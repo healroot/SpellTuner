@@ -31,6 +31,7 @@ Engine\SimSolver.lua
 Engine\SimPlanner.lua
 Engine\RunTimeline.lua
 Engine\ReplayTrace.lua
+Engine\Practice.lua
 UI\Style.lua
 UI\Tooltip.lua
 UI\SpellTooltip.lua

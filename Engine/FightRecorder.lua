@@ -639,6 +639,11 @@ end
 -- Returns: recording, label, run, pullIndex.
 function MD:GetRecording(spec)
     spec = tostring(spec or 1)
+    -- v0.15.0: "p2" is the second practice fight (Engine/Practice.lua)
+    local p = spec:match("^[pP](%d+)$")
+    if p then
+        return MD.Practice and MD.Practice.Get(tonumber(p)) or nil, "p" .. p
+    end
     local a, b = spec:match("^(%d+):(%d+)$")
     if a then
         if not MD.RunRecorder then return nil, spec end

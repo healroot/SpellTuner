@@ -314,6 +314,9 @@ function SM:Run(scenario, plan, opts)
                   reasons = {},
                   ev = { t = {}, kind = {}, tgt = {}, a = {}, b = {}, why = {} }, nEv = 0 }
         for i = 1, nT do if S.tracked[i] then trace.hp[i] = {} end end
+        -- v0.15.0: handed back at once, not only in the result -- a practice
+        -- session's window paints this trace while it is still being written
+        opts.trace.built = trace
         if gridDt ~= (opts.trace.dt or 0.25) then
             MD:Debug("sim", "trace: dt %.2f -> %.2f to stay under %d numbers", opts.trace.dt or 0.25, gridDt, SM.TRACE_MAX_NUMBERS)
         end
@@ -336,6 +339,10 @@ function SM:Run(scenario, plan, opts)
     end
     local function TakeGrid()
         local k = gridI
+        -- v0.15.0: how far the grid is written. A finished trace is full; a
+        -- practice session's is still being written while the window reads it,
+        -- and Engine/ReplayTrace.lua never reads past this.
+        trace.filled = k
         trace.mana[k] = mana
         trace.form[k] = (form == "tree") and 1 or 0
         trace.healed[k], trace.overhealed[k] = healed, overhealed
@@ -354,7 +361,10 @@ function SM:Run(scenario, plan, opts)
     ----------------------------------------------------------------------------
     -- Healing
     ----------------------------------------------------------------------------
-    local function Land(ti, amount, family)
+    -- v0.15.0: `spellID` and `periodic` say which combat-log event this heal
+    -- would have been, so a practice session (Engine/Practice.lua) can write it
+    -- down exactly as the recorder writes a real one. Optional; only onHeal reads them.
+    local function Land(ti, amount, family, spellID, periodic, crit)
         if not ti or ti < 1 or ti > nT or S.dead[ti] or amount <= 0 then return end
         local maxHP = S.maxHP[ti]
         local room = maxHP - S.hp[ti]
@@ -365,7 +375,7 @@ function SM:Run(scenario, plan, opts)
         overhealed = overhealed + (amount - eff)
         S.healByFamily[family] = (S.healByFamily[family] or 0) + eff
         S.ohByFamily[family] = (S.ohByFamily[family] or 0) + (amount - eff)
-        if onHeal then onHeal(t, ti, amount, eff, family) end
+        if onHeal then onHeal(t, ti, amount, eff, family, spellID, periodic, crit) end
     end
 
     local function Damage(ti, amount)
@@ -442,7 +452,10 @@ function SM:Run(scenario, plan, opts)
         end
         st.expires = t + (e.duration or (st.ticksLeft * st.tickPeriod))
         ScheduleHot(ti, fi, st)
-        Trace(TK.HOT, ti, fi, st.stacks)
+        local n = Trace(TK.HOT, ti, fi, st.stacks)
+        -- v0.15.0: when this application will run out, as of now. A finished
+        -- trace also has the HOT_END to read it from; a live one does not yet.
+        if n then trace.expires = trace.expires or {}; trace.expires[n] = st.expires end
     end
 
     -- Crits. "ev" multiplies by the expectation, which is right for comparing
@@ -461,9 +474,10 @@ function SM:Run(scenario, plan, opts)
         if d <= 0 then return 0 end
         local p = e.directCrit or crit
         if critMode == "roll" then
-            return Roll() < p and d * 1.5 or d
+            if Roll() < p then return d * 1.5, true end
+            return d, false
         end
-        return d * (1 + 0.5 * p)
+        return d * (1 + 0.5 * p), false
     end
 
     -- One cast landing. Instants land the moment they are cast; everything else
@@ -475,9 +489,11 @@ function SM:Run(scenario, plan, opts)
         -- the log did not carry) and no corpse: the mana is still spent.
         if not ti or ti < 1 or ti > nT or S.dead[ti] then return end
         if e.type == "direct" then
-            Land(ti, DirectAmount(e), e.family)
+            local amount, didCrit = DirectAmount(e)
+            Land(ti, amount, e.family, spellID, false, didCrit)
         elseif e.type == "hybrid" then
-            Land(ti, DirectAmount(e), e.family)
+            local amount, didCrit = DirectAmount(e)
+            Land(ti, amount, e.family, spellID, false, didCrit)
             ApplyHot(ti, HOT_INDEX.Regrowth, e, spellID)
         elseif e.type == "hot" then
             ApplyHot(ti, HOT_INDEX.Rejuvenation, e, spellID)
@@ -489,10 +505,10 @@ function SM:Run(scenario, plan, opts)
             local rg = row and row[HOT_INDEX.Regrowth]
             local rj = row and row[HOT_INDEX.Rejuvenation]
             if rg and rg.active and e.swiftmendRegrowth then
-                Land(ti, e.swiftmendRegrowth, e.family)
+                Land(ti, e.swiftmendRegrowth, e.family, spellID, false)
                 rg.active = false
             elseif rj and rj.active and e.swiftmendRejuv then
-                Land(ti, e.swiftmendRejuv, e.family)
+                Land(ti, e.swiftmendRejuv, e.family, spellID, false)
                 rj.active = false
             end
         end
@@ -663,6 +679,12 @@ function SM:Run(scenario, plan, opts)
     -- Main loop
     ----------------------------------------------------------------------------
     local aborted = false
+    -- v0.15.0: a practice session runs THIS loop in real time. `pace(nt, S,
+    -- mana, form)` is called before anything at nt is applied; a live session
+    -- yields its coroutine there until the wall clock has reached nt, and
+    -- returns false to end the fight early. Nil everywhere else, so the search
+    -- pays one comparison per event.
+    local pace = opts.pace
     while true do
         -- The next thing that happens, in the priority order equal timestamps
         -- resolve by: rates and form first (they must be in effect for the
@@ -682,6 +704,9 @@ function SM:Run(scenario, plan, opts)
         -- mana sample means: the log's line at a cast's timestamp is the mana
         -- AFTER the cast paid for itself.
         -- The trace grid (v0.8) is a third sampler under the same rule.
+        -- Paced BEFORE sampling, so a live session never writes a sample ahead
+        -- of the wall clock.
+        if pace and pace(nt, S, mana, form, busyUntil) == false then aborted = true; break end
         while true do
             local ms = (samples and sampleI <= sampleN) and samples[sampleI] or nil
             local hs = (hpT and hpI <= hpN) and hpT[hpI] or nil
@@ -774,7 +799,7 @@ function SM:Run(scenario, plan, opts)
             if prio == E_TICK then
                 local st = S.hots[a] and S.hots[a][b]
                 if st and st.active and st.gen == aux and st.ticksLeft > 0 and not S.dead[a] then
-                    Land(a, st.tick * st.stacks, st.family or "hot")
+                    Land(a, st.tick * st.stacks, st.family or "hot", st.spellID, true)
                     tickCount = tickCount + 1
                     st.ticksLeft = st.ticksLeft - 1
                     if st.ticksLeft > 0 then
@@ -800,7 +825,9 @@ function SM:Run(scenario, plan, opts)
                         -- One bloom per application-size, identical at 1, 2 and
                         -- 3 stacks, across 22 imported parses. Engine/RankMath
                         -- and the endDeficit term always had it this way.
-                        Land(a, st.bloom, st.family or "Lifebloom")
+                        -- the bloom reaches the combat log under its own id
+                        Land(a, st.bloom, st.family or "Lifebloom",
+                            st.spellID and MD.SpellData.bloomID or nil, false)
                         bloomCount = bloomCount + 1
                         bloomed = 1
                     end
@@ -828,7 +855,9 @@ function SM:Run(scenario, plan, opts)
                 end
                 local spellID, ti, rule = plan:Decide(S, t, mana, form)
                 pendingReason = trace and plan.reason or nil
-                if spellID and lastWasWait and reaction > 0 then
+                -- a human at the keyboard has their own reaction time, already
+                -- spent by the time their input reaches the queue (v0.15.0)
+                if spellID and lastWasWait and reaction > 0 and not plan.noReaction then
                     -- Coming out of idle: pay the reaction delay, then ask
                     -- again. Asking again rather than committing now keeps the
                     -- plan causal -- it may well have a better answer by then.
@@ -859,9 +888,13 @@ function SM:Run(scenario, plan, opts)
                     lastWasWait = true
                     if trace and not waitEv then waitEv = Trace(TK.WAIT, 0, 0, 0) end
                     pendingReason = nil
-                    local nextT = h.n > 0 and h.t[1] or (t + 0.5)
-                    if nextT > t + 0.5 then nextT = t + 0.5 end
-                    if nextT <= t then nextT = t + 0.5 end
+                    -- plan.poll (v0.15.0): how soon to ask again. A plan's
+                    -- answer only changes when something happens, so 0.5s is
+                    -- plenty; a player's changes whenever they press a key.
+                    local poll = plan.poll or 0.5
+                    local nextT = h.n > 0 and h.t[1] or (t + poll)
+                    if nextT > t + poll then nextT = t + poll end
+                    if nextT <= t then nextT = t + poll end
                     local span = nextT - t
                     if t + span > dur then span = dur - t end   -- "101% of the fight" otherwise
                     if span < 0 then span = 0 end
@@ -1289,18 +1322,32 @@ function SM:Validate(rec, kit)
         nil, limHpMean, whyHp)
 
     -- 5: a death truncates the damage that would have followed
-    Gate("no tracked death", #(rec.deaths or {}) == 0,
-        #(rec.deaths or {}) == 0 and "nobody died"
-            or string.format("%d death(s): damage after one is truncated in the log",
-                #rec.deaths),
-        nil, nil, "post-death damage truncation")
+    -- v0.15.0: not in a practice fight. Its damage timeline was generated
+    -- before anyone died and is recorded whole, so a plan that keeps them alive
+    -- is answering the fight that was really coming -- which is the question.
+    if rec.practice then
+        Gate("no tracked death", true,
+            #(rec.deaths or {}) == 0 and "nobody died"
+                or string.format("%d death(s) - practice: the whole damage timeline is recorded", #rec.deaths),
+            nil, nil, "practice fights record damage the dead would have taken")
+    else
+        Gate("no tracked death", #(rec.deaths or {}) == 0,
+            #(rec.deaths or {}) == 0 and "nobody died"
+                or string.format("%d death(s): damage after one is truncated in the log",
+                    #rec.deaths),
+            nil, nil, "post-death damage truncation")
+    end
 
     -- 6: whose fight was this
     local limForeign, whyForeign = Threshold("foreign")
     local fs = rec.foreignShare or 0
-    Gate("foreign healing", fs <= limForeign,
-        string.format("%.0f%% of healing on your group was somebody else's (limit %.0f%%)",
-            fs * 100, limForeign * 100),
+    -- v0.15.0: a practice fight's other healers are scripted events the engine
+    -- replays exactly, so they cannot make a plan fiction the way a real
+    -- healer reacting to yours can
+    Gate("foreign healing", rec.practice and true or fs <= limForeign,
+        string.format("%.0f%% of healing on your group was somebody else's (%s)",
+            fs * 100, rec.practice and "practice: scripted, replayed exactly"
+                or string.format("limit %.0f%%", limForeign * 100)),
         fs, limForeign, whyForeign)
 
     -- 7: is the model right about the spells that actually mattered here

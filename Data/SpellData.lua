@@ -257,6 +257,10 @@ SD.alias = {
     [44207] = 9863,
 }
 
+-- The id Lifebloom's final heal arrives under (the alias above, named for the
+-- one place that has to write it rather than read it: Engine/Practice.lua).
+SD.bloomID = 33778
+
 -- The id to attribute a heal to. Always use this on an id that came out of a
 -- combat log or a recording; a CAST id never needs it.
 function SD:Resolve(id)

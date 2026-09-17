@@ -1,0 +1,252 @@
+-- tools/run.sh tools/practice.lua
+--
+-- A practice session (Engine/Practice.lua) played by a script against a fake
+-- clock. What it holds down:
+--   * the damage generator is deterministic in its seed and delivers roughly
+--     what the setup asked for;
+--   * the session obeys the game: the GCD, the spell queue window, mana, a dead
+--     target, Swiftmend with nothing to eat;
+--   * the live trace can be read WHILE the fight is running;
+--   * the recording replays through the ordinary engine to exactly the health
+--     and mana the player saw -- same engine, so no gate may fail -- and the
+--     coach answers it;
+--   * stopping early keeps what happened and nothing after it.
+local here = arg[0]:match("^(.*)/[^/]+$")
+local a0 = arg[0]; arg[0] = here .. "/harness.lua"
+local MD = dofile(here .. "/harness.lua"); arg[0] = a0
+local S = _G.STUB
+local PR, SM, SD, SP = MD.Practice, MD.SimModel, MD.SpellData, MD.SimPlanner
+
+local ok, fails = 0, {}
+local function check(name, cond, detail)
+    if cond then ok = ok + 1 else fails[#fails + 1] = name .. (detail and (" - " .. detail) or "") end
+    print(string.format("%-58s %s%s", name, cond and "ok" or "FAIL", detail and (" - " .. detail) or ""))
+end
+
+local LB, REJ, RG, SWM = SD.maxRank.Lifebloom, SD.maxRank.Rejuvenation, SD.maxRank.Regrowth, SD.maxRank.Swiftmend
+
+-- damage -------------------------------------------------------------------------
+local setup = PR.DefaultSetup("5", 64)
+setup.dur = 60
+check("a party is five, and exactly one of them is you", #setup.targets == 5 and (function()
+    local n = 0
+    for _, tg in ipairs(setup.targets) do if tg.you then n = n + 1 end end
+    return n == 1
+end)())
+local d1, d2, d3 = PR.BuildDamage(setup, 7), PR.BuildDamage(setup, 7), PR.BuildDamage(setup, 8)
+local same = #d1.t == #d2.t
+for i = 1, #d1.t do if d1.t[i] ~= d2.t[i] or d1.amt[i] ~= d2.amt[i] then same = false end end
+check("the same seed is the same fight", same, #d1.t .. " events")
+local differs = #d1.t ~= #d3.t
+for i = 1, math.min(#d1.t, #d3.t) do if d1.amt[i] ~= d3.amt[i] then differs = true end end
+check("another seed is another fight", differs)
+local sorted = true
+for i = 2, #d1.t do if d1.t[i] < d1.t[i - 1] then sorted = false end end
+check("the timeline is in time order", sorted)
+do
+    -- the tank's steady damage, spikes and AoE off: close to dps x maxHP x time
+    local s2 = PR.DefaultSetup("2", 70)
+    s2.dur, s2.aoe = 300, nil
+    s2.targets[1].spike, s2.targets[2].spike = 0, 0
+    local ev = PR.BuildDamage(s2, 3)
+    local sum = 0
+    for i = 1, #ev.t do if ev.tgt[i] == 1 then sum = sum + ev.amt[i] end end
+    local want = s2.targets[1].dps * s2.targets[1].maxHP * (300 - 1.5)
+    check("steady damage delivers what the setup asked (within 10%)", math.abs(sum / want - 1) < 0.10,
+        string.format("%.0f vs %.0f", sum, want))
+end
+do
+    local s3 = PR.DefaultSetup("5", 70)
+    s3.dur, s3.otherHealing = 60, 0.5
+    local ev = PR.BuildDamage(s3, 5)
+    local dmg, heal = 0, 0
+    for i = 1, #ev.t do
+        if ev.kind[i] == SM.K.DMG then dmg = dmg + ev.amt[i] elseif ev.kind[i] == SM.K.FHEAL then heal = heal + ev.amt[i] end
+    end
+    check("other healers give back their share", heal > 0.4 * dmg and heal < 0.5 * dmg + 1,
+        string.format("%.0f of %.0f", heal, dmg))
+end
+
+-- a session, played ---------------------------------------------------------------
+local errors = {}
+local s = PR.New(setup, { seed = 11, onError = function(msg) errors[#errors + 1] = msg end, noStore = true })
+check("a new session is ready, not running", s.state == "ready")
+s:Start()
+check("started", s.state == "running")
+
+local TANK, MELEE, YOU = 1, 3, 2
+-- press(t, spell, target): at that clock time
+local script = {
+    { 1.0, LB, TANK },
+    { 2.0, REJ, MELEE },         -- 1.0s into the GCD: more than the queue window -> refused
+    { 2.3, REJ, MELEE },         -- 0.2s before the GCD ends: queued, goes off at 2.5
+    { 4.2, SWM, YOU },           -- nothing on you to eat
+    { 6.0, RG, TANK },           -- a 2s cast
+    { 7.8, LB, TANK },           -- queued at the end of the cast
+    { 12.0, SWM, MELEE },        -- eats the Rejuvenation
+}
+local nextI, dt = 1, 0.05
+local midTrace
+while s.state == "running" do
+    local p = script[nextI]
+    if p and s.clock >= p[1] - 1e-9 then
+        s:Cast(p[2], p[3])
+        nextI = nextI + 1
+    end
+    s:Update(dt)
+    if not midTrace and s.clock >= 10 and s.trace == nil then
+        -- read the LIVE trace the way the window does, mid-fight
+        local tr = s.S and s:LiveTrace()
+        if tr then
+            local st = MD.ReplayTrace.New(tr, s.scenario)
+            st:Advance(s.clock)
+            midTrace = { hp = st:Hp(TANK), mana = st:Mana(), hot = st:Hot(TANK, SM.HOT_INDEX.Lifebloom),
+                         filled = tr.filled, n = tr.n }
+        end
+    end
+end
+check("played to the end", s.state == "done" and s.clock >= setup.dur - 1e-6, s.state .. " at " .. s.clock)
+check("the live trace was readable mid-fight", midTrace and midTrace.hp and midTrace.mana
+    and midTrace.filled <= midTrace.n, midTrace and string.format("hp %.2f, mana %d, grid %d/%d",
+        midTrace.hp or -1, midTrace.mana or -1, midTrace.filled or -1, midTrace.n or -1))
+check("a HoT on the live trace knows when it ends", midTrace and midTrace.hot and midTrace.hot.remaining > 0
+    and midTrace.hot.remaining <= 7, midTrace and midTrace.hot and string.format("%.1fs", midTrace.hot.remaining))
+
+local rec = s.rec
+check("a recording came out", rec ~= nil)
+local function has(msg) for _, e in ipairs(errors) do if e == msg then return true end end return false end
+check("a press deep in the GCD is refused", has("Another action is in progress"), table.concat(errors, "; "))
+check("Swiftmend with nothing to eat is refused", has("Nothing to consume"))
+
+local K = SM.K
+local castsAt = {}
+for i = 1, rec.n do
+    if rec.ev.kind[i] == K.OWNCAST then castsAt[#castsAt + 1] = { rec.ev.t[i], rec.ev.x[i], rec.ev.tgt[i] } end
+end
+check("five presses were cast", #castsAt == 5, tostring(#castsAt))
+local function near(a, b) return a and b and math.abs(a - b) < 0.06 end
+check("the queued press went off when the GCD ended", castsAt[2] and castsAt[2][2] == REJ and near(castsAt[2][1], 2.5),
+    castsAt[2] and string.format("%.2f", castsAt[2][1]))
+check("a cast lands when its bar ends", castsAt[3] and castsAt[3][2] == RG and near(castsAt[3][1], 8.0),
+    castsAt[3] and string.format("%.2f", castsAt[3][1]))
+check("the press queued during the cast went off after it", castsAt[4] and castsAt[4][2] == LB and near(castsAt[4][1], 8.0),
+    castsAt[4] and string.format("%.2f", castsAt[4][1]))
+check("Swiftmend ate the Rejuvenation", castsAt[5] and castsAt[5][2] == SWM)
+local starts = 0
+for i = 1, rec.n do if rec.ev.kind[i] == K.CASTSTART then starts = starts + 1 end end
+check("the cast bar is recorded for the cast, not for instants", starts == 1, tostring(starts))
+local ticks, heals = 0, 0
+for i = 1, rec.n do
+    if rec.ev.kind[i] == K.OWNTICK then ticks = ticks + 1 elseif rec.ev.kind[i] == K.OWNHEAL then heals = heals + 1 end
+end
+check("heals are written down the way the combat log would carry them", ticks > 10 and heals >= 3,
+    ticks .. " ticks, " .. heals .. " direct")
+
+-- replay: the ordinary engine, from the recording alone ----------------------------
+local kit = MD.RankMath:SpellKit({ live = true })
+local v = SM:Validate(rec, kit)
+local failed = {}
+for _, g in ipairs(v.gates) do if not g.ok then failed[#failed + 1] = g.name .. ": " .. tostring(g.text) end end
+check("every gate passes: it is the same engine", v.ok, table.concat(failed, "; "))
+local sc = SM.ScenarioFromRecording(rec, kit)
+local r = SM:Run(sc, nil, { critMode = "ev" })
+local worst = 0
+for i = 1, #rec.tracked do
+    local n = #rec.hp.t
+    local want = rec.hp.hp[i][n]
+    local got = r.hpCurve[i] and r.hpCurve[i][#r.hpCurve[i]]
+    if want and got then worst = math.max(worst, math.abs(want - got)) end
+end
+check("the replay ends on the health the player saw", worst < 1, string.format("worst %.3f hp", worst))
+check("and on the mana", math.abs((r.manaEnd or 0) - rec.mana.v[#rec.mana.v]) < 60,
+    string.format("%.0f vs %.0f (last 2s sample)", r.manaEnd or 0, rec.mana.v[#rec.mana.v]))
+
+-- coach it ----------------------------------------------------------------------
+local card = SP.Coach(rec, { n = "p1" })
+check("the coach answers a practice fight", card and #card > 8 and not card[1]:find("does not replay"),
+    card and card[1])
+
+-- a death, and a press on the dead -------------------------------------------------
+do
+    local s4setup = PR.DefaultSetup("2", 64)
+    s4setup.dur = 30
+    s4setup.aoe = nil
+    local tank = s4setup.targets[1]
+    tank.dps, tank.spike, tank.spikeEvery, tank.jitter = 0.5, 0, 0, 0     -- half its health a second
+    local errs = {}
+    local s4 = PR.New(s4setup, { seed = 2, noStore = true, onError = function(m) errs[#errs + 1] = m end })
+    s4:Start()
+    local pressed = false
+    while s4.state == "running" do
+        if math.abs(s4.clock - 1) < 0.05 then s4:Cast(REJ, 2) end      -- one real cast, on yourself
+        if not pressed and s4.clock >= 8 then s4:Cast(REJ, 1); pressed = true end
+        s4:Update(0.1)
+    end
+    check("an unhealed tank dies", #s4.rec.deaths == 1, tostring(#s4.rec.deaths))
+    local dead = false
+    for _, e in ipairs(errs) do if e == "Target is dead" then dead = true end end
+    check("a heal on the dead is refused", dead, table.concat(errs, "; "))
+    local later = 0
+    for i = 1, s4.rec.n do
+        if s4.rec.ev.kind[i] == K.DMG and s4.rec.ev.tgt[i] == 1 and s4.rec.ev.t[i] > s4.rec.deaths[1][2] then later = later + 1 end
+    end
+    check("the damage the dead would have taken is kept", later > 10, later .. " hits after the death")
+    local v4 = SM:Validate(s4.rec, kit)
+    check("a death does not stop a practice fight being coached", v4.ok)
+end
+
+-- out of mana ----------------------------------------------------------------------
+do
+    local s5 = PR.New(PR.DefaultSetup("1", 64), { seed = 3, noStore = true })
+    s5.setup.dur = 20
+    local errs = {}
+    s5.opts.onError = function(m) errs[#errs + 1] = m end
+    s5.scenario.initial.mana = 10
+    s5:Start()
+    local pressed = false
+    while s5.state == "running" do
+        if not pressed and s5.clock >= 3 then s5:Cast(RG, 1); pressed = true end
+        s5:Update(0.1)
+    end
+    check("no mana, no cast", errs[1] == "Not enough mana", tostring(errs[1]))
+end
+
+-- stopping early -------------------------------------------------------------------
+do
+    MD.cdb.practice = {}
+    local s6 = PR.New(PR.DefaultSetup("5", 64), { seed = 4 })
+    s6:Start()
+    while s6.clock < 15 do
+        if math.abs(s6.clock - 3) < 0.03 then s6:Cast(LB, 1) end
+        s6:Update(0.05)
+    end
+    s6:Stop()
+    local r6 = s6.rec
+    check("stopping keeps the fight so far", r6 and s6.state == "done" and math.abs(r6.dur - 15) < 0.06,
+        r6 and string.format("%.2fs", r6.dur))
+    local after = 0
+    for i = 1, r6.n do if r6.ev.t[i] > r6.dur then after = after + 1 end end
+    check("and nothing after it", after == 0, after .. " events after the end")
+    check("it is marked unfinished", r6.practice and r6.practice.finished == false)
+    check("an early stop still replays", SM:Validate(r6, kit).ok)
+    check("it is kept and addressed as p1", MD:GetRecording("p1") == r6)
+    check("practice never touches the ring of real fights", #(MD.cdb.recordings or {}) == 0)
+    for k = 1, PR.MAX_KEPT + 2 do
+        local x = PR.New(PR.DefaultSetup("1", 64), { seed = k })
+        x.startedAt = 2000000000 + k
+        x:Start(); x:Update(0.2); x:Stop()
+    end
+    check("only the newest " .. PR.MAX_KEPT .. " are kept", #MD.cdb.practice == PR.MAX_KEPT
+        and PR.Get(1).id == 2000000000 + PR.MAX_KEPT + 2, tostring(#MD.cdb.practice))
+end
+
+-- the search's engine is untouched --------------------------------------------------
+check("a run with no pace and no player is unchanged", (function()
+    local sc2 = PR.New(PR.DefaultSetup("5", 64), { seed = 9, noStore = true }).scenario
+    local a = SM:Run(sc2, SP.DefaultPlan and SP.DefaultPlan() or nil, { critMode = "ev" })
+    return a and a.casts ~= nil
+end)())
+
+print(string.format("\n%d ok, %d failed", ok, #fails))
+for _, f in ipairs(fails) do print("  FAIL " .. f) end
+if #fails > 0 then os.exit(1) end

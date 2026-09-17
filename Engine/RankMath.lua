@@ -451,6 +451,10 @@ function RankMath:SpellKit(opts)
                 local c = row and row.calc
                 if c then
                     e.cost, e.cast = row.cost, row.cast
+                    -- v0.15.0: the cast bar a player actually waits through. `cast`
+                    -- averages Nature's Grace in, which is right for throughput and
+                    -- wrong for a bar on screen (Engine/Practice.lua)
+                    e.castBase = c.castBase
                     if c.kind == "direct" then
                         e.direct = row.heal / (c.critMult or 1)
                         e.directCrit = c.crit or 0

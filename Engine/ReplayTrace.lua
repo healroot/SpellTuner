@@ -58,6 +58,9 @@ local function HotEnd(trace, i, tgt, fi)
             if e.kind[j] == TK.HOT then return e.t[j], j end
         end
     end
+    -- v0.15.0: a trace still being written (a practice session) has no end to
+    -- find yet; the engine said when the application runs out
+    if trace.expires and trace.expires[i] then return trace.expires[i], nil end
     return trace.dur, nil
 end
 
@@ -185,6 +188,10 @@ local function GridIndex(self, t)
     local k = math.floor(t / self.dt + 1e-6) + 1
     if k < 1 then k = 1 end
     if k > self.trace.n then k = self.trace.n end
+    -- v0.15.0: never past what a live trace has written
+    local filled = self.trace.filled
+    if filled and k > filled then k = filled end
+    if k < 1 then k = 1 end
     return k
 end
 
