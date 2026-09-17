@@ -411,6 +411,7 @@ MD.COMMANDS = {
     { "/md drink",        "toggle the drink reminder" },
     { "/md rest",         "toggle the 'rest' segment (time to full if you stop casting)" },
     { "/md tooltip",      "hover tooltip on the FLOATING clock only (off also stops it swallowing clicks)" },
+    { "/md practice",     "heal a fight you play and get it back as a recording (start: play the saved setup now)" },
     { "/md spelltip",     "heal values on the game's spell tooltips (bars, spellbook); Shift for the maths" },
     { "/md window N",     "spend estimator half-life in seconds (5-60, default 15)" },
     { "/md verify",       "check static spell data against the live client" },
@@ -474,6 +475,15 @@ SlashCmdList.MANADEMON = function(msg)
     elseif cmd == "rest" then
         MD.db.showRest = not MD.db.showRest
         MD:Print("rest segment " .. (MD.db.showRest and "on." or "off."))
+    elseif cmd == "practice" then
+        -- v0.15.0: Simulate -> Practice; "/md practice start" plays the saved setup at once
+        if arg == "start" and MD.OpenPractice and MD.Practice then
+            MD.cdb.practiceSetup = MD.cdb.practiceSetup or MD.Practice.DefaultSetup("5")
+            MD:OpenPractice(MD.Practice.CopySetup(MD.cdb.practiceSetup), MD.cdb.practiceSetup.fixedSeed)
+        elseif MD.SelectView then
+            if MD.ShowDashboard then MD:ShowDashboard() end
+            MD:SelectView("simulate", "practice")
+        end
     elseif cmd == "spelltip" then
         MD.db.spellTooltip = (MD.db.spellTooltip == false)
         MD:Print(MD.db.spellTooltip

@@ -78,14 +78,18 @@ function MD.DashboardParts.CreateReview(parent, width)
         local i = RunIndex()
         return i and MD.RunRecorder and MD.RunRecorder:Get(i) or nil
     end
+    -- v0.15.0: practice fights (Engine/Practice.lua), kept apart from real ones
+    local function IsPractice() return source == "practice" end
     local function Rows()
         local run = CurrentRun()
         if run then return run.pulls or {} end
+        if IsPractice() then return MD.Practice and MD.Practice.List() or {} end
         return MD.FightRecorder and MD.FightRecorder:List() or {}
     end
     -- The address the commands take: "3" for a single fight, "2:7" for a pull.
     local function Spec()
         local i = RunIndex()
+        if IsPractice() then return "p" .. selected end
         return i and (i .. ":" .. selected) or tostring(selected)
     end
 
@@ -103,10 +107,10 @@ function MD.DashboardParts.CreateReview(parent, width)
     -- are a fixed pool (a run list is at most MAX_RUNS long) relabelled on
     -- render, so a run appearing or being replaced never leaves a dead button.
     local sourceBtns, prevBtn = {}, nil
-    for i = 1, 3 do
-        local b = UI.CreateButton(pane, i == 1 and "Fights" or "run", "accent-hover", { 110, 16 },
-            false, false, UI.FONT_SMALL, nil)
-        b.id = i == 1 and "fights" or ("run" .. (i - 1))
+    for i = 1, 4 do
+        local b = UI.CreateButton(pane, i == 1 and "Fights" or i == 4 and "Practice" or "run", "accent-hover",
+            { 110, 16 }, false, false, UI.FONT_SMALL, nil)
+        b.id = i == 1 and "fights" or i == 4 and "practice" or ("run" .. (i - 1))
         if prevBtn then b:SetPoint("LEFT", prevBtn, "RIGHT", -1, 0)
         else b:SetPoint("TOPLEFT", pane, "TOPLEFT", 0, -2) end
         sourceBtns[i] = b
@@ -343,7 +347,7 @@ function MD.DashboardParts.CreateReview(parent, width)
         -- the selector: [Fights] plus one button per stored run
         local RR = MD.RunRecorder
         local runs = RR and RR:List() or {}
-        for i = 2, #sourceBtns do
+        for i = 2, 3 do
             local run = runs[i - 1]
             if run then
                 sourceBtns[i]:SetText((run.pinned and "*" or "") .. (run.name or "run"))
@@ -362,6 +366,9 @@ function MD.DashboardParts.CreateReview(parent, width)
         if run then
             runFS:SetText("|cffffcc00" .. RR:Line(run) .. "|r" ..
                 (run.truncated and "" or ""))
+        elseif IsPractice() then
+            runFS:SetText("|cff888888Fights you played in Simulate -> Practice. They replay and coach like real " ..
+                "ones; the damage the dead would have taken is kept, so the coach can show how to save them.|r")
         elseif RR and RR.active then
             local st = RR:Status()
             runFS:SetText("|cff99dd99" .. (st[1] or "") .. "|r")
@@ -381,6 +388,7 @@ function MD.DashboardParts.CreateReview(parent, width)
             local row = AcquireRow()
             row:SetPoint("TOPLEFT", pane, "TOPLEFT", 0, y)
             row.cells.when:SetText(run and "|cff888888This run kept no pulls.|r"
+                or IsPractice() and "|cff888888No practice fights yet - Simulate -> Practice.|r"
                 or "|cff888888No recorded fights yet - pull something for 20s.|r")
             row.cells.when:SetWidth(width - 80)
         end
@@ -458,7 +466,7 @@ function MD.DashboardParts.CreateReview(parent, width)
         -- Enable/Disable rather than SetEnabled: the older call exists on every
         -- client this addon targets.
         local function Set(btn, on) if on then btn:Enable() else btn:Disable() end end
-        Set(pinBtn, run ~= nil or rec ~= nil)
+        Set(pinBtn, (run ~= nil or rec ~= nil) and not IsPractice())
         Set(validateBtn, rec ~= nil)
         Set(playBtn, rec ~= nil and MD.Replay ~= nil)
         Set(exportBtn, #list > 0)

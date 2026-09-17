@@ -115,6 +115,66 @@ function PR.ApplyRole(setup, kind, values)
 end
 
 --------------------------------------------------------------------------------
+-- Bindings: what a press casts. A press is the key or mouse button with its
+-- modifiers in the client's own spelling ("ALT-BUTTON5", "SHIFT-1"), made while
+-- hovering a frame -- the mouseover healing the author plays with. A binding
+-- names a family and a rank (nil = the highest you know), so it follows a new
+-- rank the day it is trained.
+--
+-- The defaults are the author's own Cell click-casting, read from their
+-- SavedVariables on 2026-09-17: Button5 "Main overtime" (Lifebloom on a
+-- friendly mouseover), Alt-Button5 "rej/moofire" (Rejuvenation), Shift-Button5
+-- "efficient Rej" (Rejuvenation Rank 5). Left and right click target and open
+-- the menu in Cell, so they are free here and carry the two heals those macros
+-- do not: Regrowth and Swiftmend. Shift-left is Healing Touch.
+--------------------------------------------------------------------------------
+PR.DEFAULT_BINDS = {
+    { key = "BUTTON5",       family = "Lifebloom" },
+    { key = "ALT-BUTTON5",   family = "Rejuvenation" },
+    { key = "SHIFT-BUTTON5", family = "Rejuvenation", rank = 5 },
+    { key = "BUTTON1",       family = "Regrowth" },
+    { key = "BUTTON2",       family = "Swiftmend" },
+    { key = "SHIFT-BUTTON1", family = "HealingTouch" },
+}
+
+-- the client's names for mouse buttons, as a binding spells them
+PR.MOUSE = { LeftButton = "BUTTON1", RightButton = "BUTTON2", MiddleButton = "BUTTON3",
+             Button4 = "BUTTON4", Button5 = "BUTTON5" }
+
+function PR.Binds()
+    local db = MD.db
+    if db and type(db.practiceBinds) == "table" then return db.practiceBinds end
+    local out = {}
+    for i, b in ipairs(PR.DEFAULT_BINDS) do out[i] = { key = b.key, family = b.family, rank = b.rank } end
+    if db then db.practiceBinds = out end
+    return out
+end
+
+-- modifiers in the order the client writes them
+function PR.Mods(alt, ctrl, shift)
+    return (alt and "ALT-" or "") .. (ctrl and "CTRL-" or "") .. (shift and "SHIFT-" or "")
+end
+
+-- A binding's spell id: that rank if you know it, else your highest.
+function PR.SpellFor(bind)
+    local SD = MD.SpellData
+    if not bind or not bind.family then return nil end
+    if bind.rank then
+        for _, id in ipairs(SD.known[bind.family] or {}) do
+            if SD.spells[id].rank == bind.rank then return id end
+        end
+    end
+    return SD.maxRank[bind.family]
+end
+
+function PR.BindFor(key)
+    for _, b in ipairs(PR.Binds()) do
+        if b.key == key then return b, PR.SpellFor(b) end
+    end
+    return nil
+end
+
+--------------------------------------------------------------------------------
 -- The damage timeline. Deterministic in the seed: the same setup and seed is
 -- the same fight, which is what lets a session be played again.
 --------------------------------------------------------------------------------
@@ -522,6 +582,13 @@ function Session:Finish()
 
     local g
     for _, x in ipairs(PR.GROUPS) do if x.id == self.setup.group then g = x end end
+    if casts == 0 then
+        -- nothing was played: not a fight worth a slot
+        self.rec = nil
+        MD:Debug("sim", "practice ended after %.0fs with no casts: not kept", endT)
+        if self.opts.onFinish then self.opts.onFinish(nil) end
+        return nil
+    end
     local rec = {
         v = 2, id = self.startedAt, t0 = 0, dur = endT, pool = sc.pool,
         zone = "Practice: " .. (g and g.label or "custom"), encounter = "Practice",

@@ -35,11 +35,13 @@ Run all of them before committing anything the engine, the recorder or a tooltip
 | `simwindow.lua` | every preset combination's scenario, baselines and search |
 | `solvercheck.lua` | the solver: deposits, the gap integral, causality, the four forecasts, the explainer |
 | `timeline.lua` | the run's clock: segments, seeks, health across a gap |
+| `practice.lua` | a practice session played against a fake clock: the seeded damage, the game's rules, the live trace, and **the recording replaying to exactly what was played** |
+| `practiceui.lua` | practice from the screen: panel, Start, presses on frames and keys over them, pause, End, the replay, Review's Practice list |
 | `spelltip.lua` | the spell tooltip (v0.14.9): druid only, once per showing, off means off, and **every number on it is the model's own** — the tick and bloom the simulator heals with, the dashboard's heal |
 
 ```bash
 for t in simcheck reccheck replaycheck replayui runcheck reviewui navui dashui \
-         regencheck simwindow solvercheck timeline spelltip; do
+         regencheck simwindow solvercheck timeline spelltip practice practiceui; do
   printf "%-13s " "$t"; bash tools/run.sh tools/$t.lua 2>&1 | tail -1
 done
 ```

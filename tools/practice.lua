@@ -234,10 +234,37 @@ do
     for k = 1, PR.MAX_KEPT + 2 do
         local x = PR.New(PR.DefaultSetup("1", 64), { seed = k })
         x.startedAt = 2000000000 + k
-        x:Start(); x:Update(0.2); x:Stop()
+        x:Start(); x:Cast(LB, 1); x:Update(0.2); x:Stop()
     end
     check("only the newest " .. PR.MAX_KEPT .. " are kept", #MD.cdb.practice == PR.MAX_KEPT
         and PR.Get(1).id == 2000000000 + PR.MAX_KEPT + 2, tostring(#MD.cdb.practice))
+end
+
+-- nothing played, nothing kept ------------------------------------------------------
+do
+    local before = #MD.cdb.practice
+    local x = PR.New(PR.DefaultSetup("1", 64), { seed = 99 })
+    x.startedAt = 2100000000
+    x:Start(); x:Update(0.2); x:Stop()
+    check("a fight with no casts is not kept", x.rec == nil and #MD.cdb.practice == before
+        and PR.Get(1).id ~= 2100000000)
+end
+
+-- bindings -----------------------------------------------------------------------
+do
+    MD.db.practiceBinds = nil
+    local b, id = PR.BindFor("BUTTON5")
+    check("Button5 is Lifebloom, as in your Cell click-casting", b and id == LB)
+    local _, rj = PR.BindFor("ALT-BUTTON5")
+    check("Alt-Button5 is your highest Rejuvenation", rj == REJ)
+    local _, r5 = PR.BindFor("SHIFT-BUTTON5")
+    check("Shift-Button5 is Rejuvenation Rank 5, the downranked one", r5 and SD.spells[r5].rank == 5
+        and SD.spells[r5].family == "Rejuvenation")
+    check("modifiers are spelled the way the client spells them", PR.Mods(true, true, true) .. "1" == "ALT-CTRL-SHIFT-1")
+    check("an unbound press is nothing", PR.BindFor("CTRL-Q") == nil)
+    MD.db.practiceBinds[1].rank = 99
+    local _, fallback = PR.BindFor("BUTTON5")
+    check("a rank you do not know falls back to your highest", fallback == LB)
 end
 
 -- the search's engine is untouched --------------------------------------------------

@@ -8,7 +8,7 @@ local UI = MD.UI
 
 local WIDTH, HEIGHT = 912, 617 -- +20% (author, 2026-09-06: not everything fit); was 760 x 514
 local frame, statsFS, calloutFS, hintFS, recapFS, messageFS, effectiveCB
-local rankTable, simStrip, wasteView, reviewView, nav
+local rankTable, simStrip, wasteView, reviewView, practiceView, nav
 local currentGroup = "spells"
 local currentFamily = "HealingTouch"
 local userPicked = false   -- once a tab is clicked, stop picking one automatically
@@ -213,8 +213,10 @@ local function Groups()
         -- empty teaches nothing, and nav:SetViews puts it there the moment a
         -- run is stored (v0.11.4)
         { id = "reports", text = "Reports", views = ReportViews() },
+        -- v0.15.0: Practice first. Building a fight for the planner to play
+        -- answered a question nobody was asking; playing it yourself does
         { id = "simulate", text = "Simulate", views = {
-            { id = "build", text = "Build a fight" } } },
+            { id = "practice", text = "Practice" }, { id = "build", text = "Build a fight" } } },
         { id = "settings", text = "Settings", views = {
             { id = "general", text = "General" }, { id = "about", text = "About" } } },
     }
@@ -244,6 +246,11 @@ local function CreateDashboard()
                 reviewView.frame:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -104)
                 reviewView.frame:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", 0, 24)
                 return reviewView.frame
+            elseif group == "simulate" and view == "practice" then
+                practiceView = MD.DashboardParts.CreatePractice(content, CONTENT_W)
+                practiceView.frame:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -6)
+                practiceView.frame:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", 0, 0)
+                return practiceView.frame
             elseif group == "simulate" then
                 if MD.AdoptSimPanel then return MD:AdoptSimPanel(content) end
                 return nil

@@ -701,6 +701,25 @@ off the combat text); (2) any tooltip where the block appears twice or not at al
 bar, spellbook, a spell linked in chat, and with ElvUI's tooltip skin if you use it;
 (3) whether Shift updates the tooltip without moving the mouse.
 
+## 34. Practice: heal a fight you play (v0.15.0)
+`/md practice` (or Simulate -> Practice). Out of combat.
+
+1. **Set up.** Pick Party. Leave the damage at the defaults for the first go. Check the right
+   side: the bindings should be your Cell click-casting -- Button5 Lifebloom, Alt-Button5
+   Rejuvenation, Shift-Button5 Rejuvenation Rank 5 -- plus left click Regrowth, right click
+   Swiftmend, Shift-left Healing Touch. Change one: click its key box, press something.
+2. **Play.** Start practice. Hover a frame and press. Press something deep in a GCD (it should
+   say "Another action is in progress" at once) and right before a GCD ends (it should go off
+   when it ends). Space pauses. Play the whole two minutes once, and once press End halfway.
+3. **Afterwards.** It opens as a replay with the suggested column filling in. Reports ->
+   Review -> Practice lists it.
+
+Report: (1) does a press on a frame feel like your Cell frames -- mouse buttons 4/5 with
+modifiers especially; (2) any press that did nothing and said nothing; (3) whether keys you did
+NOT bind still work while the window is open (they should); (4) the damage defaults -- too easy,
+too hard, the wrong shape -- with the numbers you changed them to; (5) anything on the frames
+that does not match what happened.
+
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the
 raw numbers. `/md profile` output is welcome with any report. I turn them into

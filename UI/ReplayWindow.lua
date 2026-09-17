@@ -93,6 +93,13 @@ local runIdx, pullIdx, curRun   -- which pull of which run is open, if any
 -- rewrite of it.
 local runMode, runTL, runT = false, nil, 0
 local topH = HEADER_H           -- header, plus the run strip when there is one
+-- v0.15.0: practice mode. A session (Engine/Practice.lua) is being PLAYED: the
+-- left column paints its trace as the engine writes it, the frames take presses,
+-- and the clock is the session's. When it ends, the recording opens here as an
+-- ordinary replay.
+local live = nil                -- the running Practice session, or nil
+local hoverTi = nil             -- the frame under the mouse, for key presses
+local endBtn
 local left, right          -- the two columns: { state, frames = {}, strip = {}, title }
 local rp                   -- the SP.Replay result being shown
 
@@ -398,6 +405,20 @@ local function CreateUnitFrame(parent, x, y)
     f.Resize(CELL.size[1], CELL.size[2], 1)
 
     f.flashUntil, f.textUntil, f.labelFrom, f.labelUntil, f.pulseUntil = 0, 0, 0, 0, 0
+
+    -- v0.15.0: practice. A press anywhere on the button -- its icons included,
+    -- which take the mouse for their tooltips -- is a press on this unit, and
+    -- hovering any part of it makes it the mouseover a key press heals.
+    local function Press(_, button) if f.onPress then f.onPress(button) end end
+    local function Hover() if f.onHover then f.onHover(true) end end
+    local function Unhover() if f.onHover then f.onHover(false) end end
+    f:EnableMouse(true)
+    f:SetScript("OnMouseDown", Press)
+    f:SetScript("OnEnter", Hover)
+    f:SetScript("OnLeave", Unhover)
+    for _, ic in ipairs({ f.dot, f.defIcon, f.incoming }) do ic:HookScript("OnMouseDown", Press) end
+    for _, ic in ipairs(f.hots) do ic:HookScript("OnMouseDown", Press); ic:HookScript("OnEnter", Hover) end
+    for _, ic in ipairs(f.debuffs) do ic:HookScript("OnMouseDown", Press); ic:HookScript("OnEnter", Hover) end
     return f
 end
 
@@ -809,6 +830,8 @@ local function PaintStrip(s, st, pool, now, col)
         s.castFS:SetTextColor(0.55, 0.55, 0.55)
     end
     local w = st:Waiting()
+    -- a player is not "waiting": the engine polls for their press (v0.15.0)
+    if rp and rp.live then w = nil end
     s.wait:SetText(w and string.format("waiting %.1fs", w) or "")
     s.band:SetColorTexture(0.5, 0.5, 0.5, w and 0.35 or 0)
 
@@ -979,6 +1002,7 @@ end
 local function SetPlaying(on)
     playing = on
     playBtn:SetText(on and "II" or ">")
+    if live then return end
     if on and left.state:AtEnd() then SeekTo(0) end
 end
 
@@ -1002,7 +1026,9 @@ local function RunSeek(t, keepPlaying)
     end
 end
 
+local LiveUpdate    -- defined with the practice functions below
 local function OnUpdate(_, elapsed)
+    if live then LiveUpdate(elapsed) return end
     if not rp or not playing then return end
     local dt = elapsed * speed
     local cap = DT_STEP_MAX * speed
@@ -1063,7 +1089,10 @@ local function Build()
     frame:SetFrameStrata("HIGH")
     tinsert(UISpecialFrames, "ManaDemonReplayWindow")
     frame:SetScript("OnUpdate", OnUpdate)
-    frame:SetScript("OnHide", function() playing = false end)
+    frame:SetScript("OnHide", function()
+        playing = false
+        if live and MD.StopPractice then MD:StopPractice(false) end
+    end)
     function frame:OnMoved()
         local point, _, relPoint, x, y = self:GetPoint()
         MD.db.replayPos = { point, relPoint, x, y }
@@ -1147,6 +1176,13 @@ local function Build()
         speed = id
         MD.db.replaySpeed = id
     end)
+
+    -- v0.15.0: ends a practice fight and opens it as a replay
+    endBtn = UI.CreateButton(frame, "End", "red-hover", { 48, 22 }, false, false, UI.FONT_SMALL, nil,
+        "End the practice", "What you played so far is kept, and opens as a replay.")
+    endBtn:SetPoint("LEFT", prev, "RIGHT", 12, 0)
+    endBtn:SetScript("OnClick", function() if MD.StopPractice then MD:StopPractice(true) end end)
+    endBtn:Hide()
 
     timeFS = frame:CreateFontString(nil, "OVERLAY", UI.FONT)
     timeFS:SetPoint("LEFT", prev, "RIGHT", 12, 0)
@@ -1440,6 +1476,18 @@ local function Layout()
                 f.defIcon.spellID, f.dot.spellID = nil, nil
                 for _, ic in ipairs(f.debuffs) do ic.spellID = nil end
                 for _, ic in ipairs(f.hots) do ic.spellID = nil end
+                if live and ci == 1 then
+                    local unit = ti
+                    f.onPress = function(button)
+                        local key = MD.Practice.MOUSE[button]
+                        if key then MD:PracticePress(key, unit) end
+                    end
+                    f.onHover = function(on)
+                        if on then hoverTi = unit elseif hoverTi == unit then hoverTi = nil end
+                    end
+                else
+                    f.onPress, f.onHover = nil, nil
+                end
                 f:Show()
             end
         end
@@ -1496,6 +1544,7 @@ end
 
 function MD:OpenReplay(n)
     local FR, SP = MD.FightRecorder, MD.SimPlanner
+    if live then MD:StopPractice(false) end
     if not (FR and SP and MD.ReplayTrace) then MD:Print("replay: not loaded.") return end
     if (InCombatLockdown and InCombatLockdown()) or UnitAffectingCombat("player") then
         MD:Print("replay: not in combat - it is a review tool.")
@@ -1664,8 +1713,175 @@ function MD:ToggleReplay(arg)
     MD:OpenReplay(arg)
 end
 
+--------------------------------------------------------------------------------
+-- Practice (v0.15.0, docs/SPEC-v0.15.md). The window's controls change hands:
+-- no scrubber (the future has not happened), speeds 1/4x to 1x (slow practice,
+-- never fast), an End button; the frames take presses and the window takes the
+-- keyboard. Everything painted is still read from Engine/ReplayTrace.lua, off
+-- the trace the engine is writing.
+--------------------------------------------------------------------------------
+local practiceErr, practiceErrUntil, practiceErrTi = nil, 0, nil
+
+local function Propagate(on)
+    if frame.SetPropagateKeyboardInput then pcall(frame.SetPropagateKeyboardInput, frame, on) end
+end
+
+local function LiveControls(on)
+    Shown(scrubber, not on)
+    for _, b in ipairs(speedButtons or {}) do Shown(b, not on or b.id <= 1) end
+    Shown(endBtn, on)
+    if frame.ticksCB then Shown(frame.ticksCB, not on) end
+    timeFS:ClearAllPoints()
+    timeFS:SetPoint("LEFT", on and endBtn or speedButtons[#speedButtons], "RIGHT", 12, 0)
+    if frame.EnableKeyboard then frame:EnableKeyboard(on) end
+    frame:SetScript("OnKeyDown", on and function(_, key)
+        if key == "ESCAPE" then Propagate(true) return end
+        if key == "SPACE" then
+            Propagate(false)
+            SetPlaying(not playing)
+            if live then live:SetPaused(not playing) end
+            return
+        end
+        local mods = MD.Practice.Mods(IsAltKeyDown and IsAltKeyDown(), IsControlKeyDown and IsControlKeyDown(),
+            IsShiftKeyDown and IsShiftKeyDown())
+        if MD.Practice.BindFor(mods .. key) then
+            Propagate(false)
+            MD:PracticePress(key, hoverTi)
+        else
+            Propagate(true)
+        end
+    end or nil)
+    if not on then hoverTi = nil end
+end
+
+-- A press, from a mouse button on a frame or a key over one. `key` is bare
+-- ("BUTTON5", "1"); the modifiers are read now, as the client reads them.
+function MD:PracticePress(key, ti)
+    if not live then return end
+    local PR = MD.Practice
+    local mods = PR.Mods(IsAltKeyDown and IsAltKeyDown(), IsControlKeyDown and IsControlKeyDown(),
+        IsShiftKeyDown and IsShiftKeyDown())
+    local bind, spellID = PR.BindFor(mods .. key)
+    if not bind then return end
+    if not spellID then live:Error("You don't know " .. bind.family, nil, ti) return end
+    if not ti then live:Error("No target", spellID, nil) return end
+    live:Cast(spellID, ti)
+end
+
+LiveUpdate = function(elapsed)
+    if not live then return end
+    live:SetSpeed(speed)
+    if playing then live:Update(elapsed) end
+    local st = left.state
+    if st and live.clock > st.t then st:Advance(live.clock - st.t) end
+    Paint()
+    local now = GetTime()
+    if practiceErr and now < practiceErrUntil then
+        frame.hint:SetText("|cffff4040" .. practiceErr .. "|r")
+    else
+        frame.hint:SetText(playing and "hover a frame and press a binding   |cff888888space pauses, End keeps it|r"
+            or "|cffffcc00paused|r   |cff888888space to go on|r")
+    end
+    if practiceErrTi and now < practiceErrUntil then
+        local f = left.frames[practiceErrTi]
+        if f then f.SetCast(practiceErr); f.cast:SetTextColor(1, 0.25, 0.25); f.textUntil = practiceErrUntil end
+        practiceErrTi = nil
+    end
+    if live.state == "done" or live.state == "failed" then MD:StopPractice(true) end
+end
+
+-- setup: Engine/Practice.lua's shape (the Simulate -> Practice panel builds it)
+function MD:OpenPractice(setup, seed)
+    local PR = MD.Practice
+    if not (PR and MD.ReplayTrace) then MD:Print("practice: not loaded.") return end
+    if (InCombatLockdown and InCombatLockdown()) or UnitAffectingCombat("player") then
+        MD:Print("practice: not in combat.")
+        return
+    end
+    if not MD.player.isDruid then MD:Print("practice: Druid-only, like the rest of the healing model.") return end
+    Build()
+    if live then MD:StopPractice(false) end
+    local session = PR.New(setup, { seed = seed, onError = function(msg, _, ti)
+        practiceErr, practiceErrUntil, practiceErrTi = msg, GetTime() + 1.5, ti
+    end })
+    session:Start()
+    if session.state ~= "running" or not session:LiveTrace() then
+        MD:Print("practice: the session did not start - " .. tostring(session.failure))
+        return
+    end
+    live = session
+    runMode, runTL, runT, curRun, runIdx, pullIdx = false, nil, 0, nil, nil, nil
+    local roster, tracked = {}, {}
+    for i, tg in ipairs(setup.targets) do
+        roster[i] = { name = tg.name, class = tg.class, role = tg.role,
+                      guid = tg.you and MD.player.guid or nil }
+        tracked[i] = i
+    end
+    local known = {}
+    for family, id in pairs(MD.SpellData.maxRank or {}) do known[family] = id end
+    rp = { live = true, scenario = session.scenario, kit = session.kit,
+           rec = { roster = roster, tracked = tracked, initial = { known = known }, names = {} },
+           left = { trace = session:LiveTrace() } }
+    left.state = MD.ReplayTrace.New(rp.left.trace, rp.scenario, { onEvent = MakeOnEvent(left) })
+    right.state = nil
+    stratDrop:Close()
+    stratDrop:Hide()
+    Layout()
+    LiveControls(true)
+    for _, col in ipairs({ left, right }) do col.strip.lastCast, col.strip.gcdStart, col.strip.gcdUntil = nil, 0, 0 end
+    local g
+    for _, x in ipairs(PR.GROUPS) do if x.id == setup.group then g = x end end
+    headerFS:SetText(string.format("|cffffcc00PRACTICE|r  %s, %d people   %s",
+        g and g.label or "custom", #setup.targets, Clock(session.scenario.dur)))
+    left.title:SetText("YOU")
+    speed = 1
+    speedHighlight(1)
+    playing = true
+    playBtn:SetText("II")
+    frame:Show()
+    return session
+end
+
+-- End the practice. `reopen`: open what was played as a replay (the End
+-- button, and the fight running out); closing the window only keeps it.
+function MD:StopPractice(reopen)
+    local s = live
+    if not s then return end
+    live = nil
+    if s.state == "running" then s:Stop() end
+    LiveControls(false)
+    playing = false
+    local rec = s.rec
+    if s.state == "failed" then
+        MD:Print("practice: the session failed - " .. tostring(s.failure))
+        return
+    end
+    if not rec then
+        MD:Print("practice: nothing was cast, so nothing was kept.")
+        if reopen and frame then frame:Hide() end
+        return
+    end
+    MD:Print(string.format("practice: %s played, %d casts, %d mana, %d dead - kept as |cffffff00p1|r " ..
+        "(Reports -> Review -> Practice, or /md replay p1).", Clock(rec.dur), rec.ownCasts or 0,
+        rec.spent or 0, #(rec.deaths or {})))
+    if reopen then MD:OpenReplay("p1") end
+end
+
+-- combat ends practice: the window is a review tool, and the keyboard is yours
+do
+    local guard = CreateFrame("Frame")
+    guard:RegisterEvent("PLAYER_REGEN_DISABLED")
+    guard:SetScript("OnEvent", function()
+        if live then
+            MD:StopPractice(false)
+            if frame then frame:Hide() end
+        end
+    end)
+end
+
 MD.Replay = {
     Open = function(_, n) MD:OpenReplay(n) end,
+    _live = function() return live, hoverTi end,
     -- for tools/replayui.lua: what the window is showing, read-only
     -- for tools/replayui.lua: where the run clock is, and what it thinks is
     -- happening there

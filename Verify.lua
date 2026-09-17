@@ -1380,7 +1380,8 @@ function MD:RunCoach(arg)
         return
     end
     -- "2" is a single fight, "2:7" the seventh pull of the second run
-    local n, rest = arg:match("^([%d:]*)%s*(%a*)$")   -- "3", "3 force", "3 health"
+    -- "p2" is the second practice fight (v0.15.0)
+    local n, rest = arg:match("^([pP]?[%d:]*)%s*(%a*)$")   -- "3", "3 force", "3 health", "p1"
     if not n or n == "" then n = "1" end
     local rec, label = MD:GetRecording(n)
     if not rec then MD:Print("coach: no recording " .. tostring(n) .. ".") return end

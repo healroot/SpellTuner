@@ -3096,3 +3096,39 @@ is the dashboard's x3 row; Swiftmend's numbers are the kit's; a rank 7 Healing T
 level 64 druid says it is downranked by the same penalty the row uses.
 
 All thirteen suites green. `docs/TESTING.md` §33 says what to check in game.
+
+---
+
+## 2026-09-17 — v0.15.0: Practice — heal a fight you play
+
+**Asked:** the Simulate group "does not really provide much value". Instead: render something
+like the replay, but let the author click frames to cast and heal in real time; configure the
+group, health and incoming damage per target (average, spikes, randomness) beforehand; record
+it like a real fight; replay and coach it afterwards.
+
+**Design calls made from the code rather than asked** (all in `docs/SPEC-v0.15.md`):
+- **One engine.** The session is `SM:Run` inside a coroutine, paced by a new `opts.pace` hook,
+  with a plan that reads the player's presses. No second simulator to drift from the first, and
+  the recording replays to exactly what was played (asserted: every gate passes).
+- **The replay window gets a practice mode** rather than a new window: the same painter reads
+  the trace while it is written (`trace.filled`, `trace.expires`).
+- **Mouseover input with the author's own bindings.** Their Cell click-casting is mouse button
+  4/5 macros with modifiers (read from `WTF/.../Cell.lua` and `macros-cache.txt`), so the
+  defaults are Button5 Lifebloom, Alt-Button5 Rejuvenation, Shift-Button5 Rejuvenation Rank 5,
+  with left/right click (target and menu in Cell) carrying Regrowth and Swiftmend.
+- **Practice fights are kept apart** from real ones (`cdb.practice`, `p1`) and relax the death
+  and foreign-healing gates: the whole damage timeline is recorded, so the coach can show how to
+  save someone who died.
+- **Crits are expectations**, so the replay agrees with the session.
+
+Engine hooks, all nil for the search: `opts.pace`, `opts.trace.built`, `trace.filled`,
+`trace.expires`, `plan.noReaction`, `plan.poll`, `onHeal` carrying spell id / periodic / crit,
+`SD.bloomID`, `SpellKit`'s `castBase`. `/md coach` now accepts `p1`.
+
+Suites: `tools/practice.lua` (45), `tools/practiceui.lua` (28), `tools/dashui.lua` 54 -> 56. All
+fifteen green. `docs/TESTING.md` §34 is what to try in game.
+
+**Not done, and said so:** rolled crits, cancelling a cast, Innervate / potions / Tranquility,
+enemy cast bars and aggro in the generated fight, other healers that react. Nothing has been
+tried in the client yet -- mouse buttons 4/5 on frames and keyboard propagation are the two
+things most likely to behave differently there.

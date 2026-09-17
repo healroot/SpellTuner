@@ -11,7 +11,7 @@ local a0 = arg[0]; arg[0] = here .. "/harness.lua"
 local MD = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB
 S.Load({ "UI/Style.lua", "UI/Tooltip.lua", "UI/Dashboard_Rows.lua", "UI/Dashboard_Simulate.lua",
-         "UI/Dashboard_Waste.lua", "UI/Dashboard_Review.lua", "UI/Dashboard.lua" }, "ManaDemon", MD)
+         "UI/Dashboard_Waste.lua", "UI/Dashboard_Review.lua", "UI/PracticePanel.lua", "UI/Dashboard.lua" }, "ManaDemon", MD)
 
 local ok, fails = 0, {}
 local function check(name, cond, detail)
@@ -148,6 +148,10 @@ S.Load({ "UI/SimWindow.lua" }, "ManaDemon", MD)
 Click(ButtonNamed("Simulate"))
 check("Simulate is a group of the one window", MD.db.uiPath[1] == "simulate",
     table.concat(MD.db.uiPath, "/"))
+-- v0.15.0: Practice is Simulate's first view
+check("Simulate opens on Practice", MD.db.uiPath[2] == "practice", table.concat(MD.db.uiPath, "/"))
+check("the practice panel has its Start button", ButtonNamed("Start practice") ~= nil)
+Click(ButtonNamed("Build a fight"))
 check("it did not open a third window", _G.ManaDemonSimWindow == nil)
 check("the simulator's own controls came with it", ButtonNamed("Run") ~= nil
     or ButtonNamed("From recordings") ~= nil)
@@ -226,7 +230,8 @@ check("no regen line over the simulator", ShownText("healing   regen") == nil,
 check("no recap line over the simulator", ShownText("No fights recorded") == nil
     and ShownText("Last fight:") == nil, ShownText("Last fight:") or ShownText("No fights recorded"))
 check("the what-if strip is not over the simulator", not ShownButton("Clear"))
-check("the simulator's own controls are visible", ShownButton("Run") or ShownButton("From recordings"))
+check("the simulator's own controls are visible", ShownButton("Run") or ShownButton("From recordings")
+    or ShownButton("Start practice"))
 
 -- ...and coming from Reports, not just from Spells: the author saw both
 Click(ButtonNamed("Reports"))

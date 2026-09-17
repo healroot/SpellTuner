@@ -344,6 +344,14 @@ log says it did.
   derivation. Same RankMath row as the dashboard, live context only. `tools/spelltip.lua`
   asserts every number against the simulator's own SpellKit and the dashboard's heal.
 
+- [x] **v0.15.0 — Practice: heal a fight you play** (the author's request, `docs/SPEC-v0.15.md`).
+  Set up a group and its damage, heal it yourself in real time by hovering frames and pressing
+  your own bindings (defaults: your Cell click-casting), and get it back as a recording that
+  replays, validates and coaches like a dungeon pull. One engine: SimModel's loop in a
+  coroutine paced to the wall clock, so the replay reproduces what was played exactly. Open for
+  a later version: rolled crits, cancelling a cast, Innervate / potions / Tranquility, enemy
+  cast bars and aggro in the generated fight, other healers that react to you.
+
 Known and deliberately not fixed:
 
 - **Regrowth's DIRECT reads about 13% low** against the whole Warcraft Logs corpus: on every
