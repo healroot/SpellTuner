@@ -618,6 +618,128 @@ function UI.CreateDropdown(parent, width, height, onSelect)
 end
 
 --------------------------------------------------------------------------------
+-- Tree dropdown (v0.15.2): the same button and list, one level deeper. An item
+-- with `children` opens them in a second list beside it on hover, and clicking
+-- the parent itself picks the parent.
+--
+-- It exists because a flat list of every rank of every spell is 40 rows long:
+-- it ran off the bottom of the bindings window, and picking Rejuvenation Rank 5
+-- meant reading past nine Lifeblooms. Five families, hover one, see its ranks.
+--------------------------------------------------------------------------------
+function UI.CreateTreeDropdown(parent, width, height, onSelect)
+    height = height or 18
+    local dd = UI.CreateButton(parent, "", "accent-hover", { width, height }, false, false,
+        UI.FONT_SMALL, UI.FONT_SMALL)
+    dd.items, dd.rows, dd.subRows, dd.value = {}, {}, {}, nil
+
+    local arrow = dd:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+    arrow:SetPoint("RIGHT", dd, "RIGHT", -4, 0)
+    arrow:SetText("v")
+    arrow:SetTextColor(0.7, 0.7, 0.7)
+
+    local function Panel(strata)
+        local f = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+        f:SetFrameStrata(strata)
+        UI.StylizeFrame(f, UI.PALETTE and UI.PALETTE.header or { 0.115, 0.115, 0.115, 1 })
+        f:Hide()
+        return f
+    end
+    local list = Panel("DIALOG")
+    list:SetPoint("TOPLEFT", dd, "BOTTOMLEFT", 0, -1)
+    list:SetWidth(width)
+    local sub = Panel("FULLSCREEN_DIALOG")
+    sub:SetWidth(width)
+    dd.list, dd.sub = list, sub
+
+    local function Label(id)
+        for _, it in ipairs(dd.items) do
+            if it.id == id then return it.text end
+            for _, c in ipairs(it.children or {}) do
+                if c.id == id then return c.text end
+            end
+        end
+        return ""
+    end
+
+    function dd:Close() sub:Hide(); list:Hide() end
+    function dd:SetValue(id) dd.value = id; dd:SetText(Label(id)) end
+    function dd:Value() return dd.value end
+
+    local function Pick(id)
+        dd:SetValue(id)
+        dd:Close()
+        if onSelect then onSelect(id) end
+    end
+
+    -- the children of one parent row, beside it
+    local function ShowChildren(row, children)
+        for _, r in ipairs(dd.subRows) do r:Hide() end
+        if not children or #children == 0 then sub:Hide(); return end
+        local prev
+        for i, c in ipairs(children) do
+            local r = dd.subRows[i]
+            if not r then
+                r = UI.CreateButton(sub, "", "accent-hover", { width - 2, height }, true, false,
+                    UI.FONT_SMALL, UI.FONT_SMALL)
+                dd.subRows[i] = r
+            end
+            r:SetText(c.text)
+            r:ClearAllPoints()
+            if prev then r:SetPoint("TOPLEFT", prev, "BOTTOMLEFT", 0, 1)
+            else r:SetPoint("TOPLEFT", sub, "TOPLEFT", 1, -1) end
+            r:SetScript("OnClick", function() Pick(c.id) end)
+            r:Show()
+            prev = r
+        end
+        sub:SetHeight(math.max(height, #children * (height - 1) + 3))
+        sub:ClearAllPoints()
+        sub:SetPoint("TOPLEFT", row, "TOPRIGHT", 2, 1)
+        sub:Show()
+    end
+
+    function dd:SetItems(items)
+        dd.items = items or {}
+        for _, r in ipairs(dd.rows) do r:Hide() end
+        sub:Hide()
+        local prev
+        for i, it in ipairs(dd.items) do
+            local r = dd.rows[i]
+            if not r then
+                r = UI.CreateButton(list, "", "accent-hover", { width - 2, height }, true, false,
+                    UI.FONT_SMALL, UI.FONT_SMALL)
+                dd.rows[i] = r
+            end
+            r:SetText(it.text .. ((it.children and #it.children > 0) and "   |cff777777>|r" or ""))
+            r.item = it
+            r:ClearAllPoints()
+            if prev then r:SetPoint("TOPLEFT", prev, "BOTTOMLEFT", 0, 1)
+            else r:SetPoint("TOPLEFT", list, "TOPLEFT", 1, -1) end
+            if it.tooltip then UI.SetTooltips(r, "ANCHOR_RIGHT", 0, 0, it.text, it.tooltip) end
+            r:SetScript("OnClick", function() Pick(it.id) end)
+            -- the button's own hover (and its tooltip, if it has one) is kept and
+            -- called first: a hook would be a second handler on some clients and
+            -- a replacement on others, and this has to be neither
+            r.baseEnter = r.baseEnter or r:GetScript("OnEnter")
+            local kids = it.children
+            r:SetScript("OnEnter", function(self, ...)
+                if r.baseEnter then r.baseEnter(self, ...) end
+                ShowChildren(self, kids)
+            end)
+            r:Show()
+            prev = r
+        end
+        list:SetHeight(math.max(height, #dd.items * (height - 1) + 3))
+        if dd.value == nil and dd.items[1] then dd:SetValue(dd.items[1].id) end
+    end
+
+    dd:SetScript("OnClick", function()
+        if list:IsShown() then dd:Close() else list:Show() end
+    end)
+    dd:SetScript("OnHide", function() dd:Close() end)
+    return dd
+end
+
+--------------------------------------------------------------------------------
 -- Check button
 --------------------------------------------------------------------------------
 -- UI.CreateCheckButton(parent, label, onClick(checked, cb), tooltip...)

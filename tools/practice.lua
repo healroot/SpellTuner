@@ -328,6 +328,63 @@ do
     MD.db.practiceBinds = nil
 end
 
+-- importing the game's own keybindings ---------------------------------------------
+do
+    MD.db.practiceBinds = nil
+    S.macros["Main overtime"] = "#showtooltip\n/cast [known:33763,@mouseover,help]Lifebloom;[@mouseover,help]Rejuvenation"
+    S.macros["efficient regrow"] = "#showtooltip\n/cancelform [stance:6]\n/cast [@mouseover, help, exists][]  Regrowth(Rank 5)"
+    S.macros["HT"] = "/cast [@mouseover,help,nodead][] Healing Touch"
+    S.macros["Def"] = "/cast Barkskin"
+    S.macroOrder = { "Main overtime", "efficient regrow", "HT", "Def" }
+    -- the author's own bars: ElvUI bar 2 and Blizzard's bottom-right, with a
+    -- frame carrying the slot the way every bar addon answers it
+    local elv = CreateFrame("Frame", "ElvUI_Bar2Button9")
+    elv.GetAttribute = function(_, k) return k == "action" and 74 or nil end
+    local bt4 = CreateFrame("Frame", "BT4Button13")
+    bt4.GetAttribute = function(_, k) return k == "action" and 75 or nil end
+    S.actions = {
+        [49] = { "macro", 1 },      -- MULTIACTIONBAR2BUTTON1 -> "Main overtime"
+        [74] = { "macro", 2 },      -- ElvUI bar 2 button 9   -> "efficient regrow"
+        [75] = { "spell", SD.maxRank.Rejuvenation },
+        [3]  = { "macro", 3 },      -- ACTIONBUTTON3          -> "HT" (mouseover)
+        [4]  = { "macro", 4 },      -- ACTIONBUTTON4          -> Barkskin, no heal
+        [13] = { "item", 22795 },   -- MULTIACTIONBAR4BUTTON1
+    }
+    S.bindings = {
+        { "MULTIACTIONBAR2BUTTON1", "BUTTON5" },
+        { "ELVUIBAR2BUTTON9", "BUTTON4" },
+        { "CLICK BT4Button13:LeftButton", "SHIFT-R" },
+        { "ACTIONBUTTON3", "ALT-CTRL-SHIFT-F" },
+        { "ACTIONBUTTON4", "SHIFT-F11" },
+        { "MULTIACTIONBAR4BUTTON1", "ALT-F11" },
+        { "MOVEFORWARD", "W" },
+        { "ACTIONBUTTON3", "MOUSEWHEELUP" },
+    }
+    local list, report = PR.ImportKeybinds()
+    local by = {}
+    for _, b in ipairs(list or {}) do by[b.key] = b end
+    check("the game's own keybindings import", report.added == 4, report.error or tostring(report.added))
+    check("a mouseover macro on Blizzard's bar becomes its first heal",
+        by.BUTTON5 and by.BUTTON5.family == "Lifebloom", by.BUTTON5 and by.BUTTON5.family)
+    check("an ElvUI bar is followed through its frame to the slot",
+        by.BUTTON4 and by.BUTTON4.family == "Regrowth" and by.BUTTON4.rank == 5)
+    check("a CLICK binding on a bar addon's button too",
+        by["SHIFT-R"] and by["SHIFT-R"].family == "Rejuvenation")
+    check("three modifiers keep the client's order",
+        by["ALT-CTRL-SHIFT-F"] and by["ALT-CTRL-SHIFT-F"].family == "HealingTouch")
+    local said = table.concat(report.skipped, " | ")
+    check("a macro with no heal in it is skipped by name", said:find("SHIFT%-F11") ~= nil, said)
+    check("an item binding is skipped", said:find("ALT%-F11") ~= nil, said)
+    check("the mouse wheel is skipped", said:find("MOUSEWHEEL") ~= nil, said)
+    check("a binding that is not an action button is ignored in silence",
+        not said:find("^W:") and by.W == nil)
+    local notes = table.concat(report.notes, " | ")
+    check("a binding that casts on your target says so", notes:find("SHIFT%-R") ~= nil, notes)
+    check("and a mouseover one does not", not notes:find("BUTTON5"), notes)
+    check("applying it writes them", PR.ApplyImport(list) == 4 and select(2, PR.BindFor("BUTTON5")) == LB)
+    S.bindings, S.actions, MD.db.practiceBinds = {}, {}, nil
+end
+
 -- the search's engine is untouched --------------------------------------------------
 check("a run with no pace and no player is unchanged", (function()
     local sc2 = PR.New(PR.DefaultSetup("5", 64), { seed = 9, noStore = true }).scenario

@@ -362,6 +362,128 @@ function PR.ImportClique()
     return out, report
 end
 
+--------------------------------------------------------------------------------
+-- Importing the game's own keybindings (v0.15.2).
+--
+-- The author's healing is mouseover MACROS on action bars, bound to keys and
+-- mouse buttons -- nothing Cell or Clique knows about. So: walk every binding
+-- the client has, follow it to the action-bar slot it presses, and read what is
+-- in that slot.
+--
+-- Following a binding to a slot takes three shapes, in this order:
+--   ACTIONBUTTON<n>                 the main bar, slot n
+--   MULTIACTIONBAR<b>BUTTON<n>      Blizzard's four extra bars, at their fixed
+--                                   page offsets
+--   anything with a FRAME behind it  (ELVUIBAR2BUTTON9 -> ElvUI_Bar2Button9,
+--                                   "CLICK BT4Button13:LeftButton" -> that
+--                                   frame): the frame's own `action` attribute
+--                                   says which slot it presses, which is how
+--                                   every bar addon answers the question
+-- What is in the slot is a spell (its id IS the rank) or a macro (read for the
+-- first heal it casts, exactly as a Cell macro binding is).
+--------------------------------------------------------------------------------
+local MULTIBAR_BASE = { [1] = 61, [2] = 49, [3] = 25, [4] = 13 }   -- BottomLeft, BottomRight, Right, Right2
+
+local function FrameSlot(name)
+    local f = name and _G[name]
+    if not f or type(f.GetAttribute) ~= "function" then return nil end
+    local ok, slot = pcall(f.GetAttribute, f, "action")
+    if ok then return tonumber(slot) end
+    return nil
+end
+
+function PR.SlotForCommand(command)
+    if type(command) ~= "string" then return nil end
+    local n = command:match("^ACTIONBUTTON(%d+)$")
+    if n then return tonumber(n) end
+    local bar, btn = command:match("^MULTIACTIONBAR(%d)BUTTON(%d+)$")
+    if bar and MULTIBAR_BASE[tonumber(bar)] then
+        return MULTIBAR_BASE[tonumber(bar)] + tonumber(btn) - 1
+    end
+    local ebar, ebtn = command:match("^ELVUIBAR(%d+)BUTTON(%d+)$")
+    if ebar then
+        local slot = FrameSlot("ElvUI_Bar" .. ebar .. "Button" .. ebtn)
+        if slot then return slot end
+    end
+    local clicked = command:match("^CLICK%s+(.-):")
+    if clicked then
+        local slot = FrameSlot(clicked)
+        if slot then return slot end
+    end
+    -- last chance: some bars name their binding after their frame
+    return FrameSlot(command)
+end
+
+-- What an action-bar slot casts: family, rank, and how it picks its target.
+function PR.SlotSpell(slot)
+    if not (slot and GetActionInfo) then return nil end
+    local ok, kind, id = pcall(GetActionInfo, slot)
+    if not ok or not kind then return nil end
+    if kind == "spell" then
+        local family, rank = PR.SpellFromID(id)
+        if family then return family, rank, "spell" end
+        return nil, nil, nil, "not a heal this addon models"
+    elseif kind == "macro" then
+        local body
+        if GetMacroInfo then
+            local ok2, _, _, b = pcall(GetMacroInfo, id)
+            if ok2 then body = b end
+        end
+        local family, rank = PR.MacroSpell(body)
+        if family then
+            return family, rank, (body and body:find("@mouseover")) and "mouseover" or "macro"
+        end
+        return nil, nil, nil, "the macro casts no heal this addon models"
+    end
+    return nil, nil, nil, kind .. " binding"
+end
+
+-- Every binding the client has, as practice bindings.
+function PR.ImportKeybinds()
+    if not (GetNumBindings and GetBinding) then
+        return nil, { source = "your keybindings", error = "this client does not expose its bindings." }
+    end
+    local out, report = {}, { source = "your keybindings", added = 0, skipped = {}, notes = {} }
+    local seen = {}
+    for i = 1, GetNumBindings() do
+        local r = { GetBinding(i) }
+        local command = r[1]
+        -- GetBinding's shape moved between clients (a category was added), so
+        -- the keys are the returns that the client agrees are bound to this
+        -- command rather than the ones at a fixed position
+        local keys = {}
+        for j = 2, #r do
+            local v = r[j]
+            if type(v) == "string" and v ~= "" and GetBindingAction and GetBindingAction(v) == command then
+                keys[#keys + 1] = v
+            end
+        end
+        if #keys > 0 then
+            local slot = PR.SlotForCommand(command)
+            if slot then
+                local family, rank, how, why = PR.SlotSpell(slot)
+                for _, key in ipairs(keys) do
+                    local k = key:upper()
+                    if k:find("MOUSEWHEEL") then
+                        if family then report.skipped[#report.skipped + 1] = k .. ": the mouse wheel" end
+                    elseif family and not seen[k] then
+                        seen[k] = true
+                        out[#out + 1] = { key = k, family = family, rank = rank }
+                        report.added = report.added + 1
+                        if how ~= "mouseover" then
+                            report.notes[#report.notes + 1] = k ..
+                                ": casts on your target in game, on the frame you hover here"
+                        end
+                    elseif why then
+                        report.skipped[#report.skipped + 1] = k .. ": " .. why
+                    end
+                end
+            end
+        end
+    end
+    return out, report
+end
+
 -- Take an imported list: later bindings win a clash, and what is kept is
 -- written to db.practiceBinds.
 function PR.ApplyImport(list)

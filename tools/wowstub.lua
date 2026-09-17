@@ -105,10 +105,35 @@ function GetSpellInfo(id)
 end
 -- macros, for the binding import (v0.15.1): name -> body, as the client answers
 S.macros = {}
-function GetMacroInfo(name)
-    local m = S.macros[name]
+-- by name (Cell stores macro names) or by index (an action slot holds one)
+S.macroOrder = {}
+function GetMacroInfo(which)
+    local name = which
+    if type(which) == "number" then name = S.macroOrder[which] end
+    local m = name and S.macros[name]
     if not m then return nil end
     return name, "Interface\\Icons\\INV_Misc_QuestionMark", m
+end
+
+-- keybindings and action bars, for the binding import (v0.15.2).
+-- S.bindings = { { command, key1, key2 }, ... }; S.actions[slot] = { kind, id }
+S.bindings, S.actions = {}, {}
+function GetNumBindings() return #S.bindings end
+function GetBinding(i)
+    local b = S.bindings[i]
+    if not b then return nil end
+    return b[1], b[2], b[3]
+end
+function GetBindingAction(key)
+    for _, b in ipairs(S.bindings) do
+        if b[2] == key or b[3] == key then return b[1] end
+    end
+    return ""
+end
+function GetActionInfo(slot)
+    local a = S.actions[slot]
+    if not a then return nil end
+    return a[1], a[2]
 end
 
 function GetNumTalentTabs() return 3 end

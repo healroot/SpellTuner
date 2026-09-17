@@ -3161,3 +3161,32 @@ neither is read while a fight runs.
 `tools/practice.lua` 45 -> 58 (the import, against the author's own click-castings and macro
 bodies as they are on disk), `tools/practiceui.lua` 28 -> 40 (the window: rebinding by pressing,
 add and remove, both import buttons, Defaults). All fifteen suites green.
+
+---
+
+## 2026-09-17 — v0.15.2: a tree for the spell picker, and importing the game's keybindings
+
+**Asked:** two things, from a screenshot of the bindings window. The spell dropdown was a flat
+list of every rank of every family -- forty rows, running off the bottom of the window -- and it
+should be a tree: hover a spell, see its ranks. And: import the *game's* bindings, "as I use
+lots of mouseover macros which is not defined in clique or cell".
+
+`UI.CreateTreeDropdown` (the kit, beside `UI.CreateDropdown`): an item with `children` opens
+them in a second list beside it on hover; clicking the parent picks the parent ("highest rank,
+follows training"). The bindings window now offers five family rows instead of forty rank rows.
+The stub caught a real bug while this was written: the hover was attached with `HookScript`,
+which is a second handler on some clients and a replacement on others -- the row's own OnEnter
+is captured once at creation and called first now.
+
+`PR.ImportKeybinds`: every binding the client has (`GetNumBindings` / `GetBinding`, with the
+keys identified through `GetBindingAction` because that return shape moved between clients),
+followed to the action-bar slot it presses -- `ACTIONBUTTON<n>`, `MULTIACTIONBAR<b>BUTTON<n>` at
+Blizzard's page offsets, and anything with a frame behind it (`ELVUIBAR2BUTTON9` ->
+`ElvUI_Bar2Button9`, `CLICK BT4Button13:LeftButton`) through the frame's own `action` attribute,
+which is how every bar addon answers the question. The slot is then read as a spell (whose id is
+the rank) or a macro (its first heal, exactly as a Cell macro binding is). A binding that casts
+on your target rather than your mouseover is imported **with a note**: in practice it casts on
+the frame you hover.
+
+Tested against the author's own bar layout under the stub: `tools/practice.lua` 58 -> 70,
+`tools/practiceui.lua` 40 -> 48. All fifteen suites green. Still nothing tried in the client.

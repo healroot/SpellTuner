@@ -63,7 +63,12 @@ Bindings are account-wide (`db.practiceBinds`) and edited in their own window
 Click Castings and Clique use: a row per binding, click its key box and press what you want,
 pick the spell beside it. One press, one spell -- taking a key takes it from whoever had it.
 
-### 4.1 Importing from Cell and Clique (v0.15.1)
+The spell is picked from a **tree** (v0.15.2): one row per family, its ranks in a submenu on
+hover. A flat list of every rank is forty rows -- it ran off the bottom of the window, and
+finding Rejuvenation Rank 5 meant reading past nine Lifeblooms. `UI.CreateTreeDropdown` is the
+kit's dropdown with one level under it.
+
+### 4.1 Importing from Cell, Clique and the game's own keybindings (v0.15.1, v0.15.2)
 
 Cell and Clique already hold "this press casts that spell", so the window reads them rather
 than making the author retype it. Neither is a dependency and neither is read while a fight
@@ -78,6 +83,21 @@ runs: the import happens when the button is pressed.
   import as Lifebloom, Rejuvenation and Rejuvenation Rank 5.
 - **Clique** (`Clique.db.profile.binds`, else `CliqueDB3` / `CliqueDB` profiles): its keys are
   already the client's spelling.
+- **Your keybindings** (v0.15.2), which is where the author's healing actually lives: mouseover
+  macros on action bars, bound to keys and mouse buttons, that neither Cell nor Clique knows
+  about. Every binding the client has (`GetNumBindings` / `GetBinding`, with the keys identified
+  by `GetBindingAction` because the return shape moved between clients) is followed to the
+  action-bar slot it presses:
+
+  | command | slot |
+  |---|---|
+  | `ACTIONBUTTON<n>` | n |
+  | `MULTIACTIONBAR<b>BUTTON<n>` | Blizzard's fixed page offsets (61 / 49 / 25 / 13) |
+  | `ELVUIBAR2BUTTON9`, `CLICK BT4Button13:LeftButton`, … | the frame's own `action` attribute — how every bar addon answers it |
+
+  Then the slot is read: a spell (its id **is** the rank) or a macro (its first heal, as with
+  Cell). A binding that casts on your **target** rather than your mouseover is imported and said
+  so — in practice it casts on the frame you hover.
 
 Everything that cannot be imported is **reported, never guessed**: a press bound to targeting
 or the unit menu, the mouse wheel (practice has no wheel binding), a spell this addon does not
@@ -136,11 +156,16 @@ gates read it:
   same health and mana with every gate passing**; the coach answering it; a death not blocking
   the coach and the damage after it kept; stopping early keeping nothing after the end; a
   session with no casts not kept; retention; the default bindings.
-- `tools/practice.lua` also holds the import (13 of the 58): the author's own Cell click-castings
+- `tools/practice.lua` also holds the imports (25 of the 70), including the keybinding walk
+  against the author's own bar layout: a mouseover macro on Blizzard's bottom-right bar, an
+  ElvUI bar followed through its frame, a `CLICK` binding on a bar addon's button, three
+  modifiers in the client's order, and an item, a heal-less macro, the wheel and a movement key
+  each skipped or ignored by name.
+- `tools/practice.lua` also holds the Cell and Clique import: the author's own Cell click-castings
   and macros as they are on disk import to three bindings with the ranks intact, and targeting,
   the menu, the wheel, Innervate and Rebirth are each skipped by name; Clique's shapes likewise;
   no Cell means no pretence.
-- `tools/practiceui.lua` (40): the panel (group sizes, bindings listed, no bare pipe), Start
+- `tools/practiceui.lua` (48): the panel, the tree picker (a family's ranks under it), (group sizes, bindings listed, no bare pipe), Start
   opening practice mode, Button5 on a frame casting Lifebloom, a bound key over a hovered frame,
   a refused press naming its reason, Space pausing and resuming, End keeping the fight and
   opening it as a replay that validates, Review listing it, closing the window and entering

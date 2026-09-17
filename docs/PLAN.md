@@ -359,6 +359,15 @@ log says it did.
   included; Clique's keys are already the client's spelling. What cannot be imported is listed
   by name rather than guessed. Neither addon is a dependency or read during a fight.
 
+- [x] **v0.15.2 — the spell picker is a tree, and the game's own keybindings import.**
+  A flat list of forty ranks ran off the bottom of the bindings window, so `UI.CreateTreeDropdown`
+  puts a family's ranks in a submenu on hover. And the import the author actually needs: their
+  healing is mouseover MACROS on action bars, which neither Cell nor Clique knows about, so
+  `PR.ImportKeybinds` walks every binding, follows it to its action-bar slot (Blizzard's page
+  offsets, or any bar button's `action` attribute -- ElvUI, Bartender, Dominos) and reads the
+  spell or the macro's first heal. A binding that casts on the target rather than the mouseover
+  is imported with a note saying so.
+
 Known and deliberately not fixed:
 
 - **Regrowth's DIRECT reads about 13% low** against the whole Warcraft Logs corpus: on every

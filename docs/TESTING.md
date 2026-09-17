@@ -708,7 +708,10 @@ bar, spellbook, a spell linked in chat, and with ElvUI's tooltip skin if you use
    side: the bindings should be your Cell click-casting -- Button5 Lifebloom, Alt-Button5
    Rejuvenation, Shift-Button5 Rejuvenation Rank 5 -- plus left click Regrowth, right click
    Swiftmend, Shift-left Healing Touch. Change one: click its key box, press something.
-1b. **Bindings.** Press **Edit bindings** (or `/md binds`). Press **Import from Cell**: your
+1b. **Bindings.** Press **Edit bindings** (or `/md binds`). **Import from Keybindings** is the
+   one that should fit you: it follows every bound key to its action-bar slot and reads the
+   macro there, so your mouseover macros on ElvUI's bars should arrive with the right spell and
+   rank. Then press **Cell**: your
    click-castings should come in -- Button5 Lifebloom, Shift-Button5 Rejuvenation Rank 5 -- with
    a line each for the ones it would not guess (target, the unit menu, Innervate). Rebind one by
    clicking its key box and pressing something, including a mouse button with a modifier.
@@ -718,7 +721,9 @@ bar, spellbook, a spell linked in chat, and with ElvUI's tooltip skin if you use
 3. **Afterwards.** It opens as a replay with the suggested column filling in. Reports ->
    Review -> Practice lists it.
 
-Report: (0) whether the Cell import got the bindings you actually play with, and what it
+Report: (0a) whether **Import from Keybindings** got your real bars right -- every heal key,
+the right rank, and nothing invented; anything it skipped that it should not have; (0) whether
+the Cell import got the bindings you actually play with, and what it
 skipped that it should not have; (1) does a press on a frame feel like your Cell frames -- mouse buttons 4/5 with
 modifiers especially; (2) any press that did nothing and said nothing; (3) whether keys you did
 NOT bind still work while the window is open (they should); (4) the damage defaults -- too easy,

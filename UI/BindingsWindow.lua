@@ -1,8 +1,10 @@
 -- Practice bindings (v0.15.1): the window where a press is given a spell, in
 -- the shape Cell's Click Castings and Clique use -- one row per binding, click
--- the key box and press what you want, pick the spell beside it.
+-- the key box and press what you want, pick the spell from a tree (a family,
+-- its ranks under it -- v0.15.2, because a flat list of forty ranks ran off the
+-- bottom of the window).
 --
--- And the two import buttons. Cell and Clique already hold "this press casts
+-- And the three import buttons. Cell and Clique already hold "this press casts
 -- that spell"; Engine/Practice.lua reads their tables (and, for a macro
 -- binding, the first heal the macro casts) so the bindings do not have to be
 -- retyped. Neither addon is a dependency and neither is read during a fight:
@@ -16,12 +18,13 @@ local UI = MD.UI
 
 local W, H = 470, 430
 local ROW_H = 22
-local frame, rows, addBtn, defBtn, cellBtn, cliqueBtn, statusFS, list
+local frame, rows, addBtn, defBtn, cellBtn, cliqueBtn, keysBtn, importFS, statusFS, list
 local capturing = nil
 
 local function Binds() return MD.Practice.Binds() end
 
--- every rank of every family this character knows, as dropdown items
+-- One row per family, its ranks in a submenu on hover: a flat list of every
+-- rank is forty rows and ran off the bottom of the window (v0.15.2).
 local function SpellItems()
     local SD = MD.SpellData
     local items = {}
@@ -29,13 +32,13 @@ local function SpellItems()
         local known = SD.known[family]
         if known and #known > 0 then
             local label = (SD.families[family] and SD.families[family].label) or family
-            items[#items + 1] = { id = family .. ":0", text = label .. " (highest)" }
+            local top = SD.spells[known[#known]].rank
+            local kids = { { id = family .. ":0", text = "highest (rank " .. top .. ", follows training)" } }
             for j = #known, 1, -1 do
-                if #known > 1 then
-                    items[#items + 1] = { id = family .. ":" .. SD.spells[known[j]].rank,
-                                          text = label .. " " .. SD.spells[known[j]].rank }
-                end
+                kids[#kids + 1] = { id = family .. ":" .. SD.spells[known[j]].rank,
+                                    text = label .. " " .. SD.spells[known[j]].rank }
             end
+            items[#items + 1] = { id = family .. ":0", text = label, children = #known > 1 and kids or nil }
         end
     end
     return items
@@ -57,7 +60,7 @@ local function Row(i)
     row.key = UI.CreateButton(row, "", "accent-hover", { 150, ROW_H - 2 }, false, false, UI.FONT_SMALL, nil)
     row.key:SetPoint("LEFT", row, "LEFT", 0, 0)
     row.key:RegisterForClicks("AnyUp")
-    row.spell = UI.CreateDropdown(row, 200, ROW_H - 2, function(id)
+    row.spell = UI.CreateTreeDropdown(row, 200, ROW_H - 2, function(id)
         local b = Binds()[row.index]
         if not b then return end
         local family, rank = id:match("^(%a+):(%d+)$")
@@ -146,10 +149,15 @@ local function Report(newList, report)
     capturing = nil
     Render()
     local lines = { string.format("|cff99dd99%d binding(s) imported from %s.|r", n, report.source or "?") }
+    for _, note in ipairs(report.notes or {}) do
+        lines[#lines + 1] = "|cffffcc00" .. note .. "|r"
+    end
     for _, why in ipairs(report.skipped or {}) do
         lines[#lines + 1] = "|cff888888not imported - " .. why .. "|r"
     end
-    if #(report.skipped or {}) == 0 then lines[#lines + 1] = "|cff888888Everything it had was a heal.|r" end
+    if #(report.skipped or {}) == 0 and #(report.notes or {}) == 0 then
+        lines[#lines + 1] = "|cff888888Everything it had was a heal.|r"
+    end
     statusFS:SetText(table.concat(lines, "\n"))
 end
 
@@ -166,7 +174,7 @@ local function Build()
     hint:SetJustifyH("LEFT")
     hint:SetText("In practice you hover a frame and press. Click a binding's key box, then press the key " ..
         "or mouse button you want, modifiers held.|n|cff888888These are ManaDemon's own bindings - " ..
-        "practice never reads your keybinds, Cell or Clique while you play, so import them here.|r")
+        "practice never reads your keybindings, Cell or Clique while you play, so import them here.|r")
 
     list = UI.CreateScrollFrame(frame, 0, 0)
     list:ClearAllPoints()
@@ -175,7 +183,7 @@ local function Build()
     list:SetScrollStep(ROW_H * 3)
 
     addBtn = UI.CreateButton(frame, "+ binding", "accent-hover", { 90, 20 }, false, false, UI.FONT_SMALL, nil)
-    addBtn:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 12, 68)
+    addBtn:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 12, 72)
     addBtn:SetScript("OnClick", function()
         local b = Binds()
         b[#b + 1] = { key = "", family = "Rejuvenation" }
@@ -196,14 +204,28 @@ local function Build()
         Status("back to the defaults.")
     end)
 
-    cellBtn = UI.CreateButton(frame, "Import from Cell", "accent-hover", { 130, 20 }, false, false, UI.FONT_SMALL, nil,
+    importFS = frame:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+    importFS:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 12, 48)
+    importFS:SetText("Import from")
+
+    keysBtn = UI.CreateButton(frame, "Keybindings", "accent-hover", { 100, 20 }, false, false, UI.FONT_SMALL, nil,
+        "Read the game's own keybindings", "Follows every bound key to the action-bar slot it presses and reads",
+        "what is in it: a spell, or a macro's first heal - which is how a mouseover",
+        "macro on a bar becomes a practice binding. Blizzard's bars, ElvUI's and any",
+        "bar addon whose buttons carry an `action` attribute.",
+        "A binding that casts on your target rather than your mouseover is imported",
+        "and said so: here it casts on the frame you hover.")
+    keysBtn:SetPoint("LEFT", importFS, "RIGHT", 8, 0)
+    keysBtn:SetScript("OnClick", function() Report(MD.Practice.ImportKeybinds()) end)
+
+    cellBtn = UI.CreateButton(frame, "Cell", "accent-hover", { 60, 20 }, false, false, UI.FONT_SMALL, nil,
         "Read Cell's click-castings", "Takes the bindings Cell would use (its common set, or this spec's).",
         "A macro binding becomes the first heal the macro casts, rank included.",
         "Targeting, the unit menu and anything this addon does not model are listed, not guessed.")
-    cellBtn:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 12, 44)
+    cellBtn:SetPoint("LEFT", keysBtn, "RIGHT", 6, 0)
     cellBtn:SetScript("OnClick", function() Report(MD.Practice.ImportCell()) end)
 
-    cliqueBtn = UI.CreateButton(frame, "Import from Clique", "accent-hover", { 140, 20 }, false, false, UI.FONT_SMALL, nil,
+    cliqueBtn = UI.CreateButton(frame, "Clique", "accent-hover", { 70, 20 }, false, false, UI.FONT_SMALL, nil,
         "Read Clique's bindings", "Same idea: Clique already spells its keys the way this window does.")
     cliqueBtn:SetPoint("LEFT", cellBtn, "RIGHT", 6, 0)
     cliqueBtn:SetScript("OnClick", function() Report(MD.Practice.ImportClique()) end)

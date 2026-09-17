@@ -70,6 +70,26 @@ brows[1].key:GetScript("OnKeyDown")(brows[1].key, "Q")
 S.altDown = false
 check("the press becomes the binding", PR.Binds()[1].key == "ALT-Q", PR.Binds()[1].key)
 check("and it casts what it did", select(2, PR.BindFor("ALT-Q")) == SD.maxRank.Lifebloom)
+-- the spell picker is a tree: families, ranks under them (v0.15.2)
+local dd = brows[2].spell
+dd:GetScript("OnClick")(dd)
+check("the picker opens a short list, one row per family", dd.list:IsShown() and #dd.items <= 6,
+    tostring(#dd.items))
+local rejRow
+for _, r in ipairs(dd.rows) do if r.text and r.text:find("Rejuvenation") then rejRow = r end end
+local plain = rejRow and rejRow.text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "") or ""
+check("no rank is in the top list", rejRow ~= nil and not plain:find("%d"), plain)
+rejRow:GetScript("OnEnter")(rejRow)
+check("hovering a family shows its ranks beside it", dd.sub:IsShown() and #dd.subRows > 3,
+    tostring(#dd.subRows))
+local rank5
+for _, r in ipairs(dd.subRows) do if r.text == "Rejuvenation 5" then rank5 = r end end
+check("and one of them is the rank you want", rank5 ~= nil)
+Click(rank5)
+check("clicking it binds that rank", PR.Binds()[2].family == "Rejuvenation" and PR.Binds()[2].rank == 5)
+check("and the list closes", not dd.list:IsShown() and not dd.sub:IsShown())
+Click(Button("Defaults"))
+
 Click(Button("+ binding"))
 check("a binding can be added", #PR.Binds() == 7 and PR.Binds()[7].key == "")
 Click(brows[7].del)
@@ -83,15 +103,27 @@ _G.CellCharacterDB = { clickCastings = { useCommon = true, common = {
     { "shift-type5", "macro", "efficient Rej" },
     { "type1", "target" },
 } } }
-Click(Button("Import from Cell"))
+Click(Button("Cell"))
 check("Import from Cell takes the bindings", #PR.Binds() == 2
     and select(2, PR.BindFor("BUTTON5")) == SD.maxRank.Lifebloom, tostring(#PR.Binds()))
 local report = MD.BindingsWindow._status()
 check("it says what it took and what it did not", report:find("2 binding") and report:find("target"), report)
 _G.CellCharacterDB = nil
-Click(Button("Import from Clique"))
+Click(Button("Clique"))
 check("no Clique, and it says so", MD.BindingsWindow._status():find("not loaded") ~= nil,
     MD.BindingsWindow._status())
+-- the game's own keybindings
+S.macros["Main overtime"] = "/cast [known:33763,@mouseover,help]Lifebloom;[@mouseover,help]Rejuvenation"
+S.macroOrder = { "Main overtime" }
+S.actions = { [49] = { "macro", 1 }, [13] = { "item", 22795 } }
+S.bindings = { { "MULTIACTIONBAR2BUTTON1", "BUTTON5" }, { "MULTIACTIONBAR4BUTTON1", "ALT-F11" } }
+Click(Button("Keybindings"))
+check("Import Keybindings reads your bars", #PR.Binds() == 1
+    and select(2, PR.BindFor("BUTTON5")) == SD.maxRank.Lifebloom, tostring(#PR.Binds()))
+check("and reports what it would not guess", MD.BindingsWindow._status():find("ALT%-F11") ~= nil,
+    MD.BindingsWindow._status())
+S.bindings, S.actions = {}, {}
+
 Click(Button("Defaults"))
 check("Defaults puts your Cell click-casting back", #PR.Binds() == 6
     and select(2, PR.BindFor("SHIFT-BUTTON5")) ~= nil)
