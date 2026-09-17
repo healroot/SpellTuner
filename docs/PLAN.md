@@ -352,6 +352,13 @@ log says it did.
   a later version: rolled crits, cancelling a cast, Innervate / potions / Tranquility, enemy
   cast bars and aggro in the generated fight, other healers that react to you.
 
+- [x] **v0.15.1 — the practice bindings window, and importing Cell / Clique** (the author's
+  request). `/md binds` (or Edit bindings on the panel): a row per binding in the shape Cell's
+  Click Castings and Clique use, and two import buttons. Cell's attribute keys are decoded the
+  way Cell encodes them and a macro binding resolves to the first heal the macro casts, rank
+  included; Clique's keys are already the client's spelling. What cannot be imported is listed
+  by name rather than guessed. Neither addon is a dependency or read during a fight.
+
 Known and deliberately not fixed:
 
 - **Regrowth's DIRECT reads about 13% low** against the whole Warcraft Logs corpus: on every

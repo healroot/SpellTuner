@@ -10,7 +10,7 @@ local a0 = arg[0]; arg[0] = here .. "/harness.lua"
 local MD = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB
 S.Load({ "UI/Style.lua", "UI/Tooltip.lua", "UI/Dashboard_Review.lua", "UI/PracticePanel.lua",
-         "UI/ReplayWindow.lua" }, "ManaDemon", MD)
+         "UI/BindingsWindow.lua", "UI/ReplayWindow.lua" }, "ManaDemon", MD)
 local PR, SD = MD.Practice, MD.SpellData
 
 local ok, fails = 0, {}
@@ -42,13 +42,60 @@ Click(Button("Raid 10"))
 check("choosing Raid 10 makes ten", #MD.cdb.practiceSetup.targets == 10)
 Click(Button("Party"))
 check("and back to five", #MD.cdb.practiceSetup.targets == 5)
-check("the bindings list shows your Cell click-casting", Button("BUTTON5") ~= nil and Button("ALT-BUTTON5") ~= nil)
+local bindSummary = nil
+for _, f in ipairs(S.allFrames) do
+    if type(f.text) == "string" and f.text:find("BUTTON5") and f.text:find("Lifebloom") then bindSummary = f end
+end
+check("the panel lists what your presses cast", bindSummary ~= nil)
+check("and has a button to edit them", Button("Edit bindings") ~= nil)
 local pipes = false
 for _, f in ipairs(S.allFrames) do
     local t = f.text
     if type(t) == "string" and t:gsub("||", ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):find("|", 1, true) then pipes = true end
 end
 check("no bare pipe on the panel", not pipes)
+
+-- the bindings window ---------------------------------------------------------
+Click(Button("Edit bindings"))
+local bw = MD.BindingsWindow._frame()
+check("the bindings window opens", bw ~= nil and bw:IsShown())
+local brows = MD.BindingsWindow._rows()
+check("one row per binding", #brows >= 6 and brows[1].key.text:find("BUTTON5") ~= nil,
+    brows[1] and brows[1].key.text)
+-- rebind row 1 to Alt-Q by clicking its key box and pressing
+brows[1].key:GetScript("OnClick")(brows[1].key, "LeftButton")
+check("clicking a key box waits for a press", brows[1].key.text:find("press") ~= nil, brows[1].key.text)
+S.altDown = true
+brows[1].key:GetScript("OnKeyDown")(brows[1].key, "Q")
+S.altDown = false
+check("the press becomes the binding", PR.Binds()[1].key == "ALT-Q", PR.Binds()[1].key)
+check("and it casts what it did", select(2, PR.BindFor("ALT-Q")) == SD.maxRank.Lifebloom)
+Click(Button("+ binding"))
+check("a binding can be added", #PR.Binds() == 7 and PR.Binds()[7].key == "")
+Click(brows[7].del)
+check("and removed", #PR.Binds() == 6)
+
+-- import: the author's own Cell click-castings
+S.macros["Main overtime"] = "#showtooltip\n/cast [known:33763,@mouseover,help]Lifebloom;[@mouseover,help]Rejuvenation"
+S.macros["efficient Rej"] = "/cast [@mouseover, help, exists][] Rejuvenation(Rank 5)"
+_G.CellCharacterDB = { clickCastings = { useCommon = true, common = {
+    { "type5", "macro", "Main overtime" },
+    { "shift-type5", "macro", "efficient Rej" },
+    { "type1", "target" },
+} } }
+Click(Button("Import from Cell"))
+check("Import from Cell takes the bindings", #PR.Binds() == 2
+    and select(2, PR.BindFor("BUTTON5")) == SD.maxRank.Lifebloom, tostring(#PR.Binds()))
+local report = MD.BindingsWindow._status()
+check("it says what it took and what it did not", report:find("2 binding") and report:find("target"), report)
+_G.CellCharacterDB = nil
+Click(Button("Import from Clique"))
+check("no Clique, and it says so", MD.BindingsWindow._status():find("not loaded") ~= nil,
+    MD.BindingsWindow._status())
+Click(Button("Defaults"))
+check("Defaults puts your Cell click-casting back", #PR.Binds() == 6
+    and select(2, PR.BindFor("SHIFT-BUTTON5")) ~= nil)
+bw:Hide()
 
 -- play ------------------------------------------------------------------------
 MD.cdb.practiceSetup.dur = 30

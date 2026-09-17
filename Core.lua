@@ -411,6 +411,7 @@ MD.COMMANDS = {
     { "/md drink",        "toggle the drink reminder" },
     { "/md rest",         "toggle the 'rest' segment (time to full if you stop casting)" },
     { "/md tooltip",      "hover tooltip on the FLOATING clock only (off also stops it swallowing clicks)" },
+    { "/md binds",        "what each key and mouse button casts in practice; import from Cell or Clique" },
     { "/md practice",     "heal a fight you play and get it back as a recording (start: play the saved setup now)" },
     { "/md spelltip",     "heal values on the game's spell tooltips (bars, spellbook); Shift for the maths" },
     { "/md window N",     "spend estimator half-life in seconds (5-60, default 15)" },
@@ -484,6 +485,8 @@ SlashCmdList.MANADEMON = function(msg)
             if MD.ShowDashboard then MD:ShowDashboard() end
             MD:SelectView("simulate", "practice")
         end
+    elseif cmd == "binds" or cmd == "bindings" then
+        if MD.ToggleBindings then MD:ToggleBindings() end
     elseif cmd == "spelltip" then
         MD.db.spellTooltip = (MD.db.spellTooltip == false)
         MD:Print(MD.db.spellTooltip

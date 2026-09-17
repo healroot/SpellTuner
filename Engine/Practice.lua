@@ -175,6 +175,210 @@ function PR.BindFor(key)
 end
 
 --------------------------------------------------------------------------------
+-- Importing bindings from the addon you actually play with.
+--
+-- Cell and Clique both store "this press casts that spell" and practice wants
+-- the same thing, so it is read rather than retyped. Neither is a dependency:
+-- the tables are read if they are there, once, when the button is pressed --
+-- nothing here runs at load or during a fight.
+--
+-- What cannot be imported is REPORTED, never guessed: a press bound to
+-- targeting or the unit menu, the mouse wheel (practice has no wheel binding),
+-- a spell this addon does not model, and a macro whose first heal cannot be
+-- read. The report is what the window prints.
+--------------------------------------------------------------------------------
+
+-- "Rejuvenation(Rank 5)", "Healing Touch", "Rejuvenation" -> family, rank
+function PR.ParseSpellText(text)
+    if type(text) ~= "string" then return nil end
+    local name, rank = text:match("^%s*(.-)%s*%(%s*[Rr]ank%s*(%d+)%s*%)%s*$")
+    if not name then name = text:match("^%s*(.-)%s*$") end
+    if not name or name == "" then return nil end
+    local SD = MD.SpellData
+    for family, info in pairs(SD.families) do
+        if name == (info.label or family) or name == family then
+            if SD.known[family] or SD.all[family] then return family, tonumber(rank) end
+            return nil
+        end
+    end
+    return nil
+end
+
+function PR.SpellFromID(id)
+    local s = MD.SpellData.spells[tonumber(id) or 0]
+    if not s then return nil end
+    return s.family, s.rank
+end
+
+-- The first healing spell a macro casts. A conditional macro names several --
+-- "[known:33763,@mouseover,help]Lifebloom;[@mouseover,help]Rejuvenation;..." --
+-- and the first one this addon models is the one the binding is FOR.
+function PR.MacroSpell(body)
+    if type(body) ~= "string" then return nil end
+    for line in body:gmatch("[^\r\n]+") do
+        local rest = line:match("^%s*/cast%s+(.+)$") or line:match("^%s*/use%s+(.+)$")
+        if rest then
+            rest = rest:gsub("!", "")
+            for clause in (rest .. ";"):gmatch("(.-);") do
+                local spell = clause:gsub("%b[]", ""):gsub("^%s+", ""):gsub("%s+$", "")
+                if spell ~= "" then
+                    local family, rank = PR.ParseSpellText(spell)
+                    if family then return family, rank end
+                end
+            end
+        end
+    end
+    return nil
+end
+
+local function MacroBody(name)
+    if not GetMacroInfo then return nil end
+    local ok, _, _, body = pcall(GetMacroInfo, name)
+    if ok then return body end
+    return nil
+end
+
+-- Cell's attribute key -> ours. "alt-type5" -> "ALT-BUTTON5", "type-altR" ->
+-- "ALT-R" (Cell/Modules/ClickCastings/ClickCastings.lua, GetAttributeKey).
+function PR.CellKey(attr)
+    if type(attr) ~= "string" or attr == "notBound" then return nil end
+    local mods, dash, key = attr:match("^(.*)type(%-?)(.+)$")
+    if not key then return nil end
+    local alt, ctrl, shift
+    if dash == "-" then
+        if key == "SCROLLUP" or key == "SCROLLDOWN" then return nil, "the mouse wheel" end
+        -- the modifiers are glued to the key: "altR", "altctrlF"
+        local rest = key
+        while true do
+            local m = rest:match("^(alt)") or rest:match("^(ctrl)") or rest:match("^(shift)")
+            if not m then break end
+            if m == "alt" then alt = true elseif m == "ctrl" then ctrl = true else shift = true end
+            rest = rest:sub(#m + 1)
+        end
+        if rest == "" then return nil end
+        key = rest:upper()
+    else
+        local n = tonumber(key)
+        if not n then return nil end
+        key = "BUTTON" .. n
+    end
+    for m in (mods or ""):gmatch("([^-]+)") do
+        if m == "alt" then alt = true elseif m == "ctrl" then ctrl = true elseif m == "shift" then shift = true end
+    end
+    return PR.Mods(alt, ctrl, shift) .. key
+end
+
+-- The list Cell would actually use: the common one, or this spec's.
+local function CellList()
+    local db = _G.CellCharacterDB
+    local cc = db and db.clickCastings
+    if type(cc) ~= "table" then return nil end
+    if cc.useCommon and type(cc.common) == "table" then return cc.common, "Cell (common bindings)" end
+    local i = (GetSpecialization and GetSpecialization()) or 1
+    if type(cc[i]) == "table" then return cc[i], "Cell (spec " .. i .. ")" end
+    if type(cc[1]) == "table" then return cc[1], "Cell (spec 1)" end
+    return nil
+end
+
+-- Returns a fresh binding list and a report: { source, added, skipped = { "..." } }.
+-- Nothing is written; the window decides whether to keep it.
+function PR.ImportCell()
+    local list, source = CellList()
+    if not list then return nil, { source = "Cell", error = "Cell is not loaded, or it has no click-castings." } end
+    local out, report = {}, { source = source, added = 0, skipped = {} }
+    for _, entry in ipairs(list) do
+        local key, why = PR.CellKey(entry[1])
+        local kind, action = entry[2], entry[3]
+        local family, rank
+        if key and kind == "spell" then
+            family, rank = PR.SpellFromID(action)
+            if not family then family, rank = PR.ParseSpellText(action) end
+            why = why or (not family and ("not a heal this addon models (" .. tostring(action) .. ")"))
+        elseif key and kind == "macro" then
+            family, rank = PR.MacroSpell(MacroBody(action))
+            why = why or (not family and ('macro "' .. tostring(action) .. '" casts no heal this addon models'))
+        elseif key then
+            why = why or ((kind == "custom" or kind == "item") and (kind .. " binding")
+                or ("bound to " .. tostring(kind == nil and action or kind)))
+        end
+        if family then
+            out[#out + 1] = { key = key, family = family, rank = rank }
+            report.added = report.added + 1
+        elseif why then
+            report.skipped[#report.skipped + 1] = (PR.CellKey(entry[1]) or entry[1]) .. ": " .. why
+        end
+    end
+    return out, report
+end
+
+-- Clique keeps its binds under whichever of these this version uses. The key is
+-- already the client's spelling ("ALT-BUTTON5"), so only the spell is read.
+local function CliqueBinds()
+    local C = _G.Clique
+    if C and C.db and C.db.profile and type(C.db.profile.binds) == "table" then return C.db.profile.binds end
+    for _, name in ipairs({ "CliqueDB3", "CliqueDB" }) do
+        local db = _G[name]
+        local profiles = db and db.profiles
+        if type(profiles) == "table" then
+            local key = (UnitName and UnitName("player") or "") .. " - " .. (GetRealmName and GetRealmName() or "")
+            local p = profiles[key]
+            if not p then for _, v in pairs(profiles) do p = p or v end end
+            if type(p) == "table" and type(p.binds) == "table" then return p.binds end
+        end
+    end
+    return nil
+end
+
+function PR.ImportClique()
+    local binds = CliqueBinds()
+    if not binds then return nil, { source = "Clique", error = "Clique is not loaded, or it has no bindings." } end
+    local out, report = {}, { source = "Clique", added = 0, skipped = {} }
+    for _, b in ipairs(binds) do
+        local key = b.key
+        local family, rank, why
+        if type(key) ~= "string" or key == "" then
+            key = nil
+        elseif key:find("MOUSEWHEEL") then
+            key, why = nil, "the mouse wheel"
+        end
+        if key then
+            if b.type == "spell" then
+                family, rank = PR.ParseSpellText(b.spell)
+                why = not family and ("not a heal this addon models (" .. tostring(b.spell) .. ")") or nil
+            elseif b.type == "macro" then
+                family, rank = PR.MacroSpell(b.macrotext or MacroBody(b.macro))
+                why = not family and "the macro casts no heal this addon models" or nil
+            else
+                why = "bound to " .. tostring(b.type)
+            end
+        end
+        if family then
+            out[#out + 1] = { key = key:upper(), family = family, rank = rank }
+            report.added = report.added + 1
+        elseif why then
+            report.skipped[#report.skipped + 1] = tostring(b.key) .. ": " .. why
+        end
+    end
+    return out, report
+end
+
+-- Take an imported list: later bindings win a clash, and what is kept is
+-- written to db.practiceBinds.
+function PR.ApplyImport(list)
+    if not list then return 0 end
+    local out, seen = {}, {}
+    for i = #list, 1, -1 do
+        local b = list[i]
+        if b.key and b.key ~= "" and not seen[b.key] then
+            seen[b.key] = true
+            table.insert(out, 1, { key = b.key, family = b.family, rank = b.rank })
+        end
+    end
+    MD.db.practiceBinds = out
+    return #out
+end
+
+--------------------------------------------------------------------------------
 -- The damage timeline. Deterministic in the seed: the same setup and seed is
 -- the same fight, which is what lets a session be played again.
 --------------------------------------------------------------------------------

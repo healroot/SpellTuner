@@ -3132,3 +3132,32 @@ fifteen green. `docs/TESTING.md` §34 is what to try in game.
 enemy cast bars and aggro in the generated fight, other healers that react. Nothing has been
 tried in the client yet -- mouse buttons 4/5 on frames and keyboard propagation are the two
 things most likely to behave differently there.
+
+---
+
+## 2026-09-17 — v0.15.1: the practice bindings window, and importing Cell / Clique
+
+**Asked:** a window where the bindings are set, like Clique or Cell, and buttons that import
+those addons' settings.
+
+`UI/BindingsWindow.lua` (`/md binds`, or Edit bindings on the practice panel): a row per
+binding -- click the key box, press the key or mouse button with modifiers held, pick the spell
+beside it. One press, one spell: taking a key takes it from whoever had it. The panel keeps a
+read-only summary and `MD:PracticeBindsChanged` keeps it in step.
+
+The import is in `Engine/Practice.lua`, so it is tested offline against the author's real data.
+Cell's attribute keys are decoded exactly as `Cell/Modules/ClickCastings/ClickCastings.lua`
+encodes them (`type<N>` for a mouse button, `type-altR` for a keyboard binding with the
+modifiers glued to the key), and the list chosen is the one Cell itself would use (common, or
+the spec's). The author's bindings are **macros**, not spells, so a macro binding is resolved by
+reading the macro body and taking the first heal it casts, rank included -- which is what turns
+"Main overtime" into Lifebloom and "efficient Rej" into Rejuvenation Rank 5. Clique is read from
+`Clique.db.profile.binds` or its saved profiles; its keys already use the client's spelling.
+
+Nothing is guessed: targeting, the unit menu, the mouse wheel, Innervate, Rebirth and a macro
+with no heal in it are each reported by name in the window. Neither addon is a dependency, and
+neither is read while a fight runs.
+
+`tools/practice.lua` 45 -> 58 (the import, against the author's own click-castings and macro
+bodies as they are on disk), `tools/practiceui.lua` 28 -> 40 (the window: rebinding by pressing,
+add and remove, both import buttons, Defaults). All fifteen suites green.

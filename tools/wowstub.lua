@@ -103,6 +103,14 @@ function GetSpellInfo(id)
     if type(id) == "number" then return S.spellNames[id] or ("Spell" .. id) end
     return nil
 end
+-- macros, for the binding import (v0.15.1): name -> body, as the client answers
+S.macros = {}
+function GetMacroInfo(name)
+    local m = S.macros[name]
+    if not m then return nil end
+    return name, "Interface\\Icons\\INV_Misc_QuestionMark", m
+end
+
 function GetNumTalentTabs() return 3 end
 function GetNumTalents() return 0 end
 function GetTalentInfo() return nil end
@@ -118,8 +126,8 @@ end
 -- modifier keys: a harness sets S.shift to click as if the key were held
 S.shift = false
 function IsShiftKeyDown() return S.shift == true end
-function IsControlKeyDown() return false end
-function IsAltKeyDown() return false end
+function IsControlKeyDown() return S.ctrlDown == true end
+function IsAltKeyDown() return S.altDown == true end
 function GetWeaponEnchantInfo() return false end
 function IsUsableSpell() return true end
 function GetItemCount() return 0 end

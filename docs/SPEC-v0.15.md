@@ -58,8 +58,30 @@ and a spell family with an optional rank (nil = your highest, so it follows a ne
 2026-09-17: Button5 → Lifebloom ("Main overtime"), Alt-Button5 → Rejuvenation ("rej/moofire"),
 Shift-Button5 → Rejuvenation Rank 5 ("efficient Rej"). Left and right click target and open
 the menu in Cell, so here they carry Regrowth and Swiftmend; Shift-left is Healing Touch.
-Bindings are account-wide (`db.practiceBinds`) and edited on the panel by clicking a key box
-and pressing.
+Bindings are account-wide (`db.practiceBinds`) and edited in their own window
+(`UI/BindingsWindow.lua`, `/md binds`, or **Edit bindings** on the panel), in the shape Cell's
+Click Castings and Clique use: a row per binding, click its key box and press what you want,
+pick the spell beside it. One press, one spell -- taking a key takes it from whoever had it.
+
+### 4.1 Importing from Cell and Clique (v0.15.1)
+
+Cell and Clique already hold "this press casts that spell", so the window reads them rather
+than making the author retype it. Neither is a dependency and neither is read while a fight
+runs: the import happens when the button is pressed.
+
+- **Cell** (`CellCharacterDB.clickCastings`, the common set or this spec's, exactly as Cell
+  chooses): `{"alt-type5", "macro", "Main overtime"}`. The key is decoded the way
+  `Cell/Modules/ClickCastings/ClickCastings.lua` encodes it -- `type<N>` for mouse buttons,
+  `type-altR` for a keyboard binding with its modifiers glued to the key. A **spell** binding
+  is a spell id; a **macro** binding is resolved by reading the macro and taking **the first
+  heal it casts**, rank included -- which is what makes the author's own mouseover macros
+  import as Lifebloom, Rejuvenation and Rejuvenation Rank 5.
+- **Clique** (`Clique.db.profile.binds`, else `CliqueDB3` / `CliqueDB` profiles): its keys are
+  already the client's spelling.
+
+Everything that cannot be imported is **reported, never guessed**: a press bound to targeting
+or the unit menu, the mouse wheel (practice has no wheel binding), a spell this addon does not
+model (Rebirth, Innervate), a macro with no heal in it. The window prints one line per skip.
 
 The game's rules, enforced where the game enforces them:
 
@@ -114,7 +136,11 @@ gates read it:
   same health and mana with every gate passing**; the coach answering it; a death not blocking
   the coach and the damage after it kept; stopping early keeping nothing after the end; a
   session with no casts not kept; retention; the default bindings.
-- `tools/practiceui.lua` (28): the panel (group sizes, bindings listed, no bare pipe), Start
+- `tools/practice.lua` also holds the import (13 of the 58): the author's own Cell click-castings
+  and macros as they are on disk import to three bindings with the ranks intact, and targeting,
+  the menu, the wheel, Innervate and Rebirth are each skipped by name; Clique's shapes likewise;
+  no Cell means no pretence.
+- `tools/practiceui.lua` (40): the panel (group sizes, bindings listed, no bare pipe), Start
   opening practice mode, Button5 on a frame casting Lifebloom, a bound key over a hovered frame,
   a refused press naming its reason, Space pausing and resuming, End keeping the fight and
   opening it as a replay that validates, Review listing it, closing the window and entering

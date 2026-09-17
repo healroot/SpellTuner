@@ -267,6 +267,67 @@ do
     check("a rank you do not know falls back to your highest", fallback == LB)
 end
 
+-- importing bindings ---------------------------------------------------------------
+do
+    -- the author's own Cell click-castings and macros, as they are on disk
+    S.macros["Main overtime"] = "#showtooltip\n/cast [known:33763,@mouseover,help]Lifebloom;" ..
+        "[@mouseover,help]Rejuvenation;[form:3,@mouseover,harm][form:3,harm]Rake;" ..
+        "[known:5570,@mouseover,harm][known:5570,harm]Insect Swarm;[@mouseover,harm][harm]Moonfire;" ..
+        "[known:33763]Lifebloom;Rejuvenation"
+    S.macros["efficient Rej"] = "#showtooltip\n/cancelform [stance:6]\n/cast [@mouseover, help, exists][]  Rejuvenation(Rank 5)"
+    S.macros["iner"] = "#showtooltip\n/cast [@mouseover,help][] Innervate"
+    _G.CellCharacterDB = { clickCastings = {
+        useCommon = true, class = "DRUID",
+        common = {
+            { "type5", "macro", "Main overtime" },
+            { "type1", "target" },
+            { "type2", "togglemenu" },
+            { "shift-type5", "macro", "efficient Rej" },
+            { "type4", "macro", "iner" },
+            { "type-altR", "spell", 20484 },
+            { "alt-type-SCROLLUP", "macro", "Main overtime" },
+            { "alt-type5", "spell", SD.maxRank.Regrowth },
+        },
+        [1] = { { "type1", "target" } },
+    } }
+    local list, report = PR.ImportCell()
+    check("Cell's bindings import", list ~= nil and report.added == 3,
+        report and (report.error or (report.added .. " added, " .. #report.skipped .. " skipped")))
+    local by = {}
+    for _, b in ipairs(list or {}) do by[b.key] = b end
+    check("a mouse button macro becomes its first heal", by.BUTTON5 and by.BUTTON5.family == "Lifebloom",
+        by.BUTTON5 and by.BUTTON5.family)
+    check("a downranked macro keeps its rank", by["SHIFT-BUTTON5"] and by["SHIFT-BUTTON5"].family == "Rejuvenation"
+        and by["SHIFT-BUTTON5"].rank == 5)
+    check("a spell id binding is read straight", by["ALT-BUTTON5"] and by["ALT-BUTTON5"].family == "Regrowth")
+    local said = table.concat(report.skipped, " | ")
+    check("targeting, the menu and Innervate are skipped, and say why",
+        said:find("target") and said:find("togglemenu") and said:find("iner"), said)
+    check("the mouse wheel is skipped by name", said:find("wheel") ~= nil, said)
+    check("Rebirth on a keyboard binding is skipped, not guessed", said:find("ALT%-R") ~= nil, said)
+    check("applying it writes the bindings", PR.ApplyImport(list) == 3 and PR.BindFor("BUTTON5") ~= nil)
+    local _, id = PR.BindFor("SHIFT-BUTTON5")
+    check("and the rank survives the round trip", id and SD.spells[id].rank == 5)
+
+    _G.CellCharacterDB = nil
+    local none, why = PR.ImportCell()
+    check("no Cell, no pretence", none == nil and why.error ~= nil, why and why.error)
+
+    _G.CliqueDB3 = { profiles = { ["Penek - Spineshatter"] = { binds = {
+        { key = "BUTTON1", type = "spell", spell = "Regrowth(Rank 5)" },
+        { key = "ALT-BUTTON2", type = "spell", spell = "Healing Touch" },
+        { key = "CTRL-Q", type = "spell", spell = "Rebirth" },
+        { key = "SHIFT-MOUSEWHEELUP", type = "spell", spell = "Rejuvenation" },
+        { key = "BUTTON3", type = "target" },
+    } } } }
+    local clist, crep = PR.ImportClique()
+    check("Clique's bindings import", clist and crep.added == 2, crep and (crep.error or crep.added .. " added"))
+    check("Clique keys are already the client's spelling", clist[1].key == "BUTTON1" and clist[1].rank == 5)
+    check("a spell this addon does not model is skipped", table.concat(crep.skipped, " | "):find("Rebirth") ~= nil)
+    _G.CliqueDB3 = nil
+    MD.db.practiceBinds = nil
+end
+
 -- the search's engine is untouched --------------------------------------------------
 check("a run with no pace and no player is unchanged", (function()
     local sc2 = PR.New(PR.DefaultSetup("5", 64), { seed = 9, noStore = true }).scenario

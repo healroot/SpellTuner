@@ -248,112 +248,37 @@ function MD.DashboardParts.CreatePractice(parent, width)
     end
 
     ----------------------------------------------------------------------------
-    -- bindings
+    -- bindings: shown here, edited in their own window (UI/BindingsWindow.lua)
     ----------------------------------------------------------------------------
     local BIND_X = TABLE_W + 30
     local bindTitle = pane:CreateFontString(nil, "OVERLAY", UI.FONT)
     bindTitle:SetPoint("TOPLEFT", pane, "TOPLEFT", BIND_X, tableTop)
     bindTitle:SetText("What your presses cast")
-    local bindHint = pane:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
-    bindHint:SetPoint("TOPLEFT", bindTitle, "BOTTOMLEFT", 0, -3)
-    bindHint:SetWidth(width - BIND_X - 10)
-    bindHint:SetJustifyH("LEFT")
-    bindHint:SetText("|cff888888Hover a frame, then press. Defaults are your Cell click-casting. Click a key " ..
-        "box and press the key or mouse button, modifiers held, to change it.|r")
+    local bindFS = pane:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+    bindFS:SetPoint("TOPLEFT", bindTitle, "BOTTOMLEFT", 0, -6)
+    bindFS:SetWidth(width - BIND_X - 10)
+    bindFS:SetJustifyH("LEFT")
+    bindFS:SetJustifyV("TOP")
 
-    -- every rank of every family you know, highest first, as dropdown items
-    local function SpellItems()
+    local bindBtn = UI.CreateButton(pane, "Edit bindings", "accent-hover", { 110, 20 }, false, false,
+        UI.FONT_SMALL, nil, "Practice bindings", "Set what each key and mouse button casts,",
+        "or import them from Cell or Clique.")
+    bindBtn:SetScript("OnClick", function() if MD.ShowBindings then MD:ShowBindings() end end)
+
+    local function BindLines()
         local SD = MD.SpellData
-        local items = {}
-        for _, family in ipairs({ "Lifebloom", "Rejuvenation", "Regrowth", "Swiftmend", "HealingTouch" }) do
-            local list = SD.known[family]
-            if list and #list > 0 then
-                local label = SD.families[family].label or family
-                items[#items + 1] = { id = family .. ":0", text = label .. " (highest)" }
-                for j = #list, 1, -1 do
-                    local r = SD.spells[list[j]].rank
-                    if #list > 1 then items[#items + 1] = { id = family .. ":" .. r, text = label .. " " .. r } end
-                end
-            end
+        local out = {}
+        for _, b in ipairs(PR.Binds()) do
+            local id = PR.SpellFor(b)
+            local label = (SD.families[b.family] and SD.families[b.family].label) or b.family
+            if b.rank and id and SD.spells[id].rank == b.rank then label = label .. " " .. b.rank end
+            out[#out + 1] = string.format("|cffffcc00%s|r  %s%s",
+                b.key ~= "" and b.key or "unbound", label, id and "" or "  |cffff9966(not trained)|r")
         end
-        return items
+        if #out == 0 then return "|cffff9966Nothing is bound - press Edit bindings.|r" end
+        out[#out + 1] = "|cff888888Hover a frame and press. Import from Cell or Clique in the bindings window.|r"
+        return table.concat(out, "\n")
     end
-
-    local capturing = nil     -- the key box waiting for a press
-    local bindRows = {}
-    local function BindRow(i)
-        local row = bindRows[i]
-        if row then return row end
-        row = CreateFrame("Frame", nil, pane)
-        row:SetSize(width - BIND_X - 10, ROW_H + 2)
-        row:SetPoint("TOPLEFT", bindHint, "BOTTOMLEFT", 0, -6 - (i - 1) * (ROW_H + 4))
-        row.key = UI.CreateButton(row, "", "accent-hover", { 110, ROW_H }, false, false, UI.FONT_SMALL, nil)
-        row.key:SetPoint("LEFT", row, "LEFT", 0, 0)
-        row.key:RegisterForClicks("AnyUp")
-        row.key:EnableKeyboard(false)
-        row.spell = UI.CreateDropdown(row, 150, ROW_H, function(id)
-            local b = PR.Binds()[row.index]
-            if not b then return end
-            local family, rank = id:match("^(%a+):(%d+)$")
-            b.family, b.rank = family, tonumber(rank) ~= 0 and tonumber(rank) or nil
-        end)
-        row.spell:SetPoint("LEFT", row.key, "RIGHT", 4, 0)
-        row.del = UI.CreateButton(row, "x", "red-hover", { 20, ROW_H }, false, false, UI.FONT_SMALL, nil)
-        row.del:SetPoint("LEFT", row.spell, "RIGHT", 4, 0)
-        row.del:SetScript("OnClick", function()
-            table.remove(PR.Binds(), row.index)
-            capturing = nil
-            api:Render()
-        end)
-        -- capture: the next mouse button or key, with the modifiers held
-        local function Take(key)
-            local b = PR.Binds()[row.index]
-            if b and key then
-                local full = PR.Mods(IsAltKeyDown and IsAltKeyDown(), IsControlKeyDown and IsControlKeyDown(),
-                    IsShiftKeyDown and IsShiftKeyDown()) .. key
-                for j, other in ipairs(PR.Binds()) do
-                    if j ~= row.index and other.key == full then other.key = "" end   -- one key, one spell
-                end
-                b.key = full
-            end
-            capturing = nil
-            row.key:EnableKeyboard(false)
-            api:Render()
-        end
-        row.key:SetScript("OnClick", function(self, button)
-            if capturing ~= row then
-                capturing = row
-                self:SetText("|cffffcc00press...|r")
-                self:EnableKeyboard(true)
-                return
-            end
-            Take(PR.MOUSE[button])
-        end)
-        row.key:SetScript("OnKeyDown", function(self, key)
-            if capturing ~= row then return end
-            if key == "LSHIFT" or key == "RSHIFT" or key == "LALT" or key == "RALT"
-               or key == "LCTRL" or key == "RCTRL" then return end
-            if key == "ESCAPE" then capturing = nil; self:EnableKeyboard(false); api:Render() return end
-            Take(key)
-        end)
-        row.key:SetScript("OnMouseWheel", nil)
-        bindRows[i] = row
-        return row
-    end
-    local addBtn = UI.CreateButton(pane, "+ binding", "accent-hover", { 90, ROW_H }, false, false, UI.FONT_SMALL, nil)
-    addBtn:SetScript("OnClick", function()
-        local list = PR.Binds()
-        list[#list + 1] = { key = "", family = "Rejuvenation" }
-        api:Render()
-    end)
-    local resetBtn = UI.CreateButton(pane, "Defaults", "accent-hover", { 70, ROW_H }, false, false, UI.FONT_SMALL, nil,
-        "Your Cell click-casting", "Button5 Lifebloom, Alt-Button5 Rejuvenation, Shift-Button5",
-        "Rejuvenation Rank 5, left Regrowth, right Swiftmend, Shift-left Healing Touch.")
-    resetBtn:SetScript("OnClick", function()
-        MD.db.practiceBinds = nil
-        PR.Binds()
-        api:Render()
-    end)
 
     ----------------------------------------------------------------------------
     -- start
@@ -396,25 +321,9 @@ function MD.DashboardParts.CreatePractice(parent, width)
         for i = #st.targets + 1, #rows do rows[i]:Hide() end
         scroll:SetContentHeight(math.max(1, #st.targets) * ROW_H)
 
-        local binds = PR.Binds()
-        local items = SpellItems()
-        local last
-        for i, b in ipairs(binds) do
-            local row = BindRow(i)
-            row.index = i
-            if capturing ~= row then
-                row.key:SetText(b.key ~= "" and b.key or "|cffff9966unbound|r")
-            end
-            row.spell:SetItems(items)
-            row.spell:SetValue(b.family .. ":" .. (b.rank or 0))
-            row:Show()
-            last = row
-        end
-        for i = #binds + 1, #bindRows do bindRows[i]:Hide() end
-        addBtn:ClearAllPoints()
-        if last then addBtn:SetPoint("TOPLEFT", last, "BOTTOMLEFT", 0, -6)
-        else addBtn:SetPoint("TOPLEFT", bindHint, "BOTTOMLEFT", 0, -6) end
-        resetBtn:SetPoint("LEFT", addBtn, "RIGHT", 4, 0)
+        bindFS:SetText(BindLines())
+        bindBtn:ClearAllPoints()
+        bindBtn:SetPoint("TOPLEFT", bindFS, "BOTTOMLEFT", 0, -8 - 12 * #PR.Binds())
 
         local total = 0
         for _, tg in ipairs(st.targets) do
@@ -430,6 +339,9 @@ function MD.DashboardParts.CreatePractice(parent, width)
             math.floor((st.dur or 0) / 60), (st.dur or 0) % 60)
             or "|cffff9966Practice is Druid-only, like the rest of the healing model.|r")
     end
+
+    -- the bindings window writes db.practiceBinds; this is how the summary hears
+    function MD:PracticeBindsChanged() api:Render() end
 
     pane:SetScript("OnShow", function() api:Render() end)
     return api
