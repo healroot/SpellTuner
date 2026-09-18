@@ -12,7 +12,7 @@ local MD = {}
 S.Load({
     "Core.lua", "Data/SpellData.lua", "Engine/RegenModel.lua", "Engine/SpendTracker.lua",
     "Engine/Targets.lua", "Engine/Overheal.lua", "Engine/ManaCooldowns.lua", "Engine/TTO.lua",
-    "Engine/RankMath.lua", "Engine/Calibration.lua", "Engine/PullBudget.lua",
+    "Engine/RankMath.lua", "Engine/DamageMath.lua", "Engine/Calibration.lua", "Engine/PullBudget.lua",
     "Engine/SimModel.lua", "Engine/FightRecorder.lua", "Engine/RunRecorder.lua", "Engine/Intuition.lua", "Engine/Foresight.lua", "Engine/SimSolver.lua",
     "Engine/SimPlanner.lua", "Engine/RunTimeline.lua", "Engine/ReplayTrace.lua", "Engine/Practice.lua",
     "Data/SimFixture_BF1.lua", "Data/SimPresets.lua", "Data/AuraList.lua", "Data/Intuition_TBC.lua", "Data/DruidSpells.lua",

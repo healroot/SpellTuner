@@ -149,6 +149,108 @@ check("Swiftmend: what it eats, the simulator's numbers", eatsR and eatsG
     and near(nums(eatsR.r)[1], smKit.swiftmendRejuv, 1) and near(nums(eatsG.r)[1], smKit.swiftmendRegrowth, 1),
     eatsR and eatsG and (eatsR.r .. " / " .. eatsG.r))
 
+-- damage spells (v0.15.3) ------------------------------------------------------
+-- The base numbers come from the tooltip's own text, so the fake tooltip carries
+-- a description the way the client draws it: line 1 the name, the rest below.
+local desc = {}
+function tt:GetName() return "GameTooltip" end
+function tt:NumLines() return #desc end
+for i = 1, 8 do _G["GameTooltipTextLeft" .. i] = { GetText = function() return desc[i] end } end
+local DAMAGE = {   -- id -> name, castTime (ms), description
+    [9912]  = { "Wrath", 2000, "Causes 278 to 312 Nature damage to the target." },
+    [26986] = { "Starfire", 3500, "Causes 540 to 636 Arcane damage to the target." },
+    [26988] = { "Moonfire", 0, "Burns the enemy for 305 to 357 Arcane damage and then an additional " ..
+                               "600 Arcane damage over 12 sec." },
+    [27013] = { "Insect Swarm", 0, "The enemy target is swarmed by insects, decreasing their chance to hit " ..
+                                   "by 2% and causing 792 Nature damage over 12 sec." },
+    [27012] = { "Hurricane", 10000, "Creates a violent storm in the target area causing 206 Nature damage " ..
+                                    "to enemies every 1 sec, and increasing the time between attacks of " ..
+                                    "enemies by 25%. Lasts 10 sec. Druid must channel to maintain the spell." },
+    [133]   = { "Fireball", 3500, "Hurls a fiery ball that causes 100 to 120 Fire damage." },
+}
+local realInfo = _G.GetSpellInfo
+_G.GetSpellInfo = function(id)
+    local d = DAMAGE[id]
+    if d then return d[1], nil, "icon", d[2] end
+    return realInfo(id)
+end
+_G.GetSpellBonusDamage = function() return 300 end
+local levels = {}
+_G.GetSpellLevelLearned = function(id) return levels[id] end
+local function Damage(id)
+    desc = { DAMAGE[id][1], "340 Mana", "40 yd range", DAMAGE[id][3] }
+    return SetSpell(id)
+end
+local T = MD.harnessTalents
+local saved = {}
+for _, k in ipairs({ "Moonfury", "Vengeance", "Wrath of Cenarius", "Improved Moonfire", "Focused Starlight" }) do
+    saved[k] = T[k]; T[k] = 0
+end
+
+L = Damage(9912); show(L)
+local hit = find(L, "Hit")
+-- 2.0s cast: 2/3.5 = 0.5714 of 300 = 171.4 on 278..312
+check("Wrath: the hit is base + spell damage x 2/3.5", hit and nums(hit.r)[1] == 449 and nums(hit.r)[2] == 483,
+    hit and hit.r)
+local wc = find(L, "crit 15%")
+check("  crit at 1.5x", wc and nums(wc.r)[1] == 674 and nums(wc.r)[2] == 725, wc and wc.r)
+local dpm = find(L, "DPM / DPS")
+-- 501 expected over the 340 mana the tooltip printed
+check("  DPM from the cost the tooltip prints", dpm and dpm.r:find("^1%.47") ~= nil, dpm and dpm.r)
+check("  no rank level from the client: no downrank line", find(L, "Downranked") == nil)
+
+T["Moonfury"], T["Vengeance"], T["Wrath of Cenarius"] = 5, 5, 5
+L = Damage(9912)
+hit = find(L, "Hit")
+-- coef 0.5714 + 0.10 = 0.6714 -> +201.4, then x1.10: 527.4 .. 564.8
+check("Wrath with Moonfury 5 and Wrath of Cenarius 5", hit and nums(hit.r)[1] == 527 and nums(hit.r)[2] == 565,
+    hit and hit.r)
+wc = find(L, "crit 15%")
+check("  Vengeance 5 makes a crit 2.0x", wc and nums(wc.r)[1] == 1055 and nums(wc.r)[2] == 1130, wc and wc.r)
+T["Moonfury"], T["Vengeance"], T["Wrath of Cenarius"] = 0, 0, 0
+
+L = Damage(26988); show(L)
+local mfc = MD.DamageMath.Compute(26988, "Moonfire", MD.DamageMath.Parse("Moonfire", DAMAGE[26988][3]))
+check("Moonfire's split lands on the community's 0.15 / 0.52", math.abs(mfc.coef - 0.1515) < 0.002
+    and math.abs(mfc.dotCoef - 0.52) < 0.006, string.format("%.4f / %.4f", mfc.coef, mfc.dotCoef))
+local dt = find(L, "DoT tick")
+-- 600 + 300 x 0.5156 = 754.7 over 4 ticks
+check("  its DoT ticks four times", dt and nums(dt.r)[1] == 189 and nums(dt.r)[2] == 4, dt and dt.r)
+check("  and the DoT never crits: expected = crit hit + plain DoT",
+    math.abs(mfc.expected - (mfc.avg * (1 + 0.15 * 0.5) + mfc.dotTotal)) < 0.01)
+
+L = Damage(27013); show(L)
+dt = find(L, "DoT tick")
+-- 792 + 300 x 12/15 = 1032 over 6 ticks
+check("Insect Swarm: 12/15 coefficient, six ticks", dt and nums(dt.r)[1] == 172 and nums(dt.r)[2] == 6, dt and dt.r)
+
+L = Damage(27012); show(L)
+local ht = find(L, "Tick")
+-- 10/3.5 halved = 1.4286 of 300 = 428.6 over 10 ticks
+check("Hurricane: channelled area coefficient, halved", ht and nums(ht.r)[1] == 249 and nums(ht.r)[2] == 10,
+    ht and ht.r)
+
+levels[9912] = 40
+L = Damage(9912)
+local dr = find(L, "Downranked")
+check("a rank the client says is level 40 is downranked on a 64", dr and dr.r:find("0.80") ~= nil, dr and dr.r)
+levels[9912] = nil
+
+S.shift = true
+L = Damage(26988)
+S.shift = false
+check("Shift says where the base came from", find(L, "base damage: read from this tooltip") ~= nil)
+
+desc = { "Wrath", "Something this parser has never seen." }
+check("a description it cannot read adds nothing, rather than a guess", #SetSpell(9912) == 0)
+check("a damage spell that is not a druid's adds nothing", #Damage(133) == 0)
+MD.db.spellTooltipDamage = false
+check("the damage setting off adds nothing to a damage spell", #Damage(9912) == 0)
+check("and leaves the heals alone", #SetSpell(rejuv) > 0)
+MD.db.spellTooltipDamage = true
+for k, v in pairs(saved) do T[k] = v end
+_G.GetSpellInfo = realInfo
+
 -- a builder that throws must not break the game's tooltip
 local real = MD.Tip.Spell
 MD.Tip.Spell = function() error("boom") end

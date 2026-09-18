@@ -426,6 +426,73 @@ function Tip:Spell(spellID, detail)
 end
 
 --------------------------------------------------------------------------------
+-- Damage spell tooltip (v0.15.3): Engine/DamageMath.lua's answer for one rank
+-- of Wrath, Starfire, Moonfire, Insect Swarm or Hurricane, in the heal
+-- tooltip's shape -- the hit and its crit, each DoT tick, the totals, damage per
+-- mana and per second. The base numbers were read out of the game's own
+-- description; Shift says so, and says what else is assumed.
+--------------------------------------------------------------------------------
+function Tip:Damage(c, detail)
+    local lines = {}
+    if not c then return lines end
+    lines[1] = { l = "ManaDemon", c = Accent(),
+                 r = string.format("+%d %s damage", R(c.bonus), c.school:lower()), rc = MUTED }
+    if c.min then
+        lines[#lines + 1] = { l = "Hit", r = Range(c.min, c.max), c = KEY }
+        lines[#lines + 1] = { l = "  crit " .. Pct(c.crit),
+            r = Range(c.min * c.critMult, c.max * c.critMult) .. (c.critMult > 1.51
+                and string.format("  (x%.1f)", c.critMult) or ""), c = SUB, rc = SUB }
+    end
+    if c.kind == "hybrid" or c.kind == "dot" then
+        lines[#lines + 1] = { l = "DoT tick", r = string.format("%d  x%d, every %ds", R(c.tick), c.ticks, c.every), c = KEY }
+        lines[#lines + 1] = { l = "DoT total", r = string.format("%d  over %ds", R(c.dotTotal), c.dur), c = KEY }
+    elseif c.kind == "channel" then
+        lines[#lines + 1] = { l = "Tick", r = string.format("%d  x%d, every %ds", R(c.tick), c.ticks, c.every), c = KEY }
+        lines[#lines + 1] = { l = "Total", r = string.format("%d  per target, channelled %ds", R(c.dotTotal), c.dur), c = KEY }
+    end
+    if c.kind == "direct" then
+        lines[#lines + 1] = { l = "Average", r = string.format("%d  (%d with crits)", R(c.avg), R(c.expected)), c = KEY }
+    elseif c.kind == "hybrid" then
+        lines[#lines + 1] = { l = "Total", r = string.format("%d  (%d with crits)", R(c.total), R(c.expected)), c = KEY }
+    end
+    lines[#lines + 1] = { l = "DPM / DPS", r = string.format("%s  /  %d",
+        c.dpm and string.format("%.2f", c.dpm) or "-", R(c.dps)), c = KEY }
+    if c.penaltyKnown and c.penalty < 0.999 then
+        lines[#lines + 1] = { l = "Downranked", r = string.format("spell damage x%.2f", c.penalty), c = WARN, rc = WARN }
+    end
+
+    if detail then
+        lines[#lines + 1] = {}
+        lines[#lines + 1] = { l = "  base damage: read from this tooltip", c = SUB }
+        if c.coef then
+            lines[#lines + 1] = { l = string.format("  hit  +%d = %d spell damage x %.3f coef%s", R(c.add), R(c.bonus),
+                c.coef, c.coefAdd > 0 and string.format(" (%.2f from talents)", c.coefAdd) or ""), c = MUTED }
+        end
+        if c.dotCoef then
+            lines[#lines + 1] = { l = string.format("  %s  +%d = %d spell damage x %.3f coef%s",
+                c.kind == "channel" and "channel" or "DoT", R(c.dotAdd), R(c.bonus), c.dotCoef,
+                c.aoe and " (halved: it hits everything)" or ""), c = MUTED }
+        end
+        if c.mult > 1.0001 then
+            lines[#lines + 1] = { l = string.format("  then x %.2f from talents", c.mult), c = MUTED }
+        end
+        local seen, names = {}, {}
+        for _, t in ipairs(c.talents or {}) do
+            if not seen[t] then seen[t] = true; names[#names + 1] = t end
+        end
+        if #names > 0 then lines[#lines + 1] = { l = "  talents: " .. table.concat(names, ", "), c = MUTED, wrap = true } end
+        if not c.penaltyKnown then
+            lines[#lines + 1] = { l = "  the client does not say this rank's level: no downrank penalty applied", c = MUTED, wrap = true }
+        end
+        lines[#lines + 1] = { l = "  VERIFY: coefficients, tick periods and Balance talents are the", c = MUTED }
+        lines[#lines + 1] = { l = "  standard TBC rules, not yet checked against a hit on this client", c = MUTED }
+    else
+        lines[#lines + 1] = { l = "Shift: how it is calculated", c = MUTED }
+    end
+    return lines
+end
+
+--------------------------------------------------------------------------------
 -- Column glossary, shown on the dashboard's header row. This used to be a
 -- paragraph under the table; at 760px it wrapped onto the rows below it.
 --------------------------------------------------------------------------------

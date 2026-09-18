@@ -701,6 +701,20 @@ off the combat text); (2) any tooltip where the block appears twice or not at al
 bar, spellbook, a spell linked in chat, and with ElvUI's tooltip skin if you use it;
 (3) whether Shift updates the tooltip without moving the mouse.
 
+## 33b. Damage spells on the tooltip (v0.15.3)
+Hover Wrath, Starfire, Moonfire, Insect Swarm and Hurricane on your bars or in the spellbook. The
+ManaDemon block reads the rank's base damage out of the game's own description and adds your
+spell damage, talents and crit: the hit and its crit range, each DoT tick, the totals, DPM and
+DPS. Shift shows the working.
+
+Report: (1) **the one thing this rests on** -- does the game's own tooltip text still show the
+BASE damage (the same number at any gear), or does it already include your spell damage? If it
+changes when you put on a spell-damage item, every number here is double-counted; (2) a
+non-crit Wrath or Starfire on a target dummy against the "Hit" range, and a Moonfire / Insect
+Swarm tick against "DoT tick" (the coefficients and the Balance talents are the parts marked
+VERIFY); (3) any damage spell where the block is missing (a description it could not read
+adds nothing, on purpose). Settings -> General -> Misc has "...and on damage spells".
+
 ## 34. Practice: heal a fight you play (v0.15.0)
 `/md practice` (or Simulate -> Practice). Out of combat.
 

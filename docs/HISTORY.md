@@ -3190,3 +3190,32 @@ the frame you hover.
 
 Tested against the author's own bar layout under the stub: `tools/practice.lua` 58 -> 70,
 `tools/practiceui.lua` 40 -> 48. All fifteen suites green. Still nothing tried in the client.
+
+---
+
+## 2026-09-18 — v0.15.3: damage spells on the tooltip
+
+**Asked:** "add a tooltip for dps abilities as well" -- the v0.14.9 spell tooltip, for damage.
+
+**The one design question was where the numbers come from.** The addon holds no damage value
+anywhere (`Data/DruidSpells.lua` is deliberately names and kinds only), and `Data/SpellData.lua`'s
+rule forbids typing spell values in from memory. But TBC's own spell tooltips are static: the
+description prints each rank's BASE damage, which is exactly the gap Dynamic Tooltip fills. So
+`Engine/DamageMath.lua` reads the base out of the description the client has just drawn
+(`DM.Parse`), and carries only the rules: the heal side's coefficient rules (whose hybrid split
+lands on the community's Moonfire 0.15 / 0.52 by itself), a halving for Hurricane as a channelled
+area spell, DoT tick periods, and the Balance talents. Those are marked VERIFY and Shift says so.
+Spell damage and crit are read per school; cost live, else the tooltip's own "N Mana".
+
+It refuses rather than guesses: a description it cannot parse, or a damage spell that is not a
+druid's, adds nothing. `db.spellTooltipDamage` (Settings -> General -> Misc, "...and on damage
+spells") turns the damage half off on its own. Feral abilities are out -- they scale with weapon
+and attack power.
+
+`tools/spelltip.lua` 31 -> 48, with every expected number worked out by hand in the test (Wrath
+449-483 at +300, 527-565 with Moonfury 5 and Wrath of Cenarius 5, a 2.0x crit with Vengeance 5;
+Moonfire's DoT 189 x4; Insect Swarm 172 x6; Hurricane 249 x10). All fifteen suites green.
+
+**The assumption to check first in game:** that the tooltip text really shows base damage on
+this client. If it already includes spell damage, every number is double-counted --
+`docs/TESTING.md` §33b asks exactly that.

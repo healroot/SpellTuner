@@ -20,6 +20,7 @@ local DEFAULTS = {
                           -- frame, so off also stops it swallowing clicks). The minimap button and the
                           -- ElvUI datatexts are not gated by it and must not be: they are surfaces you
                           -- go to on purpose, and the clock is one you park somewhere and stop looking at
+    spellTooltipDamage = true, -- v0.15.3: the same, for Wrath, Starfire, Moonfire, Insect Swarm and Hurricane
     spellTooltip = true,  -- v0.14.9: this rank's tick / HoT total / direct range / bloom on the game's own
                           -- spell tooltip (action bars, spellbook, chat links); Shift adds the derivation
     showCooldown = true,  -- "inn 2:10" segment: the clock if you press your mana cooldown now

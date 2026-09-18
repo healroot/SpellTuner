@@ -368,6 +368,14 @@ log says it did.
   spell or the macro's first heal. A binding that casts on the target rather than the mouseover
   is imported with a note saying so.
 
+- [x] **v0.15.3 — damage spells on the tooltip** (the author's request). Wrath, Starfire,
+  Moonfire, Insect Swarm, Hurricane: hit and crit range, DoT ticks, totals, DPM / DPS at this
+  character's spell damage. The base damage is read from the game's own tooltip (TBC's are
+  static), because no damage table has been verified and none may be typed from memory; the
+  coefficients reuse the heal rules (the hybrid split reproduces Moonfire's 0.15 / 0.52), and
+  the tick periods and Balance talents are VERIFY until a hit on a dummy confirms them. Feral
+  abilities are out: they scale with weapon and attack power, not spell damage.
+
 Known and deliberately not fixed:
 
 - **Regrowth's DIRECT reads about 13% low** against the whole Warcraft Logs corpus: on every
