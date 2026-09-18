@@ -11,6 +11,10 @@
 -- the import happens when the button is pressed, and what it CANNOT import it
 -- prints rather than guessing.
 --
+-- An import ADDS to the list (v0.15.4): a key both have is re-pointed to the
+-- imported spell, everything the import does not mention stays. Defaults is the
+-- one button that starts over.
+--
 -- These bindings are account-wide (db.practiceBinds): your hands do not change
 -- with the character.
 local _, MD = ...
@@ -145,10 +149,12 @@ local function Report(newList, report)
         Status(report and report.error or "nothing to import.", "|cffff9966")
         return
     end
-    local n = MD.Practice.ApplyImport(newList)
+    local added, replaced, same = MD.Practice.ApplyImport(newList)
     capturing = nil
     Render()
-    local lines = { string.format("|cff99dd99%d binding(s) imported from %s.|r", n, report.source or "?") }
+    -- added on top of what was there; a key both had now casts the imported spell
+    local lines = { string.format("|cff99dd99From %s: %d added, %d replaced%s. Everything else kept.|r",
+        report.source or "?", added, replaced, same > 0 and string.format(", %d already the same", same) or "") }
     for _, note in ipairs(report.notes or {}) do
         lines[#lines + 1] = "|cffffcc00" .. note .. "|r"
     end
@@ -213,6 +219,7 @@ local function Build()
         "what is in it: a spell, or a macro's first heal - which is how a mouseover",
         "macro on a bar becomes a practice binding. Blizzard's bars, ElvUI's and any",
         "bar addon whose buttons carry an `action` attribute.",
+        "Adds to your list: a key you already bound casts the imported spell.",
         "A binding that casts on your target rather than your mouseover is imported",
         "and said so: here it casts on the frame you hover.")
     keysBtn:SetPoint("LEFT", importFS, "RIGHT", 8, 0)
@@ -221,12 +228,14 @@ local function Build()
     cellBtn = UI.CreateButton(frame, "Cell", "accent-hover", { 60, 20 }, false, false, UI.FONT_SMALL, nil,
         "Read Cell's click-castings", "Takes the bindings Cell would use (its common set, or this spec's).",
         "A macro binding becomes the first heal the macro casts, rank included.",
-        "Targeting, the unit menu and anything this addon does not model are listed, not guessed.")
+        "Targeting, the unit menu and anything this addon does not model are listed, not guessed.",
+        "Adds to your list: a key you already bound casts the imported spell.")
     cellBtn:SetPoint("LEFT", keysBtn, "RIGHT", 6, 0)
     cellBtn:SetScript("OnClick", function() Report(MD.Practice.ImportCell()) end)
 
     cliqueBtn = UI.CreateButton(frame, "Clique", "accent-hover", { 70, 20 }, false, false, UI.FONT_SMALL, nil,
-        "Read Clique's bindings", "Same idea: Clique already spells its keys the way this window does.")
+        "Read Clique's bindings", "Same idea: Clique already spells its keys the way this window does.",
+        "Adds to your list: a key you already bound casts the imported spell.")
     cliqueBtn:SetPoint("LEFT", cellBtn, "RIGHT", 6, 0)
     cliqueBtn:SetScript("OnClick", function() Report(MD.Practice.ImportClique()) end)
 

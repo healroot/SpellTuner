@@ -305,9 +305,23 @@ do
         said:find("target") and said:find("togglemenu") and said:find("iner"), said)
     check("the mouse wheel is skipped by name", said:find("wheel") ~= nil, said)
     check("Rebirth on a keyboard binding is skipped, not guessed", said:find("ALT%-R") ~= nil, said)
-    check("applying it writes the bindings", PR.ApplyImport(list) == 3 and PR.BindFor("BUTTON5") ~= nil)
+    -- v0.15.4: an import goes ON TOP of what is there. Start from the defaults
+    -- plus one binding of the player's own that Cell knows nothing about.
+    MD.db.practiceBinds = nil
+    table.insert(PR.Binds(), { key = "CTRL-E", family = "Swiftmend" })
+    local before = #PR.Binds()
+    local added, replaced, same = PR.ApplyImport(list)
+    check("an import adds on top: nothing new here, one replaced, two already the same",
+        added == 0 and replaced == 1 and same == 2, string.format("%d / %d / %d", added, replaced, same))
+    check("so the list is as long as before", #PR.Binds() == before, #PR.Binds() .. " vs " .. before)
+    check("the key both had now casts the imported spell", select(2, PR.BindFor("ALT-BUTTON5")) == SD.maxRank.Regrowth)
+    check("a binding the import never mentioned is kept", select(2, PR.BindFor("CTRL-E")) == SWM
+        and select(2, PR.BindFor("BUTTON1")) == SD.maxRank.Regrowth)
     local _, id = PR.BindFor("SHIFT-BUTTON5")
     check("and the rank survives the round trip", id and SD.spells[id].rank == 5)
+    local a2 = PR.ApplyImport({ { key = "F", family = "HealingTouch" }, { key = "F", family = "Lifebloom" } })
+    check("a new key is appended, and inside one import the later entry wins", a2 == 1
+        and PR.Binds()[#PR.Binds()].key == "F" and select(2, PR.BindFor("F")) == LB)
 
     _G.CellCharacterDB = nil
     local none, why = PR.ImportCell()
@@ -381,7 +395,10 @@ do
     local notes = table.concat(report.notes, " | ")
     check("a binding that casts on your target says so", notes:find("SHIFT%-R") ~= nil, notes)
     check("and a mouseover one does not", not notes:find("BUTTON5"), notes)
-    check("applying it writes them", PR.ApplyImport(list) == 4 and select(2, PR.BindFor("BUTTON5")) == LB)
+    local ka, kr, ks = PR.ApplyImport(list)
+    check("applying it adds three on top of the defaults and finds BUTTON5 already Lifebloom",
+        ka == 3 and kr == 0 and ks == 1 and #PR.Binds() == 9 and PR.BindFor("BUTTON4").family == "Regrowth" and PR.BindFor("BUTTON4").rank == 5,
+        string.format("%d / %d / %d, %d binds", ka, kr, ks, #PR.Binds()))
     S.bindings, S.actions, MD.db.practiceBinds = {}, {}, nil
 end
 

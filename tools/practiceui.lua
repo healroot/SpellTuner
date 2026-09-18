@@ -103,11 +103,16 @@ _G.CellCharacterDB = { clickCastings = { useCommon = true, common = {
     { "shift-type5", "macro", "efficient Rej" },
     { "type1", "target" },
 } } }
+table.insert(PR.Binds(), { key = "CTRL-E", family = "Swiftmend" })   -- one of your own
+PR.BindFor("SHIFT-BUTTON5").rank = nil                                -- and one Cell will correct
 Click(Button("Cell"))
-check("Import from Cell takes the bindings", #PR.Binds() == 2
-    and select(2, PR.BindFor("BUTTON5")) == SD.maxRank.Lifebloom, tostring(#PR.Binds()))
+check("Import from Cell adds on top: your own binding stays", select(2, PR.BindFor("CTRL-E")) == SD.maxRank.Swiftmend
+    and #PR.Binds() == 7, tostring(#PR.Binds()))
+local _, r5 = PR.BindFor("SHIFT-BUTTON5")
+check("and a key both had now casts Cell's spell", r5 and SD.spells[r5].rank == 5)
 local report = MD.BindingsWindow._status()
-check("it says what it took and what it did not", report:find("2 binding") and report:find("target"), report)
+check("it says what it added, replaced and kept", report:find("0 added") and report:find("1 replaced")
+    and report:find("kept") and report:find("target"), report)
 _G.CellCharacterDB = nil
 Click(Button("Clique"))
 check("no Clique, and it says so", MD.BindingsWindow._status():find("not loaded") ~= nil,
@@ -118,8 +123,9 @@ S.macroOrder = { "Main overtime" }
 S.actions = { [49] = { "macro", 1 }, [13] = { "item", 22795 } }
 S.bindings = { { "MULTIACTIONBAR2BUTTON1", "BUTTON5" }, { "MULTIACTIONBAR4BUTTON1", "ALT-F11" } }
 Click(Button("Keybindings"))
-check("Import Keybindings reads your bars", #PR.Binds() == 1
-    and select(2, PR.BindFor("BUTTON5")) == SD.maxRank.Lifebloom, tostring(#PR.Binds()))
+check("Import Keybindings reads your bars, on top of the rest", #PR.Binds() == 7
+    and select(2, PR.BindFor("BUTTON5")) == SD.maxRank.Lifebloom
+    and select(2, PR.BindFor("CTRL-E")) == SD.maxRank.Swiftmend, tostring(#PR.Binds()))
 check("and reports what it would not guess", MD.BindingsWindow._status():find("ALT%-F11") ~= nil,
     MD.BindingsWindow._status())
 S.bindings, S.actions = {}, {}

@@ -3219,3 +3219,22 @@ Moonfire's DoT 189 x4; Insect Swarm 172 x6; Hurricane 249 x10). All fifteen suit
 **The assumption to check first in game:** that the tooltip text really shows base damage on
 this client. If it already includes spell damage, every number is double-counted --
 `docs/TESTING.md` §33b asks exactly that.
+
+---
+
+## 2026-09-18 — v0.15.4: an import adds on top of your bindings
+
+**Asked:** importing should not throw away the existing bindings -- "add on top (override on
+collision)".
+
+`PR.ApplyImport` no longer replaces `db.practiceBinds`. A key already bound is re-pointed to the
+imported spell in its own row, a new key is appended at the end, and every binding the import
+does not mention stays. Inside one import the later entry wins a clash. It returns added /
+replaced / already-the-same, and the window prints "From Cell: 0 added, 1 replaced, 2 already
+the same. Everything else kept." Each import button's tooltip says so; Defaults is the one
+button that starts over.
+
+The old tests asserted the replace-everything behaviour and were rewritten to hold the new one:
+a binding of your own that the import never mentions survives, a shared key takes the imported
+spell and rank, a new key lands at the end. `tools/practice.lua` 70 -> 74, `tools/practiceui.lua`
+48 -> 49. All fifteen suites green.

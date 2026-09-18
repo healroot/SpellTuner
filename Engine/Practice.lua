@@ -484,20 +484,47 @@ function PR.ImportKeybinds()
     return out, report
 end
 
--- Take an imported list: later bindings win a clash, and what is kept is
--- written to db.practiceBinds.
+-- Take an imported list ON TOP of what is there (v0.15.4, the author's call:
+-- "I don't want to get rid of all existing, I want to add on top, override on
+-- collision"). A key already bound is re-pointed to the imported spell, in its
+-- own row; a new key is appended; every binding the import does not mention is
+-- left alone. Inside the import the later entry wins a clash.
+-- Returns: how many were added, how many replaced, how many changed nothing.
 function PR.ApplyImport(list)
-    if not list then return 0 end
-    local out, seen = {}, {}
-    for i = #list, 1, -1 do
-        local b = list[i]
-        if b.key and b.key ~= "" and not seen[b.key] then
-            seen[b.key] = true
-            table.insert(out, 1, { key = b.key, family = b.family, rank = b.rank })
+    if not list then return 0, 0, 0 end
+    local binds = PR.Binds()
+    local byKey = {}
+    for i, b in ipairs(binds) do
+        if b.key and b.key ~= "" then byKey[b.key] = i end
+    end
+    -- the import's own last word per key, in the order it gave them
+    local last, order = {}, {}
+    for _, b in ipairs(list) do
+        if b.key and b.key ~= "" then
+            if not last[b.key] then order[#order + 1] = b.key end
+            last[b.key] = b
         end
     end
-    MD.db.practiceBinds = out
-    return #out
+    local added, replaced, same = 0, 0, 0
+    for _, key in ipairs(order) do
+        local b = last[key]
+        local i = byKey[key]
+        if i then
+            local old = binds[i]
+            if old.family == b.family and old.rank == b.rank then
+                same = same + 1
+            else
+                old.family, old.rank = b.family, b.rank
+                replaced = replaced + 1
+            end
+        else
+            binds[#binds + 1] = { key = key, family = b.family, rank = b.rank }
+            byKey[key] = #binds
+            added = added + 1
+        end
+    end
+    MD.db.practiceBinds = binds
+    return added, replaced, same
 end
 
 --------------------------------------------------------------------------------

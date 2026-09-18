@@ -376,6 +376,10 @@ log says it did.
   the tick periods and Balance talents are VERIFY until a hit on a dummy confirms them. Feral
   abilities are out: they scale with weapon and attack power, not spell damage.
 
+- [x] **v0.15.4 — an import adds on top of your bindings** (the author's call). A key both
+  have casts the imported spell; everything the import does not mention is kept; Defaults is
+  the one reset. The window says how many were added, replaced and already the same.
+
 Known and deliberately not fixed:
 
 - **Regrowth's DIRECT reads about 13% low** against the whole Warcraft Logs corpus: on every

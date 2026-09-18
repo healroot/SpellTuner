@@ -99,6 +99,12 @@ runs: the import happens when the button is pressed.
   Cell). A binding that casts on your **target** rather than your mouseover is imported and said
   so — in practice it casts on the frame you hover.
 
+**An import adds on top** (v0.15.4, the author's call): a key you already bound is re-pointed to
+the imported spell in its own row, a new key is appended, and every binding the import does not
+mention is kept. Inside one import the later entry wins a clash. The window reports "N added,
+M replaced, K already the same. Everything else kept." **Defaults** is the one button that
+starts over.
+
 Everything that cannot be imported is **reported, never guessed**: a press bound to targeting
 or the unit menu, the mouse wheel (practice has no wheel binding), a spell this addon does not
 model (Rebirth, Innervate), a macro with no heal in it. The window prints one line per skip.
