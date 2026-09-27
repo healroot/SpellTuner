@@ -10,6 +10,11 @@
 --     static table and the talent maths -- deterministic, and it exercises the
 --     fallback path the live client normally hides.
 --   * Frames only register events and run OnUpdate; nothing draws.
+-- The forever profile's secret stand-in (S.Secret, S.SecretTable) raises on arithmetic, < <=,
+-- secret-vs-secret ==, index, newindex, call, .. and tostring. It CANNOT raise on == or ~=
+-- against a plain value, #, truthiness or use as a table key (Lua 5.1 gives a table no hook
+-- for them), yet the client raises on ==, #, and table keys -- so a suite passing here does
+-- not prove the code never does one of those to a secret. See the comment on SECRET_MT.
 -- Run it with tools/run.sh (which builds a Lua 5.1 for you if there is none).
 local S = {}
 _G.STUB = S
@@ -298,6 +303,9 @@ function FrameMT:GetValue() return self.value or 0 end
 function FrameMT:SetMinMaxValues(a, b) self.minV, self.maxV = a, b end
 function FrameMT:SetChecked(v) self.checked = v and true or false end
 function FrameMT:GetChecked() return self.checked == true end
+-- Was a no-op through the fallback; no TBC suite reads the field, but T0b's
+-- "the copy box has no letter cap" does.
+function FrameMT:SetMaxLetters(n) self.maxLetters = n end
 function FrameMT:SetColorTexture(r, g, b, a) self.color = { r, g, b, a } end
 function FrameMT:SetStatusBarColor(r, g, b) self.barColor = { r, g, b } end
 function FrameMT:SetTextColor(r, g, b) self.textColor = { r, g, b } end
@@ -386,12 +394,15 @@ function S.UseProfile(name)
     GetTalentInfo = nil
     GetItemInfo = nil
 
-    -- A secret value: every operation the plan names raises (plan §1.2) except
-    -- storing, passing, concatenating and StatusBar:SetValue. __concat and
-    -- __tostring are STRICTER here than the real client, which is said to
-    -- yield a secret STRING that only raises when something later reads it --
-    -- there is no clean way to fake "looks fine now, raises downstream" with a
-    -- metatable, so the stub fails fast instead of silently passing.
+    -- A secret value, measured under Lua 5.1 (lead, 2026-09-27):
+    --   raises here: arithmetic, unary minus, < <= (against anything), secret-vs-secret ==,
+    --   index, newindex, call, .., tostring;
+    --   passes silently here: == or ~= against a plain value, #, truthiness (if v then), use as a
+    --   table key, type().
+    -- On the client (plan 1.2): comparison, #, table key and call raise; type() works
+    -- (EllesmereUI); truthiness is UNKNOWN. So the stub is LOOSER than the client on ==, ~=, #
+    -- and table keys, and nothing a metatable can do in Lua 5.1 closes that gap. __concat and
+    -- __tostring are stricter than the client, which yields a secret string that raises later.
     local function secretRaise() error("attempt to use a secret value (stub)") end
     local SECRET_MT = {
         __add = secretRaise, __sub = secretRaise, __mul = secretRaise, __div = secretRaise,
@@ -401,6 +412,18 @@ function S.UseProfile(name)
     }
     function S.Secret() return setmetatable({}, SECRET_MT) end
     function issecretvalue(v) return rawequal(getmetatable(v), SECRET_MT) end
+
+    -- A stand-in for a secret TABLE, same raising behaviour, its own marker --
+    -- the client's actual split between issecretvalue and issecrettable is
+    -- UNKNOWN (T0b Facts), so this is only "the same shape, a different flag".
+    local SECRETTABLE_MT = {
+        __add = secretRaise, __sub = secretRaise, __mul = secretRaise, __div = secretRaise,
+        __mod = secretRaise, __pow = secretRaise, __unm = secretRaise, __concat = secretRaise,
+        __lt = secretRaise, __le = secretRaise, __eq = secretRaise, __len = secretRaise,
+        __index = secretRaise, __newindex = secretRaise, __call = secretRaise, __tostring = secretRaise,
+    }
+    function S.SecretTable() return setmetatable({}, SECRETTABLE_MT) end
+    function issecrettable(v) return rawequal(getmetatable(v), SECRETTABLE_MT) end
 
     -- plan §1.5: a stand-in build number, not the real beta's.
     function GetBuildInfo() return "1.60.1", "70009", "Sep 20 2026", 16001 end
@@ -423,24 +446,40 @@ function S.UseProfile(name)
     function GetSpellBonusHealing() return S.bonusHealing end
     function GetShapeshiftFormID() return nil end
 
+    -- Two returns, name and nil, the way the client's UnitName does (a realm
+    -- name only on a cross-realm unit) -- T0b's fix for the "Healroot, nil"
+    -- join bug needs a second return to have anything to truncate.
+    function UnitName(u)
+        local x = U(u)
+        if x then return x.name, nil end
+        return nil
+    end
+
     Enum = {
         SpellBookSpellBank = { Player = 0 },
         DamageMeterType = { HealingDone = 1 },
         DamageMeterSessionType = { Overall = 0, Current = 1 },
     }
 
-    -- Three spells, one of them not a heal (Wrath), for the spellbook dump and
-    -- the healing/non-healing split (Q1). 774's description reads S.bonusHealing
-    -- live, so a probe run after changing it sees a different number.
-    local SPELL_SLOTS = { [1] = 774, [2] = 5185, [3] = 5176 }
-    local SPELL_NAMES = { [774] = "Rejuvenation", [5185] = "Healing Touch", [5176] = "Wrath" }
+    -- Five slots: two ranks of Rejuvenation (774 rank 1, 1058 rank 2) for the
+    -- ranks-per-name count, Healing Touch, a non-heal (Wrath) for the
+    -- healing/non-healing split (Q1), and slot 4's row raises on every index
+    -- (not secret) for the spellbook-error tally. 774's description reads
+    -- S.bonusHealing live, so a probe run after changing it sees a different
+    -- number; 1058's is fixed.
+    local SPELL_SLOTS = { [1] = 774, [2] = 5185, [3] = 5176, [5] = 1058 }
+    local ERROR_ROW = setmetatable({}, { __index = function() error("spellbook row unreadable (stub)") end })
+    local SPELL_NAMES = { [774] = "Rejuvenation", [5185] = "Healing Touch", [5176] = "Wrath", [1058] = "Rejuvenation" }
+    local SPELL_SUBTEXT = { [774] = "Rank 1", [5185] = "Rank 1", [5176] = "Rank 1", [1058] = "Rank 2" }
     local SPELL_DESC = {
         [774] = function() return "Heals the target for " .. (32 + S.bonusHealing) .. " over 12 sec." end,
         [5185] = function() return "Heals a friendly target for 40 to 55.|nIt is \226\128\156quoted\226\128\157." end,
         [5176] = function() return "Causes 13 to 16 Nature damage to the target." end,
+        [1058] = function() return "Heals the target for 56 over 12 sec." end,
     }
     C_SpellBook = {
         GetSpellBookItemInfo = function(slot, bank)
+            if slot == 4 then return ERROR_ROW end
             local id = SPELL_SLOTS[slot]
             if not id then return nil end
             return { spellID = id }
@@ -448,8 +487,16 @@ function S.UseProfile(name)
     }
     C_Spell = {
         GetSpellName = function(id) return SPELL_NAMES[id] end,
-        GetSpellSubtext = function(id) if SPELL_NAMES[id] then return "Rank 1" end return nil end,
-        GetSpellDescription = function(id) local f = SPELL_DESC[id]; return f and f() or nil end,
+        GetSpellSubtext = function(id) return SPELL_SUBTEXT[id] end,
+        GetSpellDescription = function(id)
+            -- 5185's description goes secret in combat only -- a stand-in to
+            -- exercise "an unreadable description is not counted as changed";
+            -- the other ids are unaffected by combat.
+            if id == 5185 and S.inCombat then return S.Secret() end
+            local f = SPELL_DESC[id]
+            if f then return f() end
+            return nil
+        end,
     }
 
     C_Secrets = {
@@ -458,6 +505,7 @@ function S.UseProfile(name)
             if u == nil then error("bad argument #1") end
             return false
         end,
+        ["ShouldStub|Piped"] = function() return false end,
     }
 
     C_UnitAuras = {
@@ -482,19 +530,36 @@ function S.UseProfile(name)
     C_Traits = nil
     C_ClassTalents = nil
 
+    -- Secret exactly while in combat, unless a script has explicitly said the
+    -- beta does not secret this one (S.meterSecretInCombat = false) -- the
+    -- default (nil) keeps the T0 in-combat-is-secret behaviour.
+    local function meterSecretNow()
+        return S.inCombat and S.meterSecretInCombat ~= false
+    end
     C_DamageMeter = {
         IsDamageMeterAvailable = function() return true end,
         GetCombatSessionFromType = function(st, mt)
-            if S.inCombat then return S.Secret() end
+            if meterSecretNow() then return S.SecretTable() end
             return { combatSources = {
                 { sourceGUID = "Player-1", isLocalPlayer = true, totalAmount = 1234, amountPerSecond = 41 },
             } }
         end,
         GetCombatSessionSourceFromType = function(st, mt, guid, cid)
-            if S.inCombat then return S.Secret() end
+            if meterSecretNow() then return S.SecretTable() end
             return { combatSpells = { { spellID = 774, totalAmount = 1000 } } }
         end,
     }
+end
+
+-- Installs C_ClassTalents/C_Traits (T0b) -- called explicitly by a script that
+-- wants to test the branch where they answer, since UseProfile("forever")
+-- itself still leaves them undefined (the absent path stays the default).
+function S.AddTraits()
+    C_ClassTalents = { GetActiveConfigID = function() return 7 end }
+    C_Traits = { GetConfigInfo = function(id)
+        if id == 7 then return { ID = 7, name = "Stub loadout", type = 1 } end
+        return nil
+    end }
 end
 
 function S.Load(files, addonName, MD)

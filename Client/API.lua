@@ -15,26 +15,47 @@ function MD.API.Has(name)
     local cached = cache[name]
     if cached ~= nil then return cached end
 
+    -- Everything happens inside this one pcall, including classifying the
+    -- walked value -- so the caller never sees the raw result and never runs
+    -- an ==/~= against it either.
     local ok, result = pcall(function()
         local obj = _G
         for segment in name:gmatch("[^%.]+") do
             -- a non-table here (nil, or a value that ran out before the last
             -- segment) means the path is absent -- never index into it.
-            if type(obj) ~= "table" then return nil end
+            if type(obj) ~= "table" then obj = nil; break end
             obj = obj[segment]
         end
-        return obj
+
+        if type(obj) == "nil" then return false end
+
+        -- Reached with a raw _G lookup, only called if present as a
+        -- function -- a secret (of either kind) is answered true, never
+        -- handed back raw.
+        local isSecretValue = rawget(_G, "issecretvalue")
+        if type(isSecretValue) == "function" then
+            local ok2, secret = pcall(isSecretValue, obj)
+            if ok2 and secret == true then return true end
+        end
+        local isSecretTable = rawget(_G, "issecrettable")
+        if type(isSecretTable) == "function" then
+            local ok2, secret = pcall(isSecretTable, obj)
+            if ok2 and secret == true then return true end
+        end
+
+        if type(obj) == "function" or type(obj) == "table" then
+            return obj
+        end
+        -- a non-nil, non-secret scalar exists, but it is never handed back
+        -- raw -- the caller only asked "is it there".
+        return true
     end)
 
     local answer
-    if not ok or result == nil then
-        answer = false
-    elseif type(result) == "function" or type(result) == "table" then
+    if ok then
         answer = result
     else
-        -- a non-nil scalar exists, but it is never handed back raw: it could
-        -- be a secret value, and the caller only asked "is it there".
-        answer = true
+        answer = false
     end
     cache[name] = answer
     return answer

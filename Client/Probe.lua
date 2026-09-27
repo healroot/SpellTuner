@@ -20,13 +20,34 @@ local function packPcall(...)
     return select("#", ...), { ... }
 end
 
--- False if issecretvalue is absent; true only when it explicitly said so.
--- Never raises, so callers can check this before anything else.
+-- True when either issecretvalue or issecrettable says so. EllesmereUI checks both before
+-- touching a value; which of the two the client's damage meter session or aura tables
+-- answer is UNKNOWN (Facts), so a table either one flags is reported <secret>.
+-- Each is reached through Has and called under its own pcall; an absent one counts as false,
+-- never raises, so callers can check this before anything else.
 local function IsSecret(v)
-    local fn = MD.API.Has("issecretvalue")
-    if type(fn) ~= "function" then return false end
-    local ok, secret = pcall(fn, v)
-    return ok and secret == true
+    local isValue = MD.API.Has("issecretvalue")
+    if type(isValue) == "function" then
+        local ok, secret = pcall(isValue, v)
+        if ok and secret == true then return true end
+    end
+    local isTable = MD.API.Has("issecrettable")
+    if type(isTable) == "function" then
+        local ok, secret = pcall(isTable, v)
+        if ok and secret == true then return true end
+    end
+    return false
+end
+
+-- True only for a string that is not "", "nil" or "nothing" and does not
+-- start with "<" -- i.e. our own rendered text actually says something, as
+-- opposed to standing in for an absence, a raise or a secret. Applied to our
+-- own stored strings only, never to a raw client value.
+local function Readable(s)
+    if type(s) ~= "string" then return false end
+    if s == "" or s == "nil" or s == "nothing" then return false end
+    if s:sub(1, 1) == "<" then return false end
+    return true
 end
 
 -- Reversible ASCII escaping: \ -> \\, | -> ||, then every byte outside the
@@ -86,6 +107,18 @@ local function Show(name, ...)
     local parts = {}
     for i = 2, n do parts[#parts + 1] = Describe(packed[i]) end
     return table.concat(parts, ", ")
+end
+
+-- Like Show, but renders only the FIRST return through Describe. UnitName answers name,
+-- realm (realm nil on your own realm) and Show joins every return, so the character line
+-- read "Healroot, nil"; First keeps the one value the line means.
+local function First(name, ...)
+    local fn = MD.API.Has(name)
+    if type(fn) ~= "function" then return "<absent>" end
+    local n, packed = packPcall(pcall(fn, ...))
+    if not packed[1] then return "<error: " .. Fmt(packed[2]) .. ">" end
+    if n <= 1 then return "nothing" end
+    return Describe(packed[2])
 end
 
 -- Reads t[key] under pcall (indexing a secret table raises rather than
@@ -168,7 +201,7 @@ end
 local function ActionOf(a)
     if IsSecret(a) then return "<secret>" end
     if type(a) ~= "string" then return "<none>" end
-    return a
+    return Esc(a)
 end
 
 local function SafeDate()
@@ -289,7 +322,7 @@ local function ClientLines()
             classText = "nil"
         end
     end
-    lines[#lines + 1] = "character: " .. Show("UnitName", "player") .. " " .. Show("GetRealmName")
+    lines[#lines + 1] = "character: " .. First("UnitName", "player") .. " " .. First("GetRealmName")
         .. " " .. classText .. " level " .. Show("UnitLevel", "player")
 
     lines[#lines + 1] = "in combat: " .. Show("UnitAffectingCombat", "player")
@@ -350,7 +383,7 @@ local function SecretsLines()
 
     local lines = {}
     for _, name in ipairs(names) do
-        lines[#lines + 1] = name .. " = " .. Show("C_Secrets." .. name)
+        lines[#lines + 1] = Esc(name) .. " = " .. Show("C_Secrets." .. name)
     end
     if #lines == 0 then lines[1] = "no Should* functions found" end
     return lines
@@ -393,7 +426,7 @@ local function SpellWalk()
     local getSubtext = MD.API.Has("C_Spell.GetSpellSubtext")
     local getDesc = MD.API.Has("C_Spell.GetSpellDescription")
 
-    local n, h, e, secretN = 0, 0, 0, 0
+    local n, h, e, secretN, errorN = 0, 0, 0, 0, 0
     local seen, order, descByKey = {}, {}, {}
 
     if type(getItem) == "function" then
@@ -403,6 +436,10 @@ local function SpellWalk()
                 local id, idStatus = Field(info, "spellID")
                 if idStatus == "secret" then
                     secretN = secretN + 1
+                elseif idStatus == "error" then
+                    -- the row exists (the call itself did not raise) but
+                    -- reading its spellID did -- counted nowhere before T0b.
+                    errorN = errorN + 1
                 elseif idStatus == "ok" and id ~= nil then
                     local key = Fmt(id)
                     if not seen[key] then
@@ -450,7 +487,7 @@ local function SpellWalk()
         end
     end
 
-    return n, h, e, secretN, order, descByKey
+    return n, h, e, secretN, errorN, order, descByKey
 end
 
 --------------------------------------------------------------------------------
@@ -505,13 +542,22 @@ local function AgainstPreviousLines(order, descByKey, bonusStr, buildKey)
         lines[#lines + 1] = string.format("previous: %s at %s, bonus healing %s -> %s",
             label, Fmt(prevRecord.at), Fmt(prevRecord.bonus), bonusStr)
 
-        local changed, comparedCount = {}, 0
+        -- A spell present in both runs is COMPARABLE only when both
+        -- descriptions are Readable -- "<secret>" this run against a real
+        -- sentence last run (or the reverse) is not a change, it is a hole in
+        -- what either run could read.
+        local changed, comparedCount, notComparable = {}, 0, 0
         for _, sp in ipairs(order) do
             local prevDesc = prevRecord.desc[sp.key]
+            local curDesc = descByKey[sp.key]
             if prevDesc ~= nil then
-                comparedCount = comparedCount + 1
-                if prevDesc ~= descByKey[sp.key] then
-                    changed[#changed + 1] = "changed " .. sp.key .. " " .. sp.name
+                if Readable(prevDesc) and Readable(curDesc) then
+                    comparedCount = comparedCount + 1
+                    if prevDesc ~= curDesc then
+                        changed[#changed + 1] = "changed " .. sp.key .. " " .. sp.name
+                    end
+                else
+                    notComparable = notComparable + 1
                 end
             end
         end
@@ -520,6 +566,9 @@ local function AgainstPreviousLines(order, descByKey, bonusStr, buildKey)
             for _, l in ipairs(changed) do lines[#lines + 1] = l end
         else
             lines[#lines + 1] = "no description changed"
+        end
+        if notComparable > 0 then
+            lines[#lines + 1] = notComparable .. " not comparable (unreadable on one run)"
         end
     else
         lines[#lines + 1] = "no previous run to compare"
@@ -652,6 +701,10 @@ end
 
 local function DamageMeterLines()
     local lines = { "C_DamageMeter.IsDamageMeterAvailable() = " .. Show("C_DamageMeter.IsDamageMeterAvailable") }
+    -- Q4 (whether the damage meter answers out of combat) is read once, here,
+    -- rather than trusting the Current block to have been read out of combat
+    -- just because it wasn't secret this time.
+    local outOfCombat = First("UnitAffectingCombat", "player") == "false"
 
     local sessTypeEnum = MD.API.Has("Enum.DamageMeterSessionType")
     local typeEnum = MD.API.Has("Enum.DamageMeterType")
@@ -665,7 +718,9 @@ local function DamageMeterLines()
     if type(getSession) ~= "function" then getSession = nil end
     if type(getSource) ~= "function" then getSource = nil end
 
-    local function MarkSeen() sawDamageMeterCurrentSources = true end
+    local function MarkSeen()
+        if outOfCombat then sawDamageMeterCurrentSources = true end
+    end
 
     for _, name in ipairs({ "Current", "Overall" }) do
         local sessionVal = nil
@@ -739,6 +794,7 @@ local function ShowReportBox(report)
             eb:SetMultiLine(true)
             eb:SetAutoFocus(false)
             eb:SetWidth(520)
+            eb:SetMaxLetters(0)
             pcall(eb.SetFont, eb, STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", 12, "")
             eb:SetScript("OnEscapePressed", function(self) self:ClearFocus(); f:Hide() end)
             scroll:SetScrollChild(eb)
@@ -789,10 +845,36 @@ local function Run()
     for _, l in ipairs(SecretsLines()) do lines[#lines + 1] = l end
 
     local bonusStr = Show("GetSpellBonusHealing")
-    local n, h, e, secretN, order, descByKey = SpellWalk()
+    local n, h, e, secretN, errorN, order, descByKey = SpellWalk()
     lines[#lines + 1] = string.format("== spells (bonus healing %s)", bonusStr)
-    lines[#lines + 1] = string.format("slots 1-500: %d with a spell, %d healing, %d empty description, %d secret",
-        n, h, e, secretN)
+    lines[#lines + 1] = string.format(
+        "slots 1-500: %d with a spell, %d healing, %d empty description, %d secret, %d error",
+        n, h, e, secretN, errorN)
+
+    -- Ranks per name: how many ranks of each healing spell were found, so a
+    -- run after turning on "show all ranks" in the spellbook can be diffed
+    -- against one before.
+    do
+        local rankCounts, rankNames = {}, {}
+        for _, sp in ipairs(order) do
+            if sp.healing then
+                if not rankCounts[sp.name] then
+                    rankCounts[sp.name] = 0
+                    rankNames[#rankNames + 1] = sp.name
+                end
+                rankCounts[sp.name] = rankCounts[sp.name] + 1
+            end
+        end
+        table.sort(rankNames)
+        if #rankNames == 0 then
+            lines[#lines + 1] = "ranks per name: none"
+        else
+            local parts = {}
+            for _, nm in ipairs(rankNames) do parts[#parts + 1] = nm .. " " .. rankCounts[nm] end
+            lines[#lines + 1] = "ranks per name: " .. table.concat(parts, "; ")
+        end
+    end
+
     for _, sp in ipairs(order) do
         if sp.healing then
             lines[#lines + 1] = "spell " .. sp.key
@@ -829,11 +911,12 @@ local function Run()
 
     lines[#lines + 1] = "== to do"
 
-    if q1Info.compared and q1Info.oldBonus ~= q1Info.newBonus then
+    if q1Info.compared and Readable(q1Info.oldBonus) and Readable(q1Info.newBonus)
+        and q1Info.oldBonus ~= q1Info.newBonus then
         lines[#lines + 1] = string.format("Q1 answered: %d of %d spell descriptions changed when bonus healing went %s -> %s",
             q1Info.changedCount or 0, q1Info.totalCount or 0, Fmt(q1Info.oldBonus), q1Info.newBonus)
     else
-        lines[#lines + 1] = "Q1 to do: change your bonus healing (put on or take off a +healing item, or take a buff that changes the number in the spells header), then type /st probe again in the same session"
+        lines[#lines + 1] = "Q1 to do: turn on show all ranks in the spellbook (the arrow at its top right), then change your bonus healing (put on or take off a +healing item, or take a buff that changes the number in the spells header), then type /st probe again in the same session"
     end
 
     local partyOk = combatSnapshot ~= nil and combatSnapshot.partyExists == "true"
@@ -871,7 +954,7 @@ local function Run()
     end
 
     local sentCombat = sentCounters["combat"]
-    if sentCombat and sentCombat.n >= 1 then
+    if combatSnapshot ~= nil and sentCombat and sentCombat.n >= 1 then
         lines[#lines + 1] = "Q8 answered: a UNIT_SPELLCAST_SENT combat counter was seen"
     else
         lines[#lines + 1] = "Q8 to do: cast a heal on the party member during the fight, then type /st probe after the fight"
@@ -883,18 +966,20 @@ local function Run()
 
     -- Save: keyed by build, overwriting only after everything above already
     -- read the OLD record for the comparison and the to-do line.
+    local saved = false
     if type(SpellTunerDB) == "table" and type(SpellTunerDB.probe) == "table"
         and type(SpellTunerDB.probe.reports) == "table" then
         local descSave = {}
         for _, sp in ipairs(order) do descSave[sp.key] = descByKey[sp.key] end
         SpellTunerDB.probe.reports[buildKey] = {
-            char = Show("UnitName", "player") .. "-" .. Show("GetRealmName"),
+            char = First("UnitName", "player") .. "-" .. First("GetRealmName"),
             at = SafeDate(),
             text = report,
             bonus = bonusStr,
             desc = descSave,
         }
         writtenThisSession[buildKey] = true
+        saved = true
     end
 
     local boxOk = ShowReportBox(report)
@@ -902,8 +987,14 @@ local function Run()
         DEFAULT_CHAT_FRAME:AddMessage("SpellTuner probe: could not open the copy box, printing the report:")
         for _, l in ipairs(lines) do DEFAULT_CHAT_FRAME:AddMessage(l) end
     end
-    DEFAULT_CHAT_FRAME:AddMessage(string.format(
-        "SpellTuner probe: build %s, %d lines, saved. Click the box, Ctrl+A, Ctrl+C.", buildKey, #lines))
+    if saved then
+        DEFAULT_CHAT_FRAME:AddMessage(string.format(
+            "SpellTuner probe: build %s, %d lines, saved. Click the box, Ctrl+A, Ctrl+C.", buildKey, #lines))
+    else
+        DEFAULT_CHAT_FRAME:AddMessage(string.format(
+            "SpellTuner probe: build %s, %d lines, not saved (no SavedVariables table). Click the box, Ctrl+A, Ctrl+C.",
+            buildKey, #lines))
+    end
 
     return report
 end
