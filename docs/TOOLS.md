@@ -38,10 +38,13 @@ Run all of them before committing anything the engine, the recorder or a tooltip
 | `practice.lua` | a practice session played against a fake clock: the seeded damage, the game's rules, the live trace, and **the recording replaying to exactly what was played** |
 | `practiceui.lua` | practice from the screen: panel, Start, presses on frames and keys over them, pause, End, the replay, Review's Practice list |
 | `spelltip.lua` | the spell tooltip (v0.14.9): druid only, once per showing, off means off, and **every number on it is the model's own** — the tick and bloom the simulator heals with, the dashboard's heal |
+| `migrate.lua` | the rename (2026-09-27): a ManaDemon WTF comes up as SpellTuner's with every setting, recording and practice fight; `/md` still answers |
+| `probecheck.lua` | **the Forever probe** (T0) under the stub's `forever` profile: never raises, a missing function is "absent" not an error, a secret is "secret" not a sum, a bad event is caught, the report is ASCII with no bare pipe and keyed by build, the sections are in order, the description dump is whole, the TOC that loaded is named |
 
 ```bash
 for t in simcheck reccheck replaycheck replayui runcheck reviewui navui dashui \
-         regencheck simwindow solvercheck timeline spelltip practice practiceui; do
+         regencheck simwindow solvercheck timeline spelltip practice practiceui \
+         migrate probecheck; do
   printf "%-13s " "$t"; bash tools/run.sh tools/$t.lua 2>&1 | tail -1
 done
 ```
@@ -198,4 +201,7 @@ absolute damage and healing.
 
 `harness.lua` (loads the addon files and returns `MD`), `wowstub.lua` (the fake client) and
 `fakepull.lua` (the shared scripted pull) are machinery the suites use. Keep
-`harness.lua`'s file list in step with `SpellTuner.toc`.
+`harness.lua`'s file list in step with `SpellTuner_TBC.toc`. `wowstub.lua` has two profiles:
+`tbc` (the default, what every suite above runs under) and `forever` (what `probecheck.lua`
+selects: no combat log, `issecretvalue`, a secret stand-in whose arithmetic raises, `C_Spell` /
+`C_SpellBook`, a Forever build string).

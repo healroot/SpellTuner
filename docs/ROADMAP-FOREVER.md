@@ -59,10 +59,13 @@ into `dist/<name>/` and zips them together; the game's AddOn list shows four ent
 in-game module switches call `C_AddOns.LoadAddOn`. A module the user has never enabled costs
 nothing — not a frame, not an event, not a table.
 
-**The rule that keeps the tree honest:** a file listed by both TOCs contains no client call and
-no flavour check. If it needs one, the call moves into `Client/API.lua` and the file stays
+**The rule that keeps the tree honest:** **client calls live in `Client/` only.** A file listed
+by both TOCs contains no client call and no flavour check; it calls the client through `MD.API`
+(`Client/API.lua`, which is itself shared and dispatches to `API_Forever.lua` / `API_TBC.lua`).
+If a shared file needs a new client fact, the call moves into the adapter and the file stays
 shared; if the *shape* differs (a recorder that reads events vs one that reads a log), the file
-is per flavour and each TOC lists its own.
+is per flavour and each TOC lists its own. `Client/Probe.lua` is the one file that sees raw
+client values, because seeing them is its job (T0 stated the rule this way; accepted 2026-09-27).
 
 ### 1.2 Branches and tags
 
@@ -127,9 +130,19 @@ The shape depends on Q1: **dynamic descriptions** → `Spells/Parse.lua` over
 `C_Spell.GetSpellDescription`, no coefficient model; **static** → `Spells/Parse.lua` for the base
 plus a coefficient model per school, druid first, others VERIFY.
 
-Tasks: T7 `Spells/Book.lua` · T8 `Spells/Parse.lua` (+ the per-school model if static) · T9
-tooltip on `TooltipDataProcessor` · T10 dashboard pane on the shared `UI/Dashboard_Rows.lua` ·
-T11 clock (TTO) on the adapter · T12 `docs/TESTING.md` for M2 and the dummy measurements.
+Tasks: T7 `Spells/Book.lua` · T8 `Spells/Parse.lua` (+ the per-school model if static) · T8b
+`tools/refcheck.py` — fetch talentsforever's `data.json` **once** into a gitignored cache and
+compare a probe dump or an exported dashboard against it (ranks, learn levels, costs, description
+numbers), printing disagreements with both values and the record's `src` / `fx` / `asis`; Wowhead
+stays a by-hand check (`docs/REFERENCES-FOREVER.md` §2, §5) · T9 tooltip on
+`TooltipDataProcessor` · T10 dashboard pane on the shared `UI/Dashboard_Rows.lua` · T11 clock
+(TTO) on the adapter · T12 `docs/TESTING.md` for M2 and the dummy measurements, including the
+downrank measurement (`FOREVER-PLAN.md` §6 Q10).
+
+Known from the references before any of it is built (`docs/REFERENCES-FOREVER.md` §4): **no
+Lifebloom, Tree of Life, Earth Shield or Circle of Healing on Forever**; costs come as `N Mana`
+and as `N% of base mana`; rank 1 of a talent-granted spell is in the book with no trainer; the
+spellbook hides lower ranks unless "show all ranks" is on; TBC spell ids do not exist.
 
 ### M3 — recorder v3 and replay (phase 3) → `1.0.0-beta.2`
 

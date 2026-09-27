@@ -3238,3 +3238,61 @@ The old tests asserted the replace-everything behaviour and were rewritten to ho
 a binding of your own that the import never mentions survives, a shared key takes the imported
 spell and rank, a new key lands at the end. `tools/practice.lua` 70 -> 74, `tools/practiceui.lua`
 48 -> 49. All fifteen suites green.
+
+---
+
+## 2026-09-27 — SpellTuner, and the turn to WoW: Forever (planning + T0)
+
+**Asked:** "now there is WoW: Forever release happening soon ... lets rewrite it to work on
+WoW: Forever" -- tooltips for more spells that also work in the spellbook, a spell dashboard for
+any spell of any class, the heal replay, the heal simulator; **modular** (modules a user can
+disable in game; the dashboard must not carry the recorder's footprint); proper debug tooling
+because the beta changes per build; and a pipeline of agents: Fable plans, Opus (lead) writes
+tasks and reviews, Sonnet implements and does not invent. Then: same repo, one code line, and a
+new name.
+
+**The name.** ManaDemon became **SpellTuner** (commit `6eeb6f6`). Saved variables migrate once
+(`ManaDemonDB` -> `SpellTunerDB`, `tools/migrate.lua` 7 assertions), `/md` still answers beside
+`/st`, `MD` stays the namespace alias, historical docs keep the old name. Pre-rename state tagged
+`manademon-final`. Weighed and dropped: ManaForever (misleading), ManaForge (a WoW raid),
+ManaTuner, SpellLab, Spellsmith, SpellDemon.
+
+**The research** (`docs/FOREVER-PLAN.md` §1, every fact sourced and dated): Forever is the retail
+12.1.5 engine with vanilla content, Interface 16001; the Classic globals are gone; **there is no
+`CombatLogGetCurrentEventInfo`**; secret values raise on arithmetic; the damage meter is secret
+in combat and per-source after; `UNIT_COMBAT` amounts are readable per the kit's recorder. The
+recorder, summaries, overheal and calibration all read the combat log today, so the recorder is
+re-founded on `UNIT_HEALTH` / `UNIT_COMBAT` / own casts / `C_DamageMeter` (plan §2.3); the
+engine, solver, planner, replay and practice are pure Lua and port unchanged.
+
+**The structure** (`docs/ROADMAP-FOREVER.md`): one tree, a TOC per client (`SpellTuner.toc`
+Forever, `SpellTuner_TBC.toc` TBC), modules as sibling LoadOnDemand addons (`_Recorder`,
+`_Replay`, `_Practice`), **client calls live in `Client/` only** (`Client/API.lua` is `MD.API`),
+branches for release lines only, six milestones M0-M5 each with a measured exit.
+
+**T0, the probe** (lead-accepted, commits `a23b641` `27db2dc` `3699b3d`): the TBC TOC moved to
+`SpellTuner_TBC.toc` (its own commit so `git log --follow` survives); `SpellTuner.toc` at 16001
+lists `Client/TOC_Plain.lua`, `Client/API.lua`, `Client/Probe.lua`; three suffixed copies
+(`_Forever`, `_Vanilla`, `_Mainline`) differing only in a marker line answer question 9. `/st
+probe` writes a report -- build, presence of 65 functions and 20 events, `C_Secrets` predicates,
+every spell's description dumped whole with reversible escaping, the talent API, a combat
+snapshot 2 s into a fight, SavedVariables read-back, the TOC that loaded, a to-do list -- to a
+copy box and to `SpellTunerDB` keyed by build. `tools/wowstub.lua` gained a `forever` profile
+(no combat log, `issecretvalue`, a secret stand-in whose arithmetic raises); `tools/probecheck.lua`
+27 ok; the sixteen TBC suites unchanged; `release.sh` packages every `SpellTuner*.toc`. The
+author's steps are `docs/TESTING.md` §35; the report lands in `docs/probe/<build>.md`.
+
+**The references** (`docs/REFERENCES-FOREVER.md`): the author named talentsforever.com and
+Wowhead for spells. Three scouts and a skeptic per scout established: talentsforever publishes
+every rank of every class as CC BY 4.0 JSON (`/data.json`, build 70009), Wowhead has a Forever
+database (env 16, `nether` tooltip endpoint, robots.txt bans AI crawlers so it stays a by-hand
+check); the two disagree on 27 of 49 druid ranks at the same build. What they and Blizzard say
+Forever changes: ranks tuned per rank; **HoTs crit**; bonus healing grants a third as much damage;
+every rank carries the full coefficient in client data (a server-side downrank rule is unknown --
+**Q10**, a measurement); base values moved at every rank; TBC ids absent; **no Lifebloom, Tree of
+Life, Earth Shield or Circle of Healing on Forever**. Two hints that descriptions are dynamic (Q1
+still decides). M2 gains T8b `tools/refcheck.py`.
+
+**State:** TBC line v0.15.4 untouched in behaviour. Forever line `1.0.0-alpha.0`, probe only.
+**Next:** the author runs §35; the planner reads `docs/probe/<build>.md` against the nine
+questions and re-plans where a fact fell; the lead writes T1-T6 (M1).

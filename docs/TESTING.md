@@ -744,6 +744,51 @@ NOT bind still work while the window is open (they should); (4) the damage defau
 too hard, the wrong shape -- with the numbers you changed them to; (5) anything on the frames
 that does not match what happened.
 
+## 35. WoW: Forever -- run the capability probe (T0, 2026-09-27)
+
+This is on the **beta client**, not TBC: `/mnt/e/Blizzard/World of Warcraft/_classic_beta_`,
+character Healroot, build 70009 or whatever is current. Everything in the Forever port waits on
+this report (`docs/FOREVER-PLAN.md` §6, nine questions), so it comes before anything else on
+Forever. The probe cannot break anything: every check is under `pcall`, and it never does
+arithmetic on what the client returns.
+
+**Install.** From this checkout (master's older `release.sh` does not know the suffixed TOCs):
+
+```bash
+./release.sh --install "/mnt/e/Blizzard/World of Warcraft/_classic_beta_/Interface/AddOns"
+```
+
+This replaces `AddOns/SpellTuner`. By hand instead: make
+`.../_classic_beta_/Interface/AddOns/SpellTuner/`, copy in `SpellTuner.toc`,
+`SpellTuner_Forever.toc`, `SpellTuner_Vanilla.toc`, `SpellTuner_Mainline.toc` and the whole
+`Client/` folder; do **not** copy `SpellTuner_TBC.toc`. Leave EllesmereUI as it is.
+
+**Run.**
+1. Start the beta. At character select, open AddOns and check that SpellTuner (1.0.0-alpha.0) is
+   enabled. Log in as Healroot and type `/console scriptErrors 1` once, so a load error shows.
+2. **First report.** `/st probe` (or `/md probe`; if both are taken by something else,
+   `/spelltuner probe`). A dark box opens: click into it, Ctrl+A, Ctrl+C, paste into a new file
+   `docs/probe/<build>.md` (the build is on the report's `build:` line). If the box never opens,
+   the report went to chat.
+3. **Q1, dynamic descriptions.** Change your bonus healing -- put on or take off a +healing item,
+   or take a buff that changes it -- and type `/st probe` again in the same session. The report
+   compares this run's spell descriptions with the previous one's.
+4. **Q2, Q3, Q4, Q5, Q8, the combat snapshot.** Join a party with at least one other player and
+   pull a mob. Let the party member take damage and cast a heal on them. The probe records itself
+   2 seconds into the fight. After combat ends, `/st probe`.
+5. **Q7, SavedVariables.** `/reload`, then `/st probe`.
+6. **Paste everything back.** Append every report of the session to `docs/probe/<build>.md` in
+   order. The last report's `== to do` section should read "answered" for Q1 to Q9; a line still
+   saying "to do" names the missing step. Then tell me the file is there.
+
+**If it does not even load:** copy the Lua error text, or what the AddOns list says about
+SpellTuner, into the report instead. Each build's last report is also kept in
+`_classic_beta_/WTF/Account/<ACCOUNT>/SavedVariables/SpellTuner.lua` -- if the beta saved it,
+which is exactly question 7.
+
+**Not yet asked of you, coming with M2:** the downrank measurement (`docs/FOREVER-PLAN.md` §6
+Q10): Healing Touch Rank 1 on yourself after fall damage, with your bonus healing noted.
+
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the
 raw numbers. `/md profile` output is welcome with any report. I turn them into

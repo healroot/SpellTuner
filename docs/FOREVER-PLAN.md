@@ -27,7 +27,12 @@ baseline `data/forever_api.json`: 6,045 globals, 269 namespaces; its bug reports
 [wow4ever](https://wow4ever.quest/en/addons) addon censuses, the
 [Blizzard beta announcement](https://news.blizzard.com/en-us/article/24304160/the-world-of-warcraft-forever-beta-now-live),
 and the source of **EllesmereUI**, a working Forever addon installed in the author's beta folder
-(`_classic_beta_/Interface/AddOns`), read as a live reference the way ElvUI was.
+(`_classic_beta_/Interface/AddOns`), read as a live reference the way ElvUI was. For **spells and
+talents** the author named two reference sites, **talentsforever.com** and **Wowhead's Forever
+database**; what each exposes, how current it is, and what the two (and Blizzard's own notes)
+say Forever changes about healing is in **`docs/REFERENCES-FOREVER.md`** (2026-09-27, every
+claim refetched by a skeptic). They are for checking and planning; no value from them goes into
+code.
 
 ### 1.1 The client
 
@@ -35,7 +40,15 @@ and the source of **EllesmereUI**, a working Forever addon installed in the auth
 |---|---|
 | Retail engine: `WOW_PROJECT_ID == WOW_PROJECT_MAINLINE`; `## Interface: 16001`; game type "camelot" | kit README; EllesmereUI_ClientGate.lua |
 | Vanilla ruleset, level 60 cap; beta cap 20 rising to 30; beta 2026-09-17 → 10-21; launch 2026-11-04 | Blizzard, Wikipedia |
-| Spell ranks exist (the Cooldown Manager "doesn't handle spell ranks yet") | classicwowforever.com |
+| Spell ranks exist and are **tuned per rank** ("Lightning Bolt: damage on ranks 3 and 4 increased to make these spells always upgrades"); the Cooldown Manager does not support ranks yet | Kaivax, beta development notes 2026-09-24 (`REFERENCES-FOREVER.md` §4) |
+| Downranking is live: purchased ranks do **not** auto-update on bars for mana users, and the spellbook **hides lower ranks** unless "show all ranks" is on | Wowhead news 383050, 2026-09-22 |
+| **HoTs crit**: Rejuvenation, Tranquility, Wild Growth (and Renew, Riptide) "can land critical hits" since build 70009 | Kaivax, 2026-09-24 |
+| Bonus healing also grants **one third** as much bonus damage; hit and crit are merged across spell / melee / ranged | Blizzard Deep Dive recap, 2026-09-13 |
+| Client data: **every rank carries the full vanilla coefficient** (cast/3.5, duration/15) with **no Classic sub-20 cut** (Healing Touch R1 0.429, Classic 0.123). A **server-side** downrank rule would not show in client data — unknown (§6 Q10) | talentsforever `co`, Wowhead `SP mod`, foreverchanges.pro |
+| Client data: **base values and costs moved at every rank** (rank-1 heals up, level-60 HoT ticks ~12-14% down, direct heals within ~3%); a Classic Era table cannot be reused. Old ranks keep Classic ids, new ranks have 7-digit ids; **TBC ids are absent** | both sites, build 70009 |
+| **No Lifebloom, Tree of Life, Earth Shield or Circle of Healing** on Forever. Druid heals: Healing Touch 11, Regrowth 9, Rejuvenation 11, Tranquility 4, Swiftmend (talent-granted, eats the full remaining HoT), Wild Growth 3 ranks (40/50/60) | talentsforever spellbooks, Wowhead env 16 |
+| Costs print as `N Mana` **or** `N% of base mana`; rank 1 of a talent-granted spell is in the book with no trainer; some ranks are tome / quest (Rejuvenation R11) | both sites |
+| In-combat Spirit regen talents at 17/33/50% (Classic 5/10/15%); Paladin Reverence; "all classes that do damage and healing via mana will have talents or abilities that give them mana back based on your spirit" | talentsforever talents; Kris Zierhut, BlizzCon transcript p.5 |
 | Classic globals gone: `GetSpellInfo`, `UnitAura`, `UnitBuff`, `GetTalentInfo`, `GetItemInfo` | kit README, baseline |
 | Trap: `select(4, GetBuildInfo()) >= 100000` is FALSE on Forever (16001), so retail/classic switches pick the Classic path | kit README |
 | `ReloadUI()` is protected; registering an unknown event throws | kit README |
@@ -106,13 +119,23 @@ the base from the text, add the coefficient model — and "any class" means a co
 class, which is a much larger and much less trustworthy project. Then the first release is druid
 heals only, as now.
 
+**Two hints, not answers** (`REFERENCES-FOREVER.md` §4): talentsforever's dump is explicitly "the
+beta client's text at level 60 with no gear", and Wowhead's Prayer of Mending tooltip leaks
+`[(172 + (Healing * 0.42899999)) * (1 * 1)]` — the client computes the text from the player's
+Healing. Both point to **dynamic**. The probe's Q1 decides. Either way the parser must read
+`N Mana` and `N% of base mana`, and the druid set has **no Lifebloom**: `Engine/RankMath.lua`'s
+Lifebloom rules (stacks, bloom, rolling) are TBC-only and stay out of the Forever kit.
+
 ### 2.2 The spell dashboard — any spell in the spellbook, any class
 
 Enumerate `C_SpellBook` skill lines → items; group by base name (`C_Spell.GetBaseSpell`,
 `C_Spell.GetSpellSubtext` for "Rank N"); per rank: value (from the description parser), cost
 (`C_Spell.GetSpellPowerCost`), cast (`C_Spell.GetSpellInfo`), crit per school, value per mana,
 per second, casts to OOM (`GetManaRegen`, `UnitPower`). The Pareto / suggested-rank logic ports
-as-is. **No combat tracking at all**: the overheal-adjusted "Effective" mode depends on measured
+as-is. **Known ranks come from the spellbook enumeration, never from a trainer list**: rank 1 of a
+talent-granted spell (Swiftmend, Wild Growth, Penance, Holy Shock, Riptide) sits in the book with
+no trainer, and some ranks are tome or quest rewards; the enumeration must ask for **all** ranks,
+since the default spellbook view hides the lower ones. **No combat tracking at all**: the overheal-adjusted "Effective" mode depends on measured
 overheal, which lived in the combat log — it moves to the Recorder module and appears only when
 that module is on.
 
@@ -240,14 +263,21 @@ later phase starts on an assumption the probe has not confirmed.
   experiments (`Intuition`, `Foresight`) were already shipped off; they stay off.
 - **Per-target overheal from the combat log**: only totals per player per fight survive
   (damage meter). Overheal by spell is gone unless the session exposes it (§6 Q4).
-- **The TBC spell table and Dreamstate.** Vanilla has neither TBC ranks nor Dreamstate.
+- **The TBC spell table, Dreamstate and Lifebloom.** Forever has none of them: TBC ids do not
+  exist, Dreamstate is a TBC talent, and Lifebloom (with Tree of Life) is not in the Forever druid
+  book at all (`REFERENCES-FOREVER.md` §4). The Lifebloom logic in `Engine/RankMath.lua` and
+  `Engine/SimModel.lua` stays for the TBC flavour and is never reached by a Forever kit.
 - **`OnTooltipSetSpell` and font-string scanning.**
 
 ## 6. The questions the probe must answer, in order of how much rides on them
 
+(Questions 1-9 are what `/st probe` asks the client; question 10 is a measurement the author
+takes with the probe's help, added after the reference scout.)
+
 1. **Are spell descriptions dynamic?** `C_Spell.GetSpellDescription(Rejuvenation)` with and
    without a +healing item equipped: same text → static (coefficient model needed) / different →
-   dynamic (parser only). Decides phase 2's whole shape.
+   dynamic (parser only). Decides phase 2's whole shape. Expected answer: dynamic (two hints in
+   §2.1); a static answer would contradict both reference sites and must be double-checked.
 2. **Is party health readable in combat?** `UnitHealth("party1")` and the `UNIT_HEALTH` payload
    during a pull — `issecretvalue`. Decides whether a recorder exists at all.
 3. **Are `UNIT_COMBAT` amounts on party units readable in combat**, and does the event fire for
@@ -263,7 +293,20 @@ later phase starts on an assumption the probe has not confirmed.
 8. **Is `GetShapeshiftFormID` / own-cast target (`UNIT_SPELLCAST_SENT`) readable in combat?**
    Decides form tracking and cast attribution.
 9. **Which TOC suffix does Forever's client load?** `SpellTuner.toc` alone, or a suffixed one
-   (`_Forever`? `_Vanilla`?). Decides the file names in `docs/ROADMAP-FOREVER.md` §1.1.
+   (`_Forever`? `_Vanilla`? `_Mainline`, the retail engine's usual one?). T0 ships all four with
+   a marker line each. Decides the file names in `docs/ROADMAP-FOREVER.md` §1.1.
+10. **Is there a server-side downrank penalty?** Not a probe of the API but a measurement, added
+   2026-09-27 from `REFERENCES-FOREVER.md` §4: the client data carries the full coefficient on
+   every rank, and a rule applied by the server (TBC's `(level + 6) / casterLevel` cut on ranks
+   learned more than a few levels below yours, or something new) would not show there. Protocol,
+   out of combat so nothing is secret: take fall damage, note `GetSpellBonusHealing()`, cast
+   **Healing Touch Rank 1** (learned at 1) on yourself, read the landed heal from the `UNIT_HEALTH`
+   delta or the `UNIT_COMBAT` amount (Q3), and compare with the tooltip's base plus
+   `0.429 × healing`. Repeat with **Rank 4** (learned at 20) and the highest rank known, at level
+   ≥ 20, and again after a level-up. Equal within the crit spread → no server rule; a shortfall
+   that grows with the gap between the rank's level and yours → a rule, to be fitted. Decides
+   whether `Engine/RankMath.lua`'s downrank penalty ports, is dropped, or is replaced. Done in M2
+   (T12), needs Q3 answered first.
 
 ## 7. Decisions that are the author's
 
