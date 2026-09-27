@@ -3293,6 +3293,21 @@ every rank carries the full coefficient in client data (a server-side downrank r
 Life, Earth Shield or Circle of Healing on Forever**. Two hints that descriptions are dynamic (Q1
 still decides). M2 gains T8b `tools/refcheck.py`.
 
+**T0b, the review before the run.** An independent three-lens review of the T0 commits (will
+it run on the real client / are the tests honest / are the rules kept), a skeptic refetching each
+finding, confirmed five defects and a set of nits; the lead wrote `docs/tasks/T0b-probe-fixes.md`,
+the implementer wrote the 16 assertions first (all failing on the old code), the lead reviewed
+twice (round 1 sent back the stub's secret comments, which stated the direction backwards).
+Fixed: the Q1 diff counted a description unreadable on one run as "changed"; the `UNIT_COMBAT`
+action string and the `C_Secrets` key names reached the report unescaped; `MD.API.Has` compared
+the walked value with `==` outside its pcall; the stub's stand-in cannot trap `==`, `#` or
+table-key use under Lua 5.1 and its comment claimed it did; "keyed by build" asserted a value
+against itself. Taken with them: `issecrettable`, `SetMaxLetters(0)` on the copy box, ranks
+counted per spell name and a "show all ranks" step for the author, Q4 only from an out-of-combat
+read, Q8 requiring the snapshot, erroring spellbook rows counted, an honest "saved" line, the
+character name without a trailing realm, and the present branch of the talent APIs exercised.
+`probecheck` 27 -> 41; the sixteen TBC suites unchanged.
+
 **State:** TBC line v0.15.4 untouched in behaviour. Forever line `1.0.0-alpha.0`, probe only.
 **Next:** the author runs §35; the planner reads `docs/probe/<build>.md` against the nine
 questions and re-plans where a fact fell; the lead writes T1-T6 (M1).

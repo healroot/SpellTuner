@@ -104,7 +104,13 @@ tasks; nothing in a milestone starts on a fact the probe has not confirmed for t
 the nine questions in `FOREVER-PLAN.md` §6 plus TOC suffix. `tools/probecheck.lua` green.
 
 Tasks: **T0** -- done 2026-09-27 (`docs/tasks/T0-probe.md`, lead-accepted; `tools/probecheck.lua`
-27 ok). The exit now waits on the author running `/st probe` on the beta.
+27 ok). **T0b** -- done 2026-09-27 (`docs/tasks/T0b-probe-fixes.md`): the five defects and the
+nits an independent three-lens review confirmed before the author's run -- the Q1 diff counting
+unreadable descriptions as changes, an unescaped client string, a comparison outside the adapter's
+pcall, the stub's secret stand-in described backwards, a self-asserting test -- plus
+`issecrettable`, the copy box's letter cap, the per-name rank count and the "show all ranks" step;
+`probecheck` 41 ok. The exit now waits on the author running `/st probe` on the beta
+(`docs/TESTING.md` §35).
 
 ### M1 — the frame (phase 1)
 

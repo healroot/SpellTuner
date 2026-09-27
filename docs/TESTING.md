@@ -766,18 +766,21 @@ This replaces `AddOns/SpellTuner`. By hand instead: make
 **Run.**
 1. Start the beta. At character select, open AddOns and check that SpellTuner (1.0.0-alpha.0) is
    enabled. Log in as Healroot and type `/console scriptErrors 1` once, so a load error shows.
-2. **First report.** `/st probe` (or `/md probe`; if both are taken by something else,
+2. **Show all ranks.** Open the spellbook, hover the arrow at its top right and turn on the option
+   to show all ranks of spells. The default view hides lower ranks, and the probe dumps what the
+   book lists; the report prints how many ranks it found per spell so this can be checked.
+3. **First report.** `/st probe` (or `/md probe`; if both are taken by something else,
    `/spelltuner probe`). A dark box opens: click into it, Ctrl+A, Ctrl+C, paste into a new file
    `docs/probe/<build>.md` (the build is on the report's `build:` line). If the box never opens,
    the report went to chat.
-3. **Q1, dynamic descriptions.** Change your bonus healing -- put on or take off a +healing item,
+4. **Q1, dynamic descriptions.** Change your bonus healing -- put on or take off a +healing item,
    or take a buff that changes it -- and type `/st probe` again in the same session. The report
    compares this run's spell descriptions with the previous one's.
-4. **Q2, Q3, Q4, Q5, Q8, the combat snapshot.** Join a party with at least one other player and
-   pull a mob. Let the party member take damage and cast a heal on them. The probe records itself
-   2 seconds into the fight. After combat ends, `/st probe`.
-5. **Q7, SavedVariables.** `/reload`, then `/st probe`.
-6. **Paste everything back.** Append every report of the session to `docs/probe/<build>.md` in
+5. **Q2, Q3, Q4, Q5, Q8, the combat snapshot.** Join a party with at least one other player and
+   pull a mob that lives longer than a few seconds. Let the party member take damage and cast a
+   heal on them. The probe records itself 2 seconds into the fight. After combat ends, `/st probe`.
+6. **Q7, SavedVariables.** `/reload`, then `/st probe`.
+7. **Paste everything back.** Append every report of the session to `docs/probe/<build>.md` in
    order. The last report's `== to do` section should read "answered" for Q1 to Q9; a line still
    saying "to do" names the missing step. Then tell me the file is there.
 
