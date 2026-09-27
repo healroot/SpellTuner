@@ -100,7 +100,8 @@ tasks; nothing in a milestone starts on a fact the probe has not confirmed for t
 *Exit:* `docs/probe/70009.md` (or the current build) exists, written from Healroot, and answers
 the nine questions in `FOREVER-PLAN.md` §6 plus TOC suffix. `tools/probecheck.lua` green.
 
-Tasks: **T0** (drafted). One task.
+Tasks: **T0** -- done 2026-09-27 (`docs/tasks/T0-probe.md`, lead-accepted; `tools/probecheck.lua`
+27 ok). The exit now waits on the author running `/st probe` on the beta.
 
 ### M1 — the frame (phase 1)
 
