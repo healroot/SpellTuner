@@ -15,6 +15,10 @@ local S = {}
 _G.STUB = S
 
 S.now = 0
+-- Which .toc GetAddOnMetadata reads its version from. Default is the TBC line
+-- (what the sixteen suites load); S.UseProfile("forever") points it at the
+-- plain SpellTuner.toc instead (T0).
+S.toc = "SpellTuner_TBC.toc"
 function GetTime() return S.now end
 -- The sub-frame clock the search slices on. In the client this advances inside
 -- a frame while GetTime() does not, which is the whole reason it is used.
@@ -24,7 +28,7 @@ function date(fmt, t) return os.date(fmt, t or 1757000000) end
 function wipe(t) for k in pairs(t) do t[k] = nil end return t end
 function strsplit(sep, s) return s end
 function GetAddOnMetadata()
-    local f = io.open((S.root or ".") .. "/SpellTuner.toc", "r")
+    local f = io.open((S.root or ".") .. "/" .. S.toc, "r")
     if f then
         for line in f:lines() do local v = line:match("^## Version: (.+)$"); if v then f:close(); return v end end
         f:close()
@@ -178,6 +182,23 @@ _G.C_Timer = {
 }
 _G.C_Spell = nil
 
+-- The Forever profile's client raises on registering an unknown event (T0
+-- plan §1.1). This is the allowed set for the probe: every EVENTS entry it
+-- registers except the combat log (whose registration outcome is itself a
+-- finding), plus the frame-lifecycle events every addon fires through.
+-- Gated on S.profile so the TBC suites, which register other events, are
+-- unaffected.
+local FOREVER_EVENTS = {
+    UNIT_SPELLCAST_SENT = true, UNIT_SPELLCAST_START = true, UNIT_SPELLCAST_SUCCEEDED = true,
+    UNIT_SPELLCAST_STOP = true, UNIT_SPELLCAST_FAILED = true, UNIT_HEALTH = true,
+    UNIT_MAXHEALTH = true, UNIT_POWER_UPDATE = true, UNIT_AURA = true, UNIT_FLAGS = true,
+    UNIT_COMBAT = true, GROUP_ROSTER_UPDATE = true, PLAYER_REGEN_DISABLED = true,
+    PLAYER_REGEN_ENABLED = true, SPELLS_CHANGED = true, PLAYER_TALENT_UPDATE = true,
+    TRAIT_CONFIG_UPDATED = true, DAMAGE_METER_COMBAT_SESSION_UPDATED = true,
+    ADDON_RESTRICTION_STATE_CHANGED = true,
+    ADDON_LOADED = true, PLAYER_LOGIN = true, PLAYER_ENTERING_WORLD = true, PLAYER_LOGOUT = true,
+}
+
 -- Frames: only what the engine files touch (event registration and OnUpdate).
 local frames = {}
 local FrameMT = {}
@@ -195,7 +216,12 @@ setmetatable(FrameMT, { __index = function(_, k)
     if type(k) == "string" and k:match("^%u") then return noop end
     return nil
 end })
-function FrameMT:RegisterEvent(e) self.events[e] = true end
+function FrameMT:RegisterEvent(e)
+    if S.profile == "forever" and not FOREVER_EVENTS[e] then
+        error('unknown event "' .. tostring(e) .. '"')
+    end
+    self.events[e] = true
+end
 function FrameMT:UnregisterEvent(e) self.events[e] = nil end
 function FrameMT:SetScript(k, fn) self.scripts[k] = fn end
 function FrameMT:GetScript(k) return self.scripts[k] end
@@ -339,6 +365,136 @@ function S.Tick(dt)
         tk.acc = tk.acc + dt
         while tk.acc >= tk.period do tk.acc = tk.acc - tk.period; tk.fn() end
     end
+end
+
+-- Switches the stub's globals to the Forever profile (T0). Called once, by a
+-- probecheck-style script, before any addon file loads. "forever" is the only
+-- name for now -- the full "only what exists" stub is M1's T5, not this task;
+-- everything the TBC profile defines above stays unless named here.
+function S.UseProfile(name)
+    if name ~= "forever" then return end
+    S.profile = "forever"
+    S.toc = "SpellTuner.toc"
+    S.inCombat = false
+    S.bonusHealing = 0
+
+    -- plan §1.1-1.2: gone on Forever.
+    CombatLogGetCurrentEventInfo = nil
+    GetSpellInfo = nil
+    UnitAura = nil
+    UnitBuff = nil
+    GetTalentInfo = nil
+    GetItemInfo = nil
+
+    -- A secret value: every operation the plan names raises (plan §1.2) except
+    -- storing, passing, concatenating and StatusBar:SetValue. __concat and
+    -- __tostring are STRICTER here than the real client, which is said to
+    -- yield a secret STRING that only raises when something later reads it --
+    -- there is no clean way to fake "looks fine now, raises downstream" with a
+    -- metatable, so the stub fails fast instead of silently passing.
+    local function secretRaise() error("attempt to use a secret value (stub)") end
+    local SECRET_MT = {
+        __add = secretRaise, __sub = secretRaise, __mul = secretRaise, __div = secretRaise,
+        __mod = secretRaise, __pow = secretRaise, __unm = secretRaise, __concat = secretRaise,
+        __lt = secretRaise, __le = secretRaise, __eq = secretRaise, __len = secretRaise,
+        __index = secretRaise, __newindex = secretRaise, __call = secretRaise, __tostring = secretRaise,
+    }
+    function S.Secret() return setmetatable({}, SECRET_MT) end
+    function issecretvalue(v) return rawequal(getmetatable(v), SECRET_MT) end
+
+    -- plan §1.5: a stand-in build number, not the real beta's.
+    function GetBuildInfo() return "1.60.1", "70009", "Sep 20 2026", 16001 end
+    WOW_PROJECT_ID = 1
+    WOW_PROJECT_MAINLINE = 1
+
+    function UnitAffectingCombat() return S.inCombat end
+    function InCombatLockdown() return S.inCombat end
+    -- A stand-in that exercises the secret path -- NOT a claim about what Q2
+    -- (party health readable in combat) actually answers on Forever.
+    function UnitHealth(u)
+        if S.inCombat and u ~= "player" then return S.Secret() end
+        local x = U(u); return x and x.hp or 0
+    end
+    function UnitHealthMax(u)
+        if S.inCombat and u ~= "player" then return S.Secret() end
+        local x = U(u); return x and x.hpMax or 1
+    end
+
+    function GetSpellBonusHealing() return S.bonusHealing end
+    function GetShapeshiftFormID() return nil end
+
+    Enum = {
+        SpellBookSpellBank = { Player = 0 },
+        DamageMeterType = { HealingDone = 1 },
+        DamageMeterSessionType = { Overall = 0, Current = 1 },
+    }
+
+    -- Three spells, one of them not a heal (Wrath), for the spellbook dump and
+    -- the healing/non-healing split (Q1). 774's description reads S.bonusHealing
+    -- live, so a probe run after changing it sees a different number.
+    local SPELL_SLOTS = { [1] = 774, [2] = 5185, [3] = 5176 }
+    local SPELL_NAMES = { [774] = "Rejuvenation", [5185] = "Healing Touch", [5176] = "Wrath" }
+    local SPELL_DESC = {
+        [774] = function() return "Heals the target for " .. (32 + S.bonusHealing) .. " over 12 sec." end,
+        [5185] = function() return "Heals a friendly target for 40 to 55.|nIt is \226\128\156quoted\226\128\157." end,
+        [5176] = function() return "Causes 13 to 16 Nature damage to the target." end,
+    }
+    C_SpellBook = {
+        GetSpellBookItemInfo = function(slot, bank)
+            local id = SPELL_SLOTS[slot]
+            if not id then return nil end
+            return { spellID = id }
+        end,
+    }
+    C_Spell = {
+        GetSpellName = function(id) return SPELL_NAMES[id] end,
+        GetSpellSubtext = function(id) if SPELL_NAMES[id] then return "Rank 1" end return nil end,
+        GetSpellDescription = function(id) local f = SPELL_DESC[id]; return f and f() or nil end,
+    }
+
+    C_Secrets = {
+        ShouldAurasBeSecret = function() return S.inCombat end,
+        ShouldUnitIdentityBeSecret = function(u)
+            if u == nil then error("bad argument #1") end
+            return false
+        end,
+    }
+
+    C_UnitAuras = {
+        GetAuraDataByIndex = function(u, i, filter)
+            if S.inCombat then error("Auras cannot be accessed when secret while tainted") end
+            if u == "player" and i == 1 then
+                return { name = "Mark of the Wild", spellId = 1126, duration = 1800 }
+            end
+            return nil
+        end,
+    }
+
+    C_SpecializationInfo = {
+        GetTalentInfo = function(a, b)
+            if type(a) == "number" then
+                error("bad argument #1 to 'GetTalentInfo' (table expected, got number)")
+            end
+            return { name = "Improved Wrath", rank = 0 }
+        end,
+    }
+    -- C_Traits and C_ClassTalents stay undefined -- the absent path (Q6).
+    C_Traits = nil
+    C_ClassTalents = nil
+
+    C_DamageMeter = {
+        IsDamageMeterAvailable = function() return true end,
+        GetCombatSessionFromType = function(st, mt)
+            if S.inCombat then return S.Secret() end
+            return { combatSources = {
+                { sourceGUID = "Player-1", isLocalPlayer = true, totalAmount = 1234, amountPerSecond = 41 },
+            } }
+        end,
+        GetCombatSessionSourceFromType = function(st, mt, guid, cid)
+            if S.inCombat then return S.Secret() end
+            return { combatSpells = { { spellID = 774, totalAmount = 1000 } } }
+        end,
+    }
 end
 
 function S.Load(files, addonName, MD)

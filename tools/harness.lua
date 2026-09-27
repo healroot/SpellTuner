@@ -1,8 +1,8 @@
 -- Loads the non-UI half of SpellTuner under tools/wowstub.lua and returns the
 -- addon table. arg[1] is the repo root.
 --
--- The file list is the .toc's order minus everything that draws. Keep it in
--- step with SpellTuner.toc when an engine file is added.
+-- The file list is SpellTuner_TBC.toc's order minus everything that draws.
+-- Keep it in step with SpellTuner_TBC.toc when an engine file is added.
 local here = arg[0]:match("^(.*)/[^/]+$")
 dofile(here .. "/wowstub.lua")
 local S = _G.STUB
@@ -10,6 +10,7 @@ S.root = arg[1] or "."
 
 local MD = {}
 S.Load({
+    "Client/TOC_TBC.lua", "Client/API.lua",
     "Core.lua", "Data/SpellData.lua", "Engine/RegenModel.lua", "Engine/SpendTracker.lua",
     "Engine/Targets.lua", "Engine/Overheal.lua", "Engine/ManaCooldowns.lua", "Engine/TTO.lua",
     "Engine/RankMath.lua", "Engine/DamageMath.lua", "Engine/Calibration.lua", "Engine/PullBudget.lua",

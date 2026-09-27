@@ -8,15 +8,20 @@
 #   ./release.sh                     build the checkout this script lives in
 #   ./release.sh --menu              pick the source interactively (make release)
 #   ./release.sh --src NAME|DIR      build a named worktree ("main", "feedback-round-3")
-#                                    or any directory containing SpellTuner.toc
+#                                    or any directory containing SpellTuner_TBC.toc or
+#                                    SpellTuner.toc
 #   ./release.sh --list              show the available sources
 #   ./release.sh --out DIR           override the output folder
 #   ./release.sh --install DIR       also copy SpellTuner/ into that AddOns folder
 #   ./release.sh /path/to/AddOns     same (legacy positional form); WOW_ADDONS env too
 #
-# The file list comes from SpellTuner.toc itself, so the release can never drift
-# from what the game actually loads. Dev files (docs/, CLAUDE.md, Makefile,
-# .git, this script) are excluded by construction.
+# The file list is the union (no duplicates) of every SpellTuner*.toc's load
+# entries in the source root, plus the .toc files themselves and README.md, so
+# the release can never drift from what any of the game's clients actually
+# loads (T0: one tree, one .toc per client). The version -- zip name, --list,
+# the menu -- comes from SpellTuner_TBC.toc when the source has one, else from
+# SpellTuner.toc. Dev files (docs/, CLAUDE.md, Makefile, .git, this script) are
+# excluded by construction.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -54,7 +59,7 @@ list_sources() {
 
 resolve_source() {
     local want="$1"
-    if [[ -d "$want" && -f "$want/SpellTuner.toc" ]]; then
+    if [[ -d "$want" && ( -f "$want/SpellTuner_TBC.toc" || -f "$want/SpellTuner.toc" ) ]]; then
         cd "$want" && pwd
         return
     fi
@@ -65,8 +70,14 @@ resolve_source() {
     exit 1
 }
 
+# The version toc: SpellTuner_TBC.toc when the source has one, else the plain
+# SpellTuner.toc (a Forever-only checkout).
+version_toc() {
+    if [[ -f "$1/SpellTuner_TBC.toc" ]]; then echo "$1/SpellTuner_TBC.toc"; else echo "$1/SpellTuner.toc"; fi
+}
+
 version_of() {
-    sed -n 's/^## Version:[[:space:]]*//p' "$1/SpellTuner.toc" 2>/dev/null | tr -d '\r'
+    sed -n 's/^## Version:[[:space:]]*//p' "$(version_toc "$1")" 2>/dev/null | tr -d '\r'
 }
 
 show_sources() {
@@ -109,8 +120,10 @@ if [[ -z "$SRC" ]]; then
 else
     SRC="$(resolve_source "$SRC")"
 fi
-TOC="$SRC/SpellTuner.toc"
-[[ -f "$TOC" ]] || { echo "ERROR: SpellTuner.toc not found in $SRC" >&2; exit 1; }
+shopt -s nullglob
+TOCS=("$SRC"/SpellTuner*.toc)
+shopt -u nullglob
+[[ ${#TOCS[@]} -gt 0 ]] || { echo "ERROR: no SpellTuner_TBC.toc or SpellTuner.toc found in $SRC" >&2; exit 1; }
 
 NAME="$(basename "$SRC")"
 [[ "$SRC" == "$ROOT" ]] && NAME="main"
@@ -118,15 +131,22 @@ NAME="$(basename "$SRC")"
 PKG="$OUT/SpellTuner"
 
 VERSION="$(version_of "$SRC")"
-[[ -n "$VERSION" ]] || { echo "ERROR: no '## Version:' line in SpellTuner.toc" >&2; exit 1; }
+[[ -n "$VERSION" ]] || { echo "ERROR: no '## Version:' line in $(basename "$(version_toc "$SRC")")" >&2; exit 1; }
 
-# Collect files: the .toc itself, every load entry in it, plus README.md.
-files=("SpellTuner.toc" "README.md")
-while IFS= read -r line; do
-    line="${line%$'\r'}"                      # strip CR (the .toc may be CRLF)
-    [[ -z "$line" || "$line" == \#* ]] && continue
-    files+=("${line//\\//}")                  # .toc uses backslashes; use / on disk
-done < "$TOC"
+# Collect files: every SpellTuner*.toc in the source root, README.md, and the
+# union (no duplicates) of every one of those .toc's load entries -- so a file
+# common to two clients (Client/API.lua) is packaged once.
+files=("README.md")
+for f in "${TOCS[@]}"; do files+=("$(basename "$f")"); done
+have() { local x; for x in "${files[@]}"; do [[ "$x" == "$1" ]] && return 0; done; return 1; }
+for toc in "${TOCS[@]}"; do
+    while IFS= read -r line; do
+        line="${line%$'\r'}"                      # strip CR (the .toc may be CRLF)
+        [[ -z "$line" || "$line" == \#* ]] && continue
+        entry="${line//\\//}"                     # .toc uses backslashes; use / on disk
+        have "$entry" || files+=("$entry")
+    done < "$toc"
+done
 
 # Verify everything exists before touching the output.
 missing=0

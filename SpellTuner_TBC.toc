@@ -6,6 +6,8 @@
 ## SavedVariables: SpellTunerDB, ManaDemonDB
 ## OptionalDeps: ElvUI
 
+Client\TOC_TBC.lua
+Client\API.lua
 Core.lua
 Data\SpellData.lua
 Data\SimFixture_BF1.lua
