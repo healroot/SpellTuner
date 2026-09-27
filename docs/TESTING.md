@@ -784,6 +784,18 @@ This replaces `AddOns/SpellTuner`. By hand instead: make
    order. The last report's `== to do` section should read "answered" for Q1 to Q9; a line still
    saying "to do" names the missing step. Then tell me the file is there.
 
+**Second round (T0c, after your first report of 2026-09-27).** Reinstall with the same command;
+the probe is now 1.0.0-alpha.1. What changed for you:
+- The "blocked from an action only available to the Blizzard UI" dialog should not appear at
+  load any more. If it does, press **Ignore** and run `/st probe`: the new `== blocked actions`
+  section names the function. Then, once, type `/st probe clog` and `/st probe` again: that
+  registers the combat log event on demand, and the same section says whether that was it.
+- The readings section now asks the client directly whether your own health and mana are secret
+  and under what state; nothing for you to do but run it once out of combat and once after a
+  fight (the snapshot takes the same readings).
+- Q1 has a second path: gain a level with no gear change and run `/st probe` again; if the spell
+  descriptions changed, they are computed. Q6 needs level 10 or above (talents start there).
+
 **If it does not even load:** copy the Lua error text, or what the AddOns list says about
 SpellTuner, into the report instead. Each build's last report is also kept in
 `_classic_beta_/WTF/Account/<ACCOUNT>/SavedVariables/SpellTuner.lua` -- if the beta saved it,

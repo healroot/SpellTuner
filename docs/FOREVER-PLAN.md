@@ -49,6 +49,8 @@ code.
 | **No Lifebloom, Tree of Life, Earth Shield or Circle of Healing** on Forever. Druid heals: Healing Touch 11, Regrowth 9, Rejuvenation 11, Tranquility 4, Swiftmend (talent-granted, eats the full remaining HoT), Wild Growth 3 ranks (40/50/60) | talentsforever spellbooks, Wowhead env 16 |
 | Costs print as `N Mana` **or** `N% of base mana`; rank 1 of a talent-granted spell is in the book with no trainer; some ranks are tome / quest (Rejuvenation R11) | both sites |
 | In-combat Spirit regen talents at 17/33/50% (Classic 5/10/15%); Paladin Reverence; "all classes that do damage and healing via mana will have talents or abilities that give them mana back based on your spirit" | talentsforever talents; Kris Zierhut, BlizzCon transcript p.5 |
+| **From the first probe report (build 70009, Healroot level 8, out of combat, solo, PvP realm):** the client loads `SpellTuner_Mainline.toc`; 57 of the 65 listed functions present, the 8 absent are the Classic globals and `CombatLogGetCurrentEventInfo`; all 20 events register (the combat log one included, under pcall); `C_ClassTalents.GetActiveConfigID` + `C_Traits.GetConfigInfo` answer, `C_SpecializationInfo.GetTalentInfo({tier, column})` is nil below level 10; `C_DamageMeter` **out of combat lists per-source totals and per-spell rows** (spellID, totalAmount, amountPerSecond, overkillAmount, a `combatSpellDetails` table); `GetManaRegen` plain; own auras plain; Healing Touch R1 reads "40 to 55" at level 8 where both reference sites print "40 to 54" for level 60 | `docs/probe/1.60.1_70009.md` |
+| **Same report, the two open alarms:** own health and mana read **secret out of combat** (Q2, widened); the ADDON_ACTION_FORBIDDEN dialog appeared at load, culprit unproven, `COMBAT_LOG_EVENT_UNFILTERED` registration the suspect (EllesmereUI never registers it) — T0c records the forbidden event's function name and moves that registration to `/st probe clog` | `docs/probe/1.60.1_70009.md`; T0c |
 | Classic globals gone: `GetSpellInfo`, `UnitAura`, `UnitBuff`, `GetTalentInfo`, `GetItemInfo` | kit README, baseline |
 | Trap: `select(4, GetBuildInfo()) >= 100000` is FALSE on Forever (16001), so retail/classic switches pick the Classic path | kit README |
 | `ReloadUI()` is protected; registering an unknown event throws | kit README |
@@ -279,7 +281,18 @@ takes with the probe's help, added after the reference scout.)
    dynamic (parser only). Decides phase 2's whole shape. Expected answer: dynamic (two hints in
    §2.1); a static answer would contradict both reference sites and must be double-checked.
 2. **Is party health readable in combat?** `UnitHealth("party1")` and the `UNIT_HEALTH` payload
-   during a pull — `issecretvalue`. Decides whether a recorder exists at all.
+   during a pull — `issecretvalue`. Decides whether a recorder exists at all. **Widened
+   2026-09-27 after the first report:** `UnitHealth("player")`, `UnitHealthMax`, `UnitPower("player")`
+   and even `UnitHealth("target")` with no target read **secret OUT of combat**, solo, at level 8
+   on the PvP beta realm, while `GetManaRegen`, the damage meter and auras read plain and
+   `ShouldUnitStatsBeSecret` / `ShouldAurasBeSecret` / `ShouldCooldownsBeSecret` were false. So
+   the question is now "is health or power readable by addon code at all, and under what state" —
+   `C_Secrets.HasSecretRestrictions()`, `ShouldUnitHealthMaxBeSecret`, `ShouldUnitPowerBeSecret`,
+   `GetPowerTypeSecrecy`, and the secret-safe percent functions EllesmereUI lives on
+   (`UnitHealthPercent`, `UnitPowerPercent`, `UnitHealthMissing`). T0c measures all of them in
+   and out of combat. If current health and mana are secret always, the recorder's health curve
+   comes from `UNIT_COMBAT` amounts (Q3) and the clock's mana from cast costs and regen, never
+   from the pool.
 3. **Are `UNIT_COMBAT` amounts on party units readable in combat**, and does the event fire for
    heals (`action == "HEAL"`) as well as damage, with the target unit? Decides the damage stream.
 4. **What does `C_DamageMeter`'s session carry after a fight?** Per-source HealingDone; is there
@@ -292,9 +305,10 @@ takes with the probe's help, added after the reference scout.)
    beta at all, or need the kit's seed workaround.
 8. **Is `GetShapeshiftFormID` / own-cast target (`UNIT_SPELLCAST_SENT`) readable in combat?**
    Decides form tracking and cast attribution.
-9. **Which TOC suffix does Forever's client load?** `SpellTuner.toc` alone, or a suffixed one
-   (`_Forever`? `_Vanilla`? `_Mainline`, the retail engine's usual one?). T0 ships all four with
-   a marker line each. Decides the file names in `docs/ROADMAP-FOREVER.md` §1.1.
+9. **Which TOC suffix does Forever's client load?** **Answered 2026-09-27, build 70009:
+   `_Mainline`** (`docs/probe/1.60.1_70009.md`: `SPELLTUNER_TOC = Mainline` with the plain,
+   `_Forever` and `_Vanilla` copies beside it). `SpellTuner_Mainline.toc` is the Forever TOC;
+   `docs/ROADMAP-FOREVER.md` §1.1 follows.
 10. **Is there a server-side downrank penalty?** Not a probe of the API but a measurement, added
    2026-09-27 from `REFERENCES-FOREVER.md` §4: the client data carries the full coefficient on
    every rank, and a rule applied by the server (TBC's `(level + 6) / casterLevel` cut on ranks

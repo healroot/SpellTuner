@@ -12,12 +12,16 @@ with per-client TOCs, branches for release lines only.
 
 A WoW client loads the TOC whose suffix matches it and ignores the others. That is the
 mechanism by which one folder serves both clients, and it is how the author's Cell fork ships
-six flavours. The suffix Forever's client looks for is **unconfirmed** (probe question 9); until
-it is, the plain `SpellTuner.toc` is the Forever one, because the newest client is the default.
+six flavours. The suffix Forever's client looks for is **`_Mainline`** — answered by the first
+probe report from the beta (`docs/probe/1.60.1_70009.md`, 2026-09-27: `SPELLTUNER_TOC =
+Mainline` with the plain, `_Forever` and `_Vanilla` copies all present). So `SpellTuner_Mainline.toc`
+is the Forever TOC and the plain `SpellTuner.toc` is kept as an identical fallback copy (its marker
+aside) for a client that matches no suffix; the other two copies are gone (T0c).
 
 ```
 SpellTuner/                         the addon; also the repository root
-  SpellTuner.toc                    Forever  (## Interface: 16001)   -- core module
+  SpellTuner_Mainline.toc           Forever  (## Interface: 16001)   -- core module; the suffix Forever loads
+  SpellTuner.toc                    the same, as the no-suffix fallback (marker line apart)
   SpellTuner_TBC.toc                TBC      (## Interface: 20506)   -- the whole TBC addon, as today
   Core.lua                          namespace, db, event bus, ticker, slash, module registry
   Client/
