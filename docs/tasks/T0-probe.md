@@ -983,3 +983,25 @@ Accepted as they are: the file-scope `CreateFrame("Frame")` and the three
 `DEFAULT_CHAT_FRAME:AddMessage` calls are not under `pcall` (both are sourced as present on
 Forever, and without them there is no probe to protect); the to-do list prints Q5 next to Q2
 rather than in numeric order (each line is labelled).
+
+### Lead follow-up (2026-09-27, planner's answer to Q9)
+
+- `SpellTuner_Mainline.toc` and `Client/TOC_Mainline.lua` (`SPELLTUNER_TOC = "Mainline"`) added,
+  same shape as the other copies: the retail engine's usual suffix is `_Mainline`, and a report
+  that said "Plain" without it would not tell us whether `_Mainline` outranks the plain name.
+  The Forever flavour now ships four copies (plain, `_Forever`, `_Vanilla`, `_Mainline`) that
+  differ only in their first file line. `release.sh` picks the new TOC up through its
+  `SpellTuner*.toc` glob; `tools/probecheck.lua` is unchanged and still 27 ok.
+- **M1 lead for the module switches (not implemented):** this engine has a TOC-level game-type
+  directive, seen with both values in the beta folder
+  (`/mnt/e/Blizzard/World of Warcraft/_classic_beta_/Interface/AddOns/`):
+  - `standard`, as a whole-addon header: `EllesmereUIFriends/EllesmereUIFriends.toc:2`,
+    `EllesmereUIMythicTimer/EllesmereUIMythicTimer.toc:2`,
+    `EllesmereUIRaidFrames/EllesmereUIRaidFrames.toc:2` (`## AllowLoadGameType: standard`);
+    as a per-file tag: `EllesmereUI/EllesmereUI.toc:20-21`
+    (`Libs\LibKeystone\LibKeystone.lua [AllowLoadGameType standard]`, same for
+    LibSpecialization). `EllesmereUI/EllesmereUI.lua:405-422` explains it: those addons are
+    "switched off for the whole client" on Forever.
+  - `camelot` (Forever's game type): Blizzard's own `Blizzard_SwingTimer` is
+    "AllowLoadGameType camelot" -- `EllesmereUIResourceBars/EUI_ResourceBars_SwingTimer.lua:7`.
+  What the TBC client does with the directive is UNKNOWN.

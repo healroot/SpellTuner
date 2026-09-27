@@ -1,0 +1,10 @@
+## Interface: 16001
+## Title: SpellTuner
+## Notes: Capability probe for WoW: Forever. Type /st probe.
+## Author: NeRgY
+## Version: 1.0.0-alpha.0
+## SavedVariables: SpellTunerDB
+
+Client\TOC_Mainline.lua
+Client\API.lua
+Client\Probe.lua
