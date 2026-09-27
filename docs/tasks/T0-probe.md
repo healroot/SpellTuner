@@ -9,7 +9,7 @@ first thing that runs on the beta.
 A `SpellTuner` addon folder that loads on interface 16001 without a single Lua error, contains
 only `Core.lua`, `Client/API.lua` (stub: presence checks) and `Client/Probe.lua`, and answers
 `/md probe` with a report that (a) prints to a copyable box, (b) is written to SavedVariables
-keyed by build number, and (c) answers the eight questions in `docs/FOREVER-PLAN.md` §6 as far
+keyed by build number, and (c) answers the nine questions in `docs/FOREVER-PLAN.md` §6 as far
 as they can be answered without the author's participation, and tells the author exactly what to
 do for the rest (equip a +healing item and run `/md probe again`; pull a mob and run it in
 combat). It is the debug tool for a moving beta, so it is built to survive the beta's own bugs:
@@ -33,7 +33,7 @@ every check under `pcall`, every result a string, no arithmetic on anything the 
 
 ## Files
 
-- `SpellTuner.toc` — `## Interface: 16001`, `## SavedVariables: SpellTunerDB`, three files.
+- `SpellTuner.toc` — `## Interface: 16001`, `## SavedVariables: SpellTunerDB`, three files. **Question 9:** also ship `SpellTuner_Forever.toc` and `SpellTuner_Vanilla.toc` as copies whose first line prints their own name into the report, so the report says which TOC the client chose.
 - `Core.lua` — namespace, `SpellTunerDB` with the read-back guard, `/md`, the copy box.
 - `Client/API.lua` — `MD.API.Has(name)` (dotted names, cached), `MD.API.client`, nothing else yet.
 - `Client/Probe.lua` — the checks and the report.
@@ -58,7 +58,7 @@ on a client value in `Probe.lua` — it formats with `tostring` only.
   descriptions of every healing spell in the spellbook (name, rank text, description); the talent
   API that answers (`C_SpecializationInfo.GetTalentInfo(1,1)` vs `C_Traits.GetConfigInfo` of the
   active config); whether the previous report (same character, any build) came back from
-  SavedVariables; and the instructions for the two author-driven checks (gear swap, in-combat run).
+  SavedVariables; which TOC file the client loaded (question 9); and the instructions for the two author-driven checks (gear swap, in-combat run).
 
 ## Out of scope
 

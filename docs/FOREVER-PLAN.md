@@ -214,11 +214,10 @@ has fails the check before anyone logs in.
 
 ### 3.6 Repository
 
-Recommendation: **stay in this repository.** Tag `master` as `tbc-final` (v0.15.4) and keep a
-`tbc` branch for anything the TBC realm still needs; develop Forever on `master`. The engine,
-tools, docs and history carry over intact, and the port is a series of ordinary versions
-(`v1.0.0-forever` when the recorder works end to end). A new repository would lose the harness
-and the decision record for no gain. **This is the author's call** (§7).
+Decided 2026-09-27: **this repository, renamed SpellTuner**, one code line with a TOC per client
+(`SpellTuner.toc` for Forever, `SpellTuner_TBC.toc` for TBC), the modules as sibling
+LoadOnDemand addon folders, branches for release lines only. The full tree, the branch and tag
+scheme, the harness changes and the milestones are in `docs/ROADMAP-FOREVER.md`.
 
 ## 4. Phases
 
@@ -263,11 +262,12 @@ later phase starts on an assumption the probe has not confirmed.
    beta at all, or need the kit's seed workaround.
 8. **Is `GetShapeshiftFormID` / own-cast target (`UNIT_SPELLCAST_SENT`) readable in combat?**
    Decides form tracking and cast attribution.
+9. **Which TOC suffix does Forever's client load?** `SpellTuner.toc` alone, or a suffixed one
+   (`_Forever`? `_Vanilla`?). Decides the file names in `docs/ROADMAP-FOREVER.md` §1.1.
 
 ## 7. Decisions that are the author's
 
-- Repository: in place with a `tbc-final` tag (recommended), or a new repository.
-- Whether TBC keeps receiving fixes on a `tbc` branch, or is frozen.
+- ~~Repository~~ decided: in place, tagged `manademon-final`; a `tbc` branch only if a fix cannot live in shared code.
 - Whether to run the two-party debate + judge on the two contested designs before phase 3: the
   recorder without a combat log (§2.3), and the module boundaries (§3.1).
 - Name and version line: `SpellTuner` continues, version resets to `1.0.0` at the first Forever
