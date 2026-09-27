@@ -27,7 +27,7 @@ local function SetSpell(id)
     return tt.lines
 end
 
-S.Load({ "UI/Style.lua", "UI/Tooltip.lua", "UI/SpellTooltip.lua" }, "ManaDemon", MD)
+S.Load({ "UI/Style.lua", "UI/Tooltip.lua", "UI/SpellTooltip.lua" }, "SpellTuner", MD)
 
 local ok, fails = 0, {}
 local function check(name, cond, detail)

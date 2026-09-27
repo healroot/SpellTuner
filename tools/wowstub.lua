@@ -1,5 +1,5 @@
 -- Minimal WoW-client stub: just enough of the API for the non-UI half of
--- ManaDemon to load and run outside the game, so Engine/SimModel.lua can be
+-- SpellTuner to load and run outside the game, so Engine/SimModel.lua can be
 -- exercised without logging in. Values mirror the BF-1 log's druid (level 64,
 -- 7009 mana pool) so the numbers mean something.
 --
@@ -24,7 +24,7 @@ function date(fmt, t) return os.date(fmt, t or 1757000000) end
 function wipe(t) for k in pairs(t) do t[k] = nil end return t end
 function strsplit(sep, s) return s end
 function GetAddOnMetadata()
-    local f = io.open((S.root or ".") .. "/ManaDemon.toc", "r")
+    local f = io.open((S.root or ".") .. "/SpellTuner.toc", "r")
     if f then
         for line in f:lines() do local v = line:match("^## Version: (.+)$"); if v then f:close(); return v end end
         f:close()
@@ -313,7 +313,7 @@ function CreateFrame(kind, name, parent, tmpl)
     end
     frames[#frames + 1] = f
     -- a named frame is a global in the client, and addon code looks itself up
-    -- that way (tinsert(UISpecialFrames, "ManaDemonDashboard"), _G[name])
+    -- that way (tinsert(UISpecialFrames, "SpellTunerDashboard"), _G[name])
     if name then _G[name] = f end
     return f
 end

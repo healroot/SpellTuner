@@ -1,6 +1,6 @@
 -- Widget kit in the style of Cell's options UI (flat 0.115-grey panels with a
 -- 1px black border, class-colour accent, 13px widget font, tab buttons that
--- sit on the top edge of the frame). Written from scratch for ManaDemon: no
+-- sit on the top edge of the frame). Written from scratch for SpellTuner: no
 -- libraries, no pixel-perfect layer, plain sizes. Exposed on MD.UI and used
 -- by the options frame, the debug console and the dashboard.
 local _, MD = ...
@@ -56,7 +56,7 @@ UI.FONT_CLASS = "MANADEMON_FONT_CLASS";                 MakeFont(UI.FONT_CLASS, 
 -- template draws a NineSlice and may lack the backdrop mixin, so both are
 -- handled defensively; on any failure the stock look is kept.
 --------------------------------------------------------------------------------
-local tooltip = CreateFrame("GameTooltip", "ManaDemonTooltip", UIParent, "GameTooltipTemplate")
+local tooltip = CreateFrame("GameTooltip", "SpellTunerTooltip", UIParent, "GameTooltipTemplate")
 UI.tooltip = tooltip
 
 local function StyleTooltip()

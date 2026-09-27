@@ -8,7 +8,7 @@ local here = arg[0]:match("^(.*)/[^/]+$")
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
 local MD = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB
-S.Load({ "UI/Style.lua" }, "ManaDemon", MD)
+S.Load({ "UI/Style.lua" }, "SpellTuner", MD)
 local UI = MD.UI
 
 local ok, fails = 0, {}
@@ -26,7 +26,7 @@ local groups = {
     { id = "settings", text = "Settings", views = { { id = "general", text = "General" } } },
 }
 local shows = {}
-local nav = UI.CreateNavFrame("ManaDemon", "MDNavTest", 900, 600, groups,
+local nav = UI.CreateNavFrame("SpellTuner", "MDNavTest", 900, 600, groups,
     function(g, v, content)
         local key = g .. ":" .. tostring(v)
         built[key] = (built[key] or 0) + 1

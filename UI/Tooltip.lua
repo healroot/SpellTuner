@@ -314,7 +314,7 @@ function Tip:Spell(spellID, detail)
     local s = SD and SD.spells[spellID]
     if not s or not RM then return lines end
     local ctx = RM:Context({ live = true })
-    local head = { l = "ManaDemon", c = Accent(),
+    local head = { l = "SpellTuner", c = Accent(),
                    r = string.format("+%d healing", R(ctx.bonus)), rc = MUTED }
 
     -- Swiftmend has no heal of its own: it is worth the HoT it eats, which is
@@ -435,7 +435,7 @@ end
 function Tip:Damage(c, detail)
     local lines = {}
     if not c then return lines end
-    lines[1] = { l = "ManaDemon", c = Accent(),
+    lines[1] = { l = "SpellTuner", c = Accent(),
                  r = string.format("+%d %s damage", R(c.bonus), c.school:lower()), rc = MUTED }
     if c.min then
         lines[#lines + 1] = { l = "Hit", r = Range(c.min, c.max), c = KEY }
@@ -528,7 +528,7 @@ end
 -- The widget / minimap composite: clock, state, last fight, click hints.
 --------------------------------------------------------------------------------
 function Tip:Clock(hints)
-    local lines = { { l = "ManaDemon", c = Accent() } }
+    local lines = { { l = "SpellTuner", c = Accent() } }
     local str = MD.GetDisplayString and MD:GetDisplayString() or ""
     if str ~= "" then
         lines[#lines + 1] = { l = Plain(str) }

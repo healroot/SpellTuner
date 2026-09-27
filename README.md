@@ -1,4 +1,6 @@
-# ManaDemon
+# SpellTuner
+
+*Formerly ManaDemon. Your saved settings and recordings carry over; `/md` still works beside `/st`.*
 
 Mana management for TBC Anniversary healers: a live **time-to-OOM** projection, a
 **healing rank dashboard** for downranking decisions, and push alerts at the moments
@@ -14,7 +16,7 @@ drink reminders).
   `~` marks an unstable read; `vv` in red under 20s. Digits are shown only as precisely
   as the model actually knows them. The thin underline fills over 5s after each cast —
   full means spirit regen is running (five-second rule).
-- **`ManaDemon Regen`** — a second ElvUI datatext showing your *current* mp5 (casting
+- **`SpellTuner Regen`** — a second ElvUI datatext showing your *current* mp5 (casting
   regen inside the five-second rule, full regen outside), unlike the stock one.
 - **`/md`** — rank dashboard: spell tabs, every rank with heal / mana / HPM / HPS and
   **To OOM** (how many times you can chain-cast it from your current mana, counting
@@ -39,7 +41,7 @@ drink reminders).
 ## Building
 
 `make release` asks which checkout to build (main or a git worktree) and writes
-`dist/<name>/ManaDemon/` plus a zip at the repo top level; `make release SRC=main` skips the
+`dist/<name>/SpellTuner/` plus a zip at the repo top level; `make release SRC=main` skips the
 prompt; `make install WOW_ADDONS="/path/to/Interface/AddOns"` also copies it into the game.
 
 ## First install
@@ -50,5 +52,5 @@ anything that needs fixing. `/md regentest` (idle, partial mana, no drink, 30s) 
 whether your client's mana regen value includes Dreamstate. Both land in the Debug
 Console (`/md debug`, enable logging, Copy).
 
-ElvUI users: enable the **ManaDemon** datatext in any datatext slot
+ElvUI users: enable the **SpellTuner** datatext in any datatext slot
 (ElvUI config → DataTexts).

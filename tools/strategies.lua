@@ -14,14 +14,14 @@ do
         i = i + 1
     end
 end
-local file = opts.file or ".logs/ManaDemon.lua"
+local file = opts.file or ".logs/SpellTuner.lua"
 local function exists(p) local f = io.open(p, "r"); if f then f:close(); return true end end
 if not exists(file) then
-    local p = io.popen('ls "/mnt/e/Blizzard/World of Warcraft/_anniversary_/WTF/Account"/*/SavedVariables/ManaDemon.lua 2>/dev/null')
+    local p = io.popen('ls "/mnt/e/Blizzard/World of Warcraft/_anniversary_/WTF/Account"/*/SavedVariables/SpellTuner.lua 2>/dev/null')
     if p then for line in p:lines() do file = line; break end; p:close() end
 end
 dofile(file)
-local realDB = _G.ManaDemonDB
+local realDB = _G.SpellTunerDB or _G.ManaDemonDB   -- files written before the rename
 local pre = {}
 for k, c in pairs(realDB.char or {}) do pre[k] = c.profile end
 

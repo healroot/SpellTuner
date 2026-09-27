@@ -17,7 +17,7 @@ local here = arg[0]:match("^(.*)/[^/]+$")
 local file, obsFile = arg[2], arg[3]
 if not file then print("usage: reproduce.lua <records.lua> [observed.lua]"); os.exit(2) end
 dofile(file)
-local realDB = _G.ManaDemonDB
+local realDB = _G.SpellTunerDB or _G.ManaDemonDB   -- files written before the rename
 local pre = {}
 for k, c in pairs(realDB.char or {}) do pre[k] = c.profile end
 

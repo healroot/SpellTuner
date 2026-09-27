@@ -1,4 +1,4 @@
-# ManaDemon for WoW: Forever — architecture and plan
+# SpellTuner for WoW: Forever — architecture and plan
 
 Written 2026-09-27 by the planner (Fable) from research, not from memory. Every fact in §1 has a
 source and a date; the beta changes per build, so §1 is a snapshot and §6 is the list of things
@@ -159,16 +159,16 @@ machinery becomes a measurement only.
 ### 3.1 Modules, as LoadOnDemand addons
 
 The standard WoW way to make a module the user can switch off with zero footprint is a separate
-addon folder with `## LoadOnDemand: 1` and `## Dependencies: ManaDemon`, loaded with
+addon folder with `## LoadOnDemand: 1` and `## Dependencies: SpellTuner`, loaded with
 `C_AddOns.LoadAddOn` when its switch is on. The in-game AddOn list disables it too. This is how
 Details, WeakAuras and DBM ship their heavy parts.
 
 | addon | on by default | contents | footprint |
 |---|---|---|---|
-| `ManaDemon` | yes | core, client adapter, capability probe, debug console, module registry + settings, **Tooltips**, **Dashboard**, **Clock** | no combat tracking beyond own casts and mana |
-| `ManaDemon_Recorder` | off | the v3 fight/run recorder, fight summaries, overheal and calibration from the damage meter | event handlers on party units during combat |
-| `ManaDemon_Replay` | off, needs Recorder | SimModel, RankMath/SpellKit-from-spellbook, planner, solver, ReplayTrace, replay window, coach, Review tab | the engine |
-| `ManaDemon_Practice` | off, needs Replay | practice session, panel, bindings window, imports | — |
+| `SpellTuner` | yes | core, client adapter, capability probe, debug console, module registry + settings, **Tooltips**, **Dashboard**, **Clock** | no combat tracking beyond own casts and mana |
+| `SpellTuner_Recorder` | off | the v3 fight/run recorder, fight summaries, overheal and calibration from the damage meter | event handlers on party units during combat |
+| `SpellTuner_Replay` | off, needs Recorder | SimModel, RankMath/SpellKit-from-spellbook, planner, solver, ReplayTrace, replay window, coach, Review tab | the engine |
+| `SpellTuner_Practice` | off, needs Replay | practice session, panel, bindings window, imports | — |
 
 Modules talk through `MD:RegisterCallback` / `MD:Fire` and declared dependencies only. A module
 that is off contributes no frames, no events, no tables.
@@ -228,7 +228,7 @@ later phase starts on an assumption the probe has not confirmed.
 
 | phase | deliverable | gates on |
 |---|---|---|
-| **0 — Probe** | `ManaDemon` skeleton that loads on 16001, `Client/Probe.lua`, `/md probe`, the report from Healroot on the current build | nothing; **this is first** |
+| **0 — Probe** | `SpellTuner` skeleton that loads on 16001, `Client/Probe.lua`, `/md probe`, the report from Healroot on the current build | nothing; **this is first** |
 | **1 — Core** | client adapter, capability table, module registry with settings, debug console (dedupe), SavedVariables guard, harness Forever profile with secrets, `apicheck` | probe report |
 | **2 — Tooltips + Dashboard** | tooltip on `TooltipDataProcessor` working in the spellbook; description parser; spellbook enumeration; rank comparison; any class | Q1 (dynamic descriptions) — decides whether a coefficient model is needed |
 | **3 — Recorder v3 + Replay** | the health/`UNIT_COMBAT`/casts/mana stream, gates re-founded on the damage meter, engine + replay window ported, `SpellKit` fed from the spellbook | Q2–Q5 |
@@ -270,5 +270,5 @@ later phase starts on an assumption the probe has not confirmed.
 - Whether TBC keeps receiving fixes on a `tbc` branch, or is frozen.
 - Whether to run the two-party debate + judge on the two contested designs before phase 3: the
   recorder without a combat log (§2.3), and the module boundaries (§3.1).
-- Name and version line: `ManaDemon` continues, version resets to `1.0.0` at the first Forever
+- Name and version line: `SpellTuner` continues, version resets to `1.0.0` at the first Forever
   release, or keeps counting from 0.15.

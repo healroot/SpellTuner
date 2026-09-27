@@ -66,7 +66,7 @@ bash tools/run.sh tools/import.lua runs                 # stored runs
 bash tools/run.sh tools/import.lua validate 3 --run 1   # run 1, pull 3 (the "1:3" address)
 ```
 
-Options: `--file <path>` (default `$MD_SAVEDVARS`, then `.logs/ManaDemon.lua`, then the
+Options: `--file <path>` (default `$MD_SAVEDVARS`, then `.logs/SpellTuner.lua`, then the
 author's install), `--char "Name-Realm"`, `--run K`.
 
 ### `reproduce.lua` — does the engine reproduce the recording at all?
@@ -101,7 +101,7 @@ python3 tools/wclrules.py .logs/wcl/waFx9B1kNQJWP3hq-103.json \
 
 ```bash
 bash tools/run.sh tools/healcheck.lua            # finds the SavedVariables the way import.lua does
-bash tools/run.sh tools/healcheck.lua .logs/ManaDemon.lua
+bash tools/run.sh tools/healcheck.lua .logs/SpellTuner.lua
 ```
 
 The client-side twin of `wclcheckkit.lua`: every own heal event in every recording, bucketed
@@ -146,7 +146,7 @@ Credentials live in `.logs/wcl.json` (gitignored); the bearer token is cached in
 # 1. download one fight's raw event streams -> .logs/wcl/<report>-<fight>.json
 python3 tools/wclfetch.py bdByCxDv6rVQhRMf 145
 
-# 2. turn raw fights into ManaDemon recordings
+# 2. turn raw fights into SpellTuner recordings
 python3 tools/wclconvert.py .logs/wcl/bdByCxDv6rVQhRMf-145.json --healer Blohz \
                             .logs/wcl/L8NJymzZW9RKtdYQ-27.json  --healer Ghnoy \
                             --out .logs/wcl-records.lua
@@ -159,7 +159,7 @@ corpus converted before v0.14.7 — the healers in it are running at a third of 
 
 `wclconvert.py` writes **two** files: `<out>.lua` (a SavedVariables-shaped database for the
 offline tools) and `<out>-append.lua` (a block to paste at the end of the game's
-`ManaDemon.lua` with the client closed, to replay the fights in-game — deleting the block is
+`SpellTuner.lua` with the client closed, to replay the fights in-game — deleting the block is
 the whole undo).
 
 ```bash
@@ -198,4 +198,4 @@ absolute damage and healing.
 
 `harness.lua` (loads the addon files and returns `MD`), `wowstub.lua` (the fake client) and
 `fakepull.lua` (the shared scripted pull) are machinery the suites use. Keep
-`harness.lua`'s file list in step with `ManaDemon.toc`.
+`harness.lua`'s file list in step with `SpellTuner.toc`.

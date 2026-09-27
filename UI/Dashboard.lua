@@ -224,7 +224,7 @@ end
 
 local function CreateDashboard()
     if nav then return end     -- MD_READY can be fired more than once
-    nav = UI.CreateNavFrame("ManaDemon", "ManaDemonDashboard", WIN_W, WIN_H, Groups(),
+    nav = UI.CreateNavFrame("SpellTuner", "SpellTunerDashboard", WIN_W, WIN_H, Groups(),
         function(group, view, content)
             -- built once, on first sight
             if group == "reports" and view == "Waste" then
@@ -281,7 +281,7 @@ local function CreateDashboard()
 
         end)
     frame = nav.frame
-    tinsert(UISpecialFrames, "ManaDemonDashboard") -- ESC closes
+    tinsert(UISpecialFrames, "SpellTunerDashboard") -- ESC closes
     local content = nav:Content()
 
     -- Settings is the fourth group now, not a button that opens a second window

@@ -27,7 +27,7 @@ for i = 2, #arg do
 end
 local file = pos[1] or ".logs/wcl-records.lua"
 dofile(file)
-local realDB = _G.ManaDemonDB
+local realDB = _G.SpellTunerDB or _G.ManaDemonDB   -- files written before the rename
 local pre = {}
 for k, c in pairs(realDB.char) do pre[k] = c.profile end
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"

@@ -151,7 +151,7 @@ end
 -- third group; everything below is unchanged and still anchors to `frame`.
 local function Build()
     if frame then return end
-    frame = UI.CreateFrame("ManaDemonSimPanel", UIParent, WIDTH, HEIGHT, true)
+    frame = UI.CreateFrame("SpellTunerSimPanel", UIParent, WIDTH, HEIGHT, true)
     frame:Hide()
 
     local function Group(label, list, x, y, width, get, set)

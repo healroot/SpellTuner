@@ -23,15 +23,15 @@ if not file then
     local function exists(p) local f = io.open(p, "r"); if f then f:close(); return true end end
     file = os.getenv("MD_SAVEDVARS")
     if not file then
-        for _, c in ipairs({ ".logs/ManaDemon.lua" }) do if exists(c) then file = c end end
+        for _, c in ipairs({ ".logs/SpellTuner.lua" }) do if exists(c) then file = c end end
         local p = io.popen('ls "/mnt/e/Blizzard/World of Warcraft/_anniversary_/WTF/Account"'
-            .. '/*/SavedVariables/ManaDemon.lua 2>/dev/null')
+            .. '/*/SavedVariables/SpellTuner.lua 2>/dev/null')
         if p then for line in p:lines() do file = file or line end; p:close() end
     end
 end
 if not file then print("usage: healcheck.lua <SavedVariables.lua>"); os.exit(2) end
 dofile(file)
-local realDB = _G.ManaDemonDB
+local realDB = _G.SpellTunerDB or _G.ManaDemonDB   -- files written before the rename
 local pre = {}
 for k, c in pairs(realDB.char or {}) do pre[k] = c.profile end
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"

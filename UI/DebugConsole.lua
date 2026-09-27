@@ -105,7 +105,7 @@ local copyFrame, copyTextArea, copyTitle
 
 function MD:ShowCopyPopup(title, text)
     if not copyFrame then
-        copyFrame = UI.CreateMovableFrame("Copy", "ManaDemonDebugCopyFrame", 460, 340, "FULLSCREEN_DIALOG", 10, true)
+        copyFrame = UI.CreateMovableFrame("Copy", "SpellTunerDebugCopyFrame", 460, 340, "FULLSCREEN_DIALOG", 10, true)
         copyFrame:SetToplevel(true)
         copyTitle = copyFrame.header.text
 
@@ -147,7 +147,7 @@ local function ShowLogCopyPopup()
     -- infer it from a cast time.
     local text = BuildPlainTextLog()
     if MD.Snapshot then
-        local head = { string.format("=== ManaDemon v%s  %s  %s level %d  %s ===", MD.version, MD.player.charKey,
+        local head = { string.format("=== SpellTuner v%s  %s  %s level %d  %s ===", MD.version, MD.player.charKey,
             MD.player.class, MD.player.level, date("%Y-%m-%d %H:%M")) }
         for _, line in ipairs(MD:Snapshot()) do head[#head + 1] = line end
         head[#head + 1] = "--- log ---"
@@ -160,9 +160,9 @@ end
 -- Console window
 --------------------------------------------------------------------------------
 local function CreateDebugConsoleFrame()
-    consoleFrame = UI.CreateMovableFrame("ManaDemon Debug Console", "ManaDemonDebugConsole", 700, 560, "DIALOG", 1, true)
+    consoleFrame = UI.CreateMovableFrame("SpellTuner Debug Console", "SpellTunerDebugConsole", 700, 560, "DIALOG", 1, true)
     consoleFrame:SetToplevel(true)
-    tinsert(UISpecialFrames, "ManaDemonDebugConsole")
+    tinsert(UISpecialFrames, "SpellTunerDebugConsole")
 
     enableCB = UI.CreateCheckButton(consoleFrame, "Enable Debug Logging", function(checked)
         MD.db.debug.enabled = checked

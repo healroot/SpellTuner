@@ -2,7 +2,7 @@
 local _, MD = ...
 local UI = MD.UI
 
-local tab = UI.CreateFrame("ManaDemonOptionsFrame_AboutTab", MD.optionsFrame, nil, nil, true)
+local tab = UI.CreateFrame("SpellTunerOptionsFrame_AboutTab", MD.optionsFrame, nil, nil, true)
 tab:SetAllPoints(MD.optionsFrame)
 tab:Hide()
 
@@ -13,7 +13,7 @@ local function Build()
 
     local title = tab:CreateFontString(nil, "OVERLAY", UI.FONT_CLASS_TITLE)
     title:SetPoint("TOPLEFT", tab, 10, -10)
-    title:SetText("ManaDemon")
+    title:SetText("SpellTuner")
 
     local version = tab:CreateFontString(nil, "OVERLAY", UI.FONT)
     version:SetPoint("LEFT", title, "RIGHT", 6, 0)

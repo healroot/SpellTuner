@@ -16,7 +16,7 @@ local MD = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB
 
 S.Load({ "UI/Style.lua", "UI/Tooltip.lua", "UI/Dashboard_Review.lua", "UI/ReplayWindow.lua" },
-    "ManaDemon", MD)
+    "SpellTuner", MD)
 
 local ok, fails = 0, {}
 local function check(name, cond, detail)

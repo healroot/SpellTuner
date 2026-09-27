@@ -1,8 +1,8 @@
--- ManaDemon: mana dynamics, time-to-OOM prediction and healing rank analysis
+-- SpellTuner: mana dynamics, time-to-OOM prediction and healing rank analysis
 -- for TBC healers. Core: namespace, saved variables, event/tick dispatch,
 -- profile & talent scanning, debug log entry point, slash commands.
 local ADDON_NAME, MD = ...
-_G.ManaDemon = MD
+_G.SpellTuner = MD
 
 do
     local ok, v = pcall(GetAddOnMetadata, ADDON_NAME, "Version")
@@ -150,7 +150,7 @@ end)
 -- Output
 --------------------------------------------------------------------------------
 function MD:Print(msg)
-    DEFAULT_CHAT_FRAME:AddMessage("|cff9966ffManaDemon:|r " .. tostring(msg))
+    DEFAULT_CHAT_FRAME:AddMessage("|cff9966ffSpellTuner:|r " .. tostring(msg))
     MD:Debug("chat", tostring(msg))
 end
 
@@ -346,9 +346,17 @@ local function FillDefaults(dst, src)
 end
 
 local function InitDB()
-    ManaDemonDB = ManaDemonDB or {}
-    FillDefaults(ManaDemonDB, DEFAULTS)
-    MD.db = ManaDemonDB
+    -- The addon was ManaDemon until 2026-09-27. Its saved variables are still
+    -- loaded (the .toc lists both) and adopted once, so nobody's recordings,
+    -- fights or settings are lost to a rename. The old global is emptied after
+    -- the copy so the client stops writing two files.
+    if SpellTunerDB == nil and type(ManaDemonDB) == "table" then
+        SpellTunerDB = ManaDemonDB
+        ManaDemonDB = nil
+    end
+    SpellTunerDB = SpellTunerDB or {}
+    FillDefaults(SpellTunerDB, DEFAULTS)
+    MD.db = SpellTunerDB
     MD.db.char[MD.player.charKey] = MD.db.char[MD.player.charKey] or {}
     MD.cdb = MD.db.char[MD.player.charKey]
 end
@@ -356,7 +364,7 @@ end
 MD:On("PLAYER_LOGIN", function()
     MD:DetectProfile()
     InitDB()
-    MD:Debug("other", "=== PLAYER_LOGIN === ManaDemon v%s, %s level %d, debug categories: %s",
+    MD:Debug("other", "=== PLAYER_LOGIN === SpellTuner v%s, %s level %d, debug categories: %s",
         MD.version, MD.player.class, MD.player.level, (function()
             local on = {}
             for k, v in pairs(MD.db.debug.categories) do if v then on[#on + 1] = k end end
@@ -404,33 +412,33 @@ end)
 --------------------------------------------------------------------------------
 -- Shared with the About tab.
 MD.COMMANDS = {
-    { "/md",              "toggle the rank dashboard" },
-    { "/md options",      "open the settings window" },
-    { "/md lock, unlock", "lock / unlock (drag) the OOM widget" },
-    { "/md reset",        "reset the widget position" },
-    { "/md mute",         "toggle alert messages" },
-    { "/md drink",        "toggle the drink reminder" },
-    { "/md rest",         "toggle the 'rest' segment (time to full if you stop casting)" },
-    { "/md tooltip",      "hover tooltip on the FLOATING clock only (off also stops it swallowing clicks)" },
-    { "/md binds",        "what each key and mouse button casts in practice; import from Cell or Clique" },
-    { "/md practice",     "heal a fight you play and get it back as a recording (start: play the saved setup now)" },
-    { "/md spelltip",     "heal values on the game's spell tooltips (bars, spellbook); Shift for the maths" },
-    { "/md window N",     "spend estimator half-life in seconds (5-60, default 15)" },
-    { "/md verify",       "check static spell data against the live client" },
-    { "/md profile",      "copyable dump of every model input - use this for bug reports" },
-    { "/md export",       "fights, overheal and roster as tab-separated text, for analysis" },
-    { "/md calibrate",    "the model against every heal you landed: ratio per spell and event kind" },
-    { "/md fsrtest",      "log mana ticks for 15s (five-second-rule anchor test)" },
-    { "/md regentest [N or clear]", "idle regen check: observed mana gain vs GetManaRegen (N s, default 30; clear forgets the measurement)" },
-    { "/md spamtest",     "arm, then chain-cast one spell to OOM: checks the dashboard's To OOM column" },
-    { "/md simrun",       "self-tests for the simulation engine (heals, HoT refresh, GCD, 5SR)" },
-    { "/md simreplay [n]", "replay recorded fight n (or the BF-1 fixture) and score it against the log" },
-    { "/md coach [n]",    "search for a better plan on recorded fight n and show the card (cancel stops it)" },
-    { "/md sim",          "simulation window: build a fight and find the cheapest plan that holds it" },
-    { "/md replay [n] [force]", "play recorded fight n (or run:pull, or 'run N') as unit frames; force: draw the suggested column on a fight that does not replay" },
-    { "/md run start / stop / status", "record a whole dungeon: every pull and the gaps between them" },
-    { "/md coachrun [n]", "coach a recorded RUN: one plan and a drink policy for the whole dungeon" },
-    { "/md debug",        "toggle the debug console (enable logging there, Copy to export)" },
+    { "/st",              "toggle the rank dashboard" },
+    { "/st options",      "open the settings window" },
+    { "/st lock, unlock", "lock / unlock (drag) the OOM widget" },
+    { "/st reset",        "reset the widget position" },
+    { "/st mute",         "toggle alert messages" },
+    { "/st drink",        "toggle the drink reminder" },
+    { "/st rest",         "toggle the 'rest' segment (time to full if you stop casting)" },
+    { "/st tooltip",      "hover tooltip on the FLOATING clock only (off also stops it swallowing clicks)" },
+    { "/st binds",        "what each key and mouse button casts in practice; import from Cell or Clique" },
+    { "/st practice",     "heal a fight you play and get it back as a recording (start: play the saved setup now)" },
+    { "/st spelltip",     "heal values on the game's spell tooltips (bars, spellbook); Shift for the maths" },
+    { "/st window N",     "spend estimator half-life in seconds (5-60, default 15)" },
+    { "/st verify",       "check static spell data against the live client" },
+    { "/st profile",      "copyable dump of every model input - use this for bug reports" },
+    { "/st export",       "fights, overheal and roster as tab-separated text, for analysis" },
+    { "/st calibrate",    "the model against every heal you landed: ratio per spell and event kind" },
+    { "/st fsrtest",      "log mana ticks for 15s (five-second-rule anchor test)" },
+    { "/st regentest [N or clear]", "idle regen check: observed mana gain vs GetManaRegen (N s, default 30; clear forgets the measurement)" },
+    { "/st spamtest",     "arm, then chain-cast one spell to OOM: checks the dashboard's To OOM column" },
+    { "/st simrun",       "self-tests for the simulation engine (heals, HoT refresh, GCD, 5SR)" },
+    { "/st simreplay [n]", "replay recorded fight n (or the BF-1 fixture) and score it against the log" },
+    { "/st coach [n]",    "search for a better plan on recorded fight n and show the card (cancel stops it)" },
+    { "/st sim",          "simulation window: build a fight and find the cheapest plan that holds it" },
+    { "/st replay [n] [force]", "play recorded fight n (or run:pull, or 'run N') as unit frames; force: draw the suggested column on a fight that does not replay" },
+    { "/st run start / stop / status", "record a whole dungeon: every pull and the gaps between them" },
+    { "/st coachrun [n]", "coach a recorded RUN: one plan and a drink policy for the whole dungeon" },
+    { "/st debug",        "toggle the debug console (enable logging there, Copy to export)" },
 }
 
 local function ShowHelp()
@@ -440,9 +448,10 @@ local function ShowHelp()
     end
 end
 
-SLASH_MANADEMON1 = "/manademon"
-SLASH_MANADEMON2 = "/md"
-SlashCmdList.MANADEMON = function(msg)
+SLASH_SPELLTUNER1 = "/spelltuner"
+SLASH_SPELLTUNER2 = "/st"
+SLASH_SPELLTUNER3 = "/md"      -- ManaDemon's, kept for the hands that learned it
+SlashCmdList.SPELLTUNER = function(msg)
     -- commands are matched lower-case; the RAW tail is kept because a run's
     -- name is the author's text ("/md run start Blood Furnace") and lower-casing
     -- it would hand them back a name they did not type

@@ -1,9 +1,9 @@
 ## Interface: 20506
-## Title: ManaDemon
-## Notes: Mana dynamics, time-to-OOM prediction and healing rank analysis for TBC healers
+## Title: SpellTuner
+## Notes: Tune your spells: ranks, mana, replays, practice. (TBC line; formerly ManaDemon)
 ## Author: NeRgY
 ## Version: 0.15.4
-## SavedVariables: ManaDemonDB
+## SavedVariables: SpellTunerDB, ManaDemonDB
 ## OptionalDeps: ElvUI
 
 Core.lua

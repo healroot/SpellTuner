@@ -17,7 +17,7 @@ local forceUntil = 0        -- first-run / unlock preview
 local flashedThisFight = false
 
 local function CreateWidget()
-    widget = CreateFrame("Frame", "ManaDemonWidget", UIParent)
+    widget = CreateFrame("Frame", "SpellTunerWidget", UIParent)
     widget:SetSize(190, 22)
     widget:SetFrameStrata("MEDIUM")
     widget:SetMovable(true)
@@ -84,7 +84,7 @@ local function CreateWidget()
         acc = 0
 
         if not MD.db.locked or GetTime() < forceUntil then
-            text:SetText("|cff9966ffManaDemon|r - drag me")
+            text:SetText("|cff9966ffSpellTuner|r - drag me")
             underline:SetWidth(math.max(60, text:GetStringWidth()))
             underline:SetValue(5)
             underline:SetStatusBarColor(0.6, 0.4, 1)

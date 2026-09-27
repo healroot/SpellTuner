@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
-# Build a ready-to-copy release of ManaDemon from the main checkout or any
+# Build a ready-to-copy release of SpellTuner from the main checkout or any
 # git worktree, into the TOP-LEVEL dist/ grouped by source:
 #
-#   dist/<name>/ManaDemon/                 <name> = "main" or the worktree folder
-#   dist/<name>/ManaDemon-<version>.zip
+#   dist/<name>/SpellTuner/                 <name> = "main" or the worktree folder
+#   dist/<name>/SpellTuner-<version>.zip
 #
 #   ./release.sh                     build the checkout this script lives in
 #   ./release.sh --menu              pick the source interactively (make release)
 #   ./release.sh --src NAME|DIR      build a named worktree ("main", "feedback-round-3")
-#                                    or any directory containing ManaDemon.toc
+#                                    or any directory containing SpellTuner.toc
 #   ./release.sh --list              show the available sources
 #   ./release.sh --out DIR           override the output folder
-#   ./release.sh --install DIR       also copy ManaDemon/ into that AddOns folder
+#   ./release.sh --install DIR       also copy SpellTuner/ into that AddOns folder
 #   ./release.sh /path/to/AddOns     same (legacy positional form); WOW_ADDONS env too
 #
-# The file list comes from ManaDemon.toc itself, so the release can never drift
+# The file list comes from SpellTuner.toc itself, so the release can never drift
 # from what the game actually loads. Dev files (docs/, CLAUDE.md, Makefile,
 # .git, this script) are excluded by construction.
 set -euo pipefail
@@ -54,7 +54,7 @@ list_sources() {
 
 resolve_source() {
     local want="$1"
-    if [[ -d "$want" && -f "$want/ManaDemon.toc" ]]; then
+    if [[ -d "$want" && -f "$want/SpellTuner.toc" ]]; then
         cd "$want" && pwd
         return
     fi
@@ -66,7 +66,7 @@ resolve_source() {
 }
 
 version_of() {
-    sed -n 's/^## Version:[[:space:]]*//p' "$1/ManaDemon.toc" 2>/dev/null | tr -d '\r'
+    sed -n 's/^## Version:[[:space:]]*//p' "$1/SpellTuner.toc" 2>/dev/null | tr -d '\r'
 }
 
 show_sources() {
@@ -109,19 +109,19 @@ if [[ -z "$SRC" ]]; then
 else
     SRC="$(resolve_source "$SRC")"
 fi
-TOC="$SRC/ManaDemon.toc"
-[[ -f "$TOC" ]] || { echo "ERROR: ManaDemon.toc not found in $SRC" >&2; exit 1; }
+TOC="$SRC/SpellTuner.toc"
+[[ -f "$TOC" ]] || { echo "ERROR: SpellTuner.toc not found in $SRC" >&2; exit 1; }
 
 NAME="$(basename "$SRC")"
 [[ "$SRC" == "$ROOT" ]] && NAME="main"
 [[ -n "$OUT" ]] || OUT="$ROOT/dist/$NAME"
-PKG="$OUT/ManaDemon"
+PKG="$OUT/SpellTuner"
 
 VERSION="$(version_of "$SRC")"
-[[ -n "$VERSION" ]] || { echo "ERROR: no '## Version:' line in ManaDemon.toc" >&2; exit 1; }
+[[ -n "$VERSION" ]] || { echo "ERROR: no '## Version:' line in SpellTuner.toc" >&2; exit 1; }
 
 # Collect files: the .toc itself, every load entry in it, plus README.md.
-files=("ManaDemon.toc" "README.md")
+files=("SpellTuner.toc" "README.md")
 while IFS= read -r line; do
     line="${line%$'\r'}"                      # strip CR (the .toc may be CRLF)
     [[ -z "$line" || "$line" == \#* ]] && continue
@@ -146,20 +146,20 @@ for f in "${files[@]}"; do
 done
 
 REL="${OUT#$ROOT/}"
-echo "Built $REL/ManaDemon (v$VERSION, ${#files[@]} files) from $NAME."
+echo "Built $REL/SpellTuner (v$VERSION, ${#files[@]} files) from $NAME."
 
 # Zip (zip if available, python3 zipfile as fallback).
-ZIP="$OUT/ManaDemon-$VERSION.zip"
+ZIP="$OUT/SpellTuner-$VERSION.zip"
 rm -f "$ZIP"
 if command -v zip >/dev/null 2>&1; then
-    (cd "$OUT" && zip -qr "$(basename "$ZIP")" ManaDemon)
-    echo "Built $REL/ManaDemon-$VERSION.zip"
+    (cd "$OUT" && zip -qr "$(basename "$ZIP")" SpellTuner)
+    echo "Built $REL/SpellTuner-$VERSION.zip"
 elif command -v python3 >/dev/null 2>&1; then
     python3 - "$OUT" "$ZIP" "$REL" <<'PYEOF'
 import os, sys, zipfile
 out_dir, out, rel = sys.argv[1], sys.argv[2], sys.argv[3]
 with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
-    for base, _, names in os.walk(os.path.join(out_dir, "ManaDemon")):
+    for base, _, names in os.walk(os.path.join(out_dir, "SpellTuner")):
         for name in names:
             path = os.path.join(base, name)
             z.write(path, os.path.relpath(path, out_dir))
@@ -172,10 +172,10 @@ fi
 # Optional: copy into the game's AddOns folder.
 if [[ -n "$TARGET" ]]; then
     [[ -d "$TARGET" ]] || { echo "ERROR: AddOns folder not found: $TARGET" >&2; exit 1; }
-    rm -rf "$TARGET/ManaDemon"
-    cp -r "$PKG" "$TARGET/ManaDemon"
-    echo "Installed into $TARGET/ManaDemon"
+    rm -rf "$TARGET/SpellTuner"
+    cp -r "$PKG" "$TARGET/SpellTuner"
+    echo "Installed into $TARGET/SpellTuner"
 else
-    echo "Copy $REL/ManaDemon into your game's Interface/AddOns folder"
+    echo "Copy $REL/SpellTuner into your game's Interface/AddOns folder"
     echo "(or: make install WOW_ADDONS=\"/mnt/c/Program Files (x86)/World of Warcraft/_anniversary_/Interface/AddOns\")"
 fi

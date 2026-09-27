@@ -6,7 +6,7 @@ first thing that runs on the beta.
 
 ## Goal
 
-A `ManaDemon` addon folder that loads on interface 16001 without a single Lua error, contains
+A `SpellTuner` addon folder that loads on interface 16001 without a single Lua error, contains
 only `Core.lua`, `Client/API.lua` (stub: presence checks) and `Client/Probe.lua`, and answers
 `/md probe` with a report that (a) prints to a copyable box, (b) is written to SavedVariables
 keyed by build number, and (c) answers the eight questions in `docs/FOREVER-PLAN.md` §6 as far
@@ -33,8 +33,8 @@ every check under `pcall`, every result a string, no arithmetic on anything the 
 
 ## Files
 
-- `ManaDemon.toc` — `## Interface: 16001`, `## SavedVariables: ManaDemonDB`, three files.
-- `Core.lua` — namespace, `ManaDemonDB` with the read-back guard, `/md`, the copy box.
+- `SpellTuner.toc` — `## Interface: 16001`, `## SavedVariables: SpellTunerDB`, three files.
+- `Core.lua` — namespace, `SpellTunerDB` with the read-back guard, `/md`, the copy box.
 - `Client/API.lua` — `MD.API.Has(name)` (dotted names, cached), `MD.API.client`, nothing else yet.
 - `Client/Probe.lua` — the checks and the report.
 - `tools/wowstub.lua` — a `forever` profile just large enough to load these three files and run the probe offline (no `CombatLogGetCurrentEventInfo`, `issecretvalue`, `C_Spell.GetSpellDescription`, `C_SpellBook` enumeration of three fake spells).

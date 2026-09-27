@@ -25,7 +25,7 @@ local function OnDragUpdate()
 end
 
 local function CreateButton()
-    btn = CreateFrame("Button", "ManaDemonMinimapButton", Minimap)
+    btn = CreateFrame("Button", "SpellTunerMinimapButton", Minimap)
     btn:SetSize(31, 31)
     btn:SetFrameStrata("MEDIUM")
     btn:SetFrameLevel(8)

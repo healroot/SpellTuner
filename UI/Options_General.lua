@@ -2,7 +2,7 @@
 local _, MD = ...
 local UI = MD.UI
 
-local tab = UI.CreateFrame("ManaDemonOptionsFrame_GeneralTab", MD.optionsFrame, nil, nil, true)
+local tab = UI.CreateFrame("SpellTunerOptionsFrame_GeneralTab", MD.optionsFrame, nil, nil, true)
 tab:SetAllPoints(MD.optionsFrame)
 tab:Hide()
 

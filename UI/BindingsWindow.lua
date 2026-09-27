@@ -169,8 +169,8 @@ end
 
 local function Build()
     if frame then return end
-    frame = UI.CreateMovableFrame("ManaDemon: Practice bindings", "ManaDemonBindingsWindow", W, H)
-    tinsert(UISpecialFrames, "ManaDemonBindingsWindow")
+    frame = UI.CreateMovableFrame("SpellTuner: Practice bindings", "SpellTunerBindingsWindow", W, H)
+    tinsert(UISpecialFrames, "SpellTunerBindingsWindow")
     frame:SetScript("OnHide", function() capturing = nil end)
     rows = {}
 
@@ -179,7 +179,7 @@ local function Build()
     hint:SetWidth(W - 24)
     hint:SetJustifyH("LEFT")
     hint:SetText("In practice you hover a frame and press. Click a binding's key box, then press the key " ..
-        "or mouse button you want, modifiers held.|n|cff888888These are ManaDemon's own bindings - " ..
+        "or mouse button you want, modifiers held.|n|cff888888These are SpellTuner's own bindings - " ..
         "practice never reads your keybindings, Cell or Clique while you play, so import them here.|r")
 
     list = UI.CreateScrollFrame(frame, 0, 0)

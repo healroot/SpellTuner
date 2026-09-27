@@ -1085,9 +1085,9 @@ end
 --------------------------------------------------------------------------------
 local function Build()
     if frame then return end
-    frame = UI.CreateMovableFrame("ManaDemon: Replay", "ManaDemonReplayWindow", 2 * COL_W + 3 * GUTTER, 300)
+    frame = UI.CreateMovableFrame("SpellTuner: Replay", "SpellTunerReplayWindow", 2 * COL_W + 3 * GUTTER, 300)
     frame:SetFrameStrata("HIGH")
-    tinsert(UISpecialFrames, "ManaDemonReplayWindow")
+    tinsert(UISpecialFrames, "SpellTunerReplayWindow")
     frame:SetScript("OnUpdate", OnUpdate)
     frame:SetScript("OnHide", function()
         playing = false

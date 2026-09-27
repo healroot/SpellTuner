@@ -25,9 +25,9 @@ if #files == 0 then print("usage: buildintuition.lua <records.lua> ..."); os.exi
 
 local recs, sources = {}, {}
 for _, f in ipairs(files) do
-    _G.ManaDemonDB = nil
+    _G.SpellTunerDB, _G.ManaDemonDB = nil, nil
     dofile(f)
-    local db = _G.ManaDemonDB
+    local db = _G.SpellTunerDB or _G.ManaDemonDB
     for key, c in pairs((db or {}).char or {}) do
         for _, rec in ipairs(c.recordings or {}) do
             recs[#recs + 1] = rec
@@ -35,7 +35,7 @@ for _, f in ipairs(files) do
         end
     end
 end
-_G.ManaDemonDB = nil
+_G.SpellTunerDB, _G.ManaDemonDB = nil, nil
 
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
 local MD = dofile(here .. "/harness.lua"); arg[0] = a0

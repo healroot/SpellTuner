@@ -1,4 +1,4 @@
-# ManaDemon — what to test now (v0.7.0)
+# SpellTuner — what to test now (v0.7.0)
 
 **Status 2026-09-05 (evening), v0.6.8:** the author ran `/md verify`, a `/reload`, `/md
 profile` and `/md spamtest` on v0.6.7 (`.logs/regression/`). Results: **§2 verify passed**
@@ -22,7 +22,7 @@ keeps 1000 lines by default — the **keep lines** box (top right, saved) raises
 a fight with the Mana category on produces roughly 3 lines per second.
 
 Install: `make install WOW_ADDONS="/path/to/_anniversary_/Interface/AddOns"` (or copy
-`dist/combat-log-design-arch-ffb907/ManaDemon`), then `/reload`.
+`dist/combat-log-design-arch-ffb907/SpellTuner`), then `/reload`.
 
 > **v0.5 and v0.6 both changed a lot of plumbing.** §0 and §0b are ten minutes of "did
 > anything break"; do them first, because everything after is worthless if something is
@@ -318,7 +318,7 @@ What to look at yourself, in the Debug Console with **Sim** on:
 - `stream discarded` for short pulls is normal (under 20 s or under 5 casts).
 
 Size: eight streams is the cap and the cheapest non-recent, non-pinned pull is the one that
-gets replaced. If your `ManaDemonDB` starts feeling large, tell me the file size — the budget
+gets replaced. If your `SpellTunerDB` starts feeling large, tell me the file size — the budget
 was ~180 KB for the streams and that is worth checking against reality. `db.recordFights =
 false` turns recording off entirely; summaries keep working.
 
@@ -680,7 +680,7 @@ you played, or obviously not.
 
 ## 33. Heal values on your spell tooltips (v0.14.9)
 Hover any healing spell on your action bars or in the spellbook. Under the game's own text
-there is now a **ManaDemon** block for *that exact rank*, at your current +healing and talents:
+there is now a **SpellTuner** block for *that exact rank*, at your current +healing and talents:
 
 - **Rejuvenation:** each tick and how many, and the total over 12s.
 - **Regrowth:** the direct heal's range and its crit range, each HoT tick, the HoT total, and
@@ -703,7 +703,7 @@ bar, spellbook, a spell linked in chat, and with ElvUI's tooltip skin if you use
 
 ## 33b. Damage spells on the tooltip (v0.15.3)
 Hover Wrath, Starfire, Moonfire, Insect Swarm and Hurricane on your bars or in the spellbook. The
-ManaDemon block reads the rank's base damage out of the game's own description and adds your
+SpellTuner block reads the rank's base damage out of the game's own description and adds your
 spell damage, talents and crit: the hit and its crit range, each DoT tick, the totals, DPM and
 DPS. Shift shows the working.
 

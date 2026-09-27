@@ -205,7 +205,7 @@ function MD:Profile()
     end
 
     local _, build, _, iface = GetBuildInfo()
-    add("=== ManaDemon v%s profile ===", MD.version)
+    add("=== SpellTuner v%s profile ===", MD.version)
     add("client build %s, interface %s, ElvUI %s", tostring(build), tostring(iface),
         ElvUI and "present" or "absent")
     add("%s, %s level %d, form: %s, mana %d/%d", MD.player.charKey, MD.player.class,
@@ -296,7 +296,7 @@ end
 function MD:RunProfile()
     local lines = MD:Profile()
     if MD.ShowCopyPopup then
-        MD:ShowCopyPopup("ManaDemon profile", table.concat(lines, "\n"))
+        MD:ShowCopyPopup("SpellTuner profile", table.concat(lines, "\n"))
         MD:Print("profile ready - Ctrl+C in the box to copy it.")
     else
         for _, line in ipairs(lines) do MD:Print(line) end
@@ -459,7 +459,7 @@ function MD:RunCalibrate()
     if not MD.Calibration then return end
     local lines = MD.Calibration:Report()
     if MD.ShowCopyPopup then
-        MD:ShowCopyPopup("ManaDemon calibration: model vs your heals", table.concat(lines, "\n"))
+        MD:ShowCopyPopup("SpellTuner calibration: model vs your heals", table.concat(lines, "\n"))
         MD:Print("calibration table ready - a ratio of 1.000 means the model matched the server exactly.")
     else
         for _, line in ipairs(lines) do MD:Print(line) end
@@ -469,7 +469,7 @@ end
 function MD:RunExport()
     local lines = MD:Export()
     if MD.ShowCopyPopup then
-        MD:ShowCopyPopup("ManaDemon export (TSV)", table.concat(lines, "\n"))
+        MD:ShowCopyPopup("SpellTuner export (TSV)", table.concat(lines, "\n"))
         MD:Print(string.format("export ready (%d lines) - Ctrl+C in the box.", #lines))
     else
         for _, line in ipairs(lines) do MD:Print(line) end
@@ -1359,7 +1359,7 @@ function MD:RunCoachRun(arg)
     MD.runSearch = MD.SimPlanner.CoachRun(run, { force = force }, function(lines)
         MD.runSearch = nil
         if MD.ShowCopyPopup and #lines > 6 then
-            MD:ShowCopyPopup("ManaDemon coach: " .. (run.name or "run"), table.concat(lines, "\n"))
+            MD:ShowCopyPopup("SpellTuner coach: " .. (run.name or "run"), table.concat(lines, "\n"))
         end
         for _, line in ipairs(lines) do
             MD:Print(line)
@@ -1418,7 +1418,7 @@ function MD:RunCoach(arg)
     local function Show(lines)
         MD.coachSearch = nil
         if MD.ShowCopyPopup and #lines > 6 then
-            MD:ShowCopyPopup("ManaDemon coach: recording " .. tostring(n), table.concat(lines, "\n"))
+            MD:ShowCopyPopup("SpellTuner coach: recording " .. tostring(n), table.concat(lines, "\n"))
         end
         for _, line in ipairs(lines) do
             MD:Print(line)

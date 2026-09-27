@@ -1,8 +1,8 @@
--- Loads the non-UI half of ManaDemon under tools/wowstub.lua and returns the
+-- Loads the non-UI half of SpellTuner under tools/wowstub.lua and returns the
 -- addon table. arg[1] is the repo root.
 --
 -- The file list is the .toc's order minus everything that draws. Keep it in
--- step with ManaDemon.toc when an engine file is added.
+-- step with SpellTuner.toc when an engine file is added.
 local here = arg[0]:match("^(.*)/[^/]+$")
 dofile(here .. "/wowstub.lua")
 local S = _G.STUB
@@ -19,7 +19,7 @@ S.Load({
     -- UI/Summary.lua owns the combat-log handler and the fight lifecycle; it
     -- touches no widgets, so it loads here too.
     "UI/Summary.lua", "Verify.lua",
-}, "ManaDemon", MD)
+}, "SpellTuner", MD)
 
 -- Everything the BF-1 druid knew: every rank at or below level 64.
 local SD = MD.SpellData
@@ -53,7 +53,7 @@ local TALENTS = {
 function MD:TalentRank(name) return TALENTS[name] or 0 end
 MD.harnessTalents = TALENTS
 
-S.Fire("ADDON_LOADED", "ManaDemon")
+S.Fire("ADDON_LOADED", "SpellTuner")
 S.Fire("PLAYER_LOGIN")
 S.Fire("PLAYER_ENTERING_WORLD")
 return MD

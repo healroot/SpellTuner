@@ -1,8 +1,8 @@
 -- ElvUI datatexts, themed with the user's ElvUI value colour. Loads only when
 -- ElvUI is present (the .toc lists ElvUI in OptionalDeps so it always loads
 -- first when installed). Two datatexts:
---   "ManaDemon"       — the OOM readout, same display string as the widget
---   "ManaDemon Regen" — CURRENT mana regen (casting regen inside the
+--   "SpellTuner"       — the OOM readout, same display string as the widget
+--   "SpellTuner Regen" — CURRENT mana regen (casting regen inside the
 --                       five-second rule, full regen outside); ElvUI's stock
 --                       regen datatext only ever shows the out-of-casting value
 -- Both share the tooltip and click behaviour.
@@ -40,7 +40,7 @@ end
 -- datatext is deliberate.
 local function OnEnter()
     DT.tooltip:ClearLines()
-    DT.tooltip:AddLine("ManaDemon")
+    DT.tooltip:AddLine("SpellTuner")
     MD.Tip:Render(DT.tooltip, MD.Tip:Mana())
     MD.Tip:Render(DT.tooltip, MD.Tip:Fights(1))
     DT.tooltip:AddLine(" ")
@@ -58,10 +58,10 @@ end
 local function OOMUpdate(panel, elapsed)
     if not Throttled(panel, elapsed) then return end
     local str = MD.GetDisplayString and MD:GetDisplayString(hex) or ""
-    panel.text:SetText(str ~= "" and str or "ManaDemon")
+    panel.text:SetText(str ~= "" and str or "SpellTuner")
 end
 
-DT:RegisterDatatext("ManaDemon", nil, nil, nil, OOMUpdate, OnClick, OnEnter, nil, "ManaDemon", nil, ApplySettings)
+DT:RegisterDatatext("SpellTuner", nil, nil, nil, OOMUpdate, OnClick, OnEnter, nil, "SpellTuner", nil, ApplySettings)
 
 --------------------------------------------------------------------------------
 -- Current-regen datatext: "Regen: 123" (mp5), "(5SR)" while casting regen
@@ -79,4 +79,4 @@ local function RegenUpdate(panel, elapsed)
     panel.text:SetText("Regen: " .. (hex or "|cffffffff") .. mp5 .. "|r" .. suffix)
 end
 
-DT:RegisterDatatext("ManaDemon Regen", nil, nil, nil, RegenUpdate, OnClick, OnEnter, nil, "ManaDemon Regen", nil, ApplySettings)
+DT:RegisterDatatext("SpellTuner Regen", nil, nil, nil, RegenUpdate, OnClick, OnEnter, nil, "SpellTuner Regen", nil, ApplySettings)

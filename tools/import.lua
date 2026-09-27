@@ -21,12 +21,12 @@
 -- .logs/runs/<id>.txt. The same address the game takes as "1:3".
 --
 -- Options: --file <path>   the SavedVariables file (default: $MD_SAVEDVARS, then
---                          .logs/ManaDemon.lua, then the author's install)
+--                          .logs/SpellTuner.lua, then the author's install)
 --          --char <key>    "Name-Realm" (default: the first character with recordings)
 --          --run K         address the pulls of run K
 --
 -- The spell kit is the CHARACTER's when the file carries a profile (v0.9.0:
--- ManaDemon writes cdb.profile at login, on a talent change and on a gear
+-- SpellTuner writes cdb.profile at login, on a talent change and on a gear
 -- change) -- healing, crit, spirit, intellect, level, talents and the relic are
 -- applied to the stub before the kit is built. Without one, the kit is the
 -- harness's stand-in (the BF-1 build, +450 healing, 15% crit) and every run
@@ -53,21 +53,21 @@ end
 local function exists(p) local f = io.open(p, "r"); if f then f:close(); return true end return false end
 local file = opts.file or os.getenv("MD_SAVEDVARS")
 if not file then
-    local candidates = { ".logs/ManaDemon.lua" }
-    local p = io.popen('ls "/mnt/e/Blizzard/World of Warcraft/_anniversary_/WTF/Account"/*/SavedVariables/ManaDemon.lua 2>/dev/null')
+    local candidates = { ".logs/SpellTuner.lua" }
+    local p = io.popen('ls "/mnt/e/Blizzard/World of Warcraft/_anniversary_/WTF/Account"/*/SavedVariables/SpellTuner.lua 2>/dev/null')
     if p then for line in p:lines() do candidates[#candidates + 1] = line end; p:close() end
     for _, c in ipairs(candidates) do if exists(c) then file = c; break end end
 end
 if not file or not exists(file) then
-    print("import: no SavedVariables file. Pass --file <path>, set MD_SAVEDVARS, or copy ManaDemon.lua to .logs/.")
+    print("import: no SavedVariables file. Pass --file <path>, set MD_SAVEDVARS, or copy SpellTuner.lua to .logs/.")
     os.exit(2)
 end
 
 -- Load the database BEFORE the addon, so Core.lua initialises from it exactly
 -- as the client does: settings, history, calibration, recordings.
 dofile(file)
-local realDB = _G.ManaDemonDB
-if not realDB then print("import: " .. file .. " holds no ManaDemonDB."); os.exit(2) end
+local realDB = _G.SpellTunerDB or _G.ManaDemonDB   -- files written before the rename
+if not realDB then print("import: " .. file .. " holds no SpellTunerDB."); os.exit(2) end
 
 -- Loading the addon over the real database runs its PLAYER_LOGIN path, and
 -- that path WRITES the profile -- with the stub's stats, over the character's
@@ -79,7 +79,7 @@ for key, c in pairs(realDB.char or {}) do preloaded[key] = { profile = c.profile
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
 local MD = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB
-S.Load({ "UI/Style.lua", "UI/Tooltip.lua" }, "ManaDemon", MD)   -- Tip is what the card and reports print through
+S.Load({ "UI/Style.lua", "UI/Tooltip.lua" }, "SpellTuner", MD)   -- Tip is what the card and reports print through
 
 -- the character: the stub's charKey is "Penek-Anniversary"; the real one is
 -- whatever the game wrote

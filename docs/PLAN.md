@@ -1,4 +1,4 @@
-# ManaDemon — plan (from 2026-09-03)
+# SpellTuner — plan (from 2026-09-03)
 
 Two phases. Phase 1 finishes and hardens the druid experience on the author's own
 character, where everything can be measured. Phase 2 opens the dashboard to other

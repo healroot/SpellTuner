@@ -15,7 +15,7 @@ local UI = MD.UI
 local TAB_HEIGHT = { general = 520, about = 360 }
 MD.optionsTabHeight = TAB_HEIGHT
 
-local frame = UI.CreateFrame("ManaDemonOptionsPanel", UIParent, 432, TAB_HEIGHT.general, true)
+local frame = UI.CreateFrame("SpellTunerOptionsPanel", UIParent, 432, TAB_HEIGHT.general, true)
 MD.optionsFrame = frame
 frame:Hide()
 

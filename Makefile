@@ -1,5 +1,5 @@
-# ManaDemon release helper (wraps release.sh). Output lands in the TOP-LEVEL
-# dist/, one folder per source: dist/main/ManaDemon, dist/<worktree>/ManaDemon.
+# SpellTuner release helper (wraps release.sh). Output lands in the TOP-LEVEL
+# dist/, one folder per source: dist/main/SpellTuner, dist/<worktree>/SpellTuner.
 #
 #   make release                       pick the main checkout or a worktree
 #   make release SRC=main              non-interactive; SRC = name or path

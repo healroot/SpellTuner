@@ -11,7 +11,7 @@ local a0 = arg[0]; arg[0] = here .. "/harness.lua"
 local MD = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB
 S.Load({ "UI/Style.lua", "UI/Tooltip.lua", "UI/Dashboard_Rows.lua", "UI/Dashboard_Simulate.lua",
-         "UI/Dashboard_Waste.lua", "UI/Dashboard_Review.lua", "UI/PracticePanel.lua", "UI/Dashboard.lua" }, "ManaDemon", MD)
+         "UI/Dashboard_Waste.lua", "UI/Dashboard_Review.lua", "UI/PracticePanel.lua", "UI/Dashboard.lua" }, "SpellTuner", MD)
 
 local ok, fails = 0, {}
 local function check(name, cond, detail)
@@ -26,11 +26,11 @@ _G.DEFAULT_CHAT_FRAME = { AddMessage = function(_, m) chat[#chat + 1] = m end }
 -- first: CreateDashboard is idempotent now, and this asserts it.
 MD:Fire("MD_READY")
 
-local frame = _G.ManaDemonDashboard
+local frame = _G.SpellTunerDashboard
 check("the dashboard exists", frame ~= nil)
 check("firing MD_READY twice does not build a second one", (function()
     local n = 0
-    for _, f in ipairs(S.allFrames) do if f.frameName == "ManaDemonDashboard" then n = n + 1 end end
+    for _, f in ipairs(S.allFrames) do if f.frameName == "SpellTunerDashboard" then n = n + 1 end end
     return n == 1
 end)())
 check("it is one window, not two", frame ~= MD.optionsFrame)
@@ -110,10 +110,10 @@ check("it reopens where it was", frame:IsShown() and MD.db.uiPath[1] ~= nil,
 --------------------------------------------------------------------------------
 -- Settings is the fourth group, not a second window (v0.11.2)
 --------------------------------------------------------------------------------
-S.Load({ "UI/OptionsFrame.lua", "UI/Options_General.lua", "UI/Options_About.lua" }, "ManaDemon", MD)
+S.Load({ "UI/OptionsFrame.lua", "UI/Options_General.lua", "UI/Options_About.lua" }, "SpellTuner", MD)
 check("the settings panel exists", MD.optionsFrame ~= nil)
-check("it is a panel, not a window", _G.ManaDemonOptionsFrame == nil,
-    tostring(_G.ManaDemonOptionsFrame))
+check("it is a panel, not a window", _G.SpellTunerOptionsFrame == nil,
+    tostring(_G.SpellTunerOptionsFrame))
 
 Click(ButtonNamed("Settings"))
 check("Settings is a group of the one window", MD.db.uiPath[1] == "settings",
@@ -129,7 +129,7 @@ Click(ButtonNamed("Spells"))
 MD:ShowOptionsFrame("general")
 check("/md options selects the settings group", MD.db.uiPath[1] == "settings"
     and MD.db.uiPath[2] == "general", table.concat(MD.db.uiPath, "/"))
-check("and it did not open a second window", _G.ManaDemonOptionsFrame == nil)
+check("and it did not open a second window", _G.SpellTunerOptionsFrame == nil)
 
 -- the spell-only furniture is not drawn over the settings
 Click(ButtonNamed("Settings"))
@@ -144,7 +144,7 @@ end)())
 --------------------------------------------------------------------------------
 -- Simulate is the third group, not a third window (v0.11.3)
 --------------------------------------------------------------------------------
-S.Load({ "UI/SimWindow.lua" }, "ManaDemon", MD)
+S.Load({ "UI/SimWindow.lua" }, "SpellTuner", MD)
 Click(ButtonNamed("Simulate"))
 check("Simulate is a group of the one window", MD.db.uiPath[1] == "simulate",
     table.concat(MD.db.uiPath, "/"))
@@ -152,7 +152,7 @@ check("Simulate is a group of the one window", MD.db.uiPath[1] == "simulate",
 check("Simulate opens on Practice", MD.db.uiPath[2] == "practice", table.concat(MD.db.uiPath, "/"))
 check("the practice panel has its Start button", ButtonNamed("Start practice") ~= nil)
 Click(ButtonNamed("Build a fight"))
-check("it did not open a third window", _G.ManaDemonSimWindow == nil)
+check("it did not open a third window", _G.SpellTunerSimWindow == nil)
 check("the simulator's own controls came with it", ButtonNamed("Run") ~= nil
     or ButtonNamed("From recordings") ~= nil)
 -- the panel builds all the way through: a frame it styles without

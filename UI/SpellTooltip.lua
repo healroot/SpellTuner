@@ -1,4 +1,4 @@
--- The spell tooltip hook (v0.14.9; damage spells v0.15.3): ManaDemon's numbers for the exact rank
+-- The spell tooltip hook (v0.14.9; damage spells v0.15.3): SpellTuner's numbers for the exact rank
 -- under the mouse, appended to the game's own tooltip wherever it shows a spell
 -- -- action bars, the spellbook, a chat link. The lines are MD.Tip:Spell
 -- (UI/Tooltip.lua); this file only decides WHEN to add them.
