@@ -136,9 +136,11 @@ value, cost, cast, value per mana, per second, casts to OOM, and the suggested r
 match a cast on a dummy within the crit spread for three spells of two classes (Healroot plus
 one alt). No module beyond core is loaded to do this.
 
-The shape depends on Q1: **dynamic descriptions** → `Spells/Parse.lua` over
-`C_Spell.GetSpellDescription`, no coefficient model; **static** → `Spells/Parse.lua` for the base
-plus a coefficient model per school, druid first, others VERIFY.
+The shape is decided: Q1 answered **dynamic** on 2026-09-27 (`FOREVER-PLAN.md` §6), so
+`Spells/Parse.lua` reads the value out of `C_Spell.GetSpellDescription`'s text and there is
+**no coefficient model and no per-school table**. Where a "per +healing" or "per spell power"
+line is wanted, the coefficient is measured from the client (the text at two bonus values), never
+typed in. The static branch is dropped from the tasks below.
 
 Tasks: T7 `Spells/Book.lua` · T8 `Spells/Parse.lua` (+ the per-school model if static) · T8b
 `tools/refcheck.py` — fetch talentsforever's `data.json` **once** into a gitignored cache and

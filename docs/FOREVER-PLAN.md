@@ -15,8 +15,9 @@ the planner, the solver, the replay state machine, the practice session and the 
 pure Lua and port unchanged. The tooltip and dashboard get *easier*, not harder, if the client's
 spell descriptions turn out to be dynamic (retail-style, already scaled to your stats) — then the
 whole coefficient model becomes optional and "any spell, any class" is a description parser over
-the spellbook. Whether they are dynamic is the single most important unknown, and it is question
-1 in §6.
+the spellbook. **They are dynamic** — answered on the beta on 2026-09-27 (§6 Q1). The unknown that
+replaced it the same day: the character's own health and mana read as secret values out of
+combat (§6 Q2), which decides what a recorder and the clock can read.
 
 ## 1. What was established (2026-09-27, builds 1.60.1.69893 / 70009)
 
@@ -121,10 +122,11 @@ the base from the text, add the coefficient model — and "any class" means a co
 class, which is a much larger and much less trustworthy project. Then the first release is druid
 heals only, as now.
 
-**Two hints, not answers** (`REFERENCES-FOREVER.md` §4): talentsforever's dump is explicitly "the
-beta client's text at level 60 with no gear", and Wowhead's Prayer of Mending tooltip leaks
-`[(172 + (Healing * 0.42899999)) * (1 * 1)]` — the client computes the text from the player's
-Healing. Both point to **dynamic**. The probe's Q1 decides. Either way the parser must read
+**Answered: dynamic** (§6 Q1, 2026-09-27: a +5 spell power elixir changed every damage
+description and no heal). The two hints that pointed there — talentsforever's "the beta client's
+text at level 60 with no gear", Wowhead's leaked `[(172 + (Healing * 0.42899999)) * (1 * 1)]` —
+were right. The first paragraph above is the plan; the static paragraph stays only as the record
+of what was ruled out. Either way the parser must read
 `N Mana` and `N% of base mana`, and the druid set has **no Lifebloom**: `Engine/RankMath.lua`'s
 Lifebloom rules (stacks, bloom, rolling) are TBC-only and stay out of the Forever kit.
 
@@ -276,10 +278,18 @@ later phase starts on an assumption the probe has not confirmed.
 (Questions 1-9 are what `/st probe` asks the client; question 10 is a measurement the author
 takes with the probe's help, added after the reference scout.)
 
-1. **Are spell descriptions dynamic?** `C_Spell.GetSpellDescription(Rejuvenation)` with and
-   without a +healing item equipped: same text → static (coefficient model needed) / different →
-   dynamic (parser only). Decides phase 2's whole shape. Expected answer: dynamic (two hints in
-   §2.1); a static answer would contradict both reference sites and must be double-checked.
+1. **Are spell descriptions dynamic?** **Answered 2026-09-27, build 70009: DYNAMIC.** Between
+   two probe runs the author drank an elixir worth +5 spell power and nothing else changed (level 8,
+   bonus healing 0 both times); the descriptions of every damage spell in the book (Wrath R1 and
+   R2, Moonfire, Entangling Roots) changed and the three heals did not
+   (`docs/probe/1.60.1_70009.md`, second report). So the client computes the text from the
+   caster's stats — the elixir moved spell damage, not bonus healing, which is why the heals
+   stood still. The heal texts will be confirmed the same way the first time bonus healing moves
+   (T0c prints the old and new text of every changed spell and the bonus damage per school beside
+   the bonus healing). Phase 2 takes the dynamic branch of §2.1: a parser over
+   `C_Spell.GetSpellDescription`, no coefficient table. A coefficient is still *measurable* from
+   the client alone — the text at two known bonus values gives the slope — which is how a
+   "per +healing" line can be shown without typing a number in.
 2. **Is party health readable in combat?** `UnitHealth("party1")` and the `UNIT_HEALTH` payload
    during a pull — `issecretvalue`. Decides whether a recorder exists at all. **Widened
    2026-09-27 after the first report:** `UnitHealth("player")`, `UnitHealthMax`, `UnitPower("player")`
