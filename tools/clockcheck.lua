@@ -130,6 +130,22 @@ do
         string.format("a=%q b=%q c=%q", a, b, c))
 end
 
+-- T11b: each state worded as the TBC clock words it (Engine/TTO.lua
+-- GetDisplayString), the "~" kept in front.
+do
+    local a = ManaModel.Text({ mode = "fullnow" })
+    local b = ManaModel.Text({ mode = "ooc", ttf = 45 })
+    local c = ManaModel.Text({ mode = "warmup", rest = 20 })
+    local d = ManaModel.Text({ mode = "warmup" })
+    local e = ManaModel.Text({ mode = "hold", rest = 20 })
+    local f = ManaModel.Text({ mode = "oom", tto = 80, rest = 90 })
+    local g = ManaModel.Text({ mode = "oom", tto = 80, rest = 130 })
+    check("each state is worded as the TBC clock words it, marked modelled",
+        a == "~FULL" and b == "~FULL 0:45" and c == "~OOM ...  rest 0:20" and d == "~OOM ..."
+        and e == "~OOM --  rest 0:20" and f == "~OOM 1:20" and g == "~OOM 1:20  rest 2:10",
+        string.format("a=%q b=%q c=%q d=%q e=%q f=%q g=%q", a, b, c, d, e, f, g))
+end
+
 --------------------------------------------------------------------------------
 -- UI/Clock_Forever.lua: the real clock, wired at MD_READY by the harness's
 -- own PLAYER_LOGIN. Everything below drives the live MD.Clock model/frame.
@@ -267,6 +283,39 @@ do
         string.format("shownInCombat=%s hiddenAtFull=%s shownWhenLow=%s hiddenWhenOff=%s stillOffInCombat=%s",
             tostring(shownInCombat), tostring(hiddenAtFull), tostring(shownWhenLow), tostring(hiddenWhenOff),
             tostring(stillOffInCombat)))
+end
+
+-- T11b: out-of-combat hysteresis -- appears under 90% of max, stays shown
+-- until back over 95% (UI/Widget.lua MD:UpdateVisibility 144-173).
+do
+    local frame = Clock.frame
+    MD.db.clock.shown = true
+    S.inCombat = false
+
+    model.mana = model.max
+    Clock:Refresh()
+    local startHidden = not frame:IsShown()
+
+    model.mana = model.max * 0.94
+    Clock:Refresh()
+    local at94 = frame:IsShown()
+
+    model.mana = model.max * 0.89
+    Clock:Refresh()
+    local at89 = frame:IsShown()
+
+    model.mana = model.max * 0.93
+    Clock:Refresh()
+    local at93 = frame:IsShown()
+
+    model.mana = model.max * 0.96
+    Clock:Refresh()
+    local at96 = frame:IsShown()
+
+    check("out of combat the clock appears under 90% and stays until 95%",
+        startHidden and not at94 and at89 and at93 and not at96,
+        string.format("startHidden=%s at94=%s at89=%s at93=%s at96=%s",
+            tostring(startHidden), tostring(at94), tostring(at89), tostring(at93), tostring(at96)))
 end
 
 -- item 7 (other half) + item 13: the hover names it modelled and is clean ASCII.

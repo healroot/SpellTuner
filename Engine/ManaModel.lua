@@ -220,19 +220,47 @@ local function FmtTime(sec)
     return string.format("%d:%02d", math.floor(sec / 60), sec % 60)
 end
 
+-- T11b (docs/tasks/T11b-clock-modes.md): the "rest <t>" segment, worded and
+-- gated exactly as TBC's Engine/TTO.lua GetDisplayString lines 397-403 gate
+-- its own rest segment -- shown whenever the primary (v) is missing (nil,
+-- TBC's "nothing to compare against"), and otherwise only when it differs
+-- from the primary by at least 25% (TBC line 400's
+-- abs(r - v) / max(v, 1) >= 0.25). Two-space separator (TBC line 405), never
+-- a pipe. Absent entirely when there is no rest reading at all.
+local function RestSegment(v, rest)
+    if type(rest) ~= "number" then return "" end
+    if v == nil or math.abs(rest - v) / math.max(v, 1) >= 0.25 then
+        return "  rest " .. FmtTime(rest)
+    end
+    return ""
+end
+
+-- T11b: every mode worded as TBC's Engine/TTO.lua GetDisplayString words the
+-- same mode (lines 349-376), with the "~" kept in front (T11 -- the pool is
+-- modelled, never the client's own).
+--   fullnow -> TBC's "FULL" (line 350)
+--   ooc/full -> TBC's "FULL <ttf>" (line 354; TBC uses one word for both the
+--     out-of-combat and in-combat "trending toward full" cases)
+--   warmup -> TBC's "OOM ..." (line 356), the rest segment allowed the same
+--     as every other in-combat mode (TBC line 390)
+--   hold -> TBC's rule for a missing value, "OOM --" (line 362; TBC's own
+--     "hold" bound at line 357-359 needs sigma/a mana-cooldown table this
+--     model does not have, T11 "not adopted")
+--   oom -> TBC's "OOM <t>" (line 374), or "OOM --" when tto is nil (line 362,
+--     "never fabricate a number")
 function ManaModel.Text(state)
     if type(state) ~= "table" or type(state.mode) ~= "string" then return "~OOM --" end
     local m = state.mode
 
-    if m == "warmup" then return "~OOM --" end
+    if m == "fullnow" then return "~FULL" end
+    if m == "ooc" then return "~FULL " .. FmtTime(state.ttf) end
+    if m == "full" then return "~FULL " .. FmtTime(state.ttf) end
+    if m == "warmup" then return "~OOM ..." .. RestSegment(nil, state.rest) end
+    if m == "hold" then return "~OOM --" .. RestSegment(nil, state.rest) end
     if m == "oom" then
         local t = FmtTime(state.tto)
-        if t == "--" then return "~OOM --" end
-        return "~OOM " .. t .. "  rest " .. FmtTime(state.rest)
+        if t == "--" then return "~OOM --" .. RestSegment(nil, state.rest) end
+        return "~OOM " .. t .. RestSegment(state.tto, state.rest)
     end
-    if m == "full" then return "~FULL " .. FmtTime(state.ttf) end
-    if m == "hold" then return "~hold" end
-    if m == "fullnow" then return "~full" end
-    if m == "ooc" then return "~refill " .. FmtTime(state.ttf) end
     return "~OOM --"
 end

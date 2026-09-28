@@ -13,6 +13,13 @@ local model
 local widget, text, bar
 local inCombat = false
 
+-- T11b (docs/tasks/T11b-clock-modes.md): out-of-combat hysteresis state --
+-- TBC's UI/Widget.lua MD:UpdateVisibility (lines 144-173) shows below 90% of
+-- max and, once shown, keeps the clock up until above 95%, so it does not
+-- flicker in the band a plain threshold would. This is the one flag that
+-- remembers which side of the band the clock is currently on.
+local shown = false
+
 --------------------------------------------------------------------------------
 -- Cost lookup: MD.Book's own entry.cost.amount (a family's known rank, or a
 -- standalone ReadSpell for anything else the book does not list -- both
@@ -37,23 +44,35 @@ end
 
 --------------------------------------------------------------------------------
 -- Visibility: one owner. Hidden when db.clock.shown is false; else shown in
--- combat, and out of combat while the modelled pool is below 95% of max.
+-- combat, and out of combat with TBC's own hysteresis (UI/Widget.lua
+-- MD:UpdateVisibility lines 144-173): appears once the modelled pool drops
+-- under 90% of max, and once shown stays up until it is back over 95% --
+-- never the plain "below 95%" threshold, which redrew at 94.x% (T11b Facts,
+-- the author's `~refill 0:05` sighting).
 --------------------------------------------------------------------------------
 local function UpdateVisibility()
     if not widget then return end
     if not (MD.db and MD.db.clock and MD.db.clock.shown) then
         widget:Hide()
+        shown = false
         return
     end
     if inCombat then
         widget:Show()
+        shown = true
         return
     end
-    if model.max and model.max > 0 and model.mana < model.max * 0.95 then
-        widget:Show()
+    if model.max and model.max > 0 then
+        local pct = model.mana / model.max
+        if shown then
+            if pct > 0.95 then shown = false end
+        else
+            if pct < 0.90 then shown = true end
+        end
     else
-        widget:Hide()
+        shown = false
     end
+    if shown then widget:Show() else widget:Hide() end
 end
 
 --------------------------------------------------------------------------------
