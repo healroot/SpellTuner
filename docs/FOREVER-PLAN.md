@@ -152,7 +152,7 @@ There is no combat log to record. What a healer addon can still observe, per §1
 
 | stream | source | attribution |
 |---|---|---|
-| health of every party member | ~~`UNIT_HEALTH` per unit~~ -- current health is secret even out of combat (§1.2, 2026-09-28). **Reconstructed** from `UNIT_COMBAT` amounts (WOUND down, HEAL up) against the plain `UnitHealthMax`, anchored at full out of combat, clamped to [0, max]; deaths from `UnitIsDeadOrGhost` re-anchor at 0 | reconstructed; exact only if every event arrives -- Q3 in combat decides |
+| health of every party member | ~~`UNIT_HEALTH` per unit~~ -- current health is secret even out of combat (§1.2, 2026-09-28), and **a party member's max is secret too** (§6 Q2). **Reconstructed** as a deficit from `UNIT_COMBAT` amounts (WOUND down, HEAL up); as a fraction only for the player, against the plain `UnitHealthMax`, anchored at full out of combat, clamped to [0, max]; deaths from `UnitIsDeadOrGhost` re-anchor at 0 | reconstructed; exact only if every event arrives -- Q3 in combat decides |
 | damage and heals landing on party members | `UNIT_COMBAT(unit, action, descriptor, amount)` — amounts reported readable by the kit's recorder | amount and target only; **no source** |
 | own casts | `UNIT_SPELLCAST_START / SUCCEEDED / STOP / FAILED` on `"player"`, target via `UNIT_SPELLCAST_SENT` | exact |
 | own mana | ~~`UnitPower`~~ secret (§1.2). **Modelled**: `UnitPowerMax` (plain) as the ceiling, minus own cast costs (`C_Spell.GetSpellPowerCost` at `UNIT_SPELLCAST_SUCCEEDED`), plus `GetManaRegen` under the five-second rule -- the engine's own mana model, run live | modelled, drifts; re-anchored at full when regen has had time to fill it out of combat |
@@ -300,7 +300,10 @@ takes with the probe's help, added after the reference scout.)
    the bonus healing). Phase 2 takes the dynamic branch of §2.1: a parser over
    `C_Spell.GetSpellDescription`, no coefficient table. A coefficient is still *measurable* from
    the client alone — the text at two known bonus values gives the slope — which is how a
-   "per +healing" line can be shown without typing a number in.
+   "per +healing" line can be shown without typing a number in. **Heals confirmed dynamic
+   2026-09-28** (eighth report): at level 8 -> 9 with no gear change Healing Touch R2 went "88 to
+   112" -> "89 to 114" (R1 and Rejuvenation R1 did not move), so a rank's base grows with level;
+   and the damage texts fell when bonus damage went 5 -> 0 (Wrath R1 17-20 -> 15-18).
 2. **Is party health readable in combat?** `UnitHealth("party1")` and the `UNIT_HEALTH` payload
    during a pull — `issecretvalue`. Decides whether a recorder exists at all. **Widened
    2026-09-27 after the first report:** `UnitHealth("player")`, `UnitHealthMax`, `UnitPower("player")`
@@ -321,15 +324,21 @@ takes with the probe's help, added after the reference scout.)
    (`ShouldUnitHealthMaxBeSecret` / `ShouldUnitPowerMaxBeSecret` false, 234 / 275), and so is
    `UnitIsDeadOrGhost`. So the "if" above holds: health is reconstructed from `UNIT_COMBAT`, mana
    modelled (§2.3, §2.5). Still open: whether it is the same in a party and in combat on a PvE
-   realm -- the author's beta realm is PvP, and the restriction may be a realm rule.
+   realm -- the author's beta realm is PvP, and the restriction may be a realm rule. **In a party
+   (eighth report): a party member's max health is secret too** -- `UnitHealthMax(party1)` secret in
+   and out of combat, while the player's own max is plain. So for party members the recorder has
+   the **deficit** (WOUND adds, HEAL subtracts, floored at 0, zeroed out of combat), not a fraction;
+   percentages and the measured danger line need a max from somewhere else (still to ask:
+   `ShouldUnitHealthMaxBeSecret("party1")`; a status bar can still *draw* the secret values).
 3. **Are `UNIT_COMBAT` amounts on party units readable in combat**, and does the event fire for
    heals (`action == "HEAL"`) as well as damage, with the target unit? Decides the damage stream. **Half answered 2026-09-28:** out of combat the
    amounts are plain numbers for WOUND and HEAL, on `player`, `target` and another unit (an 8 is
    one Rejuvenation R1 tick) -- fourth report. **In combat on the player, answered 2026-09-28** (seventh report,
    solo): 26 WOUND and 4 HEAL on `player`, 52 WOUND on the target, all plain. The same hit also
    arrives under other tokens (a mirror `other` count for every `player` HEAL), so the recorder
-   registers per token (`RegisterUnitEvent`) or keys by GUID. Open: `party1` in combat, and whether
-   the HEAL amount is gross or effective (the meter's is effective: a Healing Touch R2 of 88-112
+   registers per token (`RegisterUnitEvent`) or keys by GUID. **`party1` in combat answered the same day** (eighth
+   report): 5 WOUND and 4 HEAL on `party1`, all plain. Q3 is answered. Open: whether the HEAL
+   amount is gross or effective (the meter's is effective: a Healing Touch R2 of 88-112
    counted 31).
 4. **What does `C_DamageMeter`'s session carry after a fight?** Per-source HealingDone; is there
    any per-spell or overheal breakdown? Decides the calibration and overheal features. **Partly
@@ -338,7 +347,10 @@ takes with the probe's help, added after the reference scout.)
    (`amount=0`, blank `unitName`) on every spell out of combat -- sixth report. After a party fight
    still to see.
 5. **Are party auras (`C_UnitAuras.GetAuraDataByIndex("party1", …)`) secret in combat?** And out
-   of combat? Decides how pre-pull HoTs are captured.
+   of combat? Decides how pre-pull HoTs are captured. **Answered 2026-09-28** (eighth report):
+   readable out of combat (`party1`'s Mark of the Wild, whole), and in combat reading them raises
+   "Auras cannot be accessed when secret while tainted" as on the player. Pre-pull HoTs come from
+   the last out-of-combat read.
 6. **Which talent API answers on Forever's trees** — `C_SpecializationInfo.GetTalentInfo` or
    `C_Traits`? Decides the talent scan.
 7. **Do SavedVariables come back on build 70009?** Decides whether recordings can be kept in the
