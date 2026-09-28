@@ -2,10 +2,11 @@
 -- tools/run.sh --flavour tbc tools/adaptercheck.lua
 --
 -- T1/T1b: the shared adapter (Client/API.lua) plus its two per-flavour bindings
--- (Client/API_Forever.lua, Client/API_TBC.lua). Assertions 1-9 run under both
--- flavours, 10-15 under forever only, 16-17 under tbc only -- matching the
--- Facts in docs/tasks/T1-client-adapter.md about what is secret on which
--- client. Never runs under a flavour it did not declare (tools/harness.lua).
+-- (Client/API_Forever.lua, Client/API_TBC.lua). Assertions 1-12 run under both
+-- flavours (10-12 added by T7: Copy/Constant/a copying binding), 13-18 under
+-- forever only, 19-20 under tbc only -- matching the Facts in
+-- docs/tasks/T1-client-adapter.md about what is secret on which client. Never
+-- runs under a flavour it did not declare (tools/harness.lua).
 HARNESS_FLAVOUR = { "forever", "tbc" }
 
 local here = arg[0]:match("^(.*)/[^/]+$")
@@ -36,6 +37,14 @@ local SHARED_NAMES = {
     "GetErrorHandler", "SetErrorHandler", "DebugStack",
 }
 local ADDON_NAMES = { "AddOnMetadata", "IsAddOnLoaded", "LoadAddOn", "IsAddOnLoadOnDemand", "AddOnInfo" }
+-- T7: Client/API_Forever.lua's own spellbook/spell bindings -- forever only,
+-- so the exhaustiveness check below only expects them under that flavour.
+local FOREVER_ONLY_NAMES = {
+    "SpellBookItemInfo", "SpellBookSkillLines", "SpellBookSkillLineInfo",
+    "SpellBookItemIsLowRank", "SpellKnown", "SpellName", "SpellSubtext",
+    "SpellDescription", "SpellInfo", "SpellPowerCost", "SpellLevelLearned",
+    "BaseSpell", "SpellTexture", "SpellTooltipData",
+}
 
 --------------------------------------------------------------------------------
 -- 1-9: both flavours
@@ -45,6 +54,9 @@ do
     local allNames = {}
     for _, n in ipairs(SHARED_NAMES) do allNames[#allNames + 1] = n end
     for _, n in ipairs(ADDON_NAMES) do allNames[#allNames + 1] = n end
+    if flavour == "forever" then
+        for _, n in ipairs(FOREVER_ONLY_NAMES) do allNames[#allNames + 1] = n end
+    end
 
     local allFunctions = true
     for _, n in ipairs(allNames) do
@@ -163,7 +175,69 @@ do
 end
 
 --------------------------------------------------------------------------------
--- 10-15: forever only
+-- 10-12: T7's Copy / Constant / a copying binding -- both flavours
+--------------------------------------------------------------------------------
+
+do
+    local secret = (flavour == "forever") and S.Secret() or "unused"
+    local t = { name = "Bob", n = 5, ok = true, nested = { a = 1, deep = { x = 2 } } }
+    if flavour == "forever" then
+        t.hidden = secret
+        t[secret] = "value-under-a-secret-key"
+    end
+    local copy1 = MD.API.Copy(t, 1)
+    local copy2 = MD.API.Copy(t, 2)
+    local plainScalar = MD.API.Copy(5)
+    local nilForSecret = (flavour == "forever") and MD.API.Copy(secret) == nil or true
+    local nilForFunction = MD.API.Copy(print) == nil
+
+    local depth1Good = copy1.name == "Bob" and copy1.n == 5 and copy1.ok == true
+        and copy1.nested == nil and copy1 ~= t
+    local depth2Good = copy2.nested.a == 1 and copy2.nested.deep == nil
+    local secretCounted = true
+    if flavour == "forever" then
+        secretCounted = copy1._secret == 1 and copy1.hidden == nil
+    end
+    check("Copy keeps plain fields and drops secret ones",
+        depth1Good and depth2Good and plainScalar == 5 and nilForSecret and nilForFunction and secretCounted,
+        string.format("copy1.n=%s copy1.nested=%s copy2.nested.a=%s copy1._secret=%s",
+            tostring(copy1.n), tostring(copy1.nested), tostring(copy2.nested and copy2.nested.a), tostring(copy1._secret)))
+end
+
+do
+    -- Enum.SpellBookSpellBank.Player is a plain 0 on both stub profiles'
+    -- Enum table on forever; on tbc there is no Enum table at all, so the
+    -- walk simply answers nil rather than raising.
+    local player = MD.API.Constant("Enum.SpellBookSpellBank.Player")
+    local missing = MD.API.Constant("Enum.NoSuchThing.Nope")
+    local notAFunction = MD.API.Constant("print")
+    local ok
+    if flavour == "forever" then
+        ok = player == 0
+    else
+        ok = player == nil
+    end
+    check("Constant reads a plain enum value and nothing else",
+        ok and missing == nil and notAFunction == nil,
+        "player=" .. tostring(player) .. " missing=" .. tostring(missing) .. " notAFunction=" .. tostring(notAFunction))
+end
+
+do
+    _G.T7_COPYSRC = function()
+        local row = { id = 1, name = "Row" }
+        if flavour == "forever" then row.secretField = S.Secret() end
+        return row
+    end
+    MD.API.Bind({ T7Copying = { client = "T7_COPYSRC", copy = 1 } })
+    local a = MD.API.T7Copying()
+    local b = MD.API.T7Copying()
+    _G.T7_COPYSRC = nil
+    check("a copying binding hands back a copy, never the client's table",
+        a ~= nil and a.id == 1 and a.name == "Row" and a ~= b and a.secretField == nil)
+end
+
+--------------------------------------------------------------------------------
+-- 13-18: forever only
 --------------------------------------------------------------------------------
 
 if flavour == "forever" then

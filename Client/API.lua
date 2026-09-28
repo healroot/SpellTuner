@@ -142,17 +142,123 @@ function MD.API.Call(dotted, ...)
     return unpack(retvals, 2, retn)
 end
 
+-- T7: a value that is a plain string, number or boolean -- what a "shared
+-- file must never index a client table" file is allowed to hold onto.
+local function IsPlainScalar(v)
+    local t = type(v)
+    return t == "string" or t == "number" or t == "boolean"
+end
+
+-- One shared walk, one shared secret counter for the whole call (so a table
+-- nested three deep still adds to the SAME _secret total the top table
+-- reports) -- table.lua below never sees the client's own table, only what
+-- this builds.
+local function CopyValue(v, depth, counter)
+    if type(v) == "table" then
+        if MD.API.IsSecret(v) then
+            counter.n = counter.n + 1
+            return nil
+        end
+        local out = {}
+        for k, val in pairs(v) do
+            local kt = type(k)
+            if kt == "string" or kt == "number" then
+                if MD.API.IsSecret(k) or MD.API.IsSecret(val) then
+                    counter.n = counter.n + 1
+                elseif IsPlainScalar(val) then
+                    out[k] = val
+                elseif type(val) == "table" and depth > 1 then
+                    out[k] = CopyValue(val, depth - 1, counter)
+                end
+                -- a function, or a table one level past `depth`, is simply
+                -- left out -- that is a depth question, not a secrecy one,
+                -- so it is never counted in `counter`.
+            end
+            -- a key that is not a plain string/number (a table, a boolean, a
+            -- secret) is never walked either way -- Book only ever reads a
+            -- copy's fields by name/index, so a key it cannot ask for by
+            -- name would never be reached regardless.
+        end
+        return out
+    end
+    if MD.API.IsSecret(v) then
+        counter.n = counter.n + 1
+        return nil
+    end
+    if IsPlainScalar(v) then return v end
+    return nil -- a function, or anything else the client might hand back
+end
+
+-- T7 (Client/API.lua): a client table the adapter's own table-secrecy check
+-- passed through as-is (Call only asks whether the TABLE itself is secret,
+-- never its fields) may still carry a secret field several levels down --
+-- Copy is what lets a shared file hold onto that table's shape without ever
+-- indexing the client's own table to find out. Depth 1 keeps only the
+-- table's own scalar fields; depth 2 also copies one level of nested tables
+-- (an array of rows), and so on. Never raises: the whole walk runs inside
+-- one pcall, same reasoning as Has() and Call() above.
+function MD.API.Copy(v, depth)
+    depth = depth or 1
+    local counter = { n = 0 }
+    local ok, result = pcall(CopyValue, v, depth, counter)
+    if not ok then return nil, "error" end
+    if type(result) == "table" and counter.n > 0 then
+        result._secret = counter.n
+    end
+    return result
+end
+
+-- T7: a single plain value at a dotted path (Enum.* members, which are not
+-- functions and so never go through Has/Call) -- nil for anything secret, a
+-- function, a table, or a path that does not resolve. Not cached: a
+-- constant is read once per caller, not remembered forever like Has()'s
+-- function/table answers.
+function MD.API.Constant(dotted)
+    local ok, result = pcall(function()
+        local obj = _G
+        for segment in dotted:gmatch("[^%.]+") do
+            if type(obj) ~= "table" then return nil end
+            obj = obj[segment]
+        end
+        if MD.API.IsSecret(obj) then return nil end
+        if IsPlainScalar(obj) then return obj end
+        return nil
+    end)
+    if not ok then return nil end
+    return result
+end
+
 -- Installs MD.API[Name] = function(...) return MD.API.Call(dotted, ...) end
 -- for each Name = "dotted.client.name" pair, and remembers the binding for
 -- Capabilities(). A Name that is already a member of MD.API and was NOT
 -- installed by an earlier Bind (Has, Call, client, Bind itself, ...) is left
 -- alone and not recorded -- Bind only ever adds or replaces its OWN bindings.
+-- T7: a map value may instead be `{ client = "<dotted>", copy = n }`, which
+-- installs a wrapper that runs every table RESULT through Copy(result, n)
+-- before handing it back -- so a caller of a copying binding can never end
+-- up holding the client's own table, only ever a copy of it.
 MD.API._bindings = MD.API._bindings or {}
 function MD.API.Bind(map)
-    for name, dotted in pairs(map) do
+    for name, spec in pairs(map) do
         if MD.API[name] == nil or MD.API._bindings[name] then
+            local dotted, copyDepth = spec, nil
+            if type(spec) == "table" then
+                dotted, copyDepth = spec.client, spec.copy
+            end
             MD.API._bindings[name] = dotted
-            MD.API[name] = function(...) return MD.API.Call(dotted, ...) end
+            if copyDepth then
+                MD.API[name] = function(...)
+                    local retvals, retn = Pack(MD.API.Call(dotted, ...))
+                    for i = 1, retn do
+                        if type(retvals[i]) == "table" then
+                            retvals[i] = MD.API.Copy(retvals[i], copyDepth)
+                        end
+                    end
+                    return unpack(retvals, 1, retn)
+                end
+            else
+                MD.API[name] = function(...) return MD.API.Call(dotted, ...) end
+            end
         end
     end
 end

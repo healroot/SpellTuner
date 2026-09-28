@@ -15,3 +15,26 @@ MD.API.Bind({
 })
 
 MD.API.ForbidEvent("COMBAT_LOG_EVENT_UNFILTERED")
+
+-- T7 (Spells/Book.lua): the spellbook and spell bindings, most of them
+-- copying (docs/tasks/T7-spell-book.md Facts: every shape past the book walk
+-- itself is the retail 12.x documentation, UNVERIFIED here) so Book never
+-- indexes a client table directly.
+MD.API.Bind({
+    SpellBookItemInfo = { client = "C_SpellBook.GetSpellBookItemInfo", copy = 1 },
+    SpellBookSkillLines = "C_SpellBook.GetNumSpellBookSkillLines",
+    SpellBookSkillLineInfo = { client = "C_SpellBook.GetSpellBookSkillLineInfo", copy = 1 },
+    SpellBookItemIsLowRank = "C_SpellBook.IsSpellBookItemLowRank",
+    SpellKnown = "C_SpellBook.IsSpellKnown",
+    SpellName = "C_Spell.GetSpellName",
+    SpellSubtext = "C_Spell.GetSpellSubtext",
+    SpellDescription = "C_Spell.GetSpellDescription",
+    SpellInfo = { client = "C_Spell.GetSpellInfo", copy = 1 },
+    -- copy = 2: an array of cost-type rows, one level of table past the array itself.
+    SpellPowerCost = { client = "C_Spell.GetSpellPowerCost", copy = 2 },
+    SpellLevelLearned = "C_Spell.GetSpellLevelLearned",
+    BaseSpell = "C_Spell.GetBaseSpell",
+    SpellTexture = "C_Spell.GetSpellTexture",
+    -- copy = 3: the tooltip table -> its `lines` array -> each line's own fields.
+    SpellTooltipData = { client = "C_TooltipInfo.GetSpellByID", copy = 3 },
+})

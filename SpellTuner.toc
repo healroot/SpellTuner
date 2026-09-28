@@ -11,6 +11,7 @@ Client\API_Forever.lua
 Core.lua
 Core_Forever.lua
 Spells\Parse.lua
+Spells\Book.lua
 UI\Style.lua
 UI\Dashboard_Forever.lua
 UI\DebugConsole.lua

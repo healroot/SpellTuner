@@ -591,6 +591,10 @@ function S.UseProfile(name)
         SpellBookSpellBank = { Player = 0 },
         DamageMeterType = { HealingDone = 1 },
         DamageMeterSessionType = { Overall = 0, Current = 1 },
+        -- T7a's own retail-documented values (Spell = the ordinary row every
+        -- fixed slot above already answers via itemType = 1); NOT observed
+        -- on Forever.
+        SpellBookItemType = { Spell = 1, FutureSpell = 2, Flyout = 3, PetAction = 4 },
     }
 
     -- Five slots: two ranks of Rejuvenation (774 rank 1, 1058 rank 2) for the
@@ -618,6 +622,13 @@ function S.UseProfile(name)
     local SPELL_LEVEL = { [774] = 4, [1058] = 10, [5185] = 1, [5176] = 1 }
     local SPELL_BASE = { [774] = 774, [1058] = 774, [5185] = 5185, [5176] = 5176 }
     local SPELL_LOWRANK = {}
+    -- T7: per-spell overrides for the new AddSpell opts -- default itemType
+    -- is 1 (Spell, the shape every fixed slot above already returns);
+    -- SPELL_KNOWN default (no entry) is true, so the four fixed spells above
+    -- (never passed through AddSpell) keep answering known = true as before.
+    local SPELL_ITEMTYPE = {}
+    local SPELL_KNOWN = {}
+    local SPELL_COSTLIST = {}
     -- T0c: 774's amount also carries S.descShift, a stand-in for a description
     -- that moved with a level-up rather than with bonus healing (reads exactly
     -- as before at descShift 0). 5176's amount carries S.bonusDamage[4]
@@ -639,13 +650,20 @@ function S.UseProfile(name)
             -- retail 12.x documented shape, NOT observed on Forever -- the probe's == shapes checks it
             return {
                 spellID = id, name = SPELL_NAMES[id], subName = SPELL_SUBTEXT[id],
-                itemType = 1, isPassive = false, isOffSpec = false, skillLineIndex = 2,
+                itemType = SPELL_ITEMTYPE[id] or 1, isPassive = false, isOffSpec = false, skillLineIndex = 2,
                 actionID = id, iconID = 136041,
             }
         end,
         -- retail 12.x documented shape, NOT observed on Forever -- the probe's == shapes checks it
         IsSpellBookItemLowRank = function(slot, bank)
             return SPELL_LOWRANK[SPELL_SLOTS[slot]] == true
+        end,
+        -- T7: a boolean per spell id, defaulting true (unlike the classic
+        -- global IsSpellKnown above, which tracks S.known and answers false
+        -- by default -- this table is Forever's own known-ness stand-in).
+        IsSpellKnown = function(id)
+            if SPELL_KNOWN[id] == false then return false end
+            return true
         end,
         -- retail 12.x documented shape, NOT observed on Forever -- the probe's == shapes checks it
         GetNumSpellBookSkillLines = function() return 2 end,
@@ -668,7 +686,8 @@ function S.UseProfile(name)
     -- Adds a spell in the first free slot from 6 on -- for tests that need
     -- more spellbook rows than the fixed five above (T0c step 6's elixir
     -- test). descFn follows SPELL_DESC's own shape: a zero-argument function.
-    -- opts (T7a, optional): { cast, cost, costPercent, level, base, lowRank, noCost }.
+    -- opts (T7a, optional): { cast, cost, costPercent, level, base, lowRank, noCost,
+    -- itemType, known, costList }.
     local nextFreeSlot = 6
     function S.AddSpell(id, name, rank, descFn, opts)
         opts = opts or {}
@@ -682,7 +701,15 @@ function S.UseProfile(name)
         SPELL_LEVEL[id] = opts.level or 1
         SPELL_BASE[id] = opts.base or id
         SPELL_LOWRANK[id] = opts.lowRank == true
-        if opts.noCost then
+        -- T7: itemType default (1, "Spell") unless the test names a different
+        -- one (a flyout/pet-action row Book must skip, or a future-spell row
+        -- whose known-ness falls back to it); known default (true) unless the
+        -- test explicitly says the character has not learned it yet.
+        SPELL_ITEMTYPE[id] = opts.itemType or 1
+        if opts.known == false then SPELL_KNOWN[id] = false end
+        if opts.costList then
+            SPELL_COSTLIST[id] = opts.costList
+        elseif opts.noCost then
             SPELL_NO_COST[id] = true
         else
             SPELL_COST[id] = opts.cost or 0
@@ -713,6 +740,7 @@ function S.UseProfile(name)
         -- retail 12.x documented shape, NOT observed on Forever -- the probe's == shapes checks it
         GetSpellPowerCost = function(id)
             if not SPELL_NAMES[id] then return nil end
+            if SPELL_COSTLIST[id] then return SPELL_COSTLIST[id] end
             if SPELL_NO_COST[id] then return {} end
             local cost = SPELL_COST[id] or 0
             return { {
