@@ -36,6 +36,21 @@ local sessionT0 = GetTime()
 local consoleFrame, content, categoryCBs, enableCB, countFS
 local dirty = false
 
+-- T3: "Errors this session: N distinct, M total - /st dump copies them",
+-- read fresh every refresh (MD.errors is nil on TBC, so this is a no-op there).
+local function RefreshErrorsLine()
+    if not (consoleFrame and consoleFrame.errorsFS) then return end
+    if type(MD.errors) ~= "table" then return end
+    local distinct = #MD.errors
+    local total = tonumber(MD.errorTotal) or 0
+    if distinct == 0 and total == 0 then
+        consoleFrame.errorsFS:SetText("Errors this session: none")
+    else
+        consoleFrame.errorsFS:SetText(string.format(
+            "Errors this session: %d distinct, %d total - /st dump copies them", distinct, total))
+    end
+end
+
 local function Categories()
     return MD.db and MD.db.debug and MD.db.debug.categories or {}
 end
@@ -61,6 +76,7 @@ end
 local function RefreshLog()
     dirty = false
     if not (consoleFrame and consoleFrame:IsShown()) then return end
+    RefreshErrorsLine()
     local shown = Categories()
     local newest, n = {}, 0
     for i = #logLines, 1, -1 do
@@ -83,6 +99,20 @@ end
 
 local function StripColors(text)
     return (text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""))
+end
+
+-- T3 (/st dump): the newest n lines, every category, colour codes stripped --
+-- plus the ring's true length so the dump's header can say "newest n of m".
+-- Unlike BuildPlainTextLog this ignores the category checkboxes: a bug report
+-- wants everything that happened, not just what is ticked on right now.
+function MD:DebugLogTail(n)
+    local total = #logLines
+    local start = math.max(1, total - n + 1)
+    local lines = {}
+    for i = start, total do
+        lines[#lines + 1] = StripColors(logLines[i].text)
+    end
+    return lines, total
 end
 
 local function BuildPlainTextLog()
@@ -184,23 +214,31 @@ local function CreateDebugConsoleFrame()
     copyBtn:SetPoint("RIGHT", clearBtn, "LEFT", -5, 0)
     copyBtn:SetScript("OnClick", ShowLogCopyPopup)
 
-    local regenBtn = UI.CreateButton(consoleFrame, "Regen test", "accent-hover", { 80, 17 }, false, false, nil, nil,
-        "Regen test (30s)", "Stand idle at partial mana, no drink, no casting.",
-        "Compares observed mana gain with GetManaRegen and says whether Dreamstate is included.")
-    regenBtn:SetPoint("RIGHT", copyBtn, "LEFT", -5, 0)
-    regenBtn:SetScript("OnClick", function()
-        if not MD.db.debug.enabled then
-            enableCB:SetChecked(true)
-            enableCB.onClick(true, enableCB)
-        end
-        if MD.RunRegenTest then MD:RunRegenTest(30) end
-    end)
+    -- Only on TBC, where MD.RunRegenTest reads the TBC engine -- Forever has
+    -- no such test yet, so its console does not offer a button that would do
+    -- nothing (checked at build time: this frame is built once, on first
+    -- open, so a module loading later can never make the button appear).
+    local regenBtn
+    if type(MD.RunRegenTest) == "function" then
+        regenBtn = UI.CreateButton(consoleFrame, "Regen test", "accent-hover", { 80, 17 }, false, false, nil, nil,
+            "Regen test (30s)", "Stand idle at partial mana, no drink, no casting.",
+            "Compares observed mana gain with GetManaRegen and says whether Dreamstate is included.")
+        regenBtn:SetPoint("RIGHT", copyBtn, "LEFT", -5, 0)
+        regenBtn:SetScript("OnClick", function()
+            if not MD.db.debug.enabled then
+                enableCB:SetChecked(true)
+                enableCB.onClick(true, enableCB)
+            end
+            if MD.RunRegenTest then MD:RunRegenTest(30) end
+        end)
+    end
 
     -- Fixed grid, not a chained row: the labels are different widths, and
     -- chaining them ran the last category off the frame and under the "keep
     -- lines" box as soon as a ninth category (Cast) was added. Columns are a
     -- fixed pitch so they line up, and the row count follows the category
     -- count instead of being implied by the frame width.
+    local categoryRows = math.ceil(#CATEGORY_ORDER / CATEGORY_COLUMNS)
     categoryCBs = {}
     for i, category in ipairs(CATEGORY_ORDER) do
         local cb = UI.CreateCheckButton(consoleFrame, CATEGORY_LABELS[category], function(checked)
@@ -214,8 +252,22 @@ local function CreateDebugConsoleFrame()
     end
 
     countFS = consoleFrame:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
-    countFS:SetPoint("RIGHT", regenBtn, "LEFT", -8, 0)
+    countFS:SetPoint("RIGHT", regenBtn or copyBtn, "LEFT", -8, 0)
     countFS:SetTextColor(0.6, 0.6, 0.6)
+
+    -- T3: only present when MD.errors exists (Forever only -- TBC never
+    -- installs the capture, so MD.errors stays nil and this line is absent).
+    -- Refreshed alongside the log (RefreshLog below), not just on show, so a
+    -- fresh error while the console is already open is reflected at once.
+    local errorsFS
+    local errorsRowH = 0
+    if type(MD.errors) == "table" then
+        errorsFS = consoleFrame:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+        errorsFS:SetPoint("TOPLEFT", enableCB, "BOTTOMLEFT", 0, -12 - categoryRows * CATEGORY_ROW_H)
+        errorsFS:SetTextColor(0.8, 0.5, 0.5)
+        errorsRowH = CATEGORY_ROW_H
+    end
+    consoleFrame.errorsFS = errorsFS
 
     -- "keep N lines": ring size, saved in the settings
     local keepEB = UI.CreateEditBox(consoleFrame, 56, 16, false, false, true, UI.FONT_SMALL)
@@ -241,8 +293,7 @@ local function CreateDebugConsoleFrame()
     keepEB:SetScript("OnEditFocusLost", ApplyKeep)
     consoleFrame.keepEB = keepEB
 
-    local categoryRows = math.ceil(#CATEGORY_ORDER / CATEGORY_COLUMNS)
-    UI.CreateScrollFrame(consoleFrame, -(46 + categoryRows * CATEGORY_ROW_H), 5)
+    UI.CreateScrollFrame(consoleFrame, -(46 + categoryRows * CATEGORY_ROW_H + errorsRowH), 5)
     consoleFrame.scrollFrame:SetScrollStep(37)
     UI.StylizeFrame(consoleFrame.scrollFrame, { 0.1, 0.1, 0.1, 0.5 })
 

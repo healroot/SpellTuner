@@ -163,7 +163,15 @@ tells the core it loaded), `release.sh` building and installing them beside `Spe
 Modules); `tools/modulecheck.lua` 12 ok. **T4** -- 2026-09-28 (`docs/tasks/T4-savedvariables-guard.md`): the minimal guard
 Q7 allows -- `Core_Forever.lua` records at `ADDON_LOADED` whether `SpellTunerDB` came back (and from
 which session), was absent, or was not a table (replaced, never indexed), stamps the session, and
-keeps one line for the dump; no seed workaround; `tools/svcheck.lua` 6 / 1 ok.
+keeps one line for the dump; no seed workaround; `tools/svcheck.lua` 6 / 1 ok. **T3** -- 2026-09-28 (`docs/tasks/T3-console-dump.md`): SpellTuner's own errors caught
+through the adapter's `seterrorhandler` binding -- the first of each shown to the client, repeats
+only counted, other addons' errors passed through, at most 50 kept; `/st debug` on Forever with the
+error count; `/st dump`, one escaped block (client, capabilities, SavedVariables, modules, errors,
+debug log); every Forever TOC at `1.0.0-alpha.2`; `tools/consolecheck.lua` 11 / 1 ok.
+
+**M1's offline part is done (2026-09-28).** The exit's in-game half -- zero errors at login, `/st`,
+the module switches, the error count and the dump on the beta -- is the author's:
+`docs/TESTING.md` §36.
 
 ### M2 — tooltips and the dashboard (phase 2) → `1.0.0-beta.1`
 

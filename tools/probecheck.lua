@@ -664,9 +664,9 @@ do
     local plainLines = ReadLines(ROOT .. "/SpellTuner.toc")
     local mainlineLines = ReadLines(ROOT .. "/SpellTuner_Mainline.toc")
     local hasVersion = false
-    for _, l in ipairs(plainLines) do if l == "## Version: 1.0.0-alpha.1" then hasVersion = true end end
+    for _, l in ipairs(plainLines) do if l == "## Version: 1.0.0-alpha.2" then hasVersion = true end end
     local hasVersion2 = false
-    for _, l in ipairs(mainlineLines) do if l == "## Version: 1.0.0-alpha.1" then hasVersion2 = true end end
+    for _, l in ipairs(mainlineLines) do if l == "## Version: 1.0.0-alpha.2" then hasVersion2 = true end end
     local sameCount = #plainLines == #mainlineLines
     local diffs, diffOk = 0, true
     if sameCount then
@@ -679,8 +679,8 @@ do
             end
         end
     end
-    local PREFIX = "SpellTuner probe 1.0.0-alpha.1 -- "
-    check("the Forever TOCs are 1.0.0-alpha.1 and differ only in their marker",
+    local PREFIX = "SpellTuner probe 1.0.0-alpha.2 -- "
+    check("the Forever TOCs are 1.0.0-alpha.2 and differ only in their marker",
         hasVersion and hasVersion2 and sameCount and diffs == 1 and diffOk
         and report1:sub(1, #PREFIX) == PREFIX)
 end

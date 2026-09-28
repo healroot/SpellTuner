@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: SpellTuner
-## Notes: Capability probe for WoW: Forever. Type /st probe.
+## Notes: SpellTuner for WoW: Forever (alpha). /st opens the window, /st probe writes the capability report.
 ## Author: NeRgY
-## Version: 1.0.0-alpha.1
+## Version: 1.0.0-alpha.2
 ## SavedVariables: SpellTunerDB
 
 Client\TOC_Plain.lua
@@ -12,4 +12,6 @@ Core.lua
 Core_Forever.lua
 UI\Style.lua
 UI\Dashboard_Forever.lua
+UI\DebugConsole.lua
+UI\Dump_Forever.lua
 Client\Probe.lua

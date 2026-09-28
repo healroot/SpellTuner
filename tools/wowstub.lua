@@ -503,6 +503,28 @@ function S.UseProfile(name)
     WOW_PROJECT_ID = 1
     WOW_PROJECT_MAINLINE = 1
 
+    -- T3: the FrameXML error path. S.errorHandler starts as the client's own
+    -- default handler (a stand-in for what geterrorhandler answers before any
+    -- addon replaces it), which records every message it is ever handed in
+    -- S.clientErrors -- so a consolecheck case can tell whether OUR handler
+    -- forwarded a given message without needing to read chat output. Whoever
+    -- calls seterrorhandler simply becomes S.errorHandler from then on.
+    S.clientErrors = {}
+    local function initialErrorHandler(msg)
+        S.clientErrors[#S.clientErrors + 1] = msg
+    end
+    S.errorHandler = initialErrorHandler
+    function geterrorhandler() return S.errorHandler end
+    function seterrorhandler(h) S.errorHandler = h end
+    -- A fixed two-line stack: the first line names THIS file (a stand-in for
+    -- the handler's own frame, which Core_Forever.lua's capture must skip),
+    -- the second names where the error actually happened -- so a suite can
+    -- tell the two apart the same way it would on the client.
+    function debugstack(level, lines1, lines2)
+        return "Interface/AddOns/SpellTuner/Core_Forever.lua:1: in function <handler>\n" ..
+               "Interface/AddOns/SpellTuner/Core.lua:1: in function <error>"
+    end
+
     function UnitAffectingCombat() return S.inCombat end
     function InCombatLockdown() return S.inCombat end
 

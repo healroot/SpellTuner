@@ -213,4 +213,9 @@ MD.API.Bind({
     UnitPower = "UnitPower", UnitPowerMax = "UnitPowerMax", UnitPowerType = "UnitPowerType",
     ManaRegen = "GetManaRegen", RealmName = "GetRealmName", BuildInfo = "GetBuildInfo",
     After = "C_Timer.After", NewTicker = "C_Timer.NewTicker",
+    -- T3: error capture (Core_Forever.lua). Both clients carry these three
+    -- (the FrameXML error path), so they live in the shared Bind call rather
+    -- than a flavour file -- unused on TBC today, same as every other name
+    -- here a TBC file happens not to call.
+    GetErrorHandler = "geterrorhandler", SetErrorHandler = "seterrorhandler", DebugStack = "debugstack",
 })

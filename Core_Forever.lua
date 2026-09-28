@@ -91,6 +91,119 @@ MD:RegisterCallback("MD_READY", function()
     MD:Debug("other", "%s", MD:SavedVarsLine())
 end)
 
+--------------------------------------------------------------------------------
+-- Error capture (T3): installed right here, at load, not at an event -- this
+-- file is the earliest a Forever file can start (right after Core.lua). The
+-- FIRST occurrence of one of OUR errors is forwarded to whatever handler was
+-- already installed (the client, or BugGrabber, still shows it once); every
+-- repeat is only counted and never forwarded; another addon's error, or
+-- anything that is not a plain readable string, passes through untouched and
+-- is never recorded. Whether replacing the handler is even allowed here is
+-- UNKNOWN (Facts) -- the whole install, and the whole handler body, run under
+-- pcall so a "no" shows up as a recorded reason, never a login-time error.
+--------------------------------------------------------------------------------
+MD.errors = {}
+MD.errorTotal = 0
+MD.errorOverflow = 0
+local errorIndex = {}
+local MAX_DISTINCT_ERRORS = 50
+
+-- The retail message names the addon folder ("Interface/AddOns/SpellTuner/...");
+-- the sibling modules ship under their own folder names, which all start with
+-- "SpellTuner_" and so also match "SpellTuner" below. Falls back to the bare
+-- name if there is no path at all (Facts: whether every message carries one
+-- is UNKNOWN).
+local function IsOurs(msg)
+    if msg:find("AddOns/SpellTuner", 1, true) then return true end
+    return msg:find("SpellTuner", 1, true) ~= nil
+end
+
+-- MD.API.DebugStack(2, 1, 0) names this handler's own frame first (it is the
+-- thing that called debugstack) -- skip any line naming this file and hand
+-- back the first one that does not, so the dump points at the code that
+-- actually erred rather than at the handler that caught it.
+local function FirstUsefulLine(stack)
+    if type(stack) ~= "string" then return nil end
+    for line in stack:gmatch("[^\n]+") do
+        if not line:find("Core_Forever.lua", 1, true) then
+            return line
+        end
+    end
+    return nil
+end
+
+-- Runs entirely under pcall's protection (both the install below and every
+-- call to the handler itself); never calls MD:Print/MD:Debug/anything that
+-- could error back into it.
+local function InstallErrorHandler()
+    local prev = MD.API.GetErrorHandler()
+
+    local function handler(msg, ...)
+        -- Packed once, up front: "..." only works inside the vararg function
+        -- itself, and the body below runs inside a nested closure (so ONE
+        -- pcall covers the whole thing, including the classifying reads).
+        local extraN, extra = select("#", ...), { ... }
+
+        local safe, result = pcall(function()
+            local function fwd()
+                if prev then return prev(msg, unpack(extra, 1, extraN)) end
+            end
+
+            if type(msg) ~= "string" or MD.API.IsSecret(msg) then
+                return fwd()
+            end
+            if not IsOurs(msg) then
+                return fwd()
+            end
+
+            local key = msg:sub(1, 300)
+            local now = GetTime()
+            local entry = errorIndex[key]
+            if entry then
+                entry.count = entry.count + 1
+                entry.last = now
+                MD.errorTotal = MD.errorTotal + 1
+                return -- a repeat of our own error is never forwarded
+            end
+
+            if #MD.errors >= MAX_DISTINCT_ERRORS then
+                MD.errorOverflow = MD.errorOverflow + 1
+                MD.errorTotal = MD.errorTotal + 1
+                -- new to the client even though we stop keeping it ourselves
+                return fwd()
+            end
+
+            entry = { msg = key, count = 1, first = now, last = now,
+                      stack = FirstUsefulLine(MD.API.DebugStack(2, 1, 0)) }
+            errorIndex[key] = entry
+            MD.errors[#MD.errors + 1] = entry
+            MD.errorTotal = MD.errorTotal + 1
+            return fwd()
+        end)
+        if safe then return result end
+        return nil -- the handler must never raise back into the client
+    end
+
+    -- nil,nil on success; nil,"absent"/"error"[,detail] if the adapter could
+    -- not install it (SetErrorHandler is absent, or itself raised).
+    local _, why = MD.API.SetErrorHandler(handler)
+    return why
+end
+
+local installOk, installWhy = pcall(InstallErrorHandler)
+if installOk and installWhy == nil then
+    MD.errorHandlerInstalled = true
+else
+    MD.errorHandlerInstalled = (installOk and installWhy) or "error"
+end
+
+MD:AddCommand("debug", function() MD:ToggleDebugConsole() end, "/st debug", "the debug console")
+MD:AddCommand("dump", function()
+    if MD.BuildDump and MD.ShowCopyPopup then
+        MD:ShowCopyPopup("SpellTuner dump", MD:BuildDump())
+    end
+end, "/st dump", "one copyable block for a bug report")
+
 MD:AddCommand("", function()
     if MD.ToggleDashboard then
         MD:ToggleDashboard()

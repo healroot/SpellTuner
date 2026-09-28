@@ -804,6 +804,59 @@ which is exactly question 7.
 **Not yet asked of you, coming with M2:** the downrank measurement (`docs/FOREVER-PLAN.md` §6
 Q10): Healing Touch Rank 1 on yourself after fall damage, with your bonus healing noted.
 
+## 36. WoW: Forever -- the M1 frame (1.0.0-alpha.2, 2026-09-28)
+
+On the **beta client** again (Healroot, build 70009 or current). This is M1's exit check
+(`docs/ROADMAP-FOREVER.md` §2): the core loads with zero errors, `/st` opens the window, the three
+module switches load their addons, errors are counted instead of flooding, and `/st dump` gives one
+paste. Nothing here reads your health or mana; nothing registers the combat log.
+
+**Install.** From this checkout -- the release now builds four folders, `SpellTuner` and the
+three modules beside it:
+
+```bash
+./release.sh --install "/mnt/e/Blizzard/World of Warcraft/_classic_beta_/Interface/AddOns"
+```
+
+Check that `AddOns/` now holds `SpellTuner`, `SpellTuner_Recorder`, `SpellTuner_Replay` and
+`SpellTuner_Practice`. By hand instead: copy `dist/<name>/SpellTuner` and the three
+`dist/<name>/SpellTuner_*` folders. (The same command against the TBC client's AddOns folder now copies the three
+module folders there too: the TBC client lists them as out of date and never loads them -- they are
+Forever-only and load on demand. Harmless; say if it bothers you.)
+
+**Run.**
+1. At character select, open AddOns: SpellTuner shows `1.0.0-alpha.2`; the three modules are listed
+   (they may say "load on demand"). Leave all four enabled. Log in as Healroot and type
+   `/console scriptErrors 1` once.
+2. **Zero errors at login.** No Lua error box, no "blocked from an action" dialog. If either
+   appears, note its text, then go on -- step 6 will copy it.
+3. **The window.** `/st`. A dark window titled SpellTuner opens with **Spells** and **Settings**
+   down the left. Spells shows one line saying the spells arrive in the next build. `/st` again or
+   Esc closes it. Drag it by the title; `/reload` and `/st`: it reopens on the view you left.
+4. **The module switches.** `/st modules` (or Settings -> Modules). Three rows, all **off**.
+   - Tick **Recorder**: chat says `Recorder: loaded`, the row says `loaded`.
+   - Tick **Practice**: Replay and Practice switch on and load too (chat, one line each), because
+     Practice needs Replay and Replay needs Recorder.
+   - `/reload`. All three come back `loaded` without touching anything.
+   - Untick **Recorder**: all three go `off - unloads at your next /reload`. `/reload`: all three
+     `off`, and the AddOns list at character select still shows them enabled (SpellTuner never
+     disables an addon; it just does not load it).
+   - Tell me if any row said `could not load: <WORD>` and the word.
+5. **The debug console.** `/st debug`. The console opens and, under its buttons, a line
+   `Errors this session: none` (or a count). There is no "Regen test" button on Forever.
+6. **The dump.** `/st dump`. A copy box opens: Ctrl+A, Ctrl+C, and paste it into
+   `docs/probe/<build>-m1.md`. It has `== client`, `== capabilities`, `== saved variables`,
+   `== modules`, `== errors`, `== debug log`. Two lines matter most: `error handler: installed`
+   (if it says `not installed`, the client refused our error handler -- say so) and
+   `forbidden events: COMBAT_LOG_EVENT_UNFILTERED`.
+7. **The probe still answers.** `/st probe`: the report opens as before (the probe now answers
+   through the new core). `/st probe clog` only prints that clog is gone.
+8. Paste the dump back and tell me: any error or dialog at step 2, anything that did not happen as
+   written in steps 3-7.
+
+**If it does not load:** the dump cannot run either -- copy the error text instead, and whether
+`/st probe` still works (the probe keeps its own slash command when the core fails).
+
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the
 raw numbers. `/md profile` output is welcome with any report. I turn them into

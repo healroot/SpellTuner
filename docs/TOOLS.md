@@ -63,6 +63,7 @@ Run all of them before committing anything the engine, the recorder or a tooltip
 | `corecheck.lua` | **the shared kernel** (T1b, forever and tbc): events, callbacks, ticker, the forbidden-event guard, the command registry, `Print` through the adapter; on Forever `/st probe` through the kernel and nothing registering the combat log; on TBC its talents, profile, login order and slash chain as before |
 | `modulecheck.lua` | **the modules and the Forever window** (T2, forever): the three siblings declared in dependency order, off means never loaded, on loads what it needs first and at every login, off switches off what needs it, a refused load says why, the sibling TOCs, `/st` opening and closing the window, the Modules pane switching, every string on the window ASCII. The stub loads a sibling from `Modules/<Name>/` the way the client loads a LoadOnDemand addon |
 | `svcheck.lua` | **the SavedVariables guard** (T4, forever and tbc): a first run, a database that came back with its session, one without a stamp, a broken one replaced rather than indexed, the guard running before the probe, the line in the debug log; TBC's database never stamped |
+| `consolecheck.lua` | **errors, the console and `/st dump`** (T3, forever and tbc): our error recorded once and counted, shown to the client once; another addon's passed through; a sibling's counted as ours; the handler never raising; the 50-entry cap; the dump's sections in order, escaped to ASCII; `/st debug` with the error count and no Regen test button on Forever; every Forever TOC's version; TBC with no handler and its button kept |
 | `probecheck.lua` | **the Forever probe** (T0) under the stub's `forever` profile: never raises, a missing function is "absent" not an error, a secret is "secret" not a sum, a bad event is caught, the report is ASCII with no bare pipe and keyed by build, the sections are in order, the description dump is whole, the TOC that loaded is named; since **T0c** also a blocked action recorded with what the probe was doing, the combat log registered only by `/st probe clog`, the secret readings and restriction state, Q1 by bonus damage or level with was/now lines, Q6 at level 10, and the release carrying exactly three TOCs |
 
 ```bash
@@ -72,7 +73,7 @@ for t in simcheck reccheck replaycheck replayui runcheck reviewui navui dashui \
   printf "%-13s " "$t"; bash tools/run.sh tools/$t.lua 2>&1 | tail -1
 done
 # the suites that run under both flavours
-for t in adaptercheck corecheck svcheck; do
+for t in adaptercheck corecheck svcheck consolecheck; do
   for f in forever tbc; do
     printf "%-13s " "$t/$f"; bash tools/run.sh --flavour $f tools/$t.lua 2>&1 | tail -1
   done
