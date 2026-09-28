@@ -47,6 +47,13 @@ MD.API.Bind({
     SpellBonusHealing = "GetSpellBonusHealing",
 })
 
+-- T15 (Modules/SpellTuner_Replay/Kit_Forever.lua): crit chance per school,
+-- plain out of combat (m2 296), UNKNOWN in combat -- same reasoning as
+-- SpellBonusHealing above.
+MD.API.Bind({
+    SpellCritChance = "GetSpellCritChance",
+})
+
 -- T9 (UI/SpellTip_Forever.lua): registers the block on every spell tooltip
 -- through TooltipDataProcessor.AddTooltipPostCall (docs/tasks/T9-spell-tooltip.md
 -- Facts: present on 70009, UNVERIFIED whether it fires for the spellbook,

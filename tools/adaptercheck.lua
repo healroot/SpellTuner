@@ -48,7 +48,13 @@ local FOREVER_ONLY_NAMES = {
     "OnSpellTooltip",
     -- T12: Spells/Measure.lua's own bonus-healing read.
     "SpellBonusHealing",
+    -- T15: Modules/SpellTuner_Replay/Kit_Forever.lua's own crit reading.
+    "SpellCritChance",
 }
+-- T15: Client/API_TBC.lua's own binding -- GetSpellInfo, so
+-- Engine/SimModel.lua and Engine/SimPlanner.lua's four call sites can go
+-- through MD.API.SpellName(id) on either client.
+local TBC_ONLY_NAMES = { "SpellName" }
 
 --------------------------------------------------------------------------------
 -- 1-9: both flavours
@@ -60,6 +66,8 @@ do
     for _, n in ipairs(ADDON_NAMES) do allNames[#allNames + 1] = n end
     if flavour == "forever" then
         for _, n in ipairs(FOREVER_ONLY_NAMES) do allNames[#allNames + 1] = n end
+    else
+        for _, n in ipairs(TBC_ONLY_NAMES) do allNames[#allNames + 1] = n end
     end
 
     local allFunctions = true

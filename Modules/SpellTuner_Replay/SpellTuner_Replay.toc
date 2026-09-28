@@ -7,5 +7,7 @@
 ## LoadOnDemand: 1
 
 Module.lua
+Kit_Forever.lua
+Engine\SimModel.lua
 
 Ready.lua

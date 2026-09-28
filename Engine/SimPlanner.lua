@@ -936,7 +936,7 @@ function SP.Classify(rec, scenario, plan, kit)
                 detail.overheal[sd.family] = (detail.overheal[sd.family] or 0) + 1
             elseif label == "unclassified" then
                 detail.unclassified[#detail.unclassified + 1] =
-                    string.format("%s at %.0fs", GetSpellInfo(spellID) or spellID, t)
+                    string.format("%s at %.0fs", MD.API.SpellName(spellID) or spellID, t)
             end
         end,
     })
@@ -1171,7 +1171,7 @@ function SP.Card(rec, best, bestResult, replayResult, baselineResults, cls, vali
             local function SpellName(id)
                 local sd = id and SD2.spells[id]
                 if sd then return string.format("%s R%d", sd.family, sd.rank) end
-                return (names and names[id]) or (id and GetSpellInfo(id)) or "?"
+                return (names and names[id]) or (id and MD.API.SpellName(id)) or "?"
             end
             local who = first.tgt and rec and rec.roster and rec.roster[first.tgt]
             local onWhom = who and (" -> " .. (who.name or "?")) or ""

@@ -1364,9 +1364,9 @@ function SM:Validate(rec, kit)
         if spend > 0 and mana / spend >= 0.10 and MD.SpellData.spells[spellID] then
             local d = MD.Calibration and MD.Calibration:Drift(spellID)
             if d == nil then
-                uncalibrated[#uncalibrated + 1] = GetSpellInfo(spellID) or spellID
+                uncalibrated[#uncalibrated + 1] = MD.API.SpellName(spellID) or spellID
             elseif d >= 0.03 then
-                drifted = string.format("%s is %.0f%% off the model", GetSpellInfo(spellID) or spellID, d * 100)
+                drifted = string.format("%s is %.0f%% off the model", MD.API.SpellName(spellID) or spellID, d * 100)
             end
         end
     end

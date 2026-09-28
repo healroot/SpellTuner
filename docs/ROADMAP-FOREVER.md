@@ -280,9 +280,13 @@ the HEAL amount's gross-or-effective question if §37's full-health Healing Touc
 see SpellTuner's `MD`, `Ready.lua` (last) fires `MODULE_LOADED`; `modulecheck` 14. **T13e** (`007d1d1`) -- the
 probe asks whether a status bar hands back a secret it was given (planner ruling 1): three `bar ...`
 readings and `UnitHealthMissing(party1)`, out of combat and in the snapshot; `probecheck` 73.
-**T13a** -- `apicheck.py` rule 8: an `MD:On` handler's argument compared, indexed, measured or
+**T13a** (`797ef17`) -- `apicheck.py` rule 8: an `MD:On` handler's argument compared, indexed, measured or
 `type()`-tested before `IsSecret` asks about it is a finding; the one it found (`Core_Forever.lua`,
 `ADDON_LOADED`) is guarded; `apicheck --selftest` 10 of 10.
+**T15** -- the Replay module carries `Kit_Forever.lua` and `Engine\SimModel.lua`: `MD.RankMath:SpellKit()`
+and `MD.SpellData` built from `MD.Book` (Healing Touch, Regrowth, Rejuvenation, Swiftmend eating the
+whole HoT, Tranquility excluded; Wild Growth skipped and named); the engine's four spell-name
+lookups go through `MD.API.SpellName`; `kitcheck` 7.
 
 ### M4 — practice (phase 4) → `1.0.0-beta.3`
 
