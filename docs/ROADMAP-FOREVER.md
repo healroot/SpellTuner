@@ -132,6 +132,15 @@ pane · T3 debug console with dedupe and `/st dump` · T4 SavedVariables guard (
 workaround if Q7 says so) · T5 harness `forever` profile + secret type + TOC-driven file list ·
 T6 `apicheck.py`.
 
+Order taken by the lead (2026-09-28), each for a dependency: **T0d** first (the probe stops
+registering the combat log, which every M1 suite asserts nothing does), **T5** (the adapter's suite
+needs the probe-faithful stub), **T1**, **T1b** (the core split off T2: the registry needs a kernel
+the Forever TOC can load), **T6** (so it first passes on that kernel), **T2**, **T4** (T3's dump
+prints what the guard records), **T3**.
+
+Done: **T0d** -- 2026-09-28 (`docs/tasks/T0d-probe-no-clog.md`, lead-accepted): `/st probe clog`
+gone, Q1 kept per build; `probecheck` 58 ok.
+
 ### M2 — tooltips and the dashboard (phase 2) → `1.0.0-beta.1`
 
 *Exit:* hovering any spell of any class in the **spellbook**, on a bar or in chat shows the
