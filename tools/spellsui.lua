@@ -42,10 +42,25 @@ S.AddSpell(92011, "GapFamily", "Rank 2",
     function() return "Heals a friendly target for 40 to 50." end,
     { cast = 0, cost = 25, level = 10 })
 
--- item 1/Other section: a family with no heal/damage/absorb numbers at all.
+-- item 1/Other section: a family with no heal/damage/absorb numbers at all,
+-- but a mana cost -- T10c: a kindless family needs one to be worth comparing
+-- on this table (a shapeshift costs mana; Facts).
 S.AddSpell(92100, "Bearform", "Passive",
     function() return "You transform into a bear, increasing armor." end,
-    { cast = 0, noCost = true, level = 10 })
+    { cast = 0, cost = 30, level = 10 })
+
+-- T10c: a passive with no mana cost -- left off the pane, counted, and still
+-- in the export.
+S.AddSpell(92200, "Oakskin", "Passive",
+    function() return "Increases your armor." end,
+    { cast = 0, noCost = true, passive = true, level = 10 })
+
+-- T10c: a kindless, non-passive spell whose description carries no amount at
+-- all -- no mana cost either, so it is left off the pane the same as a
+-- passive.
+S.AddSpell(92201, "Swing", "",
+    function() return "A melee attack." end,
+    { cast = 0, noCost = true, level = 1 })
 
 -- item 6: a spell costly enough that the chain-cast interval does NOT let
 -- regen alone cover it (Engine/RankMath.lua's CastsToOOM: "inf" whenever
@@ -244,7 +259,7 @@ do
     local r2 = book.spells[1058]
 
     local headerRow = RowFor(pane.lastRows, FamilyRow(pane.lastRows, "Rejuvenation"))
-    local headerText = CellText(headerRow, "rank")
+    local headerText = CellText(headerRow, "wide") -- T10c: family text moved off the Rank column
 
     local r2Row = RowFor(pane.lastRows, EntryRow(pane.lastRows, 1058))
     local r2RankCell = CellText(r2Row, "rank")
@@ -498,6 +513,133 @@ do
         string.format("heals=%s damage=%s other=%s firstFamily=%d wrath=%d firstOther=%s emptyDamageAbsent=%s",
             tostring(heals), tostring(damage), tostring(other), familyIdx[1][1], familyIdx[2][1], tostring(otherIdx),
             tostring(not hasDamageSection)))
+end
+
+--------------------------------------------------------------------------------
+-- 13 (T10c): family, section, note and Other rows are one line across the
+-- table, never inside the Rank column
+--------------------------------------------------------------------------------
+do
+    pane = OpenPane()
+    local rows = pane.lastRows or {}
+    local bad
+    local checked = 0
+    local SPELL_COL_KEYS = { "rank", "level", "mana", "value", "permana", "persec", "cast", "toOOM", "note" }
+
+    for _, r in ipairs(rows) do
+        local row = RowFor(rows, r)
+        if not row then
+            bad = bad or ("no row frame for kind=" .. tostring(r.kind))
+        else
+            if r.kind == "section" or r.kind == "family" or r.kind == "note" or r.kind == "other" then
+                checked = checked + 1
+                local wideText = CellText(row, "wide")
+                local rankText = CellText(row, "rank")
+                local wideWrap = row.cells.wide and row.cells.wide:GetWordWrap()
+                if not bad and (wideText == nil or wideText == "") then
+                    bad = "kind=" .. r.kind .. " wide cell empty"
+                end
+                if not bad and rankText ~= "" then
+                    bad = "kind=" .. r.kind .. " rank cell not empty: " .. tostring(rankText)
+                end
+                if not bad and wideWrap ~= false then
+                    bad = "kind=" .. r.kind .. " wide.wordWrap=" .. tostring(wideWrap)
+                end
+            end
+            for _, key in ipairs(SPELL_COL_KEYS) do
+                local fs = row.cells[key]
+                if fs and fs.GetWordWrap and fs:GetWordWrap() ~= false and not bad then
+                    bad = "kind=" .. tostring(r.kind) .. " col=" .. key .. " wordWrap not false"
+                end
+            end
+        end
+    end
+
+    check("family, section, note and Other rows are one line across the table, never inside the Rank column",
+        bad == nil and checked > 0, bad or ("checked=" .. checked))
+end
+
+--------------------------------------------------------------------------------
+-- 14 (T10c): passives and spells with no mana cost are left off the pane,
+-- counted, and kept in the export
+--------------------------------------------------------------------------------
+do
+    pane = OpenPane()
+    local rows = pane.lastRows or {}
+    local sawOakskin, sawSwing = false, false
+    local noteText
+    for _, r in ipairs(rows) do
+        local hay
+        if r.kind == "family" then hay = r.family.name
+        elseif r.kind == "other" then hay = r.text
+        elseif r.kind == "note" then
+            hay = r.text
+            if r.text:find("passives and spells with no mana cost", 1, true) then noteText = r.text end
+        elseif r.kind == "section" then hay = r.text end
+        if hay then
+            if hay:find("Oakskin", 1, true) then sawOakskin = true end
+            if hay:find("Swing", 1, true) then sawSwing = true end
+        end
+    end
+
+    local exportCapture
+    do
+        local origShow = MD.ShowCopyPopup
+        MD.ShowCopyPopup = function(self, title, text) exportCapture = text end
+        pane.exportBtn:GetScript("OnClick")(pane.exportBtn)
+        MD.ShowCopyPopup = origShow
+    end
+    local exportHasBoth = exportCapture ~= nil
+        and exportCapture:find("name: Oakskin", 1, true) ~= nil
+        and exportCapture:find("name: Swing", 1, true) ~= nil
+
+    check("passives and spells with no mana cost are left off the pane, counted, and kept in the export",
+        not sawOakskin and not sawSwing
+        and noteText == "2 passives and spells with no mana cost not listed - Export has them"
+        and exportHasBoth,
+        string.format("sawOakskin=%s sawSwing=%s note=%q exportHasBoth=%s",
+            tostring(sawOakskin), tostring(sawSwing), tostring(noteText), tostring(exportHasBoth)))
+end
+
+--------------------------------------------------------------------------------
+-- 15 (T10c): hovering a family or an Other row shows its full name
+--------------------------------------------------------------------------------
+do
+    pane = OpenPane()
+    local rows = pane.lastRows or {}
+    local familyRow = FamilyRow(rows, "Healing Touch")
+    local otherRow
+    for _, r in ipairs(rows) do
+        if r.kind == "other" and r.family and r.family.name == "Bearform" then otherRow = r end
+    end
+
+    local function LinesContain(text)
+        for _, line in ipairs(GameTooltip.lines or {}) do
+            if type(line[1]) == "string" and line[1]:find(text, 1, true) then return true end
+        end
+        return false
+    end
+
+    local famRowFrame = RowFor(rows, familyRow)
+    local famEnter = famRowFrame and famRowFrame:GetScript("OnEnter")
+    GameTooltip.lines = nil
+    if famEnter then famEnter(famRowFrame) end
+    local famOk = LinesContain("Healing Touch")
+    local famLeave = famRowFrame and famRowFrame:GetScript("OnLeave")
+    if famLeave then famLeave(famRowFrame) end
+
+    local otherRowFrame = RowFor(rows, otherRow)
+    local otherEnter = otherRowFrame and otherRowFrame:GetScript("OnEnter")
+    GameTooltip.lines = nil
+    if otherEnter then otherEnter(otherRowFrame) end
+    local otherOk = LinesContain("Bearform")
+    local otherLeave = otherRowFrame and otherRowFrame:GetScript("OnLeave")
+    if otherLeave then otherLeave(otherRowFrame) end
+
+    check("hovering a family or an Other row shows its full name",
+        familyRow ~= nil and otherRow ~= nil and famOk and otherOk,
+        string.format("familyRow=%s otherRow=%s famOk=%s otherOk=%s",
+            tostring(familyRow ~= nil), tostring(otherRow ~= nil), tostring(famOk), tostring(otherOk)))
 end
 
 print(string.format("\n%d ok, %d failed", ok, #fails))

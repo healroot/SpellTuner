@@ -178,6 +178,20 @@ local SPELL_ROW_HEIGHT = 16 -- must track UI/Dashboard_Rows.lua's own ROW_HEIGHT
 local GREY = "|cff999999"
 local RESET = "|r"
 
+-- The probe's own escaping (Client/Probe.lua's Esc, duplicated -- this pane
+-- takes no dependency on Client/Probe.lua, Facts/Rules): a literal backslash
+-- doubled first, then a pipe as "||", then any non-ASCII/control byte as
+-- "\ddd" so rendered/tooltip text and the export stay ASCII with no bare pipe
+-- either way. Moved above RenderSpellRow/SpellRowEnter (T10c) since both now
+-- put a client-read name on screen, not just in the export.
+local function Esc(s)
+    if type(s) ~= "string" then return "" end
+    local step1 = s:gsub("\\", "\\\\")
+    local step2 = step1:gsub("|", "||")
+    local step3 = step2:gsub("[^ -~]", function(c) return string.format("\\%03d", c:byte()) end)
+    return step3
+end
+
 -- A number that is nil renders "-", never 0 (CLAUDE.md); mirrors
 -- UI/SpellTip_Forever.lua's own Num, duplicated because that file is not a
 -- dependency this pane is allowed to take on (Facts: only Book/SpellTip/Clock).
@@ -231,21 +245,22 @@ end
 local function RenderSpellRow(row, r, color)
     if r.kind == "section" then
         ClearCells(row)
-        row.cells.rank:SetText(UI.accentHex .. r.text .. RESET)
+        row.cells.wide:SetText(UI.accentHex .. r.text .. RESET)
     elseif r.kind == "family" then
         ClearCells(row)
-        local text = r.family.name
+        local text = Esc(r.family.name)
         if r.family.suggested and r.family.suggested.rank then
             text = text .. "   suggested: Rank " .. tostring(r.family.suggested.rank)
         end
-        row.cells.rank:SetText(text)
+        row.cells.wide:SetText(text)
     elseif r.kind == "note" then
         ClearCells(row)
-        row.cells.rank:SetText(GREY .. r.text .. RESET)
+        row.cells.wide:SetText(GREY .. r.text .. RESET)
     elseif r.kind == "other" then
         ClearCells(row)
-        row.cells.rank:SetText(r.text)
+        row.cells.wide:SetText(r.text)
     else -- "entry"
+        row.cells.wide:SetText("")
         local e = r.entry
         local rankText = e.rank and ("R" .. e.rank) or "-"
         if e.suggested then rankText = rankText .. " *" end
@@ -264,12 +279,43 @@ end
 -- Hovering a row shows the spell's own tooltip block (T9's builder), anchored
 -- to the right of the whole window -- `frame` is this file's own module-level
 -- local, the nav window itself, set once CreateDashboard runs.
-local function SpellRowEnter(row, r)
-    if not r or r.kind ~= "entry" or not r.entry or type(r.entry.id) ~= "number" then return end
+--
+-- T10c: a family or Other row's own line is truncated with "..." on the pane
+-- (SetWordWrap(false), UI/Dashboard_Rows.lua), so hovering it must show the
+-- full text instead -- a family's name, its suggested rank and how many ranks
+-- are listed, or an Other row's name, rank text, mana and cast.
+local function OpenSpellTooltip(row)
     GameTooltip:SetOwner(row, "ANCHOR_NONE")
     if frame then
         GameTooltip:SetPoint("TOPLEFT", frame, "TOPRIGHT", 4, 0)
     end
+end
+
+local function SpellRowEnter(row, r)
+    if not r then return end
+    if r.kind == "family" then
+        OpenSpellTooltip(row)
+        GameTooltip:AddLine(Esc(r.family.name))
+        if r.family.suggested and r.family.suggested.rank then
+            GameTooltip:AddLine("suggested: Rank " .. tostring(r.family.suggested.rank))
+        end
+        GameTooltip:AddLine("ranks listed: " .. tostring(#r.family.ranks))
+        GameTooltip:Show()
+        return
+    end
+    if r.kind == "other" then
+        local rep = r.family and (r.family.maxKnown or r.family.ranks[1])
+        if not rep then return end
+        OpenSpellTooltip(row)
+        GameTooltip:AddLine(Esc(rep.name or ""))
+        GameTooltip:AddLine(rep.rankText or "-")
+        GameTooltip:AddLine("mana: " .. ManaCellText(rep))
+        GameTooltip:AddLine("cast: " .. CastCellText(rep))
+        GameTooltip:Show()
+        return
+    end
+    if r.kind ~= "entry" or not r.entry or type(r.entry.id) ~= "number" then return end
+    OpenSpellTooltip(row)
     local ok, lines = pcall(MD.SpellTip.Lines, MD.SpellTip, r.entry.id)
     if ok and type(lines) == "table" then
         for _, line in ipairs(lines) do
@@ -319,13 +365,31 @@ local function BuildSpellRows(book, pool)
 
     -- T10b: a title row before each non-empty section, so a reader can tell
     -- where one ends -- none at all when a section has no family in it.
-    local hasHeal, hasDamage, hasOther = false, false, false
+    local hasHeal, hasDamage = false, false
     for _, name in ipairs(book.order) do
         local kind = book.families[name].kind
         if kind == "heal" then hasHeal = true
-        elseif kind == "damage" then hasDamage = true
-        elseif not kind then hasOther = true end
+        elseif kind == "damage" then hasDamage = true end
     end
+
+    -- T10c: a kindless family is only USEFUL on this table when it has a mana
+    -- cost to compare -- a passive or a free spell has nothing to put in Mana/
+    -- Per mana/Per second/To OOM. Those are counted, never listed, and the
+    -- Export (ExportText) still dumps every one of them (Files/Goal).
+    local listedOther, skippedOther = {}, 0
+    for _, name in ipairs(book.order) do
+        local fam = book.families[name]
+        if not fam.kind then
+            local rep = fam.maxKnown or fam.ranks[1]
+            local hasCost = rep.cost and (rep.cost.amount ~= nil or rep.cost.percent ~= nil)
+            if not rep.passive and hasCost then
+                listedOther[#listedOther + 1] = fam
+            else
+                skippedOther = skippedOther + 1
+            end
+        end
+    end
+    local hasOther = #listedOther > 0 or skippedOther > 0
 
     if hasHeal then rows[#rows + 1] = { kind = "section", text = "Heals" } end
     for _, name in ipairs(book.order) do
@@ -336,13 +400,14 @@ local function BuildSpellRows(book, pool)
         if book.families[name].kind == "damage" then AddFamily(name) end
     end
     if hasOther then rows[#rows + 1] = { kind = "section", text = "Other" } end
-    for _, name in ipairs(book.order) do
-        local fam = book.families[name]
-        if not fam.kind then
-            local rep = fam.maxKnown or fam.ranks[1]
-            rows[#rows + 1] = { kind = "other",
-                text = fam.name .. "  " .. (rep.rankText or "-") .. "  " .. ManaCellText(rep) .. "  " .. CastCellText(rep) }
-        end
+    for _, fam in ipairs(listedOther) do
+        local rep = fam.maxKnown or fam.ranks[1]
+        rows[#rows + 1] = { kind = "other", family = fam,
+            text = Esc(fam.name) .. "  " .. (rep.rankText or "-") .. "  " .. ManaCellText(rep) .. "  " .. CastCellText(rep) }
+    end
+    if skippedOther > 0 then
+        rows[#rows + 1] = { kind = "note",
+            text = tostring(skippedOther) .. " passives and spells with no mana cost not listed - Export has them" }
     end
     return rows
 end
@@ -373,18 +438,6 @@ local function RefreshSpellbookPane(pane)
 
     pane.lastRefresh = GetTime()
     pane.refreshCount = (pane.refreshCount or 0) + 1 -- tools/spellsui.lua's own hook
-end
-
--- The probe's own escaping (Client/Probe.lua's Esc, duplicated -- this pane
--- takes no dependency on Client/Probe.lua, Facts/Rules): a literal backslash
--- doubled first, then a pipe as "||", then any non-ASCII/control byte as
--- "\ddd" so the export stays ASCII with no bare pipe either way.
-local function Esc(s)
-    if type(s) ~= "string" then return "" end
-    local step1 = s:gsub("\\", "\\\\")
-    local step2 = step1:gsub("|", "||")
-    local step3 = step2:gsub("[^ -~]", function(c) return string.format("\\%03d", c:byte()) end)
-    return step3
 end
 
 -- "<n> Mana" / "<p>% of base mana" / "free" / "unknown" -- the probe's own

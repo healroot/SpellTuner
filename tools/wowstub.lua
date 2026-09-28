@@ -371,6 +371,10 @@ function FrameMT:CreateFontString() return Child("FontString", self) end
 function FrameMT:CreateTexture() return Child("Texture", self) end
 function FrameMT:GetFontString() self.fs = self.fs or Child("FontString", self); return self.fs end
 function FrameMT:SetText(t) self.text = t end
+-- T10c: a font string's word wrap, default true (the client's) -- recorded so
+-- a harness can assert a cell was told not to wrap.
+function FrameMT:SetWordWrap(v) self.wordWrap = v and true or false end
+function FrameMT:GetWordWrap() if self.wordWrap == nil then return true end return self.wordWrap end
 -- SetFormattedText was falling through to the no-op fallback, so every string
 -- written with it was invisible to the harnesses -- including their bare-pipe
 -- scans (v0.11.1)

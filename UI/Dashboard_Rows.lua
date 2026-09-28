@@ -105,7 +105,21 @@ function MD.DashboardParts.CreateTable(parent, width, opts)
                 fs:SetPoint("LEFT", row, "LEFT", col.x, 0)
                 fs:SetWidth(col.w)
                 fs:SetJustifyH("LEFT")
+                if opts and opts.render then fs:SetWordWrap(false) end -- T10c, generic path only
                 row.cells[col.key] = fs
+            end
+
+            -- T10c (generic path only): a full-width cell for a family header,
+            -- section title, note or Other line -- text that names a spell
+            -- rather than comparing ranks, so it must never wrap into the
+            -- 56px Rank column and overprint the rows below it.
+            if opts and opts.render then
+                local wide = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                wide:SetPoint("LEFT", row, "LEFT", 8, 0)
+                wide:SetWidth(width - 60 - 12)
+                wide:SetJustifyH("LEFT")
+                wide:SetWordWrap(false)
+                row.cells.wide = wide
             end
         end
         row:Show()
@@ -118,6 +132,7 @@ function MD.DashboardParts.CreateTable(parent, width, opts)
     function api:Release()
         for _, row in ipairs(usedRows) do
             row.spellID, row.variant, row.isHeader, row.data = nil, nil, nil, nil
+            if row.cells.wide then row.cells.wide:SetText("") end -- T10c: cleared like the rest
             row.highlight:Hide()
             row:Hide()
             rowPool[#rowPool + 1] = row
