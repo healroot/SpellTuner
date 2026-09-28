@@ -5,6 +5,7 @@
 -- because what is true at time t has to be a pure function of the run before a
 -- window can be trusted to draw it.
 local here = arg[0]:match("^(.*)/[^/]+$")
+HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
 local MD = dofile(here .. "/harness.lua"); arg[0] = a0
 local RT, RR = MD.RunTimeline, MD.RunRecorder

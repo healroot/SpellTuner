@@ -139,7 +139,11 @@ the Forever TOC can load), **T6** (so it first passes on that kernel), **T2**, *
 prints what the guard records), **T3**.
 
 Done: **T0d** -- 2026-09-28 (`docs/tasks/T0d-probe-no-clog.md`, lead-accepted): `/st probe clog`
-gone, Q1 kept per build; `probecheck` 58 ok.
+gone, Q1 kept per build; `probecheck` 58 ok. **T5** -- 2026-09-28 (`docs/tasks/T5-harness-forever.md`):
+`tools/run.sh --flavour forever|tbc`, the harness's file list read from the flavour's TOC, every
+harness tool declaring its flavour, the stub's Forever profile keeping secrets as build 70009 does
+and pruned to the 69893 baseline (`tools/data/forever_api.json`, the kit's, MIT);
+`tools/forevercheck.lua` 13 ok.
 
 ### M2 — tooltips and the dashboard (phase 2) → `1.0.0-beta.1`
 

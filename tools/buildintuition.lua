@@ -37,6 +37,7 @@ for _, f in ipairs(files) do
 end
 _G.SpellTunerDB, _G.ManaDemonDB = nil, nil
 
+HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
 local MD = dofile(here .. "/harness.lua"); arg[0] = a0
 local IN = MD.Intuition

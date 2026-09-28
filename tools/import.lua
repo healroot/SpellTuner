@@ -76,6 +76,7 @@ if not realDB then print("import: " .. file .. " holds no SpellTunerDB."); os.ex
 local preloaded = {}
 for key, c in pairs(realDB.char or {}) do preloaded[key] = { profile = c.profile, mp5 = c.mp5 } end
 
+HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
 local MD = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB

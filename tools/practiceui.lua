@@ -6,6 +6,7 @@
 -- Practice list. Under the stub: frames store what they paint and scripts are
 -- called by hand, the way the client would call them.
 local here = arg[0]:match("^(.*)/[^/]+$")
+HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
 local MD = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB

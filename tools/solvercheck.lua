@@ -7,6 +7,7 @@
 -- no overheal term anywhere in the code, and the same deficit must pull a
 -- different spell depending only on how the damage is spread.
 local here = arg[0]:match("^(.*)/[^/]+$")
+HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
 local MD = dofile(here .. "/harness.lua"); arg[0] = a0
 local SM, SP, SV = MD.SimModel, MD.SimPlanner, MD.SimSolver

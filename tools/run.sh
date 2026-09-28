@@ -20,6 +20,15 @@ if [ ! -x "$LUA" ]; then
       && cd lua-5.1.5 && make posix >/dev/null 2>&1 )
 fi
 
-SCRIPT="${1:?usage: tools/run.sh <script.lua> [args]}"
+if [ "${1:-}" = "--flavour" ]; then
+    case "${2:-}" in
+        forever|tbc) ;;
+        *) echo "usage: tools/run.sh [--flavour forever|tbc] <script.lua> [args]" >&2; exit 2 ;;
+    esac
+    export ST_FLAVOUR="$2"
+    shift 2
+fi
+
+SCRIPT="${1:?usage: tools/run.sh [--flavour forever|tbc] <script.lua> [args]}"
 shift
 exec "$LUA" "$ROOT/${SCRIPT#./}" "$ROOT" "$@"

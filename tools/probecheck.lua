@@ -97,6 +97,7 @@ end
 --------------------------------------------------------------------------------
 -- Step 1: the TBC line
 --------------------------------------------------------------------------------
+HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
 local MD1 = dofile(here .. "/harness.lua"); arg[0] = a0
 
@@ -580,9 +581,12 @@ end
 do
     local seg1 = Between(report1, "\n== readings now\n", "\n== combat snapshot\n")
     local seg2 = Between(report2, "\n== combat snapshot\n", "\n== events seen this session\n")
+    -- T5: build 70009 answered HasSecretRestrictions true and party1's health
+    -- percent secret whether or not combat was running (Facts) -- the sixth
+    -- report's ooc reading is not "false"/"100" any more.
     check("the secret readings are taken out of combat and in the snapshot",
         LabelsInOrder(seg1) and LabelsInOrder(seg2)
-        and Has(seg1, "C_Secrets.HasSecretRestrictions() = false") and Has(seg1, "UnitHealthPercent(party1) = 100")
+        and Has(seg1, "C_Secrets.HasSecretRestrictions() = true") and Has(seg1, "UnitHealthPercent(party1) = <secret>")
         and Has(seg2, "C_Secrets.HasSecretRestrictions() = true") and Has(seg2, "UnitHealthPercent(party1) = <secret>"))
 end
 

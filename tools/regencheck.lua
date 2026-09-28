@@ -10,6 +10,7 @@
 -- 16): the reported spirit tick, a constant 17 on a 2.00s beat, and four
 -- overlapping 3.00s streams of 13-15.
 local here = arg[0]:match("^(.*)/[^/]+$")
+HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
 local MD = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB

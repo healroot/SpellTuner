@@ -9,7 +9,16 @@ bash tools/run.sh tools/<script>.lua [args]
 ```
 
 `run.sh` builds a real Lua 5.1.5 into `tools/.lua` on first use (gitignored), then runs the
-script against this checkout. **It passes the checkout root as `arg[1]`**, so a script's own
+script against this checkout. **`--flavour forever|tbc`** (first, before the script) picks which
+client the harness loads (since T5, 2026-09-28): `tools/harness.lua` reads the file list out of
+that flavour's TOC (`SpellTuner_Mainline.toc` whole; `SpellTuner_TBC.toc` minus `UI/` other than
+`UI/Summary.lua` and minus `Integrations/`), and every tool declares the flavours it runs under
+(`HARNESS_FLAVOUR = "tbc"` before it loads the harness; no declaration means forever). Run a tool
+under a flavour it does not declare and it prints `skip: <tool> runs under <flavours> only`. The
+`forever` profile keeps secrets the way build 70009 does (current health and power always, a party
+member's max health always, `GetManaRegen` in combat, auras raise in combat, the combat log
+registration fires `ADDON_ACTION_FORBIDDEN`) and removes every global function the 69893 API
+baseline (`tools/data/forever_api.json`, the forever-addon-kit's, MIT) does not have. **It passes the checkout root as `arg[1]`**, so a script's own
 arguments start at `arg[2]` — the older tools survive reading from `arg[1]` only because
 their parsers happen to reject a path.
 
@@ -39,12 +48,13 @@ Run all of them before committing anything the engine, the recorder or a tooltip
 | `practiceui.lua` | practice from the screen: panel, Start, presses on frames and keys over them, pause, End, the replay, Review's Practice list |
 | `spelltip.lua` | the spell tooltip (v0.14.9): druid only, once per showing, off means off, and **every number on it is the model's own** — the tick and bloom the simulator heals with, the dashboard's heal |
 | `migrate.lua` | the rename (2026-09-27): a ManaDemon WTF comes up as SpellTuner's with every setting, recording and practice fight; `/md` still answers |
+| `forevercheck.lua` | **the Forever TOC under the Forever profile** (T5, forever): loads clean, loads exactly the TOC's files, never tries the combat log, and the stub keeps secrets and absences as build 70009 does -- so arithmetic on current health trips here as it does in the client |
 | `probecheck.lua` | **the Forever probe** (T0) under the stub's `forever` profile: never raises, a missing function is "absent" not an error, a secret is "secret" not a sum, a bad event is caught, the report is ASCII with no bare pipe and keyed by build, the sections are in order, the description dump is whole, the TOC that loaded is named; since **T0c** also a blocked action recorded with what the probe was doing, the combat log registered only by `/st probe clog`, the secret readings and restriction state, Q1 by bonus damage or level with was/now lines, Q6 at level 10, and the release carrying exactly three TOCs |
 
 ```bash
 for t in simcheck reccheck replaycheck replayui runcheck reviewui navui dashui \
          regencheck simwindow solvercheck timeline spelltip practice practiceui \
-         migrate probecheck; do
+         migrate probecheck forevercheck; do
   printf "%-13s " "$t"; bash tools/run.sh tools/$t.lua 2>&1 | tail -1
 done
 ```

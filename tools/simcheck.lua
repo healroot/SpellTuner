@@ -9,6 +9,7 @@ local root = arg[1] or "."
 local curve = false
 for i = 1, #arg do if arg[i] == "--curve" then curve = true end end
 
+HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]
 arg[0] = here .. "/harness.lua"
 local MD = dofile(here .. "/harness.lua")

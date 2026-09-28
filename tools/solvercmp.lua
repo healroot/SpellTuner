@@ -24,6 +24,7 @@ local realDB = _G.SpellTunerDB or _G.ManaDemonDB   -- files written before the r
 local pre = {}
 for k, c in pairs(realDB.char or {}) do pre[k] = { profile = c.profile, mp5 = c.mp5 } end
 
+HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
 local MD = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB

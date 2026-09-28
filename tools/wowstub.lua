@@ -15,6 +15,9 @@
 -- against a plain value, #, truthiness or use as a table key (Lua 5.1 gives a table no hook
 -- for them), yet the client raises on ==, #, and table keys -- so a suite passing here does
 -- not prove the code never does one of those to a secret. See the comment on SECRET_MT.
+-- T5: which VALUES the forever profile treats as secret follows the 70009 reports
+-- (docs/probe/1.60.1_70009.md, sixth-ninth) rather than a guess -- current health/power
+-- always secret, a party member's max health always secret, regen secret only in combat.
 -- Run it with tools/run.sh (which builds a Lua 5.1 for you if there is none).
 local S = {}
 _G.STUB = S
@@ -25,6 +28,23 @@ S.now = 0
 -- SpellTuner_Mainline.toc instead (T0c: the Forever line that actually loads
 -- on the client, Q9).
 S.toc = "SpellTuner_TBC.toc"
+
+-- T5: a .toc's load list, in order -- CR stripped, comments and blank lines
+-- skipped, backslashes turned into forward slashes. Used by tools/harness.lua
+-- so the file list is the TOC's own, not a hand-kept copy of it.
+function S.TocFiles(tocName)
+    local files = {}
+    local f = io.open((S.root or ".") .. "/" .. tocName, "r")
+    if not f then return files end
+    for line in f:lines() do
+        line = line:gsub("\r$", "")
+        if line:match("%S") and line:sub(1, 1) ~= "#" then
+            files[#files + 1] = (line:gsub("\\", "/"))
+        end
+    end
+    f:close()
+    return files
+end
 function GetTime() return S.now end
 -- The sub-frame clock the search slices on. In the client this advances inside
 -- a frame while GetTime() does not, which is the whole reason it is used.
@@ -249,6 +269,17 @@ function FrameMT:RegisterEvent(e)
     if S.profile == "forever" and type(S.raiseOnRegister) == "table" and S.raiseOnRegister[e] then
         error('unknown event "' .. tostring(e) .. '"')
     end
+    -- T5, Facts (sixth report, "== events"/"== blocked actions"): the client
+    -- does not raise on this one -- RegisterEvent returns normally, then
+    -- ADDON_ACTION_FORBIDDEN fires with the unnamed caller ("UNKNOWN()"), and
+    -- the event never actually registers. Checked ahead of FOREVER_EVENTS so
+    -- it does not also hit the unknown-event raise below.
+    if S.profile == "forever" and e == "COMBAT_LOG_EVENT_UNFILTERED" then
+        S.forbidden = S.forbidden or {}
+        table.insert(S.forbidden, { event = e })
+        S.Fire("ADDON_ACTION_FORBIDDEN", S.addonName, "UNKNOWN()")
+        return
+    end
     if S.profile == "forever" and not FOREVER_EVENTS[e] then
         error('unknown event "' .. tostring(e) .. '"')
     end
@@ -462,19 +493,39 @@ function S.UseProfile(name)
 
     function UnitAffectingCombat() return S.inCombat end
     function InCombatLockdown() return S.inCombat end
-    -- A stand-in that exercises the secret path -- NOT a claim about what Q2
-    -- (party health readable in combat) actually answers on Forever.
-    function UnitHealth(u)
-        if S.inCombat and u ~= "player" then return S.Secret() end
-        local x = U(u); return x and x.hp or 0
+
+    -- T5, Facts (sixth-eighth reports): current health and power are secret for
+    -- EVERY existing unit, in and out of combat -- unlike the T0c stand-in this
+    -- replaces, the player is not exempt. A unit that does not exist answers
+    -- nil, the same as the percent-style functions always did.
+    local function secretOrNil(u)
+        if not U(u) then return nil end
+        return S.Secret()
     end
+    function UnitHealth(u) return secretOrNil(u) end
+    function UnitPower(u, t) return secretOrNil(u) end
+
+    -- T5, Facts (eighth report): maxima are the one split -- the player's own
+    -- are plain (Core.lua's own mana pool needs them), a party member's are
+    -- secret, in and out of combat either way.
     function UnitHealthMax(u)
-        if S.inCombat and u ~= "player" then return S.Secret() end
-        local x = U(u); return x and x.hpMax or 1
+        if u == "player" then local x = U(u); return x and x.hpMax or 1 end
+        return secretOrNil(u)
+    end
+    function UnitPowerMax(u, t)
+        if u == "player" then return S.manaMax end
+        return secretOrNil(u)
     end
 
     function GetSpellBonusHealing() return S.bonusHealing end
     function GetShapeshiftFormID() return nil end
+
+    -- T5, Facts (seventh report): plain out of combat, secret both returns in
+    -- combat.
+    function GetManaRegen()
+        if S.inCombat then return S.Secret(), S.Secret() end
+        return 69.24, 28.33
+    end
 
     -- Two returns, name and nil, the way the client's UnitName does (a realm
     -- name only on a cross-realm unit) -- T0b's fix for the "Healroot, nil"
@@ -485,28 +536,13 @@ function S.UseProfile(name)
         return nil
     end
 
-    -- T0c: the secret-question globals. Same in-combat-and-not-player gate as
-    -- UnitHealth/UnitHealthMax above -- a stand-in, not a claim about Q2/Q5.
-    function UnitHealthPercent(u, usePredicted, curve)
-        if S.inCombat and u ~= "player" then return S.Secret() end
-        local x = U(u)
-        if not x then return nil end
-        return x.hp / x.hpMax * 100
-    end
-    function UnitHealthMissing(u)
-        if S.inCombat and u ~= "player" then return S.Secret() end
-        local x = U(u)
-        if not x then return nil end
-        return x.hpMax - x.hp
-    end
-    function UnitPowerPercent(u, powerType)
-        if u == "player" then return S.mana / S.manaMax * 100 end
-        return nil
-    end
-    function UnitGetIncomingHeals(u, healer)
-        if U(u) then return 0 end
-        return nil
-    end
+    -- T5: the same always-secret rule as UnitHealth/UnitPower above, for the
+    -- rest of the secret-question globals the eighth report read side by side
+    -- with them.
+    function UnitHealthPercent(u, usePredicted, curve) return secretOrNil(u) end
+    function UnitHealthMissing(u) return secretOrNil(u) end
+    function UnitPowerPercent(u, powerType) return secretOrNil(u) end
+    function UnitGetIncomingHeals(u, healer) return secretOrNil(u) end
     function UnitIsDeadOrGhost(u) return false end
 
     Enum = {
@@ -579,30 +615,43 @@ function S.UseProfile(name)
             return false
         end,
         ["ShouldStub|Piped"] = function() return false end,
-        -- T0c: the secret-question predicates. Each raises "bad argument #1"
+        -- T0c/T5: the secret-question predicates. Each raises "bad argument #1"
         -- on a nil first argument, as the client does, except
         -- HasSecretRestrictions which takes none and never raises.
-        HasSecretRestrictions = function() return S.inCombat end,
+        -- T5, Facts (sixth-seventh reports): true always, not gated on combat --
+        -- the beta's restriction is not something combat turns on and off.
+        HasSecretRestrictions = function() return true end,
+        -- T5, Facts (eighth report, "party1 max health always secret"): party1
+        -- was never asked directly, so the stub answers `u ~= "player"`
+        -- unconditionally, consistent with what UnitHealthMax(party1) reads.
         ShouldUnitHealthMaxBeSecret = function(u)
             if u == nil then error("bad argument #1") end
-            return S.inCombat and u ~= "player"
+            return u ~= "player"
         end,
+        -- T5, Facts (sixth report): true -- current power is secret for every
+        -- unit (UnitPower above), so the predicate that names it answers true
+        -- unconditionally rather than only for the player.
         ShouldUnitPowerBeSecret = function(u, pt)
             if u == nil then error("bad argument #1") end
-            return false
+            return true
         end,
         ShouldUnitPowerMaxBeSecret = function(u, pt)
             if u == nil then error("bad argument #1") end
             return false
         end,
+        -- T5, Facts (sixth report): 2, not 0.
         GetPowerTypeSecrecy = function(pt)
             if pt == nil then error("bad argument #1") end
-            return 0
+            return 2
         end,
         CanCompareUnitTokens = function(a, b)
             if a == nil or b == nil then error("bad argument #1") end
             return true
         end,
+        -- T5, Facts (sixth-seventh reports): added alongside ShouldAurasBeSecret,
+        -- same in-combat gate.
+        ShouldCooldownsBeSecret = function() return S.inCombat end,
+        ShouldUnitStatsBeSecret = function() return S.inCombat end,
     }
 
     C_UnitAuras = {
@@ -663,6 +712,66 @@ function S.UseProfile(name)
             return { combatSpells = { row(774, 1000) } }
         end,
     }
+
+    -- T5: nothing has registered anything yet, so this starts empty and stays
+    -- empty unless RegisterEvent's own COMBAT_LOG_EVENT_UNFILTERED branch above
+    -- appends to it.
+    S.forbidden = {}
+
+    -- T5 §5: only GetAddOnMetadata (read from OUR toc, S.toc already points at
+    -- the Forever line above) and IsAddOnLoaded, always true for our own name --
+    -- T2 adds LoadAddOn and friends.
+    C_AddOns = {
+        GetAddOnMetadata = function(name, field)
+            if name ~= S.addonName then return nil end
+            local f = io.open((S.root or ".") .. "/" .. S.toc, "r")
+            if not f then return nil end
+            local v
+            for line in f:lines() do
+                local m = line:match("^## " .. field .. ":%s*(.-)%s*$")
+                if m then v = m; break end
+            end
+            f:close()
+            return v
+        end,
+        IsAddOnLoaded = function(name) return name == S.addonName end,
+    }
+
+    -- T5: baseline pruning -- every global FUNCTION this stub leaves defined
+    -- that build 69893's real capture never saw is removed, so a suite that
+    -- calls a Classic-only global fails here the way it would on Forever
+    -- rather than quietly working against a stub that is looser than the
+    -- client. Tables/strings/numbers and namespace members are untouched (the
+    -- capture does not cover them). Kept regardless of the baseline: the
+    -- stub's own test-harness helper, and the two builtins (dofile, loadfile)
+    -- every multi-step harness script and S.Load itself keep calling AFTER
+    -- this runs -- no addon file ever calls either, so keeping them defined
+    -- does not let addon-visible code do anything the real client forbids.
+    local KEEP_ANYWAY = { collectgarbage_count = true, dofile = true, loadfile = true }
+    local function ReadBaselineFunctions(path)
+        local f = io.open(path, "r")
+        if not f then return {} end
+        local text = f:read("*a")
+        f:close()
+        local marker = text:find('"functions"', 1, true)
+        if not marker then return {} end
+        local openBracket = text:find("%[", marker)
+        local closeBracket = text:find("%]", openBracket)
+        local body = text:sub(openBracket + 1, closeBracket - 1)
+        local set = {}
+        for name in body:gmatch('"([^"]*)"') do set[name] = true end
+        return set
+    end
+    local baseline = ReadBaselineFunctions((S.root or ".") .. "/tools/data/forever_api.json")
+    local pruned = {}
+    for k, v in pairs(_G) do
+        if type(v) == "function" and not baseline[k] and not KEEP_ANYWAY[k] then
+            pruned[#pruned + 1] = k
+            _G[k] = nil
+        end
+    end
+    table.sort(pruned)
+    S.pruned = pruned
 end
 
 -- Installs C_ClassTalents/C_Traits (T0b) -- called explicitly by a script that

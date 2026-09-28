@@ -5,6 +5,7 @@
 -- them, and check the parts that are pure logic (event generation, Monte Carlo,
 -- FromRecordings). The frame itself can only be checked in-game.
 local here = arg[0]:match("^(.*)/[^/]+$")
+HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
 local MD = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB

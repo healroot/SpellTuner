@@ -7,6 +7,7 @@
 -- colours, which is enough to catch the class of bug that bit v0.7.6: a nil
 -- index, a wrong argument order, a string with a bare pipe.
 local here = arg[0]:match("^(.*)/[^/]+$")
+HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
 local MD = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB

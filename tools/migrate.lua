@@ -13,6 +13,7 @@ _G.ManaDemonDB = {
                                        practice = { { id = 2 } } } },
 }
 
+HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
 local MD = dofile(here .. "/harness.lua"); arg[0] = a0
 

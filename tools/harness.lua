@@ -1,26 +1,73 @@
--- Loads the non-UI half of SpellTuner under tools/wowstub.lua and returns the
+-- Loads one flavour of SpellTuner under tools/wowstub.lua and returns the
 -- addon table. arg[1] is the repo root.
 --
--- The file list is SpellTuner_TBC.toc's order minus everything that draws.
--- Keep it in step with SpellTuner_TBC.toc when an engine file is added.
+-- Which flavour: a tool sets HARNESS_FLAVOUR (a string, or a list of strings)
+-- before dofile-ing this file; absent means Forever only, since M1's tools
+-- are all Forever. ST_FLAVOUR (set by run.sh --flavour) picks among the
+-- declared ones; a tool run under a flavour it did not declare skips rather
+-- than running against the wrong client.
 local here = arg[0]:match("^(.*)/[^/]+$")
+
+local declared = HARNESS_FLAVOUR
+if declared == nil then declared = { "forever" } end
+if type(declared) == "string" then declared = { declared } end
+
+local function Contains(list, v)
+    for _, x in ipairs(list) do if x == v then return true end end
+    return false
+end
+
+local flavour
+local envFlavour = os.getenv("ST_FLAVOUR")
+if envFlavour ~= nil and envFlavour ~= "" then
+    if Contains(declared, envFlavour) then
+        flavour = envFlavour
+    else
+        -- The tool's name is its own main chunk's, found by walking up from
+        -- the dofile: a suite that loads this under pcall puts pcall's [C]
+        -- frame in between, so a fixed level would name "[C]".
+        local level, info = 3, nil; repeat info = debug.getinfo(level, "S"); level = level + 1 until not info or info.what == "main"
+        local scriptName = (info and info.short_src or "?"):match("([^/]+)$") or "?"
+        print("skip: " .. scriptName .. " runs under " .. table.concat(declared, ", ") .. " only")
+        os.exit(0)
+    end
+else
+    flavour = declared[1]
+end
+
 dofile(here .. "/wowstub.lua")
 local S = _G.STUB
 S.root = arg[1] or "."
+S.flavour = flavour
 
 local MD = {}
-S.Load({
-    "Client/TOC_TBC.lua", "Client/API.lua",
-    "Core.lua", "Data/SpellData.lua", "Engine/RegenModel.lua", "Engine/SpendTracker.lua",
-    "Engine/Targets.lua", "Engine/Overheal.lua", "Engine/ManaCooldowns.lua", "Engine/TTO.lua",
-    "Engine/RankMath.lua", "Engine/DamageMath.lua", "Engine/Calibration.lua", "Engine/PullBudget.lua",
-    "Engine/SimModel.lua", "Engine/FightRecorder.lua", "Engine/RunRecorder.lua", "Engine/Intuition.lua", "Engine/Foresight.lua", "Engine/SimSolver.lua",
-    "Engine/SimPlanner.lua", "Engine/RunTimeline.lua", "Engine/ReplayTrace.lua", "Engine/Practice.lua",
-    "Data/SimFixture_BF1.lua", "Data/SimPresets.lua", "Data/AuraList.lua", "Data/Intuition_TBC.lua", "Data/DruidSpells.lua",
-    -- UI/Summary.lua owns the combat-log handler and the fight lifecycle; it
-    -- touches no widgets, so it loads here too.
-    "UI/Summary.lua", "Verify.lua",
-}, "SpellTuner", MD)
+
+if flavour == "forever" then
+    S.UseProfile("forever")
+    local files = S.TocFiles("SpellTuner_Mainline.toc")
+    S.loadedFiles = files
+    S.Load(files, "SpellTuner", MD)
+    S.Fire("ADDON_LOADED", "SpellTuner")
+    S.Fire("PLAYER_LOGIN")
+    S.Fire("PLAYER_ENTERING_WORLD")
+    return MD
+end
+
+-- tbc: the TOC's own order minus everything that draws (UI/ other than
+-- UI/Summary.lua, which owns the combat-log handler and the fight lifecycle
+-- rather than a widget; Integrations/, which only wires up ElvUI).
+local function KeepForTbc(rel)
+    if rel:sub(1, 3) == "UI/" then return rel == "UI/Summary.lua" end
+    if rel:sub(1, 13) == "Integrations/" then return false end
+    return true
+end
+local allFiles = S.TocFiles("SpellTuner_TBC.toc")
+local files = {}
+for _, rel in ipairs(allFiles) do
+    if KeepForTbc(rel) then files[#files + 1] = rel end
+end
+S.loadedFiles = files
+S.Load(files, "SpellTuner", MD)
 
 -- Everything the BF-1 druid knew: every rank at or below level 64.
 local SD = MD.SpellData

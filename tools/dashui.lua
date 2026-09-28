@@ -7,6 +7,7 @@
 -- It also holds the line the spec draws under the move: /md must behave exactly
 -- as it did, and a pane must not know it lives in a different window.
 local here = arg[0]:match("^(.*)/[^/]+$")
+HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
 local MD = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB
