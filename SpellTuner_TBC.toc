@@ -8,6 +8,7 @@
 
 Client\TOC_TBC.lua
 Client\API.lua
+Client\API_TBC.lua
 Core.lua
 Data\SpellData.lua
 Data\SimFixture_BF1.lua

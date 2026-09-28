@@ -7,4 +7,5 @@
 
 Client\TOC_Mainline.lua
 Client\API.lua
+Client\API_Forever.lua
 Client\Probe.lua

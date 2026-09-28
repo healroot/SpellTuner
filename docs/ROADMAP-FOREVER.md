@@ -143,7 +143,10 @@ gone, Q1 kept per build; `probecheck` 58 ok. **T5** -- 2026-09-28 (`docs/tasks/T
 `tools/run.sh --flavour forever|tbc`, the harness's file list read from the flavour's TOC, every
 harness tool declaring its flavour, the stub's Forever profile keeping secrets as build 70009 does
 and pruned to the 69893 baseline (`tools/data/forever_api.json`, the kit's, MIT);
-`tools/forevercheck.lua` 13 ok.
+`tools/forevercheck.lua` 13 ok. **T1** -- 2026-09-28 (`docs/tasks/T1-client-adapter.md`): `MD.API.Call` / `Bind` /
+`Capabilities` / `IsSecret` / `CanRegisterEvent` in the shared `Client/API.lua`, the add-on
+bindings and the forbidden combat log in `Client/API_Forever.lua`, the classic names in
+`Client/API_TBC.lua`; a secret comes back as `nil, "secret"`; `tools/adaptercheck.lua` 14 / 10 ok.
 
 ### M2 — tooltips and the dashboard (phase 2) → `1.0.0-beta.1`
 

@@ -3,7 +3,7 @@
 -- secret scalar, or may raise partway through -- Has() turns all three into a
 -- plain answer so nothing downstream ever sees a raw client value it did not
 -- ask for.
-local _, MD = ...
+local ADDON_NAME, MD = ...
 MD.API = MD.API or {}
 
 local cache = {}
@@ -87,3 +87,127 @@ do
     end
 end
 MD.API.client = client
+
+-- Packs pcall's own return alongside the count of whatever it wrapped, so a
+-- nil in the middle of a client function's return list survives being
+-- stored in a table and handed back out (a plain {...} loses trailing nils
+-- to the # operator; select("#", ...) never does).
+local function Pack(...)
+    local n = select("#", ...)
+    local t = {}
+    for i = 1, n do t[i] = (select(i, ...)) end
+    return t, n
+end
+
+-- True when either secret predicate says so, each reached through Has (so a
+-- client missing one or both never raises) and called under its own pcall
+-- (T0b: which of the two a secret TABLE answers is unknown, so both are
+-- asked, same as Has's own internal check above).
+function MD.API.IsSecret(v)
+    local isSecretValue = MD.API.Has("issecretvalue")
+    if type(isSecretValue) == "function" then
+        local ok, secret = pcall(isSecretValue, v)
+        if ok and secret == true then return true end
+    end
+    local isSecretTable = MD.API.Has("issecrettable")
+    if type(isSecretTable) == "function" then
+        local ok, secret = pcall(isSecretTable, v)
+        if ok and secret == true then return true end
+    end
+    return false
+end
+
+-- The one place a dotted client name is actually called. A missing function
+-- is a capability, not a crash; a raise is caught and its message read only
+-- if it is a plain, non-secret string; a secret anywhere in the return list
+-- makes the whole call secret, because a caller that got the OTHER return
+-- values would still have to decide what to do with a mix -- easier and
+-- safer for every shared file if one secret return taints the call.
+function MD.API.Call(dotted, ...)
+    local fn = MD.API.Has(dotted)
+    if type(fn) ~= "function" then return nil, "absent" end
+
+    local retvals, retn = Pack(pcall(fn, ...))
+    local ok = retvals[1]
+    if not ok then
+        local msg = retvals[2]
+        local safe = "<unreadable error>"
+        if type(msg) == "string" and not MD.API.IsSecret(msg) then safe = msg end
+        return nil, "error", safe
+    end
+
+    for i = 2, retn do
+        if MD.API.IsSecret(retvals[i]) then return nil, "secret" end
+    end
+    return unpack(retvals, 2, retn)
+end
+
+-- Installs MD.API[Name] = function(...) return MD.API.Call(dotted, ...) end
+-- for each Name = "dotted.client.name" pair, and remembers the binding for
+-- Capabilities(). A Name that is already a member of MD.API and was NOT
+-- installed by an earlier Bind (Has, Call, client, Bind itself, ...) is left
+-- alone and not recorded -- Bind only ever adds or replaces its OWN bindings.
+MD.API._bindings = MD.API._bindings or {}
+function MD.API.Bind(map)
+    for name, dotted in pairs(map) do
+        if MD.API[name] == nil or MD.API._bindings[name] then
+            MD.API._bindings[name] = dotted
+            MD.API[name] = function(...) return MD.API.Call(dotted, ...) end
+        end
+    end
+end
+
+-- One entry per recorded binding, sorted by name -- what tools/adaptercheck.lua
+-- and (T3) /st dump print.
+function MD.API.Capabilities()
+    local list = {}
+    for name, dotted in pairs(MD.API._bindings) do
+        list[#list + 1] = { name = name, client = dotted, present = (type(MD.API.Has(dotted)) == "function") }
+    end
+    table.sort(list, function(a, b) return a.name < b.name end)
+    return list
+end
+
+-- Events a flavour file has said this client refuses to register (Forever's
+-- combat log, plan §1.2). Nothing forbidden until a flavour file says so.
+MD.API._forbidden = MD.API._forbidden or {}
+function MD.API.ForbidEvent(event)
+    MD.API._forbidden[event] = true
+end
+function MD.API.CanRegisterEvent(event)
+    return not MD.API._forbidden[event]
+end
+
+-- The chat frame is an ordinary Lua table handed to every addon, never a
+-- secret client value -- reached through Has/pcall like everything else here
+-- so a stub or a future client missing it costs nothing.
+function MD.API.Print(text)
+    local frame = MD.API.Has("DEFAULT_CHAT_FRAME")
+    if type(frame) == "table" then
+        pcall(function() frame:AddMessage(text) end)
+    end
+end
+
+-- This addon's own version, read back through the flavour's AddOnMetadata
+-- binding (C_AddOns.GetAddOnMetadata on Forever, the global on TBC) rather
+-- than assumed -- nil if that binding is absent or answers anything but a
+-- plain string.
+function MD.API.AddonVersion()
+    if type(MD.API.AddOnMetadata) ~= "function" then return nil end
+    local v = MD.API.AddOnMetadata(ADDON_NAME, "Version")
+    if type(v) == "string" then return v end
+    return nil
+end
+
+-- The names every client answers the same way -- the flavour files add the
+-- five add-on names (different namespace per client) and Forever's forbidden
+-- event on top of this.
+MD.API.Bind({
+    UnitClass = "UnitClass", UnitName = "UnitName", UnitLevel = "UnitLevel",
+    UnitGUID = "UnitGUID", UnitExists = "UnitExists", UnitIsDeadOrGhost = "UnitIsDeadOrGhost",
+    UnitAffectingCombat = "UnitAffectingCombat", InCombatLockdown = "InCombatLockdown",
+    UnitHealth = "UnitHealth", UnitHealthMax = "UnitHealthMax",
+    UnitPower = "UnitPower", UnitPowerMax = "UnitPowerMax", UnitPowerType = "UnitPowerType",
+    ManaRegen = "GetManaRegen", RealmName = "GetRealmName", BuildInfo = "GetBuildInfo",
+    After = "C_Timer.After", NewTicker = "C_Timer.NewTicker",
+})

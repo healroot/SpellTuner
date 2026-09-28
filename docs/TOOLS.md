@@ -49,6 +49,7 @@ Run all of them before committing anything the engine, the recorder or a tooltip
 | `spelltip.lua` | the spell tooltip (v0.14.9): druid only, once per showing, off means off, and **every number on it is the model's own** — the tick and bloom the simulator heals with, the dashboard's heal |
 | `migrate.lua` | the rename (2026-09-27): a ManaDemon WTF comes up as SpellTuner's with every setting, recording and practice fight; `/md` still answers |
 | `forevercheck.lua` | **the Forever TOC under the Forever profile** (T5, forever): loads clean, loads exactly the TOC's files, never tries the combat log, and the stub keeps secrets and absences as build 70009 does -- so arithmetic on current health trips here as it does in the client |
+| `adaptercheck.lua` | **the client adapter** (T1, forever and tbc): every binding in the capability table, absent / error / secret answered as `nil` plus a reason, returns kept whole, nothing secret ever leaving `MD.API`, the combat log forbidden on Forever only |
 | `probecheck.lua` | **the Forever probe** (T0) under the stub's `forever` profile: never raises, a missing function is "absent" not an error, a secret is "secret" not a sum, a bad event is caught, the report is ASCII with no bare pipe and keyed by build, the sections are in order, the description dump is whole, the TOC that loaded is named; since **T0c** also a blocked action recorded with what the probe was doing, the combat log registered only by `/st probe clog`, the secret readings and restriction state, Q1 by bonus damage or level with was/now lines, Q6 at level 10, and the release carrying exactly three TOCs |
 
 ```bash
@@ -56,6 +57,12 @@ for t in simcheck reccheck replaycheck replayui runcheck reviewui navui dashui \
          regencheck simwindow solvercheck timeline spelltip practice practiceui \
          migrate probecheck forevercheck; do
   printf "%-13s " "$t"; bash tools/run.sh tools/$t.lua 2>&1 | tail -1
+done
+# the suites that run under both flavours
+for t in adaptercheck; do
+  for f in forever tbc; do
+    printf "%-13s " "$t/$f"; bash tools/run.sh --flavour $f tools/$t.lua 2>&1 | tail -1
+  done
 done
 ```
 
