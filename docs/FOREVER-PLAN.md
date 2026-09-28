@@ -367,6 +367,13 @@ takes with the probe's help, added after the reference scout.)
    the last out-of-combat read.
 6. **Which talent API answers on Forever's trees** — `C_SpecializationInfo.GetTalentInfo` or
    `C_Traits`? Decides the talent scan.
+   **Answered in practice 2026-09-28** (`docs/probe/1.60.1_70009-m2.md`): at level 10
+   `C_SpecializationInfo.GetTalentInfo({tier, column})` still returns nil -- the old API does not
+   answer on Forever's trees; `C_ClassTalents.GetActiveConfigID` / `C_Traits.GetConfigInfo` do. But
+   no scan is needed for costs: a level-10 talent lowered Wrath's cost and the live
+   `GetSpellPowerCost` (so SpellTuner's tooltip and pane) followed it. **Ruling:** no talent scan;
+   `Book.adjust` stays empty until a talent that changes a *value* is shown not to reach the
+   description text -- the test for that is in the next testing round.
 7. **Do SavedVariables come back on build 70009?** Decides whether recordings can be kept in the
    beta at all, or need the kit's seed workaround.
 8. **Is `GetShapeshiftFormID` / own-cast target (`UNIT_SPELLCAST_SENT`) readable in combat?**
