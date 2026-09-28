@@ -899,6 +899,60 @@ check("UNIT_SPELLCAST_SUCCEEDED is counted with its id readable or secret, and t
     Has(report2, "UNIT_SPELLCAST_SUCCEEDED ooc n=1 readable=1 secret=0 sample=774; cost at cast readable=1 secret=0 absent=0")
     and Has(report2, "UNIT_SPELLCAST_SUCCEEDED combat n=1 readable=0 secret=1 sample=; cost at cast readable=0 secret=0 absent=0"))
 
+--------------------------------------------------------------------------------
+-- T13e: does a plain StatusBar hand a secret back through its own getters?
+-- report1 (ooc) and report2's combat snapshot already carry the bar readings
+-- under the forever stub's always-secret UnitHealthMax(party1) -- no new
+-- fixture needed for the secret case.
+--------------------------------------------------------------------------------
+check("a status bar handed a secret reports whether it reads back secret",
+    Has(report1, "bar UnitHealthMax(party1): set ok, read secret")
+    and Has(report1, "bar UnitHealth(player): set ok, read secret")
+    and Has(report1, "bar UnitPower(player, 0): set ok, read secret")
+    and (function()
+        local seg = Between(report2, "\n== combat snapshot\n", "\n== events seen this session\n")
+        return seg ~= nil
+            and Has(seg, "bar UnitHealthMax(party1): set ok, read secret")
+            and Has(seg, "bar UnitHealth(player): set ok, read secret")
+            and Has(seg, "bar UnitPower(player, 0): set ok, read secret")
+    end)())
+
+do
+    dofile(here .. "/wowstub.lua")
+    local S10 = _G.STUB
+    S10.root = ROOT
+    S10.UseProfile("forever")
+    S10.AddUnit("party1", { guid = "Party-1", name = "Tankname", class = "WARRIOR", role = "TANK", hp = 4000, hpMax = 4000 })
+
+    local MD10 = {}
+    _G.SpellTunerDB = nil
+    local step10LoadOk = pcall(S10.Load, { "Client/TOC_Mainline.lua", "Client/API.lua", "Client/Probe.lua" }, "SpellTuner", MD10)
+    local step10AddonLoadedOk = pcall(S10.Fire, "ADDON_LOADED", "SpellTuner")
+
+    -- UnitHealthMax(party1) made plain for this item only, restored after.
+    local origUnitHealthMax = UnitHealthMax
+    UnitHealthMax = function(u)
+        if u == "party1" then return 12345 end
+        return origUnitHealthMax(u)
+    end
+    -- The bar's own GetValue raises for this item -- the current-value path
+    -- (UnitHealth(player)/UnitPower(player, 0)), never GetMinMaxValues.
+    local barMT = getmetatable(_G.UIParent)
+    local origGetValue = barMT.GetValue
+    barMT.GetValue = function(self) error("stub GetValue raised") end
+
+    local okH, reportH = pcall(MD10.Probe.Run)
+
+    UnitHealthMax = origUnitHealthMax
+    barMT.GetValue = origGetValue
+
+    check("a status bar handed a plain number reads it back plain",
+        step10LoadOk == true and step10AddonLoadedOk == true and okH == true
+        and Has(reportH, "bar UnitHealthMax(party1): set ok, read plain 12345")
+        and Has(reportH, "bar UnitHealth(player): set ok, read error:")
+        and Has(reportH, "bar UnitPower(player, 0): set ok, read error:"))
+end
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("  FAIL " .. f) end
 if #fails > 0 then os.exit(1) end

@@ -275,6 +275,12 @@ answers `type(v) == "number"`, the stub's stand-in is a table, so no suite can c
 probe items M1 left: `ShouldUnitHealthMaxBeSecret("party1")`, `UNIT_COMBAT` counted per token, and
 the HEAL amount's gross-or-effective question if §37's full-health Healing Touch has not settled it.
 
+*Landed:* **T13c** (`bdbc40a`) -- a module TOC may list a shared file (`Engine\...`, `Spells\...`,
+`Data\...`, `UI\...`) that release copies into the package; `Module.lua` makes the module's files
+see SpellTuner's `MD`, `Ready.lua` (last) fires `MODULE_LOADED`; `modulecheck` 14. **T13e** -- the
+probe asks whether a status bar hands back a secret it was given (planner ruling 1): three `bar ...`
+readings and `UnitHealthMissing(party1)`, out of combat and in the snapshot; `probecheck` 73.
+
 ### M4 — practice (phase 4) → `1.0.0-beta.3`
 
 *Exit:* a practice fight plays, records, replays and coaches on Forever; Cell / Clique /

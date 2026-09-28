@@ -669,6 +669,79 @@ end
 --------------------------------------------------------------------------------
 -- == readings now -- always computed live, whatever the current phase is
 --------------------------------------------------------------------------------
+-- T13e, FOREVER-PLAN.md planner ruling 1: whether a plain StatusBar handed a
+-- client value through its own setters (SetMinMaxValues / SetValue) gives it
+-- back through its own getters (GetMinMaxValues / GetValue) secret, plain, or
+-- not at all. One hidden bar, built on first use and kept in this upvalue --
+-- never shown, no name, no parent other than UIParent -- so every call in
+-- this run reuses the same bar rather than leaking a frame per reading.
+local probeBar
+local function BarReadback(label, fnName, ...)
+    local fn = MD.API.Has(fnName)
+    if type(fn) ~= "function" then
+        return "bar " .. label .. ": set <absent>, read nil"
+    end
+    if not probeBar then
+        local cok, bar = pcall(CreateFrame, "StatusBar", nil, UIParent)
+        if cok and type(bar) == "table" then probeBar = bar end
+    end
+    if not probeBar then
+        return "bar " .. label .. ": set <error: no bar>, read nil"
+    end
+
+    -- T13e: "Max" in the function's own name is what tells a max reading
+    -- (SetMinMaxValues/GetMinMaxValues) from a current-value one
+    -- (SetMinMaxValues(0,1)+SetValue/GetValue) -- true for every name this
+    -- task passes (UnitHealthMax vs UnitHealth/UnitPower).
+    local isMax = fnName:find("Max", 1, true) ~= nil
+    local args = { ... }
+    -- One pcall hands the client's own return straight to the bar's setters,
+    -- never touched by anything else in between (a secret handed to a setter
+    -- is only ever stored, never read here).
+    local setOk, setErr = pcall(function()
+        local v = fn(unpack(args))
+        if isMax then
+            probeBar:SetMinMaxValues(0, v)
+        else
+            probeBar:SetMinMaxValues(0, 1)
+            probeBar:SetValue(v)
+        end
+    end)
+
+    local setText = "ok"
+    if not setOk then setText = "error: " .. Fmt(setErr) end
+    -- The bar is shared, so after a failed set it still holds the previous
+    -- reading's value; reading it back would report someone else's answer.
+    if not setOk then return "bar " .. label .. ": set " .. setText .. ", read skipped" end
+
+    local readText
+    if isMax then
+        local readOk, errOrMin, maxV = pcall(function() return probeBar:GetMinMaxValues() end)
+        if not readOk then
+            readText = "error: " .. Fmt(errOrMin)
+        elseif IsSecret(maxV) then
+            readText = "secret"
+        elseif maxV == nil then
+            readText = "nil"
+        else
+            readText = "plain " .. Fmt(maxV)
+        end
+    else
+        local readOk, val = pcall(function() return probeBar:GetValue() end)
+        if not readOk then
+            readText = "error: " .. Fmt(val)
+        elseif IsSecret(val) then
+            readText = "secret"
+        elseif val == nil then
+            readText = "nil"
+        else
+            readText = "plain " .. Fmt(val)
+        end
+    end
+
+    return "bar " .. label .. ": set " .. setText .. ", read " .. readText
+end
+
 local function ReadingsLines()
     return {
         "UnitExists(party1) = " .. Show("UnitExists", "party1"),
@@ -713,6 +786,13 @@ local function ReadingsLines()
         "UnitLevel(party1) = " .. Show("UnitLevel", "party1"),
         "UnitClass(party1) = " .. Show("UnitClass", "party1"),
         "UnitGroupRolesAssigned(party1) = " .. Show("UnitGroupRolesAssigned", "party1"),
+        -- T13e: does a plain StatusBar hand a secret back through its own
+        -- getters (FOREVER-PLAN.md planner ruling 1)? Copied into the 2s
+        -- combat snapshot along with everything else in this function.
+        BarReadback("UnitHealthMax(party1)", "UnitHealthMax", "party1"),
+        BarReadback("UnitHealth(player)", "UnitHealth", "player"),
+        BarReadback("UnitPower(player, 0)", "UnitPower", "player", 0),
+        "UnitHealthMissing(party1) = " .. Show("UnitHealthMissing", "party1"),
     }
 end
 

@@ -394,6 +394,9 @@ function FrameMT:SetShown(v) if v then self:Show() else self:Hide() end end
 function FrameMT:SetValue(v) self.value = v end
 function FrameMT:GetValue() return self.value or 0 end
 function FrameMT:SetMinMaxValues(a, b) self.minV, self.maxV = a, b end
+-- T13e: the setter already stores what it was given; the getter just hands
+-- it back, same as the real client's StatusBar.
+function FrameMT:GetMinMaxValues() return self.minV, self.maxV end
 function FrameMT:SetChecked(v) self.checked = v and true or false end
 function FrameMT:GetChecked() return self.checked == true end
 -- Was a no-op through the fallback; no TBC suite reads the field, but T0b's

@@ -1,6 +1,6 @@
 # T13e — the probe asks whether a status bar hands a secret back
 
-Status: **open**. M3, the probe item the planner's ruling 1 asks for (`docs/FOREVER-PLAN.md`,
+Status: **accepted** 2026-09-28 (lead review at the end). M3, the probe item the planner's ruling 1 asks for (`docs/FOREVER-PLAN.md`,
 "Planner rulings for M3", item 1: "The probe asks once whether a StatusBar given a secret max reads
 it back (it is expected not to; if it does, the stand-in goes)"). Lands in `1.0.0-alpha.4`, the
 build `docs/TESTING.md` §38 installs.
@@ -81,4 +81,180 @@ engine decides on.
 
 ## Report
 
-(implementer)
+**Files touched:** `Client/Probe.lua`, `tools/wowstub.lua` (one hunk, tagged T13e), `tools/probecheck.lua`.
+Nothing else was touched; `git status --short` at the end (below) shows the other worktree's T13c
+files untouched by me.
+
+### `Client/Probe.lua`
+
+Added a local `BarReadback(label, fnName, ...)` right before `ReadingsLines`:
+- Resolves `fnName` through `MD.API.Has` (the probe's existing path), same as every other reading.
+- Creates one hidden `StatusBar` on first use (`CreateFrame("StatusBar", nil, UIParent)`, never
+  shown, no name, kept in the `probeBar` upvalue) and reuses it for every call.
+- `isMax = fnName:find("Max", 1, true) ~= nil` tells `UnitHealthMax` (max-style: `SetMinMaxValues(0,
+  v)` / read back via `GetMinMaxValues()`) from `UnitHealth`/`UnitPower` (current-value style:
+  `SetMinMaxValues(0,1)` + `SetValue(v)` / read back via `GetValue()`).
+- One `pcall` wraps calling `fnName` and handing its return straight to the bar's setters (the
+  client value never touches anything else in between); a second, separate `pcall` reads the value
+  back. `IsSecret` is checked before `Fmt`/`type`, per the existing rule. `GetMinMaxValues`'s two
+  returns are taken into two named locals (`errOrMin, maxV`), never through `a and f() or b`.
+- Returns `"bar <label>: set <ok|error: ...>, read <secret|plain <Fmt(v)>|nil|error: ...>"`.
+
+Three `BarReadback` lines plus a new `UnitHealthMissing(party1)` line appended to `ReadingsLines()`
+(copied into the 2s combat snapshot automatically, as `TakeCombatSnapshot` already reuses this
+function -- no further wiring needed, confirmed by the new checks passing against both `report1`
+and the `report2` combat-snapshot segment). `UnitHealthMissing` is in the 69893 baseline
+(`tools/data/forever_api.json`'s `functions` list), confirmed with a one-off `python3 -c
+"import json; print('UnitHealthMissing' in json.load(open('tools/data/forever_api.json'))
+['functions'])"` -> `True`, so the line was added rather than left out.
+
+### `tools/wowstub.lua`
+
+One hunk, tagged T13e:
+```lua
+-- T13e: the setter already stores what it was given; the getter just hands
+-- it back, same as the real client's StatusBar.
+function FrameMT:GetMinMaxValues() return self.minV, self.maxV end
+```
+
+### `tools/probecheck.lua`
+
+Two new assertions, verbatim names as required:
+- `"a status bar handed a secret reports whether it reads back secret"` -- reuses the existing
+  `report1` (ooc) and the `report2` combat-snapshot segment (forever profile, `UnitHealthMax` always
+  secret under the stub); no new fixture needed.
+- `"a status bar handed a plain number reads it back plain"` -- a fresh `S10` load (forever
+  profile), temporarily replaces the global `UnitHealthMax` so `"party1"` answers a plain `12345`
+  (restored immediately after `Probe.Run`), and temporarily replaces `FrameMT:GetValue` (reached via
+  `getmetatable(_G.UIParent)`, since `wowstub.lua` does not expose `FrameMT` itself) to `error(...)`
+  for the current-value path (also restored after). Asserts `bar UnitHealthMax(party1): set ok, read
+  plain 12345`, `bar UnitHealth(player): set ok, read error:` and `bar UnitPower(player, 0): set ok,
+  read error:`, and that `Probe.Run` itself did not raise (`okH == true`).
+
+### Tests first: the failing run
+
+Implementation was written, then temporarily reverted (`Client/Probe.lua`'s `BarReadback` and its
+call sites, `tools/wowstub.lua`'s `GetMinMaxValues`) to run the two new assertions against the old
+code and confirm they fail, then the implementation was restored unchanged:
+
+```
+a status bar handed a secret reports whether it reads back secret        FAIL
+SpellTuner probe: build 70009, 229 lines, saved. Click the box, Ctrl+A, Ctrl+C.
+a status bar handed a plain number reads it back plain                   FAIL
+
+71 ok, 2 failed
+  FAIL a status bar handed a secret reports whether it reads back secret
+  FAIL a status bar handed a plain number reads it back plain
+```
+
+### `bash tools/run.sh tools/probecheck.lua` after the fix (tail)
+
+```
+a status bar handed a secret reports whether it reads back secret        ok
+SpellTuner probe: build 70009, 233 lines, saved. Click the box, Ctrl+A, Ctrl+C.
+a status bar handed a plain number reads it back plain                   ok
+
+73 ok, 0 failed
+```
+
+New report lines as the stub run prints them (forever profile, out of combat):
+```
+bar UnitHealthMax(party1): set ok, read secret
+bar UnitHealth(player): set ok, read secret
+bar UnitPower(player, 0): set ok, read secret
+UnitHealthMissing(party1) = <secret>
+```
+And under the plain-number/raising-GetValue fixture:
+```
+bar UnitHealthMax(party1): set ok, read plain 12345
+bar UnitHealth(player): set ok, read error: ...:21: stub GetValue raised
+bar UnitPower(player, 0): set ok, read error: ...:21: stub GetValue raised
+```
+
+### Every other suite (tail)
+
+```
+== measurecheck ==
+18 ok, 0 failed
+== clockcheck ==
+15 ok, 0 failed
+== spellsui ==
+15 ok, 0 failed
+== bookcheck ==
+15 ok, 0 failed
+== parsecheck ==
+11 ok, 0 failed
+== modulecheck ==
+14 ok, 0 failed
+```
+All at their baseline counts; none of my three touched files intersect `tools/modulecheck.lua`'s or
+`tools/apicheck.py`'s own fixtures, and the T13c work (Modules/*, release.sh, tools/apicheck.py,
+tools/modulecheck.lua) was left untouched by me.
+
+### `python3 tools/apicheck.py`
+
+```
+apicheck: 8 Forever TOCs, 24 files, 40 distinct globals, 0 findings (baseline 69893)
+```
+
+### `python3 tools/apicheck.py --selftest`
+
+```
+FAIL Bad.lua:1 GetSpellInfo not in baseline 69893
+FAIL Bad.lua:2 os not in the client's Lua
+FAIL Bad.lua:3 UnitHealth client call outside Client/
+FAIL Bad.lua:4 NewGlobalName new global
+FAIL Bad.lua:5 COMBAT_LOG_EVENT_UNFILTERED COMBAT_LOG_EVENT_UNFILTERED named
+FAIL Bad.lua:6 C_Spell.NoSuchMember C_ member not in baseline 69893
+FAIL Fixture_Mainline.toc:6 Gone.lua missing file
+FAIL Modules/Sample/Sample_Mainline.toc:7 Missing.lua missing file
+selftest: 8 of 8 findings as expected
+```
+
+### `luac -p` (tools/.lua/lua-5.1.5/src/luac)
+
+```
+$ tools/.lua/lua-5.1.5/src/luac -p Client/Probe.lua && tools/.lua/lua-5.1.5/src/luac -p tools/wowstub.lua && tools/.lua/lua-5.1.5/src/luac -p tools/probecheck.lua && echo ALL_OK
+ALL_OK
+```
+
+### `git status --short`
+
+```
+ M Client/Probe.lua
+ M Modules/SpellTuner_Practice/Module.lua
+ M Modules/SpellTuner_Recorder/Module.lua
+ M Modules/SpellTuner_Replay/Module.lua
+ M release.sh
+ M tools/apicheck.py
+ M tools/modulecheck.lua
+ M tools/probecheck.lua
+ M tools/wowstub.lua
+?? Modules/SpellTuner_Practice/Ready.lua
+?? Modules/SpellTuner_Recorder/Ready.lua
+?? Modules/SpellTuner_Replay/Ready.lua
+?? docs/tasks/T13c-module-plumbing.md
+?? tools/data/apicheck-fixture/Engine/
+?? tools/data/apicheck-fixture/Modules/
+?? tools/data/modulecheck-fixture/
+```
+The `Modules/*`, `release.sh`, `tools/apicheck.py`, `tools/modulecheck.lua`, and the untracked
+T13c-related files are the concurrent T13c implementer's work, not mine -- I did not touch them.
+
+### Skipped / notes
+
+- Did not touch `tools/wowstub.lua`'s `LoadAddOn` part or any of the T13c files, per instructions.
+- Out-of-scope items (the clock, `MD.API.DrawUnitPower`, the recorder, `SM.EstimateMaxHP`) left
+  untouched, as the task specifies acting on the answer is a later task.
+- No question; the task's Facts held (UnitHealthMissing is in the 69893 baseline) and the acceptance
+  criteria are all met.
+
+## Lead review (2026-09-28)
+
+Accepted with one lead fix, said here as the process requires: `BarReadback` read the bar back even
+when the set had failed, and the bar is shared across readings and runs, so a failed set reported the
+previous reading's value (a `set error` on `UnitHealthMax` in the combat snapshot would have read
+`plain 1` from the preceding current-value reading). The lead added one guard: a failed set returns
+`read skipped`. No assertion covers it; the two acceptance lines are unaffected. Suites rerun by the
+lead: probecheck 73, every other suite at its baseline, apicheck 0, selftest 8 of 8, refcheck ok;
+`luac -p` clean.
