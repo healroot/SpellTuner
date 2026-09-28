@@ -160,7 +160,10 @@ remembering the switch, "off" meaning "not loaded after the next `/reload`"), th
 LoadOnDemand siblings at `Modules/SpellTuner_Recorder|Replay|Practice/` (one `Module.lua` each that
 tells the core it loaded), `release.sh` building and installing them beside `SpellTuner/`, and
 `/st` opening the Forever window (`UI/Dashboard_Forever.lua`: Spells placeholder, Settings ->
-Modules); `tools/modulecheck.lua` 12 ok.
+Modules); `tools/modulecheck.lua` 12 ok. **T4** -- 2026-09-28 (`docs/tasks/T4-savedvariables-guard.md`): the minimal guard
+Q7 allows -- `Core_Forever.lua` records at `ADDON_LOADED` whether `SpellTunerDB` came back (and from
+which session), was absent, or was not a table (replaced, never indexed), stamps the session, and
+keeps one line for the dump; no seed workaround; `tools/svcheck.lua` 6 / 1 ok.
 
 ### M2 — tooltips and the dashboard (phase 2) → `1.0.0-beta.1`
 
