@@ -3351,3 +3351,50 @@ green. **Next:** the author reinstalls and runs the second round (`docs/TESTING.
 round"): does the dialog still appear at load, does `/st probe clog` trip it, and are health and
 mana secret always or only under a restriction. Then the planner reads that and the lead writes
 T1-T6 (M1).
+
+## 2026-09-28 — M1, the frame: adapter, shared kernel, modules, window, guard, error capture (T0d-T6)
+
+The author asked to "start M1 and M2"; the planner judged M1 unblocked (Q7 and Q9 answered) and
+handed it to the lead, M2 held back. Eight tasks, each written in `docs/tasks/`, implemented by the
+implementer agent, reviewed and rerun by the lead, and committed one by one:
+
+- **T0d** -- the probe never registers the combat log (`/st probe clog` gone: the sixth report
+  proved it is the blocked-action dialog), and an answered Q1 stays answered per build (the ninth
+  report's defect). probecheck 58.
+- **T5** -- `tools/run.sh --flavour forever|tbc`; the harness reads the flavour's TOC; every harness
+  tool declares its flavour; the stub's Forever profile keeps secrets as build 70009 does and drops
+  every global function the forever-addon-kit's 69893 baseline (`tools/data/forever_api.json`, MIT)
+  lacks. `forevercheck` 13.
+- **T1** -- the adapter: `MD.API.Call` / `Bind` / `Capabilities`, secrets answered as `nil,
+  "secret"`, `API_Forever.lua` (C_AddOns, the combat log forbidden) and `API_TBC.lua`.
+- **T1b** -- `Core.lua` became the shared kernel on the adapter; the TBC core moved verbatim to
+  `Core_TBC.lua` behind three seams; `Core_Forever.lua` began. Two re-issues: `MD.API.Print` had
+  cached the chat frame (three TBC suites caught it), and `DetectProfile` read `UnitClass`'s
+  localized first return as the class token -- invisible to every suite because the stub returned
+  the token twice; the stub now answers as the client does.
+- **T6** -- `python3 tools/apicheck.py`: every global a Forever file touches, from `luac -l`,
+  against the baseline and the adapter rule; 0 findings.
+- **T2** -- the module registry, three LoadOnDemand siblings under `Modules/`, `release.sh` building
+  them beside `SpellTuner/`, and `/st` opening the Forever window with Settings -> Modules. One
+  re-issue: the window's ASCII test had been narrowed to its panes.
+- **T4** -- the minimal SavedVariables guard (no seed workaround; Q7 holds).
+- **T3** -- SpellTuner's own errors caught, first shown and repeats counted; `/st debug` and
+  `/st dump` on Forever; every Forever TOC `1.0.0-alpha.2`.
+
+**The reading of "client calls live in `Client/` only"** M1 is built on (the lead's, escalated to the
+planner for confirmation): data reads and actions go through `MD.API`; the widget toolkit and WoW's
+Lua extensions may be used anywhere -- `UI/Style.lua`, which the roadmap lists as shared, cannot
+exist otherwise. `apicheck.py` enforces exactly that.
+
+**The repository:** the lead found five of the zero-byte objects the last entry mentions reachable
+from this branch's HEAD (the two Forever TOCs' blobs, the `tools/` tree, the T0c `probecheck.lua` and
+`wowstub.lua` blobs). The lead's attempt to restore them from byte-identical copies was refused by
+the permission system and not pursued; every one of those files has since been rewritten, so HEAD's
+tree reads whole, but the commits up to `47b9edf` still reference the empty objects -- `git log -p`
+over them, a push or a clone will fail until they are restored (identical copies: the two TOCs as
+they were at `47b9edf` and the lead's session scratchpad `pre/tools/`). Also: `docs/probe/1.60.1_70009.md`
+at HEAD holds only the eighth and ninth reports; the first seven are in history (`ad94b2f^`, `ad94b2f`).
+
+**State:** TBC line v0.15.4, behaviour unchanged (sixteen suites at their counts). Forever line
+`1.0.0-alpha.2`: twenty-seven suite runs green, apicheck 0 findings. **Next:** the author's in-game
+M1 check (`docs/TESTING.md` §36), then M2 (T7-T12).
