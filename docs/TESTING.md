@@ -957,6 +957,173 @@ rank falls further below your level -> a rule, and the numbers let me fit it.
 `/st dump` if anything errored, and in words: which tooltip places showed the block, anything
 missing from the pane, the clock's drift after a fight, and anything that did not happen as written.
 
+## 38. WoW: Forever -- the next round: the M2 re-check, Q10, a talent, an alt, the M3 probe (1.0.0-alpha.4, 2026-09-28)
+
+On the **beta client** (Healroot, build 70009 or current). Everything still to check in game,
+in the order you meet it while playing, cut into sessions of 20-30 minutes. **Do the sessions in
+order, but each one stands alone**: stop after any of them, paste what it asks for, and the next
+round starts where you stopped. §37's results are in `docs/probe/1.60.1_70009-m2.md`; this build
+fixes what that run found:
+
+- the Spellbook pane's names no longer wrap over the rows, and Other lists only spells you cast for
+  mana (T10c);
+- the clock words its states as the TBC clock does -- `~FULL 0:45` out of combat only below 90%,
+  hidden again above 95%, and `~OOM ...  rest 0:20` while it is still gathering, instead of a bare
+  `--` (T11b);
+- `/st measure` pairs each amount with the cast that caused it, keeps several spells open at once,
+  and never says BELOW on an amount it cannot pin to one cast (T12b);
+- the book reader stands on the shapes your probe returned (a free spell is free, the `|4` grammar
+  escape expanded, Thorns' reflect not counted as a cast's damage) (T7b);
+- the probe dumps the tooltip lines of a real heal, HoT and damage spell (last time it picked two
+  passives), reads a party member's GUID, name, level, class, role and max-health secrecy, counts
+  every `UNIT_COMBAT` token separately, and asks whether a status bar hands a secret back (T13b,
+  T13e).
+
+In each paste file below, `<build>` is the build number the probe prints (`1.60.1_70009` if it has
+not moved).
+
+**Install** (once, before session 1):
+
+```bash
+./release.sh --install "/mnt/e/Blizzard/World of Warcraft/_classic_beta_/Interface/AddOns"
+```
+
+At character select the AddOns list shows SpellTuner and the three modules at **1.0.0-alpha.4**.
+Log in as Healroot, `/console scriptErrors 1`. Any error box or "blocked" dialog at any step: note
+it, carry on, and `/st dump` at the end of that session (paste it under the session's other text).
+
+### 38.1 Session 1 -- the M2 re-check, solo (20 min)
+
+1. **The pane** (`/st`, Spells -> Spellbook). Every spell name on **one line** (a long one cut with
+   `...`, the whole name on hover), no text over the rows, section titles `Heals` / `Damage` /
+   `Other` readable. Other lists only spells you cast for mana (Mark of the Wild, Nature's Grasp,
+   Teleport: Moonglade, and whatever you learned since), then one grey line counting the rest.
+   **Screenshot it.** Is any spell you can cast missing, or any listed twice?
+2. **Export** from the pane, Ctrl+A, Ctrl+C -- paste into `docs/probe/<build>-alpha4-book.md`.
+3. **The clock, out of combat.** Stand at full mana: nothing drawn. Cast heals on yourself until
+   the mana bar is well under 90%: `~FULL 0:30` (a time to full) appears. Wait: it disappears
+   again once mana passes 95% (not before). Tell me if it ever said `refill`.
+4. **The clock, in combat.** Pull a mob and heal yourself through it. The first seconds read
+   `~OOM ...  rest ...` (still gathering), then digits, e.g. `~OOM 0:45  rest 0:20`. Tell me if it
+   ever showed `~OOM --` on its own. After the fight hover it and compare its `Mana X / Y
+   (modelled)` with the real bar by eye, as in §37 step 4.
+5. **Tooltips**: hover Healing Touch in the spellbook, on a bar and as a chat link again -- which
+   of the three show the grey SpellTuner block? (§37 step 2; a quick yes/no each.)
+
+**Paste back** into `docs/probe/<build>-alpha4-s1.md`: the screenshot's description (or the file),
+the answers to 1, 3, 4, 5 in words.
+
+### 38.2 Session 2 -- the measurements again, and gross or effective (25 min)
+
+`/st measure` (chat: `measure: on - ... several watches stay open at once`). A line now prints
+when a spell's window has **closed** -- about a second after a direct heal lands, 12-13 s after a
+HoT or DoT is applied -- not when the first number lands. Several can be open together; that is
+the point.
+
+1. **Get hurt first.** Lose more health than your biggest heal's top (a fall, or let a mob hit you,
+   then kill it). The measure only knows the damage it saw **while it was on**, so switch it on
+   before you get hurt.
+2. **The case that went wrong last time:** Rejuvenation (your top rank) on yourself, then at once
+   Healing Touch (top rank) while the Rejuvenation is still ticking. Expected: a Healing Touch line
+   `landed <n> ... in range` (or `crit range`), and 12 s later a Rejuvenation line
+   `4 ticks 12+12+12+12 = 48 every 3.0 s ... matches` (the numbers of Rank 2; a higher rank has its own). Do it **three times**.
+3. **Healing Touch Rank 1 and Rank 2 alone**, three casts each, while hurt.
+4. **Gross or effective (Q3's open half):** heal to full (or wait), then **one Healing Touch Rank 1
+   on yourself at full health**. The line says `nothing landed` or `capped at missing health 0
+   (amount looks effective)` if the game counts only the healing that took; `landed 48 ... in
+   range` if it counts the whole heal. Then **the same once more with a little health missing**
+   (about 10-20 below full): `capped at missing health <d>` means effective.
+5. **Damage on a mob** (a slow one, or a dummy): Moonfire, then Wrath **while Moonfire is still
+   ticking**, then let Moonfire run out. Expected: Moonfire `landed ... in range; ... 4 ticks
+   6+6+6+6 = 24 every 3.0 s ... matches` (numbers for your rank), Wrath `landed ... in range`. A
+   Wrath hit that fits a Moonfire tick reads `ambiguous: 6 also fit Moonfire` -- correct, not a
+   fault. A Wrath well under its range reads `below range: partial resist 50%?` or `below range
+   (resist?)` -- tell me how often.
+6. **In combat once**: a Healing Touch in a fight. The parenthesis should read `+heal <n> before
+   combat` (the last reading from out of combat), not `+heal ?`.
+7. `/st measure dump` -> copy.
+
+**Paste back** into `docs/probe/<build>-alpha4-measure.md`: the dump, and in words anything that
+read `BELOW` (it should now only appear when the heal really fell short on a target the measure
+knew was missing that much).
+
+### 38.3 Session 3 -- the M3 probe, in a party (20-30 min)
+
+This one needs **a party with one other player** (anyone; a second account works; if the beta has
+follower dungeons, a follower party also answers most of it -- say which you used). It answers
+what the recorder (M3) is built on: which party readings are secret, which unit names a hit
+arrives under, and whether a status bar gives a secret back.
+
+1. In the party, out of combat, `/st probe`. Copy the report.
+2. Pull a mob **with the party member fighting it too**, heal both of you and cast one Wrath,
+   finish the fight, then `/st probe` again. Copy the report. (The probe snapshots the readings 2 s
+   into the fight on its own.)
+3. Things to read in the reports (you do not need to interpret them, just paste): `== shapes` now
+   has three `tooltip` blocks (Healing Touch, Rejuvenation, Wrath); `== readings now` ends with
+   `UnitGUID(party1)`, `UnitName(party1)`, `UnitLevel(party1)`, `UnitClass(party1)`,
+   `UnitGroupRolesAssigned(party1)`, `C_Secrets.ShouldUnitHealthMaxBeSecret(party1)` and three `bar
+   ...` lines; a new `== unit combat tokens` section lists every unit name a hit arrived under and
+   a `mirrored: <m> of <n>` line.
+4. Open the game's own damage meter on the Healing tab after the fight and **write down your own
+   healing done** for that fight. (M3 checks its own count of your healing against the meter.)
+
+**Paste back** into `docs/probe/<build>-alpha4-party.md`: both reports, the meter's number, what
+kind of party it was.
+
+### 38.4 Session 4 -- a talent that changes a value (the open half of Q6; at your next talent point)
+
+Last time a talent lowered Wrath's cost and the tooltip followed. Still unseen: a talent that
+changes a spell's **amount** (heal or damage), not its cost or cast time.
+
+1. Before spending the point, look at the talent tree and pick a talent whose text says it
+   increases the healing or damage of a spell you have (for example an "Improved Rejuvenation",
+   "Improved Moonfire", "Gift of Nature" -- whatever your tree offers at that point; if none is
+   reachable yet, wait for the level where one is and do this then).
+2. Hover the spell it changes in the spellbook: note the game's own text (e.g. `Heals the target
+   for 48 over 12 sec.`) and our block's `avg` / `Heals` line.
+3. Spend the point. Hover again. **Did the game's own text change?** Did our numbers change?
+4. `/st probe` -- paste its `== talents` and `== spells against the previous run` sections.
+
+**Paste back** into `docs/probe/<build>-alpha4-talent.md`: the talent's name and text, the spell's
+text before and after, our numbers before and after, the two probe sections. If the game's text did
+**not** change but the talent says it should, that is the one case SpellTuner keeps a place for.
+
+### 38.5 Session 5 -- Q10: a low rank at level 20, and again after a level-up (20 min, twice)
+
+Healing Touch Rank 4 is learned at 20. This is the measurement for a server-side downrank
+penalty (`FOREVER-PLAN.md` §6 Q10).
+
+1. At level 20 (or the first level at which you have Rank 4), hurt, `/st measure` on: **Healing
+   Touch Rank 1, Rank 4 and your highest rank, three casts each** (session 2's rules: hurt first,
+   one cast at a time, wait for its line).
+2. `/st measure dump` -> copy.
+3. **After the next level-up**, the same nine casts again and the dump again.
+
+**Paste back** into `docs/probe/<build>-alpha4-q10.md`: both dumps, each with the level it was taken
+at. What I look for: Rank 1 and Rank 4 landing inside their text's range at both levels means no
+server rule; a shortfall that grows as the rank falls further below your level is a rule, and the
+two dumps let me fit it. (A `below range, missing health not known` line means you were not hurt
+enough -- redo that cast.)
+
+### 38.6 Session 6 -- the second class (20 min; the M2 exit needs two)
+
+An alt of any mana class (priest, mage, shaman, paladin, warlock). At level 1-10 is fine.
+
+1. Log in, `/console scriptErrors 1`. `/st`: the Spellbook pane lists that class's spells --
+   screenshot it; anything missing or wrong? Export -> copy.
+2. Hover the class's first heal or nuke: the block appears?
+3. `/st measure` on: three spells, three casts each -- a priest's Lesser Heal, Smite and Power
+   Word: Shield (a shield's absorb has no landing line -- say what it printed); a mage's Fireball,
+   Frostbolt, Arcane Missiles; a shaman's Healing Wave, Lightning Bolt, Earth Shock; a paladin's
+   Holy Light and Judgement. Heals on yourself while hurt; damage on a mob.
+4. `/st measure dump` -> copy. `/st probe` once -> copy.
+
+**Paste back** into `docs/probe/<build>-alpha4-<class>.md`: the export, the dump, the probe, and
+the answers to 1 and 2.
+
+**If you only have time for one session:** do 38.3 (the party probe) -- it is the one M3 cannot
+start without.
+
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the
 raw numbers. `/md profile` output is welcome with any report. I turn them into
