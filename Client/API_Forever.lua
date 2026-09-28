@@ -54,6 +54,27 @@ MD.API.Bind({
     SpellCritChance = "GetSpellCritChance",
 })
 
+-- T13 (Modules/SpellTuner_Recorder/Recorder_Forever.lua): the recorder's own
+-- bindings, none of which T13b's probe added. UnitGroupRolesAssigned is the
+-- same global on every client (Engine/Targets.lua's TBC comment); bound here,
+-- rather than in Client/API.lua's shared list, because only this Forever file
+-- calls it today. RealZoneText/AuraByIndex/MeterSession/MeterSource are
+-- named, not literal Blizzard identifiers, because the dotted target itself
+-- (GetRealZoneText, C_UnitAuras.GetAuraDataByIndex, C_DamageMeter's two
+-- session readers) says nothing about what the recorder uses it for.
+MD.API.Bind({
+    UnitGroupRolesAssigned = "UnitGroupRolesAssigned",
+    RealZoneText = "GetRealZoneText",
+    -- copy = 1: the aura row's own scalar fields only (spellId,
+    -- expirationTime, applications, name, ...) -- Facts: readable out of
+    -- combat, raises in combat, so this is only ever called while not.
+    AuraByIndex = { client = "C_UnitAuras.GetAuraDataByIndex", copy = 1 },
+    -- copy = 3: the session table -> its combatSources/combatSpells array ->
+    -- each row's own fields (T7's own reasoning for a copying binding).
+    MeterSession = { client = "C_DamageMeter.GetCombatSessionFromType", copy = 3 },
+    MeterSource = { client = "C_DamageMeter.GetCombatSessionSourceFromType", copy = 3 },
+})
+
 -- T9 (UI/SpellTip_Forever.lua): registers the block on every spell tooltip
 -- through TooltipDataProcessor.AddTooltipPostCall (docs/tasks/T9-spell-tooltip.md
 -- Facts: present on 70009, UNVERIFIED whether it fires for the spellbook,

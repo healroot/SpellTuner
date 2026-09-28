@@ -50,6 +50,8 @@ local FOREVER_ONLY_NAMES = {
     "SpellBonusHealing",
     -- T15: Modules/SpellTuner_Replay/Kit_Forever.lua's own crit reading.
     "SpellCritChance",
+    -- T13: Modules/SpellTuner_Recorder/Recorder_Forever.lua's own bindings.
+    "UnitGroupRolesAssigned", "RealZoneText", "AuraByIndex", "MeterSession", "MeterSource",
 }
 -- T15: Client/API_TBC.lua's own binding -- GetSpellInfo, so
 -- Engine/SimModel.lua and Engine/SimPlanner.lua's four call sites can go

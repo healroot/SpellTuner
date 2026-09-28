@@ -109,7 +109,11 @@ function UnitAffectingCombat() return false end
 function UnitGroupRolesAssigned(u) local x = U(u); return x and x.role or "NONE" end
 function GetPartyAssignment() return false end
 function GetRealmName() return "Anniversary" end
-function GetRealZoneText() return "Blood Furnace" end
+-- Lead review 1 (T13): S.zoneText wins when a fixture sets it -- MD.API.Has
+-- caches the resolved FUNCTION per dotted name forever, so a test cannot
+-- swap the global after the first call has already been made; this same
+-- function reads a settable field instead, so the cache is never an issue.
+function GetRealZoneText() return S.zoneText or "Blood Furnace" end
 function IsInRaid() return false end
 function GetNumGroupMembers() return #S.unitOrder end
 function GetRaidRosterInfo() return nil end
@@ -618,7 +622,12 @@ function S.UseProfile(name)
     function UnitHealthMissing(u) return secretOrNil(u) end
     function UnitPowerPercent(u, powerType) return secretOrNil(u) end
     function UnitGetIncomingHeals(u, healer) return secretOrNil(u) end
-    function UnitIsDeadOrGhost(u) return false end
+    -- T13: plain (Facts) -- answers a fixture's own S.units[u].dead flag
+    -- rather than always false, so a script can script a death.
+    function UnitIsDeadOrGhost(u)
+        local x = U(u)
+        return x ~= nil and x.dead == true
+    end
 
     -- T13b: a role set directly on S.roles[u] wins (a script naming a role
     -- without building a whole S.AddUnit fixture); otherwise falls back to
@@ -936,9 +945,19 @@ function S.UseProfile(name)
         ShouldUnitStatsBeSecret = function() return S.inCombat end,
     }
 
+    -- T13: a fixture's own S.units[u].auras[i] wins when set (the recorder's
+    -- own pre-pull scan); otherwise the fixed player row every earlier suite
+    -- already reads. Still raises in combat either way (Facts).
+    -- Lead review 1: S.auraCalls counts every call (raised or not), so a
+    -- suite can prove a scanner skipped this function entirely rather than
+    -- just relying on the pcall wrapper swallowing the raise.
+    S.auraCalls = 0
     C_UnitAuras = {
         GetAuraDataByIndex = function(u, i, filter)
+            S.auraCalls = S.auraCalls + 1
             if S.inCombat then error("Auras cannot be accessed when secret while tainted") end
+            local x = U(u)
+            if x and x.auras then return x.auras[i] end
             if u == "player" and i == 1 then
                 return { name = "Mark of the Wild", spellId = 1126, duration = 1800 }
             end
@@ -967,31 +986,50 @@ function S.UseProfile(name)
     local function meterSecretNow()
         return S.inCombat and S.meterSecretInCombat ~= false
     end
+    -- T13: what C_DamageMeter answers, pulled into a fixture-settable table
+    -- rather than left as inline literals -- the recorder's own suite scripts
+    -- S.meter.sources for "own X / others Y" without touching this function.
+    -- Defaults are exactly what every earlier suite already saw.
+    S.meter = {
+        sources = {
+            { sourceGUID = "Player-1", isLocalPlayer = true, totalAmount = 1234, amountPerSecond = 41 },
+        },
+        -- session type (Enum.DamageMeterSessionType's own values) -> rows.
+        -- T0c: every row carries combatSpellDetails one level deep (a
+        -- stand-in for EllesmereUI's own reading of the field), and the
+        -- Overall session lists six spells against Current's one, so the
+        -- five-row cap on the dump has something to cap.
+        spells = {
+            [Enum.DamageMeterSessionType.Overall] = {
+                { spellID = 774, totalAmount = 1000, unitName = "Tankname", unitClassFilename = "WARRIOR" },
+                { spellID = 5185, totalAmount = 900, unitName = "Tankname", unitClassFilename = "WARRIOR" },
+                { spellID = 1058, totalAmount = 800, unitName = "Tankname", unitClassFilename = "WARRIOR" },
+                { spellID = 5186, totalAmount = 700, unitName = "Tankname", unitClassFilename = "WARRIOR" },
+                { spellID = 8936, totalAmount = 600, unitName = "Tankname", unitClassFilename = "WARRIOR" },
+                { spellID = 740, totalAmount = 500, unitName = "Tankname", unitClassFilename = "WARRIOR" },
+            },
+            [Enum.DamageMeterSessionType.Current] = {
+                { spellID = 774, totalAmount = 1000, unitName = "Tankname", unitClassFilename = "WARRIOR" },
+            },
+        },
+    }
     C_DamageMeter = {
         IsDamageMeterAvailable = function() return true end,
         GetCombatSessionFromType = function(st, mt)
             if meterSecretNow() then return S.SecretTable() end
-            return { combatSources = {
-                { sourceGUID = "Player-1", isLocalPlayer = true, totalAmount = 1234, amountPerSecond = 41 },
-            } }
+            return { combatSources = S.meter.sources }
         end,
         GetCombatSessionSourceFromType = function(st, mt, guid, cid)
             if meterSecretNow() then return S.SecretTable() end
-            -- T0c: every row carries combatSpellDetails one level deep (a
-            -- stand-in for EllesmereUI's own reading of the field), and the
-            -- Overall session lists six spells against Current's one, so the
-            -- five-row cap on the dump has something to cap.
-            local function row(id, amount)
-                return { spellID = id, totalAmount = amount,
-                    combatSpellDetails = { unitName = "Tankname", unitClassFilename = "WARRIOR", specIconID = 0 } }
+            local rows = S.meter.spells[st] or {}
+            local out = {}
+            for _, r in ipairs(rows) do
+                out[#out + 1] = { spellID = r.spellID, totalAmount = r.totalAmount,
+                    overkillAmount = r.overkillAmount,
+                    combatSpellDetails = { unitName = r.unitName, unitClassFilename = r.unitClassFilename,
+                        specIconID = 0 } }
             end
-            if st == Enum.DamageMeterSessionType.Overall then
-                return { combatSpells = {
-                    row(774, 1000), row(5185, 900), row(1058, 800),
-                    row(5186, 700), row(8936, 600), row(740, 500),
-                } }
-            end
-            return { combatSpells = { row(774, 1000) } }
+            return { combatSpells = out }
         end,
     }
 

@@ -283,10 +283,16 @@ readings and `UnitHealthMissing(party1)`, out of combat and in the snapshot; `pr
 **T13a** (`797ef17`) -- `apicheck.py` rule 8: an `MD:On` handler's argument compared, indexed, measured or
 `type()`-tested before `IsSecret` asks about it is a finding; the one it found (`Core_Forever.lua`,
 `ADDON_LOADED`) is guarded; `apicheck --selftest` 10 of 10.
-**T15** -- the Replay module carries `Kit_Forever.lua` and `Engine\SimModel.lua`: `MD.RankMath:SpellKit()`
+**T15** (`9876615`) -- the Replay module carries `Kit_Forever.lua` and `Engine\SimModel.lua`: `MD.RankMath:SpellKit()`
 and `MD.SpellData` built from `MD.Book` (Healing Touch, Regrowth, Rejuvenation, Swiftmend eating the
 whole HoT, Tranquility excluded; Wild Growth skipped and named); the engine's four spell-name
 lookups go through `MD.API.SpellName`; `kitcheck` 7.
+**T13** -- the Recorder module carries `Recorder_Forever.lua`: every pull a **v3 stream** in
+`MD.cdb.recordings` (8 kept) -- `UNIT_COMBAT` WOUND / HEAL per tracked token (HEAL = 15, source
+unknown), own casts with SENT target and book cost, cancels decided whatever order STOP and
+SUCCEEDED arrive in (UNKNOWN on the client), party max health `-1`, the clock's modelled mana,
+deaths, pre-pull HoTs read out of combat, restriction brackets, the damage meter's totals read 1 s
+after combat; `/st rec [clear]`; `recordcheck` 14.
 
 ### M4 — practice (phase 4) → `1.0.0-beta.3`
 
