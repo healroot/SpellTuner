@@ -24,6 +24,16 @@ their parsers happen to reject a path.
 
 Python tools run directly with `python3` and need no harness.
 
+**`python3 tools/apicheck.py`** (T6) -- run it on every Forever change. It reads every file the
+Forever TOCs load (any `.toc` with an interface in 16000-19999, siblings included), lists every
+global each reads or writes from `luac -l` (the harness's own `luac`, built by `run.sh`), and fails
+with `FAIL <file>:<line> <name> <reason>` on a name the 69893 baseline lacks, a client call outside
+`Client/` (the widget toolkit and WoW's Lua extensions are allowed anywhere -- the two lists are in
+the script), a new global, `os` / `io` / `require` and the rest WoW's Lua does not have, the
+`COMBAT_LOG_EVENT_UNFILTERED` constant outside `Client/API_Forever.lua`, and a `C_X.Y` string the
+baseline does not have. `--report` prints every global per file with its class; `--selftest` runs
+the fixture in `tools/data/apicheck-fixture/`, which trips each rule once.
+
 ---
 
 ## 1. The test suites
@@ -65,6 +75,7 @@ for t in adaptercheck corecheck; do
     printf "%-13s " "$t/$f"; bash tools/run.sh --flavour $f tools/$t.lua 2>&1 | tail -1
   done
 done
+python3 tools/apicheck.py | tail -1; python3 tools/apicheck.py --selftest | tail -1
 ```
 
 ---

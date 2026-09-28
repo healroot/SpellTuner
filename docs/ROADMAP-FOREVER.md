@@ -151,7 +151,10 @@ bindings and the forbidden combat log in `Client/API_Forever.lua`, the classic n
 forbidden-event guard, callbacks, ticker, Print, identity, db init, the login sequence
 `CORE_LOGIN` / `MD_READY` / `CORE_READY`, the slash dispatcher with `MD:AddCommand`); the TBC
 addon's own core moved verbatim to `Core_TBC.lua`; `Core_Forever.lua` starts Forever's; `/st probe`
-goes through the kernel; `tools/corecheck.lua` 10 / 8 ok.
+goes through the kernel; `tools/corecheck.lua` 10 / 8 ok. **T6** -- 2026-09-28 (`docs/tasks/T6-apicheck.md`): `python3 tools/apicheck.py`
+checks every global the Forever TOCs' files touch (from `luac -l`) against the 69893 baseline and
+the adapter rule -- absent names, client calls outside `Client/`, new globals, WoW-less Lua
+libraries, the combat log named, unknown `C_` members -- with a fixture (`--selftest`); 0 findings.
 
 ### M2 — tooltips and the dashboard (phase 2) → `1.0.0-beta.1`
 

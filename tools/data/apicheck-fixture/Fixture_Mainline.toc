@@ -1,0 +1,6 @@
+## Interface: 16001
+## Title: Fixture
+
+Client\Ok.lua
+Bad.lua
+Gone.lua
