@@ -3311,3 +3311,43 @@ character name without a trailing realm, and the present branch of the talent AP
 **State:** TBC line v0.15.4 untouched in behaviour. Forever line `1.0.0-alpha.0`, probe only.
 **Next:** the author runs §35; the planner reads `docs/probe/<build>.md` against the nine
 questions and re-plans where a fact fell; the lead writes T1-T6 (M1).
+
+---
+
+## 2026-09-27 (evening) / 2026-09-28 — the first probe reports, T0c, and a recovery
+
+**The author ran the probe on the beta** (build 70009, Healroot level 8, PvP realm); the reports
+are `docs/probe/1.60.1_70009.md` (commits `8f775d0`, `cdaa147`, `38027a9`). What they settled:
+**Q9** -- the client loads `SpellTuner_Mainline.toc`; **Q7** -- SavedVariables come back; **Q1**
+-- descriptions are **dynamic** (a +5 spell power elixir changed every damage description and no
+heal), so phase 2 parses `C_Spell.GetSpellDescription` and needs no coefficient table. Two alarms:
+the character's own health and mana read **secret out of combat** (Q2 widened to "readable at
+all, and under what state"), and an `ADDON_ACTION_FORBIDDEN` dialog appeared at load, the combat
+log registration the suspect.
+
+**T0c** (`docs/tasks/T0c-probe-secrets.md`): the planner's answer to both alarms. The probe records
+a blocked action naming SpellTuner with what it was doing at the time, registers
+`COMBAT_LOG_EVENT_UNFILTERED` only on `/st probe clog`, reads the `C_Secrets` predicates and the
+percent / missing / incoming / dead health readings in and out of combat, counts
+`ADDON_RESTRICTION_STATE_CHANGED`, shows the damage meter's `combatSpellDetails`, prints bonus
+damage and level beside bonus healing (Q1 answered by any of the three, was/now for every changed
+description), and waits for level 10 for Q6. The Forever flavour is now two TOCs, `_Mainline` and
+the plain fallback, at `1.0.0-alpha.1`. Implemented with 21 failing assertions first;
+`probecheck` 41 -> 57.
+
+**The recovery.** The session was cut off right after the implementer's report: the worktree's
+last commit (`61fef3d`) and 17 other git objects were written as empty files, most likely an
+unclean WSL shutdown, and the branch ref points at the broken commit. The three probe-report commits
+were intact; this branch was fast-forwarded to them and the T0c working files copied over from the
+broken worktree byte for byte. The lead review that had not happened was done here: **accepted**,
+with one four-line fix by the lead (the two listener registrations at load now set
+`doing = register:<EVENT>`, so a forbidden action tripped by registering `ADDON_ACTION_BLOCKED`
+names its cause instead of `load`). The broken worktree `combat-log-design-arch-ffb907` still
+exists; its content is all in this branch, and `git fsck` still reports the empty objects in the
+shared `.git`.
+
+**State:** TBC line v0.15.4 untouched. Forever line `1.0.0-alpha.1`, probe only; seventeen suites
+green. **Next:** the author reinstalls and runs the second round (`docs/TESTING.md` §35, "Second
+round"): does the dialog still appear at load, does `/st probe clog` trip it, and are health and
+mana secret always or only under a restriction. Then the planner reads that and the lead writes
+T1-T6 (M1).

@@ -760,11 +760,11 @@ arithmetic on what the client returns.
 
 This replaces `AddOns/SpellTuner`. By hand instead: make
 `.../_classic_beta_/Interface/AddOns/SpellTuner/`, copy in `SpellTuner.toc`,
-`SpellTuner_Forever.toc`, `SpellTuner_Vanilla.toc`, `SpellTuner_Mainline.toc` and the whole
-`Client/` folder; do **not** copy `SpellTuner_TBC.toc`. Leave EllesmereUI as it is.
+`SpellTuner_Mainline.toc` and the whole `Client/` folder (since T0c the `_Forever` and `_Vanilla`
+copies are gone -- delete them if an older install left them there); do **not** copy `SpellTuner_TBC.toc`. Leave EllesmereUI as it is.
 
 **Run.**
-1. Start the beta. At character select, open AddOns and check that SpellTuner (1.0.0-alpha.0) is
+1. Start the beta. At character select, open AddOns and check that SpellTuner (1.0.0-alpha.1) is
    enabled. Log in as Healroot and type `/console scriptErrors 1` once, so a load error shows.
 2. **Show all ranks.** Open the spellbook, hover the arrow at its top right and turn on the option
    to show all ranks of spells. The default view hides lower ranks, and the probe dumps what the

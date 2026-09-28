@@ -113,7 +113,11 @@ nits an independent three-lens review confirmed before the author's run -- the Q
 unreadable descriptions as changes, an unescaped client string, a comparison outside the adapter's
 pcall, the stub's secret stand-in described backwards, a self-asserting test -- plus
 `issecrettable`, the copy box's letter cap, the per-name rank count and the "show all ranks" step;
-`probecheck` 41 ok. The exit now waits on the author running `/st probe` on the beta
+`probecheck` 41 ok. **T0c** -- done 2026-09-28 (`docs/tasks/T0c-probe-secrets.md`, lead-accepted):
+what the first two reports from build 70009 raised -- the blocked-action dialog recorded and named,
+the combat log registered only on demand (`/st probe clog`), the secret question measured, bonus
+damage and level in Q1, Q6 at level 10, and the Forever flavour cut to `SpellTuner_Mainline.toc`
+plus the plain fallback at `1.0.0-alpha.1`; `probecheck` 57 ok. The exit now waits on the author running `/st probe` on the beta
 (`docs/TESTING.md` §35).
 
 ### M1 — the frame (phase 1)
