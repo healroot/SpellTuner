@@ -181,11 +181,18 @@ check("the report is keyed by build",
 Do(S.Fire, "ADDON_RESTRICTION_STATE_CHANGED", 5, 1)
 Do(S.Fire, "ADDON_RESTRICTION_STATE_CHANGED", 5, 1)
 
+-- T7a item 7: a readable player cast, out of combat, and a party1 cast --
+-- the latter must not be counted at all.
+Do(S.Fire, "UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-0", 774)
+Do(S.Fire, "UNIT_SPELLCAST_SUCCEEDED", "party1", "Cast-P", 774)
+
 Do(S.Fire, "UNIT_COMBAT", "party1", "HEAL", "", 120, 1)
 Do(S.Fire, "UNIT_COMBAT", "party1", "BLOCK|X", "", 5, 1)
 S.inCombat = true
 Do(S.Fire, "PLAYER_REGEN_DISABLED")
 for _, fn in ipairs(S.timers or {}) do Do(fn) end
+-- T7a item 7: a secret spell id, in combat.
+Do(S.Fire, "UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-2", S.Secret())
 -- T0c: a different restriction payload and a blocked action, both in combat.
 Do(S.Fire, "ADDON_RESTRICTION_STATE_CHANGED", 5, 0)
 Do(S.Fire, "ADDON_ACTION_BLOCKED", "SpellTuner", "Frame:Show()")
@@ -716,6 +723,93 @@ check("the spells header shows bonus damage per school",
 check("Q1 is answered by a change in bonus damage",
     Has(reportC, "Q1 to do")
     and Has(reportD, "Q1 answered: 14 of 17 spell descriptions changed when bonus healing went 0 -> 0, bonus damage Holy=0 Fire=0 Nature=0 Frost=0 Shadow=0 Arcane=0 -> Holy=0 Fire=0 Nature=5 Frost=0 Shadow=0 Arcane=0, level 64 -> 64"))
+
+--------------------------------------------------------------------------------
+-- T7a: the == shapes section
+--------------------------------------------------------------------------------
+
+-- The exact text of the line starting at the given marker, or nil.
+local function LineContaining(s, marker)
+    local i = s:find(marker, 1, true)
+    if not i then return nil end
+    local j = s:find("\n", i, true) or (#s + 1)
+    return s:sub(i, j - 1)
+end
+
+check("the shapes section sits between the talents and the readings",
+    Between(report1, "\n== talents\n", "\n== shapes\n") ~= nil
+    and Between(report1, "\n== shapes\n", "\n== readings now\n") ~= nil)
+
+check("the shapes section lists every skill line whole",
+    Has(report1, "skill lines: 2")
+    and Has(report1, "skill line 1 = {iconID=1, isGuild=false, itemIndexOffset=0, name=General, numSpellBookItems=0, shouldHide=false}")
+    and Has(report1, "skill line 2 = {iconID=2, isGuild=false, itemIndexOffset=0, name=Druid, numSpellBookItems=5, shouldHide=false}"))
+
+--------------------------------------------------------------------------------
+-- Step 7: Forever, fresh -- a low-rank spell added via S.AddSpell's fifth
+-- argument, and (after the first run) C_TooltipInfo removed entirely.
+--------------------------------------------------------------------------------
+dofile(here .. "/wowstub.lua")
+local S7 = _G.STUB
+S7.root = ROOT
+S7.UseProfile("forever")
+S7.AddSpell(900100, "Stub Shield", "Rank 1", function() return "Reduces damage taken." end, { lowRank = true })
+
+_G.SpellTunerDB = nil
+local MD7 = {}
+local step7LoadOk = pcall(S7.Load, { "Client/TOC_Mainline.lua", "Client/API.lua", "Client/Probe.lua" }, "SpellTuner", MD7)
+local step7AddonLoadedOk = pcall(S7.Fire, "ADDON_LOADED", "SpellTuner")
+local okE, reportE = pcall(MD7.Probe.Run)
+
+--------------------------------------------------------------------------------
+-- Step 8: Forever, fresh, C_TooltipInfo missing entirely -- a FRESH load
+-- (T7a assertion 6), since MD.API.Has caches its answer for the life of one
+-- API table and Step 7's MD7 already cached C_TooltipInfo.GetSpellByID as
+-- present before this could remove it.
+--------------------------------------------------------------------------------
+dofile(here .. "/wowstub.lua")
+local S8 = _G.STUB
+S8.root = ROOT
+S8.UseProfile("forever")
+C_TooltipInfo = nil
+
+_G.SpellTunerDB = nil
+local MD8 = {}
+local step8LoadOk = pcall(S8.Load, { "Client/TOC_Mainline.lua", "Client/API.lua", "Client/Probe.lua" }, "SpellTuner", MD8)
+local step8AddonLoadedOk = pcall(S8.Fire, "ADDON_LOADED", "SpellTuner")
+local okF, reportF = pcall(MD8.Probe.Run)
+
+check("every spell in the book has one shapes line: info, cost, learned, base, low rank, row",
+    okE == true
+    and Has(reportE, "book 5185 Healing Touch Rank 1: info=")
+    and Has(reportE, "book 774 Rejuvenation Rank 1: info=")
+    and Has(reportE, "book 5176 Wrath Rank 1: info=")
+    and Has(reportE, "book 1058 Rejuvenation Rank 2: info=")
+    and (function()
+        local line = LineContaining(reportE, "book 900100 Stub Shield Rank 1:")
+        return line ~= nil and Has(line, "lowrank=true")
+    end)())
+
+check("a spell's cost is rendered two levels deep",
+    Has(report1, "cost={1={cost=25, costPerSec=0, costPercent=0, hasRequiredAura=false, minCost=25, name=MANA, requiredAuraID=0, type=0}}"))
+
+check("the first heal and the first damage spell carry their tooltip lines, pipes escaped",
+    Has(report1, "tooltip 5185 = 4 lines")
+    and Has(report1, "  line 4: Heals a friendly target for 40 to 55.||nIt is \\226\\128\\156quoted\\226\\128\\157. || nil")
+    and Has(report1, "tooltip 5176 = 4 lines"))
+
+check("a shape function the client lacks reads <absent>",
+    okF == true and Has(reportF, "tooltip = <absent>") and HeadersInOrder(reportF))
+
+do
+    local seg = Between(report2, "\n== shapes\n", "\n== readings now\n")
+    check("the combat snapshot carries the shapes read in combat",
+        seg ~= nil and Has(seg, "in combat (") and Has(seg, "desc=<secret>") and Has(seg, "crit4=<secret>"))
+end
+
+check("UNIT_SPELLCAST_SUCCEEDED is counted with its id readable or secret, and the cost read at the cast",
+    Has(report2, "UNIT_SPELLCAST_SUCCEEDED ooc n=1 readable=1 secret=0 sample=774; cost at cast readable=1 secret=0 absent=0")
+    and Has(report2, "UNIT_SPELLCAST_SUCCEEDED combat n=1 readable=0 secret=1 sample=; cost at cast readable=0 secret=0 absent=0"))
 
 print(string.format("\n%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("  FAIL " .. f) end

@@ -554,6 +554,14 @@ function S.UseProfile(name)
     function GetSpellBonusHealing() return S.bonusHealing end
     function GetShapeshiftFormID() return nil end
 
+    -- retail 12.x documented shape, NOT observed on Forever -- the probe's == shapes checks it.
+    -- Secret in combat like the other stat-ish predicates (ShouldUnitStatsBeSecret's gate).
+    S.crit = {}
+    function GetSpellCritChance(school)
+        if S.inCombat then return S.Secret() end
+        return S.crit[school] or 5
+    end
+
     -- T5, Facts (seventh report): plain out of combat, secret both returns in
     -- combat.
     function GetManaRegen()
@@ -591,10 +599,25 @@ function S.UseProfile(name)
     -- (not secret) for the spellbook-error tally. 774's description reads
     -- S.bonusHealing live, so a probe run after changing it sees a different
     -- number; 1058's is fixed.
-    local SPELL_SLOTS = { [1] = 774, [2] = 5185, [3] = 5176, [5] = 1058 }
+    -- T7a: 5185 moved to slot 1 (ahead of 774) -- its own description is the
+    -- only fixed one carrying a pipe, and "the first spell whose description
+    -- contains heal" (== shapes item 3) needs to land on it out of combat, so
+    -- the pipe-escaping shape has something real to show. No existing check
+    -- reads the RELATIVE order of these four, only their presence/content.
+    local SPELL_SLOTS = { [1] = 5185, [2] = 774, [3] = 5176, [5] = 1058 }
     local ERROR_ROW = setmetatable({}, { __index = function() error("spellbook row unreadable (stub)") end })
     local SPELL_NAMES = { [774] = "Rejuvenation", [5185] = "Healing Touch", [5176] = "Wrath", [1058] = "Rejuvenation" }
     local SPELL_SUBTEXT = { [774] = "Rank 1", [5185] = "Rank 1", [5176] = "Rank 1", [1058] = "Rank 2" }
+    -- T7a: the stand-in shapes the == shapes section reads -- cast in ms, cost
+    -- in mana, level learned, the family's rank-1 id -- straight from this
+    -- task's Facts, not measured on any client.
+    local SPELL_CAST = { [774] = 0, [1058] = 0, [5185] = 1500, [5176] = 1500 }
+    local SPELL_COST = { [774] = 25, [1058] = 40, [5185] = 25, [5176] = 20 }
+    local SPELL_COST_PERCENT = {}
+    local SPELL_NO_COST = {}
+    local SPELL_LEVEL = { [774] = 4, [1058] = 10, [5185] = 1, [5176] = 1 }
+    local SPELL_BASE = { [774] = 774, [1058] = 774, [5185] = 5185, [5176] = 5176 }
+    local SPELL_LOWRANK = {}
     -- T0c: 774's amount also carries S.descShift, a stand-in for a description
     -- that moved with a level-up rather than with bonus healing (reads exactly
     -- as before at descShift 0). 5176's amount carries S.bonusDamage[4]
@@ -613,20 +636,58 @@ function S.UseProfile(name)
             if slot == 4 then return ERROR_ROW end
             local id = SPELL_SLOTS[slot]
             if not id then return nil end
-            return { spellID = id }
+            -- retail 12.x documented shape, NOT observed on Forever -- the probe's == shapes checks it
+            return {
+                spellID = id, name = SPELL_NAMES[id], subName = SPELL_SUBTEXT[id],
+                itemType = 1, isPassive = false, isOffSpec = false, skillLineIndex = 2,
+                actionID = id, iconID = 136041,
+            }
+        end,
+        -- retail 12.x documented shape, NOT observed on Forever -- the probe's == shapes checks it
+        IsSpellBookItemLowRank = function(slot, bank)
+            return SPELL_LOWRANK[SPELL_SLOTS[slot]] == true
+        end,
+        -- retail 12.x documented shape, NOT observed on Forever -- the probe's == shapes checks it
+        GetNumSpellBookSkillLines = function() return 2 end,
+        -- retail 12.x documented shape, NOT observed on Forever -- the probe's == shapes checks it.
+        -- numSpellBookItems on the Druid line is the highest slot actually used,
+        -- so S.AddSpell (which only ever grows the range) moves it too.
+        GetSpellBookSkillLineInfo = function(i)
+            if i == 1 then
+                return { name = "General", iconID = 1, itemIndexOffset = 0, numSpellBookItems = 0,
+                         isGuild = false, shouldHide = false }
+            elseif i == 2 then
+                local maxSlot = 0
+                for slot in pairs(SPELL_SLOTS) do if slot > maxSlot then maxSlot = slot end end
+                return { name = "Druid", iconID = 2, itemIndexOffset = 0, numSpellBookItems = maxSlot,
+                         isGuild = false, shouldHide = false }
+            end
+            return nil
         end,
     }
     -- Adds a spell in the first free slot from 6 on -- for tests that need
     -- more spellbook rows than the fixed five above (T0c step 6's elixir
     -- test). descFn follows SPELL_DESC's own shape: a zero-argument function.
+    -- opts (T7a, optional): { cast, cost, costPercent, level, base, lowRank, noCost }.
     local nextFreeSlot = 6
-    function S.AddSpell(id, name, rank, descFn)
+    function S.AddSpell(id, name, rank, descFn, opts)
+        opts = opts or {}
         while SPELL_SLOTS[nextFreeSlot] do nextFreeSlot = nextFreeSlot + 1 end
         SPELL_SLOTS[nextFreeSlot] = id
         nextFreeSlot = nextFreeSlot + 1
         SPELL_NAMES[id] = name
         SPELL_SUBTEXT[id] = rank
         SPELL_DESC[id] = descFn
+        SPELL_CAST[id] = opts.cast or 0
+        SPELL_LEVEL[id] = opts.level or 1
+        SPELL_BASE[id] = opts.base or id
+        SPELL_LOWRANK[id] = opts.lowRank == true
+        if opts.noCost then
+            SPELL_NO_COST[id] = true
+        else
+            SPELL_COST[id] = opts.cost or 0
+            SPELL_COST_PERCENT[id] = opts.costPercent or 0
+        end
     end
     C_Spell = {
         GetSpellName = function(id) return SPELL_NAMES[id] end,
@@ -639,6 +700,52 @@ function S.UseProfile(name)
             local f = SPELL_DESC[id]
             if f then return f() end
             return nil
+        end,
+        -- retail 12.x documented shape, NOT observed on Forever -- the probe's == shapes checks it
+        GetSpellInfo = function(id)
+            local name = SPELL_NAMES[id]
+            if not name then return nil end
+            return {
+                name = name, iconID = 136041, originalIconID = 136041,
+                castTime = SPELL_CAST[id] or 0, minRange = 0, maxRange = 40, spellID = id,
+            }
+        end,
+        -- retail 12.x documented shape, NOT observed on Forever -- the probe's == shapes checks it
+        GetSpellPowerCost = function(id)
+            if not SPELL_NAMES[id] then return nil end
+            if SPELL_NO_COST[id] then return {} end
+            local cost = SPELL_COST[id] or 0
+            return { {
+                type = 0, name = "MANA", cost = cost, minCost = cost,
+                costPercent = SPELL_COST_PERCENT[id] or 0, costPerSec = 0,
+                requiredAuraID = 0, hasRequiredAura = false,
+            } }
+        end,
+        -- retail 12.x documented shape, NOT observed on Forever -- the probe's == shapes checks it
+        GetSpellLevelLearned = function(id) return SPELL_LEVEL[id] end,
+        -- retail 12.x documented shape, NOT observed on Forever -- the probe's == shapes checks it
+        GetBaseSpell = function(id) return SPELL_BASE[id] end,
+    }
+    -- retail 12.x documented shape, NOT observed on Forever -- the probe's == shapes checks it.
+    -- The description line reuses C_Spell.GetSpellDescription, so it goes secret
+    -- in combat for 5185 exactly the way the description itself does.
+    C_TooltipInfo = {
+        GetSpellByID = function(id)
+            local name = SPELL_NAMES[id]
+            if not name then return nil end
+            local cost = SPELL_NO_COST[id] and 0 or (SPELL_COST[id] or 0)
+            local castMs = SPELL_CAST[id] or 0
+            local castText = "Instant"
+            if castMs ~= 0 then castText = string.format("%.1f sec cast", castMs / 1000) end
+            return {
+                type = 1, id = id,
+                lines = {
+                    { leftText = name, rightText = SPELL_SUBTEXT[id] },
+                    { leftText = cost .. " Mana", rightText = "40 yd range" },
+                    { leftText = castText, rightText = "" },
+                    { leftText = C_Spell.GetSpellDescription(id) },
+                },
+            }
         end,
     }
 

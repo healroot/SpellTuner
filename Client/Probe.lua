@@ -130,6 +130,20 @@ local function First(name, ...)
     return Describe(packed[2])
 end
 
+-- Like Show, but renders every return through Describe at the given depth --
+-- T7a: a spell's cost table is one level too shallow at Show's default depth
+-- (1), which would print its inner row as "<table>" instead of the fields.
+local function ShowDepth(name, depth, ...)
+    local fn = MD.API.Has(name)
+    if type(fn) ~= "function" then return "<absent>" end
+    local n, packed = packPcall(pcall(fn, ...))
+    if not packed[1] then return "<error: " .. Fmt(packed[2]) .. ">" end
+    if n <= 1 then return "nothing" end
+    local parts = {}
+    for i = 2, n do parts[#parts + 1] = Describe(packed[i], depth) end
+    return table.concat(parts, ", ")
+end
+
 -- Reads t[key] under pcall (indexing a secret table raises rather than
 -- reading nil -- plan §1.2), and separately flags a secret RESULT. Only used
 -- where the surrounding code needs the raw value, not just its rendering.
@@ -201,6 +215,14 @@ local doing = "load"
 local eventOutcomes = {}                 -- EVENT -> { ok = bool, err = "<error: ...>" }
 local combatCounters, combatOrder = {}, {}
 local sentCounters, sentOrder = {}, {}
+-- T7a: UNIT_SPELLCAST_SUCCEEDED, by phase -- beside sentCounters/sentOrder,
+-- but a cast SUCCEEDED (not merely sent) is what the cost-at-cast shape needs.
+local succeededCounters, succeededOrder = {}, {}
+-- T7a: the most recent "first spell whose description contains heal" a walk
+-- found (updated by ShapesLines every time one runs) -- the combat snapshot
+-- re-reads THIS spell's shapes live rather than re-walking the book while
+-- secrecy may have changed what a fresh walk could even find.
+local knownFirstHeal = nil
 local restrictionCounters, restrictionOrder = {}, {}   -- ADDON_RESTRICTION_STATE_CHANGED, by "<phase> <payload>"
 local blockedCounters, blockedOrder = {}, {}           -- ADDON_ACTION_FORBIDDEN/BLOCKED naming us, by (event, phase, doing, function)
 local actionForbiddenOutcome, actionBlockedOutcome = "throws <error: not registered>", "throws <error: not registered>"
@@ -304,6 +326,38 @@ local function BumpSent(currentPhase, target)
         -- neither a usable name nor secret nor nil/"" -- not seen in practice,
         -- grouped with "empty" since there is nothing readable to show either way
         c.empty = c.empty + 1
+    end
+end
+
+-- T7a item 7: UNIT_SPELLCAST_SUCCEEDED's spell id, by phase -- readable/secret
+-- like every other counter here, plus whether GetSpellPowerCost(id) answers
+-- for a readable one (its own readable/secret/absent tally, never the id's).
+local function BumpSucceeded(currentPhase, spellID)
+    local c = succeededCounters[currentPhase]
+    if not c then
+        c = { n = 0, readable = 0, secret = 0, sample = nil, costReadable = 0, costSecret = 0, costAbsent = 0 }
+        succeededCounters[currentPhase] = c
+        succeededOrder[#succeededOrder + 1] = currentPhase
+    end
+    c.n = c.n + 1
+    if IsSecret(spellID) then
+        c.secret = c.secret + 1
+    elseif spellID ~= nil then
+        c.readable = c.readable + 1
+        if not c.sample then c.sample = Fmt(spellID) end
+        local getCost = MD.API.Has("C_Spell.GetSpellPowerCost")
+        if type(getCost) ~= "function" then
+            c.costAbsent = c.costAbsent + 1
+        else
+            local ok, result = pcall(getCost, spellID)
+            if not ok then
+                c.costAbsent = c.costAbsent + 1
+            elseif IsSecret(result) then
+                c.costSecret = c.costSecret + 1
+            else
+                c.costReadable = c.costReadable + 1
+            end
+        end
     end
 end
 
@@ -516,6 +570,17 @@ local function ReadingsLines()
     }
 end
 
+-- Enum.SpellBookSpellBank.Player, read once and reused everywhere a spellbook
+-- row needs its bank argument (T7a: the shapes section calls the book by slot
+-- again, outside SpellWalk, and must ask for the same bank it did).
+local function PlayerBank()
+    local bankEnum = MD.API.Has("Enum.SpellBookSpellBank")
+    if type(bankEnum) ~= "table" then return nil end
+    local v, status = Field(bankEnum, "Player")
+    if status == "ok" then return v end
+    return nil
+end
+
 --------------------------------------------------------------------------------
 -- == spells -- walk slots 1..500 of our own accord (the client is never
 -- trusted to say when to stop); dumps id/name/rank/desc for healing spells
@@ -523,12 +588,7 @@ end
 -- future run can notice one that STOPPED or STARTED containing "heal".
 --------------------------------------------------------------------------------
 local function SpellWalk()
-    local bankEnum = MD.API.Has("Enum.SpellBookSpellBank")
-    local playerBank = nil
-    if type(bankEnum) == "table" then
-        local v, status = Field(bankEnum, "Player")
-        if status == "ok" then playerBank = v end
-    end
+    local playerBank = PlayerBank()
 
     local getItem = MD.API.Has("C_SpellBook.GetSpellBookItemInfo")
     local getName = MD.API.Has("C_Spell.GetSpellName")
@@ -566,7 +626,7 @@ local function SpellWalk()
                             rank = rOk and Fmt(rVal) or ("<error: " .. Fmt(rVal) .. ">")
                         end
 
-                        local descText, healing = "<absent>", false
+                        local descText, healing, dmg = "<absent>", false, false
                         if type(getDesc) == "function" then
                             local dOk, dVal = pcall(getDesc, id)
                             if not dOk then
@@ -579,7 +639,11 @@ local function SpellWalk()
                                 descText = ""; e = e + 1
                             elseif type(dVal) == "string" then
                                 descText = Esc(dVal)
-                                healing = dVal:lower():find("heal", 1, true) ~= nil
+                                local lowered = dVal:lower()
+                                healing = lowered:find("heal", 1, true) ~= nil
+                                -- T7a item 3: the same case-insensitive substring test, for
+                                -- picking the shapes section's one damage-spell tooltip.
+                                dmg = lowered:find("damage", 1, true) ~= nil
                             else
                                 descText = Fmt(dVal)
                             end
@@ -587,7 +651,13 @@ local function SpellWalk()
                         if healing then h = h + 1 end
 
                         descByKey[key] = descText
-                        order[#order + 1] = { key = key, name = name, rank = rank, desc = descText, healing = healing }
+                        -- T7a: id and slot are kept (both already known non-secret at this
+                        -- point -- id via idStatus == "ok", slot is our own loop counter) so
+                        -- the shapes section can call the book again by slot/id without
+                        -- re-walking, and so it never touches a raw value SpellWalk itself
+                        -- has not already cleared.
+                        order[#order + 1] = { key = key, id = id, slot = slot, name = name, rank = rank,
+                            desc = descText, healing = healing, dmg = dmg }
                     end
                 end
             elseif ok and type(info) == "table" and IsSecret(info) then
@@ -728,6 +798,162 @@ local function AgainstPreviousLines(order, descByKey, bonusStr, damageStr, level
 end
 
 --------------------------------------------------------------------------------
+-- == shapes (T7a): every client return M2's spellbook reader, tooltip,
+-- dashboard and clock will read, dumped whole so those modules can be built
+-- against an answer rather than the retail documentation alone.
+--------------------------------------------------------------------------------
+
+-- One spell's tooltip: <n> lines, then each line's left/right text. Fmt
+-- already escapes a string (so a pipe in the text reads "||") and renders
+-- <secret>/nil/<table> for anything else -- there is no raw value here that
+-- reaches the report unescaped.
+local function TooltipLines(sp)
+    local out = {}
+    local getSpell = MD.API.Has("C_TooltipInfo.GetSpellByID")
+    if type(getSpell) ~= "function" then
+        out[1] = "tooltip = <absent>"
+        return out
+    end
+    local ok, err = pcall(function()
+        local n, packed = packPcall(pcall(getSpell, sp.id))
+        if not packed[1] then
+            out[1] = "tooltip " .. sp.key .. " = <error: " .. Fmt(packed[2]) .. ">"
+            return
+        end
+        local result = packed[2]
+        if IsSecret(result) then
+            out[1] = "tooltip " .. sp.key .. " = <secret>"
+            return
+        end
+        if type(result) ~= "table" then
+            out[1] = "tooltip " .. sp.key .. " = <absent>"
+            return
+        end
+        local linesField, status = Field(result, "lines")
+        if status ~= "ok" or type(linesField) ~= "table" then
+            out[1] = "tooltip " .. sp.key .. " = <absent>"
+            return
+        end
+        local rowCount, rowLines = 0, {}
+        for i, row in ipairs(linesField) do
+            rowCount = rowCount + 1
+            if not IsSecret(row) and type(row) == "table" then
+                rowLines[#rowLines + 1] = "  line " .. i .. ": " .. Fmt(row.leftText) .. " || " .. Fmt(row.rightText)
+            else
+                rowLines[#rowLines + 1] = "  line " .. i .. ": <secret>"
+            end
+        end
+        out[1] = "tooltip " .. sp.key .. " = " .. tostring(rowCount) .. " lines"
+        for _, l in ipairs(rowLines) do out[#out + 1] = l end
+    end)
+    if not ok then
+        out = { "tooltip " .. sp.key .. " = <error: " .. Fmt(err) .. ">" }
+    end
+    return out
+end
+
+-- The one healing spell the combat snapshot re-reads live (T7a item 6): every
+-- call already goes through Show/ShowDepth, which is what clears the secrecy
+-- a call made in combat may now answer with, exactly as everywhere else.
+local function FirstHealShapesLine(sp)
+    if not sp then return nil end
+    return string.format("  desc=%s; info=%s; cost=%s; crit4=%s; bonus healing=%s",
+        Show("C_Spell.GetSpellDescription", sp.id),
+        Show("C_Spell.GetSpellInfo", sp.id),
+        ShowDepth("C_Spell.GetSpellPowerCost", 2, sp.id),
+        Show("GetSpellCritChance", 4),
+        Show("GetSpellBonusHealing"))
+end
+
+-- UNIT_SPELLCAST_SUCCEEDED, one line per phase seen (T7a item 7).
+local function SucceededLines()
+    local lines = {}
+    for _, p in ipairs(succeededOrder) do
+        local c = succeededCounters[p]
+        lines[#lines + 1] = string.format(
+            "UNIT_SPELLCAST_SUCCEEDED %s n=%d readable=%d secret=%d sample=%s; cost at cast readable=%d secret=%d absent=%d",
+            p, c.n, c.readable, c.secret, c.sample or "", c.costReadable, c.costSecret, c.costAbsent)
+    end
+    if #lines == 0 then lines[1] = "UNIT_SPELLCAST_SUCCEEDED: none this session" end
+    return lines
+end
+
+-- order is the SAME walk Run() already did for == spells -- the shapes
+-- section reads every id/slot it remembered rather than walking the book a
+-- second time.
+local function ShapesLines(order)
+    local lines = {}
+
+    -- item 1: the skill lines, whole -- only per-line if the count answers a
+    -- plain, small, non-secret number (never looped on a client value that
+    -- could be secret, absent or absurd).
+    lines[#lines + 1] = "skill lines: " .. Show("C_SpellBook.GetNumSpellBookSkillLines")
+    local getNumLines = MD.API.Has("C_SpellBook.GetNumSpellBookSkillLines")
+    if type(getNumLines) == "function" then
+        local ok, n = pcall(getNumLines)
+        if ok and not IsSecret(n) and type(n) == "number" and n >= 1 and n <= 20 then
+            for i = 1, n do
+                lines[#lines + 1] = "skill line " .. i .. " = " .. Show("C_SpellBook.GetSpellBookSkillLineInfo", i)
+            end
+        end
+    end
+
+    -- item 2: every spell the walk found, in walk order.
+    local bank = PlayerBank()
+    for _, sp in ipairs(order) do
+        lines[#lines + 1] = string.format(
+            "book %s %s %s: info=%s; cost=%s; learned=%s; base=%s; lowrank=%s; row=%s",
+            sp.key, sp.name, sp.rank,
+            Show("C_Spell.GetSpellInfo", sp.id),
+            ShowDepth("C_Spell.GetSpellPowerCost", 2, sp.id),
+            Show("C_Spell.GetSpellLevelLearned", sp.id),
+            Show("C_Spell.GetBaseSpell", sp.id),
+            Show("C_SpellBook.IsSpellBookItemLowRank", sp.slot, bank),
+            Show("C_SpellBook.GetSpellBookItemInfo", sp.slot, bank))
+    end
+
+    -- item 3: the first heal's and the first damage spell's tooltip, each at
+    -- most once. knownFirstHeal is refreshed here so the combat snapshot,
+    -- taken independently of any /st probe run, has a spell to re-read live.
+    local firstHeal, firstDamage = nil, nil
+    for _, sp in ipairs(order) do
+        if not firstHeal and sp.healing then firstHeal = sp end
+        if not firstDamage and sp.dmg then firstDamage = sp end
+    end
+    if firstHeal then
+        knownFirstHeal = firstHeal
+        for _, l in ipairs(TooltipLines(firstHeal)) do lines[#lines + 1] = l end
+    end
+    if firstDamage then
+        for _, l in ipairs(TooltipLines(firstDamage)) do lines[#lines + 1] = l end
+    end
+
+    -- item 4: crit chance per school, 1 (Physical) through 7 (Arcane).
+    local schoolNames = { "Physical", "Holy", "Fire", "Nature", "Frost", "Shadow", "Arcane" }
+    local critParts = {}
+    for i, name in ipairs(schoolNames) do
+        critParts[#critParts + 1] = name .. "=" .. Show("GetSpellCritChance", i)
+    end
+    lines[#lines + 1] = "crit: " .. table.concat(critParts, " ")
+
+    -- item 5: bonus healing, read again here beside the schools above.
+    lines[#lines + 1] = "bonus healing: " .. Show("GetSpellBonusHealing")
+
+    -- item 6: the same few shapes, read again from inside combat.
+    if not combatSnapshot then
+        lines[#lines + 1] = "in combat: none this session"
+    else
+        lines[#lines + 1] = "in combat (" .. Fmt(combatSnapshot.stamp) .. "):"
+        lines[#lines + 1] = combatSnapshot.shapesFirstHeal or "  <none>"
+    end
+
+    -- item 7: UNIT_SPELLCAST_SUCCEEDED, id and cost-at-cast readability.
+    for _, l in ipairs(SucceededLines()) do lines[#lines + 1] = l end
+
+    return lines
+end
+
+--------------------------------------------------------------------------------
 -- Combat snapshot: taken 2s into PLAYER_REGEN_DISABLED (or at once if the
 -- client has no C_Timer.After), and kept -- the last one of the session wins.
 --------------------------------------------------------------------------------
@@ -742,6 +968,7 @@ local function TakeCombatSnapshot()
         inCombat = Show("UnitAffectingCombat", "player"),
         partyExists = Show("UnitExists", "party1"),
         lines = lines,
+        shapesFirstHeal = FirstHealShapesLine(knownFirstHeal),
     }
     doing = savedDoing
 end
@@ -1083,6 +1310,9 @@ local function Run()
     local talentsLines, tierColumnShow = TalentsLines()
     for _, l in ipairs(talentsLines) do lines[#lines + 1] = l end
 
+    lines[#lines + 1] = "== shapes"
+    for _, l in ipairs(ShapesLines(order)) do lines[#lines + 1] = l end
+
     lines[#lines + 1] = "== readings now"
     for _, l in ipairs(ReadingsLines()) do lines[#lines + 1] = l end
 
@@ -1293,6 +1523,16 @@ local function OnSpellcastSent(unit, target)
     BumpSent(phase, target)
 end
 
+-- T7a item 7: only for the player's own cast, and only once IsSecret has
+-- cleared the unit token -- the same "first argument == 'player'" rule
+-- Client/Probe.lua's other unit-scoped counters do not need, since UNIT_COMBAT
+-- and UNIT_SPELLCAST_SENT are read for party1 on purpose.
+local function OnSpellcastSucceeded(unit, castGUID, spellID)
+    if IsSecret(unit) then return end
+    if unit ~= "player" then return end
+    BumpSucceeded(phase, spellID)
+end
+
 -- T0c items 1 and 3: the payload is only ever passed to Fmt/BumpBlocked,
 -- never compared or indexed raw.
 local function OnRestrictionStateChanged(...)
@@ -1313,6 +1553,7 @@ local HANDLERS = {
     PLAYER_REGEN_ENABLED = OnRegenEnabled,
     UNIT_COMBAT = OnCombatEvent,
     UNIT_SPELLCAST_SENT = OnSpellcastSent,
+    UNIT_SPELLCAST_SUCCEEDED = OnSpellcastSucceeded,
     ADDON_RESTRICTION_STATE_CHANGED = OnRestrictionStateChanged,
     ADDON_ACTION_FORBIDDEN = OnAddonActionForbidden,
     ADDON_ACTION_BLOCKED = OnAddonActionBlocked,
