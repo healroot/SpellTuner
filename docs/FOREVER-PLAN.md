@@ -61,6 +61,8 @@ code.
 | | status |
 |---|---|
 | `CombatLogGetCurrentEventInfo` | **absent** from the baseline; `C_CombatLog.IsCombatLogRestricted` exists |
+| `COMBAT_LOG_EVENT_UNFILTERED` | **registering it is forbidden** (2026-09-28, build 70009): the `RegisterEvent` call returns normally, then the client fires `ADDON_ACTION_FORBIDDEN` (function `UNKNOWN()`) and shows the "blocked from an action only available to the Blizzard UI" dialog. Proven by `/st probe clog` (`docs/probe/1.60.1_70009.md`, sixth report). **No Forever file registers it, not even under pcall** |
+| Current health and mana, own and party | **secret out of combat too** (2026-09-28): `C_Secrets.HasSecretRestrictions()` is true solo out of combat; `UnitHealth`, `UnitPower`, `UnitHealthPercent`, `UnitHealthMissing`, `UnitPowerPercent`, `UnitGetIncomingHeals` all read secret. **`UnitHealthMax` and `UnitPowerMax` read plain** (234 / 275), as do `UnitIsDeadOrGhost`, `GetManaRegen` and **`UNIT_COMBAT` amounts** (WOUND and HEAL, on player, target and other units, out of combat) |
 | Enemy health, damage numbers, threat | secret ("combat-decision automation cannot exist here") |
 | Own auras in combat | secret: `C_Secrets.ShouldAurasBeSecret()` true → reading throws ("Auras cannot be accessed when secret while tainted") |
 | A secret value | arithmetic, comparison, `#`, table key, call → **immediate Lua error**; store / pass / concat / `StatusBar:SetValue` allowed; `issecretvalue(v)` tests |
@@ -135,7 +137,8 @@ Lifebloom rules (stacks, bloom, rolling) are TBC-only and stay out of the Foreve
 Enumerate `C_SpellBook` skill lines → items; group by base name (`C_Spell.GetBaseSpell`,
 `C_Spell.GetSpellSubtext` for "Rank N"); per rank: value (from the description parser), cost
 (`C_Spell.GetSpellPowerCost`), cast (`C_Spell.GetSpellInfo`), crit per school, value per mana,
-per second, casts to OOM (`GetManaRegen`, `UnitPower`). The Pareto / suggested-rank logic ports
+per second, casts to OOM (`GetManaRegen`, and the modelled mana of §2.5 -- `UnitPower` is secret, §1.2; casts from
+full use the plain `UnitPowerMax`). The Pareto / suggested-rank logic ports
 as-is. **Known ranks come from the spellbook enumeration, never from a trainer list**: rank 1 of a
 talent-granted spell (Swiftmend, Wild Growth, Penance, Holy Shock, Riptide) sits in the book with
 no trainer, and some ranks are tome or quest rewards; the enumeration must ask for **all** ranks,
@@ -149,10 +152,10 @@ There is no combat log to record. What a healer addon can still observe, per §1
 
 | stream | source | attribution |
 |---|---|---|
-| health of every party member | `UNIT_HEALTH` / `UNIT_MAXHEALTH` per unit (event-driven, not 5s snapshots — a *better* curve than today) | exact |
+| health of every party member | ~~`UNIT_HEALTH` per unit~~ -- current health is secret even out of combat (§1.2, 2026-09-28). **Reconstructed** from `UNIT_COMBAT` amounts (WOUND down, HEAL up) against the plain `UnitHealthMax`, anchored at full out of combat, clamped to [0, max]; deaths from `UnitIsDeadOrGhost` re-anchor at 0 | reconstructed; exact only if every event arrives -- Q3 in combat decides |
 | damage and heals landing on party members | `UNIT_COMBAT(unit, action, descriptor, amount)` — amounts reported readable by the kit's recorder | amount and target only; **no source** |
 | own casts | `UNIT_SPELLCAST_START / SUCCEEDED / STOP / FAILED` on `"player"`, target via `UNIT_SPELLCAST_SENT` | exact |
-| own mana | `UNIT_POWER_UPDATE("player")`, `GetManaRegen` | exact |
+| own mana | ~~`UnitPower`~~ secret (§1.2). **Modelled**: `UnitPowerMax` (plain) as the ceiling, minus own cast costs (`C_Spell.GetSpellPowerCost` at `UNIT_SPELLCAST_SUCCEEDED`), plus `GetManaRegen` under the five-second rule -- the engine's own mana model, run live | modelled, drifts; re-anchored at full when regen has had time to fill it out of combat |
 | deaths | `UNIT_HEALTH` at 0 / `UNIT_FLAGS` | exact |
 | own healing total, others' healing total | `C_DamageMeter` session **after** combat (HealingDone per source) | per player, per fight — the foreign-share gate's ground truth |
 | HoTs on party | `C_UnitAuras` — probably secret in combat; readable out of combat | pre-pull state from the last out-of-combat snapshot |
@@ -176,7 +179,14 @@ Ports last because it depends on the replay window.
 ### 2.5 The clock (TTO) and the advisor
 
 Class-generic and cheap: spend from `UNIT_SPELLCAST_SUCCEEDED`, regen from `GetManaRegen`,
-five-second rule as today. Drink detection read own auras — secret in combat, readable out of
+five-second rule as today. **Since 2026-09-28 the pool itself is secret** (§1.2): the clock cannot
+read where it starts from. It runs on a *modelled* pool -- `UnitPowerMax` (plain) minus each own
+cast's cost plus regen -- which is the engine's mana model run live, anchored at full whenever
+out-of-combat regen has had time to fill it. The error is the model's (a missed cost, a drink or
+potion not seen, a mana gain from someone else) and grows through a fight; the display must say
+"modelled" and never pretend to the TBC clock's precision. A secret value can still be *drawn*
+(`StatusBar:SetValue` accepts one), so the widget can show the real bar beside the modelled clock
+-- which also lets the author see the drift by eye. Drink detection read own auras — secret in combat, readable out of
 combat, which is when you drink. Innervate is a druid talent in vanilla (level 40) — `C_UnitAuras`
 out of combat, or the cast event. Dreamstate does not exist in vanilla; the "unreported regen"
 machinery becomes a measurement only.
@@ -302,11 +312,26 @@ takes with the probe's help, added after the reference scout.)
    (`UnitHealthPercent`, `UnitPowerPercent`, `UnitHealthMissing`). T0c measures all of them in
    and out of combat. If current health and mana are secret always, the recorder's health curve
    comes from `UNIT_COMBAT` amounts (Q3) and the clock's mana from cast costs and regen, never
-   from the pool.
+   from the pool. **Answered 2026-09-28 out of combat** (`docs/probe/1.60.1_70009.md`, sixth report):
+   `HasSecretRestrictions()` is **true** solo out of combat, and every *current* health and power
+   reading is secret -- `UnitHealth` (with and without its second argument), both
+   `UnitHealthPercent` forms, `UnitHealthMissing`, `UnitPowerPercent`, `UnitGetIncomingHeals`;
+   `ShouldUnitPowerBeSecret(player) = true`, `GetPowerTypeSecrecy(0) = 2`. The **maxima are plain**
+   (`ShouldUnitHealthMaxBeSecret` / `ShouldUnitPowerMaxBeSecret` false, 234 / 275), and so is
+   `UnitIsDeadOrGhost`. So the "if" above holds: health is reconstructed from `UNIT_COMBAT`, mana
+   modelled (§2.3, §2.5). Still open: whether it is the same in a party and in combat on a PvE
+   realm -- the author's beta realm is PvP, and the restriction may be a realm rule.
 3. **Are `UNIT_COMBAT` amounts on party units readable in combat**, and does the event fire for
-   heals (`action == "HEAL"`) as well as damage, with the target unit? Decides the damage stream.
+   heals (`action == "HEAL"`) as well as damage, with the target unit? Decides the damage stream. **Half answered 2026-09-28:** out of combat the
+   amounts are plain numbers for WOUND and HEAL, on `player`, `target` and another unit (an 8 is
+   one Rejuvenation R1 tick) -- fourth report. Q3 proper, in combat on a party member, is now the
+   question the whole recorder rests on.
 4. **What does `C_DamageMeter`'s session carry after a fight?** Per-source HealingDone; is there
-   any per-spell or overheal breakdown? Decides the calibration and overheal features.
+   any per-spell or overheal breakdown? Decides the calibration and overheal features. **Partly
+   answered:** per-spell rows (`spellID`, `totalAmount`, `amountPerSecond`, `overkillAmount`) out
+   of combat; `combatSpellDetails` is **one table**, not a per-target list, and was empty
+   (`amount=0`, blank `unitName`) on every spell out of combat -- sixth report. After a party fight
+   still to see.
 5. **Are party auras (`C_UnitAuras.GetAuraDataByIndex("party1", …)`) secret in combat?** And out
    of combat? Decides how pre-pull HoTs are captured.
 6. **Which talent API answers on Forever's trees** — `C_SpecializationInfo.GetTalentInfo` or
