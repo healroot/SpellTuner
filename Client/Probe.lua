@@ -214,6 +214,20 @@ local phase = "ooc"
 local doing = "load"
 local eventOutcomes = {}                 -- EVENT -> { ok = bool, err = "<error: ...>" }
 local combatCounters, combatOrder = {}, {}
+-- T13b: UNIT_COMBAT by exact token (nameplateN/raidN/raidpetN folded), beside
+-- combatCounters' by-class counts -- which tokens make up "other" is UNKNOWN
+-- (FOREVER-PLAN.md §6 Q3). tokenCounters/tokenOrder key by "phase\1token";
+-- mirrorCounters/mirrorOrder key by phase alone; unitCombatEvents is the
+-- CURRENT MOMENT's events only -- {phase, timeKey, action, amountKey, token}
+-- -- a later event is checked against it to find a same-GetTime()-moment
+-- mirror. Re-issue 1: a mirror can only ever be within one GetTime() moment,
+-- so the list is emptied whenever a new moment arrives (lastUnitCombatTimeKey
+-- tracks the moment the list currently holds) -- it never grows past one
+-- frame's worth of events even over a whole dungeon session.
+local tokenCounters, tokenOrder = {}, {}
+local mirrorCounters, mirrorOrder = {}, {}
+local unitCombatEvents = {}
+local lastUnitCombatTimeKey = nil
 local sentCounters, sentOrder = {}, {}
 -- T7a: UNIT_SPELLCAST_SUCCEEDED, by phase -- beside sentCounters/sentOrder,
 -- but a cast SUCCEEDED (not merely sent) is what the cost-at-cast shape needs.
@@ -254,10 +268,69 @@ local function ActionOf(a)
     return Esc(a)
 end
 
+-- T13b: whole-word "heal"/"heals"/"healing" (a frontier pattern), not the
+-- substring test that let Endurance ("Total Health increased by 5%") count
+-- as a heal -- "Health" contains "heal" as a mere substring, "heal" bounded
+-- by word edges does not match it. Takes an already-lowered description.
+local function IsHealingText(lowered)
+    if type(lowered) ~= "string" then return false end
+    return lowered:find("%f[%a]heal%f[%A]") ~= nil
+        or lowered:find("%f[%a]heals%f[%A]") ~= nil
+        or lowered:find("%f[%a]healing%f[%A]") ~= nil
+end
+
+-- T13b: a NUMBER, an optional word (a school name), then the word "damage" --
+-- not the substring test that let Plainsrunning ("Taking damage...") count
+-- as a damage spell: nothing numeric precedes "damage" there. Takes an
+-- already-lowered description.
+local function IsDamageText(lowered)
+    if type(lowered) ~= "string" then return false end
+    return lowered:find("%d+%s+%a-%s*%f[%a]damage%f[%A]") ~= nil
+end
+
+-- T13b: a healing description naming a direct heal -- two numbers joined by
+-- "to" ("Heals a friendly target for 40 to 55.").
+local function IsDirectHealText(lowered)
+    if type(lowered) ~= "string" then return false end
+    return lowered:find("%d+%s+to%s+%d+") ~= nil
+end
+
+-- T13b: a healing description naming a heal over time -- the word "over"
+-- ("Heals the target for 32 over 12 sec.").
+local function IsOverTimeHealText(lowered)
+    if type(lowered) ~= "string" then return false end
+    return lowered:find("%f[%a]over%f[%A]") ~= nil
+end
+
 local function SafeDate()
     local ok, stamp = pcall(date, "%Y-%m-%d %H:%M:%S")
     if ok then return stamp end
     return "<no date>"
+end
+
+-- T13b: GetTime() rendered to a plain string (never used raw -- see the
+-- Counters comment below), so two UNIT_COMBAT events can be compared for
+-- "the same moment" by plain string equality only.
+local function TimeKey()
+    local getTime = MD.API.Has("GetTime")
+    if type(getTime) ~= "function" then return "<absent>" end
+    local ok, t = pcall(getTime)
+    if not ok then return "<error>" end
+    if IsSecret(t) then return "<secret>" end
+    return Fmt(t)
+end
+
+-- T13b: a plain unit token, exact except numbered nameplate/raid/raidpet
+-- tokens folded to their family (Files: "nameplateN folded to nameplate,
+-- raidN to raid, raidpetN to raidpet") -- the individual number is not the
+-- question, whether the FAMILY appears in UNIT_COMBAT's "other" bucket is.
+local function FoldToken(tok)
+    if IsSecret(tok) then return "<secret>" end
+    if type(tok) ~= "string" then return "<none>" end
+    if tok:match("^nameplate%d+$") then return "nameplate" end
+    if tok:match("^raidpet%d+$") then return "raidpet" end
+    if tok:match("^raid%d+$") then return "raid" end
+    return Esc(tok)
 end
 
 -- Fmt of GetBuildInfo()'s second return, "unknown" if the function is absent
@@ -305,6 +378,70 @@ local function BumpCombat(currentPhase, unit, action, amount)
         c.readable = c.readable + 1
         if not c.sample then c.sample = Fmt(amount) end
     end
+end
+
+-- T13b: UNIT_COMBAT by exact token, with GUID readability at the moment of
+-- the event, and same-"GetTime()"-moment mirror detection (Files: "an event
+-- is a mirror when an earlier event in the same GetTime() had the same
+-- action and the same plain amount under a different token").
+local function BumpUnitCombatToken(currentPhase, unit, action, amount)
+    local tokenText = FoldToken(unit)
+    local key = currentPhase .. "\1" .. tokenText
+    local c = tokenCounters[key]
+    if not c then
+        c = { phase = currentPhase, token = tokenText, n = 0, guidReadable = 0, guidSecret = 0 }
+        tokenCounters[key] = c
+        tokenOrder[#tokenOrder + 1] = key
+    end
+    c.n = c.n + 1
+
+    if not IsSecret(unit) and type(unit) == "string" then
+        local getGUID = MD.API.Has("UnitGUID")
+        if type(getGUID) == "function" then
+            local ok, guid = pcall(getGUID, unit)
+            if ok then
+                if IsSecret(guid) then
+                    c.guidSecret = c.guidSecret + 1
+                elseif guid ~= nil then
+                    c.guidReadable = c.guidReadable + 1
+                end
+            end
+        end
+    end
+
+    local mc = mirrorCounters[currentPhase]
+    if not mc then
+        mc = { phase = currentPhase, n = 0, mirrored = 0 }
+        mirrorCounters[currentPhase] = mc
+        mirrorOrder[#mirrorOrder + 1] = currentPhase
+    end
+    mc.n = mc.n + 1
+
+    local timeKey = TimeKey()
+    if timeKey ~= lastUnitCombatTimeKey then
+        -- Re-issue 1: a new moment -- the previous moment's events can never
+        -- be a mirror match again, so drop them rather than scan them forever.
+        for i = #unitCombatEvents, 1, -1 do
+            unitCombatEvents[i] = nil
+        end
+        lastUnitCombatTimeKey = timeKey
+    end
+
+    local actionText = ActionOf(action)
+    local amountKey = "<none>"
+    if not IsSecret(amount) and amount ~= nil then
+        amountKey = Fmt(amount)
+        for _, ev in ipairs(unitCombatEvents) do
+            if ev.phase == currentPhase and ev.timeKey == timeKey and ev.action == actionText
+                and ev.amountKey == amountKey and ev.token ~= tokenText then
+                mc.mirrored = mc.mirrored + 1
+                break
+            end
+        end
+    end
+    unitCombatEvents[#unitCombatEvents + 1] = {
+        phase = currentPhase, timeKey = timeKey, action = actionText, amountKey = amountKey, token = tokenText,
+    }
 end
 
 local function BumpSent(currentPhase, target)
@@ -567,6 +704,15 @@ local function ReadingsLines()
         "UnitHealth(party1, true) = " .. Show("UnitHealth", "party1", true),
         "UnitHealthPercent(party1) = " .. Show("UnitHealthPercent", "party1"),
         "UnitHealthPercent(party1, true) = " .. Show("UnitHealthPercent", "party1", true),
+        -- T13b: the party member reads a recorder keys and labels by --
+        -- GUID, name, level, class and role -- plus the max-health secrecy
+        -- predicate for party1 (only ever read for "player" before this).
+        "C_Secrets.ShouldUnitHealthMaxBeSecret(party1) = " .. Show("C_Secrets.ShouldUnitHealthMaxBeSecret", "party1"),
+        "UnitGUID(party1) = " .. Show("UnitGUID", "party1"),
+        "UnitName(party1) = " .. First("UnitName", "party1"),
+        "UnitLevel(party1) = " .. Show("UnitLevel", "party1"),
+        "UnitClass(party1) = " .. Show("UnitClass", "party1"),
+        "UnitGroupRolesAssigned(party1) = " .. Show("UnitGroupRolesAssigned", "party1"),
     }
 end
 
@@ -626,7 +772,7 @@ local function SpellWalk()
                             rank = rOk and Fmt(rVal) or ("<error: " .. Fmt(rVal) .. ">")
                         end
 
-                        local descText, healing, dmg = "<absent>", false, false
+                        local descText, healing, dmg, direct, overTime = "<absent>", false, false, false, false
                         if type(getDesc) == "function" then
                             local dOk, dVal = pcall(getDesc, id)
                             if not dOk then
@@ -640,10 +786,16 @@ local function SpellWalk()
                             elseif type(dVal) == "string" then
                                 descText = Esc(dVal)
                                 local lowered = dVal:lower()
-                                healing = lowered:find("heal", 1, true) ~= nil
-                                -- T7a item 3: the same case-insensitive substring test, for
-                                -- picking the shapes section's one damage-spell tooltip.
-                                dmg = lowered:find("damage", 1, true) ~= nil
+                                -- T13b: word-bounded heal/heals/healing and a
+                                -- number-then-damage test, not the substring
+                                -- test a passive's "Health"/"Taking damage"
+                                -- text used to pass.
+                                healing = IsHealingText(lowered)
+                                dmg = IsDamageText(lowered)
+                                if healing then
+                                    direct = IsDirectHealText(lowered)
+                                    overTime = IsOverTimeHealText(lowered)
+                                end
                             else
                                 descText = Fmt(dVal)
                             end
@@ -657,7 +809,7 @@ local function SpellWalk()
                         -- re-walking, and so it never touches a raw value SpellWalk itself
                         -- has not already cleared.
                         order[#order + 1] = { key = key, id = id, slot = slot, name = name, rank = rank,
-                            desc = descText, healing = healing, dmg = dmg }
+                            desc = descText, healing = healing, dmg = dmg, direct = direct, overTime = overTime }
                     end
                 end
             elseif ok and type(info) == "table" and IsSecret(info) then
@@ -912,20 +1064,28 @@ local function ShapesLines(order)
             Show("C_SpellBook.GetSpellBookItemInfo", sp.slot, bank))
     end
 
-    -- item 3: the first heal's and the first damage spell's tooltip, each at
-    -- most once. knownFirstHeal is refreshed here so the combat snapshot,
-    -- taken independently of any /st probe run, has a spell to re-read live.
-    local firstHeal, firstDamage = nil, nil
+    -- item 3 (T13b): the first direct heal's, the first heal-over-time's and
+    -- the first damage spell's tooltip, each at most once, in walk order --
+    -- a healing description with "to" between two numbers is a direct heal,
+    -- one with "over" is a HoT (Facts: the old picks were two passives,
+    -- Endurance and Plainsrunning, never an actual heal spell).
+    -- knownFirstHeal is refreshed here so the combat snapshot, taken
+    -- independently of any /st probe run, has a spell to re-read live.
+    local foundDirect, foundOverTime, foundDamage = false, false, false
     for _, sp in ipairs(order) do
-        if not firstHeal and sp.healing then firstHeal = sp end
-        if not firstDamage and sp.dmg then firstDamage = sp end
-    end
-    if firstHeal then
-        knownFirstHeal = firstHeal
-        for _, l in ipairs(TooltipLines(firstHeal)) do lines[#lines + 1] = l end
-    end
-    if firstDamage then
-        for _, l in ipairs(TooltipLines(firstDamage)) do lines[#lines + 1] = l end
+        if not foundDirect and sp.direct then
+            foundDirect = true
+            knownFirstHeal = sp
+            for _, l in ipairs(TooltipLines(sp)) do lines[#lines + 1] = l end
+        end
+        if not foundOverTime and sp.overTime then
+            foundOverTime = true
+            for _, l in ipairs(TooltipLines(sp)) do lines[#lines + 1] = l end
+        end
+        if not foundDamage and sp.dmg then
+            foundDamage = true
+            for _, l in ipairs(TooltipLines(sp)) do lines[#lines + 1] = l end
+        end
     end
 
     -- item 4: crit chance per school, 1 (Physical) through 7 (Arcane).
@@ -1002,6 +1162,27 @@ local function EventsSeenLines()
         local c = restrictionCounters[key]
         lines[#lines + 1] = string.format("ADDON_RESTRICTION_STATE_CHANGED %s payload=%s n=%d",
             c.phase, c.payload, c.n)
+    end
+    if #lines == 0 then lines[1] = "none" end
+    return lines
+end
+
+--------------------------------------------------------------------------------
+-- == unit combat tokens (T13b): per phase, per exact token, how many
+-- UNIT_COMBAT events arrived and whether that token's GUID was readable at
+-- the time -- which tokens make up "other" (FOREVER-PLAN.md §6 Q3) and
+-- whether the same hit arrives twice under two tokens.
+--------------------------------------------------------------------------------
+local function UnitCombatTokensLines()
+    local lines = {}
+    for _, key in ipairs(tokenOrder) do
+        local c = tokenCounters[key]
+        lines[#lines + 1] = string.format("%s %s n=%d guid readable=%d guid secret=%d",
+            c.phase, c.token, c.n, c.guidReadable, c.guidSecret)
+    end
+    for _, p in ipairs(mirrorOrder) do
+        local mc = mirrorCounters[p]
+        lines[#lines + 1] = string.format("%s mirrored: %d of %d", p, mc.mirrored, mc.n)
     end
     if #lines == 0 then lines[1] = "none" end
     return lines
@@ -1322,6 +1503,9 @@ local function Run()
     lines[#lines + 1] = "== events seen this session"
     for _, l in ipairs(EventsSeenLines()) do lines[#lines + 1] = l end
 
+    lines[#lines + 1] = "== unit combat tokens"
+    for _, l in ipairs(UnitCombatTokensLines()) do lines[#lines + 1] = l end
+
     lines[#lines + 1] = "== damage meter"
     for _, l in ipairs(DamageMeterLines()) do lines[#lines + 1] = l end
 
@@ -1517,6 +1701,7 @@ end
 
 local function OnCombatEvent(unit, action, descriptor, amount)
     BumpCombat(phase, unit, action, amount)
+    BumpUnitCombatToken(phase, unit, action, amount)
 end
 
 local function OnSpellcastSent(unit, target)
@@ -1645,7 +1830,14 @@ else
     end
 end
 
-MD.Probe = { Run = Run }
+-- Re-issue 1: exposed for tools/probecheck.lua only, so the suite can assert
+-- the mirror list never grows past one moment's events without adding a
+-- report section for a purely internal bookkeeping fact.
+local function UnitCombatEventsCount()
+    return #unitCombatEvents
+end
+
+MD.Probe = { Run = Run, UnitCombatEventsCount = UnitCombatEventsCount }
 
 -- The file's last statement (T0c item 1): nothing is "in flight" once load
 -- finishes.

@@ -40,12 +40,12 @@ local function AsciiSafe(s)
     return not stripped:find("|", 1, true)
 end
 
--- The fifteen "== " headers, each paired with enough of what follows to tell
+-- The sixteen "== " headers, each paired with enough of what follows to tell
 -- it apart from the one it is a prefix of ("== spells" / "== events").
 local HEADERS_IN_ORDER = {
     "== client", "== functions (", "== events\n", "== blocked actions\n", "== secrets now", "== spells (",
     "== spells against the previous run", "== talents", "== readings now",
-    "== combat snapshot", "== events seen this session", "== damage meter",
+    "== combat snapshot", "== events seen this session", "== unit combat tokens\n", "== damage meter",
     "== saved variables", "== toc", "== to do",
 }
 -- The text strictly between two markers, or nil if either is missing.
@@ -779,6 +779,39 @@ local step8LoadOk = pcall(S8.Load, { "Client/TOC_Mainline.lua", "Client/API.lua"
 local step8AddonLoadedOk = pcall(S8.Fire, "ADDON_LOADED", "SpellTuner")
 local okF, reportF = pcall(MD8.Probe.Run)
 
+--------------------------------------------------------------------------------
+-- Step 9 (T13b): Endurance's and Plainsrunning's real texts (m2 140, 175) --
+-- a passive whose description says "Health" or "Taking damage" must not be
+-- picked as a heal or a damage spell -- and UNIT_COMBAT counted per exact
+-- token, with a same-frame repeat under a different token counted as a
+-- mirror.
+--------------------------------------------------------------------------------
+dofile(here .. "/wowstub.lua")
+local S9 = _G.STUB
+S9.root = ROOT
+S9.UseProfile("forever")
+S9.AddSpell(20550, "Endurance", "Racial Passive",
+    function() return "Total Health increased by 5% and chance to hit increased by 1%." end)
+S9.AddSpell(1259918, "Plainsrunning", "Racial Passive",
+    function()
+        return "Gain 1% increased movement speed every 5 sec spent moving, up to a maximum of 30% increase. "
+            .. "Taking damage or standing still will reduce this effect."
+    end)
+S9.AddUnit("party1", { guid = "Party-1", name = "Tankname", class = "WARRIOR", role = "TANK", hp = 4000, hpMax = 4000 })
+
+_G.SpellTunerDB = nil
+local MD9 = {}
+local step9LoadOk = pcall(S9.Load, { "Client/TOC_Mainline.lua", "Client/API.lua", "Client/Probe.lua" }, "SpellTuner", MD9)
+local step9AddonLoadedOk = pcall(S9.Fire, "ADDON_LOADED", "SpellTuner")
+
+S9.now = 100
+local step9C1 = pcall(S9.Combat, "player", "HEAL", 12)
+local step9C2 = pcall(S9.Combat, "nameplate1", "HEAL", 12)
+S9.now = 105
+local step9C3 = pcall(S9.Combat, "party1", "WOUND", 5)
+
+local okG, reportG = pcall(MD9.Probe.Run)
+
 check("every spell in the book has one shapes line: info, cost, learned, base, low rank, row",
     okE == true
     and Has(reportE, "book 5185 Healing Touch Rank 1: info=")
@@ -797,6 +830,61 @@ check("the first heal and the first damage spell carry their tooltip lines, pipe
     Has(report1, "tooltip 5185 = 4 lines")
     and Has(report1, "  line 4: Heals a friendly target for 40 to 55.||nIt is \\226\\128\\156quoted\\226\\128\\157. || nil")
     and Has(report1, "tooltip 5176 = 4 lines"))
+
+-- T13b
+check("the shapes section dumps the tooltip lines of a direct heal, a HoT and a damage spell",
+    Has(report1, "tooltip 5185 = 4 lines")
+    and Has(report1, "tooltip 774 = 4 lines")
+    and Has(report1, "tooltip 5176 = 4 lines"))
+
+check("a passive whose text says Health or taking damage is not picked as a heal or a damage spell",
+    step9LoadOk == true and step9AddonLoadedOk == true and okG == true
+    and not Has(reportG, "spell 20550")
+    and not Has(reportG, "spell 1259918")
+    and not Has(reportG, "tooltip 20550 ")
+    and not Has(reportG, "tooltip 1259918 "))
+
+do
+    local seg1 = Between(report1, "\n== readings now\n", "\n== combat snapshot\n")
+    local seg2 = Between(report2, "\n== combat snapshot\n", "\n== events seen this session\n")
+    local function HasAll(seg)
+        return seg ~= nil
+            and Has(seg, "C_Secrets.ShouldUnitHealthMaxBeSecret(party1) = true")
+            and Has(seg, "UnitGUID(party1) = Party-1")
+            and Has(seg, "UnitName(party1) = Tankname")
+            and Has(seg, "UnitLevel(party1) = 64")
+            and Has(seg, "UnitClass(party1) = Warrior, WARRIOR")
+            and Has(seg, "UnitGroupRolesAssigned(party1) = TANK")
+    end
+    check("party readings carry the max-health predicate, guid, name, level, class and role",
+        HasAll(seg1) and HasAll(seg2))
+end
+
+do
+    local seg = Between(reportG, "\n== unit combat tokens\n", "\n== damage meter\n")
+    check("UNIT_COMBAT is counted per token with its guid readability, and a same-frame repeat as a mirror",
+        step9C1 == true and step9C2 == true and step9C3 == true and okG == true
+        and seg ~= nil
+        and Has(seg, "ooc player n=1 guid readable=1 guid secret=0")
+        and Has(seg, "ooc nameplate n=1 guid readable=0 guid secret=0")
+        and Has(seg, "ooc party1 n=1 guid readable=1 guid secret=0")
+        and Has(seg, "ooc mirrored: 1 of 3"))
+end
+
+-- Re-issue 1: 50 UNIT_COMBAT events across 50 different S.now values must
+-- never leave more than one moment's events sitting in the probe's mirror
+-- list -- each one arrives at its own GetTime() moment, so the list is
+-- emptied and refilled with just that one event every time.
+local step9ManyOk = true
+for i = 1, 50 do
+    S9.now = 300 + i
+    local ok = pcall(S9.Combat, "player", "HEAL", 12)
+    if not ok then step9ManyOk = false end
+end
+check("the mirror list holds one moment's events, not the session's",
+    step9ManyOk == true
+    and type(MD9.Probe.UnitCombatEventsCount) == "function"
+    and MD9.Probe.UnitCombatEventsCount() == 1)
 
 check("a shape function the client lacks reads <absent>",
     okF == true and Has(reportF, "tooltip = <absent>") and HeadersInOrder(reportF))
