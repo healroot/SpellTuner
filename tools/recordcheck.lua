@@ -117,6 +117,12 @@ end
 
 -- Out-of-combat aura scan, 2s ticks -- primes R.lastAuras before the pull.
 At(8)
+-- T13f: the last scan lands here (t=8, a %4 tick boundary); two more
+-- half-second ticks put the pull's own start a full second later without
+-- crossing another scan boundary, so assertion 10 can tell "remaining at
+-- scan time" (900) from "remaining at t0" (899) apart.
+S.Tick(0.5)
+S.Tick(0.5)
 
 -- The pull starts.
 S.inCombat = true
@@ -144,18 +150,18 @@ CancelCast("cg7", 5185, "Tank") -- started, never finished
 S.Fire("ADDON_RESTRICTION_STATE_CHANGED", 0, 1)
 
 -- A roster swap at 20s: Tank and Mage trade tokens.
-At(28)
+At(29)
 S.units.party1, S.units.party2 = S.units.party2, S.units.party1
 S.Fire("GROUP_ROSTER_UPDATE")
 S.Combat("party1", "WOUND", 111) -- party1 is now Mage (idx 3)
 
 -- A death at 30s: whoever now sits at party2 (Tank, idx 2).
-At(37.5)
+At(38.5)
 S.units.party2.dead = true
-At(38)
+At(39)
 
 -- The pull ends at 40s.
-At(48)
+At(49)
 S.inCombat = false
 S.Fire("PLAYER_REGEN_ENABLED")
 S.meter.sources = {
@@ -184,12 +190,15 @@ end
 
 --------------------------------------------------------------------------------
 -- 2: a pull starts at combat and ends after it, and the damage meter is read
---    once combat is over
+--    once combat is over; the shared readers' three summary numbers are
+--    stamped (T13f Facts: ownCasts, spent, foreignShare)
 --------------------------------------------------------------------------------
 check("a pull starts at combat and ends after it, and the damage meter is read once combat is over",
-    rec ~= nil and math.abs((rec.dur or -1) - 40) < 0.001 and rec.meter and rec.meter.read == "current",
-    string.format("rec=%s dur=%s meter.read=%s", tostring(rec), tostring(rec and rec.dur),
-        tostring(rec and rec.meter and rec.meter.read)))
+    rec ~= nil and math.abs((rec.dur or -1) - 40) < 0.001 and rec.meter and rec.meter.read == "current"
+    and rec.ownCasts == 6 and rec.spent == 165 and math.abs((rec.foreignShare or -1) - 120 / 520) < 0.0001,
+    string.format("rec=%s dur=%s meter.read=%s ownCasts=%s spent=%s foreignShare=%s",
+        tostring(rec), tostring(rec and rec.dur), tostring(rec and rec.meter and rec.meter.read),
+        tostring(rec and rec.ownCasts), tostring(rec and rec.spent), tostring(rec and rec.foreignShare)))
 
 --------------------------------------------------------------------------------
 -- 3: damage and heals are kept per tracked token, once each; other tokens
@@ -284,13 +293,18 @@ do
 
     -- T13d hand-out amendment: each aura entry also carries `tgt`, the
     -- roster index -- party1 is the tank, roster index 2.
+    -- T13f Facts: the last scan (t=8) reads a remaining of 900 (908 - 8), but
+    -- the pull starts a full second later (t0=9) -- the stored remaining must
+    -- be the time left AT THE PULL (908 - 9 = 899), not the stale scan value.
     check("own HoTs on the party are read before the pull, never in combat",
         rec ~= nil and #rec.initial.auras == 1 and rec.initial.auras[1].spellId == 774
-        and rec.initial.auras[1].token == "party1" and math.abs((rec.initial.auras[1].remaining or -1) - 900) < 0.001
+        and rec.initial.auras[1].token == "party1" and math.abs((rec.initial.auras[1].remaining or -1) - 899) < 0.001
         and rec.initial.auras[1].tgt == 2
         and blocked,
-        string.format("auras=%s auraCalls before=%s after=%s tgt=%s", tostring(rec and #rec.initial.auras),
-            tostring(before), tostring(afterCombat), tostring(rec and rec.initial.auras[1] and rec.initial.auras[1].tgt)))
+        string.format("auras=%s auraCalls before=%s after=%s tgt=%s remaining=%s",
+            tostring(rec and #rec.initial.auras), tostring(before), tostring(afterCombat),
+            tostring(rec and rec.initial.auras[1] and rec.initial.auras[1].tgt),
+            tostring(rec and rec.initial.auras[1] and rec.initial.auras[1].remaining)))
 end
 
 --------------------------------------------------------------------------------

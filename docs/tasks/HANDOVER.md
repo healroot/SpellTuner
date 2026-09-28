@@ -4,13 +4,14 @@ Rewritten by the lead after every commit and every hand-out. A successor continu
 alone. Worktree: `/home/penek/projects/addons/SpellTuner/.claude/worktrees/manademon-folder-continue-41eabc`,
 branch `claude/manademon-folder-continue-41eabc`.
 
-Last updated: 2026-09-28, lead run 2, at the T17 commit.
+Last updated: 2026-09-28, lead run 2, at the T13f commit.
 
 ## Committed
 
 | hash | what |
 |---|---|
-| (the commit carrying this revision) | T17: coach/solver/card/classifier/marks on a v3 recording, no engine change; coachforever 8 (new). Causality leak via the max estimate escalated |
+| (the commit carrying this revision) | T13f: recorder stamps ownCasts/spent/foreignShare; pre-pull aura remaining aged to t0; recordcheck 14 (assertions 2 and 10 extended). TESTING §39 drafted (uncommitted until the alpha.5 bump) |
+| 46ebdd9 | T17: coach/solver/card/classifier/marks on a v3 recording, no engine change; coachforever 8 (new). Causality leak via the max estimate escalated |
 | 4ae77d8 | T16c: paint-time Esc narrowed to the pipe (names painted as given; TBC as before T16a); lead fix: Esc returns one value |
 | 243256c | T16b: Forever window Reports -> Review (shared Dashboard_Review.lua through the adapter, placeholder when Replay is off), MD:RunCoach / MD:ValidationReport on Forever; reviewforever 8 (new) |
 | a8ba234 | T16a: Replay module carries engine/planner/solver/ReplayTrace/Tooltip/ReplayWindow + Commands_Forever.lua; ReplayWindow through MD.API; SM.RecordedHp; replayforever 10 (new). Lead: SP.Card `local kit = nil` (stray global, TBC unchanged) |
@@ -29,11 +30,11 @@ Last updated: 2026-09-28, lead run 2, at the T17 commit.
 
 ## In the tree, not committed
 
-Nothing.
+- `docs/TESTING.md` §39 (the lead's, M3 in game at 1.0.0-alpha.5) -- goes in with the bump commit.
 
 ## Next, in order
 
-T13f (write + hand out: recorder summary fields ownCasts/spent/foreignShare + pre-pull aura remaining shifted to t0) -> alpha.5 bump + TESTING §39 (lead) -> T18 -> T19.
+alpha.5 bump + TESTING §39 (lead) -> T18 -> T19.
 Re-check each task's baselines against the suite run at the commit before handing it out.
 Suite loop: `docs/TOOLS.md` §1 plus `apicheck`, `apicheck --selftest`, `refcheck --selftest`.
 
@@ -57,10 +58,6 @@ corecheck 10/8, svcheck 6/1, consolecheck 11/1; apicheck 0 findings (40 files), 
   a status bar reads a secret max back plain, record the real max and drop the stand-in. Not
   blocking T18/T19.
 
-- **Recorder follow-up (small, unassigned):** `Recorder_Forever.lua` stores a pre-pull aura's
-  `remaining` as of the out-of-combat scan (up to 2 s before `t0`), not shifted to the pull. Fold
-  into the next task that touches the recorder, or a one-item task: record the scan time and
-  subtract `t0 - scanTime` when the pull starts; recordcheck assertion 10 checks it.
 
 - **Version bump + TESTING section owed at the end of M3** (after T17): bump every Forever TOC to
   `1.0.0-alpha.5` (probecheck and consolecheck pin the version -- follow 8a1f451's pattern) and write

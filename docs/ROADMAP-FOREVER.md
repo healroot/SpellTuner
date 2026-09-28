@@ -314,11 +314,13 @@ with it off; the window grows to the TBC size; the Review buttons' `MD:RunCoach`
 `MD:ValidationReport` exist on Forever (`Commands_Forever.lua`); `reviewforever` 8.
 **T16c** (`4ae77d8`) -- names the client gave are painted with their own bytes (only a `|` is doubled): the lead's
 T14 rule had escaped accented names on the TBC window too.
-**T17** -- the coach, card, classifier, solver strategy, marks and the asynchronous coach run on a v3
+**T17** (`46ebdd9`) -- the coach, card, classifier, solver strategy, marks and the asynchronous coach run on a v3
 recording (fixture only; nothing in the engine needed changing); `coachforever` 8; solver vs rules
 on the fixture: identical (220 mana each, too light to separate them -- M5 measures on real pulls).
 **Open (escalated):** planner ruling 1's whole-fight max estimate breaks the causality invariant on a
 real Forever recording (a burst at 20 s changes a cast at 6.5 s).
+**T13f** -- the v3 stream stamps `ownCasts`, `spent` and (from the meter) `foreignShare`, which the
+shared Review tab, replay window and card read; a pre-pull HoT's `remaining` is aged to the pull.
 
 ### M4 — practice (phase 4) → `1.0.0-beta.3`
 

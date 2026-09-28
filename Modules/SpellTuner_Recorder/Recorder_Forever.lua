@@ -182,13 +182,25 @@ local function ScanAuras()
         end
     end
     R.lastAuras = list
+    R.lastScanTime = now -- T13f: PLAYER_REGEN_DISABLED reads this to age the scan up to t0
 end
 
-local function CopyAuraList(list)
+-- T13f (lead review 3 of T13d): the scan that fed `list` can be up to 2s
+-- stale by the time the pull actually starts -- `elapsed` (t0 - scan time)
+-- is subtracted from every timed remaining so the stream carries "time left
+-- at the pull", not "time left when we happened to look". An entry that has
+-- run out in the meantime is dropped rather than stored negative.
+local function CopyAuraList(list, elapsed)
     local out = {}
-    for i, e in ipairs(list) do
-        out[i] = { token = e.token, spellId = e.spellId, remaining = e.remaining, stacks = e.stacks,
-                   tgt = e.tgt }
+    local n = 0
+    for _, e in ipairs(list) do
+        local remaining = e.remaining
+        if type(remaining) == "number" then remaining = remaining - elapsed end
+        if remaining == nil or remaining > 0 then
+            n = n + 1
+            out[n] = { token = e.token, spellId = e.spellId, remaining = remaining, stacks = e.stacks,
+                       tgt = e.tgt }
+        end
     end
     return out
 end
@@ -248,6 +260,12 @@ MD:On("PLAYER_REGEN_DISABLED", function()
     end
 
     local t0 = GetTime()
+    -- T13f: age the last out-of-combat scan up to this moment rather than
+    -- storing it as read (see CopyAuraList above). Never negative -- a scan
+    -- that happens to land at t0 itself (or the module having no scan yet)
+    -- ages by nothing.
+    local elapsed = t0 - (R.lastScanTime or t0)
+    if elapsed < 0 then elapsed = 0 end
     active = {
         v = 3, client = "forever", id = time(), zone = MD.API.RealZoneText(),
         t0 = t0, dur = 0, pool = MD.API.UnitPowerMax("player", 0) or 0,
@@ -255,11 +273,12 @@ MD:On("PLAYER_REGEN_DISABLED", function()
         ev = { t = {}, kind = {}, tgt = {}, amt = {}, x = {} }, n = 0,
         mana = { t = {}, v = {}, base = {}, cast = {} }, manaModelled = true,
         deaths = {}, restriction = {}, names = {},
+        ownCasts = 0, spent = 0, -- T13f: the shared Review/replay/card readers
         initial = {
             mana = (MD.Clock and MD.Clock.model and MD.Clock.model.mana) or 0,
             form = "caster", -- Forever: no Tree of Life (T15 Kit_Forever.lua Facts)
             known = known,
-            auras = CopyAuraList(R.lastAuras),
+            auras = CopyAuraList(R.lastAuras, elapsed),
         },
         meter = nil, unreadable = 0, truncated = false, raid = R.raid, pinned = false,
     }
@@ -351,6 +370,11 @@ MD:On("UNIT_SPELLCAST_SUCCEEDED", function(unit, castGUID, spellID)
         if cost ~= nil then amt = cost end
     end
     Push(active, t, K.OWNCAST, tgt, amt, sid)
+
+    -- T13f: the shared Review tab / replay window / card read rec.ownCasts
+    -- and rec.spent (Facts) -- amt of -1 (cost unknown) adds nothing.
+    active.ownCasts = (active.ownCasts or 0) + 1
+    if amt and amt > 0 then active.spent = (active.spent or 0) + amt end
 
     if sid ~= -1 and not active.names[sid] then
         local name = MD.API.SpellName(sid)
@@ -517,6 +541,11 @@ local function ReadMeter(s)
 
     s.meter = { own = own, others = others, bySource = bySource,
                 bySpell = bySpell, overkillBySpell = overkillBySpell, read = "current" }
+
+    -- T13f Facts: the Forever foreign share is the meter's, only when the
+    -- meter itself was actually read (nil otherwise, matching the shared
+    -- readers' `rec.foreignShare` being absent on a v2/no-meter stream).
+    s.foreignShare = (own + others) > 0 and (others / (own + others)) or 0
 end
 
 -- Newest first, matching TBC's Engine/FightRecorder.lua:622-627.
