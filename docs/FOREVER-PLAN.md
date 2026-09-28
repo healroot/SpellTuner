@@ -188,6 +188,14 @@ consume a scenario, not a log.
    effective (TESTING §38.2), gate 8 fails only on a **shortfall** against the meter -- a gross
    amount would exceed the effective meter by the overheal on every honest pull. `SM.HEAL_AMOUNT`
    becomes two-sided once the answer is "effective". Confirmed as the lead proposed.
+   *Amendment (2026-09-28, end of day), on the lead's finding that ruling 1 breaks the causality
+   invariant* (`SM.EstimateMaxHP` reads the whole fight, so with a secret tank max a burst at 20 s
+   changed a cast at 6.5 s): a party member's max for coaching comes **from other recordings of the
+   same name, never from the fight being coached**; where there are none, this fight's estimate is
+   used with the plan flagged `foresees` and the card saying so (the same honesty rule as
+   `Engine/Foresight.lua`); and the stand-in goes entirely if §38.3's status-bar readback (T13e)
+   returns a secret max plain. The coach's causality assertion must run with the max secret, as it
+   always is on Forever. First task tomorrow.
 4. *Shared files in modules:* `release.sh` copies each shared file a module TOC lists into that
    module's folder, and `Module.lua` gives the module a proxy to SpellTuner's `MD` (T13c). Confirmed.
 

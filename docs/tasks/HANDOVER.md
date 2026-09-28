@@ -83,3 +83,13 @@ apicheck 0 findings over 44 files, selftest 10 of 10, refcheck selftest ok.
   Not ours to repair (never touch `.git` internals); reported to the planner. Hazard: a new commit
   whose blob hash equals one of the empty objects would be silently corrupt, so after every commit
   run `git ls-tree -r HEAD` and export HEAD with `git archive` and run the suites there.
+
+## Planner, end of 2026-09-28
+
+- **Escalation 1 ruled** (docs/FOREVER-PLAN.md, the amendment under ruling 1): party max for
+  coaching from other recordings of the same name; else this fight's estimate with `foresees` set
+  and said on the card; drop the stand-in if the T13e readback shows a plain max. Write it as the
+  **first task tomorrow** (before T19), with coachforever's causality assertion run on a secret max.
+- **Escalation 2 (the 18 empty git objects)** stays with the author -- no agent touches `.git`.
+- **Nothing is installed past alpha.3** in the author's beta. Install alpha.5+ (`./release.sh
+  --install ...`) only when the author is ready to play §38/§39.
