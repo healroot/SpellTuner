@@ -4,13 +4,14 @@ Rewritten by the lead after every commit and every hand-out. A successor continu
 alone. Worktree: `/home/penek/projects/addons/SpellTuner/.claude/worktrees/manademon-folder-continue-41eabc`,
 branch `claude/manademon-folder-continue-41eabc`.
 
-Last updated: 2026-09-28, lead run 2, at the T16c commit.
+Last updated: 2026-09-28, lead run 2, at the T17 commit.
 
 ## Committed
 
 | hash | what |
 |---|---|
-| (the commit carrying this revision) | T16c: paint-time Esc narrowed to the pipe (names painted as given; TBC as before T16a); lead fix: Esc returns one value |
+| (the commit carrying this revision) | T17: coach/solver/card/classifier/marks on a v3 recording, no engine change; coachforever 8 (new). Causality leak via the max estimate escalated |
+| 4ae77d8 | T16c: paint-time Esc narrowed to the pipe (names painted as given; TBC as before T16a); lead fix: Esc returns one value |
 | 243256c | T16b: Forever window Reports -> Review (shared Dashboard_Review.lua through the adapter, placeholder when Replay is off), MD:RunCoach / MD:ValidationReport on Forever; reviewforever 8 (new) |
 | a8ba234 | T16a: Replay module carries engine/planner/solver/ReplayTrace/Tooltip/ReplayWindow + Commands_Forever.lua; ReplayWindow through MD.API; SM.RecordedHp; replayforever 10 (new). Lead: SP.Card `local kit = nil` (stray global, TBC unchanged) |
 | 6887cdf | T14: Gates_Forever.lua -- SM:ValidateV3, eight gates on a v3 stream, gate 8 one-sided until SM.HEAL_AMOUNT is effective; gatecheck 8 (new suite). T16a/T16b gained a paint-time escape rule |
@@ -19,7 +20,7 @@ Last updated: 2026-09-28, lead run 2, at the T16c commit.
 | 9876615 | T15: Replay module carries Kit_Forever.lua + Engine/SimModel.lua; kit from MD.Book; MD.API.SpellName on both clients; kitcheck 7 (new suite, in the TOOLS loop). Lead fixes: Tranquility exclude, SpellKit only-if-nil |
 | 797ef17 | T13a: apicheck rule 8 (handler argument used before IsSecret); Core_Forever ADDON_LOADED guarded; selftest 10 of 10 |
 | 007d1d1 | T13e: probe asks whether a StatusBar hands a secret back (3 `bar` lines + `UnitHealthMissing(party1)`); probecheck 73. Lead added the `read skipped` guard |
-| bdbc40a | T13c: module plumbing -- Module.lua proxy, Ready.lua handshake, root-resolved shared files in release/stub/apicheck; modulecheck 14, kitcheck 7, recordcheck 14, scenariocheck 9, gatecheck 8, replayforever 10, reviewforever 8, apicheck selftest 8 |
+| bdbc40a | T13c: module plumbing -- Module.lua proxy, Ready.lua handshake, root-resolved shared files in release/stub/apicheck; modulecheck 14, kitcheck 7, recordcheck 14, scenariocheck 9, gatecheck 8, replayforever 10, reviewforever 8, coachforever 8, apicheck selftest 8 |
 | 2ba2346 | docs: gate 8 one-sided until the HEAL amount is known (planner addendum, confirmed) |
 | da7dff2 | docs: M2 re-check in roadmap/file table/tools/history; M3/M4 tasks written |
 | 4303c71 | docs: TESTING §38 (next testing round), T13e written |
@@ -32,7 +33,7 @@ Nothing.
 
 ## Next, in order
 
-T17 -> T18 -> T19.
+T13f (write + hand out: recorder summary fields ownCasts/spent/foreignShare + pre-pull aura remaining shifted to t0) -> alpha.5 bump + TESTING §39 (lead) -> T18 -> T19.
 Re-check each task's baselines against the suite run at the commit before handing it out.
 Suite loop: `docs/TOOLS.md` §1 plus `apicheck`, `apicheck --selftest`, `refcheck --selftest`.
 
@@ -40,11 +41,21 @@ Suite loop: `docs/TOOLS.md` §1 plus `apicheck`, `apicheck --selftest`, `refchec
 
 TBC sixteen: reccheck 54, replaycheck 80, replayui 98, runcheck 78, reviewui 44, navui 25, dashui 56,
 regencheck 27, simwindow 8, solvercheck 70, timeline 27, spelltip 48, practice 74, practiceui 49,
-migrate 7, simcheck PASS. Forever: probecheck 73, forevercheck 13, modulecheck 14, kitcheck 7, recordcheck 14, scenariocheck 9, gatecheck 8, replayforever 10, reviewforever 8, parsecheck 11,
+migrate 7, simcheck PASS. Forever: probecheck 73, forevercheck 13, modulecheck 14, kitcheck 7, recordcheck 14, scenariocheck 9, gatecheck 8, replayforever 10, reviewforever 8, coachforever 8, parsecheck 11,
 bookcheck 15, tipcheck 14, clockcheck 15, spellsui 15, measurecheck 18; adaptercheck 19/15,
 corecheck 10/8, svcheck 6/1, consolecheck 11/1; apicheck 0 findings (40 files), selftest 10 of 10, refcheck ok.
 
 ## Open questions / hazards
+
+- **ESCALATED to the planner (2026-09-28, T17 review): ruling 1 breaks the causality invariant.**
+  `SM.EstimateMaxHP` uses the whole fight's largest deficit + biggest hit, so a v3 scenario's party
+  max depends on the future; with the tank's max secret, coachforever assertion 6's burst at 20 s
+  changes a cast at 6.5 s (`FAIL - diverged at 6.5s`, lead's run). Recommendation: (1) take a party
+  member's max from **other** recordings of the same name (leave-one-out, Intuition's rule: a fight
+  is never in its own prior), falling back to this fight's estimate with the plan flagged
+  `foresees` and the card saying "max from this fight" as Foresight does; (2) if T13e's probe shows
+  a status bar reads a secret max back plain, record the real max and drop the stand-in. Not
+  blocking T18/T19.
 
 - **Recorder follow-up (small, unassigned):** `Recorder_Forever.lua` stores a pre-pull aura's
   `remaining` as of the out-of-combat scan (up to 2 s before `t0`), not shifted to the pull. Fold

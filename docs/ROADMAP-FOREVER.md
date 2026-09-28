@@ -312,8 +312,13 @@ reconstructed and estimated; `SM.RecordedHp`; `replayforever` 10. `SP.Card`'s st
 shared, client calls through the adapter) with the Replay module on, a placeholder naming the switch
 with it off; the window grows to the TBC size; the Review buttons' `MD:RunCoach` /
 `MD:ValidationReport` exist on Forever (`Commands_Forever.lua`); `reviewforever` 8.
-**T16c** -- names the client gave are painted with their own bytes (only a `|` is doubled): the lead's
+**T16c** (`4ae77d8`) -- names the client gave are painted with their own bytes (only a `|` is doubled): the lead's
 T14 rule had escaped accented names on the TBC window too.
+**T17** -- the coach, card, classifier, solver strategy, marks and the asynchronous coach run on a v3
+recording (fixture only; nothing in the engine needed changing); `coachforever` 8; solver vs rules
+on the fixture: identical (220 mana each, too light to separate them -- M5 measures on real pulls).
+**Open (escalated):** planner ruling 1's whole-fight max estimate breaks the causality invariant on a
+real Forever recording (a burst at 20 s changes a cast at 6.5 s).
 
 ### M4 — practice (phase 4) → `1.0.0-beta.3`
 
