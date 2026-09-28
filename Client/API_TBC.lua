@@ -18,3 +18,11 @@ MD.API.Bind({
 MD.API.Bind({
     SpellName = "GetSpellInfo",
 })
+
+-- T16a (UI/ReplayWindow.lua): the icon fallback used GetSpellInfo's third
+-- return for the texture on the 2.5.x client; Forever's own is T7's
+-- C_Spell.GetSpellTexture (Client/API_Forever.lua). Same binding name either
+-- side.
+MD.API.Bind({
+    SpellTexture = "GetSpellTexture",
+})

@@ -985,6 +985,10 @@ local function RankLabel(id)
 end
 
 function SP.Card(rec, best, bestResult, replayResult, baselineResults, cls, validation, opts)
+    -- The card read a global `kit` that nothing ever set, so every price below
+    -- has always used the live kit (a nil kit means that downstream). Kept nil
+    -- on purpose: passing the coach's kit would change what TBC prints.
+    local kit = nil
     local out = {}
     local function add(fmt, ...) out[#out + 1] = select("#", ...) > 0 and string.format(fmt, ...) or fmt end
 
@@ -1374,8 +1378,11 @@ function SP.Replay(rec, opts)
         end
     end
 
-    -- the recorder's snapshots as fractions, tracked targets only
-    local hp = rec.hp or {}
+    -- the recorder's snapshots as fractions, tracked targets only. A v3
+    -- stream (Forever) never carries `rec.hp` at all -- T13d's reconstruction
+    -- (SM.RecordedHp, Modules/SpellTuner_Replay/Scenario_Forever.lua) stands
+    -- in, in the same shape (T16a).
+    local hp = rec.hp or (rec.v == 3 and SM.RecordedHp and SM.RecordedHp(rec)) or {}
     local ticks = { t = hp.t or {}, hp = {} }
     for _, ti in ipairs(rec.tracked or {}) do
         local cur, max = hp.hp and hp.hp[ti], hp.max and hp.max[ti]
@@ -1730,8 +1737,9 @@ function SP.FromRecordings(zone, maxFights)
                 local r = rec.roster[tgt]
                 local role = r and r.role or "UNKNOWN"
                 local maxHP = (r and r.maxHP or 0)
-                if maxHP <= 0 and rec.hp and rec.hp.max and rec.hp.max[tgt] then
-                    maxHP = rec.hp.max[tgt][1] or 0
+                if maxHP <= 0 then
+                    local hp = rec.hp or (rec.v == 3 and SM.RecordedHp and SM.RecordedHp(rec))
+                    if hp and hp.max and hp.max[tgt] then maxHP = hp.max[tgt][1] or 0 end
                 end
                 local bucket = byRole[role]
                 if not bucket then bucket = { seconds = 0, steady = 0, bigs = {} }; byRole[role] = bucket end

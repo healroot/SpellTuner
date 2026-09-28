@@ -261,13 +261,19 @@ do
     SM.Validate = realV
 end
 
--- in combat: refuses
-_G.UnitAffectingCombat = function() return true end
+-- in combat: refuses. T16a moved this read behind MD.API.UnitAffectingCombat
+-- (Client/API.lua caches a name's resolved function once, by design --
+-- "functions do not move" -- so reassigning the bare global here no longer
+-- reaches MD:OpenReplay's own already-cached lookup); overriding the
+-- adapter's own member is the same technique this file already uses on
+-- SM.Validate above.
+local realUAC = MD.API.UnitAffectingCombat
+MD.API.UnitAffectingCombat = function() return true end
 local before = W.frame:IsShown()
 W.frame:Hide()
 MD:OpenReplay(1)
 check("refuses to open in combat", not MD.Replay._state().frame:IsShown())
-_G.UnitAffectingCombat = function() return false end
+MD.API.UnitAffectingCombat = realUAC
 
 --------------------------------------------------------------------------------
 -- v0.9.7: the Swiftmend indicator belongs to a healer who HAS Swiftmend. The

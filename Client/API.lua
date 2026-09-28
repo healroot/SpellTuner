@@ -351,4 +351,7 @@ MD.API.Bind({
     -- than a flavour file -- unused on TBC today, same as every other name
     -- here a TBC file happens not to call.
     GetErrorHandler = "geterrorhandler", SetErrorHandler = "seterrorhandler", DebugStack = "debugstack",
+    -- T16a (Modules/SpellTuner_Replay/Commands_Forever.lua, UI/ReplayWindow.lua):
+    -- the modifier-key predicates, the same global on both clients.
+    IsShiftKeyDown = "IsShiftKeyDown", IsAltKeyDown = "IsAltKeyDown", IsControlKeyDown = "IsControlKeyDown",
 })

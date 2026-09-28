@@ -35,6 +35,12 @@ local SHARED_NAMES = {
     -- T3: the three error-capture bindings, added to Client/API.lua's shared
     -- Bind call alongside the rest of this list.
     "GetErrorHandler", "SetErrorHandler", "DebugStack",
+    -- T16a (UI/ReplayWindow.lua, Modules/SpellTuner_Replay/Commands_Forever.lua):
+    -- the modifier-key predicates, the same global on both clients.
+    "IsShiftKeyDown", "IsAltKeyDown", "IsControlKeyDown",
+    -- T16a: SpellTexture is now bound on both -- Forever's own C_Spell.
+    -- GetSpellTexture (T7) and TBC's own GetSpellTexture (Client/API_TBC.lua).
+    "SpellTexture",
 }
 local ADDON_NAMES = { "AddOnMetadata", "IsAddOnLoaded", "LoadAddOn", "IsAddOnLoadOnDemand", "AddOnInfo" }
 -- T7: Client/API_Forever.lua's own spellbook/spell bindings -- forever only,
@@ -43,7 +49,7 @@ local FOREVER_ONLY_NAMES = {
     "SpellBookItemInfo", "SpellBookSkillLines", "SpellBookSkillLineInfo",
     "SpellBookItemIsLowRank", "SpellKnown", "SpellName", "SpellSubtext",
     "SpellDescription", "SpellInfo", "SpellPowerCost", "SpellLevelLearned",
-    "BaseSpell", "SpellTexture", "SpellTooltipData",
+    "BaseSpell", "SpellTooltipData",
     -- T9: recorded explicitly (Client/API_Forever.lua), not through Bind.
     "OnSpellTooltip",
     -- T12: Spells/Measure.lua's own bonus-healing read.

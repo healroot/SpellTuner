@@ -279,6 +279,95 @@ function SM.AttributeHeals(rec, kit)
 end
 
 --------------------------------------------------------------------------------
+-- ReconstructHp: the shared arithmetic behind both SM.ScenarioV3's own
+-- `recordedHp` field and SM.RecordedHp below (T16a) -- a target's stand-in
+-- max (Planner ruling 1) and its health on a 2s grid from every landed amount,
+-- own and foreign alike. Pure, no kit needed: neither computation reads which
+-- heals were own.
+--------------------------------------------------------------------------------
+local function ReconstructHp(rec)
+    local roster = rec.roster or {}
+    local nT = #roster
+    local ev, n = rec.ev or {}, rec.n or 0
+
+    local hits, sizingDeficit, sizingMax = {}, {}, {}
+    for i = 1, nT do sizingDeficit[i], sizingMax[i] = 0, 0 end
+    for i = 1, n do
+        local kind, tgt, amt = ev.kind[i], ev.tgt[i], ev.amt[i]
+        if kind == V3.DMG and tgt and tgt > 0 then
+            hits[tgt] = hits[tgt] or {}
+            hits[tgt][#hits[tgt] + 1] = amt or 0
+            sizingDeficit[tgt] = (sizingDeficit[tgt] or 0) + (amt or 0)
+            if sizingDeficit[tgt] > (sizingMax[tgt] or 0) then sizingMax[tgt] = sizingDeficit[tgt] end
+        elseif kind == V3.HEAL and tgt and tgt > 0 then
+            sizingDeficit[tgt] = math.max(0, (sizingDeficit[tgt] or 0) - (amt or 0))
+        end
+    end
+
+    local maxHP, maxEstimated, anyEstimated = {}, {}, false
+    for i = 1, nT do
+        local r = roster[i] or {}
+        if r.maxSecret == false and type(r.maxHP) == "number" and r.maxHP > 0 then
+            maxHP[i], maxEstimated[i] = r.maxHP, false
+        else
+            maxHP[i] = SM.EstimateMaxHP({ sizingMax[i] or 0 }, hits[i] or {})
+            maxEstimated[i] = true
+            anyEstimated = true
+        end
+    end
+
+    local dur = rec.dur or 0
+    local gridT = {}
+    do
+        local t = 0
+        while t <= dur + 1e-9 do gridT[#gridT + 1] = t; t = t + 2 end
+    end
+
+    local recon, hpOut, maxOut = {}, {}, {}
+    for i = 1, nT do recon[i], hpOut[i], maxOut[i] = 0, {}, {} end
+    local ei = 1
+    for _, gt in ipairs(gridT) do
+        while ei <= n and ev.t[ei] <= gt + 1e-9 do
+            local kind, tgt, amt = ev.kind[ei], ev.tgt[ei], ev.amt[ei]
+            if tgt and tgt > 0 then
+                if kind == V3.DMG then
+                    recon[tgt] = (recon[tgt] or 0) + (amt or 0)
+                elseif kind == V3.HEAL then
+                    recon[tgt] = math.max(0, (recon[tgt] or 0) - (amt or 0))
+                elseif kind == V3.DIED then
+                    recon[tgt] = maxHP[tgt] or recon[tgt]
+                end
+            end
+            ei = ei + 1
+        end
+        for i = 1, nT do
+            local h = (maxHP[i] or 1) - (recon[i] or 0)
+            if h < 0 then h = 0 end
+            hpOut[i][#hpOut[i] + 1] = h
+            maxOut[i][#maxOut[i] + 1] = maxHP[i] or 0
+        end
+    end
+
+    return { maxHP = maxHP, maxEstimated = maxEstimated, anyEstimated = anyEstimated,
+             t = gridT, hp = hpOut, max = maxOut }
+end
+
+--------------------------------------------------------------------------------
+-- SM.RecordedHp(rec, kit): T13d's reconstruction, in v2's own `rec.hp` shape
+-- (`{t, hp = {[i] = {...}}, max = {[i] = {...}}}`) so Engine/SimPlanner.lua's
+-- two `rec.hp` readers (the recorder's real-health ticks, and the max-health
+-- fallback in `SP.FromRecordings`) work unchanged on a v3 stream that never
+-- carried `rec.hp` at all. `kit` is accepted for symmetry with
+-- SM.ScenarioFromRecording's own signature but unused: the reconstruction
+-- never needs to know which heals were own.
+--------------------------------------------------------------------------------
+function SM.RecordedHp(rec, kit)
+    if not rec or not rec.roster then return nil end
+    local h = ReconstructHp(rec)
+    return { t = h.t, hp = h.hp, max = h.max }
+end
+
+--------------------------------------------------------------------------------
 -- SM.ScenarioV3: a v3 stream -> the v2 scenario shape, plus recordedHp,
 -- attribution and maxEstimated (Files table).
 --------------------------------------------------------------------------------

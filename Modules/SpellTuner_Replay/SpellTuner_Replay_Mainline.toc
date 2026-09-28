@@ -11,5 +11,15 @@ Kit_Forever.lua
 Engine\SimModel.lua
 Scenario_Forever.lua
 Gates_Forever.lua
+Data\AuraList.lua
+Engine\Intuition.lua
+Engine\Foresight.lua
+Engine\SimSolver.lua
+Engine\SimPlanner.lua
+Engine\RunTimeline.lua
+Engine\ReplayTrace.lua
+UI\Tooltip.lua
+UI\ReplayWindow.lua
+Commands_Forever.lua
 
 Ready.lua

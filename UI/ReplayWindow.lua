@@ -15,6 +15,20 @@
 local _, MD = ...
 local UI = MD.UI
 
+-- T16a, lead review (2026-09-28): a target's name and a fallback spell name
+-- come straight from the client and may carry a bare "|" or a non-ASCII byte
+-- (an EU realm name). The probe's own escaping (Client/Probe.lua's Esc,
+-- duplicated -- this file takes no dependency on it): a literal backslash
+-- doubled first, then a pipe as "||", then any non-ASCII/control byte as
+-- "\ddd", so anything painted or printed stays ASCII with no bare pipe.
+local function Esc(s)
+    if type(s) ~= "string" then return s end
+    local step1 = s:gsub("\\", "\\\\")
+    local step2 = step1:gsub("|", "||")
+    local step3 = step2:gsub("[^ -~]", function(c) return string.format("\\%03d", c:byte()) end)
+    return step3
+end
+
 local COL_W = 460              -- the healer strip's width; a column is at least this wide
 local GUTTER = 16
 local HEADER_H, STRIP_H, SCRUB_H = 26, 96, 96
@@ -140,8 +154,8 @@ local function SpellLabel(spellID)
         if (rankCount[sd.family] or 1) > 1 then name = string.format("%s R%d", name, sd.rank) end
         return name, sd.family
     end
-    local ok, name = pcall(GetSpellInfo, spellID)
-    return (ok and name) or ("spell " .. tostring(spellID)), "other"
+    local name = MD.API.SpellName(spellID)
+    return (name and Esc(name)) or ("spell " .. tostring(spellID)), "other"
 end
 
 local function Clock(sec)
@@ -506,7 +520,7 @@ local function MakeOnEvent(col)
                 end
             end
             local tgtName = rp.rec.roster[tgt] and rp.rec.roster[tgt].name
-            col.strip.lastCast = label .. (tgtName and (" -> " .. tgtName) or "")
+            col.strip.lastCast = label .. (tgtName and (" -> " .. Esc(tgtName)) or "")
             col.strip.lastFamily = family
             -- an instant: sweep the GCD from this moment (replay clock, not wall clock)
             local c = col.state and col.state:Casting()
@@ -534,22 +548,25 @@ end
 local function AuraName(spellID)
     local d = MD.AuraList and MD.AuraList.Defensive(spellID)
     if d then return d[1] end
-    local ok, name = pcall(GetSpellInfo, spellID)
-    return (ok and name) or ("spell " .. tostring(spellID))
+    local name = MD.API.SpellName(spellID)
+    return (name and Esc(name)) or ("spell " .. tostring(spellID))
 end
 
 local textureCache = {}
 local function SpellTexture(spellID)
     local tex = textureCache[spellID]
     if tex ~= nil then return tex or nil end
-    local ok, t = pcall(GetSpellTexture, spellID)
-    if not (ok and t) then
-        -- this client may not have GetSpellTexture; GetSpellInfo's third
-        -- return is the icon on the 2.5.x client
-        local ok2, _, _, icon = pcall(GetSpellInfo, spellID)
-        if ok2 and icon then ok, t = true, icon end
+    local t = MD.API.SpellTexture(spellID)
+    if not t then
+        -- this client may not have GetSpellTexture; MD.API.SpellName's third
+        -- return is the icon on the 2.5.x client (T7/T15's Bind of
+        -- SpellName -> GetSpellInfo there); Forever's own SpellTexture binding
+        -- (Client/API_Forever.lua's C_Spell.GetSpellTexture) always answers
+        -- one way or the other, so this fallback is TBC-only in practice.
+        local icon = select(3, MD.API.SpellName(spellID))
+        if icon then t = icon end
     end
-    if not (ok and t) then MD:Debug("sim", "replay: no texture for spell %d", spellID); t = false end
+    if not t then MD:Debug("sim", "replay: no texture for spell %d", spellID); t = false end
     textureCache[spellID] = t
     return t or nil
 end
@@ -815,7 +832,7 @@ local function PaintStrip(s, st, pool, now, col)
         s.cast:SetStatusBarColor(fc[1], fc[2], fc[3])
         s.cast:SetValue(frac)
         local tgt = rp.rec.roster[c.target]
-        s.castFS:SetText(label .. (tgt and (" -> " .. tgt.name) or "") .. string.format("  %.1fs", c.castTime))
+        s.castFS:SetText(label .. (tgt and (" -> " .. Esc(tgt.name)) or "") .. string.format("  %.1fs", c.castTime))
         s.castFS:SetTextColor(1, 1, 1)
     elseif s.lastCast and st.t < s.gcdUntil and st.t >= s.gcdStart then
         -- just after an instant: the GCD sweeping, in grey
@@ -1107,6 +1124,17 @@ local function Build()
     headerFS:SetPoint("TOPLEFT", frame, "TOPLEFT", GUTTER, -6)
     headerFS:SetJustifyH("LEFT")
     headerFS:SetWidth(2 * COL_W + GUTTER)
+
+    -- T16a: a v3 recording (Forever) never carried a real health log -- every
+    -- percentage and danger line drawn from it is T13d's reconstruction, and a
+    -- party member's max may itself be a stand-in (Planner ruling 1). One grey
+    -- line says so; hidden on a v2/TBC recording, which has neither question.
+    frame.reconFS = frame:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+    frame.reconFS:SetPoint("TOPLEFT", headerFS, "BOTTOMLEFT", 0, -2)
+    frame.reconFS:SetJustifyH("LEFT")
+    frame.reconFS:SetWidth(2 * COL_W + GUTTER)
+    frame.reconFS:SetTextColor(0.6, 0.6, 0.6)
+    frame.reconFS:Hide()
 
     -- The strategies the last search produced for this recording. One dropdown
     -- rather than four buttons: the names are long and ran off the window
@@ -1401,7 +1429,7 @@ local function Layout()
     table.sort(rows)
     local roster = rp.rec.roster
     local healerIdx = nil
-    local myName = UnitName and UnitName("player") or nil
+    local myName = MD.API.UnitName("player")
     for i, r in ipairs(roster) do
         if (r.guid and r.guid == MD.player.guid) or (not r.guid and myName and r.name == myName) then healerIdx = i end
     end
@@ -1465,7 +1493,7 @@ local function Layout()
                 f.isHealer = (ti == healerIdx)
                 local rc = ROLE_COORD[r.role]
                 if rc then f.role:SetTexCoord(rc[1], rc[2], rc[3], rc[4]); f.role:Show() else f.role:Hide() end
-                f.name:SetText(r.name or ("#" .. ti))
+                f.name:SetText(r.name and Esc(r.name) or ("#" .. ti))
                 local c = f.classColor
                 f.bar:SetStatusBarColor(c[1], c[2], c[3])
                 f.bar.bg:SetColorTexture(c[1] * CELL.lossFactor, c[2] * CELL.lossFactor, c[3] * CELL.lossFactor, 1)
@@ -1546,7 +1574,7 @@ function MD:OpenReplay(n)
     local FR, SP = MD.FightRecorder, MD.SimPlanner
     if live then MD:StopPractice(false) end
     if not (FR and SP and MD.ReplayTrace) then MD:Print("replay: not loaded.") return end
-    if (InCombatLockdown and InCombatLockdown()) or UnitAffectingCombat("player") then
+    if MD.API.InCombatLockdown() or MD.API.UnitAffectingCombat("player") then
         MD:Print("replay: not in combat - it is a review tool.")
         return
     end
@@ -1612,6 +1640,17 @@ function MD:OpenReplay(n)
         run and (run.name .. " pull " .. tostring(pullK) .. " - ") or "", rec.zone or "?", when,
         Clock(rec.dur or 0), v and (v.ok and "|cff99dd99replays|r" or "|cffff9966does not replay|r") or "",
         fit ~= "" and ("  |cff888888" .. fit .. "|r") or ""))
+    -- T16a: a v3 recording (Forever) has no real health log at all -- every
+    -- bar and tick drawn is T13d's reconstruction, and `maxEstimated` says
+    -- whether any tracked target's max was itself a stand-in.
+    if rec.v == 3 then
+        local estimated = rp.scenario and rp.scenario.maxEstimated
+        frame.reconFS:SetText("health reconstructed from UNIT_COMBAT"
+            .. (estimated and "; party max estimated" or ""))
+        frame.reconFS:Show()
+    else
+        frame.reconFS:Hide()
+    end
     -- the strategy chooser, when a search has produced strategies for this fight
     do
         local SP = MD.SimPlanner
@@ -1742,8 +1781,8 @@ local function LiveControls(on)
             if live then live:SetPaused(not playing) end
             return
         end
-        local mods = MD.Practice.Mods(IsAltKeyDown and IsAltKeyDown(), IsControlKeyDown and IsControlKeyDown(),
-            IsShiftKeyDown and IsShiftKeyDown())
+        local mods = MD.Practice.Mods(MD.API.IsAltKeyDown(), MD.API.IsControlKeyDown(),
+            MD.API.IsShiftKeyDown())
         if MD.Practice.BindFor(mods .. key) then
             Propagate(false)
             MD:PracticePress(key, hoverTi)
@@ -1759,8 +1798,8 @@ end
 function MD:PracticePress(key, ti)
     if not live then return end
     local PR = MD.Practice
-    local mods = PR.Mods(IsAltKeyDown and IsAltKeyDown(), IsControlKeyDown and IsControlKeyDown(),
-        IsShiftKeyDown and IsShiftKeyDown())
+    local mods = PR.Mods(MD.API.IsAltKeyDown(), MD.API.IsControlKeyDown(),
+        MD.API.IsShiftKeyDown())
     local bind, spellID = PR.BindFor(mods .. key)
     if not bind then return end
     if not spellID then live:Error("You don't know " .. bind.family, nil, ti) return end
@@ -1794,7 +1833,7 @@ end
 function MD:OpenPractice(setup, seed)
     local PR = MD.Practice
     if not (PR and MD.ReplayTrace) then MD:Print("practice: not loaded.") return end
-    if (InCombatLockdown and InCombatLockdown()) or UnitAffectingCombat("player") then
+    if MD.API.InCombatLockdown() or MD.API.UnitAffectingCombat("player") then
         MD:Print("practice: not in combat.")
         return
     end
@@ -1833,6 +1872,7 @@ function MD:OpenPractice(setup, seed)
     for _, x in ipairs(PR.GROUPS) do if x.id == setup.group then g = x end end
     headerFS:SetText(string.format("|cffffcc00PRACTICE|r  %s, %d people   %s",
         g and g.label or "custom", #setup.targets, Clock(session.scenario.dur)))
+    frame.reconFS:Hide()
     left.title:SetText("YOU")
     speed = 1
     speedHighlight(1)
@@ -1893,7 +1933,8 @@ MD.Replay = {
     end,
     _runSeek = function(_, t) if runMode then RunSeek(t) end end,
     _state = function() return { frame = frame, left = left, right = right, rows = rows, rp = rp,
-                                 scrubber = scrubber, timeFS = timeFS, playing = playing, speeds = speedButtons } end,
+                                 scrubber = scrubber, timeFS = timeFS, playing = playing, speeds = speedButtons,
+                                 headerFS = headerFS, reconFS = frame and frame.reconFS, hint = frame and frame.hint } end,
     _runStrip = function()
         if not runStrip then return nil end
         return { shown = runStrip:IsShown(), pulls = runStrip.pulls, drinks = runStrip.drinks,
