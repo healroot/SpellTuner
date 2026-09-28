@@ -668,6 +668,9 @@ function S.UseProfile(name)
     local SPELL_ITEMTYPE = {}
     local SPELL_KNOWN = {}
     local SPELL_COSTLIST = {}
+    -- T7b: per-spell isPassive override (default false, m2's own General/
+    -- Druid rows above all carry isPassive = false in their table literal).
+    local SPELL_PASSIVE = {}
     -- T0c: 774's amount also carries S.descShift, a stand-in for a description
     -- that moved with a level-up rather than with bonus healing (reads exactly
     -- as before at descShift 0). 5176's amount carries S.bonusDamage[4]
@@ -689,8 +692,8 @@ function S.UseProfile(name)
             -- retail 12.x documented shape, NOT observed on Forever -- the probe's == shapes checks it
             return {
                 spellID = id, name = SPELL_NAMES[id], subName = SPELL_SUBTEXT[id],
-                itemType = SPELL_ITEMTYPE[id] or 1, isPassive = false, isOffSpec = false, skillLineIndex = 2,
-                actionID = id, iconID = 136041,
+                itemType = SPELL_ITEMTYPE[id] or 1, isPassive = SPELL_PASSIVE[id] == true, isOffSpec = false,
+                skillLineIndex = 2, actionID = id, iconID = 136041,
             }
         end,
         -- retail 12.x documented shape, NOT observed on Forever -- the probe's == shapes checks it
@@ -745,6 +748,7 @@ function S.UseProfile(name)
         -- whose known-ness falls back to it); known default (true) unless the
         -- test explicitly says the character has not learned it yet.
         SPELL_ITEMTYPE[id] = opts.itemType or 1
+        SPELL_PASSIVE[id] = opts.passive == true
         if opts.known == false then SPELL_KNOWN[id] = false end
         if opts.costList then
             SPELL_COSTLIST[id] = opts.costList
@@ -780,7 +784,10 @@ function S.UseProfile(name)
         GetSpellPowerCost = function(id)
             if not SPELL_NAMES[id] then return nil end
             if SPELL_COSTLIST[id] then return SPELL_COSTLIST[id] end
-            if SPELL_NO_COST[id] then return {} end
+            -- == shapes item 5 (m2 lines 252-259, 274-285): every no-cost
+            -- spell in the book returned NO VALUES AT ALL, never an empty
+            -- list -- `return` with nothing, not `return {}`.
+            if SPELL_NO_COST[id] then return end
             local cost = SPELL_COST[id] or 0
             return { {
                 type = 0, name = "MANA", cost = cost, minCost = cost,

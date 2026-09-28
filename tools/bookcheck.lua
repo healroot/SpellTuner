@@ -50,7 +50,7 @@ S.AddSpell(90030, "FreeSpell", "Rank 1",
 -- crash on a family with no kind.
 S.AddSpell(90040, "PassiveSpell", "Passive",
     function() return "A permanent racial passive." end,
-    { cast = 0, noCost = true, level = 1 })
+    { cast = 0, noCost = true, level = 1, passive = true })
 
 -- item 10: a spell the character has not learned yet.
 S.AddSpell(90050, "LaterSpell", "Rank 1",
@@ -461,6 +461,26 @@ do
         sameGood and standaloneGood and nothingGood,
         string.format("sameGood=%s standaloneGood=%s nothingGood=%s",
             tostring(sameGood), tostring(standaloneGood), tostring(nothingGood)))
+end
+
+--------------------------------------------------------------------------------
+-- 15 (T7b, == shapes item 5/3): a spell whose cost call returns nothing is
+-- free, and a passive row is marked passive
+--------------------------------------------------------------------------------
+do
+    local book = Book:Scan()
+    local free = FindEntry(book, 90030)
+    local passive = FindEntry(book, 90040)
+    local fixed = FindEntry(book, 5185)
+
+    local freeGood = free.costState == "free"
+    local passiveGood = passive.passive == true
+    local fixedGood = fixed.passive == false
+
+    check("a spell whose cost call returns nothing is free, and a passive row is marked passive",
+        freeGood and passiveGood and fixedGood,
+        string.format("free.costState=%s passive.passive=%s fixed.passive=%s",
+            tostring(free.costState), tostring(passive.passive), tostring(fixed.passive)))
 end
 
 print(string.format("\n%d ok, %d failed", ok, #fails))

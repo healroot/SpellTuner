@@ -84,11 +84,15 @@ local function ManaCostEntry(list)
     return nil
 end
 
--- cost, costState -- Rule (Facts): an amount from the mana entry's cost when
--- > 0, plus a percent from costPercent when > 0; {free = true} for an empty
--- cost list; else the tooltip data's own cost line; else nil/"absent".
+-- cost, costState -- Rule (Facts, == shapes item 5): an amount from the mana
+-- entry's cost when > 0, plus a percent from costPercent when > 0; {free =
+-- true} for an empty cost list OR a call that returned no value and no
+-- reason at all (m2 lines 252-259, 274-285: every no-cost spell in the book
+-- returned nothing, never an empty list) -- else the tooltip data's own cost
+-- line; else nil/"absent".
 local function ResolveCost(list, listReason, tip)
     if listReason == "secret" then return nil, "secret" end
+    if list == nil and listReason == nil then return { free = true }, "free" end
     if type(list) == "table" then
         if #list == 0 then return { free = true }, "free" end
         local mana = ManaCostEntry(list)
@@ -202,6 +206,12 @@ end
 function Book:BuildEntry(row, slot, bank, futureConst, prevSpells)
     local id = row.spellID
     local entry = { id = id, slot = slot }
+
+    -- == shapes item 3 (m2 lines 252-259): kept as read, for the pane (T10c)
+    -- to leave passives out; skillLineIndex is absent on General's own rows,
+    -- so a plain number-or-nil is all Book can promise here.
+    entry.passive = (row.isPassive == true)
+    entry.skillLine = (type(row.skillLineIndex) == "number") and row.skillLineIndex or nil
 
     local name = MD.API.SpellName(id)
     entry.name = (type(name) == "string") and name or nil

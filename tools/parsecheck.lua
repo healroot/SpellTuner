@@ -282,6 +282,30 @@ do
 end
 
 --------------------------------------------------------------------------------
+-- 11 (T7b, m2 lines 91/154/161): the client's grammar escape is expanded and
+-- a reactive damage clause is not a cast's damage
+--------------------------------------------------------------------------------
+do
+    local motw1 = P.Clean("Increases the friendly target's armor by 34 for 1 |4hour:hrs;.")
+    local motw1Good = motw1 == "Increases the friendly target's armor by 34 for 1 hour."
+
+    local motw2 = P.Clean("Increases the friendly target's armor by 88 for 2 |4hour:hrs;.")
+    local motw2Good = motw2 ~= nil and motw2:sub(-10) == "for 2 hrs."
+
+    local bare = P.Clean("|4hour:hrs;")
+    local bareGood = bare == "hrs"
+
+    local thorns = P.Description(
+        "Thorns sprout from the friendly target causing 4 Nature damage to attackers when hit. Lasts 10 min.")
+    local thornsGood = thorns == nil
+
+    check("the client's grammar escape is expanded and a reactive damage clause is not a cast's damage",
+        motw1Good and motw2Good and bareGood and thornsGood,
+        string.format("motw1=%q motw2=%q bare=%q thorns=%s",
+            tostring(motw1), tostring(motw2), tostring(bare), Fmt(thorns)))
+end
+
+--------------------------------------------------------------------------------
 -- 10: the Forever TOC loads Spells/Parse.lua before the UI
 --------------------------------------------------------------------------------
 do

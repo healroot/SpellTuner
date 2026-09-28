@@ -58,12 +58,28 @@ end
 -- Parse.Clean
 --------------------------------------------------------------------------------
 
+-- The client's own grammar escape (m2 lines 154, 161): |4singular:plural;,
+-- chosen by the number immediately before it. Expanded before every other
+-- strip (Files) so a colour/texture code straddling it is never the reason
+-- the escape survives. A preceding "N " picks the singular only when N is
+-- exactly 1, else the plural; with no number before it at all, the plural is
+-- taken (UNKNOWN what the client does -- the safe reading for a count we
+-- cannot see).
+local function ExpandGrammar(text)
+    local out = text:gsub("(%d+)(%s+)|4(.-):(.-);", function(num, gap, singular, plural)
+        if tonumber(num) == 1 then return num .. gap .. singular end
+        return num .. gap .. plural
+    end)
+    out = out:gsub("|4(.-):(.-);", function(_, plural) return plural end)
+    return out
+end
+
 -- Strips the client's own escape codes and normalises whitespace. nil in,
 -- nil out -- every other function here starts by calling this, which is what
 -- lets them accept anything without raising.
 function Parse.Clean(text)
     if type(text) ~= "string" then return nil end
-    local out = text
+    local out = ExpandGrammar(text)
     out = out:gsub(COLOR_START, "")
     out = out:gsub(COLOR_END, "")
     out = out:gsub(TEXTURE, "")
@@ -253,7 +269,10 @@ function Parse.Description(text)
     end
     if damage == nil then
         local a, b, x1, sc1 = clean:find(DAMAGE_SINGLE)
-        if a then
+        -- Thorns' shape (m2 line 91): "N School damage to attackers when
+        -- hit" is a reactive aura's per-hit damage, not the cast's own --
+        -- refused rather than read as a direct amount.
+        if a and not clean:sub(b + 1):match("^%s+to%s+attackers%f[%A]") then
             damage = { min = N(x1), max = N(x1), school = NormSchool(sc1) }
             clean = Blank(clean, a, b)
         end
