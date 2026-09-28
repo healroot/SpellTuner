@@ -184,6 +184,10 @@ consume a scenario, not a log.
    total disagrees with the meter beyond the gate's threshold is not coached from.
 3. *The mana gates* compare the engine with the clock's modelled pool, not the real pool (which is
    secret). Kept, and every report of them says "modelled pool" -- they measure consistency, not truth.
+   *Addendum (2026-09-28):* until the probe settles whether a `UNIT_COMBAT` HEAL amount is gross or
+   effective (TESTING §38.2), gate 8 fails only on a **shortfall** against the meter -- a gross
+   amount would exceed the effective meter by the overheal on every honest pull. `SM.HEAL_AMOUNT`
+   becomes two-sided once the answer is "effective". Confirmed as the lead proposed.
 4. *Shared files in modules:* `release.sh` copies each shared file a module TOC lists into that
    module's folder, and `Module.lua` gives the module a proxy to SpellTuner's `MD` (T13c). Confirmed.
 
