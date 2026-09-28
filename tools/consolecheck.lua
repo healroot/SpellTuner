@@ -224,15 +224,15 @@ try("the Forever console has no Regen test button", function()
 end)
 
 --------------------------------------------------------------------------------
--- 10: every Forever TOC is 1.0.0-alpha.3
+-- 10: every Forever TOC is 1.0.0-alpha.4
 --------------------------------------------------------------------------------
-try("every Forever TOC is 1.0.0-alpha.3", function()
+try("every Forever TOC is 1.0.0-alpha.4", function()
     local function HasVersionLine(rel)
         local f = io.open(ROOT .. "/" .. rel, "r")
         if not f then return false end
         local found = false
         for line in f:lines() do
-            if line:gsub("\r$", "") == "## Version: 1.0.0-alpha.3" then found = true end
+            if line:gsub("\r$", "") == "## Version: 1.0.0-alpha.4" then found = true end
         end
         f:close()
         return found
@@ -250,7 +250,7 @@ try("every Forever TOC is 1.0.0-alpha.3", function()
     for _, f in ipairs(files) do
         if not HasVersionLine(f) then allOk = false; bad = f end
     end
-    check("every Forever TOC is 1.0.0-alpha.3", allOk, bad)
+    check("every Forever TOC is 1.0.0-alpha.4", allOk, bad)
 end)
 
 --------------------------------------------------------------------------------
