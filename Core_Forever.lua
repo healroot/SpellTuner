@@ -233,6 +233,16 @@ MD:AddCommand("clock", function(arg)
     if MD.Clock and MD.Clock.Refresh then MD.Clock:Refresh() end
 end, "/st clock [lock]", "show or hide the mana clock, or lock it in place")
 
+MD:AddCommand("measure", function(arg)
+    if arg == "dump" then
+        if MD.Measure and MD.Measure.Dump and MD.ShowCopyPopup then
+            MD:ShowCopyPopup("SpellTuner measure", MD.Measure:Dump())
+        end
+    elseif MD.Measure and MD.Measure.Toggle then
+        MD.Measure:Toggle()
+    end
+end, "/st measure [dump]", "measure a landed cast against its own description (a diagnostic session)")
+
 MD:AddCommand("modules", function()
     if MD.SelectView then
         MD:SelectView("settings", "modules")

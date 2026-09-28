@@ -39,6 +39,14 @@ MD.API.Bind({
     SpellTooltipData = { client = "C_TooltipInfo.GetSpellByID", copy = 3 },
 })
 
+-- T12 (Spells/Measure.lua): plain out of combat, UNKNOWN in combat (Facts --
+-- stats go secret in combat, T7a's seventh report) -- read through the
+-- adapter like every other stat, printed as "?" when it does not come back a
+-- plain number.
+MD.API.Bind({
+    SpellBonusHealing = "GetSpellBonusHealing",
+})
+
 -- T9 (UI/SpellTip_Forever.lua): registers the block on every spell tooltip
 -- through TooltipDataProcessor.AddTooltipPostCall (docs/tasks/T9-spell-tooltip.md
 -- Facts: present on 70009, UNVERIFIED whether it fires for the spellbook,

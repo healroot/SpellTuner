@@ -46,6 +46,8 @@ local FOREVER_ONLY_NAMES = {
     "BaseSpell", "SpellTexture", "SpellTooltipData",
     -- T9: recorded explicitly (Client/API_Forever.lua), not through Bind.
     "OnSpellTooltip",
+    -- T12: Spells/Measure.lua's own bonus-healing read.
+    "SpellBonusHealing",
 }
 
 --------------------------------------------------------------------------------

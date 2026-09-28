@@ -13,6 +13,7 @@ Core_Forever.lua
 Spells\Parse.lua
 Spells\Book.lua
 Engine\ManaModel.lua
+Spells\Measure.lua
 UI\Style.lua
 UI\Dashboard_Rows.lua
 UI\Dashboard_Forever.lua

@@ -612,6 +612,17 @@ function S.UseProfile(name)
         S.Fire("UNIT_SPELLCAST_SUCCEEDED", unit or "player", "cast-guid", id)
     end
 
+    -- T12: one UNIT_COMBAT event, in the shape Facts give -- (unit, action,
+    -- descriptor, amount, school). Overrides the TBC-profile S.Combat above
+    -- (which fires the combat log Forever forbids); args are reordered here
+    -- for a caller's convenience (amount is the number a fixture actually
+    -- varies, descriptor never is) and put back in the client's own order
+    -- before firing. A caller may hand either argument S.Secret() to prove
+    -- the unreadable case.
+    function S.Combat(unit, action, amount, descriptor)
+        S.Fire("UNIT_COMBAT", unit, action, descriptor, amount, nil)
+    end
+
     Enum = {
         SpellBookSpellBank = { Player = 0 },
         DamageMeterType = { HealingDone = 1 },
