@@ -132,10 +132,33 @@ function SpellTip:Lines(id)
     end
     lines[#lines + 1] = { "Per mana", perManaRight }
 
-    -- 5: per second, with the chain interval named on the same line
+    -- 5: per second, with the interval named on the same line BY KIND (T10
+    -- review of this file: naming every interval "sec cast" read as
+    -- "12.0 sec cast" for a HoT whose interval is its own duration, and for a
+    -- channel -- neither of which is a cast bar). castKind is the same field
+    -- Book already derived (T7): "cast" for a direct/hybrid spell with a real
+    -- cast time, "instant" for one at the GCD, "channeled" for a channel; a
+    -- pure over-time entry (no direct part, entry.min/max nil) has no
+    -- castKind at all but does have an interval (its own duration).
     local perSecRight = "-"
     if entry.perSec and entry.interval then
-        perSecRight = Num(entry.perSec, 1) .. " (" .. Num(entry.interval, 1) .. " sec cast)"
+        -- T10 review's own four examples: a cast bar or the GCD keeps one
+        -- decimal (a fractional cast time is real -- Nature's Grace-style
+        -- averages elsewhere in the tree carry one too); a HoT's or a
+        -- channel's own duration is whole seconds in every description this
+        -- tree has ever parsed, so it renders without one, matching the
+        -- literal wording the review gave ("over 12 sec", "10 sec channel").
+        local unit
+        if entry.castKind == "channeled" then
+            unit = Num(entry.interval, 0) .. " sec channel"
+        elseif entry.min == nil and entry.max == nil then
+            unit = "over " .. Num(entry.interval, 0) .. " sec"
+        elseif entry.castKind == "instant" then
+            unit = Num(entry.interval, 1) .. " sec GCD"
+        else
+            unit = Num(entry.interval, 1) .. " sec cast"
+        end
+        perSecRight = Num(entry.perSec, 1) .. " (" .. unit .. ")"
     end
     lines[#lines + 1] = { "Per second", perSecRight }
 

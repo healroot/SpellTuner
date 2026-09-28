@@ -58,6 +58,19 @@ S.AddSpell(92040, "PassiveSpell", "Passive",
     function() return "A permanent racial passive." end,
     { cast = 0, noCost = true, level = 1 })
 
+-- item 13 (T10, carried from this file's own T9 Review): an instant direct
+-- heal (cast = 0, a min/max part, no tick -- Book's own rule gives it
+-- castKind "instant", interval = max(0, GCD) = 1.5) and a channel (cast = 0,
+-- a tick/periodDur part -- castKind "channeled", interval = periodDur). Both
+-- alongside 5185 (a real cast) and 774 (a pure over-time HoT, already a
+-- fixture) cover the per-second line's four kinds.
+S.AddSpell(92080, "InstantHeal", "Rank 1",
+    function() return "Heals a friendly target for 50 to 60." end,
+    { cast = 0, cost = 20, level = 1 })
+S.AddSpell(92090, "ChannelHeal", "Rank 1",
+    function() return "Heals the target for 285 every 2 sec for 10 sec." end,
+    { cast = 0, cost = 35, level = 1 })
+
 --------------------------------------------------------------------------------
 -- helpers
 --------------------------------------------------------------------------------
@@ -373,6 +386,40 @@ do
         end
     end
     check("every line is ASCII with no bare pipe", bad == nil, bad)
+end
+
+--------------------------------------------------------------------------------
+-- 13 (T10): the per-second line names its interval by kind
+--------------------------------------------------------------------------------
+do
+    local book = Book:Get()
+
+    local castLine = FindLine(SpellTip:Lines(5185), "Per second")
+    local castGood = castLine ~= nil and castLine[2]:find(" sec cast)", 1, true) ~= nil
+
+    local instantEntry = book.spells[92080]
+    local instantLine = FindLine(SpellTip:Lines(92080), "Per second")
+    local instantGood = instantEntry ~= nil and instantEntry.castKind == "instant"
+        and instantLine ~= nil and instantLine[2] == string.format("%.1f (%.1f sec GCD)",
+            instantEntry.perSec, instantEntry.interval)
+
+    local overEntry = book.spells[774]
+    local overLine = FindLine(SpellTip:Lines(774), "Per second")
+    local overGood = overEntry ~= nil and overEntry.min == nil and overEntry.max == nil
+        and overLine ~= nil and overLine[2] == string.format("%.1f (over %d sec)",
+            overEntry.perSec, math.floor(overEntry.interval + 0.5))
+
+    local chanEntry = book.spells[92090]
+    local chanLine = FindLine(SpellTip:Lines(92090), "Per second")
+    local chanGood = chanEntry ~= nil and chanEntry.castKind == "channeled"
+        and chanLine ~= nil and chanLine[2] == string.format("%.1f (%d sec channel)",
+            chanEntry.perSec, math.floor(chanEntry.interval + 0.5))
+
+    check("the per-second line names its interval by kind",
+        castGood and instantGood and overGood and chanGood,
+        string.format("cast=%s instant=%s over=%s channel=%s",
+            castLine and castLine[2] or "nil", instantLine and instantLine[2] or "nil",
+            overLine and overLine[2] or "nil", chanLine and chanLine[2] or "nil"))
 end
 
 print(string.format("\n%d ok, %d failed", ok, #fails))

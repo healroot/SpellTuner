@@ -2,6 +2,16 @@
 -- the per-row rendering. Split out of UI/Dashboard.lua so the frame file stays
 -- about the frame. Exports a constructor on MD.DashboardParts; UI/Dashboard.lua
 -- loads after this and calls it.
+--
+-- T10 (docs/tasks/T10-spells-pane.md): this file is now SHARED (both TOCs) --
+-- CreateTable(parent, width, opts) grew an optional fourth argument so
+-- UI/Dashboard_Forever.lua's Spellbook pane can reuse the same row pool with
+-- its own columns/render/hover, while `opts == nil` (every existing TBC call)
+-- renders BYTE FOR BYTE what it always has. No client call and no flavour
+-- check belong here either way -- CreateFrame and font strings are the widget
+-- toolkit (CLAUDE.md, FOREVER-PLAN.md sec3.2), and the only client-shaped reads
+-- below (MD.Tip, MD.RankMath) sit behind the `not opts` branch, which a
+-- Forever caller never takes.
 local _, MD = ...
 
 MD.DashboardParts = MD.DashboardParts or {}
@@ -33,9 +43,22 @@ local function AccentHex()
     return string.format("|cff%02x%02x%02x", a[1] * 255, a[2] * 255, a[3] * 255)
 end
 
-function MD.DashboardParts.CreateTable(parent, width)
+-- opts (T10, optional -- nil is today's TBC behaviour, unchanged):
+--   opts.cols    -- a column list in COLS' own shape ({key,x,w,label}), used
+--                    for both the fontstrings AcquireRow builds and the header
+--                    labels, instead of the fixed TBC set.
+--   opts.render(row, r, color) -- fills one data row's cells for one entry
+--                    `r`, given the same known/suggested/dominated colour the
+--                    TBC branch derives; called instead of the TBC rendering.
+--   opts.onEnter(row, r) / opts.onLeave(row) -- the row's hover, instead of
+--                    MD.Tip/MD.RankMath (which a Forever caller must never
+--                    reach -- both are TBC-only globals, CLAUDE.md).
+--   opts.header  -- an array of header label overrides by column index; a
+--                    missing entry falls back to that column's own .label.
+function MD.DashboardParts.CreateTable(parent, width, opts)
     local pane = CreateFrame("Frame", nil, parent)
     local rowPool, usedRows = {}, {}
+    local cols = (opts and opts.cols) or COLS
 
     local function AcquireRow()
         local row = table.remove(rowPool)
@@ -54,6 +77,12 @@ function MD.DashboardParts.CreateTable(parent, width)
 
             row:EnableMouse(true)
             row:SetScript("OnEnter", function(self)
+                if opts and opts.onEnter then
+                    if self.isHeader then return end -- no glossary hover in the generic pane (T10)
+                    self.highlight:Show()
+                    opts.onEnter(self, self.data)
+                    return
+                end
                 if self.isHeader then
                     MD.Tip:ShowAt(self, "TOPLEFT", pane:GetParent(), "TOPRIGHT", 4, 0, MD.Tip:Columns())
                     return
@@ -65,9 +94,13 @@ function MD.DashboardParts.CreateTable(parent, width)
             end)
             row:SetScript("OnLeave", function(self)
                 self.highlight:Hide()
+                if opts and opts.onLeave then
+                    opts.onLeave(self)
+                    return
+                end
                 MD.Tip:Hide()
             end)
-            for _, col in ipairs(COLS) do
+            for _, col in ipairs(cols) do
                 local fs = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
                 fs:SetPoint("LEFT", row, "LEFT", col.x, 0)
                 fs:SetWidth(col.w)
@@ -80,16 +113,60 @@ function MD.DashboardParts.CreateTable(parent, width)
         return row
     end
 
-    local api = { frame = pane, cols = COLS }
+    local api = { frame = pane, cols = cols, rowHeight = ROW_HEIGHT }
 
     function api:Release()
         for _, row in ipairs(usedRows) do
-            row.spellID, row.variant, row.isHeader = nil, nil, nil
+            row.spellID, row.variant, row.isHeader, row.data = nil, nil, nil, nil
             row.highlight:Hide()
             row:Hide()
             rowPool[#rowPool + 1] = row
         end
         wipe(usedRows)
+    end
+
+    if opts and opts.render then
+        -- The generic path (T10): one plain header row from `cols`' own
+        -- labels (or opts.header's override), then one opts.render call per
+        -- entry in `rows`, in order -- no RankMath/Tip read, no effective-mode
+        -- concept (that is a TBC-only, overheal-measured idea -- CLAUDE.md's
+        -- Out of scope).
+        function api:Render(rows)
+            api:Release()
+            local y = -4
+
+            local header = AcquireRow()
+            header.isHeader = true
+            header:SetPoint("TOPLEFT", pane, "TOPLEFT", 0, y)
+            for i, col in ipairs(cols) do
+                local label = (opts.header and opts.header[i]) or col.label
+                header.cells[col.key]:SetText("|cff888888" .. label .. "|r")
+            end
+            y = y - 18
+
+            for _, r in ipairs(rows) do
+                local row = AcquireRow()
+                row:SetPoint("TOPLEFT", pane, "TOPLEFT", 0, y)
+                row.data = r
+                row.spellID = r.id
+
+                local color
+                if r.known == false then
+                    color = "|cff555555"
+                elseif r.suggested then
+                    color = "|cffffcc00"
+                elseif r.dominated then
+                    color = "|cff8a8a8a"
+                else
+                    color = "|cffffffff"
+                end
+
+                opts.render(row, r, color)
+                y = y - ROW_HEIGHT
+            end
+        end
+
+        return api
     end
 
     -- rows come straight from RankMath:Compute(). In "Effective" mode the four
