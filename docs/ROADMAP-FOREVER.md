@@ -226,6 +226,15 @@ on a bar and in chat, the pane against the real book, and three spells of two cl
 within the crit spread -- is the author's: `docs/TESTING.md` §37. `1.0.0-beta.1` is cut when that
 passes.
 
+**Planner ruling (2026-09-28) on the order M2 was built in:** the spell readers were written from
+retail's documentation before any beta report showed the return *shapes* (`GetSpellInfo.castTime`,
+the `GetSpellPowerCost` rows, the skill-line bounds, the tooltip data lines,
+`Enum.TooltipDataType.Spell`, `IsSpellKnown`, the book row's `itemType`, and whether
+`TooltipDataProcessor` fires in the spellbook, on bars and in chat). Accepted, because the author
+asked for M2 in the same session -- on one condition: **the first probe report carrying `== shapes`
+(T7a) is a gate for `beta.1`**, checked line by line against `Spells/Book.lua`'s reader by the
+lead before §37's result counts.
+
 Known from the references before any of it is built (`docs/REFERENCES-FOREVER.md` §4): **no
 Lifebloom, Tree of Life, Earth Shield or Circle of Healing on Forever**; costs come as `N Mana`
 and as `N% of base mana`; rank 1 of a talent-granted spell is in the book with no trainer; the
@@ -242,7 +251,13 @@ own-healing total.
 Depends on Q2–Q5. Tasks: T13 stream v3 + `ScenarioFromRecording` v3 · T14 gates re-founded
 (calibration and foreign share from `C_DamageMeter`; enemy-cast and threat inputs removed) ·
 T15 `SpellKit` from `Spells/Book.lua` · T16 Review tab and replay window under the adapter · T17
-coach and the solver re-measured on Forever recordings.
+coach and the solver re-measured on Forever recordings. **T13a** (added 2026-09-28 from the M2
+review): a static check in `tools/apicheck.py` that no event-handler argument reaches
+`type(...) == "number"` or any comparison without `IsSecret` first -- on the client a secret number
+answers `type(v) == "number"`, the stub's stand-in is a table, so no suite can catch the omission
+(T9 had exactly this gap). It lands before T13, whose recorder is all event handlers. **T13b**, the
+probe items M1 left: `ShouldUnitHealthMaxBeSecret("party1")`, `UNIT_COMBAT` counted per token, and
+the HEAL amount's gross-or-effective question if §37's full-health Healing Touch has not settled it.
 
 ### M4 — practice (phase 4) → `1.0.0-beta.3`
 

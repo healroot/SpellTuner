@@ -124,6 +124,12 @@ exactly on every Rejuvenation rank and on Renew; Wowhead's direct heals run ~1.7
 vs 679 over 7 s; Riptide R3 HoT 953 vs 805). Neither states what explains it. **Only the client's
 own tooltip on the character is authoritative**, and the sites catch gross errors, not 2% ones.
 
+An oddity from the client (2026-09-28, `docs/probe/1.60.1_70009.md`, first report): Healing Touch
+R1 reads **"40 to 55" on the level 8-9 client** where talentsforever's level-60 text says "40 to
+54" -- *higher* below 60 than at 60, the opposite of a per-level increase. Either the site's text
+is not the level-60 client's or the value drops with level; the author's own level-60 tooltip will
+say which. Until then the site's R1 numbers are not evidence for any level but its own.
+
 ## 4. What the sources say Forever changes about healing
 
 Kept apart: what Blizzard said, what the client data shows, what nobody knows.
