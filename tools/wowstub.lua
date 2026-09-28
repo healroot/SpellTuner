@@ -237,6 +237,9 @@ local FOREVER_EVENTS = {
     TRAIT_CONFIG_UPDATED = true, DAMAGE_METER_COMBAT_SESSION_UPDATED = true,
     ADDON_RESTRICTION_STATE_CHANGED = true, ADDON_ACTION_FORBIDDEN = true, ADDON_ACTION_BLOCKED = true,
     ADDON_LOADED = true, PLAYER_LOGIN = true, PLAYER_ENTERING_WORLD = true, PLAYER_LOGOUT = true,
+    -- T12b Facts: exists on the retail engine (EllesmereUI's event list does
+    -- not name it -- it is not measured, only assumed present).
+    PLAYER_TARGET_CHANGED = true,
 }
 
 -- Frames: only what the engine files touch (event registration and OnUpdate).
@@ -477,6 +480,10 @@ function S.UseProfile(name)
     S.bonusHealing = 0
     S.bonusDamage = {}
     S.descShift = 0
+    -- T12b (m2 line 220): GetSpellBonusHealing() is not plain in combat on
+    -- this client. Off by default so no other suite changes; a script that
+    -- needs the secret-in-combat behaviour sets this true.
+    S.bonusHealingSecretInCombat = false
     function GetSpellBonusDamage(school) return S.bonusDamage[school] or 0 end
 
     -- plan §1.1-1.2: gone on Forever.
@@ -571,7 +578,10 @@ function S.UseProfile(name)
         return secretOrNil(u)
     end
 
-    function GetSpellBonusHealing() return S.bonusHealing end
+    function GetSpellBonusHealing()
+        if S.bonusHealingSecretInCombat and S.inCombat then return S.Secret() end
+        return S.bonusHealing
+    end
     function GetShapeshiftFormID() return nil end
 
     -- retail 12.x documented shape, NOT observed on Forever -- the probe's == shapes checks it.
@@ -1018,6 +1028,25 @@ function S.UseProfile(name)
         return nil
     end
 
+    -- T13c: the same four top-level folders release.sh is allowed to pull a
+    -- missing module entry from, at the repository root.
+    local ROOT_RESOLVABLE = { "Engine/", "Spells/", "Data/", "UI/" }
+
+    -- relDir/f if it exists there; else, when f names a file under one of the
+    -- four shared folders and it exists at the repository root, that root
+    -- path; else relDir/f unchanged, so an entry that resolves nowhere fails
+    -- exactly where it always did (loadfile inside LoadModuleFiles).
+    local function ResolveModuleFile(relDir, f)
+        local modPath = relDir .. "/" .. f
+        if FileExists((S.root or ".") .. "/" .. modPath) then return modPath end
+        for _, prefix in ipairs(ROOT_RESOLVABLE) do
+            if f:sub(1, #prefix) == prefix and FileExists((S.root or ".") .. "/" .. f) then
+                return f
+            end
+        end
+        return modPath
+    end
+
     local function ReadTocField(tocRel, field)
         local f = io.open((S.root or ".") .. "/" .. tocRel, "r")
         if not f then return nil end
@@ -1035,12 +1064,22 @@ function S.UseProfile(name)
     -- forbid-on-register stand-in for the addon that actually registered an
     -- event, and reassigning it here would misattribute every event the MAIN
     -- addon registers after a module loads.
+    --
+    -- T13c: one fresh table for the whole addon load, not one per file -- the
+    -- real client hands every file of one LoadOnDemand addon the SAME second
+    -- vararg (S.Load above already does this for the main addon, passing one
+    -- MD through its whole file loop). A fresh table per FILE was
+    -- indistinguishable from a fresh table per ADDON as long as a sibling
+    -- listed exactly one file (Module.lua); T13c's Ready.lua is the second,
+    -- and Module.lua's proxy metatable on that table must still be the table
+    -- every later file in this same TOC sees.
     local function LoadModuleFiles(files, addonName)
+        local ns = {}
         for _, rel in ipairs(files) do
             local path = S.root .. "/" .. rel
             local chunk, err = loadfile(path)
             if not chunk then error("load " .. rel .. ": " .. tostring(err)) end
-            chunk(addonName, {})
+            chunk(addonName, ns)
         end
     end
 
@@ -1079,8 +1118,16 @@ function S.UseProfile(name)
         end,
         -- An unregistered name (never seen on disk, or a typo) is MISSING; a
         -- name a test marked disabled is DISABLED; an already-loaded one is a
-        -- no-op success; otherwise its own TOC's files load under its own
-        -- name, with a fresh table (Module.lua does not need MD).
+        -- no-op success; otherwise its own TOC's files load under one shared
+        -- table this addon's own files see as MD (T13c).
+        --
+        -- T13c: a TOC entry may name a file that does not live under the
+        -- module's own folder -- a shared file the release build copies in
+        -- from the repository root (release.sh) -- so an entry is resolved
+        -- under the module folder FIRST and, only if it is not there, at the
+        -- repository root under the same four folders release.sh copies from
+        -- (Engine/, Spells/, Data/, UI/). Anything else missing still fails
+        -- the same way it always has, one level down in LoadModuleFiles.
         LoadAddOn = function(name)
             S.loadAddOnCalls[#S.loadAddOnCalls + 1] = name
             if S.addOnLoaded[name] then return true end
@@ -1090,9 +1137,11 @@ function S.UseProfile(name)
             local tocRel = ModuleTocPath(relDir, name)
             if not tocRel then return false, "MISSING" end
             local files = S.TocFiles(tocRel)
-            local prefixed = {}
-            for _, f in ipairs(files) do prefixed[#prefixed + 1] = relDir .. "/" .. f end
-            LoadModuleFiles(prefixed, name)
+            local resolved = {}
+            for _, f in ipairs(files) do
+                resolved[#resolved + 1] = ResolveModuleFile(relDir, f)
+            end
+            LoadModuleFiles(resolved, name)
             S.addOnLoaded[name] = true
             return true
         end,
