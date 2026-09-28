@@ -603,6 +603,15 @@ function S.UseProfile(name)
     function UnitGetIncomingHeals(u, healer) return secretOrNil(u) end
     function UnitIsDeadOrGhost(u) return false end
 
+    -- T11: one own cast succeeding, the way the client would fire it (Facts:
+    -- whether the spellID argument itself is readable in combat is UNKNOWN,
+    -- so a caller may hand S.Cast a plain id or S.Secret() either way).
+    -- unit defaults to "player"; a suite names another unit to prove a cast
+    -- on it is ignored.
+    function S.Cast(id, unit)
+        S.Fire("UNIT_SPELLCAST_SUCCEEDED", unit or "player", "cast-guid", id)
+    end
+
     Enum = {
         SpellBookSpellBank = { Player = 0 },
         DamageMeterType = { HealingDone = 1 },

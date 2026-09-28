@@ -297,6 +297,33 @@ function MD.API.Print(text)
     end
 end
 
+-- T11: the one sanctioned path for a secret to leave this file -- straight
+-- into a StatusBar's own setters, which the widget toolkit is allowed to
+-- call (CLAUDE.md), and which never asks what it was handed. Deliberately
+-- bypasses Call/IsSecret: Call would classify each return (a read, however
+-- harmless), and this function's whole point is that nothing here ever
+-- reads the mana value at all -- it is fetched through Has (cached, no
+-- classification of the RETURN, only of the function itself) and handed
+-- straight to the bar inside one pcall, the same "one raise, caught once"
+-- shape as Has/Call/Copy. UnitPowerMax/UnitPower are shared names (Bind
+-- below), so this lives here rather than in a flavour file.
+function MD.API.DrawUnitPower(bar, unit, powerType)
+    if type(bar) ~= "table" then return false, "absent" end
+    local maxFn = MD.API.Has("UnitPowerMax")
+    local curFn = MD.API.Has("UnitPower")
+    if type(maxFn) ~= "function" or type(curFn) ~= "function" then return false, "absent" end
+
+    local ok = pcall(function()
+        local max = maxFn(unit, powerType)
+        local cur = curFn(unit, powerType)
+        -- Never inspected -- a secret max/cur goes straight into the bar.
+        bar:SetMinMaxValues(0, max)
+        bar:SetValue(cur)
+    end)
+    if not ok then return false, "error" end
+    return true
+end
+
 -- This addon's own version, read back through the flavour's AddOnMetadata
 -- binding (C_AddOns.GetAddOnMetadata on Forever, the global on TBC) rather
 -- than assumed -- nil if that binding is absent or answers anything but a

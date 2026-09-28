@@ -15,6 +15,7 @@ MD.DEFAULTS = {
     char = {},
     modules = {},  -- name -> true|false, read/written by Core.lua's registry
     spellTooltip = true,  -- UI/SpellTip_Forever.lua's block on spell tooltips
+    clock = { shown = true, locked = false, point = nil },  -- UI/Clock_Forever.lua
 }
 
 -- The three siblings, in dependency order (each needs only what is declared
@@ -219,6 +220,18 @@ MD:AddCommand("tooltip", function()
     MD.db.spellTooltip = not MD.db.spellTooltip
     MD:Print("spell tooltip lines: " .. (MD.db.spellTooltip and "on" or "off"))
 end, "/st tooltip", "turn the SpellTuner block on spell tooltips on or off")
+
+MD:AddCommand("clock", function(arg)
+    MD.db.clock = MD.db.clock or {}
+    if arg == "lock" then
+        MD.db.clock.locked = not MD.db.clock.locked
+        MD:Print("mana clock: " .. (MD.db.clock.locked and "locked" or "unlocked"))
+    else
+        MD.db.clock.shown = not MD.db.clock.shown
+        MD:Print("mana clock: " .. (MD.db.clock.shown and "shown" or "hidden"))
+    end
+    if MD.Clock and MD.Clock.Refresh then MD.Clock:Refresh() end
+end, "/st clock [lock]", "show or hide the mana clock, or lock it in place")
 
 MD:AddCommand("modules", function()
     if MD.SelectView then

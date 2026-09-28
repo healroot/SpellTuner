@@ -32,6 +32,9 @@ local generalPane
 local function RefreshGeneralPane()
     if not generalPane or not generalPane.tooltipCheck then return end
     generalPane.tooltipCheck:SetChecked(MD.db.spellTooltip ~= false)
+    if generalPane.clockCheck then
+        generalPane.clockCheck:SetChecked(MD.db.clock and MD.db.clock.shown ~= false)
+    end
 end
 
 local function BuildGeneralPane(content)
@@ -50,6 +53,16 @@ local function BuildGeneralPane(content)
     check:SetChecked(MD.db.spellTooltip ~= false)
 
     pane.tooltipCheck = check -- marks this pane for tools/tipcheck.lua
+
+    local clockCheck = UI.CreateCheckButton(pane, "Show the mana clock", function(checked)
+        MD.db.clock = MD.db.clock or {}
+        MD.db.clock.shown = checked and true or false
+        if MD.Clock and MD.Clock.Refresh then MD.Clock:Refresh() end
+    end)
+    clockCheck:SetPoint("TOPLEFT", check, "BOTTOMLEFT", 0, -20)
+    clockCheck:SetChecked(MD.db.clock and MD.db.clock.shown ~= false)
+    pane.clockCheck = clockCheck -- marks this pane for tools/clockcheck.lua
+
     return pane
 end
 

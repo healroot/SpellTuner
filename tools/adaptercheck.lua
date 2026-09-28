@@ -239,6 +239,19 @@ do
 end
 
 --------------------------------------------------------------------------------
+-- T11: DrawUnitPower -- both flavours (a StatusBar's own setters are the one
+-- sanctioned path for a secret to leave the adapter; nothing here asks what
+-- either value was, so the shape of the check is the same whether or not
+-- this client's UnitPower happens to be secret).
+--------------------------------------------------------------------------------
+do
+    local bar = CreateFrame("StatusBar", nil, UIParent)
+    local drawOk = MD.API.DrawUnitPower(bar, "player", 0)
+    check("DrawUnitPower hands the values over without reading them",
+        drawOk == true and bar.minV == 0 and bar.maxV ~= nil and bar.value ~= nil)
+end
+
+--------------------------------------------------------------------------------
 -- 13-18: forever only
 --------------------------------------------------------------------------------
 

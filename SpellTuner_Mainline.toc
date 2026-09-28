@@ -12,9 +12,11 @@ Core.lua
 Core_Forever.lua
 Spells\Parse.lua
 Spells\Book.lua
+Engine\ManaModel.lua
 UI\Style.lua
 UI\Dashboard_Forever.lua
 UI\SpellTip_Forever.lua
+UI\Clock_Forever.lua
 UI\DebugConsole.lua
 UI\Dump_Forever.lua
 Client\Probe.lua
