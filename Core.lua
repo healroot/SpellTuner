@@ -188,6 +188,140 @@ MD:On("PLAYER_LEVEL_UP", function(level)
 end)
 
 --------------------------------------------------------------------------------
+-- Module registry (T2 of docs/ROADMAP-FOREVER.md): inert until a flavour file
+-- calls MD:DeclareModule -- the TBC flavour never does, so MD.modules stays
+-- empty and MD.db.modules is never created (its DEFAULTS carries no such key).
+-- A module is a sibling LoadOnDemand addon folder (Modules/<name>/ in this
+-- checkout, built beside SpellTuner/ by release.sh) whose own Module.lua's
+-- only job is to call MD:ModuleLoaded(name) once it runs.
+--------------------------------------------------------------------------------
+MD.modules = MD.modules or {}
+local moduleIndex = {}
+
+function MD:DeclareModule(name, label, needs, text)
+    local m = { name = name, label = label, needs = needs or {}, text = text,
+                loaded = false, failed = nil }
+    MD.modules[#MD.modules + 1] = m
+    moduleIndex[name] = m
+end
+
+-- Called by a sibling's Module.lua the moment it loads.
+function MD:ModuleLoaded(name)
+    local m = moduleIndex[name]
+    if not m then return end
+    m.loaded = true
+    m.failed = nil
+    MD:Fire("MODULE_LOADED", name)
+end
+
+-- LoadAddOn's own reason ("MISSING", "DISABLED", "DEP_MISSING", ...) is shown
+-- only if it survived MD.API.Call as a plain, non-secret string of exactly
+-- the shape the client uses; anything else (an adapter failure reason such
+-- as "absent"/"error"/"secret", or nothing at all) becomes "unknown" rather
+-- than leaking an internal detail into the chat line.
+local function CleanReason(reason)
+    if type(reason) == "string" and reason:match("^[A-Z_]+$") then return reason end
+    return "unknown"
+end
+
+-- Attempts to load one module NOW if it is not already loaded, printing the
+-- one line whose state actually changed. Never called for a module that is
+-- not switched on -- the caller (SetModule, or CORE_READY below) decides that.
+local function DoLoad(m)
+    if m.loaded then return end
+    local loaded, reason = MD.API.LoadAddOn(m.name)
+    if loaded then
+        m.loaded = true
+        m.failed = nil
+        MD:Print(m.label .. ": loaded")
+    else
+        m.failed = CleanReason(reason)
+        MD:Print(m.label .. ": on, could not load (" .. m.failed .. ")")
+    end
+end
+
+function MD:ModuleState(name)
+    local m = moduleIndex[name]
+    if not m then return "off" end
+    local on = MD.db and MD.db.modules and MD.db.modules[name] == true
+    if m.failed then return "failed", m.failed end
+    if m.loaded then
+        if on then return "loaded" end
+        return "unloads"
+    end
+    if on then return "on" end
+    return "off"
+end
+
+-- on: switch on `name` and everything it needs (recursively), then load every
+-- one of those not yet loaded, in declaration order -- which is dependency
+-- order, because a module's needs are always declared before it (Facts).
+-- off: switch off `name` and every module that (transitively) needs it.
+-- Neither direction ever unloads anything (WoW cannot); off only marks state
+-- and, for a module that WAS loaded this session, warns it takes a /reload.
+function MD:SetModule(name, on)
+    if not moduleIndex[name] then return end
+    MD.db.modules = MD.db.modules or {}
+    local affected = {}
+    if on then
+        affected[name] = true
+        local changed = true
+        while changed do
+            changed = false
+            for _, m in ipairs(MD.modules) do
+                if affected[m.name] then
+                    for _, need in ipairs(m.needs) do
+                        if not affected[need] then affected[need] = true; changed = true end
+                    end
+                end
+            end
+        end
+        for _, m in ipairs(MD.modules) do
+            if affected[m.name] then
+                MD.db.modules[m.name] = true
+                DoLoad(m)
+            end
+        end
+    else
+        affected[name] = true
+        local changed = true
+        while changed do
+            changed = false
+            for _, m in ipairs(MD.modules) do
+                if not affected[m.name] then
+                    for _, need in ipairs(m.needs) do
+                        if affected[need] then affected[m.name] = true; changed = true; break end
+                    end
+                end
+            end
+        end
+        for _, m in ipairs(MD.modules) do
+            if affected[m.name] then
+                MD.db.modules[m.name] = false
+                m.failed = nil
+                if m.loaded then
+                    MD:Print(m.label .. ": off - unloads at your next /reload")
+                else
+                    MD:Print(m.label .. ": off")
+                end
+            end
+        end
+    end
+end
+
+-- Every declared module the player already switched on, loaded once the
+-- client is ready enough -- same order, same DoLoad, no adapter call for one
+-- whose switch is absent or false.
+MD:RegisterCallback("CORE_READY", function()
+    if not (MD.db and MD.db.modules) then return end
+    for _, m in ipairs(MD.modules) do
+        if MD.db.modules[m.name] == true then
+            DoLoad(m)
+        end
+    end
+end)
+
+--------------------------------------------------------------------------------
 -- Slash commands
 --------------------------------------------------------------------------------
 -- name (lower-case) -> fn(arg, rawArg); COMMAND_LIST is the same set, in

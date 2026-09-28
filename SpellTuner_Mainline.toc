@@ -10,4 +10,6 @@ Client\API.lua
 Client\API_Forever.lua
 Core.lua
 Core_Forever.lua
+UI\Style.lua
+UI\Dashboard_Forever.lua
 Client\Probe.lua

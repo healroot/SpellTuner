@@ -154,7 +154,13 @@ addon's own core moved verbatim to `Core_TBC.lua`; `Core_Forever.lua` starts For
 goes through the kernel; `tools/corecheck.lua` 10 / 8 ok. **T6** -- 2026-09-28 (`docs/tasks/T6-apicheck.md`): `python3 tools/apicheck.py`
 checks every global the Forever TOCs' files touch (from `luac -l`) against the 69893 baseline and
 the adapter rule -- absent names, client calls outside `Client/`, new globals, WoW-less Lua
-libraries, the combat log named, unknown `C_` members -- with a fixture (`--selftest`); 0 findings.
+libraries, the combat log named, unknown `C_` members -- with a fixture (`--selftest`); 0 findings. **T2** -- 2026-09-28 (`docs/tasks/T2-modules-window.md`): the module registry in the
+kernel (`MD:DeclareModule` / `SetModule` / `ModuleState`, loading what a module needs first,
+remembering the switch, "off" meaning "not loaded after the next `/reload`"), the three
+LoadOnDemand siblings at `Modules/SpellTuner_Recorder|Replay|Practice/` (one `Module.lua` each that
+tells the core it loaded), `release.sh` building and installing them beside `SpellTuner/`, and
+`/st` opening the Forever window (`UI/Dashboard_Forever.lua`: Spells placeholder, Settings ->
+Modules); `tools/modulecheck.lua` 12 ok.
 
 ### M2 — tooltips and the dashboard (phase 2) → `1.0.0-beta.1`
 

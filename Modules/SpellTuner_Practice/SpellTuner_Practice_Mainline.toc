@@ -1,0 +1,9 @@
+## Interface: 16001
+## Title: SpellTuner Practice
+## Notes: heal a fight you play, then review it. A SpellTuner module: switch it on in /st -> Settings -> Modules.
+## Author: NeRgY
+## Version: 1.0.0-alpha.1
+## Dependencies: SpellTuner, SpellTuner_Replay
+## LoadOnDemand: 1
+
+Module.lua

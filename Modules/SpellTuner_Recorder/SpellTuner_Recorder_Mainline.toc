@@ -1,0 +1,9 @@
+## Interface: 16001
+## Title: SpellTuner Recorder
+## Notes: records your fights: health, heals, casts and mana. A SpellTuner module: switch it on in /st -> Settings -> Modules.
+## Author: NeRgY
+## Version: 1.0.0-alpha.1
+## Dependencies: SpellTuner
+## LoadOnDemand: 1
+
+Module.lua

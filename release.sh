@@ -3,7 +3,10 @@
 # git worktree, into the TOP-LEVEL dist/ grouped by source:
 #
 #   dist/<name>/SpellTuner/                 <name> = "main" or the worktree folder
-#   dist/<name>/SpellTuner-<version>.zip
+#   dist/<name>/SpellTuner_Recorder/        the three LoadOnDemand siblings (T2),
+#   dist/<name>/SpellTuner_Replay/          each only if Modules/<Name>/ exists
+#   dist/<name>/SpellTuner_Practice/        in the source
+#   dist/<name>/SpellTuner-<version>.zip    holds SpellTuner/ plus every sibling
 #
 #   ./release.sh                     build the checkout this script lives in
 #   ./release.sh --menu              pick the source interactively (make release)
@@ -12,7 +15,8 @@
 #                                    SpellTuner.toc
 #   ./release.sh --list              show the available sources
 #   ./release.sh --out DIR           override the output folder
-#   ./release.sh --install DIR       also copy SpellTuner/ into that AddOns folder
+#   ./release.sh --install DIR       also copy SpellTuner/ (and every sibling) into
+#                                    that AddOns folder
 #   ./release.sh /path/to/AddOns     same (legacy positional form); WOW_ADDONS env too
 #
 # The file list is the union (no duplicates) of every SpellTuner*.toc's load
@@ -21,7 +25,10 @@
 # loads (T0: one tree, one .toc per client). The version -- zip name, --list,
 # the menu -- comes from SpellTuner_TBC.toc when the source has one, else from
 # SpellTuner.toc. Dev files (docs/, CLAUDE.md, Makefile, .git, this script) are
-# excluded by construction.
+# excluded by construction. Each Modules/<Name>/ folder with at least one
+# <Name>*.toc becomes its own top-level package the same way, built from ITS
+# OWN TOCs' file lists (T2, docs/ROADMAP-FOREVER.md §1.1) -- a checkout with no
+# Modules/ builds exactly as before.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -166,34 +173,96 @@ for f in "${files[@]}"; do
 done
 
 REL="${OUT#$ROOT/}"
-echo "Built $REL/SpellTuner (v$VERSION, ${#files[@]} files) from $NAME."
 
-# Zip (zip if available, python3 zipfile as fallback).
+# The sibling modules (T2): every Modules/<Name>/ with at least one
+# <Name>*.toc, built the same way as SpellTuner/ above but from its OWN TOCs'
+# file lists -- no README.md, no version-line requirement (a module's own
+# "## Version:" is cosmetic; the core's is what matters).
+MODULE_NAMES=()
+if [[ -d "$SRC/Modules" ]]; then
+    for d in "$SRC"/Modules/*/; do
+        [[ -d "$d" ]] || continue
+        mname="$(basename "$d")"
+        shopt -s nullglob
+        mtocs=("$d"/"$mname"*.toc)
+        shopt -u nullglob
+        [[ ${#mtocs[@]} -gt 0 ]] || continue
+        MODULE_NAMES+=("$mname")
+
+        mdir="${d%/}"
+        mpkg="$OUT/$mname"
+        mfiles=()
+        for f in "${mtocs[@]}"; do mfiles+=("$(basename "$f")"); done
+        mhave() { local x; for x in "${mfiles[@]}"; do [[ "$x" == "$1" ]] && return 0; done; return 1; }
+        for toc in "${mtocs[@]}"; do
+            while IFS= read -r line; do
+                line="${line%$'\r'}"
+                [[ -z "$line" || "$line" == \#* ]] && continue
+                entry="${line//\\//}"
+                mhave "$entry" || mfiles+=("$entry")
+            done < "$toc"
+        done
+
+        mmissing=0
+        for f in "${mfiles[@]}"; do
+            if [[ ! -f "$mdir/$f" ]]; then
+                echo "ERROR: Modules/$mname/$f is listed in the .toc but missing on disk" >&2
+                mmissing=1
+            fi
+        done
+        [[ $mmissing -eq 0 ]] || exit 1
+
+        rm -rf "$mpkg"
+        mkdir -p "$mpkg"
+        for f in "${mfiles[@]}"; do
+            mkdir -p "$mpkg/$(dirname "$f")"
+            cp "$mdir/$f" "$mpkg/$f"
+        done
+    done
+fi
+
+if [[ ${#MODULE_NAMES[@]} -gt 0 ]]; then
+    echo "Built $REL/SpellTuner (v$VERSION, ${#files[@]} files) from $NAME," \
+        "plus ${#MODULE_NAMES[@]} module(s): ${MODULE_NAMES[*]}."
+else
+    echo "Built $REL/SpellTuner (v$VERSION, ${#files[@]} files) from $NAME."
+fi
+
+# Zip (zip if available, python3 zipfile as fallback) -- SpellTuner/ plus every
+# module folder, so the archive is the same four (or one) top-level folders
+# the game's AddOn list would show.
 ZIP="$OUT/SpellTuner-$VERSION.zip"
 rm -f "$ZIP"
 if command -v zip >/dev/null 2>&1; then
-    (cd "$OUT" && zip -qr "$(basename "$ZIP")" SpellTuner)
+    (cd "$OUT" && zip -qr "$(basename "$ZIP")" SpellTuner "${MODULE_NAMES[@]}")
     echo "Built $REL/SpellTuner-$VERSION.zip"
 elif command -v python3 >/dev/null 2>&1; then
-    python3 - "$OUT" "$ZIP" "$REL" <<'PYEOF'
+    python3 - "$OUT" "$ZIP" "$REL" "${MODULE_NAMES[@]}" <<'PYEOF'
 import os, sys, zipfile
 out_dir, out, rel = sys.argv[1], sys.argv[2], sys.argv[3]
+folders = ["SpellTuner"] + sys.argv[4:]
 with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
-    for base, _, names in os.walk(os.path.join(out_dir, "SpellTuner")):
-        for name in names:
-            path = os.path.join(base, name)
-            z.write(path, os.path.relpath(path, out_dir))
+    for folder in folders:
+        for base, _, names in os.walk(os.path.join(out_dir, folder)):
+            for name in names:
+                path = os.path.join(base, name)
+                z.write(path, os.path.relpath(path, out_dir))
 print("Built " + rel + "/" + os.path.basename(out))
 PYEOF
 else
     echo "NOTE: neither zip nor python3 found — skipped the zip archive."
 fi
 
-# Optional: copy into the game's AddOns folder.
+# Optional: copy into the game's AddOns folder -- SpellTuner/ and every
+# sibling module folder beside it.
 if [[ -n "$TARGET" ]]; then
     [[ -d "$TARGET" ]] || { echo "ERROR: AddOns folder not found: $TARGET" >&2; exit 1; }
     rm -rf "$TARGET/SpellTuner"
     cp -r "$PKG" "$TARGET/SpellTuner"
+    for mname in "${MODULE_NAMES[@]}"; do
+        rm -rf "$TARGET/$mname"
+        cp -r "$OUT/$mname" "$TARGET/$mname"
+    done
     echo "Installed into $TARGET/SpellTuner"
 else
     echo "Copy $REL/SpellTuner into your game's Interface/AddOns folder"

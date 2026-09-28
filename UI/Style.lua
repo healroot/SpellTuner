@@ -17,7 +17,12 @@ UI.whiteTexture = WHITE
 local accent = { 0.7, 0.7, 0.7 }
 local accentHex = "|cffb2b2b2"
 do
-    local _, class = UnitClass("player")
+    -- Client call, through the adapter (T2): UnitClass returns localized,
+    -- token (or nil, "<reason>" on failure) -- the token is the SECOND
+    -- value, and it is only meaningful when the first came back at all
+    -- (same rule as Core.lua's DetectProfile, T1b Review re-issue 2).
+    local loc, class = MD.API.UnitClass("player")
+    if not loc then class = nil end
     local c = class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[class]
     if c then
         accent = { c.r, c.g, c.b }

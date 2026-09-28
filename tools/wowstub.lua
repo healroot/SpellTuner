@@ -730,9 +730,80 @@ function S.UseProfile(name)
     -- appends to it.
     S.forbidden = {}
 
-    -- T5 §5: only GetAddOnMetadata (read from OUR toc, S.toc already points at
-    -- the Forever line above) and IsAddOnLoaded, always true for our own name --
-    -- T2 adds LoadAddOn and friends.
+    -- T2: sibling LoadOnDemand addon folders. S.RegisterAddOnFolder(name,
+    -- relDir) makes one loadable, exactly like a real client where a sibling
+    -- is loadable simply by being present on disk -- which is also why this
+    -- auto-registers every Modules/<Name>/ folder actually in the checkout
+    -- right below, rather than making every test call it by hand.
+    S.addOnFolders = {}
+    S.addOnLoaded = {}
+    S.addOnDisabled = S.addOnDisabled or {}
+    S.loadAddOnCalls = {}
+
+    function S.RegisterAddOnFolder(name, relDir)
+        S.addOnFolders[name] = relDir
+    end
+
+    local function FileExists(path)
+        local f = io.open(path, "r")
+        if f then f:close(); return true end
+        return false
+    end
+
+    -- <relDir>/<name>_Mainline.toc if it exists, else <relDir>/<name>.toc
+    -- (T0c: the Mainline suffix is what the client actually loads; the plain
+    -- .toc is the fallback copy), else nil.
+    local function ModuleTocPath(relDir, name)
+        local rel = relDir .. "/" .. name .. "_Mainline.toc"
+        if FileExists((S.root or ".") .. "/" .. rel) then return rel end
+        rel = relDir .. "/" .. name .. ".toc"
+        if FileExists((S.root or ".") .. "/" .. rel) then return rel end
+        return nil
+    end
+
+    local function ReadTocField(tocRel, field)
+        local f = io.open((S.root or ".") .. "/" .. tocRel, "r")
+        if not f then return nil end
+        local v
+        for line in f:lines() do
+            local m = line:match("^## " .. field .. ":%s*(.-)%s*$")
+            if m then v = m end
+        end
+        f:close()
+        return v
+    end
+
+    -- Loads a sibling's own files under ITS OWN addon name, without touching
+    -- S.addonName -- S.Load (below) assigns that global, which is read by the
+    -- forbid-on-register stand-in for the addon that actually registered an
+    -- event, and reassigning it here would misattribute every event the MAIN
+    -- addon registers after a module loads.
+    local function LoadModuleFiles(files, addonName)
+        for _, rel in ipairs(files) do
+            local path = S.root .. "/" .. rel
+            local chunk, err = loadfile(path)
+            if not chunk then error("load " .. rel .. ": " .. tostring(err)) end
+            chunk(addonName, {})
+        end
+    end
+
+    do
+        local dir = (S.root or ".") .. "/Modules"
+        local p = io.popen('ls -1 "' .. dir .. '" 2>/dev/null')
+        if p then
+            for line in p:lines() do
+                local name = line:gsub("[\r\n]+$", "")
+                if name ~= "" and ModuleTocPath("Modules/" .. name, name) then
+                    S.RegisterAddOnFolder(name, "Modules/" .. name)
+                end
+            end
+            p:close()
+        end
+    end
+
+    -- T5 §5: GetAddOnMetadata (read from OUR toc, S.toc already points at the
+    -- Forever line above); IsAddOnLoaded true for our own name or a loaded
+    -- sibling. T2: LoadAddOn/IsAddOnLoadOnDemand/GetAddOnInfo for the siblings.
     C_AddOns = {
         GetAddOnMetadata = function(name, field)
             if name ~= S.addonName then return nil end
@@ -746,7 +817,45 @@ function S.UseProfile(name)
             f:close()
             return v
         end,
-        IsAddOnLoaded = function(name) return name == S.addonName end,
+        IsAddOnLoaded = function(name)
+            return name == S.addonName or S.addOnLoaded[name] == true
+        end,
+        -- An unregistered name (never seen on disk, or a typo) is MISSING; a
+        -- name a test marked disabled is DISABLED; an already-loaded one is a
+        -- no-op success; otherwise its own TOC's files load under its own
+        -- name, with a fresh table (Module.lua does not need MD).
+        LoadAddOn = function(name)
+            S.loadAddOnCalls[#S.loadAddOnCalls + 1] = name
+            if S.addOnLoaded[name] then return true end
+            local relDir = S.addOnFolders[name]
+            if not relDir then return false, "MISSING" end
+            if S.addOnDisabled[name] then return false, "DISABLED" end
+            local tocRel = ModuleTocPath(relDir, name)
+            if not tocRel then return false, "MISSING" end
+            local files = S.TocFiles(tocRel)
+            local prefixed = {}
+            for _, f in ipairs(files) do prefixed[#prefixed + 1] = relDir .. "/" .. f end
+            LoadModuleFiles(prefixed, name)
+            S.addOnLoaded[name] = true
+            return true
+        end,
+        IsAddOnLoadOnDemand = function(name)
+            local relDir = S.addOnFolders[name]
+            if not relDir then return nil end
+            local tocRel = ModuleTocPath(relDir, name)
+            if not tocRel then return nil end
+            return ReadTocField(tocRel, "LoadOnDemand") == "1"
+        end,
+        GetAddOnInfo = function(name)
+            local relDir = S.addOnFolders[name]
+            if not relDir then return name, nil, nil, false, "MISSING" end
+            local tocRel = ModuleTocPath(relDir, name)
+            local title = tocRel and ReadTocField(tocRel, "Title") or nil
+            local notes = tocRel and ReadTocField(tocRel, "Notes") or nil
+            local loadable, reason = true, nil
+            if S.addOnDisabled[name] then loadable, reason = false, "DISABLED" end
+            return name, title, notes, loadable, reason
+        end,
     }
 
     -- T5: baseline pruning -- every global FUNCTION this stub leaves defined
