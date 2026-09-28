@@ -211,6 +211,12 @@ Details, WeakAuras and DBM ship their heavy parts.
 Modules talk through `MD:RegisterCallback` / `MD:Fire` and declared dependencies only. A module
 that is off contributes no frames, no events, no tables.
 
+**Where they live (decided 2026-09-28, M1/T2):** in this repository under `Modules/<Name>/`;
+`release.sh` builds each into its own top-level folder beside `SpellTuner/`, because the client
+never loads a nested addon folder. Open: one zip currently carries both release lines and a TBC
+install also receives the three siblings (listed there as out of date, never loaded) -- per-flavour
+packaging is a release task for M5.
+
 ### 3.2 The client adapter — one file touches the client
 
 `Client/API.lua` is the **only** file that calls `C_*` or a Blizzard global. Everything else
@@ -219,6 +225,14 @@ calls `MD.API.SpellInfo(id)`, `MD.API.UnitHealth(unit)`, … Each wrapper: check
 `nil` plus a reason** (`issecretvalue`), so no arithmetic on a secret ever happens outside this
 file. This is also where the retail/classic build-check trap is neutralised: the adapter reads
 `WOW_PROJECT_ID` and the interface number once and exposes `MD.API.client = "forever"`.
+
+**What "the client" means for this rule (confirmed 2026-09-28, M1/T1b-T6):** game **data reads and
+actions** go through `MD.API` (`MD.API.Call` / `Bind`, per-flavour bindings in `API_Forever.lua` /
+`API_TBC.lua`; a secret comes back as `nil, "secret"`). The **widget toolkit** (`CreateFrame`,
+`UIParent`, fonts, `SlashCmdList`, ...) and WoW's **Lua extensions** (`wipe`, `date`, `GetTime`,
+...) may be used anywhere -- the shared `UI/Style.lua` could not exist otherwise.
+`tools/apicheck.py` enforces exactly this split, and **no Forever file registers
+`COMBAT_LOG_EVENT_UNFILTERED`** (§1.2); the adapter refuses it.
 
 ### 3.3 The capability probe — the tool for a moving beta
 
