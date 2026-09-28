@@ -181,7 +181,8 @@ Ports last because it depends on the replay window.
 Class-generic and cheap: spend from `UNIT_SPELLCAST_SUCCEEDED`, regen from `GetManaRegen`,
 five-second rule as today. **Since 2026-09-28 the pool itself is secret** (§1.2): the clock cannot
 read where it starts from. It runs on a *modelled* pool -- `UnitPowerMax` (plain) minus each own
-cast's cost plus regen -- which is the engine's mana model run live, anchored at full whenever
+cast's cost plus regen, **the regen rate taken from the last out-of-combat `GetManaRegen()`, which
+reads secret in combat** (2026-09-28, seventh report) -- which is the engine's mana model run live, anchored at full whenever
 out-of-combat regen has had time to fill it. The error is the model's (a missed cost, a drink or
 potion not seen, a mana gain from someone else) and grows through a fight; the display must say
 "modelled" and never pretend to the TBC clock's precision. A secret value can still be *drawn*
@@ -324,8 +325,12 @@ takes with the probe's help, added after the reference scout.)
 3. **Are `UNIT_COMBAT` amounts on party units readable in combat**, and does the event fire for
    heals (`action == "HEAL"`) as well as damage, with the target unit? Decides the damage stream. **Half answered 2026-09-28:** out of combat the
    amounts are plain numbers for WOUND and HEAL, on `player`, `target` and another unit (an 8 is
-   one Rejuvenation R1 tick) -- fourth report. Q3 proper, in combat on a party member, is now the
-   question the whole recorder rests on.
+   one Rejuvenation R1 tick) -- fourth report. **In combat on the player, answered 2026-09-28** (seventh report,
+   solo): 26 WOUND and 4 HEAL on `player`, 52 WOUND on the target, all plain. The same hit also
+   arrives under other tokens (a mirror `other` count for every `player` HEAL), so the recorder
+   registers per token (`RegisterUnitEvent`) or keys by GUID. Open: `party1` in combat, and whether
+   the HEAL amount is gross or effective (the meter's is effective: a Healing Touch R2 of 88-112
+   counted 31).
 4. **What does `C_DamageMeter`'s session carry after a fight?** Per-source HealingDone; is there
    any per-spell or overheal breakdown? Decides the calibration and overheal features. **Partly
    answered:** per-spell rows (`spellID`, `totalAmount`, `amountPerSecond`, `overkillAmount`) out
@@ -339,7 +344,9 @@ takes with the probe's help, added after the reference scout.)
 7. **Do SavedVariables come back on build 70009?** Decides whether recordings can be kept in the
    beta at all, or need the kit's seed workaround.
 8. **Is `GetShapeshiftFormID` / own-cast target (`UNIT_SPELLCAST_SENT`) readable in combat?**
-   Decides form tracking and cast attribution.
+   Decides form tracking and cast attribution. **Target answered 2026-09-28:** `UNIT_SPELLCAST_SENT`'s
+   target name readable in combat, 26 of 26 (seventh report). Form in combat still untested (no
+   form was held).
 9. **Which TOC suffix does Forever's client load?** **Answered 2026-09-27, build 70009:
    `_Mainline`** (`docs/probe/1.60.1_70009.md`: `SPELLTUNER_TOC = Mainline` with the plain,
    `_Forever` and `_Vanilla` copies beside it). `SpellTuner_Mainline.toc` is the Forever TOC;
