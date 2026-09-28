@@ -431,6 +431,38 @@ do
             tostring(first == stillCached), tostring(rescanned ~= first), tostring(dirtyForces ~= rescanned)))
 end
 
+--------------------------------------------------------------------------------
+-- 14 (T9): ReadSpell reads a spell by id alone -- in the book or not, no
+-- family, no row number a family or a mana pool would supply
+--------------------------------------------------------------------------------
+do
+    -- 5185 is one of T7a's fixed slots, so ReadSpell's own id-only path must
+    -- agree with what the family-aware scan already found for it.
+    local book = Book:Scan()
+    local viaBook = FindEntry(book, 5185)
+    local viaRead = Book:ReadSpell(5185)
+    local sameGood = viaRead ~= nil and viaRead.name == "Healing Touch" and viaRead.rank == 1
+        and ApproxEq(viaRead.value, 47.5) and ApproxEq(viaRead.cost.amount, 25)
+        and viaRead.cast == 1.5 and viaRead.casts == nil
+        and viaRead.value == viaBook.value
+
+    -- 90060 is the flyout fixture from item 9 -- Book:Scan() never lists it
+    -- (a row the book walk itself skips), but its id-keyed client calls still
+    -- answer, which is exactly what a chat link needs.
+    local notInBook = FindEntry(book, 90060) == nil
+    local standalone = Book:ReadSpell(90060)
+    local standaloneGood = notInBook and standalone ~= nil and standalone.name == "FlyoutThing"
+        and standalone.value ~= nil
+
+    -- an id nothing answers a name for (no such spell) is nil, not a guess.
+    local nothingGood = Book:ReadSpell(999999) == nil
+
+    check("ReadSpell reads a spell by id alone, in the book or not, with no row number",
+        sameGood and standaloneGood and nothingGood,
+        string.format("sameGood=%s standaloneGood=%s nothingGood=%s",
+            tostring(sameGood), tostring(standaloneGood), tostring(nothingGood)))
+end
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("  FAIL " .. f) end
 if #fails > 0 then os.exit(1) end

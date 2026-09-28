@@ -264,6 +264,88 @@ function Book:BuildEntry(row, slot, bank, futureConst, prevSpells)
 end
 
 --------------------------------------------------------------------------------
+-- A single spell by id, outside the player's book (T9): a chat link, or
+-- someone else's action bar. There is no slot to read (SpellBookItemInfo,
+-- SpellBookItemIsLowRank both need one), so only the id-keyed calls run; and
+-- no family to compare against, so no row number that needs one or a mana
+-- pool (dominated, suggested, casts to OOM) is set here -- those stay nil
+-- rather than guessed from nothing.
+--------------------------------------------------------------------------------
+function Book:ReadSpell(id)
+    if type(id) ~= "number" then return nil end
+    local entry = { id = id }
+
+    local name = MD.API.SpellName(id)
+    if type(name) ~= "string" then return nil end
+    entry.name = name
+
+    local rankText = MD.API.SpellSubtext(id)
+    entry.rankText = (type(rankText) == "string") and rankText or nil
+    entry.rank = Parse.Rank(entry.rankText)
+
+    local desc, descReason = MD.API.SpellDescription(id)
+    if type(desc) == "string" then
+        entry.desc = Parse.Clean(desc)
+        entry.parsed = Parse.Description(desc)
+        entry.descState = (entry.desc == "") and "empty" or "ok"
+    elseif descReason == "secret" then
+        entry.descState = "secret"
+    else
+        entry.descState = "absent"
+    end
+
+    local level = MD.API.SpellLevelLearned(id)
+    entry.level = (type(level) == "number") and level or nil
+
+    local tip = MD.API.SpellTooltipData(id)
+    local info = MD.API.SpellInfo(id)
+    local tipSecs, tipKind = TooltipCastInfo(tip)
+    if type(info) == "table" and type(info.castTime) == "number" then
+        entry.cast = info.castTime / 1000
+    else
+        entry.cast = tipSecs
+    end
+
+    if tipKind == "channeled" then
+        entry.castKind = "channeled"
+    elseif entry.cast == 0 then
+        entry.castKind = HasTickPart(entry.parsed) and "channeled" or "instant"
+    elseif entry.cast ~= nil then
+        entry.castKind = "cast"
+    end
+
+    local costList, costReason = MD.API.SpellPowerCost(id)
+    entry.cost, entry.costState = ResolveCost(costList, costReason, tip)
+
+    -- The kind (heal/damage), the same rule GroupFamilies uses per family,
+    -- read off this one entry's own parsed text.
+    local kind
+    if type(entry.parsed) == "table" and (entry.parsed.heal ~= nil or entry.parsed.absorb ~= nil) then
+        kind = "heal"
+    elseif type(entry.parsed) == "table" and entry.parsed.damage ~= nil then
+        kind = "damage"
+    end
+    entry.kind = kind
+
+    if kind then
+        local value, part = PartValue(entry, kind)
+        local interval = IntervalFor(entry, part)
+        entry.value = value
+        entry.min = part and part.min
+        entry.max = part and part.max
+        entry.over = part and part.over
+        entry.dur = part and part.dur
+        entry.interval = interval
+
+        local amount = entry.cost and entry.cost.amount
+        entry.perMana = (value ~= nil and amount ~= nil and amount > 0) and (value / amount) or nil
+        entry.perSec = (value ~= nil and interval ~= nil and interval > 0) and (value / interval) or nil
+    end
+
+    return entry
+end
+
+--------------------------------------------------------------------------------
 -- Families
 --------------------------------------------------------------------------------
 

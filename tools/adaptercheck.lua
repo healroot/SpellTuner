@@ -44,6 +44,8 @@ local FOREVER_ONLY_NAMES = {
     "SpellBookItemIsLowRank", "SpellKnown", "SpellName", "SpellSubtext",
     "SpellDescription", "SpellInfo", "SpellPowerCost", "SpellLevelLearned",
     "BaseSpell", "SpellTexture", "SpellTooltipData",
+    -- T9: recorded explicitly (Client/API_Forever.lua), not through Bind.
+    "OnSpellTooltip",
 }
 
 --------------------------------------------------------------------------------

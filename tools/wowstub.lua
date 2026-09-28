@@ -300,6 +300,22 @@ end
 function FrameMT:UnregisterEvent(e) self.events[e] = nil end
 function FrameMT:SetScript(k, fn) self.scripts[k] = fn end
 function FrameMT:GetScript(k) return self.scripts[k] end
+-- T9: chains onto whatever script is already there rather than replacing it
+-- (UI/SpellTooltip.lua's TBC precedent, and now UI/SpellTip_Forever.lua) --
+-- the client's own HookScript never drops the frame's existing handler.
+function FrameMT:HookScript(k, fn)
+    local prev = self.scripts[k]
+    self.scripts[k] = function(...)
+        if prev then prev(...) end
+        return fn(...)
+    end
+end
+-- T9: enough of the tooltip widget for UI/SpellTip_Forever.lua's block --
+-- lines kept as { left, right } pairs so a harness can read back exactly what
+-- was appended, in order.
+function FrameMT:AddLine(left) self.lines = self.lines or {}; table.insert(self.lines, { left }) end
+function FrameMT:AddDoubleLine(left, right) self.lines = self.lines or {}; table.insert(self.lines, { left, right }) end
+function FrameMT:NumLines() return self.lines and #self.lines or 0 end
 function FrameMT:IsShown() return self.shown == true end
 -- Visible means shown AND every parent shown, which is what the eye sees: the
 -- client hides a whole subtree when it hides a frame, and a harness that only
@@ -595,6 +611,9 @@ function S.UseProfile(name)
         -- fixed slot above already answers via itemType = 1); NOT observed
         -- on Forever.
         SpellBookItemType = { Spell = 1, FutureSpell = 2, Flyout = 3, PetAction = 4 },
+        -- T9: retail's documented value (FOREVER-PLAN.md sec2.1) -- NOT observed
+        -- on Forever (docs/tasks/T9-spell-tooltip.md Facts); T12 checks it.
+        TooltipDataType = { Spell = 1 },
     }
 
     -- Five slots: two ranks of Rejuvenation (774 rank 1, 1058 rank 2) for the
@@ -776,6 +795,35 @@ function S.UseProfile(name)
             }
         end,
     }
+
+    -- T9: retail's TooltipDataProcessor (FOREVER-PLAN.md sec2.1) -- NOT observed
+    -- on Forever. Callbacks are kept per Enum.TooltipDataType value, in
+    -- registration order, exactly as Client/API_Forever.lua's OnSpellTooltip
+    -- registers its own wrapper.
+    S.tooltipPostCalls = {}
+    TooltipDataProcessor = {
+        AddTooltipPostCall = function(dataType, fn)
+            S.tooltipPostCalls[dataType] = S.tooltipPostCalls[dataType] or {}
+            table.insert(S.tooltipPostCalls[dataType], fn)
+        end,
+    }
+    -- T9: one full tooltip showing -- clears (firing OnTooltipCleared, the
+    -- addon's own cue that a previous id no longer applies), then runs every
+    -- registered Spell post-call with { type = Spell, id = id }, the same
+    -- shape the client hands a processor. Calling a stored post-call
+    -- function directly (S.tooltipPostCalls[...]) simulates the client
+    -- re-drawing an action button's tooltip WITHOUT a clear in between.
+    function S.ShowSpellTooltip(tt, id)
+        tt = tt or GameTooltip
+        tt.lines = {}
+        if tt.scripts.OnTooltipCleared then tt.scripts.OnTooltipCleared(tt) end
+        local list = S.tooltipPostCalls[Enum.TooltipDataType.Spell]
+        if list then
+            for _, fn in ipairs(list) do
+                fn(tt, { type = Enum.TooltipDataType.Spell, id = id })
+            end
+        end
+    end
 
     C_Secrets = {
         ShouldAurasBeSecret = function() return S.inCombat end,

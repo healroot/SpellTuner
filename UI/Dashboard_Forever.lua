@@ -19,8 +19,38 @@ local function Groups()
         { id = "spells", text = "Spells", views = {
             { id = "book", text = "Spellbook" } } },
         { id = "settings", text = "Settings", views = {
+            { id = "general", text = "General" },
             { id = "modules", text = "Modules" } } },
     }
+end
+
+--------------------------------------------------------------------------------
+-- Settings -> General
+--------------------------------------------------------------------------------
+local generalPane
+
+local function RefreshGeneralPane()
+    if not generalPane or not generalPane.tooltipCheck then return end
+    generalPane.tooltipCheck:SetChecked(MD.db.spellTooltip ~= false)
+end
+
+local function BuildGeneralPane(content)
+    local pane = CreateFrame("Frame", nil, content)
+    pane:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
+    pane:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", 0, 0)
+
+    local title = pane:CreateFontString(nil, "OVERLAY", UI.FONT_TITLE)
+    title:SetPoint("TOPLEFT", pane, "TOPLEFT", 4, -4)
+    title:SetText("General")
+
+    local check = UI.CreateCheckButton(pane, "Add SpellTuner lines to spell tooltips", function(checked)
+        MD.db.spellTooltip = checked and true or false
+    end)
+    check:SetPoint("TOPLEFT", pane, "TOPLEFT", 4, -30)
+    check:SetChecked(MD.db.spellTooltip ~= false)
+
+    pane.tooltipCheck = check -- marks this pane for tools/tipcheck.lua
+    return pane
 end
 
 --------------------------------------------------------------------------------
@@ -141,6 +171,9 @@ local function CreateDashboard()
         function(group, view, content)
             if group == "spells" and view == "book" then
                 return BuildSpellbookPane(content)
+            elseif group == "settings" and view == "general" then
+                generalPane = BuildGeneralPane(content)
+                return generalPane
             elseif group == "settings" and view == "modules" then
                 modulesPane = BuildModulesPane(content)
                 return modulesPane
@@ -148,6 +181,7 @@ local function CreateDashboard()
             return nil
         end,
         function(group, view)
+            if group == "settings" and view == "general" then RefreshGeneralPane() end
             if group == "settings" and view == "modules" then RefreshModulesPane() end
         end)
     frame = nav.frame

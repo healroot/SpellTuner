@@ -14,6 +14,7 @@ MD.DEFAULTS = {
     },
     char = {},
     modules = {},  -- name -> true|false, read/written by Core.lua's registry
+    spellTooltip = true,  -- UI/SpellTip_Forever.lua's block on spell tooltips
 }
 
 -- The three siblings, in dependency order (each needs only what is declared
@@ -213,6 +214,11 @@ MD:AddCommand("", function()
 end, "/st", "open the SpellTuner window")
 
 MD:AddCommand("help", function() MD:ShowCommands() end, "/st help", "this list")
+
+MD:AddCommand("tooltip", function()
+    MD.db.spellTooltip = not MD.db.spellTooltip
+    MD:Print("spell tooltip lines: " .. (MD.db.spellTooltip and "on" or "off"))
+end, "/st tooltip", "turn the SpellTuner block on spell tooltips on or off")
 
 MD:AddCommand("modules", function()
     if MD.SelectView then
