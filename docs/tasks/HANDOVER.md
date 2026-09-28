@@ -4,13 +4,14 @@ Rewritten by the lead after every commit and every hand-out. A successor continu
 alone. Worktree: `/home/penek/projects/addons/SpellTuner/.claude/worktrees/manademon-folder-continue-41eabc`,
 branch `claude/manademon-folder-continue-41eabc`.
 
-Last updated: 2026-09-28, lead run 2, at the T16b commit.
+Last updated: 2026-09-28, lead run 2, at the T16c commit.
 
 ## Committed
 
 | hash | what |
 |---|---|
-| (the commit carrying this revision) | T16b: Forever window Reports -> Review (shared Dashboard_Review.lua through the adapter, placeholder when Replay is off), MD:RunCoach / MD:ValidationReport on Forever; reviewforever 8 (new) |
+| (the commit carrying this revision) | T16c: paint-time Esc narrowed to the pipe (names painted as given; TBC as before T16a); lead fix: Esc returns one value |
+| 243256c | T16b: Forever window Reports -> Review (shared Dashboard_Review.lua through the adapter, placeholder when Replay is off), MD:RunCoach / MD:ValidationReport on Forever; reviewforever 8 (new) |
 | a8ba234 | T16a: Replay module carries engine/planner/solver/ReplayTrace/Tooltip/ReplayWindow + Commands_Forever.lua; ReplayWindow through MD.API; SM.RecordedHp; replayforever 10 (new). Lead: SP.Card `local kit = nil` (stray global, TBC unchanged) |
 | 6887cdf | T14: Gates_Forever.lua -- SM:ValidateV3, eight gates on a v3 stream, gate 8 one-sided until SM.HEAL_AMOUNT is effective; gatecheck 8 (new suite). T16a/T16b gained a paint-time escape rule |
 | 9f2488b | T13d: Replay module carries Scenario_Forever.lua -- v3 stream to scenario, heal attribution (ruling 2), max-HP estimate (ruling 1), reconstructed health; recorder aura `tgt`; tools/foreverfixture.lua; scenariocheck 9 (new suite). Two re-issues (recast cadence, recast chain) |
@@ -31,7 +32,7 @@ Nothing.
 
 ## Next, in order
 
-T16c (write + hand out: narrow the paint-time Esc to the pipe, see T16b's review) -> T17 -> T18 -> T19.
+T17 -> T18 -> T19.
 Re-check each task's baselines against the suite run at the commit before handing it out.
 Suite loop: `docs/TOOLS.md` §1 plus `apicheck`, `apicheck --selftest`, `refcheck --selftest`.
 

@@ -248,9 +248,20 @@ if W.frame then W.frame:Hide() end
 --------------------------------------------------------------------------------
 local recBadName = buildFixture()
 recBadName.id = 3000000000
-recBadName.roster[2].name = "Tank\195\169|boss" -- an EU-style byte plus a bare pipe
+-- roster[1] (Healroot), not roster[2] (Tank): the tab only ever reads a
+-- roster name back out for the "excluded" tooltip line (Healroot takes no
+-- damage in this fixture and is excluded every time), never for the target
+-- whose health curve reproduces exactly -- so this is the one name the tab
+-- is guaranteed to paint.
+recBadName.roster[1].name = "Healroot\195\169|boss" -- an EU-style byte plus a bare pipe
 MD.cdb.recordings = { recBadName, recGood, recBad }
 MD:SelectView("reports", "review")
+-- a row's OnEnter closes over the validation cached at the time the row was
+-- built; select-and-Validate (as assertion 6 already does) forces a second
+-- render with that cache warm, so the "excluded" line -- the one line that
+-- ever reads a roster name back out -- is actually there to hover.
+SelectRow(1)
+Click(ButtonNamed("Validate"))
 
 -- the root of the tab: any row's own parent is the Review pane itself
 -- (UI/Dashboard_Review.lua's `pane`), not the window's nav chrome -- so this
@@ -284,11 +295,27 @@ local function Pipes(s)
     return stripped:find("|", 1, true) ~= nil
 end
 local function NonAscii(s) return s:find("[^ -~]") ~= nil end
-local bad = {}
+-- T16c: a name the client gave paints with its own bytes -- only its "|" is
+-- doubled. So the fixture's name is expected to survive intact (pipe
+-- doubled) wherever it is painted; everything ELSE this tab composes itself
+-- must still be plain ASCII once that one known name is removed.
+local NAME_PAINTED = "Healroot\195\169||boss"
+local function StripPlain(s, sub)
+    local out, i = {}, 1
+    while true do
+        local a, b = s:find(sub, i, true)
+        if not a then out[#out + 1] = s:sub(i); break end
+        out[#out + 1] = s:sub(i, a - 1)
+        i = b + 1
+    end
+    return table.concat(out)
+end
+local bad, sawName = {}, false
 local function Scan(label, s)
     if type(s) ~= "string" then return end
     if Pipes(s) then bad[#bad + 1] = label .. " has a bare pipe: " .. s end
-    if NonAscii(s) then bad[#bad + 1] = label .. " is not ASCII: " .. s end
+    if s:find(NAME_PAINTED, 1, true) then sawName = true end
+    if NonAscii(StripPlain(s, NAME_PAINTED)) then bad[#bad + 1] = label .. " is not ASCII: " .. s end
 end
 
 local root = TabRoot()
@@ -303,7 +330,9 @@ for _, line in ipairs(GameTooltip.lines or {}) do
     Scan("tooltip r", line[2])
 end
 if leaveBad then leaveBad(badRow) end
-check("every string the tab paints is ASCII with no bare pipe", #bad == 0, bad[1])
+local detail8 = bad[1]
+if not detail8 and not sawName then detail8 = "the fixture name never painted with its own bytes" end
+check("every string the tab paints is ASCII with no bare pipe", #bad == 0 and sawName, detail8)
 
 print(string.format("\n%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("  FAIL " .. f) end

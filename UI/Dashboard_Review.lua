@@ -34,19 +34,16 @@ local COLS = {
     { "valid",  538, 190, "validate" },
 }
 
--- The probe's own escaping (Client/Probe.lua's Esc), duplicated per painting
--- file (UI/Dashboard_Forever.lua, UI/ReplayWindow.lua): a literal backslash
--- doubled first, then a pipe as "||", then any non-ASCII/control byte as
--- "\ddd" -- so a zone name, a gate's own text (which can embed a target
--- name, T14) and a roster name stay ASCII with no bare pipe wherever this
--- pane paints them, on either client (T16b, lead review 2026-09-28: "escape
--- every such string at paint time").
+-- T16c, lead review (2026-09-28), correcting T16b: a zone name, a gate's own
+-- text (which can embed a target name, T14) and a roster name come straight
+-- from the client and paint in the game's own font for that name -- an
+-- EU-realm accented byte is not ours to mangle. Only a bare "|" is unsafe
+-- (the client reads it as the start of a colour code or texture escape);
+-- everything this pane composes itself is ASCII by construction, so nothing
+-- else needs escaping, on either client.
 local function Esc(s)
     if type(s) ~= "string" then return "" end
-    local step1 = s:gsub("\\", "\\\\")
-    local step2 = step1:gsub("|", "||")
-    local step3 = step2:gsub("[^ -~]", function(c) return string.format("\\%03d", c:byte()) end)
-    return step3
+    return (s:gsub("|", "||")) -- one value: gsub also returns a count
 end
 
 local function K(n)

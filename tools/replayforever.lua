@@ -182,11 +182,27 @@ end
 local function NonAscii(s)
     return s:find("[^ -~]") ~= nil
 end
-local bad = {}
+-- T16c: a name the client gave paints with its own bytes -- only its "|" is
+-- doubled. So the fixture's name is expected to survive intact (pipe
+-- doubled) wherever it is painted; everything ELSE this window composes
+-- itself must still be plain ASCII once that one known name is removed.
+local NAME_PAINTED = "Tank\195\169||boss"
+local function StripPlain(s, sub)
+    local out, i = {}, 1
+    while true do
+        local a, b = s:find(sub, i, true)
+        if not a then out[#out + 1] = s:sub(i); break end
+        out[#out + 1] = s:sub(i, a - 1)
+        i = b + 1
+    end
+    return table.concat(out)
+end
+local bad, sawName = {}, false
 local function Scan(label, s)
     if type(s) ~= "string" then return end
     if Pipes(s) then bad[#bad + 1] = label .. " has a bare pipe: " .. s end
-    if NonAscii(s) then bad[#bad + 1] = label .. " is not ASCII: " .. s end
+    if s:find(NAME_PAINTED, 1, true) then sawName = true end
+    if NonAscii(StripPlain(s, NAME_PAINTED)) then bad[#bad + 1] = label .. " is not ASCII: " .. s end
 end
 for _, col in ipairs({ W.left, W.right }) do
     if col then
@@ -206,7 +222,9 @@ Scan("recon", W.reconFS and W.reconFS:GetText())
 Scan("hint", W.hint and W.hint:GetText())
 for _, l in ipairs(vlines) do Scan("validate line", l) end
 for _, l in ipairs(clines) do Scan("coach line", l) end
-check("every string the window paints is ASCII with no bare pipe", #bad == 0, bad[1])
+local detail9 = bad[1]
+if not detail9 and not sawName then detail9 = "the fixture name never painted with its own bytes" end
+check("every string the window paints is ASCII with no bare pipe", #bad == 0 and sawName, detail9)
 
 --------------------------------------------------------------------------------
 -- 10: the window will not open in combat

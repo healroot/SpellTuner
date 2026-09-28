@@ -15,18 +15,16 @@
 local _, MD = ...
 local UI = MD.UI
 
--- T16a, lead review (2026-09-28): a target's name and a fallback spell name
--- come straight from the client and may carry a bare "|" or a non-ASCII byte
--- (an EU realm name). The probe's own escaping (Client/Probe.lua's Esc,
--- duplicated -- this file takes no dependency on it): a literal backslash
--- doubled first, then a pipe as "||", then any non-ASCII/control byte as
--- "\ddd", so anything painted or printed stays ASCII with no bare pipe.
+-- T16c, lead review (2026-09-28), correcting T16a: a target's name and a
+-- fallback spell name come straight from the client and paint in the game's
+-- own font for that name -- an EU-realm accented byte is not ours to mangle,
+-- it reads on this window exactly as it reads on the game's own frames. Only
+-- a bare "|" is unsafe (the client reads it as the start of a colour code or
+-- texture escape); everything this file composes itself is ASCII by
+-- construction, so nothing else needs escaping.
 local function Esc(s)
     if type(s) ~= "string" then return s end
-    local step1 = s:gsub("\\", "\\\\")
-    local step2 = step1:gsub("|", "||")
-    local step3 = step2:gsub("[^ -~]", function(c) return string.format("\\%03d", c:byte()) end)
-    return step3
+    return (s:gsub("|", "||")) -- one value: gsub also returns a count
 end
 
 local COL_W = 460              -- the healer strip's width; a column is at least this wide

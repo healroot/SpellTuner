@@ -308,10 +308,12 @@ the TBC window unchanged) and `Commands_Forever.lua` (`/st replay`, `/st validat
 v3 recording plays with its reconstructed health as the left column's ticks and says it is
 reconstructed and estimated; `SM.RecordedHp`; `replayforever` 10. `SP.Card`'s stray global `kit`
 (always nil) made an explicit local, TBC output unchanged.
-**T16b** -- the Forever window gains Reports -> Review: the TBC Review tab (`UI/Dashboard_Review.lua`,
+**T16b** (`243256c`) -- the Forever window gains Reports -> Review: the TBC Review tab (`UI/Dashboard_Review.lua`,
 shared, client calls through the adapter) with the Replay module on, a placeholder naming the switch
 with it off; the window grows to the TBC size; the Review buttons' `MD:RunCoach` /
 `MD:ValidationReport` exist on Forever (`Commands_Forever.lua`); `reviewforever` 8.
+**T16c** -- names the client gave are painted with their own bytes (only a `|` is doubled): the lead's
+T14 rule had escaped accented names on the TBC window too.
 
 ### M4 — practice (phase 4) → `1.0.0-beta.3`
 
