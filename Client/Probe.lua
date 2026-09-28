@@ -1363,23 +1363,44 @@ for _, event in ipairs(EVENTS) do
     doing = saved
 end
 
-SLASH_SPELLTUNER1 = "/spelltuner"
-SLASH_SPELLTUNER2 = "/st"
-SLASH_SPELLTUNER3 = "/md"
-SlashCmdList.SPELLTUNER = function(msg)
-    local first, second = tostring(msg or ""):match("^%s*(%S*)%s*(%S*)")
-    first = (first or ""):lower()
-    second = (second or ""):lower()
-    if first == "probe" and second == "clog" then
-        -- T0d: clog is gone -- never register it, and never run the probe
-        -- here either, since a run saves a record and would move the
-        -- "previous run" every later comparison reads.
-        DEFAULT_CHAT_FRAME:AddMessage(
-            "SpellTuner probe: clog is gone - the combat log registration is forbidden on Forever. Type /st probe.")
-    elseif first == "probe" then
-        Run()
-    else
-        DEFAULT_CHAT_FRAME:AddMessage("SpellTuner probe: type /st probe")
+-- T1b: once Core.lua's kernel is on the TOC (it is, right before this file --
+-- Client/Probe.lua stays load-order-independent so it still answers if the
+-- kernel fails to load, T0's own Goal), the probe registers through it
+-- instead of owning the slash command outright -- one dispatcher, one place
+-- that prints "commands:".
+if type(MD.AddCommand) == "function" then
+    MD:AddCommand("probe", function(arg)
+        if arg == "clog" then
+            -- T0d: clog is gone -- never register it, and never run the probe
+            -- here either, since a run saves a record and would move the
+            -- "previous run" every later comparison reads.
+            DEFAULT_CHAT_FRAME:AddMessage(
+                "SpellTuner probe: clog is gone - the combat log registration is forbidden on Forever. Type /st probe.")
+        else
+            Run()
+        end
+    end, "/st probe", "the capability report for the planner")
+else
+    -- No kernel: today's standalone block, unchanged, so the probe still
+    -- answers if Core.lua fails to load.
+    SLASH_SPELLTUNER1 = "/spelltuner"
+    SLASH_SPELLTUNER2 = "/st"
+    SLASH_SPELLTUNER3 = "/md"
+    SlashCmdList.SPELLTUNER = function(msg)
+        local first, second = tostring(msg or ""):match("^%s*(%S*)%s*(%S*)")
+        first = (first or ""):lower()
+        second = (second or ""):lower()
+        if first == "probe" and second == "clog" then
+            -- T0d: clog is gone -- never register it, and never run the probe
+            -- here either, since a run saves a record and would move the
+            -- "previous run" every later comparison reads.
+            DEFAULT_CHAT_FRAME:AddMessage(
+                "SpellTuner probe: clog is gone - the combat log registration is forbidden on Forever. Type /st probe.")
+        elseif first == "probe" then
+            Run()
+        else
+            DEFAULT_CHAT_FRAME:AddMessage("SpellTuner probe: type /st probe")
+        end
     end
 end
 

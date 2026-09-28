@@ -8,4 +8,6 @@
 Client\TOC_Plain.lua
 Client\API.lua
 Client\API_Forever.lua
+Core.lua
+Core_Forever.lua
 Client\Probe.lua

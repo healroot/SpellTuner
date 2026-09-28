@@ -146,7 +146,12 @@ and pruned to the 69893 baseline (`tools/data/forever_api.json`, the kit's, MIT)
 `tools/forevercheck.lua` 13 ok. **T1** -- 2026-09-28 (`docs/tasks/T1-client-adapter.md`): `MD.API.Call` / `Bind` /
 `Capabilities` / `IsSecret` / `CanRegisterEvent` in the shared `Client/API.lua`, the add-on
 bindings and the forbidden combat log in `Client/API_Forever.lua`, the classic names in
-`Client/API_TBC.lua`; a secret comes back as `nil, "secret"`; `tools/adaptercheck.lua` 14 / 10 ok.
+`Client/API_TBC.lua`; a secret comes back as `nil, "secret"`; `tools/adaptercheck.lua` 14 / 10 ok (15 / 11 after T1b). **T1b** -- 2026-09-28
+(`docs/tasks/T1b-shared-core.md`): `Core.lua` is the shared kernel on the adapter (events with the
+forbidden-event guard, callbacks, ticker, Print, identity, db init, the login sequence
+`CORE_LOGIN` / `MD_READY` / `CORE_READY`, the slash dispatcher with `MD:AddCommand`); the TBC
+addon's own core moved verbatim to `Core_TBC.lua`; `Core_Forever.lua` starts Forever's; `/st probe`
+goes through the kernel; `tools/corecheck.lua` 10 / 8 ok.
 
 ### M2 — tooltips and the dashboard (phase 2) → `1.0.0-beta.1`
 

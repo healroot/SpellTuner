@@ -88,7 +88,19 @@ function UnitHealth(u) local x = U(u); return x and x.hp or 0 end
 function UnitHealthMax(u) local x = U(u); return x and x.hpMax or 1 end
 function UnitGUID(u) local x = U(u); return x and x.guid or nil end
 function UnitName(u) local x = U(u); return x and x.name or nil end
-function UnitClass(u) local x = U(u); return x and x.class or "DRUID", x and x.class or "DRUID" end
+-- The client's own UnitClass returns the LOCALIZED class name first, the
+-- token ("DRUID") second (docs/tasks/T1b Review, re-issue 2) -- every reader
+-- in the tree (Engine/Targets.lua, UI/Style.lua, Client/Probe.lua) already
+-- takes the second, so this fix changes no TBC suite. A unit can carry its
+-- own `localized` override; otherwise it is derived from the token (only the
+-- first letter upper-case, which is wrong for e.g. "DEATHKNIGHT" but no test
+-- needs more than that).
+function UnitClass(u)
+    local x = U(u)
+    local token = x and x.class or "DRUID"
+    local loc = x and x.localized or (token:sub(1, 1) .. token:sub(2):lower())
+    return loc, token
+end
 function UnitLevel(u) return S.level end
 function UnitStat(u, i) return S.stats[i] or 0, S.stats[i] or 0, 0, 0 end
 function UnitExists(u) return U(u) ~= nil end

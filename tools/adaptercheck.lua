@@ -1,9 +1,9 @@
 -- tools/run.sh --flavour forever tools/adaptercheck.lua
 -- tools/run.sh --flavour tbc tools/adaptercheck.lua
 --
--- T1: the shared adapter (Client/API.lua) plus its two per-flavour bindings
--- (Client/API_Forever.lua, Client/API_TBC.lua). Assertions 1-8 run under both
--- flavours, 9-14 under forever only, 15-16 under tbc only -- matching the
+-- T1/T1b: the shared adapter (Client/API.lua) plus its two per-flavour bindings
+-- (Client/API_Forever.lua, Client/API_TBC.lua). Assertions 1-9 run under both
+-- flavours, 10-15 under forever only, 16-17 under tbc only -- matching the
 -- Facts in docs/tasks/T1-client-adapter.md about what is secret on which
 -- client. Never runs under a flavour it did not declare (tools/harness.lua).
 HARNESS_FLAVOUR = { "forever", "tbc" }
@@ -35,7 +35,7 @@ local SHARED_NAMES = {
 local ADDON_NAMES = { "AddOnMetadata", "IsAddOnLoaded", "LoadAddOn", "IsAddOnLoadOnDemand", "AddOnInfo" }
 
 --------------------------------------------------------------------------------
--- 1-8: both flavours
+-- 1-9: both flavours
 --------------------------------------------------------------------------------
 
 do
@@ -127,6 +127,23 @@ do
 end
 
 do
+    -- T1b re-issue: DEFAULT_CHAT_FRAME is a variable the UI may reassign
+    -- (a chat addon, a UI reload) -- Print must not trust a cached table.
+    local originalFrame = _G.DEFAULT_CHAT_FRAME
+    MD.API.Print("t1-print-old-frame")
+    local oldSeen
+    originalFrame.AddMessage = function(_, m) oldSeen = m end
+
+    local newSeen
+    _G.DEFAULT_CHAT_FRAME = { AddMessage = function(_, m) newSeen = m end }
+    MD.API.Print("t1-print-new-frame")
+    _G.DEFAULT_CHAT_FRAME = originalFrame
+
+    check("Print follows the chat frame the UI has now",
+        newSeen == "t1-print-new-frame" and oldSeen == nil)
+end
+
+do
     if flavour == "forever" then S.inCombat = false end
     local caps = MD.API.Capabilities()
     local okAll = pcall(function()
@@ -143,7 +160,7 @@ do
 end
 
 --------------------------------------------------------------------------------
--- 9-14: forever only
+-- 10-15: forever only
 --------------------------------------------------------------------------------
 
 if flavour == "forever" then
@@ -228,7 +245,7 @@ if flavour == "forever" then
 end
 
 --------------------------------------------------------------------------------
--- 15-16: tbc only
+-- 16-17: tbc only
 --------------------------------------------------------------------------------
 
 if flavour == "tbc" then

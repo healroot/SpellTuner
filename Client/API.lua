@@ -179,10 +179,13 @@ function MD.API.CanRegisterEvent(event)
 end
 
 -- The chat frame is an ordinary Lua table handed to every addon, never a
--- secret client value -- reached through Has/pcall like everything else here
--- so a stub or a future client missing it costs nothing.
+-- secret client value -- but unlike every other name on this file it is a
+-- plain global variable the UI (a chat addon, a reload) may reassign after
+-- login, and today's TBC MD:Print re-reads it on every call. Has()'s cache
+-- is right for functions, which do not move; it would be wrong here, so this
+-- one reads _G directly every time rather than going through Has.
 function MD.API.Print(text)
-    local frame = MD.API.Has("DEFAULT_CHAT_FRAME")
+    local frame = rawget(_G, "DEFAULT_CHAT_FRAME")
     if type(frame) == "table" then
         pcall(function() frame:AddMessage(text) end)
     end
