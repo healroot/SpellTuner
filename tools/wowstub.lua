@@ -21,8 +21,9 @@ _G.STUB = S
 
 S.now = 0
 -- Which .toc GetAddOnMetadata reads its version from. Default is the TBC line
--- (what the sixteen suites load); S.UseProfile("forever") points it at the
--- plain SpellTuner.toc instead (T0).
+-- (what the sixteen suites load); S.UseProfile("forever") points it at
+-- SpellTuner_Mainline.toc instead (T0c: the Forever line that actually loads
+-- on the client, Q9).
 S.toc = "SpellTuner_TBC.toc"
 function GetTime() return S.now end
 -- The sub-frame clock the search slices on. In the client this advances inside
@@ -190,7 +191,9 @@ _G.C_Spell = nil
 -- The Forever profile's client raises on registering an unknown event (T0
 -- plan §1.1). This is the allowed set for the probe: every EVENTS entry it
 -- registers except the combat log (whose registration outcome is itself a
--- finding), plus the frame-lifecycle events every addon fires through.
+-- finding, T0c: moved off the load path entirely), plus the frame-lifecycle
+-- events every addon fires through, plus (T0c) the two blocked-action events
+-- the probe now listens for from load.
 -- Gated on S.profile so the TBC suites, which register other events, are
 -- unaffected.
 local FOREVER_EVENTS = {
@@ -200,7 +203,7 @@ local FOREVER_EVENTS = {
     UNIT_COMBAT = true, GROUP_ROSTER_UPDATE = true, PLAYER_REGEN_DISABLED = true,
     PLAYER_REGEN_ENABLED = true, SPELLS_CHANGED = true, PLAYER_TALENT_UPDATE = true,
     TRAIT_CONFIG_UPDATED = true, DAMAGE_METER_COMBAT_SESSION_UPDATED = true,
-    ADDON_RESTRICTION_STATE_CHANGED = true,
+    ADDON_RESTRICTION_STATE_CHANGED = true, ADDON_ACTION_FORBIDDEN = true, ADDON_ACTION_BLOCKED = true,
     ADDON_LOADED = true, PLAYER_LOGIN = true, PLAYER_ENTERING_WORLD = true, PLAYER_LOGOUT = true,
 }
 
@@ -222,6 +225,21 @@ setmetatable(FrameMT, { __index = function(_, k)
     return nil
 end })
 function FrameMT:RegisterEvent(e)
+    -- Recorded in every profile, before anything can forbid or raise, so a
+    -- test can see exactly which events (and in what order) a frame tried to
+    -- register even when the attempt never took (T0c). No TBC suite reads it.
+    self.attempts = self.attempts or {}
+    table.insert(self.attempts, e)
+    -- A stand-in for the suspicion that a client-forbidden RegisterEvent
+    -- fires ADDON_ACTION_FORBIDDEN rather than raising (T0c Facts) -- set by a
+    -- script via S.forbidOnRegister[e] = "<functionName>", not a fact about
+    -- the client. Checked before the unknown-event raise below, so a
+    -- forbidden COMBAT_LOG_EVENT_UNFILTERED (never added to FOREVER_EVENTS)
+    -- does not also raise.
+    if S.profile == "forever" and type(S.forbidOnRegister) == "table" and S.forbidOnRegister[e] then
+        S.Fire("ADDON_ACTION_FORBIDDEN", S.addonName, S.forbidOnRegister[e])
+        return
+    end
     if S.profile == "forever" and not FOREVER_EVENTS[e] then
         error('unknown event "' .. tostring(e) .. '"')
     end
@@ -382,9 +400,12 @@ end
 function S.UseProfile(name)
     if name ~= "forever" then return end
     S.profile = "forever"
-    S.toc = "SpellTuner.toc"
+    S.toc = "SpellTuner_Mainline.toc"
     S.inCombat = false
     S.bonusHealing = 0
+    S.bonusDamage = {}
+    S.descShift = 0
+    function GetSpellBonusDamage(school) return S.bonusDamage[school] or 0 end
 
     -- plan §1.1-1.2: gone on Forever.
     CombatLogGetCurrentEventInfo = nil
@@ -455,6 +476,30 @@ function S.UseProfile(name)
         return nil
     end
 
+    -- T0c: the secret-question globals. Same in-combat-and-not-player gate as
+    -- UnitHealth/UnitHealthMax above -- a stand-in, not a claim about Q2/Q5.
+    function UnitHealthPercent(u, usePredicted, curve)
+        if S.inCombat and u ~= "player" then return S.Secret() end
+        local x = U(u)
+        if not x then return nil end
+        return x.hp / x.hpMax * 100
+    end
+    function UnitHealthMissing(u)
+        if S.inCombat and u ~= "player" then return S.Secret() end
+        local x = U(u)
+        if not x then return nil end
+        return x.hpMax - x.hp
+    end
+    function UnitPowerPercent(u, powerType)
+        if u == "player" then return S.mana / S.manaMax * 100 end
+        return nil
+    end
+    function UnitGetIncomingHeals(u, healer)
+        if U(u) then return 0 end
+        return nil
+    end
+    function UnitIsDeadOrGhost(u) return false end
+
     Enum = {
         SpellBookSpellBank = { Player = 0 },
         DamageMeterType = { HealingDone = 1 },
@@ -471,10 +516,17 @@ function S.UseProfile(name)
     local ERROR_ROW = setmetatable({}, { __index = function() error("spellbook row unreadable (stub)") end })
     local SPELL_NAMES = { [774] = "Rejuvenation", [5185] = "Healing Touch", [5176] = "Wrath", [1058] = "Rejuvenation" }
     local SPELL_SUBTEXT = { [774] = "Rank 1", [5185] = "Rank 1", [5176] = "Rank 1", [1058] = "Rank 2" }
+    -- T0c: 774's amount also carries S.descShift, a stand-in for a description
+    -- that moved with a level-up rather than with bonus healing (reads exactly
+    -- as before at descShift 0). 5176's amount carries S.bonusDamage[4]
+    -- (Nature), a stand-in for the elixir test -- also unchanged at 0.
     local SPELL_DESC = {
-        [774] = function() return "Heals the target for " .. (32 + S.bonusHealing) .. " over 12 sec." end,
+        [774] = function() return "Heals the target for " .. (32 + S.bonusHealing + S.descShift) .. " over 12 sec." end,
         [5185] = function() return "Heals a friendly target for 40 to 55.|nIt is \226\128\156quoted\226\128\157." end,
-        [5176] = function() return "Causes 13 to 16 Nature damage to the target." end,
+        [5176] = function()
+            local n = S.bonusDamage[4] or 0
+            return "Causes " .. (13 + n) .. " to " .. (16 + n) .. " Nature damage to the target."
+        end,
         [1058] = function() return "Heals the target for 56 over 12 sec." end,
     }
     C_SpellBook = {
@@ -485,6 +537,18 @@ function S.UseProfile(name)
             return { spellID = id }
         end,
     }
+    -- Adds a spell in the first free slot from 6 on -- for tests that need
+    -- more spellbook rows than the fixed five above (T0c step 6's elixir
+    -- test). descFn follows SPELL_DESC's own shape: a zero-argument function.
+    local nextFreeSlot = 6
+    function S.AddSpell(id, name, rank, descFn)
+        while SPELL_SLOTS[nextFreeSlot] do nextFreeSlot = nextFreeSlot + 1 end
+        SPELL_SLOTS[nextFreeSlot] = id
+        nextFreeSlot = nextFreeSlot + 1
+        SPELL_NAMES[id] = name
+        SPELL_SUBTEXT[id] = rank
+        SPELL_DESC[id] = descFn
+    end
     C_Spell = {
         GetSpellName = function(id) return SPELL_NAMES[id] end,
         GetSpellSubtext = function(id) return SPELL_SUBTEXT[id] end,
@@ -506,6 +570,30 @@ function S.UseProfile(name)
             return false
         end,
         ["ShouldStub|Piped"] = function() return false end,
+        -- T0c: the secret-question predicates. Each raises "bad argument #1"
+        -- on a nil first argument, as the client does, except
+        -- HasSecretRestrictions which takes none and never raises.
+        HasSecretRestrictions = function() return S.inCombat end,
+        ShouldUnitHealthMaxBeSecret = function(u)
+            if u == nil then error("bad argument #1") end
+            return S.inCombat and u ~= "player"
+        end,
+        ShouldUnitPowerBeSecret = function(u, pt)
+            if u == nil then error("bad argument #1") end
+            return false
+        end,
+        ShouldUnitPowerMaxBeSecret = function(u, pt)
+            if u == nil then error("bad argument #1") end
+            return false
+        end,
+        GetPowerTypeSecrecy = function(pt)
+            if pt == nil then error("bad argument #1") end
+            return 0
+        end,
+        CanCompareUnitTokens = function(a, b)
+            if a == nil or b == nil then error("bad argument #1") end
+            return true
+        end,
     }
 
     C_UnitAuras = {
@@ -523,6 +611,9 @@ function S.UseProfile(name)
             if type(a) == "number" then
                 error("bad argument #1 to 'GetTalentInfo' (table expected, got number)")
             end
+            -- What the client answered at level 8 (T0c Facts): nil below the
+            -- level talents start at, the row otherwise.
+            if S.level < 10 then return nil end
             return { name = "Improved Wrath", rank = 0 }
         end,
     }
@@ -546,7 +637,21 @@ function S.UseProfile(name)
         end,
         GetCombatSessionSourceFromType = function(st, mt, guid, cid)
             if meterSecretNow() then return S.SecretTable() end
-            return { combatSpells = { { spellID = 774, totalAmount = 1000 } } }
+            -- T0c: every row carries combatSpellDetails one level deep (a
+            -- stand-in for EllesmereUI's own reading of the field), and the
+            -- Overall session lists six spells against Current's one, so the
+            -- five-row cap on the dump has something to cap.
+            local function row(id, amount)
+                return { spellID = id, totalAmount = amount,
+                    combatSpellDetails = { unitName = "Tankname", unitClassFilename = "WARRIOR", specIconID = 0 } }
+            end
+            if st == Enum.DamageMeterSessionType.Overall then
+                return { combatSpells = {
+                    row(774, 1000), row(5185, 900), row(1058, 800),
+                    row(5186, 700), row(8936, 600), row(740, 500),
+                } }
+            end
+            return { combatSpells = { row(774, 1000) } }
         end,
     }
 end
@@ -563,6 +668,9 @@ function S.AddTraits()
 end
 
 function S.Load(files, addonName, MD)
+    -- Read by FrameMT:RegisterEvent's forbid stand-in (S.Fire("ADDON_ACTION_FORBIDDEN", S.addonName, ...)),
+    -- which needs the addon name before any file has registered anything.
+    S.addonName = addonName
     for _, rel in ipairs(files) do
         local path = S.root .. "/" .. rel
         local chunk, err = loadfile(path)

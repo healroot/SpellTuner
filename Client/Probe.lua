@@ -76,7 +76,11 @@ end
 
 -- Like Fmt, but a non-secret table is shown shallow: {k=v, ...}, sorted by
 -- the escaped key text, capped so one huge table cannot blow up the report.
-local function Describe(v)
+-- depth (default 1) is how many levels of nested non-secret table a field may
+-- itself be walked instead of just Fmt'd -- T0c's one-level-deeper damage
+-- meter dump (Describe(row, 2)) without a second, near-identical walker.
+local function Describe(v, depth)
+    depth = depth or 1
     if IsSecret(v) or v == nil or type(v) ~= "table" then return Fmt(v) end
     local ok, result = pcall(function()
         local keys = {}
@@ -86,7 +90,12 @@ local function Describe(v)
         for _, k in ipairs(keys) do
             count = count + 1
             if count > 24 then parts[#parts + 1] = "..."; break end
-            parts[#parts + 1] = Esc(tostring(k)) .. "=" .. Fmt(v[k])
+            local val = v[k]
+            if depth > 1 and not IsSecret(val) and type(val) == "table" then
+                parts[#parts + 1] = Esc(tostring(k)) .. "=" .. Describe(val, depth - 1)
+            else
+                parts[#parts + 1] = Esc(tostring(k)) .. "=" .. Fmt(val)
+            end
         end
         return "{" .. table.concat(parts, ", ") .. "}"
     end)
@@ -161,21 +170,39 @@ local FUNCTIONS = {
     "UnitAffectingCombat", "UnitExists", "UnitName", "UnitClass", "UnitLevel", "GetRealmName", "CreateFrame",
 }
 
+-- COMBAT_LOG_EVENT_UNFILTERED is deliberately NOT here (T0c item 2): the load
+-- path must not be able to trip the blocked-action dialog on its own. /st
+-- probe clog registers it on demand instead (RegisterClog).
 local EVENTS = {
     "UNIT_SPELLCAST_SENT", "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_SUCCEEDED", "UNIT_SPELLCAST_STOP",
     "UNIT_SPELLCAST_FAILED", "UNIT_HEALTH", "UNIT_MAXHEALTH", "UNIT_POWER_UPDATE", "UNIT_AURA",
     "UNIT_FLAGS", "UNIT_COMBAT", "GROUP_ROSTER_UPDATE", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED",
     "SPELLS_CHANGED", "PLAYER_TALENT_UPDATE", "TRAIT_CONFIG_UPDATED", "DAMAGE_METER_COMBAT_SESSION_UPDATED",
-    "ADDON_RESTRICTION_STATE_CHANGED", "COMBAT_LOG_EVENT_UNFILTERED",
+    "ADDON_RESTRICTION_STATE_CHANGED",
 }
+
+-- The damage meter's per-session spell-row print cap (T0c item 4), one
+-- constant for both sessions; the per-source row cap a few lines below is a
+-- separate, untouched 5.
+local SPELL_ROWS = 5
 
 --------------------------------------------------------------------------------
 -- Session state
 --------------------------------------------------------------------------------
 local phase = "ooc"
+-- What the probe is doing right now (T0c item 1), so a blocked/forbidden
+-- action that names us can say what it interrupted. Exact values: "load",
+-- "register:<EVENT>", "ADDON_LOADED", "clog", "run", "snapshot", "idle" --
+-- see the file's load-time section and Run()/TakeCombatSnapshot for where
+-- each is set and restored.
+local doing = "load"
 local eventOutcomes = {}                 -- EVENT -> { ok = bool, err = "<error: ...>" }
 local combatCounters, combatOrder = {}, {}
 local sentCounters, sentOrder = {}, {}
+local restrictionCounters, restrictionOrder = {}, {}   -- ADDON_RESTRICTION_STATE_CHANGED, by "<phase> <payload>"
+local blockedCounters, blockedOrder = {}, {}           -- ADDON_ACTION_FORBIDDEN/BLOCKED naming us, by (event, phase, doing, function)
+local actionForbiddenOutcome, actionBlockedOutcome = "throws <error: not registered>", "throws <error: not registered>"
+local clogOutcome = nil                  -- nil until /st probe clog; then { ok = bool, err = "<error: ...>" or nil }
 local combatSnapshot = nil                -- { stamp, inCombat, partyExists, lines } or nil
 local writtenThisSession = {}             -- build key -> true, once this session saved it
 local sawDamageMeterCurrentSources = false
@@ -279,6 +306,40 @@ local function BumpSent(currentPhase, target)
     end
 end
 
+-- ADDON_RESTRICTION_STATE_CHANGED(restrictionType, state, ...): every argument
+-- through Fmt and joined, never inspected -- the planner reads the payload,
+-- the probe only counts it (T0c item 3).
+local function BumpRestriction(currentPhase, ...)
+    local n = select("#", ...)
+    local parts = {}
+    for i = 1, n do parts[#parts + 1] = Fmt((select(i, ...))) end
+    local payload = (n > 0) and table.concat(parts, ", ") or "nothing"
+    local key = currentPhase .. " " .. payload
+    local c = restrictionCounters[key]
+    if not c then
+        c = { phase = currentPhase, payload = payload, n = 0 }
+        restrictionCounters[key] = c
+        restrictionOrder[#restrictionOrder + 1] = key
+    end
+    c.n = c.n + 1
+end
+
+-- ADDON_ACTION_FORBIDDEN/ADDON_ACTION_BLOCKED(addonName, functionName): kept
+-- only when the addon name is ours (Fmt/Esc compared as text, never raw --
+-- T0c item 1), counted per (event, phase, doing, function), first-seen order.
+local function BumpBlocked(event, addonName, functionName)
+    if Fmt(addonName) ~= Esc(ADDON_NAME) then return end
+    local fn = Fmt(functionName)
+    local key = event .. "\1" .. phase .. "\1" .. doing .. "\1" .. fn
+    local c = blockedCounters[key]
+    if not c then
+        c = { event = event, phase = phase, doing = doing, addon = Fmt(addonName), fn = fn, n = 0 }
+        blockedCounters[key] = c
+        blockedOrder[#blockedOrder + 1] = key
+    end
+    c.n = c.n + 1
+end
+
 --------------------------------------------------------------------------------
 -- == client
 --------------------------------------------------------------------------------
@@ -361,6 +422,36 @@ local function EventsSummaryLines()
             lines[#lines + 1] = "throws " .. event .. " <error: not registered>"
         end
     end
+    -- T0c item 2: the combat log's own registration outcome, off the load
+    -- path -- nil until /st probe clog has tried it at least once.
+    if clogOutcome == nil then
+        lines[#lines + 1] = "COMBAT_LOG_EVENT_UNFILTERED not registered at load (type /st probe clog)"
+    elseif clogOutcome.ok then
+        lines[#lines + 1] = "ok COMBAT_LOG_EVENT_UNFILTERED (by /st probe clog)"
+    else
+        lines[#lines + 1] = "throws COMBAT_LOG_EVENT_UNFILTERED " .. clogOutcome.err .. " (by /st probe clog)"
+    end
+    return lines
+end
+
+--------------------------------------------------------------------------------
+-- == blocked actions -- ADDON_ACTION_FORBIDDEN/ADDON_ACTION_BLOCKED naming us
+-- (T0c item 1), right after == events.
+--------------------------------------------------------------------------------
+local function BlockedActionsLines()
+    local lines = {
+        "listening: ADDON_ACTION_FORBIDDEN " .. actionForbiddenOutcome
+            .. ", ADDON_ACTION_BLOCKED " .. actionBlockedOutcome,
+    }
+    if #blockedOrder == 0 then
+        lines[#lines + 1] = "none"
+    else
+        for _, key in ipairs(blockedOrder) do
+            local c = blockedCounters[key]
+            lines[#lines + 1] = string.format("%s phase=%s during=%s addon=%s function=%s n=%d",
+                c.event, c.phase, c.doing, c.addon, c.fn, c.n)
+        end
+    end
     return lines
 end
 
@@ -404,6 +495,29 @@ local function ReadingsLines()
         "GetShapeshiftFormID() = " .. Show("GetShapeshiftFormID"),
         "C_UnitAuras.GetAuraDataByIndex(player, 1, HELPFUL) = " .. Show("C_UnitAuras.GetAuraDataByIndex", "player", 1, "HELPFUL"),
         "C_UnitAuras.GetAuraDataByIndex(party1, 1, HELPFUL) = " .. Show("C_UnitAuras.GetAuraDataByIndex", "party1", 1, "HELPFUL"),
+        -- T0c item 3: whether health/power are secret always or only under a
+        -- restriction is the question this run exists to answer -- these
+        -- eighteen are read live here and, via TakeCombatSnapshot copying
+        -- this same function, again at the 2s-into-combat mark, so the two
+        -- can be read side by side.
+        "C_Secrets.HasSecretRestrictions() = " .. Show("C_Secrets.HasSecretRestrictions"),
+        "C_Secrets.ShouldUnitHealthMaxBeSecret(player) = " .. Show("C_Secrets.ShouldUnitHealthMaxBeSecret", "player"),
+        "C_Secrets.ShouldUnitPowerBeSecret(player) = " .. Show("C_Secrets.ShouldUnitPowerBeSecret", "player"),
+        "C_Secrets.ShouldUnitPowerMaxBeSecret(player) = " .. Show("C_Secrets.ShouldUnitPowerMaxBeSecret", "player"),
+        "C_Secrets.GetPowerTypeSecrecy(0) = " .. Show("C_Secrets.GetPowerTypeSecrecy", 0),
+        "C_Secrets.CanCompareUnitTokens(player, player) = " .. Show("C_Secrets.CanCompareUnitTokens", "player", "player"),
+        "UnitHealthMax(player) = " .. Show("UnitHealthMax", "player"),
+        "UnitPowerMax(player, 0) = " .. Show("UnitPowerMax", "player", 0),
+        "UnitHealth(player, true) = " .. Show("UnitHealth", "player", true),
+        "UnitHealthPercent(player) = " .. Show("UnitHealthPercent", "player"),
+        "UnitHealthPercent(player, true) = " .. Show("UnitHealthPercent", "player", true),
+        "UnitHealthMissing(player) = " .. Show("UnitHealthMissing", "player"),
+        "UnitPowerPercent(player, 0) = " .. Show("UnitPowerPercent", "player", 0),
+        "UnitGetIncomingHeals(player) = " .. Show("UnitGetIncomingHeals", "player"),
+        "UnitIsDeadOrGhost(player) = " .. Show("UnitIsDeadOrGhost", "player"),
+        "UnitHealth(party1, true) = " .. Show("UnitHealth", "party1", true),
+        "UnitHealthPercent(party1) = " .. Show("UnitHealthPercent", "party1"),
+        "UnitHealthPercent(party1, true) = " .. Show("UnitHealthPercent", "party1", true),
     }
 end
 
@@ -490,14 +604,40 @@ local function SpellWalk()
     return n, h, e, secretN, errorN, order, descByKey
 end
 
+-- Bonus damage per school, schools 2-7 (the classic API's numbering: Holy,
+-- Fire, Nature, Frost, Shadow, Arcane) -- beside GetSpellBonusHealing in the
+-- spells header (T0c item 5), so a bonus-damage-only change (an elixir) shows
+-- up there without needing a +healing item or a level.
+local function BonusDamageString()
+    local schools = { { 2, "Holy" }, { 3, "Fire" }, { 4, "Nature" }, { 5, "Frost" }, { 6, "Shadow" }, { 7, "Arcane" } }
+    local parts = {}
+    for _, s in ipairs(schools) do
+        parts[#parts + 1] = s[2] .. "=" .. Show("GetSpellBonusDamage", s[1])
+    end
+    return table.concat(parts, " ")
+end
+
+-- Readable, plus none of the "one school did not answer" markers -- a single
+-- <absent>/<error:>/nil/nothing school makes the WHOLE string unusable for a
+-- before/after comparison (T0c item 5's Q1 rule).
+local function BonusDamageReadable(s)
+    if not Readable(s) then return false end
+    if s:find("<", 1, true) then return false end
+    if s:find("=nil", 1, true) then return false end
+    if s:find("=nothing", 1, true) then return false end
+    return true
+end
+
 --------------------------------------------------------------------------------
 -- == talents
 --------------------------------------------------------------------------------
+-- Second return: the rendered {tier=1, column=1} result, so Run() can tell
+-- Q6 apart without re-deriving it from the lines (T0c item 6).
 local function TalentsLines()
     local lines = {}
     lines[#lines + 1] = "C_SpecializationInfo.GetTalentInfo(1, 1) = " .. Show("C_SpecializationInfo.GetTalentInfo", 1, 1)
-    lines[#lines + 1] = "C_SpecializationInfo.GetTalentInfo({tier=1, column=1}) = "
-        .. Show("C_SpecializationInfo.GetTalentInfo", { tier = 1, column = 1 })
+    local tierColumnShow = Show("C_SpecializationInfo.GetTalentInfo", { tier = 1, column = 1 })
+    lines[#lines + 1] = "C_SpecializationInfo.GetTalentInfo({tier=1, column=1}) = " .. tierColumnShow
 
     local configID, activeShow = nil, "<absent>"
     local getActive = MD.API.Has("C_ClassTalents.GetActiveConfigID")
@@ -516,15 +656,16 @@ local function TalentsLines()
     end
     lines[#lines + 1] = "C_ClassTalents.GetActiveConfigID() = " .. activeShow
     lines[#lines + 1] = "C_Traits.GetConfigInfo(<first return above>) = " .. Show("C_Traits.GetConfigInfo", configID)
-    return lines
+    return lines, tierColumnShow
 end
 
 --------------------------------------------------------------------------------
 -- == spells against the previous run
 --------------------------------------------------------------------------------
--- info.compared, .oldBonus, .newBonus, .changedCount, .totalCount -- used by
--- the to-do section's Q1 line without redoing the SavedVariables read.
-local function AgainstPreviousLines(order, descByKey, bonusStr, buildKey)
+-- info.compared, .old*/.new* (Bonus, Damage, Level), .changedCount,
+-- .totalCount -- used by the to-do section's Q1 line without redoing the
+-- SavedVariables read.
+local function AgainstPreviousLines(order, descByKey, bonusStr, damageStr, levelStr, buildKey)
     local lines = { "== spells against the previous run" }
     local info = { compared = false }
 
@@ -536,16 +677,22 @@ local function AgainstPreviousLines(order, descByKey, bonusStr, buildKey)
 
     if type(prevRecord) == "table" and type(prevRecord.desc) == "table" then
         info.compared = true
-        info.oldBonus = prevRecord.bonus
-        info.newBonus = bonusStr
+        info.oldBonus, info.newBonus = prevRecord.bonus, bonusStr
+        info.oldDamage, info.newDamage = prevRecord.damage, damageStr
+        info.oldLevel, info.newLevel = prevRecord.level, levelStr
         local label = writtenThisSession[buildKey] and "this session" or "saved"
-        lines[#lines + 1] = string.format("previous: %s at %s, bonus healing %s -> %s",
-            label, Fmt(prevRecord.at), Fmt(prevRecord.bonus), bonusStr)
+        lines[#lines + 1] = string.format(
+            "previous: %s at %s, bonus healing %s -> %s, bonus damage %s -> %s, level %s -> %s",
+            label, Fmt(prevRecord.at), Fmt(prevRecord.bonus), bonusStr,
+            Fmt(prevRecord.damage), damageStr, Fmt(prevRecord.level), levelStr)
 
         -- A spell present in both runs is COMPARABLE only when both
         -- descriptions are Readable -- "<secret>" this run against a real
         -- sentence last run (or the reverse) is not a change, it is a hole in
-        -- what either run could read.
+        -- what either run could read. Each changed one keeps its stored texts
+        -- so the first 12 can print was/now (T0c item 5) -- already Esc'd
+        -- once when read/saved, so they print here exactly as stored: a
+        -- second Esc would double-escape a pipe or a non-ASCII byte.
         local changed, comparedCount, notComparable = {}, 0, 0
         for _, sp in ipairs(order) do
             local prevDesc = prevRecord.desc[sp.key]
@@ -554,7 +701,7 @@ local function AgainstPreviousLines(order, descByKey, bonusStr, buildKey)
                 if Readable(prevDesc) and Readable(curDesc) then
                     comparedCount = comparedCount + 1
                     if prevDesc ~= curDesc then
-                        changed[#changed + 1] = "changed " .. sp.key .. " " .. sp.name
+                        changed[#changed + 1] = { id = sp.key, name = sp.name, was = prevDesc, now = curDesc }
                     end
                 else
                     notComparable = notComparable + 1
@@ -563,7 +710,16 @@ local function AgainstPreviousLines(order, descByKey, bonusStr, buildKey)
         end
         info.changedCount, info.totalCount = #changed, comparedCount
         if #changed > 0 then
-            for _, l in ipairs(changed) do lines[#lines + 1] = l end
+            for i, c in ipairs(changed) do
+                lines[#lines + 1] = "changed " .. c.id .. " " .. c.name
+                if i <= 12 then
+                    lines[#lines + 1] = "  was: " .. c.was
+                    lines[#lines + 1] = "  now: " .. c.now
+                end
+            end
+            if #changed > 12 then
+                lines[#lines + 1] = "was/now shown for the first 12 of " .. #changed .. " changed spells"
+            end
         else
             lines[#lines + 1] = "no description changed"
         end
@@ -581,6 +737,8 @@ end
 -- client has no C_Timer.After), and kept -- the last one of the session wins.
 --------------------------------------------------------------------------------
 local function TakeCombatSnapshot()
+    local savedDoing = doing
+    doing = "snapshot"
     local lines = {}
     for _, l in ipairs(SecretsLines()) do lines[#lines + 1] = l end
     for _, l in ipairs(ReadingsLines()) do lines[#lines + 1] = l end
@@ -590,6 +748,7 @@ local function TakeCombatSnapshot()
         partyExists = Show("UnitExists", "party1"),
         lines = lines,
     }
+    doing = savedDoing
 end
 
 --------------------------------------------------------------------------------
@@ -616,6 +775,11 @@ local function EventsSeenLines()
         local c = sentCounters[p]
         lines[#lines + 1] = string.format("UNIT_SPELLCAST_SENT %s n=%d readable=%d secret=%d empty=%d sample=%s",
             p, c.n, c.readable, c.secret, c.empty, c.sample or "")
+    end
+    for _, key in ipairs(restrictionOrder) do
+        local c = restrictionCounters[key]
+        lines[#lines + 1] = string.format("ADDON_RESTRICTION_STATE_CHANGED %s payload=%s n=%d",
+            c.phase, c.payload, c.n)
     end
     if #lines == 0 then lines[1] = "none" end
     return lines
@@ -684,7 +848,10 @@ local function SessionBlock(name, sessionVal, healingVal, getSession, getSource,
                         local spellCount, spellLines = 0, {}
                         for i, sp in ipairs(spells) do
                             spellCount = spellCount + 1
-                            if i <= 5 then spellLines[#spellLines + 1] = "  spell " .. i .. " = " .. Describe(sp) end
+                            -- depth 2 (T0c item 4): combatSpellDetails, a
+                            -- field of this row, is itself walked one level
+                            -- rather than printed as <table>.
+                            if i <= SPELL_ROWS then spellLines[#spellLines + 1] = "  spell " .. i .. " = " .. Describe(sp, 2) end
                         end
                         lines[#lines + 1] = "  local spells = combatSpells=" .. tostring(spellCount)
                         for _, l in ipairs(spellLines) do lines[#lines + 1] = l end
@@ -828,6 +995,14 @@ end
 -- swallows its own client-call failures.
 --------------------------------------------------------------------------------
 local function Run()
+    -- T0c item 1: "run" for the whole build, restored on the way out so a
+    -- blocked/forbidden action that fires from inside (e.g. the copy box)
+    -- names it, and so the very next idle-phase action does not still read
+    -- "run" (Run() never raises, so a plain save/restore is enough -- no
+    -- early return to miss).
+    local savedDoing = doing
+    doing = "run"
+
     local lines = {}
     lines[#lines + 1] = "SpellTuner probe " .. Version() .. " -- " .. SafeDate()
 
@@ -841,12 +1016,17 @@ local function Run()
     lines[#lines + 1] = "== events"
     for _, l in ipairs(EventsSummaryLines()) do lines[#lines + 1] = l end
 
+    lines[#lines + 1] = "== blocked actions"
+    for _, l in ipairs(BlockedActionsLines()) do lines[#lines + 1] = l end
+
     lines[#lines + 1] = "== secrets now"
     for _, l in ipairs(SecretsLines()) do lines[#lines + 1] = l end
 
     local bonusStr = Show("GetSpellBonusHealing")
+    local damageStr = BonusDamageString()
+    local levelStr = First("UnitLevel", "player")
     local n, h, e, secretN, errorN, order, descByKey = SpellWalk()
-    lines[#lines + 1] = string.format("== spells (bonus healing %s)", bonusStr)
+    lines[#lines + 1] = string.format("== spells (bonus healing %s, bonus damage %s)", bonusStr, damageStr)
     lines[#lines + 1] = string.format(
         "slots 1-500: %d with a spell, %d healing, %d empty description, %d secret, %d error",
         n, h, e, secretN, errorN)
@@ -885,11 +1065,12 @@ local function Run()
     end
 
     local buildKey = BuildKey()
-    local againstLines, q1Info = AgainstPreviousLines(order, descByKey, bonusStr, buildKey)
+    local againstLines, q1Info = AgainstPreviousLines(order, descByKey, bonusStr, damageStr, levelStr, buildKey)
     for _, l in ipairs(againstLines) do lines[#lines + 1] = l end
 
     lines[#lines + 1] = "== talents"
-    for _, l in ipairs(TalentsLines()) do lines[#lines + 1] = l end
+    local talentsLines, tierColumnShow = TalentsLines()
+    for _, l in ipairs(talentsLines) do lines[#lines + 1] = l end
 
     lines[#lines + 1] = "== readings now"
     for _, l in ipairs(ReadingsLines()) do lines[#lines + 1] = l end
@@ -911,12 +1092,29 @@ local function Run()
 
     lines[#lines + 1] = "== to do"
 
-    if q1Info.compared and Readable(q1Info.oldBonus) and Readable(q1Info.newBonus)
-        and q1Info.oldBonus ~= q1Info.newBonus then
-        lines[#lines + 1] = string.format("Q1 answered: %d of %d spell descriptions changed when bonus healing went %s -> %s",
-            q1Info.changedCount or 0, q1Info.totalCount or 0, Fmt(q1Info.oldBonus), q1Info.newBonus)
+    -- T0c item 5: Q1 now also answers from a bonus-damage or a level change --
+    -- either is as good a test as bonus healing when there is no +healing
+    -- item. At least one comparable description must ALSO have changed: a
+    -- level-up with every description unreadable proves nothing.
+    local q1Trigger = false
+    if q1Info.compared then
+        if Readable(q1Info.oldBonus) and Readable(q1Info.newBonus) and q1Info.oldBonus ~= q1Info.newBonus then
+            q1Trigger = true
+        elseif BonusDamageReadable(q1Info.oldDamage) and BonusDamageReadable(q1Info.newDamage)
+            and q1Info.oldDamage ~= q1Info.newDamage then
+            q1Trigger = true
+        elseif Readable(q1Info.oldLevel) and Readable(q1Info.newLevel) and q1Info.oldLevel ~= q1Info.newLevel then
+            q1Trigger = true
+        end
+    end
+
+    if q1Info.compared and (q1Info.changedCount or 0) > 0 and q1Trigger then
+        lines[#lines + 1] = string.format(
+            "Q1 answered: %d of %d spell descriptions changed when bonus healing went %s -> %s, bonus damage %s -> %s, level %s -> %s",
+            q1Info.changedCount, q1Info.totalCount, Fmt(q1Info.oldBonus), q1Info.newBonus,
+            Fmt(q1Info.oldDamage), q1Info.newDamage, Fmt(q1Info.oldLevel), q1Info.newLevel)
     else
-        lines[#lines + 1] = "Q1 to do: turn on show all ranks in the spellbook (the arrow at its top right), then change your bonus healing (put on or take off a +healing item, or take a buff that changes the number in the spells header), then type /st probe again in the same session"
+        lines[#lines + 1] = "Q1 to do: turn on show all ranks in the spellbook (the arrow at its top right), then change your bonus healing or bonus damage (put on or take off a +healing item, drink a spell power elixir, or take a buff that changes a number in the spells header) or gain a level with no gear change (as good a test when you have no +healing item), then type /st probe again in the same session"
     end
 
     local partyOk = combatSnapshot ~= nil and combatSnapshot.partyExists == "true"
@@ -945,7 +1143,13 @@ local function Run()
         lines[#lines + 1] = "Q4 to do: after a fight, out of combat, type /st probe"
     end
 
-    lines[#lines + 1] = "Q6 answered: see == talents"
+    -- T0c item 6: answered only once the query table actually returns a
+    -- table (rendered as a "{...}" string) -- below level 10 it reads "nil".
+    if type(tierColumnShow) == "string" and tierColumnShow:sub(1, 1) == "{" then
+        lines[#lines + 1] = "Q6 answered: see == talents"
+    else
+        lines[#lines + 1] = "Q6 to do: talents start at level 10, so C_SpecializationInfo.GetTalentInfo({tier=1, column=1}) is answered at level 10 or above; type /st probe again then"
+    end
 
     if svPrevStamp ~= nil then
         lines[#lines + 1] = "Q7 answered: SavedVariables came back (previous stamp " .. Fmt(svPrevStamp) .. ")"
@@ -976,6 +1180,8 @@ local function Run()
             at = SafeDate(),
             text = report,
             bonus = bonusStr,
+            damage = damageStr,
+            level = levelStr,
             desc = descSave,
         }
         writtenThisSession[buildKey] = true
@@ -996,6 +1202,7 @@ local function Run()
             buildKey, #lines))
     end
 
+    doing = savedDoing
     return report
 end
 
@@ -1008,31 +1215,38 @@ end
 local frame
 
 local function OnAddonLoaded(loadedName)
-    if loadedName ~= ADDON_NAME then return end
-    -- handled once: a later ADDON_LOADED for some other addon would still
-    -- reach this handler otherwise, uselessly re-scanning SpellTunerDB.
-    pcall(frame.UnregisterEvent, frame, "ADDON_LOADED")
+    -- T0c item 1: "ADDON_LOADED" for the whole handler, even the immediate
+    -- no-op for another addon's load -- restored on every exit since the
+    -- guard below used to be an early return.
+    local savedDoing = doing
+    doing = "ADDON_LOADED"
+    if loadedName == ADDON_NAME then
+        -- handled once: a later ADDON_LOADED for some other addon would still
+        -- reach this handler otherwise, uselessly re-scanning SpellTunerDB.
+        pcall(frame.UnregisterEvent, frame, "ADDON_LOADED")
 
-    svTypeAtLoad = type(SpellTunerDB)
-    if svTypeAtLoad == "table" and type(SpellTunerDB.probe) == "table" then
-        svPrevStamp = SpellTunerDB.probe.stamp
-        if type(SpellTunerDB.probe.reports) == "table" then
-            local keys = {}
-            for k in pairs(SpellTunerDB.probe.reports) do keys[#keys + 1] = k end
-            table.sort(keys)
-            for _, k in ipairs(keys) do
-                local rec = SpellTunerDB.probe.reports[k]
-                local char = (type(rec) == "table") and Fmt(rec.char) or "<absent>"
-                local at = (type(rec) == "table") and Fmt(rec.at) or "<absent>"
-                svReportsAtLoad[#svReportsAtLoad + 1] = tostring(k) .. " (" .. char .. ", " .. at .. ")"
+        svTypeAtLoad = type(SpellTunerDB)
+        if svTypeAtLoad == "table" and type(SpellTunerDB.probe) == "table" then
+            svPrevStamp = SpellTunerDB.probe.stamp
+            if type(SpellTunerDB.probe.reports) == "table" then
+                local keys = {}
+                for k in pairs(SpellTunerDB.probe.reports) do keys[#keys + 1] = k end
+                table.sort(keys)
+                for _, k in ipairs(keys) do
+                    local rec = SpellTunerDB.probe.reports[k]
+                    local char = (type(rec) == "table") and Fmt(rec.char) or "<absent>"
+                    local at = (type(rec) == "table") and Fmt(rec.at) or "<absent>"
+                    svReportsAtLoad[#svReportsAtLoad + 1] = tostring(k) .. " (" .. char .. ", " .. at .. ")"
+                end
             end
         end
-    end
 
-    if type(SpellTunerDB) ~= "table" then SpellTunerDB = {} end
-    if type(SpellTunerDB.probe) ~= "table" then SpellTunerDB.probe = {} end
-    if type(SpellTunerDB.probe.reports) ~= "table" then SpellTunerDB.probe.reports = {} end
-    SpellTunerDB.probe.stamp = SafeDate()
+        if type(SpellTunerDB) ~= "table" then SpellTunerDB = {} end
+        if type(SpellTunerDB.probe) ~= "table" then SpellTunerDB.probe = {} end
+        if type(SpellTunerDB.probe.reports) ~= "table" then SpellTunerDB.probe.reports = {} end
+        SpellTunerDB.probe.stamp = SafeDate()
+    end
+    doing = savedDoing
 end
 
 local function OnRegenDisabled()
@@ -1057,12 +1271,29 @@ local function OnSpellcastSent(unit, target)
     BumpSent(phase, target)
 end
 
+-- T0c items 1 and 3: the payload is only ever passed to Fmt/BumpBlocked,
+-- never compared or indexed raw.
+local function OnRestrictionStateChanged(...)
+    BumpRestriction(phase, ...)
+end
+
+local function OnAddonActionForbidden(addonName, functionName)
+    BumpBlocked("ADDON_ACTION_FORBIDDEN", addonName, functionName)
+end
+
+local function OnAddonActionBlocked(addonName, functionName)
+    BumpBlocked("ADDON_ACTION_BLOCKED", addonName, functionName)
+end
+
 local HANDLERS = {
     ADDON_LOADED = OnAddonLoaded,
     PLAYER_REGEN_DISABLED = OnRegenDisabled,
     PLAYER_REGEN_ENABLED = OnRegenEnabled,
     UNIT_COMBAT = OnCombatEvent,
     UNIT_SPELLCAST_SENT = OnSpellcastSent,
+    ADDON_RESTRICTION_STATE_CHANGED = OnRestrictionStateChanged,
+    ADDON_ACTION_FORBIDDEN = OnAddonActionForbidden,
+    ADDON_ACTION_BLOCKED = OnAddonActionBlocked,
 }
 
 frame = CreateFrame("Frame")
@@ -1071,27 +1302,83 @@ frame:SetScript("OnEvent", function(self, event, ...)
     if handler then pcall(handler, ...) end
 end)
 
-pcall(frame.RegisterEvent, frame, "ADDON_LOADED")
+-- T0c item 1: the FIRST two RegisterEvent calls this file makes, so the frame
+-- is already listening for a blocked/forbidden action before anything else
+-- (including its own later registrations) can trip one.
+-- doing names each listener too: registering BLOCKED could itself trip
+-- FORBIDDEN, which is already being listened for by then.
+do
+    local saved = doing
+    doing = "register:ADDON_ACTION_FORBIDDEN"
+    local ok, err = pcall(frame.RegisterEvent, frame, "ADDON_ACTION_FORBIDDEN")
+    doing = saved
+    actionForbiddenOutcome = ok and "ok" or ("throws <error: " .. Fmt(err) .. ">")
+end
+do
+    local saved = doing
+    doing = "register:ADDON_ACTION_BLOCKED"
+    local ok, err = pcall(frame.RegisterEvent, frame, "ADDON_ACTION_BLOCKED")
+    doing = saved
+    actionBlockedOutcome = ok and "ok" or ("throws <error: " .. Fmt(err) .. ">")
+end
+
+do
+    local saved = doing
+    doing = "register:ADDON_LOADED"
+    pcall(frame.RegisterEvent, frame, "ADDON_LOADED")
+    doing = saved
+end
 
 for _, event in ipairs(EVENTS) do
+    local saved = doing
+    doing = "register:" .. event
     local ok, err = pcall(frame.RegisterEvent, frame, event)
     -- "ok and nil or X" would always pick X (nil is falsy, so the "or" side
     -- always runs) -- the trap CLAUDE.md warns about, written out instead.
     local errText = nil
     if not ok then errText = "<error: " .. Fmt(err) .. ">" end
     eventOutcomes[event] = { ok = ok, err = errText }
+    doing = saved
+end
+
+-- /st probe clog (T0c item 2): the combat log's own registration, off the
+-- load path so it alone can be blamed for the blocked-action dialog. Never
+-- runs Run() itself -- the forbidden event, if any, may arrive after this
+-- call returns.
+local function RegisterClog()
+    local saved = doing
+    doing = "clog"
+    local ok, err = pcall(frame.RegisterEvent, frame, "COMBAT_LOG_EVENT_UNFILTERED")
+    doing = saved
+    if ok then
+        clogOutcome = { ok = true }
+        DEFAULT_CHAT_FRAME:AddMessage(
+            "SpellTuner probe: COMBAT_LOG_EVENT_UNFILTERED registered without a Lua error. If the blocked-action dialog appeared, click Ignore (not Disable), then type /st probe.")
+    else
+        clogOutcome = { ok = false, err = "<error: " .. Fmt(err) .. ">" }
+        DEFAULT_CHAT_FRAME:AddMessage(
+            "SpellTuner probe: registering COMBAT_LOG_EVENT_UNFILTERED raised " .. clogOutcome.err .. ". Type /st probe.")
+    end
 end
 
 SLASH_SPELLTUNER1 = "/spelltuner"
 SLASH_SPELLTUNER2 = "/st"
 SLASH_SPELLTUNER3 = "/md"
 SlashCmdList.SPELLTUNER = function(msg)
-    local first = tostring(msg or ""):match("^%s*(%S*)")
-    if first and first:lower() == "probe" then
+    local first, second = tostring(msg or ""):match("^%s*(%S*)%s*(%S*)")
+    first = (first or ""):lower()
+    second = (second or ""):lower()
+    if first == "probe" and second == "clog" then
+        RegisterClog()
+    elseif first == "probe" then
         Run()
     else
-        DEFAULT_CHAT_FRAME:AddMessage("SpellTuner probe: type /st probe")
+        DEFAULT_CHAT_FRAME:AddMessage("SpellTuner probe: type /st probe (or /st probe clog)")
     end
 end
 
 MD.Probe = { Run = Run }
+
+-- The file's last statement (T0c item 1): nothing is "in flight" once load
+-- finishes.
+doing = "idle"
