@@ -3440,3 +3440,39 @@ two classes, one heal at full health to settle Q3's gross-or-effective, Q6 at le
 **Next:** the author runs §36 (if not done) and §37; the lead checks the `== shapes` lines against
 T7's reader, pins the parser's `loose` texts that the measurements touch, and cuts
 `1.0.0-beta.1` when §37 passes. Then M3.
+
+## 2026-09-28 (evening) — the M2 re-check: what the first M2 run found (T7b, T10c, T11b, T12b, T13b), alpha.4, TESTING §38
+
+The author's first M2 run on build 70009 (`docs/probe/1.60.1_70009-m2.md`) showed the pane's
+names wrapping over the rows, the clock drawing `~refill` out of combat and a bare `~OOM --` in
+the first seconds of a fight, and `/st measure` crediting a Healing Touch to a Rejuvenation
+(`12+12+110 ... every 1.9 s`), losing every DoT tick at the next cast, and calling a Rejuvenation
+tick a Healing Touch `BELOW range` -- the false Q10 signal the instrument exists to avoid. The
+planner ruled the shapes report a gate for `beta.1` and pulled the M3 probe items forward.
+
+- **T7b** (`0983a4b`) -- the book reader line by line against the shapes 70009 returned: a free
+  spell, the `|4` grammar escape, Thorns' reflect, `isPassive` kept.
+- **T11b** (`04a8747`) -- the clock's states worded, shown and hidden as the TBC clock's.
+- **T10c** (`2a0cba0`) -- the pane on one line per name; Other only for spells cast for mana.
+- **T13b** (`6e4d69b`, `3054101`) -- the probe's heal pick word-bounded, real heal/HoT/damage
+  tooltip lines, party1's GUID / name / level / class / role / max-health predicate, `UNIT_COMBAT`
+  per token with mirrors.
+- **T12b** (`b7e55b7`) -- `/st measure` pairs each amount with its own cast: several watches, a
+  direct amount looked for 0.3 s before its cast event, ticks by cadence, a two-pass contest, and no
+  BELOW it cannot back (a damage shortfall is a possible resist; a heal shortfall needs the known
+  deficit). The implementer's run was cut off before its Report; the lead reviewed the tree and
+  closed it (three readings recorded in the task: the resist tolerance in percentage points, pass 2
+  as "a closed watch's direct window never contests", the `refreshed` count).
+
+Every Forever TOC at **`1.0.0-alpha.4`** (`8a1f451`). **`docs/TESTING.md` §38** is the next round
+in six sessions of 20-30 minutes: the re-check solo; the measurements with overlapping spells and
+the full-health Healing Touch (gross or effective, Q3); the M3 probe in a party (T13b's sections and
+T13e's status-bar readback, the damage meter's own number); a talent that changes a value (Q6's
+open half); Q10 at level 20 before and after a level-up; the second class. Each names its paste
+file under `docs/probe/`.
+
+The planner's four M3 rulings (`FOREVER-PLAN.md` above §2.4) were written into T13, T13c, T13d,
+T14 and T16a: `-1` for a party max and `SM.EstimateMaxHP` as a labelled lower bound; offline heal
+attribution with gate 8 able to fail (the lead's reading: only a shortfall against the meter is
+checked until a heal amount is known to be effective); the mana gates say "modelled pool"; the
+module copy-at-release confirmed. **T13e** was added for ruling 1's probe item.

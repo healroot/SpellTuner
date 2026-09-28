@@ -226,6 +226,22 @@ on a bar and in chat, the pane against the real book, and three spells of two cl
 within the crit spread -- is the author's: `docs/TESTING.md` §37. `1.0.0-beta.1` is cut when that
 passes.
 
+**The M2 re-check (2026-09-28, after the author's first M2 run, `docs/probe/1.60.1_70009-m2.md`),
+each lead-accepted in its task file:** **T7b** (`0983a4b`) -- the shapes gate: the book reader against
+what build 70009 returned (a free spell is free, `|4` expanded, Thorns' reflect not a cast's damage,
+`isPassive` kept); `bookcheck` 15, `parsecheck` 11. **T11b** (`04a8747`) -- the clock appears, hides and
+words its states as the TBC clock does; `clockcheck` 15. **T10c** (`2a0cba0`) -- the pane's names on one
+line, Other only for spells cast for mana; `spellsui` 15. **T12b** (`b7e55b7`) -- `/st measure` pairs
+each amount with its own cast (several watches open, a direct amount looked for 0.3 s before its
+cast event, ticks by cadence, a two-pass contest), never BELOW on an amount it cannot pin;
+`measurecheck` 18. **T13b** (`6e4d69b`, `3054101`) -- pulled forward from M3: the probe dumps a real
+heal's, HoT's and damage spell's tooltip lines, reads party1's GUID / name / level / class / role /
+max-health predicate, and counts `UNIT_COMBAT` per token with mirrors; `probecheck` 71. Every Forever
+TOC at `1.0.0-alpha.4` (`8a1f451`). The in-game half is `docs/TESTING.md` §38 (six sessions: the
+re-check, the measurements with overlapping spells and gross-or-effective, the party probe, a talent
+that changes a value, Q10 at level 20, the second class). `beta.1` is still gated on §38.1-38.2 and
+38.6 passing.
+
 **Planner ruling (2026-09-28) on the order M2 was built in:** the spell readers were written from
 retail's documentation before any beta report showed the return *shapes* (`GetSpellInfo.castTime`,
 the `GetSpellPowerCost` rows, the skill-line bounds, the tooltip data lines,
