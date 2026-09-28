@@ -1,0 +1,47 @@
+{
+  "_readme": "minimal fixture for tools/refcheck.py --selftest; not real talentsforever data",
+  "generated": "2026-09-01",
+  "spell_desc": {
+    "Druid|Alpha|Rank 1": {
+      "l": [["5 Mana", "30 yd range"], ["Instant", ""]],
+      "d": "Heals for 10.",
+      "s": "beta",
+      "src": "beta client 1.60.1.70009",
+      "lv": "Learned at level 1",
+      "id": 100
+    },
+    "Druid|Beta|Rank 1": {
+      "l": [["10 Mana", "30 yd range"], ["1.5 sec cast", ""]],
+      "d": "Heals for 25 to 35.",
+      "s": "beta",
+      "src": "beta client 1.60.1.70009",
+      "lv": "Learned at level 4",
+      "id": 200
+    },
+    "Druid|Gamma|Rank 1": {
+      "l": [["15 Mana", "30 yd range"], ["Instant", ""]],
+      "d": "Heals for 5.",
+      "s": "beta",
+      "src": "beta client 1.60.1.70009",
+      "lv": "Learned at level 6",
+      "id": 301
+    },
+    "Druid|Delta|Rank 2": {
+      "l": [["50 Mana", "30 yd range"], ["Instant", ""]],
+      "d": "Heals for 15.",
+      "s": "beta",
+      "src": "beta client 1.60.1.70009",
+      "lv": "Learned at level 12",
+      "id": 400
+    },
+    "Druid|Epsilon|": {
+      "l": [["20 Mana", "0 yd range"], ["Instant", ""]],
+      "d": "Restores 8 over 3 sec.",
+      "s": "demo",
+      "src": "footage",
+      "lv": "Learned at level 3",
+      "id": 500,
+      "fx": "beta text drops the trailing period"
+    }
+  }
+}

@@ -1,0 +1,19 @@
+Data from talentsforever.com (https://talentsforever.com) -- generated 2026-09-01, CC BY 4.0
+client: Druid level 9; reference: level 60, no gear -- numbers are expected to differ below 60
+200 Beta Rank 1  [Druid|Beta|Rank 1, s=beta, src=beta client 1.60.1.70009]
+  desc number 1: client 20, reference 25
+  desc number 2: client 30, reference 35
+  desc: client "Heals for 20 to 30."
+  desc: reference "Heals for 25 to 35."
+300 Gamma Rank 1  [Druid|Gamma|Rank 1, s=beta, src=beta client 1.60.1.70009]
+  id: client 300, reference 301
+400 Delta Rank 2  [Druid|Delta|Rank 2, s=beta, src=beta client 1.60.1.70009]
+  learned: client 10, reference 12
+  cost: client 40 Mana, reference 50 Mana
+500 Epsilon  [Druid|Epsilon|, s=demo, src=footage]
+  desc number 1: client 6, reference 8
+  desc: client "Restores 6 over 3 sec."
+  desc: reference "Restores 8 over 3 sec."
+  fx: beta text drops the trailing period
+600 Zeta Rank 1  [not in the reference: Druid|Zeta|Rank 1]
+refcheck: 6 spells, 1 agree, 4 disagree, 1 not in the reference

@@ -1,0 +1,31 @@
+SpellTuner probe 1.0.0-fixture -- 2026-09-28 00:00:00
+== client
+character: Testroot Some Realm DRUID level 9
+
+== spells (bonus healing 0)
+spell 100
+  name: Alpha
+  rank: Rank 1
+  desc: Heals for 10.
+spell 200
+  name: Beta
+  rank: Rank 1
+  desc: Heals for 20 to 30.
+spell 300
+  name: Gamma
+  rank: Rank 1
+  desc: Heals for 5.
+spell 400
+  name: Delta
+  rank: Rank 2
+  desc: Heals for 15.
+  cost: 40 Mana
+  level: 10
+spell 500
+  name: Epsilon
+  rank:
+  desc: Restores 6 over 3 sec.
+spell 600
+  name: Zeta
+  rank: Rank 1
+  desc: Heals for 8.
