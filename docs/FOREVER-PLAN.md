@@ -170,6 +170,23 @@ foreign-share gate reads the damage meter; the enemy-cast and threat inputs are 
 engine, `ReplayTrace`, the planner, the solver and the replay window port without change — they
 consume a scenario, not a log.
 
+**Planner rulings for M3 (2026-09-28, on the lead's escalations):**
+1. *A party member's max health* is secret, so the stream records `-1` and the scenario uses a
+   **stand-in that is a lower bound**: the largest deficit the target lived through plus its biggest
+   single hit (`SM.EstimateMaxHP`, marked `maxEstimated`). Every percentage or danger line derived
+   from it says "estimated" wherever it is printed or drawn; the deficit itself is exact and is what
+   the engine decides on. The probe asks once whether a StatusBar given a secret max reads it back
+   (it is expected not to; if it does, the stand-in goes).
+2. *`UNIT_COMBAT` HEAL has no source.* Heals are attributed **offline** (`SM.AttributeHeals`): a
+   direct heal pairs with an own cast on the same target within [-0.3 s, +1.0 s] of its success, HoT
+   ticks by cadence from application, and everything else counts as foreign. The damage meter's own
+   healing total is the check, reported by gate 8 ("heals attributed"); a pull whose attributed own
+   total disagrees with the meter beyond the gate's threshold is not coached from.
+3. *The mana gates* compare the engine with the clock's modelled pool, not the real pool (which is
+   secret). Kept, and every report of them says "modelled pool" -- they measure consistency, not truth.
+4. *Shared files in modules:* `release.sh` copies each shared file a module TOC lists into that
+   module's folder, and `Module.lua` gives the module a proxy to SpellTuner's `MD` (T13c). Confirmed.
+
 ### 2.4 The simulator (practice)
 
 Pure Lua plus bindings. `GetBinding`, `GetActionInfo`, `GetMacroInfo` survive; Cell and Clique
