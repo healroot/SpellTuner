@@ -125,6 +125,11 @@ dofile(here .. "/wowstub.lua")
 local S = _G.STUB
 S.root = ROOT
 S.UseProfile("forever")
+-- T0d: a bad event that is not the combat log -- the combat log is never
+-- registered by anything in this file any more, so "registering a bad event
+-- is caught" needs its own stand-in event to prove the load path still
+-- catches one.
+S.raiseOnRegister = { UNIT_FLAGS = true }
 
 _G.SpellTunerDB, _G.ManaDemonDB = nil, nil
 _G.SPELLTUNER_TOC = nil
@@ -299,13 +304,20 @@ local okA, reportA = pcall(MD5.Probe.Run)
 -- Not called through Do(): its own pcall result is one of the named "the
 -- probe never raises" checks for this step (Acceptance).
 local step5ClogOk = pcall(SlashCmdList.SPELLTUNER, "probe clog")
+local clogAfter5 = ClogAttempts(S5)
 S5.level = 10
 S5.descShift = 3
 local okB, reportB = pcall(MD5.Probe.Run)
 
+-- T0d: one more run of the same build with nothing changed since reportB --
+-- the ninth report's bug flipped an answered Q1 back to "to do" here.
+local okB2, reportB2 = pcall(MD5.Probe.Run)
+
 -- Do NOT call S5.AddTraits() here -- "the probe adds no global but its own"
 -- runs after this step and only tolerates the probe's own new globals.
 local probeFrame5 = ProbeFrame(S5)
+-- Read here, before step 6 replaces SpellTunerDB with its own fixture.
+local step5Q1Record = SpellTunerDB.probe.reports["70009"].q1
 
 --------------------------------------------------------------------------------
 -- Step 6: a spell power elixir -- fourteen extra spellbook rows so a Q1
@@ -342,7 +354,7 @@ check("the probe never raises", (function()
     if not (step4LoadOk and step4AddonLoadedOk and step4RegenDisabledOk and step4SentOk and ok5) then
         return false
     end
-    if not (step5LoadOk and step5AddonLoadedOk and okA and step5ClogOk and okB) then return false end
+    if not (step5LoadOk and step5AddonLoadedOk and okA and step5ClogOk and okB and okB2) then return false end
     if not (step6LoadOk and step6AddonLoadedOk and okC and okD) then return false end
     for _, r in ipairs(raises) do if not r then return false end end
     return true
@@ -353,10 +365,12 @@ check("a missing function is reported absent, not raised",
     and Has(report1, "C_ClassTalents.GetActiveConfigID() = <absent>"))
 
 check("registering a bad event is caught",
-    Has(report1, "COMBAT_LOG_EVENT_UNFILTERED not registered at load (type /st probe clog)")
+    Has(report1, "COMBAT_LOG_EVENT_UNFILTERED never registered (forbidden on Forever)")
     and Has(report1, "ok UNIT_COMBAT")
-    and Has(report3, "throws COMBAT_LOG_EVENT_UNFILTERED <error:")
-    and Has(report3, "(by /st probe clog)"))
+    and Has(report1, "throws UNIT_FLAGS <error:")
+    and Has(report3, "throws UNIT_FLAGS <error:")
+    and Has(report3, "COMBAT_LOG_EVENT_UNFILTERED never registered (forbidden on Forever)")
+    and not Has(report3, "by /st probe clog"))
 
 do
     local _, secretHealthCount = report2:gsub("UnitHealth%(party1%) = <secret>", "")
@@ -511,17 +525,35 @@ do
         seg ~= nil and not Has(seg, "EllesmereUI") and not Has(seg, "CastSpellByName"))
 end
 
-check("COMBAT_LOG_EVENT_UNFILTERED is not registered at load, only by clog",
-    clogBefore2 == 0 and clogAfter2 == 1 and clogBefore5 == 0
-    and Has(table.concat(chat2, "\n"), "registering COMBAT_LOG_EVENT_UNFILTERED raised"))
+check("COMBAT_LOG_EVENT_UNFILTERED is never registered, not even by clog",
+    clogBefore2 == 0 and clogAfter2 == 0 and clogBefore5 == 0 and clogAfter5 == 0
+    and Has(table.concat(chat2, "\n"), "SpellTuner probe: clog is gone - the combat log registration is forbidden on Forever. Type /st probe.")
+    and not Has(table.concat(chat2, "\n"), "registering COMBAT_LOG_EVENT_UNFILTERED"))
 
 check("a blocked action at load names the registration that caused it",
     Has(reportB, "ADDON_ACTION_FORBIDDEN phase=ooc during=register:UNIT_FLAGS addon=SpellTuner function=Frame:RegisterEvent() n=1")
-    and Has(reportB, "ADDON_ACTION_FORBIDDEN phase=ooc during=clog addon=SpellTuner function=Frame:RegisterEvent() n=1")
-    and Has(reportB, "ok COMBAT_LOG_EVENT_UNFILTERED (by /st probe clog)")
+    and not Has(reportB, "during=clog")
     and probeFrame5 ~= nil and probeFrame5.attempts[1] == "ADDON_ACTION_FORBIDDEN"
     and probeFrame5.attempts[2] == "ADDON_ACTION_BLOCKED"
-    and Has(table.concat(chat5, "\n"), "registered without a Lua error"))
+    and not Has(table.concat(chat5, "\n"), "registered without a Lua error"))
+
+-- T0d: Q1's answer, once given, stays given on a later run of the same build
+-- with nothing changed -- the ninth report's bug.
+do
+    local reportBQ1Line = (function()
+        local i = reportB:find("Q1 answered: ", 1, true)
+        if not i then return nil end
+        local j = reportB:find("\n", i, true) or (#reportB + 1)
+        return reportB:sub(i, j - 1)
+    end)()
+    local q1Text = reportBQ1Line and reportBQ1Line:sub(#"Q1 answered: " + 1) or nil
+    check("Q1 stays answered on a later run of the same build",
+        reportBQ1Line ~= nil and q1Text ~= nil
+        and Has(reportB2, "Q1 answered (kept from ")
+        and Has(reportB2, "): " .. q1Text)
+        and not Has(reportB2, "Q1 to do")
+        and type(step5Q1Record) == "table" and step5Q1Record.text == q1Text)
+end
 
 -- The eighteen secret-question labels (item 3), left-hand side only -- their
 -- values differ run to run, the labels and their order do not.

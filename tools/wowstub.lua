@@ -240,6 +240,15 @@ function FrameMT:RegisterEvent(e)
         S.Fire("ADDON_ACTION_FORBIDDEN", S.addonName, S.forbidOnRegister[e])
         return
     end
+    -- T0d: a script's own stand-in for "this event is not one the client
+    -- accepts here", distinct from S.forbidOnRegister (which fires the
+    -- blocked-action event instead of raising) and from FOREVER_EVENTS
+    -- (this file's fixed idea of what the client accepts) -- lets a suite
+    -- make an ordinary, allowed event raise for one step without touching
+    -- either of those.
+    if S.profile == "forever" and type(S.raiseOnRegister) == "table" and S.raiseOnRegister[e] then
+        error('unknown event "' .. tostring(e) .. '"')
+    end
     if S.profile == "forever" and not FOREVER_EVENTS[e] then
         error('unknown event "' .. tostring(e) .. '"')
     end

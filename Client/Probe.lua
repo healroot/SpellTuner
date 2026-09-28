@@ -170,9 +170,11 @@ local FUNCTIONS = {
     "UnitAffectingCombat", "UnitExists", "UnitName", "UnitClass", "UnitLevel", "GetRealmName", "CreateFrame",
 }
 
--- COMBAT_LOG_EVENT_UNFILTERED is deliberately NOT here (T0c item 2): the load
--- path must not be able to trip the blocked-action dialog on its own. /st
--- probe clog registers it on demand instead (RegisterClog).
+-- COMBAT_LOG_EVENT_UNFILTERED is deliberately NOT here, and nowhere else in
+-- this file (T0d): registering it is forbidden on Forever, not even under
+-- pcall (docs/FOREVER-PLAN.md §1.2) -- the sixth report watched the client
+-- fire ADDON_ACTION_FORBIDDEN and show the blocked-action dialog the moment
+-- it was tried. Nothing in this file ever attempts it.
 local EVENTS = {
     "UNIT_SPELLCAST_SENT", "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_SUCCEEDED", "UNIT_SPELLCAST_STOP",
     "UNIT_SPELLCAST_FAILED", "UNIT_HEALTH", "UNIT_MAXHEALTH", "UNIT_POWER_UPDATE", "UNIT_AURA",
@@ -192,7 +194,7 @@ local SPELL_ROWS = 5
 local phase = "ooc"
 -- What the probe is doing right now (T0c item 1), so a blocked/forbidden
 -- action that names us can say what it interrupted. Exact values: "load",
--- "register:<EVENT>", "ADDON_LOADED", "clog", "run", "snapshot", "idle" --
+-- "register:<EVENT>", "ADDON_LOADED", "run", "snapshot", "idle" --
 -- see the file's load-time section and Run()/TakeCombatSnapshot for where
 -- each is set and restored.
 local doing = "load"
@@ -202,7 +204,6 @@ local sentCounters, sentOrder = {}, {}
 local restrictionCounters, restrictionOrder = {}, {}   -- ADDON_RESTRICTION_STATE_CHANGED, by "<phase> <payload>"
 local blockedCounters, blockedOrder = {}, {}           -- ADDON_ACTION_FORBIDDEN/BLOCKED naming us, by (event, phase, doing, function)
 local actionForbiddenOutcome, actionBlockedOutcome = "throws <error: not registered>", "throws <error: not registered>"
-local clogOutcome = nil                  -- nil until /st probe clog; then { ok = bool, err = "<error: ...>" or nil }
 local combatSnapshot = nil                -- { stamp, inCombat, partyExists, lines } or nil
 local writtenThisSession = {}             -- build key -> true, once this session saved it
 local sawDamageMeterCurrentSources = false
@@ -422,15 +423,9 @@ local function EventsSummaryLines()
             lines[#lines + 1] = "throws " .. event .. " <error: not registered>"
         end
     end
-    -- T0c item 2: the combat log's own registration outcome, off the load
-    -- path -- nil until /st probe clog has tried it at least once.
-    if clogOutcome == nil then
-        lines[#lines + 1] = "COMBAT_LOG_EVENT_UNFILTERED not registered at load (type /st probe clog)"
-    elseif clogOutcome.ok then
-        lines[#lines + 1] = "ok COMBAT_LOG_EVENT_UNFILTERED (by /st probe clog)"
-    else
-        lines[#lines + 1] = "throws COMBAT_LOG_EVENT_UNFILTERED " .. clogOutcome.err .. " (by /st probe clog)"
-    end
+    -- T0d: registering it is forbidden on Forever, not even under pcall, so
+    -- there is no outcome to report here -- just the fact.
+    lines[#lines + 1] = "COMBAT_LOG_EVENT_UNFILTERED never registered (forbidden on Forever)"
     return lines
 end
 
@@ -989,6 +984,22 @@ local function ShowReportBox(report)
     end)
 end
 
+-- T0d: Q1's answer, once given, is sticky per build -- a run with no change
+-- since the last one must not flip an answered Q1 back to "to do" (ninth
+-- report). Reads only this build's own record; a record for another build is
+-- never consulted. at/text are our own strings read back from
+-- SavedVariables, so both are type-checked before use.
+local function PreviousQ1(buildKey)
+    if type(SpellTunerDB) ~= "table" or type(SpellTunerDB.probe) ~= "table"
+        or type(SpellTunerDB.probe.reports) ~= "table" then
+        return nil
+    end
+    local rec = SpellTunerDB.probe.reports[buildKey]
+    if type(rec) ~= "table" or type(rec.q1) ~= "table" then return nil end
+    if type(rec.q1.at) ~= "string" or type(rec.q1.text) ~= "string" then return nil end
+    return rec.q1
+end
+
 --------------------------------------------------------------------------------
 -- Run(): builds the report, saves it, shows it, prints one chat line, returns
 -- the report string. Never raises -- every section builder above already
@@ -1108,11 +1119,21 @@ local function Run()
         end
     end
 
+    -- T0d: kept per build (buildKey computed a few lines above, for
+    -- AgainstPreviousLines) -- an answered Q1 stays answered on a later run
+    -- of the same build with nothing new to report.
+    local prevQ1 = PreviousQ1(buildKey)
+    local q1Record = nil
     if q1Info.compared and (q1Info.changedCount or 0) > 0 and q1Trigger then
-        lines[#lines + 1] = string.format(
-            "Q1 answered: %d of %d spell descriptions changed when bonus healing went %s -> %s, bonus damage %s -> %s, level %s -> %s",
+        local q1Text = string.format(
+            "%d of %d spell descriptions changed when bonus healing went %s -> %s, bonus damage %s -> %s, level %s -> %s",
             q1Info.changedCount, q1Info.totalCount, Fmt(q1Info.oldBonus), q1Info.newBonus,
             Fmt(q1Info.oldDamage), q1Info.newDamage, Fmt(q1Info.oldLevel), q1Info.newLevel)
+        lines[#lines + 1] = "Q1 answered: " .. q1Text
+        q1Record = { at = SafeDate(), text = q1Text }
+    elseif prevQ1 then
+        lines[#lines + 1] = "Q1 answered (kept from " .. prevQ1.at .. "): " .. prevQ1.text
+        q1Record = prevQ1
     else
         lines[#lines + 1] = "Q1 to do: turn on show all ranks in the spellbook (the arrow at its top right), then change your bonus healing or bonus damage (put on or take off a +healing item, drink a spell power elixir, or take a buff that changes a number in the spells header) or gain a level with no gear change (as good a test when you have no +healing item), then type /st probe again in the same session"
     end
@@ -1183,6 +1204,7 @@ local function Run()
             damage = damageStr,
             level = levelStr,
             desc = descSave,
+            q1 = q1Record,
         }
         writtenThisSession[buildKey] = true
         saved = true
@@ -1341,26 +1363,6 @@ for _, event in ipairs(EVENTS) do
     doing = saved
 end
 
--- /st probe clog (T0c item 2): the combat log's own registration, off the
--- load path so it alone can be blamed for the blocked-action dialog. Never
--- runs Run() itself -- the forbidden event, if any, may arrive after this
--- call returns.
-local function RegisterClog()
-    local saved = doing
-    doing = "clog"
-    local ok, err = pcall(frame.RegisterEvent, frame, "COMBAT_LOG_EVENT_UNFILTERED")
-    doing = saved
-    if ok then
-        clogOutcome = { ok = true }
-        DEFAULT_CHAT_FRAME:AddMessage(
-            "SpellTuner probe: COMBAT_LOG_EVENT_UNFILTERED registered without a Lua error. If the blocked-action dialog appeared, click Ignore (not Disable), then type /st probe.")
-    else
-        clogOutcome = { ok = false, err = "<error: " .. Fmt(err) .. ">" }
-        DEFAULT_CHAT_FRAME:AddMessage(
-            "SpellTuner probe: registering COMBAT_LOG_EVENT_UNFILTERED raised " .. clogOutcome.err .. ". Type /st probe.")
-    end
-end
-
 SLASH_SPELLTUNER1 = "/spelltuner"
 SLASH_SPELLTUNER2 = "/st"
 SLASH_SPELLTUNER3 = "/md"
@@ -1369,11 +1371,15 @@ SlashCmdList.SPELLTUNER = function(msg)
     first = (first or ""):lower()
     second = (second or ""):lower()
     if first == "probe" and second == "clog" then
-        RegisterClog()
+        -- T0d: clog is gone -- never register it, and never run the probe
+        -- here either, since a run saves a record and would move the
+        -- "previous run" every later comparison reads.
+        DEFAULT_CHAT_FRAME:AddMessage(
+            "SpellTuner probe: clog is gone - the combat log registration is forbidden on Forever. Type /st probe.")
     elseif first == "probe" then
         Run()
     else
-        DEFAULT_CHAT_FRAME:AddMessage("SpellTuner probe: type /st probe (or /st probe clog)")
+        DEFAULT_CHAT_FRAME:AddMessage("SpellTuner probe: type /st probe")
     end
 end
 
