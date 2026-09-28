@@ -1124,6 +1124,53 @@ the answers to 1 and 2.
 **If you only have time for one session:** do 38.3 (the party probe) -- it is the one M3 cannot
 start without.
 
+## 39. WoW: Forever -- the recorder, the replay and the coach in game (1.0.0-alpha.5, 2026-09-28)
+
+On the **beta client**, after §38 (or instead of any §38 session you have not done -- §38.2 step 4,
+gross or effective, is still the one that decides whether gate 8 checks both sides). This build
+adds M3: the **Recorder** and **Replay** modules now do something. Nothing here has run on a real
+client yet; every step is the first time.
+
+**Install** as in §38 (`./release.sh --install ...`). At character select SpellTuner and the three
+modules read **1.0.0-alpha.5**. `/console scriptErrors 1`; any error box: note it, carry on,
+`/st dump` at the end of the session.
+
+### 39.1 Session 1 -- record a pull (20 min, in a party)
+
+A party with at least one other player (a follower dungeon counts -- say which).
+
+1. `/st` -> Settings -> Modules: switch **Recorder** on, then **Replay** on. Chat says each loaded.
+   Any error box here is the first thing to report.
+2. Out of combat, cast Rejuvenation on the tank (or the other player) and wait 3-4 s.
+3. Pull and heal a real pull of **at least 20 seconds with at least five of your own casts**. Cast
+   one Healing Touch and **cancel it on purpose** (move, or press Escape) somewhere in the middle;
+   remember how many you cancelled in total.
+4. After combat wait two seconds, then `/st rec`. Expected: one line `1. <zone> <n>s <c> casts
+   <e> events meter own <x> others <y>`. Write down `<c>` next to how many casts you think you
+   made, and open the game's damage meter on Healing: is `own` your healing done for that pull?
+5. Two more pulls the same way (so three are kept); `/st rec` again.
+
+**Paste back** into `docs/probe/<build>-alpha5-rec.md`: the `/st rec` lines, the meter's numbers
+for each pull, how many casts you cancelled.
+
+### 39.2 Session 2 -- validate, replay, coach (15 min, anywhere out of combat)
+
+1. `/st validate 1` -- copy every line. Eight gates; the mana ones say `(modelled pool)`, the
+   health one may say `max estimated`, the last one is `heals attributed ... only a shortfall is
+   checked ...`. Which failed?
+2. `/st replay 1`. The window opens with a row per party member; a grey line under the title says
+   `health reconstructed from UNIT_COMBAT; party max estimated`. Press play at 1x for 20 s: do the
+   bars move when you remember them moving? Does a cast you cancelled show as cancelled?
+   **Screenshot** once mid-fight. After a few seconds the right column (suggested) fills in -- or a
+   hint names the gate that failed and says `force`.
+3. `/st coach 1` (or `/st coach 1 force` if it refused) -- copy the card.
+4. `/st` -> Reports -> Review: three rows; hover each; press Play on one.
+
+**Paste back** into `docs/probe/<build>-alpha5-replay.md`: the validate lines, the screenshot, the
+card, anything the Review tab showed that looked wrong (a `0 casts` row, an empty tooltip).
+
+**If you only have time for one:** 39.1 -- without a real recording nothing else can be checked.
+
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the
 raw numbers. `/md profile` output is welcome with any report. I turn them into

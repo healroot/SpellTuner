@@ -3476,3 +3476,37 @@ T14 and T16a: `-1` for a party max and `SM.EstimateMaxHP` as a labelled lower bo
 attribution with gate 8 able to fail (the lead's reading: only a shortfall against the meter is
 checked until a heal amount is known to be effective); the mana gates say "modelled pool"; the
 module copy-at-release confirmed. **T13e** was added for ruling 1's probe item.
+
+## 2026-09-28 (night) — M3 built: recorder v3, scenario, gates, replay, Review, coach; alpha.5, TESTING §39
+
+The lead run that picked up the M3 queue closed it task by task, each reviewed with every suite
+rerun and verified in a `git archive` export of HEAD; `docs/tasks/HANDOVER.md` now carries the state
+after every commit so a cut-off run can be continued from it alone.
+
+- **T13c** (`bdbc40a`) -- a module TOC may list a shared file under `Engine/`, `Spells/`, `Data/`,
+  `UI/`; release copies it in, the stub and apicheck resolve it; `Module.lua` proxies SpellTuner's
+  `MD`, `Ready.lua` fires `MODULE_LOADED` last.
+- **T13e** (`007d1d1`) -- the probe asks whether a status bar hands a secret back (planner ruling 1).
+- **T13a** (`797ef17`) -- apicheck rule 8: an event argument used before `IsSecret`.
+- **T15** (`9876615`) -- the engine's kit from the spellbook (`Kit_Forever.lua`), `MD.API.SpellName`.
+- **T13** (`6624d58`) -- the Forever recorder, stream v3 (one re-issue: cancels decided whatever
+  order STOP and SUCCEEDED arrive in, names escaped, no aura read in combat).
+- **T13d** (`9f2488b`) -- v3 into the scenario: heal attribution (ruling 2) on both HoT cadences,
+  since the client's refresh behaviour is unknown (two re-issues: the recast, then the chain), the
+  max estimate (ruling 1), health reconstructed.
+- **T14** (`6887cdf`) -- the eight gates on a v3 stream; gate 8 one-sided until `SM.HEAL_AMOUNT`.
+- **T16a** (`a8ba234`), **T16b** (`243256c`), **T16c** (`4ae77d8`) -- the replay window and the
+  Review tab on Forever, through the adapter; client-given names painted as given (the lead's own
+  over-strict escape rule corrected).
+- **T17** (`46ebdd9`) -- coach, card, solver, marks on a v3 recording; no engine change needed.
+- **T13f** (`c3fb09b`) -- the recorder stamps `ownCasts`, `spent`, `foreignShare`; pre-pull HoTs
+  aged to the pull.
+
+**Escalated:** ruling 1's whole-fight max estimate breaks the causality invariant on a real Forever
+recording (a burst at 20 s changes a cast at 6.5 s once the tank's max is secret) -- the lead's
+recommendation is in `docs/tasks/HANDOVER.md`. **Hazard:** the shared `.git` store has empty loose
+objects reachable only from four old docs commits (HANDOVER.md).
+
+Every Forever TOC at **`1.0.0-alpha.5`**; **`docs/TESTING.md` §39** is the first in-game run of the
+recorder, replay, validate, coach and Review. **Next:** T18 (practice on Forever), T19 (bindings
+imports re-checked); the planner's answer on the max estimate.

@@ -4,13 +4,14 @@ Rewritten by the lead after every commit and every hand-out. A successor continu
 alone. Worktree: `/home/penek/projects/addons/SpellTuner/.claude/worktrees/manademon-folder-continue-41eabc`,
 branch `claude/manademon-folder-continue-41eabc`.
 
-Last updated: 2026-09-28, lead run 2, at the T13f commit.
+Last updated: 2026-09-28, lead run 2, at the alpha.5 bump commit.
 
 ## Committed
 
 | hash | what |
 |---|---|
-| (the commit carrying this revision) | T13f: recorder stamps ownCasts/spent/foreignShare; pre-pull aura remaining aged to t0; recordcheck 14 (assertions 2 and 10 extended). TESTING §39 drafted (uncommitted until the alpha.5 bump) |
+| (the commit carrying this revision) | Every Forever TOC at 1.0.0-alpha.5 (probecheck/consolecheck pins follow, counts unchanged); TESTING §39 (M3 in game); HISTORY entry |
+| c3fb09b | T13f: recorder stamps ownCasts/spent/foreignShare; pre-pull aura remaining aged to t0; recordcheck 14 (assertions 2 and 10 extended). TESTING §39 drafted (uncommitted until the alpha.5 bump) |
 | 46ebdd9 | T17: coach/solver/card/classifier/marks on a v3 recording, no engine change; coachforever 8 (new). Causality leak via the max estimate escalated |
 | 4ae77d8 | T16c: paint-time Esc narrowed to the pipe (names painted as given; TBC as before T16a); lead fix: Esc returns one value |
 | 243256c | T16b: Forever window Reports -> Review (shared Dashboard_Review.lua through the adapter, placeholder when Replay is off), MD:RunCoach / MD:ValidationReport on Forever; reviewforever 8 (new) |
@@ -30,11 +31,11 @@ Last updated: 2026-09-28, lead run 2, at the T13f commit.
 
 ## In the tree, not committed
 
-- `docs/TESTING.md` §39 (the lead's, M3 in game at 1.0.0-alpha.5) -- goes in with the bump commit.
+Nothing.
 
 ## Next, in order
 
-alpha.5 bump + TESTING §39 (lead) -> T18 -> T19.
+T18 -> T19.
 Re-check each task's baselines against the suite run at the commit before handing it out.
 Suite loop: `docs/TOOLS.md` §1 plus `apicheck`, `apicheck --selftest`, `refcheck --selftest`.
 
@@ -59,13 +60,10 @@ corecheck 10/8, svcheck 6/1, consolecheck 11/1; apicheck 0 findings (40 files), 
   blocking T18/T19.
 
 
-- **Version bump + TESTING section owed at the end of M3** (after T17): bump every Forever TOC to
-  `1.0.0-alpha.5` (probecheck and consolecheck pin the version -- follow 8a1f451's pattern) and write
-  TESTING §39 for the recorder, replay, validate and coach in game.
-- **In-game checks owed for M3** (to go into a new `docs/TESTING.md` section with the next Forever
-  build, once T16a makes a recording playable): `/st rec` lists a real pull; its CANCEL count
-  matches the casts actually cancelled (STOP / SUCCEEDED order is UNKNOWN); the meter's own total
-  after the pull. TESTING §38 is alpha.4 and does not carry the recorder.
+- **In-game M3 checks** are TESTING §39 (alpha.5): `/st rec` on real pulls, CANCEL count vs casts
+  actually cancelled (STOP / SUCCEEDED order UNKNOWN), meter totals, validate / replay / coach /
+  Review. The next bump is the lead's own commit (follow 8a1f451 / this run's alpha.5 commit:
+  every Forever TOC's `## Version:`, and the pins in probecheck.lua and consolecheck.lua).
 
 - **The shared `.git` object store has 18 empty (corrupt) loose objects** (`git fsck`). They are
   reachable only from four old docs commits (fd6a540, ad94b2f, d35f41c, 47b9edf -- `git ls-tree -r`
