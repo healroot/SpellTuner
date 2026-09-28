@@ -607,6 +607,27 @@ function S.UseProfile(name)
     function UnitGetIncomingHeals(u, healer) return secretOrNil(u) end
     function UnitIsDeadOrGhost(u) return false end
 
+    -- T13b: a role set directly on S.roles[u] wins (a script naming a role
+    -- without building a whole S.AddUnit fixture); otherwise falls back to
+    -- the unit's own .role (S.AddUnit), else "NONE".
+    S.roles = S.roles or {}
+    function UnitGroupRolesAssigned(u)
+        if S.roles[u] ~= nil then return S.roles[u] end
+        local x = U(u)
+        return (x and x.role) or "NONE"
+    end
+
+    -- T13b: UnitGUID(party1) answers a fixed placeholder if the unit was
+    -- never given its own guid, so a script does not have to build a whole
+    -- S.AddUnit fixture just to prove a GUID is readable.
+    local baseUnitGUID = UnitGUID
+    function UnitGUID(u)
+        local g = baseUnitGUID(u)
+        if g then return g end
+        if u == "party1" then return "Player-1-00000001" end
+        return nil
+    end
+
     -- T11: one own cast succeeding, the way the client would fire it (Facts:
     -- whether the spellID argument itself is readable in combat is UNKNOWN,
     -- so a caller may hand S.Cast a plain id or S.Secret() either way).
