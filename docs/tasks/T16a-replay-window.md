@@ -60,7 +60,7 @@ M3 exit: "opens in the replay window with the suggested column").
 - The TBC line must not change behaviour: replayui 98, reviewui 44, practiceui 49, and every other
   TBC suite at its count. A behaviour change on TBC is a question, not an edit.
 - Nothing in the window reads a party member's max as measured when `maxEstimated` says it is not.
-- ASCII, no bare `|` in anything painted or printed. No new global; no library; the multi-return trap
+- ASCII, no bare `|` in anything painted or printed. **Lead, 2026-09-28 (T14 review):** gate texts and target names carry player and spell names as the client gave them (an EU name can be non-ASCII); escape every such string at paint time, and the ASCII assertion's fixture includes a target named with a non-ASCII byte and a `|`. No new global; no library; the multi-return trap
   (`MD.API.SpellName(id) or id` is fine; `a and MD.API.X() or b` is not).
 - Tests first: replayforever written and failing first.
 - **Git:** no `git add`, `stash`, `checkout -- <path>`, `reset`, commit. Do not edit `CLAUDE.md` or

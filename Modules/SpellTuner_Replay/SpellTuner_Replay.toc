@@ -10,5 +10,6 @@ Module.lua
 Kit_Forever.lua
 Engine\SimModel.lua
 Scenario_Forever.lua
+Gates_Forever.lua
 
 Ready.lua

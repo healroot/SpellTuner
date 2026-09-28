@@ -47,7 +47,7 @@ pulls.
 - No client call outside `Client/` (apicheck 0, rule 8). The TBC line unchanged: reviewui 44,
   dashui 56, navui 25, and the rest of the sixteen at their counts.
 - The placeholder pane must not load the module (only the Modules pane's switch does).
-- ASCII, no bare `|`. No new global; no library.
+- ASCII, no bare `|`. **Lead, 2026-09-28 (T14 review):** gate texts and target names carry player and spell names as the client gave them (an EU name can be non-ASCII); escape every such string at paint time, and the ASCII assertion's fixture includes a target named with a non-ASCII byte and a `|`. No new global; no library.
 - Tests first: reviewforever written and failing first.
 - **Git:** no `git add`, `stash`, `checkout -- <path>`, `reset`, commit. Do not edit `CLAUDE.md` or
   any `docs/` file except this Report.

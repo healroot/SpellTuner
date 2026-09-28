@@ -293,11 +293,15 @@ unknown), own casts with SENT target and book cost, cancels decided whatever ord
 SUCCEEDED arrive in (UNKNOWN on the client), party max health `-1`, the clock's modelled mana,
 deaths, pre-pull HoTs read out of combat, restriction brackets, the damage meter's totals read 1 s
 after combat; `/st rec [clear]`; `recordcheck` 14.
-**T13d** -- the Replay module carries `Scenario_Forever.lua`: `SM.ScenarioFromRecording` sends a v3
+**T13d** (`9f2488b`) -- the Replay module carries `Scenario_Forever.lua`: `SM.ScenarioFromRecording` sends a v3
 stream to `SM.ScenarioV3` (v2 untouched); `SM.AttributeHeals` (planner ruling 2) splits the
 sourceless heals into own and foreign; `SM.EstimateMaxHP` (ruling 1) stands in for a party member's
 max, marked estimated; health reconstructed as a deficit on a 2 s grid; pre-pull HoTs placed by the
 recorder's new aura `tgt`; `tools/foreverfixture.lua`; `scenariocheck` 9.
+**T14** -- `Gates_Forever.lua`: `SM:Validate` sends a v3 stream to `SM:ValidateV3` -- the mana gates
+against the modelled pool (said so, ruling 3), health against the reconstruction, foreign share and
+calibration from the damage meter, spend coverage by the book, and gate 8 "heals attributed"
+(ruling 2; one-sided until `SM.HEAL_AMOUNT` is known to be effective); `gatecheck` 8.
 
 ### M4 — practice (phase 4) → `1.0.0-beta.3`
 
