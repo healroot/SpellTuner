@@ -58,13 +58,20 @@ local FOREVER_ONLY_NAMES = {
     "SpellCritChance",
     -- T13: Modules/SpellTuner_Recorder/Recorder_Forever.lua's own bindings.
     "UnitGroupRolesAssigned", "RealZoneText", "AuraByIndex", "MeterSession", "MeterSource",
+    -- T18 (Engine/Practice.lua): the bindings-import triad plus the macro/
+    -- action reads, all present on the 69893 baseline.
+    "BindingCount", "Binding", "BindingAction", "ActionInfo", "MacroInfo",
 }
 -- T15: Client/API_TBC.lua's own binding -- GetSpellInfo, so
 -- Engine/SimModel.lua and Engine/SimPlanner.lua's four call sites can go
 -- through MD.API.SpellName(id) on either client.
 -- T16b (UI/Dashboard_Review.lua): RealZoneText, TBC's own GetRealZoneText --
 -- Forever's is FOREVER_ONLY_NAMES' own (Client/API_Forever.lua, T13).
-local TBC_ONLY_NAMES = { "SpellName", "RealZoneText" }
+-- T18: the same bindings-import triad as Forever's own FOREVER_ONLY_NAMES,
+-- plus Specialization -- GetSpecialization, which Forever's own baseline
+-- lacks (Client/API_Forever.lua's comment).
+local TBC_ONLY_NAMES = { "SpellName", "RealZoneText",
+    "BindingCount", "Binding", "BindingAction", "ActionInfo", "MacroInfo", "Specialization" }
 
 --------------------------------------------------------------------------------
 -- 1-9: both flavours

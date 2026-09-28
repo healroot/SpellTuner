@@ -266,6 +266,7 @@ function MD.DashboardParts.CreatePractice(parent, width)
     bindBtn:SetScript("OnClick", function() if MD.ShowBindings then MD:ShowBindings() end end)
 
     local function BindLines()
+        PR.EnsureKit()
         local SD = MD.SpellData
         local out = {}
         for _, b in ipairs(PR.Binds()) do

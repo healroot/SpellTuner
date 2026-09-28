@@ -4,13 +4,13 @@ Rewritten by the lead after every commit and every hand-out. A successor continu
 alone. Worktree: `/home/penek/projects/addons/SpellTuner/.claude/worktrees/manademon-folder-continue-41eabc`,
 branch `claude/manademon-folder-continue-41eabc`.
 
-Last updated: 2026-09-28, lead run 2, at the alpha.5 bump commit.
+Last updated: 2026-09-28, lead run 2, T18 handed out.
 
 ## Committed
 
 | hash | what |
 |---|---|
-| (the commit carrying this revision) | Every Forever TOC at 1.0.0-alpha.5 (probecheck/consolecheck pins follow, counts unchanged); TESTING §39 (M3 in game); HISTORY entry |
+| b95ef03 | Every Forever TOC at 1.0.0-alpha.5 (probecheck/consolecheck pins follow, counts unchanged); TESTING §39 (M3 in game); HISTORY entry |
 | c3fb09b | T13f: recorder stamps ownCasts/spent/foreignShare; pre-pull aura remaining aged to t0; recordcheck 14 (assertions 2 and 10 extended). TESTING §39 drafted (uncommitted until the alpha.5 bump) |
 | 46ebdd9 | T17: coach/solver/card/classifier/marks on a v3 recording, no engine change; coachforever 8 (new). Causality leak via the max estimate escalated |
 | 4ae77d8 | T16c: paint-time Esc narrowed to the pipe (names painted as given; TBC as before T16a); lead fix: Esc returns one value |
@@ -31,11 +31,14 @@ Last updated: 2026-09-28, lead run 2, at the alpha.5 bump commit.
 
 ## In the tree, not committed
 
-Nothing.
+- **T18** (practice on Forever) -- handed to an implementer after b95ef03. Touches the shared
+  `Engine/Practice.lua`, `UI/PracticePanel.lua`, `UI/BindingsWindow.lua` (practice 74 / practiceui 49 must
+  hold). The 69893 baseline lacks `GetSpecialization` (lead's check). If its Report is empty, the
+  implementer was cut off.
 
 ## Next, in order
 
-T18 -> T19.
+T18 (out) -> T19.
 Re-check each task's baselines against the suite run at the commit before handing it out.
 Suite loop: `docs/TOOLS.md` §1 plus `apicheck`, `apicheck --selftest`, `refcheck --selftest`.
 

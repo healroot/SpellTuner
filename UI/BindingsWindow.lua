@@ -30,6 +30,7 @@ local function Binds() return MD.Practice.Binds() end
 -- One row per family, its ranks in a submenu on hover: a flat list of every
 -- rank is forty rows and ran off the bottom of the window (v0.15.2).
 local function SpellItems()
+    MD.Practice.EnsureKit()
     local SD = MD.SpellData
     local items = {}
     for _, family in ipairs({ "Lifebloom", "Rejuvenation", "Regrowth", "Swiftmend", "HealingTouch" }) do
@@ -84,8 +85,9 @@ local function Row(i)
         local b = Binds()[row.index]
         if b and key then
             local PR = MD.Practice
-            local full = PR.Mods(IsAltKeyDown and IsAltKeyDown(), IsControlKeyDown and IsControlKeyDown(),
-                IsShiftKeyDown and IsShiftKeyDown()) .. key
+            local full = PR.Mods(MD.API.IsAltKeyDown and MD.API.IsAltKeyDown(),
+                MD.API.IsControlKeyDown and MD.API.IsControlKeyDown(),
+                MD.API.IsShiftKeyDown and MD.API.IsShiftKeyDown()) .. key
             for j, other in ipairs(Binds()) do
                 -- one press, one spell: taking a key takes it from whoever had it
                 if j ~= row.index and other.key == full then other.key = "" end

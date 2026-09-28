@@ -100,3 +100,17 @@ function MD.API.OnSpellTooltip(fn)
     return MD.API.Call("TooltipDataProcessor.AddTooltipPostCall", spellType, wrapper)
 end
 MD.API._bindings.OnSpellTooltip = "TooltipDataProcessor.AddTooltipPostCall"
+
+-- T18 (Engine/Practice.lua): the bindings-import triad plus the macro/action
+-- reads, all present on the 69893 baseline (docs/tasks/T18-practice-forever.md
+-- Facts, lead's own apicheck run). GetSpecialization is NOT -- Client/API_TBC.lua
+-- binds it alone, so MD.API.Specialization stays nil on this client and every
+-- caller's own `MD.API.Specialization and ...` guard already treats that as
+-- absent.
+MD.API.Bind({
+    BindingCount = "GetNumBindings",
+    Binding = "GetBinding",
+    BindingAction = "GetBindingAction",
+    ActionInfo = "GetActionInfo",
+    MacroInfo = "GetMacroInfo",
+})

@@ -329,6 +329,12 @@ keybinding import works against the Forever builds of those addons (re-checked, 
 
 Tasks: T18 session and panel under the adapter · T19 bindings + imports re-verified.
 
+*Landed:* **T18** -- the Practice module carries `Engine/Practice.lua`, `UI/PracticePanel.lua`,
+`UI/BindingsWindow.lua` (shared, every client call through the adapter; `GetSpecialization` bound on
+TBC only, absent from 69893) and `Commands_Forever.lua` (`/st practice`, `/st binds`); the Forever
+window gains Simulate -> Practice; `PR.EnsureKit` builds the Forever kit before the panel reads the
+spell index (a no-op on TBC); `practiceforever` 8.
+
 ### M5 — launch (phase 5) → `1.0.0`
 
 *Exit:* on the launch client (2026-11-04), level 60 values measured on a dummy for the healing

@@ -91,7 +91,7 @@ function PR.DefaultSetup(groupID, level)
         local classes = CLASSES[kind]
         setup.targets[i] = {
             kind = kind, role = r.role,
-            name = isYou and ((UnitName and UnitName("player")) or "You")
+            name = isYou and ((MD.API.UnitName and MD.API.UnitName("player")) or "You")
                 or (r.label .. (count[kind] > 1 and (" " .. count[kind]) or "")),
             class = isYou and "DRUID" or classes[(count[kind] - 1) % #classes + 1],
             you = isYou or nil,
@@ -153,6 +153,21 @@ end
 -- modifiers in the order the client writes them
 function PR.Mods(alt, ctrl, shift)
     return (alt and "ALT-" or "") .. (ctrl and "CTRL-" or "") .. (shift and "SHIFT-" or "")
+end
+
+-- Forever's own kit (Modules/SpellTuner_Replay/Kit_Forever.lua) fills
+-- MD.SpellData's tables (spells/families/known/all/maxRank) lazily, the
+-- first time anything calls MD.RankMath:SpellKit() -- TBC's own Data/
+-- SpellData.lua carries every one of those as a table from load, always
+-- (SD.maxRank = {} at file scope, populated later by a scan, never nil). The
+-- bindings list (below) reads them before a session ever starts one, so it
+-- warms the kit itself, once -- a no-op on TBC, where SD.maxRank is never
+-- nil and this guard is always false.
+function PR.EnsureKit()
+    local SD = MD.SpellData
+    if not SD.maxRank and MD.RankMath and MD.RankMath.SpellKit then
+        MD.RankMath:SpellKit({ live = true })
+    end
 end
 
 -- A binding's spell id: that rank if you know it, else your highest.
@@ -232,9 +247,8 @@ function PR.MacroSpell(body)
 end
 
 local function MacroBody(name)
-    if not GetMacroInfo then return nil end
-    local ok, _, _, body = pcall(GetMacroInfo, name)
-    if ok then return body end
+    local _, _, body = MD.API.MacroInfo(name)
+    if type(body) == "string" then return body end
     return nil
 end
 
@@ -274,7 +288,7 @@ local function CellList()
     local cc = db and db.clickCastings
     if type(cc) ~= "table" then return nil end
     if cc.useCommon and type(cc.common) == "table" then return cc.common, "Cell (common bindings)" end
-    local i = (GetSpecialization and GetSpecialization()) or 1
+    local i = (MD.API.Specialization and MD.API.Specialization()) or 1
     if type(cc[i]) == "table" then return cc[i], "Cell (spec " .. i .. ")" end
     if type(cc[1]) == "table" then return cc[1], "Cell (spec 1)" end
     return nil
@@ -320,7 +334,8 @@ local function CliqueBinds()
         local db = _G[name]
         local profiles = db and db.profiles
         if type(profiles) == "table" then
-            local key = (UnitName and UnitName("player") or "") .. " - " .. (GetRealmName and GetRealmName() or "")
+            local key = (MD.API.UnitName and MD.API.UnitName("player") or "") ..
+                " - " .. (MD.API.RealmName and MD.API.RealmName() or "")
             local p = profiles[key]
             if not p then for _, v in pairs(profiles) do p = p or v end end
             if type(p) == "table" and type(p.binds) == "table" then return p.binds end
@@ -416,19 +431,15 @@ end
 
 -- What an action-bar slot casts: family, rank, and how it picks its target.
 function PR.SlotSpell(slot)
-    if not (slot and GetActionInfo) then return nil end
-    local ok, kind, id = pcall(GetActionInfo, slot)
-    if not ok or not kind then return nil end
+    if not slot then return nil end
+    local kind, id = MD.API.ActionInfo(slot)
+    if type(kind) ~= "string" then return nil end
     if kind == "spell" then
         local family, rank = PR.SpellFromID(id)
         if family then return family, rank, "spell" end
         return nil, nil, nil, "not a heal this addon models"
     elseif kind == "macro" then
-        local body
-        if GetMacroInfo then
-            local ok2, _, _, b = pcall(GetMacroInfo, id)
-            if ok2 then body = b end
-        end
+        local body = MacroBody(id)
         local family, rank = PR.MacroSpell(body)
         if family then
             return family, rank, (body and body:find("@mouseover")) and "mouseover" or "macro"
@@ -440,13 +451,14 @@ end
 
 -- Every binding the client has, as practice bindings.
 function PR.ImportKeybinds()
-    if not (GetNumBindings and GetBinding) then
+    local n = MD.API.BindingCount()
+    if type(n) ~= "number" then
         return nil, { source = "your keybindings", error = "this client does not expose its bindings." }
     end
     local out, report = {}, { source = "your keybindings", added = 0, skipped = {}, notes = {} }
     local seen = {}
-    for i = 1, GetNumBindings() do
-        local r = { GetBinding(i) }
+    for i = 1, n do
+        local r = { MD.API.Binding(i) }
         local command = r[1]
         -- GetBinding's shape moved between clients (a category was added), so
         -- the keys are the returns that the client agrees are bound to this
@@ -454,7 +466,7 @@ function PR.ImportKeybinds()
         local keys = {}
         for j = 2, #r do
             local v = r[j]
-            if type(v) == "string" and v ~= "" and GetBindingAction and GetBindingAction(v) == command then
+            if type(v) == "string" and v ~= "" and MD.API.BindingAction(v) == command then
                 keys[#keys + 1] = v
             end
         end
@@ -634,7 +646,7 @@ local function BuildScenario(setup, seed, kit)
     local sampleT, hpT = {}, {}
     for t = 0, dur, 2 do sampleT[#sampleT + 1] = t end
     for t = 0, dur, 5 do hpT[#hpT + 1] = t end
-    local pool = (UnitPowerMax and UnitPowerMax("player", 0)) or 0
+    local pool = (MD.API.UnitPowerMax and MD.API.UnitPowerMax("player", 0)) or 0
     return {
         dur = dur, pool = pool,
         initial = { mana = pool, apiBase = RM and RM.apiBase or 0, apiCasting = RM and RM.apiCasting or 0,

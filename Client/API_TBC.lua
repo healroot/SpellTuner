@@ -33,3 +33,16 @@ MD.API.Bind({
 MD.API.Bind({
     RealZoneText = "GetRealZoneText",
 })
+
+-- T18 (Engine/Practice.lua): the same client calls the bindings import needs on
+-- Forever (Client/API_Forever.lua), the classic globals unmoved on this client
+-- -- plus GetSpecialization, which Forever's own baseline lacks (Client/
+-- API_Forever.lua's own comment).
+MD.API.Bind({
+    BindingCount = "GetNumBindings",
+    Binding = "GetBinding",
+    BindingAction = "GetBindingAction",
+    ActionInfo = "GetActionInfo",
+    MacroInfo = "GetMacroInfo",
+    Specialization = "GetSpecialization",
+})

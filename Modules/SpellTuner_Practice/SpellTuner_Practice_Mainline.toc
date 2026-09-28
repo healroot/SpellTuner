@@ -7,5 +7,9 @@
 ## LoadOnDemand: 1
 
 Module.lua
+Engine\Practice.lua
+UI\PracticePanel.lua
+UI\BindingsWindow.lua
+Commands_Forever.lua
 
 Ready.lua

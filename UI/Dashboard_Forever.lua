@@ -24,6 +24,10 @@ local function Groups()
             { id = "book", text = "Spellbook" } } },
         { id = "reports", text = "Reports", views = {
             { id = "review", text = "Review" } } },
+        -- T18: a placeholder until the Practice module is on (Files/Rules),
+        -- same shape as Reports -> Review's own placeholder-then-module.
+        { id = "simulate", text = "Simulate", views = {
+            { id = "practice", text = "Practice" } } },
         { id = "settings", text = "Settings", views = {
             { id = "general", text = "General" },
             { id = "modules", text = "Modules" } } },
@@ -606,6 +610,38 @@ local function RefreshReviewPane()
 end
 
 --------------------------------------------------------------------------------
+-- Simulate -> Practice (T18, docs/tasks/T18-practice-forever.md): the TBC
+-- practice panel (UI/PracticePanel.lua, shared with TBC) with the Practice
+-- module on; a placeholder naming how to switch it on while it is off, same
+-- shape as Reports -> Review's own (Rules: never loads the module itself).
+--------------------------------------------------------------------------------
+local practicePane        -- the api object MD.DashboardParts.CreatePractice hands back
+local practicePlaceholder -- the placeholder frame, while the module is off
+
+local function BuildPracticePlaceholder(content)
+    local pane = CreateFrame("Frame", nil, content)
+    pane:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
+    pane:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", 0, 0)
+
+    local text = pane:CreateFontString(nil, "OVERLAY", UI.FONT)
+    text:SetPoint("TOPLEFT", pane, "TOPLEFT", 4, -4)
+    text:SetPoint("RIGHT", pane, "RIGHT", -4, 0)
+    text:SetJustifyH("LEFT")
+    text:SetText("Practice needs the Practice module - Settings -> Modules")
+
+    pane.practicePlaceholder = true -- marks this pane for tools/practiceforever.lua
+    practicePlaceholder = pane
+    return pane
+end
+
+local function BuildPracticePane(content)
+    practicePane = MD.DashboardParts.CreatePractice(content, 912)
+    practicePane.frame:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
+    practicePane.frame:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", 0, 0)
+    return practicePane.frame
+end
+
+--------------------------------------------------------------------------------
 -- The window
 --------------------------------------------------------------------------------
 local function CreateDashboard()
@@ -620,6 +656,11 @@ local function CreateDashboard()
                     return BuildReviewPane(content)
                 end
                 return BuildReviewPlaceholder(content)
+            elseif group == "simulate" and view == "practice" then
+                if MD.DashboardParts.CreatePractice then
+                    return BuildPracticePane(content)
+                end
+                return BuildPracticePlaceholder(content)
             elseif group == "settings" and view == "general" then
                 generalPane = BuildGeneralPane(content)
                 return generalPane
@@ -701,6 +742,27 @@ MD:RegisterCallback("MODULE_LOADED", function(name)
         reviewPlaceholder = nil
         if nav.group == "reports" and nav.view == "review" then
             nav:Select("reports", "review")
+        end
+    end
+end)
+
+-- T18: SpellTuner_Practice finishing load brings MD.DashboardParts.CreatePractice
+-- with it -- same swap as the Review one above, on the Simulate -> Practice
+-- placeholder. The window is already grown by the time this fires: Practice
+-- needs SpellTuner_Replay (Core_Forever.lua's own dependency declaration), so
+-- that module's own MODULE_LOADED has already run first (MD:SetModule loads
+-- in declaration order).
+MD:RegisterCallback("MODULE_LOADED", function(name)
+    if name ~= "SpellTuner_Practice" or not MD.DashboardParts.CreatePractice then return end
+    if nav and nav.panes and nav.panes.simulate and nav.panes.simulate.practice == practicePlaceholder
+            and practicePlaceholder then
+        local content = nav:Content()
+        local pane = BuildPracticePane(content)
+        nav.panes.simulate.practice = pane
+        practicePlaceholder:Hide()
+        practicePlaceholder = nil
+        if nav.group == "simulate" and nav.view == "practice" then
+            nav:Select("simulate", "practice")
         end
     end
 end)
