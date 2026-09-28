@@ -3398,3 +3398,45 @@ at HEAD holds only the eighth and ninth reports; the first seven are in history 
 **State:** TBC line v0.15.4, behaviour unchanged (sixteen suites at their counts). Forever line
 `1.0.0-alpha.2`: twenty-seven suite runs green, apicheck 0 findings. **Next:** the author's in-game
 M1 check (`docs/TESTING.md` §36), then M2 (T7-T12).
+
+## 2026-09-28 — M2's offline part: the spellbook as numbers, tooltips, the pane, the clock, /st measure (T7a-T12)
+
+The planner handed M2 to the lead with the M1 rulings recorded (FOREVER-PLAN §3.1/§3.2) while the
+author runs the M1 in-game check. Ten tasks, each in `docs/tasks/`, implemented by the implementer
+agent, reviewed and rerun by the lead, committed one by one:
+
+- **T8b** `tools/refcheck.py` -- the client's spells against talentsforever's `data.json`, fetched
+  once into the ignored `tools/.cache/`. Its first real run: Healing Touch R1 reads "40 to 55" on
+  the level-9 client where the level-60 reference reads "40 to 54" -- a rank-1 text higher below 60
+  than at 60, which the level explanation does not cover.
+- **T8** `Spells/Parse.lua` -- descriptions, costs, cast lines and ranks into numbers, refusing
+  what it does not recognise; 54 sourced texts across every class.
+- **T7a** (added by the lead) -- the probe's `== shapes`: every return M2 reads was only ever
+  probed for *presence*, so the probe now prints them whole. M2 is built against retail's documented
+  shapes meanwhile and says so everywhere; the lead amended its own line form after the implementer
+  stopped on a collision with an existing assertion.
+- **T7** `Spells/Book.lua` -- the book through the adapter (`MD.API.Copy`: no shared file indexes a
+  client table), families of ranks with value, cost, cast, per mana, per second, casts to OOM,
+  dominance and the suggested rank; `Book.adjust`, the Q6 seam, empty.
+- **T9** the block on every spell tooltip (`TooltipDataProcessor`). The lead's one-line fix: the
+  post-call passed on an id whose `type()` was `"number"` without asking whether it was secret --
+  on the client a secret number answers `type() == "number"`, which the stub's table stand-in cannot
+  show.
+- **T11** the clock on a modelled pool, `~` everywhere, the real pool drawn by the game beside it
+  (`MD.API.DrawUnitPower`). Lead fix: a free cast no longer restarts the five-second rule.
+- **T10 / T10b** the Spellbook pane on the now-shared `UI/Dashboard_Rows.lua` (the TBC table
+  unchanged, `dashui` 56), section titles, export for refcheck.
+- **T12** `/st measure` -- each cast against its own text (`in range` / `crit range` /
+  **`BELOW range`**, the Q10 signal); re-issued once so a line carries both the rank's learn level
+  and the caster's.
+
+Every Forever TOC is at `1.0.0-alpha.3`. `docs/TESTING.md` §37 is the M2 exit check: the probe's
+new section (show all ranks off and on, and after a fight), the tooltip in the spellbook / on a bar
+/ in chat, the pane against the real book, the clock's drift, and the measurements (three spells of
+two classes, one heal at full health to settle Q3's gross-or-effective, Q6 at level 10, Q10 at 20).
+
+**State:** TBC line v0.15.4, behaviour unchanged (sixteen suites at their counts). Forever line
+`1.0.0-alpha.3`: every suite green (`docs/TOOLS.md` §1 loop), apicheck 0 findings over 21 files.
+**Next:** the author runs §36 (if not done) and §37; the lead checks the `== shapes` lines against
+T7's reader, pins the parser's `loose` texts that the measurements touch, and cuts
+`1.0.0-beta.1` when §37 passes. Then M3.

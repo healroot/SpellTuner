@@ -801,8 +801,7 @@ SpellTuner, into the report instead. Each build's last report is also kept in
 `_classic_beta_/WTF/Account/<ACCOUNT>/SavedVariables/SpellTuner.lua` -- if the beta saved it,
 which is exactly question 7.
 
-**Not yet asked of you, coming with M2:** the downrank measurement (`docs/FOREVER-PLAN.md` §6
-Q10): Healing Touch Rank 1 on yourself after fall damage, with your bonus healing noted.
+**The downrank measurement** (`docs/FOREVER-PLAN.md` §6 Q10) is now §37, step 5 and step 7.
 
 ## 36. WoW: Forever -- the M1 frame (1.0.0-alpha.2, 2026-09-28)
 
@@ -856,6 +855,107 @@ Forever-only and load on demand. Harmless; say if it bothers you.)
 
 **If it does not load:** the dump cannot run either -- copy the error text instead, and whether
 `/st probe` still works (the probe keeps its own slash command when the core fails).
+
+## 37. WoW: Forever -- M2: spell tooltips, the Spellbook pane, the clock, and the measurements (1.0.0-alpha.3, 2026-09-28)
+
+On the **beta client** (Healroot, build 70009 or current). This is M2's exit check
+(`docs/ROADMAP-FOREVER.md` §2): the SpellTuner block on every spell tooltip, the Spellbook pane
+listing every spell with its numbers, the mana clock, and **the numbers checked against real
+casts** -- three spells of two classes, within the crit spread. It also answers what M2 was built on
+without seeing: the return shapes (the probe's new `== shapes`), where tooltips fire, and whether a
+low rank is penalised by the server (`FOREVER-PLAN.md` §6 Q10). Run §36 first if you have not.
+
+**Install.** The same command as §36; the AddOns list should now show SpellTuner **1.0.0-alpha.3**
+(and the three modules at alpha.3):
+
+```bash
+./release.sh --install "/mnt/e/Blizzard/World of Warcraft/_classic_beta_/Interface/AddOns"
+```
+
+Log in as Healroot, `/console scriptErrors 1`. Any error box or "blocked" dialog at any step: note
+it, carry on, and `/st dump` at the end.
+
+**1. The probe, with the new shapes section (do this first -- it checks what everything else
+assumes).**
+1. Open the spellbook and turn **show all ranks off** (the arrow at the top right). `/st probe`,
+   copy the report into `docs/probe/<build>-m2.md`.
+2. Turn **show all ranks on**. `/st probe` again, paste it under the first. (The `book <id> ...`
+   lines and `lowrank=` say whether the API lists the lower ranks either way.)
+3. Pull a mob, cast one heal and one Wrath during the fight, finish it, then `/st probe` a third
+   time and paste. (`in combat (...)` and the `UNIT_SPELLCAST_SUCCEEDED` lines say what reads
+   secret mid-fight.)
+
+**2. Tooltips (show all ranks on).** Hover **Healing Touch Rank 1** in the spellbook. Under the
+game's text a grey `SpellTuner` block: `Heals 40 - 55 / avg 48`, `Crit 60 - 83`, `Per mana`,
+`Per second (1.5 sec cast)`, `Casts to OOM`, `vs Rank 2 / 0.47x the heal for ...x the mana`, and a
+`Suggested` line. Then:
+- the same spell **on an action bar** (drag it there if it is not);
+- the same spell **as a chat link** (shift-click it into chat, send it to yourself or a channel,
+  click the link);
+- **Rejuvenation** (`Heals 32 over 12 sec`, `Per second (over 12 sec)`) and **Wrath** (`Damage ...`);
+- in combat once: the block should still appear (it may say `Read before combat`).
+Tell me which of the three places show the block and which do not. `/st tooltip` switches it off
+and on (also Settings -> General).
+
+**3. The Spellbook pane.** `/st`. Spells -> Spellbook: a mana line, then **Heals**, **Damage** and
+**Other** sections; every family with its ranks and Lvl / Mana / Value / Per mana / Per sec / Cast
+/ To OOM; the suggested rank starred and named on its family's line. Hover a row: the same block
+as the tooltip. Check against your own spellbook: **is any spell missing, or listed twice?** Press
+**Export**, Ctrl+A, Ctrl+C, paste into `docs/probe/<build>-book.md` -- I run it through
+`tools/refcheck.py` against talentsforever's data.
+
+**4. The mana clock.** Out of combat at full mana it is hidden. Pull a mob and heal: a small frame
+appears (top of the screen unless moved) reading `~OOM --` for the first few casts, then `~OOM 1:20
+rest 2:10` or `~FULL 0:45`. The `~` means **modelled**: the game will not tell an addon your
+current mana, so the clock adds up your casts' costs and your regen. The thin bar under it is the
+**real** mana, drawn by the game. After the fight, hover it and read `Mana X / Y (modelled ...)`,
+then compare with the real bar by eye: **tell me roughly how far apart they are** (for example
+"bar about 40%, model says 55%"), and whether you drank. Drag it where you like; `/st clock lock`
+locks it, `/st clock` hides it (also Settings -> General). If the bar stays empty or never moves,
+say so -- that is a fact about the client (a secret handed to a status bar), not a bug to work
+around.
+
+**5. The measurements -- the M2 exit.** `/st measure` (chat: `measure: on - cast on yourself for
+heals, on a target dummy for damage; one spell at a time`). One spell at a time: cast, wait for its
+line in chat, then the next.
+- **Heals, on yourself, with health missing.** Lose more health than the heal's top first (a fall
+  from a height, or let a mob hit you and kill it). Then **Healing Touch Rank 1** (from the
+  spellbook, show all ranks on), again for **Rank 2**, and **Rejuvenation Rank 1** (wait the full
+  12 s). Each prints a line such as
+  `Healing Touch R1 (learned 1, you 9, +heal 0): landed 48 [text 40-55, crit 60-83] in range` or
+  `Rejuvenation R1: 4 ticks 8+8+8+8 = 32 every 3.0 s [text 32 over 12 sec] matches`.
+  Cast each heal **three times** if you have the patience -- one landing proves little.
+- **Once at full health**, cast Healing Touch Rank 1 on yourself. If the line says `nothing landed`
+  or a small number, the game counts **effective** healing (overheal left out); if it lands inside
+  the text's range, it counts **gross**. (That settles the open half of Q3.)
+- **Damage, on a target:** a target dummy if the beta has one, else a low-level mob you can kill
+  slowly: **Wrath Rank 1**, **Wrath Rank 2**, and **Moonfire Rank 1** (let the damage over time run
+  out). Lines read `Wrath R1 (learned 1, you 9): landed 15 [text 13-16, crit 20-24] in range`.
+- **A second class** (the exit needs two): make or log in an alt of any mana class and do the same
+  with its first heal or damage spells -- a priest's Lesser Heal and Smite, a mage's Fireball, a
+  shaman's Healing Wave and Lightning Bolt, a paladin's Holy Light. Three spells is enough.
+- `/st measure dump` gives every line in one copy box (kept across `/reload`, last 100): paste it
+  into `docs/probe/<build>-measure.md`.
+What the verdicts mean: `in range` and `crit range` are the model agreeing with the game;
+**`BELOW range`** (a landed heal under the text's minimum, repeatedly) is the thing to report
+first -- it is what a server-side downrank penalty would look like (Q10); `above` is a crit bigger
+than 1.5x or a talent the text does not show.
+
+**6. When you reach level 10 (talents, Q6).** Before spending the first talent point, hover the heal
+the talent would change (for example Healing Touch or Rejuvenation) and note its text and our
+`avg`. Spend the point on that talent. Hover again: **did the game's own text change?** If yes,
+SpellTuner needs nothing more; if the talent says it changes the heal and the text did not move,
+tell me -- that is the one case the code keeps a place for. Then `/st probe` (`== talents` now
+answers Q6).
+
+**7. Later, at level 20 (Q10 in full).** Healing Touch Rank 4 is learned at 20. Repeat step 5's
+heals with **Rank 1, Rank 4 and your highest rank**, three casts each, and again after the next
+level-up. Equal to the text within the crit spread -> no server rule; a shortfall that grows as the
+rank falls further below your level -> a rule, and the numbers let me fit it.
+
+**Paste back:** the three probe reports (step 1), the export (step 3), the measure dump (step 5),
+`/st dump` if anything errored, and in words: which tooltip places showed the block, anything
+missing from the pane, the clock's drift after a fight, and anything that did not happen as written.
 
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the

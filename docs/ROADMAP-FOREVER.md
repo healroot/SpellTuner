@@ -196,6 +196,36 @@ stays a by-hand check (`docs/REFERENCES-FOREVER.md` §2, §5) · T9 tooltip on
 (TTO) on the adapter · T12 `docs/TESTING.md` for M2 and the dummy measurements, including the
 downrank measurement (`FOREVER-PLAN.md` §6 Q10).
 
+Order taken by the lead (2026-09-28): **T7a** (added: the probe dumps every return shape M2 reads,
+because only presence had been probed), **T8** and **T8b** beside it, then **T7** (needs the parser
+and the stub's shapes), **T9**, **T11** (the dashboard reads the clock's pool), **T10**, **T10b**
+(T10's two review follow-ups) beside **T12**. T12 was split: the instrument (`/st measure`) is the
+implementer's, the `docs/TESTING.md` section the lead's.
+
+Done (all 2026-09-28, each lead-accepted in its task file):
+**T8b** (`fb18fa5`, `docs/tasks/T8b-refcheck.md`) -- `python3 tools/refcheck.py`: a probe dump or the
+pane's export against talentsforever's `data.json`, fetched once into the ignored `tools/.cache/`;
+`--selftest` against a fixture. **T8** (`cc35daa`) -- `Spells/Parse.lua`: descriptions, cost, cast and
+rank texts into numbers, refusing a sentence it does not recognise; `parsecheck` 10 against 54
+sourced texts. **T7a** (`309efc1`) -- the probe's `== shapes` (book rows, `GetSpellInfo`,
+`GetSpellPowerCost`, learn level, base spell, low-rank flag, tooltip data lines, crit per school,
+the same in combat, `UNIT_SPELLCAST_SUCCEEDED` counted); `probecheck` 66. **T7** (`645f83b`) --
+`Spells/Book.lua`: the book through the adapter (`MD.API.Copy` / `Constant`, copying bindings),
+families of ranks with value, cost, cast, per mana, per second, casts to OOM, dominance and the
+suggested rank; the Q6 seam `Book.adjust` (empty); `bookcheck` 13 (14 after T9). **T9** (`fecb3f2`)
+-- the block on every spell tooltip through `TooltipDataProcessor`; `tipcheck` 12 (14 after T10b).
+**T11** (`2e49ae5`) -- the clock on a modelled pool (`Engine/ManaModel.lua`), marked `~`, the real
+pool drawn beside it by `MD.API.DrawUnitPower`; `clockcheck` 13. **T10** (`182f414`) and **T10b**
+(`319cc5f`) -- the Spellbook pane on the now-shared `UI/Dashboard_Rows.lua`, sections, export;
+`spellsui` 12, `dashui` still 56. **T12** (`0f56662`) -- `/st measure`, one line per cast against its
+own text (`in range` / `crit range` / `BELOW range`); `measurecheck` 9. Every Forever TOC at
+`1.0.0-alpha.3` (`bf54cbe`).
+
+**M2's offline part is done (2026-09-28).** The exit's in-game half -- the block in the spellbook,
+on a bar and in chat, the pane against the real book, and three spells of two classes measured
+within the crit spread -- is the author's: `docs/TESTING.md` §37. `1.0.0-beta.1` is cut when that
+passes.
+
 Known from the references before any of it is built (`docs/REFERENCES-FOREVER.md` §4): **no
 Lifebloom, Tree of Life, Earth Shield or Circle of Healing on Forever**; costs come as `N Mana`
 and as `N% of base mana`; rank 1 of a talent-granted spell is in the book with no trainer; the

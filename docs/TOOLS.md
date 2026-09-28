@@ -34,6 +34,19 @@ the script), a new global, `os` / `io` / `require` and the rest WoW's Lua does n
 baseline does not have. `--report` prints every global per file with its class; `--selftest` runs
 the fixture in `tools/data/apicheck-fixture/`, which trips each rule once.
 
+**`python3 tools/refcheck.py <file>`** (T8b, M2) -- the client's spells against talentsforever.com's
+`data.json` (`docs/REFERENCES-FOREVER.md` §1). `<file>` is a probe report (its `== spells` blocks;
+several reports in one file, the last block per spell wins) or the Spellbook pane's **Export** (the
+same blocks plus `cost:`, `cast:`, `level:`). For each spell: the record `Class|Name|Rank N`, and
+every disagreement -- id, description numbers position by position, learn level, cost line, cast
+line -- printed with both values and the record's `s` / `src` / `fx` / `asis`; the header says the
+client's level against the reference's level 60, because below 60 the numbers are expected to
+differ. It reports, never judges. **`--fetch`** downloads `data.json` once into the ignored
+`tools/.cache/talentsforever.json` (a second `--fetch` refuses; `--refresh` forces); nothing else
+touches the network, and Wowhead is never fetched. `--data <path>` points at another copy;
+`--selftest` runs the fixture in `tools/data/refcheck-fixture/`. Data from talentsforever.com
+(https://talentsforever.com), CC BY 4.0 -- the attribution is printed on every run.
+
 ---
 
 ## 1. The test suites
@@ -64,12 +77,19 @@ Run all of them before committing anything the engine, the recorder or a tooltip
 | `modulecheck.lua` | **the modules and the Forever window** (T2, forever): the three siblings declared in dependency order, off means never loaded, on loads what it needs first and at every login, off switches off what needs it, a refused load says why, the sibling TOCs, `/st` opening and closing the window, the Modules pane switching, every string on the window ASCII. The stub loads a sibling from `Modules/<Name>/` the way the client loads a LoadOnDemand addon |
 | `svcheck.lua` | **the SavedVariables guard** (T4, forever and tbc): a first run, a database that came back with its session, one without a stamp, a broken one replaced rather than indexed, the guard running before the probe, the line in the debug log; TBC's database never stamped |
 | `consolecheck.lua` | **errors, the console and `/st dump`** (T3, forever and tbc): our error recorded once and counted, shown to the client once; another addon's passed through; a sibling's counted as ours; the handler never raising; the 50-entry cap; the dump's sections in order, escaped to ASCII; `/st debug` with the error count and no Regen test button on Forever; every Forever TOC's version; TBC with no handler and its button kept |
-| `probecheck.lua` | **the Forever probe** (T0) under the stub's `forever` profile: never raises, a missing function is "absent" not an error, a secret is "secret" not a sum, a bad event is caught, the report is ASCII with no bare pipe and keyed by build, the sections are in order, the description dump is whole, the TOC that loaded is named; since **T0c** also a blocked action recorded with what the probe was doing, the combat log registered only by `/st probe clog`, the secret readings and restriction state, Q1 by bonus damage or level with was/now lines, Q6 at level 10, and the release carrying exactly three TOCs |
+| `parsecheck.lua` | **`Spells/Parse.lua`** (T8, forever): 54 sourced descriptions (`tools/data/parse-fixture.lua`: the probe's own texts and talentsforever's beta texts, every class) read exactly -- or refused -- plus costs, cast lines and ranks; **no number is ever invented**, and nothing raises whatever it is given |
+| `bookcheck.lua` | **`Spells/Book.lua`** (T7, forever): the book read through the skill lines or the slot walk, families in rank order, every value from the spell's own text, gaps, the four cost states, per mana / per second / casts to OOM, dominance and the suggested rank, a secret description keeping its last value, **nothing handed out secret**, the cache, `ReadSpell` |
+| `tipcheck.lua` | **the spell tooltip block** (T9/T10/T10b, forever): registered through the adapter for the Spell data type, once per showing, every number the book's, the comparison with the highest rank, the suggested rank, gaps, a secret id or a builder error never reaching the game's tooltip, off means off, the per-second interval named by kind |
+| `clockcheck.lua` | **the Forever mana clock** (T11, forever): the pool assumed full at login, a cast's cost at success, the five-second rule across its boundary, the out-of-combat regen rate carried into combat, re-anchoring, warmup / OOM / FULL, `~` in text and hover, unpriced casts counted, **the real pool handed to the bar unread**, visibility |
+| `spellsui.lua` | **the Spellbook pane** (T10/T10b, forever): every family under Heals / Damage / Other with section titles, each row the book's numbers, dashes never zeros, the clock's pool for casts to OOM, the hover, the export read back by `refcheck.py`, refresh while shown only, no module loaded |
+| `measurecheck.lua` | **`/st measure`** (T12, forever): nothing registered until asked, a heal on yourself and a Wrath on the target matched and judged (`in range` / `crit range` / `BELOW range`), a HoT's ticks, other units ignored, a secret amount counted and never judged, the dump |
+| `probecheck.lua` | **the Forever probe** (T0) under the stub's `forever` profile: never raises, a missing function is "absent" not an error, a secret is "secret" not a sum, a bad event is caught, the report is ASCII with no bare pipe and keyed by build, the sections are in order, the description dump is whole, the TOC that loaded is named; since **T0c** also a blocked action recorded with what the probe was doing, the combat log registered only by `/st probe clog`, the secret readings and restriction state, Q1 by bonus damage or level with was/now lines, Q6 at level 10, and the release carrying exactly three TOCs; since **T7a** the `== shapes` section (every return shape M2 reads, in and out of combat, and `UNIT_SPELLCAST_SUCCEEDED` counted) |
 
 ```bash
 for t in simcheck reccheck replaycheck replayui runcheck reviewui navui dashui \
          regencheck simwindow solvercheck timeline spelltip practice practiceui \
-         migrate probecheck forevercheck modulecheck; do
+         migrate probecheck forevercheck modulecheck \
+         parsecheck bookcheck tipcheck clockcheck spellsui measurecheck; do
   printf "%-13s " "$t"; bash tools/run.sh tools/$t.lua 2>&1 | tail -1
 done
 # the suites that run under both flavours
@@ -79,6 +99,7 @@ for t in adaptercheck corecheck svcheck consolecheck; do
   done
 done
 python3 tools/apicheck.py | tail -1; python3 tools/apicheck.py --selftest | tail -1
+python3 tools/refcheck.py --selftest | tail -1
 ```
 
 ---
