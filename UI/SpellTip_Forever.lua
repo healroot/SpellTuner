@@ -148,10 +148,15 @@ function SpellTip:Lines(id)
         -- channel's own duration is whole seconds in every description this
         -- tree has ever parsed, so it renders without one, matching the
         -- literal wording the review gave ("over 12 sec", "10 sec channel").
+        -- T10b review: "no direct range" also describes an absorb (no
+        -- min/max AND no over/dur -- Book's IntervalFor treats it as the
+        -- direct/hybrid case, one instant effect), which is not over-time
+        -- and must not read "over" -- it has no duration to be over.
+        local isAbsorb = entry.parsed and entry.parsed.absorb ~= nil
         local unit
         if entry.castKind == "channeled" then
             unit = Num(entry.interval, 0) .. " sec channel"
-        elseif entry.min == nil and entry.max == nil then
+        elseif entry.min == nil and entry.max == nil and not isAbsorb then
             unit = "over " .. Num(entry.interval, 0) .. " sec"
         elseif entry.castKind == "instant" then
             unit = Num(entry.interval, 1) .. " sec GCD"

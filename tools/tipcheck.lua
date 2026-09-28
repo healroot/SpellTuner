@@ -71,6 +71,16 @@ S.AddSpell(92090, "ChannelHeal", "Rank 1",
     function() return "Heals the target for 285 every 2 sec for 10 sec." end,
     { cast = 0, cost = 35, level = 1 })
 
+-- T10b item 2: an absorb (no heal part, PartOf() nil for both) at the GCD
+-- and behind a real cast bar -- Review's own bug was reading "no direct
+-- range" as over-time, which an absorb also has no range for.
+S.AddSpell(92095, "AbsorbInstant", "Rank 1",
+    function() return "Shields the target, absorbing 120 damage." end,
+    { cast = 0, cost = 20, level = 1 })
+S.AddSpell(92096, "AbsorbCast", "Rank 1",
+    function() return "Shields the target, absorbing 300 damage." end,
+    { cast = 1500, cost = 45, level = 1 })
+
 --------------------------------------------------------------------------------
 -- helpers
 --------------------------------------------------------------------------------
@@ -420,6 +430,32 @@ do
         string.format("cast=%s instant=%s over=%s channel=%s",
             castLine and castLine[2] or "nil", instantLine and instantLine[2] or "nil",
             overLine and overLine[2] or "nil", chanLine and chanLine[2] or "nil"))
+end
+
+--------------------------------------------------------------------------------
+-- 14 (T10b): an absorb's per-second line names a cast or the GCD, never over
+--------------------------------------------------------------------------------
+do
+    local book = Book:Get()
+
+    local absInstantEntry = book.spells[92095]
+    local absInstantLine = FindLine(SpellTip:Lines(92095), "Per second")
+    local absInstantGood = absInstantEntry ~= nil and absInstantEntry.min == nil and absInstantEntry.max == nil
+        and absInstantEntry.castKind == "instant"
+        and absInstantLine ~= nil and absInstantLine[2]:find(" sec GCD)", 1, true) ~= nil
+        and absInstantLine[2]:find("over", 1, true) == nil
+
+    local absCastEntry = book.spells[92096]
+    local absCastLine = FindLine(SpellTip:Lines(92096), "Per second")
+    local absCastGood = absCastEntry ~= nil and absCastEntry.min == nil and absCastEntry.max == nil
+        and absCastEntry.castKind == "cast"
+        and absCastLine ~= nil and absCastLine[2]:find(" sec cast)", 1, true) ~= nil
+        and absCastLine[2]:find("over", 1, true) == nil
+
+    check("an absorb's per-second line names a cast or the GCD, never over",
+        absInstantGood and absCastGood,
+        string.format("instant=%s cast=%s",
+            absInstantLine and absInstantLine[2] or "nil", absCastLine and absCastLine[2] or "nil"))
 end
 
 print(string.format("\n%d ok, %d failed", ok, #fails))

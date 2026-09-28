@@ -452,6 +452,54 @@ do
     check("every string the pane renders or exports is ASCII with no bare pipe", bad == nil, bad)
 end
 
+--------------------------------------------------------------------------------
+-- 12 (T10b): each non-empty section has a title row before its first family,
+-- and an empty one has none
+--------------------------------------------------------------------------------
+do
+    pane = OpenPane()
+    local rows = pane.lastRows or {}
+    local sectionIdx, familyIdx, otherIdx = {}, {}, nil
+    for i, r in ipairs(rows) do
+        if r.kind == "section" then sectionIdx[r.text] = sectionIdx[r.text] or i end
+        if r.kind == "family" and not familyIdx[1] then familyIdx[1] = { i, r.family.name } end
+        if r.kind == "family" and r.family.name == "Wrath" and not familyIdx[2] then familyIdx[2] = { i, r.family.name } end
+        if r.kind == "other" and not otherIdx then otherIdx = i end
+    end
+
+    -- this fixture book has no Damage-kind family with a "damage" kind row
+    -- that isn't Wrath, so "Heals" precedes the first heal family and
+    -- "Damage" precedes Wrath; both are non-empty here, and "Other" precedes
+    -- the first "other" line (Bearform).
+    local heals = sectionIdx["Heals"]
+    local damage = sectionIdx["Damage"]
+    local other = sectionIdx["Other"]
+    local ok12 = heals ~= nil and damage ~= nil and other ~= nil
+        and heals < familyIdx[1][1]
+        and damage < familyIdx[2][1]
+        and other < otherIdx
+
+    -- an empty section has none: strip Wrath's kind so the book has no
+    -- damage-kind family left, refresh, and check "Damage" is absent.
+    local book = MD.Book:Get()
+    local wrath = book.families["Wrath"]
+    local savedKind = wrath.kind
+    wrath.kind = nil
+    local pane2 = OpenPane()
+    local hasDamageSection = false
+    for _, r in ipairs(pane2.lastRows or {}) do
+        if r.kind == "section" and r.text == "Damage" then hasDamageSection = true end
+    end
+    wrath.kind = savedKind
+    OpenPane() -- restore the real book's rows for anything after this
+
+    check("each non-empty section has a title row before its first family, and an empty one has none",
+        ok12 and not hasDamageSection,
+        string.format("heals=%s damage=%s other=%s firstFamily=%d wrath=%d firstOther=%s emptyDamageAbsent=%s",
+            tostring(heals), tostring(damage), tostring(other), familyIdx[1][1], familyIdx[2][1], tostring(otherIdx),
+            tostring(not hasDamageSection)))
+end
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("  FAIL " .. f) end
 if #fails > 0 then os.exit(1) end

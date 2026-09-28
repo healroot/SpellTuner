@@ -223,12 +223,16 @@ local function ClearCells(row)
     for _, col in ipairs(SPELL_COLS) do row.cells[col.key]:SetText("") end
 end
 
--- opts.render(row, r, color): r.kind picks the shape -- "family" (a section
--- header + its "suggested: Rank K"), "note" (a gap/stale line under it),
--- "entry" (one rank row, the TBC table's own colour rule), "other" (one line
--- for a kindless family, spec's own four fields).
+-- opts.render(row, r, color): r.kind picks the shape -- "section" (a Heals/
+-- Damage/Other title, T10b: nothing on the pane named where one ended),
+-- "family" (a family header + its "suggested: Rank K"), "note" (a gap/stale
+-- line under it), "entry" (one rank row, the TBC table's own colour rule),
+-- "other" (one line for a kindless family, spec's own four fields).
 local function RenderSpellRow(row, r, color)
-    if r.kind == "family" then
+    if r.kind == "section" then
+        ClearCells(row)
+        row.cells.rank:SetText(UI.accentHex .. r.text .. RESET)
+    elseif r.kind == "family" then
         ClearCells(row)
         local text = r.family.name
         if r.family.suggested and r.family.suggested.rank then
@@ -313,12 +317,25 @@ local function BuildSpellRows(book, pool)
         end
     end
 
+    -- T10b: a title row before each non-empty section, so a reader can tell
+    -- where one ends -- none at all when a section has no family in it.
+    local hasHeal, hasDamage, hasOther = false, false, false
+    for _, name in ipairs(book.order) do
+        local kind = book.families[name].kind
+        if kind == "heal" then hasHeal = true
+        elseif kind == "damage" then hasDamage = true
+        elseif not kind then hasOther = true end
+    end
+
+    if hasHeal then rows[#rows + 1] = { kind = "section", text = "Heals" } end
     for _, name in ipairs(book.order) do
         if book.families[name].kind == "heal" then AddFamily(name) end
     end
+    if hasDamage then rows[#rows + 1] = { kind = "section", text = "Damage" } end
     for _, name in ipairs(book.order) do
         if book.families[name].kind == "damage" then AddFamily(name) end
     end
+    if hasOther then rows[#rows + 1] = { kind = "section", text = "Other" } end
     for _, name in ipairs(book.order) do
         local fam = book.families[name]
         if not fam.kind then
