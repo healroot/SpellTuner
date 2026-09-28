@@ -282,12 +282,15 @@ do
     S.inCombat = false
     local blocked = afterCombat == before
 
+    -- T13d hand-out amendment: each aura entry also carries `tgt`, the
+    -- roster index -- party1 is the tank, roster index 2.
     check("own HoTs on the party are read before the pull, never in combat",
         rec ~= nil and #rec.initial.auras == 1 and rec.initial.auras[1].spellId == 774
         and rec.initial.auras[1].token == "party1" and math.abs((rec.initial.auras[1].remaining or -1) - 900) < 0.001
+        and rec.initial.auras[1].tgt == 2
         and blocked,
-        string.format("auras=%s auraCalls before=%s after=%s", tostring(rec and #rec.initial.auras),
-            tostring(before), tostring(afterCombat)))
+        string.format("auras=%s auraCalls before=%s after=%s tgt=%s", tostring(rec and #rec.initial.auras),
+            tostring(before), tostring(afterCombat), tostring(rec and rec.initial.auras[1] and rec.initial.auras[1].tgt)))
 end
 
 --------------------------------------------------------------------------------

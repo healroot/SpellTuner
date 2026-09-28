@@ -287,12 +287,17 @@ readings and `UnitHealthMissing(party1)`, out of combat and in the snapshot; `pr
 and `MD.SpellData` built from `MD.Book` (Healing Touch, Regrowth, Rejuvenation, Swiftmend eating the
 whole HoT, Tranquility excluded; Wild Growth skipped and named); the engine's four spell-name
 lookups go through `MD.API.SpellName`; `kitcheck` 7.
-**T13** -- the Recorder module carries `Recorder_Forever.lua`: every pull a **v3 stream** in
+**T13** (`6624d58`) -- the Recorder module carries `Recorder_Forever.lua`: every pull a **v3 stream** in
 `MD.cdb.recordings` (8 kept) -- `UNIT_COMBAT` WOUND / HEAL per tracked token (HEAL = 15, source
 unknown), own casts with SENT target and book cost, cancels decided whatever order STOP and
 SUCCEEDED arrive in (UNKNOWN on the client), party max health `-1`, the clock's modelled mana,
 deaths, pre-pull HoTs read out of combat, restriction brackets, the damage meter's totals read 1 s
 after combat; `/st rec [clear]`; `recordcheck` 14.
+**T13d** -- the Replay module carries `Scenario_Forever.lua`: `SM.ScenarioFromRecording` sends a v3
+stream to `SM.ScenarioV3` (v2 untouched); `SM.AttributeHeals` (planner ruling 2) splits the
+sourceless heals into own and foreign; `SM.EstimateMaxHP` (ruling 1) stands in for a party member's
+max, marked estimated; health reconstructed as a deficit on a 2 s grid; pre-pull HoTs placed by the
+recorder's new aura `tgt`; `tools/foreverfixture.lua`; `scenariocheck` 9.
 
 ### M4 — practice (phase 4) → `1.0.0-beta.3`
 

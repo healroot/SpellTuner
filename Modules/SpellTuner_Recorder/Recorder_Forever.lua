@@ -156,13 +156,18 @@ local function InCombat()
     return v ~= false
 end
 
+-- T13d (docs/tasks/T13d-scenario-v3.md), lead's hand-out amendment: each
+-- entry also carries `tgt`, the roster index -- ScanAuras already iterates
+-- R.roster by ipairs, so `i` IS that index; without it a stream cannot say
+-- which target a pre-pull HoT sits on (the roster itself carries no token,
+-- and a token can move between roster indices across a roster change).
 local function ScanAuras()
     local now = GetTime()
     local list = {}
-    for _, e in ipairs(R.roster) do
+    for i, e in ipairs(R.roster) do
         local token = e.token
-        for i = 1, 40 do
-            local row = MD.API.AuraByIndex(token, i, "HELPFUL|PLAYER")
+        for j = 1, 40 do
+            local row = MD.API.AuraByIndex(token, j, "HELPFUL|PLAYER")
             if row == nil then break end
             if type(row) == "table" and type(row.spellId) == "number" then
                 local remaining
@@ -171,7 +176,8 @@ local function ScanAuras()
                 if type(row.applications) == "number" and row.applications > 0 then
                     stacks = row.applications
                 end
-                list[#list + 1] = { token = token, spellId = row.spellId, remaining = remaining, stacks = stacks }
+                list[#list + 1] = { token = token, spellId = row.spellId, remaining = remaining,
+                                     stacks = stacks, tgt = i }
             end
         end
     end
@@ -181,7 +187,8 @@ end
 local function CopyAuraList(list)
     local out = {}
     for i, e in ipairs(list) do
-        out[i] = { token = e.token, spellId = e.spellId, remaining = e.remaining, stacks = e.stacks }
+        out[i] = { token = e.token, spellId = e.spellId, remaining = e.remaining, stacks = e.stacks,
+                   tgt = e.tgt }
     end
     return out
 end
