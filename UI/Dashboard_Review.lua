@@ -34,6 +34,21 @@ local COLS = {
     { "valid",  538, 190, "validate" },
 }
 
+-- The probe's own escaping (Client/Probe.lua's Esc), duplicated per painting
+-- file (UI/Dashboard_Forever.lua, UI/ReplayWindow.lua): a literal backslash
+-- doubled first, then a pipe as "||", then any non-ASCII/control byte as
+-- "\ddd" -- so a zone name, a gate's own text (which can embed a target
+-- name, T14) and a roster name stay ASCII with no bare pipe wherever this
+-- pane paints them, on either client (T16b, lead review 2026-09-28: "escape
+-- every such string at paint time").
+local function Esc(s)
+    if type(s) ~= "string" then return "" end
+    local step1 = s:gsub("\\", "\\\\")
+    local step2 = step1:gsub("|", "||")
+    local step3 = step2:gsub("[^ -~]", function(c) return string.format("\\%03d", c:byte()) end)
+    return step3
+end
+
 local function K(n)
     if n >= 1000 then return string.format("%.1fk", n / 1000) end
     return string.format("%d", n + 0.5)
@@ -219,7 +234,7 @@ function MD.DashboardParts.CreateReview(parent, width)
     -- failed. You cannot get a card from a fight the engine gets wrong by
     -- accident; you can get one on purpose.
     local function Forcing()
-        return IsShiftKeyDown and IsShiftKeyDown() or false
+        return MD.API.IsShiftKeyDown and MD.API.IsShiftKeyDown() or false
     end
     coachBtn:SetScript("OnClick", function()
         local i = RunIndex()
@@ -254,7 +269,7 @@ function MD.DashboardParts.CreateReview(parent, width)
     -- /md coach N force has to have run first (v0.9.6).
     playBtn:SetScript("OnClick", function()
         if not MD.Replay then return end
-        local shift = IsShiftKeyDown and IsShiftKeyDown()
+        local shift = MD.API.IsShiftKeyDown and MD.API.IsShiftKeyDown()
         MD.Replay:Open(Spec() .. (shift and " force" or ""))
     end)
 
@@ -306,7 +321,7 @@ function MD.DashboardParts.CreateReview(parent, width)
         for _, g in ipairs(v.gates) do
             if not g.ok then
                 local short = g.text:match("^([^%(]+)")
-                return "|cffff9966" .. g.name .. ": " .. (short or g.text):gsub("%s+$", "") .. "|r", false
+                return "|cffff9966" .. g.name .. ": " .. Esc((short or g.text):gsub("%s+$", "")) .. "|r", false
             end
         end
         return "|cffff9966failed|r", false
@@ -412,7 +427,7 @@ function MD.DashboardParts.CreateReview(parent, width)
             local c = ((v and not ok) or rec.short) and "|cffbbbbbb" or "|cffffffff"
             row.cells.n:SetText(c .. i .. (rec.pinned and "*" or "") .. "|r")
             row.cells.when:SetText(c .. (run and ("+" .. Clock(rec.runT0 or 0)) or When(rec.id)) .. "|r")
-            row.cells.zone:SetText(c .. (rec.zone or "?") .. "|r")
+            row.cells.zone:SetText(c .. Esc(rec.zone or "?") .. "|r")
             row.cells.dur:SetText(c .. Clock(rec.dur or 0) .. "|r")
             row.cells.tgts:SetText(c .. #(rec.tracked or {}) .. "|r")
             row.cells.casts:SetText(c .. (rec.ownCasts or 0) .. "|r")
@@ -424,7 +439,7 @@ function MD.DashboardParts.CreateReview(parent, width)
                 local tip = MD.Tip
                 if not tip then return end
                 local lines = {}
-                lines[#lines + 1] = { l = rec.zone or "?", r = When(rec.id) }
+                lines[#lines + 1] = { l = Esc(rec.zone or "?"), r = When(rec.id) }
                 lines[#lines + 1] = { l = "foreign healing",
                     r = string.format("%d%%", (rec.foreignShare or 0) * 100 + 0.5) }
                 if rec.truncated then
@@ -433,10 +448,11 @@ function MD.DashboardParts.CreateReview(parent, width)
                 if v then
                     for _, g in ipairs(v.gates) do
                         lines[#lines + 1] = { l = (g.ok and "|cff99dd99" or "|cffff9966") .. g.name .. "|r",
-                                              r = g.text }
+                                              r = Esc(g.text) }
                     end
                     for idx, why in pairs(v.excluded) do
-                        lines[#lines + 1] = { l = "  excluded " .. ((rec.roster[idx] and rec.roster[idx].name) or idx),
+                        local nm = rec.roster[idx] and rec.roster[idx].name
+                        lines[#lines + 1] = { l = "  excluded " .. (nm and Esc(nm) or tostring(idx)),
                                               r = why }
                     end
                 else
@@ -505,7 +521,7 @@ function MD.DashboardParts.CreateReview(parent, width)
                 lines[#lines + 1] = { l = "|cffff9966This fight does not replay, so nothing would be", r = "" }
                 lines[#lines + 1] = { l = "|cffff9966suggested from it.|r", r = "" }
                 for _, g in ipairs(v.gates) do
-                    if not g.ok then lines[#lines + 1] = { l = "  " .. g.name, r = g.text } end
+                    if not g.ok then lines[#lines + 1] = { l = "  " .. g.name, r = Esc(g.text) } end
                 end
                 lines[#lines + 1] = { l = "|cffffff00shift-click|r to coach it anyway", r = "" }
                 lines[#lines + 1] = { l = "|cff888888(or /md coach " .. Spec() .. " force)|r", r = "" }
@@ -521,7 +537,7 @@ function MD.DashboardParts.CreateReview(parent, width)
         coachBtn:SetScript("OnLeave", function() if MD.Tip then MD.Tip:Hide() end end)
 
         habitsFS:SetText(Habits() or "|cff888888Habits appear once a few fights have been summarised.|r")
-        local zone = GetRealZoneText and GetRealZoneText() or nil
+        local zone = MD.API.RealZoneText and MD.API.RealZoneText() or nil
         local prog = MD.SimPlanner and zone and MD.SimPlanner.Progress(zone)
         progressFS:SetText(prog and ("|cff99dd99" .. prog .. "|r") or "")
     end

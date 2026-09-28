@@ -11,6 +11,10 @@ local _, MD = ...
 local UI = MD.UI
 
 local WIDTH, HEIGHT = 700, 460
+-- T16b: the Review tab is laid out for TBC's own Reports pane (912-wide
+-- content), so the window grows to that size once it fits -- the Spellbook
+-- pane keeps its own 620-wide table regardless (Files).
+local GROWN_WIDTH, GROWN_HEIGHT = 912 + 108 + 16, 646
 
 local nav, frame
 
@@ -18,6 +22,8 @@ local function Groups()
     return {
         { id = "spells", text = "Spells", views = {
             { id = "book", text = "Spellbook" } } },
+        { id = "reports", text = "Reports", views = {
+            { id = "review", text = "Review" } } },
         { id = "settings", text = "Settings", views = {
             { id = "general", text = "General" },
             { id = "modules", text = "Modules" } } },
@@ -559,14 +565,61 @@ local function BuildSpellbookPane(content)
 end
 
 --------------------------------------------------------------------------------
+-- Reports -> Review (T16b, docs/tasks/T16b-review-tab.md): the TBC Review tab
+-- (UI/Dashboard_Review.lua, shared) with the Replay module on; a placeholder
+-- naming how to switch it on, off. The placeholder never loads the module --
+-- only the Modules pane's own switch does (Rules).
+--------------------------------------------------------------------------------
+local reviewPane        -- the api object MD.DashboardParts.CreateReview hands back
+local reviewPlaceholder -- the placeholder frame, while the module is off
+
+local function DesiredSize()
+    if MD.DashboardParts.CreateReview then return GROWN_WIDTH, GROWN_HEIGHT end
+    return WIDTH, HEIGHT
+end
+
+local function BuildReviewPlaceholder(content)
+    local pane = CreateFrame("Frame", nil, content)
+    pane:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
+    pane:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", 0, 0)
+
+    local text = pane:CreateFontString(nil, "OVERLAY", UI.FONT)
+    text:SetPoint("TOPLEFT", pane, "TOPLEFT", 4, -4)
+    text:SetPoint("RIGHT", pane, "RIGHT", -4, 0)
+    text:SetJustifyH("LEFT")
+    text:SetText("Review needs the Replay module - Settings -> Modules")
+
+    pane.reviewPlaceholder = true -- marks this pane for tools/reviewforever.lua
+    reviewPlaceholder = pane
+    return pane
+end
+
+local function BuildReviewPane(content)
+    reviewPane = MD.DashboardParts.CreateReview(content, 912)
+    reviewPane.frame:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
+    reviewPane.frame:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", 0, 0)
+    return reviewPane.frame
+end
+
+local function RefreshReviewPane()
+    if reviewPane then reviewPane:Render() end
+end
+
+--------------------------------------------------------------------------------
 -- The window
 --------------------------------------------------------------------------------
 local function CreateDashboard()
     if nav then return end -- MD_READY-equivalent callers may ask more than once
-    nav = UI.CreateNavFrame("SpellTuner", "SpellTunerDashboard", WIDTH, HEIGHT, Groups(),
+    local w, h = DesiredSize()
+    nav = UI.CreateNavFrame("SpellTuner", "SpellTunerDashboard", w, h, Groups(),
         function(group, view, content)
             if group == "spells" and view == "book" then
                 return BuildSpellbookPane(content)
+            elseif group == "reports" and view == "review" then
+                if MD.DashboardParts.CreateReview then
+                    return BuildReviewPane(content)
+                end
+                return BuildReviewPlaceholder(content)
             elseif group == "settings" and view == "general" then
                 generalPane = BuildGeneralPane(content)
                 return generalPane
@@ -579,6 +632,7 @@ local function CreateDashboard()
         function(group, view, pane)
             if group == "settings" and view == "general" then RefreshGeneralPane() end
             if group == "settings" and view == "modules" then RefreshModulesPane() end
+            if group == "reports" and view == "review" then RefreshReviewPane() end
             -- "refreshed on show" (Goal): nav:Select runs this on every visit,
             -- the FIRST included -- a plain Show()/OnShow pair would miss the
             -- first one, since a frame is created already shown (CLAUDE.md's
@@ -628,3 +682,25 @@ end
 -- loads landing while the window happens to be up from a previous session
 -- were that ever possible, and any other module firing MODULE_LOADED later).
 MD:RegisterCallback("MODULE_LOADED", RefreshModulesPane)
+
+-- T16b: SpellTuner_Replay finishing load (its own last file, Ready.lua)
+-- brings MD.DashboardParts.CreateReview with it. Grow the window to fit the
+-- tab, and if a placeholder is what the Review view is currently showing,
+-- replace it with the real pane -- re-selecting it if it happens to be the
+-- one on screen, which both shows the new pane (nav.panes already carries it)
+-- and refreshes it.
+MD:RegisterCallback("MODULE_LOADED", function(name)
+    if name ~= "SpellTuner_Replay" or not MD.DashboardParts.CreateReview then return end
+    if frame then frame:SetSize(GROWN_WIDTH, GROWN_HEIGHT) end
+    if nav and nav.panes and nav.panes.reports and nav.panes.reports.review == reviewPlaceholder
+            and reviewPlaceholder then
+        local content = nav:Content()
+        local pane = BuildReviewPane(content)
+        nav.panes.reports.review = pane
+        reviewPlaceholder:Hide()
+        reviewPlaceholder = nil
+        if nav.group == "reports" and nav.view == "review" then
+            nav:Select("reports", "review")
+        end
+    end
+end)

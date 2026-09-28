@@ -20,6 +20,7 @@ Engine\RunTimeline.lua
 Engine\ReplayTrace.lua
 UI\Tooltip.lua
 UI\ReplayWindow.lua
+UI\Dashboard_Review.lua
 Commands_Forever.lua
 
 Ready.lua

@@ -62,7 +62,9 @@ local FOREVER_ONLY_NAMES = {
 -- T15: Client/API_TBC.lua's own binding -- GetSpellInfo, so
 -- Engine/SimModel.lua and Engine/SimPlanner.lua's four call sites can go
 -- through MD.API.SpellName(id) on either client.
-local TBC_ONLY_NAMES = { "SpellName" }
+-- T16b (UI/Dashboard_Review.lua): RealZoneText, TBC's own GetRealZoneText --
+-- Forever's is FOREVER_ONLY_NAMES' own (Client/API_Forever.lua, T13).
+local TBC_ONLY_NAMES = { "SpellName", "RealZoneText" }
 
 --------------------------------------------------------------------------------
 -- 1-9: both flavours

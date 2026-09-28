@@ -26,3 +26,10 @@ MD.API.Bind({
 MD.API.Bind({
     SpellTexture = "GetSpellTexture",
 })
+
+-- T16b (UI/Dashboard_Review.lua): the Review tab's own progress line reads
+-- the current zone; Forever's own binding is Client/API_Forever.lua's (T13's
+-- recorder). Same binding name, same classic global either side.
+MD.API.Bind({
+    RealZoneText = "GetRealZoneText",
+})

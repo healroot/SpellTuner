@@ -89,6 +89,18 @@ local function ValidationReport(rec, n)
     return out
 end
 MD.ValidationReportForever = ValidationReport -- read by tools/replayforever.lua
+-- T16b: the Review tab's own Validate button (UI/Dashboard_Review.lua, shared
+-- with TBC) calls `MD:ValidationReport(rec, n)` -- a COLON call, same as
+-- Verify.lua's TBC one (Verify.lua:1299) -- so this has to be a method too:
+-- `MD.ValidationReport = ValidationReport` (the plain, 2-argument local
+-- above) would have taken the implicit `self` as `rec` and shifted `rec`
+-- into `n`, and the misfed table sailed straight through as far as
+-- `SM:Run` before it broke on a field only a real recording has. Not
+-- wrapped in Esc here, same as the TBC one it mirrors: MD:Print goes
+-- straight to chat on both clients, unescaped, on this call path today.
+function MD:ValidationReport(rec, n)
+    return ValidationReport(rec, n)
+end
 
 MD:AddCommand("replay", function(arg)
     if MD.ToggleReplay then MD:ToggleReplay(arg) end
@@ -103,7 +115,14 @@ MD:AddCommand("validate", function(arg)
     for _, line in ipairs(ValidationReport(rec, label)) do Print(line) end
 end, "/st validate [n]", "check whether recording n replays through the engine, gate by gate")
 
-MD:AddCommand("coach", function(arg)
+-- T16b (UI/Dashboard_Review.lua, shared with TBC): the Review tab's Coach and
+-- Coach pull buttons call `MD:RunCoach(arg)` the same way Core_TBC.lua's own
+-- "coach" slash command does (`if MD.RunCoach then MD:RunCoach(arg) end`,
+-- Core_TBC.lua:390) -- named the same on both clients so the shared pane
+-- never needs to know which one it is on. `/st coach` is now this function;
+-- Verify.lua's own `MD:RunCoach` (TBC, printing through a different Print)
+-- is untouched.
+function MD:RunCoach(arg)
     if not (MD.SimPlanner and MD.FightRecorder) then Print("coach: not loaded.") return end
     arg = arg or ""
     if arg == "cancel" then
@@ -130,4 +149,7 @@ MD:AddCommand("coach", function(arg)
         for _, line in ipairs(lines) do Print(line) end
     end
     MD.coachSearch = MD.SimPlanner.CoachAsync(rec, { n = n, force = (rest == "force") }, Show)
-end, "/st coach [n] [force]", "search for a better plan on recorded fight n and show the card (cancel stops it)")
+end
+
+MD:AddCommand("coach", function(arg) MD:RunCoach(arg) end,
+    "/st coach [n] [force]", "search for a better plan on recorded fight n and show the card (cancel stops it)")

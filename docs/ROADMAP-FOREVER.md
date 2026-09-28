@@ -302,12 +302,16 @@ recorder's new aura `tgt`; `tools/foreverfixture.lua`; `scenariocheck` 9.
 against the modelled pool (said so, ruling 3), health against the reconstruction, foreign share and
 calibration from the damage meter, spend coverage by the book, and gate 8 "heals attributed"
 (ruling 2; one-sided until `SM.HEAL_AMOUNT` is known to be effective); `gatecheck` 8.
-**T16a** -- the Replay module carries the engine, the planner and solver, `ReplayTrace`, `UI/Tooltip.lua`
+**T16a** (`a8ba234`) -- the Replay module carries the engine, the planner and solver, `ReplayTrace`, `UI/Tooltip.lua`
 and `UI/ReplayWindow.lua` (every client call now through the adapter, names escaped at paint time,
 the TBC window unchanged) and `Commands_Forever.lua` (`/st replay`, `/st validate`, `/st coach`); a
 v3 recording plays with its reconstructed health as the left column's ticks and says it is
 reconstructed and estimated; `SM.RecordedHp`; `replayforever` 10. `SP.Card`'s stray global `kit`
 (always nil) made an explicit local, TBC output unchanged.
+**T16b** -- the Forever window gains Reports -> Review: the TBC Review tab (`UI/Dashboard_Review.lua`,
+shared, client calls through the adapter) with the Replay module on, a placeholder naming the switch
+with it off; the window grows to the TBC size; the Review buttons' `MD:RunCoach` /
+`MD:ValidationReport` exist on Forever (`Commands_Forever.lua`); `reviewforever` 8.
 
 ### M4 — practice (phase 4) → `1.0.0-beta.3`
 
