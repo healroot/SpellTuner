@@ -42,7 +42,7 @@ MD:DeclareModule("SpellTuner_Practice", "Practice", { "SpellTuner_Replay" },
 --------------------------------------------------------------------------------
 local svHandled = false
 MD:On("ADDON_LOADED", function(loadedName)
-    if svHandled or loadedName ~= ADDON_NAME then return end
+    if svHandled or MD.API.IsSecret(loadedName) or loadedName ~= ADDON_NAME then return end
     svHandled = true
 
     -- Our own SavedVariables are ours, not client values -- type() checks

@@ -32,7 +32,14 @@ with `FAIL <file>:<line> <name> <reason>` on a name the 69893 baseline lacks, a 
 the script), a new global, `os` / `io` / `require` and the rest WoW's Lua does not have, the
 `COMBAT_LOG_EVENT_UNFILTERED` constant outside `Client/API_Forever.lua`, and a `C_X.Y` string the
 baseline does not have. `--report` prints every global per file with its class; `--selftest` runs
-the fixture in `tools/data/apicheck-fixture/`, which trips each rule once.
+the fixture in `tools/data/apicheck-fixture/`, which trips each rule once (10 findings since T13a).
+Since **T13c** a module TOC's entry under `Engine/`, `Spells/`, `Data/` or `UI/` that is not in the
+module folder is scanned from the repository root. Since **T13a**, rule 8, from the source text:
+`rule 8: <file>:<line> <param> used before IsSecret in the <EVENT> handler` for an `MD:On` handler
+(inline, or a same-file `local function`) outside `Client/` whose argument is compared, used in
+arithmetic, indexed, measured with `#` or `type()`-tested before a call to `...IsSecret(param)`.
+It does not follow a value into another function or through an alias, and a check in a branch
+that does not dominate the use still counts -- a clean run is necessary, not sufficient.
 
 **`python3 tools/refcheck.py <file>`** (T8b, M2) -- the client's spells against talentsforever.com's
 `data.json` (`docs/REFERENCES-FOREVER.md` §1). `<file>` is a probe report (its `== spells` blocks;

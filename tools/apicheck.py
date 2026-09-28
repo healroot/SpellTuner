@@ -13,8 +13,16 @@ API baseline and the adapter rule (CLAUDE.md / docs/FOREVER-PLAN.md):
   6. a "C_Namespace.Member" string whose namespace/member the baseline lacks,
      outside Client/Probe.lua (which names absent members as strings on purpose)
   7. a TOC entry with no file on disk
+  8. an event handler's argument compared, used in arithmetic, indexed,
+     measured with `#`, or type()-tested before the same function has asked
+     IsSecret about it (outside Client/, from the handler's own source text --
+     see docs/tasks/T13a-secret-arg-check.md). Known limits: a parameter
+     passed on to another function and compared there is not followed; an
+     alias (`local u = unit`) is not followed; a check in a branch that does
+     not dominate the use still counts as a check.
 
-See docs/tasks/T6-apicheck.md for the full rule text.
+See docs/tasks/T6-apicheck.md for the full rule text (rules 1-7) and
+docs/tasks/T13a-secret-arg-check.md for rule 8.
 """
 import argparse
 import json
@@ -91,6 +99,17 @@ class Finding:
 
     def render(self):
         return "FAIL {}:{} {} {}".format(self.path, self.line, self.name, self.reason)
+
+
+class Rule8Finding(Finding):
+    """rule 8: <file>:<line> <param> used before IsSecret in the <EVENT> handler"""
+
+    def __init__(self, path, line, param, event):
+        reason = "used before IsSecret in the {} handler".format(event)
+        Finding.__init__(self, path, line, param, reason)
+
+    def render(self):
+        return "rule 8: {}:{} {} {}".format(self.path, self.line, self.name, self.reason)
 
 
 def to_posix(path):
@@ -214,6 +233,206 @@ def scan_file(luac, abspath, relpath, baseline, globals_seen, per_file_globals):
     return findings
 
 
+# ---------------------------------------------------------------------------
+# Rule 8: an event handler's argument used riskily before IsSecret asks about
+# it. Source text only (T13a) -- a secret's own shape does not survive to
+# luac's listing the way a plain global name does.
+# ---------------------------------------------------------------------------
+
+HANDLER_INLINE_RE = re.compile(
+    r'MD:On\(\s*"([A-Za-z_][A-Za-z0-9_]*)"\s*,\s*function\s*\(([^)]*)\)'
+)
+HANDLER_NAMED_RE = re.compile(
+    r'MD:On\(\s*"([A-Za-z_][A-Za-z0-9_]*)"\s*,\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)'
+)
+
+BLOCK_TOKEN_RE = re.compile(r'\b(function|if|do|repeat|until|end)\b')
+CHECK_CALL_RE = re.compile(r'([A-Za-z_][A-Za-z0-9_.:]*IsSecret)\s*\(([^)]*)\)')
+
+RISKY_PATTERNS_TMPL = [
+    r'\b{p}\b\s*(?:==|~=|<=|>=|<|>)',
+    r'(?:==|~=|<=|>=|<|>)\s*\b{p}\b',
+    r'\b{p}\b\s*[-+*/%^]',
+    r'[-+*/%^]\s*\b{p}\b',
+    r'#\s*\b{p}\b',
+    r'\b{p}\b\s*\[',
+    r'\b{p}\b\s*\.\s*[A-Za-z_]',
+    r'\b{p}\b\s*:',
+    r'\b{p}\b\s*\(',
+    r'\btype\s*\(\s*{p}\b\s*\)',
+]
+
+
+def _blank(segment):
+    return ''.join('\n' if ch == '\n' else ' ' for ch in segment)
+
+
+def _strip(text, strip_strings):
+    """Blank out comments (and, if strip_strings, string literals too),
+    character-for-character -- same length, newlines kept in place -- so
+    offsets still line up with the raw source for line numbers."""
+    out = []
+    i = 0
+    n = len(text)
+    while i < n:
+        c = text[i]
+        if text.startswith("--", i):
+            j = i + 2
+            long_end = None
+            if j < n and text[j] == '[':
+                k = j + 1
+                eq = 0
+                while k < n and text[k] == '=':
+                    eq += 1
+                    k += 1
+                if k < n and text[k] == '[':
+                    close = ']' + '=' * eq + ']'
+                    found = text.find(close, k + 1)
+                    long_end = (found + len(close)) if found != -1 else n
+            if long_end is None:
+                long_end = text.find('\n', i)
+                if long_end == -1:
+                    long_end = n
+            out.append(_blank(text[i:long_end]))
+            i = long_end
+            continue
+        if strip_strings and c in ('"', "'"):
+            quote = c
+            j = i + 1
+            while j < n and text[j] != quote:
+                if text[j] == '\\' and j + 1 < n:
+                    j += 2
+                else:
+                    j += 1
+            j = min(j + 1, n)
+            out.append(_blank(text[i:j]))
+            i = j
+            continue
+        if strip_strings and c == '[':
+            k = i + 1
+            eq = 0
+            while k < n and text[k] == '=':
+                eq += 1
+                k += 1
+            if k < n and text[k] == '[':
+                close = ']' + '=' * eq + ']'
+                found = text.find(close, k + 1)
+                end = (found + len(close)) if found != -1 else n
+                out.append(_blank(text[i:end]))
+                i = end
+                continue
+        out.append(c)
+        i += 1
+    return ''.join(out)
+
+
+def strip_comments(text):
+    return _strip(text, strip_strings=False)
+
+
+def strip_source(text):
+    return _strip(text, strip_strings=True)
+
+
+def find_block_end(stripped, body_start):
+    """Position of the `end` (or the `until` its `repeat` closes) that ends
+    the block opened at body_start (the handler function itself already
+    counted as open)."""
+    stack = ["function"]
+    for m in BLOCK_TOKEN_RE.finditer(stripped, body_start):
+        tok = m.group(1)
+        if tok in ("function", "if", "do", "repeat"):
+            stack.append(tok)
+        elif tok == "end":
+            if stack and stack[-1] != "repeat":
+                stack.pop()
+        elif tok == "until":
+            if stack and stack[-1] == "repeat":
+                stack.pop()
+        if not stack:
+            return m.start()
+    return len(stripped)
+
+
+def param_names(paramlist):
+    names = []
+    for p in paramlist.split(","):
+        p = p.strip()
+        if p and p not in ("_", "self", "..."):
+            names.append(p)
+    return names
+
+
+def check_positions(body, param):
+    positions = []
+    for m in CHECK_CALL_RE.finditer(body):
+        args = [a.strip() for a in m.group(2).split(",")]
+        if param in args:
+            positions.append(m.start())
+    return positions
+
+
+def first_risky_use(body, param):
+    p = re.escape(param)
+    best = None
+    for tmpl in RISKY_PATTERNS_TMPL:
+        m = re.compile(tmpl.format(p=p)).search(body)
+        if m and (best is None or m.start() < best):
+            best = m.start()
+    return best
+
+
+def line_of(text, pos):
+    return text.count('\n', 0, pos) + 1
+
+
+def rule8_findings_for_body(relpath, stripped_file, body_start, body_end, event, params):
+    findings = []
+    body = stripped_file[body_start:body_end]
+    for param in params:
+        use_pos = first_risky_use(body, param)
+        if use_pos is None:
+            continue
+        if any(cp < use_pos for cp in check_positions(body, param)):
+            continue
+        line = line_of(stripped_file, body_start + use_pos)
+        findings.append(Rule8Finding(relpath, line, param, event))
+    return findings
+
+
+def scan_rule8(abspath, relpath):
+    if under_client_dir(relpath):
+        return []
+    with open(abspath, "r", encoding="utf-8", errors="replace") as f:
+        raw = f.read()
+    no_comments = strip_comments(raw)   # for locating handlers -- strings intact
+    stripped = strip_source(raw)        # for body scanning -- strings blanked too
+    findings = []
+
+    for m in HANDLER_INLINE_RE.finditer(no_comments):
+        event = m.group(1)
+        params = param_names(m.group(2))
+        if not params:
+            continue
+        body_start = m.end()
+        body_end = find_block_end(stripped, body_start)
+        findings.extend(rule8_findings_for_body(relpath, stripped, body_start, body_end, event, params))
+
+    for m in HANDLER_NAMED_RE.finditer(no_comments):
+        event, fname = m.group(1), m.group(2)
+        dm = re.search(r'\blocal\s+function\s+' + re.escape(fname) + r'\s*\(([^)]*)\)', no_comments)
+        if not dm:
+            continue  # not a same-file local function -- out of scope (Facts)
+        params = param_names(dm.group(1))
+        if not params:
+            continue
+        body_start = dm.end()
+        body_end = find_block_end(stripped, body_start)
+        findings.extend(rule8_findings_for_body(relpath, stripped, body_start, body_end, event, params))
+
+    return findings
+
+
 def collect(root, baseline):
     """Returns (forever_tocs, checked_files[abspath,relpath], findings, globals_seen, per_file_globals)."""
     all_tocs = find_tocs(root)
@@ -277,6 +496,7 @@ def main():
     per_file_globals = {}
     for abspath, relpath in checked:
         findings.extend(scan_file(args.luac, abspath, relpath, baseline, globals_seen, per_file_globals))
+        findings.extend(scan_rule8(abspath, relpath))
 
     findings.sort(key=lambda f: f.key())
 
@@ -298,12 +518,16 @@ def main():
             ("Bad.lua", 5, "COMBAT_LOG_EVENT_UNFILTERED", "{} named".format(FORBIDDEN_EVENT)),
             ("Bad.lua", 6, "C_Spell.NoSuchMember", "C_ member not in baseline {}".format(build)),
         ]
+        # rule 8: Handlers.lua's two bad handlers use their param before
+        # IsSecret ever asks about it (T13a); the two good ones raise nothing.
+        expected.append(("Handlers.lua", 21, "unit", "used before IsSecret in the UNIT_HEALTH_BAD handler"))
+        expected.append(("Handlers.lua", 27, "unit", "used before IsSecret in the UNIT_AURA_BAD handler"))
         # rule 7: Gone.lua is missing, referenced from the fixture TOC.
         toc_rel = None
         for t in forever_tocs:
             if os.path.basename(t) == "Fixture_Mainline.toc":
                 toc_rel = to_posix(os.path.relpath(t, root))
-        expected.append((toc_rel, 6, "Gone.lua", "missing file"))
+        expected.append((toc_rel, 7, "Gone.lua", "missing file"))
         # T13c: Modules/Sample/Sample_Mainline.toc lists Engine\Ok.lua (not
         # under Modules/Sample/, resolves at the fixture root -- zero findings
         # of its own, proving the resolution) and Missing.lua (nowhere at

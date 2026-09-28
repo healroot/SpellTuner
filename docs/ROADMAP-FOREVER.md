@@ -277,9 +277,12 @@ the HEAL amount's gross-or-effective question if §37's full-health Healing Touc
 
 *Landed:* **T13c** (`bdbc40a`) -- a module TOC may list a shared file (`Engine\...`, `Spells\...`,
 `Data\...`, `UI\...`) that release copies into the package; `Module.lua` makes the module's files
-see SpellTuner's `MD`, `Ready.lua` (last) fires `MODULE_LOADED`; `modulecheck` 14. **T13e** -- the
+see SpellTuner's `MD`, `Ready.lua` (last) fires `MODULE_LOADED`; `modulecheck` 14. **T13e** (`007d1d1`) -- the
 probe asks whether a status bar hands back a secret it was given (planner ruling 1): three `bar ...`
 readings and `UnitHealthMissing(party1)`, out of combat and in the snapshot; `probecheck` 73.
+**T13a** -- `apicheck.py` rule 8: an `MD:On` handler's argument compared, indexed, measured or
+`type()`-tested before `IsSecret` asks about it is a finding; the one it found (`Core_Forever.lua`,
+`ADDON_LOADED`) is guarded; `apicheck --selftest` 10 of 10.
 
 ### M4 — practice (phase 4) → `1.0.0-beta.3`
 
