@@ -190,8 +190,11 @@ try("each sibling is a LoadOnDemand Forever addon that depends on SpellTuner", f
             local deps = mainline:match("## Dependencies:%s*([^\r\n]+)")
             if not deps or not deps:match("^SpellTuner") then allGood = false end
             if s.need and not deps:find(s.need, 1, true) then allGood = false end
+            -- T13c: Module.lua sets the namespace up, first; Ready.lua tells
+            -- the core it loaded, last -- nothing between yet (that arrives
+            -- with T13/T15/T16's own shared files).
             local entries = TocEntries(mainline)
-            if not (#entries == 1 and entries[1] == "Module.lua") then allGood = false end
+            if not (entries[1] == "Module.lua" and entries[#entries] == "Ready.lua") then allGood = false end
         end
     end
     check("each sibling is a LoadOnDemand Forever addon that depends on SpellTuner", allGood)
@@ -335,6 +338,55 @@ try("nothing on the Forever TOC or in a sibling registers the combat log", funct
     end
     check("nothing on the Forever TOC or in a sibling registers the combat log",
         not attempted and #(S.forbidden or {}) == 0 and next(S.forbidden or {}) == nil)
+end)
+
+--------------------------------------------------------------------------------
+-- 13: a module file reads and writes SpellTuner's namespace as MD (T13c)
+--
+-- The scratch sibling lives under tools/data/modulecheck-fixture/T13CScratch/
+-- (a suite-only folder the stub registers with S.RegisterAddOnFolder, NOT
+-- under the real Modules/ -- a fixture has no business in the package a
+-- release actually builds). Its TOC lists Module.lua, a plain test file
+-- (T13cTest.lua) that does exactly what the task names, then Ready.lua.
+--------------------------------------------------------------------------------
+try("a module file reads and writes SpellTuner's namespace as MD", function()
+    local MD, S = NewSession()
+    S.RegisterAddOnFolder("T13CScratch", "tools/data/modulecheck-fixture/T13CScratch")
+    -- MD:ModuleLoaded (Core.lua) is a no-op, and MODULE_LOADED never fires,
+    -- for a name MD:DeclareModule never registered -- the scratch sibling
+    -- needs one, exactly like a real module's Core_Forever.lua declaration.
+    MD:DeclareModule("T13CScratch", "T13C Scratch", {})
+    -- Captured the moment MODULE_LOADED fires, so a pass here also proves
+    -- Ready.lua ran AFTER the test file, not just that both eventually ran.
+    local probeSetBeforeLoaded
+    MD:RegisterCallback("MODULE_LOADED", function(name)
+        if name == "T13CScratch" and probeSetBeforeLoaded == nil then
+            probeSetBeforeLoaded = (_G.SpellTuner.T13cProbe == "forever")
+        end
+    end)
+    local ok = C_AddOns.LoadAddOn("T13CScratch")
+    MD:Fire("T13C")
+    check("a module file reads and writes SpellTuner's namespace as MD",
+        ok == true
+        and _G.SpellTuner.T13cProbe == "forever"
+        and probeSetBeforeLoaded == true
+        and _G.SpellTuner.T13cFired == true)
+end)
+
+--------------------------------------------------------------------------------
+-- 14: a module TOC entry outside the module folder loads from the repository
+-- root (T13c)
+--
+-- The scratch sibling lists Engine\ReplayTrace.lua -- pure, no client call --
+-- from a TOC that otherwise lives entirely under
+-- tools/data/modulecheck-fixture/T13CRoot/.
+--------------------------------------------------------------------------------
+try("a module TOC entry outside the module folder loads from the repository root", function()
+    local MD, S = NewSession()
+    S.RegisterAddOnFolder("T13CRoot", "tools/data/modulecheck-fixture/T13CRoot")
+    local ok = C_AddOns.LoadAddOn("T13CRoot")
+    check("a module TOC entry outside the module folder loads from the repository root",
+        ok == true and _G.SpellTuner.ReplayTrace ~= nil)
 end)
 
 print(string.format("\n%d ok, %d failed", ok, #fails))

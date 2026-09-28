@@ -203,20 +203,33 @@ if [[ -d "$SRC/Modules" ]]; then
             done < "$toc"
         done
 
+        # T13c: an entry not under the module's own folder is a shared file
+        # (Engine/SimModel.lua etc.) that the client never loads across addon
+        # folders -- so it is resolved at the repository root, under the same
+        # four shared folders the stub and apicheck.py accept, and copied to
+        # the SAME relative path inside the package. Anything else missing is
+        # still the existing error.
         mmissing=0
+        msrc=()
         for f in "${mfiles[@]}"; do
-            if [[ ! -f "$mdir/$f" ]]; then
+            if [[ -f "$mdir/$f" ]]; then
+                msrc+=("$mdir/$f")
+            elif [[ "$f" == Engine/* || "$f" == Spells/* || "$f" == Data/* || "$f" == UI/* ]] && [[ -f "$SRC/$f" ]]; then
+                msrc+=("$SRC/$f")
+            else
                 echo "ERROR: Modules/$mname/$f is listed in the .toc but missing on disk" >&2
                 mmissing=1
+                msrc+=("")
             fi
         done
         [[ $mmissing -eq 0 ]] || exit 1
 
         rm -rf "$mpkg"
         mkdir -p "$mpkg"
-        for f in "${mfiles[@]}"; do
+        for i in "${!mfiles[@]}"; do
+            f="${mfiles[$i]}"
             mkdir -p "$mpkg/$(dirname "$f")"
-            cp "$mdir/$f" "$mpkg/$f"
+            cp "${msrc[$i]}" "$mpkg/$f"
         done
     done
 fi

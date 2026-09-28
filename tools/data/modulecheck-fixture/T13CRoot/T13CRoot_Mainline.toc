@@ -1,0 +1,13 @@
+## Interface: 16001
+## Title: T13C Root (modulecheck.lua fixture only)
+## Notes: not a real module; never built by release.sh; loaded only by tools/modulecheck.lua.
+## Author: test
+## Version: 1.0.0
+## Dependencies: SpellTuner
+## LoadOnDemand: 1
+
+Module.lua
+
+Engine\ReplayTrace.lua
+
+Ready.lua

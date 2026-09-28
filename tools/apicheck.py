@@ -64,6 +64,10 @@ TOOLKIT = {
 # WoW's Lua does not have these (lead, 2026-09-28).
 NOT_IN_CLIENT = {"os", "io", "require", "dofile", "loadfile", "package", "module", "debug"}
 
+# T13c: the same four shared folders release.sh (and the stub) resolve a
+# missing module TOC entry against, at the repository root.
+MODULE_ROOT_PREFIXES = ("Engine/", "Spells/", "Data/", "UI/")
+
 FORBIDDEN_EVENT = "COMBAT_LOG_EVENT_UNFILTERED"
 FORBIDDEN_EVENT_HOME = "Client/API_Forever.lua"
 PROBE_FILE = "Client/Probe.lua"
@@ -219,10 +223,21 @@ def collect(root, baseline):
     checked = []  # (abspath, relpath)
     seen_abs = set()
 
+    modules_dir = os.path.join(root, "Modules")
+
     for toc in forever_tocs:
         toc_rel = to_posix(os.path.relpath(toc, root))
+        toc_dir = os.path.dirname(toc)
+        is_module_toc = os.path.commonpath([os.path.abspath(toc_dir), os.path.abspath(modules_dir)]) == os.path.abspath(modules_dir)
         for lineno, relfile in toc_entries(toc):
-            abspath = os.path.normpath(os.path.join(os.path.dirname(toc), relfile))
+            abspath = os.path.normpath(os.path.join(toc_dir, relfile))
+            if not os.path.isfile(abspath) and is_module_toc and relfile.startswith(MODULE_ROOT_PREFIXES):
+                # T13c: an entry not under the module's own folder is a shared
+                # file resolved at the repository root -- the same rule
+                # release.sh and tools/wowstub.lua follow.
+                root_abspath = os.path.normpath(os.path.join(root, relfile))
+                if os.path.isfile(root_abspath):
+                    abspath = root_abspath
             if not os.path.isfile(abspath):
                 findings.append(Finding(toc_rel, lineno, relfile, "missing file"))
                 continue
@@ -289,6 +304,15 @@ def main():
             if os.path.basename(t) == "Fixture_Mainline.toc":
                 toc_rel = to_posix(os.path.relpath(t, root))
         expected.append((toc_rel, 6, "Gone.lua", "missing file"))
+        # T13c: Modules/Sample/Sample_Mainline.toc lists Engine\Ok.lua (not
+        # under Modules/Sample/, resolves at the fixture root -- zero findings
+        # of its own, proving the resolution) and Missing.lua (nowhere at
+        # all -- still the existing "missing file" error, line 7).
+        sample_toc_rel = None
+        for t in forever_tocs:
+            if os.path.basename(t) == "Sample_Mainline.toc":
+                sample_toc_rel = to_posix(os.path.relpath(t, root))
+        expected.append((sample_toc_rel, 7, "Missing.lua", "missing file"))
         expected_keys = sorted(expected)
         actual_keys = sorted(f.key() for f in findings)
         ok = expected_keys == actual_keys
