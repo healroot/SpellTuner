@@ -60,6 +60,27 @@ local function FindStarting(lines, prefix)
     return nil
 end
 
+-- review-measure (R14/R34): a cast the way the client fires it -- SENT with
+-- the target's NAME, then SUCCEEDED under the same castGUID. S.Cast fires
+-- SUCCEEDED alone (no target known), which the items above still use.
+local guidN = 0
+local function CastOn(id, targetName)
+    guidN = guidN + 1
+    local g = "measure-guid-" .. guidN
+    S.Fire("UNIT_SPELLCAST_SENT", "player", targetName, g, id)
+    S.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", g, id)
+end
+-- review-measure (R1): the known deficit only counts inside combat.
+local function EnterCombat() S.inCombat = true; S.Fire("PLAYER_REGEN_DISABLED") end
+local function LeaveCombat() S.inCombat = false; S.Fire("PLAYER_REGEN_ENABLED") end
+
+-- ASCII, and every pipe doubled (Esc's escape for one): no BARE pipe.
+local function AsciiNoBarePipe(s)
+    if type(s) ~= "string" then return false end
+    if s:gsub("||", ""):find("|", 1, true) then return false end
+    return s:match("^[\32-\126]*$") ~= nil
+end
+
 local function AsciiCleanMultiline(s)
     if type(s) ~= "string" then return false end
     if s:find("|", 1, true) then return false end
@@ -117,10 +138,14 @@ end
 -- first (Facts: "+ WOUND ... on player" grows the deficit).
 --------------------------------------------------------------------------------
 do
+    -- review-measure: in combat (R1: the deficit is known only there) and
+    -- cast on yourself by name (R14: a cast on anyone else is not measured).
+    EnterCombat()
     S.Combat("player", "WOUND", 100)
-    S.Cast(5185)
+    CastOn(5185, "Penek")
     S.Combat("player", "HEAL", 30) -- < 40, and deficitBefore (100) >= min (40)
     S.Tick(2)
+    LeaveCombat()
     local line = LastLine()
     check("a heal below its text's range, with the deficit to back it up, is called out",
         line ~= nil and line:find("BELOW range", 1, true) ~= nil, tostring(line))
@@ -368,10 +393,12 @@ end
 -- item 16: a heal equal to the known missing health reads as capped.
 --------------------------------------------------------------------------------
 do
+    EnterCombat() -- review-measure (R1): the deficit is known in combat only
     S.Combat("player", "WOUND", 20)
     S.Cast(5185)
     S.Combat("player", "HEAL", 20) -- amount == deficitBefore
     S.Tick(2)
+    LeaveCombat()
     local line = LastLine()
     check("a heal equal to the known missing health reads as capped",
         line ~= nil and line:find("capped at missing health 20 (amount looks effective)", 1, true) ~= nil,
@@ -419,6 +446,195 @@ do
         and not line:find("BELOW", 1, true) and not line:find("above", 1, true),
         tostring(line))
     S.Tick(15) -- close the second watch so nothing leaks past this file
+end
+
+-- review-measure: the items below start from no bonus healing (item 17 left
+-- 12, which the dynamic Rejuvenation text would add to its total), and cast
+-- their in-combat heals with a spell whose text stays readable in combat --
+-- 5185's goes secret there, and how long Book keeps the stale value is
+-- Book's business (R41), not this suite's.
+S.bonusHealing = 0
+S.AddSpell(99002, "Lesser Healing Wave", "Rank 1",
+    function() return "Heals a friendly target for 40 to 55." end,
+    { cost = 30, level = 1 })
+
+--------------------------------------------------------------------------------
+-- review-measure R1: health comes back with no UNIT_COMBAT HEAL out of combat
+-- (regen, food, a resurrection), so damage taken in an earlier fight is not
+-- known to be missing any more -- a small heal after it is not BELOW.
+--------------------------------------------------------------------------------
+do
+    EnterCombat()
+    S.Combat("player", "WOUND", 200)
+    LeaveCombat() -- ... and the player regenerates to full, which fires nothing
+    CastOn(5185, "Penek")
+    S.Combat("player", "HEAL", 12) -- < 40: the heal landed effective on a full player
+    S.Tick(2)
+    local line = LastLine()
+    check("R1: damage from a fight already over is not a known deficit",
+        line ~= nil and line:find("missing health not known (0 known)", 1, true) ~= nil
+        and not line:find("BELOW", 1, true),
+        tostring(line))
+end
+
+--------------------------------------------------------------------------------
+-- review-measure R1: out of combat the client regenerates health with no
+-- event, so a WOUND taken there is not a known deficit either.
+--------------------------------------------------------------------------------
+do
+    S.Combat("player", "WOUND", 200) -- out of combat: a fall, say
+    CastOn(5185, "Penek")
+    S.Combat("player", "HEAL", 12)
+    S.Tick(2)
+    local line = LastLine()
+    check("R1: a wound taken out of combat is not a known deficit",
+        line ~= nil and line:find("missing health not known (0 known)", 1, true) ~= nil
+        and not line:find("BELOW", 1, true),
+        tostring(line))
+end
+
+--------------------------------------------------------------------------------
+-- review-measure R14: a heal cast on someone else is not judged against a
+-- foreign heal that happened to land on the player in its window.
+--------------------------------------------------------------------------------
+do
+    local mark = Mark()
+    local before = Measure.elsewhere
+    EnterCombat()
+    S.Combat("player", "WOUND", 200)
+    CastOn(99002, "Tankname") -- a direct heal on the tank
+    S.Combat("player", "HEAL", 45) -- a priest's Renew tick on the player
+    S.Tick(2)
+    LeaveCombat()
+    local lines = LinesSince(mark)
+    check("R14: a heal cast on another unit opens no watch and is not judged",
+        FindStarting(lines, "Lesser Healing Wave") == nil and FindContaining(lines, "BELOW") == nil
+        and type(before) == "number" and Measure.elsewhere == before + 1,
+        string.format("lines=%s elsewhere %s->%s", table.concat(lines, " / "),
+            tostring(before), tostring(Measure.elsewhere)))
+end
+
+--------------------------------------------------------------------------------
+-- review-measure R14: with no SENT target the cast cannot be pinned to the
+-- player, so a heal below its range is never BELOW -- it says why.
+--------------------------------------------------------------------------------
+do
+    EnterCombat()
+    S.Combat("player", "WOUND", 200)
+    S.Cast(99002) -- SUCCEEDED alone: the target is not known
+    S.Combat("player", "HEAL", 30)
+    S.Tick(2)
+    LeaveCombat()
+    local line = LastLine()
+    check("R14: a heal whose target is not known is never BELOW",
+        line ~= nil and line:find("below range, target not known", 1, true) ~= nil
+        and not line:find("BELOW", 1, true),
+        tostring(line))
+end
+
+--------------------------------------------------------------------------------
+-- review-measure R34: a Rejuvenation on the tank neither refreshes the one
+-- on yourself nor takes its ticks.
+--------------------------------------------------------------------------------
+do
+    local mark = Mark()
+    CastOn(774, "Penek") -- t=0
+    S.Tick(1)
+    CastOn(774, "Tankname") -- t=1, another unit's Rejuvenation
+    S.Tick(2)
+    S.Combat("player", "HEAL", 8) -- t=3
+    S.Tick(3)
+    S.Combat("player", "HEAL", 8) -- t=6
+    S.Tick(3)
+    S.Combat("player", "HEAL", 8) -- t=9
+    S.Tick(3)
+    S.Combat("player", "HEAL", 8) -- t=12
+    S.Tick(3)
+    local lines = LinesSince(mark)
+    local rej = FindStarting(lines, "Rejuvenation")
+    check("R34: a HoT cast on another unit does not refresh the one on yourself",
+        #lines == 1 and rej ~= nil and FindContaining(lines, "refreshed") == nil
+        and rej:find("4 ticks", 1, true) ~= nil and rej:find("matches", 1, true) ~= nil,
+        table.concat(lines, " / "))
+end
+
+--------------------------------------------------------------------------------
+-- review-measure R34: a damage spell cast at something that is not the
+-- current target is not judged against a hit on the target.
+--------------------------------------------------------------------------------
+do
+    local mark = Mark()
+    local savedTarget = S.units.target
+    S.units.target = { guid = "Creature-1", name = "Target Dummy" }
+    CastOn(5176, "Other Mob") -- a focus / mouseover Wrath
+    S.Combat("target", "WOUND", 15) -- a party member's hit on the target
+    S.Tick(4)
+    local skipped = LinesSince(mark)
+    CastOn(5176, "Target Dummy")
+    S.Combat("target", "WOUND", 15)
+    S.Tick(4)
+    local lines = LinesSince(mark)
+    S.units.target = savedTarget
+    check("R34: a damage spell cast at another unit is not judged against the target",
+        #skipped == 0 and #lines == 1
+        and lines[1] == "Wrath R1 (learned 1, you 64): landed 15 [text 13-16, crit 20-24] in range",
+        table.concat(lines, " / "))
+end
+
+--------------------------------------------------------------------------------
+-- review-measure R32: a HoT tick that crits (1.5x the per-tick share) is
+-- counted as a crit.
+--------------------------------------------------------------------------------
+do
+    CastOn(774, "Penek") -- Rejuvenation R1, 32 over 12: 8 a tick, a crit 12
+    S.Tick(3)
+    S.Combat("player", "HEAL", 8)
+    S.Tick(3)
+    S.Combat("player", "HEAL", 12) -- the crit
+    S.Tick(3)
+    S.Combat("player", "HEAL", 8)
+    S.Tick(3)
+    S.Combat("player", "HEAL", 8)
+    S.Tick(3)
+    local line = LastLine()
+    check("R32: a HoT tick at 1.5x its share is counted as a crit",
+        line ~= nil and line:find("8+12+8+8", 1, true) ~= nil
+        and line:find("matches (1 crits)", 1, true) ~= nil,
+        tostring(line))
+end
+
+--------------------------------------------------------------------------------
+-- review-measure R33: the names in "also fit" and "shared with" go through
+-- Esc like the one at the head of the line -- a localized name with a
+-- non-ASCII byte (and a pipe) stays ASCII, no bare pipe.
+--------------------------------------------------------------------------------
+S.AddSpell(99001, "Sonnenfeuer\195\164|", "Rank 1",
+    function() return "Burns the enemy for 11 to 15 Arcane damage and then an additional 24 Arcane damage over 12 sec." end,
+    { cost = 50, level = 10 })
+do
+    local mark = Mark()
+    S.Cast(8924) -- Moonfire, t=0
+    S.Combat("target", "WOUND", 13) -- t=0: fits both direct windows
+    S.Tick(0.1)
+    S.Cast(99001) -- t=0.1, its ticks share Moonfire's windows
+    S.Tick(2.9)
+    S.Combat("target", "WOUND", 6) -- t=3
+    S.Tick(3)
+    S.Combat("target", "WOUND", 6) -- t=6
+    S.Tick(3)
+    S.Combat("target", "WOUND", 6) -- t=9
+    S.Tick(3)
+    S.Combat("target", "WOUND", 6) -- t=12
+    S.Tick(3)
+    local lines = LinesSince(mark)
+    local mf = FindStarting(lines, "Moonfire R2")
+    local clean = #lines > 0
+    for _, l in ipairs(lines) do clean = clean and AsciiNoBarePipe(l) end
+    check("R33: names in 'also fit' and 'shared with' are escaped",
+        clean and mf ~= nil
+        and mf:find("also fit Sonnenfeuer\\195\\164||", 1, true) ~= nil
+        and mf:find("shared with Sonnenfeuer\\195\\164||", 1, true) ~= nil,
+        table.concat(lines, " / "))
 end
 
 --------------------------------------------------------------------------------

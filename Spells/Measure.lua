@@ -2,7 +2,10 @@
 -- measure -- pairs each amount that lands with the cast that caused it,
 -- keeps several watches open at once (a Rejuvenation keeps ticking while a
 -- Healing Touch is cast), and never issues a BELOW verdict on an amount it
--- cannot pin to one cast: it says ambiguous instead. Rewrites T12's
+-- cannot pin to one cast: it says ambiguous instead. A cast is pinned to
+-- the unit a watch listens to by UNIT_SPELLCAST_SENT's target name (a heal
+-- on the player, damage on the target); a cast named at anyone else opens
+-- no watch (review R14/R34). Rewrites T12's
 -- attribution half; the line format and verdict words stay. Forever only --
 -- needs UNIT_COMBAT and MD.Book, both Forever's own. Reaches the client only
 -- through MD.API; never indexes a client table.
@@ -16,7 +19,17 @@ local Measure = MD.Measure
 Measure.on = false
 Measure.registered = false
 Measure.unreadable = 0 -- a secret or non-numeric amount or id, this session (Behaviour)
-Measure.deficit = 0    -- known missing health: + WOUND, - HEAL on player, floored at 0 (Facts)
+Measure.elsewhere = 0  -- own casts SENT at a unit the watch does not listen to, this session (R14/R34)
+-- Known missing health: + WOUND, - HEAL on player, floored at 0 (Facts) --
+-- IN COMBAT ONLY (review R1). Out of combat the client gives health back
+-- with no UNIT_COMBAT HEAL (regeneration, food, a resurrection), so nothing
+-- counted there, or carried out of a fight, is known to be missing any more:
+-- a WOUND out of combat adds nothing, a HEAL out of combat reads 0, and
+-- PLAYER_REGEN_ENABLED zeroes it. Inside combat a player regenerates no
+-- health without a HEAL event (UNVERIFIED on Forever; a level-up refill is
+-- the one known exception and is not caught) -- that is what makes it the
+-- lower bound BELOW needs.
+Measure.deficit = 0
 Measure.lastBonus = nil -- last PLAIN GetSpellBonusHealing() reading (Behaviour: "bonus healing")
 
 -- Vanilla's rule, same constant/comment UI/SpellTip_Forever.lua already
@@ -46,6 +59,7 @@ local PERIODS = { 3, 2, 1 } -- Facts: vanilla HoT/DoT periods; tie goes to the l
 local watches = {}       -- open watches, in cast order
 local closedRecent = {}  -- { watch = w, closeTime = t }, purged past HISTORY_SECS
 local history = { player = {}, target = {} } -- { amount, time, deficitBefore?, descriptor }
+local sentTarget = {}    -- castGUID -> { name, time }: UNIT_SPELLCAST_SENT's target, until SUCCEEDED
 
 --------------------------------------------------------------------------------
 -- Reversible ASCII escaping, Client/Probe.lua's own rule (Rules: "every
@@ -257,7 +271,7 @@ local function IsContested(e, windows)
     for _, win in ipairs(windows) do
         if e.time >= win.lo and e.time <= win.hi and (win.bound == nil or e.amount <= win.bound) then
             any = true
-            names[win.name] = true
+            names[win.name or "?"] = true
         end
     end
     return any, names
@@ -278,11 +292,14 @@ end
 -- match to the deficit is checked first (a heal that landed effective, not
 -- gross, still looks like a clean cap); only past that does the gate decide
 -- between a genuine BELOW and "not known to be missing that much" (Behaviour).
-local function BelowHealText(min, amount, deficitBefore)
+-- R14: BELOW also needs the cast pinned to the player by its SENT target;
+-- without it the amount may be anyone's heal, so it says so instead.
+local function BelowHealText(min, amount, deficitBefore, targetKnown)
     local d = deficitBefore or 0
     if math.abs(amount - d) <= 1 then
         return string.format("capped at missing health %s (amount looks effective)", Round(d))
     elseif d >= min then
+        if not targetKnown then return "below range, target not known" end
         return "BELOW range"
     else
         return string.format("below range, missing health not known (%s known)", Round(d))
@@ -319,7 +336,7 @@ local function DirectVerdictText(w, amount, event)
     local min, max = w.text.min, w.text.max
     if amount < min then
         if w.kind == "heal" then
-            return BelowHealText(min, amount, event.deficitBefore)
+            return BelowHealText(min, amount, event.deficitBefore, w.targetKnown)
         else
             return BelowDamageText(min, max, amount, event.descriptor)
         end
@@ -405,15 +422,23 @@ end
 local function OverVerdictText(w, r)
     if not r.confident then return "ambiguous (cadence unknown)" end
     if r.ambiguous then
-        return string.format("ambiguous (%d ticks shared with %s)", #r.ticks, table.concat(SortedKeys(r.contestedWith), ", "))
+        -- R33: every client name through Esc, as at the head of the line.
+        local shared = {}
+        for i, nm in ipairs(SortedKeys(r.contestedWith)) do shared[i] = Esc(nm) end
+        return string.format("ambiguous (%d ticks shared with %s)", #r.ticks, table.concat(shared, ", "))
     end
     local sum = 0
     for _, t in ipairs(r.ticks) do sum = sum + t.amount end
     local total = OverTotal(w.text)
+    -- R32: a crit tick lands AT CRIT_MULT times the share (18 for a 12),
+    -- and the tick bound already drops anything past CRIT_MULT times it + 1,
+    -- so "over CRIT_MULT times" named almost none. A tick is a crit when it
+    -- is nearer the crit amount than the plain one: over the midpoint.
     local crits = 0
     if r.perTick then
+        local critFrom = r.perTick * (1 + CRIT_MULT) / 2
         for _, t in ipairs(r.ticks) do
-            if t.amount > r.perTick * CRIT_MULT then crits = crits + 1 end
+            if t.amount > critFrom then crits = crits + 1 end
         end
     end
     local verdict, allowCrits = nil, false
@@ -424,7 +449,9 @@ local function OverVerdictText(w, r)
     elseif sum < total * 0.9 then
         if w.kind == "heal" then
             local d = r.ticks[1] and r.ticks[1].deficitBefore or 0
-            if d >= total then
+            if d >= total and not w.targetKnown then
+                verdict = "below range, target not known" -- R14
+            elseif d >= total then
                 verdict, allowCrits = "BELOW", true
             else
                 verdict = string.format("below range, missing health not known (%s known)", Round(d))
@@ -481,7 +508,9 @@ local function DirectHead(w, dr)
     elseif dr.status == "ambiguousOther" then
         landedText = table.concat(dr.amounts, "+")
         if #dr.names > 0 then
-            verdict = "ambiguous: " .. table.concat(dr.amounts, ", ") .. " also fit " .. table.concat(dr.names, ", ")
+            local fit = {} -- R33: every client name through Esc
+            for i, nm in ipairs(dr.names) do fit[i] = Esc(nm) end
+            verdict = "ambiguous: " .. table.concat(dr.amounts, ", ") .. " also fit " .. table.concat(fit, ", ")
         else
             verdict = "ambiguous: " .. table.concat(dr.amounts, ", ")
         end
@@ -619,11 +648,36 @@ local function FamilyCloseIfSameFamily(name, now)
     end
 end
 
-local function OpenWatch(id, castTime)
+-- A unit's name as a plain string, else nil (absent, secret, not a string).
+local function PlainUnitName(unit)
+    local n = MD.API.UnitName and MD.API.UnitName(unit)
+    if MD.API.IsSecret(n) or type(n) ~= "string" or n == "" then return nil end
+    return n
+end
+
+-- targetName: the cast's SENT target, or nil when none was read (no SENT,
+-- an empty or secret one). R14/R34: UNIT_COMBAT carries no source, so a
+-- watch can only be trusted for a cast that went to the unit it listens to
+-- -- a heal to the player, damage to the current target. A cast named at
+-- anyone else opens no watch (and so refreshes none); one whose target is
+-- not known opens as before but may never say BELOW.
+local function OpenWatch(id, castTime, targetName)
     local entry, kind = ResolveEntry(id)
     if not entry or not kind then return end -- no heal/damage part -- nothing to judge
     local part = PartOf(entry, kind)
     if not part then return end
+
+    local unit = (kind == "heal") and "player" or "target"
+    local targetKnown = false
+    if targetName ~= nil then
+        local want = PlainUnitName(unit)
+        if want ~= nil and want == targetName then
+            targetKnown = true
+        elseif want ~= nil then
+            Measure.elsewhere = Measure.elsewhere + 1
+            return
+        end
+    end
 
     FamilyCloseIfSameFamily(entry.name, castTime)
 
@@ -650,7 +704,7 @@ local function OpenWatch(id, castTime)
     local dur = part.dur or part.periodDur
 
     local w = {
-        unit = (kind == "heal") and "player" or "target",
+        unit = unit, targetKnown = targetKnown,
         kind = kind,
         name = entry.name, rank = entry.rank, level = entry.level,
         casterLevel = casterLevel, bonus = bonus, bonusBeforeCombat = bonusBeforeCombat,
@@ -668,16 +722,46 @@ end
 --------------------------------------------------------------------------------
 -- Events -- registered once, on the first toggle (Behaviour).
 --------------------------------------------------------------------------------
+-- R14/R34: the target's name by castGUID, kept until the cast succeeds
+-- (read plain in combat, 26 of 26: docs/probe/1.60.1_70009.md, Q8). An
+-- empty one (a cast with no target) is not kept -- not known.
+local function OnCastSent(unit, target, castGUID, spellID)
+    if not Measure.on then return end
+    if MD.API.IsSecret(unit) or unit ~= "player" then return end
+    if MD.API.IsSecret(castGUID) or type(castGUID) ~= "string" then return end
+    if MD.API.IsSecret(target) or type(target) ~= "string" or target == "" then return end
+    local now = GetTime()
+    for g, rec in pairs(sentTarget) do
+        if now - rec.time > HISTORY_SECS then sentTarget[g] = nil end -- a cast that never succeeded
+    end
+    sentTarget[castGUID] = { name = target, time = now }
+end
+
 local function OnCastSucceeded(unit, castGUID, spellID)
     if not Measure.on then return end
     if MD.API.IsSecret(unit) or unit ~= "player" then return end
 
     local now = GetTime()
+    local targetName
+    if not MD.API.IsSecret(castGUID) and type(castGUID) == "string" then
+        local rec = sentTarget[castGUID]
+        sentTarget[castGUID] = nil
+        targetName = rec and rec.name
+    end
     if MD.API.IsSecret(spellID) or type(spellID) ~= "number" then
         Measure.unreadable = Measure.unreadable + 1
         return
     end
-    OpenWatch(spellID, now)
+    OpenWatch(spellID, now, targetName)
+end
+
+-- R1: whether the player is in combat now, read at the event. Secret or
+-- unreadable counts as not in combat -- the deficit then adds nothing, which
+-- can only make BELOW rarer.
+local function InCombatNow()
+    local c = MD.API.UnitAffectingCombat and MD.API.UnitAffectingCombat("player")
+    if MD.API.IsSecret(c) then return false end
+    return c == true
 end
 
 local function OnUnitCombat(unit, action, descriptor, amount, school)
@@ -700,11 +784,13 @@ local function OnUnitCombat(unit, action, descriptor, amount, school)
     if unit == "player" and action == "WOUND" then
         -- Facts: "+ WOUND ... amounts on player" -- not kept as a pairing
         -- candidate (Behaviour: only HEAL/player and WOUND/target are).
-        Measure.deficit = Measure.deficit + amount
+        -- R1: out of combat health comes back unseen -- not a known deficit.
+        if InCombatNow() then Measure.deficit = Measure.deficit + amount end
         return
     end
 
     if unit == "player" and action == "HEAL" then
+        if not InCombatNow() then Measure.deficit = 0 end -- R1
         local before = Measure.deficit
         Measure.deficit = math.max(0, Measure.deficit - amount)
         table.insert(history.player, { amount = amount, time = now, deficitBefore = before, descriptor = descriptor })
@@ -728,6 +814,13 @@ local function OnTargetChanged()
             FinishClose(w, now, "target changed")
         end
     end
+end
+
+-- R1: leaving combat (a death included) ends what the deficit knows --
+-- regeneration, food or a resurrection follow with no HEAL event.
+local function OnCombatEnded()
+    if not Measure.on then return end
+    Measure.deficit = 0
 end
 
 -- The deadlines are time-driven, not event-driven -- the master ticker is
@@ -754,9 +847,11 @@ end)
 --------------------------------------------------------------------------------
 function Measure:Toggle()
     if not Measure.registered then
+        MD:On("UNIT_SPELLCAST_SENT", OnCastSent)
         MD:On("UNIT_SPELLCAST_SUCCEEDED", OnCastSucceeded)
         MD:On("UNIT_COMBAT", OnUnitCombat)
         MD:On("PLAYER_TARGET_CHANGED", OnTargetChanged)
+        MD:On("PLAYER_REGEN_ENABLED", OnCombatEnded)
         Measure.registered = true
     end
     Measure.on = not Measure.on
@@ -766,6 +861,7 @@ function Measure:Toggle()
         watches = {}
         closedRecent = {}
         history.player, history.target = {}, {}
+        sentTarget = {}
         Measure.deficit = 0
         MD:Print("measure: on - cast on yourself for heals, on a target dummy for damage; several watches stay open at once")
     else
@@ -794,5 +890,6 @@ function Measure:Dump()
         lines[#lines + 1] = l
     end
     lines[#lines + 1] = "unreadable: " .. tostring(Measure.unreadable)
+    lines[#lines + 1] = "cast at another unit, not measured: " .. tostring(Measure.elsewhere)
     return table.concat(lines, "\n")
 end
