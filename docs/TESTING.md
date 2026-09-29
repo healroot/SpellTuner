@@ -1305,6 +1305,33 @@ the three modules read **0.16.1**. First do §38's opening step on this build (t
 says), in words what the practice summary and the picker showed before and after the import, which
 bars showed the macro block (and the probe's `macro` lines if one did not), and the measure dump.
 
+## 42. The coach values regen, and practice fights as reports (branch `work/regen`, 2026-09-29; 15 min, solo, out of combat)
+
+On the **beta client**, with the Replay and Practice modules on. This answers your 2026-09-29
+report: "it does not tolerate non casting window to regen", and "practice recordings so we can
+improve the code from such reports".
+
+1. **Play the same fight again.** Simulate -> Practice, the Party setup you played at 20:08
+   (or anything at your level), about 45 s, healing the way you did. Press **End**.
+2. **The replay.** In the replay window, pick **Solver: frugal** in the chooser. The score line
+   now starts with **`used N`**: the pool at the pull less the pool now. It is the number the
+   coach ranks on, and `spent` / `regen` follow it. Scrub to about 0:44 and compare the two
+   columns' `used`. The suggested column should now have gaps where it waits outside the
+   five-second rule. While it waits, the reason line under the column should say `resting is
+   worth more` (counting the regen a cast would stop). It should end with noticeably more mana than it
+   did (it had 24 at 0:43.9 on your fight). It must not let anybody fall lower than before for
+   it. Note anything it does that you would not.
+3. **Keep the fight for a report.** `/st` -> Reports -> Review -> **Practice**, select the fight,
+   press **Pin** (at most four stay pinned; the next eight fights no longer push it out). Then
+   **`/reload`**: SavedVariables reach the disk only then.
+4. Tell me which `pN` it is. `bash tools/run.sh tools/practicereport.lua report N` prints your
+   replay beside every strategy, and `export N` turns it into a fixture the suites run on. Your
+   20:08 fight is already one: `tools/data/practice/1790701698.lua`.
+5. **TBC** (only if you play the anniversary client): the coach card's first line now reads
+   `used: you N   best N   diff N`, and its rows read `N used (N spent)`.
+
+**Paste back**: the `pN` you pinned, and in words what the suggested column did differently.
+
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the
 raw numbers. `/md profile` output is welcome with any report. I turn them into
