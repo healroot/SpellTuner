@@ -23,6 +23,7 @@ local UI = MD.UI
 local W, H = 470, 430
 local ROW_H = 22
 local frame, rows, addBtn, defBtn, cellBtn, cliqueBtn, keysBtn, importFS, statusFS, list
+local hiddenLine, hiddenFS, forgetBtn -- T27: the footer for bindings kept but hidden
 local capturing = nil
 
 local function Binds() return MD.Practice.Binds() end
@@ -76,7 +77,10 @@ local function Row(i)
     row.del = UI.CreateButton(row, "x", "red-hover", { 22, ROW_H - 2 }, false, false, UI.FONT_SMALL, nil)
     row.del:SetPoint("LEFT", row.spell, "RIGHT", 6, 0)
     row.del:SetScript("OnClick", function()
-        table.remove(Binds(), row.index)
+        -- T27: removed from the stored list by the binding itself -- with a
+        -- hidden one before it, the row's index is not its place in the list
+        local b = Binds()[row.index]
+        if b then MD.Practice.RemoveBind(b) end
         capturing = nil
         Render()
     end)
@@ -88,9 +92,11 @@ local function Row(i)
             local full = PR.Mods(MD.API.IsAltKeyDown and MD.API.IsAltKeyDown(),
                 MD.API.IsControlKeyDown and MD.API.IsControlKeyDown(),
                 MD.API.IsShiftKeyDown and MD.API.IsShiftKeyDown()) .. key
-            for j, other in ipairs(Binds()) do
-                -- one press, one spell: taking a key takes it from whoever had it
-                if j ~= row.index and other.key == full then other.key = "" end
+            for _, other in ipairs(PR.AllBinds()) do
+                -- one press, one spell: taking a key takes it from whoever had
+                -- it -- T27: a hidden binding too, so it cannot come back on
+                -- the same key as this one when its spell is learned
+                if other ~= b and other.key == full then other.key = "" end
             end
             b.key = full
             Status("bound " .. full .. ".")
@@ -125,8 +131,31 @@ local function Row(i)
     return row
 end
 
+-- T27: "1 binding kept for a spell you have not learned  [Forget]", its
+-- hover naming them; shown only while a binding is hidden (never on TBC).
+local function RenderHidden()
+    if not hiddenLine then return end
+    local hidden = MD.Practice.HiddenBinds()
+    if #hidden == 0 then
+        hiddenLine:Hide()
+        return
+    end
+    local one = #hidden == 1
+    hiddenFS:SetText(string.format("|cff888888%d %s kept for %s you have not learned|r", #hidden,
+        one and "binding" or "bindings", one and "a spell" or "spells"))
+    local tips = { "Kept for when you learn the spell" }
+    for _, b in ipairs(hidden) do
+        tips[#tips + 1] = (b.key ~= "" and b.key or "unbound") .. "  " .. MD.Practice.FamilyLabel(b.family)
+            .. (b.rank and (" " .. b.rank) or "")
+    end
+    tips[#tips + 1] = "Not listed, not counted, never cast until then. Forget deletes them."
+    UI.SetTooltips(hiddenLine, "ANCHOR_TOPLEFT", 0, 3, unpack(tips))
+    hiddenLine:Show()
+end
+
 Render = function()
     if not frame then return end
+    MD.Practice.RefreshKit() -- T27: a spell learned since brings its binding back (Forever only)
     local binds = Binds()
     local items = SpellItems()
     for i, b in ipairs(binds) do
@@ -146,6 +175,7 @@ Render = function()
     end
     for i = #binds + 1, #rows do rows[i]:Hide() end
     list:SetContentHeight(math.max(1, #binds) * (ROW_H + 2))
+    RenderHidden()
     if MD.PracticeBindsChanged then MD:PracticeBindsChanged() end
 end
 
@@ -155,7 +185,8 @@ local function Report(newList, report)
         Status(report and report.error or "nothing to import.", "|cffff9966")
         return
     end
-    local added, replaced, same = MD.Practice.ApplyImport(newList)
+    local added, replaced, same, notInBook = MD.Practice.ApplyImport(newList)
+    notInBook = notInBook or {}
     capturing = nil
     Render()
     -- added on top of what was there; a key both had now casts the imported spell
@@ -167,7 +198,11 @@ local function Report(newList, report)
     for _, why in ipairs(report.skipped or {}) do
         lines[#lines + 1] = "|cff888888not imported - " .. why .. "|r"
     end
-    if #(report.skipped or {}) == 0 and #(report.notes or {}) == 0 then
+    -- T27: named, so nothing an import had vanishes unexplained
+    if #notInBook > 0 then
+        lines[#lines + 1] = "|cff888888skipped (not in your spellbook): " .. table.concat(notInBook, ", ") .. "|r"
+    end
+    if #(report.skipped or {}) == 0 and #(report.notes or {}) == 0 and #notInBook == 0 then
         lines[#lines + 1] = "|cff888888Everything it had was a heal.|r"
     end
     statusFS:SetText(table.concat(lines, "\n"))
@@ -197,10 +232,9 @@ local function Build()
     addBtn = UI.CreateButton(frame, "+ binding", "accent-hover", { 90, 20 }, false, false, UI.FONT_SMALL, nil)
     addBtn:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 12, 72)
     addBtn:SetScript("OnClick", function()
-        local b = Binds()
         local family = "Rejuvenation"
         if MD.API.client == "forever" then family = MD.Practice.FirstFamily() end
-        b[#b + 1] = { key = "", family = family }
+        MD.Practice.AddBind({ key = "", family = family }) -- T27: into the stored list
         Render()
         Status("click the new row's key box and press something.")
     end)
@@ -219,6 +253,26 @@ local function Build()
         Render()
         Status("back to the defaults.")
     end)
+
+    -- T27: the footer for hidden bindings, where Defaults would sit (Defaults
+    -- is TBC's only, and TBC never hides one)
+    hiddenLine = CreateFrame("Frame", nil, frame)
+    hiddenLine:SetSize(W - 24 - 90 - 12, 20)
+    hiddenLine:SetPoint("LEFT", addBtn, "RIGHT", 12, 0)
+    hiddenLine:EnableMouse(true)
+    hiddenFS = hiddenLine:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+    hiddenFS:SetPoint("LEFT", hiddenLine, "LEFT", 0, 0)
+    hiddenFS:SetJustifyH("LEFT")
+    forgetBtn = UI.CreateButton(hiddenLine, "Forget", "red-hover", { 60, 18 }, false, false, UI.FONT_SMALL, nil,
+        "Forget them", "Deletes the bindings kept for spells you have not learned.")
+    forgetBtn:SetPoint("LEFT", hiddenFS, "RIGHT", 8, 0)
+    forgetBtn:SetScript("OnClick", function()
+        local n = MD.Practice.ForgetHidden()
+        capturing = nil
+        Render()
+        Status(string.format("forgot %d %s.", n, n == 1 and "binding" or "bindings"))
+    end)
+    hiddenLine:Hide()
 
     importFS = frame:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
     importFS:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 12, 48)

@@ -329,7 +329,9 @@ do -- 2
     local changed = CopyDefaults()
     changed[3].key = "CTRL-Q"
     MD.db.practiceBinds = changed
-    local kept = PR.Binds()
+    -- T27: "kept whole" is the STORED list (PR.AllBinds); PR.Binds() now
+    -- leaves out the three whose families this book lacks (decision 9)
+    local kept = PR.AllBinds()
     local keptOk = #kept == #PR.DEFAULT_BINDS and kept[1].key == PR.DEFAULT_BINDS[1].key
         and kept[3].key == "CTRL-Q" and kept[6].family == PR.DEFAULT_BINDS[6].family
     check("the TBC author's defaults saved on Forever are dropped once", droppedOk and keptOk,
@@ -337,6 +339,9 @@ do -- 2
 end
 
 do -- 3
+    -- T27 (decision 9): a bind for a spell not in the book is no longer
+    -- listed with "(not in your spellbook)" -- it is not listed at all (T24's
+    -- label half of this check became the T27 checks below); the rest holds.
     MD.db.practiceBinds = { { key = "1", family = "Lifebloom" }, { key = "2", family = "Rejuvenation" } }
     local lines = Lines(PanelBindText())
     local lbLine, rejLine
@@ -344,9 +349,9 @@ do -- 3
         if l:find("Lifebloom", 1, true) then lbLine = l end
         if l:find("Rejuvenation", 1, true) then rejLine = l end
     end
-    local textOk = lbLine and lbLine:find("(not in your spellbook)", 1, true) ~= nil
+    local textOk = lbLine == nil
         and rejLine and rejLine:find("(not in your spellbook)", 1, true) == nil
-        and CountOf(table.concat(lines, "\n"), "(not in your spellbook)") == 1
+        and CountOf(table.concat(lines, "\n"), "(not in your spellbook)") == 0
     local nilFor = PR.SpellFor(MD.db.practiceBinds[1]) == nil and PR.SpellFor(MD.db.practiceBinds[2]) ~= nil
 
     local st3 = PR.CopySetup(setup)
@@ -364,7 +369,7 @@ do -- 3
     st3w.frame:GetScript("OnKeyDown")(st3w.frame, "2")
     S.Tick(0.3)
     local afterBound = #live3.own
-    check("a bind for a spell not in your spellbook says so and casts nothing",
+    check("a bind for a spell not in your spellbook is not shown and casts nothing",
         textOk and nilFor and afterMissing == 0 and afterBound >= 1,
         "text=" .. tostring(textOk) .. " nil=" .. tostring(nilFor) .. " missing=" .. tostring(afterMissing)
         .. " bound=" .. tostring(afterBound))
@@ -429,6 +434,121 @@ do -- 6
     end
     check("Start with nothing bound says so and opens nothing", live6b == nil and said,
         "button=" .. tostring(startB ~= nil) .. " live=" .. tostring(live6b ~= nil) .. " said=" .. tostring(said))
+end
+
+--------------------------------------------------------------------------------
+-- T27 (docs/tasks/T27-practice-hidden-binds.md, decision 9): a binding for a
+-- spell not in your spellbook is hidden on Forever -- not listed, not counted,
+-- not cast -- but kept in db.practiceBinds, so it comes back when the spell is
+-- learned; an import skips such a spell and names it; the bindings sheet's
+-- footer counts what it keeps, names it on hover, and Forget deletes it.
+--------------------------------------------------------------------------------
+local function Contains(list, family)
+    for _, b in ipairs(list or {}) do if b.family == family then return true end end
+    return false
+end
+local function VisibleText(needle, root)
+    for _, f in ipairs(S.allFrames) do
+        if f.GetText and f:IsVisible() and (not root or Under(f, root)) then
+            local okt, txt = pcall(f.GetText, f)
+            if okt and type(txt) == "string" and txt:find(needle, 1, true) then return f, txt end
+        end
+    end
+    return nil
+end
+local function ShownRows()
+    local n = 0
+    for _, r in ipairs(MD.BindingsWindow._rows() or {}) do if r:IsShown() then n = n + 1 end end
+    return n
+end
+
+do -- T27 1: an import skips a spell not in your spellbook and names it
+    MD.db.practiceBinds = { { key = "2", family = "Rejuvenation" } }
+    _G.CellCharacterDB = { clickCastings = { useCommon = true, common = {
+        { "type5", "spell", "Lifebloom" },
+        { "shift-type1", "spell", "Healing Touch" },
+    } } }
+    MD:ShowBindings()
+    Click(Button("Cell"))
+    local status = MD.BindingsWindow._status()
+    _G.CellCharacterDB = nil
+    local a, r, same, skipped = PR.ApplyImport({ { key = "BUTTON5", family = "Lifebloom" } })
+    local direct = a == 0 and r == 0 and same == 0 and type(skipped) == "table"
+        and #skipped == 1 and skipped[1] == "Lifebloom"
+    check("T27: an import skips a spell not in your spellbook and names it",
+        status:find("skipped (not in your spellbook): Lifebloom", 1, true) ~= nil
+        and not Contains(MD.db.practiceBinds, "Lifebloom") and Contains(MD.db.practiceBinds, "HealingTouch")
+        and direct,
+        "status=" .. status .. " direct=" .. tostring(direct))
+end
+
+do -- T27 2: an existing binding for it is not listed, not counted, not cast
+    MD.db.practiceBinds = { { key = "1", family = "Lifebloom" }, { key = "2", family = "Rejuvenation" } }
+    local txt = PanelBindText() or ""
+    local binds = PR.Binds()
+    MD:ShowBindings()
+    local rowsShown = ShownRows()
+    local bound = PR.BindFor("1")
+    check("T27: a binding for a spell not in your spellbook is not listed, not counted, not cast",
+        #binds == 1 and binds[1].family == "Rejuvenation" and not txt:find("Lifebloom", 1, true)
+        and rowsShown == 1 and bound == nil and PR.BindFor("2") ~= nil,
+        "binds=" .. #binds .. " rows=" .. rowsShown .. " bound=" .. tostring(bound) .. " text=" .. txt)
+end
+
+do -- T27 3: it is still in db.practiceBinds, even after the sheet edits the rest
+    MD.db.practiceBinds = { { key = "1", family = "Lifebloom" }, { key = "2", family = "Rejuvenation" } }
+    MD:ShowBindings()
+    local win = MD.BindingsWindow._rows()
+    Click(win[1] and win[1].del)                -- the one row shown: Rejuvenation
+    Click(Button("+ binding"))                  -- a new row, appended
+    local db = MD.db.practiceBinds
+    check("T27: the hidden binding is still in db.practiceBinds",
+        #db == 2 and db[1].family == "Lifebloom" and db[1].key == "1"
+        and db[2].family == PR.FirstFamily() and #PR.Binds() == 1 and PR.Binds()[1] == db[2],
+        "db=" .. #db .. " first=" .. tostring(db[1] and db[1].family) .. " visible=" .. #PR.Binds())
+end
+
+do -- T27 4: Forget deletes it; the footer counted it and named it on hover
+    MD.db.practiceBinds = { { key = "1", family = "Lifebloom" }, { key = "2", family = "Rejuvenation" } }
+    MD:ShowBindings()
+    local bw = MD.BindingsWindow._frame()
+    local line = VisibleText("1 binding kept for a spell you have not learned", bw)
+    local hovered = false
+    local holder = line and line.parentFrame
+    local enter = holder and holder:GetScript("OnEnter")
+    if enter then
+        enter(holder)
+        for _, l in ipairs(MD.UI.tooltip.lines or {}) do
+            if type(l[1]) == "string" and l[1]:find("Lifebloom", 1, true) then hovered = true end
+        end
+    end
+    local hidden = PR.HiddenBinds and PR.HiddenBinds() or {}
+    local forget = Button("Forget")
+    Click(forget)
+    local db = MD.db.practiceBinds
+    local after = VisibleText("kept for a spell", bw)
+    check("T27: the sheet's footer names the kept binding and Forget deletes it",
+        line ~= nil and hovered and #hidden == 1 and hidden[1].family == "Lifebloom"
+        and #db == 1 and db[1].family == "Rejuvenation" and after == nil,
+        "line=" .. tostring(line ~= nil) .. " hover=" .. tostring(hovered) .. " hidden=" .. #hidden
+        .. " db=" .. #db .. " after=" .. tostring(after ~= nil))
+end
+
+do -- T27 5: learning the spell brings the binding back (Regrowth: Forever has
+   -- no Lifebloom to learn -- Kit_Forever.lua's FAMILY_KEY has no slot for it)
+    MD.db.practiceBinds = { { key = "3", family = "Regrowth" }, { key = "2", family = "Rejuvenation" } }
+    local before = PanelBindText() or ""
+    local hiddenBefore = #PR.Binds() == 1 and not before:find("Regrowth", 1, true)
+    S.AddSpell(90301, "Regrowth", "Rank 1",
+        function() return "Heals a friendly target for 93 to 107 and another 98 over 21 sec." end,
+        { cast = 2000, cost = 80, level = 1 })
+    MD.Book:MarkDirty()
+    local after = PanelBindText() or ""
+    local _, id = PR.BindFor("3")
+    check("T27: learning the spell brings its binding back",
+        hiddenBefore and #PR.Binds() == 2 and after:find("Regrowth", 1, true) ~= nil and id == 90301
+        and #MD.db.practiceBinds == 2,
+        "before=" .. tostring(hiddenBefore) .. " visible=" .. #PR.Binds() .. " id=" .. tostring(id) .. " text=" .. after)
 end
 
 print(string.format("\n%d ok, %d failed", ok, #fails))

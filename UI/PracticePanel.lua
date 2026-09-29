@@ -318,6 +318,9 @@ function MD.DashboardParts.CreatePractice(parent, width)
 
     function api:Render()
         if not pane:IsShown() then return end
+        -- T27: a spell learned since the last paint brings back a binding that
+        -- was hidden for it (Forever only; nothing on TBC)
+        PR.RefreshKit()
         local st = Setup()
         highlightGroup(st.group)
         for _, eb in ipairs(fightFields) do eb:Refresh() end

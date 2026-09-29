@@ -161,7 +161,10 @@ local function IsShippedDefaults(list)
     return true
 end
 
-function PR.Binds()
+-- T27: every stored binding, hidden ones included -- the list itself
+-- (db.practiceBinds), so a caller that adds or removes a row edits what is
+-- saved. PR.Binds() below is what is SHOWN and CAST.
+function PR.AllBinds()
     local db = MD.db
     local forever = OnForever()
     if db and type(db.practiceBinds) == "table" then
@@ -181,6 +184,102 @@ function PR.Binds()
     end
     if db then db.practiceBinds = out end
     return out
+end
+
+-- T27 (decision 9): on Forever a binding whose spell is not in your
+-- spellbook (Lifebloom from a TBC Cell import) is HIDDEN: not listed by the
+-- panel or the bindings sheet, not counted, never cast -- and not deleted, so
+-- it is back the day the spell is learned. A row with no spell picked yet is
+-- the player's own unfinished row, not a hidden one. Always false on TBC.
+local function IsHidden(b)
+    return type(b) == "table" and b.family ~= nil and not PR.InBook(b)
+end
+
+-- The bindings shown and cast. On TBC, and on Forever whenever nothing is
+-- hidden, this IS the stored list (PR.AllBinds()); with a binding hidden it
+-- is a new list of the same binding tables, so a field edit through it is
+-- saved but a row added or removed is not -- add and remove go through
+-- PR.AddBind / PR.RemoveBind.
+function PR.Binds()
+    local all = PR.AllBinds()
+    if not OnForever() then return all end
+    local any = false
+    for _, b in ipairs(all) do
+        if IsHidden(b) then any = true; break end
+    end
+    if not any then return all end
+    local out = {}
+    for _, b in ipairs(all) do
+        if not IsHidden(b) then out[#out + 1] = b end
+    end
+    return out
+end
+
+-- T27: the bindings kept but hidden (Forever), in stored order; {} on TBC.
+function PR.HiddenBinds()
+    local out = {}
+    if not OnForever() then return out end
+    for _, b in ipairs(PR.AllBinds()) do
+        if IsHidden(b) then out[#out + 1] = b end
+    end
+    return out
+end
+
+-- T27: the bindings sheet's [Forget] -- deletes every hidden binding for good.
+-- Returns how many went.
+function PR.ForgetHidden()
+    local all = PR.AllBinds()
+    local n = 0
+    for i = #all, 1, -1 do
+        if OnForever() and IsHidden(all[i]) then
+            table.remove(all, i)
+            n = n + 1
+        end
+    end
+    return n
+end
+
+-- T27: a row added to, or removed from, the stored list (by the table itself,
+-- wherever it sits among hidden ones).
+function PR.AddBind(b)
+    local all = PR.AllBinds()
+    all[#all + 1] = b
+    return b
+end
+
+function PR.RemoveBind(b)
+    local all = PR.AllBinds()
+    for i = 1, #all do
+        if all[i] == b then
+            table.remove(all, i)
+            return true
+        end
+    end
+    return false
+end
+
+-- T27: a family key as a player reads it ("HealingTouch" -> "Healing Touch").
+-- The kit's own label when the book has the family; else the engine's name.
+PR.FAMILY_LABELS = {
+    Lifebloom = "Lifebloom", Rejuvenation = "Rejuvenation", Regrowth = "Regrowth",
+    Swiftmend = "Swiftmend", HealingTouch = "Healing Touch",
+}
+function PR.FamilyLabel(family)
+    local SD = MD.SpellData
+    local fam = SD and SD.families and SD.families[family]
+    return (fam and fam.label) or PR.FAMILY_LABELS[family] or tostring(family)
+end
+
+-- T27: the Forever kit is built from the spellbook, which changes when a spell
+-- is learned (Spells/Book.lua rescans on SPELLS_CHANGED). The panel and the
+-- bindings sheet rebuild it when they paint, so a hidden binding comes back
+-- without a /reload. Never on the press path; nothing on TBC, whose table is
+-- static.
+function PR.RefreshKit()
+    if not OnForever() then return end
+    if MD.RankMath and MD.RankMath.SpellKit then
+        MD.RankMath:SpellKit({ live = true })
+    end
 end
 
 -- modifiers in the order the client writes them
@@ -282,6 +381,15 @@ function PR.ParseSpellText(text)
             return nil
         end
     end
+    -- T27: on Forever the kit knows only the book's families, so a practice
+    -- family the book lacks (Lifebloom) is recognised by the engine's own name
+    -- -- for PR.ApplyImport to skip it and say so, rather than the import
+    -- calling it "not a heal this addon models".
+    if OnForever() then
+        for family, label in pairs(PR.FAMILY_LABELS) do
+            if name == label or name == family then return family, tonumber(rank) end
+        end
+    end
     return nil
 end
 
@@ -294,8 +402,13 @@ end
 -- The first healing spell a macro casts. A conditional macro names several --
 -- "[known:33763,@mouseover,help]Lifebloom;[@mouseover,help]Rejuvenation;..." --
 -- and the first one this addon models is the one the binding is FOR.
+-- T27: the first one IN YOUR SPELLBOOK -- "[known:33763]Lifebloom;
+-- Rejuvenation" casts Rejuvenation on a character without Lifebloom -- and
+-- only when no clause is, the first one named, for the import to skip by name.
+-- On TBC every family is in the book, so this is the first one, as before.
 function PR.MacroSpell(body)
     if type(body) ~= "string" then return nil end
+    local firstFamily, firstRank
     for line in body:gmatch("[^\r\n]+") do
         local rest = line:match("^%s*/cast%s+(.+)$") or line:match("^%s*/use%s+(.+)$")
         if rest then
@@ -304,12 +417,15 @@ function PR.MacroSpell(body)
                 local spell = clause:gsub("%b[]", ""):gsub("^%s+", ""):gsub("%s+$", "")
                 if spell ~= "" then
                     local family, rank = PR.ParseSpellText(spell)
-                    if family then return family, rank end
+                    if family then
+                        if PR.InBook({ family = family }) then return family, rank end
+                        if not firstFamily then firstFamily, firstRank = family, rank end
+                    end
                 end
             end
         end
     end
-    return nil
+    return firstFamily, firstRank
 end
 
 --------------------------------------------------------------------------------
@@ -915,18 +1031,31 @@ end
 -- collision"). A key already bound is re-pointed to the imported spell, in its
 -- own row; a new key is appended; every binding the import does not mention is
 -- left alone. Inside the import the later entry wins a clash.
--- Returns: how many were added, how many replaced, how many changed nothing.
+-- Returns: how many were added, how many replaced, how many changed nothing,
+-- and (T27) the spells it skipped because they are not in your spellbook, by
+-- name, each once ({} on TBC, where every family is in the book).
+-- T27: on Forever an imported binding for a spell not in the book is dropped
+-- BEFORE the keys are matched, so it neither lands nor overrides one of yours.
+-- A key it collides with is matched among every stored binding, hidden ones
+-- included (PR.AllBinds): the import re-points a hidden one too.
 function PR.ApplyImport(list)
-    if not list then return 0, 0, 0 end
-    local binds = PR.Binds()
+    if not list then return 0, 0, 0, {} end
+    local binds = PR.AllBinds()
     local byKey = {}
     for i, b in ipairs(binds) do
         if b.key and b.key ~= "" then byKey[b.key] = i end
     end
     -- the import's own last word per key, in the order it gave them
     local last, order = {}, {}
+    local skipped, skippedSeen = {}, {}
     for _, b in ipairs(list) do
-        if b.key and b.key ~= "" then
+        if b.family and not PR.InBook(b) then
+            local label = PR.FamilyLabel(b.family)
+            if not skippedSeen[label] then
+                skippedSeen[label] = true
+                skipped[#skipped + 1] = label
+            end
+        elseif b.key and b.key ~= "" then
             if not last[b.key] then order[#order + 1] = b.key end
             last[b.key] = b
         end
@@ -950,7 +1079,7 @@ function PR.ApplyImport(list)
         end
     end
     MD.db.practiceBinds = binds
-    return added, replaced, same
+    return added, replaced, same, skipped
 end
 
 --------------------------------------------------------------------------------
