@@ -251,14 +251,20 @@ MD:AddCommand("clock", function(arg)
 end, "/st clock [lock]", "show or hide the mana clock, or lock it in place")
 
 MD:AddCommand("measure", function(arg)
-    if arg == "dump" then
+    if arg == "dump" or arg == "dump all" then
         if MD.Measure and MD.Measure.Dump and MD.ShowCopyPopup then
-            MD:ShowCopyPopup("SpellTuner measure", MD.Measure:Dump())
+            MD:ShowCopyPopup("SpellTuner measure", MD.Measure:Dump(arg == "dump all"))
+        end
+    elseif arg == "clear" then
+        if MD.Measure and MD.Measure.Clear then
+            local n = MD.Measure:Clear()
+            MD:Print("measure: cleared " .. n .. " line(s)")
         end
     elseif MD.Measure and MD.Measure.Toggle then
         MD.Measure:Toggle()
     end
-end, "/st measure [dump]", "measure a landed cast against its own description (a diagnostic session)")
+end, "/st measure [dump [all] / clear]",
+"measure a landed cast against its own description (a diagnostic session); dump shows this version's lines, dump all every line with its stamp, clear empties the list")
 
 MD:AddCommand("modules", function()
     if MD.SelectView then

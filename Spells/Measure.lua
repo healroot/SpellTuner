@@ -567,10 +567,28 @@ end
 --------------------------------------------------------------------------------
 -- Storage: SpellTunerDB.measures, last 100, oldest dropped (Files).
 --------------------------------------------------------------------------------
+-- T26: each kept line is { text, version, build } -- the addon version and the
+-- client build that wrote it -- so a dump can tell this version's lines from
+-- the ones an older version left in SavedVariables. Entries stored before T26
+-- are plain strings; they are read as written by "before <BEFORE_STAMPS>".
+-- BEFORE_STAMPS is the version this ships in (0.16.1); the lead bumps the TOCs
+-- to it after acceptance.
+local BEFORE_STAMPS = "0.16.1"
+
+local function PlainOr(v)
+    if type(v) == "string" and not MD.API.IsSecret(v) then return v end
+    return "?"
+end
+
 local function RecordLine(line)
     if type(SpellTunerDB) ~= "table" then SpellTunerDB = {} end
     SpellTunerDB.measures = SpellTunerDB.measures or {}
-    table.insert(SpellTunerDB.measures, line)
+    local build = select(2, MD.API.BuildInfo())
+    table.insert(SpellTunerDB.measures, {
+        text = line,
+        version = PlainOr(MD.API.AddonVersion()),
+        build = PlainOr(build),
+    })
     while #SpellTunerDB.measures > 100 do table.remove(SpellTunerDB.measures, 1) end
     MD:Print(line)
 end
@@ -874,22 +892,55 @@ function Measure:Watch()
     return watches[#watches]
 end
 
--- One copy block: a header (build, character, level, date) then every kept
--- line (Files: "shows them with a header ... in MD:ShowCopyPopup").
-function Measure:Dump()
+-- One copy block: a header (build, character, level, date) then the kept
+-- lines (Files: "shows them with a header ... in MD:ShowCopyPopup"). By default
+-- only the lines the running version wrote; `all` shows every line, each
+-- prefixed with the stamp it was written under (T26).
+function Measure:Dump(all)
     local build = select(2, MD.API.BuildInfo())
     if type(build) ~= "string" or MD.API.IsSecret(build) then build = "?" end
     local charKey = (MD.player and MD.player.charKey) or "?"
     local level = (MD.player and MD.player.level) or "?"
+    local version = MD.API.AddonVersion()
 
     local lines = {
         string.format("=== SpellTuner measure  build %s  %s level %s  %s ===",
             Esc(build), Esc(charKey), tostring(level), date("%Y-%m-%d %H:%M:%S")),
     }
-    for _, l in ipairs((SpellTunerDB and SpellTunerDB.measures) or {}) do
-        lines[#lines + 1] = l
+    local older = 0
+    for _, e in ipairs((SpellTunerDB and SpellTunerDB.measures) or {}) do
+        if type(e) == "table" then
+            local current = version ~= nil and e.version == version
+            if all then
+                lines[#lines + 1] = "[" .. Esc(PlainOr(e.version)) .. " " .. Esc(PlainOr(e.build)) .. "] "
+                    .. PlainOr(e.text)
+            elseif current then
+                lines[#lines + 1] = PlainOr(e.text)
+            else
+                older = older + 1
+            end
+        elseif type(e) == "string" then
+            if all then
+                lines[#lines + 1] = "[before " .. BEFORE_STAMPS .. "] " .. e
+            else
+                older = older + 1
+            end
+        end
+    end
+    if older > 0 then
+        lines[#lines + 1] = older .. " older line(s) from earlier versions not shown - /st measure dump all"
     end
     lines[#lines + 1] = "unreadable: " .. tostring(Measure.unreadable)
     lines[#lines + 1] = "cast at another unit, not measured: " .. tostring(Measure.elsewhere)
     return table.concat(lines, "\n")
+end
+
+-- Empties the kept list; answers how many entries it removed (T26).
+function Measure:Clear()
+    local n = 0
+    if type(SpellTunerDB) == "table" and type(SpellTunerDB.measures) == "table" then
+        n = #SpellTunerDB.measures
+        SpellTunerDB.measures = {}
+    end
+    return n
 end

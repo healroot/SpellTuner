@@ -28,9 +28,15 @@ local Measure = MD.Measure
 --   774  Rejuvenation R1:  "Heals the target for 32 over 12 sec."  (over only)
 --   5176 Wrath R1:         "Causes 13 to 16 Nature damage..."      (direct, damage)
 
+-- T26: a kept entry is a table { text, version, build }; one stored by an
+-- older version is the string itself. The helpers answer the line's text.
+local function EntryText(e)
+    if type(e) == "table" then return e.text end
+    return e
+end
 local function LastLine()
     local list = SpellTunerDB and SpellTunerDB.measures
-    return list and list[#list]
+    return list and EntryText(list[#list])
 end
 
 -- T12b: several watches can close minutes apart now (a deadline, not the
@@ -42,7 +48,7 @@ end
 local function LinesSince(mark)
     local list = SpellTunerDB and SpellTunerDB.measures or {}
     local out = {}
-    for i = mark + 1, #list do out[#out + 1] = list[i] end
+    for i = mark + 1, #list do out[#out + 1] = EntryText(list[i]) end
     return out
 end
 local function FindContaining(lines, substr)
@@ -217,6 +223,87 @@ do
         type(text) == "string" and text:find("SpellTuner", 1, true) ~= nil
         and AsciiCleanMultiline(text) and SpellTunerDB.measures and #SpellTunerDB.measures > 0,
         tostring(text and #text))
+end
+
+--------------------------------------------------------------------------------
+-- T26: every kept line carries the version and build that wrote it; the dump
+-- shows this version's lines and counts the older ones; clear empties the list.
+--------------------------------------------------------------------------------
+do
+    local list = SpellTunerDB.measures
+    local last = list[#list]
+    local printed = LastLine()
+    check("each kept line carries the version and build that wrote it",
+        type(last) == "table" and last.text == printed and type(printed) == "string"
+        and last.version == MD.API.AddonVersion() and last.version ~= nil
+        and last.build == select(2, GetBuildInfo()),
+        string.format("type=%s version=%s build=%s", type(last),
+            type(last) == "table" and tostring(last.version) or "-",
+            type(last) == "table" and tostring(last.build) or "-"))
+end
+
+local function CountOf(text, needle)
+    local n, from = 0, 1
+    while true do
+        local a, b = text:find(needle, from, true)
+        if not a then return n end
+        n = n + 1; from = b + 1
+    end
+end
+
+do
+    local ver = MD.API.AddonVersion()
+    local build = select(2, GetBuildInfo())
+    local kept = SpellTunerDB.measures
+    SpellTunerDB.measures = {
+        "OLDSTRING one",
+        "OLDSTRING two",
+        { text = "OLDTABLE zero", version = "0.0.1", build = "1111" },
+        { text = "CURRENT alpha", version = ver, build = build },
+        { text = "CURRENT beta", version = ver, build = build },
+    }
+    local d = Measure:Dump()
+    check("the dump shows this version's lines and counts the older ones",
+        d:find("CURRENT alpha", 1, true) ~= nil and d:find("CURRENT beta", 1, true) ~= nil
+        and d:find("OLDSTRING", 1, true) == nil and d:find("OLDTABLE", 1, true) == nil
+        and d:find("3 older line(s) from earlier versions not shown - /st measure dump all", 1, true) ~= nil
+        and AsciiCleanMultiline(d),
+        d)
+
+    local all = Measure:Dump(true)
+    check("dump all shows every line with its stamp",
+        all:find("[before 0.16.1] OLDSTRING one", 1, true) ~= nil
+        and all:find("[before 0.16.1] OLDSTRING two", 1, true) ~= nil
+        and all:find("[0.0.1 1111] OLDTABLE zero", 1, true) ~= nil
+        and all:find("[" .. ver .. " " .. build .. "] CURRENT alpha", 1, true) ~= nil
+        and all:find("[" .. ver .. " " .. build .. "] CURRENT beta", 1, true) ~= nil
+        and all:find("older line(s)", 1, true) == nil
+        and AsciiCleanMultiline(all),
+        all)
+    SpellTunerDB.measures = kept
+
+    -- a clear through the registered command
+    SpellTunerDB.measures = {
+        "OLDSTRING one",
+        { text = "CURRENT alpha", version = ver, build = build },
+    }
+    local printed = {}
+    local origPrint = MD.Print
+    MD.Print = function(self, msg) printed[#printed + 1] = tostring(msg) end
+    local shown
+    local origPopup = MD.ShowCopyPopup
+    MD.ShowCopyPopup = function(self, title, text) shown = text end
+    SlashCmdList.SPELLTUNER("measure clear")
+    SlashCmdList.SPELLTUNER("measure dump")
+    MD.Print, MD.ShowCopyPopup = origPrint, origPopup
+    local named = false
+    for _, l in ipairs(printed) do if l:find("cleared 2 line(s)", 1, true) then named = true end end
+    check("/st measure clear empties the list and says how many",
+        #SpellTunerDB.measures == 0 and named and shown ~= nil
+        and shown:find("CURRENT", 1, true) == nil and shown:find("OLDSTRING", 1, true) == nil
+        and shown:find("older line(s)", 1, true) == nil,
+        table.concat(printed, " / ") .. " || " .. tostring(shown))
+    SpellTunerDB.measures = kept
 end
 
 --------------------------------------------------------------------------------
@@ -643,7 +730,7 @@ end
 -- forwards to print()) -- restated here from the stored copy for the Report.
 --------------------------------------------------------------------------------
 print("\n-- demonstration: the stored measure lines --")
-for _, l in ipairs(SpellTunerDB.measures or {}) do print("  " .. l) end
+for _, l in ipairs(SpellTunerDB.measures or {}) do print("  " .. tostring(EntryText(l))) end
 
 print("")
 print(string.format("%d ok, %d failed", ok, #fails))

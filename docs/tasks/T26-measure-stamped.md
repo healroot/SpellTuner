@@ -1,6 +1,6 @@
 # T26 -- `/st measure` lines stamped with the version and build that wrote them
 
-Status: handed out 2026-09-29.
+Status: **accepted** 2026-09-29 (handed out in d558432).
 
 ## Goal
 
@@ -89,4 +89,22 @@ files T24 and T25 own.
 
 ## Report
 
-(implementer)
+Done 2026-09-29.
+
+- `Spells/Measure.lua`: `RecordLine` stores `{ text, version, build }` (version from `MD.API.AddonVersion()`, build from `select(2, MD.API.BuildInfo())`, each `"?"` unless a plain non-secret string), still the last 100, still prints `line` unchanged. `Measure:Dump(all)`: default shows only entries whose `version` equals the running one, then `N older line(s) from earlier versions not shown - /st measure dump all` when N > 0; `all` shows every entry prefixed `[<version> <build>] ` (a string entry `[before 0.16.1] `, the constant `BEFORE_STAMPS` with a comment); version and build pass `Esc`. Stored text is not re-escaped (already escaped when written). New `Measure:Clear()` returns the count removed.
+- `Core_Forever.lua`: `measure dump all` -> `Dump(true)`, `measure clear` -> `Clear()` and `measure: cleared N line(s)`, usage `/st measure [dump [all] / clear]`, help names all three.
+- `tools/measurecheck.lua`: `EntryText` helper so `LastLine`, `LinesSince` and the demonstration read a table's `text` or the string itself; the four new assertions, names verbatim.
+
+Suite. Before the code, `measurecheck` failed: "each kept line carries the version and build that wrote it FAIL - type=string version=- build=-", then died at `Spells/Measure.lua:894: invalid value (table) at index 4 in table for 'concat'` (the second new assertion's table entries against the old dump). After: `30 ok, 0 failed`. `luac -p` (tools/.lua's luac, none on PATH) clean on `Spells/Measure.lua`, `Core_Forever.lua`, `tools/measurecheck.lua`. Loop: every suite at its baseline except: tipcheck 22 (T25, was 17), practiceforever 15 (T24, was 9; its first run printed a mid-suite line, the re-run ended `15 ok, 0 failed`), and `adaptercheck/forever` **21 ok, 1 failed** ("every binding is on MD.API and in the capability table"), also after a one-minute wait and re-run. That failure is in a file I did not touch (`Client/API_Forever.lua` is modified by T25 in this tree); I did not investigate it further. adaptercheck/tbc 15, corecheck 10/8, svcheck 6/1, consolecheck 14/1, releasecheck 13, apicheck 0 findings over 44 files, selftest 10 of 10.
+
+Skipped: nothing. Questions: none. Note: no `MD.API.AddonVersion` replacement was needed; the stub's TOC gives a version and build "70009".
+
+
+## Lead review (2026-09-29)
+
+Accepted as delivered, no lead change. Read the diff: version and build only through `MD.API`,
+checked plain before use and escaped before printing, `select(2, ...)` for the build, old string
+entries read as `before 0.16.1`, the chat line unchanged; `clear` and `dump all` through the
+registered command (the dispatcher lower-cases and passes the tail, so `dump all` arrives whole).
+The adaptercheck failure the report saw was T25's two new bindings, fixed in T25's commit (8ffd300).
+Lead's runs: measurecheck 30, consolecheck 14, corecheck 10, `luac -p` clean.
