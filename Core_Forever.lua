@@ -233,10 +233,21 @@ end, "/st", "open the SpellTuner window")
 
 MD:AddCommand("help", function() MD:ShowCommands() end, "/st help", "this list")
 
-MD:AddCommand("tooltip", function()
+MD:AddCommand("tooltip", function(arg)
+    -- T28 (docs/SPEC-forever-ui.md 5.5): one line saying why the last macro
+    -- hover showed a block or none; it changes nothing.
+    if arg == "why" then
+        if MD.SpellTip and MD.SpellTip.Why then
+            MD:Print(MD.SpellTip:Why())
+        else
+            MD:Print("tooltip why: the spell tooltip is not loaded")
+        end
+        return
+    end
     MD.db.spellTooltip = not MD.db.spellTooltip
     MD:Print("spell tooltip lines: " .. (MD.db.spellTooltip and "on" or "off"))
-end, "/st tooltip", "turn the SpellTuner block on spell tooltips on or off")
+end, "/st tooltip [why]",
+"turn the SpellTuner block on spell tooltips on or off; why: what the last macro hover did, step by step")
 
 MD:AddCommand("clock", function(arg)
     MD.db.clock = MD.db.clock or {}

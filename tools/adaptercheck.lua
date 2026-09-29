@@ -63,6 +63,8 @@ local FOREVER_ONLY_NAMES = {
     "BindingCount", "Binding", "BindingAction", "ActionInfo", "MacroInfo",
     -- T25 (UI/SpellTip_Forever.lua): a macro's spell, and the macro tooltip hook.
     "MacroSpell", "OnMacroTooltip",
+    -- T28: the SetAction hook, recorded explicitly (Client/API_Forever.lua).
+    "OnActionTooltip",
 }
 -- T15: Client/API_TBC.lua's own binding -- GetSpellInfo, so
 -- Engine/SimModel.lua and Engine/SimPlanner.lua's four call sites can go

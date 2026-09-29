@@ -952,6 +952,61 @@ function S.UseProfile(name)
         end
     end
 
+    -- T28: hooksecurefunc(table, method, hook) / hooksecurefunc(global, hook)
+    -- -- the hook runs after the original with the same arguments, and the
+    -- original's returns are handed back; S.secureHooks[method] counts them.
+    S.secureHooks = {}
+    function hooksecurefunc(a, b, c) -- T28
+        local tbl, name, hook = a, b, c
+        if type(a) == "string" then tbl, name, hook = _G, a, b end
+        local orig = tbl[name]
+        if type(orig) ~= "function" or type(hook) ~= "function" then
+            error("hooksecurefunc: bad argument")
+        end
+        rawset(tbl, name, function(...)
+            local r = (function(...) return { n = select("#", ...), ... } end)(orig(...))
+            hook(...)
+            return unpack(r, 1, r.n)
+        end)
+        S.secureHooks[name] = (S.secureHooks[name] or 0) + 1
+    end
+
+    -- T28: GameTooltip:SetAction(slot) -- clears (firing OnTooltipCleared),
+    -- then runs every Macro post-call with S.actionTooltipData[slot] when a
+    -- script set one (the client assigning the showing a Macro data type),
+    -- else no post-call at all (a path that fires none, spec 5.5 item 2).
+    -- Hooks installed by hooksecurefunc run after this, as in the client.
+    S.actionTooltipData = {}
+    rawset(GameTooltip, "SetAction", function(tt, slot) -- T28
+        tt.lines = {}
+        if tt.scripts.OnTooltipCleared then tt.scripts.OnTooltipCleared(tt) end
+        local data = S.actionTooltipData[slot]
+        local list = S.tooltipPostCalls[Enum.TooltipDataType.Macro]
+        if data ~= nil and list then
+            for _, fn in ipairs(list) do fn(tt, data) end
+        end
+    end)
+
+    -- T28: one action-button showing on GameTooltip, through its SetAction
+    -- (and so through every hook on it). `data`, when given, is the Macro
+    -- data the client hands the post-calls for this showing; the owner is nil
+    -- unless `owner` is given, so the hook must use the slot it is handed.
+    function S.SetActionTooltip(slot, data, owner) -- T28
+        GameTooltip.GetOwner = function() return owner end
+        S.actionTooltipData[slot] = data
+        GameTooltip:SetAction(slot)
+        S.actionTooltipData[slot] = nil
+        return GameTooltip
+    end
+
+    -- T28: a Macro data whose one line names `id` with a type that is not
+    -- the Spell type (`lineType`, default 0) -- the shape ElvUI's own Macro
+    -- handler reads without checking the type.
+    function S.MacroDataUntyped(id, lineType) -- T28
+        return { type = Enum.TooltipDataType.Macro,
+            lines = { { tooltipType = lineType or 0, tooltipID = id } } }
+    end
+
     C_Secrets = {
         ShouldAurasBeSecret = function() return S.inCombat end,
         ShouldUnitIdentityBeSecret = function(u)

@@ -600,6 +600,111 @@ do
         string.format("one=%s off=%s entry=%s", tostring(one), tostring(off), tostring(entry ~= nil)))
 end
 
+--------------------------------------------------------------------------------
+-- T28 (docs/SPEC-forever-ui.md 5.5): the untyped first line, the SetAction
+-- path and /st tooltip why
+--------------------------------------------------------------------------------
+-- What `/st tooltip why` printed, and whether it left the setting alone.
+local function Why()
+    local said = {}
+    local prev = _G.DEFAULT_CHAT_FRAME
+    _G.DEFAULT_CHAT_FRAME = { AddMessage = function(_, m) said[#said + 1] = m end }
+    local before = MD.db.spellTooltip
+    local okCall = pcall(SlashCmdList.SPELLTUNER, "tooltip why")
+    _G.DEFAULT_CHAT_FRAME = prev
+    return table.concat(said, "\n"), okCall and MD.db.spellTooltip == before, #said
+end
+local function Has(text, part) return text:find(part, 1, true) ~= nil end
+
+do
+    local want = SpellBlock(5185)
+    local typed0 = MacroTooltip(S.MacroDataUntyped(5185, 0), nil)
+    local noType = MacroTooltip({ type = MACRO, lines = { { tooltipID = 5185 } } }, nil)
+    check("T28: an untyped first line gives the block",
+        SameLines(typed0, want) and SameLines(noType, want),
+        string.format("type0=%d none=%d want=%d", typed0:NumLines(), noType:NumLines(), want:NumLines()))
+end
+
+do
+    local want = SpellBlock(5185)
+    S.actions[61] = { "macro", 3 }
+    S.macroSpells[3] = 5185
+    local tt = S.SetActionTooltip(61)          -- no Macro post-call fires, no owner
+    local owner = tt:GetOwner()
+    local got = SameLines(tt, want)
+    S.actions[61], S.macroSpells[3] = nil, nil
+    local entry
+    for _, c in ipairs(MD.API.Capabilities()) do if c.name == "OnActionTooltip" then entry = c end end
+    check("T28: the SetAction path gives the block from the slot argument, with no owner",
+        got and owner == nil and S.secureHooks.SetAction == 1 and entry ~= nil and entry.present == true,
+        string.format("got=%d want=%d hooks=%s entry=%s", tt:NumLines(), want:NumLines(),
+            tostring(S.secureHooks.SetAction), tostring(entry and entry.present)))
+end
+
+do
+    -- the post-call names Healing Touch rank 1, the slot rank 2: one block,
+    -- the first one, whatever id the second path resolved
+    local want = SpellBlock(5185)
+    S.actions[61] = { "macro", 3 }
+    S.macroSpells[3] = 92002
+    local tt = S.SetActionTooltip(61, { type = MACRO, lines = { { tooltipType = 1, tooltipID = 5185 } } })
+    local got = SameLines(tt, want)
+    local n = tt:NumLines()
+    S.actions[61], S.macroSpells[3] = nil, nil
+    local why = Why()
+    check("T28: a Macro post-call and the SetAction hook on one showing give the block once",
+        got and Has(why, "path macro post-call, SetAction hook")
+        and Has(why, "SetAction slot 61 -> macro 3 -> GetMacroSpell 92002 -> already shown"),
+        string.format("lines=%d want=%d why=%s", n, want:NumLines(), why))
+end
+
+do
+    -- 1: an id neither in the book nor readable, and no owner
+    MacroTooltip(S.MacroDataUntyped(424242, 0), nil)
+    local why1, kept1, n1 = Why()
+    -- 2: a book spell with no value on the first line, then the owner's slot
+    S.actions[7] = { "macro", 3 }
+    S.macroSpells[3] = 5185
+    local tt = MacroTooltip(S.MacroDataUntyped(92040, 0), { action = 7 })
+    S.actions[7], S.macroSpells[3] = nil, nil
+    local why2, kept2 = Why()
+    local ascii1, ascii2 = AsciiNoBarePipe(why1), AsciiNoBarePipe(why2)
+    check("T28: /st tooltip why names the path, each step and what Lines said",
+        n1 == 1 and kept1 and kept2 and ascii1 and ascii2 and tt:NumLines() > 0
+        and Has(why1, "path macro post-call") and Has(why1, "spell line: none")
+        and Has(why1, "first line: type 0 id 424242 -> not in book") and Has(why1, "slot: no owner")
+        and Has(why2, "first line: type 0 id 92040 -> no value")
+        and Has(why2, "slot 7 -> macro 3 -> GetMacroSpell 5185 -> block")
+        and Has(why2, "macro post-call on") and Has(why2, "SetAction hook on"),
+        why1 .. " // " .. why2)
+end
+
+do
+    local total = 0
+    local function Count(tt) total = total + tt:NumLines() end
+    local noId = { type = MACRO, lines = { { tooltipType = 0 } } }
+    local ok1 = pcall(function()
+        Count(MacroTooltip(noId, { GetAttribute = function() error("owner blew up (test)") end }))
+    end)
+    local why1 = Why()
+    -- GetOwner itself raising, straight into the adapter's post-call
+    local tt = CreateFrame("GameTooltip")
+    tt.GetOwner = function() error("GetOwner blew up (test)") end
+    local ok2 = pcall(S.tooltipPostCalls[MACRO][2], tt, noId)
+    Count(tt)
+    -- a slot whose ActionInfo raises, and a secret slot
+    S.actions[62] = setmetatable({}, { __index = function() error("slot blew up (test)") end })
+    local ok3 = pcall(function() Count(S.SetActionTooltip(62, noId)) end)
+    S.actions[62] = nil
+    local why3 = Why()
+    local ok4 = pcall(function() Count(S.SetActionTooltip(S.Secret())) end)
+    check("T28: a raising owner or slot adds nothing, never raises, and why says so",
+        ok1 and ok2 and ok3 and ok4 and total == 0 and Has(why1, "slot: owner raised")
+        and Has(why3, "SetAction slot 62 -> ActionInfo error"),
+        string.format("ok=%s,%s,%s,%s lines=%d why1=%s why3=%s", tostring(ok1), tostring(ok2),
+            tostring(ok3), tostring(ok4), total, why1, why3))
+end
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("  FAIL " .. f) end
 if #fails > 0 then os.exit(1) end

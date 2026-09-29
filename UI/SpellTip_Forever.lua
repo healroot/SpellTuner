@@ -82,18 +82,31 @@ end
 -- {l, r} lines for one spell id, or nil for no block: a spell in the
 -- player's book whose family has a kind, else Book:ReadSpell(id) when THAT
 -- has a value, else nil (Facts).
+-- T28: the outcome is kept in SpellTip.lastOutcome (only there: a second
+-- return would reach every caller that passes Lines' result on), for
+-- /st tooltip why: "block", "not in book" (an id the book does not list
+-- and Book:ReadSpell cannot value) or "no value" (a book spell with no
+-- amount to show), "no id" for anything but a number.
 function SpellTip:Lines(id)
-    if type(id) ~= "number" then return nil end
+    if type(id) ~= "number" then
+        SpellTip.lastOutcome = "no id"
+        return nil
+    end
 
     local book = Book:Get()
     local entry = book.spells[id]
+    local inBook = entry ~= nil
     local family = entry and book.families[entry.name]
 
     if not (family and family.kind) then
         entry = Book:ReadSpell(id)
         family = nil
     end
-    if not entry or entry.value == nil then return nil end
+    if not entry or entry.value == nil then
+        SpellTip.lastOutcome = inBook and "no value" or "not in book"
+        return nil
+    end
+    SpellTip.lastOutcome = "block"
 
     local kind = family and family.kind or entry.kind
     local lines = {}
@@ -234,25 +247,37 @@ end
 -- until OnTooltipCleared, hooked once per frame (an action button re-sets its
 -- tooltip on a timer, and the callback can run more than once for one
 -- showing -- Facts).
+-- T28: the guard is shared by every path (the Spell and Macro post-calls and
+-- the SetAction hook all hand their id here) and holds whatever the id: once
+-- a showing has its block, a second path resolving another id (a macro's
+-- post-call naming rank 1, its slot rank 2) adds nothing. _spellTipId is set
+-- only when a block was added, so an id that gave none leaves the next path
+-- its turn. Answers `done, outcome` for the adapter's chain and
+-- /st tooltip why: done when a block is on the tooltip or the block is off.
 local function OnSpell(tt, id)
-    if not tt or type(id) ~= "number" then return end
-    if MD.db and MD.db.spellTooltip == false then return end
+    if not tt or type(id) ~= "number" then return false, "no id" end
+    if MD.db and MD.db.spellTooltip == false then return true, "off" end
 
     if not tt._spellTipHooked and tt.HookScript then
         tt._spellTipHooked = true
         tt:HookScript("OnTooltipCleared", function(self) self._spellTipId = nil end)
     end
-    if tt._spellTipId == id then return end
-    tt._spellTipId = id
+    if tt._spellTipId ~= nil then
+        -- without the clear hook the guard cannot reset, so it holds only
+        -- for the id it was set for (the pre-T28 rule)
+        if tt._spellTipHooked or tt._spellTipId == id then return true, "already shown" end
+    end
 
     -- The builder never raises into the game's tooltip.
+    SpellTip.lastOutcome = nil
     local ok, lines = pcall(SpellTip.Lines, SpellTip, id)
     if not ok then
         MD:Debug("other", "spell tooltip for %s failed: %s", tostring(id), tostring(lines))
-        return
+        return false, "error"
     end
-    if type(lines) ~= "table" then return end
+    if type(lines) ~= "table" then return false, SpellTip.lastOutcome or "no value" end
 
+    tt._spellTipId = id
     for _, line in ipairs(lines) do
         if line[2] ~= nil then
             tt:AddDoubleLine(line[1], line[2])
@@ -261,10 +286,31 @@ local function OnSpell(tt, id)
         end
     end
     if tt.Show then tt:Show() end
+    return true, "block"
+end
+
+-- T28: /st tooltip why -- one line: whether each macro path is registered,
+-- then what the last macro hover did (MD.API.LastMacroHover: the path that
+-- fired, each step's answer and what Lines said about each id). Every piece
+-- is the adapter's own ASCII strings.
+function SpellTip:Why()
+    local hooks = MD.API.tooltipHooks or {}
+    local head = "tooltip why: macro post-call " .. tostring(hooks.macro or "not registered")
+        .. ", SetAction hook " .. tostring(hooks.action or "not registered")
+    if MD.db and MD.db.spellTooltip == false then head = head .. " (block off: /st tooltip)" end
+    local rec = MD.API.LastMacroHover and MD.API.LastMacroHover()
+    if type(rec) ~= "table" then
+        return head .. "; last macro hover: path none"
+    end
+    local line = head .. "; last macro hover: path " .. table.concat(rec.path, ", ")
+    if #rec.steps > 0 then line = line .. "; " .. table.concat(rec.steps, "; ") end
+    return line
 end
 
 MD:RegisterCallback("MD_READY", function()
     MD.API.OnSpellTooltip(OnSpell)
     -- T25: a macro's tooltip gets the block of the spell it casts.
     if MD.API.OnMacroTooltip then MD.API.OnMacroTooltip(OnSpell) end
+    -- T28: and so does an action button's, from the slot SetAction is handed.
+    if MD.API.OnActionTooltip then MD.API.OnActionTooltip(OnSpell) end
 end)
