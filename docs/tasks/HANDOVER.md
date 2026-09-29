@@ -70,7 +70,14 @@ docs/HISTORY.md's 2026-09-29 entry covers T18 onwards.
 
 ## In the tree, not committed
 
-Nothing.
+Nothing yet. **Handed out 2026-09-29 (the author's 70058 report, four items), one implementer each,
+in parallel on disjoint files:** T24 `docs/tasks/T24-practice-own-spells.md` (practice offers only
+the player's own spells on Forever), T25 `docs/tasks/T25-macro-tooltip.md` (the block on a macro's
+tooltip), T26 `docs/tasks/T26-measure-stamped.md` (measure lines stamped, `dump all`, `clear`).
+**T25a** `docs/tasks/T25a-probe-macro-shapes.md` (the probe's macro lines) is written and goes out
+only after T25 is accepted (both touch `tools/wowstub.lua`). Item 4 (TESTING §38: re-run the probe on
+70058 into `docs/probe/1.60.1_70058.md`) is the lead's own docs edit. After all four: every TOC to
+0.16.1 (`./release.sh --set-version 0.16.1`), build, install the Forever package only.
 
 ## Next, in order
 
@@ -138,12 +145,8 @@ globals), selftest 10 of 10, refcheck selftest ok. The same counts in a `git arc
   Report section, `git status --short` and `git diff` for its files; if another implementer may
   still be writing, wait until the tree settles (file mtimes stable for a few minutes) rather than
   starting a second one. Stage only the task's own paths; never `git add -A`.
-- **The shared `.git` object store has 18 empty (corrupt) loose objects** (`git fsck`). They are
-  reachable only from four old docs commits (fd6a540, ad94b2f, d35f41c, 47b9edf -- `git ls-tree -r`
-  fails on them) and from branch `claude/combat-log-design-arch-ffb907`. HEAD's tree is readable.
-  Not ours to repair (never touch `.git` internals); reported to the planner. Hazard: a new commit
-  whose blob hash equals one of the empty objects would be silently corrupt, so after every commit
-  run `git ls-tree -r HEAD` and export HEAD with `git archive` and run the suites there.
+- (Resolved 2026-09-29: the planner repaired the shared `.git` with the author's approval; `git fsck` is
+  clean. Still: never touch `.git` internals.)
 
 ## Planner, end of 2026-09-28
 
