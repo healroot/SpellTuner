@@ -610,6 +610,17 @@ SP.STRATEGY_SET = {
       params = { minValue = 15, horizon = 12 } },
 }
 
+-- R23 (review 2026-09-29): the many-raids strategy is the shipped prior in
+-- Data/Intuition_TBC.lua, which only the TBC TOC loads (before this file).
+-- Where it did not load (the Forever Replay module) the entry is not offered:
+-- run without its prior it would be the no-intuition solver under the prior's
+-- label. On TBC the table is there and the list is unchanged.
+if not MD.IntuitionTBC then
+    for i = #SP.STRATEGY_SET, 1, -1 do
+        if SP.STRATEGY_SET[i].params.corpus then table.remove(SP.STRATEGY_SET, i) end
+    end
+end
+
 function SP.Strategy(key)
     for _, e in ipairs(SP.STRATEGY_SET) do if e.key == key then return e end end
     return nil
@@ -630,7 +641,10 @@ function SP.MakeStrategy(entry, binds, kit, ctx)
         if params.corpus then
             -- the shipped prior: somebody else's experience, blurred, in
             -- fractions of health so it lands on any character
-            params.prior = MD.Intuition:Load(MD.IntuitionTBC)
+            params.prior = MD.Intuition and MD.Intuition:Load(MD.IntuitionTBC)
+            -- R23: no shipped prior, no plan -- never the blind solver under
+            -- this strategy's name
+            if not params.prior then return nil end
             params.zone = ctx and ctx.encounter or nil
             params.corpus = nil
         elseif params.prior then

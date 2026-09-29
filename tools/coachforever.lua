@@ -152,6 +152,27 @@ do
 end
 
 --------------------------------------------------------------------------------
+-- R23 (review 2026-09-29): Data/Intuition_TBC.lua is on the TBC TOC only, so
+-- on Forever there is no shipped prior. "Solver: intuition from many raids"
+-- is not offered, and a corpus strategy handed in anyway is refused rather
+-- than silently run as the no-intuition solver under the prior's name.
+--------------------------------------------------------------------------------
+do
+    local offered = false
+    for _, e in ipairs(SP.STRATEGY_SET) do
+        if e.params and e.params.corpus then offered = true end
+    end
+    local binds = SP.BindsFromRecording(recGood, kit)
+    local sc = SM.ScenarioFromRecording(recGood, kit)
+    local handIn = { key = "solver-corpus", label = "Solver: intuition from many raids", kind = "solver",
+                     why = "test", params = { minValue = 15, horizon = 18, corpus = true } }
+    local plan = SP.MakeStrategy(handIn, binds, kit, { scenario = sc })
+    check("R23: with no shipped prior the many-raids strategy is neither offered nor run without it",
+        MD.IntuitionTBC == nil and not offered and SP.Strategy("solver-corpus") == nil and plan == nil,
+        "offered=" .. tostring(offered) .. " plan=" .. tostring(plan))
+end
+
+--------------------------------------------------------------------------------
 -- 6: a burst at 20 s changes nothing the plan does before it (the invariant
 --    on a v3 scenario)
 --------------------------------------------------------------------------------
