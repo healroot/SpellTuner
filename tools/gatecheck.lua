@@ -237,6 +237,23 @@ do
     check("every gate text is ASCII with no bare pipe", allAscii, offender)
 end
 
+--------------------------------------------------------------------------------
+-- review-replay R27: a target excluded from the health gate whose max is the
+-- stand-in says so beside its percentages (Planner ruling 1: every percentage
+-- from an estimated max says "estimated"). The thresholds are pushed below
+-- zero for this one call so the fixture's tank (secret max) is excluded.
+--------------------------------------------------------------------------------
+do
+    local savedMean, savedMax = MD.db.simGateHpMean, MD.db.simGateHpMax
+    MD.db.simGateHpMean, MD.db.simGateHpMax = -1, -1
+    local v = SM:Validate(buildFixture(), kit)
+    MD.db.simGateHpMean, MD.db.simGateHpMax = savedMean, savedMax
+    local why = v.excluded[2] or ""
+    check("an excluded target's health percentages say when its max is estimated (R27)",
+        why:find("of max health", 1, true) ~= nil and why:find("estimated", 1, true) ~= nil,
+        why)
+end
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("  FAIL " .. f) end
 if #fails > 0 then os.exit(1) end

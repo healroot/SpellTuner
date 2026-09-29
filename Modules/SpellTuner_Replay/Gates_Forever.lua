@@ -131,8 +131,10 @@ function SM:ValidateV3(rec, kit)
                 out.excluded[i] = "no health readings"
                 excluded = excluded + 1
             elseif mean > limHpMean or max > limHpMax then
-                out.excluded[i] = string.format("mean %.0f%% / worst %.0f%% of max health",
-                    mean * 100, max * 100)
+                -- review-replay R27: a percentage of a stand-in max says so
+                -- (Planner ruling 1), here as on the gate's own text.
+                out.excluded[i] = string.format("mean %.0f%% / worst %.0f%% of max health%s",
+                    mean * 100, max * 100, tg.maxEstimated and ", max estimated" or "")
                 excluded = excluded + 1
             else
                 scored = scored + 1
