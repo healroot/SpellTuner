@@ -3539,3 +3539,55 @@ Every Forever TOC at **`1.0.0-alpha.6`**; **`docs/TESTING.md` §40** is practice
 imports on the beta. The TBC line (`SpellTuner_TBC.toc`, 0.15.4) is unchanged. **Next:** the author's
 §38 / §39 / §40 reports -- §38.2 step 4 (gross or effective) makes gate 8 two-sided, §38.3's bar line
 decides `BAR_READS_MAX`, §40.1's paste is what an importer is fixed from; then M5.
+
+## 2026-09-29 — the independent Forever review and its fixes: 41 of 42, alpha.7
+
+An independent read-only review of the M1-M4 Forever code at `34d3509`
+(`docs/review/2026-09-29-forever-review.md`, committed in `c725e91`): 18 finders (six file groups x
+three lenses), each finding checked by three skeptics, 42 numbered R1-R42 (40 upheld, 2 split).
+The fixes were made in seven groups, each on its own branch and worktree, each finding with a test
+that fails on the old code, and each group reviewed before it was accepted. All seven were accepted
+and cherry-picked, oldest first, with no conflicts (the stub hunks each group tagged
+`-- review-<group>` merged on their own):
+
+- **measure** (`12ba325`) -- R1 the known deficit counted in combat only (a WOUND out of combat
+  adds nothing, `PLAYER_REGEN_ENABLED` zeroes it); R14 + R34 `UNIT_SPELLCAST_SENT`'s target name
+  kept by castGUID, a cast named at another unit opens no watch (`Measure.elsewhere`), an unknown
+  target reads `below range, target not known`; R32 a HoT/DoT crit at 1.5x counted; R33 the lists
+  escaped. measurecheck 18 -> 26.
+- **recorder** (`ad3f5f4`) -- R7 a member dead at the pull does not die in it; R8 the opener
+  recorded at t=0 with its cost given back to `initial.mana`, a pre-cast HoT in `initial.auras`
+  (a `UNIT_AURA` rescan out of combat); R9 an empty, foreign-only or partial meter read as `none`;
+  R10 a death poll at `PLAYER_REGEN_ENABLED`; R11 no meter read once the next pull started; R24 +
+  R25 departed members lose their token. recordcheck 15 -> 24.
+- **replay** (`1463b9b`, `530cc08`, `4673fc8`) -- R12 `/st coach N safe/health/cheap/regen`; R26 the
+  card keeps its colour codes (`PrintCard`); R27 `max estimated` on an excluded target; R28
+  Swiftmend ends the HoT it eats; R29 a pre-pull HoT's remaining ticks by ceiling, with a scoped
+  `Engine/SimModel.lua` read of `ticksLeft` / `firstTick` that TBC auras never carry; R30 direct
+  claims matched by size. coachforever, gatecheck 8 -> 9, scenariocheck 9 -> 12.
+- **probe** (`3ad8cce`) -- R2 the 2 s snapshot only while in combat; R3 `SpellTunerDB at load` from
+  the guard; R17 pets their own class; R18 mirrors by GUID; R19 `no cost`; R20 the `SpellTuner_`
+  modules' blocked actions kept. probecheck 73 -> 82.
+- **core** (`80054ab`) -- R15 + R16 the debug console's Enable box no longer calls the TBC-only
+  `MD:TalentSummary`; R22 the error's stack line names the frame that raised; R21 the previous
+  handler is a tail call, with none of our frames between. consolecheck 11 -> 14 (TBC 1).
+- **spells** (`a73d296`) -- R13 Rage / Energy / Focus costs are not mana; R31 + R38 the pane counts
+  its own casts to OOM (`Book:CastsFor`), the tooltip says `from full`; R35 wards and reactive
+  damage refused (checked against all 1796 beta descriptions); R36 + R37 a login mid-fight starts
+  the clock in combat; R41 a stale value kept across several unreadable rescans; R42 the crit line
+  says `1.5x, unverified`. parse 11 -> 12, book 15 -> 17, tip 14 -> 17, clock 15 -> 17, spellsui 15 -> 17.
+- **shared** (`e6cc8cd`, `bdbd42e`, `baaf6ef`, `a12bcf6`) -- R4 Forever practice regenerates at
+  `GetManaRegen`'s rates; R39 low mana `~N%` when modelled; R40 Export hidden without
+  `MD.RunExport`; R23 no `solver-corpus` without its shipped prior; R5 a v3 replay's ticks called
+  reconstructed. practiceforever 8 -> 9, reviewforever 8 -> 10, replayforever 10 -> 11,
+  coachforever 13 -> 16 (with the replay group).
+
+**Held for the author:** R6 -- the solver's danger line is the whole fight's biggest hit, on TBC as
+on Forever; making it causal is a ruling on the causality invariant, not a review fix.
+
+The TBC sixteen keep their exact counts (simcheck's run-cost line reads 3.46 KB/run with 1500
+events, was 3.39, still flat and passing). Every suite passes in the worktree and in a `git archive`
+export of HEAD; apicheck 0 findings. Every Forever TOC at **`1.0.0-alpha.7`** (probecheck and
+consolecheck pins follow). **Next:** the author's §38 / §39 / §40 reports on alpha.7, R6's ruling,
+then M5.
+

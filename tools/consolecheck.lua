@@ -254,15 +254,15 @@ try("the Forever console's Enable box logs its line and raises nothing", functio
 end)
 
 --------------------------------------------------------------------------------
--- 10: every Forever TOC is 1.0.0-alpha.6
+-- 10: every Forever TOC is 1.0.0-alpha.7
 --------------------------------------------------------------------------------
-try("every Forever TOC is 1.0.0-alpha.6", function()
+try("every Forever TOC is 1.0.0-alpha.7", function()
     local function HasVersionLine(rel)
         local f = io.open(ROOT .. "/" .. rel, "r")
         if not f then return false end
         local found = false
         for line in f:lines() do
-            if line:gsub("\r$", "") == "## Version: 1.0.0-alpha.6" then found = true end
+            if line:gsub("\r$", "") == "## Version: 1.0.0-alpha.7" then found = true end
         end
         f:close()
         return found
@@ -280,7 +280,7 @@ try("every Forever TOC is 1.0.0-alpha.6", function()
     for _, f in ipairs(files) do
         if not HasVersionLine(f) then allOk = false; bad = f end
     end
-    check("every Forever TOC is 1.0.0-alpha.6", allOk, bad)
+    check("every Forever TOC is 1.0.0-alpha.7", allOk, bad)
 end)
 
 --------------------------------------------------------------------------------

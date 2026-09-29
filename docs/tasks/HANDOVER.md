@@ -4,15 +4,31 @@ Rewritten by the lead after every commit and every hand-out. A successor continu
 alone. Worktree: `/home/penek/projects/addons/SpellTuner/.claude/worktrees/manademon-folder-continue-41eabc`,
 branch `claude/manademon-folder-continue-41eabc`.
 
-Last updated: 2026-09-29, lead run 3 (the author: "ok continue working from where you have
-stopped"). **The queue is done**: T17b, T17c, T19 committed, every Forever TOC at `1.0.0-alpha.6`
-with TESTING §40. Nothing is running; nothing is handed out.
+Last updated: 2026-09-29, after the review fixes. The independent Forever code review
+(`docs/review/2026-09-29-forever-review.md`, R1-R42) was fixed in seven groups (measure, recorder,
+replay, probe, core, spells, shared), each on its own branch and reviewed, and all seven were
+accepted and cherry-picked here: **41 of 42 findings fixed, R6 held for the author**. Every Forever
+TOC at `1.0.0-alpha.7`. Nothing is running; nothing is handed out.
 
 ## Committed (newest first)
 
 | hash | what |
 |---|---|
-| (the commit carrying this revision) | alpha.6: every Forever TOC + the probecheck / consolecheck pins; TESTING §40 (practice and the imports on Forever); ROADMAP M3/M4 ticks; TOOLS rows (coachforever, adaptercheck, recordcheck, bindscheck + the loop); HISTORY entry from T18 on; this handover |
+| (the commit carrying this revision) | alpha.7: every Forever TOC + the probecheck / consolecheck pins; the review annotated `**Fixed** in <hash>` / `**Skipped**` per R-number; TOOLS suite counts; HISTORY entry; this handover |
+| a12bcf6 | review-shared R5: a v3 replay's ticks called reconstructed (SimPlanner `rp.ticks.reconstructed`, ReplayWindow hover and checkbox); replayforever 11 |
+| baaf6ef | review-shared R23: no `solver-corpus` strategy without `MD.IntuitionTBC`; coachforever |
+| bdbd42e | review-shared R39, R40: Review's low mana `~N%` when modelled, Export hidden without `MD.RunExport`; reviewforever 10 |
+| e6cc8cd | review-shared R4: Forever practice regen from `MD.API.ManaRegen()` when `MD.Regen` is absent; practiceforever 9 |
+| a73d296 | review-spells R13 R31 R35 R36 R37 R38 R41 R42: non-mana costs free, `Book:CastsFor`, wards/reactive damage refused, clock starts in combat after a mid-fight login, stale values across rescans, crit `1.5x, unverified`; parse 12, book 17, tip 17, clock 17, spellsui 17 |
+| 80054ab | review-core R15 R16 R21 R22: debug console Enable box on Forever, the stack line names the raising frame, the forward a tail call; consolecheck 14/1; stub `debugstack` from the real stack (`-- review-core`) |
+| 3ad8cce | review-probe R2 R3 R17-R20: snapshot only in combat, SV type at load from the guard, pets, GUID mirrors, `no cost`, `SpellTuner_` modules' blocked actions; probecheck 82 |
+| 4673fc8 | review-replay R28 R29 R30: Swiftmend ends the HoT it eats, pre-pull ticks by ceiling (with a scoped `Engine/SimModel.lua` `ticksLeft`/`firstTick` read TBC never sets), direct claims by size; scenariocheck 12 |
+| 530cc08 | review-replay R27: an excluded target's line says `max estimated`; gatecheck 9 |
+| 1463b9b | review-replay R12 R26: `/st coach N safe/health/cheap/regen` picks a strategy; the card keeps its colour codes; coachforever 16 (with baaf6ef) |
+| ad3f5f4 | review-recorder R7-R11 R24 R25: dead at the pull, the opener and pre-cast HoTs, meter `none` when empty/partial/in combat again, the healer's death at the end, departed tokens; recordcheck 24 |
+| 12ba325 | review-measure R1 R14 R32 R33 R34: deficit in combat only, casts named at another unit not judged (SENT target), HoT crit at 1.5x, lists escaped; measurecheck 26 |
+| c725e91 | docs: CLAUDE.md rows for T17b/T17c/T19 and alpha.6 (applied by the planner); the independent Forever review |
+| 63b0cf7 | alpha.6: every Forever TOC + the probecheck / consolecheck pins; TESTING §40 (practice and the imports on Forever); ROADMAP M3/M4 ticks; TOOLS rows (coachforever, adaptercheck, recordcheck, bindscheck + the loop); HISTORY entry from T18 on; this handover |
 | 9cbc043 | T19: `/st binds check` (`PR.BindsReport`), importers refuse an unknown shape naming what they expected and found; bindscheck 6 (new) |
 | 3fc0623 | T17c: `MD.API.HealthMax` reads a party max through a hidden StatusBar behind `MD.API.BAR_READS_MAX = false`; the recorder records a plain read-back (`maxVia = "bar"`); adaptercheck 22/15, recordcheck 15 |
 | a5e49e0 | T17b: party max from other recordings (leave-one-out, `SM.PartyMaxFromOthers`), else this fight's estimate with the plan flagged `foresees` and the card line "NOT causal - sees this fight"; coachforever 13 (assertion 6 on a secret max) |
@@ -42,24 +58,22 @@ Nothing.
 
 ## Next, in order
 
-1. **Nothing offline is queued.** M4 is built except for its in-game half (TESTING §40).
-2. **Not done, needs the author (or the planner with the author's word):** the `CLAUDE.md` file-table
-   rows for T17b / T17c / T19 and the alpha.6 status line. The lead did not edit `CLAUDE.md`: an
-   agent's request is not the author's consent to change it. Proposed text is in the lead's report
-   to the planner (2026-09-29): the `Client/API.lua` row gains `MD.API.HealthMax` behind
-   `MD.API.BAR_READS_MAX = false` (T17c); the `Modules/<Name>/` row gains T17b's leave-one-out max
-   (`SM.PartyMaxFromOthers`, `maxSource`, `maxForesees`, the card's `NOT causal` line), T17c's
-   `maxVia = "bar"` in the recorder, and T19's `/st binds check`; the `Engine/Practice.lua` row gains
-   `PR.BindsReport` and the importers' shape refusal; the `tools/` row's Forever suite list gains
-   `coachforever` (13), `bindscheck` (6), `adaptercheck` 22 / 15, `recordcheck` 15, `practiceforever`
-   (8); the "What this is" paragraph's "empty until M3/M4" becomes "M3 at alpha.5, M4's offline part
-   at alpha.6".
+1. **The review's groups not accepted: none.** All seven fix branches (`fix/review-measure`,
+   `-recorder`, `-replay`, `-probe`, `-core`, `-spells`, `-shared`) were accepted and are in HEAD;
+   there is no review group left to redo.
+2. **R6, held for the author** (`docs/review/2026-09-29-forever-review.md` R6): the solver's danger
+   line is the whole fight's biggest hit (`Scenario_Forever.lua` builds `targets[i].danger` from
+   every DMG in the stream; `Engine/SimModel.lua` copies it on TBC and Forever alike), so a coached
+   solver plan can see a later hit. Making it causal changes the coach on both lines -- a ruling on
+   the causality invariant for the author or the planner, not a review fix. Do not start it without
+   that word.
 3. **When the author's reports arrive:** §38.2 step 4 (gross or effective) -> `SM.HEAL_AMOUNT` and
    gate 8 two-sided; §38.3's `bar UnitHealthMax(party1): ...` line -> flip `MD.API.BAR_READS_MAX`
    (one word, `Client/API.lua` 333) if `read plain`, both out of combat and in the snapshot; §39 ->
    the recorder on real pulls (CANCEL count, meter vs attributed own healing); §40.1's
    `/st binds check` paste -> a task per importer that does not recognise the Forever shape (from
-   the paste only); §40.2 -> practice on the beta.
+   the paste only); §40.2 -> practice on the beta. Install **alpha.7** for all of them (it carries
+   every review fix; nothing in §38-§40 changes).
 4. Then M5 (launch client, 2026-11-04).
 
 Suite loop: `docs/TOOLS.md` §1 (every suite, `bindscheck` included since alpha.6) plus
@@ -67,13 +81,14 @@ Suite loop: `docs/TOOLS.md` §1 (every suite, `bindscheck` included since alpha.
 
 ## Baselines (at the last commit)
 
-TBC sixteen: simcheck PASS, reccheck 54, replaycheck 80, replayui 98, runcheck 78, reviewui 44,
-navui 25, dashui 56, regencheck 27, simwindow 8, solvercheck 70, timeline 27, spelltip 48, practice
-74, practiceui 49, migrate 7. Forever: probecheck 73, forevercheck 13, modulecheck 14, kitcheck 7,
-recordcheck 15, scenariocheck 9, gatecheck 8, replayforever 10, reviewforever 8, coachforever 13 (since T17b),
-practiceforever 8, bindscheck 6, parsecheck 11, bookcheck 15, tipcheck 14, clockcheck 15, spellsui 15,
-measurecheck 18. Both flavours: adaptercheck 22/15, corecheck 10/8, svcheck 6/1, consolecheck 11/1.
-apicheck 0 findings over 44 files (45 distinct globals), selftest 10 of 10, refcheck selftest ok.
+TBC sixteen (unchanged by the review): simcheck PASS, reccheck 54, replaycheck 80, replayui 98,
+runcheck 78, reviewui 44, navui 25, dashui 56, regencheck 27, simwindow 8, solvercheck 70, timeline
+27, spelltip 48, practice 74, practiceui 49, migrate 7. Forever: probecheck 82, forevercheck 13,
+modulecheck 14, kitcheck 7, recordcheck 24, scenariocheck 12, gatecheck 9, replayforever 11,
+reviewforever 10, coachforever 16, practiceforever 9, bindscheck 6, parsecheck 12, bookcheck 17,
+tipcheck 17, clockcheck 17, spellsui 17, measurecheck 26. Both flavours: adaptercheck 22/15,
+corecheck 10/8, svcheck 6/1, consolecheck 14/1. apicheck 0 findings over 44 files (45 distinct
+globals), selftest 10 of 10, refcheck selftest ok. The same counts in a `git archive HEAD` export.
 
 ## Open questions / hazards
 
@@ -82,12 +97,13 @@ apicheck 0 findings over 44 files (45 distinct globals), selftest 10 of 10, refc
   the plan flagged `foresees`, the card line "NOT causal - sees this fight"; the status-bar path
   ships off (`MD.API.BAR_READS_MAX = false`) -- **switch it on** (one word, `Client/API.lua` 333)
   only if the author's §38.3 report shows `bar UnitHealthMax(party1): set ok, read plain <n>`.
+- **Held for the author:** review R6 (the solver's danger line from the whole fight), see Next 2.
 - **Waiting on the author:** TESTING §38 (alpha.4 items, notably §38.2 step 4 -- is a `UNIT_COMBAT`
   HEAL amount gross or effective; that sets `SM.HEAL_AMOUNT` and makes gate 8 two-sided -- and
   §38.3, the party probe with the `bar ...` lines), §39 (the recorder, validate, replay, coach and
   Review on real pulls; the CANCEL count against casts actually cancelled, since the STOP /
-  SUCCEEDED order is UNKNOWN) and §40 (practice and the imports). All three install **alpha.6**
-  (it carries everything §38/§39 need).
+  SUCCEEDED order is UNKNOWN) and §40 (practice and the imports). All three install **alpha.7**
+  (it carries everything §38/§39 need, plus the review fixes).
 - **Lesson -- check before you dispatch.** T13c was dispatched twice, and two implementers were
   writing in the same tree at once (the previous run's alpha.4 commit also swept in T13c's TOC hunk,
   and T12b's commit its stub hunk). Before handing a task out or re-issuing it: read the task's

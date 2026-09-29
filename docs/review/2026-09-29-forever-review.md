@@ -8,7 +8,14 @@ Several upheld findings are the same defect seen through two lenses (noted as `s
 
 Numbering is stable: fix tasks cite `R<n>`.
 
+**Outcome (2026-09-29, alpha.7):** 41 of 42 fixed in seven groups (review-measure, -recorder,
+-replay, -probe, -core, -spells, -shared), each group on its own branch with a test that failed on
+the old code, then cherry-picked onto `claude/manademon-folder-continue-41eabc`; R6 held for the
+author. Each finding below says which.
+
 ## R1 [high] `Spells/Measure.lua:700` -- The known deficit only grows between heals, so it can be far larger than the health actually missing and produce a false BELOW
+
+**Fixed** in 12ba325 (review-measure)
 
 *UPHELD 3/3*
 
@@ -37,6 +44,8 @@ Numbering is stable: fix tasks cite `R<n>`.
 
 ## R2 [medium] `Client/Probe.lua:1635` -- Q2 and Q5 are marked answered from a combat snapshot that may have been taken out of combat
 
+**Fixed** in 3ad8cce (review-probe)
+
 *UPHELD 3/3*
 
 **Scenario.** In a party, the player kills a low mob in under 2 seconds. PLAYER_REGEN_ENABLED fires before C_Timer.After(2) runs TakeCombatSnapshot, so every reading in the snapshot is taken out of combat and combatSnapshot.inCombat is "false". partyExists is still "true", so the to-do section prints "Q2 answered" (is party health readable IN combat?) and "Q5 answered" (are party auras secret IN combat?). Neither question was tested in combat, and the out-of-combat aura read, which works, is what the report shows. The same thing happens when the last fight of the session is short, because the last snapshot wins.
@@ -62,6 +71,8 @@ if partyOk then
 
 ## R3 [medium] `Client/Probe.lua:1744` -- "SpellTunerDB at load" always reads "table": Core_Forever's guard has already created the table
 
+**Fixed** in 3ad8cce (review-probe)
+
 *UPHELD 3/3*
 
 **Scenario.** Core_Forever.lua registers its ADDON_LOADED handler on the kernel frame before Probe.lua creates its own frame. Its own comment relies on this order: it "runs before the probe's ADDON_LOADED handler". When the client does not read SpellTunerDB back (a first run, a lost file, or a broken non-table file), that guard sets SpellTunerDB = {} first. The probe then records svTypeAtLoad = type(SpellTunerDB) = "table", so == saved variables prints "SpellTunerDB at load: table" next to "previous session stamp: none". The one line meant to show that the file did not come back says that it did. Q7 itself is still decided correctly from svPrevStamp.
@@ -86,6 +97,8 @@ else
 - UPHELD: The claim holds at 34d3509. Core.lua:18 creates the kernel eventFrame, and MD:On (Core.lua:25-35) registers events on it. Core_Forever.lua:44 registers ADDON_LOADED through MD:On. The Mainline TOC loads Core_Forever.lua before Client/Probe.lua, which is the last file listed. Probe.lua creates its own frame later (line 1827) and registers ADDON_LOADED at line 1856. Core_Forever's own comment at lines 38-41 says the guard runs before the probe's handler.  When SpellTunerDB is nil (a first run or a lost file) or not a table (a broken file), the guard replaces it with {} (lines 62-68) and stamps .session (line 72). The probe's handler then sets svTypeAtLoad = type(SpellTunerDB) at Probe.lua:1744, which is always "table". SavedVarsLines (Probe.lua:1392) prints "SpellTunerDB at load: table". The probe never reads MD.sv.atLoad, which holds the true value, so nothing corrects the line.  Nothing guards this path: no IsSecret check, pcall or adapter call is involved, because SpellTunerDB is the addon's own value. The path runs at load, so combat has no effect. Q7 is still decided correctly from svPrevStamp, because a fresh {} has no .probe (lines 1745 and 1669). Only the diagnostic line is wrong, which is exactly what the claim says.
 
 ## R4 [medium] `Engine/Practice.lua:637` -- Practice on Forever has no mana regeneration: it reads the TBC-only MD.Regen, which does not exist on the Forever TOC
+
+**Fixed** in e6cc8cd (review-shared)
 
 *UPHELD 3/3*
 
@@ -113,6 +126,8 @@ local function BuildScenario(setup, seed, kit)
 
 ## R5 [medium] `Engine/SimPlanner.lua:1385` -- On a v3 (Forever) replay, reconstructed health ticks are labelled as real recorded health
 
+**Fixed** in a12bcf6 (review-shared)
+
 *UPHELD 3/3*
 
 **Scenario.** On a v3 recording, SP.Replay fills rp.ticks from SM.RecordedHp, which is itself a reconstruction. It assumes each target starts at full health, subtracts damage and adds heals on a 2 s grid, and uses a stand-in max for party members whose max is secret. replayTicks defaults to true (Commands_Forever.lua), so the ticks are drawn on the left bars. Their hover (ReplayWindow.lua:236-240) says "Recorded health", "The recorder reads real HP every 5s" and "The tick is the truth mark", and it calls any gap over 5% "the replay's error". The checkbox tooltip (ReplayWindow.lua:1248) repeats "The recorder's real HP every 5s". On Forever no real health was ever read, since UnitHealth is secret. The one-line reconFS header does not reach the hover, so an estimate compared with another estimate is presented as ground truth.
@@ -135,6 +150,8 @@ local hp = rec.hp or (rec.v == 3 and SM.RecordedHp and SM.RecordedHp(rec)) or {}
 - UPHELD: I could not refute the claim. At 34d3509, a v3 recording has no rec.hp: Recorder_Forever.lua writes v=3 and never reads UnitHealth, since UnitHealth is secret. So SimPlanner.lua:1385 falls back to SM.RecordedHp(rec) (Scenario_Forever.lua:364-368). That function returns ReconstructHp: health rebuilt from UNIT_COMBAT amounts, with a stand-in max for party members. The result goes into rp.ticks with no v3 guard (SimPlanner.lua:1386-1397). ReplayWindow.lua:784-806 then draws those ticks on the left bars whenever MD.db.replayTicks is set, and Commands_Forever.lua:13 defaults replayTicks to true. Nothing checks rec.v at that point. The tick hover at ReplayWindow.lua:236-241 is the same text for every recording. It says "Recorded health" and "The recorder reads real HP every 5s ... The tick is the truth mark", and it calls any difference over 5% "the replay's error". The checkbox tooltip at 1248-1249 says "The recorder's real HP every 5s". The only disclaimer is the grey reconFS header line (1644-1651, "health reconstructed from UNIT_COMBAT"), which is separate from the hover and the checkbox tooltip. The path runs on the real client: Replay is a LoadOnDemand module whose TOC lists Scenario_Forever, SimPlanner and ReplayWindow, and replay needs no secret reads, so no IsSecret, pcall or adapter guard stops it. The claim is accurate: on Forever, the hover presents a reconstruction as recorded ground truth.
 
 ## R6 [medium] `Engine/SimSolver.lua:334` -- Solver's Decide reads a danger line built from the whole fight's biggest hit, so a coached solver plan can see future damage
+
+**Skipped**: held for the author -- the danger line is the whole fight's biggest hit on the TBC path too (`Engine/SimModel.lua` copies `tg.danger` for both), so making it causal changes the coach on both lines and is a ruling on the causality invariant, not a review fix.
 
 *UPHELD 3/3*
 
@@ -167,6 +184,8 @@ Engine/SimModel.lua:256
 
 ## R7 [medium] `Modules/SpellTuner_Recorder/Recorder_Forever.lua:249` -- A party member who is already dead when the pull starts is recorded as dying in this pull
 
+**Fixed** in ad3f5f4 (review-recorder)
+
 *UPHELD 3/3*
 
 **Scenario.** A DPS died in the previous pull and is still a corpse or ghost running back when the group pulls the next pack, which is common in 5-mans. PLAYER_REGEN_DISABLED resets deadState to {}, so on the first tick UnitIsDeadOrGhost(token) == true with no deadState entry pushes K.DIED at t=~0.5 and appends to active.deaths. Gate 4 then fails with "1 death(s)" for a death that did not happen in this fight, and the pull is refused for coaching. The engine also marks that target dead from 0.5 s. TBC used UNIT_DIED from the combat log, which only fires on an actual death, so this is new Forever behaviour.
@@ -192,6 +211,8 @@ Engine/SimModel.lua:256
 
 ## R8 [medium] `Modules/SpellTuner_Recorder/Recorder_Forever.lua:357` -- The pull's opening cast is never recorded, and its HoT is missing from the pre-pull auras too
 
+**Fixed** in ad3f5f4 (review-recorder)
+
 *UPHELD 3/3*
 
 **Scenario.** The tank pulls and the druid casts Rejuvenation on the tank, who is already in combat. Healing a unit in combat puts the healer into combat, so UNIT_SPELLCAST_SUCCEEDED fires while `active` is still nil and the handler returns: no OWNCAST, no cost, no ownCasts++. PLAYER_REGEN_DISABLED fires a moment later. The only pre-pull aura data is R.lastAuras, which the ticker refreshes every 4th tick (2 s), so a HoT cast in the last <2 s before combat is not in it. All four Rejuvenation ticks then reach AttributeHeals with no claim and become foreign FHEAL. Result: the meter counts them as own, the paired total comes up short (gate 8 can fail), the foreign share is inflated, and the actual column has no opener. A cast-time opener has a second path to the same loss: SENT fires before combat (dropped because `active` is nil), and line 249 also wipes sentTarget, so the SUCCEEDED lands with tgt = -1 and AttributeHeals skips it (`tgt > 0`). TBC keeps a 20 s cast ring (FightRecorder.lua:237-242, `stream.precasts`); Forever keeps nothing.
@@ -214,6 +235,8 @@ MD:On("UNIT_SPELLCAST_SUCCEEDED", function(unit, castGUID, spellID)
 - UPHELD: The claim holds at 34d3509 (Modules/SpellTuner_Recorder/Recorder_Forever.lua). Every cast handler returns early when `active` is nil: SENT at 336, START at 344 and SUCCEEDED at 358. `active` is only set in the PLAYER_REGEN_DISABLED handler (247-287), and that handler also clears `sentTarget` and `pending` at 249. The only record of anything before the pull is `R.lastAuras`. It is filled by ScanAuras (164-186), and only from the ticker when `tickCount % 4 == 0 and not InCombat()` (447). With a 0.5 s tick that is a scan every 2 s. CopyAuraList (193-206) ages each entry by `elapsed` but cannot add a HoT the last scan never saw. No upstream guard, pcall or adapter path fills the gap: MD.API.Call/Copy only decide how values are read, not whether these events are kept. Nothing like TBC's 20 s cast ring exists on Forever (TBC's is Engine/FightRecorder.lua 237-242, `stream.precasts`). The loss does not depend on the uncertain event order in the reviewer's first scenario (SUCCEEDED before REGEN_DISABLED when healing an in-combat tank). Two paths are certain on the real client: (a) a HoT cast fully out of combat in the last 0 to 2 s before the pull. Its SUCCEEDED is dropped because `active` is nil, and it is not in `lastAuras` because the last scan came before the cast. (b) A cast-time opener started before combat. Its SENT is dropped (336), and even if it were kept, 249 wipes `sentTarget`. So the SUCCEEDED inside combat resolves `tgt = -1` (366, ResolveTargetIndex returns -1 on nil). Scenario_Forever only claims ticks for own casts whose `tgt > 0` (line 85), so the unclaimed HEAL events become FHEAL (413). This inflates the foreign share and leaves the actual column without its opener, as the claim says. Nothing in the code or the task docs marks this as an accepted limitation.
 
 ## R9 [medium] `Modules/SpellTuner_Recorder/Recorder_Forever.lua:542` -- An empty or wrong meter session is stored as a valid read, and gates 5 and 8 then pass with nothing to check
+
+**Fixed** in ad3f5f4 (review-recorder)
 
 *UPHELD 3/3*
 
@@ -239,6 +262,8 @@ MD:On("UNIT_SPELLCAST_SUCCEEDED", function(unit, castGUID, spellID)
 
 ## R10 [medium] `Modules/SpellTuner_Recorder/Recorder_Forever.lua:622` -- The healer's own death is almost never recorded, so gate 4 passes on a pull the healer died in
 
+**Fixed** in ad3f5f4 (review-recorder)
+
 *UPHELD 3/3*
 
 **Scenario.** The healer dies mid-pull. Dying clears the combat flag, so PLAYER_REGEN_ENABLED fires in the same or the next frame and sets `active = nil` before the 0.5 s ticker polls UnitIsDeadOrGhost("player"). No K.DIED is pushed and rec.deaths stays empty. The stream is still stored (dur >= 20, casts >= 5), and ValidateV3 gate 4 reports "nobody died" and passes, so the fight is treated as coachable even though it was cut short at the death. The death is exactly what gate 4 exists to catch.
@@ -261,6 +286,8 @@ MD:On("PLAYER_REGEN_ENABLED", function()
 - UPHELD: The claim holds at 34d3509. Recorder_Forever.lua records a death in one place only: the 0.5 s OnTick loop (lines 443-478). While `active` is set, it polls MD.API.UnitIsDeadOrGhost(token) for each tracked index and pushes K.DIED plus an entry in active.deaths (lines 467-472). There is no PLAYER_DEAD, UNIT_HEALTH, UNIT_FLAGS or UNIT_COMBAT death path anywhere in the file (grep finds none). The player is in the roster and the tracked list (line 70 tokens = {"player"}, line 114). A dead player is out of combat, so PLAYER_REGEN_ENABLED fires at the death. The handler at lines 622-634 flushes cancels, sets `active = nil` and closes the stream. Nothing checks for death first. After that the OnTick returns early at `if not active`, so the poll never sees the player dead unless a tick happened to land between the death and the end of combat. That window is at most one frame, while the poll runs only every 0.5 s. StoreOrDrop (600-620) keeps the stream when dur >= 20 and there are at least 5 own casts, with no death check. Gates_Forever.lua gate 4 (lines 159-171) reads only #rec.deaths, so it passes with "nobody died". Nothing guards this path: no IsSecret, pcall, adapter or TOC-order issue applies. UnitIsDeadOrGhost is plain, and the failure is event timing, not a secret value. The scenario can happen on the real client.
 
 ## R11 [medium] `Modules/SpellTuner_Recorder/Recorder_Forever.lua:631` -- The meter is read one second after combat ends, without checking whether combat has started again
+
+**Fixed** in ad3f5f4 (review-recorder)
 
 *UPHELD 3/3*
 
@@ -288,6 +315,8 @@ local function ReadMeter(s)
 
 ## R12 [medium] `Modules/SpellTuner_Replay/Commands_Forever.lua:135` -- Forever /st coach drops the strategy-pick branch that the shared card tells the user to use
 
+**Fixed** in 1463b9b (review-replay)
+
 *UPHELD 3/3*
 
 **Scenario.** SP.Card (SimPlanner.lua:1087), shared by both clients, prints "/md coach N safe / health / cheap / regen plays that one in the replay". TBC's MD:RunCoach (Verify.lua:1393-1409) handles these keywords by setting SP.plans[rec.id] from SP.strategies without searching again. The Forever reimplementation has no such branch. On Forever, `/st coach 1 health` gives rest = "health", which falls through to CoachAsync with force = false. That starts a whole new frame-sliced search, or refuses on a fight that failed its gates. When the search finishes, SP.plans[rec.id] holds the overall best rather than the "health" strategy, so the replay draws a different plan from the one the user asked for.
@@ -309,6 +338,8 @@ local function ReadMeter(s)
 - UPHELD: I could not refute the claim. It holds at 34d3509.  1. The Forever `MD:RunCoach` (Modules/SpellTuner_Replay/Commands_Forever.lua:125-152) splits the argument into `n` and `rest` with `^([pP]?%d*)%s*(%a*)$`. It only checks `rest` for "force", which it passes into `CoachAsync(rec, {n=n, force=(rest=="force")}, Show)` at line 151. It has no loop over `SP.OBJECTIVES`.  2. The TBC `MD:RunCoach` (Verify.lua:1374 on, the strategy loop at about 1393-1409) matches `rest` against `SP.OBJECTIVES` keys. On a match it sets `SP.plans[rec.id] = SP.strategies[rec.id][obj.key].plan` and returns without searching.  3. Verify.lua is not listed in any Forever TOC (SpellTuner_Mainline.toc and the three module Mainline TOCs). The Practice module's Commands_Forever.lua does not define "coach". So Commands_Forever's `RunCoach` is the only handler on Forever. It is reached from `/st coach`, from `/md coach` and from the Review tab (UI/Dashboard_Review.lua:240-245).  4. On Forever the hint line is really printed. `SP.CoachAsync` (SimPlanner.lua:1663-1693) stores `SP.strategies[rec.id] = winners` and calls `SP.Coach` with `winners`. `SP.Card` (line 987) then adds the "/md coach %s safe / health / cheap / regen plays that one in the replay" line at line 1087 inside `if opts and opts.winners`.  5. When a user follows that hint on Forever (`/st coach 1 health`), `rest` is "health" and `force` is false. There are two outcomes:    - If the fight failed its gates, `CoachAsync` refuses at lines 1668-1671.    - Otherwise it starts a new frame-sliced search, and `SP.Coach` sets `SP.plans[rec.id] = best` at line 1322. That is the overall best by the lexicographic score, not the "health" winner.  No secret value, combat state or adapter behaviour is involved, so nothing on the real client guards this path. The replay draws a different plan from the one the card told the user to pick, which matches the claim exactly.
 
 ## R13 [medium] `Spells/Book.lua:106` -- An Energy or Rage cost is taken from the tooltip line and treated as a mana cost
+
+**Fixed** in a73d296 (review-spells)
 
 *UPHELD 3/3*
 
@@ -332,6 +363,8 @@ local function ReadMeter(s)
 - UPHELD: The claim holds at 34d3509. In Spells/Book.lua, ResolveCost (lines ~91-108) returns "free" only when the cost list is empty or nil. For a non-empty list, ManaCostEntry (~81-86) keeps only a row with type == 0. If no row has type 0, for example a single ENERGY (type 3) or RAGE (type 1) row, the function falls through to TooltipCostInfo(tip) (~61-69) and returns whatever it finds with state "ok".  Parse.Cost (Spells/Parse.lua:319-334) matches any "^NUM %s+(%a+)$" line. So "45 Energy" or "10 Rage" becomes {amount=45, power="Energy"}. No caller ever reads .power: - Book:Rows (~458-462) sets perMana = value/amount and calls CastsToOOM(amount, ...) against the mana pool (UnitPowerMax "player", 0). - UI/Dashboard_Forever.lua:216-218 puts the amount in the Mana column. - The Export at 457-459 prints "Num(amount) .. ' Mana'". - UI/Clock_Forever.lua:41 also takes entry.cost.amount as the cast's mana cost, so the modelled pool loses mana on an energy cast as well.  Nothing guards this path. The adapter's SpellPowerCost is copy=2 (Client/API_Forever.lua:34), so the rows arrive plain. The path runs out of combat, where the list and the tooltip are readable. The build 70009 probe (a level-10 druid) shows only MANA rows because the character had no cat or bear forms yet. On the real client, GetSpellPowerCost returns the spell's own power type for Energy and Rage abilities, and a retail-style tooltip's cost line reads "45 Energy". So a druid at level 20 or above, a rogue or a warrior reaches this path.  Whether Claw's text parses as damage only affects the per-mana column. The mis-typed cost itself is real regardless.
 
 ## R14 [medium] `Spells/Measure.lua:342` -- A heal watch takes any HEAL on the player in its window, whoever cast it and whatever the cast's target, and judges it as that cast
+
+**Fixed** in 12ba325 (review-measure)
 
 *UPHELD 3/3*
 
@@ -357,6 +390,8 @@ local function ReadMeter(s)
 
 ## R15 [medium] `UI/DebugConsole.lua:199` -- The debug console's 'Enable Debug Logging' checkbox calls MD:TalentSummary(), which does not exist on Forever, so every click raises an error
 
+**Fixed** in 80054ab (review-core)
+
 *UPHELD 3/3*
 
 **Scenario.** On the Forever client (SpellTuner_Mainline.toc), the player runs /st debug and ticks or unticks 'Enable Debug Logging'. MD:TalentSummary is defined only in Core_TBC.lua:177. Neither the Forever TOC nor any module TOC loads that file, and no module defines TalentSummary. Lua evaluates the arguments to MD:Debug before the call, so the error happens whether logging is on or off: "attempt to call method 'TalentSummary' (a nil value)". The setting is already written by then, but RefreshLog() is skipped. The error capture then records a SpellTuner error on every toggle, and /st dump reports it as a bug. This breaks the author's main diagnostic path on Forever. TBC is not affected.
@@ -378,6 +413,8 @@ enableCB = UI.CreateCheckButton(consoleFrame, "Enable Debug Logging", function(c
 - UPHELD: The claim holds at 34d3509. In UI/DebugConsole.lua lines 197-201, the Enable checkbox's onClick builds its MD:Debug arguments by calling MD:TalentSummary(). The only definition of that method is in Core_TBC.lua:177, which SpellTuner_Mainline.toc does not load. That TOC loads Client\TOC_Mainline, Client\API, Client\API_Forever, Core, Core_Forever, Spells\*, Engine\ManaModel, UI\Style, Dashboard_Rows, Dashboard_Forever, SpellTip_Forever, Clock_Forever, DebugConsole, Dump_Forever and Client\Probe. None of the Recorder, Replay or Practice module TOCs lists Core_TBC.lua either, and a git grep at 34d3509 finds no other definition. The module metatable proxies only forward to _G.SpellTuner, so they do not supply the method. There is also no guard around the call. UI.CreateCheckButton (Style.lua:754-758) calls cb.onClick directly, with no pcall. Lua evaluates the arguments before MD:Debug runs, so the call raises "attempt to call method 'TalentSummary' (a nil value)" whether logging is on or off. MD.db.debug.enabled has already been set on the line before, and RefreshLog() is skipped. The path has nothing to do with combat or secret values, so it happens on every toggle through /st debug (Core_Forever.lua:202). DebugConsole.lua:229-230 also calls enableCB.onClick(true, enableCB) directly, so that path raises the same error. TBC is not affected because SpellTuner_TBC.toc loads Core_TBC.lua.
 
 ## R16 [medium] `UI/DebugConsole.lua:200` -- Ticking 'Enable Debug Logging' on Forever calls MD:TalentSummary, which only Core_TBC.lua defines
+
+**Fixed** in 80054ab (review-core)
 
 *UPHELD 3/3*
 
@@ -401,6 +438,8 @@ enableCB = UI.CreateCheckButton(consoleFrame, "Enable Debug Logging", function(c
 
 ## R17 [low] `Client/Probe.lua:260` -- partypetN is classified as "party", so a pet's UNIT_COMBAT can answer Q3
 
+**Fixed** in 3ad8cce (review-probe)
+
 *UPHELD 3/3*
 
 **Scenario.** In a party with a hunter or warlock, UNIT_COMBAT fires for partypet1 when the pet takes damage in combat. UnitClassOf sees the "party" prefix and files the event under "combat party <action>", and the Q3 check (key:match("^combat party ")) then prints "Q3 answered: a UNIT_COMBAT combat party counter was seen", even if no event on party1..4 was ever counted. The same prefix test puts raidpetN under "raid".
@@ -421,6 +460,8 @@ if key:match("^combat party ") then q3ok = true; break end
 - UPHELD: The defect is real at 34d3509, though its impact is small. UnitClassOf (Client/Probe.lua:255-262) tests only the prefix: `u:sub(1,5) == "party"` is true for "partypet1", and `u:sub(1,4) == "raid"` is true for "raidpet3". Nothing upstream stops these tokens. UNIT_COMBAT is registered with a plain frame:RegisterEvent for all units (EVENTS at l.195, registration loop at l.1860-1869), not RegisterUnitEvent on party1..4. OnCombatEvent (l.1812) passes the raw token to BumpCombat (l.364), which builds the key as `phase .. " " .. UnitClassOf(unit) .. " " .. action`. The adapter's Call/Copy does not stand in the way: the token arrives straight from the event and is a plain string, so it is not secret. The pcall around the handler only catches errors and does not filter tokens. The Q3 check (l.1645-1650) then accepts any key matching "^combat party ", so a partypetN WOUND or HEAL alone prints "Q3 answered". FoldToken (l.327-334) keeps exact tokens, so the separate "unit combat tokens" section would show "partypet1", but Q3 does not read it. Can this happen on the real client? The measured fact that one hit arrives once per unit token (target, nameplate, and so on) means the client sends UNIT_COMBAT to every token that names the unit. partypetN is a valid token for a hunter's or warlock's pet in a Forever party, so the scenario is plausible, not guarded against. Impact is low. Q3 was already answered by real party events (docs/probe/1.60.1_70009.md l.1013/1017/1047), and the lumping only blurs the combined "party" bucket. That is a real misclassification, as the claim says, but it is minor.
 
 ## R18 [low] `Client/Probe.lua:435` -- UNIT_COMBAT mirror detection counts two different units hit for the same amount as one hit mirrored
+
+**Fixed** in 3ad8cce (review-probe)
 
 *UPHELD 3/3*
 
@@ -447,6 +488,8 @@ local actionText = ActionOf(action)
 
 ## R19 [low] `Client/Probe.lua:492` -- 'cost at cast readable' counts a nil return and a plain list holding secret cost fields as readable
 
+**Fixed** in 3ad8cce (review-probe)
+
 *UPHELD 2/3*
 
 **Scenario.** The probe asks whether C_Spell.GetSpellPowerCost answers at cast time (T7a item 7), and the modelled mana clock subtracts that cost at UNIT_SPELLCAST_SUCCEEDED. (1) The player casts a free spell (Find Herbs, a trinket, a mount). GetSpellPowerCost returns nothing, which is the measured shape for a free spell, and pcall gives ok=true, result=nil. IsSecret(nil) is false, so costReadable goes up although nothing was read. (2) In combat the client returns the usual list {{cost=<secret>, ...}} with the rows' numbers secret but the outer table plain. IsSecret(result) only looks at the outer table, so this also counts as readable. In both cases the report says 'cost at cast readable=N secret=0' and hides exactly the secrecy the counter was added to detect.
@@ -472,6 +515,8 @@ local ok, result = pcall(getCost, spellID)
 
 ## R20 [low] `Client/Probe.lua:523` -- Blocked actions blamed on the LoadOnDemand modules are dropped; the section prints "none"
 
+**Fixed** in 3ad8cce (review-probe)
+
 *UPHELD 3/3*
 
 **Scenario.** On the Forever TOC the three modules are separate addons (SpellTuner_Recorder, _Replay, _Practice). A forbidden or blocked action taken by module code (for example the M3 recorder's registration) is reported by the client with addonName "SpellTuner_Recorder". BumpBlocked keeps only an exact match with ADDON_NAME ("SpellTuner"), so == blocked actions prints "none" while the blocked-action dialog was shown in game.
@@ -490,6 +535,8 @@ local function BumpBlocked(event, addonName, functionName)
 - UPHELD: I could not refute the claim. At 34d3509, Client/Probe.lua:522-523 keeps a blocked action only when `Fmt(addonName)` equals `Esc(ADDON_NAME)`. `ADDON_NAME` comes from the probe file's own vararg at line 10. The probe is listed only in SpellTuner_Mainline.toc, so that value is always "SpellTuner".  Nothing upstream widens the match: - The handlers at lines 1807-1812 pass `addonName` straight to `BumpBlocked`. - No module TOC loads Probe.lua. - Secrecy does not come into it, because the probe only compares escaped text. - Nothing stops the path running in combat: ADDON_ACTION_FORBIDDEN and ADDON_ACTION_BLOCKED are the first events registered (lines 1837-1851), they are never unregistered, and they are dispatched under pcall.  The modules really are separate LoadOnDemand addons. Their Mainline TOCs list their own files: Recorder_Forever.lua, Engine/SimModel.lua, UI/ReplayWindow.lua (which takes keyboard input), Engine/Practice.lua, and the others. Module.lua only proxies the addon table to _G.SpellTuner; it does not change which addon loaded the code. So the client would name "SpellTuner_Recorder", "SpellTuner_Replay" or "SpellTuner_Practice" for an action their code takes, and `BumpBlocked` would drop it. The `== blocked actions` section would then print "none" (lines 632-633) while the dialog was on screen.  The exact match was written in T0c, before the modules existed (docs/tasks/T0c-probe-secrets.md:168). TESTING.md:789-790 still tells the author to use this section to diagnose the dialog. Nothing proves a module triggers a blocked action today, but the claim is about what the diagnostic drops, and that part holds.
 
 ## R21 [low] `Core_Forever.lua:151` -- Forwarded errors reach the previous handler several frames deeper, which shifts its fixed-level debugstack/debuglocals for every addon's errors
+
+**Fixed** in 80054ab (review-core)
 
 *UPHELD 3/3*
 
@@ -518,6 +565,8 @@ local safe, result = pcall(function()
 
 ## R22 [low] `Core_Forever.lua:179` -- The error-capture stack line always points at the adapter's Call, never at the code that raised
 
+**Fixed** in 80054ab (review-core)
+
 *UPHELD 3/3*
 
 **Scenario.** On the real client, any SpellTuner error (for example a raise in a module file) reaches the installed handler. The handler asks for the stack through MD.API.DebugStack(2, 1, 0), which is Client/API.lua's Call wrapper around pcall(debugstack, 2, 1, 0). From debugstack upward, the stack is: pcall [C], then MD.API.Call (Client/API.lua:130), then the Core_Forever closure, then pcall, then the handler, and only after those the erring code. With count1=1 and count2=0 debugstack returns a single line. Level 2 is Call itself, or pcall if levels count differently, and neither contains 'Core_Forever.lua', so FirstUsefulLine returns it unchanged. Every entry.stack, and so every stack line /st dump prints, reads something like 'Interface/AddOns/SpellTuner/Client/API.lua:130: in function ...' or '[C]: in function pcall' instead of the erring frame. The comment at lines 123-126 assumes the call happens without the adapter's frames, which is what went wrong. Because count1 is 1, the line-skipping loop in FirstUsefulLine can never reach a useful line even if the start level changes.
@@ -543,6 +592,8 @@ entry = { msg = key, count = 1, first = now, last = now,
 
 ## R23 [low] `Engine/SimPlanner.lua:633` -- 'Solver: intuition from many raids' silently runs without its prior on Forever: Data/Intuition_TBC.lua is not in the Replay module TOC
 
+**Fixed** in baaf6ef (review-shared)
+
 *UPHELD 3/3*
 
 **Scenario.** Forever: open /st replay 1 and pick 'Solver: intuition from many raids' in the strategy chooser. The chooser lists every SP.STRATEGY_SET entry (ReplayWindow.lua:1661). MakeStrategy calls MD.Intuition:Load(MD.IntuitionTBC), but MD.IntuitionTBC is nil because SpellTuner_Replay_Mainline.toc lists Engine\Intuition.lua and not Data\Intuition_TBC.lua (and release.sh builds only from that list). IN:Load(nil) returns nil, so the plan is the no-intuition solver. The SUGGESTED column still shows it under the label and tooltip 'one blurred prior merged from 22 logged fights across 13 encounters'. Either the entry should be hidden or flagged on Forever, or the data file should ship.
@@ -563,6 +614,8 @@ Modules/SpellTuner_Replay/SpellTuner_Replay_Mainline.toc: ... Data\AuraList.lua 
 - UPHELD: I could not refute the claim. At 34d3509, SimPlanner.lua:597-599 defines the entry "solver-corpus" with the label "Solver: intuition from many raids" and the tooltip text "one blurred prior merged from 22 logged fights across 13 encounters". MakeStrategy (SimPlanner.lua:630-635) sets params.prior = MD.Intuition:Load(MD.IntuitionTBC), and there is no guard or fallback around that line. MD.IntuitionTBC is defined only in Data/Intuition_TBC.lua:30. `git grep` shows that file listed only in SpellTuner_TBC.toc:18. It is missing from SpellTuner_Mainline.toc and from Modules/SpellTuner_Replay/SpellTuner_Replay_Mainline.toc, which loads Engine\Intuition.lua, Foresight, SimSolver and SimPlanner but not the data file. On Forever, then, MD.IntuitionTBC is nil. IN:Load(nil) returns nil (Intuition.lua:204-205), and the solver treats a nil prior as "use what it observes" (SimSolver.lua:137-138). The result is the "no intuition" solver running under the "many raids" name. The strategy chooser in UI/ReplayWindow.lua:1661-1662, shared by both flavours and loaded by the Replay module, lists every SP.STRATEGY_SET entry with its label and tooltip. It does not filter by flavour and does not check whether the prior is present. This path has nothing to do with secret values or combat: the prior is static Lua data, and the only failure is that the file was never loaded, so no upstream guard applies. The problem is real and low severity. It does not crash, but the label and tooltip say the plan uses a prior it does not have.
 
 ## R24 [low] `Modules/SpellTuner_Recorder/Recorder_Forever.lua:101` -- Roster entries of departed members keep a stale unit token, which is then used for aura scans and death polling
+
+**Fixed** in ad3f5f4 (review-recorder)
 
 *UPHELD 3/3*
 
@@ -589,6 +642,8 @@ Modules/SpellTuner_Replay/SpellTuner_Replay_Mainline.toc: ... Data\AuraList.lua 
 - UPHELD: The claim holds at 34d3509. In Modules/SpellTuner_Recorder/Recorder_Forever.lua, R:Refresh (lines 64-116) resets only tokenIndex and tracked. It rewrites self.roster[idx], including `token = token` at line 107, only for tokens where UnitExists is true right now. The index is keyed by GUID or name (lines 95-100), so C, now on party2, keeps its own index and gets token="party2". Nothing clears the entry of B, who has left, so B's entry still has token="party2". No other code clears or nils e.token.  1. Aura scan. ScanAuras (lines 164-186) loops over every R.roster entry by ipairs and calls AuraByIndex(e.token, ...). It runs from the ticker every 2s out of combat (line 447), exactly when party auras can be read, so it is not blocked by combat or secrets. It therefore reads C's HELPFUL|PLAYER auras twice: once with tgt = C's index and once with tgt = B's index. CopyAuraList keeps both (line 201). Scenario_Forever.lua (lines 109-110 and 226-242) applies initial.auras by a.tgt, so B gets a phantom pre-pull HoT and a phantom tick claim.  2. Death polling. If B leaves mid-pull, the GROUP_ROSTER_UPDATE handler (lines 289-303) only adds indices to active.tracked and never removes them, so B's index stays. The death loop (lines 463-477) looks up R.roster[idx].token, which is "party2" for both B and C, and calls UnitIsDeadOrGhost on it. If C dies, both indices get deadState and a K.DIED, which counts two deaths.  Nothing guards against this. The IsSecret, pcall and adapter checks only protect value reads; none of them checks that the token still names the same GUID. WoW compacts party tokens when a member leaves, so the scenario can really happen. Severity is low (it needs a roster change, and in the aura case it must happen between pulls), but the claim is correct.
 
 ## R25 [low] `Modules/SpellTuner_Recorder/Recorder_Forever.lua:167` -- Out-of-combat aura scan reads a stale party token for members who left, so the same unit's HoTs are recorded twice under different roster indices
+
+**Fixed** in ad3f5f4 (review-recorder)
 
 *UPHELD 3/3*
 
@@ -618,6 +673,8 @@ Modules/SpellTuner_Replay/SpellTuner_Replay_Mainline.toc: ... Data\AuraList.lua 
 
 ## R26 [low] `Modules/SpellTuner_Replay/Commands_Forever.lua:39` -- Coach card colour codes are escaped into literal text in Forever chat
 
+**Fixed** in 1463b9b (review-replay)
+
 *UPHELD 3/3*
 
 **Scenario.** On Forever, RunCoach's Show passes every card line through Print, which calls Esc and doubles every '|'. Card lines built in SimPlanner.lua contain intentional colour codes: line 1087 "|cff888888/md coach ... |r" and lines 1185/1190 "|cff888888%s: %s|r". After Esc they reach the chat frame as "||cff888888...||r", so the chat shows the raw text "|cff888888/md coach 1 safe / ...|r" rather than a grey line. TBC's RunCoach prints the same lines unescaped and they render correctly.
@@ -643,6 +700,8 @@ end
 
 ## R27 [low] `Modules/SpellTuner_Replay/Gates_Forever.lua:134` -- Excluded target's health percentages use the estimated max but do not say it is estimated
 
+**Fixed** in 530cc08 (review-replay)
+
 *UPHELD 3/3*
 
 **Scenario.** Party members' max health is always secret on Forever, so tg.maxHP is SM.EstimateMaxHP's stand-in. When such a target is excluded from gate 3, its line reads "mean 12% / worst 40% of max health" with no "estimated". The ", max estimated" suffix is added only when a scored target used an estimate. Planner ruling 1 requires every percentage derived from the stand-in to say "estimated" wherever it is printed.
@@ -661,6 +720,8 @@ end
 - UPHELD: The claim holds at 34d3509. Scenario_Forever.lua:427-436 gives every target whose max is secret a stand-in max from SM.EstimateMaxHP and sets maxEstimated=true. On Forever that covers every party member, because party1's UnitHealthMax is secret. Gates_Forever.lua:132-136 divides by that stand-in max: MeanMax (lines 34-48) scales by tg.maxHP. When a target goes over the limit, it writes out.excluded[i] = "mean %.0f%% / worst %.0f%% of max health", which says nothing about the max being estimated. The ", max estimated" suffix (line 139, applied at line 155) is only added through anyScoredEstimated, which is set for scored targets, never for excluded ones. Nothing upstream guards this: the function is pure arithmetic on recorded, plain values, so no secret, pcall or combat condition stops the path from running. The excluded percentages are printed to the user in two places: Commands_Forever.lua:79-82 ("excluded: <name> - <why>") and the Review tab tooltip at UI/Dashboard_Review.lua:450-453. Planner ruling 1 (docs/FOREVER-PLAN.md:174-177) says every percentage derived from the stand-in "says 'estimated' wherever it is printed or drawn". This is a real inconsistency with that rule. It is low severity because the text is informational only.
 
 ## R28 [low] `Modules/SpellTuner_Replay/Scenario_Forever.lua:175` -- HoT tick claims stay open after Swiftmend consumes the HoT, so they take foreign heals as own
+
+**Fixed** in 4673fc8 (review-replay)
 
 *UPHELD 3/3*
 
@@ -684,6 +745,8 @@ end
 
 ## R29 [low] `Modules/SpellTuner_Replay/Scenario_Forever.lua:232` -- Pre-pull HoT tick count rounds instead of taking the ceiling, dropping the first remaining tick
 
+**Fixed** in 4673fc8 (review-replay)
+
 *UPHELD 3/3*
 
 **Scenario.** A Rejuvenation applied 2 s before the pull has remaining = 10 and ticks at t = 1, 4, 7, 10 (ceil(10/3) = 4). The code gives floor(10/3 + 0.5) = 3 and nextTick = 4, so there is no claim at t=1. That real own tick is counted as foreign, which lowers gate 8's pairedTotal and the prepull count. The first tick is lost whenever frac(remaining/period) is below 0.5, i.e. about half of all pre-pull HoTs. PrepullCadenceOf (line 137) has the same arithmetic.
@@ -702,6 +765,8 @@ end
 - UPHELD: I could not refute the claim. The path runs on the real client and the arithmetic does drop a real tick.  (1) The input is real and plain. Recorder_Forever.lua:163-185 (ScanAuras) reads auras only out of combat, which the client allows. It gets `remaining = expirationTime - now` with a type check, then tags each aura with its roster `tgt`. CopyAuraList (lines 194-205) ages that value to t0 on PLAYER_REGEN_DISABLED (line 281). So `rec.initial.auras[*].remaining` is the true time left at the pull. No secret, pcall or adapter nil stops this path.  (2) Scenario_Forever.lua:226-244 runs for any aura with `tgt > 0` and a kit tick. Take a Rejuvenation with remaining = 10 and tickPeriod = 3. Its real ticks come at expiry minus 3m: t = 10, 7, 4, 1, which is ceil(10/3) = 4 ticks. Line 232 computes floor(10/3 + 0.5) = 3, and line 233 gives nextTick = 4, so claims are made only at 4, 7 and 10 (each +-0.4 s). The heal at t = 1 arrives through UNIT_COMBAT, which is plain on party tokens. Only an unrelated cast claim in [0.6, 1.4] could match it, so in general it ends up counted as foreign at lines 266-267. That lowers counts.own, counts.ownTick and counts.prepull. The same arithmetic in PrepullCadenceOf (lines 136-139) feeds the continuing-cadence claims after a recast over a pre-pull HoT, so the same tick is missed there. This happens whenever frac(remaining/period) is between 0 and 0.5.  (3) The effect is limited, which fits the "low" rating. The code copies Engine/SimModel.lua:649-650 on purpose (the comment at lines 223-225 says so), so the engine drops the same tick. The tick marked foreign is then replayed as an FHEAL (line 406), so the reconstructed health still matches the recording. The damage is to attribution and gate 8's counts, not to replay health. Nothing guards against it or makes the case unreachable, so the claim stands.
 
 ## R30 [low] `Modules/SpellTuner_Replay/Scenario_Forever.lua:256` -- Greedy first-fit pairing lets a foreign heal take an own direct-heal claim
+
+**Fixed** in 4673fc8 (review-replay)
 
 *UPHELD 3/3*
 
@@ -724,6 +789,8 @@ end
 - UPHELD: I could not refute the claim. The code at 34d3509 does what the reviewer describes, and the scenario can happen on the real client. In Modules/SpellTuner_Replay/Scenario_Forever.lua, lines 168-173 give every direct cast, and every kindless cast, the claim window [c.t-0.3, c.t+1.0] with maxAmt=nil. The only size guard, at line 257, is `cl.kindTag ~= "tick" or ...`, so direct claims have none. Line 249 sorts the claims by t0. Lines 251-259 walk the HEAL events in time order and give each one the first unconsumed claim with the same target whose window covers it. Nothing else in the file reassigns a claim later.  The window reaches 0.3 s before the cast on purpose, because a heal can land in the same frame. On a real pull, UNIT_COMBAT reports every heal on player/party1 as plain, with no source. So a foreign heal (another healer's HoT tick, or any foreign heal) that lands on the same target in [c.t-0.3, own heal event) arrives first. If no own tick claim sorts ahead of it, it takes the Healing Touch's direct claim. The real Healing Touch amount that follows then finds no claim. A tick claim cannot absorb it either, because it fails the 2x-tick size guard. So line 269 counts it as foreign.  Gates_Forever.lua lines 276-294 sum pairedTotal only over ownSet, and they always check the shortfall side (`pairedTotal < mOwn*(1-limAttrib)`). Each collision therefore lowers pairedTotal by roughly the Healing Touch amount minus the foreign tick. That pushes an honest pull toward failing gate 8.  No guard applies. This path is pure post-fight arithmetic on plain recorded numbers, so IsSecret, pcall and the adapter do not matter here. There is also no dedupe or second pass. How often it happens depends on overlap (roughly 0.3 s out of every foreign tick period per direct cast). Whether gate 8 actually fails depends on the configured limit, and on gross amounts partly offsetting the meter's effective total. That fits the low severity, but the defect is real.
 
 ## R31 [low] `Spells/Book.lua:461` -- Casts to OOM on the cached entries switches between 'from full' and 'modelled' with no label
+
+**Fixed** in a73d296 (review-spells)
 
 *UPHELD 3/3*
 
@@ -748,6 +815,8 @@ end
 
 ## R32 [low] `Spells/Measure.lua:416` -- A HoT or DoT crit is never counted, because the tick filter drops exactly the amounts the crit test looks for
 
+**Fixed** in 12ba325 (review-measure)
+
 *UPHELD 3/3*
 
 **Scenario.** Rejuvenation R2 '48 over 12 sec' gives P=3 and perTick=12. TicksForPeriod keeps only amounts <= 12*1.5+1 = 19. The crit test needs amount > 12*1.5 = 18. A real crit tick of 18 (1.5x) fails the crit test, and anything above 19 was already filtered out, so '(N crits)' never appears. Crit ticks only push the sum up without being named.
@@ -770,6 +839,8 @@ end
 
 ## R33 [low] `Spells/Measure.lua:484` -- Spell names in the 'also fit' and 'shared with' lists are printed without Esc
 
+**Fixed** in 12ba325 (review-measure)
+
 *UPHELD 3/3*
 
 **Scenario.** Contest windows carry w.name, a client spell name, raw. SortedKeys/table.concat puts it straight into the chat line and into SpellTunerDB.measures. On a non-enUS client, a name like 'Heilende Beruehrung' written with a u-umlaut puts non-ASCII bytes into the line. T12b's Rules say 'spell names and the descriptor through Esc', and the head of the same line does escape the name.
@@ -791,6 +862,8 @@ end
 - UPHELD: The claim holds at 34d3509. w.name is the client's spell name with nothing done to it: OpenWatch (Measure.lua ~655) sets name = entry.name, and Book.lua:216-217/288-290 take that straight from MD.API.SpellName(id). The adapter binds SpellName to C_Spell.GetSpellName on Forever (API_Forever.lua:29) and GetSpellInfo on TBC, so the text comes back unchanged. OtherWindows (Measure.lua:227/236/247) copies w.name into the contest windows, IsContested puts it in a names set (~line 260), and SortedKeys (266) returns the keys unchanged. Those names then reach the verdict unescaped: at line 484 (" also fit " .. table.concat(dr.names, ", ")) and at line 408 ("ambiguous (%d ticks shared with %s)"). RecordLine (541-546) stores the line in SpellTunerDB.measures and prints it through MD:Print, which only adds a colour prefix (Core.lua:78-80). Measure:Dump (~793) copies stored lines as they are. Nothing escapes the text further down the path. The head of the same line does escape the name (Esc(w.name) at 493, 530, 534), so the lists are handled differently from the rest of the line. T12b's own rules (docs/tasks/T12b-measure-attribution.md:125) say "ASCII only, no bare |; spell names and the descriptor through Esc". The path works in combat because UNIT_COMBAT amounts and own-cast ids are plain, and no IsSecret check or pcall stands in the way. A localized client, whose spell names have non-ASCII bytes, therefore gets non-ASCII text in the chat line and in the stored measures. On enUS the names are ASCII, so there is no practical harm there, which fits "low". Still, the file breaks its own stated rule, so this is not refuted. Side note, not part of this claim: Book.lua:217 can leave entry.name nil, and names[win.name] = true in IsContested would then raise "table index is nil".
 
 ## R34 [low] `Spells/Measure.lua:671` -- Heal watches do not check the cast target, and any HEAL on player from any source is a candidate
+
+**Fixed** in 12ba325 (review-measure)
 
 *UPHELD 3/3*
 
@@ -818,6 +891,8 @@ end
 
 ## R35 [low] `Spells/Parse.lua:275` -- Reactive and ward clauses are read as the cast's own damage; only 'to attackers' is refused
 
+**Fixed** in a73d296 (review-spells)
+
 *UPHELD 3/3*
 
 **Scenario.** Frost Ward or Fire Ward ('Absorbs 165 Frost damage') match DAMAGE_SINGLE as a 165 Frost damage spell. So do Lightning Shield ('the attacker will be struck for 13 Nature damage') and Retribution Aura ('5 Holy damage to any enemy that strikes'). Each goes into the Spellbook's Damage section with per-mana and per-second values, and casting one opens a Measure damage watch that reports 'nothing landed'. This contradicts the rule 'refuses a sentence it does not recognise rather than guess'.
@@ -837,6 +912,8 @@ end
 - UPHELD: I could not refute the claim. At 34d3509, Spells/Parse.lua:162 defines DAMAGE_SINGLE as "(N)%s+(%a+)%s+damage". The only thing that stops it is the check at lines 275-277, which refuses the match only when " to attackers" follows it (Thorns). The absorb check (ABSORB, line 164, run at lines 175-179) only matches the lowercase phrase "absorbing N damage". So: - "Absorbs 165 Frost damage" (Frost Ward / Fire Ward) does not match ABSORB, falls through, and is read as damage {min=max=165, school=Frost}. - "the attacker will be struck for 13 Nature damage" (Lightning Shield) and "5 Holy damage to any creature that strikes" (Retribution Aura) also match DAMAGE_SINGLE, and neither is followed by "to attackers".  The parser is pure string handling (no secrets, no adapter or pcall involved), and descriptions are readable out of combat, so this runs on the real client.  Downstream: - Book.lua:335-336 and 405-408 give such an entry and its family kind="damage" whenever parsed.damage is set. - Dashboard_Forever.lua:408-410 then lists it under the Damage section. These are cast spells, not passives, so no passive filter drops them. - Measure.lua:622-654 (OpenWatch) opens a damage watch on "target" for any entry with a damage kind. With nothing landing it reports "nothing landed" (line 480), or it can pick up an unrelated hit.  The fixtures (tools/data/parse-fixture.lua, tools/parsecheck.lua:298) only cover the Thorns case. No ward, Lightning Shield or aura text is tested. The scenario is real; severity is low as stated.
 
 ## R36 [low] `UI/Clock_Forever.lua:14` -- The clock only learns combat state from PLAYER_REGEN events, so after a /reload or login mid-fight it treats the whole fight as out of combat
+
+**Fixed** in a73d296 (review-spells)
 
 *UPHELD 3/3*
 
@@ -862,6 +939,8 @@ end)
 - UPHELD: The claim holds at 34d3509. In UI/Clock_Forever.lua, `inCombat` is a file-local that starts as false (line 14). Only the PLAYER_REGEN_DISABLED and PLAYER_REGEN_ENABLED handlers change it (lines 223-231), and only the first of those calls model:StartFight. Nothing else sets it. The MD_READY handler (lines 188-205) anchors the model with "assumed full at login" and never checks UnitAffectingCombat or InCombatLockdown. Both are bound in Client/API.lua (line 344), but no Forever file reads them: a grep of Core.lua, Core_Forever.lua and the clock file finds no UnitAffectingCombat call.  After a /reload or a reconnect mid-fight, WoW does not fire PLAYER_REGEN_DISABLED again, so the clock stays in its out-of-combat state: - **No fight is started.** model.fight stays nil, so ManaModel:Project (Engine/ManaModel.lua, lines 154-200) goes down its else branch and returns 'fullnow' or 'ooc' instead of 'warmup', 'oom' or 'hold'. - **No regen rate.** GetManaRegen is secret in combat, so MD.API.ManaRegen gives no plain numbers. The type() checks at lines 196 and 42 of the tick (which runs the out-of-combat branch because inCombat is false) never set model.base or model.casting. - **The widget is hidden.** UpdateVisibility (lines 60-75) skips the in-combat show and applies the 90%/95% hysteresis to a pool anchored at max. The clock stays hidden until modelled spend takes it below 90%, and then it shows '~FULL ...' in the middle of a fight.  No pcall, IsSecret check or adapter behaviour prevents any of this. The scenario is reachable on the real client, and the effect is minor (low severity), as claimed.
 
 ## R37 [low] `UI/Clock_Forever.lua:223` -- Combat state is learned only from PLAYER_REGEN_*; after a /reload in combat the clock treats the whole fight as out of combat
+
+**Fixed** in a73d296 (review-spells)
 
 *UPHELD 3/3*
 
@@ -894,6 +973,8 @@ end)
 
 ## R38 [low] `UI/Dashboard_Forever.lua:354` -- The Spellbook pane re-runs Book:Rows on the shared cached entries, so the tooltip's 'Casts to OOM' switches between a full pool and the modelled current pool
 
+**Fixed** in a73d296 (review-spells)
+
 *UPHELD 3/3*
 
 **Scenario.** With the Spellbook pane open, RefreshSpellbookPane mutates the cached Book entries in place, rewriting e.casts from the clock's modelled CURRENT mana (pool.mana). Any Book:Get() at least 2 s after the last scan rescans and resets e.casts from Book:DefaultPool(), i.e. from full max. That includes Clock's CostFor, which runs on every own cast. SpellTip:Lines shows entry.casts unlabelled as 'Casts to OOM'. Example: in combat at 40% modelled mana, the pane row reads 'To OOM 8'. Hovering the same row (SpellRowEnter goes through SpellTip:Lines, then Book:Get()) or the spell on the action bar shows 8 or 20, depending on whether a scan happened since the last pane refresh. Nothing on the line says which pool the number came from.
@@ -922,6 +1003,8 @@ local function BuildSpellRows(book, pool)
 
 ## R39 [low] `UI/Dashboard_Review.lua:432` -- The Review tab's 'low mana' column shows modelled mana on Forever without saying so
 
+**Fixed** in bdbd42e (review-shared)
+
 *UPHELD 3/3*
 
 **Scenario.** A v3 recording's rec.mana.v holds modelled mana samples, because UnitPower is secret. Recorder_Forever stamps the record with manaModelled = true. LowestMana reads those samples, and the row prints them as a plain percentage (for example "38%") in the same form as TBC's measured low-water mark. There is no '~' and no note, even though the Forever clock marks the same model with '~'. The row tooltip does not mention it either.
@@ -945,6 +1028,8 @@ local function LowestMana(rec)
 
 ## R40 [low] `UI/Dashboard_Review.lua:485` -- Export button is enabled on Forever but does nothing
 
+**Fixed** in bdbd42e (review-shared)
+
 *UPHELD 3/3*
 
 **Scenario.** MD:RunExport is defined only in Verify.lua, which is on the TBC TOC only. On Forever, once any recording exists, the Review tab enables Export, and its tooltip says "Same as /md export". Clicking it is a silent no-op because MD.RunExport is nil, and no /st export command exists either. The Start run button gets the RR ~= nil check; this button has no equivalent check.
@@ -964,6 +1049,8 @@ local function LowestMana(rec)
 - UPHELD: I could not refute this claim. At 34d3509, UI/Dashboard_Review.lua:261 is `exportBtn:SetScript("OnClick", function() if MD.RunExport then MD:RunExport() end end)`. The only definition of MD:RunExport is Verify.lua:469, and Verify.lua is listed only in SpellTuner_TBC.toc (line 61). The other caller is Core_TBC.lua:376, which is also TBC-only. No file under Modules/ and neither Core_Forever.lua nor any Forever TOC defines it. So on Forever MD.RunExport is nil and the click does nothing. The review pane does run on Forever: SpellTuner_Replay_Mainline.toc loads UI\Dashboard_Review.lua, and Dashboard_Forever.lua:602 calls MD.DashboardParts.CreateReview. Rows() (lines 95-100) reads MD.FightRecorder:List(), which Recorder_Forever.lua:554 defines, so `list` has entries once a recording exists. Line 485 then calls `Set(exportBtn, #list > 0)` and enables the button. Its tooltip (lines 156-157) says "Copy every recording as text" and "Same as /md export.", yet nothing gets copied. Other buttons are gated on their dependency (runBtn on `RR ~= nil` at 486, playBtn on `MD.Replay ~= nil` at 484); exportBtn has no such check. None of the secret-value or combat facts touch this path: it is a plain nil function lookup in the UI. The impact is only a silent no-op (the `if MD.RunExport` guard stops any error), which fits the low severity.
 
 ## R41 [medium] `Spells/Book.lua:199` -- The stale description only survives one in-combat rescan, then the parsed values are lost
+
+**Fixed** in a73d296 (review-spells)
 
 *SPLIT 1/3 -- not confirmed*
 
@@ -991,6 +1078,8 @@ end
 - REFUTED: The code does what the claim says, but the case that triggers it has not been seen on the real client, and the measured evidence points the other way. At 34d3509, Spells/Book.lua:197-204 ApplyStale copies desc and parsed only when prev.descState == "ok". It leaves entry.descState as "secret", "absent" or "empty". Book:Scan (560) stores the new spells as _prevSpells, and Book:Get (575-580) rescans every 2 s. So a second rescan that still cannot read the description would lose parsed. That defect is real but latent: it only fires if GetSpellDescription returns secret, absent or empty in combat. None of the facts or probe reports shows that. The probe runs report "0 secret" for descriptions (70009.md:118/209/402/635/921, m2.md:311). The combat facts list what turns secret in combat (GetManaRegen, auras, health and power), and descriptions are not on that list. The m2 run's second `/st measure dump` (m2.md:212-225) is decisive. After the `+heal ?` line (bonus healing unreadable, so in combat), several casts within one fight are all matched against their own text: Rejuvenation R2 [text 48 over 12 sec], Wrath R1 x2 [text 15-18], Moonfire R2 [text 11-15]. The dump ends with "unreadable: 0". That run spans well over 4 s, so there were several rescans at the 2 s interval (and on player UNIT_AURA). Measure.lua:76-98 ResolveEntry reads entry.parsed from Book:Get() each time. If descriptions were secret in combat, the claimed bug would have produced no watch and no text range for the later casts. Instead every cast had its range. Book.lua's stale logic has not changed since T7/T7b (git log), so this build ran the same code. On build 70009, descriptions read "ok" in combat, and the "stale only survives one rescan" scenario does not occur. It would matter only if a future build made descriptions secret in combat. The fix is small: keep prev.stale entries, or check prev.parsed rather than prev.descState == "ok".
 
 ## R42 [low] `UI/SpellTip_Forever.lua:76` -- Crit range uses the vanilla 1.5x multiplier, which the file itself marks UNVERIFIED on Forever, but the tooltip shows it as fact
+
+**Fixed** in a73d296 (review-spells)
 
 *SPLIT 1/3 -- not confirmed*
 
