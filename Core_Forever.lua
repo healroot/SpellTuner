@@ -16,6 +16,10 @@ MD.DEFAULTS = {
     modules = {},  -- name -> true|false, read/written by Core.lua's registry
     spellTooltip = true,  -- UI/SpellTip_Forever.lua's block on spell tooltips
     clock = { shown = true, locked = false, point = nil },  -- UI/Clock_Forever.lua
+    -- T29 (docs/SPEC-forever-ui.md 4.2, 4.3, 6): fontOffset (-2..+2, clamped by
+    -- UI/Theme_Forever.lua at login), the window scale, the main window in
+    -- combat ("hide" / "keep"), one window per ESC, saved window positions.
+    ui = { fontOffset = 0, scale = 1, combat = "hide", escStack = true, win = {} },
 }
 
 -- The three siblings, in dependency order (each needs only what is declared

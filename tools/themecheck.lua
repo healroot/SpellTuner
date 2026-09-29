@@ -1,0 +1,261 @@
+-- tools/run.sh tools/themecheck.lua
+--
+-- T29 (docs/SPEC-forever-ui.md 4.1-4.3, section 9's T29 row): the Forever theme --
+-- UI/Theme_Forever.lua (the palette, UI.TEXT, the fonts, UI.ApplyFonts, the
+-- font offset clamped to -2..+2, UI.Pitch, UI.PIXEL, UI.LIST_STRATA), the
+-- additive half in UI/Style.lua (UI.px, StylizeFrame under UI.PIXEL and its
+-- weak registry, UI.RestylePixels), MD.API.PhysicalScreenSize and the
+-- db.ui defaults in Core_Forever.lua. Forever only: the TBC TOC does not list
+-- the theme, and tools/navui.lua (25) / tools/dashui.lua (56) hold TBC's look.
+HARNESS_FLAVOUR = "forever"
+
+local here = arg[0]:match("^(.*)/[^/]+$")
+
+local ok, fails = 0, {}
+local function check(name, cond, detail)
+    if cond then ok = ok + 1 else fails[#fails + 1] = name .. (detail and (" - " .. detail) or "") end
+    print(string.format("%-72s %s%s", name, cond and "ok" or "FAIL", detail and (" - " .. detail) or ""))
+end
+
+local a0 = arg[0]; arg[0] = here .. "/harness.lua"
+local MD = dofile(here .. "/harness.lua")
+arg[0] = a0
+
+local S = _G.STUB
+local UI = MD.UI
+
+local function near(a, b, eps) return type(a) == "number" and type(b) == "number" and math.abs(a - b) < (eps or 1e-6) end
+
+--------------------------------------------------------------------------------
+-- 1. The theme is on the Forever TOCs, right after UI/Style.lua, and not on TBC's
+--------------------------------------------------------------------------------
+do
+    local function after(toc)
+        local files = S.TocFiles(toc)
+        for i, f in ipairs(files) do
+            if f == "UI/Theme_Forever.lua" then return files[i - 1] == "UI/Style.lua" end
+        end
+        return false
+    end
+    local inTbc = false
+    for _, f in ipairs(S.TocFiles("SpellTuner_TBC.toc")) do
+        if f:find("Theme_Forever", 1, true) then inTbc = true end
+    end
+    check("the theme follows UI/Style.lua in both Forever TOCs and not in TBC's",
+        after("SpellTuner_Mainline.toc") and after("SpellTuner.toc") and not inTbc)
+end
+
+--------------------------------------------------------------------------------
+-- 2. UI.TEXT: every token of 4.1, each { r, g, b, hex = "|cffrrggbb" }, no gold
+--------------------------------------------------------------------------------
+local TOKENS = { "accent", "text", "text2", "label", "muted", "disabled", "mana", "good", "bad" }
+do
+    local T = UI.TEXT
+    local all, shaped = type(T) == "table", true
+    for _, k in ipairs(TOKENS) do
+        local c = all and T[k]
+        if type(c) ~= "table" then all = false
+        elseif not (type(c[1]) == "number" and type(c[2]) == "number" and type(c[3]) == "number"
+                    and type(c.hex) == "string" and c.hex:match("^|cff%x%x%x%x%x%x$")) then
+            shaped = false
+        end
+    end
+    check("UI.TEXT carries every text token of 4.1", all)
+    check("each UI.TEXT token is r, g, b plus an ASCII |cffrrggbb hex", all and shaped)
+
+    local gold = false
+    for k, c in pairs(type(T) == "table" and T or {}) do
+        if type(c) == "table" then
+            local hex = type(c.hex) == "string" and c.hex:lower() or ""
+            if hex:find("ffcc00", 1, true) or hex:find("ffd100", 1, true) then gold = k end
+            if near(c[1], 1, 0.01) and near(c[2], 0.82, 0.01) and near(c[3], 0, 0.01) then gold = k end
+            if near(c[1], 1, 0.01) and near(c[2], 0.8, 0.01) and near(c[3], 0, 0.01) then gold = k end
+        end
+    end
+    check("Blizzard gold is absent from UI.TEXT", all and gold == false, gold and ("token " .. tostring(gold)) or nil)
+
+    local a = all and T.accent
+    check("UI.TEXT.accent is the class colour (druid ff7c0a, as 4.1)",
+        a and near(a[1], UI.accent[1]) and near(a[2], UI.accent[2]) and near(a[3], UI.accent[3])
+          and a.hex:lower() == "|cffff7c0a",
+        a and a.hex or nil)
+    check("the text tokens' values (text2 b3b3b3, muted 7a7a7a, mana 4d99ff, bad e0605a)",
+        all and T.text.hex:lower() == "|cffffffff" and T.text2.hex:lower() == "|cffb3b3b3"
+          and T.label.hex:lower() == "|cff9d9d9d" and T.muted.hex:lower() == "|cff7a7a7a"
+          and T.disabled.hex:lower() == "|cff4d4d4d" and T.mana.hex:lower() == "|cff4d99ff"
+          and T.good.hex:lower() == "|cff5ccb6e" and T.bad.hex:lower() == "|cffe0605a")
+end
+
+--------------------------------------------------------------------------------
+-- 3. UI.PALETTE: the 4.1 fills, the kit's own keys following them
+--------------------------------------------------------------------------------
+do
+    local P = UI.PALETTE
+    local function is(c, r, g, b, a) return type(c) == "table" and near(c[1], r, 0.002) and near(c[2], g, 0.002)
+        and near(c[3], b, 0.002) and near(c[4], a, 0.002) end
+    local A = UI.accent
+    check("UI.PALETTE holds 4.1's fills (bg 0.96, pane, nav, line, rowAlt, mask, border)",
+        is(P.bg, 22 / 255, 22 / 255, 22 / 255, 0.96) and is(P.pane, 28 / 255, 28 / 255, 28 / 255, 1)
+        and is(P.nav, 0.115, 0.115, 0.115, 1) and is(P.line, 42 / 255, 42 / 255, 42 / 255, 1)
+        and is(P.rowAlt, 1, 1, 1, 0.03) and is(P.mask, 38 / 255, 38 / 255, 38 / 255, 0.7)
+        and is(P.border, 0, 0, 0, 1))
+    check("the accent fills: rule 0.6, hover 0.12, selected 0.28, suggested 0.10; close as Cell",
+        is(P.rule, A[1], A[2], A[3], 0.6) and is(P.hover, A[1], A[2], A[3], 0.12)
+        and is(P.selected, A[1], A[2], A[3], 0.28) and is(P.suggested, A[1], A[2], A[3], 0.10)
+        and is(P.close, 0.6, 0.1, 0.1, 0.6) and is(P.closeHover, 0.6, 0.1, 0.1, 1))
+    check("the kit's window and header keys follow bg and nav",
+        is(P.frame, 22 / 255, 22 / 255, 22 / 255, 0.96) and is(P.header, 0.115, 0.115, 0.115, 1))
+end
+
+--------------------------------------------------------------------------------
+-- 4. Fonts: built once, Friz for text, Arial Narrow for numbers, 4.2's sizes
+--------------------------------------------------------------------------------
+local function font(name)
+    local o = UI.fontObjects and UI.fontObjects[name]
+    if not o then return nil end
+    local path, size, flags = o:GetFont()
+    return path, size, flags
+end
+local FRIZ = (GameFontNormal:GetFont())
+do
+    local want = {
+        { "FONT_TITLE", 14, FRIZ }, { "FONT_HEAD", 16, FRIZ }, { "FONT_BIG", 18, FRIZ },
+        { "FONT", 13, FRIZ }, { "FONT_SMALL", 11, FRIZ },
+        { "FONT_NUM", 13, "Fonts\\ARIALN.TTF" }, { "FONT_NUM_SMALL", 11, "Fonts\\ARIALN.TTF" },
+    }
+    local bad = {}
+    for _, w in ipairs(want) do
+        local name = UI[w[1]]
+        local path, size, flags = font(name or "?")
+        if type(name) ~= "string" or path ~= w[3] or size ~= w[2] or flags ~= "" then
+            bad[#bad + 1] = w[1] .. "=" .. tostring(path) .. "/" .. tostring(size)
+        end
+    end
+    check("the fonts of 4.2 are built with their faces and sizes, no outline", #bad == 0,
+        #bad > 0 and table.concat(bad, " ") or nil)
+end
+
+--------------------------------------------------------------------------------
+-- 5. The font offset: clamped to -2..+2, every font follows, pitches grow with it
+--------------------------------------------------------------------------------
+do
+    local got = UI.ApplyFonts and UI.ApplyFonts(4)
+    local _, head = font(UI.FONT_HEAD or "?")
+    local _, num = font(UI.FONT_NUM or "?")
+    local _, cls = font(UI.FONT_CLASS or "?")
+    check("an offset of +4 is clamped to +2 and every font grows by 2",
+        got == 2 and head == 18 and num == 15 and cls == 15,
+        string.format("got=%s head=%s num=%s class=%s", tostring(got), tostring(head), tostring(num), tostring(cls)))
+    local p2 = UI.Pitch and UI.Pitch(20)
+    local lo = UI.ApplyFonts and UI.ApplyFonts(-9)
+    local pm2 = UI.Pitch and UI.Pitch(20)
+    local _, small = font(UI.FONT_SMALL or "?")
+    local zero = UI.ApplyFonts and UI.ApplyFonts(0)
+    local p0 = UI.Pitch and UI.Pitch(20)
+    check("UI.Pitch(20) is 20 at -2, 20 at 0 and 22 at +2",
+        p2 == 22 and pm2 == 20 and p0 == 20 and lo == -2 and small == 9 and zero == 0,
+        string.format("+2:%s -2:%s 0:%s small@-2=%s", tostring(p2), tostring(pm2), tostring(p0), tostring(small)))
+end
+
+--------------------------------------------------------------------------------
+-- 6. db.ui: the defaults, and a saved +4 clamped at login and written back
+--------------------------------------------------------------------------------
+do
+    local u = MD.db and MD.db.ui
+    check("db.ui defaults: fontOffset 0, scale 1, combat hide, escStack on, win {}",
+        type(u) == "table" and u.fontOffset == 0 and u.scale == 1 and u.combat == "hide"
+          and u.escStack == true and type(u.win) == "table")
+    if type(u) == "table" then
+        u.fontOffset = 4
+        MD:Fire("CORE_LOGIN")
+    end
+    local _, size = font(UI.FONT or "?")
+    check("a saved offset of +4 comes back +2 at login, applied to the fonts",
+        type(u) == "table" and u.fontOffset == 2 and size == 15 and UI.Pitch and UI.Pitch(20) == 22,
+        string.format("saved=%s FONT=%s", tostring(u and u.fontOffset), tostring(size)))
+    if type(u) == "table" then u.fontOffset = 0 end
+    if UI.ApplyFonts then UI.ApplyFonts(0) end
+end
+
+--------------------------------------------------------------------------------
+-- 7. UI.PIXEL, UI.LIST_STRATA, MD.API.PhysicalScreenSize
+--------------------------------------------------------------------------------
+check("the theme sets UI.PIXEL and UI.LIST_STRATA = FULLSCREEN_DIALOG",
+    UI.PIXEL == true and UI.LIST_STRATA == "FULLSCREEN_DIALOG")
+do
+    local w, h = nil, nil
+    if MD.API.PhysicalScreenSize then w, h = MD.API.PhysicalScreenSize() end
+    check("MD.API.PhysicalScreenSize answers the physical screen through the adapter",
+        w == 1920 and h == 1080, tostring(w) .. "x" .. tostring(h))
+end
+
+--------------------------------------------------------------------------------
+-- 8. UI.px at effective scales 0.64 / 0.71 / 1 on a 1080-line screen
+--------------------------------------------------------------------------------
+local function scaled(s)
+    local f = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+    f.GetEffectiveScale = function() return s end
+    return f
+end
+do
+    local bad = {}
+    for _, s in ipairs({ 0.64, 0.71, 1 }) do
+        local want = (768 / 1080) / s
+        local got = UI.px and UI.px(1, scaled(s))
+        if not near(got, want) then bad[#bad + 1] = s .. ":" .. tostring(got) end
+        local got3 = UI.px and UI.px(3, scaled(s))
+        if not near(got3, 3 * want) then bad[#bad + 1] = s .. "x3:" .. tostring(got3) end
+    end
+    check("UI.px(n, frame) = n * 768 / physicalHeight / effective scale at 0.64, 0.71 and 1",
+        #bad == 0, #bad > 0 and table.concat(bad, " ") or nil)
+
+    local saved = S.physicalHeight
+    S.physicalHeight = 0
+    local zero = UI.px and UI.px(1, scaled(0.71))
+    S.physicalHeight = saved
+    check("UI.px with no usable screen height is n itself", zero == 1, tostring(zero))
+end
+
+--------------------------------------------------------------------------------
+-- 9. StylizeFrame under UI.PIXEL: a px edge and insets, recorded; RestylePixels
+--------------------------------------------------------------------------------
+do
+    local f = scaled(0.71)
+    UI.StylizeFrame(f, { 0.2, 0.3, 0.4, 0.5 }, { 0, 0, 0, 1 })
+    local e = (768 / 1080) / 0.71
+    local bd = f.backdrop or {}
+    check("StylizeFrame under UI.PIXEL uses UI.px(1) for the edge and the insets",
+        near(bd.edgeSize, e) and type(bd.insets) == "table" and near(bd.insets.left, e)
+          and near(bd.insets.right, e) and near(bd.insets.top, e) and near(bd.insets.bottom, e),
+        tostring(bd.edgeSize))
+    local mode = UI.pixelFrames and getmetatable(UI.pixelFrames) and getmetatable(UI.pixelFrames).__mode
+    check("the styled frame is in a weak-keyed registry",
+        UI.pixelFrames ~= nil and UI.pixelFrames[f] ~= nil and mode == "k")
+
+    -- A hover recoloured it after styling: a restyle keeps the colour it has now.
+    f:SetBackdropColor(0.9, 0.1, 0.1, 1)
+    f.GetEffectiveScale = function() return 1 end
+    S.physicalHeight = 1440
+    local n = UI.RestylePixels and UI.RestylePixels()
+    local e2 = 768 / 1440
+    local bd2 = f.backdrop or {}
+    check("UI.RestylePixels re-applies a new edge and insets to a registered frame",
+        type(n) == "number" and n >= 1 and near(bd2.edgeSize, e2) and type(bd2.insets) == "table"
+          and near(bd2.insets.left, e2), tostring(bd2.edgeSize))
+    check("a restyle keeps the frame's current fill and border colours",
+        type(n) == "number" and f.bg and near(f.bg[1], 0.9) and near(f.bg[4], 1) and f.border and near(f.border[4], 1))
+    S.physicalHeight = 1080
+
+    -- The TBC path: without UI.PIXEL today's backdrop, and nothing recorded.
+    UI.PIXEL = nil
+    local g = scaled(0.71)
+    UI.StylizeFrame(g)
+    local bg = g.backdrop or {}
+    UI.PIXEL = true
+    check("without UI.PIXEL StylizeFrame is today's 1-unit edge and records nothing",
+        bg.edgeSize == 1 and bg.insets == nil and (UI.pixelFrames == nil or UI.pixelFrames[g] == nil))
+end
+
+--------------------------------------------------------------------------------
+print(string.format("%d ok, %d failed", ok, #fails))
+if #fails > 0 then os.exit(1) end

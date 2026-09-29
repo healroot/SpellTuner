@@ -54,6 +54,13 @@ MD.API.Bind({
     SpellCritChance = "GetSpellCritChance",
 })
 
+-- T29 (UI/Style.lua's UI.px, docs/SPEC-forever-ui.md 4.3): the physical screen
+-- size in pixels (width, height), in the 69893 baseline; UI.px reads the height
+-- for pixel-snapped 1-px edges and returns n unchanged when it is not a number.
+MD.API.Bind({
+    PhysicalScreenSize = "GetPhysicalScreenSize",
+})
+
 -- T13 (Modules/SpellTuner_Recorder/Recorder_Forever.lua): the recorder's own
 -- bindings, none of which T13b's probe added. UnitGroupRolesAssigned is the
 -- same global on every client (Engine/Targets.lua's TBC comment); bound here,

@@ -428,8 +428,19 @@ _G.tinsert = table.insert
 _G.UISpecialFrames = {}
 _G.PlaySound = noop
 -- font objects are frames too; GetFont is the one call the kit makes at load
-function FrameMT:GetFont() return "font", 12, "" end
+-- T29: SetFont is recorded and GetFont hands it back, so a harness can read a
+-- font object's face and size (UI/Theme_Forever.lua's fonts and offset); an
+-- object never given SetFont answers as before.
+function FrameMT:SetFont(path, size, flags) self.fontPath, self.fontSize, self.fontFlags = path, size, flags end -- T29
+function FrameMT:GetFont()
+    if self.fontSize ~= nil then return self.fontPath, self.fontSize, self.fontFlags end -- T29
+    return "font", 12, ""
+end
 function CreateFont() return Child("Font") end
+-- T29: the physical screen (UI.px through MD.API.PhysicalScreenSize); in the
+-- 69893 baseline, so the forever profile keeps it. A script sets the fields.
+S.physicalWidth, S.physicalHeight = 1920, 1080 -- T29
+function GetPhysicalScreenSize() return S.physicalWidth, S.physicalHeight end -- T29
 _G.GameFontNormal = CreateFont()
 _G.GameFontNormalSmall = CreateFont()
 _G.GameFontHighlightSmall = CreateFont()
@@ -453,6 +464,9 @@ function CreateFrame(kind, name, parent, tmpl)
         f.SetBackdrop = function(self, bd) self.backdrop = bd end
         f.SetBackdropColor = function(self, r, g, b, a) self.bg = { r, g, b, a } end
         f.SetBackdropBorderColor = function(self, r, g, b, a) self.border = { r, g, b, a } end
+        -- T29: the mixin's getters (UI.RestylePixels keeps a frame's current colours)
+        f.GetBackdropColor = function(self) if self.bg then return unpack(self.bg) end end -- T29
+        f.GetBackdropBorderColor = function(self) if self.border then return unpack(self.border) end end -- T29
     end
     frames[#frames + 1] = f
     -- a named frame is a global in the client, and addon code looks itself up

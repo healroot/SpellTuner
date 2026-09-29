@@ -38,8 +38,12 @@ function UI.GetAccentColorRGB() return accent[1], accent[2], accent[3] end
 --------------------------------------------------------------------------------
 -- Fonts (global font objects, like Cell's CELL_FONT_*)
 --------------------------------------------------------------------------------
+-- T29: every font object the kit builds, by name, so UI/Theme_Forever.lua's
+-- UI.ApplyFonts can resize them in place. Nothing on TBC reads it.
+UI.fontObjects = {}
 local function MakeFont(name, size, r, g, b)
     local f = _G[name] or CreateFont(name)
+    UI.fontObjects[name] = f
     f:SetFont(GameFontNormal:GetFont(), size, "")
     f:SetTextColor(r, g, b, 1)
     f:SetShadowColor(0, 0, 0)
@@ -108,12 +112,86 @@ end
 --------------------------------------------------------------------------------
 -- Frames
 --------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+-- T29 (docs/SPEC-forever-ui.md 4.3): pixel-perfect edges, additive. UI.PIXEL is
+-- nil unless UI/Theme_Forever.lua (Forever TOCs only) sets it, so on TBC
+-- StylizeFrame draws exactly the backdrop it always drew.
+--
+-- UI.px(n, frame): n physical pixels in the frame's own units --
+-- n * (768 / physicalHeight) / frame:GetEffectiveScale(). The physical height
+-- comes through the adapter (MD.API.PhysicalScreenSize, Forever's binding); with
+-- no usable answer (TBC, absent, secret, zero) n is returned unchanged.
+--------------------------------------------------------------------------------
+function UI.px(n, frame)
+    local h
+    if MD.API.PhysicalScreenSize then
+        -- explicit locals: the adapter answers (w, h) or (nil, "<reason>")
+        local w, hh = MD.API.PhysicalScreenSize()
+        if type(w) == "number" and type(hh) == "number" and hh > 0 then h = hh end
+    end
+    if not h then return n end
+    frame = frame or UIParent
+    local s
+    if frame and frame.GetEffectiveScale then
+        local ok, v = pcall(frame.GetEffectiveScale, frame)
+        if ok and type(v) == "number" and v > 0 then s = v end
+    end
+    return n * (768 / h) / (s or 1)
+end
+
+-- Frames styled under UI.PIXEL, weak-keyed so the registry never keeps a frame
+-- alive; the value is the colours it was styled with (the fallback when the
+-- backdrop cannot say what it shows now).
+UI.pixelFrames = setmetatable({}, { __mode = "k" })
+
+local function PixelBackdrop(frame)
+    local e = UI.px(1, frame)
+    return { bgFile = WHITE, edgeFile = WHITE, edgeSize = e,
+             insets = { left = e, right = e, top = e, bottom = e } }
+end
+
 function UI.StylizeFrame(frame, color, borderColor)
     color = color or { 0.1, 0.1, 0.1, 0.9 }
     borderColor = borderColor or { 0, 0, 0, 1 }
-    frame:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = 1 })
+    if UI.PIXEL then
+        frame:SetBackdrop(PixelBackdrop(frame))
+        UI.pixelFrames[frame] = { color = color, border = borderColor }
+    else
+        frame:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = 1 })
+    end
     frame:SetBackdropColor(unpack(color))
     frame:SetBackdropBorderColor(unpack(borderColor))
+end
+
+-- UI.px is evaluated when a frame is styled, so a UI scale or display change
+-- leaves stale edges: re-apply the edge and insets to every registered frame,
+-- keeping the colours it shows now (a hover may have changed them since). The
+-- window manager calls it on UI_SCALE_CHANGED / DISPLAY_SIZE_CHANGED and after
+-- db.ui.scale changes. Returns how many frames it restyled.
+function UI.RestylePixels()
+    local n = 0
+    for frame, rec in pairs(UI.pixelFrames) do
+        local done = pcall(function()
+            -- explicit locals: each getter's four returns kept whole
+            local r, g, b, a
+            if frame.GetBackdropColor then r, g, b, a = frame:GetBackdropColor() end
+            local br, bg, bb, ba
+            if frame.GetBackdropBorderColor then br, bg, bb, ba = frame:GetBackdropBorderColor() end
+            frame:SetBackdrop(PixelBackdrop(frame))
+            if type(r) == "number" then
+                frame:SetBackdropColor(r, g, b, a)
+            else
+                frame:SetBackdropColor(unpack(rec.color))
+            end
+            if type(br) == "number" then
+                frame:SetBackdropBorderColor(br, bg, bb, ba)
+            else
+                frame:SetBackdropBorderColor(unpack(rec.border))
+            end
+        end)
+        if done then n = n + 1 end
+    end
+    return n
 end
 
 function UI.CreateFrame(name, parent, width, height, isTransparent)

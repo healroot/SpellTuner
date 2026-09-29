@@ -65,6 +65,8 @@ local FOREVER_ONLY_NAMES = {
     "MacroSpell", "OnMacroTooltip",
     -- T28: the SetAction hook, recorded explicitly (Client/API_Forever.lua).
     "OnActionTooltip",
+    -- T29 (UI/Style.lua's UI.px): the physical screen, for pixel-snapped edges.
+    "PhysicalScreenSize", -- T29
 }
 -- T15: Client/API_TBC.lua's own binding -- GetSpellInfo, so
 -- Engine/SimModel.lua and Engine/SimPlanner.lua's four call sites can go
