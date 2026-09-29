@@ -4,7 +4,10 @@
 -- CAUSALITY: Plan:Decide(state, t) receives, and may read, ONLY: t; each
 -- target's hp, maxHP, alive, and the player's own HoT state on it as of t;
 -- mana, form, cooldowns as of t; and ONE derived input: each target's damage
--- taken over the trailing 5 s, computed from events already applied. It holds
+-- taken over the trailing 5 s, computed from events already applied -- and,
+-- for the solver, each target's danger line as of t (SM.DangerLine: the biggest
+-- hit already applied; S.danger / tg.danger is the whole fight's and is the
+-- SCORE's, never read by a plan). It holds
 -- no reference to the scenario's event arrays and nothing it schedules may
 -- depend on any event with t' > t. A cast, once started, is locked until it
 -- lands. This is what makes the card advice rather than hindsight.

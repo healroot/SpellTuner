@@ -4,17 +4,16 @@ Rewritten by the lead after every commit and every hand-out. A successor continu
 alone. Worktree: `/home/penek/projects/addons/SpellTuner/.claude/worktrees/manademon-folder-continue-41eabc`,
 branch `claude/manademon-folder-continue-41eabc`.
 
-Last updated: 2026-09-29, after the review fixes. The independent Forever code review
-(`docs/review/2026-09-29-forever-review.md`, R1-R42) was fixed in seven groups (measure, recorder,
-replay, probe, core, spells, shared), each on its own branch and reviewed, and all seven were
-accepted and cherry-picked here: **41 of 42 findings fixed, R6 held for the author**. Every Forever
-TOC at `1.0.0-alpha.7`. Nothing is running; nothing is handed out.
+Last updated: 2026-09-29, after T20 (review R6, the author's ruling "Fix both lines": the danger
+line a plan decides on is causal). Every Forever TOC at `1.0.0-alpha.7`; the TBC TOC at 0.15.4 (the
+author decides a TBC release separately). Next: T20b (hand out), then alpha.8, then T21.
 
 ## Committed (newest first)
 
 | hash | what |
 |---|---|
-| (the commit carrying this revision) | alpha.7: every Forever TOC + the probecheck / consolecheck pins; the review annotated `**Fixed** in <hash>` / `**Skipped**` per R-number; TOOLS suite counts; HISTORY entry; this handover |
+| (the commit carrying this revision) | T20 (R6): `SM.DangerLine` -- a plan decides on the biggest hit so far (prior / floor before the first), the score keeps the whole-fight line; `Solver:AtRisk` and rule 8 read it; synthetic scenarios unchanged; DECISIONS entry for the ruling; solvercheck 74, coachforever 17 |
+| a7d604e | alpha.7: every Forever TOC + the probecheck / consolecheck pins; the review annotated `**Fixed** in <hash>` / `**Skipped**` per R-number; TOOLS suite counts; HISTORY entry; this handover |
 | a12bcf6 | review-shared R5: a v3 replay's ticks called reconstructed (SimPlanner `rp.ticks.reconstructed`, ReplayWindow hover and checkbox); replayforever 11 |
 | baaf6ef | review-shared R23: no `solver-corpus` strategy without `MD.IntuitionTBC`; coachforever |
 | bdbd42e | review-shared R39, R40: Review's low mana `~N%` when modelled, Export hidden without `MD.RunExport`; reviewforever 10 |
@@ -54,19 +53,20 @@ docs/HISTORY.md's 2026-09-29 entry covers T18 onwards.
 
 ## In the tree, not committed
 
-Nothing.
+- `docs/tasks/T20b-danger-prior-from-others.md` -- written (the second half of R6: the danger prior
+  from other recordings, leave-one-out). Handed out next.
 
 ## Next, in order
 
 1. **The review's groups not accepted: none.** All seven fix branches (`fix/review-measure`,
    `-recorder`, `-replay`, `-probe`, `-core`, `-spells`, `-shared`) were accepted and are in HEAD;
    there is no review group left to redo.
-2. **R6, held for the author** (`docs/review/2026-09-29-forever-review.md` R6): the solver's danger
-   line is the whole fight's biggest hit (`Scenario_Forever.lua` builds `targets[i].danger` from
-   every DMG in the stream; `Engine/SimModel.lua` copies it on TBC and Forever alike), so a coached
-   solver plan can see a later hit. Making it causal changes the coach on both lines -- a ruling on
-   the causality invariant for the author or the planner, not a review fix. Do not start it without
-   that word.
+2. **R6** (ruled "Fix both lines", DECISIONS "Forever review R6"): T20 committed (the causal line);
+   T20b (the prior from other recordings) next; then **alpha.8** (every Forever TOC + the
+   probecheck / consolecheck pins, R6 marked Fixed in `docs/review/2026-09-29-forever-review.md`,
+   TOOLS counts, HISTORY entry), then **T21** docs (CLAUDE.md file table, TESTING §38-§40,
+   ROADMAP-FOREVER up to alpha.8 and the review fixes 12ba325..a12bcf6; TESTING steps changed only
+   where a fix changed what the author sees).
 3. **When the author's reports arrive:** §38.2 step 4 (gross or effective) -> `SM.HEAL_AMOUNT` and
    gate 8 two-sided; §38.3's `bar UnitHealthMax(party1): ...` line -> flip `MD.API.BAR_READS_MAX`
    (one word, `Client/API.lua` 333) if `read plain`, both out of combat and in the snapshot; §39 ->
@@ -82,10 +82,10 @@ Suite loop: `docs/TOOLS.md` §1 (every suite, `bindscheck` included since alpha.
 ## Baselines (at the last commit)
 
 TBC sixteen (unchanged by the review): simcheck PASS, reccheck 54, replaycheck 80, replayui 98,
-runcheck 78, reviewui 44, navui 25, dashui 56, regencheck 27, simwindow 8, solvercheck 70, timeline
+runcheck 78, reviewui 44, navui 25, dashui 56, regencheck 27, simwindow 8, solvercheck 74, timeline
 27, spelltip 48, practice 74, practiceui 49, migrate 7. Forever: probecheck 82, forevercheck 13,
 modulecheck 14, kitcheck 7, recordcheck 24, scenariocheck 12, gatecheck 9, replayforever 11,
-reviewforever 10, coachforever 16, practiceforever 9, bindscheck 6, parsecheck 12, bookcheck 17,
+reviewforever 10, coachforever 17, practiceforever 9, bindscheck 6, parsecheck 12, bookcheck 17,
 tipcheck 17, clockcheck 17, spellsui 17, measurecheck 26. Both flavours: adaptercheck 22/15,
 corecheck 10/8, svcheck 6/1, consolecheck 14/1. apicheck 0 findings over 44 files (45 distinct
 globals), selftest 10 of 10, refcheck selftest ok. The same counts in a `git archive HEAD` export.
@@ -97,7 +97,11 @@ globals), selftest 10 of 10, refcheck selftest ok. The same counts in a `git arc
   the plan flagged `foresees`, the card line "NOT causal - sees this fight"; the status-bar path
   ships off (`MD.API.BAR_READS_MAX = false`) -- **switch it on** (one word, `Client/API.lua` 333)
   only if the author's §38.3 report shows `bar UnitHealthMax(party1): set ok, read plain <n>`.
-- **Held for the author:** review R6 (the solver's danger line from the whole fight), see Next 2.
+- **Ruled and fixed (T20):** review R6. Follow-up worth a one-line task some day: the two OLDER
+  divergence assertions (solvercheck §4 "a burst at 40s ...", coachforever 6) time a divergence by
+  the quiet run's cast only, which could report late when the loud run inserts an early cast; T20's
+  two new ones take the earlier of the two (lead's one-line change). Both older ones still pass
+  with the stricter time.
 - **Waiting on the author:** TESTING §38 (alpha.4 items, notably §38.2 step 4 -- is a `UNIT_COMBAT`
   HEAL amount gross or effective; that sets `SM.HEAL_AMOUNT` and makes gate 8 two-sided -- and
   §38.3, the party probe with the `bar ...` lines), §39 (the recorder, validate, replay, coach and

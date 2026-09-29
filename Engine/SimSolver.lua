@@ -326,12 +326,14 @@ function Solver:Best(S, t, mana, form, delay)
 end
 
 -- The lowest health a target reaches over the horizon if nothing is cast. The
--- danger line is MEASURED (v0.10.3): the biggest hit that target actually took
--- in this fight, times db.simDangerHits.
+-- danger line is MEASURED (v0.10.3): the biggest hit that target has taken so
+-- far in this fight, times db.simDangerHits (T20, review R6: SM.DangerLine, as
+-- of t -- never the whole fight's, which is the score's).
 function Solver:AtRisk(S, t, i)
     local maxHP = S.maxHP[i] or 0
     if maxHP <= 0 or S.dead[i] then return nil end
-    local line = (S.danger and S.danger[i] or 0) * maxHP
+    local dl = (SM or MD.SimModel).DangerLine(S, i)
+    local line = (dl or 0) * maxHP
     if line <= 0 then return nil end
     -- Already there. A target sitting at a tenth of their health with the burst
     -- that put them there over has a trailing damage rate of zero, and the
@@ -413,7 +415,7 @@ function Solver:Decide(S, t, mana, form)
                 end
                 if pick then
                     self.reason = { rule = 8, target = i, deficit = (S.maxHP[i] or 0) - S.hp[i],
-                                    rate = SV.Rate(S, i, t, self), below = (S.danger and S.danger[i]) or nil,
+                                    rate = SV.Rate(S, i, t, self), below = (SM or MD.SimModel).DangerLine(S, i),
                                     cost = pickCost, freeIn = when }
                     return pick, i, 8
                 end

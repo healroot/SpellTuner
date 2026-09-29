@@ -187,6 +187,129 @@ do
 end
 
 --------------------------------------------------------------------------------
+-- 4b. T20 (review R6): the danger line a plan DECIDES on is the biggest hit
+-- taken so far; the score keeps the whole fight's. A measured scenario carries
+-- `danger` computed exactly as the TBC builder does from the scenario's own hits.
+--------------------------------------------------------------------------------
+do
+    local dangerHits = (MD.db and MD.db.simDangerHits) or 1
+    -- 600 every 2 s from 2 s to 38 s, and (optionally) one 7000 hit at 40 s
+    local function measured(bigAt, maxHP, step, small, big, fheal)
+        local ev = { t = {}, kind = {}, tgt = {}, amt = {}, x = {} }
+        local n, biggest = 0, 0
+        local function add(at, amt)
+            n = n + 1
+            ev.t[n], ev.kind[n], ev.tgt[n], ev.amt[n], ev.x[n] = at, K.DMG, 1, amt, 0
+            if amt > biggest then biggest = amt end
+        end
+        for at = 2, 38, step do add(at, small) end
+        if bigAt then add(bigAt, big) end
+        -- (optional) a foreign healer keeping the tank alive with no cast of
+        -- ours: 19 hits of 600 would kill 10000 before the hit at 40 s lands
+        if fheal then
+            for at = 3, 39, step do
+                n = n + 1
+                ev.t[n], ev.kind[n], ev.tgt[n], ev.amt[n], ev.x[n] = at, K.FHEAL, 1, fheal, 0
+            end
+            -- the engine reads events by cursor: keep them in time order
+            local order = {}
+            for j = 1, n do order[j] = j end
+            table.sort(order, function(x, y)
+                if ev.t[x] ~= ev.t[y] then return ev.t[x] < ev.t[y] end
+                return x < y
+            end)
+            local sorted = { t = {}, kind = {}, tgt = {}, amt = {}, x = {} }
+            for j = 1, n do
+                local o = order[j]
+                sorted.t[j], sorted.kind[j], sorted.tgt[j], sorted.amt[j], sorted.x[j] =
+                    ev.t[o], ev.kind[o], ev.tgt[o], ev.amt[o], ev.x[o]
+            end
+            ev = sorted
+        end
+        return { dur = 60, pool = 9000, initial = { mana = 9000, apiBase = 10, apiCasting = 4 },
+                 kit = kit, floor = 0.30, ev = ev,
+                 targets = { { name = "T", role = "TANK", maxHP = maxHP, hp0 = maxHP, tracked = true,
+                               danger = math.min(1, biggest * dangerHits / maxHP) } } }
+    end
+    -- a plan that reads the line the engine hands it and casts nothing
+    local function readings(sc)
+        local seen = {}
+        local plan = { Decide = function(_, S, t)
+            local line
+            if SM.DangerLine then line = SM.DangerLine(S, 1) end
+            seen[#seen + 1] = { t = t, line = line }
+            return nil
+        end }
+        SP.RunPlan(sc, plan, { critMode = "ev" })
+        return seen
+    end
+    local function span(seen, from, to)
+        local lo, hi, n = 2, -1, 0
+        for _, r in ipairs(seen) do
+            if r.t >= from and r.t <= to then
+                n = n + 1
+                if type(r.line) ~= "number" then return nil, n end
+                if r.line < lo then lo = r.line end
+                if r.line > hi then hi = r.line end
+            end
+        end
+        return { lo = lo, hi = hi }, n
+    end
+    local function flat(seen, from, to, want)
+        local r, n = span(seen, from, to)
+        return r ~= nil and n > 0 and math.abs(r.lo - want) < 1e-9 and math.abs(r.hi - want) < 1e-9,
+            r and string.format("%d reads, %.3f..%.3f", n, r.lo, r.hi) or ("no number in " .. n .. " reads")
+    end
+
+    local seen = readings(measured(40, 10000, 2, 600, 7000, 500))
+    local a1, d1 = flat(seen, 0, 1.9, 0.30)
+    local a2, d2 = flat(seen, 2.1, 39.9, 0.06)
+    local a3, d3 = flat(seen, 40.1, 59, 0.70)
+    check("the danger line a plan reads is the biggest hit so far", a1 and a2 and a3,
+        "before: " .. d1 .. "; between: " .. d2 .. "; after: " .. d3)
+
+    local sc = measured(40, 10000, 2, 600, 7000, 500)
+    sc.targets[1].dangerPrior = 0.5
+    local seenP = readings(sc)
+    local p1, e1 = flat(seenP, 0, 1.9, 0.5)
+    local p2, e2 = flat(seenP, 2.1, 39.9, 0.06)
+    check("before the first hit the line is the scenario's prior when it has one", p1 and p2,
+        "before: " .. e1 .. "; from 2 s: " .. e2)
+
+    local function castsOf(sc2)
+        local out = {}
+        SP.RunPlan(sc2, SV.NewPlan(binds, { minValue = 0.5, horizon = 12 }, kit),
+            { critMode = "ev", onCast = function(_, at, id)
+                out[#out + 1] = string.format("%.2f:%d", at, id) end })
+        return out
+    end
+    local q, l = castsOf(measured(nil, 10000, 2, 600, 0)), castsOf(measured(40, 10000, 2, 600, 7000))
+    local diverged
+    for j = 1, math.min(#q, #l) do
+        local at = math.min(tonumber(q[j]:match("^([%d%.]+)")), tonumber(l[j]:match("^([%d%.]+)")))
+        if q[j] ~= l[j] then diverged = diverged or at end
+    end
+    if not diverged and #q ~= #l then
+        local at = tonumber(((#q > #l) and q[#l + 1] or l[#q + 1]):match("^([%d%.]+)"))
+        diverged = at
+    end
+    check("a hit bigger than any before it changes nothing the solver does before it",
+        #q > 0 and (diverged == nil or diverged >= 39.9),
+        string.format("%d and %d casts, ", #q, #l) ..
+        (diverged and string.format("diverged at %.1fs", diverged) or "identical until the hit"))
+
+    -- the score: whole-fight line. Nothing cast, the tank at 75% sitting under
+    -- the 80% line the 8000 hit at 40 s will draw, though the causal line
+    -- before 40 s is 1%.
+    local sc3 = measured(40, 10000, 2, 100, 8000)
+    sc3.targets[1].hp0 = 7500
+    local r = SM:Run(sc3, nil, { critMode = "ev" })
+    check("the score still counts seconds under the whole-fight line",
+        sc3.targets[1].danger == 0.8 and r.floorSeconds >= 30,
+        string.format("danger %.2f, floorSeconds %.1f", sc3.targets[1].danger, r.floorSeconds or -1))
+end
+
+--------------------------------------------------------------------------------
 -- 5. Healer intuition: a prior from OTHER fights, never from this one
 --------------------------------------------------------------------------------
 do

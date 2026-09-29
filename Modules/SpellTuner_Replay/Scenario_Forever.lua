@@ -598,6 +598,8 @@ function SM.ScenarioV3(rec, kit, others)
     -- target needed one.
     local maxHP, maxEstimated, maxSource, anyEstimated = ChooseMaxes(rec, others, hits, sizingMax)
 
+    -- `danger` is the SCORE's line (the whole fight's biggest hit); a plan
+    -- decides on SM.DangerLine, the biggest hit so far (T20, review R6).
     local dangerHits = (MD.db and MD.db.simDangerHits) or 1
     local targets = {}
     for i = 1, nT do

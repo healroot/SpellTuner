@@ -153,7 +153,9 @@ local function NewSlot()
         busy = false,
         heap = HeapNew(),
         nT = 0, hp = {}, maxHP = {}, dead = {}, tracked = {}, role = {},
-        danger = {},      -- [target] = the health fraction one recorded hit would take them through
+        danger = {},      -- [target] = the health fraction one recorded hit would take them through, WHOLE fight: the SCORE's line (a plan reads SM.DangerLine)
+        dangerMeasured = {}, -- [target] = true when the scenario carries a measured line (tg.danger)
+        dangerPrior = {}, -- [target] = a fraction to use before the first hit, or nil (T20b fills it)
         -- v0.12.1: the two things the healer's frames show them coming. Both are
         -- present-tense: the aggro on the frame now, and the cast bar that is up.
         threat = {},      -- [target] = UnitThreatSituation 0..3 as of t
@@ -235,6 +237,9 @@ function SM:Run(scenario, plan, opts)
     local critMode = opts.critMode or "ev"
     local crit = (kit and kit.crit) or 0
 
+    S.dangerHits = (MD.db and MD.db.simDangerHits) or 1
+    S.floor = floor
+
     -- targets
     local nT = 0
     if scenario.targets then
@@ -253,7 +258,12 @@ function SM:Run(scenario, plan, opts)
             -- there are enough of them to have an outlier), times
             -- db.simDangerHits. A synthetic scenario has no recorded damage and
             -- keeps the flat floor.
+            -- T20 (review R6): S.danger is the SCORE's line, the whole fight's
+            -- biggest hit -- scoring may look at everything. A plan's Decide
+            -- reads SM.DangerLine instead: the biggest hit taken SO FAR.
             S.danger[i] = tg.danger or floor
+            S.dangerMeasured[i] = (tg.danger ~= nil)
+            S.dangerPrior[i] = tg.dangerPrior
             S.threat[i], S.incoming[i] = 0, nil
             local row = S.hots[i]
             if row then for fi = 1, 3 do local st = row[fi]; if st then st.active = false end end end
@@ -1005,6 +1015,28 @@ function SM.SeenDamage(S, ti, t)
     return (ring.total or 0) / span, ring.biggest or 0
 end
 
+-- The danger line a plan may DECIDE on at this moment (T20, review R6). Where
+-- the scenario carries a measured line (tg.danger), it is built only from what
+-- this target has taken so far: the biggest hit already applied times
+-- db.simDangerHits, capped at 1; before its first hit, a prior the scenario
+-- carries, else the flat floor. S.danger[ti] is the whole fight's biggest hit
+-- and is for the score only: scoring may look at everything, deciding may not.
+-- A synthetic target has no measured line and keeps its flat floor, exactly
+-- what S.danger[ti] held for it. Returns ONE value.
+function SM.DangerLine(S, ti)
+    if not (S.dangerMeasured and S.dangerMeasured[ti]) then
+        return S.danger and S.danger[ti]
+    end
+    local ring = S.dmg and S.dmg[ti]
+    local maxHP = S.maxHP and S.maxHP[ti] or 0
+    if ring and (ring.biggest or 0) > 0 and maxHP > 0 then
+        return math.min(1, ring.biggest * (S.dangerHits or 1) / maxHP)
+    end
+    local prior = S.dangerPrior and S.dangerPrior[ti]
+    if prior then return prior end
+    return S.floor or 0.30
+end
+
 function SM.RecentDamage(S, ti, t, window)
     local ring = S.dmg and S.dmg[ti]
     if not ring then return 0 end
@@ -1071,6 +1103,8 @@ function SM.ScenarioFromRecording(rec, kit)
     -- means for them in this fight. The MAXIMUM, not a percentile: that hit
     -- happened, and one more like it takes them from the line to the floor.
     -- A percentile would quietly discard exactly the tail the line is about.
+    -- (T20: that is the SCORE's line, `tg.danger`. A plan decides on
+    -- SM.DangerLine, the biggest hit so far, never on this.)
     local hits = {}
     do
         local ev, K2 = rec.ev or {}, SM.K

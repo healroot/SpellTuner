@@ -251,6 +251,33 @@ do
     check("a burst at 20 s changes nothing the plan does before it",
         diverged == nil or diverged >= 19.9,
         diverged and string.format("diverged at %.1fs", diverged) or "identical until the burst")
+
+    -- T20 (review R6): the same two recordings through the SOLVER, whose
+    -- at-risk line came from the whole fight's biggest hit.
+    MD.cdb.recordings = { scenarioRec(false, { id = 9000000003 }) }
+    local function solverCasts(burst)
+        local out = {}
+        local sc = SM.ScenarioFromRecording(scenarioRec(burst), kit)
+        local sp = SP.MakeStrategy(SP.Strategy("solver-blind"), binds, kit,
+            { scenario = sc, seed = 1 })
+        SP.RunPlan(sc, sp, { critMode = "ev",
+            onCast = function(_, at, id) out[#out + 1] = string.format("%.2f:%d", at, id) end })
+        return out
+    end
+    local sq, sl = solverCasts(false), solverCasts(true)
+    MD.cdb.recordings = savedStore
+    local sdiv
+    for j = 1, math.min(#sq, #sl) do
+        local at = math.min(tonumber(sq[j]:match("^([%d%.]+)")), tonumber(sl[j]:match("^([%d%.]+)")))
+        if sq[j] ~= sl[j] then sdiv = sdiv or at end
+    end
+    if not sdiv and #sq ~= #sl then
+        sdiv = tonumber(((#sq > #sl) and sq[#sl + 1] or sl[#sq + 1]):match("^([%d%.]+)"))
+    end
+    check("a burst above every earlier hit changes nothing the solver does before it",
+        #sq > 0 and (sdiv == nil or sdiv >= 19.9),
+        string.format("%d and %d casts, ", #sq, #sl) ..
+        (sdiv and string.format("diverged at %.1fs", sdiv) or "identical until the burst"))
 end
 
 --------------------------------------------------------------------------------

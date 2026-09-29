@@ -704,3 +704,30 @@ coach variant at the same place." `docs/SPEC-v0.10.md` carries the plan. The cal
    `-- VERIFY` until a recording proves it, and the addon learns the rest from `GetSpellInfo`
    into `cdb.spellbook` rather than from a website.
 
+## Forever review R6 (2026-09-29): the danger line a plan decides on is causal
+
+The independent Forever review (`docs/review/2026-09-29-forever-review.md` R6) found that the
+solver's danger line was the whole fight's biggest hit, set once at the start of `SM:Run`, so a
+coached solver plan could be advised by a hit that had not landed yet. The finding was held for
+the author because it changes the coach on both lines. **The author chose "Fix both lines"**
+(relayed by the planner, 2026-09-29); implemented by T20 (`docs/tasks/T20-causal-danger-line.md`).
+
+1. **Deciding reads only the causal line.** At time t a target's line is the biggest hit it has
+   taken so far in this fight, times `db.simDangerHits`, capped at 1 (`SM.DangerLine`).
+   `Solver:AtRisk`, rule 8 and its reason record read it; nothing a plan's `Decide` reaches reads
+   `S.danger` any more.
+2. **Scoring keeps the whole-fight line.** `floorSeconds` in `SM:Run` and the card's "danger line"
+   still use the biggest hit of the whole fight (`tg.danger`): scoring may look at everything,
+   deciding may not.
+3. **Before a target's first hit**, the line is a prior from other recordings of the same target
+   where the scenario carries one (the leave-one-out rule T17b uses for max health, never the fight
+   being coached; T20b), else `db.simFloor`.
+4. **Synthetic scenarios keep the flat floor** for both deciding and scoring (lead's call, confirmed
+   by the planner): a constant sees no future. Practice, the Simulate window's presets and every
+   hand-built test scenario decide exactly as before; the causal line applies only where the
+   scenario carries a measured line (a recorded fight).
+5. **The rules coach does not change** (confirmed by the planner): the threshold plans
+   (`SP.NewPlan`, `SP.Search`, TBC's `/md coach`) never read the danger line. Only the solver
+   strategies change, on TBC and Forever alike. The TBC TOC stays at 0.15.4 until the author
+   decides a TBC release.
+
