@@ -429,7 +429,12 @@ function MD.DashboardParts.CreateReview(parent, width)
             row.cells.tgts:SetText(c .. #(rec.tracked or {}) .. "|r")
             row.cells.casts:SetText(c .. (rec.ownCasts or 0) .. "|r")
             row.cells.spent:SetText(c .. K(rec.spent or 0) .. "|r")
-            row.cells.low:SetText(c .. string.format("%d%%", LowestMana(rec) * 100 + 0.5) .. "|r")
+            -- R39 (review 2026-09-29): a v3 recording's mana samples are the
+            -- clock's model, not a reading (UnitPower is secret on Forever),
+            -- so the cell carries the clock's own "~". A TBC recording never
+            -- sets manaModelled and prints as it always has.
+            row.cells.low:SetText(c .. (rec.manaModelled and "~" or "")
+                .. string.format("%d%%", LowestMana(rec) * 100 + 0.5) .. "|r")
             row.cells.valid:SetText(cell)
 
             row:SetScript("OnEnter", function(self)
@@ -439,6 +444,10 @@ function MD.DashboardParts.CreateReview(parent, width)
                 lines[#lines + 1] = { l = Esc(rec.zone or "?"), r = When(rec.id) }
                 lines[#lines + 1] = { l = "foreign healing",
                     r = string.format("%d%%", (rec.foreignShare or 0) * 100 + 0.5) }
+                if rec.manaModelled then
+                    lines[#lines + 1] = { l = "low mana",
+                        r = string.format("~%d%% - modelled pool, not read", LowestMana(rec) * 100 + 0.5) }
+                end
                 if rec.truncated then
                     lines[#lines + 1] = { l = "|cffff9966stream truncated|r", r = "over 4000 events" }
                 end
@@ -482,7 +491,15 @@ function MD.DashboardParts.CreateReview(parent, width)
         Set(pinBtn, (run ~= nil or rec ~= nil) and not IsPractice())
         Set(validateBtn, rec ~= nil)
         Set(playBtn, rec ~= nil and MD.Replay ~= nil)
-        Set(exportBtn, #list > 0)
+        -- R40 (review 2026-09-29): MD:RunExport is Verify.lua's, on the TBC
+        -- TOC only. Where it does not exist the button is not offered at all
+        -- rather than sitting enabled and doing nothing; TBC takes the old path.
+        if MD.RunExport then
+            Set(exportBtn, #list > 0)
+        else
+            exportBtn:Disable()
+            exportBtn:Hide()
+        end
         Set(runBtn, RR ~= nil)
         -- a fight the gates rejected keeps its button, marked with a star: a
         -- plain click refuses and names the gate, shift forces

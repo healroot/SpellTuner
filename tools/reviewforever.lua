@@ -202,8 +202,38 @@ for _, n in ipairs(GATE_NAMES) do
     if not LineHas(n) then missingGate = n; break end
 end
 check("a row's tooltip carries every Forever gate line", missingGate == nil, missingGate)
+
+--------------------------------------------------------------------------------
+-- R39 (review 2026-09-29): a v3 recording's mana samples are the clock's
+-- model (UnitPower is secret), so the "low mana" cell says so with the
+-- clock's own "~" and the row's tooltip names it modelled -- before any
+-- Validate, since the gate text is not the column's explanation.
+--------------------------------------------------------------------------------
+local lowCell = row1 and CellText(row1, "low") or ""
+local sawModelled = false
+for _, line in ipairs(GameTooltip.lines or {}) do
+    local both = tostring(line[1]) .. " " .. tostring(line[2])
+    if both:find("low mana", 1, true) and both:find("modelled", 1, true) then sawModelled = true end
+end
+check("R39: the low mana cell of a v3 recording is marked modelled (~, and the tooltip says so)",
+    lowCell:sub(1, 1) == "~" and sawModelled,
+    "cell=" .. lowCell .. " tooltip modelled line=" .. tostring(sawModelled))
 local leave1 = row1 and row1:GetScript("OnLeave")
 if leave1 then leave1(row1) end
+
+--------------------------------------------------------------------------------
+-- R40 (review 2026-09-29): there is no export on Forever (MD.RunExport is
+-- Verify.lua's, TBC only), so the Export button is not offered -- it used to
+-- sit enabled and do nothing when clicked.
+--------------------------------------------------------------------------------
+local exportBtn
+for _, f in ipairs(S.allFrames) do
+    if f.kind == "Button" and f.text == "Export" then exportBtn = f end
+end
+check("R40: with no export on this client the Export button is not offered",
+    MD.RunExport == nil and exportBtn ~= nil and (exportBtn.shown == false or exportBtn.enabled == false),
+    "RunExport=" .. tostring(MD.RunExport) .. " shown=" .. tostring(exportBtn and exportBtn.shown)
+    .. " enabled=" .. tostring(exportBtn and exportBtn.enabled))
 
 --------------------------------------------------------------------------------
 -- 6: Coach refuses the failing fight and shift-click coaches it anyway
