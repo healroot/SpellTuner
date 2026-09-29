@@ -997,6 +997,9 @@ function SP.Card(rec, best, bestResult, replayResult, baselineResults, cls, vali
         rec.zone or "?", date and date("%H:%M", rec.id) or "", Clock(rec.dur or 0), nTargets,
         Fmt(replayResult.manaSpent), Fmt(bestResult.manaSpent),
         Fmt(math.abs(replayResult.manaSpent - bestResult.manaSpent)))
+    if best and best.foresees then
+        add("  NOT causal - sees this fight: %s", best.foreseesWhy or "a view of this fight")
+    end
 
     -- verdict
     -- "did this pull even need coaching": one more pull's worth of mana left in
@@ -1311,6 +1314,15 @@ function SP.Coach(rec, opts)
         results[#results + 1] = { name = c.name, result = snap }
         local score = SP.Score(snap, c.plan, 0)
         if SP.Better(score, bestScore) then best, bestScore, bestResult = c.plan, score, snap end
+    end
+
+    -- A Forever scenario whose party member's max had to be estimated from
+    -- this very fight (no other recording of them) is not causal: the plan
+    -- is flagged, as Engine/Foresight.lua's plans are, and the card says so.
+    if type(scenario.maxForesees) == "table" and #scenario.maxForesees > 0 then
+        best.foresees = true
+        best.foreseesWhy = "max health of " .. table.concat(scenario.maxForesees, ", ")
+            .. " estimated from this fight (no other recording of them)"
     end
 
     local cls = SP.Classify(rec, scenario, best, kit)

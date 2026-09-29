@@ -279,42 +279,116 @@ function SM.AttributeHeals(rec, kit)
 end
 
 --------------------------------------------------------------------------------
+-- T17b (docs/tasks/T17b-party-max-leave-one-out.md): the sizing arithmetic
+-- behind a stand-in max, once. Per roster index: every DMG amount (`hits`),
+-- the largest running deficit -- DMG adding, HEAL subtracting, floored at 0
+-- -- (`sizingMax`), and whether the target was ever hit or healed.
+--------------------------------------------------------------------------------
+local function SizeRec(rec)
+    local nT = #(rec.roster or {})
+    local ev, n = rec.ev or {}, rec.n or 0
+    local hits, sizingDeficit, sizingMax, hitOrHealed = {}, {}, {}, {}
+    for i = 1, nT do sizingDeficit[i], sizingMax[i] = 0, 0 end
+    for i = 1, n do
+        local kind, tgt, amt = ev.kind[i], ev.tgt[i], ev.amt[i]
+        if kind == V3.DMG and tgt and tgt > 0 then
+            hitOrHealed[tgt] = true
+            hits[tgt] = hits[tgt] or {}
+            hits[tgt][#hits[tgt] + 1] = amt or 0
+            sizingDeficit[tgt] = (sizingDeficit[tgt] or 0) + (amt or 0)
+            if sizingDeficit[tgt] > (sizingMax[tgt] or 0) then sizingMax[tgt] = sizingDeficit[tgt] end
+        elseif kind == V3.HEAL and tgt and tgt > 0 then
+            hitOrHealed[tgt] = true
+            sizingDeficit[tgt] = math.max(0, (sizingDeficit[tgt] or 0) - (amt or 0))
+        end
+    end
+    return hits, sizingMax, hitOrHealed
+end
+
+--------------------------------------------------------------------------------
+-- T17b, the planner's amendment to ruling 1: a party member's max for coaching
+-- comes from OTHER recordings of the same name (and level), never from the
+-- fight being coached -- so a burst late in the fight cannot change what the
+-- plan does before it. Leave-one-out, as Engine/Intuition.lua's IN:Build: the
+-- exclusion is a required argument. Returns value, source, count -- a plain
+-- max in any other recording ("recorded", the largest), else
+-- SM.EstimateMaxHP over those recordings' own sizing, one per recording
+-- ("others") -- or nil when nobody else has this person. An entry that took
+-- no damage in its recording carries no sizing and is not counted.
+--------------------------------------------------------------------------------
+function SM.PartyMaxFromOthers(recs, excludeID, name, level)
+    if excludeID == nil then error("SM.PartyMaxFromOthers: excludeID is required", 2) end
+    if type(name) ~= "string" or type(recs) ~= "table" then return nil end
+    local plainBest, plainN = nil, 0
+    local sizings, allHits, estN = {}, {}, 0
+    for _, r in ipairs(recs) do
+        if type(r) == "table" and r.id ~= excludeID and r.v == 3 and type(r.roster) == "table" then
+            local hits, sizingMax
+            for i, e in ipairs(r.roster) do
+                if type(e) == "table" and e.name == name
+                    and not (type(level) == "number" and type(e.level) == "number" and e.level ~= level) then
+                    if e.maxSecret == false and type(e.maxHP) == "number" and e.maxHP > 0 then
+                        plainN = plainN + 1
+                        if plainBest == nil or e.maxHP > plainBest then plainBest = e.maxHP end
+                    else
+                        if not hits then hits, sizingMax = SizeRec(r) end
+                        if hits[i] and #hits[i] > 0 then
+                            estN = estN + 1
+                            sizings[#sizings + 1] = sizingMax[i] or 0
+                            for _, a in ipairs(hits[i]) do allHits[#allHits + 1] = a end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    if plainBest ~= nil then return plainBest, "recorded", plainN end
+    if estN > 0 then return SM.EstimateMaxHP(sizings, allHits), "others", estN end
+    return nil
+end
+
+-- The one chooser both ReconstructHp and SM.ScenarioV3 use, so the two never
+-- disagree: plain in this recording -> that; else, when the recording has an
+-- id and other recordings know this person -> theirs; else this fight's own
+-- estimate as before. `others` nil means MD.cdb.recordings ({} for none).
+local function ChooseMaxes(rec, others, hits, sizingMax)
+    if others == nil then others = MD.cdb and MD.cdb.recordings end
+    local roster = rec.roster or {}
+    local maxHP, maxEstimated, maxSource, anyEstimated = {}, {}, {}, false
+    for i = 1, #roster do
+        local r = roster[i] or {}
+        if r.maxSecret == false and type(r.maxHP) == "number" and r.maxHP > 0 then
+            maxHP[i], maxEstimated[i], maxSource[i] = r.maxHP, false, "recorded"
+        else
+            local v, src
+            if rec.id ~= nil and type(others) == "table" then
+                local v1, src1 = SM.PartyMaxFromOthers(others, rec.id, r.name, r.level)
+                if v1 ~= nil then v, src = v1, src1 end
+            end
+            if v == nil then
+                v, src = SM.EstimateMaxHP({ sizingMax[i] or 0 }, hits[i] or {}), "this fight"
+            end
+            maxHP[i], maxEstimated[i], maxSource[i] = v, true, src
+            anyEstimated = true
+        end
+    end
+    return maxHP, maxEstimated, maxSource, anyEstimated
+end
+
+--------------------------------------------------------------------------------
 -- ReconstructHp: the shared arithmetic behind both SM.ScenarioV3's own
 -- `recordedHp` field and SM.RecordedHp below (T16a) -- a target's stand-in
 -- max (Planner ruling 1) and its health on a 2s grid from every landed amount,
 -- own and foreign alike. Pure, no kit needed: neither computation reads which
 -- heals were own.
 --------------------------------------------------------------------------------
-local function ReconstructHp(rec)
+local function ReconstructHp(rec, others)
     local roster = rec.roster or {}
     local nT = #roster
     local ev, n = rec.ev or {}, rec.n or 0
 
-    local hits, sizingDeficit, sizingMax = {}, {}, {}
-    for i = 1, nT do sizingDeficit[i], sizingMax[i] = 0, 0 end
-    for i = 1, n do
-        local kind, tgt, amt = ev.kind[i], ev.tgt[i], ev.amt[i]
-        if kind == V3.DMG and tgt and tgt > 0 then
-            hits[tgt] = hits[tgt] or {}
-            hits[tgt][#hits[tgt] + 1] = amt or 0
-            sizingDeficit[tgt] = (sizingDeficit[tgt] or 0) + (amt or 0)
-            if sizingDeficit[tgt] > (sizingMax[tgt] or 0) then sizingMax[tgt] = sizingDeficit[tgt] end
-        elseif kind == V3.HEAL and tgt and tgt > 0 then
-            sizingDeficit[tgt] = math.max(0, (sizingDeficit[tgt] or 0) - (amt or 0))
-        end
-    end
-
-    local maxHP, maxEstimated, anyEstimated = {}, {}, false
-    for i = 1, nT do
-        local r = roster[i] or {}
-        if r.maxSecret == false and type(r.maxHP) == "number" and r.maxHP > 0 then
-            maxHP[i], maxEstimated[i] = r.maxHP, false
-        else
-            maxHP[i] = SM.EstimateMaxHP({ sizingMax[i] or 0 }, hits[i] or {})
-            maxEstimated[i] = true
-            anyEstimated = true
-        end
-    end
+    local hits, sizingMax = SizeRec(rec)
+    local maxHP, maxEstimated, maxSource, anyEstimated = ChooseMaxes(rec, others, hits, sizingMax)
 
     local dur = rec.dur or 0
     local gridT = {}
@@ -348,8 +422,8 @@ local function ReconstructHp(rec)
         end
     end
 
-    return { maxHP = maxHP, maxEstimated = maxEstimated, anyEstimated = anyEstimated,
-             t = gridT, hp = hpOut, max = maxOut }
+    return { maxHP = maxHP, maxEstimated = maxEstimated, maxSource = maxSource,
+             anyEstimated = anyEstimated, t = gridT, hp = hpOut, max = maxOut }
 end
 
 --------------------------------------------------------------------------------
@@ -361,9 +435,9 @@ end
 -- SM.ScenarioFromRecording's own signature but unused: the reconstruction
 -- never needs to know which heals were own.
 --------------------------------------------------------------------------------
-function SM.RecordedHp(rec, kit)
+function SM.RecordedHp(rec, kit, others)
     if not rec or not rec.roster then return nil end
-    local h = ReconstructHp(rec)
+    local h = ReconstructHp(rec, others)
     return { t = h.t, hp = h.hp, max = h.max }
 end
 
@@ -371,7 +445,7 @@ end
 -- SM.ScenarioV3: a v3 stream -> the v2 scenario shape, plus recordedHp,
 -- attribution and maxEstimated (Files table).
 --------------------------------------------------------------------------------
-function SM.ScenarioV3(rec, kit)
+function SM.ScenarioV3(rec, kit, others)
     local K = SM.K -- the engine's own numbering (FHEAL = 2, etc.)
     local roster = rec.roster or {}
     local nT = #roster
@@ -388,28 +462,16 @@ function SM.ScenarioV3(rec, kit)
     end
 
     -- Per target: every hit (for danger/EstimateMaxHP), whether it was ever
-    -- hit or healed (for `tracked`), and the plain running deficit used to
-    -- size the stand-in max (Planner ruling 1) -- DMG/HEAL only, DIED not
-    -- reset here (nothing needs the true max yet).
-    local hits, hitOrHealed, sizingDeficit, sizingMax = {}, {}, {}, {}
-    for i = 1, nT do sizingDeficit[i], sizingMax[i] = 0, 0 end
+    -- hit or healed (for `tracked`) and the running deficit that sizes a
+    -- stand-in max (Planner ruling 1) -- one loop, SizeRec, shared with
+    -- ReconstructHp.
+    local hits, sizingMax, hitOrHealed = SizeRec(rec)
 
     for i = 1, n do
         local kind, tgt, amt, x = ev.kind[i], ev.tgt[i], ev.amt[i], ev.x[i]
         if kind == V3.DMG then
             Push(ev.t[i], K.DMG, tgt, amt, x)
-            if tgt and tgt > 0 then
-                hitOrHealed[tgt] = true
-                hits[tgt] = hits[tgt] or {}
-                hits[tgt][#hits[tgt] + 1] = amt or 0
-                sizingDeficit[tgt] = (sizingDeficit[tgt] or 0) + (amt or 0)
-                if sizingDeficit[tgt] > (sizingMax[tgt] or 0) then sizingMax[tgt] = sizingDeficit[tgt] end
-            end
         elseif kind == V3.HEAL then
-            if tgt and tgt > 0 then
-                hitOrHealed[tgt] = true
-                sizingDeficit[tgt] = math.max(0, (sizingDeficit[tgt] or 0) - (amt or 0))
-            end
             if not ownSet[i] then Push(ev.t[i], K.FHEAL, tgt, amt, x) end
         elseif kind == V3.OWNCAST then
             Push(ev.t[i], K.OWNCAST, tgt, amt, x)
@@ -422,19 +484,11 @@ function SM.ScenarioV3(rec, kit)
         end
     end
 
-    -- Planner ruling 1: a plain max stays plain; a secret one is stood in
-    -- for. `maxEstimated` on the scenario is true when any target needed one.
-    local maxHP, maxEstimated, anyEstimated = {}, {}, false
-    for i = 1, nT do
-        local r = roster[i] or {}
-        if r.maxSecret == false and type(r.maxHP) == "number" and r.maxHP > 0 then
-            maxHP[i], maxEstimated[i] = r.maxHP, false
-        else
-            maxHP[i] = SM.EstimateMaxHP({ sizingMax[i] or 0 }, hits[i] or {})
-            maxEstimated[i] = true
-            anyEstimated = true
-        end
-    end
+    -- Planner ruling 1 and its T17b amendment: a plain max stays plain; a
+    -- secret one comes from other recordings of that person, else is stood in
+    -- for from this fight. `maxEstimated` on the scenario is true when any
+    -- target needed one.
+    local maxHP, maxEstimated, maxSource, anyEstimated = ChooseMaxes(rec, others, hits, sizingMax)
 
     local dangerHits = (MD.db and MD.db.simDangerHits) or 1
     local targets = {}
@@ -449,7 +503,7 @@ function SM.ScenarioV3(rec, kit)
         end
         targets[i] = {
             name = r.name, role = r.role, maxHP = maxHP[i], maxEstimated = maxEstimated[i],
-            danger = danger, hp0 = maxHP[i],
+            maxSource = maxSource[i], danger = danger, hp0 = maxHP[i],
             tracked = (trackedSet[i] == true) and (hitOrHealed[i] == true) or false,
         }
     end
@@ -529,8 +583,19 @@ function SM.ScenarioV3(rec, kit)
         end
     end
 
+    -- The tracked targets whose max had to come from this very fight: the
+    -- plan coached on this scenario is then not causal (T17b), and says so.
+    local maxForesees = {}
+    for i = 1, nT do
+        if targets[i].tracked and targets[i].maxSource == "this fight" then
+            maxForesees[#maxForesees + 1] = targets[i].name or "?"
+        end
+    end
+    if #maxForesees == 0 then maxForesees = nil end
+
     return {
         dur = dur, pool = rec.pool or 0,
+        maxForesees = maxForesees,
         initial = initial, energizeAssumed = false,
         targets = targets, ev = outEv, rates = rates, fixed = fixed,
         incoming = {}, threat = {}, -- secret by policy (Facts, plan §5)

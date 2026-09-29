@@ -157,7 +157,11 @@ end
 --------------------------------------------------------------------------------
 do
     local V3K = { DMG = 1, HEAL = 15, OWNCAST = 3, CASTSTART = 6, CANCEL = 7, DIED = 9 }
-    local function scenarioRec(burst)
+    -- opts: id, level (the Tank's), name (the Tank's), secret (default true:
+    -- the party member's max is secret on Forever, so the causality
+    -- assertion runs with it secret -- T17b), maxHP (when not secret).
+    local function scenarioRec(burst, opts)
+        opts = opts or {}
         local ev = { t = {}, kind = {}, tgt = {}, amt = {}, x = {} }
         local n = 0
         local function push(t, kind, tgt, amt, x)
@@ -174,13 +178,15 @@ do
             mana.t[i], mana.v[i], mana.base[i], mana.cast[i] = t, 9000, 69.24, 28.33
         end
         return {
-            v = 3, client = "forever", id = burst and 9000000002 or 9000000001, zone = "Test",
+            v = 3, client = "forever", id = opts.id or (burst and 9000000002 or 9000000001), zone = "Test",
             t0 = 0, dur = 40, pool = 9000,
             roster = {
                 { name = "Healroot", guid = "Player-1", class = "DRUID", role = "HEALER",
                   level = 64, maxHP = 375, maxSecret = false },
-                { name = "Tank", guid = "Party-1-guid", class = "WARRIOR", role = "TANK",
-                  level = 64, maxHP = 10000, maxSecret = false },
+                { name = opts.name or "Tank", guid = "Party-1-guid", class = "WARRIOR", role = "TANK",
+                  level = opts.level or 64,
+                  maxHP = (opts.secret == false) and (opts.maxHP or 10000) or -1,
+                  maxSecret = opts.secret ~= false },
             },
             tracked = { 1, 2 },
             ev = ev, n = n,
@@ -200,6 +206,12 @@ do
     local plan = SP.NewPlan(binds, { swiftmendBelow = 0.30, directBelow = 0.45, rollStacks = 3,
         hotBelow = 0.80, filler = false }, kit)
 
+    -- The store for this assertion: ONE other recording of Tank (same level,
+    -- a different id, no burst), and neither the quiet nor the loud one --
+    -- they are two versions of one fight. Restored afterwards.
+    local savedStore = MD.cdb.recordings
+    MD.cdb.recordings = { scenarioRec(false, { id = 9000000003 }) }
+
     local function castsOf(burst)
         local out = {}
         local sc = SM.ScenarioFromRecording(scenarioRec(burst), kit)
@@ -209,6 +221,7 @@ do
     end
 
     local quiet, loud = castsOf(false), castsOf(true)
+    MD.cdb.recordings = savedStore
     local diverged
     for j = 1, math.min(#quiet, #loud) do
         local at = tonumber(quiet[j]:match("^([%d%.]+)"))
@@ -217,6 +230,85 @@ do
     check("a burst at 20 s changes nothing the plan does before it",
         diverged == nil or diverged >= 19.9,
         diverged and string.format("diverged at %.1fs", diverged) or "identical until the burst")
+end
+
+--------------------------------------------------------------------------------
+-- 9-11 (T17b): where a party member's max comes from. Hand-made v3 recordings
+-- with the Tank's max secret; the store is set per assertion and restored.
+--------------------------------------------------------------------------------
+do
+    local V3K = { DMG = 1 }
+    -- five hits of `amt` on roster index 2, two seconds' worth of mana rows
+    local function tankRec(id, name, level, amt, secret, maxHP, burst)
+        local ev = { t = {}, kind = {}, tgt = {}, amt = {}, x = {} }
+        local n = 0
+        local function push(t, kind, tgt, a, x)
+            n = n + 1
+            ev.t[n], ev.kind[n], ev.tgt[n], ev.amt[n], ev.x[n] = t, kind, tgt, a, x
+        end
+        for t = 2, 18, 4 do push(t, V3K.DMG, 2, amt, 0) end
+        if burst then push(30, V3K.DMG, 2, 9000, 0) end
+        local mana = { t = { 2 }, v = { 9000 }, base = { 69.24 }, cast = { 28.33 } }
+        return {
+            v = 3, client = "forever", id = id, zone = "Test", t0 = 0, dur = 40, pool = 9000,
+            roster = {
+                { name = "Healroot", guid = "Player-1", class = "DRUID", role = "HEALER",
+                  level = 64, maxHP = 375, maxSecret = false },
+                { name = name, guid = "Party-1-guid", class = "WARRIOR", role = "TANK",
+                  level = level, maxHP = maxHP or -1, maxSecret = secret ~= false },
+            },
+            tracked = { 1, 2 }, ev = ev, n = n, mana = mana, manaModelled = true,
+            deaths = {}, restriction = {}, names = {},
+            initial = { mana = 9000, form = "caster", known = { HealingTouch = 5185 }, auras = {} },
+            meter = { own = 0, others = 0, bySource = {}, bySpell = {}, read = "current" },
+            unreadable = 0, truncated = false, raid = false, pinned = false,
+        }
+    end
+    local saved = MD.cdb.recordings
+
+    -- 9: same name AND level only, never the one coached
+    do
+        local coached = tankRec(9100000001, "Tank", 64, 300, true, nil, true)
+        local sameLevel = tankRec(9100000002, "Tank", 64, 300, true) -- sizing 1500, hits 300
+        local otherLevel = tankRec(9100000003, "Tank", 60, 2000, true)
+        local otherName = tankRec(9100000004, "Bob", 64, 4000, true)
+        MD.cdb.recordings = { coached, sameLevel, otherLevel, otherName }
+        local want = SM.EstimateMaxHP({ 1500 }, { 300, 300, 300, 300, 300 })
+        local a = SM.ScenarioFromRecording(coached, kit).targets[2]
+        local calm = tankRec(9100000001, "Tank", 64, 300, true) -- the coached one without its burst
+        MD.cdb.recordings = { calm, sameLevel, otherLevel, otherName }
+        local b = SM.ScenarioFromRecording(calm, kit).targets[2]
+        check("a party member's max comes from other recordings of the same name and level, never the one coached",
+            a.maxHP == want and a.maxSource == "others" and b.maxHP == want and b.maxSource == "others",
+            string.format("want=%s burst=%s/%s calm=%s/%s", tostring(want), tostring(a.maxHP),
+                tostring(a.maxSource), tostring(b.maxHP), tostring(b.maxSource)))
+    end
+
+    -- 10: a plain max elsewhere is taken as it is
+    do
+        local coached = tankRec(9100000011, "Tank", 64, 300, true)
+        local plain = tankRec(9100000012, "Tank", 64, 300, false, 5000)
+        MD.cdb.recordings = { coached, plain }
+        local t = SM.ScenarioFromRecording(coached, kit).targets[2]
+        check("a plain max in another recording is taken as it is",
+            t.maxHP == 5000 and t.maxSource == "recorded",
+            string.format("maxHP=%s source=%s", tostring(t.maxHP), tostring(t.maxSource)))
+    end
+
+    -- 11: the exclusion is required; a recording with no id is not trusted
+    do
+        local other = tankRec(9100000022, "Tank", 64, 300, true)
+        local recs = { other }
+        local okCall = pcall(SM.PartyMaxFromOthers, recs, nil, "Tank", 64)
+        local noId = tankRec(nil, "Tank", 64, 300, true)
+        MD.cdb.recordings = { other, noId }
+        local t = SM.ScenarioFromRecording(noId, kit).targets[2]
+        check("the exclusion is required",
+            okCall == false and t.maxSource == "this fight",
+            string.format("pcall=%s source=%s", tostring(okCall), tostring(t.maxSource)))
+    end
+
+    MD.cdb.recordings = saved
 end
 
 --------------------------------------------------------------------------------
@@ -266,6 +358,45 @@ do
         W.right ~= nil and W.right.state ~= nil and W.rp.right ~= nil,
         string.format("frames=%d right=%s", frames, tostring(W.right)))
     if W.frame then W.frame:Hide() end
+end
+
+--------------------------------------------------------------------------------
+-- 12, 13 (T17b): the plan is flagged foresees, and the card says so, only
+-- when a party member's max had to come from the fight being coached.
+--------------------------------------------------------------------------------
+do
+    local saved = MD.cdb.recordings
+    local function causalLines(c)
+        local starts, any = 0, 0
+        local first
+        for _, line in ipairs(c) do
+            if line:find("  NOT causal - sees this fight:", 1, true) == 1 then starts = starts + 1; first = first or line end
+            if line:find("NOT causal", 1, true) then any = any + 1 end
+        end
+        return starts, any, first
+    end
+
+    MD.cdb.recordings = { recGood }
+    local c12, _, _, best12 = SP.Coach(recGood, { n = 1 })
+    local starts12, _, first12 = causalLines(c12 or {})
+    print("--- the card, store holding only the coached recording:")
+    for _, line in ipairs(c12 or {}) do print("    " .. line) end
+    check("with no other recording of them, the plan is flagged foresees and its card says so",
+        best12 ~= nil and best12.foresees == true and starts12 == 1
+        and first12 ~= nil and first12:find("Tank", 1, true) ~= nil,
+        "foresees=" .. tostring(best12 and best12.foresees) .. " lines=" .. starts12)
+
+    local another = buildFixture({ meter = { own = baseSimOwn, others = 0, bySource = {}, bySpell = {}, read = "current" } })
+    another.id = 2300000000
+    another.zone = "Blood Furnace"
+    another.mana.v = DeepCopy(baseManaCurve)
+    MD.cdb.recordings = { recGood, another }
+    local c13, v13, _, best13 = SP.Coach(recGood, { n = 1, force = true })
+    local _, any13 = causalLines(c13 or {})
+    check("with another recording of them, the plan is not flagged and the card says nothing",
+        best13 ~= nil and best13.foresees ~= true and any13 == 0,
+        "foresees=" .. tostring(best13 and best13.foresees) .. " lines=" .. any13)
+    MD.cdb.recordings = saved
 end
 
 --------------------------------------------------------------------------------
