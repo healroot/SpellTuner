@@ -205,6 +205,69 @@ end
 SV.Gap = Gap
 
 --------------------------------------------------------------------------------
+-- 3b. The price: a cast's mana PLUS the regen it forfeits (2026-09-29)
+--------------------------------------------------------------------------------
+-- The author, after a practice fight at level 10: "I've found the coach issue,
+-- it does not tolerate non casting window to regen. It will be less relevant on
+-- higher level, but as a concept it is critical." (docs/DECISIONS.md, "The coach
+-- values regen".)
+--
+-- A cast restarts the five-second rule, and inside the rule the pool refills
+-- at the casting rate rather than the base rate. On Forever that is 11.5 mana a
+-- second against 0.001: a Healing Touch R2 (55 mana) cast out of the rule
+-- forfeits 57.5 more. Pricing a cast at its cost alone made every lapse of the
+-- rule worthless, so the solver never let one happen.
+--
+-- The price is the difference between two mana curves over the cast's own
+-- window [t, land + 5]: without the cast, and with it. The two are the same
+-- until the cast lands (mana leaves at success), so
+--
+--   forfeit = max(0, min(R * added, room - G1))
+--
+--   R      base - casting rate: what a second inside the rule costs
+--   added  the seconds of [land, land + 5] the rule would NOT have covered
+--          anyway -- 5 out of the rule, 5 - r with r seconds of it left, 0
+--          when it already runs past land + 5 (a cast inside a running rule
+--          is cheap and one out of it is dear, which is how bursts and rests
+--          fall out of one price with no rule saying so)
+--   room   what the pool has left when the cast lands, without it: regen that
+--          would only overflow a full pool is worth nothing
+--   G1     what both branches regain in [land, land + 5] at the in-rule rate
+--          (casting + energize); only what the pool could hold beyond that is lost
+--
+-- At a full pool the forfeit is 0 and the price is the cost; with R = 0 (TBC's
+-- Innervate, or a class whose rates agree) it is exactly the cost, and the
+-- solver decides exactly as it did before this change.
+--
+-- Everything read is present tense and the healer's own: S.fsrUntil (the 5SR
+-- underline), S.regenBase / S.regenCasting / S.energize (GetManaRegen and the
+-- measured leftover), S.manaMax (UnitPowerMax). Nothing about the fight's future.
+-- The danger rule (8) does NOT use it: safety is priced at the nominal cost.
+function SV.Forfeit(S, t, mana, e, delay)
+    local lost = (S.regenBase or 0) - (S.regenCasting or 0)
+    if lost <= 0 or not e then return 0 end
+    local pool = S.manaMax or 0
+    if pool <= 0 then return 0 end
+    SM = SM or MD.SimModel
+    local fsr = SM.FSR or 5
+    local instant = e.type == "hot" or e.type == "lifebloom" or e.type == "instant"
+    local land = t + (delay or 0) + (instant and 0 or (e.cast or e.gcd or 1.5))
+    local ruleEnds = S.fsrUntil or -1
+    local added = land + fsr - (ruleEnds > land and ruleEnds or land)
+    if added <= 0 then return 0 end
+    local inRate = (S.regenCasting or 0) + (S.energize or 0)
+    -- the no-cast branch up to the moment the cast would land
+    local outBefore = land - (ruleEnds > t and ruleEnds or t)
+    if outBefore < 0 then outBefore = 0 end
+    local atLand = mana + inRate * (land - t) + lost * outBefore
+    if atLand > pool then atLand = pool end
+    local f = lost * added
+    local cap = (pool - atLand) - inRate * fsr
+    if cap < f then f = cap end
+    return f > 0 and f or 0
+end
+
+--------------------------------------------------------------------------------
 -- 4. The decision
 --------------------------------------------------------------------------------
 
@@ -265,7 +328,7 @@ end
 function Solver:Best(S, t, mana, form, delay)
     local kit = self.kit[form] or self.kit.caster
     local HOT_INDEX = SM.HOT_INDEX
-    local bestV, bestID, bestTgt, bestSaved, bestCost, bestRate, bestDef = -1
+    local bestV, bestID, bestTgt, bestSaved, bestCost, bestRate, bestDef, bestLost = -1
     local horizon = self.horizon
     for i = 1, S.nT do
         if S.tracked[i] and not S.dead[i] and (S.maxHP[i] or 0) > 0 then
@@ -311,10 +374,23 @@ function Solver:Best(S, t, mana, form, delay)
                                                 dep, dn, t, horizon, self.sag)
                             local saved = base - withGap
                             local cost = e.cost or 1
-                            local v = saved / (cost > 0 and cost or 1)
+                            -- The regen this cast forfeits is part of its price --
+                            -- the price of casting NOW, for the one-GCD-later
+                            -- candidate too. Waiting is a question about timing
+                            -- (will the target hold, will a HoT free up), and it
+                            -- stays one: priced at its own later forfeit, a cast
+                            -- inside a running rule always beat the same cast a
+                            -- GCD later, so a chain never broke -- on a Sethekk
+                            -- Halls recording the solver rolled Lifebloom R1 for
+                            -- twenty seconds on a target the unpriced one left
+                            -- alone (2026-09-29, docs/DECISIONS.md).
+                            local lost = SV.Forfeit(S, t, mana, e, 0)
+                            local price = cost + lost
+                            local v = saved / (price > 0 and price or 1)
                             if v > bestV then
                                 bestV, bestID, bestTgt = v, id, i
                                 bestSaved, bestCost, bestRate, bestDef = saved, cost, rate, deficit
+                                bestLost = lost
                             end
                         end
                     end
@@ -322,7 +398,7 @@ function Solver:Best(S, t, mana, form, delay)
             end
         end
     end
-    return bestV, bestID, bestTgt, bestSaved, bestCost, bestRate, bestDef
+    return bestV, bestID, bestTgt, bestSaved, bestCost, bestRate, bestDef, bestLost
 end
 
 -- The lowest health a target reaches over the horizon if nothing is cast. The
@@ -405,7 +481,14 @@ function Solver:Decide(S, t, mana, form)
                             if hp > (S.maxHP[i] or 0) then hp = S.maxHP[i] end
                             if hp < low then low = hp end
                         end
-                        local better = low > (pickLow or -1)
+                        -- The first candidate is always taken. `low > (pickLow or -1)`
+                        -- was the test until 2026-09-29, and the projection is not
+                        -- clamped at 0: a target projected through the floor by more
+                        -- than one point under EVERY cast -- the deepest danger there
+                        -- is -- got no pick at all, and the value rule below decided
+                        -- instead. Found while pricing regen, which relies on this
+                        -- rule to never let the mana price reach somebody in danger.
+                        local better = (not pick) or low > pickLow
                         if low > line then
                             -- it clears the line: cheapest wins
                             better = (not pick or pickLow <= line) or (e.cost or 0) < (pickCost or 1e9)
@@ -423,11 +506,11 @@ function Solver:Decide(S, t, mana, form)
         end
     end
 
-    local v, id, tgt, saved, cost, rate, deficit = self:Best(S, t, mana, form, 0)
+    local v, id, tgt, saved, cost, rate, deficit, lost = self:Best(S, t, mana, form, 0)
     if not id or v < self.minValue then
         self.reason = { rule = 9, target = tgt, deficit = deficit, rate = rate,
                         value = v > 0 and v or nil, floor = self.minValue,
-                        watched = S.nT }
+                        watched = S.nT, forfeit = (lost or 0) > 0 and lost or nil }
         return nil
     end
     -- Waiting is a candidate: the same question one global cooldown later, when
@@ -449,7 +532,8 @@ function Solver:Decide(S, t, mana, form)
         return nil
     end
     self.reason = { rule = 7, target = tgt, deficit = deficit, rate = rate,
-                    saved = saved, cost = cost, value = v }
+                    saved = saved, cost = cost, value = v,
+                    forfeit = (lost or 0) > 0 and lost or nil }
     return id, tgt, 7
 end
 
@@ -474,6 +558,11 @@ function SV.ReasonText(r, names)
         if (r.rate or 0) > 0 then
             parts[#parts + 1] = string.format("%d/s expected", (r.rate or 0) + 0.5)
         end
+        if r.forfeit then
+            return string.format("%s -> closes %s health-seconds of the gap for %d mana "
+                .. "+ %d regen the five-second rule costs: %.1f per mana, the best on offer",
+                table.concat(parts, ", "), K1(r.saved), r.cost or 0, r.forfeit + 0.5, r.value or 0)
+        end
         return string.format("%s -> closes %s health-seconds of the gap for %d mana: "
             .. "%.1f per mana, the best on offer",
             table.concat(parts, ", "), K1(r.saved), r.cost or 0, r.value or 0)
@@ -492,6 +581,11 @@ function SV.ReasonText(r, names)
             return string.format("waiting: the best cast buys %.1f per mana now and %.1f "
                 .. "after one global cooldown, and nobody falls that far",
                 r.value or 0, r.later or 0)
+        end
+        if r.value and r.forfeit then
+            return string.format("waiting: the best cast buys %.1f per mana counting the %d "
+                .. "regen it would stop, under the %.1f floor -- resting is worth more",
+                r.value, r.forfeit + 0.5, r.floor or 0)
         end
         if r.value then
             return string.format("waiting: the best cast buys %.1f per mana, under the %.1f "

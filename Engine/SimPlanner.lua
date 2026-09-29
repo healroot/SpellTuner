@@ -605,9 +605,22 @@ SP.STRATEGY_SET = {
       why = "a smeared, quantised, half-trusted view of THIS fight -- not causal",
       params = { minValue = 15, horizon = 18, foresight = true } },
     -- and two dials on the same solver, for comparison
+    -- 2026-09-29: 30 -> 20, when the solver started pricing the regen a cast
+    -- forfeits (docs/DECISIONS.md "The coach values regen"). A priced value is
+    -- smaller than the old one by cost / (cost + forfeit), and at 30 a level 10
+    -- druid's Healing Touch R2 out of the rule (55 mana + 57.5 forfeited, at most
+    -- ~15 per mana) could never clear the floor. Measured, not guessed: on 180
+    -- synthetic level 10 party fights 20 was the only floor that cost no deaths
+    -- and ended with more mana than the unpriced 30, on the author's practice
+    -- fight (tools/data/practice/1790701698.lua) it used 301 mana against 364
+    -- with the same lowest health and less owed, and on the author's eight TBC
+    -- recordings it decided exactly as the unpriced 30 did. A constant from one
+    -- synthetic setup and one real fight: re-measure it before trusting it at a
+    -- level where the values are nowhere near it.
     { key = "solver-frugal", label = "Solver: frugal", kind = "solver",
-      why = "no intuition, and it will not spend under 30 health-seconds per mana",
-      params = { minValue = 30, horizon = 18 } },
+      why = "no intuition, and it will not spend under 20 health-seconds per mana, "
+          .. "counting the regen a cast stops",
+      params = { minValue = 20, horizon = 18 } },
     { key = "solver-near",  label = "Solver: reactive", kind = "solver",
       why = "no intuition, 12s of forecast: what is happening, not what is building",
       params = { minValue = 15, horizon = 12 } },
