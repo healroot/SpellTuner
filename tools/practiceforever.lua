@@ -171,6 +171,21 @@ check("the recording replays to the health the player saw and every gate passes"
     v4.ok and worst < 1,
     "gates: " .. table.concat(failed, "; ") .. " worst hp diff " .. string.format("%.3f", worst))
 
+-- 2026-09-29: the record carries the book's kit, so a report replays it with
+-- no spellbook at all (tools/practicereport.lua), and says it is Forever's
+do
+    local own = rec.kit and rec.kit.caster
+    local same = own ~= nil
+    for id, e in pairs(kit.caster or {}) do
+        if not (own and own[id] and own[id].cost == e.cost and own[id].direct == e.direct
+                and own[id].tick == e.tick) then same = false end
+    end
+    local v5 = own and SM:Validate(rec, rec.kit)
+    check("a Forever practice record carries the book's kit and replays with it alone",
+        same and rec.client == "forever" and v5 and v5.ok,
+        "client=" .. tostring(rec.client) .. " kit=" .. tostring(own ~= nil))
+end
+
 --------------------------------------------------------------------------------
 -- 5: a key bound to a spell casts it; an unbound key propagates
 --------------------------------------------------------------------------------

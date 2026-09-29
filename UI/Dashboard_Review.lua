@@ -255,7 +255,14 @@ function MD.DashboardParts.CreateReview(parent, width)
         end
         local rec = Selected()
         if not rec then return end
-        rec.pinned = not rec.pinned
+        if IsPractice() and MD.Practice and MD.Practice.Pin then
+            -- 2026-09-29: a practice fight a report is about is kept past the
+            -- next eight; the pinned ones have a cap of their own
+            local ok, why = MD.Practice.Pin(rec)
+            if not ok then MD:Print("practice: " .. why) end
+        else
+            rec.pinned = not rec.pinned
+        end
         api:Render()
     end)
     exportBtn:SetScript("OnClick", function() if MD.RunExport then MD:RunExport() end end)
@@ -488,7 +495,7 @@ function MD.DashboardParts.CreateReview(parent, width)
         -- Enable/Disable rather than SetEnabled: the older call exists on every
         -- client this addon targets.
         local function Set(btn, on) if on then btn:Enable() else btn:Disable() end end
-        Set(pinBtn, (run ~= nil or rec ~= nil) and not IsPractice())
+        Set(pinBtn, run ~= nil or rec ~= nil)
         Set(validateBtn, rec ~= nil)
         Set(playBtn, rec ~= nil and MD.Replay ~= nil)
         -- R40 (review 2026-09-29): MD:RunExport is Verify.lua's, on the TBC

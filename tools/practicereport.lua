@@ -227,10 +227,13 @@ end
 -- Commands
 --------------------------------------------------------------------------------
 local function Line(i, r)
-    return string.format("p%d  %s  %-18s %5.1fs  %2d casts  %4d mana spent  pool %d  regen %.2f/%.3f  kit %s",
+    return string.format("p%d  %s  %-18s %5.1fs  %2d casts  %4d mana spent  pool %d  regen %.2f/%.3f  kit %s%s%s",
         i, os.date("!%Y-%m-%d %H:%M UTC", r.id or 0), r.zone or "?", r.dur or 0, r.ownCasts or 0,
         r.spent or 0, r.pool or 0, r.initial and r.initial.apiBase or 0,
-        r.initial and r.initial.apiCasting or 0, r.kit and "stored" or "not stored")
+        r.initial and r.initial.apiCasting or 0, r.kit and "stored" or "not stored",
+        r.pinned and "  PINNED" or "",
+        r.client and string.format("  (%s, level %s, %s%s)", r.client, tostring(r.level or "?"),
+            tostring(r.version or "?"), r.build and (", build " .. r.build) or "") or "")
 end
 
 print("practicereport: " .. source .. (charKey and (" - " .. charKey) or ""))

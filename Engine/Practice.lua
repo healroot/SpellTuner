@@ -23,6 +23,10 @@ local PR = {}
 MD.Practice = PR
 
 PR.MAX_KEPT = 8
+-- 2026-09-29: a practice fight a report is about must not be pushed out by the
+-- next eight. At most this many are pinned, so at least MAX_KEPT - MAX_PINNED
+-- slots always take the newest fights.
+PR.MAX_PINNED = 4
 PR.QUEUE = 0.4          -- the client's spell queue window: a press this close to
                         -- the end of a cast or the GCD goes off when it ends
 PR.POLL = 0.05          -- how often the engine asks for input while idle
@@ -1386,8 +1390,33 @@ function Session:Finish()
         if self.opts.onFinish then self.opts.onFinish(nil) end
         return nil
     end
+    -- 2026-09-29: what the fight was simulated WITH, so a report replays it
+    -- exactly -- mana included -- with no game and no spellbook
+    -- (tools/practicereport.lua). On Forever the kit is the live book's; nothing
+    -- else in the record says what a rank healed or cost.
+    local kitCopy = { crit = self.kit.crit }
+    for form, list in pairs(self.kit) do
+        if type(list) == "table" then
+            kitCopy[form] = {}
+            for id, e in pairs(list) do
+                local c = {}
+                for k, v in pairs(e) do
+                    local tv = type(v)
+                    if tv == "number" or tv == "string" or tv == "boolean" then c[k] = v end
+                end
+                kitCopy[form][id] = c
+            end
+        end
+    end
+    local build
+    if MD.API.BuildInfo then
+        local _, b = MD.API.BuildInfo()
+        if type(b) == "string" or type(b) == "number" then build = tostring(b) end
+    end
     local rec = {
         v = 2, id = self.startedAt, t0 = 0, dur = endT, pool = sc.pool,
+        kit = kitCopy, client = MD.API.client, level = MD.player and MD.player.level,
+        build = build, version = MD.version,
         zone = "Practice: " .. (g and g.label or "custom"), encounter = "Practice",
         roster = roster, tracked = tracked, ev = ev, n = #ev.t,
         hp = hp, mana = mana, initial = initial, precasts = {}, deaths = deaths,
@@ -1432,7 +1461,31 @@ function PR.Store(rec)
     local list = MD.cdb.practice
     list[#list + 1] = rec
     table.sort(list, function(a, b) return (a.id or 0) > (b.id or 0) end)
-    while #list > PR.MAX_KEPT do list[#list] = nil end
+    -- the oldest UNPINNED goes; a pinned fight stays until it is unpinned
+    while #list > PR.MAX_KEPT do
+        local victim
+        for i = #list, 1, -1 do
+            if not list[i].pinned then victim = i; break end
+        end
+        if not victim then break end
+        table.remove(list, victim)
+    end
+end
+
+-- Pin or unpin a practice fight (the Review tab's Pin). Returns true, or false
+-- and why: at most PR.MAX_PINNED stay pinned.
+function PR.Pin(rec, on)
+    if not rec then return false, "no practice fight selected" end
+    if on == nil then on = not rec.pinned end
+    if on and not rec.pinned then
+        local n = 0
+        for _, r in ipairs(MD.cdb and MD.cdb.practice or {}) do if r.pinned then n = n + 1 end end
+        if n >= PR.MAX_PINNED then
+            return false, string.format("%d practice fights are pinned already - unpin one first", n)
+        end
+    end
+    rec.pinned = on and true or false
+    return true
 end
 
 function PR.List()
