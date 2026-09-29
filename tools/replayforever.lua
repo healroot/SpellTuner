@@ -98,6 +98,32 @@ check("the reconstructed health is drawn as the left column's ticks",
     string.format("tickCol=%s", tostring(tickCol and tickCol[lastIdx])))
 
 --------------------------------------------------------------------------------
+-- R5 (review 2026-09-29): on a v3 stream no health was ever read (UnitHealth
+-- is secret), so a tick's hover and the ticks checkbox call it reconstructed
+-- -- never "recorded", "real HP" or "the truth mark".
+--------------------------------------------------------------------------------
+do
+    local texts = {}
+    local hit = W.left.frames[2] and W.left.frames[2].tickHit
+    GameTooltip.lines = nil
+    local enter = hit and W.left.frames[2].tickInfo and hit:GetScript("OnEnter")
+    if enter then enter(hit) end
+    for _, line in ipairs(GameTooltip.lines or {}) do
+        texts[#texts + 1] = tostring(line[1]) .. " " .. tostring(line[2])
+    end
+    local leave = hit and hit:GetScript("OnLeave")
+    if leave then leave(hit) end
+    local cb = W.frame and W.frame.ticksCB
+    for _, t in ipairs(cb and cb.tooltips or {}) do texts[#texts + 1] = tostring(t) end
+    local all = table.concat(texts, " / ")
+    local claimsReal = all:find("truth mark", 1, true) or all:find("real HP", 1, true)
+        or all:find("Recorded health", 1, true)
+    check("R5: a v3 tick's hover and the ticks checkbox say reconstructed, not recorded",
+        enter ~= nil and #texts > 0 and not claimsReal and all:find("econstructed", 1, true) ~= nil,
+        all)
+end
+
+--------------------------------------------------------------------------------
 -- 5: the window says the health is reconstructed and a party max is
 --    estimated (the tank's is secret in the fixture)
 --------------------------------------------------------------------------------

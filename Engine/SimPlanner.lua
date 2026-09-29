@@ -1409,7 +1409,12 @@ function SP.Replay(rec, opts)
     -- (SM.RecordedHp, Modules/SpellTuner_Replay/Scenario_Forever.lua) stands
     -- in, in the same shape (T16a).
     local hp = rec.hp or (rec.v == 3 and SM.RecordedHp and SM.RecordedHp(rec)) or {}
-    local ticks = { t = hp.t or {}, hp = {} }
+    -- R5 (review 2026-09-29): say which. A reconstruction is an estimate (full
+    -- at the pull, UNIT_COMBAT on a 2 s grid, a party max possibly a stand-in),
+    -- and the window must not present it as health the recorder read. Absent
+    -- (nil) on every TBC recording, which keeps its old wording.
+    local ticks = { t = hp.t or {}, hp = {},
+                    reconstructed = (rec.hp == nil and rec.v == 3) or nil }
     for _, ti in ipairs(rec.tracked or {}) do
         local cur, max = hp.hp and hp.hp[ti], hp.max and hp.max[ti]
         if cur and max then

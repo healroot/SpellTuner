@@ -36,6 +36,10 @@ local FLASH_CAST, FLASH_TEXT, FLASH_FOREIGN, PULSE_DMG = 0.8, 0.8, 0.4, 0.4
 local GCD = 1.5                -- an instant still locks the healer for this long
 local SPEEDS = { 0.25, 0.5, 1, 2, 4 }
 local TICK_FADE = 5            -- the recorder's snapshot cadence
+-- the ticks checkbox's tooltip for health the recorder READ (R5 swaps it for a
+-- reconstruction's and back)
+local TICKS_TIPS = { "Snapshot ticks", "The recorder's real HP every 5s, drawn over the",
+                     "engine's reconstruction on the left bars." }
 
 -- The author's Cell layout ("default"), copied from their SavedVariables on
 -- 2026-09-06 -- NOT read from Cell at runtime, by their request. The frames
@@ -232,6 +236,21 @@ local function CreateUnitFrame(parent, x, y)
     f.tickHit:SetScript("OnEnter", function(self)
         if not (MD.Tip and f.tickInfo) then return end
         local ti = f.tickInfo
+        if ti.recon then
+            -- R5 (review 2026-09-29): a v3 (Forever) tick is SM.RecordedHp's
+            -- reconstruction -- no health was ever read -- so it is not
+            -- called recorded, real or the truth.
+            MD.Tip:Show(self, "ANCHOR_RIGHT", {
+                { l = "Reconstructed health", r = string.format("%d%% at %s", ti.rec * 100 + 0.5, Clock(ti.at)) },
+                { l = "Engine's replay now", r = string.format("%d%%", ti.sim * 100 + 0.5) },
+                { l = string.format("|cff888888%s|r", math.abs(ti.rec - ti.sim) <= 0.05
+                    and "within the health gate's 5%" or "outside the health gate's 5%"), r = "" },
+                { l = "|cff888888No health is read on this client (it is secret). The tick|r", r = "" },
+                { l = "|cff888888is rebuilt from UNIT_COMBAT every 2s, from full at the pull,|r", r = "" },
+                { l = "|cff888888a party max perhaps estimated: an estimate, not the truth.|r", r = "" },
+            })
+            return
+        end
         MD.Tip:Show(self, "ANCHOR_RIGHT", {
             { l = "Recorded health", r = string.format("%d%% at %s", ti.rec * 100 + 0.5, Clock(ti.at)) },
             { l = "Engine's reconstruction now", r = string.format("%d%%", ti.sim * 100 + 0.5) },
@@ -799,6 +818,7 @@ local function PaintFrame(f, st, ti, isLeft, now)
             f.tick:SetPoint("LEFT", f.bar, "LEFT", x, 0)
             f.tickInfo = f.tickInfo or {}
             f.tickInfo.rec, f.tickInfo.at, f.tickInfo.sim = v, ts[j], hp or 0
+            f.tickInfo.recon = rp.ticks.reconstructed -- R5: nil on TBC
             f.tickHit:SetSize(8, f.bar:GetHeight())
             f.tickHit:ClearAllPoints()
             f.tickHit:SetPoint("CENTER", f.tick, "CENTER", 0, 0)
@@ -1245,8 +1265,7 @@ local function Build()
     local ticksCB = UI.CreateCheckButton(frame, "ticks", function(checked)
         MD.db.replayTicks = checked
         Paint()
-    end, "Snapshot ticks", "The recorder's real HP every 5s, drawn over the",
-        "engine's reconstruction on the left bars.")
+    end, TICKS_TIPS[1], TICKS_TIPS[2], TICKS_TIPS[3])
     -- anchored from the right edge, label included, so it cannot fall off a
     -- one-column window (it did, twice)
     local labelW = (ticksCB.label and ticksCB.label.GetStringWidth and ticksCB.label:GetStringWidth()) or 32
@@ -1648,6 +1667,19 @@ function MD:OpenReplay(n)
         frame.reconFS:Show()
     else
         frame.reconFS:Hide()
+    end
+    -- R5 (review 2026-09-29): the ticks checkbox says what the ticks are; only
+    -- a reconstructed set changes it, and the next recording puts it back.
+    if frame.ticksCB then
+        if rp.ticks and rp.ticks.reconstructed then
+            UI.SetTooltips(frame.ticksCB, "ANCHOR_TOPLEFT", 0, 3, "Reconstructed health ticks",
+                "Health rebuilt from UNIT_COMBAT every 2s (none is read on",
+                "this client), drawn over the engine's replay on the left bars.")
+            frame.ticksCB.reconTips = true
+        elseif frame.ticksCB.reconTips then
+            UI.SetTooltips(frame.ticksCB, "ANCHOR_TOPLEFT", 0, 3, TICKS_TIPS[1], TICKS_TIPS[2], TICKS_TIPS[3])
+            frame.ticksCB.reconTips = nil
+        end
     end
     -- the strategy chooser, when a search has produced strategies for this fight
     do
