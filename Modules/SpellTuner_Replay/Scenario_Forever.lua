@@ -32,6 +32,35 @@ function SM.EstimateMaxHP(deficits, hits)
 end
 
 --------------------------------------------------------------------------------
+-- review-replay R29: a pre-pull HoT's remaining ticks. It ticks at its expiry
+-- and every period before that, down to anything still after the pull --
+-- ceil(remaining / period) ticks, the first at remaining - (n - 1) * period.
+-- Engine/SimModel.lua's own init.auras arithmetic rounds instead, which drops
+-- that first tick whenever frac(remaining / period) is under a half; so the
+-- claims below and the engine (handed these two numbers on each aura by
+-- SM.ScenarioV3) count the same ticks, at the times they really land.
+--------------------------------------------------------------------------------
+local function PrepullTicks(remaining, period)
+    local ticksLeft = math.max(1, math.ceil(remaining / period - 1e-6))
+    local firstTick = remaining - (ticksLeft - 1) * period
+    if firstTick < 0 then firstTick = 0 end
+    return ticksLeft, firstTick
+end
+
+-- review-replay R28: the engine's HoT slot for a kit entry (Engine/
+-- SimModel.lua's LandCast: "hybrid" rolls the Regrowth slot, "hot" the
+-- Rejuvenation one) -- what a Swiftmend can eat.
+local function SlotOf(e)
+    if e.type == "hybrid" then return "Regrowth" end
+    if e.type == "hot" then return "Rejuvenation" end
+    return nil
+end
+
+-- The crit multiplier Engine/SimModel.lua's DirectAmount uses (vanilla's
+-- 1.5, UNVERIFIED on Forever -- the engine's own assumption, not a new one).
+local CRIT_MULT = 1.5
+
+--------------------------------------------------------------------------------
 -- Planner ruling 2, 2026-09-28 (FOREVER-PLAN.md, rulings for M3): a HEAL
 -- event's source is unknown. Pair it with the player's own casts by time and
 -- target -- a direct heal within [cast-0.3, cast+1.0] on the cast's target; a
@@ -40,6 +69,14 @@ end
 -- heal), and ended by a recast of the same family on the same target
 -- (including a pre-pull HoT the recast lands on top of). Everything a claim
 -- does not reach is foreign.
+--
+-- review-replay R28: a HoT's claims also end at the Swiftmend that eats it
+-- (Regrowth first, else Rejuvenation -- the engine's own rule), since the
+-- engine ticks it no further. R30: a direct claim takes the heal in its
+-- window nearest the cast's own value (or its crit), not whichever heal
+-- arrived first -- a foreign tick landing just before an own Healing Touch
+-- no longer takes its claim; the tick claims then share what is left, first
+-- fit as before.
 --
 -- Lead review 1, 2026-09-28: what the tick TIMER does across a recast is
 -- UNKNOWN on Forever. Two readings are both defensible -- the ruling's own
@@ -133,10 +170,7 @@ function SM.AttributeHeals(rec, kit)
         local sd = MD.SpellData.spells[a.spellId]
         local e2 = sd and k[a.spellId]
         if not (e2 and e2.tickPeriod) then return nil end
-        local remaining = a.remaining or 0
-        local ticksLeft = math.max(1, math.floor(remaining / e2.tickPeriod + 0.5))
-        local nextTick = remaining - (ticksLeft - 1) * e2.tickPeriod
-        if nextTick < 0 then nextTick = 0 end
+        local _, nextTick = PrepullTicks(a.remaining or 0, e2.tickPeriod)
         return { anchor = nextTick, tickPeriod = e2.tickPeriod, prepull = true }
     end
 
@@ -157,28 +191,69 @@ function SM.AttributeHeals(rec, kit)
         return anchor + tickPeriod * m
     end
 
-    -- claims: {t0, t1, tgt, kindTag = "direct"|"tick", maxAmt, prepull}
+    -- R28: which HoT slot each Swiftmend eats, walking the casts in order
+    -- with each target's slots' end times (a pre-pull aura's own remaining,
+    -- an application's own duration, a Swiftmend ending the slot it ate) --
+    -- `c.consumes` is that slot's name, and `c.eats` what it landed for.
+    do
+        local untilT = {}
+        local function Slots(tgt)
+            untilT[tgt] = untilT[tgt] or {}
+            return untilT[tgt]
+        end
+        for _, a in ipairs(rec.initial and rec.initial.auras or {}) do
+            local e2 = a.tgt and k[a.spellId]
+            local slot = e2 and MD.SpellData.spells[a.spellId] and SlotOf(e2)
+            if slot and (a.remaining or 0) > 0 then
+                local sl = Slots(a.tgt)
+                if (a.remaining or 0) > (sl[slot] or 0) then sl[slot] = a.remaining end
+            end
+        end
+        for _, c in ipairs(casts) do
+            local slot = SlotOf(c.e)
+            local sl = Slots(c.tgt)
+            if slot and c.e.tickPeriod and c.e.ticks then
+                sl[slot] = c.t + c.e.tickPeriod * c.e.ticks
+            elseif c.e.type == "instant" then
+                if c.t < (sl.Regrowth or 0) and c.e.swiftmendRegrowth then
+                    c.consumes, c.eats, sl.Regrowth = "Regrowth", c.e.swiftmendRegrowth, c.t
+                elseif c.t < (sl.Rejuvenation or 0) and c.e.swiftmendRejuv then
+                    c.consumes, c.eats, sl.Rejuvenation = "Rejuvenation", c.e.swiftmendRejuv, c.t
+                end
+            end
+        end
+    end
+
+    -- claims: {t0, t1, tgt, kindTag = "direct"|"tick", maxAmt, prepull,
+    -- expect, crit} -- `expect` (a direct claim's own value, when the kit
+    -- has one) and `crit` (whether it can crit) choose among the heals in a
+    -- direct claim's window (R30).
     local claims = {}
-    local function AddClaim(t0, t1, tgt, kindTag, maxAmt, isPrepull)
+    local function AddClaim(t0, t1, tgt, kindTag, maxAmt, isPrepull, expect, crit)
         claims[#claims + 1] = { t0 = t0, t1 = t1, tgt = tgt, kindTag = kindTag,
-                                 maxAmt = maxAmt, prepull = isPrepull }
+                                 maxAmt = maxAmt, prepull = isPrepull, expect = expect, crit = crit }
     end
 
     for i, c in ipairs(casts) do
         if c.e.direct then
-            AddClaim(c.t - 0.3, c.t + 1.0, c.tgt, "direct", nil, false)
+            AddClaim(c.t - 0.3, c.t + 1.0, c.tgt, "direct", nil, false,
+                c.e.direct, (c.e.directCrit or 0) > 0)
         elseif not c.e.tick then
             -- Swiftmend and any other kindless-but-healing kit entry: one
             -- lump claim, same window as a direct heal.
-            AddClaim(c.t - 0.3, c.t + 1.0, c.tgt, "direct", nil, false)
+            AddClaim(c.t - 0.3, c.t + 1.0, c.tgt, "direct", nil, false, c.eats, false)
         end
         if c.e.tick and c.e.tickPeriod and c.e.ticks then
             local ticks = math.floor(c.e.ticks + 0.5)
-            -- ends at the NEXT own cast of the same family/target (Facts)
+            -- ends at the NEXT own cast of the same family/target (Facts),
+            -- or at the Swiftmend that eats this HoT (R28)
+            local mySlot = SlotOf(c.e)
             local cutoff = math.huge
             for j = i + 1, #casts do
                 local o = casts[j]
-                if o.tgt == c.tgt and o.family == c.family then cutoff = o.t; break end
+                if o.tgt == c.tgt and (o.family == c.family or (mySlot and o.consumes == mySlot)) then
+                    cutoff = o.t; break
+                end
             end
             -- Every application's own cadence (Planner ruling 2, k = 1..ticks
             -- from its own cast time) -- unconditional; a recast is no
@@ -220,21 +295,21 @@ function SM.AttributeHeals(rec, kit)
         end
     end
 
-    -- Pre-pull HoTs: ticks counted back from their own expiry (the same
-    -- ticksLeft/nextTick arithmetic Engine/SimModel.lua's own init.auras
-    -- handling uses), ended the same way by a recast.
+    -- Pre-pull HoTs: ticks counted back from their own expiry (PrepullTicks,
+    -- the count SM.ScenarioV3 hands Engine/SimModel.lua's init.auras too --
+    -- R29), ended the same way by a recast or by the Swiftmend that eats it.
     for _, a in ipairs(rec.initial and rec.initial.auras or {}) do
         if a.tgt and a.tgt > 0 then
             local sd = MD.SpellData.spells[a.spellId]
             local e = sd and k[a.spellId]
             if sd and e and e.tick and e.tickPeriod then
-                local remaining = a.remaining or 0
-                local ticksLeft = math.max(1, math.floor(remaining / e.tickPeriod + 0.5))
-                local nextTick = remaining - (ticksLeft - 1) * e.tickPeriod
-                if nextTick < 0 then nextTick = 0 end
+                local ticksLeft, nextTick = PrepullTicks(a.remaining or 0, e.tickPeriod)
+                local mySlot = SlotOf(e)
                 local cutoff = math.huge
                 for _, c in ipairs(casts) do
-                    if c.tgt == a.tgt and c.family == sd.family then cutoff = c.t; break end
+                    if c.tgt == a.tgt and (c.family == sd.family or (mySlot and c.consumes == mySlot)) then
+                        cutoff = c.t; break
+                    end
                 end
                 for j = 0, ticksLeft - 1 do
                     local when = nextTick + e.tickPeriod * j
@@ -247,17 +322,50 @@ function SM.AttributeHeals(rec, kit)
 
     table.sort(claims, function(x, y) return x.t0 < y.t0 end)
 
+    -- R30, pass 1: each direct claim, in time order, takes the heal in its
+    -- window on its target nearest its own value (or that value's crit); a
+    -- claim with no value of its own takes the earliest, as before. Ties go
+    -- to the earlier heal.
+    local healIdx = {}
+    for i = 1, n do if ev.kind[i] == V3.HEAL then healIdx[#healIdx + 1] = i end end
+    local takenBy = {} -- HEAL event index -> the claim that took it
+    for _, cl in ipairs(claims) do
+        if cl.kindTag == "direct" then
+            local best, bestScore
+            for _, i in ipairs(healIdx) do
+                local t = ev.t[i]
+                if not takenBy[i] and ev.tgt[i] == cl.tgt and t >= cl.t0 and t <= cl.t1 then
+                    local score = 0
+                    if cl.expect then
+                        local amt = ev.amt[i] or 0
+                        score = math.abs(amt - cl.expect)
+                        if cl.crit then
+                            local d = math.abs(amt - cl.expect * CRIT_MULT)
+                            if d < score then score = d end
+                        end
+                    end
+                    if not best or score < bestScore then best, bestScore = i, score end
+                end
+            end
+            if best then takenBy[best] = cl end
+        end
+    end
+
+    -- Pass 2: every heal no direct claim took, in stream order, against the
+    -- tick claims, first fit under the size guard.
     local consumed, own = {}, {}
     local counts = { own = 0, foreign = 0, ownDirect = 0, ownTick = 0, prepull = 0 }
     for i = 1, n do
         if ev.kind[i] == V3.HEAL then
             local t, tgt, amt = ev.t[i], ev.tgt[i], ev.amt[i]
-            local matched
-            for ci, cl in ipairs(claims) do
-                if not consumed[ci] and cl.tgt == tgt and t >= cl.t0 and t <= cl.t1
-                    and (cl.kindTag ~= "tick" or (amt or 0) <= cl.maxAmt + 1e-6) then
-                    matched, consumed[ci] = cl, true
-                    break
+            local matched = takenBy[i]
+            if not matched then
+                for ci, cl in ipairs(claims) do
+                    if cl.kindTag == "tick" and not consumed[ci] and cl.tgt == tgt
+                        and t >= cl.t0 and t <= cl.t1 and (amt or 0) <= cl.maxAmt + 1e-6 then
+                        matched, consumed[ci] = cl, true
+                        break
+                    end
                 end
             end
             if matched then
@@ -536,7 +644,13 @@ function SM.ScenarioV3(rec, kit, others)
     local auras = {}
     for _, a in ipairs(rinit.auras or {}) do
         if a.tgt and a.tgt > 0 and MD.SpellData.spells[a.spellId] then
-            auras[#auras + 1] = { target = a.tgt, spellID = a.spellId, stacks = a.stacks, remaining = a.remaining }
+            local entry = { target = a.tgt, spellID = a.spellId, stacks = a.stacks, remaining = a.remaining }
+            -- R29: the engine ticks it where the claims above do.
+            local e = kit and kit.caster and kit.caster[a.spellId]
+            if e and e.tickPeriod then
+                entry.ticksLeft, entry.firstTick = PrepullTicks(a.remaining or 0, e.tickPeriod)
+            end
+            auras[#auras + 1] = entry
         end
     end
     local mn = rec.mana or {}

@@ -257,6 +257,116 @@ do
         ok1 and ok2, string.format("t1: %s | t2: %s", d1, d2))
 end
 
+--------------------------------------------------------------------------------
+-- review-replay (docs/review/2026-09-29-forever-review.md): three small v3
+-- streams on the tank (roster 2), hand-built so only the claim at issue can
+-- take the heal.
+--------------------------------------------------------------------------------
+local function MiniRec(events, auras)
+    local ev = { t = {}, kind = {}, tgt = {}, amt = {}, x = {} }
+    for i, e in ipairs(events) do
+        ev.t[i], ev.kind[i], ev.tgt[i], ev.amt[i], ev.x[i] = e[1], e[2], e[3], e[4], e[5]
+    end
+    local mana = { t = {}, v = {}, base = {}, cast = {} }
+    for t = 2, 30, 2 do
+        local i = #mana.t + 1
+        mana.t[i], mana.v[i], mana.base[i], mana.cast[i] = t, 1000, 69.24, 28.33
+    end
+    return {
+        v = 3, client = "forever", id = 1757100000, zone = "Test", t0 = 0, dur = 30, pool = 1000,
+        roster = {
+            { name = "Healroot", guid = "Player-1", class = "DRUID", role = "HEALER",
+              level = 64, maxHP = 375, maxSecret = false },
+            { name = "Tank", guid = "Party-1-guid", class = "WARRIOR", role = "TANK",
+              level = 64, maxHP = 2000, maxSecret = false },
+        },
+        tracked = { 1, 2 }, ev = ev, n = #events, mana = mana, manaModelled = true,
+        deaths = {}, restriction = {}, names = {},
+        initial = { mana = 1000, form = "caster", known = { HealingTouch = 5185, Rejuvenation = 1058 },
+                    auras = auras or {} },
+        meter = { own = 0, others = 0, bySource = {}, bySpell = {}, read = "current" },
+        unreadable = 0, truncated = false, raid = false, pinned = false,
+    }
+end
+local function HealAt(r, t)
+    for i = 1, r.n do if r.ev.kind[i] == 15 and r.ev.t[i] == t then return i end end
+end
+
+--------------------------------------------------------------------------------
+-- 10 (R28): Swiftmend eats the Rejuvenation, so the HoT's later tick times
+--     claim nothing -- a foreign heal landing on one of them stays foreign.
+--     The stub's book has no Swiftmend; one is added to a copy of the kit
+--     and to the spell index for this assertion only, shaped as
+--     Kit_Forever.lua builds it (type "instant", swiftmendRejuv).
+--------------------------------------------------------------------------------
+do
+    local SMID = 18562
+    local SD = MD.SpellData
+    SD.spells[SMID] = { family = "Swiftmend", rank = 1 }
+    local caster = setmetatable({ [SMID] = { family = "Swiftmend", type = "instant", swiftmendRejuv = 32, cast = 1.5 } },
+        { __index = kit.caster })
+    local smKit = { caster = caster, tree = kit.tree, crit = kit.crit }
+    local r = MiniRec({
+        { 1, 1, 2, 400, 0 },
+        { 10, 6, 2, 0, 774 }, { 10, 3, 2, 25, 774 },
+        { 13, 15, 2, 8, 0 },                         -- Rejuvenation tick 1 (own)
+        { 14, 6, 2, 0, SMID }, { 14, 3, 2, 10, SMID },
+        { 14, 15, 2, 24, 0 },                        -- Swiftmend's lump (own)
+        { 16.1, 15, 2, 8, 0 },                       -- a priest's Renew tick: foreign
+    })
+    local own = SM.AttributeHeals(r, smKit)
+    SD.spells[SMID] = nil
+    local i13, i14, i16 = HealAt(r, 13), HealAt(r, 14), HealAt(r, 16.1)
+    check("Swiftmend ends the HoT it eats: a heal on one of its later tick times is foreign (R28)",
+        own[i13] == true and own[i14] == true and own[i16] ~= true,
+        string.format("tick=%s swiftmend=%s after=%s", tostring(own[i13]), tostring(own[i14]), tostring(own[i16])))
+end
+
+--------------------------------------------------------------------------------
+-- 11 (R29): a pre-pull HoT with 10 s left ticks at 1, 4, 7 and 10 --
+--     ceil(10/3) ticks counted back from its expiry, not a rounded 3 -- and
+--     the engine ticks it there too, so the replay still reaches the
+--     reconstructed health.
+--------------------------------------------------------------------------------
+do
+    local r = MiniRec({
+        { 0.5, 1, 2, 400, 0 },
+        { 1, 15, 2, 8, 0 }, { 4, 15, 2, 8, 0 }, { 7, 15, 2, 8, 0 }, { 10, 15, 2, 8, 0 },
+    }, { { token = "party1", spellId = 774, remaining = 10, stacks = 1, tgt = 2 } })
+    local own, counts = SM.AttributeHeals(r, kit)
+    local allOwn = own[HealAt(r, 1)] and own[HealAt(r, 4)] and own[HealAt(r, 7)] and own[HealAt(r, 10)]
+    local sc2 = SM.ScenarioFromRecording(r, kit)
+    local run = SM:Run(sc2, nil, { critMode = "ev" })
+    local a, b = run.hpCurve[2], sc2.recordedHp.hp[2]
+    local maxDev = 0
+    for i = 1, math.min(#a, #b) do
+        local d = math.abs(a[i] - b[i]); if d > maxDev then maxDev = d end
+    end
+    check("a pre-pull HoT's first remaining tick is own, and the engine ticks it too (R29)",
+        allOwn == true and counts.prepull == 4 and #a == #b and maxDev < 1e-6,
+        string.format("allOwn=%s prepull=%s maxDev=%s", tostring(allOwn), tostring(counts.prepull), tostring(maxDev)))
+end
+
+--------------------------------------------------------------------------------
+-- 12 (R30): a foreign HoT tick landing in the window just before an own
+--     Healing Touch's heal does not take the Healing Touch's claim -- the
+--     heal nearest the cast's own value does.
+--------------------------------------------------------------------------------
+do
+    local r = MiniRec({
+        { 1, 1, 2, 400, 0 },
+        { 8.5, 6, 2, 0, 5185 }, { 10, 3, 2, 25, 5185 },
+        { 9.8, 15, 2, 9, 0 },                        -- a priest's Renew tick: foreign
+        { 10.05, 15, 2, 47.5, 0 },                   -- the Healing Touch (own)
+    })
+    local own, counts = SM.AttributeHeals(r, kit)
+    local iF, iHT = HealAt(r, 9.8), HealAt(r, 10.05)
+    check("a foreign heal before an own direct heal does not take its claim (R30)",
+        own[iHT] == true and own[iF] ~= true and counts.ownDirect == 1 and counts.foreign == 1,
+        string.format("ht=%s foreign=%s ownDirect=%s foreignCount=%s", tostring(own[iHT]), tostring(own[iF]),
+            tostring(counts.ownDirect), tostring(counts.foreign)))
+end
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("  FAIL " .. f) end
 if #fails > 0 then os.exit(1) end

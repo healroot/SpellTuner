@@ -646,9 +646,16 @@ function SM:Run(scenario, plan, opts)
                 st.stacks = a.stacks or 1
                 local remaining = a.remaining or 0
                 st.expires = remaining
-                st.ticksLeft = math.max(1, math.floor(remaining / st.tickPeriod + 0.5))
-                st.nextTick = remaining - (st.ticksLeft - 1) * st.tickPeriod
-                if st.nextTick < 0 then st.nextTick = 0 end
+                if a.ticksLeft and a.firstTick then
+                    -- review-replay R29: a v3 (Forever) scenario hands its own
+                    -- count (Scenario_Forever.lua's PrepullTicks). A TBC aura
+                    -- never carries these, so TBC keeps the rounding below.
+                    st.ticksLeft, st.nextTick = a.ticksLeft, a.firstTick
+                else
+                    st.ticksLeft = math.max(1, math.floor(remaining / st.tickPeriod + 0.5))
+                    st.nextTick = remaining - (st.ticksLeft - 1) * st.tickPeriod
+                    if st.nextTick < 0 then st.nextTick = 0 end
+                end
                 ScheduleHot(a.target, fi, st)
                 Trace(TK.HOT, a.target, fi, st.stacks)
             end
