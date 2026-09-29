@@ -400,6 +400,59 @@ do
 end
 
 --------------------------------------------------------------------------------
+-- review-replay R26: the coach card's own colour codes reach chat as colour
+-- codes -- not escaped into literal "||cff888888" text -- while everything
+-- else stays escaped (no bare pipe).
+-- review-replay R12: "/st coach N health" (the card's own hint) picks that
+-- strategy from the last search without searching again; before any search
+-- it says to run one first.
+--------------------------------------------------------------------------------
+do
+    local saved = MD.cdb.recordings
+    MD.cdb.recordings = { recGood }
+    local lines = CapturedChat(function()
+        SlashCmdList.SPELLTUNER("coach 1")
+        local f = 0
+        while MD.coachSearch and f < 20000 do S.Tick(0.016); f = f + 1 end
+    end)
+    local sawColour, escaped, bare = false, nil, nil
+    for _, l in ipairs(lines) do
+        if l:find("|cff888888", 1, true) and not l:find("||cff888888", 1, true) then sawColour = true end
+        if l:find("||c", 1, true) or l:find("||r", 1, true) then escaped = escaped or l end
+        local stripped = l:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("||", "")
+        if stripped:find("|", 1, true) then bare = bare or l end
+    end
+    check("the coach card's colour codes reach chat unescaped, with no bare pipe (R26)",
+        sawColour and escaped == nil and bare == nil,
+        "sawColour=" .. tostring(sawColour) .. " escaped=" .. tostring(escaped) .. " bare=" .. tostring(bare))
+
+    local w = SP.strategies[recGood.id] and SP.strategies[recGood.id].health
+    SP.plans[recGood.id] = nil
+    local picked = CapturedChat(function() SlashCmdList.SPELLTUNER("coach 1 health") end)
+    local startedSearch = MD.coachSearch ~= nil
+    if MD.coachSearch then MD.coachSearch:Cancel(); MD.coachSearch = nil end
+    local saidIt = false
+    for _, l in ipairs(picked) do if l:find("Highest health", 1, true) then saidIt = true end end
+
+    local savedStrat = SP.strategies[recGood.id]
+    SP.strategies[recGood.id] = nil
+    local none = CapturedChat(function() SlashCmdList.SPELLTUNER("coach 1 cheap") end)
+    local startedSearch2 = MD.coachSearch ~= nil
+    if MD.coachSearch then MD.coachSearch:Cancel(); MD.coachSearch = nil end
+    SP.strategies[recGood.id] = savedStrat
+    local saidFirst = false
+    for _, l in ipairs(none) do if l:find("no strategies", 1, true) then saidFirst = true end end
+    MD.cdb.recordings = saved
+
+    check("/st coach N health plays that strategy without searching again, and says to search first (R12)",
+        w ~= nil and SP.plans[recGood.id] == w.plan and not startedSearch and saidIt
+        and not startedSearch2 and saidFirst,
+        string.format("winner=%s plan=%s searched=%s said=%s searched2=%s saidFirst=%s", tostring(w),
+            tostring(SP.plans[recGood.id] == (w and w.plan)), tostring(startedSearch), tostring(saidIt),
+            tostring(startedSearch2), tostring(saidFirst)))
+end
+
+--------------------------------------------------------------------------------
 -- The record, not an assertion (acceptance 2): solver vs rules on the
 -- fixture.
 --------------------------------------------------------------------------------

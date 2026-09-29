@@ -39,6 +39,34 @@ local function Print(line)
     MD:Print(Esc(line))
 end
 
+-- review-replay R26: the coach card (Engine/SimPlanner.lua's SP.Card, shared
+-- with TBC) carries its own colour codes ("|cff888888...|r"). Esc alone
+-- doubles their pipes and chat shows them as literal text, so a card line is
+-- split around each well-formed colour start ("|c" + eight hex digits) and
+-- reset ("|r"), those are kept as they are, and everything between them is
+-- escaped as before -- a name's own pipe still never reaches chat bare.
+local function EscKeepColours(s)
+    if type(s) ~= "string" then return s end
+    local out, i = {}, 1
+    while i <= #s do
+        local a, b = s:find("|c%x%x%x%x%x%x%x%x", i)
+        local c, d = s:find("|r", i, true)
+        if c and (not a or c < a) then a, b = c, d end
+        if not a then
+            out[#out + 1] = Esc(s:sub(i))
+            break
+        end
+        out[#out + 1] = Esc(s:sub(i, a - 1))
+        out[#out + 1] = s:sub(a, b)
+        i = b + 1
+    end
+    return table.concat(out)
+end
+
+local function PrintCard(line)
+    MD:Print(EscKeepColours(line))
+end
+
 -- The v3 stream's own OWNCAST kind (Modules/SpellTuner_Recorder/
 -- Recorder_Forever.lua's local K, Scenario_Forever.lua's local V3) --
 -- duplicated here for the same reason those files give: nothing guarantees
@@ -131,12 +159,35 @@ function MD:RunCoach(arg)
         return
     end
     -- "3" is a single fight, "3 force" coaches one that failed its gates
-    -- (Coach itself refuses without it).
+    -- (Coach itself refuses without it), "3 health" picks a strategy.
     local n, rest = arg:match("^([pP]?%d*)%s*(%a*)$")
     if not n or n == "" then n = "1" end
     local rec, label = MD:GetRecording(n)
     if not rec then Print("coach: no recording " .. tostring(n) .. ".") return end
     n = label
+
+    -- review-replay R12: "/st coach 3 health" picks one of the strategies the
+    -- last search on this fight produced (the card's own hint), without
+    -- searching again -- Verify.lua's TBC branch, ported (v0.10.4).
+    local SP = MD.SimPlanner
+    for _, obj in ipairs(SP.OBJECTIVES or {}) do
+        if rest == obj.key then
+            local w = SP.strategies and SP.strategies[rec.id] and SP.strategies[rec.id][obj.key]
+            if not w then
+                PrintCard(string.format("coach: no strategies for recording %s yet - run |cffffff00/st coach %s|r first.",
+                    Esc(tostring(n)), Esc(tostring(n))))
+                return
+            end
+            SP.plans[rec.id] = w.plan
+            PrintCard(string.format("coach: |cff33ff66%s|r is now the plan the replay draws for recording %s - %s.",
+                Esc(obj.name), Esc(tostring(n)), Esc(obj.what)))
+            local r = w.result or {}
+            Print(string.format("  %d mana, floor %d%%, %.1fs in danger.",
+                math.floor((r.manaSpent or 0) + SP.ManaOwed(r, w.plan) + 0.5),
+                math.floor((r.lowest and r.lowest.hp or 1) * 100 + 0.5), r.floorSeconds or 0))
+            return
+        end
+    end
 
     if MD.coachSearch and MD.replayCoaching then
         MD.coachSearch:Cancel()
@@ -146,10 +197,11 @@ function MD:RunCoach(arg)
 
     local function Show(lines)
         MD.coachSearch = nil
-        for _, line in ipairs(lines) do Print(line) end
+        for _, line in ipairs(lines) do PrintCard(line) end
     end
     MD.coachSearch = MD.SimPlanner.CoachAsync(rec, { n = n, force = (rest == "force") }, Show)
 end
 
 MD:AddCommand("coach", function(arg) MD:RunCoach(arg) end,
-    "/st coach [n] [force]", "search for a better plan on recorded fight n and show the card (cancel stops it)")
+    "/st coach [n] [force, or safe / health / cheap / regen]",
+    "search for a better plan on recorded fight n and show the card (cancel stops it); a strategy name plays that one")
