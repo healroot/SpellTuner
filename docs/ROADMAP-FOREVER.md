@@ -353,6 +353,32 @@ they do not recognise, naming what they expected and what they found; `bindschec
 the beta, and the imports re-checked against the Forever builds from the author's
 `/st binds check` paste (an importer is changed from that paste only).
 
+### The independent review of M1-M4 (2026-09-29) → `1.0.0-alpha.7`, `1.0.0-alpha.8`
+
+`docs/review/2026-09-29-forever-review.md`: an independent read-only review of the Forever code at
+`34d3509`, 42 findings (R1-R42), each checked by three skeptics. Fixed in seven groups, each on its
+own branch with a test that failed on the old code, reviewed and cherry-picked:
+**measure** (`12ba325`; R1 the known deficit in combat only, R14/R34 a cast judged only on the unit
+its watch listens to, R32 HoT crits, R33; `measurecheck` 26) · **recorder** (`ad3f5f4`; R7-R11, R24,
+R25 -- dead at the pull, the opener and pre-cast HoTs, the meter `none` when it cannot be trusted, the
+healer's own death, departed tokens; `recordcheck` 24) · **replay** (`1463b9b`, `530cc08`, `4673fc8`;
+R12 `/st coach N safe/health/cheap/regen`, R26 card colours, R27, R28-R30 heal attribution;
+`gatecheck` 9, `scenariocheck` 12) · **probe** (`3ad8cce`; R2, R3, R17-R20; `probecheck` 82) ·
+**core** (`80054ab`; R15, R16, R21, R22; `consolecheck` 14 / 1) · **spells** (`a73d296`; R13 non-mana
+costs, R31/R38 casts to OOM, R35 wards, R36/R37 the clock after a mid-fight login, R41, R42; `parsecheck`
+12, `bookcheck` 17, `tipcheck` 17, `clockcheck` 17, `spellsui` 17) · **shared** (`e6cc8cd`, `bdbd42e`,
+`baaf6ef`, `a12bcf6`; R4 practice regen, R39, R40, R23, R5; `practiceforever` 9, `reviewforever` 10,
+`replayforever` 11, `coachforever` 16). Every Forever TOC at `1.0.0-alpha.7` (`a7d604e`).
+
+**R6** was held for the author (the solver's danger line was the whole fight's biggest hit, on TBC
+as on Forever) and ruled "Fix both lines" (`docs/DECISIONS.md`, "Forever review R6"): **T20**
+(`1c76605`) -- a plan decides on `SM.DangerLine`, the biggest hit taken so far, while the score keeps
+the whole-fight line and synthetic scenarios keep the flat floor; **T20b** (`753cd96`) -- before a
+target's first hit, the biggest hit that person took in other recordings (leave-one-out by id);
+`solvercheck` 77, `coachforever` 18. The rules coach is unchanged. Every Forever TOC at
+`1.0.0-alpha.8` (`c805287`); the TBC TOC stays at 0.15.4 until the author decides a TBC release.
+TESTING §38-§40 are written for alpha.8 (the measure now needs the author hurt **in combat**, R1).
+
 ### M5 — launch (phase 5) → `1.0.0`
 
 *Exit:* on the launch client (2026-11-04), level 60 values measured on a dummy for the healing

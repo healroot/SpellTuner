@@ -4,17 +4,18 @@ Rewritten by the lead after every commit and every hand-out. A successor continu
 alone. Worktree: `/home/penek/projects/addons/SpellTuner/.claude/worktrees/manademon-folder-continue-41eabc`,
 branch `claude/manademon-folder-continue-41eabc`.
 
-Last updated: 2026-09-29, after T20 (review R6, the author's ruling "Fix both lines": the danger
-line a plan decides on is causal). Every Forever TOC at `1.0.0-alpha.8` (T20 1c76605, T20b 753cd96, the
-bump in the commit carrying this revision); the TBC TOC at 0.15.4 (the author decides a TBC release
-separately). All 42 review findings fixed. Next: T21 (drafts of its CLAUDE.md and TESTING edits are
-in the tree, uncommitted).
+Last updated: 2026-09-29, after T21 (docs up to alpha.8). Review R6 is ruled (the author: "Fix both
+lines") and fixed: the danger line a plan decides on is causal. Every Forever TOC at
+`1.0.0-alpha.8` (T20 1c76605, T20b 753cd96, the bump c805287); the TBC TOC at 0.15.4 (the author decides a TBC release
+separately). All 42 review findings fixed. Nothing is running;
+nothing is handed out. Next: the author's §38-§40 reports on alpha.8.
 
 ## Committed (newest first)
 
 | hash | what |
 |---|---|
-| (the commit carrying this revision) | alpha.8: every Forever TOC + the probecheck / consolecheck pins; R6 marked Fixed in the review; TOOLS rows for solvercheck / coachforever; HISTORY entry; this handover |
+| (the commit carrying this revision) | T21 docs (lead): CLAUDE.md rows for the review fixes and T20/T20b, intro to alpha.8; ROADMAP section for the review and R6; TESTING §38-§40 written for alpha.8 (R1 measure in combat, R2, R8/R9, R5, R12/R26, R39/R40, R4); HISTORY; this handover |
+| c805287 | alpha.8: every Forever TOC + the probecheck / consolecheck pins; R6 marked Fixed in the review; TOOLS rows for solvercheck / coachforever; HISTORY entry; this handover |
 | 753cd96 | T20b (R6, second half): `SM.DangerHitFromOthers` (leave-one-out by id, name and level); both builders set `tg.dangerPrior` (the biggest hit that person took in other recordings over this scenario's max); a target with a prior is read as measured; solvercheck 77, coachforever 18 |
 | 1c76605 | T20 (R6): `SM.DangerLine` -- a plan decides on the biggest hit so far (prior / floor before the first), the score keeps the whole-fight line; `Solver:AtRisk` and rule 8 read it; synthetic scenarios unchanged; DECISIONS entry for the ruling; solvercheck 74, coachforever 17 |
 | a7d604e | alpha.7: every Forever TOC + the probecheck / consolecheck pins; the review annotated `**Fixed** in <hash>` / `**Skipped**` per R-number; TOOLS suite counts; HISTORY entry; this handover |
@@ -57,20 +58,15 @@ docs/HISTORY.md's 2026-09-29 entry covers T18 onwards.
 
 ## In the tree, not committed
 
-- `CLAUDE.md`, `docs/TESTING.md` -- the lead's T21 drafts (review-fix notes on the file table rows;
-  §38-§40 steps changed where a fix changes what the author sees: §38.2/§38.5 measure in combat
-  (R1), §38.3 snapshot (R2), §39 meter `-` / gate wording / tick hover / coach strategy / Review,
-  §40.2 regen (R4), install alpha.8). Not committed; finish after alpha.8.
+Nothing.
 
 ## Next, in order
 
 1. **The review's groups not accepted: none.** All seven fix branches (`fix/review-measure`,
    `-recorder`, `-replay`, `-probe`, `-core`, `-spells`, `-shared`) were accepted and are in HEAD;
    there is no review group left to redo.
-2. **R6** (ruled "Fix both lines", DECISIONS "Forever review R6"): T20, T20b and alpha.8
-   committed; next **T21** docs (CLAUDE.md file table, TESTING §38-§40,
-   ROADMAP-FOREVER up to alpha.8 and the review fixes 12ba325..a12bcf6; TESTING steps changed only
-   where a fix changed what the author sees).
+2. **R6**: ruled ("Fix both lines", DECISIONS "Forever review R6") and closed -- T20 1c76605, T20b
+   753cd96, alpha.8 c805287, T21 docs. Nothing of the review is left.
 3. **When the author's reports arrive:** §38.2 step 4 (gross or effective) -> `SM.HEAL_AMOUNT` and
    gate 8 two-sided; §38.3's `bar UnitHealthMax(party1): ...` line -> flip `MD.API.BAR_READS_MAX`
    (one word, `Client/API.lua` 333) if `read plain`, both out of combat and in the snapshot; §39 ->

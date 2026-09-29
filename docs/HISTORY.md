@@ -3616,5 +3616,14 @@ rules coach never read the line and does not change, on TBC or Forever (confirme
 All 42 review findings are now fixed (R6 marked in the review). Every other suite keeps its count;
 apicheck 0 findings. Every Forever TOC at **`1.0.0-alpha.8`** (probecheck and consolecheck pins
 follow); the TBC TOC stays at 0.15.4 until the author decides a TBC release, though the shared
-solver change is in the TBC tree too. **Next:** T21 (CLAUDE.md, TESTING §38-§40 and the roadmap up
-to alpha.8), then the author's §38 / §39 / §40 reports on alpha.8, then M5.
+solver change is in the TBC tree too. **Next:** the author's §38 / §39 / §40 reports on alpha.8, then M5.
+
+**T21, docs** (the lead, same day): `CLAUDE.md`'s file table carries the review fixes per row and
+T20 / T20b on the engine and solver rows, its intro names alpha.7 and alpha.8;
+`docs/ROADMAP-FOREVER.md` gains a section for the review and R6; `docs/TESTING.md` §38-§40 are
+written for alpha.8 -- changed only where a fix changes what the author sees: the measure needs the
+author hurt **in combat** (R1; §38.2, §38.5), heals on yourself only (R14), the probe's snapshot
+needs a fight longer than 2 s (R2; §38.3), the opener counted and an unreadable meter shown as
+`own - others -` (R8, R9; §39.1), the meter gates' wording, the reconstructed tick hover, the card's
+colours and `/st coach 1 safe` (R9, R27, R5, R26, R12; §39.2), the Review tab's `~N%` and no Export
+(R39, R40), practice regenerating (R4; §40.2).

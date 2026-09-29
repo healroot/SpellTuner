@@ -988,8 +988,10 @@ not moved).
 ./release.sh --install "/mnt/e/Blizzard/World of Warcraft/_classic_beta_/Interface/AddOns"
 ```
 
-At character select the AddOns list shows SpellTuner and the three modules at **1.0.0-alpha.4**.
-Log in as Healroot, `/console scriptErrors 1`. Any error box or "blocked" dialog at any step: note
+At character select the AddOns list shows SpellTuner and the three modules at **1.0.0-alpha.4**
+or later -- install the newest build (**1.0.0-alpha.8** as of 2026-09-29) for every session of
+§38-§40; the steps below are written for it. Log in as Healroot, `/console scriptErrors 1`. Any
+error box or "blocked" dialog at any step: note
 it, carry on, and `/st dump` at the end of that session (paste it under the session's other text).
 
 ### 38.1 Session 1 -- the M2 re-check, solo (20 min)
@@ -1020,9 +1022,17 @@ when a spell's window has **closed** -- about a second after a direct heal lands
 HoT or DoT is applied -- not when the first number lands. Several can be open together; that is
 the point.
 
-1. **Get hurt first.** Lose more health than your biggest heal's top (a fall, or let a mob hit you,
-   then kill it). The measure only knows the damage it saw **while it was on**, so switch it on
-   before you get hurt.
+**Since alpha.7 the measure only knows missing health inside a fight.** Out of combat the game
+gives health back with no event it can see (regeneration, food), so it forgets what you lost when
+the fight ends. Every "while hurt" below therefore means **in combat, with the mob still on you**:
+pull something weak, let it hit you, and heal yourself while it is still fighting. A heal cast
+after the fight reads `below range, missing health not known (0 known)` when it falls short --
+not a fault, just the wrong moment. Heal **yourself** (target yourself or self-cast): a heal cast
+at someone else is not judged at all, and the dump counts it.
+
+1. **Get hurt first, in combat.** Switch the measure on, pull a weak mob and let it take more
+   health off you than your biggest heal's top; keep it alive (and on you) while you do steps 2
+   and 3. A fall does not count any more (it happens out of combat).
 2. **The case that went wrong last time:** Rejuvenation (your top rank) on yourself, then at once
    Healing Touch (top rank) while the Rejuvenation is still ticking. Expected: a Healing Touch line
    `landed <n> ... in range` (or `crit range`), and 12 s later a Rejuvenation line
@@ -1031,8 +1041,9 @@ the point.
 4. **Gross or effective (Q3's open half):** heal to full (or wait), then **one Healing Touch Rank 1
    on yourself at full health**. The line says `nothing landed` or `capped at missing health 0
    (amount looks effective)` if the game counts only the healing that took; `landed 48 ... in
-   range` if it counts the whole heal. Then **the same once more with a little health missing**
-   (about 10-20 below full): `capped at missing health <d>` means effective.
+   range` if it counts the whole heal. Then **the same once more with a little health missing, in
+   combat** (a weak mob has taken about 10-20 off you and is still fighting): `capped at missing
+   health <d>` means effective.
 5. **Damage on a mob** (a slow one, or a dummy): Moonfire, then Wrath **while Moonfire is still
    ticking**, then let Moonfire run out. Expected: Moonfire `landed ... in range; ... 4 ticks
    6+6+6+6 = 24 every 3.0 s ... matches` (numbers for your rank), Wrath `landed ... in range`. A
@@ -1057,7 +1068,8 @@ arrives under, and whether a status bar gives a secret back.
 1. In the party, out of combat, `/st probe`. Copy the report.
 2. Pull a mob **with the party member fighting it too**, heal both of you and cast one Wrath,
    finish the fight, then `/st probe` again. Copy the report. (The probe snapshots the readings 2 s
-   into the fight on its own.)
+   into the fight on its own -- **only if the fight is still on then**: a fight over in under 2 s is
+   counted as `skipped` and answers nothing, so make it last.)
 3. Things to read in the reports (you do not need to interpret them, just paste): `== shapes` now
    has three `tooltip` blocks (Healing Touch, Rejuvenation, Wrath); `== readings now` ends with
    `UnitGUID(party1)`, `UnitName(party1)`, `UnitLevel(party1)`, `UnitClass(party1)`,
@@ -1093,9 +1105,10 @@ text before and after, our numbers before and after, the two probe sections. If 
 Healing Touch Rank 4 is learned at 20. This is the measurement for a server-side downrank
 penalty (`FOREVER-PLAN.md` §6 Q10).
 
-1. At level 20 (or the first level at which you have Rank 4), hurt, `/st measure` on: **Healing
-   Touch Rank 1, Rank 4 and your highest rank, three casts each** (session 2's rules: hurt first,
-   one cast at a time, wait for its line).
+1. At level 20 (or the first level at which you have Rank 4), `/st measure` on, hurt **in combat**:
+   **Healing Touch Rank 1, Rank 4 and your highest rank, three casts each** (session 2's rules: hurt
+   first by a mob that is still fighting you, heal yourself, one cast at a time, wait for its
+   line).
 2. `/st measure dump` -> copy.
 3. **After the next level-up**, the same nine casts again and the dump again.
 
@@ -1103,7 +1116,7 @@ penalty (`FOREVER-PLAN.md` §6 Q10).
 at. What I look for: Rank 1 and Rank 4 landing inside their text's range at both levels means no
 server rule; a shortfall that grows as the rank falls further below your level is a rule, and the
 two dumps let me fit it. (A `below range, missing health not known` line means you were not hurt
-enough -- redo that cast.)
+enough, or the fight had ended -- redo that cast in combat.)
 
 ### 38.6 Session 6 -- the second class (20 min; the M2 exit needs two)
 
@@ -1132,7 +1145,8 @@ adds M3: the **Recorder** and **Replay** modules now do something. Nothing here 
 client yet; every step is the first time.
 
 **Install** as in §38 (`./release.sh --install ...`). At character select SpellTuner and the three
-modules read **1.0.0-alpha.5**. `/console scriptErrors 1`; any error box: note it, carry on,
+modules read **1.0.0-alpha.5** or later (install the newest, **1.0.0-alpha.8** as of 2026-09-29).
+`/console scriptErrors 1`; any error box: note it, carry on,
 `/st dump` at the end of the session.
 
 ### 39.1 Session 1 -- record a pull (20 min, in a party)
@@ -1147,7 +1161,9 @@ A party with at least one other player (a follower dungeon counts -- say which).
    remember how many you cancelled in total.
 4. After combat wait two seconds, then `/st rec`. Expected: one line `1. <zone> <n>s <c> casts
    <e> events meter own <x> others <y>`. Write down `<c>` next to how many casts you think you
-   made, and open the game's damage meter on Healing: is `own` your healing done for that pull?
+   made (the cast that started the pull counts too), and open the game's damage meter on Healing:
+   is `own` your healing done for that pull? `own - others -` means the meter could not be read for
+   that pull (empty, only part of it, or the next pull had already started) -- say which it was.
 5. Two more pulls the same way (so three are kept); `/st rec` again.
 
 **Paste back** into `docs/probe/<build>-alpha5-rec.md`: the `/st rec` lines, the meter's numbers
@@ -1156,15 +1172,22 @@ for each pull, how many casts you cancelled.
 ### 39.2 Session 2 -- validate, replay, coach (15 min, anywhere out of combat)
 
 1. `/st validate 1` -- copy every line. Eight gates; the mana ones say `(modelled pool)`, the
-   health one may say `max estimated`, the last one is `heals attributed ... only a shortfall is
-   checked ...`. Which failed?
+   health one may say `max estimated` (on an excluded member's line too), the last one is `heals
+   attributed ... only a shortfall is checked ...`. Where the meter was not read, the meter gates
+   fail with `no damage meter reading after the fight (<why>)`. Which failed?
 2. `/st replay 1`. The window opens with a row per party member; a grey line under the title says
    `health reconstructed from UNIT_COMBAT; party max estimated`. Press play at 1x for 20 s: do the
-   bars move when you remember them moving? Does a cast you cancelled show as cancelled?
-   **Screenshot** once mid-fight. After a few seconds the right column (suggested) fills in -- or a
+   bars move when you remember them moving? Does a cast you cancelled show as cancelled? Hover a
+   health tick: it should say `Reconstructed health`, not recorded. **Screenshot** once mid-fight.
+   After a few seconds the right column (suggested) fills in -- or a
    hint names the gate that failed and says `force`.
-3. `/st coach 1` (or `/st coach 1 force` if it refused) -- copy the card.
-4. `/st` -> Reports -> Review: three rows; hover each; press Play on one.
+3. `/st coach 1` (or `/st coach 1 force` if it refused) -- copy the card. Its grey lines are grey
+   (not `|cff888888...` as text). The card offers `safe / health / cheap / regen`: try
+   `/st coach 1 safe` -- no new search; the replay's suggested column then draws that plan.
+   (Since alpha.8 a solver plan decides only on the hits already taken, so it may differ from what
+   an older build suggested for the same pull.)
+4. `/st` -> Reports -> Review: three rows; hover each; press Play on one. The low-mana column reads
+   `~N%` (modelled, the tooltip says so), and there is no Export button on this client.
 
 **Paste back** into `docs/probe/<build>-alpha5-replay.md`: the validate lines, the screenshot, the
 card, anything the Review tab showed that looked wrong (a `0 casts` row, an empty tooltip).
@@ -1188,7 +1211,8 @@ Two changes you may meet in §39's steps:
   report (the line `bar UnitHealthMax(party1): ...`). Nothing to do here; it ships off.
 
 **Install** as in §38 (`./release.sh --install ...`). At character select SpellTuner and the three
-modules read **1.0.0-alpha.6**. `/console scriptErrors 1`; any error box: note it, carry on,
+modules read **1.0.0-alpha.6** or later (install the newest, **1.0.0-alpha.8** as of 2026-09-29).
+`/console scriptErrors 1`; any error box: note it, carry on,
 `/st dump` at the end of the session.
 
 ### 40.1 Session 1 -- the imports on this client (10 min, anywhere, out of combat)
@@ -1220,7 +1244,8 @@ only, never from memory.
    and what it shows for it.
 2. Press **Start practice**. Hover a frame and press. Press deep in a GCD (it should say "Another
    action is in progress" at once) and right before a GCD ends (it should go off when it ends).
-   Space pauses. Play the whole fight once.
+   Space pauses. Play the whole fight once. Your mana should regenerate between casts (since
+   alpha.7; before, practice on Forever never gave any back).
 3. When it ends the replay opens and the suggested column fills in after a few seconds.
    **Screenshot** once. Then `/st` -> Reports -> Review -> Practice: is it listed? Hover it; press
    Play.
