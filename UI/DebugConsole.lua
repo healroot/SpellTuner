@@ -196,8 +196,16 @@ local function CreateDebugConsoleFrame()
 
     enableCB = UI.CreateCheckButton(consoleFrame, "Enable Debug Logging", function(checked)
         MD.db.debug.enabled = checked
-        MD:Debug("other", "debug logging enabled (v%s, %s level %d, talents: %s)",
-            MD.version, MD.player.class, MD.player.level, MD:TalentSummary())
+        -- MD:TalentSummary is Core_TBC.lua's (the TBC talent scan); Forever has
+        -- no talent scan, so its header line leaves talents out rather than
+        -- calling a method that is not there (review R15/R16).
+        if type(MD.TalentSummary) == "function" then
+            MD:Debug("other", "debug logging enabled (v%s, %s level %d, talents: %s)",
+                MD.version, MD.player.class, MD.player.level, MD:TalentSummary())
+        else
+            MD:Debug("other", "debug logging enabled (v%s, %s level %d)",
+                MD.version, MD.player.class, MD.player.level)
+        end
         RefreshLog()
     end, "Enable Debug Logging", "Records regen / mana ticks / casts / clock state into this window (memory only, nothing is saved).", "Leave it off when you are not testing.")
     enableCB:SetPoint("TOPLEFT", 10, -12)

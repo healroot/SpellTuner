@@ -550,13 +550,35 @@ function S.UseProfile(name)
     S.errorHandler = initialErrorHandler
     function geterrorhandler() return S.errorHandler end
     function seterrorhandler(h) S.errorHandler = h end
-    -- A fixed two-line stack: the first line names THIS file (a stand-in for
-    -- the handler's own frame, which Core_Forever.lua's capture must skip),
-    -- the second names where the error actually happened -- so a suite can
-    -- tell the two apart the same way it would on the client.
-    function debugstack(level, lines1, lines2)
-        return "Interface/AddOns/SpellTuner/Core_Forever.lua:1: in function <handler>\n" ..
-               "Interface/AddOns/SpellTuner/Core.lua:1: in function <error>"
+    -- review-core: the REAL stack, one line per level the way the client
+    -- prints it (level 1 = the function that called debugstack; C frames as
+    -- "[C]", tail calls as "(tail call)"; the top `lines1` and bottom `lines2`
+    -- with "..." between), so a capture that names the adapter's frames
+    -- instead of the code that raised fails here as it does in the client.
+    local dbg = debug -- review-core
+    function debugstack(level, lines1, lines2) -- review-core
+        level, lines1, lines2 = level or 1, lines1 or 12, lines2 or 10
+        local all, l = {}, level + 1
+        while true do
+            local info = dbg.getinfo(l, "Sln")
+            if not info then break end
+            local name = info.name and ("'" .. info.name .. "'") or "?"
+            if info.what == "C" then
+                all[#all + 1] = "[C]: in function " .. name
+            elseif info.what == "tail" then
+                all[#all + 1] = "(tail call): ?"
+            else
+                all[#all + 1] = string.format("%s:%d: in function %s", info.short_src,
+                    info.currentline or 0, info.name and name or ("<" .. info.short_src .. ":" .. (info.linedefined or 0) .. ">"))
+            end
+            l = l + 1
+        end
+        if #all <= lines1 + lines2 then return table.concat(all, "\n") .. "\n" end
+        local out = {}
+        for i = 1, lines1 do out[#out + 1] = all[i] end
+        out[#out + 1] = "..."
+        for i = #all - lines2 + 1, #all do out[#out + 1] = all[i] end
+        return table.concat(out, "\n") .. "\n"
     end
 
     function UnitAffectingCombat() return S.inCombat end

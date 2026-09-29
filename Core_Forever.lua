@@ -101,8 +101,9 @@ end)
 -- repeat is only counted and never forwarded; another addon's error, or
 -- anything that is not a plain readable string, passes through untouched and
 -- is never recorded. Whether replacing the handler is even allowed here is
--- UNKNOWN (Facts) -- the whole install, and the whole handler body, run under
--- pcall so a "no" shows up as a recorded reason, never a login-time error.
+-- UNKNOWN (Facts) -- the whole install, and all of the handler's own
+-- bookkeeping, run under pcall so a "no" shows up as a recorded reason, never
+-- a login-time error; only the forward to the previous handler does not (R21).
 --------------------------------------------------------------------------------
 MD.errors = {}
 MD.errorTotal = 0
@@ -120,14 +121,28 @@ local function IsOurs(msg)
     return msg:find("SpellTuner", 1, true) ~= nil
 end
 
--- MD.API.DebugStack(2, 1, 0) names this handler's own frame first (it is the
--- thing that called debugstack) -- skip any line naming this file and hand
--- back the first one that does not, so the dump points at the code that
--- actually erred rather than at the handler that caught it.
+-- The stack is read through the adapter (MD.API.DebugStack -> MD.API.Call ->
+-- pcall(debugstack)), from inside Record's pcall, under the handler, under
+-- the client's call of it -- so its first lines are the capture's own frames,
+-- not the code that raised (review R22: asking for level 2, one line, always
+-- named Client/API.lua's Call). Read from level 1, several lines, and skip
+-- every leading line that belongs to the capture: this file, the adapter,
+-- C frames (pcall, and `error` itself), tail-call markers and the "..."
+-- elision; the first line left is the frame that raised.
+local STACK_LINES = 16
+local function IsCaptureLine(line)
+    return line:find("Core_Forever.lua", 1, true) ~= nil
+        or line:find("Client/API.lua", 1, true) ~= nil
+        or line:find("Client\\API.lua", 1, true) ~= nil
+        or line:find("[C]", 1, true) ~= nil
+        or line:find("(tail call)", 1, true) ~= nil
+        or line == "..."
+end
+
 local function FirstUsefulLine(stack)
     if type(stack) ~= "string" then return nil end
     for line in stack:gmatch("[^\n]+") do
-        if not line:find("Core_Forever.lua", 1, true) then
+        if not IsCaptureLine(line) then
             return line
         end
     end
@@ -135,55 +150,57 @@ local function FirstUsefulLine(stack)
 end
 
 -- Runs entirely under pcall's protection (both the install below and every
--- call to the handler itself); never calls MD:Print/MD:Debug/anything that
--- could error back into it.
+-- call to Record); never calls MD:Print/MD:Debug/anything that could error
+-- back into it.
 local function InstallErrorHandler()
     local prev = MD.API.GetErrorHandler()
+    if type(prev) ~= "function" then prev = nil end
 
-    local function handler(msg, ...)
-        -- Packed once, up front: "..." only works inside the vararg function
-        -- itself, and the body below runs inside a nested closure (so ONE
-        -- pcall covers the whole thing, including the classifying reads).
-        local extraN, extra = select("#", ...), { ... }
+    -- Classifies and records `msg`; answers true when the previous handler
+    -- should be shown it too, false for a repeat of our own error.
+    local function Record(msg)
+        if type(msg) ~= "string" or MD.API.IsSecret(msg) then return true end
+        if not IsOurs(msg) then return true end
 
-        local safe, result = pcall(function()
-            local function fwd()
-                if prev then return prev(msg, unpack(extra, 1, extraN)) end
-            end
-
-            if type(msg) ~= "string" or MD.API.IsSecret(msg) then
-                return fwd()
-            end
-            if not IsOurs(msg) then
-                return fwd()
-            end
-
-            local key = msg:sub(1, 300)
-            local now = GetTime()
-            local entry = errorIndex[key]
-            if entry then
-                entry.count = entry.count + 1
-                entry.last = now
-                MD.errorTotal = MD.errorTotal + 1
-                return -- a repeat of our own error is never forwarded
-            end
-
-            if #MD.errors >= MAX_DISTINCT_ERRORS then
-                MD.errorOverflow = MD.errorOverflow + 1
-                MD.errorTotal = MD.errorTotal + 1
-                -- new to the client even though we stop keeping it ourselves
-                return fwd()
-            end
-
-            entry = { msg = key, count = 1, first = now, last = now,
-                      stack = FirstUsefulLine(MD.API.DebugStack(2, 1, 0)) }
-            errorIndex[key] = entry
-            MD.errors[#MD.errors + 1] = entry
+        local key = msg:sub(1, 300)
+        local now = GetTime()
+        local entry = errorIndex[key]
+        if entry then
+            entry.count = entry.count + 1
+            entry.last = now
             MD.errorTotal = MD.errorTotal + 1
-            return fwd()
-        end)
-        if safe then return result end
-        return nil -- the handler must never raise back into the client
+            return false -- a repeat of our own error is never forwarded
+        end
+
+        if #MD.errors >= MAX_DISTINCT_ERRORS then
+            MD.errorOverflow = MD.errorOverflow + 1
+            MD.errorTotal = MD.errorTotal + 1
+            -- new to the client even though we stop keeping it ourselves
+            return true
+        end
+
+        entry = { msg = key, count = 1, first = now, last = now,
+                  stack = FirstUsefulLine(MD.API.DebugStack(1, STACK_LINES, 0)) }
+        errorIndex[key] = entry
+        MD.errors[#MD.errors + 1] = entry
+        MD.errorTotal = MD.errorTotal + 1
+        return true
+    end
+
+    -- The bookkeeping runs under its own pcall and is finished before the
+    -- forward, which is a TAIL call from this function (review R21): the
+    -- previous handler (the client's, or BugGrabber's) reads the stack and
+    -- locals at fixed levels relative to itself, so it must run where it
+    -- would have run without us -- not under a pcall and a closure of ours.
+    -- A raise inside Record is ours and is swallowed (the message is then
+    -- forwarded, so the client still sees it); a raise inside the previous
+    -- handler is that handler's own, exactly as it would be had SpellTuner
+    -- never installed anything.
+    local function handler(msg, ...)
+        local ok, forward = pcall(Record, msg)
+        if ok and forward == false then return nil end
+        if prev then return prev(msg, ...) end
+        return nil
     end
 
     -- nil,nil on success; nil,"absent"/"error"[,detail] if the adapter could
