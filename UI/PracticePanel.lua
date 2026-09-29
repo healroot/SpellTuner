@@ -271,12 +271,20 @@ function MD.DashboardParts.CreatePractice(parent, width)
         local out = {}
         for _, b in ipairs(PR.Binds()) do
             local id = PR.SpellFor(b)
-            local label = (SD.families[b.family] and SD.families[b.family].label) or b.family
+            local label = b.family and ((SD.families[b.family] and SD.families[b.family].label) or b.family)
+                or "no spell picked"
             if b.rank and id and SD.spells[id].rank == b.rank then label = label .. " " .. b.rank end
+            local note = ""
+            if not id and b.family then
+                if PR.InBook(b) then note = "  |cffff9966(not trained)|r"
+                else note = "  |cffff9966(not in your spellbook)|r" end
+            end
             out[#out + 1] = string.format("|cffffcc00%s|r  %s%s",
-                b.key ~= "" and b.key or "unbound", label, id and "" or "  |cffff9966(not trained)|r")
+                b.key ~= "" and b.key or "unbound", label, note)
         end
-        if #out == 0 then return "|cffff9966Nothing is bound - press Edit bindings.|r" end
+        if #out == 0 then
+            return "|cffff9966Nothing is bound - Import your keybindings, Cell or Clique, or add one, in Edit bindings.|r"
+        end
         out[#out + 1] = "|cff888888Hover a frame and press. Import from Cell or Clique in the bindings window.|r"
         return table.concat(out, "\n")
     end
@@ -297,6 +305,14 @@ function MD.DashboardParts.CreatePractice(parent, width)
         for _, row in ipairs(rows) do for _, eb in ipairs(row.fields) do if eb:HasFocus() then eb:ClearFocus() end end end
         for _, eb in ipairs(fightFields) do if eb:HasFocus() then eb:ClearFocus() end end
         local st = Setup()
+        if #PR.Binds() == 0 then
+            statusFS:SetText("|cffff9966Nothing is bound yet - import your bindings or add one in Edit bindings first.|r")
+            return
+        end
+        if MD.API.client == "forever" and not PR.FirstFamily() then
+            statusFS:SetText("|cffff9966No healing spell in your spellbook for practice to cast.|r")
+            return
+        end
         if MD.OpenPractice then MD:OpenPractice(PR.CopySetup(st), st.fixedSeed) end
     end)
 

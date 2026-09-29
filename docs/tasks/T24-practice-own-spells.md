@@ -1,6 +1,6 @@
 # T24 -- practice offers only the spells in your own spellbook (Forever)
 
-Status: handed out 2026-09-29.
+Status: **accepted** 2026-09-29 (handed out in d558432).
 
 ## Goal
 
@@ -111,4 +111,35 @@ styling or layout; every file T25 and T26 own (Rules).
 
 ## Report
 
-(implementer)
+**What I did, file by file.**
+
+- `tools/practiceforever.lua`: the six new cases, names verbatim, appended after the ASCII case and before the totals. Written first and run against the unchanged code: 3 of them failed and the run then died at case 5 (`attempt to call field 'FirstFamily' (a nil value)`, line 398, a missing function, which is a failure of that case too). Before-run tail:
+  - `on Forever nothing is bound until you bind or import  FAIL - n=6 text=... BUTTON5 Lifebloom (not trained) ... name=Healing Touch`
+  - `the TBC author's defaults saved on Forever are dropped once  FAIL - dropped=false kept=true n=6`
+  - `a bind for a spell not in your spellbook says so and casts nothing  FAIL - text=false nil=true missing=0 bound=1`
+  - `the spell picker lists only families in your spellbook  ok` (already book-only, as the task's Facts said; now held)
+  - then the crash at case 5 and exit 1; case 6 never ran.
+- `Engine/Practice.lua`: `PR.Binds()` on Forever: nothing saved gives `{}` (stored), an exact copy of `PR.DEFAULT_BINDS` (length, key, family, rank in order) is replaced by `{}` once with one `MD:Debug("other", ...)` line, any other list is returned whole; TBC still gets the defaults. New `PR.InBook(bind)` (Forever: family in `SD.all` with at least one rank; TBC: always true), new `PR.FirstFamily()` (`SD.familyOrder`, then Swiftmend, first with a known rank, else nil). `PR.SpellFor` returns nil for a bind not in the book and never indexes a nil `SD.known` / `SD.maxRank`. One addition the task did not name: `PR.BindFor` skips a row with no family (`b.key == key and b.family`), so a row the picker left empty is not a binding and the press propagates. Without it, `UI/ReplayWindow.lua` 1836 (`"You don't know " .. bind.family`) would raise on a press of such a row; that line I did not touch (not my file).
+- `UI/PracticePanel.lua`: `BindLines()` says `(not in your spellbook)` for a Forever bind not in the book (`(not trained)` kept for one that is in the book but unlearned, and on TBC); a row with no family reads `no spell picked` with no note; nothing bound reads the sentence the task gives. Start with nothing bound writes `Nothing is bound yet - import your bindings or add one in Edit bindings first.` in the status line and opens nothing; on Forever, with no family `PR.FirstFamily()` finds, `No healing spell in your spellbook for practice to cast.`
+- `UI/BindingsWindow.lua`: a new row's family is `PR.FirstFamily()` on Forever (nil possible; `Rejuvenation` on TBC as before); a row with no family calls `SetValue(nil)`, which shows nothing; the Defaults button is hidden on Forever. No restyle, move or resize.
+
+**After.** `bash tools/run.sh tools/practiceforever.lua` ends `15 ok, 0 failed`. `luac -p` (the repo's own `tools/.lua/lua-5.1.5/src/luac`, there is no `luac` on PATH) is clean on `Engine/Practice.lua`, `UI/PracticePanel.lua`, `UI/BindingsWindow.lua` and `tools/practiceforever.lua`.
+
+**The loop (last line of each).** simcheck PASS; reccheck 54, replaycheck 80, replayui 98, runcheck 78, reviewui 44, navui 25, dashui 56, regencheck 27, simwindow 8, solvercheck 77, timeline 27, spelltip 48, practice 74, practiceui 49, migrate 7; probecheck 82, forevercheck 13, modulecheck 14, kitcheck 7, recordcheck 24, scenariocheck 12, gatecheck 9, replayforever 11, reviewforever 10, coachforever 18, practiceforever 15, bindscheck 6, parsecheck 12, bookcheck 17, clockcheck 17, spellsui 17, releasecheck 13; corecheck 10, svcheck 6, consolecheck 14; adaptercheck 22 (forever) and 15 (tbc). Numbers as I found them for the suites T25 / T26 are changing: tipcheck 22 (baseline 17), measurecheck 30 (baseline 26). `python3 tools/apicheck.py`: 0 findings, 44 files, 45 globals; `--selftest` 10 of 10.
+
+**One flake.** adaptercheck printed `21 ok, 1 failed` in the first full loop (while T25's `Client/API_Forever.lua` was being edited); after a minute's wait its re-run was `22 ok, 0 failed`. Not investigated, not mine.
+
+**Skipped.** Nothing. I did not run a TBC-flavour pass of the practice suites beyond the loop (practice 74 and practiceui 49 are the TBC ones and are unchanged).
+
+**Notes / questions.** The nothing-bound sentence is longer than the old one and will wrap in the panel; I did not touch layout. The dropped-defaults rule means a Forever player who deliberately builds exactly the six TBC defaults gets them dropped once too; that is what the task specifies.
+
+## Lead review (2026-09-29)
+
+Accepted as delivered, no lead change. Read the diff: every change behind `MD.API.client ==
+"forever"` apart from the Start refusal with nothing bound (as the task allowed); only an exact copy
+of `PR.DEFAULT_BINDS` is dropped; no restyle (the Defaults button hidden, texts changed). The two
+additions beyond Files are right and inside the implementer's own file: `PR.BindFor` skips a row with
+no spell (so `UI/ReplayWindow.lua`'s `"You don't know " .. bind.family` can never see a nil family --
+a bind not in the book still reaches it with its family, which is the message it should get), and
+`no spell picked` in the summary. Lead's runs: practiceforever 15, practice 74, practiceui 49,
+bindscheck 6, replayui 98, `luac -p` clean.

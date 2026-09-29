@@ -137,7 +137,11 @@ Render = function()
             row.key:EnableKeyboard(false)
         end
         row.spell:SetItems(items)
-        row.spell:SetValue((b.family or "Rejuvenation") .. ":" .. (b.rank or 0))
+        if b.family then
+            row.spell:SetValue(b.family .. ":" .. (b.rank or 0))
+        else
+            row.spell:SetValue(nil)
+        end
         row:Show()
     end
     for i = #binds + 1, #rows do rows[i]:Hide() end
@@ -194,7 +198,9 @@ local function Build()
     addBtn:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 12, 72)
     addBtn:SetScript("OnClick", function()
         local b = Binds()
-        b[#b + 1] = { key = "", family = "Rejuvenation" }
+        local family = "Rejuvenation"
+        if MD.API.client == "forever" then family = MD.Practice.FirstFamily() end
+        b[#b + 1] = { key = "", family = family }
         Render()
         Status("click the new row's key box and press something.")
     end)
@@ -204,6 +210,8 @@ local function Build()
         "Button5 Lifebloom, Alt-Button5 Rejuvenation, Shift-Button5 Rejuvenation Rank 5,",
         "left Regrowth, right Swiftmend, Shift-left Healing Touch.")
     defBtn:SetPoint("LEFT", addBtn, "RIGHT", 6, 0)
+    -- no Forever defaults exist: the shipped ones are the TBC author's Cell bindings
+    if MD.API.client == "forever" then defBtn:Hide() end
     defBtn:SetScript("OnClick", function()
         MD.db.practiceBinds = nil
         Binds()

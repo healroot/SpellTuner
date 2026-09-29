@@ -267,6 +267,170 @@ for _, f in ipairs(S.allFrames) do
 end
 check("every string the panel and the bindings window paint is ASCII with no bare pipe", #bad == 0, bad[1])
 
+
+--------------------------------------------------------------------------------
+-- T24 (docs/tasks/T24-practice-own-spells.md): practice offers only the spells
+-- in your own spellbook. Nothing bound is the default on Forever; the TBC
+-- author's shipped defaults are dropped once; a family the book lacks is said
+-- so and casts nothing; the picker and a new row come from the Forever kit.
+--------------------------------------------------------------------------------
+local FAMILY_NAMES = { "Lifebloom", "Rejuvenation", "Regrowth", "Swiftmend", "HealingTouch", "Healing Touch" }
+-- the panel's own bindings text: the visible font string under the panel that
+-- carries the bindings summary (the key lines, or the nothing-bound sentence)
+local function PanelBindText()
+    panel:Render()
+    for _, f in ipairs(S.allFrames) do
+        if f.GetText and Under(f, panel.frame) and f:IsVisible() then
+            local okt, txt = pcall(f.GetText, f)
+            if okt and type(txt) == "string"
+               and (txt:find("Nothing is bound -", 1, true) or txt:find("Hover a frame and press", 1, true)) then
+                return txt
+            end
+        end
+    end
+    return nil
+end
+local function Lines(str)
+    local out = {}
+    for line in (str or ""):gmatch("[^\n]+") do out[#out + 1] = line end
+    return out
+end
+local function CountOf(str, needle)
+    local n, from = 0, 1
+    while true do
+        local a, b = str:find(needle, from, true)
+        if not a then return n end
+        n, from = n + 1, b + 1
+    end
+end
+
+do -- 1
+    MD.db.practiceBinds = nil
+    local b = PR.Binds()
+    local txt = PanelBindText()
+    local nameHit
+    for _, n in ipairs(FAMILY_NAMES) do if txt and txt:find(n, 1, true) then nameHit = n end end
+    check("on Forever nothing is bound until you bind or import",
+        type(b) == "table" and #b == 0 and MD.db.practiceBinds == b
+        and txt ~= nil and txt:find("Import", 1, true) ~= nil and txt:find("Edit bindings", 1, true) ~= nil
+        and nameHit == nil,
+        "n=" .. tostring(type(b) == "table" and #b) .. " text=" .. tostring(txt) .. " name=" .. tostring(nameHit))
+end
+
+do -- 2
+    local function CopyDefaults()
+        local out = {}
+        for i, d in ipairs(PR.DEFAULT_BINDS) do out[i] = { key = d.key, family = d.family, rank = d.rank } end
+        return out
+    end
+    MD.db.practiceBinds = CopyDefaults()
+    local dropped = PR.Binds()
+    local droppedOk = type(dropped) == "table" and #dropped == 0 and MD.db.practiceBinds == dropped
+    local changed = CopyDefaults()
+    changed[3].key = "CTRL-Q"
+    MD.db.practiceBinds = changed
+    local kept = PR.Binds()
+    local keptOk = #kept == #PR.DEFAULT_BINDS and kept[1].key == PR.DEFAULT_BINDS[1].key
+        and kept[3].key == "CTRL-Q" and kept[6].family == PR.DEFAULT_BINDS[6].family
+    check("the TBC author's defaults saved on Forever are dropped once", droppedOk and keptOk,
+        "dropped=" .. tostring(droppedOk) .. " kept=" .. tostring(keptOk) .. " n=" .. tostring(#kept))
+end
+
+do -- 3
+    MD.db.practiceBinds = { { key = "1", family = "Lifebloom" }, { key = "2", family = "Rejuvenation" } }
+    local lines = Lines(PanelBindText())
+    local lbLine, rejLine
+    for _, l in ipairs(lines) do
+        if l:find("Lifebloom", 1, true) then lbLine = l end
+        if l:find("Rejuvenation", 1, true) then rejLine = l end
+    end
+    local textOk = lbLine and lbLine:find("(not in your spellbook)", 1, true) ~= nil
+        and rejLine and rejLine:find("(not in your spellbook)", 1, true) == nil
+        and CountOf(table.concat(lines, "\n"), "(not in your spellbook)") == 1
+    local nilFor = PR.SpellFor(MD.db.practiceBinds[1]) == nil and PR.SpellFor(MD.db.practiceBinds[2]) ~= nil
+
+    local st3 = PR.CopySetup(setup)
+    st3.dur = 20
+    MD:OpenPractice(st3, 5)
+    local live3, st3w = MD.Replay._live(), MD.Replay._state()
+    assert(live3 ~= nil and live3.state == "running" and st3w.frame and st3w.frame:IsShown(),
+        "expected practice mode to open the replay window")
+    local tank = st3w.left.frames[1]
+    tank:GetScript("OnEnter")(tank)
+    S.Tick(1.0)
+    st3w.frame:GetScript("OnKeyDown")(st3w.frame, "1")
+    S.Tick(0.3)
+    local afterMissing = #live3.own
+    st3w.frame:GetScript("OnKeyDown")(st3w.frame, "2")
+    S.Tick(0.3)
+    local afterBound = #live3.own
+    check("a bind for a spell not in your spellbook says so and casts nothing",
+        textOk and nilFor and afterMissing == 0 and afterBound >= 1,
+        "text=" .. tostring(textOk) .. " nil=" .. tostring(nilFor) .. " missing=" .. tostring(afterMissing)
+        .. " bound=" .. tostring(afterBound))
+    Click(Button("End"))
+end
+
+do -- 4
+    MD.db.practiceBinds = { { key = "1", family = "Rejuvenation" } }
+    MD:ShowBindings()
+    local win = MD.BindingsWindow._rows()
+    local items = win[1] and win[1].spell.items or {}
+    local bad, n = nil, 0
+    for _, it in ipairs(items) do
+        local fam = it.id:match("^(%a+):")
+        n = n + 1
+        if not fam or fam == "Lifebloom" or not (SD.known[fam] and #SD.known[fam] > 0) then bad = it.id end
+        for _, c in ipairs(it.children or {}) do
+            local cf = c.id:match("^(%a+):")
+            if not cf or cf == "Lifebloom" or not (SD.known[cf] and #SD.known[cf] > 0) then bad = c.id end
+        end
+    end
+    check("the spell picker lists only families in your spellbook", n > 0 and bad == nil,
+        "items=" .. n .. " bad=" .. tostring(bad))
+end
+
+do -- 5
+    MD.db.practiceBinds = {}
+    MD:ShowBindings()
+    Click(Button("+ binding"))
+    local b1 = PR.Binds()[1]
+    local first = PR.FirstFamily()
+    local ok1 = b1 ~= nil and first ~= nil and b1.family == first and SD.known[first] ~= nil and #SD.known[first] > 0
+
+    local savedKnown = SD.known
+    SD.known = {}
+    MD.db.practiceBinds = {}
+    local emptyFirst = PR.FirstFamily()
+    local okc, errc = pcall(function() Click(Button("+ binding")) end)
+    local b2 = PR.Binds()[1]
+    local ok2 = okc and emptyFirst == nil and b2 ~= nil and b2.family == nil
+    SD.known = savedKnown
+    check("a new binding row picks a spell you have", ok1 and ok2,
+        "first=" .. tostring(first) .. " b1=" .. tostring(b1 and b1.family) .. " raised=" .. tostring(not okc and errc)
+        .. " b2=" .. tostring(b2 and b2.family))
+end
+
+do -- 6
+    MD.db.practiceBinds = {}
+    panel:Render()
+    local startB
+    for _, f in ipairs(S.allFrames) do
+        if f.kind == "Button" and f.text == "Start practice" and Under(f, panel.frame) then startB = f end
+    end
+    Click(startB)
+    local live6b = MD.Replay._live()
+    local said = false
+    for _, f in ipairs(S.allFrames) do
+        if f.GetText and Under(f, panel.frame) and f:IsVisible() then
+            local okt, txt = pcall(f.GetText, f)
+            if okt and type(txt) == "string" and txt:find("Nothing is bound yet", 1, true) then said = true end
+        end
+    end
+    check("Start with nothing bound says so and opens nothing", live6b == nil and said,
+        "button=" .. tostring(startB ~= nil) .. " live=" .. tostring(live6b ~= nil) .. " said=" .. tostring(said))
+end
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("  FAIL " .. f) end
 if #fails > 0 then os.exit(1) end

@@ -141,11 +141,44 @@ PR.DEFAULT_BINDS = {
 PR.MOUSE = { LeftButton = "BUTTON1", RightButton = "BUTTON2", MiddleButton = "BUTTON3",
              Button4 = "BUTTON4", Button5 = "BUTTON5" }
 
+-- The client the file is running on, read the one way a shared file may.
+local function OnForever()
+    return MD.API and MD.API.client == "forever"
+end
+
+-- T24: is this list exactly PR.DEFAULT_BINDS (same length, and in order the
+-- same key, family and rank)? On Forever those are the TBC author's Cell
+-- bindings, which 0.16.0 wrote into SavedVariables the first time the panel
+-- was opened.
+local function IsShippedDefaults(list)
+    if #list ~= #PR.DEFAULT_BINDS then return false end
+    for i, d in ipairs(PR.DEFAULT_BINDS) do
+        local b = list[i]
+        if type(b) ~= "table" or b.key ~= d.key or b.family ~= d.family or b.rank ~= d.rank then
+            return false
+        end
+    end
+    return true
+end
+
 function PR.Binds()
     local db = MD.db
-    if db and type(db.practiceBinds) == "table" then return db.practiceBinds end
+    local forever = OnForever()
+    if db and type(db.practiceBinds) == "table" then
+        -- only an exact copy of the shipped defaults is dropped, once; any
+        -- other list is the player's own and is kept whole
+        if forever and IsShippedDefaults(db.practiceBinds) then
+            db.practiceBinds = {}
+            if MD.Debug then
+                MD:Debug("other", "practice: the shipped TBC default bindings were saved on this client; dropped")
+            end
+        end
+        return db.practiceBinds
+    end
     local out = {}
-    for i, b in ipairs(PR.DEFAULT_BINDS) do out[i] = { key = b.key, family = b.family, rank = b.rank } end
+    if not forever then
+        for i, b in ipairs(PR.DEFAULT_BINDS) do out[i] = { key = b.key, family = b.family, rank = b.rank } end
+    end
     if db then db.practiceBinds = out end
     return out
 end
@@ -170,10 +203,41 @@ function PR.EnsureKit()
     end
 end
 
--- A binding's spell id: that rank if you know it, else your highest.
+-- T24: is the bind's family in the player's own spellbook? Forever's kit
+-- lists a family in SD.all only when the book has it. TBC's static table
+-- has every family, so it is always true there.
+function PR.InBook(bind)
+    if not OnForever() then return true end
+    if not bind or not bind.family then return false end
+    PR.EnsureKit()
+    local all = MD.SpellData.all
+    local ranks = all and all[bind.family]
+    return type(ranks) == "table" and #ranks > 0
+end
+
+-- T24: the first family this player has a known rank of -- the engine's own
+-- order, then Swiftmend -- else nil.
+function PR.FirstFamily()
+    PR.EnsureKit()
+    local SD = MD.SpellData
+    if not SD.known then return nil end
+    local order = {}
+    for _, f in ipairs(SD.familyOrder or {}) do order[#order + 1] = f end
+    order[#order + 1] = "Swiftmend"
+    for _, f in ipairs(order) do
+        local known = SD.known[f]
+        if type(known) == "table" and #known > 0 then return f end
+    end
+    return nil
+end
+
+-- A binding's spell id: that rank if you know it, else your highest. A bind
+-- whose family is not in the spellbook (Forever) casts nothing.
 function PR.SpellFor(bind)
     local SD = MD.SpellData
     if not bind or not bind.family then return nil end
+    if not PR.InBook(bind) then return nil end
+    if not SD.known or not SD.maxRank then return nil end
     if bind.rank then
         for _, id in ipairs(SD.known[bind.family] or {}) do
             if SD.spells[id].rank == bind.rank then return id end
@@ -184,7 +248,9 @@ end
 
 function PR.BindFor(key)
     for _, b in ipairs(PR.Binds()) do
-        if b.key == key then return b, PR.SpellFor(b) end
+        -- a row with no spell picked yet (T24: a new row on a character with no
+        -- family to offer) is not a binding: the press is left to the client
+        if b.key == key and b.family then return b, PR.SpellFor(b) end
     end
     return nil
 end
