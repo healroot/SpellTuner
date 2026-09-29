@@ -885,7 +885,11 @@ function S.UseProfile(name)
     -- retail 12.x documented shape, NOT observed on Forever -- the probe's == shapes checks it.
     -- The description line reuses C_Spell.GetSpellDescription, so it goes secret
     -- in combat for 5185 exactly the way the description itself does.
+    -- T25a: S.actionTooltips[slot] = the tooltip data C_TooltipInfo.GetAction(slot)
+    -- answers (nil otherwise), for the probe's `macro action` lines.
+    S.actionTooltips = {}
     C_TooltipInfo = {
+        GetAction = function(slot) return S.actionTooltips[slot] end,
         GetSpellByID = function(id)
             local name = SPELL_NAMES[id]
             if not name then return nil end

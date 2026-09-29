@@ -1,6 +1,6 @@
 # T25a -- the probe dumps what a macro action's tooltip data and GetActionInfo return
 
-Status: handed out 2026-09-29 after T25 (8ffd300) was accepted.
+Status: **accepted** 2026-09-29 (handed out in a24569e, after T25 8ffd300).
 
 ## Goal
 
@@ -75,4 +75,37 @@ for that hover. For the lead, so T25's assumed shapes become facts in the author
 
 ## Report
 
-(implementer)
+**Done.** `Client/Probe.lua`: `MacroLines()` (called last in `ShapesLines`) prints `macro types Spell=<v> Macro=<v>` (`absent` when `MD.API.Constant` reads nothing plain); walks action slots 1-180 with `GetActionInfo` under `pcall`, skipping a secret or non-string type, for the first three `"macro"` slots: `macro action <slot> info=<t>,<id>,<sub> GetMacroSpell=<v> GetMacroInfo=<name>,<icon>` (a secret id prints `<secret>` and is not passed on), `... tooltip type=<v> id=<v> lines=<n>` (or `tooltip <absent>` / `<error: ...>` / `nothing` / `<secret>`), and up to 6 `... line <i> type= tooltipType= tooltipID= left=` lines; `macro actions: none on your bars`; `macro hover: 0 seen` or `macro hover: <n> seen, last type=.. id=.. line1 tooltipType=.. tooltipID=.. owner action=.. attr=..`. A Macro post-call is registered at load (only if `MD.API.Constant("Enum.TooltipDataType.Macro")` and `AddTooltipPostCall` exist, `doing` set first, under `pcall`); it counts and stores strings only (`RecordMacroHover` under its own `pcall`) and never touches the tooltip. The to-do line `macro to do: ...` follows Q9 until a hover was seen. `tools/wowstub.lua`: `S.actionTooltips` and `C_TooltipInfo.GetAction(slot)`. `tools/probecheck.lua`: step 13, the four assertions, names verbatim.
+
+**Tests first.** Before the code: `82 ok, 4 failed` (the four new names FAIL). After: `86 ok, 0 failed`.
+
+`luac -p Client/Probe.lua`, `tools/probecheck.lua`, `tools/wowstub.lua`: ok (`tools/.lua/lua-5.1.5/src/luac`).
+
+Stub report's macro lines (slot 13 a macro, `S.macroSpells[2] = 5185`, two tooltip lines, no hover):
+```
+macro types Spell=1 Macro=25
+macro action 13 info=macro,2,spell GetMacroSpell=5185 GetMacroInfo=Heal Mac,Interface\\Icons\\INV_Misc_QuestionMark
+macro action 13 tooltip type=25 id=2 lines=2
+macro action 13 line 1 type=0 tooltipType=1 tooltipID=5185 left=Heal
+macro action 13 line 2 type=0 tooltipType=nil tooltipID=nil left=a||cff00ff00b
+macro hover: 0 seen
+macro to do: put a macro that casts a spell on an action bar, hover it, then type /st probe
+```
+
+**The loop (docs/TOOLS.md 1), last lines:** every suite at its baseline (probecheck 86, practiceforever 15 on the first run, measurecheck 30, adaptercheck 22/15, ...) except **tipcheck: `21 ok, 1 failed` -- `FAIL the macro hook is registered through the adapter, and off means off - one=false off=true entry=true`**. `apicheck` 0 findings, `--selftest` 10 of 10, `refcheck --selftest` ok.
+
+**Question (not fixed, outside this task's Files).** `tools/tipcheck.lua` line 591 asserts `#S.tooltipPostCalls[MACRO] == 1`. The harness loads the whole Forever TOC, so the probe's own Macro post-call (this task's required load-time registration) is now the second entry beside `UI/SpellTip_Forever.lua`'s. Nothing in the addon is wrong; the assertion counts callbacks instead of finding T25's. The lead should either relax line 591 (e.g. `#list == 2`, or find the callback that adds a block) or say the probe should register elsewhere (e.g. lazily at PLAYER_LOGIN, which would not change the count for suites that never fire it).
+
+Skipped: nothing else. No commit, no git state changes. `docs/TESTING.md` shows as modified in the tree; not by me.
+
+## Lead review (2026-09-29)
+
+Accepted. Read the diff: every client read under `pcall`, secrets named and never compared (the
+action type checked with `IsSecret` before `== "macro"`, a secret id not passed on), strings only in
+the hover record, the post-call never touching the tooltip, `doing` set around the registration. The
+tipcheck failure the implementer reported is the lead's own task-writing miss (T25's assertion
+counted Macro post-calls, and this task required a second one at load); the lead's **one-line
+change**: `tools/tipcheck.lua` 591 expects two Macro post-calls, the probe's (at load) then the
+adapter's. Lead's run of the whole loop: every suite at its baseline except probecheck 86 (82),
+tipcheck 22 (17), measurecheck 30 (26), practiceforever 15 (9); adaptercheck 22/15; apicheck 0
+findings over 44 files, selftest 10 of 10, refcheck selftest ok.

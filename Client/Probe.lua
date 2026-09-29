@@ -1178,6 +1178,156 @@ local function SucceededLines()
     return lines
 end
 
+--------------------------------------------------------------------------------
+-- T25a: what T25 assumes about a macro action, dumped raw. Every read is under
+-- pcall, every result a string, a secret is named and never compared.
+--------------------------------------------------------------------------------
+-- An Enum value as text: absent when the adapter reads nothing plain.
+local function MacroConstant(dotted)
+    local v = MD.API.Constant(dotted)
+    if v == nil then return "absent" end
+    return Fmt(v)
+end
+
+-- The Macro post-call's record (registered at load, below): a count and
+-- strings only.
+local macroHover = { n = 0 }
+
+-- t[key] rendered: a non-table, a secret table or a raising index says so.
+local function KeyText(t, key)
+    if t == nil then return "nil" end
+    if IsSecret(t) then return "<secret>" end
+    if type(t) ~= "table" then return Fmt(t) end
+    local v, status = Field(t, key)
+    if status ~= "ok" then return "<" .. status .. ">" end
+    return Fmt(v)
+end
+
+-- The one table under t[key], or nil (absent, secret, raising or not a table).
+local function SubTable(t, key)
+    if type(t) ~= "table" or IsSecret(t) then return nil end
+    local v, status = Field(t, key)
+    if status ~= "ok" or type(v) ~= "table" then return nil end
+    return v
+end
+
+-- A Macro post-call's arguments as strings. Runs under pcall in the callback.
+local function RecordMacroHover(tooltip, data)
+    local rec = { n = macroHover.n + 1 }
+    rec.type = KeyText(data, "type")
+    rec.id = KeyText(data, "id")
+    local lines = SubTable(data, "lines")
+    local line1 = SubTable(lines, 1)
+    rec.tooltipType = KeyText(line1, "tooltipType")
+    rec.tooltipID = KeyText(line1, "tooltipID")
+    rec.action, rec.attr = "nil", "nil"
+    local okOwner, owner = pcall(function() return tooltip:GetOwner() end)
+    if okOwner and type(owner) == "table" and not IsSecret(owner) then
+        rec.action = KeyText(owner, "action")
+        local okF, fn = pcall(function() return owner.GetAttribute end)
+        if okF and type(fn) == "function" and not IsSecret(fn) then
+            local okA, v = pcall(fn, owner, "action")
+            if okA then rec.attr = Fmt(v) else rec.attr = "<error>" end
+        elseif okF then
+            rec.attr = "absent"
+        end
+    elseif okOwner then
+        rec.action = Fmt(owner)
+    else
+        rec.action = "<error>"
+    end
+    macroHover = rec
+end
+
+-- The first `Show`-style read that keeps only the first two returns (a macro's
+-- name and icon; the third is its body).
+local function ShowTwo(name, ...)
+    local fn = MD.API.Has(name)
+    if type(fn) ~= "function" then return "<absent>" end
+    local n, packed = packPcall(pcall(fn, ...))
+    if not packed[1] then return "<error: " .. Fmt(packed[2]) .. ">" end
+    if n <= 1 then return "nothing" end
+    return Describe(packed[2]) .. "," .. Describe(packed[3])
+end
+
+local MACRO_SLOTS, MACRO_ACTIONS, MACRO_LINES = 180, 3, 6
+
+local function MacroLines()
+    local lines = {}
+    lines[#lines + 1] = "macro types Spell=" .. MacroConstant("Enum.TooltipDataType.Spell")
+        .. " Macro=" .. MacroConstant("Enum.TooltipDataType.Macro")
+
+    local found = 0
+    local getInfo = MD.API.Has("GetActionInfo")
+    if type(getInfo) == "function" then
+        for slot = 1, MACRO_SLOTS do
+            if found >= MACRO_ACTIONS then break end
+            local n, packed = packPcall(pcall(getInfo, slot))
+            local kind = packed[2]
+            if packed[1] and n >= 2 and not IsSecret(kind) and type(kind) == "string" and kind == "macro" then
+                found = found + 1
+                local id, sub = packed[3], packed[4]
+                local spellText, infoText
+                if IsSecret(id) then
+                    spellText, infoText = "<secret>", "<secret>"
+                else
+                    spellText = Show("GetMacroSpell", id)
+                    infoText = ShowTwo("GetMacroInfo", id)
+                end
+                lines[#lines + 1] = string.format("macro action %d info=%s,%s,%s GetMacroSpell=%s GetMacroInfo=%s",
+                    slot, Fmt(kind), Fmt(id), Fmt(sub), spellText, infoText)
+
+                local getTip = MD.API.Has("C_TooltipInfo.GetAction")
+                if type(getTip) ~= "function" then
+                    lines[#lines + 1] = string.format("macro action %d tooltip <absent>", slot)
+                else
+                    local tn, tp = packPcall(pcall(getTip, slot))
+                    local data = tp[2]
+                    if not tp[1] then
+                        lines[#lines + 1] = string.format("macro action %d tooltip <error: %s>", slot, Fmt(tp[2]))
+                    elseif tn <= 1 or data == nil then
+                        lines[#lines + 1] = string.format("macro action %d tooltip nothing", slot)
+                    elseif IsSecret(data) or type(data) ~= "table" then
+                        lines[#lines + 1] = string.format("macro action %d tooltip %s", slot, Fmt(data))
+                    else
+                        local list = SubTable(data, "lines")
+                        local count = "nil"
+                        if list ~= nil then
+                            local okN, len = pcall(function() return #list end)
+                            if okN then count = Fmt(len) else count = "<error>" end
+                        else
+                            count = KeyText(data, "lines")
+                        end
+                        lines[#lines + 1] = string.format("macro action %d tooltip type=%s id=%s lines=%s",
+                            slot, KeyText(data, "type"), KeyText(data, "id"), count)
+                        if list ~= nil then
+                            for i = 1, MACRO_LINES do
+                                local line = SubTable(list, i)
+                                if line == nil then break end
+                                lines[#lines + 1] = string.format(
+                                    "macro action %d line %d type=%s tooltipType=%s tooltipID=%s left=%s",
+                                    slot, i, KeyText(line, "type"), KeyText(line, "tooltipType"),
+                                    KeyText(line, "tooltipID"), KeyText(line, "leftText"))
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    if found == 0 then lines[#lines + 1] = "macro actions: none on your bars" end
+
+    if macroHover.n == 0 then
+        lines[#lines + 1] = "macro hover: 0 seen"
+    else
+        lines[#lines + 1] = string.format(
+            "macro hover: %d seen, last type=%s id=%s line1 tooltipType=%s tooltipID=%s owner action=%s attr=%s",
+            macroHover.n, macroHover.type, macroHover.id, macroHover.tooltipType, macroHover.tooltipID,
+            macroHover.action, macroHover.attr)
+    end
+    return lines
+end
+
 -- order is the SAME walk Run() already did for == spells -- the shapes
 -- section reads every id/slot it remembered rather than walking the book a
 -- second time.
@@ -1257,6 +1407,9 @@ local function ShapesLines(order)
 
     -- item 7: UNIT_SPELLCAST_SUCCEEDED, id and cost-at-cast readability.
     for _, l in ipairs(SucceededLines()) do lines[#lines + 1] = l end
+
+    -- item 8 (T25a): a macro action, whole.
+    for _, l in ipairs(MacroLines()) do lines[#lines + 1] = l end
 
     return lines
 end
@@ -1765,6 +1918,10 @@ local function Run()
 
     lines[#lines + 1] = "Q9 answered: SPELLTUNER_TOC = " .. Fmt(_G.SPELLTUNER_TOC)
 
+    if macroHover.n == 0 then
+        lines[#lines + 1] = "macro to do: put a macro that casts a spell on an action bar, hover it, then type /st probe"
+    end
+
     local report = table.concat(lines, "\n")
 
     -- Save: keyed by build, overwriting only after everything above already
@@ -1965,6 +2122,22 @@ for _, event in ipairs(EVENTS) do
     local errText = nil
     if not ok then errText = "<error: " .. Fmt(err) .. ">" end
     eventOutcomes[event] = { ok = ok, err = errText }
+    doing = saved
+end
+
+-- T25a: a Macro post-call, only if both the constant and AddTooltipPostCall exist.
+-- The callback counts and keeps strings, under its own pcall; it never touches
+-- the tooltip, so nothing it does can change or raise into the game's.
+do
+    local saved = doing
+    doing = "register:macro tooltip post-call"
+    pcall(function()
+        local macroType = MD.API.Constant("Enum.TooltipDataType.Macro")
+        local add = MD.API.Has("TooltipDataProcessor.AddTooltipPostCall")
+        if macroType ~= nil and type(add) == "function" then
+            add(macroType, function(tooltip, data) pcall(RecordMacroHover, tooltip, data) end)
+        end
+    end)
     doing = saved
 end
 

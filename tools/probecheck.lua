@@ -1129,6 +1129,103 @@ do
         and reportBroken ~= nil and Has(reportBroken, "SpellTunerDB at load: string\n"))
 end
 
+--------------------------------------------------------------------------------
+-- Step 13 (T25a): the macro lines of == shapes. The stub's own macro fixtures
+-- (S.actions with a third return, S.macroSpells, S.macros / S.macroOrder,
+-- S.actionTooltips, S.ShowMacroTooltip) stand in for the client's.
+--------------------------------------------------------------------------------
+do
+    local function Fresh(before)
+        dofile(here .. "/wowstub.lua")
+        local St = _G.STUB
+        St.root = ROOT
+        St.UseProfile("forever")
+        if before then before(St) end
+        _G.SpellTunerDB = nil
+        local MDm = {}
+        local loadOk = pcall(St.Load, { "Client/TOC_Mainline.lua", "Client/API.lua", "Client/Probe.lua" }, "SpellTuner", MDm)
+        local addonOk = pcall(St.Fire, "ADDON_LOADED", "SpellTuner")
+        return St, MDm, loadOk and addonOk
+    end
+    local function Shapes(report)
+        return Between(report, "\n== shapes\n", "\n== readings now\n") or ""
+    end
+
+    -- 1: the two constants
+    do
+        local St, MDm, loaded = Fresh()
+        local okR, rep = pcall(MDm.Probe.Run)
+        check("shapes names the tooltip data types for Spell and Macro",
+            loaded and okR and Has(Shapes(rep), "macro types Spell=1 Macro=25\n"))
+    end
+
+    -- 2: a macro action whole
+    do
+        local St, MDm, loaded = Fresh(function(St)
+            St.actions[13] = { "macro", 2, "spell" }
+            St.macroSpells[2] = 5185
+            St.macros["Heal Mac"] = "#showtooltip"
+            St.macroOrder[2] = "Heal Mac"
+            St.actionTooltips[13] = {
+                type = 25, id = 2,
+                lines = {
+                    { type = 0, tooltipType = 1, tooltipID = 5185, leftText = "Heal" },
+                    { type = 0, leftText = "a|cff00ff00b" },
+                },
+            }
+        end)
+        local okR, rep = pcall(MDm.Probe.Run)
+        local seg = Shapes(rep)
+        check("shapes dumps a macro action's GetActionInfo, GetMacroSpell and tooltip data whole",
+            loaded and okR
+            and Has(seg, "macro action 13 info=macro,2,spell GetMacroSpell=5185 GetMacroInfo=Heal Mac,")
+            and Has(seg, "macro action 13 tooltip type=25 id=2 lines=2\n")
+            and Has(seg, "macro action 13 line 1 type=0 tooltipType=1 tooltipID=5185 left=Heal\n")
+            and Has(seg, "macro action 13 line 2 type=0 tooltipType=nil tooltipID=nil left=a||cff00ff00b")
+            and not Has(seg, "macro actions: none")
+            and AsciiSafe(rep))
+    end
+
+    -- 3: the probe's own Macro post-call
+    do
+        local St, MDm, loaded = Fresh()
+        local okA, before = pcall(MDm.Probe.Run)
+        local tt = CreateFrame("GameTooltip")
+        local owner = { action = 13, GetAttribute = function(_, k) if k == "action" then return 13 end end }
+        local okS = pcall(St.ShowMacroTooltip, tt,
+            { type = 25, id = 77, lines = { { tooltipType = 1, tooltipID = 5185 } } }, owner)
+        local okB, after = pcall(MDm.Probe.Run)
+        check("a hovered macro is recorded by the probe's own post-call, and the to-do line goes",
+            loaded and okA and okS and okB
+            and Has(before, "macro to do: put a macro that casts a spell on an action bar, hover it, then type /st probe")
+            and Has(Shapes(before), "macro hover: 0 seen")
+            and Has(Shapes(after),
+                "macro hover: 1 seen, last type=25 id=77 line1 tooltipType=1 tooltipID=5185 owner action=13 attr=13")
+            and not Has(after, "macro to do")
+            and tt:NumLines() == 0)
+    end
+
+    -- 4: secret, raising and absent
+    do
+        local St, MDm, loaded = Fresh(function(St)
+            St.actions[13] = { "macro", 2, "spell" }
+            St.actions[14] = { "macro", St.Secret(), "spell" }
+            St.macros["Heal Mac"] = "#showtooltip"
+            St.macroOrder[2] = "Heal Mac"
+            _G.GetMacroSpell = nil
+            C_TooltipInfo.GetAction = function() error("stub GetAction raised") end
+        end)
+        local okR, rep = pcall(MDm.Probe.Run)
+        local seg = Shapes(rep)
+        check("the macro lines never raise on a secret or raising client",
+            loaded and okR
+            and Has(seg, "macro action 13 info=macro,2,spell GetMacroSpell=<absent>")
+            and Has(seg, "macro action 14 info=macro,<secret>,spell")
+            and Has(seg, "macro action 13 tooltip <error:")
+            and AsciiSafe(rep))
+    end
+end
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("  FAIL " .. f) end
 if #fails > 0 then os.exit(1) end

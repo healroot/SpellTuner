@@ -588,7 +588,7 @@ end
 
 do
     local list = S.tooltipPostCalls[MACRO]
-    local one = list ~= nil and #list == 1 and type(list[1]) == "function"
+    local one = list ~= nil and #list == 2 and type(list[2]) == "function" -- the probe's own (T25a, at load), then the adapter's
     local entry
     for _, c in ipairs(MD.API.Capabilities()) do if c.name == "OnMacroTooltip" then entry = c end end
     MD.db.spellTooltip = false
