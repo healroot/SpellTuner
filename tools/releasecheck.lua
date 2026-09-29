@@ -297,15 +297,17 @@ do
     local badOut = SCRATCH .. "/out disagree"
     local text = Slurp(COPY .. "/" .. badToc)
     local wrote = false
+    -- a version no tree ever carries, so the check holds whatever the tree's own is
+    local OTHER = "9.9.9-disagree"
     if text then
         local f = io.open(COPY .. "/" .. badToc, "wb")
-        if f then f:write((text:gsub("## Version: [^\r\n]*", "## Version: 0.16.1", 1))); f:close(); wrote = true end
+        if f then f:write((text:gsub("## Version: [^\r\n]*", "## Version: " .. OTHER, 1))); f:close(); wrote = true end
     end
     local out, rc = "", 0
     if haveCopy and wrote then out, rc = Release(COPY_RELEASE, "--out", badOut) end
     local noFolders = #DirNames(badOut .. "/tbc") == 0 and #DirNames(badOut .. "/forever") == 0
     check("the build refuses when two TOCs disagree on the version",
-        haveCopy and wrote and rc ~= 0 and Has(out, badToc) and Has(out, "0.16.1")
+        haveCopy and wrote and rc ~= 0 and Has(out, badToc) and Has(out, OTHER)
         and Has(out, tostring(TREE_VERSION)) and noFolders,
         "rc=" .. tostring(rc) .. " " .. out:gsub("\n", " / "):sub(1, 160))
     -- put the copy back for the next check
