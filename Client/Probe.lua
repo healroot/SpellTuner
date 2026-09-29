@@ -218,7 +218,8 @@ local combatCounters, combatOrder = {}, {}
 -- combatCounters' by-class counts -- which tokens make up "other" is UNKNOWN
 -- (FOREVER-PLAN.md §6 Q3). tokenCounters/tokenOrder key by "phase\1token";
 -- mirrorCounters/mirrorOrder key by phase alone; unitCombatEvents is the
--- CURRENT MOMENT's events only -- {phase, timeKey, action, amountKey, token}
+-- CURRENT MOMENT's events only -- {phase, timeKey, action, amountKey, token,
+-- guidKey}
 -- -- a later event is checked against it to find a same-GetTime()-moment
 -- mirror. Re-issue 1: a mirror can only ever be within one GetTime() moment,
 -- so the list is emptied whenever a new moment arrives (lastUnitCombatTimeKey
@@ -241,6 +242,9 @@ local restrictionCounters, restrictionOrder = {}, {}   -- ADDON_RESTRICTION_STAT
 local blockedCounters, blockedOrder = {}, {}           -- ADDON_ACTION_FORBIDDEN/BLOCKED naming us, by (event, phase, doing, function)
 local actionForbiddenOutcome, actionBlockedOutcome = "throws <error: not registered>", "throws <error: not registered>"
 local combatSnapshot = nil                -- { stamp, inCombat, partyExists, lines } or nil
+-- review-probe R2: snapshot timers that fired after the fight had already
+-- ended (PLAYER_REGEN_ENABLED came first) -- not taken, only counted.
+local combatSnapshotsSkipped = 0
 local writtenThisSession = {}             -- build key -> true, once this session saved it
 local sawDamageMeterCurrentSources = false
 local probeFrame, probeEditBox = nil, nil
@@ -257,6 +261,10 @@ local function UnitClassOf(u)
     if type(u) ~= "string" then return "<none>" end
     if u == "player" then return "player" end
     if u == "target" then return "target" end
+    -- review-probe R17: a pet's token starts with "party"/"raid" too, and a
+    -- partypetN hit must not answer Q3 (is a PARTY MEMBER's UNIT_COMBAT seen).
+    if u:sub(1, 8) == "partypet" then return "partypet" end
+    if u:sub(1, 7) == "raidpet" then return "raidpet" end
     if u:sub(1, 5) == "party" then return "party" end
     if u:sub(1, 4) == "raid" then return "raid" end
     return "other"
@@ -383,7 +391,8 @@ end
 -- T13b: UNIT_COMBAT by exact token, with GUID readability at the moment of
 -- the event, and same-"GetTime()"-moment mirror detection (Files: "an event
 -- is a mirror when an earlier event in the same GetTime() had the same
--- action and the same plain amount under a different token").
+-- action and the same plain amount under a different token"), narrowed by
+-- review-probe R18: not when both GUIDs read plain and differ.
 local function BumpUnitCombatToken(currentPhase, unit, action, amount)
     local tokenText = FoldToken(unit)
     local key = currentPhase .. "\1" .. tokenText
@@ -395,6 +404,9 @@ local function BumpUnitCombatToken(currentPhase, unit, action, amount)
     end
     c.n = c.n + 1
 
+    -- review-probe R18: the GUID's text (Fmt of a plain, non-nil GUID only)
+    -- is kept for the mirror test below; nil when it could not be read.
+    local guidKey = nil
     if not IsSecret(unit) and type(unit) == "string" then
         local getGUID = MD.API.Has("UnitGUID")
         if type(getGUID) == "function" then
@@ -404,6 +416,7 @@ local function BumpUnitCombatToken(currentPhase, unit, action, amount)
                     c.guidSecret = c.guidSecret + 1
                 elseif guid ~= nil then
                     c.guidReadable = c.guidReadable + 1
+                    guidKey = Fmt(guid)
                 end
             end
         end
@@ -411,7 +424,7 @@ local function BumpUnitCombatToken(currentPhase, unit, action, amount)
 
     local mc = mirrorCounters[currentPhase]
     if not mc then
-        mc = { phase = currentPhase, n = 0, mirrored = 0 }
+        mc = { phase = currentPhase, n = 0, mirrored = 0, unconfirmed = 0 }
         mirrorCounters[currentPhase] = mc
         mirrorOrder[#mirrorOrder + 1] = currentPhase
     end
@@ -431,16 +444,34 @@ local function BumpUnitCombatToken(currentPhase, unit, action, amount)
     local amountKey = "<none>"
     if not IsSecret(amount) and amount ~= nil then
         amountKey = Fmt(amount)
+        -- review-probe R18: two DIFFERENT units hit or healed for the same
+        -- amount in one frame (an area tick, Tranquility on player and
+        -- party1) match on everything above; the GUID tells them apart. Two
+        -- readable GUIDs that differ are never a mirror; the same GUID is a
+        -- confirmed one; when either GUID could not be read the match is
+        -- still counted, as before, but also counted as unconfirmed, so the
+        -- report says it may be two units.
+        local confirmed, unsure = false, false
         for _, ev in ipairs(unitCombatEvents) do
             if ev.phase == currentPhase and ev.timeKey == timeKey and ev.action == actionText
                 and ev.amountKey == amountKey and ev.token ~= tokenText then
-                mc.mirrored = mc.mirrored + 1
-                break
+                if guidKey ~= nil and ev.guidKey ~= nil then
+                    if ev.guidKey == guidKey then confirmed = true; break end
+                else
+                    unsure = true
+                end
             end
+        end
+        if confirmed then
+            mc.mirrored = mc.mirrored + 1
+        elseif unsure then
+            mc.mirrored = mc.mirrored + 1
+            mc.unconfirmed = mc.unconfirmed + 1
         end
     end
     unitCombatEvents[#unitCombatEvents + 1] = {
         phase = currentPhase, timeKey = timeKey, action = actionText, amountKey = amountKey, token = tokenText,
+        guidKey = guidKey,
     }
 end
 
@@ -468,11 +499,12 @@ end
 
 -- T7a item 7: UNIT_SPELLCAST_SUCCEEDED's spell id, by phase -- readable/secret
 -- like every other counter here, plus whether GetSpellPowerCost(id) answers
--- for a readable one (its own readable/secret/absent tally, never the id's).
+-- for a readable one (its own readable/secret/absent/no-cost tally, never the
+-- id's; review-probe R19 added "no cost" and the walk into the rows).
 local function BumpSucceeded(currentPhase, spellID)
     local c = succeededCounters[currentPhase]
     if not c then
-        c = { n = 0, readable = 0, secret = 0, sample = nil, costReadable = 0, costSecret = 0, costAbsent = 0 }
+        c = { n = 0, readable = 0, secret = 0, sample = nil, costReadable = 0, costSecret = 0, costAbsent = 0, costNone = 0 }
         succeededCounters[currentPhase] = c
         succeededOrder[#succeededOrder + 1] = currentPhase
     end
@@ -491,8 +523,38 @@ local function BumpSucceeded(currentPhase, spellID)
                 c.costAbsent = c.costAbsent + 1
             elseif IsSecret(result) then
                 c.costSecret = c.costSecret + 1
-            else
+            elseif result == nil then
+                -- review-probe R19: nothing came back (a free spell's measured
+                -- shape) -- nothing was read, so not "readable".
+                c.costNone = c.costNone + 1
+            elseif type(result) ~= "table" then
                 c.costReadable = c.costReadable + 1
+            else
+                -- review-probe R19: a plain list can still hold secret rows or
+                -- fields; each row and each field is asked, never indexed or
+                -- used before IsSecret said no. A walk that raises counts as
+                -- secret (indexing a secret is what raises on this client).
+                local walked, anySecret, rows = pcall(function()
+                    local secret, n = false, 0
+                    for _, row in pairs(result) do
+                        n = n + 1
+                        if IsSecret(row) then
+                            secret = true
+                        elseif type(row) == "table" then
+                            for _, v in pairs(row) do
+                                if IsSecret(v) then secret = true end
+                            end
+                        end
+                    end
+                    return secret, n
+                end)
+                if not walked or anySecret then
+                    c.costSecret = c.costSecret + 1
+                elseif rows == 0 then
+                    c.costNone = c.costNone + 1
+                else
+                    c.costReadable = c.costReadable + 1
+                end
             end
         end
     end
@@ -519,8 +581,14 @@ end
 -- ADDON_ACTION_FORBIDDEN/ADDON_ACTION_BLOCKED(addonName, functionName): kept
 -- only when the addon name is ours (Fmt/Esc compared as text, never raw --
 -- T0c item 1), counted per (event, phase, doing, function), first-seen order.
+-- review-probe R20: "ours" includes the LoadOnDemand modules, which the client
+-- names by their own folders (SpellTuner_Recorder, _Replay, _Practice) -- the
+-- same "SpellTuner_" prefix Core_Forever.lua's error capture accepts. Their
+-- own actions would otherwise be dropped and the section print "none".
 local function BumpBlocked(event, addonName, functionName)
-    if Fmt(addonName) ~= Esc(ADDON_NAME) then return end
+    local nameText = Fmt(addonName)
+    local own = Esc(ADDON_NAME)
+    if nameText ~= own and nameText:sub(1, #own + 1) ~= own .. "_" then return end
     local fn = Fmt(functionName)
     local key = event .. "\1" .. phase .. "\1" .. doing .. "\1" .. fn
     local c = blockedCounters[key]
@@ -1103,8 +1171,8 @@ local function SucceededLines()
     for _, p in ipairs(succeededOrder) do
         local c = succeededCounters[p]
         lines[#lines + 1] = string.format(
-            "UNIT_SPELLCAST_SUCCEEDED %s n=%d readable=%d secret=%d sample=%s; cost at cast readable=%d secret=%d absent=%d",
-            p, c.n, c.readable, c.secret, c.sample or "", c.costReadable, c.costSecret, c.costAbsent)
+            "UNIT_SPELLCAST_SUCCEEDED %s n=%d readable=%d secret=%d sample=%s; cost at cast readable=%d secret=%d absent=%d no cost=%d",
+            p, c.n, c.readable, c.secret, c.sample or "", c.costReadable, c.costSecret, c.costAbsent, c.costNone)
     end
     if #lines == 0 then lines[1] = "UNIT_SPELLCAST_SUCCEEDED: none this session" end
     return lines
@@ -1195,7 +1263,8 @@ end
 
 --------------------------------------------------------------------------------
 -- Combat snapshot: taken 2s into PLAYER_REGEN_DISABLED (or at once if the
--- client has no C_Timer.After), and kept -- the last one of the session wins.
+-- client has no C_Timer.After), and kept -- the last one of the session wins,
+-- but only one taken while the fight was still on (review-probe R2).
 --------------------------------------------------------------------------------
 local function TakeCombatSnapshot()
     local savedDoing = doing
@@ -1217,9 +1286,18 @@ end
 -- == combat snapshot
 --------------------------------------------------------------------------------
 local function CombatSnapshotLines()
-    if not combatSnapshot then return { "none this session" } end
-    local lines = { "taken " .. Fmt(combatSnapshot.stamp) .. ", in combat: " .. combatSnapshot.inCombat }
-    for _, l in ipairs(combatSnapshot.lines) do lines[#lines + 1] = l end
+    local lines
+    if not combatSnapshot then
+        lines = { "none this session" }
+    else
+        lines = { "taken " .. Fmt(combatSnapshot.stamp) .. ", in combat: " .. combatSnapshot.inCombat }
+        for _, l in ipairs(combatSnapshot.lines) do lines[#lines + 1] = l end
+    end
+    -- review-probe R2: printed only when a snapshot was skipped, so a
+    -- session with none skipped reads exactly as before.
+    if combatSnapshotsSkipped > 0 then
+        lines[#lines + 1] = string.format("skipped %d: the fight had ended before the 2 s snapshot", combatSnapshotsSkipped)
+    end
     return lines
 end
 
@@ -1262,7 +1340,13 @@ local function UnitCombatTokensLines()
     end
     for _, p in ipairs(mirrorOrder) do
         local mc = mirrorCounters[p]
-        lines[#lines + 1] = string.format("%s mirrored: %d of %d", p, mc.mirrored, mc.n)
+        local line = string.format("%s mirrored: %d of %d", p, mc.mirrored, mc.n)
+        -- review-probe R18: only when a counted mirror's unit was not
+        -- confirmed by GUID, so a clean session's line reads as before.
+        if (mc.unconfirmed or 0) > 0 then
+            line = line .. string.format(" (%d with a guid not readable, so possibly two units)", mc.unconfirmed)
+        end
+        lines[#lines + 1] = line
     end
     if #lines == 0 then lines[1] = "none" end
     return lines
@@ -1742,7 +1826,13 @@ local function OnAddonLoaded(loadedName)
         pcall(frame.UnregisterEvent, frame, "ADDON_LOADED")
 
         svTypeAtLoad = type(SpellTunerDB)
-        if svTypeAtLoad == "table" and type(SpellTunerDB.probe) == "table" then
+        -- review-probe R3: Core_Forever.lua's guard runs first and has already
+        -- replaced a missing or broken SpellTunerDB with {} -- what the client
+        -- handed back is the guard's own record of it, when there is one.
+        if type(MD.sv) == "table" and type(MD.sv.atLoad) == "string" then
+            svTypeAtLoad = MD.sv.atLoad
+        end
+        if type(SpellTunerDB) == "table" and type(SpellTunerDB.probe) == "table" then
             svPrevStamp = SpellTunerDB.probe.stamp
             if type(SpellTunerDB.probe.reports) == "table" then
                 local keys = {}
@@ -1769,7 +1859,16 @@ local function OnRegenDisabled()
     phase = "combat"
     local after = MD.API.Has("C_Timer.After")
     if type(after) == "function" then
-        pcall(after, 2, function() pcall(TakeCombatSnapshot) end)  -- runs later, outside every other pcall
+        -- runs later, outside every other pcall. review-probe R2: only if the
+        -- fight is still on -- a fight over within 2 s would otherwise answer
+        -- Q2/Q5 from out-of-combat readings and replace a good snapshot.
+        pcall(after, 2, function()
+            if phase == "combat" then
+                pcall(TakeCombatSnapshot)
+            else
+                combatSnapshotsSkipped = combatSnapshotsSkipped + 1
+            end
+        end)
     else
         TakeCombatSnapshot()
     end

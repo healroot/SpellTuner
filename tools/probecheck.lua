@@ -953,6 +953,166 @@ do
         and Has(reportH, "bar UnitPower(player, 0): set ok, read error:"))
 end
 
+--------------------------------------------------------------------------------
+-- Step 11 (review-probe, docs/review/2026-09-29-forever-review.md R2, R17,
+-- R18, R19, R20): a fresh Forever load in a party.
+--   R19: a free spell (GetSpellPowerCost answers nothing) and one whose cost
+--        list is plain but whose fields are secret, both cast out of combat.
+--   R18: player and party1 healed for the same amount in one moment (two
+--        units, both GUIDs readable) and a target seen again as nameplate1
+--        (one unit, the same GUID) in the next.
+--   R20: blocked actions naming a module, and an addon that merely starts
+--        with our name.
+--   R2 + R17: a fight that ends before the 2 s snapshot, with only a party
+--        member's PET taking damage in it; then a fight long enough for the
+--        snapshot, then a short one after it.
+--------------------------------------------------------------------------------
+do
+    dofile(here .. "/wowstub.lua")
+    local S11 = _G.STUB
+    S11.root = ROOT
+    S11.UseProfile("forever")
+    S11.AddUnit("party1", { guid = "Party-1", name = "Tankname", class = "WARRIOR", role = "TANK", hp = 4000, hpMax = 4000 })
+    S11.AddUnit("target", { guid = "Creature-9", name = "Mob", class = "WARRIOR", hp = 900, hpMax = 900 })
+    S11.AddUnit("nameplate1", { guid = "Creature-9", name = "Mob", class = "WARRIOR", hp = 900, hpMax = 900 })
+
+    -- R19's two spells, wrapped before the load: MD.API.Has keeps what it found.
+    local origCost = C_Spell.GetSpellPowerCost
+    C_Spell.GetSpellPowerCost = function(id)
+        if id == 900201 then return end
+        if id == 900202 then return { { type = 0, name = "MANA", cost = S11.Secret(), minCost = S11.Secret() } } end
+        return origCost(id)
+    end
+
+    _G.SpellTunerDB = nil
+    local MD11 = {}
+    local loadOk = pcall(S11.Load, { "Client/TOC_Mainline.lua", "Client/API.lua", "Client/Probe.lua" }, "SpellTuner", MD11)
+    local addonLoadedOk = pcall(S11.Fire, "ADDON_LOADED", "SpellTuner")
+    local steps = {}
+    local function Do11(fn, ...) steps[#steps + 1] = pcall(fn, ...) end
+
+    Do11(S11.Fire, "UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-F", 900201)
+    Do11(S11.Fire, "UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-S", 900202)
+
+    S11.now = 500
+    Do11(S11.Combat, "player", "HEAL", 7)
+    Do11(S11.Combat, "party1", "HEAL", 7)
+    S11.now = 501
+    Do11(S11.Combat, "target", "WOUND", 40)
+    Do11(S11.Combat, "nameplate1", "WOUND", 40)
+
+    Do11(S11.Fire, "ADDON_ACTION_BLOCKED", "SpellTuner_Recorder", "Frame:RegisterEvent()")
+    Do11(S11.Fire, "ADDON_ACTION_FORBIDDEN", "SpellTuner_Practice", "UNKNOWN()")
+    Do11(S11.Fire, "ADDON_ACTION_FORBIDDEN", "SpellTunerX", "CastSpellByName()")
+
+    -- the short fight: over before its snapshot timer runs
+    S11.inCombat = true
+    Do11(S11.Fire, "PLAYER_REGEN_DISABLED")
+    Do11(S11.Combat, "partypet1", "WOUND", 30)
+    S11.inCombat = false
+    Do11(S11.Fire, "PLAYER_REGEN_ENABLED")
+    local ran = 0
+    for i = ran + 1, #(S11.timers or {}) do Do11(S11.timers[i]); ran = i end
+    local okI, reportI = pcall(MD11.Probe.Run)
+
+    -- a fight the snapshot is taken in, then a short one after it
+    S11.inCombat = true
+    Do11(S11.Fire, "PLAYER_REGEN_DISABLED")
+    for i = ran + 1, #(S11.timers or {}) do Do11(S11.timers[i]); ran = i end
+    S11.inCombat = false
+    Do11(S11.Fire, "PLAYER_REGEN_ENABLED")
+    S11.inCombat = true
+    Do11(S11.Fire, "PLAYER_REGEN_DISABLED")
+    S11.inCombat = false
+    Do11(S11.Fire, "PLAYER_REGEN_ENABLED")
+    for i = ran + 1, #(S11.timers or {}) do Do11(S11.timers[i]); ran = i end
+    local okJ, reportJ = pcall(MD11.Probe.Run)
+
+    local allOk = loadOk and addonLoadedOk and okI and okJ
+    for _, r in ipairs(steps) do if not r then allOk = false end end
+    check("step 11 never raises", allOk == true)
+    if type(reportI) ~= "string" then reportI = "" end
+    if type(reportJ) ~= "string" then reportJ = "" end
+
+    -- R2
+    do
+        local seg = Between(reportI, "\n== combat snapshot\n", "\n== events seen this session\n")
+        check("R2: a fight over before the 2 s snapshot answers neither Q2 nor Q5",
+            seg ~= nil and Has(seg, "none this session")
+            and Has(seg, "skipped 1: the fight had ended before the 2 s snapshot")
+            and Has(reportI, "Q2 to do") and Has(reportI, "Q5 to do")
+            and not Has(reportI, "Q2 answered") and not Has(reportI, "Q5 answered"))
+    end
+    do
+        local seg = Between(reportJ, "\n== combat snapshot\n", "\n== events seen this session\n")
+        check("R2: a short fight after a good snapshot does not replace it",
+            seg ~= nil and Has(seg, "in combat: true") and not Has(seg, "in combat: false")
+            and Has(seg, "skipped 2: the fight had ended before the 2 s snapshot")
+            and Has(reportJ, "Q2 answered") and Has(reportJ, "Q5 answered"))
+    end
+
+    -- R17
+    check("R17: a party pet's UNIT_COMBAT is its own class and does not answer Q3",
+        Has(reportI, "UNIT_COMBAT combat partypet WOUND n=1")
+        and not Has(reportI, "UNIT_COMBAT combat party WOUND")
+        and Has(reportI, "Q3 to do") and not Has(reportI, "Q3 answered"))
+
+    -- R18
+    do
+        local seg = Between(reportI, "\n== unit combat tokens\n", "\n== damage meter\n")
+        check("R18: two units hit for the same amount in one moment are not a mirror; one unit under two tokens is",
+            seg ~= nil and Has(seg, "ooc mirrored: 1 of 4\n") and not Has(seg, "possibly two units"))
+    end
+
+    -- R19
+    check("R19: a free spell's cost is no cost, and secret fields in a plain list are secret",
+        Has(reportI, "UNIT_SPELLCAST_SUCCEEDED ooc n=2 readable=2 secret=0 sample=900201; cost at cast readable=0 secret=1 absent=0 no cost=1"))
+
+    -- R20
+    do
+        local seg = Between(reportI, "\n== blocked actions\n", "\n== secrets now\n")
+        check("R20: a blocked action naming one of our modules is recorded; a lookalike name is not",
+            seg ~= nil
+            and Has(seg, "ADDON_ACTION_BLOCKED phase=ooc during=idle addon=SpellTuner_Recorder function=Frame:RegisterEvent() n=1")
+            and Has(seg, "ADDON_ACTION_FORBIDDEN phase=ooc during=idle addon=SpellTuner_Practice function=UNKNOWN() n=1")
+            and not Has(seg, "SpellTunerX") and not Has(seg, "CastSpellByName"))
+    end
+end
+
+-- R18: step 9's mirror (player and nameplate1, whose GUID the stub does not
+-- answer) is still counted, and now says the unit could not be told apart.
+do
+    local seg = Between(reportG, "\n== unit combat tokens\n", "\n== damage meter\n")
+    check("R18: a mirror whose unit cannot be confirmed by GUID says so",
+        seg ~= nil and Has(seg, "ooc mirrored: 1 of 3 (1 with a guid not readable, so possibly two units)"))
+end
+
+--------------------------------------------------------------------------------
+-- Step 12 (review-probe R3): the whole Forever TOC, so Core_Forever.lua's
+-- SavedVariables guard runs before the probe's ADDON_LOADED -- the probe's
+-- "at load" line must say what the client handed back, not what the guard
+-- replaced it with.
+--------------------------------------------------------------------------------
+do
+    local function Session(preset)
+        HARNESS_FLAVOUR = "forever"
+        _G.SpellTunerDB = preset
+        _G.ManaDemonDB = nil
+        local a1 = arg[0]; arg[0] = here .. "/harness.lua"
+        local okLoad, MDx = pcall(dofile, here .. "/harness.lua"); arg[0] = a1
+        if not okLoad or type(MDx) ~= "table" or type(MDx.Probe) ~= "table" then return nil end
+        local okRun, report = pcall(MDx.Probe.Run)
+        if not okRun or type(report) ~= "string" then return nil end
+        return report
+    end
+    local reportNil = Session(nil)
+    local reportBroken = Session("junk")
+    check("R3: the at-load line reads the guard's record, not the table it made",
+        reportNil ~= nil and Has(reportNil, "SpellTunerDB at load: nil\n")
+        and Has(reportNil, "previous session stamp: none")
+        and reportBroken ~= nil and Has(reportBroken, "SpellTunerDB at load: string\n"))
+end
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("  FAIL " .. f) end
 if #fails > 0 then os.exit(1) end
