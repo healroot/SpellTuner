@@ -465,6 +465,276 @@ do
         string.format("rec=%s tank=%s,%s,%s", tostring(rec2), tostring(e and e.maxHP), tostring(e and e.maxSecret), tostring(e and e.maxVia)))
 end
 
+--------------------------------------------------------------------------------
+-- Review 2026-09-29 (docs/review/2026-09-29-forever-review.md), R7 R8 R9 R10
+-- R11 R24 R25: each in a fresh session, so the fixture pull above is
+-- untouched. Fresh() sets up the player plus the named party, switches the
+-- recorder on and hands back the helpers every block below drives it with.
+--------------------------------------------------------------------------------
+local function Fresh(party)
+    local M, St = NewSession()
+    St.units.player.name = "Healroot"
+    St.units.player.hpMax = 375
+    St.units.player.auras = {}
+    for i, u in ipairs(party or {}) do
+        u.auras = u.auras or {}
+        St.AddUnit("party" .. i, u)
+    end
+    M:SetModule("SpellTuner_Recorder", true)
+    local env = { MD = M, S = St }
+    local cursor = 0
+    function env.Flush()
+        for i = cursor + 1, #(St.timers or {}) do St.timers[i]() end
+        cursor = #(St.timers or {})
+    end
+    function env.At(t) while St.now < t - 1e-6 do St.Tick(0.5) end end
+    function env.Cast(g, id, name)
+        St.Fire("UNIT_SPELLCAST_SENT", "player", name, g, id)
+        St.Fire("UNIT_SPELLCAST_START", "player", g, id)
+        St.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", g, id)
+        St.Fire("UNIT_SPELLCAST_STOP", "player", g, id)
+    end
+    function env.Start()
+        St.inCombat = true
+        St.Fire("PLAYER_REGEN_DISABLED")
+    end
+    function env.Five(prefix, name)
+        for i = 1, 5 do env.Cast(prefix .. i, 774, name) end
+    end
+    function env.Stop()
+        St.inCombat = false
+        St.Fire("PLAYER_REGEN_ENABLED")
+    end
+    -- the newest stored stream (every stream shares one id under the stub's
+    -- fixed time(), so List's sort cannot tell them apart)
+    function env.Last()
+        local list = M.cdb.recordings or {}
+        return list[#list], #list
+    end
+    return env
+end
+
+local function Unit(guid, name, class, role, extra)
+    local u = { guid = guid, name = name, class = class, role = role, hp = 5000, hpMax = 5000 }
+    for k, v in pairs(extra or {}) do u[k] = v end
+    return u
+end
+
+-- R7: a party member already dead (or a ghost running back) at the pull did
+-- not die in it; a res and a real death in the pull is still one death.
+do
+    local E = Fresh({ Unit("G-A", "Tank", "WARRIOR", "TANK"),
+                      Unit("G-B", "Mage", "MAGE", "DAMAGER", { dead = true }) })
+    E.At(4)
+    E.Start()
+    E.Five("r7-", "Tank")
+    E.At(12)
+    E.S.units.party2.dead = false -- resurrected
+    E.At(18)
+    E.S.units.party2.dead = true  -- and dies for real
+    E.At(30)
+    E.Stop()
+    E.Flush()
+    local rec = E.Last()
+    check("R7: a member already dead at the pull is not a death in it; a real one after a res still is",
+        rec ~= nil and #rec.deaths == 1 and rec.deaths[1][2] == 3 and rec.deaths[1][1] > 13
+        and CountKind(rec, K.DIED) == 1,
+        string.format("deaths=%s first=%s at %s", tostring(rec and #rec.deaths),
+            tostring(rec and rec.deaths[1] and rec.deaths[1][2]), tostring(rec and rec.deaths[1] and rec.deaths[1][1])))
+end
+
+-- R8: the pull's opener. (a) An instant that succeeds the moment before the
+-- combat flag is the pull's first cast at t = 0, its target resolved, counted
+-- and priced, the starting mana lifted by what the clock already charged;
+-- (b) a cast-time opener SENT before the flag keeps its target.
+do
+    local E = Fresh({ Unit("G-A", "Tank", "WARRIOR", "TANK") })
+    E.At(6)
+    E.Cast("op1", 774, "Tank") -- out of combat: no pull yet
+    local clockMana = E.MD.Clock and E.MD.Clock.model and E.MD.Clock.model.mana
+    E.S.Fire("UNIT_SPELLCAST_SENT", "player", "Tank", "op2", 5185) -- out of combat too
+    E.S.Fire("UNIT_SPELLCAST_START", "player", "op2", 5185)
+    E.Start()                  -- same frame
+    E.S.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "op2", 5185)   -- inside the pull
+    E.Five("r8-", "Tank")
+    E.At(32)
+    E.Stop()
+    E.Flush()
+    local rec = E.Last()
+    local first = rec and FindEvent(rec, K.OWNCAST)
+    check("R8: an opener that succeeds just before the combat flag is recorded at t = 0, priced, its mana given back",
+        rec ~= nil and first ~= nil and first.t == 0 and first.x == 774 and first.tgt == 2 and first.amt == 25
+        and rec.ownCasts == 7 and rec.spent == 25 * 6 + 25
+        and type(clockMana) == "number" and math.abs((rec.initial.mana or -1) - (clockMana + 25)) < 1e-6,
+        string.format("first=%s t=%s tgt=%s amt=%s ownCasts=%s spent=%s mana=%s clock=%s",
+            tostring(first and first.x), tostring(first and first.t), tostring(first and first.tgt),
+            tostring(first and first.amt), tostring(rec and rec.ownCasts), tostring(rec and rec.spent),
+            tostring(rec and rec.initial.mana), tostring(clockMana)))
+
+    local sentBefore = rec and FindEvent(rec, K.OWNCAST, function(r) return r.x == 5185 end)
+    check("R8: a cast-time opener SENT before the combat flag keeps its target",
+        sentBefore ~= nil and sentBefore.tgt == 2,
+        string.format("tgt=%s", tostring(sentBefore and sentBefore.tgt)))
+end
+
+-- R8 (c): a HoT that lands out of combat between two 2 s scans is in the
+-- pull's initial auras (UNIT_AURA reads it at once), aged to the pull, and
+-- not recorded a second time as a cast.
+do
+    local E = Fresh({ Unit("G-A", "Tank", "WARRIOR", "TANK") })
+    E.At(8) -- a scan lands here; nothing on the tank yet
+    E.S.Tick(0.5)
+    E.Cast("pre1", 774, "Tank")
+    E.S.units.party1.auras = { [1] = { name = "Rejuvenation", spellId = 774,
+                                       expirationTime = E.S.now + 12, applications = 0 } }
+    E.S.Fire("UNIT_AURA", "party1")
+    E.S.now = E.S.now + 1 -- a second later, no tick in between (no 2 s scan)
+    E.Start()
+    E.Five("r8c-", "Tank")
+    E.At(36)
+    E.Stop()
+    E.Flush()
+    local rec = E.Last()
+    local a = rec and rec.initial.auras[1]
+    check("R8: a HoT pre-cast between two scans is in the pull's initial auras, aged, and not a cast too",
+        rec ~= nil and #rec.initial.auras == 1 and a.spellId == 774 and a.tgt == 2
+        and math.abs((a.remaining or -1) - 11) < 1e-6 and rec.ownCasts == 5,
+        string.format("auras=%s tgt=%s remaining=%s ownCasts=%s", tostring(rec and #rec.initial.auras),
+            tostring(a and a.tgt), tostring(a and a.remaining), tostring(rec and rec.ownCasts)))
+end
+
+-- R9: a meter session with no sources, or with no row for the player, is not
+-- a reading of the pull.
+do
+    local E = Fresh({ Unit("G-A", "Tank", "WARRIOR", "TANK") })
+    local function PullWith(sources, t)
+        E.At(t)
+        E.Start()
+        E.Five("r9-" .. t .. "-", "Tank")
+        E.At(t + 25)
+        E.Stop()
+        E.S.meter.sources = sources
+        E.Flush()
+        return E.Last()
+    end
+    local empty = PullWith({}, 4)
+    local foreignOnly = PullWith({ { sourceGUID = "Other-1", isLocalPlayer = false, totalAmount = 300, name = "Someone" } }, 40)
+    local partial = PullWith({ { sourceGUID = E.S.units.player.guid, isLocalPlayer = true, totalAmount = 400 },
+                               { sourceGUID = "Other-1", isLocalPlayer = false, name = "Someone" } }, 80)
+    local function None(r) return r ~= nil and r.meter and r.meter.read == "none" and r.foreignShare == nil end
+    check("R9: an empty meter session, one with no own row, or one with an unreadable row is no reading",
+        None(empty) and None(foreignOnly) and None(partial),
+        string.format("empty=%s/%s foreignOnly=%s/%s partial=%s/%s",
+            tostring(empty and empty.meter and empty.meter.read), tostring(empty and empty.foreignShare),
+            tostring(foreignOnly and foreignOnly.meter and foreignOnly.meter.read), tostring(foreignOnly and foreignOnly.foreignShare),
+            tostring(partial and partial.meter and partial.meter.read), tostring(partial and partial.foreignShare)))
+end
+
+-- R10: the healer's own death ends combat in the same frame. (a) Polled as
+-- the pull ends; (b) the dead flag trailing the combat flag, seen while the
+-- ended pull waits for its meter.
+do
+    local E = Fresh({ Unit("G-A", "Tank", "WARRIOR", "TANK") })
+    E.At(4)
+    E.Start()
+    E.Five("r10a-", "Tank")
+    E.At(27)
+    E.S.units.player.dead = true -- no tick between the death and the flag
+    E.Stop()
+    E.Flush()
+    local recA = E.Last()
+    E.S.units.player.dead = false
+
+    E.At(40)
+    E.Start()
+    E.Five("r10b-", "Tank")
+    E.At(63)
+    E.Stop()                      -- the combat flag first ...
+    E.S.units.player.dead = true  -- ... the dead flag after it
+    E.Flush()
+    local recB = E.Last()
+    E.S.units.player.dead = false
+    check("R10: the healer's own death is recorded when it ends the pull, whichever event comes first",
+        recA ~= nil and #recA.deaths == 1 and recA.deaths[1][2] == 1
+        and recB ~= nil and recB ~= recA and #recB.deaths == 1 and recB.deaths[1][2] == 1,
+        string.format("a=%s b=%s", tostring(recA and #recA.deaths), tostring(recB and recB ~= recA and #recB.deaths)))
+end
+
+-- R11: a chain pull -- combat starts again inside the second before the meter
+-- is read. The ended pull's reading is missing, not the new fight's totals,
+-- even when the meter would answer in combat.
+do
+    local E = Fresh({ Unit("G-A", "Tank", "WARRIOR", "TANK") })
+    E.S.meterSecretInCombat = false
+    E.At(4)
+    E.Start()
+    E.Five("r11a-", "Tank")
+    E.At(28)
+    E.Stop()
+    E.S.Tick(0.5)
+    E.Start() -- the next pack, inside the second
+    E.S.meter.sources = { { sourceGUID = E.S.units.player.guid, isLocalPlayer = true, totalAmount = 7 } }
+    E.Flush()
+    local recA = E.Last()
+    E.S.meterSecretInCombat = nil
+    E.Five("r11b-", "Tank")
+    E.At(60)
+    E.Stop()
+    E.Flush()
+    check("R11: a meter read that finds combat again is stored as no reading, not the next fight's totals",
+        recA ~= nil and recA.meter and recA.meter.read == "none" and recA.meter.why == "combat"
+        and recA.foreignShare == nil,
+        string.format("read=%s why=%s own=%s", tostring(recA and recA.meter and recA.meter.read),
+            tostring(recA and recA.meter and recA.meter.why), tostring(recA and recA.meter and recA.meter.own)))
+end
+
+-- R25: a member who left keeps their index but not their token -- the aura
+-- scan does not read the member now on that token a second time.
+-- R24: nor does the death poll, when the member leaves mid-pull.
+do
+    local rejuv = { [1] = { name = "Rejuvenation", spellId = 774, expirationTime = 900, applications = 0 } }
+    local E = Fresh({ Unit("G-A", "Tank", "WARRIOR", "TANK"),
+                      Unit("G-B", "Mage", "MAGE", "DAMAGER"),
+                      Unit("G-C", "Rogue", "ROGUE", "DAMAGER", { auras = rejuv }) })
+    -- roster: player 1, Tank 2, Mage 3, Rogue 4. The Mage leaves; the
+    -- Rogue's token moves from party3 to party2.
+    E.S.units.party2, E.S.units.party3 = E.S.units.party3, nil
+    E.S.Fire("GROUP_ROSTER_UPDATE")
+    E.At(8) -- out-of-combat scans
+    E.Start()
+    local rec0 = nil
+    E.Five("r25-", "Tank")
+    E.At(30)
+    E.Stop()
+    E.Flush()
+    rec0 = E.Last()
+    local tgts = {}
+    for _, a in ipairs(rec0 and rec0.initial.auras or {}) do tgts[#tgts + 1] = tostring(a.tgt) end
+    check("R25: a departed member's stale token is not read by the aura scan",
+        rec0 ~= nil and #rec0.initial.auras == 1 and rec0.initial.auras[1].tgt == 4,
+        string.format("auras on %s", table.concat(tgts, ",")))
+
+    -- R24: the Tank leaves mid-pull (the Rogue moves to party1), then the
+    -- Rogue dies: one death, the Rogue's.
+    E.At(40)
+    E.Start()
+    E.Five("r24-", "Tank")
+    E.At(45)
+    E.S.units.party1, E.S.units.party2 = E.S.units.party2, nil
+    E.S.Fire("GROUP_ROSTER_UPDATE")
+    E.At(50)
+    E.S.units.party1.dead = true
+    E.At(66)
+    E.Stop()
+    E.Flush()
+    local rec = E.Last()
+    local who = {}
+    for _, d in ipairs(rec and rec.deaths or {}) do who[#who + 1] = tostring(d[2]) end
+    check("R24: a member who leaves mid-pull is not polled through a token that now names another",
+        rec ~= nil and rec ~= rec0 and #rec.deaths == 1 and rec.deaths[1][2] == 4,
+        string.format("deaths on %s", table.concat(who, ",")))
+end
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("  FAIL " .. f) end
 if #fails > 0 then os.exit(1) end

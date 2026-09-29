@@ -73,6 +73,13 @@ function R:Refresh()
     end
 
     self.tokenIndex = {}
+    -- Review R24/R25: a member who has left keeps their roster index (a
+    -- stream already recorded may name it), but not their token -- party
+    -- tokens compact when someone leaves, so the old one now names somebody
+    -- else. Every entry loses its token here; only the live ones below get
+    -- one back, so the aura scan and the death poll never read a departed
+    -- member through a token that belongs to another.
+    for _, e in ipairs(self.roster) do e.token = nil end
     for _, token in ipairs(tokens) do
         if MD.API.UnitExists(token) == true then
             local guid = MD.API.UnitGUID(token)
@@ -171,8 +178,10 @@ local function ScanAuras()
     local now = GetTime()
     local list = {}
     for i, e in ipairs(R.roster) do
+        -- Review R24/R25: a departed member has no token (R:Refresh), and is
+        -- skipped rather than read through a token that is somebody else's.
         local token = e.token
-        for j = 1, 40 do
+        for j = 1, token and 40 or 0 do
             local row = MD.API.AuraByIndex(token, j, "HELPFUL|PLAYER")
             if row == nil then break end
             if type(row) == "table" and type(row.spellId) == "number" then
@@ -236,8 +245,31 @@ end
 local active = nil
 local pending = {}     -- castGUID -> { spellID, t }
 local sentTarget = {}  -- castGUID -> target name
+local sentAt = {}      -- castGUID -> GetTime() of its SENT (Review R8: pruned by age, not wiped at the pull)
 local deadState = {}   -- roster index -> true while recorded dead (not stored)
+local preCasts = {}    -- Review R8: own casts that succeeded with no pull active, { t, sid, tgt, amt }
 local tickCount = 0
+
+-- Review R8: a SENT whose cast never went further (out of range, refused)
+-- would otherwise stay in sentTarget for the session. Ten seconds is longer
+-- than any cast bar.
+local SENT_MAX_AGE = 10
+-- Review R8: how long before PLAYER_REGEN_DISABLED an own cast may have
+-- succeeded and still be the pull's opener -- the heal that put the healer
+-- into combat arrives in the same frame as the combat flag or the next.
+-- Within it, the cast is recorded at t = 0; older ones landed before the
+-- pull, and their HoTs are the aura scan's (kept current by UNIT_AURA).
+local OPENER_WINDOW = 0.5
+local PRECAST_KEEP = 8
+
+local function PruneSent(now)
+    for castGUID, at in pairs(sentAt) do
+        if now - at > SENT_MAX_AGE then
+            sentAt[castGUID] = nil
+            sentTarget[castGUID] = nil
+        end
+    end
+end
 
 local function Push(s, t, kind, tgt, amt, x)
     if not s or s.truncated then return end
@@ -250,9 +282,75 @@ local function Push(s, t, kind, tgt, amt, x)
     s.ev.t[n], s.ev.kind[n], s.ev.tgt[n], s.ev.amt[n], s.ev.x[n] = t, kind, tgt, amt, x
 end
 
+-- One own cast into a stream: the event, the shared readers' two summary
+-- numbers (T13f Facts: rec.ownCasts, rec.spent -- amt of -1, cost unknown,
+-- adds nothing) and the spell's name for offline reading.
+local function RecordOwnCast(s, t, sid, tgt, amt)
+    Push(s, t, K.OWNCAST, tgt, amt, sid)
+    s.ownCasts = (s.ownCasts or 0) + 1
+    if amt and amt > 0 then s.spent = (s.spent or 0) + amt end
+
+    if sid ~= -1 and not s.names[sid] then
+        local name = MD.API.SpellName(sid)
+        if type(name) == "string" then
+            local sub = MD.API.SpellSubtext(sid)
+            s.names[sid] = (type(sub) == "string") and (name .. " " .. sub) or name
+        end
+    end
+end
+
+-- Every tracked index polled once through UnitIsDeadOrGhost: a new death is
+-- recorded at `t`, a res clears the mark (no event, per Facts). Called from
+-- the ticker and (Review R10) once more as the pull ends, because the
+-- healer's own death takes them out of combat in the same frame.
+local function CheckDeaths(s, t)
+    for _, idx in ipairs(s.tracked) do
+        local e = R.roster[idx]
+        local token = e and e.token
+        if token then
+            local dead = MD.API.UnitIsDeadOrGhost(token)
+            if dead == true and not deadState[idx] then
+                deadState[idx] = true
+                Push(s, t, K.DIED, idx, 0, 0)
+                s.deaths[#s.deaths + 1] = { t, idx }
+            elseif dead == false and deadState[idx] then
+                deadState[idx] = false -- a res: no event, per Facts
+            end
+        end
+    end
+end
+
+-- Review R7: whoever is already dead or a ghost when they come under the
+-- recorder's eye (the pull's start, or joining mid-pull) did not die in this
+-- pull -- marked, never recorded, so the first poll does not take them for a
+-- death at t = 0.5.
+local function SeedDead(indices)
+    for _, idx in ipairs(indices) do
+        local e = R.roster[idx]
+        local token = e and e.token
+        if token and deadState[idx] == nil and MD.API.UnitIsDeadOrGhost(token) == true then
+            deadState[idx] = true
+        end
+    end
+end
+
+-- Review R8: did the last out-of-combat aura scan run after this pre-pull
+-- cast and find its aura? Then the HoT is already in initial.auras, with its
+-- own cadence, and the cast is not recorded a second time.
+local function SeenByScan(c)
+    if not R.lastScanTime or R.lastScanTime < c.t then return false end
+    for _, a in ipairs(R.lastAuras) do
+        if a.spellId == c.sid and a.tgt == c.tgt then return true end
+    end
+    return false
+end
+
 MD:On("PLAYER_REGEN_DISABLED", function()
     R:Refresh()
-    pending, sentTarget, deadState = {}, {}, {}
+    -- Review R8: sentTarget is NOT wiped here -- a cast-time opener was SENT
+    -- out of combat and SUCCEEDS inside the pull, and needs its target.
+    pending, deadState = {}, {}
+    PruneSent(GetTime())
 
     local known = {}
     if MD.Book then
@@ -272,6 +370,7 @@ MD:On("PLAYER_REGEN_DISABLED", function()
     -- ages by nothing.
     local elapsed = t0 - (R.lastScanTime or t0)
     if elapsed < 0 then elapsed = 0 end
+    local clockMana = MD.Clock and MD.Clock.model and MD.Clock.model.mana
     active = {
         v = 3, client = "forever", id = time(), zone = MD.API.RealZoneText(),
         t0 = t0, dur = 0, pool = MD.API.UnitPowerMax("player", 0) or 0,
@@ -281,15 +380,40 @@ MD:On("PLAYER_REGEN_DISABLED", function()
         deaths = {}, restriction = {}, names = {},
         ownCasts = 0, spent = 0, -- T13f: the shared Review/replay/card readers
         initial = {
-            mana = (MD.Clock and MD.Clock.model and MD.Clock.model.mana) or 0,
+            mana = clockMana or 0,
             form = "caster", -- Forever: no Tree of Life (T15 Kit_Forever.lua Facts)
             known = known,
             auras = CopyAuraList(R.lastAuras, elapsed),
         },
         meter = nil, unreadable = 0, truncated = false, raid = R.raid, pinned = false,
     }
-    MD:Debug("sim", "forever pull started: %d tracked, %d initial aura(s)",
-        #active.tracked, #active.initial.auras)
+
+    -- Review R7: nobody already dead at the pull dies in it.
+    SeedDead(active.tracked)
+
+    -- Review R8: the opener. An own cast that succeeded in the moment before
+    -- the combat flag (healing a tank already in combat is what puts the
+    -- healer into it) is the pull's first cast, recorded at t = 0 -- unless
+    -- the last aura scan already carries its HoT. The clock charged its cost
+    -- before t0, so the stream's starting mana is lifted by that cost and
+    -- the cast pays it again at t = 0: the replay spends it once.
+    local lifted = 0
+    for _, c in ipairs(preCasts) do
+        local age = t0 - c.t
+        if age >= 0 and age <= OPENER_WINDOW and not SeenByScan(c) then
+            RecordOwnCast(active, 0, c.sid, c.tgt, c.amt)
+            if c.amt > 0 then lifted = lifted + c.amt end
+        end
+    end
+    preCasts = {}
+    if lifted > 0 and clockMana then
+        local m = clockMana + lifted
+        if active.pool > 0 and m > active.pool then m = active.pool end
+        active.initial.mana = m
+    end
+
+    MD:Debug("sim", "forever pull started: %d tracked, %d initial aura(s), %d opener cast(s)",
+        #active.tracked, #active.initial.auras, active.ownCasts)
 end)
 
 MD:On("GROUP_ROSTER_UPDATE", function()
@@ -300,12 +424,16 @@ MD:On("GROUP_ROSTER_UPDATE", function()
     -- WHICH token an index answers to, never the index itself.
     if not active then return end
     active.roster = CopyRoster()
-    local seen = {}
+    local seen, added = {}, {}
     for _, idx in ipairs(active.tracked) do seen[idx] = true end
     for _, idx in ipairs(R.tracked) do
-        if not seen[idx] then active.tracked[#active.tracked + 1] = idx; seen[idx] = true end
+        if not seen[idx] then
+            active.tracked[#active.tracked + 1] = idx; seen[idx] = true
+            added[#added + 1] = idx
+        end
     end
     table.sort(active.tracked)
+    SeedDead(added) -- Review R7: a newcomer who joins dead did not die here
 end)
 
 --------------------------------------------------------------------------------
@@ -338,12 +466,14 @@ end)
 --------------------------------------------------------------------------------
 -- Own casts.
 --------------------------------------------------------------------------------
+-- Review R8: SENT is kept with or without a pull -- a cast-time opener is
+-- SENT before the combat flag and SUCCEEDS after it.
 MD:On("UNIT_SPELLCAST_SENT", function(unit, target, castGUID, spellID)
-    if not active then return end
     if MD.API.IsSecret(unit) or unit ~= "player" then return end
     if MD.API.IsSecret(castGUID) or type(castGUID) ~= "string" then return end
     if MD.API.IsSecret(target) or type(target) ~= "string" then return end
     sentTarget[castGUID] = target
+    sentAt[castGUID] = GetTime()
 end)
 
 MD:On("UNIT_SPELLCAST_START", function(unit, castGUID, spellID)
@@ -361,37 +491,33 @@ MD:On("UNIT_SPELLCAST_START", function(unit, castGUID, spellID)
 end)
 
 MD:On("UNIT_SPELLCAST_SUCCEEDED", function(unit, castGUID, spellID)
-    if not active then return end
     if MD.API.IsSecret(unit) or unit ~= "player" then return end
     if MD.API.IsSecret(castGUID) or type(castGUID) ~= "string" then return end
 
     local sid = spellID
     if MD.API.IsSecret(sid) or type(sid) ~= "number" then sid = -1 end
 
-    local t = GetTime() - active.t0
     local tgt = ResolveTargetIndex(sentTarget[castGUID])
     local amt = -1
     if sid ~= -1 then
         local cost = CostFor(sid)
         if cost ~= nil then amt = cost end
     end
-    Push(active, t, K.OWNCAST, tgt, amt, sid)
+    sentTarget[castGUID] = nil
+    sentAt[castGUID] = nil
 
-    -- T13f: the shared Review tab / replay window / card read rec.ownCasts
-    -- and rec.spent (Facts) -- amt of -1 (cost unknown) adds nothing.
-    active.ownCasts = (active.ownCasts or 0) + 1
-    if amt and amt > 0 then active.spent = (active.spent or 0) + amt end
-
-    if sid ~= -1 and not active.names[sid] then
-        local name = MD.API.SpellName(sid)
-        if type(name) == "string" then
-            local sub = MD.API.SpellSubtext(sid)
-            active.names[sid] = (type(sub) == "string") and (name .. " " .. sub) or name
-        end
+    if not active then
+        -- Review R8: no pull yet -- kept for PLAYER_REGEN_DISABLED, which
+        -- takes the one that opened the pull (OPENER_WINDOW).
+        preCasts[#preCasts + 1] = { t = GetTime(), sid = sid, tgt = tgt, amt = amt }
+        if #preCasts > PRECAST_KEEP then table.remove(preCasts, 1) end
+        return
     end
 
+    -- T13f: the shared Review tab / replay window / card read rec.ownCasts
+    -- and rec.spent (Facts) -- RecordOwnCast keeps both.
+    RecordOwnCast(active, GetTime() - active.t0, sid, tgt, amt)
     pending[castGUID] = nil
-    sentTarget[castGUID] = nil
 end)
 
 -- Lead review 1: whether UNIT_SPELLCAST_STOP fires before or after
@@ -427,6 +553,7 @@ local function FlushCancels(s, t)
             Push(s, t, K.CANCEL, -1, p.endT - p.startT, p.sid)
             pending[castGUID] = nil
             sentTarget[castGUID] = nil
+            sentAt[castGUID] = nil
         end
     end
 end
@@ -450,7 +577,10 @@ MD:OnTick(function()
     tickCount = tickCount + 1
 
     if not active then
-        if tickCount % 4 == 0 and not InCombat() then ScanAuras() end
+        if tickCount % 4 == 0 then
+            PruneSent(GetTime())
+            if not InCombat() then ScanAuras() end
+        end
         return
     end
 
@@ -465,22 +595,19 @@ MD:OnTick(function()
     end
 
     FlushCancels(active, GetTime() - active.t0)
+    CheckDeaths(active, GetTime() - active.t0)
+end)
 
-    for _, idx in ipairs(active.tracked) do
-        local e = R.roster[idx]
-        local token = e and e.token
-        if token then
-            local dead = MD.API.UnitIsDeadOrGhost(token)
-            if dead == true and not deadState[idx] then
-                deadState[idx] = true
-                local t = GetTime() - active.t0
-                Push(active, t, K.DIED, idx, 0, 0)
-                active.deaths[#active.deaths + 1] = { t, idx }
-            elseif dead == false and deadState[idx] then
-                deadState[idx] = false -- a res: no event, per Facts
-            end
-        end
-    end
+-- Review R8: a HoT that lands out of combat between two 2 s scans is read at
+-- once, so a pre-cast in the last seconds before the pull is in the pull's
+-- initial auras. Only the tracked tokens, never in combat (Facts: reading
+-- auras in combat raises), never during a pull.
+MD:On("UNIT_AURA", function(unit)
+    if active then return end
+    if MD.API.IsSecret(unit) or type(unit) ~= "string" then return end
+    if not R.tokenIndex[unit] then return end
+    if InCombat() then return end
+    ScanAuras()
 end)
 
 --------------------------------------------------------------------------------
@@ -511,6 +638,7 @@ local function ReadMeter(s)
     end
 
     local own, others, bySource, ownGUID = 0, 0, {}, nil
+    local sawLocal, unreadableRows = false, 0
     if type(session.combatSources) == "table" then
         for _, row in ipairs(session.combatSources) do
             if type(row) == "table" and type(row.totalAmount) == "number" then
@@ -520,13 +648,34 @@ local function ReadMeter(s)
                     amount = row.totalAmount, isLocal = isLocal,
                 }
                 if isLocal then
+                    sawLocal = true
                     own = own + row.totalAmount
                     if type(row.sourceGUID) == "string" then ownGUID = row.sourceGUID end
                 else
                     others = others + row.totalAmount
                 end
+            else
+                unreadableRows = unreadableRows + 1
             end
         end
+    end
+
+    -- Review R9: a session with nothing in it (build 70009 read Current as
+    -- sources=0 out of combat), rows whose amount did not come back plain
+    -- (the copy drops a secret field, so the totals would be partial), or no
+    -- row for the player is not a reading of this pull -- stored as none,
+    -- so the gates say "no damage meter reading" instead of passing on zeros.
+    local notRead
+    if unreadableRows > 0 then
+        notRead = "unreadable rows"
+    elseif #bySource == 0 or own + others <= 0 then
+        notRead = "empty"
+    elseif not sawLocal then
+        notRead = "no own row"
+    end
+    if notRead then
+        s.meter = { read = "none", why = notRead }
+        return
     end
 
     local bySpell, overkillBySpell = {}, {}
@@ -551,7 +700,7 @@ local function ReadMeter(s)
     -- T13f Facts: the Forever foreign share is the meter's, only when the
     -- meter itself was actually read (nil otherwise, matching the shared
     -- readers' `rec.foreignShare` being absent on a v2/no-meter stream).
-    s.foreignShare = (own + others) > 0 and (others / (own + others)) or 0
+    s.foreignShare = others / (own + others) -- own + others > 0, checked above
 end
 
 -- Newest first, matching TBC's Engine/FightRecorder.lua:622-627.
@@ -632,10 +781,34 @@ MD:On("PLAYER_REGEN_ENABLED", function()
     -- a genuine cancel (Lead review 1) -- flushed before `active` is cleared,
     -- since Push/FlushCancels need it.
     FlushCancels(s, GetTime() - s.t0)
+    -- Review R10: one last death poll -- the healer's own death is what
+    -- ended combat, usually before the ticker could see it.
+    CheckDeaths(s, GetTime() - s.t0)
     active = nil
     s.dur = GetTime() - s.t0
     MD.API.After(1, function()
-        ReadMeter(s)
+        -- Review R10: and once more a second later, for the player only, in
+        -- case the dead flag trailed the combat flag. Nothing out of combat
+        -- kills in that second in practice (damage keeps a healer in
+        -- combat), and a chain pull means the player is alive. PLAYER_DEAD
+        -- would say it directly, but the probe has never measured it on
+        -- this client; UnitIsDeadOrGhost it has.
+        local pidx = R.tokenIndex.player
+        if not active and pidx and not deadState[pidx]
+            and MD.API.UnitIsDeadOrGhost("player") == true then
+            deadState[pidx] = true
+            Push(s, s.dur, K.DIED, pidx, 0, 0)
+            s.deaths[#s.deaths + 1] = { s.dur, pidx }
+        end
+        -- Review R11: a chain pull may have started within the second. The
+        -- meter is secret in combat, and "Current" is by then the new
+        -- fight's session -- this pull's reading is missing, not the new
+        -- fight's totals.
+        if active or InCombat() then
+            s.meter = { read = "none", why = "combat" }
+        else
+            ReadMeter(s)
+        end
         StoreOrDrop(s)
     end)
 end)
