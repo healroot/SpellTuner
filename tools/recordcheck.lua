@@ -413,6 +413,58 @@ do
         and got.pinned == false and viaSpec == got and label == "1" and runSpec == nil and runLabel == "2:3")
 end
 
+--------------------------------------------------------------------------------
+-- T17c: with the adapter's status-bar readback on and a bar that reads back
+-- plain, a party member's max is recorded plain. A fresh session, so the
+-- assertions above (constant off) are untouched; the constant and the bar's
+-- getter are restored at the end.
+--------------------------------------------------------------------------------
+do
+    local MD2, S2 = NewSession()
+    S2.units.player.name = "Healroot"
+    S2.units.player.hpMax = 375
+    S2.AddUnit("party1", { guid = "Party-1-guid", name = "Tank", class = "WARRIOR", role = "TANK",
+                            hp = 9000, hpMax = 9000 })
+    S2.units.player.auras = {}
+    local tankMax = S2.units.party1.hpMax
+    local barMT = getmetatable(_G.UIParent)
+    local origGet = barMT.GetMinMaxValues
+    local origFlag = MD2.API.BAR_READS_MAX
+    MD2.API.BAR_READS_MAX = true
+    barMT.GetMinMaxValues = function() return 0, tankMax end
+
+    MD2:SetModule("SpellTuner_Recorder", true)
+    local cursor = 0
+    local function Flush()
+        for i = cursor + 1, #(S2.timers or {}) do S2.timers[i]() end
+        cursor = #(S2.timers or {})
+    end
+    S2.inCombat = true
+    S2.Fire("PLAYER_REGEN_DISABLED")
+    for i = 1, 5 do
+        local g = "bg" .. i
+        S2.Fire("UNIT_SPELLCAST_SENT", "player", "Tank", g, 774)
+        S2.Fire("UNIT_SPELLCAST_START", "player", g, 774)
+        S2.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", g, 774)
+        S2.Fire("UNIT_SPELLCAST_STOP", "player", g, 774)
+    end
+    S2.Combat("party1", "WOUND", 500)
+    while S2.now < 30 do S2.Tick(0.5) end
+    S2.inCombat = false
+    S2.Fire("PLAYER_REGEN_ENABLED")
+    Flush()
+    local rec2 = MD2.FightRecorder:Get(1)
+
+    barMT.GetMinMaxValues = origGet
+    MD2.API.BAR_READS_MAX = origFlag
+    local e = rec2 and rec2.roster and rec2.roster[2]
+    check("with the readback on and a bar that reads back plain, a party member's max is recorded plain",
+        rec2 ~= nil and e ~= nil and e.name == "Tank" and e.maxHP == tankMax and e.maxSecret == false
+        and e.maxVia == "bar" and rec2.roster[1].maxHP == 375 and rec2.roster[1].maxVia == nil
+        and origFlag == false,
+        string.format("rec=%s tank=%s,%s,%s", tostring(rec2), tostring(e and e.maxHP), tostring(e and e.maxSecret), tostring(e and e.maxVia)))
+end
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("  FAIL " .. f) end
 if #fails > 0 then os.exit(1) end

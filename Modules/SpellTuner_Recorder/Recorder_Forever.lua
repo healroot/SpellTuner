@@ -86,10 +86,16 @@ function R:Refresh()
             -- Party members' current and max health are secret; the
             -- player's max is plain (Facts). -1/maxSecret=true is Planner
             -- ruling 1's stand-in -- this task only records it.
-            local maxHP, maxSecret = -1, true
+            local maxHP, maxSecret, maxVia = -1, true, nil
             if token == "player" then
                 local hp = MD.API.UnitHealthMax(token)
                 if type(hp) == "number" then maxHP, maxSecret = hp, false end
+            else
+                -- T17c: a status bar's read-back of the party member's max,
+                -- only when the adapter's BAR_READS_MAX is on and the bar
+                -- hands it back plain; otherwise the stand-in as before.
+                local hp = MD.API.HealthMax(token)
+                if type(hp) == "number" then maxHP, maxSecret, maxVia = hp, false, "bar" end
             end
 
             local key = RosterKey(guid, name, token)
@@ -103,7 +109,7 @@ function R:Refresh()
                 guid = (type(guid) == "string") and guid or nil,
                 class = class, role = role,
                 level = (type(level) == "number") and level or nil,
-                maxHP = maxHP, maxSecret = maxSecret,
+                maxHP = maxHP, maxSecret = maxSecret, maxVia = maxVia,
                 token = token, -- kept on the LIVE entry only; never copied into a stored stream
             }
             self.tokenIndex[token] = idx
@@ -122,7 +128,7 @@ local function CopyRoster()
     local out = {}
     for i, e in ipairs(R.roster) do
         out[i] = { name = e.name, guid = e.guid, class = e.class, role = e.role,
-                   level = e.level, maxHP = e.maxHP, maxSecret = e.maxSecret }
+                   level = e.level, maxHP = e.maxHP, maxSecret = e.maxSecret, maxVia = e.maxVia }
     end
     return out
 end

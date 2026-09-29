@@ -324,6 +324,58 @@ function MD.API.DrawUnitPower(bar, unit, powerType)
     return true
 end
 
+-- T17c: whether a hidden status bar may be asked for a party member's max
+-- health. Whether a bar hands a secret back PLAIN is UNKNOWN until the
+-- author's TESTING section 38.3 report (docs/probe/<build>-alpha4-party.md):
+-- its line `bar UnitHealthMax(party1): set ok, read plain <n>` switches this on
+-- (one word, false -> true); `... read secret` leaves it off. Read at call
+-- time, so a test may flip it and must restore it.
+MD.API.BAR_READS_MAX = false
+
+local maxBar -- created on first use, never named, never shown, never styled
+
+-- T17c: a unit's max health as a plain number, or nil plus a reason. The
+-- client's own answer goes through Has (cached, the return not classified by
+-- Call); a plain number is returned as it is; a secret is refused unless
+-- BAR_READS_MAX, in which case it is handed -- unread -- to a hidden bar's
+-- SetMinMaxValues and the bar's second return is read back and classified
+-- before anything compares it. One raise anywhere is "error" and never leaves.
+function MD.API.HealthMax(unit)
+    local fn = MD.API.Has("UnitHealthMax")
+    if type(fn) ~= "function" then return nil, "absent" end
+
+    local gotOk, v = pcall(fn, unit)
+    if not gotOk then return nil, "error" end
+    if not MD.API.IsSecret(v) then
+        if type(v) == "number" then return v end
+        return nil, "error"
+    end
+    if MD.API.BAR_READS_MAX ~= true then return nil, "secret" end
+
+    if not maxBar then
+        local cok, bar = pcall(CreateFrame, "StatusBar", nil, UIParent)
+        if cok and type(bar) == "table" then maxBar = bar end
+    end
+    if not maxBar then return nil, "error" end
+
+    -- The bar is shared: a failed set would leave the previous unit's value
+    -- behind, so it is reset first and a failed set is never read back.
+    local setOk = pcall(function()
+        maxBar:SetMinMaxValues(0, 1)
+        maxBar:SetMinMaxValues(0, v) -- never inspected: straight into the bar
+    end)
+    if not setOk then return nil, "error" end
+
+    local readOk, _, maxV = pcall(function()
+        local lo, hi = maxBar:GetMinMaxValues()
+        return lo, hi
+    end)
+    if not readOk then return nil, "error" end
+    if MD.API.IsSecret(maxV) then return nil, "secret" end
+    if type(maxV) == "number" and maxV > 0 then return maxV end
+    return nil, "error"
+end
+
 -- This addon's own version, read back through the flavour's AddOnMetadata
 -- binding (C_AddOns.GetAddOnMetadata on Forever, the global on TBC) rather
 -- than assumed -- nil if that binding is absent or answers anything but a

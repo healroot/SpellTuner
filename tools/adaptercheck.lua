@@ -361,6 +361,61 @@ if flavour == "forever" then
         for _, v in ipairs(r) do checkOne(v) end
         check("no secret ever leaves the adapter", none == true)
     end
+
+    -- T17c: HealthMax, a party member's real max through a hidden status bar,
+    -- off (MD.API.BAR_READS_MAX false) until the probe's bar readback line says
+    -- a bar hands a secret back plain. The getter is replaced through the bar
+    -- metatable the stub shares (T13e's own technique) and always restored.
+    do
+        local barMT = getmetatable(_G.UIParent)
+        local origGet = barMT.GetMinMaxValues
+        local origFlag = MD.API.BAR_READS_MAX
+        local calls = 0
+        barMT.GetMinMaxValues = function(self) calls = calls + 1; return origGet(self) end
+        MD.API.BAR_READS_MAX = false
+        local a, b = MD.API.HealthMax("party1")
+        local p, pr = MD.API.HealthMax("player")
+        barMT.GetMinMaxValues = origGet
+        MD.API.BAR_READS_MAX = origFlag
+        check("a party member's max through a status bar is off until the probe says so",
+            origFlag == false and a == nil and b == "secret" and calls == 0
+            and type(p) == "number" and p == S.units.player.hpMax and pr == nil,
+            string.format("flag=%s a=%s b=%s calls=%s p=%s", tostring(origFlag), tostring(a), tostring(b), tostring(calls), tostring(p)))
+    end
+
+    do
+        local origFlag = MD.API.BAR_READS_MAX
+        MD.API.BAR_READS_MAX = true
+        local r = { MD.API.HealthMax("party1") }
+        local n = select("#", MD.API.HealthMax("party1"))
+        MD.API.BAR_READS_MAX = origFlag
+        local leaked = false
+        for i = 1, n do
+            local v = select(i, MD.API.HealthMax("party1"))
+            if _G.issecretvalue(v) then leaked = true end
+        end
+        for i = 1, 2 do if _G.issecretvalue(r[i]) then leaked = true end end
+        check("with the readback on, a bar that hands back a secret gives nil, secret",
+            r[1] == nil and r[2] == "secret" and not leaked,
+            string.format("a=%s b=%s leaked=%s", tostring(r[1]), tostring(r[2]), tostring(leaked)))
+    end
+
+    do
+        local barMT = getmetatable(_G.UIParent)
+        local origGet = barMT.GetMinMaxValues
+        local origFlag = MD.API.BAR_READS_MAX
+        MD.API.BAR_READS_MAX = true
+        barMT.GetMinMaxValues = function() return 0, 12345 end
+        local plain = MD.API.HealthMax("party1")
+        barMT.GetMinMaxValues = function() error("stub GetMinMaxValues raised") end
+        local okRaise, ra, rb = pcall(MD.API.HealthMax, "party1")
+        barMT.GetMinMaxValues = origGet
+        MD.API.BAR_READS_MAX = origFlag
+        check("with the readback on, a bar that hands back a plain max gives that number, and a raising bar gives nil, error",
+            plain == 12345 and okRaise == true and ra == nil and rb == "error" and origFlag == false
+            and barMT.GetMinMaxValues == origGet,
+            string.format("plain=%s okRaise=%s ra=%s rb=%s", tostring(plain), tostring(okRaise), tostring(ra), tostring(rb)))
+    end
 end
 
 --------------------------------------------------------------------------------
