@@ -621,7 +621,8 @@ check("Q6 waits for level 10",
     and Has(reportB, "Q6 answered: see == talents"))
 
 --------------------------------------------------------------------------------
--- The release: proves the build ships exactly the three surviving TOCs.
+-- The release (T23): the Forever package ships the two Forever TOCs, the TBC package
+-- the TBC one, and neither carries the other's TOC marker file.
 --------------------------------------------------------------------------------
 local RELEASE_OUT = ROOT .. "/tools/.lua/probecheck-release"
 local releaseOutput = ""
@@ -630,15 +631,18 @@ do
     if p then releaseOutput = p:read("*a") or ""; p:close() end
 end
 
-local releaseTocs = {}
-do
-    local p = io.popen("ls \"" .. RELEASE_OUT .. "/SpellTuner\"/*.toc 2>/dev/null")
+local function TocsIn(dir)
+    local tocs = {}
+    local p = io.popen("ls \"" .. dir .. "\"/*.toc 2>/dev/null")
     if p then
-        for line in p:lines() do releaseTocs[#releaseTocs + 1] = line:match("([^/]+)$") end
+        for line in p:lines() do tocs[#tocs + 1] = line:match("([^/]+)$") end
         p:close()
     end
-    table.sort(releaseTocs)
+    table.sort(tocs)
+    return tocs
 end
+local foreverTocs = TocsIn(RELEASE_OUT .. "/forever/SpellTuner")
+local tbcTocs = TocsIn(RELEASE_OUT .. "/tbc/SpellTuner")
 
 local function FileExists(path)
     local f = io.open(path, "r")
@@ -646,15 +650,19 @@ local function FileExists(path)
     return false
 end
 
-check("the build ships three TOCs",
+check("the Forever package ships two TOCs and the TBC package one",
     Has(releaseOutput, "Built ")
-    and #releaseTocs == 3
-    and releaseTocs[1] == "SpellTuner.toc" and releaseTocs[2] == "SpellTuner_Mainline.toc"
-    and releaseTocs[3] == "SpellTuner_TBC.toc"
-    and FileExists(RELEASE_OUT .. "/SpellTuner/Client/TOC_Mainline.lua")
-    and FileExists(RELEASE_OUT .. "/SpellTuner/Client/TOC_Plain.lua")
-    and not FileExists(RELEASE_OUT .. "/SpellTuner/Client/TOC_Forever.lua")
-    and not FileExists(RELEASE_OUT .. "/SpellTuner/Client/TOC_Vanilla.lua")
+    and #foreverTocs == 2
+    and foreverTocs[1] == "SpellTuner.toc" and foreverTocs[2] == "SpellTuner_Mainline.toc"
+    and #tbcTocs == 1 and tbcTocs[1] == "SpellTuner_TBC.toc"
+    and FileExists(RELEASE_OUT .. "/forever/SpellTuner/Client/TOC_Mainline.lua")
+    and FileExists(RELEASE_OUT .. "/forever/SpellTuner/Client/TOC_Plain.lua")
+    and not FileExists(RELEASE_OUT .. "/tbc/SpellTuner/Client/TOC_Mainline.lua")
+    and not FileExists(RELEASE_OUT .. "/tbc/SpellTuner/Client/TOC_Plain.lua")
+    and FileExists(RELEASE_OUT .. "/tbc/SpellTuner/Client/TOC_TBC.lua")
+    and not FileExists(RELEASE_OUT .. "/forever/SpellTuner/Client/TOC_TBC.lua")
+    and not FileExists(RELEASE_OUT .. "/forever/SpellTuner/Client/TOC_Forever.lua")
+    and not FileExists(RELEASE_OUT .. "/forever/SpellTuner/Client/TOC_Vanilla.lua")
     and not FileExists(ROOT .. "/SpellTuner_Forever.toc")
     and not FileExists(ROOT .. "/SpellTuner_Vanilla.toc"))
 

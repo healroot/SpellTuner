@@ -1,6 +1,6 @@
 # T23 -- two installations from one tree: a TBC package and a Forever package
 
-Status: **handed out** 2026-09-29 (T22 accepted in 6d755f6).
+Status: **accepted** 2026-09-29 (handed out after T22, 6d755f6).
 
 ## Goal
 
@@ -188,6 +188,160 @@ HISTORY after acceptance).
 
 ## Report
 
-What you changed, file by file; the failing runs from "tests first"; every paste Acceptance asks
-for; anything that surprised you (a file one TOC lists that another flavour also needs, a module
-entry resolved from the root, a path the detection gets wrong).
+**Implementer's report (2026-09-29).** Everything Acceptance asks for holds; one thing needs the
+lead's eyes first.
+
+**Read this first: a second writer.** At 16:34:05 something other than me overwrote
+`tools/releasecheck.lua` (4 s after I wrote `release.sh`; my 13-assertion suite, written at ~16:31,
+was replaced by a different 440-line suite with the same 13 names, scratch root
+`tools/.lua/releasecheck/scratch tree`). It looks like a second implementer on the same task. I
+did not fight it: I kept the file as found and made one change to it -- its `sh()` ran
+`"cmd 2>&1"` after callers' own `2>/dev/null`, so the stderr of `ls`/`find` on a missing folder
+leaked into `DirNames()` and failed assertions 7, 10 and 11 (10 ok, 3 failed against my
+`release.sh`); wrapping the command in parentheses fixed it (13 ok). If that other writer is not
+yours, the file's provenance is worth a look; if it is, `release.sh`, `Makefile` and `probecheck.lua`
+are mine and unchanged by it as far as I can see (mtimes and contents). That suite does not check a
+CRLF TOC; I checked it by hand (below). My own suite is not in the tree.
+
+**Files.**
+- `release.sh`: rewritten (header included). Classifies every root `SpellTuner*.toc` and
+  `Modules/<Name>/<Name>*.toc` by `## Interface:` (20000-29999 tbc, 16000-19999 forever, a mix or
+  anything else, or a module that is not forever: `ERROR: <file> has interface <v>: neither tbc nor
+  forever`); reads every TOC's version and refuses on disagreement (`ERROR: the TOCs disagree on the
+  version:` + one `  <path>: <version>` per TOC) before touching the output; `--version`,
+  `--set-version X` (regex checked first, `sed` on the version line only, the CR of a CRLF file
+  kept, builds nothing), `--flavour tbc|forever|both`, `--install-tbc`, `--install-forever`,
+  `--install` / positional / `$WOW_ADDONS` (env only when no install option was given) which detect
+  from `/_classic_beta_/` and `/_anniversary_/`. Every install refusal (missing dir, last component
+  not `AddOns`, unknown or ambiguous path, explicit flavour against the path's) comes before anything
+  is built. Build: `$OUT/tbc/SpellTuner`, `$OUT/forever/SpellTuner` + `$OUT/forever/<Module>`, old
+  layout `$OUT/SpellTuner` and `$OUT/SpellTuner_*` removed, `SpellTuner-tbc-<v>.zip` and
+  `SpellTuner-forever-<v>.zip` (python3 fallback here, no `zip`). All files verified before
+  anything is written. Install replaces `DIR/SpellTuner` whole; forever also replaces the modules;
+  tbc removes `DIR/<Module>` with `Removed stale ... (Forever only)`. The worktree machinery is as
+  before; `--list` / `--menu` show the version or `mixed`. Two small additions the task did not spell
+  out: an unknown `-option` is now an error (it used to become the install path), and `--help` prints
+  the whole header.
+- `Makefile`: `FLAVOUR ?=`; `install` passes `--install-$(FLAVOUR)` when set, else `--install`; a
+  bogus FLAVOUR is refused by make; usage comments updated.
+- `tools/releasecheck.lua`: new, 13 ok (see the provenance note above).
+- `tools/probecheck.lua`: the release check is now "the Forever package ships two TOCs and the TBC
+  package one" with the clauses of Acceptance 2 (`TocsIn` replaces `releaseTocs`); nothing else.
+
+**Tests first.** My suite (13 assertions, before I had a new `release.sh`) against the old script:
+`0 ok, 13 failed` (e.g. `the TBC package holds exactly the TBC TOC's files FAIL - missing set`,
+`the build refuses when two TOCs disagree on the version FAIL - exit 0: Built ...`, `an install into a
+path of unknown flavour is refused and writes nothing FAIL - exit 0 Built ...`). probecheck against
+the old script: `81 ok, 1 failed` -- `FAIL the Forever package ships two TOCs and the TBC package one`.
+Side effect of that run to know about: the old script, given a scratch tree without `--out`, wrote
+`dist/tree8` into the **main checkout's** `dist/` (`ROOT` is the git common dir); I deleted it. Nothing
+was written under `/mnt/e` or any real AddOns folder; every install went into
+`tools/.lua/releasecheck/` or `tools/.lua/manual check/`.
+
+**Suites (last lines).** `tools/run.sh tools/releasecheck.lua`: `13 ok, 0 failed`.
+`probecheck`: `82 ok, 0 failed`. The whole `docs/TOOLS.md` section 1 loop, at HANDOVER's baselines:
+simcheck `-> PASS`, reccheck 54, replaycheck 80, replayui 98, runcheck 78, reviewui 44, navui 25,
+dashui 56, regencheck 27, simwindow 8, solvercheck 77, timeline 27, spelltip 48, practice 74,
+practiceui 49, migrate 7, forevercheck 13, modulecheck 14, kitcheck 7, recordcheck 24, scenariocheck
+12, gatecheck 9, replayforever 11, reviewforever 10, coachforever 18, practiceforever 9, bindscheck 6,
+parsecheck 12, bookcheck 17, tipcheck 17, clockcheck 17, spellsui 17, measurecheck 26 (all `0 failed`);
+adaptercheck 22/15, corecheck 10/8, svcheck 6/1, consolecheck 14/1 (forever/tbc);
+`apicheck: 8 Forever TOCs, 44 files, 45 distinct globals, 0 findings (baseline 69893)`;
+`selftest: 10 of 10 findings as expected`; `selftest: ok` (refcheck). `luac -p` on `releasecheck.lua`
+and `probecheck.lua`: clean. `bash -n release.sh`: clean.
+
+**Acceptance 4 pastes** (`--out "<worktree>/tools/.lua/manual check/out"`, a path with a space):
+```
+Built .../out/tbc/SpellTuner (v0.16.0, 55 files) from manademon-folder-continue-41eabc.
+Built .../out/SpellTuner-tbc-0.16.0.zip
+Built .../out/forever/SpellTuner (v0.16.0, 21 files) from manademon-folder-continue-41eabc, plus 3 module(s): SpellTuner_Practice SpellTuner_Recorder SpellTuner_Replay.
+Built .../out/SpellTuner-forever-0.16.0.zip
+Copy .../out/<flavour>/SpellTuner (and, for Forever, its siblings) into the matching client's Interface/AddOns folder, or:
+  ./release.sh --install-tbc "/mnt/c/Program Files (x86)/World of Warcraft/_anniversary_/Interface/AddOns"
+  ./release.sh --install-forever "/mnt/c/Program Files (x86)/World of Warcraft/_classic_beta_/Interface/AddOns"
+(or: make install WOW_ADDONS="<AddOns folder>" [FLAVOUR=tbc|forever])
+```
+(the out folder had a pre-seeded `SpellTuner/old.toc` and `SpellTuner_Old/`; both were gone.)
+`find <out> -name '*.toc' | sort` (paths relative to out): `forever/SpellTuner/SpellTuner.toc`,
+`forever/SpellTuner/SpellTuner_Mainline.toc`, `forever/SpellTuner_Practice/SpellTuner_Practice.toc`,
+`.../SpellTuner_Practice_Mainline.toc`, the same two for `SpellTuner_Recorder` and `SpellTuner_Replay`,
+`tbc/SpellTuner/SpellTuner_TBC.toc` -- nine, none of the other flavour. File counts: TBC package 55
+files; Forever `SpellTuner/` 21 files, all of `forever/` 53 (three modules 32). `bash -n release.sh`
+clean. `./release.sh --version`: `0.16.0`. `./release.sh --list`:
+```
+  1) main                   vmixed   master  (/home/penek/projects/addons/SpellTuner)
+  2) combat-log-design-arch-ffb907 vmixed   claude/combat-log-design-arch-ffb907  (...)
+  3) manademon-folder-continue-41eabc v0.16.0  claude/manademon-folder-continue-41eabc  (...)
+```
+(the two `mixed` are other checkouts whose TOCs really disagree or predate the layout).
+```
+make -n install WOW_ADDONS=/x/_classic_beta_/Interface/AddOns
+  -> ./release.sh --menu --install "/x/_classic_beta_/Interface/AddOns"
+make -n install WOW_ADDONS=/x/y/Interface/AddOns FLAVOUR=tbc
+  -> ./release.sh --menu --install-tbc "/x/y/Interface/AddOns"
+```
+(each preceded by the two `test` guard lines; `--menu` is the existing behaviour without `SRC=`.)
+
+Hand checks in scratch: `--install` into a scratch `_classic_beta_` and `_anniversary_` AddOns
+(`Installed forever v0.16.0 into ...`; `Removed stale .../SpellTuner_Replay (Forever only)` then
+`Installed tbc v0.16.0 into ...`); `--install` into `.../x/Interface/Other` refused (not an AddOns
+folder); `--install-tbc` into the `_classic_beta_` folder: `ERROR: ... looks like a forever client;
+refusing to install tbc there`; a nonexistent folder refused; a CRLF `SpellTuner_TBC.toc` through
+`--set-version 1.2.3-rc.1` changed only `## Version: ...^M$`.
+
+**Surprises.** (1) The second writer above. (2) `tools/data/modulecheck-fixture/T13CScratch/` holds
+`.toc` files; anything that finds TOCs by `find -name '*.toc'` over the tree (as my first suite did)
+sees them, so both `release.sh` (root and `Modules/*/` only) and the suite (which excludes
+`./tools/*`) must not. (3) A main checkout on `master` and one other worktree read `mixed` in
+`--list`; nothing to fix, but it will show. (4) Nothing a TBC TOC lists is missing from a Forever
+package or vice versa; the two packages overlap only in shared files (Client/API.lua, Core.lua, ...),
+each carrying its own copy. (5) No module entry needed the root-resolution rule differently from
+before.
+
+## Lead review (2026-09-29)
+
+Accepted. **Two implementers were on this task at once** (cause in HANDOVER's lessons). The one
+whose report is above (session a8fb5831) wrote `release.sh`, `Makefile` and the probecheck change.
+The "second writer" it names at 16:34:05 was the lead's own re-dispatch (agent a688ec09). That agent
+found the file already on disk when its `Write` reported "updated", stopped, and changed nothing
+else. So the `tools/releasecheck.lua` in this commit is the re-dispatched agent's suite (its python
+edit to assertion 9 included), with this report's `sh()` fix (the command parenthesised so a
+caller's `2>/dev/null` stays inside). The first implementer's own suite is lost. The lead reviewed
+the suite on disk as if nobody vouched for it.
+
+- **Diff read.** `release.sh` against every numbered point of Files:
+  - classification by interface (module TOCs must be forever);
+  - one version, refused before the output is touched;
+  - `--flavour`, the two packages, the old layout removed, and the zips named by flavour and version;
+  - `--install-tbc` / `--install-forever` / `--install` / the positional form / `$WOW_ADDONS`
+    (the last only when no install option was given). Detection runs on the resolved path, and
+    every refusal comes before the build;
+  - installing tbc removes the modules with `Removed stale`;
+  - `--set-version` checks its argument before touching anything, and its `sed` keeps a trailing CR
+    in `\2`;
+  - the closing hint names both commands.
+
+  `Makefile` refuses a bogus `FLAVOUR`. probecheck changes only the release check, to the
+  Acceptance 2 clauses.
+- **Suite read assertion by assertion.** Each of the 13 tests what its name says:
+  - 1 also requires `tbc/` to hold only `SpellTuner/`;
+  - 7 requires no `tbc/` or `forever/` in the refused `--out`;
+  - 11 requires the refused `--out` to be empty;
+  - 12 compares the file list and checksums before and after;
+  - every install goes under `tools/.lua/releasecheck/scratch tree/`;
+  - `WOW_ADDONS` is unset for every run.
+- **Lead's change (the planner's request): a CRLF TOC under `--set-version`.** Assertion 8 now turns
+  the scratch copy's `SpellTuner_TBC.toc` into CRLF before the snapshot. It requires that file to come
+  back byte-for-byte except the version line, with every LF still a CRLF and
+  `## Version: 0.16.9\r\n` present. Mutation check: a `release.sh` whose `--set-version` pipes
+  through `tr -d "\r"` fails it (`12 ok, 1 failed -- SpellTuner_TBC.toc differs beyond its version
+  line`). `release.sh` was restored byte-for-byte afterwards.
+- **Re-run by the lead.** releasecheck 13, probecheck 82, and every other suite at HANDOVER's
+  baselines. apicheck 0 findings over 44 files, selftest 10 of 10, refcheck selftest ok. `bash -n
+  release.sh` clean, and `luac -p` clean on both suites. `make -n install` prints
+  `./release.sh --menu --install "/x/_classic_beta_/Interface/AddOns"` and
+  `./release.sh --menu --install-tbc "/x/y/Interface/AddOns"`. `./release.sh --version` prints
+  `0.16.0`.
+- Noted, not changed: `rm -rf "$OUT"/SpellTuner_*` removes the old layout as the task asked. An
+  `--out` pointed at a real AddOns folder would lose the modules there, which is no worse than the
+  old script's own `rm -rf "$OUT/SpellTuner"`.
