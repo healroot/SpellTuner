@@ -21,9 +21,23 @@
 -- .logs/runs/<id>.txt. The same address the game takes as "1:3".
 --
 -- Options: --file <path>   the SavedVariables file (default: $MD_SAVEDVARS, then
---                          .logs/SpellTuner.lua, then the author's install)
---          --char <key>    "Name-Realm" (default: the first character with recordings)
+--                          .logs/SpellTuner.lua, then the author's install -- the
+--                          anniversary one, or with --flavour forever the beta one)
+--          --char <key>    "Name-Realm" (default: the character with the most recordings)
 --          --run K         address the pulls of run K
+--          --flavour forever|tbc
+--                          which client wrote the file (default: read from it -- a v3
+--                          recording, a kit, the SavedVariables guard's session stamp or
+--                          the probe's reports say Forever; `run.sh --flavour` sets it too)
+--          --strategy <key> (Forever) the suggested column's planner or search reading
+--          --out <dir>     (Forever) where export writes (default .logs/forever/)
+--
+-- pN addresses practice fight N (p1 = newest) instead of recording N, on both clients.
+--
+-- On a Forever file (WoW: Forever, the beta) the commands are the same and run on
+-- the Forever engine -- tools/importforever.lua, which says what each prints:
+-- list, validate N, replay N, coach N [force] [--strategy <key>], export N, with
+-- N a recording (1 = newest) or pN a practice fight (p1 = newest).
 --
 -- The spell kit is the CHARACTER's when the file carries a profile (v0.9.0:
 -- SpellTuner writes cdb.profile at login, on a talent change and on a gear
@@ -42,20 +56,45 @@ do
         if a == "--file" then opts.file = arg[i + 1]; i = i + 1
         elseif a == "--char" then opts.char = arg[i + 1]; i = i + 1
         elseif a == "--run" then opts.run = tonumber(arg[i + 1]); i = i + 1
+        elseif a == "--flavour" or a == "--flavor" then opts.flavour = arg[i + 1]; i = i + 1
+        elseif a == "--strategy" then opts.strategy = arg[i + 1]; i = i + 1
+        elseif a == "--out" then opts.out = arg[i + 1]; i = i + 1
         elseif a == "force" then opts.force = true
         elseif tonumber(a) then n = tonumber(a); opts.gotN = true
+        elseif a:match("^[pP]%d+$") then opts.spec = a:lower(); opts.gotN = true
         elseif a:match("^%a+$") then cmd = a end
         i = i + 1
     end
 end
+local envFlavour = os.getenv("ST_FLAVOUR")
+if not opts.flavour and envFlavour and envFlavour ~= "" then opts.flavour = envFlavour end
+if opts.flavour and opts.flavour ~= "forever" and opts.flavour ~= "tbc" then
+    print("import: --flavour is forever or tbc, not " .. tostring(opts.flavour))
+    os.exit(2)
+end
 
 -- the file
 local function exists(p) local f = io.open(p, "r"); if f then f:close(); return true end return false end
+local function Installs(client)
+    local found = {}
+    local p = io.popen('ls "/mnt/e/Blizzard/World of Warcraft/' .. client ..
+        '/WTF/Account"/*/SavedVariables/SpellTuner.lua 2>/dev/null')
+    if p then for line in p:lines() do found[#found + 1] = line end; p:close() end
+    return found
+end
 local file = opts.file or os.getenv("MD_SAVEDVARS")
 if not file then
-    local candidates = { ".logs/SpellTuner.lua" }
-    local p = io.popen('ls "/mnt/e/Blizzard/World of Warcraft/_anniversary_/WTF/Account"/*/SavedVariables/SpellTuner.lua 2>/dev/null')
-    if p then for line in p:lines() do candidates[#candidates + 1] = line end; p:close() end
+    local candidates = {}
+    if opts.flavour == "forever" then
+        -- the author's beta install (a Windows drive under /mnt/e)
+        for _, c in ipairs(Installs("_classic_beta_")) do candidates[#candidates + 1] = c end
+    else
+        candidates[1] = ".logs/SpellTuner.lua"
+        for _, c in ipairs(Installs("_anniversary_")) do candidates[#candidates + 1] = c end
+        if not opts.flavour then
+            for _, c in ipairs(Installs("_classic_beta_")) do candidates[#candidates + 1] = c end
+        end
+    end
     for _, c in ipairs(candidates) do if exists(c) then file = c; break end end
 end
 if not file or not exists(file) then
@@ -68,6 +107,40 @@ end
 dofile(file)
 local realDB = _G.SpellTunerDB or _G.ManaDemonDB   -- files written before the rename
 if not realDB then print("import: " .. file .. " holds no SpellTunerDB."); os.exit(2) end
+
+-- Which client wrote it. Forever is told apart by what only its code writes:
+-- a v3 stream, a recorded kit, the SavedVariables guard's session stamp
+-- (Core_Forever.lua; TBC's database is never stamped) and the probe's reports
+-- (Client/Probe.lua, on the Forever TOC only).
+local function DetectFlavour(db, path)
+    for _, c in pairs(db.char or {}) do
+        if type(c) == "table" then
+            for _, r in ipairs(c.recordings or {}) do
+                if type(r) == "table" and r.v == 3 then return "forever", "a v3 recording" end
+            end
+            if c.kit then return "forever", "a Forever spell kit" end
+            for _, r in ipairs(c.practice or {}) do
+                if type(r) == "table" and r.kit then return "forever", "a practice fight with its kit" end
+            end
+        end
+    end
+    if type(db.session) == "table" and db.session.stamp then return "forever", "the session stamp" end
+    if type(db.probe) == "table" then return "forever", "the probe's reports" end
+    if path:find("_classic_beta_", 1, true) then return "forever", "the beta install path" end
+    return "tbc", "no v3 recording, kit, session stamp or probe report"
+end
+local seen, seenWhy = DetectFlavour(realDB, file)
+local flavour = opts.flavour or seen
+
+if flavour == "forever" then
+    IMPORT = { file = file, db = realDB, cmd = cmd, n = n, opts = opts, here = here,
+               detected = seen, detectedWhy = seenWhy }
+    dofile(here .. "/importforever.lua")
+    os.exit(0)
+end
+if opts.flavour == "tbc" and seen ~= "tbc" then
+    print(string.format("import: note - this file looks like a Forever one (%s); read as TBC because you said so", seenWhy))
+end
 
 -- Loading the addon over the real database runs its PLAYER_LOGIN path, and
 -- that path WRITES the profile -- with the stub's stats, over the character's
@@ -184,6 +257,11 @@ if opts.run then
     what = "pull"
     Say("run:   %d. %s -- %s", opts.run, theRun.name or "?", Strip(RR:Line(theRun)))
     Say("")
+elseif opts.spec then
+    -- "p3": the third newest practice fight (v0.15.0's own address)
+    list = MD.Practice and MD.Practice.List() or {}
+    n = tonumber(opts.spec:sub(2))
+    what = "practice fight"
 else
     list = FR:List()
 end
@@ -195,6 +273,7 @@ end
 
 -- the label the game would take for this recording: "3", or "1:3" inside a run
 local function Label(i)
+    if opts.spec then return "p" .. i end
     return opts.run and (opts.run .. ":" .. i) or tostring(i)
 end
 
