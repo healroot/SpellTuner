@@ -1399,6 +1399,11 @@ function Session:Finish()
         practice = { seed = self.seed, setup = PR.CopySetup(self.setup), finished = endT >= sc.dur - 1e-6,
                      errors = self.errors },
     }
+    -- Forever: the kit this fight was played with, so the offline tools
+    -- (tools/import.lua) replay and coach it with the character's own spells
+    -- rather than the stub's. Kit_Forever.lua's; TBC has no KitSnapshot (its
+    -- kit is rebuilt offline from cdb.profile), so nothing changes there.
+    if MD.RankMath and MD.RankMath.KitSnapshot then rec.kit = MD.RankMath.KitSnapshot(self.kit) end
     self.rec = rec
     if MD.cdb and not self.opts.noStore then PR.Store(rec) end
     MD:Debug("sim", "practice recorded: %.0fs, %d events, %d casts, %d mana, %d dead",

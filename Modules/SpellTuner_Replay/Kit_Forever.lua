@@ -199,7 +199,43 @@ local function SpellKit(self, opts)
         sm.cast = 1.5
     end
 
+    -- The last kit this character built, kept for the offline tools
+    -- (tools/import.lua): a recording made before recordings carried their
+    -- own kit (KitSnapshot below) is replayed offline with this one, and the
+    -- tool says so. A few dozen plain numbers, rewritten on every build.
+    if MD.cdb then MD.cdb.kit = RM.KitSnapshot(kit) end
+
     return kit
+end
+
+--------------------------------------------------------------------------------
+-- The kit as plain data, for a SavedVariables file (the recordings pipeline,
+-- docs/TOOLS.md §2): every entry of `kit` (default: a fresh SpellKit) and the
+-- MD.SpellData index the engine reads names and families from, copied, with
+-- the time and the character's level. Kept on every Forever recording and
+-- practice fight at the moment it is stored (`rec.kit`), because the kit is
+-- built from the live spellbook and nothing offline can rebuild it: the
+-- spellbook tools/import.lua would see is the stub's. Pure copies; nothing
+-- here reads the client.
+--------------------------------------------------------------------------------
+local function Copy(v)
+    if type(v) ~= "table" then return v end
+    local t = {}
+    for k, x in pairs(v) do t[k] = Copy(x) end
+    return t
+end
+
+function RM.KitSnapshot(kit)
+    kit = kit or RM:SpellKit()
+    return {
+        at = time and time() or 0,
+        level = MD.player and MD.player.level or 0,
+        crit = kit.crit, critMissing = kit.critMissing,
+        caster = Copy(kit.caster or {}),
+        sd = { spells = Copy(SD.spells), families = Copy(SD.families), known = Copy(SD.known),
+               all = Copy(SD.all), maxRank = Copy(SD.maxRank), skipped = Copy(SD.skipped),
+               familyOrder = Copy(SD.familyOrder) },
+    }
 end
 
 -- Only where no flavour has a kit of its own: this file must never replace

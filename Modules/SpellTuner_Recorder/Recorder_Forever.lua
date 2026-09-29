@@ -759,6 +759,15 @@ local function StoreOrDrop(s)
         return
     end
 
+    -- The spell kit at this pull, for the offline tools (tools/import.lua):
+    -- built from the live spellbook, so nothing offline can rebuild it. Only
+    -- with the Replay module on (Kit_Forever.lua is its file); without it the
+    -- tools fall back to the last kit built (cdb.kit) and say so.
+    if MD.RankMath and MD.RankMath.KitSnapshot then
+        local okKit, snap = pcall(MD.RankMath.KitSnapshot)
+        if okKit then s.kit = snap end
+    end
+
     MD.cdb.recordings = MD.cdb.recordings or {}
     local list = MD.cdb.recordings
     if #list < MAX_STREAMS then
