@@ -995,11 +995,29 @@ local function BuildScenario(setup, seed, kit)
     for t = 0, dur, 2 do sampleT[#sampleT + 1] = t end
     for t = 0, dur, 5 do hpT[#hpT + 1] = t end
     local pool = (MD.API.UnitPowerMax and MD.API.UnitPowerMax("player", 0)) or 0
+    local apiBase, apiCasting, energize
+    if RM then
+        apiBase, apiCasting, energize = RM.apiBase or 0, RM.apiCasting or 0, RM:Unreported()
+    else
+        -- R4 (review 2026-09-29): MD.Regen is Engine/RegenModel.lua, on the TBC
+        -- TOC only. Without it (Forever) the rates are the client's own
+        -- GetManaRegen through the adapter -- plain out of combat, which is
+        -- where a session starts -- as UI/Clock_Forever.lua reads them. A
+        -- secret or absent answer leaves them 0, as before. Nothing unreported
+        -- is modelled on Forever, so energize stays 0.
+        apiBase, apiCasting, energize = 0, 0, 0
+        if MD.API.ManaRegen then
+            local base, casting = MD.API.ManaRegen()
+            if type(base) == "number" and type(casting) == "number" then
+                apiBase, apiCasting = base, casting
+            end
+        end
+    end
     return {
         dur = dur, pool = pool,
-        initial = { mana = pool, apiBase = RM and RM.apiBase or 0, apiCasting = RM and RM.apiCasting or 0,
+        initial = { mana = pool, apiBase = apiBase, apiCasting = apiCasting,
                     form = (MD.InTreeForm and MD:InTreeForm()) and "tree" or "caster",
-                    energize = RM and RM:Unreported() or 0 },
+                    energize = energize or 0 },
         targets = targets, ev = PR.BuildDamage(setup, seed),
         floor = (MD.db and MD.db.simFloor) or 0.30, grace = 6,
         sampleT = sampleT, hpSampleT = hpT, kit = kit, synthetic = true,

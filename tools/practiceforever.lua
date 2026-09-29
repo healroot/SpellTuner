@@ -133,6 +133,24 @@ check("a session plays against a fake clock with the Forever kit and records a p
     " ownCasts=" .. tostring(rec and rec.ownCasts) .. " errors=" .. table.concat(errors3, "; "))
 
 --------------------------------------------------------------------------------
+-- R4 (review 2026-09-29): the healer regenerates. MD.Regen is TBC's
+-- Engine/RegenModel.lua and is on no Forever TOC, so the regen rates come
+-- from the adapter's GetManaRegen (plain out of combat, where practice
+-- starts): the scenario, and so the recording, carry them -- not zero.
+--------------------------------------------------------------------------------
+do
+    local wantBase, wantCast = GetManaRegen() -- the stub's plain out-of-combat pair
+    local ini = rec and rec.initial or {}
+    local mb = rec and rec.mana and rec.mana.base and rec.mana.base[1]
+    local mc = rec and rec.mana and rec.mana.cast and rec.mana.cast[1]
+    check("R4: a Forever practice session regenerates at the client's own GetManaRegen rates",
+        MD.Regen == nil and type(wantBase) == "number" and wantBase > 0
+        and ini.apiBase == wantBase and ini.apiCasting == wantCast and mb == wantBase and mc == wantCast,
+        string.format("apiBase=%s apiCasting=%s mana.base[1]=%s want %s/%s", tostring(ini.apiBase),
+            tostring(ini.apiCasting), tostring(mb), tostring(wantBase), tostring(wantCast)))
+end
+
+--------------------------------------------------------------------------------
 -- 4: the recording replays to the health the player saw and every gate
 --    passes -- the same engine, the Forever kit
 --------------------------------------------------------------------------------
