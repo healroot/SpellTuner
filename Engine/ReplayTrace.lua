@@ -379,3 +379,13 @@ function State:Regen()
     local now = self.trace.mana[k] or 0
     return now - (self.trace.mana0 or self.trace.mana[1] or now) + self.spent
 end
+
+-- 2026-09-29 ("The coach values regen"): what has left the pool so far -- the
+-- mana at the pull less the mana now. Spent less regenerated, potions and any
+-- other mana the recording carried included; the number the coach's score
+-- ranks on (SP.ManaUsed), as of t.
+function State:Used()
+    local k = GridIndex(self, self.t)
+    local now = self.trace.mana[k] or 0
+    return (self.trace.mana0 or self.trace.mana[1] or now) - now
+end

@@ -397,5 +397,104 @@ do
             agg.new.u / 180, agg.old.u / 180))
 end
 
+--------------------------------------------------------------------------------
+-- 7. The score ranks what left the pool
+--------------------------------------------------------------------------------
+do
+    local stub = { BindCount = function() return 2 end }
+    local function R(spent, manaEnd)
+        return { manaSpent = spent, manaStart = 364, manaEnd = manaEnd, manaUsed = 364 - manaEnd,
+                 deaths = { n = 0 }, floorSeconds = 0, endDeficit = 0, deficitArea = 1,
+                 healed = 1000, overhealed = 50 }
+    end
+    -- the author's screenshot at 0:43.9: YOU spent 425, regen 137, 76 left;
+    -- the coach spent 385, regen 45, 24 left
+    local you, coach = R(425, 76), R(385, 24)
+    check("7a 425 spent / 76 left beats 385 spent / 24 left",
+        SP.Better(SP.Score(you, stub, 0), SP.Score(coach, stub, 0)),
+        string.format("%s vs %s", num(SP.Score(you, stub, 0)[3]), num(SP.Score(coach, stub, 0)[3])))
+    local all = true
+    for _, obj in ipairs(SP.OBJECTIVES) do
+        if not SP.Better(obj.score(you, stub, 0), obj.score(coach, stub, 0)) then all = false end
+    end
+    check("7b ...under every objective, not only the default", all)
+    check("7c a result with gross spend only is ranked on it, as before",
+        SP.ManaUsed({ manaSpent = 500 }) == 500 and SP.ManaUsed({ manaSpent = 500, manaUsed = 120 }) == 120)
+
+    -- the stated bias: the owed term is priced at the best heal per mana with
+    -- no regen forfeit, so ending a Healing Touch R2 short (owed 102.5 / 1.86)
+    -- scores below paying for it out of the rule (55 + 57.5). A fact about the
+    -- tuple, held here so a change to it is a decision rather than an accident.
+    local plan = SV.NewPlan(binds10, {}, kit10)
+    local healed = { manaUsed = 300 + 55 + 57.5, endDeficit = 0, deaths = { n = 0 }, floorSeconds = 0 }
+    local short = { manaUsed = 300, endDeficit = 102.5, deaths = { n = 0 }, floorSeconds = 0 }
+    check("7d stated bias: owed carries no forfeit, so ending hurt scores lower",
+        SP.Score(short, plan, 0)[3] < SP.Score(healed, plan, 0)[3],
+        string.format("%.1f vs %.1f", SP.Score(short, plan, 0)[3], SP.Score(healed, plan, 0)[3]))
+
+    -- the search's abort: a plan that spends MORE but ends HIGHER may not be
+    -- killed for its gross spend -- not by a later Innervate rate sample, not
+    -- by a recorded potion
+    local function Sc(extra)
+        local sc = {
+            dur = 30, pool = 1000,
+            initial = { mana = 1000, apiBase = 0, apiCasting = 0, form = "caster", energize = 0 },
+            targets = { { name = "T", maxHP = 1000, hp0 = 500, tracked = true } },
+            ev = { t = {}, kind = {}, tgt = {}, amt = {}, x = {} },
+            kit = kit10, floor = 0.30, grace = 6,
+            script = { { 1, 5186, 200, 1 }, { 3, 5186, 200, 1 }, { 5, 5186, 200, 1 } },
+        }
+        if extra then extra(sc) end
+        return sc
+    end
+    local r = SM:Run(Sc(function(sc) sc.rates = { { 20, 100, 100 } } end), nil, { critMode = "ev", abortAbove = 300 })
+    check("7e abort: spends 600 but an Innervate at 20 s refills it -- not aborted",
+        not r.aborted and (r.manaUsed or 1e9) < 300, string.format("aborted %s, used %s", tostring(r.aborted), num(r.manaUsed)))
+    r = SM:Run(Sc(function(sc) sc.ev = { t = { 25 }, kind = { K.CD }, tgt = { 0 }, amt = { 700 }, x = { 0 } } end),
+        nil, { critMode = "ev", abortAbove = 300 })
+    check("7f abort: ...nor a recorded potion at 25 s",
+        not r.aborted and (r.manaUsed or 1e9) < 300, string.format("aborted %s, used %s", tostring(r.aborted), num(r.manaUsed)))
+    r = SM:Run(Sc(), nil, { critMode = "ev", abortAbove = 300 })
+    check("7g abort: nothing can come back, so it still stops", r.aborted == true)
+
+    -- a run: the rule the pull left running regenerates at the casting rate in
+    -- the gap after it, once
+    local realScen = SM.ScenarioFromRecording
+    local scen = {}
+    SM.ScenarioFromRecording = function(rec) return scen[rec] end
+    local function Pull(lastCast)
+        local sc = Sc()
+        sc.dur, sc.initial.apiBase, sc.initial.apiCasting, sc.initial.mana = 10, 10, 0, 500
+        sc.script = { { lastCast, 5186, 100, 1 } }
+        return sc
+    end
+    local p1 = { dur = 10, runT0 = 0, initial = { apiBase = 10, apiCasting = 0, energize = 0, mana = 500 } }
+    local p2 = { dur = 10, runT0 = 20, initial = { apiBase = 10, apiCasting = 0, energize = 0, mana = 500 } }
+    local run = { pool = 1000, pulls = { p1, p2 }, ev = { t = {} }, stats = {} }
+    scen[p1], scen[p2] = Pull(9.9), Pull(1)
+    local okRun, chain = pcall(SM.ChainRun, run, kit10, { drinkRate = 1, policy = { below = 0, upTo = 0.95 } })
+    local gap = okRun and chain.gaps[1]
+    local gained = gap and (gap.manaEnd - gap.manaStart)
+    check("7h a run: the pull's last-second cast delays the gap's regen by its tail",
+        near(gained, 10 * 10 - 10 * 4.9, 1e-6), okRun and num(gained) or tostring(chain))
+    check("7i ...and the run's used is its own start less its own end",
+        okRun and near(chain.manaUsed, chain.manaStart - chain.manaEnd), okRun and num(chain.manaUsed) or nil)
+    SM.ScenarioFromRecording = realScen
+    local a = { deaths = 0, floorSeconds = 0, addedTime = 0, drinks = 1, manaSpent = 5000, manaUsed = 1000 }
+    local b = { deaths = 0, floorSeconds = 0, addedTime = 0, drinks = 1, manaSpent = 4000, manaUsed = 1500 }
+    check("7j the run score ranks mana used: more spent but less used wins",
+        SP.Better(SP.ChainScore(a, stub, 0), SP.ChainScore(b, stub, 0)))
+
+    -- the replay window's header leads with it
+    local fx = dofile(here .. "/data/practice/1790701698.lua")
+    local rp = SP.Replay(fx.rec, { kit = fx.kit, dt = 0.25 })
+    local st = MD.ReplayTrace.New(rp.left.trace, rp.scenario)
+    st:Seek(43.9)
+    local used = st.Used and st:Used()
+    check("7k the replay's USED at 0:43.9 is the pool at the pull less the pool now",
+        used and near(used, 364 - st:Mana(), 1e-6) and near(used, st.spent - st:Regen(), 1e-6),
+        string.format("used %s, spent %s, regen %s", num(used), num(st.spent), num(st:Regen())))
+end
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 if #fails > 0 then for _, m in ipairs(fails) do print("  FAIL " .. m) end; os.exit(1) end

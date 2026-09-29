@@ -182,8 +182,8 @@ function MD:RunCoach(arg)
             PrintCard(string.format("coach: |cff33ff66%s|r is now the plan the replay draws for recording %s - %s.",
                 Esc(obj.name), Esc(tostring(n)), Esc(obj.what)))
             local r = w.result or {}
-            Print(string.format("  %d mana, floor %d%%, %.1fs in danger.",
-                math.floor((r.manaSpent or 0) + SP.ManaOwed(r, w.plan) + 0.5),
+            Print(string.format("  %d mana used (and owed), floor %d%%, %.1fs in danger.",
+                math.floor(SP.ManaUsed(r) + SP.ManaOwed(r, w.plan) + 0.5),
                 math.floor((r.lowest and r.lowest.hp or 1) * 100 + 0.5), r.floorSeconds or 0))
             return
         end

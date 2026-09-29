@@ -692,10 +692,28 @@ end
 
 --------------------------------------------------------------------------------
 -- Score: lexicographic, lower is better (docs/SPEC-v0.7.md 5.3).
---   (deaths, floorSeconds, manaSpent, -heldOn, #binds, overhealSim)
+--   (deaths, floorSeconds, manaUsed + manaOwed, -heldOn, #binds, overhealSim)
 -- Nothing is blended into a scalar. A plan that lets somebody die is not
 -- redeemed by saving mana, and no weight can be chosen that says otherwise.
+--
+-- 2026-09-29 ("The coach values regen", docs/DECISIONS.md): the third slot is
+-- mana USED -- what the fight took out of the pool, start minus end plus the
+-- regen a rule still running at the end has yet to cost -- where it was mana
+-- SPENT. Gross spend counts a cast the rule's lapse paid back exactly like one
+-- it did not, so no plan that rested could ever score better for it: on the
+-- author's practice fight the coach looked cheaper at 385 spent than the
+-- author's 425 while leaving 24 mana in the pool against 76. Same slot, same
+-- place in the tuple: it is the quantity manaSpent was standing in for.
 --------------------------------------------------------------------------------
+-- What a result took out of the pool. A result built before 2026-09-29 (a
+-- hand-made fixture, a snapshot someone kept) carries only gross spend and is
+-- ranked on that, as it always was; every run of the engine now carries both.
+function SP.ManaUsed(result)
+    if not result then return 0 end
+    if type(result.manaUsed) == "number" then return result.manaUsed end
+    return result.manaSpent or 0
+end
+
 -- The cheapest healing this plan can buy, in health per mana. Used to price a
 -- deficit the plan leaves behind: what it WOULD cost to put that health back,
 -- at the best rate the plan itself has available. A lower bound on the debt,
@@ -733,7 +751,11 @@ function SP.Score(result, plan, heldOn)
     -- wins, which on a light fight means barely healing at all -- 674 mana and
     -- a healer sitting at 45% scored better than 3.1k and 93%. Nothing is
     -- earned above `db.simFullHp`, so no plan is pushed into overheal.
-    local mana = (result.manaSpent or 0) + SP.ManaOwed(result, plan)
+    -- 2026-09-29: USED, not spent (see the header above). Known bias, stated:
+    -- the owed term is priced at the best heal per mana with no regen forfeit,
+    -- so it slightly favours a plan that ends hurt over one that spends the
+    -- same mana healing -- tools/restcheck.lua holds it as a fact, not a goal.
+    local mana = SP.ManaUsed(result) + SP.ManaOwed(result, plan)
     return { result.deaths and result.deaths.n or 0, result.floorSeconds or 0,
              mana, -(heldOn or 0), plan and plan:BindCount() or 0, oh }
 end
@@ -758,16 +780,16 @@ SP.OBJECTIVES = {
       what = "least time one hit from death, then least health missing",
       score = function(r, plan, held)
           return { r.deaths and r.deaths.n or 0, r.floorSeconds or 0, r.deficitArea or 0,
-                   (r.manaSpent or 0) + SP.ManaOwed(r, plan), -(held or 0), OH(r) }
+                   SP.ManaUsed(r) + SP.ManaOwed(r, plan), -(held or 0), OH(r) }
       end },
     { key = "health", name = "Highest health",
       what = "least health missing over the fight, overheal excluded",
       score = function(r, plan, held)
           return { r.deaths and r.deaths.n or 0, r.deficitArea or 0, r.floorSeconds or 0,
-                   (r.manaSpent or 0) + SP.ManaOwed(r, plan), -(held or 0), OH(r) }
+                   SP.ManaUsed(r) + SP.ManaOwed(r, plan), -(held or 0), OH(r) }
       end },
     { key = "cheap", name = "Least mana",
-      what = "least mana spent, plus what it still owes for health left missing",
+      what = "least mana used (what left the pool), plus what it still owes for health left missing",
       score = function(r, plan, held) return SP.Score(r, plan, held) end },
     { key = "regen", name = "Most mana left",
       what = "most mana in the pool at the end - rewards spacing casts out of the 5SR",
@@ -1023,10 +1045,10 @@ function SP.Card(rec, best, bestResult, replayResult, baselineResults, cls, vali
     local function add(fmt, ...) out[#out + 1] = select("#", ...) > 0 and string.format(fmt, ...) or fmt end
 
     local nTargets = #(rec.tracked or {})
-    add("%s, %s (%s, %d targets)   you %s   best %s   diff %s",
+    add("%s, %s (%s, %d targets)   used: you %s   best %s   diff %s",
         rec.zone or "?", date and date("%H:%M", rec.id) or "", Clock(rec.dur or 0), nTargets,
-        Fmt(replayResult.manaSpent), Fmt(bestResult.manaSpent),
-        Fmt(math.abs(replayResult.manaSpent - bestResult.manaSpent)))
+        Fmt(SP.ManaUsed(replayResult)), Fmt(SP.ManaUsed(bestResult)),
+        Fmt(math.abs(SP.ManaUsed(replayResult) - SP.ManaUsed(bestResult))))
     if best and best.foresees then
         add("  NOT causal - sees this fight: %s", best.foreseesWhy or "a view of this fight")
     end
@@ -1039,7 +1061,8 @@ function SP.Card(rec, best, bestResult, replayResult, baselineResults, cls, vali
         add("  you had %s headroom - nothing here needed to change",
             Fmt(replayResult.lowestMana - budget.perPull))
     elseif budget and budget.n >= 4 and budget.perPull > 0 then
-        local saved = replayResult.manaSpent - bestResult.manaSpent
+        -- a drink is about the pool, so the saving is in mana USED
+        local saved = SP.ManaUsed(replayResult) - SP.ManaUsed(bestResult)
         if saved > 0 then
             add("  ~ one fewer drink per %d pulls", math.max(1, math.floor(budget.perPull / saved + 0.5)))
         end
@@ -1077,7 +1100,9 @@ function SP.Card(rec, best, bestResult, replayResult, baselineResults, cls, vali
 
     local function row(name, res, extra, plan)
         local owed = plan and SP.ManaOwed(res, plan) or 0
-        add("  %-12s %7s   lowest %3d%%%s%s", name, Fmt(res.manaSpent),
+        -- used first (what left the pool), then the gross spend it came from
+        add("  %-12s %7s used (%s spent)   lowest %3d%%%s%s", name, Fmt(SP.ManaUsed(res)),
+            Fmt(res.manaSpent or 0),
             (res.lowest and res.lowest.hp or 1) * 100 + 0.5,
             owed >= 25 and string.format("   + %s still owed", Fmt(owed)) or "", extra or "")
     end
@@ -1111,7 +1136,7 @@ function SP.Card(rec, best, bestResult, replayResult, baselineResults, cls, vali
             local names = e.names[1]
             if #e.also > 0 then names = names .. " = " .. table.concat(e.also, " = ") end
             add("    %-34s %6s mana   floor %3d%%   %4.1fs in danger   %s",
-                names, Fmt((r.manaSpent or 0) + SP.ManaOwed(r, p)),
+                names, Fmt(SP.ManaUsed(r) + SP.ManaOwed(r, p)),
                 (r.lowest and r.lowest.hp or 1) * 100 + 0.5, r.floorSeconds or 0,
                 (r.endDeficit or 0) < 1 and "ends whole"
                     or string.format("owes %s", Fmt(SP.ManaOwed(r, p))))
@@ -1319,7 +1344,9 @@ function SP.Coach(rec, opts)
     local replayResult = SM:Run(scenario, nil, { critMode = "ev" })
     -- the result belongs to a pool slot, so keep the handful of numbers the
     -- card needs before anything else runs
-    local you = { manaSpent = replayResult.manaSpent, healed = replayResult.healed,
+    local you = { manaSpent = replayResult.manaSpent, manaUsed = replayResult.manaUsed,
+                  manaStart = replayResult.manaStart, manaEnd = replayResult.manaEnd,
+                  regenGained = replayResult.regenGained, healed = replayResult.healed,
                   overhealed = replayResult.overhealed, lowestMana = replayResult.lowestMana,
                   lowest = { hp = replayResult.lowest.hp } }
 
@@ -1340,7 +1367,8 @@ function SP.Coach(rec, opts)
                        floorSeconds = r.floorSeconds, deaths = { n = r.deaths.n },
                        waitFraction = r.waitFraction, maxWaitRun = r.maxWaitRun,
                        endDeficit = r.endDeficit, deficitArea = r.deficitArea,
-                       manaEnd = r.manaEnd }
+                       manaEnd = r.manaEnd, manaStart = r.manaStart, manaUsed = r.manaUsed,
+                       regenGained = r.regenGained }
         results[#results + 1] = { name = c.name, result = snap }
         local score = SP.Score(snap, c.plan, 0)
         if SP.Better(score, bestScore) then best, bestScore, bestResult = c.plan, score, snap end
@@ -1392,7 +1420,8 @@ local function Snap(r)
              lowestMana = r.lowestMana, lowest = { hp = r.lowest.hp, tgt = r.lowest.tgt, t = r.lowest.t },
              floorSeconds = r.floorSeconds, deaths = { n = r.deaths.n },
              waitFraction = r.waitFraction, maxWaitRun = r.maxWaitRun,
-             endDeficit = r.endDeficit, deficitArea = r.deficitArea, manaEnd = r.manaEnd }
+             endDeficit = r.endDeficit, deficitArea = r.deficitArea, manaEnd = r.manaEnd,
+             manaStart = r.manaStart, manaUsed = r.manaUsed, regenGained = r.regenGained }
 end
 
 function SP.Replay(rec, opts)
@@ -1547,7 +1576,9 @@ function SP.Search(scenario, opts, onProgress, onDone)
         local plan = SP.NewPlan(binds, params, kit)
         local r = SP.RunPlan(scenario, plan, {
             critMode = "ev",
-            -- no candidate that has already spent more than the incumbent can win
+            -- no candidate that can no longer end having used less than the
+            -- incumbent can win (SimModel's bound: what it has used so far,
+            -- less everything that could still come back)
             abortAbove = bestScore and bestScore[1] == 0 and bestScore[2] == 0
                 and bestScore[3] or nil,
         })
@@ -1560,7 +1591,8 @@ function SP.Search(scenario, opts, onProgress, onDone)
                        -- every field an objective reads must be here, or that
                        -- objective silently ranks everything equal and collapses
                        -- onto the default's winner (v0.11.12)
-                       deficitArea = r.deficitArea, manaEnd = r.manaEnd }
+                       deficitArea = r.deficitArea, manaEnd = r.manaEnd,
+                       manaStart = r.manaStart, manaUsed = r.manaUsed, regenGained = r.regenGained }
         local score = snap.aborted and nil or SP.Score(snap, plan, 0)
         local out = { plan = plan, result = snap, score = score, params = params }
         seen[key] = out
@@ -1610,16 +1642,18 @@ function SP.Search(scenario, opts, onProgress, onDone)
         end
     end)
 
-    -- alternates: anything within 5% of the winner's mana with fewer binds
+    -- alternates: anything within 5% of the winner's mana used with fewer binds
     local function CollectAlternates()
         if not bestScore then return end
+        local limit = SP.ManaUsed(bestResult)
+        limit = limit + math.abs(limit) * 0.05
         for _, out in pairs(seen) do
-            if out.score and out ~= best and out.result.manaSpent <= bestResult.manaSpent * 1.05
+            if out.score and out ~= best and SP.ManaUsed(out.result) <= limit
                and out.score[1] == bestScore[1] and out.score[2] <= bestScore[2] + 1e-9 then
                 alternates[#alternates + 1] = out
             end
         end
-        table.sort(alternates, function(a, b) return a.result.manaSpent < b.result.manaSpent end)
+        table.sort(alternates, function(a, b) return SP.ManaUsed(a.result) < SP.ManaUsed(b.result) end)
     end
 
     local frame = CreateFrame("Frame")
@@ -1653,7 +1687,8 @@ function SP.Search(scenario, opts, onProgress, onDone)
             MD:Debug("sim", "search done: %d evaluation(s), best (deaths %d, floor %.1fs, mana %d, binds %d)",
                 evals, bestScore and bestScore[1] or -1, bestScore and bestScore[2] or -1,
                 bestScore and bestScore[3] or -1, bestScore and bestScore[5] or -1)
-            -- The physical floor: no plan can spend less than the damage taken
+            -- The physical floor: no plan can SPEND less than the damage taken
+            -- (gross, on purpose: regen heals nobody)
             -- divided by the best healing-per-mana available. Never shown on a
             -- card (spec 13), but a best that beats it means the engine is wrong.
             -- ...and only when nobody died: a plan that let a target die did not
@@ -1865,7 +1900,11 @@ end
 -- whole dungeon, scored on a chain of pulls with the gaps in between.
 --
 -- The score is v0.7's tuple with TIME put in front of mana:
---   (deaths, floorSeconds, addedTime, drinks, manaSpent, -heldOn, #binds, overheal)
+--   (deaths, floorSeconds, addedTime, drinks, manaUsed, -heldOn, #binds, overheal)
+-- 2026-09-29: manaUsed is the RUN's -- mana at the first pull less mana after the
+-- last, gaps, drinks and potions included -- where it was the pulls' gross
+-- spend. SM.ChainRun carries each pull's five-second rule into the gap after
+-- it, so the regen a late cast forfeits is charged there, once.
 -- `addedTime` is the time the run got LONGER because a drink did not fit its
 -- gap; `drinks` is next because each is most of a minute of five people standing
 -- still even when it does fit. Mana ranks after both: in a dungeon mana is only
@@ -1878,12 +1917,13 @@ function SP.ChainScore(chain, plan, heldOn)
     local oh, total = 0, (chain.healed or 0) + (chain.overhealed or 0)
     if total > 0 then oh = chain.overhealed / total end
     return { chain.deaths or 0, chain.floorSeconds or 0, chain.addedTime or 0,
-             chain.drinks or 0, chain.manaSpent or 0, -(heldOn or 0),
+             chain.drinks or 0, SP.ManaUsed(chain), -(heldOn or 0),
              plan and plan:BindCount() or 0, oh }
 end
 
 local function ChainSnap(c)
     return { deaths = c.deaths, floorSeconds = c.floorSeconds, manaSpent = c.manaSpent,
+             manaStart = c.manaStart, manaEnd = c.manaEnd, manaUsed = c.manaUsed,
              healed = c.healed, overhealed = c.overhealed, drinks = c.drinks,
              drinkTime = c.drinkTime, addedTime = c.addedTime, wall = c.wall,
              lowest = { hp = c.lowest.hp, tgt = c.lowest.tgt, pull = c.lowest.pull },
@@ -2058,10 +2098,10 @@ function SP.RunCard(run, best, chain, you, evals, gates)
         local drink = (c.drinks or 0) > 0
             and string.format("drank %dx (%s)", c.drinks, Clock(c.drinkTime or 0))
             or "no drink"
-        add("  %-9s %-22s %-16s %6s spent   lowest %s%s", label, drink,
+        add("  %-9s %-22s %-16s %6s used   lowest %s%s", label, drink,
             (c.addedTime or 0) > 0 and string.format("+%s waiting to drink", Clock(c.addedTime))
                 or "never forced",
-            Fmt(c.manaSpent or 0), Pct(c.lowest and c.lowest.hp),
+            Fmt(SP.ManaUsed(c)), Pct(c.lowest and c.lowest.hp),
             extra or "")
     end
     Row("you", you, you.lowest and you.lowest.pull and string.format(" (pull %d)", you.lowest.pull) or "")
@@ -2094,7 +2134,7 @@ function SP.RunCard(run, best, chain, you, evals, gates)
     for i, p in ipairs(chain.pulls or {}) do
         local y = you.pulls and you.pulls[i]
         if y then
-            local d = (y.manaSpent or 0) - (p.manaSpent or 0)
+            local d = SP.ManaUsed(y) - SP.ManaUsed(p)
             if math.abs(d) > 200 then diffs[#diffs + 1] = { i, d, p, y } end
         end
     end
