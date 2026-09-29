@@ -74,8 +74,8 @@ Nothing yet. **Handed out 2026-09-29 (the author's 70058 report, four items), on
 in parallel on disjoint files:** T24 `docs/tasks/T24-practice-own-spells.md` (practice offers only
 the player's own spells on Forever), T25 `docs/tasks/T25-macro-tooltip.md` (the block on a macro's
 tooltip), T26 `docs/tasks/T26-measure-stamped.md` (measure lines stamped, `dump all`, `clear`).
-**T25a** `docs/tasks/T25a-probe-macro-shapes.md` (the probe's macro lines) is written and goes out
-only after T25 is accepted (both touch `tools/wowstub.lua`). Item 4 (TESTING §38: re-run the probe on
+**T25 accepted, 8ffd300.** **T25a** `docs/tasks/T25a-probe-macro-shapes.md` (the probe's macro lines)
+handed out after it, at 17:3x (both touch `tools/wowstub.lua`). Item 4 (TESTING §38: re-run the probe on
 70058 into `docs/probe/1.60.1_70058.md`) is the lead's own docs edit. After all four: every TOC to
 0.16.1 (`./release.sh --set-version 0.16.1`), build, install the Forever package only.
 

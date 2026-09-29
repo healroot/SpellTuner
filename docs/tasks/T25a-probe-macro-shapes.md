@@ -1,6 +1,6 @@
 # T25a -- the probe dumps what a macro action's tooltip data and GetActionInfo return
 
-Status: written 2026-09-29; handed out after T25 is accepted (both touch `tools/wowstub.lua`).
+Status: handed out 2026-09-29 after T25 (8ffd300) was accepted.
 
 ## Goal
 
