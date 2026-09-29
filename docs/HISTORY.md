@@ -3591,3 +3591,30 @@ export of HEAD; apicheck 0 findings. Every Forever TOC at **`1.0.0-alpha.7`** (p
 consolecheck pins follow). **Next:** the author's §38 / §39 / §40 reports on alpha.7, R6's ruling,
 then M5.
 
+
+## 2026-09-29 — R6 ruled and fixed: the danger line a plan decides on is causal; alpha.8
+
+The author's ruling on review R6, relayed by the planner: **"Fix both lines."** Recorded in
+`docs/DECISIONS.md` ("Forever review R6"). Deciding reads only a causal line; scoring keeps the
+whole fight's; synthetic scenarios keep the flat floor (lead's call, confirmed by the planner); the
+rules coach never read the line and does not change, on TBC or Forever (confirmed).
+
+- **T20** (`1c76605`) -- `SM.DangerLine(S, ti)`: where the scenario carries a measured line, the
+  biggest hit that target has taken so far times `db.simDangerHits` (capped at 1); before its first
+  hit the scenario's prior, else the floor. `Solver:AtRisk` and rule 8's reason record read it;
+  `S.danger` (the whole-fight line) is read only by `floorSeconds`; the card is unchanged. The new
+  causality assertions fail on the old engine (a 7000 hit at 40 s moved the solver's casts from
+  4.0 s). The implementer kept the tank alive to 40 s in two reading tests with foreign heals (the
+  task's scenario killed it); the lead made the two new divergence assertions time a divergence by
+  the earlier of the two casts. solvercheck 70 -> 74, coachforever 16 -> 17.
+- **T20b** (`753cd96`) -- the prior: `SM.DangerHitFromOthers(recs, excludeID, name, level)`, the
+  biggest single hit that person took in **other** recordings (the exclusion by id required, the
+  level matched when both are numbers, as `SM.PartyMaxFromOthers`); both builders set
+  `tg.dangerPrior` over this scenario's max, and a target with a prior is read as measured, so a
+  never-hit target cannot be told apart by its line. solvercheck 74 -> 77, coachforever 17 -> 18.
+
+All 42 review findings are now fixed (R6 marked in the review). Every other suite keeps its count;
+apicheck 0 findings. Every Forever TOC at **`1.0.0-alpha.8`** (probecheck and consolecheck pins
+follow); the TBC TOC stays at 0.15.4 until the author decides a TBC release, though the shared
+solver change is in the TBC tree too. **Next:** T21 (CLAUDE.md, TESTING §38-§40 and the roadmap up
+to alpha.8), then the author's §38 / §39 / §40 reports on alpha.8, then M5.

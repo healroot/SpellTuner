@@ -11,7 +11,8 @@ Numbering is stable: fix tasks cite `R<n>`.
 **Outcome (2026-09-29, alpha.7):** 41 of 42 fixed in seven groups (review-measure, -recorder,
 -replay, -probe, -core, -spells, -shared), each group on its own branch with a test that failed on
 the old code, then cherry-picked onto `claude/manademon-folder-continue-41eabc`; R6 held for the
-author. Each finding below says which.
+author. Each finding below says which. **R6 (2026-09-29, alpha.8):** ruled by the author ("Fix both
+lines") and fixed by T20 / T20b -- all 42 fixed.
 
 ## R1 [high] `Spells/Measure.lua:700` -- The known deficit only grows between heals, so it can be far larger than the health actually missing and produce a false BELOW
 
@@ -151,7 +152,7 @@ local hp = rec.hp or (rec.v == 3 and SM.RecordedHp and SM.RecordedHp(rec)) or {}
 
 ## R6 [medium] `Engine/SimSolver.lua:334` -- Solver's Decide reads a danger line built from the whole fight's biggest hit, so a coached solver plan can see future damage
 
-**Skipped**: held for the author -- the danger line is the whole fight's biggest hit on the TBC path too (`Engine/SimModel.lua` copies `tg.danger` for both), so making it causal changes the coach on both lines and is a ruling on the causality invariant, not a review fix.
+**Fixed** in 1c76605 (T20) and 753cd96 (T20b), `1.0.0-alpha.8` -- after the author's ruling "Fix both lines" (2026-09-29, `docs/DECISIONS.md` "Forever review R6"). A plan decides on `SM.DangerLine`: the biggest hit already taken, before the first a prior from other recordings of the same person (leave-one-out by id), else the flat floor; the score keeps the whole-fight line; synthetic scenarios keep the floor; the rules coach is unchanged. (First held for the author: the danger line is the whole fight's biggest hit on the TBC path too, so making it causal changes the coach on both lines and is a ruling on the causality invariant, not a review fix.)
 
 *UPHELD 3/3*
 

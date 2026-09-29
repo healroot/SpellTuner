@@ -5,16 +5,17 @@ alone. Worktree: `/home/penek/projects/addons/SpellTuner/.claude/worktrees/manad
 branch `claude/manademon-folder-continue-41eabc`.
 
 Last updated: 2026-09-29, after T20 (review R6, the author's ruling "Fix both lines": the danger
-line a plan decides on is causal). Every Forever TOC at `1.0.0-alpha.7`; the TBC TOC at 0.15.4 (the
-author decides a TBC release separately). T20 committed in 1c76605, T20b in the commit
-carrying this revision. Next: alpha.8, then T21 (drafts of its CLAUDE.md and TESTING edits are in
-the tree, uncommitted).
+line a plan decides on is causal). Every Forever TOC at `1.0.0-alpha.8` (T20 1c76605, T20b 753cd96, the
+bump in the commit carrying this revision); the TBC TOC at 0.15.4 (the author decides a TBC release
+separately). All 42 review findings fixed. Next: T21 (drafts of its CLAUDE.md and TESTING edits are
+in the tree, uncommitted).
 
 ## Committed (newest first)
 
 | hash | what |
 |---|---|
-| (the commit carrying this revision) | T20b (R6, second half): `SM.DangerHitFromOthers` (leave-one-out by id, name and level); both builders set `tg.dangerPrior` (the biggest hit that person took in other recordings over this scenario's max); a target with a prior is read as measured; solvercheck 77, coachforever 18 |
+| (the commit carrying this revision) | alpha.8: every Forever TOC + the probecheck / consolecheck pins; R6 marked Fixed in the review; TOOLS rows for solvercheck / coachforever; HISTORY entry; this handover |
+| 753cd96 | T20b (R6, second half): `SM.DangerHitFromOthers` (leave-one-out by id, name and level); both builders set `tg.dangerPrior` (the biggest hit that person took in other recordings over this scenario's max); a target with a prior is read as measured; solvercheck 77, coachforever 18 |
 | 1c76605 | T20 (R6): `SM.DangerLine` -- a plan decides on the biggest hit so far (prior / floor before the first), the score keeps the whole-fight line; `Solver:AtRisk` and rule 8 read it; synthetic scenarios unchanged; DECISIONS entry for the ruling; solvercheck 74, coachforever 17 |
 | a7d604e | alpha.7: every Forever TOC + the probecheck / consolecheck pins; the review annotated `**Fixed** in <hash>` / `**Skipped**` per R-number; TOOLS suite counts; HISTORY entry; this handover |
 | a12bcf6 | review-shared R5: a v3 replay's ticks called reconstructed (SimPlanner `rp.ticks.reconstructed`, ReplayWindow hover and checkbox); replayforever 11 |
@@ -66,10 +67,8 @@ docs/HISTORY.md's 2026-09-29 entry covers T18 onwards.
 1. **The review's groups not accepted: none.** All seven fix branches (`fix/review-measure`,
    `-recorder`, `-replay`, `-probe`, `-core`, `-spells`, `-shared`) were accepted and are in HEAD;
    there is no review group left to redo.
-2. **R6** (ruled "Fix both lines", DECISIONS "Forever review R6"): T20 and T20b committed; next
-   **alpha.8** (every Forever TOC + the
-   probecheck / consolecheck pins, R6 marked Fixed in `docs/review/2026-09-29-forever-review.md`,
-   TOOLS counts, HISTORY entry), then **T21** docs (CLAUDE.md file table, TESTING §38-§40,
+2. **R6** (ruled "Fix both lines", DECISIONS "Forever review R6"): T20, T20b and alpha.8
+   committed; next **T21** docs (CLAUDE.md file table, TESTING §38-§40,
    ROADMAP-FOREVER up to alpha.8 and the review fixes 12ba325..a12bcf6; TESTING steps changed only
    where a fix changed what the author sees).
 3. **When the author's reports arrive:** §38.2 step 4 (gross or effective) -> `SM.HEAL_AMOUNT` and
@@ -77,8 +76,9 @@ docs/HISTORY.md's 2026-09-29 entry covers T18 onwards.
    (one word, `Client/API.lua` 333) if `read plain`, both out of combat and in the snapshot; §39 ->
    the recorder on real pulls (CANCEL count, meter vs attributed own healing); §40.1's
    `/st binds check` paste -> a task per importer that does not recognise the Forever shape (from
-   the paste only); §40.2 -> practice on the beta. Install **alpha.7** for all of them (it carries
-   every review fix; nothing in §38-§40 changes).
+   the paste only); §40.2 -> practice on the beta. Install **alpha.8** for all of them (every review
+   fix and R6). The review's R1 changes §38.2 / §38.5: the measure knows missing health only in
+   combat -- T21's TESTING edit says so.
 4. Then M5 (launch client, 2026-11-04).
 
 Suite loop: `docs/TOOLS.md` §1 (every suite, `bindscheck` included since alpha.6) plus
@@ -111,8 +111,8 @@ globals), selftest 10 of 10, refcheck selftest ok. The same counts in a `git arc
   HEAL amount gross or effective; that sets `SM.HEAL_AMOUNT` and makes gate 8 two-sided -- and
   §38.3, the party probe with the `bar ...` lines), §39 (the recorder, validate, replay, coach and
   Review on real pulls; the CANCEL count against casts actually cancelled, since the STOP /
-  SUCCEEDED order is UNKNOWN) and §40 (practice and the imports). All three install **alpha.7**
-  (it carries everything §38/§39 need, plus the review fixes).
+  SUCCEEDED order is UNKNOWN) and §40 (practice and the imports). All three install **alpha.8**
+  (it carries everything §38/§39 need, the review fixes and R6).
 - **Lesson -- check before you dispatch.** T13c was dispatched twice, and two implementers were
   writing in the same tree at once (the previous run's alpha.4 commit also swept in T13c's TOC hunk,
   and T12b's commit its stub hunk). Before handing a task out or re-issuing it: read the task's
