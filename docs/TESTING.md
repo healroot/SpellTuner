@@ -1305,6 +1305,28 @@ the three modules read **0.16.1**. First do §38's opening step on this build (t
 says), in words what the practice summary and the picker showed before and after the import, which
 bars showed the macro block (and the probe's `macro` lines if one did not), and the measure dump.
 
+## 42. WoW: Forever -- a practice fight (or a pull) as a report (2 min after the fight, out of combat)
+
+The fights you play are the report now: the planner reads them straight out of your beta
+SavedVariables with `tools/import.lua` (docs/TOOLS.md §2), replays them on the same engine, and
+changes the code against the numbers. Nothing to paste but a sentence.
+
+1. Play the practice fight (§40.2) -- or a pull with the Recorder on -- and open its replay once
+   (it opens by itself at the end of practice). Since the build after 0.16.1 every fight is stored
+   with the spells it was played with (`kit`), and opening a replay also keeps your current ones.
+2. **`/reload`** (or log out). SavedVariables are only written then: until you do, the fight is in
+   the game's memory and not in
+   `E:\Blizzard\World of Warcraft\_classic_beta_\WTF\Account\124250034#1\SavedVariables\SpellTuner.lua`.
+3. **Tell the planner** which fight and what you saw, in one line: "p1, the coach will not stop
+   casting to regenerate" -- `p1` is the newest practice fight, `1` the newest pull, as in the
+   Review list. A screenshot of the replay helps as before.
+
+The planner then runs `bash tools/run.sh tools/import.lua --flavour forever list`, `replay p1`,
+`coach p1 --strategy solver-frugal` and the rest. Practice fights stored by 0.16.1 or earlier,
+before fights carried their spells, still work: their spells are read back off the fight's own
+heals, exactly for every spell the fight cast. A pull stored before then is replayed with your
+last spells and says so.
+
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the
 raw numbers. `/md profile` output is welcome with any report. I turn them into
