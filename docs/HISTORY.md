@@ -3627,3 +3627,38 @@ needs a fight longer than 2 s (R2; §38.3), the opener counted and an unreadable
 `own - others -` (R8, R9; §39.1), the meter gates' wording, the reconstructed tick hover, the card's
 colours and `/st coach 1 safe` (R9, R27, R5, R26, R12; §39.2), the Review tab's `~N%` and no Export
 (R39, R40), practice regenerating (R4; §40.2).
+
+## 2026-09-29 — one version, two installations: T22, T23, 0.16.0 in the beta
+
+The author's ruling ("lets have single addon version and just separate installations",
+`docs/DECISIONS.md` "One version, two installations"): one `## Version:` for the whole tree --
+**0.16.0** for both lines now, Forever beta builds 0.16.x, 1.0.0 at the Forever launch, the TBC line
+never "alpha" -- and one package per client.
+
+- **T22** (`6d755f6`) -- all nine TOCs at `0.16.0`, the TOCs the single source: consolecheck case 10
+  holds every TOC equal to what the addon reports, probecheck reads the version from disk instead of
+  a literal. The Forever TOCs' Notes say "beta".
+- **T23** (`cdf3727`) -- `release.sh` classifies each TOC by interface (20000-29999 tbc, 16000-19999
+  forever) and refuses when the TOCs disagree on the version. It builds `dist/<name>/tbc/SpellTuner`
+  (55 files) and `dist/<name>/forever/SpellTuner` (21) plus the three modules (53 files in all),
+  with a zip named by flavour and version for each. `--version` prints the version and
+  `--set-version X` bumps every TOC (CRLF kept). An install puts one flavour into one client:
+  `--install-tbc`, `--install-forever`, or `--install`, which detects `_classic_beta_` /
+  `_anniversary_` and refuses anything else. `SpellTuner/` is replaced whole, and a TBC install
+  removes the modules. `make install ... FLAVOUR=tbc|forever`. The new suite `releasecheck` (13)
+  covers it, and probecheck's release check follows (82). **Two implementers ran at once**: the
+  planner took a clean tree two minutes after the hand-out for a dead implementer, and the lead
+  re-dispatched it. The re-dispatched agent overwrote the first one's suite and then stopped. The
+  suite that shipped is the second agent's, with the first agent's `sh()` fix. In review the lead
+  added a CRLF TOC under `--set-version` and checked that a CR-stripping mutation fails it.
+- **Docs** (the lead): TESTING's install lines by flavour (§35-§40 `--install-forever`, the TBC line
+  at the top `--install-tbc`; §36's note about modules landing in a TBC client dropped), §38-§40
+  pointing at 0.16.0; TOOLS' releasecheck row and loop; CLAUDE.md's intro (one version) and
+  release.sh row.
+- **Installed**: the Forever package, **0.16.0**, into the author's beta
+  (`/mnt/e/Blizzard/World of Warcraft/_classic_beta_/Interface/AddOns`). The alpha.8 install and the
+  stray `SpellTuner_TBC.toc` an old mixed package had left there are gone, and every installed
+  folder is identical to the package. Nothing was installed into a TBC client.
+
+Every suite at its count, releasecheck 13 added, the same in a `git archive` export. **Next:** the
+author's §38 / §39 / §40 reports, played on 0.16.0, then M5.

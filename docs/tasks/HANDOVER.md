@@ -4,23 +4,27 @@ Rewritten by the lead after every commit and every hand-out. A successor continu
 alone. Worktree: `/home/penek/projects/addons/SpellTuner/.claude/worktrees/manademon-folder-continue-41eabc`,
 branch `claude/manademon-folder-continue-41eabc`.
 
-Last updated: 2026-09-29, T23 handed out. **The author's ruling today** ("lets have single addon
-version and just separate installations"; 0.16.0 for both lines now, 1.0.0 at the Forever launch,
-Forever beta builds 0.16.x, the TBC line never "alpha") is `docs/DECISIONS.md` "One version, two
-installations"; ROADMAP §1.2 and the milestone arrows follow it. **T22** (6d755f6) put all nine TOCs
-at `0.16.0` with the TOCs as the single source (consolecheck case 10 holds them equal to what the
-addon reports; probecheck reads the version, no literal). **T23** (`docs/tasks/T23-two-installations.md`,
-handed out): release.sh builds a TBC and a Forever package, installs by flavour (explicit or detected,
-refused when unknown), refuses on disagreeing versions, `--set-version`; new suite releasecheck (13).
-After T23: lead docs (TESTING install lines, TOOLS, CLAUDE.md release.sh row + intro, HISTORY), then
-build both and install ONLY Forever into the author's beta
-(`/mnt/e/Blizzard/World of Warcraft/_classic_beta_/Interface/AddOns`, which today holds alpha.8 plus a
-stray `SpellTuner_TBC.toc`). Never install into a TBC client.
+Last updated: 2026-09-29, after T23 and its docs, with **0.16.0 installed in the author's beta**.
+**The author's ruling** ("lets have single addon version and just separate installations"; 0.16.0
+for both lines now, 1.0.0 at the Forever launch, Forever beta builds 0.16.x, the TBC line never
+"alpha") is `docs/DECISIONS.md` "One version, two installations"; ROADMAP §1.2 and the milestone
+arrows follow it. **T22** (6d755f6) put all nine TOCs at `0.16.0` with the TOCs as the single
+source. **T23** (cdf3727) gave `release.sh` two packages (`dist/<name>/tbc/`, `dist/<name>/forever/`
++ modules, a zip each), per-flavour installs (explicit, or detected from `_classic_beta_` /
+`_anniversary_`, refused when unknown), a refusal on disagreeing versions and `--set-version`;
+releasecheck 13. The lead's docs commit after it carries TESTING, TOOLS, CLAUDE.md, HISTORY and this
+file. **Installed:** the Forever package, 0.16.0, into
+`/mnt/e/Blizzard/World of Warcraft/_classic_beta_/Interface/AddOns`. All four folders are identical
+to the package and `SpellTuner_TBC.toc` is gone. Nothing was installed into a TBC client. The next
+Forever install is `./release.sh --install-forever "<that path>"` and the next TBC one
+`./release.sh --install-tbc ".../_anniversary_/Interface/AddOns"`; never cross them.
 
 ## Committed (newest first)
 
 | hash | what |
 |---|---|
+| (after cdf3727) | docs (lead): TESTING install lines by flavour (§35-§40 `--install-forever`, top `--install-tbc`, §36 TBC-modules note dropped, §38-§40 at 0.16.0); TOOLS releasecheck row + loop; CLAUDE.md intro (one version) + release.sh row + suite list; HISTORY; this handover |
+| cdf3727 | T23: release.sh two packages and per-flavour installs, `--version`, `--set-version`, version refusal; Makefile `FLAVOUR`; releasecheck 13 (new; CRLF case added by the lead); probecheck's release check on the new layout (82) |
 | 6d755f6 | T22: nine TOCs at 0.16.0, the TOCs the single source; consolecheck case 10 and probecheck read the version from disk; DECISIONS "One version, two installations"; ROADMAP versioning; Forever TOC Notes "beta" (lead) |
 | 2696187 | T21 docs (lead): CLAUDE.md rows for the review fixes and T20/T20b, intro to alpha.8; ROADMAP section for the review and R6; TESTING §38-§40 written for alpha.8 (R1 measure in combat, R2, R8/R9, R5, R12/R26, R39/R40, R4); HISTORY; this handover |
 | c805287 | alpha.8: every Forever TOC + the probecheck / consolecheck pins; R6 marked Fixed in the review; TOOLS rows for solvercheck / coachforever; HISTORY entry; this handover |
@@ -80,13 +84,15 @@ Nothing.
    (one word, `Client/API.lua` 333) if `read plain`, both out of combat and in the snapshot; §39 ->
    the recorder on real pulls (CANCEL count, meter vs attributed own healing); §40.1's
    `/st binds check` paste -> a task per importer that does not recognise the Forever shape (from
-   the paste only); §40.2 -> practice on the beta. Install **alpha.8** for all of them (every review
-   fix and R6). The review's R1 changes §38.2 / §38.5: the measure knows missing health only in
+   the paste only); §40.2 -> practice on the beta. **0.16.0 is installed** in the beta (every review fix and R6,
+   everything alpha.8 had); TESTING §38-§40 say 0.16.0. The review's R1 changes §38.2 / §38.5: the measure knows missing health only in
    combat -- T21's TESTING edit says so.
 4. Then M5 (launch client, 2026-11-04).
 
 Suite loop: `docs/TOOLS.md` §1 (every suite, `bindscheck` included since alpha.6) plus
-`python3 tools/apicheck.py`, `--selftest`, `python3 tools/refcheck.py --selftest`.
+`python3 tools/apicheck.py`, `--selftest`, `python3 tools/refcheck.py --selftest`. `releasecheck`
+is in the loop since T23; in a `git archive` export it needs a throwaway `git init` there (its scratch
+copy of the tree comes from `git ls-files`).
 
 ## Baselines (at the last commit)
 
@@ -96,7 +102,7 @@ runcheck 78, reviewui 44, navui 25, dashui 56, regencheck 27, simwindow 8, solve
 modulecheck 14, kitcheck 7, recordcheck 24, scenariocheck 12, gatecheck 9, replayforever 11,
 reviewforever 10, coachforever 18, practiceforever 9, bindscheck 6, parsecheck 12, bookcheck 17,
 tipcheck 17, clockcheck 17, spellsui 17, measurecheck 26. Both flavours: adaptercheck 22/15,
-corecheck 10/8, svcheck 6/1, consolecheck 14/1. apicheck 0 findings over 44 files (45 distinct
+corecheck 10/8, svcheck 6/1, consolecheck 14/1. releasecheck 13 (T23). apicheck 0 findings over 44 files (45 distinct
 globals), selftest 10 of 10, refcheck selftest ok. The same counts in a `git archive HEAD` export.
 
 ## Open questions / hazards
@@ -115,8 +121,17 @@ globals), selftest 10 of 10, refcheck selftest ok. The same counts in a `git arc
   HEAL amount gross or effective; that sets `SM.HEAL_AMOUNT` and makes gate 8 two-sided -- and
   §38.3, the party probe with the `bar ...` lines), §39 (the recorder, validate, replay, coach and
   Review on real pulls; the CANCEL count against casts actually cancelled, since the STOP /
-  SUCCEEDED order is UNKNOWN) and §40 (practice and the imports). All three install **alpha.8**
-  (it carries everything §38/§39 need, the review fixes and R6).
+  SUCCEEDED order is UNKNOWN) and §40 (practice and the imports). All three play on **0.16.0**,
+  installed 2026-09-29 (everything alpha.8 had, the review fixes and R6).
+- **Lesson -- a clean tree is not a dead implementer (T23, 2026-09-29).** T23 was dispatched twice
+  again. The predecessor lead's session (a8fb5831, alive in the process table) handed T23 out at
+  16:29:44 and its implementer was still reading. The planner saw a clean tree and an empty Report
+  and took that for "left no changes", so it asked for a re-dispatch at 16:31. The two
+  implementers both wrote `tools/releasecheck.lua` at 16:31-16:34. The re-dispatched one's `Write`
+  overwrote the first one's suite, and on seeing "updated" it stopped. Before re-dispatching: compare
+  the hand-out commit's time with now (minutes mean nothing), look for a live session on this
+  worktree (`ps -eo pid,etime,args | grep -- --resume=`, a child running a suite in this tree), and
+  only then dispatch. An implementer that finds a file it did not expect must stop, as a688ec09 did.
 - **Lesson -- check before you dispatch.** T13c was dispatched twice, and two implementers were
   writing in the same tree at once (the previous run's alpha.4 commit also swept in T13c's TOC hunk,
   and T12b's commit its stub hunk). Before handing a task out or re-issuing it: read the task's
@@ -137,6 +152,5 @@ globals), selftest 10 of 10, refcheck selftest ok. The same counts in a `git arc
   and said on the card; drop the stand-in if the T13e readback shows a plain max. Write it as the
   **first task tomorrow** (before T19), with coachforever's causality assertion run on a secret max.
 - **Escalation 2 (the 18 empty git objects)** stays with the author -- no agent touches `.git`.
-- **Nothing is installed past alpha.3** in the author's beta. Install alpha.6 (`./release.sh
-  --install ...`) only when the author is ready to play §38-§40.
+- (superseded 2026-09-29: 0.16.0 is installed in the author's beta, `--install-forever`.)
 - 2026-09-29: the amendment is implemented (T17b, T17c); escalation 1 is closed.

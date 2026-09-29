@@ -21,8 +21,11 @@ After each test: **Copy** in the console, paste into a file under `.logs/`
 keeps 1000 lines by default — the **keep lines** box (top right, saved) raises it to 20000;
 a fight with the Mana category on produces roughly 3 lines per second.
 
-Install: `make install WOW_ADDONS="/path/to/_anniversary_/Interface/AddOns"` (or copy
-`dist/combat-log-design-arch-ffb907/SpellTuner`), then `/reload`.
+Install the TBC package (since T23 the TBC and the Forever lines are two packages from one tree):
+`./release.sh --install-tbc "/mnt/e/Blizzard/World of Warcraft/_anniversary_/Interface/AddOns"`
+(or `make install WOW_ADDONS=".../_anniversary_/Interface/AddOns" FLAVOUR=tbc`, or copy
+`dist/<name>/tbc/SpellTuner`), then `/reload`. It replaces `AddOns/SpellTuner` whole and removes
+the Forever-only module folders if an older install left them there.
 
 > **v0.5 and v0.6 both changed a lot of plumbing.** §0 and §0b are ten minutes of "did
 > anything break"; do them first, because everything after is worthless if something is
@@ -755,13 +758,12 @@ arithmetic on what the client returns.
 **Install.** From this checkout (master's older `release.sh` does not know the suffixed TOCs):
 
 ```bash
-./release.sh --install "/mnt/e/Blizzard/World of Warcraft/_classic_beta_/Interface/AddOns"
+./release.sh --install-forever "/mnt/e/Blizzard/World of Warcraft/_classic_beta_/Interface/AddOns"
 ```
 
-This replaces `AddOns/SpellTuner`. By hand instead: make
-`.../_classic_beta_/Interface/AddOns/SpellTuner/`, copy in `SpellTuner.toc`,
-`SpellTuner_Mainline.toc` and the whole `Client/` folder (since T0c the `_Forever` and `_Vanilla`
-copies are gone -- delete them if an older install left them there); do **not** copy `SpellTuner_TBC.toc`. Leave EllesmereUI as it is.
+This replaces `AddOns/SpellTuner` and the module folders whole (any `SpellTuner_TBC.toc` an older
+mixed package left there goes with it). By hand instead: copy `dist/<name>/forever/SpellTuner` and
+its sibling folders; the Forever package carries no `SpellTuner_TBC.toc`. Leave EllesmereUI as it is.
 
 **Run.**
 1. Start the beta. At character select, open AddOns and check that SpellTuner (1.0.0-alpha.1) is
@@ -814,14 +816,11 @@ paste. Nothing here reads your health or mana; nothing registers the combat log.
 three modules beside it:
 
 ```bash
-./release.sh --install "/mnt/e/Blizzard/World of Warcraft/_classic_beta_/Interface/AddOns"
+./release.sh --install-forever "/mnt/e/Blizzard/World of Warcraft/_classic_beta_/Interface/AddOns"
 ```
 
 Check that `AddOns/` now holds `SpellTuner`, `SpellTuner_Recorder`, `SpellTuner_Replay` and
-`SpellTuner_Practice`. By hand instead: copy `dist/<name>/SpellTuner` and the three
-`dist/<name>/SpellTuner_*` folders. (The same command against the TBC client's AddOns folder now copies the three
-module folders there too: the TBC client lists them as out of date and never loads them -- they are
-Forever-only and load on demand. Harmless; say if it bothers you.)
+`SpellTuner_Practice`. By hand instead: copy the four folders under `dist/<name>/forever/`.
 
 **Run.**
 1. At character select, open AddOns: SpellTuner shows `1.0.0-alpha.2`; the three modules are listed
@@ -869,7 +868,7 @@ low rank is penalised by the server (`FOREVER-PLAN.md` §6 Q10). Run §36 first 
 (and the three modules at alpha.3):
 
 ```bash
-./release.sh --install "/mnt/e/Blizzard/World of Warcraft/_classic_beta_/Interface/AddOns"
+./release.sh --install-forever "/mnt/e/Blizzard/World of Warcraft/_classic_beta_/Interface/AddOns"
 ```
 
 Log in as Healroot, `/console scriptErrors 1`. Any error box or "blocked" dialog at any step: note
@@ -985,12 +984,14 @@ not moved).
 **Install** (once, before session 1):
 
 ```bash
-./release.sh --install "/mnt/e/Blizzard/World of Warcraft/_classic_beta_/Interface/AddOns"
+./release.sh --install-forever "/mnt/e/Blizzard/World of Warcraft/_classic_beta_/Interface/AddOns"
 ```
 
-At character select the AddOns list shows SpellTuner and the three modules at **1.0.0-alpha.4**
-or later -- install the newest build (**1.0.0-alpha.8** as of 2026-09-29) for every session of
-§38-§40; the steps below are written for it. Log in as Healroot, `/console scriptErrors 1`. Any
+At character select the AddOns list shows SpellTuner and the three modules at the newest build --
+**0.16.0** as of 2026-09-29, which carries everything 1.0.0-alpha.8 did (the numbering changed that
+day: one version for both lines, Forever beta builds 0.16.x, 1.0.0 at the Forever launch --
+`docs/DECISIONS.md` "One version, two installations"). Install it for every session of §38-§40;
+the steps below are written for it. Log in as Healroot, `/console scriptErrors 1`. Any
 error box or "blocked" dialog at any step: note
 it, carry on, and `/st dump` at the end of that session (paste it under the session's other text).
 
@@ -1144,8 +1145,9 @@ gross or effective, is still the one that decides whether gate 8 checks both sid
 adds M3: the **Recorder** and **Replay** modules now do something. Nothing here has run on a real
 client yet; every step is the first time.
 
-**Install** as in §38 (`./release.sh --install ...`). At character select SpellTuner and the three
-modules read **1.0.0-alpha.5** or later (install the newest, **1.0.0-alpha.8** as of 2026-09-29).
+**Install** as in §38 (`./release.sh --install-forever ...`). At character select SpellTuner and the
+three modules read the newest build (**0.16.0** as of 2026-09-29; it carries everything 1.0.0-alpha.5 and
+later did).
 `/console scriptErrors 1`; any error box: note it, carry on,
 `/st dump` at the end of the session.
 
@@ -1210,8 +1212,9 @@ Two changes you may meet in §39's steps:
 - Whether the addon may read a party member's real max through a status bar is decided by §38.3's
   report (the line `bar UnitHealthMax(party1): ...`). Nothing to do here; it ships off.
 
-**Install** as in §38 (`./release.sh --install ...`). At character select SpellTuner and the three
-modules read **1.0.0-alpha.6** or later (install the newest, **1.0.0-alpha.8** as of 2026-09-29).
+**Install** as in §38 (`./release.sh --install-forever ...`). At character select SpellTuner and the
+three modules read the newest build (**0.16.0** as of 2026-09-29; it carries everything 1.0.0-alpha.6 and
+later did).
 `/console scriptErrors 1`; any error box: note it, carry on,
 `/st dump` at the end of the session.
 
