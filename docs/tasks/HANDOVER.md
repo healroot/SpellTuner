@@ -4,17 +4,25 @@ Rewritten by the lead after every commit and every hand-out. A successor continu
 alone. Worktree: `/home/penek/projects/addons/SpellTuner/.claude/worktrees/manademon-folder-continue-41eabc`,
 branch `claude/manademon-folder-continue-41eabc`.
 
-Last updated: 2026-09-29, after T21 (docs up to alpha.8). Review R6 is ruled (the author: "Fix both
-lines") and fixed: the danger line a plan decides on is causal. Every Forever TOC at
-`1.0.0-alpha.8` (T20 1c76605, T20b 753cd96, the bump c805287); the TBC TOC at 0.15.4 (the author decides a TBC release
-separately). All 42 review findings fixed. Nothing is running;
-nothing is handed out. Next: the author's §38-§40 reports on alpha.8.
+Last updated: 2026-09-29, T23 handed out. **The author's ruling today** ("lets have single addon
+version and just separate installations"; 0.16.0 for both lines now, 1.0.0 at the Forever launch,
+Forever beta builds 0.16.x, the TBC line never "alpha") is `docs/DECISIONS.md` "One version, two
+installations"; ROADMAP §1.2 and the milestone arrows follow it. **T22** (6d755f6) put all nine TOCs
+at `0.16.0` with the TOCs as the single source (consolecheck case 10 holds them equal to what the
+addon reports; probecheck reads the version, no literal). **T23** (`docs/tasks/T23-two-installations.md`,
+handed out): release.sh builds a TBC and a Forever package, installs by flavour (explicit or detected,
+refused when unknown), refuses on disagreeing versions, `--set-version`; new suite releasecheck (13).
+After T23: lead docs (TESTING install lines, TOOLS, CLAUDE.md release.sh row + intro, HISTORY), then
+build both and install ONLY Forever into the author's beta
+(`/mnt/e/Blizzard/World of Warcraft/_classic_beta_/Interface/AddOns`, which today holds alpha.8 plus a
+stray `SpellTuner_TBC.toc`). Never install into a TBC client.
 
 ## Committed (newest first)
 
 | hash | what |
 |---|---|
-| (the commit carrying this revision) | T21 docs (lead): CLAUDE.md rows for the review fixes and T20/T20b, intro to alpha.8; ROADMAP section for the review and R6; TESTING §38-§40 written for alpha.8 (R1 measure in combat, R2, R8/R9, R5, R12/R26, R39/R40, R4); HISTORY; this handover |
+| 6d755f6 | T22: nine TOCs at 0.16.0, the TOCs the single source; consolecheck case 10 and probecheck read the version from disk; DECISIONS "One version, two installations"; ROADMAP versioning; Forever TOC Notes "beta" (lead) |
+| 2696187 | T21 docs (lead): CLAUDE.md rows for the review fixes and T20/T20b, intro to alpha.8; ROADMAP section for the review and R6; TESTING §38-§40 written for alpha.8 (R1 measure in combat, R2, R8/R9, R5, R12/R26, R39/R40, R4); HISTORY; this handover |
 | c805287 | alpha.8: every Forever TOC + the probecheck / consolecheck pins; R6 marked Fixed in the review; TOOLS rows for solvercheck / coachforever; HISTORY entry; this handover |
 | 753cd96 | T20b (R6, second half): `SM.DangerHitFromOthers` (leave-one-out by id, name and level); both builders set `tg.dangerPrior` (the biggest hit that person took in other recordings over this scenario's max); a target with a prior is read as measured; solvercheck 77, coachforever 18 |
 | 1c76605 | T20 (R6): `SM.DangerLine` -- a plan decides on the biggest hit so far (prior / floor before the first), the score keeps the whole-fight line; `Solver:AtRisk` and rule 8 read it; synthetic scenarios unchanged; DECISIONS entry for the ruling; solvercheck 74, coachforever 17 |
