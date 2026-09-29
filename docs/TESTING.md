@@ -1171,6 +1171,71 @@ card, anything the Review tab showed that looked wrong (a `0 casts` row, an empt
 
 **If you only have time for one:** 39.1 -- without a real recording nothing else can be checked.
 
+## 40. WoW: Forever -- practice and the binding imports (1.0.0-alpha.6, 2026-09-29)
+
+On the **beta client**, after §39 (or instead of any §38/§39 session you have not done -- §38.3's
+party probe and §38.2 step 4 still decide two things the code is waiting on). This build adds M4's
+offline part: the **Practice** module works on Forever, and `/st binds check` reports what the three
+import sources look like on this client. Nothing here has run on a real client yet.
+
+Two changes you may meet in §39's steps:
+- A coach card may now carry, as its second line, `NOT causal - sees this fight: max health of
+  <name> estimated from this fight (no other recording of them)`. That is expected while only one
+  recording of that party member exists: their max health is secret, so it is taken from **other**
+  recordings of the same name and level, and with none the card says the plan saw this fight. After
+  two or more pulls with the same person the line should go away.
+- Whether the addon may read a party member's real max through a status bar is decided by §38.3's
+  report (the line `bar UnitHealthMax(party1): ...`). Nothing to do here; it ships off.
+
+**Install** as in §38 (`./release.sh --install ...`). At character select SpellTuner and the three
+modules read **1.0.0-alpha.6**. `/console scriptErrors 1`; any error box: note it, carry on,
+`/st dump` at the end of the session.
+
+### 40.1 Session 1 -- the imports on this client (10 min, anywhere, out of combat)
+
+1. `/st` -> Settings -> Modules: switch **Practice** on (it loads Recorder and Replay first, which it
+   needs). Chat says each loaded.
+2. `/st binds check`. A copy box titled `SpellTuner binds check` opens with three sections --
+   `== keybindings`, `== Cell`, `== Clique` -- each ending in an `importer:` line. Copy it whole.
+3. Write down which of Cell and Clique are installed **and enabled** in the beta's AddOns folder
+   (the report says `absent` for one that is not loaded) and which bars you use (Blizzard's,
+   ElvUI / EllesmereUI, Bartender, Dominos).
+4. `/st binds` opens the bindings window. Press **Import from Keybindings**, then **Cell**, then
+   **Clique** (the ones you have). Each prints what it took, a note per binding that casts on your
+   target, and a line per binding it would not guess at -- copy those chat lines. An import adds on
+   top of what is there; **Defaults** is the one reset.
+5. For each key or mouse button you really heal with: does the window now show the right spell and
+   rank? Anything invented, anything missing?
+
+**Paste back** into `docs/probe/<build>-alpha6-binds.md`: the report, the chat lines of each import,
+which add-ons and bars you have, and the answer to step 5. An importer is changed from this paste
+only, never from memory.
+
+### 40.2 Session 2 -- a practice fight (20 min, solo, out of combat)
+
+1. `/st practice` (or `/st` -> Simulate -> Practice). Pick Party; leave the damage at its defaults
+   for the first go. The spells offered should be the ones your book has (Healing Touch,
+   Rejuvenation, Regrowth from level 12). Look at the bindings summary: note any binding that names
+   a spell you do not have (the defaults are the TBC Cell click-castings -- Lifebloom, Swiftmend)
+   and what it shows for it.
+2. Press **Start practice**. Hover a frame and press. Press deep in a GCD (it should say "Another
+   action is in progress" at once) and right before a GCD ends (it should go off when it ends).
+   Space pauses. Play the whole fight once.
+3. When it ends the replay opens and the suggested column fills in after a few seconds.
+   **Screenshot** once. Then `/st` -> Reports -> Review -> Practice: is it listed? Hover it; press
+   Play.
+4. A second fight: press **End** halfway. Does it reopen as a replay too?
+5. While a practice window is open, press a key you did **not** bind: does it still do what it
+   normally does?
+
+**Paste back** into `docs/probe/<build>-alpha6-practice.md`: the screenshot, any chat lines, any
+press that did nothing and said nothing, the answer to step 5, the damage defaults (too easy or
+too hard at your level, with the numbers you changed them to), anything on the frames that does not
+match what happened, and `/st dump` if an error box appeared.
+
+**If you only have time for one:** 40.1 -- M4's exit needs the imports re-checked against the
+Forever builds, and its paste is what an importer is fixed from.
+
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the
 raw numbers. `/md profile` output is welcome with any report. I turn them into

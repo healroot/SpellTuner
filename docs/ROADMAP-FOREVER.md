@@ -317,10 +317,21 @@ T14 rule had escaped accented names on the TBC window too.
 **T17** (`46ebdd9`) -- the coach, card, classifier, solver strategy, marks and the asynchronous coach run on a v3
 recording (fixture only; nothing in the engine needed changing); `coachforever` 8; solver vs rules
 on the fixture: identical (220 mana each, too light to separate them -- M5 measures on real pulls).
-**Open (escalated):** planner ruling 1's whole-fight max estimate breaks the causality invariant on a
-real Forever recording (a burst at 20 s changes a cast at 6.5 s).
-**T13f** -- the v3 stream stamps `ownCasts`, `spent` and (from the meter) `foreignShare`, which the
+~~**Open (escalated):** planner ruling 1's whole-fight max estimate breaks the causality invariant on
+a real Forever recording (a burst at 20 s changes a cast at 6.5 s).~~ Ruled (planner, 2026-09-28)
+and closed by T17b and T17c below.
+**T13f** (`c3fb09b`) -- the v3 stream stamps `ownCasts`, `spent` and (from the meter) `foreignShare`, which the
 shared Review tab, replay window and card read; a pre-pull HoT's `remaining` is aged to the pull.
+**T17b** (`a5e49e0`) -- a party member's max for the scenario comes from **other** recordings of the same name
+and level (`SM.PartyMaxFromOthers`, leave-one-out, the exclusion required); with none, this
+fight's estimate with the coached plan flagged `foresees` and the card saying `NOT causal - sees
+this fight`; `coachforever` 13, its causality assertion on a secret max.
+**T17c** (`3fc0623`) -- `MD.API.HealthMax` reads a party max through a hidden status bar, behind
+`MD.API.BAR_READS_MAX = false` until TESTING §38.3's report shows the bar reading it back plain;
+the recorder then records the real max (`maxVia = "bar"`) and no stand-in is used; `adaptercheck`
+22 / 15, `recordcheck` 15.
+*Built:* `1.0.0-alpha.5` (b95ef03) carries T13c-T17 and T13f; T17b / T17c ship in `1.0.0-alpha.6`.
+The exit's in-game half is TESTING §38.3 and §39.
 
 ### M4 — practice (phase 4) → `1.0.0-beta.3`
 
@@ -329,11 +340,18 @@ keybinding import works against the Forever builds of those addons (re-checked, 
 
 Tasks: T18 session and panel under the adapter · T19 bindings + imports re-verified.
 
-*Landed:* **T18** -- the Practice module carries `Engine/Practice.lua`, `UI/PracticePanel.lua`,
+*Landed:* **T18** (`a25d878`) -- the Practice module carries `Engine/Practice.lua`, `UI/PracticePanel.lua`,
 `UI/BindingsWindow.lua` (shared, every client call through the adapter; `GetSpecialization` bound on
 TBC only, absent from 69893) and `Commands_Forever.lua` (`/st practice`, `/st binds`); the Forever
 window gains Simulate -> Practice; `PR.EnsureKit` builds the Forever kit before the panel reads the
 spell index (a no-op on TBC); `practiceforever` 8.
+**T19** (`9cbc043`) -- `/st binds check` writes one escaped copy-box report of the key bindings (the
+first rows whole, what resolved to a slot, a spell, a macro), Cell's click-castings and Clique's
+binds in the shapes the importers read, with each importer's verdict; the importers refuse a shape
+they do not recognise, naming what they expected and what they found; `bindscheck` 6.
+*Built:* `1.0.0-alpha.6` (2026-09-29). The exit's in-game half is TESTING §40: a practice fight on
+the beta, and the imports re-checked against the Forever builds from the author's
+`/st binds check` paste (an importer is changed from that paste only).
 
 ### M5 — launch (phase 5) → `1.0.0`
 

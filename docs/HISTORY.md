@@ -3510,3 +3510,32 @@ objects reachable only from four old docs commits (HANDOVER.md).
 Every Forever TOC at **`1.0.0-alpha.5`**; **`docs/TESTING.md` §39** is the first in-game run of the
 recorder, replay, validate, coach and Review. **Next:** T18 (practice on Forever), T19 (bindings
 imports re-checked); the planner's answer on the max estimate.
+
+## 2026-09-29 — M4's offline part: practice on Forever, the causality fix, the imports checked; alpha.6, TESTING §40
+
+The lead run continued from `docs/tasks/HANDOVER.md` alone, one implementer at a time, every task
+reviewed with every suite rerun and verified in a `git archive` export of HEAD.
+
+- **T18** (`a25d878`, the evening before) -- the Practice module carries `Engine/Practice.lua`,
+  `UI/PracticePanel.lua` and `UI/BindingsWindow.lua` (shared, every client call through the
+  adapter) and `Commands_Forever.lua`; Simulate -> Practice in the Forever window; `PR.EnsureKit`;
+  `practiceforever` 8.
+- **Planner's amendment to ruling 1** (`34d3509`): a party member's max for coaching never comes from
+  the fight being coached.
+- **T17b** (`a5e49e0`) -- `SM.PartyMaxFromOthers` (leave-one-out, the exclusion required) feeds the
+  one chooser both the scenario and the reconstruction use; with no other recording of that person
+  the fight's own estimate is used, the plan is flagged `foresees` and the card says `NOT causal -
+  sees this fight`. coachforever's causality assertion now runs with the max secret and holds
+  (four identical casts before the burst; it diverged at 6.5 s before). `coachforever` 13.
+- **T17c** (`3fc0623`) -- `MD.API.HealthMax` reads a party max through a hidden status bar behind
+  `MD.API.BAR_READS_MAX = false`; the recorder records a plain read-back as the real max
+  (`maxVia = "bar"`). Switched on only if TESTING §38.3 shows the bar reading back plain.
+  `adaptercheck` 22 / 15, `recordcheck` 15.
+- **T19** (`9cbc043`) -- `/st binds check`: one escaped report of the key bindings, Cell and Clique
+  in the shapes the importers read; the importers refuse an unknown shape with what they expected
+  and what they found. `bindscheck` 6 (new); `practice` 74 and `practiceui` 49 unchanged.
+
+Every Forever TOC at **`1.0.0-alpha.6`**; **`docs/TESTING.md` §40** is practice and the binding
+imports on the beta. The TBC line (`SpellTuner_TBC.toc`, 0.15.4) is unchanged. **Next:** the author's
+§38 / §39 / §40 reports -- §38.2 step 4 (gross or effective) makes gate 8 two-sided, §38.3's bar line
+decides `BAR_READS_MAX`, §40.1's paste is what an importer is fixed from; then M5.
