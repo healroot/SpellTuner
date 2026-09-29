@@ -126,8 +126,8 @@ globals), selftest 10 of 10, refcheck selftest ok. The same counts in a `git arc
   HEAL amount gross or effective; that sets `SM.HEAL_AMOUNT` and makes gate 8 two-sided -- and
   §38.3, the party probe with the `bar ...` lines), §39 (the recorder, validate, replay, coach and
   Review on real pulls; the CANCEL count against casts actually cancelled, since the STOP /
-  SUCCEEDED order is UNKNOWN) and §40 (practice and the imports). All three play on **0.16.0**,
-  installed 2026-09-29 (everything alpha.8 had, the review fixes and R6).
+  SUCCEEDED order is UNKNOWN) and §40 (practice and the imports). All three play on **0.16.1**
+  (build 70058), installed 2026-09-29, after the 70058 probe and §41.
 - **Lesson -- parallel tasks on disjoint files still meet in the suites (T24-T26, 2026-09-29).**
   Three implementers ran at once, each told which files the others owned; that held. What it did not
   catch: T25's assertion counted Macro post-calls (`#list == 1`) and T25a, written the same hour,
