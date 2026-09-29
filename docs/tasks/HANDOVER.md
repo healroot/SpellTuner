@@ -4,25 +4,25 @@ Rewritten by the lead after every commit and every hand-out. A successor continu
 alone. Worktree: `/home/penek/projects/addons/SpellTuner/.claude/worktrees/manademon-folder-continue-41eabc`,
 branch `claude/manademon-folder-continue-41eabc`.
 
-Last updated: 2026-09-29, after T23 and its docs, with **0.16.0 installed in the author's beta**.
-**The author's ruling** ("lets have single addon version and just separate installations"; 0.16.0
-for both lines now, 1.0.0 at the Forever launch, Forever beta builds 0.16.x, the TBC line never
-"alpha") is `docs/DECISIONS.md` "One version, two installations"; ROADMAP §1.2 and the milestone
-arrows follow it. **T22** (6d755f6) put all nine TOCs at `0.16.0` with the TOCs as the single
-source. **T23** (cdf3727) gave `release.sh` two packages (`dist/<name>/tbc/`, `dist/<name>/forever/`
-+ modules, a zip each), per-flavour installs (explicit, or detected from `_classic_beta_` /
-`_anniversary_`, refused when unknown), a refusal on disagreeing versions and `--set-version`;
-releasecheck 13. The lead's docs commit after it carries TESTING, TOOLS, CLAUDE.md, HISTORY and this
-file. **Installed:** the Forever package, 0.16.0, into
-`/mnt/e/Blizzard/World of Warcraft/_classic_beta_/Interface/AddOns`. All four folders are identical
-to the package and `SpellTuner_TBC.toc` is gone. Nothing was installed into a TBC client. The next
-Forever install is `./release.sh --install-forever "<that path>"` and the next TBC one
-`./release.sh --install-tbc ".../_anniversary_/Interface/AddOns"`; never cross them.
+Last updated: 2026-09-29, after T24-T26 and T25a (the author's build-70058 report), with **0.16.1
+installed in the author's beta** (Forever package only; 8 TOCs at 0.16.1, no TBC TOC, every folder
+identical to the package). The version ruling is `docs/DECISIONS.md` "One version, two installations"
+(0.16.x beta builds, 1.0.0 at the Forever launch). The next Forever install is
+`./release.sh --install-forever "/mnt/e/Blizzard/World of Warcraft/_classic_beta_/Interface/AddOns"`
+and the next TBC one `./release.sh --install-tbc ".../_anniversary_/Interface/AddOns"`; never cross
+them.
 
 ## Committed (newest first)
 
 | hash | what |
 |---|---|
+| (after 69d9d96) | docs (lead): TESTING §38 opening (probe on 70058 into `docs/probe/1.60.1_70058.md`), §41 (0.16.1 checks), §38-§40 at 0.16.1; TOOLS rows; CLAUDE.md rows (API_Forever, Probe, SpellTip, Measure, Practice, intro 0.16.1, measure usage); HISTORY; this handover |
+| 69d9d96 | 0.16.1: every TOC via `release.sh --set-version`; releasecheck's disagreeing version `9.9.9-disagree` (it was the literal 0.16.1) |
+| d168f43 | T25a: the probe's `macro` lines in `== shapes` and its own Macro post-call at load; probecheck 86; lead's one-line tipcheck change (two Macro post-calls) |
+| 13f8f6e | T24: practice on Forever only from the spellbook -- no default binds, TBC defaults saved there dropped once, `(not in your spellbook)`, `PR.InBook`, `PR.FirstFamily`, Start refuses with nothing bound, Defaults hidden; practiceforever 15 |
+| 71ddbb7 | T26: measure lines `{ text, version, build }`; `dump` current version + older count, `dump all`, `clear`; measurecheck 30 |
+| 8ffd300 | T25: `MD.API.OnMacroTooltip` + `MacroSpell`; the block on a macro's tooltip; tipcheck 22; lead's adaptercheck list (22/15) |
+| d558432 / a24569e | hand-outs of T24, T25, T26 / T25a |
 | (after cdf3727) | docs (lead): TESTING install lines by flavour (§35-§40 `--install-forever`, top `--install-tbc`, §36 TBC-modules note dropped, §38-§40 at 0.16.0); TOOLS releasecheck row + loop; CLAUDE.md intro (one version) + release.sh row + suite list; HISTORY; this handover |
 | cdf3727 | T23: release.sh two packages and per-flavour installs, `--version`, `--set-version`, version refusal; Makefile `FLAVOUR`; releasecheck 13 (new; CRLF case added by the lead); probecheck's release check on the new layout (82) |
 | 6d755f6 | T22: nine TOCs at 0.16.0, the TOCs the single source; consolecheck case 10 and probecheck read the version from disk; DECISIONS "One version, two installations"; ROADMAP versioning; Forever TOC Notes "beta" (lead) |
@@ -70,14 +70,7 @@ docs/HISTORY.md's 2026-09-29 entry covers T18 onwards.
 
 ## In the tree, not committed
 
-Nothing yet. **Handed out 2026-09-29 (the author's 70058 report, four items), one implementer each,
-in parallel on disjoint files:** T24 `docs/tasks/T24-practice-own-spells.md` (practice offers only
-the player's own spells on Forever), T25 `docs/tasks/T25-macro-tooltip.md` (the block on a macro's
-tooltip), T26 `docs/tasks/T26-measure-stamped.md` (measure lines stamped, `dump all`, `clear`).
-**T25 accepted, 8ffd300.** **T25a** `docs/tasks/T25a-probe-macro-shapes.md` (the probe's macro lines)
-handed out after it, at 17:3x (both touch `tools/wowstub.lua`). Item 4 (TESTING §38: re-run the probe on
-70058 into `docs/probe/1.60.1_70058.md`) is the lead's own docs edit. After all four: every TOC to
-0.16.1 (`./release.sh --set-version 0.16.1`), build, install the Forever package only.
+Nothing.
 
 ## Next, in order
 
@@ -86,15 +79,20 @@ handed out after it, at 17:3x (both touch `tools/wowstub.lua`). Item 4 (TESTING 
    there is no review group left to redo.
 2. **R6**: ruled ("Fix both lines", DECISIONS "Forever review R6") and closed -- T20 1c76605, T20b
    753cd96, alpha.8 c805287, T21 docs. Nothing of the review is left.
-3. **When the author's reports arrive:** §38.2 step 4 (gross or effective) -> `SM.HEAL_AMOUNT` and
+3. **First the build-70058 probe** (`docs/probe/1.60.1_70058.md`, TESTING §38's opening step) and
+   **TESTING §41** (0.16.1): the probe's `macro` lines decide whether T25's assumed shapes hold (a
+   `macro hover` with `line1 tooltipType=<Spell's value> tooltipID=<id>`, or a `GetActionInfo` id /
+   subType that `GetMacroSpell` resolves); if neither, write a task from those lines only. Diff the
+   70058 probe against 70009 for anything else that moved.
+4. **When the author's reports arrive:** §38.2 step 4 (gross or effective) -> `SM.HEAL_AMOUNT` and
    gate 8 two-sided; §38.3's `bar UnitHealthMax(party1): ...` line -> flip `MD.API.BAR_READS_MAX`
    (one word, `Client/API.lua` 333) if `read plain`, both out of combat and in the snapshot; §39 ->
    the recorder on real pulls (CANCEL count, meter vs attributed own healing); §40.1's
    `/st binds check` paste -> a task per importer that does not recognise the Forever shape (from
-   the paste only); §40.2 -> practice on the beta. **0.16.0 is installed** in the beta (every review fix and R6,
-   everything alpha.8 had); TESTING §38-§40 say 0.16.0. The review's R1 changes §38.2 / §38.5: the measure knows missing health only in
+   the paste only); §40.2 -> practice on the beta. **0.16.1 is installed** in the beta (everything 0.16.0 had
+   plus T24-T26 / T25a); TESTING §38-§41 say 0.16.1. The review's R1 changes §38.2 / §38.5: the measure knows missing health only in
    combat -- T21's TESTING edit says so.
-4. Then M5 (launch client, 2026-11-04).
+5. Then M5 (launch client, 2026-11-04).
 
 Suite loop: `docs/TOOLS.md` §1 (every suite, `bindscheck` included since alpha.6) plus
 `python3 tools/apicheck.py`, `--selftest`, `python3 tools/refcheck.py --selftest`. `releasecheck`
@@ -105,10 +103,10 @@ copy of the tree comes from `git ls-files`).
 
 TBC sixteen (unchanged by the review): simcheck PASS, reccheck 54, replaycheck 80, replayui 98,
 runcheck 78, reviewui 44, navui 25, dashui 56, regencheck 27, simwindow 8, solvercheck 77, timeline
-27, spelltip 48, practice 74, practiceui 49, migrate 7. Forever: probecheck 82, forevercheck 13,
+27, spelltip 48, practice 74, practiceui 49, migrate 7. Forever: probecheck 86 (T25a), forevercheck 13,
 modulecheck 14, kitcheck 7, recordcheck 24, scenariocheck 12, gatecheck 9, replayforever 11,
-reviewforever 10, coachforever 18, practiceforever 9, bindscheck 6, parsecheck 12, bookcheck 17,
-tipcheck 17, clockcheck 17, spellsui 17, measurecheck 26. Both flavours: adaptercheck 22/15,
+reviewforever 10, coachforever 18, practiceforever 15 (T24), bindscheck 6, parsecheck 12, bookcheck 17,
+tipcheck 22 (T25), clockcheck 17, spellsui 17, measurecheck 30 (T26). Both flavours: adaptercheck 22/15,
 corecheck 10/8, svcheck 6/1, consolecheck 14/1. releasecheck 13 (T23). apicheck 0 findings over 44 files (45 distinct
 globals), selftest 10 of 10, refcheck selftest ok. The same counts in a `git archive HEAD` export.
 
@@ -130,6 +128,12 @@ globals), selftest 10 of 10, refcheck selftest ok. The same counts in a `git arc
   Review on real pulls; the CANCEL count against casts actually cancelled, since the STOP /
   SUCCEEDED order is UNKNOWN) and §40 (practice and the imports). All three play on **0.16.0**,
   installed 2026-09-29 (everything alpha.8 had, the review fixes and R6).
+- **Lesson -- parallel tasks on disjoint files still meet in the suites (T24-T26, 2026-09-29).**
+  Three implementers ran at once, each told which files the others owned; that held. What it did not
+  catch: T25's assertion counted Macro post-calls (`#list == 1`) and T25a, written the same hour,
+  required a second one at load. When two tasks touch the same registry, say in the second task
+  which of the first's assertions it moves. And an assertion that writes a literal version breaks on
+  the next bump (releasecheck's `0.16.1`): use a value no tree carries.
 - **Lesson -- a clean tree is not a dead implementer (T23, 2026-09-29).** T23 was dispatched twice
   again. The predecessor lead's session (a8fb5831, alive in the process table) handed T23 out at
   16:29:44 and its implementer was still reading. The planner saw a clean tree and an empty Report

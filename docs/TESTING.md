@@ -958,6 +958,14 @@ missing from the pane, the clock's drift after a fight, and anything that did no
 
 ## 38. WoW: Forever -- the next round: the M2 re-check, Q10, a talent, an alt, the M3 probe (1.0.0-alpha.4, 2026-09-28)
 
+> **First, on the new beta build 70058 (2026-09-29): re-run the probe before anything else.** The
+> client moved from 70009 to 70058, so every fact the port rests on is dated until the probe says
+> otherwise. Out of combat, with **show all ranks** on in the spellbook and a macro that casts a
+> spell on one of your bars (hover it once first -- 0.16.1's probe records what the client hands a
+> macro tooltip), type `/st probe`, copy the whole box and paste it into
+> **`docs/probe/1.60.1_70058.md`** (if the probe prints a different `<version>_<build>`, use that).
+> Then do the sessions below on 70058; wherever they say 70009, read "the build you are on".
+
 On the **beta client** (Healroot, build 70009 or current). Everything still to check in game,
 in the order you meet it while playing, cut into sessions of 20-30 minutes. **Do the sessions in
 order, but each one stands alone**: stop after any of them, paste what it asks for, and the next
@@ -988,7 +996,7 @@ not moved).
 ```
 
 At character select the AddOns list shows SpellTuner and the three modules at the newest build --
-**0.16.0** as of 2026-09-29, which carries everything 1.0.0-alpha.8 did (the numbering changed that
+**0.16.1** as of 2026-09-29 (build 70058; §41), which carries everything 1.0.0-alpha.8 did (the numbering changed that
 day: one version for both lines, Forever beta builds 0.16.x, 1.0.0 at the Forever launch --
 `docs/DECISIONS.md` "One version, two installations"). Install it for every session of §38-§40;
 the steps below are written for it. Log in as Healroot, `/console scriptErrors 1`. Any
@@ -1146,7 +1154,7 @@ adds M3: the **Recorder** and **Replay** modules now do something. Nothing here 
 client yet; every step is the first time.
 
 **Install** as in §38 (`./release.sh --install-forever ...`). At character select SpellTuner and the
-three modules read the newest build (**0.16.0** as of 2026-09-29; it carries everything 1.0.0-alpha.5 and
+three modules read the newest build (**0.16.1** as of 2026-09-29; it carries everything 1.0.0-alpha.5 and
 later did).
 `/console scriptErrors 1`; any error box: note it, carry on,
 `/st dump` at the end of the session.
@@ -1213,7 +1221,7 @@ Two changes you may meet in §39's steps:
   report (the line `bar UnitHealthMax(party1): ...`). Nothing to do here; it ships off.
 
 **Install** as in §38 (`./release.sh --install-forever ...`). At character select SpellTuner and the
-three modules read the newest build (**0.16.0** as of 2026-09-29; it carries everything 1.0.0-alpha.6 and
+three modules read the newest build (**0.16.1** as of 2026-09-29; it carries everything 1.0.0-alpha.6 and
 later did).
 `/console scriptErrors 1`; any error box: note it, carry on,
 `/st dump` at the end of the session.
@@ -1242,9 +1250,9 @@ only, never from memory.
 
 1. `/st practice` (or `/st` -> Simulate -> Practice). Pick Party; leave the damage at its defaults
    for the first go. The spells offered should be the ones your book has (Healing Touch,
-   Rejuvenation, Regrowth from level 12). Look at the bindings summary: note any binding that names
-   a spell you do not have (the defaults are the TBC Cell click-castings -- Lifebloom, Swiftmend)
-   and what it shows for it.
+   Rejuvenation, Regrowth from level 12). Look at the bindings summary: since 0.16.1 nothing is
+   bound until you import or add a binding (§41 item 1) -- do 40.1's imports first; note any
+   binding that names a spell you do not have and what it shows for it.
 2. Press **Start practice**. Hover a frame and press. Press deep in a GCD (it should say "Another
    action is in progress" at once) and right before a GCD ends (it should go off when it ends).
    Space pauses. Play the whole fight once. Your mana should regenerate between casts (since
@@ -1263,6 +1271,39 @@ match what happened, and `/st dump` if an error box appeared.
 
 **If you only have time for one:** 40.1 -- M4's exit needs the imports re-checked against the
 Forever builds, and its paste is what an importer is fixed from.
+
+## 41. WoW: Forever -- 0.16.1: your report of 2026-09-29 on build 70058 (10 min, out of combat)
+
+On the **beta client**, build 70058. 0.16.1 answers the four points of your 2026-09-29 report.
+**Install** as in §38 (`./release.sh --install-forever ...`); at character select SpellTuner and
+the three modules read **0.16.1**. First do §38's opening step on this build (the probe into
+`docs/probe/1.60.1_70058.md`, with a macro hovered first). Then:
+
+1. **Practice offers only your own spells** (T24). `/st` -> Settings -> Modules: Practice on. Open
+   Simulate -> Practice. The bindings summary no longer lists Lifebloom, Swiftmend or any TBC
+   Cell default: 0.16.0 wrote those into your saved settings, and 0.16.1 drops that exact list once.
+   With nothing bound it says `Nothing is bound - Import your keybindings, Cell or Clique, or add
+   one, in Edit bindings.`, and **Start practice** says nothing is bound instead of opening a fight.
+   Press **Edit bindings**: there is no **Defaults** button; the spell picker lists only families
+   your spellbook has (Healing Touch, Rejuvenation, Regrowth as you train them); **+ binding** gives a
+   row with a spell you have. Import from Keybindings (and Cell / Clique if you use them), then start
+   a fight and heal with what was imported. Anything named that you do not have: note it.
+2. **The block on a macro's tooltip** (T25). Put a macro that casts a heal (`/cast Healing Touch`,
+   or `/cast [@mouseover] Rejuvenation`) on an action bar and hover it: the SpellTuner block should
+   appear under it, the same as on the spell itself, once. Try a Blizzard bar and, if you use one,
+   an ElvUI / Bartender bar. The shapes this rests on are the retail engine's, not yet seen on
+   Forever: if no block appears, the probe's `macro` lines (in `== shapes`, after you hovered the
+   macro) say why -- paste them.
+3. **`/st measure dump` shows this version's lines** (T26). `/st measure dump`: the lines older
+   versions left are gone from the box, replaced by one line `N older line(s) from earlier versions
+   not shown - /st measure dump all`. `/st measure dump all` shows every line with its stamp
+   (`[before 0.16.1] ...` for the old ones, `[0.16.1 70058] ...` for new ones). `/st measure clear`
+   says how many it cleared, and a dump afterwards is empty. Then one measurement
+   (`/st measure`, a Healing Touch on yourself, `/st measure`) and a dump: one line, current.
+
+**Paste back** into `docs/probe/1.60.1_70058-0.16.1.md`: the probe report (as §38's opening step
+says), in words what the practice summary and the picker showed before and after the import, which
+bars showed the macro block (and the probe's `macro` lines if one did not), and the measure dump.
 
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the

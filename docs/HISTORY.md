@@ -3662,3 +3662,38 @@ never "alpha" -- and one package per client.
 
 Every suite at its count, releasecheck 13 added, the same in a `git archive` export. **Next:** the
 author's §38 / §39 / §40 reports, played on 0.16.0, then M5.
+
+## 2026-09-29 — the author's build-70058 report: T24, T25, T25a, T26; 0.16.1 in the beta
+
+**Asked** (the author, on beta build 70058, via the planner): (1) practice showed "BUTTON5 Lifebloom
+(not trained)" and the rest of the TBC author's Cell defaults -- "we need to adjust to spells the
+player really has"; (2) no SpellTuner block on an action-bar macro's tooltip; (3) `/st measure dump`
+on 0.16.0 reprinted alpha.3's lines as if new; (4) the new build means the probe first.
+
+- **T24** (`13f8f6e`) -- on Forever nothing is bound by default: the panel says so and points at
+  Import / Edit bindings, Start refuses with nothing bound, the exact TBC default list 0.16.0 saved
+  is dropped once (any other list kept whole), a bind the spellbook lacks reads `(not in your
+  spellbook)` and casts nothing, a new row takes the first family you know, the Defaults button is
+  hidden. TBC unchanged. practiceforever 15.
+- **T25** (`8ffd300`) -- `MD.API.OnMacroTooltip`: the Macro post-call, the spell resolved in the
+  adapter from the data's `tooltipType`/`tooltipID` line or else the hovered button's slot through
+  `GetActionInfo` + `GetMacroSpell`; `UI/SpellTip_Forever.lua` hands it the same `OnSpell`. The
+  shapes are retail's, not yet seen on Forever. tipcheck 22; the lead added the two new names to
+  adaptercheck's exhaustive list (22/15).
+- **T25a** (`d168f43`) -- the probe's `macro` lines in `== shapes` and a Macro post-call of its own
+  at load recording what a hovered macro handed it, so the next report confirms or refutes T25's
+  shapes. probecheck 86; the lead's one-line tipcheck change (two Macro post-calls now).
+- **T26** (`71ddbb7`) -- measure lines stored as `{ text, version, build }`; `dump` shows this
+  version's and counts older ones, `dump all` stamps every line, `clear`. measurecheck 30.
+- T24, T25 and T26 ran **in parallel** on disjoint files (T25a after T25, both touching the stub);
+  the only cross-talk was an adaptercheck failure each saw while T25 was mid-edit.
+- **0.16.1** (`69d9d96`) -- every TOC by `release.sh --set-version`; releasecheck's "disagreeing"
+  version was the literal `0.16.1`, which stopped disagreeing on the bump -- now `9.9.9-disagree`.
+- **Docs**: TESTING §38 opens with "re-run the probe on 70058 into `docs/probe/1.60.1_70058.md`";
+  new §41 for the three fixes; §38-§40 at 0.16.1, §40.2's note on defaults rewritten. TOOLS, CLAUDE.md
+  rows, this entry, the handover.
+- **Installed**: the Forever package, **0.16.1**, into the author's beta; 8 TOCs at 0.16.1, no TBC
+  TOC, every folder identical to the package.
+
+Every suite at its count (probecheck 86, tipcheck 22, measurecheck 30, practiceforever 15, the rest
+unchanged). **Next:** the 70058 probe report, TESTING §41, then §38-§40 as before.
