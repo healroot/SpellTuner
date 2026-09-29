@@ -382,6 +382,54 @@ S.Tick(0.5)
 print("after combat: " .. Clock.text:GetText())
 print("  " .. HoverText())
 
+--------------------------------------------------------------------------------
+-- review R13: an Energy cast spends no mana -- Claw's "45 Energy" (beta
+-- client 1.60.1.70009) is not 45 mana off the modelled pool, and it is not
+-- unpriced either: it is known to cost no mana.
+--------------------------------------------------------------------------------
+do
+    S.AddSpell(93020, "Claw", "Rank 1",
+        function() return "Claw the enemy for 110% normal damage plus 29. Awards 1 combo point." end,
+        { cast = 0, level = 20, costLine = "45 Energy",
+          costList = { { type = 3, name = "ENERGY", cost = 45, minCost = 45, costPercent = 0, costPerSec = 0,
+                         requiredAuraID = 0, hasRequiredAura = false } } })
+    MD.Book:MarkDirty()
+    local m = Clock.model
+    m.mana = m.max * 0.5
+    local before, beforeUnpriced = m.mana, m.unpriced
+    S.Cast(93020)
+    check("an Energy cast spends no mana and is not unpriced",
+        m.mana == before and m.unpriced == beforeUnpriced,
+        string.format("mana %s->%s unpriced %s->%s", tostring(before), tostring(m.mana),
+            tostring(beforeUnpriced), tostring(m.unpriced)))
+end
+
+--------------------------------------------------------------------------------
+-- review R36/R37: a login or /reload in the middle of a fight -- no
+-- PLAYER_REGEN_DISABLED will come -- starts the clock in combat: a fight
+-- under way, shown, and never worded as the out-of-combat "~FULL".
+--------------------------------------------------------------------------------
+do
+    MD.db.clock.shown = true
+    S.inCombat = true
+    MD:Fire("MD_READY") -- what PLAYER_LOGIN runs after a /reload
+    local m = Clock.model
+    S.Tick(0.5)
+    local text = Clock.text and Clock.text:GetText() or ""
+    local fightGood = m ~= model and m.fight ~= nil
+    local shownGood = Clock.frame ~= nil and Clock.frame:IsShown()
+    local wordGood = text:find("~OOM", 1, true) ~= nil and text:find("FULL", 1, true) == nil
+
+    S.Fire("PLAYER_REGEN_ENABLED")
+    S.inCombat = false
+    local endedGood = m.fight == nil
+
+    check("a login in the middle of a fight starts the clock in combat",
+        fightGood and shownGood and wordGood and endedGood,
+        string.format("fight=%s shown=%s text=%q ended=%s", tostring(fightGood), tostring(shownGood), text,
+            tostring(endedGood)))
+end
+
 print("")
 print(string.format("%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("  FAIL " .. f) end

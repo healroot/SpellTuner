@@ -199,7 +199,14 @@ MD:RegisterCallback("MD_READY", function()
 
     model:Anchor(GetTime(), model.max, "assumed full at login")
 
-    CreateWidget()
+    -- Review R36/R37: a login or /reload in the middle of a fight gets no
+    -- PLAYER_REGEN_DISABLED (it already fired), so the combat state is read
+    -- here once, through the adapter -- anything but a plain true (false,
+    -- absent, secret) leaves the clock out of combat, as before.
+    inCombat = (MD.API.UnitAffectingCombat("player") == true)
+    if inCombat then model:StartFight(GetTime()) end
+
+    if not widget then CreateWidget() end
     UpdateVisibility()
 end)
 

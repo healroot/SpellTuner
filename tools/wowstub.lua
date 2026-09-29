@@ -740,6 +740,7 @@ function S.UseProfile(name)
     -- T7b: per-spell isPassive override (default false, m2's own General/
     -- Druid rows above all carry isPassive = false in their table literal).
     local SPELL_PASSIVE = {}
+    local SPELL_COSTLINE = {} -- review-spells: a tooltip cost line other than "N Mana" ("45 Energy")
     -- T0c: 774's amount also carries S.descShift, a stand-in for a description
     -- that moved with a level-up rather than with bonus healing (reads exactly
     -- as before at descShift 0). 5176's amount carries S.bonusDamage[4]
@@ -819,6 +820,7 @@ function S.UseProfile(name)
         SPELL_ITEMTYPE[id] = opts.itemType or 1
         SPELL_PASSIVE[id] = opts.passive == true
         if opts.known == false then SPELL_KNOWN[id] = false end
+        SPELL_COSTLINE[id] = opts.costLine -- review-spells
         if opts.costList then
             SPELL_COSTLIST[id] = opts.costList
         elseif opts.noCost then
@@ -884,7 +886,7 @@ function S.UseProfile(name)
                 type = 1, id = id,
                 lines = {
                     { leftText = name, rightText = SPELL_SUBTEXT[id] },
-                    { leftText = cost .. " Mana", rightText = "40 yd range" },
+                    { leftText = SPELL_COSTLINE[id] or (cost .. " Mana"), rightText = "40 yd range" }, -- review-spells
                     { leftText = castText, rightText = "" },
                     { leftText = C_Spell.GetSpellDescription(id) },
                 },

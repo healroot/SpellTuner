@@ -70,7 +70,10 @@ local function ValueText(entry, kind)
 end
 
 -- Crit only for a direct part (one with its own min/max) -- a HoT tick or an
--- absorb never crits in this text.
+-- absorb never crits in this text. Review R42: the multiplier is the one
+-- number on the block not read from the game, so the line says so on its
+-- right-hand side rather than showing the range as the game's own.
+local CRIT_NOTE = "1.5x, unverified"
 local function CritLine(entry)
     if entry.min == nil or entry.max == nil then return nil end
     return "Crit " .. Num(entry.min * CRIT_MULT) .. " - " .. Num(entry.max * CRIT_MULT)
@@ -117,12 +120,15 @@ function SpellTip:Lines(id)
 
     -- 3: crit range
     local crit = CritLine(entry)
-    if crit then lines[#lines + 1] = { crit, nil } end
+    if crit then lines[#lines + 1] = { crit, CRIT_NOTE } end
 
-    -- 4: per mana
+    -- 4: per mana -- review R13: a Rage / Focus / Energy cost is no mana,
+    -- and named (Book's own word, one of three fixed ASCII words)
     local perManaRight
     if entry.perMana then
         perManaRight = Num(entry.perMana, 2)
+    elseif entry.cost and type(entry.cost.power) == "string" and type(entry.cost.powerAmount) == "number" then
+        perManaRight = "no mana (" .. Num(entry.cost.powerAmount) .. " " .. entry.cost.power .. ")"
     elseif entry.costState == "free" then
         perManaRight = "free"
     elseif entry.cost and entry.cost.percent then
@@ -168,14 +174,17 @@ function SpellTip:Lines(id)
     lines[#lines + 1] = { "Per second", perSecRight }
 
     -- 6: casts to OOM -- a family row number (Book:Rows, from
-    -- Book:DefaultPool()); a standalone entry (ReadSpell) never has one.
+    -- Book:DefaultPool(), i.e. from a full pool); a standalone entry
+    -- (ReadSpell) never has one. Review R31/R38: the Spellbook pane no longer
+    -- rewrites it with the clock's modelled pool, so it is always from full,
+    -- and the label says so (the pane's own column is the modelled count).
     local castsRight = "-"
     if entry.casts == math.huge then
         castsRight = "inf"
     elseif type(entry.casts) == "number" then
         castsRight = Num(entry.casts, 0)
     end
-    lines[#lines + 1] = { "Casts to OOM", castsRight }
+    lines[#lines + 1] = { "Casts to OOM from full", castsRight }
 
     if family then
         -- 7: compared with the highest known rank, when this is not it

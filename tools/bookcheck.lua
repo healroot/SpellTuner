@@ -483,6 +483,88 @@ do
             tostring(free.costState), tostring(passive.passive), tostring(fixed.passive)))
 end
 
+--------------------------------------------------------------------------------
+-- 16 (review R13): a Rage or Energy cost is not a mana cost -- the spell
+-- costs no mana (free, as far as the pool goes), keeps what it does cost,
+-- and gets no per-mana or casts-to-OOM number; from the cost list and from
+-- the tooltip's own cost line alike. Texts and cost lines: talentsforever's
+-- beta client 1.60.1.70009 (Rend: "10 Rage"; Claw: "45 Energy").
+--------------------------------------------------------------------------------
+S.AddSpell(90080, "Rend", "Rank 1",
+    function() return "Wounds the target causing them to bleed for 15 damage over 9 sec." end,
+    { cast = 0, level = 4, costLine = "10 Rage",
+      costList = { { type = 1, name = "RAGE", cost = 10, minCost = 10, costPercent = 0, costPerSec = 0,
+                     requiredAuraID = 0, hasRequiredAura = false } } })
+S.AddSpell(90081, "Claw", "Rank 1",
+    function() return "Claw the enemy for 110% normal damage plus 29. Awards 1 combo point." end,
+    { cast = 0, level = 20, costLine = "45 Energy",
+      costList = { { type = 3, name = "ENERGY", cost = 45, minCost = 45, costPercent = 0, costPerSec = 0,
+                     requiredAuraID = 0, hasRequiredAura = false } } })
+do
+    local function NoMana(e, power, amount)
+        return e ~= nil and e.costState == "free" and type(e.cost) == "table" and e.cost.amount == nil
+            and e.cost.percent == nil and e.cost.power == power and e.cost.powerAmount == amount
+    end
+    local function Show(e)
+        if not e then return "nil" end
+        return string.format("%s amount=%s power=%s powerAmount=%s perMana=%s casts=%s", tostring(e.costState),
+            tostring(e.cost and e.cost.amount), tostring(e.cost and e.cost.power),
+            tostring(e.cost and e.cost.powerAmount), tostring(e.perMana), tostring(e.casts))
+    end
+
+    local book = Book:Scan()
+    Book:Rows(FindFamily(book, "Rend"), { max = 200, regenCasting = 10 })
+    local rend, claw = FindEntry(book, 90080), FindEntry(book, 90081)
+    local listGood = NoMana(rend, "Rage", 10) and NoMana(claw, "Energy", 45)
+        and FindFamily(book, "Rend").kind == "damage" and rend.perMana == nil and rend.casts == nil
+
+    -- the cost list absent for the whole scan: the tooltip's "10 Rage" line
+    -- is all there is, and it is not mana either.
+    local bookTip = FreshBook(function()
+        local saved = C_Spell.GetSpellPowerCost
+        C_Spell.GetSpellPowerCost = nil
+        return function() C_Spell.GetSpellPowerCost = saved end
+    end)
+    local rendTip, clawTip = FindEntry(bookTip, 90080), FindEntry(bookTip, 90081)
+    local tipGood = NoMana(rendTip, "Rage", 10) and NoMana(clawTip, "Energy", 45)
+        and FindEntry(bookTip, 5185).cost.amount == 25 -- a "25 Mana" line still is mana
+
+    local read = Book:ReadSpell(90080)
+    local readGood = NoMana(read, "Rage", 10) and read.perMana == nil
+
+    check("a Rage or Energy cost is not a mana cost",
+        listGood and tipGood and readGood,
+        string.format("list: rend %s | claw %s; tooltip: rend %s; ReadSpell: %s",
+            Show(rend), Show(claw), Show(rendTip), Show(read)))
+end
+
+--------------------------------------------------------------------------------
+-- 17 (review R41): a description secret for several rescans in a row keeps
+-- the last value read on every one of them, not only the first
+--------------------------------------------------------------------------------
+do
+    S.inCombat = false
+    local before = FindEntry(Book:Scan(), 5185)
+    S.inCombat = true
+    local first = FindEntry(Book:Scan(), 5185)
+    local second = FindEntry(Book:Scan(), 5185)
+    local third = FindEntry(Book:Scan(), 5185)
+    S.inCombat = false
+    local after = FindEntry(Book:Scan(), 5185)
+
+    local function Kept(e)
+        return e.descState == "secret" and e.stale == true and e.desc == before.desc
+            and type(e.parsed) == "table" and e.parsed == before.parsed and ApproxEq(e.value, before.value)
+    end
+    check("a description secret for several rescans keeps the last value read on each",
+        Kept(first) and Kept(second) and Kept(third)
+        and after.descState == "ok" and not after.stale,
+        string.format("stale %s/%s/%s value %s/%s/%s (before %s), after %s",
+            tostring(first.stale), tostring(second.stale), tostring(third.stale),
+            tostring(first.value), tostring(second.value), tostring(third.value), tostring(before.value),
+            tostring(after.descState)))
+end
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("  FAIL " .. f) end
 if #fails > 0 then os.exit(1) end

@@ -57,12 +57,35 @@ local function TooltipCastInfo(tip)
     return nil, nil
 end
 
+-- Review R13: the powers a cost line or a cost row can name besides mana.
+-- A spell that costs one of these costs NO mana -- it is "free" as far as
+-- the mana pool goes (the clock spends nothing, no per mana, no casts to
+-- OOM), and keeps what it does cost as cost.power / cost.powerAmount for
+-- the pane and the tooltip to name. Type numbers: Enum.PowerType (retail
+-- 12.x documented, the same table that makes mana type 0 -- Facts); the
+-- words are the tooltip cost lines of talentsforever's beta client
+-- 1.60.1.70009 descriptions ("10 Rage", "25 Focus", "45 Energy").
+local OTHER_POWER_BY_TYPE = { [1] = "Rage", [2] = "Focus", [3] = "Energy" }
+local OTHER_POWER_WORD = { Rage = true, Focus = true, Energy = true }
+
+local function NoManaCost(power, amount)
+    return { free = true, power = power, powerAmount = amount }
+end
+
+-- The first tooltip line that is a cost: a mana one as Parse.Cost reads it,
+-- a Rage / Focus / Energy one as no mana; any other "N Word" line is not a
+-- cost line at all and the walk goes on.
 local function TooltipCostInfo(tip)
     if type(tip) ~= "table" or type(tip.lines) ~= "table" then return nil end
     for _, line in ipairs(tip.lines) do
         if type(line) == "table" and type(line.leftText) == "string" then
             local cost = Parse.Cost(line.leftText)
-            if cost ~= nil then return cost end
+            if cost ~= nil then
+                if cost.power == "Mana" then return cost end
+                if OTHER_POWER_WORD[cost.power] and type(cost.amount) == "number" then
+                    return NoManaCost(cost.power, cost.amount)
+                end
+            end
         end
     end
     return nil
@@ -84,12 +107,26 @@ local function ManaCostEntry(list)
     return nil
 end
 
+-- Review R13: a list with no mana row but a Rage / Focus / Energy row with a
+-- plain cost is a spell that costs no mana.
+local function OtherPowerEntry(list)
+    for _, e in ipairs(list) do
+        if type(e) == "table" and type(e.type) == "number" and OTHER_POWER_BY_TYPE[e.type]
+            and type(e.cost) == "number" and e.cost > 0 then
+            return e
+        end
+    end
+    return nil
+end
+
 -- cost, costState -- Rule (Facts, == shapes item 5): an amount from the mana
 -- entry's cost when > 0, plus a percent from costPercent when > 0; {free =
 -- true} for an empty cost list OR a call that returned no value and no
 -- reason at all (m2 lines 252-259, 274-285: every no-cost spell in the book
 -- returned nothing, never an empty list) -- else the tooltip data's own cost
--- line; else nil/"absent".
+-- line; else nil/"absent". Review R13: a Rage / Focus / Energy cost, from
+-- either place, is "free" with cost.power / cost.powerAmount -- never an
+-- amount of mana.
 local function ResolveCost(list, listReason, tip)
     if listReason == "secret" then return nil, "secret" end
     if list == nil and listReason == nil then return { free = true }, "free" end
@@ -101,10 +138,16 @@ local function ResolveCost(list, listReason, tip)
             if type(mana.cost) == "number" and mana.cost > 0 then cost.amount = mana.cost end
             if type(mana.costPercent) == "number" and mana.costPercent > 0 then cost.percent = mana.costPercent end
             if cost.amount ~= nil or cost.percent ~= nil then return cost, "ok" end
+        else
+            local other = OtherPowerEntry(list)
+            if other then return NoManaCost(OTHER_POWER_BY_TYPE[other.type], other.cost), "free" end
         end
     end
     local fromTip = TooltipCostInfo(tip)
-    if fromTip ~= nil then return fromTip, "ok" end
+    if fromTip ~= nil then
+        if fromTip.free then return fromTip, "free" end
+        return fromTip, "ok"
+    end
     return nil, "absent"
 end
 
@@ -194,9 +237,12 @@ end
 -- not readable right now but the PREVIOUS scan had it readable, the entry
 -- keeps the old desc/parsed and says so -- a healer's dashboard should never
 -- go blank mid-fight just because the client secreted the text for a tick.
+-- Review R41: a previous entry that was itself stale carries its kept values
+-- forward too -- otherwise only the first unreadable rescan kept them, and
+-- the second (2 s later, or on the next player UNIT_AURA) lost them.
 local function ApplyStale(entry, prevSpells)
     local prev = prevSpells and prevSpells[entry.id]
-    if prev and prev.descState == "ok" and entry.descState ~= "ok" then
+    if prev and (prev.descState == "ok" or prev.stale == true) and entry.descState ~= "ok" then
         entry.desc = prev.desc
         entry.parsed = prev.parsed
         entry.stale = true
@@ -442,6 +488,17 @@ end
 -- Row numbers (Facts, ported from Engine/RankMath.lua's Compute())
 --------------------------------------------------------------------------------
 
+-- Casts to OOM for one entry Rows has already filled (its interval) against
+-- any pool, WITHOUT writing it anywhere (review R38): the Spellbook pane
+-- counts against the clock's modelled pool through this, so the entries
+-- Book:Get() shares with the spell tooltip, the clock and the modules keep
+-- the from-full count Book:Scan() gave them.
+function Book:CastsFor(entry, pool)
+    if type(entry) ~= "table" or type(pool) ~= "table" then return nil end
+    local amount = entry.cost and entry.cost.amount
+    return CastsToOOM(amount, entry.interval, pool.mana or pool.max, pool.regenCasting)
+end
+
 function Book:Rows(family, pool)
     if not family.kind then return end
 
@@ -458,7 +515,7 @@ function Book:Rows(family, pool)
         local amount = e.cost and e.cost.amount
         e.perMana = (value ~= nil and amount ~= nil and amount > 0) and (value / amount) or nil
         e.perSec = (value ~= nil and interval ~= nil and interval > 0) and (value / interval) or nil
-        e.casts = CastsToOOM(amount, interval, pool.mana or pool.max, pool.regenCasting)
+        e.casts = Book:CastsFor(e, pool)
         e.dominated = nil
         e.suggested = nil
     end

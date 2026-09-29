@@ -85,6 +85,10 @@ local function Num(v, decimals)
 end
 
 local function ManaText(e)
+    -- review R13: a Rage / Focus / Energy cost is named, never read as mana
+    if e.cost and type(e.cost.power) == "string" and type(e.cost.powerAmount) == "number" then
+        return Num(e.cost.powerAmount) .. " " .. e.cost.power
+    end
     if e.costState == "free" then return "free" end
     if e.cost then
         if type(e.cost.amount) == "number" then return Num(e.cost.amount) end
@@ -234,7 +238,9 @@ do
                 local expect = {
                     { "rank", wantRank }, { "level", Num(e.level) }, { "mana", ManaText(e) },
                     { "value", Num(e.value) }, { "permana", Num(e.perMana, 2) }, { "persec", Num(e.perSec, 1) },
-                    { "cast", CastText(e) }, { "toOOM", ToOOMText(e) }, { "note", NoteText(e, r.family) },
+                    -- review R38: the row's own count against the clock's pool
+                    { "cast", CastText(e) }, { "toOOM", ToOOMText({ casts = Book:CastsFor(e, MD.Clock:Pool()) }) },
+                    { "note", NoteText(e, r.family) },
                 }
                 for _, p in ipairs(expect) do
                     local key, want = p[1], p[2]
@@ -334,12 +340,28 @@ do
     -- the default pool would never do this.
     MD.Clock.model:Anchor(GetTime(), 5, "test: drained for spellsui")
     local pane3 = OpenPane()
-    local afterEntry = Book:Get().spells[92050]
+    local r = EntryRow(pane3.lastRows, 92050)
+    local cell = CellText(RowFor(pane3.lastRows, r), "toOOM")
+
+    -- review R38: the pane counts on its own row (r.casts), never in the
+    -- entries Book:Get() shares -- the very scan it drew from still holds
+    -- the from-full count, and so does the spell tooltip read from it.
+    local cachedEntry = Book:Get().spells[92050]
+    local tip = MD.SpellTip:Lines(92050)
+    local tipCasts
+    for _, line in ipairs(tip or {}) do
+        if type(line[1]) == "string" and line[1]:find("Casts to OOM", 1, true) then tipCasts = line[2] end
+    end
 
     check("casts to OOM use the clock's modelled pool when there is one",
-        type(defaultCasts) == "number" and defaultCasts > 0 and defaultCasts ~= math.huge and afterEntry.casts == 0,
-        string.format("defaultPoolCasts=%s clockPoolCasts=%s",
-            tostring(defaultCasts), tostring(afterEntry.casts)))
+        type(defaultCasts) == "number" and defaultCasts > 0 and defaultCasts ~= math.huge
+        and r ~= nil and r.casts == 0 and cell == "0",
+        string.format("defaultPoolCasts=%s clockPoolCasts=%s cell=%s",
+            tostring(defaultCasts), tostring(r and r.casts), tostring(cell)))
+    check("the pane never rewrites the book's own casts to OOM",
+        cachedEntry.casts == defaultCasts and tipCasts == tostring(defaultCasts),
+        string.format("book entry=%s tooltip=%s from full=%s",
+            tostring(cachedEntry.casts), tostring(tipCasts), tostring(defaultCasts)))
 
     -- restore a full modelled pool so nothing after this item is affected.
     MD.Clock.model:Anchor(GetTime(), MD.Clock.model.max, "test: restored")
@@ -640,6 +662,45 @@ do
         familyRow ~= nil and otherRow ~= nil and famOk and otherOk,
         string.format("familyRow=%s otherRow=%s famOk=%s otherOk=%s",
             tostring(familyRow ~= nil), tostring(otherRow ~= nil), tostring(famOk), tostring(otherOk)))
+end
+
+--------------------------------------------------------------------------------
+-- 17 (review R13): a Rage cost is named in the Mana column and the export --
+-- "10 Rage", the client's own cost-line words -- never read as mana. Added
+-- last so item 12's "Wrath is the only damage family" fixture holds. Text
+-- and cost line: talentsforever's beta client 1.60.1.70009 (Rend, Rank 1).
+--------------------------------------------------------------------------------
+do
+    S.AddSpell(92300, "Rend", "Rank 1",
+        function() return "Wounds the target causing them to bleed for 15 damage over 9 sec." end,
+        { cast = 0, level = 4, costLine = "10 Rage",
+          costList = { { type = 1, name = "RAGE", cost = 10, minCost = 10, costPercent = 0, costPerSec = 0,
+                         requiredAuraID = 0, hasRequiredAura = false } } })
+    Book:MarkDirty()
+    pane = OpenPane()
+    local r = EntryRow(pane.lastRows, 92300)
+    local row = RowFor(pane.lastRows, r)
+    local manaCell, perManaCell, oomCell = CellText(row, "mana"), CellText(row, "permana"), CellText(row, "toOOM")
+
+    local exportCapture
+    do
+        local origShow = MD.ShowCopyPopup
+        MD.ShowCopyPopup = function(self, title, text) exportCapture = text end
+        pane.exportBtn:GetScript("OnClick")(pane.exportBtn)
+        MD.ShowCopyPopup = origShow
+    end
+    local block
+    local at = exportCapture and exportCapture:find("spell 92300\n", 1, true)
+    if at then
+        local nextAt = exportCapture:find("\nspell ", at + 1, true)
+        block = exportCapture:sub(at, nextAt or #exportCapture) .. "\n"
+    end
+    local exportGood = block ~= nil and block:find("\n  cost: 10 Rage\n", 1, true) ~= nil
+
+    check("a Rage cost is named in the Mana column and the export, never read as mana",
+        manaCell == "10 Rage" and perManaCell == "-" and oomCell == "-" and exportGood,
+        string.format("mana=%s permana=%s toOOM=%s export=%s", tostring(manaCell), tostring(perManaCell),
+            tostring(oomCell), tostring(block and block:match("cost: [^\n]*"))))
 end
 
 print(string.format("\n%d ok, %d failed", ok, #fails))

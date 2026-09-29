@@ -306,6 +306,41 @@ do
 end
 
 --------------------------------------------------------------------------------
+-- 12 (review R35): a ward's absorb and a reactive aura's per-hit damage are
+-- not a cast's damage either -- only "to attackers" (Thorns, item 11) was
+-- refused before. Texts: talentsforever.com's data.json, source "beta
+-- client 1.60.1.70009" (tools/.cache/talentsforever.json, spell_desc), the
+-- rank 1 of each. Hammer of Wrath is the control: "strikes an enemy for N to
+-- M Holy damage" is a cast's own damage and must still read.
+--------------------------------------------------------------------------------
+do
+    local refused = {
+        { "Frost Ward", "Absorbs 162 Frost damage. Lasts 30 sec." },
+        { "Shadow Ward", "Absorbs 290 shadow damage. Lasts 30 sec." },
+        { "Mana Shield", "Absorbs 120 physical damage, draining mana instead. Drains 2 mana per damage absorbed. Lasts 1 min." },
+        { "Lightning Shield", "The caster is surrounded by 3 balls of lightning. When a spell, melee or ranged attack hits the caster, the attacker will be struck for 13 Nature damage. This expends one lightning ball. Only one ball will fire every few seconds. Lasts 10 min." },
+        { "Retribution Aura", "Causes 7 Holy damage to any creature that strikes a party member within 30 yards. Players may only have one Aura on them per Paladin at any one time." },
+        { "Fire Shield", "Surrounds the target in a shield of fire. Every strike against the target causes 5 Fire damage to the attacker. Lasts 3 min. Your pet cannot cast Fire Shield on itself." },
+        { "Holy Shield", "Increases chance to block by 20% for 10 sec, and deals 110 Holy damage for each attack blocked while active. Damage caused by Holy Shield causes 20% additional threat. Each block expends a charge. 4 charges." },
+        { "Touch of Weakness", "The next melee attack against the caster will cause 8 Shadow damage and reduce the attacker's melee attack power by 43 for 2 min." },
+    }
+    local bad = {}
+    for _, r in ipairs(refused) do
+        local got = P.Description(r[2])
+        if got ~= nil and got.damage ~= nil then bad[#bad + 1] = r[1] .. "=" .. Fmt(got.damage) end
+    end
+
+    local hammer = P.Description("Hurls a hammer that strikes an enemy for 286 to 314 Holy damage. Only usable on enemies that have 20% or less health.")
+    local hammerGood = hammer ~= nil and hammer.damage ~= nil and hammer.damage.min == 286 and hammer.damage.max == 314
+        and hammer.damage.school == "Holy"
+
+    check("a ward's absorb and a reactive aura's per-hit damage are not a cast's damage",
+        #bad == 0 and hammerGood,
+        string.format("read as damage: %s; hammer=%s", (#bad == 0) and "none" or table.concat(bad, ", "),
+            Fmt(hammer and hammer.damage)))
+end
+
+--------------------------------------------------------------------------------
 -- 10: the Forever TOC loads Spells/Parse.lua before the UI
 --------------------------------------------------------------------------------
 do

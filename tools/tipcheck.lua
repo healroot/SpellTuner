@@ -458,6 +458,52 @@ do
             absInstantLine and absInstantLine[2] or "nil", absCastLine and absCastLine[2] or "nil"))
 end
 
+--------------------------------------------------------------------------------
+-- 15 (review R31): casts to OOM says it counts from a full pool, and does --
+-- whatever another pool has been counted against on the side
+--------------------------------------------------------------------------------
+do
+    local book = Book:Get()
+    local htR1 = book.spells[5185]
+    local fromFull = Book:CastsFor(htR1, Book:DefaultPool())
+    Book:CastsFor(htR1, { max = 1000, mana = 5, regenCasting = 0 }) -- a drained pool, counted on the side
+    local line = FindLine(SpellTip:Lines(5185), "Casts to OOM")
+    local want = (fromFull == math.huge) and "inf" or tostring(fromFull)
+    check("casts to OOM says it counts from a full pool, and does",
+        line ~= nil and line[1] == "Casts to OOM from full" and line[2] == want,
+        string.format("line=%s / %s want=%s", tostring(line and line[1]), tostring(line and line[2]), want))
+end
+
+--------------------------------------------------------------------------------
+-- 16 (review R42): the crit range says its 1.5x multiplier is assumed --
+-- Forever's own crit rule is UNVERIFIED (docs/REFERENCES-FOREVER.md sec4)
+--------------------------------------------------------------------------------
+do
+    local critLine = FindLine(SpellTip:Lines(5185), "Crit ")
+    check("the crit range says its 1.5x multiplier is assumed",
+        critLine ~= nil and critLine[2] == "1.5x, unverified",
+        string.format("crit=%s / %s", tostring(critLine and critLine[1]), tostring(critLine and critLine[2])))
+end
+
+--------------------------------------------------------------------------------
+-- 17 (review R13): a Rage cost reads as no mana, named, never as a per-mana
+-- number. Text and cost line: talentsforever's beta client 1.60.1.70009.
+--------------------------------------------------------------------------------
+do
+    S.AddSpell(92300, "Rend", "Rank 1",
+        function() return "Wounds the target causing them to bleed for 15 damage over 9 sec." end,
+        { cast = 0, level = 4, costLine = "10 Rage",
+          costList = { { type = 1, name = "RAGE", cost = 10, minCost = 10, costPercent = 0, costPerSec = 0,
+                         requiredAuraID = 0, hasRequiredAura = false } } })
+    Book:MarkDirty()
+    local lines = SpellTip:Lines(92300)
+    local perMana = FindLine(lines, "Per mana")
+    local casts = FindLine(lines, "Casts to OOM")
+    check("a Rage cost reads as no mana on the tooltip, named",
+        perMana ~= nil and perMana[2] == "no mana (10 Rage)" and casts ~= nil and casts[2] == "-",
+        string.format("perMana=%s casts=%s", tostring(perMana and perMana[2]), tostring(casts and casts[2])))
+end
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("  FAIL " .. f) end
 if #fails > 0 then os.exit(1) end

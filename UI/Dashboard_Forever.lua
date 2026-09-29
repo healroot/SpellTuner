@@ -211,7 +211,19 @@ local function Num(v, decimals)
     return tostring(math.floor(v + 0.5))
 end
 
+-- Review R13: a spell that costs Rage / Focus / Energy costs no mana; its
+-- own cost is named ("10 Rage") rather than read as mana or called "free".
+-- The power word is Book's own (one of three fixed ASCII words).
+local function OtherPowerText(e)
+    if e.cost and type(e.cost.power) == "string" and type(e.cost.powerAmount) == "number" then
+        return Num(e.cost.powerAmount) .. " " .. e.cost.power
+    end
+    return nil
+end
+
 local function ManaCellText(e)
+    local other = OtherPowerText(e)
+    if other then return other end
     if e.costState == "free" then return "free" end
     if e.cost then
         if type(e.cost.amount) == "number" then return Num(e.cost.amount) end
@@ -227,9 +239,11 @@ local function CastCellText(e)
     return "-"
 end
 
-local function ToOOMCellText(e)
-    if e.casts == math.huge then return "inf" end
-    if type(e.casts) == "number" then return Num(e.casts, 0) end
+-- `casts` is the row's own count against the pane's pool (review R38), never
+-- the book entry's.
+local function ToOOMCellText(casts)
+    if casts == math.huge then return "inf" end
+    if type(casts) == "number" then return Num(casts, 0) end
     return "-"
 end
 
@@ -281,7 +295,7 @@ local function RenderSpellRow(row, r, color)
         row.cells.permana:SetText(color .. Num(e.perMana, 2) .. RESET)
         row.cells.persec:SetText(color .. Num(e.perSec, 1) .. RESET)
         row.cells.cast:SetText(color .. CastCellText(e) .. RESET)
-        row.cells.toOOM:SetText(color .. ToOOMCellText(e) .. RESET)
+        row.cells.toOOM:SetText(color .. ToOOMCellText(r.casts) .. RESET)
         row.cells.note:SetText(NoteCellText(e, r.family))
     end
 end
@@ -344,16 +358,14 @@ end
 
 -- One flat, ordered list: Heals families, then Damage families (each a
 -- "family" header, an optional gap note, an optional stale note, then its
--- ranks), then one "other" line per kindless family (Goal/pane spec). Book:Rows
--- is re-run against `pool` here (T7's own "called again by anyone with
--- another pool") so casts-to-OOM reflects the clock's modelled pool, not the
--- default one Book:Scan() baked in at scan time.
+-- ranks), then one "other" line per kindless family (Goal/pane spec). Each
+-- rank row carries its own casts to OOM against `pool` (the clock's modelled
+-- pool) through Book:CastsFor -- review R38: re-running Book:Rows here wrote
+-- the modelled count into the entries Book:Get() shares with the spell
+-- tooltip, the clock and the modules, so their "Casts to OOM" flipped between
+-- the full pool and the modelled one with the pane's refreshes. The book's
+-- entries keep the from-full count Book:Scan() gave them.
 local function BuildSpellRows(book, pool)
-    for _, name in ipairs(book.order) do
-        local fam = book.families[name]
-        if fam.kind then MD.Book:Rows(fam, pool) end
-    end
-
     local rows = {}
     local function AddFamily(name)
         local fam = book.families[name]
@@ -369,7 +381,8 @@ local function BuildSpellRows(book, pool)
         end
         for _, e in ipairs(fam.ranks) do
             rows[#rows + 1] = { kind = "entry", entry = e, family = fam, id = e.id,
-                known = e.known, suggested = e.suggested, dominated = e.dominated }
+                known = e.known, suggested = e.suggested, dominated = e.dominated,
+                casts = MD.Book:CastsFor(e, pool) }
         end
     end
 
@@ -453,6 +466,8 @@ end
 -- "<n> Mana" / "<p>% of base mana" / "free" / "unknown" -- the probe's own
 -- cost-line words (T8b Facts), read back by tools/refcheck.py's `cost:` field.
 local function ExportCostText(e)
+    local other = OtherPowerText(e) -- review R13: "10 Rage", the client's own cost-line words
+    if other then return other end
     if e.costState == "free" then return "free" end
     if e.cost then
         if type(e.cost.amount) == "number" then return Num(e.cost.amount) .. " Mana" end

@@ -152,6 +152,36 @@ local DAMAGE_SINGLE = "(" .. NUM .. ")%s+(%a+)%s+damage"
 
 local ABSORB = "absorbing%s+(" .. NUM .. ")%s+damage"
 
+-- The sentence holding text[s..e]: from just after the previous ". " (or
+-- the start) to the next "." followed by a space (or the end). A decimal
+-- ("1.5 sec") is never a boundary -- no space follows its point.
+local function SentenceAt(text, s, e)
+    local from = 1
+    for p in text:sub(1, s - 1):gmatch("%.%s+()") do from = p end
+    local to = text:find("%.%s", e + 1) or #text
+    return text:sub(from, to)
+end
+
+-- Review R35: "N School damage" that is not what the cast itself deals, so
+-- DAMAGE_SINGLE refuses it rather than guess (this file's own rule):
+--   * a ward's absorb -- the amount right after "Absorbs" (Fire / Frost /
+--     Shadow Ward, Mana Shield: "Absorbs 162 Frost damage");
+--   * a reactive clause -- a sentence about whoever hits the target: an
+--     "attacker" (Thorns, Lightning Shield, Shadowguard, Fire Shield, Touch
+--     of Weakness), a creature "that strikes" (Retribution Aura) or an attack
+--     "blocked" (Holy Shield).
+-- Texts: talentsforever.com's beta client 1.60.1.70009 descriptions. The
+-- sentence test is DAMAGE_SINGLE's only: a range ("strikes an enemy for 286
+-- to 314 Holy damage", Hammer of Wrath) is a cast's own and never reaches it.
+local function NotCastDamage(text, s, e)
+    if text:sub(1, s - 1):match("[Aa]bsorbs%s+$") then return true end
+    local sentence = SentenceAt(text, s, e):lower()
+    if sentence:find("attacker", 1, true) then return true end
+    if sentence:find("%f[%a]that%s+strikes%f[%A]") then return true end
+    if sentence:find("%f[%a]blocked%f[%A]") then return true end
+    return false
+end
+
 -- Description() reads one clause shape at a time out of the cleaned text,
 -- blanking whatever it just read so a looser pattern tried afterwards never
 -- re-reads the same digits under a different (wrong) role.
@@ -271,8 +301,9 @@ function Parse.Description(text)
         local a, b, x1, sc1 = clean:find(DAMAGE_SINGLE)
         -- Thorns' shape (m2 line 91): "N School damage to attackers when
         -- hit" is a reactive aura's per-hit damage, not the cast's own --
-        -- refused rather than read as a direct amount.
-        if a and not clean:sub(b + 1):match("^%s+to%s+attackers%f[%A]") then
+        -- refused rather than read as a direct amount. Review R35: so is
+        -- every other reactive or ward clause (NotCastDamage).
+        if a and not NotCastDamage(clean, a, b) then
             damage = { min = N(x1), max = N(x1), school = NormSchool(sc1) }
             clean = Blank(clean, a, b)
         end
