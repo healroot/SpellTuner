@@ -7,8 +7,9 @@
 -- (a fresh login), because case 6's dump has to see case 1's 340-count entry
 -- and case 5's cap has to see cases 1 and 3's entries already there -- exactly
 -- the way one game session would. Case 7 gets its own fresh dofile (its own
--- Facts: "so the 50-entry cap from 5 is not in the way"). Case 10 only reads
--- files. Case 12 is TBC's own session. The 2026-09-29 review added case 13
+-- Facts: "so the 50-entry cap from 5 is not in the way"). Case 10 reads the
+-- TOCs from disk and compares them with the version the session reported.
+-- Case 12 is TBC's own session. The 2026-09-29 review added case 13
 -- (the shared session: the Enable box on Forever, R15/R16) and cases 14-15
 -- (their own session, last: the captured stack line and the forward, R22/R21).
 HARNESS_FLAVOUR = { "forever", "tbc" }
@@ -254,33 +255,49 @@ try("the Forever console's Enable box logs its line and raises nothing", functio
 end)
 
 --------------------------------------------------------------------------------
--- 10: every Forever TOC is 1.0.0-alpha.8
+-- 10: every TOC carries the version the addon reports
 --------------------------------------------------------------------------------
-try("every Forever TOC is 1.0.0-alpha.8", function()
-    local function HasVersionLine(rel)
+try("every TOC carries the version the addon reports", function()
+    -- The TOCs are listed from disk, never by hand. MD.version is what the
+    -- forever session read through C_AddOns.GetAddOnMetadata, not a value this
+    -- test read itself.
+    local files = {}
+    local p = io.popen("cd \"" .. ROOT .. "\" && ls SpellTuner*.toc Modules/*/*.toc 2>/dev/null")
+    if p then
+        for line in p:lines() do files[#files + 1] = line end
+        p:close()
+    end
+    table.sort(files)
+    local function VersionLines(rel)
+        local found = {}
         local f = io.open(ROOT .. "/" .. rel, "r")
-        if not f then return false end
-        local found = false
+        if not f then return found end
         for line in f:lines() do
-            if line:gsub("\r$", "") == "## Version: 1.0.0-alpha.8" then found = true end
+            local v = line:gsub("\r$", ""):match("^## Version: (.*)$")
+            if v then found[#found + 1] = v end
         end
         f:close()
         return found
     end
-    local files = {
-        "SpellTuner.toc", "SpellTuner_Mainline.toc",
-        "Modules/SpellTuner_Recorder/SpellTuner_Recorder.toc",
-        "Modules/SpellTuner_Recorder/SpellTuner_Recorder_Mainline.toc",
-        "Modules/SpellTuner_Replay/SpellTuner_Replay.toc",
-        "Modules/SpellTuner_Replay/SpellTuner_Replay_Mainline.toc",
-        "Modules/SpellTuner_Practice/SpellTuner_Practice.toc",
-        "Modules/SpellTuner_Practice/SpellTuner_Practice_Mainline.toc",
-    }
-    local allOk, bad = true, nil
-    for _, f in ipairs(files) do
-        if not HasVersionLine(f) then allOk = false; bad = f end
+    local reported = MD.version
+    local allOk, detail = true, nil
+    if #files ~= 9 then
+        allOk, detail = false, "found " .. #files .. " TOCs, not 9"
+    elseif type(reported) ~= "string" or reported == "" then
+        allOk, detail = false, "the addon reports no version"
+    else
+        for _, f in ipairs(files) do
+            local v = VersionLines(f)
+            if #v ~= 1 then
+                allOk, detail = false, f .. " has " .. #v .. " Version lines"
+                break
+            elseif v[1] ~= reported then
+                allOk, detail = false, f .. " is " .. v[1] .. ", the addon reports " .. reported
+                break
+            end
+        end
     end
-    check("every Forever TOC is 1.0.0-alpha.8", allOk, bad)
+    check("every TOC carries the version the addon reports", allOk, detail)
 end)
 
 --------------------------------------------------------------------------------

@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: SpellTuner
-## Notes: SpellTuner for WoW: Forever (alpha). /st opens the window, /st probe writes the capability report.
+## Notes: SpellTuner for WoW: Forever (beta). /st opens the window, /st probe writes the capability report.
 ## Author: NeRgY
-## Version: 1.0.0-alpha.8
+## Version: 0.16.0
 ## SavedVariables: SpellTunerDB
 
 Client\TOC_Plain.lua

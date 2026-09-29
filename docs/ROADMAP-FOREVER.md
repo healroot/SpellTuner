@@ -81,9 +81,14 @@ client values, because seeing them is its job (T0 stated the rule this way; acce
 | `forever-v*` (tags) | Forever releases |
 | `tbc` (branch, **only if needed**) | created the day a TBC fix cannot live in shared code; until then it does not exist |
 
-Version lines: the TBC flavour continues `0.15.x` → `0.16` as it lands changes; the Forever
-flavour starts at **`1.0.0-beta.1`** with milestone M2 and becomes `1.0.0` at the first release
-that records and replays a fight on the launch client. One `## Version:` per TOC.
+Versions (**superseded 2026-09-29** by the author's ruling, `docs/DECISIONS.md` "One version, two
+installations"): **one version for the whole tree**, every TOC -- TBC, the two Forever TOCs and the
+six module TOCs -- carrying the same `## Version:`. **`0.16.0` now for both lines; Forever beta
+builds are `0.16.x`; `1.0.0` at the Forever launch (2026-11-04).** The TBC line never shows "alpha"
+or "beta". `release.sh` builds two installations from the one tree, a TBC package and a Forever
+package (T22, T23). The `1.0.0-alpha.1` ... `1.0.0-alpha.8` builds named below were cut under the
+old scheme (the Forever line starting at `1.0.0-beta.1` with M2) and keep their names as history;
+the gates that were going to cut `beta.1` / `beta.2` / `beta.3` now each cut a `0.16.x`.
 
 ### 1.3 The harness serves both
 
@@ -173,7 +178,7 @@ debug log); every Forever TOC at `1.0.0-alpha.2`; `tools/consolecheck.lua` 11 / 
 the module switches, the error count and the dump on the beta -- is the author's:
 `docs/TESTING.md` §36.
 
-### M2 — tooltips and the dashboard (phase 2) → `1.0.0-beta.1`
+### M2 — tooltips and the dashboard (phase 2) → a `0.16.x` (was `1.0.0-beta.1`)
 
 *Exit:* hovering any spell of any class in the **spellbook**, on a bar or in chat shows the
 SpellTuner block; the dashboard lists every spell in the book grouped by family with ranks,
@@ -223,7 +228,7 @@ own text (`in range` / `crit range` / `BELOW range`); `measurecheck` 9. Every Fo
 
 **M2's offline part is done (2026-09-28).** The exit's in-game half -- the block in the spellbook,
 on a bar and in chat, the pane against the real book, and three spells of two classes measured
-within the crit spread -- is the author's: `docs/TESTING.md` §37. `1.0.0-beta.1` is cut when that
+within the crit spread -- is the author's: `docs/TESTING.md` §37. The M2 `0.16.x` (formerly `beta.1`) is cut when that
 passes.
 
 **The M2 re-check (2026-09-28, after the author's first M2 run, `docs/probe/1.60.1_70009-m2.md`),
@@ -240,7 +245,7 @@ max-health predicate, and counts `UNIT_COMBAT` per token with mirrors; `probeche
 TOC at `1.0.0-alpha.4` (`8a1f451`). The in-game half is `docs/TESTING.md` §38 (six sessions: the
 re-check, the measurements with overlapping spells and gross-or-effective, the party probe, a talent
 that changes a value, Q10 at level 20, the second class). `beta.1` is still gated on §38.1-38.2 and
-38.6 passing.
+38.6 passing (it is now a `0.16.x`, not `beta.1`).
 
 **Planner ruling (2026-09-28) on the order M2 was built in:** the spell readers were written from
 retail's documentation before any beta report showed the return *shapes* (`GetSpellInfo.castTime`,
@@ -248,7 +253,7 @@ the `GetSpellPowerCost` rows, the skill-line bounds, the tooltip data lines,
 `Enum.TooltipDataType.Spell`, `IsSpellKnown`, the book row's `itemType`, and whether
 `TooltipDataProcessor` fires in the spellbook, on bars and in chat). Accepted, because the author
 asked for M2 in the same session -- on one condition: **the first probe report carrying `== shapes`
-(T7a) is a gate for `beta.1`**, checked line by line against `Spells/Book.lua`'s reader by the
+(T7a) is a gate for the M2 `0.16.x` (formerly `beta.1`)**, checked line by line against `Spells/Book.lua`'s reader by the
 lead before §37's result counts.
 
 Known from the references before any of it is built (`docs/REFERENCES-FOREVER.md` §4): **no
@@ -256,7 +261,7 @@ Lifebloom, Tree of Life, Earth Shield or Circle of Healing on Forever**; costs c
 and as `N% of base mana`; rank 1 of a talent-granted spell is in the book with no trainer; the
 spellbook hides lower ranks unless "show all ranks" is on; TBC spell ids do not exist.
 
-### M3 — recorder v3 and replay (phase 3) → `1.0.0-beta.2`
+### M3 — recorder v3 and replay (phase 3) → a `0.16.x` (was `1.0.0-beta.2`)
 
 *Exit:* a dungeon pull on Forever is recorded (health at event resolution, landed amounts,
 own casts with targets, own mana, deaths, the damage meter's totals), replays through the
@@ -333,7 +338,7 @@ the recorder then records the real max (`maxVia = "bar"`) and no stand-in is use
 *Built:* `1.0.0-alpha.5` (b95ef03) carries T13c-T17 and T13f; T17b / T17c ship in `1.0.0-alpha.6`.
 The exit's in-game half is TESTING §38.3 and §39.
 
-### M4 — practice (phase 4) → `1.0.0-beta.3`
+### M4 — practice (phase 4) → a `0.16.x` (was `1.0.0-beta.3`)
 
 *Exit:* a practice fight plays, records, replays and coaches on Forever; Cell / Clique /
 keybinding import works against the Forever builds of those addons (re-checked, not assumed).
@@ -376,7 +381,8 @@ as on Forever) and ruled "Fix both lines" (`docs/DECISIONS.md`, "Forever review 
 the whole-fight line and synthetic scenarios keep the flat floor; **T20b** (`753cd96`) -- before a
 target's first hit, the biggest hit that person took in other recordings (leave-one-out by id);
 `solvercheck` 77, `coachforever` 18. The rules coach is unchanged. Every Forever TOC at
-`1.0.0-alpha.8` (`c805287`); the TBC TOC stays at 0.15.4 until the author decides a TBC release.
+`1.0.0-alpha.8` (`c805287`); the TBC TOC stayed at 0.15.4. **Since 2026-09-29 both lines are one
+version, `0.16.0`** (T22, T23; `docs/DECISIONS.md` "One version, two installations").
 TESTING §38-§40 are written for alpha.8 (the measure now needs the author hurt **in combat**, R1).
 
 ### M5 — launch (phase 5) → `1.0.0`

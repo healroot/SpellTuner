@@ -731,3 +731,22 @@ the author because it changes the coach on both lines. **The author chose "Fix b
    strategies change, on TBC and Forever alike. The TBC TOC stays at 0.15.4 until the author
    decides a TBC release.
 
+
+## One version, two installations (2026-09-29)
+
+The author, 2026-09-29 (relayed by the planner): "lets have single addon version and just separate
+installations". On the number: **0.16.0 for both lines now, 1.0.0 at the Forever launch
+(2026-11-04)**. This supersedes the `1.0.0-alpha.N` / `1.0.0-beta.N` scheme of
+`docs/ROADMAP-FOREVER.md` §1.2 (and the TBC line's separate `0.15.x`).
+
+1. **One version for the whole tree.** Every TOC -- `SpellTuner_TBC.toc`, `SpellTuner_Mainline.toc`,
+   `SpellTuner.toc` and the six module TOCs -- carries the same `## Version:`. A TBC release and a
+   Forever release cut from the same commit are the same version.
+2. **The number.** `0.16.0` now; Forever beta builds from now on are `0.16.x` (what was going to be
+   `1.0.0-alpha.9`, `-beta.1`, ... is `0.16.1`, `0.16.2`, ...); **`1.0.0` at the Forever launch**. The
+   TBC line never shows "alpha" or "beta".
+3. **Two installations, one tree.** `release.sh` builds a TBC package (`SpellTuner/` with only
+   `SpellTuner_TBC.toc` and its files) and a Forever package (`SpellTuner/` with the two Forever
+   TOCs and their files, plus the three module folders beside it), zipped by flavour and version.
+   An install puts exactly one flavour into one client and never the other flavour's files.
+   (T22, T23.)
