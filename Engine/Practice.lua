@@ -246,6 +246,90 @@ function PR.MacroSpell(body)
     return nil
 end
 
+--------------------------------------------------------------------------------
+-- T19: what the importers read is checked, not assumed. Another add-on's table
+-- is indexed only under pcall and only after type(); a shape the importer does
+-- not recognise is refused with what it expected and what it found.
+--------------------------------------------------------------------------------
+
+-- Reversible ASCII escaping, the same rule as Client/Probe.lua's Esc (this file's
+-- own copy, T19): \ -> \\, | -> ||, then every byte outside printable ASCII -> \ddd.
+local function Esc(s)
+    if type(s) ~= "string" then s = tostring(s) end
+    local step1 = s:gsub("\\", "\\\\")
+    local step2 = step1:gsub("|", "||")
+    local step3 = step2:gsub("[^ -~]", function(c) return string.format("\\%03d", c:byte()) end)
+    return step3
+end
+
+local function Safe(t, k)
+    if type(t) ~= "table" then return nil end
+    local ok, v = pcall(function() return t[k] end)
+    if ok then return v end
+    return nil
+end
+
+local function TypeName(v)
+    if v == nil then return "absent" end
+    return type(v)
+end
+
+-- the top-level keys of a table, sorted, escaped, at most `limit` of them
+local function KeysOf(t, limit)
+    if type(t) ~= "table" then return "" end
+    local keys = {}
+    pcall(function() for k in pairs(t) do keys[#keys + 1] = k end end)
+    table.sort(keys, function(a, b)
+        local sa, sb = tostring(a), tostring(b)
+        if sa ~= sb then return sa < sb end
+        return type(a) < type(b)
+    end)
+    local out = {}
+    for i, k in ipairs(keys) do
+        if i > (limit or 20) then out[#out + 1] = "..."; break end
+        out[#out + 1] = Esc(tostring(k))
+    end
+    return table.concat(out, ", ")
+end
+
+-- one value as text, `depth` levels of table deep, escaped
+local function Dump(v, depth)
+    local t = type(v)
+    if t == "string" then return '"' .. Esc(v) .. '"' end
+    if t == "number" or t == "boolean" or t == "nil" then return tostring(v) end
+    if t ~= "table" then return "<" .. t .. ">" end
+    if depth <= 1 then return "{...}" end
+    local parts, n = {}, 0
+    for i, x in ipairs(v) do
+        n = i
+        if i > 20 then parts[#parts + 1] = "..."; break end
+        parts[#parts + 1] = Dump(x, depth - 1)
+    end
+    local keys = {}
+    for k in pairs(v) do
+        if not (type(k) == "number" and k >= 1 and k <= n and k == math.floor(k)) then keys[#keys + 1] = k end
+    end
+    table.sort(keys, function(a, b)
+        local sa, sb = tostring(a), tostring(b)
+        if sa ~= sb then return sa < sb end
+        return type(a) < type(b)
+    end)
+    for _, k in ipairs(keys) do
+        if #parts >= 20 then parts[#parts + 1] = "..."; break end
+        parts[#parts + 1] = Esc(tostring(k)) .. "=" .. Dump(v[k], depth - 1)
+    end
+    return "{" .. table.concat(parts, ", ") .. "}"
+end
+
+-- what an entry that is not the expected shape looks like, for an error text
+local function Found(entryIndex, e)
+    if type(e) == "table" then
+        local keys = KeysOf(e, 10)
+        return "entry " .. entryIndex .. " = table with keys: " .. (keys ~= "" and keys or "none")
+    end
+    return "entry " .. entryIndex .. " = " .. Esc(tostring(e)) .. " (" .. type(e) .. ")"
+end
+
 local function MacroBody(name)
     local _, _, body = MD.API.MacroInfo(name)
     if type(body) == "string" then return body end
@@ -282,25 +366,65 @@ function PR.CellKey(attr)
     return PR.Mods(alt, ctrl, shift) .. key
 end
 
--- The list Cell would actually use: the common one, or this spec's.
-local function CellList()
-    local db = _G.CellCharacterDB
-    local cc = db and db.clickCastings
-    if type(cc) ~= "table" then return nil end
-    if cc.useCommon and type(cc.common) == "table" then return cc.common, "Cell (common bindings)" end
+-- The list Cell would actually use: the common one, or this spec's. Returns
+-- list, source -- or nil, <reason> when Cell has something there but not in a
+-- shape this reads (nil, nil when Cell is simply not loaded).
+local function CellPick()
+    local db = rawget(_G, "CellCharacterDB")
+    if db == nil then return nil, nil end
+    if type(db) ~= "table" then return nil, "expected CellCharacterDB to be a table - found " .. type(db) end
+    local cc = Safe(db, "clickCastings")
+    if cc == nil then
+        return nil, "expected CellCharacterDB.clickCastings to be a table - found nothing (CellCharacterDB has keys: " ..
+            KeysOf(db, 10) .. ")"
+    end
+    if type(cc) ~= "table" then return nil, "expected CellCharacterDB.clickCastings to be a table - found " .. type(cc) end
+    if Safe(cc, "useCommon") then
+        local common = Safe(cc, "common")
+        if type(common) == "table" then return common, "Cell (common bindings)" end
+        return nil, "expected clickCastings.common to be a table (useCommon is set) - found " .. TypeName(common)
+    end
     local i = (MD.API.Specialization and MD.API.Specialization()) or 1
-    if type(cc[i]) == "table" then return cc[i], "Cell (spec " .. i .. ")" end
-    if type(cc[1]) == "table" then return cc[1], "Cell (spec 1)" end
-    return nil
+    local bySpec = Safe(cc, i)
+    if type(bySpec) == "table" then return bySpec, "Cell (spec " .. tostring(i) .. ")" end
+    local first = Safe(cc, 1)
+    if type(first) == "table" then return first, "Cell (spec 1)" end
+    return nil, "expected clickCastings.common (with useCommon) or clickCastings[<spec>] to be a table - found keys: " ..
+        KeysOf(cc, 10)
+end
+
+-- CellPick, and the list itself must be a list of { attribute, kind, action }
+local function CellList()
+    local list, source = CellPick()
+    if not list then return nil, source end
+    local n = 0
+    for _ in ipairs(list) do n = n + 1 end
+    if n == 0 then
+        if next(list) ~= nil then
+            return nil, "expected " .. source .. " to be a list of { attribute, kind, action } entries - found a table with keys: " ..
+                KeysOf(list, 10)
+        end
+        return list, source
+    end
+    for _, e in ipairs(list) do
+        if type(e) == "table" and type(Safe(e, 1)) == "string" then return list, source end
+    end
+    return nil, 'expected each click-casting entry to be { attribute, kind, action } with a string attribute such as "type1" - found ' ..
+        Found(1, list[1])
 end
 
 -- Returns a fresh binding list and a report: { source, added, skipped = { "..." } }.
 -- Nothing is written; the window decides whether to keep it.
 function PR.ImportCell()
     local list, source = CellList()
-    if not list then return nil, { source = "Cell", error = "Cell is not loaded, or it has no click-castings." } end
+    if not list then
+        return nil, { source = "Cell", error = source or "Cell is not loaded, or it has no click-castings." }
+    end
     local out, report = {}, { source = source, added = 0, skipped = {} }
     for _, entry in ipairs(list) do
+      if type(entry) ~= "table" then
+        report.skipped[#report.skipped + 1] = "entry: not a table (" .. type(entry) .. ")"
+      else
         local key, why = PR.CellKey(entry[1])
         local kind, action = entry[2], entry[3]
         local family, rank
@@ -319,36 +443,83 @@ function PR.ImportCell()
             out[#out + 1] = { key = key, family = family, rank = rank }
             report.added = report.added + 1
         elseif why then
-            report.skipped[#report.skipped + 1] = (PR.CellKey(entry[1]) or entry[1]) .. ": " .. why
+            report.skipped[#report.skipped + 1] = tostring(PR.CellKey(entry[1]) or entry[1]) .. ": " .. why
         end
+      end
     end
     return out, report
 end
 
 -- Clique keeps its binds under whichever of these this version uses. The key is
 -- already the client's spelling ("ALT-BUTTON5"), so only the spell is read.
-local function CliqueBinds()
-    local C = _G.Clique
-    if C and C.db and C.db.profile and type(C.db.profile.binds) == "table" then return C.db.profile.binds end
+-- Returns binds -- or nil, <reason> (nil, nil when Clique is simply not there).
+local function CliquePick()
+    local reason
+    local C = rawget(_G, "Clique")
+    if type(C) == "table" then
+        local profile = Safe(Safe(C, "db"), "profile")
+        local binds = Safe(profile, "binds")
+        if type(binds) == "table" then return binds end
+        if binds ~= nil then reason = reason or ("expected Clique.db.profile.binds to be a table - found " .. type(binds)) end
+    end
     for _, name in ipairs({ "CliqueDB3", "CliqueDB" }) do
-        local db = _G[name]
-        local profiles = db and db.profiles
-        if type(profiles) == "table" then
-            local key = (MD.API.UnitName and MD.API.UnitName("player") or "") ..
-                " - " .. (MD.API.RealmName and MD.API.RealmName() or "")
-            local p = profiles[key]
-            if not p then for _, v in pairs(profiles) do p = p or v end end
-            if type(p) == "table" and type(p.binds) == "table" then return p.binds end
+        local db = rawget(_G, name)
+        if db ~= nil then
+            local profiles = Safe(db, "profiles")
+            if type(profiles) ~= "table" then
+                reason = reason or ("expected " .. name .. ".profiles to be a table - found " .. TypeName(profiles))
+            else
+                local key = (MD.API.UnitName and MD.API.UnitName("player") or "") ..
+                    " - " .. (MD.API.RealmName and MD.API.RealmName() or "")
+                local p = Safe(profiles, key)
+                if p == nil then
+                    -- any profile, the first by name so the answer does not depend on table order
+                    local names = {}
+                    pcall(function() for k in pairs(profiles) do names[#names + 1] = k end end)
+                    table.sort(names, function(a, b) return tostring(a) < tostring(b) end)
+                    if names[1] ~= nil then p = Safe(profiles, names[1]) end
+                end
+                local binds = Safe(p, "binds")
+                if type(binds) == "table" then return binds end
+                reason = reason or ("expected " .. name .. ".profiles[<name>].binds to be a table - found " ..
+                    (type(p) == "table" and ("a profile with keys: " .. KeysOf(p, 10)) or TypeName(p)))
+            end
         end
     end
-    return nil
+    return nil, reason
+end
+
+-- CliquePick, and the binds must be a list of { key, type, ... }
+local function CliqueBinds()
+    local binds, reason = CliquePick()
+    if not binds then return nil, reason end
+    local n = 0
+    for _ in ipairs(binds) do n = n + 1 end
+    if n == 0 then
+        if next(binds) ~= nil then
+            return nil, "expected the Clique binds to be a list of { key, type, ... } binds - found a table with keys: " ..
+                KeysOf(binds, 10)
+        end
+        return binds
+    end
+    for _, b in ipairs(binds) do
+        if type(b) == "table" and type(Safe(b, "key")) == "string" and type(Safe(b, "type")) == "string" then
+            return binds
+        end
+    end
+    return nil, "expected each Clique bind to be { key = <string>, type = <string>, ... } - found " .. Found(1, binds[1])
 end
 
 function PR.ImportClique()
-    local binds = CliqueBinds()
-    if not binds then return nil, { source = "Clique", error = "Clique is not loaded, or it has no bindings." } end
+    local binds, reason = CliqueBinds()
+    if not binds then
+        return nil, { source = "Clique", error = reason or "Clique is not loaded, or it has no bindings." }
+    end
     local out, report = {}, { source = "Clique", added = 0, skipped = {} }
     for _, b in ipairs(binds) do
+      if type(b) ~= "table" then
+        report.skipped[#report.skipped + 1] = "bind: not a table (" .. type(b) .. ")"
+      else
         local key = b.key
         local family, rank, why
         if type(key) ~= "string" or key == "" then
@@ -373,6 +544,7 @@ function PR.ImportClique()
         elseif why then
             report.skipped[#report.skipped + 1] = tostring(b.key) .. ": " .. why
         end
+      end
     end
     return out, report
 end
@@ -449,27 +621,46 @@ function PR.SlotSpell(slot)
     return nil, nil, nil, kind .. " binding"
 end
 
+-- One GetBinding row -> its command and the keys the client agrees are bound to
+-- that command. GetBinding's shape moved between clients (a category was added),
+-- so the keys are the returns that the client agrees are bound to this command
+-- rather than the ones at a fixed position.
+local function BindingKeys(r)
+    local command = r[1]
+    local keys = {}
+    for j = 2, (r.n or #r) do
+        local v = r[j]
+        if type(v) == "string" and v ~= "" and MD.API.BindingAction(v) == command then
+            keys[#keys + 1] = v
+        end
+    end
+    return command, keys
+end
+
+-- GetBinding(i) with every return kept, a trailing nil included
+local function PackBinding(i)
+    local function pack(...) return { n = select("#", ...), ... } end
+    return pack(MD.API.Binding(i))
+end
+
 -- Every binding the client has, as practice bindings.
 function PR.ImportKeybinds()
     local n = MD.API.BindingCount()
     if type(n) ~= "number" then
         return nil, { source = "your keybindings", error = "this client does not expose its bindings." }
     end
+    if n >= 1 then
+        local first = PackBinding(1)
+        if type(first[1]) ~= "string" then
+            return nil, { source = "your keybindings",
+                error = "expected GetBinding(1) to return a command name string first - found " ..
+                    Esc(tostring(first[1])) .. " (" .. type(first[1]) .. ") among " .. tostring(first.n) .. " returns" }
+        end
+    end
     local out, report = {}, { source = "your keybindings", added = 0, skipped = {}, notes = {} }
     local seen = {}
     for i = 1, n do
-        local r = { MD.API.Binding(i) }
-        local command = r[1]
-        -- GetBinding's shape moved between clients (a category was added), so
-        -- the keys are the returns that the client agrees are bound to this
-        -- command rather than the ones at a fixed position
-        local keys = {}
-        for j = 2, #r do
-            local v = r[j]
-            if type(v) == "string" and v ~= "" and MD.API.BindingAction(v) == command then
-                keys[#keys + 1] = v
-            end
-        end
+        local command, keys = BindingKeys(PackBinding(i))
         if #keys > 0 then
             local slot = PR.SlotForCommand(command)
             if slot then
@@ -494,6 +685,163 @@ function PR.ImportKeybinds()
         end
     end
     return out, report
+end
+
+--------------------------------------------------------------------------------
+-- T19: /st binds check. One escaped block: what the three import sources look
+-- like on this client, in the shapes the importers read, and whether each
+-- importer recognised them. Only reads; nothing is imported or stored.
+--------------------------------------------------------------------------------
+local function ReasonCounts(skipped)
+    local counts, order = {}, {}
+    for _, line in ipairs(skipped or {}) do
+        local reason = line:match("^.-: (.*)$") or line
+        if not counts[reason] then order[#order + 1] = reason; counts[reason] = 0 end
+        counts[reason] = counts[reason] + 1
+    end
+    table.sort(order)
+    local parts = {}
+    for _, r in ipairs(order) do parts[#parts + 1] = Esc(r) .. " x" .. counts[r] end
+    return table.concat(parts, "; ")
+end
+
+local function ImporterLine(fn)
+    local ok, list, rep = pcall(fn)
+    if not ok then return "importer: raised: " .. Esc(tostring(list)) end
+    if not list then
+        return "importer: not recognised: " .. (rep and rep.error or "no reason given")
+    end
+    local skipped = rep and rep.skipped and #rep.skipped or 0
+    local line = string.format("importer: recognised: %d bindings, %d skipped", #list, skipped)
+    if skipped > 0 then line = line .. " (" .. ReasonCounts(rep.skipped) .. ")" end
+    return line
+end
+
+local function Shown(v)
+    if type(v) == "string" then return '"' .. Esc(v) .. '"' end
+    return Esc(tostring(v))
+end
+
+-- first element of a list, else the value under its first key, as depth-3 text
+local function FirstOf(t)
+    if type(t) ~= "table" then return "none" end
+    local ok, text = pcall(function()
+        if t[1] ~= nil then return Dump(t[1], 3) end
+        local keys = {}
+        for k in pairs(t) do keys[#keys + 1] = k end
+        table.sort(keys, function(a, b) return tostring(a) < tostring(b) end)
+        if keys[1] == nil then return "none" end
+        return Esc(tostring(keys[1])) .. " = " .. Dump(t[keys[1]], 3)
+    end)
+    if ok then return text end
+    return "unreadable"
+end
+
+function PR.BindsReport()
+    local out = {}
+    local function add(line) out[#out + 1] = line end
+
+    local _, build = MD.API.BuildInfo()
+    local name = MD.API.UnitName("player")
+    local realm = MD.API.RealmName()
+    add(string.format("=== SpellTuner binds check  build %s  %s-%s  %s ===",
+        Esc(build == nil and "unknown" or tostring(build)),
+        Esc(name == nil and "?" or tostring(name)),
+        Esc(realm == nil and "?" or tostring(realm)),
+        date("%Y-%m-%d %H:%M:%S")))
+
+    ---------------------------------------------------------------------------
+    add("== keybindings")
+    local n, why = MD.API.BindingCount()
+    if type(n) ~= "number" then
+        add("count: absent" .. (why and (" (" .. Esc(why) .. ")") or ""))
+        n = 0
+    else
+        add("count: " .. n)
+    end
+    for i = 1, math.min(n, 5) do
+        local r = PackBinding(i)
+        local parts = {}
+        for j = 1, r.n do parts[j] = Shown(r[j]) end
+        add("binding " .. i .. " = " .. table.concat(parts, ", "))
+    end
+    local bound, resolved, spells, macros = 0, 0, 0, 0
+    local firstResolved = {}
+    for i = 1, n do
+        local command, keys = BindingKeys(PackBinding(i))
+        for _, key in ipairs(keys) do
+            bound = bound + 1
+            local slot = PR.SlotForCommand(command)
+            if slot then
+                resolved = resolved + 1
+                local kind, id = MD.API.ActionInfo(slot)
+                local what = "empty"
+                if kind == "spell" then
+                    spells = spells + 1
+                    local sp = MD.SpellData and MD.SpellData.spells and MD.SpellData.spells[tonumber(id) or 0]
+                    what = "spell " .. Esc(tostring(id)) .. (sp and (" (" .. Esc(tostring(sp.family)) .. ")") or "")
+                elseif kind == "macro" then
+                    macros = macros + 1
+                    local mname = MD.API.MacroInfo(id)
+                    what = "macro " .. (type(mname) == "string" and ('"' .. Esc(mname) .. '"') or Esc(tostring(id)))
+                elseif kind ~= nil then
+                    what = Esc(tostring(kind))
+                end
+                if #firstResolved < 10 then
+                    firstResolved[#firstResolved + 1] = string.format("  %s -> %s -> slot %s -> %s",
+                        Esc(key), Esc(tostring(command)), Esc(tostring(slot)), what)
+                end
+            end
+        end
+    end
+    add(string.format("bound: %d keys; resolved to a slot: %d; to a spell: %d; to a macro: %d",
+        bound, resolved, spells, macros))
+    add("first 10 resolved:" .. (#firstResolved == 0 and " none" or ""))
+    for _, l in ipairs(firstResolved) do add(l) end
+    do
+        local ok, list, rep = pcall(PR.ImportKeybinds)
+        if not ok then
+            add("importer: raised: " .. Esc(tostring(list)))
+        elseif not list then
+            add("importer: not recognised: " .. (rep and rep.error or "no reason given"))
+        else
+            local skipped = #rep.skipped
+            local line = string.format("importer: %d bindings imported, %d skipped", #list, skipped)
+            if skipped > 0 then line = line .. " (" .. ReasonCounts(rep.skipped) .. ")" end
+            add(line)
+        end
+    end
+
+    ---------------------------------------------------------------------------
+    add("== Cell")
+    local cdb = rawget(_G, "CellCharacterDB")
+    add("CellCharacterDB: " .. TypeName(cdb))
+    local cc = Safe(cdb, "clickCastings")
+    if type(cc) == "table" then
+        add("clickCastings: table, keys: " .. KeysOf(cc, 20))
+    else
+        add("clickCastings: " .. TypeName(cc))
+    end
+    local picked = CellPick()
+    add("first entry: " .. FirstOf(picked or cc))
+    add(ImporterLine(PR.ImportCell))
+
+    ---------------------------------------------------------------------------
+    add("== Clique")
+    local C = rawget(_G, "Clique")
+    local cliqueBinds = Safe(Safe(Safe(C, "db"), "profile"), "binds")
+    local function DbLine(dbName)
+        local db = rawget(_G, dbName)
+        local line = dbName .. ": " .. TypeName(db)
+        if type(db) == "table" then line = line .. " (profiles: " .. TypeName(Safe(db, "profiles")) .. ")" end
+        return line
+    end
+    add("Clique: " .. TypeName(C) .. "; Clique.db.profile.binds: " .. TypeName(cliqueBinds) ..
+        "; " .. DbLine("CliqueDB3") .. "; " .. DbLine("CliqueDB"))
+    add("first bind: " .. FirstOf((CliquePick())))
+    add(ImporterLine(PR.ImportClique))
+
+    return table.concat(out, "\n")
 end
 
 -- Take an imported list ON TOP of what is there (v0.15.4, the author's call:
