@@ -265,4 +265,6 @@ end
 
 MD:RegisterCallback("MD_READY", function()
     MD.API.OnSpellTooltip(OnSpell)
+    -- T25: a macro's tooltip gets the block of the spell it casts.
+    if MD.API.OnMacroTooltip then MD.API.OnMacroTooltip(OnSpell) end
 end)

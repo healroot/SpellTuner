@@ -179,7 +179,16 @@ end
 function GetActionInfo(slot)
     local a = S.actions[slot]
     if not a then return nil end
+    -- T25: a macro slot may answer a third value (the sub-type, "spell" on
+    -- newer retail); unset, exactly the two values every earlier caller saw.
+    if a[3] ~= nil then return a[1], a[2], a[3] end
     return a[1], a[2]
+end
+-- T25: a macro's spell by macro index, from S.macroSpells[index] (nil = the
+-- macro casts no spell the client can name).
+S.macroSpells = {}
+function GetMacroSpell(index)
+    return S.macroSpells[index]
 end
 
 function GetNumTalentTabs() return 3 end
@@ -702,7 +711,9 @@ function S.UseProfile(name)
         SpellBookItemType = { Spell = 1, FutureSpell = 2, Flyout = 3, PetAction = 4 },
         -- T9: retail's documented value (FOREVER-PLAN.md sec2.1) -- NOT observed
         -- on Forever (docs/tasks/T9-spell-tooltip.md Facts); T12 checks it.
-        TooltipDataType = { Spell = 1 },
+        -- T25: Macro = 25 is retail's value, UNVERIFIED on Forever
+        -- (docs/tasks/T25-macro-tooltip.md Facts; T25a's probe lines).
+        TooltipDataType = { Spell = 1, Macro = 25 },
     }
 
     -- Five slots: two ranks of Rejuvenation (774 rank 1, 1058 rank 2) for the
@@ -920,6 +931,20 @@ function S.UseProfile(name)
             for _, fn in ipairs(list) do
                 fn(tt, { type = Enum.TooltipDataType.Spell, id = id })
             end
+        end
+    end
+
+    -- T25: one full macro tooltip showing -- clears, fires OnTooltipCleared,
+    -- sets tt:GetOwner() to `owner` (the hovered action button, or nil), then
+    -- runs every Macro post-call with `data` exactly as given.
+    function S.ShowMacroTooltip(tt, data, owner)
+        tt = tt or GameTooltip
+        tt.lines = {}
+        tt.GetOwner = function() return owner end
+        if tt.scripts.OnTooltipCleared then tt.scripts.OnTooltipCleared(tt) end
+        local list = S.tooltipPostCalls[Enum.TooltipDataType.Macro]
+        if list then
+            for _, fn in ipairs(list) do fn(tt, data) end
         end
     end
 

@@ -61,6 +61,8 @@ local FOREVER_ONLY_NAMES = {
     -- T18 (Engine/Practice.lua): the bindings-import triad plus the macro/
     -- action reads, all present on the 69893 baseline.
     "BindingCount", "Binding", "BindingAction", "ActionInfo", "MacroInfo",
+    -- T25 (UI/SpellTip_Forever.lua): a macro's spell, and the macro tooltip hook.
+    "MacroSpell", "OnMacroTooltip",
 }
 -- T15: Client/API_TBC.lua's own binding -- GetSpellInfo, so
 -- Engine/SimModel.lua and Engine/SimPlanner.lua's four call sites can go

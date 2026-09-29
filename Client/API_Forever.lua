@@ -113,4 +113,80 @@ MD.API.Bind({
     BindingAction = "GetBindingAction",
     ActionInfo = "GetActionInfo",
     MacroInfo = "GetMacroInfo",
+    -- T25: a macro's spell by macro index (69893 baseline).
+    MacroSpell = "GetMacroSpell",
 })
+
+-- T25 (UI/SpellTip_Forever.lua): the same block on a macro's tooltip
+-- (docs/tasks/T25-macro-tooltip.md). Every shape below is the retail 12.x
+-- engine's, UNVERIFIED on Forever (T25a's probe lines will confirm); a shape
+-- that does not match adds nothing and raises nothing. The spell id is
+-- resolved here, in this order, and shared code gets only a plain id:
+--   (1) the first data line whose tooltipType is the Spell type and whose
+--       tooltipID is a number;
+--   (2) the hovered button's slot (owner.action, else the "action" attribute)
+--       -> GetActionInfo: "macro" with a macro index (GetMacroSpell names its
+--       spell) or, on newer retail, already the spell id with sub-type "spell".
+-- Each step under its own pcall: the tooltip data, the owner and the client's
+-- answers can all be secret or a shape past our reach, and a raise here must
+-- never reach the client's tooltip dispatch.
+local function PlainNumber(v)
+    return type(v) == "number" and not MD.API.IsSecret(v)
+end
+
+local function MacroSpellFromData(data, spellType)
+    if data == nil or MD.API.IsSecret(data) then return nil end
+    local lines = data.lines
+    if type(lines) ~= "table" or MD.API.IsSecret(lines) then return nil end
+    for i = 1, #lines do
+        local line = lines[i]
+        if type(line) == "table" and not MD.API.IsSecret(line) then
+            local lineType, lineId = line.tooltipType, line.tooltipID
+            if PlainNumber(lineType) and lineType == spellType and PlainNumber(lineId) then
+                return lineId
+            end
+        end
+    end
+    return nil
+end
+
+local function MacroSpellFromSlot(tooltip)
+    if not tooltip or not tooltip.GetOwner then return nil end
+    local owner = tooltip:GetOwner()
+    if type(owner) ~= "table" or MD.API.IsSecret(owner) then return nil end
+    local slot = owner.action
+    if not PlainNumber(slot) then
+        slot = nil
+        if owner.GetAttribute then slot = owner:GetAttribute("action") end
+    end
+    if not PlainNumber(slot) then return nil end
+
+    -- three returns; written out, never `a and f() or b`.
+    local kind, id, subType = MD.API.ActionInfo(slot)
+    if kind ~= "macro" then return nil end
+    if MD.API.MacroSpell then
+        local spellId = MD.API.MacroSpell(id)
+        if PlainNumber(spellId) then return spellId end
+    end
+    if subType == "spell" and PlainNumber(id) then return id end
+    return nil
+end
+
+function MD.API.OnMacroTooltip(fn)
+    local macroType = MD.API.Constant("Enum.TooltipDataType.Macro")
+    if macroType == nil then return false, "absent" end
+    local spellType = MD.API.Constant("Enum.TooltipDataType.Spell")
+
+    local wrapper = function(tooltip, data)
+        local id
+        local ok, found = pcall(MacroSpellFromData, data, spellType)
+        if ok and PlainNumber(found) then id = found end
+        if id == nil then
+            ok, found = pcall(MacroSpellFromSlot, tooltip)
+            if ok and PlainNumber(found) then id = found end
+        end
+        if id ~= nil then fn(tooltip, id) end
+    end
+    return MD.API.Call("TooltipDataProcessor.AddTooltipPostCall", macroType, wrapper)
+end
+MD.API._bindings.OnMacroTooltip = "TooltipDataProcessor.AddTooltipPostCall"

@@ -504,6 +504,102 @@ do
         string.format("perMana=%s casts=%s", tostring(perMana and perMana[2]), tostring(casts and casts[2])))
 end
 
+--------------------------------------------------------------------------------
+-- T25: the block on a macro's tooltip, through MD.API.OnMacroTooltip
+--------------------------------------------------------------------------------
+local MACRO = 25
+local function SameLines(a, b)
+    if a:NumLines() ~= b:NumLines() or a:NumLines() == 0 then return false end
+    for i = 1, a:NumLines() do
+        if a.lines[i][1] ~= b.lines[i][1] or a.lines[i][2] ~= b.lines[i][2] then return false end
+    end
+    return true
+end
+local function SpellBlock(id)
+    local tt = CreateFrame("GameTooltip")
+    S.ShowSpellTooltip(tt, id)
+    return tt
+end
+local function MacroTooltip(data, owner)
+    local tt = CreateFrame("GameTooltip")
+    S.ShowMacroTooltip(tt, data, owner)
+    return tt
+end
+
+do
+    local want = SpellBlock(5185)
+    local got = MacroTooltip({ type = MACRO, lines = { { tooltipType = 1, tooltipID = 5185 } } }, nil)
+    check("a macro's tooltip gets its spell's block, from the tooltip data",
+        SameLines(got, want), string.format("got=%d want=%d", got:NumLines(), want:NumLines()))
+end
+
+do
+    local want = SpellBlock(5185)
+    local noSpell = { type = MACRO, lines = { { tooltipType = 0, tooltipID = 9 } } }
+    S.actions[7] = { "macro", 3 }
+    S.macroSpells[3] = 5185
+    local viaIndex = MacroTooltip(noSpell, { action = 7 })
+
+    S.macroSpells[3] = nil
+    S.actions[7] = { "macro", 5185, "spell" }
+    local viaSpell = MacroTooltip(noSpell, { action = 7 })
+
+    local viaAttr = MacroTooltip(noSpell, {
+        GetAttribute = function(_, k) if k == "action" then return 7 end return nil end })
+
+    S.actions[7] = nil
+    check("a macro's spell is found through its action slot when the data does not name it",
+        SameLines(viaIndex, want) and SameLines(viaSpell, want) and SameLines(viaAttr, want),
+        string.format("index=%d spell=%d attr=%d want=%d", viaIndex:NumLines(), viaSpell:NumLines(),
+            viaAttr:NumLines(), want:NumLines()))
+end
+
+do
+    local data = { type = MACRO, lines = { { tooltipType = 1, tooltipID = 5185 } } }
+    local tt = MacroTooltip(data, nil)
+    local n1 = tt:NumLines()
+    S.tooltipPostCalls[MACRO][1](tt, data)
+    local n2 = tt:NumLines()
+    S.ShowMacroTooltip(tt, data, nil)
+    local n3 = tt:NumLines()
+    check("a macro's block appears once per showing",
+        n1 > 0 and n2 == n1 and n3 == n1, string.format("n1=%d n2=%d n3=%d", n1, n2, n3))
+end
+
+do
+    local noSpell = { type = MACRO, lines = { { tooltipType = 0, tooltipID = 9 } } }
+    local total, allOk = 0, true
+    local function Try(data, owner)
+        local tt = CreateFrame("GameTooltip")
+        local ok = pcall(S.ShowMacroTooltip, tt, data, owner)
+        if not ok then allOk = false end
+        total = total + tt:NumLines()
+    end
+    Try(noSpell, nil)                                                              -- no spell line, no slot
+    Try({ type = MACRO, lines = { { tooltipType = 1, tooltipID = S.Secret() } } }, nil) -- a secret id
+    S.actions[8] = { "macro", 4 }                                                  -- GetMacroSpell answers nil
+    Try(noSpell, { action = 8 })
+    S.actions[8] = nil
+    Try(noSpell, { GetAttribute = function() error("owner blew up (test)") end })  -- a raising owner
+    Try(nil, nil)                                                                  -- data = nil
+    check("a macro with no spell, a secret id or a raising owner adds nothing and never raises",
+        allOk and total == 0, string.format("allOk=%s lines=%d", tostring(allOk), total))
+end
+
+do
+    local list = S.tooltipPostCalls[MACRO]
+    local one = list ~= nil and #list == 1 and type(list[1]) == "function"
+    local entry
+    for _, c in ipairs(MD.API.Capabilities()) do if c.name == "OnMacroTooltip" then entry = c end end
+    MD.db.spellTooltip = false
+    local tt = MacroTooltip({ type = MACRO, lines = { { tooltipType = 1, tooltipID = 5185 } } }, nil)
+    local off = tt:NumLines() == 0
+    MD.db.spellTooltip = true
+    check("the macro hook is registered through the adapter, and off means off",
+        one and off and entry ~= nil and entry.present == true,
+        string.format("one=%s off=%s entry=%s", tostring(one), tostring(off), tostring(entry ~= nil)))
+end
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("  FAIL " .. f) end
 if #fails > 0 then os.exit(1) end

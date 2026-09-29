@@ -1,6 +1,6 @@
 # T25 -- the SpellTuner block on a macro's tooltip
 
-Status: handed out 2026-09-29.
+Status: **accepted** 2026-09-29 (handed out in d558432).
 
 ## Goal
 
@@ -106,4 +106,32 @@ works and every other shape adds nothing and raises nothing. For the author, who
 
 ## Report
 
-(implementer)
+**Done, file by file.**
+
+- `Client/API_Forever.lua`: `MacroSpell = "GetMacroSpell"` added to the T18 `Bind` block; `MD.API.OnMacroTooltip(fn)` added after it, recorded in `MD.API._bindings` like `OnSpellTooltip`. It answers `false, "absent"` when `Enum.TooltipDataType.Macro` is nil. Otherwise the wrapper tries (1) the data's lines for `tooltipType == Spell` with a numeric `tooltipID`, then (2) the owner's slot (`owner.action`, else `owner:GetAttribute("action")`) through `MD.API.ActionInfo` (three locals written out) and, for `"macro"`, `MD.API.MacroSpell(id)` else `id` when the third return is `"spell"`. Each step is under its own `pcall`, every value passes `IsSecret` before it is compared or indexed, and `fn(tooltip, id)` is called once with the first plain number, else not at all. Two small local helpers (`PlainNumber`, `MacroSpellFromData`, `MacroSpellFromSlot`) are file-local, no new global.
+- `UI/SpellTip_Forever.lua`: at `MD_READY`, `if MD.API.OnMacroTooltip then MD.API.OnMacroTooltip(OnSpell) end` after the Spell registration. Nothing else.
+- `tools/wowstub.lua`: `Enum.TooltipDataType.Macro = 25` (commented as retail's value, unverified on Forever); `S.macroSpells` and `GetMacroSpell(index)`; `GetActionInfo` returns `a[3]` only when set; `S.ShowMacroTooltip(tt, data, owner)` (clear, set `tt.GetOwner`, fire `OnTooltipCleared`, run the Macro post-calls).
+- `tools/tipcheck.lua`: the five assertions, names verbatim.
+
+**Tests first.** Before the code, `tipcheck` printed `a macro's tooltip gets its spell's block, from the tooltip data  FAIL - got=0 want=8` and `a macro's spell is found through its action slot when the data does not name it  FAIL - index=0 spell=0 attr=0 want=8`, then the script died on the third assertion (`S.tooltipPostCalls[25]` was nil: no Macro hook yet). After the code: `22 ok, 0 failed`, all five new ones ok, the seventeen old ones untouched.
+
+**luac -p** (tools/.lua/lua-5.1.5/src/luac; none on PATH): `Client/API_Forever.lua`, `UI/SpellTip_Forever.lua`, `tools/wowstub.lua`, `tools/tipcheck.lua` all clean.
+
+**The loop, last lines** (TOOLS.md section 1): simcheck PASS, reccheck 54, replaycheck 80, replayui 98, runcheck 78, reviewui 44, navui 25, dashui 56, regencheck 27, simwindow 8, solvercheck 77, timeline 27, spelltip 48, practice 74, practiceui 49, migrate 7, probecheck 82, forevercheck 13, modulecheck 14, kitcheck 7, recordcheck 24, scenariocheck 12, gatecheck 9, replayforever 11, reviewforever 10, coachforever 18, bindscheck 6, parsecheck 12, bookcheck 17, tipcheck 22, clockcheck 17, spellsui 17, measurecheck 30 (T26 is adding), releasecheck 13; adaptercheck 15 ok tbc; corecheck 10/8, svcheck 6/1, consolecheck 14/1. `python3 tools/apicheck.py`: `apicheck: 8 Forever TOCs, 44 files, 45 distinct globals, 0 findings (baseline 69893)`; `--selftest`: `10 of 10 findings as expected`; `refcheck --selftest`: ok.
+
+**Two suites not green, neither a T25 failure to fix here.**
+
+1. `adaptercheck` under forever: `21 ok, 1 failed`, "every binding is on MD.API and in the capability table". It counts the capability table exhaustively against `FOREVER_ONLY_NAMES`, and the task's own two additions (`MacroSpell`, `OnMacroTooltip`) put two entries in the table that the list lacks. `tools/adaptercheck.lua` is not in this task's Files, so I did not edit it. **Needed one-line edit** (the T18 line in `FOREVER_ONLY_NAMES`): `"BindingCount", "Binding", "BindingAction", "ActionInfo", "MacroInfo", "MacroSpell", "OnMacroTooltip",`. I checked it on a throwaway copy (deleted): `22 ok, 0 failed`. The TBC flavour is unaffected (15 ok). The acceptance's "adaptercheck 22/15" is therefore met only once the lead (or the next task) makes that edit.
+2. `practiceforever`: `13 ok, 2 failed` ("a new binding row picks a spell you have", raising at `UI/PracticePanel.lua:281` `bad argument #3 to 'format'`; "Start with nothing bound says so and opens nothing"). Those are T24's files, mid-work (`tools/practiceforever.lua` and `PracticePanel.lua` are modified by someone else); I re-ran once, same result. It does not touch tooltips.
+
+**Skipped / not done:** nothing in the task. **Left for T25a:** every shape is retail's assumption; a non-matching shape adds nothing. `Client/Probe.lua`, `tools/probecheck.lua` untouched (probecheck 82). No git operations, no `docs/` edit except this Report.
+
+## Lead review (2026-09-29)
+
+Accepted. Read the diff: every client read in the adapter, each step under `pcall`, `IsSecret`
+before any compare or index, the three `ActionInfo` returns written out, no new global; the block
+itself unchanged. The five assertions test behaviour (the macro's lines equal the spell's on a fresh
+tooltip). The lead's **one-line change**, which the implementer named and correctly left alone:
+`tools/adaptercheck.lua`'s `FOREVER_ONLY_NAMES` gains `"MacroSpell", "OnMacroTooltip"` (the
+capability table is counted exhaustively). Lead's runs: tipcheck 22, adaptercheck 22/15, probecheck
+82, apicheck 0 findings, `luac -p` clean.
