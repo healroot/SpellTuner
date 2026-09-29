@@ -262,7 +262,11 @@ function SM:Run(scenario, plan, opts)
             -- biggest hit -- scoring may look at everything. A plan's Decide
             -- reads SM.DangerLine instead: the biggest hit taken SO FAR.
             S.danger[i] = tg.danger or floor
-            S.dangerMeasured[i] = (tg.danger ~= nil)
+            -- T20b: a target carrying a prior is read as measured too, so a
+            -- never-hit target answers with its prior as a hit-at-all target
+            -- does before its first hit -- the plan cannot tell whether the
+            -- target is ever hit.
+            S.dangerMeasured[i] = (tg.danger ~= nil) or (tg.dangerPrior ~= nil)
             S.dangerPrior[i] = tg.dangerPrior
             S.threat[i], S.incoming[i] = 0, nil
             local row = S.hots[i]
@@ -1083,6 +1087,50 @@ function SM.ScriptPlan(list)
 end
 
 --------------------------------------------------------------------------------
+-- T20b: the biggest single hit a person took in OTHER recordings (the one
+-- exclusion is by id and required, exactly as SM.PartyMaxFromOthers takes a
+-- party member's max: the fight being built is never a source of its own
+-- prior). `name` matches a roster entry; when both levels are plain numbers
+-- they must be equal. Returns the biggest hit and how many recordings had one,
+-- or nil when nobody else has a hit on this person. Plain numbers only.
+--------------------------------------------------------------------------------
+function SM.DangerHitFromOthers(recs, excludeID, name, level)
+    if excludeID == nil then error("SM.DangerHitFromOthers: excludeID is required", 2) end
+    if type(name) ~= "string" or type(recs) ~= "table" then return nil end
+    local DMG = SM.K.DMG
+    local best, count = nil, 0
+    for _, r in ipairs(recs) do
+        if type(r) == "table" and r.id ~= excludeID and type(r.roster) == "table"
+            and type(r.ev) == "table" and type(r.n) == "number" then
+            local ev = r.ev
+            local mine = {}
+            for i, e in ipairs(r.roster) do
+                if type(e) == "table" and e.name == name
+                    and not (type(level) == "number" and type(e.level) == "number" and e.level ~= level) then
+                    mine[i] = true
+                end
+            end
+            local recBest = nil
+            if next(mine) ~= nil and type(ev.kind) == "table" and type(ev.tgt) == "table"
+                and type(ev.amt) == "table" then
+                for j = 1, r.n do
+                    local a = ev.amt[j]
+                    if ev.kind[j] == DMG and mine[ev.tgt[j]] and type(a) == "number" and a > 0 then
+                        if recBest == nil or a > recBest then recBest = a end
+                    end
+                end
+            end
+            if recBest ~= nil then
+                count = count + 1
+                if best == nil or recBest > best then best = recBest end
+            end
+        end
+    end
+    if best == nil then return nil end
+    return best, count
+end
+
+--------------------------------------------------------------------------------
 -- Replay: a recorded fight as a scenario the engine can run.
 --
 -- Everything the healer did is a script (the recorded casts at their recorded
@@ -1092,9 +1140,10 @@ end
 -- wrong, replaying the fight will not reproduce the health bars, and the gates
 -- below will say so instead of the Coach quietly building on a bad model.
 --------------------------------------------------------------------------------
-function SM.ScenarioFromRecording(rec, kit)
+function SM.ScenarioFromRecording(rec, kit, others)
     if not rec then return nil end
     local K = SM.K
+    if others == nil then others = MD.cdb and MD.cdb.recordings end
     local roster = rec.roster or {}
     local trackedSet = {}
     for _, idx in ipairs(rec.tracked or {}) do trackedSet[idx] = true end
@@ -1132,8 +1181,16 @@ function SM.ScenarioFromRecording(rec, kit)
         if list and #list > 0 and maxHP > 0 then
             danger = math.min(1, (list[#list] * dangerHits) / maxHP)
         end
+        -- T20b: before this target's first hit a plan reads what OTHER
+        -- recordings of the same person suggest, never this one (by id; a
+        -- recording with no id gets none). `if`, not `and/or`: two returns.
+        local dangerPrior
+        if rec.id ~= nil and maxHP > 0 then
+            local hit = SM.DangerHitFromOthers(others, rec.id, roster[i].name, roster[i].level)
+            if hit ~= nil then dangerPrior = math.min(1, hit * dangerHits / maxHP) end
+        end
         targets[i] = { name = roster[i].name, role = roster[i].role, maxHP = maxHP,
-                       danger = danger,
+                       danger = danger, dangerPrior = dangerPrior,
                        hp0 = hp0 >= 0 and hp0 or maxHP,
                        -- a target with no health readings cannot be scored, and
                        -- pretending otherwise would count a flat line as a pass

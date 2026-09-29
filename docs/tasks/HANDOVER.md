@@ -6,13 +6,16 @@ branch `claude/manademon-folder-continue-41eabc`.
 
 Last updated: 2026-09-29, after T20 (review R6, the author's ruling "Fix both lines": the danger
 line a plan decides on is causal). Every Forever TOC at `1.0.0-alpha.7`; the TBC TOC at 0.15.4 (the
-author decides a TBC release separately). Next: T20b (hand out), then alpha.8, then T21.
+author decides a TBC release separately). T20 committed in 1c76605, T20b in the commit
+carrying this revision. Next: alpha.8, then T21 (drafts of its CLAUDE.md and TESTING edits are in
+the tree, uncommitted).
 
 ## Committed (newest first)
 
 | hash | what |
 |---|---|
-| (the commit carrying this revision) | T20 (R6): `SM.DangerLine` -- a plan decides on the biggest hit so far (prior / floor before the first), the score keeps the whole-fight line; `Solver:AtRisk` and rule 8 read it; synthetic scenarios unchanged; DECISIONS entry for the ruling; solvercheck 74, coachforever 17 |
+| (the commit carrying this revision) | T20b (R6, second half): `SM.DangerHitFromOthers` (leave-one-out by id, name and level); both builders set `tg.dangerPrior` (the biggest hit that person took in other recordings over this scenario's max); a target with a prior is read as measured; solvercheck 77, coachforever 18 |
+| 1c76605 | T20 (R6): `SM.DangerLine` -- a plan decides on the biggest hit so far (prior / floor before the first), the score keeps the whole-fight line; `Solver:AtRisk` and rule 8 read it; synthetic scenarios unchanged; DECISIONS entry for the ruling; solvercheck 74, coachforever 17 |
 | a7d604e | alpha.7: every Forever TOC + the probecheck / consolecheck pins; the review annotated `**Fixed** in <hash>` / `**Skipped**` per R-number; TOOLS suite counts; HISTORY entry; this handover |
 | a12bcf6 | review-shared R5: a v3 replay's ticks called reconstructed (SimPlanner `rp.ticks.reconstructed`, ReplayWindow hover and checkbox); replayforever 11 |
 | baaf6ef | review-shared R23: no `solver-corpus` strategy without `MD.IntuitionTBC`; coachforever |
@@ -53,16 +56,18 @@ docs/HISTORY.md's 2026-09-29 entry covers T18 onwards.
 
 ## In the tree, not committed
 
-- `docs/tasks/T20b-danger-prior-from-others.md` -- written (the second half of R6: the danger prior
-  from other recordings, leave-one-out). Handed out next.
+- `CLAUDE.md`, `docs/TESTING.md` -- the lead's T21 drafts (review-fix notes on the file table rows;
+  §38-§40 steps changed where a fix changes what the author sees: §38.2/§38.5 measure in combat
+  (R1), §38.3 snapshot (R2), §39 meter `-` / gate wording / tick hover / coach strategy / Review,
+  §40.2 regen (R4), install alpha.8). Not committed; finish after alpha.8.
 
 ## Next, in order
 
 1. **The review's groups not accepted: none.** All seven fix branches (`fix/review-measure`,
    `-recorder`, `-replay`, `-probe`, `-core`, `-spells`, `-shared`) were accepted and are in HEAD;
    there is no review group left to redo.
-2. **R6** (ruled "Fix both lines", DECISIONS "Forever review R6"): T20 committed (the causal line);
-   T20b (the prior from other recordings) next; then **alpha.8** (every Forever TOC + the
+2. **R6** (ruled "Fix both lines", DECISIONS "Forever review R6"): T20 and T20b committed; next
+   **alpha.8** (every Forever TOC + the
    probecheck / consolecheck pins, R6 marked Fixed in `docs/review/2026-09-29-forever-review.md`,
    TOOLS counts, HISTORY entry), then **T21** docs (CLAUDE.md file table, TESTING §38-§40,
    ROADMAP-FOREVER up to alpha.8 and the review fixes 12ba325..a12bcf6; TESTING steps changed only
@@ -82,10 +87,10 @@ Suite loop: `docs/TOOLS.md` §1 (every suite, `bindscheck` included since alpha.
 ## Baselines (at the last commit)
 
 TBC sixteen (unchanged by the review): simcheck PASS, reccheck 54, replaycheck 80, replayui 98,
-runcheck 78, reviewui 44, navui 25, dashui 56, regencheck 27, simwindow 8, solvercheck 74, timeline
+runcheck 78, reviewui 44, navui 25, dashui 56, regencheck 27, simwindow 8, solvercheck 77, timeline
 27, spelltip 48, practice 74, practiceui 49, migrate 7. Forever: probecheck 82, forevercheck 13,
 modulecheck 14, kitcheck 7, recordcheck 24, scenariocheck 12, gatecheck 9, replayforever 11,
-reviewforever 10, coachforever 17, practiceforever 9, bindscheck 6, parsecheck 12, bookcheck 17,
+reviewforever 10, coachforever 18, practiceforever 9, bindscheck 6, parsecheck 12, bookcheck 17,
 tipcheck 17, clockcheck 17, spellsui 17, measurecheck 26. Both flavours: adaptercheck 22/15,
 corecheck 10/8, svcheck 6/1, consolecheck 14/1. apicheck 0 findings over 44 files (45 distinct
 globals), selftest 10 of 10, refcheck selftest ok. The same counts in a `git archive HEAD` export.

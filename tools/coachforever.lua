@@ -356,6 +356,25 @@ do
             string.format("pcall=%s source=%s", tostring(okCall), tostring(t.maxSource)))
     end
 
+    -- T20b: a target's danger prior is the biggest hit that person took in
+    -- OTHER recordings of the same name and level, over this scenario's max
+    do
+        local dangerHits = (MD.db and MD.db.simDangerHits) or 1
+        local coached = tankRec(9100000031, "Tank", 64, 300, true, nil, true)
+        local sameLevel = tankRec(9100000032, "Tank", 64, 700, false, 5000) -- biggest hit H = 700
+        local otherLevel = tankRec(9100000033, "Tank", 60, 2000, true)      -- a bigger hit, another level
+        MD.cdb.recordings = { coached, sameLevel, otherLevel }
+        local t = SM.ScenarioFromRecording(coached, kit).targets[2]
+        local want = math.min(1, 700 * dangerHits / t.maxHP)
+        local noId = tankRec(nil, "Tank", 64, 300, true, nil, true)
+        MD.cdb.recordings = { noId, sameLevel, otherLevel }
+        local u = SM.ScenarioFromRecording(noId, kit).targets[2]
+        check("a Forever target's danger prior comes from other recordings of the same name and level",
+            t.dangerPrior == want and u.dangerPrior == nil,
+            string.format("prior=%s want=%s (maxHP %s) noId=%s", tostring(t.dangerPrior), tostring(want),
+                tostring(t.maxHP), tostring(u.dangerPrior)))
+    end
+
     MD.cdb.recordings = saved
 end
 

@@ -310,6 +310,98 @@ do
 end
 
 --------------------------------------------------------------------------------
+-- 4c. T20b: before a target's first hit, its danger line comes from OTHER
+-- recordings of the same person (leave-one-out, by id); never the one built.
+--------------------------------------------------------------------------------
+do
+    local dangerHits = (MD.db and MD.db.simDangerHits) or 1
+    -- a hand-made TBC recording: roster Healroot + <name>, DMG events on the
+    -- second, given as { { t, amount }, ... }
+    local function rec(id, name, hits)
+        local ev = { t = {}, kind = {}, tgt = {}, amt = {}, x = {} }
+        local n = 0
+        for _, h in ipairs(hits) do
+            n = n + 1
+            ev.t[n], ev.kind[n], ev.tgt[n], ev.amt[n], ev.x[n] = h[1], K.DMG, 2, h[2], 0
+        end
+        return { id = id, zone = "Test", dur = 60, pool = 9000, n = n, ev = ev,
+                 roster = { { name = "Healroot", role = "HEALER", maxHP = 3000 },
+                            { name = name, role = "TANK", maxHP = 10000 } },
+                 tracked = { 1, 2 },
+                 initial = { mana = 9000, apiBase = 10, apiCasting = 4 },
+                 mana = { t = {}, base = {}, cast = {} } }
+    end
+    local A, B, C = 7100000001, 7100000002, 7100000003
+    local recA = rec(A, "Tank", { { 4, 300 }, { 20, 5000 } })
+    local store = { recA, rec(B, "Tank", { { 5, 2000 }, { 9, 700 } }), rec(C, "Bob", { { 6, 9000 } }) }
+
+    local hit, cnt
+    if SM.DangerHitFromOthers then
+        local h, c = SM.DangerHitFromOthers(store, A, "Tank")
+        hit, cnt = h, c
+    end
+    check("the danger prior is the biggest hit that person took in other recordings",
+        hit == 2000 and cnt == 1, string.format("hit=%s recordings=%s", tostring(hit), tostring(cnt)))
+
+    local okNil = false
+    if SM.DangerHitFromOthers then okNil = pcall(SM.DangerHitFromOthers, store, nil, "Tank") end
+    local noId = rec(nil, "Tank", { { 4, 300 }, { 20, 5000 } })
+    local scNoId = SM.ScenarioFromRecording(noId, kit, store)
+    check("the prior's exclusion is required",
+        okNil == false and scNoId.targets[2].dangerPrior == nil,
+        string.format("pcall=%s prior=%s", tostring(okNil), tostring(scNoId.targets[2].dangerPrior)))
+
+    local function readings(sc)
+        local seen = {}
+        SP.RunPlan(sc, { Decide = function(_, S, t)
+            seen[#seen + 1] = { t = t, line = SM.DangerLine(S, 2) }
+            return nil
+        end }, { critMode = "ev" })
+        return seen
+    end
+    local function range(seen, from, to)
+        local lo, hi, n = 2, -1, 0
+        for _, r in ipairs(seen) do
+            if r.t >= from and r.t <= to and type(r.line) == "number" then
+                n = n + 1
+                if r.line < lo then lo = r.line end
+                if r.line > hi then hi = r.line end
+            end
+        end
+        return lo, hi, n
+    end
+    local want = math.min(1, 2000 * dangerHits / 10000)
+    local scA = SM.ScenarioFromRecording(recA, kit, store)
+    local seenA = readings(scA)
+    local l1, h1, n1 = range(seenA, 0, 3.9)
+    local l2, h2, n2 = range(seenA, 4.1, 19.9)
+    local l3, h3, n3 = range(seenA, 20.1, 59)
+    local exp2 = math.min(1, 300 * dangerHits / 10000)
+    local exp3 = math.min(1, 5000 * dangerHits / 10000)
+    local function near(a, b) return math.abs(a - b) < 1e-9 end
+    local readsOk = n1 > 0 and n2 > 0 and n3 > 0 and near(l1, want) and near(h1, want)
+        and near(l2, exp2) and near(h2, exp2) and near(l3, exp3) and near(h3, exp3)
+
+    -- the same recording without its 5000 hit: same prior, same reads before 20 s
+    local recA2 = rec(A, "Tank", { { 4, 300 } })
+    local scA2 = SM.ScenarioFromRecording(recA2, kit, store)
+    local seenA2 = readings(scA2)
+    local same = scA2.targets[2].dangerPrior == scA.targets[2].dangerPrior
+    local nb = 0
+    for _, r in ipairs(seenA) do
+        if r.t < 20 then
+            nb = nb + 1
+            local o = seenA2[nb]
+            if not o or o.t ~= r.t or o.line ~= r.line then same = false end
+        end
+    end
+    check("before the first hit a plan reads the prior from other recordings",
+        near(scA.targets[2].dangerPrior or -1, want) and readsOk and same and nb > 0,
+        string.format("prior=%s want=%s before=%.3f/%.3f/%d between=%.3f/%d after=%.3f/%d identical-before-20s=%s",
+            tostring(scA.targets[2].dangerPrior), tostring(want), l1, h1, n1, l2, n2, l3, n3, tostring(same)))
+end
+
+--------------------------------------------------------------------------------
 -- 5. Healer intuition: a prior from OTHER fights, never from this one
 --------------------------------------------------------------------------------
 do

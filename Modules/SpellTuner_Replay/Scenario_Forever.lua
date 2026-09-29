@@ -601,6 +601,8 @@ function SM.ScenarioV3(rec, kit, others)
     -- `danger` is the SCORE's line (the whole fight's biggest hit); a plan
     -- decides on SM.DangerLine, the biggest hit so far (T20, review R6).
     local dangerHits = (MD.db and MD.db.simDangerHits) or 1
+    local priorStore = others
+    if priorStore == nil then priorStore = MD.cdb and MD.cdb.recordings end
     local targets = {}
     for i = 1, nT do
         local r = roster[i] or {}
@@ -611,9 +613,17 @@ function SM.ScenarioV3(rec, kit, others)
             for _, v in ipairs(list) do if v > biggest then biggest = v end end
             danger = math.min(1, (biggest * dangerHits) / maxHP[i])
         end
+        -- T20b: the biggest hit that person (same name, same level) took in
+        -- OTHER recordings, over this scenario's max for them. Never this
+        -- recording (by id); no id, no prior. `if`, not `and/or`: two returns.
+        local dangerPrior
+        if rec.id ~= nil and maxHP[i] > 0 then
+            local hit = SM.DangerHitFromOthers(priorStore, rec.id, r.name, r.level)
+            if hit ~= nil then dangerPrior = math.min(1, hit * dangerHits / maxHP[i]) end
+        end
         targets[i] = {
             name = r.name, role = r.role, maxHP = maxHP[i], maxEstimated = maxEstimated[i],
-            maxSource = maxSource[i], danger = danger, hp0 = maxHP[i],
+            maxSource = maxSource[i], danger = danger, dangerPrior = dangerPrior, hp0 = maxHP[i],
             tracked = (trackedSet[i] == true) and (hitOrHealed[i] == true) or false,
         }
     end
