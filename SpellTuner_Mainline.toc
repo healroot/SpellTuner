@@ -12,6 +12,7 @@ Core.lua
 Core_Forever.lua
 Spells\Parse.lua
 Spells\Book.lua
+Spells\Tabs.lua
 Engine\ManaModel.lua
 Spells\Measure.lua
 UI\Style.lua

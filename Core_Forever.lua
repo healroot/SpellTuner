@@ -97,6 +97,13 @@ MD:RegisterCallback("MD_READY", function()
     MD:Debug("other", "%s", MD:SavedVarsLine())
 end)
 
+-- T35 (docs/SPEC-forever-ui.md 3.3): the character's spell list is in place
+-- from login -- Spells/Tabs.lua creates MD.cdb.spellTabs (empty, not seeded;
+-- the seed runs on the Spells pane's first open) and repairs a damaged one.
+MD:RegisterCallback("CORE_LOGIN", function()
+    if MD.Tabs then MD.Tabs:Store() end
+end)
+
 --------------------------------------------------------------------------------
 -- Error capture (T3): installed right here, at load, not at an event -- this
 -- file is the earliest a Forever file can start (right after Core.lua). The

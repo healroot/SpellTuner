@@ -418,7 +418,11 @@ function Book:GroupFamilies(spells)
         if e.name then
             local fam = families[e.name]
             if not fam then
-                fam = { name = e.name, ranks = {} }
+                -- T35 (docs/SPEC-forever-ui.md 3.3): the family's key is its
+                -- name (enUS only, and a family has no one stable id), and
+                -- ids holds every rank's id -- Spells/Tabs.lua keeps them
+                -- beside the key, the fallback should the name ever change.
+                fam = { name = e.name, key = e.name, ranks = {}, ids = {} }
                 families[e.name] = fam
                 order[#order + 1] = e.name
             end
@@ -434,6 +438,7 @@ function Book:GroupFamilies(spells)
             if ra ~= rb then return ra < rb end
             return a.slot < b.slot
         end)
+        for i, e in ipairs(fam.ranks) do fam.ids[i] = e.id end
 
         for _, e in ipairs(fam.ranks) do
             for _, fn in ipairs(Book.adjust) do
@@ -579,6 +584,9 @@ end
 --------------------------------------------------------------------------------
 
 function Book:Scan()
+    -- T35: a scan after MarkDirty (or the first) is a changed book; the
+    -- 2-second rescans of an unchanged one are not.
+    local changed = Book._dirty or not Book._cache
     local via, slotList = Book:Enumerate()
     local read = { via = via, slots = #slotList, spells = 0, secret = 0, errors = 0 }
 
@@ -619,6 +627,9 @@ function Book:Scan()
 
     MD:Debug("other", "book scan via=%s spells=%d secret=%d errors=%d",
         read.via, read.spells, read.secret, read.errors)
+    -- T35: Spells/Tabs.lua reconciles the spell list here (a newly learned
+    -- heal appended), after the cache is in place.
+    if changed then MD:Fire("BOOK_CHANGED", book) end
     return book
 end
 
