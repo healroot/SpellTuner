@@ -866,6 +866,15 @@ approve before its task starts.
 - **M6 (C3, C4, only with decision 10). TBC Spells view** in the Forever structure with TBC numbers,
   and the TBC widget in the kit's look.
 
+### 7.1 Mockups approved (2026-09-30)
+
+`docs/mockups/refactor-ux.html` (M1-M6) approved by the author ("Approve, build it"), with three
+choices: **TBC gets the spell rail too** (a task C5 in wave C: the Forever rail, Overview first, the TBC
+druid families seeded -- M6's view tabs are replaced by the rail); **rail hover is layout B** (one `x`,
+Move up / Move down / Remove in a right-click menu, drag still reorders); **the selected rank row is a
+white 2-px bar** (the suggested row keeps its fill + bar). The page's other readings (its closing list)
+are accepted; invented wording is adjusted in game.
+
 ## 8. For the author
 
 1. **Decision 10 again** (TBC opt-in): section 5.C lists what it would fix on the client you play

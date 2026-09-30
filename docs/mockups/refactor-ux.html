@@ -1,0 +1,968 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SpellTuner Refactor Mockups</title><style>
+/* ---------- the approved page's tokens and primitives (docs/mockups/forever-ui.html), unchanged ---------- */
+:root{
+  --bg:rgba(22,22,22,.96); --pane:#1c1c1c; --nav:#1d1d1d; --border:#000; --line:#2a2a2a;
+  --accent:#ff7c0a; --accent-rgb:255,124,10;
+  --text:#fff; --text2:#b3b3b3; --label:#9d9d9d; --muted:#7a7a7a; --disabled:#4d4d4d;
+  --mana:#4d99ff; --good:#5ccb6e; --bad:#e0605a; --mask:rgba(38,38,38,.7);
+  --friz:"Friz Quadrata TT","Friz Quadrata",Georgia,"Times New Roman",serif;
+  --narrow:"Arial Narrow","Liberation Sans Narrow","Nimbus Sans Narrow",Arial,sans-serif;
+  /* P34's merged grey: text2 and label become one token (see M5) */
+  --label2:#b3b3b3;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:#0b0c0e;color:#ddd}
+body{font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:28px 16px 60px}
+.page{max-width:1240px;margin:0 auto}
+h1{font:600 22px/1.2 system-ui,sans-serif;margin:0 0 6px;color:#f2f2f2;letter-spacing:.2px}
+.lead{color:#9a9a9a;margin:0 0 14px;max-width:960px}
+.mock{margin:0 0 52px}
+.mock h2{font:600 15px/1.3 system-ui,sans-serif;color:#e6e6e6;margin:0 0 4px}
+.mock h2 .n{display:inline-block;min-width:30px;height:22px;line-height:22px;text-align:center;border-radius:4px;background:#26211b;color:var(--accent);margin-right:8px;font-size:12px;padding:0 5px}
+.mock h3{font:600 13px/1.3 system-ui,sans-serif;color:#cfcfcf;margin:18px 0 6px}
+.mock p.cap{color:#8d8d8d;margin:0 0 12px;font-size:13px;max-width:1000px}
+.scroll{overflow-x:auto;padding:14px;border-radius:10px;
+  background:
+   radial-gradient(1200px 500px at 20% 10%, rgba(92,104,62,.55), transparent 60%),
+   radial-gradient(900px 500px at 85% 80%, rgba(110,78,48,.55), transparent 60%),
+   linear-gradient(160deg,#2d3322,#3a2e21 55%,#1f2419);}
+.win{position:relative;margin-top:19px;background:var(--bg);border:1px solid var(--border);box-shadow:0 10px 40px rgba(0,0,0,.55);
+  font-family:var(--friz);color:var(--text);text-shadow:1px 1px 0 #000;flex:none}
+.hdr{position:absolute;left:-1px;right:-1px;top:-20px;height:20px;background:var(--nav);border:1px solid #000;
+  text-align:center;font-size:14px;line-height:20px;color:var(--accent)}
+.hdr .x{position:absolute;right:-1px;top:-1px;width:20px;height:20px;background:rgba(153,26,26,.6);color:#fff;font:13px/19px var(--narrow);text-align:center}
+.hdr .back{position:absolute;left:0;top:0;height:19px;padding:0 8px;background:#1d1d1d;border-right:1px solid #000;color:#fff;font-size:12px;line-height:19px}
+.grip{position:absolute;right:3px;bottom:3px;width:11px;height:11px;
+  background:linear-gradient(135deg,transparent 45%,#5a5a5a 45%,#5a5a5a 52%,transparent 52%,transparent 64%,#5a5a5a 64%,#5a5a5a 71%,transparent 71%,transparent 83%,#5a5a5a 83%,#5a5a5a 90%,transparent 90%)}
+.nav{position:absolute;left:0;top:0;bottom:0;width:108px;background:var(--nav);border-right:1px solid #000;padding-top:1px}
+.nb{position:relative;margin:0 1px -1px;height:22px;border:1px solid #000;background:#1d1d1d;font-size:14px;line-height:20px;text-align:center}
+.nb.on{background:rgba(var(--accent-rgb),.28)}
+.nb.on:before{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--accent)}
+.content{position:absolute;left:116px;top:8px;right:8px;bottom:8px}
+.rail{position:absolute;left:0;top:0;bottom:0;width:172px;background:var(--pane);border:1px solid #000}
+.rail .lbl{height:22px;padding:6px 8px 0;font-size:11px;color:var(--muted);letter-spacing:.6px}
+.rr{position:relative;height:20px;margin-bottom:-1px;border:1px solid transparent;display:flex;align-items:center;font-size:13px}
+.rr .ic{margin-left:4px}
+.rr .nm{margin-left:4px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:clip}
+.rr .rk{font:11px var(--narrow);color:var(--muted);margin-right:6px}
+.rr.sel{background:rgba(var(--accent-rgb),.28)}
+.rr.sel:before{content:"";position:absolute;left:-1px;top:-1px;bottom:-1px;width:2px;background:var(--accent)}
+.rr.hov{background:rgba(var(--accent-rgb),.12)}
+.rr.ov{padding-left:8px}
+.rule{height:1px;background:var(--line);margin:3px 6px 4px}
+.btn{display:inline-block;height:20px;border:1px solid #000;background:#1d1d1d;color:#fff;font:13px/18px var(--friz);text-align:center;padding:0 8px;white-space:nowrap}
+.btn.accb{background:rgba(var(--accent-rgb),.3)}
+.btn.on{background:rgba(var(--accent-rgb),.6)}
+.btn.red{background:rgba(153,26,26,.6)}
+.btn.sm{height:18px;font-size:11px;line-height:16px}
+.btn.dis{color:var(--disabled)}
+.btn + .btn{margin-left:4px}
+.rail .foot{position:absolute;left:3px;right:3px;bottom:4px}
+.rail .foot .btn{width:100%}
+.ic{flex:none;display:inline-block;width:16px;height:16px;border:1px solid #000;box-shadow:inset 0 0 4px rgba(0,0,0,.85);vertical-align:middle}
+.ic.big{width:32px;height:32px}
+.i-ht{background:radial-gradient(circle at 45% 40%,#fff6a8 0,#a8d24a 22%,#3f7a1c 55%,#1c3a0e 100%)}
+.i-rj{background:radial-gradient(circle at 40% 45%,#e7ffd0 0,#79c84f 25%,#6b3f9a 70%,#2a1640 100%)}
+.i-mf{background:radial-gradient(circle at 55% 40%,#ffffff 0,#b9d3ff 20%,#3f57c9 55%,#10163f 100%)}
+.i-wr{background:radial-gradient(circle at 50% 50%,#f6ffb8 0,#a6d93a 25%,#4b7a18 60%,#1d2c0a 100%)}
+.i-er{background:radial-gradient(circle at 40% 60%,#c7e59a 0,#6f8f33 35%,#4a3317 75%,#1d130a 100%)}
+.i-mw{background:radial-gradient(circle at 50% 45%,#f4d8ff 0,#b36ae0 30%,#5b2780 70%,#220d33 100%)}
+.i-th{background:radial-gradient(circle at 50% 45%,#e8d7a2 0,#9b7c3a 35%,#4c3a15 75%,#1d1507 100%)}
+.i-rg{background:radial-gradient(circle at 45% 45%,#e9ffd6 0,#7fd05a 28%,#2f7a2a 62%,#0f2a10 100%)}
+.i-ng{background:radial-gradient(circle at 50% 45%,#d8f7b6 0,#6aa33a 35%,#2f5217 75%,#101d08 100%)}
+/* new stand-ins for the level 60 rail and TBC */
+.i-lb{background:radial-gradient(circle at 50% 40%,#f7ffd8 0,#c6e84a 25%,#5f8f1c 60%,#1f300a 100%)}
+.i-sm{background:radial-gradient(circle at 50% 50%,#fff2cc 0,#ffb44a 28%,#9b4f12 65%,#2f1605 100%)}
+.i-tq{background:radial-gradient(circle at 50% 45%,#e6ffff 0,#6fe0e0 28%,#1f7f86 62%,#0a2628 100%)}
+.i-inv{background:radial-gradient(circle at 50% 45%,#e8f0ff 0,#8fb0ff 28%,#3b3fa8 62%,#12133a 100%)}
+.i-rb{background:radial-gradient(circle at 50% 45%,#fffbe0 0,#e9d36a 28%,#6f8a2a 62%,#1f280a 100%)}
+.i-sf{background:radial-gradient(circle at 50% 40%,#ffffff 0,#ffe7a8 22%,#c9721f 58%,#2e1406 100%)}
+.i-is{background:radial-gradient(circle at 50% 50%,#e6ffd0 0,#9ac43a 30%,#3c4f14 65%,#141a06 100%)}
+.i-hu{background:radial-gradient(circle at 50% 50%,#e8f4ff 0,#9ab8d8 30%,#3c5a7a 65%,#121c28 100%)}
+.i-ff{background:radial-gradient(circle at 50% 50%,#ffe0ff 0,#d67ae0 30%,#6a2a80 65%,#200b28 100%)}
+.i-gw{background:radial-gradient(circle at 50% 45%,#fbe8ff 0,#c98aea 30%,#6a2f8f 66%,#240e33 100%)}
+.i-bk{background:radial-gradient(circle at 50% 50%,#e8d0a8 0,#9a6a3a 35%,#4a2f14 72%,#1a0f05 100%)}
+.i-rc{background:radial-gradient(circle at 50% 50%,#f0e0ff 0,#9f7ad0 30%,#4a2f70 66%,#170d24 100%)}
+.i-ap{background:radial-gradient(circle at 50% 50%,#e0ffe0 0,#6ad06a 30%,#2a6a2a 66%,#0b200b 100%)}
+.i-hb{background:radial-gradient(circle at 50% 50%,#f0f0ff 0,#a0a8d8 30%,#3a4070 66%,#10121f 100%)}
+.i-sa{background:radial-gradient(circle at 50% 50%,#fff0d8 0,#d8b070 30%,#6a4a1a 66%,#20150a 100%)}
+.i-tp{background:radial-gradient(circle at 50% 50%,#e8fff0 0,#7ad0a0 30%,#1f6a4a 66%,#082014 100%)}
+.i-oc{background:radial-gradient(circle at 50% 50%,#fffff0 0,#e0e0a0 30%,#6a6a30 66%,#1f1f0a 100%)}
+.i-po{background:radial-gradient(circle at 50% 50%,#e8ffb0 0,#8ac02a 30%,#3a5a0a 66%,#101a03 100%)}
+.i-sh{background:radial-gradient(circle at 50% 50%,#e0e8ff 0,#7a90c0 30%,#2a3a60 66%,#0a1020 100%)}
+.i-mb{background:radial-gradient(circle at 50% 50%,#f4e0ff 0,#a070ff 25%,#4020b0 60%,#10083a 100%)}
+.view{position:absolute;left:180px;top:0;right:0;bottom:0}
+.vh{position:absolute;left:0;right:0;top:0;height:48px}
+.vh .ic{position:absolute;left:0;top:4px}
+.vh .name{position:absolute;left:42px;top:3px;font-size:16px}
+.vh .sub{position:absolute;left:42px;top:26px;font-size:11px;color:var(--text2)}
+.vh .mana{position:absolute;right:2px;top:5px;font:13px var(--narrow);color:var(--text)}
+.mana-c{color:var(--mana)}
+.strip{position:absolute;left:0;right:0;top:60px;height:44px}
+.chip{position:absolute;left:0;top:0;width:150px;height:44px;background:var(--pane);border:1px solid #000}
+.chip:before{content:"";position:absolute;left:-1px;top:-1px;bottom:-1px;width:2px;background:var(--accent)}
+.chip .k{position:absolute;left:10px;top:4px;font-size:11px;color:var(--accent);letter-spacing:.6px}
+.chip .v{position:absolute;left:10px;top:17px;font-size:18px}
+.cmp{position:absolute;left:162px;right:0;top:5px;font-size:13px;line-height:17px;color:var(--text2)}
+.cmp b{color:var(--text);font-weight:normal}
+.tp{position:absolute;left:0;right:0}
+.tp .t,.tpf .t{font-size:14px;color:var(--accent);height:17px;line-height:17px;letter-spacing:.3px}
+.tp .t .r,.tpf .t .r{float:right;font-size:11px;color:var(--text2);letter-spacing:0}
+.tp .ru,.tpf .ru{height:1px;background:rgba(var(--accent-rgb),.6);box-shadow:1px 1px 0 #000;margin-bottom:9px}
+.tbl{padding:0 8px}
+.tr{position:relative;display:grid;align-items:center;height:20px;font:13px var(--narrow)}
+.tr.h{height:22px;color:var(--muted);font:11px var(--friz);border-bottom:1px solid var(--line)}
+.tr.z{background:rgba(255,255,255,.03)}
+.tr.sug{background:rgba(var(--accent-rgb),.10)}
+.tr.sel{background:rgba(var(--accent-rgb),.28)}
+.tr.sug:before,.tr.sel:before{content:"";position:absolute;left:-8px;top:0;bottom:0;width:2px;background:var(--accent)}
+.tr.hov{background:rgba(var(--accent-rgb),.12)}
+.tr.dis{color:var(--disabled)}
+.tr > div{padding:0 6px;white-space:nowrap;overflow:hidden}
+.tr > .R{text-align:right}
+.tr .rkc{font-family:var(--friz);font-size:13px}
+.tr.h .rkc{font-size:11px}
+.tr .tag{font:11px var(--friz)}
+.tag.best{color:var(--accent)} .tag.max{color:var(--text2)} .tag.dom{color:var(--muted)}
+.barc{display:flex;align-items:center;justify-content:flex-end;gap:4px}
+.bar{width:72px;height:8px;background:rgba(255,255,255,.05);position:relative;flex:none}
+.bar i{position:absolute;left:0;top:0;bottom:0;background:rgba(var(--accent-rgb),.5)}
+.bar.dim i{background:rgba(var(--accent-rgb),.13)}
+.cols{display:grid;grid-template-columns:52px 34px 46px 58px 116px 54px 46px 58px 60px}
+.card{padding:0 8px}
+.card .q{font-size:12px;color:var(--text2);margin-bottom:5px}
+.pairs{display:grid;grid-template-columns:262px 262px;row-gap:0}
+.pairs div{height:17px;font-size:12px;color:var(--label);white-space:nowrap}
+.pairs div span{display:inline-block;min-width:72px}
+.pairs div b{font:13px var(--narrow);color:var(--text);font-weight:normal}
+.foot1{position:absolute;left:8px;bottom:0;font-size:11px;color:var(--muted)}
+.cb{width:14px;height:14px;border:1px solid #000;background:rgba(29,29,29,.9);position:relative;margin-right:6px;flex:none;display:inline-block}
+.cb.on:after{content:"";position:absolute;inset:1px;background:rgba(var(--accent-rgb),.7)}
+.gt{width:318px;background:rgba(12,12,12,.94);border:1px solid #000;padding:7px 9px 8px;font-family:var(--friz);font-size:12px;line-height:15px;text-shadow:1px 1px 0 #000;color:#fff;box-shadow:0 4px 14px rgba(0,0,0,.5)}
+.gt .l{display:flex;justify-content:space-between;gap:10px;white-space:nowrap}
+.gt .l.wrap{white-space:normal;display:block}
+.gt .title{font-size:14px;line-height:18px}
+.gold{color:#ffd100}
+.f6{color:#6fb4ff}
+.gt .sp{height:15px}
+.acc{color:var(--accent)} .lab{color:#9e9e9e} .dim{color:var(--disabled)} .mut{color:var(--muted)} .t2{color:var(--text2)} .man{color:var(--mana)} .w{color:#fff}
+.good{color:var(--good)} .bad{color:var(--bad)} .lb2{color:var(--label2)}
+.tipcap{font:12px system-ui,sans-serif;color:#b8b8b8;margin:0 0 6px;text-shadow:0 1px 2px #000}
+.tipcol{display:flex;flex-direction:column}
+
+/* ---------- new for this page ---------- */
+.toc{display:flex;flex-wrap:wrap;gap:8px 10px;margin:0 0 30px}
+.toc a{font:12px system-ui,sans-serif;color:#cfcfcf;text-decoration:none;background:#16181b;border:1px solid #2a2d31;border-radius:6px;padding:5px 10px}
+.toc a b{color:var(--accent);font-weight:600;margin-right:6px}
+.before{display:flex;gap:14px;align-items:flex-start;background:#141110;border:1px solid #2c2522;border-left:3px solid var(--bad);border-radius:6px;padding:10px 14px;margin:0 0 12px;max-width:1100px;font:12.5px/1.5 system-ui,sans-serif;color:#aaa}
+.before .bt{flex:none;font:700 10.5px/20px system-ui,sans-serif;letter-spacing:1px;color:var(--bad)}
+.before ul{margin:0;padding:0;list-style:none;display:grid;gap:3px}
+.before li{display:flex;gap:9px}
+.before .u{flex:none;font:600 11px/17px ui-monospace,Menlo,Consolas,monospace;color:#f0bdb8;background:#2d1a17;border-radius:3px;padding:0 6px;height:17px;margin-top:1px}
+.after{font:700 10.5px system-ui,sans-serif;letter-spacing:1px;color:var(--good);margin:0 0 6px}
+.row{display:flex;gap:26px;align-items:flex-start;width:max-content}
+.col{display:flex;flex-direction:column;gap:14px}
+.note{font:12px/1.45 system-ui,sans-serif;color:#c9c9c9;max-width:300px;text-shadow:0 1px 2px #000}
+.note b{color:#fff;font-weight:600}
+.panel{position:relative;background:var(--bg);border:1px solid #000;box-shadow:0 8px 28px rgba(0,0,0,.5);font-family:var(--friz);color:#fff;text-shadow:1px 1px 0 #000}
+/* view tabs (level 2): selected fill + 2 px accent bar at the bottom (P30) */
+.vtabs{position:absolute;left:0;top:0;height:20px;display:flex}
+.vt{position:relative;height:20px;border:1px solid #000;margin-right:-1px;background:#1d1d1d;font:13px/18px var(--friz);padding:0 12px;white-space:nowrap}
+.vt.on{background:rgba(var(--accent-rgb),.28)}
+.vt.on:after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--accent)}
+/* titled pane in flow */
+.tpf{position:relative;margin:0 0 12px}
+.ck{display:flex;align-items:center;min-height:20px;font:13px var(--friz);white-space:nowrap}
+.ck + .ck{margin-top:2px}
+.hint{font:11px/14px var(--friz);color:var(--muted);margin:1px 0 5px 20px}
+.lab13{font:13px var(--friz)}
+/* dropdown with an 8x8 chevron texture (P33) */
+.dd{display:inline-flex;align-items:center;justify-content:space-between;height:18px;border:1px solid #000;background:#1d1d1d;font:12px/16px var(--friz);padding:0 5px 0 6px;color:#fff;vertical-align:middle}
+.chev{flex:none;width:8px;height:8px;position:relative;margin-left:8px}
+.chev:after{content:"";position:absolute;left:0;top:2px;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid #b3b3b3}
+.chev.up:after{top:1px;border-top:0;border-bottom:5px solid #b3b3b3}
+.chev.rt:after{left:2px;top:0;border-top:4px solid transparent;border-bottom:4px solid transparent;border-left:5px solid #b3b3b3;border-right:0}
+.chev.lf:after{left:1px;top:0;border-top:4px solid transparent;border-bottom:4px solid transparent;border-right:5px solid #b3b3b3;border-left:0}
+.ddl{position:absolute;background:var(--pane);border:1px solid #000;box-shadow:0 6px 18px rgba(0,0,0,.6);font:12px var(--friz);padding:1px 0}
+.ddl .it{height:18px;line-height:18px;padding:0 8px;display:flex;justify-content:space-between;align-items:center;white-space:nowrap}
+.ddl .it.on{color:var(--accent)}
+.ddl .it.hov{background:rgba(var(--accent-rgb),.12)}
+/* Cell-style slider */
+.sld{position:relative;display:inline-block;vertical-align:top;width:150px;height:60px}
+.sld .sl{position:absolute;left:0;right:0;top:0;text-align:center;font:13px var(--friz)}
+.sld .tr0{position:absolute;left:0;right:0;top:19px;height:10px;border:1px solid #000;background:#1d1d1d}
+.sld .th{position:absolute;top:0;width:8px;height:8px;background:rgba(var(--accent-rgb),.7)}
+.sld .lo,.sld .hi{position:absolute;top:31px;font:11px var(--narrow);color:var(--muted)}
+.sld .lo{left:0} .sld .hi{right:0}
+.sld .eb{position:absolute;left:51px;top:30px;width:48px;height:17px;border:1px solid #000;background:#111;font:12px/15px var(--narrow);text-align:center}
+/* context menu (UI/ContextMenu.lua, the dropdown's list look) */
+.menu{position:absolute;min-width:168px;background:var(--pane);border:1px solid #000;box-shadow:0 8px 22px rgba(0,0,0,.65);padding:2px 0;font:13px var(--friz);z-index:5}
+.menu .mt{height:18px;line-height:18px;padding:0 10px;font-size:11px;color:var(--accent);letter-spacing:.4px}
+.menu .mi{height:20px;line-height:20px;padding:0 10px;display:flex;justify-content:space-between;gap:14px;white-space:nowrap}
+.menu .mi.hov{background:rgba(var(--accent-rgb),.12)}
+.menu .mi.dis{color:var(--disabled)}
+.menu .mi .k{font:11px var(--narrow);color:var(--muted)}
+.menu .mi.dis .k{color:var(--muted)}
+.menu .ms{height:1px;background:var(--line);margin:3px 6px}
+/* thin kit scroll bar: 5 px accent thumb on a dark track */
+.sb{position:absolute;width:7px;border:1px solid #000;background:rgba(26,26,26,.8)}
+.sb i{position:absolute;left:0;width:5px;background:rgba(var(--accent-rgb),.8);box-shadow:0 0 0 1px #000 inset}
+/* Review */
+.rv{display:grid;grid-template-columns:34px 88px 128px 60px 64px 56px 64px 78px 1fr}
+.rvr{display:grid;grid-template-columns:34px 64px 60px 64px 56px 64px 78px 1fr}
+.tr.h.l12{font:12px var(--friz);color:var(--label2)}
+.tr.short{color:var(--muted)}
+.tr .v{font:12px var(--friz)}
+.tr.sel2{background:rgba(var(--accent-rgb),.28)}
+.tr.sel2:before{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--accent)}
+.res .rl{display:grid;grid-template-columns:150px 50px 1fr;height:17px;font-size:12px;align-items:center;white-space:nowrap}
+.res .rl .n{color:var(--label2)}
+.res .rl .s{font:13px var(--narrow)}
+.res .rl .x{color:var(--text2)}
+.res .rl .x b{font:13px var(--narrow);color:#fff;font-weight:normal}
+.cl{height:17px;font-size:12px;white-space:nowrap;color:var(--text2)}
+.cl b{font:13px var(--narrow);color:#fff;font-weight:normal}
+.cl .n{display:inline-block;min-width:22px;color:var(--accent)}
+.cg{display:grid;grid-template-columns:48px 64px 70px 70px 80px 1fr;height:18px;font-size:12px;align-items:center;white-space:nowrap}
+.cg > div{text-align:right;padding-right:10px;font:13px var(--narrow)}
+.cg > div:first-child{text-align:left;font:12px var(--friz);color:var(--label2)}
+.cg.h > div{font:11px var(--friz);color:var(--label2)}
+.pbar{height:4px;background:rgba(255,255,255,.06);position:relative;border:1px solid #000}
+.pbar i{position:absolute;left:0;top:0;bottom:0;background:rgba(var(--accent-rgb),.8)}
+.chat{font:13px/17px var(--friz);color:#fff;text-shadow:1px 1px 0 #000;background:rgba(0,0,0,.25);padding:4px 8px;border-radius:2px;width:max-content}
+.chat .pf{color:var(--accent)}
+/* Replay */
+.band{position:absolute;left:0;right:0;top:0;height:28px;background:var(--pane);border-bottom:1px solid #000;display:flex;align-items:center;justify-content:space-between;padding:0 16px;font-size:13px}
+.band .f b{color:var(--accent);font-weight:normal}
+.band .f .n{font:13px var(--narrow);color:var(--text2)}
+.band .v{display:flex;align-items:center;gap:10px}
+.word{color:var(--muted);border-bottom:1px dotted var(--muted);font-size:12px}
+.ctitle{position:absolute;font:14px var(--friz);letter-spacing:.3px}
+.ctitle .m{font-size:12px;color:var(--muted);letter-spacing:0}
+.sbar{position:absolute;width:390px;height:18px;border:1px solid #000;background:rgba(0,0,0,.45);font:13px/16px var(--friz);overflow:hidden}
+.sbar i{position:absolute;left:0;top:0;bottom:0}
+.sbar span{position:relative}
+.stxt{position:absolute;font:13px var(--friz);color:#b3b3b3}
+.score{position:absolute;width:460px;font:12px var(--friz);color:var(--text2);white-space:nowrap}
+.score b{font:13px var(--narrow);color:#fff;font-weight:normal}
+.uf{position:absolute;width:460px;height:74px;border:1px solid #000;overflow:visible}
+.uf .hp{position:absolute;left:0;top:0;bottom:3px}
+.uf .pw{position:absolute;left:0;bottom:0;height:3px}
+.uf .pwb{position:absolute;left:0;right:0;bottom:0;height:3px;background:#111}
+.uf .nm{position:absolute;left:0;right:0;top:18px;text-align:center;font:20px var(--friz);color:#fff}
+.uf .df{position:absolute;right:4px;bottom:5px;font:18px var(--narrow);color:#fff}
+.uf .ro{position:absolute;left:1px;top:1px;width:18px;height:18px;border-radius:50%;border:1px solid #000;font:11px/16px var(--narrow);text-align:center;color:#fff}
+.ro.t{background:radial-gradient(circle at 40% 35%,#8fb4ff,#1f3f99)} .ro.h{background:radial-gradient(circle at 40% 35%,#9ff08f,#1f7a1f)} .ro.d{background:radial-gradient(circle at 40% 35%,#ff9f8f,#8a1f1f)}
+.uf .ag{position:absolute;left:0;top:-8px;width:32px;height:6px;border:1px solid #000;background:#e02020}
+.uf .hots{position:absolute;right:1px;top:-5px;display:flex;flex-direction:row-reverse;gap:0}
+.uf .hot{position:relative;width:21px;height:21px;border:1px solid #000;margin-left:-1px}
+.uf .hot s{position:absolute;right:1px;bottom:-1px;font:11px var(--narrow);text-decoration:none;color:#fff}
+.uf .smd{position:absolute;right:2px;top:19px;width:14px;height:14px;border:1px solid #000;background:#ff9933}
+.uf .db{position:absolute;left:2px;bottom:6px;width:21px;height:21px;border:1px solid #000}
+.uf .st{position:absolute;left:0;right:0;bottom:3px;height:20px;background:rgba(0,0,0,.55);text-align:center;font:16px/20px var(--friz)}
+.uf .tick{position:absolute;top:0;bottom:3px;width:3px;background:rgba(255,255,255,.85);box-shadow:0 0 0 1px rgba(0,0,0,.6)}
+.uf.tgt{box-shadow:0 0 0 2px #59d959}
+.scrub{position:absolute;height:14px;border:1px solid #000;background:#1d1d1d}
+.scrub .mk{position:absolute;top:2px;width:1px;height:8px}
+.scrub .mk.big{top:-3px;height:18px;width:2px;background:#ff9f4a}
+.scrub .th{position:absolute;top:-3px;width:6px;height:18px;background:var(--accent)}
+.kc{display:inline-block;min-width:18px;height:16px;border:1px solid #000;background:#1d1d1d;font:11px/14px var(--narrow);text-align:center;padding:0 4px;color:#fff;vertical-align:middle}
+.kc.on{border-color:rgba(var(--accent-rgb),.9);color:var(--accent)}
+.khint{position:absolute;font:12px var(--friz);color:var(--text2);white-space:nowrap}
+.khint .m{color:var(--muted);font-size:11px}
+.crop{position:absolute;left:0;right:0;bottom:0;height:40px;background:linear-gradient(transparent,rgba(22,22,22,.98));font:11px system-ui,sans-serif;color:#9a9a9a;display:flex;align-items:flex-end;justify-content:center;padding-bottom:4px;text-shadow:none}
+/* clocks and minimap */
+.clk{position:relative;width:180px;height:30px;background:rgba(22,22,22,.96);border:1px solid #000;font:13px var(--friz);text-shadow:1px 1px 0 #000}
+.clk .tx{position:absolute;left:0;right:0;top:3px;text-align:center;white-space:nowrap}
+.clk .bk{position:absolute;left:9px;bottom:4px;width:162px;height:6px;background:#000}
+.clk .bf{position:absolute;left:1px;top:1px;height:4px}
+.old{font:bold 14px Arial,Helvetica,sans-serif;color:#fff;text-shadow:-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000,1px 1px 0 #000;white-space:nowrap}
+.world{position:relative;border-radius:4px;border:1px solid #000;overflow:hidden;
+  background:radial-gradient(260px 120px at 30% 30%,#6b7a45,transparent 70%),radial-gradient(260px 140px at 80% 90%,#7a5a38,transparent 70%),#3a3826}
+.mm{position:relative;width:150px;height:150px;border-radius:50%;
+  background:radial-gradient(circle at 45% 40%,#7c8a4a 0,#5a6a34 30%,#3f4a26 60%,#2a2f1b 100%);
+  box-shadow:0 0 0 4px #2a2418,0 0 0 6px #6d5a2c,0 0 0 7px #000,0 6px 18px rgba(0,0,0,.6)}
+.mm:before{content:"";position:absolute;left:66px;top:66px;width:0;height:0;border-left:8px solid transparent;border-right:8px solid transparent;border-bottom:16px solid #f2f2f2;filter:drop-shadow(0 0 1px #000)}
+.mm .road{position:absolute;left:10px;top:84px;width:130px;height:5px;background:#9a8a5a;transform:rotate(-18deg);opacity:.7}
+.mmb{position:absolute;width:31px;height:31px}
+.mmb .ring{position:absolute;left:-1px;top:-1px;width:33px;height:33px;border-radius:50%;
+  background:radial-gradient(circle,transparent 58%,#2a2210 60%,#c9a24a 66%,#f3d98a 72%,#9a7a2a 80%,#2a2210 86%,transparent 88%)}
+.mmb .icon{position:absolute;left:6px;top:6px;width:19px;height:19px;border-radius:50%;
+  background:radial-gradient(circle at 45% 40%,#f6e8ff 0,#b27aff 22%,#5a2fd0 55%,#1a0a4a 100%)}
+.swatches{display:flex;gap:16px;flex-wrap:wrap}
+.swg{display:flex;flex-direction:column;gap:6px}
+.sw{display:flex;align-items:center;gap:8px;font:12px system-ui,sans-serif;color:#bbb}
+.sw i{width:26px;height:18px;border:1px solid #000;display:inline-block}
+.sw .demo{font:12px var(--friz);text-shadow:1px 1px 0 #000;margin-left:4px}
+.choices{background:#121315;border:1px solid #2a2d31;border-radius:8px;padding:14px 18px;font:13px/1.55 system-ui,sans-serif;color:#b8b8b8;max-width:1100px}
+.choices li{margin:0 0 6px}
+.choices b{color:#eee}
+.pointer{position:absolute;width:14px;height:20px;z-index:9}
+.rail .undo{position:absolute;left:8px;right:6px;bottom:30px;font-size:11px;color:var(--text2)}
+.rail .undo b{color:var(--accent);font-weight:normal}
+/* P30: a button group's active member = selected fill + 2 px accent bar */
+.btn.act{background:rgba(var(--accent-rgb),.28);box-shadow:inset 0 -2px 0 var(--accent)}
+/* P34: the selected rank = a white 2 px bar; the fill is the suggested row's alone */
+.tr.pick:before{content:"";position:absolute;left:-8px;top:0;bottom:0;width:2px;background:#fff}
+</style></head><body><div class="page">
+
+<h1>SpellTuner: the refactor's UI mockups, M1 to M6</h1>
+<p class="lead">For the author to approve before waves 11-17 and wave C start (docs/PLAN-refactor-ux.md section 7). Each panel opens with what is wrong today (a short BEFORE note citing the review's U-number, docs/review/2026-09-30-project-review.md), then draws the new design at 1:1 in UI units with the approved Forever palette, fonts and sizes (SPEC-forever-ui.md section 4, docs/mockups/forever-ui.html). Section 8.1's answers are already applied: TBC gets the new UI, Review coaches a failed fight from the row menu's <i>Coach anyway</i> (no star, no shift-click), a placeholder's <i>Turn on</i> loads the module, <i>dominated</i> becomes <i>beaten</i> with a tooltip, each group keeps its own window size, both lines get the minimap button, and the replay's keys work only under the pointer and never in combat.</p>
+<p class="lead" style="margin-bottom:18px">Forever frames use the level 10 druid from the approved mockup (364 mana). Review and the replay use the author's TBC dungeon recordings (Underbog), since decision 10 brings the same panes to TBC. The TBC Spells view uses the model's own numbers for a level 70 druid at +1150 healing and 9800 mana, computed with the offline harness. The web fonts stand in for Friz Quadrata and Arial Narrow. All the text drawn inside the UI is ASCII.</p>
+<div class="toc">
+<a href="#m1"><b>M1</b>Settings you can reach, About, Turn on</a>
+<a href="#m2"><b>M2</b>Review answers in the window</a>
+<a href="#m3"><b>M3</b>The replay while coaching</a>
+<a href="#m4"><b>M4</b>Kit behaviours: rail, lists, text size</a>
+<a href="#m5"><b>M5</b>Words and tones</a>
+<a href="#m6"><b>M6</b>TBC: Spells view, one clock, minimap</a>
+<a href="#choices"><b>?</b>Where the mockups chose</a>
+</div>
+
+<!-- =============================================================== M1 -->
+<section class="mock" id="m1"><h2><span class="n">M1</span>Settings you can reach (P26), About, and a placeholder that turns the module on (P29)</h2>
+<div class="before"><span class="bt">BEFORE</span><ul>
+<li><span class="u">U18</span>The Forever clock shows only in combat or under 90% mana, so it cannot be placed at full mana. Lock is only <i>/st clock lock</i>: there is no reset, no preview and no click action.</li>
+<li><span class="u">U24</span>Five Review settings (auto-coach, next pull, ticks, rebinds, full health) have no control. The console, dump and measure are slash-only, and there is no command list.</li>
+<li><span class="u">U15</span><i>Font offset</i> and <i>Window scale</i> both make things bigger, and tooltips ignore the window scale. <span class="u">U31</span> The right half of General is empty.</li>
+<li><span class="u">U11</span>The placeholder says "Review needs the Replay module - Settings -&gt; Modules" in plain text, which takes four clicks. A module that "unloads at your next /reload" has no Reload button.</li>
+</ul></div>
+<div class="after">AFTER: SETTINGS -&gt; GENERAL IN TWO COLUMNS, LOCK UNTICKED (THE CLOCK PREVIEWS FOR 60 S), A HOVERED CONTROL EXPLAINING ITSELF</div>
+<div class="scroll"><div class="row">
+<div class="win" style="width:860px;height:560px;"><div class="hdr">SpellTuner<span class="x">x</span></div>
+<div class="nav"><div class="nb">Spells</div><div class="nb">Reports</div><div class="nb">Simulate</div><div class="nb on">Settings</div></div>
+<div class="content">
+<div class="vtabs"><div class="vt on">General</div><div class="vt">Modules</div><div class="vt">About</div></div>
+<!-- left column -->
+<div style="position:absolute;left:0;top:32px;width:352px">
+ <div class="tpf"><div class="t">SPELL TOOLTIPS</div><div class="ru"></div>
+  <div class="ck"><span class="cb on"></span>Add SpellTuner lines to spell tooltips</div>
+  <div class="ck" style="margin-top:6px"><span class="lab13" style="margin-left:20px">Detail lines</span><span class="dd" style="width:120px;margin-left:8px">With Shift<span class="chev"></span></span></div>
+ </div>
+ <div class="tpf"><div class="t">APPEARANCE</div><div class="ru"></div>
+  <div style="display:flex;gap:40px;padding-left:5px;margin-top:4px">
+   <div><div class="sld"><div class="sl">Text size</div><div class="tr0"><div class="th" style="left:70px"></div></div><div class="lo">-2</div><div class="eb">0</div><div class="hi">+2</div></div>
+    <div class="hint" style="margin:0;width:150px">Every SpellTuner text, one size bigger or smaller.</div></div>
+   <div><div class="sld"><div class="sl">Window size</div><div class="tr0"><div class="th" style="left:85px"></div></div><div class="lo">70%</div><div class="eb">100%</div><div class="hi">120%</div></div>
+    <div class="hint" style="margin:0;width:150px">Every SpellTuner window, and the tooltips in it.</div></div>
+  </div>
+ </div>
+ <div class="tpf" style="margin-top:14px"><div class="t">WINDOWS</div><div class="ru"></div>
+  <div class="ck"><span class="lab13" style="margin-left:5px">In combat</span><span class="dd" style="width:160px;margin-left:8px">Hide, reopen after<span class="chev"></span></span></div>
+  <div class="ck" style="margin-top:6px"><span class="cb on"></span>Close one window per ESC</div>
+  <div class="ck"><span class="cb on"></span>Minimap button</div>
+  <div class="hint">Left-click opens the window, right-click opens Settings.</div>
+  <div style="margin:4px 0 0 0"><span class="btn" style="width:170px">Reset window positions</span></div>
+ </div>
+</div>
+<!-- right column -->
+<div style="position:absolute;left:376px;top:32px;width:360px">
+ <div class="tpf"><div class="t">MANA CLOCK</div><div class="ru"></div>
+  <div class="ck"><span class="cb on"></span>Show the mana clock</div>
+  <div class="ck"><span class="cb"></span>Lock in place</div>
+  <div class="hint">Unlocked: the clock stays up for 60 s, even at full mana, so you can drag it.</div>
+  <div style="margin:2px 0 0 20px"><span class="btn" style="width:112px">Reset position</span><span class="btn" style="width:86px">Show now</span></div>
+  <div class="hint" style="margin-top:5px">Left-click the clock to open this window.</div>
+ </div>
+ <div class="tpf"><div class="t">REVIEW <span class="r">needs the Replay module</span></div><div class="ru"></div>
+  <div class="ck"><span class="cb on"></span>Coach a fight when it opens</div>
+  <div class="ck" style="background:rgba(var(--accent-rgb),.12);margin:2px -4px 0;padding-left:4px"><span class="cb on"></span>Next pull follows</div>
+  <div class="ck"><span class="cb on"></span>Snapshot ticks on the bars</div>
+  <div class="ck"><span class="cb"></span>Let Coach change ranks</div>
+  <div style="margin:12px 0 0 20px"><div class="sld" style="width:160px"><div class="sl">Full health is above</div><div class="tr0"><div class="th" style="left:81px"></div></div><div class="lo">70%</div><div class="eb" style="left:56px">85%</div><div class="hi">99%</div></div></div>
+ </div>
+ <div class="tpf" style="margin-top:0"><div class="t">TOOLS</div><div class="ru"></div>
+  <div style="margin-left:5px"><span class="btn" style="width:104px">Debug console</span><span class="btn" style="width:108px">Copy /st dump</span><span class="btn" style="width:98px">Measure: off</span></div>
+  <div class="hint" style="margin:4px 0 0 5px">Measure checks each cast that lands against its own text.</div>
+ </div>
+</div>
+<!-- the hovered control's tooltip (the kit tooltip, P32) -->
+<div class="gt" style="position:absolute;left:490px;top:258px;width:238px;z-index:4"><div class="l title"><span>Next pull follows</span></div><div class="l wrap t2">In a run, a pull played to its end opens the next one. Off: the replay stops at each pull's end.</div></div>
+</div><div class="grip" style="display:none"></div></div>
+<div class="col" style="padding-top:40px">
+ <div class="tipcap">The clock preview while Lock is unticked (60 s)</div>
+ <div class="clk" style="outline:1px dashed rgba(255,255,255,.4);outline-offset:4px"><div class="tx acc">SpellTuner - drag me</div><div class="bk"><div class="bf" style="width:160px;background:var(--accent)"></div></div></div>
+ <div class="note" style="margin-top:10px">Both columns fit at 860 x 560, so the resize grip is gone (P31: it hides where a group's minimum equals its size). <b>Show now</b> and unticking <b>Lock in place</b> do the same thing: 60 s of the clock at any mana level, as on TBC. <b>Minimap button</b> is new because the author answered yes to decision 10. The REVIEW pane's note says which module these settings belong to.</div>
+ <div class="tipcap" style="margin-top:14px">The slider tooltip, shown when you hover the slider</div>
+ <div class="gt" style="width:260px"><div class="l title"><span>Window size</span></div><div class="l wrap t2">Makes the main, replay and practice windows bigger or smaller, along with the console, the copy box and the tooltips inside them.</div></div>
+</div>
+</div></div>
+
+<h3>About: the command list, from MD:Commands() (P26)</h3>
+<div class="scroll"><div class="win" style="width:860px;height:560px;"><div class="hdr">SpellTuner<span class="x">x</span></div>
+<div class="nav"><div class="nb">Spells</div><div class="nb">Reports</div><div class="nb">Simulate</div><div class="nb on">Settings</div></div>
+<div class="content">
+<div class="vtabs"><div class="vt">General</div><div class="vt">Modules</div><div class="vt on">About</div></div>
+<div style="position:absolute;left:0;right:0;top:32px">
+ <div style="font-size:16px">SpellTuner <span style="font:15px var(--narrow)">0.16.4</span><span class="mut" style="font-size:12px;margin-left:10px">WoW: Forever, build 70058</span></div>
+ <div class="t2" style="font-size:12px;margin:4px 0 14px">Your spells rank by rank, your mana clock, and your fights recorded, replayed and coached.</div>
+ <div class="tpf"><div class="t">COMMANDS <span class="r">/st and /md both answer</span></div><div class="ru"></div>
+  <div style="display:grid;grid-template-columns:196px 1fr;row-gap:1px;font-size:12px;line-height:17px;padding-left:5px">
+   <div style="font:13px var(--narrow)">/st</div><div class="t2">open the SpellTuner window</div>
+   <div style="font:13px var(--narrow)">/st help</div><div class="t2">this list, in chat</div>
+   <div style="font:13px var(--narrow)">/st spell &lt;name&gt;</div><div class="t2">open that spell's view in the Spells list</div>
+   <div style="font:13px var(--narrow)">/st clock [lock]</div><div class="t2">show or hide the mana clock, or lock it in place</div>
+   <div style="font:13px var(--narrow)">/st tooltip [why]</div><div class="t2">the SpellTuner block on spell tooltips on or off</div>
+   <div style="font:13px var(--narrow)">/st measure [dump / clear]</div><div class="t2">measure a landed cast against its own description</div>
+   <div style="font:13px var(--narrow)">/st modules</div><div class="t2">switch the Recorder, Replay and Practice modules on or off</div>
+   <div style="font:13px var(--narrow)">/st ui reset</div><div class="t2">every window back at its default place and size</div>
+   <div style="font:13px var(--narrow)">/st debug</div><div class="t2">the debug console</div>
+   <div style="font:13px var(--narrow)">/st dump</div><div class="t2">one copyable block for a bug report</div>
+   <div style="font:13px var(--narrow)">/st probe</div><div class="t2">the capability report for the planner</div>
+  </div>
+ </div>
+ <div class="tpf" style="margin-top:14px"><div class="t">WITH THE MODULES</div><div class="ru"></div>
+  <div style="display:grid;grid-template-columns:196px 1fr 120px;row-gap:1px;font-size:12px;line-height:17px;padding-left:5px">
+   <div style="font:13px var(--narrow)">/st rec</div><div class="t2">the recordings this character keeps</div><div class="mut" style="font-size:11px">Recorder</div>
+   <div style="font:13px var(--narrow)">/st replay &lt;n&gt;</div><div class="t2">play a recorded fight as unit frames</div><div class="mut" style="font-size:11px">Replay</div>
+   <div style="font:13px var(--narrow)">/st validate &lt;n&gt;</div><div class="t2">run the gates on a fight</div><div class="mut" style="font-size:11px">Replay</div>
+   <div style="font:13px var(--narrow)">/st coach &lt;n&gt; [force]</div><div class="t2">coach a fight; force coaches one that does not replay</div><div class="mut" style="font-size:11px">Replay</div>
+   <div style="font:13px var(--narrow);color:var(--disabled)">/st practice</div><div class="dim">heal a fight you play, then review it</div><div class="dim" style="font-size:11px">Practice - off</div>
+   <div style="font:13px var(--narrow);color:var(--disabled)">/st binds [check]</div><div class="dim">your practice bindings, or a report of them</div><div class="dim" style="font-size:11px">Practice - off</div>
+  </div>
+ </div>
+</div>
+<div class="foot1">Usages in Arial Narrow, one column. A module that is off lists its commands greyed.</div>
+</div></div></div>
+
+<h3>The Review placeholder with Replay off: Turn on loads it (P29, answer 6)</h3>
+<div class="scroll"><div class="row">
+<div class="win" style="width:1036px;height:646px;"><div class="hdr">SpellTuner<span class="x">x</span></div>
+<div class="nav"><div class="nb">Spells</div><div class="nb on">Reports</div><div class="nb">Simulate</div><div class="nb">Settings</div></div>
+<div class="content">
+<div class="vtabs"><div class="vt on">Review</div></div>
+<div style="position:absolute;left:0;right:0;top:236px;text-align:center">
+ <div style="font-size:11px;color:var(--accent);letter-spacing:.8px;margin-bottom:6px">REVIEW</div>
+ <div style="font-size:16px">Review needs the Replay module</div>
+ <div class="t2" style="font-size:12px;margin:6px auto 14px;max-width:470px;line-height:17px">Replay plays a recorded fight back as unit frames and coaches it. It needs Recorder, which turns on with it.</div>
+ <span class="btn accb" style="width:110px;height:22px;line-height:20px">Turn on</span>
+ <div class="mut" style="font-size:11px;margin-top:10px">Loads now, no reload. To turn it off again: Settings -&gt; Modules.</div>
+</div>
+<div class="foot1">Simulate -&gt; Practice has the same placeholder: "Practice needs the Practice module".</div>
+</div></div>
+<div class="col" style="padding-top:20px">
+ <div class="tipcap">Settings -&gt; Modules after Replay was switched off this session</div>
+ <div class="panel" style="width:430px;height:124px">
+  <div style="position:absolute;left:10px;top:10px;right:10px">
+   <div class="ck"><span class="cb on"></span>Recorder</div>
+   <div class="mut" style="font-size:11px;margin:0 0 0 20px;line-height:14px">records your fights: health, heals, casts and mana<br>loaded</div>
+   <div class="ck" style="margin-top:8px"><span class="cb"></span>Replay</div>
+   <div class="mut" style="font-size:11px;margin:0 0 0 20px;line-height:14px">replays a recorded fight and coaches it - needs Recorder</div>
+   <div style="margin:2px 0 0 20px;display:flex;align-items:center;justify-content:space-between"><span style="font-size:11px;color:var(--text2)">off - unloads at your next reload</span><span class="btn sm" style="width:84px">Reload UI</span></div>
+  </div>
+ </div>
+ <div class="note" style="margin-top:8px">A module that is still loaded but switched off gets a <b>Reload UI</b> button on its row. The placeholder shows only while the module is not loaded, so it never needs that button.</div>
+ <div class="tipcap" style="margin-top:12px">The first time the window hides for combat (one chat line, P29)</div>
+ <div class="chat"><span class="pf">SpellTuner:</span> the window hides in combat and comes back after. Settings -&gt; General -&gt; Windows.</div>
+</div>
+</div></div>
+</section>
+
+<!-- =============================================================== M2 -->
+<section class="mock" id="m2"><h2><span class="n">M2</span>Review answers in the window (P27)</h2>
+<div class="before"><span class="bt">BEFORE</span><ul>
+<li><span class="u">U20</span>Validate, Coach and the auto-coach print to chat, where the card scrolls away under party chat.</li>
+<li><span class="u">U22</span>Playing a fight takes four clicks (row, then Play). <i>Coach*</i> means "shift-click to force", which only the hover explains. Otherwise forcing takes a slash command quoted in a tooltip.</li>
+<li><span class="u">U25</span>A 36-pull run shows about 30 rows, and nothing says the rest are cut off. <span class="u">U17</span> The rows are 16 px and the numbers are left-justified in GameFontHighlightSmall. <span class="u">U28</span> The gate tooltip opens at the far right of an 852-px row.</li>
+</ul></div>
+<div class="after">AFTER, FRAME 1: A 36-PULL RUN, SCROLLED; PULL 7 VALIDATED IN THE RESULT PANE; THE ROW MENU OPEN ON IT</div>
+<div class="scroll"><div class="col">
+<div class="win" style="width:1036px;height:646px;"><div class="hdr">SpellTuner<span class="x">x</span></div>
+<div class="nav"><div class="nb">Spells</div><div class="nb on">Reports</div><div class="nb">Simulate</div><div class="nb">Settings</div></div>
+<div class="content">
+<div class="vtabs"><div class="vt">Waste</div><div class="vt on">Review</div></div>
+<div style="position:absolute;left:0;top:30px;display:flex"><span class="btn" style="width:70px;margin-right:-1px">Fights</span><span class="btn act" style="width:92px;margin:0 -1px 0 0">Underbog</span><span class="btn" style="width:92px;margin:0 -1px 0 0">Slave Pens</span><span class="btn" style="width:74px;margin:0">Practice</span></div>
+<div style="position:absolute;left:0;right:0;top:55px;font-size:11px;color:var(--accent);white-space:nowrap">run Underbog: 36 pulls, 44:12, combat 49%&nbsp;&nbsp;&nbsp;<span class="t2">drank 5x (3:40, 142 mana/s)&nbsp;&nbsp;&nbsp;pinned</span></div>
+<div style="position:absolute;left:0;right:10px;top:74px">
+ <div class="tr h l12 rvr" style="padding:0 0"><div class="R">#</div><div class="R">At</div><div class="R">Length</div><div class="R">Targets</div><div class="R">Casts</div><div class="R">Spent</div><div class="R">Low mana</div><div style="padding-left:16px">Result</div></div>
+ <div class="tr rvr"><div class="R">1</div><div class="R">0:12</div><div class="R">0:48</div><div class="R">3</div><div class="R">14</div><div class="R">1.9k</div><div class="R">71%</div><div class="v good" style="padding-left:16px">replays</div></div>
+ <div class="tr rvr z"><div class="R">2</div><div class="R">1:35</div><div class="R">1:02</div><div class="R">4</div><div class="R">19</div><div class="R">2.6k</div><div class="R">58%</div><div class="v good" style="padding-left:16px">replays</div></div>
+ <div class="tr rvr short"><div class="R">3</div><div class="R">3:10</div><div class="R">0:14</div><div class="R">2</div><div class="R">3</div><div class="R">310</div><div class="R">96%</div><div class="v" style="padding-left:16px">short - under 20 s, not coached</div></div>
+ <div class="tr rvr z"><div class="R">4</div><div class="R">4:02</div><div class="R">1:21</div><div class="R">5</div><div class="R">26</div><div class="R">3.4k</div><div class="R">44%</div><div class="v good" style="padding-left:16px">replays</div></div>
+ <div class="tr rvr"><div class="R">5</div><div class="R">6:40</div><div class="R">0:52</div><div class="R">3</div><div class="R">17</div><div class="R">2.1k</div><div class="R">63%</div><div class="v mut" style="padding-left:16px">not checked</div></div>
+ <div class="tr rvr z short"><div class="R">6</div><div class="R">8:05</div><div class="R">0:09</div><div class="R">1</div><div class="R">2</div><div class="R">180</div><div class="R">97%</div><div class="v" style="padding-left:16px">short - under 20 s, not coached</div></div>
+ <div class="tr rvr sel2"><div class="R">7</div><div class="R">9:14</div><div class="R">1:52</div><div class="R">5</div><div class="R">38</div><div class="R">5.6k</div><div class="R">27%</div><div class="v bad" style="padding-left:16px">does not replay: health</div></div>
+ <div class="tr rvr z"><div class="R">8</div><div class="R">12:30</div><div class="R">1:10</div><div class="R">4</div><div class="R">22</div><div class="R">2.9k</div><div class="R">52%</div><div class="v good" style="padding-left:16px">replays</div></div>
+ <div class="tr rvr"><div class="R">9</div><div class="R">14:48</div><div class="R">0:58</div><div class="R">3</div><div class="R">18</div><div class="R">2.2k</div><div class="R">60%</div><div class="v good" style="padding-left:16px">replays</div></div>
+ <div class="tr rvr z"><div class="R">10</div><div class="R">16:22</div><div class="R">1:44</div><div class="R">5</div><div class="R">34</div><div class="R">4.6k</div><div class="R">31%</div><div class="v bad" style="padding-left:16px">does not replay: foreign healing</div></div>
+ <div class="tr rvr"><div class="R">11</div><div class="R">19:05</div><div class="R">0:33</div><div class="R">2</div><div class="R">9</div><div class="R">940</div><div class="R">85%</div><div class="v mut" style="padding-left:16px">not checked</div></div>
+ <div class="tr rvr z"><div class="R">12</div><div class="R">20:41</div><div class="R">1:15</div><div class="R">4</div><div class="R">24</div><div class="R">3.1k</div><div class="R">49%</div><div class="v good" style="padding-left:16px">replays</div></div>
+ <div class="tr rvr short"><div class="R">13</div><div class="R">22:30</div><div class="R">0:18</div><div class="R">1</div><div class="R">4</div><div class="R">420</div><div class="R">93%</div><div class="v" style="padding-left:16px">short - under 20 s, not coached</div></div>
+ <div class="tr rvr z"><div class="R">14</div><div class="R">23:36</div><div class="R">1:28</div><div class="R">5</div><div class="R">29</div><div class="R">3.8k</div><div class="R">38%</div><div class="v good" style="padding-left:16px">replays</div></div>
+</div>
+<div class="sb" style="left:905px;top:96px;height:282px"><i style="top:0;height:109px"></i></div>
+<!-- the row menu, opened by a right-click on pull 7 -->
+<div class="menu" style="left:420px;top:236px"><div class="mt">PULL 7 - 9:14</div><div class="mi">Play<span class="k">double-click</span></div><div class="mi">Validate</div><div class="mi dis">Coach<span class="k">does not replay</span></div><div class="mi hov">Coach anyway</div><div class="ms"></div><div class="mi">Pin the run</div><div class="mi">Export</div></div>
+<svg class="pointer" style="left:470px;top:318px" viewBox="0 0 14 20"><path d="M1 1 L1 16 L5 12 L8 19 L10.5 18 L7.5 11 L13 11 Z" fill="#fff" stroke="#000" stroke-width="1.2"/></svg>
+<!-- RESULT -->
+<div class="tp res" style="top:392px"><div class="t">RESULT <span class="r">pull 7 of Underbog, 9:14 - validated just now</span></div><div class="ru"></div>
+ <div style="padding:0 8px">
+ <div class="rl"><span class="n">mana mean</span><span class="s good">ok</span><span class="x">mean off by <b>1.2%</b> of pool (limit 2%)</span></div>
+ <div class="rl"><span class="n">mana max</span><span class="s good">ok</span><span class="x">worst sample off by <b>3.9%</b> of pool (limit 5%)</span></div>
+ <div class="rl"><span class="n">spend coverage</span><span class="s good">ok</span><span class="x"><b>96%</b> of the mana is accounted for (91% healing, 5% replayed as cast)</span></div>
+ <div class="rl"><span class="n bad">health curves</span><span class="s bad">FAIL</span><span class="x bad">no target reproduced within 5% mean / 15% worst - worst: Lunaria, 11% mean</span></div>
+ <div class="rl"><span class="n">no tracked death</span><span class="s good">ok</span><span class="x">nobody died</span></div>
+ <div class="rl"><span class="n">foreign healing</span><span class="s good">ok</span><span class="x"><b>6%</b> of healing on your group was somebody else's (limit 25%)</span></div>
+ <div class="rl"><span class="n">model calibrated</span><span class="s good">ok</span><span class="x">every spell within 10% of the model</span></div>
+ <div class="mut" style="font-size:11px;margin-top:7px">The engine cannot rebuild this pull's health, so a plan made from it would be advice about a different fight. <span class="t2">Right-click the row -&gt; Coach anyway</span> to coach it regardless.</div>
+ </div>
+</div>
+<!-- buttons -->
+<div style="position:absolute;left:0;right:0;top:604px;display:flex;align-items:center;justify-content:space-between">
+ <div style="display:flex;align-items:center;gap:12px"><span class="btn sm" style="width:76px">Start run</span><span class="mut" style="font-size:11px">Double-click a row to play it. Right-click for everything else.</span></div>
+ <div><span class="btn sm" style="width:72px">Validate</span><span class="btn sm dis" style="width:82px">Coach pull</span><span class="btn sm" style="width:80px">Coach run</span><span class="btn sm" style="width:48px">Play</span><span class="btn sm" style="width:68px">Unpin</span><span class="btn sm" style="width:60px">Export</span></div>
+</div>
+</div></div>
+<div class="tipcap" style="margin-top:4px">What chat still gets: one line</div>
+<div class="chat"><span class="pf">SpellTuner:</span> pull 7 validated - does not replay (health curves). The details are in Review.</div>
+</div></div>
+
+<div class="after" style="margin-top:22px">AFTER, FRAME 2: THE FIGHTS LIST WITH A COACH CARD IN THE RESULT PANE, AND THE SAME PANE WHILE THE SEARCH RUNS</div>
+<div class="scroll"><div class="row">
+<div class="win" style="width:1036px;height:646px;"><div class="hdr">SpellTuner<span class="x">x</span></div>
+<div class="nav"><div class="nb">Spells</div><div class="nb on">Reports</div><div class="nb">Simulate</div><div class="nb">Settings</div></div>
+<div class="content">
+<div class="vtabs"><div class="vt">Waste</div><div class="vt on">Review</div></div>
+<div style="position:absolute;left:0;top:30px;display:flex"><span class="btn act" style="width:70px;margin-right:-1px">Fights</span><span class="btn" style="width:92px;margin:0 -1px 0 0">Underbog</span><span class="btn" style="width:92px;margin:0 -1px 0 0">Slave Pens</span><span class="btn" style="width:74px;margin:0">Practice</span></div>
+<div style="position:absolute;left:0;right:0;top:55px;font-size:11px;color:var(--text2)">Your last 8 fights over 20 s. The two pinned ones are never replaced.</div>
+<div style="position:absolute;left:0;right:0;top:74px">
+ <div class="tr h l12 rv"><div class="R">#</div><div>When</div><div>Zone</div><div class="R">Length</div><div class="R">Targets</div><div class="R">Casts</div><div class="R">Spent</div><div class="R">Low mana</div><div style="padding-left:16px">Result</div></div>
+ <div class="tr rv"><div class="R">1</div><div class="v">today 21:52</div><div class="v">Underbog</div><div class="R">0:58</div><div class="R">3</div><div class="R">18</div><div class="R">2.2k</div><div class="R">60%</div><div class="v good" style="padding-left:16px">replays</div></div>
+ <div class="tr rv sel2"><div class="R">2</div><div class="v">today 21:31</div><div class="v">Underbog</div><div class="R">2:04</div><div class="R">5</div><div class="R">41</div><div class="R">5.8k</div><div class="R">24%</div><div class="v" style="padding-left:16px"><span class="good">replays</span><span class="t2"> - coached: 1.9k less mana</span></div></div>
+ <div class="tr rv z"><div class="R">3</div><div class="v">today 21:14</div><div class="v">Underbog</div><div class="R">1:52</div><div class="R">5</div><div class="R">38</div><div class="R">5.6k</div><div class="R">27%</div><div class="v bad" style="padding-left:16px">does not replay: health</div></div>
+ <div class="tr rv"><div class="R">4</div><div class="v">today 20:47</div><div class="v">Underbog</div><div class="R">1:21</div><div class="R">5</div><div class="R">26</div><div class="R">3.4k</div><div class="R">44%</div><div class="v good" style="padding-left:16px">replays</div></div>
+ <div class="tr rv z"><div class="R">5</div><div class="v">today 20:30</div><div class="v">The Slave Pens</div><div class="R">1:44</div><div class="R">5</div><div class="R">34</div><div class="R">4.6k</div><div class="R">31%</div><div class="v mut" style="padding-left:16px">not checked</div></div>
+ <div class="tr rv"><div class="R">6</div><div class="v">yesterday 22:15</div><div class="v">The Slave Pens</div><div class="R">1:09</div><div class="R">4</div><div class="R">20</div><div class="R">2.7k</div><div class="R">55%</div><div class="v good" style="padding-left:16px">replays <span class="mut">- pinned</span></div></div>
+ <div class="tr rv z"><div class="R">7</div><div class="v">yesterday 21:58</div><div class="v">The Slave Pens</div><div class="R">0:47</div><div class="R">3</div><div class="R">15</div><div class="R">1.8k</div><div class="R">68%</div><div class="v mut" style="padding-left:16px">not checked</div></div>
+ <div class="tr rv"><div class="R">8</div><div class="v">27 Sep 20:11</div><div class="v">Mana-Tombs</div><div class="R">1:33</div><div class="R">5</div><div class="R">30</div><div class="R">4.1k</div><div class="R">35%</div><div class="v good" style="padding-left:16px">replays <span class="mut">- pinned</span></div></div>
+</div>
+<div class="tp res" style="top:262px"><div class="t">RESULT <span class="r">#2 Underbog 21:31 - coach card</span></div><div class="ru"></div>
+ <div style="padding:0 8px">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><span class="mut" style="font-size:11px;white-space:nowrap">Coached: 300 plans in 1.8 s</span><div class="pbar" style="width:160px"><i style="width:100%;background:rgba(var(--accent-rgb),.45)"></i></div><span class="mut" style="font-size:11px">The same plan appears in the replay's right column.</span></div>
+  <div class="cl" style="font-size:13px;color:#fff">Underbog, 21:31 <span class="t2">(2:04, 5 targets)</span>&nbsp;&nbsp;&nbsp;<span class="t2">used: you</span> <b>5.8k</b>&nbsp;&nbsp;<span class="t2">best</span> <b>3.9k</b>&nbsp;&nbsp;<span class="t2">diff</span> <b class="good" style="color:var(--good)">-1.9k</b></div>
+  <div style="display:grid;grid-template-columns:520px 1fr;gap:18px;margin-top:6px">
+   <div>
+    <div class="cl"><span class="lb2">Bind:</span> <span style="color:#fff">Lifebloom, Rejuvenation R6, Regrowth R5, Healing Touch R7, Swiftmend</span></div>
+    <div class="cl"><span class="n">1.</span>Anyone under <b>40%</b> with a HoT: Swiftmend</div>
+    <div class="cl"><span class="n">2.</span>Anyone under <b>35%</b>: Regrowth R5</div>
+    <div class="cl"><span class="n">3.</span>Keep Lifebloom x3 rolling on the tank</div>
+    <div class="cl"><span class="n">4.</span>Anyone under <b>70%</b>: the HoT whose whole heal fits the deficit</div>
+    <div class="cl" style="padding-left:22px">(Rejuvenation R6 or Lifebloom)</div>
+    <div class="cl"><span class="n">5.</span>Otherwise wait - <b>38%</b> of the fight, longest gap <b>6s</b></div>
+   </div>
+   <div>
+    <div class="cg h"><div></div><div>used</div><div>spent</div><div>lowest</div><div>overheal</div><div></div></div>
+    <div class="cg"><div>you</div><div>5.8k</div><div>6.1k</div><div>24%</div><div>34%</div><div></div></div>
+    <div class="cg"><div style="color:var(--accent)">best</div><div>3.9k</div><div>4.0k</div><div>41%</div><div>-</div><div></div></div>
+    <div class="cl" style="margin-top:4px">held on <b>41</b> of <b>58</b> of your casts</div>
+    <div class="cl" style="margin-top:8px;color:var(--good)">since your last card (4 fights): overheal 39% -&gt; 31%</div>
+   </div>
+  </div>
+  <div class="cl mut" style="margin-top:8px;font-size:11px;color:var(--muted)">Other strategies: /st coach 2 safe / health / cheap / regen plays that one in the replay.</div>
+ </div>
+</div>
+<div style="position:absolute;left:0;right:0;top:604px;display:flex;align-items:center;justify-content:space-between">
+ <div style="display:flex;align-items:center;gap:12px"><span class="btn sm" style="width:76px">Start run</span><span class="mut" style="font-size:11px">Double-click a row to play it. Right-click for everything else.</span></div>
+ <div><span class="btn sm" style="width:72px">Validate</span><span class="btn sm" style="width:64px">Coach</span><span class="btn sm" style="width:48px">Play</span><span class="btn sm" style="width:52px">Pin</span><span class="btn sm" style="width:60px">Export</span></div>
+</div>
+</div></div>
+<div class="col" style="padding-top:20px">
+ <div class="tipcap">The RESULT pane while the search runs (coach progress)</div>
+ <div class="panel" style="width:430px;height:118px">
+  <div style="position:absolute;left:10px;right:10px;top:8px">
+   <div class="tpf"><div class="t" style="font-size:14px">RESULT <span class="r">#2 Underbog 21:31 - coaching</span></div><div class="ru"></div></div>
+   <div style="display:flex;align-items:center;gap:10px;margin-top:-4px"><span style="font-size:12px;white-space:nowrap">coaching... <span style="font:13px var(--narrow)">120</span> <span class="t2">of</span> <span style="font:13px var(--narrow)">300</span> <span class="t2">plans</span></span><div class="pbar" style="flex:1"><i style="width:40%"></i></div></div>
+   <div class="cl" style="margin-top:8px">best so far: <b>4.3k</b> used, lowest <b>38%</b></div>
+   <div class="mut" style="font-size:11px">Play now and the right column fills in when the search ends.</div>
+  </div>
+ </div>
+ <div class="note" style="margin-top:6px">The card is the chat card (SP.Card) split into lines with tones (SP.CardLines), and chat gets one line instead. The rules keep their order and wording. The you/best rows become a small table because the pane is wide enough for one.</div>
+ <div class="tipcap" style="margin-top:10px">Row hover: the gate tooltip opens beside the cursor and flips at the edge (P32)</div>
+ <div class="gt" style="width:300px"><div class="l title"><span>#3 Underbog, today 21:14</span></div><div class="l"><span class="lab">Result</span><span class="bad">does not replay: health</span></div><div class="l"><span class="lab">Worst target</span><span class="w">Lunaria, 11% mean</span></div><div class="l"><span class="lab">Limit</span><span class="w">5% mean / 15% worst</span></div><div class="l wrap mut" style="margin-top:3px">Right-click: Play, Validate, Coach anyway, Pin, Export.</div></div>
+</div>
+</div></div>
+</section>
+
+<!-- =============================================================== M3 -->
+<section class="mock" id="m3"><h2><span class="n">M3</span>The replay while coaching: stable layout, a readable verdict, keys under the pointer (P28)</h2>
+<div class="before"><span class="bt">BEFORE</span><ul>
+<li><span class="u">U21</span>The window opens with one 492-px column. When the auto-coach finishes, it reopens at 968 and re-centres under your eyes. The only warning is a footer hint in 0.5 grey.</li>
+<li><span class="u">U23</span>The verdict ("does not replay (gate)", "no plan yet", "coaching") is the faintest text on the window: grey, 11 px, in the footer. The header packs six facts into one 11-px line.</li>
+<li><span class="u">U27</span>The play button's tooltip says Space toggles playback, but the keyboard is never enabled for a replay.</li>
+</ul></div>
+<div class="after">AFTER, FRAME 1: #3 UNDERBOG, AUTO-COACH RUNNING. BOTH COLUMNS ARE LAID OUT AT OPEN (968), AND THE RIGHT ONE IS DIMMED UNTIL THE PLAN ARRIVES</div>
+<div class="scroll"><div class="win" style="width:968px;height:640px;"><div class="hdr"><span class="back">&lt; SpellTuner</span>Replay<span class="x">x</span></div>
+<!-- status band -->
+<div class="band"><div class="f"><b>#3</b>&nbsp;&nbsp;Underbog&nbsp;&nbsp;<span class="t2">today 21:14</span>&nbsp;&nbsp;<span class="n">1:52</span>&nbsp;&nbsp;<span class="t2">5 targets</span></div>
+<div class="v"><span class="bad">does not replay: health</span><span class="btn accb sm" style="width:104px">Coach anyway</span></div></div>
+<!-- column titles -->
+<div class="ctitle" style="left:16px;top:34px">ACTUAL <span class="m">what you did</span></div>
+<div class="ctitle" style="left:492px;top:34px;color:#8a8a8a">SUGGESTED&nbsp;&nbsp;<span class="m" style="color:var(--accent);opacity:.85">coaching...</span> <span class="m">120 plans</span></div>
+<div class="pbar" style="position:absolute;left:760px;top:40px;width:190px"><i style="width:40%"></i></div>
+<!-- left strip -->
+<div class="sbar" style="left:16px;top:58px"><i style="width:73%;background:rgba(64,115,242,.85)"></i><span style="display:block;text-align:center">5120</span></div>
+<div class="stxt" style="left:414px;top:59px">[tree]</div>
+<div class="sbar" style="left:16px;top:82px"><i style="width:62%;background:rgba(89,217,89,.75)"></i><span style="padding-left:5px">Regrowth R5 -&gt; Grumbak&nbsp;&nbsp;2.0s</span></div>
+<div class="score" style="left:16px;top:108px">used <b>5.6k</b>&nbsp;&nbsp; spent <b>5.9k</b>&nbsp;&nbsp; regen <b>820</b>&nbsp;&nbsp; overheal <b>34%</b>&nbsp;&nbsp; lowest <b>27%</b>&nbsp;&nbsp; <b>0</b> dead</div>
+<!-- right strip, dimmed -->
+<div style="position:absolute;left:0;top:0;right:0;bottom:0;opacity:.32;filter:saturate(.35)">
+ <div class="sbar" style="left:492px;top:58px"><i style="width:100%;background:rgba(64,115,242,.85)"></i><span style="display:block;text-align:center">7009</span></div>
+ <div class="stxt" style="left:890px;top:59px">[tree]</div>
+ <div class="sbar" style="left:492px;top:82px"><span style="padding-left:5px;color:#888">no plan yet</span></div>
+ <div class="score" style="left:492px;top:108px">used <b>-</b>&nbsp;&nbsp; spent <b>-</b>&nbsp;&nbsp; regen <b>-</b>&nbsp;&nbsp; overheal <b>-</b>&nbsp;&nbsp; lowest <b>-</b></div>
+ <div class="uf" style="left:492px;top:133px;background:#281f16"><div class="hp" style="width:100%;background:#c69b6d"></div><div class="pwb"></div><div class="nm">Grumbak</div><div class="ro t">T</div></div>
+ <div class="uf" style="left:492px;top:212px;background:#331902"><div class="hp" style="width:100%;background:#ff7c0a"></div><div class="pwb"></div><div class="nm">Penek</div><div class="ro h">H</div></div>
+ <div class="uf" style="left:492px;top:291px;background:#333115"><div class="hp" style="width:100%;background:#fff468"></div><div class="pwb"></div><div class="nm">Vexa</div><div class="ro d">D</div></div>
+ <div class="uf" style="left:492px;top:370px;background:#0d282f"><div class="hp" style="width:100%;background:#3fc7eb"></div><div class="pwb"></div><div class="nm">Lunaria</div><div class="ro d">D</div></div>
+ <div class="uf" style="left:492px;top:449px;background:#222a17"><div class="hp" style="width:100%;background:#aad372"></div><div class="pwb"></div><div class="nm">Torvald</div><div class="ro d">D</div></div>
+</div>
+<!-- left unit frames (the author's Cell layout, party of 5 stretched to the column) -->
+<div class="uf tgt" style="left:16px;top:133px;background:#281f16"><div class="hp" style="width:68%;background:#c69b6d"></div><div class="pwb"></div><div class="pw" style="width:42%;background:#c62828"></div><div class="tick" style="left:63%"></div><div class="ag"></div><div class="ro t">T</div><div class="nm">Grumbak</div><div class="hots"><div class="hot i-lb"><s>3</s></div><div class="hot i-rj"></div><div class="hot i-rg"></div></div><div class="smd"></div><div class="st" style="color:#59d959">Regrowth R5</div><div class="df" style="bottom:24px">-2.9k</div></div>
+<div class="uf" style="left:16px;top:212px;background:#331902"><div class="hp" style="width:91%;background:#ff7c0a"></div><div class="pwb"></div><div class="pw" style="width:73%;background:#4073f2"></div><div class="tick" style="left:92%"></div><div class="ro h">H</div><div class="nm">Penek</div><div class="hots"><div class="hot i-rj"></div></div><div class="df">-0.4k</div></div>
+<div class="uf" style="left:16px;top:291px;background:#333115"><div class="hp" style="width:100%;background:#fff468"></div><div class="pwb"></div><div class="pw" style="width:80%;background:#e6d02a"></div><div class="tick" style="left:99%"></div><div class="ro d">D</div><div class="nm" style="color:#fff">Vexa</div></div>
+<div class="uf" style="left:16px;top:370px;background:#0d282f"><div class="hp" style="width:57%;background:#3fc7eb"></div><div class="pwb"></div><div class="pw" style="width:61%;background:#4073f2"></div><div class="tick" style="left:49%"></div><div class="ro d">D</div><div class="nm">Lunaria</div><div class="db i-po"></div><div class="df">-2.7k</div></div>
+<div class="uf" style="left:16px;top:449px;background:#222a17"><div class="hp" style="width:83%;background:#aad372"></div><div class="pwb"></div><div class="pw" style="width:55%;background:#4073f2"></div><div class="tick" style="left:81%"></div><div class="ro d">D</div><div class="nm">Torvald</div><div class="hots"><div class="hot i-rj"></div></div><div class="df">-1.3k</div></div>
+<!-- scrubber -->
+<div class="scrub" style="left:16px;right:16px;top:548px">
+ <div class="mk" style="left:3%;background:#5ccb6e"></div><div class="mk" style="left:6%;background:#5ccb6e"></div><div class="mk" style="left:9%;background:#b3b3b3"></div><div class="mk" style="left:12%;background:#5ccb6e"></div><div class="mk" style="left:15%;background:#e0a040"></div><div class="mk big" style="left:17%"></div><div class="mk" style="left:19%;background:#5ccb6e"></div><div class="mk" style="left:22%;background:#e0605a"></div><div class="mk" style="left:25%;background:#5ccb6e"></div><div class="mk" style="left:28%;background:#5ccb6e"></div><div class="mk" style="left:31%;background:#e0a040"></div><div class="mk" style="left:34%;background:#5ccb6e"></div><div class="mk" style="left:36%;background:#b3b3b3"></div><div class="mk big" style="left:41%"></div><div class="mk" style="left:44%;background:#5ccb6e"></div><div class="mk" style="left:47%;background:#e0605a"></div><div class="mk" style="left:50%;background:#5ccb6e"></div><div class="mk" style="left:53%;background:#5ccb6e"></div><div class="mk" style="left:56%;background:#e0a040"></div><div class="mk" style="left:59%;background:#5ccb6e"></div><div class="mk big" style="left:62%"></div><div class="mk" style="left:64%;background:#5ccb6e"></div><div class="mk" style="left:67%;background:#e0605a"></div><div class="mk" style="left:70%;background:#5ccb6e"></div><div class="mk" style="left:74%;background:#5ccb6e"></div><div class="mk" style="left:77%;background:#b3b3b3"></div><div class="mk" style="left:81%;background:#5ccb6e"></div><div class="mk" style="left:85%;background:#e0a040"></div><div class="mk" style="left:88%;background:#5ccb6e"></div><div class="mk" style="left:92%;background:#5ccb6e"></div><div class="mk" style="left:96%;background:#5ccb6e"></div>
+ <div class="th" style="left:38.4%"></div>
+</div>
+<!-- controls -->
+<div style="position:absolute;left:16px;top:582px;display:flex;align-items:center">
+ <span class="btn" style="width:34px;height:22px;line-height:20px;margin-right:3px">II</span>
+ <span class="btn sm" style="width:40px;height:22px;line-height:20px;margin:0 3px 0 0">1/4x</span><span class="btn sm" style="width:40px;height:22px;line-height:20px;margin:0 3px 0 0">1/2x</span><span class="btn sm act" style="width:40px;height:22px;line-height:20px;margin:0 3px 0 0">1x</span><span class="btn sm" style="width:40px;height:22px;line-height:20px;margin:0 3px 0 0">2x</span><span class="btn sm" style="width:40px;height:22px;line-height:20px;margin:0 3px 0 0">4x</span>
+ <span style="margin-left:12px;font:13px var(--narrow)">0:43 / 1:52</span>
+ <span class="ck" style="margin-left:22px;font-size:12px"><span class="cb on"></span>Snapshot ticks</span>
+</div>
+<div class="khint" style="right:16px;top:585px"><span class="kc on">Space</span> <span class="acc">play</span>&nbsp;&nbsp;<span class="kc on">Left</span> <span class="kc on">Right</span> <span class="acc">5 s</span>&nbsp;&nbsp;&nbsp;<span class="m">keys work while the pointer is over this window</span></div>
+<svg class="pointer" style="left:640px;top:600px" viewBox="0 0 14 20"><path d="M1 1 L1 16 L5 12 L8 19 L10.5 18 L7.5 11 L13 11 Z" fill="#fff" stroke="#000" stroke-width="1.2"/></svg>
+</div></div>
+<p class="cap" style="margin-top:10px">The band replaces the old 11-px header line. The fight is on the left: the accent <i>#3</i>, where, when, how long and how many targets. The verdict is on the right in <span style="color:var(--good)">good</span> or <span style="color:var(--bad)">bad</span>, and <i>Coach anyway</i> replaces the quoted <i>/md replay 3 force</i>. With the pointer over the window and out of combat, the key caps light in the accent. When the pointer leaves, or a fight starts, they go grey and the keys move your character again. The right column's frames never move. When the plan arrives the dimming lifts, and the title reads <i>SUGGESTED (solver, 5 binds)</i>, as today.</p>
+
+<div class="after">AFTER, FRAME 2 (CROPPED): A FORT FIGHT THAT REPLAYS; THE RECONSTRUCTION IS ONE WORD IN THE BAND AND A MARKER IN THE BAR'S TOOLTIP</div>
+<div class="scroll"><div class="row">
+<div class="win" style="width:968px;height:232px;"><div class="hdr"><span class="back">&lt; SpellTuner</span>Replay<span class="x">x</span></div>
+<div class="band"><div class="f"><b>#2</b>&nbsp;&nbsp;Ragefire Chasm&nbsp;&nbsp;<span class="t2">today 20:02</span>&nbsp;&nbsp;<span class="n">2:31</span>&nbsp;&nbsp;<span class="t2">5 targets</span>&nbsp;&nbsp;&nbsp;<span class="word">reconstructed</span></div>
+<div class="v"><span class="good">replays</span></div></div>
+<div class="ctitle" style="left:16px;top:34px">ACTUAL <span class="m">what you did</span></div>
+<div class="ctitle" style="left:492px;top:34px">SUGGESTED&nbsp;&nbsp;<span class="m">(solver, 4 binds)</span></div>
+<div class="sbar" style="left:16px;top:58px"><i style="width:58%;background:rgba(64,115,242,.85)"></i><span style="display:block;text-align:center">~282</span></div>
+<div class="stxt" style="left:414px;top:59px">[caster]</div>
+<div class="sbar" style="left:16px;top:82px"><i style="width:100%;background:rgba(89,153,255,.55)"></i><span style="padding-left:5px">Healing Touch R3 -&gt; Brakka&nbsp;&nbsp;2.5s</span></div>
+<div class="score" style="left:16px;top:108px">used <b>~1.3k</b>&nbsp;&nbsp; spent <b>~1.4k</b>&nbsp;&nbsp; overheal <b>22%</b>&nbsp;&nbsp; lowest <b>~31%</b>&nbsp;&nbsp; <b>0</b> dead</div>
+<div class="sbar" style="left:492px;top:58px"><i style="width:71%;background:rgba(64,115,242,.85)"></i><span style="display:block;text-align:center">~344</span></div>
+<div class="stxt" style="left:890px;top:59px">[caster]</div>
+<div class="sbar" style="left:492px;top:82px"><i style="width:40%;background:rgba(184,115,242,.6)"></i><span style="padding-left:5px">Rejuvenation R3 -&gt; Brakka</span></div>
+<div class="score" style="left:492px;top:108px">used <b>~0.9k</b>&nbsp;&nbsp; spent <b>~1.0k</b>&nbsp;&nbsp; overheal <b>9%</b>&nbsp;&nbsp; lowest <b>~44%</b>&nbsp;&nbsp; <b>0</b> dead</div>
+<div class="uf tgt" style="left:16px;top:133px;background:#281f16;box-shadow:0 0 0 2px #5999ff"><div class="hp" style="width:62%;background:#c69b6d"></div><div class="pwb"></div><div class="pw" style="width:35%;background:#c62828"></div><div class="tick" style="left:62%;background:rgba(255,255,255,.55)"></div><div class="ag"></div><div class="ro t">T</div><div class="nm">Brakka</div><div class="hots"><div class="hot i-rj"></div></div><div class="df">-296</div></div>
+<div class="uf" style="left:492px;top:133px;background:#281f16"><div class="hp" style="width:74%;background:#c69b6d"></div><div class="pwb"></div><div class="pw" style="width:35%;background:#c62828"></div><div class="ag"></div><div class="ro t">T</div><div class="nm">Brakka</div><div class="hots"><div class="hot i-rj"></div><div class="hot i-rg"></div></div><div class="df">-203</div></div>
+<div class="crop">cropped: four more frames per column, then the scrubber and the controls, as in frame 1</div>
+</div>
+<div class="col" style="padding-top:110px">
+ <div class="tipcap">Hover on Brakka's bar (left column)</div>
+ <div class="gt" style="width:300px"><div class="l title"><span>Brakka</span><span class="mut" style="font-size:11px">reconstructed</span></div><div class="l"><span class="lab">Health then</span><span class="w">62% at 1:14</span></div><div class="l"><span class="lab">Engine's replay now</span><span class="w">60%</span></div><div class="l"><span class="lab">Difference</span><span class="good">within 5%</span></div><div class="l wrap mut" style="margin-top:3px">Reconstructed: this client reads no health, so it is rebuilt from UNIT_COMBAT every 2 s.</div></div>
+</div>
+</div></div>
+</section>
+
+<!-- =============================================================== M4 -->
+<section class="mock" id="m4"><h2><span class="n">M4</span>Kit behaviours: rail rows, the rail's overflow, lists that flip, text size (P33, with P31's measuring)</h2>
+<div class="before"><span class="bt">BEFORE</span><ul>
+<li><span class="u">U8</span>On hover the rail swaps the rank tag for <i>^ v x</i>. They are 14-px targets (about 10 physical px at 0.71 scale), and the red <i>x</i> sits 2 px from <i>v</i>. A row without the stale mark has no tooltip, so nothing explains <i>R1</i>.</li>
+<li><span class="u">U16</span>The rail has no overflow. At level 60 to 70, 20+ rows at 19 px run under <i>+ Add</i>.</li>
+<li><span class="u">U12</span>Lists always open below and sub-lists always open to the right, even off the screen. The chevrons are the letters <i>v</i> and <i>&gt;</i>.</li>
+<li><span class="u">U30</span>View-tab widths come from <i>#text * 8 + 16</i> and check hit rects are measured once, so at text size +2 labels outgrow their boxes.</li>
+</ul></div>
+<div class="after">AFTER: THE RAIL ROW ON HOVER, TWO LAYOUTS FOR THE AUTHOR TO PICK FROM</div>
+<div class="scroll"><div class="row" style="gap:34px">
+ <div class="tipcol"><div class="tipcap">A: the R1 tag kept, ^ v at 18 px, x 8 px apart</div>
+  <div class="win" style="width:174px;height:128px;margin-top:0"><div class="rail"><div class="lbl">MY SPELLS</div><div class="rr ov"><span class="nm">Overview</span></div><div class="rule"></div>
+   <div class="rr hov"><span class="ic i-ht"></span><span class="nm">Healing Touch</span><span class="rk" style="margin-right:4px">R1</span>
+    <span style="display:flex;margin-right:1px"><span class="btn" style="width:18px;height:18px;padding:0;font:12px/16px var(--narrow)">^</span><span class="btn" style="width:18px;height:18px;padding:0;margin-left:-1px;font:12px/16px var(--narrow)">v</span><span class="btn red" style="width:18px;height:18px;padding:0;margin-left:8px;font:12px/16px var(--narrow)">x</span></span></div>
+   <div class="rr"><span class="ic i-rj"></span><span class="nm">Rejuvenation</span><span class="rk">R1</span></div>
+   <div class="rr"><span class="ic i-mf"></span><span class="nm">Moonfire</span><span class="rk">R1</span></div>
+   <div class="rr"><span class="ic i-wr"></span><span class="nm">Wrath</span><span class="rk">R1</span></div></div></div>
+  <div class="note" style="margin-top:8px;max-width:230px">The rank stays visible. The name clips on hover to make room: 18 + 18 + 8 + 18 px of controls.</div>
+ </div>
+ <div class="tipcol"><div class="tipcap">B: x only; reorder by dragging or from the row menu</div>
+  <div class="win" style="width:174px;height:128px;margin-top:0;overflow:visible"><div class="rail"><div class="lbl">MY SPELLS</div><div class="rr ov"><span class="nm">Overview</span></div><div class="rule"></div>
+   <div class="rr hov"><span class="ic i-ht"></span><span class="nm">Healing Touch</span><span class="rk" style="margin-right:8px">R1</span><span class="btn red" style="width:18px;height:18px;padding:0;margin-right:1px;font:12px/16px var(--narrow)">x</span></div>
+   <div class="rr"><span class="ic i-rj"></span><span class="nm">Rejuvenation</span><span class="rk">R1</span></div>
+   <div class="rr"><span class="ic i-mf"></span><span class="nm">Moonfire</span><span class="rk">R1</span></div>
+   <div class="rr"><span class="ic i-wr"></span><span class="nm">Wrath</span><span class="rk">R1</span></div></div>
+   <div class="menu" style="left:128px;top:62px;min-width:136px"><div class="mt">HEALING TOUCH</div><div class="mi hov">Move up</div><div class="mi">Move down</div><div class="ms"></div><div class="mi">Remove</div></div>
+  </div>
+  <div class="note" style="margin-top:8px;max-width:230px">Only one control, and it is 18 px. The right-click menu is the same ContextMenu Review uses.</div>
+ </div>
+ <div class="tipcol"><div class="tipcap">Any row, hovered for half a second (both layouts)</div>
+  <div class="gt" style="width:240px"><div class="l title"><span>Healing Touch</span></div><div class="l"><span class="lab">Suggested</span><span class="acc">Rank 1 of 2 known</span></div><div class="l"><span class="lab">Per mana</span><span class="w">1.90</span></div><div class="l wrap mut" style="margin-top:3px">Drag to reorder. Right-click for more.</div></div>
+  <div class="tipcap" style="margin-top:16px">A stale row, same tooltip plus the reason</div>
+  <div class="gt" style="width:240px"><div class="l title"><span>Moonfire</span></div><div class="l"><span class="lab">Suggested</span><span class="acc">Rank 1 of 2 known</span></div><div class="l wrap bad" style="margin-top:2px">Read before combat: the spell text was hidden during the fight.</div></div>
+ </div>
+</div></div>
+
+<div class="after" style="margin-top:22px">AFTER: A 25-SPELL RAIL AT LEVEL 60 SCROLLS ABOVE A FIXED FOOTER; LISTS FLIP AT THE SCREEN'S EDGE; TEXT SIZE +2</div>
+<div class="scroll"><div class="row" style="gap:30px">
+ <div class="tipcol"><div class="tipcap">Rail, 25 spells, scrolled a little</div>
+ <div class="win" style="width:174px;height:546px;margin-top:0"><div class="rail" style="overflow:hidden">
+  <div class="lbl">MY SPELLS</div><div class="rr ov"><span class="nm">Overview</span></div><div class="rule"></div>
+  <div style="position:absolute;left:0;right:9px;top:50px;bottom:50px;overflow:hidden">
+   <div style="position:relative;top:-32px">
+   <div class="rr"><span class="ic i-ht"></span><span class="nm">Healing Touch</span><span class="rk">R7</span></div>
+   <div class="rr"><span class="ic i-rj"></span><span class="nm">Rejuvenation</span><span class="rk">R6</span></div>
+   <div class="rr sel"><span class="ic i-rg"></span><span class="nm">Regrowth</span><span class="rk">R5</span></div>
+   <div class="rr"><span class="ic i-tq"></span><span class="nm">Tranquility</span><span class="rk">R2</span></div>
+   <div class="rr"><span class="ic i-sm"></span><span class="nm">Swiftmend</span></div>
+   <div class="rr"><span class="ic i-inv"></span><span class="nm">Innervate</span></div>
+   <div class="rr"><span class="ic i-rb"></span><span class="nm">Rebirth</span><span class="rk">R4</span></div>
+   <div class="rr"><span class="ic i-wr"></span><span class="nm">Wrath</span><span class="rk">R6</span></div>
+   <div class="rr"><span class="ic i-mf"></span><span class="nm">Moonfire</span><span class="rk">R7</span></div>
+   <div class="rr"><span class="ic i-sf"></span><span class="nm">Starfire</span><span class="rk">R5</span></div>
+   <div class="rr"><span class="ic i-is"></span><span class="nm">Insect Swarm</span><span class="rk">R4</span></div>
+   <div class="rr"><span class="ic i-hu"></span><span class="nm">Hurricane</span><span class="rk">R2</span></div>
+   <div class="rr"><span class="ic i-er"></span><span class="nm">Entangling Roots</span><span class="rk">R5</span></div>
+   <div class="rr"><span class="ic i-ff"></span><span class="nm">Faerie Fire</span><span class="rk">R4</span></div>
+   <div class="rr"><span class="ic i-mw"></span><span class="nm">Mark of the Wild</span><span class="rk">R7</span></div>
+   <div class="rr"><span class="ic i-gw"></span><span class="nm">Gift of the Wild</span><span class="rk">R2</span></div>
+   <div class="rr"><span class="ic i-th"></span><span class="nm">Thorns</span><span class="rk">R6</span></div>
+   <div class="rr"><span class="ic i-bk"></span><span class="nm">Barkskin</span></div>
+   <div class="rr"><span class="ic i-ng"></span><span class="nm">Nature's Grasp</span><span class="rk">R6</span></div>
+   <div class="rr"><span class="ic i-rc"></span><span class="nm">Remove Curse</span></div>
+   <div class="rr"><span class="ic i-ap"></span><span class="nm">Abolish Poison</span></div>
+   <div class="rr"><span class="ic i-hb"></span><span class="nm">Hibernate</span><span class="rk">R3</span></div>
+   <div class="rr"><span class="ic i-sa"></span><span class="nm">Soothe Animal</span><span class="rk">R4</span></div>
+   <div class="rr"><span class="ic i-oc"></span><span class="nm">Omen of Clarity</span></div>
+   <div class="rr"><span class="ic i-tp"></span><span class="nm">Teleport: Moonglade</span></div>
+   </div>
+  </div>
+  <div class="sb" style="left:163px;top:50px;height:444px"><i style="top:28px;height:414px"></i></div>
+  <div class="undo">Thorns removed&nbsp;&nbsp;<b>[Undo]</b></div>
+  <div class="foot"><span class="btn accb">+ Add</span></div></div></div>
+ </div>
+ <div class="col" style="gap:16px">
+  <div class="note" style="max-width:320px">The rows scroll in a frame between <b>Overview</b> and the footer. The footer and the Undo line never move. The 5-px scroll bar is the kit's own: an accent thumb, the same one Practice and Bindings use. The mouse wheel scrolls 3 rows at a time. The selected row keeps its bar. When you select a row off-screen from the Overview or with /st spell, the list scrolls it into view.</div>
+  <div class="tipcap" style="margin-top:6px">A list near the bottom of the screen opens upward</div>
+  <div class="world" style="width:330px;height:190px">
+   <div class="panel" style="position:absolute;left:14px;top:14px;width:300px;height:190px;border-bottom:0">
+    <div style="position:absolute;left:10px;top:10px;right:10px">
+     <div class="tpf"><div class="t">WINDOWS</div><div class="ru"></div></div>
+     <div class="ck" style="margin-top:-2px"><span class="cb on"></span>Close one window per ESC</div>
+     <div class="ck"><span class="cb on"></span>Minimap button</div>
+     <div class="ck" style="margin-top:62px"><span class="lab13">In combat</span><span class="dd" style="width:160px;margin-left:8px;border-color:rgba(var(--accent-rgb),.8)">Hide, reopen after<span class="chev up"></span></span></div>
+    </div>
+    <div class="ddl" style="left:80px;top:100px;width:160px"><div class="it on">Hide, reopen after</div><div class="it hov">Keep them open</div></div>
+   </div>
+   <div style="position:absolute;left:0;right:0;bottom:0;height:18px;border-top:1px dashed rgba(255,255,255,.55);font:10px/16px system-ui,sans-serif;color:rgba(255,255,255,.75);text-align:center;background:rgba(0,0,0,.25)">bottom of the screen</div>
+  </div>
+ </div>
+ <div class="col" style="gap:16px">
+  <div class="tipcap">A sub-list near the right edge opens to the left (Practice's spell picker)</div>
+  <div class="world" style="width:360px;height:210px">
+   <div class="ddl" style="left:170px;top:14px;width:176px">
+    <div class="it"><span><span class="ic i-ht" style="width:14px;height:14px;margin-right:6px"></span>Healing Touch</span><span class="chev lf" style="opacity:0"></span></div>
+    <div class="it hov"><span><span class="ic i-rj" style="width:14px;height:14px;margin-right:6px"></span>Rejuvenation</span><span class="chev lf"></span></div>
+    <div class="it"><span><span class="ic i-rg" style="width:14px;height:14px;margin-right:6px"></span>Regrowth</span><span class="chev lf"></span></div>
+    <div class="it"><span><span class="ic i-sm" style="width:14px;height:14px;margin-right:6px"></span>Swiftmend</span></div>
+    <div class="it"><span><span class="ic i-tq" style="width:14px;height:14px;margin-right:6px"></span>Tranquility</span><span class="chev lf"></span></div>
+   </div>
+   <div class="ddl" style="left:52px;top:33px;width:119px">
+    <div class="it on">Highest known</div><div class="it">Rank 1</div><div class="it">Rank 2</div><div class="it">Rank 3</div><div class="it hov">Rank 4</div><div class="it">Rank 5</div><div class="it">Rank 6</div>
+   </div>
+   <div style="position:absolute;top:0;bottom:0;right:0;width:10px;border-left:1px dashed rgba(255,255,255,.55);background:rgba(0,0,0,.25)"></div>
+   <div style="position:absolute;right:16px;bottom:6px;font:10px system-ui,sans-serif;color:rgba(255,255,255,.75)">right edge of the screen</div>
+  </div>
+  <div class="note" style="max-width:360px">The chevrons are 8 x 8 textures that point the way the list opens: down, up, right, or left once it flips. If the texture is missing, the letters come back. Both flips apply on TBC too, since a list that opens off the screen is a bug on either line.</div>
+ </div>
+</div></div>
+
+<div class="scroll" style="margin-top:14px"><div class="row" style="gap:28px">
+ <div class="tipcol"><div class="tipcap">Text size 0: widths measured from the text</div>
+  <div class="panel" style="width:360px;height:132px">
+   <div style="position:absolute;left:10px;top:10px"><div class="vtabs" style="position:relative"><div class="vt on">General</div><div class="vt">Modules</div><div class="vt">About</div></div></div>
+   <div style="position:absolute;left:10px;top:42px"><div class="ck" style="outline:1px dashed rgba(92,203,110,.8);outline-offset:1px;width:max-content"><span class="cb on"></span>Close one window per ESC</div></div>
+   <div style="position:absolute;left:10px;top:70px;width:172px;border:1px solid #000;background:var(--pane)"><div class="rr"><span class="ic i-ht"></span><span class="nm">Healing Touch</span><span class="rk">R1</span></div><div class="rr"><span class="ic i-rj"></span><span class="nm">Rejuvenation</span><span class="rk">R1</span></div></div>
+   <div style="position:absolute;left:196px;top:74px;font:11px system-ui,sans-serif;color:#9a9a9a;text-shadow:none;line-height:15px">rows 20 px<br>green: the check's click area</div>
+  </div></div>
+ <div class="tipcol"><div class="tipcap">Text size +2: everything re-measured on FONTS_CHANGED</div>
+  <div class="panel" style="width:420px;height:150px">
+   <div style="position:absolute;left:10px;top:10px"><div class="vtabs" style="position:relative;height:22px"><div class="vt on" style="height:22px;font-size:15px;line-height:20px">General</div><div class="vt" style="height:22px;font-size:15px;line-height:20px">Modules</div><div class="vt" style="height:22px;font-size:15px;line-height:20px">About</div></div></div>
+   <div style="position:absolute;left:10px;top:46px"><div class="ck" style="font-size:15px;outline:1px dashed rgba(92,203,110,.8);outline-offset:1px;width:max-content"><span class="cb on"></span>Close one window per ESC</div></div>
+   <div style="position:absolute;left:10px;top:76px;width:172px;border:1px solid #000;background:var(--pane)"><div class="rr" style="height:22px;font-size:15px"><span class="ic i-ht"></span><span class="nm">Healing Touch</span><span class="rk" style="font-size:13px">R1</span></div><div class="rr" style="height:22px;font-size:15px"><span class="ic i-rj"></span><span class="nm">Rejuvenation</span><span class="rk" style="font-size:13px">R1</span></div></div>
+   <div style="position:absolute;left:196px;top:80px;font:11px system-ui,sans-serif;color:#9a9a9a;text-shadow:none;line-height:15px">rows 22 px (UI.Pitch)<br>tabs and click areas follow the text<br>the rail's width stays 172: names clip</div>
+  </div></div>
+ <div class="note" style="max-width:250px;align-self:center">SpellsPane re-pitches on <b>FONTS_CHANGED</b> instead of wrapping <i>UI.ApplyFonts</i>, and the window manager listens for <b>UI_POPUP</b> instead of taking <i>UI.OnPopup</i>. Neither is visible, but they are why the +2 frame lays itself out again without a reload.</div>
+</div></div>
+</section>
+
+<!-- =============================================================== M5 -->
+<section class="mock" id="m5"><h2><span class="n">M5</span>Words and tones in the rank table (P34): "beaten", merged greys, selection apart from the suggestion</h2>
+<div class="before"><span class="bt">BEFORE</span><ul>
+<li><span class="u">U7</span><i>disabled</i> #4D4D4D on #161616 is about 2:1 contrast, yet it carries information: a gap row's explanation, the <i>learn at 20</i> tag, the tooltip's Shift hint. <i>text2</i> #B3B3B3 and <i>label</i> #9D9D9D can't be told apart through the shadow.</li>
+<li><span class="u">U1</span>The selected row and the suggested row are two strengths of the same orange (0.28 and 0.10, both with a bar).</li>
+<li><span class="u">U9</span><span class="u">U10</span><i>dominated</i> is a statistician's word, and nothing explains it. The words drift: <i>Per s</i> in the table, <i>Per second</i> in the tooltip, <i>To OOM</i>, <i>Casts to OOM</i>, <i>casts from full</i>. Hovering a header shows nothing.</li>
+</ul></div>
+<p class="cap">The level 16 druid (484 mana) from the approved mockup, who skipped Rank 2 at the trainer. This one family shows every kind of row: a beaten rank that is also selected, a gap, the suggested rank, and a rank not learned yet. Healing Touch Rank 3 is 195 to 243 for 110 mana, and Rank 4 is 363 to 445 for 185 mana (the spell's own text).</p>
+<div class="scroll"><div class="row" style="gap:22px">
+ <div class="tipcol"><div class="tipcap">Today (for comparison)</div>
+ <div class="panel" style="width:572px;height:162px">
+  <div class="tp" style="top:10px;left:10px;right:10px"><div class="t" style="padding-left:0">RANKS</div><div class="ru"></div><div class="tbl">
+   <div class="tr h cols"><div class="rkc">Rank</div><div class="R">Lvl</div><div class="R">Mana</div><div class="R">Heal</div><div class="R">Per mana</div><div class="R">Per s</div><div class="R">Cast</div><div class="R">To OOM</div><div></div></div>
+   <div class="tr cols sel" style="color:var(--muted)"><div class="rkc">R1</div><div class="R">1</div><div class="R">25</div><div class="R">48</div><div class="R barc"><span class="bar"><i style="width:95.5%"></i></span><span>1.90</span></div><div class="R">31.7</div><div class="R">1.5s</div><div class="R">19</div><div class="tag dom">dominated</div></div>
+   <div class="tr z" style="display:flex;color:var(--disabled)"><div class="rkc" style="width:52px">R2</div><div style="font:13px var(--friz);padding-left:6px">not in your spellbook - untrained, or hidden by "show all ranks"</div></div>
+   <div class="tr cols sug"><div class="rkc">R3</div><div class="R">14</div><div class="R">110</div><div class="R">219</div><div class="R barc"><span class="bar"><i style="width:100%"></i></span><span>1.99</span></div><div class="R">87.6</div><div class="R">2.5s</div><div class="R">4</div><div class="tag best">best</div></div>
+   <div class="tr cols z dis"><div class="rkc">R4</div><div class="R">20</div><div class="R">185</div><div class="R">404</div><div class="R barc"><span class="bar dim"><i style="width:100%"></i></span><span>2.18</span></div><div class="R">134.7</div><div class="R">3.0s</div><div class="R">2</div><div class="tag" style="color:var(--disabled)">learn at 20</div></div>
+  </div></div></div></div>
+ <div class="tipcol"><div class="tipcap">After: a white bar marks the selection, the fill stays for the suggestion, and explanations are readable</div>
+ <div class="panel" style="width:572px;height:162px">
+  <div class="tp" style="top:10px;left:10px;right:10px"><div class="t">RANKS</div><div class="ru"></div><div class="tbl">
+   <div class="tr h cols" style="font-size:12px;color:var(--label2)"><div class="rkc" style="font-size:12px">Rank</div><div class="R">Lvl</div><div class="R">Mana</div><div class="R">Heal</div><div class="R">Per mana</div><div class="R">Per sec</div><div class="R">Cast</div><div class="R" style="background:rgba(255,255,255,.06)">Casts</div><div></div></div>
+   <div class="tr cols pick" style="color:var(--text)"><div class="rkc">R1</div><div class="R">1</div><div class="R">25</div><div class="R">48</div><div class="R barc"><span class="bar"><i style="width:95.5%"></i></span><span>1.90</span></div><div class="R">31.7</div><div class="R">1.5s</div><div class="R">19</div><div class="tag" style="color:var(--label2);border-bottom:1px dotted #777">beaten</div></div>
+   <div class="tr z" style="display:flex"><div class="rkc" style="width:52px;color:var(--disabled)">R2</div><div style="font:12px var(--friz);padding-left:6px;color:var(--muted)">not in your spellbook - untrained, or hidden by "show all ranks"</div></div>
+   <div class="tr cols sug"><div class="rkc">R3</div><div class="R">14</div><div class="R">110</div><div class="R">219</div><div class="R barc"><span class="bar"><i style="width:100%"></i></span><span>1.99</span></div><div class="R">87.6</div><div class="R">2.5s</div><div class="R">4</div><div class="tag best">best</div></div>
+   <div class="tr cols z dis"><div class="rkc">R4</div><div class="R">20</div><div class="R">185</div><div class="R">404</div><div class="R barc"><span class="bar dim"><i style="width:100%"></i></span><span>2.18</span></div><div class="R">134.7</div><div class="R">3.0s</div><div class="R">2</div><div class="tag" style="color:var(--label2)">learn at 20</div></div>
+  </div></div></div></div>
+</div>
+<div class="row" style="gap:22px;margin-top:18px">
+ <div class="tipcol"><div class="tipcap">Hover the "beaten" tag</div>
+  <div class="gt" style="width:280px"><div class="l title"><span>Beaten by Rank 3</span></div><div class="l"><span class="lab">Per mana</span><span class="w">1.99 vs 1.90</span></div><div class="l"><span class="lab">Per sec</span><span class="w">87.6 vs 31.7</span></div><div class="l wrap mut" style="margin-top:3px">Rank 3 is better on both, and you know it.</div></div>
+  <div class="tipcap" style="margin-top:14px">Hover the "Casts" header</div>
+  <div class="gt" style="width:280px"><div class="l title"><span>Casts</span></div><div class="l wrap t2">Casts in a row from a full pool.</div></div>
+ </div>
+ <div class="tipcol"><div class="tipcap">The other headers and tags, one sentence each</div>
+  <div class="gt" style="width:330px;line-height:16px">
+   <div class="l"><span class="lab">Per mana</span><span class="w">healing for each point of mana</span></div>
+   <div class="l"><span class="lab">Per sec</span><span class="w">healing per second of casting</span></div>
+   <div class="l"><span class="lab">Cast</span><span class="w">cast time; inst for an instant</span></div>
+   <div class="l"><span class="lab">best</span><span class="acc">the rank SpellTuner suggests</span></div>
+   <div class="l"><span class="lab">max</span><span class="w">your highest known rank</span></div>
+   <div class="l"><span class="lab">beaten</span><span class="w">another rank wins on both</span></div>
+   <div class="l"><span class="lab">learn at 20</span><span class="w">not learned yet</span></div>
+  </div>
+  <div class="tipcap" style="margin-top:14px">Alternative selection mark: a 1-px white outline</div>
+  <div class="panel" style="width:330px;height:44px;padding:0 0 0 8px"><div class="tr" style="grid-template-columns:52px 34px 46px 58px 1fr;margin-top:12px;outline:1px solid rgba(255,255,255,.85);outline-offset:-1px"><div class="rkc">R1</div><div class="R">1</div><div class="R">25</div><div class="R">48</div><div class="tag" style="color:var(--label2);text-align:right">beaten</div></div></div>
+ </div>
+ <div class="tipcol"><div class="tipcap">The spell tooltip's block with the same words</div>
+  <div class="gt"><div class="l title"><span>Healing Touch</span></div><div class="l"><span class="w">55 Mana</span><span class="w">40 yd range</span></div><div class="l"><span>2 sec cast</span></div><div class="l wrap gold">Heals a friendly target for 90 to 115.</div><div class="sp"></div><div class="l"><span class="acc">SpellTuner</span><span class="w">Rank 2 of 2&nbsp;&nbsp;<span class="mut">Shift</span></span></div><div class="l"><span class="lb2">Suggested</span><span class="acc">Rank 1 (+2% per mana)</span></div><div class="l"><span class="lb2">Per mana</span><span class="w">1.86</span></div><div class="l"><span class="lb2">Per sec</span><span class="w">51.2</span></div><div class="l"><span class="lb2">Casts to OOM</span><span class="w">6 from full, <span class="man">~5 now</span></span></div></div>
+  <div class="note" style="margin-top:8px;max-width:318px">The approved block read "Rank 1 (1.90 per mana)", "Per second" and "6 full". The Shift hint moves from <i>disabled</i> to <i>muted</i>, since it tells you something.</div>
+ </div>
+</div>
+<div style="margin-top:20px" class="row">
+ <div class="swg"><div class="tipcap">Greys today: four on Forever, three more on TBC</div>
+  <div class="swatches">
+   <div class="swg"><div class="sw"><i style="background:#b3b3b3"></i>text2 #B3B3B3<span class="demo" style="color:#b3b3b3">vs Rank 2</span></div><div class="sw"><i style="background:#9d9d9d"></i>label #9D9D9D<span class="demo" style="color:#9d9d9d">Per mana</span></div><div class="sw"><i style="background:#7a7a7a"></i>muted #7A7A7A<span class="demo" style="color:#7a7a7a">Rank</span></div><div class="sw"><i style="background:#4d4d4d"></i>disabled #4D4D4D<span class="demo" style="color:#4d4d4d">learn at 20</span></div></div>
+   <div class="swg"><div class="sw"><i style="background:#999"></i>TBC #999999<span class="demo" style="color:#999">OOM</span></div><div class="sw"><i style="background:#888"></i>TBC #888888<span class="demo" style="color:#888">hint</span></div><div class="sw"><i style="background:#666"></i>TBC #666666<span class="demo" style="color:#666">No fights yet</span></div></div>
+  </div></div>
+ <div class="swg"><div class="tipcap">After: three greys on both lines, each with one job</div>
+  <div class="swg"><div class="sw"><i style="background:#b3b3b3"></i><b style="color:#ddd;font-weight:600">label</b>&nbsp;#B3B3B3 - labels, headers (12 px), tags, secondary lines<span class="demo" style="color:#b3b3b3">Per mana&nbsp; beaten</span></div>
+  <div class="sw"><i style="background:#7a7a7a"></i><b style="color:#ddd;font-weight:600">muted</b>&nbsp;#7A7A7A - explanations, hints, footers<span class="demo" style="color:#7a7a7a">not in your spellbook</span></div>
+  <div class="sw"><i style="background:#4d4d4d"></i><b style="color:#ddd;font-weight:600">disabled</b>&nbsp;#4D4D4D - inert controls, numbers of a rank you do not have<span class="demo" style="color:#4d4d4d">185&nbsp; 404</span></div></div></div>
+</div>
+</div>
+</section>
+
+<!-- =============================================================== M6 -->
+<section class="mock" id="m6"><h2><span class="n">M6</span>TBC: the Spells view in the Forever structure (C3), one clock look (C4), and the minimap button on both lines</h2>
+<div class="before"><span class="bt">BEFORE</span><ul>
+<li><span class="u">U6</span>There are four lines of prose above the table: the Simulate strip, a five-colour stats line, a gold callout, and a glossary hint repeated every 2 s. The table starts at -104.</li>
+<li><span class="u">U5</span>Numbers are left-justified, 10 pt, on 16-px rows, so <i>20</i> and <i>757</i> or <i>1.5s</i> and <i>2.9s</i> don't line up.</li>
+<li><span class="u">U4</span>Gold is everywhere, and the suggestion is stated three times (gold row, <i>*</i>, "efficient rank" note). The window is 90% opaque. The widget is 14-pt OUTLINE text with no panel, while the Forever clock sits on a flat panel.</li>
+</ul></div>
+<p class="cap">The numbers come from the TBC model (Engine/RankMath.lua under the offline harness) for a level 70 druid at +1150 healing with 9800 mana and every rank trained. Healing Touch R7 is suggested because R5 and R6 heal less than 40% of R13 (the floor rule). R1-R4 and R9-R11 are beaten. <i>Casts</i> on TBC counts your regen while casting, as it does today; that is why the cheap ranks read <i>inf</i> or <i>999+</i>.</p>
+<div class="scroll"><div class="row">
+<div class="win" style="width:860px;height:560px;"><div class="hdr">SpellTuner<span class="x">x</span></div>
+<div class="nav"><div class="nb on">Spells</div><div class="nb">Reports</div><div class="nb">Simulate</div><div class="nb">Settings</div></div>
+<div class="content" style="overflow:hidden">
+<div class="vtabs"><div class="vt on">Healing Touch</div><div class="vt">Lifebloom</div><div class="vt">Rejuvenation</div><div class="vt">Regrowth</div></div>
+<div style="position:absolute;left:0;top:30px;right:12px;bottom:0">
+ <div class="vh"><span class="ic big i-ht"></span><div class="name">Healing Touch</div><div class="sub">Direct heal - Rank 13 of 13 known - 2.9 s cast with Nature's Grace averaged</div><div class="mana">9800 / 9800 mana</div><div style="position:absolute;right:2px;top:26px;font-size:11px;color:var(--text2)"><span style="font:12px var(--narrow);color:#fff">+1150</span> healing</div></div>
+ <div class="strip" style="top:58px"><div class="chip"><div class="k">SUGGESTED</div><div class="v">Rank 7</div></div><div class="cmp" style="right:170px">vs Rank 13 (your highest): <b>6%</b> more healing per mana, <b>46%</b> of the heal, the same cast.</div>
+  <div style="position:absolute;right:0;top:2px;width:156px"><div class="ck" style="font-size:12px"><span class="cb"></span>After overheal</div><div style="font-size:11px;color:var(--muted);margin:1px 0 4px 20px">31% measured</div><span class="btn sm" style="width:100%">What if...</span></div></div>
+ <div class="tp" style="top:114px"><div class="t">RANKS <span class="r">live: gear, talents, downrank rules</span></div><div class="ru"></div><div class="tbl">
+  <div class="tr h" style="grid-template-columns:48px 36px 50px 58px 124px 58px 48px 56px 1fr;font-size:12px;color:var(--label2)"><div class="rkc" style="font-size:12px">Rank</div><div class="R">Lvl</div><div class="R">Mana</div><div class="R">Heal</div><div class="R">Per mana</div><div class="R">Per sec</div><div class="R">Cast</div><div class="R">Casts</div><div></div></div>
+  <div class="tr" style="grid-template-columns:48px 36px 50px 58px 124px 58px 48px 56px 1fr"><div class="rkc">R1</div><div class="R">1</div><div class="R">20</div><div class="R">86</div><div class="R barc"><span class="bar" style="width:80px"><i style="width:58.7%"></i></span><span>4.32</span></div><div class="R">58</div><div class="R">1.5s</div><div class="R">inf</div><div class="tag" style="color:var(--label2)">beaten</div></div>
+  <div class="tr z" style="grid-template-columns:48px 36px 50px 58px 124px 58px 48px 56px 1fr"><div class="rkc">R2</div><div class="R">8</div><div class="R">45</div><div class="R">257</div><div class="R barc"><span class="bar" style="width:80px"><i style="width:77.7%"></i></span><span>5.72</span></div><div class="R">172</div><div class="R">1.5s</div><div class="R">999+</div><div class="tag" style="color:var(--label2)">beaten</div></div>
+  <div class="tr" style="grid-template-columns:48px 36px 50px 58px 124px 58px 48px 56px 1fr"><div class="rkc">R3</div><div class="R">14</div><div class="R">89</div><div class="R">582</div><div class="R barc"><span class="bar" style="width:80px"><i style="width:88.7%"></i></span><span>6.53</span></div><div class="R">302</div><div class="R">1.9s</div><div class="R">282</div><div class="tag" style="color:var(--label2)">beaten</div></div>
+  <div class="tr z" style="grid-template-columns:48px 36px 50px 58px 124px 58px 48px 56px 1fr"><div class="rkc">R4</div><div class="R">20</div><div class="R">150</div><div class="R">1097</div><div class="R barc"><span class="bar" style="width:80px"><i style="width:99.3%"></i></span><span>7.31</span></div><div class="R">452</div><div class="R">2.4s</div><div class="R">119</div><div class="tag" style="color:var(--label2)">beaten</div></div>
+  <div class="tr" style="grid-template-columns:48px 36px 50px 58px 124px 58px 48px 56px 1fr"><div class="rkc">R5</div><div class="R">26</div><div class="R">219</div><div class="R">1611</div><div class="R barc"><span class="bar" style="width:80px"><i style="width:100%"></i></span><span>7.36</span></div><div class="R">551</div><div class="R">2.9s</div><div class="R">71</div><div></div></div>
+  <div class="tr z" style="grid-template-columns:48px 36px 50px 58px 124px 58px 48px 56px 1fr"><div class="rkc">R6</div><div class="R">32</div><div class="R">271</div><div class="R">1970</div><div class="R barc"><span class="bar" style="width:80px"><i style="width:98.8%"></i></span><span>7.27</span></div><div class="R">673</div><div class="R">2.9s</div><div class="R">51</div><div></div></div>
+  <div class="tr sug" style="grid-template-columns:48px 36px 50px 58px 124px 58px 48px 56px 1fr"><div class="rkc">R7</div><div class="R">38</div><div class="R">328</div><div class="R">2358</div><div class="R barc"><span class="bar" style="width:80px"><i style="width:97.7%"></i></span><span>7.19</span></div><div class="R">806</div><div class="R">2.9s</div><div class="R">39</div><div class="tag best">best</div></div>
+  <div class="tr z" style="grid-template-columns:48px 36px 50px 58px 124px 58px 48px 56px 1fr"><div class="rkc">R8</div><div class="R">44</div><div class="R">401</div><div class="R">2835</div><div class="R barc"><span class="bar" style="width:80px"><i style="width:96.1%"></i></span><span>7.07</span></div><div class="R">969</div><div class="R">2.9s</div><div class="R">30</div><div></div></div>
+  <div class="tr" style="grid-template-columns:48px 36px 50px 58px 124px 58px 48px 56px 1fr"><div class="rkc">R9</div><div class="R">50</div><div class="R">486</div><div class="R">3385</div><div class="R barc"><span class="bar" style="width:80px"><i style="width:94.7%"></i></span><span>6.97</span></div><div class="R">1157</div><div class="R">2.9s</div><div class="R">24</div><div class="tag" style="color:var(--label2)">beaten</div></div>
+  <div class="tr z" style="grid-template-columns:48px 36px 50px 58px 124px 58px 48px 56px 1fr"><div class="rkc">R10</div><div class="R">56</div><div class="R">583</div><div class="R">3998</div><div class="R barc"><span class="bar" style="width:80px"><i style="width:93.2%"></i></span><span>6.86</span></div><div class="R">1367</div><div class="R">2.9s</div><div class="R">19</div><div class="tag" style="color:var(--label2)">beaten</div></div>
+  <div class="tr hov" style="grid-template-columns:48px 36px 50px 58px 124px 58px 48px 56px 1fr"><div class="rkc">R11</div><div class="R">60</div><div class="R">648</div><div class="R">4556</div><div class="R barc"><span class="bar" style="width:80px"><i style="width:95.5%"></i></span><span>7.03</span></div><div class="R">1558</div><div class="R">2.9s</div><div class="R">17</div><div class="tag" style="color:var(--label2);border-bottom:1px dotted #777;justify-self:start">beaten</div></div>
+  <div class="tr z" style="grid-template-columns:48px 36px 50px 58px 124px 58px 48px 56px 1fr"><div class="rkc">R12</div><div class="R">62</div><div class="R">664</div><div class="R">4684</div><div class="R barc"><span class="bar" style="width:80px"><i style="width:95.8%"></i></span><span>7.05</span></div><div class="R">1602</div><div class="R">2.9s</div><div class="R">16</div><div></div></div>
+  <div class="tr" style="grid-template-columns:48px 36px 50px 58px 124px 58px 48px 56px 1fr"><div class="rkc">R13</div><div class="R">69</div><div class="R">757</div><div class="R">5123</div><div class="R barc"><span class="bar" style="width:80px"><i style="width:92.0%"></i></span><span>6.77</span></div><div class="R">1752</div><div class="R">2.9s</div><div class="R">14</div><div class="tag max">max</div></div>
+ </div></div>
+ <div class="tp" style="top:444px"><div class="t">RANK 7 <span class="r">learned at 38 - you are 70</span></div><div class="ru"></div><div class="card">
+  <div class="q">"Heals a friendly target for 936 to 1121." <span class="mut">Your +healing adds to it, then the rules below.</span></div>
+  <div class="pairs" style="grid-template-columns:300px 300px"><div><span>Heals</span><b>2092 - 2296</b> <span class="mut" style="min-width:0">(2358 with 15% crit)</span></div><div><span>Crit</span><b>3138 - 3444</b></div><div><span>Downrank</span><b>70%</b> <span class="mut" style="min-width:0">of your +healing counts</span></div><div><span>Cost</span><b>328 mana</b></div></div>
+ </div></div>
+ <div class="sb" style="left:726px;top:114px;height:398px"><i style="top:0;height:318px"></i></div>
+</div>
+<!-- the beaten tooltip on R11 -->
+<div class="gt" style="position:absolute;left:596px;top:426px;width:258px;z-index:4"><div class="l title"><span>Beaten by Rank 12</span></div><div class="l"><span class="lab">Per mana</span><span class="w">7.05 vs 7.03</span></div><div class="l"><span class="lab">Per sec</span><span class="w">1602 vs 1558</span></div><div class="l wrap mut" style="margin-top:3px">Rank 12 is better on both, and you know it.</div></div>
+</div></div>
+<div class="col" style="padding-top:26px">
+ <div class="note">TBC's four heal families stay along the top as views, as in today's TBC window. The Forever rail is for a list you edit, and TBC has none. The four lines of prose are gone:
+ <br>- The stats line splits into the header's mana and <b>+healing</b>. Regen moves to the clock's tooltip.
+ <br>- The gold callout is the comparison line beside the chip.
+ <br>- <b>Effective</b> is now <b>After overheal</b>, with the measured share under it.
+ <br>- The Simulate strip folds behind <b>What if...</b>. While any what-if value is set, the chip says SIMULATED and the header shows the changed stats in the accent.</div>
+ <div class="note" style="margin-top:4px">The view scrolls when 13 ranks and the card don't fit (spec 3.5). Rows are 20 px, numbers are right-justified in Arial Narrow, and the only fill left is the suggested row's.</div>
+</div>
+</div></div>
+
+<h3>C4: one clock look, and the minimap button on both lines</h3>
+<div class="scroll"><div class="row" style="gap:30px">
+ <div class="tipcol"><div class="tipcap">TBC today (14-pt OUTLINE, the 5 s rule underline)</div>
+  <div class="world" style="width:230px;height:86px">
+   <div style="position:absolute;left:18px;top:22px"><span class="old"><span style="color:#999">OOM</span> 1:20 <span style="color:#ffcc33">v</span>&nbsp;&nbsp;<span style="color:#999">rest 2:10</span></span>
+   <div style="width:170px;height:2px;margin-top:3px;background:rgba(0,0,0,.3)"><div style="width:62%;height:2px;background:#ffab33"></div></div></div>
+   <div style="position:absolute;left:18px;top:58px"><span class="old" style="font-size:14px"><span style="color:#9966ff">SpellTuner</span> - drag me</span></div>
+  </div></div>
+ <div class="tipcol"><div class="tipcap">TBC after: the kit's panel, font and bar</div>
+  <div class="world" style="width:240px;height:110px">
+   <div class="clk" style="position:absolute;left:30px;top:14px"><div class="tx"><span class="t2">OOM</span> 1:20 <span style="color:#ffcc33">v</span>&nbsp;&nbsp;<span class="t2">rest 2:10</span></div><div class="bk"><div class="bf" style="width:100px;background:#ffab33"></div></div></div>
+   <div class="clk" style="position:absolute;left:30px;top:62px"><div class="tx acc">SpellTuner - drag me</div><div class="bk"><div class="bf" style="width:160px;background:var(--accent)"></div></div></div>
+  </div>
+  <div class="note" style="margin-top:6px;max-width:240px">The bar still shows the five-second rule: amber while it fills, green once spirit regen runs. It sits in Forever's 160 x 4 slot with a black backing.</div></div>
+ <div class="tipcol"><div class="tipcap">Forever (for reference, unchanged)</div>
+  <div class="world" style="width:240px;height:110px">
+   <div class="clk" style="position:absolute;left:30px;top:14px"><div class="tx"><span class="t2">~OOM</span> 1:20&nbsp;&nbsp;<span class="t2">rest 2:10</span></div><div class="bk"><div class="bf" style="width:118px;background:var(--mana)"></div></div></div>
+   <div class="clk" style="position:absolute;left:30px;top:62px"><div class="tx acc">SpellTuner - drag me</div><div class="bk"><div class="bf" style="width:160px;background:var(--accent)"></div></div></div>
+  </div>
+  <div class="note" style="margin-top:6px;max-width:240px">Here the bar is the real mana pool, drawn by the game. The <b>~</b> marks a modelled number.</div></div>
+</div>
+<div class="row" style="gap:40px;margin-top:22px;align-items:center">
+ <div class="tipcol"><div class="tipcap">TBC minimap</div>
+  <div style="display:flex;gap:18px;align-items:flex-start">
+   <div class="mm" style="margin:12px"><div class="road"></div><div class="mmb" style="left:-2px;top:98px"><div class="ring"></div><div class="icon"></div></div></div>
+   <div class="gt" style="width:250px;margin-top:40px"><div class="l title"><span class="acc">SpellTuner</span></div><div class="l"><span class="lab">Out of mana in</span><span class="w">1:20</span></div><div class="l"><span class="lab">Full again in</span><span class="w">2:10 if you stop</span></div><div class="sp" style="height:6px"></div><div class="l"><span class="lab">Left-click</span><span class="w">open the window</span></div><div class="l"><span class="lab">Right-click</span><span class="w">Settings</span></div><div class="l"><span class="lab">Drag</span><span class="w">move it round the map</span></div><div class="l wrap mut" style="margin-top:3px">Hide it: Settings -&gt; General -&gt; Windows.</div></div>
+  </div></div>
+ <div class="tipcol"><div class="tipcap">Forever minimap: the same button, the same tooltip</div>
+  <div style="display:flex;gap:18px;align-items:flex-start">
+   <div class="mm" style="margin:12px;background:radial-gradient(circle at 50% 45%,#8a8a5a 0,#6a7040 30%,#4a4a2a 60%,#2a2a1a 100%)"><div class="road" style="top:60px;transform:rotate(24deg)"></div><div class="mmb" style="left:-2px;top:98px"><div class="ring"></div><div class="icon"></div></div></div>
+   <div class="gt" style="width:250px;margin-top:40px"><div class="l title"><span class="acc">SpellTuner</span></div><div class="l"><span class="lab">Out of mana in</span><span class="w man">~1:20</span></div><div class="l"><span class="lab">Full again in</span><span class="w man">~2:10 if you stop</span></div><div class="sp" style="height:6px"></div><div class="l"><span class="lab">Left-click</span><span class="w">open the window</span></div><div class="l"><span class="lab">Right-click</span><span class="w">Settings</span></div><div class="l"><span class="lab">Drag</span><span class="w">move it round the map</span></div><div class="l wrap mut" style="margin-top:3px">Hide it: Settings -&gt; General -&gt; Windows.</div></div>
+  </div></div>
+ <div class="note" style="max-width:250px">The button is Blizzard's standard minimap button (31 x 31 with the tracking border), with the same icon on both lines. Left-click reopens the window on the last view, right-click opens Settings, and dragging moves it round the rim. The tooltip is the kit tooltip, and the clock lines use the healer words from P32 and P34. The old <i>CV</i> and <i>raw</i> lines go behind the detail key.</div>
+</div></div>
+</section>
+
+<!-- =============================================================== choices -->
+<section class="mock" id="choices"><h2><span class="n">?</span>Where the mockups had to choose</h2>
+<div class="choices"><ul>
+<li><b>M1, placeholder:</b> <i>Reload UI</i> is drawn on the Modules row of a module that is switched off but still loaded, not on the placeholder. A placeholder only shows while the module is not loaded, so a reload would do nothing there.</li>
+<li><b>M1, the minimap setting</b> sits in WINDOWS, and a <i>Show now</i> button sits beside <i>Reset position</i>. Show now gives the same 60 s preview as unticking Lock.</li>
+<li><b>M2, drawn on the TBC line</b> with a 36-pull Underbog run, because runs (and so scrolling) exist only there. On Forever the same pane lists v3 fights, with low mana read as ~N%.</li>
+<li><b>M2, the menu</b> keeps Coach but greys it out on a fight that does not replay, with the reason beside it. Coach anyway sits right under it. The Coach buttons carry no star.</li>
+<li><b>M3:</b> the reconstruction word is dotted-underlined and its tooltip explains it. When the pointer is over the window out of combat, the key caps light in the accent, so you can see whether the keys are live.</li>
+<li><b>M4:</b> both rail layouts are drawn. B (<i>x</i> only, reorder by drag or the row menu) is the one this page leans towards: it has one 18-px control and does not clip the name.</li>
+<li><b>M5, the merged grey</b> takes text2's #B3B3B3, the lighter of the two, for legibility at 0.71 scale. The selection mark is a 2-px white bar, and a 1-px outline is drawn as the alternative. M5 uses a level 16 druid who skipped Rank 2, the only way one family shows every kind of row.</li>
+<li><b>M6:</b> C3 names only the header, chip, table and card, so TBC keeps its families as tabs instead of getting the rail. The window uses the Spells group's 860 x 560 (C1's size per group), so the view scrolls. <i>Casts</i> keeps TBC's regen-aware count and shows <i>inf</i>, with <i>999+</i> for anything larger. Today it prints the raw 3895.</li>
+<li><b>C4:</b> TBC's bar keeps meaning the five-second rule, in the same slot as Forever's pool bar. The clock looks the same on both lines, but the bar still means something different on each.</li>
+</ul></div>
+</section>
+
+</div></body></html>
