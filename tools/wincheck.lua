@@ -17,7 +17,8 @@
 -- UI.px assumes). It is this suite's own, installed on the stub's frame
 -- metatable after the addon loads (the main window is built on first use, so
 -- every window this suite opens has it); no other suite sees it. T33 / T34
--- extend this file (T33: the ESC stack and combat, section 11).
+-- extend this file (T33: the ESC stack and combat, section 11; T34: the
+-- replay and practice takeover, section 12).
 HARNESS_FLAVOUR = "forever"
 
 local here = arg[0]:match("^(.*)/[^/]+$")
@@ -534,6 +535,218 @@ do
         fallback and closed and MD.db.ui.escStack == true and not InSpecial("SpellTunerDashboard")
           and Top() == frame and proxy ~= nil and proxy:IsShown(),
         tostring(fallback) .. " " .. tostring(closed))
+end
+
+--------------------------------------------------------------------------------
+-- 12. T34 (6.3): the replay and the practice session take the main window's
+-- place. The Practice module brings Recorder and Replay with it; the replay
+-- plays a tools/foreverfixture.lua stream. A "chat" open is one with the main
+-- window hidden; Review's Play is MD.Replay:Open with it shown.
+--------------------------------------------------------------------------------
+local function CapturedChat(body)
+    local lines = {}
+    local cf = _G.DEFAULT_CHAT_FRAME
+    local orig = cf.AddMessage
+    cf.AddMessage = function(_, m) lines[#lines + 1] = m end
+    body()
+    cf.AddMessage = orig
+    return lines
+end
+local function Under(f, root)
+    local guard = 0
+    while f and guard < 50 do
+        if f == root then return true end
+        f, guard = f.parentFrame, guard + 1
+    end
+    return false
+end
+local function ButtonUnder(root, text)
+    for _, f in ipairs(S.allFrames) do
+        if f.kind == "Button" and f.text == text and Under(f, root) then return f end
+    end
+    return nil
+end
+local function Click(b) local fn = b and b:GetScript("OnClick"); if fn then fn(b, "LeftButton") end end
+-- a frame's top centre in screen pixels (6.3's cx / top)
+local function TopCentrePx(f)
+    local es = f:GetEffectiveScale()
+    return (f:GetLeft() + f:GetWidth() / 2) * es, f:GetTop() * es
+end
+
+MD:SetModule("SpellTuner_Practice", true)
+MD.player.isDruid = true
+local buildFixture = dofile(here .. "/foreverfixture.lua")
+local recT34 = buildFixture()
+recT34.id = 2000000000
+MD.cdb.recordings = { recT34 }
+MD.cdb.practice = {}
+MD.db.replayAutoCoach = false -- no search running under the checks
+local mainShows = 0
+frame:HookScript("OnShow", function() mainShows = mainShows + 1 end)
+
+-- replayPos migrated once: the old anchor becomes db.ui.win.replay's TOPLEFT,
+-- the old key is deleted, and a drag afterwards writes only the new one
+local replay, backBtn
+do
+    frame:Hide()
+    MD.db.replayPos = { "TOPLEFT", "BOTTOMLEFT", 40, 600 }
+    MD:OpenReplay("1")
+    replay = _G.SpellTunerReplayWindow
+    backBtn = replay and replay.header and replay.header.backBtn
+    local sv = MD.db.ui.win.replay
+    local migrated = MD.db.replayPos == nil and sv ~= nil and near(sv.x, 40) and near(sv.y, 600)
+      and replay:IsShown() and near(replay:GetLeft(), 40) and near(replay:GetTop(), 600)
+    if replay then DragTo(replay, 60, 620) end
+    sv = MD.db.ui.win.replay
+    check("T34: db.replayPos is migrated into db.ui.win.replay once, then deleted",
+        migrated and MD.db.replayPos == nil and sv and near(sv.x, 60) and near(sv.y, 620),
+        tostring(migrated) .. " " .. (sv and (fmt(sv.x) .. "," .. fmt(sv.y)) or "nil"))
+    if replay then replay:Hide() end
+    MD.db.ui.win.replay = nil
+end
+if not replay then
+    print(string.format("%d ok, %d failed (stopped: no replay window)", ok, #fails)); os.exit(1)
+end
+
+-- a replay from chat: no back button, centred, a takeover in DIALOG, the main
+-- window left hidden
+do
+    frame:Hide()
+    local before = mainShows
+    MD:OpenReplay("1")
+    local sw, sh = UIParent:GetWidth(), UIParent:GetHeight()
+    local cx = replay:GetLeft() + replay:GetWidth() / 2
+    local cy = replay:GetTop() - replay:GetHeight() / 2
+    check("T34: a replay from chat has no back button, opens centred in DIALOG, main stays hidden",
+        replay:IsShown() and backBtn ~= nil and not backBtn:IsShown() and replay:GetFrameStrata() == "DIALOG"
+          and near(cx, sw / 2, 1e-3) and near(cy, sh / 2, 1e-3) and not frame:IsShown() and mainShows == before
+          and Top() == replay and not InSpecial("SpellTunerReplayWindow"),
+        tostring(backBtn and backBtn:IsShown()) .. " " .. tostring(replay:GetFrameStrata()) .. " "
+          .. fmt(cx) .. "," .. fmt(cy))
+    replay:Hide()
+end
+
+-- Review -> Play: the main window hides with its path; back restores it
+do
+    MD:SelectView("reports", "review")
+    MD.Replay:Open("1")
+    local took = replay:IsShown() and not frame:IsShown() and backBtn:IsShown() and Top() == replay
+    Click(backBtn)
+    local g, v = MD:SelectedView()
+    local back = not replay:IsShown() and frame:IsShown() and g == "reports" and v == "review" and Top() == frame
+    -- ESC does the same, one entry: the replay, not the main window it gives back
+    MD.Replay:Open("1")
+    NextFrame()
+    Esc()
+    NextFrame()
+    local g2, v2 = MD:SelectedView()
+    local esc = not replay:IsShown() and frame:IsShown() and g2 == "reports" and v2 == "review" and Top() == frame
+      and proxy:IsShown()
+    check("T34: Play hides the main window with its path; < SpellTuner or ESC closes the replay and restores it",
+        took and back and esc and backBtn.text == "< SpellTuner",
+        tostring(took) .. " " .. tostring(back) .. " " .. tostring(esc) .. " " .. tostring(g) .. "/" .. tostring(v))
+end
+
+-- the placement: the replay's top centre on the main window's, in screen
+-- pixels, at UI scales 0.71 and 1 (a window scale of 0.9 on both)
+do
+    local res = {}
+    Win:SetScale(0.9)
+    for _, us in ipairs({ 0.71, 1 }) do
+        S.uiScale = us
+        S.Fire("UI_SCALE_CHANGED")
+        MD:SelectView("reports", "review")
+        DragTo(frame, 150, 700)
+        local mx, mt = TopCentrePx(frame)
+        MD.Replay:Open("1")
+        local rx, rt = TopCentrePx(replay)
+        local p = replay:GetPoint(1)
+        res[#res + 1] = { ok = near(mx, rx, 1e-3) and near(mt, rt, 1e-3) and p == "TOP" and not frame:IsShown(),
+                          d = fmt(mx) .. "," .. fmt(mt) .. " vs " .. fmt(rx) .. "," .. fmt(rt) .. " " .. tostring(p) }
+        Click(backBtn)
+    end
+    Win:SetScale(1)
+    S.uiScale = 0.71
+    S.Fire("UI_SCALE_CHANGED")
+    check("T34: the replay opens with its top centre on the main window's, at UI scales 0.71 and 1",
+        res[1].ok and res[2].ok, res[1].d .. " / " .. res[2].d)
+end
+
+-- /st during a replay takeover: the replay closes, the requested view opens
+do
+    MD:SelectView("reports", "review")
+    MD.Replay:Open("1")
+    local took = replay:IsShown() and not frame:IsShown()
+    SlashCmdList.SPELLTUNER("modules")
+    local g, v = MD:SelectedView()
+    check("T34: /st modules during a replay takeover closes it and opens Settings -> Modules",
+        took and not replay:IsShown() and frame:IsShown() and g == "settings" and v == "modules"
+          and Top() == frame,
+        tostring(took) .. " " .. tostring(replay:IsShown()) .. " " .. tostring(g) .. "/" .. tostring(v))
+end
+
+-- practice: always a takeover; /st refused; ESC pauses, ESC again ends it and
+-- opens its replay, the main window never shown; back is Simulate -> Practice
+local PR = MD.Practice
+local function StartPractice()
+    MD:SelectView("simulate", "practice")
+    MD.db.practiceBinds = { { key = "1", family = "Rejuvenation" } }
+    local setup = PR.DefaultSetup("2", 64)
+    setup.dur, setup.fixedSeed = 30, 9
+    MD:OpenPractice(setup, 9)
+    local live = MD.Replay._live()
+    S.Tick(0.5)
+    if live then live:Cast(MD.SpellData.maxRank.Rejuvenation, 1) end
+    S.Tick(0.5)
+    return live
+end
+do
+    local live = StartPractice()
+    local took = live ~= nil and replay:IsShown() and not frame:IsShown() and not backBtn:IsShown()
+    local before = mainShows
+    local lines = CapturedChat(function()
+        SlashCmdList.SPELLTUNER("")
+        SlashCmdList.SPELLTUNER("modules")
+    end)
+    local refusedLine = 0
+    for _, l in ipairs(lines) do
+        if l:find("Practice is running: ESC pauses, ESC again ends it.", 1, true) then refusedLine = refusedLine + 1 end
+    end
+    check("T34: /st during practice is refused with one line and nothing shows",
+        took and refusedLine == 2 and #lines == 2 and not frame:IsShown() and mainShows == before
+          and replay:IsShown() and MD.Replay._live() == live,
+        tostring(took) .. " lines " .. #lines .. " " .. table.concat(lines, " / "))
+
+    Esc()
+    local paused = MD.Replay._live() == live and live.paused == true and replay:IsShown() and Top() == replay
+    NextFrame()
+    Esc()
+    NextFrame()
+    local st = MD.Replay._state()
+    local reopened = MD.Replay._live() == nil and replay:IsShown() and st.rp and not st.rp.live
+      and st.rp.rec == MD:GetRecording("p1") and not frame:IsShown() and mainShows == before
+      and backBtn:IsShown() and Top() == replay
+    Click(backBtn)
+    local g, v = MD:SelectedView()
+    check("T34: practice ESC pauses, ESC again ends it into its replay; back goes to Simulate -> Practice",
+        paused and reopened and frame:IsShown() and g == "simulate" and v == "practice",
+        tostring(paused) .. " " .. tostring(reopened) .. " " .. tostring(g) .. "/" .. tostring(v))
+end
+
+-- End opens the replay directly, the main window not shown in between
+do
+    local live = StartPractice()
+    local before = mainShows
+    local endBtn = ButtonUnder(replay, "End")
+    Click(endBtn)
+    local st = MD.Replay._state()
+    local ok6 = live ~= nil and endBtn ~= nil and MD.Replay._live() == nil and replay:IsShown()
+      and st.rp and not st.rp.live and not frame:IsShown() and mainShows == before and backBtn:IsShown()
+    Click(backBtn)
+    local g, v = MD:SelectedView()
+    check("T34: End opens the replay without showing the main window; back returns to Practice",
+        ok6 and frame:IsShown() and g == "simulate" and v == "practice",
+        tostring(ok6) .. " " .. tostring(g) .. "/" .. tostring(v))
 end
 
 --------------------------------------------------------------------------------

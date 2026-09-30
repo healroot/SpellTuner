@@ -306,6 +306,28 @@ do
 end
 
 --------------------------------------------------------------------------------
+-- T34 (docs/SPEC-forever-ui.md 6.2, 6.3): on Forever the window is the manager's
+-- takeover -- registered as "replay", on the ESC stack rather than named in
+-- UISpecialFrames, with a "< SpellTuner" back button that a replay opened
+-- from chat (the main window hidden) does not show. tools/wincheck.lua
+-- section 12 holds the placement and the ways back.
+--------------------------------------------------------------------------------
+do
+    SlashCmdList.SPELLTUNER("replay 1")
+    local f = MD.Replay._state().frame
+    local special = false
+    for _, n in ipairs(UISpecialFrames) do if n == "SpellTunerReplayWindow" then special = true end end
+    local w = MD.Win and MD.Win.windows and MD.Win.windows.replay
+    local back = f and f.header and f.header.backBtn
+    check("T34: the replay is the manager's takeover, on the ESC stack; from chat no back button",
+        w ~= nil and w.frame == f and w.role == "takeover" and not special and back ~= nil
+        and back.text == "< SpellTuner" and not back:IsShown() and f:IsShown()
+        and MD.Win.takeover ~= nil and MD.Win.takeover.kind == "replay" and MD.Win.takeover.path == nil,
+        "registered=" .. tostring(w ~= nil) .. " special=" .. tostring(special)
+        .. " back=" .. tostring(back and back:IsShown()))
+end
+
+--------------------------------------------------------------------------------
 -- 10: the window will not open in combat
 --------------------------------------------------------------------------------
 if W.frame then W.frame:Hide() end

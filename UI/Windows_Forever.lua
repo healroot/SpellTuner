@@ -13,7 +13,7 @@
 -- with SetScale, and a change converts every saved position (x * old / new) so
 -- the window stays where it was on screen. UI.RestylePixels runs on
 -- UI_SCALE_CHANGED, DISPLAY_SIZE_CHANGED and a scale change, so 1-px edges stay
--- one pixel without a reload. The replay and practice takeover (6.3) are T34's.
+-- one pixel without a reload.
 --
 -- T33 (6.5, 6.6): the ESC stack and combat. One invisible proxy,
 -- SpellTunerEscProxy, is the only SpellTuner frame in UISpecialFrames; it is
@@ -25,6 +25,18 @@
 -- UISpecialFrames entry, as before. Entering combat hides the main window (and
 -- a review replay) under db.ui.combat = "hide"; PLAYER_REGEN_ENABLED shows them
 -- again, the main window on the view it had.
+--
+-- T34 (6.3): the takeover. A replay or a practice session takes the main
+-- window's place: Win:TakeOver, called by the window right before it shows,
+-- hides the main window and remembers its path; the replay opens at its saved
+-- place (db.ui.win.replay, once dragged), else with its top centre on the main
+-- window's, computed in screen pixels. Its "< SpellTuner" button (the kit's
+-- opts.back), the x, ESC and End close it and show the main window on that
+-- path; a practice session's way back is Simulate -> Practice, and its replay
+-- follows it directly, the main window never shown in between. ShowMain during
+-- a takeover closes a replay and opens the requested view, and is refused
+-- while a practice session runs. db.replayPos (the old anchor) is adopted
+-- into db.ui.win.replay once (Win:Adopt).
 --
 -- No client data is read here: the widget toolkit (frame geometry, strata,
 -- scale) is not a client call (CLAUDE.md), and the two events go through the
@@ -167,10 +179,50 @@ function Win:Place(key)
         local sw, sh = ScreenIn(f)
         x, y = (sw - f:GetWidth()) / 2, (sh + f:GetHeight()) / 2
     end
+    -- T34 (6.3): a takeover never dragged sits with its top centre on the
+    -- point it took over (screen pixels, w.over), anchored by its TOP so a
+    -- width that changes later (the suggested column filling in) keeps it
+    -- centred there; clamped as a TOPLEFT would be.
+    if not (s and type(s.x) == "number" and type(s.y) == "number") and w.over then
+        local rs = f:GetEffectiveScale()
+        if type(rs) == "number" and rs > 0 then
+            local fw = f:GetWidth()
+            local cx, cy = Clamp(f, w.over[1] / rs - fw / 2, w.over[2] / rs)
+            f:ClearAllPoints()
+            f:SetPoint("TOP", UIParent, "BOTTOMLEFT", cx + fw / 2, cy)
+            f:SetUserPlaced(false)
+            return
+        end
+    end
     w.pos = { x, y }
     local cx, cy = Clamp(f, x, y)
     Anchor(f, cx, cy)
     f:SetUserPlaced(false)
+end
+
+-- T34: an old saved anchor { point, relPoint, x, y } (to UIParent, in the
+-- frame's units: db.replayPos) turned into the manager's saved TOPLEFT, by
+-- arithmetic on the screen and the frame's size -- no GetLeft, which a hidden
+-- frame may not answer.
+local FX = { TOPLEFT = 0, LEFT = 0, BOTTOMLEFT = 0, TOP = 0.5, CENTER = 0.5, BOTTOM = 0.5,
+             TOPRIGHT = 1, RIGHT = 1, BOTTOMRIGHT = 1 }
+local FY = { BOTTOMLEFT = 0, BOTTOM = 0, BOTTOMRIGHT = 0, LEFT = 0.5, CENTER = 0.5, RIGHT = 0.5,
+             TOPLEFT = 1, TOP = 1, TOPRIGHT = 1 }
+function Win:Adopt(key, p)
+    local w = self.windows[key]
+    if not w or type(p) ~= "table" then return false end
+    local point, rel, x, y = p[1], p[2], tonumber(p[3]), tonumber(p[4])
+    if not (FX[point] and FX[rel] and x and y) then return false end
+    local f = w.frame
+    local sw, sh = ScreenIn(f)
+    local px, py = FX[rel] * sw + x, FY[rel] * sh + y
+    local left = px - FX[point] * f:GetWidth()
+    local top = py + (1 - FY[point]) * f:GetHeight()
+    local s = Saved(key, true)
+    if not s then return false end
+    s.x, s.y = Clamp(f, left, top)
+    self:Place(key)
+    return true
 end
 
 -- After a drag (the kit's OnDragStop calls frame:OnMoved()): the TOPLEFT the
@@ -260,6 +312,18 @@ function Win:Register(frame, spec)
         Win:Push(f, cur and cur.onEsc)
     end)
     if frame:IsShown() then self:Push(frame, w.onEsc) end
+
+    -- T34 (6.3): a takeover's back button (the kit's opts.back) and its every
+    -- close -- back, the x, ESC, End -- give the main window back
+    if spec.role == "takeover" then
+        if frame.header and frame.header.backBtn then
+            frame.OnBack = function(f) f:Hide() end
+        end
+        frame:HookScript("OnHide", function(f)
+            if f:IsShown() then return end -- UIParent hid (Alt+Z), not this
+            Win:TakeoverHidden(spec.key)
+        end)
+    end
     return w
 end
 
@@ -311,12 +375,113 @@ function Win:Reset()
 end
 
 --------------------------------------------------------------------------------
--- The main window
+-- The main window and the takeover (6.3, T34)
 --------------------------------------------------------------------------------
--- Every caller of MD:SelectView comes through here (6.3). T32: open the main
--- window on the view asked for (nil: the remembered one). T34 adds the
--- takeover rules in front of this.
+Win.PRACTICE_PATH = { "simulate", "practice" }
+Win.PRACTICE_REFUSED = "Practice is running: ESC pauses, ESC again ends it."
+-- Win.takeover = { key, kind = "replay" | "practice", path = { group, view } | nil }
+
+local function SetBack(f, on)
+    local b = f.header and f.header.backBtn
+    if not b then return end
+    if on then b:Show() else b:Hide() end
+end
+
+-- The window `key` is about to show as `kind`: "replay" (a review replay, or
+-- a practice's) or "practice" (a session being played). With the main window
+-- shown, it hides and its path is remembered, and the window opens over its
+-- top centre (unless it was ever dragged); with a takeover of this window
+-- already on screen (End -> its replay, the next pull, the suggested column
+-- filling in) the place and the way back are kept; otherwise (from chat) the
+-- saved place or the centre, and no back button. A practice session always
+-- takes over, and its way back is Simulate -> Practice.
+function Win:TakeOver(key, kind)
+    local w = self.windows[key]
+    if not w then return end
+    local f = w.frame
+    local main = self.windows.main
+    local cur = self.takeover
+    local mainShown = main and main.frame:IsShown()
+    local path
+    if mainShown then
+        local mf = main.frame
+        if MD.SelectedView then
+            local g, v = MD:SelectedView()
+            if g then path = { g, v } end
+        end
+        local ms = mf:GetEffectiveScale()
+        local l, t = mf:GetLeft(), mf:GetTop()
+        if type(ms) == "number" and type(l) == "number" and type(t) == "number" then
+            w.over = { (l + mf:GetWidth() / 2) * ms, t * ms }
+        end
+        w.pos = nil
+    elseif cur and cur.key == key and f:IsShown() then
+        path = cur.path
+    else
+        w.over, w.pos = nil, nil
+    end
+    if kind == "practice" then path = { Win.PRACTICE_PATH[1], Win.PRACTICE_PATH[2] } end
+    self.takeover = { key = key, kind = kind, path = path }
+    SetBack(f, kind ~= "practice" and path ~= nil)
+    self:Place(key)
+    if mainShown then main.frame:Hide() end
+end
+
+-- The takeover window hid (its OnHide, however it closed). A combat hide keeps
+-- the takeover: the window comes back after, the main window still hidden.
+-- Otherwise the main window returns on the remembered path -- after combat,
+-- if this happened in one under db.ui.combat = "hide".
+function Win:TakeoverHidden(key)
+    local t = self.takeover
+    if not t or t.key ~= key then return end
+    if self.combatHiding then return end
+    self.takeover = nil
+    if not t.path then return end
+    local u = UIdb()
+    if self:InCombat() and not (u and u.combat == "keep") then
+        self.combatHidden = self.combatHidden or {}
+        table.insert(self.combatHidden, { key = "main", group = t.path[1], view = t.path[2] })
+        return
+    end
+    if MD.OpenMainWindow then MD:OpenMainWindow(t.path[1], t.path[2]) end
+end
+
+-- Every takeover window closed without giving the main window back (ShowMain
+-- opens the view asked for instead); nothing of theirs returns after combat.
+function Win:CloseTakeovers()
+    self.takeover = nil
+    for _, w in pairs(self.windows) do
+        if w.role == "takeover" and w.frame:IsShown() then w.frame:Hide() end
+    end
+    local hidden = self.combatHidden
+    if hidden then
+        for i = #hidden, 1, -1 do
+            local w = self.windows[hidden[i].key]
+            if w and w.role == "takeover" then table.remove(hidden, i) end
+        end
+    end
+end
+
+function Win:InCombat()
+    if self.inCombat then return true end
+    local API = MD.API
+    return (API and API.UnitAffectingCombat and API.UnitAffectingCombat("player") == true) or false
+end
+
+-- Every caller of MD:SelectView comes through here (6.3). Open the main window
+-- on the view asked for (nil: the remembered one). During a practice session
+-- it is refused with one line; during a replay the replay closes first -- the
+-- two are never shown together by a command.
 function Win:ShowMain(group, view)
+    local t = self.takeover
+    if t and t.kind == "practice" then
+        local w = self.windows[t.key]
+        if w and w.frame:IsShown() then
+            MD:Print(Win.PRACTICE_REFUSED)
+            return
+        end
+    end
+    self:CloseTakeovers()
     if MD.OpenMainWindow then return MD:OpenMainWindow(group, view) end
 end
 
@@ -585,6 +750,7 @@ end
 -- db.ui.combat = "hide" (default): every shown window whose rule is "hide"
 -- hides and is remembered, the main window with its view. "keep": nothing.
 function Win:EnterCombat()
+    self.inCombat = true -- T34: a takeover closed in combat gives the main window back after
     local u = UIdb()
     if u and u.combat == "keep" then return end
     local hidden = self.combatHidden or {}
@@ -596,16 +762,19 @@ function Win:EnterCombat()
             list[#list + 1] = rec
         end
     end
+    self.combatHidden = hidden
+    self.combatHiding = true -- T34: a takeover hidden here stays a takeover
     for _, rec in ipairs(list) do
         hidden[#hidden + 1] = rec
         self.windows[rec.key].frame:Hide()
     end
-    self.combatHidden = hidden
+    self.combatHiding = nil
 end
 
 -- PLAYER_REGEN_ENABLED: what combat hid comes back where it was. During a
 -- takeover the main window was already hidden, so only the replay returns.
 function Win:LeaveCombat()
+    self.inCombat = nil
     local hidden = self.combatHidden
     self.combatHidden = nil
     if not hidden then return end

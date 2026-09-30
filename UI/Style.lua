@@ -249,6 +249,17 @@ function UI.CreateMovableFrame(title, name, width, height, strata, level, notUse
     header.closeBtn:SetPoint("TOPRIGHT")
     header.closeBtn:SetScript("OnClick", function() f:Hide() end)
 
+    -- T34 (docs/SPEC-forever-ui.md 6.3): opts.back (a label, or true for
+    -- "< Back") adds a back button at the header's left, 84x20, hidden until
+    -- the window manager shows it; a click calls f:OnBack() when set.
+    if opts and opts.back then
+        local label = type(opts.back) == "string" and opts.back or "< Back"
+        header.backBtn = UI.CreateButton(header, label, "accent-hover", { 84, 20 })
+        header.backBtn:SetPoint("TOPLEFT")
+        header.backBtn:SetScript("OnClick", function() if f.OnBack then f:OnBack() end end)
+        header.backBtn:Hide()
+    end
+
     if opts and opts.resizable then -- T32
         f:SetResizable(true)
         local grip = CreateFrame("Button", nil, f)
