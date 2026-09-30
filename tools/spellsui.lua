@@ -3,6 +3,15 @@
 -- T10 (docs/tasks/T10-spells-pane.md): the Spells -> Spellbook pane
 -- (UI/Dashboard_Forever.lua) on UI/Dashboard_Rows.lua's now-shared table
 -- widget. Forever only.
+--
+-- T36 (docs/SPEC-forever-ui.md 3.1-3.4, 3.6): rewritten for the Spells pane
+-- that moved into UI/SpellsPane_Forever.lua. The Spells group is a rail
+-- group: MY SPELLS, Overview, then one row per family of the player's list
+-- (Spells/Tabs.lua). Today's Spellbook table is the Overview view until T39
+-- turns it into My spells / Whole book, so items 1-17 below open "overview"
+-- and hold that table as before; the T36 items after them hold the rail, the
+-- picker sheet, the drop from the spellbook (the cursor never cleared), /st
+-- spell, the preview banner and the pitches at a font offset of +2.
 HARNESS_FLAVOUR = "forever"
 
 local here = arg[0]:match("^(.*)/[^/]+$")
@@ -19,6 +28,378 @@ arg[0] = a0
 
 local S = _G.STUB
 local Book = MD.Book
+local UI = MD.UI
+
+-- T36: anchors recorded for THIS suite only (the stub keeps none; navui's own
+-- instrumentation, the same three methods), so the picker's anchor and its
+-- mask's region can be read back.
+local FrameMT = getmetatable(UIParent)
+function FrameMT:SetPoint(p, rel, rp, x, y)
+    if type(rel) == "number" then rel, rp, x, y = nil, p, rel, rp end
+    self.points = self.points or {}
+    self.points[p] = { rel = rel or self.parentFrame, rp = rp or p, x = x or 0, y = y or 0 }
+end
+function FrameMT:ClearAllPoints() self.points = {}; self.allPoints = nil end
+function FrameMT:SetAllPoints(rel) self.points = {}; self.allPoints = rel or self.parentFrame end
+
+--------------------------------------------------------------------------------
+-- T36: the kindless fixtures first (they are no heal, so the seed does not
+-- take them; the picker lists them), the rail and the picker against the
+-- stub's own book (Healing Touch R1, Rejuvenation R1/R2, Wrath R1), then the
+-- heal fixtures of items 1-17 and those items on the Overview view.
+--------------------------------------------------------------------------------
+-- item 1/Other section: a family with no heal/damage/absorb numbers at all,
+-- but a mana cost -- T10c: a kindless family needs one to be worth comparing
+-- on this table (a shapeshift costs mana; Facts).
+S.AddSpell(92100, "Bearform", "Passive",
+    function() return "You transform into a bear, increasing armor." end,
+    { cast = 0, cost = 30, level = 10 })
+
+-- T10c: a passive with no mana cost -- left off the pane, counted, and still
+-- in the export.
+S.AddSpell(92200, "Oakskin", "Passive",
+    function() return "Increases your armor." end,
+    { cast = 0, noCost = true, passive = true, level = 10 })
+
+-- T10c: a kindless, non-passive spell whose description carries no amount at
+-- all -- no mana cost either, so it is left off the pane the same as a
+-- passive.
+S.AddSpell(92201, "Swing", "",
+    function() return "A melee attack." end,
+    { cast = 0, noCost = true, level = 1 })
+
+--------------------------------------------------------------------------------
+-- T36 (docs/SPEC-forever-ui.md 3.1-3.4, 3.6): the rail and the picker. Each
+-- block runs under pcall, so the old code (no rail, no MD.SpellsPane) fails
+-- item by item instead of stopping the suite.
+--------------------------------------------------------------------------------
+local SP = MD.SpellsPane
+local function T36(name, fn)
+    local good, cond, detail = pcall(fn)
+    if not good then check(name, false, "raised: " .. tostring(cond)) return end
+    check(name, cond == true, detail)
+end
+
+local function Nav() return SP and SP.nav end
+local function Rail() return Nav() and Nav():Rail("spells") end
+local function RailIds()
+    local ids = {}
+    for _, r in ipairs(Rail() and Rail():Rows() or {}) do ids[#ids + 1] = r.id end
+    return ids
+end
+local function RailRow(id)
+    for _, r in ipairs(Rail() and Rail():Rows() or {}) do if r.id == id then return r end end
+    return nil
+end
+local function Order() return table.concat(MD.Tabs:Get(), ",") end
+local function ShownViewButtons()
+    local n = 0
+    for _, b in ipairs(Nav() and Nav().viewButtons or {}) do if b:IsShown() then n = n + 1 end end
+    return n
+end
+local function PickerRow(key)
+    for _, r in ipairs(SP.picker and SP.picker.rows or {}) do
+        if r.key == key and r:IsShown() then return r end
+    end
+    return nil
+end
+local function Click(b, button)
+    local fn = b and b:GetScript("OnClick")
+    if fn then fn(b, button or "LeftButton") end
+end
+local function Tick(row, on)
+    row.check:SetChecked(on)
+    Click(row.check)
+end
+local chat = {}
+local function Chat(fn)
+    wipe(chat)
+    local frame = _G.DEFAULT_CHAT_FRAME
+    local saved = frame.AddMessage
+    frame.AddMessage = function(_, m) chat[#chat + 1] = m end
+    local good, err = pcall(fn)
+    frame.AddMessage = saved
+    if not good then error(err, 0) end
+end
+local function Slash(msg) SlashCmdList.SPELLTUNER(msg) end
+
+-- 18: the Spells group is a rail
+T36("the Spells group is a rail: MY SPELLS, Overview, then the seeded families", function()
+    MD:SelectView("spells")
+    local book = Book:Get()
+    local rj = book.families["Rejuvenation"]
+    local ids = RailIds()
+    local htRow, rjRow = RailRow("fam:Healing Touch"), RailRow("fam:Rejuvenation")
+    local st = MD.cdb.spellTabs
+    local good = Rail() ~= nil and Rail().title:GetText() == "MY SPELLS"
+        and table.concat(ids, ",") == "overview,fam:Healing Touch,fam:Rejuvenation"
+        and st.seeded == true and Order() == "Healing Touch,Rejuvenation"
+        and ShownViewButtons() == 0 and Nav().contentTop == -8
+        and htRow.data.tag == "R1" and rjRow.data.tag == "R" .. rj.suggested.rank
+        and htRow.data.icon == 136041
+    return good, "rail=" .. table.concat(ids, ",") .. " order=" .. Order()
+        .. " viewButtons=" .. ShownViewButtons()
+end)
+
+-- 19: the picker opens as a sheet over the view only, and lists the book
+T36("+ Add opens the picker over the spell view, not over the rail", function()
+    Click(SP.addBtn)
+    local p = SP.picker
+    local view = Nav():RailView("spells")
+    local tl = p and p.points and p.points.TOPLEFT
+    local ht, rj, wr = PickerRow("Healing Touch"), PickerRow("Rejuvenation"), PickerRow("Wrath")
+    local good = p ~= nil and p:IsShown() and p.mask:IsShown() and p.mask.allPoints == view
+        and tl ~= nil and tl.rel == Rail().frame and tl.rp == "TOPRIGHT" and tl.x == 4
+        and ht ~= nil and ht.check:GetChecked() and rj ~= nil and rj.check:GetChecked()
+        and wr ~= nil and not wr.check:GetChecked()
+        and PickerRow("Oakskin") == nil -- a passive is not listed
+        and PickerRow("Swing") ~= nil -- a free spell is, under Other
+        and ht.section == "heal" and wr.section == "damage" and PickerRow("Swing").section == "other"
+    return good, string.format("shown=%s mask=%s anchor=%s ht=%s wrath=%s",
+        tostring(p and p:IsShown()), tostring(p and p.mask.allPoints == view),
+        tostring(tl and tl.rp), tostring(ht ~= nil), tostring(wr ~= nil))
+end)
+
+-- 20: a tick adds a view
+T36("a tick adds the family to the rail as a view", function()
+    Tick(PickerRow("Wrath"), true)
+    Click(SP.picker.doneBtn)
+    local views = {}
+    for _, g in ipairs(Nav().groups) do
+        if g.id == "spells" then for _, v in ipairs(g.views) do views[#views + 1] = v.id end end
+    end
+    MD:SelectView("spells", "fam:Wrath")
+    local _, view = Nav():Selected()
+    local good = Order() == "Healing Touch,Rejuvenation,Wrath"
+        and RailRow("fam:Wrath") ~= nil and views[#views] == "fam:Wrath"
+        and view == "fam:Wrath" and SP.picker:IsShown() == false -- Done only closes the sheet
+    return good, "order=" .. Order() .. " view=" .. tostring(view)
+end)
+
+-- 21: unticking removes (and records it); Undo in the rail puts it back
+T36("unticking removes it, and the rail's Undo line brings it back", function()
+    Click(SP.addBtn)
+    Tick(PickerRow("Wrath"), false)
+    local removed = MD.cdb.spellTabs.removed["Wrath"] == true
+    local line = SP.undoText:IsShown() and SP.undoText:GetText() or ""
+    local gone = RailRow("fam:Wrath") == nil
+    Click(SP.undoBtn)
+    local back = Order() == "Healing Touch,Rejuvenation,Wrath" and RailRow("fam:Wrath") ~= nil
+        and PickerRow("Wrath").check:GetChecked() and not SP.undoText:IsShown()
+    return removed and gone and line == "Wrath removed" and back,
+        string.format("removed=%s line=%q back=%s", tostring(removed), line, tostring(back))
+end)
+
+-- 22: the search box filters by substring as you type
+T36("the picker's search filters by substring", function()
+    SP.picker.search:SetText("JUV")
+    SP.picker.search:GetScript("OnTextChanged")(SP.picker.search, true)
+    local only = PickerRow("Rejuvenation") ~= nil and PickerRow("Healing Touch") == nil and PickerRow("Wrath") == nil
+    SP.picker.search:SetText("")
+    SP.picker.search:GetScript("OnTextChanged")(SP.picker.search, true)
+    return only and PickerRow("Healing Touch") ~= nil, "filtered=" .. tostring(only)
+end)
+
+-- 23: a spellbook spell dropped on a row goes in at that row; the cursor stays
+T36("a drop adds at the row and leaves the cursor as it was", function()
+    Click(SP.picker.doneBtn)
+    Rail().opts.onRemove("fam:Wrath")
+    local cursor = { "spell", 3, "spell", 5176 }
+    S.cursor = cursor
+    local before = S.clearCursorCalls
+    local ht = RailRow("fam:Healing Touch")
+    ht:GetScript("OnReceiveDrag")(ht)
+    local good = Order() == "Wrath,Healing Touch,Rejuvenation"
+        and S.cursor == cursor and S.cursor[4] == 5176 and S.clearCursorCalls == before
+        and SP.picker:IsShown() == false
+    S.cursor = nil
+    return good, "order=" .. Order() .. " cleared=" .. (S.clearCursorCalls - before)
+end)
+
+-- 24: something that is not a spell adds nothing; a click with a spell on
+-- the cursor drops rather than selects
+T36("an item on the cursor adds nothing; a click with a spell drops it", function()
+    Rail().opts.onRemove("fam:Wrath")
+    S.cursor = { "item", 6948 }
+    local ht = RailRow("fam:Healing Touch")
+    ht:GetScript("OnReceiveDrag")(ht)
+    local itemNothing = Order() == "Healing Touch,Rejuvenation"
+    S.cursor = { "spell", 3, "spell", 5176 }
+    local rj = RailRow("fam:Rejuvenation")
+    Click(rj)
+    local _, view = Nav():Selected()
+    local dropped = Order() == "Healing Touch,Wrath,Rejuvenation" and view ~= "fam:Rejuvenation"
+    S.cursor = nil
+    return itemNothing and dropped, "item=" .. tostring(itemNothing) .. " order=" .. Order()
+end)
+
+-- 25: the rail stays live while the picker is open
+T36("the rail takes a drop while the picker is open, and the picker follows", function()
+    Rail().opts.onRemove("fam:Wrath")
+    Click(SP.addBtn)
+    local unticked = not PickerRow("Wrath").check:GetChecked()
+    S.cursor = { "spell", 3, "spell", 5176 }
+    Rail().frame:GetScript("OnReceiveDrag")(Rail().frame)
+    S.cursor = nil
+    local good = unticked and Order() == "Healing Touch,Rejuvenation,Wrath"
+        and SP.picker:IsShown() and PickerRow("Wrath").check:GetChecked()
+    Click(SP.picker.doneBtn)
+    return good, "order=" .. Order()
+end)
+
+-- 26: the adapter answers the cursor's spell id only when it is plain
+T36("MD.API.CursorInfo answers a spell id only when plain", function()
+    S.cursor = { "spell", 3, "spell", 5176 }
+    local k1, id1 = MD.API.CursorInfo()
+    S.cursor = { "spell", 3, "spell", S.Secret() }
+    local k2, id2 = MD.API.CursorInfo()
+    S.cursor = { "item", 6948 }
+    local k3, id3 = MD.API.CursorInfo()
+    S.cursor = nil
+    local k4, id4 = MD.API.CursorInfo()
+    return k1 == "spell" and id1 == 5176 and id2 == nil and k3 == "item" and id3 == nil
+        and k4 == nil and id4 == nil,
+        string.format("%s/%s %s/%s %s/%s %s/%s", tostring(k1), tostring(id1), tostring(k2), tostring(id2),
+            tostring(k3), tostring(id3), tostring(k4), tostring(id4))
+end)
+
+-- 27: /st spell <name> selects the view, through the window manager
+T36("/st spell selects one, through MD.Win:ShowMain", function()
+    MD:SelectView("settings", "modules")
+    local calls = {}
+    local orig = MD.Win.ShowMain
+    MD.Win.ShowMain = function(self, g, v) calls[#calls + 1] = tostring(g) .. "/" .. tostring(v); return orig(self, g, v) end
+    Slash("spell reju")
+    MD.Win.ShowMain = orig
+    local g, view = Nav():Selected()
+    return g == "spells" and view == "fam:Rejuvenation" and calls[#calls] == "spells/fam:Rejuvenation"
+        and RailRow("fam:Rejuvenation").selected == true,
+        "selected=" .. tostring(g) .. "/" .. tostring(view) .. " calls=" .. table.concat(calls, ";")
+end)
+
+-- 28: a family not in the list opens as a preview, with its banner
+T36("/st spell on a family not in the list opens its preview; Add lists it", function()
+    Rail().opts.onRemove("fam:Wrath")
+    Slash("spell WRA")
+    local banner = SP.banner
+    local text = banner and banner:IsShown() and banner.text:GetText() or ""
+    local previewing = SP.family:IsShown() and SP.family.key == "Wrath"
+    local noneSelected = true
+    for _, r in ipairs(Rail():Rows()) do if r.selected then noneSelected = false end end
+    Click(banner.addBtn)
+    local _, view = Nav():Selected()
+    local good = text:find("Not in your list.", 1, true) ~= nil and previewing and noneSelected
+        and Order() == "Healing Touch,Rejuvenation,Wrath" and view == "fam:Wrath" and not banner:IsShown()
+    return good, string.format("banner=%q previewing=%s noneSelected=%s view=%s", text,
+        tostring(previewing), tostring(noneSelected), tostring(view))
+end)
+
+-- 29: no match says so and changes nothing
+T36("/st spell with no match says so", function()
+    local before = Order()
+    Chat(function() Slash("spell zzz") end)
+    local line = chat[1] or ""
+    return Order() == before and line:find("zzz", 1, true) ~= nil and line:find("no spell", 1, true) ~= nil,
+        line
+end)
+
+-- 30: a family the book no longer has stays, greyed, with its own Remove
+T36("a family the book no longer has stays in the rail, greyed, with Remove", function()
+    table.insert(MD.cdb.spellTabs.order, "Healing Wave")
+    SP:RefreshRail()
+    local row = RailRow("fam:Healing Wave")
+    local stale = row ~= nil and row.data.stale == true
+    MD:SelectView("spells", "fam:Healing Wave")
+    local msg = SP.family.staleText:IsShown() and SP.family.staleText:GetText() or ""
+    Click(SP.family.removeBtn)
+    return stale and msg == "Healing Wave is not in this character's spellbook." and RailRow("fam:Healing Wave") == nil
+        and Order() == "Healing Touch,Rejuvenation,Wrath", "msg=" .. msg .. " order=" .. Order()
+end)
+
+-- 31: a heal learned later is appended with the new dot until it is opened
+T36("a newly learned heal appears with the new dot until opened", function()
+    S.AddSpell(92400, "Regrowth", "Rank 1",
+        function() return "Heals a friendly target for 84 to 98." end,
+        { cast = 2000, cost = 80, level = 12 })
+    Book:MarkDirty()
+    MD:SelectView("spells", "overview")
+    local row = RailRow("fam:Regrowth")
+    local dot = row ~= nil and row.data.new == true and row.dot:IsShown()
+    MD:SelectView("spells", "fam:Regrowth")
+    row = RailRow("fam:Regrowth")
+    return dot and row.data.new ~= true and not row.dot:IsShown(), "dot=" .. tostring(dot)
+end)
+
+-- 31b: a family clicked in Overview opens: its view when listed, else its preview
+T36("a family clicked in Overview opens its view, or its preview when not listed", function()
+    MD:SelectView("spells", "overview")
+    local function ClickFamily(name)
+        for _, f in ipairs(S.allFrames) do
+            if f.cells and f.data and f.data.kind == "family" and f.data.family.name == name and f:IsShown()
+                and f:GetScript("OnMouseUp") then
+                f:GetScript("OnMouseUp")(f, "LeftButton") -- the table's click (T30's onClick)
+                return true
+            end
+        end
+        return false
+    end
+    local clickedRj = ClickFamily("Rejuvenation")
+    local _, v1 = Nav():Selected()
+    Rail().opts.onRemove("fam:Wrath")
+    MD:SelectView("spells", "overview")
+    local clickedWr = ClickFamily("Wrath")
+    local _, v2 = Nav():Selected()
+    local preview = SP.banner:IsShown() and SP.family.key == "Wrath"
+    SP:Undo()
+    return clickedRj and v1 == "fam:Rejuvenation" and clickedWr and v2 == "overview" and preview
+        and Order() == "Healing Touch,Rejuvenation,Wrath,Regrowth",
+        string.format("v1=%s v2=%s preview=%s order=%s", tostring(v1), tostring(v2), tostring(preview), Order())
+end)
+
+-- 32: the picker refuses to open in combat
+T36("the picker does not open in combat", function()
+    S.inCombat = true
+    Chat(function() Click(SP.addBtn) end)
+    S.inCombat = false
+    return SP.picker:IsShown() == false and (chat[1] or ""):find("combat", 1, true) ~= nil, chat[1]
+end)
+
+-- 32b (integration of T33 and T36, 6.5: "the sheets" join the ESC stack): with
+-- the picker open, one ESC closes the picker and leaves the window up
+T36("one ESC closes the picker, not the window (T33's stack)", function()
+    MD:SelectView("spells", "fam:Healing Touch")
+    local frame = _G.SpellTunerDashboard
+    if frame and not frame:IsShown() then frame:Show() end
+    Click(SP.addBtn)
+    local opened = SP.picker:IsShown()
+    local before = #(S.timers or {})
+    local names = {}
+    for _, name in ipairs(UISpecialFrames) do names[#names + 1] = name end
+    for _, name in ipairs(names) do
+        local f = _G[name]
+        if f and f:IsShown() then f:Hide() end
+    end
+    local pickerUp, frameUp = SP.picker:IsShown(), frame and frame:IsShown()
+    local timers = S.timers or {}
+    for i = before + 1, #timers do timers[i]() end
+    local proxy = _G.SpellTunerEscProxy
+    return opened and not pickerUp and frameUp == true and proxy ~= nil and proxy:IsShown(),
+        string.format("opened=%s picker=%s frame=%s proxy=%s", tostring(opened), tostring(pickerUp),
+            tostring(frameUp), tostring(proxy and proxy:IsShown()))
+end)
+
+-- 33: the pitches grow with the font offset, and the pane re-renders at once
+T36("at font offset +2 the rail rows are 22 tall (21 apart, the 1-px overlap)", function()
+    MD:SelectView("spells", "fam:Healing Touch")
+    UI.ApplyFonts(2)
+    local a, b = RailRow("fam:Healing Touch"), RailRow("fam:Rejuvenation")
+    local h, gap = a:GetHeight(), b.top - a.top
+    local headH = SP.family.header:GetHeight()
+    UI.ApplyFonts(0)
+    local h0 = RailRow("fam:Healing Touch"):GetHeight()
+    return h == 22 and gap == 21 and headH == 50 and h0 == 20,
+        string.format("height=%s apart=%s header=%s back=%s", tostring(h), tostring(gap), tostring(headH), tostring(h0))
+end)
 
 --------------------------------------------------------------------------------
 -- fixtures -- named for which acceptance item they exercise. The four fixed
@@ -42,26 +423,6 @@ S.AddSpell(92011, "GapFamily", "Rank 2",
     function() return "Heals a friendly target for 40 to 50." end,
     { cast = 0, cost = 25, level = 10 })
 
--- item 1/Other section: a family with no heal/damage/absorb numbers at all,
--- but a mana cost -- T10c: a kindless family needs one to be worth comparing
--- on this table (a shapeshift costs mana; Facts).
-S.AddSpell(92100, "Bearform", "Passive",
-    function() return "You transform into a bear, increasing armor." end,
-    { cast = 0, cost = 30, level = 10 })
-
--- T10c: a passive with no mana cost -- left off the pane, counted, and still
--- in the export.
-S.AddSpell(92200, "Oakskin", "Passive",
-    function() return "Increases your armor." end,
-    { cast = 0, noCost = true, passive = true, level = 10 })
-
--- T10c: a kindless, non-passive spell whose description carries no amount at
--- all -- no mana cost either, so it is left off the pane the same as a
--- passive.
-S.AddSpell(92201, "Swing", "",
-    function() return "A melee attack." end,
-    { cast = 0, noCost = true, level = 1 })
-
 -- item 6: a spell costly enough that the chain-cast interval does NOT let
 -- regen alone cover it (Engine/RankMath.lua's CastsToOOM: "inf" whenever
 -- regen*interval >= cost, no matter how little mana is left, which is why
@@ -73,6 +434,8 @@ S.AddSpell(92201, "Swing", "",
 S.AddSpell(92050, "BigSpell", "Rank 1",
     function() return "Heals a friendly target for 90 to 110." end,
     { cast = 1500, cost = 300, level = 1 })
+-- T36: the book was read by the rail above; these are new to it
+Book:MarkDirty()
 
 --------------------------------------------------------------------------------
 -- helpers
@@ -162,8 +525,9 @@ local function CellText(row, key)
     return fs and StripColor(fs:GetText() or "") or nil
 end
 
+-- T36: today's table is the Overview view (the first rail row) until T39
 local function OpenPane()
-    MD:SelectView("spells", "book")
+    MD:SelectView("spells", "overview")
     return FindPane()
 end
 
@@ -474,25 +838,6 @@ check("no module beyond core is loaded to draw it", #S.loadAddOnCalls == 0,
     "#loadAddOnCalls=" .. #S.loadAddOnCalls)
 
 --------------------------------------------------------------------------------
--- 11: every string the pane renders or exports is ASCII with no bare pipe
---------------------------------------------------------------------------------
-do
-    local bad
-    for _, f in ipairs(S.allFrames) do
-        local t = f.GetText and f:GetText()
-        if type(t) == "string" and t ~= "" and not bad then
-            local good, why = AsciiNoBarePipe(t)
-            if not good then bad = why .. " in painted '" .. t .. "'" end
-        end
-    end
-    if not bad and exportText then
-        local good, why = AsciiNoBarePipe(exportText)
-        if not good then bad = why .. " in the export" end
-    end
-    check("every string the pane renders or exports is ASCII with no bare pipe", bad == nil, bad)
-end
-
---------------------------------------------------------------------------------
 -- 12 (T10b): each non-empty section has a title row before its first family,
 -- and an empty one has none
 --------------------------------------------------------------------------------
@@ -704,6 +1049,26 @@ do
         manaCell == "10 Rage" and perManaCell == "-" and oomCell == "-" and exportGood,
         string.format("mana=%s permana=%s toOOM=%s export=%s", tostring(manaCell), tostring(perManaCell),
             tostring(oomCell), tostring(block and block:match("cost: [^\n]*"))))
+end
+
+--------------------------------------------------------------------------------
+-- 11: every string the pane renders or exports is ASCII with no bare pipe
+-- (T36: run last, so the rail, the picker and the family views are in it)
+--------------------------------------------------------------------------------
+do
+    local bad
+    for _, f in ipairs(S.allFrames) do
+        local t = f.GetText and f:GetText()
+        if type(t) == "string" and t ~= "" and not bad then
+            local good, why = AsciiNoBarePipe(t)
+            if not good then bad = why .. " in painted '" .. t .. "'" end
+        end
+    end
+    if not bad and exportText then
+        local good, why = AsciiNoBarePipe(exportText)
+        if not good then bad = why .. " in the export" end
+    end
+    check("every string the pane renders or exports is ASCII with no bare pipe", bad == nil, bad)
 end
 
 print(string.format("\n%d ok, %d failed", ok, #fails))

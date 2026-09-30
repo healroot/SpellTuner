@@ -69,6 +69,8 @@ local FOREVER_ONLY_NAMES = {
     "PhysicalScreenSize", -- T29
     -- T37 (UI/SpellTip_Forever.lua): the detail key's tooltip refresh.
     "RefreshTooltip", -- T37
+    -- T36 (UI/SpellsPane_Forever.lua): a spell dragged onto the Spells rail.
+    "CursorInfo", -- T36
 }
 -- T15: Client/API_TBC.lua's own binding -- GetSpellInfo, so
 -- Engine/SimModel.lua and Engine/SimPlanner.lua's four call sites can go

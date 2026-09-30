@@ -191,6 +191,17 @@ function GetMacroSpell(index)
     return S.macroSpells[index]
 end
 
+-- T36: what the cursor holds, in retail's GetCursorInfo shape for a spell
+-- ("spell", book slot, book type, spell id); a script sets S.cursor to that
+-- list (or { "item", id }, or nil). ClearCursor is counted, so a harness can
+-- tell the Spells rail never cleared it. Both are in the 69893 baseline.
+S.cursor = nil -- T36
+S.clearCursorCalls = 0 -- T36
+function GetCursorInfo() -- T36
+    if S.cursor then return unpack(S.cursor, 1, 4) end
+end
+function ClearCursor() S.clearCursorCalls = S.clearCursorCalls + 1; S.cursor = nil end -- T36
+
 function GetNumTalentTabs() return 3 end
 function GetNumTalents() return 0 end
 function GetTalentInfo() return nil end

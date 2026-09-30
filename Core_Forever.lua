@@ -302,6 +302,18 @@ MD:AddCommand("ui", function(arg)
     end
 end, "/st ui reset", "put every SpellTuner window back at its default place and size")
 
+-- T36 (docs/SPEC-forever-ui.md 3.1): a spell's view in the Spells rail, by
+-- a case-insensitive prefix of its family's name (the raw text, so the echo
+-- of a name that matches nothing is what was typed). Not in the list: its
+-- preview. Through MD:SelectView, so the window manager's ShowMain decides.
+MD:AddCommand("spell", function(arg, rawArg)
+    if MD.OpenSpell then
+        MD:OpenSpell(rawArg or arg)
+    else
+        MD:ShowCommands()
+    end
+end, "/st spell <name>", "open that spell's view in the Spells list (a preview when it is not in your list)")
+
 MD:AddCommand("modules", function()
     if MD.SelectView then
         MD:SelectView("settings", "modules")

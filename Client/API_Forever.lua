@@ -61,6 +61,24 @@ MD.API.Bind({
     PhysicalScreenSize = "GetPhysicalScreenSize",
 })
 
+-- T36 (UI/SpellsPane_Forever.lua, docs/SPEC-forever-ui.md 3.2): what the
+-- cursor holds, for a spell dragged from the spellbook onto the Spells rail.
+-- GetCursorInfo is in the 69893 baseline; its shape for a spell is retail's
+-- ("spell", book slot, book type, spell id), UNVERIFIED on Forever. Answers
+-- `kind, spellId`: the kind only when it is a plain string, the id only for a
+-- "spell" whose fourth return is a plain number; anything secret, absent or
+-- raising answers nil (a drop then does nothing, and the picker still works).
+-- Read only: nothing here, and nothing that calls it, clears the cursor.
+function MD.API.CursorInfo()
+    local kind, _, _, id = MD.API.Call("GetCursorInfo")
+    if type(kind) ~= "string" or MD.API.IsSecret(kind) then return nil end
+    if kind == "spell" and type(id) == "number" and not MD.API.IsSecret(id) then
+        return kind, id
+    end
+    return kind, nil
+end
+MD.API._bindings.CursorInfo = "GetCursorInfo"
+
 -- T13 (Modules/SpellTuner_Recorder/Recorder_Forever.lua): the recorder's own
 -- bindings, none of which T13b's probe added. UnitGroupRolesAssigned is the
 -- same global on every client (Engine/Targets.lua's TBC comment); bound here,
