@@ -65,7 +65,7 @@ local function CheckRankShift()
         for family, rank in pairs(current) do
             if stored.ranks[family] and stored.ranks[family] ~= rank then
                 local label = MD.SpellData.families[family].label
-                MD:Alert(string.format("gear change — %s R%d is now your efficient rank (was R%d). Rebind?",
+                MD:Alert(string.format("gear change - %s R%d is now your efficient rank (was R%d). Rebind?",
                     label, rank, stored.ranks[family]))
             end
         end

@@ -240,7 +240,7 @@ MD:RegisterCallback("CORE_READY", function()
 
     if MD.db.firstRun then
         MD.db.firstRun = false
-        MD:Print("first run — the widget is unlocked for 60s so you can drag it. |cffffff00/md lock|r when done, |cffffff00/md help|r for commands.")
+        MD:Print("first run - the widget is unlocked for 60s so you can drag it. |cffffff00/md lock|r when done, |cffffff00/md help|r for commands.")
         if MD.ForceWidgetPreview then MD:ForceWidgetPreview(60) end
     end
 end)
@@ -322,7 +322,7 @@ MD.SlashFallback = function(cmd, arg, rawArg)
     elseif cmd == "unlock" then
         MD.db.locked = false
         if MD.UpdateVisibility then MD:UpdateVisibility() end
-        MD:Print("widget unlocked — drag it, then /md lock.")
+        MD:Print("widget unlocked - drag it, then /md lock.")
     elseif cmd == "reset" then
         MD.db.pos = { DEFAULTS.pos[1], DEFAULTS.pos[2], DEFAULTS.pos[3], DEFAULTS.pos[4] }
         if MD.ApplyWidgetPosition then MD:ApplyWidgetPosition() end
@@ -366,7 +366,7 @@ MD.SlashFallback = function(cmd, arg, rawArg)
             MD.db.halfLife = n
             MD:Print("spend half-life set to " .. n .. "s.")
         else
-            MD:Print("usage: /md window N (5–60 seconds)")
+            MD:Print("usage: /md window N (5-60 seconds)")
         end
     elseif cmd == "verify" then
         if MD.RunVerify then MD:RunVerify() end

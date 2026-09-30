@@ -245,7 +245,7 @@ function UI.CreateMovableFrame(title, name, width, height, strata, level, notUse
     header.text:SetText(title)
     header.text:SetPoint("CENTER", header)
 
-    header.closeBtn = UI.CreateButton(header, "×", "red", { 20, 20 }, false, false, UI.FONT_SPECIAL, UI.FONT_SPECIAL)
+    header.closeBtn = UI.CreateButton(header, "x", "red", { 20, 20 }, false, false, UI.FONT_SPECIAL, UI.FONT_SPECIAL)
     header.closeBtn:SetPoint("TOPRIGHT")
     header.closeBtn:SetScript("OnClick", function() f:Hide() end)
 

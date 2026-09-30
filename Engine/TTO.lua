@@ -440,7 +440,8 @@ MD:OnTick(function(dt)
     if dbgAcc >= (s.inCombat and 5 or 15) then
         dbgAcc = 0
         local T = s.tto or s.ttf or s.bound
-        MD:Debug("tto", "%s '%s' | T %s rest %s | spend %.2f +- %.2f/s n=%d cv=%.2f | regen %.2f/s (duty %d%%, now %.2f) | net %+.2f/s%s | mana %d/%d",
+        -- "||" draws one pipe in the console; a bare "|" is an escape (T47, B11)
+        MD:Debug("tto", "%s '%s' || T %s rest %s || spend %.2f +- %.2f/s n=%d cv=%.2f || regen %.2f/s (duty %d%%, now %.2f) || net %+.2f/s%s || mana %d/%d",
             s.mode, Plain(MD:GetDisplayString()),
             T and string.format("%.0fs", T) or "-", s.rest and string.format("%.0fs", s.rest) or "-",
             s.spend, s.sigma, s.casts, s.cv, s.regen, s.duty * 100, s.regenNow, s.net,
