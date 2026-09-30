@@ -1441,12 +1441,12 @@ the numbers.
 
 **Paste back**: the `pN` you pinned, and in words what the suggested column did differently.
 
-## 44. The refactor plan's checks (`docs/PLAN-refactor-ux.md` section 9; waves 1-6, the next build)
+## 44. The refactor plan's checks (`docs/PLAN-refactor-ux.md` section 9; waves 1-7, the next build)
 
 Paste back as in section 41. Out of combat unless a step says otherwise. The items keep the plan's
 numbers; wave 1 (T45-T47) needs items 3 and 15, wave 2 (T48-T50) adds 4, 6, 8, 10 and 14, and wave 3
 (T51-T53) adds 1, 2, 7, 9, 11 and 12, wave 4 (T54-T56) adds 5 and the TBC load-list smoke line
-(W4), wave 5 (T57-T58) adds 16, and wave 6 (T59-T61) adds 17's TBC half. Item 13 waits for P35's pass over this section.
+(W4), wave 5 (T57-T58) adds 16, and wave 6 (T59-T61) adds 17's TBC half, and wave 7 (T62-T63) adds 18 and the kit line (W7). Item 13 waits for P35's pass over this section.
 
 **TBC.**
 
@@ -1481,6 +1481,8 @@ W4. **The split load list (T56).** With the new TOC installed, `/md verify`, `/m
 17. **Commands (P17, the TBC half).** `/md help` lists the same 27 rows as before and the About tab the
    same commands; `/md config`, `/md settings`, `/md bindings`, `/md tip` and `/md calib` still do what
    `/md options`, `binds`, `tooltip` and `calibrate` do.
+18. **An unreadable address (P18).** `/md replay foo`: `replay: no recording foo.` and no window (it used
+   to open your newest fight). `/md replay 1` and `/md replay p1` still open.
 
 **Forever.**
 
@@ -1494,6 +1496,10 @@ W4. **The split load list (T56).** With the new TOC installed, `/md verify`, `/m
     heals the tank.
 14. **Coach address (B16).** `/st coach 2:7`: a refusal, no card.
 15. **Client (P3).** `/st dump`: the first line says `forever`.
+W7. **The kit (P19).** With the Replay module on, `/st replay`, `/st coach N` and a practice fight behave
+    as before; after `/reload` the character's `SpellTunerDB` still carries `kit` (written when the kit
+    was first built this session and again only when the spellbook or crit changed). TBC: `/md coach N`
+    and `/md practice start` as before.
 
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the

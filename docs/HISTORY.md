@@ -4008,3 +4008,34 @@ slashcheck), simcheck's per-run allocation measure (`9 run cost is flat`: 3.57 /
 run-to-run noise (ms, table addresses, the sliced search's counts, replayui's two `search done` lines
 finishing in either order -- seen both ways on `8c4cc93` itself). **Next:** wave 7; the author's §44
 item 17 (TBC half) with item 16 on the next TBC build.
+
+## 2026-09-30 — the refactor plan, wave 7: T62-T63 (P18-P19)
+
+Wave 7 of `docs/PLAN-refactor-ux.md` cherry-picked onto `b2d9b90`, oldest first, then the
+integrator's lines (the TOCs, CLAUDE.md, `docs/DECISIONS.md`, `docs/TESTING.md` §44, `docs/TOOLS.md`,
+`tools/data/expected-counts.json`, this entry) in one commit. The version stays 0.16.3. TOC lines:
+`Engine\Recordings.lua` before `Engine\FightRecorder.lua` on `SpellTuner_TBC.toc` and after
+`Engine\ManaModel.lua` on `SpellTuner_Mainline.toc` / `SpellTuner.toc`; `Engine\Kit.lua` before
+`Engine\RankMath.lua` on `SpellTuner_TBC.toc` and between `Module.lua` and `Kit_Forever.lua` on both
+Replay module TOCs.
+
+- **T62 (P18)** (`ab87c6f`, `b3ea5b3`, `bd0d5d0`): one recordings router, `Engine/Recordings.lua`
+  on both lines (A5) -- bare `N` (FightRecorder on TBC, Recorder_Forever on Forever), `pN`
+  (Practice), `a:b` (RunRecorder, TBC only); `MD:GetRecording` provided once through `MD:Provide`;
+  the pin cap is the router's (two fights, practice its own four; TBC's `FR:Pin` new, with the Review
+  tab's line); `Recorder_Forever`'s `== nil` patches gone; both recorders keep a pull by
+  `MD.Util.RECORD_GATE`. **An address that does not parse is refused** (B16's root; the author's Q11):
+  `/md replay foo` no longer opens the newest fight -- DECISIONS "An address that does not parse is
+  refused". `tools/recordingscheck.lua` (32 / 32) new, practice 84.
+- **T63 (P19)** (`95184a1`, `799781a`, `ecafebe`): the kit has an owner, `Engine/Kit.lua` (A12 / A11
+  first step) -- `Kit.FIELDS` / `TYPES` / `UNPRICED`, `Validate`, `Check` (both builders end with it),
+  `Snapshot` (`SM.KitSnapshot` its alias) and a flavour-free `Restore`; `Book.generation`; the Forever
+  kit cached per generation and crit reading, `cdb.kit` written only when rebuilt, a rank with no
+  readable cast `dataMissing` (DECISIONS note). kitcheck forever 11, tbc 3 (new run). TBC unchanged.
+
+`make check`: 64 runs, all passed, in the worktree and in a `git archive` export (59 counted runs
+against 59 expected). Each TBC suite's full output against `b2d9b90` differs only by the new
+assertions (practice's `p1` through the router, the new recordingscheck and kitcheck tbc runs),
+apicheck / textcheck / releasecheck counting the two new files, and run-to-run noise (ms, table
+addresses, the sliced search's counts in replayui and reviewui). **Next:** wave 8; the author's §44
+item 18 (and W7) on the next build.

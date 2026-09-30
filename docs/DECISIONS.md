@@ -1025,3 +1025,11 @@ sheet read it, and apicheck rule 10 refuses `MD.API.client` outside `Client/` an
 `UI/Dump_Forever.lua` (review A6a). A practice recording now writes `threatOn = {}` (practice has no
 threat) and names every spell id its own events carry, the bloom's 33778 included (review A30).
 Nothing a TBC player sees changes; recordings already stored are left as they are.
+
+## An address that does not parse is refused (2026-09-30, T62)
+
+Every recording is addressed by one grammar, `Engine/Recordings.lua` on both lines: nothing (or blanks) is the newest single fight, `N` a single fight, `pN` a practice fight, `a:b` pull b of run a (TBC; Forever records no runs and answers nil). An address neither shape reads -- `foo`, `2x`, `p`, `:7`, `0x2` -- is now refused and the command prints its "no recording" line; it used to mean recording 1 (`0x2` recording 2), which is how `/st coach` printed a card for the wrong fight (B16). This changes TBC: `/md replay foo` no longer opens the newest fight. Each recorder still decides which recording it drops; the pin cap is the router's -- two single fights on both lines (TBC now has a `Pin` of its own with the Review tab's line, `at most 2 fights can be pinned - unpin one first.`), four practice fights. Both recorders keep a pull by `MD.Util.RECORD_GATE` (20 s, 5 casts), unchanged.
+
+## A Forever kit rank with no readable cast is dataMissing (2026-09-30, T63)
+
+A Forever kit rank whose cast time the book cannot read is `dataMissing` (Practice refuses it) rather than carrying a `nil` cast into the engine (T63). TBC is unchanged: its kit already validates against `Engine/Kit.lua`'s shape (Innervate declared as `Kit.UNPRICED`).

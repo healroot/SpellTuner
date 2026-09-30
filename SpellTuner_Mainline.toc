@@ -14,6 +14,7 @@ Spells\Parse.lua
 Spells\Book.lua
 Spells\Tabs.lua
 Engine\ManaModel.lua
+Engine\Recordings.lua
 Spells\Measure.lua
 UI\Style.lua
 UI\Theme_Forever.lua

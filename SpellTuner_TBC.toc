@@ -23,11 +23,13 @@ Engine\Targets.lua
 Engine\Overheal.lua
 Engine\ManaCooldowns.lua
 Engine\TTO.lua
+Engine\Kit.lua
 Engine\RankMath.lua
 Engine\DamageMath.lua
 Engine\Calibration.lua
 Engine\PullBudget.lua
 Engine\SimModel.lua
+Engine\Recordings.lua
 Engine\FightRecorder.lua
 Engine\RunRecorder.lua
 Engine\Intuition.lua
