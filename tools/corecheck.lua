@@ -21,6 +21,10 @@
 -- MD.inCombat seeded from the adapter and flipped by the regen events,
 -- Provide refusing a second provider, MD.Text's two escapes, PrintSafe, and
 -- MD.Util -- 22 forever, 22 tbc.
+-- T61 (P17, review A1): two more under both flavours -- every verb the
+-- flavour registers is in MD:Commands() (and the help is exactly its listed
+-- rows; on tbc MD.COMMANDS and MD.SlashFallback are gone), and an alias runs
+-- its verb without a second row -- 24 forever, 24 tbc.
 HARNESS_FLAVOUR = { "forever", "tbc" }
 
 local here = arg[0]:match("^(.*)/[^/]+$")
@@ -46,7 +50,7 @@ local okLoad, MD = pcall(dofile, here .. "/harness.lua")
 arg[0] = a0
 if not okLoad then
     print("harness failed to load: " .. tostring(MD))
-    print("0 ok, 22 failed")
+    print("0 ok, 24 failed")
     os.exit(1)
 end
 local S = _G.STUB
@@ -380,6 +384,111 @@ try("MD.Util: Median copies, Clock and K format (A9)", function()
         and U.RECORD_GATE.sec == 20 and U.RECORD_GATE.casts == 5
         and MD.Rules.SUGGESTED_FLOOR == 0.4,
         string.format("median=%s low=%s", tostring(m), tostring(mLow)))
+end)
+
+--------------------------------------------------------------------------------
+-- T61 (P17, review A1): one command registry on both lines, both flavours
+--------------------------------------------------------------------------------
+
+-- Every verb each flavour's harness registers: names, then aliases (an alias
+-- is a second spelling of a verb, listed under it). corecheck's own t1btest
+-- (and its t1balias below) are left out of the comparison.
+local VERBS = {
+    tbc = {
+        names = { "", "help", "options", "lock", "unlock", "reset", "mute", "drink", "rest",
+                  "tooltip", "binds", "practice", "spelltip", "window", "verify", "profile",
+                  "export", "calibrate", "fsrtest", "regentest", "spamtest", "simrun",
+                  "simreplay", "coach", "sim", "replay", "run", "coachrun", "debug" },
+        aliases = { config = "options", settings = "options", bindings = "binds",
+                    tip = "tooltip", calib = "calibrate" },
+    },
+    forever = {
+        names = { "debug", "dump", "", "help", "tooltip", "clock", "measure", "ui", "spell",
+                  "modules", "probe" },
+        aliases = {},
+    },
+}
+local OWN = { t1btest = true, t1balias = true }
+
+-- The help as printed, colour codes out, the prefix and the row's "  " gone.
+local function HelpRows()
+    local lines = {}
+    local frame = _G.DEFAULT_CHAT_FRAME
+    local orig = frame.AddMessage
+    frame.AddMessage = function(_, m) lines[#lines + 1] = m end
+    SlashCmdList.SPELLTUNER("help")
+    frame.AddMessage = orig
+    local rows = {}
+    for i = 2, #lines do
+        local plain = lines[i]:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+        rows[#rows + 1] = plain:gsub("^SpellTuner:   ", "") -- the prefix and the row's indent
+    end
+    return rows
+end
+
+try("every verb is in MD:Commands() and the help is its listed rows (A1)", function()
+    local want = VERBS[flavour]
+    local list = MD:Commands()
+    local byName, aliasOf, problems = {}, {}, {}
+    for _, c in ipairs(list) do
+        if byName[c.name] then problems[#problems + 1] = "twice: " .. c.name end
+        byName[c.name] = c
+        for _, a in ipairs(c.aliases or {}) do aliasOf[a] = c.name end
+    end
+    for _, n in ipairs(want.names) do
+        if not byName[n] then problems[#problems + 1] = "missing: '" .. n .. "'" end
+    end
+    for a, n in pairs(want.aliases) do
+        if aliasOf[a] ~= n then problems[#problems + 1] = "alias " .. a .. " -> " .. tostring(aliasOf[a]) end
+    end
+    local known = {}
+    for _, n in ipairs(want.names) do known[n] = true end
+    for n in pairs(byName) do
+        if not known[n] and not OWN[n] then problems[#problems + 1] = "unexpected: '" .. n .. "'" end
+    end
+    -- the listed entries, in order, are exactly the rows /st help prints
+    local rows, listed = HelpRows(), {}
+    for _, c in ipairs(list) do
+        if not c.hidden then listed[#listed + 1] = c.usage .. " - " .. c.text end
+    end
+    local same = #rows == #listed
+    for i = 1, #rows do if rows[i] ~= listed[i] then same = false end end
+    if not same then problems[#problems + 1] = string.format("help %d rows, listed %d", #rows, #listed) end
+    if flavour == "tbc" and (MD.COMMANDS ~= nil or MD.SlashFallback ~= nil) then
+        problems[#problems + 1] = "MD.COMMANDS / MD.SlashFallback still defined"
+    end
+    check("every verb is in MD:Commands() and the help is its listed rows (A1)",
+        #problems == 0, problems[1])
+end)
+
+try("an alias runs its verb and is not listed twice (A1)", function()
+    local gotArg, gotRaw
+    MD:AddCommand("t1btest", function(arg, rawArg) gotArg, gotRaw = arg, rawArg end)
+    MD:AddAlias("t1balias", "t1btest")
+    SlashCmdList.SPELLTUNER("T1BAlias Blood Furnace")
+    local entries, aliasListed = 0, false
+    for _, c in ipairs(MD:Commands()) do
+        if c.name == "t1btest" then entries = entries + 1 end
+        if c.name == "t1balias" then aliasListed = true end
+    end
+    local calibOk = true
+    if flavour == "tbc" then
+        -- a real alias: /md calib is /md calibrate, and the help says calibrate once
+        local saved, ran = MD.RunCalibrate, 0
+        MD.RunCalibrate = function() ran = ran + 1 end
+        SlashCmdList.SPELLTUNER("calib")
+        MD.RunCalibrate = saved
+        local rows, seen = HelpRows(), 0
+        for _, r in ipairs(rows) do
+            if r:find("calib", 1, true) then seen = seen + 1 end
+        end
+        calibOk = ran == 1 and seen == 1
+    end
+    check("an alias runs its verb and is not listed twice (A1)",
+        gotArg == "blood furnace" and gotRaw == "Blood Furnace" and entries == 1
+        and not aliasListed and calibOk,
+        string.format("arg=%s entries=%d aliasListed=%s calib=%s", tostring(gotArg), entries,
+            tostring(aliasListed), tostring(calibOk)))
 end)
 
 --------------------------------------------------------------------------------

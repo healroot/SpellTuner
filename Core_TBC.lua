@@ -1,11 +1,11 @@
 -- SpellTuner: mana dynamics, time-to-OOM prediction and healing rank analysis
 -- for TBC healers. The TBC addon's own core: defaults, the Simulate table,
 -- buffs and Tree of Life, talents, the profile snapshot, gear/talent events,
--- its command list and its whole slash `if` chain. Everything shared with
--- Forever (namespace, event dispatch, the ticker, Print/Alert/Debug, player
--- identity, SavedVariables init, the login sequence, the slash dispatcher and
--- command registry) is in Core.lua; this file hangs off it via
--- CORE_LOGIN/CORE_READY and MD.SlashFallback (T1b of docs/ROADMAP-FOREVER.md).
+-- and its slash verbs (on Core.lua's MD:AddCommand since T61). Everything
+-- shared with Forever (namespace, event dispatch, the ticker, Print/Alert/
+-- Debug, player identity, SavedVariables init, the login sequence, the slash
+-- dispatcher and command registry) is in Core.lua; this file hangs off it via
+-- CORE_LOGIN/CORE_READY and MD:AddCommand (T1b of docs/ROADMAP-FOREVER.md).
 -- This file is on the TBC TOC only, so it keeps its direct client calls.
 local ADDON_NAME, MD = ...
 
@@ -292,138 +292,164 @@ end)
 --------------------------------------------------------------------------------
 -- Slash commands
 --------------------------------------------------------------------------------
--- Shared with the About tab.
-MD.COMMANDS = {
-    { "/st",              "toggle the rank dashboard" },
-    { "/st options",      "open the settings window" },
-    { "/st lock, unlock", "lock / unlock (drag) the OOM widget" },
-    { "/st reset",        "reset the widget position" },
-    { "/st mute",         "toggle alert messages" },
-    { "/st drink",        "toggle the drink reminder" },
-    { "/st rest",         "toggle the 'rest' segment (time to full if you stop casting)" },
-    { "/st tooltip",      "hover tooltip on the FLOATING clock only (off also stops it swallowing clicks)" },
-    { "/st binds",        "what each key and mouse button casts in practice; import from Cell or Clique" },
-    { "/st practice",     "heal a fight you play and get it back as a recording (start: play the saved setup now)" },
-    { "/st spelltip",     "heal values on the game's spell tooltips (bars, spellbook); Shift for the maths" },
-    { "/st window N",     "spend estimator half-life in seconds (5-60, default 15)" },
-    { "/st verify",       "check static spell data against the live client" },
-    { "/st profile",      "copyable dump of every model input - use this for bug reports" },
-    { "/st export",       "fights, overheal and roster as tab-separated text, for analysis" },
-    { "/st calibrate",    "the model against every heal you landed: ratio per spell and event kind" },
-    { "/st fsrtest",      "log mana ticks for 15s (five-second-rule anchor test)" },
-    { "/st regentest [N or clear]", "idle regen check: observed mana gain vs GetManaRegen (N s, default 30; clear forgets the measurement)" },
-    { "/st spamtest",     "arm, then chain-cast one spell to OOM: checks the dashboard's To OOM column" },
-    { "/st simrun",       "self-tests for the simulation engine (heals, HoT refresh, GCD, 5SR)" },
-    { "/st simreplay [n]", "replay recorded fight n (or the BF-1 fixture) and score it against the log" },
-    { "/st coach [n]",    "search for a better plan on recorded fight n and show the card (cancel stops it)" },
-    { "/st sim",          "simulation window: build a fight and find the cheapest plan that holds it" },
-    { "/st replay [n] [force]", "play recorded fight n (or run:pull, or 'run N') as unit frames; force: draw the suggested column on a fight that does not replay" },
-    { "/st run start / stop / status", "record a whole dungeon: every pull and the gaps between them" },
-    { "/st coachrun [n]", "coach a recorded RUN: one plan and a drink policy for the whole dungeon" },
-    { "/st debug",        "toggle the debug console (enable logging there, Copy to export)" },
-}
+-- T61 (P17, review A1): every TBC verb registered on the kernel's one registry
+-- (Core.lua's MD:AddCommand), here where the old MD.COMMANDS list and
+-- MD.SlashFallback if-chain were -- no verb moved file; each moves next to its
+-- owner when that file is next touched. Registered in the old list's order, so
+-- the help and the About tab (MD:Commands()) print what they printed; the
+-- verbs the list never had a row for (help, unlock) are hidden, and the second
+-- spellings are aliases. tools/slashcheck.lua's golden transcript, captured
+-- before the move, holds every verb's output line for line.
+MD.COMMAND_USAGE_COLOR = "ffffff00"
 
-local function ShowHelp()
-    MD:Print("commands:")
-    for _, c in ipairs(MD.COMMANDS) do
-        MD:Print("  |cffffff00" .. c[1] .. "|r - " .. c[2])
+MD:AddCommand("", function()
+    if MD.ToggleDashboard then MD:ToggleDashboard() end
+end, "/st", "toggle the rank dashboard")
+
+MD:AddCommand("options", function()
+    if MD.ShowOptionsFrame then MD:ShowOptionsFrame() end
+end, "/st options", "open the settings window")
+MD:AddAlias("config", "options")
+MD:AddAlias("settings", "options")
+
+MD:AddCommand("lock", function()
+    MD.db.locked = true
+    if MD.UpdateVisibility then MD:UpdateVisibility() end
+    MD:Print("widget locked.")
+end, "/st lock, unlock", "lock / unlock (drag) the OOM widget")
+MD:AddCommand("unlock", function()
+    MD.db.locked = false
+    if MD.UpdateVisibility then MD:UpdateVisibility() end
+    MD:Print("widget unlocked - drag it, then /md lock.")
+end, nil, nil, true) -- listed on lock's row
+
+MD:AddCommand("reset", function()
+    MD.db.pos = { DEFAULTS.pos[1], DEFAULTS.pos[2], DEFAULTS.pos[3], DEFAULTS.pos[4] }
+    if MD.ApplyWidgetPosition then MD:ApplyWidgetPosition() end
+    MD:Print("widget position reset.")
+end, "/st reset", "reset the widget position")
+
+MD:AddCommand("mute", function()
+    MD.db.muted = not MD.db.muted
+    MD:Print("alerts " .. (MD.db.muted and "muted." or "unmuted."))
+end, "/st mute", "toggle alert messages")
+
+MD:AddCommand("drink", function()
+    MD.db.drinkReminder = not MD.db.drinkReminder
+    MD:Print("drink reminder " .. (MD.db.drinkReminder and "on." or "off."))
+end, "/st drink", "toggle the drink reminder")
+
+MD:AddCommand("rest", function()
+    MD.db.showRest = not MD.db.showRest
+    MD:Print("rest segment " .. (MD.db.showRest and "on." or "off."))
+end, "/st rest", "toggle the 'rest' segment (time to full if you stop casting)")
+
+MD:AddCommand("tooltip", function()
+    MD.db.widgetTooltip = (MD.db.widgetTooltip == false)
+    if MD.UpdateVisibility then MD:UpdateVisibility() end
+    MD:Print(MD.db.widgetTooltip
+        and "floating clock: tooltip on - hovering shows the breakdown, left-click opens the dashboard."
+        or "floating clock: tooltip off - it takes no mouse input at all now, so it neither pops a tooltip "
+           .. "nor swallows clicks in its rectangle, and it is still draggable while unlocked. The minimap "
+           .. "button and the ElvUI datatexts keep theirs.")
+end, "/st tooltip", "hover tooltip on the FLOATING clock only (off also stops it swallowing clicks)")
+MD:AddAlias("tip", "tooltip")
+
+MD:AddCommand("binds", function()
+    if MD.ToggleBindings then MD:ToggleBindings() end
+end, "/st binds", "what each key and mouse button casts in practice; import from Cell or Clique")
+MD:AddAlias("bindings", "binds")
+
+MD:AddCommand("practice", function(arg)
+    -- v0.15.0: Simulate -> Practice; "/md practice start" plays the saved setup at once
+    if arg == "start" and MD.OpenPractice and MD.Practice then
+        MD.cdb.practiceSetup = MD.cdb.practiceSetup or MD.Practice.DefaultSetup("5")
+        MD:OpenPractice(MD.Practice.CopySetup(MD.cdb.practiceSetup), MD.cdb.practiceSetup.fixedSeed)
+    elseif MD.SelectView then
+        if MD.ShowDashboard then MD:ShowDashboard() end
+        MD:SelectView("simulate", "practice")
     end
-end
+end, "/st practice", "heal a fight you play and get it back as a recording (start: play the saved setup now)")
 
--- Seam 3: the kernel's dispatcher tries a registered MD:AddCommand name
--- first; nothing on TBC is registered that way yet, so every command falls
--- through to here -- today's whole `if` chain, verbatim.
-MD.SlashFallback = function(cmd, arg, rawArg)
-    if cmd == "" then
-        if MD.ToggleDashboard then MD:ToggleDashboard() end
-    elseif cmd == "help" then
-        ShowHelp()
-    elseif cmd == "options" or cmd == "config" or cmd == "settings" then
-        if MD.ShowOptionsFrame then MD:ShowOptionsFrame() end
-    elseif cmd == "lock" then
-        MD.db.locked = true
-        if MD.UpdateVisibility then MD:UpdateVisibility() end
-        MD:Print("widget locked.")
-    elseif cmd == "unlock" then
-        MD.db.locked = false
-        if MD.UpdateVisibility then MD:UpdateVisibility() end
-        MD:Print("widget unlocked - drag it, then /md lock.")
-    elseif cmd == "reset" then
-        MD.db.pos = { DEFAULTS.pos[1], DEFAULTS.pos[2], DEFAULTS.pos[3], DEFAULTS.pos[4] }
-        if MD.ApplyWidgetPosition then MD:ApplyWidgetPosition() end
-        MD:Print("widget position reset.")
-    elseif cmd == "mute" then
-        MD.db.muted = not MD.db.muted
-        MD:Print("alerts " .. (MD.db.muted and "muted." or "unmuted."))
-    elseif cmd == "drink" then
-        MD.db.drinkReminder = not MD.db.drinkReminder
-        MD:Print("drink reminder " .. (MD.db.drinkReminder and "on." or "off."))
-    elseif cmd == "rest" then
-        MD.db.showRest = not MD.db.showRest
-        MD:Print("rest segment " .. (MD.db.showRest and "on." or "off."))
-    elseif cmd == "practice" then
-        -- v0.15.0: Simulate -> Practice; "/md practice start" plays the saved setup at once
-        if arg == "start" and MD.OpenPractice and MD.Practice then
-            MD.cdb.practiceSetup = MD.cdb.practiceSetup or MD.Practice.DefaultSetup("5")
-            MD:OpenPractice(MD.Practice.CopySetup(MD.cdb.practiceSetup), MD.cdb.practiceSetup.fixedSeed)
-        elseif MD.SelectView then
-            if MD.ShowDashboard then MD:ShowDashboard() end
-            MD:SelectView("simulate", "practice")
-        end
-    elseif cmd == "binds" or cmd == "bindings" then
-        if MD.ToggleBindings then MD:ToggleBindings() end
-    elseif cmd == "spelltip" then
-        MD.db.spellTooltip = (MD.db.spellTooltip == false)
-        MD:Print(MD.db.spellTooltip
-            and "spell tooltips: on - hover a heal on your bars or in the spellbook; hold Shift for the maths."
-            or "spell tooltips: off.")
-    elseif cmd == "tooltip" or cmd == "tip" then
-        MD.db.widgetTooltip = (MD.db.widgetTooltip == false)
-        if MD.UpdateVisibility then MD:UpdateVisibility() end
-        MD:Print(MD.db.widgetTooltip
-            and "floating clock: tooltip on - hovering shows the breakdown, left-click opens the dashboard."
-            or "floating clock: tooltip off - it takes no mouse input at all now, so it neither pops a tooltip "
-               .. "nor swallows clicks in its rectangle, and it is still draggable while unlocked. The minimap "
-               .. "button and the ElvUI datatexts keep theirs.")
-    elseif cmd == "window" then
-        local n = tonumber(arg)
-        if n and n >= 5 and n <= 60 then
-            MD.db.halfLife = n
-            MD:Print("spend half-life set to " .. n .. "s.")
-        else
-            MD:Print("usage: /md window N (5-60 seconds)")
-        end
-    elseif cmd == "verify" then
-        if MD.RunVerify then MD:RunVerify() end
-    elseif cmd == "profile" then
-        if MD.RunProfile then MD:RunProfile() end
-    elseif cmd == "export" then
-        if MD.RunExport then MD:RunExport() end
-    elseif cmd == "calibrate" or cmd == "calib" then
-        if MD.RunCalibrate then MD:RunCalibrate() end
-    elseif cmd == "fsrtest" then
-        if MD.RunFSRTest then MD:RunFSRTest() end
-    elseif cmd == "regentest" then
-        if MD.RunRegenTest then MD:RunRegenTest(arg ~= "" and arg or nil) end
-    elseif cmd == "spamtest" then
-        if MD.RunSpamTest then MD:RunSpamTest() end
-    elseif cmd == "simrun" then
-        if MD.RunSimRun then MD:RunSimRun() end
-    elseif cmd == "simreplay" then
-        if MD.RunSimReplay then MD:RunSimReplay(arg) end
-    elseif cmd == "coach" then
-        if MD.RunCoach then MD:RunCoach(arg) end
-    elseif cmd == "sim" then
-        if MD.ToggleSimWindow then MD:ToggleSimWindow() end
-    elseif cmd == "replay" then
-        if MD.ToggleReplay then MD:ToggleReplay(arg) end
-    elseif cmd == "run" then
-        if MD.RunCommand then MD:RunCommand(rawArg) end
-    elseif cmd == "coachrun" then
-        if MD.RunCoachRun then MD:RunCoachRun(arg) end
-    elseif cmd == "debug" then
-        if MD.ToggleDebugConsole then MD:ToggleDebugConsole() end
+MD:AddCommand("spelltip", function()
+    MD.db.spellTooltip = (MD.db.spellTooltip == false)
+    MD:Print(MD.db.spellTooltip
+        and "spell tooltips: on - hover a heal on your bars or in the spellbook; hold Shift for the maths."
+        or "spell tooltips: off.")
+end, "/st spelltip", "heal values on the game's spell tooltips (bars, spellbook); Shift for the maths")
+
+MD:AddCommand("window", function(arg)
+    local n = tonumber(arg)
+    if n and n >= 5 and n <= 60 then
+        MD.db.halfLife = n
+        MD:Print("spend half-life set to " .. n .. "s.")
     else
-        ShowHelp()
+        MD:Print("usage: /md window N (5-60 seconds)")
     end
-end
+end, "/st window N", "spend estimator half-life in seconds (5-60, default 15)")
+
+MD:AddCommand("verify", function()
+    if MD.RunVerify then MD:RunVerify() end
+end, "/st verify", "check static spell data against the live client")
+
+MD:AddCommand("profile", function()
+    if MD.RunProfile then MD:RunProfile() end
+end, "/st profile", "copyable dump of every model input - use this for bug reports")
+
+MD:AddCommand("export", function()
+    if MD.RunExport then MD:RunExport() end
+end, "/st export", "fights, overheal and roster as tab-separated text, for analysis")
+
+MD:AddCommand("calibrate", function()
+    if MD.RunCalibrate then MD:RunCalibrate() end
+end, "/st calibrate", "the model against every heal you landed: ratio per spell and event kind")
+MD:AddAlias("calib", "calibrate")
+
+MD:AddCommand("fsrtest", function()
+    if MD.RunFSRTest then MD:RunFSRTest() end
+end, "/st fsrtest", "log mana ticks for 15s (five-second-rule anchor test)")
+
+MD:AddCommand("regentest", function(arg)
+    if MD.RunRegenTest then MD:RunRegenTest(arg ~= "" and arg or nil) end
+end, "/st regentest [N or clear]",
+"idle regen check: observed mana gain vs GetManaRegen (N s, default 30; clear forgets the measurement)")
+
+MD:AddCommand("spamtest", function()
+    if MD.RunSpamTest then MD:RunSpamTest() end
+end, "/st spamtest", "arm, then chain-cast one spell to OOM: checks the dashboard's To OOM column")
+
+MD:AddCommand("simrun", function()
+    if MD.RunSimRun then MD:RunSimRun() end
+end, "/st simrun", "self-tests for the simulation engine (heals, HoT refresh, GCD, 5SR)")
+
+MD:AddCommand("simreplay", function(arg)
+    if MD.RunSimReplay then MD:RunSimReplay(arg) end
+end, "/st simreplay [n]", "replay recorded fight n (or the BF-1 fixture) and score it against the log")
+
+MD:AddCommand("coach", function(arg)
+    if MD.RunCoach then MD:RunCoach(arg) end
+end, "/st coach [n]", "search for a better plan on recorded fight n and show the card (cancel stops it)")
+
+MD:AddCommand("sim", function()
+    if MD.ToggleSimWindow then MD:ToggleSimWindow() end
+end, "/st sim", "simulation window: build a fight and find the cheapest plan that holds it")
+
+MD:AddCommand("replay", function(arg)
+    if MD.ToggleReplay then MD:ToggleReplay(arg) end
+end, "/st replay [n] [force]",
+"play recorded fight n (or run:pull, or 'run N') as unit frames; force: draw the suggested column on a fight that does not replay")
+
+MD:AddCommand("run", function(_, rawArg)
+    if MD.RunCommand then MD:RunCommand(rawArg) end
+end, "/st run start / stop / status", "record a whole dungeon: every pull and the gaps between them")
+
+MD:AddCommand("coachrun", function(arg)
+    if MD.RunCoachRun then MD:RunCoachRun(arg) end
+end, "/st coachrun [n]", "coach a recorded RUN: one plan and a drink policy for the whole dungeon")
+
+MD:AddCommand("debug", function()
+    if MD.ToggleDebugConsole then MD:ToggleDebugConsole() end
+end, "/st debug", "toggle the debug console (enable logging there, Copy to export)")
+
+-- The list itself, not a row of it (an unknown verb prints it too: Core.lua).
+MD:AddCommand("help", function() MD:ShowCommands() end, nil, nil, true)

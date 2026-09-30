@@ -5,7 +5,7 @@
 -- MD.API (Client/API.lua) -- no flavour check here (CLAUDE.md: a file listed
 -- by both TOCs contains no client call and no flavour check). Everything
 -- that is the TBC addon's own (defaults, Simulate, buffs/Tree of Life,
--- talents, the profile snapshot, its command list) lives in Core_TBC.lua;
+-- talents, the profile snapshot, its commands) lives in Core_TBC.lua;
 -- Forever's own defaults and first two commands live in Core_Forever.lua.
 -- T55 (P11, review A3, A4, A9, A16, A28): the kernel's seams -- every event
 -- and callback handler under xpcall (one raise no longer stops the rest),
@@ -628,24 +628,76 @@ end)
 --------------------------------------------------------------------------------
 -- Slash commands
 --------------------------------------------------------------------------------
--- name (lower-case) -> fn(arg, rawArg); COMMAND_LIST is the same set, in
--- registration order, for ShowCommands()/the About tab (MD.COMMANDS is the
--- TBC addon's own hand-kept list, unaffected by this registry).
-local commandFns = {}
-local commandHelp = {}
+-- The one registry, both lines (T61, P17, review A1: the TBC verbs moved here
+-- from Core_TBC.lua's own list and if-chain). A command is registered once,
+-- in the order the help lists it; the dispatcher looks every verb up here and
+-- prints the help for a verb it does not know.
+--   MD:AddCommand(name, fn, usage, text, hidden)
+--       fn(arg, rawArg): arg lower-cased, rawArg as typed. usage/text are the
+--       help row; hidden keeps a verb out of the help and the About tab (a
+--       verb another row already names, as TBC's "lock, unlock"). Registering
+--       a name again replaces its function and row in place.
+--   MD:AddAlias(alias, name)
+--       a second spelling of a registered verb: runs its function, listed
+--       only under it (MD:Commands()'s `aliases`), never as a row of its own.
+--   MD:Commands()
+--       every registered verb in order, as copies: { name, usage, text,
+--       hidden, aliases } -- what the help, the About tab and the tests read.
+--   MD.COMMAND_USAGE_COLOR
+--       a colour ("ffffff00") the help wraps each usage in; nil prints it
+--       plain. Set by the flavour core (TBC's help has always been yellow).
+local commandList = {}   -- entries, in registration order
+local commandByName = {} -- name or alias (lower-case) -> entry
 
-function MD:AddCommand(name, fn, usage, text)
-    commandFns[name:lower()] = fn
+function MD:AddCommand(name, fn, usage, text, hidden)
+    name = name:lower()
+    local e = commandByName[name]
+    if e and e.name ~= name then
+        -- the name was another verb's alias: it becomes a verb of its own
+        for i, a in ipairs(e.aliases) do
+            if a == name then table.remove(e.aliases, i); break end
+        end
+        e = nil
+    end
+    if not e then
+        e = { name = name, aliases = {} }
+        commandList[#commandList + 1] = e
+        commandByName[name] = e
+    end
+    e.fn = fn
     -- usage/text are optional (a caller registering only to claim a name, as
     -- tools/corecheck.lua's own test command does) -- ShowCommands still has
     -- to print every entry without raising.
-    commandHelp[#commandHelp + 1] = { usage or "", text or "" }
+    e.usage, e.text, e.hidden = usage or "", text or "", hidden and true or false
+end
+
+function MD:AddAlias(alias, name)
+    alias = alias:lower()
+    local e = commandByName[name:lower()]
+    if not e then error("MD:AddAlias: no command '" .. tostring(name) .. "' for '" .. alias .. "'", 2) end
+    if commandByName[alias] == e then return end
+    commandByName[alias] = e
+    e.aliases[#e.aliases + 1] = alias
+end
+
+function MD:Commands()
+    local out = {}
+    for i, e in ipairs(commandList) do
+        local aliases = {}
+        for k, a in ipairs(e.aliases) do aliases[k] = a end
+        out[i] = { name = e.name, usage = e.usage, text = e.text, hidden = e.hidden, aliases = aliases }
+    end
+    return out
 end
 
 function MD:ShowCommands()
     MD:Print("commands:")
-    for _, c in ipairs(commandHelp) do
-        MD:Print("  " .. c[1] .. " - " .. c[2])
+    local color = MD.COMMAND_USAGE_COLOR
+    for _, e in ipairs(commandList) do
+        if not e.hidden then
+            local usage = color and ("|c" .. color .. e.usage .. "|r") or e.usage
+            MD:Print("  " .. usage .. " - " .. e.text)
+        end
     end
 end
 
@@ -660,11 +712,9 @@ SlashCmdList.SPELLTUNER = function(msg)
     msg = raw:lower()
     local cmd, arg = msg:match("^(%S*)%s*(.*)$")
     local _, rawArg = raw:match("^(%S*)%s*(.*)$")
-    local fn = commandFns[cmd]
-    if fn then
-        fn(arg, rawArg)
-    elseif type(MD.SlashFallback) == "function" then
-        MD.SlashFallback(cmd, arg, rawArg)
+    local e = commandByName[cmd]
+    if e then
+        e.fn(arg, rawArg)
     else
         MD:ShowCommands()
     end

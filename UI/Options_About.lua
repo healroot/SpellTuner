@@ -32,19 +32,25 @@ local function Build()
     local cmdPane = UI.CreateTitledPane(tab, "Commands", 412, 200)
     cmdPane:SetPoint("TOPLEFT", blurb, "BOTTOMLEFT", 0, -10)
     local y = -24
-    for _, c in ipairs(MD.COMMANDS) do
+    -- T61 (P17): the kernel's registry, the rows /md help prints (a hidden
+    -- verb and an alias have no row of their own)
+    local rows = {}
+    for _, c in ipairs(MD:Commands()) do
+        if not c.hidden then rows[#rows + 1] = c end
+    end
+    for _, c in ipairs(rows) do
         local left = cmdPane:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
         left:SetPoint("TOPLEFT", cmdPane, 5, y)
         left:SetWidth(118)
         left:SetJustifyH("LEFT")
         left:SetTextColor(UI.accent[1], UI.accent[2], UI.accent[3])
-        left:SetText(c[1])
+        left:SetText(c.usage)
         local right = cmdPane:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
         right:SetPoint("TOPLEFT", cmdPane, 128, y)
         right:SetWidth(280)
         right:SetJustifyH("LEFT")
         right:SetTextColor(0.85, 0.85, 0.85)
-        right:SetText(c[2])
+        right:SetText(c.text)
         y = y - math.max(left:GetStringHeight(), right:GetStringHeight()) - 3
     end
     cmdPane:SetHeight(-y + 4)
