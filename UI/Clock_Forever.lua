@@ -10,8 +10,12 @@ MD.Clock = MD.Clock or {}
 local Clock = MD.Clock
 
 local model
-local widget, text, bar
+local widget, text, bar, barBack
 local inCombat = false
+
+-- T41 (docs/SPEC-forever-ui.md 4.4): the physical pixel the clock was last
+-- snapped to, in its own units (UI.px(1, widget)); nil until the first snap.
+local snappedPx
 
 -- T11b (docs/tasks/T11b-clock-modes.md): out-of-combat hysteresis state --
 -- TBC's UI/Widget.lua MD:UpdateVisibility (lines 144-173) shows below 90% of
@@ -124,11 +128,24 @@ local function ApplyPoint()
     end
 end
 
+-- T41 (docs/SPEC-forever-ui.md 4.4): the theme's `bg` fill and a 1-px border
+-- (UI.StylizeFrame under UI.PIXEL draws the physical-pixel edge), and the
+-- bar's backing sized one physical pixel around it. The window manager never
+-- touches the clock (6.1), so the clock keeps itself snapped: Paint calls this
+-- whenever UI.px(1) has moved (a UI scale or display change), no reload
+-- needed. Without the theme the kit's own default fill is used.
+local function Snap()
+    local e = UI.px(1, widget)
+    local P = UI.PALETTE or {}
+    UI.StylizeFrame(widget, P.bg, P.border)
+    barBack:SetSize(160 + 2 * e, 4 + 2 * e)
+    snappedPx = e
+end
+
 local function CreateWidget()
     widget = CreateFrame("Frame", "SpellTunerClock", UIParent, "BackdropTemplate")
     widget:SetSize(180, 30)
     widget:SetFrameStrata("MEDIUM")
-    UI.StylizeFrame(widget)
     widget:SetMovable(true)
     widget:SetClampedToScreen(true)
     widget:EnableMouse(true)
@@ -156,6 +173,15 @@ local function CreateWidget()
     bar:SetStatusBarColor(0.3, 0.6, 1)
     Clock.bar = bar
 
+    -- T41: a black backing one physical pixel wider than the bar on every
+    -- side, so the bar reads on bright ground. A texture of the widget: the
+    -- bar is a child frame and draws above it, the backdrop beneath it.
+    barBack = widget:CreateTexture(nil, "ARTWORK")
+    barBack:SetColorTexture(0, 0, 0, 1)
+    barBack:SetPoint("CENTER", bar, "CENTER", 0, 0)
+    Clock.barBack = barBack
+
+    Snap()
     ApplyPoint()
     Clock.frame = widget
 end
@@ -164,6 +190,7 @@ end
 -- Paint: rendering only, tick-driven -- the model is event/tick driven above.
 --------------------------------------------------------------------------------
 local function Paint(now)
+    if UI.px(1, widget) ~= snappedPx then Snap() end -- T41: re-snap after a scale change
     local state = model:Project(now)
     text:SetText(MD.ManaModel.Text(state))
     MD.API.DrawUnitPower(bar, "player", 0)

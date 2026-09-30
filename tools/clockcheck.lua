@@ -430,6 +430,54 @@ do
             tostring(endedGood)))
 end
 
+--------------------------------------------------------------------------------
+-- T41 (docs/SPEC-forever-ui.md 4.4): the clock under the theme -- the `bg`
+-- fill and a pixel-snapped 1-px border, and a 1-px black backing behind the
+-- 160x4 mana bar so it reads on bright ground; both re-snapped when the UI
+-- scale changes, without a reload (the manager never touches the clock, 6.1).
+--------------------------------------------------------------------------------
+do
+    local UI = MD.UI
+    local P = UI.PALETTE
+    local w = Clock.frame
+    local function Near(a, b) return type(a) == "number" and type(b) == "number" and math.abs(a - b) < 1e-9 end
+    local function SameColour(got, want)
+        return type(got) == "table" and type(want) == "table" and Near(got[1], want[1]) and Near(got[2], want[2])
+            and Near(got[3], want[3]) and Near(got[4], want[4])
+    end
+
+    S.physicalHeight = 1080
+    w.GetEffectiveScale = function() return 1 end
+    S.Tick(0.5)
+    local e = UI.px(1, w)
+    local bd = w.backdrop or {}
+    check("the clock is filled with the theme's bg and edged in one physical pixel",
+        SameColour(w.bg, P.bg) and SameColour(w.border, P.border) and Near(bd.edgeSize, e)
+        and bd.insets ~= nil and Near(bd.insets.left, e) and UI.pixelFrames[w] ~= nil,
+        string.format("bg=%s,%s,%s,%s edge=%s px=%s", tostring(w.bg and w.bg[1]), tostring(w.bg and w.bg[2]),
+            tostring(w.bg and w.bg[3]), tostring(w.bg and w.bg[4]), tostring(bd.edgeSize), tostring(e)))
+
+    local back = Clock.barBack
+    check("the mana bar has a black backing one physical pixel wider on every side",
+        back ~= nil and back.parentFrame == w and SameColour(back.color, { 0, 0, 0, 1 })
+        and Near(back.w, 160 + 2 * e) and Near(back.h, 4 + 2 * e)
+        and Clock.bar and Clock.bar.w == 160 and Clock.bar.h == 4,
+        string.format("back=%s w=%s h=%s want %s x %s", tostring(back ~= nil), tostring(back and back.w),
+            tostring(back and back.h), tostring(160 + 2 * e), tostring(4 + 2 * e)))
+
+    -- a UI scale change: the next tick re-snaps the edge and the backing
+    w.GetEffectiveScale = function() return 0.64 end
+    S.Tick(0.5)
+    local e2 = UI.px(1, w)
+    local bd2 = w.backdrop or {}
+    check("a UI scale change re-snaps the clock's edge and the bar's backing without a reload",
+        not Near(e, e2) and Near(bd2.edgeSize, e2) and back ~= nil and Near(back.w, 160 + 2 * e2)
+        and Near(back.h, 4 + 2 * e2) and SameColour(w.bg, P.bg),
+        string.format("edge=%s backW=%s want px=%s", tostring(bd2.edgeSize), tostring(back and back.w), tostring(e2)))
+    w.GetEffectiveScale = function() return 1 end
+    S.Tick(0.5)
+end
+
 print("")
 print(string.format("%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("  FAIL " .. f) end
