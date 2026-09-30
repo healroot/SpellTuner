@@ -21,6 +21,13 @@ local UI = MD.UI
 
 MD.DashboardParts = MD.DashboardParts or {}
 
+-- T43 (docs/SPEC-forever-ui.md 4.1, 4.4): under the Forever theme (UI.TEXT set
+-- by UI/Theme_Forever.lua, before any module file) the pane's small text is
+-- the kit's UI.FONT_SMALL and the run line the accent; TBC has no UI.TEXT and
+-- keeps GameFontHighlightSmall and gold.
+local SMALL  = UI.TEXT and UI.FONT_SMALL or "GameFontHighlightSmall"
+local RUN_HI = UI.TEXT and UI.TEXT.accent and UI.TEXT.accent.hex or "|cffffcc00"
+
 local ROW_HEIGHT = 16
 local COLS = {
     { "n",      0,   22,  "#" },
@@ -105,12 +112,12 @@ function MD.DashboardParts.CreateReview(parent, width)
         return i and (i .. ":" .. selected) or tostring(selected)
     end
 
-    local habitsFS = pane:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    local habitsFS = pane:CreateFontString(nil, "OVERLAY", SMALL)
     habitsFS:SetPoint("BOTTOMLEFT", pane, "BOTTOMLEFT", 12, 20)
     habitsFS:SetJustifyH("LEFT")
     habitsFS:SetWidth(width - 60)
 
-    local progressFS = pane:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    local progressFS = pane:CreateFontString(nil, "OVERLAY", SMALL)
     progressFS:SetPoint("BOTTOMLEFT", pane, "BOTTOMLEFT", 12, 4)
     progressFS:SetJustifyH("LEFT")
     progressFS:SetWidth(width - 60)
@@ -134,7 +141,7 @@ function MD.DashboardParts.CreateReview(parent, width)
         api:Render()
     end)
 
-    local runFS = pane:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    local runFS = pane:CreateFontString(nil, "OVERLAY", SMALL)
     runFS:SetPoint("TOPLEFT", pane, "TOPLEFT", 2, -22)
     runFS:SetJustifyH("LEFT")
     runFS:SetWidth(width - 60)
@@ -277,7 +284,7 @@ function MD.DashboardParts.CreateReview(parent, width)
             row:SetSize(width - 60, ROW_HEIGHT)
             row.cells = {}
             for _, col in ipairs(COLS) do
-                local fs = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                local fs = row:CreateFontString(nil, "OVERLAY", SMALL)
                 fs:SetJustifyH("LEFT")
                 fs:SetPoint("LEFT", row, "LEFT", col[2], 0)
                 fs:SetWidth(col[3])
@@ -376,7 +383,7 @@ function MD.DashboardParts.CreateReview(parent, width)
         if selected > #list then selected = math.max(1, #list) end
 
         if run then
-            runFS:SetText("|cffffcc00" .. RR:Line(run) .. "|r" ..
+            runFS:SetText(RUN_HI .. RR:Line(run) .. "|r" ..
                 (run.truncated and "" or ""))
         elseif IsPractice() then
             runFS:SetText("|cff888888Fights you played in Simulate -> Practice. They replay and coach like real " ..

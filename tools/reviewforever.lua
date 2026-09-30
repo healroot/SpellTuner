@@ -102,6 +102,18 @@ check("with the Replay module off the Review view says how to switch it on and l
 -- 3: switching the Replay module on replaces the placeholder with the Review
 --    tab
 --------------------------------------------------------------------------------
+-- T43: the template each font string is built from, recorded by this script
+-- (not the stub) so the Review pane's fonts can be read back below.
+local fontTemplate = setmetatable({}, { __mode = "k" })
+do
+    local FrameMT = getmetatable(CreateFrame("Frame"))
+    local origCFS = FrameMT.CreateFontString
+    FrameMT.CreateFontString = function(self, name, layer, template)
+        local fs = origCFS(self, name, layer, template)
+        fontTemplate[fs] = template or false
+        return fs
+    end
+end
 MD:SetModule("SpellTuner_Replay", true) -- loads Recorder (a dependency), Kit/Scenario/Gates, the engine chain, the window and this pane
 check("switching the Replay module on replaces the placeholder with the Review tab",
     not TextPresent("Review needs the Replay module - Settings -> Modules")
@@ -177,6 +189,28 @@ check("each recording is a row with its validate result",
     (ValidText(1) or ""):find("ok", 1, true) ~= nil
     and (ValidText(2) or ""):find("foreign healing", 1, true) ~= nil,
     "row1=" .. tostring(ValidText(1)) .. " row2=" .. tostring(ValidText(2)))
+
+--------------------------------------------------------------------------------
+-- T43 (docs/SPEC-forever-ui.md 4.4): under the Forever theme the Review pane's
+-- four GameFontHighlightSmall strings -- the habits line, the progress line,
+-- the run line and the row cells -- are built from UI.FONT_SMALL.
+--------------------------------------------------------------------------------
+do
+    local small, gold, other = 0, 0, {}
+    for fs, tpl in pairs(fontTemplate) do
+        local p = fs.parentFrame
+        local inPane = p == reviewFrame or (p and p.cells and p.parentFrame == reviewFrame)
+        if inPane then
+            if tpl == "GameFontHighlightSmall" then gold = gold + 1
+            elseif tpl == MD.UI.FONT_SMALL then small = small + 1
+            else other[#other + 1] = tostring(tpl) end
+        end
+    end
+    -- the pane's three lines plus at least one row's cells (three rows are up)
+    check("T43: the Review pane's small text is UI.FONT_SMALL, not GameFontHighlightSmall",
+        reviewFrame ~= nil and gold == 0 and small > 3,
+        string.format("FONT_SMALL=%d GameFontHighlightSmall=%d other=%s", small, gold, table.concat(other, ",")))
+end
 
 --------------------------------------------------------------------------------
 -- 5: a row's tooltip carries every Forever gate line

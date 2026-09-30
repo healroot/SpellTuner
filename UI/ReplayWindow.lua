@@ -27,6 +27,13 @@ local function Esc(s)
     return (s:gsub("|", "||")) -- one value: gsub also returns a count
 end
 
+-- T43 (docs/SPEC-forever-ui.md 4.1, 4.4): the window's own highlighted words
+-- (the header's #n and PRACTICE, the run strip's name, "paused") open with the
+-- theme's accent on Forever; UI.TEXT is nil on TBC, which keeps its gold.
+local function Hi()
+    return UI.TEXT and UI.TEXT.accent and UI.TEXT.accent.hex or "|cffffcc00"
+end
+
 local COL_W = 460              -- the healer strip's width; a column is at least this wide
 local GUTTER = 16
 local HEADER_H, STRIP_H, SCRUB_H = 26, 96, 96
@@ -1429,7 +1436,7 @@ local function PaintRunStrip(width)
     end
 
     local st = curRun.stats or {}
-    runStrip.label:SetText(string.format("|cffffcc00%s|r  %s, %d pull(s)%s%s", curRun.name or "run",
+    runStrip.label:SetText(string.format(Hi() .. "%s|r  %s, %d pull(s)%s%s", curRun.name or "run",
         Clock(st.wall or 0), st.pulls or 0,
         (st.drinks or 0) > 0 and string.format(", %d drink(s)", st.drinks) or "",
         (st.deaths or 0) > 0 and string.format(", %d death(s)", st.deaths) or ""))
@@ -1653,7 +1660,7 @@ function MD:OpenReplay(n)
         end
     end
     local when = rec.id and date and date("%H:%M", rec.id) or ""
-    headerFS:SetText(string.format("|cffffcc00#%s|r  %s%s  %s  %s   %s%s", tostring(n),
+    headerFS:SetText(string.format(Hi() .. "#%s|r  %s%s  %s  %s   %s%s", tostring(n),
         run and (run.name .. " pull " .. tostring(pullK) .. " - ") or "", rec.zone or "?", when,
         Clock(rec.dur or 0), v and (v.ok and "|cff99dd99replays|r" or "|cffff9966does not replay|r") or "",
         fit ~= "" and ("  |cff888888" .. fit .. "|r") or ""))
@@ -1849,7 +1856,7 @@ LiveUpdate = function(elapsed)
         frame.hint:SetText("|cffff4040" .. practiceErr .. "|r")
     else
         frame.hint:SetText(playing and "hover a frame and press a binding   |cff888888space pauses, End keeps it|r"
-            or "|cffffcc00paused|r   |cff888888space to go on|r")
+            or Hi() .. "paused|r   |cff888888space to go on|r")
     end
     if practiceErrTi and now < practiceErrUntil then
         local f = left.frames[practiceErrTi]
@@ -1900,7 +1907,7 @@ function MD:OpenPractice(setup, seed)
     for _, col in ipairs({ left, right }) do col.strip.lastCast, col.strip.gcdStart, col.strip.gcdUntil = nil, 0, 0 end
     local g
     for _, x in ipairs(PR.GROUPS) do if x.id == setup.group then g = x end end
-    headerFS:SetText(string.format("|cffffcc00PRACTICE|r  %s, %d people   %s",
+    headerFS:SetText(string.format(Hi() .. "PRACTICE|r  %s, %d people   %s",
         g and g.label or "custom", #setup.targets, Clock(session.scenario.dur)))
     frame.reconFS:Hide()
     left.title:SetText("YOU")

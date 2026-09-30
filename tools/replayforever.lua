@@ -253,6 +253,59 @@ if not detail9 and not sawName then detail9 = "the fixture name never painted wi
 check("every string the window paints is ASCII with no bare pipe", #bad == 0 and sawName, detail9)
 
 --------------------------------------------------------------------------------
+-- T43 (docs/SPEC-forever-ui.md 4.1, 4.4): under the Forever theme the
+-- window's own text takes UI.TEXT.accent where it was Blizzard gold. The
+-- header's "#n" is checked on a single fight; the run strip on a run's pull
+-- (runs are not recorded on Forever yet, so the address is answered here
+-- for the one call -- the strip paints whatever run it is handed).
+--------------------------------------------------------------------------------
+local ACCENT = MD.UI.TEXT and MD.UI.TEXT.accent and MD.UI.TEXT.accent.hex or "(no UI.TEXT)"
+local function Gold(s)
+    s = (s or ""):lower()
+    return s:find("ffcc00", 1, true) ~= nil or s:find("ffd100", 1, true) ~= nil
+end
+do
+    SlashCmdList.SPELLTUNER("replay 2")
+    local h = MD.Replay._state().headerFS:GetText() or ""
+    check("T43: the header's #n takes the accent, not gold",
+        not Gold(h) and h:find(ACCENT .. "#2", 1, true) ~= nil, h)
+end
+do
+    local origGet = MD.GetRecording
+    local run = { name = "Underbog", stats = { wall = 120, pulls = 1, drinks = 1, deaths = 0 },
+                  pulls = { recGood }, ev = {} }
+    MD.GetRecording = function(self, spec)
+        if tostring(spec) == "1:1" then return recGood, "1:1", run, 1 end
+        return origGet(self, spec)
+    end
+    local okOpen, err = pcall(SlashCmdList.SPELLTUNER, "replay 1:1")
+    MD.GetRecording = origGet
+    local strip = MD.Replay._runStrip()
+    local label = strip and strip.label or ""
+    local h = MD.Replay._state().headerFS:GetText() or ""
+    check("T43: the run strip's name takes the accent, not gold",
+        okOpen and strip and strip.shown and not Gold(label) and not Gold(h)
+        and label:find(ACCENT .. "Underbog", 1, true) ~= nil,
+        tostring(err or "") .. " label=" .. label .. " header=" .. h)
+    SlashCmdList.SPELLTUNER("replay 1") -- back to a single fight: the strip gone
+end
+do
+    -- MD.Tip (UI/Tooltip.lua) is the replay's and Review's hover builder: its
+    -- one gold colour, the suggested rank's note, reads the accent.
+    local calc = { label = "Healing Touch", kind = "direct", base = 100, bonus = 0, coef = 1, penalty = 1,
+                   bonusMult = 1, bonusMultName = "", bonusOut = 0, talentMult = 1, cost = 50,
+                   costSource = "live", mana = 1000, netPerCast = 50 }
+    local okRow, lines = pcall(MD.Tip.Row, MD.Tip, { calc = calc, rank = 2, suggested = true, heal = 100,
+        cast = 2, hpm = 2, hps = 50, casts = 20 })
+    local rc = okRow and lines[1] and lines[1].rc
+    local A = MD.UI.TEXT and MD.UI.TEXT.accent
+    check("T43: MD.Tip's suggested-rank colour is the accent, not gold",
+        rc ~= nil and A ~= nil and rc[1] == A[1] and rc[2] == A[2] and rc[3] == A[3]
+        and not (rc[1] == 1 and rc[2] == 0.82 and rc[3] == 0),
+        okRow and (rc and string.format("%.3f %.3f %.3f", rc[1], rc[2], rc[3]) or "no rc") or tostring(lines))
+end
+
+--------------------------------------------------------------------------------
 -- 10: the window will not open in combat
 --------------------------------------------------------------------------------
 if W.frame then W.frame:Hide() end

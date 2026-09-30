@@ -21,7 +21,10 @@ local KEY    = { 0.78, 0.78, 0.78 }
 local SUB    = { 0.63, 0.63, 0.63 }
 local MUTED  = { 0.43, 0.43, 0.43 }
 local WARN   = { 1, 0.67, 0.2 }
-local GOLD   = { 1, 0.82, 0 }
+-- T43 (docs/SPEC-forever-ui.md 4.4): the theme's accent where it is loaded
+-- (Forever; UI/Theme_Forever.lua runs before any module file), else gold (TBC).
+local GOLD   = (UI and UI.TEXT and UI.TEXT.accent)
+    and { UI.TEXT.accent[1], UI.TEXT.accent[2], UI.TEXT.accent[3] } or { 1, 0.82, 0 }
 local GOOD   = { 0.2, 1, 0.4 }
 local MANA   = { 0.31, 0.66, 0.94 }
 
