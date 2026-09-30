@@ -423,5 +423,41 @@ check("T30 bar header: the label over the whole column, the header 22 tall", hpm
 
 for k, fn in pairs(saved) do rawset(MT, k, fn) end
 
+--------------------------------------------------------------------------------
+-- T53 (P9, review U25): a Waste list longer than the pane ends with a tail
+-- line saying how many rows it does not show. A 300-high pane has 14 slots
+-- below the header: 13 rows and "... and 27 more" for a list of 40.
+--------------------------------------------------------------------------------
+do
+    local OH = MD.Overheal
+    local realRows = OH.SpellRows
+    local fake = {}
+    for i = 1, 40 do
+        fake[i] = { key = "x:" .. i, label = "Spell " .. i, healed = 100, overhealed = 10, frac = 0.1,
+                    wastedMana = 0, wastedEvents = 0 }
+    end
+    OH.SpellRows = function() return fake end
+    local wparent = CreateFrame("Frame")
+    wparent:SetSize(760, 300)
+    local waste = MD.DashboardParts.CreateWaste(wparent, 760)
+    waste.frame:SetSize(760, 300)
+    waste.frame:Show()
+    waste:Render()
+    local labels, tail, last = 0, nil, nil
+    for _, f in ipairs(S.allFrames) do
+        if f.cells and f.cells.wev and f.shown and f:GetParent() == waste.frame then
+            local t = (f.cells.label:GetText() or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+            if t:match("^Spell %d+$") then
+                labels = labels + 1
+                last = math.max(last or 0, tonumber(t:match("%d+")))
+            end
+            tail = tail or tonumber(t:match("^%.%.%. and (%d+) more %(scroll: not yet%)$"))
+        end
+    end
+    check("a long Waste list ends with the tail line", labels == 13 and last == 13 and tail == 27,
+        string.format("rows=%d last=%s tail=%s", labels, tostring(last), tostring(tail)))
+    OH.SpellRows = realRows
+end
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 if #fails > 0 then for _, m in ipairs(fails) do print("  FAIL " .. m) end; os.exit(1) end

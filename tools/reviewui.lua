@@ -407,5 +407,58 @@ do
     MD.cdb.recordings = saved
 end
 
+--------------------------------------------------------------------------------
+-- T53 (P9, review U25): a list longer than the pane says what it hides. A
+-- 36-pull run in a 420-high pane has 19 slots: 18 pulls and the tail line
+-- "... and 18 more". Selecting pull 36 (in a taller pane, then shrunk to the
+-- same height) keeps it on screen: the list starts where 36 is the last row.
+--------------------------------------------------------------------------------
+do
+    local realPulls = run.pulls
+    local many = {}
+    for i = 1, 36 do
+        local c = {}
+        for k, v in pairs(realPulls[1]) do c[k] = v end
+        c.runT0 = (i - 1) * 60
+        many[i] = c
+    end
+    run.pulls = many
+    local function Tail()
+        for _, r in ipairs(Rows()) do
+            local n = CellText(r, "when"):match("^%.%.%. and (%d+) more %(scroll: not yet%)$")
+            if n then return tonumber(n) end
+        end
+        return nil
+    end
+    local function Numbers()
+        local out = {}
+        for _, r in ipairs(Rows()) do
+            local n = tonumber((CellText(r, "n"):gsub("%*$", "")))
+            if n then out[#out + 1] = n end
+        end
+        table.sort(out)
+        return out
+    end
+    Click(ButtonNamed("Ramparts test")); api:Render()
+    local nums = Numbers()
+    check("a 36-pull run ends with the tail line", Tail() == 18 and #nums == 18
+        and nums[1] == 1 and nums[18] == 18,
+        string.format("tail=%s rows=%d (%s..%s)", tostring(Tail()), #nums, tostring(nums[1]), tostring(nums[#nums])))
+
+    api.frame:SetSize(760, 1000); api:Render()
+    local row36
+    for _, r in ipairs(Rows()) do if CellText(r, "n") == "36" then row36 = r end end
+    Click(row36)
+    api.frame:SetSize(760, 420); api:Render()
+    nums = Numbers()
+    local has36 = false
+    for _, n in ipairs(nums) do if n == 36 then has36 = true end end
+    check("selecting pull 36 keeps it on screen", row36 ~= nil and has36 and #nums == 18
+        and nums[1] == 19 and Tail() == 18,
+        string.format("tail=%s rows=%d (%s..%s)", tostring(Tail()), #nums, tostring(nums[1]), tostring(nums[#nums])))
+    run.pulls = realPulls
+    Click(ButtonNamed("Fights")); api:Render()
+end
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 if #fails > 0 then for _, m in ipairs(fails) do print("  FAIL " .. m) end; os.exit(1) end

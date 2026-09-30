@@ -46,6 +46,19 @@ local function Fmt(n) return string.format("%d", n + 0.5) end
 local function Pct(f) return string.format("%.1f%%", f * 100) end
 local function K(n) return n >= 10000 and string.format("%.1fk", n / 1000) or Fmt(n) end
 
+-- T53 (P9, review U25): how many rows fit, and how many the tail line names.
+-- `top` is the first row's y and `floor` the lowest y a row may start at (the
+-- loop's old `break` condition, unchanged), so the slots are exactly the rows
+-- painted before; a longer list gives its last slot to the tail line. No slot
+-- at all (a pane with no height yet) paints nothing, as before.
+local function ListFit(n, top, floor)
+    local slots = 0
+    if top >= floor then slots = math.floor((top - floor) / ROW_HEIGHT) + 1 end
+    if n <= slots then return n, 0 end
+    if slots == 0 then return 0, 0 end
+    return slots - 1, n - (slots - 1)
+end
+
 function MD.DashboardParts.CreateWaste(parent, width)
     local pane = CreateFrame("Frame", nil, parent)
     pane:Hide()
@@ -150,8 +163,12 @@ function MD.DashboardParts.CreateWaste(parent, width)
 
         local spend = mode == "spell" and FamilySpend() or nil
         local shownFam = {}
-        for _, r in ipairs(rows) do
-            if y < -(pane:GetHeight() - 40) then break end
+        -- T53 (P9, review U25): the rows stop at the pane's height, as they
+        -- always have, but no longer silently -- when there are more than fit,
+        -- the last slot says how many are not shown. No scroll yet.
+        local shown, hidden = ListFit(#rows, y, -(pane:GetHeight() - 40))
+        for i = 1, shown do
+            local r = rows[i]
             local row = AcquireRow()
             Layout(row, cols)
             row:SetPoint("TOPLEFT", pane, "TOPLEFT", 0, y)
@@ -203,6 +220,14 @@ function MD.DashboardParts.CreateWaste(parent, width)
                 row.cells.sub:SetText("|cff888888" .. table.concat(names, ", ") .. "|r")
             end
             y = y - ROW_HEIGHT
+        end
+        if hidden > 0 then
+            local row = AcquireRow(); Layout(row, cols)
+            row:SetPoint("TOPLEFT", pane, "TOPLEFT", 0, y)
+            -- a pooled row keeps the last render's text in every cell
+            for _, col in ipairs(cols) do row.cells[col[1]]:SetText("") end
+            row.cells.label:SetWidth(600)
+            row.cells.label:SetText(string.format("|cff888888... and %d more (scroll: not yet)|r", hidden))
         end
 
         if #rows == 0 then

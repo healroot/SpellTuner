@@ -71,6 +71,30 @@ local function LowestMana(rec)
     return (low or pool) / pool
 end
 
+-- T53 (P9, review U25): which rows of a list fit, and what the last slot says
+-- when they do not all fit. `top` is the first row's y, `floor` the lowest y a
+-- row may start at (the loop's old `break` condition, unchanged), so the
+-- number of slots is exactly the number of rows painted before. When the
+-- list is longer, the last slot is the tail line and `hidden` counts every
+-- row not painted; the window starts at the selected row when the selection
+-- would fall below it, backed up so the slots stay full at the list's end.
+-- No slot at all (a pane with no height yet) paints nothing, as before.
+local function ListWindow(n, top, floor, selected)
+    local slots = 0
+    if top >= floor then slots = math.floor((top - floor) / ROW_HEIGHT) + 1 end
+    if n <= slots then return 1, n, 0 end
+    if slots == 0 then return 1, 0, 0 end
+    local rows = slots - 1
+    local first = 1
+    if selected and selected > rows then
+        first = math.max(1, math.min(selected, n - rows + 1))
+    end
+    return first, first + rows - 1, n - rows
+end
+local function TailText(hidden)
+    return string.format("|cff888888... and %d more (scroll: not yet)|r", hidden)
+end
+
 local function When(id)
     if not id then return "?" end
     local days = math.floor((time() - id) / 86400)
@@ -458,8 +482,14 @@ function MD.DashboardParts.CreateReview(parent, width)
             row.cells.when:SetWidth(width - 80)
         end
 
-        for i, rec in ipairs(list) do
-            if y < -(pane:GetHeight() - 70) then break end
+        -- T53 (P9, review U25): the rows stop at the pane's height, as they
+        -- always have, but no longer silently -- when the list is longer, the
+        -- last slot says how many are not shown, and the selected row is kept
+        -- on screen (the list starts at it when it would fall off). There is
+        -- no scroll yet; the Forever list gets one in P27.
+        local first, last, hidden = ListWindow(#list, y, -(pane:GetHeight() - 70), selected)
+        for i = first, last do
+            local rec = list[i]
             local row = AcquireRow()
             row:SetPoint("TOPLEFT", pane, "TOPLEFT", 0, y)
             row.highlight:SetShown(i == selected)
@@ -521,6 +551,13 @@ function MD.DashboardParts.CreateReview(parent, width)
             end)
             row:SetScript("OnLeave", function() if MD.Tip then MD.Tip:Hide() end end)
             y = y - ROW_HEIGHT
+        end
+        if hidden > 0 then
+            local row = AcquireRow()
+            row:SetPoint("TOPLEFT", pane, "TOPLEFT", 0, y)
+            row:EnableMouse(false)
+            row.cells.when:SetText(TailText(hidden))
+            row.cells.when:SetWidth(width - 80)
         end
 
         -- buttons follow the selection (rec and v are read above, before the rows)
