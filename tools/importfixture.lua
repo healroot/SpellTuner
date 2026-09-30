@@ -38,6 +38,13 @@ function date(fmt, t)
     return os.date(fmt, t or FIXED_TIME)
 end
 function time() return FIXED_TIME end
+-- T54 (P10, review Q6): nor on the addon's version. MD.version is read from
+-- the TOC at load, and a practice fight stores it: with the real one the
+-- fixture changed on every --set-version and importcheck failed until it was
+-- rebuilt, the rebuilt diff hiding any genuine change in storage. A fixed
+-- token, as the dates above and the stub's build are.
+local FIXED_VERSION = "0.0.0-fixture"
+MD.version = FIXED_VERSION
 
 -- A level 10 druid on the beta: 364 mana, the author's own p1 pool.
 S.level = 10
@@ -165,7 +172,11 @@ S.Fire("PLAYER_REGEN_ENABLED")
 S.meter.sources = {
     { sourceGUID = S.units.player.guid, isLocalPlayer = true, totalAmount = 450, name = "Healroot" },
 }
-for _, fn in ipairs(S.timers or {}) do fn() end
+-- T54 (P10, review Q8): the recorder stores the pull one second after the
+-- combat flag drops (MD.API.After(1, ...)); the stub's clock runs it there,
+-- and nothing may be left pending after that second
+At(S.now + 1)
+assert(S.Pending() == 0, "a timer is still pending one second after the pull")
 local recs = MD.cdb.recordings or {}
 assert(#recs == 1 and recs[1].v == 3 and recs[1].kit, "the recorder kept no v3 stream with its kit")
 

@@ -32,6 +32,24 @@ local function CapturedChat(body)
     return lines
 end
 
+-- T54 (P10, review Q8): the recorder finishes a pull one second after the
+-- combat flag drops (MD.API.After(1, ...): the death re-poll, the meter read,
+-- the store), and the stub now fires a timer when its clock reaches it. So a
+-- pull's end is the clock ticked one second on -- never a hand flush -- and
+-- whatever is still pending after that is noted here; one check at the end
+-- says nothing ever was. A chain pull (R11) is back in combat by then and
+-- has queued its own timers (the probe's 2 s snapshot), so only a pull that
+-- ended out of combat is held to it.
+local leftovers = {}
+local function Settle(St, label)
+    local t = St.now + 1
+    while St.now < t - 1e-6 do St.Tick(0.5) end
+    local n = St.Pending and St.Pending() or #(St.timers or {})
+    if n ~= 0 and not St.inCombat then
+        leftovers[#leftovers + 1] = string.format("%s: %d pending", label, n)
+    end
+end
+
 local function CountAttempts(S, event)
     local n = 0
     for _, f in ipairs(S.allFrames) do
@@ -88,11 +106,6 @@ local function At(t)
     end
 end
 
-local timerCursor = 0
-local function FlushTimers()
-    for i = timerCursor + 1, #(S.timers or {}) do S.timers[i]() end
-    timerCursor = #(S.timers or {})
-end
 
 -- Lead review 1: whether UNIT_SPELLCAST_STOP fires before or after
 -- UNIT_SPELLCAST_SUCCEEDED is UNKNOWN -- every successful cast below fires
@@ -168,7 +181,7 @@ S.meter.sources = {
     { sourceGUID = S.units.player.guid, isLocalPlayer = true, totalAmount = 400, name = "Healroot" },
     { sourceGUID = "Other-1", isLocalPlayer = false, totalAmount = 120, name = "Someone" },
 }
-FlushTimers()
+Settle(S, "fixture") -- T54 (P10): one second on, not a flush
 
 local rec = MD.FightRecorder:Get(1)
 local K = { DMG = 1, OWNCAST = 3, CASTSTART = 6, CANCEL = 7, DIED = 9, HEAL = 15 }
@@ -320,7 +333,7 @@ do
     At(65)
     S.inCombat = false
     S.Fire("PLAYER_REGEN_ENABLED")
-    FlushTimers()
+    Settle(S, "fixture") -- T54 (P10): one second on, not a flush
     local after = #MD.FightRecorder:List()
     check("a short pull is dropped, a kept one enters a ring of eight",
         before == 1 and after == 1,
@@ -371,7 +384,7 @@ do
     At(115)
     S.inCombat = false
     S.Fire("PLAYER_REGEN_ENABLED")
-    FlushTimers()
+    Settle(S, "fixture") -- T54 (P10): one second on, not a flush
 end
 
 --------------------------------------------------------------------------------
@@ -434,11 +447,7 @@ do
     barMT.GetMinMaxValues = function() return 0, tankMax end
 
     MD2:SetModule("SpellTuner_Recorder", true)
-    local cursor = 0
-    local function Flush()
-        for i = cursor + 1, #(S2.timers or {}) do S2.timers[i]() end
-        cursor = #(S2.timers or {})
-    end
+    local function Flush() Settle(S2, "bar") end -- T54 (P10)
     S2.inCombat = true
     S2.Fire("PLAYER_REGEN_DISABLED")
     for i = 1, 5 do
@@ -482,11 +491,7 @@ local function Fresh(party)
     end
     M:SetModule("SpellTuner_Recorder", true)
     local env = { MD = M, S = St }
-    local cursor = 0
-    function env.Flush()
-        for i = cursor + 1, #(St.timers or {}) do St.timers[i]() end
-        cursor = #(St.timers or {})
-    end
+    function env.Flush() Settle(St, "fresh") end -- T54 (P10)
     function env.At(t) while St.now < t - 1e-6 do St.Tick(0.5) end end
     function env.Cast(g, id, name)
         St.Fire("UNIT_SPELLCAST_SENT", "player", name, g, id)
@@ -649,11 +654,23 @@ do
     E.Start()
     E.Five("r10b-", "Tank")
     E.At(63)
+    -- T54 (P10, review Q8): the re-poll is MD.API.After(1, ...) and its point
+    -- is WHEN it runs -- a dead flag trailing the combat flag by half a second
+    -- is still seen, because the poll waits a second. Driven by the clock:
+    -- nothing is stored at +0.5 s, the pull is stored with the death at +1 s.
+    local _, nStop = E.Last()
     E.Stop()                      -- the combat flag first ...
-    E.S.units.player.dead = true  -- ... the dead flag after it
-    E.Flush()
-    local recB = E.Last()
+    E.S.Tick(0.5)
+    local _, nHalf = E.Last()
+    E.S.units.player.dead = true  -- ... the dead flag half a second after it
+    E.S.Tick(0.5)
+    local recB, nOne = E.Last()
+    local pendingB = E.S.Pending and E.S.Pending() or #(E.S.timers or {})
     E.S.units.player.dead = false
+    check("R10 (review Q8): the death re-poll runs at +1 s on the clock: nothing stored at +0.5 s, the death seen at +1 s",
+        nHalf == nStop and nOne == nStop + 1 and recB ~= nil and #recB.deaths == 1 and pendingB == 0,
+        string.format("stored at stop/+0.5/+1 = %s/%s/%s deaths=%s pending=%s", tostring(nStop), tostring(nHalf),
+            tostring(nOne), tostring(recB and #recB.deaths), tostring(pendingB)))
     check("R10: the healer's own death is recorded when it ends the pull, whichever event comes first",
         recA ~= nil and #recA.deaths == 1 and recA.deaths[1][2] == 1
         and recB ~= nil and recB ~= recA and #recB.deaths == 1 and recB.deaths[1][2] == 1,
@@ -831,6 +848,11 @@ do
         e ~= nil and e.name == nil and e.realm == nil,
         string.format("roster[2]=%s name=%s realm=%s", tostring(e ~= nil), tostring(e and e.name), tostring(e and e.realm)))
 end
+
+-- T54 (P10, review Q8): every pull above ended on the clock; nothing its end
+-- queued was left pending one second on.
+check("review Q8: one second after every pull, no timer is left pending (the clock ran them, not a flush)",
+    #leftovers == 0, #leftovers > 0 and table.concat(leftovers, "; ") or nil)
 
 print(string.format("\n%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("  FAIL " .. f) end

@@ -13,6 +13,16 @@ local function check(name, cond, detail)
     print(string.format("%-72s %s%s", name, cond and "ok" or "FAIL", detail and (" - " .. detail) or ""))
 end
 
+-- T54 (P10, review Q8): the probe's combat snapshot is C_Timer.After(2, ...),
+-- and the stub now fires a timer when its clock reaches it. Each step ticks
+-- the clock past the delay instead of calling the queued functions by hand,
+-- and notes here whatever it left pending; one check at the end says nothing.
+local leftovers = {}
+local function NoteLeft(Sx, label)
+    local n = Sx.Pending and Sx.Pending() or #(Sx.timers or {})
+    if n ~= 0 then leftovers[#leftovers + 1] = string.format("%s: %d pending", label, n) end
+end
+
 -- Plain substring test (never a pattern -- report text can contain "%").
 local function Has(s, sub) return s ~= nil and s:find(sub, 1, true) ~= nil end
 
@@ -190,7 +200,10 @@ Do(S.Fire, "UNIT_COMBAT", "party1", "HEAL", "", 120, 1)
 Do(S.Fire, "UNIT_COMBAT", "party1", "BLOCK|X", "", 5, 1)
 S.inCombat = true
 Do(S.Fire, "PLAYER_REGEN_DISABLED")
-for _, fn in ipairs(S.timers or {}) do Do(fn) end
+-- T54 (P10): two seconds on the clock, in combat -- the snapshot runs then
+Do(S.Tick, 1)
+Do(S.Tick, 1)
+NoteLeft(S, "step 2")
 -- T7a item 7: a secret spell id, in combat.
 Do(S.Fire, "UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-2", S.Secret())
 -- T0c: a different restriction payload and a blocked action, both in combat.
@@ -1027,21 +1040,23 @@ do
     Do11(S11.Combat, "partypet1", "WOUND", 30)
     S11.inCombat = false
     Do11(S11.Fire, "PLAYER_REGEN_ENABLED")
-    local ran = 0
-    for i = ran + 1, #(S11.timers or {}) do Do11(S11.timers[i]); ran = i end
+    -- T54 (P10): the snapshot's two seconds pass on the clock, out of combat
+    Do11(S11.Tick, 2)
+    NoteLeft(S11, "step 11, short fight")
     local okI, reportI = pcall(MD11.Probe.Run)
 
     -- a fight the snapshot is taken in, then a short one after it
     S11.inCombat = true
     Do11(S11.Fire, "PLAYER_REGEN_DISABLED")
-    for i = ran + 1, #(S11.timers or {}) do Do11(S11.timers[i]); ran = i end
+    Do11(S11.Tick, 2)
     S11.inCombat = false
     Do11(S11.Fire, "PLAYER_REGEN_ENABLED")
     S11.inCombat = true
     Do11(S11.Fire, "PLAYER_REGEN_DISABLED")
     S11.inCombat = false
     Do11(S11.Fire, "PLAYER_REGEN_ENABLED")
-    for i = ran + 1, #(S11.timers or {}) do Do11(S11.timers[i]); ran = i end
+    Do11(S11.Tick, 2)
+    NoteLeft(S11, "step 11, two fights")
     local okJ, reportJ = pcall(MD11.Probe.Run)
 
     local allOk = loadOk and addonLoadedOk and okI and okJ
@@ -1246,15 +1261,16 @@ do
         if _G.SpellTunerProbeFrame then _G.SpellTunerProbeFrame:Hide() end
         MDx:SelectView("spells")
         MDx:ToggleDebugConsole()
-        local cursor = #(Sx.timers or {})
         local names = {}
         for _, n in ipairs(UISpecialFrames) do names[#names + 1] = n end
         for _, n in ipairs(names) do
             local f = _G[n]
             if f and f:IsShown() then f:Hide() end
         end
-        local t = Sx.timers or {}
-        while cursor < #t do cursor = cursor + 1; t[cursor]() end
+        -- T54 (P10): the next frame is a tick of the clock (the proxy's
+        -- After(0) re-arm runs in it), not a hand-run of the queued callbacks
+        Sx.Tick(0)
+        NoteLeft(Sx, "step 14")
         after = MDx.Probe.Run()
     end)
     check("T33: the esc= line: untested with a to-do line, then esc=stack after one press",
@@ -1264,6 +1280,10 @@ do
         and not Has(after, "esc to do") and AsciiSafe(after),
         type(after) == "string" and (Between(after, "== windows\n", "\n") or "no == windows") or "no report")
 end
+
+-- T54 (P10, review Q8)
+check("review Q8: every step's timers ran on the clock; none is left pending",
+    #leftovers == 0, #leftovers > 0 and table.concat(leftovers, "; ") or nil)
 
 print(string.format("\n%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("  FAIL " .. f) end

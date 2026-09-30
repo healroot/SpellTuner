@@ -654,12 +654,12 @@ do -- T40 2: ESC closes the sheet and not the window
     local wasShown = sheet ~= nil and sheet:IsShown() and main ~= nil and main:IsShown()
     local top = MD.Win and MD.Win.stack[#MD.Win.stack]
     local onTop = top ~= nil and top.frame == sheet
-    local queued = #(S.timers or {})
     MD.Win.proxy:Hide()     -- what the client's ESC does to the one special frame
-    -- the next frame: only the C_Timer.After callbacks this press queued (the
-    -- proxy's re-arm), as tools/wincheck.lua's NextFrame
-    local t = S.timers or {}
-    for i = queued + 1, #t do t[i]() end
+    -- the next frame (T54, P10: a tick of the stub's clock, which runs the
+    -- C_Timer.After callbacks now due -- the proxy's re-arm -- rather than a
+    -- hand-run of the queue), and nothing left pending after it
+    S.Tick(0)
+    local leftAfterEsc = S.Pending and S.Pending() or #(S.timers or {})
     local sheetGone = sheet ~= nil and not sheet:IsShown()
     local mainStays = main ~= nil and main:IsShown()
     local inUISpecial = false
@@ -670,6 +670,8 @@ do -- T40 2: ESC closes the sheet and not the window
         string.format("shown=%s view=%s/%s onTop=%s gone=%s main=%s special=%s proxy=%s", tostring(wasShown),
             tostring(g), tostring(v), tostring(onTop), tostring(sheetGone), tostring(mainStays),
             tostring(inUISpecial), tostring(MD.Win.proxy:IsShown())))
+    check("review Q8: the ESC's next frame is a tick of the clock and leaves no timer pending",
+        leftAfterEsc == 0, "pending " .. tostring(leftAfterEsc))
 end
 
 do -- T40 3: at 900 wide no fight field extends past the pane's right edge

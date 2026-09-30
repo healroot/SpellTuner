@@ -10,13 +10,13 @@
 -- MD.Win:ShowMain, /st ui reset, and the late grow on MODULE_LOADED gone.
 -- Forever only: the TBC TOC does not list the manager.
 --
--- The stub's frames have no geometry (GetLeft is 0, SetPoint a no-op), so this
--- suite gives the frame metatable just enough of one for windows anchored to
--- UIParent: a scale per frame, points recorded, GetLeft / GetTop computed in a
--- 768-high base space (UIParent's effective scale is the game's UI scale, as
--- UI.px assumes). It is this suite's own, installed on the stub's frame
--- metatable after the addon loads (the main window is built on first use, so
--- every window this suite opens has it); no other suite sees it. T33 / T34
+-- The stub's frames have no geometry by default (GetLeft is 0, SetPoint a
+-- no-op), so this suite switches on the stub's opt-in one, S.Geometry(true)
+-- (T54: it was this suite's own until then): a scale per frame, points
+-- recorded, GetLeft / GetTop computed in a 768-high base space (UIParent's
+-- effective scale is the game's UI scale, as UI.px assumes) and a
+-- deterministic text metric. It goes on after the addon loads (the main window
+-- is built on first use, so every window this suite opens has it). T33 / T34
 -- extend this file (T33: the ESC stack and combat, section 11; T34: the
 -- replay and practice takeover, section 12; T42: Settings -> General's
 -- controls, section 13).
@@ -40,80 +40,14 @@ local S = _G.STUB
 local UI = MD.UI
 
 --------------------------------------------------------------------------------
--- Geometry, this suite's own (see the header)
+-- Geometry: the stub's opt-in one (T54, P10, review Q12 -- this suite's own
+-- until then, promoted into tools/wowstub.lua's S.Geometry unchanged, plus a
+-- deterministic text metric), switched on after the addon loads at the game's
+-- UI scale this suite has always used.
 --------------------------------------------------------------------------------
 local FM = getmetatable(UIParent)
 S.uiScale = 0.71
-local function BaseW() return 768 * S.physicalWidth / S.physicalHeight end
-
-UIParent.GetEffectiveScale = function() return S.uiScale end
-UIParent.GetScale = function() return S.uiScale end
-UIParent.GetWidth = function() return BaseW() / S.uiScale end
-UIParent.GetHeight = function() return 768 / S.uiScale end
-UIParent.GetLeft = function() return 0 end
-UIParent.GetBottom = function() return 0 end
-UIParent.GetTop = function() return 768 / S.uiScale end
-UIParent.GetRight = function() return BaseW() / S.uiScale end
-
-FM.SetScale = function(self, s) self.scaleV = s end
-FM.GetScale = function(self) return self.scaleV or 1 end
-FM.GetEffectiveScale = function(self)
-    local p = self.parentFrame
-    local pe = (p and p.GetEffectiveScale) and p:GetEffectiveScale() or 1
-    return (self.scaleV or 1) * pe
-end
-FM.ClearAllPoints = function(self) self.points = {} end
-FM.SetPoint = function(self, p, rel, rp, x, y)
-    self.points = self.points or {}
-    self.points[#self.points + 1] = { p, rel, rp, x, y }
-end
-FM.GetNumPoints = function(self) return self.points and #self.points or 0 end
-FM.GetPoint = function(self, i)
-    local pt = self.points and self.points[i or 1]
-    if not pt then return "CENTER", nil, "CENTER", 0, 0 end
-    return pt[1], pt[2], pt[3], pt[4], pt[5]
-end
-FM.SetFrameStrata = function(self, s) self.strata = s end
-FM.GetFrameStrata = function(self) return self.strata or "MEDIUM" end
-FM.SetFrameLevel = function(self, l) self.level = l end
-FM.GetFrameLevel = function(self) return self.level or 1 end
-FM.SetToplevel = function(self, v) self.toplevel = v and true or false end
-FM.IsToplevel = function(self) return self.toplevel == true end
-FM.SetUserPlaced = function(self, v) self.userPlaced = v and true or false end
-FM.IsUserPlaced = function(self) return self.userPlaced == true end
-FM.SetClampedToScreen = function(self, v) self.clamped = v and true or false end
-FM.IsClampedToScreen = function(self) return self.clamped == true end
-FM.SetResizable = function(self, v) self.resizable = v and true or false end
-FM.IsResizable = function(self) return self.resizable == true end
-FM.SetResizeBounds = function(self, a, b, c, d) self.bounds = { a, b, c, d } end
-
--- Where a frame's TOPLEFT is, in its own units from UIParent's BOTTOMLEFT;
--- only the one-point anchors to UIParent a window uses. nil for anything else.
-local ANCHOR = {
-    BOTTOMLEFT = function() return 0, 0 end,
-    TOPLEFT = function() return 0, 768 end,
-    CENTER = function() return BaseW() / 2, 384 end,
-    TOP = function() return BaseW() / 2, 768 end,
-}
-local function TopLeft(self)
-    local pt = self.points and self.points[#self.points]
-    if not pt or #self.points ~= 1 then return nil end
-    local p, rel, rp, x, y = pt[1], pt[2], pt[3], pt[4], pt[5]
-    if rel == nil then rel, rp, x, y = UIParent, p, 0, 0 end
-    if rel ~= UIParent or not ANCHOR[rp] then return nil end
-    local es = self:GetEffectiveScale()
-    local ax, ay = ANCHOR[rp]()
-    local px, py = ax + (x or 0) * es, ay + (y or 0) * es
-    local w, h = self:GetWidth() * es, self:GetHeight() * es
-    local left, top
-    if p == "TOPLEFT" then left, top = px, py
-    elseif p == "TOP" then left, top = px - w / 2, py
-    elseif p == "CENTER" then left, top = px - w / 2, py + h / 2
-    else return nil end
-    return left / es, top / es
-end
-FM.GetLeft = function(self) local l = TopLeft(self); if l then return l end return 0 end
-FM.GetTop = function(self) local _, t = TopLeft(self); if t then return t end return self.h or 20 end
+S.Geometry(true)
 
 -- A drag: the client moves the frame and the kit's OnDragStop calls OnMoved.
 local function DragTo(f, x, y)
@@ -383,18 +317,12 @@ end
 --------------------------------------------------------------------------------
 -- 11. T33 (6.5, 6.6): the ESC stack and combat. ESC is the client's
 -- CloseSpecialWindows: every shown frame named in UISpecialFrames hidden in one
--- press; "the next frame" runs the C_Timer.After callbacks queued since the
--- last one (only those, so nothing an earlier section queued runs here).
+-- press; "the next frame" is a tick of the stub's clock, which runs the
+-- C_Timer.After callbacks then due (T54, P10, review Q8: it used to run the
+-- queued ones by hand).
 --------------------------------------------------------------------------------
 FM.GetName = function(self) return self.frameName end
-local timerCursor = #(S.timers or {})
-local function NextFrame()
-    local t = S.timers or {}
-    while timerCursor < #t do
-        timerCursor = timerCursor + 1
-        t[timerCursor]()
-    end
-end
+local function NextFrame() S.Tick(0) end
 local function Esc()
     local list = {}
     for _, name in ipairs(UISpecialFrames) do list[#list + 1] = name end
@@ -481,7 +409,7 @@ do
         Win:Push(B, function() calls = calls + 1 end)
     end
     local rec = MD.db.ui.escTest
-    local queued = #(S.timers or {})
+    local queued = S.Pending() -- T54 (P10): the pending timers
     -- UIParent hidden (Alt+Z): the client runs OnHide on frames that stay
     -- shown; neither the proxy's nor a window's may pop or drop anything
     if proxy then proxy:GetScript("OnHide")(proxy) end
@@ -492,7 +420,7 @@ do
     A:Hide()
     check("T33: a code hide of the proxy pops nothing: no onEsc, no press recorded, quiet cleared",
         altZ and still and calls == 0 and not proxy:IsShown() and proxy.quiet == nil and #Stack() == 0
-          and MD.db.ui.escTest == rec and #(S.timers or {}) == queued,
+          and MD.db.ui.escTest == rec and S.Pending() == queued,
         tostring(altZ) .. " " .. tostring(still) .. " calls " .. calls)
 end
 

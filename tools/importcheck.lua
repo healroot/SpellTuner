@@ -11,7 +11,25 @@ local root = arg[1] or "."
 local LUA = root .. "/tools/.lua/lua-5.1.5/src/lua"
 local FIXTURE = root .. "/tools/data/import-forever-sv.lua"
 local SCRATCH = root .. "/tools/.lua/importcheck"
-os.execute(string.format("rm -rf %q && mkdir -p %q", SCRATCH, SCRATCH))
+
+-- T54 (P10, review Q4/Q6): EVERY subprocess goes through Sh. The environment
+-- this suite runs in never reaches a child: `run.sh --flavour tbc` exports
+-- ST_FLAVOUR=tbc to this suite, and tools/importfixture.lua spawned with it
+-- skipped (it declares forever only) and wrote nothing, so importcheck failed
+-- under --flavour tbc; a developer's MD_SAVEDVARS would point import.lua at
+-- their own file. Each command starts with both unset, and names what it
+-- wants set in `set` (a list of { name, value }); `cwd` runs it elsewhere.
+local SCRUB = { "ST_FLAVOUR", "MD_SAVEDVARS" }
+local function Sh(cmd, set, cwd)
+    local env = { "env" }
+    for _, name in ipairs(SCRUB) do env[#env + 1] = "-u " .. name end
+    for _, kv in ipairs(set or {}) do env[#env + 1] = string.format("%s=%q", kv[1], kv[2]) end
+    local line = table.concat(env, " ") .. " " .. cmd
+    if cwd then line = string.format("cd %q && %s", cwd, line) end
+    return os.execute(line)
+end
+Sh(string.format("rm -rf %q", SCRATCH))
+Sh(string.format("mkdir -p %q", SCRATCH))
 
 local ok, fails = 0, {}
 local function check(name, cond, detail)
@@ -21,11 +39,10 @@ end
 
 -- one command: its output and whether it exited 0
 local runN = 0
-local function Import(args, env)
+local function Import(args, set)
     runN = runN + 1
     local out = string.format("%s/run%d.txt", SCRATCH, runN)
-    local status = os.execute(string.format("%s bash %q tools/import.lua %s > %q 2>&1",
-        env or "env -u ST_FLAVOUR -u MD_SAVEDVARS", root .. "/tools/run.sh", args, out))
+    local status = Sh(string.format("bash %q tools/import.lua %s > %q 2>&1", root .. "/tools/run.sh", args, out), set)
     local f = io.open(out, "r")
     local text = f and f:read("*a") or ""
     if f then f:close() end
@@ -67,7 +84,7 @@ local p1, p2, r1 = practice[1], practice[2], recordings[1]
 --------------------------------------------------------------------------------
 do
     local fresh = SCRATCH .. "/fixture.lua"
-    local status = os.execute(string.format("bash %q tools/importfixture.lua %q > %q 2>&1",
+    local status = Sh(string.format("bash %q tools/importfixture.lua %q > %q 2>&1",
         root .. "/tools/run.sh", fresh, SCRATCH .. "/fixture.log"))
     local a, b = io.open(FIXTURE, "rb"), io.open(fresh, "rb")
     local same = a and b and a:read("*a") == b:read("*a")
@@ -75,6 +92,23 @@ do
     if b then b:close() end
     check("the committed fixture is what tools/importfixture.lua writes today", status == 0 and same,
         "rebuild with: bash tools/run.sh tools/importfixture.lua")
+end
+
+-- T54 (P10, review Q6): the fixture is stamped with a fixed version token,
+-- not the TOC's, so --set-version leaves it (and check 1) alone
+do
+    local toc = io.open(root .. "/SpellTuner_Mainline.toc", "r")
+    local tocVersion = nil
+    if toc then
+        for l in toc:lines() do tocVersion = tocVersion or l:match("^## Version:%s*(%S+)") end
+        toc:close()
+    end
+    local stamped = {}
+    for _, r in ipairs(practice) do if r.version ~= nil then stamped[#stamped + 1] = tostring(r.version) end end
+    check("the fixture carries a fixed version token, not the TOC's (a version bump leaves it alone)",
+        #stamped > 0 and tocVersion ~= nil and table.concat(stamped, ",") == "0.0.0-fixture"
+        and not Has(table.concat(stamped, ","), tocVersion),
+        string.format("stamped=%s toc=%s", table.concat(stamped, ","), tostring(tocVersion)))
 end
 
 --------------------------------------------------------------------------------
@@ -118,7 +152,7 @@ check("every stored kit is the one lean record; a practice fight carries client,
 local F = string.format("--file %q", FIXTURE)
 local list, listOk = Import(F .. " list")
 local told = Import(F .. " --flavour forever list")
-local viaRun = Import(F .. " list", "env -u MD_SAVEDVARS ST_FLAVOUR=forever")
+local viaRun = Import(F .. " list", { { "ST_FLAVOUR", "forever" } })
 check("a Forever file is read as Forever, told or not",
     listOk and Has(list, "client: forever (read from the file: a v3 recording)")
     and Has(told, "client: forever (--flavour forever)") and Has(viaRun, "client: forever (--flavour forever)"),
@@ -325,7 +359,7 @@ end
 do
     local W = dofile(root .. "/tools/svwrite.lua")
     local dir = SCRATCH .. "/tbcexport"
-    os.execute(string.format("mkdir -p %q", dir))
+    Sh(string.format("mkdir -p %q", dir))
     local function Rec(id, zone)
         return { id = id, v = 2, zone = zone, dur = 30, pool = 5000, ownCasts = 5, spent = 400,
             roster = { { name = "Penek", class = "DRUID", role = "HEALER", maxHP = 4000 } }, tracked = { 1 },
@@ -336,8 +370,8 @@ do
     W.Write(dir .. "/tbc.lua", { SpellTunerDB = { char = { ["Penek-Anniversary"] = {
         recordings = { Rec(1790000001, "Underbog"), Rec(1790000002, "Slave Pens") }, fights = {} } } } })
     local log = dir .. "/export.log"
-    local status = os.execute(string.format("cd %q && env -u ST_FLAVOUR -u MD_SAVEDVARS bash %q tools/import.lua --file tbc.lua export 1 > %q 2>&1",
-        dir, root .. "/tools/run.sh", log))
+    local status = Sh(string.format("bash %q tools/import.lua --file tbc.lua export 1 > %q 2>&1",
+        root .. "/tools/run.sh", log), nil, dir)
     local lf = io.open(log, "r")
     local said = lf and lf:read("*a") or ""
     if lf then lf:close() end

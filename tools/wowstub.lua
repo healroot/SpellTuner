@@ -302,8 +302,22 @@ S.known = {}
 _G.DEFAULT_CHAT_FRAME = { AddMessage = function(_, m) print(m) end }
 _G.SlashCmdList = {}
 _G.UIParent = nil   -- set to a frame once CreateFrame exists (below)
+-- T54 (P10, review Q8): C_Timer.After keeps a due time and S.Tick fires what
+-- is due, at the end of the tick, in due order (queue order between equal
+-- ones) -- as the client runs a timer on the first frame at or after its
+-- delay. S.timers is the list of timers still pending, { due, fn, seq } each;
+-- one queued while the pass runs waits for a later tick (the client's
+-- After(0) runs on the NEXT frame). A suite no longer calls them by hand: it
+-- ticks the clock past the delay and asserts S.Pending() == 0 ("nothing left
+-- due"). S.Due() counts the pending timers already due at S.now.
+S.timers = {}
+local timerSeq = 0
 _G.C_Timer = {
-    After = function(_, fn) S.timers = S.timers or {}; table.insert(S.timers, fn) end,
+    After = function(delay, fn)
+        timerSeq = timerSeq + 1
+        local d = (rawtype(delay) == "number") and delay or 0
+        S.timers[#S.timers + 1] = { due = S.now + d, fn = fn, seq = timerSeq }
+    end,
     NewTicker = function(period, fn)
         S.tickers = S.tickers or {}
         table.insert(S.tickers, { period = period, fn = fn, acc = 0 })
@@ -605,10 +619,188 @@ S.allFrames = frames
 _G.UIParent = CreateFrame("Frame")
 _G.GameTooltip = CreateFrame("GameTooltip")
 
+--------------------------------------------------------------------------------
+-- T54 (P10, review Q12): geometry, opt-in. Off (the default), a frame has none:
+-- GetLeft 0, GetStringWidth 40, GetEffectiveScale 1, SetPoint a no-op -- what
+-- every suite has always seen. S.Geometry(true) gives the frame metatable just
+-- enough of one for windows anchored to UIParent (tools/wincheck.lua's own
+-- until T54, promoted here unchanged):
+--   * UIParent's effective scale is the game's UI scale, S.uiScale (as UI.px
+--     assumes), in a base space 768 high and 768 * physicalWidth /
+--     physicalHeight wide (S.physicalWidth / S.physicalHeight, GetPhysicalScreenSize);
+--   * a frame keeps its scale (SetScale; its effective scale is its own times
+--     its parent's) and its points (SetPoint / ClearAllPoints / GetPoint /
+--     GetNumPoints); GetLeft / GetTop are computed for a frame with ONE point
+--     on UIParent (TOPLEFT / TOP / CENTER of the frame against UIParent's
+--     BOTTOMLEFT / TOPLEFT / CENTER / TOP), else 0 and the frame's height;
+--   * strata, level, toplevel, user-placed, clamped, resizable and the resize
+--     bounds are stored and read back;
+--   * a deterministic text metric: a font string's width is 6 px per visible
+--     character scaled by its font size over 12 (SetFont's size, else the size
+--     of the object SetFontObject gave it, else 12); colour codes (|cAARRGGBB,
+--     |r) take no room, an escaped pipe (||) is one character, a texture
+--     (|T...|t) is one. Its height is the font size per line.
+-- S.Geometry(false) puts back what was there. Only a suite that asks sees any
+-- of it.
+--------------------------------------------------------------------------------
+S.uiScale = 1
+local function BaseW() return 768 * S.physicalWidth / S.physicalHeight end
+-- Where a frame's TOPLEFT is, in its own units from UIParent's BOTTOMLEFT;
+-- only the one-point anchors to UIParent a window uses. nil for anything else.
+local GEO_ANCHOR = {
+    BOTTOMLEFT = function() return 0, 0 end,
+    TOPLEFT = function() return 0, 768 end,
+    CENTER = function() return BaseW() / 2, 384 end,
+    TOP = function() return BaseW() / 2, 768 end,
+}
+local function GeoTopLeft(self)
+    local pt = self.points and self.points[#self.points]
+    if not pt or #self.points ~= 1 then return nil end
+    local p, rel, rp, x, y = pt[1], pt[2], pt[3], pt[4], pt[5]
+    if rel == nil then rel, rp, x, y = UIParent, p, 0, 0 end
+    if rel ~= UIParent or not GEO_ANCHOR[rp] then return nil end
+    local es = self:GetEffectiveScale()
+    local ax, ay = GEO_ANCHOR[rp]()
+    local px, py = ax + (x or 0) * es, ay + (y or 0) * es
+    local w, h = self:GetWidth() * es, self:GetHeight() * es
+    local left, top
+    if p == "TOPLEFT" then left, top = px, py
+    elseif p == "TOP" then left, top = px - w / 2, py
+    elseif p == "CENTER" then left, top = px - w / 2, py + h / 2
+    else return nil end
+    return left / es, top / es
+end
+local function GeoFontSize(self)
+    if rawtype(self.fontSize) == "number" then return self.fontSize end
+    local obj = self.fontObject
+    if obj and obj.GetFont then
+        local _, size = obj:GetFont()
+        if rawtype(size) == "number" then return size end
+    end
+    return 12
+end
+local function GeoVisibleChars(text)
+    local s = rawtype(text) == "string" and text or ""
+    s = s:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|T.-|t", "#"):gsub("||", "|")
+    local lines = 1
+    for _ in s:gmatch("\n") do lines = lines + 1 end
+    local widest = 0
+    for line in (s .. "\n"):gmatch("([^\n]*)\n") do
+        if #line > widest then widest = #line end
+    end
+    return widest, lines
+end
+local GEO_FRAME = {
+    SetScale = function(self, s) self.scaleV = s end,
+    GetScale = function(self) return self.scaleV or 1 end,
+    GetEffectiveScale = function(self)
+        local p = self.parentFrame
+        local pe = (p and p.GetEffectiveScale) and p:GetEffectiveScale() or 1
+        return (self.scaleV or 1) * pe
+    end,
+    ClearAllPoints = function(self) self.points = {} end,
+    SetPoint = function(self, p, rel, rp, x, y)
+        self.points = self.points or {}
+        self.points[#self.points + 1] = { p, rel, rp, x, y }
+    end,
+    GetNumPoints = function(self) return self.points and #self.points or 0 end,
+    GetPoint = function(self, i)
+        local pt = self.points and self.points[i or 1]
+        if not pt then return "CENTER", nil, "CENTER", 0, 0 end
+        return pt[1], pt[2], pt[3], pt[4], pt[5]
+    end,
+    SetFrameStrata = function(self, s) self.strata = s end,
+    GetFrameStrata = function(self) return self.strata or "MEDIUM" end,
+    SetFrameLevel = function(self, l) self.level = l end,
+    GetFrameLevel = function(self) return self.level or 1 end,
+    SetToplevel = function(self, v) self.toplevel = v and true or false end,
+    IsToplevel = function(self) return self.toplevel == true end,
+    SetUserPlaced = function(self, v) self.userPlaced = v and true or false end,
+    IsUserPlaced = function(self) return self.userPlaced == true end,
+    SetClampedToScreen = function(self, v) self.clamped = v and true or false end,
+    IsClampedToScreen = function(self) return self.clamped == true end,
+    SetResizable = function(self, v) self.resizable = v and true or false end,
+    IsResizable = function(self) return self.resizable == true end,
+    SetResizeBounds = function(self, a, b, c, d) self.bounds = { a, b, c, d } end,
+    GetLeft = function(self) local l = GeoTopLeft(self); if l then return l end return 0 end,
+    GetTop = function(self) local _, t = GeoTopLeft(self); if t then return t end return self.h or 20 end,
+    SetFontObject = function(self, obj) self.fontObject = obj end,
+    GetStringWidth = function(self)
+        local chars = GeoVisibleChars(self.text)
+        return chars * 6 * GeoFontSize(self) / 12
+    end,
+    GetUnboundedStringWidth = function(self)
+        local chars = GeoVisibleChars(self.text)
+        return chars * 6 * GeoFontSize(self) / 12
+    end,
+    GetStringHeight = function(self)
+        local _, lines = GeoVisibleChars(self.text)
+        return lines * GeoFontSize(self)
+    end,
+}
+local GEO_UIPARENT = {
+    GetEffectiveScale = function() return S.uiScale end,
+    GetScale = function() return S.uiScale end,
+    GetWidth = function() return BaseW() / S.uiScale end,
+    GetHeight = function() return 768 / S.uiScale end,
+    GetLeft = function() return 0 end,
+    GetBottom = function() return 0 end,
+    GetTop = function() return 768 / S.uiScale end,
+    GetRight = function() return BaseW() / S.uiScale end,
+}
+local geometrySaved
+function S.Geometry(on)
+    if on then
+        if geometrySaved then return end
+        geometrySaved = { frame = {}, ui = {} }
+        for k, fn in pairs(GEO_FRAME) do
+            geometrySaved.frame[k] = rawget(FrameMT, k) or false
+            FrameMT[k] = fn
+        end
+        for k, fn in pairs(GEO_UIPARENT) do
+            geometrySaved.ui[k] = rawget(UIParent, k) or false
+            UIParent[k] = fn
+        end
+        S.geometry = true
+    elseif geometrySaved then
+        for k, v in pairs(geometrySaved.frame) do FrameMT[k] = v or nil end
+        for k, v in pairs(geometrySaved.ui) do UIParent[k] = v or nil end
+        geometrySaved = nil
+        S.geometry = false
+    end
+end
+
 function S.Fire(event, ...)
     for _, f in ipairs(frames) do
         if f.events[event] and f.scripts.OnEvent then f.scripts.OnEvent(f, event, ...) end
     end
+end
+
+-- T54 (P10): a timer is due once S.now has reached its due time; the
+-- tolerance absorbs a clock advanced in steps that do not add up exactly.
+local DUE_EPS = 1e-9
+local function IsDue(t) return t.due <= S.now + DUE_EPS end
+function S.Pending() return #S.timers end
+function S.Due()
+    local n = 0
+    for _, t in ipairs(S.timers) do if IsDue(t) then n = n + 1 end end
+    return n
+end
+-- Fires every pending timer due at S.now (the end of S.Tick). The due ones
+-- are taken off the list before any runs, so a timer queued by one of them
+-- lands on the list for a later tick.
+local function RunDueTimers()
+    local due, keep = {}, {}
+    for _, t in ipairs(S.timers) do
+        if IsDue(t) then due[#due + 1] = t else keep[#keep + 1] = t end
+    end
+    if #due == 0 then return end
+    S.timers = keep
+    table.sort(due, function(a, b)
+        if a.due ~= b.due then return a.due < b.due end
+        return a.seq < b.seq
+    end)
+    for _, t in ipairs(due) do t.fn() end
 end
 
 function S.Tick(dt)
@@ -620,6 +812,7 @@ function S.Tick(dt)
         tk.acc = tk.acc + dt
         while tk.acc >= tk.period do tk.acc = tk.acc - tk.period; tk.fn() end
     end
+    RunDueTimers() -- T54 (P10)
 end
 
 -- Switches the stub's globals to the Forever profile (T0). Called once, by a

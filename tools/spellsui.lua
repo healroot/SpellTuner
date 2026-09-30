@@ -388,7 +388,6 @@ T36("one ESC closes the picker, not the window (T33's stack)", function()
     if frame and not frame:IsShown() then frame:Show() end
     Click(SP.addBtn)
     local opened = SP.picker:IsShown()
-    local before = #(S.timers or {})
     local names = {}
     for _, name in ipairs(UISpecialFrames) do names[#names + 1] = name end
     for _, name in ipairs(names) do
@@ -396,12 +395,15 @@ T36("one ESC closes the picker, not the window (T33's stack)", function()
         if f and f:IsShown() then f:Hide() end
     end
     local pickerUp, frameUp = SP.picker:IsShown(), frame and frame:IsShown()
-    local timers = S.timers or {}
-    for i = before + 1, #timers do timers[i]() end
+    -- T54 (P10, review Q8): the next frame is a tick of the stub's clock, which
+    -- runs the proxy's After(0) re-arm -- not a hand-run of the queue -- and
+    -- nothing is left pending after it
+    S.Tick(0)
+    local left = S.Pending and S.Pending() or #(S.timers or {})
     local proxy = _G.SpellTunerEscProxy
-    return opened and not pickerUp and frameUp == true and proxy ~= nil and proxy:IsShown(),
-        string.format("opened=%s picker=%s frame=%s proxy=%s", tostring(opened), tostring(pickerUp),
-            tostring(frameUp), tostring(proxy and proxy:IsShown()))
+    return opened and not pickerUp and frameUp == true and proxy ~= nil and proxy:IsShown() and left == 0,
+        string.format("opened=%s picker=%s frame=%s proxy=%s pending=%s", tostring(opened), tostring(pickerUp),
+            tostring(frameUp), tostring(proxy and proxy:IsShown()), tostring(left))
 end)
 
 -- 33: the pitches grow with the font offset, and the pane re-renders at once

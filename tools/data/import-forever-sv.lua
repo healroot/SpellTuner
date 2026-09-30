@@ -977,7 +977,7 @@ SpellTunerDB = {
 					},
 					["truncated"] = false,
 					["v"] = 2,
-					["version"] = "0.16.3",
+					["version"] = "0.0.0-fixture",
 					["zone"] = "Practice: Party",
 				},
 				[2] = {
