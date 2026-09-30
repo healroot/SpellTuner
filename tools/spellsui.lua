@@ -7,11 +7,17 @@
 -- T36 (docs/SPEC-forever-ui.md 3.1-3.4, 3.6): rewritten for the Spells pane
 -- that moved into UI/SpellsPane_Forever.lua. The Spells group is a rail
 -- group: MY SPELLS, Overview, then one row per family of the player's list
--- (Spells/Tabs.lua). Today's Spellbook table is the Overview view until T39
--- turns it into My spells / Whole book, so items 1-17 below open "overview"
--- and hold that table as before; the T36 items after them hold the rail, the
--- picker sheet, the drop from the spellbook (the cursor never cleared), /st
--- spell, the preview banner and the pitches at a font offset of +2.
+-- (Spells/Tabs.lua). The T36 items hold the rail, the picker sheet, the drop
+-- from the spellbook (the cursor never cleared), /st spell, the preview
+-- banner and the pitches at a font offset of +2.
+--
+-- T39 (docs/SPEC-forever-ui.md 3.6): today's Spellbook table is Overview ->
+-- Whole book under 3.5's look, so items 1-17 open "overview" in Whole book
+-- and hold that table in its new shape -- 3.5's rank rows (a Tag column, no
+-- star, no gold, To OOM from full), a gap a row of its own, a family header
+-- for Other's families too, the rank row's hover the game's tooltip. Four
+-- items after T38's hold Whole book (a row per rank of every family, the gap
+-- row, + adds) and My spells.
 --
 -- T38 (docs/SPEC-forever-ui.md 3.5): eight items before the ASCII walk hold
 -- one spell's view -- the header and the decision strip, the RANKS table, the
@@ -339,9 +345,12 @@ end)
 -- 31b: a family clicked in Overview opens: its view when listed, else its preview
 T36("a family clicked in Overview opens its view, or its preview when not listed", function()
     MD:SelectView("spells", "overview")
+    if SP.SetOverviewMode then SP:SetOverviewMode("mine") end -- T39: a listed family clicked in My spells
     local function ClickFamily(name)
         for _, f in ipairs(S.allFrames) do
-            if f.cells and f.data and f.data.kind == "family" and f.data.family.name == name and f:IsShown()
+            -- T39: a My spells row ("mine") or a Whole book family header ("family")
+            if f.cells and f.data and (f.data.kind == "family" or f.data.kind == "mine")
+                and f.data.family and f.data.family.name == name and f:IsShown()
                 and f:GetScript("OnMouseUp") then
                 f:GetScript("OnMouseUp")(f, "LeftButton") -- the table's click (T30's onClick)
                 return true
@@ -353,6 +362,7 @@ T36("a family clicked in Overview opens its view, or its preview when not listed
     local _, v1 = Nav():Selected()
     Rail().opts.onRemove("fam:Wrath")
     MD:SelectView("spells", "overview")
+    if SP.SetOverviewMode then SP:SetOverviewMode("book") end -- T39: not listed, so only Whole book has it
     local clickedWr = ClickFamily("Wrath")
     local _, v2 = Nav():Selected()
     local preview = SP.banner:IsShown() and SP.family.key == "Wrath"
@@ -473,17 +483,32 @@ local function CastText(e)
     return "-"
 end
 
-local function ToOOMText(e)
-    if e.casts == math.huge then return "inf" end
-    if type(e.casts) == "number" then return Num(e.casts, 0) end
+-- T39: Whole book's To OOM is 3.5's -- casts from a FULL pool at the
+-- clock's max and casting regen, never the drained current pool.
+local function FullCasts(e)
+    local pool = MD.Clock:Pool()
+    return Book:CastsFor(e, { max = pool.max, regenCasting = pool.regenCasting })
+end
+
+local function CastsWord(n)
+    if n == math.huge then return "inf" end
+    if type(n) == "number" then return Num(n, 0) end
     return "-"
 end
 
-local function NoteText(e, family)
-    if e.known == false then return "not learned" end
+-- T39: the RANKS table's Tag column (3.5): best, learn at N, max, dominated.
+local function TagText(e, family)
+    if e.suggested then return "best" end
+    if e.known == false then return (type(e.level) == "number") and ("learn at " .. e.level) or "not learned" end
+    if family and family.maxKnown == e then return "max" end
     if e.dominated then return "dominated" end
-    if family and family.maxKnown == e then return "max rank" end
     return ""
+end
+
+local function SpellTipBlocks(tt)
+    local n = 0
+    for _, line in ipairs(tt.lines or {}) do if line[1] == "SpellTuner" then n = n + 1 end end
+    return n
 end
 
 local function StripColor(s)
@@ -531,9 +556,11 @@ local function CellText(row, key)
     return fs and StripColor(fs:GetText() or "") or nil
 end
 
--- T36: today's table is the Overview view (the first rail row) until T39
+-- T39: today's table is Overview -> Whole book (3.6); lastRows is the table
+-- the pane shows
 local function OpenPane()
     MD:SelectView("spells", "overview")
+    if SP.SetOverviewMode then SP:SetOverviewMode("book") end
     return FindPane()
 end
 
@@ -545,7 +572,7 @@ local function FamilyRow(rows, name)
 end
 local function EntryRow(rows, id)
     for _, r in ipairs(rows or {}) do
-        if r.kind == "entry" and r.entry.id == id then return r end
+        if r.kind == "rank" and r.entry.id == id then return r end -- T39: 3.5's rank rows
     end
     return nil
 end
@@ -568,14 +595,12 @@ if not pane then error("spellsui: no .spellsBook pane found -- fixture/build is 
 -- 1: the Spellbook view lists every family of the book, heals then damage
 -- then other
 --------------------------------------------------------------------------------
--- Heals/Damage families get a "family" row; a kindless family (Other) gets
--- one "other" line instead (Goal) -- both counted, in the same flat order.
+-- T39: every listed family, Other's included, gets a header row ("family")
+-- with its ranks under it.
 local sectionOrder = {}
 for _, r in ipairs(pane.lastRows or {}) do
     if r.kind == "family" then
         sectionOrder[#sectionOrder + 1] = r.family.name
-    elseif r.kind == "other" then
-        sectionOrder[#sectionOrder + 1] = r.text:match("^(%S+)")
     end
 end
 do
@@ -585,7 +610,7 @@ do
     local order = iHT ~= nil and iRejuv ~= nil and iWrath ~= nil and iBear ~= nil
         and iHT < iRejuv and iRejuv < iWrath and iWrath < iBear
 
-    check("the Spellbook view lists every family of the book, heals then damage then other",
+    check("Whole book lists every family of the book, heals then damage then other", -- T39
         order == true, "order=" .. table.concat(sectionOrder, ", "))
 end
 
@@ -596,7 +621,7 @@ do
     local bad
     local checked = 0
     for _, r in ipairs(pane.lastRows or {}) do
-        if r.kind == "entry" then
+        if r.kind == "rank" then -- T39: 3.5's RANKS columns, no star, a Tag column
             local e = r.entry
             local row = RowFor(pane.lastRows, r)
             if not row then
@@ -604,13 +629,14 @@ do
             else
                 checked = checked + 1
                 local wantRank = e.rank and ("R" .. e.rank) or "-"
-                if e.suggested then wantRank = wantRank .. " *" end
+                local valued = r.family.kind ~= nil -- a family with no value leaves its value cells empty
                 local expect = {
                     { "rank", wantRank }, { "level", Num(e.level) }, { "mana", ManaText(e) },
-                    { "value", Num(e.value) }, { "permana", Num(e.perMana, 2) }, { "persec", Num(e.perSec, 1) },
-                    -- review R38: the row's own count against the clock's pool
-                    { "cast", CastText(e) }, { "toOOM", ToOOMText({ casts = Book:CastsFor(e, MD.Clock:Pool()) }) },
-                    { "note", NoteText(e, r.family) },
+                    { "value", valued and Num(e.value) or "" }, { "permana", valued and Num(e.perMana, 2) or "" },
+                    { "persec", valued and Num(e.perSec, 1) or "" },
+                    -- review R38: the row's own count; T39: from a full pool (3.5)
+                    { "cast", CastText(e) }, { "toOOM", valued and CastsWord(FullCasts(e)) or "" },
+                    { "tag", TagText(e, r.family) },
                 }
                 for _, p in ipairs(expect) do
                     local key, want = p[1], p[2]
@@ -627,7 +653,8 @@ do
 end
 
 --------------------------------------------------------------------------------
--- 3: the suggested rank is starred and named in its family's header
+-- 3 (T39): the suggested rank is tagged best and marked by the bar and the
+-- fill -- no star, no "suggested:" in the header, no gold anywhere
 --------------------------------------------------------------------------------
 do
     local book = Book:Get()
@@ -639,13 +666,23 @@ do
 
     local r2Row = RowFor(pane.lastRows, EntryRow(pane.lastRows, 1058))
     local r2RankCell = CellText(r2Row, "rank")
+    local gold
+    for _, r in ipairs(pane.lastRows or {}) do
+        local row = RowFor(pane.lastRows, r)
+        for _, fs in pairs(row and row.cells or {}) do
+            local t = (fs:GetText() or ""):lower()
+            if not gold and (t:find("ffcc00", 1, true) or t:find("ffd100", 1, true)) then gold = t end
+        end
+    end
+    local fill = r2Row and r2Row.fill and r2Row.fill:IsShown() and r2Row.fill.color and r2Row.fill.color[4]
 
-    check("the suggested rank is starred and named in its family's header",
+    check("the suggested rank is tagged best and marked by the bar, never starred or gold",
         rejuv.suggested == r2 and r2.suggested == true
-        and headerText ~= nil and headerText:find("suggested: Rank 2", 1, true) ~= nil
-        and r2RankCell ~= nil and r2RankCell:find("%*") ~= nil,
-        string.format("suggestedId=%s header=%q rankCell=%q",
-            tostring(rejuv.suggested and rejuv.suggested.id), tostring(headerText), tostring(r2RankCell)))
+        and headerText == "Rejuvenation" and r2RankCell == "R2" and CellText(r2Row, "tag") == "best"
+        and r2Row.mark ~= nil and r2Row.mark:IsShown() and fill == 0.10 and gold == nil,
+        string.format("suggestedId=%s header=%q rankCell=%q tag=%q fill=%s gold=%s",
+            tostring(rejuv.suggested and rejuv.suggested.id), tostring(headerText), tostring(r2RankCell),
+            tostring(CellText(r2Row, "tag")), tostring(fill), tostring(gold)))
 end
 
 --------------------------------------------------------------------------------
@@ -674,9 +711,15 @@ end
 -- 5: gaps and stale values are noted under the family
 --------------------------------------------------------------------------------
 do
-    local gapNote = NoteRow(pane.lastRows, "not listed")
+    -- T39: a gap is a row of its own under the family (3.5), not a note
+    local gapNote
+    for i, r in ipairs(pane.lastRows or {}) do
+        if r.kind == "gap" and r.family.name == "GapFamily" and r.rank == 1 then
+            local after = pane.lastRows[i + 1]
+            if after and after.kind == "rank" and after.entry.id == 92011 then gapNote = r end
+        end
+    end
     local gapGood = gapNote ~= nil
-        and gapNote.text == "Rank 1 not listed (untrained, or hidden - show all ranks)"
 
     -- the stale value: 5185's description goes secret in combat (tools/wowstub.lua),
     -- the same mechanic tools/tipcheck.lua's own stale test uses.
@@ -687,11 +730,19 @@ do
     S.inCombat = false
 
     local pane2 = OpenPane()
-    local staleNote = NoteRow(pane2.lastRows, "values read before combat")
+    local staleNote = NoteRow(pane2.lastRows, "Text read before combat - may be out of date")
+    local staleUnder = false
+    for i, r in ipairs(pane2.lastRows or {}) do
+        if r == staleNote then
+            local prev = pane2.lastRows[i - 1]
+            staleUnder = prev ~= nil and prev.kind == "family" and prev.family.name == "Healing Touch"
+        end
+    end
 
     check("gaps and stale values are noted under the family",
-        gapGood and staleNote ~= nil,
-        string.format("gap=%s stale=%s", tostring(gapNote and gapNote.text), tostring(staleNote and staleNote.text)))
+        gapGood and staleNote ~= nil and staleUnder,
+        string.format("gap=%s stale=%s under=%s", tostring(gapNote and gapNote.rank),
+            tostring(staleNote and staleNote.text), tostring(staleUnder)))
 
     Book:MarkDirty(); Book:Get()
     pane = OpenPane()
@@ -712,6 +763,7 @@ do
     local pane3 = OpenPane()
     local r = EntryRow(pane3.lastRows, 92050)
     local cell = CellText(RowFor(pane3.lastRows, r), "toOOM")
+    local fromFull = FullCasts(Book:Get().spells[92050]) -- T39: 3.5's To OOM, the clock's max full
 
     -- review R38: the pane counts on its own row (r.casts), never in the
     -- entries Book:Get() shares -- the very scan it drew from still holds
@@ -726,11 +778,12 @@ do
         end
     end
 
-    check("casts to OOM use the clock's modelled pool when there is one",
+    check("casts to OOM count from the clock's pool when full, never the drained one",
         type(defaultCasts) == "number" and defaultCasts > 0 and defaultCasts ~= math.huge
-        and r ~= nil and r.casts == 0 and cell == "0",
-        string.format("defaultPoolCasts=%s clockPoolCasts=%s cell=%s",
-            tostring(defaultCasts), tostring(r and r.casts), tostring(cell)))
+        and type(fromFull) == "number" and fromFull > 0 and fromFull ~= math.huge
+        and r ~= nil and r.fullCasts == fromFull and cell == Num(fromFull),
+        string.format("defaultPoolCasts=%s fromFull=%s rowCasts=%s cell=%s",
+            tostring(defaultCasts), tostring(fromFull), tostring(r and r.fullCasts), tostring(cell)))
     check("the pane never rewrites the book's own casts to OOM",
         cachedEntry.casts == defaultCasts and tipCasts == tostring(defaultCasts),
         string.format("book entry=%s tooltip=%s from full=%s",
@@ -745,16 +798,20 @@ end
 -- 7: hovering a row shows the spell's tooltip block
 --------------------------------------------------------------------------------
 do
+    -- T39: a rank row's hover is 3.5's -- the game's own tooltip for that
+    -- rank, the SpellTuner block under it once
     local row = RowFor(pane.lastRows, EntryRow(pane.lastRows, 5185))
     local enter = row and row:GetScript("OnEnter")
-    local before = GameTooltip:NumLines()
+    GameTooltip.lines = nil
+    S.setSpellByIdCalls = {}
     if enter then enter(row) end
-    local after = GameTooltip:NumLines()
-
-    local expected = MD.SpellTip:Lines(5185)
+    local calls = table.concat(S.setSpellByIdCalls, ",")
+    S.setSpellByIdCalls = nil
+    local blocks = SpellTipBlocks(GameTooltip)
+    local first = GameTooltip.lines and GameTooltip.lines[1] and GameTooltip.lines[1][1]
     check("hovering a row shows the spell's tooltip block",
-        row ~= nil and after > before and after == #expected,
-        string.format("before=%d after=%d expected=%d", before, after, #expected))
+        row ~= nil and calls == "5185" and first == "Healing Touch" and blocks == 1,
+        string.format("calls=%s first=%s blocks=%d", calls, tostring(first), blocks))
 
     local leave = row and row:GetScript("OnLeave")
     if leave then leave(row) end
@@ -855,7 +912,7 @@ do
         if r.kind == "section" then sectionIdx[r.text] = sectionIdx[r.text] or i end
         if r.kind == "family" and not familyIdx[1] then familyIdx[1] = { i, r.family.name } end
         if r.kind == "family" and r.family.name == "Wrath" and not familyIdx[2] then familyIdx[2] = { i, r.family.name } end
-        if r.kind == "other" and not otherIdx then otherIdx = i end
+        if r.kind == "family" and r.family.name == "Bearform" and not otherIdx then otherIdx = i end -- T39
     end
 
     -- this fixture book has no Damage-kind family with a "damage" kind row
@@ -865,7 +922,7 @@ do
     local heals = sectionIdx["Heals"]
     local damage = sectionIdx["Damage"]
     local other = sectionIdx["Other"]
-    local ok12 = heals ~= nil and damage ~= nil and other ~= nil
+    local ok12 = heals ~= nil and damage ~= nil and other ~= nil and otherIdx ~= nil -- T39: nil-safe
         and heals < familyIdx[1][1]
         and damage < familyIdx[2][1]
         and other < otherIdx
@@ -893,21 +950,21 @@ end
 
 --------------------------------------------------------------------------------
 -- 13 (T10c): family, section, note and Other rows are one line across the
--- table, never inside the Rank column
+-- table, never inside the Rank column (T39: Other's families are family rows)
 --------------------------------------------------------------------------------
 do
     pane = OpenPane()
     local rows = pane.lastRows or {}
     local bad
     local checked = 0
-    local SPELL_COL_KEYS = { "rank", "level", "mana", "value", "permana", "persec", "cast", "toOOM", "note" }
+    local SPELL_COL_KEYS = { "rank", "level", "mana", "value", "permana", "persec", "cast", "toOOM", "tag" } -- T39
 
     for _, r in ipairs(rows) do
         local row = RowFor(rows, r)
         if not row then
             bad = bad or ("no row frame for kind=" .. tostring(r.kind))
         else
-            if r.kind == "section" or r.kind == "family" or r.kind == "note" or r.kind == "other" then
+            if r.kind == "section" or r.kind == "family" or r.kind == "note" then
                 checked = checked + 1
                 local wideText = CellText(row, "wide")
                 local rankText = CellText(row, "rank")
@@ -947,7 +1004,7 @@ do
     for _, r in ipairs(rows) do
         local hay
         if r.kind == "family" then hay = r.family.name
-        elseif r.kind == "other" then hay = r.text
+        elseif r.kind == "rank" then hay = r.family.name -- T39
         elseif r.kind == "note" then
             hay = r.text
             if r.text:find("passives and spells with no mana cost", 1, true) then noteText = r.text end
@@ -978,7 +1035,8 @@ do
 end
 
 --------------------------------------------------------------------------------
--- 15 (T10c): hovering a family or an Other row shows its full name
+-- 15 (T10c): hovering a family or an Other row shows its full name (T39: the
+-- kit tooltip beside the row; Other's families are family headers too)
 --------------------------------------------------------------------------------
 do
     pane = OpenPane()
@@ -986,12 +1044,14 @@ do
     local familyRow = FamilyRow(rows, "Healing Touch")
     local otherRow
     for _, r in ipairs(rows) do
-        if r.kind == "other" and r.family and r.family.name == "Bearform" then otherRow = r end
+        if r.kind == "family" and r.family and r.family.name == "Bearform" then otherRow = r end -- T39
     end
 
     local function LinesContain(text)
-        for _, line in ipairs(GameTooltip.lines or {}) do
-            if type(line[1]) == "string" and line[1]:find(text, 1, true) then return true end
+        for _, tt in ipairs({ GameTooltip, UI.tooltip }) do -- T39: the kit tooltip
+            for _, line in ipairs(tt.lines or {}) do
+                if type(line[1]) == "string" and line[1]:find(text, 1, true) then return true end
+            end
         end
         return false
     end
@@ -999,6 +1059,7 @@ do
     local famRowFrame = RowFor(rows, familyRow)
     local famEnter = famRowFrame and famRowFrame:GetScript("OnEnter")
     GameTooltip.lines = nil
+    if UI.tooltip then UI.tooltip.lines = nil end -- T39
     if famEnter then famEnter(famRowFrame) end
     local famOk = LinesContain("Healing Touch")
     local famLeave = famRowFrame and famRowFrame:GetScript("OnLeave")
@@ -1007,6 +1068,7 @@ do
     local otherRowFrame = RowFor(rows, otherRow)
     local otherEnter = otherRowFrame and otherRowFrame:GetScript("OnEnter")
     GameTooltip.lines = nil
+    if UI.tooltip then UI.tooltip.lines = nil end -- T39
     if otherEnter then otherEnter(otherRowFrame) end
     local otherOk = LinesContain("Bearform")
     local otherLeave = otherRowFrame and otherRowFrame:GetScript("OnLeave")
@@ -1406,6 +1468,167 @@ T36("T38 no ffcc00 anywhere in the view or its tooltips", function()
         Unhover(row)
     end
     return bad == nil and seen > 40, bad or ("frames=" .. seen)
+end)
+
+--------------------------------------------------------------------------------
+-- T39 (docs/SPEC-forever-ui.md 3.6, docs/tasks/T39-overview.md): Overview.
+-- My spells -- one row per listed family, its suggested rank against its
+-- highest; Whole book -- today's table under 3.5's look: sections, a header
+-- row per family with + or listed, one row per rank in the RANKS columns,
+-- gaps and ranks not learned included; Export (format unchanged, item 8).
+-- After the T38 fixtures, so Nourish's gap and its rank not learned are in
+-- the book. Each block under T36(), so the old pane fails item by item.
+--------------------------------------------------------------------------------
+local function BookRows()
+    local p = OpenPane()
+    return p, (p and p.lastRows) or {}
+end
+local function ListedInBook(fam)
+    if fam.kind then return true end
+    local rep = fam.maxKnown or fam.ranks[1]
+    return rep ~= nil and not rep.passive and rep.cost ~= nil
+        and (rep.cost.amount ~= nil or rep.cost.percent ~= nil)
+end
+local function HeaderFor(rows, name)
+    for _, r in ipairs(rows) do
+        if r.kind == "family" and r.family.name == name then return r, RowFor(nil, r) end
+    end
+    return nil
+end
+
+-- T39-1: a row per known rank of every family, each under its own header
+T36("T39 Whole book has a row per known rank of every family, under its header", function()
+    local p, rows = BookRows()
+    local book = Book:Get()
+    local seen, current, bad = {}, nil, nil
+    local headers = 0
+    for _, r in ipairs(rows) do
+        if r.kind == "family" then current = r.family; headers = headers + 1
+        elseif r.kind == "rank" then
+            if r.family ~= current and not bad then bad = "rank " .. tostring(r.entry.id) .. " not under its family" end
+            seen[r.entry.id] = (seen[r.entry.id] or 0) + 1
+            local row = RowFor(nil, r)
+            local want = r.entry.rank and ("R" .. r.entry.rank) or "-"
+            if not bad and CellText(row, "rank") ~= want then bad = "rank cell " .. tostring(CellText(row, "rank")) end
+        end
+    end
+    local families, ranks = 0, 0
+    for _, name in ipairs(book.order) do
+        local fam = book.families[name]
+        if ListedInBook(fam) then
+            families = families + 1
+            for _, e in ipairs(fam.ranks) do
+                ranks = ranks + 1
+                if seen[e.id] ~= 1 and not bad then
+                    bad = string.format("%s id %s rows=%s", name, tostring(e.id), tostring(seen[e.id]))
+                end
+            end
+        end
+    end
+    local r4 = EntryRow(rows, 93804)
+    local learn = CellText(RowFor(nil, r4), "tag")
+    return bad == nil and headers == families and families > 5 and learn == "learn at 20"
+        and p.bookTable ~= nil and p.bookTable.frame:IsShown(),
+        string.format("bad=%s headers=%d families=%d ranks=%d r4tag=%s", tostring(bad), headers, families, ranks,
+            tostring(learn))
+end)
+
+-- T39-2: a gap is one disabled row across the table, with its reason on hover
+T36("T39 Whole book: a gap is one disabled row across the table", function()
+    local _, rows = BookRows()
+    local order, gapRow, gapR = {}, nil, nil
+    local inNourish = false
+    for _, r in ipairs(rows) do
+        if r.kind == "family" then inNourish = (r.family.name == "Nourish")
+        elseif inNourish and (r.kind == "rank" or r.kind == "gap") then
+            order[#order + 1] = r.kind .. tostring(r.rank)
+            if r.kind == "gap" then gapR, gapRow = r, RowFor(nil, r) end
+        end
+    end
+    local raw = gapRow and gapRow.cells.rank:GetText() or ""
+    local wide = gapRow and CellText(gapRow, "wide")
+    if gapRow then Hover(gapRow) end
+    local lines = {}
+    for _, l in ipairs(UI.tooltip.lines or {}) do lines[#lines + 1] = l[1] end
+    if gapRow then Unhover(gapRow) end
+    local tip = table.concat(lines, " / ")
+    local good = table.concat(order, ",") == "rank1,rank2,gap3,rank4"
+        and CellText(gapRow, "rank") == "R3" and raw:find(UI.TEXT.disabled.hex, 1, true) == 1
+        and wide == 'not in your spellbook - untrained, or hidden by "show all ranks"'
+        and CellText(gapRow, "level") == "" and CellText(gapRow, "tag") == ""
+        and not gapRow.bars.permana.track:IsShown()
+        and tip == 'Nourish Rank 3 / Not in your spellbook: untrained, or hidden by "show all ranks".'
+    return good, string.format("order=%s rank=%q wide=%q tip=%q", table.concat(order, ","), raw, tostring(wide), tip)
+end)
+
+-- T39-3: + adds a family to the list (the rail follows, Overview stays); a
+-- listed family reads a grey "listed" and has no +
+T36("T39 Whole book: + adds a family to the list; a listed one reads listed", function()
+    MD.Tabs:Remove("Rend") -- not listed (a damage family the reconcile never adds)
+    SP:ListChanged()
+    local _, rows = BookRows()
+    local _, rend = HeaderFor(rows, "Rend")
+    local plusBefore = rend and rend.plusBtn and rend.plusBtn:IsShown()
+    local listedBefore = rend and rend.listed and rend.listed:IsShown()
+    Click(rend and rend.plusBtn)
+    local added = MD.Tabs:Has("Rend") and RailRow("fam:Rend") ~= nil
+    local g, v = Nav():Selected()
+    local _, rows2 = BookRows()
+    local _, rend2 = HeaderFor(rows2, "Rend")
+    local after = rend2 and rend2.listed:IsShown() and not rend2.plusBtn:IsShown()
+        and rend2.listed:GetText() == "listed"
+    local _, ht = HeaderFor(rows2, "Healing Touch")
+    local htGood = ht and ht.listed:IsShown() and not ht.plusBtn:IsShown()
+        and ht.listed.textColor ~= nil and math.abs(ht.listed.textColor[1] - UI.TEXT.muted[1]) < 1e-6
+        and ht.famIcon:IsShown()
+    SP:Remove("Rend")
+    return plusBefore == true and listedBefore == false and added and g == "spells" and v == "overview"
+        and after == true and htGood == true,
+        string.format("plus=%s listed=%s added=%s view=%s/%s after=%s ht=%s", tostring(plusBefore),
+            tostring(listedBefore), tostring(added), tostring(g), tostring(v), tostring(after), tostring(htGood))
+end)
+
+-- T39-4: My spells -- one row per listed family in the list's order, its
+-- suggested rank against its highest; a click opens that family's view
+T36("T39 My spells: a row per listed family, suggested against highest; a click opens it", function()
+    MD:SelectView("spells", "overview")
+    SP:SetOverviewMode("mine")
+    local p = FindPane()
+    local rows = p.lastRows or {}
+    local keys = {}
+    for _, r in ipairs(rows) do keys[#keys + 1] = r.key end
+    local want = {}
+    for _, k in ipairs(MD.Tabs:Get()) do
+        if type(MD.Tabs:Resolve(k, Book:Get())) == "table" then want[#want + 1] = k end
+    end
+    local nourish
+    for _, r in ipairs(rows) do if r.key == "Nourish" then nourish = RowFor(nil, r) end end
+    local e1, e2 = Book:Get().spells[93801], Book:Get().spells[93802]
+    local function Cells(row)
+        local t = {}
+        for _, k in ipairs({ "spell", "suggested", "value", "permana", "toOOM", "highest", "hvalue", "hpermana" }) do
+            t[#t + 1] = CellText(row, k) or "?"
+        end
+        return table.concat(t, ",")
+    end
+    local wantN = table.concat({ "Nourish", "R1", "48", "1.90", CastsWord(FullCasts(e1)), "R2", "103",
+        Num(e2.perMana, 2) }, ",")
+    local header
+    for _, fr in ipairs(S.allFrames) do
+        if fr.isHeader and fr.cells and fr.cells.hpermana and fr:IsVisible() then header = fr end
+    end
+    local labels = header and Cells(header) or ""
+    local bookHidden = not p.bookTable.frame:IsShown()
+    local rj
+    for _, r in ipairs(rows) do if r.key == "Rejuvenation" then rj = RowFor(nil, r) end end
+    rj:GetScript("OnMouseUp")(rj, "LeftButton")
+    local _, v = Nav():Selected()
+    local good = table.concat(keys, ",") == table.concat(want, ",") and #keys > 3
+        and Cells(nourish) == wantN
+        and labels == "Spell,Suggested,Value,Per mana,To OOM,Highest,Value,Per mana"
+        and bookHidden and v == "fam:Rejuvenation"
+    return good, string.format("keys=%s nourish=%s labels=%s view=%s", table.concat(keys, ","),
+        nourish and Cells(nourish) or "nil", labels, tostring(v))
 end)
 
 --------------------------------------------------------------------------------

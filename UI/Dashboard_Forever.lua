@@ -294,9 +294,11 @@ end
 
 --------------------------------------------------------------------------------
 -- Spells: T36 moved the whole group into UI/SpellsPane_Forever.lua (the rail,
--- the list, the picker, Overview with today's Spellbook table and Export, a
--- family's view). This file only wires it: the group's definition, onCreate,
--- onShow, and the rail's footer once the nav exists.
+-- the list, the picker, Overview, a family's view). T39: the old Spellbook
+-- view is gone -- Overview's Whole book is today's table under the new look,
+-- My spells one row per listed family, and Export moved there (3.6). This
+-- file only wires it: the group's definition, onCreate, onShow, and the
+-- rail's footer once the nav exists.
 --------------------------------------------------------------------------------
 
 --------------------------------------------------------------------------------

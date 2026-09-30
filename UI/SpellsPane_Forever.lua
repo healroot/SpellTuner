@@ -13,8 +13,10 @@
 -- would delete the player's button). /st spell <name> opens a family's view,
 -- or its preview with a banner when it is not in the list.
 --
--- Overview is still T36's interim, today's Spellbook table (T10-T10c, the
--- review's R13/R38, Export), until T39 turns it into My spells / Whole book.
+-- Overview is T39's (3.6): My spells, one row per listed family, its
+-- suggested rank against its highest; Whole book, today's Spellbook table
+-- under 3.5's look (a header row per family with + or listed, a row per rank
+-- in the RANKS columns); Export, the probe's format, the whole book.
 -- A family's view is T38's (3.5): the header, the decision strip, the RANKS
 -- table, the rank card, the row hover and the refresh split.
 --
@@ -53,7 +55,6 @@ local function SetColor(fs, token, r, g, b)
     if t then fs:SetTextColor(t[1], t[2], t[3]) else fs:SetTextColor(r, g, b) end
 end
 
-local GREY = "|cff999999"
 local RESET = "|r"
 
 -- The probe's own escaping (Client/Probe.lua's Esc, duplicated -- this pane
@@ -101,25 +102,9 @@ local function InCombat()
 end
 
 --------------------------------------------------------------------------------
--- Today's Spellbook table (T10, docs/tasks/T10-spells-pane.md), moved here
--- whole: Heals then Damage then Other on UI/Dashboard_Rows.lua's shared table
--- widget. The note column is 90 wide (was 180) so the table fits the 556-px
--- view right of the rail; its three words fit.
+-- Cells every table in the pane shares (the RANKS table, Whole book, the
+-- export's words): today's Spellbook table went with T39 (3.6).
 --------------------------------------------------------------------------------
-local SPELL_COLS = {
-    { key = "rank",    x = 8,   w = 56,  label = "Rank" },
-    { key = "level",   x = 66,  w = 32,  label = "Lvl" },
-    { key = "mana",    x = 100, w = 56,  label = "Mana" },
-    { key = "value",   x = 158, w = 64,  label = "Value" },
-    { key = "permana", x = 224, w = 64,  label = "Per mana" },
-    { key = "persec",  x = 290, w = 60,  label = "Per sec" },
-    { key = "cast",    x = 352, w = 46,  label = "Cast" },
-    { key = "toOOM",   x = 400, w = 56,  label = "To OOM" },
-    { key = "note",    x = 458, w = 90,  label = "" },
-}
-local TABLE_W = 548
-local SPELL_ROW_HEIGHT = 16 -- UI/Dashboard_Rows.lua's own ROW_HEIGHT; its cells use GameFontHighlightSmall, which the font offset does not size
-
 -- Review R13: a spell that costs Rage / Focus / Energy costs no mana; its
 -- own cost is named ("10 Rage") rather than read as mana or called "free".
 local function OtherPowerText(e)
@@ -147,188 +132,10 @@ local function CastCellText(e)
     return "-"
 end
 
--- `casts` is the row's own count against the pane's pool (review R38), never
--- the book entry's.
-local function ToOOMCellText(casts)
-    if casts == math.huge then return "inf" end
-    if type(casts) == "number" then return Num(casts, 0) end
-    return "-"
-end
-
-local function NoteCellText(e, family)
-    if e.known == false then return "not learned" end
-    if e.dominated then return "dominated" end
-    if family and family.maxKnown == e then return "max rank" end
-    return ""
-end
-
-local function ClearCells(row)
-    for _, col in ipairs(SPELL_COLS) do row.cells[col.key]:SetText("") end
-end
-
--- opts.render(row, r, color): r.kind picks the shape -- "section", "family",
--- "note", "entry", "other" (T10b/T10c).
-local function RenderSpellRow(row, r, color)
-    if r.kind == "section" then
-        ClearCells(row)
-        row.cells.wide:SetText(UI.accentHex .. r.text .. RESET)
-    elseif r.kind == "family" then
-        ClearCells(row)
-        local text = Esc(r.family.name)
-        if r.family.suggested and r.family.suggested.rank then
-            text = text .. "   suggested: Rank " .. tostring(r.family.suggested.rank)
-        end
-        row.cells.wide:SetText(text)
-    elseif r.kind == "note" then
-        ClearCells(row)
-        row.cells.wide:SetText(GREY .. r.text .. RESET)
-    elseif r.kind == "other" then
-        ClearCells(row)
-        row.cells.wide:SetText(r.text)
-    else -- "entry"
-        row.cells.wide:SetText("")
-        local e = r.entry
-        local rankText = e.rank and ("R" .. e.rank) or "-"
-        if e.suggested then rankText = rankText .. " *" end
-        row.cells.rank:SetText(color .. rankText .. RESET)
-        row.cells.level:SetText(color .. Num(e.level) .. RESET)
-        row.cells.mana:SetText(color .. ManaCellText(e) .. RESET)
-        row.cells.value:SetText(color .. Num(e.value) .. RESET)
-        row.cells.permana:SetText(color .. Num(e.perMana, 2) .. RESET)
-        row.cells.persec:SetText(color .. Num(e.perSec, 1) .. RESET)
-        row.cells.cast:SetText(color .. CastCellText(e) .. RESET)
-        row.cells.toOOM:SetText(color .. ToOOMCellText(r.casts) .. RESET)
-        row.cells.note:SetText(NoteCellText(e, r.family))
-    end
-end
-
--- Hovering a row shows the spell's tooltip block beside the window (T38
--- moves it beside the row, with the game's own tooltip).
-local function OpenSpellTooltip(row)
-    GameTooltip:SetOwner(row, "ANCHOR_NONE")
-    local frame = SpellsPane.nav and SpellsPane.nav.frame
-    if frame then
-        GameTooltip:SetPoint("TOPLEFT", frame, "TOPRIGHT", 4, 0)
-    end
-end
-
-local function SpellRowEnter(row, r)
-    if not r then return end
-    if r.kind == "family" then
-        OpenSpellTooltip(row)
-        GameTooltip:AddLine(Esc(r.family.name))
-        if r.family.suggested and r.family.suggested.rank then
-            GameTooltip:AddLine("suggested: Rank " .. tostring(r.family.suggested.rank))
-        end
-        GameTooltip:AddLine("ranks listed: " .. tostring(#r.family.ranks))
-        GameTooltip:Show()
-        return
-    end
-    if r.kind == "other" then
-        local rep = r.family and (r.family.maxKnown or r.family.ranks[1])
-        if not rep then return end
-        OpenSpellTooltip(row)
-        GameTooltip:AddLine(Esc(rep.name or ""))
-        GameTooltip:AddLine(rep.rankText or "-")
-        GameTooltip:AddLine("mana: " .. ManaCellText(rep))
-        GameTooltip:AddLine("cast: " .. CastCellText(rep))
-        GameTooltip:Show()
-        return
-    end
-    if r.kind ~= "entry" or not r.entry or type(r.entry.id) ~= "number" then return end
-    OpenSpellTooltip(row)
-    -- T37: the block with its colours (SpellTip:Render); the plain block,
-    -- the detail lines with the key (T38 replaces this hover)
-    local ok, lines = pcall(MD.SpellTip.Lines, MD.SpellTip, r.entry.id, MD.SpellTip:DetailShown())
-    if ok and type(lines) == "table" then
-        MD.SpellTip:Render(GameTooltip, lines)
-    end
-    GameTooltip:Show()
-end
-local function SpellRowLeave()
-    GameTooltip:Hide()
-end
-
--- One family's rows: its header, a gap note, a stale note, then its ranks,
--- each carrying its own casts to OOM against `pool` (review R38: never
--- written into the book's shared entries).
-local function AddFamilyRows(rows, fam, pool)
-    rows[#rows + 1] = { kind = "family", family = fam }
-    if fam.gaps and #fam.gaps > 0 then
-        rows[#rows + 1] = { kind = "note",
-            text = "Rank " .. table.concat(fam.gaps, ", ") .. " not listed (untrained, or hidden - show all ranks)" }
-    end
-    local stale = false
-    for _, e in ipairs(fam.ranks) do if e.stale then stale = true end end
-    if stale then
-        rows[#rows + 1] = { kind = "note", text = "values read before combat" }
-    end
-    for _, e in ipairs(fam.ranks) do
-        rows[#rows + 1] = { kind = "entry", entry = e, family = fam, id = e.id,
-            known = e.known, suggested = e.suggested, dominated = e.dominated,
-            casts = MD.Book:CastsFor(e, pool) }
-    end
-end
-
--- The whole book: Heals, then Damage, then one "other" line per kindless
--- family cast for mana (T10c: the rest counted, never listed; Export has
--- every one).
-local function BuildSpellRows(book, pool)
-    local rows = {}
-    local hasHeal, hasDamage = false, false
-    for _, name in ipairs(book.order) do
-        local kind = book.families[name].kind
-        if kind == "heal" then hasHeal = true
-        elseif kind == "damage" then hasDamage = true end
-    end
-
-    local listedOther, skippedOther = {}, 0
-    for _, name in ipairs(book.order) do
-        local fam = book.families[name]
-        if not fam.kind then
-            local rep = fam.maxKnown or fam.ranks[1]
-            local hasCost = rep.cost and (rep.cost.amount ~= nil or rep.cost.percent ~= nil)
-            if not rep.passive and hasCost then
-                listedOther[#listedOther + 1] = fam
-            else
-                skippedOther = skippedOther + 1
-            end
-        end
-    end
-    local hasOther = #listedOther > 0 or skippedOther > 0
-
-    if hasHeal then rows[#rows + 1] = { kind = "section", text = "Heals" } end
-    for _, name in ipairs(book.order) do
-        if book.families[name].kind == "heal" then AddFamilyRows(rows, book.families[name], pool) end
-    end
-    if hasDamage then rows[#rows + 1] = { kind = "section", text = "Damage" } end
-    for _, name in ipairs(book.order) do
-        if book.families[name].kind == "damage" then AddFamilyRows(rows, book.families[name], pool) end
-    end
-    if hasOther then rows[#rows + 1] = { kind = "section", text = "Other" } end
-    for _, fam in ipairs(listedOther) do
-        local rep = fam.maxKnown or fam.ranks[1]
-        rows[#rows + 1] = { kind = "other", family = fam,
-            text = Esc(fam.name) .. "  " .. (rep.rankText or "-") .. "  " .. ManaCellText(rep) .. "  " .. CastCellText(rep) }
-    end
-    if skippedOther > 0 then
-        rows[#rows + 1] = { kind = "note",
-            text = tostring(skippedOther) .. " passives and spells with no mana cost not listed - Export has them" }
-    end
-    return rows
-end
-
 local function Pool()
     local pool
     if MD.Clock and MD.Clock.Pool then pool = MD.Clock:Pool() end
     return pool or MD.Book:DefaultPool()
-end
-
-local function ManaLineText(pool)
-    if type(pool.mana) == "number" then
-        return string.format("Mana %s (modelled %s)", Num(pool.max), Num(pool.mana))
-    end
-    return string.format("Mana %s, casts to OOM from full", Num(pool.max))
 end
 
 --------------------------------------------------------------------------------
@@ -393,88 +200,6 @@ local function ExportText()
     for _, n in ipairs(book.order) do if not book.families[n].kind then DumpFamily(n) end end
 
     return table.concat(lines, "\n")
-end
-
---------------------------------------------------------------------------------
--- The Overview view: today's Spellbook table and Export (T39 rebuilds it)
---------------------------------------------------------------------------------
-local function RefreshOverview(pane)
-    if not (MD.Book and MD.SpellTip) then return end
-    local book = MD.Book:Get()
-    local pool = Pool()
-
-    pane.manaLine:SetText(ManaLineText(pool))
-    pane.legendLine:SetText("Rank table: * suggested, grey dominated, dark not learned - click a spell to open it")
-
-    local rows = BuildSpellRows(book, pool)
-    pane.lastRows = rows -- tools/spellsui.lua's own hook: the exact render order
-    pane.tableApi:Render(rows)
-    local height = 4 + 18 + (#rows * SPELL_ROW_HEIGHT) + 8
-    pane.tableApi.frame:SetHeight(height)
-    if pane.scroll then pane.scroll:SetContentHeight(height) end
-
-    pane.lastRefresh = GetTime()
-    pane.refreshCount = (pane.refreshCount or 0) + 1 -- tools/spellsui.lua's own hook
-end
-
--- A click on a family (its header or one of its ranks) opens it: its view
--- when it is in the list, else its preview (3.6).
-local function OverviewClick(_, r)
-    local fam = r and r.family
-    if type(fam) ~= "table" or type(fam.name) ~= "string" then return end
-    SpellsPane:OpenFamily(fam.key or fam.name)
-end
-
-local function BuildOverview(host)
-    local pane = CreateFrame("Frame", nil, host)
-    pane:SetPoint("TOPLEFT", host, "TOPLEFT", 0, 0)
-    pane:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", 0, 0)
-    pane.spellsBook = true -- marks this pane for tools/modulecheck.lua / tools/spellsui.lua
-
-    local exportBtn = UI.CreateButton(pane, "Export", "accent-hover", { 70, 20 })
-    exportBtn:SetPoint("TOPRIGHT", pane, "TOPRIGHT", -4, -4)
-    exportBtn:SetScript("OnClick", function()
-        MD:ShowCopyPopup("SpellTuner spellbook", ExportText())
-    end)
-    pane.exportBtn = exportBtn
-
-    local manaLine = pane:CreateFontString(nil, "OVERLAY", UI.FONT)
-    manaLine:SetPoint("TOPLEFT", pane, "TOPLEFT", 4, -4)
-    manaLine:SetPoint("RIGHT", exportBtn, "LEFT", -8, 0)
-    manaLine:SetJustifyH("LEFT")
-    pane.manaLine = manaLine
-
-    local legendLine = pane:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
-    legendLine:SetPoint("TOPLEFT", manaLine, "BOTTOMLEFT", 0, -2)
-    legendLine:SetPoint("RIGHT", pane, "RIGHT", -4, 0)
-    legendLine:SetJustifyH("LEFT")
-    legendLine:SetWordWrap(false)
-    pane.legendLine = legendLine
-
-    local scroll = UI.CreateScrollFrame(pane, -42, 4)
-    pane.scroll = scroll
-
-    local tableApi = MD.DashboardParts.CreateTable(scroll.content, TABLE_W, {
-        cols = SPELL_COLS,
-        render = RenderSpellRow,
-        onEnter = SpellRowEnter,
-        onLeave = SpellRowLeave,
-        onClick = OverviewClick,
-    })
-    tableApi.frame:SetPoint("TOPLEFT", scroll.content, "TOPLEFT", 0, 0)
-    tableApi.frame:SetPoint("TOPRIGHT", scroll.content, "TOPRIGHT", 0, 0)
-    pane.tableApi = tableApi
-
-    -- refreshed on show and every 2 s while shown (T10's Goal); the master
-    -- ticker runs at 0.5 s and this never fires while the pane is hidden
-    MD:OnTick(function()
-        if not pane:IsVisible() then return end
-        local now = GetTime()
-        if not pane.lastRefresh or (now - pane.lastRefresh) >= 2 then
-            RefreshOverview(pane)
-        end
-    end)
-    return pane
 end
 
 --------------------------------------------------------------------------------
@@ -1434,6 +1159,500 @@ function SpellsPane:RenderFamily(key, preview)
 end
 
 --------------------------------------------------------------------------------
+-- T39 (docs/SPEC-forever-ui.md 3.6, docs/tasks/T39-overview.md): Overview, the
+-- rail's first row. A title row -- OVERVIEW, [My spells][Whole book] and
+-- [Export] -- over one scroll frame that holds one of two tables:
+--   My spells: one row per family in the list, in its order -- the suggested
+--     rank (its value, per mana and To OOM from full) against the highest
+--     known (its value and per mana); a click opens that family's view;
+--   Whole book: today's Spellbook table under 3.5's look -- sections Heals /
+--     Damage / Other, a header row per family (its icon, its name, a 16x16 +
+--     or a grey "listed"), under it one row per rank in the RANKS columns,
+--     gaps and ranks not learned included (the same rows a family's view
+--     draws); Other lists only kindless spells cast for mana and counts the
+--     rest (T10c); a click opens the family, as a preview when it is not in
+--     the list; + adds it.
+-- The 2-s tick while shown re-renders when what the tables were drawn from
+-- changed (the book, the list, the bonus-healing reading, the pool's max,
+-- the pitch); else only the To OOM cells move, in place (3.5's split).
+--------------------------------------------------------------------------------
+local OVERVIEW_TOP = 32     -- the title row (20) and the 12-px section gap
+local MINE_SEP_X = 384      -- My spells: the rule between suggested and highest
+local LISTED_W = 60         -- the right end of a family header: + or "listed"
+local STALE_TEXT = "Text read before combat - may be out of date"
+local MINE_HINT = "Click a row to open that spell."
+local MINE_HINT2 = "Whole book lists every family in your spellbook the same way, with + to add it."
+local MINE_EMPTY = "Your list is empty - + Add on the left, or + beside a family in Whole book."
+
+-- My spells: 524 of columns from x = 8 (the icon at 8, the name at 28), as
+-- 3.5's table; "Per mana" fits a 50-px Arial Narrow column.
+local MINE_COLS = {
+    { key = "spell",     x = 28,  w = 128, label = "Spell" },
+    { key = "suggested", x = 158, w = 62,  label = "Suggested" },
+    { key = "value",     x = 220, w = 46,  label = "Value",    justify = "RIGHT" },
+    { key = "permana",   x = 266, w = 58,  label = "Per mana", justify = "RIGHT" },
+    { key = "toOOM",     x = 324, w = 52,  label = "To OOM",   justify = "RIGHT" },
+    { key = "highest",   x = 392, w = 50,  label = "Highest" },
+    { key = "hvalue",    x = 442, w = 40,  label = "Value",    justify = "RIGHT" },
+    { key = "hpermana",  x = 482, w = 50,  label = "Per mana", justify = "RIGHT" },
+}
+-- Whole book: 3.5's RANKS columns; heals and damage share the value column.
+local BOOK_HEADER = { [4] = "Value" }
+
+local function OverviewMode()
+    local ui = MD.db and MD.db.ui
+    local m = (type(ui) == "table") and ui.overview or SpellsPane.overviewMode
+    if m == "book" or m == "mine" then return m end
+    return "mine"
+end
+
+-- A family's icon at the row's left (x = 8, 16x16 on a 1-px black edge),
+-- built on first use on a pooled row; hidden on any row that is not a family.
+local function RowIcon(row, icon)
+    if not row.famIcon then
+        row.famEdge = row:CreateTexture(nil, "ARTWORK")
+        row.famEdge:SetSize(18, 18)
+        row.famEdge:SetPoint("LEFT", row, "LEFT", 7, 0)
+        row.famEdge:SetColorTexture(0, 0, 0, 1)
+        row.famIcon = row:CreateTexture(nil, "OVERLAY")
+        row.famIcon:SetSize(16, 16)
+        row.famIcon:SetPoint("LEFT", row, "LEFT", 8, 0)
+        row.famIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    end
+    if icon then
+        row.famIcon:SetTexture(icon)
+        row.famIcon:Show(); row.famEdge:Show()
+    else
+        row.famIcon:Hide(); row.famEdge:Hide()
+    end
+end
+
+local function HideExtras(row)
+    if row.famIcon then row.famIcon:Hide(); row.famEdge:Hide() end
+    if row.plusBtn then row.plusBtn:Hide() end
+    if row.listed then row.listed:Hide() end
+end
+
+-- A family header's right end: a 16x16 + (adds it), or a grey "listed".
+local function PlusParts(row)
+    if row.plusBtn then return end
+    local b = UI.CreateButton(row, "+", "accent-hover", { 16, 16 }, false, false, UI.FONT_SMALL, UI.FONT_SMALL)
+    b:SetPoint("RIGHT", row, "RIGHT", -8, 0)
+    b:SetScript("OnClick", function()
+        local r = row.data
+        if r and r.kind == "family" then SpellsPane:AddFromBook(r.key) end
+    end)
+    b:HookScript("OnEnter", function(self) KitTip(self, "Add to my spells", "It gets its own row on the left.") end)
+    b:HookScript("OnLeave", function() if UI.tooltip then UI.tooltip:Hide() end end)
+    row.plusBtn = b
+    local fs = row:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+    fs:SetPoint("RIGHT", row, "RIGHT", -8, 0)
+    fs:SetJustifyH("RIGHT")
+    SetColor(fs, "muted", 0.48, 0.48, 0.48)
+    fs:SetText("listed")
+    row.listed = fs
+end
+
+-- The spanning cell at x, `font` the size it is drawn in.
+local function WideAt(row, x, w, text, font)
+    local wide = row.cells.wide
+    if not wide then return end
+    if font then wide:SetFontObject(font) end
+    wide:ClearAllPoints()
+    wide:SetPoint("LEFT", row, "LEFT", x, 0)
+    wide:SetWidth(w)
+    wide:SetText(text)
+end
+
+--------------------------------------------------------------------------------
+-- Whole book's rows
+--------------------------------------------------------------------------------
+local function RenderBookRow(row, r, color)
+    HideExtras(row)
+    if r.kind == "rank" or r.kind == "gap" then
+        if row.cells.wide then row.cells.wide:SetFontObject(UI.FONT_SMALL) end
+        RenderRankRow(row, r, color)
+        if r.noValue and r.kind == "rank" then
+            -- a family with no value: Rank / Lvl / Mana / Cast / Tag only (3.5)
+            local c = row.cells
+            c.value:SetText(""); c.permana:SetText(""); c.persec:SetText(""); c.toOOM:SetText("")
+            if row.SetBar then row:SetBar("permana", nil) end
+        end
+        return
+    end
+    for _, fs in pairs(row.cells) do fs:SetText("") end
+    if row.SetBar then row:SetBar("permana", nil) end
+    if r.kind == "section" then
+        WideAt(row, 8, VIEW_W - 16, Hex("accent", UI.accentHex) .. r.text .. RESET, UI.FONT)
+    elseif r.kind == "family" then
+        local rep = Rep(r.family)
+        RowIcon(row, rep and rep.icon or nil)
+        WideAt(row, 28, VIEW_W - 28 - LISTED_W, color .. Esc(r.family.name or r.key) .. RESET, UI.FONT)
+        PlusParts(row)
+        if r.listed then
+            row.plusBtn:Hide(); row.listed:Show()
+        else
+            row.listed:Hide(); row.plusBtn:Show()
+        end
+    elseif r.kind == "note" then
+        local x = r.indent and 28 or 8
+        WideAt(row, x, VIEW_W - x - 8, Hex(r.tone or "muted", "|cff7a7a7a") .. r.text .. RESET, UI.FONT_SMALL)
+    end
+end
+
+local function UpdateBookRow(row, r)
+    if r.noValue then return end
+    UpdateRankRow(row, r)
+end
+
+local function BookRowEnter(row, r)
+    if not r then return end
+    if r.kind == "rank" or r.kind == "gap" then return RankRowEnter(row, r) end
+    if r.kind == "family" then
+        KitTip(row, Esc(r.family.name or r.key),
+            r.listed and "In your list." or "Not in your list - + adds it.",
+            "Click to open it.")
+    end
+end
+
+local function OverviewClick(_, r)
+    if not r then return end
+    if r.kind == "family" or r.kind == "rank" or r.kind == "gap" or r.kind == "mine" then
+        local key = r.key or (r.family and (r.family.key or r.family.name))
+        if key then SpellsPane:OpenFamily(key) end
+    end
+end
+
+-- Other's rule (T10c): a kindless family is listed when it is cast for mana.
+local function OtherListed(fam)
+    local rep = Rep(fam)
+    if not rep or rep.passive then return false end
+    return rep.cost ~= nil and (rep.cost.amount ~= nil or rep.cost.percent ~= nil)
+end
+
+-- One family: its header, a stale note, then 3.5's rows (FamilyRows).
+local function AddBookFamily(rows, fam, pool)
+    local key = fam.key or fam.name
+    rows[#rows + 1] = { kind = "family", family = fam, key = key, listed = MD.Tabs:Has(key) }
+    local stale = false
+    for _, e in ipairs(fam.ranks) do if e.stale then stale = true end end
+    if stale then
+        rows[#rows + 1] = { kind = "note", family = fam, text = STALE_TEXT, tone = "bad", indent = true }
+    end
+    for _, r in ipairs(FamilyRows(fam, pool)) do
+        r.key = key
+        if not fam.kind then r.noValue = true end
+        rows[#rows + 1] = r
+    end
+end
+
+local function BookRows(book, pool)
+    local rows = {}
+    local heals, damage, other, skipped = {}, {}, {}, 0
+    for _, name in ipairs(book.order) do
+        local fam = book.families[name]
+        if fam.kind == "heal" then heals[#heals + 1] = fam
+        elseif fam.kind == "damage" then damage[#damage + 1] = fam
+        elseif OtherListed(fam) then other[#other + 1] = fam
+        else skipped = skipped + 1 end
+    end
+    local function Section(title, list, count)
+        if #list == 0 and (count or 0) == 0 then return end
+        rows[#rows + 1] = { kind = "section", text = title }
+        for _, fam in ipairs(list) do AddBookFamily(rows, fam, pool) end
+    end
+    Section("Heals", heals)
+    Section("Damage", damage)
+    Section("Other", other, skipped)
+    if skipped > 0 then
+        rows[#rows + 1] = { kind = "note",
+            text = tostring(skipped) .. " passives and spells with no mana cost not listed - Export has them" }
+    end
+    return rows
+end
+
+--------------------------------------------------------------------------------
+-- My spells' rows
+--------------------------------------------------------------------------------
+local function RenderMineRow(row, r, color)
+    for _, fs in pairs(row.cells) do fs:SetText("") end
+    local c = row.cells
+    if r.stale then
+        RowIcon(row, nil)
+        local dis = Hex("disabled", "|cff4d4d4d")
+        c.spell:SetText(dis .. Esc(r.key) .. RESET)
+        WideAt(row, MINE_COLS[2].x, VIEW_W - MINE_COLS[2].x - 8, dis .. "not in your spellbook" .. RESET)
+        return
+    end
+    WideAt(row, 8, 0, "")
+    local fam = r.family
+    local rep = Rep(fam)
+    RowIcon(row, rep and rep.icon or nil)
+    c.spell:SetText(color .. Esc(fam.name or r.key) .. RESET)
+    local s, h = fam.suggested, fam.maxKnown
+    local valued = fam.kind ~= nil
+    if s then
+        c.suggested:SetText(Hex("accent", UI.accentHex) .. RankCell(s) .. RESET)
+        if valued then
+            c.value:SetText(color .. Num(s.value) .. RESET)
+            c.permana:SetText(color .. Num(s.perMana, 2) .. RESET)
+            c.toOOM:SetText(color .. CastsWord(r.fullCasts) .. RESET)
+        end
+    else
+        c.suggested:SetText(Hex("muted", "|cff7a7a7a") .. "-" .. RESET)
+    end
+    if h then
+        c.highest:SetText(color .. RankCell(h) .. RESET)
+        if valued then
+            c.hvalue:SetText(color .. Num(h.value) .. RESET)
+            c.hpermana:SetText(color .. Num(h.perMana, 2) .. RESET)
+        end
+    end
+end
+
+local function UpdateMineRow(row, r)
+    if r.stale or not r.suggestedEntry or not r.family.kind then return end
+    r.fullCasts = MD.Book:CastsFor(r.suggestedEntry, SpellsPane.liveFull or FullPool(Pool()))
+    row.cells.toOOM:SetText((r.color or "") .. CastsWord(r.fullCasts) .. RESET)
+end
+
+local function RenderMineRowKeep(row, r, color)
+    r.color = color
+    RenderMineRow(row, r, color)
+end
+
+local function MineRowEnter(row, r)
+    if not r then return end
+    if r.stale then
+        KitTip(row, Esc(r.key), "Not in this character's spellbook.", "Click to open it.")
+        return
+    end
+    local s = r.family.suggested
+    if s and s.known ~= false and type(s.id) == "number" then
+        GameTip(row, r.family, s)
+    else
+        KitTip(row, Esc(r.family.name or r.key), "Click to open it.")
+    end
+end
+
+local function MineRows(book, pool)
+    local rows = {}
+    local full = FullPool(pool)
+    for _, key in ipairs(MD.Tabs:Get(book)) do
+        local fam = MD.Tabs:Resolve(key, book)
+        if type(fam) == "table" then
+            local s = fam.suggested
+            rows[#rows + 1] = { kind = "mine", key = key, family = fam, suggestedEntry = s,
+                fullCasts = s and MD.Book:CastsFor(s, full) or nil }
+        else
+            rows[#rows + 1] = { kind = "mine", key = key, stale = true, known = false }
+        end
+    end
+    return rows
+end
+
+--------------------------------------------------------------------------------
+-- The pane
+--------------------------------------------------------------------------------
+-- The two tables for the current pitch, built once per pitch (a font offset
+-- changes the row height, which UI/Dashboard_Rows.lua fixes at creation).
+local function OverviewTables(pane)
+    local rowH, headH = Pitch(TABLE_ROW), Pitch(TABLE_HEAD)
+    local k = rowH .. "/" .. headH
+    pane.tables = pane.tables or {}
+    local t = pane.tables[k]
+    if not t then
+        local content = pane.scroll.content
+        local function Make(cols, header, wideFont, render, onUpdate, onEnter)
+            local api = MD.DashboardParts.CreateTable(content, VIEW_W, {
+                cols = cols, header = header,
+                font = UI.FONT_NUM or UI.FONT, wideFont = wideFont,
+                rowHeight = rowH, headerHeight = headH, headerRule = true,
+                zebra = true, rowWidth = true, marker = "bar",
+                render = render, onUpdateCells = onUpdate,
+                onEnter = onEnter, onLeave = RankRowLeave, onClick = OverviewClick,
+            })
+            api.frame:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
+            api.frame:SetWidth(VIEW_W)
+            api.frame:Hide()
+            return api
+        end
+        t = {}
+        t.mine = Make(MINE_COLS, nil, UI.FONT_SMALL, RenderMineRowKeep, UpdateMineRow, MineRowEnter)
+        t.book = Make(RANK_COLS, BOOK_HEADER, UI.FONT, RenderBookRow, UpdateBookRow, BookRowEnter)
+        -- My spells' rule between the suggested rank and the highest
+        local sep = t.mine.frame:CreateTexture(nil, "BORDER")
+        sep:SetWidth(1)
+        sep:SetPoint("TOPLEFT", t.mine.frame, "TOPLEFT", MINE_SEP_X, -4)
+        local P = UI.PALETTE or {}
+        local lc = P.line or { 0.165, 0.165, 0.165, 1 }
+        sep:SetColorTexture(lc[1], lc[2], lc[3], lc[4] or 1)
+        t.mine.sep = sep
+        pane.tables[k] = t
+    end
+    for key, other in pairs(pane.tables) do
+        if key ~= k then
+            other.mine:Release(); other.mine.frame:Hide()
+            other.book:Release(); other.book.frame:Hide()
+        end
+    end
+    pane.mineTable, pane.bookTable = t.mine, t.book
+    return t
+end
+
+-- What a full render was drawn from: the mode, the book's generation, the
+-- bonus-healing reading, the pool's max, the pitch (SpellsPane:Signature)
+-- and the list.
+local function OverviewSignature(mode)
+    local list = MD.Tabs and MD.Tabs:Get() or {}
+    return SpellsPane:Signature("overview:" .. mode, false) .. "|" .. table.concat(list, ",")
+end
+
+function SpellsPane:RenderOverview()
+    local pane = self.overview
+    if not (pane and MD.Book and MD.Tabs) then return end
+    local mode = OverviewMode()
+    if pane.highlightMode then pane.highlightMode(mode) end
+    local t = OverviewTables(pane)
+    local book = MD.Book:Get()
+    local pool = Pool()
+    local active, idle = t.mine, t.book
+    if mode == "book" then active, idle = t.book, t.mine end
+    idle:Release(); idle.frame:Hide()
+
+    local rows = (mode == "book") and BookRows(book, pool) or MineRows(book, pool)
+    active.frame:Show()
+    active:Render(rows)
+    pane.lastRows = rows -- tools/spellsui.lua's own hook: the exact render order
+    pane.mode, pane.activeTable = mode, active
+    local tableH = 4 + active.headerHeight + #rows * active.rowHeight
+    active.frame:SetHeight(tableH)
+    if t.mine.sep then t.mine.sep:SetHeight(tableH - 4) end
+
+    local y = tableH + BLOCK_GAP
+    if mode == "mine" then
+        pane.hint:ClearAllPoints()
+        pane.hint:SetPoint("TOPLEFT", pane.scroll.content, "TOPLEFT", 8, -y)
+        pane.hint:SetText(#rows == 0 and MINE_EMPTY or MINE_HINT)
+        pane.hint:Show()
+        pane.hint2:Show()
+        y = y + Pitch(34)
+    else
+        pane.hint:Hide()
+        pane.hint2:Hide()
+    end
+    pane.footer:ClearAllPoints()
+    pane.footer:SetPoint("TOPLEFT", pane.scroll.content, "TOPLEFT", 8, -y)
+    y = y + 16
+    pane.scroll:SetContentHeight(y)
+
+    pane.signature = OverviewSignature(mode)
+    pane.lastRefresh = GetTime()
+    pane.renderCount = (pane.renderCount or 0) + 1
+    pane.refreshCount = (pane.refreshCount or 0) + 1 -- tools/spellsui.lua's own hook
+end
+
+-- The tick's in-place half: the To OOM cells, nothing released.
+function SpellsPane:UpdateOverviewLive()
+    local pane = self.overview
+    if not (pane and pane.activeTable) then return end
+    self.liveFull = FullPool(Pool())
+    pane.activeTable:UpdateCells()
+    self.liveFull = nil
+    pane.lastRefresh = GetTime()
+    pane.liveCount = (pane.liveCount or 0) + 1
+    pane.refreshCount = (pane.refreshCount or 0) + 1
+end
+
+function SpellsPane:SetOverviewMode(mode)
+    if mode ~= "mine" and mode ~= "book" then return end
+    local ui = MD.db and MD.db.ui
+    if type(ui) == "table" then ui.overview = mode end
+    self.overviewMode = mode
+    if self.overview and self.overview:IsVisible() then self:RenderOverview() end
+end
+
+-- + on a Whole book family: it joins the list (at the end), and Overview
+-- stays where it is; the rail follows (ListChanged), and the header reads
+-- "listed".
+function SpellsPane:AddFromBook(key)
+    if type(key) ~= "string" or not MD.Tabs:Add(key, nil) then return end
+    if self.preview == key then self.preview = nil end
+    self:ListChanged()
+    if self.overview and self.overview:IsVisible() then self:RenderOverview() end
+end
+
+local function BuildOverview(host)
+    local pane = CreateFrame("Frame", nil, host)
+    pane:SetPoint("TOPLEFT", host, "TOPLEFT", 0, 0)
+    pane:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", 0, 0)
+    pane.spellsBook = true -- marks this pane for tools/spellsui.lua
+
+    local title = pane:CreateFontString(nil, "OVERLAY", UI.FONT_TITLE)
+    title:SetPoint("TOPLEFT", pane, "TOPLEFT", 0, -3)
+    title:SetJustifyH("LEFT")
+    local a = UI.accent
+    title:SetTextColor(a[1], a[2], a[3])
+    title:SetText("OVERVIEW")
+    pane.title = title
+
+    -- [Export] at the view's right edge (556), never the window's
+    local exportBtn = UI.CreateButton(pane, "Export", "accent-hover", { 70, 20 })
+    exportBtn:SetPoint("TOPLEFT", pane, "TOPLEFT", VIEW_W - 70, 0)
+    exportBtn:SetScript("OnClick", function()
+        MD:ShowCopyPopup("SpellTuner spellbook", ExportText())
+    end)
+    pane.exportBtn = exportBtn
+
+    local bookBtn = UI.CreateButton(pane, "Whole book", "accent-hover", { 88, 20 })
+    bookBtn.id = "book"
+    bookBtn:SetPoint("TOPRIGHT", exportBtn, "TOPLEFT", -8, 0)
+    local mineBtn = UI.CreateButton(pane, "My spells", "accent-hover", { 84, 20 })
+    mineBtn.id = "mine"
+    mineBtn:SetPoint("TOPRIGHT", bookBtn, "TOPLEFT", 1, 0)
+    pane.mineBtn, pane.bookBtn = mineBtn, bookBtn
+    pane.highlightMode = UI.CreateButtonGroup({ mineBtn, bookBtn }, function(id)
+        SpellsPane:SetOverviewMode(id)
+    end)
+
+    pane.scroll = UI.CreateScrollFrame(pane, -OVERVIEW_TOP, 4)
+    local content = pane.scroll.content
+
+    local hint = content:CreateFontString(nil, "OVERLAY", UI.FONT_SPECIAL or UI.FONT_SMALL)
+    hint:SetJustifyH("LEFT")
+    SetColor(hint, "text2", 0.7, 0.7, 0.7)
+    pane.hint = hint
+    local hint2 = content:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+    hint2:SetPoint("TOPLEFT", hint, "BOTTOMLEFT", 0, -4)
+    hint2:SetWidth(VIEW_W - 16)
+    hint2:SetJustifyH("LEFT")
+    SetColor(hint2, "muted", 0.48, 0.48, 0.48)
+    hint2:SetText(MINE_HINT2)
+    pane.hint2 = hint2
+    local footer = content:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+    footer:SetJustifyH("LEFT")
+    SetColor(footer, "muted", 0.48, 0.48, 0.48)
+    footer:SetText(FOOTER_TEXT)
+    pane.footer = footer
+
+    -- every 2 s while shown (T10's rule): a full render when what the table
+    -- was drawn from changed, else the To OOM cells in place (3.5's split);
+    -- the master ticker runs at 0.5 s and this never fires while hidden
+    MD:OnTick(function()
+        if not pane:IsVisible() then return end
+        local now = GetTime()
+        if pane.lastRefresh and (now - pane.lastRefresh) < 2 then return end
+        MD.Book:Get() -- a changed book fires BOOK_CHANGED here, and bumps bookGen
+        if OverviewSignature(OverviewMode()) ~= pane.signature then
+            SpellsPane:RenderOverview()
+        else
+            SpellsPane:UpdateOverviewLive()
+        end
+    end)
+    return pane
+end
+
+--------------------------------------------------------------------------------
 -- The list: rail rows from Spells/Tabs.lua (3.2, 3.3)
 --------------------------------------------------------------------------------
 -- The rail's views: Overview, then one per listed family. The first call
@@ -1844,7 +2063,7 @@ function SpellsPane:Show(view)
         return
     end
     ShowOnly("overview")
-    if self.overview then RefreshOverview(self.overview) end
+    self:RenderOverview() -- T39
 end
 
 -- A rail row clicked (after the nav selected it): the Overview row ends a
