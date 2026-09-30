@@ -26,10 +26,10 @@ Owned files (section 4, wave 2): `Recorder/Recorder_Forever.lua`, `Replay/Comman
 
 | file | change |
 |---|---|
-| `Modules/SpellTuner_Recorder/Recorder_Forever.lua` | **B15:** `R:Refresh` reads `local name, realm = MD.API.UnitName(token)` (a non-string or `""` realm is `nil`); the live roster entry and `CopyRoster`'s stored copy carry `realm` beside the bare `name`. The session-only roster key (used only when a GUID is not plain) is the full name, so two same-name members of different realms stay two. `ResolveTargetIndex(target)`: first the full name exactly (`name .. "-" .. realm`, or the bare name for a same-realm member), then the bare name -- the target's own, or the part before its realm -- when exactly one roster entry carries it; two of one name with nothing to tell them apart are `-1`. **B14:** `MD.FightRecorder:Pin` returns `false, "at most 2 fights can be pinned - unpin one first."` on a refusal (and `false, "no recording N"` for a missing one); `StoreOrDrop` protects only the first `MAX_PINNED` pinned streams in list order (TBC's `Engine/FightRecorder.lua` rule), always has a victim (the oldest unprotected), and writes a `sim` debug line when that victim was pinned. |
+| `Modules/SpellTuner_Recorder/Recorder_Forever.lua` | **B15:** `R:Refresh` reads `local name, realm = MD.API.UnitName(token)` (a non-string or `""` realm is `nil`, and so is any realm when the name is not a plain string: a failed read answers `nil` and the adapter's status word, which is not a realm -- the review's fix); the live roster entry and `CopyRoster`'s stored copy carry `realm` beside the bare `name`. The session-only roster key (used only when a GUID is not plain) is the full name, so two same-name members of different realms stay two. `ResolveTargetIndex(target)`: first the full name exactly (`name .. "-" .. realm`, or the bare name for a same-realm member), then the bare name -- the target's own, or the part before its realm -- when exactly one roster entry carries it; two of one name with nothing to tell them apart are `-1`. **B14:** `MD.FightRecorder:Pin` returns `false, "at most 2 fights can be pinned - unpin one first."` on a refusal (and `false, "no recording N"` for a missing one); `StoreOrDrop` protects only the first `MAX_PINNED` pinned streams in list order (TBC's `Engine/FightRecorder.lua` rule), always has a victim (the oldest unprotected), and writes a `sim` debug line when that victim was pinned. |
 | `Modules/SpellTuner_Replay/Commands_Forever.lua` | **B16:** `MD:RunCoach` matches `^([pP]?[%d:]*)%s*(%a*)$`; no match prints `coach: no recording <arg>.` and returns; an empty address is still recording 1. `2:7` reaches `MD:GetRecording`, which on Forever answers nil for a run address, so it prints `coach: no recording 2:7.` |
 | `UI/Dashboard_Review.lua` | **B14:** a local `PinFight(rec, on)`: finds the record's index in `MD.FightRecorder:List()` and calls `FR:Pin(n, on)` when the recorder has one (Forever); where it has none (TBC's `Engine/FightRecorder.lua`, owned by P4 in this wave) the same cap is applied here at that file's `MAX_PINNED` (2). The Pin button prints `pin: <why>` on a refusal (the reason's pipes doubled). Practice pins and run pins unchanged. **B24:** `rec = Selected()` and its validation (`Validation(rec)` for a druid, the cache otherwise) move above the row loop, so the selected row's cell and hover are built from the result the buttons act on; the buttons' code below reads the same `rec` / `v`. |
-| `tools/recordcheck.lua` | +4 (24 -> 28), below. |
+| `tools/recordcheck.lua` | +5 (24 -> 29), below. |
 | `tools/scenariocheck.lua` | +2 (12 -> 14), below. |
 | `tools/reviewforever.lua` | +2 (11 -> 13), below; the sanity comment on the row count updated. |
 | `tools/coachforever.lua` | +1 (19 -> 20), below. |
@@ -45,6 +45,13 @@ B15: a cross-realm member's Name-Realm target resolves to their roster index    
 B15: two same-name members on different realms are told apart by the full name             FAIL - RealmA=-1 RealmB=-1
 B15: the stored roster name stays bare, the realm beside it                                FAIL - name=Healer realm=nil player realm=nil
 24 ok, 4 failed
+```
+
+The fifth, added after the review (on 7b7fb85, the first submission, only the test changed; rc 1):
+
+```
+B15: a member whose name reads secret is stored with no realm (the status word is not one) FAIL - roster[2]=true name=nil realm=secret
+28 ok, 1 failed
 ```
 
 `tools/reviewforever.lua` (rc 1):
@@ -95,6 +102,9 @@ a third pin is refused with a line             ok - pins=true,true,false line=|c
   `realm` knob from T45); casts SENT at `Healer-OtherRealm`, `Tank-RealmB`, `Tank-RealmA` land on
   roster 2, 4 and 3; the stored roster entry is `name = "Healer"`, `realm = "OtherRealm"`, the
   player's realm nil.
+- `recordcheck` B15 (review): a party member whose name reads secret (the stub's `S.Secret()` as
+  `name`, with a realm set) is stored with `name` and `realm` both nil -- `MD.API.Call`'s `nil, "secret"`
+  is not a realm.
 - `scenariocheck` (x2): above.
 - `reviewforever` B24: the first render after the recordings exist, before any Validate click, row 1
   (selected) reads `ok`. B14: Pin on rows 1 and 2 print nothing and pin; Pin on row 3 prints one ASCII
@@ -104,11 +114,20 @@ a third pin is refused with a line             ok - pins=true,true,false line=|c
 - `reviewui` (TBC): the fakepull fight's row reads its first failing gate (`mana mean: ...`) on the
   first render; three copies of the fight, Pin on two, the third refused with the same line.
 
+## Review fix (2026-09-30)
+
+The reviewer found that `R:Refresh` stored the adapter's status word as a realm: when `MD.API.Call`
+fails it answers `nil, "secret"` (or `"absent"` / `"error"`, `Client/API.lua`), so a member whose
+name read secret was stored with `realm = "secret"`. The realm is now dropped whenever the name is not
+a plain string (`if type(name) ~= "string" or type(realm) ~= "string" or realm == "" then realm = nil
+end`), the guard the `UnitClass` read beside it already has. One `recordcheck` assertion holds it
+(failing first, above). The full loop re-run afterwards, every suite rc 0, counts as below.
+
 ## Suites (exit codes checked; the loop in docs/TOOLS.md section 1)
 
 | suite | before (06f0969) | after |
 |---|---|---|
-| `recordcheck` | 24 | **28** |
+| `recordcheck` | 24 | **29** |
 | `scenariocheck` | 12 | **14** |
 | `reviewforever` | 11 | **13** |
 | `coachforever` | 19 | **20** |
@@ -158,16 +177,17 @@ fallback"):
   add ` **T49 (P5):** a party member's `realm` is recorded beside the bare `name`, a SENT
   `Name-Realm` target resolved by the full name then a unique bare name (B15); `Pin` refuses a third
   with a reason, and the ring protects only the first two pins and always stores (B14); `/st coach`
-  takes `2:7` and refuses an argument it cannot read (B16) (`recordcheck` 28)`.
+  takes `2:7` and refuses an argument it cannot read (B16) (`recordcheck` 29)`.
 - `UI/Dashboard_Review.lua` row, append: ` **T49 (P5):** Pin on a single fight goes through the
   recorder's capped `Pin` (the cap of two applied here on TBC, whose recorder has none), a third
   refused with one line; the selected row validated before the rows are painted (B14, B24)`.
 
 **docs/TOOLS.md** section 1:
 
-- `recordcheck.lua` row, append: `Since **T49** (28): every stored stream pinned and the ninth pull
+- `recordcheck.lua` row, append: `Since **T49** (29): every stored stream pinned and the ninth pull
   still stored, the first two pins kept (B14); a cross-realm `Name-Realm` target resolved, two
-  same-name members of different realms told apart, the stored name bare with its realm (B15)`.
+  same-name members of different realms told apart, the stored name bare with its realm, a member
+  whose name reads secret stored with no realm (B15)`.
 - `scenariocheck.lua` row, append: `Since **T49** (14): an old bare-name recording and a new one with
   a realm are one person to `SM.PartyMaxFromOthers` and `SM.DangerHitFromOthers` (B15)`.
 - `reviewforever.lua` row, append: `Since **T49** (13): the selected row's verdict on the first
@@ -181,7 +201,7 @@ fallback"):
 section 9, as written there; and, for TBC, "Pin three fights in `/md` -> Reports -> Review: the third
 is refused with a line."
 
-**tools/data/expected-counts.json** (when P13 creates it): `recordcheck` 28, `scenariocheck` 14,
+**tools/data/expected-counts.json** (when P13 creates it): `recordcheck` 29, `scenariocheck` 14,
 `reviewforever` 13, `coachforever` 20, `reviewui` 46.
 
 No TOC changes.

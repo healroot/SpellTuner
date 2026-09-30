@@ -813,6 +813,25 @@ do
             tostring(rec and rec.roster[1] and rec.roster[1].realm)))
 end
 
+-- T49 (P5), B15 (review): a member whose name reads secret. The adapter
+-- answers a failed read with nil and its status word ("secret" / "absent" /
+-- "error"), so the second value is not a realm and must not be stored as one.
+do
+    local E = Fresh({ Unit("G-S", "Hidden", "WARRIOR", "TANK", { realm = "RealmA" }) })
+    E.S.units.party1.name = E.S.Secret()
+    E.At(4)
+    E.Start()
+    E.Five("sr-", "Healroot")
+    E.At(30)
+    E.Stop()
+    E.Flush()
+    local rec = E.Last()
+    local e = rec and rec.roster and rec.roster[2]
+    check("B15: a member whose name reads secret is stored with no realm (the status word is not one)",
+        e ~= nil and e.name == nil and e.realm == nil,
+        string.format("roster[2]=%s name=%s realm=%s", tostring(e ~= nil), tostring(e and e.name), tostring(e and e.realm)))
+end
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("  FAIL " .. f) end
 if #fails > 0 then os.exit(1) end

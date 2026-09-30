@@ -87,9 +87,11 @@ function R:Refresh()
             -- member from another realm (nil, or "" on some clients, for
             -- one's own). The name stays bare -- it is what other recordings
             -- are matched on (SM.PartyMaxFromOthers, SM.DangerHitFromOthers),
-            -- old ones included -- and the realm is kept beside it.
+            -- old ones included -- and the realm is kept beside it. A failed
+            -- read answers nil and the adapter's status word ("secret" /
+            -- "absent" / "error"), which is not a realm: no plain name, no realm.
             local name, realm = MD.API.UnitName(token)
-            if type(realm) ~= "string" or realm == "" then realm = nil end
+            if type(name) ~= "string" or type(realm) ~= "string" or realm == "" then realm = nil end
             local loc, class = MD.API.UnitClass(token)
             if not loc then class = nil end
             local level = MD.API.UnitLevel(token)
