@@ -818,8 +818,12 @@ rule forfeits 57.5 mana, more than its own 55.
    most ~15 per mana) could never clear it. On 180 synthetic level 10 party fights 20 cost no
    deaths (0 against 1) and ended with 85 mana against 34. On the author's fight it used 301
    against 364, with the same lowest health (48%) and less owed (244 against 302). On the eight
-   TBC recordings its row in `tools/strategies.lua` (deaths, seconds one hit from death, mana)
-   read the same at 20 as at 30; that is what was compared, not its decisions cast for cast.
+   TBC recordings its row in `tools/strategies.lua` was compared at 20 and at 30, totals only, not
+   its decisions cast for cast. On the anniversary snapshot the recordings were first measured on,
+   20 and 30 give the same deaths, the same seconds one hit from death and the same 346 casts, but
+   not the same mana: 31189 used at 20 against 31234 at 30. On the author's current eight-recording
+   file the two rows are identical (442 casts, 33609 used). (Corrected 2026-09-30 from "read the
+   same, mana included", which the review's re-run measured as too strong for the snapshot.)
    The other floors keep their numbers.
 7. **The replay window leads with "used"**, the pool at the pull less the pool now, which is the
    number the coach ranks on. The author read "spent 385" against his "spent 425" as the coach
@@ -841,8 +845,9 @@ rule forfeits 57.5 mana, more than its own 55.
 
 **Critics' objections rejected, and why.**
 - *Normalise the floor to `minFrac x BestHPM x horizon`* (critic 1, O4/D5): right in principle.
-  But at level 70 the solver's values sit far above every floor (20 and 30 read the same in
-  `tools/strategies.lua` on eight TBC recordings), so there is nothing yet to fit a fraction to. It stays open until a
+  But at level 70 the solver's values sit far above every floor (on eight TBC recordings 20 and 30 give
+  the same deaths, seconds and casts in `tools/strategies.lua`, and mana used within
+  0.2%; see 6), so there is nothing yet to fit a fraction to. It stays open until a
   high-level fight where the floor binds.
 - *A rest guard with its own hit multiple* (critic 1, D4): see 4.
 - *Price the later candidate at its own delay* (one reading of "the same price"): see 2.

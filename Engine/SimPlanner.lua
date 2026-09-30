@@ -618,10 +618,12 @@ SP.STRATEGY_SET = {
     -- synthetic level 10 party fights 20 was the only floor that cost no deaths
     -- and ended with more mana than the unpriced 30, on the author's practice
     -- fight (tools/data/practice/1790701698.lua) it used 301 mana against 364
-    -- with the same lowest health and less owed, and on the author's eight TBC
-    -- recordings its row in tools/strategies.lua (deaths, seconds one hit from
-    -- death, mana) read the same as the unpriced 30's -- totals compared, not
-    -- decisions cast for cast. A constant from one
+    -- with the same lowest health and less owed. On the author's eight TBC
+    -- recordings its row in tools/strategies.lua (totals compared, not
+    -- decisions cast for cast): on the anniversary snapshot the same deaths,
+    -- the same seconds one hit from death and the same 346 casts as the
+    -- unpriced 30's, but 31189 mana used against 31234; on the current
+    -- eight-recording file identical (442 casts, 33609 used). A constant from one
     -- synthetic setup and one real fight: re-measure it before trusting it at a
     -- level where the values are nowhere near it.
     { key = "solver-frugal", label = "Solver: frugal", kind = "solver",
