@@ -423,9 +423,10 @@ local ABOUT_ROW_H = 17
 local USAGE_W = 196
 
 local function ClientLine()
+    -- This file is on the Forever TOCs only, so the client is named here, not
+    -- read (apicheck: the client's name is a flavour's policy, not a branch).
     local version, build = MD.API.BuildInfo()
-    local client = MD.API.client == "forever" and "WoW: Forever" or "WoW: The Burning Crusade Classic"
-    local parts = { client }
+    local parts = { "WoW: Forever" }
     if type(build) == "string" and build ~= "" then
         parts[#parts + 1] = "build " .. build
     elseif type(version) == "string" and version ~= "" then
