@@ -25,7 +25,16 @@ local pos = {}
 for i = 2, #arg do
     if arg[i] == "--fit" then fit = true else pos[#pos + 1] = arg[i] end
 end
+-- T57 (P13, review Q15): the two default files are gitignored; without them
+-- it prints its usage line instead of a traceback.
+local USAGE = "usage: tools/run.sh tools/wclcheckkit.lua [records.lua] [observed.lua] [--fit]"
+    .. "  (defaults .logs/wcl-records.lua and .logs/wcl-observed.lua, written by tools/wclconvert.py)"
+local function exists(p) local f = p and io.open(p, "r"); if f then f:close(); return true end end
 local file = pos[1] or ".logs/wcl-records.lua"
+local obsFile = pos[2] or ".logs/wcl-observed.lua"
+for _, f in ipairs({ file, obsFile }) do
+    if not exists(f) then print("wclcheckkit: no " .. f); print(USAGE); os.exit(2) end
+end
 dofile(file)
 local realDB = _G.SpellTunerDB or _G.ManaDemonDB   -- files written before the rename
 local pre = {}
@@ -36,7 +45,7 @@ local MD = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB
 
 -- observed medians, gross, non-crit: written next to the records by the converter
-local OBS = dofile(pos[2] or ".logs/wcl-observed.lua")
+local OBS = dofile(obsFile)
 
 local ratios = {}
 for key, p in pairs(pre) do

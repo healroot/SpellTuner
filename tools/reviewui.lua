@@ -277,12 +277,25 @@ do
     chat = {}
     S.shift = false
     Click(star)
-    for _ = 1, 200 do S.Tick(0.016) end
+    -- T57 (P13, review Q15): the refusal is decided in the click -- no search
+    -- was started -- rather than "no plan after 200 frames", which a search
+    -- slower than 200 frames would also pass.
+    check("a plain click starts no coach search", MD.coachSearch == nil
+        and (function()
+            for _, m in ipairs(chat) do if m:find("coach: searching", 1, true) then return false end end
+            return true
+        end)())
     check("a plain click refuses and names a gate", MD.SimPlanner.plans[rec1.id] == nil
         and (function()
             for _, m in ipairs(chat) do if m:find("does not replay") then return true end end
             return false
         end)(), chat[1] or "no chat")
+    -- The click also cancelled the replay window's automatic coach of the
+    -- pull opened above (Engine/ReviewCommands.lua: the author's coach wins);
+    -- a cancelled search closes on its next frame, and its callback clears
+    -- MD.coachSearch whatever it holds by then (UI/ReplayWindow.lua
+    -- CoachOnOpen -- noted in docs/tasks/T57), so that frame runs here.
+    S.Tick(0.016)
 
     S.shift = true
     Click(ButtonNamed("Coach*"))

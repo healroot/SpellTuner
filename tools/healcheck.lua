@@ -29,7 +29,14 @@ if not file then
         if p then for line in p:lines() do file = file or line end; p:close() end
     end
 end
-if not file then print("usage: healcheck.lua <SavedVariables.lua>"); os.exit(2) end
+-- T57 (P13, review Q15): a file named but absent is the usage line too, not a
+-- traceback.
+local function present(p) local f = io.open(p, "r"); if f then f:close(); return true end end
+if not file or not present(file) then
+    if file then print("healcheck: no " .. file) end
+    print("usage: tools/run.sh tools/healcheck.lua [SavedVariables.lua]  (default: $MD_SAVEDVARS, .logs/SpellTuner.lua, the author's install)")
+    os.exit(2)
+end
 dofile(file)
 local realDB = _G.SpellTunerDB or _G.ManaDemonDB   -- files written before the rename
 local pre = {}

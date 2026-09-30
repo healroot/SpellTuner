@@ -11,6 +11,11 @@
 -- tools/data/flavours.txt only a fallback -- a launch interface outside every
 -- band still packages, and only a TOC with neither is refused.
 --
+-- T57 (P13, review Q7, A10): the scratch copy of the tree is asserted before
+-- anything reads it (git's file list, or find where there is no repository),
+-- --set-version's one folded check is four, and the two plain Forever TOCs are
+-- asserted identical but for their marker line.
+--
 -- NOTHING here writes outside tools/.lua/releasecheck/: every install goes into
 -- a scratch "AddOns" folder below it. The scratch tree is cleaned at the START
 -- of a run so a failure can be inspected afterwards.
@@ -301,10 +306,31 @@ end
 -- 7-8. On a scratch copy of the tree (uncommitted work included).
 --------------------------------------------------------------------------------
 local COPY = SCRATCH .. "/tree copy"
-sh("mkdir -p " .. q(COPY) .. " && cd " .. q(ROOT)
-    .. " && git ls-files -co --exclude-standard -z | tar --null -T - -cf - 2>/dev/null | tar -xf - -C " .. q(COPY))
+-- git's own file list (uncommitted work included, ignored files left out);
+-- outside a repository -- an unpacked archive, a copied folder -- every file
+-- but the ones git would ignore here: tools/.lua (this scratch tree among
+-- them), dist, .git, .claude, .logs, caches.
+local copySource
+do
+    local _, inGit = sh("cd " .. q(ROOT) .. " && git rev-parse --is-inside-work-tree >/dev/null 2>&1")
+    sh("mkdir -p " .. q(COPY))
+    if inGit == 0 then
+        copySource = "git"
+        sh("cd " .. q(ROOT) .. " && git ls-files -co --exclude-standard -z | tar --null -T - -cf - 2>/dev/null | tar -xf - -C " .. q(COPY))
+    else
+        copySource = "find"
+        sh("cd " .. q(ROOT) .. " && find . \\( -path ./.git -o -path ./tools/.lua -o -path ./dist -o -path ./.claude"
+            .. " -o -path ./.logs -o -path ./tools/.cache -o -name __pycache__ \\) -prune -o -type f -print0"
+            .. " | tar --null -T - -cf - 2>/dev/null | tar -xf - -C " .. q(COPY))
+    end
+end
 local COPY_RELEASE = COPY .. "/release.sh"
-local haveCopy = Slurp(COPY_RELEASE) ~= nil and Slurp(COPY .. "/SpellTuner_TBC.toc") ~= nil
+local copyTocs = #TocsUnder(COPY)
+local haveCopy = Slurp(COPY_RELEASE) ~= nil and Slurp(COPY .. "/SpellTuner_TBC.toc") ~= nil and copyTocs >= 9
+-- Asserted before any check reads the copy: an empty copy used to surface as
+-- "lost its CRLF: 0 of 0" three checks later (review Q7).
+check("the scratch copy of the tree holds release.sh and every TOC (" .. copySource .. ")",
+    haveCopy, "release.sh " .. tostring(Slurp(COPY_RELEASE) ~= nil) .. ", " .. copyTocs .. " TOCs in " .. COPY)
 
 local function AllTocs(dir)
     local t = {}
@@ -368,6 +394,9 @@ do
     local _, rcBad = Release(COPY_RELEASE, "--set-version", "1.0")
     local unchanged = Checksums(COPY) == sumsBefore
 
+    check("--set-version refuses a version that is not x.y.z and changes nothing",
+        haveCopy and rcBad ~= 0 and unchanged, "rc=" .. tostring(rcBad) .. " unchanged=" .. tostring(unchanged))
+
     local out, rc = Release(COPY_RELEASE, "--set-version", "0.16.9")
     local allNew, onlyLine = #tocs >= 9, true
     local detail
@@ -377,6 +406,9 @@ do
         if Version(COPY .. "/" .. rel) ~= "0.16.9" then allNew = false; detail = rel .. " reads " .. tostring(Version(COPY .. "/" .. rel)) end
         if after ~= expected then onlyLine = false; detail = detail or (rel .. " differs beyond its version line") end
     end
+    check("--set-version rewrites every TOC's version line, and only that line",
+        haveCopy and rc == 0 and allNew and onlyLine,
+        detail or ("rc=" .. tostring(rc) .. " TOCs " .. #tocs .. " " .. out:gsub("\n", " / "):sub(1, 80)))
     -- no other file changed: the checksums of everything else are as they were
     local function WithoutTocs(sums)
         local t = {}
@@ -386,18 +418,39 @@ do
         return table.concat(t, "\n")
     end
     local othersSame = WithoutTocs(Checksums(COPY)) == WithoutTocs(sumsBefore)
-    local crlfKept
+    check("--set-version changes no file but the TOCs", haveCopy and rc == 0 and othersSame)
+    local crlfKept, crlfDetail
     do
         local text = Slurp(COPY .. "/" .. CRLF_TOC) or ""
         local _, lf = text:gsub("\n", "")
         local _, crlf = text:gsub("\r\n", "")
         crlfKept = crlfMade and lf > 0 and lf == crlf and Has(text, "## Version: 0.16.9\r\n")
-        if not crlfKept then detail = detail or (CRLF_TOC .. " lost its CRLF: " .. crlf .. " of " .. lf) end
+        if not crlfKept then
+            crlfDetail = crlfMade and (CRLF_TOC .. " lost its CRLF: " .. crlf .. " of " .. lf)
+                or (CRLF_TOC .. " could not be made CRLF in the copy")
+        end
     end
-    check("--set-version rewrites every TOC's version line and nothing else",
-        haveCopy and rc == 0 and allNew and onlyLine and othersSame and rcBad ~= 0 and unchanged and crlfKept,
-        detail or ("rc=" .. tostring(rc) .. " bad=" .. tostring(rcBad) .. " unchanged=" .. tostring(unchanged)
-            .. " others=" .. tostring(othersSame) .. " " .. out:sub(1, 80)))
+    check("--set-version keeps a CRLF TOC's every CR, the version line's included",
+        haveCopy and rc == 0 and crlfKept, crlfDetail)
+end
+
+--------------------------------------------------------------------------------
+-- T57 (P13, review A10): SpellTuner.toc is SpellTuner_Mainline.toc's fallback
+-- twin -- the client loads one or the other -- so the two are the same file but
+-- for the marker line each loads first (Client\TOC_Plain.lua /
+-- Client\TOC_Mainline.lua, the line the probe reads back). Nothing asserted it.
+--------------------------------------------------------------------------------
+do
+    local a, b = Lines(ROOT .. "/SpellTuner.toc"), Lines(ROOT .. "/SpellTuner_Mainline.toc")
+    local diffs = {}
+    for i = 1, math.max(#a, #b) do
+        if a[i] ~= b[i] then diffs[#diffs + 1] = i end
+    end
+    local i = diffs[1]
+    local markerOnly = #diffs == 1 and a[i] == "Client\\TOC_Plain.lua" and b[i] == "Client\\TOC_Mainline.lua"
+    check("SpellTuner.toc and SpellTuner_Mainline.toc differ only in their marker line",
+        #a > 0 and markerOnly,
+        #diffs .. " differing line(s)" .. (i and (": " .. tostring(a[i]) .. " / " .. tostring(b[i])) or ""))
 end
 
 --------------------------------------------------------------------------------

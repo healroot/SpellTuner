@@ -1,29 +1,47 @@
--- tools/run.sh tools/strategies.lua [--file <sv>] [--char <key>]
+-- tools/run.sh tools/strategies.lua [--file <sv>] [--char <key>] [--calibrate <observed.lua>]
+-- tools/run.sh tools/strategies.lua --fixture tools/data/practice/<id>.lua
 --
 -- Every strategy in SP.STRATEGY_SET, over every recording in the file, through
 -- the same engine and scored on the same lexicographic tuple. This is the table
 -- the author asked for: pick one by looking at it, not by being told.
+--
+-- T57 (P13, review Q15): with no SavedVariables file (the default one is
+-- gitignored) it prints its usage line instead of a traceback; --fixture reads
+-- one practice fight and the kit it replays with ({ rec, kit }, as
+-- tools/import.lua --fixture does), which is how tools/check.sh smoke-runs it.
 local here = arg[0]:match("^(.*)/[^/]+$")
+local USAGE = "usage: tools/run.sh tools/strategies.lua [--file <SavedVariables.lua>] [--char <Name-Realm>]"
+    .. " [--calibrate <observed.lua>] | --fixture <tools/data/practice/<id>.lua>"
 local opts = {}
 do
     local i = 1
     while i <= #arg do
         if arg[i] == "--calibrate" then opts.calibrate = arg[i + 1]; i = i + 1
         elseif arg[i] == "--file" then opts.file = arg[i + 1]; i = i + 1
+        elseif arg[i] == "--fixture" then opts.fixture = arg[i + 1]; i = i + 1
         elseif arg[i] == "--char" then opts.char = arg[i + 1]; i = i + 1 end
         i = i + 1
     end
 end
-local file = opts.file or ".logs/SpellTuner.lua"
-local function exists(p) local f = io.open(p, "r"); if f then f:close(); return true end end
-if not exists(file) then
-    local p = io.popen('ls "/mnt/e/Blizzard/World of Warcraft/_anniversary_/WTF/Account"/*/SavedVariables/SpellTuner.lua 2>/dev/null')
-    if p then for line in p:lines() do file = line; break end; p:close() end
+local function exists(p) local f = p and io.open(p, "r"); if f then f:close(); return true end end
+local realDB, pre, fx = { char = {} }, {}, nil
+if opts.fixture then
+    if not exists(opts.fixture) then print("strategies: no fixture " .. tostring(opts.fixture)); print(USAGE); os.exit(2) end
+    fx = dofile(opts.fixture)
+    if type(fx) ~= "table" or type(fx.rec) ~= "table" or type(fx.kit) ~= "table" then
+        print("strategies: " .. opts.fixture .. " is not a fixture (it returns no { rec, kit })"); os.exit(2)
+    end
+else
+    local file = opts.file or ".logs/SpellTuner.lua"
+    if not exists(file) then
+        local p = io.popen('ls "/mnt/e/Blizzard/World of Warcraft/_anniversary_/WTF/Account"/*/SavedVariables/SpellTuner.lua 2>/dev/null')
+        if p then for line in p:lines() do file = line; break end; p:close() end
+    end
+    if not exists(file) then print("strategies: no SavedVariables file (" .. tostring(file) .. ")"); print(USAGE); os.exit(2) end
+    dofile(file)
+    realDB = _G.SpellTunerDB or _G.ManaDemonDB   -- files written before the rename
+    for k, c in pairs(realDB.char or {}) do pre[k] = c.profile end
 end
-dofile(file)
-local realDB = _G.SpellTunerDB or _G.ManaDemonDB   -- files written before the rename
-local pre = {}
-for k, c in pairs(realDB.char or {}) do pre[k] = c.profile end
 
 HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
@@ -102,6 +120,21 @@ for key, c in pairs(realDB.char or {}) do
         pool[#pool + 1] = { rec = rec, profile = pre[key], who = key }
     end
 end
+if fx then
+    -- the fixture's own kit and the ranks that fight had, never the harness druid's
+    pool[1] = { rec = fx.rec, who = "fixture", kit = fx.kit, known = fx.rec.initial and fx.rec.initial.known }
+end
+-- A fresh kit per run: Calibrate scales in place, and a fixture's kit is one table.
+local function Copy(t)
+    if type(t) ~= "table" then return t end
+    local c = {}
+    for k, v in pairs(t) do c[k] = Copy(v) end
+    return c
+end
+local function KitFor(e)
+    if e.kit then return Copy(e.kit) end
+    return MD.RankMath:SpellKit({ live = true })
+end
 table.sort(pool, function(a, b) return (a.rec.id or 0) < (b.rec.id or 0) end)
 for i, e in ipairs(pool) do allRecs[i] = e.rec end
 if opts.char then
@@ -119,7 +152,7 @@ print(string.format("%d recording(s)%s\n", #pool,
 local cd, cf, cm, cn = 0, 0, 0, 0
 for _, e in ipairs(pool) do
     ApplyProfile(e.profile)
-    local kit = MD.RankMath:SpellKit({ live = true })
+    local kit = KitFor(e)
     kit = (Calibrate(kit, e.who))
     local sc = SM.ScenarioFromRecording(e.rec, kit)
     if sc then
@@ -139,12 +172,12 @@ for _, entry in ipairs(SP.STRATEGY_SET) do
     local sees = false
     for _, e in ipairs(pool) do
         ApplyProfile(e.profile)
-        local kit = MD.RankMath:SpellKit({ live = true })
+        local kit = KitFor(e)
         local worst
         kit, worst = Calibrate(kit, e.who)
         local sc = SM.ScenarioFromRecording(e.rec, kit)
         if sc then
-            local plan = SP.MakeStrategy(entry, SP.MaxRankBinds(), kit,
+            local plan = SP.MakeStrategy(entry, SP.MaxRankBinds(e.known), kit,
                 { scenario = sc, seed = e.rec.id or 1,
                   recs = allRecs, excludeID = e.rec.id, zone = e.rec.zone,
                   encounter = e.rec.encounter })

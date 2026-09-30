@@ -389,6 +389,43 @@ try("a module TOC entry outside the module folder loads from the repository root
         ok == true and _G.SpellTuner.ReplayTrace ~= nil)
 end)
 
+--------------------------------------------------------------------------------
+-- 15-19 (T57, P13, review A10): the three module folders are one shape. Each
+-- module's Module.lua (points the module's table at SpellTuner) and Ready.lua
+-- (tells the core it loaded) are the same file in all three, and each module's
+-- two TOCs (the _Mainline one the client loads, the plain fallback) are
+-- identical -- the modules have no marker line. Nothing asserted it: an edit
+-- to one copy would load in one module and not the others.
+--------------------------------------------------------------------------------
+do
+    local ROOT = arg[1] or "."
+    local function Slurp(path)
+        local f = io.open(path, "rb")
+        if not f then return nil end
+        local s = f:read("*a")
+        f:close()
+        return s
+    end
+    local MODULES = { "SpellTuner_Recorder", "SpellTuner_Replay", "SpellTuner_Practice" }
+    for _, file in ipairs({ "Module.lua", "Ready.lua" }) do
+        local first, same, detail = nil, true, nil
+        for _, name in ipairs(MODULES) do
+            local text = Slurp(ROOT .. "/Modules/" .. name .. "/" .. file)
+            if text == nil then same, detail = false, name .. "/" .. file .. " missing"
+            elseif first == nil then first = text
+            elseif text ~= first then same, detail = false, name .. "/" .. file .. " differs from " .. MODULES[1] .. "'s" end
+        end
+        check("the three modules' " .. file .. " are the same file", same and first ~= nil, detail)
+    end
+    for _, name in ipairs(MODULES) do
+        local dir = ROOT .. "/Modules/" .. name .. "/"
+        local plain, mainline = Slurp(dir .. name .. ".toc"), Slurp(dir .. name .. "_Mainline.toc")
+        check(name .. ": its two TOCs are identical",
+            plain ~= nil and mainline ~= nil and plain == mainline,
+            (plain == nil or mainline == nil) and "a TOC is missing" or nil)
+    end
+end
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("  FAIL " .. f) end
 if #fails > 0 then os.exit(1) end

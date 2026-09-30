@@ -3,7 +3,11 @@
 -- The control experiment for docs/SPEC-v0.13.md: the threshold rules and the
 -- solver, on the same recordings, through the same engine, scored on the same
 -- lexicographic tuple. The solver has to win or tie to replace anything.
+--
+-- T57 (P13, review Q15): with no SavedVariables file (the default one is
+-- gitignored) it prints its usage line instead of a traceback.
 local here = arg[0]:match("^(.*)/[^/]+$")
+local USAGE = "usage: tools/run.sh tools/solvercmp.lua [--file <SavedVariables.lua>] [--char <Name-Realm>]"
 local opts = {}
 do
     local i = 1
@@ -19,6 +23,7 @@ if not exists(file) then
     local p = io.popen('ls "/mnt/e/Blizzard/World of Warcraft/_anniversary_/WTF/Account"/*/SavedVariables/SpellTuner.lua 2>/dev/null')
     if p then for line in p:lines() do file = line; break end; p:close() end
 end
+if not exists(file) then print("solvercmp: no SavedVariables file (" .. tostring(file) .. ")"); print(USAGE); os.exit(2) end
 dofile(file)
 local realDB = _G.SpellTunerDB or _G.ManaDemonDB   -- files written before the rename
 local pre = {}

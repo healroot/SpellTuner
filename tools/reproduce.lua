@@ -13,13 +13,39 @@
 -- With an `observed.lua` (tools/wclrules.py --observed) the kit is first scaled
 -- so each spell heals what the log says it healed, which removes spell values
 -- from the question entirely. What is left is the engine.
+--
+-- T57 (P13, review Q15): a missing file prints the usage line, not a
+-- traceback; --fixture replays one practice fight with the kit it was played
+-- with ({ rec, kit }, tools/data/practice/<id>.lua), which is how
+-- tools/check.sh smoke-runs it.
 local here = arg[0]:match("^(.*)/[^/]+$")
+local USAGE = "usage: tools/run.sh tools/reproduce.lua <records.lua> [observed.lua]"
+    .. " | --fixture <tools/data/practice/<id>.lua>"
+local function exists(p) local f = p and io.open(p, "r"); if f then f:close(); return true end end
 local file, obsFile = arg[2], arg[3]
-if not file then print("usage: reproduce.lua <records.lua> [observed.lua]"); os.exit(2) end
-dofile(file)
-local realDB = _G.SpellTunerDB or _G.ManaDemonDB   -- files written before the rename
-local pre = {}
-for k, c in pairs(realDB.char or {}) do pre[k] = c.profile end
+local fx
+if file == "--fixture" then
+    fx, obsFile = obsFile, nil
+    if not exists(fx) then print("reproduce: no fixture " .. tostring(fx)); print(USAGE); os.exit(2) end
+    fx = dofile(fx)
+    if type(fx) ~= "table" or type(fx.rec) ~= "table" or type(fx.kit) ~= "table" then
+        print("reproduce: " .. tostring(arg[3]) .. " is not a fixture (it returns no { rec, kit })"); os.exit(2)
+    end
+elseif not exists(file) then
+    if file then print("reproduce: no " .. file) end
+    print(USAGE); os.exit(2)
+elseif obsFile and not exists(obsFile) then
+    print("reproduce: no " .. obsFile); print(USAGE); os.exit(2)
+end
+local realDB, pre = { char = {} }, {}
+if fx then
+    -- one practice fight under a key of its own; its kit is used as it is
+    realDB.char["Fixture-" .. tostring(fx.rec.id or 0)] = { recordings = { fx.rec } }
+else
+    dofile(file)
+    realDB = _G.SpellTunerDB or _G.ManaDemonDB   -- files written before the rename
+    for k, c in pairs(realDB.char or {}) do pre[k] = c.profile end
+end
 
 HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
@@ -86,7 +112,7 @@ print(string.format("%-30s %9s %9s %7s  %s",
 for key, c in pairs(realDB.char or {}) do
     for _, rec in ipairs(c.recordings or {}) do
         ApplyProfile(pre[key])
-        local kit = Calibrate(MD.RankMath:SpellKit({ live = true }), key)
+        local kit = Calibrate(fx and fx.kit or MD.RankMath:SpellKit({ live = true }), key)
         local sc = SM.ScenarioFromRecording(rec, kit)
         if sc then
             local fired = 0
