@@ -16,10 +16,16 @@ API baseline and the adapter rule (CLAUDE.md / docs/FOREVER-PLAN.md):
   8. an event handler's argument compared, used in arithmetic, indexed,
      measured with `#`, or type()-tested before the same function has asked
      IsSecret about it (outside Client/, from the handler's own source text --
-     see docs/tasks/T13a-secret-arg-check.md). Known limits: a parameter
-     passed on to another function and compared there is not followed; an
-     alias (`local u = unit`) is not followed; a check in a branch that does
-     not dominate the use still counts as a check.
+     see docs/tasks/T13a-secret-arg-check.md). An alias (`local sid = spellID`,
+     the recorder's own idiom) is the same value under another name: its risky
+     uses count, and a check on either name covers both (T57). Known limits: a
+     parameter passed on to another function and compared there is not
+     followed; an alias of an alias is not followed; a check in a branch that
+     does not dominate the use still counts as a check.
+  9. an event registered on a frame (`:RegisterEvent`, `:RegisterUnitEvent`,
+     `:RegisterAllEvents`, in any spelling a call can take) outside Client/ and
+     Core.lua -- every registration goes through MD:On, which refuses what the
+     adapter forbids (T57, review Q2)
 
 A Forever TOC is one that loads a forever marker file of tools/data/flavours.txt,
 or sits under Modules/, or (with neither) whose interface is in forever's band
@@ -81,6 +87,9 @@ NOT_IN_CLIENT = {"os", "io", "require", "dofile", "loadfile", "package", "module
 MODULE_ROOT_PREFIXES = ("Engine/", "Spells/", "Data/", "UI/")
 
 FORBIDDEN_EVENT = "COMBAT_LOG_EVENT_UNFILTERED"
+# rule 9 (T57): the one file outside Client/ that registers events -- MD:On's.
+REGISTER_HOME = "Core.lua"
+REGISTER_RE = re.compile(r'[.:]\s*(RegisterEvent|RegisterUnitEvent|RegisterAllEvents)\b')
 FORBIDDEN_EVENT_HOME = "Client/API_Forever.lua"
 PROBE_FILE = "Client/Probe.lua"
 
@@ -426,17 +435,47 @@ def line_of(text, pos):
     return text.count('\n', 0, pos) + 1
 
 
+def aliases_of(body, param):
+    """[(alias, position of its `local`)] -- every `local NAME = <param>` in
+    the body whose right-hand side is the parameter alone (T57, review Q2)."""
+    p = re.escape(param)
+    found = []
+    for m in re.finditer(r'\blocal\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*' + p + r'\b(?![ \t]*[-+*/%^.:\[(=<>~#])', body):
+        if m.group(1) != param:
+            found.append((m.group(1), m.start()))
+    return found
+
+
 def rule8_findings_for_body(relpath, stripped_file, body_start, body_end, event, params):
     findings = []
     body = stripped_file[body_start:body_end]
     for param in params:
-        use_pos = first_risky_use(body, param)
-        if use_pos is None:
-            continue
-        if any(cp < use_pos for cp in check_positions(body, param)):
-            continue
-        line = line_of(stripped_file, body_start + use_pos)
-        findings.append(Rule8Finding(relpath, line, param, event))
+        names = [(param, 0)] + aliases_of(body, param)
+        checks = []
+        for name, _ in names:
+            checks.extend(check_positions(body, name))
+        for name, since in names:
+            use_pos = first_risky_use(body[since:], name)
+            if use_pos is None:
+                continue
+            use_pos += since
+            if any(cp < use_pos for cp in checks):
+                continue
+            line = line_of(stripped_file, body_start + use_pos)
+            findings.append(Rule8Finding(relpath, line, name, event))
+    return findings
+
+
+def scan_rule9(abspath, relpath):
+    """Rule 9 (T57): an event registered on a frame outside Client/ and Core.lua."""
+    if under_client_dir(relpath) or relpath == REGISTER_HOME:
+        return []
+    with open(abspath, "r", encoding="utf-8", errors="replace") as f:
+        stripped = strip_source(f.read())
+    findings = []
+    for m in REGISTER_RE.finditer(stripped):
+        findings.append(Finding(relpath, line_of(stripped, m.start()), m.group(1),
+                                "outside MD:On (only Client/ and Core.lua register events)"))
     return findings
 
 
@@ -538,6 +577,7 @@ def main():
     for abspath, relpath in checked:
         findings.extend(scan_file(args.luac, abspath, relpath, baseline, globals_seen, per_file_globals))
         findings.extend(scan_rule8(abspath, relpath))
+        findings.extend(scan_rule9(abspath, relpath))
 
     findings.sort(key=lambda f: f.key())
 
@@ -563,6 +603,11 @@ def main():
         # IsSecret ever asks about it (T13a); the two good ones raise nothing.
         expected.append(("Handlers.lua", 21, "unit", "used before IsSecret in the UNIT_HEALTH_BAD handler"))
         expected.append(("Handlers.lua", 27, "unit", "used before IsSecret in the UNIT_AURA_BAD handler"))
+        # T57: an alias of the param (`local sid = spellID`) used before
+        # IsSecret; the good twin checks the alias and raises nothing.
+        expected.append(("Handlers.lua", 45, "sid", "used before IsSecret in the UNIT_SPELLCAST_ALIAS_BAD handler"))
+        # T57, rule 9: a raw frame registering an event outside Client/ and Core.lua.
+        expected.append(("Bad.lua", 12, "RegisterEvent", "outside MD:On (only Client/ and Core.lua register events)"))
         # rule 7: Gone.lua is missing, referenced from the fixture TOC.
         toc_rel = None
         for t in forever_tocs:

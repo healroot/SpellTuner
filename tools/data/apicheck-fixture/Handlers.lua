@@ -29,3 +29,20 @@ local function OnAuraBad(unit)
     end
 end
 MD:On("UNIT_AURA_BAD", OnAuraBad)
+
+-- T57: an alias of the param (`local sid = spellID`, the recorder's idiom):
+-- asked about under its alias before the use (must pass), and not (must be found).
+MD:On("UNIT_SPELLCAST_ALIAS_GOOD", function(unit, castGUID, spellID)
+    local sid = spellID
+    if MD.API.IsSecret(sid) then sid = -1 end
+    if sid == 774 then
+        return
+    end
+end)
+
+MD:On("UNIT_SPELLCAST_ALIAS_BAD", function(unit, castGUID, spellID)
+    local sid = spellID
+    if sid == 774 then
+        return
+    end
+end)

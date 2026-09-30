@@ -2050,17 +2050,16 @@ function MD:StopPractice(reopen)
 end
 
 -- combat ends practice: the window is a review tool, and the keyboard is yours
-do
-    local guard = CreateFrame("Frame")
-    guard:RegisterEvent("PLAYER_REGEN_DISABLED")
-    guard:SetScript("OnEvent", function()
-        refusedInCombat = false -- T51 (B22): a new combat says its refusal once
-        if live then
-            MD:StopPractice(false)
-            if frame then frame:Hide() end
-        end
-    end)
-end
+-- T57 (P13, review Q2): through the kernel's MD:On like every other event
+-- (tools/apicheck.py rule 9), not a raw frame of its own -- same event, same
+-- handler.
+MD:On("PLAYER_REGEN_DISABLED", function()
+    refusedInCombat = false -- T51 (B22): a new combat says its refusal once
+    if live then
+        MD:StopPractice(false)
+        if frame then frame:Hide() end
+    end
+end)
 
 MD.Replay = {
     Open = function(_, n) MD:OpenReplay(n) end,
