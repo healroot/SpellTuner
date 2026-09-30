@@ -32,7 +32,6 @@ end
 
 local MAX_EV = 4000
 local MAX_STREAMS = 8
-local MAX_PINNED = 2
 
 -- The book's own English family name -> the engine's family key (T15's own
 -- table, Modules/SpellTuner_Replay/Kit_Forever.lua) -- duplicated rather than
@@ -733,66 +732,54 @@ local function ReadMeter(s)
     s.foreignShare = others / (own + others) -- own + others > 0, checked above
 end
 
--- Newest first, matching TBC's Engine/FightRecorder.lua:622-627.
-MD.FightRecorder = MD.FightRecorder or {}
-if MD.FightRecorder.List == nil then
-    function MD.FightRecorder:List()
-        local list = {}
-        for _, r in ipairs(MD.cdb and MD.cdb.recordings or {}) do list[#list + 1] = r end
-        table.sort(list, function(a, b) return (a.id or 0) > (b.id or 0) end)
-        return list
-    end
-end
-if MD.FightRecorder.Get == nil then
-    function MD.FightRecorder:Get(n)
-        return MD.FightRecorder:List()[n or 1]
-    end
-end
-if MD.FightRecorder.Pin == nil then
-    -- At most MAX_PINNED pinned (TBC's own constant, Engine/FightRecorder.lua:25).
-    -- T49 (P5), B14: a refusal says why, in a line the Review tab prints.
-    function MD.FightRecorder:Pin(n, on)
-        local list = MD.FightRecorder:List()
-        local rec = list[n or 1]
-        if not rec then return false, "no recording " .. tostring(n or 1) end
-        if on then
-            local count = 0
-            for _, r in ipairs(list) do
-                if r.pinned and r ~= rec then count = count + 1 end
-            end
-            if count >= MAX_PINNED then
-                return false, string.format("at most %d fights can be pinned - unpin one first.", MAX_PINNED)
-            end
-            rec.pinned = true
-        else
-            rec.pinned = false
-        end
-        return true
-    end
-end
-if MD.GetRecording == nil then
-    -- TBC's own address scheme (Engine/FightRecorder.lua:640-655): "N" a
-    -- single fight, "pN" a practice fight, "a:b" a run's pull -- runs are not
-    -- recorded on Forever yet (out of scope), so that shape answers nil.
-    function MD:GetRecording(spec)
-        spec = tostring(spec or 1)
-        local p = spec:match("^[pP](%d+)$")
-        if p then return MD.Practice and MD.Practice.Get(tonumber(p)) or nil, "p" .. p end
-        if spec:match("^%d+:%d+$") then return nil, spec end
-        local n = tonumber(spec) or 1
-        return MD.FightRecorder:Get(n), tostring(n)
-    end
+-- The single fights, newest first, as TBC's Engine/FightRecorder.lua answers
+-- them. T62 (P18): this file is Forever's fight recorder, so it defines
+-- MD.FightRecorder's List / Get / Pin outright -- the `if ... == nil` patches
+-- are gone (Engine/FightRecorder.lua is on the TBC TOC only) -- and answers
+-- bare N through the one router (Engine/Recordings.lua), which also owns the
+-- address grammar and the pin cap ("pN" is Practice's; "a:b" answers nil:
+-- Forever records no runs).
+local FR = {}
+MD.FightRecorder = FR
+
+function FR:List()
+    local list = {}
+    for _, r in ipairs(MD.cdb and MD.cdb.recordings or {}) do list[#list + 1] = r end
+    table.sort(list, function(a, b) return (a.id or 0) > (b.id or 0) end)
+    return list
 end
 
+function FR:Get(n)
+    return FR:List()[n or 1]
+end
+
+-- T49 (P5), B14: a refusal says why, in a line the Review tab prints.
+function FR:Pin(n, on)
+    local rec = FR:Get(n)
+    if not rec then return false, "no recording " .. tostring(n or 1) end
+    return MD.Recordings.PinRecord("", rec, on and true or false)
+end
+
+MD.Recordings.Register("", {
+    Get = function(n) return FR:Get(n) end,
+    List = function() return FR:List() end,
+    pinCap = MD.Recordings.MAX_PINNED,
+    noun = "fights",
+})
+
 -- 8 kept; past that, the oldest unprotected one is dropped (Facts). T49 (P5),
--- B14: only the first MAX_PINNED pinned streams (in list order) are protected,
+-- B14: only the first MAX_PINNED pinned streams (in list order) are protected
+-- (the router's MD.Recordings.MAX_PINNED since T62, shared with TBC),
 -- as TBC's Engine/FightRecorder.lua does -- a list with more pins than that
 -- (an old file, or the Review tab's toggle before T49) still takes the new
 -- pull, and a debug line says a pinned one had to go.
 local function StoreOrDrop(s)
     local casts = CountKind(s, K.OWNCAST)
-    if s.dur < 20 or casts < 5 then
-        MD:Debug("sim", "forever stream discarded: %.0fs, %d own cast(s) (needs 20s / 5)", s.dur, casts)
+    -- T62 (P18): the gate is MD.Util.RECORD_GATE (Core.lua), one for both lines
+    local gate = MD.Util.RECORD_GATE
+    if s.dur < gate.sec or casts < gate.casts then
+        MD:Debug("sim", "forever stream discarded: %.0fs, %d own cast(s) (needs %ds / %d)", s.dur, casts,
+            gate.sec, gate.casts)
         return
     end
 
@@ -812,6 +799,7 @@ local function StoreOrDrop(s)
         return
     end
 
+    local MAX_PINNED = MD.Recordings.MAX_PINNED
     local protected, pinnedCount = {}, 0
     for i, r in ipairs(list) do
         if r.pinned and pinnedCount < MAX_PINNED then

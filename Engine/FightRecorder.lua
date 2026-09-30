@@ -22,7 +22,8 @@ local AURA_EVENTS = {
     SPELL_AURA_REMOVED = "remove",
 }
 local MAX_STREAMS = 8
-local MAX_PINNED = 2
+-- the pin cap is the router's (Engine/Recordings.lua, T62), shared with
+-- Forever's recorder; read at every Store, never copied
 local RECENT_PROTECTED = 3
 local HP_SNAPSHOT_EVERY = 5   -- seconds
 local MANA_SAMPLE_TICKS = 4   -- MD:OnTick is 0.5s, so every 2s
@@ -598,8 +599,9 @@ local function Store(stream)
 
     local protected = {}
     local pinnedCount = 0
+    local maxPinned = MD.Recordings.MAX_PINNED
     for i, r in ipairs(list) do
-        if r.pinned and pinnedCount < MAX_PINNED then
+        if r.pinned and pinnedCount < maxPinned then
             protected[i] = true
             pinnedCount = pinnedCount + 1
         end
@@ -649,7 +651,9 @@ function FR:Finish(duration, labels)
     s.foreignShare = (own + foreign) > 0 and (foreign / (own + foreign)) or 0
     s.trackedSet = nil  -- a set of indices does not serialise usefully
 
-    local short = duration < 20 or s.ownCasts < 5
+    -- T62 (P18): the gate is MD.Util.RECORD_GATE (Core.lua), one for both lines
+    local gate = MD.Util.RECORD_GATE
+    local short = duration < gate.sec or s.ownCasts < gate.casts
 
     -- v0.9.1: while a run is recording it takes every pull, the short ones
     -- included -- a dungeon is mostly short pulls, and the gate is about what
@@ -664,8 +668,8 @@ function FR:Finish(duration, labels)
     end
 
     if short then
-        MD:Debug("sim", "stream discarded: %.0fs, %d own cast(s) (needs 20s / 5)",
-            duration, s.ownCasts)
+        MD:Debug("sim", "stream discarded: %.0fs, %d own cast(s) (needs %ds / %d)",
+            duration, s.ownCasts, gate.sec, gate.casts)
         return nil
     end
 
@@ -690,25 +694,20 @@ function FR:Get(n)
     return list[n or 1]
 end
 
--- One address for both kinds of recording (v0.9.2). "3" is the third single
--- fight; "2:7" is the seventh pull of the second run. Everything that takes a
--- recording by number -- /md coach, /md simreplay, /md replay, the Review tab's
--- buttons -- goes through this, so a pull inside a run is reachable everywhere a
--- fight is, under a label the author can retype.
--- Returns: recording, label, run, pullIndex.
-function MD:GetRecording(spec)
-    spec = tostring(spec or 1)
-    -- v0.15.0: "p2" is the second practice fight (Engine/Practice.lua)
-    local p = spec:match("^[pP](%d+)$")
-    if p then
-        return MD.Practice and MD.Practice.Get(tonumber(p)) or nil, "p" .. p
-    end
-    local a, b = spec:match("^(%d+):(%d+)$")
-    if a then
-        if not MD.RunRecorder then return nil, spec end
-        local rec, run = MD.RunRecorder:GetPull(tonumber(a), tonumber(b))
-        return rec, spec, run, tonumber(b)
-    end
-    local n = tonumber(spec) or 1
-    return FR:Get(n), tostring(n)
+-- T62 (P18): pin or unpin fight n (the Review tab's Pin), capped by the
+-- router -- a third pin is refused with a line, as on Forever. There was no
+-- Pin here before: the Review tab kept its own copy of the cap.
+function FR:Pin(n, on)
+    local rec = FR:Get(n)
+    if not rec then return false, "no recording " .. tostring(n or 1) end
+    return MD.Recordings.PinRecord("", rec, on and true or false)
 end
+
+-- The address ("3" the third single fight, v0.9.2) is the router's
+-- (Engine/Recordings.lua, T62): this file answers bare N.
+MD.Recordings.Register("", {
+    Get = function(n) return FR:Get(n) end,
+    List = function() return FR:List() end,
+    pinCap = MD.Recordings.MAX_PINNED,
+    noun = "fights",
+})

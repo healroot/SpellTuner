@@ -176,6 +176,14 @@ function RR:GetPull(runIdx, k)
     return run.pulls[k], run
 end
 
+-- T62 (P18): "a:b" is answered through the one router (Engine/Recordings.lua).
+-- No pin cap: a run is pinned whole (the Review tab's Pin, MAX_PINNED_RUNS in
+-- the retention above), never a pull on its own.
+MD.Recordings.Register(":", {
+    Get = function(runIdx, k) return RR:GetPull(runIdx, k) end,
+    List = function() return RR:List() end,
+})
+
 --------------------------------------------------------------------------------
 -- Lifecycle
 --------------------------------------------------------------------------------

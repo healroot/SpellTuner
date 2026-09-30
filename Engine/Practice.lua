@@ -1625,18 +1625,11 @@ end
 
 -- Pin or unpin a practice fight (the Review tab's Pin). Returns true, or false
 -- and why: at most PR.MAX_PINNED stay pinned.
+-- T62 (P18): the cap is checked by the router (Engine/Recordings.lua) with
+-- practice's own number and its own line.
 function PR.Pin(rec, on)
     if not rec then return false, "no practice fight selected" end
-    if on == nil then on = not rec.pinned end
-    if on and not rec.pinned then
-        local n = 0
-        for _, r in ipairs(MD.cdb and MD.cdb.practice or {}) do if r.pinned then n = n + 1 end end
-        if n >= PR.MAX_PINNED then
-            return false, string.format("%d practice fights are pinned already - unpin one first", n)
-        end
-    end
-    rec.pinned = on and true or false
-    return true
+    return MD.Recordings.PinRecord("p", rec, on)
 end
 
 function PR.List()
@@ -1647,3 +1640,13 @@ function PR.List()
 end
 
 function PR.Get(n) return PR.List()[n or 1] end
+
+-- "p2" is the second practice fight (v0.15.0), answered through the router.
+MD.Recordings.Register("p", {
+    Get = PR.Get,
+    List = PR.List,
+    pinCap = PR.MAX_PINNED,
+    Refusal = function(n)
+        return string.format("%d practice fights are pinned already - unpin one first", n)
+    end,
+})
