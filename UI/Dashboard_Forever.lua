@@ -713,9 +713,6 @@ local function CreateDashboard()
             if group == "spells" and view == "book" and pane then RefreshSpellbookPane(pane) end
         end, { resizable = true, notUserPlaced = true })
     frame = nav.frame
-    -- T32: strata, place, scale, the size per group (6.2, 6.7)
-    if MD.Win then MD.Win:Register(frame, { key = "main", role = "host", sizes = MD.Win.SIZES }) end
-    tinsert(UISpecialFrames, "SpellTunerDashboard") -- ESC closes
 
     frame:SetScript("OnShow", function()
         local path = MD.db.uiPath
@@ -725,6 +722,16 @@ local function CreateDashboard()
             nav:Select("spells", "book")
         end
     end)
+
+    -- T32: strata, place, scale, the size per group (6.2, 6.7). T33 (6.5): the
+    -- manager's ESC stack instead of a UISpecialFrames entry of its own (one
+    -- ESC would otherwise close this and the top of the stack together);
+    -- registered after the OnShow script above, since Register hooks OnShow.
+    if MD.Win then
+        MD.Win:Register(frame, { key = "main", role = "host", sizes = MD.Win.SIZES })
+    else
+        tinsert(UISpecialFrames, "SpellTunerDashboard") -- ESC closes
+    end
 end
 
 function MD:ShowDashboard()

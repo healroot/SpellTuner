@@ -1226,6 +1226,45 @@ do
     end
 end
 
+--------------------------------------------------------------------------------
+-- Step 14 (T33, docs/SPEC-forever-ui.md 6.5): the esc= line. The whole Forever
+-- TOC (the window manager with it); "untested" and a to-do line until one ESC
+-- press, then what that press did -- here two windows open (the main window
+-- and the console) and one closed, the proxy shown again on the next frame.
+-- ESC is the client's CloseSpecialWindows; the next frame runs the
+-- C_Timer.After callbacks queued since the press.
+--------------------------------------------------------------------------------
+do
+    HARNESS_FLAVOUR = "forever"
+    _G.SpellTunerDB, _G.ManaDemonDB = nil, nil
+    local a1 = arg[0]; arg[0] = here .. "/harness.lua"
+    local okLoad, MDx = pcall(dofile, here .. "/harness.lua"); arg[0] = a1
+    local Sx = _G.STUB
+    local before, after
+    local okAll = okLoad and pcall(function()
+        before = MDx.Probe.Run()
+        if _G.SpellTunerProbeFrame then _G.SpellTunerProbeFrame:Hide() end
+        MDx:SelectView("spells")
+        MDx:ToggleDebugConsole()
+        local cursor = #(Sx.timers or {})
+        local names = {}
+        for _, n in ipairs(UISpecialFrames) do names[#names + 1] = n end
+        for _, n in ipairs(names) do
+            local f = _G[n]
+            if f and f:IsShown() then f:Hide() end
+        end
+        local t = Sx.timers or {}
+        while cursor < #t do cursor = cursor + 1; t[cursor]() end
+        after = MDx.Probe.Run()
+    end)
+    check("T33: the esc= line: untested with a to-do line, then esc=stack after one press",
+        okAll and type(before) == "string" and type(after) == "string"
+        and Has(before, "\n== windows\nesc=untested\n") and Has(before, "\nesc to do: ")
+        and Has(after, "\nesc=stack (last press: 2 open, 1 closed, the proxy shown again)\n")
+        and not Has(after, "esc to do") and AsciiSafe(after),
+        type(after) == "string" and (Between(after, "== windows\n", "\n") or "no == windows") or "no report")
+end
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("  FAIL " .. f) end
 if #fails > 0 then os.exit(1) end

@@ -1649,6 +1649,27 @@ local function TocLines()
 end
 
 --------------------------------------------------------------------------------
+-- == windows (T33, docs/SPEC-forever-ui.md 6.5): what one ESC press did under
+-- the window manager's stack -- esc=stack (one press, one window), esc=all
+-- (one press closed several), esc=stuck (the proxy did not come back), esc=off
+-- (the fallback is on), esc=untested. The line is the manager's own string
+-- (UI/Windows_Forever.lua's MD.Win:EscLine), read under pcall and escaped; no
+-- client value is involved. Returns the lines and whether a press is still to
+-- be made.
+--------------------------------------------------------------------------------
+local function WindowsLines()
+    local W = MD and MD.Win
+    if type(W) ~= "table" or type(W.EscLine) ~= "function" then
+        return { "esc=no window manager" }, false
+    end
+    local ok, line = pcall(W.EscLine, W)
+    if not ok or type(line) ~= "string" then
+        return { "esc=<error: " .. Esc(tostring(line)) .. ">" }, false
+    end
+    return { Esc(line) }, line == "esc=untested"
+end
+
+--------------------------------------------------------------------------------
 -- The copy box: a read-only scroll edit box holding plain text. Built once,
 -- on the first Run(); the whole thing is one pcall, so a widget surprise on
 -- the beta falls back to printing the report to chat instead of raising.
@@ -1698,12 +1719,18 @@ local function ShowReportBox(report)
                 self:SetVerticalScroll(new)
             end)
 
-            tinsert(UISpecialFrames, "SpellTunerProbeFrame")
+            -- T33 (docs/SPEC-forever-ui.md 6.5): under the window manager the
+            -- box is an ESC stack entry (pushed on every show, below), not a
+            -- UISpecialFrames line of its own -- one ESC closes one thing
+            if not (MD and MD.Win and MD.Win.Push) then
+                tinsert(UISpecialFrames, "SpellTunerProbeFrame")
+            end
             probeFrame, probeEditBox = f, eb
         end
 
         probeEditBox:SetText(report)
         probeFrame:Show()
+        if MD and MD.Win and MD.Win.Push then MD.Win:Push(probeFrame) end
         probeEditBox:SetFocus()
         probeEditBox:HighlightText()
     end)
@@ -1832,6 +1859,10 @@ local function Run()
     lines[#lines + 1] = "== toc"
     for _, l in ipairs(TocLines()) do lines[#lines + 1] = l end
 
+    lines[#lines + 1] = "== windows"
+    local windowLines, escToDo = WindowsLines()
+    for _, l in ipairs(windowLines) do lines[#lines + 1] = l end
+
     lines[#lines + 1] = "== to do"
 
     -- T0c item 5: Q1 now also answers from a bonus-damage or a level change --
@@ -1920,6 +1951,10 @@ local function Run()
 
     if macroHover.n == 0 then
         lines[#lines + 1] = "macro to do: put a macro that casts a spell on an action bar, hover it, then type /st probe"
+    end
+
+    if escToDo then
+        lines[#lines + 1] = "esc to do: open the SpellTuner window (/st) and the debug console (/st debug), press ESC once, note which closed, then type /st probe"
     end
 
     local report = table.concat(lines, "\n")

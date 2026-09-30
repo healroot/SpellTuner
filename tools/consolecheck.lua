@@ -99,9 +99,34 @@ end
 local envFlavour = os.getenv("ST_FLAVOUR")
 local flavour = (envFlavour ~= nil and envFlavour ~= "") and envFlavour or "forever"
 
+local function InSpecial(name)
+    for _, n in ipairs(UISpecialFrames) do if n == name then return true end end
+    return false
+end
+
 if flavour == "forever" then
 
 local MD, S = NewSession()
+
+-- T33: this session's frames record their strata, level, toplevel and points
+-- (the stub's are no-ops), and UIParent is a 1920 x 1080 screen, so cases 16-18
+-- can read where the console and the copy box were put. Installed on this
+-- session's frame metatable only; case 7's fresh session does not have it.
+do
+    local FM = getmetatable(UIParent)
+    FM.SetFrameStrata = function(self, s) self.strata = s end
+    FM.GetFrameStrata = function(self) return self.strata or "MEDIUM" end
+    FM.SetFrameLevel = function(self, l) self.level = l end
+    FM.GetFrameLevel = function(self) return self.level or 1 end
+    FM.SetToplevel = function(self, v) self.toplevel = v and true or false end
+    FM.IsToplevel = function(self) return self.toplevel == true end
+    FM.ClearAllPoints = function(self) self.points = {} end
+    FM.SetPoint = function(self, p, rel, rp, x, y)
+        self.points = self.points or {}
+        self.points[#self.points + 1] = { p, rel, rp, x, y }
+    end
+    UIParent:SetSize(1920, 1080)
+end
 
 --------------------------------------------------------------------------------
 -- 1: our error is recorded once, counted, and shown to the client once
@@ -252,6 +277,53 @@ try("the Forever console's Enable box logs its line and raises nothing", functio
     local good = box ~= nil and clicked and line ~= nil and not line:find("talents", 1, true)
     check("the Forever console's Enable box logs its line and raises nothing", good,
         (not good) and tostring(err or line) or nil)
+end)
+
+--------------------------------------------------------------------------------
+-- 16-18 (T33, docs/SPEC-forever-ui.md 6.2, 6.5): the console is a tool in
+-- FULLSCREEN with one ESC stack entry and a remembered place; the copy box is
+-- FULLSCREEN_DIALOG / 20, on the stack, and closes an open list
+--------------------------------------------------------------------------------
+try("the Forever console is FULLSCREEN / 10, toplevel, one stack entry, not a special frame", function()
+    local root = _G.SpellTunerDebugConsole
+    local stack = MD.Win and MD.Win.stack or {}
+    local n = 0
+    for _, e in ipairs(stack) do if e.frame == root then n = n + 1 end end
+    check("the Forever console is FULLSCREEN / 10, toplevel, one stack entry, not a special frame",
+        root and root:IsShown() and root:GetFrameStrata() == "FULLSCREEN" and root:GetFrameLevel() == 10
+        and root:IsToplevel() and n == 1 and not InSpecial("SpellTunerDebugConsole"),
+        root and (root:GetFrameStrata() .. "/" .. tostring(root:GetFrameLevel()) .. " entries " .. n) or "no console")
+end)
+
+try("the Forever console opens where it was left, not re-centred", function()
+    local root = _G.SpellTunerDebugConsole
+    root:Hide()
+    MD.db.ui.win.console = { x = 300, y = 700 }
+    MD:ToggleDebugConsole()
+    local pts = root.points or {}
+    local pt = pts[#pts] or {}
+    check("the Forever console opens where it was left, not re-centred",
+        root:IsShown() and #pts == 1 and pt[1] == "TOPLEFT" and pt[2] == UIParent and pt[3] == "BOTTOMLEFT"
+        and pt[4] == 300 and pt[5] == 700,
+        tostring(pt[1]) .. " " .. tostring(pt[3]) .. " " .. tostring(pt[4]) .. "," .. tostring(pt[5]))
+end)
+
+try("the copy box is FULLSCREEN_DIALOG / 20, on top of the stack, and closes an open list", function()
+    local root = _G.SpellTunerDebugConsole
+    local dd = MD.UI.CreateDropdown(root, 120, 18)
+    dd:SetItems({ { id = 1, text = "one" } })
+    dd:GetScript("OnClick")(dd)
+    local listOpen = dd.list:IsShown()
+    MD:ShowCopyPopup("T33", "text")
+    local copy = _G.SpellTunerDebugCopyFrame
+    local stack = MD.Win and MD.Win.stack or {}
+    local top = stack[#stack] and stack[#stack].frame
+    check("the copy box is FULLSCREEN_DIALOG / 20, on top of the stack, and closes an open list",
+        listOpen and not dd.list:IsShown() and copy and copy:IsShown()
+        and copy:GetFrameStrata() == "FULLSCREEN_DIALOG" and copy:GetFrameLevel() == 20 and top == copy,
+        tostring(listOpen) .. " " .. tostring(dd.list:IsShown()) .. " "
+        .. (copy and (copy:GetFrameStrata() .. "/" .. tostring(copy:GetFrameLevel())) or "no copy box"))
+    if copy then copy:Hide() end
 end)
 
 --------------------------------------------------------------------------------
@@ -417,8 +489,11 @@ try("TBC installs no error handler and keeps its Regen test button", function()
     MD:ToggleDebugConsole()
     local root = _G.SpellTunerDebugConsole
     local strings = StringsUnder(S, root)
+    -- T33: and its console keeps its own UISpecialFrames entry (no window
+    -- manager on TBC, so no ESC stack)
     check("TBC installs no error handler and keeps its Regen test button",
-        MD.errors == nil and AnyEquals(strings, "Regen test"))
+        MD.errors == nil and AnyEquals(strings, "Regen test")
+        and MD.Win == nil and InSpecial("SpellTunerDebugConsole"))
 end)
 
 end

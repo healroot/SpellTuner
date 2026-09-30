@@ -165,8 +165,26 @@ function MD:ShowCopyPopup(title, text)
     copyTextArea.eb:SetCursorPosition(0)
 
     copyFrame:ClearAllPoints()
-    copyFrame:SetPoint("CENTER")
+    if MD.Win then
+        -- T33 (6.2, 6.5), Forever only: FULLSCREEN_DIALOG / 20, above the
+        -- lists; any open list closed; the window scale; centred on the window
+        -- that asked (the newest one on the ESC stack), and on the stack itself
+        -- once shown (Push, so it closes first).
+        copyFrame:SetFrameStrata("FULLSCREEN_DIALOG")
+        copyFrame:SetFrameLevel(20)
+        copyFrame:SetScale(MD.Win:Scale())
+        MD.Win:CloseLists()
+        local owner = MD.Win:TopWindow(copyFrame)
+        if owner then
+            copyFrame:SetPoint("CENTER", owner, "CENTER")
+        else
+            copyFrame:SetPoint("CENTER")
+        end
+    else
+        copyFrame:SetPoint("CENTER")
+    end
     copyFrame:Show()
+    if MD.Win then MD.Win:Push(copyFrame) end
     copyTextArea.eb:SetFocus()
     copyTextArea.eb:HighlightText()
 end
@@ -192,7 +210,9 @@ end
 local function CreateDebugConsoleFrame()
     consoleFrame = UI.CreateMovableFrame("SpellTuner Debug Console", "SpellTunerDebugConsole", 700, 560, "DIALOG", 1, true)
     consoleFrame:SetToplevel(true)
-    tinsert(UISpecialFrames, "SpellTunerDebugConsole")
+    if not MD.Win then
+        tinsert(UISpecialFrames, "SpellTunerDebugConsole")
+    end
 
     enableCB = UI.CreateCheckButton(consoleFrame, "Enable Debug Logging", function(checked)
         MD.db.debug.enabled = checked
@@ -330,6 +350,15 @@ local function CreateDebugConsoleFrame()
             if dirty then RefreshLog() end
         end
     end)
+
+    -- T33 (docs/SPEC-forever-ui.md 6.2, 6.5), Forever only (UI/Windows_Forever.lua
+    -- is not on the TBC TOC): a tool in FULLSCREEN / 10, above the replay's
+    -- DIALOG; its place remembered in db.ui.win.console; one ESC stack entry
+    -- instead of its own UISpecialFrames line. Registered after its OnShow
+    -- script, which Register hooks.
+    if MD.Win then
+        MD.Win:Register(consoleFrame, { key = "console", role = "tool" })
+    end
 end
 
 function MD:ToggleDebugConsole()
@@ -338,6 +367,9 @@ function MD:ToggleDebugConsole()
     end
     if consoleFrame:IsShown() then
         consoleFrame:Hide()
+    elseif MD.Win then
+        MD.Win:Place("console") -- T33: where it was left (clamped), not re-centred
+        consoleFrame:Show()
     else
         consoleFrame:ClearAllPoints()
         consoleFrame:SetPoint("CENTER")

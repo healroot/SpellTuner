@@ -17,7 +17,7 @@
 -- UI.px assumes). It is this suite's own, installed on the stub's frame
 -- metatable after the addon loads (the main window is built on first use, so
 -- every window this suite opens has it); no other suite sees it. T33 / T34
--- extend this file.
+-- extend this file (T33: the ESC stack and combat, section 11).
 HARNESS_FLAVOUR = "forever"
 
 local here = arg[0]:match("^(.*)/[^/]+$")
@@ -340,6 +340,200 @@ do
     check("a saved place and a group's saved size are used when the window is placed",
         near(frame:GetLeft(), 200) and near(frame:GetTop(), 800) and frame:GetWidth() == 1100
           and frame:GetHeight() == 700, fmt(frame:GetLeft()) .. "," .. fmt(frame:GetTop()))
+end
+
+--------------------------------------------------------------------------------
+-- 11. T33 (6.5, 6.6): the ESC stack and combat. ESC is the client's
+-- CloseSpecialWindows: every shown frame named in UISpecialFrames hidden in one
+-- press; "the next frame" runs the C_Timer.After callbacks queued since the
+-- last one (only those, so nothing an earlier section queued runs here).
+--------------------------------------------------------------------------------
+FM.GetName = function(self) return self.frameName end
+local timerCursor = #(S.timers or {})
+local function NextFrame()
+    local t = S.timers or {}
+    while timerCursor < #t do
+        timerCursor = timerCursor + 1
+        t[timerCursor]()
+    end
+end
+local function Esc()
+    local list = {}
+    for _, name in ipairs(UISpecialFrames) do list[#list + 1] = name end
+    for _, name in ipairs(list) do
+        local f = _G[name]
+        if f and f:IsShown() then f:Hide() end
+    end
+end
+local function InSpecial(name)
+    for _, n in ipairs(UISpecialFrames) do if n == name then return true end end
+    return false
+end
+local function Stack() return type(Win.stack) == "table" and Win.stack or {} end
+local function Top() local s = Stack(); return s[#s] and s[#s].frame end
+local function EntriesFor(f)
+    local n = 0
+    for _, e in ipairs(Stack()) do if e.frame == f then n = n + 1 end end
+    return n
+end
+
+NextFrame()
+MD:SelectView("spells", "book")
+MD:ToggleDebugConsole()
+local console = _G.SpellTunerDebugConsole
+local proxy = _G.SpellTunerEscProxy
+
+-- the console: a tool in FULLSCREEN, one stack entry, out of UISpecialFrames
+check("T33: the console is one entry: FULLSCREEN / 10 on top of the stack, not a special frame",
+    console and console:IsShown() and console:GetFrameStrata() == "FULLSCREEN" and console:GetFrameLevel() == 10
+      and console:IsToplevel() and EntriesFor(console) == 1 and Top() == console
+      and not InSpecial("SpellTunerDebugConsole") and not InSpecial("SpellTunerDashboard")
+      and proxy ~= nil and InSpecial("SpellTunerEscProxy") and proxy:IsShown(),
+    console and (console:GetFrameStrata() .. "/" .. tostring(console:GetFrameLevel()) .. " entries "
+      .. EntriesFor(console) .. " special " .. tostring(InSpecial("SpellTunerDebugConsole"))) or "no console")
+
+-- one ESC, one entry: a dropdown list (UI.OnPopup), then the console, then the main window
+do
+    local dd = UI.CreateDropdown(frame, 120, 18)
+    dd:SetItems({ { id = 1, text = "one" }, { id = 2, text = "two" } })
+    dd:GetScript("OnClick")(dd)
+    local listTop = Top() == dd.list and dd.list:IsShown()
+    Esc()
+    local a = not dd.list:IsShown() and console:IsShown() and frame:IsShown() and #Stack() == 2
+    NextFrame()
+    Esc()
+    local b = not console:IsShown() and frame:IsShown() and #Stack() == 1 and Top() == frame
+    check("T33: one ESC closes one entry: the list, then the console, the main window last",
+        listTop and a and b, tostring(listTop) .. " " .. tostring(a) .. " " .. tostring(b))
+end
+
+-- the proxy re-arms on the next frame, and the last ESC leaves it down
+do
+    local downAfterPress = proxy ~= nil and not proxy:IsShown()
+    NextFrame()
+    local rearmed = proxy ~= nil and proxy:IsShown()
+    Esc()
+    NextFrame()
+    check("T33: the proxy re-arms on the next frame; the last ESC closes the main window and leaves it down",
+        downAfterPress and rearmed and not frame:IsShown() and #Stack() == 0 and not proxy:IsShown(),
+        tostring(downAfterPress) .. " " .. tostring(rearmed) .. " " .. #Stack())
+end
+
+-- a window closed by its x leaves no entry
+do
+    MD:SelectView("spells", "book")
+    MD:ToggleDebugConsole()
+    local two = #Stack() == 2
+    console.header.closeBtn:GetScript("OnClick")(console.header.closeBtn)
+    local one = #Stack() == 1 and Top() == frame and proxy ~= nil and proxy:IsShown()
+    frame.header.closeBtn:GetScript("OnClick")(frame.header.closeBtn)
+    check("T33: a window closed by its x leaves no entry, and the proxy goes down with the last",
+        two and one and #Stack() == 0 and proxy ~= nil and not proxy:IsShown(),
+        tostring(two) .. " " .. tostring(one))
+end
+
+-- the stack emptied by code: the proxy hides quietly, nothing is popped or recorded
+do
+    local calls = 0
+    local A = CreateFrame("Frame", "SpellTunerTestA", UIParent)
+    local B = CreateFrame("Frame", "SpellTunerTestB", UIParent)
+    A:Show(); B:Show()
+    if Win.Push then
+        Win:Push(A, function() calls = calls + 1 end)
+        Win:Push(B, function() calls = calls + 1 end)
+    end
+    local rec = MD.db.ui.escTest
+    local queued = #(S.timers or {})
+    -- UIParent hidden (Alt+Z): the client runs OnHide on frames that stay
+    -- shown; neither the proxy's nor a window's may pop or drop anything
+    if proxy then proxy:GetScript("OnHide")(proxy) end
+    A:GetScript("OnHide")(A)
+    local altZ = #Stack() == 2
+    B:Hide()
+    local still = proxy ~= nil and proxy:IsShown() and #Stack() == 1
+    A:Hide()
+    check("T33: a code hide of the proxy pops nothing: no onEsc, no press recorded, quiet cleared",
+        altZ and still and calls == 0 and not proxy:IsShown() and proxy.quiet == nil and #Stack() == 0
+          and MD.db.ui.escTest == rec and #(S.timers or {}) == queued,
+        tostring(altZ) .. " " .. tostring(still) .. " calls " .. calls)
+end
+
+-- practice's entry: its first ESC pauses and stays, the second ends it
+do
+    local P = UI.CreateMovableFrame("Practice", "SpellTunerTestPractice", 492, 400, nil, nil, true)
+    local paused, ended = false, false
+    P:Show()
+    if Win.Push then
+        Win:Push(P, function(f)
+            if not paused then paused = true; return true end
+            ended = true
+            f:Hide()
+        end)
+    end
+    Esc()
+    local first = P:IsShown() and paused and not ended and Top() == P and #Stack() == 1
+    NextFrame()
+    local armed = proxy ~= nil and proxy:IsShown()
+    Esc()
+    NextFrame()
+    check("T33: practice's entry stays on its first ESC (pause) and goes on the second (end)",
+        first and armed and ended and not P:IsShown() and #Stack() == 0 and not proxy:IsShown(),
+        tostring(first) .. " " .. tostring(armed) .. " " .. tostring(ended))
+    P:Hide()
+end
+
+-- combat: hide, then back on the same view; "keep" leaves it
+do
+    MD.db.ui.combat = "hide"
+    MD:SelectView("reports", "review")
+    S.Fire("PLAYER_REGEN_DISABLED")
+    local hidden = not frame:IsShown() and #Stack() == 0 and proxy ~= nil and not proxy:IsShown()
+    MD:SelectView("spells", "book")   -- a command in combat opens it (nothing auto-opens) ...
+    frame:Hide()                      -- ... and the player closes it again
+    S.Fire("PLAYER_REGEN_ENABLED")
+    local g, v = MD:SelectedView()
+    local back = frame:IsShown() and g == "reports" and v == "review" and Top() == frame
+    MD.db.ui.combat = "keep"
+    S.Fire("PLAYER_REGEN_DISABLED")
+    local kept = frame:IsShown()
+    S.Fire("PLAYER_REGEN_ENABLED")
+    MD.db.ui.combat = "hide"
+    check("T33: combat hides the main window and restores it on the same view; keep leaves it",
+        hidden and back and kept, tostring(hidden) .. " " .. tostring(back) .. " " .. tostring(g) .. "/"
+          .. tostring(v) .. " " .. tostring(kept))
+end
+
+-- during a takeover only the replay comes back
+do
+    local R = UI.CreateMovableFrame("Replay", "SpellTunerTestReplay", 492, 400, nil, nil, true)
+    Win:Register(R, { key = "testreplay", role = "takeover" })
+    frame:Hide()
+    R:Show()
+    local onStack = Top() == R and R:GetFrameStrata() == "DIALOG"
+    S.Fire("PLAYER_REGEN_DISABLED")
+    local gone = not R:IsShown() and not frame:IsShown()
+    S.Fire("PLAYER_REGEN_ENABLED")
+    check("T33: during a takeover combat hides the replay, and only the replay comes back",
+        onStack and gone and R:IsShown() and not frame:IsShown() and Top() == R,
+        tostring(onStack) .. " " .. tostring(gone) .. " " .. tostring(R:IsShown()) .. " " .. tostring(frame:IsShown()))
+    R:Hide()
+    Win.windows.testreplay = nil
+end
+
+-- db.ui.escStack = false: today's per-window entries, and back
+do
+    if Win.SetEscStack then Win:SetEscStack(false) end
+    MD:SelectView("spells", "book")
+    local fallback = MD.db.ui.escStack == false and InSpecial("SpellTunerDashboard")
+      and proxy ~= nil and not proxy:IsShown() and #Stack() == 0
+    Esc()
+    local closed = not frame:IsShown()
+    if Win.SetEscStack then Win:SetEscStack(true) end
+    MD:SelectView("spells", "book")
+    check("T33: db.ui.escStack = false falls back to one UISpecialFrames entry per window, and back",
+        fallback and closed and MD.db.ui.escStack == true and not InSpecial("SpellTunerDashboard")
+          and Top() == frame and proxy ~= nil and proxy:IsShown(),
+        tostring(fallback) .. " " .. tostring(closed))
 end
 
 --------------------------------------------------------------------------------
