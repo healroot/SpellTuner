@@ -194,9 +194,11 @@ end
 
 --------------------------------------------------------------------------------
 -- Simulation (v0.7). Only the settings a player would actually reach for: the
--- gate thresholds and the search's internals stay in Core.lua's DEFAULTS with
--- their provenance comments, because a slider invites tuning and these numbers
--- are supposed to be argued with, not nudged.
+-- gate thresholds and the search's internals stay where Engine/SimModel.lua
+-- declares them (MD:RegisterDefaults, T64) with their provenance comments,
+-- because a slider invites tuning and these numbers are supposed to be argued
+-- with, not nudged. The two sliders read MD:Setting, so a fresh database shows
+-- the registered default.
 --------------------------------------------------------------------------------
 local function CreateSimPane(anchor)
     local pane = UI.CreateTitledPane(tab, "Fight recording", 205, 225)
@@ -286,7 +288,7 @@ local function ShowTab(which)
     rebindCB:SetChecked(MD.db.simAllowRebinds == true)
     runsCB:SetChecked(MD.db.recordRuns ~= false)
     nextPullCB:SetChecked(MD.db.replayNextPull ~= false)
-    fullHpSlider:SetValue(math.floor((MD.db.simFullHp or 0.85) * 100 + 0.5))
-    floorSlider:SetValue(math.floor((MD.db.simFloor or 0.30) * 100 + 0.5))
+    fullHpSlider:SetValue(math.floor(MD:Setting("simFullHp") * 100 + 0.5))
+    floorSlider:SetValue(math.floor(MD:Setting("simFloor") * 100 + 0.5))
 end
 MD:RegisterCallback("ShowOptionsTab", ShowTab)

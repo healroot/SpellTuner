@@ -910,7 +910,7 @@ function SP.Classify(rec, scenario, plan, kit)
     SM = SM or MD.SimModel
     local SD = MD.SpellData
     local K = SM.K
-    local fullHp = (MD.db and MD.db.simFullHp) or 0.85
+    local fullHp = MD:Setting("simFullHp")
 
     -- what the plan would do on its own, for `late` and `idle`
     local planCasts = {}
@@ -1026,7 +1026,7 @@ function SP.Classify(rec, scenario, plan, kit)
 
     -- idle: the plan cast where the player did nothing, and the target had been
     -- below the floor long enough that a human could have known
-    local reaction = (MD.db and MD.db.simReaction) or 0.5
+    local reaction = MD:Setting("simReaction")
     local realT = {}
     for i = 1, (rec.n or 0) do
         if rec.ev.kind[i] == K.OWNCAST then realT[#realT + 1] = rec.ev.t[i] end
@@ -1799,7 +1799,7 @@ function SP.CoachAsync(rec, opts, onDone)
 
     local scenario = SM.ScenarioFromRecording(rec, kit)
     local binds = SP.BindsFromRecording(rec, kit)
-    if MD.db and MD.db.simAllowRebinds then binds = SP.MaxRankBinds(rec.initial and rec.initial.known) end
+    if MD:Setting("simAllowRebinds") then binds = SP.MaxRankBinds(rec.initial and rec.initial.known) end
 
     MD:Print("coach: searching (this runs across frames; /md coach cancel stops it)...")
     return SP.Search(scenario, { kit = kit, binds = binds, rec = rec },
@@ -1871,7 +1871,7 @@ function SP.FromRecordings(zone, maxFights)
                 local bucket = byRole[role]
                 if not bucket then bucket = { seconds = 0, steady = 0, bigs = {} }; byRole[role] = bucket end
                 bucket.seconds = bucket.seconds + rec.dur
-                local threshold = maxHP > 0 and maxHP * ((MD.db and MD.db.simBigHit) or 0.15) or math.huge
+                local threshold = maxHP > 0 and maxHP * MD:Setting("simBigHit") or math.huge
                 for _, amount in pairs(secs) do
                     if amount >= threshold then
                         bucket.bigs[#bucket.bigs + 1] = amount

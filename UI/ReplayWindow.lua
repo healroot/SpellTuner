@@ -1400,7 +1400,7 @@ local function PlaceMarkers()
             end
         end
     end
-    local big = (MD.db.simBigHit or 0.15)
+    local big = MD:Setting("simBigHit")
     local sev = rp.scenario.ev
     if sev then
         for i = 1, #sev.t do
@@ -1747,7 +1747,7 @@ function MD:OpenReplay(n)
         (debugprofilestop and debugprofilestop() or 0) - t0)
 
     Layout()
-    speed = MD.db.replaySpeed or 1
+    speed = MD:Setting("replaySpeed")
     speedHighlight(speed)
 
     local v = rp.validation

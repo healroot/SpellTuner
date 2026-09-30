@@ -4,6 +4,12 @@
 -- loads after this file and gives "/st" and "/st modules" something to open.
 local ADDON_NAME, MD = ...
 
+-- Only this TOC's own settings. A LoadOnDemand module's settings are declared
+-- by the file that reads them (MD:RegisterDefaults, T64 / P20: the engine's,
+-- the planner's, the replay window's and the gates' in Engine/SimModel.lua and
+-- Gates_Forever.lua), which back-fills MD.db when the module loads -- so no
+-- key is hand-copied here. tools/defaultscheck.lua holds that every setting a
+-- file on these TOCs reads has a default once the modules are loaded.
 MD.DEFAULTS = {
     debug = {
         enabled = false,  -- MD:Debug() is a no-op unless this is on
@@ -14,6 +20,12 @@ MD.DEFAULTS = {
     },
     char = {},
     modules = {},  -- name -> true|false, read/written by Core.lua's registry
+    -- T64 (P20, review A3: "Core_Forever.lua DEFAULTS lacks keys shared files
+    -- read"): two settings shared files read on this TOC, off as nil read
+    -- before -- Core.lua's MD:Alert (muted) and UI/Dashboard_Rows.lua's
+    -- Effective mode (effectiveMode, which nothing on Forever turns on).
+    muted = false,
+    effectiveMode = false,
     spellTooltip = true,  -- UI/SpellTip_Forever.lua's block on spell tooltips
     -- T37 (docs/SPEC-forever-ui.md 5.6): the key that shows the block's detail
     -- lines -- "SHIFT", "ALT", "CTRL", or "ALWAYS" / "NEVER" (Settings -> General).

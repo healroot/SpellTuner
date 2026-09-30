@@ -26,9 +26,7 @@ local V3_HEAL = 15
 -- place and this file only adds two entries to it.
 local function Threshold(name)
     local g = SM.GATES[name]
-    local v = MD.db and MD.db[g.setting]
-    if v == nil then v = g.default end
-    return v, g.why
+    return MD:Setting(g.setting), g.why
 end
 
 local function MeanMax(sim, rec, n, scale)
@@ -49,14 +47,20 @@ local function MeanMax(sim, rec, n, scale)
 end
 
 -- Two new thresholds, only if some other file has not already added them
--- (Files table).
+-- (Files table). T64 (P20, review A3): their defaults are registered here,
+-- once, and the gate's `default` reads them back (Engine/SimModel.lua's
+-- SM.Gate); MD:Setting answers the player's value, else this default.
+MD:RegisterDefaults({
+    simGateMeter = 0.10,   -- gate 6: the replay's own healing against the meter's own total
+    simGateAttrib = 0.10,  -- gate 8: the paired own heals against the meter's own total
+})
 if not SM.GATES.meterOwn then
-    SM.GATES.meterOwn = { setting = "simGateMeter", default = 0.10,
-        why = "lead's first threshold (2026-09-28); the meter counts effective healing; re-measured in M5" }
+    SM.GATES.meterOwn = SM.Gate("simGateMeter",
+        "lead's first threshold (2026-09-28); the meter counts effective healing; re-measured in M5")
 end
 if not SM.GATES.attributed then
-    SM.GATES.attributed = { setting = "simGateAttrib", default = 0.10,
-        why = "planner ruling 2 (2026-09-28); lead's first threshold; re-measured on the author's first Forever pulls" }
+    SM.GATES.attributed = SM.Gate("simGateAttrib",
+        "planner ruling 2 (2026-09-28); lead's first threshold; re-measured on the author's first Forever pulls")
 end
 
 -- Whether a UNIT_COMBAT HEAL amount is gross or effective is still open

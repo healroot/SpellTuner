@@ -30,21 +30,9 @@ local DEFAULTS = {
     naturesGrace = true,  -- average Nature's Grace into the dashboard's cast times
     effectiveMode = false, -- dashboard shows overheal-adjusted heal/HPM/HPS
     calibAlerts = true,   -- chat line when a spell drifts >3% from the model over 30+ events
-    simFullHp = 0.85,     -- a target at or above this fraction of health counts as "full" for the
-                          -- cast labels and the replay engine (docs/SPEC-v0.7.md §2.2)
-    simFloor = 0.30,      -- below this fraction of health a tracked target is "in danger": the
-                          -- seconds spent there are what a plan is scored on first. Used for
-                          -- SYNTHETIC scenarios only since v0.10.3 -- a recording measures its
-                          -- own line (see simDangerHits)
-    simDangerHits = 1,    -- "in danger" is this many of the biggest hits the target actually took
-                          -- in that fight away from death. 1 = one more hit kills. A flat 30% says
-                          -- the same thing about a quest mob hitting for 7% and a boss hitting for
-                          -- a third of the tank, which is why it stopped being the line
-    simReaction = 0.5,    -- seconds a simulated healer takes to start casting after idling.
-                          -- Only after a wait: BF-1's inter-cast gaps (p10/p25 1.50/1.52s) show
-                          -- chained casts go out at the GCD with no delay at all
-    simMinActivity = 0,   -- minimum fraction of the fight a plan must spend casting (0 = off;
-                          -- waiting is a legitimate action for a 5-man healer)
+    -- The engine's, the planner's and the replay window's settings (sim*,
+    -- replay*, the gate thresholds) are declared by Engine/SimModel.lua with
+    -- MD:RegisterDefaults since T64 (P20, review A3): same values, one place.
     recordFights = true,  -- keep the full event stream of the last 8 interesting pulls so they
                           -- can be replayed (Engine/FightRecorder.lua). Summaries run regardless
     recordThreat = true,  -- record the two things a healer can see coming: aggro on each tracked
@@ -56,21 +44,6 @@ local DEFAULTS = {
     runAutoStart = false, -- RESERVED (docs/SPEC-v0.9.md 1.1): start a run on entering a 5-man.
                           -- Runs are manual; the recorder already takes a reason so this is one
                           -- `if` away when the author asks for it
-    -- Replay validation gates (docs/SPEC-v0.7.md §7). A recording earns the right to be
-    -- coached from; each threshold's provenance is printed with its result in Engine/SimModel.lua.
-    simGateManaMean = 0.02,   -- mean |delta| on the mana curve, as a fraction of the pool
-    simGateManaMax = 0.05,    -- worst single mana sample
-    simGateHpMean = 0.05,     -- mean |delta| on one target's health, fraction of its max
-    simGateHpMax = 0.15,      -- worst single health snapshot
-    simForeignShare = 0.25,   -- above this share of foreign healing, replay is fiction
-    simAllowRebinds = false,  -- let the search change which RANKS you bind, not just the thresholds
-    replaySpeed = 1,          -- the replay window's last playback speed (1, 2 or 4)
-    replayTicks = true,       -- draw the recorder's real HP snapshots over the left bars
-    replayNextPull = true,    -- inside a run, playing a pull to the end opens the next one
-    replayAutoCoach = true,   -- opening a replay with no plan coaches it (v0.13.9): validate,
-                              -- coach and play were three commands to answer one question
-    simBigHit = 0.15,         -- a single hit worth this much of a target's max health is a "big hit"
-                              -- when a preset is derived from recordings (v0.7.7)
     simUtilityPerFight = nil, -- derived: median utility mana per fight, applied as a lump in
                               -- synthetic scenarios. nil until 5 summaries exist
     healAmountGross = nil, -- latched from the combat log: does SPELL_HEAL's "amount" include the overheal?

@@ -32,6 +32,42 @@ local _, MD = ...
 local SM = {}
 MD.SimModel = SM
 
+--------------------------------------------------------------------------------
+-- The settings the engine, the planner and the replay window read, declared
+-- once, here (T64, P20, review A3). Every reader asks MD:Setting(key); the
+-- values and their provenance moved here from Core_TBC.lua's DEFAULTS
+-- unchanged, and on Forever this is what back-fills MD.db when the Replay
+-- module loads (Core_Forever.lua's DEFAULTS never carried them). The window's
+-- own four (replay*) are declared here too, because the window loads after
+-- this file on both lines and the offline TBC harness does not load UI/.
+-- The gates' thresholds are registered with the gates below.
+--------------------------------------------------------------------------------
+MD:RegisterDefaults({
+    simFullHp = 0.85,     -- a target at or above this fraction of health counts as "full" for the
+                          -- cast labels and the replay engine (docs/SPEC-v0.7.md §2.2)
+    simFloor = 0.30,      -- below this fraction of health a tracked target is "in danger": the
+                          -- seconds spent there are what a plan is scored on first. Used for
+                          -- SYNTHETIC scenarios only since v0.10.3 -- a recording measures its
+                          -- own line (see simDangerHits)
+    simDangerHits = 1,    -- "in danger" is this many of the biggest hits the target actually took
+                          -- in that fight away from death. 1 = one more hit kills. A flat 30% says
+                          -- the same thing about a quest mob hitting for 7% and a boss hitting for
+                          -- a third of the tank, which is why it stopped being the line
+    simReaction = 0.5,    -- seconds a simulated healer takes to start casting after idling.
+                          -- Only after a wait: BF-1's inter-cast gaps (p10/p25 1.50/1.52s) show
+                          -- chained casts go out at the GCD with no delay at all
+    simMinActivity = 0,   -- minimum fraction of the fight a plan must spend casting (0 = off;
+                          -- waiting is a legitimate action for a 5-man healer)
+    simAllowRebinds = false,  -- let the search change which RANKS you bind, not just the thresholds
+    simBigHit = 0.15,         -- a single hit worth this much of a target's max health is a "big hit"
+                              -- when a preset is derived from recordings (v0.7.7)
+    replaySpeed = 1,          -- the replay window's last playback speed (1, 2 or 4)
+    replayTicks = true,       -- draw the recorder's real HP snapshots over the left bars
+    replayNextPull = true,    -- inside a run, playing a pull to the end opens the next one
+    replayAutoCoach = true,   -- opening a replay with no plan coaches it (v0.13.9): validate,
+                              -- coach and play were three commands to answer one question
+})
+
 -- Event kinds in a recorded stream (Engine/FightRecorder.lua, the fixtures and
 -- this engine all use these numbers -- do not renumber).
 SM.K = {
@@ -246,8 +282,8 @@ function SM:Run(scenario, plan, opts)
     -- timer). Carried by the scenario with its own provenance; zero unless a
     -- recording measured one. See docs/DECISIONS.md v0.7 "unreported energize".
     local energize = init.energize or 0
-    local floor = scenario.floor or (MD.db and MD.db.simFloor) or 0.30
-    local fullAt = scenario.fullHp or (MD.db and MD.db.simFullHp) or 0.85
+    local floor = scenario.floor or MD:Setting("simFloor")
+    local fullAt = scenario.fullHp or MD:Setting("simFullHp")
     local grace = scenario.grace or 6
     local dur = scenario.dur or 0
     local refreshKeepsTicks = opts.refreshKeepsTicks or false
@@ -259,7 +295,7 @@ function SM:Run(scenario, plan, opts)
     local critMode = opts.critMode or "ev"
     local crit = (kit and kit.crit) or 0
 
-    S.dangerHits = (MD.db and MD.db.simDangerHits) or 1
+    S.dangerHits = MD:Setting("simDangerHits")
     S.floor = floor
 
     -- targets
@@ -324,7 +360,7 @@ function SM:Run(scenario, plan, opts)
     -- says to. The delay applies ONLY coming out of a wait: the BF-1 log's
     -- inter-cast gaps (p10/p25 = 1.50/1.52s) show chaining happens at the GCD
     -- with no delay at all.
-    local reaction = (MD.db and MD.db.simReaction) or 0.5
+    local reaction = MD:Setting("simReaction")
     local lastWasWait = false
     local fsrUntil = init.fsrUntil or -1
     local lowestTgt, lowestHp, lowestHpT = nil, 1, 0
@@ -1286,7 +1322,7 @@ function SM.ScenarioFromRecording(rec, kit, others)
         end
         for _, list in pairs(hits) do table.sort(list) end
     end
-    local dangerHits = (MD.db and MD.db.simDangerHits) or 1
+    local dangerHits = MD:Setting("simDangerHits")
 
     local hp = rec.hp or {}
     local targets = {}
@@ -1409,7 +1445,7 @@ function SM.ScenarioFromRecording(rec, kit, others)
         targets = targets, ev = ev, rates = rates, fixed = fixed,
         incoming = incoming, threat = threat,
         sampleT = mn.t, hpSampleT = hp.t, kit = kit,
-        floor = (MD.db and MD.db.simFloor) or 0.30,
+        floor = MD:Setting("simFloor"),
         script = script,
     }
 end
@@ -1420,25 +1456,49 @@ end
 -- threshold, printed with the result, because a number nobody can trace is a
 -- number nobody can argue with.
 --------------------------------------------------------------------------------
+--
+-- T64 (P20, review A3): each threshold's default is registered with
+-- MD:RegisterDefaults, beside the gate that reads it; a gate keeps its setting
+-- name and its provenance, and its `default` field is read from the registry
+-- (MD.DEFAULTS, which RegisterDefaults fills on both lines) rather than kept
+-- as a second copy. SM.Gate(setting, why) builds one, for Gates_Forever.lua.
+MD:RegisterDefaults({
+    simGateManaMean = 0.02,   -- mean |delta| on the mana curve, as a fraction of the pool
+    simGateManaMax = 0.05,    -- worst single mana sample
+    simGateHpMean = 0.05,     -- mean |delta| on one target's health, fraction of its max
+    simGateHpMax = 0.15,      -- worst single health snapshot
+    simForeignShare = 0.25,   -- above this share of foreign healing, replay is fiction
+})
+
+local GATE_MT = { __index = function(g, k)
+    if k == "default" then
+        local d = MD.DEFAULTS
+        return type(d) == "table" and d[rawget(g, "setting")] or nil
+    end
+    return nil
+end }
+
+function SM.Gate(setting, why)
+    return setmetatable({ setting = setting, why = why }, GATE_MT)
+end
+
 local GATES = {
-    manaMean    = { setting = "simGateManaMean", default = 0.02,
-                    why = "judge; server regen ticks quantise samples by ~2% of pool" },
-    manaMax     = { setting = "simGateManaMax", default = 0.05,
-                    why = "judge; same quantisation, worst single sample" },
-    hpMean      = { setting = "simGateHpMean", default = 0.05,
-                    why = "B; health is reconstructed through pets, absorbs and range" },
-    hpMax       = { setting = "simGateHpMax", default = 0.15,
-                    why = "B; same" },
-    foreign     = { setting = "simForeignShare", default = 0.25,
-                    why = "A's number; BF-1 measured 0%; a prior, not a measurement" },
+    manaMean    = SM.Gate("simGateManaMean",
+                    "judge; server regen ticks quantise samples by ~2% of pool"),
+    manaMax     = SM.Gate("simGateManaMax",
+                    "judge; same quantisation, worst single sample"),
+    hpMean      = SM.Gate("simGateHpMean",
+                    "B; health is reconstructed through pets, absorbs and range"),
+    hpMax       = SM.Gate("simGateHpMax",
+                    "B; same"),
+    foreign     = SM.Gate("simForeignShare",
+                    "A's number; BF-1 measured 0%; a prior, not a measurement"),
 }
 SM.GATES = GATES
 
 local function Threshold(name)
     local g = GATES[name]
-    local v = MD.db and MD.db[g.setting]
-    if v == nil then v = g.default end
-    return v, g.why
+    return MD:Setting(g.setting), g.why
 end
 
 local function MeanMax(sim, rec, n, scale)
@@ -1681,7 +1741,7 @@ function SM.CostOfCasts(rec, kit, kinds)
     -- how many of them were cast while the healer was already low, read off the
     -- recording's own mana samples
     local mn, pool = rec.mana or {}, rec.pool or 0
-    local low, lowLine = 0, (MD.db and MD.db.simFloor) or 0.30
+    local low, lowLine = 0, MD:Setting("simFloor")
     if pool > 0 and mn.t then
         for _, c in ipairs(taken) do
             local v
