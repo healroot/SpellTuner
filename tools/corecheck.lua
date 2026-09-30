@@ -14,6 +14,13 @@
 -- PLAYER_LEVEL_UP is never stored -- tbc because the forever stub cannot
 -- register that event; Tree form: the buff scan only when GetShapeshiftFormID
 -- is missing or raised) -- 13 forever, 13 tbc.
+-- T55 (P11, review A3, A4, A9, A16, A28): nine more under both flavours --
+-- a raising handler stops neither MD:On's nor MD:Fire's loop and reaches the
+-- error handler once, with no handler at all the loop re-raises after every
+-- handler ran, RegisterDefaults back-fills after login without overwriting,
+-- MD.inCombat seeded from the adapter and flipped by the regen events,
+-- Provide refusing a second provider, MD.Text's two escapes, PrintSafe, and
+-- MD.Util -- 22 forever, 22 tbc.
 HARNESS_FLAVOUR = { "forever", "tbc" }
 
 local here = arg[0]:match("^(.*)/[^/]+$")
@@ -39,7 +46,7 @@ local okLoad, MD = pcall(dofile, here .. "/harness.lua")
 arg[0] = a0
 if not okLoad then
     print("harness failed to load: " .. tostring(MD))
-    print("0 ok, 13 failed")
+    print("0 ok, 22 failed")
     os.exit(1)
 end
 local S = _G.STUB
@@ -188,6 +195,191 @@ try("an unreadable mana max falls back to the power type (B1)", function()
     end)
     Restore()
     if not runOk then error(err, 0) end
+end)
+
+--------------------------------------------------------------------------------
+-- T55 (P11): the kernel's seams, both flavours
+--------------------------------------------------------------------------------
+
+-- Swaps the client's geterrorhandler for one answering `handler` (nil: the
+-- global is gone), reached through the adapter's Invalidate since Has caches
+-- the function it found; puts the real one back whatever happened.
+local function WithErrorHandler(handler, body)
+    local real = rawget(_G, "geterrorhandler")
+    if handler then
+        _G.geterrorhandler = function() return handler end
+    else
+        _G.geterrorhandler = nil
+    end
+    MD.API.Invalidate("geterrorhandler")
+    local runOk, err = pcall(body)
+    _G.geterrorhandler = real
+    MD.API.Invalidate("geterrorhandler")
+    if not runOk then error(err, 0) end
+end
+
+-- A4: one raise no longer stops the handlers after it. The raising handler is
+-- armed only for its own firing (a handler cannot be unregistered).
+local armedOn, armedFire = false, false
+MD:On("UNIT_COMBAT", function() if armedOn then error("corecheck: raised in MD:On", 0) end end)
+local secondOnRan = false
+MD:On("UNIT_COMBAT", function() if armedOn then secondOnRan = true end end)
+MD:RegisterCallback("CoreCheckRaise", function() if armedFire then error("corecheck: raised in MD:Fire", 0) end end)
+local secondFireRan = false
+MD:RegisterCallback("CoreCheckRaise", function() if armedFire then secondFireRan = true end end)
+
+try("a raising MD:On handler stops nothing and reaches the handler once (A4)", function()
+    local seen = {}
+    local fireOk
+    WithErrorHandler(function(msg) seen[#seen + 1] = msg end, function()
+        armedOn = true
+        fireOk = pcall(S.Fire, "UNIT_COMBAT", "player", "HEAL", "", 10, 1)
+        armedOn = false
+    end)
+    check("a raising MD:On handler stops nothing and reaches the handler once (A4)",
+        fireOk == true and secondOnRan == true and #seen == 1
+        and seen[1] == "corecheck: raised in MD:On",
+        "fired=" .. tostring(fireOk) .. " second=" .. tostring(secondOnRan) .. " seen=" .. #seen)
+end)
+
+try("a raising MD:Fire callback stops nothing and reaches the handler once (A4)", function()
+    local seen = {}
+    local fireOk
+    WithErrorHandler(function(msg) seen[#seen + 1] = msg end, function()
+        armedFire = true
+        fireOk = pcall(MD.Fire, MD, "CoreCheckRaise")
+        armedFire = false
+    end)
+    check("a raising MD:Fire callback stops nothing and reaches the handler once (A4)",
+        fireOk == true and secondFireRan == true and #seen == 1
+        and seen[1] == "corecheck: raised in MD:Fire",
+        "fired=" .. tostring(fireOk) .. " second=" .. tostring(secondFireRan) .. " seen=" .. #seen)
+end)
+
+-- With no error handler to sink into (only a stub lacks one) the error is not
+-- swallowed: it is raised after every handler ran, so a suite goes red.
+try("with no error handler the loop re-raises after every handler ran (A4)", function()
+    secondFireRan = false
+    local fireOk, err
+    WithErrorHandler(nil, function()
+        armedFire = true
+        fireOk, err = pcall(MD.Fire, MD, "CoreCheckRaise")
+        armedFire = false
+    end)
+    check("with no error handler the loop re-raises after every handler ran (A4)",
+        fireOk == false and err == "corecheck: raised in MD:Fire" and secondFireRan == true,
+        "fired=" .. tostring(fireOk) .. " err=" .. tostring(err))
+end)
+
+-- A3: a feature file registering its defaults after login fills what the
+-- player does not have and leaves what they set; a second, different default
+-- for the same key raises; MD:Setting falls back to the registered default.
+try("RegisterDefaults after login back-fills and never overwrites (A3)", function()
+    MD.db.coreCheckKept = "user"
+    MD.db.coreCheckOff = false
+    MD:RegisterDefaults({ coreCheckKept = "default", coreCheckNew = 3,
+                          coreCheckOff = true, coreCheckNest = { a = 1 } })
+    local filled = MD.db.coreCheckKept == "user" and MD.db.coreCheckNew == 3
+        and MD.db.coreCheckOff == false and type(MD.db.coreCheckNest) == "table"
+        and MD.db.coreCheckNest.a == 1
+    local sameOk = pcall(MD.RegisterDefaults, MD, { coreCheckNew = 3 })
+    local otherOk, otherErr = pcall(MD.RegisterDefaults, MD, { coreCheckNew = 4 })
+    local nestOk = pcall(MD.RegisterDefaults, MD, { coreCheckNest = { a = 2 } })
+    MD.db.coreCheckNew = nil
+    local setting = MD:Setting("coreCheckNew")
+    local stored = MD:Setting("coreCheckOff")
+    check("RegisterDefaults after login back-fills and never overwrites (A3)",
+        filled and sameOk and otherOk == false and nestOk == false
+        and type(otherErr) == "string" and otherErr:find("coreCheckNew", 1, true) ~= nil
+        and setting == 3 and stored == false,
+        string.format("filled=%s same=%s other=%s nest=%s setting=%s stored=%s", tostring(filled),
+            tostring(sameOk), tostring(otherOk), tostring(nestOk), tostring(setting), tostring(stored)))
+end)
+
+-- A28: the flag is seeded at MD_READY from the adapter (a /reload mid-fight
+-- starts in combat), an unreadable answer leaves it, the regen events flip it.
+try("MD.inCombat seeded from the adapter, flipped by the regen events (A28)", function()
+    local real = rawget(_G, "UnitAffectingCombat")
+    local seeded, kept, afterEnd, afterStart
+    local runOk, err = pcall(function()
+        _G.UnitAffectingCombat = function() return true end
+        MD.API.Invalidate("UnitAffectingCombat")
+        MD.inCombat = false
+        MD:Fire("MD_READY")
+        seeded = MD.inCombat
+        _G.UnitAffectingCombat = function() error("stub: UnitAffectingCombat raised") end
+        MD.API.Invalidate("UnitAffectingCombat")
+        MD:Fire("MD_READY")
+        kept = MD.inCombat
+        _G.UnitAffectingCombat = real
+        MD.API.Invalidate("UnitAffectingCombat")
+        S.Fire("PLAYER_REGEN_ENABLED")
+        afterEnd = MD.inCombat
+        S.Fire("PLAYER_REGEN_DISABLED")
+        afterStart = MD.inCombat
+        S.Fire("PLAYER_REGEN_ENABLED")
+    end)
+    _G.UnitAffectingCombat = real
+    MD.API.Invalidate("UnitAffectingCombat")
+    if not runOk then error(err, 0) end
+    check("MD.inCombat seeded from the adapter, flipped by the regen events (A28)",
+        seeded == true and kept == true and afterEnd == false and afterStart == true
+        and MD.inCombat == false,
+        string.format("seeded=%s kept=%s end=%s start=%s", tostring(seeded), tostring(kept),
+            tostring(afterEnd), tostring(afterStart)))
+end)
+
+-- A16: a seam has one provider; the second raises and names it.
+try("Provide fills a seam once and refuses a second provider (A16)", function()
+    local fn1, fn2 = function() return 1 end, function() return 2 end
+    MD:Provide("CoreCheckSeam", fn1)
+    local secondOk, secondErr = pcall(MD.Provide, MD, "CoreCheckSeam", fn2)
+    MD.CoreCheckTable = {}
+    MD:Provide("CoreCheckTable.Pin", fn1)
+    local dottedAgain = pcall(MD.Provide, MD, "CoreCheckTable.Pin", fn2)
+    local noTable = pcall(MD.Provide, MD, "NoSuchTable.Pin", fn1)
+    check("Provide fills a seam once and refuses a second provider (A16)",
+        MD.CoreCheckSeam == fn1 and secondOk == false and type(secondErr) == "string"
+        and secondErr:find("CoreCheckSeam", 1, true) ~= nil
+        and MD.CoreCheckTable.Pin == fn1 and dottedAgain == false and noTable == false)
+end)
+
+-- A9: the two escaping rules, named apart. Esc doubles a pipe and leaves a
+-- non-ASCII byte to the font; EscASCII is the probe's reversible escape.
+try("MD.Text: Esc doubles pipes, EscASCII is the probe's escape (A9)", function()
+    local T = MD.Text
+    local accented = "Penek\195\169"
+    check("MD.Text: Esc doubles pipes, EscASCII is the probe's escape (A9)",
+        T.Esc("a|b") == "a||b" and T.Esc(accented) == accented
+        and T.EscASCII("a|b") == "a||b" and T.EscASCII(accented) == "Penek\\195\\169"
+        and T.EscASCII("c:\\x") == "c:\\\\x" and T.Esc(nil) == "" and T.EscASCII(12) == "12",
+        T.EscASCII(accented))
+end)
+
+try("PrintSafe keeps a well-formed colour code and escapes the rest (A9)", function()
+    local seen
+    local frame = _G.DEFAULT_CHAT_FRAME
+    local orig = frame.AddMessage
+    frame.AddMessage = function(_, m) seen = m end
+    MD:PrintSafe("|cff888888grey|r a|b \195\169 |cffzz")
+    frame.AddMessage = orig
+    local want = "|cff888888grey|r a||b \\195\\169 ||cffzz"
+    check("PrintSafe keeps a well-formed colour code and escapes the rest (A9)",
+        type(seen) == "string" and seen:sub(-#want) == want, tostring(seen))
+end)
+
+try("MD.Util: Median copies, Clock and K format (A9)", function()
+    local U = MD.Util
+    local list = { 5, 1, 3, 2 }
+    local m, mLow = U.Median(list), U.Median(list, "low")
+    check("MD.Util: Median copies, Clock and K format (A9)",
+        m == 2.5 and mLow == 2 and U.Median({ 3, 1, 2 }) == 2 and U.Median({}) == nil
+        and list[1] == 5 and list[2] == 1
+        and U.Clock(75) == "1:15" and U.Clock(75.25, true) == "1:15.2" and U.Clock(-3) == "0:00"
+        and U.K(2345) == "2.3k" and U.K(2345, 10000) == "2345" and U.K(999.6) == "1000"
+        and U.RECORD_GATE.sec == 20 and U.RECORD_GATE.casts == 5
+        and MD.Rules.SUGGESTED_FLOOR == 0.4,
+        string.format("median=%s low=%s", tostring(m), tostring(mLow)))
 end)
 
 --------------------------------------------------------------------------------

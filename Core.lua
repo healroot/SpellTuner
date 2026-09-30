@@ -7,6 +7,12 @@
 -- that is the TBC addon's own (defaults, Simulate, buffs/Tree of Life,
 -- talents, the profile snapshot, its command list) lives in Core_TBC.lua;
 -- Forever's own defaults and first two commands live in Core_Forever.lua.
+-- T55 (P11, review A3, A4, A9, A16, A28): the kernel's seams -- every event
+-- and callback handler under xpcall (one raise no longer stops the rest),
+-- MD.Text / MD:PrintSafe (the escaping rules, named apart), MD.Util and
+-- MD.Rules (helpers copied 3-11 times), MD:RegisterDefaults / MD:Setting,
+-- MD.inCombat, MD:Provide and MD:ModuleStateText. Defined here; the
+-- consumers move in P14, P16, P18, P20 and P23.
 local ADDON_NAME, MD = ...
 _G.SpellTuner = MD
 
@@ -35,12 +41,53 @@ function MD:On(event, fn)
     handlers[event][#handlers[event] + 1] = fn
 end
 
+-- T55 (P11, review A4): fault isolation. Each handler runs as
+-- xpcall(handler, MD.ErrorSink, ...), so a raise in one handler no longer
+-- stops the ones after it (PLAYER_REGEN_ENABLED has eight: the recorder
+-- closing its stream, the clock re-anchoring, the run recorder seeing the
+-- pull). The error still reaches the installed error handler exactly once.
+--   * Arguments: the WoW client's xpcall passes its extra arguments to the
+--     function (Lua 5.1.5's own drops them; tools/wowstub.lua's xpcall passes
+--     them as the client does, docs/PLAN-refactor-ux.md section 9 check 5).
+--   * Cost: one C call per handler per event -- measured 0.085 us per
+--     dispatch over the bare loop (docs/tasks/T55-kernel-seams.md), under the
+--     1 us bound, so the combat log is isolated per handler like every event.
+--   * The sink is a TAIL call into whatever geterrorhandler() answers at that
+--     moment (BugGrabber, Core_Forever.lua's capture, or the client's own), so
+--     no frame of ours sits between that handler and the code that raised:
+--     Core_Forever.lua's capture still names the raising line (review R22)
+--     and its forward to the previous handler still reaches it with nothing
+--     of ours in between (R21).
+--   * No handler at all (only an offline stub lacks geterrorhandler): the
+--     sink hands the message back and the loop raises it once every handler
+--     has run, so a suite still goes red on a raising handler.
+--     (xpcall hands back only the sink's FIRST return, so the message rides
+--     in an upvalue read the moment xpcall returns, with nothing between.)
+local UNSUNK = {}
+local unsunkMsg
+function MD.ErrorSink(msg)
+    local h = MD.API.GetErrorHandler()
+    if type(h) == "function" and h ~= MD.ErrorSink then
+        return h(msg)
+    end
+    unsunkMsg = msg
+    return UNSUNK
+end
+local ErrorSink = MD.ErrorSink
+
+local function Dispatch(list, ...)
+    local unsunk
+    for i = 1, #list do
+        local ok, marker = xpcall(list[i], ErrorSink, ...)
+        if not ok and marker == UNSUNK and unsunk == nil then unsunk = unsunkMsg end
+    end
+    if unsunk ~= nil then error(unsunk, 0) end
+end
+
 eventFrame:SetScript("OnEvent", function(_, event, ...)
     local list = handlers[event]
     if not list then return end
-    for i = 1, #list do
-        list[i](...)
-    end
+    Dispatch(list, ...)
 end)
 
 -- Internal pub/sub (module-to-module, not Blizzard events).
@@ -52,10 +99,26 @@ end
 function MD:Fire(name, ...)
     local list = callbacks[name]
     if not list then return end
-    for i = 1, #list do
-        list[i](...)
-    end
+    Dispatch(list, ...)
 end
+
+--------------------------------------------------------------------------------
+-- The combat flag (T55, P11, review A28): one owner. Set by the two regen
+-- events -- registered here, first, so every other handler of those events
+-- already reads the new value -- and seeded at MD_READY through the adapter,
+-- so a login or /reload mid-fight starts in combat (the R36 fix, for every
+-- reader). An unreadable answer (absent, raised, secret) leaves the flag as
+-- it was. Readers move to it in P14.
+--------------------------------------------------------------------------------
+MD.inCombat = false
+MD:On("PLAYER_REGEN_DISABLED", function() MD.inCombat = true end)
+MD:On("PLAYER_REGEN_ENABLED", function() MD.inCombat = false end)
+MD:RegisterCallback("MD_READY", function()
+    -- (value, nil) is an answer -- nil or false out of combat, true (1 on an
+    -- old client) in it; (nil, "absent" / "error" / "secret") is not.
+    local v, why = MD.API.UnitAffectingCombat("player")
+    if why == nil then MD.inCombat = (v == true or v == 1) end
+end)
 
 --------------------------------------------------------------------------------
 -- Master ticker: the model is event-driven; this drives accumulation/rendering.
@@ -79,6 +142,121 @@ function MD:Print(msg)
     MD.API.Print("|cff9966ffSpellTuner:|r " .. tostring(msg))
     MD:Debug("chat", tostring(msg))
 end
+
+--------------------------------------------------------------------------------
+-- Text (T55, P11, review A9): the two escaping rules the tree copies nine
+-- times, named apart. Consumers move to these in P16; the probe may keep its
+-- own copy (it must run with nothing else loaded).
+--   Esc            pipe-doubling only: "|" -> "||". For text the game's own
+--                  fonts draw (a player's accented name stays as it is).
+--   EscASCII       the probe's reversible escape: a backslash doubled, "|" ->
+--                  "||", then every byte outside printable ASCII -> "\ddd",
+--                  in that order so the backslashes the last step adds are
+--                  never doubled. For copy boxes, reports and chat lines that
+--                  must be ASCII.
+--   EscKeepColours EscASCII around every well-formed colour start ("|c" and
+--                  eight hex digits) and reset ("|r"), which are kept as they
+--                  are (the coach card's own colours, review R26).
+-- Each takes any value: nil is "", a secret "<secret>", anything else its
+-- tostring. Each gsub result is kept in its own local (gsub's second return,
+-- the count, must not reach the next call).
+--------------------------------------------------------------------------------
+local function AsText(s)
+    if type(s) == "string" then return s end
+    if s == nil then return "" end
+    if MD.API.IsSecret(s) then return "<secret>" end
+    return tostring(s)
+end
+
+local Text = {}
+MD.Text = Text
+
+function Text.Esc(s)
+    local out = AsText(s):gsub("|", "||")
+    return out
+end
+
+function Text.EscASCII(s)
+    local step1 = AsText(s):gsub("\\", "\\\\")
+    local step2 = step1:gsub("|", "||")
+    local step3 = step2:gsub("[^ -~]", function(c) return string.format("\\%03d", c:byte()) end)
+    return step3
+end
+
+function Text.EscKeepColours(s)
+    s = AsText(s)
+    local out, i = {}, 1
+    while i <= #s do
+        local a, b = s:find("|c%x%x%x%x%x%x%x%x", i)
+        local c, d = s:find("|r", i, true)
+        if c and (not a or c < a) then a, b = c, d end
+        if not a then
+            out[#out + 1] = Text.EscASCII(s:sub(i))
+            break
+        end
+        out[#out + 1] = Text.EscASCII(s:sub(i, a - 1))
+        out[#out + 1] = s:sub(a, b)
+        i = b + 1
+    end
+    return table.concat(out)
+end
+
+-- A line from anywhere (a name, a card, a client string) printed safely:
+-- ASCII, no bare pipe, its own well-formed colour codes kept.
+function MD:PrintSafe(line)
+    MD:Print(Text.EscKeepColours(line))
+end
+
+--------------------------------------------------------------------------------
+-- Small shared helpers (T55, P11, review A9) and the one rule constant with a
+-- planned consumer (P23). GCD and the crit multiplier are not defined here
+-- until a task moves their six copies (docs/PLAN-refactor-ux.md section 6).
+--------------------------------------------------------------------------------
+local Util = {}
+MD.Util = Util
+
+-- The median of a list of numbers, never sorting the caller's table (review
+-- A9: PullBudget's sorted it in place). An even count averages the two middle
+-- values; mode "low" takes the lower of them instead (PullBudget's choice).
+-- nil for an empty list.
+function Util.Median(t, mode)
+    local n = t and #t or 0
+    if n == 0 then return nil end
+    local c = {}
+    for i = 1, n do c[i] = t[i] end
+    table.sort(c)
+    if n % 2 == 1 then return c[(n + 1) / 2] end
+    if mode == "low" then return c[n / 2] end
+    return (c[n / 2] + c[n / 2 + 1]) / 2
+end
+
+-- m:ss (seconds floored), or m:ss.t with tenths; a negative time is 0.
+function Util.Clock(sec, tenths)
+    sec = tonumber(sec) or 0
+    if sec < 0 then sec = 0 end
+    if tenths then
+        return string.format("%d:%04.1f", math.floor(sec / 60), sec % 60)
+    end
+    return string.format("%d:%02d", math.floor(sec / 60), math.floor(sec % 60))
+end
+
+-- 2345 -> "2.3k" from `from` on (default 1000; the Waste view uses 10000),
+-- below it the rounded whole number.
+function Util.K(n, from)
+    n = tonumber(n) or 0
+    if n >= (from or 1000) then return string.format("%.1fk", n / 1000) end
+    return string.format("%d", math.floor(n + 0.5))
+end
+
+-- A fight is kept when it lasted this long with this many own casts (the
+-- two recorders' own copies move to it in P18).
+Util.RECORD_GATE = { sec = 20, casts = 5 }
+
+MD.Rules = {
+    -- A rank is suggested only while its value is at least this share of the
+    -- highest known rank's (Spells/Book.lua, Engine/RankMath.lua; P23).
+    SUGGESTED_FLOOR = 0.4,
+}
 
 -- Alert respects /md mute and pulses the widget if present.
 function MD:Alert(msg)
@@ -158,6 +336,65 @@ local function FillDefaults(dst, src)
     end
 end
 
+--------------------------------------------------------------------------------
+-- Registered defaults (T55, P11, review A3): a feature file -- a
+-- LoadOnDemand module included, which loads after InitDB ran -- declares its
+-- own settings' defaults with MD:RegisterDefaults({ key = value, ... }).
+-- Before login they are merged into MD.DEFAULTS (or kept until the flavour
+-- core has assigned it) and InitDB fills them in; after login they back-fill
+-- MD.db at once. Either way a value the user already has is never touched.
+-- A key registered twice with a DIFFERENT value raises: one owner per default
+-- (the drift A3 names -- a re-measured threshold landing in one list only).
+-- MD:Setting(key) answers the db value, else the registered default, else
+-- MD.DEFAULTS'. Consumers move to these in P20.
+--------------------------------------------------------------------------------
+local registered = {}
+
+local function CopyValue(v)
+    if type(v) ~= "table" then return v end
+    local c = {}
+    for k, x in pairs(v) do c[k] = CopyValue(x) end
+    return c
+end
+
+-- The first key whose default `tbl` would change in `existing`, as a dotted
+-- path with both values; nil when every shared key agrees.
+local function Conflict(existing, tbl, path)
+    if type(existing) ~= "table" then return nil end
+    for k, v in pairs(tbl) do
+        local e = existing[k]
+        if e ~= nil then
+            local here = path .. tostring(k)
+            if type(e) == "table" and type(v) == "table" then
+                local c = Conflict(e, v, here .. ".")
+                if c then return c end
+            elseif e ~= v then
+                return here .. " (" .. tostring(e) .. " and " .. tostring(v) .. ")"
+            end
+        end
+    end
+    return nil
+end
+
+function MD:RegisterDefaults(tbl)
+    if type(tbl) ~= "table" then error("SpellTuner: RegisterDefaults takes a table", 2) end
+    local c = Conflict(registered, tbl, "") or Conflict(MD.DEFAULTS, tbl, "")
+    if c then error("SpellTuner: two defaults for " .. c, 2) end
+    FillDefaults(registered, CopyValue(tbl))
+    if type(MD.DEFAULTS) == "table" then FillDefaults(MD.DEFAULTS, tbl) end
+    if type(MD.db) == "table" then FillDefaults(MD.db, tbl) end
+end
+
+function MD:Setting(key)
+    local v
+    if type(MD.db) == "table" then v = MD.db[key] end -- a stored false is an answer
+    if v ~= nil then return v end
+    v = registered[key]
+    if v ~= nil then return v end
+    if type(MD.DEFAULTS) == "table" then return MD.DEFAULTS[key] end
+    return nil
+end
+
 local function InitDB()
     -- The addon was ManaDemon until 2026-09-27. Its saved variables are still
     -- loaded (the .toc lists both) and adopted once, so nobody's recordings,
@@ -168,7 +405,13 @@ local function InitDB()
         ManaDemonDB = nil
     end
     SpellTunerDB = SpellTunerDB or {}
+    -- A default registered before the flavour core assigned MD.DEFAULTS
+    -- joins it here (the conflict check ran against what existed then; on a
+    -- key both carry, MD.DEFAULTS' value stays -- only Core.lua and Client/
+    -- load before the flavour core, and neither registers anything).
+    if type(MD.DEFAULTS) == "table" then FillDefaults(MD.DEFAULTS, registered) end
     FillDefaults(SpellTunerDB, MD.DEFAULTS or {})
+    FillDefaults(SpellTunerDB, registered)
     MD.db = SpellTunerDB
     MD.db.char[MD.player.charKey] = MD.db.char[MD.player.charKey] or {}
     MD.cdb = MD.db.char[MD.player.charKey]
@@ -203,6 +446,37 @@ MD:On("PLAYER_LEVEL_UP", function(level)
     if not MD.API.IsSecret(level) then n = tonumber(level) end
     MD.player.level = n or MD.API.UnitLevel("player") or MD.player.level
 end)
+
+--------------------------------------------------------------------------------
+-- MD:Provide(name, fn) (T55, P11, review A16): the one way a file fills a
+-- seam another flavour or module may also fill -- MD.GetRecording,
+-- MD.ClassifyCast, MD.FightRecorder.Pin -- instead of `if MD.X == nil then`,
+-- a guard that always passes on Forever and would hide a load-order mistake.
+-- `name` may be dotted ("FightRecorder.Pin"); every table on the way must
+-- exist. A second provider (anything already there, however it got there)
+-- raises, naming the seam. Adopted where P18 and P22 touch those seams.
+--------------------------------------------------------------------------------
+function MD:Provide(name, fn)
+    if type(name) ~= "string" or name == "" then
+        error("SpellTuner: Provide needs a name", 2)
+    end
+    local owner, key = MD, nil
+    local segs = {}
+    for seg in name:gmatch("[^%.]+") do segs[#segs + 1] = seg end
+    for i = 1, #segs - 1 do
+        owner = owner[segs[i]]
+        if type(owner) ~= "table" then
+            error("SpellTuner: Provide " .. name .. ": MD." .. table.concat(segs, ".", 1, i)
+                .. " is not a table", 2)
+        end
+    end
+    key = segs[#segs]
+    if owner[key] ~= nil then
+        error("SpellTuner: a second provider for MD." .. name, 2)
+    end
+    owner[key] = fn
+    return fn
+end
 
 --------------------------------------------------------------------------------
 -- Module registry (T2 of docs/ROADMAP-FOREVER.md): inert until a flavour file
@@ -267,6 +541,19 @@ function MD:ModuleState(name)
         return "unloads"
     end
     if on then return "on" end
+    return "off"
+end
+
+-- The module's state as the Modules pane and /st dump word it (T55, P11,
+-- review A9: two copies, UI/Dashboard_Forever.lua's and UI/Dump_Forever.lua's;
+-- they move to this in P16). ASCII already: CleanReason only ever hands back
+-- "[A-Z_]+" or "unknown".
+function MD:ModuleStateText(name)
+    local state, reason = MD:ModuleState(name)
+    if state == "loaded" then return "loaded" end
+    if state == "on" then return "on - loads at login" end
+    if state == "failed" then return "could not load: " .. tostring(reason) end
+    if state == "unloads" then return "off - unloads at your next /reload" end
     return "off"
 end
 

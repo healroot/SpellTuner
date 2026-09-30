@@ -12,6 +12,9 @@
 -- Case 12 is TBC's own session. The 2026-09-29 review added case 13
 -- (the shared session: the Enable box on Forever, R15/R16) and cases 14-15
 -- (their own session, last: the captured stack line and the forward, R22/R21).
+-- T55 (P11, review A4) added cases 19-21 in 14-15's session: the same capture
+-- and forward for a handler raising inside MD:On, now that Core.lua runs every
+-- handler under xpcall, and the event's arguments reaching it -- 20 forever.
 HARNESS_FLAVOUR = { "forever", "tbc" }
 
 local here = arg[0]:match("^(.*)/[^/]+$")
@@ -475,6 +478,59 @@ try("the previous handler sees no SpellTuner frame and no pcall above the raise"
     check("the previous handler sees no SpellTuner frame and no pcall above the raise", good,
         (not good) and (tostring(foundA) .. " " .. tostring(foundB) .. ": "
             .. table.concat(badA, ",") .. " / " .. table.concat(badB, ",")) or nil)
+end)
+
+--------------------------------------------------------------------------------
+-- 19-21 (T55, P11, review A4): the same capture, now that Core.lua runs every
+-- event handler under xpcall with MD.ErrorSink. A handler raising inside
+-- MD:On -- fired the way the client fires an event -- must still be named by
+-- its own file and line (not Core.lua's loop or sink, Client/API.lua or a C
+-- frame), reach the previous handler exactly once over two firings, and have
+-- received the event's arguments (the client's xpcall passes them). Same
+-- session as 14-15.
+--------------------------------------------------------------------------------
+local DISPATCH_MSG = "Interface/AddOns/SpellTuner/Dispatched.lua:3: raised in a handler"
+local dispatchLine, dispatchArgs, dispatchAfter, dispatchFired = nil, nil, 0, {}
+try("a handler raising inside MD:On is named by its own line (A4, R22)", function()
+    local armed = true
+    MD3:On("UNIT_COMBAT", function(...)
+        if not armed then return end
+        dispatchArgs = { n = select("#", ...), ... }
+        dispatchLine = debug.getinfo(1, "l").currentline; error(DISPATCH_MSG, 0)
+    end)
+    MD3:On("UNIT_COMBAT", function() if armed then dispatchAfter = dispatchAfter + 1 end end)
+    dispatchFired[1] = pcall(S3.Fire, "UNIT_COMBAT", "player", "HEAL", "", 120, 1)
+    dispatchFired[2] = pcall(S3.Fire, "UNIT_COMBAT", "player", "HEAL", "", 120, 1)
+    armed = false
+    local entry
+    for _, e in ipairs(MD3.errors) do
+        if e.msg == DISPATCH_MSG then entry = e end
+    end
+    local stack = entry and entry.stack
+    local good = type(stack) == "string" and dispatchLine ~= nil
+        and stack:find("consolecheck.lua:" .. dispatchLine .. ":", 1, true) ~= nil
+        and not stack:find("Core.lua", 1, true) and not stack:find("API.lua", 1, true)
+        and not stack:find("[C]", 1, true)
+        and entry.count == 2
+    check("a handler raising inside MD:On is named by its own line (A4, R22)", good,
+        (not good) and (tostring(stack) .. " count=" .. tostring(entry and entry.count)) or nil)
+end)
+
+try("the previous handler gets a dispatched error exactly once (A4, R21)", function()
+    local forwarded = CountEq(S3.clientErrors, DISPATCH_MSG)
+    check("the previous handler gets a dispatched error exactly once (A4, R21)",
+        forwarded == 1 and dispatchFired[1] == true and dispatchFired[2] == true
+        and dispatchAfter == 2,
+        "forwarded=" .. forwarded .. " fired=" .. tostring(dispatchFired[1]) .. "/"
+            .. tostring(dispatchFired[2]) .. " after=" .. dispatchAfter)
+end)
+
+try("a handler under xpcall receives the event's arguments (A4)", function()
+    local a = dispatchArgs
+    check("a handler under xpcall receives the event's arguments (A4)",
+        a ~= nil and a.n == 5 and a[1] == "player" and a[2] == "HEAL" and a[3] == ""
+        and a[4] == 120 and a[5] == 1,
+        a and ("n=" .. tostring(a.n)) or "never called")
 end)
 
 else -- tbc
