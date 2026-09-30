@@ -3745,3 +3745,41 @@ gained the kit's and the table's new options on top, 25 -> 35 and 56 -> 63):
 
 Not scheduled, by the spec: the "Measured" line (decision 8), pair mode (6.3b), the TBC opt-in
 (decision 10). **Next:** TESTING §42, then §38-§41 as before.
+
+## 2026-09-30 — the regen and recordings work merged; 0.16.3 in the beta
+
+`work/regen-recordings` (8 commits on c2bab7c, reviewed) merged into the UI build with
+`git merge --no-ff` (`9844770`). It answers the author's 2026-09-29 practice report ("it does not
+tolerate non casting window to regen ... I would like to have practice recordings so we can improve
+the code from such reports"); the design and every changed output are in `docs/DECISIONS.md` "The
+coach values regen" and "One kit record and one report tool".
+
+- **The coach values regen**: the solver prices a cast at its cost plus the regen it forfeits
+  (`SV.Forfeit`); rule 8 stays on nominal cost and its pick is fixed; the score's third slot is mana
+  **used** (`SP.ManaUsed`, `r.manaUsed` from the engine's own accounting), on the card, the
+  alternates, the Sim window and the run score; `solver-frugal`'s floor 30 -> 20; the replay's score
+  line leads with `used N`. restcheck 51 (new).
+- **Practice fights as reports**: a practice record carries its kit, client, level, version and
+  build; `PR.Pin` keeps up to four past the ring of eight (Review's Pin on the Practice list).
+- **Recordings**: every Forever pull and practice fight stored with its kit, one record
+  (`SM.KitSnapshot`), the character's last kit in `cdb.kit`, `RM.KitRestore` offline; one report
+  tool, `tools/import.lua`, on both clients (the Forever half `tools/importforever.lua`; `report N|pN`
+  from `tools/reportlines.lua`); importcheck 19 (new) on a fixture built by `tools/importfixture.lua`.
+
+Conflicts were in docs only: the practiceforever row (T27/T40's history kept, the kit line added,
+25), the TOOLS table and loop (the UI's three suites kept, restcheck and importcheck added), TESTING
+§42 (the UI build's) and §43 (the regen / recordings checks). The code merged cleanly next to T27,
+T34, T40 and T43 (Practice.lua, ReplayWindow.lua, Dashboard_Review.lua, practiceforever.lua), and
+the fixture was regenerated because the merged code also stores the UI build's new defaults.
+
+The planner's two corrections (`4b6b112`): frugal at 20 against 30 on the eight TBC recordings is
+not "the same, mana included" -- on the anniversary snapshot the same deaths, floor seconds and 346
+casts but 31189 used against 31234; on the author's current file identical (442 casts, 33609
+used). Stated so in DECISIONS and in the `SP.STRATEGY_SET` comment.
+
+`0.16.3` on every TOC and the fixture rebuilt (`51c96cc`, it embeds `MD.version`); CLAUDE.md rows,
+this entry and the handover in the docs commit. Every suite passes; each TBC suite's output against
+0.16.2 differs exactly as the branch's own c2bab7c -> 8b2c2d5 delta does (plus addresses, ms and the
+sliced search's counts). **Installed**: the Forever package, **0.16.3**, into the author's beta; no
+TBC TOC there, nothing installed into a TBC client. **Next:** the author's TESTING §38-§43 on 0.16.3
+(§43 first for a short session), then the planner's whole-project review.

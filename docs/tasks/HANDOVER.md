@@ -4,9 +4,11 @@ Rewritten by the lead after every commit and every hand-out. A successor continu
 alone. Worktree: `/home/penek/projects/addons/SpellTuner/.claude/worktrees/manademon-folder-continue-41eabc`,
 branch `claude/manademon-folder-continue-41eabc`.
 
-Last updated: 2026-09-30, after the Forever UI (T27-T43 from `docs/SPEC-forever-ui.md`, every
-task of its section 9) and T44 (docs, `0.16.2`), with **0.16.2 installed in the author's beta**
-(Forever package only; the installed TOCs read 0.16.2, no TBC TOC there). The version ruling is
+Last updated: 2026-09-30, after the `work/regen-recordings` merge (the coach values regen,
+practice fights as reports, one kit record and one report tool; `docs/DECISIONS.md` "The coach
+values regen" and "One kit record and one report tool") on top of the Forever UI (T27-T44), with
+**0.16.3 installed in the author's beta** (Forever package only; the installed TOCs read 0.16.3, no
+TBC TOC there). The version ruling is
 `docs/DECISIONS.md` "One version, two installations" (0.16.x beta builds, 1.0.0 at the Forever
 launch). The next Forever install is
 `./release.sh --install-forever "/mnt/e/Blizzard/World of Warcraft/_classic_beta_/Interface/AddOns"`
@@ -17,6 +19,10 @@ them.
 
 | hash | what |
 |---|---|
+| (the docs commit after 51c96cc) | docs: CLAUDE.md rows for what the merge changed (SimModel, SimSolver, SimPlanner, Practice, ReplayTrace, the Modules row -- Kit_Forever, Recorder_Forever, Commands_Forever --, ReplayWindow, Dashboard_Review, the tools row: restcheck, importcheck, import.lua's Forever commands and `report`, reportlines.lua), intro 0.16.3; HISTORY; this handover |
+| 51c96cc | 0.16.3 on every TOC (`release.sh --set-version`); `tools/data/import-forever-sv.lua` regenerated (it embeds `MD.version`); TESTING's install lines at 0.16.3 |
+| 4b6b112 | DECISIONS "The coach values regen" (item 6, the rejected normalisation) and the `solver-frugal` comment: 20 against 30 as measured -- same deaths, floor seconds and 346 casts, 31189 against 31234 used on the anniversary snapshot; identical (442 casts, 33609 used) on the current file |
+| 9844770 | merge `work/regen-recordings` (b062413 regen priced by the solver, 9a694f1 the score ranks mana used, cfd4314 practice fights as reports, 9acd5f4 fights stored with their kit, baa0c03 import.lua on Forever, 8b2c2d5 one kit record `SM.KitSnapshot` and one report tool); conflicts in docs only (TOOLS rows and loop, TESTING §42 UI / §43 regen); fixture regenerated; restcheck 51, importcheck 19 (new), practice 80, practiceui 50, practiceforever 25 |
 | (the T44 commit) | T44: `0.16.2` on every TOC (`release.sh --set-version`); CLAUDE.md rows (new: `UI/Theme_Forever.lua`, `UI/Windows_Forever.lua`, `UI/SpellsPane_Forever.lua`, `Spells/Tabs.lua`; the changed shared and Forever files annotated), TESTING §42 (three sessions) and §38-§40 pointed at the new places, ROADMAP section, TOOLS (themecheck / tabscheck / wincheck rows and loop, every changed count), HISTORY, this handover |
 | 83ec2d1 | T39: Overview -- My spells, Whole book (a row per rank), Export byte-identical (refcheck exit 0); spellsui 47 |
 | f4342b3 | T42: Settings -> General -- SPELL TOOLTIPS, APPEARANCE (font offset, window scale, clock), WINDOWS (combat, ESC, reset); wincheck 53 |
@@ -95,42 +101,51 @@ Nothing.
 
 ## Next, in order
 
-1. **Nothing of the Forever UI spec is left undone.** Every task of `docs/SPEC-forever-ui.md`
-   section 9 landed (T27-T43) and T44 is this commit. Not scheduled by the spec, each waiting on
-   the author: the "Measured" line (decision 8, after measure's attribution is shown right on real
-   casts), pair mode for the replay (6.3b, decision 3), the TBC opt-in to the theme and the window
-   rules (decision 10), and decision 12 (a macro naming a rank) after the probe's `macro` lines.
-2. **TESTING §42** (0.16.2, three 20-30 minute sessions; pastes into
-   `docs/probe/<build>-0.16.2-s1.md` / `-s2.md` / `-s3.md`). 42.1 first: `/st tooltip why` from a
-   Blizzard and an ElvUI bar is what the macro path is fixed from, and the practice check closes the
-   Lifebloom report. Write a task per failed check from the paste only. UNVERIFIED on a real client:
-   the ESC proxy re-arming (`esc=` line), `SetSpellByID` firing the Spell post-call on a rank-row
-   hover (the view adds the block itself when it does not), the drop from the spellbook
-   (`GetCursorInfo`'s shape), `RefreshData` on the modifier key.
-3. **Then the older reports, unchanged:** the build-70058 probe (`docs/probe/1.60.1_70058.md`) and
-   §41; §38.2 step 4 (gross or effective) -> `SM.HEAL_AMOUNT` and gate 8 two-sided; §38.3's
-   `bar UnitHealthMax(party1): ...` line -> flip `MD.API.BAR_READS_MAX` (one word, `Client/API.lua`)
-   if `read plain`; §39 -> the recorder on real pulls; §40.1's `/st binds check` paste -> a task per
-   importer that does not recognise the Forever shape. §38-§40 now point at the new places (the
-   Spellbook pane is Spells -> Overview -> Whole book, the bindings window a sheet).
+1. **The author's in-game checks, TESTING §38-§43, on 0.16.3.** §43 first if the author has one
+   session (15 min, solo): a practice fight replayed with "Solver: frugal" -- the score line led by
+   `used`, the suggested column resting outside the five-second rule (`resting is worth more`),
+   Pin on the Practice list, `/reload`, then the fight named in one line (`p1, ...`). The planner
+   reads it offline: `bash tools/run.sh tools/import.lua list`, `report p1`,
+   `replay p1 --strategy solver-frugal`, `coach p1` (docs/TOOLS.md §2). §42 (the UI's three
+   sessions; 42.1 first -- `/st tooltip why` from a Blizzard and an ElvUI bar), then §38-§41 as
+   before: the build-70058 probe and §41; §38.2 step 4 (gross or effective) -> `SM.HEAL_AMOUNT` and
+   gate 8 two-sided; §38.3's `bar UnitHealthMax(party1): ...` -> `MD.API.BAR_READS_MAX` if `read
+   plain`; §39 the recorder on real pulls; §40.1's `/st binds check` paste. Write a task per failed
+   check from the paste only. UNVERIFIED on a real client: the ESC proxy re-arming (`esc=`),
+   `SetSpellByID` firing the Spell post-call, the spellbook drop's cursor shape, `RefreshData` on
+   the modifier key.
+2. **Then the planner's whole-project review (Fable)** of the tree as it stands at 0.16.3.
+3. Not scheduled, each waiting on the author: the "Measured" line (UI spec decision 8), pair mode
+   for the replay (6.3b), the TBC opt-in to the theme and window rules (decision 10), decision 12
+   (a macro naming a rank) after the probe's `macro` lines; from the regen work, the two TBC rows
+   that got worse on the anniversary snapshot ("no intuition" one more death, "many raids" 6.8 s
+   more one hit from death) and the frugal floor re-measured at a level where it binds.
 4. Then M5 (launch client, 2026-11-04).
 
 Suite loop: `docs/TOOLS.md` §1 (every suite, `themecheck`, `tabscheck` and `wincheck` included
-since 0.16.2) plus `python3 tools/apicheck.py`, `--selftest`, `python3 tools/refcheck.py --selftest`.
+since 0.16.2, `restcheck` and `importcheck` since 0.16.3; `importcheck` fails until
+`bash tools/run.sh tools/importfixture.lua` rebuilds its fixture after anything that changes what is
+stored, a version bump included) plus `python3 tools/apicheck.py`, `--selftest`, `python3 tools/refcheck.py --selftest`.
 `releasecheck` is in the loop since T23; in a `git archive` export it needs a throwaway `git init`
 there (its scratch copy of the tree comes from `git ls-files`).
 
 ## Baselines (at the last commit)
 
-TBC sixteen: simcheck PASS, reccheck 54, replaycheck 80, replayui 98, runcheck 78, reviewui 44,
-navui 35 (T31: the old 25 unchanged + 10), dashui 63 (T30: the old 56 unchanged + 7), regencheck 27,
-simwindow 8, solvercheck 77, timeline 27, spelltip 48, practice 74, practiceui 49, migrate 7.
+TBC seventeen: simcheck PASS, reccheck 54, replaycheck 80, replayui 98, runcheck 78, reviewui 44,
+navui 35, dashui 63, regencheck 27, simwindow 8, solvercheck 77, restcheck 51 (new), timeline 27,
+spelltip 48, practice 80 (74 + the kit and pin checks), practiceui 50 (49 + Pin), migrate 7.
 Forever: probecheck 87, forevercheck 13, modulecheck 14, kitcheck 7, recordcheck 24, scenariocheck
-12, gatecheck 9, replayforever 15, reviewforever 11, coachforever 18, practiceforever 24, bindscheck
-6, parsecheck 12, bookcheck 21, tipcheck 37, clockcheck 20, spellsui 47, measurecheck 30, themecheck
-23, tabscheck 24, wincheck 53. Both flavours: adaptercheck 22/15, corecheck 10/8, svcheck 6/1,
-consolecheck 17/1. releasecheck 13. apicheck 0 findings over 48 files (8 Forever TOCs, 46 distinct
-globals), selftest 10 of 10, refcheck selftest ok.
+12, gatecheck 9, replayforever 15, reviewforever 11, coachforever 18, practiceforever 25 (24 + the
+kit), bindscheck 6, parsecheck 12, bookcheck 21, tipcheck 37, clockcheck 20, spellsui 47,
+measurecheck 30, themecheck 23, tabscheck 24, wincheck 53. importcheck 19 (new; both clients through import.lua). Both flavours:
+adaptercheck 22/15, corecheck 10/8, svcheck 6/1, consolecheck 17/1. releasecheck 13. apicheck 0
+findings over 48 files (8 Forever TOCs, 46 distinct globals), selftest 10 of 10, refcheck selftest
+ok. Output changes against 0.16.2 are exactly the regen branch's own (its c2bab7c -> 8b2c2d5 delta,
+compared suite by suite): the coach card's `used:` lines and `N used (N spent)` rows, the replay's
+`used N`, the search's `mana` now used (2371 -> 1593 on the scripted pull), coachforever /
+replayforever's plan and card (floor 45% -> 55%, Rejuvenation R2, `idle 3`), solvercheck's 31 -> 32
+casts in the burst check, simcheck's flat run cost 3.46 / 3.39 -> 3.55 / 3.55 KB per run; plus
+noise (addresses, ms, sliced search counts).
 
 ## Open questions / hazards
 
@@ -148,8 +163,9 @@ globals), selftest 10 of 10, refcheck selftest ok.
   HEAL amount gross or effective; that sets `SM.HEAL_AMOUNT` and makes gate 8 two-sided -- and
   §38.3, the party probe with the `bar ...` lines), §39 (the recorder, validate, replay, coach and
   Review on real pulls; the CANCEL count against casts actually cancelled, since the STOP /
-  SUCCEEDED order is UNKNOWN) and §40 (practice and the imports). All three play on **0.16.2**
-  (installed 2026-09-30; 0.16.1 was build 70058's), after the 70058 probe, §41 and §42.
+  SUCCEEDED order is UNKNOWN) and §40 (practice and the imports). All three play on **0.16.3**
+  (installed 2026-09-30; 0.16.2 the UI build, 0.16.1 build 70058's), after the 70058 probe, §41,
+  §42 and §43.
 - **Lesson -- parallel tasks on disjoint files still meet in the suites (T24-T26, 2026-09-29).**
   Three implementers ran at once, each told which files the others owned; that held. What it did not
   catch: T25's assertion counted Macro post-calls (`#list == 1`) and T25a, written the same hour,
