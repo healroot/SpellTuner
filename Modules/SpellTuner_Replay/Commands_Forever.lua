@@ -1,29 +1,18 @@
--- T16a (docs/tasks/T16a-replay-window.md): the Replay module's own command
--- and the settings the window and the engine read that Core_Forever.lua's own
--- MD.DEFAULTS never carried.
+-- T16a (docs/tasks/T16a-replay-window.md): the Replay module's own command.
 --
 -- T65 (P21, review A1): /st validate and /st coach, and MD:ValidationReport
 -- and MD:RunCoach behind them, are the shared ones now --
 -- Engine/ReviewCommands.lua, listed by this module's TOCs right after this
 -- file (so /st help keeps replay, validate, coach in that order); this file
--- provides the Forever half of its policy (MD.ReviewPolicy). The
--- defaults are declared through MD:RegisterDefaults (Core.lua): this module
--- loads after InitDB ran, so they back-fill MD.db at once, never over a value
--- the player already has, and a second owner declaring one of them with a
--- different value raises instead of drifting. Runs only once this module is
--- on -- this file is that module's own TOC entry. /st rec stays in
+-- provides the Forever half of its policy (MD.ReviewPolicy). The settings the
+-- window and the engine read are declared once, by Engine/SimModel.lua (T64,
+-- P20: MD:RegisterDefaults; this module loads it before this file), and the
+-- two v3 gate thresholds by Gates_Forever.lua -- this file declares none
+-- (wave 8's merge: the REPLAY_DEFAULTS copy it kept, every key repeating
+-- SimModel.lua's value, is gone). Runs only once this module is on -- this
+-- file is that module's own TOC entry. /st rec stays in
 -- Modules/SpellTuner_Recorder/Recorder_Forever.lua.
 local _, MD = ...
-
-MD:RegisterDefaults({
-    replaySpeed = 1, replayTicks = true, replayNextPull = true, replayAutoCoach = true,
-    -- The sim* values Engine/SimModel.lua, Engine/SimPlanner.lua and
-    -- Gates_Forever.lua read (Core_TBC.lua's own DEFAULTS, the same values),
-    -- declared for the settings pane, which reads MD.db directly.
-    simFullHp = 0.85, simFloor = 0.30, simDangerHits = 1, simReaction = 0.5, simMinActivity = 0,
-    simGateManaMean = 0.02, simGateManaMax = 0.05, simGateHpMean = 0.05, simGateHpMax = 0.15,
-    simForeignShare = 0.25, simAllowRebinds = false, simBigHit = 0.15,
-})
 
 -- The review policy Engine/ReviewCommands.lua reads (its TBC value is that
 -- file's default): the card to chat only, /st validate as the report's verb,

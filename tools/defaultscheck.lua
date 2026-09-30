@@ -15,8 +15,8 @@
 --   2. a gate keeps its setting name and provenance and its `default` is read
 --      from the registry, not kept as a second copy;
 --   3. each key is declared in exactly one file on the flavour's TOCs -- its
---      owner -- counting Commands_Forever.lua's REPLAY_DEFAULTS as declared
---      (not as a second owner) until P21 moves it;
+--      owner; since wave 8's merge Commands_Forever.lua (whose REPLAY_DEFAULTS
+--      once repeated them) declares none of them;
 --   4. every setting a file on the flavour's TOCs reads -- MD.db.<key>,
 --      MD.db["<key>"], MD:Setting("<key>"), a gate's setting name -- found by
 --      scanning the sources, has a default once every module has loaded (the
@@ -230,15 +230,16 @@ if flavour == "tbc" then
         return true
     end)())
 else
-    -- REPLAY_DEFAULTS (P21 moves it): whatever is left of it may only repeat
-    -- a registered value -- it is counted as declared, never as an owner
-    local agree, n, off = true, 0, {}
+    -- REPLAY_DEFAULTS is gone (wave 8's merge of P20 and P21): the Replay
+    -- module's Commands_Forever.lua declares none of these keys any more --
+    -- Engine/SimModel.lua owns them, and a copy left behind would be a second
+    -- place for a value to drift
+    local n, off = 0, {}
     for _, k in ipairs(Sorted(replayDeclared)) do
-        n = n + 1
-        if MD.DEFAULTS[k] ~= OLD[k] then agree = false; off[#off + 1] = k end
+        n = n + 1; off[#off + 1] = k
     end
-    check("Commands_Forever.lua's REPLAY_DEFAULTS repeats only registered values", agree,
-        n .. " keys" .. (#off > 0 and (", differing: " .. table.concat(off, ", ")) or ""))
+    check("Commands_Forever.lua declares none of the engine's defaults", n == 0,
+        n .. " keys" .. (#off > 0 and (": " .. table.concat(off, ", ")) or ""))
 end
 
 --------------------------------------------------------------------------------
