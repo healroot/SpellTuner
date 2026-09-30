@@ -27,6 +27,8 @@ Severity is the skeptics' (medium / low). Line numbers at `92ff5d2`.
 
 ### B1 [medium] `Core.lua:131` -- a login or `/reload` in Cat/Bear form turns the whole mana side off for the session (both lines)
 
+**Fixed in** `fbd1e2d` (T52, P8).
+
 **Scenario.** `/reload` in Cat or Bear form. `UnitPowerType("player")` answers 3 or 1, so
 `MD.player.usesMana = false`, and nothing ever re-evaluates it (`DetectProfile` runs only from
 `PLAYER_LOGIN`; `Core_TBC`'s `CheckForm` tracks Tree only). For the session: `Engine/TTO.lua:53`
@@ -37,6 +39,8 @@ HEALER, `Engine/ManaCooldowns.lua:126` gives nothing.
 readers, one writer.
 
 ### B2 [medium] `Core_TBC.lua:123` -- another druid's Tree of Life aura makes the model think YOU are in Tree form
+
+**Fixed in** `fbd1e2d` (T52, P8).
 
 **Scenario.** In caster form in a group with a second resto druid in Tree. `GetShapeshiftFormID()`
 answers `nil` in caster form (what the stub models at `tools/wowstub.lua:662`), so `ok and id ~= nil`
@@ -50,6 +54,8 @@ it answered `nil`. Every offline suite takes the fallback path and none has a se
 
 ### B3 [low] `Core_TBC.lua:243, 325, 369`, `Verify.lua:10, 24, 65, 68, 93, 500`, `UI/Advisor.lua:68` -- em and en dashes in chat strings
 
+**Fixed in** `a71cf2a`, `56f85c6` (T47, P3).
+
 **Scenario.** First-run line `first run <U+2014> the widget is unlocked...`, `/md unlock`, `/md window` with a
 bad value `(5<U+2013>60 seconds)`, six `/md verify` lines, one `/md fsrtest` line and the Advisor's
 gear-change toast (`gear change <U+2014> ...`, added after the first pass) carry U+2014 / U+2013. A
@@ -58,6 +64,8 @@ font without the glyph draws a box, and a pasted `/md verify` report carries mul
 kit's own close glyph the U+00D7 multiplication sign at `UI/Style.lua:248` [ux kit #15].
 
 ### B4 [medium] `Spells/Parse.lua:300` -- the single-damage catch-all values one tick of a periodic spell as a direct hit
+
+**Fixed in** `40f9557` (T50, P6).
 
 **Scenario.** A periodic clause phrased other than the two recognised shapes falls to `DAMAGE_SINGLE`,
 which takes any `N School damage` anywhere. Hellfire (`... 83 Fire damage to all nearby enemies every 1
@@ -71,6 +79,8 @@ wards and reactive clauses only; the file's contract is "refuse rather than gues
 
 ### B5 [medium] `Engine/SimModel.lua:537` -- a HoT eaten by Swiftmend is never traced as ended
 
+**Fixed in** `cb94d8e` (T46, P2).
+
 **Scenario.** Regrowth at 1 s, Swiftmend at 4 s. `LandCast` sets `rg.active = false` with no
 `Trace(TK.HOT_END)`, and the later expiry pop sees an inactive slot and emits nothing.
 `ReplayTrace`'s `HotEnd` falls to the nominal expiry, so the replay (both columns) and the practice
@@ -80,6 +90,8 @@ says there is something to eat.
 12 s both live while the engine's `r.ticks` is 0. No suite asserts it.
 
 ### B6 [medium] `Engine/SimPlanner.lua:1577` (and `:1961`) -- the search's cache key omits `noDirect`, so the HoTs-only seed is never evaluated
+
+**Fixed in** `cb94d8e` (T46, P2).
 
 **Scenario.** `Key(p)` formats five parameters and not `noDirect`. Seed 2 (`noDirect = true`, line
 1616) collides with seed 1 and returns its cached entry; every descended trial copying `noDirect`
@@ -92,6 +104,8 @@ built 0`.
 
 ### B7 [low] `Engine/SimModel.lua:864` -- after a fixed cast preempts a long cast, the plan is not asked again until the cancelled cast's landing time
 
+**Fixed in** `cb94d8e`, `3ddd972` (T46, P2).
+
 **Scenario.** Healing Touch (2.9 s) started at 0; a recorded Moonfire at 0.5 s preempts it
 (`busyUntil = 2.0`). The pending `E_DECIDE` sits at 2.925, never hits the busy guard the comment
 relies on, and the plan idles from 2.0 to 2.925 with no WAIT event and no `waitTime`. The suggested
@@ -100,12 +114,16 @@ column drifts late and the plan's score is charged for idle it never chose.
 
 ### B8 [low] `Engine/SimSolver.lua:356` -- the solver values Swiftmend as eating Rejuvenation first; the engine eats Regrowth first
 
+**Fixed in** `cb94d8e` (T46, P2).
+
 **Scenario.** Both HoTs rolling: `Solver:Best` (356-359, 371) prices Swiftmend against Rejuvenation's
 deposits; `LandCast` (537-543) consumes Regrowth (TBC's rule, `RankMath.lua:425-427`). The pick is
 scored against the wrong counterfactual. It also writes `swiftmendAmount` onto the shared kit entry,
 which `SM.KitSnapshot` copies into practice recordings' `rec.kit`.
 
 ### B9 [medium] `Engine/FightRecorder.lua:327` -- any own combat-log event during a hard cast is recorded as a CANCEL
+
+**Fixed in** `61175d8` (T48, P4).
 
 **Scenario.** Lifebloom rolling, a 3 s Healing Touch started: the next own `SPELL_PERIODIC_HEAL` (or
 aura applied/removed, Omen of Clarity energize, a `SPELL_CAST_FAILED` from a button pressed mid-cast)
@@ -119,6 +137,8 @@ has nothing between cast start and success; reccheck counts no CANCEL.
 
 ### B10 [medium] `UI/Summary.lua:233` -- Lifebloom's bloom (33778) is classified "direct"
 
+**Fixed in** `61175d8` (T48, P4).
+
 **Scenario.** 33778 is an alias (`Data/SpellData.lua:244-248`), not a row, so
 `SpellData.spells[33778]` is nil and the kind stays `direct`: (1) calibration never sees the bloom
 (`Calibration:Observe` -> `Prediction(33778)` -> `RowFor` nil -> return before any bucket); (2)
@@ -130,10 +150,14 @@ on top of the ticks that already carry it.
 
 ### B11 [low] `Engine/RunRecorder.lua:561` (and `Engine/TTO.lua:443`) -- bare pipes in rendered text
 
+**Fixed in** `a71cf2a` (T47, P3: `Engine/TTO.lua`), `61175d8` (T48, P4: `Engine/RunRecorder.lua`).
+
 `MD:Print("usage: /md run start [name] | stop | status")`; TTO's debug line is rendered by the
 console's `SetText`. The rule is "never a bare pipe" (`UI/Summary.lua:489` doubles it for this reason).
 
 ### B12 [low] `Engine/RunRecorder.lua:217` -- `RR:Start` does not reset `potionCount` and `pullStart`
+
+**Fixed in** `61175d8` (T48, P4).
 
 (a) A potion drunk, banked or sold between runs: run 2's first sample compares with run 1's count and
 pushes a false `K.POTION` at t~0, which `ComputeStats` counts. (b) Run 1's last pull started but
@@ -142,11 +166,15 @@ started mid-pull uses run 1's stale offset as `runT0` (line 406). `runcheck` nev
 
 ### B13 [low] `Engine/Overheal.lua:96` -- Tranquility waste divided by the whole raid
 
+**Fixed in** `61175d8` (T48, P4).
+
 Waste per tick is `cost / (4 * group)` with `group` = every non-pet in `Targets.byGUID`: 25 in a raid,
 while Tranquility heals the caster's party. A 5x understatement in the Waste view and the fight
 summary's "into full health" clause; right in a 5-man.
 
 ### B14 [medium] `Modules/SpellTuner_Recorder/Recorder_Forever.lua:782` -- a finished pull is silently lost once every stored stream is pinned (Forever)
+
+**Fixed in** `2806606` (T49, P5).
 
 `UI/Dashboard_Review.lua:271` toggles `rec.pinned` directly (the capped `MD.FightRecorder:Pin` at
 Recorder_Forever 723 is never called; the tooltip says "at most two", nothing enforces it). After eight
@@ -154,6 +182,8 @@ pins `StoreOrDrop` finds no victim and returns with no chat or debug line. TBC's
 honours only the first `MAX_PINNED` and always stores.
 
 ### B15 [medium, 2 of 3] `Modules/SpellTuner_Recorder/Recorder_Forever.lua:143` -- a cross-realm party member's heals all become foreign
+
+**Fixed in** `2806606`, `865acde` (T49, P5).
 
 `UNIT_SPELLCAST_SENT`'s target carries `Name-Realm` on the retail engine; the roster stores
 `UnitName`'s first return (`Name`); `ResolveTargetIndex` compares exactly and returns -1.
@@ -164,10 +194,14 @@ unverified.
 
 ### B16 [low] `Modules/SpellTuner_Replay/Commands_Forever.lua:433` -- `/st coach` with an argument the pattern rejects silently coaches recording 1
 
+**Fixed in** `2806606` (T49, P5).
+
 `arg:match("^([pP]?%d*)%s*(%a*)$")` is nil for `2:7`, `1 force now` and similar; `n` becomes `"1"` and
 a card for a different fight is printed. `/st validate 2:7` answers "no recording" correctly.
 
 ### B17 [medium] `UI/Windows_Forever.lua:344` -- `Win:SetScale` converts saved positions only for windows registered this session
+
+**Fixed in** `18ce073` (T51, P7).
 
 Scale changed to 80 % before the replay (or console) was built this session: `db.ui.win.replay` keeps
 1.0-scale units; the next `/st replay` places it 20 % toward the bottom-left and persists the wrong
@@ -176,12 +210,16 @@ numbers. The file's own contract (12-14) says a change converts every saved posi
 
 ### B18 [low] `UI/Windows_Forever.lua:297` -- pixel-snapped edges computed before `Register` applies the scale, never restyled
 
+**Fixed in** `18ce073` (T51, P7).
+
 `UI.CreateNavFrame` styles the frame, title bar and nav column at UIParent's scale; `Register` then
 `SetScale(0.8)`: those borders draw at 0.8 physical px (1.2 at 120 %), thin or doubled, while panes
 built later are crisp. Only `UI_SCALE_CHANGED`, `DISPLAY_SIZE_CHANGED` or a later `Win:SetScale`
 restyle. Same path for the console and the replay window.
 
 ### B19 [low, 2 of 3] `UI/Clock_Forever.lua:259` -- an opener cast before the combat flag is spent but not counted in the fight
+
+**Fixed in** `40f9557` (T50, P6).
 
 The opener's `UNIT_SPELLCAST_SUCCEEDED` arrives before `PLAYER_REGEN_DISABLED` (review R8's window);
 `Spend` with no fight drops the pool, then `StartFight` resets `spent`, `casts` and `unpriced`
@@ -190,12 +228,16 @@ lasts one cast longer; an unpriced opener vanishes from the hover.
 
 ### B20 [low, 2 of 3] `UI/SpellsPane_Forever.lua:178` -- Export's character line is not escaped
 
+**Fixed in** `40f9557` (T50, P6).
+
 `"character: " .. Str(name) .. " " .. Str(realm) ...` straight from the adapter, while every other
 client string in the export goes through `Esc`. A name like `Zoe` with a diaeresis puts raw non-ASCII
 bytes in the one format `tools/refcheck.py` and the probe share. `spellsui`'s ASCII assertion runs
 with an ASCII stub name.
 
 ### B21 [medium] `UI/ReplayWindow.lua:1797` -- run-mode scrubber collapses to one pull's range at the first pull boundary (TBC)
+
+**Fixed in** `18ce073` (T51, P7).
 
 `/md replay run 2`: `OpenRunPlay` sets the scrubber to the run (1817) once; crossing into pull 2
 re-enters `MD:OpenReplay`, which sets `(0, pull dur)` unconditionally. `SetValue(runT)` clamps, the
@@ -205,12 +247,16 @@ opening seconds. Same on a run-strip click (1435) and `RebuildSuggested` (1633).
 
 ### B22 [medium] `UI/ReplayWindow.lua:1095` -- run-mode `OnUpdate` retries a refused `OpenReplay` every frame, flooding chat in combat (TBC)
 
+**Fixed in** `18ce073` (T51, P7).
+
 A run playing, combat starts (nothing hides the replay on TBC); at the next pull boundary
 `OpenReplay` refuses and prints "not in combat - it is a review tool", `pullIdx` is unchanged, and the
 next frame does it again: ~60 lines a second. A scrubber drag in combat prints per event. Forever
 hides the window in combat, so only TBC is exposed.
 
 ### B23 [low] `UI/ReplayWindow.lua:457` -- practice: hovering the Swiftmend, defensive or incoming-cast icon drops the key target
+
+**Fixed in** `18ce073` (T51, P7).
 
 The unit frame's `OnLeave` fires when the pointer moves onto a mouse-enabled child (`Icon()` enables
 the mouse, 339); these three icons hook only `OnMouseDown`, so `hoverTi` stays nil and a bound key
@@ -219,11 +265,15 @@ reports "No target". Conversely no icon hooks `OnLeave`, so leaving outward from
 
 ### B24 [low] `UI/Dashboard_Review.lua:431` -- the selected row's validate cell and hover are drawn before its validation runs
 
+**Fixed in** `2806606` (T49, P5).
+
 `Render` paints rows from `cache[rec.id]` (431), then runs `Validation(rec)` (495). A newly selected row
 reads "not checked" with a hover saying "press Validate" while the buttons on the same paint already
 say `Coach*`. TBC heals it on the next 2 s tick; Forever only on the next click.
 
 ### B25 [medium] `tools/import.lua:564` -- TBC `export N` writes the header only
+
+**Fixed in** `40f9557` (T50, P6).
 
 `line:match("^# recording %d")` has no capture, so it returns the whole text and the comparison with
 `tostring(n)` always fails; every recording flips the phase to `other`. The tool reports
@@ -231,6 +281,8 @@ say `Coach*`. TBC heals it on the next 2 s tick; Forever only on the next click.
 Reproduced with two fakepull recordings. `importcheck` exercises only the Forever export.
 
 ### B26 [medium] `tools/refcheck.py:148` -- the probe's `\ddd` escapes are counted as description numbers
+
+**Fixed in** `40f9557` (T50, P6).
 
 `Esc` writes a non-ASCII byte as `\226`...; `numbers_in` runs on the still-escaped text (only `||`
 is undone, line 59), so a curly quote adds 226, 128, 156... Reproduced with the bundled fixture:

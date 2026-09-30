@@ -4141,3 +4141,33 @@ count in reccheck and evaluation counts in replayui); `ttocheck`, `dashui`, `spe
 `navui`, `practiceui` equal. Forever: clockcheck's and themecheck's new assertions, apicheck 56 files,
 textcheck 92. **Next:** wave 11; nothing new for the author to test in game (plan section 9 already
 covers "TBC looks exactly as before").
+
+## 2026-09-30 — the refactor plan, waves 1-10 closed: 0.16.4 built, not installed
+
+The ten waves of `docs/PLAN-refactor-ux.md` (P1-P25, T45-T69) are all on the branch, each wave
+cherry-picked oldest first and closed by an integrator commit (`06f0969`, `4702b5c`, `fecaad4`,
+`a185bfb`, `8c4cc93`, `b2d9b90`, `3261856`, `46c09d9`, `e0454fc`, `3f96611`; the per-wave entries
+above). Nothing planned for waves 1-10 failed to land. In short: the stub tells the truth about
+secrets (P1); the coach's engine fixes B5-B8 (P2); the client read from the TOC's marker and one
+ASCII text rule (P3); the TBC recorders, overheal, Forever pins, cross-realm names, the coach
+address, parse, the opener and exports, B4 and B9-B26 (P4-P7); the character read and the Tree aura,
+B1 and B2 (P8); lists that say what they hide (P9); stub timers, the kernel seams, `Verify.lua` split
+in four (P10-P12); one honest command `make check` and one combat flag (P13, P14); the practice
+policy, one escaping rule, the TBC verbs on `MD:AddCommand` (P15-P17); the recordings router and the
+kit's owner (P18, P19); defaults declared once and the review commands shared (P20, P21); the stream
+registry and the rank rules / spell words once (P22, P23); the mana pool out of the widget and the
+colour tokens with one theme flag (P24, P25).
+
+This closing pass (P35's remainder): `docs/review/2026-09-30-project-review.md` carries a
+**Fixed in** line under every B1-B26 (commit and task); CLAUDE.md gains the missing
+`Data/DruidSpells.lua` row and its intro names 0.16.4; `docs/TESTING.md` §44 is written for waves
+1-10 on 0.16.4 -- item 13 (the opener, T50's B19, which no task had put in §44), the regression line
+W10 for wave 10, a one-session subset, and the install lines above it at 0.16.4;
+`docs/tasks/HANDOVER.md` rewritten (it still described the 0.16.3 merge).
+
+`./release.sh --set-version 0.16.4` on all nine TOCs; `tools/importfixture.lua` rebuilt with no
+change (the fixture carries a fixed version since T54). `make check`: 68 runs, all passed (63
+counted against 63 expected), apicheck 0 findings over 56 files, textcheck 0 over 92. Both packages
+built into `dist/`; **nothing installed** (the author installs 0.16.4 per client when ready). **Next:**
+the author's §44 on 0.16.4; mockups M1-M3 (and later M4, M5) with the author's answers to plan section
+8 questions 1, 5, 6, 7, 8, 9, 10 and 12; then waves 11-17 (P26-P34).

@@ -996,7 +996,7 @@ not moved).
 ```
 
 At character select the AddOns list shows SpellTuner and the three modules at the newest build --
-**0.16.3** as of 2026-09-30 (§43; 0.16.2 the Forever UI, §42; 0.16.1 was build 70058's, §41), which carries everything 1.0.0-alpha.8 did (the numbering changed that
+**0.16.4** as of 2026-09-30 (§44, waves 1-10 of the refactor plan; 0.16.3 the coach and regen, §43; 0.16.2 the Forever UI, §42; 0.16.1 was build 70058's, §41), which carries everything 1.0.0-alpha.8 did (the numbering changed that
 day: one version for both lines, Forever beta builds 0.16.x, 1.0.0 at the Forever launch --
 `docs/DECISIONS.md` "One version, two installations"). Install it for every session of §38-§40;
 the steps below are written for it. Log in as Healroot, `/console scriptErrors 1`. Any
@@ -1154,7 +1154,7 @@ adds M3: the **Recorder** and **Replay** modules now do something. Nothing here 
 client yet; every step is the first time.
 
 **Install** as in §38 (`./release.sh --install-forever ...`). At character select SpellTuner and the
-three modules read the newest build (**0.16.3** as of 2026-09-30; it carries everything 1.0.0-alpha.5 and
+three modules read the newest build (**0.16.4** as of 2026-09-30; it carries everything 1.0.0-alpha.5 and
 later did).
 `/console scriptErrors 1`; any error box: note it, carry on,
 `/st dump` at the end of the session.
@@ -1221,7 +1221,7 @@ Two changes you may meet in §39's steps:
   report (the line `bar UnitHealthMax(party1): ...`). Nothing to do here; it ships off.
 
 **Install** as in §38 (`./release.sh --install-forever ...`). At character select SpellTuner and the
-three modules read the newest build (**0.16.3** as of 2026-09-30; it carries everything 1.0.0-alpha.6 and
+three modules read the newest build (**0.16.4** as of 2026-09-30; it carries everything 1.0.0-alpha.6 and
 later did).
 `/console scriptErrors 1`; any error box: note it, carry on,
 `/st dump` at the end of the session.
@@ -1316,7 +1316,7 @@ combat). Everything in the spec's task list landed (T27-T43); nothing here has r
 yet, and the shapes the tooltip's macro path rests on are still the retail engine's.
 
 **Install**: `./release.sh --install-forever "/mnt/e/Blizzard/World of Warcraft/_classic_beta_/Interface/AddOns"`.
-At character select SpellTuner and the three modules read **0.16.2** (or **0.16.3**, which carries it with §43's changes). `/console scriptErrors 1`;
+At character select SpellTuner and the three modules read **0.16.2** (or **0.16.3** / **0.16.4**, which carry it with §43's and §44's changes). `/console scriptErrors 1`;
 any error box: note it and carry on, `/st dump` at the end of the session. Out of combat unless a
 step says otherwise.
 
@@ -1441,12 +1441,19 @@ the numbers.
 
 **Paste back**: the `pN` you pinned, and in words what the suggested column did differently.
 
-## 44. The refactor plan's checks (`docs/PLAN-refactor-ux.md` section 9; waves 1-9, the next build)
+## 44. The refactor plan's checks (`docs/PLAN-refactor-ux.md` section 9; waves 1-10, 0.16.4)
 
-Paste back as in section 41. Out of combat unless a step says otherwise. The items keep the plan's
-numbers; wave 1 (T45-T47) needs items 3 and 15, wave 2 (T48-T50) adds 4, 6, 8, 10 and 14, and wave 3
-(T51-T53) adds 1, 2, 7, 9, 11 and 12, wave 4 (T54-T56) adds 5 and the TBC load-list smoke line
-(W4), wave 5 (T57-T58) adds 16, and wave 6 (T59-T61) adds 17's TBC half, and wave 7 (T62-T63) adds 18 and the kit line (W7), and wave 8 (T64-T65) adds 17's Forever half and the settings line (W8), and wave 9 (T66-T67) adds the two rank lines (W9). Item 13 waits for P35's pass over this section.
+Paste back as in section 41. Out of combat unless a step says otherwise. Install **0.16.4** on each
+client (`--install-tbc` / `--install-forever`, the top of this file and §38; never cross them). The
+items keep the plan's numbers; wave 1 (T45-T47) needs items 3 and 15, wave 2 (T48-T50) adds 4, 6, 8,
+10, 13 and 14, wave 3 (T51-T53) adds 1, 2, 7, 9, 11 and 12, wave 4 (T54-T56) adds 5 and the TBC
+load-list smoke line (W4), wave 5 (T57-T58) adds 16, wave 6 (T59-T61) adds 17's TBC half, wave 7
+(T62-T63) adds 18 and the kit line (W7), wave 8 (T64-T65) adds 17's Forever half and the settings
+line (W8), wave 9 (T66-T67) adds the two rank lines (W9), and wave 10 (T68-T69) adds only the
+regression line W10. From wave 4 on nothing visible should change: any difference not listed here is
+a regression. Plan item 19 (`/st dump`'s order) waits for P29 (wave 12); items 20-24 for waves 11-16.
+
+If there is only one short session: TBC 1, 4 and 16; Forever 13, 15 and W10.
 
 **TBC.**
 
@@ -1498,6 +1505,9 @@ W9. **The dashboard's ranks (P23).** `/md` -> Spells: the same ranks are marked 
     `/st replay 1`: it opens where you last left it; the window borders are one crisp pixel.
 12. **Practice icons (B23).** In practice, point at a tank's Swiftmend icon and press a bound key: it
     heals the tank.
+13. **Opener (B19).** Out of combat at full mana, pre-cast Rejuvenation on the tank and pull within
+    half a second of it landing. Hover the clock in the fight: the opener is in this fight's casts and
+    spend (the warm-up ends one cast earlier than on 0.16.3).
 14. **Coach address (B16).** `/st coach 2:7`: a refusal, no card.
 15. **Client (P3).** `/st dump`: the first line says `forever`.
 17. **Commands (P21, the Forever half).** On Forever, with Replay on: `/st validate 1` and `/st coach 1`
@@ -1510,6 +1520,13 @@ W9. **A spell outside the book in combat (P23).** Link a heal you know in chat, 
     combat (the SpellTuner block shows), then again in combat: the block is still there, with `Text read
     before combat` last. The Spells pane's rank table, the rank card and the spell tooltip read as before.
     `/st tooltip why` after hovering a rank row in the Spells pane still describes your last macro hover.
+W10. **The clock and the theme (P24, P25).** The mana clock behaves exactly as on 0.16.3: it appears
+    under 90% out of combat, hides above 95%, counts down in a fight, its hover and thin bar as before;
+    after `/reload` mid-fight it shows the in-combat projection. With the Recorder and Replay modules on,
+    `/st replay 1` after a pull shows your mana falling and rising as before (the recorder now samples
+    the pool the clock paints). The window, the tooltips, Review and practice keep their
+    colours. **On TBC:** `/md` and the widget look exactly as before (the colours are now named
+    tokens with TBC's own values).
 
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the
