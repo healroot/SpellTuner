@@ -107,7 +107,9 @@ end
 --   col.justify     -- "LEFT" (default) / "RIGHT" / "CENTER" per column.
 --   opts.rowHeight  -- the data rows' pitch (default 16); a Forever caller
 --                       passes UI.Pitch(20). opts.headerHeight is the header's
---                       (default 18; UI.Pitch(22)).
+--                       (default 18; UI.Pitch(22)); when set, the header row's
+--                       frame is that tall too, so its labels centre in the band
+--                       and the rule sits on its bottom edge.
 --   opts.headerRule -- true (the theme's `line`) or an {r, g, b, a}: a 1-px
 --                       rule along the header's bottom edge.
 --   opts.headerColor -- the header labels' colour code (default |cff888888,
@@ -118,6 +120,7 @@ end
 --   col.type = "bar" -- a per-mana bar cell: a col.barWidth (72) track, a
 --                       col.gap (4), then the number in row.cells[key] over the
 --                       rest; opts.render fills it with row:SetBar(key, frac).
+--                       The header's label spans the whole column (col.x, col.w).
 --   opts.marker = "bar" -- the suggested row is marked by the `suggested` fill
 --                       and a 2-px accent bar at its left instead of gold; the
 --                       colour handed to render is text / muted / disabled,
@@ -167,6 +170,23 @@ function MD.DashboardParts.CreateTable(parent, width, opts)
         if row.mark then
             if r and r.suggested then row.mark:Show() else row.mark:Hide() end
         end
+    end
+
+    -- T30: a bar column's label. On a data row the number sits after the bar
+    -- (col.x + barWidth + gap, the rest of the column); on the header row the
+    -- label spans the whole column (col.x, col.w), so "Per mana" is never
+    -- squeezed into the number's 40 px. A pooled row can serve as either, so
+    -- Render places it per role and Release puts it back as a data row.
+    local function PlaceBarCells(row, asHeader)
+        if not row.barCells or row.barAsHeader == asHeader then return end
+        for _, bc in ipairs(row.barCells) do
+            local col, x, w = bc.col, bc.col.x, bc.col.w
+            if not asHeader then x, w = x + bc.bw + bc.gap, w - bc.bw - bc.gap end
+            bc.fs:ClearAllPoints()
+            bc.fs:SetPoint("LEFT", row, "LEFT", x, 0)
+            bc.fs:SetWidth(w)
+        end
+        row.barAsHeader = asHeader
     end
 
     local function AcquireRow()
@@ -256,6 +276,9 @@ function MD.DashboardParts.CreateTable(parent, width, opts)
                     row.bars[col.key] = { track = track, fill = fill, width = bw }
                     row.SetBar = SetBar
                     x, w = col.x + bw + gap, col.w - bw - gap
+                    row.barCells = row.barCells or {}
+                    row.barCells[#row.barCells + 1] = { fs = fs, col = col, bw = bw, gap = gap }
+                    row.barAsHeader = false
                 end
                 fs:SetPoint("LEFT", row, "LEFT", x, 0)
                 fs:SetWidth(w)
@@ -295,6 +318,8 @@ function MD.DashboardParts.CreateTable(parent, width, opts)
             if row.bars then -- T30
                 for _, b in pairs(row.bars) do b.track:Hide(); b.fill:Hide() end
             end
+            PlaceBarCells(row, false) -- T30: back to a data row's layout
+            if row.headerSized then row:SetHeight(rowH); row.headerSized = nil end -- T30
             row.highlight:Hide()
             row:Hide()
             rowPool[#rowPool + 1] = row
@@ -320,6 +345,11 @@ function MD.DashboardParts.CreateTable(parent, width, opts)
             local header = AcquireRow()
             header.isHeader = true
             header:SetPoint("TOPLEFT", pane, "TOPLEFT", 0, y)
+            if opts.headerHeight then -- T30: the header band's own height (4.3's 22)
+                header:SetHeight(headerH)
+                header.headerSized = true
+            end
+            PlaceBarCells(header, true) -- T30: the label over the whole column
             for i, col in ipairs(cols) do
                 local label = (opts.header and opts.header[i]) or col.label
                 header.cells[col.key]:SetText(headerHex .. label .. "|r")
@@ -348,6 +378,7 @@ function MD.DashboardParts.CreateTable(parent, width, opts)
                 row.data = r
                 row.spellID = r.id
                 row.index = i -- T30: the zebra's parity
+                PlaceBarCells(row, false) -- T30: the number after the bar
 
                 local color
                 if marker == "bar" then

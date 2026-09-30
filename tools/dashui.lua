@@ -384,6 +384,43 @@ check("T30 onUpdateCells: data rows refreshed in place", n == 4 and t30updates =
     and R1.cells.rank:GetText():find("R1", 1, true) ~= nil,
     string.format("n=%s calls=%d frames %d -> %d", tostring(n), t30updates, nFrames, #S.allFrames))
 
+-- review of T30: a bar column's HEADER label spans the whole column (a data
+-- row's number sits after the bar), and the header frame is headerHeight tall
+-- so its label centres in the 22 band and the rule lies on its bottom edge.
+-- Rendered twice: the pool hands the second header the first render's last
+-- data row, and the first header comes back as a data row.
+local function BarHeader()
+    local h
+    for _, f in ipairs(S.allFrames) do
+        if f.isHeader and f.parentFrame == t30.frame and f:IsShown() then h = f end
+    end
+    return h
+end
+local h1 = BarHeader()
+local hpm1 = h1 and h1.cells.pm
+-- read now: the pool may hand this very frame back as a data row below
+local first = h1 and hpm1.pt and { x = hpm1.pt[4], w = hpm1.w, j = hpm1.justify, h = h1.h } or {}
+local firstHeader = h1
+t30rows = {}
+t30:Render({
+    { id = 1, rank = 1, frac = 1,    casts = 14, suggested = true },
+    { id = 2, rank = 2, frac = 0.5,  casts = 6,  dominated = true },
+    { id = 3, rank = 3,              casts = 0,  known = false },
+    { id = 4, rank = 4, frac = 0.25, casts = 3 },
+})
+local h2 = BarHeader()
+local reused -- the first render's header, now a data row
+for _, row in pairs(t30rows) do if row == firstHeader then reused = row end end
+local function Cell(fs) return fs and fs.pt and string.format("@%s w=%s", tostring(fs.pt[4]), tostring(fs.w)) or "?" end
+check("T30 bar header: the label over the whole column, the header 22 tall", hpm1 and h2
+    and first.x == 60 and first.w == 116 and first.j == "RIGHT"
+    and first.h == 22 and h2.h == 22 and h2.cells.pm.pt[4] == 60 and h2.cells.pm.w == 116
+    and h2 ~= firstHeader and reused and reused.h == 20
+    and reused.cells.pm.pt[4] == 60 + 72 + 4 and reused.cells.pm.w == 40,
+    string.format("header pm @%s w=%s h=%s; again %s h=%s; old header as a row %s h=%s",
+        tostring(first.x), tostring(first.w), tostring(first.h), Cell(h2 and h2.cells.pm), tostring(h2 and h2.h),
+        Cell(reused and reused.cells.pm), tostring(reused and reused.h)))
+
 for k, fn in pairs(saved) do rawset(MT, k, fn) end
 
 print(string.format("\n%d ok, %d failed", ok, #fails))
