@@ -7,7 +7,12 @@
 -- taken over the trailing 5 s, computed from events already applied -- and,
 -- for the solver, each target's danger line as of t (SM.DangerLine: the biggest
 -- hit already applied; S.danger / tg.danger is the whole fight's and is the
--- SCORE's, never read by a plan). It holds
+-- SCORE's, never read by a plan) -- and, for the solver's price of the regen a
+-- cast forfeits (SV.Forfeit, 2026-09-29), the healer's own present regen state:
+-- S.fsrUntil (the five-second rule's end as of t), S.regenBase and
+-- S.regenCasting (GetManaRegen's two rates), S.energize (the measured leftover
+-- the client omits) and S.manaMax (UnitPowerMax). None of them says anything
+-- about the fight after t. It holds
 -- no reference to the scenario's event arrays and nothing it schedules may
 -- depend on any event with t' > t. A cast, once started, is locked until it
 -- lands. This is what makes the card advice rather than hindsight.
@@ -614,7 +619,9 @@ SP.STRATEGY_SET = {
     -- and ended with more mana than the unpriced 30, on the author's practice
     -- fight (tools/data/practice/1790701698.lua) it used 301 mana against 364
     -- with the same lowest health and less owed, and on the author's eight TBC
-    -- recordings it decided exactly as the unpriced 30 did. A constant from one
+    -- recordings its row in tools/strategies.lua (deaths, seconds one hit from
+    -- death, mana) read the same as the unpriced 30's -- totals compared, not
+    -- decisions cast for cast. A constant from one
     -- synthetic setup and one real fight: re-measure it before trusting it at a
     -- level where the values are nowhere near it.
     { key = "solver-frugal", label = "Solver: frugal", kind = "solver",

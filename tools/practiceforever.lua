@@ -172,7 +172,7 @@ check("the recording replays to the health the player saw and every gate passes"
     "gates: " .. table.concat(failed, "; ") .. " worst hp diff " .. string.format("%.3f", worst))
 
 -- 2026-09-29: the record carries the book's kit, so a report replays it with
--- no spellbook at all (tools/practicereport.lua), and says it is Forever's
+-- no spellbook at all (tools/import.lua report pN), and says it is Forever's
 do
     local own = rec.kit and rec.kit.caster
     local same = own ~= nil

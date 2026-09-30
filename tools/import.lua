@@ -13,6 +13,11 @@
 --   replay N             the trace: every own cast with its target and label, the
 --                        mana fit, each target's lowest health
 --   coach N [force]      the search and the card (force: even if the gates failed)
+--   report N             N replayed through the engine (what you played) beside every
+--                        strategy in SP.STRATEGY_SET on the same fight: mana spent,
+--                        regenerated, USED, at the end, still owed, deaths, seconds one
+--                        hit from death, lowest health, casts (tools/reportlines.lua;
+--                        it was tools/practicereport.lua's, folded in 2026-09-30)
 --   export N             the /md export text for N, written to .logs/recordings/<id>.txt
 --
 -- With --run K, every command above addresses the pulls of run K instead of the
@@ -21,9 +26,27 @@
 -- .logs/runs/<id>.txt. The same address the game takes as "1:3".
 --
 -- Options: --file <path>   the SavedVariables file (default: $MD_SAVEDVARS, then
---                          .logs/SpellTuner.lua, then the author's install)
---          --char <key>    "Name-Realm" (default: the first character with recordings)
+--                          .logs/SpellTuner.lua, then the author's install -- the
+--                          anniversary one, or with --flavour forever the beta one)
+--          --char <key>    "Name-Realm" (default: the character with the most recordings)
 --          --run K         address the pulls of run K
+--          --flavour forever|tbc
+--                          which client wrote the file (default: read from it -- a v3
+--                          recording, a kit, the SavedVariables guard's session stamp or
+--                          the probe's reports say Forever; `run.sh --flavour` sets it too)
+--          --strategy <key> (Forever) the suggested column's planner or search reading
+--          --out <dir>     (Forever) where export writes (default .logs/forever/)
+--          --fixture <path> read a fixture ({ rec, kit }, tools/data/practice/<id>.lua)
+--                          instead of a SavedVariables file: it is practice fight p1
+--
+-- pN addresses practice fight N (p1 = newest) instead of recording N, on both clients.
+-- A practice fight (and on Forever every pull) carries the kit it was played with
+-- (`rec.kit`, MD.SimModel.KitSnapshot); a command on one fight replays it with that kit.
+--
+-- On a Forever file (WoW: Forever, the beta) the commands are the same and run on
+-- the Forever engine -- tools/importforever.lua, which says what each prints:
+-- list, validate N, replay N, coach N [force] [--strategy <key>], report N, export N,
+-- with N a recording (1 = newest) or pN a practice fight (p1 = newest).
 --
 -- The spell kit is the CHARACTER's when the file carries a profile (v0.9.0:
 -- SpellTuner writes cdb.profile at login, on a talent change and on a gear
@@ -42,20 +65,46 @@ do
         if a == "--file" then opts.file = arg[i + 1]; i = i + 1
         elseif a == "--char" then opts.char = arg[i + 1]; i = i + 1
         elseif a == "--run" then opts.run = tonumber(arg[i + 1]); i = i + 1
+        elseif a == "--flavour" or a == "--flavor" then opts.flavour = arg[i + 1]; i = i + 1
+        elseif a == "--strategy" then opts.strategy = arg[i + 1]; i = i + 1
+        elseif a == "--out" then opts.out = arg[i + 1]; i = i + 1
+        elseif a == "--fixture" then opts.fixture = arg[i + 1]; i = i + 1
         elseif a == "force" then opts.force = true
         elseif tonumber(a) then n = tonumber(a); opts.gotN = true
+        elseif a:match("^[pP]%d+$") then opts.spec = a:lower(); opts.gotN = true
         elseif a:match("^%a+$") then cmd = a end
         i = i + 1
     end
 end
+local envFlavour = os.getenv("ST_FLAVOUR")
+if not opts.flavour and envFlavour and envFlavour ~= "" then opts.flavour = envFlavour end
+if opts.flavour and opts.flavour ~= "forever" and opts.flavour ~= "tbc" then
+    print("import: --flavour is forever or tbc, not " .. tostring(opts.flavour))
+    os.exit(2)
+end
 
 -- the file
 local function exists(p) local f = io.open(p, "r"); if f then f:close(); return true end return false end
-local file = opts.file or os.getenv("MD_SAVEDVARS")
+local function Installs(client)
+    local found = {}
+    local p = io.popen('ls "/mnt/e/Blizzard/World of Warcraft/' .. client ..
+        '/WTF/Account"/*/SavedVariables/SpellTuner.lua 2>/dev/null')
+    if p then for line in p:lines() do found[#found + 1] = line end; p:close() end
+    return found
+end
+local file = opts.fixture or opts.file or os.getenv("MD_SAVEDVARS")
 if not file then
-    local candidates = { ".logs/SpellTuner.lua" }
-    local p = io.popen('ls "/mnt/e/Blizzard/World of Warcraft/_anniversary_/WTF/Account"/*/SavedVariables/SpellTuner.lua 2>/dev/null')
-    if p then for line in p:lines() do candidates[#candidates + 1] = line end; p:close() end
+    local candidates = {}
+    if opts.flavour == "forever" then
+        -- the author's beta install (a Windows drive under /mnt/e)
+        for _, c in ipairs(Installs("_classic_beta_")) do candidates[#candidates + 1] = c end
+    else
+        candidates[1] = ".logs/SpellTuner.lua"
+        for _, c in ipairs(Installs("_anniversary_")) do candidates[#candidates + 1] = c end
+        if not opts.flavour then
+            for _, c in ipairs(Installs("_classic_beta_")) do candidates[#candidates + 1] = c end
+        end
+    end
     for _, c in ipairs(candidates) do if exists(c) then file = c; break end end
 end
 if not file or not exists(file) then
@@ -65,9 +114,61 @@ end
 
 -- Load the database BEFORE the addon, so Core.lua initialises from it exactly
 -- as the client does: settings, history, calibration, recordings.
-dofile(file)
+if opts.fixture then
+    -- a fixture is one practice fight and the kit it is replayed with: made the
+    -- database of a character of its own, so every command reads it as p1
+    local fx = dofile(file)
+    if type(fx) ~= "table" or type(fx.rec) ~= "table" then
+        print("import: " .. file .. " is not a fixture (it returns no { rec, kit })"); os.exit(2)
+    end
+    fx.rec.kit = fx.rec.kit or fx.kit
+    _G.SpellTunerDB = { char = { ["Fixture-" .. tostring(fx.rec.id or 0)] = { practice = { fx.rec } } } }
+    if not opts.spec and cmd ~= "list" then opts.spec, opts.gotN = "p1", true end
+else
+    dofile(file)
+end
 local realDB = _G.SpellTunerDB or _G.ManaDemonDB   -- files written before the rename
 if not realDB then print("import: " .. file .. " holds no SpellTunerDB."); os.exit(2) end
+
+-- Which client wrote it. Forever is told apart by what only its code writes:
+-- a v3 stream, a recorded kit, the SavedVariables guard's session stamp
+-- (Core_Forever.lua; TBC's database is never stamped) and the probe's reports
+-- (Client/Probe.lua, on the Forever TOC only).
+local function DetectFlavour(db, path)
+    for _, c in pairs(db.char or {}) do
+        if type(c) == "table" then
+            for _, r in ipairs(c.recordings or {}) do
+                if type(r) == "table" and r.v == 3 then return "forever", "a v3 recording" end
+            end
+            if c.kit then return "forever", "a Forever spell kit" end
+            -- a practice fight says which client played it (both clients store
+            -- its kit); one with a kit and no word is from the recordings branch,
+            -- which stored kits on Forever only
+            for _, r in ipairs(c.practice or {}) do
+                if type(r) == "table" and r.client == "forever" then return "forever", "a practice fight played on it" end
+                if type(r) == "table" and r.kit and r.client == nil then
+                    return "forever", "a practice fight with its kit"
+                end
+            end
+        end
+    end
+    if type(db.session) == "table" and db.session.stamp then return "forever", "the session stamp" end
+    if type(db.probe) == "table" then return "forever", "the probe's reports" end
+    if path:find("_classic_beta_", 1, true) then return "forever", "the beta install path" end
+    return "tbc", "no v3 recording, Forever kit or practice fight, session stamp or probe report"
+end
+local seen, seenWhy = DetectFlavour(realDB, file)
+local flavour = opts.flavour or seen
+
+if flavour == "forever" then
+    IMPORT = { file = file, db = realDB, cmd = cmd, n = n, opts = opts, here = here,
+               detected = seen, detectedWhy = seenWhy }
+    dofile(here .. "/importforever.lua")
+    os.exit(0)
+end
+if opts.flavour == "tbc" and seen ~= "tbc" then
+    print(string.format("import: note - this file looks like a Forever one (%s); read as TBC because you said so", seenWhy))
+end
 
 -- Loading the addon over the real database runs its PLAYER_LOGIN path, and
 -- that path WRITES the profile -- with the stub's stats, over the character's
@@ -85,7 +186,9 @@ S.Load({ "UI/Style.lua", "UI/Tooltip.lua" }, "SpellTuner", MD)   -- Tip is what 
 -- the character: the stub's charKey is "Penek-Anniversary"; the real one is
 -- whatever the game wrote
 local chars = {}
-for key, c in pairs(realDB.char or {}) do chars[#chars + 1] = { key = key, n = #(c.recordings or {}) } end
+for key, c in pairs(realDB.char or {}) do
+    chars[#chars + 1] = { key = key, n = #(c.recordings or {}) + #(c.practice or {}) }
+end
 table.sort(chars, function(a, b) if a.n ~= b.n then return a.n > b.n end return a.key < b.key end)
 local charKey = opts.char or (chars[1] and chars[1].key)
 if not charKey or not realDB.char[charKey] then
@@ -184,6 +287,11 @@ if opts.run then
     what = "pull"
     Say("run:   %d. %s -- %s", opts.run, theRun.name or "?", Strip(RR:Line(theRun)))
     Say("")
+elseif opts.spec then
+    -- "p3": the third newest practice fight (v0.15.0's own address)
+    list = MD.Practice and MD.Practice.List() or {}
+    n = tonumber(opts.spec:sub(2))
+    what = "practice fight"
 else
     list = FR:List()
 end
@@ -195,11 +303,27 @@ end
 
 -- the label the game would take for this recording: "3", or "1:3" inside a run
 local function Label(i)
+    if opts.spec then return "p" .. i end
     return opts.run and (opts.run .. ":" .. i) or tostring(i)
 end
 
+-- A fight that carries the kit it was played with (every practice fight since
+-- 2026-09-29, MD.SimModel.KitSnapshot) is replayed with that kit, not the one
+-- the profile above builds: every command on one fight, and its row in list.
+local function OwnKit(rec)
+    return type(rec) == "table" and type(rec.kit) == "table" and type(rec.kit.caster) == "table" and rec.kit or nil
+end
+if opts.gotN and list[n] and OwnKit(list[n]) then
+    local own = OwnKit(list[n])
+    function MD.RankMath:SpellKit() return own end
+    Say("kit:   %s %s's own, stored with it (%s%s) - the profile above is not used for it", what, Label(n),
+        own.level and ("level " .. tostring(own.level) .. ", ") or "",
+        string.format("crit %.1f%%", (own.crit or 0) * 100))
+    Say("")
+end
+
 local function Verdict(rec)
-    local v = SM:Validate(rec)
+    local v = SM:Validate(rec, OwnKit(rec))
     if not v then return "?" end
     if v.ok then return "ok" end
     for _, g in ipairs(v.gates) do if not g.ok then return g.name .. ": " .. Strip(g.text) end end
@@ -371,6 +495,16 @@ elseif cmd == "coach" then
     if not done then Say("coach: the search did not finish in %d frames", frames); os.exit(1) end
     for _, line in ipairs(out) do Say("%s", Strip(line)) end
     if h then Say("(search ran across %d stub frames)", frames) end
+
+elseif cmd == "report" then
+    local rec = list[n]; if not rec then Say("no %s %s", what, Label(n)); os.exit(1) end
+    Say("%s %s: %s, %s, %.1fs, %d own casts%s", what, Label(n), rec.zone or "?", When(rec.id), rec.dur or 0,
+        rec.ownCasts or 0, rec.client and string.format("  (played on %s, level %s, SpellTuner %s%s)",
+            rec.client, tostring(rec.level or "?"), tostring(rec.version or "?"),
+            rec.build and (", build " .. rec.build) or "") or "")
+    for _, line in ipairs(dofile(here .. "/reportlines.lua")(MD, rec, MD.RankMath:SpellKit())) do
+        Say("  %s", line)
+    end
 
 elseif cmd == "gates" then
     if not opts.run then

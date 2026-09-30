@@ -310,18 +310,31 @@ do
     end
     local r8 = Rule8(true)
     check("5b the author's fight: rule 8 fires in the priced plan", #r8 > 0, string.format("%d", #r8))
-    local allNominal = true
-    for _, d in ipairs(r8) do if d.forfeit then allNominal = false end end
-    -- and the reason rule 8 writes never carries a forfeit
+    -- 5c reads the reason rule 8 writes at each of its decisions: no forfeit in
+    -- it, and the cost it names is the picked spell's own. (Until the 2026-09-30
+    -- merge a first loop looked for `forfeit` on the { t, id, ti } triples 5b
+    -- collects, which never carry one: it could not fail, and is gone.)
+    local seen, allNominal, detail = 0, true, nil
     local p = Frugal(fx.kit, SP.MaxRankBinds(fx.rec.initial.known))
     local o = p.Decide
     p.Decide = function(self, S, t, mana, form)
         local id, ti, rule = o(self, S, t, mana, form)
-        if rule == 8 and self.reason and self.reason.forfeit then allNominal = false end
+        if rule == 8 then
+            seen = seen + 1
+            local r = self.reason or {}
+            local list = fx.kit[form or "caster"] or fx.kit.caster
+            local e = list[id] or fx.kit.caster[id]
+            if r.forfeit or not e or r.cost ~= (e.cost or 0) then
+                allNominal = false
+                detail = detail or string.format("t=%.1f id %s: cost %s, own %s, forfeit %s", t, tostring(id),
+                    tostring(r.cost), tostring(e and e.cost), tostring(r.forfeit))
+            end
+        end
         return id, ti, rule
     end
     SP.RunPlan(sc2, p, { critMode = "ev" })
-    check("5c rule 8 prices at the nominal cost, never the forfeit", allNominal)
+    check("5c rule 8 prices at the spell's own cost, never the forfeit", seen > 0 and allNominal,
+        detail or string.format("%d rule 8 decisions", seen))
 end
 
 --------------------------------------------------------------------------------

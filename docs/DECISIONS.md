@@ -818,22 +818,31 @@ rule forfeits 57.5 mana, more than its own 55.
    most ~15 per mana) could never clear it. On 180 synthetic level 10 party fights 20 cost no
    deaths (0 against 1) and ended with 85 mana against 34. On the author's fight it used 301
    against 364, with the same lowest health (48%) and less owed (244 against 302). On the eight
-   TBC recordings it decided exactly as 30 did. The other floors keep their numbers.
+   TBC recordings its row in `tools/strategies.lua` (deaths, seconds one hit from death, mana)
+   read the same at 20 as at 30; that is what was compared, not its decisions cast for cast.
+   The other floors keep their numbers.
 7. **The replay window leads with "used"**, the pool at the pull less the pool now, which is the
    number the coach ranks on. The author read "spent 385" against his "spent 425" as the coach
    being cheaper while it had 24 mana left to his 76.
 8. **Practice fights are reports.** A practice record carries the kit it was simulated with, the
    client, level, version and build. `PR.Pin` keeps up to four past the ring of eight, from Review's
-   Pin. `tools/practicereport.lua` lists, reports (the replay beside every strategy: spent, regen,
-   used, end, owed, deaths, seconds in danger, lowest) and exports a fight as a fixture. The
+   Pin. `tools/import.lua report pN` (on both clients; it was `tools/practicereport.lua`'s until the
+   2026-09-30 merge with the recordings pipeline) puts the replay beside every strategy: spent,
+   regen, used, end, owed, deaths, seconds in danger, lowest. The
    author's fight is `tools/data/practice/1790701698.lua`; its kit was reconstructed from its own
    events, because it predates the stored kit, and it passes every gate. `/reload` before sending:
    SavedVariables reach the disk only then.
 
+**What changed on TBC, per strategy** (items 1-6 together; the review's re-run, 2026-09-29):
+- on the anniversary snapshot the recordings were first measured on: "Solver: no intuition"
+  4 -> 5 deaths, and "Solver: intuition from many raids" 15.3 -> 22.1 s one hit from death;
+- on the author's current eight-recording file: the solver strategies together 23 deaths and
+  270 s one hit from death -> 19 and 208 s; the two rules strategies unchanged.
+
 **Critics' objections rejected, and why.**
 - *Normalise the floor to `minFrac x BestHPM x horizon`* (critic 1, O4/D5): right in principle.
-  But at level 70 the solver's values sit far above every floor (20 and 30 decide identically on
-  eight TBC recordings), so there is nothing yet to fit a fraction to. It stays open until a
+  But at level 70 the solver's values sit far above every floor (20 and 30 read the same in
+  `tools/strategies.lua` on eight TBC recordings), so there is nothing yet to fit a fraction to. It stays open until a
   high-level fight where the floor binds.
 - *A rest guard with its own hit multiple* (critic 1, D4): see 4.
 - *Price the later candidate at its own delay* (one reading of "the same price"): see 2.
@@ -847,7 +856,37 @@ rule forfeits 57.5 mana, more than its own 55.
 - *Report lowest mana and OOM time on the card* (critic 1, D7): not done here. The replay's
   mana bar shows it, and no card line was asked for.
 
-**Still open.** One extra death on TBC for "Solver: reactive" in a 180 s Blackrock fight where
-both versions sit near 250 mana for 90 s. The divergence is chaotic, not mana banked while someone
-was in danger, but it is a death, and it is named rather than tuned away. The frugal floor is a
-constant from one synthetic setup and one real fight.
+**Still open.** The two TBC rows that got worse on the anniversary snapshot ("no intuition" one
+more death, "many raids" 6.8 s more one hit from death), named rather than tuned away. The first
+write-up named instead one extra death for "Solver: reactive" in a 180 s Blackrock fight where both
+versions sit near 250 mana for 90 s, and read that divergence as chaotic rather than mana banked
+while someone was in danger; the review's re-run is the one above. The frugal floor is a constant
+from one synthetic setup and one real fight.
+
+## One kit record and one report tool (2026-09-30)
+
+`work/regen` (practice fights as reports) and `work/recordings` (the beta's SavedVariables read by
+`tools/import.lua`) each stored the kit a fight was played with, differently: the first a copy of
+every form's entries on practice fights, the second `RM.KitSnapshot` on practice fights and Forever
+pulls -- the entries plus a copy of the whole `MD.SpellData` index (spells, families, known, all,
+max rank, skipped, order) on every record, and the same again as the character's `cdb.kit`.
+
+1. **One record, `SM.KitSnapshot`** (Engine/SimModel.lua, both clients): each form's entries with
+   their number, string and boolean fields, the crit, the time and the level. It is a kit as it
+   stands (`SM.ScenarioFromRecording(rec, rec.kit)` replays with it), so TBC needs nothing more,
+   and it holds nothing a replay does not read. The index is not stored: on Forever
+   `RM.KitRestore` rebuilds the part the engine reads (family, rank, cost, cast; every rank in a kit
+   is a known one) from the entries, offline only. `RM.KitSnapshot` is kept as the Forever name for
+   it. Practice fights (both clients), Forever pulls and `cdb.kit` all carry it.
+2. **`cdb.kit` stays**: a few dozen numbers, and the only kit a Forever pull recorded before pulls
+   carried their own can be replayed with (the tool says `last` when it uses it).
+3. **One tool, `tools/import.lua`.** It already read both clients' files, addressed practice fights
+   as `pN` and, on Forever, read a kit back off an old practice fight's own heals (the same
+   reconstruction `practicereport.lua` did; on TBC the character's profile rebuilds the kit).
+   Its `report N|pN` is practicereport's report, shared by both halves (`tools/reportlines.lua`),
+   and `--fixture` reads a `{ rec, kit }` file. `tools/practicereport.lua`
+   is removed rather than kept as a wrapper: a wrapper would be a second place to document and keep
+   in step, for nothing the entry point does not do. What it did that `import.lua` does differently:
+   its `export` wrote a `{ rec, kit }` fixture; `import.lua`'s Forever `export pN` writes the fight
+   and its kit as a SavedVariables file of its own (`--file` reads it), and the existing fixture
+   stays readable with `--fixture`.

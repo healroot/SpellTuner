@@ -102,12 +102,13 @@ Run all of them before committing anything the engine, the recorder or a tooltip
 | `measurecheck.lua` | **`/st measure`** (T12, forever): nothing registered until asked, a heal on yourself and a Wrath on the target matched and judged (`in range` / `crit range` / `BELOW range`), a HoT's ticks, other units ignored, a secret amount counted and never judged, the dump. Since **T12b** (18): several watches at once, a heal landing before its own cast event, a HoT's ticks kept through another cast, a DoT's through the next casts, an amount that fits two casts `ambiguous`, a damage shortfall a possible resist, a heal shortfall BELOW only with the known deficit behind it, `capped at missing health`, bonus healing from before combat, a recast ending a watch as `refreshed`. Since **the 2026-09-29 review** (26): the deficit counted in combat only, a cast named at another unit not judged, `target not known`, a HoT crit at 1.5x counted, the lists escaped (R1, R14, R32-R34) Since **T26** (30): each kept line stamped with version and build, the dump showing this version's lines and counting older ones, `dump all` with stamps, `/st measure clear` |
 | `probecheck.lua` | **the Forever probe** (T0) under the stub's `forever` profile: never raises, a missing function is "absent" not an error, a secret is "secret" not a sum, a bad event is caught, the report is ASCII with no bare pipe and keyed by build, the sections are in order, the description dump is whole, the TOC that loaded is named; since **T0c** also a blocked action recorded with what the probe was doing, the combat log registered only by `/st probe clog`, the secret readings and restriction state, Q1 by bonus damage or level with was/now lines, Q6 at level 10, and the release carrying exactly three TOCs (since **T23**: the Forever package two, the TBC package one, each `Client/TOC_*.lua` only in its own); since **T7a** the `== shapes` section (every return shape M2 reads, in and out of combat, and `UNIT_SPELLCAST_SUCCEEDED` counted). Since **T13b** (71): a passive's "Health" / "taking damage" not taken for a heal or damage spell, the tooltip lines of a direct heal, a HoT and a damage spell, party1's six readings out of combat and in the snapshot, `UNIT_COMBAT` per token with mirrors. Since **T13e** (73): a status bar handed a secret reports whether it reads back secret, plain, or raises. Since **the 2026-09-29 review** (82): the snapshot only in combat, `SpellTunerDB at load` from the guard, pets their own class, mirrors by GUID, `no cost`, blocked actions of the `SpellTuner_` modules (R2, R3, R17-R20) Since **T25a** (86): the Spell and Macro data types, a macro action's `GetActionInfo`, `GetMacroSpell` and tooltip data whole (a pipe escaped), a hovered macro recorded by the probe's own post-call with its to-do line, nothing raising on a secret or raising client |
 | `releasecheck.lua` | **the two packages and the installs** (T23; no harness, it only runs `release.sh` into `tools/.lua/releasecheck/scratch tree/`, a path with a space, and never into a real client): the TBC package exactly `SpellTuner_TBC.toc` and its files, the Forever package exactly the two Forever TOCs and theirs plus the three modules each exactly its TOCs' files, no TOC of the other flavour in either, every packaged TOC at the tree's one version, the two zips named by flavour and version holding exactly their package; on a scratch copy of the tree (`git ls-files`, so uncommitted work is in it; a `git archive` export needs a throwaway `git init` of its own): the build refused when two TOCs disagree, `--set-version` rewriting only the version lines (a CRLF TOC keeping every CR) and refusing `1.0`; an install into a `_classic_beta_` folder leaving only the Forever package (a stale TBC TOC and file gone, another addon kept), into an `_anniversary_` folder only the TBC package with the modules removed, an unknown path refused with nothing written, an explicit flavour against the path refused, the explicit flavour into an unknown path installed (13) The disagreeing version it writes is `9.9.9-disagree` since 0.16.1 (it wrote `0.16.1`, which stopped disagreeing the day the tree became 0.16.1) |
+| `importcheck.lua` | **the recordings pipeline** (no harness of its own; it runs `tools/import.lua` as the planner does, 19): on `tools/data/import-forever-sv.lua` -- built by `tools/importfixture.lua` with the real Practice and Recorder code: p1 (48 s, a twelve-second window of no casting in the middle) stored with its kit, p2 stored without one as 0.16.1 stored every practice fight, and one v3 pull -- the committed fixture byte for byte what the code writes today; the game storing each fight's kit and the character's last one (`rec.kit`, `cdb.kit`), every one the same lean record (`SM.KitSnapshot`: entries only, no `MD.SpellData` copy) and a practice fight with its client, level and version; the file read as Forever told or not; `list` with kit and verdict; `validate`; `replay pN --strategy`'s YOU column exactly the fight as played (spent, the mana at its end), the 5SR marks, the plan's reasons and waits; p2 replaying exactly from the kit read back off its own heals; the pull without its kit using the last kit, then the stub's book, and saying which; `coach` (the card; a failing pull refused, forced); `coach --strategy` (that strategy's card); an unknown strategy refused; `export` writing an importable file and the text; `report pN` (the replay beside every strategy) on the file and on the author's fight read with `--fixture`; a TBC file still taking the TBC road |
 
 ```bash
 for t in simcheck reccheck replaycheck replayui runcheck reviewui navui dashui \
          regencheck simwindow solvercheck restcheck timeline spelltip practice practiceui \
          migrate probecheck forevercheck modulecheck kitcheck recordcheck scenariocheck gatecheck replayforever reviewforever coachforever practiceforever bindscheck \
-         parsecheck bookcheck tipcheck clockcheck spellsui measurecheck releasecheck; do
+         parsecheck bookcheck tipcheck clockcheck spellsui measurecheck releasecheck importcheck; do
   printf "%-13s " "$t"; bash tools/run.sh tools/$t.lua 2>&1 | tail -1
 done
 # the suites that run under both flavours
@@ -134,6 +135,8 @@ bash tools/run.sh tools/import.lua list                 # every recording + its 
 bash tools/run.sh tools/import.lua validate 1           # the eight gates, in full
 bash tools/run.sh tools/import.lua replay 1             # every cast, its label and its reason
 bash tools/run.sh tools/import.lua coach 1 force        # the search and the card
+bash tools/run.sh tools/import.lua report p1            # the replay beside every strategy
+bash tools/run.sh tools/import.lua --fixture tools/data/practice/1790701698.lua report
 bash tools/run.sh tools/import.lua spells 1             # where the mana went, by kind
 bash tools/run.sh tools/import.lua export 1             # -> .logs/recordings/<id>.txt
 bash tools/run.sh tools/import.lua runs                 # stored runs
@@ -141,7 +144,66 @@ bash tools/run.sh tools/import.lua validate 3 --run 1   # run 1, pull 3 (the "1:
 ```
 
 Options: `--file <path>` (default `$MD_SAVEDVARS`, then `.logs/SpellTuner.lua`, then the
-author's install), `--char "Name-Realm"`, `--run K`.
+author's install), `--fixture <path>` (a `{ rec, kit }` file such as
+`tools/data/practice/1790701698.lua`, read as practice fight p1), `--char "Name-Realm"`, `--run K`,
+`--flavour forever|tbc`. `pN` addresses practice fight N (p1 = newest) wherever a number addresses
+a recording.
+
+**`report N|pN`** (both clients; `tools/practicereport.lua`'s until the 2026-09-30 merge, now
+`tools/reportlines.lua` under both halves of `import.lua`) puts the fight's own replay beside every
+strategy in `SP.STRATEGY_SET` on the same fight: spent, regenerated, **used** (what left the
+pool), mana at the end, owed, deaths, seconds one hit from death, lowest health, casts, lowest mana,
+with the gates on top and, for a practice fight, the client, level, version and build it was
+played on. A wrong kit fails the gates. A fight that carries its kit (`rec.kit`) is replayed with
+it on either client. SavedVariables reach the disk only on `/reload` or logout.
+
+### `import.lua` on WoW: Forever -- practice fights and pulls from the beta
+
+The recordings pipeline: the author plays, `/reload`s, and says which fight (docs/TESTING.md §43);
+the planner reads it here. The file is the beta's own SavedVariables, read from the author's
+install by default (`/mnt/e/Blizzard/World of Warcraft/_classic_beta_/WTF/Account/*/SavedVariables/SpellTuner.lua`);
+a file is recognised as Forever without `--flavour` by what only Forever writes (a v3 stream, a
+kit, the SavedVariables guard's session stamp, the probe's reports). The Forever half is
+`tools/importforever.lua`: the Mainline TOC under the stub's forever profile, the three modules on,
+over the file's database -- the same engine, gates, planner and solver the game runs.
+
+```bash
+bash tools/run.sh tools/import.lua --flavour forever list          # every pull (1..) and practice fight (p1..), kit, verdict
+bash tools/run.sh tools/import.lua --flavour forever validate p1    # the Forever gates, as /st validate
+bash tools/run.sh tools/import.lua --flavour forever replay p1      # both columns as text (the search first, as the window does)
+bash tools/run.sh tools/import.lua --flavour forever replay p1 --strategy solver-frugal   # the chooser's pick
+bash tools/run.sh tools/import.lua --flavour forever coach p1       # the search and the card, as /st coach
+bash tools/run.sh tools/import.lua --flavour forever coach p1 --strategy solver-frugal    # that strategy's card
+bash tools/run.sh tools/import.lua --flavour forever coach 1 force  # a pull that fails its gates, anyway
+bash tools/run.sh tools/import.lua --flavour forever report p1      # the replay beside every strategy
+bash tools/run.sh tools/import.lua --flavour forever export p1      # -> .logs/forever/p1-<id>.lua + .txt
+```
+
+`replay` prints what the replay window shows at the end of the fight for each column -- spent,
+regen, overheal, lowest, dead, mana at the end -- plus **seconds outside the five-second rule**; the
+mana every 2 s side by side with `*` where that column was regenerating at the full rate; every cast
+of yours with the classifier's label and why; the plan's casts with the rule's own sentence and
+every wait of 2 s or more. `--strategy` is the window's chooser: a planner (`rules`, `rules-hots`,
+`solver-blind`, `solver-prior`, `solver-sight`, `solver-frugal`, `solver-near`, built on demand) or a
+reading of the search (`safe`, `health`, `cheap`, `regen`). `export` writes the fight alone as a
+SavedVariables file (`--file` imports it again) and the replay text beside it; `--out <dir>` moves it.
+
+**The kit.** On Forever the spells are read from the live spellbook, which offline is the stub's
+(Healing Touch R1, Rejuvenation R1-R2). So since the recordings pipeline every fight is stored with
+the kit it was played with (`rec.kit`, on practice fights and Recorder pulls with the Replay
+module on), and every kit the game builds is kept as the character's last (`cdb.kit`). All three
+are one record, `SM.KitSnapshot` (Engine/SimModel.lua, both clients): each form's entries with
+their plain fields, the crit, the time and the level -- a kit as it stands, with no copy of the
+`MD.SpellData` index; `RM.KitRestore` (Kit_Forever.lua) rebuilds the part of the index a replay
+reads from the entries. The tool replays each fight with, in order: its own kit (`recorded`); for a
+practice fight stored before that, the kit read back off its own heals (`inferred` -- exact for every
+spell the fight cast, crit folded into each heal, nothing for a spell it did not cast); the
+character's last kit (`last`); the stub's book (`STUB` -- the numbers are not the author's). `list`
+has a kit column and every report a `kit:` line.
+
+`bash tools/run.sh tools/importfixture.lua` rebuilds `tools/data/import-forever-sv.lua` (the
+fixture `importcheck.lua` runs every command on) whenever what the code stores changes;
+`importcheck` fails until it is.
 
 ### `reproduce.lua` — does the engine reproduce the recording at all?
 
@@ -198,26 +260,6 @@ bash tools/run.sh tools/solvercmp.lua --file .logs/wcl-all.lua
 ```
 
 Sweeps `minValue` / `horizon` and prints the frontier against the rules baseline.
-
-### `practicereport.lua` — a practice fight as a report and a fixture
-
-```bash
-bash tools/run.sh tools/practicereport.lua list                  # p1 = the newest
-bash tools/run.sh tools/practicereport.lua report 1              # the replay beside every strategy
-bash tools/run.sh tools/practicereport.lua export 1              # -> tools/data/practice/<id>.lua
-bash tools/run.sh tools/practicereport.lua report --fixture tools/data/practice/1790701698.lua
-```
-
-Since 2026-09-29, for the author's "practice recordings so we can improve the code from such reports". It
-reads the SavedVariables file (`--file`, `$MD_SAVEDVARS`, `.logs/SpellTuner.lua`, then the WoW: Forever
-beta install, then the anniversary one) and the character with the most practice fights (`--char`).
-`report N` puts pN's own replay beside every strategy in `SP.STRATEGY_SET` on the same fight: spent,
-regenerated, **used** (what left the pool), mana at the end, owed, deaths, seconds one hit from death,
-lowest health, casts, lowest mana, with the gates on top. A wrong kit fails the gates. `export N` writes the
-record and its kit as a fixture a suite can `dofile`. A fight recorded since 2026-09-29 carries its kit; an
-older one gets its kit **reconstructed from its own events** (cost from OWNCAST, cast time from CASTSTART to
-OWNCAST, a direct heal from what it landed for, a HoT's tick and period from its ticks), and the report says
-which. SavedVariables reach the disk only on `/reload` or logout.
 
 ### `strategies.lua` — every strategy side by side
 

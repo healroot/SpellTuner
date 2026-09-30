@@ -1392,30 +1392,19 @@ function Session:Finish()
     end
     -- 2026-09-29: what the fight was simulated WITH, so a report replays it
     -- exactly -- mana included -- with no game and no spellbook
-    -- (tools/practicereport.lua). On Forever the kit is the live book's; nothing
-    -- else in the record says what a rank healed or cost.
-    local kitCopy = { crit = self.kit.crit }
-    for form, list in pairs(self.kit) do
-        if type(list) == "table" then
-            kitCopy[form] = {}
-            for id, e in pairs(list) do
-                local c = {}
-                for k, v in pairs(e) do
-                    local tv = type(v)
-                    if tv == "number" or tv == "string" or tv == "boolean" then c[k] = v end
-                end
-                kitCopy[form][id] = c
-            end
-        end
-    end
+    -- (tools/import.lua). SM.KitSnapshot, the one kit record both clients
+    -- keep: on Forever the kit is the live book's, and nothing else in the
+    -- record says what a rank healed or cost.
+    -- The build only as the plain string GetBuildInfo gives: the adapter's
+    -- failure answers (nil plus "absent" / "error" / "secret") leave it nil.
     local build
     if MD.API.BuildInfo then
-        local _, b = MD.API.BuildInfo()
-        if type(b) == "string" or type(b) == "number" then build = tostring(b) end
+        local ver, b = MD.API.BuildInfo()
+        if ver ~= nil and type(b) == "string" then build = b end
     end
     local rec = {
         v = 2, id = self.startedAt, t0 = 0, dur = endT, pool = sc.pool,
-        kit = kitCopy, client = MD.API.client, level = MD.player and MD.player.level,
+        kit = MD.SimModel.KitSnapshot(self.kit), client = MD.API.client, level = MD.player and MD.player.level,
         build = build, version = MD.version,
         zone = "Practice: " .. (g and g.label or "custom"), encounter = "Practice",
         roster = roster, tracked = tracked, ev = ev, n = #ev.t,
