@@ -1441,12 +1441,12 @@ the numbers.
 
 **Paste back**: the `pN` you pinned, and in words what the suggested column did differently.
 
-## 44. The refactor plan's checks (`docs/PLAN-refactor-ux.md` section 9; waves 1-4, the next build)
+## 44. The refactor plan's checks (`docs/PLAN-refactor-ux.md` section 9; waves 1-5, the next build)
 
 Paste back as in section 41. Out of combat unless a step says otherwise. The items keep the plan's
 numbers; wave 1 (T45-T47) needs items 3 and 15, wave 2 (T48-T50) adds 4, 6, 8, 10 and 14, and wave 3
-(T51-T53) adds 1, 2, 7, 9, 11 and 12, and wave 4 (T54-T56) adds 5 and the TBC load-list smoke line
-(W4). Item 13 waits for P35's pass over this section.
+(T51-T53) adds 1, 2, 7, 9, 11 and 12, wave 4 (T54-T56) adds 5 and the TBC load-list smoke line
+(W4), and wave 5 (T57-T58) adds 16. Item 13 waits for P35's pass over this section.
 
 **TBC.**
 
@@ -1476,6 +1476,8 @@ numbers; wave 1 (T45-T47) needs items 3 and 15, wave 2 (T48-T50) adds 4, 6, 8, 1
 W4. **The split load list (T56).** With the new TOC installed, `/md verify`, `/md simrun`,
    `/md regentest` (it answers "you are at full mana" or starts) and `/md coach` each answer in chat;
    a silent command means its file is missing from the TOC.
+16. **Reload mid-fight (P14).** `/reload` mid-fight on TBC: the clock shows the in-combat projection at
+   once.
 
 **Forever.**
 

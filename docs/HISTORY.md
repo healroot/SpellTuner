@@ -3934,3 +3934,41 @@ after, unchanged) and corecheck/forever's probe report is 243 lines, not 241 (th
 intermediate counts (reccheck's frames, replayui's and reviewui's `search N evaluations`; the final
 44 unchanged). **Next:** wave 5 (P13, P14); the author's §44 item 5 on both clients and the TBC
 load-list line W4 on the next build.
+
+## 2026-09-30 — the refactor plan, wave 5: T57-T58 (P13-P14)
+
+Wave 5 of `docs/PLAN-refactor-ux.md` cherry-picked onto `a185bfb`, oldest first, then the
+integrator's lines (CLAUDE.md, `docs/DECISIONS.md`, `docs/TESTING.md` §44, `docs/TOOLS.md`,
+`tools/data/expected-counts.json`, this entry) in one commit. The version stays 0.16.3; no TOC
+changed (`tools/ttocheck.lua` is not shipped).
+
+- **T57 (P13)** (`ed6082f`, `5fe4ef4`, `50a7ea7`, `149c512`): one honest command -- `make check`
+  (`tools/check.sh`): every suite under each flavour its `HARNESS_FLAVOUR` declares, exit code AND
+  footer AND no FAIL line, a skip (now exit 3) under a requested flavour a failure, the research
+  tools' smoke runs, apicheck / textcheck and the three selftests, the counts against
+  `tools/data/expected-counts.json` (created here, 55 keys, by `tools/check.sh --write-counts` on the
+  merged tree); `make release` / `make install` check the source they build first (`NO_CHECK=1`).
+  apicheck rule 8 follows aliases and rule 9 forbids `RegisterEvent` outside `Client/` and
+  `Core.lua` -- `UI/ReplayWindow.lua`'s raw `PLAYER_REGEN_DISABLED` frame moved onto `MD:On` (same
+  event, same body). `run.sh` pins Lua 5.1.5's SHA-256; `tools/lib/t.lua` for new suites;
+  releasecheck 21 and modulecheck 19 assert what is one file in several places; reviewui 49 asserts
+  no coach search after a plain click; the research tools print usage without their data, and
+  `reproduce` / `strategies` take `--fixture`. CLAUDE.md's hand-kept assertion counts dropped (the
+  task file's list, plus `probecheck` 87, `recordcheck` 29, `practiceui` 49, `dashui` 56 + 7 = 63,
+  `restcheck` (51) twice, `importcheck` (19) and `releasecheck` (13), which the list missed) and step 3
+  of "Verifying changes" is `make check`. Two findings left for later: `MD:CoachOnOpen`'s callback
+  clears a newer `MD.coachSearch`; the stub's re-dofile wraps `type` in its own wrapper (probecheck
+  ~86 s of the ~105 s run; a fix measured at 1 s).
+- **T58 (P14)** (`f288792`, `bc0987e`, `6750444`): "in combat" is `MD.inCombat` for the TBC clock,
+  its widget, the pull budget (its median now `MD.Util.Median(t, "low")`), the Advisor, the gear
+  reminder and the Forever clock (A28; DECISIONS "In combat is one flag on both lines"). The TBC stub
+  answers `UnitAffectingCombat` / `InCombatLockdown` from the regen events; `tools/ttocheck.lua` (45)
+  holds the TBC clock's in-combat path; replayui enters combat with the real event (103).
+
+`make check`: 60 runs, all passed, in the worktree and in a `git archive` export. Each suite's full
+output against `a185bfb` differs only by the new assertions (releasecheck, modulecheck, reviewui,
+ttocheck, lib/t, apicheck's selftest), replayui's log of the two combats it now enters through
+`PLAYER_REGEN_DISABLED` (`[combat] pull ...`, `[combat] end ... too short to record`,
+`[sim] stream discarded ...`, documented in T58) and run-to-run noise (ms, table addresses, the sliced
+search's counts, simwindow's frames). **Next:** wave 6; the author's §44 item 16 on the next TBC
+build.

@@ -1005,3 +1005,12 @@ one still run (review A4: one raise in an early `PLAYER_REGEN_ENABLED` handler u
 recorder closing its stream, the clock re-anchoring and the run recorder seeing the pull). Both lines;
 a change only when a handler raises. Measured cost 0.085 us per handler per event, so the combat log
 is isolated per handler too.
+
+## "In combat" is one flag on both lines (2026-09-30, T58)
+
+The TBC mana clock, its widget, the pull budget, the Advisor's two checks, the gear reminder and the
+Forever clock read `MD.inCombat` (Core.lua, T55: the regen events, seeded at `MD_READY` through the
+adapter) instead of each polling `UnitAffectingCombat` or keeping a copy (review A28). On TBC nothing
+visible changes -- the poll already followed the events and already said "in combat" after a
+`/reload` mid-fight; that case now comes from the seed. The offline stub's TBC profile answers the
+regen events, so the clock's in-combat path has a suite (`tools/ttocheck.lua`).
