@@ -61,6 +61,14 @@ function MD.API.Has(name)
     return answer
 end
 
+-- T52 (P8, review Q15): forget one name's cached answer, so the next Has walks
+-- _G again. For the offline tests, which swap a global after the adapter has
+-- already answered for it (the cache is otherwise forever, and the stub had
+-- grown settable fields only to route around it). Nothing in the game calls it.
+function MD.API.Invalidate(name)
+    if type(name) == "string" then cache[name] = nil end
+end
+
 -- Computed once at load (T47, docs/DECISIONS.md "the client is the TOC's, the
 -- interface is a fallback"). The TOC the client picked says which line this
 -- is: every main TOC lists its Client/TOC_<X>.lua first, which sets our own

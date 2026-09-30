@@ -114,13 +114,19 @@ end
 
 -- Tree of Life form: the shapeshift form ID when the client exposes it
 -- (FrameXML TREE_FORM = 2), the form buff by name as fallback.
+-- T52 (P8, review B2; docs/DECISIONS.md "Tree form: the buff scan is a
+-- fallback for a missing API only"): GetShapeshiftFormID answering nil is an
+-- answer -- caster form -- not a missing API. The buff scan ran on that nil
+-- and found ANOTHER resto druid's Tree of Life aura (34123, the same name), so
+-- the model, the recorder and the labels thought YOU were in Tree form. It now
+-- runs only when the function is absent or raised.
 local TREE_OF_LIFE = GetSpellInfo(33891)
 local TREE_FORM_ID = _G.TREE_FORM or 2
 function MD:InTreeForm()
     if not MD.player.isDruid then return false end
     if GetShapeshiftFormID then
         local ok, id = pcall(GetShapeshiftFormID)
-        if ok and id ~= nil then return id == TREE_FORM_ID end
+        if ok then return id == TREE_FORM_ID end
     end
     return MD:HasBuff(TREE_OF_LIFE)
 end
@@ -154,14 +160,33 @@ MD.RELEVANT_TALENTS = {
     "Naturalist", "Natural Perfection", "Nature's Grace", "Tree of Life",
 }
 
+-- T52 (P8, review Q15): the offline tools' seam. MD:SetTalents(tbl) makes the
+-- ranks `tbl` -- held, not copied, so a tool that edits it later changes the
+-- ranks -- and every scan takes it instead of the client, until
+-- MD:SetTalents(nil) hands the scan back to the client. Called before login it
+-- is what the login scan finds; after login it rescans at once (firing
+-- TALENTS_CHANGED as a scan does). tools/harness.lua uses it instead of
+-- replacing MD:TalentRank, so the real TalentRank is what the suites run.
+-- Nothing in the game calls it.
+local fixedTalents = nil
+function MD:SetTalents(tbl)
+    if tbl == nil and fixedTalents ~= nil then MD.talents = {} end -- never wipe the tool's table
+    fixedTalents = tbl
+    if MD.db then MD:ScanTalents() end
+end
+
 function MD:ScanTalents()
-    wipe(MD.talents)
-    if not GetNumTalentTabs then return end
-    for tab = 1, GetNumTalentTabs() do
-        for i = 1, GetNumTalents(tab) do
-            local name, _, _, _, rank = GetTalentInfo(tab, i)
-            if name then
-                MD.talents[name] = rank or 0
+    if fixedTalents then
+        MD.talents = fixedTalents
+    else
+        wipe(MD.talents)
+        if not GetNumTalentTabs then return end
+        for tab = 1, GetNumTalentTabs() do
+            for i = 1, GetNumTalents(tab) do
+                local name, _, _, _, rank = GetTalentInfo(tab, i)
+                if name then
+                    MD.talents[name] = rank or 0
+                end
             end
         end
     end

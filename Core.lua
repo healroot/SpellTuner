@@ -126,9 +126,20 @@ function MD:DetectProfile()
     local name = MD.API.UnitName("player")
     local realm = MD.API.RealmName()
     MD.player.charKey = (name or "?") .. "-" .. (realm or "?")
-    -- Druids are checked at login (caster form); cat/bear later doesn't change
-    -- that mana is their healing resource.
-    MD.player.usesMana = MD.API.UnitPowerType("player") == 0
+    -- T52 (P8, review B1; docs/DECISIONS.md "usesMana is whether the player
+    -- has a mana pool"): answered from data -- the player's mana maximum,
+    -- read plain and above 0. A druid who logs in or reloads in Cat or Bear
+    -- form still has a mana pool (the power TYPE answered 3 or 1 there and
+    -- switched the whole mana side off for the session); a warrior or rogue
+    -- has none. No class list: which classes use mana on Forever's retail
+    -- engine is not ours to guess. Only when that read is absent, secret or
+    -- raised does the current power type decide, as it did before.
+    local manaMax = MD.API.UnitPowerMax("player", 0)
+    if not MD.API.IsSecret(manaMax) and type(manaMax) == "number" then
+        MD.player.usesMana = manaMax > 0
+    else
+        MD.player.usesMana = MD.API.UnitPowerType("player") == 0
+    end
 end
 
 --------------------------------------------------------------------------------
@@ -183,8 +194,14 @@ MD:On("PLAYER_LOGIN", function()
     MD:Fire("CORE_READY")
 end)
 
+-- T52 (P8, review A31): the event's argument is a client value and this file
+-- is on the Forever TOC -- asked IsSecret before tonumber, whose answer for a
+-- secret number would be the secret itself. Unreadable: the adapter's own
+-- UnitLevel, else the level we had.
 MD:On("PLAYER_LEVEL_UP", function(level)
-    MD.player.level = tonumber(level) or MD.API.UnitLevel("player") or MD.player.level
+    local n
+    if not MD.API.IsSecret(level) then n = tonumber(level) end
+    MD.player.level = n or MD.API.UnitLevel("player") or MD.player.level
 end)
 
 --------------------------------------------------------------------------------

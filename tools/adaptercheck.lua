@@ -7,6 +7,7 @@
 -- forever only, 19-20 under tbc only -- matching the Facts in
 -- docs/tasks/T1-client-adapter.md about what is secret on which client. Never
 -- runs under a flavour it did not declare (tools/harness.lua).
+-- T52 (P8): one more under both flavours, MD.API.Invalidate (23 forever, 16 tbc).
 HARNESS_FLAVOUR = { "forever", "tbc" }
 
 local here = arg[0]:match("^(.*)/[^/]+$")
@@ -291,6 +292,33 @@ do
     local drawOk = MD.API.DrawUnitPower(bar, "player", 0)
     check("DrawUnitPower hands the values over without reading them",
         drawOk == true and bar.minV == 0 and bar.maxV ~= nil and bar.value ~= nil)
+end
+
+--------------------------------------------------------------------------------
+-- T52 (P8, review Q15): MD.API.Invalidate(name) clears one Has cache entry, so
+-- a test can swap a global after the adapter has already answered for it --
+-- both flavours. Before it a later Has kept the first answer forever.
+--------------------------------------------------------------------------------
+do
+    local runOk, err = pcall(function()
+        _G.T52_LATE = nil
+        local before = MD.API.Has("T52_LATE")
+        _G.T52_LATE = function() return 7 end
+        local stillCached = MD.API.Has("T52_LATE")
+        MD.API.Invalidate("T52_LATE")
+        local after = MD.API.Has("T52_LATE")
+        local otherKept = type(MD.API.Has("UnitLevel")) == "function"
+        _G.T52_LATE = nil
+        MD.API.Invalidate("T52_LATE")
+        local gone = MD.API.Has("T52_LATE")
+        check("Invalidate makes a later Has see a new global",
+            before == false and stillCached == false and type(after) == "function"
+            and gone == false and otherKept == true,
+            string.format("before=%s cached=%s after=%s gone=%s", tostring(before),
+                tostring(stillCached), type(after), tostring(gone)))
+    end)
+    _G.T52_LATE = nil
+    if not runOk then check("Invalidate makes a later Has see a new global", false, "raised: " .. tostring(err)) end
 end
 
 --------------------------------------------------------------------------------

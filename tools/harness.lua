@@ -98,7 +98,11 @@ local TALENTS = {
     ["Tranquil Spirit"] = 5, ["Improved Regrowth"] = 5, ["Nature's Grace"] = 1,
     ["Intensity"] = 3, ["Dreamstate"] = 0,
 }
-function MD:TalentRank(name) return TALENTS[name] or 0 end
+-- T52 (P8, review Q15): set through Core_TBC.lua's own seam rather than by
+-- replacing MD:TalentRank, so the suites run the real TalentRank and the login
+-- scan. The table is held, not copied: a suite that edits MD.harnessTalents
+-- (tools/regencheck.lua's Dreamstate) changes the ranks.
+MD:SetTalents(TALENTS)
 MD.harnessTalents = TALENTS
 
 S.Fire("ADDON_LOADED", "SpellTuner")
