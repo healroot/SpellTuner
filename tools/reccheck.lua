@@ -234,5 +234,104 @@ do
     MD.db.recordThreat = true
 end
 
+--------------------------------------------------------------------------------
+-- T48 (P4, review B9): what ends a pending hard cast. Only its own success, an
+-- interrupt carrying its castGUID, or another own cast start -- never a HoT
+-- tick, and never the failure a spam press of the same button produces.
+-- (B10) the bloom attributed to the Lifebloom that bloomed, Tranquility left
+-- alone.
+--------------------------------------------------------------------------------
+do
+    local K2 = MD.SimModel.K
+    local observed = {}
+    local CAL = MD.Calibration
+    local realObserve = CAL.Observe
+    CAL.Observe = function(self, spellID, kind, ...)
+        observed[#observed + 1] = { spellID, kind }
+        return realObserve(self, spellID, kind, ...)
+    end
+    local m = ids.castPull()
+    CAL.Observe = realObserve
+
+    local s = m.stream
+    local cancels = {}
+    for i = 1, (s and s.n or 0) do
+        if s.ev.kind[i] == K2.CANCEL then
+            cancels[#cancels + 1] = { t = s.ev.t[i], amt = s.ev.amt[i], x = s.ev.x[i] }
+        end
+    end
+    local function within(a, b)
+        local n, last = 0, nil
+        for _, c in ipairs(cancels) do
+            if c.t >= a - 1e-6 and c.t <= b + 1e-6 then n = n + 1; last = c end
+        end
+        return n, last
+    end
+    local function list()
+        local t = {}
+        for _, c in ipairs(cancels) do t[#t + 1] = string.format("%.1fs (%.1fs of %d)", c.t, c.amt, c.x) end
+        return #t > 0 and table.concat(t, ", ") or "none"
+    end
+    local stored = false
+    for _, r in ipairs(MD.cdb.recordings or {}) do if r == s then stored = true end end
+    check("the cast pull was recorded", s ~= nil and stored,
+        s and string.format("%.0fs, %d own casts", s.dur or 0, s.ownCasts or 0) or "no stream")
+    check("B9: a HoT tick mid-cast is no CANCEL", (within(m.ht1Start, m.ht1End)) == 0, list())
+    check("B9: a spam press is no CANCEL", (within(m.ht2Start, m.ht2End)) == 0
+        and m.pendingAfterSpam == m.HT and m.pendingAfterHt2 == nil,
+        string.format("%s; pending after the spam %s, after the success %s", list(),
+            tostring(m.pendingAfterSpam), tostring(m.pendingAfterHt2)))
+    local nCut, cut = within(m.ht3Start, m.ht4Start - 0.01)
+    check("B9: an interrupt is one CANCEL", nCut == 1 and cut and math.abs(cut.t - m.ht3Cut) < 1e-6
+        and math.abs(cut.amt - (m.ht3Cut - m.ht3Start)) < 1e-6 and cut.x == m.HT, list())
+    local nRep, rep = within(m.ht4Start, m.ht5End)
+    check("B9: a new start cancels the pending one", nRep == 1 and rep and math.abs(rep.t - m.ht5Start) < 1e-6
+        and math.abs(rep.amt - (m.ht5Start - m.ht4Start)) < 1e-6, list())
+
+    local OH = MD.Overheal
+    check("B10: the bloom is stored as k:33763:bloom",
+        OH.stats["k:33763:bloom"] ~= nil and OH.stats["k:" .. SD.bloomID .. ":direct"] == nil,
+        string.format("k:33763:bloom %s, k:33778:direct %s", tostring(OH.stats["k:33763:bloom"] ~= nil),
+            tostring(OH.stats["k:33778:direct"] ~= nil)))
+    local bloomCall, tranqCall
+    for _, o in ipairs(observed) do
+        if o[1] == 33763 and o[2] == "bloom" then bloomCall = true end
+        if o[1] == 44208 then tranqCall = o[2] end
+    end
+    local bucket = MD.cdb.calibration and MD.cdb.calibration.stats
+        and MD.cdb.calibration.stats["33763:bloom"]
+    check("B10: calibration gets a 33763 bloom", bloomCall == true and bucket ~= nil and bucket.n >= 1,
+        string.format("call %s, bucket %s", tostring(bloomCall), bucket and tostring(bucket.n) or "none"))
+    check("B10: Tranquility's 44208 unchanged", OH.stats["s:44208"] ~= nil and OH.stats["k:44208:direct"] ~= nil
+        and tranqCall == "direct",
+        string.format("s:44208 %s, calibration kind %s", tostring(OH.stats["s:44208"] ~= nil), tostring(tranqCall)))
+end
+
+--------------------------------------------------------------------------------
+-- T48 (P4, review B13): Tranquility heals the caster's party, so a fully
+-- overhealed tick in a 25-man raid carries its cost over the five of subgroup
+-- 3, not over the raid.
+--------------------------------------------------------------------------------
+do
+    S.raid = true
+    for i = 1, 25 do
+        local me = (i == 13)
+        S.AddUnit("raid" .. i, {
+            guid = me and "Player-1" or ("Raider-" .. i), name = me and "Penek" or ("Raider" .. i),
+            class = me and "DRUID" or "WARRIOR", role = "DAMAGER", hp = 5000, hpMax = 5000,
+            subgroup = math.floor((i - 1) / 5) + 1 })
+    end
+    S.Fire("GROUP_ROSTER_UPDATE")
+    local OH = MD.Overheal
+    local before = OH.waste["s:44208"] and OH.waste["s:44208"].mana or 0
+    S.Combat(0, "SPELL_HEAL", false, "Player-1", "src", 0, 0, "Raider-11", "Raider11", 0, 0,
+        44208, "Tranquility", 8, 700, 700, 0, false)
+    local wasted = (OH.waste["s:44208"] and OH.waste["s:44208"].mana or 0) - before
+    local cost = SD:GetCost(44208) or SD.spells[26983].cost
+    check("B13: raid Tranquility waste / caster's party of 5", math.abs(wasted - cost / (4 * 5)) < 1e-6,
+        string.format("%.2f, expected %.2f (a raid of 25 gives %.2f)", wasted, cost / 20, cost / 100))
+    S.raid = false
+end
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 if #fails > 0 then for _, m in ipairs(fails) do print("  FAIL " .. m) end; os.exit(1) end

@@ -104,5 +104,75 @@ ev("UNIT_DIED", "Mob-1", "Lock-1", "Abufaisall")
 advance(10)
 S.Fire("PLAYER_REGEN_ENABLED")
 
-return { rejuv = rejuv, regrowth = regrowth, lifebloom = lifebloom, MOTW = MOTW, PLAYER = PLAYER }
+--------------------------------------------------------------------------------
+-- T48 (P4, review B9 / B10): a SECOND pull, played only when a harness asks for
+-- it (tools/reccheck.lua), so every other suite that plays the pull above sees
+-- exactly the stream it always did. Everything that decides what ends a hard
+-- cast happens inside it, on the tank, under a rolling Lifebloom:
+--   HT1  a Lifebloom tick between its start and its success     -> no CANCEL
+--   HT2  a spam press of the same button mid-cast: the combat log's
+--        SPELL_CAST_FAILED and a UNIT_SPELLCAST_FAILED (and an INTERRUPTED)
+--        carrying a NEW castGUID, then its success               -> no CANCEL
+--   HT3  a real interrupt: UNIT_SPELLCAST_INTERRUPTED with its own castGUID
+--                                                                 -> one CANCEL
+--   HT4  a second Healing Touch start while it is pending        -> one CANCEL
+--   HT5  that second start, then its success
+-- plus a Lifebloom bloom (33778, the alias) and a Tranquility heal (44208).
+-- Returns the moments, on the stream's own clock, and what was pending when.
+--------------------------------------------------------------------------------
+local HT = SD.maxRank.HealingTouch
+local function unitCast(event, guid, spellID) S.Fire(event, "player", guid, spellID) end
+local function castPull()
+    local m = { HT = HT }
+    local function now() return FR.active and (S.now - FR.active.t0) or -1 end
+    S.units.party1.hp = 4000
+    S.Fire("PLAYER_REGEN_DISABLED")
+    assert(FR.active, "recorder did not start the cast pull")
+    swing("Tank-1", "Destroyka", 4000)
+    cast(lifebloom, "Tank-1", "Destroyka");  S.mana = S.mana - (SD:GetCost(lifebloom) or 0)
+
+    -- HT1: a HoT tick lands mid-cast
+    advance(1.0); m.ht1Start = now()
+    unitCast("UNIT_SPELLCAST_START", "Cast-A", HT); castStart(HT, "Tank-1", "Destroyka")
+    advance(1.0); ownTick(lifebloom, "Tank-1", "Destroyka", 300, 0)
+    advance(2.0); m.ht1End = now(); cast(HT, "Tank-1", "Destroyka"); S.mana = S.mana - (SD:GetCost(HT) or 0)
+
+    -- HT2: the same button pressed again while the cast goes on
+    advance(1.0); m.ht2Start = now()
+    unitCast("UNIT_SPELLCAST_START", "Cast-B", HT); castStart(HT, "Tank-1", "Destroyka")
+    advance(1.0)
+    ev("SPELL_CAST_FAILED", PLAYER, nil, nil, HT, "Healing Touch", 8, "Another action is in progress")
+    unitCast("UNIT_SPELLCAST_FAILED", "Cast-C", HT)
+    unitCast("UNIT_SPELLCAST_INTERRUPTED", "Cast-C", HT)
+    m.pendingAfterSpam = FR.pending and FR.pending[1] or nil
+    advance(2.0); m.ht2End = now(); cast(HT, "Tank-1", "Destroyka"); S.mana = S.mana - (SD:GetCost(HT) or 0)
+    m.pendingAfterHt2 = FR.pending and FR.pending[1] or nil
+
+    -- HT3: moved, and the cast was interrupted
+    advance(1.0); m.ht3Start = now()
+    unitCast("UNIT_SPELLCAST_START", "Cast-D", HT); castStart(HT, "Tank-1", "Destroyka")
+    advance(1.0); m.ht3Cut = now()
+    unitCast("UNIT_SPELLCAST_INTERRUPTED", "Cast-D", HT)
+
+    -- HT4 replaced by HT5: a new start while one is pending (the unit event
+    -- arriving AFTER the combat log's this time)
+    advance(1.0); m.ht4Start = now()
+    castStart(HT, "Tank-1", "Destroyka"); unitCast("UNIT_SPELLCAST_START", "Cast-E", HT)
+    advance(1.0); m.ht5Start = now()
+    castStart(HT, "Tank-1", "Destroyka"); unitCast("UNIT_SPELLCAST_START", "Cast-F", HT)
+    advance(3.0); m.ht5End = now(); cast(HT, "Tank-1", "Destroyka"); S.mana = S.mana - (SD:GetCost(HT) or 0)
+
+    -- the bloom (fully overhealed) and a Tranquility heal, both non-periodic
+    advance(1.0)
+    ev("SPELL_HEAL", PLAYER, "Tank-1", "Destroyka", SD.bloomID, "Lifebloom", 8, 900, 900, 0, false)
+    ev("SPELL_HEAL", PLAYER, "Tank-1", "Destroyka", 44208, "Tranquility", 8, 700, 200, 0, false)
+    advance(1.0); cast(rejuv, "Mage-1", "Alkandari"); S.mana = S.mana - (SD:GetCost(rejuv) or 0)
+    advance(8.0)
+    m.stream = FR.active
+    S.Fire("PLAYER_REGEN_ENABLED")
+    return m
+end
+
+return { rejuv = rejuv, regrowth = regrowth, lifebloom = lifebloom, MOTW = MOTW, PLAYER = PLAYER,
+         HT = HT, castPull = castPull }
 end

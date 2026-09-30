@@ -491,6 +491,52 @@ do
     end
 end
 
+--------------------------------------------------------------------------------
+-- T48 (P4, review B12 / B11): two runs back to back. Run A stops while a pull
+-- is still going, a potion leaves the bags between the runs, run B starts: B
+-- must not see A's potion count (no POTION at t~0) nor A's pull start (the
+-- pull that ends inside B is placed on B's own clock). And the usage line
+-- carries no bare pipe.
+--------------------------------------------------------------------------------
+do
+    _G.DEFAULT_CHAT_FRAME = { AddMessage = function(_, m) out[#out + 1] = m; print(m) end }
+    local realCount = _G.GetItemCount
+    local bag = { [22832] = 2 }
+    _G.GetItemCount = function(id) return bag[id] or 0 end
+    for _, r in ipairs(MD.cdb.runs or {}) do r.pinned = false end
+    S.mana = 4000
+    local runA = RR:Start("manual", "back to back A")
+    advance(30)
+    S.units.party1.hp = 5000
+    S.Fire("PLAYER_REGEN_DISABLED")     -- a pull starts inside run A...
+    swing("Tank-1", "Destroyka", 1500)
+    advance(5)
+    RR:Stop("manual")                    -- ...and is still going when A stops
+    bag[22832] = 1                       -- a potion drunk between the runs
+    local runB = RR:Start("manual", "back to back B")
+    advance(5)
+    S.Fire("PLAYER_REGEN_ENABLED")       -- the pull ends inside run B
+    advance(2)
+    local potions = 0
+    for i = 1, #(runB and runB.ev.t or {}) do
+        if runB.ev.kind[i] == K.POTION then potions = potions + 1 end
+    end
+    check("B12: run B does not inherit run A's potions", runA ~= nil and runB ~= nil and potions == 0,
+        string.format("%d POTION event(s) in run B", potions))
+    local p1 = runB and runB.pulls[1]
+    check("B12: run B's first pull is on B's own clock", p1 ~= nil and p1.runT0 >= 0 and p1.runT0 <= 5 + 1e-6,
+        p1 and string.format("runT0 %.1fs (run A's pull began at %.1fs of A)", p1.runT0, 30) or "no pull")
+    RR:Stop("manual")
+    _G.GetItemCount = realCount
+
+    out = {}
+    MD:RunCommand("bogus")
+    local usage = found("usage") or ""
+    local stripped = usage:gsub("||", ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+    check("B11: the usage line has no bare pipe", usage ~= "" and not stripped:find("|", 1, true), usage)
+    _G.DEFAULT_CHAT_FRAME = realChat
+end
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 if #fails > 0 then for _, m in ipairs(fails) do print("  FAIL " .. m) end; os.exit(1) end
 
