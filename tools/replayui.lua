@@ -669,5 +669,75 @@ do
         string.format("run=%s max=%s dur=%s", tostring(MD.Replay._run() ~= nil), tostring(hi1), tostring(d)))
 end
 
+--------------------------------------------------------------------------------
+-- T72 (P28, review U27): Space plays the replay, as its button always said,
+-- and Left / Right seek 5 s -- on TBC too. The keyboard is the window's only
+-- while the pointer is over it and never in combat, because Space and the
+-- arrows are jump and turn: PLAYER_REGEN_DISABLED lets go of it, and it comes
+-- back only when the pointer enters again after the fight. The status band and
+-- the two-column layout while coaching are the theme's; TBC keeps its header.
+--------------------------------------------------------------------------------
+do
+    MD:OpenReplay(1)
+    local st = MD.Replay._state()
+    local f = st.frame
+    local kb, prop = {}, nil
+    f.EnableKeyboard = function(_, on) kb[#kb + 1] = on and true or false end
+    f.SetPropagateKeyboardInput = function(_, on) prop = on end
+    local function Script(name, ...) local fn = f:GetScript(name); if fn then fn(f, ...) end end
+    local function Keys() return kb[#kb] == true end
+    MD.Replay._setPlaying(false)
+
+    S.mouseFocus = f
+    Script("OnEnter")
+    local on = Keys()
+    Script("OnKeyDown", "SPACE")
+    local played = MD.Replay._state().playing
+    Script("OnKeyDown", "SPACE")
+    check("T72: Space toggles with the pointer over",
+        on and played == true and not MD.Replay._state().playing and prop == false,
+        string.format("kb=%s played=%s prop=%s", tostring(on), tostring(played), tostring(prop)))
+
+    S.mouseFocus = nil
+    Script("OnLeave")
+    S.Tick(0.1)
+    check("T72: no keyboard with the pointer elsewhere", #kb > 0 and not Keys(), tostring(kb[#kb]))
+
+    S.mouseFocus = f
+    Script("OnEnter")
+    local before = Keys()
+    S.Fire("PLAYER_REGEN_DISABLED")
+    local offInCombat = not Keys()
+    -- the pointer leaves and comes back in combat: still no keys
+    S.mouseFocus = nil
+    Script("OnLeave")
+    S.Tick(0.1)
+    S.mouseFocus = f
+    Script("OnEnter")
+    S.Tick(0.1)
+    local stillOff = not Keys()
+    S.Fire("PLAYER_REGEN_ENABLED")
+    S.Tick(0.1)
+    local offAfter = not Keys()
+    S.mouseFocus = nil
+    Script("OnLeave")
+    S.Tick(0.1)
+    S.mouseFocus = f
+    Script("OnEnter")
+    S.Tick(0.1)
+    check("T72: combat lets go of the keyboard until re-entry",
+        before and offInCombat and stillOff and offAfter and Keys(),
+        string.format("before=%s combat=%s entered=%s after=%s reentered=%s", tostring(before),
+            tostring(offInCombat), tostring(stillOff), tostring(offAfter), tostring(Keys())))
+    S.mouseFocus = nil
+    Script("OnLeave")
+
+    local h = st.headerFS:GetText() or ""
+    check("T72: TBC keeps its header, no band, no key hint",
+        f.band == nil and f.keyHint == nil and st.right.dimmed == nil
+        and h:find("|cff99dd99replays|r", 1, true) ~= nil, h)
+    f.EnableKeyboard, f.SetPropagateKeyboardInput = nil, nil
+end
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 if #fails > 0 then for _, m in ipairs(fails) do print("  FAIL " .. m) end; os.exit(1) end

@@ -38,6 +38,12 @@ local COL_W = 460              -- the healer strip's width; a column is at least
 local GUTTER = 16
 local HEADER_H, STRIP_H, SCRUB_H = 26, 96, 96
 local RUNSTRIP_H = 26          -- the run strip, drawn only when the pull belongs to a run
+-- T72 (P28, review U23, mockup M3): under the theme the header line is a status
+-- band -- the fight on the left, the verdict on the right -- 28 px tall.
+local BAND_H = 28
+local function HeadH() return UI.THEMED and BAND_H or HEADER_H end
+local DIM_ALPHA = 0.32         -- the suggested column while its plan is being searched for
+local KEY_SEEK = 5             -- Left / Right move this many seconds
 local DT_STEP_MAX = 0.25       -- never advance more than this per frame at 1x (a hitch is not a skip)
 local FLASH_CAST, FLASH_TEXT, FLASH_FOREIGN, PULSE_DMG = 0.8, 0.8, 0.4, 0.4
 local GCD = 1.5                -- an instant still locks the healer for this long
@@ -133,6 +139,13 @@ local hoverTi = nil             -- the frame under the mouse, for key presses
 local endBtn
 local left, right          -- the two columns: { state, frames = {}, strip = {}, title }
 local rp                   -- the SP.Replay result being shown
+-- T72 (P28, review U27): the replay's keyboard. On only while the pointer is
+-- over the window and never in combat (`pointerIn` is the last answer to "is
+-- the pointer over it", so the keys come back only when it ENTERS again);
+-- practice keeps its own rules (LiveControls).
+local keysOn, pointerIn = false, false
+local askedToCoach = false -- the band's Coach anyway: coach even with replayAutoCoach off
+local coachEvals = nil     -- the search's plan count last written into the dimmed column's title
 
 -- Does the healer of the recording being played have Swiftmend at all?
 local function HasSwiftmend()
@@ -217,6 +230,52 @@ local function Font(fs, size)
     pcall(fs.SetFont, fs, FONT_PATH, size, "OUTLINE")
 end
 
+-- The snapshot tick's tooltip, owned by the tick's hover frame (and, under the
+-- theme, by the whole button: the bar's tooltip).
+local function TickTip(owner, f)
+    if not (MD.Tip and f.tickInfo) then return end
+    local ti = f.tickInfo
+    if ti.recon and UI.THEMED then
+        -- T72 (P28, mockup M3): the bar's tooltip, the reconstruction one
+        -- marker on its title line and one sentence under it
+        local within = math.abs(ti.rec - ti.sim) <= 0.05
+        local m = UI.Hex("muted")
+        MD.Tip:Show(owner, "ANCHOR_RIGHT", {
+            { l = f.name:GetText() or "", r = m .. "reconstructed|r" },
+            { l = "Health then", r = string.format("%d%% at %s", ti.rec * 100 + 0.5, Clock(ti.at)) },
+            { l = "Engine's replay now", r = string.format("%d%%", ti.sim * 100 + 0.5) },
+            { l = "Difference", r = within and (UI.Hex("good") .. "within 5%|r")
+                or (UI.Hex("bad") .. "outside 5%|r") },
+            { l = m .. "Reconstructed: this client reads no health, so it is|r", r = "" },
+            { l = m .. "rebuilt from UNIT_COMBAT every 2 s, from full at the pull.|r", r = "" },
+        })
+        return
+    end
+    if ti.recon then
+        -- R5 (review 2026-09-29): a v3 (Forever) tick is SM.RecordedHp's
+        -- reconstruction -- no health was ever read -- so it is not
+        -- called recorded, real or the truth.
+        MD.Tip:Show(owner, "ANCHOR_RIGHT", {
+            { l = "Reconstructed health", r = string.format("%d%% at %s", ti.rec * 100 + 0.5, Clock(ti.at)) },
+            { l = "Engine's replay now", r = string.format("%d%%", ti.sim * 100 + 0.5) },
+            { l = string.format("|cff888888%s|r", math.abs(ti.rec - ti.sim) <= 0.05
+                and "within the health gate's 5%" or "outside the health gate's 5%"), r = "" },
+            { l = "|cff888888No health is read on this client (it is secret). The tick|r", r = "" },
+            { l = "|cff888888is rebuilt from UNIT_COMBAT every 2s, from full at the pull,|r", r = "" },
+            { l = "|cff888888a party max perhaps estimated: an estimate, not the truth.|r", r = "" },
+        })
+        return
+    end
+    MD.Tip:Show(owner, "ANCHOR_RIGHT", {
+        { l = "Recorded health", r = string.format("%d%% at %s", ti.rec * 100 + 0.5, Clock(ti.at)) },
+        { l = "Engine's reconstruction now", r = string.format("%d%%", ti.sim * 100 + 0.5) },
+        { l = string.format("|cff888888%s|r", math.abs(ti.rec - ti.sim) <= 0.05
+            and "within the health gate's 5%" or "outside the health gate's 5% -- this is the replay's error"), r = "" },
+        { l = "|cff888888The recorder reads real HP every 5s; the bar is the engine's|r", r = "" },
+        { l = "|cff888888account of the same fight. The tick is the truth mark.|r", r = "" },
+    })
+end
+
 local function CreateUnitFrame(parent, x, y)
     local f = CreateFrame("Frame", nil, parent, "BackdropTemplate")
     f:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
@@ -252,33 +311,7 @@ local function CreateUnitFrame(parent, x, y)
     f.tickHit:SetFrameLevel(base + 21)
     f.tickHit:EnableMouse(true)
     f.tickHit:Hide()
-    f.tickHit:SetScript("OnEnter", function(self)
-        if not (MD.Tip and f.tickInfo) then return end
-        local ti = f.tickInfo
-        if ti.recon then
-            -- R5 (review 2026-09-29): a v3 (Forever) tick is SM.RecordedHp's
-            -- reconstruction -- no health was ever read -- so it is not
-            -- called recorded, real or the truth.
-            MD.Tip:Show(self, "ANCHOR_RIGHT", {
-                { l = "Reconstructed health", r = string.format("%d%% at %s", ti.rec * 100 + 0.5, Clock(ti.at)) },
-                { l = "Engine's replay now", r = string.format("%d%%", ti.sim * 100 + 0.5) },
-                { l = string.format("|cff888888%s|r", math.abs(ti.rec - ti.sim) <= 0.05
-                    and "within the health gate's 5%" or "outside the health gate's 5%"), r = "" },
-                { l = "|cff888888No health is read on this client (it is secret). The tick|r", r = "" },
-                { l = "|cff888888is rebuilt from UNIT_COMBAT every 2s, from full at the pull,|r", r = "" },
-                { l = "|cff888888a party max perhaps estimated: an estimate, not the truth.|r", r = "" },
-            })
-            return
-        end
-        MD.Tip:Show(self, "ANCHOR_RIGHT", {
-            { l = "Recorded health", r = string.format("%d%% at %s", ti.rec * 100 + 0.5, Clock(ti.at)) },
-            { l = "Engine's reconstruction now", r = string.format("%d%%", ti.sim * 100 + 0.5) },
-            { l = string.format("|cff888888%s|r", math.abs(ti.rec - ti.sim) <= 0.05
-                and "within the health gate's 5%" or "outside the health gate's 5% -- this is the replay's error"), r = "" },
-            { l = "|cff888888The recorder reads real HP every 5s; the bar is the engine's|r", r = "" },
-            { l = "|cff888888account of the same fight. The tick is the truth mark.|r", r = "" },
-        })
-    end)
+    f.tickHit:SetScript("OnEnter", function(self) TickTip(self, f) end)
     f.tickHit:SetScript("OnLeave", function() if MD.Tip then MD.Tip:Hide() end end)
 
     -- nameText: centred on the bar, class colour, 75% of the bar's width
@@ -464,8 +497,21 @@ local function CreateUnitFrame(parent, x, y)
     local function Unhover() if f.onHover then f.onHover(false) end end
     f:EnableMouse(true)
     f:SetScript("OnMouseDown", Press)
-    f:SetScript("OnEnter", Hover)
-    f:SetScript("OnLeave", Unhover)
+    if UI.THEMED then
+        -- T72 (P28, mockup M3): outside practice, hovering the left button is
+        -- hovering its bar -- the tick's tooltip, with the reconstruction marked
+        f:SetScript("OnEnter", function(self)
+            Hover()
+            if not f.onHover and f.tickHit:IsShown() then TickTip(self, f) end
+        end)
+        f:SetScript("OnLeave", function()
+            Unhover()
+            if not f.onHover and MD.Tip then MD.Tip:Hide() end
+        end)
+    else
+        f:SetScript("OnEnter", Hover)
+        f:SetScript("OnLeave", Unhover)
+    end
     -- T51 (B23): the button's OnLeave fires when the pointer moves onto one of
     -- its icons, so every icon makes the button the mouseover again on enter;
     -- and leaving an icon clears it unless the pointer is still on the button
@@ -1101,8 +1147,103 @@ local function RunSeek(t, keepPlaying)
     end
 end
 
+--------------------------------------------------------------------------------
+-- T72 (P28, review U27, docs/DECISIONS.md): the replay's keyboard, on both
+-- lines. Space plays and pauses, Left / Right move 5 s, every other key goes on
+-- to the game (practice's propagate pattern). Space and the arrows are jump and
+-- turn, and TBC does not hide the replay in combat, so the window takes the
+-- keyboard only while the pointer is over it and never in combat: it lets go
+-- on PLAYER_REGEN_DISABLED, when the pointer leaves and when it hides, and
+-- takes it only when the pointer ENTERS out of combat. A failed
+-- SetPropagateKeyboardInput (it is only pcall'd) can then swallow keys at most
+-- while the player points at the window out of combat. Practice keeps its own
+-- rules (LiveControls; it ends in combat).
+--------------------------------------------------------------------------------
+local function Propagate(on)
+    if frame.SetPropagateKeyboardInput then pcall(frame.SetPropagateKeyboardInput, frame, on) end
+end
+
+local function InCombat()
+    return MD.API.InCombatLockdown() or MD.API.UnitAffectingCombat("player") or false
+end
+
+-- The key hint under the theme: the caps light in the accent while the keys
+-- are live, grey otherwise.
+local function KeyHintText(on, long)
+    local cap = on and UI.Hex("accent") or UI.Hex("muted")
+    local word = on and UI.Hex("text2") or UI.Hex("muted")
+    local s = string.format("%sSpace|r %splay|r   %sLeft  Right|r %s5 s|r", cap, word, cap, word)
+    if long then s = s .. "   " .. UI.Hex("muted") .. "keys work while the pointer is over this window|r" end
+    return s
+end
+
+local function SetKeys(on)
+    on = on and true or false
+    keysOn = on
+    if not frame then return end
+    if frame.EnableKeyboard then frame:EnableKeyboard(on) end
+    if frame.keyHint then frame.keyHint:SetText(KeyHintText(on, frame.keyHint.long)) end
+end
+
+-- Asked on the window's OnEnter / OnLeave and every frame: the pointer moving
+-- onto a unit frame or a button fires the window's OnLeave, but it is still
+-- over the window, so only the answer to IsMouseOver counts.
+local function PointerCheck()
+    if not frame or live then return end
+    local over = (frame:IsShown() and frame:IsMouseOver()) and true or false
+    if over and not pointerIn then
+        if not InCombat() then SetKeys(true) end
+    elseif not over and keysOn then
+        SetKeys(false)
+    end
+    pointerIn = over
+end
+
+-- Move the clock by dt seconds: the run's clock in run mode, the fight's
+-- otherwise; playing or paused stays as it was.
+local function Nudge(dt)
+    if not rp or live or not (left and left.state) then return end
+    if runMode and runTL then RunSeek(runT + dt) return end
+    local t = left.state.t + dt
+    if t < 0 then t = 0 end
+    if t > left.state.dur then t = left.state.dur end
+    SeekTo(t)
+end
+
+local function ReplayKey(_, key)
+    if not keysOn or live or not rp then Propagate(true) return end
+    if key == "SPACE" then
+        Propagate(false)
+        SetPlaying(not playing)
+        return
+    end
+    if key == "LEFT" or key == "RIGHT" then
+        Propagate(false)
+        Nudge(key == "LEFT" and -KEY_SEEK or KEY_SEEK)
+        return
+    end
+    Propagate(true)
+end
+
+-- The dimmed column's title: what the search has done so far.
+local function PendingTitle(n)
+    return string.format("%sSUGGESTED|r  %scoaching...|r %s%d plans|r", UI.Hex("muted"), UI.Hex("accent"),
+        UI.Hex("muted"), n or 0)
+end
+local function CoachProgress()
+    if not (right and right.dimmed) then return end
+    local h = MD.coachSearch
+    local n = (h and h.evals) or 0
+    if n ~= coachEvals then
+        coachEvals = n
+        right.title:SetText(PendingTitle(n))
+    end
+end
+
 local LiveUpdate    -- defined with the practice functions below
 local function OnUpdate(_, elapsed)
+    PointerCheck()   -- T72
+    CoachProgress()  -- T72
     if live then LiveUpdate(elapsed) return end
     if not rp or not playing then return end
     local dt = elapsed * speed
@@ -1199,7 +1340,13 @@ local function Build()
     frame:SetScript("OnHide", function()
         playing = false
         if live and MD.StopPractice then MD:StopPractice(false) end
+        SetKeys(false) -- T72: a hidden window holds no keys
+        pointerIn = false
     end)
+    -- T72 (P28): the replay's keys, live only under the pointer (PointerCheck)
+    frame:SetScript("OnKeyDown", ReplayKey)
+    frame:HookScript("OnEnter", PointerCheck)
+    frame:HookScript("OnLeave", PointerCheck)
     if W then
         -- T34 (6.2, 6.3): a takeover -- DIALOG / 10, on the ESC stack, placed by
         -- the manager (db.ui.win.replay once dragged); registered after the
@@ -1223,21 +1370,89 @@ local function Build()
         end
     end
 
-    headerFS = frame:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
-    headerFS:SetPoint("TOPLEFT", frame, "TOPLEFT", GUTTER, -6)
-    headerFS:SetJustifyH("LEFT")
-    headerFS:SetWidth(2 * COL_W + GUTTER)
+    if UI.THEMED then
+        -- T72 (P28, review U23, mockup M3): the status band. The fight on the
+        -- left (headerFS: #n, where, when, how long, how many), the verdict on
+        -- the right in good / bad, and Coach anyway where "/md replay N force"
+        -- was quoted. The reconstruction is one word beside the fight, its
+        -- explanation that word's hover.
+        local band = CreateFrame("Frame", nil, frame, "BackdropTemplate")
+        band:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+        band:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
+        band:SetHeight(BAND_H)
+        UI.StylizeFrame(band, UI.PALETTE.pane or { 0.11, 0.11, 0.11, 1 }, UI.PALETTE.border or { 0, 0, 0, 1 })
+        frame.band = band
 
-    -- T16a: a v3 recording (Forever) never carried a real health log -- every
-    -- percentage and danger line drawn from it is T13d's reconstruction, and a
-    -- party member's max may itself be a stand-in (Planner ruling 1). One grey
-    -- line says so; hidden on a v2/TBC recording, which has neither question.
-    frame.reconFS = frame:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
-    frame.reconFS:SetPoint("TOPLEFT", headerFS, "BOTTOMLEFT", 0, -2)
-    frame.reconFS:SetJustifyH("LEFT")
-    frame.reconFS:SetWidth(2 * COL_W + GUTTER)
-    frame.reconFS:SetTextColor(0.6, 0.6, 0.6)
-    frame.reconFS:Hide()
+        headerFS = band:CreateFontString(nil, "OVERLAY", UI.FONT)
+        headerFS:SetPoint("LEFT", band, "LEFT", GUTTER, 0)
+        headerFS:SetJustifyH("LEFT")
+        headerFS:SetWordWrap(false)
+
+        band.word = band:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+        band.word:SetPoint("LEFT", headerFS, "RIGHT", 12, 0)
+        band.word:SetTextColor(UI.RGB("muted"))
+        band.word:Hide()
+        band.wordLine = band:CreateTexture(nil, "ARTWORK")   -- the word's dotted underline, drawn solid
+        band.wordLine:SetPoint("TOPLEFT", band.word, "BOTTOMLEFT", 0, -1)
+        band.wordLine:SetPoint("TOPRIGHT", band.word, "BOTTOMRIGHT", 0, -1)
+        band.wordLine:SetHeight(1)
+        do
+            local r, g, b = UI.RGB("muted")
+            band.wordLine:SetColorTexture(r, g, b, 0.6)
+        end
+        band.wordLine:Hide()
+        band.wordHit = CreateFrame("Frame", nil, band)
+        band.wordHit:SetAllPoints(band.word)
+        band.wordHit:EnableMouse(true)
+        band.wordHit:SetScript("OnEnter", function(self)
+            if not (MD.Tip and band.wordTip) then return end
+            local lines = { { l = band.wordTip[1] or "", r = "" } }
+            for i = 2, #band.wordTip do
+                lines[#lines + 1] = { l = UI.Hex("muted") .. band.wordTip[i] .. "|r", r = "" }
+            end
+            MD.Tip:Show(self, "ANCHOR_BOTTOM", lines)
+        end)
+        band.wordHit:SetScript("OnLeave", function() if MD.Tip then MD.Tip:Hide() end end)
+        band.wordHit:Hide()
+
+        band.coach = UI.CreateButton(band, "Coach anyway", "accent", { 104, 20 }, false, false, UI.FONT_SMALL, nil,
+            "Coach anyway", "This fight does not replay within the gates, so a plan",
+            "found on it may be advice the engine got wrong.")
+        band.coach:SetPoint("RIGHT", band, "RIGHT", -GUTTER, 0)
+        band.coach:SetScript("OnClick", function() if MD.Replay then MD.Replay.CoachAnyway() end end)
+        band.coach:Hide()
+
+        band.verdict = band:CreateFontString(nil, "OVERLAY", UI.FONT)
+        band.verdict:SetJustifyH("RIGHT")
+        band.verdict:SetWordWrap(false)
+        band.verdict:SetPoint("RIGHT", band, "RIGHT", -GUTTER, 0)
+        band.verdict:SetText("")
+        band.verdictHit = CreateFrame("Frame", nil, band)
+        band.verdictHit:SetAllPoints(band.verdict)
+        band.verdictHit:EnableMouse(true)
+        band.verdictHit:SetScript("OnEnter", function(self)
+            if MD.Tip and band.verdictTip then MD.Tip:Show(self, "ANCHOR_BOTTOM", band.verdictTip) end
+        end)
+        band.verdictHit:SetScript("OnLeave", function() if MD.Tip then MD.Tip:Hide() end end)
+
+        frame.reconFS = band.word
+    else
+        headerFS = frame:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+        headerFS:SetPoint("TOPLEFT", frame, "TOPLEFT", GUTTER, -6)
+        headerFS:SetJustifyH("LEFT")
+        headerFS:SetWidth(2 * COL_W + GUTTER)
+
+        -- T16a: a v3 recording (Forever) never carried a real health log -- every
+        -- percentage and danger line drawn from it is T13d's reconstruction, and a
+        -- party member's max may itself be a stand-in (Planner ruling 1). One grey
+        -- line says so; hidden on a v2/TBC recording, which has neither question.
+        frame.reconFS = frame:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+        frame.reconFS:SetPoint("TOPLEFT", headerFS, "BOTTOMLEFT", 0, -2)
+        frame.reconFS:SetJustifyH("LEFT")
+        frame.reconFS:SetWidth(2 * COL_W + GUTTER)
+        frame.reconFS:SetTextColor(0.6, 0.6, 0.6)
+        frame.reconFS:Hide()
+    end
 
     -- The strategies the last search produced for this recording. One dropdown
     -- rather than four buttons: the names are long and ran off the window
@@ -1274,7 +1489,7 @@ local function Build()
     stratDrop:Hide()
 
     runStrip = CreateFrame("Frame", nil, frame)
-    runStrip:SetPoint("TOPLEFT", frame, "TOPLEFT", GUTTER, -(HEADER_H - 2))
+    runStrip:SetPoint("TOPLEFT", frame, "TOPLEFT", GUTTER, UI.THEMED and -(BAND_H + 2) or -(HEADER_H - 2))
     runStrip:SetSize(2 * COL_W + GUTTER, 18)
     runStrip.pulls, runStrip.drinks, runStrip.marks = {}, {}, {}
     runStrip.label = frame:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
@@ -1287,8 +1502,10 @@ local function Build()
     left.isLeft = true
 
     -- scrubber row, anchored to the bottom
+    -- T72: the promise the keyboard now keeps, and its two guards
     playBtn = UI.CreateButton(frame, ">", "accent-hover", { 24, 18 }, false, false, nil, nil,
-        "Play / pause", "Space also toggles while the window has focus.")
+        "Play / pause", "Space plays and pauses, Left / Right move 5 s, while",
+        "the pointer is over this window and you are out of combat.")
     playBtn:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", GUTTER, 30)
     playBtn:SetSize(34, 22)
     playBtn:SetScript("OnClick", function() SetPlaying(not playing) end)
@@ -1365,6 +1582,16 @@ local function Build()
     frame.hint:SetTextColor(0.5, 0.5, 0.5)
     frame.hint:SetJustifyH("LEFT")
     frame.hint:SetWordWrap(false)
+
+    if UI.THEMED then
+        -- T72 (mockup M3): which keys work, lit while they do; the footer's
+        -- right end, so it never crowds the controls row of a one-column window
+        frame.keyHint = frame:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+        frame.keyHint:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -GUTTER, 9)
+        frame.keyHint:SetJustifyH("RIGHT")
+        frame.keyHint:SetWordWrap(false)
+        frame.keyHint:SetText(KeyHintText(false, false))
+    end
 end
 
 -- Markers along the scrubber: deaths red, big hits orange, the left column's
@@ -1529,6 +1756,46 @@ end
 --------------------------------------------------------------------------------
 -- Opening a fight
 --------------------------------------------------------------------------------
+-- T72 (P28, review U21): the suggested column while its plan is searched for.
+-- Laid out with the rest and dimmed, so the window has its final size from the
+-- moment it opens; painted blank (the plan has not happened yet).
+local function Dim(col, on)
+    local a = on and DIM_ALPHA or 1
+    for _, f in pairs(col.frames) do f:SetAlpha(a) end
+    for _, k in ipairs({ "mana", "cast", "form", "wait", "score" }) do col.strip[k]:SetAlpha(a) end
+    col.dimmed = on
+end
+
+local function BlankColumn(col)
+    for _, ti in ipairs(rows) do
+        local f = col.frames[ti]
+        if f then
+            f.bar:SetValue(1)
+            f.pct:SetText("")
+            local c = f.classColor
+            f.name:SetTextColor(c[1], c[2], c[3])
+            for _, ic in ipairs(f.hots) do ic.slot = nil; ic:Hide() end
+            for _, ic in ipairs(f.debuffs) do ic:Hide() end
+            f.dot:Hide(); f.defIcon:Hide(); f.incoming:Hide(); f.aggro:Hide()
+            f.statusBG:Hide(); f.cast:Hide(); f.label:Hide()
+            f.tick:SetColorTexture(1, 1, 1, 0)
+            f.tickHit:Hide()
+        end
+    end
+    local s = col.strip
+    local pool = rp.scenario.pool or 0
+    s.mana:SetValue(1)
+    s.manaFS:SetText(string.format("%d", pool + 0.5))
+    s.form:SetText("")
+    s.cast:SetValue(0)
+    s.castFS:SetText("no plan yet")
+    s.castFS:SetTextColor(0.55, 0.55, 0.55)
+    s.wait:SetText("")
+    s.band:SetColorTexture(0.5, 0.5, 0.5, 0)
+    s.why = nil
+    s.score:SetText("used -   spent -   regen -   overheal -   lowest -")
+end
+
 local function Layout()
     -- roster order, as the author's layout has sortByRole off; columns of
     -- unitsPerColumn, a raid's subgroup and main tanks filling the next ones
@@ -1556,14 +1823,28 @@ local function Layout()
     end
     local gridH = math.min(n, perCol) * H + (math.min(n, perCol) - 1) * spY
     local overhang = CELL.hots[3] * sc + 4        -- the HoT slot sits above the button's top edge
-    local hasRight = rp.right ~= nil
+    -- T72 (P28, review U21): under the theme a fight the auto-coach is
+    -- searching gets both columns now, the right one dimmed, so the window
+    -- does not grow and re-centre when the plan arrives
+    local pending = UI.THEMED and not rp.right and not rp.live and rp.rec ~= nil
+        and MD.replayCoaching ~= nil and MD.replayCoaching == rp.rec.id or false
+    local hasRight = rp.right ~= nil or pending
     local width = hasRight and (2 * pitch + 3 * GUTTER) or (pitch + 2 * GUTTER)
     -- the run strip pushes everything below it down, and only exists when this
     -- pull belongs to a run
-    topH = HEADER_H + (curRun and RUNSTRIP_H or 0)
+    topH = HeadH() + (curRun and RUNSTRIP_H or 0)
     local height = topH + STRIP_H + overhang + gridH + SCRUB_H + 12
     frame:SetSize(width, height)
-    frame.hint:SetWidth(width - 2 * GUTTER)
+    if UI.THEMED then
+        -- the footer shares its row with the key hint (T72)
+        frame.hint:SetWidth(rp.live and (width - 2 * GUTTER) or math.floor((width - 2 * GUTTER) / 2))
+        if frame.keyHint then
+            frame.keyHint.long = hasRight
+            frame.keyHint:SetText(KeyHintText(keysOn, hasRight))
+        end
+    else
+        frame.hint:SetWidth(width - 2 * GUTTER)
+    end
     left.title:ClearAllPoints()
     left.title:SetPoint("TOPLEFT", frame, "TOPLEFT", left.x, -(topH + 6))
     left.strip.mana:ClearAllPoints()
@@ -1628,6 +1909,11 @@ local function Layout()
             end
         end
     end
+    if UI.THEMED then
+        Dim(right, pending)
+        coachEvals = nil
+        if pending then BlankColumn(right) end
+    end
 end
 
 -- Redraw the suggested column from whatever plan is now cached for this
@@ -1644,7 +1930,8 @@ end
 function MD:CoachOnOpen(rec, force, validation)
     local SP = MD.SimPlanner
     if not (rec and SP and MD.player.isDruid) then return end
-    if MD.db and MD.db.replayAutoCoach == false then return end
+    -- T72: the band's Coach anyway is a request, not the automatic coach
+    if MD.db and MD.db.replayAutoCoach == false and not askedToCoach then return end
     if SP.plans[rec.id] or MD.coachSearch or MD.replayCoaching then return end
     if not force and not (validation and validation.ok) then return end
     MD.replayCoaching = rec.id
@@ -1736,7 +2023,9 @@ function MD:OpenReplay(n)
     if not rp then MD:Print("replay: could not build the fight.") return false end
     -- v0.13.9: no plan yet? coach it now, and let the window fill in.
     if not rp.right then MD:CoachOnOpen(rec, force, rp.validation) end
-    if force and not rp.right then
+    -- T72: under the theme a forced open that started the coach has
+    -- something to force: the column fills in when the search ends
+    if force and not rp.right and not (UI.THEMED and MD.replayCoaching == rec.id) then
         MD:Print(string.format("replay: nothing to force - no plan has been coached for this fight. " ..
             "|cffffff00/md coach %s force|r first.", tostring(n)))
     end
@@ -1759,15 +2048,67 @@ function MD:OpenReplay(n)
         end
     end
     local when = rec.id and date and date("%H:%M", rec.id) or ""
-    headerFS:SetText(string.format(Hi() .. "#%s|r  %s%s  %s  %s   %s%s", tostring(n),
-        run and (run.name .. " pull " .. tostring(pullK) .. " - ") or "", rec.zone or "?", when,
-        Clock(rec.dur or 0), v and (v.ok and "|cff99dd99replays|r" or "|cffff9966does not replay|r") or "",
-        fit ~= "" and ("  |cff888888" .. fit .. "|r") or ""))
+    if UI.THEMED then
+        -- T72 (P28, mockup M3): the band -- the fight left, the verdict right
+        local day = when
+        if rec.id and date then
+            day = (date("%Y-%m-%d", rec.id) == date("%Y-%m-%d")) and ("today " .. when)
+                or date("%Y-%m-%d %H:%M", rec.id)
+        end
+        local t2 = UI.Hex("text2")
+        headerFS:SetText(string.format(Hi() .. "#%s|r  %s%s  %s%s|r  %s%s|r  %s%d targets|r", tostring(n),
+            run and (Esc(run.name or "run") .. " pull " .. tostring(pullK) .. " - ") or "",
+            Esc(rec.zone or "?"), t2, day, t2, MD.Util.Clock(rec.dur or 0), t2, #rows))
+        local band = frame.band
+        local verdict, tip = "", nil
+        if v then
+            local failed
+            tip = {}
+            for _, g in ipairs(v.gates or {}) do
+                if not g.ok and not failed then failed = g.name end
+                tip[#tip + 1] = { l = tostring(g.name or "?"),
+                    r = g.ok and (UI.Hex("good") .. "ok|r") or (UI.Hex("bad") .. "FAIL|r") }
+            end
+            verdict = v.ok and (UI.Hex("good") .. "replays|r")
+                or (UI.Hex("bad") .. "does not replay: " .. (failed or "a gate failed") .. "|r")
+            if fit ~= "" then tip[#tip + 1] = { l = UI.Hex("muted") .. fit .. "|r", r = "" } end
+        end
+        band.verdict:SetText(verdict)
+        band.verdictTip = tip
+        local offerCoach = v and not v.ok and not rp.right and not right.dimmed and true or false
+        Shown(band.coach, offerCoach)
+        band.verdict:ClearAllPoints()
+        if offerCoach then band.verdict:SetPoint("RIGHT", band.coach, "LEFT", -10, 0)
+        else band.verdict:SetPoint("RIGHT", band, "RIGHT", -GUTTER, 0) end
+    else
+        headerFS:SetText(string.format(Hi() .. "#%s|r  %s%s  %s  %s   %s%s", tostring(n),
+            run and (run.name .. " pull " .. tostring(pullK) .. " - ") or "", rec.zone or "?", when,
+            Clock(rec.dur or 0), v and (v.ok and "|cff99dd99replays|r" or "|cffff9966does not replay|r") or "",
+            fit ~= "" and ("  |cff888888" .. fit .. "|r") or ""))
+    end
     -- T16a: a v3 recording (Forever) has no real health log at all -- every
     -- bar and tick drawn is T13d's reconstruction, and `maxEstimated` says
     -- whether any tracked target's max was itself a stand-in. T66 (review
     -- A18): the scenario says it is reconstructed; the version is not tested.
-    if rp.scenario and rp.scenario.reconstructed then
+    if UI.THEMED then
+        -- T72: one word in the band, what it means on its hover
+        local band = frame.band
+        local recon = rp.scenario and rp.scenario.reconstructed
+        if recon then
+            band.word:SetText("reconstructed")
+            band.wordTip = { "Reconstructed health",
+                "This client reads no health (it is secret), so every bar",
+                "and tick here is rebuilt from UNIT_COMBAT every 2 s,",
+                "from full at the pull: an estimate, not the truth." }
+            if rp.scenario.maxEstimated then
+                band.wordTip[#band.wordTip + 1] = "A party member's max health is estimated too."
+            end
+        else
+            band.word:SetText("")
+            band.wordTip = nil
+        end
+        Shown(band.word, recon); Shown(band.wordLine, recon); Shown(band.wordHit, recon)
+    elseif rp.scenario and rp.scenario.reconstructed then
         local estimated = rp.scenario.maxEstimated
         frame.reconFS:SetText("health reconstructed from UNIT_COMBAT"
             .. (estimated and "; party max estimated" or ""))
@@ -1824,7 +2165,9 @@ function MD:OpenReplay(n)
             -- cannot run off the way four buttons growing rightward from the
             -- column title did. The header text is left-anchored and short; a
             -- one-column window has no suggested column and so no chooser.
-            stratDrop:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -GUTTER, -6)
+            -- T72: under the theme the band holds the verdict there, so the
+            -- chooser sits at the right end of the column titles' line.
+            stratDrop:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -GUTTER, UI.THEMED and -(topH + 4) or -6)
             stratDrop:Show()
         else
             stratDrop:Close()
@@ -1837,6 +2180,14 @@ function MD:OpenReplay(n)
         right.title:SetText(string.format("SUGGESTED  |cff888888(%s, %d binds)|r%s", p.name or "plan", p:BindCount(),
             rp.forced and "  |cffff9966FORCED - this fight does not replay|r" or ""))
         frame.hint:SetText("")
+    elseif right.dimmed then
+        -- T72: the dimmed column's title carries the search's progress
+        coachEvals = (MD.coachSearch and MD.coachSearch.evals) or 0
+        right.title:SetText(PendingTitle(coachEvals))
+        frame.hint:SetText("")
+    elseif UI.THEMED then
+        -- T72: the band says whether it replays and offers Coach anyway
+        frame.hint:SetText(v and not v.ok and "" or "no plan yet")
     elseif MD.replayCoaching == (rp.rec and rp.rec.id) then
         frame.hint:SetText("coaching this fight - the suggested column fills in when the search finishes")
     else
@@ -1907,10 +2258,6 @@ end
 --------------------------------------------------------------------------------
 local practiceErr, practiceErrUntil, practiceErrTi = nil, 0, nil
 
-local function Propagate(on)
-    if frame.SetPropagateKeyboardInput then pcall(frame.SetPropagateKeyboardInput, frame, on) end
-end
-
 local function LiveControls(on)
     Shown(scrubber, not on)
     for _, b in ipairs(speedButtons or {}) do Shown(b, not on or b.id <= 1) end
@@ -1919,6 +2266,9 @@ local function LiveControls(on)
     timeFS:ClearAllPoints()
     timeFS:SetPoint("LEFT", on and endBtn or speedButtons[#speedButtons], "RIGHT", 12, 0)
     if frame.EnableKeyboard then frame:EnableKeyboard(on) end
+    keysOn = on and true or false
+    if frame.keyHint then Shown(frame.keyHint, not on) end
+    -- T72: off, the replay's own keys (live only under the pointer) come back
     frame:SetScript("OnKeyDown", on and function(_, key)
         if key == "ESCAPE" then Propagate(true) return end
         if key == "SPACE" then
@@ -1935,8 +2285,8 @@ local function LiveControls(on)
         else
             Propagate(true)
         end
-    end or nil)
-    if not on then hoverTi = nil end
+    end or ReplayKey)
+    if not on then hoverTi = nil; pointerIn = false end
 end
 
 -- A press, from a mouse button on a frame or a key over one. `key` is bare
@@ -2019,6 +2369,12 @@ function MD:OpenPractice(setup, seed)
     headerFS:SetText(string.format(Hi() .. "PRACTICE|r  %s, %d people   %s",
         g and g.label or "custom", #setup.targets, Clock(session.scenario.dur)))
     frame.reconFS:Hide()
+    if frame.band then
+        -- T72: a practice has no verdict and nothing to reconstruct
+        frame.band.verdict:SetText("")
+        frame.band.verdictTip, frame.band.wordTip = nil, nil
+        frame.band.coach:Hide(); frame.band.wordLine:Hide(); frame.band.wordHit:Hide()
+    end
     left.title:SetText("YOU")
     speed = 1
     speedHighlight(1)
@@ -2064,10 +2420,29 @@ MD:On("PLAYER_REGEN_DISABLED", function()
         MD:StopPractice(false)
         if frame then frame:Hide() end
     end
+    -- T72: combat takes the keyboard back, and it stays back until the pointer
+    -- enters the window again out of combat (pointerIn is left as it is)
+    if frame then SetKeys(false) end
 end)
+
+-- T72 (P28, review U23): the band's Coach anyway -- what "/md replay N force"
+-- did, from the window: coach this fight although it does not replay, both
+-- columns laid out at once while the search runs.
+local function CoachAnyway()
+    if live or not (rp and rp.rec and openSpec) then return end
+    if MD.coachSearch then
+        MD:Print("replay: another fight is being coached - this one can be coached when it finishes.")
+        return
+    end
+    askedToCoach = true
+    local ok, err = pcall(MD.OpenReplay, MD, tostring(openSpec) .. " force")
+    askedToCoach = false
+    if not ok then error(err, 0) end
+end
 
 MD.Replay = {
     Open = function(_, n) MD:OpenReplay(n) end,
+    CoachAnyway = CoachAnyway, -- T72: the band's button
     _live = function() return live, hoverTi end,
     -- for tools/replayui.lua: what the window is showing, read-only
     -- for tools/replayui.lua: where the run clock is, and what it thinks is
@@ -2081,7 +2456,10 @@ MD.Replay = {
     _runSeek = function(_, t) if runMode then RunSeek(t) end end,
     _state = function() return { frame = frame, left = left, right = right, rows = rows, rp = rp,
                                  scrubber = scrubber, timeFS = timeFS, playing = playing, speeds = speedButtons,
-                                 headerFS = headerFS, reconFS = frame and frame.reconFS, hint = frame and frame.hint } end,
+                                 headerFS = headerFS, reconFS = frame and frame.reconFS, hint = frame and frame.hint,
+                                 -- T72: the band (themed only), its word's hover, the keys
+                                 band = frame and frame.band,
+                                 reconTip = frame and frame.band and frame.band.wordTip, keys = keysOn } end,
     _runStrip = function()
         if not runStrip then return nil end
         return { shown = runStrip:IsShown(), pulls = runStrip.pulls, drinks = runStrip.drinks,

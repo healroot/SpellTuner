@@ -127,10 +127,13 @@ end
 -- 5: the window says the health is reconstructed and a party max is
 --    estimated (the tank's is secret in the fixture)
 --------------------------------------------------------------------------------
+-- T72 (P28, mockup M3): under the theme the caveat is one word in the status
+-- band, and the rest -- the estimated max included -- is that word's hover.
 local reconText = W.reconFS and W.reconFS:GetText() or ""
+local reconAll = reconText .. " " .. table.concat(W.reconTip or {}, " ")
 check("the window says the health is reconstructed and a party max is estimated",
-    reconText:find("reconstructed", 1, true) ~= nil and reconText:find("estimated", 1, true) ~= nil,
-    reconText)
+    reconText:find("reconstructed", 1, true) ~= nil and reconAll:find("estimated", 1, true) ~= nil,
+    reconAll)
 
 --------------------------------------------------------------------------------
 -- 6: the suggested column fills in when the coach's search finishes
@@ -246,6 +249,7 @@ end
 Scan("header", W.headerFS:GetText())
 Scan("recon", W.reconFS and W.reconFS:GetText())
 Scan("hint", W.hint and W.hint:GetText())
+Scan("band", W.frame and W.frame.band and W.frame.band.verdict:GetText()) -- T72
 for _, l in ipairs(vlines) do Scan("validate line", l) end
 for _, l in ipairs(clines) do Scan("coach line", l) end
 local detail9 = bad[1]
@@ -325,6 +329,155 @@ do
         and MD.Win.takeover ~= nil and MD.Win.takeover.kind == "replay" and MD.Win.takeover.path == nil,
         "registered=" .. tostring(w ~= nil) .. " special=" .. tostring(special)
         .. " back=" .. tostring(back and back:IsShown()))
+end
+
+--------------------------------------------------------------------------------
+-- T72 (P28, review U21, U23, U27; docs/mockups/refactor-ux.html M3): the
+-- replay while coaching. Both columns are laid out the moment the auto-coach
+-- starts, the right one dimmed and titled with the search's progress, and the
+-- width never changes for that fight. A status band under the header carries
+-- the verdict in good / bad and a Coach anyway button where a slash command
+-- was quoted. The keyboard: Space plays, Left / Right seek 5 s, every other
+-- key goes on to the game -- only while the pointer is over the window.
+--------------------------------------------------------------------------------
+local TWO_COLS = 2 * 460 + 3 * 16 -- ACTUAL and SUGGESTED side by side: 968
+local GOOD, BAD = MD.UI.TEXT.good.hex, MD.UI.TEXT.bad.hex
+local function FinishSearch()
+    local n = 0
+    while MD.coachSearch and n < 20000 do S.Tick(0.016); n = n + 1 end
+    return MD.coachSearch == nil
+end
+local function BandVerdict(st)
+    local band = st.frame and st.frame.band
+    return band and band.verdict and band.verdict:GetText() or ""
+end
+
+do
+    -- a fight that replays (the gates forced open, as tools/replayui.lua does)
+    -- and has no plan: opening it starts the auto-coach
+    local realV = SM.Validate
+    function SM:Validate(...)
+        local v = realV(self, ...)
+        if v then v.ok = true end
+        return v
+    end
+    local recNew = buildFixture()
+    recNew.id = 3100000000
+    MD.cdb.recordings = { recNew, recGood, recBad }
+    SP.plans[recNew.id] = nil
+    SlashCmdList.SPELLTUNER("replay 1")
+    local st = MD.Replay._state()
+    local wOpen = st.frame:GetWidth()
+    local title = st.right and st.right.title:GetText() or ""
+    local rf = st.right and st.right.frames[2]
+    check("T72: the auto-coach lays out both columns at open, the right one dimmed and titled",
+        MD.replayCoaching == recNew.id and wOpen == TWO_COLS and st.right.title:IsShown()
+        and title:find("coaching...", 1, true) ~= nil and title:find("plans", 1, true) ~= nil
+        and rf ~= nil and rf:IsShown() and st.right.dimmed == true,
+        string.format("coaching=%s width=%s title=%s dimmed=%s", tostring(MD.replayCoaching),
+            tostring(wOpen), title, tostring(st.right and st.right.dimmed)))
+    local v = BandVerdict(st)
+    check("T72: the band's verdict reads replays, in good", v:find(GOOD .. "replays", 1, true) ~= nil, v)
+
+    local done = FinishSearch()
+    st = MD.Replay._state()
+    local title2 = st.right.title:GetText() or ""
+    check("T72: the plan fills the right column in place: same width, the dimming lifted",
+        done and st.frame:GetWidth() == wOpen and st.right.state ~= nil and st.right.dimmed ~= true
+        and title2:find("coaching", 1, true) == nil,
+        string.format("done=%s width=%s title=%s", tostring(done), tostring(st.frame:GetWidth()), title2))
+    SM.Validate = realV
+end
+
+do
+    -- a fight that does not replay: the verdict names the gate in bad, and
+    -- Coach anyway takes the place of the quoted "/md replay N force"
+    local recF = buildFixture({ meterOverridden = true })
+    recF.id = 3200000000
+    MD.cdb.recordings = { recF, recGood, recBad }
+    SP.plans[recF.id] = nil
+    SlashCmdList.SPELLTUNER("replay 1")
+    local st = MD.Replay._state()
+    local band = st.frame.band
+    local v = BandVerdict(st)
+    local hint = st.hint and st.hint:GetText() or ""
+    check("T72: a fight that does not replay says so in bad, naming the gate, with Coach anyway",
+        v:find(BAD .. "does not replay: ", 1, true) ~= nil and band ~= nil and band.coach:IsShown()
+        and MD.replayCoaching == nil and st.frame:GetWidth() < TWO_COLS and hint:find("force", 1, true) == nil,
+        v .. " / hint=" .. hint)
+    local said = CapturedChat(function()
+        local click = band and band.coach:GetScript("OnClick")
+        if click then click(band.coach) end
+    end)
+    st = MD.Replay._state()
+    local nothing = false
+    for _, l in ipairs(said) do if l:find("nothing to force", 1, true) then nothing = true end end
+    check("T72: Coach anyway coaches it with both columns laid out at once",
+        MD.replayCoaching == recF.id and st.frame:GetWidth() == TWO_COLS and st.right.dimmed == true
+        and not (band and band.coach:IsShown()) and not nothing,
+        string.format("coaching=%s width=%s lines=%s", tostring(MD.replayCoaching),
+            tostring(st.frame:GetWidth()), table.concat(said, " / ")))
+    local done = FinishSearch()
+    st = MD.Replay._state()
+    check("T72: ...and the forced plan is drawn at the same width, the verdict still bad",
+        done and st.right.state ~= nil and st.frame:GetWidth() == TWO_COLS
+        and BandVerdict(st):find(BAD .. "does not replay", 1, true) ~= nil, BandVerdict(st))
+end
+
+do
+    -- the keyboard, under the pointer only (Space, Left / Right, the rest passed on)
+    local st = MD.Replay._state()
+    local f = st.frame
+    local kb, prop = {}, nil
+    f.EnableKeyboard = function(_, on) kb[#kb + 1] = on and true or false end
+    f.SetPropagateKeyboardInput = function(_, on) prop = on end
+    local function Script(name, ...) local fn = f:GetScript(name); if fn then fn(f, ...) end end
+    MD.Replay._setPlaying(false)
+    MD.Replay._seek(10)
+    S.mouseFocus = f
+    Script("OnEnter")
+    local onOver = kb[#kb] == true
+    Script("OnKeyDown", "SPACE")
+    local nowPlaying, spaceProp = MD.Replay._state().playing, prop
+    Script("OnKeyDown", "SPACE")
+    local stopped = not MD.Replay._state().playing
+    check("T72: with the pointer over the replay Space plays and pauses, and stays with the window",
+        onOver and nowPlaying == true and stopped and spaceProp == false,
+        string.format("kb=%s playing=%s stopped=%s prop=%s", tostring(kb[#kb]), tostring(nowPlaying),
+            tostring(stopped), tostring(spaceProp)))
+    local t0 = st.left.state.t
+    Script("OnKeyDown", "RIGHT")
+    local t1 = st.left.state.t
+    Script("OnKeyDown", "LEFT")
+    local t2 = st.left.state.t
+    prop = nil
+    Script("OnKeyDown", "W")
+    check("T72: Left / Right seek 5 s; an unbound key goes on to the game",
+        math.abs(t1 - t0 - 5) < 1e-6 and math.abs(t2 - t0) < 1e-6 and prop == true
+        and not MD.Replay._state().playing,
+        string.format("t %.2f -> %.2f -> %.2f, W propagates=%s", t0, t1, t2, tostring(prop)))
+    S.mouseFocus = nil
+    Script("OnLeave")
+    check("T72: the keyboard is let go when the pointer leaves the window", kb[#kb] == false,
+        tostring(kb[#kb]))
+    f.EnableKeyboard, f.SetPropagateKeyboardInput = nil, nil
+
+    -- the reconstruction's marker in the bar's tooltip: hovering the left
+    -- button is hovering its bar (mockup M3, frame 2)
+    MD.Replay._seek(10)
+    local uf = st.left.frames[2]
+    GameTooltip.lines = nil
+    local enter = uf and uf:GetScript("OnEnter")
+    if enter then enter(uf) end
+    local first = GameTooltip.lines and GameTooltip.lines[1]
+    local lines = {}
+    for _, line in ipairs(GameTooltip.lines or {}) do lines[#lines + 1] = tostring(line[1]) .. " " .. tostring(line[2]) end
+    local leave = uf and uf:GetScript("OnLeave")
+    if leave then leave(uf) end
+    check("T72: the left bar's hover names the target and marks the health reconstructed",
+        first ~= nil and tostring(first[1]):find("Tank", 1, true) ~= nil
+        and tostring(first[2]):find("reconstructed", 1, true) ~= nil,
+        table.concat(lines, " / "))
 end
 
 --------------------------------------------------------------------------------
