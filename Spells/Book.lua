@@ -629,12 +629,14 @@ function Book:DefaultPool()
     local _, regenCasting = MD.API.ManaRegen()
     if type(regenCasting) == "number" then
         pool.regenCasting = regenCasting
-        Book._lastRegenCasting = regenCasting
-    elseif Book._lastRegenCasting ~= nil then
+    elseif MD.Pool and MD.Pool.LastRegen then
         -- ManaRegen() goes secret in combat (Facts) -- the last plain reading
-        -- Book itself saw is kept rather than losing casts-to-OOM entirely
-        -- for the whole fight.
-        pool.regenCasting = Book._lastRegenCasting
+        -- is kept rather than losing casts-to-OOM entirely for the whole
+        -- fight. T68 (P24, review A29): the reading is the modelled pool's
+        -- (Engine/ManaPool_Forever.lua, read at login and every tick out of
+        -- combat), not a copy this file cached from its own calls.
+        local _, lastCasting = MD.Pool:LastRegen()
+        if type(lastCasting) == "number" then pool.regenCasting = lastCasting end
     end
     return pool
 end

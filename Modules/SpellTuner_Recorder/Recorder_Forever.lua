@@ -242,22 +242,13 @@ local function CopyAuraList(list, elapsed)
 end
 
 --------------------------------------------------------------------------------
--- Cost lookup, T11's UI/Clock_Forever.lua's own CostFor -- duplicated rather
--- than shared: the clock is a UI file, not something this module loads.
+-- Cost lookup: the modelled pool's own (Engine/ManaPool_Forever.lua
+-- MD.Pool.CostFor, on the base Forever TOC), so a cast is priced the same in
+-- the stream as on the pool. T68 (P24, review A29): it was a copy of the
+-- clock's while the pricing lived in a UI file.
 --------------------------------------------------------------------------------
 local function CostFor(id)
-    if not MD.Book then return nil end
-    local book = MD.Book:Get()
-    local entry = book and book.spells[id]
-    if not entry then
-        local ok
-        ok, entry = pcall(MD.Book.ReadSpell, MD.Book, id)
-        if not ok then entry = nil end
-    end
-    if not entry then return nil end
-    if entry.costState == "free" then return 0 end
-    if entry.cost and type(entry.cost.amount) == "number" then return entry.cost.amount end
-    return nil
+    return MD.Pool.CostFor(id)
 end
 
 --------------------------------------------------------------------------------
@@ -391,7 +382,9 @@ MD:On("PLAYER_REGEN_DISABLED", function()
     -- ages by nothing.
     local elapsed = t0 - (R.lastScanTime or t0)
     if elapsed < 0 then elapsed = 0 end
-    local clockMana = MD.Clock and MD.Clock.model and MD.Clock.model.mana
+    -- T68 (P24, review A29): the modelled pool's mana (MD.Pool:Sample's first
+    -- return, parenthesised to one value), no longer a widget's private field.
+    local poolMana = MD.Pool and (MD.Pool:Sample())
     active = {
         v = MD.StreamV3.V, client = "forever", id = time(), zone = MD.API.RealZoneText(),
         t0 = t0, dur = 0, pool = MD.API.UnitPowerMax("player", 0) or 0,
@@ -401,7 +394,7 @@ MD:On("PLAYER_REGEN_DISABLED", function()
         deaths = {}, restriction = {}, names = {},
         ownCasts = 0, spent = 0, -- T13f: the shared Review/replay/card readers
         initial = {
-            mana = clockMana or 0,
+            mana = poolMana or 0,
             form = "caster", -- Forever: no Tree of Life (T15 Kit_Forever.lua Facts)
             known = known,
             auras = CopyAuraList(R.lastAuras, elapsed),
@@ -415,7 +408,7 @@ MD:On("PLAYER_REGEN_DISABLED", function()
     -- Review R8: the opener. An own cast that succeeded in the moment before
     -- the combat flag (healing a tank already in combat is what puts the
     -- healer into it) is the pull's first cast, recorded at t = 0 -- unless
-    -- the last aura scan already carries its HoT. The clock charged its cost
+    -- the last aura scan already carries its HoT. The pool charged its cost
     -- before t0, so the stream's starting mana is lifted by that cost and
     -- the cast pays it again at t = 0: the replay spends it once.
     local lifted = 0
@@ -427,8 +420,8 @@ MD:On("PLAYER_REGEN_DISABLED", function()
         end
     end
     preCasts = {}
-    if lifted > 0 and clockMana then
-        local m = clockMana + lifted
+    if lifted > 0 and poolMana then
+        local m = poolMana + lifted
         if active.pool > 0 and m > active.pool then m = active.pool end
         active.initial.mana = m
     end
@@ -606,12 +599,14 @@ MD:OnTick(function()
     end
 
     if tickCount % 4 == 0 then
-        local m = MD.Clock and MD.Clock.model
-        if m then
+        -- T68 (P24, review A29): sampled from the modelled pool
+        -- (Engine/ManaPool_Forever.lua), no longer from the clock widget's model.
+        local mana, base, casting = MD.Pool:Sample()
+        if mana ~= nil then
             local ms = active.mana
             local n = #ms.t + 1
-            ms.t[n], ms.v[n] = GetTime() - active.t0, m.mana
-            ms.base[n], ms.cast[n] = m.base, m.casting
+            ms.t[n], ms.v[n] = GetTime() - active.t0, mana
+            ms.base[n], ms.cast[n] = base, casting
         end
     end
 

@@ -55,7 +55,10 @@ do
         if name == "MD_READY" then ready[#ready + 1] = fn end
         return realReg(self, name, fn)
     end
-    S.Load({ "UI/Style.lua", "UI/Tooltip.lua", "UI/Widget.lua", "UI/Advisor.lua" }, "SpellTuner", MD)
+    -- T68 (P24): UI/Visibility.lua holds the widget's show/hide rule, so it
+    -- loads before UI/Widget.lua, as in SpellTuner_TBC.toc.
+    S.Load({ "UI/Style.lua", "UI/Tooltip.lua", "UI/Visibility.lua", "UI/Widget.lua", "UI/Advisor.lua" },
+        "SpellTuner", MD)
     MD.RegisterCallback = realReg
     for _, fn in ipairs(ready) do fn() end
 end

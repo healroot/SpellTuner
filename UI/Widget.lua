@@ -139,31 +139,32 @@ end
 
 --------------------------------------------------------------------------------
 -- Visibility: the single owner. In combat: always show. Out of combat:
--- hysteresis (show below 90% mana, hide above 95%) so it never flickers.
+-- hysteresis (show below 90% mana, hide above 95%) so it never flickers --
+-- the rule itself is UI/Visibility.lua's MD.Visibility.Want (T68, P24), the
+-- one the Forever clock asks too; this function keeps the Show/Hide.
 --------------------------------------------------------------------------------
 function MD:UpdateVisibility()
     if not widget then return end
 
+    local unlocked = not MD.db.locked or GetTime() < forceUntil
     local wantShown
-    if not MD.db.locked or GetTime() < forceUntil then
-        wantShown = true
+    if unlocked then
         widget:EnableMouse(true)
     else
         widget:EnableMouse(MD.db.widgetTooltip ~= false)
-        if not MD.player.usesMana then
-            wantShown = false
-        elseif MD.inCombat then -- T58 (P14, A28): the kernel's flag (Core.lua)
-            wantShown = true
-        else
+    end
+    if not unlocked and not MD.player.usesMana then
+        wantShown = false
+    else
+        -- the mana is read only when the answer depends on it (locked, out
+        -- of combat), as before
+        local pct
+        if not unlocked and not MD.inCombat then -- T58 (P14, A28): the kernel's flag (Core.lua)
             local mana = UnitPower("player", 0)
             local manaMax = UnitPowerMax("player", 0)
-            local pct = manaMax > 0 and mana / manaMax or 1
-            if shown then
-                wantShown = pct <= 0.95
-            else
-                wantShown = pct < 0.90
-            end
+            pct = manaMax > 0 and mana / manaMax or 1
         end
+        wantShown = MD.Visibility.Want(pct, shown, MD.inCombat, unlocked)
     end
 
     if wantShown ~= shown then

@@ -1,15 +1,26 @@
 -- T11 (docs/tasks/T11-clock.md, M2): the Forever counterpart of the TBC mana
--- clock -- a small movable widget over Engine/ManaModel.lua's modelled pool,
--- because current mana is secret always on this client (Facts). Reaches the
--- client only through MD.API; the widget toolkit (CreateFrame, GameTooltip,
--- UI/Style.lua) is not a client call (CLAUDE.md). Forever only.
+-- clock -- a small movable widget over the modelled pool, because current
+-- mana is secret always on this client (Facts). Reaches the client only
+-- through MD.API; the widget toolkit (CreateFrame, GameTooltip, UI/Style.lua)
+-- is not a client call (CLAUDE.md). Forever only.
+--
+-- T68 (P24, review A29): this file PAINTS. The model instance, the cast and
+-- regen events, the pricing and the assume-full rule are
+-- Engine/ManaPool_Forever.lua's (MD.Pool), which loads just before it; the
+-- clock reads MD.Pool.model and MD.Pool:Project. MD.Clock:Pool() and
+-- MD.Clock.model stay as aliases of the pool's for their existing readers.
 local _, MD = ...
 local UI = MD.UI
 
 MD.Clock = MD.Clock or {}
 local Clock = MD.Clock
 
-local model
+-- MD.Clock.model: the pool's model, looked up at every read (a /reload's
+-- MD_READY makes a new one), never a copy of it.
+setmetatable(Clock, { __index = function(_, k)
+    if k == "model" then return MD.Pool and MD.Pool.model end
+end })
+
 local widget, text, bar, barBack
 -- T58 (P14, review A28): "in combat" is the kernel's MD.inCombat (Core.lua),
 -- set by the two regen events before any other handler of them runs and
@@ -20,41 +31,17 @@ local widget, text, bar, barBack
 local snappedPx
 
 -- T11b (docs/tasks/T11b-clock-modes.md): out-of-combat hysteresis state --
--- TBC's UI/Widget.lua MD:UpdateVisibility (lines 144-173) shows below 90% of
--- max and, once shown, keeps the clock up until above 95%, so it does not
--- flicker in the band a plain threshold would. This is the one flag that
--- remembers which side of the band the clock is currently on.
+-- the one flag that remembers which side of the 90/95 band the clock is
+-- currently on (the rule is MD.Visibility.Want, UI/Visibility.lua, T68).
 local shown = false
 
 --------------------------------------------------------------------------------
--- Cost lookup: MD.Book's own entry.cost.amount (a family's known rank, or a
--- standalone ReadSpell for anything else the book does not list -- both
--- already reach the client only through MD.API). A percentage-of-base-mana
--- cost, or nothing readable at all, is never priced -- the caller counts it
--- as unpriced instead of guessing an amount.
---------------------------------------------------------------------------------
-local function CostFor(id)
-    if not MD.Book then return nil end
-    local book = MD.Book:Get()
-    local entry = book and book.spells[id]
-    if not entry then
-        local ok
-        ok, entry = pcall(MD.Book.ReadSpell, MD.Book, id)
-        if not ok then entry = nil end
-    end
-    if not entry then return nil end
-    if entry.costState == "free" then return 0 end
-    if entry.cost and type(entry.cost.amount) == "number" then return entry.cost.amount end
-    return nil
-end
-
---------------------------------------------------------------------------------
--- Visibility: one owner. Hidden when db.clock.shown is false; else shown in
--- combat, and out of combat with TBC's own hysteresis (UI/Widget.lua
--- MD:UpdateVisibility lines 144-173): appears once the modelled pool drops
--- under 90% of max, and once shown stays up until it is back over 95% --
--- never the plain "below 95%" threshold, which redrew at 94.x% (T11b Facts,
--- the author's `~refill 0:05` sighting).
+-- Visibility: one owner. Hidden when db.clock.shown is false; else the rule
+-- the TBC widget asks too (MD.Visibility.Want, T68): shown in combat, and out
+-- of combat once the modelled pool drops under 90% of max, staying up until
+-- it is back over 95% -- never the plain "below 95%" threshold, which redrew
+-- at 94.x% (T11b Facts, the author's `~refill 0:05` sighting). No max yet
+-- reads as nothing to compare: hidden.
 --------------------------------------------------------------------------------
 local function UpdateVisibility()
     if not widget then return end
@@ -63,21 +50,10 @@ local function UpdateVisibility()
         shown = false
         return
     end
-    if MD.inCombat then
-        widget:Show()
-        shown = true
-        return
-    end
-    if model.max and model.max > 0 then
-        local pct = model.mana / model.max
-        if shown then
-            if pct > 0.95 then shown = false end
-        else
-            if pct < 0.90 then shown = true end
-        end
-    else
-        shown = false
-    end
+    local model = MD.Pool.model
+    local pct
+    if model and model.max and model.max > 0 then pct = model.mana / model.max end
+    shown = MD.Visibility.Want(pct, shown, MD.inCombat, false)
     if shown then widget:Show() else widget:Hide() end
 end
 
@@ -85,6 +61,8 @@ end
 -- Hover
 --------------------------------------------------------------------------------
 local function ShowHover(self)
+    local model = MD.Pool.model
+    if not model then return end
     GameTooltip:SetOwner(self, "ANCHOR_TOP")
     GameTooltip:AddLine("SpellTuner mana clock (modelled)")
     GameTooltip:AddLine(string.format("Mana %d / %d (modelled - the real pool is secret on this client)",
@@ -100,7 +78,7 @@ local function ShowHover(self)
     GameTooltip:AddLine("Anchored " .. ago .. " ago: " .. why)
 
     if MD.inCombat then
-        local state = model:Project(GetTime())
+        local state = MD.Pool:Project(GetTime())
         local spend = type(state.spend) == "number" and string.format("%.1f", state.spend) or "-"
         local regen = type(state.regen) == "number" and string.format("%.1f", state.regen) or "-"
         local casts = model.fight and model.fight.casts or 0
@@ -189,11 +167,12 @@ local function CreateWidget()
 end
 
 --------------------------------------------------------------------------------
--- Paint: rendering only, tick-driven -- the model is event/tick driven above.
+-- Paint: rendering only, tick-driven -- the model is event/tick driven in
+-- Engine/ManaPool_Forever.lua, whose tick runs just before this file's.
 --------------------------------------------------------------------------------
 local function Paint(now)
     if UI.px(1, widget) ~= snappedPx then Snap() end -- T41: re-snap after a scale change
-    local state = model:Project(now)
+    local state = MD.Pool:Project(now)
     text:SetText(MD.ManaModel.Text(state))
     MD.API.DrawUnitPower(bar, "player", 0)
     UpdateVisibility()
@@ -202,98 +181,25 @@ end
 -- Repaints without waiting for the next tick -- used by settings/commands
 -- that just changed db.clock, and by the test harness.
 function Clock:Refresh()
-    if not model then return end
+    if not MD.Pool.model then return end
     Paint(GetTime())
 end
 
+-- Kept for its readers (the Spellbook pane, the spell tooltip): the pool's.
 function Clock:Pool()
-    if not model then return {} end
-    return { max = model.max, mana = model.mana, regenCasting = model.casting }
+    return MD.Pool:Pool()
 end
 
 --------------------------------------------------------------------------------
--- Wiring
+-- Wiring: the widget, once the pool has its model (MD.Pool's MD_READY runs
+-- first), and a repaint on every tick after the pool's own.
 --------------------------------------------------------------------------------
 MD:RegisterCallback("MD_READY", function()
-    model = MD.ManaModel.New()
-    Clock.model = model
-
-    local max = MD.API.UnitPowerMax("player", 0)
-    if type(max) == "number" then model:SetMax(max) end
-
-    local base, casting = MD.API.ManaRegen()
-    if type(base) == "number" and type(casting) == "number" then
-        model:SetRegen(base, casting)
-    end
-
-    model:Anchor(GetTime(), model.max, "assumed full at login")
-
-    -- Review R36/R37: a login or /reload in the middle of a fight gets no
-    -- PLAYER_REGEN_DISABLED (it already fired). Core.lua's own MD_READY
-    -- handler, registered before this one, has already seeded MD.inCombat
-    -- through the adapter (an unreadable answer -- absent, raised, secret --
-    -- leaves it out of combat, as before), so the fight starts here (T58).
-    if MD.inCombat then model:StartFight(GetTime()) end
-
     if not widget then CreateWidget() end
     UpdateVisibility()
 end)
 
-MD:On("UNIT_SPELLCAST_SUCCEEDED", function(unit, castGUID, spellID)
-    if not model then return end
-    -- Facts/T9 Review: IsSecret before the comparison, every time -- type()
-    -- of a secret does not raise and may answer the underlying type.
-    if MD.API.IsSecret(unit) or unit ~= "player" then return end
-
-    local now = GetTime()
-    if not MD.API.IsSecret(spellID) and type(spellID) == "number" then
-        local cost = CostFor(spellID)
-        if cost ~= nil then
-            if cost > 0 then model:Spend(cost, now) end -- a free cast spends nothing and restarts no five-second rule
-            return
-        end
-    end
-    model:Unpriced(now)
-end)
-
-MD:On("PLAYER_REGEN_DISABLED", function()
-    -- Review B19: an opener that succeeded up to 0.5 s before this flag is
-    -- folded into the fight by the model itself (ManaModel:StartFight).
-    if model then model:StartFight(GetTime()) end
-end)
-
-MD:On("PLAYER_REGEN_ENABLED", function()
-    if model then model:EndFight(GetTime()) end
-end)
-
 MD:OnTick(function()
-    if not model then return end
-    local now = GetTime()
-
-    local max = MD.API.UnitPowerMax("player", 0)
-    if type(max) == "number" then model:SetMax(max) end
-
-    if not MD.inCombat then
-        local base, casting = MD.API.ManaRegen()
-        if type(base) == "number" and type(casting) == "number" then
-            model:SetRegen(base, casting)
-        end
-    end
-
-    model:Advance(now)
-
-    -- Out of combat, once regen alone (at the base rate, the faster of the
-    -- two -- Facts) would have had time to refill the whole pool from empty,
-    -- the real pool is assumed full even if the model's own integral (which
-    -- spent part of that time at the slower casting rate, Engine/ManaModel.lua
-    -- Advance) has not quite caught up -- the drift the plan accepts
-    -- (FOREVER-PLAN.md sec2.5): drinks, potions, other heals are invisible to
-    -- this model, so "assume full after long enough" is the only correction
-    -- it gets.
-    if not MD.inCombat and model.max and model.max > 0 and model.base and model.base > 0
-       and (now - model.lastSpend) >= (model.max / model.base) and model.mana < model.max then
-        model:Anchor(now, model.max, "regen had time to fill it")
-    end
-
-    if widget then Paint(now) end
+    if not MD.Pool.model then return end
+    if widget then Paint(GetTime()) end
 end)

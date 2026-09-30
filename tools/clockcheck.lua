@@ -1,7 +1,9 @@
 -- tools/run.sh tools/clockcheck.lua
 --
 -- T11 (docs/tasks/T11-clock.md): the Forever mana clock -- Engine/ManaModel.lua
--- (pure) and UI/Clock_Forever.lua (events/ticker/widget/hover). Forever only:
+-- (pure), Engine/ManaPool_Forever.lua (the model instance, its events, the
+-- pricing, the assume-full rule -- T68, P24) and UI/Clock_Forever.lua (the
+-- widget and its hover, painting the pool). Forever only:
 -- the modelled pool exists because current mana is secret on this client
 -- (Facts); nothing here is meaningful on TBC, which reads UnitPower directly.
 HARNESS_FLAVOUR = "forever"
@@ -41,7 +43,7 @@ end
 --------------------------------------------------------------------------------
 local ManaModel = MD.ManaModel
 
--- item 1 is exercised through the real MD.Clock below (login behaviour);
+-- item 1 is exercised through the real MD.Pool below (login behaviour);
 -- this section covers 3, 6, 7 (Text), 12.
 
 -- item 3: exact numbers across the 5s boundary.
@@ -147,11 +149,14 @@ do
 end
 
 --------------------------------------------------------------------------------
--- UI/Clock_Forever.lua: the real clock, wired at MD_READY by the harness's
--- own PLAYER_LOGIN. Everything below drives the live MD.Clock model/frame.
+-- Engine/ManaPool_Forever.lua and UI/Clock_Forever.lua: the real pool and the
+-- real clock, wired at MD_READY by the harness's own PLAYER_LOGIN. Everything
+-- below drives the live MD.Pool model and the MD.Clock frame that paints it
+-- (T68, P24: the model is the pool's; MD.Clock.model is only an alias).
 --------------------------------------------------------------------------------
 local Clock = MD.Clock
-local model = Clock and Clock.model
+local Pool = MD.Pool
+local model = Pool and Pool.model
 
 -- item 1: assumed full at login.
 check("the pool starts full at login and says it was assumed",
@@ -436,7 +441,7 @@ do
           costList = { { type = 3, name = "ENERGY", cost = 45, minCost = 45, costPercent = 0, costPerSec = 0,
                          requiredAuraID = 0, hasRequiredAura = false } } })
     MD.Book:MarkDirty()
-    local m = Clock.model
+    local m = Pool.model
     m.mana = m.max * 0.5
     local before, beforeUnpriced = m.mana, m.unpriced
     S.Cast(93020)
@@ -461,7 +466,7 @@ local function HoverLines()
 end
 
 do
-    local m = Clock.model
+    local m = Pool.model
     S.Tick(0.5)
     S.Cast(774)                    -- Rejuvenation rank 1, 25 mana, 1 s before the flag: not the opener
     S.now = S.now + 0.7
@@ -478,7 +483,7 @@ do
 end
 
 do
-    local m = Clock.model
+    local m = Pool.model
     MD.db.clock.shown = true
     S.Tick(0.5)
     S.Cast(93010)                  -- a percent-of-base-mana cost: unpriced
@@ -503,7 +508,7 @@ do
     MD.db.clock.shown = true
     S.inCombat = true
     MD:Fire("MD_READY") -- what PLAYER_LOGIN runs after a /reload
-    local m = Clock.model
+    local m = Pool.model
     S.Tick(0.5)
     local text = Clock.text and Clock.text:GetText() or ""
     local fightGood = m ~= model and m.fight ~= nil
@@ -566,6 +571,41 @@ do
         string.format("edge=%s backW=%s want px=%s", tostring(bd2.edgeSize), tostring(back and back.w), tostring(e2)))
     w.GetEffectiveScale = function() return 1 end
     S.Tick(0.5)
+end
+
+--------------------------------------------------------------------------------
+-- T68 (P24, review A29): the pool owns the model, the events and the pricing,
+-- so a cast is priced with no clock at all. A second copy of the addon's core
+-- is loaded WITHOUT UI/Clock_Forever.lua (no clock file, so no clock frame can
+-- be built): its MD_READY gives it a pool assumed full, and an own cast spends
+-- the book's cost from it. On the parent the pricing lived in the clock file,
+-- so this copy has no pool at all.
+--------------------------------------------------------------------------------
+do
+    local files = {
+        "Client/API.lua", "Client/API_Forever.lua", "Core.lua",
+        "Spells/Parse.lua", "Spells/RankRules.lua", "Spells/Book.lua",
+        "Engine/ManaModel.lua", "Engine/ManaPool_Forever.lua",
+    }
+    local MD2 = {}
+    local loaded, loadErr = pcall(S.Load, files, "SpellTuner", MD2)
+    local P2 = MD2.Pool
+    local before, after, why, frameBuilt
+    if loaded and P2 then
+        MD2:Fire("MD_READY")
+        local m2 = P2.model
+        before, why = m2 and m2.mana, m2 and m2.anchor.why
+        S.Cast(774) -- Rejuvenation rank 1, 25 mana
+        after = m2 and m2.mana
+    end
+    frameBuilt = MD2.Clock ~= nil
+    check("a cast is priced by the pool with no clock frame built (T68)",
+        loaded and P2 ~= nil and not frameBuilt and type(before) == "number" and before > 0
+        and why == "assumed full at login" and after == before - 25
+        and (P2:Sample()) == after and P2:Pool().mana == after,
+        string.format("loaded=%s err=%s pool=%s clock=%s before=%s after=%s why=%s", tostring(loaded),
+            tostring(loadErr), tostring(P2 ~= nil), tostring(frameBuilt), tostring(before), tostring(after),
+            tostring(why)))
 end
 
 print("")

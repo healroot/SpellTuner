@@ -247,12 +247,13 @@ local function FmtTime(sec)
 end
 
 -- T11b (docs/tasks/T11b-clock-modes.md): the "rest <t>" segment, worded and
--- gated exactly as TBC's Engine/TTO.lua GetDisplayString lines 397-403 gate
--- its own rest segment -- shown whenever the primary (v) is missing (nil,
--- TBC's "nothing to compare against"), and otherwise only when it differs
--- from the primary by at least 25% (TBC line 400's
--- abs(r - v) / max(v, 1) >= 0.25). Two-space separator (TBC line 405), never
--- a pipe. Absent entirely when there is no rest reading at all.
+-- gated exactly as TBC's MD:GetDisplayString (Engine/TTO.lua) gates its own
+-- rest segment in its "Secondary segment" block -- shown whenever the primary
+-- (v) is missing (nil, TBC's "nothing to compare against"), and otherwise
+-- only when it differs from the primary by at least 25% (TBC's
+-- abs(r - v) / max(v, 1) >= 0.25). Two-space separator, never a pipe (the
+-- same block's `out .. "  " .. seg`). Absent entirely when there is no rest
+-- reading at all. (T68, P24: citations by name, not line number.)
 local function RestSegment(v, rest)
     if type(rest) ~= "number" then return "" end
     if v == nil or math.abs(rest - v) / math.max(v, 1) >= 0.25 then
@@ -261,19 +262,21 @@ local function RestSegment(v, rest)
     return ""
 end
 
--- T11b: every mode worded as TBC's Engine/TTO.lua GetDisplayString words the
--- same mode (lines 349-376), with the "~" kept in front (T11 -- the pool is
--- modelled, never the client's own).
---   fullnow -> TBC's "FULL" (line 350)
---   ooc/full -> TBC's "FULL <ttf>" (line 354; TBC uses one word for both the
---     out-of-combat and in-combat "trending toward full" cases)
---   warmup -> TBC's "OOM ..." (line 356), the rest segment allowed the same
---     as every other in-combat mode (TBC line 390)
---   hold -> TBC's rule for a missing value, "OOM --" (line 362; TBC's own
---     "hold" bound at line 357-359 needs sigma/a mana-cooldown table this
---     model does not have, T11 "not adopted")
---   oom -> TBC's "OOM <t>" (line 374), or "OOM --" when tto is nil (line 362,
---     "never fabricate a number")
+-- T11b: every mode worded as TBC's MD:GetDisplayString (Engine/TTO.lua)
+-- words the same mode in its mode branches, with the "~" kept in front (T11
+-- -- the pool is modelled, never the client's own).
+--   fullnow -> TBC's "FULL" (its fullnow branch)
+--   ooc/full -> TBC's "FULL <ttf>" (its shared ooc/full branch; TBC uses one
+--     word for both the out-of-combat and in-combat "trending toward full"
+--     cases)
+--   warmup -> TBC's "OOM ..." (its warmup branch), the rest segment allowed
+--     the same as every other in-combat mode (the "Secondary segment" block's
+--     oom / hold / warmup test)
+--   hold -> TBC's rule for a missing value, "OOM --" (its oom branch with
+--     v == nil; TBC's own "hold" branch, the "OOM >bound =" bound, needs
+--     sigma/a mana-cooldown table this model does not have, T11 "not adopted")
+--   oom -> TBC's "OOM <t>" (its oom branch), or "OOM --" when tto is nil (the
+--     same branch's "never fabricate a number")
 function ManaModel.Text(state)
     if type(state) ~= "table" or type(state.mode) ~= "string" then return "~OOM --" end
     local m = state.mode

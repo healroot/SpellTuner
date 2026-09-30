@@ -264,12 +264,20 @@ check("a party member's max health is recorded unknown, the player's as read",
         tostring(rec and rec.roster[3].maxHP), tostring(rec and rec.roster[3].maxSecret)))
 
 --------------------------------------------------------------------------------
--- 7: mana is the clock's modelled pool every two seconds, marked modelled
+-- 7: mana is the clock's modelled pool every two seconds, marked modelled.
+-- T68 (P24): the pool is Engine/ManaPool_Forever.lua's now (MD.Pool:Sample),
+-- no longer the clock widget's model; the fixture's track is pinned to what
+-- the parent recorded (the starting 7009, the first sample 6872.33 at the
+-- 69.24 / 28.33 regen pair, back at 7009 by the fourth), so the move leaves
+-- it unchanged. The label is kept so the suite's output does not move.
 --------------------------------------------------------------------------------
 check("mana is the clock's modelled pool every two seconds, marked modelled",
     rec ~= nil and rec.manaModelled == true and #rec.mana.t >= 2
     and math.abs(rec.mana.t[2] - rec.mana.t[1] - 2) < 0.001
-    and type(rec.mana.v[1]) == "number",
+    and type(rec.mana.v[1]) == "number"
+    and rec.initial.mana == 7009 and #rec.mana.t == 20
+    and math.abs(rec.mana.v[1] - 6872.33) < 1e-6 and math.abs(rec.mana.v[2] - 6928.99) < 1e-6
+    and rec.mana.v[4] == 7009 and rec.mana.base[1] == 69.24 and rec.mana.cast[1] == 28.33,
     string.format("manaModelled=%s samples=%s", tostring(rec and rec.manaModelled), tostring(rec and #rec.mana.t)))
 
 --------------------------------------------------------------------------------
@@ -556,7 +564,8 @@ do
     local E = Fresh({ Unit("G-A", "Tank", "WARRIOR", "TANK") })
     E.At(6)
     E.Cast("op1", 774, "Tank") -- out of combat: no pull yet
-    local clockMana = E.MD.Clock and E.MD.Clock.model and E.MD.Clock.model.mana
+    -- T68 (P24): the modelled pool's mana (MD.Pool), which the recorder reads
+    local clockMana = E.MD.Pool and (E.MD.Pool:Sample())
     E.S.Fire("UNIT_SPELLCAST_SENT", "player", "Tank", "op2", 5185) -- out of combat too
     E.S.Fire("UNIT_SPELLCAST_START", "player", "op2", 5185)
     E.Start()                  -- same frame
