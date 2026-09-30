@@ -2,7 +2,7 @@
 ## Title: SpellTuner Recorder
 ## Notes: records your fights: health, heals, casts and mana. A SpellTuner module: switch it on in /st -> Settings -> Modules.
 ## Author: NeRgY
-## Version: 0.16.1
+## Version: 0.16.2
 ## Dependencies: SpellTuner
 ## LoadOnDemand: 1
 

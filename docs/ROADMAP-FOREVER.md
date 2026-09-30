@@ -385,6 +385,36 @@ target's first hit, the biggest hit that person took in other recordings (leave-
 version, `0.16.0`** (T22, T23; `docs/DECISIONS.md` "One version, two installations").
 TESTING §38-§40 are written for alpha.8 (the measure now needs the author hurt **in combat**, R1).
 
+### The author's build-70058 report and the Forever UI (2026-09-29 / 30) → `0.16.1`, `0.16.2`
+
+**0.16.1** (`69d9d96`): T24 practice only from the spellbook, T25 / T25a the block on a macro's
+tooltip and the probe's `macro` lines, T26 measure lines stamped by version.
+
+**0.16.2**: the author's UI request ("each spell a separate view, constructed by the user; make it
+look better; better tooltips, and on macros; windows that do not overlap"), specified in
+`docs/SPEC-forever-ui.md` with every recommendation taken (its 8.1) and a mockup in
+`docs/mockups/forever-ui.html`. All seventeen tasks of its section 9 landed, in dependency order,
+each with tests that failed on the old code and the TBC line on its old path:
+**T27** (`0a14c32`) practice bindings for spells not in the book hidden, not deleted, and named by
+an import; **T28** (`99bbff4`) the macro block's untyped first line, the `SetAction` path and
+`/st tooltip why`; **T29** (`b9cbf66`) the theme -- palette, `UI.TEXT` without gold, fonts and the
+-2..+2 offset, `UI.Pitch`, pixel-snapped edges; **T35** (`9c2a26e`) the spell list model
+(`Spells/Tabs.lua`); **T30** (`974ca82`, `36de582`) table options; **T31** (`65f8d12`) the kit's
+rail, sheet and lists; **T32** (`1638cee`) the window manager `MD.Win`; **T37** (`75fa92f`) the
+tooltip block redesign and the detail key; **T41** (`4c0205a`) the clock under the theme; **T43**
+(`3407386`) Review and replay text under the theme; **T33** (`5f1fae2`) the ESC stack and combat
+hide; **T36** (`9a04b62`) the Spells rail and picker (`UI/SpellsPane_Forever.lua`); **T34**
+(`4bc1da9`) the replay and practice takeover; **T38** (`0520277`) one spell's view; **T40**
+(`c5a2367`) practice under the theme and the manager, the bindings sheet; **T42** (`f4342b3`)
+Settings -> General: appearance and windows; **T39** (`83ec2d1`) Overview: My spells, Whole book,
+Export unchanged. **T44** the docs and the `0.16.2` bump. New suites `themecheck` 23, `tabscheck`
+24, `wincheck` 53. The in-game half is TESTING §42 (three sessions).
+
+*Not scheduled* (the spec's section 9, the author's call): a "Measured" line fed by
+`/st measure` (decision 8, after measure's attribution is shown right on real casts), pair mode
+for the replay (6.3b, decision 3), and the TBC opt-in to the theme and the window rules
+(decision 10). Decision 12 (a macro naming a rank) waits on the probe's `macro` lines.
+
 ### M5 — launch (phase 5) → `1.0.0`
 
 *Exit:* on the launch client (2026-11-04), level 60 values measured on a dummy for the healing

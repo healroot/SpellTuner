@@ -4,10 +4,11 @@ Rewritten by the lead after every commit and every hand-out. A successor continu
 alone. Worktree: `/home/penek/projects/addons/SpellTuner/.claude/worktrees/manademon-folder-continue-41eabc`,
 branch `claude/manademon-folder-continue-41eabc`.
 
-Last updated: 2026-09-29, after T24-T26 and T25a (the author's build-70058 report), with **0.16.1
-installed in the author's beta** (Forever package only; 8 TOCs at 0.16.1, no TBC TOC, every folder
-identical to the package). The version ruling is `docs/DECISIONS.md` "One version, two installations"
-(0.16.x beta builds, 1.0.0 at the Forever launch). The next Forever install is
+Last updated: 2026-09-30, after the Forever UI (T27-T43 from `docs/SPEC-forever-ui.md`, every
+task of its section 9) and T44 (docs, `0.16.2`), with **0.16.2 installed in the author's beta**
+(Forever package only; the installed TOCs read 0.16.2, no TBC TOC there). The version ruling is
+`docs/DECISIONS.md` "One version, two installations" (0.16.x beta builds, 1.0.0 at the Forever
+launch). The next Forever install is
 `./release.sh --install-forever "/mnt/e/Blizzard/World of Warcraft/_classic_beta_/Interface/AddOns"`
 and the next TBC one `./release.sh --install-tbc ".../_anniversary_/Interface/AddOns"`; never cross
 them.
@@ -16,6 +17,26 @@ them.
 
 | hash | what |
 |---|---|
+| (the T44 commit) | T44: `0.16.2` on every TOC (`release.sh --set-version`); CLAUDE.md rows (new: `UI/Theme_Forever.lua`, `UI/Windows_Forever.lua`, `UI/SpellsPane_Forever.lua`, `Spells/Tabs.lua`; the changed shared and Forever files annotated), TESTING §42 (three sessions) and §38-§40 pointed at the new places, ROADMAP section, TOOLS (themecheck / tabscheck / wincheck rows and loop, every changed count), HISTORY, this handover |
+| 83ec2d1 | T39: Overview -- My spells, Whole book (a row per rank), Export byte-identical (refcheck exit 0); spellsui 47 |
+| f4342b3 | T42: Settings -> General -- SPELL TOOLTIPS, APPEARANCE (font offset, window scale, clock), WINDOWS (combat, ESC, reset); wincheck 53 |
+| c5a2367 | T40: practice under the theme; the bindings editor a sheet under `MD.Win`; the one-line summary; Simulate minimum 900; practiceforever 24 |
+| 0520277 | T38: one spell's view (header, strip, RANKS, card, the game's tooltip on a row, `MD.API.SetTooltipSpell`); `Book:Compare`, `shape`, `dominatedBy`; bookcheck 21, spellsui 43 |
+| 4bc1da9 | T34: replay and practice takeover (`MD.Win:TakeOver`, `< SpellTuner`, practice ESC pause then end, `replayPos` adopted); wincheck 47, replayforever 15 |
+| 9a04b62 | T36: Spells rail and picker (`UI/SpellsPane_Forever.lua`), drop from the spellbook (`MD.API.CursorInfo`, cursor never cleared), `/st spell`; spellsui 35 |
+| 5f1fae2 | T33: the ESC stack, combat hide / reopen, console strata and place, probe `esc=`; wincheck 39, probecheck 87, consolecheck 17 / 1 |
+| 3407386 | T43: Review and replay text under the theme; replayforever 14, reviewforever 11 |
+| 4c0205a | T41: the clock under the theme; clockcheck 20 |
+| 75fa92f | T37: tooltip block redesign, detail key, `MD.API.RefreshTooltip`; tipcheck 37 |
+| 1638cee | T32: window manager core (`UI/Windows_Forever.lua`), `/st ui reset`; wincheck 30 (new) |
+| 65f8d12 | T31: kit rail, sheet, mask, list strata, `UI.OnPopup`; navui 35 (25 old unchanged) |
+| 36de582 / 974ca82 | T30: table options (+ the review's bar-column header fix); dashui 63 (56 old unchanged) |
+| 9c2a26e | T35: `Spells/Tabs.lua`, Book's family `key` / `ids`, `BOOK_CHANGED`; tabscheck 24 (new) |
+| b9cbf66 | T29: the theme (`UI/Theme_Forever.lua`), `MD.API.PhysicalScreenSize`, `db.ui` defaults; themecheck 23 (new) |
+| 99bbff4 | T28: macro block's untyped first line, the `SetAction` hook, `/st tooltip why`; tipcheck 27 |
+| 0a14c32 | T27: practice bindings not in the book hidden (not deleted), skipped by imports, `[Forget]`; practiceforever 20 |
+| af266e5 | docs: the Forever UI spec and its mockup, with the author's answers |
+| c2bab7c | handover: §38-§40 play on 0.16.1 |
 | (after 69d9d96) | docs (lead): TESTING §38 opening (probe on 70058 into `docs/probe/1.60.1_70058.md`), §41 (0.16.1 checks), §38-§40 at 0.16.1; TOOLS rows; CLAUDE.md rows (API_Forever, Probe, SpellTip, Measure, Practice, intro 0.16.1, measure usage); HISTORY; this handover |
 | 69d9d96 | 0.16.1: every TOC via `release.sh --set-version`; releasecheck's disagreeing version `9.9.9-disagree` (it was the literal 0.16.1) |
 | d168f43 | T25a: the probe's `macro` lines in `== shapes` and its own Macro post-call at load; probecheck 86; lead's one-line tipcheck change (two Macro post-calls) |
@@ -74,41 +95,42 @@ Nothing.
 
 ## Next, in order
 
-1. **The review's groups not accepted: none.** All seven fix branches (`fix/review-measure`,
-   `-recorder`, `-replay`, `-probe`, `-core`, `-spells`, `-shared`) were accepted and are in HEAD;
-   there is no review group left to redo.
-2. **R6**: ruled ("Fix both lines", DECISIONS "Forever review R6") and closed -- T20 1c76605, T20b
-   753cd96, alpha.8 c805287, T21 docs. Nothing of the review is left.
-3. **First the build-70058 probe** (`docs/probe/1.60.1_70058.md`, TESTING §38's opening step) and
-   **TESTING §41** (0.16.1): the probe's `macro` lines decide whether T25's assumed shapes hold (a
-   `macro hover` with `line1 tooltipType=<Spell's value> tooltipID=<id>`, or a `GetActionInfo` id /
-   subType that `GetMacroSpell` resolves); if neither, write a task from those lines only. Diff the
-   70058 probe against 70009 for anything else that moved.
-4. **When the author's reports arrive:** §38.2 step 4 (gross or effective) -> `SM.HEAL_AMOUNT` and
-   gate 8 two-sided; §38.3's `bar UnitHealthMax(party1): ...` line -> flip `MD.API.BAR_READS_MAX`
-   (one word, `Client/API.lua` 333) if `read plain`, both out of combat and in the snapshot; §39 ->
-   the recorder on real pulls (CANCEL count, meter vs attributed own healing); §40.1's
-   `/st binds check` paste -> a task per importer that does not recognise the Forever shape (from
-   the paste only); §40.2 -> practice on the beta. **0.16.1 is installed** in the beta (everything 0.16.0 had
-   plus T24-T26 / T25a); TESTING §38-§41 say 0.16.1. The review's R1 changes §38.2 / §38.5: the measure knows missing health only in
-   combat -- T21's TESTING edit says so.
-5. Then M5 (launch client, 2026-11-04).
+1. **Nothing of the Forever UI spec is left undone.** Every task of `docs/SPEC-forever-ui.md`
+   section 9 landed (T27-T43) and T44 is this commit. Not scheduled by the spec, each waiting on
+   the author: the "Measured" line (decision 8, after measure's attribution is shown right on real
+   casts), pair mode for the replay (6.3b, decision 3), the TBC opt-in to the theme and the window
+   rules (decision 10), and decision 12 (a macro naming a rank) after the probe's `macro` lines.
+2. **TESTING §42** (0.16.2, three 20-30 minute sessions; pastes into
+   `docs/probe/<build>-0.16.2-s1.md` / `-s2.md` / `-s3.md`). 42.1 first: `/st tooltip why` from a
+   Blizzard and an ElvUI bar is what the macro path is fixed from, and the practice check closes the
+   Lifebloom report. Write a task per failed check from the paste only. UNVERIFIED on a real client:
+   the ESC proxy re-arming (`esc=` line), `SetSpellByID` firing the Spell post-call on a rank-row
+   hover (the view adds the block itself when it does not), the drop from the spellbook
+   (`GetCursorInfo`'s shape), `RefreshData` on the modifier key.
+3. **Then the older reports, unchanged:** the build-70058 probe (`docs/probe/1.60.1_70058.md`) and
+   §41; §38.2 step 4 (gross or effective) -> `SM.HEAL_AMOUNT` and gate 8 two-sided; §38.3's
+   `bar UnitHealthMax(party1): ...` line -> flip `MD.API.BAR_READS_MAX` (one word, `Client/API.lua`)
+   if `read plain`; §39 -> the recorder on real pulls; §40.1's `/st binds check` paste -> a task per
+   importer that does not recognise the Forever shape. §38-§40 now point at the new places (the
+   Spellbook pane is Spells -> Overview -> Whole book, the bindings window a sheet).
+4. Then M5 (launch client, 2026-11-04).
 
-Suite loop: `docs/TOOLS.md` §1 (every suite, `bindscheck` included since alpha.6) plus
-`python3 tools/apicheck.py`, `--selftest`, `python3 tools/refcheck.py --selftest`. `releasecheck`
-is in the loop since T23; in a `git archive` export it needs a throwaway `git init` there (its scratch
-copy of the tree comes from `git ls-files`).
+Suite loop: `docs/TOOLS.md` §1 (every suite, `themecheck`, `tabscheck` and `wincheck` included
+since 0.16.2) plus `python3 tools/apicheck.py`, `--selftest`, `python3 tools/refcheck.py --selftest`.
+`releasecheck` is in the loop since T23; in a `git archive` export it needs a throwaway `git init`
+there (its scratch copy of the tree comes from `git ls-files`).
 
 ## Baselines (at the last commit)
 
-TBC sixteen (unchanged by the review): simcheck PASS, reccheck 54, replaycheck 80, replayui 98,
-runcheck 78, reviewui 44, navui 25, dashui 56, regencheck 27, simwindow 8, solvercheck 77, timeline
-27, spelltip 48, practice 74, practiceui 49, migrate 7. Forever: probecheck 86 (T25a), forevercheck 13,
-modulecheck 14, kitcheck 7, recordcheck 24, scenariocheck 12, gatecheck 9, replayforever 11,
-reviewforever 10, coachforever 18, practiceforever 15 (T24), bindscheck 6, parsecheck 12, bookcheck 17,
-tipcheck 22 (T25), clockcheck 17, spellsui 17, measurecheck 30 (T26). Both flavours: adaptercheck 22/15,
-corecheck 10/8, svcheck 6/1, consolecheck 14/1. releasecheck 13 (T23). apicheck 0 findings over 44 files (45 distinct
-globals), selftest 10 of 10, refcheck selftest ok. The same counts in a `git archive HEAD` export.
+TBC sixteen: simcheck PASS, reccheck 54, replaycheck 80, replayui 98, runcheck 78, reviewui 44,
+navui 35 (T31: the old 25 unchanged + 10), dashui 63 (T30: the old 56 unchanged + 7), regencheck 27,
+simwindow 8, solvercheck 77, timeline 27, spelltip 48, practice 74, practiceui 49, migrate 7.
+Forever: probecheck 87, forevercheck 13, modulecheck 14, kitcheck 7, recordcheck 24, scenariocheck
+12, gatecheck 9, replayforever 15, reviewforever 11, coachforever 18, practiceforever 24, bindscheck
+6, parsecheck 12, bookcheck 21, tipcheck 37, clockcheck 20, spellsui 47, measurecheck 30, themecheck
+23, tabscheck 24, wincheck 53. Both flavours: adaptercheck 22/15, corecheck 10/8, svcheck 6/1,
+consolecheck 17/1. releasecheck 13. apicheck 0 findings over 48 files (8 Forever TOCs, 46 distinct
+globals), selftest 10 of 10, refcheck selftest ok.
 
 ## Open questions / hazards
 
@@ -126,8 +148,8 @@ globals), selftest 10 of 10, refcheck selftest ok. The same counts in a `git arc
   HEAL amount gross or effective; that sets `SM.HEAL_AMOUNT` and makes gate 8 two-sided -- and
   §38.3, the party probe with the `bar ...` lines), §39 (the recorder, validate, replay, coach and
   Review on real pulls; the CANCEL count against casts actually cancelled, since the STOP /
-  SUCCEEDED order is UNKNOWN) and §40 (practice and the imports). All three play on **0.16.1**
-  (build 70058), installed 2026-09-29, after the 70058 probe and §41.
+  SUCCEEDED order is UNKNOWN) and §40 (practice and the imports). All three play on **0.16.2**
+  (installed 2026-09-30; 0.16.1 was build 70058's), after the 70058 probe, §41 and §42.
 - **Lesson -- parallel tasks on disjoint files still meet in the suites (T24-T26, 2026-09-29).**
   Three implementers ran at once, each told which files the others owned; that held. What it did not
   catch: T25's assertion counted Macro post-calls (`#list == 1`) and T25a, written the same hour,

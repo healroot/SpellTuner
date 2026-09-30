@@ -2,7 +2,7 @@
 ## Title: SpellTuner Practice
 ## Notes: heal a fight you play, then review it. A SpellTuner module: switch it on in /st -> Settings -> Modules.
 ## Author: NeRgY
-## Version: 0.16.1
+## Version: 0.16.2
 ## Dependencies: SpellTuner, SpellTuner_Replay
 ## LoadOnDemand: 1
 

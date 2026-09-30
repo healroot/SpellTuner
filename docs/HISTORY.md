@@ -3697,3 +3697,51 @@ on 0.16.0 reprinted alpha.3's lines as if new; (4) the new build means the probe
 
 Every suite at its count (probecheck 86, tipcheck 22, measurecheck 30, practiceforever 15, the rest
 unchanged). **Next:** the 70058 probe report, TESTING §41, then §38-§40 as before.
+
+## 2026-09-30 — the Forever UI: T27-T43 and T44; 0.16.2 in the beta
+
+**Asked** (the author, 2026-09-29, after installing 0.16.1 on build 70058): the spell dashboard as
+separate views the player chooses, a cleaner look, better tooltips (and the block on macros), and
+windows that do not overlap; practice still showed Lifebloom. The planner wrote
+`docs/SPEC-forever-ui.md` with a mockup (`docs/mockups/forever-ui.html`); the author took every
+recommendation ("rail, takeover, hide in combat, shift -- go with recommendations", its 8.1).
+
+All seventeen tasks of the spec's section 9 landed, in dependency order, each with tests first and
+the TBC line on its old path (every TBC suite's old assertions pass unchanged; `navui` and `dashui`
+gained the kit's and the table's new options on top, 25 -> 35 and 56 -> 63):
+
+- **T27** (`0a14c32`) practice bindings for spells not in the book hidden, never deleted, back when
+  learned; an import names them skipped; the sheet's `[Forget]`. practiceforever 20.
+- **T28** (`99bbff4`) the macro block: the untyped first line, the `SetAction` hook on the slot
+  argument, one block per showing, `/st tooltip why`. tipcheck 27.
+- **T29** (`b9cbf66`) the theme (`UI/Theme_Forever.lua`): flat palette, `UI.TEXT` with no gold, fonts
+  and the -2..+2 offset, `UI.Pitch`, pixel edges. themecheck 23 (new).
+- **T35** (`9c2a26e`) the spell list model (`Spells/Tabs.lua`): seed, reconcile, add / remove / move
+  / undo, stale. tabscheck 24 (new).
+- **T30** (`974ca82`, review `36de582`) table options in `Dashboard_Rows.lua`. dashui 63.
+- **T31** (`65f8d12`) the kit's rail, sheet, mask and list strata. navui 35.
+- **T32** (`1638cee`) the window manager `MD.Win` (`UI/Windows_Forever.lua`): roles, saved TOPLEFT,
+  clamp, size per group, scale, `/st ui reset`. wincheck 30 (new).
+- **T37** (`75fa92f`) the tooltip block redesign, the detail key (Shift), the refresh on the key.
+  tipcheck 37.
+- **T41** (`4c0205a`) the clock under the theme. clockcheck 20.
+- **T43** (`3407386`) Review and replay text under the theme. replayforever 14, reviewforever 11.
+- **T33** (`5f1fae2`) the ESC stack (one proxy), combat hide and reopen, the console's strata and
+  place, the probe's `esc=` line. wincheck 39, probecheck 87, consolecheck 17 / 1.
+- **T36** (`9a04b62`) the Spells rail and picker (`UI/SpellsPane_Forever.lua`), the drop from the
+  spellbook that never clears the cursor, `/st spell`. spellsui 35.
+- **T34** (`4bc1da9`) the replay and practice takeover. wincheck 47, replayforever 15.
+- **T38** (`0520277`) one spell's view: header, decision strip, RANKS, rank card, the game's tooltip
+  on a row. bookcheck 21, spellsui 43.
+- **T40** (`c5a2367`) practice under the theme; the bindings editor a sheet. practiceforever 24.
+- **T42** (`f4342b3`) Settings -> General: SPELL TOOLTIPS, APPEARANCE, WINDOWS. wincheck 53.
+- **T39** (`83ec2d1`) Overview: My spells and Whole book; Export byte-identical. spellsui 47.
+- **T44** (this entry's commit): CLAUDE.md rows for the four new files and the changed ones, TESTING
+  §42 (three 20-30 minute sessions from the spec's section 10) with §38-§40 pointed at the new
+  places, ROADMAP, TOOLS (the three new suites in the loop, every changed count), the handover;
+  `0.16.2` on every TOC by `release.sh --set-version`.
+- **Installed**: the Forever package, **0.16.2**, into the author's beta; no TBC TOC there, nothing
+  installed into a TBC client.
+
+Not scheduled, by the spec: the "Measured" line (decision 8), pair mode (6.3b), the TBC opt-in
+(decision 10). **Next:** TESTING §42, then §38-§41 as before.

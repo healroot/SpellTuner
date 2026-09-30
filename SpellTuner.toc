@@ -2,7 +2,7 @@
 ## Title: SpellTuner
 ## Notes: SpellTuner for WoW: Forever (beta). /st opens the window, /st probe writes the capability report.
 ## Author: NeRgY
-## Version: 0.16.1
+## Version: 0.16.2
 ## SavedVariables: SpellTunerDB
 
 Client\TOC_Plain.lua

@@ -996,7 +996,7 @@ not moved).
 ```
 
 At character select the AddOns list shows SpellTuner and the three modules at the newest build --
-**0.16.1** as of 2026-09-29 (build 70058; §41), which carries everything 1.0.0-alpha.8 did (the numbering changed that
+**0.16.2** as of 2026-09-30 (§42; 0.16.1 was build 70058's, §41), which carries everything 1.0.0-alpha.8 did (the numbering changed that
 day: one version for both lines, Forever beta builds 0.16.x, 1.0.0 at the Forever launch --
 `docs/DECISIONS.md` "One version, two installations"). Install it for every session of §38-§40;
 the steps below are written for it. Log in as Healroot, `/console scriptErrors 1`. Any
@@ -1005,7 +1005,7 @@ it, carry on, and `/st dump` at the end of that session (paste it under the sess
 
 ### 38.1 Session 1 -- the M2 re-check, solo (20 min)
 
-1. **The pane** (`/st`, Spells -> Spellbook). Every spell name on **one line** (a long one cut with
+1. **The pane** (`/st`, Spells -> Spellbook; since 0.16.2 Spells -> Overview -> Whole book, §42). Every spell name on **one line** (a long one cut with
    `...`, the whole name on hover), no text over the rows, section titles `Heals` / `Damage` /
    `Other` readable. Other lists only spells you cast for mana (Mark of the Wild, Nature's Grasp,
    Teleport: Moonglade, and whatever you learned since), then one grey line counting the rest.
@@ -1131,7 +1131,7 @@ enough, or the fight had ended -- redo that cast in combat.)
 
 An alt of any mana class (priest, mage, shaman, paladin, warlock). At level 1-10 is fine.
 
-1. Log in, `/console scriptErrors 1`. `/st`: the Spellbook pane lists that class's spells --
+1. Log in, `/console scriptErrors 1`. `/st`: the Spellbook pane (since 0.16.2 Spells -> Overview -> Whole book) lists that class's spells --
    screenshot it; anything missing or wrong? Export -> copy.
 2. Hover the class's first heal or nuke: the block appears?
 3. `/st measure` on: three spells, three casts each -- a priest's Lesser Heal, Smite and Power
@@ -1154,7 +1154,7 @@ adds M3: the **Recorder** and **Replay** modules now do something. Nothing here 
 client yet; every step is the first time.
 
 **Install** as in §38 (`./release.sh --install-forever ...`). At character select SpellTuner and the
-three modules read the newest build (**0.16.1** as of 2026-09-29; it carries everything 1.0.0-alpha.5 and
+three modules read the newest build (**0.16.2** as of 2026-09-30; it carries everything 1.0.0-alpha.5 and
 later did).
 `/console scriptErrors 1`; any error box: note it, carry on,
 `/st dump` at the end of the session.
@@ -1221,7 +1221,7 @@ Two changes you may meet in §39's steps:
   report (the line `bar UnitHealthMax(party1): ...`). Nothing to do here; it ships off.
 
 **Install** as in §38 (`./release.sh --install-forever ...`). At character select SpellTuner and the
-three modules read the newest build (**0.16.1** as of 2026-09-29; it carries everything 1.0.0-alpha.6 and
+three modules read the newest build (**0.16.2** as of 2026-09-30; it carries everything 1.0.0-alpha.6 and
 later did).
 `/console scriptErrors 1`; any error box: note it, carry on,
 `/st dump` at the end of the session.
@@ -1235,7 +1235,7 @@ later did).
 3. Write down which of Cell and Clique are installed **and enabled** in the beta's AddOns folder
    (the report says `absent` for one that is not loaded) and which bars you use (Blizzard's,
    ElvUI / EllesmereUI, Bartender, Dominos).
-4. `/st binds` opens the bindings window. Press **Import from Keybindings**, then **Cell**, then
+4. `/st binds` opens the bindings window (since 0.16.2 a sheet over Simulate -> Practice). Press **Import from Keybindings**, then **Cell**, then
    **Clique** (the ones you have). Each prints what it took, a note per binding that casts on your
    target, and a line per binding it would not guess at -- copy those chat lines. An import adds on
    top of what is there; **Defaults** is the one reset.
@@ -1304,6 +1304,102 @@ the three modules read **0.16.1**. First do §38's opening step on this build (t
 **Paste back** into `docs/probe/1.60.1_70058-0.16.1.md`: the probe report (as §38's opening step
 says), in words what the practice summary and the picker showed before and after the import, which
 bars showed the macro block (and the probe's `macro` lines if one did not), and the measure dump.
+
+## 42. WoW: Forever -- 0.16.2: the new UI (three sessions, 20-30 min each)
+
+On the **beta client** (build 70058 or whatever it is now; §38's opening step first if the build
+changed). 0.16.2 is your UI request of 2026-09-29 built from `docs/SPEC-forever-ui.md` with every
+recommendation you took (its section 8.1): the Spells group as a rail with one view per spell,
+the flat look with no gold, the tooltip block redesigned, and windows that take turns (the replay
+and practice take the main window's place, one ESC closes one thing, the main window hides in
+combat). Everything in the spec's task list landed (T27-T43); nothing here has run on a real client
+yet, and the shapes the tooltip's macro path rests on are still the retail engine's.
+
+**Install**: `./release.sh --install-forever "/mnt/e/Blizzard/World of Warcraft/_classic_beta_/Interface/AddOns"`.
+At character select SpellTuner and the three modules read **0.16.2**. `/console scriptErrors 1`;
+any error box: note it and carry on, `/st dump` at the end of the session. Out of combat unless a
+step says otherwise.
+
+Where things moved (for §38-§41 on this build): the Spellbook pane is now **Spells -> Overview ->
+Whole book**, with Export on its title row; the practice bindings window is a **sheet** over
+Simulate -> Practice (**Edit bindings**, or `/st binds`); the tooltip and window settings are under
+**Settings -> General**.
+
+### 42.1 Session 1 -- practice, the macro block and the tooltip (20 min, solo)
+
+1. **Practice (T27).** `/st` -> Settings -> Modules: Practice on. Simulate -> Practice. Lifebloom
+   (from a Cell import) is not listed and not counted in `N bindings`. Press **Edit bindings**: the
+   sheet's footer reads `1 binding kept for a spell you have not learned  [Forget]`, and its hover
+   names Lifebloom. Import from Cell again: the chat report names Lifebloom as `skipped (not in
+   your spellbook)`. Start a fight and press Lifebloom's key: nothing is cast. (The step before the
+   install that section 10 asks for, the 0.16.1 wording beside Lifebloom, cannot be done any more:
+   0.16.2 replaced 0.16.1.)
+2. **Macro block (T28).** Hover a macro that casts Healing Touch on a Blizzard bar, then on an ElvUI
+   bar. The block appears **once**, and its header reads `Rank N of M - macro`. Whatever happens, type
+   `/st tooltip why` and copy the line (it names both paths and each step of the last macro hover).
+   Then try a macro `/cast Healing Touch(Rank 1)`: note which rank the header names.
+3. **Tooltip (T37).** Hover Healing Touch R2 on your bar: a blank line, `SpellTuner` with
+   `Rank 2 of 2  Shift` at the right, then 4 lines. Hold Shift **without moving the mouse**: the detail
+   lines appear (say so if they only appear on the next hover). Hover Mark of the Wild: two lines,
+   no Shift hint. Settings -> General -> SPELL TOOLTIPS -> Detail lines -> With Alt: the hint now
+   says Alt. Put it back to With Shift.
+
+**Paste back** into `docs/probe/<build>-0.16.2-s1.md`: the `/st tooltip why` line from each bar, the
+rank the `(Rank 1)` macro showed, in words whether each check held (and what you saw where one did
+not), and a screenshot of one tooltip with and one without Shift.
+
+### 42.2 Session 2 -- the look, Settings, the rail and one spell (25-30 min, solo)
+
+1. **The look (T29, T30, T41, T43).** Nameplates no longer show through the window. No gold text in
+   Spells, Practice, the bindings sheet, Review, the replay's header and run strip, or their hover
+   tooltips (the debug console keeps its category colours). Borders are one crisp pixel at your UI
+   scale; change the game's UI scale (Esc -> Options): still one pixel, without a `/reload`. The
+   mana clock has a dark fill and a thin edge.
+2. **Settings (T42).** Settings -> General -> APPEARANCE -> font offset **+2**: every SpellTuner text
+   grows; in Spells the rail rows, the table rows and the card lines move apart and nothing overlaps.
+   The slider stops at +2. Window scale **90 %**: the main window shrinks and stays where it was.
+   Put both back (0, 100 %).
+3. **The rail (T31, T35, T36).** Spells shows `MY SPELLS` with Healing Touch and Rejuvenation. Add
+   Wrath with **+ Add**; with the picker still open, drag Moonfire from your spellbook onto the rail
+   (say so if nothing happens), then right-click Moonfire off the cursor. Drag Wrath above
+   Rejuvenation; remove it with the hover `x`; press **Undo**. `/reload`: the order is kept. If you
+   train a new heal this session (Regrowth at 12), it appears with a dot; a new damage spell does not.
+4. **One spell (T38, T39).** Healing Touch: the chip says Rank 1, the line under it compares it with
+   Rank 2, and the R1 row has the orange bar and `best`. Click R2: the card shows 90 - 115 and crit
+   135 - 173 (at +0 healing). Hover a row: the game's own Healing Touch tooltip with the SpellTuner
+   block under it, beside the row. Cast a heal: the header's `~` mana changes within 2 s and the
+   table does not flicker. Overview -> **Whole book**: every rank of every family has its own row;
+   **Export** from its title row, Ctrl+A, Ctrl+C.
+
+**Paste back** into `docs/probe/<build>-0.16.2-s2.md`: a screenshot of Spells at offset 0 and one at
++2, one of Healing Touch's view with R2 selected, the Export whole, whether the drop from the
+spellbook worked, and anything that overlapped, flickered or showed gold.
+
+### 42.3 Session 3 -- windows, ESC, combat and size (20 min; one short pull at the end)
+
+Needs one recorded pull in Review (Recorder and Replay on; any pull from §39 will do).
+
+1. **Takeover (T34).** Reports -> Review -> Play: the main window hides and the replay opens in its
+   place with `< SpellTuner` in its header. Type `/st`: the replay closes and the main window opens.
+   Play again and press **ESC once**: only the replay closes, and the main window is back on Review.
+   Drag the replay, close it, reopen: it is where you left it.
+2. **Practice takeover.** Start a practice fight: the main window hides; type `/st`: one chat line
+   refuses. **ESC** pauses the fight; **ESC** again ends it and opens its replay without the main
+   window flashing. The replay's back returns to Simulate -> Practice.
+3. **ESC and strata (T33).** Open the debug console (`/st debug`) and a replay together: neither
+   draws through the other; each ESC closes one of them. After one ESC test type `/st probe` and copy
+   the `esc=` line from its `== windows` section.
+4. **Resize (T32).** Drag the corner of Spells narrower: it stops at 860. Switch to Reports: it keeps
+   its own width and the left nav stays where it was. `/st ui reset` puts every window back.
+5. **Combat (T33).** With the main window open, pull something: it hides, and it comes back on the
+   same view when the fight ends. (Settings -> General -> WINDOWS -> In combat -> Keep them open leaves it.)
+
+**Paste back** into `docs/probe/<build>-0.16.2-s3.md`: the `esc=` line, in words each check that did
+not hold (which window, what it did), a screenshot of any two windows drawn through each other, and
+`/st dump` if an error box appeared.
+
+**If you only have time for one:** 42.1 -- the macro block and practice are the two bugs of your
+build-70058 report, and `/st tooltip why` is what the macro path is fixed from.
 
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the
