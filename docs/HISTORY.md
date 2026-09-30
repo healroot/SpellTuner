@@ -4109,3 +4109,35 @@ runcheck on another); `dashui`, `spelltip`,
 `simcheck`, `replayui`, `reviewui` equal. Forever: gatecheck's, tipcheck's and bookcheck's new
 assertions, apicheck 54 files, textcheck 90. **Next:** wave 10; the author's §44 W9 lines on the next
 build.
+
+## 2026-09-30 — the refactor plan, wave 10: T68-T69 (P24-P25)
+
+Wave 10 of `docs/PLAN-refactor-ux.md` cherry-picked onto `e0454fc`, oldest first, then the
+integrator's lines (the three main TOCs, CLAUDE.md, `docs/DECISIONS.md`, `docs/TOOLS.md`,
+`tools/data/expected-counts.json`, this entry) in one commit. No merge fix was needed (the two tasks
+share no file). The version stays 0.16.3. TOC lines: `Engine\ManaPool_Forever.lua` and
+`UI\Visibility.lua` right before `UI\Clock_Forever.lua` on `SpellTuner_Mainline.toc` and
+`SpellTuner.toc` (still identical but for the marker); `UI\Visibility.lua` right before
+`UI\Widget.lua` on `SpellTuner_TBC.toc`. No module TOC changed.
+
+- **T68 (P24)** (`fa969e4`, `648c581`): the mana pool leaves the widget (review A29) -- new
+  `Engine/ManaPool_Forever.lua` (`MD.Pool`: the one `ManaModel` instance, the cast / combat / regen
+  events, `CostFor`, the assume-full rule, `Sample` / `Pool` / `Project` / `LastRegen`); the Forever
+  clock only paints; the recorder samples the pool; `Book:DefaultPool` falls back on
+  `MD.Pool:LastRegen()`; new `UI/Visibility.lua` (`MD.Visibility.Want`, the 90/95 rule, pure) asked by
+  the TBC widget and the Forever clock. clockcheck forever 24, recordcheck's mana track pinned (31).
+- **T69 (P25)** (`e736481`, `1fffaeb`): colour tokens always present, one theme flag (review A20) --
+  `UI.THEMED` (false in `UI/Style.lua`, true once `UI/Theme_Forever.lua` runs) is the one test;
+  `UI.TEXT` / `UI.PALETTE` carry TBC's literals everywhere (legacy tokens `dominated`, `note`,
+  `tipGold`), the theme overwrites them in place; `UI.Hex` / `UI.RGB` / `UI.Fill`. DECISIONS "TBC's
+  disagreeing colour literals are named tokens" (for P34). themecheck forever 28 and a new tbc run (7).
+
+`make check`: 68 runs, all passed, in the worktree and in a `git archive` export (63 counted runs
+against 63 expected). The named suites fail on `e0454fc` first (clockcheck forever raises at its
+first assertion, themecheck forever 23/5 and tbc 1/6, recordcheck 30/1). Each TBC suite's full output
+against `e0454fc` differs only by the new themecheck tbc run, releasecheck's package file counts (tbc
+62, was 61; forever 30, was 28) and run-to-run noise (ms, table addresses, the sliced search's frame
+count in reccheck and evaluation counts in replayui); `ttocheck`, `dashui`, `spelltip`, `simcheck`,
+`navui`, `practiceui` equal. Forever: clockcheck's and themecheck's new assertions, apicheck 56 files,
+textcheck 92. **Next:** wave 11; nothing new for the author to test in game (plan section 9 already
+covers "TBC looks exactly as before").

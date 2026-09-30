@@ -43,6 +43,7 @@ Engine\Practice.lua
 UI\Style.lua
 UI\Tooltip.lua
 UI\SpellTooltip.lua
+UI\Visibility.lua
 UI\Widget.lua
 UI\Dashboard_Rows.lua
 UI\Dashboard_Simulate.lua

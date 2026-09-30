@@ -1045,3 +1045,7 @@ A Forever kit rank whose cast time the book cannot read is `dataMissing` (Practi
 ## A spell outside the book keeps its last readable text (2026-09-30, T67)
 
 A spell read outside the book keeps its last readable text through a secret description, as a book spell does, and says it was read before combat (T67, review R41's gap). TBC is unchanged: the rank rules moved to `Spells/RankRules.lua` and mark the same ranks.
+
+## TBC's disagreeing colour literals are named tokens (2026-09-30, T69)
+
+T69 (P25): TBC's three disagreeing literals kept as named tokens -- dominated 8a8a8a (muted is 888888), note ffcc00 (text2's TBC stand-in), tipGold ffd100 (accent is ffcc00). Unifying them moves TBC and is P34's question to the author (plan section 8).
