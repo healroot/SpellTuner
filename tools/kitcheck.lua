@@ -2,8 +2,10 @@
 --
 -- T15 (docs/tasks/T15-kit-from-book.md): the engine's spell kit, built from
 -- Spells/Book.lua through Modules/SpellTuner_Replay/Kit_Forever.lua, once the
--- Replay module is switched on. Forever only.
-HARNESS_FLAVOUR = "forever"
+-- Replay module is switched on. Forever, and since T63 (P19) tbc too: the kit's
+-- shape has one owner (Engine/Kit.lua) and BOTH builders end with Kit.Check --
+-- RankMath:SpellKit on tbc (the section at the end), Kit_Forever's here.
+HARNESS_FLAVOUR = { "forever", "tbc" }
 
 local here = arg[0]:match("^(.*)/[^/]+$")
 
@@ -19,12 +21,104 @@ arg[0] = a0
 
 local S = _G.STUB
 
+local function Footer()
+    print(string.format("%d ok, %d failed", ok, #fails))
+    if #fails > 0 then os.exit(1) end
+    os.exit(0)
+end
+
+-- A copy of a kit, deep enough to break one entry without touching the
+-- builder's own (a cached kit is shared).
+local function CopyKit(kit)
+    local c = {}
+    for k, v in pairs(kit) do
+        if type(v) == "table" then
+            c[k] = {}
+            for id, e in pairs(v) do
+                local ce = {}
+                for f, x in pairs(e) do ce[f] = x end
+                c[k][id] = ce
+            end
+        else
+            c[k] = v
+        end
+    end
+    return c
+end
+
+-- The first direct-type entry of a kit's caster form, for the castBase test.
+local function FirstDirect(kit)
+    local ids = {}
+    for id, e in pairs(kit.caster) do
+        if e.type == "direct" and not e.dataMissing and not MD.Kit.UNPRICED[e.family] then
+            ids[#ids + 1] = id
+        end
+    end
+    table.sort(ids)
+    return ids[1]
+end
+
+local function CastBaseFails(kit)
+    local id = FirstDirect(kit)
+    local broken = CopyKit(kit)
+    if id then broken.caster[id].castBase = nil end
+    local okV, problems = MD.Kit.Validate(broken)
+    local named = false
+    for _, p in ipairs(problems or {}) do
+        if p:find("caster%[" .. tostring(id) .. "%]", 1) and p:find("castBase", 1, true) then named = true end
+    end
+    return id ~= nil and okV == false and named, id, problems and problems[1]
+end
+
+--------------------------------------------------------------------------------
+-- tbc (T63, P19): RankMath:SpellKit ends with Kit.Check, and the kit it builds
+-- validates -- Innervate, priced for its mana only, included.
+--------------------------------------------------------------------------------
+if S.flavour == "tbc" then
+    local Kit = MD.Kit
+    local checks, realCheck = 0, Kit and Kit.Check
+    if Kit then
+        Kit.Check = function(...) checks = checks + 1; return realCheck(...) end
+    end
+    local built, kit = pcall(function() return MD.RankMath:SpellKit() end)
+    if Kit then Kit.Check = realCheck end
+    local valid, problems = false, nil
+    if Kit and built then valid, problems = Kit.Validate(kit) end
+    check("tbc: RankMath:SpellKit ends with Kit.Check and its kit validates",
+        Kit ~= nil and built and checks == 1 and valid
+        and kit.caster[29166] ~= nil and Kit.UNPRICED[kit.caster[29166].family] == true,
+        string.format("Kit=%s built=%s checks=%d valid=%s first=%s",
+            tostring(Kit ~= nil), tostring(built), checks, tostring(valid),
+            tostring(problems and problems[1] or (not built and kit) or nil)))
+
+    local failed, id, first = false, nil, nil
+    if Kit and built then failed, id, first = CastBaseFails(kit) end
+    check("tbc: a kit missing castBase fails validation, naming the entry",
+        failed, string.format("id=%s first=%s", tostring(id), tostring(first)))
+
+    local aliased, restoredOk, restoreProblem = false, false, nil
+    if Kit and built then
+        aliased = MD.SimModel.KitSnapshot == Kit.Snapshot
+        local snap = Kit.Snapshot(kit)
+        local restored = Kit.Restore(snap)
+        restoredOk, restoreProblem = Kit.Validate(restored)
+        restoredOk = restoredOk and restored.caster[29166] ~= nil
+    end
+    check("tbc: SM.KitSnapshot is Kit.Snapshot, and a snapshot restores into a kit that validates",
+        aliased and restoredOk,
+        string.format("aliased=%s restored=%s first=%s", tostring(aliased), tostring(restoredOk),
+            tostring(restoreProblem and restoreProblem[1])))
+    Footer()
+end
+
 --------------------------------------------------------------------------------
 -- Fixtures, on top of T7a's fixed five (5185 Healing Touch R1, 774
 -- Rejuvenation R1, 1058 Rejuvenation R2, 5176 Wrath, the slot-4 error row).
 --------------------------------------------------------------------------------
+-- T63: Regrowth's numbers can move (a rescan that changes one entry).
+local regrowthText = "Heals a friendly target for 93 to 107 and another 98 over 21 sec."
 S.AddSpell(90201, "Regrowth", "Rank 1",
-    function() return "Heals a friendly target for 93 to 107 and another 98 over 21 sec." end,
+    function() return regrowthText end,
     { cast = 2000, cost = 80, level = 1 })
 
 S.AddSpell(90202, "Swiftmend", "Rank 1",
@@ -175,5 +269,97 @@ do
         string.format("kitPlain.crit=%s kitSecret.crit=%s", tostring(kitPlain.crit), tostring(kitSecret.crit)))
 end
 
-print(string.format("%d ok, %d failed", ok, #fails))
-if #fails > 0 then os.exit(1) end
+--------------------------------------------------------------------------------
+-- T63 (P19 of docs/PLAN-refactor-ux.md, review A12 / A11): the kit has an
+-- owner (Engine/Kit.lua), and the Forever kit is built once per book
+-- generation.
+--------------------------------------------------------------------------------
+local Kit = MD.Kit
+local Book = MD.Book
+
+-- 8: the Forever builder ends with Kit.Check, and its kit validates -- a rank
+--    whose cast time the book cannot read included (it is dataMissing)
+do
+    local checks, realCheck = 0, Kit and Kit.Check
+    if Kit then Kit.Check = function(...) checks = checks + 1; return realCheck(...) end end
+    S.crit[4] = 6.2                     -- a crit the cache has not seen: a build
+    local built, k = pcall(function() return MD.RankMath:SpellKit() end)
+    if Kit then Kit.Check = realCheck end
+    local valid, problems = false, nil
+    if Kit and built then valid, problems = Kit.Validate(k) end
+
+    -- 5185 (Healing Touch R1) with no cast the book can read: neither
+    -- SpellInfo nor the tooltip data answers
+    local API = MD.API
+    local rawInfo, rawTip = rawget(API, "SpellInfo"), rawget(API, "SpellTooltipData")
+    local info, tip = API.SpellInfo, API.SpellTooltipData
+    rawset(API, "SpellInfo", function(id, ...) if id == 5185 then return nil end return info(id, ...) end)
+    rawset(API, "SpellTooltipData", function(id, ...) if id == 5185 then return nil end return tip(id, ...) end)
+    if Book then Book:MarkDirty() end
+    local builtNoCast, kNoCast = pcall(function() return MD.RankMath:SpellKit() end)
+    rawset(API, "SpellInfo", rawInfo)
+    rawset(API, "SpellTooltipData", rawTip)
+    if Book then Book:MarkDirty() end
+    local noCast = builtNoCast and kNoCast.caster[5185]
+    local noCastOk = noCast and noCast.dataMissing == true and noCast.cast == nil
+        and Kit and Kit.Validate(kNoCast)
+    local back = MD.RankMath:SpellKit().caster[5185]
+
+    check("the Forever builder ends with Kit.Check and its kit validates, an unreadable cast as dataMissing",
+        Kit ~= nil and built and checks == 1 and valid and noCastOk == true
+        and back and back.dataMissing == nil and back.cast == 1.5,
+        string.format("Kit=%s built=%s checks=%d valid=%s first=%s noCast=%s back=%s",
+            tostring(Kit ~= nil), tostring(built), checks, tostring(valid),
+            tostring(problems and problems[1] or (not built and k) or nil),
+            tostring(noCastOk), tostring(back and back.cast)))
+end
+
+-- 9: a kit missing castBase fails validation
+do
+    local failed, id, first = false, nil, nil
+    if Kit then failed, id, first = CastBaseFails(MD.RankMath:SpellKit()) end
+    check("a kit missing castBase fails validation, naming the entry",
+        failed, string.format("id=%s first=%s", tostring(id), tostring(first)))
+end
+
+-- 10: two calls with an unchanged book return the same table and write
+--     cdb.kit once
+do
+    local writes, realSnap = 0, Kit and Kit.Snapshot
+    if Kit then Kit.Snapshot = function(...) writes = writes + 1; return realSnap(...) end end
+    S.crit[4] = 6.4                     -- a change the cache has not seen: one build, one write
+    local k1 = MD.RankMath:SpellKit()
+    local gen1, saved1 = Book and Book.generation, MD.cdb.kit
+    if Book then Book:MarkDirty() end   -- the book read again, unchanged
+    local k2 = MD.RankMath:SpellKit()
+    if Kit then Kit.Snapshot = realSnap end
+    local gen2 = Book and Book.generation
+    check("two calls with an unchanged book return the same table and write cdb.kit once",
+        Kit ~= nil and gen1 ~= nil and rawequal(k1, k2) and gen1 == gen2
+        and writes == 1 and rawequal(MD.cdb.kit, saved1),
+        string.format("same=%s gen=%s->%s writes=%d cdbSame=%s",
+            tostring(rawequal(k1, k2)), tostring(gen1), tostring(gen2), writes,
+            tostring(rawequal(MD.cdb.kit, saved1))))
+end
+
+-- 11: a rescan that changes one entry bumps the generation and rebuilds
+do
+    local k1 = MD.RankMath:SpellKit()
+    local gen1, saved1 = Book and Book.generation, MD.cdb.kit
+    regrowthText = "Heals a friendly target for 193 to 207 and another 98 over 21 sec."
+    if Book then Book:MarkDirty() end
+    local k2 = MD.RankMath:SpellKit()
+    local gen2 = Book and Book.generation
+    local e2 = k2.caster[90201]
+    local saved2 = MD.cdb.kit
+    check("a rescan that changes one entry bumps the generation and rebuilds",
+        gen1 ~= nil and gen2 == gen1 + 1 and not rawequal(k1, k2)
+        and e2 and e2.direct == 200 and k1.caster[90201].direct == 100
+        and not rawequal(saved2, saved1) and saved2.caster[90201].direct == 200,
+        string.format("gen=%s->%s rebuilt=%s direct=%s->%s cdb=%s",
+            tostring(gen1), tostring(gen2), tostring(not rawequal(k1, k2)),
+            tostring(k1.caster[90201].direct), tostring(e2 and e2.direct),
+            tostring(saved2 and saved2.caster[90201] and saved2.caster[90201].direct)))
+end
+
+Footer()
