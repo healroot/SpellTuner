@@ -530,6 +530,43 @@ do
 end
 
 --------------------------------------------------------------------------------
+-- T49 (P5), B16: an address the coach cannot find, or an argument it cannot
+-- read, is refused as /st validate refuses it -- it used to coach recording 1
+-- and print that fight's card under the wrong address.
+--------------------------------------------------------------------------------
+do
+    local saved = MD.cdb.recordings
+    MD.cdb.recordings = { recGood }
+    if MD.coachSearch then MD.coachSearch:Cancel(); MD.coachSearch = nil end
+    local savedPlan = SP.plans[recGood.id]
+    SP.plans[recGood.id] = nil
+    local function Try(arg)
+        local started
+        local lines = CapturedChat(function()
+            SlashCmdList.SPELLTUNER("coach " .. arg)
+            started = MD.coachSearch ~= nil
+            local f = 0
+            while MD.coachSearch and f < 20000 do S.Tick(0.016); f = f + 1 end
+        end)
+        return lines, started
+    end
+    local l1, s1 = Try("2:7")
+    local l2, s2 = Try("1 force now")
+    local function Said(lines, text)
+        for _, l in ipairs(lines) do if l:find(text, 1, true) then return true end end
+        return false
+    end
+    local noPlan = SP.plans[recGood.id] == nil
+    SP.plans[recGood.id] = savedPlan
+    MD.cdb.recordings = saved
+    check("/st coach 2:7 with no such recording is refused, and no card (B16)",
+        Said(l1, "coach: no recording 2:7") and not s1 and #l1 == 1
+        and Said(l2, "coach: no recording 1 force now") and not s2 and #l2 == 1 and noPlan,
+        string.format("2:7 -> %s (%d lines, searched=%s); '1 force now' -> %s (%d lines, searched=%s); plan=%s",
+            tostring(l1[1]), #l1, tostring(s1), tostring(l2[1]), #l2, tostring(s2), tostring(not noPlan)))
+end
+
+--------------------------------------------------------------------------------
 -- The record, not an assertion (acceptance 2): solver vs rules on the
 -- fixture.
 --------------------------------------------------------------------------------

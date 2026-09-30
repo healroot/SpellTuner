@@ -169,10 +169,26 @@ MD:SelectView("reports", "review") -- re-render now that recordings exist
 -- recordings.
 -- Rows() picks up the header row too (it shares the same cells.n shape,
 -- tools/reviewui.lua's own "a header and a row" count) -- three total for two
--- recordings, unchecked until Validate runs. Sanity, not one of the eight
+-- recordings (the selected one validated on sight since T49, the other
+-- unchecked until Validate runs). Sanity, not one of the eight
 -- named checks: a wrong count here would fail check 4 below anyway, less
 -- clearly.
 assert(#Rows() == 3, "expected a header and two data rows, got " .. #Rows())
+
+--------------------------------------------------------------------------------
+-- T49 (P5), B24: the selected row is validated before the rows are painted,
+-- so on the very first render it already shows its verdict -- not "not
+-- checked" beside buttons that already say Coach or Coach*.
+--------------------------------------------------------------------------------
+do
+    local first
+    for _, r in ipairs(Rows()) do
+        if CellText(r, "n") == "1" then first = CellText(r, "valid") end
+    end
+    check("B24: the selected, never validated row paints its verdict on the first render",
+        first ~= nil and first:find("ok", 1, true) == 1,
+        "row1=" .. tostring(first))
+end
 
 SelectRow(1)
 Click(ButtonNamed("Validate"))
@@ -397,6 +413,34 @@ if leaveBad then leaveBad(badRow) end
 local detail8 = bad[1]
 if not detail8 and not sawName then detail8 = "the fixture name never painted with its own bytes" end
 check("every string the tab paints is ASCII with no bare pipe", #bad == 0 and sawName, detail8)
+
+--------------------------------------------------------------------------------
+-- T49 (P5), B14: Review's Pin goes through the recorder's capped Pin -- two
+-- pinned fights, and a third is refused with one line saying why, instead of
+-- being pinned past the cap (after which every stored pull could end up
+-- pinned and the next one lost).
+--------------------------------------------------------------------------------
+do
+    for _, r in ipairs(MD.cdb.recordings) do r.pinned = false end
+    MD:SelectView("reports", "review")
+    local function PinRow(n)
+        SelectRow(n)
+        return CapturedChat(function() Click(ButtonNamed("Pin")) end)
+    end
+    local l1 = PinRow(1)
+    local l2 = PinRow(2)
+    local l3 = PinRow(3)
+    local list = MD.FightRecorder:List()
+    local refusal = l3[1] or ""
+    local plain = refusal:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+    check("B14: a third pin is refused with one line, and the first two stay pinned",
+        #l1 == 0 and #l2 == 0 and list[1].pinned == true and list[2].pinned == true
+        and list[3].pinned ~= true and #l3 == 1 and plain:find("pin: at most 2", 1, true) ~= nil
+        and not plain:find("[^ -~]") and not plain:gsub("||", ""):find("|", 1, true),
+        string.format("pins=%s,%s,%s line=%s", tostring(list[1].pinned), tostring(list[2].pinned),
+            tostring(list[3].pinned), tostring(l3[1])))
+    for _, r in ipairs(MD.cdb.recordings) do r.pinned = false end
+end
 
 print(string.format("\n%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("  FAIL " .. f) end

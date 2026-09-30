@@ -367,6 +367,32 @@ do
             tostring(counts.ownDirect), tostring(counts.foreign)))
 end
 
+--------------------------------------------------------------------------------
+-- 13, 14 (T49, P5, B15): the recorder keeps a cross-realm member's `name`
+--     bare and adds `realm` beside it, so a recording made before the realm
+--     existed and one made after still name the same person: both are found
+--     by SM.PartyMaxFromOthers and by SM.DangerHitFromOthers (the count says
+--     both matched, the value that the newer one's bigger number was read).
+--------------------------------------------------------------------------------
+do
+    local coached = MiniRec({ { 1, 1, 2, 300, 0 } })
+    coached.id = 100
+    local old = MiniRec({ { 1, 1, 2, 400, 0 } })          -- before T49: a bare "Tank", no realm
+    old.id = 200
+    local new = MiniRec({ { 1, 1, 2, 600, 0 } })          -- after: "Tank" with its realm beside it
+    new.id = 300
+    new.roster[2].realm = "X"
+    new.roster[2].maxHP = 2500
+    local recs = { coached, old, new }
+    local mx, how, n = SM.PartyMaxFromOthers(recs, coached.id, "Tank", 64)
+    check("an old bare-name recording and a new one with a realm are one person for the party max (B15)",
+        mx == 2500 and how == "recorded" and n == 2,
+        string.format("max=%s via=%s n=%s", tostring(mx), tostring(how), tostring(n)))
+    local hit, hn = SM.DangerHitFromOthers(recs, coached.id, "Tank", 64)
+    check("...and for the danger prior (B15)", hit == 600 and hn == 2,
+        string.format("hit=%s n=%s", tostring(hit), tostring(hn)))
+end
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("  FAIL " .. f) end
 if #fails > 0 then os.exit(1) end

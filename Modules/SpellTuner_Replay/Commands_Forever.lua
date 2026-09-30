@@ -160,8 +160,12 @@ function MD:RunCoach(arg)
     end
     -- "3" is a single fight, "3 force" coaches one that failed its gates
     -- (Coach itself refuses without it), "3 health" picks a strategy.
-    local n, rest = arg:match("^([pP]?%d*)%s*(%a*)$")
-    if not n or n == "" then n = "1" end
+    -- T49 (P5), B16: "2:7" (a run's pull) is an address too, and an argument
+    -- the pattern cannot read is refused as /st validate refuses one -- it
+    -- used to fall through to recording 1 and print that fight's card.
+    local n, rest = arg:match("^([pP]?[%d:]*)%s*(%a*)$")
+    if not n then Print("coach: no recording " .. arg .. ".") return end
+    if n == "" then n = "1" end
     local rec, label = MD:GetRecording(n)
     if not rec then Print("coach: no recording " .. tostring(n) .. ".") return end
     n = label

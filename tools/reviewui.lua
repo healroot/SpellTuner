@@ -69,6 +69,20 @@ check("the fight's zone is in the row", (function()
     return false
 end)())
 check("no run button before a run exists", ButtonNamed("Blood Furnace test") == nil)
+-- T49 (P5), B24: the selected row is validated before the rows are painted,
+-- so its cell carries the verdict on the first render, not "not checked"
+check("the selected row paints its verdict at once", (function()
+    for _, r in ipairs(rows) do
+        if CellText(r, "n") == "1" then
+            local c = CellText(r, "valid")
+            return c ~= "" and c ~= "not checked"
+        end
+    end
+    return false
+end)(), (function()
+    for _, r in ipairs(rows) do if CellText(r, "n") == "1" then return CellText(r, "valid") end end
+    return "no row 1"
+end)())
 
 --------------------------------------------------------------------------------
 -- a run: two pulls, one of them under the recording gate
@@ -353,6 +367,44 @@ do
         MD.replayCoaching == nil, tostring(MD.replayCoaching))
     if MD.coachSearch and MD.coachSearch.Cancel then MD.coachSearch:Cancel() end
     MD.coachSearch = nil
+end
+
+--------------------------------------------------------------------------------
+-- T49 (P5), B14 on TBC: Review's Pin is capped at two here too -- a third is
+-- refused with one line (it used to be pinned and then not protected by the
+-- recorder, which honours only the first two).
+--------------------------------------------------------------------------------
+do
+    Click(ButtonNamed("Fights"))
+    local base = MD.cdb.recordings[1]
+    local saved = MD.cdb.recordings
+    local function Copy(id)
+        local c = {}
+        for k, v in pairs(base) do c[k] = v end
+        c.id, c.pinned = id, false
+        return c
+    end
+    MD.cdb.recordings = { Copy((base.id or 0) + 1), Copy((base.id or 0) + 2), Copy((base.id or 0) + 3) }
+    api:Render()
+    local function PinRow(n)
+        for _, r in ipairs(Rows()) do
+            if CellText(r, "n"):gsub("%*$", "") == tostring(n) then Click(r) end
+        end
+        api:Render()
+        chat = {}
+        Click(ButtonNamed("Pin"))
+        api:Render()
+        return chat
+    end
+    local l1, l2, l3 = #PinRow(1), #PinRow(2), PinRow(3)
+    local list = MD.FightRecorder:List()
+    local line = (l3[1] or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+    check("a third pin is refused with a line", l1 == 0 and l2 == 0 and #l3 == 1
+        and list[1].pinned and list[2].pinned and not list[3].pinned
+        and line:find("pin: at most 2", 1, true) ~= nil,
+        string.format("pins=%s,%s,%s line=%s", tostring(list[1].pinned), tostring(list[2].pinned),
+            tostring(list[3].pinned), tostring(l3[1])))
+    MD.cdb.recordings = saved
 end
 
 print(string.format("\n%d ok, %d failed", ok, #fails))

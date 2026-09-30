@@ -83,7 +83,13 @@ function R:Refresh()
     for _, token in ipairs(tokens) do
         if MD.API.UnitExists(token) == true then
             local guid = MD.API.UnitGUID(token)
-            local name = MD.API.UnitName(token)
+            -- T49 (P5), B15: UnitName's second return is the realm of a
+            -- member from another realm (nil, or "" on some clients, for
+            -- one's own). The name stays bare -- it is what other recordings
+            -- are matched on (SM.PartyMaxFromOthers, SM.DangerHitFromOthers),
+            -- old ones included -- and the realm is kept beside it.
+            local name, realm = MD.API.UnitName(token)
+            if type(realm) ~= "string" or realm == "" then realm = nil end
             local loc, class = MD.API.UnitClass(token)
             if not loc then class = nil end
             local level = MD.API.UnitLevel(token)
@@ -105,7 +111,9 @@ function R:Refresh()
                 if type(hp) == "number" then maxHP, maxSecret, maxVia = hp, false, "bar" end
             end
 
-            local key = RosterKey(guid, name, token)
+            -- a session-only key (never stored): the full name, so two
+            -- same-name members of different realms with no plain GUID stay two
+            local key = RosterKey(guid, (type(name) == "string" and realm) and (name .. "-" .. realm) or name, token)
             local idx = self.index[key]
             if not idx then
                 idx = #self.roster + 1
@@ -113,6 +121,7 @@ function R:Refresh()
             end
             self.roster[idx] = {
                 name = (type(name) == "string") and name or nil,
+                realm = realm,
                 guid = (type(guid) == "string") and guid or nil,
                 class = class, role = role,
                 level = (type(level) == "number") and level or nil,
@@ -134,18 +143,37 @@ end
 local function CopyRoster()
     local out = {}
     for i, e in ipairs(R.roster) do
-        out[i] = { name = e.name, guid = e.guid, class = e.class, role = e.role,
+        out[i] = { name = e.name, realm = e.realm, guid = e.guid, class = e.class, role = e.role,
                    level = e.level, maxHP = e.maxHP, maxSecret = e.maxSecret, maxVia = e.maxVia }
     end
     return out
 end
 
-local function ResolveTargetIndex(name)
-    if type(name) ~= "string" then return -1 end
+-- T49 (P5), B15: UNIT_SPELLCAST_SENT names a member from another realm
+-- "Name-Realm" (the retail convention; unverified on the beta, whose probe
+-- only ever saw same-realm names). First the full name exactly -- a
+-- same-realm member's full name is the bare one -- then the bare name (the
+-- target's own, or the part before its realm) when exactly one roster entry
+-- carries it. Two members of one name and no realm to tell them apart are
+-- nobody's rather than a guess.
+local function FullName(e)
+    if e.realm then return e.name .. "-" .. e.realm end
+    return e.name
+end
+local function ResolveTargetIndex(target)
+    if type(target) ~= "string" or target == "" then return -1 end
     for i, e in ipairs(R.roster) do
-        if e.name == name then return i end
+        if e.name and FullName(e) == target then return i end
     end
-    return -1
+    local bare = target:match("^([^%-]+)%-.") or target
+    local found = -1
+    for i, e in ipairs(R.roster) do
+        if e.name == bare then
+            if found ~= -1 then return -1 end
+            found = i
+        end
+    end
+    return found
 end
 
 MD:On("GROUP_ROSTER_UPDATE", function() R:Refresh() end)
@@ -720,16 +748,19 @@ if MD.FightRecorder.Get == nil then
 end
 if MD.FightRecorder.Pin == nil then
     -- At most MAX_PINNED pinned (TBC's own constant, Engine/FightRecorder.lua:25).
+    -- T49 (P5), B14: a refusal says why, in a line the Review tab prints.
     function MD.FightRecorder:Pin(n, on)
         local list = MD.FightRecorder:List()
         local rec = list[n or 1]
-        if not rec then return false end
+        if not rec then return false, "no recording " .. tostring(n or 1) end
         if on then
             local count = 0
             for _, r in ipairs(list) do
                 if r.pinned and r ~= rec then count = count + 1 end
             end
-            if count >= MAX_PINNED then return false end
+            if count >= MAX_PINNED then
+                return false, string.format("at most %d fights can be pinned - unpin one first.", MAX_PINNED)
+            end
             rec.pinned = true
         else
             rec.pinned = false
@@ -751,7 +782,11 @@ if MD.GetRecording == nil then
     end
 end
 
--- 8 kept; past that, the oldest unpinned one is dropped (Facts).
+-- 8 kept; past that, the oldest unprotected one is dropped (Facts). T49 (P5),
+-- B14: only the first MAX_PINNED pinned streams (in list order) are protected,
+-- as TBC's Engine/FightRecorder.lua does -- a list with more pins than that
+-- (an old file, or the Review tab's toggle before T49) still takes the new
+-- pull, and a debug line says a pinned one had to go.
 local function StoreOrDrop(s)
     local casts = CountKind(s, K.OWNCAST)
     if s.dur < 20 or casts < 5 then
@@ -775,11 +810,22 @@ local function StoreOrDrop(s)
         return
     end
 
+    local protected, pinnedCount = {}, 0
+    for i, r in ipairs(list) do
+        if r.pinned and pinnedCount < MAX_PINNED then
+            protected[i] = true
+            pinnedCount = pinnedCount + 1
+        end
+    end
     local victim
     for i, r in ipairs(list) do
-        if not r.pinned and (not victim or (r.id or 0) < (list[victim].id or 0)) then victim = i end
+        if not protected[i] and (not victim or (r.id or 0) < (list[victim].id or 0)) then victim = i end
     end
-    if not victim then return end -- everything pinned (MAX_PINNED < MAX_STREAMS, so this should not happen)
+    -- MAX_PINNED < MAX_STREAMS, so there is always a victim
+    if list[victim].pinned then
+        MD:Debug("sim", "forever stream stored over a pinned one: more than %d pinned, only the first %d are kept",
+            MAX_PINNED, MAX_PINNED)
+    end
     list[victim] = s
 end
 

@@ -251,6 +251,33 @@ function MD.DashboardParts.CreateReview(parent, width)
     pullBtn:SetScript("OnClick", function()
         if MD.RunCoach then MD:RunCoach(Spec() .. (Forcing() and " force" or "")) end
     end)
+    -- T49 (P5), B14: a single fight is pinned through the recorder's own capped
+    -- Pin (Recorder_Forever.lua's on Forever), which refuses a third with a
+    -- reason. TBC's Engine/FightRecorder.lua has no Pin yet (the shared
+    -- Engine/Recordings.lua, P18, is where one lands for both lines); until
+    -- then the same cap is kept here, at that file's MAX_PINNED, so a pin the
+    -- recorder would not honour is refused instead of silently not protecting.
+    local PIN_CAP = 2
+    local function PinFight(rec, on)
+        local FR = MD.FightRecorder
+        if not FR then return false, "no recorder" end
+        local list = FR:List()
+        local n
+        for i, r in ipairs(list) do if r == rec then n = i end end
+        if not n then return false, "no such recording" end
+        if FR.Pin then return FR:Pin(n, on) end
+        if on then
+            local count = 0
+            for _, r in ipairs(list) do
+                if r.pinned and r ~= rec then count = count + 1 end
+            end
+            if count >= PIN_CAP then
+                return false, string.format("at most %d fights can be pinned - unpin one first.", PIN_CAP)
+            end
+        end
+        rec.pinned = on and true or false
+        return true
+    end
     -- Pinning a pull would be meaningless: a run is kept or dropped whole, so
     -- while a run is shown this pins the RUN.
     pinBtn:SetScript("OnClick", function()
@@ -268,7 +295,8 @@ function MD.DashboardParts.CreateReview(parent, width)
             local ok, why = MD.Practice.Pin(rec)
             if not ok then MD:Print("practice: " .. why) end
         else
-            rec.pinned = not rec.pinned
+            local ok, why = PinFight(rec, not rec.pinned)
+            if not ok then MD:Print("pin: " .. Esc(why or "refused")) end
         end
         api:Render()
     end)
@@ -403,6 +431,17 @@ function MD.DashboardParts.CreateReview(parent, width)
                 "is recorded with Start run.|r")
         end
 
+        -- The selected row is validated on sight (one simulation, cached), so
+        -- the buttons can tell the truth without the author pressing Validate
+        -- first. Before v0.9.8 the "a fight that does not replay has Coach
+        -- disabled" rule only took effect AFTER a manual Validate, which is the
+        -- one moment it was not needed. Druid-only: the gates run the druid
+        -- spell kit, and running them for anyone else would print fiction.
+        -- T49 (P5), B24: before the rows are painted, so the selected row's
+        -- own cell and hover carry the verdict the buttons already act on.
+        local rec = Selected()
+        local v = rec and MD.player.isDruid and Validation(rec) or (rec and cache[rec.id])
+
         local y = -38
         local header = AcquireRow()
         header:SetPoint("TOPLEFT", pane, "TOPLEFT", 0, y)
@@ -484,15 +523,7 @@ function MD.DashboardParts.CreateReview(parent, width)
             y = y - ROW_HEIGHT
         end
 
-        -- buttons follow the selection
-        local rec = Selected()
-        -- The selected row is validated on sight (one simulation, cached), so
-        -- the buttons can tell the truth without the author pressing Validate
-        -- first. Before v0.9.8 the "a fight that does not replay has Coach
-        -- disabled" rule only took effect AFTER a manual Validate, which is the
-        -- one moment it was not needed. Druid-only: the gates run the druid
-        -- spell kit, and running them for anyone else would print fiction.
-        local v = rec and MD.player.isDruid and Validation(rec) or (rec and cache[rec.id])
+        -- buttons follow the selection (rec and v are read above, before the rows)
         if run then
             pinBtn:SetText(run.pinned and "Unpin run" or "Pin run")
         else

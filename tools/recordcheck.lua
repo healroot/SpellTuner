@@ -735,6 +735,84 @@ do
         string.format("deaths on %s", table.concat(who, ",")))
 end
 
+--------------------------------------------------------------------------------
+-- T49 (P5), B14: every stored stream pinned (as the Review tab's old direct
+-- toggle, or an old SavedVariables file, could leave them) -- the ninth pull is
+-- still stored. Only the first MAX_PINNED pins protect, as TBC's recorder does.
+--------------------------------------------------------------------------------
+do
+    local E = Fresh({ Unit("G-A", "Tank", "WARRIOR", "TANK") })
+    local t = 4
+    for p = 1, 8 do
+        E.At(t)
+        E.Start()
+        E.Five("b14-" .. p .. "-", "Tank")
+        E.At(t + 25)
+        E.Stop()
+        E.Flush()
+        t = t + 40
+    end
+    local list = E.MD.cdb.recordings or {}
+    local before = {}
+    for i, r in ipairs(list) do r.pinned = true; before[r] = i end
+    local eight = #list
+    E.At(t)
+    E.Start()
+    E.Five("b14-9-", "Tank")
+    E.At(t + 25)
+    E.Stop()
+    E.Flush()
+    list = E.MD.cdb.recordings or {}
+    local ninth, firstTwoKept = nil, true
+    for _, r in ipairs(list) do if not before[r] then ninth = r end end
+    for r, i in pairs(before) do
+        if i <= 2 then
+            local still = false
+            for _, x in ipairs(list) do if x == r then still = true end end
+            firstTwoKept = firstTwoKept and still
+        end
+    end
+    check("B14: with all eight stored streams pinned the ninth pull is still stored (the first two pins kept)",
+        eight == 8 and #list == 8 and ninth ~= nil and firstTwoKept,
+        string.format("before=%d after=%d ninth=%s firstTwoKept=%s", eight, #list, tostring(ninth ~= nil),
+            tostring(firstTwoKept)))
+end
+
+--------------------------------------------------------------------------------
+-- T49 (P5), B15: a cross-realm member. UNIT_SPELLCAST_SENT names them
+-- "Name-Realm" (the retail convention, unverified on the beta); the roster
+-- keeps the bare name (what other recordings are matched on) and the realm
+-- beside it, and a cast at them is theirs, not foreign.
+--------------------------------------------------------------------------------
+do
+    local E = Fresh({ Unit("G-H", "Healer", "PRIEST", "HEALER", { realm = "OtherRealm" }),
+                      Unit("G-T1", "Tank", "WARRIOR", "TANK", { realm = "RealmA" }),
+                      Unit("G-T2", "Tank", "PALADIN", "TANK", { realm = "RealmB" }) })
+    E.At(4)
+    E.Start()
+    E.Cast("xr-h", 774, "Healer-OtherRealm")
+    E.Cast("xr-b", 5185, "Tank-RealmB")
+    E.Cast("xr-a", 8936, "Tank-RealmA")
+    E.Five("xr-", "Healer-OtherRealm")
+    E.At(30)
+    E.Stop()
+    E.Flush()
+    local rec = E.Last()
+    local h = rec and FindEvent(rec, K.OWNCAST, function(r) return r.x == 774 end)
+    local b = rec and FindEvent(rec, K.OWNCAST, function(r) return r.x == 5185 end)
+    local a = rec and FindEvent(rec, K.OWNCAST, function(r) return r.x == 8936 end)
+    check("B15: a cross-realm member's Name-Realm target resolves to their roster index",
+        h ~= nil and h.tgt == 2, string.format("tgt=%s", tostring(h and h.tgt)))
+    check("B15: two same-name members on different realms are told apart by the full name",
+        a ~= nil and b ~= nil and a.tgt == 3 and b.tgt == 4,
+        string.format("RealmA=%s RealmB=%s", tostring(a and a.tgt), tostring(b and b.tgt)))
+    local e = rec and rec.roster and rec.roster[2]
+    check("B15: the stored roster name stays bare, the realm beside it",
+        e ~= nil and e.name == "Healer" and e.realm == "OtherRealm" and rec.roster[1].realm == nil,
+        string.format("name=%s realm=%s player realm=%s", tostring(e and e.name), tostring(e and e.realm),
+            tostring(rec and rec.roster[1] and rec.roster[1].realm)))
+end
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("  FAIL " .. f) end
 if #fails > 0 then os.exit(1) end
