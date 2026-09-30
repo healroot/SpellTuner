@@ -166,7 +166,9 @@ function ST:WindowStats()
     local rates = {}
     for i = 1, 6 do rates[i] = buckets[i] / 5 end
     table.sort(rates)
-    local median = (rates[3] + rates[4]) / 2
+    -- six buckets: the mean of the middle two, MD.Util.Median's even-n rule
+    -- (T60, P16, review A9; the sort stays for p25 / p75)
+    local median = MD.Util.Median(rates)
     local p25 = rates[2]
     local p75 = rates[5]
     local stable = casts >= 6 and median > 0 and (p75 - p25) <= 0.4 * median
@@ -199,8 +201,13 @@ MD:On("PLAYER_REGEN_DISABLED", function()
         for i = 1, #pool do
             rates[#rates + 1] = pool[i].avgSpendRate or 0
         end
-        table.sort(rates)
-        local m = rates[math.ceil(#rates / 2)]
+        -- The seed's median has always been rates[math.ceil(n / 2)] of the
+        -- sorted list: for an even count the LOWER middle value, not the mean
+        -- of the two that MD.Util.Median answers by default. That is
+        -- MD.Util.Median's "low" mode exactly (identical for every n, nil for
+        -- none), so the seed does not move (T60, P16, review A9; changing it
+        -- would be a model change and needs a decision).
+        local m = MD.Util.Median(rates, "low")
         if m and m > 0 then
             seed = { rate = m, t = GetTime() }
             MD:Debug("spend", "pull: seeded %.2f mana/s from %d fight(s) in %s", m, #rates, tostring(source))

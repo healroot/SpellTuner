@@ -7,18 +7,11 @@ local _, MD = ...
 
 local DEBUG_LOG_LINES = 50
 
--- Reversible ASCII escaping, same rule as Client/Probe.lua's own Esc (kept as
--- its own copy here per the task -- the probe's is local to that file):
--- \ -> \\, | -> ||, then every byte outside the printable range -> \ddd, in
--- that order so the backslashes the third step adds are never re-escaped by
--- the first.
-local function Esc(s)
-    if type(s) ~= "string" then s = tostring(s) end
-    local step1 = s:gsub("\\", "\\\\")
-    local step2 = step1:gsub("|", "||")
-    local step3 = step2:gsub("[^ -~]", function(c) return string.format("\\%03d", c:byte()) end)
-    return step3
-end
+-- Reversible ASCII escaping, Client/Probe.lua's rule (\ -> \\, | -> ||, then
+-- every byte outside the printable range -> \ddd). Its one copy is
+-- MD.Text.EscASCII in Core.lua (T60, P16, review A9); every caller below hands
+-- it a string.
+local Esc = MD.Text.EscASCII
 
 -- A client scalar that survived MD.API.Call (already secret-filtered) as
 -- readable text, or "?" for anything else -- never a raw table.
@@ -27,17 +20,10 @@ local function Field(v)
     return "?"
 end
 
--- Same state text as UI/Dashboard_Forever.lua's Modules pane, kept as its own
--- copy here (that file's is local) -- ASCII already, since Core.lua's own
--- CleanReason only ever hands back "[A-Z_]+" or "unknown".
-local function ModuleStateText(name)
-    local state, reason = MD:ModuleState(name)
-    if state == "loaded" then return "loaded" end
-    if state == "on" then return "on - loads at login" end
-    if state == "failed" then return "could not load: " .. tostring(reason) end
-    if state == "unloads" then return "off - unloads at your next /reload" end
-    return "off"
-end
+-- The Modules pane's state text, MD:ModuleStateText (Core.lua, T55; this
+-- file's own copy moved there in T60, P16, review A9) -- ASCII already, since
+-- Core.lua's own CleanReason only ever hands back "[A-Z_]+" or "unknown".
+local function ModuleStateText(name) return MD:ModuleStateText(name) end
 
 function MD:BuildDump()
     local lines = {}

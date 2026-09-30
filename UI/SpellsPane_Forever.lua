@@ -57,18 +57,12 @@ end
 
 local RESET = "|r"
 
--- The probe's own escaping (Client/Probe.lua's Esc, duplicated -- this pane
--- takes no dependency on Client/Probe.lua): a literal backslash doubled
--- first, then a pipe as "||", then any non-ASCII/control byte as "\ddd", so
--- every client-read name on screen, in a tooltip or in the export stays ASCII
--- with no bare pipe.
-local function Esc(s)
-    if type(s) ~= "string" then return "" end
-    local step1 = s:gsub("\\", "\\\\")
-    local step2 = step1:gsub("|", "||")
-    local step3 = step2:gsub("[^ -~]", function(c) return string.format("\\%03d", c:byte()) end)
-    return step3
-end
+-- The probe's escaping (a literal backslash doubled first, then a pipe as
+-- "||", then any non-ASCII/control byte as "\ddd"), so every client-read name
+-- on screen, in a tooltip or in the export stays ASCII with no bare pipe. Its
+-- one copy is MD.Text.EscASCII in Core.lua (T60, P16, review A9); every caller
+-- below hands it a string or nil (nil is "", as it was here).
+local Esc = MD.Text.EscASCII
 
 -- A number that is nil renders "-", never 0 (CLAUDE.md).
 local function Num(v, decimals)

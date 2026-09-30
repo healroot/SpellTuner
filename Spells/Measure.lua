@@ -63,18 +63,13 @@ local sentTarget = {}    -- castGUID -> { name, time }: UNIT_SPELLCAST_SENT's ta
 
 --------------------------------------------------------------------------------
 -- Reversible ASCII escaping, Client/Probe.lua's own rule (Rules: "every
--- client string ... through Esc"). Duplicated rather than imported: Probe.lua
--- exposes no public Esc, and this file's client strings (a spell's own name,
--- a UNIT_COMBAT descriptor) are already read through MD.API/MD.Book, never a
--- client table directly.
+-- client string ... through Esc"): MD.Text.EscASCII, its one copy in Core.lua
+-- (T60, P16, review A9). This file's client strings (a spell's own name, a
+-- UNIT_COMBAT descriptor, the build) are already read through MD.API/MD.Book,
+-- never a client table directly, and every caller hands it a string or nil
+-- (nil is "", as it was here).
 --------------------------------------------------------------------------------
-local function Esc(s)
-    if type(s) ~= "string" then return "" end
-    local step1 = s:gsub("\\", "\\\\")
-    local step2 = step1:gsub("|", "||")
-    local step3 = step2:gsub("[^ -~]", function(c) return string.format("\\%03d", c:byte()) end)
-    return step3
-end
+local Esc = MD.Text.EscASCII
 
 -- A number that is nil renders "-", never 0 (CLAUDE.md / this task's Rules).
 local function Round(n)

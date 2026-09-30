@@ -21,11 +21,10 @@ local UI = MD.UI
 -- it reads on this window exactly as it reads on the game's own frames. Only
 -- a bare "|" is unsafe (the client reads it as the start of a colour code or
 -- texture escape); everything this file composes itself is ASCII by
--- construction, so nothing else needs escaping.
-local function Esc(s)
-    if type(s) ~= "string" then return s end
-    return (s:gsub("|", "||")) -- one value: gsub also returns a count
-end
+-- construction, so nothing else needs escaping. That rule is MD.Text.Esc
+-- (pipe-doubling only; Core.lua, T60, P16, review A9). Every caller here
+-- tests the name first (`name and Esc(name)`), so a nil never reaches it.
+local Esc = MD.Text.Esc
 
 -- T43 (docs/SPEC-forever-ui.md 4.1, 4.4): the window's own highlighted words
 -- (the header's #n and PRACTICE, the run strip's name, "paused") open with the
@@ -175,14 +174,18 @@ local function SpellLabel(spellID)
     return (name and Esc(name)) or ("spell " .. tostring(spellID)), "other"
 end
 
-local function Clock(sec)
-    if sec < 0 then sec = 0 end
-    return string.format("%d:%04.1f", math.floor(sec / 60), sec % 60)
-end
+-- m:ss.t, a negative time 0:00.0 (MD.Util.Clock; T60, P16, review A9).
+local function Clock(sec) return MD.Util.Clock(sec, true) end
 
+-- "2.3k" from 1000 on (MD.Util.K; T60, P16, review A9) -- except below zero.
+-- This window's K has always printed string.format("%d", n + 0.5), which
+-- truncates toward zero (-12 -> "-11"), where MD.Util.K rounds (-12 -> "-12");
+-- the two agree on every n >= 0. The score line's used and regen go below zero
+-- when the pool gains more than it spends (a pull started below full), so the
+-- old rule is kept there, byte for byte, until a decision says otherwise.
 local function K(n)
-    if n >= 1000 then return string.format("%.1fk", n / 1000) end
-    return string.format("%d", n + 0.5)
+    if type(n) == "number" and n < 0 then return string.format("%d", n + 0.5) end
+    return MD.Util.K(n)
 end
 
 --------------------------------------------------------------------------------

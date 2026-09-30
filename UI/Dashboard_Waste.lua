@@ -42,9 +42,12 @@ local COLS = {
 }
 local ALL_KEYS = { "label", "sub", "casts", "mana", "healed", "frac", "waste", "wev", "role" }
 
-local function Fmt(n) return string.format("%d", n + 0.5) end
 local function Pct(f) return string.format("%.1f%%", f * 100) end
-local function K(n) return n >= 10000 and string.format("%.1fk", n / 1000) or Fmt(n) end
+-- MD.Util.K (Core.lua; T60, P16, review A9) with this view's own threshold:
+-- "12.3k" only from 10000 on, below it the rounded whole number. Every amount
+-- here (mana, healing, waste) is a sum of non-negative events.
+local K_FROM = 10000
+local function K(n) return MD.Util.K(n, K_FROM) end
 
 -- T53 (P9, review U25): how many rows fit, and how many the tail line names.
 -- `top` is the first row's y and `floor` the lowest y a row may start at (the

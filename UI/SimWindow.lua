@@ -20,9 +20,15 @@ local derived = nil            -- SimPlanner.FromRecordings result, or nil
 local lastResult, searchHandle = nil, nil
 local resultFS, headerFS, provFS
 
+-- "2.3k" from 1000 on (MD.Util.K; T60, P16, review A9) -- except below zero.
+-- This window's K has always printed string.format("%d", n + 0.5), which
+-- truncates toward zero (-12 -> "-11"), where MD.Util.K rounds (-12 -> "-12");
+-- the two agree on every n >= 0. Mana used (SP.ManaUsed) goes below zero when
+-- a plan regenerates more than it spends from a start below full, so the old
+-- rule is kept there, byte for byte, until a decision says otherwise.
 local function K(n)
-    if n >= 1000 then return string.format("%.1fk", n / 1000) end
-    return string.format("%d", n + 0.5)
+    if type(n) == "number" and n < 0 then return string.format("%d", n + 0.5) end
+    return MD.Util.K(n)
 end
 
 --------------------------------------------------------------------------------

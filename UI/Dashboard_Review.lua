@@ -47,17 +47,13 @@ local COLS = {
 -- EU-realm accented byte is not ours to mangle. Only a bare "|" is unsafe
 -- (the client reads it as the start of a colour code or texture escape);
 -- everything this pane composes itself is ASCII by construction, so nothing
--- else needs escaping, on either client.
-local function Esc(s)
-    if type(s) ~= "string" then return "" end
-    return (s:gsub("|", "||")) -- one value: gsub also returns a count
-end
-
-local function K(n)
-    if n >= 1000 then return string.format("%.1fk", n / 1000) end
-    return string.format("%d", n + 0.5)
-end
-local function Clock(s) return string.format("%d:%02d", math.floor(s / 60), math.floor(s % 60)) end
+-- else needs escaping, on either client. That rule is MD.Text.Esc (pipe-
+-- doubling only), and the formatters are MD.Util's (Core.lua; T60, P16,
+-- review A9): K is "2.3k" from 1000 on, Clock is m:ss -- every number handed
+-- to either here is a mana sum or a duration, never below zero.
+local Esc   = MD.Text.Esc
+local K     = MD.Util.K
+local Clock = MD.Util.Clock
 
 -- The fight's mana low-water mark, read back out of the recorded samples: the
 -- stream is the record, so nothing needs to be stored twice.
