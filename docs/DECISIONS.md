@@ -1049,3 +1049,14 @@ A spell read outside the book keeps its last readable text through a secret desc
 ## TBC's disagreeing colour literals are named tokens (2026-09-30, T69)
 
 T69 (P25): TBC's three disagreeing literals kept as named tokens -- dominated 8a8a8a (muted is 888888), note ffcc00 (text2's TBC stand-in), tipGold ffd100 (accent is ffcc00). Unifying them moves TBC and is P34's question to the author (plan section 8).
+
+## The author's answers to the refactor plan (2026-09-30)
+
+`docs/PLAN-refactor-ux.md` section 8.1 records them one by one. In short: the new UI comes to TBC too
+(decision 10, wave C after wave 17, mockup M6 first) and SpellTuner replaces ManaDemon on both
+clients; a failed fight is coached from the Review row menu's "Coach anyway"; a module placeholder's
+"Turn on" loads the module; `dominated` becomes `beaten`; a window size per group stays; Forever
+gets the minimap button TBC has; replay keys only under the pointer and never in combat; and the four
+defaults the running waves used (coach cards change, old CANCELs stay, a third pin refused, an
+unreadable address refused) are confirmed.
+

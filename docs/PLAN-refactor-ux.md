@@ -895,6 +895,27 @@ approve before its task starts.
 12. **Replay keys (P28)** work only while the pointer is over the replay and never in combat, so Space
     and the arrow keys keep moving your character everywhere else.
 
+### 8.1 The author's answers (2026-09-30)
+
+1. **Decision 10: yes** -- "I would like to have updated UI on TBC as well once its ready". Wave C
+   (C1-C4) runs after wave 17; mockup M6 goes to the author with M1-M5. The author also retired
+   ManaDemon: SpellTuner replaces it on both clients (the TBC install and the saved data carried over,
+   2026-09-30).
+2. Coach cards may change (P2) -- **accepted**.
+3. Old TBC recordings keep their false CANCELs (P4) -- **accepted**, the replay does not hide them.
+4. A third pin is refused with a line (P5) -- **accepted**.
+5. Review conventions (P27): **the row menu's "Coach anyway"**; the Coach* star and shift-click go.
+6. Placeholders (P29): **"Turn on" switches the module on** (Settings -> Modules stays the way off).
+7. Words (P34): **`dominated` -> `beaten`**, with a tooltip naming the rank that beats it; TBC's three
+   greys unify with the theme (follows from decision 10).
+8. Window size (U17): **keep a size per group** (decision 6 stands).
+9. Cross-realm targets (B15): an in-game check, not a decision -- stays in section 9.
+10. **Minimap button on Forever: yes** -- the same button on both lines (left-click opens the window
+    on the last view, right-click Settings, drag round the minimap, a setting to hide it); a task after
+    P29.
+11. An unreadable address is refused (P18) -- **accepted**.
+12. Replay keys (P28): **only while the pointer is over the replay, never in combat.**
+
 ## 9. In-game checks (for `docs/TESTING.md` section 44)
 
 Paste back as in section 41. Out of combat unless a step says otherwise.
