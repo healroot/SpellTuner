@@ -1127,6 +1127,7 @@ end
 do
     local function Session(preset)
         HARNESS_FLAVOUR = "forever"
+        HARNESS_FORCE = true -- T57 (P13): Forever inside a tbc run (tools/check.sh runs this under tbc)
         _G.SpellTunerDB = preset
         _G.ManaDemonDB = nil
         local a1 = arg[0]; arg[0] = here .. "/harness.lua"
@@ -1251,6 +1252,7 @@ end
 --------------------------------------------------------------------------------
 do
     HARNESS_FLAVOUR = "forever"
+    HARNESS_FORCE = true -- T57 (P13): as step 12
     _G.SpellTunerDB, _G.ManaDemonDB = nil, nil
     local a1 = arg[0]; arg[0] = here .. "/harness.lua"
     local okLoad, MDx = pcall(dofile, here .. "/harness.lua"); arg[0] = a1

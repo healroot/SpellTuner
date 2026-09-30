@@ -6,6 +6,13 @@
 -- are all Forever. ST_FLAVOUR (set by run.sh --flavour) picks among the
 -- declared ones; a tool run under a flavour it did not declare skips rather
 -- than running against the wrong client.
+--
+-- T57 (P13, review Q4): the skip exits 3, not 0 -- a suite run under a flavour
+-- it did not declare is a skip, never a silent pass; tools/check.sh counts a
+-- skip under a flavour it asked for as a failure. HARNESS_FORCE (set by the
+-- tool, consumed here) loads declared[1] whatever ST_FLAVOUR says: a tool that
+-- loads the other line on purpose, as tools/probecheck.lua's Forever steps do
+-- inside a tbc run.
 local here = arg[0]:match("^(.*)/[^/]+$")
 
 local declared = HARNESS_FLAVOUR
@@ -19,7 +26,11 @@ end
 
 local flavour
 local envFlavour = os.getenv("ST_FLAVOUR")
-if envFlavour ~= nil and envFlavour ~= "" then
+local forced = HARNESS_FORCE
+HARNESS_FORCE = nil
+if forced then
+    flavour = declared[1]
+elseif envFlavour ~= nil and envFlavour ~= "" then
     if Contains(declared, envFlavour) then
         flavour = envFlavour
     else
@@ -29,7 +40,7 @@ if envFlavour ~= nil and envFlavour ~= "" then
         local level, info = 3, nil; repeat info = debug.getinfo(level, "S"); level = level + 1 until not info or info.what == "main"
         local scriptName = (info and info.short_src or "?"):match("([^/]+)$") or "?"
         print("skip: " .. scriptName .. " runs under " .. table.concat(declared, ", ") .. " only")
-        os.exit(0)
+        os.exit(3)
     end
 else
     flavour = declared[1]
