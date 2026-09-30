@@ -18,7 +18,8 @@
 -- metatable after the addon loads (the main window is built on first use, so
 -- every window this suite opens has it); no other suite sees it. T33 / T34
 -- extend this file (T33: the ESC stack and combat, section 11; T34: the
--- replay and practice takeover, section 12).
+-- replay and practice takeover, section 12; T42: Settings -> General's
+-- controls, section 13).
 HARNESS_FLAVOUR = "forever"
 
 local here = arg[0]:match("^(.*)/[^/]+$")
@@ -747,6 +748,139 @@ do
     check("T34: End opens the replay without showing the main window; back returns to Practice",
         ok6 and frame:IsShown() and g == "simulate" and v == "practice",
         tostring(ok6) .. " " .. tostring(g) .. "/" .. tostring(v))
+end
+
+--------------------------------------------------------------------------------
+-- 13. T42 (section 9's T42 row, 4.2, 4.3, 6.5, 6.6): Settings -> General's
+-- controls. Each writes its db field and applies it at once; a slider is driven
+-- as the player types a value into its box (the kit's OnEnterPressed runs both
+-- of its callbacks), a dropdown and a button as they are clicked.
+--------------------------------------------------------------------------------
+MD:SelectView("settings", "general")
+local gp
+for _, f in ipairs(S.allFrames) do
+    if f.fontSlider then gp = f end
+end
+local function Type(slider, text)
+    local eb = slider and slider.currentEditBox
+    if not eb then return end
+    eb:SetText(text)
+    eb:GetScript("OnEnterPressed")(eb)
+end
+local function Pick(dd, id)
+    if not dd then return end
+    for i, it in ipairs(dd.items) do
+        if it.id == id and dd.rows[i] then dd.rows[i]:GetScript("OnClick")(dd.rows[i]) end
+    end
+end
+local function FontSize(name)
+    local obj = (UI.fontObjects and UI.fontObjects[name]) or _G[name]
+    if not obj then return nil end
+    local _, size = obj:GetFont()
+    return size
+end
+local function Click(b)
+    if b and b:GetScript("OnClick") then b:GetScript("OnClick")(b) end
+end
+
+do
+    local titles = {}
+    for _, f in ipairs(S.allFrames) do
+        if f.title and f.line and gp and f.parentFrame == gp then titles[f.title:GetText()] = f end
+    end
+    local detailIn = gp and gp.detailDropdown and gp.detailDropdown.parentFrame
+    check("T42: Settings -> General has SPELL TOOLTIPS, APPEARANCE and WINDOWS titled panes",
+        gp ~= nil and titles["SPELL TOOLTIPS"] ~= nil and titles["APPEARANCE"] ~= nil and titles["WINDOWS"] ~= nil
+          and detailIn == titles["SPELL TOOLTIPS"] and gp.fontSlider.parentFrame == titles["APPEARANCE"]
+          and gp.combatDropdown ~= nil and gp.combatDropdown.parentFrame == titles["WINDOWS"],
+        (not gp) and "no pane" or nil)
+end
+
+do
+    local s = gp and gp.fontSlider
+    local rail = MD.SpellsPane and MD.SpellsPane.nav and MD.SpellsPane.nav.rails
+      and MD.SpellsPane.nav.rails.spells and MD.SpellsPane.nav.rails.spells.rail
+    Type(s, "2")
+    local rows = rail and rail:Rows() or {}
+    local size = FontSize(UI.FONT)
+    local row2 = rows[1] and rows[1]:GetHeight()
+    local applied = MD.db.ui.fontOffset == 2 and UI.fontOffset == 2 and size == 15 and row2 == 22
+    Type(s, "4")
+    local clamped = s ~= nil and MD.db.ui.fontOffset == 2 and s.high == 2 and s.low == -2
+    Type(s, "0")
+    local size0 = FontSize(UI.FONT)
+    check("T42: the font offset slider (-2..+2) writes db.ui.fontOffset and applies it (fonts, the Spells rail)",
+        s ~= nil and applied and clamped and MD.db.ui.fontOffset == 0 and size0 == 13 and rows[1] ~= nil and rows[1]:GetHeight() == 20,
+        s and string.format("at +2 size=%s row=%s; back at %s size=%s row=%s; range %s..%s", tostring(size),
+          tostring(row2), tostring(MD.db.ui.fontOffset), tostring(size0), tostring(rows[1] and rows[1]:GetHeight()),
+          tostring(s.low), tostring(s.high)) or "no slider")
+end
+
+do
+    local s = gp and gp.scaleSlider
+    DragTo(frame, 100, 700)
+    local es0 = frame:GetEffectiveScale()
+    local pxL, pxT = frame:GetLeft() * es0, frame:GetTop() * es0
+    Type(s, "90")
+    local es1 = frame:GetEffectiveScale()
+    local applied = near(MD.db.ui.scale, 0.9) and near(frame:GetScale(), 0.9)
+      and near(frame:GetLeft() * es1, pxL, 1e-3) and near(frame:GetTop() * es1, pxT, 1e-3)
+    Type(s, "150")
+    local clamped = s ~= nil and near(MD.db.ui.scale, 1.2) and s.low == 70 and s.high == 120
+    Type(s, "100")
+    check("T42: the window scale slider (70-120 %) writes db.ui.scale and applies it through MD.Win",
+        s ~= nil and applied and clamped and near(MD.db.ui.scale, 1) and near(frame:GetScale(), 1),
+        s and string.format("scale=%s frame=%s", fmt(MD.db.ui.scale), fmt(frame:GetScale())) or "no slider")
+end
+
+do
+    local dd = gp and gp.combatDropdown
+    local shownDefault = dd and dd:Value() == "hide"
+    Pick(dd, "keep")
+    local wrote = MD.db.ui.combat == "keep"
+    S.Fire("PLAYER_REGEN_DISABLED")
+    local kept = frame:IsShown()
+    S.Fire("PLAYER_REGEN_ENABLED")
+    Pick(dd, "hide")
+    local wrote2 = MD.db.ui.combat == "hide"
+    S.Fire("PLAYER_REGEN_DISABLED")
+    local hid = not frame:IsShown()
+    S.Fire("PLAYER_REGEN_ENABLED")
+    local g, v = MD:SelectedView()
+    check("T42: the combat dropdown writes db.ui.combat (hide / keep) and the next pull follows it",
+        dd ~= nil and shownDefault and wrote and kept and wrote2 and hid and frame:IsShown()
+          and g == "settings" and v == "general",
+        string.format("%s %s %s %s %s", tostring(shownDefault), tostring(wrote), tostring(kept),
+          tostring(wrote2), tostring(hid)))
+end
+
+do
+    local cb = gp and gp.escCheck
+    local on = cb and cb:GetChecked()
+    if cb then cb:SetChecked(false); cb.onClick(false, cb) end
+    local off = MD.db.ui.escStack == false and InSpecial("SpellTunerDashboard") and #Stack() == 0
+      and proxy ~= nil and not proxy:IsShown()
+    if cb then cb:SetChecked(true); cb.onClick(true, cb) end
+    check("T42: 'Close one window per ESC' writes db.ui.escStack and switches the stack at once",
+        cb ~= nil and on and off and MD.db.ui.escStack == true and not InSpecial("SpellTunerDashboard")
+          and Top() == frame and proxy ~= nil and proxy:IsShown(),
+        tostring(on) .. " " .. tostring(off))
+end
+
+do
+    local b = gp and gp.resetButton
+    DragTo(frame, 10, 500)
+    ResizeTo(frame, 950, 620)
+    local saved = type(MD.db.ui.win.main) == "table"
+    Click(b)
+    local win = MD.db.ui.win
+    local sw, sh = UIParent:GetWidth(), UIParent:GetHeight()
+    local cx = frame:GetLeft() + frame:GetWidth() / 2
+    local cy = frame:GetTop() - frame:GetHeight() / 2
+    check("T42: 'Reset window positions' clears db.ui.win and re-centres the window at its default size",
+        b ~= nil and saved and type(win) == "table" and next(win) == nil and frame:GetWidth() == 860
+          and frame:GetHeight() == 560 and near(cx, sw / 2, 1e-3) and near(cy, sh / 2, 1e-3),
+        fmt(cx) .. "," .. fmt(cy))
 end
 
 --------------------------------------------------------------------------------

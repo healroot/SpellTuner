@@ -39,17 +39,155 @@ end
 --------------------------------------------------------------------------------
 -- Settings -> General
 --------------------------------------------------------------------------------
+-- T42 (docs/SPEC-forever-ui.md section 9's T42 row, 4.2, 4.3, 6.5, 6.6): three
+-- titled panes, Cell's (title at 0, the rule at -17, the first control at -27,
+-- 12 between panes):
+--   SPELL TOOLTIPS  the block on or off, and T37's detail key (5.6)
+--   APPEARANCE      the font offset (-2..+2, UI.ApplyFonts: every font object
+--                   re-sized and the Spells pane re-rendered, 4.2), the window
+--                   scale (70-120 %, MD.Win:SetScale, 4.3), the mana clock
+--   WINDOWS         combat hide / keep (6.6), one window per ESC (6.5,
+--                   db.ui.escStack), Reset window positions (/st ui reset)
+-- Each control writes its db field and applies it at once. The font offset
+-- follows the slider as it moves; the scale waits for the mouse-up (Cell's
+-- rule: the window must not scale under the pointer mid-drag).
 local generalPane
+
+local PANE_GAP = 12
+
+local function Round(v) return math.floor((tonumber(v) or 0) + 0.5) end
 
 local function RefreshGeneralPane()
     if not generalPane or not generalPane.tooltipCheck then return end
-    generalPane.tooltipCheck:SetChecked(MD.db.spellTooltip ~= false)
-    if generalPane.clockCheck then
-        generalPane.clockCheck:SetChecked(MD.db.clock and MD.db.clock.shown ~= false)
+    local p = generalPane
+    p.tooltipCheck:SetChecked(MD.db.spellTooltip ~= false)
+    if p.clockCheck then
+        p.clockCheck:SetChecked(MD.db.clock and MD.db.clock.shown ~= false)
     end
-    if generalPane.detailDropdown and MD.SpellTip and MD.SpellTip.DetailMode then
-        generalPane.detailDropdown:SetValue(MD.SpellTip:DetailMode())
+    if p.detailDropdown and MD.SpellTip and MD.SpellTip.DetailMode then
+        p.detailDropdown:SetValue(MD.SpellTip:DetailMode())
     end
+    local u = type(MD.db.ui) == "table" and MD.db.ui or {}
+    if p.fontSlider then p.fontSlider:SetValue(Round(UI.fontOffset or u.fontOffset)) end
+    if p.scaleSlider and MD.Win then p.scaleSlider:SetValue(MD.Win:ScalePercent()) end
+    if p.combatDropdown and MD.Win then p.combatDropdown:SetValue(MD.Win:CombatMode()) end
+    if p.escCheck and MD.Win then p.escCheck:SetChecked(MD.Win:EscStackOn()) end
+end
+
+-- A titled pane across the view, under `above` (nil: the view's top).
+local function Section(pane, text, height, above)
+    local t = UI.CreateTitledPane(pane, text, 400, height)
+    if above then
+        t:SetPoint("TOPLEFT", above, "BOTTOMLEFT", 0, -PANE_GAP)
+    else
+        t:SetPoint("TOPLEFT", pane, "TOPLEFT", 4, -4)
+    end
+    t:SetPoint("RIGHT", pane, "RIGHT", -4, 0)
+    return t
+end
+
+local function BuildTooltipSection(pane)
+    local sec = Section(pane, "SPELL TOOLTIPS", 64)
+
+    local check = UI.CreateCheckButton(sec, "Add SpellTuner lines to spell tooltips", function(checked)
+        MD.db.spellTooltip = checked and true or false
+    end)
+    check:SetPoint("TOPLEFT", sec, "TOPLEFT", 5, -27)
+    check:SetChecked(MD.db.spellTooltip ~= false)
+    pane.tooltipCheck = check -- marks this pane for tools/tipcheck.lua
+
+    -- T37 (5.6, decision 5): the key that shows the block's detail lines
+    if MD.SpellTip and MD.SpellTip.DETAIL_MODES then
+        local detailLabel = sec:CreateFontString(nil, "OVERLAY", UI.FONT)
+        detailLabel:SetPoint("TOPLEFT", check, "BOTTOMLEFT", 0, -10)
+        detailLabel:SetText("Detail lines")
+        local dd = UI.CreateDropdown(sec, 120, 18, function(id)
+            MD.db.spellTooltipDetail = id
+        end)
+        dd:SetPoint("LEFT", detailLabel, "RIGHT", 8, 0)
+        dd:SetItems(MD.SpellTip.DETAIL_MODES)
+        dd:SetValue(MD.SpellTip:DetailMode())
+        pane.detailDropdown = dd -- marks this pane for tools/tipcheck.lua
+    end
+    return sec
+end
+
+local function BuildAppearanceSection(pane, above)
+    local sec = Section(pane, "APPEARANCE", 104, above)
+
+    -- 4.2: -2..+2 (decision 13), every SpellTuner font; the Spells pane's
+    -- pitches follow (UI.ApplyFonts is wrapped by UI/SpellsPane_Forever.lua)
+    if UI.ApplyFonts then
+        local lo, hi = UI.FONT_OFFSET_MIN or -2, UI.FONT_OFFSET_MAX or 2
+        local slider = UI.CreateSlider("Font offset", sec, lo, hi, 150, 1, function(value)
+            local u = MD.db.ui
+            if type(u) ~= "table" then u = {}; MD.db.ui = u end
+            u.fontOffset = UI.ApplyFonts(value)
+        end, nil, false,
+            "Font offset", "Every SpellTuner text a size bigger or smaller, -2 to +2.",
+            "Spells' rows and cards move apart with it.")
+        slider:SetPoint("TOPLEFT", sec, "TOPLEFT", 5, -45)
+        pane.fontSlider = slider
+    end
+
+    -- 4.3: 70-120 %, through the window manager (the saved places converted)
+    if MD.Win then
+        local lo, hi = Round(MD.Win.SCALE_MIN * 100), Round(MD.Win.SCALE_MAX * 100)
+        local slider = UI.CreateSlider("Window scale", sec, lo, hi, 150, 5, nil, function(value)
+            MD.Win:SetScale((tonumber(value) or 100) / 100)
+        end, true,
+            "Window scale", "The main, replay and practice windows, the console and the copy box.")
+        slider:SetPoint("TOPLEFT", sec, "TOPLEFT", 205, -45)
+        pane.scaleSlider = slider
+    end
+
+    local clockCheck = UI.CreateCheckButton(sec, "Show the mana clock", function(checked)
+        MD.db.clock = MD.db.clock or {}
+        MD.db.clock.shown = checked and true or false
+        if MD.Clock and MD.Clock.Refresh then MD.Clock:Refresh() end
+    end)
+    clockCheck:SetPoint("TOPLEFT", sec, "TOPLEFT", 5, -84)
+    clockCheck:SetChecked(MD.db.clock and MD.db.clock.shown ~= false)
+    pane.clockCheck = clockCheck -- marks this pane for tools/clockcheck.lua
+    return sec
+end
+
+local function BuildWindowsSection(pane, above)
+    if not MD.Win then return nil end
+    local sec = Section(pane, "WINDOWS", 100, above)
+
+    -- 6.6, decision 4
+    local combatLabel = sec:CreateFontString(nil, "OVERLAY", UI.FONT)
+    combatLabel:SetPoint("TOPLEFT", sec, "TOPLEFT", 5, -29)
+    combatLabel:SetText("In combat")
+    local dd = UI.CreateDropdown(sec, 160, 18, function(id)
+        MD.Win:SetCombat(id)
+    end)
+    dd:SetPoint("LEFT", combatLabel, "RIGHT", 8, 0)
+    dd:SetItems(MD.Win.COMBAT_MODES)
+    dd:SetValue(MD.Win:CombatMode())
+    pane.combatDropdown = dd
+
+    -- 6.5: off is the fallback, one UISpecialFrames entry per window
+    local esc = UI.CreateCheckButton(sec, "Close one window per ESC", function(checked)
+        MD.Win:SetEscStack(checked)
+    end, "Close one window per ESC",
+        "On: each ESC closes the window opened last, then the next.",
+        "Off: one ESC closes every SpellTuner window at once.")
+    esc:SetPoint("TOPLEFT", sec, "TOPLEFT", 5, -55)
+    esc:SetChecked(MD.Win:EscStackOn())
+    pane.escCheck = esc
+
+    local reset = UI.CreateButton(sec, "Reset window positions", "accent-hover", { 170, 20 }, false, false,
+        nil, nil, "Reset window positions",
+        "Every SpellTuner window back at its default place and size (/st ui reset).")
+    reset:SetPoint("TOPLEFT", sec, "TOPLEFT", 5, -77)
+    reset:SetScript("OnClick", function()
+        MD.Win:Reset()
+        MD:Print("windows: every position and size reset")
+    end)
+    pane.resetButton = reset
+    return sec
 end
 
 local function BuildGeneralPane(content)
@@ -57,48 +195,9 @@ local function BuildGeneralPane(content)
     pane:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
     pane:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", 0, 0)
 
-    local title = pane:CreateFontString(nil, "OVERLAY", UI.FONT_TITLE)
-    title:SetPoint("TOPLEFT", pane, "TOPLEFT", 4, -4)
-    title:SetText("General")
-
-    local check = UI.CreateCheckButton(pane, "Add SpellTuner lines to spell tooltips", function(checked)
-        MD.db.spellTooltip = checked and true or false
-    end)
-    check:SetPoint("TOPLEFT", pane, "TOPLEFT", 4, -30)
-    check:SetChecked(MD.db.spellTooltip ~= false)
-
-    pane.tooltipCheck = check -- marks this pane for tools/tipcheck.lua
-
-    -- T37 (docs/SPEC-forever-ui.md 5.6, decision 5): the key that shows the
-    -- block's detail lines. T42 moves it into its titled pane.
-    local below = check
-    if MD.SpellTip and MD.SpellTip.DETAIL_MODES then
-        local detailLabel = pane:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
-        detailLabel:SetPoint("TOPLEFT", check, "BOTTOMLEFT", 20, -12)
-        detailLabel:SetText("Detail lines")
-        local dd = UI.CreateDropdown(pane, 120, 18, function(id)
-            MD.db.spellTooltipDetail = id
-        end)
-        dd:SetPoint("LEFT", detailLabel, "RIGHT", 8, 0)
-        dd:SetItems(MD.SpellTip.DETAIL_MODES)
-        dd:SetValue(MD.SpellTip:DetailMode())
-        pane.detailDropdown = dd -- marks this pane for tools/tipcheck.lua
-        below = detailLabel
-    end
-
-    local clockCheck = UI.CreateCheckButton(pane, "Show the mana clock", function(checked)
-        MD.db.clock = MD.db.clock or {}
-        MD.db.clock.shown = checked and true or false
-        if MD.Clock and MD.Clock.Refresh then MD.Clock:Refresh() end
-    end)
-    if below == check then
-        clockCheck:SetPoint("TOPLEFT", check, "BOTTOMLEFT", 0, -20)
-    else
-        clockCheck:SetPoint("TOPLEFT", below, "BOTTOMLEFT", -20, -16)
-    end
-    clockCheck:SetChecked(MD.db.clock and MD.db.clock.shown ~= false)
-    pane.clockCheck = clockCheck -- marks this pane for tools/clockcheck.lua
-
+    local tips = BuildTooltipSection(pane)
+    local look = BuildAppearanceSection(pane, tips)
+    BuildWindowsSection(pane, look)
     return pane
 end
 

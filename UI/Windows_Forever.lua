@@ -365,8 +365,14 @@ function Win:Restyle()
     for key in pairs(self.windows) do self:Place(key) end
 end
 
--- /st ui reset: every saved place and size forgotten; every window back at its
--- default size, centred.
+-- T42: the scale as the Settings slider shows it, a whole percent (70-120).
+function Win:ScalePercent()
+    return math.floor(self:Scale() * 100 + 0.5)
+end
+
+-- /st ui reset and Settings -> General's "Reset window positions" (T42):
+-- every saved place and size forgotten; every window back at its default
+-- size, centred. The scale, the combat rule and the ESC rule are kept.
 function Win:Reset()
     local u = UIdb()
     if u then u.win = {} end
@@ -747,6 +753,31 @@ local function CombatRule(w)
     if type(c) == "function" then c = c(w.frame) end
     if c == nil then c = (Win.ROLES[w.role] or Win.ROLES.host).combat end
     return c
+end
+
+-- T42 (Settings -> General's WINDOWS pane, decision 4): the two modes, in the
+-- order the dropdown lists them. "hide" is the default and what anything else
+-- saved reads as.
+Win.COMBAT_MODES = {
+    { id = "hide", text = "Hide, reopen after",
+      tooltip = "The main window and a replay hide when a fight starts and come back on the same view after it." },
+    { id = "keep", text = "Keep them open", tooltip = "Nothing changes when a fight starts." },
+}
+
+function Win:CombatMode()
+    local u = UIdb()
+    if u and u.combat == "keep" then return "keep" end
+    return "hide"
+end
+
+-- The next PLAYER_REGEN_DISABLED reads it; what a fight already hid still
+-- comes back when it ends.
+function Win:SetCombat(mode)
+    local u = UIdb()
+    if not u then return end
+    if mode ~= "keep" then mode = "hide" end
+    u.combat = mode
+    return mode
 end
 
 -- db.ui.combat = "hide" (default): every shown window whose rule is "hide"
