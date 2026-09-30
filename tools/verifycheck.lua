@@ -246,8 +246,39 @@ local function Compare(GOLDEN)
         check("/md " .. t.cmd .. " as on the parent", detail == nil and #t.lines > 0,
             detail or (#t.lines == 0 and "no output" or string.format("%d lines", #t.lines)))
     end
+end
+
+local function Footer()
     print(string.format("\n%d ok, %d failed", ok, #fails))
     if #fails > 0 then for _, m in ipairs(fails) do print("  FAIL " .. m) end; os.exit(1) end
+end
+
+--------------------------------------------------------------------------------
+-- T65 (P21, review A1): the review commands are shared with Forever and print
+-- every line through MD:PrintSafe -- the one TBC change. A zone name with a
+-- pipe and a non-ASCII byte reaches the coach card's header escaped (the
+-- pipe doubled, the byte as \ddd), the card's own colour codes kept. Run
+-- after the transcript, so the golden above is untouched by it.
+--------------------------------------------------------------------------------
+local PIPE_ZONE = "Blood|Furnace\195\169"
+local PIPE_ZONE_PRINTED = "Blood||Furnace\\195\\169"
+local function PipeZoneCheck()
+    local rec = MD:GetRecording("1")
+    local savedZone = rec and rec.zone
+    if rec then rec.zone = PIPE_ZONE end
+    out = {}
+    SlashCmdList.SPELLTUNER("coach 1 force")
+    Pump("coachSearch")
+    if rec then rec.zone = savedZone end
+    local saw, bad = false, nil
+    for _, l in ipairs(out) do
+        if l:find(PIPE_ZONE_PRINTED, 1, true) then saw = true end
+        local stripped = l:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("||", "")
+        if stripped:find("|", 1, true) then bad = bad or ("bare pipe: " .. Quote(l)) end
+        if l:find("[^ -~]") then bad = bad or ("not ASCII: " .. Quote(l)) end
+    end
+    check("/md coach: a zone with a pipe prints escaped (T65)", rec ~= nil and saw and bad == nil,
+        bad or string.format("%d lines, zone printed escaped: %s", #out, tostring(saw)))
 end
 
 --------------------------------------------------------------------------------
@@ -721,3 +752,5 @@ local GOLDEN = {
 }
 
 Compare(GOLDEN)
+PipeZoneCheck()
+Footer()

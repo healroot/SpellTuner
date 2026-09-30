@@ -567,6 +567,47 @@ do
 end
 
 --------------------------------------------------------------------------------
+-- T65 (P21, review A1): the review commands are shared with TBC
+-- (Engine/ReviewCommands.lua) and print every line through MD:PrintSafe. A
+-- zone name with a pipe and a non-ASCII byte still prints escaped on Forever,
+-- as it did through Commands_Forever.lua's own Esc: /st validate's header and
+-- the coach card's header carry it with the pipe doubled and the byte as
+-- \ddd, and no line has a bare pipe or a non-ASCII byte.
+--------------------------------------------------------------------------------
+do
+    local saved = MD.cdb.recordings
+    MD.cdb.recordings = { recGood }
+    if MD.coachSearch then MD.coachSearch:Cancel(); MD.coachSearch = nil end
+    local savedZone = recGood.zone
+    recGood.zone = "Blood|Furnace\195\169"
+    local PRINTED = "Blood||Furnace\\195\\169"
+    local vl = CapturedChat(function() SlashCmdList.SPELLTUNER("validate 1") end)
+    local cl = CapturedChat(function()
+        SlashCmdList.SPELLTUNER("coach 1 force")
+        local f = 0
+        while MD.coachSearch and f < 20000 do S.Tick(0.016); f = f + 1 end
+    end)
+    recGood.zone = savedZone
+    MD.cdb.recordings = saved
+    local function Scan(lines)
+        local saw, bad = false, nil
+        for _, l in ipairs(lines) do
+            if l:find(PRINTED, 1, true) then saw = true end
+            local stripped = l:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("||", "")
+            if stripped:find("|", 1, true) then bad = bad or ("bare pipe: " .. l) end
+            if l:find("[^ -~]") then bad = bad or ("not ASCII: " .. l) end
+        end
+        return saw, bad
+    end
+    local vSaw, vBad = Scan(vl)
+    local cSaw, cBad = Scan(cl)
+    check("a zone with a pipe prints escaped in /st validate and the coach card (T65)",
+        vSaw and cSaw and vBad == nil and cBad == nil,
+        string.format("validate: %s %s; coach: %s %s", tostring(vSaw), tostring(vBad or ""),
+            tostring(cSaw), tostring(cBad or "")))
+end
+
+--------------------------------------------------------------------------------
 -- The record, not an assertion (acceptance 2): solver vs rules on the
 -- fixture.
 --------------------------------------------------------------------------------
