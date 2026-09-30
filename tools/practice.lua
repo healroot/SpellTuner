@@ -274,6 +274,13 @@ do
     check("it is marked unfinished", r6.practice and r6.practice.finished == false)
     check("an early stop still replays", SM:Validate(r6, kit).ok)
     check("it is kept and addressed as p1", MD:GetRecording("p1") == r6)
+    -- T62 (P18): p1 reaches the practice provider through the one router
+    -- (Engine/Recordings.lua), not a second parser of its own
+    local REC = MD.Recordings
+    check("...through the router's practice provider",
+        REC ~= nil and REC.Provider("p") ~= nil and REC.Provider("p").List == PR.List
+        and REC.Get("p1") == r6 and REC.List("p")[1] == r6,
+        REC and "provider " .. tostring(REC.Provider("p")) or "no MD.Recordings")
     check("practice never touches the ring of real fights", #(MD.cdb.recordings or {}) == 0)
     for k = 1, PR.MAX_KEPT + 2 do
         local x = PR.New(PR.DefaultSetup("1", 64), { seed = k })
