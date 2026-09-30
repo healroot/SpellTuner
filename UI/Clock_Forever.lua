@@ -35,6 +35,22 @@ local snappedPx
 -- currently on (the rule is MD.Visibility.Want, UI/Visibility.lua, T68).
 local shown = false
 
+-- T70 (P26 of docs/PLAN-refactor-ux.md, review U18): the preview -- the clock
+-- up at any mana level for PREVIEW_SECONDS after Lock is unticked or Show now
+-- is pressed, as TBC's widget does (UI/Widget.lua forceUntil), so it can be
+-- placed at full mana. A GetTime() deadline; 0 is "no preview".
+Clock.PREVIEW_SECONDS = 60
+local previewUntil = 0
+
+-- T70: a left-click opens the window; a drag is not a click. OnMouseDown
+-- clears this, OnDragStart sets it, OnMouseUp reads it -- whatever order the
+-- client fires OnDragStop and OnMouseUp in.
+local dragged = false
+
+local function Previewing()
+    return GetTime() < previewUntil
+end
+
 --------------------------------------------------------------------------------
 -- Visibility: one owner. Hidden when db.clock.shown is false; else the rule
 -- the TBC widget asks too (MD.Visibility.Want, T68): shown in combat, and out
@@ -53,7 +69,7 @@ local function UpdateVisibility()
     local model = MD.Pool.model
     local pct
     if model and model.max and model.max > 0 then pct = model.mana / model.max end
-    shown = MD.Visibility.Want(pct, shown, MD.inCombat, false)
+    shown = MD.Visibility.Want(pct, shown, MD.inCombat, Previewing())
     if shown then widget:Show() else widget:Hide() end
 end
 
@@ -92,6 +108,7 @@ local function ShowHover(self)
     end
 
     GameTooltip:AddLine("The bar under the clock is the real pool, drawn by the game")
+    GameTooltip:AddLine("Left-click (out of combat): open the SpellTuner window")
     GameTooltip:Show()
 end
 
@@ -131,7 +148,9 @@ local function CreateWidget()
     widget:EnableMouse(true)
     widget:RegisterForDrag("LeftButton")
     widget:SetScript("OnDragStart", function(self)
-        if MD.db.clock and MD.db.clock.locked then return end
+        -- T70: draggable while unlocked, and during a preview (TBC's rule)
+        if MD.db.clock and MD.db.clock.locked and not Previewing() then return end
+        dragged = true
         self:StartMoving()
     end)
     widget:SetScript("OnDragStop", function(self)
@@ -141,6 +160,15 @@ local function CreateWidget()
     end)
     widget:SetScript("OnEnter", ShowHover)
     widget:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    -- T70 (U18): a left-click opens the window -- out of combat only, since
+    -- the window hides in combat (decision 4) and the clock is up in every
+    -- fight, where a stray click would put the window over the party.
+    widget:SetScript("OnMouseDown", function() dragged = false end)
+    widget:SetScript("OnMouseUp", function(_, button)
+        if button ~= "LeftButton" or dragged then return end
+        if MD.inCombat then return end
+        if MD.ToggleDashboard then MD:ToggleDashboard() end
+    end)
 
     text = widget:CreateFontString(nil, "OVERLAY", UI.FONT)
     text:SetPoint("TOP", widget, "TOP", 0, -4)
@@ -172,8 +200,15 @@ end
 --------------------------------------------------------------------------------
 local function Paint(now)
     if UI.px(1, widget) ~= snappedPx then Snap() end -- T41: re-snap after a scale change
-    local state = MD.Pool:Project(now)
-    text:SetText(MD.ManaModel.Text(state))
+    if Previewing() then
+        -- T70: the preview says what it is for (TBC's words), in the accent
+        text:SetText("SpellTuner - drag me")
+        text:SetTextColor(UI.RGB("accent"))
+    else
+        local state = MD.Pool:Project(now)
+        text:SetText(MD.ManaModel.Text(state))
+        text:SetTextColor(UI.RGB("text"))
+    end
     MD.API.DrawUnitPower(bar, "player", 0)
     UpdateVisibility()
 end
@@ -183,6 +218,38 @@ end
 function Clock:Refresh()
     if not MD.Pool.model then return end
     Paint(GetTime())
+end
+
+-- T70 (P26, U18): what Settings -> General's MANA CLOCK pane calls.
+-- The clock up for `seconds` (default PREVIEW_SECONDS) at any mana level, and
+-- draggable meanwhile; off (db.clock.shown false) stays off.
+function Clock:Preview(seconds)
+    previewUntil = GetTime() + (tonumber(seconds) or Clock.PREVIEW_SECONDS)
+    if widget and MD.Pool.model then Paint(GetTime()) end
+end
+
+function Clock:Previewing()
+    return Previewing()
+end
+
+-- Lock on: the preview ends and the clock stays where it is. Lock off: the
+-- 60 s preview, so it can be dragged at full mana.
+function Clock:SetLocked(locked)
+    MD.db.clock = MD.db.clock or {}
+    MD.db.clock.locked = locked and true or false
+    if locked then
+        previewUntil = 0
+        if widget and MD.Pool.model then Paint(GetTime()) end
+    else
+        Clock:Preview()
+    end
+end
+
+-- Back at the default place (the top of the screen): the saved point cleared.
+function Clock:ResetPosition()
+    MD.db.clock = MD.db.clock or {}
+    MD.db.clock.point = nil
+    if widget then ApplyPoint() end
 end
 
 -- Kept for its readers (the Spellbook pane, the spell tooltip): the pool's.

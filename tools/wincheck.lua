@@ -538,6 +538,56 @@ local function TopCentrePx(f)
     return (f:GetLeft() + f:GetWidth() / 2) * es, f:GetTop() * es
 end
 
+-- T70 (P26, U24): before the Replay module loads (the next line loads it),
+-- Settings -> General's REVIEW pane is shown but not live -- its keys are the
+-- module's (Engine/SimModel.lua registers them) -- and it says so; About lists
+-- each module that is not loaded as one line instead of commands it has not
+-- registered yet.
+local function GeneralPane()
+    for _, f in ipairs(S.allFrames) do
+        if f.fontSlider and f.reviewChecks then return f end
+    end
+    return nil
+end
+local function AboutPane()
+    for _, f in ipairs(S.allFrames) do
+        if f.about == true and f.rows then return f end
+    end
+    return nil
+end
+local function AboutRows(p)
+    local out = {}
+    for i = 1, (p and p.shown or 0) do
+        local r = p.rows[i]
+        out[#out + 1] = { usage = r.usage:GetText(), text = r.text:GetText() or "", command = r.command, tips = r.tooltips }
+    end
+    return out
+end
+do
+    MD:SelectView("settings", "general")
+    local p = GeneralPane()
+    local allOff = p ~= nil and #p.reviewChecks == 4
+    for _, c in ipairs(p and p.reviewChecks or {}) do
+        if c.check:IsEnabled() then allOff = false end
+    end
+    local sliderOff = p and p.fullHpSlider and not p.fullHpSlider:IsEnabled()
+    local note = p and p.reviewNote and p.reviewNote:GetText()
+    MD:SelectView("settings", "about")
+    local rows = AboutRows(AboutPane())
+    local replayLine, replayCmd = false, false
+    for _, r in ipairs(rows) do
+        if r.usage == "Replay" and r.text:find("off: its commands are listed here once it is on", 1, true) then
+            replayLine = true
+        end
+        if r.usage and r.usage:find("^/st replay") then replayCmd = true end
+    end
+    check("T70: with Replay not loaded, REVIEW is shown disabled and says so; About lists Replay as off",
+        allOff and sliderOff and note == "needs the Replay module - off" and replayLine and not replayCmd
+          and MD:ModuleState("SpellTuner_Replay") ~= "loaded",
+        string.format("checksOff=%s sliderOff=%s note=%s replayLine=%s replayCmd=%s", tostring(allOff),
+          tostring(sliderOff), tostring(note), tostring(replayLine), tostring(replayCmd)))
+end
+
 MD:SetModule("SpellTuner_Practice", true)
 MD.player.isDruid = true
 local buildFixture = dofile(here .. "/foreverfixture.lua")
@@ -846,6 +896,172 @@ do
           and frame:GetHeight() == 560 and near(cx, sw / 2, 1e-3) and near(cy, sh / 2, 1e-3),
         fmt(cx) .. "," .. fmt(cy))
 end
+
+--------------------------------------------------------------------------------
+-- 14. T70 (P26 of docs/PLAN-refactor-ux.md, review U18, U24, U15, mockup M1):
+-- Settings -> General in two columns with the MANA CLOCK, REVIEW and TOOLS
+-- panes, and Settings -> About. The Replay module is loaded here (section 12).
+--------------------------------------------------------------------------------
+MD:SelectView("settings", "general")
+gp = GeneralPane()
+
+-- the pane a titled pane hangs from: follow its first point up the chain
+-- to the one anchored on the General pane itself, and read that x
+local function ColumnX(sec)
+    local guard = 0
+    while sec and guard < 10 do
+        local _, rel, _, x = sec:GetPoint(1)
+        if rel == gp then return x end
+        sec, guard = rel, guard + 1
+    end
+    return nil
+end
+local function FontStringUnder(parent, text)
+    for _, f in ipairs(S.allFrames) do
+        if f.kind == "FontString" and f.parentFrame == parent and f:GetText() == text then return f end
+    end
+    return nil
+end
+
+do
+    local titles = {}
+    for _, f in ipairs(S.allFrames) do
+        if f.title and f.line and gp and f.parentFrame == gp then titles[f.title:GetText()] = f end
+    end
+    local left, right = true, true
+    for _, t in ipairs({ "SPELL TOOLTIPS", "APPEARANCE", "WINDOWS" }) do
+        if ColumnX(titles[t]) ~= 4 then left = false end
+    end
+    for _, t in ipairs({ "MANA CLOCK", "REVIEW", "TOOLS" }) do
+        if ColumnX(titles[t]) ~= 376 then right = false end
+    end
+    local named = gp and FontStringUnder(gp.fontSlider, "Text size") ~= nil
+      and FontStringUnder(gp.scaleSlider, "Window size") ~= nil
+      and gp.fontHint and gp.fontHint:GetText() == "Every SpellTuner text, one size bigger or smaller."
+      and gp.scaleHint and gp.scaleHint:GetText() == "Every SpellTuner window, bigger or smaller."
+      and FontStringUnder(gp.fontSlider, "Font offset") == nil
+    check("T70: General in two columns (tooltips, appearance, windows | clock, review, tools); Text size, Window size",
+        gp ~= nil and left and right and named and gp.clockCheck.parentFrame == titles["MANA CLOCK"],
+        string.format("left=%s right=%s named=%s", tostring(left), tostring(right), tostring(named)))
+end
+
+-- A block that raises (on the parent: no such pane) is one FAIL, not the end
+-- of the suite.
+local function Guarded(name, fn)
+    local okRun, err = pcall(fn)
+    if not okRun then check(name, false, "raised: " .. tostring(err)) end
+end
+
+-- MANA CLOCK: show, lock, Show now, and Reset position clearing the saved point
+Guarded("T70: MANA CLOCK", function()
+    local Clock = MD.Clock
+    local w = Clock.frame
+    local show, lock = gp and gp.clockCheck, gp and gp.clockLockCheck
+    if show then show:SetChecked(false); show.onClick(false, show) end
+    local off = MD.db.clock.shown == false and w and not w:IsShown() and not gp.clockShowNow:IsEnabled()
+    if show then show:SetChecked(true); show.onClick(true, show) end
+    local on = MD.db.clock.shown == true and gp.clockShowNow:IsEnabled()
+    if lock then lock:SetChecked(true); lock.onClick(true, lock) end
+    local locked = MD.db.clock.locked == true and not Clock:Previewing()
+    Click(gp and gp.clockShowNow)
+    local preview = Clock:Previewing() and w:IsShown()
+    MD.db.clock.point = { "CENTER", nil, "CENTER", 40, -30 }
+    w:ClearAllPoints()
+    w:SetPoint("CENTER", UIParent, "CENTER", 40, -30)
+    Click(gp and gp.clockReset)
+    local p, rel, rp, x, y = w:GetPoint(1)
+    local reset = MD.db.clock.point == nil and p == "TOP" and rel == UIParent and rp == "TOP" and x == 0 and y == -120
+    if lock then lock:SetChecked(false); lock.onClick(false, lock) end
+    S.Tick(61)
+    check("T70: MANA CLOCK writes db.clock.shown / locked, Show now previews, Reset position clears the point",
+        show ~= nil and lock ~= nil and off and on and locked and preview and reset
+          and MD.db.clock.locked == false and not Clock:Previewing(),
+        string.format("off=%s on=%s locked=%s preview=%s reset=%s (%s %s %s)", tostring(off), tostring(on),
+          tostring(locked), tostring(preview), tostring(reset), tostring(p), tostring(rp), tostring(y)))
+end)
+
+-- REVIEW: live now that Replay is loaded; each control writes its key
+Guarded("T70: REVIEW", function()
+    local keys, wrote, live = {}, true, true
+    local saved = {}
+    for _, c in ipairs(gp and gp.reviewChecks or {}) do
+        keys[#keys + 1] = c.key
+        saved[c.key] = MD.db[c.key]
+        if not c.check:IsEnabled() then live = false end
+        c.check:SetChecked(true); c.check.onClick(true, c.check)
+        if MD.db[c.key] ~= true or MD:Setting(c.key) ~= true then wrote = false end
+        c.check:SetChecked(false); c.check.onClick(false, c.check)
+        if MD.db[c.key] ~= false or MD:Setting(c.key) ~= false then wrote = false end
+    end
+    local sv = MD.db.simFullHp
+    Type(gp and gp.fullHpSlider, "90")
+    local hp = near(MD.db.simFullHp, 0.9) and near(MD:Setting("simFullHp"), 0.9)
+    Type(gp and gp.fullHpSlider, "120")
+    local clamped = near(MD.db.simFullHp, 0.99)
+    MD.db.simFullHp = sv
+    for k, v in pairs(saved) do MD.db[k] = v end
+    check("T70: REVIEW's four checks and 'Full health is above' write their keys once Replay is loaded",
+        #keys == 4 and table.concat(keys, ",") == "replayAutoCoach,replayNextPull,replayTicks,simAllowRebinds"
+          and live and wrote and hp and clamped and gp.fullHpSlider:IsEnabled()
+          and gp.reviewNote:GetText() == "needs the Replay module",
+        string.format("keys=%s live=%s wrote=%s hp=%s clamped=%s", table.concat(keys, ","), tostring(live),
+          tostring(wrote), tostring(hp), tostring(clamped)))
+end)
+
+-- TOOLS: the console, the dump in the copy box, measure on and off
+Guarded("T70: TOOLS", function()
+    local console = _G.SpellTunerDebugConsole
+    if console then console:Hide() end
+    Click(gp and gp.consoleButton)
+    console = _G.SpellTunerDebugConsole
+    local consoleShown = console ~= nil and console:IsShown()
+    if console then console:Hide() end
+    Click(gp and gp.dumpButton)
+    local copy = _G.SpellTunerDebugCopyFrame
+    local dumped = copy ~= nil and copy:IsShown() and type(copy.text) == "string"
+      and copy.text:find("SpellTuner dump", 1, true) == 1
+    if copy then copy:Hide() end
+    local wasOn = MD.Measure.on
+    Click(gp and gp.measureButton)
+    local turnedOn = MD.Measure.on == true and gp.measureButton:GetText() == "Measure: on"
+    Click(gp and gp.measureButton)
+    local turnedOff = not MD.Measure.on and gp.measureButton:GetText() == "Measure: off"
+    check("T70: TOOLS opens the console, puts /st dump in the copy box, and turns measure on and off",
+        consoleShown and dumped and not wasOn and turnedOn and turnedOff,
+        string.format("console=%s dump=%s measure %s/%s", tostring(consoleShown), tostring(dumped),
+          tostring(turnedOn), tostring(turnedOff)))
+end)
+
+-- About: every command MD:Commands() lists, the modules' included, cut at "; "
+Guarded("T70: About", function()
+    MD:SelectView("settings", "about")
+    local ap = AboutPane()
+    local rows = AboutRows(ap)
+    local byUsage = {}
+    for _, r in ipairs(rows) do byUsage[r.usage] = r end
+    local want, missing = 0, {}
+    for _, e in ipairs(MD:Commands()) do
+        if not e.hidden and e.usage ~= "" then
+            want = want + 1
+            if not byUsage[e.usage] then missing[#missing + 1] = e.usage end
+        end
+    end
+    local m = byUsage["/st measure [dump [all] / clear]"]
+    local cut = m ~= nil and m.text == "measure a landed cast against its own description (a diagnostic session)"
+      and m.tips and m.tips[2] and m.tips[2]:find("dump all every line", 1, true) ~= nil
+    local offLine = false
+    for _, r in ipairs(rows) do
+        if r.text:find("off: its commands", 1, true) then offLine = true end
+    end
+    local hasReplay = false
+    for u in pairs(byUsage) do if u:find("^/st replay") then hasReplay = true end end
+    local head = ap and ap.version:GetText() == "SpellTuner " .. tostring(MD.version)
+      and ap.client:GetText():find("^WoW: Forever") ~= nil
+    check("T70: About lists every visible command (the modules' too), the long ones cut at '; ' with the rest on hover",
+        ap ~= nil and #missing == 0 and #rows == want and cut and hasReplay and not offLine and head,
+        string.format("rows=%d want=%d missing=%s cut=%s replay=%s head=%s", #rows, want,
+          table.concat(missing, " | "), tostring(cut), tostring(hasReplay), tostring(head)))
+end)
 
 --------------------------------------------------------------------------------
 print(string.format("%d ok, %d failed", ok, #fails))

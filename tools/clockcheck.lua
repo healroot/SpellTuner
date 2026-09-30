@@ -574,6 +574,86 @@ do
 end
 
 --------------------------------------------------------------------------------
+-- T70 (P26 of docs/PLAN-refactor-ux.md, review U18): the clock can be placed
+-- at full mana. Unticking Settings -> General's "Lock in place" previews it for
+-- 60 s at any mana level, as TBC's widget does, and it hides after; a
+-- left-click on it opens the window, a drag, another button or a click in
+-- combat does not.
+--------------------------------------------------------------------------------
+do
+    local w = Clock.frame
+    MD.db.clock.shown = true
+    MD.db.clock.locked = true
+    S.inCombat = false
+    model.mana = model.max -- full: the 90/95 rule alone keeps it hidden
+    Clock:Refresh()
+    local hiddenAtFull = not w:IsShown()
+
+    MD:SelectView("settings", "general")
+    local lock
+    for _, f in ipairs(S.allFrames) do
+        if f.clockLockCheck then lock = f.clockLockCheck end
+    end
+    if lock then lock:SetChecked(false); lock.onClick(false, lock) end
+    local at0 = w:IsShown()
+    local word0 = Clock.text and Clock.text:GetText() or ""
+    S.Tick(59)
+    local at59 = w:IsShown()
+    S.Tick(1.5)
+    local after = not w:IsShown()
+    local word1 = Clock.text and Clock.text:GetText() or ""
+    local frame = _G.SpellTunerDashboard
+    if frame then frame:Hide() end
+
+    check("unticking Lock shows the clock at full mana for 60 s, then it hides",
+        lock ~= nil and hiddenAtFull and MD.db.clock.locked == false and at0 and at59 and after
+        and word0 == "SpellTuner - drag me" and word1:sub(1, 1) == "~" and model.mana == model.max,
+        string.format("lock=%s hidden=%s at0=%s at59=%s after=%s word0=%q word1=%q", tostring(lock ~= nil),
+            tostring(hiddenAtFull), tostring(at0), tostring(at59), tostring(after), word0, word1))
+end
+
+do
+    local w = Clock.frame
+    local calls = 0
+    local orig = MD.ToggleDashboard
+    MD.ToggleDashboard = function() calls = calls + 1 end
+    local down, up = w:GetScript("OnMouseDown"), w:GetScript("OnMouseUp")
+    local dragStart, dragStop = w:GetScript("OnDragStart"), w:GetScript("OnDragStop")
+    local function Press(button, drag)
+        if down then down(w, button) end
+        if drag then dragStart(w); dragStop(w) end
+        if up then up(w, button) end
+    end
+    local savedPoint = MD.db.clock.point
+    S.inCombat = false
+    Press("LeftButton")
+    local clicked = calls == 1
+    Press("LeftButton", true)
+    local dragNot = calls == 1
+    Press("RightButton")
+    local rightNot = calls == 1
+    S.inCombat = true
+    S.Fire("PLAYER_REGEN_DISABLED")
+    Press("LeftButton")
+    local combatNot = calls == 1
+    S.Fire("PLAYER_REGEN_ENABLED")
+    S.inCombat = false
+    MD.ToggleDashboard = orig
+    MD.db.clock.point = savedPoint
+
+    GameTooltip.lines = {}
+    w:GetScript("OnEnter")(w)
+    local says = false
+    for _, l in ipairs(GameTooltip.lines or {}) do
+        if type(l[1]) == "string" and l[1]:find("Left-click", 1, true) then says = true end
+    end
+    check("a left-click on the clock calls MD:ToggleDashboard; a drag, a right-click or combat does not",
+        down ~= nil and up ~= nil and clicked and dragNot and rightNot and combatNot and says,
+        string.format("calls=%d clicked=%s drag=%s right=%s combat=%s hover=%s", calls, tostring(clicked),
+            tostring(dragNot), tostring(rightNot), tostring(combatNot), tostring(says)))
+end
+
+--------------------------------------------------------------------------------
 -- T68 (P24, review A29): the pool owns the model, the events and the pricing,
 -- so a cast is priced with no clock at all. A second copy of the addon's core
 -- is loaded WITHOUT UI/Clock_Forever.lua (no clock file, so no clock frame can
