@@ -995,3 +995,13 @@ another resto druid's Tree of Life party aura (34123, the same name). The rank m
 recorder, the cast labels and the profile then thought the player was in Tree form, and
 `FORM_CHANGED` fired whenever the other druid shifted or left range. The scan now runs only when the
 function is absent or raised. TBC only (`Core_TBC.lua`).
+
+## A raising event handler no longer stops the others (2026-09-30, T55)
+
+`Core.lua` runs every `MD:On` handler and every `MD:Fire` callback as `xpcall(handler, MD.ErrorSink,
+...)`; the sink tail-calls whatever `geterrorhandler()` answers then, so the error still reaches
+BugGrabber, Forever's capture or the client's own handler once, and the handlers after the raising
+one still run (review A4: one raise in an early `PLAYER_REGEN_ENABLED` handler used to stop the
+recorder closing its stream, the clock re-anchoring and the run recorder seeing the pull). Both lines;
+a change only when a handler raises. Measured cost 0.085 us per handler per event, so the combat log
+is isolated per handler too.

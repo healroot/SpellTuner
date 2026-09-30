@@ -3886,3 +3886,51 @@ opens, practiceui's two, reviewui's two, dashui's one, corecheck/tbc's five, ada
 -- plus ms, table addresses and the sliced search's intermediate counts (the final 44 unchanged).
 **Next:** wave 4; the author's §44 items 1, 2, 7 and 9 (TBC) and 11 and 12 (Forever) on the next
 build.
+
+## 2026-09-30 — the refactor plan, wave 4: T54-T56 (P10-P12)
+
+Wave 4 of `docs/PLAN-refactor-ux.md` cherry-picked onto `fecaad4`, oldest first, then the
+integrator's lines (`SpellTuner_TBC.toc`, CLAUDE.md, `docs/DECISIONS.md`, `docs/TESTING.md` §44,
+`docs/TOOLS.md`, this entry) in one commit. The version stays 0.16.3. The one TOC change is T56's:
+`SpellTuner_TBC.toc`'s last line `Verify.lua` is now `Diagnostics_TBC.lua`,
+`Engine\RegenMeasure.lua`, `Engine\SimSelfTest.lua`, `Engine\ReviewCommands.lua`, in that order and
+at that position (the TBC package goes from 55 files to 58). `tools/data/expected-counts.json` does
+not exist yet: when P13 creates it, the wave's counts are recordcheck 31, probecheck 88,
+practiceforever 28, importcheck 21 (under both flavours and none), corecheck 22 / 22, consolecheck
+20 / 1, verifycheck 13 (tbc).
+
+- **T54 (P10)** (`efa247b`, `b470219`): the stub's `C_Timer.After` keeps a due time and `S.Tick`
+  fires what is due, so recordcheck, probecheck, practiceforever, spellsui and importfixture tick
+  the clock instead of flushing by hand and assert nothing is left pending -- the R10 death re-poll
+  now provably runs at +1 s (Q8); `S.Geometry(true)`, wincheck's geometry promoted into the stub with
+  a text metric (Q12, wincheck's transcript unchanged); importcheck scrubs `ST_FLAVOUR` /
+  `MD_SAVEDVARS` from every subprocess (green under `--flavour tbc` at last, Q4) and the import
+  fixture carries the fixed version `0.0.0-fixture` (Q6; `tools/data/import-forever-sv.lua`
+  regenerated, one line). Offline tools only. recordcheck 31, probecheck 88, practiceforever 28,
+  importcheck 21, spellsui 48, wincheck 55.
+- **T55 (P11)** (`093ebeb`, `00c7283`): `Core.lua` runs every `MD:On` handler and `MD:Fire`
+  callback under `xpcall` with `MD.ErrorSink` (A4; 0.085 us per handler measured, so per handler
+  everywhere, the combat log included); the seams later tasks adopt: `MD.Text`, `MD:PrintSafe`,
+  `MD.Util`, `MD.Rules.SUGGESTED_FLOOR`, `MD:RegisterDefaults` / `MD:Setting`, `MD.inCombat`,
+  `MD:Provide`, `MD:ModuleStateText` -- nothing reads them yet. DECISIONS "A raising event handler no
+  longer stops the others". corecheck 22 / 22, consolecheck 20 / 1.
+- **T56 (P12)** (`2f7cec1`, `b36bd87`, `c367622`): `Verify.lua` split, a pure move (bodies
+  byte-identical, the same globals), into `Diagnostics_TBC.lua`, `Engine/RegenMeasure.lua`,
+  `Engine/SimSelfTest.lua` and `Engine/ReviewCommands.lua` (A2); `tools/verifycheck.lua` holds twelve
+  TBC commands word for word against a golden captured on `fecaad4` (13 there, 13 here). No DECISIONS
+  entry (no behaviour change).
+
+Every suite passes (exit codes checked; `simcheck` 0 FAIL lines), apicheck and textcheck 0 findings,
+`refcheck.py --selftest` 2 of 2, in the worktree and in a `git archive` export; verifycheck run on
+`fecaad4` itself is 13 of 13. Each suite's full output against `fecaad4` differs only by the new
+assertions and their counts (recordcheck's two, probecheck's one, practiceforever's one, importcheck's
+one and its TBC-flavour fixture check now green, corecheck's nine under both flavours, consolecheck's
+three), spellsui's `pending=0` detail, textcheck's file count (82 -> 85), apicheck's distinct globals
+(46 -> 47: `Core.lua` now touches `xpcall`), releasecheck's TBC package count (55 -> 58) -- and two
+Forever-only detail strings: recordcheck's `auraCalls before=16 after=16` is now 22 / 22 (the
+probe's 2 s snapshot now fires on the stub's clock during the pull, T54; the check is before ==
+after, unchanged) and corecheck/forever's probe report is 243 lines, not 241 (the probe counts the
+`UNIT_COMBAT` T55's new A4 assertion fires). Plus ms, table addresses and the sliced search's
+intermediate counts (reccheck's frames, replayui's and reviewui's `search N evaluations`; the final
+44 unchanged). **Next:** wave 5 (P13, P14); the author's §44 item 5 on both clients and the TBC
+load-list line W4 on the next build.

@@ -58,4 +58,7 @@ UI\MinimapButton.lua
 UI\Advisor.lua
 UI\Summary.lua
 Integrations\ElvUIDatatext.lua
-Verify.lua
+Diagnostics_TBC.lua
+Engine\RegenMeasure.lua
+Engine\SimSelfTest.lua
+Engine\ReviewCommands.lua
