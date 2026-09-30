@@ -46,13 +46,20 @@ end
 -- Chain-casts until the next cast is unaffordable: each cast nets
 -- (cost - regen * interval) mana, so floor((mana - cost) / net) + 1 casts.
 -- math.huge when regen covers the cost, 0 when mana < cost.
+-- T67 (P23, review A13): the rule is Spells/RankRules.lua's, shared with the
+-- Forever book; this method stays for its callers (RegenMeasure, SimSelfTest).
 function RankMath:CastsToOOM(cost, interval, mana, regen)
-    if cost <= 0 then return math.huge end
-    local net = cost - regen * interval
-    if net <= 0 then return math.huge end
-    if mana < cost then return 0 end
-    return math.floor((mana - cost) / net) + 1
+    return MD.RankRules.CastsToOOM(cost, interval, mana, regen)
 end
+
+-- T67: the dashboard's rows for Spells/RankRules.lua -- heal per mana and per
+-- second, the heal the floor is a share of, and only known real ranks (the
+-- rolling-stack Lifebloom rows are virtual: a different activity).
+local RULE_FIELDS = {
+    eff = "hpm", rate = "hps", value = "heal",
+    eligible = function(r) return r.known and not r.virtual end,
+}
+RankMath.RULE_FIELDS = RULE_FIELDS -- read by tools/bookcheck.lua's tbc run
 
 --------------------------------------------------------------------------------
 -- Context: every input the rank math reads, resolved once.
@@ -571,36 +578,17 @@ function RankMath:Compute()
             end
 
             -- Pareto dominance on (HPM, HPS) — among KNOWN, real ranks only.
-            for i = 1, #rows do
-                if rows[i].known and not rows[i].virtual then
-                    for j = 1, #rows do
-                        if i ~= j and rows[j].known and not rows[j].virtual
-                            and rows[j].hpm >= rows[i].hpm and rows[j].hps >= rows[i].hps
-                            and (rows[j].hpm > rows[i].hpm or rows[j].hps > rows[i].hps) then
-                            rows[i].dominated = true
-                            break
-                        end
-                    end
-                end
-            end
-
             -- Suggested rank: highest-HPM known non-dominated rank that still
-            -- heals >= 40% of the max known rank (assumption: below that,
-            -- cast-count pressure outweighs efficiency).
+            -- heals >= MD.Rules.SUGGESTED_FLOOR (40%) of the max known rank
+            -- (assumption: below that, cast-count pressure outweighs
+            -- efficiency). T67: both rules are Spells/RankRules.lua's.
+            local RR = MD.RankRules
+            RR.Pareto(rows, RULE_FIELDS)
             local maxRow
             for i = 1, #rows do
                 if rows[i].isMax then maxRow = rows[i] end
             end
-            local suggested
-            for i = 1, #rows do
-                local r = rows[i]
-                if r.known and not r.virtual and not r.dominated and maxRow and r.heal >= 0.4 * maxRow.heal then
-                    if not suggested or r.hpm > suggested.hpm then
-                        suggested = r
-                    end
-                end
-            end
-            suggested = suggested or maxRow
+            local suggested = RR.Suggested(rows, maxRow, RULE_FIELDS)
             if suggested then suggested.suggested = true end
 
             local callout

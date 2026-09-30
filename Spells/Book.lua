@@ -6,6 +6,9 @@
 -- of a table MD.API.Copy already built, never the client's own table).
 local _, MD = ...
 local Parse = MD.Parse
+-- T67 (P23, review A13): the Pareto filter, the suggested rank and casts to
+-- OOM are Spells/RankRules.lua's, shared with the TBC dashboard.
+local RR = MD.RankRules
 
 MD.Book = MD.Book or {}
 local Book = MD.Book
@@ -14,11 +17,7 @@ local Book = MD.Book
 -- uses (1.5s) -- ported as-is (Facts), to be checked against a real cast bar
 -- once one exists to read (T12).
 local GCD = 1.5
-
--- The suggested-rank floor (Facts, ported from Engine/RankMath.lua's
--- Compute()): below 40% of the highest known rank's value, cast-count
--- pressure is assumed to outweigh efficiency.
-local SUGGESTED_FLOOR = 0.4
+Book.GCD = GCD -- T67: Spells/Words.lua's per-second words read it
 
 -- The book walk the probe proved (Facts): only when every skill line's own
 -- copy answers numeric bounds is the line-based read trusted; anything else
@@ -184,19 +183,6 @@ local function PartValue(entry, familyKind)
     return nil, nil
 end
 
--- Facts, ported from Engine/RankMath.lua's CastsToOOM: inf when the spell is
--- free or regen alone covers the chain, 0 when the pool cannot afford even
--- one cast, else the floor of the chain plus the first cast. nil when any
--- input Book needs is itself missing -- never guessed at 0.
-local function CastsToOOM(cost, interval, mana, regen)
-    if cost == nil or interval == nil or mana == nil or regen == nil then return nil end
-    if cost <= 0 then return math.huge end
-    local net = cost - regen * interval
-    if net <= 0 then return math.huge end
-    if mana < cost then return 0 end
-    return math.floor((mana - cost) / net) + 1
-end
-
 --------------------------------------------------------------------------------
 -- Enumeration
 --------------------------------------------------------------------------------
@@ -327,6 +313,11 @@ end
 -- pool (dominated, suggested, casts to OOM) is set here -- those stay nil
 -- rather than guessed from nothing.
 --------------------------------------------------------------------------------
+-- T67: the previous entry ReadSpell answered for each id it could name, the
+-- `prevSpells` its ApplyStale reads (one entry per id ever read: a chat link
+-- or a bar's spell, a handful of ids).
+Book._readSpells = Book._readSpells or {}
+
 function Book:ReadSpell(id)
     if type(id) ~= "number" then return nil end
     local entry = { id = id }
@@ -349,6 +340,11 @@ function Book:ReadSpell(id)
     else
         entry.descState = "absent"
     end
+    -- T67 (P23, review A15's R41 gap): the last readable text is carried
+    -- through a secret description here too, as BuildEntry carries it, from
+    -- this path's own previous reads -- a spell outside the book (a chat
+    -- link, another bar) no longer goes blank in combat.
+    ApplyStale(entry, Book._readSpells)
 
     local level = MD.API.SpellLevelLearned(id)
     entry.level = (type(level) == "number") and level or nil
@@ -398,6 +394,7 @@ function Book:ReadSpell(id)
         entry.perSec = (value ~= nil and interval ~= nil and interval > 0) and (value / interval) or nil
     end
 
+    Book._readSpells[id] = entry
     return entry
 end
 
@@ -540,8 +537,16 @@ end
 function Book:CastsFor(entry, pool)
     if type(entry) ~= "table" or type(pool) ~= "table" then return nil end
     local amount = entry.cost and entry.cost.amount
-    return CastsToOOM(amount, entry.interval, pool.mana or pool.max, pool.regenCasting)
+    return RR.CastsToOOM(amount, entry.interval, pool.mana or pool.max, pool.regenCasting)
 end
+
+-- T67: the book's entries for Spells/RankRules.lua -- per mana and per
+-- second, the value the floor is a share of, and only known ranks that have
+-- both numbers.
+local RULE_FIELDS = {
+    eff = "perMana", rate = "perSec", value = "value",
+    eligible = function(e) return e.known and e.perMana and e.perSec end,
+}
 
 function Book:Rows(family, pool)
     if not family.kind then return end
@@ -565,57 +570,19 @@ function Book:Rows(family, pool)
         e.suggested = nil
     end
 
-    -- Pareto dominance on (perMana, perSec), known ranks only.
-    local function Beats(rj, ri)
-        return rj ~= ri and rj.known and rj.perMana and rj.perSec
-            and rj.perMana >= ri.perMana and rj.perSec >= ri.perSec
-            and (rj.perMana > ri.perMana or rj.perSec > ri.perSec)
-    end
-    for _, ri in ipairs(family.ranks) do
-        if ri.known and ri.perMana and ri.perSec then
-            for _, rj in ipairs(family.ranks) do
-                if Beats(rj, ri) then
-                    ri.dominated = true
-                    break
-                end
-            end
-        end
-    end
-
-    -- Suggested: the known, non-dominated rank with the highest per-mana
-    -- whose value is still at least SUGGESTED_FLOOR of the highest known
-    -- rank's, else the highest known rank itself.
-    local maxKnown = family.maxKnown
-    local suggested
-    if maxKnown and maxKnown.value then
-        for _, e in ipairs(family.ranks) do
-            if e.known and e.perMana and e.perSec and not e.dominated
-                and e.value ~= nil and e.value >= SUGGESTED_FLOOR * maxKnown.value then
-                if not suggested or e.perMana > suggested.perMana then suggested = e end
-            end
-        end
-    end
-    suggested = suggested or maxKnown
+    -- Pareto dominance on (perMana, perSec), known ranks with both numbers;
+    -- suggested: the known, non-dominated rank with the highest per mana
+    -- whose value is still at least MD.Rules.SUGGESTED_FLOOR of the highest
+    -- known rank's, else the highest known rank itself; T38 (docs/SPEC-
+    -- forever-ui.md 3.5): a dominated rank names the rank that beats it, by
+    -- its spell id (a plain number, never a second path to a table) -- the
+    -- suggested rank when it is one of them, else the one of them with the
+    -- best per mana. T67: all three are Spells/RankRules.lua's.
+    RR.Pareto(family.ranks, RULE_FIELDS)
+    local suggested = RR.Suggested(family.ranks, family.maxKnown, RULE_FIELDS)
     if suggested then suggested.suggested = true end
     family.suggested = suggested
-
-    -- T38 (docs/SPEC-forever-ui.md 3.5): a dominated rank names the rank
-    -- that beats it, by its spell id (a plain number, never a second path to
-    -- a table): the suggested rank when it is one of them, else the one of
-    -- them with the best per mana -- UI/SpellTip_Forever.lua's own rule.
-    for _, ri in ipairs(family.ranks) do
-        if ri.dominated then
-            local by
-            if suggested and Beats(suggested, ri) then
-                by = suggested
-            else
-                for _, rj in ipairs(family.ranks) do
-                    if Beats(rj, ri) and (not by or rj.perMana > by.perMana) then by = rj end
-                end
-            end
-            ri.dominatedBy = by and by.id or nil
-        end
-    end
+    RR.DominatedBy(family.ranks, suggested, RULE_FIELDS)
 end
 
 -- T38 (docs/SPEC-forever-ui.md 3.5): how rank `a` stands against rank `b`,

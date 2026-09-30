@@ -2,8 +2,9 @@
 --
 -- T7 (docs/tasks/T7-spell-book.md): Spells/Book.lua against the stub's
 -- spellbook (T7a's fixed five slots plus the extra spells this suite adds via
--- S.AddSpell). Forever only -- the book walk is a Forever-only file.
-HARNESS_FLAVOUR = "forever"
+-- S.AddSpell). Forever -- the book walk is a Forever-only file -- and since
+-- T67 (P23) tbc too: the rank rules both lines share (Spells/RankRules.lua).
+HARNESS_FLAVOUR = { "forever", "tbc" }
 
 local here = arg[0]:match("^(.*)/[^/]+$")
 
@@ -18,6 +19,117 @@ local MD = dofile(here .. "/harness.lua")
 arg[0] = a0
 
 local S = _G.STUB
+
+--------------------------------------------------------------------------------
+-- tbc (T67, P23, review A13): the dashboard's rank rules are
+-- Spells/RankRules.lua's, the same rules Book:Rows runs on Forever. The TBC
+-- suites never looked at Compute()'s marks (dashui and spelltip stay green
+-- with the Pareto call removed), so this run holds them: against the old
+-- inline rule, kept below verbatim as the oracle, and on constructed rows
+-- where the floor and a virtual row decide.
+--------------------------------------------------------------------------------
+if S.flavour == "tbc" then
+    local RM, RR = MD.RankMath, MD.RankRules
+
+    -- Engine/RankMath.lua's Compute() before T67, the rule part only.
+    local function OldRule(rows)
+        for i = 1, #rows do
+            if rows[i].known and not rows[i].virtual then
+                for j = 1, #rows do
+                    if i ~= j and rows[j].known and not rows[j].virtual
+                        and rows[j].hpm >= rows[i].hpm and rows[j].hps >= rows[i].hps
+                        and (rows[j].hpm > rows[i].hpm or rows[j].hps > rows[i].hps) then
+                        rows[i].dominated = true
+                        break
+                    end
+                end
+            end
+        end
+        local maxRow
+        for i = 1, #rows do if rows[i].isMax then maxRow = rows[i] end end
+        local suggested
+        for i = 1, #rows do
+            local r = rows[i]
+            if r.known and not r.virtual and not r.dominated and maxRow and r.heal >= 0.4 * maxRow.heal then
+                if not suggested or r.hpm > suggested.hpm then suggested = r end
+            end
+        end
+        return suggested or maxRow
+    end
+    local function Fresh(rows)
+        local out = {}
+        for i, r in ipairs(rows) do
+            local c = {}
+            for k, v in pairs(r) do c[k] = v end
+            c.dominated, c.suggested = nil, nil
+            out[i] = c
+        end
+        return out
+    end
+
+    local okRun, results = pcall(function() return RM:Compute() end)
+    local families, rowsSeen, dominatedSeen, bad = 0, 0, 0, {}
+    if okRun then
+        for family, res in pairs(results) do
+            families = families + 1
+            local copy = Fresh(res.rows)
+            local want = OldRule(copy)
+            if (want and want.id) ~= res.suggestedID then
+                bad[#bad + 1] = family .. " suggested " .. tostring(res.suggestedID) .. " want " .. tostring(want and want.id)
+            end
+            for i, r in ipairs(res.rows) do
+                rowsSeen = rowsSeen + 1
+                if r.dominated then dominatedSeen = dominatedSeen + 1 end
+                if (r.dominated == true) ~= (copy[i].dominated == true) then
+                    bad[#bad + 1] = family .. " row " .. i .. " dominated " .. tostring(r.dominated)
+                end
+                if (r.suggested == true) ~= (want == copy[i]) then
+                    bad[#bad + 1] = family .. " row " .. i .. " suggested " .. tostring(r.suggested)
+                end
+            end
+        end
+        table.sort(bad)
+    end
+    check("tbc: Compute's dominated and suggested ranks are the old rule's on every family",
+        okRun and families > 0 and dominatedSeen > 0 and #bad == 0,
+        string.format("ran=%s families=%d rows=%d dominated=%d bad=%s", tostring(okRun), families, rowsSeen,
+            dominatedSeen, okRun and (#bad == 0 and "none" or table.concat(bad, "; ")) or tostring(results)))
+
+    -- constructed rows (tools/bookcheck.lua's SubFamily in the dashboard's
+    -- fields): R1 far cheaper per heal, R2 the max and faster; a virtual row
+    -- that beats both on paper and must count for nothing, an unknown one
+    -- likewise; R5 ties R2 on per mana and is slower, so R2 dominates it (at
+    -- least as good on both, better on one -- a tie is not a draw)
+    local function Rows(r1Heal)
+        return {
+            { id = 1, known = true, hpm = 10, hps = 133, heal = r1Heal },
+            { id = 2, known = true, hpm = 2, hps = 333, heal = 500, isMax = true },
+            { id = 3, known = true, virtual = true, hpm = 20, hps = 400, heal = 900 },
+            { id = 4, known = false, hpm = 30, hps = 500, heal = 800 },
+            { id = 5, known = true, hpm = 2, hps = 300, heal = 400 },
+        }
+    end
+    local F = RM.RULE_FIELDS
+    local at, under = Rows(200), Rows(199)
+    local sAt, sUnder
+    if F then
+        RR.Pareto(at, F); sAt = RR.Suggested(at, at[2], F)
+        RR.Pareto(under, F); sUnder = RR.Suggested(under, under[2], F)
+    end
+    local noneDominated = at[1].dominated == nil and at[2].dominated == nil and at[5].dominated == true
+    check("tbc: the floor is MD.Rules.SUGGESTED_FLOOR, a virtual or unknown row beats nothing",
+        F ~= nil and MD.Rules.SUGGESTED_FLOOR == 0.4 and noneDominated and sAt == at[1] and sUnder == under[2]
+        and RM:CastsToOOM(100, 2, 1000, 10) == 12 and RM:CastsToOOM(0, 2, 1000, 10) == math.huge
+        and RM:CastsToOOM(100, 2, 50, 10) == 0 and RM:CastsToOOM(100, 2, 1000, 60) == math.huge,
+        string.format("fields=%s dominated=%s/%s/%s at200=%s at199=%s casts=%s", tostring(F ~= nil),
+            tostring(at[1].dominated), tostring(at[2].dominated), tostring(at[5].dominated), tostring(sAt and sAt.id),
+            tostring(sUnder and sUnder.id), tostring(RM:CastsToOOM(100, 2, 1000, 10))))
+
+    print(string.format("\n%d ok, %d failed", ok, #fails))
+    for _, f in ipairs(fails) do print("  FAIL " .. f) end
+    os.exit(#fails > 0 and 1 or 0)
+end
+
 local Book = MD.Book
 
 --------------------------------------------------------------------------------
@@ -648,6 +760,56 @@ T38("dominatedBy names the rank that beats a dominated one", function()
         and sub1.dominatedBy == nil and sub2.dominatedBy == nil
     return good, string.format("ht1=%s rj1=%s ht2=%s sub=%s/%s", tostring(ht1.dominatedBy),
         tostring(rj1.dominatedBy), tostring(ht2.dominatedBy), tostring(sub1.dominatedBy), tostring(sub2.dominatedBy))
+end)
+
+--------------------------------------------------------------------------------
+-- 22 (T67, P23, review A15's R41 gap): ReadSpell -- a spell outside the book
+-- -- carries the last readable text through a secret description as the
+-- scan does, and the tooltip block then says it was read before combat; a
+-- spell never read before the fight has nothing to carry and stays blank
+--------------------------------------------------------------------------------
+-- two flyout rows (never listed by the scan, read by id alone), each with a
+-- description the stub makes secret in combat, as it does 5185's
+local function SecretInCombat(text)
+    return function()
+        if S.inCombat then return S.Secret() end
+        return text
+    end
+end
+S.AddSpell(90094, "FlyoutLink", "Rank 1", SecretInCombat("Heals a friendly target for 60 to 80."),
+    { cast = 1500, cost = 30, level = 1, itemType = Enum.SpellBookItemType.Flyout })
+S.AddSpell(90095, "FlyoutLater", "Rank 1", SecretInCombat("Heals a friendly target for 30 to 40."),
+    { cast = 1500, cost = 20, level = 1, itemType = Enum.SpellBookItemType.Flyout })
+T38("ReadSpell keeps a spell outside the book readable in combat, read before combat", function()
+    S.inCombat = false
+    local before = Book:ReadSpell(90094)
+    S.inCombat = true
+    local first = Book:ReadSpell(90094)
+    local second = Book:ReadSpell(90094)
+    local lines = MD.SpellTip:Lines(90094) or {}
+    local never = Book:ReadSpell(90095)
+    S.inCombat = false
+    local after = Book:ReadSpell(90094)
+
+    local function Kept(e)
+        return e ~= nil and e.descState == "secret" and e.stale == true and e.desc == before.desc
+            and e.parsed == before.parsed and ApproxEq(e.value, before.value) and ApproxEq(e.perMana, before.perMana)
+    end
+    local said = false
+    for _, line in ipairs(lines) do
+        if line[1] == "Text read before combat" then said = true end
+    end
+    local good = FindEntry(Book:Get(), 90094) == nil and before ~= nil and before.descState == "ok"
+        and not before.stale and ApproxEq(before.value, 70)
+        and Kept(first) and Kept(second) and said
+        and never ~= nil and never.descState == "secret" and never.value == nil and not never.stale
+        and after ~= nil and after.descState == "ok" and not after.stale
+    return good, string.format("before=%s/%s first=%s/%s/%s second=%s/%s said=%s never=%s/%s after=%s/%s",
+        tostring(before and before.descState), tostring(before and before.value),
+        tostring(first and first.descState), tostring(first and first.stale), tostring(first and first.value),
+        tostring(second and second.stale), tostring(second and second.value), tostring(said),
+        tostring(never and never.descState), tostring(never and never.value),
+        tostring(after and after.descState), tostring(after and after.stale))
 end)
 
 print(string.format("\n%d ok, %d failed", ok, #fails))

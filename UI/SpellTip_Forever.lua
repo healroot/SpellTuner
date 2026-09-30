@@ -15,18 +15,18 @@
 -- arguments, so the tooltip's default gold is never inherited.
 local _, MD = ...
 local Book = MD.Book
+-- T67 (P23, review A13): the words -- per mana, per second, casts, the
+-- value's parts, the crit range -- are Spells/Words.lua's, shared with the
+-- Spells pane; this file picks the block's style (spec 5.x) and colours.
+local Words = MD.Words
 
 MD.SpellTip = MD.SpellTip or {}
 local SpellTip = MD.SpellTip
 
--- Facts: vanilla's crit rule (1.5x); Forever's own is UNVERIFIED (HoTs crit
--- since 70009, REFERENCES-FOREVER.md sec4, amount not stated). T12 checks it
--- against a landed heal above this range's top.
-local CRIT_MULT = 1.5
 -- Book's own global cooldown (Spells/Book.lua's GCD): an Other spell's
 -- interval for casts to OOM, which Book:Rows never fills for a kindless
 -- family.
-local GCD = 1.5
+local GCD = Words.GCD
 
 --------------------------------------------------------------------------------
 -- Colours: the theme's tokens (UI/Theme_Forever.lua's UI.TEXT, 4.1), else the
@@ -58,26 +58,10 @@ local function Single(l, tok)
 end
 
 -- A number that is nil renders "-", never 0 (CLAUDE.md/this task's Rules).
-local function Num(v, decimals)
-    if type(v) ~= "number" then return "-" end
-    if v ~= v then return "-" end -- NaN, never trusted as a number to show
-    if decimals then return string.format("%." .. decimals .. "f", v) end
-    return tostring(math.floor(v + 0.5))
-end
+local Num = Words.Num
 
 local function Casts(n)
-    if n == math.huge then return "inf" end
-    return Num(n, 0)
-end
-
--- The relevant half of the entry's own parsed description -- read fresh from
--- entry.parsed rather than from entry.min/max/over/dur, because a tick shape
--- (Tranquility) and an absorb both leave those four nil and would otherwise
--- be indistinguishable.
-local function PartOf(entry, kind)
-    if type(entry.parsed) ~= "table" then return nil end
-    if kind == "damage" then return entry.parsed.damage end
-    return entry.parsed.heal
+    return Words.Casts(n, "short")
 end
 
 --------------------------------------------------------------------------------
@@ -122,29 +106,15 @@ end
 --------------------------------------------------------------------------------
 
 -- Per mana -- review R13: a Rage / Focus / Energy cost is no mana, and named
--- (Book's own word, one of three fixed ASCII words).
+-- (Book's own word, one of three fixed ASCII words). Per second: a plain
+-- number for a cast, the GCD or a hybrid; "over N s" when the interval is
+-- the spell's own duration. Both Spells/Words.lua's "tip" style (5.1).
 local function PerManaText(entry)
-    if entry.perMana then return Num(entry.perMana, 2) end
-    if entry.cost and type(entry.cost.power) == "string" and type(entry.cost.powerAmount) == "number" then
-        return "no mana (" .. Num(entry.cost.powerAmount) .. " " .. entry.cost.power .. ")"
-    end
-    if entry.costState == "free" then return "free" end
-    if entry.cost and entry.cost.percent then return Num(entry.cost.percent, 0) .. "% of base mana" end
-    return "cost unknown"
+    return Words.PerMana(entry, "tip")
 end
 
--- Per second: a plain number for a cast, the GCD or a hybrid (the game's
--- own cast line already says which, 5.1); "over N s" when the interval is
--- the spell's own duration -- a HoT with no direct part, or a channel. An
--- absorb has no range and no duration either, and is one instant effect
--- (Book's IntervalFor), never "over".
 local function PerSecText(entry)
-    if not (entry.perSec and entry.interval) then return "-" end
-    local isAbsorb = type(entry.parsed) == "table" and entry.parsed.absorb ~= nil
-    if entry.castKind == "channeled" or (entry.min == nil and entry.max == nil and not isAbsorb) then
-        return Num(entry.perSec, 1) .. " over " .. Num(entry.interval, 0) .. " s"
-    end
-    return Num(entry.perSec, 1)
+    return Words.PerSec(entry, nil, "tip")
 end
 
 -- The clock's modelled pool when it is below its max, else nil (5.1: at full
@@ -183,20 +153,16 @@ local function HasManaCost(entry)
     return type(cost) == "table" and cost.power == nil and type(cost.amount) == "number" and cost.amount > 0
 end
 
--- The known rank that dominates `entry` (Book's own Pareto rule on per mana
--- and per second): the suggested rank when it does, else the best per mana.
+-- The known rank that dominates `entry`: Book's own entry.dominatedBy
+-- (Spells/RankRules.lua's rule, T67 -- this file no longer re-runs it), a
+-- spell id looked up among the family's ranks.
 local function Dominator(family, entry)
-    local function Beats(e)
-        return e ~= entry and e.known and e.perMana and e.perSec and entry.perMana and entry.perSec
-            and e.perMana >= entry.perMana and e.perSec >= entry.perSec
-            and (e.perMana > entry.perMana or e.perSec > entry.perSec)
-    end
-    if family.suggested and Beats(family.suggested) then return family.suggested end
-    local best
+    local id = entry.dominatedBy
+    if id == nil then return nil end
     for _, e in ipairs(family.ranks) do
-        if Beats(e) and (not best or e.perMana > best.perMana) then best = e end
+        if e.id == id then return e end
     end
-    return best
+    return nil
 end
 
 -- The first fact: which rank, never "press" (5.1).
@@ -221,36 +187,13 @@ end
 -- The detail lines
 --------------------------------------------------------------------------------
 
--- The value by shape (5.2-5.4): a direct range, a hybrid's hit / over time /
--- total, a tick the text states, an absorb. A HoT with no stated tick adds
--- nothing here: its amount is the game's own description. Answers whether a
--- crit range was given, for the one multiplier line.
+-- The value by shape (5.2-5.4): Spells/Words.lua's "tip" parts, each a pair
+-- in the block's colours. Answers whether a crit range was given, for the one
+-- multiplier line.
 local function ValueLines(out, entry, kind)
-    local part = PartOf(entry, kind)
-    if part == nil then
-        if kind == "heal" and type(entry.parsed) == "table" and entry.parsed.absorb ~= nil then
-            out[#out + 1] = Pair("Absorbs", Num(entry.parsed.absorb))
-        end
-        return false
-    end
-    if part.tick ~= nil and part.periodDur ~= nil then
-        out[#out + 1] = Pair("Ticks", Num(part.tick) .. " every " .. Num(part.period) .. " s for "
-            .. Num(part.periodDur) .. " s")
-        return false
-    end
-    if part.min ~= nil and part.max ~= nil then
-        local critRange = Num(part.min * CRIT_MULT) .. " - " .. Num(part.max * CRIT_MULT)
-        if part.over ~= nil and part.dur ~= nil then
-            out[#out + 1] = Pair("Hit", "avg " .. Num((part.min + part.max) / 2) .. ", crit " .. critRange)
-            out[#out + 1] = Pair("Over time", Num(part.over) .. " over " .. Num(part.dur) .. " s")
-            out[#out + 1] = Pair("Total", Num(entry.value))
-        else
-            out[#out + 1] = Pair("Average", Num(entry.value) .. " (" .. Num(part.min) .. " - " .. Num(part.max) .. ")")
-            out[#out + 1] = Pair("Crit", critRange)
-        end
-        return true
-    end
-    return false
+    local parts, crit = Words.Value(entry, kind, "tip")
+    for _, p in ipairs(parts) do out[#out + 1] = Pair(p[1], p[2]) end
+    return crit
 end
 
 -- Every known rank with a value, this one marked, when there are two or more
@@ -319,15 +262,16 @@ end
 -- lines after it when `detail` is true. `source` "macro" marks the header.
 -- A spell in the player's book whose family has a kind; a book spell with no
 -- kind (5.4b); else Book:ReadSpell(id) when THAT has a value; else nil.
--- T28: the outcome is kept in SpellTip.lastOutcome (only there: a second
--- return would reach every caller that passes Lines' result on), for
+-- T28 / T67 (P23, review A13): the second return is the outcome, for
 -- /st tooltip why: "block", "not in book" (an id the book does not list
 -- and Book:ReadSpell cannot value) or "no value" (a book spell with no
--- amount to show and no mana cost), "no id" for anything but a number.
+-- amount to show and no mana cost), "no id" for anything but a number. It
+-- was a field (SpellTip.lastOutcome) until T67, which any caller -- the
+-- Spells pane's rank-row hover -- overwrote; a return reaches only the
+-- caller that asked.
 function SpellTip:Lines(id, detail, source)
     if type(id) ~= "number" then
-        SpellTip.lastOutcome = "no id"
-        return nil
+        return nil, "no id"
     end
 
     local book = Book:Get()
@@ -337,17 +281,14 @@ function SpellTip:Lines(id, detail, source)
 
     if family and not family.kind then
         local other = OtherLines(entry, family, source)
-        SpellTip.lastOutcome = other and "block" or "no value"
-        return other
+        return other, other and "block" or "no value"
     end
     if not family then
         entry = Book:ReadSpell(id)
     end
     if not entry or entry.value == nil then
-        SpellTip.lastOutcome = inBook and "no value" or "not in book"
-        return nil
+        return nil, inBook and "no value" or "not in book"
     end
-    SpellTip.lastOutcome = "block"
 
     local kind = family and family.kind or entry.kind
 
@@ -356,7 +297,7 @@ function SpellTip:Lines(id, detail, source)
     local crit = ValueLines(more, entry, kind)
     if crit then
         -- "assumed", once, and only here (5.1)
-        more[#more + 1] = Pair("Crit multiplier", "x" .. Num(CRIT_MULT, 1) .. ", not measured", "label", "muted")
+        more[#more + 1] = Pair("Crit multiplier", Words.CritNote(), "label", "muted")
     end
     if family then
         RankLines(more, family, entry)
@@ -385,7 +326,7 @@ function SpellTip:Lines(id, detail, source)
     if detail then
         for _, line in ipairs(more) do lines[#lines + 1] = line end
     end
-    return lines
+    return lines, "block"
 end
 
 -- Writes Lines' result into a tooltip, colours passed as arguments.
@@ -450,13 +391,12 @@ local function OnSpell(tt, id, source)
     end
 
     -- The builder never raises into the game's tooltip.
-    SpellTip.lastOutcome = nil
-    local ok, lines = pcall(SpellTip.Lines, SpellTip, id, detail, source)
+    local ok, lines, outcome = pcall(SpellTip.Lines, SpellTip, id, detail, source)
     if not ok then
         MD:Debug("other", "spell tooltip for %s failed: %s", tostring(id), tostring(lines))
         return false, "error"
     end
-    if type(lines) ~= "table" then return false, SpellTip.lastOutcome or "no value" end
+    if type(lines) ~= "table" then return false, outcome or "no value" end
 
     tt._spellTipId = id
     tt._spellTipDetail = detail

@@ -24,6 +24,10 @@
 -- the cursor); the widget toolkit is not a client call (CLAUDE.md, T1b).
 local _, MD = ...
 local UI = MD.UI
+-- T67 (P23, review A13): how a rank's cost, cast, per second, casts and
+-- value are said is Spells/Words.lua's, shared with the spell tooltip's
+-- block; this file picks the styles of 3.5 / 3.6 and the colours.
+local Words = MD.Words
 
 local SpellsPane = {}
 MD.SpellsPane = SpellsPane
@@ -65,11 +69,7 @@ local RESET = "|r"
 local Esc = MD.Text.EscASCII
 
 -- A number that is nil renders "-", never 0 (CLAUDE.md).
-local function Num(v, decimals)
-    if type(v) ~= "number" or v ~= v then return "-" end
-    if decimals then return string.format("%." .. decimals .. "f", v) end
-    return tostring(math.floor(v + 0.5))
-end
+local Num = Words.Num
 
 local function Book() return MD.Book end
 local function Tabs() return MD.Tabs end
@@ -101,29 +101,13 @@ end
 --------------------------------------------------------------------------------
 -- Review R13: a spell that costs Rage / Focus / Energy costs no mana; its
 -- own cost is named ("10 Rage") rather than read as mana or called "free".
-local function OtherPowerText(e)
-    if e.cost and type(e.cost.power) == "string" and type(e.cost.powerAmount) == "number" then
-        return Num(e.cost.powerAmount) .. " " .. e.cost.power
-    end
-    return nil
-end
-
+-- The Mana and Cast cells: Spells/Words.lua's "cell" style (3.5).
 local function ManaCellText(e)
-    local other = OtherPowerText(e)
-    if other then return other end
-    if e.costState == "free" then return "free" end
-    if e.cost then
-        if type(e.cost.amount) == "number" then return Num(e.cost.amount) end
-        if type(e.cost.percent) == "number" then return Num(e.cost.percent, 0) .. "%" end
-    end
-    return "-"
+    return Words.Cost(e, "cell")
 end
 
 local function CastCellText(e)
-    if e.castKind == "instant" then return "inst" end
-    if e.castKind == "channeled" then return "chan" end
-    if type(e.cast) == "number" then return Num(e.cast, 1) .. "s" end
-    return "-"
+    return Words.Cast(e, "cell")
 end
 
 local function Pool()
@@ -136,24 +120,13 @@ end
 -- Export: the probe's dump block format, so tools/refcheck.py reads it the
 -- way it reads a probe report. Scope: the whole book (3.6).
 --------------------------------------------------------------------------------
+-- The export's cost and cast: Spells/Words.lua's "export" style (3.6).
 local function ExportCostText(e)
-    local other = OtherPowerText(e)
-    if other then return other end
-    if e.costState == "free" then return "free" end
-    if e.cost then
-        if type(e.cost.amount) == "number" then return Num(e.cost.amount) .. " Mana" end
-        if type(e.cost.percent) == "number" then return Num(e.cost.percent, 0) .. "% of base mana" end
-    end
-    return "unknown"
+    return Words.Cost(e, "export")
 end
 
 local function ExportCastText(e)
-    if e.castKind == "instant" then return "Instant" end
-    if e.castKind == "channeled" then return "Channeled" end
-    if e.castKind == "cast" and type(e.cast) == "number" then
-        return string.format("%.1f sec cast", e.cast)
-    end
-    return "unknown"
+    return Words.Cast(e, "export")
 end
 
 -- Review B20: the character line's name and realm come from the client like
@@ -231,9 +204,7 @@ local CARD_PAIR = 17
 local CARD_COL = 262
 local CARD_LABEL_W = 70
 local TIP_GAP = 6           -- the row tooltip's distance from the row
-local CRIT_MULT = 1.5       -- vanilla's rule, UNVERIFIED on Forever (UI/SpellTip_Forever.lua)
-local GCD = 1.5             -- Spells/Book.lua's own
-local SUGGESTED_RULE = "Highest heal per mana among the ranks nothing beats on both per mana and per second, with at least 40% of your highest rank's heal."
+local SUGGESTED_RULE = Words.SuggestedRule() -- the floor is MD.Rules.SUGGESTED_FLOOR (T67)
 local GAP_TEXT = 'not in your spellbook - untrained, or hidden by "show all ranks"'
 local FOOTER_TEXT = "Values come from the spell's own text. ~ = modelled."
 
@@ -279,32 +250,16 @@ local function Rep(fam)
     return fam.maxKnown or (fam.ranks and fam.ranks[1])
 end
 
-local function PartOf(e, kind)
-    if type(e) ~= "table" or type(e.parsed) ~= "table" then return nil end
-    if kind == "damage" then return e.parsed.damage end
-    return e.parsed.heal
-end
+local PartOf = Words.PartOf
 
 -- "2.0 s cast", "instant", "channeled"; nil when the book has no cast.
 local function CastWord(e)
-    if not e then return nil end
-    if e.castKind == "instant" then return "instant" end
-    if e.castKind == "channeled" then return "channeled" end
-    if type(e.cast) == "number" then return string.format("%.1f s cast", e.cast) end
-    return nil
+    return Words.Cast(e, "phrase")
 end
 
 -- A cost in words: "25 mana", "free", "5% of base mana", "10 Rage", "-".
 local function CostWord(e)
-    if not e then return "-" end
-    local other = OtherPowerText(e)
-    if other then return other end
-    if e.costState == "free" then return "free" end
-    if e.cost then
-        if type(e.cost.amount) == "number" then return Num(e.cost.amount) .. " mana" end
-        if type(e.cost.percent) == "number" then return Num(e.cost.percent, 0) .. "% of base mana" end
-    end
-    return "-"
+    return Words.Cost(e, "card")
 end
 
 -- 1. The header's second line, by the family's shape (Book's family.shape).
@@ -392,9 +347,7 @@ local function FullPool(pool)
 end
 
 local function CastsWord(n)
-    if n == math.huge then return "inf" end
-    if type(n) == "number" then return Num(n, 0) end
-    return "-"
+    return Words.Casts(n, "short")
 end
 
 --------------------------------------------------------------------------------
@@ -588,21 +541,7 @@ end
 -- 4. The rank card
 --------------------------------------------------------------------------------
 local function PerSecWord(e, kind)
-    local part = PartOf(e, kind)
-    local muted = Hex("muted", "|cff7a7a7a")
-    if type(e.perSec) ~= "number" then return "-" end
-    local base = Num(e.perSec, 1) .. " "
-    if e.castKind == "channeled" then
-        return base .. muted .. "over the " .. Num(e.interval, 0) .. " s channel" .. RESET
-    end
-    local isAbsorb = type(e.parsed) == "table" and e.parsed.absorb ~= nil and part == nil
-    if isAbsorb or (part and (part.min ~= nil or part.max ~= nil)) then
-        if e.castKind == "cast" and type(e.cast) == "number" and e.cast >= GCD then
-            return base .. muted .. string.format("over a %.1f s cast", e.cast) .. RESET
-        end
-        return base .. muted .. string.format("over the %.1f s global cooldown", GCD) .. RESET
-    end
-    return base .. muted .. "over its " .. Num(e.interval, 0) .. " s" .. RESET
+    return Words.PerSec(e, kind, "card", { muted = Hex("muted", "|cff7a7a7a"), reset = RESET })
 end
 
 -- The label/value pairs for one rank, by shape: { {label, value}, ... }.
@@ -611,35 +550,11 @@ local function CardPairs(fam, e, pool)
     local function P(l, v) out[#out + 1] = { l, v } end
     local kind = fam.kind
     if kind then
-        local part = PartOf(e, kind)
-        local valueWord = (kind == "damage") and "Damage" or "Heals"
-        local muted = Hex("muted", "|cff7a7a7a")
-        if part == nil and kind == "heal" and type(e.parsed) == "table" and e.parsed.absorb ~= nil then
-            P("Absorbs", Num(e.parsed.absorb))
-        elseif part and part.min ~= nil and part.max ~= nil then
-            local crit = Num(part.min * CRIT_MULT) .. " - " .. Num(part.max * CRIT_MULT) .. " "
-                .. muted .. "(x" .. Num(CRIT_MULT, 1) .. " assumed)" .. RESET
-            if part.over ~= nil and part.dur ~= nil then
-                P("Hit", Num(part.min) .. " - " .. Num(part.max))
-                P("Crit", crit)
-                P("Over time", Num(part.over) .. " over " .. Num(part.dur) .. " s")
-                P("Total", Num(e.value))
-            else
-                P(valueWord, Num(part.min) .. " - " .. Num(part.max) .. " (avg " .. Num(e.value) .. ")")
-                P("Crit", crit)
-            end
-        elseif part and part.over ~= nil and part.dur ~= nil then
-            P(valueWord, Num(part.over) .. " over " .. Num(part.dur) .. " s")
-        elseif part and part.tick ~= nil then
-            if part.periodDur ~= nil then P(valueWord, Num(e.value) .. " over " .. Num(part.periodDur) .. " s") end
-            -- only what the text states: a tick and its period, never derived
-            if part.period ~= nil then P("Ticks", Num(part.tick) .. " every " .. Num(part.period) .. " s") end
-        end
+        local parts = Words.Value(e, kind, "card", { muted = Hex("muted", "|cff7a7a7a"), reset = RESET })
+        for _, p in ipairs(parts) do P(p[1], p[2]) end
     end
     P("Cost", CostWord(e))
-    local cast = e.castKind == "cast" and type(e.cast) == "number" and string.format("%.1f s", e.cast)
-        or CastWord(e) or "-"
-    P("Cast", cast)
+    P("Cast", Words.Cast(e, "card"))
     if kind then
         P("Per mana", Num(e.perMana, 2))
         P("Per s", PerSecWord(e, kind))
@@ -656,9 +571,7 @@ local function CardPairs(fam, e, pool)
 end
 
 local function ToOOMWord(n)
-    if n == math.huge then return "never - regen keeps up" end
-    if type(n) == "number" then return Num(n, 0) .. " casts from full" end
-    return "-"
+    return Words.Casts(n, "card")
 end
 
 local function NowWord(e, pool)

@@ -941,8 +941,7 @@ end
 
 do
     -- a free Other spell: nothing SpellTuner could add
-    local lines = SpellTip:Lines(92600)
-    local outcome = SpellTip.lastOutcome
+    local lines, outcome = SpellTip:Lines(92600)
     local tt = Shown(92600, true)
     check("T37: a free Other spell gets no block",
         lines == nil and outcome == "no value" and tt:NumLines() == 0,
@@ -1032,6 +1031,53 @@ do
         and hint == "Rank 1 of 2  " .. T.disabled.hex .. "Alt|r" and altShown == 1 + #SpellTip:Lines(5185, true),
         string.format("dd=%s default=%s picked=%s ids=%s hint=%s altShown=%s", tostring(dd ~= nil),
             tostring(default), tostring(picked), table.concat(ids, ","), tostring(hint), tostring(altShown)))
+end
+
+--------------------------------------------------------------------------------
+-- T67 (P23, review A13): Lines answers `lines, outcome`; the outcome is no
+-- longer a field any caller overwrites, so a rank-row hover in the Spells
+-- pane (which builds the block through Lines) leaves /st tooltip why naming
+-- the last macro hover, and SpellTip.lastOutcome is gone
+--------------------------------------------------------------------------------
+do
+    MacroTooltip(S.MacroDataUntyped(424242, 0), nil)
+    local why1 = Why()
+
+    -- the rank-row hover: Overview -> Whole book, Healing Touch rank 1
+    MD:SelectView("spells", "overview")
+    if MD.SpellsPane.SetOverviewMode then MD.SpellsPane:SetOverviewMode("book") end
+    local pane
+    for _, f in ipairs(S.allFrames) do if f.spellsBook then pane = f end end
+    local rowData
+    for _, r in ipairs(pane and pane.lastRows or {}) do
+        if r.kind == "rank" and r.entry.id == 5185 then rowData = r end
+    end
+    local rowFrame
+    for _, f in ipairs(S.allFrames) do
+        if f.cells and rowData and f.data == rowData then rowFrame = f end
+    end
+    GameTooltip.lines = nil
+    local enter = rowFrame and rowFrame:GetScript("OnEnter")
+    if enter then enter(rowFrame) end
+    local blocks = 0
+    for _, line in ipairs(GameTooltip.lines or {}) do if line[1] == "SpellTuner" then blocks = blocks + 1 end end
+    local leave = rowFrame and rowFrame:GetScript("OnLeave")
+    if leave then leave(rowFrame) end
+    local fieldAfterHover = SpellTip.lastOutcome
+
+    local why2 = Why()
+    local _, blockOutcome = SpellTip:Lines(5185)
+    local _, noIdOutcome = SpellTip:Lines("x")
+    local _, notInBook = SpellTip:Lines(424242)
+    check("T67: why after a rank-row hover still names the last macro hover",
+        enter ~= nil and blocks == 1 and why2 == why1
+        and Has(why2, "first line: type 0 id 424242 -> not in book")
+        and fieldAfterHover == nil and SpellTip.lastOutcome == nil
+        and blockOutcome == "block" and noIdOutcome == "no id"
+        and notInBook == "not in book",
+        string.format("hovered=%s blocks=%d same=%s lastOutcome=%s outcomes=%s/%s/%s why=%s",
+            tostring(enter ~= nil), blocks, tostring(why2 == why1), tostring(fieldAfterHover),
+            tostring(blockOutcome), tostring(noIdOutcome), tostring(notInBook), why2))
 end
 
 print(string.format("\n%d ok, %d failed", ok, #fails))
