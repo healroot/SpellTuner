@@ -3,6 +3,9 @@
 -- T9 (docs/tasks/T9-spell-tooltip.md): the SpellTuner block on every spell
 -- tooltip (UI/SpellTip_Forever.lua) through Client/API_Forever.lua's
 -- MD.API.OnSpellTooltip and the stub's TooltipDataProcessor. Forever only.
+-- T37 (docs/SPEC-forever-ui.md 5.1-5.4b, 5.6): the block's new shapes --
+-- SpellTip:Lines(id, detail, source) answering {l, r, lr,lg,lb, rr,rg,rb},
+-- the spacer, the plain block and the detail lines behind the key.
 HARNESS_FLAVOUR = "forever"
 
 local here = arg[0]:match("^(.*)/[^/]+$")
@@ -81,6 +84,27 @@ S.AddSpell(92096, "AbsorbCast", "Rank 1",
     function() return "Shields the target, absorbing 300 damage." end,
     { cast = 1500, cost = 45, level = 1 })
 
+-- T37 (docs/SPEC-forever-ui.md 5.4): a hybrid damage spell, two ranks -- the
+-- probe's own Moonfire R1 text and the spec's R2 (11 to 15, then 24 over 12).
+S.AddSpell(92400, "Moonfire", "Rank 1",
+    function() return "Burns the enemy for 9 to 12 Arcane damage and then an additional 12 Arcane damage over 9 sec." end,
+    { cast = 0, cost = 25, level = 4 })
+S.AddSpell(92401, "Moonfire", "Rank 2",
+    function() return "Burns the enemy for 11 to 15 Arcane damage and then an additional 24 Arcane damage over 12 sec." end,
+    { cast = 0, cost = 50, level = 10 })
+
+-- T37 (5.4b): an Other spell (no heal, no damage in its text: m2's own Mark
+-- of the Wild texts) with a mana cost, and a free Other spell.
+S.AddSpell(92500, "Mark of the Wild", "Rank 1",
+    function() return "Increases the friendly target's armor by 34 for 1 |4hour:hrs;." end,
+    { cast = 0, cost = 20, level = 1 })
+S.AddSpell(92501, "Mark of the Wild", "Rank 2",
+    function() return "Increases the friendly target's armor by 88 and all attributes by 3 for 1 |4hour:hrs;." end,
+    { cast = 0, cost = 50, level = 10 })
+S.AddSpell(92600, "Bear Form", nil,
+    function() return "Shapeshift into a bear, increasing melee attack power by 120." end,
+    { cast = 0, noCost = true, level = 10 })
+
 --------------------------------------------------------------------------------
 -- helpers
 --------------------------------------------------------------------------------
@@ -114,6 +138,34 @@ local function FindLine(lines, leftSubstring)
         if type(line[1]) == "string" and line[1]:find(leftSubstring, 1, true) then return line end
     end
     return nil
+end
+
+-- T37: the line whose left side is exactly `left`.
+local function LineAt(lines, left)
+    for i, line in ipairs(lines or {}) do
+        if line[1] == left then return line, i end
+    end
+    return nil
+end
+
+-- T37: the colours of theme token `name` as three numbers.
+local T = MD.UI and MD.UI.TEXT or {}
+local function IsColour(r, g, b, name)
+    local c = T[name]
+    return c ~= nil and ApproxEq(r, c[1], 1e-3) and ApproxEq(g, c[2], 1e-3) and ApproxEq(b, c[3], 1e-3)
+end
+local function Gold(r, g, b)
+    return type(r) == "number" and ApproxEq(r, 1, 0.02) and type(g) == "number" and g > 0.78 and g < 0.84
+        and ApproxEq(b, 0, 0.02)
+end
+local function HasGoldText(text)
+    local lower = text:lower()
+    return lower:find("ffcc00", 1, true) ~= nil or lower:find("ffd100", 1, true) ~= nil
+end
+local function Count(lines, left)
+    local n = 0
+    for _, line in ipairs(lines or {}) do if line[1] == left then n = n + 1 end end
+    return n
 end
 
 local function AsciiNoBarePipe(text)
@@ -173,118 +225,135 @@ do
 end
 
 --------------------------------------------------------------------------------
--- 3: every number in the block is the book's
+-- 3: every number in the block is the book's (T37: the plain block's four
+-- facts, the value and crit behind the key)
 --------------------------------------------------------------------------------
 do
     local book = Book:Get()
     local htR1 = book.spells[5185]
-    local lines = SpellTip:Lines(5185)
+    local lines = SpellTip:Lines(5185, true)
 
-    local valueLine = lines[2]
-    local avgGood = valueLine[2] == "avg " .. tostring(math.floor(htR1.value + 0.5))
+    local average = LineAt(lines, "Average")
+    local avgGood = average ~= nil
+        and average[2] == string.format("%d (%d - %d)", math.floor(htR1.value + 0.5), htR1.min, htR1.max)
 
-    local critLine = FindLine(lines, "Crit ")
+    local critLine = LineAt(lines, "Crit")
     local critGood = critLine ~= nil
-        and critLine[1] == string.format("Crit %d - %d",
+        and critLine[2] == string.format("%d - %d",
             math.floor(htR1.min * 1.5 + 0.5), math.floor(htR1.max * 1.5 + 0.5))
 
-    local perManaLine = FindLine(lines, "Per mana")
+    local perManaLine = LineAt(lines, "Per mana")
     local perManaGood = perManaLine ~= nil and perManaLine[2] == string.format("%.2f", htR1.perMana)
 
-    local perSecLine = FindLine(lines, "Per second")
-    local perSecGood = perSecLine ~= nil
-        and perSecLine[2] == string.format("%.1f (%.1f sec cast)", htR1.perSec, htR1.interval)
+    local perSecLine = LineAt(lines, "Per second")
+    local perSecGood = perSecLine ~= nil and perSecLine[2] == string.format("%.1f", htR1.perSec)
 
-    local castsLine = FindLine(lines, "Casts to OOM")
+    local castsLine = LineAt(lines, "Casts to OOM")
     local expectCasts
     if htR1.casts == math.huge then expectCasts = "inf"
-    else expectCasts = tostring(math.floor(htR1.casts + 0.5)) end
+    else expectCasts = tostring(math.floor(htR1.casts + 0.5)) .. " full" end
     local castsGood = castsLine ~= nil and castsLine[2] == expectCasts
 
     check("every number in the block is the book's",
         avgGood and critGood and perManaGood and perSecGood and castsGood,
         string.format("avg=%s crit=%s perMana=%s perSec=%s casts=%s",
-            tostring(avgGood), tostring(critGood), tostring(perManaGood), tostring(perSecGood), tostring(castsGood)))
+            tostring(average and average[2]), tostring(critLine and critLine[2]),
+            tostring(perManaLine and perManaLine[2]), tostring(perSecLine and perSecLine[2]),
+            tostring(castsLine and castsLine[2])))
 end
 
 --------------------------------------------------------------------------------
--- 4: a lower rank is compared with the highest known
+-- 4: every known rank is compared behind the key, this one marked (T37: the
+-- rank rows replace the "vs Rank M" line)
 --------------------------------------------------------------------------------
 do
     local book = Book:Get()
     local htR1, htR2 = book.spells[5185], book.spells[92002]
-    local lines = SpellTip:Lines(5185)
-    local vsLine = FindLine(lines, "vs Rank")
+    local function Row(e)
+        local casts = (e.casts == math.huge) and "inf" or tostring(e.casts)
+        return string.format("%d   %.2f per mana   %s", math.floor(e.value + 0.5), e.perMana, casts)
+    end
+    local lines = SpellTip:Lines(5185, true)
+    local this = LineAt(lines, "Rank 1 (this)")
+    local other = LineAt(lines, "Rank 2")
+    local plainHasRows = LineAt(SpellTip:Lines(5185, false), "Rank 2") ~= nil
+    local noVs = FindLine(lines, "vs Rank") == nil
 
-    local expectedValueRatio = htR1.value / htR2.value
-    local expectedCostRatio = htR1.cost.amount / htR2.cost.amount
-    local expectedRight = string.format("%.2fx the heal for %.2fx the mana", expectedValueRatio, expectedCostRatio)
-
-    -- the max rank itself carries no "vs Rank" line.
-    local maxLines = SpellTip:Lines(92002)
-    local maxHasVs = FindLine(maxLines, "vs Rank") ~= nil
-
-    check("a lower rank is compared with the highest known",
-        vsLine ~= nil and vsLine[1] == "vs Rank 2" and vsLine[2] == expectedRight and not maxHasVs,
-        string.format("vsLine=%s maxHasVs=%s", vsLine and (vsLine[1] .. " / " .. vsLine[2]) or "nil", tostring(maxHasVs)))
+    check("every known rank is compared behind the key, this one marked",
+        this ~= nil and other ~= nil and this[2] == Row(htR1) and other[2] == Row(htR2)
+        and IsColour(this[6], this[7], this[8], "text") and IsColour(other[6], other[7], other[8], "text2")
+        and not plainHasRows and noVs,
+        string.format("this=%s other=%s plainHasRows=%s noVs=%s", tostring(this and this[2]),
+            tostring(other and other[2]), tostring(plainHasRows), tostring(noVs)))
 end
 
 --------------------------------------------------------------------------------
--- 5: the suggested rank is named on itself and on the others
+-- 5: the suggested rank comes first: named on itself, on the others, and a
+-- dominated rank names what dominates it
 --------------------------------------------------------------------------------
 do
     local book = Book:Get()
     local sub1, sub2 = book.spells[92070], book.spells[92071]
-    -- SubFamily: R1 is far more mana-efficient and still worth >= 40% of R2's
-    -- value, so R1 (not the max rank) is suggested (tools/bookcheck.lua item 7).
     local suggestedIsR1 = sub1.suggested == true and sub2.suggested ~= true
 
     local r1Lines = SpellTip:Lines(92070)
     local r2Lines = SpellTip:Lines(92071)
-    local onItself = FindLine(r1Lines, "Suggested rank") ~= nil
-    local onTheOther = FindLine(r2Lines, "Suggested: Rank 1")
-    local onTheOtherGood = onTheOther ~= nil
-        and onTheOther[2] == string.format("%.2f per mana", sub1.perMana)
+    local onItself = r1Lines[2][1] == "Suggested" and r1Lines[2][2] == "this rank"
+    local onTheOther = r2Lines[2]
+    local onTheOtherGood = onTheOther[1] == "Suggested"
+        and onTheOther[2] == string.format("Rank 1 (%.2f per mana)", sub1.perMana)
+        and IsColour(onTheOther[3], onTheOther[4], onTheOther[5], "label")
+        and IsColour(onTheOther[6], onTheOther[7], onTheOther[8], "accent")
 
-    check("the suggested rank is named on itself and on the others",
-        suggestedIsR1 and onItself and onTheOtherGood,
-        string.format("suggestedIsR1=%s onItself=%s onTheOther=%s",
-            tostring(suggestedIsR1), tostring(onItself), onTheOther and onTheOther[2] or "nil"))
+    -- Healing Touch rank 2 (90-110 for 50 in 2.0 s) beats rank 1 on both
+    -- per mana and per second.
+    local htR1 = book.spells[5185]
+    local dom = SpellTip:Lines(5185)[2]
+    local domGood = htR1.dominated == true and dom[1] == "Dominated by" and dom[2] == "Rank 2"
+
+    check("the suggested rank comes first: on itself, on the others, and a dominated rank",
+        suggestedIsR1 and onItself and onTheOtherGood and domGood,
+        string.format("suggestedIsR1=%s onItself=%s/%s onTheOther=%s/%s dominated=%s/%s",
+            tostring(suggestedIsR1), tostring(r1Lines[2][1]), tostring(r1Lines[2][2]),
+            tostring(onTheOther[1]), tostring(onTheOther[2]), tostring(dom[1]), tostring(dom[2])))
 end
 
 --------------------------------------------------------------------------------
--- 6: a rank the book does not list is named
+-- 6: a rank the book does not list is named, behind the key only (T37)
 --------------------------------------------------------------------------------
 do
-    local lines = SpellTip:Lines(92010)
-    local gapLine = FindLine(lines, "not listed")
-    check("a rank the book does not list is named",
-        gapLine ~= nil and gapLine[1] == "Rank 1 not listed (untrained, or hidden - show all ranks)",
-        gapLine and gapLine[1] or "no gap line")
+    local plain = SpellTip:Lines(92010, false)
+    local detail = SpellTip:Lines(92010, true)
+    local gapLine = LineAt(detail, "Not in your book")
+    check("T37: the gap line only with the key, in muted",
+        gapLine ~= nil and gapLine[2] == "Rank 1" and LineAt(plain, "Not in your book") == nil
+        and FindLine(plain, "not listed") == nil
+        and IsColour(gapLine[3], gapLine[4], gapLine[5], "muted") and IsColour(gapLine[6], gapLine[7], gapLine[8], "muted"),
+        gapLine and (gapLine[1] .. " / " .. tostring(gapLine[2])) or "no gap line")
 end
 
 --------------------------------------------------------------------------------
--- 7: a spell not in the book still gets its own numbers
+-- 7: a spell not in the book still gets its own numbers: the header, per
+-- mana and per second (T37, 5.4), its value behind the key
 --------------------------------------------------------------------------------
 do
     local book = Book:Get()
     local notInBook = book.spells[92060] == nil
     local lines = SpellTip:Lines(92060)
-    local valueLine = lines and lines[2]
-    local hasNoFamilyLines = lines ~= nil
-        and FindLine(lines, "vs Rank") == nil
-        and FindLine(lines, "Suggested") == nil
-        and FindLine(lines, "not listed") == nil
+    local detail = SpellTip:Lines(92060, true)
+    local shape = lines ~= nil and #lines == 3 and lines[1][1] == "SpellTuner"
+        and lines[2][1] == "Per mana" and lines[3][1] == "Per second"
+    local average = LineAt(detail, "Average")
 
-    check("a spell not in the book still gets its own numbers",
-        notInBook and lines ~= nil and valueLine ~= nil
-        and valueLine[1] == "Heals 60 - 80" and hasNoFamilyLines,
-        string.format("notInBook=%s valueLine=%s hasNoFamilyLines=%s",
-            tostring(notInBook), valueLine and valueLine[1] or "nil", tostring(hasNoFamilyLines)))
+    check("a spell not in the book gets the header, per mana and per second",
+        notInBook and shape and average ~= nil and average[2] == "70 (60 - 80)"
+        and FindLine(detail, "Suggested") == nil and FindLine(detail, "Casts to OOM") == nil,
+        string.format("notInBook=%s lines=%s average=%s", tostring(notInBook),
+            tostring(lines and #lines), tostring(average and average[2])))
 end
 
 --------------------------------------------------------------------------------
--- 8: a spell with no amount gets no block
+-- 8: a spell with no amount and no cost gets no block
 --------------------------------------------------------------------------------
 do
     local lines = SpellTip:Lines(92040)
@@ -321,9 +390,13 @@ do
 end
 
 --------------------------------------------------------------------------------
--- 10: values read before combat say so
+-- 10: values read before combat say so, last in the plain block (T37: at
+-- most 5 plain lines when fresh, 6 when stale)
 --------------------------------------------------------------------------------
 do
+    local freshPlain = SpellTip:Lines(5185, false)
+    local freshCount = freshPlain and #freshPlain
+
     S.inCombat = false
     Book:MarkDirty()
     Book:Get() -- an ok, non-stale read of 5185
@@ -333,9 +406,16 @@ do
     Book:Get() -- 5185's description goes secret; the stale value is kept
     S.inCombat = false
 
-    local lines = SpellTip:Lines(5185)
-    local staleLine = FindLine(lines, "Read before combat")
-    check("values read before combat say so", staleLine ~= nil, staleLine and staleLine[1] or "no stale line")
+    local plain = SpellTip:Lines(5185, false)
+    local detail = SpellTip:Lines(5185, true)
+    local last = plain[#plain]
+    local _, staleAt = LineAt(detail, "Text read before combat")
+    check("T37: at most 5 plain lines when fresh, 6 when stale, the stale line last",
+        freshCount == 5 and #plain == 6 and last[1] == "Text read before combat" and last[2] == nil
+        and IsColour(last[3], last[4], last[5], "bad") and staleAt == #plain and #detail > #plain
+        and FindLine(freshPlain, "before combat") == nil,
+        string.format("fresh=%s stale=%d last=%s staleAt=%s detail=%d", tostring(freshCount), #plain,
+            tostring(last and last[1]), tostring(staleAt), #detail))
 
     -- leave the book clean for anything run after this.
     Book:MarkDirty()
@@ -383,111 +463,135 @@ do
 end
 
 --------------------------------------------------------------------------------
--- 12: every line is ASCII with no bare pipe
+-- 12: every line is ASCII with no bare pipe -- plain, detail and from a macro
 --------------------------------------------------------------------------------
 do
-    local ids = { 5185, 92002, 92070, 92071, 92010, 92060, 774 }
+    local ids = { 5185, 92002, 92070, 92071, 92010, 92060, 774, 92090, 92095, 92400, 92401, 92500, 92501 }
     local bad
     for _, id in ipairs(ids) do
-        local lines = SpellTip:Lines(id)
-        for _, text in ipairs(AllText(lines)) do
-            local good, why = AsciiNoBarePipe(text)
-            if not good and not bad then bad = why .. " in '" .. text .. "' (id " .. id .. ")" end
+        for _, args in ipairs({ { false }, { true }, { true, "macro" } }) do
+            local lines = SpellTip:Lines(id, args[1], args[2])
+            for _, text in ipairs(AllText(lines)) do
+                local good, why = AsciiNoBarePipe(text)
+                if not good and not bad then bad = why .. " in '" .. text .. "' (id " .. id .. ")" end
+            end
         end
     end
     check("every line is ASCII with no bare pipe", bad == nil, bad)
 end
 
 --------------------------------------------------------------------------------
--- 13 (T10): the per-second line names its interval by kind
+-- 13 (T10, T37): per second -- a plain number for a cast, the GCD or a
+-- hybrid; "over N s" for a HoT and a channel; never the cast line again
 --------------------------------------------------------------------------------
 do
     local book = Book:Get()
 
-    local castLine = FindLine(SpellTip:Lines(5185), "Per second")
-    local castGood = castLine ~= nil and castLine[2]:find(" sec cast)", 1, true) ~= nil
+    local castEntry = book.spells[5185]
+    local castLine = LineAt(SpellTip:Lines(5185), "Per second")
+    local castGood = castLine ~= nil and castLine[2] == string.format("%.1f", castEntry.perSec)
 
     local instantEntry = book.spells[92080]
-    local instantLine = FindLine(SpellTip:Lines(92080), "Per second")
+    local instantLine = LineAt(SpellTip:Lines(92080), "Per second")
     local instantGood = instantEntry ~= nil and instantEntry.castKind == "instant"
-        and instantLine ~= nil and instantLine[2] == string.format("%.1f (%.1f sec GCD)",
-            instantEntry.perSec, instantEntry.interval)
+        and instantLine ~= nil and instantLine[2] == string.format("%.1f", instantEntry.perSec)
 
     local overEntry = book.spells[774]
-    local overLine = FindLine(SpellTip:Lines(774), "Per second")
+    local overLine = LineAt(SpellTip:Lines(774), "Per second")
     local overGood = overEntry ~= nil and overEntry.min == nil and overEntry.max == nil
-        and overLine ~= nil and overLine[2] == string.format("%.1f (over %d sec)",
+        and overLine ~= nil and overLine[2] == string.format("%.1f over %d s",
             overEntry.perSec, math.floor(overEntry.interval + 0.5))
 
     local chanEntry = book.spells[92090]
-    local chanLine = FindLine(SpellTip:Lines(92090), "Per second")
+    local chanLine = LineAt(SpellTip:Lines(92090), "Per second")
     local chanGood = chanEntry ~= nil and chanEntry.castKind == "channeled"
-        and chanLine ~= nil and chanLine[2] == string.format("%.1f (%d sec channel)",
+        and chanLine ~= nil and chanLine[2] == string.format("%.1f over %d s",
             chanEntry.perSec, math.floor(chanEntry.interval + 0.5))
 
-    check("the per-second line names its interval by kind",
-        castGood and instantGood and overGood and chanGood,
-        string.format("cast=%s instant=%s over=%s channel=%s",
+    local mfLine = LineAt(SpellTip:Lines(92401), "Per second")
+    local mfGood = mfLine ~= nil and mfLine[2] == "24.7"
+
+    check("per second: plain for a cast, the GCD or a hybrid, over N s for a HoT or channel",
+        castGood and instantGood and overGood and chanGood and mfGood,
+        string.format("cast=%s instant=%s over=%s channel=%s hybrid=%s",
             castLine and castLine[2] or "nil", instantLine and instantLine[2] or "nil",
-            overLine and overLine[2] or "nil", chanLine and chanLine[2] or "nil"))
+            overLine and overLine[2] or "nil", chanLine and chanLine[2] or "nil", mfLine and mfLine[2] or "nil"))
 end
 
 --------------------------------------------------------------------------------
--- 14 (T10b): an absorb's per-second line names a cast or the GCD, never over
+-- 14 (T10b, T37): an absorb's per-second line is a plain number, never over
 --------------------------------------------------------------------------------
 do
     local book = Book:Get()
 
     local absInstantEntry = book.spells[92095]
-    local absInstantLine = FindLine(SpellTip:Lines(92095), "Per second")
-    local absInstantGood = absInstantEntry ~= nil and absInstantEntry.min == nil and absInstantEntry.max == nil
-        and absInstantEntry.castKind == "instant"
-        and absInstantLine ~= nil and absInstantLine[2]:find(" sec GCD)", 1, true) ~= nil
-        and absInstantLine[2]:find("over", 1, true) == nil
+    local absInstantLine = LineAt(SpellTip:Lines(92095), "Per second")
+    local absInstantGood = absInstantEntry ~= nil and absInstantEntry.castKind == "instant"
+        and absInstantLine ~= nil and absInstantLine[2] == string.format("%.1f", absInstantEntry.perSec)
 
     local absCastEntry = book.spells[92096]
-    local absCastLine = FindLine(SpellTip:Lines(92096), "Per second")
-    local absCastGood = absCastEntry ~= nil and absCastEntry.min == nil and absCastEntry.max == nil
-        and absCastEntry.castKind == "cast"
-        and absCastLine ~= nil and absCastLine[2]:find(" sec cast)", 1, true) ~= nil
-        and absCastLine[2]:find("over", 1, true) == nil
+    local absCastLine = LineAt(SpellTip:Lines(92096), "Per second")
+    local absCastGood = absCastEntry ~= nil and absCastEntry.castKind == "cast"
+        and absCastLine ~= nil and absCastLine[2] == string.format("%.1f", absCastEntry.perSec)
 
-    check("an absorb's per-second line names a cast or the GCD, never over",
-        absInstantGood and absCastGood,
-        string.format("instant=%s cast=%s",
-            absInstantLine and absInstantLine[2] or "nil", absCastLine and absCastLine[2] or "nil"))
+    local absorbs = LineAt(SpellTip:Lines(92095, true), "Absorbs")
+
+    check("an absorb's per-second line is a plain number, never over",
+        absInstantGood and absCastGood and absorbs ~= nil and absorbs[2] == "120",
+        string.format("instant=%s cast=%s absorbs=%s",
+            absInstantLine and absInstantLine[2] or "nil", absCastLine and absCastLine[2] or "nil",
+            tostring(absorbs and absorbs[2])))
 end
 
 --------------------------------------------------------------------------------
--- 15 (review R31): casts to OOM says it counts from a full pool, and does --
--- whatever another pool has been counted against on the side
+-- 15 (review R31, T37): casts to OOM counts from a full pool, and adds
+-- "~N now" in mana blue only while the modelled pool is below its max
 --------------------------------------------------------------------------------
 do
     local book = Book:Get()
-    local htR1 = book.spells[5185]
-    local fromFull = Book:CastsFor(htR1, Book:DefaultPool())
-    Book:CastsFor(htR1, { max = 1000, mana = 5, regenCasting = 0 }) -- a drained pool, counted on the side
-    local line = FindLine(SpellTip:Lines(5185), "Casts to OOM")
-    local want = (fromFull == math.huge) and "inf" or tostring(fromFull)
-    check("casts to OOM says it counts from a full pool, and does",
-        line ~= nil and line[1] == "Casts to OOM from full" and line[2] == want,
-        string.format("line=%s / %s want=%s", tostring(line and line[1]), tostring(line and line[2]), want))
+    -- SubFamily rank 2 (250 mana a cast) runs dry; Healing Touch rank 1
+    -- never does against the stub's regen.
+    local entry = book.spells[92071]
+    local fromFull = Book:CastsFor(entry, Book:DefaultPool())
+    local model = MD.Clock and MD.Clock.model
+    model:Anchor(GetTime(), model.max, "test: full")
+    local atFull = LineAt(SpellTip:Lines(92071), "Casts to OOM")
+
+    model:Anchor(GetTime(), 500, "test: drained for tipcheck")
+    local now = Book:CastsFor(entry, MD.Clock:Pool())
+    local drained = LineAt(SpellTip:Lines(92071), "Casts to OOM")
+    model:Anchor(GetTime(), model.max, "test: restored")
+
+    local want = tostring(fromFull) .. " full"
+    local wantNow = want .. ", " .. T.mana.hex .. "~" .. tostring(now) .. " now|r"
+    check("T37: casts to OOM from full, and ~N now only below max",
+        atFull ~= nil and atFull[2] == want and drained ~= nil and drained[2] == wantNow
+        and type(fromFull) == "number" and fromFull ~= math.huge and type(now) == "number" and now < fromFull,
+        string.format("full=%s drained=%s want=%s / %s", tostring(atFull and atFull[2]),
+            tostring(drained and drained[2]), want, wantNow))
 end
 
 --------------------------------------------------------------------------------
--- 16 (review R42): the crit range says its 1.5x multiplier is assumed --
--- Forever's own crit rule is UNVERIFIED (docs/REFERENCES-FOREVER.md sec4)
+-- 16 (review R42, T37): the 1.5x crit multiplier is said to be assumed,
+-- once, and only behind the key
 --------------------------------------------------------------------------------
 do
-    local critLine = FindLine(SpellTip:Lines(5185), "Crit ")
-    check("the crit range says its 1.5x multiplier is assumed",
-        critLine ~= nil and critLine[2] == "1.5x, unverified",
-        string.format("crit=%s / %s", tostring(critLine and critLine[1]), tostring(critLine and critLine[2])))
+    local plain = SpellTip:Lines(5185, false)
+    local detail = SpellTip:Lines(5185, true)
+    local mult = LineAt(detail, "Crit multiplier")
+    local hot = SpellTip:Lines(774, true)
+    check("the 1.5x crit multiplier is said to be assumed, once, behind the key",
+        mult ~= nil and mult[2] == "x1.5, not measured" and Count(detail, "Crit multiplier") == 1
+        and IsColour(mult[6], mult[7], mult[8], "muted")
+        and LineAt(plain, "Crit") == nil and LineAt(plain, "Crit multiplier") == nil
+        and LineAt(hot, "Crit") == nil and LineAt(hot, "Crit multiplier") == nil,
+        string.format("mult=%s", tostring(mult and mult[2])))
 end
 
 --------------------------------------------------------------------------------
 -- 17 (review R13): a Rage cost reads as no mana, named, never as a per-mana
--- number. Text and cost line: talentsforever's beta client 1.60.1.70009.
+-- number, and no casts to OOM. Text and cost line: talentsforever's beta
+-- client 1.60.1.70009.
 --------------------------------------------------------------------------------
 do
     S.AddSpell(92300, "Rend", "Rank 1",
@@ -497,10 +601,10 @@ do
                          requiredAuraID = 0, hasRequiredAura = false } } })
     Book:MarkDirty()
     local lines = SpellTip:Lines(92300)
-    local perMana = FindLine(lines, "Per mana")
+    local perMana = LineAt(lines, "Per mana")
     local casts = FindLine(lines, "Casts to OOM")
     check("a Rage cost reads as no mana on the tooltip, named",
-        perMana ~= nil and perMana[2] == "no mana (10 Rage)" and casts ~= nil and casts[2] == "-",
+        perMana ~= nil and perMana[2] == "no mana (10 Rage)" and casts == nil,
         string.format("perMana=%s casts=%s", tostring(perMana and perMana[2]), tostring(casts and casts[2])))
 end
 
@@ -515,9 +619,15 @@ local function SameLines(a, b)
     end
     return true
 end
-local function SpellBlock(id)
+-- T37: what a macro's tooltip should carry -- the spacer, then the spell's
+-- own plain block with "- macro" on its header (SpellTip:Lines(id, false,
+-- "macro")), written line by line the way the hook writes them.
+local function MacroBlock(id)
     local tt = CreateFrame("GameTooltip")
-    S.ShowSpellTooltip(tt, id)
+    tt:AddLine(" ")
+    for _, line in ipairs(SpellTip:Lines(id, false, "macro") or {}) do
+        if line[2] ~= nil then tt:AddDoubleLine(line[1], line[2]) else tt:AddLine(line[1]) end
+    end
     return tt
 end
 local function MacroTooltip(data, owner)
@@ -527,14 +637,14 @@ local function MacroTooltip(data, owner)
 end
 
 do
-    local want = SpellBlock(5185)
+    local want = MacroBlock(5185)
     local got = MacroTooltip({ type = MACRO, lines = { { tooltipType = 1, tooltipID = 5185 } } }, nil)
     check("a macro's tooltip gets its spell's block, from the tooltip data",
         SameLines(got, want), string.format("got=%d want=%d", got:NumLines(), want:NumLines()))
 end
 
 do
-    local want = SpellBlock(5185)
+    local want = MacroBlock(5185)
     local noSpell = { type = MACRO, lines = { { tooltipType = 0, tooltipID = 9 } } }
     S.actions[7] = { "macro", 3 }
     S.macroSpells[3] = 5185
@@ -617,7 +727,7 @@ end
 local function Has(text, part) return text:find(part, 1, true) ~= nil end
 
 do
-    local want = SpellBlock(5185)
+    local want = MacroBlock(5185)
     local typed0 = MacroTooltip(S.MacroDataUntyped(5185, 0), nil)
     local noType = MacroTooltip({ type = MACRO, lines = { { tooltipID = 5185 } } }, nil)
     check("T28: an untyped first line gives the block",
@@ -626,7 +736,7 @@ do
 end
 
 do
-    local want = SpellBlock(5185)
+    local want = MacroBlock(5185)
     S.actions[61] = { "macro", 3 }
     S.macroSpells[3] = 5185
     local tt = S.SetActionTooltip(61)          -- no Macro post-call fires, no owner
@@ -644,7 +754,7 @@ end
 do
     -- the post-call names Healing Touch rank 1, the slot rank 2: one block,
     -- the first one, whatever id the second path resolved
-    local want = SpellBlock(5185)
+    local want = MacroBlock(5185)
     S.actions[61] = { "macro", 3 }
     S.macroSpells[3] = 92002
     local tt = S.SetActionTooltip(61, { type = MACRO, lines = { { tooltipType = 1, tooltipID = 5185 } } })
@@ -703,6 +813,225 @@ do
         and Has(why3, "SetAction slot 62 -> ActionInfo error"),
         string.format("ok=%s,%s,%s,%s lines=%d why1=%s why3=%s", tostring(ok1), tostring(ok2),
             tostring(ok3), tostring(ok4), total, why1, why3))
+end
+
+--------------------------------------------------------------------------------
+-- T37 (docs/SPEC-forever-ui.md 5.1-5.4b, 5.6): the block's look, its plain /
+-- detail split, the Other block, the macro marker, the detail key
+--------------------------------------------------------------------------------
+-- A showing through the Spell post-call, with the detail key up or down.
+local function Shown(id, shift)
+    S.shift = shift == true
+    local tt = CreateFrame("GameTooltip")
+    S.ShowSpellTooltip(tt, id)
+    S.shift = false
+    return tt
+end
+local function RenderedText(tt)
+    local out = {}
+    for _, line in ipairs(tt.lines or {}) do
+        if line[1] ~= nil then out[#out + 1] = line[1] end
+        if line[2] ~= nil then out[#out + 1] = line[2] end
+    end
+    return out
+end
+
+do
+    -- the block after a spacer, its header in the accent, its pairs in the
+    -- label colour and white, every colour passed as an argument and none
+    -- of them Blizzard gold
+    local tt = Shown(5185, true)
+    local l = tt.lines or {}
+    local head, pair = l[2] or {}, l[4] or {}
+    local allColoured, gold = #l > 2, false
+    for i = 2, #l do
+        local c, rc = l[i].color, l[i].rcolor
+        if type(c) ~= "table" or type(c[1]) ~= "number" or type(c[3]) ~= "number" then allColoured = false end
+        if l[i][2] ~= nil and (type(rc) ~= "table" or type(rc[1]) ~= "number" or type(rc[3]) ~= "number") then
+            allColoured = false
+        end
+        if c and Gold(c[1], c[2], c[3]) then gold = true end
+        if rc and Gold(rc[1], rc[2], rc[3]) then gold = true end
+    end
+    for _, text in ipairs(RenderedText(tt)) do if HasGoldText(text) then gold = true end end
+    check("T37: a spacer, then the block with its colours passed and no gold",
+        l[1] ~= nil and l[1][1] == " " and l[1][2] == nil and head[1] == "SpellTuner"
+        and head.color and IsColour(head.color[1], head.color[2], head.color[3], "accent")
+        and head.rcolor and IsColour(head.rcolor[1], head.rcolor[2], head.rcolor[3], "text")
+        and pair[1] == "Per mana" and pair.color and IsColour(pair.color[1], pair.color[2], pair.color[3], "label")
+        and pair.rcolor and IsColour(pair.rcolor[1], pair.rcolor[2], pair.rcolor[3], "text")
+        and allColoured and not gold,
+        string.format("spacer=%s head=%s pair=%s allColoured=%s gold=%s", tostring(l[1] and l[1][1]),
+            tostring(head[1]), tostring(pair[1]), tostring(allColoured), tostring(gold)))
+end
+
+do
+    -- the header names the rank of the family's known ranks and the key
+    local head = SpellTip:Lines(5185)[1]
+    local maxHead = SpellTip:Lines(92002)[1]
+    check("T37: the header says Rank N of M and the detail key in the disabled colour",
+        head[1] == "SpellTuner" and head[2] == "Rank 1 of 2  " .. T.disabled.hex .. "Shift|r"
+        and maxHead[2] == "Rank 2 of 2  " .. T.disabled.hex .. "Shift|r",
+        string.format("head=%s max=%s", tostring(head[2]), tostring(maxHead[2])))
+end
+
+do
+    -- nothing the game already printed: no description range, no cast line
+    local digitsRange = "%d+ %- %d+"
+    local bad
+    for _, id in ipairs({ 5185, 92002, 92060, 92090, 92400, 92401, 774 }) do
+        for _, text in ipairs(AllText(SpellTip:Lines(id, false))) do
+            if text:find(digitsRange) or text:find("sec cast", 1, true) or text:find("GCD", 1, true) then
+                bad = bad or (tostring(id) .. ": " .. text)
+            end
+        end
+    end
+    check("T37: no range and no cast line on the plain block", bad == nil, bad)
+end
+
+do
+    -- detail lines only with the key (Shift by default), always with
+    -- ALWAYS, never with NEVER
+    local plainN = 1 + #SpellTip:Lines(5185, false)
+    local detailN = 1 + #SpellTip:Lines(5185, true)
+    local up, down = Shown(5185, false):NumLines(), Shown(5185, true):NumLines()
+    MD.db.spellTooltipDetail = "ALWAYS"
+    local always = Shown(5185, false):NumLines()
+    local alwaysHead = SpellTip:Lines(5185)[1][2]
+    MD.db.spellTooltipDetail = "NEVER"
+    local never = Shown(5185, true):NumLines()
+    MD.db.spellTooltipDetail = "SHIFT"
+    check("T37: detail lines only with the key",
+        detailN > plainN and up == plainN and down == detailN and always == detailN and never == plainN
+        and alwaysHead == "Rank 1 of 2",
+        string.format("plain=%d detail=%d up=%d down=%d always=%d never=%d alwaysHead=%s", plainN, detailN,
+            up, down, always, never, tostring(alwaysHead)))
+end
+
+do
+    -- 5.4: a hybrid's detail lines -- the hit, the over-time part, the total
+    local d = SpellTip:Lines(92401, true)
+    local hit, over, total = LineAt(d, "Hit"), LineAt(d, "Over time"), LineAt(d, "Total")
+    local sugg = SpellTip:Lines(92401)[2]
+    check("T37: a hybrid's detail is the hit, the over-time part and the total",
+        hit ~= nil and hit[2] == "avg 13, crit 17 - 23" and over ~= nil and over[2] == "24 over 12 s"
+        and total ~= nil and total[2] == "37" and LineAt(d, "Crit multiplier") ~= nil
+        and sugg[1] == "Suggested" and sugg[2]:find("^Rank 1 %(") ~= nil,
+        string.format("hit=%s over=%s total=%s suggested=%s/%s", tostring(hit and hit[2]),
+            tostring(over and over[2]), tostring(total and total[2]), tostring(sugg[1]), tostring(sugg[2])))
+end
+
+do
+    -- 5.4b: a spell with no heal and no damage: the header and casts to OOM,
+    -- no hint, the same with the key down
+    local book = Book:Get()
+    local fam = book.families["Mark of the Wild"]
+    local plain, detail = SpellTip:Lines(92501, false), SpellTip:Lines(92501, true)
+    local casts = Book:CastsFor({ cost = book.spells[92501].cost, interval = 1.5 }, Book:DefaultPool())
+    local want = (casts == math.huge) and "inf" or (tostring(casts) .. " full")
+    local tt = Shown(92501, true)
+    check("T37: an Other spell gets two lines and no hint",
+        fam ~= nil and fam.kind == nil and plain ~= nil and #plain == 2 and #detail == 2
+        and plain[1][1] == "SpellTuner" and plain[1][2] == "Rank 2 of 2"
+        and plain[2][1] == "Casts to OOM" and plain[2][2] == want and tt:NumLines() == 3,
+        string.format("kind=%s lines=%s head=%s casts=%s want=%s shown=%d", tostring(fam and fam.kind),
+            tostring(plain and #plain), tostring(plain and plain[1][2]), tostring(plain and plain[2] and plain[2][2]),
+            want, tt:NumLines()))
+end
+
+do
+    -- a free Other spell: nothing SpellTuner could add
+    local lines = SpellTip:Lines(92600)
+    local outcome = SpellTip.lastOutcome
+    local tt = Shown(92600, true)
+    check("T37: a free Other spell gets no block",
+        lines == nil and outcome == "no value" and tt:NumLines() == 0,
+        string.format("lines=%s outcome=%s shown=%d", tostring(lines), tostring(outcome), tt:NumLines()))
+end
+
+do
+    -- the macro marker: "- macro" from the source, on a macro's tooltip only
+    local head = (SpellTip:Lines(5185, false, "macro") or {})[1] or {}
+    local other = (SpellTip:Lines(92501, false, "macro") or {})[1] or {}
+    local got = MacroTooltip({ type = MACRO, lines = { { tooltipType = 1, tooltipID = 5185 } } }, nil)
+    local spell = Shown(5185, false)
+    check("T37: the macro marker",
+        head[2] == "Rank 1 of 2 - macro  " .. T.disabled.hex .. "Shift|r" and other[2] == "Rank 2 of 2 - macro"
+        and got.lines[2] ~= nil and got.lines[2][2] == head[2]
+        and spell.lines[2] ~= nil and tostring(spell.lines[2][2]):find("macro", 1, true) == nil,
+        string.format("head=%s other=%s got=%s", tostring(head[2]), tostring(other[2]),
+            tostring(got.lines[2] and got.lines[2][2])))
+end
+
+do
+    -- 5.6: the detail key down while the tooltip is up refreshes it through
+    -- the adapter, and the block is rebuilt once, with its detail lines; the
+    -- key up puts the plain block back; another key refreshes nothing
+    local entry
+    for _, c in ipairs(MD.API.Capabilities()) do if c.name == "RefreshTooltip" then entry = c end end
+    MD.db.spellTooltipDetail = "SHIFT"
+    local plainN = 1 + #SpellTip:Lines(5185, false)
+    local detailN = 1 + #SpellTip:Lines(5185, true)
+    S.shift = false
+    S.ShowSpellTooltip(GameTooltip, 5185)
+    local n0 = GameTooltip:NumLines()
+    local r0 = GameTooltip.refreshes or 0
+
+    S.shift = true
+    S.Fire("MODIFIER_STATE_CHANGED", "LSHIFT", 1)
+    local n1 = GameTooltip:NumLines()
+    local heads = Count(GameTooltip.lines, "SpellTuner")
+    -- the same showing handed to the post-call again (no clear): nothing added
+    Wrapper()(GameTooltip, { type = Enum.TooltipDataType.Spell, id = 5185 })
+    local n1b = GameTooltip:NumLines()
+
+    S.shift = false
+    S.Fire("MODIFIER_STATE_CHANGED", "LSHIFT", 0)
+    local n2 = GameTooltip:NumLines()
+    local r2 = GameTooltip.refreshes or 0
+
+    S.altDown = true
+    S.Fire("MODIFIER_STATE_CHANGED", "LALT", 1)
+    S.altDown = false
+    local r3 = GameTooltip.refreshes or 0
+
+    check("T37: the detail key refreshes the tooltip and the block is rebuilt once",
+        entry ~= nil and entry.present == true and n0 == plainN and n1 == detailN and heads == 1
+        and n1b == n1 and n2 == plainN and r2 - r0 == 2 and r3 == r2,
+        string.format("entry=%s n0=%d n1=%d heads=%d again=%d n2=%d want=%d/%d refreshes=%d,%d",
+            tostring(entry and entry.present), n0, n1, heads, n1b, n2, plainN, detailN, r2 - r0, r3 - r2))
+end
+
+do
+    -- the setting, in Settings -> General: Shift by default, Alt picked
+    MD:SelectView("settings", "general")
+    local pane
+    for _, f in ipairs(S.allFrames) do
+        if f.detailDropdown then pane = f end
+    end
+    local dd = pane and pane.detailDropdown
+    local default, picked, hint, altShown, ids = nil, false, nil, nil, {}
+    if dd then
+        default = dd:Value()
+        for i, it in ipairs(dd.items) do
+            ids[#ids + 1] = it.id
+            if it.id == "ALT" and dd.rows[i] then
+                dd.rows[i]:GetScript("OnClick")(dd.rows[i])
+                picked = MD.db.spellTooltipDetail == "ALT"
+            end
+        end
+        hint = SpellTip:Lines(5185)[1][2]
+        S.altDown = true
+        altShown = Shown(5185, false):NumLines()
+        S.altDown = false
+        MD.db.spellTooltipDetail = "SHIFT"
+    end
+    check("T37: the detail key is a Settings -> General dropdown",
+        dd ~= nil and MD.DEFAULTS.spellTooltipDetail == "SHIFT" and default == "SHIFT" and picked
+        and table.concat(ids, ",") == "SHIFT,ALT,CTRL,ALWAYS,NEVER"
+        and hint == "Rank 1 of 2  " .. T.disabled.hex .. "Alt|r" and altShown == 1 + #SpellTip:Lines(5185, true),
+        string.format("dd=%s default=%s picked=%s ids=%s hint=%s altShown=%s", tostring(dd ~= nil),
+            tostring(default), tostring(picked), table.concat(ids, ","), tostring(hint), tostring(altShown)))
 end
 
 print(string.format("\n%d ok, %d failed", ok, #fails))

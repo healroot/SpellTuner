@@ -255,6 +255,9 @@ local FOREVER_EVENTS = {
     PLAYER_TARGET_CHANGED = true,
     -- T32: the window manager restyles its 1-px edges on these (retail events)
     UI_SCALE_CHANGED = true, DISPLAY_SIZE_CHANGED = true, -- T32
+    -- T37: the detail key's refresh (UI/SpellTip_Forever.lua); a retail
+    -- event, assumed present like PLAYER_TARGET_CHANGED above.
+    MODIFIER_STATE_CHANGED = true, -- T37
 }
 
 -- Frames: only what the engine files touch (event registration and OnUpdate).
@@ -331,8 +334,17 @@ end
 -- T9: enough of the tooltip widget for UI/SpellTip_Forever.lua's block --
 -- lines kept as { left, right } pairs so a harness can read back exactly what
 -- was appended, in order.
-function FrameMT:AddLine(left) self.lines = self.lines or {}; table.insert(self.lines, { left }) end
-function FrameMT:AddDoubleLine(left, right) self.lines = self.lines or {}; table.insert(self.lines, { left, right }) end
+-- T37: the colour arguments kept beside the text (color / rcolor), so a
+-- harness can tell a colour passed from the client's default gold.
+function FrameMT:AddLine(left, r, g, b) -- T37
+    self.lines = self.lines or {}
+    table.insert(self.lines, { left, color = (r ~= nil) and { r, g, b } or nil })
+end
+function FrameMT:AddDoubleLine(left, right, lr, lg, lb, rr, rg, rb) -- T37
+    self.lines = self.lines or {}
+    table.insert(self.lines, { left, right, color = (lr ~= nil) and { lr, lg, lb } or nil,
+        rcolor = (rr ~= nil) and { rr, rg, rb } or nil })
+end
 function FrameMT:NumLines() return self.lines and #self.lines or 0 end
 function FrameMT:IsShown() return self.shown == true end
 -- Visible means shown AND every parent shown, which is what the eye sees: the
@@ -944,6 +956,7 @@ function S.UseProfile(name)
     -- re-drawing an action button's tooltip WITHOUT a clear in between.
     function S.ShowSpellTooltip(tt, id)
         tt = tt or GameTooltip
+        tt._stubShowing = { Enum.TooltipDataType.Spell, { type = Enum.TooltipDataType.Spell, id = id } } -- T37
         tt.lines = {}
         if tt.scripts.OnTooltipCleared then tt.scripts.OnTooltipCleared(tt) end
         local list = S.tooltipPostCalls[Enum.TooltipDataType.Spell]
@@ -959,12 +972,29 @@ function S.UseProfile(name)
     -- runs every Macro post-call with `data` exactly as given.
     function S.ShowMacroTooltip(tt, data, owner)
         tt = tt or GameTooltip
+        tt._stubShowing = { Enum.TooltipDataType.Macro, data } -- T37
         tt.lines = {}
         tt.GetOwner = function() return owner end
         if tt.scripts.OnTooltipCleared then tt.scripts.OnTooltipCleared(tt) end
         local list = S.tooltipPostCalls[Enum.TooltipDataType.Macro]
         if list then
             for _, fn in ipairs(list) do fn(tt, data) end
+        end
+    end
+
+    -- T37: retail's tooltip:RefreshData() (docs/SPEC-forever-ui.md 5.6,
+    -- UNVERIFIED on Forever): the lines are cleared and the showing's
+    -- post-calls run again with its data -- WITHOUT OnTooltipCleared, the
+    -- harder case for the block's once-per-showing guard. Counted per
+    -- tooltip in tt.refreshes.
+    function FrameMT:RefreshData() -- T37
+        rawset(self, "refreshes", (rawget(self, "refreshes") or 0) + 1)
+        local showing = self._stubShowing
+        self.lines = {}
+        if not showing then return end
+        local list = S.tooltipPostCalls[showing[1]]
+        if list then
+            for _, fn in ipairs(list) do fn(self, showing[2]) end
         end
     end
 

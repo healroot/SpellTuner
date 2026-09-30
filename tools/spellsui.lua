@@ -350,7 +350,10 @@ do
     local tip = MD.SpellTip:Lines(92050)
     local tipCasts
     for _, line in ipairs(tip or {}) do
-        if type(line[1]) == "string" and line[1]:find("Casts to OOM", 1, true) then tipCasts = line[2] end
+        -- T37: the block reads "N full, ~M now" -- its from-full count is N
+        if type(line[1]) == "string" and line[1]:find("Casts to OOM", 1, true) then
+            tipCasts = tostring(line[2]):match("^(%S+) full") -- T37
+        end
     end
 
     check("casts to OOM use the clock's modelled pool when there is one",

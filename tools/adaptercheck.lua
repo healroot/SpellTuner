@@ -67,6 +67,8 @@ local FOREVER_ONLY_NAMES = {
     "OnActionTooltip",
     -- T29 (UI/Style.lua's UI.px): the physical screen, for pixel-snapped edges.
     "PhysicalScreenSize", -- T29
+    -- T37 (UI/SpellTip_Forever.lua): the detail key's tooltip refresh.
+    "RefreshTooltip", -- T37
 }
 -- T15: Client/API_TBC.lua's own binding -- GetSpellInfo, so
 -- Engine/SimModel.lua and Engine/SimPlanner.lua's four call sites can go

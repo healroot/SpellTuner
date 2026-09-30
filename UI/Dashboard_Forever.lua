@@ -46,6 +46,9 @@ local function RefreshGeneralPane()
     if generalPane.clockCheck then
         generalPane.clockCheck:SetChecked(MD.db.clock and MD.db.clock.shown ~= false)
     end
+    if generalPane.detailDropdown and MD.SpellTip and MD.SpellTip.DetailMode then
+        generalPane.detailDropdown:SetValue(MD.SpellTip:DetailMode())
+    end
 end
 
 local function BuildGeneralPane(content)
@@ -65,12 +68,33 @@ local function BuildGeneralPane(content)
 
     pane.tooltipCheck = check -- marks this pane for tools/tipcheck.lua
 
+    -- T37 (docs/SPEC-forever-ui.md 5.6, decision 5): the key that shows the
+    -- block's detail lines. T42 moves it into its titled pane.
+    local below = check
+    if MD.SpellTip and MD.SpellTip.DETAIL_MODES then
+        local detailLabel = pane:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+        detailLabel:SetPoint("TOPLEFT", check, "BOTTOMLEFT", 20, -12)
+        detailLabel:SetText("Detail lines")
+        local dd = UI.CreateDropdown(pane, 120, 18, function(id)
+            MD.db.spellTooltipDetail = id
+        end)
+        dd:SetPoint("LEFT", detailLabel, "RIGHT", 8, 0)
+        dd:SetItems(MD.SpellTip.DETAIL_MODES)
+        dd:SetValue(MD.SpellTip:DetailMode())
+        pane.detailDropdown = dd -- marks this pane for tools/tipcheck.lua
+        below = detailLabel
+    end
+
     local clockCheck = UI.CreateCheckButton(pane, "Show the mana clock", function(checked)
         MD.db.clock = MD.db.clock or {}
         MD.db.clock.shown = checked and true or false
         if MD.Clock and MD.Clock.Refresh then MD.Clock:Refresh() end
     end)
-    clockCheck:SetPoint("TOPLEFT", check, "BOTTOMLEFT", 0, -20)
+    if below == check then
+        clockCheck:SetPoint("TOPLEFT", check, "BOTTOMLEFT", 0, -20)
+    else
+        clockCheck:SetPoint("TOPLEFT", below, "BOTTOMLEFT", -20, -16)
+    end
     clockCheck:SetChecked(MD.db.clock and MD.db.clock.shown ~= false)
     pane.clockCheck = clockCheck -- marks this pane for tools/clockcheck.lua
 
@@ -341,15 +365,11 @@ local function SpellRowEnter(row, r)
     end
     if r.kind ~= "entry" or not r.entry or type(r.entry.id) ~= "number" then return end
     OpenSpellTooltip(row)
-    local ok, lines = pcall(MD.SpellTip.Lines, MD.SpellTip, r.entry.id)
+    -- T37: the block with its colours (SpellTip:Render); the plain block,
+    -- the detail lines with the key (T38 replaces this hover)
+    local ok, lines = pcall(MD.SpellTip.Lines, MD.SpellTip, r.entry.id, MD.SpellTip:DetailShown())
     if ok and type(lines) == "table" then
-        for _, line in ipairs(lines) do
-            if line[2] ~= nil then
-                GameTooltip:AddDoubleLine(line[1], line[2])
-            else
-                GameTooltip:AddLine(line[1])
-            end
-        end
+        MD.SpellTip:Render(GameTooltip, lines)
     end
     GameTooltip:Show()
 end

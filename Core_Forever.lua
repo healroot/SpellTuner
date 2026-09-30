@@ -15,6 +15,9 @@ MD.DEFAULTS = {
     char = {},
     modules = {},  -- name -> true|false, read/written by Core.lua's registry
     spellTooltip = true,  -- UI/SpellTip_Forever.lua's block on spell tooltips
+    -- T37 (docs/SPEC-forever-ui.md 5.6): the key that shows the block's detail
+    -- lines -- "SHIFT", "ALT", "CTRL", or "ALWAYS" / "NEVER" (Settings -> General).
+    spellTooltipDetail = "SHIFT",
     clock = { shown = true, locked = false, point = nil },  -- UI/Clock_Forever.lua
     -- T29 (docs/SPEC-forever-ui.md 4.2, 4.3, 6): fontOffset (-2..+2, clamped by
     -- UI/Theme_Forever.lua at login), the window scale, the main window in

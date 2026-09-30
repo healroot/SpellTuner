@@ -205,13 +205,15 @@ local function Step(rec, text)
 end
 
 -- Hands `id` to fn once per chain; the answer goes beside step i.
-local function Offer(fn, tooltip, id, rec, i, tried)
+-- T37: fn is also told the id came from a macro (docs/SPEC-forever-ui.md
+-- 5.5: the block's header then reads "- macro").
+local function Offer(fn, tooltip, id, rec, i, tried, source)
     if tried[id] then
         rec.steps[i] = rec.steps[i] .. " -> tried above"
         return false
     end
     tried[id] = true
-    local ok, done, note = pcall(fn, tooltip, id)
+    local ok, done, note = pcall(fn, tooltip, id, source)
     if not ok then done, note = false, "error" end
     if type(note) ~= "string" then note = done and "done" or "nothing" end
     rec.steps[i] = rec.steps[i] .. " -> " .. Desc(note)
@@ -309,7 +311,7 @@ local function MacroChain(fn, tooltip, data, spellType)
         Step(rec, "spell line: raised")
     elseif PlainNumber(found) then
         i = Step(rec, "spell line: " .. Desc(found))
-        if Offer(fn, tooltip, found, rec, i, tried) then return end
+        if Offer(fn, tooltip, found, rec, i, tried, "macro") then return end
     else
         Step(rec, "spell line: none")
     end
@@ -320,7 +322,7 @@ local function MacroChain(fn, tooltip, data, spellType)
         Step(rec, "first line: raised")
     else
         i = Step(rec, text)
-        if PlainNumber(id) and Offer(fn, tooltip, id, rec, i, tried) then return end
+        if PlainNumber(id) and Offer(fn, tooltip, id, rec, i, tried, "macro") then return end
     end
 
     ok, text, id = pcall(SlotFromOwner, tooltip)
@@ -328,7 +330,7 @@ local function MacroChain(fn, tooltip, data, spellType)
         Step(rec, "slot: owner raised")
     else
         i = Step(rec, text)
-        if PlainNumber(id) then Offer(fn, tooltip, id, rec, i, tried) end
+        if PlainNumber(id) then Offer(fn, tooltip, id, rec, i, tried, "macro") end
     end
 end
 
@@ -372,7 +374,10 @@ local function ActionHook(fn, tooltip, slot)
     if kind ~= "macro" and rec == nil then return end
     rec = HoverRecord(tooltip, "SetAction hook")
     local i = Step(rec, "SetAction " .. text)
-    if PlainNumber(id) then Offer(fn, tooltip, id, rec, i, {}) end
+    -- T37: a macro's slot marks the block; a plain spell button's does not
+    local source
+    if kind == "macro" then source = "macro" end
+    if PlainNumber(id) then Offer(fn, tooltip, id, rec, i, {}, source) end
 end
 
 function MD.API.OnActionTooltip(fn)
@@ -394,3 +399,18 @@ function MD.API.OnActionTooltip(fn)
     return true
 end
 MD.API._bindings.OnActionTooltip = "GameTooltip.SetAction"
+
+-- T37 (UI/SpellTip_Forever.lua, docs/SPEC-forever-ui.md 5.6): the detail
+-- key's refresh -- tooltip:RefreshData(), which clears the tooltip and runs
+-- its post-calls again. Retail's method; UNVERIFIED on Forever that it re-runs
+-- the post-calls (if it does not, the detail lines show on the next hover,
+-- as before). Guarded: a tooltip without it answers absent, a raise error;
+-- neither reaches the caller.
+function MD.API.RefreshTooltip(tooltip)
+    local ok, fn = pcall(function() return type(tooltip) == "table" and tooltip.RefreshData end)
+    if not ok then return nil, "error" end
+    if type(fn) ~= "function" then return nil, "absent" end
+    if not pcall(fn, tooltip) then return nil, "error" end
+    return true
+end
+MD.API._bindings.RefreshTooltip = "GameTooltip.RefreshData"
