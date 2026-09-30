@@ -11,6 +11,9 @@ local _, MD = ...
 if MD.SpellData == nil then MD.SpellData = {} end
 if MD.RankMath == nil then MD.RankMath = {} end
 local SD, RM = MD.SpellData, MD.RankMath
+-- The kit's shape, its validator, Snapshot and Restore (Engine/Kit.lua, listed
+-- before this file by the module's TOCs; T63, P19).
+local Kit = MD.Kit
 
 -- The book's own English name -> the engine's family key
 -- (Engine/SimPlanner.lua 49, Engine/SimSolver.lua 212). Only Healing Touch
@@ -114,6 +117,10 @@ local function KitEntry(family, be, crit)
         e.dataMissing = true
     end
     e.cast, e.castBase = be.cast, be.cast
+    -- T63 (P19): a rank whose cast time the book could not read is a value
+    -- missing like any other (Kit.Validate asks every type for a cast); the
+    -- engine could not time it and Engine/Practice.lua refuses it.
+    if type(be.cast) ~= "number" then e.dataMissing = true end
 
     if family == "HealingTouch" then
         if type(be.min) == "number" and type(be.max) == "number" then
@@ -159,19 +166,32 @@ local function KitEntry(family, be, crit)
     return e
 end
 
-local function SpellKit(self, opts)
-    local book = MD.Book:Get()
-    local spells, families, known, all, maxRank, skipped, bookByID = BuildIndex(book)
-
+-- The index a kit is read with (MD.SpellData's fields), installed as a whole
+-- by both paths below: a fresh build and a cached kit handed out again (so
+-- whatever KitRestore installed meanwhile never outlives the next SpellKit).
+local function InstallIndex(index)
     SD.spells, SD.families, SD.known, SD.all, SD.maxRank, SD.skipped =
-        spells, families, known, all, maxRank, skipped
+        index.spells, index.families, index.known, index.all, index.maxRank, index.skipped
     -- The engine's own dashboard order (Data/SpellData.lua's familyOrder,
     -- minus the two excluded families) -- fixed, not derived from the book.
     SD.familyOrder = { "HealingTouch", "Rejuvenation", "Regrowth" }
     -- No Lifebloom on Forever (Facts), so no alias id for its bloom either.
     SD.bloomID = nil
+end
 
-    local crit, critMissing = CritFraction()
+-- T63 (P19, review A11): the kit is built once per spellbook generation
+-- (Spells/Book.lua's Book.generation, bumped by every scan that changes an
+-- entry) and crit reading -- the only input that is not in the book -- and
+-- the same table is handed out while neither moves. Before, every call (ten
+-- call sites, several per coach) rebuilt it and rewrote cdb.kit. A book table
+-- without a generation (a caller's own) is never cached.
+local cache = {}
+
+local function Build(book, crit, critMissing)
+    local spells, families, known, all, maxRank, skipped, bookByID = BuildIndex(book)
+    local index = { spells = spells, families = families, known = known, all = all,
+                    maxRank = maxRank, skipped = skipped }
+
     local kit = { caster = {}, tree = {}, crit = crit }
     if critMissing then kit.critMissing = true end
     local out = kit.caster
@@ -199,69 +219,60 @@ local function SpellKit(self, opts)
         sm.cast = 1.5
     end
 
+    return Kit.Check(kit, "Kit_Forever SpellKit"), index
+end
+
+local function SpellKit(self, opts)
+    local book = MD.Book:Get()
+    local crit, critMissing = CritFraction()
+    local gen = book.generation
+
+    local rebuilt = false
+    if gen == nil or cache.kit == nil or cache.generation ~= gen
+        or cache.crit ~= crit or cache.critMissing ~= critMissing then
+        cache.kit, cache.index = Build(book, crit, critMissing)
+        cache.generation, cache.crit, cache.critMissing = gen, crit, critMissing
+        rebuilt = true
+    end
+    InstallIndex(cache.index)
+
     -- The last kit this character built, kept for the offline tools
     -- (tools/import.lua): a recording made before recordings carried their
-    -- own kit (KitSnapshot below) is replayed offline with this one, and the
-    -- tool says so. A few dozen plain numbers, rewritten on every build.
-    if MD.cdb and MD.SimModel then MD.cdb.kit = RM.KitSnapshot(kit) end
+    -- own kit (Kit.Snapshot) is replayed offline with this one, and the tool
+    -- says so. Written when the kit changed (T63) -- or into a character
+    -- database it has not been written to yet -- never on every call.
+    if MD.cdb and (rebuilt or cache.cdb ~= MD.cdb) then
+        MD.cdb.kit = Kit.Snapshot(cache.kit)
+        cache.cdb = MD.cdb
+    end
 
-    return kit
+    return cache.kit
 end
 
 --------------------------------------------------------------------------------
--- The kit as plain data (the recordings pipeline, docs/TOOLS.md §2):
--- MD.SimModel.KitSnapshot, the one record both clients keep, of `kit`
--- (default: a fresh SpellKit). Kept on every Forever pull and practice fight
--- at the moment it is stored (`rec.kit`) and as the last kit built
+-- The kit as plain data (the recordings pipeline, docs/TOOLS.md section 2):
+-- Kit.Snapshot (Engine/Kit.lua), the one record both clients keep, of `kit`
+-- (default: the current SpellKit). Kept on every Forever pull and practice
+-- fight at the moment it is stored (`rec.kit`) and as the last kit built
 -- (cdb.kit), because the kit is built from the live spellbook and nothing
 -- offline can rebuild it: the spellbook tools/import.lua would see is the
 -- stub's. The MD.SpellData index is NOT copied: KitRestore rebuilds the part
 -- a replay reads from the entries themselves.
 --------------------------------------------------------------------------------
 function RM.KitSnapshot(kit)
-    return MD.SimModel.KitSnapshot(kit or RM:SpellKit())
+    return Kit.Snapshot(kit or RM:SpellKit())
 end
 
--- A snapshot back into a kit AND the MD.SpellData index the engine reads
--- names, families and ranks from -- the index SpellKit builds from the book,
--- rebuilt from the kit's own entries (family, rank, type, cost, cast). Every
--- rank in it is a known one (a kit holds nothing else), so `all` is `known`;
--- the unlearned ranks and the skipped families a replay never reads are not
--- there. Returns a fresh kit (copies: the engine never writes into the
--- snapshot). For the offline tools; the game never needs it.
+-- A snapshot back into a kit AND the MD.SpellData index (Kit.Restore with
+-- Forever's families, labels and plan exclusions), installed as SpellKit
+-- installs its own. For the offline tools; the game never needs it.
 local LABEL = {}
 for name, key in pairs(FAMILY_KEY) do LABEL[key] = name end
+local RESTORE_POLICY = { types = FAMILY_TYPE, labels = LABEL, exclude = { Tranquility = true } }
 
 function RM.KitRestore(snap)
-    local function Copy(v)
-        if type(v) ~= "table" then return v end
-        local t = {}
-        for k, x in pairs(v) do t[k] = Copy(x) end
-        return t
-    end
-    local kit = { crit = snap.crit or 0, critMissing = snap.critMissing or nil,
-                  caster = Copy(snap.caster or {}), tree = Copy(snap.tree or {}) }
-    local spells, families, known, maxRank = {}, {}, {}, {}
-    for id, e in pairs(kit.caster) do
-        local key = e.family
-        if key and FAMILY_TYPE[key] then
-            spells[id] = { family = key, rank = e.rank, cost = e.cost, cast = e.cast }
-            families[key] = families[key]
-                or { type = FAMILY_TYPE[key], label = LABEL[key] or key, exclude = (key == "Tranquility") or nil }
-            known[key] = known[key] or {}
-            known[key][#known[key] + 1] = id
-        end
-    end
-    local all = {}
-    for key, ids in pairs(known) do
-        table.sort(ids, function(a, b) return (spells[a].rank or 0) < (spells[b].rank or 0) end)
-        maxRank[key] = ids[#ids]
-        all[key] = Copy(ids)
-    end
-    SD.spells, SD.families, SD.known, SD.all, SD.maxRank, SD.skipped =
-        spells, families, known, all, maxRank, {}
-    SD.familyOrder = { "HealingTouch", "Rejuvenation", "Regrowth" }
-    SD.bloomID = nil
+    local kit, index = Kit.Restore(snap, RESTORE_POLICY)
+    InstallIndex(index)
     return kit
 end
 

@@ -1243,39 +1243,12 @@ function SM.DangerHitFromOthers(recs, excludeID, name, level)
 end
 
 --------------------------------------------------------------------------------
--- The kit a fight was played with, as plain data for SavedVariables (2026-09-29,
--- the one mechanism for both clients): every form's entries with their number,
--- string and boolean fields, the crit, the time and the character's level. It
--- IS a kit -- `SM.ScenarioFromRecording(rec, rec.kit)` replays with it as it
--- stands -- and it holds nothing a replay does not read: no MD.SpellData index
--- (on TBC that table is static; on Forever it is rebuilt from these entries by
--- RankMath.KitRestore, Kit_Forever.lua) and no unlearned rank. Stored on every
--- practice fight (Engine/Practice.lua), every Forever pull
--- (Recorder_Forever.lua) and as the character's last kit (cdb.kit, Forever).
--- Pure copies; nothing here reads the client.
+-- The kit a fight was played with, as plain data for SavedVariables: moved to
+-- Engine/Kit.lua (T63, P19) as Kit.Snapshot, unchanged; this name stays as its
+-- alias for every caller that already has it (Engine/Practice.lua, the Forever
+-- recorder, the offline tools).
 --------------------------------------------------------------------------------
-function SM.KitSnapshot(kit)
-    if type(kit) ~= "table" then return nil end
-    local snap = { crit = kit.crit, critMissing = kit.critMissing or nil,
-                   at = time and time() or nil, level = MD.player and MD.player.level or nil }
-    for form, list in pairs(kit) do
-        if type(list) == "table" then
-            local out = {}
-            for id, e in pairs(list) do
-                if type(e) == "table" then
-                    local c = {}
-                    for k, v in pairs(e) do
-                        local tv = type(v)
-                        if tv == "number" or tv == "string" or tv == "boolean" then c[k] = v end
-                    end
-                    out[id] = c
-                end
-            end
-            snap[form] = out
-        end
-    end
-    return snap
-end
+SM.KitSnapshot = MD.Kit.Snapshot
 
 --------------------------------------------------------------------------------
 -- Replay: a recorded fight as a scenario the engine can run.

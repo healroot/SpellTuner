@@ -408,13 +408,9 @@ end
 -- thousands of times inside a search -- so this is the single boundary between
 -- the rank math and the simulation (docs/SPEC-v0.7.md 3.1).
 --
---   kit.caster[spellID] / kit.tree[spellID] = {
---     family, rank, type, cost, cast, gcd,
---     direct, directCrit,                  -- direct / hybrid; NEVER crit-loaded
---     tick, ticks, tickPeriod, duration,   -- hot / hybrid / lifebloom
---     bloom,                               -- lifebloom
---     swiftmendRejuv, swiftmendRegrowth,   -- instant
---     channelTick, channelTicks, dataMissing }
+-- The entry's shape is Engine/Kit.lua's Kit.FIELDS (T63, P19: this comment
+-- was its only statement until then); the builder ends with Kit.Check, so a
+-- field this function forgets or misspells fails here, not inside a search.
 --
 -- Crit is stripped from `direct` on purpose: RowFor bakes E[crit] in for a
 -- throughput column, but the engine decides per cast whether to use the
@@ -508,7 +504,7 @@ function RankMath:SpellKit(opts)
     end
 
     kit.crit = RankMath:Context({ live = true, healer = opts and opts.healer }).crit
-    return kit
+    return MD.Kit.Check(kit, "RankMath:SpellKit")
 end
 
 -- One row plus its full breakdown, for the dashboard tooltip. Rebuilt from a

@@ -676,6 +676,63 @@ end
 -- Scan / cache
 --------------------------------------------------------------------------------
 
+-- T63 (P19 of docs/PLAN-refactor-ux.md, review A11): the book's generation, a
+-- counter bumped by every scan that changes an entry -- one added or gone, or
+-- any field of one different from the previous scan's, after Rows (so the
+-- numbers Book.adjust and the family rules derive count too). One field is
+-- left out: `casts`, the casts-to-OOM count against the mana pool of the
+-- moment, which moves with max mana and regen and is not the spell's. A
+-- rescan of an unchanged book leaves it where it was, so a consumer that
+-- builds from the book (Kit_Forever.lua's SpellKit) rebuilds only when there
+-- is something new. The first scan counts as a change. Also carried on each
+-- book table Scan returns (`book.generation`).
+Book.generation = Book.generation or 0
+
+local SIG_SKIP = { casts = true }
+
+-- A deterministic string for one value: tables by sorted key, numbers to 17
+-- significant digits, strings length-prefixed (so no two values share a
+-- signature by an accident of concatenation). Only Book's own copies and
+-- plain values reach here.
+local function Sig(v, out, depth)
+    local tv = type(v)
+    if tv == "number" then
+        out[#out + 1] = "n" .. string.format("%.17g", v)
+    elseif tv == "string" then
+        out[#out + 1] = "s" .. #v .. ":" .. v
+    elseif tv == "boolean" then
+        out[#out + 1] = v and "T" or "F"
+    elseif tv == "table" then
+        if depth > 6 then out[#out + 1] = "?"; return end
+        local keys = {}
+        for k in pairs(v) do
+            if not (depth == 0 and SIG_SKIP[k]) then keys[#keys + 1] = k end
+        end
+        table.sort(keys, function(a, b)
+            local ta, tb = type(a), type(b)
+            if ta ~= tb then return ta < tb end
+            if ta == "number" or ta == "string" then return a < b end
+            return tostring(a) < tostring(b)
+        end)
+        out[#out + 1] = "{"
+        for _, k in ipairs(keys) do
+            Sig(k, out, depth + 1)
+            out[#out + 1] = "="
+            Sig(v[k], out, depth + 1)
+            out[#out + 1] = ";"
+        end
+        out[#out + 1] = "}"
+    else
+        out[#out + 1] = tv
+    end
+end
+
+local function EntrySig(entry)
+    local out = {}
+    Sig(entry, out, 0)
+    return table.concat(out)
+end
+
 function Book:Scan()
     -- T35: a scan after MarkDirty (or the first) is a changed book; the
     -- 2-second rescans of an unchanged one are not.
@@ -712,7 +769,24 @@ function Book:Scan()
         Book:Rows(families[name], pool)
     end
 
-    local book = { families = families, order = order, spells = spells, read = read }
+    -- T63: the generation moves when any entry did (see Book.generation).
+    local prevSigs = Book._prevSigs
+    local sigs, entryChanged = {}, (prevSigs == nil)
+    for id, entry in pairs(spells) do
+        local sig = EntrySig(entry)
+        sigs[id] = sig
+        if not entryChanged and prevSigs[id] ~= sig then entryChanged = true end
+    end
+    if not entryChanged then
+        for id in pairs(prevSigs) do
+            if sigs[id] == nil then entryChanged = true; break end
+        end
+    end
+    if entryChanged then Book.generation = Book.generation + 1 end
+    Book._prevSigs = sigs
+
+    local book = { families = families, order = order, spells = spells, read = read,
+                   generation = Book.generation }
     Book._cache = book
     Book._cacheTime = GetTime()
     Book._prevSpells = spells
