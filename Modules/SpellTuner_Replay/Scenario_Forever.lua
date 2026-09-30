@@ -6,13 +6,35 @@
 local _, MD = ...
 local SM = MD.SimModel
 
--- The v3 stream's own event-kind numbers (Recorder_Forever.lua's local K,
--- duplicated for the same reason that file gives: the two modules are not
--- guaranteed to load in a way that lets one read the other's locals). HEAL
--- (15) never reaches SM.K -- SM.Run only knows FHEAL (2), which the engine
--- generates its own heals to match; a HEAL of unknown source is this file's
--- job to turn into either nothing (own) or an FHEAL (foreign).
-local V3 = { DMG = 1, HEAL = 15, OWNCAST = 3, CASTSTART = 6, CANCEL = 7, DIED = 9 }
+-- The v3 stream's own event-kind numbers, published once by the Recorder
+-- module's Stream_Forever.lua (T66, P22, review A18) -- this module depends on
+-- that one, so it is always loaded first. HEAL (15) never reaches SM.K --
+-- SM.Run only knows FHEAL (2), which the engine generates its own heals to
+-- match; a HEAL of unknown source is this file's job to turn into either
+-- nothing (own) or an FHEAL (foreign).
+local STREAM = MD.StreamV3
+if type(STREAM) ~= "table" or type(STREAM.K) ~= "table" then
+    error("Scenario_Forever.lua: MD.StreamV3 is missing -- the Recorder module's Stream_Forever.lua loads first")
+end
+local V3 = STREAM.K
+
+-- T66: asserted at load, because a persisted stream cannot be renumbered
+-- after the fact. A v3 HEAL equal to any SM.K value would be read as that
+-- kind wherever a v3 stream meets the engine's own numbering; and the kinds a
+-- v3 stream shares with SM.K must keep SM.K's numbers, because
+-- SM.DangerHitFromOthers reads a v3 stream's damage by SM.K.DMG.
+for name, value in pairs(SM.K) do
+    if value == V3.HEAL then
+        error(string.format("Scenario_Forever.lua: StreamV3.K.HEAL (%s) collides with SM.K.%s",
+            tostring(V3.HEAL), name))
+    end
+end
+for _, name in ipairs({ "DMG", "OWNCAST", "CASTSTART", "CANCEL", "DIED" }) do
+    if V3[name] ~= SM.K[name] then
+        error(string.format("Scenario_Forever.lua: StreamV3.K.%s (%s) is not SM.K.%s (%s)",
+            name, tostring(V3[name]), name, tostring(SM.K[name])))
+    end
+end
 
 --------------------------------------------------------------------------------
 -- Planner ruling 1, 2026-09-28 (FOREVER-PLAN.md, rulings for M3): a party
@@ -430,7 +452,7 @@ function SM.PartyMaxFromOthers(recs, excludeID, name, level)
     local plainBest, plainN = nil, 0
     local sizings, allHits, estN = {}, {}, 0
     for _, r in ipairs(recs) do
-        if type(r) == "table" and r.id ~= excludeID and r.v == 3 and type(r.roster) == "table" then
+        if type(r) == "table" and r.id ~= excludeID and r.v == STREAM.V and type(r.roster) == "table" then
             local hits, sizingMax
             for i, e in ipairs(r.roster) do
                 if type(e) == "table" and e.name == name
@@ -488,14 +510,16 @@ end
 -- `recordedHp` field and SM.RecordedHp below (T16a) -- a target's stand-in
 -- max (Planner ruling 1) and its health on a 2s grid from every landed amount,
 -- own and foreign alike. Pure, no kit needed: neither computation reads which
--- heals were own.
+-- heals were own. T66 (P22, review A18): the ONE copy -- ScenarioV3 used to
+-- carry the grid loop a second time; it now reads this, and the sizing
+-- (`hits`, `hitOrHealed`) comes back with it.
 --------------------------------------------------------------------------------
 local function ReconstructHp(rec, others)
     local roster = rec.roster or {}
     local nT = #roster
     local ev, n = rec.ev or {}, rec.n or 0
 
-    local hits, sizingMax = SizeRec(rec)
+    local hits, sizingMax, hitOrHealed = SizeRec(rec)
     local maxHP, maxEstimated, maxSource, anyEstimated = ChooseMaxes(rec, others, hits, sizingMax)
 
     local dur = rec.dur or 0
@@ -531,7 +555,8 @@ local function ReconstructHp(rec, others)
     end
 
     return { maxHP = maxHP, maxEstimated = maxEstimated, maxSource = maxSource,
-             anyEstimated = anyEstimated, t = gridT, hp = hpOut, max = maxOut }
+             anyEstimated = anyEstimated, t = gridT, hp = hpOut, max = maxOut,
+             hits = hits, hitOrHealed = hitOrHealed }
 end
 
 --------------------------------------------------------------------------------
@@ -551,7 +576,13 @@ end
 
 --------------------------------------------------------------------------------
 -- SM.ScenarioV3: a v3 stream -> the v2 scenario shape, plus recordedHp,
--- attribution and maxEstimated (Files table).
+-- attribution and maxEstimated (Files table). T66 (P22, review A18): also
+-- `ownHeals` (the attribution's own set: HEAL event index -> true), so gate 8
+-- reads what this scenario attributed instead of attributing a second time,
+-- and `reconstructed = true` -- the scenario's own word that its health is
+-- rebuilt, which Engine/SimPlanner.lua and UI/ReplayWindow.lua read instead
+-- of testing the stream's version by number. `recordedHp` carries `max`
+-- too, in `rec.hp`'s shape.
 --------------------------------------------------------------------------------
 function SM.ScenarioV3(rec, kit, others)
     local K = SM.K -- the engine's own numbering (FHEAL = 2, etc.)
@@ -570,10 +601,14 @@ function SM.ScenarioV3(rec, kit, others)
     end
 
     -- Per target: every hit (for danger/EstimateMaxHP), whether it was ever
-    -- hit or healed (for `tracked`) and the running deficit that sizes a
-    -- stand-in max (Planner ruling 1) -- one loop, SizeRec, shared with
-    -- ReconstructHp.
-    local hits, sizingMax, hitOrHealed = SizeRec(rec)
+    -- hit or healed (for `tracked`), the running deficit that sizes a
+    -- stand-in max (Planner ruling 1), the max chosen from it (Planner ruling
+    -- 1 and its T17b amendment: a plain max stays plain; a secret one comes
+    -- from other recordings of that person, else is stood in for from this
+    -- fight) and the health on the grid -- all ReconstructHp's.
+    local h = ReconstructHp(rec, others)
+    local hits, hitOrHealed = h.hits, h.hitOrHealed
+    local maxHP, maxEstimated, maxSource, anyEstimated = h.maxHP, h.maxEstimated, h.maxSource, h.anyEstimated
 
     for i = 1, n do
         local kind, tgt, amt, x = ev.kind[i], ev.tgt[i], ev.amt[i], ev.x[i]
@@ -591,12 +626,6 @@ function SM.ScenarioV3(rec, kit, others)
             Push(ev.t[i], K.DIED, tgt, amt, x)
         end
     end
-
-    -- Planner ruling 1 and its T17b amendment: a plain max stays plain; a
-    -- secret one comes from other recordings of that person, else is stood in
-    -- for from this fight. `maxEstimated` on the scenario is true when any
-    -- target needed one.
-    local maxHP, maxEstimated, maxSource, anyEstimated = ChooseMaxes(rec, others, hits, sizingMax)
 
     -- `danger` is the SCORE's line (the whole fight's biggest hit); a plan
     -- decides on SM.DangerLine, the biggest hit so far (T20, review R6).
@@ -677,37 +706,9 @@ function SM.ScenarioV3(rec, kit, others)
 
     -- recordedHp: a deficit from every landed amount (own and foreign alike
     -- -- they all landed), floored at full, sampled every two seconds,
-    -- starting at full at the pull (Facts).
+    -- starting at full at the pull (Facts) -- ReconstructHp's grid.
     local dur = rec.dur or 0
-    local gridT = {}
-    do
-        local t = 0
-        while t <= dur + 1e-9 do gridT[#gridT + 1] = t; t = t + 2 end
-    end
-
-    local recon, hpOut = {}, {}
-    for i = 1, nT do recon[i], hpOut[i] = 0, {} end
-    local ei = 1
-    for _, gt in ipairs(gridT) do
-        while ei <= n and ev.t[ei] <= gt + 1e-9 do
-            local kind, tgt, amt = ev.kind[ei], ev.tgt[ei], ev.amt[ei]
-            if tgt and tgt > 0 then
-                if kind == V3.DMG then
-                    recon[tgt] = (recon[tgt] or 0) + (amt or 0)
-                elseif kind == V3.HEAL then
-                    recon[tgt] = math.max(0, (recon[tgt] or 0) - (amt or 0))
-                elseif kind == V3.DIED then
-                    recon[tgt] = maxHP[tgt] or recon[tgt]
-                end
-            end
-            ei = ei + 1
-        end
-        for i = 1, nT do
-            local h = (maxHP[i] or 1) - (recon[i] or 0)
-            if h < 0 then h = 0 end
-            hpOut[i][#hpOut[i] + 1] = h
-        end
-    end
+    local gridT = h.t
 
     -- The tracked targets whose max had to come from this very fight: the
     -- plan coached on this scenario is then not causal (T17b), and says so.
@@ -728,23 +729,23 @@ function SM.ScenarioV3(rec, kit, others)
         sampleT = mn.t, hpSampleT = gridT, kit = kit,
         floor = (MD.db and MD.db.simFloor) or 0.30,
         script = script,
-        recordedHp = { t = gridT, hp = hpOut },
+        recordedHp = { t = gridT, hp = h.hp, max = h.max },
+        reconstructed = true,
         attribution = attrCounts,
+        ownHeals = ownSet,
         maxEstimated = anyEstimated,
     }
 end
 
 --------------------------------------------------------------------------------
--- Wrap SM.ScenarioFromRecording: a v3 stream goes to ScenarioV3, everything
--- else (every v2/TBC recording) takes the road it always has. Every argument
--- after `kit` is forwarded as it came (T46, review A18: the wrapper was
--- `(rec, kit)` and dropped T20b's `others` store on both roads).
+-- The v3 road, registered (T66, P22, review A18) where this file used to wrap
+-- SM.ScenarioFromRecording: Engine/SimModel.lua picks the builder by the
+-- stream's version and forwards every argument after `kit` as it came (T46:
+-- T20b's `others` store). The reconstruction answers SM.RecordedHealth for a
+-- v3 stream, which never carries `rec.hp`.
 --------------------------------------------------------------------------------
-local V2ScenarioFromRecording = SM.ScenarioFromRecording
-function SM.ScenarioFromRecording(rec, kit, ...)
-    if rec and rec.v == 3 then return SM.ScenarioV3(rec, kit, ...) end
-    return V2ScenarioFromRecording(rec, kit, ...)
-end
+SM.scenarioBuilders[STREAM.V] = function(rec, kit, ...) return SM.ScenarioV3(rec, kit, ...) end
+SM.healthReconstructors[STREAM.V] = function(rec) return SM.RecordedHp(rec) end
 
 --------------------------------------------------------------------------------
 -- MD:ClassifyCast(id) -> label, kind -- only if no flavour defined it yet

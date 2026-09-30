@@ -53,24 +53,24 @@ local function Say(line)
     MD:PrintSafe(line)
 end
 
--- The v3 stream's own OWNCAST kind (Modules/SpellTuner_Recorder/
--- Recorder_Forever.lua's local K, Scenario_Forever.lua's local V3) --
--- duplicated here for the same reason those files give: nothing guarantees
--- one module can read another's locals. P22 publishes it once.
-local V3_OWNCAST = 3
-
 -- The header's casts and mana: the recorder's own counters when the
 -- recording has them (TBC since v0.7, Forever since T13f), else counted from
--- a v3 stream. A v2 stream without them reads 0, as it always did.
+-- a v3 stream, by the v3 kinds the Recorder module publishes once
+-- (Modules/SpellTuner_Recorder/Stream_Forever.lua's MD.StreamV3, T66; read at
+-- call time -- absent on TBC, where no v3 stream exists). A v2 stream without
+-- the counters reads 0, as it always did.
 local function CastsAndMana(rec)
     if rec.ownCasts ~= nil or rec.spent ~= nil then
         return rec.ownCasts or 0, rec.spent or 0
     end
     local casts, mana = 0, 0
     local ev = rec.ev
-    if rec.v ~= 3 or type(ev) ~= "table" or type(ev.kind) ~= "table" then return casts, mana end
+    local stream = MD.StreamV3
+    if not stream or rec.v ~= stream.V or type(ev) ~= "table" or type(ev.kind) ~= "table" then
+        return casts, mana
+    end
     for i = 1, rec.n or 0 do
-        if ev.kind[i] == V3_OWNCAST then
+        if ev.kind[i] == stream.K.OWNCAST then
             casts = casts + 1
             local amt = ev.amt and ev.amt[i]
             if amt and amt > 0 then mana = mana + amt end

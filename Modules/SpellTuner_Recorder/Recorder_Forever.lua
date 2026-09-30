@@ -7,13 +7,13 @@
 local _, MD = ...
 
 --------------------------------------------------------------------------------
--- Event kinds. Numbers borrowed from Engine/SimModel.lua's SM.K (T13d turns a
--- v3 stream into a scenario against that same engine) -- copied here, not
--- read off SM.K, because the Replay module that defines it is not guaranteed
--- loaded while the Recorder module runs alone. HEAL (15) is new: a heal of
--- unknown source, never entered into the engine directly (T13d's job).
+-- Event kinds: the v3 stream's own, published once by Stream_Forever.lua
+-- (T66, P22, review A18), which this module's TOCs list first. The kinds a v3
+-- stream shares with Engine/SimModel.lua's SM.K keep its numbers; HEAL (15) is
+-- new: a heal of unknown source, never entered into the engine directly (the
+-- Replay module's Scenario_Forever.lua turns it into own or foreign).
 --------------------------------------------------------------------------------
-local K = { DMG = 1, OWNCAST = 3, CASTSTART = 6, CANCEL = 7, DIED = 9, HEAL = 15 }
+local K = MD.StreamV3.K
 
 --------------------------------------------------------------------------------
 -- Reversible ASCII escaping, Client/Probe.lua's own rule (Rules: "ASCII-only
@@ -33,17 +33,9 @@ end
 local MAX_EV = 4000
 local MAX_STREAMS = 8
 
--- The book's own English family name -> the engine's family key (T15's own
--- table, Modules/SpellTuner_Replay/Kit_Forever.lua) -- duplicated rather than
--- shared, because the Replay module that owns that file is not guaranteed
--- loaded while the Recorder module runs alone.
-local FAMILY_KEY = {
-    ["Healing Touch"] = "HealingTouch",
-    ["Regrowth"]       = "Regrowth",
-    ["Rejuvenation"]   = "Rejuvenation",
-    ["Swiftmend"]      = "Swiftmend",
-    ["Tranquility"]    = "Tranquility",
-}
+-- The book's own English family name -> the engine's family key
+-- (Stream_Forever.lua, T66; the same table Kit_Forever.lua carries).
+local FAMILY_KEY = MD.StreamV3.FAMILY_KEY
 
 --------------------------------------------------------------------------------
 -- Roster: player, party1..party4 that exist -- indexed by GUID (by name when
@@ -251,7 +243,7 @@ end
 
 --------------------------------------------------------------------------------
 -- Cost lookup, T11's UI/Clock_Forever.lua's own CostFor -- duplicated rather
--- than shared, same reasoning as FAMILY_KEY above.
+-- than shared: the clock is a UI file, not something this module loads.
 --------------------------------------------------------------------------------
 local function CostFor(id)
     if not MD.Book then return nil end
@@ -401,7 +393,7 @@ MD:On("PLAYER_REGEN_DISABLED", function()
     if elapsed < 0 then elapsed = 0 end
     local clockMana = MD.Clock and MD.Clock.model and MD.Clock.model.mana
     active = {
-        v = 3, client = "forever", id = time(), zone = MD.API.RealZoneText(),
+        v = MD.StreamV3.V, client = "forever", id = time(), zone = MD.API.RealZoneText(),
         t0 = t0, dur = 0, pool = MD.API.UnitPowerMax("player", 0) or 0,
         roster = CopyRoster(), tracked = { unpack(R.tracked) },
         ev = { t = {}, kind = {}, tgt = {}, amt = {}, x = {} }, n = 0,

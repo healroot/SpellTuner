@@ -1764,9 +1764,10 @@ function MD:OpenReplay(n)
         fit ~= "" and ("  |cff888888" .. fit .. "|r") or ""))
     -- T16a: a v3 recording (Forever) has no real health log at all -- every
     -- bar and tick drawn is T13d's reconstruction, and `maxEstimated` says
-    -- whether any tracked target's max was itself a stand-in.
-    if rec.v == 3 then
-        local estimated = rp.scenario and rp.scenario.maxEstimated
+    -- whether any tracked target's max was itself a stand-in. T66 (review
+    -- A18): the scenario says it is reconstructed; the version is not tested.
+    if rp.scenario and rp.scenario.reconstructed then
+        local estimated = rp.scenario.maxEstimated
         frame.reconFS:SetText("health reconstructed from UNIT_COMBAT"
             .. (estimated and "; party max estimated" or ""))
         frame.reconFS:Show()

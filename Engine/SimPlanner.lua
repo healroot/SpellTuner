@@ -1482,15 +1482,17 @@ function SP.Replay(rec, opts)
 
     -- the recorder's snapshots as fractions, tracked targets only. A v3
     -- stream (Forever) never carries `rec.hp` at all -- T13d's reconstruction
-    -- (SM.RecordedHp, Modules/SpellTuner_Replay/Scenario_Forever.lua) stands
-    -- in, in the same shape (T16a).
-    local hp = rec.hp or (rec.v == 3 and SM.RecordedHp and SM.RecordedHp(rec)) or {}
+    -- stands in, in the same shape (T16a): the scenario's own `recordedHp`,
+    -- which a scenario whose health is rebuilt marks `reconstructed` (T66,
+    -- review A18: the scenario says so; the stream's version is not tested).
+    local recon = scenario and scenario.reconstructed and scenario.recordedHp or nil
+    local hp = rec.hp or recon or {}
     -- R5 (review 2026-09-29): say which. A reconstruction is an estimate (full
     -- at the pull, UNIT_COMBAT on a 2 s grid, a party max possibly a stand-in),
     -- and the window must not present it as health the recorder read. Absent
     -- (nil) on every TBC recording, which keeps its old wording.
     local ticks = { t = hp.t or {}, hp = {},
-                    reconstructed = (rec.hp == nil and rec.v == 3) or nil }
+                    reconstructed = (rec.hp == nil and recon ~= nil) or nil }
     for _, ti in ipairs(rec.tracked or {}) do
         local cur, max = hp.hp and hp.hp[ti], hp.max and hp.max[ti]
         if cur and max then
@@ -1865,7 +1867,9 @@ function SP.FromRecordings(zone, maxFights)
                 local role = r and r.role or "UNKNOWN"
                 local maxHP = (r and r.maxHP or 0)
                 if maxHP <= 0 then
-                    local hp = rec.hp or (rec.v == 3 and SM.RecordedHp and SM.RecordedHp(rec))
+                    -- T66: the recording's own health log, else its
+                    -- version's reconstruction (a v3 stream has no log)
+                    local hp = SM.RecordedHealth(rec)
                     if hp and hp.max and hp.max[tgt] then maxHP = hp.max[tgt][1] or 0 end
                 end
                 local bucket = byRole[role]

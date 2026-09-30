@@ -1295,8 +1295,12 @@ SM.KitSnapshot = MD.Kit.Snapshot
 -- from the spell kit -- that is the point: if the model's Rejuvenation is
 -- wrong, replaying the fight will not reproduce the health bars, and the gates
 -- below will say so instead of the Coach quietly building on a bad model.
+--
+-- T66 (P22, review A18): this is the v2 road (every TBC recording, v1 and v2,
+-- and a practice fight). SM.ScenarioFromRecording below picks a road by the
+-- stream's version from SM.scenarioBuilders; the Replay module registers v3.
 --------------------------------------------------------------------------------
-function SM.ScenarioFromRecording(rec, kit, others)
+local function ScenarioV2(rec, kit, others)
     if not rec then return nil end
     local K = SM.K
     if others == nil then others = MD.cdb and MD.cdb.recordings end
@@ -1451,6 +1455,63 @@ function SM.ScenarioFromRecording(rec, kit, others)
 end
 
 --------------------------------------------------------------------------------
+-- T66 (P22, review A18): one registry per question, keyed by the stream's
+-- version (`rec.v`; a recording without one is read as a v2 stream). v1 and
+-- v2 share the road above; the Replay module registers v3
+-- (Modules/SpellTuner_Replay/Scenario_Forever.lua, Gates_Forever.lua) instead
+-- of wrapping these functions. A version nobody registered raises a named
+-- error rather than being read as a v2 stream -- the same numbers mean other
+-- things in another version (a v3 HEAL is 15, which SM.K does not have).
+--
+--   SM.scenarioBuilders[v]      fn(rec, kit, ...) -> scenario
+--   SM.validators[v]            fn(rec, kit, ...) -> validation
+--   SM.healthReconstructors[v]  fn(rec) -> rec.hp's shape, for a stream that
+--                               carries no health log of its own (SM.RecordedHealth)
+--------------------------------------------------------------------------------
+SM.scenarioBuilders = { [1] = ScenarioV2, [2] = ScenarioV2 }
+SM.validators = {}
+SM.healthReconstructors = {}
+
+function SM.StreamVersion(rec)
+    return rec.v or 2
+end
+
+local function KnownVersions(registry)
+    local known = {}
+    for k in pairs(registry) do known[#known + 1] = tostring(k) end
+    table.sort(known)
+    return #known > 0 and table.concat(known, ", ") or "none"
+end
+
+-- The function registered for this recording's version, or a named error
+-- raised at whoever called SM.ScenarioFromRecording / SM:Validate.
+local function Road(registry, rec, what)
+    local v = SM.StreamVersion(rec)
+    local fn = registry[v]
+    if fn == nil then
+        error(string.format("SimModel: no %s for a v%s recording (known: %s)",
+            what, tostring(v), KnownVersions(registry)), 3)
+    end
+    return fn
+end
+
+function SM.ScenarioFromRecording(rec, kit, ...)
+    if not rec then return nil end
+    return Road(SM.scenarioBuilders, rec, "scenario builder")(rec, kit, ...)
+end
+
+-- The health a recording carries, or its version's reconstruction, or nil: the
+-- question Engine/SimPlanner.lua's FromRecordings asks of a recording it has
+-- no scenario for.
+function SM.RecordedHealth(rec)
+    if not rec then return nil end
+    if rec.hp then return rec.hp end
+    local fn = SM.healthReconstructors[SM.StreamVersion(rec)]
+    if fn then return fn(rec) end
+    return nil
+end
+
+--------------------------------------------------------------------------------
 -- The six gates (docs/SPEC-v0.7.md 7). A recording earns the right to be
 -- coached from; it is not assumed. Each gate carries the provenance of its
 -- threshold, printed with the result, because a number nobody can trace is a
@@ -1496,10 +1557,13 @@ local GATES = {
 }
 SM.GATES = GATES
 
+-- T66 (P22, review A18): both exported, so the v3 gates (Gates_Forever.lua)
+-- read the same arithmetic instead of carrying a copy of it.
 local function Threshold(name)
     local g = GATES[name]
     return MD:Setting(g.setting), g.why
 end
+SM.Threshold = Threshold
 
 local function MeanMax(sim, rec, n, scale)
     if not sim or not rec or n == 0 or scale <= 0 then return nil, nil end
@@ -1517,15 +1581,18 @@ local function MeanMax(sim, rec, n, scale)
     if used == 0 then return nil, nil end
     return sum / used, worst, at
 end
+SM.MeanMax = MeanMax
 
--- Validate(rec) -> { ok, gates = { {name, ok, value, limit, why, text}, ... },
---                    excluded = { <target index> = reason }, result = <sim result> }
-function SM:Validate(rec, kit)
-    if not rec then return nil end
-    kit = kit or MD.RankMath:SpellKit()
-    local sc = SM.ScenarioFromRecording(rec, kit)
-    local r = SM:Run(sc, nil, { critMode = "ev" })
+--------------------------------------------------------------------------------
+-- T66 (P22, review A18): the gates both roads share, as primitives. Each takes
+-- the `Gate` adder SM.NewValidation hands out and adds its gate(s) where the
+-- caller puts it in the report; the v3 road (Gates_Forever.lua) calls the same
+-- ones, with its own note on the mana gates and its own provenance on spend.
+--------------------------------------------------------------------------------
 
+-- The validation table and the function that adds one gate to it. A v3
+-- scenario carries energize 0, never assumed, so the same two reads serve both.
+function SM.NewValidation(rec, sc)
     local out = { gates = {}, excluded = {}, ok = true, rec = rec,
                   energize = (sc.initial and sc.initial.energize) or 0,
                   energizeAssumed = sc.energizeAssumed or false }
@@ -1534,8 +1601,14 @@ function SM:Validate(rec, kit)
                                       value = value, limit = limit, why = why }
         if not ok then out.ok = false end
     end
+    return out, Gate
+end
 
-    -- 1 + 2: mana curve
+-- 1 + 2: the run's mana curve against the recorded samples. `note` ends each
+-- text (" (modelled pool)" on a v3 stream, whose samples are the clock's model
+-- and never the real pool). Returns the mean and the worst.
+function SM.GateMana(Gate, r, rec, note)
+    note = note or ""
     local mn = rec.mana or {}
     local pool = rec.pool or 0
     local mMean, mMax = MeanMax(r.manaCurve, mn.v, #(mn.t or {}), pool)
@@ -1546,14 +1619,96 @@ function SM:Validate(rec, kit)
             -- no bare "|" in a rendered string: the client reads it as the start
             -- of an escape sequence and eats what follows (CLAUDE.md). This said
             -- "mean |d|" from v0.7.3 until the Review tab started painting it.
-            string.format("mean off by %.1f%% of pool (limit %.0f%%)", mMean * 100, limMean * 100),
+            string.format("mean off by %.1f%% of pool (limit %.0f%%)", mMean * 100, limMean * 100) .. note,
             mMean, limMean, whyMean)
         Gate("mana max", mMax <= limMax,
-            string.format("worst sample off by %.1f%% of pool (limit %.0f%%)", mMax * 100, limMax * 100),
+            string.format("worst sample off by %.1f%% of pool (limit %.0f%%)", mMax * 100, limMax * 100) .. note,
             mMax, limMax, whyMax)
     else
-        Gate("mana curve", false, "no mana samples recorded", nil, nil, whyMean)
+        Gate("mana curve", false, "no mana samples recorded" .. note, nil, nil, whyMean)
     end
+    return mMean, mMax
+end
+
+-- A death truncates the damage that would have followed.
+-- v0.15.0: not in a practice fight. Its damage timeline was generated
+-- before anyone died and is recorded whole, so a plan that keeps them alive
+-- is answering the fight that was really coming -- which is the question.
+function SM.GateDeath(Gate, rec)
+    if rec.practice then
+        Gate("no tracked death", true,
+            #(rec.deaths or {}) == 0 and "nobody died"
+                or string.format("%d death(s) - practice: the whole damage timeline is recorded", #rec.deaths),
+            nil, nil, "practice fights record damage the dead would have taken")
+    else
+        Gate("no tracked death", #(rec.deaths or {}) == 0,
+            #(rec.deaths or {}) == 0 and "nobody died"
+                or string.format("%d death(s): damage after one is truncated in the log",
+                    #rec.deaths),
+            nil, nil, "post-death damage truncation")
+    end
+end
+
+-- The mana the recording says each own cast cost, by spell and in total.
+-- `ownCast` is the stream's own OWNCAST kind (SM.K's when not given).
+function SM.OwnSpend(rec, ownCast)
+    ownCast = ownCast or SM.K.OWNCAST
+    local spendBySpell, spend = {}, 0
+    local ev = rec.ev or {}
+    for i = 1, (rec.n or 0) do
+        if ev.kind[i] == ownCast and (ev.amt[i] or 0) > 0 then
+            spendBySpell[ev.x[i]] = (spendBySpell[ev.x[i]] or 0) + ev.amt[i]
+            spend = spend + ev.amt[i]
+        end
+    end
+    return spendBySpell, spend
+end
+
+-- Did the engine even know what the mana went on. v0.10.2: everything it
+-- REPRODUCES counts, not only what the healing model prices. A Cyclone is
+-- replayed as a fixed point -- same moment, same cost, same five-second-rule
+-- restart, in both columns -- so the engine is not guessing about it; a cast
+-- nobody can classify still is, and that is the hole this gate exists to
+-- notice. Before this, a healer who assisted the damage dealers failed the
+-- gate for playing their class. `why` is the threshold's provenance.
+function SM.GateSpend(Gate, rec, sc, kit, spend, why)
+    local form = rec.initial and rec.initial.form or "caster"
+    local modelled, replayed, unclassified = 0, 0, 0
+    for i = 1, #sc.script do
+        local c = sc.script[i]
+        local e = kit[form][c[2]] or kit.caster[c[2]]
+        local cost = c[3] or (e and e.cost) or 0
+        if e then
+            modelled = modelled + cost
+        else
+            local kind
+            if MD.ClassifyCast then local _, k = MD:ClassifyCast(c[2]); kind = k end
+            if kind and kind ~= "unknown" then replayed = replayed + cost
+            else unclassified = unclassified + cost end
+        end
+    end
+    local coverage = spend > 0 and (modelled + replayed) / spend or 0
+    Gate("spend coverage", coverage >= 0.90,
+        string.format("%.0f%% of the mana is accounted for (%.0f%% healing, %.0f%% replayed as cast)%s",
+            coverage * 100, spend > 0 and modelled / spend * 100 or 0,
+            spend > 0 and replayed / spend * 100 or 0,
+            unclassified > 0 and string.format("; %d mana on spells nothing can name", unclassified) or ""),
+        coverage, 0.90, why)
+end
+
+-- Validate(rec) -> { ok, gates = { {name, ok, value, limit, why, text}, ... },
+--                    excluded = { <target index> = reason }, result = <sim result> }
+-- The v2 road (T66: registered in SM.validators; SM:Validate below dispatches).
+local function ValidateV2(rec, kit)
+    if not rec then return nil end
+    kit = kit or MD.RankMath:SpellKit()
+    local sc = SM.ScenarioFromRecording(rec, kit)
+    local r = SM:Run(sc, nil, { critMode = "ev" })
+
+    local out, Gate = SM.NewValidation(rec, sc)
+
+    -- 1 + 2: mana curve
+    local mMean, mMax = SM.GateMana(Gate, r, rec)
 
     -- 3 + 4: health per target. A target that misses is EXCLUDED, not fatal:
     -- one pet-heavy warlock should not disqualify the tank's timeline.
@@ -1600,21 +1755,7 @@ function SM:Validate(rec, kit)
         nil, limHpMean, whyHp)
 
     -- 5: a death truncates the damage that would have followed
-    -- v0.15.0: not in a practice fight. Its damage timeline was generated
-    -- before anyone died and is recorded whole, so a plan that keeps them alive
-    -- is answering the fight that was really coming -- which is the question.
-    if rec.practice then
-        Gate("no tracked death", true,
-            #(rec.deaths or {}) == 0 and "nobody died"
-                or string.format("%d death(s) - practice: the whole damage timeline is recorded", #rec.deaths),
-            nil, nil, "practice fights record damage the dead would have taken")
-    else
-        Gate("no tracked death", #(rec.deaths or {}) == 0,
-            #(rec.deaths or {}) == 0 and "nobody died"
-                or string.format("%d death(s): damage after one is truncated in the log",
-                    #rec.deaths),
-            nil, nil, "post-death damage truncation")
-    end
+    SM.GateDeath(Gate, rec)
 
     -- 6: whose fight was this
     local limForeign, whyForeign = Threshold("foreign")
@@ -1629,14 +1770,7 @@ function SM:Validate(rec, kit)
         fs, limForeign, whyForeign)
 
     -- 7: is the model right about the spells that actually mattered here
-    local spendBySpell, spend = {}, 0
-    local ev = rec.ev or {}
-    for i = 1, (rec.n or 0) do
-        if ev.kind[i] == SM.K.OWNCAST and (ev.amt[i] or 0) > 0 then
-            spendBySpell[ev.x[i]] = (spendBySpell[ev.x[i]] or 0) + ev.amt[i]
-            spend = spend + ev.amt[i]
-        end
-    end
+    local spendBySpell, spend = SM.OwnSpend(rec)
     local drifted, uncalibrated = nil, {}
     for spellID, mana in pairs(spendBySpell) do
         if spend > 0 and mana / spend >= 0.10 and MD.SpellData.spells[spellID] then
@@ -1654,39 +1788,21 @@ function SM:Validate(rec, kit)
             or "every spell worth 10% of the spend is within 3%"),
         nil, 0.03, "Calibration ALERT_REL")
 
-    -- 8: did the engine even know what the mana went on. v0.10.2: everything it
-    -- REPRODUCES counts, not only what the healing model prices. A Cyclone is
-    -- replayed as a fixed point -- same moment, same cost, same five-second-rule
-    -- restart, in both columns -- so the engine is not guessing about it; a cast
-    -- nobody can classify still is, and that is the hole this gate exists to
-    -- notice. Before this, a healer who assisted the damage dealers failed the
-    -- gate for playing their class.
-    local form = rec.initial and rec.initial.form or "caster"
-    local modelled, replayed, unclassified = 0, 0, 0
-    for i = 1, #sc.script do
-        local c = sc.script[i]
-        local e = kit[form][c[2]] or kit.caster[c[2]]
-        local cost = c[3] or (e and e.cost) or 0
-        if e then
-            modelled = modelled + cost
-        else
-            local kind
-            if MD.ClassifyCast then local _, k = MD:ClassifyCast(c[2]); kind = k end
-            if kind and kind ~= "unknown" then replayed = replayed + cost
-            else unclassified = unclassified + cost end
-        end
-    end
-    local coverage = spend > 0 and (modelled + replayed) / spend or 0
-    Gate("spend coverage", coverage >= 0.90,
-        string.format("%.0f%% of the mana is accounted for (%.0f%% healing, %.0f%% replayed as cast)%s",
-            coverage * 100, spend > 0 and modelled / spend * 100 or 0,
-            spend > 0 and replayed / spend * 100 or 0,
-            unclassified > 0 and string.format("; %d mana on spells nothing can name", unclassified) or ""),
-        coverage, 0.90, "12.6% utility hole in BF-1")
+    -- 8: did the engine even know what the mana went on (SM.GateSpend)
+    SM.GateSpend(Gate, rec, sc, kit, spend, "12.6% utility hole in BF-1")
 
     out.result = r
     out.manaMean, out.manaMax = mMean, mMax
     return out
+end
+SM.validators[1] = ValidateV2
+SM.validators[2] = ValidateV2
+
+-- The one entry every caller uses: the road for this recording's version.
+-- Every argument after `kit` is forwarded as it came (T46).
+function SM:Validate(rec, kit, ...)
+    if not rec then return nil end
+    return Road(SM.validators, rec, "validator")(rec, kit, ...)
 end
 
 --------------------------------------------------------------------------------

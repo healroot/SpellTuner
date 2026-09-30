@@ -254,6 +254,39 @@ do
         why)
 end
 
+--------------------------------------------------------------------------------
+-- T66 (P22, review A18): the roads are a registry keyed by the stream's
+-- version. A version nobody registered is refused by name on both entries --
+-- never read as a v2 stream, whose numbers mean other things.
+--------------------------------------------------------------------------------
+do
+    local rec = buildFixture()
+    rec.v = 9
+    local okSc, errSc = pcall(SM.ScenarioFromRecording, rec, kit)
+    local okV, errV = pcall(SM.Validate, SM, rec, kit)
+    errSc, errV = tostring(errSc), tostring(errV)
+    check("a recording of an unknown version (v = 9) raises a named error (T66)",
+        not okSc and not okV
+        and errSc:find("no scenario builder for a v9 recording", 1, true) ~= nil
+        and errV:find("no validator for a v9 recording", 1, true) ~= nil,
+        string.format("scenario: %s %s ; validate: %s %s", tostring(okSc), errSc, tostring(okV), errV))
+end
+
+--------------------------------------------------------------------------------
+-- T66 (P22, review A18): gate 8 reads the attribution the scenario already
+-- made -- one SM.AttributeHeals per validation, where there were two.
+--------------------------------------------------------------------------------
+do
+    local real, calls = SM.AttributeHeals, 0
+    SM.AttributeHeals = function(...) calls = calls + 1; return real(...) end
+    local v = SM:Validate(buildFixture(), kit)
+    SM.AttributeHeals = real
+    local g = ByName(v, "heals attributed")
+    check("one validation attributes the heals once, and gate 8 still reads them (T66)",
+        calls == 1 and g ~= nil and g.text:find("paired with your casts", 1, true) ~= nil,
+        string.format("calls=%d gate=%s", calls, g and g.text or "nil"))
+end
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("  FAIL " .. f) end
 if #fails > 0 then os.exit(1) end

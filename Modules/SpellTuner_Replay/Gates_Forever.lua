@@ -5,46 +5,19 @@
 -- is a consistency check between the engine's mana model and the client's own
 -- modelled pool, never the real (secret) pool; the enemy-cast and threat
 -- inputs are dropped (Facts, plan Sec2.3). Pure: no client call, no mutation
--- of `rec`. `Engine/SimModel.lua` is untouched -- its own `SM:Validate` still
--- runs byte for byte on a v2 (TBC) recording; this file only adds the v3 road
--- and wraps the dispatch.
+-- of `rec`. `Engine/SimModel.lua`'s own v2 road still runs byte for byte on a
+-- v2 (TBC) recording; this file registers the v3 road in SM.validators (T66,
+-- P22, review A18: it used to wrap SM.Validate) and reads the gates both
+-- roads share (mana, death, spend) and the arithmetic (SM.Threshold,
+-- SM.MeanMax) from there.
 local _, MD = ...
 local SM = MD.SimModel
 
--- The v3 stream's own HEAL kind (Modules/SpellTuner_Recorder/
--- Recorder_Forever.lua's local K, Scenario_Forever.lua's local V3) --
--- duplicated here for the same reason those files give: nothing guarantees
--- one module can read another's locals. It never reaches SM.K (which only
--- knows FHEAL); it is this file's job to read the raw stream a second time,
--- for the amounts ScenarioV3 does not carry back out.
-local V3_HEAL = 15
-
--- `Threshold` and `MeanMax` are local to Engine/SimModel.lua (not exposed on
--- SM) and that file is untouched by this task, so the same small arithmetic
--- is duplicated here. `SM.GATES` itself IS the shared table (`SM.GATES =
--- GATES` there), so every threshold's setting/default/why still lives in one
--- place and this file only adds two entries to it.
-local function Threshold(name)
-    local g = SM.GATES[name]
-    return MD:Setting(g.setting), g.why
-end
-
-local function MeanMax(sim, rec, n, scale)
-    if not sim or not rec or n == 0 or scale <= 0 then return nil, nil end
-    local sum, worst, at = 0, 0, 0
-    local used = 0
-    for i = 1, n do
-        local a, b = sim[i], rec[i]
-        if a ~= nil and b ~= nil and b >= 0 then
-            local d = math.abs(a - b) / scale
-            sum = sum + d
-            used = used + 1
-            if d > worst then worst, at = d, i end
-        end
-    end
-    if used == 0 then return nil, nil end
-    return sum / used, worst, at
-end
+-- The v3 stream's own kinds, published once by the Recorder module's
+-- Stream_Forever.lua (T66), which this module depends on.
+local STREAM = MD.StreamV3
+local V3 = STREAM.K
+local Threshold, MeanMax = SM.Threshold, SM.MeanMax
 
 -- Two new thresholds, only if some other file has not already added them
 -- (Files table). T64 (P20, review A3): their defaults are registered here,
@@ -69,21 +42,16 @@ end
 SM.HEAL_AMOUNT = "unknown"
 
 --------------------------------------------------------------------------------
--- SM:ValidateV3(rec, kit) -- the eight gates on a v3 stream.
+-- SM.ValidateV3(rec, kit) -- the eight gates on a v3 stream (SM.validators[3]).
 --------------------------------------------------------------------------------
-function SM:ValidateV3(rec, kit)
+function SM.ValidateV3(rec, kit)
     if not rec then return nil end
     kit = kit or MD.RankMath:SpellKit()
     local sc = SM.ScenarioFromRecording(rec, kit)
     local r = SM:Run(sc, nil, { critMode = "ev" })
 
-    local out = { gates = {}, excluded = {}, ok = true, rec = rec,
-                  energize = 0, energizeAssumed = false }
-    local function Gate(name, ok, text, value, limit, why)
-        out.gates[#out.gates + 1] = { name = name, ok = ok, text = text,
-                                      value = value, limit = limit, why = why }
-        if not ok then out.ok = false end
-    end
+    -- energize 0, never assumed: a v3 scenario carries both (ScenarioV3).
+    local out, Gate = SM.NewValidation(rec, sc)
 
     ----------------------------------------------------------------------------
     -- 1 + 2: mana curve. The recorded mana IS the clock's own model
@@ -91,21 +59,7 @@ function SM:ValidateV3(rec, kit)
     -- with the live mana model -- a consistency check, not a check against the
     -- real pool, which is secret (Facts, Planner ruling 3). Thresholds as v2.
     ----------------------------------------------------------------------------
-    local mn = rec.mana or {}
-    local pool = rec.pool or 0
-    local mMean, mMax = MeanMax(r.manaCurve, mn.v, #(mn.t or {}), pool)
-    local limMean, whyMean = Threshold("manaMean")
-    local limMax, whyMax = Threshold("manaMax")
-    if mMean then
-        Gate("mana mean", mMean <= limMean,
-            string.format("mean off by %.1f%% of pool (limit %.0f%%) (modelled pool)", mMean * 100, limMean * 100),
-            mMean, limMean, whyMean)
-        Gate("mana max", mMax <= limMax,
-            string.format("worst sample off by %.1f%% of pool (limit %.0f%%) (modelled pool)", mMax * 100, limMax * 100),
-            mMax, limMax, whyMax)
-    else
-        Gate("mana curve", false, "no mana samples recorded (modelled pool)", nil, nil, whyMean)
-    end
+    local mMean, mMax = SM.GateMana(Gate, r, rec, " (modelled pool)")
 
     ----------------------------------------------------------------------------
     -- 3: health per target, scored against the reconstruction
@@ -121,7 +75,7 @@ function SM:ValidateV3(rec, kit)
     local hpAll = (sc.recordedHp and sc.recordedHp.hp) or {}
     local damageTaken = {}
     for i = 1, (rec.n or 0) do
-        if rec.ev.kind[i] == SM.K.DMG and (rec.ev.tgt[i] or 0) > 0 then
+        if rec.ev.kind[i] == V3.DMG and (rec.ev.tgt[i] or 0) > 0 then
             damageTaken[rec.ev.tgt[i]] = (damageTaken[rec.ev.tgt[i]] or 0) + 1
         end
     end
@@ -162,20 +116,9 @@ function SM:ValidateV3(rec, kit)
     Gate("health curves", scored > 0, hcText, nil, limHpMean, whyHp)
 
     ----------------------------------------------------------------------------
-    -- 4: no tracked death (as v2).
+    -- 4: no tracked death (as v2, the same gate).
     ----------------------------------------------------------------------------
-    if rec.practice then
-        Gate("no tracked death", true,
-            #(rec.deaths or {}) == 0 and "nobody died"
-                or string.format("%d death(s) - practice: the whole damage timeline is recorded", #rec.deaths),
-            nil, nil, "practice fights record damage the dead would have taken")
-    else
-        Gate("no tracked death", #(rec.deaths or {}) == 0,
-            #(rec.deaths or {}) == 0 and "nobody died"
-                or string.format("%d death(s): damage after one is truncated in the log",
-                    #rec.deaths),
-            nil, nil, "post-death damage truncation")
-    end
+    SM.GateDeath(Gate, rec)
 
     ----------------------------------------------------------------------------
     -- 5: foreign healing -- the damage meter's own share, not TBC's combat
@@ -235,55 +178,26 @@ function SM:ValidateV3(rec, kit)
     end
 
     ----------------------------------------------------------------------------
-    -- 7: spend coverage (as v2), classified with the Forever `MD:ClassifyCast`
-    -- (T13d).
+    -- 7: spend coverage (as v2, the same gate), classified with the Forever
+    -- `MD:ClassifyCast` (T13d).
     ----------------------------------------------------------------------------
-    local spendBySpell, spend = {}, 0
-    do
-        local evr = rec.ev or {}
-        for i = 1, (rec.n or 0) do
-            if evr.kind[i] == SM.K.OWNCAST and (evr.amt[i] or 0) > 0 then
-                spendBySpell[evr.x[i]] = (spendBySpell[evr.x[i]] or 0) + evr.amt[i]
-                spend = spend + evr.amt[i]
-            end
-        end
-    end
-    local form = (rec.initial and rec.initial.form) or "caster"
-    local modelled, replayed, unclassified = 0, 0, 0
-    for i = 1, #sc.script do
-        local c = sc.script[i]
-        local e = kit[form][c[2]] or kit.caster[c[2]]
-        local cost = c[3] or (e and e.cost) or 0
-        if e then
-            modelled = modelled + cost
-        else
-            local kind
-            if MD.ClassifyCast then local _, k = MD:ClassifyCast(c[2]); kind = k end
-            if kind and kind ~= "unknown" then replayed = replayed + cost
-            else unclassified = unclassified + cost end
-        end
-    end
-    local coverage = spend > 0 and (modelled + replayed) / spend or 0
-    Gate("spend coverage", coverage >= 0.90,
-        string.format("%.0f%% of the mana is accounted for (%.0f%% healing, %.0f%% replayed as cast)%s",
-            coverage * 100, spend > 0 and modelled / spend * 100 or 0,
-            spend > 0 and replayed / spend * 100 or 0,
-            unclassified > 0 and string.format("; %d mana on spells nothing can name", unclassified) or ""),
-        coverage, 0.90, "book classification (Forever)")
+    local _, spend = SM.OwnSpend(rec, V3.OWNCAST)
+    SM.GateSpend(Gate, rec, sc, kit, spend, "book classification (Forever)")
 
     ----------------------------------------------------------------------------
     -- 8: heals attributed (Planner ruling 2) -- the paired own total against
     -- the meter's own total. The short side (paired below the meter -- own
     -- heals the attribution called foreign) is always checked; the long side
-    -- only once `SM.HEAL_AMOUNT == "effective"`.
+    -- only once `SM.HEAL_AMOUNT == "effective"`. The attribution is the
+    -- scenario's own (T66: `sc.ownHeals`, `sc.attribution`), never made twice.
     ----------------------------------------------------------------------------
     local limAttrib, whyAttrib = Threshold("attributed")
     do
-        local ownSet, counts = SM.AttributeHeals(rec, kit)
+        local ownSet, counts = sc.ownHeals or {}, sc.attribution or {}
         local pairedTotal = 0
         local evr = rec.ev or {}
         for i = 1, (rec.n or 0) do
-            if evr.kind[i] == V3_HEAL and ownSet[i] then
+            if evr.kind[i] == V3.HEAL and ownSet[i] then
                 pairedTotal = pairedTotal + (evr.amt[i] or 0)
             end
         end
@@ -316,12 +230,8 @@ function SM:ValidateV3(rec, kit)
 end
 
 --------------------------------------------------------------------------------
--- Wrap SM:Validate: a v3 stream goes to ValidateV3, everything else (every
--- v2/TBC recording) takes the road it always has. Every argument after `kit`
--- is forwarded as it came (T46, review A18).
+-- The v3 road, registered (T66, P22, review A18) where this file used to wrap
+-- SM:Validate: Engine/SimModel.lua picks the validator by the stream's version;
+-- every v2/TBC recording takes the road it always has.
 --------------------------------------------------------------------------------
-local V2Validate = SM.Validate
-function SM.Validate(self, rec, kit, ...)
-    if rec and rec.v == 3 then return SM.ValidateV3(self, rec, kit, ...) end
-    return V2Validate(self, rec, kit, ...)
-end
+SM.validators[STREAM.V] = function(rec, kit, ...) return SM.ValidateV3(rec, kit, ...) end
