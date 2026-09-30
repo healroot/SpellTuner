@@ -12,6 +12,12 @@
 -- and hold that table as before; the T36 items after them hold the rail, the
 -- picker sheet, the drop from the spellbook (the cursor never cleared), /st
 -- spell, the preview banner and the pitches at a font offset of +2.
+--
+-- T38 (docs/SPEC-forever-ui.md 3.5): eight items before the ASCII walk hold
+-- one spell's view -- the header and the decision strip, the RANKS table, the
+-- rank card, the row hover (the game's tooltip through MD.API.SetTooltipSpell,
+-- the block added when no post-call runs, the edge, the kit tooltip's
+-- reasons), each shape, the refresh split and the pitches, and no gold.
 HARNESS_FLAVOUR = "forever"
 
 local here = arg[0]:match("^(.*)/[^/]+$")
@@ -1050,6 +1056,357 @@ do
         string.format("mana=%s permana=%s toOOM=%s export=%s", tostring(manaCell), tostring(perManaCell),
             tostring(oomCell), tostring(block and block:match("cost: [^\n]*"))))
 end
+
+--------------------------------------------------------------------------------
+-- T38 (docs/SPEC-forever-ui.md 3.5, docs/tasks/T38-one-spell-view.md): one
+-- spell's view -- the header, the decision strip, the RANKS table (T30's
+-- options: the per-mana bar, the gap and not-learned rows, the tags, the row
+-- states), the rank card, the row hover through MD.API.SetTooltipSpell with
+-- its fallback, the refresh split and the pitches. Each block under pcall
+-- (T36's T36()), so the old view fails item by item.
+--
+-- Fixtures: "Nourish", a direct heal listed at ranks 1, 2 and 4 (rank 3 a
+-- gap, rank 4 not learned), with the spec's own numbers (3.5, 10.6: R1 40-55
+-- for 25 mana in 1.5 s, R2 90-115 for 55 in 2.0 s); Rejuvenation (the stub's
+-- R1 dominated by R2) as a HoT; "Starfall" (the probe's Moonfire R1 text) as a
+-- hybrid; Bearform (above) as a family with no value.
+--------------------------------------------------------------------------------
+S.AddSpell(93801, "Nourish", "Rank 1",
+    function() return "Heals a friendly target for 40 to 55." end,
+    { cast = 1500, cost = 25, level = 1 })
+S.AddSpell(93802, "Nourish", "Rank 2",
+    function() return "Heals a friendly target for 90 to 115." end,
+    { cast = 2000, cost = 55, level = 8 })
+S.AddSpell(93804, "Nourish", "Rank 4",
+    function() return "Heals a friendly target for 150 to 170." end,
+    { cast = 2500, cost = 100, level = 20, known = false })
+S.AddSpell(93811, "Starfall", "Rank 1",
+    function() return "Burns the enemy for 9 to 12 Arcane damage and then an additional 12 Arcane damage over 9 sec." end,
+    { cast = 0, cost = 25, level = 4 })
+Book:MarkDirty()
+
+local F = function() return SP.family end
+local function OpenView(key)
+    if not MD.Tabs:Has(key) then MD.Tabs:Add(key, nil); SP:ListChanged() end
+    MD:SelectView("spells", "fam:" .. key)
+    return SP.family
+end
+local function ViewRows()
+    local out = {}
+    for _, r in ipairs(F().lastRows or {}) do out[#out + 1] = r end
+    return out
+end
+local function ViewRow(rank)
+    for _, r in ipairs(ViewRows()) do
+        if r.rank == rank then return r, RowFor(nil, r) end
+    end
+    return nil
+end
+local function Pairs()
+    local out = {}
+    for _, p in ipairs(F().card and F().card.shown or {}) do
+        out[#out + 1] = StripColor(p.label:GetText() or "") .. "=" .. StripColor(p.value:GetText() or "")
+    end
+    return table.concat(out, "; ")
+end
+local function PairValue(label)
+    for _, p in ipairs(F().card and F().card.shown or {}) do
+        if StripColor(p.label:GetText() or "") == label then return StripColor(p.value:GetText() or "") end
+    end
+    return nil
+end
+local function Fill(rowFrame)
+    if not (rowFrame and rowFrame.fill and rowFrame.fill:IsShown()) then return nil end
+    return rowFrame.fill.color and rowFrame.fill.color[4]
+end
+local function BlockCount(tt)
+    local n = 0
+    for _, line in ipairs(tt.lines or {}) do if line[1] == "SpellTuner" then n = n + 1 end end
+    return n
+end
+local function Hover(rowFrame)
+    GameTooltip.lines = nil
+    if UI.tooltip then UI.tooltip.lines = nil end
+    rowFrame:GetScript("OnEnter")(rowFrame)
+end
+local function Unhover(rowFrame)
+    rowFrame:GetScript("OnLeave")(rowFrame)
+end
+local function FullPoolCasts(e)
+    local pool = MD.Clock:Pool()
+    return Book:CastsFor(e, { max = pool.max, regenCasting = pool.regenCasting })
+end
+local PAD_SCREEN = 4000
+-- The card's To OOM and Now: this stub's casting regen (28.33 a second)
+-- keeps up with every cheap rank, so both read "never" there; BigSpell (300
+-- mana, above) is the finite case (T38-7).
+local function OOMWord(n)
+    if n == math.huge then return "never - regen keeps up" end
+    return Num(n) .. " casts from full"
+end
+local function NowWord(n, pool)
+    if n == math.huge then return "never - regen keeps up" end
+    return "~" .. Num(n) .. " from ~" .. Num(pool.mana) .. " mana"
+end
+
+-- T38-1: the header and the decision strip
+T36("T38 the header and the decision strip: which rank, and one factual line", function()
+    local f = OpenView("Nourish")
+    local pool = MD.Clock:Pool()
+    local rawMana = f.header.mana:GetText() or ""
+    local manaText = StripColor(rawMana)
+    local wantMana = "~" .. Num(pool.mana) .. " / " .. Num(pool.max) .. " mana"
+    local _, tildes = manaText:gsub("~", "")
+    local good = StripColor(f.header.name:GetText() or "") == "Nourish"
+        and f.header.sub:GetText() == "Direct heal - Rank 2 of 2 known - 2.0 s cast"
+        and manaText == wantMana and tildes == 1
+        and rawMana:find(UI.TEXT.mana.hex .. "~", 1, true) == 1 -- only the modelled pool in the mana colour
+        and f.strip:IsShown() and f.strip.chipLabel:GetText() == "SUGGESTED"
+        and f.strip.chipRank:GetText() == "Rank 1"
+        and f.strip.compare:GetText() == "vs Rank 2 (your highest): 2% more healing per mana, 46% of the heal, a 25% shorter cast."
+    return good, string.format("sub=%q mana=%q chip=%q cmp=%q", tostring(f.header.sub:GetText()), manaText,
+        tostring(f.strip.chipRank and f.strip.chipRank:GetText()), tostring(f.strip.compare and f.strip.compare:GetText()))
+end)
+
+-- T38-2: the RANKS table -- a row per rank from 1 to the highest listed, the
+-- gap spanning, the not-learned row, the bar, the tags, the suggested row
+T36("T38 the ranks table: every rank to the highest listed, the gap, the bar and the tags", function()
+    local f = F()
+    local r1, row1 = ViewRow(1)
+    local r2, row2 = ViewRow(2)
+    local r3, row3 = ViewRow(3)
+    local r4, row4 = ViewRow(4)
+    local e1, e2 = Book:Get().spells[93801], Book:Get().spells[93802]
+    local order = {}
+    for _, r in ipairs(ViewRows()) do order[#order + 1] = r.kind .. tostring(r.rank) end
+    local function Cells(row)
+        local t = {}
+        for _, k in ipairs({ "rank", "level", "mana", "value", "permana", "persec", "cast", "toOOM", "tag" }) do
+            t[#t + 1] = CellText(row, k) or "?"
+        end
+        return table.concat(t, ",")
+    end
+    local want1 = table.concat({ "R1", "1", "25", "48", "1.90", "31.7", "1.5s", Num(FullPoolCasts(e1)), "best" }, ",")
+    local want2 = table.concat({ "R2", "8", "55", "103", Num(e2.perMana, 2), Num(e2.perSec, 1), "2.0s",
+        Num(FullPoolCasts(e2)), "max" }, ",")
+    local header
+    for _, fr in ipairs(S.allFrames) do
+        if fr.isHeader and fr.cells and fr.cells.value and fr:IsVisible() then header = fr end
+    end
+    local gapText = CellText(row3, "wide")
+    local good = table.concat(order, ",") == "rank1,rank2,gap3,rank4"
+        and Cells(row1) == want1 and Cells(row2) == want2
+        and CellText(row3, "rank") == "R3"
+        and gapText == 'not in your spellbook - untrained, or hidden by "show all ranks"'
+        and CellText(row4, "tag") == "learn at 20"
+        and (row4.cells.value:GetText() or ""):find(UI.TEXT.disabled.hex, 1, true) == 1
+        and header ~= nil and CellText(header, "value") == "Heal" and CellText(header, "permana") == "Per mana"
+        and row1.bars.permana.fill:IsShown() and row1.bars.permana.fill.w == 72
+        and math.abs(row2.bars.permana.fill.w - 72 * e2.perMana / e1.perMana) < 1e-6
+        and not row3.bars.permana.track:IsShown()
+        and row1.mark:IsShown() and not row2.mark:IsShown()
+        and f.selectedId == 93801 and Fill(row1) == 0.28 and Fill(row2) == 0.03 -- zebra on the even row
+    return good, string.format("order=%s r1=%s r2=%s gap=%q r4tag=%s fill1=%s",
+        table.concat(order, ","), Cells(row1), Cells(row2), tostring(gapText), tostring(CellText(row4, "tag")),
+        tostring(Fill(row1)))
+end)
+
+-- T38-3: the card follows the selected rank; a click selects another
+T36("T38 the rank card: the suggested rank by default, a click selects another", function()
+    local f = F()
+    local before = f.card.title:GetText() .. " / " .. f.card.learned:GetText()
+    local firstPairs = Pairs()
+    local _, row2 = ViewRow(2)
+    row2:GetScript("OnMouseUp")(row2, "LeftButton")
+    local e2 = Book:Get().spells[93802]
+    local pool = MD.Clock:Pool()
+    local _, row1 = ViewRow(1)
+    local good = before == "RANK 1 / learned at 1"
+        and firstPairs:find("Heals=40 - 55 (avg 48); Crit=60 - 83 (x1.5 assumed)", 1, true) == 1
+        and f.selectedId == 93802 and f.card.title:GetText() == "RANK 2" and f.card.learned:GetText() == "learned at 8"
+        and f.card.quote:GetText() == '"Heals a friendly target for 90 to 115."'
+        and PairValue("Heals") == "90 - 115 (avg 103)" and PairValue("Crit") == "135 - 173 (x1.5 assumed)"
+        and PairValue("Cost") == "55 mana" and PairValue("Cast") == "2.0 s"
+        and PairValue("Per mana") == Num(e2.perMana, 2)
+        and PairValue("Per s") == Num(e2.perSec, 1) .. " over a 2.0 s cast"
+        and PairValue("To OOM") == OOMWord(FullPoolCasts(e2))
+        and PairValue("Now") == NowWord(Book:CastsFor(e2, pool), pool)
+        and Fill(row2) == 0.28 and Fill(row1) == 0.10 and row1.mark:IsShown()
+        and f.footer:GetText() == "Values come from the spell's own text. ~ = modelled."
+    return good, "before=" .. before .. " | " .. Pairs()
+end)
+
+-- T38-4: a row's hover is the game's own tooltip for that rank, through the
+-- adapter, with the block under it once, beside the row
+T36("T38 row hover: the game's tooltip through MD.API.SetTooltipSpell, the block once, beside the row", function()
+    UIParent:SetWidth(PAD_SCREEN)
+    local _, row1 = ViewRow(1)
+    S.setSpellByIdCalls = {}
+    Hover(row1)
+    local calls = table.concat(S.setSpellByIdCalls, ",")
+    local tl = GameTooltip.points and GameTooltip.points.TOPLEFT
+    local good = calls == "93801" and GameTooltip.lines ~= nil and GameTooltip.lines[1][1] == "Nourish"
+        and BlockCount(GameTooltip) == 1 and GameTooltip._spellTipId == 93801
+        and tl ~= nil and tl.rel == row1 and tl.rp == "TOPRIGHT" and tl.x == 6
+        and row1.highlight:IsShown()
+    Unhover(row1)
+    return good and not row1.highlight:IsShown(), string.format("calls=%s blocks=%d anchor=%s/%s",
+        calls, BlockCount(GameTooltip), tostring(tl and tl.rp), tostring(tl and tl.x))
+end)
+
+-- T38-5: no post-call -> the row adds the block itself; off the screen's
+-- right edge -> the tooltip on the row's left; a gap or a not-learned row ->
+-- the kit tooltip with the reason, and no game tooltip
+T36("T38 row hover: the block added when no post-call runs, flipped at the edge, a reason for gap rows", function()
+    local _, row2 = ViewRow(2)
+    S.setSpellByIdNoPostCall = true
+    UIParent:SetWidth(560)
+    Hover(row2)
+    S.setSpellByIdNoPostCall = nil
+    local tr = GameTooltip.points and GameTooltip.points.TOPRIGHT
+    local fallback = BlockCount(GameTooltip) == 1 and GameTooltip.lines[1][1] == "Nourish"
+        and tr ~= nil and tr.rel == row2 and tr.rp == "TOPLEFT" and tr.x == -6
+    Unhover(row2)
+    UIParent:SetWidth(PAD_SCREEN)
+
+    local _, row3 = ViewRow(3)
+    local _, row4 = ViewRow(4)
+    S.setSpellByIdCalls = {}
+    Hover(row3)
+    local gapLines = {}
+    for _, l in ipairs(UI.tooltip.lines or {}) do gapLines[#gapLines + 1] = l[1] end
+    Unhover(row3)
+    Hover(row4)
+    local learnLines = {}
+    for _, l in ipairs(UI.tooltip.lines or {}) do learnLines[#learnLines + 1] = l[1] end
+    Unhover(row4)
+    local gapText, learnText = table.concat(gapLines, " / "), table.concat(learnLines, " / ")
+    local good = fallback and #S.setSpellByIdCalls == 0
+        and gapText == 'Nourish Rank 3 / Not in your spellbook: untrained, or hidden by "show all ranks".'
+        and learnText == "Nourish Rank 4 / Not learned yet: learn at level 20."
+    return good, string.format("fallback=%s gap=%q learn=%q", tostring(fallback), gapText, learnText)
+end)
+
+-- T38-6: a HoT, a hybrid and a family with no value each read as what they are
+T36("T38 a HoT, a hybrid and a spell with no value: header, strip, columns and card by shape", function()
+    local f = OpenView("Rejuvenation")
+    local _, rj1 = ViewRow(1)
+    local hot = f.header.sub:GetText() == "Heal over time - Rank 2 of 2 known - 12 s"
+        and f.strip:IsShown() and f.strip.chipRank:GetText() == "Rank 2"
+        and f.strip.compare:GetText() == "Your highest rank is also the best per mana."
+        and CellText(rj1, "tag") == "dominated"
+        and (rj1.cells.level:GetText() or ""):find(UI.TEXT.muted.hex, 1, true) == 1
+        and PairValue("Heals") == "56 over 12 s" and PairValue("Crit") == nil
+    local hotSub = f.header.sub:GetText()
+
+    OpenView("Starfall")
+    local hybrid = f.header.sub:GetText() == "Damage - hit and over time - Arcane - Rank 1 of 1 known"
+        and not f.strip:IsShown()
+        and PairValue("Hit") == "9 - 12" and PairValue("Over time") == "12 over 9 s" and PairValue("Total") == "23"
+    local hybridSub = f.header.sub:GetText()
+
+    OpenView("Bearform")
+    local headers = {}
+    for _, fr in ipairs(S.allFrames) do
+        if fr.isHeader and fr.cells and fr:IsVisible() then
+            for _, c in ipairs(f.activeTable.cols) do headers[#headers + 1] = CellText(fr, c.key) end
+        end
+    end
+    local none = f.header.sub:GetText() == "Utility - 30 mana" and not f.strip:IsShown()
+        and f.activeTable == f.otherTable and not f.rankTable.frame:IsShown()
+        and table.concat(headers, ",") == "Rank,Lvl,Mana,Cast,"
+        and PairValue("Cost") == "30 mana" and PairValue("Per mana") == nil
+    return hot and hybrid and none, string.format("hot=%s(%q) hybrid=%s(%q) none=%s(%q, %s) | %s",
+        tostring(hot), tostring(hotSub), tostring(hybrid), tostring(hybridSub), tostring(none),
+        tostring(f.header.sub:GetText()), table.concat(headers, ","), Pairs())
+end)
+
+-- T38-7: the 2-s tick updates the header's mana, Now and To OOM in place; a
+-- book change re-renders; at font offset +2 every pitch grows
+T36("T38 the refresh split: mana, Now and To OOM in place; a book change re-renders; pitches at +2", function()
+    -- BigSpell: one rank, 300 mana, so both counts are finite here
+    local f = OpenView("BigSpell")
+    local renders, lives = f.renderCount, f.liveCount
+    local _, row1 = ViewRow(1)
+    local e1 = Book:Get().spells[92050]
+    local fullBefore = PairValue("To OOM")
+    MD.Clock.model:Anchor(GetTime(), 100, "test: drained for T38")
+    MD.Clock.model.lastSpend = GetTime() -- as after a cast: the clock does not assume it refilled
+    for _ = 1, 4 do S.Tick(0.5) end
+    local pool = MD.Clock:Pool()
+    local _, row1b = ViewRow(1)
+    local inPlace = f.renderCount == renders and f.liveCount == lives + 1 and row1b == row1
+        and StripColor(f.header.mana:GetText()) == "~" .. Num(pool.mana) .. " / " .. Num(pool.max) .. " mana"
+        and PairValue("Now") == "~0 from ~" .. Num(pool.mana) .. " mana"
+        and fullBefore == OOMWord(FullPoolCasts(e1)) and fullBefore:find("casts from full", 1, true) ~= nil
+        and CellText(row1, "toOOM") == Num(FullPoolCasts(e1))
+    local liveDetail = string.format("renders %s->%s lives %s->%s same=%s mana=%q now=%q full=%q cell=%q",
+        tostring(renders), tostring(f.renderCount), tostring(lives), tostring(f.liveCount), tostring(row1b == row1),
+        StripColor(f.header.mana:GetText()), tostring(PairValue("Now")), tostring(fullBefore), tostring(CellText(row1, "toOOM")))
+    MD.Clock.model:Anchor(GetTime(), MD.Clock.model.max, "test: restored")
+    OpenView("Nourish")
+    renders = f.renderCount
+
+    Book:MarkDirty()
+    for _ = 1, 4 do S.Tick(0.5) end
+    local rerendered = f.renderCount == renders + 1
+
+    UI.ApplyFonts(2)
+    local _, a = ViewRow(1)
+    local _, b = ViewRow(2)
+    local rowGap = a.points.TOPLEFT.y - b.points.TOPLEFT.y
+    local pitches = rowGap == 22 and a:GetHeight() == 22 and f.header:GetHeight() == 50
+        and f.strip:GetHeight() == 46 and f.card.pitch == 19
+    local pitchDetail = string.format("rowGap=%s strip=%s card=%s", tostring(rowGap), tostring(f.strip:GetHeight()),
+        tostring(f.card.pitch))
+    UI.ApplyFonts(0)
+    local _, a0 = ViewRow(1)
+    local _, b0 = ViewRow(2)
+    local back = a0.points.TOPLEFT.y - b0.points.TOPLEFT.y == 20 and f.card.pitch == 17
+    return inPlace and rerendered and pitches and back, string.format(
+        "inPlace=%s (%s) rerendered=%s at +2 %s back=%s", tostring(inPlace), liveDetail, tostring(rerendered),
+        pitchDetail, tostring(back))
+end)
+
+-- T38-8: no Blizzard gold anywhere in the view, nor in its row tooltips
+T36("T38 no ffcc00 anywhere in the view or its tooltips", function()
+    local f = OpenView("Nourish")
+    local function Under(fr)
+        local p, guard = fr, 0
+        while p and guard < 60 do
+            if p == f then return true end
+            p, guard = p.parentFrame, guard + 1
+        end
+        return false
+    end
+    local bad
+    local function Scan(text, where)
+        if type(text) == "string" and not bad then
+            local low = text:lower()
+            if low:find("ffcc00", 1, true) or low:find("ffd100", 1, true) then bad = where .. ": " .. text end
+        end
+    end
+    local seen = 0
+    for _, fr in ipairs(S.allFrames) do
+        if Under(fr) then
+            seen = seen + 1
+            Scan(fr.GetText and fr:GetText(), "painted")
+            local c = fr.textColor
+            if c and not bad and math.abs(c[1] - 1) < 0.01 and math.abs(c[2] - 0.82) < 0.01 and c[3] < 0.01 then
+                bad = "gold text colour on '" .. tostring(fr:GetText()) .. "'"
+            end
+        end
+    end
+    for _, rank in ipairs({ 1, 2, 3, 4 }) do
+        local _, row = ViewRow(rank)
+        Hover(row)
+        for _, tt in ipairs({ GameTooltip, UI.tooltip }) do
+            for _, l in ipairs(tt.lines or {}) do Scan(l[1], "tooltip"); Scan(l[2], "tooltip") end
+        end
+        Unhover(row)
+    end
+    return bad == nil and seen > 40, bad or ("frames=" .. seen)
+end)
 
 --------------------------------------------------------------------------------
 -- 11: every string the pane renders or exports is ASCII with no bare pipe

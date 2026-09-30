@@ -13,10 +13,10 @@
 -- would delete the player's button). /st spell <name> opens a family's view,
 -- or its preview with a banner when it is not in the list.
 --
--- What each view shows is T36's interim: Overview is today's Spellbook table
--- (T10-T10c, the review's R13/R38, Export) until T39 turns it into My spells /
--- Whole book, and a family's view is a header over that family's rows of the
--- same table until T38 builds the view of 3.5.
+-- Overview is still T36's interim, today's Spellbook table (T10-T10c, the
+-- review's R13/R38, Export), until T39 turns it into My spells / Whole book.
+-- A family's view is T38's (3.5): the header, the decision strip, the RANKS
+-- table, the rank card, the row hover and the refresh split.
 --
 -- Forever TOCs only. Client data only through MD.API (the book, the clock,
 -- the cursor); the widget toolkit is not a client call (CLAUDE.md, T1b).
@@ -478,27 +478,184 @@ local function BuildOverview(host)
 end
 
 --------------------------------------------------------------------------------
--- A family's view (T36's interim: T38 builds 3.5 in its place): the preview
--- banner, a header (icon, name, what it is, the modelled pool) and the
--- family's rows of the table above; a family the book no longer has says so,
--- with its [Remove].
+-- T38 (docs/SPEC-forever-ui.md 3.5, docs/tasks/T38-one-spell-view.md): one
+-- spell's view. Top to bottom, 12 px apart, inside one scroll frame (the
+-- view scrolls when it is taller than the pane):
+--   1. the header: the icon, the name, what the family is (its shape), and
+--      the modelled pool at the right ("~" only on the current pool);
+--   2. the decision strip: the SUGGESTED chip and one factual comparison
+--      with the highest known rank (Book:Compare), never what to press;
+--      no strip with one known rank;
+--   3. RANKS: one row per rank from 1 to the highest listed, gaps included,
+--      on UI/Dashboard_Rows.lua's table with T30's options (the per-mana
+--      bar, the fills, the tags; no gold, no star, no legend);
+--   4. the rank card for the selected rank (the suggested one by default),
+--      and one footer line.
+-- A row's hover is the game's own tooltip for that rank (MD.API.
+-- SetTooltipSpell), the SpellTuner block under it from the Spell post-call,
+-- or added here when the post-call did not run. The 2-s tick updates the
+-- header's mana, the card's Now and the To OOM cells in place; a full render
+-- happens on a book change, a new bonus-healing reading, a new pool max, a
+-- font offset or a view switch. Every vertical pitch goes through UI.Pitch.
 --------------------------------------------------------------------------------
-local function KindWord(kind)
-    if kind == "heal" then return "Heal" end
-    if kind == "damage" then return "Damage" end
-    return "Utility"
+local VIEW_W = 540          -- 524 of columns plus 8 px each side, inside the 556 view
+local STRIP_H = 44
+local CHIP_W = 150
+local BLOCK_GAP = 12
+local PANE_TOP = 27         -- a titled pane's first control (Cell)
+local TABLE_ROW = 20
+local TABLE_HEAD = 22
+local CARD_PAIR = 17
+local CARD_COL = 262
+local CARD_LABEL_W = 70
+local TIP_GAP = 6           -- the row tooltip's distance from the row
+local CRIT_MULT = 1.5       -- vanilla's rule, UNVERIFIED on Forever (UI/SpellTip_Forever.lua)
+local GCD = 1.5             -- Spells/Book.lua's own
+local SUGGESTED_RULE = "Highest heal per mana among the ranks nothing beats on both per mana and per second, with at least 40% of your highest rank's heal."
+local GAP_TEXT = 'not in your spellbook - untrained, or hidden by "show all ranks"'
+local FOOTER_TEXT = "Values come from the spell's own text. ~ = modelled."
+
+-- The RANKS columns (3.5): 524 wide from x = 8. The Tag column starts 8 px
+-- into its 60 so a tag never touches the right-justified To OOM number.
+local RANK_COLS = {
+    { key = "rank",    x = 8,   w = 52,  label = "Rank" },
+    { key = "level",   x = 60,  w = 34,  label = "Lvl",      justify = "RIGHT" },
+    { key = "mana",    x = 94,  w = 46,  label = "Mana",     justify = "RIGHT" },
+    { key = "value",   x = 140, w = 58,  label = "Heal",     justify = "RIGHT" },
+    { key = "permana", x = 198, w = 116, label = "Per mana", justify = "RIGHT", type = "bar", barWidth = 72, gap = 4 },
+    { key = "persec",  x = 314, w = 54,  label = "Per s",    justify = "RIGHT" },
+    { key = "cast",    x = 368, w = 46,  label = "Cast",     justify = "RIGHT" },
+    { key = "toOOM",   x = 414, w = 58,  label = "To OOM",   justify = "RIGHT" },
+    { key = "tag",     x = 480, w = 52,  label = "", font = UI.FONT_SMALL },
+}
+-- A family with no value (3.5 "Other-kind"): Rank / Lvl / Mana / Cast / Tag.
+local OTHER_COLS = {
+    { key = "rank",  x = 8,   w = 52, label = "Rank" },
+    { key = "level", x = 60,  w = 34, label = "Lvl",  justify = "RIGHT" },
+    { key = "mana",  x = 94,  w = 46, label = "Mana", justify = "RIGHT" },
+    { key = "cast",  x = 140, w = 46, label = "Cast", justify = "RIGHT" },
+    { key = "tag",   x = 202, w = 52, label = "", font = UI.FONT_SMALL },
+}
+
+local function Tok(token, r, g, b)
+    local t = UI.TEXT and UI.TEXT[token]
+    if t then return t[1], t[2], t[3] end
+    return r, g, b
 end
 
-local function SubText(fam)
-    local known = 0
-    for _, e in ipairs(fam.ranks or {}) do if e.known ~= false then known = known + 1 end end
-    local top = fam.maxKnown and fam.maxKnown.rank
-    if type(top) == "number" then
-        return string.format("%s - Rank %d of %d known", KindWord(fam.kind), top, known)
+local function Round(x) return math.floor(x + 0.5) end
+
+local function KnownRanks(fam)
+    local n = 0
+    for _, e in ipairs(fam.ranks or {}) do if e.known ~= false then n = n + 1 end end
+    return n
+end
+
+-- The rank a family's words are read from: the highest known, else the
+-- first listed.
+local function Rep(fam)
+    return fam.maxKnown or (fam.ranks and fam.ranks[1])
+end
+
+local function PartOf(e, kind)
+    if type(e) ~= "table" or type(e.parsed) ~= "table" then return nil end
+    if kind == "damage" then return e.parsed.damage end
+    return e.parsed.heal
+end
+
+-- "2.0 s cast", "instant", "channeled"; nil when the book has no cast.
+local function CastWord(e)
+    if not e then return nil end
+    if e.castKind == "instant" then return "instant" end
+    if e.castKind == "channeled" then return "channeled" end
+    if type(e.cast) == "number" then return string.format("%.1f s cast", e.cast) end
+    return nil
+end
+
+-- A cost in words: "25 mana", "free", "5% of base mana", "10 Rage", "-".
+local function CostWord(e)
+    if not e then return "-" end
+    local other = OtherPowerText(e)
+    if other then return other end
+    if e.costState == "free" then return "free" end
+    if e.cost then
+        if type(e.cost.amount) == "number" then return Num(e.cost.amount) .. " mana" end
+        if type(e.cost.percent) == "number" then return Num(e.cost.percent, 0) .. "% of base mana" end
     end
-    return KindWord(fam.kind) .. " - not learned yet"
+    return "-"
 end
 
+-- 1. The header's second line, by the family's shape (Book's family.shape).
+local function HeaderSub(fam)
+    local rep = Rep(fam)
+    local top = fam.maxKnown
+    local rankPart
+    if top and type(top.rank) == "number" then
+        rankPart = string.format("Rank %d of %d known", top.rank, KnownRanks(fam))
+    elseif not top and KnownRanks(fam) == 0 then
+        rankPart = "not learned yet"
+    end
+    local heal = fam.kind == "heal"
+    local parts = {}
+    local shape = fam.shape
+    if shape == "direct" then
+        local isAbsorb = heal and type(rep.parsed) == "table" and rep.parsed.heal == nil and rep.parsed.absorb ~= nil
+        parts[1] = isAbsorb and "Absorb" or (heal and "Direct heal" or "Direct damage")
+        parts[#parts + 1] = rankPart
+        parts[#parts + 1] = CastWord(rep)
+    elseif shape == "hot" then
+        parts[1] = heal and "Heal over time" or "Damage over time"
+        parts[#parts + 1] = rankPart
+        local part = PartOf(rep, fam.kind)
+        local dur = part and (part.dur or part.periodDur)
+        if type(dur) == "number" then parts[#parts + 1] = Num(dur) .. " s" end
+    elseif shape == "hybrid" then
+        parts[1] = heal and "Heal" or "Damage"
+        parts[2] = "hit and over time"
+        local part = PartOf(rep, fam.kind)
+        if part and type(part.school) == "string" then parts[3] = Esc(part.school) end
+        parts[#parts + 1] = rankPart
+    else
+        parts[1] = "Utility"
+        parts[#parts + 1] = rankPart
+        parts[#parts + 1] = CostWord(rep)
+    end
+    local out = {}
+    for i = 1, 6 do if parts[i] then out[#out + 1] = parts[i] end end
+    return table.concat(out, " - ")
+end
+
+-- 2. The strip's comparison line (Book:Compare's numbers, rounded).
+local function CompareText(a, b, kind)
+    local c = MD.Book:Compare(a, b)
+    if not c then return "" end
+    local what = (kind == "damage") and "damage" or "healing"
+    local noun = (kind == "damage") and "damage" or "heal"
+    local parts = {}
+    if c.perMana then
+        local p = Round(math.abs(c.perMana))
+        if p == 0 then
+            parts[#parts + 1] = "the same " .. what .. " per mana"
+        else
+            parts[#parts + 1] = p .. "% " .. (c.perMana > 0 and "more" or "less") .. " " .. what .. " per mana"
+        end
+    end
+    if c.value then parts[#parts + 1] = Round(c.value) .. "% of the " .. noun end
+    if c.cast then
+        local p = Round(math.abs(c.cast))
+        if p == 0 then
+            parts[#parts + 1] = "the same cast time"
+        else
+            parts[#parts + 1] = "a " .. p .. "% " .. (c.cast < 0 and "shorter" or "longer") .. " cast"
+        end
+    end
+    local head = "vs Rank " .. tostring(b.rank or "-") .. " (your highest)"
+    if #parts == 0 then return head .. "." end
+    return head .. ": " .. table.concat(parts, ", ") .. "."
+end
+
+-- The header's pool: "~364 / 364 mana", the "~" and the mana colour on the
+-- modelled current pool only; the max plain.
 local function HeaderManaText(pool)
     if type(pool) == "table" and type(pool.mana) == "number" and type(pool.max) == "number" then
         return Hex("mana", "|cff4d99ff") .. "~" .. Num(pool.mana) .. RESET .. " / " .. Num(pool.max) .. " mana"
@@ -506,19 +663,435 @@ local function HeaderManaText(pool)
     return Hex("muted", "|cff7a7a7a") .. "mana not modelled yet" .. RESET
 end
 
+-- The pool a To OOM cell counts from: full, at the clock's (else the book's)
+-- max and casting regen.
+local function FullPool(pool)
+    return { max = pool.max, regenCasting = pool.regenCasting }
+end
+
+local function CastsWord(n)
+    if n == math.huge then return "inf" end
+    if type(n) == "number" then return Num(n, 0) end
+    return "-"
+end
+
+--------------------------------------------------------------------------------
+-- Tooltips beside a row (3.5): TOPLEFT at the row's TOPRIGHT +6, or, when
+-- that runs off the screen's right edge, TOPRIGHT at the row's TOPLEFT -6.
+-- Nothing anchors to the window edge.
+--------------------------------------------------------------------------------
+local function Place(tt, row)
+    tt:ClearAllPoints()
+    local flip = false
+    local right, screen, w = row:GetRight(), UIParent:GetRight(), tt:GetWidth()
+    if type(right) == "number" and type(screen) == "number" and type(w) == "number" then
+        local rs, us, ts = row:GetEffectiveScale(), UIParent:GetEffectiveScale(), tt:GetEffectiveScale()
+        flip = (right + TIP_GAP) * rs + w * ts > screen * us
+    end
+    if flip then
+        tt:SetPoint("TOPRIGHT", row, "TOPLEFT", -TIP_GAP, 0)
+    else
+        tt:SetPoint("TOPLEFT", row, "TOPRIGHT", TIP_GAP, 0)
+    end
+end
+
+-- The kit tooltip (a gap row, a rank not learned, the chip): a title and
+-- its lines, every colour passed, so no default gold is inherited.
+local function KitTip(owner, title, ...)
+    local tt = UI.tooltip
+    if not tt then return end
+    tt:SetOwner(owner, "ANCHOR_NONE")
+    tt:AddLine(title, Tok("text", 1, 1, 1))
+    for i = 1, select("#", ...) do
+        local line = select(i, ...)
+        if line then tt:AddLine(line, Tok("text2", 0.7, 0.7, 0.7)) end
+    end
+    tt:Show()
+    Place(tt, owner)
+end
+
+local function RankName(fam, rank)
+    return Esc(fam.name or "") .. ((type(rank) == "number") and (" Rank " .. rank) or "")
+end
+
+-- A known rank: the game's own tooltip for that id, then the block. The
+-- tooltip's guard (UI/SpellTip_Forever.lua's _spellTipId) is cleared first,
+-- so "the block is there" is read from this showing alone.
+local function GameTip(row, fam, e)
+    local tt = GameTooltip
+    tt:SetOwner(row, "ANCHOR_NONE")
+    tt:ClearAllPoints()
+    tt:SetPoint("TOPLEFT", row, "TOPRIGHT", TIP_GAP, 0)
+    tt._spellTipId = nil
+    local shown = MD.API.SetTooltipSpell(tt, e.id)
+    if not shown then
+        tt:AddLine(RankName(fam, e.rank), Tok("text", 1, 1, 1))
+    end
+    if tt._spellTipId ~= e.id and MD.SpellTip then
+        local ok, lines = pcall(MD.SpellTip.Lines, MD.SpellTip, e.id, MD.SpellTip:DetailShown())
+        if ok and type(lines) == "table" then
+            tt:AddLine(" ")
+            MD.SpellTip:Render(tt, lines)
+        end
+    end
+    tt:Show()
+    Place(tt, row)
+end
+
+--------------------------------------------------------------------------------
+-- 3. The RANKS rows
+--------------------------------------------------------------------------------
+local function TagText(r)
+    local e = r.entry
+    if e.suggested then return Hex("accent", UI.accentHex) .. "best" .. RESET end
+    if e.known == false then
+        local word = (type(e.level) == "number") and ("learn at " .. e.level) or "not learned"
+        return Hex("disabled", "|cff4d4d4d") .. word .. RESET
+    end
+    if r.isMax then return Hex("text2", "|cffb3b3b3") .. "max" .. RESET end
+    if e.dominated then return Hex("muted", "|cff7a7a7a") .. "dominated" .. RESET end
+    return ""
+end
+
+local function RankCell(e)
+    if type(e.rank) == "number" then return "R" .. e.rank end
+    return "-"
+end
+
+local function SetWide(row, x, text)
+    local wide = row.cells.wide
+    if not wide then return end
+    wide:ClearAllPoints()
+    wide:SetPoint("LEFT", row, "LEFT", x, 0)
+    wide:SetWidth(VIEW_W - x - 8)
+    wide:SetText(text)
+end
+
+local function RenderRankRow(row, r, color)
+    r.color = color
+    for _, fs in pairs(row.cells) do fs:SetText("") end
+    if r.kind == "gap" then
+        local dis = Hex("disabled", "|cff4d4d4d")
+        row.cells.rank:SetText(dis .. "R" .. r.rank .. RESET)
+        SetWide(row, RANK_COLS[2].x, dis .. GAP_TEXT .. RESET)
+        if row.SetBar then row:SetBar("permana", nil) end
+        return
+    end
+    SetWide(row, 8, "")
+    local e = r.entry
+    local c = row.cells
+    c.rank:SetText(color .. RankCell(e) .. RESET)
+    c.level:SetText(color .. Num(e.level) .. RESET)
+    c.mana:SetText(color .. ManaCellText(e) .. RESET)
+    c.cast:SetText(color .. CastCellText(e) .. RESET)
+    c.tag:SetText(TagText(r))
+    if c.value then
+        c.value:SetText(color .. Num(e.value) .. RESET)
+        c.permana:SetText(color .. Num(e.perMana, 2) .. RESET)
+        c.persec:SetText(color .. Num(e.perSec, 1) .. RESET)
+        c.toOOM:SetText(color .. CastsWord(r.fullCasts) .. RESET)
+        local frac
+        if type(e.perMana) == "number" and type(r.maxPerMana) == "number" and r.maxPerMana > 0 then
+            frac = e.perMana / r.maxPerMana
+        end
+        if row.SetBar then row:SetBar("permana", frac, (e.known == false) and 0.25 or nil) end
+    end
+end
+
+-- The 2-s tick's in-place update (T30's onUpdateCells): the To OOM cell,
+-- against the full pool SpellsPane:UpdateFamilyLive read once for the tick.
+local function UpdateRankRow(row, r)
+    if r.kind ~= "rank" or not row.cells.toOOM then return end
+    r.fullCasts = MD.Book:CastsFor(r.entry, SpellsPane.liveFull or FullPool(Pool()))
+    row.cells.toOOM:SetText((r.color or "") .. CastsWord(r.fullCasts) .. RESET)
+end
+
+local function RankRowEnter(row, r)
+    if not r then return end
+    local fam = r.family
+    if r.kind == "gap" then
+        KitTip(row, RankName(fam, r.rank), 'Not in your spellbook: untrained, or hidden by "show all ranks".')
+        return
+    end
+    local e = r.entry
+    if e.known == false then
+        local why = (type(e.level) == "number") and ("Not learned yet: learn at level " .. e.level .. ".")
+            or "Not learned yet."
+        KitTip(row, RankName(fam, e.rank), why)
+        return
+    end
+    if type(e.id) == "number" then GameTip(row, fam, e) end
+end
+
+local function RankRowLeave()
+    GameTooltip:Hide()
+    if UI.tooltip then UI.tooltip:Hide() end
+end
+
+local function RankRowClick(_, r)
+    if not r or r.kind ~= "rank" then return end
+    SpellsPane:SelectRank(r.entry.id)
+end
+
+-- The family's rows: one per rank from 1 to the highest listed, a gap a
+-- spanning row; unranked entries (no rank number) after them, one each.
+local function FamilyRows(fam, pool)
+    local rows, byRank, unranked, maxListed = {}, {}, {}, 0
+    local maxPerMana
+    for _, e in ipairs(fam.ranks) do
+        if type(e.rank) == "number" then
+            byRank[e.rank] = byRank[e.rank] or e
+            if e.rank > maxListed then maxListed = e.rank end
+        else
+            unranked[#unranked + 1] = e
+        end
+        if type(e.perMana) == "number" and (not maxPerMana or e.perMana > maxPerMana) then maxPerMana = e.perMana end
+    end
+    local full = FullPool(pool)
+    local function Add(e)
+        rows[#rows + 1] = { kind = "rank", rank = e.rank, entry = e, id = e.id, family = fam,
+            known = e.known, suggested = e.suggested, dominated = e.dominated,
+            isMax = (fam.maxKnown == e), maxPerMana = maxPerMana,
+            fullCasts = MD.Book:CastsFor(e, full) }
+    end
+    for n = 1, maxListed do
+        if byRank[n] then Add(byRank[n])
+        else rows[#rows + 1] = { kind = "gap", rank = n, known = false, family = fam } end
+    end
+    for _, e in ipairs(unranked) do Add(e) end
+    return rows
+end
+
+--------------------------------------------------------------------------------
+-- 4. The rank card
+--------------------------------------------------------------------------------
+local function PerSecWord(e, kind)
+    local part = PartOf(e, kind)
+    local muted = Hex("muted", "|cff7a7a7a")
+    if type(e.perSec) ~= "number" then return "-" end
+    local base = Num(e.perSec, 1) .. " "
+    if e.castKind == "channeled" then
+        return base .. muted .. "over the " .. Num(e.interval, 0) .. " s channel" .. RESET
+    end
+    local isAbsorb = type(e.parsed) == "table" and e.parsed.absorb ~= nil and part == nil
+    if isAbsorb or (part and (part.min ~= nil or part.max ~= nil)) then
+        if e.castKind == "cast" and type(e.cast) == "number" and e.cast >= GCD then
+            return base .. muted .. string.format("over a %.1f s cast", e.cast) .. RESET
+        end
+        return base .. muted .. string.format("over the %.1f s global cooldown", GCD) .. RESET
+    end
+    return base .. muted .. "over its " .. Num(e.interval, 0) .. " s" .. RESET
+end
+
+-- The label/value pairs for one rank, by shape: { {label, value}, ... }.
+local function CardPairs(fam, e, pool)
+    local out = {}
+    local function P(l, v) out[#out + 1] = { l, v } end
+    local kind = fam.kind
+    if kind then
+        local part = PartOf(e, kind)
+        local valueWord = (kind == "damage") and "Damage" or "Heals"
+        local muted = Hex("muted", "|cff7a7a7a")
+        if part == nil and kind == "heal" and type(e.parsed) == "table" and e.parsed.absorb ~= nil then
+            P("Absorbs", Num(e.parsed.absorb))
+        elseif part and part.min ~= nil and part.max ~= nil then
+            local crit = Num(part.min * CRIT_MULT) .. " - " .. Num(part.max * CRIT_MULT) .. " "
+                .. muted .. "(x" .. Num(CRIT_MULT, 1) .. " assumed)" .. RESET
+            if part.over ~= nil and part.dur ~= nil then
+                P("Hit", Num(part.min) .. " - " .. Num(part.max))
+                P("Crit", crit)
+                P("Over time", Num(part.over) .. " over " .. Num(part.dur) .. " s")
+                P("Total", Num(e.value))
+            else
+                P(valueWord, Num(part.min) .. " - " .. Num(part.max) .. " (avg " .. Num(e.value) .. ")")
+                P("Crit", crit)
+            end
+        elseif part and part.over ~= nil and part.dur ~= nil then
+            P(valueWord, Num(part.over) .. " over " .. Num(part.dur) .. " s")
+        elseif part and part.tick ~= nil then
+            if part.periodDur ~= nil then P(valueWord, Num(e.value) .. " over " .. Num(part.periodDur) .. " s") end
+            -- only what the text states: a tick and its period, never derived
+            if part.period ~= nil then P("Ticks", Num(part.tick) .. " every " .. Num(part.period) .. " s") end
+        end
+    end
+    P("Cost", CostWord(e))
+    local cast = e.castKind == "cast" and type(e.cast) == "number" and string.format("%.1f s", e.cast)
+        or CastWord(e) or "-"
+    P("Cast", cast)
+    if kind then
+        P("Per mana", Num(e.perMana, 2))
+        P("Per s", PerSecWord(e, kind))
+    end
+    local out2 = { pairs = out }
+    local amount = e.cost and e.cost.power == nil and e.cost.amount
+    if kind and type(amount) == "number" and amount > 0 then
+        out2.toOOM = #out + 1
+        P("To OOM", "")
+        out2.now = #out + 1
+        P("Now", "")
+    end
+    return out2
+end
+
+local function ToOOMWord(n)
+    if n == math.huge then return "never - regen keeps up" end
+    if type(n) == "number" then return Num(n, 0) .. " casts from full" end
+    return "-"
+end
+
+local function NowWord(e, pool)
+    if type(pool.mana) ~= "number" then
+        return Hex("muted", "|cff7a7a7a") .. "mana not modelled yet" .. RESET
+    end
+    local now = MD.Book:CastsFor(e, pool)
+    local mana = Hex("mana", "|cff4d99ff")
+    if now == math.huge then return "never - regen keeps up" end
+    return mana .. "~" .. CastsWord(now) .. RESET .. " from " .. mana .. "~" .. Num(pool.mana) .. RESET .. " mana"
+end
+
+local function CardPair(card, i)
+    local p = card.pairPool[i]
+    if p then return p end
+    p = {}
+    p.label = card:CreateFontString(nil, "OVERLAY", UI.FONT_SPECIAL or UI.FONT_SMALL)
+    p.label:SetJustifyH("LEFT")
+    p.label:SetWordWrap(false)
+    p.label:SetWidth(CARD_LABEL_W)
+    p.label:SetTextColor(Tok("label", 0.62, 0.62, 0.62))
+    p.value = card:CreateFontString(nil, "OVERLAY", UI.FONT_NUM or UI.FONT)
+    p.value:SetJustifyH("LEFT")
+    p.value:SetWordWrap(false)
+    p.value:SetWidth(CARD_COL - CARD_LABEL_W - 8)
+    p.value:SetTextColor(Tok("text", 1, 1, 1))
+    card.pairPool[i] = p
+    return p
+end
+
+-- The live half of the card (the tick's): To OOM and Now for the selected rank.
+local function UpdateCardLive(f, pool)
+    local card = f.card
+    local e = card.entry
+    if not e then return end
+    if card.toOOMPair then card.toOOMPair.value:SetText(ToOOMWord(MD.Book:CastsFor(e, FullPool(pool)))) end
+    if card.nowPair then card.nowPair.value:SetText(NowWord(e, pool)) end
+end
+
+-- Returns the card's height.
+local function RenderCard(f, fam, e, pool)
+    local card = f.card
+    card.entry = e
+    card.pitch = Pitch(CARD_PAIR)
+    if type(e.rank) == "number" then
+        card.title:SetText("RANK " .. e.rank)
+    elseif type(e.rankText) == "string" and e.rankText ~= "" then
+        card.title:SetText(Esc(e.rankText):upper())
+    else
+        card.title:SetText("SPELL")
+    end
+    if type(e.level) == "number" then
+        card.learned:SetText((e.known == false and "learn at " or "learned at ") .. e.level)
+    else
+        card.learned:SetText(e.known == false and "not learned" or "")
+    end
+
+    local y = PANE_TOP
+    if type(e.desc) == "string" and e.desc ~= "" then
+        card.quote:SetText('"' .. Esc(e.desc) .. '"')
+        card.quote:ClearAllPoints()
+        card.quote:SetPoint("TOPLEFT", card, "TOPLEFT", 8, -y)
+        card.quote:Show()
+        local h = card.quote:GetStringHeight()
+        y = y + ((type(h) == "number" and h > 0) and h or 12) + 8
+    else
+        card.quote:SetText("")
+        card.quote:Hide()
+    end
+
+    local spec = CardPairs(fam, e, pool)
+    for _, p in ipairs(card.pairPool) do p.label:Hide(); p.value:Hide() end
+    card.shown, card.toOOMPair, card.nowPair = {}, nil, nil
+    for i, pair in ipairs(spec.pairs) do
+        local p = CardPair(card, i)
+        local col, line = (i - 1) % 2, math.floor((i - 1) / 2)
+        local x, py = 8 + col * CARD_COL, y + line * card.pitch
+        p.label:ClearAllPoints()
+        p.label:SetPoint("TOPLEFT", card, "TOPLEFT", x, -py)
+        p.value:ClearAllPoints()
+        p.value:SetPoint("TOPLEFT", card, "TOPLEFT", x + CARD_LABEL_W + 2, -py)
+        p.label:SetText(pair[1])
+        p.value:SetText(pair[2])
+        p.label:Show(); p.value:Show()
+        card.shown[#card.shown + 1] = p
+        if i == spec.toOOM then card.toOOMPair = p end
+        if i == spec.now then card.nowPair = p end
+    end
+    y = y + math.ceil(#spec.pairs / 2) * card.pitch
+    UpdateCardLive(f, pool)
+
+    if e.stale then
+        card.stale:ClearAllPoints()
+        card.stale:SetPoint("TOPLEFT", card, "TOPLEFT", 8, -(y + 2))
+        card.stale:Show()
+        y = y + card.pitch + 2
+    else
+        card.stale:Hide()
+    end
+    return y + 4
+end
+
+--------------------------------------------------------------------------------
+-- Building the view
+--------------------------------------------------------------------------------
+local function TitledPane(parent, text)
+    local pane = UI.CreateTitledPane(parent, text, VIEW_W, 60)
+    local rc = UI.PALETTE and UI.PALETTE.rule
+    if rc and pane.line then pane.line:SetColorTexture(rc[1], rc[2], rc[3], rc[4] or 0.6) end
+    return pane
+end
+
+-- The two tables for the current pitch, built once per pitch (a font offset
+-- changes the row height, which UI/Dashboard_Rows.lua fixes at creation).
+local function Tables(f)
+    local rowH, headH = Pitch(TABLE_ROW), Pitch(TABLE_HEAD)
+    local k = rowH .. "/" .. headH
+    f.tables = f.tables or {}
+    local t = f.tables[k]
+    if not t then
+        local function Make(cols, header)
+            local api = MD.DashboardParts.CreateTable(f.ranks, VIEW_W, {
+                cols = cols, header = header,
+                font = UI.FONT_NUM or UI.FONT, wideFont = UI.FONT_SMALL,
+                rowHeight = rowH, headerHeight = headH, headerRule = true,
+                zebra = true, rowWidth = true, marker = "bar",
+                render = RenderRankRow, onUpdateCells = UpdateRankRow,
+                onEnter = RankRowEnter, onLeave = RankRowLeave, onClick = RankRowClick,
+            })
+            api.frame:SetPoint("TOPLEFT", f.ranks, "TOPLEFT", 0, -(PANE_TOP - 4))
+            api.frame:SetWidth(VIEW_W)
+            api.frame:Hide()
+            return api
+        end
+        t = { header = {} }
+        t.rank = Make(RANK_COLS, t.header)
+        t.other = Make(OTHER_COLS, nil)
+        f.tables[k] = t
+    end
+    for key, other in pairs(f.tables) do
+        if key ~= k then
+            other.rank:Release(); other.rank.frame:Hide()
+            other.other:Release(); other.other.frame:Hide()
+        end
+    end
+    f.rankTable, f.otherTable = t.rank, t.other
+    return t
+end
+
 local function LayoutFamily(f)
     local top = 0
     f.banner:SetHeight(Pitch(BANNER_H))
     if f.banner:IsShown() then top = Pitch(BANNER_H) + 6 end
-    f.header:ClearAllPoints()
-    f.header:SetPoint("TOPLEFT", f, "TOPLEFT", 0, -top)
-    f.header:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, -top)
+    f.scroll:Resize(-top, 4)
     f.header:SetHeight(Pitch(HEADER_H))
-    local below = top + Pitch(HEADER_H) + 12
-    f.staleText:ClearAllPoints()
-    f.staleText:SetPoint("TOPLEFT", f, "TOPLEFT", 4, -below)
-    f.staleText:SetPoint("RIGHT", f, "RIGHT", -4, 0)
-    f.scroll:Resize(-below, 4)
 end
 
 local function BuildFamily(host)
@@ -526,13 +1099,14 @@ local function BuildFamily(host)
     f:SetPoint("TOPLEFT", host, "TOPLEFT", 0, 0)
     f:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", 0, 0)
     f.spellsFamily = true -- marks this pane for tools/spellsui.lua
+    f.renderCount, f.liveCount = 0, 0
+    local P = UI.PALETTE or {}
 
     -- the preview banner (3.6): "Not in your list.  [+ Add to my spells]"
     local banner = CreateFrame("Frame", nil, f, "BackdropTemplate")
     banner:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
     banner:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, 0)
     banner:SetHeight(Pitch(BANNER_H))
-    local P = UI.PALETTE or {}
     UI.StylizeFrame(banner, P.suggested or P.pane or { 0.13, 0.13, 0.13, 1 }, P.border or { 0, 0, 0, 1 })
     banner.text = banner:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
     banner.text:SetPoint("LEFT", banner, "LEFT", 8, 0)
@@ -550,9 +1124,14 @@ local function BuildFamily(host)
     f.banner = banner
     SpellsPane.banner = banner
 
-    -- the header: a 32x32 icon with a 1-px black border, the name, what it
-    -- is, and the modelled pool at the right
-    local header = CreateFrame("Frame", nil, f)
+    f.scroll = UI.CreateScrollFrame(f, 0, 4)
+    local content = f.scroll.content
+
+    -- 1. the header: a 32x32 icon with a 1-px black border, the name, what
+    -- it is, and the modelled pool at the right
+    local header = CreateFrame("Frame", nil, content)
+    header:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
+    header:SetWidth(VIEW_W)
     header.iconEdge = header:CreateTexture(nil, "ARTWORK")
     header.iconEdge:SetSize(34, 34)
     header.iconEdge:SetPoint("LEFT", header, "LEFT", 4, 0)
@@ -568,58 +1147,203 @@ local function BuildFamily(host)
     header.sub = header:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
     header.sub:SetPoint("TOPLEFT", header.name, "BOTTOMLEFT", 0, -4)
     header.sub:SetJustifyH("LEFT")
+    header.sub:SetWordWrap(false)
     SetColor(header.sub, "text2", 0.7, 0.7, 0.7)
     header.mana = header:CreateFontString(nil, "OVERLAY", UI.FONT_NUM or UI.FONT)
     header.mana:SetPoint("TOPRIGHT", header, "TOPRIGHT", -4, -8)
     header.mana:SetJustifyH("RIGHT")
+    SetColor(header.mana, "text", 1, 1, 1)
     f.header = header
 
     -- a family the book no longer has (3.3)
-    f.staleText = f:CreateFontString(nil, "OVERLAY", UI.FONT)
+    f.staleText = content:CreateFontString(nil, "OVERLAY", UI.FONT)
+    f.staleText:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 4, -BLOCK_GAP)
     f.staleText:SetJustifyH("LEFT")
     SetColor(f.staleText, "text2", 0.7, 0.7, 0.7)
     f.staleText:Hide()
-    f.removeBtn = UI.CreateButton(f, "Remove", "accent-hover", { 70, 20 })
+    f.removeBtn = UI.CreateButton(content, "Remove", "accent-hover", { 70, 20 })
     f.removeBtn:SetPoint("TOPLEFT", f.staleText, "BOTTOMLEFT", 0, -8)
     f.removeBtn:SetScript("OnClick", function()
         if f.key then SpellsPane:Remove(f.key) end
     end)
     f.removeBtn:Hide()
 
-    f.scroll = UI.CreateScrollFrame(f, -(HEADER_H + 12), 4)
-    f.tableApi = MD.DashboardParts.CreateTable(f.scroll.content, TABLE_W, {
-        cols = SPELL_COLS,
-        render = RenderSpellRow,
-        onEnter = SpellRowEnter,
-        onLeave = SpellRowLeave,
-    })
-    f.tableApi.frame:SetPoint("TOPLEFT", f.scroll.content, "TOPLEFT", 0, 0)
-    f.tableApi.frame:SetPoint("TOPRIGHT", f.scroll.content, "TOPRIGHT", 0, 0)
+    -- 2. the decision strip: the chip, and the comparison beside it
+    local strip = CreateFrame("Frame", nil, content)
+    strip:SetWidth(VIEW_W)
+    local chip = CreateFrame("Frame", nil, strip, "BackdropTemplate")
+    chip:SetPoint("TOPLEFT", strip, "TOPLEFT", 0, 0)
+    chip:SetWidth(CHIP_W)
+    UI.StylizeFrame(chip, P.pane or { 0.11, 0.11, 0.11, 1 }, P.border or { 0, 0, 0, 1 })
+    local a = UI.accent
+    chip.bar = chip:CreateTexture(nil, "OVERLAY")
+    chip.bar:SetPoint("TOPLEFT", chip, "TOPLEFT", 0, 0)
+    chip.bar:SetPoint("BOTTOMLEFT", chip, "BOTTOMLEFT", 0, 0)
+    chip.bar:SetWidth(2)
+    chip.bar:SetColorTexture(a[1], a[2], a[3], 1)
+    strip.chipLabel = chip:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+    strip.chipLabel:SetPoint("TOPLEFT", chip, "TOPLEFT", 10, -4)
+    strip.chipLabel:SetJustifyH("LEFT")
+    strip.chipLabel:SetTextColor(a[1], a[2], a[3])
+    strip.chipLabel:SetText("SUGGESTED")
+    strip.chipRank = chip:CreateFontString(nil, "OVERLAY", UI.FONT_BIG or UI.FONT_TITLE)
+    strip.chipRank:SetPoint("TOPLEFT", chip, "TOPLEFT", 10, -17)
+    strip.chipRank:SetJustifyH("LEFT")
+    SetColor(strip.chipRank, "text", 1, 1, 1)
+    chip:EnableMouse(true)
+    chip:SetScript("OnEnter", function(self) KitTip(self, "Suggested rank", SUGGESTED_RULE) end)
+    chip:SetScript("OnLeave", function() if UI.tooltip then UI.tooltip:Hide() end end)
+    strip.chip = chip
+    strip.compare = strip:CreateFontString(nil, "OVERLAY", UI.FONT)
+    strip.compare:SetPoint("LEFT", chip, "RIGHT", BLOCK_GAP, 0)
+    strip.compare:SetPoint("RIGHT", strip, "RIGHT", -4, 0)
+    strip.compare:SetJustifyH("LEFT")
+    strip.compare:SetWordWrap(true)
+    strip.compare:SetMaxLines(2)
+    SetColor(strip.compare, "text2", 0.7, 0.7, 0.7)
+    strip:Hide()
+    f.strip = strip
+
+    -- 3. RANKS
+    f.ranks = TitledPane(content, "RANKS")
+
+    -- 4. the rank card, and the footer under it
+    local card = TitledPane(content, "RANK")
+    card.pairPool, card.shown = {}, {}
+    card.learned = card:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+    card.learned:SetPoint("BOTTOMRIGHT", card.line, "TOPRIGHT", 0, 3)
+    card.learned:SetJustifyH("RIGHT")
+    SetColor(card.learned, "text2", 0.7, 0.7, 0.7)
+    card.quote = card:CreateFontString(nil, "OVERLAY", UI.FONT_SPECIAL or UI.FONT_SMALL)
+    card.quote:SetWidth(VIEW_W - 16)
+    card.quote:SetJustifyH("LEFT")
+    card.quote:SetWordWrap(true)
+    SetColor(card.quote, "text2", 0.7, 0.7, 0.7)
+    card.stale = card:CreateFontString(nil, "OVERLAY", UI.FONT_SPECIAL or UI.FONT_SMALL)
+    card.stale:SetJustifyH("LEFT")
+    SetColor(card.stale, "bad", 0.88, 0.38, 0.35)
+    card.stale:SetText("Text read before combat - may be out of date")
+    card.stale:Hide()
+    f.card = card
+    f.footer = content:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+    f.footer:SetJustifyH("LEFT")
+    SetColor(f.footer, "muted", 0.48, 0.48, 0.48)
+    f.footer:SetText(FOOTER_TEXT)
 
     LayoutFamily(f)
 
+    -- the refresh split (3.5): every 2 s while shown, the live numbers in
+    -- place, or a full render when what the view was drawn from changed
     MD:OnTick(function()
         if not f:IsVisible() or not f.key then return end
         local now = GetTime()
-        if not f.lastRefresh or (now - f.lastRefresh) >= 2 then
+        if f.lastTick and (now - f.lastTick) < 2 then return end
+        f.lastTick = now
+        MD.Book:Get() -- a changed book fires BOOK_CHANGED here, and bumps bookGen
+        if SpellsPane:Signature(f.key, f.preview) ~= f.signature then
             SpellsPane:RenderFamily(f.key, f.preview)
+        else
+            SpellsPane:UpdateFamilyLive()
         end
     end)
     return f
 end
 
+-- What a full render was drawn from (3.5): the view, the book's generation
+-- (BOOK_CHANGED), the bonus-healing reading (the last plain one), the pool's
+-- max and the pitch.
+SpellsPane.bookGen = 0
+function SpellsPane:Signature(key, preview)
+    local bonus = MD.API.SpellBonusHealing and MD.API.SpellBonusHealing()
+    if type(bonus) == "number" and not MD.API.IsSecret(bonus) then self.lastBonus = bonus end
+    local pool = Pool()
+    return table.concat({ tostring(key), tostring(preview and true or false), tostring(self.bookGen),
+        tostring(self.lastBonus), tostring(pool.max), tostring(Pitch(TABLE_ROW)) }, "|")
+end
+
+-- The tick's in-place half: the header's mana, the card's To OOM and Now,
+-- and the To OOM cells. Nothing released, re-acquired or re-laid out.
+function SpellsPane:UpdateFamilyLive()
+    local f = self.family
+    if not f or not f.fam then return end
+    local pool = Pool()
+    f.header.mana:SetText(HeaderManaText(pool))
+    UpdateCardLive(f, pool)
+    self.liveFull = FullPool(pool)
+    if f.activeTable and f.activeTable.UpdateCells then f.activeTable:UpdateCells() end
+    self.liveFull = nil
+    f.liveCount = f.liveCount + 1
+end
+
+-- A rank row clicked: the card follows, the fills repaint in place.
+function SpellsPane:SelectRank(id)
+    local f = self.family
+    if not f or not f.fam then return end
+    local e
+    for _, x in ipairs(f.fam.ranks) do if x.id == id then e = x end end
+    if not e then return end
+    f.selectedId = id
+    if f.activeTable then f.activeTable:SetSelected(id) end
+    local h = RenderCard(f, f.fam, e, Pool())
+    self:LayoutBlocks(h)
+end
+
+local function DefaultSelection(fam)
+    if fam.suggested then return fam.suggested end
+    if fam.maxKnown then return fam.maxKnown end
+    for _, e in ipairs(fam.ranks) do if e.known ~= false then return e end end
+    return fam.ranks[1]
+end
+
+-- Places the blocks top to bottom, 12 px apart; `cardH` is the card's own
+-- height (RenderCard's answer).
+function SpellsPane:LayoutBlocks(cardH)
+    local f = self.family
+    local content = f.scroll.content
+    local y = Pitch(HEADER_H) + BLOCK_GAP
+    if f.strip:IsShown() then
+        f.strip:ClearAllPoints()
+        f.strip:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -y)
+        y = y + f.strip:GetHeight() + BLOCK_GAP
+    end
+    f.ranks:ClearAllPoints()
+    f.ranks:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -y)
+    y = y + f.ranks:GetHeight() + BLOCK_GAP
+    f.card:ClearAllPoints()
+    f.card:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -y)
+    f.card:SetHeight(cardH)
+    y = y + cardH + 4
+    f.footer:ClearAllPoints()
+    f.footer:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -y)
+    y = y + 16
+    f.scroll:SetContentHeight(y)
+end
+
+local function ShowBlocks(f, on)
+    for _, b in ipairs({ f.ranks, f.card, f.footer }) do
+        if on then b:Show() else b:Hide() end
+    end
+    if not on then f.strip:Hide() end
+end
+
 function SpellsPane:RenderFamily(key, preview)
     local f = self.family
     if not f then return end
+    if f.key ~= key then f.selectedId = nil end
     f.key, f.preview = key, preview and true or false
-    f.lastRefresh = GetTime()
+    f.lastTick = GetTime()
+    f.signature = self:Signature(key, preview)
+    f.renderCount = f.renderCount + 1
+    f.refreshCount = f.renderCount -- T36's name for it
     if preview then f.banner:Show() else f.banner:Hide() end
     LayoutFamily(f)
+    local t = Tables(f)
 
     local book = MD.Book:Get()
     local fam = MD.Tabs:Resolve(key, book)
     if type(fam) ~= "table" then
         -- 3.3: kept, greyed, never dropped silently
+        f.fam = nil
         f.header.icon:Hide(); f.header.iconEdge:Hide()
         f.header.name:SetText(Esc(key))
         SetColor(f.header.name, "disabled", 0.3, 0.3, 0.3)
@@ -628,16 +1352,22 @@ function SpellsPane:RenderFamily(key, preview)
         f.staleText:SetText(Esc(key) .. " is not in this character's spellbook.")
         f.staleText:Show()
         f.removeBtn:Show()
-        f.tableApi:Render({})
-        f.scroll:Hide()
+        f.rankTable:Release(); f.otherTable:Release()
+        f.rankTable.frame:Hide(); f.otherTable.frame:Hide()
+        f.activeTable = nil
+        ShowBlocks(f, false)
         f.lastRows = {}
+        f.scroll:SetContentHeight(Pitch(HEADER_H) + 60)
         return
     end
+    f.fam = fam
     f.staleText:Hide()
     f.removeBtn:Hide()
-    f.scroll:Show()
+    ShowBlocks(f, true)
+    local pool = Pool()
 
-    local rep = fam.maxKnown or fam.ranks[1]
+    -- 1. the header
+    local rep = Rep(fam)
     if rep and rep.icon then
         f.header.icon:SetTexture(rep.icon); f.header.icon:Show(); f.header.iconEdge:Show()
     else
@@ -645,18 +1375,62 @@ function SpellsPane:RenderFamily(key, preview)
     end
     f.header.name:SetText(Esc(fam.name or key))
     SetColor(f.header.name, "text", 1, 1, 1)
-    f.header.sub:SetText(SubText(fam))
-    local pool = Pool()
+    f.header.sub:SetText(HeaderSub(fam))
     f.header.mana:SetText(HeaderManaText(pool))
 
-    local rows = {}
-    AddFamilyRows(rows, fam, pool)
+    -- 2. the strip: two or more known ranks with a value, and a suggestion
+    local valued = 0
+    for _, e in ipairs(fam.ranks) do
+        if e.known ~= false and e.value ~= nil then valued = valued + 1 end
+    end
+    local s = fam.suggested
+    f.strip:SetHeight(Pitch(STRIP_H))
+    f.strip.chip:SetHeight(Pitch(STRIP_H))
+    if fam.kind and s and valued >= 2 then
+        f.strip.chipRank:SetText((type(s.rank) == "number") and ("Rank " .. s.rank) or "-")
+        if s == fam.maxKnown then
+            f.strip.compare:SetText("Your highest rank is also the best per mana.")
+        else
+            f.strip.compare:SetText(CompareText(s, fam.maxKnown, fam.kind))
+        end
+        f.strip:Show()
+    else
+        f.strip:Hide()
+    end
+
+    -- 3. RANKS
+    local rows = FamilyRows(fam, pool)
+    local active
+    if fam.kind then
+        -- the value column's label by shape: a total for anything over time
+        local label = (fam.kind == "damage") and "Dmg" or "Heal"
+        if fam.shape == "hot" or fam.shape == "hybrid" then label = "Total" end
+        wipe(t.header)
+        t.header[4] = label
+        active = t.rank
+        t.other:Release(); t.other.frame:Hide()
+    else
+        active = t.other
+        t.rank:Release(); t.rank.frame:Hide()
+    end
+    f.activeTable = active
+    local sel
+    if f.selectedId then
+        for _, e in ipairs(fam.ranks) do if e.id == f.selectedId then sel = e end end
+    end
+    sel = sel or DefaultSelection(fam)
+    f.selectedId = sel and sel.id or nil
+    active.selectedId = f.selectedId
+    active.frame:Show()
+    active:Render(rows)
     f.lastRows = rows
-    f.tableApi:Render(rows)
-    local height = 4 + 18 + (#rows * SPELL_ROW_HEIGHT) + 8
-    f.tableApi.frame:SetHeight(height)
-    f.scroll:SetContentHeight(height)
-    f.refreshCount = (f.refreshCount or 0) + 1
+    local tableH = 4 + active.headerHeight + #rows * active.rowHeight
+    active.frame:SetHeight(tableH)
+    f.ranks:SetHeight(PANE_TOP - 4 + tableH)
+
+    -- 4. the card
+    local cardH = sel and RenderCard(f, fam, sel, pool) or PANE_TOP
+    self:LayoutBlocks(cardH)
 end
 
 --------------------------------------------------------------------------------
@@ -1212,7 +1986,11 @@ function SpellsPane:Create(content)
 end
 
 -- A rescan that changed the book (Spells/Tabs.lua reconciled first: it
--- registered before this file loaded): the rail follows.
+-- registered before this file loaded): the rail follows, and (T38) a
+-- family's view re-renders on its next tick -- the book's generation is in
+-- what the view was drawn from.
 MD:RegisterCallback("BOOK_CHANGED", function()
+    SpellsPane.bookGen = (SpellsPane.bookGen or 0) + 1
     SpellsPane:RefreshRail()
 end)
+

@@ -71,6 +71,8 @@ local FOREVER_ONLY_NAMES = {
     "RefreshTooltip", -- T37
     -- T36 (UI/SpellsPane_Forever.lua): a spell dragged onto the Spells rail.
     "CursorInfo", -- T36
+    -- T38 (UI/SpellsPane_Forever.lua): the game's spell tooltip for a rank row.
+    "SetTooltipSpell", -- T38
 }
 -- T15: Client/API_TBC.lua's own binding -- GetSpellInfo, so
 -- Engine/SimModel.lua and Engine/SimPlanner.lua's four call sites can go

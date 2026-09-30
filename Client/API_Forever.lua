@@ -432,3 +432,21 @@ function MD.API.RefreshTooltip(tooltip)
     return true
 end
 MD.API._bindings.RefreshTooltip = "GameTooltip.RefreshData"
+
+-- T38 (UI/SpellsPane_Forever.lua, docs/SPEC-forever-ui.md 3.5): the game's
+-- own spell tooltip for one rank, for a row hover in a spell's view --
+-- tooltip:SetSpellByID(id), retail's method; the Spell post-call above then
+-- appends the SpellTuner block, so the pane and the action bar read the same.
+-- UNVERIFIED on Forever that the post-call fires for SetSpellByID: the caller
+-- checks the tooltip's own guard and adds the block itself when it did not.
+-- Answers true, or nil plus "absent" (no method, or an id that is not a plain
+-- number) / "error" (the method raised); nothing reaches the caller.
+function MD.API.SetTooltipSpell(tooltip, id)
+    if type(id) ~= "number" or MD.API.IsSecret(id) then return nil, "absent" end
+    local ok, fn = pcall(function() return type(tooltip) == "table" and tooltip.SetSpellByID end)
+    if not ok then return nil, "error" end
+    if type(fn) ~= "function" then return nil, "absent" end
+    if not pcall(fn, tooltip, id) then return nil, "error" end
+    return true
+end
+MD.API._bindings.SetTooltipSpell = "GameTooltip.SetSpellByID"

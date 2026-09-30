@@ -565,6 +565,91 @@ do
             tostring(after.descState)))
 end
 
+--------------------------------------------------------------------------------
+-- T38 (docs/SPEC-forever-ui.md 3.5, docs/tasks/T38-one-spell-view.md): what a
+-- family's own view reads off the book -- Book:Compare(a, b) for the decision
+-- strip's one factual line, family.shape for the header's words, and
+-- entry.dominatedBy for a dominated rank. The fixtures are added here, last,
+-- so no item above sees them. Texts: the probe's Moonfire R1, talentsforever's
+-- Tranquility R4 and Power Word: Shield R1 (tools/data/parse-fixture.lua).
+--------------------------------------------------------------------------------
+S.AddSpell(90090, "HybridSpell", "Rank 1",
+    function() return "Burns the enemy for 9 to 12 Arcane damage and then an additional 12 Arcane damage over 9 sec." end,
+    { cast = 1500, cost = 25, level = 4 })
+S.AddSpell(90091, "TickSpell", "Rank 1",
+    function() return "Regenerates all nearby party members within 20 yards for 285 every 2 sec for 10 sec. Druid must channel to maintain the spell." end,
+    { cast = 0, cost = 300, level = 30 })
+S.AddSpell(90092, "ShieldSpell", "Rank 1",
+    function() return "Draws on the soul of the party member to shield them, absorbing 48 damage. Lasts 30 sec." end,
+    { cast = 0, cost = 45, level = 6 })
+Book:MarkDirty()
+
+local function T38(name, fn)
+    local good, cond, detail = pcall(fn)
+    if not good then check(name, false, "raised: " .. tostring(cond)) return end
+    check(name, cond == true, detail)
+end
+
+-- 18: Compare's numbers for Healing Touch R1 against R2 (5185: 40-55 for 25
+-- mana, a 1.5 s cast; 90002: 90-110 for 50, a 2.0 s cast): R1 heals 47.5 at
+-- 1.90 per mana and 31.7 per second, R2 100 at 2.00 and 50.
+T38("Compare: Healing Touch R1 against R2, in percent", function()
+    local book = Book:Get()
+    local c = Book:Compare(FindEntry(book, 5185), FindEntry(book, 90002))
+    local good = type(c) == "table" and ApproxEq(c.perMana, -5, 1e-6) and ApproxEq(c.value, 47.5, 1e-6)
+        and ApproxEq(c.cast, -25, 1e-6) and ApproxEq(c.perSec, (47.5 / 1.5 / 50 - 1) * 100, 1e-6)
+    return good, c and string.format("perMana=%s value=%s cast=%s perSec=%s", tostring(c.perMana),
+        tostring(c.value), tostring(c.cast), tostring(c.perSec)) or "no answer"
+end)
+
+-- 19: a side that lacks a number leaves that number nil (never 0), a cast
+-- compared only between two timed casts, and anything but two entries nil
+T38("Compare leaves out what either side lacks, and never raises", function()
+    local book = Book:Get()
+    local ht1, rj1, rj2 = FindEntry(book, 5185), FindEntry(book, 774), FindEntry(book, 1058)
+    local noValue = { rank = 3, known = true, cast = 0, castKind = "instant" } -- no value, no per mana
+    local a = Book:Compare(rj1, rj2)   -- two instant HoTs: no cast clause
+    local b = Book:Compare(ht1, noValue)
+    local good = a ~= nil and ApproxEq(a.value, 32 / 56 * 100, 1e-6) and a.cast == nil
+        and b ~= nil and b.value == nil and b.perMana == nil and b.cast == nil
+        and Book:Compare(nil, ht1) == nil and Book:Compare(ht1, "x") == nil
+    return good, string.format("rj value=%s cast=%s; noValue value=%s perMana=%s", tostring(a and a.value),
+        tostring(a and a.cast), tostring(b and b.value), tostring(b and b.perMana))
+end)
+
+-- 20: every family's shape, from its own text
+T38("shape per family: direct, hot, hybrid, none", function()
+    local book = Book:Get()
+    local want = {
+        ["Healing Touch"] = "direct", ["Wrath"] = "direct", ["Rejuvenation"] = "hot",
+        ["TickSpell"] = "hot", ["HybridSpell"] = "hybrid", ["ShieldSpell"] = "direct",
+        ["PassiveSpell"] = "none",
+    }
+    local bad = {}
+    for name, shape in pairs(want) do
+        local fam = FindFamily(book, name)
+        if not fam or fam.shape ~= shape then
+            bad[#bad + 1] = name .. "=" .. tostring(fam and fam.shape)
+        end
+    end
+    table.sort(bad)
+    return #bad == 0, #bad == 0 and "all seven" or table.concat(bad, ", ")
+end)
+
+-- 21: a dominated rank names the rank that beats it (by id, a plain number);
+-- a rank nothing beats names none
+T38("dominatedBy names the rank that beats a dominated one", function()
+    local book = Book:Get()
+    local ht1, ht2 = FindEntry(book, 5185), FindEntry(book, 90002)
+    local rj1, rj2 = FindEntry(book, 774), FindEntry(book, 1058)
+    local sub1, sub2 = FindEntry(book, 90070), FindEntry(book, 90071)
+    local good = ht1.dominatedBy == 90002 and ht2.dominatedBy == nil
+        and rj1.dominatedBy == 1058 and rj2.dominatedBy == nil
+        and sub1.dominatedBy == nil and sub2.dominatedBy == nil
+    return good, string.format("ht1=%s rj1=%s ht2=%s sub=%s/%s", tostring(ht1.dominatedBy),
+        tostring(rj1.dominatedBy), tostring(ht2.dominatedBy), tostring(sub1.dominatedBy), tostring(sub2.dominatedBy))
+end)
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("  FAIL " .. f) end
 if #fails > 0 then os.exit(1) end

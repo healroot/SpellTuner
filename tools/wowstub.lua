@@ -1044,6 +1044,27 @@ function S.UseProfile(name)
         end
     end)
 
+    -- T38: GameTooltip:SetSpellByID(id) -- the game's own spell tooltip, which
+    -- the Spells view's row hover asks for through MD.API.SetTooltipSpell
+    -- (docs/SPEC-forever-ui.md 3.5). Clears (firing OnTooltipCleared), writes
+    -- the spell's name as the game's first line, then runs every Spell
+    -- post-call with { type = Spell, id = id } -- unless
+    -- S.setSpellByIdNoPostCall, the case the spec calls UNVERIFIED on Forever
+    -- (the post-call not firing for SetSpellByID). Each id is appended to
+    -- S.setSpellByIdCalls when a script set it to a table.
+    rawset(GameTooltip, "SetSpellByID", function(tt, id) -- T38
+        if type(S.setSpellByIdCalls) == "table" then table.insert(S.setSpellByIdCalls, tostring(id)) end
+        local data = { type = Enum.TooltipDataType.Spell, id = id }
+        tt._stubShowing = { Enum.TooltipDataType.Spell, data }
+        tt.lines = {}
+        if tt.scripts.OnTooltipCleared then tt.scripts.OnTooltipCleared(tt) end
+        tt.lines = { { C_Spell.GetSpellName(id) or "?" } }
+        local list = S.tooltipPostCalls[Enum.TooltipDataType.Spell]
+        if list and not S.setSpellByIdNoPostCall then
+            for _, fn in ipairs(list) do fn(tt, data) end
+        end
+    end)
+
     -- T28: one action-button showing on GameTooltip, through its SetAction
     -- (and so through every hook on it). `data`, when given, is the Macro
     -- data the client hands the post-calls for this showing; the owner is nil

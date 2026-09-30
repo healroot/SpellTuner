@@ -405,6 +405,44 @@ end
 -- Families
 --------------------------------------------------------------------------------
 
+-- T38 (docs/SPEC-forever-ui.md 3.5): what a family's value is made of, for the
+-- words of its view's header and the card's pairs -- "direct" (a range, or an
+-- absorb: one effect at once), "hot" (an amount over a duration, or a tick
+-- every period: over time only), "hybrid" (a range and an amount over time)
+-- or "none" (no kind: nothing the text values). Read off the family's own
+-- relevant part (heal or damage, by its kind), the highest known rank's
+-- first, else the first rank that has one; nothing is assumed.
+local function PartShape(e, kind)
+    if type(e.parsed) ~= "table" then return nil end
+    local part
+    if kind == "heal" then
+        part = e.parsed.heal
+        if part == nil and e.parsed.absorb ~= nil then return "direct" end
+    else
+        part = e.parsed.damage
+    end
+    if type(part) ~= "table" then return nil end
+    local hit = part.min ~= nil or part.max ~= nil
+    local over = part.over ~= nil or part.tick ~= nil
+    if hit and over then return "hybrid" end
+    if hit then return "direct" end
+    if over then return "hot" end
+    return nil
+end
+
+local function ShapeOf(fam)
+    if not fam.kind then return "none" end
+    if fam.maxKnown then
+        local s = PartShape(fam.maxKnown, fam.kind)
+        if s then return s end
+    end
+    for _, e in ipairs(fam.ranks) do
+        local s = PartShape(e, fam.kind)
+        if s then return s end
+    end
+    return "none"
+end
+
 function Book:GroupFamilies(spells)
     local ids = {}
     for id in pairs(spells) do ids[#ids + 1] = id end
@@ -468,6 +506,7 @@ function Book:GroupFamilies(spells)
             if e.known and e.rank and (not maxKnown or e.rank > maxKnown.rank) then maxKnown = e end
         end
         fam.maxKnown = maxKnown
+        fam.shape = ShapeOf(fam)
 
         -- A gap: a rank number below the highest LISTED rank that the book
         -- simply does not list (untrained, or hidden -- Facts: Book cannot
@@ -522,16 +561,20 @@ function Book:Rows(family, pool)
         e.perSec = (value ~= nil and interval ~= nil and interval > 0) and (value / interval) or nil
         e.casts = Book:CastsFor(e, pool)
         e.dominated = nil
+        e.dominatedBy = nil -- T38
         e.suggested = nil
     end
 
     -- Pareto dominance on (perMana, perSec), known ranks only.
-    for i, ri in ipairs(family.ranks) do
+    local function Beats(rj, ri)
+        return rj ~= ri and rj.known and rj.perMana and rj.perSec
+            and rj.perMana >= ri.perMana and rj.perSec >= ri.perSec
+            and (rj.perMana > ri.perMana or rj.perSec > ri.perSec)
+    end
+    for _, ri in ipairs(family.ranks) do
         if ri.known and ri.perMana and ri.perSec then
-            for j, rj in ipairs(family.ranks) do
-                if i ~= j and rj.known and rj.perMana and rj.perSec
-                    and rj.perMana >= ri.perMana and rj.perSec >= ri.perSec
-                    and (rj.perMana > ri.perMana or rj.perSec > ri.perSec) then
+            for _, rj in ipairs(family.ranks) do
+                if Beats(rj, ri) then
                     ri.dominated = true
                     break
                 end
@@ -555,6 +598,56 @@ function Book:Rows(family, pool)
     suggested = suggested or maxKnown
     if suggested then suggested.suggested = true end
     family.suggested = suggested
+
+    -- T38 (docs/SPEC-forever-ui.md 3.5): a dominated rank names the rank
+    -- that beats it, by its spell id (a plain number, never a second path to
+    -- a table): the suggested rank when it is one of them, else the one of
+    -- them with the best per mana -- UI/SpellTip_Forever.lua's own rule.
+    for _, ri in ipairs(family.ranks) do
+        if ri.dominated then
+            local by
+            if suggested and Beats(suggested, ri) then
+                by = suggested
+            else
+                for _, rj in ipairs(family.ranks) do
+                    if Beats(rj, ri) and (not by or rj.perMana > by.perMana) then by = rj end
+                end
+            end
+            ri.dominatedBy = by and by.id or nil
+        end
+    end
+end
+
+-- T38 (docs/SPEC-forever-ui.md 3.5): how rank `a` stands against rank `b`,
+-- for the decision strip's one factual line -- plain numbers in percent, each
+-- nil when either side lacks what it needs (never a 0 standing in for a
+-- number the book does not have):
+--   perMana -- a's per mana against b's, minus one (+2 = 2% more per mana)
+--   perSec  -- the same for per second
+--   value   -- a's value as a percent of b's (47 = 47% of the heal)
+--   cast    -- a's cast time against b's, minus one (-25 = a 25% shorter
+--              cast); only between two timed casts ("cast" kind, time > 0)
+-- nil when a or b is not an entry. It says how they differ, never which to
+-- cast.
+local function Ratio(x, y)
+    if type(x) ~= "number" or type(y) ~= "number" or y == 0 or x ~= x or y ~= y then return nil end
+    return x / y
+end
+
+function Book:Compare(a, b)
+    if type(a) ~= "table" or type(b) ~= "table" then return nil end
+    local out = {}
+    local r = Ratio(a.perMana, b.perMana)
+    if r then out.perMana = (r - 1) * 100 end
+    r = Ratio(a.perSec, b.perSec)
+    if r then out.perSec = (r - 1) * 100 end
+    r = Ratio(a.value, b.value)
+    if r then out.value = r * 100 end
+    if a.castKind == "cast" and b.castKind == "cast" then
+        r = Ratio(a.cast, b.cast)
+        if r and a.cast > 0 then out.cast = (r - 1) * 100 end
+    end
+    return out
 end
 
 --------------------------------------------------------------------------------
