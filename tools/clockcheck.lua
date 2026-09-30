@@ -187,6 +187,48 @@ do
             tostring(beforeUnpriced), tostring(model.unpriced)))
 end
 
+-- T45 (P1, review Q1): in a fight, a secret spell id never reaches the book as a
+-- key. The client raises on `t[secret]`; Lua 5.1 cannot trap it, so the stub
+-- would let `book.spells[secret]` pass as a quiet miss -- this watches every key
+-- the clock hands the book (its spells table and ReadSpell) and fails on a secret
+-- one. It goes red when UNIT_SPELLCAST_SUCCEEDED's IsSecret(spellID) half is
+-- removed, now that type(secret) answers "number" as on the client.
+do
+    local Book = MD.Book
+    local origGet, origRead = Book.Get, Book.ReadSpell
+    local keys, secretKeys = 0, 0
+    local function Seen(k)
+        keys = keys + 1
+        if issecretvalue(k) then secretKeys = secretKeys + 1 end
+    end
+    Book.Get = function(self, ...)
+        local real = origGet(self, ...)
+        if not real then return real end
+        local spells = setmetatable({}, { __index = function(_, k)
+            Seen(k)
+            if issecretvalue(k) then return nil end
+            return real.spells and real.spells[k]
+        end })
+        return setmetatable({ spells = spells }, { __index = real })
+    end
+    Book.ReadSpell = function(self, id, ...)
+        Seen(id)
+        if issecretvalue(id) then return nil end
+        return origRead(self, id, ...)
+    end
+    local before = model.mana
+    S.inCombat = true
+    S.Fire("PLAYER_REGEN_DISABLED")
+    S.Cast(S.Secret())
+    S.Cast(774)
+    S.Fire("PLAYER_REGEN_ENABLED")
+    S.inCombat = false
+    Book.Get, Book.ReadSpell = origGet, origRead
+    check("in a fight the book is never indexed by a secret spell id",
+        secretKeys == 0 and keys >= 1 and model.mana < before,
+        string.format("keys=%d secret=%d mana %s->%s", keys, secretKeys, tostring(before), tostring(model.mana)))
+end
+
 -- item 4: in combat, the regen rate holds at what was last read out of combat.
 do
     -- one tick out of combat first, to be sure base/casting are seeded.

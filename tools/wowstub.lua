@@ -11,16 +11,42 @@
 --     fallback path the live client normally hides.
 --   * Frames only register events and run OnUpdate; nothing draws.
 -- The forever profile's secret stand-in (S.Secret, S.SecretTable) raises on arithmetic, < <=,
--- secret-vs-secret ==, index, newindex, call, .. and tostring. It CANNOT raise on == or ~=
--- against a plain value, #, truthiness or use as a table key (Lua 5.1 gives a table no hook
--- for them), yet the client raises on ==, #, and table keys -- so a suite passing here does
--- not prove the code never does one of those to a secret. See the comment on SECRET_MT.
+-- secret-vs-secret ==, index, newindex, call, .. and tostring, and (T45, review Q1) type()
+-- answers "number" for it (S.Secret("string") for a secret string) as the client answers the
+-- type under the secret -- so `IsSecret(x) or type(x) ~= "number"` is tested on its IsSecret
+-- half. It CANNOT raise on == or ~= against a plain value, #, truthiness or use as a table
+-- key (Lua 5.1 gives a table no hook for them), yet the client raises on ==, #, and table
+-- keys. Those three -- `#secret`, `secret == plain`, `t[secret]` -- are REVIEW-ONLY: a suite
+-- passing here does not prove the code never does one of them to a secret, and a check that
+-- needs one (clockcheck's "never indexed by a secret") has to watch the table itself. See the
+-- comment on SECRET_MT.
+-- T45 (P1) knobs, each defaulting to the answer the stub gave before it: S.powerType and
+-- S.powerMax[t] (UnitPowerType / UnitPowerMax), S.raid and S.units["raidN"] (IsInRaid /
+-- GetRaidRosterInfo), a unit's `realm` (UnitName's second return), a slider's value clamped
+-- to its range, S.mouseFocus (IsMouseOver / GetMouseFocus / GetMouseFoci), and an xpcall that
+-- passes its extra arguments as the client's does.
 -- T5: which VALUES the forever profile treats as secret follows the 70009 reports
 -- (docs/probe/1.60.1_70009.md, sixth-ninth) rather than a guess -- current health/power
 -- always secret, a party member's max health always secret, regen secret only in combat.
 -- Run it with tools/run.sh (which builds a Lua 5.1 for you if there is none).
 local S = {}
 _G.STUB = S
+-- T45 (P1): Lua's own type() and xpcall, captured before the forever profile
+-- wraps type() for secrets and before xpcall is replaced below -- the stub's own
+-- frame code must see a secret as the table it is.
+local rawtype, rawxpcall = type, xpcall
+
+-- T45 (P1): the WoW client's xpcall passes its extra arguments to the function
+-- (xpcall(f, handler, a, b) calls f(a, b)); Lua 5.1.5's drops them. Both clients
+-- take this form (docs/PLAN-refactor-ux.md section 9 check 5), so the stub does
+-- too. With no extra arguments it is Lua's own call; with some, a tail call, so
+-- f's frame sits directly under xpcall as it does in the client.
+function xpcall(f, handler, ...)
+    local n = select("#", ...)
+    if n == 0 then return rawxpcall(f, handler) end
+    local args = { ... }
+    return rawxpcall(function() return f(unpack(args, 1, n)) end, handler)
+end
 
 S.now = 0
 -- Which .toc GetAddOnMetadata reads its version from. Default is the TBC line
@@ -82,12 +108,38 @@ end
 local function U(u) return S.units[u] end
 
 function UnitPower(u, t) return S.mana end
-function UnitPowerMax(u, t) return S.manaMax end
-function UnitPowerType(u) return 0 end
+-- T45 (P1): the power type and its maximum are knobs. S.powerType (default 0,
+-- mana) is what UnitPowerType answers (a unit's own .powerType wins);
+-- UnitPowerMax(u, t) answers S.powerMax[t] when a script set one (t nil = the
+-- current type, as in the client), else S.manaMax -- so with S.powerMax empty
+-- every call answers exactly what it did before the knob.
+S.powerType = 0
+S.powerMax = {}
+local function PowerMaxFor(u, t)
+    if t == nil then
+        local x = U(u)
+        t = (x and x.powerType ~= nil) and x.powerType or S.powerType
+    end
+    if t ~= nil and S.powerMax[t] ~= nil then return S.powerMax[t] end
+    return S.manaMax
+end
+function UnitPowerMax(u, t) return PowerMaxFor(u, t) end
+function UnitPowerType(u)
+    local x = U(u)
+    if x and x.powerType ~= nil then return x.powerType end
+    return S.powerType or 0
+end
 function UnitHealth(u) local x = U(u); return x and x.hp or 0 end
 function UnitHealthMax(u) local x = U(u); return x and x.hpMax or 1 end
 function UnitGUID(u) local x = U(u); return x and x.guid or nil end
-function UnitName(u) local x = U(u); return x and x.name or nil end
+-- T45 (P1): a unit carrying a `realm` (a cross-realm member) answers
+-- name, realm as the client does; any other answers the one value it always did.
+function UnitName(u)
+    local x = U(u)
+    if not x then return nil end
+    if x.realm ~= nil then return x.name, x.realm end
+    return x.name
+end
 -- The client's own UnitClass returns the LOCALIZED class name first, the
 -- token ("DRUID") second (docs/tasks/T1b Review, re-issue 2) -- every reader
 -- in the tree (Engine/Targets.lua, UI/Style.lua, Client/Probe.lua) already
@@ -114,9 +166,25 @@ function GetRealmName() return "Anniversary" end
 -- swap the global after the first call has already been made; this same
 -- function reads a settable field instead, so the cache is never an issue.
 function GetRealZoneText() return S.zoneText or "Blood Furnace" end
-function IsInRaid() return false end
+-- T45 (P1): a raid. S.raid = true makes IsInRaid true, and GetRaidRosterInfo(i)
+-- answers from S.units["raid" .. i] in the client's order: name ("Name-Realm"
+-- for a unit with a realm, as the roster names a cross-realm member), rank
+-- (.rank, default 0), subgroup (.subgroup, default 1), level, localized class,
+-- class token, zone, online, isDead, role, isML, combatRole. Off (the default)
+-- it is false and nil, as before.
+S.raid = false
+function IsInRaid() return S.raid == true end
 function GetNumGroupMembers() return #S.unitOrder end
-function GetRaidRosterInfo() return nil end
+function GetRaidRosterInfo(i)
+    local x = rawtype(i) == "number" and U("raid" .. i) or nil
+    if not x then return nil end
+    local name = x.name
+    if x.realm ~= nil and name ~= nil then name = name .. "-" .. x.realm end
+    local token = x.class or "DRUID"
+    local loc = x.localized or (token:sub(1, 1) .. token:sub(2):lower())
+    return name, x.rank or 0, x.subgroup or 1, x.level or S.level, loc, token,
+        x.zone, x.online ~= false, x.dead == true, nil, false, x.role or "NONE"
+end
 function InCombatLockdown() return false end
 function UnitAura() return nil end
 -- Buffs on the player, by name, in the order the client would return them.
@@ -429,9 +497,40 @@ function FrameMT:GetStringHeight() return 12 end
 -- the addon prefers Show/Hide (older clients), but it does use SetShown in
 -- places and the stub has to see through it either way
 function FrameMT:SetShown(v) if v then self:Show() else self:Hide() end end
-function FrameMT:SetValue(v) self.value = v end
+-- T45 (P1): a slider or status bar clamps its value to its range, as the
+-- client does -- SetValue past the max stores the max, and a new range clamps
+-- the value already there. Only plain numbers are compared: a secret handed to
+-- a bar (MD.API.DrawUnitPower, HealthMax) is stored unread, and a frame never
+-- given a range keeps whatever it is handed, as before.
+local function Clamp(self, v)
+    if rawtype(v) ~= "number" then return v end
+    local lo, hi = self.minV, self.maxV
+    if rawtype(lo) == "number" and v < lo then v = lo end
+    if rawtype(hi) == "number" and v > hi then v = hi end
+    return v
+end
+function FrameMT:SetValue(v) self.value = Clamp(self, v) end
 function FrameMT:GetValue() return self.value or 0 end
-function FrameMT:SetMinMaxValues(a, b) self.minV, self.maxV = a, b end
+function FrameMT:SetMinMaxValues(a, b)
+    self.minV, self.maxV = a, b
+    if self.value ~= nil then self.value = Clamp(self, self.value) end
+end
+-- T45 (P1): what is under the mouse. S.mouseFocus is the frame the cursor is
+-- over (nil = none, the default); a frame IsMouseOver when it is that frame or
+-- one of its ancestors, as a parent's rectangle holds its child's.
+-- GetMouseFocus (Classic) and GetMouseFoci (retail) answer it; the forever
+-- profile's baseline pruning leaves only GetMouseFoci, as on the client.
+S.mouseFocus = nil
+function FrameMT:IsMouseOver()
+    local f, guard = S.mouseFocus, 0
+    while f and guard < 50 do
+        if rawequal(f, self) then return true end
+        f, guard = f.parentFrame, guard + 1
+    end
+    return false
+end
+function GetMouseFocus() return S.mouseFocus end
+function GetMouseFoci() return { S.mouseFocus } end
 -- T13e: the setter already stores what it was given; the getter just hands
 -- it back, same as the real client's StatusBar.
 function FrameMT:GetMinMaxValues() return self.minV, self.maxV end
@@ -553,10 +652,11 @@ function S.UseProfile(name)
     --   raises here: arithmetic, unary minus, < <= (against anything), secret-vs-secret ==,
     --   index, newindex, call, .., tostring;
     --   passes silently here: == or ~= against a plain value, #, truthiness (if v then), use as a
-    --   table key, type().
+    --   table key; type() answers "number" (T45, below -- it answered "table" before).
     -- On the client (plan 1.2): comparison, #, table key and call raise; type() works
-    -- (EllesmereUI); truthiness is UNKNOWN. So the stub is LOOSER than the client on ==, ~=, #
-    -- and table keys, and nothing a metatable can do in Lua 5.1 closes that gap. __concat and
+    -- (EllesmereUI) and answers the underlying type; truthiness is UNKNOWN. So the stub is
+    -- LOOSER than the client on ==, ~=, # and table keys, and nothing a metatable can do in
+    -- Lua 5.1 closes that gap: those three are review-only (the header above). __concat and
     -- __tostring are stricter than the client, which yields a secret string that raises later.
     local function secretRaise() error("attempt to use a secret value (stub)") end
     local SECRET_MT = {
@@ -565,7 +665,6 @@ function S.UseProfile(name)
         __lt = secretRaise, __le = secretRaise, __eq = secretRaise, __len = secretRaise,
         __index = secretRaise, __newindex = secretRaise, __call = secretRaise, __tostring = secretRaise,
     }
-    function S.Secret() return setmetatable({}, SECRET_MT) end
     function issecretvalue(v) return rawequal(getmetatable(v), SECRET_MT) end
 
     -- A stand-in for a secret TABLE, same raising behaviour, its own marker --
@@ -579,6 +678,27 @@ function S.UseProfile(name)
     }
     function S.SecretTable() return setmetatable({}, SECRETTABLE_MT) end
     function issecrettable(v) return rawequal(getmetatable(v), SECRETTABLE_MT) end
+
+    -- T45 (P1, review Q1): the client's type() on a secret answers the type of the
+    -- value under it -- "number" for the health, power, regen and amounts this
+    -- stand-in mostly stands for. The stand-in is a table, so without this every
+    -- `if MD.API.IsSecret(x) or type(x) ~= "number"` guard passed on its second
+    -- clause alone and the IsSecret half was never tested. S.Secret(kind) takes the
+    -- type it answers ("string" for a secret name or GUID); the default is
+    -- "number". A secret TABLE (S.SecretTable) still answers "table".
+    local secretKind = setmetatable({}, { __mode = "k" })
+    function S.Secret(kind)
+        local s = setmetatable({}, SECRET_MT)
+        if kind ~= nil and kind ~= "number" then secretKind[s] = kind end
+        return s
+    end
+    function type(v)
+        if rawtype(v) == "table" and rawequal(getmetatable(v), SECRET_MT) then
+            return secretKind[v] or "number"
+        end
+        return rawtype(v)
+    end
+    S.rawtype = rawtype
 
     -- plan §1.5: a stand-in build number, not the real beta's.
     function GetBuildInfo() return "1.60.1", "70009", "Sep 20 2026", 16001 end
@@ -651,7 +771,7 @@ function S.UseProfile(name)
         return secretOrNil(u)
     end
     function UnitPowerMax(u, t)
-        if u == "player" then return S.manaMax end
+        if u == "player" then return PowerMaxFor(u, t) end -- T45 (P1): S.powerMax, else S.manaMax
         return secretOrNil(u)
     end
 
@@ -679,9 +799,10 @@ function S.UseProfile(name)
     -- Two returns, name and nil, the way the client's UnitName does (a realm
     -- name only on a cross-realm unit) -- T0b's fix for the "Healroot, nil"
     -- join bug needs a second return to have anything to truncate.
+    -- T45 (P1): and the unit's `realm` when it has one.
     function UnitName(u)
         local x = U(u)
-        if x then return x.name, nil end
+        if x then return x.name, x.realm end
         return nil
     end
 

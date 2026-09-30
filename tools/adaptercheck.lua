@@ -224,7 +224,10 @@ do
     local t = { name = "Bob", n = 5, ok = true, nested = { a = 1, deep = { x = 2 } } }
     if flavour == "forever" then
         t.hidden = secret
-        t[secret] = "value-under-a-secret-key"
+        -- T45 (P1, review Q1): no `t[secret] = ...` here any more -- the client
+        -- raises on a secret used as a table key, so a table keyed by one cannot
+        -- exist there; the stub (Lua 5.1) cannot trap it, and since type(secret)
+        -- answers "number" the key would only be counted as a second secret.
     end
     local copy1 = MD.API.Copy(t, 1)
     local copy2 = MD.API.Copy(t, 2)
