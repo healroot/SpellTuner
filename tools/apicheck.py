@@ -26,6 +26,12 @@ API baseline and the adapter rule (CLAUDE.md / docs/FOREVER-PLAN.md):
      `:RegisterAllEvents`, in any spelling a call can take) outside Client/ and
      Core.lua -- every registration goes through MD:On, which refuses what the
      adapter forbids (T57, review Q2)
+ 10. the client's name read (`MD.API.client`, `API.client`, `API["client"]`)
+     outside Client/ and UI/Dump_Forever.lua -- a flavour difference is a
+     seam the flavour installs (Engine/Practice.lua's policy), never a branch
+     on the client in shared code (T59, review A6a). From the source text,
+     comments and strings blanked; a copy of MD.API under another name than
+     `API` is not followed.
 
 A Forever TOC is one that loads a forever marker file of tools/data/flavours.txt,
 or sits under Modules/, or (with neither) whose interface is in forever's band
@@ -91,6 +97,9 @@ FORBIDDEN_EVENT = "COMBAT_LOG_EVENT_UNFILTERED"
 REGISTER_HOME = "Core.lua"
 REGISTER_RE = re.compile(r'[.:]\s*(RegisterEvent|RegisterUnitEvent|RegisterAllEvents)\b')
 FORBIDDEN_EVENT_HOME = "Client/API_Forever.lua"
+# rule 10 (T59): the client's name, read only in Client/ and the dump.
+CLIENT_NAME_HOMES = ("UI/Dump_Forever.lua",)
+CLIENT_NAME_RE = re.compile(r'\bAPI\s*(?:\.\s*client\b|\[\s*["\']client["\']\s*\])')
 PROBE_FILE = "Client/Probe.lua"
 
 C_MEMBER_RE = re.compile(r"^(C_[A-Za-z0-9_]+)\.([A-Za-z0-9_]+)$")
@@ -479,6 +488,26 @@ def scan_rule9(abspath, relpath):
     return findings
 
 
+def scan_rule10(abspath, relpath):
+    """Rule 10 (T59): the client's name read outside Client/ and the dump."""
+    if under_client_dir(relpath) or relpath in CLIENT_NAME_HOMES:
+        return []
+    with open(abspath, "r", encoding="utf-8", errors="replace") as f:
+        raw = f.read()
+    # comments blanked; strings blanked too, except that a ["client"] index
+    # must survive -- so the match runs on the comment-free text and is kept
+    # only where the string-free text still has the `API` it starts with
+    no_comments = strip_comments(raw)
+    stripped = strip_source(raw)
+    findings = []
+    for m in CLIENT_NAME_RE.finditer(no_comments):
+        if stripped[m.start():m.start() + 3] != "API":
+            continue
+        findings.append(Finding(relpath, line_of(no_comments, m.start()), "MD.API.client",
+                                "read outside Client/ and UI/Dump_Forever.lua (a flavour installs a policy)"))
+    return findings
+
+
 def scan_rule8(abspath, relpath):
     if under_client_dir(relpath):
         return []
@@ -578,6 +607,7 @@ def main():
         findings.extend(scan_file(args.luac, abspath, relpath, baseline, globals_seen, per_file_globals))
         findings.extend(scan_rule8(abspath, relpath))
         findings.extend(scan_rule9(abspath, relpath))
+        findings.extend(scan_rule10(abspath, relpath))
 
     findings.sort(key=lambda f: f.key())
 
@@ -608,6 +638,10 @@ def main():
         expected.append(("Handlers.lua", 45, "sid", "used before IsSecret in the UNIT_SPELLCAST_ALIAS_BAD handler"))
         # T57, rule 9: a raw frame registering an event outside Client/ and Core.lua.
         expected.append(("Bad.lua", 12, "RegisterEvent", "outside MD:On (only Client/ and Core.lua register events)"))
+        # T59, rule 10: the client's name read in a shared file (Client/Ok.lua
+        # reads it too, and raises nothing; a comment naming it is not a read).
+        expected.append(("Bad.lua", 15, "MD.API.client",
+                         "read outside Client/ and UI/Dump_Forever.lua (a flavour installs a policy)"))
         # rule 7: Gone.lua is missing, referenced from the fixture TOC.
         toc_rel = None
         for t in forever_tocs:

@@ -159,6 +159,32 @@ for i = 1, rec.n do
 end
 check("heals are written down the way the combat log would carry them", ticks > 10 and heals >= 3,
     ticks .. " ticks, " .. heals .. " direct")
+do
+    -- T59 (P15, review A30): the practice writer carries the two fields
+    -- Engine/FightRecorder.lua's stream has. `names` is keyed by spell id (the
+    -- replay window and the reason texts read it offline); every roster index
+    -- carries its name, and every spell id the healer's own events name is in
+    -- `names`, the bloom's own id (33778) and ticks included.
+    local own = { [K.OWNCAST] = true, [K.CASTSTART] = true, [K.OWNHEAL] = true, [K.OWNTICK] = true }
+    local missing = {}
+    for i = 1, #rec.roster do
+        if type(rec.roster[i].name) ~= "string" then missing[#missing + 1] = "roster " .. i end
+    end
+    for i = 1, rec.n do
+        local x = rec.ev.x[i]
+        if x >= 100000 then x = x - 100000 end   -- a crit's flag (FightRecorder's CRIT_FLAG)
+        if own[rec.ev.kind[i]] and type(rec.names) == "table" and type(rec.names[x]) ~= "string" then
+            missing[#missing + 1] = "spell " .. tostring(x)
+        end
+    end
+    check("the stream names every roster index and every spell its own events carry",
+        type(rec.names) == "table" and #missing == 0, table.concat(missing, ", "))
+    local threat = 0
+    for i = 1, rec.n do if rec.ev.kind[i] == K.THREAT then threat = threat + 1 end end
+    check("...and carries a threatOn table, empty: practice has no threat",
+        type(rec.threatOn) == "table" and next(rec.threatOn) == nil and threat == 0,
+        type(rec.threatOn) .. ", " .. threat .. " threat events")
+end
 
 -- replay: the ordinary engine, from the recording alone ----------------------------
 local kit = MD.RankMath:SpellKit({ live = true })

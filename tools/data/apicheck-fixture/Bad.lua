@@ -10,3 +10,6 @@ local ok3 = SlashCmdList
 local ok4 = SpellTunerDB
 -- T57 (rule 9): a raw frame registering an event, outside Client/ and Core.lua; the mention of RegisterEvent( in this comment is not one.
 CreateFrame("Frame"):RegisterEvent("PLAYER_REGEN_DISABLED")
+-- T59 (rule 10): the client's name read outside Client/ and the dump; this comment naming MD.API.client is not a read.
+local _, MD = ...
+local r15 = MD.API.client
