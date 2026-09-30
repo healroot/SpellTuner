@@ -18,11 +18,11 @@ MD.PullBudget = PB
 
 local RECENT = 5
 
+-- T58 (P14, review A9): the median is MD.Util's (Core.lua), which copies
+-- rather than sorting the caller's table in place; "low" keeps this file's
+-- own choice for an even count (the lower of the two middle values).
 local function Median(t)
-    if #t == 0 then return nil end
-    table.sort(t)
-    local mid = math.ceil(#t / 2)
-    return t[mid]
+    return MD.Util.Median(t, "low")
 end
 
 -- { perPull, afford, afterDrink, source = <zone name | "recent fights">, n }
@@ -72,7 +72,7 @@ end
 -- Tooltip lines (out of combat only; in combat the clock is the readout).
 function PB:Lines()
     local e = PB:Estimate()
-    if not e or UnitAffectingCombat("player") then return {} end
+    if not e or MD.inCombat then return {} end -- T58 (P14, A28): the kernel's flag
     return {
         {},
         { l = "Pull budget", r = string.format("%d more, %d after a drink", e.afford, e.afterDrink),

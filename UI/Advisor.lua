@@ -13,7 +13,8 @@ local _, MD = ...
 local fired = {}
 
 MD:OnTick(function()
-    if not MD.db or not UnitAffectingCombat("player") or not MD.player.usesMana then return end
+    -- T58 (P14, review A28): the kernel's combat flag (Core.lua), not a poll.
+    if not MD.db or not MD.inCombat or not MD.player.usesMana then return end
     if not MD.ManaCooldowns then return end
     local deficit = UnitPowerMax("player", 0) - UnitPower("player", 0)
 
@@ -108,7 +109,7 @@ end
 
 MD:OnTick(function(dt)
     if not MD.db or not MD.db.drinkReminder or not MD.player.usesMana then return end
-    if UnitAffectingCombat("player") then
+    if MD.inCombat then -- T58 (P14, A28): the kernel's flag
         stillSince = nil
         drinkArmed = true
         return

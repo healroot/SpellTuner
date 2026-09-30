@@ -281,7 +281,7 @@ local gearReminded = false
 MD:On("PLAYER_EQUIPMENT_CHANGED", function()
     if not MD.cdb then return end
     MD:WriteProfile()
-    if gearReminded or UnitAffectingCombat("player") then return end
+    if gearReminded or MD.inCombat then return end -- T58 (P14, A28): the kernel's flag
     local m = MD.cdb.mp5
     if not m or not m.at then return end
     gearReminded = true

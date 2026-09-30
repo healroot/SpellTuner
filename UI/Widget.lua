@@ -152,7 +152,7 @@ function MD:UpdateVisibility()
         widget:EnableMouse(MD.db.widgetTooltip ~= false)
         if not MD.player.usesMana then
             wantShown = false
-        elseif InCombatLockdown() or UnitAffectingCombat("player") then
+        elseif MD.inCombat then -- T58 (P14, A28): the kernel's flag (Core.lua)
             wantShown = true
         else
             local mana = UnitPower("player", 0)

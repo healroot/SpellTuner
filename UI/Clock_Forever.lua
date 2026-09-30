@@ -11,7 +11,9 @@ local Clock = MD.Clock
 
 local model
 local widget, text, bar, barBack
-local inCombat = false
+-- T58 (P14, review A28): "in combat" is the kernel's MD.inCombat (Core.lua),
+-- set by the two regen events before any other handler of them runs and
+-- seeded at MD_READY through the adapter; this file keeps no copy of it.
 
 -- T41 (docs/SPEC-forever-ui.md 4.4): the physical pixel the clock was last
 -- snapped to, in its own units (UI.px(1, widget)); nil until the first snap.
@@ -61,7 +63,7 @@ local function UpdateVisibility()
         shown = false
         return
     end
-    if inCombat then
+    if MD.inCombat then
         widget:Show()
         shown = true
         return
@@ -97,7 +99,7 @@ local function ShowHover(self)
     end
     GameTooltip:AddLine("Anchored " .. ago .. " ago: " .. why)
 
-    if inCombat then
+    if MD.inCombat then
         local state = model:Project(GetTime())
         local spend = type(state.spend) == "number" and string.format("%.1f", state.spend) or "-"
         local regen = type(state.regen) == "number" and string.format("%.1f", state.regen) or "-"
@@ -227,11 +229,11 @@ MD:RegisterCallback("MD_READY", function()
     model:Anchor(GetTime(), model.max, "assumed full at login")
 
     -- Review R36/R37: a login or /reload in the middle of a fight gets no
-    -- PLAYER_REGEN_DISABLED (it already fired), so the combat state is read
-    -- here once, through the adapter -- anything but a plain true (false,
-    -- absent, secret) leaves the clock out of combat, as before.
-    inCombat = (MD.API.UnitAffectingCombat("player") == true)
-    if inCombat then model:StartFight(GetTime()) end
+    -- PLAYER_REGEN_DISABLED (it already fired). Core.lua's own MD_READY
+    -- handler, registered before this one, has already seeded MD.inCombat
+    -- through the adapter (an unreadable answer -- absent, raised, secret --
+    -- leaves it out of combat, as before), so the fight starts here (T58).
+    if MD.inCombat then model:StartFight(GetTime()) end
 
     if not widget then CreateWidget() end
     UpdateVisibility()
@@ -255,14 +257,12 @@ MD:On("UNIT_SPELLCAST_SUCCEEDED", function(unit, castGUID, spellID)
 end)
 
 MD:On("PLAYER_REGEN_DISABLED", function()
-    inCombat = true
     -- Review B19: an opener that succeeded up to 0.5 s before this flag is
     -- folded into the fight by the model itself (ManaModel:StartFight).
     if model then model:StartFight(GetTime()) end
 end)
 
 MD:On("PLAYER_REGEN_ENABLED", function()
-    inCombat = false
     if model then model:EndFight(GetTime()) end
 end)
 
@@ -273,7 +273,7 @@ MD:OnTick(function()
     local max = MD.API.UnitPowerMax("player", 0)
     if type(max) == "number" then model:SetMax(max) end
 
-    if not inCombat then
+    if not MD.inCombat then
         local base, casting = MD.API.ManaRegen()
         if type(base) == "number" and type(casting) == "number" then
             model:SetRegen(base, casting)
@@ -290,7 +290,7 @@ MD:OnTick(function()
     -- (FOREVER-PLAN.md sec2.5): drinks, potions, other heals are invisible to
     -- this model, so "assume full after long enough" is the only correction
     -- it gets.
-    if not inCombat and model.max and model.max > 0 and model.base and model.base > 0
+    if not MD.inCombat and model.max and model.max > 0 and model.base and model.base > 0
        and (now - model.lastSpend) >= (model.max / model.base) and model.mana < model.max then
         model:Anchor(now, model.max, "regen had time to fill it")
     end

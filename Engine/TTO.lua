@@ -65,7 +65,10 @@ local function Compute()
         spend = rate, sigma = sigma, pessimistic = pess, net = net,
         casts = n, cv = cv,
         stable = n >= 5 and cv <= CV_STABLE,
-        inCombat = UnitAffectingCombat("player") and true or false,
+        -- T58 (P14, review A28): the kernel's flag (Core.lua), set by the two
+        -- regen events and seeded at MD_READY -- so a /reload mid-fight
+        -- projects in combat at once, as the Forever clock already did (R36).
+        inCombat = MD.inCombat == true,
         rest = RestTime(mana, manaMax),
     }
     if not s.inCombat then
