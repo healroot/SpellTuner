@@ -65,7 +65,8 @@ the reason, and several tasks below make them cheaper later.
   book hidden automatically; 10 TBC does not opt in now; 11 Whole book kept; 12 a macro naming a rank
   decided after T25a's probe; 13 font offset -2..+2. Anything below that departs from the approved
   spec or mockup is marked **needs a mockup** (section 7) and waits for the author. A new surface
-  the spec does not have (the minimap button on Forever) is a question (section 8), not a task.
+  the spec does not have was a question (section 8) until the author answered it: the minimap button
+  on Forever is now P36 (section 8.1 item 10).
 - **Model rules from CLAUDE.md**: calibration never feeds the model; `Data/SpellData.lua` changes only
   from a measurement; the model is event-driven and tickers only accumulate or render; widget
   visibility has one owner per line.
@@ -91,8 +92,8 @@ the reason, and several tasks below make them cheaper later.
 
 ## 4. The waves
 
-"Suites" means files under `tools/`. `Replay/` and `Recorder/` are the module folders under
-`Modules/SpellTuner_*`.
+"Suites" means files under `tools/`. `Replay/`, `Recorder/` and `Practice/` are the module folders
+under `Modules/SpellTuner_*`.
 
 | Wave | Tasks | Owned files (complete) |
 |---|---|---|
@@ -112,15 +113,24 @@ the reason, and several tasks below make them cheaper later.
 | 14 | P31 | `UI/Style.lua`, `UI/Windows_Forever.lua`, `tools/themecheck.lua`, `tools/navui.lua`, `tools/wincheck.lua` |
 | 15 | P32 | `UI/Style.lua`, `UI/Tooltip.lua` -> new `UI/Tip.lua` + new `UI/Tip_TBC.lua`, `UI/SpellsPane_Forever.lua`, `UI/SpellTip_Forever.lua`, `UI/Clock_Forever.lua`, `UI/Dashboard_Rows.lua`, `tools/tipcheck.lua`, `tools/spelltip.lua`, `tools/reviewforever.lua`, `tools/clockcheck.lua`, `tools/dashui.lua` |
 | 16 | P33 (after M4) | `UI/Style.lua`, `UI/SpellsPane_Forever.lua`, `UI/Windows_Forever.lua`, `tools/navui.lua`, `tools/spellsui.lua`, `tools/wincheck.lua` |
-| 17 | P34 (after M5) | `UI/Theme_Forever.lua`, `UI/Dashboard_Rows.lua`, `UI/SpellsPane_Forever.lua`, `UI/SpellTip_Forever.lua`, `tools/spellsui.lua`, `tools/tipcheck.lua`, `tools/themecheck.lua` |
-| C | C1-C4, only on the author's yes to decision 10 | see section 5.C |
+| 17 | P34, P36 | **P34:** `UI/Theme_Forever.lua`, `UI/Dashboard_Rows.lua`, `UI/SpellsPane_Forever.lua`, `UI/SpellTip_Forever.lua`, `tools/spellsui.lua`, `tools/tipcheck.lua`, `tools/themecheck.lua`. **P36:** `UI/MinimapButton.lua`, `UI/Tip_TBC.lua`, `UI/Clock_Forever.lua`, `UI/Dashboard_Forever.lua`, `Core_TBC.lua`, `tools/wowstub.lua`, new `tools/minimapcheck.lua` |
+| C-a | C1 | `UI/Windows_Forever.lua` -> `UI/Windows.lua`, new `UI/EscStack.lua`, `UI/Theme_Forever.lua` -> `UI/Theme_Flat.lua`, `UI/Dashboard.lua`, `UI/Dashboard_Forever.lua`, `UI/Options_General.lua`, `UI/DebugConsole.lua`, `UI/PracticePanel.lua`, `UI/BindingsWindow.lua`, `UI/ReplayWindow.lua`, `UI/SpellsPane_Forever.lua`, `Practice/Commands_Forever.lua`, `Core_Forever.lua`, `tools/wincheck.lua`, `tools/themecheck.lua`, `tools/defaultscheck.lua`, `tools/dashui.lua`, `tools/navui.lua`, `tools/reviewui.lua`, `tools/replayui.lua`, `tools/practiceui.lua`, `tools/spelltip.lua`, `tools/consolecheck.lua` |
+| C-b | C2, C4 | **C2:** `UI/Dashboard_Rows.lua`, `UI/Dashboard.lua`, `UI/Dashboard_Waste.lua`, `UI/Dashboard_Review.lua`, `tools/dashui.lua`, `tools/reviewui.lua`. **C4:** `UI/Widget.lua`, `UI/Tip_TBC.lua`, `tools/ttocheck.lua`, `tools/minimapcheck.lua` |
+| C-c | C3 | `UI/Dashboard.lua`, new `UI/SpellsView_TBC.lua`, `UI/Dashboard_Simulate.lua`, `tools/dashui.lua` |
+| C-d | C5 | `Spells/Tabs.lua`, new `Spells/Families_TBC.lua`, new `UI/SpellRail.lua`, `UI/SpellsPane_Forever.lua`, `UI/Dashboard.lua`, `UI/SpellsView_TBC.lua`, `tools/tabscheck.lua`, `tools/spellsui.lua`, `tools/dashui.lua` |
 
 Why this order. The stub's secret lie (Q1) is fixed in wave 1, before P5 and P6 edit
 `IsSecret`-guarded code in wave 2, so P1's "stop and file B27" rule fires before those fixes, not
 after. Every stub knob that waves 2-3 need (raid roster, realm, power type, slider clamp, mouse
 focus, `xpcall` arguments) is added by P1 in wave 1, so no later bug task has to share
-`wowstub.lua`. Waves 13-17 are single tasks because `UI/Style.lua` is one file; splitting it (A20's
-four kit files) is not taken (section 6), so the kit tasks queue.
+`wowstub.lua`. Waves 13-16 are single tasks because `UI/Style.lua` is one file; splitting it (A20's
+four kit files) is not taken (section 6), so the kit tasks queue. P36 (the minimap button on Forever)
+needs P29's Settings and P32's tooltip and shares no file with P34, so it joins wave 17 instead of
+opening a wave 18. Wave C runs after wave 17, split so that no file is owned twice in a wave: C1
+alone first, because every other C task needs the manager, the theme and `UI.THEMED` on TBC and C1
+owns most of the UI files; then C2 and C4 (the tables, and the clock with the minimap tooltip --
+disjoint); then C3, which renders on C2's table options and shares `UI/Dashboard.lua` and `dashui`
+with it; then C5, which opens C3's view from the rail and shares C3's files.
 
 ---
 
@@ -761,7 +771,7 @@ This is the part spec 4.3 and the approved mockup already show.
   reaches the manager), `dashui`/`navui` TBC equal but for the flip.
 - *TBC.* The flips only.
 
-### Wave 17 -- words and tones (after mockup M5 and the author)
+### Wave 17 -- words and tones (after mockup M5 and the author), the minimap button on Forever
 
 **P34. Words and tones** -- U7, U9, U10 (words), U1 (table selection), the TBC grey unification of P25.
 - *What.* One vocabulary on Forever ("Per mana", "Per sec", "Casts" with header tip "chain casts from
@@ -776,6 +786,77 @@ This is the part spec 4.3 and the approved mockup already show.
   expected strings change, listed in the task file).
 - *TBC.* No, unless the author also takes the TBC grey unification.
 
+**P36. The minimap button on Forever** -- section 8.1 item 10; mockups M1 (the WINDOWS pane) and M6
+(the button and its tooltip on both lines).
+- *What.* **One implementation for both lines.** `UI/MinimapButton.lua` lifts as it is: it calls only
+  the widget toolkit (`CreateFrame`, `Minimap`, `GetCursorPosition`, all in apicheck's `TOOLKIT`) and
+  `MD:ToggleDashboard` / `MD:OpenDashboardSettings`, which both lines define after this task. It stays
+  at the same path and TOC position on TBC and is added to the two Forever main TOCs. What differs
+  per line comes through two named seams, never a client test:
+  (a) **The tooltip's clock lines** through `MD:Provide("MinimapLines", fn)`, where `fn(hints)` answers
+  the title and the clock lines, plus the hints when it is given any. TBC's provider is today's
+  `Tip:Clock` (one `Provide` line in `UI/Tip_TBC.lua`). Forever's is new `MD.Clock:SummaryLines()` in
+  `UI/Clock_Forever.lua`: the label/value pairs P32 gave the clock's own hover (`Out of mana in ~1:20`,
+  `Full again in ~2:10 if you stop`). The clock's hover reads the same function, so the two cannot
+  drift.
+  (b) **The tooltip's shape** by `UI.THEMED`. Themed (Forever) is M6's kit tooltip: the provider's
+  lines, a spacer, the pairs `Left-click` / `open the window`, `Right-click` / `Settings`, `Drag` /
+  `move it round the map`, and the muted line `Hide it: Settings -> General -> Windows.` Unthemed (TBC)
+  is today's call, `MinimapLines({ "Left-click: dashboard", "Right-click: settings" })`, byte for
+  byte.
+  **Clicks and drag.** Left-click is `MD:ToggleDashboard()` on both lines. On Forever that reopens on
+  the remembered view through `MD.Win:ShowMain`, and on TBC through `db.uiPath`, as today; a second
+  click closes the window, as TBC's does. Right-click is `MD:OpenDashboardSettings()`, which Forever
+  gains in `UI/Dashboard_Forever.lua` as `MD:SelectView("settings", "general")`. The drag is
+  unchanged: the angle goes in `db.minimap.angle`, at a radius of half the minimap's width + 5.
+  **The default** `minimap = { hide = false, angle = 220 }` is declared once, by the button file
+  (`MD:RegisterDefaults`), and leaves `Core_TBC.lua`'s `DEFAULTS` (same values, P20's rule).
+  **The setting.** M1's WINDOWS pane in Settings -> General (`UI/Dashboard_Forever.lua`) gains the
+  **Minimap button** checkbox with the sentence "Left-click opens the window, right-click opens
+  Settings." It writes `db.minimap.hide` and calls `MD:UpdateMinimapButton()`. TBC keeps its "Show
+  minimap button" checkbox in `UI/Options_General.lua`, untouched.
+  **Tokens and the stub.** The tooltip reads only the `accent`, `label`, `muted` and `mana` tokens,
+  because P34 in the same wave merges `text2` into `label`. The stub gains a `Minimap` frame (140 x
+  140 at a fixed centre, with `GetEffectiveScale`) and a `GetCursorPosition` that answers a settable
+  `S.cursor`.
+- *Why.* The author's answer 10: the same button on both lines. On Forever today the window is
+  reached only by `/st` and the clock's click (P26); the minimap button is the usual way in without
+  typing, and minimap-button collectors adopt it by its global name.
+- *Owned files.* `UI/MinimapButton.lua`, `UI/Tip_TBC.lua` (the `Provide` line only),
+  `UI/Clock_Forever.lua`, `UI/Dashboard_Forever.lua`, `Core_TBC.lua` (the `minimap` default line only),
+  `tools/wowstub.lua`, new `tools/minimapcheck.lua`.
+- *Tests (fail first).* New `tools/minimapcheck.lua`, both flavours. Its TBC half is written and run
+  on the parent commit before the first edit, and must stay equal after it: the button's name,
+  parent, size, its point after a drag, and the tooltip lines as a golden. Its Forever half fails on
+  the parent, where there is no button:
+  1. `SpellTunerMinimapButton` exists after `MD_READY`, parented to `Minimap`.
+  2. A drag with `S.cursor` due east of the centre stores angle 0 and places the button at `(75, 0)`.
+  3. With `db.uiPath = { "reports", "review" }`, a left-click opens the main window on Review, and a
+     second left-click closes it.
+  4. A right-click opens Settings -> General.
+  5. Unticking the WINDOWS checkbox hides the button and writes `db.minimap.hide = true`; ticking it
+     shows the button again.
+  6. The themed tooltip's lines are M6's (the hint pairs, the hide line, the clock lines with `~`),
+     with no bare pipe.
+  7. On a fresh db, `db.minimap` is `{ hide = false, angle = 220 }` on both lines.
+
+  A mutation (the right-click branch calling Toggle) turns both halves red; the task file records
+  it. Equal counts: `slashcheck` (its golden transcript), `defaultscheck` (on Forever its scan now
+  covers the button file), `clockcheck` (the clock's hover reads `SummaryLines` and shows the same
+  lines), `wincheck`, `spelltip`, `consolecheck`. `apicheck`: 0 findings.
+- *Dependencies.* After P29, whose Settings pane and window-manager door (`MD.Win:ShowMain`) it uses;
+  after P26, whose two-column General has the WINDOWS pane; after P32, which provides `UI/Tip.lua` on
+  both main TOCs, `UI/Tip_TBC.lua` and the clock's label/value hover. It shares no file with P34, so
+  it runs in wave 17.
+- *Shared/TBC files touched.* `UI/MinimapButton.lua` (shared from now on), `UI/Tip_TBC.lua`,
+  `Core_TBC.lua`. None of them changes TBC; the TBC golden proves it. C4 later reshapes TBC's
+  `Tip:Clock` body to M6's words, and once C1 turns `UI.THEMED` on for TBC, TBC's tooltip takes the
+  themed shape. **Integrator:** `UI\MinimapButton.lua` goes in `SpellTuner_Mainline.toc` and
+  `SpellTuner.toc` after `UI\Clock_Forever.lua`, and the CLAUDE.md row for it; TESTING section 44
+  item 25. No DECISIONS entry: this is a new Forever surface the author asked for.
+- *In-game check* (section 9, item 25): the button sits on the Forever minimap's rim and can be
+  dragged round it.
+
 ### P35. Docs (integrator, at every wave end)
 
 CLAUDE.md rows for new files (`Engine/Recordings.lua`, `Engine/ReviewCommands.lua`, `Engine/Kit.lua`,
@@ -783,29 +864,131 @@ CLAUDE.md rows for new files (`Engine/Recordings.lua`, `Engine/ReviewCommands.lu
 `Spells/Words.lua`, `Engine/ManaPool_Forever.lua`, `UI/Visibility.lua`, `UI/ContextMenu.lua`,
 `UI/Tip.lua`, `UI/Tip_TBC.lua`, `Stream_Forever.lua`, `tools/check.sh`, `tools/lib/t.lua`,
 `tools/textcheck.py`, `tools/data/flavours.txt`, and the new suites `costcheck`, `ttocheck`,
-`verifycheck`, `slashcheck`, `recordingscheck`, `defaultscheck`), and the missing `Spells/Tabs.lua` and
+`verifycheck`, `slashcheck`, `recordingscheck`, `defaultscheck`, `minimapcheck`; in wave C
+`UI/Windows.lua`, `UI/Theme_Flat.lua`, `UI/EscStack.lua`, `UI/SpellsView_TBC.lua`, `UI/SpellRail.lua`,
+`Spells/Families_TBC.lua`; `UI/MinimapButton.lua`'s row says both lines), and the missing `Spells/Tabs.lua` and
 `Data/DruidSpells.lua` rows; the "keep harness.lua's list in step" sentence removed; counts removed
 from prose; DECISIONS entries named in the tasks; HISTORY per wave; TESTING section 44 (section 9
 below); `docs/review/2026-09-30-review.md` from `REVIEW-2026-09-30.md` with a "Fixed in" line per B.
 
-### 5.C Conditional wave -- only on the author's yes to decision 10 (TBC opt-in)
+### 5.C Wave C -- the new UI on TBC (the author said yes to decision 10, section 8.1 item 1)
 
-Put to the author with U4's list: gold everywhere and the suggestion said three times; 10-pt
-left-justified numbers; four prose lines above the table; a see-through window; HIGH-strata windows
-interleaving; one ESC closing everything; nothing hides in combat; a separate bindings window; two
-clock looks. On a yes, `SpellTuner_TBC.toc` lists the theme and `UI.THEMED` becomes true there, which
-is what turns on everything P27-P33 gated.
-- **C1. Window manager on TBC** (A22, A6c): the manager takes its knowledge from the dashboard at
-  `Register`; the ESC stack becomes `UI/EscStack.lua`; theme (renamed `UI/Theme_Flat.lua`) and manager
-  (`UI/Windows.lua`) listed on `SpellTuner_TBC.toc`; the `if MD.Win` else-branches deleted; positions
-  migrated with `Win:Adopt`. Tests: all TBC suites, `wincheck` under tbc.
-- **C2. TBC tables** (U5, A23): the TBC rank table, Review and Waste as `opts` sets on the one generic
-  table (right-justified numbers, 20-px rows, zebra, header rule, the bar marker and a Tag column
-  instead of the gold note); the second `Render` deleted. `dashui` rewritten to the new bytes.
-- **C3. TBC Spells view** (U6): the Forever structure (header, chip + one comparison line, table)
-  with TBC's numbers; "Effective" as "After overheal"; the Simulate strip folded. *Needs a mockup* (M6).
-- **C4. One clock look** (U4): the TBC widget on the kit's font and backdrop, the unlock text in the
-  accent. *Needs a mockup* (small; M6's second frame).
+This was put to the author with U4's list: gold everywhere and the suggestion said three times;
+10-pt left-justified numbers; four prose lines above the table; a see-through window; HIGH-strata
+windows interleaving; one ESC closing everything; nothing hides in combat; a separate bindings
+window; two clock looks. The author said yes. So `SpellTuner_TBC.toc` lists the theme, and `UI.THEMED`
+becomes true there (C1), which turns on everything P27-P33 gated. Wave C runs after wave 17, in the
+four waves of section 4: C-a = C1, C-b = C2 + C4, C-c = C3, C-d = C5. Mockup M6 is approved (7.1),
+with the rail on TBC (C5).
+
+- **C1. Window manager and theme on TBC** (A22, A6c).
+  - *What.* The manager takes its knowledge from the dashboard at `Register`: each dashboard file
+    passes its sizes per group and its "open on a view" function, and `MD.Win.SIZES` moves into
+    `UI/Dashboard_Forever.lua`, with TBC's own table in `UI/Dashboard.lua`. The ESC stack becomes
+    `UI/EscStack.lua`. The theme is renamed `UI/Theme_Flat.lua` and the manager `UI/Windows.lua`, and
+    both are listed on `SpellTuner_TBC.toc`. The `if MD.Win` else-branches are deleted: TBC's
+    `UISpecialFrames` entries and its own dashboard positioning go, and the saved positions migrate
+    with `Win:Adopt`. The `ui` defaults (`fontOffset`, `scale`, `combat`, `escStack`, `win`) leave
+    `Core_Forever.lua`'s `DEFAULTS` for `MD:RegisterDefaults` in the theme (`fontOffset`) and the
+    manager (the rest), so TBC gets them. TBC's Settings -> General (`UI/Options_General.lua`) gains
+    the WINDOWS controls of M1: In combat, Close one window per ESC, Window size, Text size and Reset
+    window positions. The TBC UI suites load the theme and the manager, as the TOC now does, and
+    their assertions that pinned the unthemed TBC look move to the themed expectation. Comments that
+    name the old file names are fixed when each file is next touched.
+  - *Owned files.* `UI/Windows_Forever.lua` -> `UI/Windows.lua`, new `UI/EscStack.lua`,
+    `UI/Theme_Forever.lua` -> `UI/Theme_Flat.lua`, `UI/Dashboard.lua`, `UI/Dashboard_Forever.lua`,
+    `UI/Options_General.lua`, `UI/DebugConsole.lua`, `UI/PracticePanel.lua`, `UI/BindingsWindow.lua`,
+    `UI/ReplayWindow.lua`, `UI/SpellsPane_Forever.lua`, `Practice/Commands_Forever.lua`,
+    `Core_Forever.lua`, `tools/wincheck.lua`, `tools/themecheck.lua`, `tools/defaultscheck.lua`,
+    `tools/dashui.lua`, `tools/navui.lua`, `tools/reviewui.lua`, `tools/replayui.lua`,
+    `tools/practiceui.lua`, `tools/spelltip.lua`, `tools/consolecheck.lua`.
+  - *Tests.* `wincheck` declared for both flavours. Under tbc (+4): the main window registers with
+    TBC's sizes per group; a TBC position saved before C1 is adopted; ESC closes the top window only;
+    the window hides in combat and reopens on the same view. `themecheck`: `UI.THEMED` is true on TBC,
+    and P25's assertion that TBC's tokens equal the old literals is replaced by one that they equal
+    Forever's. `defaultscheck` (+1: every `ui` key has a default on TBC). The other TBC UI suites
+    are re-baselined under the theme, and the task file lists every expected value that changed.
+    `spellsui`, `reviewforever`, `replayforever` and `practiceforever`: equal counts (Forever
+    unchanged by the move).
+  - *Dependencies.* After wave 17.
+  - *Shared/TBC files.* Yes, the whole TBC window. DECISIONS: "TBC takes the Forever window" (U4's
+    list, answer 1). Integrator: all three main TOCs (the renamed files, and on TBC `UI\Theme_Flat.lua`
+    after `UI\Style.lua`, then `UI\EscStack.lua` and `UI\Windows.lua` before
+    `UI\Dashboard_Rows.lua`); CLAUDE.md rows.
+- **C2. TBC tables** (U5, A23).
+  - *What.* The TBC rank table, Review and Waste become `opts` sets on the one generic table:
+    right-justified numbers, 20-px rows, zebra, a header rule, the bar marker, and a Tag column
+    instead of the gold note. The second `Render` is deleted.
+  - *Owned files.* `UI/Dashboard_Rows.lua`, `UI/Dashboard.lua`, `UI/Dashboard_Waste.lua`,
+    `UI/Dashboard_Review.lua`, `tools/dashui.lua`, `tools/reviewui.lua`.
+  - *Tests.* `dashui` rewritten to the new bytes; `reviewui` re-baselined, with the chat card
+    byte-identical.
+  - *Dependencies.* After C1.
+- **C3. TBC Spells view** (U6), *mockup M6, approved*.
+  - *What.* The Forever structure, with TBC's numbers: a header, the chip and one comparison line,
+    the table and the card. "Effective" becomes "After overheal", with the measured share, and the
+    Simulate strip folds behind *What if...*. The view is built in new `UI/SpellsView_TBC.lua`.
+    `UI/Dashboard.lua` keeps the four family views along the top until C5.
+  - *Owned files.* `UI/Dashboard.lua`, new `UI/SpellsView_TBC.lua`, `UI/Dashboard_Simulate.lua`,
+    `tools/dashui.lua`.
+  - *Tests.* `dashui` (the header, the chip line, the suggested row's fill and bar, *Casts* reading
+    `inf` / `999+`, What if... folded).
+  - *Dependencies.* After C2, whose table options it renders on.
+- **C4. One clock look** (U4), *mockup M6, approved*.
+  - *What.* The TBC widget moves onto the kit's panel, font and a 160 x 4 five-second-rule bar, and
+    its unlock text takes the accent colour. TBC's `Tip:Clock` body takes M6's words (`Out of mana
+    in`, `Full again in ... if you stop` as label/value pairs; the CV and raw lines behind the detail
+    key). With C1's `UI.THEMED`, the TBC minimap tooltip is then P36's themed shape.
+  - *Owned files.* `UI/Widget.lua`, `UI/Tip_TBC.lua`, `tools/ttocheck.lua`, `tools/minimapcheck.lua`.
+  - *Tests.* `ttocheck` (+2: the widget has the kit backdrop and bar under the theme; the unlock text
+    is in the accent); `minimapcheck`'s TBC golden replaced by M6's lines (listed in the task file).
+  - *Dependencies.* After C1 and P36.
+- **C5. The spell rail on TBC** (section 7.1; mockup M4 layout B and M6).
+  - *What.* TBC's Spells group becomes a rail group (`layout = "rail"`), as on Forever: **Overview**
+    first, then one row per family in the player's own list, with `+ Add`, the Undo line, drag to
+    reorder, one `x`, and the right-click row menu (Move up / Move down / Remove; P33's rail). C3's four
+    view tabs go.
+    (a) **The list model.** `Spells/Tabs.lua` is now on the TBC TOC too, with its rules unchanged. Its
+    book comes through one seam, `Tabs.source`, which defaults to `MD.Book:Get()`. On TBC the source
+    is new `Spells/Families_TBC.lua`: the families the TBC rank table has today, in Book's family
+    shape (`key`, `kind = "heal"`, `ids`, and `ranks` with `id`, `known`, `level`, `cost.amount`),
+    built from `Data/SpellData.lua`'s `SD.families` and its known-rank index. It is rebuilt on
+    `SPELLS_REBUILT`, which then runs the reconcile, the job `BOOK_CHANGED` does on Forever.
+    So on a fresh TBC character the seed is the known heal families ordered by learn level (Tabs's
+    rule); the store is `cdb.spellTabs`, as on Forever; and a newly trained family is appended with
+    the dot (decision 2).
+    (b) **The rail glue** moves out of `UI/SpellsPane_Forever.lua` into new shared `UI/SpellRail.lua`:
+    RefreshRail, the footer and Undo line, drop, remove, undo, the row menu and the picker's list.
+    It takes a source (the book, or the TBC families) and the functions that open views. Forever's
+    pane calls it and shows exactly what it shows today.
+    (c) **TBC's Overview** is built in `UI/SpellsView_TBC.lua`: the My spells table on C2's table
+    options, with TBC's numbers. There is one row per listed family (its suggested rank, per mana, per
+    sec and casts), and a row click opens that family. A family's view is C3's view for that key.
+    `/md` opens on Overview the first time, then on the remembered row.
+  - *Why.* The author chose the rail for TBC when approving the mockups (7.1). That gives one Spells
+    structure on both lines, and an editable list on the client the author plays until launch.
+  - *Owned files.* `Spells/Tabs.lua`, new `Spells/Families_TBC.lua`, new `UI/SpellRail.lua`,
+    `UI/SpellsPane_Forever.lua`, `UI/Dashboard.lua`, `UI/SpellsView_TBC.lua`, `tools/tabscheck.lua`,
+    `tools/spellsui.lua`, `tools/dashui.lua`.
+  - *Tests (fail first).* `tabscheck` is declared for both flavours. Under tbc (+4): a level 70
+    druid's families seed Healing Touch, Rejuvenation, Regrowth and Lifebloom, in that order; a
+    removed family stays removed across `SPELLS_REBUILT`; a family trained later is appended with the
+    new dot; the default source is unchanged on Forever. The Forever half keeps equal counts.
+    `dashui` (+4): the Spells group is a rail with Overview first; Overview lists one row per listed
+    family, with its suggested rank; a rail row opens C3's view for that family; `x` then Undo puts
+    the row back. `spellsui`: equal counts and strings (the move changed nothing on Forever). `navui`:
+    equal (the rail kit is untouched).
+  - *Dependencies.* After C1, because the rail kit's look needs the manager, the theme and
+    `UI.THEMED` on TBC. After C3: a rail row opens C3's view, and C5 shares `UI/Dashboard.lua`,
+    `UI/SpellsView_TBC.lua` and `dashui` with it, so the two cannot be in one wave. Also after P33
+    (the rail's scroll frame and row tooltip) and P34 (the white selection bar).
+  - *Shared/TBC files.* TBC: yes, the Spells group's navigation (DECISIONS: "TBC's Spells group is
+    the rail", citing 7.1). Shared: `Spells/Tabs.lua` (one seam; its "Forever TOCs only" header goes),
+    `UI/SpellRail.lua`, `UI/SpellsPane_Forever.lua` (a move; Forever byte-identical). Integrator:
+    `Spells\Tabs.lua` and `Spells\Families_TBC.lua` on `SpellTuner_TBC.toc` after
+    `Engine\RankMath.lua`; `UI\SpellRail.lua` after `UI\Dashboard_Rows.lua` on all three main TOCs
+    (on Forever that is before `UI\SpellsPane_Forever.lua`); CLAUDE.md rows, and the Tabs row loses
+    "Forever TOCs only".
 
 ---
 
@@ -837,7 +1020,6 @@ is what turns on everything P27-P33 gated.
 | Q14 baseline refresh | Needs a probe dump of the globals from the author's client first. |
 | U17 one window size for every group | Departs from decision 6 (a size per group). The author's call; P27 fixes the look of Review, which is the larger half of the complaint. |
 | U29 SimWindow's table | Low traffic; demote or rebuild when Practice supersedes it. |
-| The minimap button on Forever | Not in spec 8.1 or mockup M1; a new surface. The author's call (section 8.10). |
 | Style.lua split into four kit files (A20) | Mechanical; it would let kit tasks run in parallel, which the author asked not to do anyway. Revisit if the kit keeps growing. |
 
 ## 7. Visual changes that need a mockup
@@ -907,7 +1089,7 @@ are accepted; invented wording is adjusted in game.
 ### 8.1 The author's answers (2026-09-30)
 
 1. **Decision 10: yes** -- "I would like to have updated UI on TBC as well once its ready". Wave C
-   (C1-C4) runs after wave 17; mockup M6 goes to the author with M1-M5. The author also retired
+   (C1-C4, and C5 added with the mockups in 7.1) runs after wave 17; mockup M6 goes to the author with M1-M5. The author also retired
    ManaDemon: SpellTuner replaces it on both clients (the TBC install and the saved data carried over,
    2026-09-30).
 2. Coach cards may change (P2) -- **accepted**.
@@ -986,6 +1168,17 @@ until then).
     missing). A Settings dropdown near the bottom of the screen opens upward. **On TBC:** the window,
     its buttons and its tooltips look exactly as before.
 
+**After wave 17 and wave C.**
+25. **Minimap button (P36).** On Forever the SpellTuner button sits on the minimap's rim; drag it
+    round, `/reload`, and it stays there. Left-click opens the window on the view you left, again
+    closes it; right-click opens Settings -> General; unticking *Minimap button* under WINDOWS hides
+    it. If you use a minimap-button collector, say whether it picked the button up. On TBC nothing
+    changes until wave C.
+26. **TBC (wave C).** `/md` opens the flat window: the rail with Overview first and your heal
+    families, which you can reorder, remove and undo; the window hides in combat and comes back on the
+    same view; one ESC closes one window; the clock sits on the flat panel; the minimap tooltip reads
+    as on Forever.
+
 ## 10. Revision 2: what changed after the critic
 
 - **Theme flag.** `UI.THEMED` (P25) replaces "gated on `UI.TEXT`"; every existing theme test is
@@ -1020,3 +1213,15 @@ until then).
 - **Smaller.** B1 answered from `UnitPowerMax(..., 0)`, not a class list. P12 is a real pure move:
   `MeasuredMp5` untouched, coach and validate go straight to their final file. P11 no longer defines
   `GCD`/`CRIT_MULT` (section 6). The minimap button on Forever is a question (8.10), not a task.
+
+## 11. Revision 3 (2026-09-30): after the author's answers and the mockups
+
+- **P36** (section 8.1 item 10): the minimap button on Forever. It is one shared file with two
+  seams: the clock lines through `MD:Provide("MinimapLines")`, and the tooltip's shape through
+  `UI.THEMED`. It joins wave 17 (it shares no file with P34), so there is no wave 18. TBC's behaviour
+  is unchanged; a golden taken on the parent proves it.
+- **C5** (section 7.1): the spell rail on TBC, with `Spells/Tabs.lua` fed by the TBC druid families
+  and the rail glue moved into shared `UI/SpellRail.lua`. It replaces C3's view tabs.
+- **Wave C** gets owned files per task and is split into C-a (C1), C-b (C2, C4), C-c (C3) and C-d (C5),
+  with no file owned twice in a wave (checked mechanically). C1 now also moves the `ui` defaults
+  and gives TBC the WINDOWS settings. C4 also takes TBC's minimap and clock tooltip words from M6.
