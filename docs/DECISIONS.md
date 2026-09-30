@@ -1033,3 +1033,7 @@ Every recording is addressed by one grammar, `Engine/Recordings.lua` on both lin
 ## A Forever kit rank with no readable cast is dataMissing (2026-09-30, T63)
 
 A Forever kit rank whose cast time the book cannot read is `dataMissing` (Practice refuses it) rather than carrying a `nil` cast into the engine (T63). TBC is unchanged: its kit already validates against `Engine/Kit.lua`'s shape (Innervate declared as `Kit.UNPRICED`).
+
+## The review commands are one implementation (2026-09-30, T65)
+
+**The review commands are one implementation (T65, P21, review A1).** `/md coach`, `/md coachrun`, the validation report and Forever's `/st validate` are `Engine/ReviewCommands.lua` on both lines. Every line they print goes through `MD:PrintSafe`, so on TBC a zone, name, run name or spell with a pipe, a backslash or a non-ASCII byte now prints escaped, as it already did on Forever; and `/md coach` refuses an argument it cannot read (`1 force now`) instead of coaching recording 1 (B16, the router's rule, now on the coach's own parse too). What still differs by line is a policy the flavour installs: the copy box for a long card (TBC), the report's verb (`simreplay` / `validate`) and the slash in hints.

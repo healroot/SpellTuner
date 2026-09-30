@@ -23,5 +23,6 @@ UI\Tooltip.lua
 UI\ReplayWindow.lua
 UI\Dashboard_Review.lua
 Commands_Forever.lua
+Engine\ReviewCommands.lua
 
 Ready.lua

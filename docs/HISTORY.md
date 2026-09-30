@@ -4039,3 +4039,38 @@ assertions (practice's `p1` through the router, the new recordingscheck and kitc
 apicheck / textcheck / releasecheck counting the two new files, and run-to-run noise (ms, table
 addresses, the sliced search's counts in replayui and reviewui). **Next:** wave 8; the author's §44
 item 18 (and W7) on the next build.
+
+## 2026-09-30 — the refactor plan, wave 8: T64-T65 (P20-P21)
+
+Wave 8 of `docs/PLAN-refactor-ux.md` cherry-picked onto `3261856`, oldest first, then one merge fix
+and the integrator's lines (both Replay module TOCs, CLAUDE.md, `docs/DECISIONS.md`,
+`docs/TESTING.md` §44, `docs/TOOLS.md`, `tools/data/expected-counts.json`, this entry) in one commit.
+The version stays 0.16.3. TOC lines: `Engine\ReviewCommands.lua` right after `Commands_Forever.lua`
+on `SpellTuner_Replay_Mainline.toc` and `SpellTuner_Replay.toc` (still identical); the TBC TOC already
+listed it.
+
+- **T64 (P20)** (`8ea70a3`, `f7aadd7`, `d2505f8`): the engine's settings declared once (review A3):
+  `Engine/SimModel.lua` and `Gates_Forever.lua` register their defaults, `SM.GATES` reads the
+  registry, every reader asks `MD:Setting`; `Core_TBC.lua`'s `DEFAULTS` loses 16 keys,
+  `Core_Forever.lua` gains `muted` / `effectiveMode`; new `tools/defaultscheck.lua` (tbc 48, forever
+  52); the Forever import fixture rebuilt (four new keys). TBC unchanged.
+- **T65 (P21)** (`80dd589`, `7d0b0b0`): the review commands are one implementation (review A1) --
+  `Engine/ReviewCommands.lua` on both lines, every line through `MD:PrintSafe`, what differs by line
+  a policy the flavour installs (`MD.ReviewPolicy` from the Replay module's `Commands_Forever.lua`);
+  `/md coach` refuses an argument it cannot read (`1 force now`). DECISIONS "The review commands are
+  one implementation". verifycheck tbc 14, coachforever 21.
+- **Merge fix** (`20a4f27`): P21 was built without P20 and kept `REPLAY_DEFAULTS` as an
+  `MD:RegisterDefaults` call repeating 16 keys `Engine/SimModel.lua` registers with the same values
+  (green, since an equal value is allowed). Following T64's merge note the copy is deleted --
+  SimModel.lua is their one owner and the Replay TOC loads it first -- and defaultscheck's forever
+  check on it now asserts `Commands_Forever.lua` declares none of them (count still 52; re-adding
+  `simFloor = 0.30` fails it). `SpellTunerDB` unchanged (importcheck green, fixture not rebuilt).
+  CLAUDE.md's T65 sentence in the `Modules/<Name>/` row says so instead of "the module's defaults".
+
+`make check`: 66 runs, all passed, in the worktree and in a `git archive` export (61 counted runs
+against 61 expected). Each TBC suite's full output against `3261856` differs only by the new
+assertions (verifycheck's escaped zone in the `/md coach` card, the new defaultscheck tbc run) and
+run-to-run noise (ms, table addresses, sliced search frame / evaluation counts in reccheck, runcheck
+and replayui, replayui's two `search done` lines finishing in either order, simcheck's KB/run).
+Forever: coachforever's new assertion, apicheck counting 51 files. **Next:** wave 9; the author's §44
+item 17 (Forever half) and W8 on the next build.
