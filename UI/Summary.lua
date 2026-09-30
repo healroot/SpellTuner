@@ -227,15 +227,30 @@ MD:On("COMBAT_LOG_EVENT_UNFILTERED", function()
     -- Event kind for calibration and (v0.6.3) the overheal buckets: a periodic
     -- event is a tick; a non-periodic Lifebloom event is its bloom; the rest
     -- are direct heals.
+    --
+    -- T48 (review B10): the bloom arrives under 33778, an ALIAS and not a row,
+    -- so it used to stay "direct" under its own id -- calibration never saw it,
+    -- the kind-scoped bloom fraction RankMath reads never existed, and waste
+    -- charged a fully overhealed bloom the whole cast. The resolved id is used
+    -- ONLY when the raw id is not a row and resolves to Lifebloom: then the
+    -- event is a bloom of the Lifebloom that bloomed (33763). Every other id,
+    -- Tranquility's 44208 / 44207 included, reaches both calls unchanged.
     local kind = "direct"
+    local attrID = spellID
     if subevent == "SPELL_PERIODIC_HEAL" then
         kind = "tick"
-    elseif spellID and MD.SpellData.spells[spellID] and MD.SpellData.spells[spellID].family == "Lifebloom" then
-        kind = "bloom"
+    elseif spellID and SD.spells[spellID] then
+        if SD.spells[spellID].family == "Lifebloom" then kind = "bloom" end
+    elseif spellID then
+        local resolved = SD:Resolve(spellID)
+        local row = SD.spells[resolved]
+        if resolved ~= spellID and row and row.family == "Lifebloom" then
+            attrID, kind = resolved, "bloom"
+        end
     end
 
     local wasted = 0
-    if MD.Overheal then wasted = MD.Overheal:Record(spellID, kind, amount, overheal, destGUID, destName) end
+    if MD.Overheal then wasted = MD.Overheal:Record(attrID, kind, amount, overheal, destGUID, destName) end
 
     -- one convention for the whole addon (Engine/Overheal.lua): whether the
     -- log's "amount" already includes the overheal is a client property,
@@ -250,7 +265,7 @@ MD:On("COMBAT_LOG_EVENT_UNFILTERED", function()
     end
 
     if MD.Calibration then
-        MD.Calibration:Observe(spellID, kind, gross, critical, destGUID)
+        MD.Calibration:Observe(attrID, kind, gross, critical, destGUID)
     end
 
     -- Ticks are credited to the cast record that applied the HoT.

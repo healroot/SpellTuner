@@ -245,6 +245,7 @@ function FR:Start(t0)
     FR.tickCount = 0
     FR.nextHpAt = 0
     FR.pending = nil
+    FR.unitStart = nil
     FR:Snapshot(0)
     MD:Debug("sim", "recording started: %d tracked, %d initial aura(s), %d precast(s)",
         #stream.tracked, #stream.initial.auras, #stream.precasts)
@@ -261,6 +262,19 @@ local function Push(s, t, kind, tgt, amt, x)
     local n = s.n + 1
     s.n = n
     s.ev.t[n], s.ev.kind[n], s.ev.tgt[n], s.ev.amt[n], s.ev.x[n] = t, kind, tgt, amt, x
+end
+
+-- T48 (review B9): a pending hard cast that ended without its success -- cut
+-- by an interrupt, or replaced by another start. The time is still gone, so it
+-- is recorded as a CANCEL: amt the seconds it ran, x the spell.
+-- UNIT_START_TTL: how long a UNIT_SPELLCAST_START that arrived before the
+-- combat log's SPELL_CAST_START waits to be adopted (both land in one frame).
+local UNIT_START_TTL = 0.5
+local function CancelPending(s, t)
+    local p = FR.pending
+    if not p then return end
+    FR.pending = nil
+    Push(s, t, K.CANCEL, -1, t - p[2], p[1])
 end
 
 function FR:Snapshot(t)
@@ -319,18 +333,12 @@ function FR:Event(subevent, sourceGUID, destGUID, destName, p1, p2, p3, p4, p5, 
     local idx = destGUID and MD.Recorder:Index(destGUID, destName) or -1
     local tracked = idx > 0 and s.trackedSet[idx] or false
 
-    -- A cast start with no matching success by the next own event was cancelled
-    -- or interrupted; the time is still gone, so it is recorded as such.
-    if isOwn and FR.pending then
-        local pendingSpell, pendingT = FR.pending[1], FR.pending[2]
-        local matched = (subevent == "SPELL_CAST_SUCCESS" and p1 == pendingSpell)
-        if not matched and subevent ~= "SPELL_CAST_START" then
-            Push(s, t, K.CANCEL, -1, t - pendingT, pendingSpell)
-            FR.pending = nil
-        elseif matched then
-            FR.pending = nil
-        end
-    end
+    -- T48 (review B9): what ends a pending hard cast is decided in the own-cast
+    -- branches at the bottom (its success, another start) and in FR:UnitCast
+    -- (an interrupt carrying its castGUID) -- never by "any other own event".
+    -- A HoT tick, an aura, an energize and the SPELL_CAST_FAILED a spam press
+    -- of the same button produces all arrive while the cast goes on; closing it
+    -- on them recorded nearly every hard cast under a rolling HoT as cancelled.
 
     local dmg = DAMAGE_EVENTS[subevent]
     if dmg then
@@ -440,6 +448,9 @@ function FR:Event(subevent, sourceGUID, destGUID, destName, p1, p2, p3, p4, p5, 
     if not isOwn then return end
 
     if subevent == "SPELL_CAST_SUCCESS" then
+        -- the pending cast's own success closes it; any other success (an
+        -- off-GCD instant) leaves it open
+        if FR.pending and p1 == FR.pending[1] then FR.pending = nil end
         local cost = MD.SpellData:GetCost(p1)
         Push(s, t, K.OWNCAST, idx, cost or -1, p1 or 0)
         if p1 and not s.names[p1] then
@@ -455,11 +466,59 @@ function FR:Event(subevent, sourceGUID, destGUID, destName, p1, p2, p3, p4, p5, 
         s.ownCasts = (s.ownCasts or 0) + 1
         if cost and cost > 0 then s.spent = (s.spent or 0) + cost end
     elseif subevent == "SPELL_CAST_START" then
+        -- a new start while one is pending: the old cast ended without a
+        -- success we saw (the same spell included -- a spam press produces no
+        -- SPELL_CAST_START, only a failure), and the time is still gone
+        CancelPending(s, t)
         Push(s, t, K.CASTSTART, idx, 0, p1 or 0)
-        FR.pending = FR.pending or {}
-        FR.pending[1], FR.pending[2] = p1, t
+        FR.pending = { p1, t }
+        -- the unit event may have come first; adopt its castGUID
+        local u = FR.unitStart
+        FR.unitStart = nil
+        if u and u.spellID == p1 and GetTime() - u.at <= UNIT_START_TTL then
+            FR.pending.guid = u.guid
+        end
     end
 end
+
+--------------------------------------------------------------------------------
+-- T48 (review B9): the player's own cast events, for their castGUID. The
+-- combat log carries none, and it has no event for a cast cut short by moving
+-- or a kick; the unit events do. Payload on the TBC client: unit, castGUID,
+-- spellID (the shape is the in-game check in docs/PLAN-refactor-ux.md 9.4).
+-- UNIT_SPELLCAST_FAILED is deliberately not listened to: a spam press of the
+-- button being cast fires it for the NEW attempt while the first cast goes on,
+-- and its reason text is localised.
+--------------------------------------------------------------------------------
+function FR:UnitCast(event, unit, castGUID, spellID)
+    local s = FR.active
+    if not s or unit ~= "player" then return end
+    local p = FR.pending
+    if event == "UNIT_SPELLCAST_START" then
+        if p and p[1] == spellID and p.guid == nil then
+            p.guid = castGUID
+        else
+            -- before the combat log's SPELL_CAST_START; that one adopts it
+            FR.unitStart = { spellID = spellID, guid = castGUID, at = GetTime() }
+        end
+    elseif event == "UNIT_SPELLCAST_INTERRUPTED" then
+        if not p then return end
+        local match
+        if p.guid ~= nil and castGUID ~= nil then
+            match = (castGUID == p.guid)
+        else
+            match = (spellID == p[1])   -- a GUID we could not read: the spell id
+        end
+        if match then CancelPending(s, GetTime() - s.t0) end
+    end
+end
+
+MD:On("UNIT_SPELLCAST_START", function(unit, castGUID, spellID)
+    FR:UnitCast("UNIT_SPELLCAST_START", unit, castGUID, spellID)
+end)
+MD:On("UNIT_SPELLCAST_INTERRUPTED", function(unit, castGUID, spellID)
+    FR:UnitCast("UNIT_SPELLCAST_INTERRUPTED", unit, castGUID, spellID)
+end)
 
 --------------------------------------------------------------------------------
 -- v0.12.0: the two things the author's frames show them coming.

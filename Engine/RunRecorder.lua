@@ -219,6 +219,13 @@ function RR:Start(reason, name)
     RR.deadFrom = nil
     RR.leftAt = nil
     RR.drinkRates = {}
+    -- T48 (review B12): nothing of the previous run carries over. The potion
+    -- counts are re-read as a baseline on the first sample (a potion drunk,
+    -- banked or sold between runs is no POTION of this one), and a pull that
+    -- started inside the previous run is placed by its own length in AddPull
+    -- rather than at that run's clock.
+    RR.potionCount = {}
+    RR.pullStart = nil
     run.deadTime, run.drinkTime = 0, 0
     -- the pull in progress, if any, joins the run
     if MD.FightRecorder and MD.FightRecorder.active then
@@ -421,6 +428,7 @@ function RR:PullSkipped(duration)
     if not run then return end
     Push(run, RR.K.PULL_END, 0, duration or 0)
     run.summarised = (run.summarised or 0) + 1
+    RR.pullStart = nil   -- T48 (B12): the pull is over, kept or not
 end
 
 -- Called by the recorder when a pull STARTS, so the mana the healer opened with
@@ -558,6 +566,6 @@ function MD:RunCommand(arg)
     elseif sub == "status" or sub == "" then
         for _, line in ipairs(RR:Status()) do MD:Print(line) end
     else
-        MD:Print("usage: /md run start [name] | stop | status")
+        MD:Print("usage: /md run start [name] || stop || status")   -- T48 (B11): no bare pipe
     end
 end

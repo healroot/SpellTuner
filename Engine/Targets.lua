@@ -68,6 +68,14 @@ local function AddPet(petUnit, owner)
     Targets.byName[e.name] = Targets.byName[e.name] or e
 end
 
+-- The subgroup of raid member i, or nil when the client will not say.
+local function RaidSubgroup(i)
+    if not GetRaidRosterInfo then return nil end
+    local ok, _, _, subgroup = pcall(GetRaidRosterInfo, i)
+    if ok and type(subgroup) == "number" then return subgroup end
+    return nil
+end
+
 function Targets:Rebuild()
     wipe(Targets.byGUID)
     wipe(Targets.byName)
@@ -82,12 +90,20 @@ function Targets:Rebuild()
     if IsInRaid and IsInRaid() then
         for i = 1, (GetNumGroupMembers and GetNumGroupMembers() or 40) do
             local unit = "raid" .. i
-            if UnitExists(unit) and not UnitIsUnit(unit, "player") then
-                local e = Describe(unit)
-                if e then
-                    Targets.byGUID[e.guid] = e
-                    Targets.byName[e.name] = e
-                    if UnitExists("raidpet" .. i) then AddPet("raidpet" .. i, e) end
+            if UnitExists(unit) then
+                -- T48 (review B13): each member's subgroup, the player's own
+                -- included -- a raid's Tranquility heals the caster's party
+                local subgroup = RaidSubgroup(i)
+                if UnitIsUnit(unit, "player") then
+                    if me then me.subgroup = subgroup end
+                else
+                    local e = Describe(unit)
+                    if e then
+                        e.subgroup = subgroup
+                        Targets.byGUID[e.guid] = e
+                        Targets.byName[e.name] = e
+                        if UnitExists("raidpet" .. i) then AddPet("raidpet" .. i, e) end
+                    end
                 end
             end
         end
@@ -114,6 +130,20 @@ function Targets:Lookup(guid, name)
     local e = guid and Targets.byGUID[guid]
     if not e and name then e = Targets.byName[name] end
     return e
+end
+
+-- T48 (review B13): how many people a party-wide heal (Tranquility) reaches:
+-- in a raid, the members of the player's own subgroup; in a party, everyone.
+-- Pets are not counted. A raid whose subgroups the client did not give counts
+-- everyone, as before.
+function Targets:PartySize()
+    local me = MD.player and MD.player.guid and Targets.byGUID[MD.player.guid]
+    local sub = me and me.subgroup
+    local n = 0
+    for _, e in pairs(Targets.byGUID) do
+        if not e.isPet and (sub == nil or e.subgroup == sub) then n = n + 1 end
+    end
+    return math.max(n, 1)
 end
 
 -- A warlock who Life Taps makes room for a HoT on purpose; overheal on them

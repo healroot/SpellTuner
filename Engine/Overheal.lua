@@ -79,7 +79,7 @@ end
 --   single-target HoT tick   cost / ticks
 --   direct heal              cost            (hybrid Regrowth: half to the
 --   hybrid HoT tick          cost / 2 / 7     direct, half spread over the ticks)
---   AoE tick (Tranquility)   cost / (ticks x group size)
+--   AoE tick (Tranquility)   cost / (ticks x the caster's party)
 --   Lifebloom bloom          0               (the ticks already carry the cost)
 --------------------------------------------------------------------------------
 local TICKS = { Rejuvenation = 4, Regrowth = 7, Lifebloom = 7, Tranquility = 4 }
@@ -90,12 +90,8 @@ local function Attribute(spellID, spell, kind)
     local fam, ftype = spell.family, MD.SpellData.families[spell.family] and MD.SpellData.families[spell.family].type
     if kind == "bloom" then return 0 end
     if ftype == "channel" then
-        local group = 1
-        if MD.Targets then
-            group = 0
-            for _, e in pairs(MD.Targets.byGUID) do if not e.isPet then group = group + 1 end end
-            group = math.max(group, 1)
-        end
+        -- T48 (review B13): the caster's party, not the whole raid
+        local group = MD.Targets and MD.Targets:PartySize() or 1
         return cost / ((TICKS[fam] or 4) * group)
     end
     if ftype == "hybrid" then
