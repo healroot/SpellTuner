@@ -10,11 +10,12 @@
 local _, MD = ...
 local UI = MD.UI
 
-local WIDTH, HEIGHT = 700, 460
--- T16b: the Review tab is laid out for TBC's own Reports pane (912-wide
--- content), so the window grows to that size once it fits -- the Spellbook
--- pane keeps its own 620-wide table regardless (Files).
-local GROWN_WIDTH, GROWN_HEIGHT = 912 + 108 + 16, 646
+-- T32 (docs/SPEC-forever-ui.md 6.7): the window's size is the window
+-- manager's, one per group (UI/Windows_Forever.lua, MD.Win.SIZES) -- Reports
+-- and Simulate at 1036 x 646 for the Review and Practice panes' 912-wide
+-- content, Spells and Settings at 860 x 560. The late grow on MODULE_LOADED is
+-- gone. These are only the size the frame is built at, before MD.Win places it.
+local WIDTH, HEIGHT = 860, 560
 
 local nav, frame
 
@@ -592,11 +593,6 @@ end
 local reviewPane        -- the api object MD.DashboardParts.CreateReview hands back
 local reviewPlaceholder -- the placeholder frame, while the module is off
 
-local function DesiredSize()
-    if MD.DashboardParts.CreateReview then return GROWN_WIDTH, GROWN_HEIGHT end
-    return WIDTH, HEIGHT
-end
-
 local function BuildReviewPlaceholder(content)
     local pane = CreateFrame("Frame", nil, content)
     pane:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
@@ -661,8 +657,7 @@ end
 --------------------------------------------------------------------------------
 local function CreateDashboard()
     if nav then return end -- MD_READY-equivalent callers may ask more than once
-    local w, h = DesiredSize()
-    nav = UI.CreateNavFrame("SpellTuner", "SpellTunerDashboard", w, h, Groups(),
+    nav = UI.CreateNavFrame("SpellTuner", "SpellTunerDashboard", WIDTH, HEIGHT, Groups(),
         function(group, view, content)
             if group == "spells" and view == "book" then
                 return BuildSpellbookPane(content)
@@ -686,6 +681,8 @@ local function CreateDashboard()
             return nil
         end,
         function(group, view, pane)
+            -- T32: the group's own size, the TOPLEFT kept (6.7)
+            if MD.Win then MD.Win:SetGroup("main", group) end
             if group == "settings" and view == "general" then RefreshGeneralPane() end
             if group == "settings" and view == "modules" then RefreshModulesPane() end
             if group == "reports" and view == "review" then RefreshReviewPane() end
@@ -694,8 +691,10 @@ local function CreateDashboard()
             -- first one, since a frame is created already shown (CLAUDE.md's
             -- "one owner" rule is about hide/show, not about this).
             if group == "spells" and view == "book" and pane then RefreshSpellbookPane(pane) end
-        end)
+        end, { resizable = true, notUserPlaced = true })
     frame = nav.frame
+    -- T32: strata, place, scale, the size per group (6.2, 6.7)
+    if MD.Win then MD.Win:Register(frame, { key = "main", role = "host", sizes = MD.Win.SIZES }) end
     tinsert(UISpecialFrames, "SpellTunerDashboard") -- ESC closes
 
     frame:SetScript("OnShow", function()
@@ -716,16 +715,30 @@ end
 function MD:ToggleDashboard()
     CreateDashboard()
     if not frame then return end
-    if frame:IsShown() then frame:Hide() else frame:Show() end
+    if frame:IsShown() then
+        frame:Hide()
+    elseif MD.Win then
+        MD.Win:ShowMain() -- T32: on the remembered view
+    else
+        frame:Show()
+    end
 end
 
--- Every entry point that wants a particular view goes through here (/st
--- modules today; the same door M2/M3/M4 use). Opens the window if closed.
-function MD:SelectView(group, view)
+-- T32: what MD.Win:ShowMain opens -- the window on the view asked for, or on
+-- the remembered one when none is named. Opens the window if closed.
+function MD:OpenMainWindow(group, view)
     CreateDashboard()
     if not nav then return end
     if not frame:IsShown() then frame:Show() end
-    nav:Select(group, view)
+    if group then nav:Select(group, view) end
+end
+
+-- Every entry point that wants a particular view goes through here (/st
+-- modules today; the same door M2/M3/M4 use). Since T32 (6.3) it goes
+-- through the window manager, which T34 teaches the takeover rules.
+function MD:SelectView(group, view)
+    if MD.Win then return MD.Win:ShowMain(group, view) end
+    return MD:OpenMainWindow(group, view)
 end
 
 function MD:SelectedView()
@@ -740,14 +753,13 @@ end
 MD:RegisterCallback("MODULE_LOADED", RefreshModulesPane)
 
 -- T16b: SpellTuner_Replay finishing load (its own last file, Ready.lua)
--- brings MD.DashboardParts.CreateReview with it. Grow the window to fit the
--- tab, and if a placeholder is what the Review view is currently showing,
--- replace it with the real pane -- re-selecting it if it happens to be the
--- one on screen, which both shows the new pane (nav.panes already carries it)
--- and refreshes it.
+-- brings MD.DashboardParts.CreateReview with it. If a placeholder is what the
+-- Review view is currently showing, replace it with the real pane --
+-- re-selecting it if it happens to be the one on screen, which both shows the
+-- new pane (nav.panes already carries it) and refreshes it. (T32: the window
+-- no longer grows here -- Reports has its own size, 6.7.)
 MD:RegisterCallback("MODULE_LOADED", function(name)
     if name ~= "SpellTuner_Replay" or not MD.DashboardParts.CreateReview then return end
-    if frame then frame:SetSize(GROWN_WIDTH, GROWN_HEIGHT) end
     if nav and nav.panes and nav.panes.reports and nav.panes.reports.review == reviewPlaceholder
             and reviewPlaceholder then
         local content = nav:Content()
@@ -763,10 +775,7 @@ end)
 
 -- T18: SpellTuner_Practice finishing load brings MD.DashboardParts.CreatePractice
 -- with it -- same swap as the Review one above, on the Simulate -> Practice
--- placeholder. The window is already grown by the time this fires: Practice
--- needs SpellTuner_Replay (Core_Forever.lua's own dependency declaration), so
--- that module's own MODULE_LOADED has already run first (MD:SetModule loads
--- in declaration order).
+-- placeholder.
 MD:RegisterCallback("MODULE_LOADED", function(name)
     if name ~= "SpellTuner_Practice" or not MD.DashboardParts.CreatePractice then return end
     if nav and nav.panes and nav.panes.simulate and nav.panes.simulate.practice == practicePlaceholder

@@ -253,6 +253,8 @@ local FOREVER_EVENTS = {
     -- T12b Facts: exists on the retail engine (EllesmereUI's event list does
     -- not name it -- it is not measured, only assumed present).
     PLAYER_TARGET_CHANGED = true,
+    -- T32: the window manager restyles its 1-px edges on these (retail events)
+    UI_SCALE_CHANGED = true, DISPLAY_SIZE_CHANGED = true, -- T32
 }
 
 -- Frames: only what the engine files touch (event registration and OnUpdate).

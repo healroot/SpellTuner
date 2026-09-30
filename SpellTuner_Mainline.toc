@@ -17,6 +17,7 @@ Engine\ManaModel.lua
 Spells\Measure.lua
 UI\Style.lua
 UI\Theme_Forever.lua
+UI\Windows_Forever.lua
 UI\Dashboard_Rows.lua
 UI\Dashboard_Forever.lua
 UI\SpellTip_Forever.lua

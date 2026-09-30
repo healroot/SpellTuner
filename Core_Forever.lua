@@ -288,6 +288,17 @@ MD:AddCommand("measure", function(arg)
 end, "/st measure [dump [all] / clear]",
 "measure a landed cast against its own description (a diagnostic session); dump shows this version's lines, dump all every line with its stamp, clear empties the list")
 
+-- T32 (docs/SPEC-forever-ui.md 6.7): every SpellTuner window back at its
+-- default place and size (UI/Windows_Forever.lua's MD.Win:Reset).
+MD:AddCommand("ui", function(arg)
+    if arg == "reset" and MD.Win and MD.Win.Reset then
+        MD.Win:Reset()
+        MD:Print("windows: every position and size reset")
+    else
+        MD:Print("usage: /st ui reset")
+    end
+end, "/st ui reset", "put every SpellTuner window back at its default place and size")
+
 MD:AddCommand("modules", function()
     if MD.SelectView then
         MD:SelectView("settings", "modules")

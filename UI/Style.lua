@@ -204,7 +204,11 @@ function UI.CreateFrame(name, parent, width, height, isTransparent)
 end
 
 -- Frame with a 20px header bar above it (title in class colour, red x).
-function UI.CreateMovableFrame(title, name, width, height, strata, level, notUserPlaced)
+-- T32: opts (additive; TBC never passes it) -- opts.resizable adds a 16x16 grip
+-- at the bottom-right corner (SetResizable, StartSizing); its mouse-up calls
+-- f:OnResized() when set, as a drag's end calls f:OnMoved(). The bounds are the
+-- caller's (the window manager sets each group's minimum).
+function UI.CreateMovableFrame(title, name, width, height, strata, level, notUserPlaced, opts)
     local f = CreateFrame("Frame", name, UIParent, "BackdropTemplate")
     f:EnableMouse(true)
     f:SetMovable(true)
@@ -244,6 +248,28 @@ function UI.CreateMovableFrame(title, name, width, height, strata, level, notUse
     header.closeBtn = UI.CreateButton(header, "×", "red", { 20, 20 }, false, false, UI.FONT_SPECIAL, UI.FONT_SPECIAL)
     header.closeBtn:SetPoint("TOPRIGHT")
     header.closeBtn:SetScript("OnClick", function() f:Hide() end)
+
+    if opts and opts.resizable then -- T32
+        f:SetResizable(true)
+        local grip = CreateFrame("Button", nil, f)
+        f.resizeGrip = grip
+        grip:SetSize(16, 16)
+        grip:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -1, 1)
+        grip:SetFrameLevel(f:GetFrameLevel() + 20)
+        grip:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+        grip:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
+        grip:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
+        grip:SetScript("OnMouseDown", function(_, button)
+            if button ~= "LeftButton" then return end
+            f:StartSizing("BOTTOMRIGHT")
+            if notUserPlaced then f:SetUserPlaced(false) end
+        end)
+        grip:SetScript("OnMouseUp", function()
+            f:StopMovingOrSizing()
+            if notUserPlaced then f:SetUserPlaced(false) end
+            if f.OnResized then f:OnResized() end
+        end)
+    end
 
     return f
 end
@@ -442,9 +468,11 @@ local RAIL_W = 172       -- T31: a rail group's list column (docs/SPEC-forever-u
 -- onShow(groupID, viewID, pane, nav). Called on every selection, including the
 --   first. This is where a pane is refreshed -- rebuilding it instead would
 --   throw away its state and its frames every time the author clicked a tab.
-function UI.CreateNavFrame(title, name, width, height, groups, onCreate, onShow)
+-- T32: opts (optional, additive) is handed to UI.CreateMovableFrame -- the
+--   Forever window passes { resizable = true, notUserPlaced = true }.
+function UI.CreateNavFrame(title, name, width, height, groups, onCreate, onShow, opts)
     local P = UI.PALETTE
-    local f = UI.CreateMovableFrame(title, name, width, height)
+    local f = UI.CreateMovableFrame(title, name, width, height, nil, nil, opts and opts.notUserPlaced, opts)
     UI.StylizeFrame(f, P.frame, P.border)
 
     local nav = { frame = f, groups = groups, buttons = {}, viewButtons = {},
