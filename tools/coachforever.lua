@@ -529,7 +529,10 @@ do
     local rulesPlan = SP.NewPlan(binds, { swiftmendBelow = 0.30, directBelow = 0.45, rollStacks = 3,
         hotBelow = 0.80, filler = false }, kit)
     local solverPlan = SP.MakeStrategy(SP.Strategy("solver-blind"), binds, kit, { scenario = sc })
-    local rulesR = SP.RunPlan(sc, rulesPlan, { critMode = "ev" })
+    -- a run's result belongs to the engine's pool slot, so the first is copied
+    -- before the second runs (until 2026-09-29 both columns printed the solver's)
+    local r1 = SP.RunPlan(sc, rulesPlan, { critMode = "ev" })
+    local rulesR = { manaSpent = r1.manaSpent, deaths = { n = r1.deaths.n }, floorSeconds = r1.floorSeconds }
     local solverR = SP.RunPlan(sc, solverPlan, { critMode = "ev" })
     print(string.format(
         "solver vs rules on the fixture: mana %d vs %d, deaths %d vs %d, floor seconds %.1f vs %.1f",

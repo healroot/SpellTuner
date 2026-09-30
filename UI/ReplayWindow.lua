@@ -910,11 +910,14 @@ local function PaintStrip(s, st, pool, now, col)
 
     -- spent, floor, deaths -- and (v0.11.14) how much of the healing landed and
     -- how much mana came back, which is what comparing two strategies needs:
-    -- cheap is only cheap if it was not thrown away.
+    -- cheap is only cheap if it was not thrown away. 2026-09-29: led by USED,
+    -- what has left the pool so far -- the number the coach ranks on. The
+    -- author read "spent 385" against his "spent 425" as the coach being
+    -- cheaper while it had 24 mana left to his 76.
     local spent, lowest, deaths = st:Score()
     local oh = st:Overheal()
-    s.score:SetText(string.format("spent %s   regen %s   overheal %s   lowest %d%%   %s",
-        K(spent), K(st:Regen()),
+    s.score:SetText(string.format("used %s   spent %s   regen %s   overheal %s   lowest %d%%   %s",
+        K(st:Used()), K(spent), K(st:Regen()),
         oh and string.format("%d%%", oh * 100 + 0.5) or "-",
         lowest * 100 + 0.5,
         deaths > 0 and string.format("|cffff5555%d dead|r", deaths) or "0 dead"))

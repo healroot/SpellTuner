@@ -199,6 +199,69 @@ local function SpellKit(self, opts)
         sm.cast = 1.5
     end
 
+    -- The last kit this character built, kept for the offline tools
+    -- (tools/import.lua): a recording made before recordings carried their
+    -- own kit (KitSnapshot below) is replayed offline with this one, and the
+    -- tool says so. A few dozen plain numbers, rewritten on every build.
+    if MD.cdb and MD.SimModel then MD.cdb.kit = RM.KitSnapshot(kit) end
+
+    return kit
+end
+
+--------------------------------------------------------------------------------
+-- The kit as plain data (the recordings pipeline, docs/TOOLS.md §2):
+-- MD.SimModel.KitSnapshot, the one record both clients keep, of `kit`
+-- (default: a fresh SpellKit). Kept on every Forever pull and practice fight
+-- at the moment it is stored (`rec.kit`) and as the last kit built
+-- (cdb.kit), because the kit is built from the live spellbook and nothing
+-- offline can rebuild it: the spellbook tools/import.lua would see is the
+-- stub's. The MD.SpellData index is NOT copied: KitRestore rebuilds the part
+-- a replay reads from the entries themselves.
+--------------------------------------------------------------------------------
+function RM.KitSnapshot(kit)
+    return MD.SimModel.KitSnapshot(kit or RM:SpellKit())
+end
+
+-- A snapshot back into a kit AND the MD.SpellData index the engine reads
+-- names, families and ranks from -- the index SpellKit builds from the book,
+-- rebuilt from the kit's own entries (family, rank, type, cost, cast). Every
+-- rank in it is a known one (a kit holds nothing else), so `all` is `known`;
+-- the unlearned ranks and the skipped families a replay never reads are not
+-- there. Returns a fresh kit (copies: the engine never writes into the
+-- snapshot). For the offline tools; the game never needs it.
+local LABEL = {}
+for name, key in pairs(FAMILY_KEY) do LABEL[key] = name end
+
+function RM.KitRestore(snap)
+    local function Copy(v)
+        if type(v) ~= "table" then return v end
+        local t = {}
+        for k, x in pairs(v) do t[k] = Copy(x) end
+        return t
+    end
+    local kit = { crit = snap.crit or 0, critMissing = snap.critMissing or nil,
+                  caster = Copy(snap.caster or {}), tree = Copy(snap.tree or {}) }
+    local spells, families, known, maxRank = {}, {}, {}, {}
+    for id, e in pairs(kit.caster) do
+        local key = e.family
+        if key and FAMILY_TYPE[key] then
+            spells[id] = { family = key, rank = e.rank, cost = e.cost, cast = e.cast }
+            families[key] = families[key]
+                or { type = FAMILY_TYPE[key], label = LABEL[key] or key, exclude = (key == "Tranquility") or nil }
+            known[key] = known[key] or {}
+            known[key][#known[key] + 1] = id
+        end
+    end
+    local all = {}
+    for key, ids in pairs(known) do
+        table.sort(ids, function(a, b) return (spells[a].rank or 0) < (spells[b].rank or 0) end)
+        maxRank[key] = ids[#ids]
+        all[key] = Copy(ids)
+    end
+    SD.spells, SD.families, SD.known, SD.all, SD.maxRank, SD.skipped =
+        spells, families, known, all, maxRank, {}
+    SD.familyOrder = { "HealingTouch", "Rejuvenation", "Regrowth" }
+    SD.bloomID = nil
     return kit
 end
 

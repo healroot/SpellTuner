@@ -208,6 +208,13 @@ for _, f in ipairs(S.allFrames) do
     if type(f.text) == "string" and f.text:find("Practice: Party") and f.shown ~= false then listed = true end
 end
 check("Review lists it under Practice", listed)
+-- 2026-09-29: a practice fight a report is about can be pinned from Review
+local pinB = Button("Pin")
+local pinOn = pinB ~= nil and pinB:IsEnabled()
+Click(pinB); review:Render()
+check("Pin keeps a practice fight past the next eight",
+    pinOn and MD:GetRecording("p1").pinned == true and Button("Unpin") ~= nil)
+Click(Button("Unpin")); review:Render()
 
 -- closing the window mid-fight keeps it --------------------------------------------
 MD:OpenPractice(PR.CopySetup(MD.cdb.practiceSetup), 6)

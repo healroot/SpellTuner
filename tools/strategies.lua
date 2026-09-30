@@ -126,12 +126,12 @@ for _, e in ipairs(pool) do
         local r = SM:Run(sc, nil, { critMode = "ev" })
         cd = cd + (r.deaths and r.deaths.n or 0)
         cf = cf + (r.floorSeconds or 0)
-        cm = cm + (r.manaSpent or 0)
+        cm = cm + MD.SimPlanner.ManaUsed(r)
         cn = cn + (e.rec.ownCasts or 0)
     end
 end
 print(string.format("%-26s %-46s %s", "strategy", "total over every recording", "causal?"))
-print(string.format("%-26s deaths %2d  floor %6.1fs  mana %7.0f  %4d casts   %s",
+print(string.format("%-26s deaths %2d  floor %6.1fs  used %7.0f  %4d casts   %s",
     "the recorded casts", cd, cf, cm, cn, "<- the CONTROL"))
 local rows = {}
 for _, entry in ipairs(SP.STRATEGY_SET) do
@@ -156,7 +156,7 @@ for _, entry in ipairs(SP.STRATEGY_SET) do
         end
     end
     rows[#rows + 1] = { entry = entry, d = d, f = f, m = m, casts = casts, sees = sees }
-    print(string.format("%-26s deaths %2d  floor %6.1fs  mana %7.0f  %4d casts   %s",
+    print(string.format("%-26s deaths %2d  floor %6.1fs  used %7.0f  %4d casts   %s",
         entry.label, d, f, m, casts, sees and "NO - sees this fight" or "yes"))
 end
 
@@ -165,7 +165,7 @@ table.sort(rows, function(a, b)
     if math.abs(a.f - b.f) > 0.05 then return a.f < b.f end
     return a.m < b.m
 end)
-print("\nranked by the lexicographic tuple (deaths, then time in danger, then mana):")
+print("\nranked by the lexicographic tuple (deaths, then time in danger, then mana used -- what left the pool -- plus what it still owes):")
 for i, r in ipairs(rows) do
     print(string.format("  %d. %-26s %s", i, r.entry.label, r.entry.why))
 end

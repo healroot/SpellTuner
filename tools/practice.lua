@@ -239,6 +239,41 @@ do
     end
     check("only the newest " .. PR.MAX_KEPT .. " are kept", #MD.cdb.practice == PR.MAX_KEPT
         and PR.Get(1).id == 2000000000 + PR.MAX_KEPT + 2, tostring(#MD.cdb.practice))
+
+    -- 2026-09-29: practice fights a report can be built from. The record
+    -- carries the kit it was simulated with, the client and the version, and
+    -- replays with that kit -- mana included -- with nothing else loaded.
+    check("a practice record carries the kit it was simulated with",
+        type(r6.kit) == "table" and type(r6.kit.caster) == "table" and r6.kit.caster[LB] ~= nil
+        and r6.kit.caster[LB].cost == s6.kit.caster[LB].cost)
+    check("...and the client, level and version", r6.client ~= nil and r6.level ~= nil and r6.version ~= nil,
+        string.format("%s / %s / %s", tostring(r6.client), tostring(r6.level), tostring(r6.version)))
+    local ra = SM:Run(SM.ScenarioFromRecording(r6, r6.kit), nil, { critMode = "ev" })
+    local worst, nS = 0, 0
+    for k, v in ipairs(r6.mana.v) do
+        local m = ra.manaCurve[k]
+        if m then nS = nS + 1; worst = math.max(worst, math.abs(m - v)) end
+    end
+    check("...and replays with that kit to the mana the session wrote",
+        SM:Validate(r6, r6.kit).ok and nS == #r6.mana.v and nS > 0 and worst < 1,
+        string.format("%d samples, worst %.2f mana off", nS, worst))
+
+    -- pinned: the next eight do not push it out, and at most MAX_PINNED stay pinned
+    local oldest = MD.cdb.practice[#MD.cdb.practice]
+    check("a practice fight can be pinned", PR.Pin(oldest) == true and oldest.pinned == true)
+    for k = 1, PR.MAX_KEPT do
+        local x = PR.New(PR.DefaultSetup("1", 64), { seed = 50 + k })
+        x.startedAt = 2050000000 + k
+        x:Start(); x:Cast(LB, 1); x:Update(0.2); x:Stop()
+    end
+    local still = false
+    for _, r in ipairs(MD.cdb.practice) do if r == oldest then still = true end end
+    check("...and the next " .. PR.MAX_KEPT .. " do not push it out", still and #MD.cdb.practice == PR.MAX_KEPT,
+        tostring(#MD.cdb.practice))
+    for i = 1, PR.MAX_PINNED - 1 do PR.Pin(MD.cdb.practice[i], true) end
+    local okPin, why = PR.Pin(MD.cdb.practice[PR.MAX_PINNED + 1], true)
+    check("...and no more than " .. PR.MAX_PINNED .. " are pinned", okPin == false and why ~= nil, tostring(why))
+    for _, r in ipairs(MD.cdb.practice) do r.pinned = false end
 end
 
 -- nothing played, nothing kept ------------------------------------------------------

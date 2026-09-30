@@ -1401,6 +1401,46 @@ not hold (which window, what it did), a screenshot of any two windows drawn thro
 **If you only have time for one:** 42.1 -- the macro block and practice are the two bugs of your
 build-70058 report, and `/st tooltip why` is what the macro path is fixed from.
 
+## 43. WoW: Forever -- 0.16.3: the coach and regen, practice recordings (branches `work/regen` and `work/recordings`, 2026-09-30; 15 min, solo, out of combat)
+
+(§42 is the Forever UI build's.) On the **beta client**, with the Replay and Practice modules on.
+This answers your 2026-09-29 report: "it does not tolerate non casting window to regen", and
+"practice recordings so we can improve the code from such reports". The fights you play are the
+report now: the planner reads them straight out of your beta SavedVariables with
+`tools/import.lua` (docs/TOOLS.md §2), replays them on the same engine and changes the code against
+the numbers.
+
+1. **Play the same fight again.** Simulate -> Practice, the Party setup you played at 20:08
+   (or anything at your level), about 45 s, healing the way you did. Press **End**.
+2. **The replay.** In the replay window, pick **Solver: frugal** in the chooser. The score line
+   now starts with **`used N`**: the pool at the pull less the pool now. It is the number the
+   coach ranks on, and `spent` / `regen` follow it. Scrub to about 0:44 and compare the two
+   columns' `used`. The suggested column should now have gaps where it waits outside the
+   five-second rule. While it waits, the reason line under the column should say `resting is
+   worth more` (counting the regen a cast would stop). It should end with noticeably more mana
+   than it did (it had 24 at 0:43.9 on your fight). It must not let anybody fall lower than before
+   for it. Note anything it does that you would not.
+3. **Keep the fight.** `/st` -> Reports -> Review -> **Practice**, select the fight, press **Pin**
+   (at most four stay pinned; the next eight fights no longer push it out). Every fight -- a
+   practice fight, or a pull with the Recorder and Replay modules on -- is now stored with the
+   spells it was played with (`kit`), and opening a replay also keeps your current ones.
+4. **`/reload`** (or log out). SavedVariables reach the disk only then: until you do, the fight is
+   in the game's memory and not in
+   `E:\Blizzard\World of Warcraft\_classic_beta_\WTF\Account\124250034#1\SavedVariables\SpellTuner.lua`.
+5. **Tell the planner** which fight and what you saw, in one line: "p1, the coach will not stop
+   casting to regenerate" -- `p1` is the newest practice fight, `1` the newest pull, as in the
+   Review list. A screenshot of the replay helps as before. The planner then runs
+   `bash tools/run.sh tools/import.lua list`, `report p1` (your replay beside every strategy),
+   `replay p1 --strategy solver-frugal`, `coach p1` and the rest. Your 20:08 fight is already a
+   fixture the suites run on: `tools/data/practice/1790701698.lua`. Practice fights stored by
+   0.16.1 or earlier, before fights carried their spells, still work: their spells are read back
+   off the fight's own heals, exactly for every spell the fight cast. A pull stored before then is
+   replayed with your last spells and says so.
+6. **TBC** (only if you play the anniversary client): the coach card's first line now reads
+   `used: you N   best N   diff N`, and its rows read `N used (N spent)`.
+
+**Paste back**: the `pN` you pinned, and in words what the suggested column did differently.
+
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the
 raw numbers. `/md profile` output is welcome with any report. I turn them into

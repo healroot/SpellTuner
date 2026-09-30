@@ -74,8 +74,9 @@ Run all of them before committing anything the engine, the recorder or a tooltip
 | `simwindow.lua` | every preset combination's scenario, baselines and search |
 | `solvercheck.lua` | the solver: deposits, the gap integral, causality, the four forecasts, the explainer. Since **T20 / T20b** (77, review R6): the danger line a plan reads is the biggest hit so far (the scenario's prior, else the floor, before the first), a hit bigger than any before it changes nothing the solver does before it, the score still counts seconds under the whole-fight line, and the prior is the biggest hit that person took in **other** recordings, the exclusion required |
 | `timeline.lua` | the run's clock: segments, seeks, health across a gap |
-| `practice.lua` | a practice session played against a fake clock: the seeded damage, the game's rules, the live trace, and **the recording replaying to exactly what was played** |
-| `practiceui.lua` | practice from the screen: panel, Start, presses on frames and keys over them, pause, End, the replay, Review's Practice list |
+| `restcheck.lua` | **the coach values regen** (2026-09-29, 51): the engine's mana accounting (paid, regenerated and potion mana after the floor and the cap, `manaStart - manaEnd = paid - regen - potion`, the rule's tail and its debt, `manaUsed`); the solver's price in units (`SV.Forfeit`: R x 5 out of the rule, the extension inside it, 0 at a full pool and when base == casting, TBC near the cap); base == casting deciding cast for cast as the regen-blind solver, on a level 10 party and on a TBC recording; the rule state reaching `Decide` by cursor and after the classifier's hook, a rate sample at 30 s changing nothing before it; rule 8 owning a target projected far through the floor, never priced; **the author's practice fight** (`tools/data/practice/1790701698.lua`: every gate, 21 mana at the end, and the coach now regenerating more, ending higher, using less, with no more deaths, danger seconds or owed and the same lowest health) and 180 synthetic level 10 fights; the score ranking mana used (425 spent / 76 left beats 385 / 24 under every objective), the stated owed-term bias, the search's abort past a later Innervate or a recorded potion, the run's rule tail and score, the replay's `used` |
+| `practice.lua` | a practice session played against a fake clock: the seeded damage, the game's rules, the live trace, and **the recording replaying to exactly what was played**. Since **2026-09-29** (80): the record carries its kit, client, level and version and replays with that kit to every mana sample the session wrote; `PR.Pin`, a pinned fight surviving eight more, the cap of four pinned |
+| `practiceui.lua` | practice from the screen: panel, Start, presses on frames and keys over them, pause, End, the replay, Review's Practice list. Since **2026-09-29** (50): Review's Pin on a practice fight |
 | `spelltip.lua` | the spell tooltip (v0.14.9): druid only, once per showing, off means off, and **every number on it is the model's own** — the tick and bloom the simulator heals with, the dashboard's heal |
 | `migrate.lua` | the rename (2026-09-27): a ManaDemon WTF comes up as SpellTuner's with every setting, recording and practice fight; `/md` still answers |
 | `forevercheck.lua` | **the Forever TOC under the Forever profile** (T5, forever): loads clean, loads exactly the TOC's files, never tries the combat log, and the stub keeps secrets and absences as build 70009 does -- so arithmetic on current health trips here as it does in the client |
@@ -89,7 +90,7 @@ Run all of them before committing anything the engine, the recorder or a tooltip
 | `replayforever.lua` | **the replay window on a Forever recording** (T16a, forever): `/st replay`, `/st validate`, `/st coach` only with the Replay module; a v3 stream opened with a row per tracked target, played to the end with bars following the reconstructed health, its ticks drawn, the "health reconstructed ... party max estimated" line, the suggested column after the search, seek == play, the Forever gates printed and a failing fight refused unless forced, every painted string ASCII (a non-ASCII name and a `\|` in the fixture), no opening in combat. Since **the 2026-09-29 review** (11): a v3 tick's hover and the ticks checkbox say reconstructed, not recorded (R5) Since **T43** (14): no `ffcc00` in the replay's header, run strip or `MD.Tip` under the theme. Since **T34** (15): the replay registered as the manager's takeover |
 | `reviewforever.lua` | **the Review tab in the Forever window** (T16b, forever): a Reports group with a Review view; with the Replay module off a placeholder that loads nothing, replaced by the tab when the module comes on; a row per v3 recording with its validate result, the tooltip carrying every Forever gate, Coach refusing a failing fight and shift-click coaching it, Play opening the replay window, every painted string ASCII. Since **the 2026-09-29 review** (10): low mana `~N%` as modelled, Export hidden without `MD.RunExport` (R39, R40) Since **T43** (11): Review's run line in the accent and its small strings in `UI.FONT_SMALL` |
 | `coachforever.lua` | **the coach and the solver on a v3 recording** (T17, forever): a plan found for a clean fixture, binding only families the player had and never Lifebloom; the card ASCII and naming its gates; every recorded cast labelled; the solver as a strategy on the Forever kit; the causality invariant on a v3 scenario; the zone's marks; the asynchronous coach filling the replay window. Prints one solver-vs-rules line. Since **T17b** (13): the causality assertion runs with the party member's max **secret**, as it always is on Forever, taken from another recording of them; a party max from other recordings of the same name and level, never the one coached; a plain max elsewhere taken as it is; the exclusion required; with no other recording the plan flagged `foresees` and its card saying `NOT causal - sees this fight`, and silent otherwise. Since **the 2026-09-29 review** (16): `/st coach N safe` (or `health`, `cheap`, `regen`) picks a strategy, the card keeps its colour codes, no `solver-corpus` without its prior (R12, R26, R23). Since **T20 / T20b** (18, review R6): a burst above every earlier hit changes nothing the **solver** does before it, and a Forever target's danger prior comes from other recordings of the same name and level |
-| `practiceforever.lua` | **practice on Forever** (T18, forever): Simulate -> Practice, a placeholder until the Practice module is on; the panel from the Forever kit's spells; a session against a fake clock recording a practice stream that replays to the health the player saw with every gate passing; a bound key casts, an unbound one propagates; End reopens it as a replay and lists it in Review; `/st practice` / `/st binds` only with the module; every painted string ASCII. Since **the 2026-09-29 review** (9): the scenario and the recording regenerate at `GetManaRegen`'s rates (R4) Since **T24** (15): nothing bound by default on Forever and the panel pointing at Import / Edit bindings, an exact copy of the TBC defaults dropped once (any other list kept whole), a bind for a spell not in the spellbook labelled and casting nothing, the picker only the book's families, a new row a spell you have, Start refusing with nothing bound Since **T27** (20): a binding for a spell not in the book not listed, not counted, not cast and still saved; an import skipping and naming it; learning the spell bringing it back; Forget deleting it. Since **T40** (24): no `ffcc00` in the panel or the bindings sheet, one ESC closing the sheet and not the window, no fight field past the pane's right edge at 900 wide, the summary not counting a hidden binding |
+| `practiceforever.lua` | **practice on Forever** (T18, forever): Simulate -> Practice, a placeholder until the Practice module is on; the panel from the Forever kit's spells; a session against a fake clock recording a practice stream that replays to the health the player saw with every gate passing; a bound key casts, an unbound one propagates; End reopens it as a replay and lists it in Review; `/st practice` / `/st binds` only with the module; every painted string ASCII. Since **the 2026-09-29 review** (9): the scenario and the recording regenerate at `GetManaRegen`'s rates (R4) Since **T24** (15): nothing bound by default on Forever and the panel pointing at Import / Edit bindings, an exact copy of the TBC defaults dropped once (any other list kept whole), a bind for a spell not in the spellbook labelled and casting nothing, the picker only the book's families, a new row a spell you have, Start refusing with nothing bound Since **T27** (20): a binding for a spell not in the book not listed, not counted, not cast and still saved; an import skipping and naming it; learning the spell bringing it back; Forget deleting it. Since **T40** (24): no `ffcc00` in the panel or the bindings sheet, one ESC closing the sheet and not the window, no fight field past the pane's right edge at 900 wide, the summary not counting a hidden binding Since **2026-09-29** (the recordings work, 25 with T40's): the record carries the book's kit and replays with it alone |
 | `bindscheck.lua` | **`/st binds check`** (T19, forever): the report's three sections (key bindings, Cell, Clique) in order, ASCII, no bare pipe; absent add-ons said absent with nothing raising; a Cell table in the TBC shape recognised and its first entry shown; an unknown Cell or Clique shape refused with what was expected and what was found; the first binding rows whole and a count of what resolved to a slot, a spell and a macro |
 | `svcheck.lua` | **the SavedVariables guard** (T4, forever and tbc): a first run, a database that came back with its session, one without a stamp, a broken one replaced rather than indexed, the guard running before the probe, the line in the debug log; TBC's database never stamped |
 | `consolecheck.lua` | **errors, the console and `/st dump`** (T3, forever and tbc): our error recorded once and counted, shown to the client once; another addon's passed through; a sibling's counted as ours; the handler never raising; the 50-entry cap; the dump's sections in order, escaped to ASCII; `/st debug` with the error count and no Regen test button on Forever; every Forever TOC's version; TBC with no handler and its button kept. Since **the 2026-09-29 review** (14 / 1): the Enable box on Forever, the stack line naming the frame that raised, the previous handler called with no frame of ours between (R15, R16, R21, R22) Since **T33** (17 / 1): on Forever the console a `FULLSCREEN` tool with its remembered place and one ESC-stack entry, the copy box `FULLSCREEN_DIALOG` closing open lists; TBC keeps `UISpecialFrames` |
@@ -104,12 +105,13 @@ Run all of them before committing anything the engine, the recorder or a tooltip
 | `themecheck.lua` | **the Forever theme** (T29, forever, 23): no gold in `UI.TEXT`, the fonts built, a font offset of +4 clamped to +2, `UI.Pitch(20)` at -2 / 0 / +2, `UI.px` at scales 0.64 / 0.71 / 1, `UI.RestylePixels` giving a registered frame the new edge; nothing of it on TBC |
 | `tabscheck.lua` | **the spell list model** (T35, forever, 24): the seed (known heals by learn level; mana-costing damage when there is no heal), the reconcile appending a newly known heal once with its dot and never a removed family or a damage spell, a stale entry kept, a renamed family renamed in place, add / remove / move / undo / reset, `cdb.spellTabs` initialised at login |
 | `wincheck.lua` | **the window manager** (T32-T34, T42, forever, 53; the frame geometry is modelled by the suite itself, not the stub): strata by role, a per-group size restored, a group switch keeping the TOPLEFT, the clamp, a scale change converting the saved place, a scale event restyling; the ESC stack (one ESC one entry, the proxy re-armed, a window closed by its x leaving no entry, a code hide popping nothing, practice's entry staying on its first ESC, the console one entry, the `escStack = false` fallback), combat hiding and restoring the path (only the replay coming back during a takeover); the takeover (the main window hidden and given back on its path, no back button from chat, the placement at scales 0.71 and 1, `/st` closing a replay and refused during practice, End opening the replay without the main window, `replayPos` migrated once, practice's ESC pause then end); Settings' controls each writing its `db` field and applying it, reset clearing `db.ui.win` |
+| `importcheck.lua` | **the recordings pipeline** (no harness of its own; it runs `tools/import.lua` as the planner does, 19): on `tools/data/import-forever-sv.lua` -- built by `tools/importfixture.lua` with the real Practice and Recorder code: p1 (48 s, a twelve-second window of no casting in the middle) stored with its kit, p2 stored without one as 0.16.1 stored every practice fight, and one v3 pull -- the committed fixture byte for byte what the code writes today; the game storing each fight's kit and the character's last one (`rec.kit`, `cdb.kit`), every one the same lean record (`SM.KitSnapshot`: entries only, no `MD.SpellData` copy) and a practice fight with its client, level and version; the file read as Forever told or not; `list` with kit and verdict; `validate`; `replay pN --strategy`'s YOU column exactly the fight as played (spent, the mana at its end), the 5SR marks, the plan's reasons and waits; p2 replaying exactly from the kit read back off its own heals; the pull without its kit using the last kit, then the stub's book, and saying which; `coach` (the card; a failing pull refused, forced); `coach --strategy` (that strategy's card); an unknown strategy refused; `export` writing an importable file and the text; `report pN` (the replay beside every strategy) on the file and on the author's fight read with `--fixture`; a TBC file still taking the TBC road |
 
 ```bash
 for t in simcheck reccheck replaycheck replayui runcheck reviewui navui dashui \
-         regencheck simwindow solvercheck timeline spelltip practice practiceui \
+         regencheck simwindow solvercheck restcheck timeline spelltip practice practiceui \
          migrate probecheck forevercheck modulecheck kitcheck recordcheck scenariocheck gatecheck replayforever reviewforever coachforever practiceforever bindscheck \
-         parsecheck bookcheck tipcheck clockcheck spellsui measurecheck releasecheck \
+         parsecheck bookcheck tipcheck clockcheck spellsui measurecheck releasecheck importcheck \
          themecheck tabscheck wincheck; do
   printf "%-13s " "$t"; bash tools/run.sh tools/$t.lua 2>&1 | tail -1
 done
@@ -137,6 +139,8 @@ bash tools/run.sh tools/import.lua list                 # every recording + its 
 bash tools/run.sh tools/import.lua validate 1           # the eight gates, in full
 bash tools/run.sh tools/import.lua replay 1             # every cast, its label and its reason
 bash tools/run.sh tools/import.lua coach 1 force        # the search and the card
+bash tools/run.sh tools/import.lua report p1            # the replay beside every strategy
+bash tools/run.sh tools/import.lua --fixture tools/data/practice/1790701698.lua report
 bash tools/run.sh tools/import.lua spells 1             # where the mana went, by kind
 bash tools/run.sh tools/import.lua export 1             # -> .logs/recordings/<id>.txt
 bash tools/run.sh tools/import.lua runs                 # stored runs
@@ -144,7 +148,66 @@ bash tools/run.sh tools/import.lua validate 3 --run 1   # run 1, pull 3 (the "1:
 ```
 
 Options: `--file <path>` (default `$MD_SAVEDVARS`, then `.logs/SpellTuner.lua`, then the
-author's install), `--char "Name-Realm"`, `--run K`.
+author's install), `--fixture <path>` (a `{ rec, kit }` file such as
+`tools/data/practice/1790701698.lua`, read as practice fight p1), `--char "Name-Realm"`, `--run K`,
+`--flavour forever|tbc`. `pN` addresses practice fight N (p1 = newest) wherever a number addresses
+a recording.
+
+**`report N|pN`** (both clients; `tools/practicereport.lua`'s until the 2026-09-30 merge, now
+`tools/reportlines.lua` under both halves of `import.lua`) puts the fight's own replay beside every
+strategy in `SP.STRATEGY_SET` on the same fight: spent, regenerated, **used** (what left the
+pool), mana at the end, owed, deaths, seconds one hit from death, lowest health, casts, lowest mana,
+with the gates on top and, for a practice fight, the client, level, version and build it was
+played on. A wrong kit fails the gates. A fight that carries its kit (`rec.kit`) is replayed with
+it on either client. SavedVariables reach the disk only on `/reload` or logout.
+
+### `import.lua` on WoW: Forever -- practice fights and pulls from the beta
+
+The recordings pipeline: the author plays, `/reload`s, and says which fight (docs/TESTING.md §43);
+the planner reads it here. The file is the beta's own SavedVariables, read from the author's
+install by default (`/mnt/e/Blizzard/World of Warcraft/_classic_beta_/WTF/Account/*/SavedVariables/SpellTuner.lua`);
+a file is recognised as Forever without `--flavour` by what only Forever writes (a v3 stream, a
+kit, the SavedVariables guard's session stamp, the probe's reports). The Forever half is
+`tools/importforever.lua`: the Mainline TOC under the stub's forever profile, the three modules on,
+over the file's database -- the same engine, gates, planner and solver the game runs.
+
+```bash
+bash tools/run.sh tools/import.lua --flavour forever list          # every pull (1..) and practice fight (p1..), kit, verdict
+bash tools/run.sh tools/import.lua --flavour forever validate p1    # the Forever gates, as /st validate
+bash tools/run.sh tools/import.lua --flavour forever replay p1      # both columns as text (the search first, as the window does)
+bash tools/run.sh tools/import.lua --flavour forever replay p1 --strategy solver-frugal   # the chooser's pick
+bash tools/run.sh tools/import.lua --flavour forever coach p1       # the search and the card, as /st coach
+bash tools/run.sh tools/import.lua --flavour forever coach p1 --strategy solver-frugal    # that strategy's card
+bash tools/run.sh tools/import.lua --flavour forever coach 1 force  # a pull that fails its gates, anyway
+bash tools/run.sh tools/import.lua --flavour forever report p1      # the replay beside every strategy
+bash tools/run.sh tools/import.lua --flavour forever export p1      # -> .logs/forever/p1-<id>.lua + .txt
+```
+
+`replay` prints what the replay window shows at the end of the fight for each column -- spent,
+regen, overheal, lowest, dead, mana at the end -- plus **seconds outside the five-second rule**; the
+mana every 2 s side by side with `*` where that column was regenerating at the full rate; every cast
+of yours with the classifier's label and why; the plan's casts with the rule's own sentence and
+every wait of 2 s or more. `--strategy` is the window's chooser: a planner (`rules`, `rules-hots`,
+`solver-blind`, `solver-prior`, `solver-sight`, `solver-frugal`, `solver-near`, built on demand) or a
+reading of the search (`safe`, `health`, `cheap`, `regen`). `export` writes the fight alone as a
+SavedVariables file (`--file` imports it again) and the replay text beside it; `--out <dir>` moves it.
+
+**The kit.** On Forever the spells are read from the live spellbook, which offline is the stub's
+(Healing Touch R1, Rejuvenation R1-R2). So since the recordings pipeline every fight is stored with
+the kit it was played with (`rec.kit`, on practice fights and Recorder pulls with the Replay
+module on), and every kit the game builds is kept as the character's last (`cdb.kit`). All three
+are one record, `SM.KitSnapshot` (Engine/SimModel.lua, both clients): each form's entries with
+their plain fields, the crit, the time and the level -- a kit as it stands, with no copy of the
+`MD.SpellData` index; `RM.KitRestore` (Kit_Forever.lua) rebuilds the part of the index a replay
+reads from the entries. The tool replays each fight with, in order: its own kit (`recorded`); for a
+practice fight stored before that, the kit read back off its own heals (`inferred` -- exact for every
+spell the fight cast, crit folded into each heal, nothing for a spell it did not cast); the
+character's last kit (`last`); the stub's book (`STUB` -- the numbers are not the author's). `list`
+has a kit column and every report a `kit:` line.
+
+`bash tools/run.sh tools/importfixture.lua` rebuilds `tools/data/import-forever-sv.lua` (the
+fixture `importcheck.lua` runs every command on) whenever what the code stores changes;
+`importcheck` fails until it is.
 
 ### `reproduce.lua` — does the engine reproduce the recording at all?
 

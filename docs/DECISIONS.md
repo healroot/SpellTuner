@@ -750,3 +750,143 @@ installations". On the number: **0.16.0 for both lines now, 1.0.0 at the Forever
    TOCs and their files, plus the three module folders beside it), zipped by flavour and version.
    An install puts exactly one flavour into one client and never the other flavour's files.
    (T22, T23.)
+
+
+## The coach values regen (2026-09-29)
+
+The author played a practice fight at level 10 on the WoW: Forever beta (Party, 47.9 s), opened it
+as a replay, and compared his column with the coach's "Solver: frugal": his spent 425, regen 137,
+lowest 43%, the coach's spent 385, regen 45, lowest 51%, both at 0:43.9. The author: **"I've found
+the coach issue, it does not tolerate non casting window to regen. It will be less relevant on
+higher level, but as a concept it is critical. And to measure it, I would like to have practice
+recordings so we can improve the code from such reports."** The concept is critical for both
+lines, so the TBC coach changes where this is the point, and every changed output is named in the
+commits (`b062413`, `9a694f1`, `cfd4314`).
+
+**Why the coach never rested.** Nothing in the solver or the score knew the five-second rule
+existed. The solver priced a cast at its mana cost; the rule state and the two regen rates were
+locals of `SM:Run` that `Decide` never saw. Every score ranked gross mana SPENT, so a pause that
+let the rule lapse could never score better. On Forever the rule is nearly all of the regen
+(`GetManaRegen` 8.5 to 11.5 a second outside it, 0.001 inside): a Healing Touch R2 cast out of the
+rule forfeits 57.5 mana, more than its own 55.
+
+1. **The solver prices the regen a cast forfeits** (`SV.Forfeit`). The price is the difference
+   between two mana curves over the cast's window [t, land + 5], without the cast and with it:
+   `cost + max(0, min(R x added, room - G1))`. R is base - casting; `added` is the seconds of the
+   window the rule would not have covered anyway; `room` is what the pool can still hold when the
+   cast lands without it; G1 is what both branches regain inside the rule. The forfeit is 0 at a
+   full pool and whenever base == casting, so a class or moment with nothing to forfeit decides
+   exactly as before (`tools/restcheck.lua` 3a/3b: cast for cast). Everything it reads is the
+   healer's own and present tense: the 5SR underline, `GetManaRegen`, `UnitPowerMax`, published by
+   the engine by cursor and after the classifier's lockstep hook (4a-4f). **Rule 8, the danger
+   line, stays on nominal cost.**
+2. **The one-GCD-later candidate carries the price of casting now.** Waiting is a question about
+   timing and stays one. Priced at its own later forfeit, a cast inside a running rule always beat
+   the same cast one GCD later, so a chain never broke: on the author's Sethekk Halls recording
+   the solver rolled Lifebloom R1 for twenty seconds on a target the unpriced one left alone.
+3. **The danger rule's pick was broken, and is fixed.** `better = low > (pickLow or -1)`, with the
+   projection not clamped at 0, meant a target projected through the floor by more than one point
+   under every cast got no pick at all, and the value rule decided instead. That is the deepest
+   danger there is, and it is exactly what regen pricing relies on rule 8 to own. The first
+   candidate is now always taken. This fix alone changes the TBC solver more than the price does:
+   over the author's eight anniversary recordings its six strategies go from 29 deaths and 145 s
+   one hit from death to 27 and 126 s, spending more mana.
+4. **No separate rest guard.** Critic 1 proposed pricing regen only while nobody is projected
+   under a larger hit multiple (`db.simRestHits`). I measured it before finding item 3. At 1, 2,
+   3 or 4 hits it gave identical results on TBC and on the author's fight, because a linear 18 s
+   projection either crosses every line or none. At one hit it is rule 8's own test, and
+   everything it changed was a decision rule 8 had dropped (item 3). With rule 8 fixed, it differs
+   only when no non-instant cast is affordable. It would have been a setting with nothing to
+   measure it on, so it is not added.
+5. **The score ranks mana USED** (what the fight took out of the pool: start - end, plus the
+   regen a rule still running at the end has yet to cost), in the same third slot that gross spend
+   held. `(deaths, floorSeconds, manaUsed + manaOwed, -heldOn, #binds, overheal)`. It is the
+   quantity spend was standing in for; as a later tie-break it would change nothing. Deaths and
+   seconds in danger still lead and nothing is blended. The same change reaches the objectives, the
+   card, the alternates, both coach commands, the Sim window and the run score. `SP.ChainScore`
+   ranks the run's own used (first pull's mana less what is left after the last, gaps, drinks and
+   potions included). `SM.ChainRun` carries each pull's rule tail into the gap at the casting
+   rate, so the forfeit is charged once and no per-pull debt is added. The search's early abort
+   stops a run only when it can no longer end having used less than the incumbent, bounding
+   everything that could still come back (the pool's room, the fastest rate any sample reaches,
+   energize and every recorded potion). Gross spend would have killed exactly the plans that rest.
+   Stated bias, held by a test (7d): `ManaOwed` prices health left missing at the best heal per
+   mana with no forfeit, so ending hurt scores slightly better than paying for the heal out of the
+   rule.
+6. **Frugal's floor 30 -> 20**, measured, with provenance in `SP.STRATEGY_SET`. A priced value is
+   smaller by cost / (cost + forfeit), and at 30 a level 10 Healing Touch R2 out of the rule (at
+   most ~15 per mana) could never clear it. On 180 synthetic level 10 party fights 20 cost no
+   deaths (0 against 1) and ended with 85 mana against 34. On the author's fight it used 301
+   against 364, with the same lowest health (48%) and less owed (244 against 302). On the eight
+   TBC recordings its row in `tools/strategies.lua` (deaths, seconds one hit from death, mana)
+   read the same at 20 as at 30; that is what was compared, not its decisions cast for cast.
+   The other floors keep their numbers.
+7. **The replay window leads with "used"**, the pool at the pull less the pool now, which is the
+   number the coach ranks on. The author read "spent 385" against his "spent 425" as the coach
+   being cheaper while it had 24 mana left to his 76.
+8. **Practice fights are reports.** A practice record carries the kit it was simulated with, the
+   client, level, version and build. `PR.Pin` keeps up to four past the ring of eight, from Review's
+   Pin. `tools/import.lua report pN` (on both clients; it was `tools/practicereport.lua`'s until the
+   2026-09-30 merge with the recordings pipeline) puts the replay beside every strategy: spent,
+   regen, used, end, owed, deaths, seconds in danger, lowest. The
+   author's fight is `tools/data/practice/1790701698.lua`; its kit was reconstructed from its own
+   events, because it predates the stored kit, and it passes every gate. `/reload` before sending:
+   SavedVariables reach the disk only then.
+
+**What changed on TBC, per strategy** (items 1-6 together; the review's re-run, 2026-09-29):
+- on the anniversary snapshot the recordings were first measured on: "Solver: no intuition"
+  4 -> 5 deaths, and "Solver: intuition from many raids" 15.3 -> 22.1 s one hit from death;
+- on the author's current eight-recording file: the solver strategies together 23 deaths and
+  270 s one hit from death -> 19 and 208 s; the two rules strategies unchanged.
+
+**Critics' objections rejected, and why.**
+- *Normalise the floor to `minFrac x BestHPM x horizon`* (critic 1, O4/D5): right in principle.
+  But at level 70 the solver's values sit far above every floor (20 and 30 read the same in
+  `tools/strategies.lua` on eight TBC recordings), so there is nothing yet to fit a fraction to. It stays open until a
+  high-level fight where the floor binds.
+- *A rest guard with its own hit multiple* (critic 1, D4): see 4.
+- *Price the later candidate at its own delay* (one reading of "the same price"): see 2.
+- *Measure the solver's gap only up to `fullAt`* (proposal): the author asked for top-ups
+  (v0.13.5), and it is not the regen concept (both critics).
+- *A `restOut` rule parameter* (proposal): not needed for the concept. The price is the
+  solver's, and the rules search now ranks used mana. It would also double the domain in a
+  300-evaluation budget (critic 2).
+- *An in-game Export copy box for practice*: the report tool reads the SavedVariables file
+  directly, so there is nothing to paste. Pin is what stops the fight being lost.
+- *Report lowest mana and OOM time on the card* (critic 1, D7): not done here. The replay's
+  mana bar shows it, and no card line was asked for.
+
+**Still open.** The two TBC rows that got worse on the anniversary snapshot ("no intuition" one
+more death, "many raids" 6.8 s more one hit from death), named rather than tuned away. The first
+write-up named instead one extra death for "Solver: reactive" in a 180 s Blackrock fight where both
+versions sit near 250 mana for 90 s, and read that divergence as chaotic rather than mana banked
+while someone was in danger; the review's re-run is the one above. The frugal floor is a constant
+from one synthetic setup and one real fight.
+
+## One kit record and one report tool (2026-09-30)
+
+`work/regen` (practice fights as reports) and `work/recordings` (the beta's SavedVariables read by
+`tools/import.lua`) each stored the kit a fight was played with, differently: the first a copy of
+every form's entries on practice fights, the second `RM.KitSnapshot` on practice fights and Forever
+pulls -- the entries plus a copy of the whole `MD.SpellData` index (spells, families, known, all,
+max rank, skipped, order) on every record, and the same again as the character's `cdb.kit`.
+
+1. **One record, `SM.KitSnapshot`** (Engine/SimModel.lua, both clients): each form's entries with
+   their number, string and boolean fields, the crit, the time and the level. It is a kit as it
+   stands (`SM.ScenarioFromRecording(rec, rec.kit)` replays with it), so TBC needs nothing more,
+   and it holds nothing a replay does not read. The index is not stored: on Forever
+   `RM.KitRestore` rebuilds the part the engine reads (family, rank, cost, cast; every rank in a kit
+   is a known one) from the entries, offline only. `RM.KitSnapshot` is kept as the Forever name for
+   it. Practice fights (both clients), Forever pulls and `cdb.kit` all carry it.
+2. **`cdb.kit` stays**: a few dozen numbers, and the only kit a Forever pull recorded before pulls
+   carried their own can be replayed with (the tool says `last` when it uses it).
+3. **One tool, `tools/import.lua`.** It already read both clients' files, addressed practice fights
+   as `pN` and, on Forever, read a kit back off an old practice fight's own heals (the same
+   reconstruction `practicereport.lua` did; on TBC the character's profile rebuilds the kit).
+   Its `report N|pN` is practicereport's report, shared by both halves (`tools/reportlines.lua`),
+   and `--fixture` reads a `{ rec, kit }` file. `tools/practicereport.lua`
+   is removed rather than kept as a wrapper: a wrapper would be a second place to document and keep
+   in step, for nothing the entry point does not do. What it did that `import.lua` does differently:
+   its `export` wrote a `{ rec, kit }` fixture; `import.lua`'s Forever `export pN` writes the fight
+   and its kit as a SavedVariables file of its own (`--file` reads it), and the existing fixture
+   stays readable with `--fixture`.

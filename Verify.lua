@@ -1401,8 +1401,8 @@ function MD:RunCoach(arg)
             SP.plans[rec.id] = w.plan
             MD:Print(string.format("coach: |cff33ff66%s|r is now the plan the replay draws for recording %s - %s.",
                 obj.name, tostring(n), obj.what))
-            MD:Print(string.format("  %s mana, floor %d%%, %.1fs in danger.",
-                (w.result.manaSpent or 0) + SP.ManaOwed(w.result, w.plan) + 0.5,
+            MD:Print(string.format("  %d mana used (and owed), floor %d%%, %.1fs in danger.",
+                SP.ManaUsed(w.result) + SP.ManaOwed(w.result, w.plan) + 0.5,
                 (w.result.lowest and w.result.lowest.hp or 1) * 100 + 0.5, w.result.floorSeconds or 0))
             return
         end

@@ -50,7 +50,8 @@ end
 -- Running it. The same three plans the replay card compares, plus the search.
 --------------------------------------------------------------------------------
 local function Snapshot(r)
-    return { manaSpent = r.manaSpent, healed = r.healed, overhealed = r.overhealed,
+    return { manaSpent = r.manaSpent, manaUsed = r.manaUsed, manaEnd = r.manaEnd,
+             healed = r.healed, overhealed = r.overhealed,
              lowestMana = r.lowestMana, lowest = { hp = r.lowest.hp },
              floorSeconds = r.floorSeconds, deaths = { n = r.deaths.n },
              waitFraction = r.waitFraction, maxWaitRun = r.maxWaitRun }
@@ -82,8 +83,8 @@ local function Run()
     for _, b in ipairs(baselines) do
         local r = SP.RunPlan(scenario, b.plan, { critMode = "ev" })
         local s = Snapshot(r)
-        lines[#lines + 1] = string.format("%-12s %7s mana   lowest %3d%%   %s",
-            b.name, K(s.manaSpent), (s.lowest.hp or 1) * 100 + 0.5,
+        lines[#lines + 1] = string.format("%-12s %7s used   lowest %3d%%   %s",
+            b.name, K(SP.ManaUsed(s)), (s.lowest.hp or 1) * 100 + 0.5,
             s.deaths.n > 0 and string.format("|cffff5555%d died|r", s.deaths.n)
                 or (s.floorSeconds > 0 and string.format("|cffffcc66%.0fs in danger|r", s.floorSeconds)
                 or "|cff99dd99everyone held|r"))
@@ -121,8 +122,8 @@ local function Run()
                 best.filler and "Lifebloom on the tank" or "wait",
                 (bestResult.waitFraction or 0) * 100 + 0.5)
             out[#out + 1] = ""
-            out[#out + 1] = string.format("%-12s %7s mana   lowest %3d%%", "best",
-                K(bestResult.manaSpent), (bestResult.lowest.hp or 1) * 100 + 0.5)
+            out[#out + 1] = string.format("%-12s %7s used   lowest %3d%%", "best",
+                K(SP.ManaUsed(bestResult)), (bestResult.lowest.hp or 1) * 100 + 0.5)
             for _, l in ipairs(lines) do out[#out + 1] = l end
 
             -- Monte Carlo, synthetic mode only: how often does this plan lose

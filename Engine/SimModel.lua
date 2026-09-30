@@ -79,6 +79,7 @@ SM.SPELL_CD = SPELL_CD              -- read by Engine/ReplayTrace.lua for the Sw
 local DMG_RING = 32
 local GCD = 1.5
 local FSR = 5
+SM.FSR = FSR   -- the five-second rule, read by the solver's regen price (2026-09-29)
 
 --------------------------------------------------------------------------------
 -- Internal heap events, in the tie-break order docs/SPEC-v0.7.md 3.3 fixes for
@@ -306,6 +307,21 @@ function SM:Run(scenario, plan, opts)
     local lastWasWait = false
     local fsrUntil = init.fsrUntil or -1
     local lowestTgt, lowestHp, lowestHpT = nil, 1, 0
+    -- 2026-09-29, "the coach values regen" (docs/DECISIONS.md): what the pool
+    -- really paid and really got back, after the floor at 0 and the cap at
+    -- `pool`. manaSpent stays the GROSS cost of every cast; these are what
+    -- r.manaUsed is built from, and they satisfy
+    --     manaStart - manaEnd = paid - gained - cdGained
+    local manaStart = mana
+    local paid, gained, cdGained = 0, 0, 0
+    -- The healer's own five-second rule, regen rates and pool, as the plan may
+    -- read them: the 5SR underline, GetManaRegen and UnitPowerMax, all present
+    -- tense. Published at the start, when a rate sample is APPLIED (by cursor,
+    -- never ahead of its time) and after a cast's onCast hook -- so the
+    -- classifier's lockstep Decide sees the rule as it was before the cast it
+    -- is judging.
+    S.fsrUntil, S.regenBase, S.regenCasting = fsrUntil, baseRate, castingRate
+    S.manaMax, S.energize = pool, energize
 
     ----------------------------------------------------------------------------
     -- Trace (docs/SPEC-v0.8.md 2). Allocated fresh, owned by the caller, never
@@ -535,9 +551,11 @@ function SM:Run(scenario, plan, opts)
         local e = kit and kit[form] and kit[form][spellID]
         if cost == nil then cost = (e and e.cost) or 0 end
         if cost > 0 then
+            local before = mana
             mana = mana - cost
             if mana < 0 then mana = 0 end
             manaSpent = manaSpent + cost
+            paid = paid + (before - mana)
         end
         fsrUntil = t + FSR
         if SPELL_CD[spellID] then S.cd[spellID] = t + SPELL_CD[spellID] end
@@ -549,6 +567,7 @@ function SM:Run(scenario, plan, opts)
         -- Lockstep hook: the classifier asks a plan what it would have done at
         -- this instant, with the REPLAY's state rather than the plan's own.
         if onCast then onCast(S, t, spellID, ti, mana, form) end
+        S.fsrUntil = fsrUntil   -- after onCast: see where it is first published
         if trace then
             EndWait()
             Trace(TK.CAST, ti, spellID, cost, pendingWhy)
@@ -600,8 +619,10 @@ function SM:Run(scenario, plan, opts)
         else
             gain = baseRate * dt
         end
+        local before = mana
         mana = mana + gain + energize * dt
         if mana > pool then mana = pool end
+        if mana > before then gained = gained + (mana - before) end
         if mana < lowestMana then lowestMana = mana end
         if not oomAt and pool > 0 and mana <= pool * 0.02 then oomAt = t end
         if nt > grace then
@@ -643,6 +664,28 @@ function SM:Run(scenario, plan, opts)
     local samples, sampleN, sampleI = scenario.sampleT, scenario.sampleT and #scenario.sampleT or 0, 1
     local hpT, hpN, hpI = scenario.hpSampleT, scenario.hpSampleT and #scenario.hpSampleT or 0, 1
     local deciding = plan and plan.Decide and true or false
+    -- The search's early abort (SP.Search). Since 2026-09-29 the score ranks
+    -- mana USED, and a plan that spends more can still end with more -- it
+    -- rested -- so a run may only be stopped once it CANNOT end having used
+    -- less than the incumbent: what it has used so far, less the most that
+    -- could still come back. That is the pool's room, or the fastest rate the
+    -- scenario ever reaches (a later Innervate sample included) plus the
+    -- energize for the time left plus every recorded potion not yet applied,
+    -- whichever is smaller. Engine-side only: none of it is on S, so no plan
+    -- can read the future through it.
+    local abortAbove = opts.abortAbove
+    local cdLeft, maxRate = 0, 0
+    if abortAbove then
+        maxRate = baseRate > castingRate and baseRate or castingRate
+        for i = 1, rateN do
+            local rt = rates[i]
+            if (rt[2] or 0) > maxRate then maxRate = rt[2] end
+            if (rt[3] or 0) > maxRate then maxRate = rt[3] end
+        end
+        for i = 1, evN do
+            if ev.kind[i] == SM.K.CD and (ev.amt[i] or 0) > 0 then cdLeft = cdLeft + ev.amt[i] end
+        end
+    end
 
     ----------------------------------------------------------------------------
     -- Initial state
@@ -748,6 +791,7 @@ function SM:Run(scenario, plan, opts)
 
         if src == 1 then
             baseRate, castingRate = rates[rateI][2], rates[rateI][3]
+            S.regenBase, S.regenCasting = baseRate, castingRate
             rateI = rateI + 1
         elseif src == 2 then
             form = forms[formI][2]
@@ -769,8 +813,11 @@ function SM:Run(scenario, plan, opts)
                 Trace(TK.CANCEL, tg, x, 0)
             elseif k == SM.K.CD then
                 if amt and amt > 0 then
+                    local before = mana
                     mana = mana + amt
                     if mana > pool then mana = pool end
+                    cdGained = cdGained + (mana - before)
+                    cdLeft = cdLeft - amt
                 end
             elseif k == SM.K.DIED then
                 if tg and tg >= 1 and tg <= nT and not S.dead[tg] then
@@ -928,7 +975,11 @@ function SM:Run(scenario, plan, opts)
             end
         end
 
-        if opts.abortAbove and manaSpent > opts.abortAbove then aborted = true; break end
+        if abortAbove then
+            local ceiling = mana + (maxRate + energize) * (dur - t) + cdLeft
+            if ceiling > pool then ceiling = pool end
+            if manaStart - ceiling > abortAbove then aborted = true; break end
+        end
     end
 
     while (samples and sampleI <= sampleN) or (hpT and hpI <= hpN) or (trace and gridI <= gridN) do
@@ -951,6 +1002,26 @@ function SM:Run(scenario, plan, opts)
     r.deaths = S.deaths
     r.floorSeconds = floorSeconds
     r.manaSpent, r.manaEnd, r.lowestMana, r.oomAt = manaSpent, mana, lowestMana, oomAt
+    -- 2026-09-29: what the fight took OUT OF THE POOL (docs/DECISIONS.md "The
+    -- coach values regen"). Gross spend counts a cast the rule's lapse paid back
+    -- the same as one it did not; the pool does not. `ruleDebt` is the regen a
+    -- five-second rule still running at the end has yet to cost -- a cast in the
+    -- last second pays its price but would otherwise escape the regen it
+    -- forfeits -- capped by the room the pool had left. Single fights only:
+    -- SM.ChainRun carries the tail into the gap instead (fsrLeft).
+    local fsrLeft = fsrUntil - t
+    if fsrLeft < 0 then fsrLeft = 0 end
+    local lost = baseRate - castingRate
+    local ruleDebt = 0
+    if lost > 0 and fsrLeft > 0 then
+        ruleDebt = lost * fsrLeft
+        local room = pool - mana
+        if ruleDebt > room then ruleDebt = room end
+        if ruleDebt < 0 then ruleDebt = 0 end
+    end
+    r.manaStart, r.paid, r.regenGained, r.cdGained = manaStart, paid, gained, cdGained
+    r.fsrLeft, r.ruleDebt = fsrLeft, ruleDebt
+    r.manaUsed = manaStart - mana + ruleDebt
     r.healed, r.overhealed = healed, overhealed
     r.casts, r.byFamily = casts, S.byFamily
     r.ticks, r.blooms = tickCount, bloomCount
@@ -1128,6 +1199,41 @@ function SM.DangerHitFromOthers(recs, excludeID, name, level)
     end
     if best == nil then return nil end
     return best, count
+end
+
+--------------------------------------------------------------------------------
+-- The kit a fight was played with, as plain data for SavedVariables (2026-09-29,
+-- the one mechanism for both clients): every form's entries with their number,
+-- string and boolean fields, the crit, the time and the character's level. It
+-- IS a kit -- `SM.ScenarioFromRecording(rec, rec.kit)` replays with it as it
+-- stands -- and it holds nothing a replay does not read: no MD.SpellData index
+-- (on TBC that table is static; on Forever it is rebuilt from these entries by
+-- RankMath.KitRestore, Kit_Forever.lua) and no unlearned rank. Stored on every
+-- practice fight (Engine/Practice.lua), every Forever pull
+-- (Recorder_Forever.lua) and as the character's last kit (cdb.kit, Forever).
+-- Pure copies; nothing here reads the client.
+--------------------------------------------------------------------------------
+function SM.KitSnapshot(kit)
+    if type(kit) ~= "table" then return nil end
+    local snap = { crit = kit.crit, critMissing = kit.critMissing or nil,
+                   at = time and time() or nil, level = MD.player and MD.player.level or nil }
+    for form, list in pairs(kit) do
+        if type(list) == "table" then
+            local out = {}
+            for id, e in pairs(list) do
+                if type(e) == "table" then
+                    local c = {}
+                    for k, v in pairs(e) do
+                        local tv = type(v)
+                        if tv == "number" or tv == "string" or tv == "boolean" then c[k] = v end
+                    end
+                    out[id] = c
+                end
+            end
+            snap[form] = out
+        end
+    end
+    return snap
 end
 
 --------------------------------------------------------------------------------
@@ -1677,6 +1783,11 @@ function SM.ChainRun(run, kit, opts)
     if #pulls == 0 then return out end
 
     local mana = (pulls[1].initial and pulls[1].initial.mana) or pool
+    out.manaStart = mana
+    -- the five-second rule the last pull left running (2026-09-29): its tail
+    -- regenerates at the casting rate, not the base rate, and a gap shorter
+    -- than it hands the rest to the next pull
+    local tail = 0
     for k, rec in ipairs(pulls) do
         ------------------------------------------------------------------------
         -- the gap before this pull
@@ -1719,9 +1830,20 @@ function SM.ChainRun(run, kit, opts)
 
             local init = rec.initial or {}
             local base = (init.apiBase or 0) + (init.energize or 0)
-            mana = mana + base * free
+            -- the rule the pull left running covers the first seconds of the
+            -- gap; a drink (which starts the gap, at its own measured rate)
+            -- already overlaps them
+            local inRule = tail - (gap.drinkTime or 0)
+            if inRule > free then inRule = free end
+            if inRule < 0 then inRule = 0 end
+            local lost = (init.apiBase or 0) - (init.apiCasting or 0)
+            if lost < 0 then lost = 0 end
+            mana = mana + base * free - lost * inRule
             if mana > pool then mana = pool end
             gap.manaEnd = mana
+            gap.ruleTail = inRule
+            tail = tail - len
+            if tail < 0 then tail = 0 end
             out.gaps[#out.gaps + 1] = gap
         end
 
@@ -1735,6 +1857,12 @@ function SM.ChainRun(run, kit, opts)
         local init = {}
         for key, v in pairs(sc.initial or {}) do init[key] = v end
         init.mana = mana
+        -- a rule still running from the pull before (a gap shorter than its
+        -- tail): the plan's own, so the "you" row keeps what was recorded
+        if not opts.recorded and k > 1 and tail > 0 then
+            local carried = tail
+            if carried > (init.fsrUntil or -1) then init.fsrUntil = carried end
+        end
         sc.initial = init
         local saved = sc.script
         if plan then sc.script = nil end
@@ -1743,6 +1871,8 @@ function SM.ChainRun(run, kit, opts)
 
         local p = { k = k, dur = rec.dur or 0, short = rec.short or false,
                     manaStart = mana, manaEnd = r.manaEnd, manaSpent = r.manaSpent,
+                    -- no rule debt here: the tail is carried into the gap
+                    manaUsed = mana - r.manaEnd,
                     floorSeconds = r.floorSeconds, deaths = r.deaths.n,
                     lowest = { hp = r.lowest.hp, tgt = r.lowest.tgt },
                     oomAt = r.oomAt, zone = rec.zone }
@@ -1757,7 +1887,12 @@ function SM.ChainRun(run, kit, opts)
             out.lowest = { hp = p.lowest.hp, tgt = p.lowest.tgt, pull = k }
         end
         mana = r.manaEnd
+        tail = r.fsrLeft or 0
     end
+    out.manaEnd = mana
+    -- what the run took out of the pool: the first pull's mana less what was
+    -- left after the last, with every gap, drink and potion in between
+    out.manaUsed = out.manaStart - mana
 
     if opts.recorded then
         -- the "you" row: the drinking that actually happened, not a policy
