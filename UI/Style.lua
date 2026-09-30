@@ -426,8 +426,17 @@ UI.PALETTE = {
 local NAV_W = 108        -- the left column
 local NAV_TOP = 24       -- the horizontal view row
 local NAV_PAD = 8
+local RAIL_W = 172       -- T31: a rail group's list column (docs/SPEC-forever-ui.md 3.2)
 
 -- groups: { { id, text, views = { { id, text, hidden }, ... } }, ... }
+--   T31 (docs/SPEC-forever-ui.md 3.1), additive: a group with layout = "rail"
+--   draws no view row. Its views are the rows of a list down the content's
+--   left edge (UI.CreateRail, options from group.rail; a view may also carry
+--   icon / tag / new / stale / fixed / tooltip), and its panes are built into
+--   the area right of that list (onCreate is handed that area as `content`).
+--   The content frame is re-anchored per group: NAV_PAD below the frame's top
+--   for a rail group, NAV_TOP + NAV_PAD for any other (today's, and TBC's
+--   only, since TBC declares no rail group).
 -- onCreate(groupID, viewID, content, nav) -> pane. Called ONCE per view, the
 --   first time it is selected; the pane is cached and shown thereafter.
 -- onShow(groupID, viewID, pane, nav). Called on every selection, including the
@@ -451,10 +460,67 @@ function UI.CreateNavFrame(title, name, width, height, groups, onCreate, onShow)
 
     -- the content area, and the row of view buttons above it
     local content = CreateFrame("Frame", nil, f)
-    content:SetPoint("TOPLEFT", left, "TOPRIGHT", NAV_PAD, -(NAV_TOP + NAV_PAD))
-    content:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -NAV_PAD, NAV_PAD)
     nav.content = content
     function nav:Content() return content end
+
+    -- T31: anchored per group -- a rail group has no view row above it
+    local function AnchorContent(isRail)
+        local top = isRail and -NAV_PAD or -(NAV_TOP + NAV_PAD)
+        if nav.contentTop == top then return end
+        nav.contentTop = top
+        content:ClearAllPoints()
+        content:SetPoint("TOPLEFT", left, "TOPRIGHT", NAV_PAD, top)
+        content:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -NAV_PAD, NAV_PAD)
+    end
+    AnchorContent(false)
+
+    -- T31: a rail group's list and the area right of it, built the first time
+    -- the group is asked for, one holder per rail group
+    nav.rails = {}
+    local function RailOf(group)
+        if not group or group.layout ~= "rail" then return nil end
+        local h = nav.rails[group.id]
+        if h then return h end
+        local holder = CreateFrame("Frame", nil, content)
+        holder:SetAllPoints(content)
+        local o = {}
+        for k, v in pairs(group.rail or {}) do o[k] = v end
+        local own = o.onSelect
+        o.onSelect = function(id)
+            nav:Select(group.id, id)
+            if own then own(id) end
+        end
+        local rail = UI.CreateRail(holder, o.width or RAIL_W, o)
+        rail.frame:SetPoint("TOPLEFT", holder, "TOPLEFT", 0, 0)
+        rail.frame:SetPoint("BOTTOMLEFT", holder, "BOTTOMLEFT", 0, 0)
+        local view = CreateFrame("Frame", nil, holder)
+        view:SetPoint("TOPLEFT", rail.frame, "TOPRIGHT", NAV_PAD, 0)
+        view:SetPoint("BOTTOMRIGHT", holder, "BOTTOMRIGHT", 0, 0)
+        rail:SetRows(group.views)
+        h = { holder = holder, rail = rail, view = view }
+        nav.rails[group.id] = h
+        if nav.group ~= group.id then holder:Hide() end
+        return h
+    end
+    local function GroupOf(groupID)
+        for _, g in ipairs(groups) do if g.id == groupID then return g end end
+    end
+    -- nav:Rail(groupID) -> the rail (UI.CreateRail's), nav:RailView(groupID) ->
+    -- the frame right of it that the group's panes live in; nil for a group
+    -- without layout = "rail"
+    function nav:Rail(groupID)
+        local h = RailOf(GroupOf(groupID))
+        return h and h.rail or nil
+    end
+    function nav:RailView(groupID)
+        local h = RailOf(GroupOf(groupID))
+        return h and h.view or nil
+    end
+    local function ShowRails(groupID)
+        for id, h in pairs(nav.rails) do
+            if id == groupID then h.holder:Show() else h.holder:Hide() end
+        end
+    end
 
     -- Hide everything that is not the selected pane, THEN show it. One frame can
     -- be registered under several views (the rank table is the pane for every
@@ -470,15 +536,36 @@ function UI.CreateNavFrame(title, name, width, height, groups, onCreate, onShow)
         if keep and keep.Show then keep:Show() end
     end
 
-    -- the horizontal row for the selected group
-    local function BuildViews(group)
-        for _, b in ipairs(nav.viewButtons) do b:Hide() end
+    -- the horizontal row for the selected group. T31: the buttons come from a
+    -- pool and a hidden one is reused by index -- a rebuild used to create a
+    -- fresh set every time and hide the old (Reports -> Runs leaked a row per
+    -- SetViews). A reused button is put back as CreateButton left it.
+    nav.viewButtonPool = {}
+    local function ReleaseViews()
+        for _, b in ipairs(nav.viewButtonPool) do b:Hide() end
         wipe(nav.viewButtons)
+    end
+    local function BuildViews(group)
+        ReleaseViews()
         local prev
         for _, v in ipairs(group.views or {}) do
             if not v.hidden then
-                local b = UI.CreateButton(f, v.text, "accent-hover", { math.max(64, #v.text * 8 + 16), 20 },
-                    false, false, UI.FONT_TITLE, UI.FONT_TITLE_DISABLE)
+                local i = #nav.viewButtons + 1
+                local bw = math.max(64, #v.text * 8 + 16)
+                local b = nav.viewButtonPool[i]
+                if b then
+                    b:SetText(v.text)
+                    b:SetSize(bw, 20)
+                    b:ClearAllPoints()
+                    b:SetBackdropColor(unpack(b.color))
+                    b:SetScript("OnEnter", function(self) self:SetBackdropColor(unpack(self.hoverColor)) end)
+                    b:SetScript("OnLeave", function(self) self:SetBackdropColor(unpack(self.color)) end)
+                    b:Show()
+                else
+                    b = UI.CreateButton(f, v.text, "accent-hover", { bw, 20 },
+                        false, false, UI.FONT_TITLE, UI.FONT_TITLE_DISABLE)
+                    nav.viewButtonPool[i] = b
+                end
                 b.id = v.id
                 if prev then b:SetPoint("LEFT", prev, "RIGHT", -1, 0)
                 else b:SetPoint("TOPLEFT", left, "TOPRIGHT", NAV_PAD, -2) end
@@ -496,7 +583,17 @@ function UI.CreateNavFrame(title, name, width, height, groups, onCreate, onShow)
         if not group then return end
         if nav.group ~= group.id then
             nav.group = group.id
-            BuildViews(group)
+            local isRail = group.layout == "rail"
+            AnchorContent(isRail)
+            if isRail then
+                -- T31: no view row; the rail marks the selection
+                ReleaseViews()
+                local r = RailOf(group).rail
+                nav.highlightView = function(id) r:Select(id) end
+            else
+                BuildViews(group)
+            end
+            ShowRails(group.id)
             nav.view = nil
         end
         local views = group.views or {}
@@ -515,7 +612,8 @@ function UI.CreateNavFrame(title, name, width, height, groups, onCreate, onShow)
         nav.panes[group.id] = nav.panes[group.id] or {}
         local pane = nav.view and nav.panes[group.id][nav.view] or nil
         if not pane and nav.view and onCreate then
-            pane = onCreate(group.id, nav.view, content, nav)
+            local h = nav.rails[group.id]   -- T31: a rail group's panes go right of its rail
+            pane = onCreate(group.id, nav.view, h and h.view or content, nav)
             if pane then nav.panes[group.id][nav.view] = pane end
         end
         ShowOnly(group.id, nav.view)
@@ -527,6 +625,14 @@ function UI.CreateNavFrame(title, name, width, height, groups, onCreate, onShow)
         for _, g in ipairs(groups) do
             if g.id == groupID then
                 g.views = views
+                if g.layout == "rail" then
+                    -- T31: a rail group has no view row to build; its rail
+                    -- (if it exists yet) takes the new rows
+                    local h = nav.rails[groupID]
+                    if h then h.rail:SetRows(views) end
+                    if nav.group == groupID then nav:Select(groupID, nav.view) end
+                    return
+                end
                 if nav.group == groupID then BuildViews(g); nav:Select(groupID, nav.view) end
                 return
             end
@@ -618,6 +724,528 @@ function UI.CreateNavBox(parent, width, height, groups, onSelect)   -- one hook:
 end
 
 --------------------------------------------------------------------------------
+-- T31 (docs/SPEC-forever-ui.md 3.2, 6.2, 6.4): the rail, sheets and masks.
+-- Additive: nothing on TBC builds them (only a layout = "rail" nav group and
+-- the Forever panes do). Colours are the theme's (UI.PALETTE / UI.TEXT, from
+-- UI/Theme_Forever.lua) with the flat literals as the fallback.
+--------------------------------------------------------------------------------
+local function TextRGB(token, r, g, b)
+    local t = UI.TEXT and UI.TEXT[token]
+    if t then return t[1], t[2], t[3] end
+    return r, g, b
+end
+local function Fill(key, fallback)
+    local c = UI.PALETTE and UI.PALETTE[key]
+    return c or fallback
+end
+
+-- A popup list (a dropdown's, the rail's menu) opened or closed: the window
+-- manager's hook (6.5), called only when it is set -- TBC never sets it.
+local function Popup(list, shown)
+    if UI.OnPopup then UI.OnPopup(list, shown) end
+end
+local function WatchPopup(list)
+    list:SetScript("OnShow", function(self) Popup(self, true) end)
+    list:SetScript("OnHide", function(self) Popup(self, false) end)
+end
+
+--------------------------------------------------------------------------------
+-- The rail: a list you build yourself, one row per view (3.2).
+--
+-- UI.CreateRail(parent, w, opts) -> rail     (rail.frame is the list's frame;
+--                                             the caller anchors it)
+--   opts.title          the label on top ("MY SPELLS"), 11 px muted, 18 tall
+--   opts.rowHeight      a row's height, 20 (a Forever pane passes UI.Pitch(20));
+--                       rows overlap by 1 px, so their tops are rowHeight - 1 apart
+--   opts.footerHeight   the slot pinned at the bottom (rail:Footer()), 0 if absent
+--   opts.empty          the line shown when no movable row is listed
+--   opts.onSelect(id)   a row clicked
+--   opts.onMove(id, to) ONCE per reorder (a drag, ^ / v, the menu); `to` is the
+--                       row's new place among the movable rows
+--   opts.onRemove(id)   the hover x or the menu's Remove
+--   opts.onDrop(at)     something dropped on the rail, to go in before movable
+--                       row `at` (#rows + 1: at the end). The kit never reads
+--                       or clears the cursor: the caller does what it likes.
+--   opts.canDrop()      true when a click on the rail should drop (the cursor
+--                       holds something) rather than select
+-- rail:SetRows(rows)   rows = { { id, text, icon, tag, new, stale, fixed,
+--                      tooltip, hidden }, ... }: fixed rows (Overview) are not
+--                      movable, and a 1-px rule follows the last of them;
+--                      `stale` greys the name and drops the tag
+-- rail:Select(id)      marks the row (fill + a 2-px accent bar)
+-- rail:Rows()          the rows shown, in order (each .id, .index, .data)
+-- rail:Footer()        the bottom slot's frame
+-- rail:SetRowHeight(h) a new row height (the font offset changed), rows re-laid
+-- rail:OpenMenu(row)   the right-click menu: Move up / Move down / Remove from list
+--------------------------------------------------------------------------------
+function UI.CreateRail(parent, w, opts)
+    opts = opts or {}
+    local rowH = opts.rowHeight or 20
+    local pitch = rowH - 1
+    local TITLE_H = 18
+    local RULE_GAP = 8          -- 3 above the 1-px rule, 4 below
+    local rail = { opts = opts, rows = {}, pool = {}, selected = nil }
+
+    local frame = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+    frame:SetWidth(w)
+    frame:EnableMouse(true)
+    UI.StylizeFrame(frame, Fill("pane", { 0.11, 0.11, 0.11, 1 }), Fill("border", { 0, 0, 0, 1 }))
+    rail.frame = frame
+
+    local title = frame:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+    title:SetJustifyH("LEFT")
+    title:SetPoint("TOPLEFT", frame, "TOPLEFT", 8, -5)
+    title:SetTextColor(TextRGB("muted", 0.48, 0.48, 0.48))
+    title:SetText(opts.title or "")
+    rail.title = title
+
+    local rule = frame:CreateTexture(nil, "ARTWORK")
+    rule:SetHeight(1)
+    local lc = Fill("line", { 0.165, 0.165, 0.165, 1 })
+    rule:SetColorTexture(lc[1], lc[2], lc[3], lc[4] or 1)
+    rule:Hide()
+
+    local emptyText = frame:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+    emptyText:SetJustifyH("LEFT")
+    emptyText:SetPoint("LEFT", frame, "LEFT", 8, 0)
+    emptyText:SetPoint("RIGHT", frame, "RIGHT", -6, 0)
+    emptyText:SetTextColor(TextRGB("muted", 0.48, 0.48, 0.48))
+    emptyText:Hide()
+
+    -- the insertion line a drag shows (2 px, accent)
+    local line = frame:CreateTexture(nil, "OVERLAY")
+    line:SetHeight(2)
+    line:SetColorTexture(accent[1], accent[2], accent[3], 1)
+    line:Hide()
+
+    local footer = CreateFrame("Frame", nil, frame)
+    footer:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 1, 1)
+    footer:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -1, 1)
+    footer:SetHeight(opts.footerHeight or 0)
+    function rail:Footer() return footer end
+
+    local function Movables()
+        local n = 0
+        for _, r in ipairs(rail.rows) do if r.movable then n = n + 1 end end
+        return n
+    end
+
+    ----------------------------------------------------------------------------
+    -- painting one row: fill, bar, name, tag, dot, controls
+    ----------------------------------------------------------------------------
+    local function Paint(row)
+        local fill
+        if row.selected then fill = Fill("selected", { accent[1], accent[2], accent[3], 0.28 })
+        elseif row.hovered then fill = Fill("hover", { accent[1], accent[2], accent[3], 0.12 }) end
+        if fill then row.bg:SetColorTexture(fill[1], fill[2], fill[3], fill[4] or 1)
+        else row.bg:SetColorTexture(0, 0, 0, 0) end
+        if row.selected then row.bar:Show() else row.bar:Hide() end
+        local d = row.data or {}
+        local controls = row.hovered and row.movable and (opts.onMove or opts.onRemove) and true or false
+        local right
+        if controls then
+            row.up:Show(); row.down:Show(); row.rm:Show()
+            row.tag:Hide(); row.dot:Hide()
+            right = 56
+        else
+            row.up:Hide(); row.down:Hide(); row.rm:Hide()
+            local tag = d.tag and d.tag ~= "" and not d.stale
+            local dot = d.new and not d.stale
+            if tag then row.tag:Show() else row.tag:Hide() end
+            if dot then row.dot:Show() else row.dot:Hide() end
+            right = (tag and 32 or 6) + (dot and 11 or 0)
+        end
+        -- the name is truncated before whatever sits at the right
+        row.name:ClearAllPoints()
+        row.name:SetPoint("LEFT", row, "LEFT", row.nameX or 24, 0)
+        row.name:SetPoint("RIGHT", row, "RIGHT", -right, 0)
+    end
+
+    local function Leave(row)
+        if row.IsMouseOver and row:IsMouseOver() then return end   -- onto its own control
+        row.hovered = nil
+        Paint(row)
+    end
+
+    local function DropAt(row)
+        if row and row.movable then return row.index end
+        if row and not row.movable then return 1 end
+        return Movables() + 1
+    end
+
+    local function NewRow()
+        local row = CreateFrame("Button", nil, frame)
+        row:SetHeight(rowH)
+        row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        row:RegisterForDrag("LeftButton")
+
+        row.bg = row:CreateTexture(nil, "BACKGROUND")
+        row.bg:SetAllPoints(row)
+        row.bg:SetColorTexture(0, 0, 0, 0)
+
+        row.bar = row:CreateTexture(nil, "ARTWORK")
+        row.bar:SetWidth(2)
+        row.bar:SetPoint("TOPLEFT", row, "TOPLEFT", -1, 0)
+        row.bar:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", -1, 0)
+        row.bar:SetColorTexture(accent[1], accent[2], accent[3], 1)
+        row.bar:Hide()
+
+        row.iconEdge = row:CreateTexture(nil, "ARTWORK")
+        row.iconEdge:SetSize(18, 18)
+        row.iconEdge:SetPoint("LEFT", row, "LEFT", 3, 0)
+        row.iconEdge:SetColorTexture(0, 0, 0, 1)
+        row.icon = row:CreateTexture(nil, "OVERLAY")
+        row.icon:SetSize(16, 16)
+        row.icon:SetPoint("LEFT", row, "LEFT", 4, 0)
+        row.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+
+        row.tag = row:CreateFontString(nil, "OVERLAY", UI.FONT_NUM_SMALL or UI.FONT_SMALL)
+        row.tag:SetJustifyH("RIGHT")
+        row.tag:SetPoint("RIGHT", row, "RIGHT", -6, 0)
+        row.tag:SetTextColor(TextRGB("muted", 0.48, 0.48, 0.48))
+
+        row.dot = row:CreateTexture(nil, "OVERLAY")
+        row.dot:SetSize(6, 6)
+        row.dot:SetColorTexture(accent[1], accent[2], accent[3], 1)
+
+        row.name = row:CreateFontString(nil, "OVERLAY", UI.FONT)
+        row.name:SetJustifyH("LEFT")
+        row.name:SetWordWrap(false)
+
+        -- the hover controls: ^ move up, v move down, x remove (red, as Cell's delete)
+        local function Ctl(text, color)
+            local b = UI.CreateButton(row, text, color, { 14, 14 }, false, false, UI.FONT_SMALL, UI.FONT_SMALL)
+            b:HookScript("OnLeave", function() Leave(row) end)
+            b:Hide()
+            return b
+        end
+        row.rm = Ctl("x", "red-hover")
+        row.rm:SetPoint("RIGHT", row, "RIGHT", -4, 0)
+        row.down = Ctl("v", "accent-hover")
+        row.down:SetPoint("RIGHT", row.rm, "LEFT", -2, 0)
+        row.up = Ctl("^", "accent-hover")
+        row.up:SetPoint("RIGHT", row.down, "LEFT", -2, 0)
+        row.up:SetScript("OnClick", function()
+            if row.index and row.index > 1 and opts.onMove then opts.onMove(row.id, row.index - 1) end
+        end)
+        row.down:SetScript("OnClick", function()
+            if row.index and row.index < Movables() and opts.onMove then opts.onMove(row.id, row.index + 1) end
+        end)
+        row.rm:SetScript("OnClick", function()
+            if opts.onRemove then opts.onRemove(row.id) end
+        end)
+
+        row:SetScript("OnEnter", function(self)
+            self.hovered = true
+            Paint(self)
+        end)
+        row:SetScript("OnLeave", function(self) Leave(self) end)
+        row:SetScript("OnClick", function(self, button)
+            if button == "RightButton" then
+                if self.movable then rail:OpenMenu(self) end
+                return
+            end
+            if opts.canDrop and opts.onDrop and opts.canDrop() then
+                opts.onDrop(DropAt(self))
+                return
+            end
+            if opts.onSelect then opts.onSelect(self.id) end
+        end)
+        row:SetScript("OnReceiveDrag", function(self)
+            if opts.onDrop then opts.onDrop(DropAt(self)) end
+        end)
+        row:SetScript("OnDragStart", function(self) rail:BeginDrag(self) end)
+        row:SetScript("OnDragStop", function() rail:EndDrag() end)
+
+        -- the row's tooltip (a stale row's "not in your spellbook"); the
+        -- kit's hover hook is installed once, the lines set per SetRows
+        UI.SetTooltips(row, "ANCHOR_RIGHT", 2, 0, "")
+        row.tooltips = nil
+        return row
+    end
+
+    ----------------------------------------------------------------------------
+    -- rows
+    ----------------------------------------------------------------------------
+    function rail:SetRows(rows)
+        rail.lastRows = rows
+        for _, r in ipairs(rail.pool) do r:Hide() end
+        wipe(rail.rows)
+        rule:Hide()
+        rail.firstTop = nil
+        local y = TITLE_H
+        local sawFixed, sawMovable, movable = false, false, 0
+        for _, d in ipairs(rows or {}) do
+            if not d.hidden then
+                if not d.fixed and sawFixed and not sawMovable then
+                    rule:ClearAllPoints()
+                    rule:SetPoint("TOPLEFT", frame, "TOPLEFT", 6, -(y + 3))
+                    rule:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -6, -(y + 3))
+                    rule:Show()
+                    y = y + RULE_GAP
+                end
+                local i = #rail.rows + 1
+                local row = rail.pool[i]
+                if not row then row = NewRow(); rail.pool[i] = row end
+                row.id, row.data = d.id, d
+                row.movable = not d.fixed
+                if row.movable then
+                    movable = movable + 1
+                    row.index = movable
+                    sawMovable = true
+                    if movable == 1 then rail.firstTop = y end
+                else
+                    row.index = nil
+                    sawFixed = true
+                end
+                row:ClearAllPoints()
+                row:SetPoint("TOPLEFT", frame, "TOPLEFT", 1, -y)
+                row:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -1, -y)
+                row.top = y
+
+                local hasIcon = d.icon ~= nil and not d.fixed
+                if hasIcon then
+                    row.icon:SetTexture(d.icon); row.icon:Show(); row.iconEdge:Show()
+                else
+                    row.icon:Hide(); row.iconEdge:Hide()
+                end
+                row.nameX = d.fixed and 8 or 24
+                row.name:SetText(d.text or "")
+                if d.stale then row.name:SetTextColor(TextRGB("disabled", 0.3, 0.3, 0.3))
+                else row.name:SetTextColor(TextRGB("text", 1, 1, 1)) end
+                row.tag:SetText(d.tag or "")
+                row.dot:ClearAllPoints()
+                if d.tag and d.tag ~= "" then row.dot:SetPoint("RIGHT", row.tag, "LEFT", -5, 0)
+                else row.dot:SetPoint("RIGHT", row, "RIGHT", -6, 0) end
+                if d.stale or d.tooltip then
+                    row.tooltips = { d.text or "", d.tooltip or "not in your spellbook" }
+                else
+                    row.tooltips = nil
+                end
+                row.selected = (rail.selected ~= nil and rail.selected == d.id)
+                row.hovered = nil
+                row:SetAlpha(1)
+                Paint(row)
+                row:Show()
+                rail.rows[i] = row
+                y = y + pitch
+            end
+        end
+        if not rail.firstTop then rail.firstTop = y end
+        if movable == 0 and opts.empty then
+            if sawFixed then y = y + RULE_GAP end
+            emptyText:ClearAllPoints()
+            emptyText:SetPoint("TOPLEFT", frame, "TOPLEFT", 8, -(y + 4))
+            emptyText:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -6, -(y + 4))
+            emptyText:SetText(opts.empty)
+            emptyText:Show()
+        else
+            emptyText:Hide()
+        end
+    end
+
+    function rail:Rows() return rail.rows end
+
+    function rail:SetRowHeight(h)
+        if type(h) ~= "number" or h <= 1 or h == rowH then return end
+        rowH, pitch = h, h - 1
+        for _, r in ipairs(rail.pool) do r:SetHeight(rowH) end
+        rail:SetRows(rail.lastRows)
+    end
+
+    function rail:Select(id)
+        rail.selected = id
+        for _, r in ipairs(rail.rows) do
+            r.selected = (r.id == id)
+            Paint(r)
+        end
+    end
+
+    ----------------------------------------------------------------------------
+    -- drag to reorder: the row lifts to alpha 0.5, a 2-px line marks the drop
+    -- point, and the move is reported ONCE (OnDragStop can fire twice)
+    ----------------------------------------------------------------------------
+    local function SlotAtCursor()
+        local _, cy = GetCursorPosition()
+        local top = frame:GetTop()
+        local s = frame:GetEffectiveScale()
+        if type(cy) ~= "number" or type(top) ~= "number" or type(s) ~= "number" or s <= 0 then return nil end
+        local rel = top - cy / s
+        local n = Movables()
+        local slot = math.floor((rel - (rail.firstTop or TITLE_H) + pitch / 2) / pitch) + 1
+        if slot < 1 then slot = 1 end
+        if slot > n + 1 then slot = n + 1 end
+        return slot
+    end
+
+    function rail:BeginDrag(row)
+        if rail.drag or not row.movable or not opts.onMove then return end
+        rail.drag = { row = row, from = row.index }
+        row:SetAlpha(0.5)
+        frame:SetScript("OnUpdate", function() rail:TrackDrag() end)
+        rail:TrackDrag()
+    end
+
+    function rail:TrackDrag()
+        local slot = rail.drag and SlotAtCursor()
+        if not slot then line:Hide(); return end
+        local y = (rail.firstTop or TITLE_H) + (slot - 1) * pitch
+        line:ClearAllPoints()
+        line:SetPoint("TOPLEFT", frame, "TOPLEFT", 4, -(y - 1))
+        line:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -4, -(y - 1))
+        line:Show()
+    end
+
+    -- a drag that ends nowhere (the rail hidden under it) moves nothing
+    local function StopDrag()
+        local d = rail.drag
+        if not d then return nil end
+        rail.drag = nil
+        frame:SetScript("OnUpdate", nil)
+        line:Hide()
+        d.row:SetAlpha(1)
+        return d
+    end
+
+    function rail:EndDrag()
+        local d = StopDrag()
+        if not d then return end
+        local slot = SlotAtCursor()
+        if not slot then return end
+        local to = slot
+        if slot > d.from then to = slot - 1 end
+        if to ~= d.from and opts.onMove then opts.onMove(d.row.id, to) end
+    end
+
+    -- a drop on the rail's own ground (below the rows) goes in at the end
+    frame:SetScript("OnReceiveDrag", function()
+        if opts.onDrop then opts.onDrop(Movables() + 1) end
+    end)
+    frame:SetScript("OnMouseUp", function()
+        if opts.canDrop and opts.onDrop and opts.canDrop() then opts.onDrop(Movables() + 1) end
+    end)
+
+    ----------------------------------------------------------------------------
+    -- the right-click menu (a kit popup list, in the lists' strata)
+    ----------------------------------------------------------------------------
+    local MENU_W, MENU_H = 130, 18
+    local menu = CreateFrame("Frame", nil, frame, "BackdropTemplate")
+    menu:SetFrameStrata(UI.LIST_STRATA or "DIALOG")
+    menu:SetWidth(MENU_W)
+    UI.StylizeFrame(menu, Fill("header", { 0.115, 0.115, 0.115, 1 }))
+    menu:Hide()
+    WatchPopup(menu)
+    rail.menu = menu
+    local items = {
+        { "Move up", function(r) if r.index > 1 and opts.onMove then opts.onMove(r.id, r.index - 1) end end },
+        { "Move down", function(r) if r.index < Movables() and opts.onMove then opts.onMove(r.id, r.index + 1) end end },
+        { "Remove from list", function(r) if opts.onRemove then opts.onRemove(r.id) end end },
+    }
+    menu.buttons = {}
+    for i, it in ipairs(items) do
+        local b = UI.CreateButton(menu, it[1], "accent-hover", { MENU_W - 2, MENU_H }, true, false,
+            UI.FONT_SMALL, UI.FONT_SMALL)
+        b:SetPoint("TOPLEFT", menu, "TOPLEFT", 1, -1 - (i - 1) * (MENU_H - 1))
+        b:SetScript("OnClick", function()
+            local r = menu.row
+            menu:Hide()
+            if r and r.movable then it[2](r) end
+        end)
+        menu.buttons[i] = b
+    end
+    menu:SetHeight(#items * (MENU_H - 1) + 3)
+
+    function rail:OpenMenu(row)
+        menu.row = row
+        menu:ClearAllPoints()
+        menu:SetPoint("TOPLEFT", row, "BOTTOMLEFT", 8, 1)
+        menu:Show()
+    end
+    frame:SetScript("OnHide", function() menu:Hide(); StopDrag() end)
+
+    return rail
+end
+
+--------------------------------------------------------------------------------
+-- Masks and sheets (6.4): an editor is a sheet inside the pane, never another
+-- window. Behind it a mask covers the region the caller names and swallows
+-- mouse and wheel input there (Cell's CreateMask); whatever is outside that
+-- region stays live (the Spells rail while the picker is open).
+--
+-- UI.CreateMask(region, level) -> mask, hidden; at `level` (default the
+--   region's +30), over the whole region
+-- UI.CreateSheet(pane, maskRegion, w, h, title) -> sheet, hidden; a child of
+--   the pane at its level +50, the mask over maskRegion (default the pane) at
+--   the pane's +30, a 20-px title row, the `pane` fill and a 1-px accent edge;
+--   centred on maskRegion until the caller anchors it. sheet:Body() is the
+--   area under the title. Only one sheet is open at a time: showing one hides
+--   the other.
+--------------------------------------------------------------------------------
+function UI.CreateMask(region, level)
+    local m = CreateFrame("Frame", nil, region)
+    m:SetAllPoints(region)
+    m:SetFrameLevel(level or (region:GetFrameLevel() + 30))
+    m:EnableMouse(true)
+    if m.EnableMouseWheel then m:EnableMouseWheel(true) end
+    m:SetScript("OnMouseWheel", function() end)
+    local c = Fill("mask", { 0.15, 0.15, 0.15, 0.7 })
+    local tex = m:CreateTexture(nil, "BACKGROUND")
+    tex:SetAllPoints(m)
+    tex:SetColorTexture(c[1], c[2], c[3], c[4] or 0.7)
+    m:Hide()
+    return m
+end
+
+function UI.CreateSheet(pane, maskRegion, w, h, title)
+    maskRegion = maskRegion or pane
+    local base = pane:GetFrameLevel()
+    local mask = UI.CreateMask(maskRegion, base + 30)
+
+    local s = CreateFrame("Frame", nil, pane, "BackdropTemplate")
+    s:SetSize(w, h)
+    s:SetPoint("CENTER", maskRegion, "CENTER", 0, 0)
+    s:SetFrameLevel(base + 50)
+    s:EnableMouse(true)
+    UI.StylizeFrame(s, Fill("pane", { 0.11, 0.11, 0.11, 1 }), { accent[1], accent[2], accent[3], 1 })
+    s.mask = mask
+
+    local bar = s:CreateTexture(nil, "ARTWORK")
+    bar:SetPoint("TOPLEFT", s, "TOPLEFT", 1, -1)
+    bar:SetPoint("TOPRIGHT", s, "TOPRIGHT", -1, -1)
+    bar:SetHeight(20)
+    local nc = Fill("nav", Fill("header", { 0.115, 0.115, 0.115, 1 }))
+    bar:SetColorTexture(nc[1], nc[2], nc[3], nc[4] or 1)
+    local edge = s:CreateTexture(nil, "ARTWORK")
+    edge:SetPoint("TOPLEFT", bar, "BOTTOMLEFT", 0, 0)
+    edge:SetPoint("TOPRIGHT", bar, "BOTTOMRIGHT", 0, 0)
+    edge:SetHeight(1)
+    edge:SetColorTexture(0, 0, 0, 1)
+
+    s.title = s:CreateFontString(nil, "OVERLAY", UI.FONT_CLASS)
+    s.title:SetJustifyH("LEFT")
+    s.title:SetPoint("LEFT", bar, "LEFT", 7, 0)
+    s.title:SetText(title or "")
+    function s:SetTitle(t) s.title:SetText(t or "") end
+
+    local body = CreateFrame("Frame", nil, s)
+    body:SetPoint("TOPLEFT", s, "TOPLEFT", 1, -22)
+    body:SetPoint("BOTTOMRIGHT", s, "BOTTOMRIGHT", -1, 1)
+    function s:Body() return body end
+
+    s:Hide()
+    s:SetScript("OnShow", function(self)
+        if UI.openSheet and UI.openSheet ~= self then UI.openSheet:Hide() end
+        UI.openSheet = self
+        mask:Show()
+    end)
+    s:SetScript("OnHide", function(self)
+        mask:Hide()
+        if UI.openSheet == self then UI.openSheet = nil end
+    end)
+    return s
+end
+
+--------------------------------------------------------------------------------
 -- Dropdown: a button that says what is selected and drops a list under it.
 --
 -- The kit had button groups and nothing else, which is fine for two or three
@@ -645,9 +1273,12 @@ function UI.CreateDropdown(parent, width, height, onSelect)
     local list = CreateFrame("Frame", nil, parent, "BackdropTemplate")
     list:SetPoint("TOPLEFT", dd, "BOTTOMLEFT", 0, -1)
     list:SetWidth(width)
-    list:SetFrameStrata("DIALOG")
+    -- T31 (6.2): the lists' strata is the kit's setting; nil is today's DIALOG
+    -- (TBC's), the Forever theme lifts it above the replay's
+    list:SetFrameStrata(UI.LIST_STRATA or "DIALOG")
     UI.StylizeFrame(list, UI.PALETTE and UI.PALETTE.header or { 0.115, 0.115, 0.115, 1 })
     list:Hide()
+    WatchPopup(list)   -- T31: UI.OnPopup told, once it exists (after the first Hide)
     dd.list = list
 
     local function Label(id)
@@ -727,12 +1358,19 @@ function UI.CreateTreeDropdown(parent, width, height, onSelect)
         f:Hide()
         return f
     end
-    local list = Panel("DIALOG")
+    -- T31 (6.2): the first list in the kit's list strata (nil: today's DIALOG),
+    -- the second in FULLSCREEN_DIALOG as before and always above the first by
+    -- level too -- once the theme puts both in one strata, only the level
+    -- keeps the second on top
+    local list = Panel(UI.LIST_STRATA or "DIALOG")
     list:SetPoint("TOPLEFT", dd, "BOTTOMLEFT", 0, -1)
     list:SetWidth(width)
     local sub = Panel("FULLSCREEN_DIALOG")
     sub:SetWidth(width)
+    sub:SetFrameLevel(list:GetFrameLevel() + 10)
     dd.list, dd.sub = list, sub
+    WatchPopup(list)
+    list:HookScript("OnHide", function() sub:Hide() end)   -- the second list goes with the first
 
     local function Label(id)
         for _, it in ipairs(dd.items) do
@@ -775,6 +1413,7 @@ function UI.CreateTreeDropdown(parent, width, height, onSelect)
             prev = r
         end
         sub:SetHeight(math.max(height, #children * (height - 1) + 3))
+        sub:SetFrameLevel(list:GetFrameLevel() + 10)   -- T31
         sub:ClearAllPoints()
         sub:SetPoint("TOPLEFT", row, "TOPRIGHT", 2, 1)
         sub:Show()

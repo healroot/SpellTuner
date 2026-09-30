@@ -4,6 +4,10 @@
 -- left, that group's views along the top, panes built lazily and cached, the
 -- selection remembered. It is the piece every other window is about to be
 -- rebuilt on, so it gets its own suite before anything moves.
+--
+-- T31 (docs/SPEC-forever-ui.md 3.1, 3.2, 6.2, 6.4) adds ten: a rail group (no
+-- top row, the content anchored per group, rail rows as views, one reorder per
+-- drag), the view-button pool, a sheet's mask, and the dropdown lists' strata.
 local here = arg[0]:match("^(.*)/[^/]+$")
 HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
@@ -11,6 +15,32 @@ local MD = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB
 S.Load({ "UI/Style.lua" }, "SpellTuner", MD)
 local UI = MD.UI
+
+-- T31: geometry and layering, recorded for THIS suite only (the stub keeps
+-- none, and every other suite sees it exactly as before): anchors, strata,
+-- frame levels (a child one above its parent, as in the client) and mouse.
+local FrameMT = getmetatable(UIParent)
+function FrameMT:SetPoint(p, rel, rp, x, y)
+    if type(rel) == "number" then rel, rp, x, y = nil, p, rel, rp end
+    self.points = self.points or {}
+    self.points[p] = { rel = rel or self.parentFrame, rp = rp or p, x = x or 0, y = y or 0 }
+end
+function FrameMT:ClearAllPoints() self.points = {}; self.allPoints = nil end
+function FrameMT:SetAllPoints(rel) self.points = {}; self.allPoints = rel or self.parentFrame end
+function FrameMT:SetFrameStrata(s) self.strata = s end
+function FrameMT:GetFrameStrata()
+    if self.strata then return self.strata end
+    local p = self.parentFrame
+    return p and p:GetFrameStrata() or "MEDIUM"
+end
+function FrameMT:SetFrameLevel(n) self.level = n end
+function FrameMT:GetFrameLevel()
+    if self.level then return self.level end
+    local p = self.parentFrame
+    return p and (p:GetFrameLevel() + 1) or 0
+end
+function FrameMT:EnableMouse(v) self.mouse = v and true or false end
+function FrameMT:IsMouseEnabled() return self.mouse == true end
 
 local ok, fails = 0, {}
 local function check(name, cond, detail)
@@ -119,6 +149,166 @@ check("the box has its own content frame", box:Content() ~= nav:Content())
 
 -- palette: one place decides
 check("there is a single palette", UI.PALETTE ~= nil and UI.PALETTE.frame and UI.PALETTE.header)
+
+--------------------------------------------------------------------------------
+-- T31 (docs/SPEC-forever-ui.md 3.1, 3.2, 6.2, 6.4): a rail group, the content
+-- anchored per group, the view-button pool, sheets and masks, the lists' strata
+--------------------------------------------------------------------------------
+local function ButtonsOn(parent)
+    local n = 0
+    for _, fr in ipairs(S.allFrames) do
+        if fr.kind == "Button" and fr.parentFrame == parent then n = n + 1 end
+    end
+    return n
+end
+local function ShownButtonsOn(parent)
+    local n = 0
+    for _, fr in ipairs(S.allFrames) do
+        if fr.kind == "Button" and fr.parentFrame == parent and fr:IsShown() then n = n + 1 end
+    end
+    return n
+end
+local function Views(names)
+    local out = { { id = "overview", text = "Overview", fixed = true } }
+    for _, n in ipairs(names) do out[#out + 1] = { id = "fam:" .. n, text = n, tag = "R1" } end
+    return out
+end
+
+local moves = {}
+local railGroups = {
+    { id = "spells", text = "Spells", layout = "rail",
+      views = Views({ "Healing Touch", "Rejuvenation", "Wrath" }),
+      rail = { title = "MY SPELLS", onMove = function(id, to) moves[#moves + 1] = id .. ">" .. tostring(to) end } },
+    { id = "reports", text = "Reports", views = {
+        { id = "waste", text = "Waste" }, { id = "review", text = "Review" } } },
+}
+local nav2 = UI.CreateNavFrame("SpellTuner", "MDNavRailTest", 860, 560, railGroups,
+    function(g2, v2, content)
+        local pane = CreateFrame("Frame", nil, content)
+        pane.key = g2 .. ":" .. tostring(v2)
+        return pane
+    end)
+local win = nav2.frame
+
+nav2:Select("spells")
+local tl = nav2:Content().points and nav2:Content().points.TOPLEFT
+local railTop = tl and tl.y
+check("a rail group: no top row, content at -8", #nav2.viewButtons == 0 and ShownButtonsOn(win) == 0
+    and tl ~= nil and tl.y == -8,
+    string.format("%d view buttons, %d shown, top %s", #nav2.viewButtons, ShownButtonsOn(win),
+        tostring(tl and tl.y)))
+
+nav2:Select("reports")
+tl = nav2:Content().points and nav2:Content().points.TOPLEFT
+check("a view-row group puts it back at -32", railTop == -8 and tl ~= nil and tl.y == -32
+    and #nav2.viewButtons == 2,
+    string.format("top %s -> %s, %d buttons", tostring(railTop), tostring(tl and tl.y), #nav2.viewButtons))
+
+nav2:Select("spells", "fam:Healing Touch")
+local before = ButtonsOn(win)
+nav2:SetViews("spells", Views({ "Healing Touch", "Rejuvenation", "Wrath", "Moonfire" }))
+check("SetViews on a rail group creates no button", ButtonsOn(win) == before and #nav2.viewButtons == 0
+    and ShownButtonsOn(win) == 0, string.format("%d -> %d", before, ButtonsOn(win)))
+
+nav2:Select("reports")
+local three = { { id = "waste", text = "Waste" }, { id = "review", text = "Review" }, { id = "runs", text = "Runs" } }
+nav2:SetViews("reports", three)
+local once = ButtonsOn(win)
+for _ = 1, 5 do nav2:SetViews("reports", three) end
+check("five SetViews on Reports: same button frames", ButtonsOn(win) == once and #nav2.viewButtons == 3,
+    string.format("%d -> %d", once, ButtonsOn(win)))
+
+nav2:Select("spells", "fam:Healing Touch")
+local rail = nav2.Rail and nav2:Rail("spells")
+local rows = rail and rail:Rows() or {}
+local rj
+for _, r in ipairs(rows) do if r.id == "fam:Rejuvenation" then rj = r end end
+if rj then rj:GetScript("OnClick")(rj, "LeftButton") end
+local viaClick = nav2.view
+nav2:Select("spells", "fam:Wrath")
+local wrathRow
+for _, r in ipairs(rows) do if r.id == "fam:Wrath" then wrathRow = r end end
+check("rail rows are views", #rows == 5 and viaClick == "fam:Rejuvenation"
+    and MD.db.uiPath[2] == "fam:Wrath" and wrathRow ~= nil and wrathRow.selected == true
+    and rj.selected ~= true, string.format("%d rows, click -> %s", #rows, tostring(viaClick)))
+
+-- drag Wrath (third in the list) up onto Rejuvenation's top half: one move,
+-- to 2, however many times the client fires OnDragStop (Cell's note: twice)
+local ht
+for _, r in ipairs(rows) do if r.id == "fam:Healing Touch" then ht = r end end
+if rail and wrathRow and rj then
+    rail.frame.GetTop = function() return 500 end
+    local rjTop = rj.points and rj.points.TOPLEFT and rj.points.TOPLEFT.y or 0
+    local savedCursor = _G.GetCursorPosition
+    _G.GetCursorPosition = function() return 50, 500 + rjTop - 2 end
+    wrathRow:GetScript("OnDragStart")(wrathRow, "LeftButton")
+    if rail.frame:GetScript("OnUpdate") then rail.frame:GetScript("OnUpdate")(rail.frame, 0.02) end
+    wrathRow:GetScript("OnDragStop")(wrathRow)
+    wrathRow:GetScript("OnDragStop")(wrathRow)
+    _G.GetCursorPosition = savedCursor
+end
+check("reorder fires once", #moves == 1 and moves[1] == "fam:Wrath>2", table.concat(moves, ", "))
+
+-- a sheet's mask: over its region it takes the click, outside it does not
+local STRATA = { BACKGROUND = 1, LOW = 2, MEDIUM = 3, HIGH = 4, DIALOG = 5, FULLSCREEN = 6,
+                 FULLSCREEN_DIALOG = 7, TOOLTIP = 8 }
+local function Rect(fr)
+    if fr.rect then return fr.rect[1], fr.rect[2], fr.rect[3], fr.rect[4] end
+    if fr.allPoints then return Rect(fr.allPoints) end
+end
+local function HitAt(x, y)
+    local best
+    for _, fr in ipairs(S.allFrames) do
+        if fr.mouse and fr:IsVisible() then
+            local l, b, r, t = Rect(fr)
+            if l and x >= l and x <= r and y >= b and y <= t then
+                local s, bs = STRATA[fr:GetFrameStrata()] or 0, best and (STRATA[best:GetFrameStrata()] or 0)
+                if not best or s > bs or (s == bs and fr:GetFrameLevel() > best:GetFrameLevel()) then best = fr end
+            end
+        end
+    end
+    return best
+end
+local host = CreateFrame("Frame", nil, UIParent)
+host:SetFrameLevel(10); host.rect = { 0, 0, 736, 560 }
+local railArea = CreateFrame("Button", nil, host); railArea.rect = { 0, 0, 172, 560 }; railArea:EnableMouse(true)
+local viewArea = CreateFrame("Frame", nil, host); viewArea.rect = { 180, 0, 736, 560 }
+local viewBtn = CreateFrame("Button", nil, viewArea); viewBtn.rect = { 200, 500, 300, 520 }; viewBtn:EnableMouse(true)
+local sheet = UI.CreateSheet and UI.CreateSheet(host, viewArea, 300, 400, "ADD SPELLS")
+local beforeHit = HitAt(250, 510)
+if sheet then sheet:Show() end
+local onHit = HitAt(250, 510)
+check("a mask swallows clicks on its region", sheet ~= nil and beforeHit == viewBtn
+    and onHit ~= viewBtn and onHit == sheet.mask)
+check("and not outside it", sheet ~= nil and HitAt(80, 300) == railArea)
+if sheet then sheet:Hide() end
+
+-- the dropdown lists: UI.LIST_STRATA (nil = DIALOG, TBC's), UI.OnPopup told
+UI.LIST_STRATA, UI.OnPopup = nil, nil
+local d0 = UI.CreateDropdown(UIParent, 100, 18)
+local popups = {}
+UI.LIST_STRATA = "FULLSCREEN_DIALOG"
+UI.OnPopup = function(list, shown) popups[#popups + 1] = { list, shown } end
+local d1 = UI.CreateDropdown(UIParent, 100, 18)
+d1:SetItems({ { id = 1, text = "A" }, { id = 2, text = "B" } })
+d1:GetScript("OnClick")(d1)
+d1:Close()
+check("a list takes UI.LIST_STRATA", d0.list:GetFrameStrata() == "DIALOG"
+    and d1.list:GetFrameStrata() == "FULLSCREEN_DIALOG" and #popups == 2
+    and popups[1][1] == d1.list and popups[1][2] == true and popups[2][2] == false,
+    string.format("%s / %s, %d popup calls", d0.list:GetFrameStrata(), d1.list:GetFrameStrata(), #popups))
+
+local t1 = UI.CreateTreeDropdown(UIParent, 100, 18)
+t1:SetItems({ { id = "a", text = "A", children = { { id = "a1", text = "A1" } } } })
+t1:GetScript("OnClick")(t1)
+t1.rows[1]:GetScript("OnEnter")(t1.rows[1])
+check("the second list is above the first", t1.sub:IsShown()
+    and t1.sub:GetFrameStrata() == t1.list:GetFrameStrata()
+    and t1.sub:GetFrameLevel() == t1.list:GetFrameLevel() + 10,
+    string.format("%s %d / %s %d", t1.list:GetFrameStrata(), t1.list:GetFrameLevel(),
+        t1.sub:GetFrameStrata(), t1.sub:GetFrameLevel()))
+t1:Close()
+UI.LIST_STRATA, UI.OnPopup = nil, nil
 
 print(string.format("\n%d ok, %d failed", ok, #fails))
 if #fails > 0 then for _, m in ipairs(fails) do print("  FAIL " .. m) end; os.exit(1) end
