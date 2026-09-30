@@ -43,6 +43,50 @@ local function AccentHex()
     return string.format("|cff%02x%02x%02x", a[1] * 255, a[2] * 255, a[3] * 255)
 end
 
+-- T30 (docs/SPEC-forever-ui.md 3.5, 4.1, 4.3): the theme's fills and text
+-- colours for the table options, read from UI.PALETTE / UI.TEXT when the
+-- Forever theme wrote them and from these literals otherwise. Only an option
+-- reaches them: the all-nil table never calls either.
+local function FillColor(key)
+    local P = MD.UI.PALETTE
+    local c = P and P[key]
+    if c then return c[1], c[2], c[3], c[4] end
+    local a = MD.UI.accent
+    if key == "rowAlt" then return 1, 1, 1, 0.03 end
+    if key == "hover" then return a[1], a[2], a[3], 0.12 end
+    if key == "selected" then return a[1], a[2], a[3], 0.28 end
+    if key == "suggested" then return a[1], a[2], a[3], 0.10 end
+    if key == "line" then return 0x2A / 255, 0x2A / 255, 0x2A / 255, 1 end
+    return a[1], a[2], a[3], 1
+end
+
+local function TextHex(token, literal)
+    local T = MD.UI.TEXT
+    local t = T and T[token]
+    return (t and t.hex) or literal
+end
+
+-- row:SetBar(key, fraction, alpha) (T30, a `type = "bar"` column): the bar
+-- scaled to `fraction` (0..1) of its width, accent at `alpha` (default 0.5,
+-- 0.25 on a dominated row); a fraction that is not a number hides the bar
+-- and its track (a gap row, a spell with no value).
+local function SetBar(row, key, frac, alpha)
+    local b = row.bars and row.bars[key]
+    if not b then return end
+    if type(frac) ~= "number" or frac ~= frac then
+        b.track:Hide(); b.fill:Hide()
+        return
+    end
+    if frac > 1 then frac = 1 end
+    b.track:Show()
+    if frac <= 0 then b.fill:Hide(); return end
+    if not alpha then alpha = (row.data and row.data.dominated) and 0.25 or 0.5 end
+    local a = MD.UI.accent
+    b.fill:SetWidth(b.width * frac)
+    b.fill:SetColorTexture(a[1], a[2], a[3], alpha)
+    b.fill:Show()
+end
+
 -- opts (T10, optional -- nil is today's TBC behaviour, unchanged):
 --   opts.cols    -- a column list in COLS' own shape ({key,x,w,label}), used
 --                    for both the fontstrings AcquireRow builds and the header
@@ -55,25 +99,117 @@ end
 --                    reach -- both are TBC-only globals, CLAUDE.md).
 --   opts.header  -- an array of header label overrides by column index; a
 --                    missing entry falls back to that column's own .label.
+--
+-- T30 (docs/SPEC-forever-ui.md 3.5, 4.3), each optional; with all of them nil
+-- the table is today's, gold included:
+--   opts.font       -- a font object name every cell is built from, instead of
+--                       GameFontHighlightSmall; a column's own col.font wins.
+--   col.justify     -- "LEFT" (default) / "RIGHT" / "CENTER" per column.
+--   opts.rowHeight  -- the data rows' pitch (default 16); a Forever caller
+--                       passes UI.Pitch(20). opts.headerHeight is the header's
+--                       (default 18; UI.Pitch(22)).
+--   opts.headerRule -- true (the theme's `line`) or an {r, g, b, a}: a 1-px
+--                       rule along the header's bottom edge.
+--   opts.headerColor -- the header labels' colour code (default |cff888888,
+--                       `muted` under marker = "bar").
+--   opts.zebra      -- even data rows get the `rowAlt` fill.
+--   opts.rowWidth   -- a row's width: a number, or true for the table's whole
+--                       width (default width - 60, today's).
+--   col.type = "bar" -- a per-mana bar cell: a col.barWidth (72) track, a
+--                       col.gap (4), then the number in row.cells[key] over the
+--                       rest; opts.render fills it with row:SetBar(key, frac).
+--   opts.marker = "bar" -- the suggested row is marked by the `suggested` fill
+--                       and a 2-px accent bar at its left instead of gold; the
+--                       colour handed to render is text / muted / disabled,
+--                       never gold; hover takes the `hover` fill; a selected
+--                       row (r.selected, or api:SetSelected(id)) the `selected`.
+--   opts.onUpdateCells(row, r) -- api:UpdateCells() calls it for every data
+--                       row in place, without releasing or re-rendering one.
+--   opts.onClick(row, r, button) -- a data row's click.
+--   opts.wideFont   -- the spanning cell's font (default opts.font).
 function MD.DashboardParts.CreateTable(parent, width, opts)
     local pane = CreateFrame("Frame", nil, parent)
     local rowPool, usedRows = {}, {}
     local cols = (opts and opts.cols) or COLS
 
+    -- T30: the options, each falling back to today's value.
+    local rowH = (opts and opts.rowHeight) or ROW_HEIGHT
+    local headerH = (opts and opts.headerHeight) or 18
+    local rowW = width - 60
+    if opts and opts.rowWidth == true then
+        rowW = width
+    elseif opts and type(opts.rowWidth) == "number" then
+        rowW = opts.rowWidth
+    end
+    local marker = opts and opts.marker
+    local zebra = opts and opts.zebra
+    local api -- the table's own api, assigned below (PaintFill reads its selection)
+
+    -- T30: the row's fill under marker = "bar" / zebra -- selected over
+    -- suggested over the even-row stripe -- and the suggested row's 2-px bar.
+    local function PaintFill(row)
+        if not row.fill then return end
+        local r = row.data
+        local key
+        if r and marker == "bar" and (r.selected or (api.selectedId ~= nil and r.id == api.selectedId)) then
+            key = "selected"
+        elseif r and marker == "bar" and r.suggested then
+            key = "suggested"
+        elseif zebra and row.index and row.index % 2 == 0 then
+            key = "rowAlt"
+        end
+        if key then
+            row.fill:SetColorTexture(FillColor(key))
+            row.fill:Show()
+        else
+            row.fill:Hide()
+        end
+        if row.mark then
+            if r and r.suggested then row.mark:Show() else row.mark:Hide() end
+        end
+    end
+
     local function AcquireRow()
         local row = table.remove(rowPool)
         if not row then
             row = CreateFrame("Frame", nil, pane)
-            row:SetSize(width - 60, ROW_HEIGHT)
+            row:SetSize(rowW, rowH)
             row.cells = {}
+
+            -- T30: the fill (under the hover wash) and the suggested marker,
+            -- built only when an option asks for them.
+            if marker == "bar" or zebra then
+                row.fill = row:CreateTexture(nil, "BACKGROUND", nil, -1)
+                row.fill:SetAllPoints()
+                row.fill:Hide()
+            end
+            if marker == "bar" then
+                local a = MD.UI.accent
+                row.mark = row:CreateTexture(nil, "BORDER")
+                row.mark:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+                row.mark:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
+                row.mark:SetWidth(2)
+                row.mark:SetColorTexture(a[1], a[2], a[3], 1)
+                row.mark:Hide()
+            end
 
             -- Hover: a faint accent wash and the full breakdown of every
             -- number in the row (RankMath:Explain rebuilds it on demand, so
             -- the 2s re-render never allocates it).
             row.highlight = row:CreateTexture(nil, "BACKGROUND")
             row.highlight:SetAllPoints()
-            row.highlight:SetColorTexture(MD.UI.accent[1], MD.UI.accent[2], MD.UI.accent[3], 0.10)
+            if marker == "bar" then
+                row.highlight:SetColorTexture(FillColor("hover")) -- T30
+            else
+                row.highlight:SetColorTexture(MD.UI.accent[1], MD.UI.accent[2], MD.UI.accent[3], 0.10)
+            end
             row.highlight:Hide()
+            if opts and opts.onClick then -- T30
+                row:SetScript("OnMouseUp", function(self, button)
+                    if self.isHeader or not self.data then return end
+                    opts.onClick(self, self.data, button)
+                end)
+            end
 
             row:EnableMouse(true)
             row:SetScript("OnEnter", function(self)
@@ -101,10 +237,29 @@ function MD.DashboardParts.CreateTable(parent, width, opts)
                 MD.Tip:Hide()
             end)
             for _, col in ipairs(cols) do
-                local fs = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-                fs:SetPoint("LEFT", row, "LEFT", col.x, 0)
-                fs:SetWidth(col.w)
-                fs:SetJustifyH("LEFT")
+                local fs = row:CreateFontString(nil, "OVERLAY",
+                    col.font or (opts and opts.font) or "GameFontHighlightSmall")
+                local x, w = col.x, col.w
+                if col.type == "bar" then
+                    -- T30: the bar cell -- track, fill, then the number.
+                    local bw, gap = col.barWidth or 72, col.gap or 4
+                    local track = row:CreateTexture(nil, "ARTWORK")
+                    track:SetPoint("LEFT", row, "LEFT", col.x, 0)
+                    track:SetSize(bw, 8)
+                    track:SetColorTexture(1, 1, 1, 0.05)
+                    track:Hide()
+                    local fill = row:CreateTexture(nil, "ARTWORK", nil, 1)
+                    fill:SetPoint("LEFT", track, "LEFT", 0, 0)
+                    fill:SetSize(bw, 8)
+                    fill:Hide()
+                    row.bars = row.bars or {}
+                    row.bars[col.key] = { track = track, fill = fill, width = bw }
+                    row.SetBar = SetBar
+                    x, w = col.x + bw + gap, col.w - bw - gap
+                end
+                fs:SetPoint("LEFT", row, "LEFT", x, 0)
+                fs:SetWidth(w)
+                fs:SetJustifyH(col.justify or "LEFT")
                 if opts and opts.render then fs:SetWordWrap(false) end -- T10c, generic path only
                 row.cells[col.key] = fs
             end
@@ -114,9 +269,10 @@ function MD.DashboardParts.CreateTable(parent, width, opts)
             -- rather than comparing ranks, so it must never wrap into the
             -- 56px Rank column and overprint the rows below it.
             if opts and opts.render then
-                local wide = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                local wide = row:CreateFontString(nil, "OVERLAY",
+                    opts.wideFont or opts.font or "GameFontHighlightSmall")
                 wide:SetPoint("LEFT", row, "LEFT", 8, 0)
-                wide:SetWidth(width - 60 - 12)
+                wide:SetWidth(rowW - 12)
                 wide:SetJustifyH("LEFT")
                 wide:SetWordWrap(false)
                 row.cells.wide = wide
@@ -127,12 +283,18 @@ function MD.DashboardParts.CreateTable(parent, width, opts)
         return row
     end
 
-    local api = { frame = pane, cols = cols, rowHeight = ROW_HEIGHT }
+    api = { frame = pane, cols = cols, rowHeight = rowH, headerHeight = headerH, rowWidth = rowW }
 
     function api:Release()
         for _, row in ipairs(usedRows) do
             row.spellID, row.variant, row.isHeader, row.data = nil, nil, nil, nil
+            row.index = nil -- T30
             if row.cells.wide then row.cells.wide:SetText("") end -- T10c: cleared like the rest
+            if row.fill then row.fill:Hide() end -- T30
+            if row.mark then row.mark:Hide() end -- T30
+            if row.bars then -- T30
+                for _, b in pairs(row.bars) do b.track:Hide(); b.fill:Hide() end
+            end
             row.highlight:Hide()
             row:Hide()
             rowPool[#rowPool + 1] = row
@@ -146,6 +308,11 @@ function MD.DashboardParts.CreateTable(parent, width, opts)
         -- entry in `rows`, in order -- no RankMath/Tip read, no effective-mode
         -- concept (that is a TBC-only, overheal-measured idea -- CLAUDE.md's
         -- Out of scope).
+        -- T30: the header's rule, one texture on the pane, built on first use.
+        local headerRule
+        local headerHex = opts.headerColor
+            or (marker == "bar" and TextHex("muted", "|cff888888")) or "|cff888888"
+
         function api:Render(rows)
             api:Release()
             local y = -4
@@ -155,18 +322,45 @@ function MD.DashboardParts.CreateTable(parent, width, opts)
             header:SetPoint("TOPLEFT", pane, "TOPLEFT", 0, y)
             for i, col in ipairs(cols) do
                 local label = (opts.header and opts.header[i]) or col.label
-                header.cells[col.key]:SetText("|cff888888" .. label .. "|r")
+                header.cells[col.key]:SetText(headerHex .. label .. "|r")
             end
-            y = y - 18
+            if opts.headerRule then
+                if not headerRule then
+                    headerRule = pane:CreateTexture(nil, "BORDER")
+                    if type(opts.headerRule) == "table" then
+                        local c = opts.headerRule
+                        headerRule:SetColorTexture(c[1], c[2], c[3], c[4] or 1)
+                    else
+                        headerRule:SetColorTexture(FillColor("line"))
+                    end
+                end
+                local px = MD.UI.px and MD.UI.px(1, pane) or 1
+                headerRule:ClearAllPoints()
+                headerRule:SetPoint("TOPLEFT", pane, "TOPLEFT", 0, y - headerH + px)
+                headerRule:SetSize(rowW, px)
+                headerRule:Show()
+            end
+            y = y - headerH
 
-            for _, r in ipairs(rows) do
+            for i, r in ipairs(rows) do
                 local row = AcquireRow()
                 row:SetPoint("TOPLEFT", pane, "TOPLEFT", 0, y)
                 row.data = r
                 row.spellID = r.id
+                row.index = i -- T30: the zebra's parity
 
                 local color
-                if r.known == false then
+                if marker == "bar" then
+                    -- T30: no gold -- the fill, the bar and the caller's tag
+                    -- mark the suggested row.
+                    if r.known == false then
+                        color = TextHex("disabled", "|cff555555")
+                    elseif r.dominated then
+                        color = TextHex("muted", "|cff8a8a8a")
+                    else
+                        color = TextHex("text", "|cffffffff")
+                    end
+                elseif r.known == false then
                     color = "|cff555555"
                 elseif r.suggested then
                     color = "|cffffcc00"
@@ -176,9 +370,33 @@ function MD.DashboardParts.CreateTable(parent, width, opts)
                     color = "|cffffffff"
                 end
 
+                PaintFill(row)
                 opts.render(row, r, color)
-                y = y - ROW_HEIGHT
+                y = y - rowH
             end
+        end
+
+        -- T30: the selected row (drives T38's card) by its data's id; nil
+        -- clears it. Repaints the fills in place.
+        function api:SetSelected(id)
+            api.selectedId = id
+            for _, row in ipairs(usedRows) do
+                if not row.isHeader then PaintFill(row) end
+            end
+        end
+
+        -- T30: refresh in place -- opts.onUpdateCells(row, r) for every data
+        -- row now shown, nothing released or re-acquired. Returns the count.
+        function api:UpdateCells()
+            local n = 0
+            if not opts.onUpdateCells then return n end
+            for _, row in ipairs(usedRows) do
+                if not row.isHeader and row.data ~= nil then
+                    opts.onUpdateCells(row, row.data)
+                    n = n + 1
+                end
+            end
+            return n
         end
 
         return api
