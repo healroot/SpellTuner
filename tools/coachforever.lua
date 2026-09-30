@@ -373,6 +373,16 @@ do
             t.dangerPrior == want and u.dangerPrior == nil,
             string.format("prior=%s want=%s (maxHP %s) noId=%s", tostring(t.dangerPrior), tostring(want),
                 tostring(t.maxHP), tostring(u.dangerPrior)))
+
+        -- T46 (P2, review A18): the store handed in as the third argument
+        -- reaches the v3 builder. The Replay module's wrapper was `(rec, kit)`
+        -- and dropped it, so a curated leave-one-out store was ignored and the
+        -- prior came from MD.cdb.recordings (here: nothing but the coached fight).
+        MD.cdb.recordings = { coached }
+        local v = SM.ScenarioFromRecording(coached, kit, { coached, sameLevel, otherLevel }).targets[2]
+        check("the store passed as ScenarioFromRecording's third argument reaches the v3 builder",
+            v.dangerPrior ~= nil and v.dangerPrior == t.dangerPrior,
+            string.format("passed=%s via cdb=%s", tostring(v.dangerPrior), tostring(t.dangerPrior)))
     end
 
     MD.cdb.recordings = saved

@@ -854,5 +854,38 @@ end
 local plain = SM:Run(rp.scenario, nil, { critMode = "ev" })
 check("no trace unless asked", plain.trace == nil)
 
+--------------------------------------------------------------------------------
+-- 10. T46 (P2, review B5): Swiftmend ends the HoT it eats, in the trace. A
+-- Regrowth at 1 s eaten by a Swiftmend at 4 s used to leave no HOT_END, so the
+-- replay (and the practice window) drew it for its whole duration and the
+-- Swiftmend-ready dot kept offering something to eat.
+--------------------------------------------------------------------------------
+do
+    local B = SP.MaxRankBinds()
+    local rgE, smE = kit.caster[B.Regrowth], kit.caster[B.Swiftmend]
+    local sc = { dur = 20, pool = 9000, initial = { mana = 9000, apiBase = 10, apiCasting = 4 },
+                 kit = kit, floor = 0.30, ev = { t = {}, kind = {}, tgt = {}, amt = {}, x = {} },
+                 targets = { { name = "T", role = "TANK", maxHP = 10000, hp0 = 3000, tracked = true } },
+                 script = { { 1, B.Regrowth, rgE.cost, 1 }, { 4, B.Swiftmend, smE.cost, 1 } } }
+    local r = SM:Run(sc, nil, { critMode = "ev", trace = { dt = 0.25 } })
+    local tr, endAt = r.trace, nil
+    for i = 1, tr.nEv do
+        if tr.ev.kind[i] == TK.HOT_END and tr.ev.tgt[i] == 1 and tr.ev.a[i] == SM.HOT_INDEX.Regrowth then
+            endAt = endAt or tr.ev.t[i]
+        end
+    end
+    local st = RT.New(tr, sc)
+    st:Seek(6)
+    local row = st.hots[1] or {}
+    check("Swiftmend ends the Regrowth it eats (HOT_END at 4 s)",
+        endAt ~= nil and math.abs(endAt - 4) < 1e-6 and st:Hot(1, SM.HOT_INDEX.Regrowth) == nil,
+        string.format("HOT_END at %s, Hot() at 6 s %s", tostring(endAt),
+            st:Hot(1, SM.HOT_INDEX.Regrowth) and "live" or "nil"))
+    check("...and nothing is left for Swiftmend to eat after it",
+        row[SM.HOT_INDEX.Regrowth] == nil and row[SM.HOT_INDEX.Rejuvenation] == nil,
+        string.format("Regrowth %s, Rejuvenation %s", tostring(row[SM.HOT_INDEX.Regrowth] ~= nil),
+            tostring(row[SM.HOT_INDEX.Rejuvenation] ~= nil)))
+end
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 if #fails > 0 then for _, m in ipairs(fails) do print("  FAIL " .. m) end; os.exit(1) end

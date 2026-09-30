@@ -736,12 +736,14 @@ end
 
 --------------------------------------------------------------------------------
 -- Wrap SM.ScenarioFromRecording: a v3 stream goes to ScenarioV3, everything
--- else (every v2/TBC recording) takes the road it always has.
+-- else (every v2/TBC recording) takes the road it always has. Every argument
+-- after `kit` is forwarded as it came (T46, review A18: the wrapper was
+-- `(rec, kit)` and dropped T20b's `others` store on both roads).
 --------------------------------------------------------------------------------
 local V2ScenarioFromRecording = SM.ScenarioFromRecording
-function SM.ScenarioFromRecording(rec, kit)
-    if rec and rec.v == 3 then return SM.ScenarioV3(rec, kit) end
-    return V2ScenarioFromRecording(rec, kit)
+function SM.ScenarioFromRecording(rec, kit, ...)
+    if rec and rec.v == 3 then return SM.ScenarioV3(rec, kit, ...) end
+    return V2ScenarioFromRecording(rec, kit, ...)
 end
 
 --------------------------------------------------------------------------------

@@ -49,7 +49,11 @@ local depBuf, flightBuf = {}, {}
 -- The schedule a cast of `e` on a target would deposit, relative to now.
 -- `st` is what is already on that target of the same family (Lifebloom stacks).
 -- Returns the buffer and how many entries are live in it.
-function SV.Deposits(e, st, out)
+-- `eats` is what a Swiftmend (type "instant") is worth: the value of the HoT it
+-- would eat, which the caller works out (SM.SwiftmendEats) and passes in. It is
+-- never written onto the kit entry (T46, review B8: the entry is shared, and
+-- SM.KitSnapshot copied the stray field into practice recordings).
+function SV.Deposits(e, st, out, eats)
     out = out or {}
     local n = 0
     if not e then return out, 0 end
@@ -64,7 +68,7 @@ function SV.Deposits(e, st, out)
     if e.type == "instant" then
         -- Swiftmend: the amount depends on which HoT it eats, and the caller
         -- takes the eaten HoT's remaining deposits away.
-        put(cast, e.swiftmendAmount or 0)
+        put(cast, eats or 0)
         return out, n
     end
     if (e.direct or 0) > 0 then put(cast, e.direct) end
@@ -348,21 +352,16 @@ function Solver:Best(S, t, mana, form, delay)
                     if e and mana >= (e.cost or 0) then
                         local fi = HOT_INDEX[fam]
                         local st = fi and S.hots[i] and S.hots[i][fi]
-                        local eaten = nil
+                        local eaten, eats = nil, nil
                         if e.type == "instant" then
-                            -- Swiftmend eats a HoT; without one it does nothing
-                            local rj = S.hots[i] and S.hots[i][HOT_INDEX.Rejuvenation]
-                            local rg = S.hots[i] and S.hots[i][HOT_INDEX.Regrowth]
-                            if rj and rj.active then
-                                e.swiftmendAmount, eaten = e.swiftmendRejuv, "Rejuvenation"
-                            elseif rg and rg.active then
-                                e.swiftmendAmount, eaten = e.swiftmendRegrowth, "Regrowth"
-                            else
-                                e.swiftmendAmount = nil
-                            end
+                            -- Swiftmend eats a HoT; without one it does nothing.
+                            -- Which one is the engine's rule (SM.SWIFTMEND_ORDER:
+                            -- Regrowth first), so the pick is priced against the
+                            -- HoT that will really be consumed (T46, review B8).
+                            eaten, eats = SM.SwiftmendEats(e, S.hots[i])
                         end
-                        if not (e.type == "instant" and not e.swiftmendAmount) then
-                            local dep, dn = SV.Deposits(e, st, depBuf)
+                        if not (e.type == "instant" and not eats) then
+                            local dep, dn = SV.Deposits(e, st, depBuf, eats)
                             if (delay or 0) > 0 then
                                 for j = 1, dn do dep[j][1] = dep[j][1] + delay end
                             end

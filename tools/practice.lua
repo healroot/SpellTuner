@@ -133,6 +133,23 @@ check("a cast lands when its bar ends", castsAt[3] and castsAt[3][2] == RG and n
 check("the press queued during the cast went off after it", castsAt[4] and castsAt[4][2] == LB and near(castsAt[4][1], 8.0),
     castsAt[4] and string.format("%.2f", castsAt[4][1]))
 check("Swiftmend ate the Rejuvenation", castsAt[5] and castsAt[5][2] == SWM)
+do
+    -- T46 (P2, review B5): the practice window paints this trace, so the
+    -- Rejuvenation Swiftmend ate must end on it at the Swiftmend, not run on to
+    -- its nominal expiry with the Swiftmend-ready dot still offering it
+    local tr, endAt = s:LiveTrace(), nil
+    local smAt = castsAt[5] and castsAt[5][1]
+    for i = 1, (tr and tr.nEv or 0) do
+        if tr.ev.kind[i] == SM.TK.HOT_END and tr.ev.tgt[i] == MELEE
+           and tr.ev.a[i] == SM.HOT_INDEX.Rejuvenation then endAt = endAt or tr.ev.t[i] end
+    end
+    local st = tr and MD.ReplayTrace.New(tr, s.scenario)
+    if st and smAt then st:Seek(smAt + 1) end
+    check("the practice trace ends the HoT Swiftmend ate, at the Swiftmend",
+        endAt ~= nil and smAt ~= nil and near(endAt, smAt)
+        and st:Hot(MELEE, SM.HOT_INDEX.Rejuvenation) == nil,
+        string.format("Swiftmend at %s, HOT_END at %s", tostring(smAt), tostring(endAt)))
+end
 local starts = 0
 for i = 1, rec.n do if rec.ev.kind[i] == K.CASTSTART then starts = starts + 1 end end
 check("the cast bar is recorded for the cast, not for instants", starts == 1, tostring(starts))

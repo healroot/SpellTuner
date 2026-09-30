@@ -789,5 +789,90 @@ do
     end
 end
 
+--------------------------------------------------------------------------------
+-- 9. T46 (P2): the search reaches every seed, the solver prices Swiftmend the
+-- way the engine lands it, and a preempted plan is asked again when it is free.
+--------------------------------------------------------------------------------
+do
+    -- B6: `noDirect` is in the search's key, so the HoTs-only seed is evaluated
+    local rec = MD.FightRecorder:Get(1)
+    local kitS = MD.RankMath:SpellKit()
+    local sc = SM.ScenarioFromRecording(rec, kitS)
+    local realNew, built, hotsOnly = SP.NewPlan, 0, 0
+    SP.NewPlan = function(b, params, k)
+        built = built + 1
+        if params and params.noDirect then hotsOnly = hotsOnly + 1 end
+        return realNew(b, params, k)
+    end
+    local done = false
+    SP.Search(sc, { kit = kitS, binds = SP.MaxRankBinds(), maxEvals = 60 }, nil,
+        function() done = true end)
+    local frames = 0
+    while not done and frames < 20000 do _G.STUB.Tick(0.016); frames = frames + 1 end
+    SP.NewPlan = realNew
+    check("a HoTs-only (noDirect) plan is built during the search",
+        done and hotsOnly > 0, string.format("%d plan(s) built, %d HoTs-only", built, hotsOnly))
+
+    -- ...and no two seeds are the same point
+    local seeds = SP.SearchSeeds and SP.SearchSeeds()
+    local keys, dup = {}, nil
+    for _, p in ipairs(seeds or {}) do
+        local k = SP.ParamKey(p)
+        if keys[k] then dup = k end
+        keys[k] = true
+    end
+    check("the search's seeds are distinct points",
+        seeds ~= nil and #seeds >= 3 and dup == nil,
+        seeds and string.format("%d seed(s)%s", #seeds, dup and (", duplicate " .. dup) or "") or "no SP.SearchSeeds")
+end
+
+do
+    -- B8: both HoTs rolling, the engine's Swiftmend eats Regrowth (SimModel's
+    -- LandCast, TBC's rule); the solver must price that one. Eating the
+    -- Rejuvenation here would be worth 5000, the Regrowth 1.
+    local SMID = MD.SpellData.maxRank.Swiftmend
+    local entry = { family = "Swiftmend", type = "instant", cost = 100, cast = 1.5,
+                    swiftmendRejuv = 5000, swiftmendRegrowth = 1 }
+    local kitB = { caster = { [SMID] = entry } }
+    local plan = SV.NewPlan({ Swiftmend = SMID }, { minValue = 0, horizon = 12 }, kitB)
+    local St = state(5000, 0)
+    local function hot(fam)
+        return { active = true, spellID = 0, tick = 0, tickPeriod = 3, ticksLeft = 0, expires = 30,
+                 stacks = 1, bloom = 0, gen = 1, family = fam }
+    end
+    St.hots[1][SM.HOT_INDEX.Rejuvenation] = hot("Rejuvenation")
+    St.hots[1][SM.HOT_INDEX.Regrowth] = hot("Regrowth")
+    local _, id, _, saved = plan:Best(St, 10, 99999, "caster", 0)
+    check("with both HoTs rolling the solver's Swiftmend eats Regrowth, as the engine does",
+        id == SMID and saved ~= nil and saved < 100,
+        string.format("id=%s saved=%s", tostring(id), tostring(saved)))
+    check("the solver writes nothing onto the shared kit entry",
+        entry.swiftmendAmount == nil, "swiftmendAmount=" .. tostring(entry.swiftmendAmount))
+end
+
+do
+    -- B7: a 2.9 s cast started at 0 and preempted by a fixed cast at 0.5 frees
+    -- the healer at 2.0 (the fixed cast's global cooldown); the plan is asked
+    -- then, not at the cancelled cast's landing time
+    local HT = MD.SpellData.maxRank.HealingTouch
+    local kitP = { caster = { [HT] = { family = "HealingTouch", type = "direct", cast = 2.9,
+                                       cost = 100, direct = 500 } } }
+    local asked = {}
+    local plan = { Decide = function(_, S2, at)
+        asked[#asked + 1] = at
+        return HT, 1, 2
+    end, noReaction = true }
+    local sc = { dur = 8, pool = 9000, initial = { mana = 9000, apiBase = 10, apiCasting = 4 },
+                 kit = kitP, floor = 0.30, ev = { t = {}, kind = {}, tgt = {}, amt = {}, x = {} },
+                 targets = { { name = "T", role = "TANK", maxHP = 10000, hp0 = 2000, tracked = true } },
+                 fixed = { { 0.5, 8921, 50, -1 } } }
+    SM:Run(sc, plan, { critMode = "ev" })
+    local shown = {}
+    for j = 1, math.min(4, #asked) do shown[j] = string.format("%.2f", asked[j]) end
+    check("after a fixed cast preempts a 2.9 s cast at 0.5 s, the plan is asked at 2.0",
+        asked[1] == 0 and asked[2] ~= nil and math.abs(asked[2] - 2.0) < 1e-6,
+        "asked at " .. table.concat(shown, ", "))
+end
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 if #fails > 0 then for _, m in ipairs(fails) do print("  FAIL " .. m) end; os.exit(1) end

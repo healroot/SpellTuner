@@ -74,6 +74,27 @@ local LIFEBLOOM_MAX_STACKS = 3
 -- Innervate and potions are recorded events, not decisions (spec 13).
 local SPELL_CD = { [18562] = 15 }   -- Swiftmend
 SM.SPELL_CD = SPELL_CD              -- read by Engine/ReplayTrace.lua for the Swiftmend-ready dot
+
+-- T46 (P2, review B8): which HoT Swiftmend eats, in the order it tries them --
+-- Regrowth first, else Rejuvenation (TBC's rule, Engine/RankMath.lua's
+-- SWIFTMEND_*_SECONDS). ONE list, read by LandCast below and by the solver's
+-- valuation (Engine/SimSolver.lua), which priced Rejuvenation first while the
+-- engine ate Regrowth. The field is the kit entry's value of eating that HoT.
+SM.SWIFTMEND_ORDER = { "Regrowth", "Rejuvenation" }
+SM.SWIFTMEND_FIELD = { Regrowth = "swiftmendRegrowth", Rejuvenation = "swiftmendRejuv" }
+
+-- What a Swiftmend (kit entry `e`) would eat out of one target's HoT row:
+-- family, amount, the HoT's state -- or nil when there is nothing it can eat.
+-- Allocates nothing.
+function SM.SwiftmendEats(e, row)
+    if not (e and row) then return nil end
+    for _, fam in ipairs(SM.SWIFTMEND_ORDER) do
+        local st = row[HOT_INDEX[fam]]
+        local amount = e[SM.SWIFTMEND_FIELD[fam]]
+        if st and st.active and amount then return fam, amount, st end
+    end
+    return nil
+end
 -- Trailing damage per target, kept as a small circular buffer. This is the ONE
 -- derived input a plan is allowed (see the causality note in SimPlanner).
 local DMG_RING = 32
@@ -530,16 +551,15 @@ function SM:Run(scenario, plan, opts)
         elseif e.type == "lifebloom" then
             ApplyHot(ti, HOT_INDEX.Lifebloom, e, spellID)
         elseif e.type == "instant" then
-            -- Swiftmend eats Regrowth first, else Rejuvenation.
-            local row = S.hots[ti]
-            local rg = row and row[HOT_INDEX.Regrowth]
-            local rj = row and row[HOT_INDEX.Rejuvenation]
-            if rg and rg.active and e.swiftmendRegrowth then
-                Land(ti, e.swiftmendRegrowth, e.family, spellID, false)
-                rg.active = false
-            elseif rj and rj.active and e.swiftmendRejuv then
-                Land(ti, e.swiftmendRejuv, e.family, spellID, false)
-                rj.active = false
+            -- Swiftmend eats Regrowth first, else Rejuvenation (SM.SWIFTMEND_ORDER).
+            local fam, amount, st = SM.SwiftmendEats(e, S.hots[ti])
+            if fam then
+                Land(ti, amount, e.family, spellID, false)
+                st.active = false
+                -- T46 (P2, review B5): the HoT ends HERE. Its expiry pop later
+                -- sees an inactive slot and traces nothing, so without this the
+                -- replay and the practice window drew it to its nominal end.
+                Trace(TK.HOT_END, ti, HOT_INDEX[fam], 0)
             end
         end
     end
@@ -661,6 +681,11 @@ function SM:Run(scenario, plan, opts)
     local fixed = plan and scenario.fixed or nil
     local fixedN, fixedI = fixed and #fixed or 0, 1
     local inFlight = false      -- the plan has a cast committed and not yet landed
+    -- T46 (P2, review B7): the live decision chain's generation. Every
+    -- E_DECIDE carries the generation it was pushed under; a fixed cast that
+    -- frees the healer earlier than the pending decision starts a new one, and
+    -- the stale event falls through when it pops. One live chain, no allocation.
+    local decideGen = 0
     local samples, sampleN, sampleI = scenario.sampleT, scenario.sampleT and #scenario.sampleT or 0, 1
     local hpT, hpN, hpI = scenario.hpSampleT, scenario.hpSampleT and #scenario.hpSampleT or 0, 1
     local deciding = plan and plan.Decide and true or false
@@ -723,7 +748,7 @@ function SM:Run(scenario, plan, opts)
         -- across runs it must start clean or the search compares plans that
         -- remember different fights
         if plan.Reset then plan:Reset() end
-        HeapPush(h, 0, E_DECIDE, 0, 0, 0)
+        HeapPush(h, 0, E_DECIDE, decideGen, 0, 0)
     end
 
     local function TakeSample()
@@ -856,12 +881,18 @@ function SM:Run(scenario, plan, opts)
             -- no reason: the plan did not choose this one, it worked around it
             pendingWhy, pendingReason = SM.WHY_FIXED, nil
             Succeed(c[2], c[4] or -1, c[3])
-            -- the global cooldown it takes, and NO new decision event: exactly
-            -- one decision chain may be alive, and the pending one will hit the
-            -- busy guard below and reschedule itself. Pushing here as well made
-            -- two chains, and the plan's waiting was counted twice -- a card
-            -- reading "waited 390% of the fight" is how that showed up.
+            -- the global cooldown it takes. Exactly one decision chain may be
+            -- alive: pushing a second one made the plan's waiting count twice
+            -- (a card read "waited 390% of the fight"). T46 (P2, review B7):
+            -- the pending decision may sit at a preempted cast's landing time,
+            -- past this global cooldown, which left the plan idle and charged
+            -- for it -- so the chain is REPLACED: a new generation asks at
+            -- busyUntil and the pending event is dropped when it pops.
             busyUntil = t + GCD
+            if deciding then
+                decideGen = decideGen + 1
+                HeapPush(h, busyUntil, E_DECIDE, decideGen, 0, 0)
+            end
         elseif src == 5 then
             local et, prio, a, b, aux = HeapPop(h)
             if prio == E_TICK then
@@ -910,7 +941,7 @@ function SM:Run(scenario, plan, opts)
                     inFlight = false
                     Succeed(a, b, aux)   -- aux carries the committed cast's cost
                 end
-            elseif prio == E_DECIDE and deciding then
+            elseif prio == E_DECIDE and deciding and a == decideGen then
                 CatchUpFrames(t)
                 -- Still casting, or inside a fixed cast's global cooldown: ask
                 -- again when the healer is free. Only one decision chain may be
@@ -918,7 +949,7 @@ function SM:Run(scenario, plan, opts)
                 -- (repeat/until true is Lua 5.1's `goto`.)
                 repeat
                 if t < busyUntil - 1e-9 then
-                    HeapPush(h, busyUntil, E_DECIDE, 0, 0, 0)
+                    HeapPush(h, busyUntil, E_DECIDE, decideGen, 0, 0)
                     break
                 end
                 local spellID, ti, rule = plan:Decide(S, t, mana, form)
@@ -930,7 +961,7 @@ function SM:Run(scenario, plan, opts)
                     -- again. Asking again rather than committing now keeps the
                     -- plan causal -- it may well have a better answer by then.
                     lastWasWait = false
-                    HeapPush(h, t + reaction, E_DECIDE, 0, 0, 0)
+                    HeapPush(h, t + reaction, E_DECIDE, decideGen, 0, 0)
                 elseif spellID then
                     local e = kit and kit[form] and kit[form][spellID]
                     local castTime = (e and e.cast) or GCD
@@ -949,7 +980,7 @@ function SM:Run(scenario, plan, opts)
                         HeapPush(h, succeedAt, E_LAND, spellID, ti, e and e.cost or nil)
                     end
                     busyUntil = succeedAt > t + GCD and succeedAt or (t + GCD)
-                    HeapPush(h, busyUntil, E_DECIDE, 0, 0, 0)
+                    HeapPush(h, busyUntil, E_DECIDE, decideGen, 0, 0)
                 else
                     -- waiting is a real action; ask again at the next thing
                     -- that could change the answer, and never later than 0.5s
@@ -969,7 +1000,7 @@ function SM:Run(scenario, plan, opts)
                     waitTime = waitTime + span
                     waitRun = waitRun + span
                     if waitRun > maxWaitRun then maxWaitRun, maxWaitAt = waitRun, t + span end
-                    if nextT < dur then HeapPush(h, nextT, E_DECIDE, 0, 0, 0) end
+                    if nextT < dur then HeapPush(h, nextT, E_DECIDE, decideGen, 0, 0) end
                 end
                 until true
             end

@@ -38,18 +38,48 @@ MD.SimPlanner = SP
 local SM = nil  -- MD.SimModel, bound lazily
 local HOT_INDEX = { Rejuvenation = 1, Regrowth = 2, Lifebloom = 3 }
 
--- Parameter domains (docs/SPEC-v0.7.md 5.1). Small on purpose: the search has
--- 300 evaluations and a human has to remember the answer.
-SP.DOMAINS = {
-    swiftmendBelow = { 0.30, 0.40 },
-    directBelow    = { 0.35, 0.45, 0.55 },
-    rollStacks     = { 0, 1, 3 },
+-- A plan's parameters (docs/SPEC-v0.7.md 5.1), ONE list: name, domain, default.
+-- NewPlan's defaults, Plan:Params(), the search's cache key (SP.ParamKey), the
+-- domains and the descent order are all derived from it, so a parameter cannot
+-- be in a plan and missing from the key -- which is how `noDirect` fell out of
+-- the key and the HoTs-only seed was never evaluated (T46, review B6).
+-- Domains small on purpose: the search has 300 evaluations and a human has to
+-- remember the answer.
+--   seed = true: fixed by the seed the descent starts from, never stepped.
+SP.PARAMS = {
+    { name = "swiftmendBelow", domain = { 0.30, 0.40 },       default = 0.30 },
+    { name = "directBelow",    domain = { 0.35, 0.45, 0.55 }, default = 0.45 },
+    { name = "rollStacks",     domain = { 0, 1, 3 },          default = 3 },
     -- 1.00 = no health gate at all: whether a HoT is worth casting is the fit
     -- rule's question (does the whole heal land), not a threshold's
-    hotBelow       = { 0.60, 0.80, 0.90, 1.00 },
-    filler         = { false, true },   -- wait, or Lifebloom x1 on the tank
+    { name = "hotBelow",       domain = { 0.60, 0.80, 0.90, 1.00 }, default = 0.80 },
+    { name = "filler",         domain = { false, true },      default = false },  -- wait, or Lifebloom x1 on the tank
+    -- the "HoTs only" baseline: a seed of its own, descended within
+    { name = "noDirect",       domain = { false, true },      default = false, seed = true },
 }
-SP.PARAM_ORDER = { "swiftmendBelow", "directBelow", "rollStacks", "hotBelow", "filler" }
+SP.DOMAINS, SP.PARAM_ORDER = {}, {}
+for _, p in ipairs(SP.PARAMS) do
+    SP.DOMAINS[p.name] = p.domain
+    if not p.seed then SP.PARAM_ORDER[#SP.PARAM_ORDER + 1] = p.name end
+end
+
+-- The value a plan built from `params` holds for parameter `p` (nil = default;
+-- `false` and 0 are values).
+local function ParamValue(params, p)
+    local v = params and params[p.name]
+    if v == nil then return p.default end
+    return v
+end
+
+-- The search's cache key: every parameter in SP.PARAMS, as the plan will hold it.
+function SP.ParamKey(params)
+    local parts = {}
+    for i, p in ipairs(SP.PARAMS) do
+        local v = ParamValue(params, p)
+        parts[i] = type(v) == "number" and string.format("%.2f", v) or tostring(v)
+    end
+    return table.concat(parts, "|")
+end
 
 -- The families a rule can bind. Tranquility is deliberately absent: the spell
 -- table carries no heal values for it, so no plan may spend the player's mana
@@ -111,16 +141,8 @@ Plan.__index = Plan
 
 function SP.NewPlan(binds, params, kit)
     SM = SM or MD.SimModel
-    local p = setmetatable({
-        binds = binds,
-        kit = kit,
-        swiftmendBelow = params.swiftmendBelow or 0.30,
-        directBelow = params.directBelow or 0.45,
-        rollStacks = params.rollStacks or 3,
-        hotBelow = params.hotBelow or 0.80,
-        filler = params.filler or false,
-        noDirect = params.noDirect or false,   -- the "HoTs only" baseline
-    }, Plan)
+    local p = setmetatable({ binds = binds, kit = kit }, Plan)
+    for _, d in ipairs(SP.PARAMS) do p[d.name] = ParamValue(params, d) end
     return p
 end
 
@@ -129,9 +151,9 @@ function Plan:Reset()
 end
 
 function Plan:Params()
-    return { swiftmendBelow = self.swiftmendBelow, directBelow = self.directBelow,
-             rollStacks = self.rollStacks, hotBelow = self.hotBelow,
-             filler = self.filler, noDirect = self.noDirect }
+    local out = {}
+    for _, d in ipairs(SP.PARAMS) do out[d.name] = self[d.name] end
+    return out
 end
 
 function Plan:Clone(param, value)
@@ -1555,6 +1577,29 @@ local function RandomParams()
     return p
 end
 
+-- The points SP.Search descends from. T46 (P2, review B6): the third used to be
+-- a byte copy of the first, so the search started from two points and a random
+-- one; it is now the low-threshold corner SP.SearchRun's third seed already
+-- used. The random point is re-drawn (a few times at most) when it lands on a
+-- fixed one, so every seed is its own start.
+function SP.SearchSeeds()
+    local seeds = {
+        { swiftmendBelow = 0.30, directBelow = 0.45, rollStacks = 3, hotBelow = 0.80, filler = false },
+        { swiftmendBelow = 0.30, directBelow = 0.45, rollStacks = 3, hotBelow = 0.80, filler = false,
+          noDirect = true },
+        { swiftmendBelow = 0.30, directBelow = 0.35, rollStacks = 0, hotBelow = 0.60, filler = false },
+    }
+    local taken = {}
+    for _, p in ipairs(seeds) do taken[SP.ParamKey(p)] = true end
+    local r = RandomParams()
+    for _ = 1, 8 do
+        if not taken[SP.ParamKey(r)] then break end
+        r = RandomParams()
+    end
+    if not taken[SP.ParamKey(r)] then seeds[#seeds + 1] = r end
+    return seeds
+end
+
 -- Search(scenario, opts, onProgress, onDone)
 --   opts = { kit, binds, rec, maxEvals, abortAbove }
 --   onProgress(evals, bestScore)   called at most once per slice
@@ -1573,10 +1618,7 @@ function SP.Search(scenario, opts, onProgress, onDone)
     local seen = {}
     local alternates = {}
 
-    local function Key(p)
-        return string.format("%.2f|%.2f|%d|%.2f|%s", p.swiftmendBelow, p.directBelow,
-            p.rollStacks, p.hotBelow, tostring(p.filler))
-    end
+    local Key = SP.ParamKey
 
     local function Eval(params)
         local key = Key(params)
@@ -1611,13 +1653,7 @@ function SP.Search(scenario, opts, onProgress, onDone)
         return out
     end
 
-    local seeds = {
-        { swiftmendBelow = 0.30, directBelow = 0.45, rollStacks = 3, hotBelow = 0.80, filler = false },
-        { swiftmendBelow = 0.30, directBelow = 0.45, rollStacks = 3, hotBelow = 0.80, filler = false,
-          noDirect = true },
-        { swiftmendBelow = 0.30, directBelow = 0.45, rollStacks = 3, hotBelow = 0.80, filler = false },
-        RandomParams(),
-    }
+    local seeds = SP.SearchSeeds()
 
     local co = coroutine.create(function()
         for _, seed in ipairs(seeds) do
@@ -1957,9 +1993,10 @@ function SP.SearchRun(run, opts, onProgress, onDone)
     local evals, seen = 0, {}
     local best, bestScore, bestChain = nil, nil, nil
 
+    -- the plan's key (every SP.PARAMS entry, `noDirect` included -- T46, review
+    -- B6) plus the drink policy's two
     local function Key(p)
-        return string.format("%.2f|%.2f|%d|%.2f|%s|%.2f|%.2f", p.swiftmendBelow, p.directBelow,
-            p.rollStacks, p.hotBelow, tostring(p.filler), p.below, p.upTo)
+        return string.format("%s|%.2f|%.2f", SP.ParamKey(p), p.below, p.upTo)
     end
 
     local function Eval(params)

@@ -313,10 +313,11 @@ end
 
 --------------------------------------------------------------------------------
 -- Wrap SM:Validate: a v3 stream goes to ValidateV3, everything else (every
--- v2/TBC recording) takes the road it always has.
+-- v2/TBC recording) takes the road it always has. Every argument after `kit`
+-- is forwarded as it came (T46, review A18).
 --------------------------------------------------------------------------------
 local V2Validate = SM.Validate
-function SM.Validate(self, rec, kit)
-    if rec and rec.v == 3 then return SM.ValidateV3(self, rec, kit) end
-    return V2Validate(self, rec, kit)
+function SM.Validate(self, rec, kit, ...)
+    if rec and rec.v == 3 then return SM.ValidateV3(self, rec, kit, ...) end
+    return V2Validate(self, rec, kit, ...)
 end
