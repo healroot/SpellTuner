@@ -940,3 +940,40 @@ neither. One table, `tools/data/flavours.txt`, is what `release.sh`, `tools/apic
 equal it. On TBC nothing changes: its interface is inside the band and its marker says `tbc`.
 The same task made the ten TBC chat strings with an em or en dash and the window's U+00D7 close
 glyph ASCII (`tools/textcheck.py`, B3, U31) -- text only.
+
+## What a CANCEL means, and the bloom's bucket (2026-09-30, T48)
+
+The whole-project review (`docs/review/2026-09-30-project-review.md` B9, B10, B13) found three TBC
+recorder and overheal bugs; T48 (`docs/tasks/T48-tbc-recorders-overheal.md`) fixes them.
+
+1. **A CANCEL is a hard cast that ended without its success** (B9): an interrupt carrying its
+   `castGUID` (`UNIT_SPELLCAST_INTERRUPTED`; by spell id when no GUID was readable), or another own
+   cast start while it was pending. Its own success closes it; nothing else does -- not a HoT tick,
+   an aura, an energize, and not the failure a spam press of the same button produces
+   (`SPELL_CAST_FAILED` / `UNIT_SPELLCAST_FAILED`), whose reason text is localised and not read.
+   **Recordings made before this build keep their spurious CANCELs**: the pending cast was dropped
+   when they were written, so they cannot be repaired, and the replay does not hide a CANCEL followed
+   by the same spell's success (the author's answer, plan section 8, question 3).
+2. **The bloom is a Lifebloom bloom** (B10). 33778 is attributed to 33763 with kind `bloom` in the
+   overheal buckets and in calibration, so the Effective Lifebloom row can use a measured bloom
+   fraction, `/md calibrate` gets a bloom line, and a fully overhealed bloom wastes no mana (the ticks
+   carry the cost). Old `k:33778:direct` / `s:33778` entries decay out on their own (150-event
+   half-life); `s:33763` now includes the bloom (`f:Lifebloom` always did). Only the Lifebloom alias is
+   resolved: Tranquility's 44208 / 44207 stay under their own ids (resolving them is a model change
+   left to the author).
+3. **Tranquility's waste is divided by the caster's party** (B13): in a raid, the members of the
+   player's own subgroup (`GetRaidRosterInfo`); in a party, everyone, as before.
+
+## Pins are capped in the Review tab, and a cross-realm member keeps a bare name (2026-09-30, T49)
+
+Review's Pin on a single fight goes through the recorder's capped `Pin` (Forever's
+`Recorder_Forever.lua`; on TBC, whose `Engine/FightRecorder.lua` has no `Pin` yet, the same cap of
+two is applied by the Review until P18's `Engine/Recordings.lua` gives both lines one). A third pin
+is refused with one line, `pin: at most 2 fights can be pinned - unpin one first.`, on both lines;
+on TBC it used to be set and silently not honoured, on Forever it used to be set and, with every
+stream pinned, the next pull was lost. Forever's ring now protects only the first two pins (TBC's
+rule) and always stores. A party member from another realm is recorded with `name` bare and
+`realm` beside it (from `UnitName`'s second return): old recordings and new ones name the same
+person to `SM.PartyMaxFromOthers` and `SM.DangerHitFromOthers`; a cast SENT at `Name-Realm` is
+matched to the full name first, then to a bare name that is unique in the roster. The suffix form
+of the SENT target follows the retail convention and has not been seen on the beta.

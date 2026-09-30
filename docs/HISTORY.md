@@ -3813,3 +3813,43 @@ the new assertions, practice's record `client` `tbc` where the TBC harness said 
 TBC stub has no `GetBuildInfo`), and simcheck's run cost 3.55 -> 3.57 KB/run (T46's per-run state;
 the "run cost is flat" test still passes) -- plus addresses and ms. **Next:** wave 2 (P4-P6);
 the author's §44 items 3 and 15 on the next build.
+
+## 2026-09-30 — the refactor plan, wave 2: T48-T50 (P4-P6)
+
+Wave 2 of `docs/PLAN-refactor-ux.md` cherry-picked onto `06f0969`, oldest first, then the
+integrator's lines (CLAUDE.md, `docs/DECISIONS.md`, `docs/TESTING.md` §44, `docs/TOOLS.md`, this
+entry) in one commit. No TOC changes; the version stays 0.16.3. `tools/data/expected-counts.json`
+does not exist yet: when P13 creates it, the wave's counts are reccheck 63, runcheck 81,
+recordcheck 29, scenariocheck 14, reviewforever 13, coachforever 20, reviewui 46, parsecheck 15,
+clockcheck 23, spellsui 48, importcheck 20, `refcheck.py --selftest` 2.
+
+- **T48 (P4)** (`5c5554f`, `61175d8`, `b6bba2a`): the TBC recorders and overheal, B9-B13 -- a
+  pending hard cast ends only on its success, an interrupt carrying its `castGUID` or another own
+  start (never a HoT tick or a spam press's failure); the bloom (33778) recorded and calibrated as
+  33763 `bloom`, Tranquility's ids unchanged; `||` in the run usage line; `RR:Start` resets the potion
+  counts and the pull start; Tranquility's waste over the caster's raid subgroup. DECISIONS "What a
+  CANCEL means, and the bloom's bucket". Old recordings keep their spurious CANCELs (Q3). reccheck
+  63, runcheck 81; the new events are a second scripted pull that only reccheck plays, so the five
+  suites that play the first pull see the same stream.
+- **T49 (P5)** (`2806606`, `cd8716c`, `865acde`): Review's Pin capped at two on both lines (a third
+  refused with one line; on TBC the cap lives in the Review until P18), Forever's ring protecting only
+  the first two pins and always storing; a party member's `realm` beside the bare `name`, a SENT
+  `Name-Realm` target resolved by the full name then a unique bare name, a secret name storing no
+  realm; `/st coach 2:7` read and an unreadable argument refused; the selected row validated before
+  the rows are painted. DECISIONS "Pins are capped in the Review tab, and a cross-realm member keeps
+  a bare name". recordcheck 29, scenariocheck 14, reviewforever 13, coachforever 20, reviewui 46.
+- **T50 (P6)** (`40f9557`, `a402ee4`): Parse refuses one tick of a periodic clause and an amount
+  offered "or N healing" (Penance; Hellfire and Volley as UNVERIFIED wordings); the Forever clock
+  folds an opener up to 0.5 s before the combat flag into the fight; the Spells export escapes the
+  character line; `tools/import.lua`'s TBC `export N` writes its recording; refcheck undoes the
+  probe's escapes before counting. parsecheck 15, clockcheck 23, spellsui 48, importcheck 20,
+  `refcheck.py --selftest` 2 of 2. TBC is not affected.
+
+Every suite passes (exit codes checked), apicheck and textcheck 0 findings, in the worktree and in
+a `git archive` export. Each TBC suite's output against `06f0969` differs only as the task files
+say: reccheck's second pull and its nine assertions, runcheck's back-to-back runs and usage line
+(run B's `combat 143%` is a pre-existing oddity T48 names and leaves), reviewui's two assertions,
+importcheck's TBC export -- plus ms, addresses, scratch paths and reviewui's sliced search counts
+(19/21, 39/40/42 evaluations on either commit). **Next:** wave 3 (P7-P9); the author's §44 items
+4, 6, 8, 10 and 14 on the next build (plan item 13, the opener, is T50's B19 but the task named no
+TESTING line, so it waits for P35's pass over §44).

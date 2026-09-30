@@ -1444,15 +1444,28 @@ the numbers.
 ## 44. The refactor plan's checks (`docs/PLAN-refactor-ux.md` section 9; waves 1-3, the next build)
 
 Paste back as in section 41. Out of combat unless a step says otherwise. The items keep the plan's
-numbers; wave 1 (T45-T47) needs items 3 and 15, and waves 2-3 add the others as they land.
+numbers; wave 1 (T45-T47) needs items 3 and 15, wave 2 (T48-T50) adds 4, 6, 8, 10 and 14, and wave 3
+adds the others as it lands.
 
 **TBC.**
 
 3. **Text (B3).** `/md verify`, `/md unlock`, `/md window 99`, and a gear change that moves an efficient
    rank: no boxes; paste the verify block.
+4. **Casts under a rolling HoT (B9).** Keep Lifebloom rolling on the tank and hard-cast Healing Touch
+   three times in one pull, **pressing the Healing Touch button again two or three times during one of
+   the casts**; then move to cancel one cast. `/md replay 1`: three full cast bars, one cut. Also paste
+   `/run local f=CreateFrame("Frame") f:RegisterEvent("UNIT_SPELLCAST_INTERRUPTED") f:SetScript("OnEvent",function(_,e,...) print(e,...) end)`
+   and then move during a cast: the line shows `player`, a cast GUID and the spell id.
+6. **Bloom (B10).** After a dungeon with Lifebloom, `/md calibrate` lists a bloom line; the Waste view
+   has a Lifebloom bloom row.
+8. **Two runs (B12).** Stop a run, drink a potion, start a run: `/md run status` shows no potion.
+10. **Pins (B14).** Pin three fights in `/md` -> Reports -> Review: the third is refused with a line.
 
 **Forever.**
 
+10. **Pins (B14).** Pin three fights in Review: the third is refused with a line. Pull nine times: the
+    ninth is listed.
+14. **Coach address (B16).** `/st coach 2:7`: a refusal, no card.
 15. **Client (P3).** `/st dump`: the first line says `forever`.
 
 ## Reporting
