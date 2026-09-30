@@ -7,7 +7,7 @@ local _, MD = ...
 
 function MD:RunVerify()
     local SD = MD.SpellData
-    MD:Print("— verify: static data vs live client —")
+    MD:Print("-- verify: static data vs live client --")
     local mismatches, checkedCost, checkedCast = 0, 0, 0
 
     local ids = {}
@@ -21,7 +21,7 @@ function MD:RunVerify()
 
         if not name then
             mismatches = mismatches + 1
-            MD:Print("|cffff4444MISSING|r " .. label .. " — spellID unknown to this client")
+            MD:Print("|cffff4444MISSING|r " .. label .. " - spellID unknown to this client")
         else
             -- cast time (GetSpellInfo returns milliseconds)
             if s.cast and castMs and castMs > 0 then
@@ -62,10 +62,10 @@ function MD:RunVerify()
     end
 
     if checkedCost == 0 then
-        MD:Print("|cffffaa33GetSpellPowerCost unavailable|r — the static table is in use; costs must be verified " ..
+        MD:Print("|cffffaa33GetSpellPowerCost unavailable|r - the static table is in use; costs must be verified " ..
             "by hand (cast each rank at full idle mana and read the drop; compare to the table).")
     end
-    MD:Print(string.format("checked %d cast times, %d costs — %d mismatch(es).",
+    MD:Print(string.format("checked %d cast times, %d costs - %d mismatch(es).",
         checkedCast, checkedCost, mismatches))
 
     -- Spells outside the healing model, by what they were for (v0.10.1). The
@@ -90,7 +90,7 @@ function MD:RunVerify()
         end
     end
 
-    MD:Print("— input snapshot —")
+    MD:Print("-- input snapshot --")
     for _, line in ipairs(MD:Snapshot()) do MD:Print(line) end
     MD:Print("For the FSR anchor: stand idle at partial mana, run /md fsrtest, cast ONE " ..
         "Healing Touch, and watch which tick sizes appear when. For Dreamstate: /md regentest.")
@@ -497,7 +497,7 @@ function MD:RunFSRTest()
     fsrLogging = true
     fsrT0 = GetTime()
     fsrLast = UnitPower("player", 0)
-    MD:Print("fsrtest: logging mana changes for 15s — cast one spell now.")
+    MD:Print("fsrtest: logging mana changes for 15s - cast one spell now.")
     C_Timer.After(15, function()
         fsrLogging = false
         MD:Print("fsrtest: done.")
@@ -977,7 +977,7 @@ end
 
 function MD:RunSimRun()
     local SM, RM, SD = MD.SimModel, MD.RankMath, MD.SpellData
-    if not (SM and RM and SD) then MD:Print("simrun: engine not loaded.") return end
+    if not (SM and RM and SD) then MD:Print("simrun: engine not loaded.") return 0, 1 end
 
     -- The kit's caster half is built with inTree = false, so the rows it is
     -- compared against must be too -- otherwise running this in Tree form
@@ -1200,6 +1200,8 @@ function MD:RunSimRun()
         MD:Print("  " .. line)
         MD:Debug("sim", "simrun %s", line)
     end
+    -- T47 (Q3): the verdict, for tools/simcheck.lua's exit code
+    return #out, fails
 end
 
 --------------------------------------------------------------------------------
@@ -1255,29 +1257,33 @@ local function ReplayFixture(fx)
     local recorded = 0
     for _, c in ipairs(fx.casts) do recorded = recorded + (c[3] or 0) end
 
+    local spendExact = math.abs(eRes.manaSpent - recorded) < 1
+    local fit = eMean <= 0.02 and eMax <= 0.05
     local lines = {
         string.format("fixture %s: %d casts, %.1fs, pool %d", fx.name or "?", #fx.casts, fx.dur, fx.pool),
         string.format("  spend    sim %.0f vs recorded %d  (%s)", eRes.manaSpent, recorded,
-            math.abs(eRes.manaSpent - recorded) < 1 and "exact" or "MISMATCH"),
+            spendExact and "exact" or "MISMATCH"),
         string.format("  modelled mean %.1f%%  max %.1f%% at %.1fs   (GetManaRegen only)",
             mMean * 100, mMax * 100, mAt),
         string.format("  measured mean %.1f%%  max %.1f%% at %.1fs   (+ %.1f mana/s energize) -> %s",
             eMean * 100, eMax * 100, eAt, fx.initial.energize or 0,
-            (eMean <= 0.02 and eMax <= 0.05) and "PASS" or "FAIL"),
+            fit and "PASS" or "FAIL"),
     }
-    return lines
+    return lines, spendExact and fit
 end
 
 function MD:RunSimReplay(arg)
-    if not (MD.SimModel and MD.RankMath) then MD:Print("simreplay: engine not loaded.") return end
+    if not (MD.SimModel and MD.RankMath) then MD:Print("simreplay: engine not loaded.") return false end
     if arg == nil or arg == "" or arg == "fixture" or arg == "bf1" then
         local fx = MD.SimFixtures and MD.SimFixtures.BF1
-        if not fx then MD:Print("simreplay: no fixture loaded.") return end
-        for _, line in ipairs(ReplayFixture(fx)) do
+        if not fx then MD:Print("simreplay: no fixture loaded.") return false end
+        local lines, pass = ReplayFixture(fx)
+        for _, line in ipairs(lines) do
             MD:Print(line)
             MD:Debug("sim", "simreplay %s", line)
         end
-        return
+        -- T47 (Q3): the fixture's verdict -- spend exact and the fit inside its gate
+        return pass
     end
     local rec, label = MD:GetRecording(arg)
     if not rec then
