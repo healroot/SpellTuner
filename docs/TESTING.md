@@ -996,7 +996,7 @@ not moved).
 ```
 
 At character select the AddOns list shows SpellTuner and the three modules at the newest build --
-**0.16.2** as of 2026-09-30 (§42; 0.16.1 was build 70058's, §41), which carries everything 1.0.0-alpha.8 did (the numbering changed that
+**0.16.3** as of 2026-09-30 (§43; 0.16.2 the Forever UI, §42; 0.16.1 was build 70058's, §41), which carries everything 1.0.0-alpha.8 did (the numbering changed that
 day: one version for both lines, Forever beta builds 0.16.x, 1.0.0 at the Forever launch --
 `docs/DECISIONS.md` "One version, two installations"). Install it for every session of §38-§40;
 the steps below are written for it. Log in as Healroot, `/console scriptErrors 1`. Any
@@ -1154,7 +1154,7 @@ adds M3: the **Recorder** and **Replay** modules now do something. Nothing here 
 client yet; every step is the first time.
 
 **Install** as in §38 (`./release.sh --install-forever ...`). At character select SpellTuner and the
-three modules read the newest build (**0.16.2** as of 2026-09-30; it carries everything 1.0.0-alpha.5 and
+three modules read the newest build (**0.16.3** as of 2026-09-30; it carries everything 1.0.0-alpha.5 and
 later did).
 `/console scriptErrors 1`; any error box: note it, carry on,
 `/st dump` at the end of the session.
@@ -1221,7 +1221,7 @@ Two changes you may meet in §39's steps:
   report (the line `bar UnitHealthMax(party1): ...`). Nothing to do here; it ships off.
 
 **Install** as in §38 (`./release.sh --install-forever ...`). At character select SpellTuner and the
-three modules read the newest build (**0.16.2** as of 2026-09-30; it carries everything 1.0.0-alpha.6 and
+three modules read the newest build (**0.16.3** as of 2026-09-30; it carries everything 1.0.0-alpha.6 and
 later did).
 `/console scriptErrors 1`; any error box: note it, carry on,
 `/st dump` at the end of the session.
@@ -1316,7 +1316,7 @@ combat). Everything in the spec's task list landed (T27-T43); nothing here has r
 yet, and the shapes the tooltip's macro path rests on are still the retail engine's.
 
 **Install**: `./release.sh --install-forever "/mnt/e/Blizzard/World of Warcraft/_classic_beta_/Interface/AddOns"`.
-At character select SpellTuner and the three modules read **0.16.2**. `/console scriptErrors 1`;
+At character select SpellTuner and the three modules read **0.16.2** (or **0.16.3**, which carries it with §43's changes). `/console scriptErrors 1`;
 any error box: note it and carry on, `/st dump` at the end of the session. Out of combat unless a
 step says otherwise.
 
