@@ -284,7 +284,7 @@ local function Build(onPane)
     addBtn:SetPoint("BOTTOMLEFT", root, "BOTTOMLEFT", 12, 72)
     addBtn:SetScript("OnClick", function()
         local family = "Rejuvenation"
-        if MD.API.client == "forever" then family = MD.Practice.FirstFamily() end
+        if MD.Practice.policy.kitIsLive then family = MD.Practice.FirstFamily() end
         MD.Practice.AddBind({ key = "", family = family }) -- T27: into the stored list
         Render()
         Status("click the new row's key box and press something.")
@@ -295,8 +295,9 @@ local function Build(onPane)
         "Button5 Lifebloom, Alt-Button5 Rejuvenation, Shift-Button5 Rejuvenation Rank 5,",
         "left Regrowth, right Swiftmend, Shift-left Healing Touch.")
     defBtn:SetPoint("LEFT", addBtn, "RIGHT", 6, 0)
-    -- no Forever defaults exist: the shipped ones are the TBC author's Cell bindings
-    if MD.API.client == "forever" then defBtn:Hide() end
+    -- no defaults to go back to on a line whose policy ships none (Forever:
+    -- the shipped ones are the TBC author's Cell bindings)
+    if #MD.Practice.policy.defaultBinds == 0 then defBtn:Hide() end
     defBtn:SetScript("OnClick", function()
         MD.db.practiceBinds = nil
         Binds()

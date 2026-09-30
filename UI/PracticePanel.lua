@@ -424,7 +424,7 @@ function MD.DashboardParts.CreatePractice(parent, width)
             statusFS:SetText("|cffff9966Nothing is bound yet - import your bindings or add one in Edit bindings first.|r")
             return
         end
-        if MD.API.client == "forever" and not PR.FirstFamily() then
+        if PR.policy.kitIsLive and not PR.FirstFamily() then
             statusFS:SetText("|cffff9966No healing spell in your spellbook for practice to cast.|r")
             return
         end

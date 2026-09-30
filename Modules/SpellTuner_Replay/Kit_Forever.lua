@@ -267,4 +267,15 @@ end
 
 -- Only where no flavour has a kit of its own: this file must never replace
 -- Engine/RankMath.lua's.
-if RM.SpellKit == nil then RM.SpellKit = SpellKit end
+--
+-- T59 (P15, review A6a): and with the kit, the practice policy this kit
+-- implies (Engine/Practice.lua reads it as MD.Practice.policy; the TBC value
+-- is that file's default). The kit is the live spellbook's, so a family can be
+-- missing from it (`kitIsLive`); no bindings ship (the TBC defaults are the
+-- TBC author's Cell click-casting); a recording is stamped "forever". Provided
+-- here, before the Practice module loads (it needs this one), and only where
+-- this file's kit is the kit.
+if RM.SpellKit == nil then
+    RM.SpellKit = SpellKit
+    MD:Provide("PracticePolicy", { defaultBinds = {}, kitIsLive = true, client = "forever" })
+end

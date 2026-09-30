@@ -968,6 +968,7 @@ SpellTunerDB = {
 					},
 					["spent"] = 420,
 					["t0"] = 0,
+					["threatOn"] = {},
 					["tracked"] = {
 						[1] = 1,
 						[2] = 2,
@@ -1579,6 +1580,7 @@ SpellTunerDB = {
 					},
 					["spent"] = 300,
 					["t0"] = 0,
+					["threatOn"] = {},
 					["tracked"] = {
 						[1] = 1,
 						[2] = 2,

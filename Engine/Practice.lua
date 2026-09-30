@@ -145,15 +145,34 @@ PR.DEFAULT_BINDS = {
 PR.MOUSE = { LeftButton = "BUTTON1", RightButton = "BUTTON2", MiddleButton = "BUTTON3",
              Button4 = "BUTTON4", Button5 = "BUTTON5" }
 
--- The client the file is running on, read the one way a shared file may.
-local function OnForever()
-    return MD.API and MD.API.client == "forever"
+--------------------------------------------------------------------------------
+-- T59 (P15, review A6a): the practice POLICY. What differs between the two
+-- lines' practice is installed by the flavour, never asked of the client in
+-- this shared file:
+--   defaultBinds  the bindings a character starts with, copied into
+--                 db.practiceBinds the first time they are read;
+--   kitIsLive     true when the kit is the live spellbook's (Forever:
+--                 Modules/SpellTuner_Replay/Kit_Forever.lua), so a family can
+--                 be missing from it -- a binding for one is hidden and casts
+--                 nothing, and the kit is rebuilt when a pane paints; false
+--                 when it is a static table with every family (TBC's
+--                 Data/SpellData.lua);
+--   client        the stamp a recording carries (rec.client).
+-- The TBC value below is the default. Kit_Forever.lua provides
+-- MD.PracticePolicy before this file runs (the Practice module needs the
+-- Replay module), and that replaces it.
+--------------------------------------------------------------------------------
+PR.TBC_POLICY = { defaultBinds = PR.DEFAULT_BINDS, kitIsLive = false, client = "tbc" }
+PR.policy = MD.PracticePolicy or PR.TBC_POLICY
+
+local function KitIsLive()
+    return PR.policy.kitIsLive == true
 end
 
 -- T24: is this list exactly PR.DEFAULT_BINDS (same length, and in order the
--- same key, family and rank)? On Forever those are the TBC author's Cell
--- bindings, which 0.16.0 wrote into SavedVariables the first time the panel
--- was opened.
+-- same key, family and rank)? Those are the TBC author's Cell bindings, which
+-- 0.16.0 wrote into SavedVariables on Forever the first time the panel was
+-- opened.
 local function IsShippedDefaults(list)
     if #list ~= #PR.DEFAULT_BINDS then return false end
     for i, d in ipairs(PR.DEFAULT_BINDS) do
@@ -170,11 +189,12 @@ end
 -- saved. PR.Binds() below is what is SHOWN and CAST.
 function PR.AllBinds()
     local db = MD.db
-    local forever = OnForever()
+    local defaults = PR.policy.defaultBinds
     if db and type(db.practiceBinds) == "table" then
-        -- only an exact copy of the shipped defaults is dropped, once; any
-        -- other list is the player's own and is kept whole
-        if forever and IsShippedDefaults(db.practiceBinds) then
+        -- only an exact copy of the TBC defaults, on a line whose own defaults
+        -- are other (Forever's are none), is dropped, once; any other list is
+        -- the player's own and is kept whole
+        if defaults ~= PR.DEFAULT_BINDS and IsShippedDefaults(db.practiceBinds) then
             db.practiceBinds = {}
             if MD.Debug then
                 MD:Debug("other", "practice: the shipped TBC default bindings were saved on this client; dropped")
@@ -183,9 +203,7 @@ function PR.AllBinds()
         return db.practiceBinds
     end
     local out = {}
-    if not forever then
-        for i, b in ipairs(PR.DEFAULT_BINDS) do out[i] = { key = b.key, family = b.family, rank = b.rank } end
-    end
+    for i, b in ipairs(defaults) do out[i] = { key = b.key, family = b.family, rank = b.rank } end
     if db then db.practiceBinds = out end
     return out
 end
@@ -206,7 +224,7 @@ end
 -- PR.AddBind / PR.RemoveBind.
 function PR.Binds()
     local all = PR.AllBinds()
-    if not OnForever() then return all end
+    if not KitIsLive() then return all end
     local any = false
     for _, b in ipairs(all) do
         if IsHidden(b) then any = true; break end
@@ -222,7 +240,7 @@ end
 -- T27: the bindings kept but hidden (Forever), in stored order; {} on TBC.
 function PR.HiddenBinds()
     local out = {}
-    if not OnForever() then return out end
+    if not KitIsLive() then return out end
     for _, b in ipairs(PR.AllBinds()) do
         if IsHidden(b) then out[#out + 1] = b end
     end
@@ -235,7 +253,7 @@ function PR.ForgetHidden()
     local all = PR.AllBinds()
     local n = 0
     for i = #all, 1, -1 do
-        if OnForever() and IsHidden(all[i]) then
+        if KitIsLive() and IsHidden(all[i]) then
             table.remove(all, i)
             n = n + 1
         end
@@ -280,7 +298,7 @@ end
 -- without a /reload. Never on the press path; nothing on TBC, whose table is
 -- static.
 function PR.RefreshKit()
-    if not OnForever() then return end
+    if not KitIsLive() then return end
     if MD.RankMath and MD.RankMath.SpellKit then
         MD.RankMath:SpellKit({ live = true })
     end
@@ -310,7 +328,7 @@ end
 -- lists a family in SD.all only when the book has it. TBC's static table
 -- has every family, so it is always true there.
 function PR.InBook(bind)
-    if not OnForever() then return true end
+    if not KitIsLive() then return true end
     if not bind or not bind.family then return false end
     PR.EnsureKit()
     local all = MD.SpellData.all
@@ -389,7 +407,7 @@ function PR.ParseSpellText(text)
     -- family the book lacks (Lifebloom) is recognised by the engine's own name
     -- -- for PR.ApplyImport to skip it and say so, rather than the import
     -- calling it "not a heal this addon models".
-    if OnForever() then
+    if KitIsLive() then
         for family, label in pairs(PR.FAMILY_LABELS) do
             if name == label or name == family then return family, tonumber(rank) end
         end
@@ -438,15 +456,11 @@ end
 -- not recognise is refused with what it expected and what it found.
 --------------------------------------------------------------------------------
 
--- Reversible ASCII escaping, the same rule as Client/Probe.lua's Esc (this file's
--- own copy, T19): \ -> \\, | -> ||, then every byte outside printable ASCII -> \ddd.
-local function Esc(s)
-    if type(s) ~= "string" then s = tostring(s) end
-    local step1 = s:gsub("\\", "\\\\")
-    local step2 = step1:gsub("|", "||")
-    local step3 = step2:gsub("[^ -~]", function(c) return string.format("\\%03d", c:byte()) end)
-    return step3
-end
+-- Reversible ASCII escaping, the probe's rule: a backslash doubled, "|" ->
+-- "||", then every byte outside printable ASCII -> "\ddd". T59 (P15): Core.lua's
+-- MD.Text.EscASCII, no longer this file's own copy (T19). Every caller hands
+-- it a string.
+local Esc = MD.Text.EscASCII
 
 local function Safe(t, k)
     if type(t) ~= "table" then return nil end
@@ -1444,15 +1458,30 @@ function Session:Finish()
             deaths[#deaths + 1] = { S.deaths.tgt[i], t }
         end
     end
+    -- names: [spellID] = "Rejuvenation r10", as Engine/FightRecorder.lua keeps
+    -- it -- for every id the healer's own events carry (T59, P15, review A30:
+    -- the heals and ticks too, and the bloom's own id, which no cast carries).
+    -- A heal's crit flag (+100000) is not part of the id.
+    local SD = MD.SpellData
     local spent, casts, names = 0, 0, {}
+    local function Name(x)
+        local id = (x >= 100000) and (x - 100000) or x
+        if names[id] then return end
+        local base = SD.Resolve and SD:Resolve(id) or id
+        local sd = SD.spells[base]
+        if not sd then return end
+        names[id] = (SD.bloomID ~= nil and id == SD.bloomID) and (sd.family .. " bloom")
+            or (sd.family .. " r" .. sd.rank)
+    end
     for _, o in ipairs(self.own) do
         if o.t <= endT then
             rows[#rows + 1] = { t = o.t, kind = o.kind, tgt = o.tgt, amt = o.amt, x = o.x, order = 1, seq = o.seq }
             if o.kind == K.OWNCAST then
                 casts = casts + 1
                 if o.amt > 0 then spent = spent + o.amt end
-                local sd = MD.SpellData.spells[o.x]
-                if sd and not names[o.x] then names[o.x] = sd.family .. " r" .. sd.rank end
+            end
+            if o.kind == K.OWNCAST or o.kind == K.CASTSTART or o.kind == K.OWNHEAL or o.kind == K.OWNTICK then
+                Name(o.x)
             end
         end
     end
@@ -1533,12 +1562,16 @@ function Session:Finish()
     end
     local rec = {
         v = 2, id = self.startedAt, t0 = 0, dur = endT, pool = sc.pool,
-        kit = MD.SimModel.KitSnapshot(self.kit), client = MD.API.client, level = MD.player and MD.player.level,
+        kit = MD.SimModel.KitSnapshot(self.kit), client = PR.policy.client, level = MD.player and MD.player.level,
         build = build, version = MD.version,
         zone = "Practice: " .. (g and g.label or "custom"), encounter = "Practice",
         roster = roster, tracked = tracked, ev = ev, n = #ev.t,
         hp = hp, mana = mana, initial = initial, precasts = {}, deaths = deaths,
         names = names, ownCasts = casts, spent = spent,
+        -- T59 (P15, review A30): FightRecorder's field, [roster index] = the
+        -- last threat status recorded. Practice has no threat: empty, and no
+        -- K.THREAT event is ever written.
+        threatOn = {},
         foreignShare = (own + foreign) > 0 and foreign / (own + foreign) or 0,
         truncated = false, pinned = false,
         -- what makes it practice: the setup and seed that reproduce the fight,
