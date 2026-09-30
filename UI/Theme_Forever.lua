@@ -2,9 +2,10 @@
 -- Forever TOCs only, right after UI/Style.lua; at load, before any window is
 -- built, it writes the flat palette into UI.PALETTE, the text colours into
 -- UI.TEXT, builds the new fonts, and switches on the kit's pixel-snapped edges
--- (UI.PIXEL) and the dropdown lists' strata (UI.LIST_STRATA). The TBC TOC does
--- not list it, so there UI.TEXT, UI.PIXEL and UI.LIST_STRATA stay nil and every
--- shared file keeps its old literals.
+-- (UI.PIXEL) and the dropdown lists' strata (UI.LIST_STRATA), and sets
+-- UI.THEMED (T69, P25). The TBC TOC does not list it, so there UI.THEMED stays
+-- false, UI.PIXEL and UI.LIST_STRATA nil, and UI.TEXT / UI.PALETTE hold
+-- Style.lua's TBC values -- the literals the shared files carried.
 --
 -- No client data is read here: the accent is Style.lua's (UnitClass through
 -- the adapter, RAID_CLASS_COLORS), the font face is GameFontNormal's.
@@ -38,14 +39,12 @@ P.frame     = P.bg
 P.header    = P.nav
 
 --------------------------------------------------------------------------------
--- 4.1 Text colours: UI.TEXT.<token> = { r, g, b, hex = "|cffrrggbb" }. Shared
--- files read them behind `if UI.TEXT` and keep their literals otherwise. No
--- Blizzard gold here: the accent is the class colour.
+-- 4.1 Text colours: UI.TEXT.<token> = { r, g, b, hex = "|cffrrggbb" }, written
+-- over Style.lua's TBC values in place (T69, P25: the tokens are always
+-- present; UI.THEMED, not UI.TEXT, says the theme is on). No Blizzard gold
+-- here: the accent is the class colour.
 --------------------------------------------------------------------------------
-local function Tok(hex)
-    local r, g, b = tonumber(hex:sub(1, 2), 16), tonumber(hex:sub(3, 4), 16), tonumber(hex:sub(5, 6), 16)
-    return { r / 255, g / 255, b / 255, hex = "|cff" .. hex:lower() }
-end
+local Tok = UI.Token
 
 local accentHex = type(UI.accentHex) == "string" and UI.accentHex:match("^|c[fF][fF](%x%x%x%x%x%x)$")
 if not accentHex then
@@ -53,17 +52,23 @@ if not accentHex then
         math.floor(A[2] * 255 + 0.5), math.floor(A[3] * 255 + 0.5))
 end
 
-UI.TEXT = {
-    accent   = { A[1], A[2], A[3], hex = "|cff" .. accentHex:lower() },  -- titles, rules, selection
-    text     = Tok("FFFFFF"),   -- values
-    text2    = Tok("B3B3B3"),   -- secondary lines, comparison, spell text
-    label    = Tok("9D9D9D"),   -- labels in cards and the tooltip block
-    muted    = Tok("7A7A7A"),   -- dominated, footers, table headers, hints
-    disabled = Tok("4D4D4D"),   -- gaps, not learned, disabled buttons
-    mana     = Tok("4D99FF"),   -- modelled mana figures (the clock bar's 0.3/0.6/1)
-    good     = Tok("5CCB6E"),   -- measure verdicts
-    bad      = Tok("E0605A"),   -- measure verdicts, the stale warning
-}
+local T = UI.TEXT
+T.accent   = Tok(accentHex, A[1], A[2], A[3])   -- titles, rules, selection
+T.text     = Tok("FFFFFF")   -- values
+T.text2    = Tok("B3B3B3")   -- secondary lines, comparison, spell text
+T.label    = Tok("9D9D9D")   -- labels in cards and the tooltip block
+T.muted    = Tok("7A7A7A")   -- dominated, footers, table headers, hints
+T.disabled = Tok("4D4D4D")   -- gaps, not learned, disabled buttons
+T.mana     = Tok("4D99FF")   -- modelled mana figures (the clock bar's 0.3/0.6/1)
+T.good     = Tok("5CCB6E")   -- measure verdicts
+T.bad      = Tok("E0605A")   -- measure verdicts, the stale warning
+-- Style.lua's legacy tokens (TBC's disagreeing literals) read 4.1's here
+T.dominated = T.muted
+T.note      = T.text2
+T.tipGold   = T.accent
+
+-- the one switch every Forever-only branch asks (docs/PLAN-refactor-ux.md 2)
+UI.THEMED = true
 
 --------------------------------------------------------------------------------
 -- 4.2 Fonts: no outline, a black shadow at (1, -1). Friz (GameFontNormal's

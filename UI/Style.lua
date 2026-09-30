@@ -36,6 +36,70 @@ UI.grey = { 0.7, 0.7, 0.7 }
 function UI.GetAccentColorRGB() return accent[1], accent[2], accent[3] end
 
 --------------------------------------------------------------------------------
+-- T69 (P25, docs/PLAN-refactor-ux.md, review A20): one theme flag, colour
+-- tokens always present.
+--
+-- UI.THEMED is the only "is the Forever look on" test: false here, true once
+-- UI/Theme_Forever.lua has run (the Forever TOCs list it right after this
+-- file; TBC's does not). A branch that changes a font, a size, a layout or a
+-- behaviour asks UI.THEMED; a colour is a token read and never a gate.
+--
+-- UI.TEXT.<token> = { r, g, b, hex = "|cffrrggbb" }. These are TBC's values:
+-- each is the literal the shared files carried before the tokens existed, so
+-- TBC paints exactly what it painted. The theme overwrites every key. Tokens
+-- no TBC file reads (text2, label, mana, good, bad) carry 4.1's values.
+-- Where TBC's files disagreed on one role the extra value is a named legacy
+-- token, which the theme maps onto its 4.1 token; unifying them is P34's
+-- question to the author:
+--   dominated  8a8a8a  the rank table's dominated row (muted is 888888)
+--   note       ffcc00  the bindings import's notes, practice's "every <role>" rows
+--   tipGold    ffd100  MD.Tip's suggested rank ({1, 0.82, 0}; accent is ffcc00)
+--------------------------------------------------------------------------------
+UI.THEMED = false
+
+local function Token(hex, r, g, b)
+    if not r then
+        r, g, b = tonumber(hex:sub(1, 2), 16) / 255, tonumber(hex:sub(3, 4), 16) / 255,
+            tonumber(hex:sub(5, 6), 16) / 255
+    end
+    return { r, g, b, hex = "|cff" .. hex:lower() }
+end
+UI.Token = Token
+
+UI.TEXT = {
+    accent    = Token("ffcc00", 1, 0.8, 0),   -- highlighted words (Review's run line, the replay's header)
+    text      = Token("ffffff"),
+    text2     = Token("b3b3b3"),              -- no TBC reader: 4.1's value
+    label     = Token("9d9d9d"),              -- no TBC reader: 4.1's value
+    muted     = Token("888888"),              -- table headers, hints
+    disabled  = Token("555555"),              -- a rank not learned
+    mana      = Token("4d99ff"),              -- no TBC reader: 4.1's value
+    good      = Token("5ccb6e"),              -- no TBC reader: 4.1's value
+    bad       = Token("e0605a"),              -- no TBC reader: 4.1's value
+    dominated = Token("8a8a8a"),              -- legacy (see above)
+    note      = Token("ffcc00", 1, 0.8, 0),   -- legacy
+    tipGold   = Token("ffd100", 1, 0.82, 0),  -- legacy
+}
+
+-- A token's colour code, its r, g, b, and a palette fill's r, g, b, a. An
+-- unknown name paints white rather than raising into a paint (tools/
+-- themecheck.lua scans the tree for names neither table carries).
+function UI.Hex(token)
+    local t = UI.TEXT[token]
+    return t and t.hex or "|cffffffff"
+end
+function UI.RGB(token)
+    local t = UI.TEXT[token]
+    if t then return t[1], t[2], t[3] end
+    return 1, 1, 1
+end
+function UI.Fill(key)
+    local c = UI.PALETTE[key]
+    if c then return c[1], c[2], c[3], c[4] end
+    return 1, 1, 1, 1
+end
+
+--------------------------------------------------------------------------------
 -- Fonts (global font objects, like Cell's CELL_FONT_*)
 --------------------------------------------------------------------------------
 -- T29: every font object the kit builds, by name, so UI/Theme_Forever.lua's
@@ -458,6 +522,13 @@ UI.PALETTE = {
     header = { 0.115, 0.115, 0.115, 1 },  -- the title bar and the nav columns
     pane   = { 0.13, 0.13, 0.13, 1 },     -- a box drawn inside the content area
     border = { 0, 0, 0, 1 },
+    -- T69 (P25): the rank table's option fills (UI/Dashboard_Rows.lua), the
+    -- literals that file carried; the theme overwrites them with 4.1's.
+    rowAlt    = { 1, 1, 1, 0.03 },
+    hover     = { accent[1], accent[2], accent[3], 0.12 },
+    selected  = { accent[1], accent[2], accent[3], 0.28 },
+    suggested = { accent[1], accent[2], accent[3], 0.10 },
+    line      = { 0x2A / 255, 0x2A / 255, 0x2A / 255, 1 },
 }
 
 local NAV_W = 108        -- the left column
@@ -767,9 +838,11 @@ end
 -- Additive: nothing on TBC builds them (only a layout = "rail" nav group and
 -- the Forever panes do). Colours are the theme's (UI.PALETTE / UI.TEXT, from
 -- UI/Theme_Forever.lua) with the flat literals as the fallback.
+-- T69 (P25): UI.TEXT is present on TBC too now, so the text colours ask
+-- UI.THEMED: without the theme each call keeps its own literal, as before.
 --------------------------------------------------------------------------------
 local function TextRGB(token, r, g, b)
-    local t = UI.TEXT and UI.TEXT[token]
+    local t = UI.THEMED and UI.TEXT[token]
     if t then return t[1], t[2], t[3] end
     return r, g, b
 end
@@ -1315,7 +1388,7 @@ function UI.CreateDropdown(parent, width, height, onSelect)
     -- T31 (6.2): the lists' strata is the kit's setting; nil is today's DIALOG
     -- (TBC's), the Forever theme lifts it above the replay's
     list:SetFrameStrata(UI.LIST_STRATA or "DIALOG")
-    UI.StylizeFrame(list, UI.PALETTE and UI.PALETTE.header or { 0.115, 0.115, 0.115, 1 })
+    UI.StylizeFrame(list, UI.PALETTE.header)
     list:Hide()
     WatchPopup(list)   -- T31: UI.OnPopup told, once it exists (after the first Hide)
     dd.list = list
@@ -1393,7 +1466,7 @@ function UI.CreateTreeDropdown(parent, width, height, onSelect)
     local function Panel(strata)
         local f = CreateFrame("Frame", nil, parent, "BackdropTemplate")
         f:SetFrameStrata(strata)
-        UI.StylizeFrame(f, UI.PALETTE and UI.PALETTE.header or { 0.115, 0.115, 0.115, 1 })
+        UI.StylizeFrame(f, UI.PALETTE.header)
         f:Hide()
         return f
     end

@@ -23,8 +23,8 @@ local MUTED  = { 0.43, 0.43, 0.43 }
 local WARN   = { 1, 0.67, 0.2 }
 -- T43 (docs/SPEC-forever-ui.md 4.4): the theme's accent where it is loaded
 -- (Forever; UI/Theme_Forever.lua runs before any module file), else gold (TBC).
-local GOLD   = (UI and UI.TEXT and UI.TEXT.accent)
-    and { UI.TEXT.accent[1], UI.TEXT.accent[2], UI.TEXT.accent[3] } or { 1, 0.82, 0 }
+-- T69 (P25): a token read -- "tipGold", TBC's {1, 0.82, 0}, the accent themed.
+local GOLD   = { UI.RGB("tipGold") }
 local GOOD   = { 0.2, 1, 0.4 }
 local MANA   = { 0.31, 0.66, 0.94 }
 

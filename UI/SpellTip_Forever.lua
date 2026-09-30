@@ -42,8 +42,10 @@ local FALLBACK = {
     mana     = { 0.302, 0.6, 1, hex = "|cff4d99ff" },
     bad      = { 0.878, 0.376, 0.353, hex = "|cffe0605a" },
 }
+-- T69 (P25): UI.TEXT is present on TBC too now (its gold among it), so the
+-- block asks UI.THEMED: without the theme it keeps these values, as before.
 local function C(name)
-    local t = MD.UI and MD.UI.TEXT
+    local t = MD.UI and MD.UI.THEMED and MD.UI.TEXT
     return (t and t[name]) or FALLBACK[name]
 end
 

@@ -28,9 +28,10 @@ local Esc = MD.Text.Esc
 
 -- T43 (docs/SPEC-forever-ui.md 4.1, 4.4): the window's own highlighted words
 -- (the header's #n and PRACTICE, the run strip's name, "paused") open with the
--- theme's accent on Forever; UI.TEXT is nil on TBC, which keeps its gold.
+-- theme's accent on Forever; TBC keeps its gold. T69 (P25): a token read,
+-- TBC's accent token (UI/Style.lua) being that gold.
 local function Hi()
-    return UI.TEXT and UI.TEXT.accent and UI.TEXT.accent.hex or "|cffffcc00"
+    return UI.Hex("accent")
 end
 
 local COL_W = 460              -- the healer strip's width; a column is at least this wide

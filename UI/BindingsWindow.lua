@@ -24,7 +24,7 @@
 -- 460, the whole pane masked), /st binds and "Edit bindings" open the main
 -- window on that view with the sheet shown, it is one entry on the ESC stack
 -- (one ESC closes the sheet and leaves the window), it hides with its pane,
--- and it refuses to open in combat. Under the theme (UI.TEXT) the waiting key
+-- and it refuses to open in combat. Under the theme (UI.THEMED) the waiting key
 -- box is in the accent and an import's notes in text2, not Blizzard gold.
 -- TBC keeps its own movable window exactly as before.
 local _, MD = ...
@@ -38,17 +38,14 @@ local hiddenLine, hiddenFS, forgetBtn -- T27: the footer for bindings kept but h
 local host -- T40: the practice pane the sheet sits on (nil: TBC's window)
 local capturing = nil
 
--- T40: a colour from the theme, else today's literal (TBC)
-local function Hex(token, fallback)
-    local t = UI.TEXT and UI.TEXT[token]
-    return (t and t.hex) or fallback
-end
+-- T40: a colour from the theme, TBC's own literal without it. T69 (P25): a
+-- token read (UI.Hex), TBC's tokens holding those literals (UI/Style.lua).
 
 -- a tooltip's first line takes the client's gold unless it is coloured: the
--- accent under the theme, the text unchanged on TBC
+-- accent under the theme (UI.THEMED), the text unchanged on TBC
 local function Title(text)
-    local t = UI.TEXT and UI.TEXT.accent
-    return t and (t.hex .. text .. "|r") or text
+    if UI.THEMED then return UI.Hex("accent") .. text .. "|r" end
+    return text
 end
 
 local function InCombat()
@@ -138,7 +135,7 @@ local function Row(i)
     row.key:SetScript("OnClick", function(self, button)
         if capturing ~= row then
             capturing = row
-            self:SetText(Hex("accent", "|cffffcc00") .. "press a key or button...|r") -- T40
+            self:SetText(UI.Hex("accent") .. "press a key or button...|r") -- T40, T69: gold on TBC
             self:EnableKeyboard(true)
             Status("press the key or mouse button, with any modifiers held. Escape cancels.")
             return
@@ -223,7 +220,7 @@ local function Report(newList, report)
     local lines = { string.format("|cff99dd99From %s: %d added, %d replaced%s. Everything else kept.|r",
         report.source or "?", added, replaced, same > 0 and string.format(", %d already the same", same) or "") }
     for _, note in ipairs(report.notes or {}) do
-        lines[#lines + 1] = Hex("text2", "|cffffcc00") .. note .. "|r" -- T40
+        lines[#lines + 1] = UI.Hex("note") .. note .. "|r" -- T40, T69: gold on TBC, text2 themed
     end
     for _, why in ipairs(report.skipped or {}) do
         lines[#lines + 1] = "|cff888888not imported - " .. why .. "|r"
@@ -271,7 +268,7 @@ local function Build(onPane)
     hint:SetWidth(W - 24)
     hint:SetJustifyH("LEFT")
     hint:SetText("In practice you hover a frame and press. Click a binding's key box, then press the key " ..
-        "or mouse button you want, modifiers held.|n" .. Hex("muted", "|cff888888") .. "These are SpellTuner's own bindings - " ..
+        "or mouse button you want, modifiers held.|n" .. UI.Hex("muted") .. "These are SpellTuner's own bindings - " ..
         "practice never reads your keybindings, Cell or Clique while you play, so import them here.|r")
 
     list = UI.CreateScrollFrame(root, 0, 0)

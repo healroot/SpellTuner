@@ -14,7 +14,8 @@ MD.DashboardParts = MD.DashboardParts or {}
 local ROW_H = 20
 
 -- T40 (docs/SPEC-forever-ui.md 4.4, 6.4, 6.7): under the Forever theme
--- (UI.TEXT, set by UI/Theme_Forever.lua on the Forever TOCs only) the panel
+-- (UI.THEMED since T69/P25, set by UI/Theme_Forever.lua on the Forever TOCs
+-- only; colours are token reads, TBC's tokens holding its literals) the panel
 -- drops Blizzard gold (the role rows in text2, the key labels in the accent),
 -- shows "you" as a small accent tag after the name, wraps the fight fields
 -- onto a second row when the pane is narrower than them (the Simulate group
@@ -23,15 +24,11 @@ local ROW_H = 20
 -- manager (MD.Win) "Edit bindings" opens the bindings SHEET on this pane
 -- (UI/BindingsWindow.lua). TBC has neither, and every line of its panel is
 -- built exactly as before.
-local function Hex(token, fallback)
-    local t = UI.TEXT and UI.TEXT[token]
-    return (t and t.hex) or fallback
-end
 -- a tooltip's first line takes the client's gold unless it is coloured: the
 -- accent under the theme, the text unchanged on TBC
 local function Title(text)
-    local t = UI.TEXT and UI.TEXT.accent
-    return t and (t.hex .. text .. "|r") or text
+    if UI.THEMED then return UI.Hex("accent") .. text .. "|r" end
+    return text
 end
 
 -- T40: every practice pane built under the manager, so /st binds can find the
@@ -99,8 +96,8 @@ function MD.DashboardParts.CreatePractice(parent, width)
     local pane = CreateFrame("Frame", nil, parent)
     pane:Hide()
     local api = { frame = pane }
-    local themed = UI.TEXT ~= nil                  -- T40: the Forever theme
-    local GREY = themed and Hex("muted", "|cff888888") or "|cff888888"
+    local themed = UI.THEMED                       -- T40: the Forever theme (T69: the flag)
+    local GREY = UI.Hex("muted")                   -- T69: 888888 on TBC, the theme's muted on Forever
     if MD.Win then hosts[pane] = true end
 
     local function Setup()
@@ -229,8 +226,8 @@ function MD.DashboardParts.CreatePractice(parent, width)
             if c[1] == "name" then
                 local fs = row:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
                 fs:SetPoint("LEFT", row, "LEFT", x, 0)
-                fs:SetText((themed and Hex("text2", "|cffb3b3b3") or "|cffffcc00") .. "every "
-                    .. PR.ROLES[kind].label:lower() .. "|r") -- T40: text2 under the theme
+                fs:SetText(UI.Hex("note") .. "every "
+                    .. PR.ROLES[kind].label:lower() .. "|r") -- T40/T69: "note", gold on TBC, text2 themed
             elseif c[4] ~= "label" and c[1] ~= "maxHP" then
                 local key, how = c[1], c[4]
                 local eb = Field(row, c[3], function()
@@ -280,7 +277,7 @@ function MD.DashboardParts.CreatePractice(parent, width)
                     row.nameEB = eb
                     row.youFS = eb:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
                     row.youFS:SetPoint("RIGHT", eb, "RIGHT", -5, 0)
-                    row.youFS:SetText(Hex("accent", "|cff99dd99") .. "you|r")
+                    row.youFS:SetText(UI.Hex("accent") .. "you|r")
                     row.youFS:Hide()
                 end
                 eb:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
@@ -377,7 +374,7 @@ function MD.DashboardParts.CreatePractice(parent, width)
         PR.EnsureKit()
         local SD = MD.SpellData
         local binds = PR.Binds()
-        local accent, white = Hex("accent", "|cffffffff"), Hex("text", "|cffffffff")
+        local accent, white = UI.Hex("accent"), UI.Hex("text")
         local tips = { Title("What your presses cast") }
         if #binds == 0 then
             summary.fs:SetText("|cffff9966Nothing is bound|r")

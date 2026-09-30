@@ -48,16 +48,9 @@ local function Pitch(n)
     return n
 end
 
--- A theme token's colour code / r, g, b, with the flat literal as fallback
--- (the theme is always listed before this file on Forever).
-local function Hex(token, fallback)
-    local t = UI.TEXT and UI.TEXT[token]
-    return (t and t.hex) or fallback
-end
-local function SetColor(fs, token, r, g, b)
-    local t = UI.TEXT and UI.TEXT[token]
-    if t then fs:SetTextColor(t[1], t[2], t[3]) else fs:SetTextColor(r, g, b) end
-end
+-- Colours are the theme's tokens, read through UI.Hex / UI.RGB (T69, P25: the
+-- tokens are always present, and the theme is always listed before this file
+-- on Forever, so the private helpers and their flat fallbacks are gone).
 
 local RESET = "|r"
 
@@ -230,12 +223,6 @@ local OTHER_COLS = {
     { key = "tag",   x = 202, w = 52, label = "", font = UI.FONT_SMALL },
 }
 
-local function Tok(token, r, g, b)
-    local t = UI.TEXT and UI.TEXT[token]
-    if t then return t[1], t[2], t[3] end
-    return r, g, b
-end
-
 local function Round(x) return math.floor(x + 0.5) end
 
 local function KnownRanks(fam)
@@ -335,9 +322,9 @@ end
 -- modelled current pool only; the max plain.
 local function HeaderManaText(pool)
     if type(pool) == "table" and type(pool.mana) == "number" and type(pool.max) == "number" then
-        return Hex("mana", "|cff4d99ff") .. "~" .. Num(pool.mana) .. RESET .. " / " .. Num(pool.max) .. " mana"
+        return UI.Hex("mana") .. "~" .. Num(pool.mana) .. RESET .. " / " .. Num(pool.max) .. " mana"
     end
-    return Hex("muted", "|cff7a7a7a") .. "mana not modelled yet" .. RESET
+    return UI.Hex("muted") .. "mana not modelled yet" .. RESET
 end
 
 -- The pool a To OOM cell counts from: full, at the clock's (else the book's)
@@ -376,10 +363,10 @@ local function KitTip(owner, title, ...)
     local tt = UI.tooltip
     if not tt then return end
     tt:SetOwner(owner, "ANCHOR_NONE")
-    tt:AddLine(title, Tok("text", 1, 1, 1))
+    tt:AddLine(title, UI.RGB("text"))
     for i = 1, select("#", ...) do
         local line = select(i, ...)
-        if line then tt:AddLine(line, Tok("text2", 0.7, 0.7, 0.7)) end
+        if line then tt:AddLine(line, UI.RGB("text2")) end
     end
     tt:Show()
     Place(tt, owner)
@@ -400,7 +387,7 @@ local function GameTip(row, fam, e)
     tt._spellTipId = nil
     local shown = MD.API.SetTooltipSpell(tt, e.id)
     if not shown then
-        tt:AddLine(RankName(fam, e.rank), Tok("text", 1, 1, 1))
+        tt:AddLine(RankName(fam, e.rank), UI.RGB("text"))
     end
     if tt._spellTipId ~= e.id and MD.SpellTip then
         local ok, lines = pcall(MD.SpellTip.Lines, MD.SpellTip, e.id, MD.SpellTip:DetailShown())
@@ -418,13 +405,13 @@ end
 --------------------------------------------------------------------------------
 local function TagText(r)
     local e = r.entry
-    if e.suggested then return Hex("accent", UI.accentHex) .. "best" .. RESET end
+    if e.suggested then return UI.Hex("accent") .. "best" .. RESET end
     if e.known == false then
         local word = (type(e.level) == "number") and ("learn at " .. e.level) or "not learned"
-        return Hex("disabled", "|cff4d4d4d") .. word .. RESET
+        return UI.Hex("disabled") .. word .. RESET
     end
-    if r.isMax then return Hex("text2", "|cffb3b3b3") .. "max" .. RESET end
-    if e.dominated then return Hex("muted", "|cff7a7a7a") .. "dominated" .. RESET end
+    if r.isMax then return UI.Hex("text2") .. "max" .. RESET end
+    if e.dominated then return UI.Hex("muted") .. "dominated" .. RESET end
     return ""
 end
 
@@ -446,7 +433,7 @@ local function RenderRankRow(row, r, color)
     r.color = color
     for _, fs in pairs(row.cells) do fs:SetText("") end
     if r.kind == "gap" then
-        local dis = Hex("disabled", "|cff4d4d4d")
+        local dis = UI.Hex("disabled")
         row.cells.rank:SetText(dis .. "R" .. r.rank .. RESET)
         SetWide(row, RANK_COLS[2].x, dis .. GAP_TEXT .. RESET)
         if row.SetBar then row:SetBar("permana", nil) end
@@ -541,7 +528,7 @@ end
 -- 4. The rank card
 --------------------------------------------------------------------------------
 local function PerSecWord(e, kind)
-    return Words.PerSec(e, kind, "card", { muted = Hex("muted", "|cff7a7a7a"), reset = RESET })
+    return Words.PerSec(e, kind, "card", { muted = UI.Hex("muted"), reset = RESET })
 end
 
 -- The label/value pairs for one rank, by shape: { {label, value}, ... }.
@@ -550,7 +537,7 @@ local function CardPairs(fam, e, pool)
     local function P(l, v) out[#out + 1] = { l, v } end
     local kind = fam.kind
     if kind then
-        local parts = Words.Value(e, kind, "card", { muted = Hex("muted", "|cff7a7a7a"), reset = RESET })
+        local parts = Words.Value(e, kind, "card", { muted = UI.Hex("muted"), reset = RESET })
         for _, p in ipairs(parts) do P(p[1], p[2]) end
     end
     P("Cost", CostWord(e))
@@ -576,10 +563,10 @@ end
 
 local function NowWord(e, pool)
     if type(pool.mana) ~= "number" then
-        return Hex("muted", "|cff7a7a7a") .. "mana not modelled yet" .. RESET
+        return UI.Hex("muted") .. "mana not modelled yet" .. RESET
     end
     local now = MD.Book:CastsFor(e, pool)
-    local mana = Hex("mana", "|cff4d99ff")
+    local mana = UI.Hex("mana")
     if now == math.huge then return "never - regen keeps up" end
     return mana .. "~" .. CastsWord(now) .. RESET .. " from " .. mana .. "~" .. Num(pool.mana) .. RESET .. " mana"
 end
@@ -592,12 +579,12 @@ local function CardPair(card, i)
     p.label:SetJustifyH("LEFT")
     p.label:SetWordWrap(false)
     p.label:SetWidth(CARD_LABEL_W)
-    p.label:SetTextColor(Tok("label", 0.62, 0.62, 0.62))
+    p.label:SetTextColor(UI.RGB("label"))
     p.value = card:CreateFontString(nil, "OVERLAY", UI.FONT_NUM or UI.FONT)
     p.value:SetJustifyH("LEFT")
     p.value:SetWordWrap(false)
     p.value:SetWidth(CARD_COL - CARD_LABEL_W - 8)
-    p.value:SetTextColor(Tok("text", 1, 1, 1))
+    p.value:SetTextColor(UI.RGB("text"))
     card.pairPool[i] = p
     return p
 end
@@ -746,7 +733,7 @@ local function BuildFamily(host)
     banner.text = banner:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
     banner.text:SetPoint("LEFT", banner, "LEFT", 8, 0)
     banner.text:SetJustifyH("LEFT")
-    SetColor(banner.text, "text2", 0.7, 0.7, 0.7)
+    banner.text:SetTextColor(UI.RGB("text2"))
     banner.text:SetText("Not in your list.")
     banner.addBtn = UI.CreateButton(banner, "+ Add to my spells", "accent-hover", { 130, 16 },
         false, false, UI.FONT_SMALL, UI.FONT_SMALL)
@@ -783,18 +770,18 @@ local function BuildFamily(host)
     header.sub:SetPoint("TOPLEFT", header.name, "BOTTOMLEFT", 0, -4)
     header.sub:SetJustifyH("LEFT")
     header.sub:SetWordWrap(false)
-    SetColor(header.sub, "text2", 0.7, 0.7, 0.7)
+    header.sub:SetTextColor(UI.RGB("text2"))
     header.mana = header:CreateFontString(nil, "OVERLAY", UI.FONT_NUM or UI.FONT)
     header.mana:SetPoint("TOPRIGHT", header, "TOPRIGHT", -4, -8)
     header.mana:SetJustifyH("RIGHT")
-    SetColor(header.mana, "text", 1, 1, 1)
+    header.mana:SetTextColor(UI.RGB("text"))
     f.header = header
 
     -- a family the book no longer has (3.3)
     f.staleText = content:CreateFontString(nil, "OVERLAY", UI.FONT)
     f.staleText:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 4, -BLOCK_GAP)
     f.staleText:SetJustifyH("LEFT")
-    SetColor(f.staleText, "text2", 0.7, 0.7, 0.7)
+    f.staleText:SetTextColor(UI.RGB("text2"))
     f.staleText:Hide()
     f.removeBtn = UI.CreateButton(content, "Remove", "accent-hover", { 70, 20 })
     f.removeBtn:SetPoint("TOPLEFT", f.staleText, "BOTTOMLEFT", 0, -8)
@@ -824,7 +811,7 @@ local function BuildFamily(host)
     strip.chipRank = chip:CreateFontString(nil, "OVERLAY", UI.FONT_BIG or UI.FONT_TITLE)
     strip.chipRank:SetPoint("TOPLEFT", chip, "TOPLEFT", 10, -17)
     strip.chipRank:SetJustifyH("LEFT")
-    SetColor(strip.chipRank, "text", 1, 1, 1)
+    strip.chipRank:SetTextColor(UI.RGB("text"))
     chip:EnableMouse(true)
     chip:SetScript("OnEnter", function(self) KitTip(self, "Suggested rank", SUGGESTED_RULE) end)
     chip:SetScript("OnLeave", function() if UI.tooltip then UI.tooltip:Hide() end end)
@@ -835,7 +822,7 @@ local function BuildFamily(host)
     strip.compare:SetJustifyH("LEFT")
     strip.compare:SetWordWrap(true)
     strip.compare:SetMaxLines(2)
-    SetColor(strip.compare, "text2", 0.7, 0.7, 0.7)
+    strip.compare:SetTextColor(UI.RGB("text2"))
     strip:Hide()
     f.strip = strip
 
@@ -848,21 +835,21 @@ local function BuildFamily(host)
     card.learned = card:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
     card.learned:SetPoint("BOTTOMRIGHT", card.line, "TOPRIGHT", 0, 3)
     card.learned:SetJustifyH("RIGHT")
-    SetColor(card.learned, "text2", 0.7, 0.7, 0.7)
+    card.learned:SetTextColor(UI.RGB("text2"))
     card.quote = card:CreateFontString(nil, "OVERLAY", UI.FONT_SPECIAL or UI.FONT_SMALL)
     card.quote:SetWidth(VIEW_W - 16)
     card.quote:SetJustifyH("LEFT")
     card.quote:SetWordWrap(true)
-    SetColor(card.quote, "text2", 0.7, 0.7, 0.7)
+    card.quote:SetTextColor(UI.RGB("text2"))
     card.stale = card:CreateFontString(nil, "OVERLAY", UI.FONT_SPECIAL or UI.FONT_SMALL)
     card.stale:SetJustifyH("LEFT")
-    SetColor(card.stale, "bad", 0.88, 0.38, 0.35)
+    card.stale:SetTextColor(UI.RGB("bad"))
     card.stale:SetText("Text read before combat - may be out of date")
     card.stale:Hide()
     f.card = card
     f.footer = content:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
     f.footer:SetJustifyH("LEFT")
-    SetColor(f.footer, "muted", 0.48, 0.48, 0.48)
+    f.footer:SetTextColor(UI.RGB("muted"))
     f.footer:SetText(FOOTER_TEXT)
 
     LayoutFamily(f)
@@ -981,7 +968,7 @@ function SpellsPane:RenderFamily(key, preview)
         f.fam = nil
         f.header.icon:Hide(); f.header.iconEdge:Hide()
         f.header.name:SetText(Esc(key))
-        SetColor(f.header.name, "disabled", 0.3, 0.3, 0.3)
+        f.header.name:SetTextColor(UI.RGB("disabled"))
         f.header.sub:SetText("")
         f.header.mana:SetText("")
         f.staleText:SetText(Esc(key) .. " is not in this character's spellbook.")
@@ -1009,7 +996,7 @@ function SpellsPane:RenderFamily(key, preview)
         f.header.icon:Hide(); f.header.iconEdge:Hide()
     end
     f.header.name:SetText(Esc(fam.name or key))
-    SetColor(f.header.name, "text", 1, 1, 1)
+    f.header.name:SetTextColor(UI.RGB("text"))
     f.header.sub:SetText(HeaderSub(fam))
     f.header.mana:SetText(HeaderManaText(pool))
 
@@ -1158,7 +1145,7 @@ local function PlusParts(row)
     local fs = row:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
     fs:SetPoint("RIGHT", row, "RIGHT", -8, 0)
     fs:SetJustifyH("RIGHT")
-    SetColor(fs, "muted", 0.48, 0.48, 0.48)
+    fs:SetTextColor(UI.RGB("muted"))
     fs:SetText("listed")
     row.listed = fs
 end
@@ -1193,7 +1180,7 @@ local function RenderBookRow(row, r, color)
     for _, fs in pairs(row.cells) do fs:SetText("") end
     if row.SetBar then row:SetBar("permana", nil) end
     if r.kind == "section" then
-        WideAt(row, 8, VIEW_W - 16, Hex("accent", UI.accentHex) .. r.text .. RESET, UI.FONT)
+        WideAt(row, 8, VIEW_W - 16, UI.Hex("accent") .. r.text .. RESET, UI.FONT)
     elseif r.kind == "family" then
         local rep = Rep(r.family)
         RowIcon(row, rep and rep.icon or nil)
@@ -1206,7 +1193,7 @@ local function RenderBookRow(row, r, color)
         end
     elseif r.kind == "note" then
         local x = r.indent and 28 or 8
-        WideAt(row, x, VIEW_W - x - 8, Hex(r.tone or "muted", "|cff7a7a7a") .. r.text .. RESET, UI.FONT_SMALL)
+        WideAt(row, x, VIEW_W - x - 8, UI.Hex(r.tone or "muted") .. r.text .. RESET, UI.FONT_SMALL)
     end
 end
 
@@ -1289,7 +1276,7 @@ local function RenderMineRow(row, r, color)
     local c = row.cells
     if r.stale then
         RowIcon(row, nil)
-        local dis = Hex("disabled", "|cff4d4d4d")
+        local dis = UI.Hex("disabled")
         c.spell:SetText(dis .. Esc(r.key) .. RESET)
         WideAt(row, MINE_COLS[2].x, VIEW_W - MINE_COLS[2].x - 8, dis .. "not in your spellbook" .. RESET)
         return
@@ -1302,14 +1289,14 @@ local function RenderMineRow(row, r, color)
     local s, h = fam.suggested, fam.maxKnown
     local valued = fam.kind ~= nil
     if s then
-        c.suggested:SetText(Hex("accent", UI.accentHex) .. RankCell(s) .. RESET)
+        c.suggested:SetText(UI.Hex("accent") .. RankCell(s) .. RESET)
         if valued then
             c.value:SetText(color .. Num(s.value) .. RESET)
             c.permana:SetText(color .. Num(s.perMana, 2) .. RESET)
             c.toOOM:SetText(color .. CastsWord(r.fullCasts) .. RESET)
         end
     else
-        c.suggested:SetText(Hex("muted", "|cff7a7a7a") .. "-" .. RESET)
+        c.suggested:SetText(UI.Hex("muted") .. "-" .. RESET)
     end
     if h then
         c.highest:SetText(color .. RankCell(h) .. RESET)
@@ -1530,18 +1517,18 @@ local function BuildOverview(host)
 
     local hint = content:CreateFontString(nil, "OVERLAY", UI.FONT_SPECIAL or UI.FONT_SMALL)
     hint:SetJustifyH("LEFT")
-    SetColor(hint, "text2", 0.7, 0.7, 0.7)
+    hint:SetTextColor(UI.RGB("text2"))
     pane.hint = hint
     local hint2 = content:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
     hint2:SetPoint("TOPLEFT", hint, "BOTTOMLEFT", 0, -4)
     hint2:SetWidth(VIEW_W - 16)
     hint2:SetJustifyH("LEFT")
-    SetColor(hint2, "muted", 0.48, 0.48, 0.48)
+    hint2:SetTextColor(UI.RGB("muted"))
     hint2:SetText(MINE_HINT2)
     pane.hint2 = hint2
     local footer = content:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
     footer:SetJustifyH("LEFT")
-    SetColor(footer, "muted", 0.48, 0.48, 0.48)
+    footer:SetTextColor(UI.RGB("muted"))
     footer:SetText(FOOTER_TEXT)
     pane.footer = footer
 
@@ -1674,7 +1661,7 @@ local function BuildFooter(rail)
     local undoText = footer:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
     undoText:SetPoint("BOTTOMLEFT", add, "TOPLEFT", 5, 8)
     undoText:SetJustifyH("LEFT")
-    SetColor(undoText, "text2", 0.7, 0.7, 0.7)
+    undoText:SetTextColor(UI.RGB("text2"))
     SpellsPane.undoText = undoText
 
     local undo = UI.CreateButton(footer, "Undo", "accent-hover", { 44, 16 }, false, false,
@@ -1763,7 +1750,7 @@ local function PickerSectionFrame(p, i)
     s.title = s:CreateFontString(nil, "OVERLAY", UI.FONT_TITLE)
     s.title:SetPoint("TOPLEFT", s, "TOPLEFT", 2, -2)
     s.title:SetJustifyH("LEFT")
-    local a = UI.TEXT and UI.TEXT.accent or UI.accent
+    local a = UI.TEXT.accent
     s.title:SetTextColor(a[1], a[2], a[3])
     s.rule = s:CreateTexture(nil, "ARTWORK")
     s.rule:SetHeight(1)
@@ -1801,7 +1788,7 @@ local function PickerRowFrame(p, i)
     r.range = r:CreateFontString(nil, "OVERLAY", UI.FONT_NUM_SMALL or UI.FONT_SMALL)
     r.range:SetPoint("RIGHT", r, "RIGHT", -6, 0)
     r.range:SetJustifyH("RIGHT")
-    SetColor(r.range, "muted", 0.48, 0.48, 0.48)
+    r.range:SetTextColor(UI.RGB("muted"))
     r.name = r:CreateFontString(nil, "OVERLAY", UI.FONT)
     r.name:SetPoint("LEFT", r, "LEFT", 46, 0)
     r.name:SetPoint("RIGHT", r, "RIGHT", -64, 0)
@@ -1887,7 +1874,7 @@ local function BuildPicker()
     p.search = search
     local placeholder = search:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
     placeholder:SetPoint("LEFT", search, "LEFT", 6, 0)
-    SetColor(placeholder, "muted", 0.48, 0.48, 0.48)
+    placeholder:SetTextColor(UI.RGB("muted"))
     placeholder:SetText("search...")
     p.placeholder = placeholder
 
@@ -1900,7 +1887,7 @@ local function BuildPicker()
     tip:SetPoint("BOTTOMLEFT", body, "BOTTOMLEFT", 8, 34)
     tip:SetPoint("RIGHT", body, "RIGHT", -8, 0)
     tip:SetJustifyH("LEFT")
-    SetColor(tip, "muted", 0.48, 0.48, 0.48)
+    tip:SetTextColor(UI.RGB("muted"))
     tip:SetText("Tip: drag a spell from your spellbook onto the list.")
     p.tip = tip
 

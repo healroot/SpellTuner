@@ -21,12 +21,13 @@ local UI = MD.UI
 
 MD.DashboardParts = MD.DashboardParts or {}
 
--- T43 (docs/SPEC-forever-ui.md 4.1, 4.4): under the Forever theme (UI.TEXT set
--- by UI/Theme_Forever.lua, before any module file) the pane's small text is
--- the kit's UI.FONT_SMALL and the run line the accent; TBC has no UI.TEXT and
--- keeps GameFontHighlightSmall and gold.
-local SMALL  = UI.TEXT and UI.FONT_SMALL or "GameFontHighlightSmall"
-local RUN_HI = UI.TEXT and UI.TEXT.accent and UI.TEXT.accent.hex or "|cffffcc00"
+-- T43 (docs/SPEC-forever-ui.md 4.1, 4.4): under the Forever theme the pane's
+-- small text is the kit's UI.FONT_SMALL and the run line the accent; TBC keeps
+-- GameFontHighlightSmall and gold. T69 (P25): the font asks UI.THEMED (set by
+-- UI/Theme_Forever.lua, before any module file); the colour is a token read,
+-- TBC's accent token being that gold.
+local SMALL  = UI.THEMED and UI.FONT_SMALL or "GameFontHighlightSmall"
+local RUN_HI = UI.Hex("accent")
 
 local ROW_HEIGHT = 16
 local COLS = {

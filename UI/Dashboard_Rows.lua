@@ -43,28 +43,11 @@ local function AccentHex()
     return string.format("|cff%02x%02x%02x", a[1] * 255, a[2] * 255, a[3] * 255)
 end
 
--- T30 (docs/SPEC-forever-ui.md 3.5, 4.1, 4.3): the theme's fills and text
--- colours for the table options, read from UI.PALETTE / UI.TEXT when the
--- Forever theme wrote them and from these literals otherwise. Only an option
--- reaches them: the all-nil table never calls either.
-local function FillColor(key)
-    local P = MD.UI.PALETTE
-    local c = P and P[key]
-    if c then return c[1], c[2], c[3], c[4] end
-    local a = MD.UI.accent
-    if key == "rowAlt" then return 1, 1, 1, 0.03 end
-    if key == "hover" then return a[1], a[2], a[3], 0.12 end
-    if key == "selected" then return a[1], a[2], a[3], 0.28 end
-    if key == "suggested" then return a[1], a[2], a[3], 0.10 end
-    if key == "line" then return 0x2A / 255, 0x2A / 255, 0x2A / 255, 1 end
-    return a[1], a[2], a[3], 1
-end
-
-local function TextHex(token, literal)
-    local T = MD.UI.TEXT
-    local t = T and T[token]
-    return (t and t.hex) or literal
-end
+-- T30 (docs/SPEC-forever-ui.md 3.5, 4.1, 4.3): the table options' fills and
+-- text colours. T69 (P25): token reads -- MD.UI.Fill / MD.UI.Hex -- whose TBC
+-- values (UI/Style.lua) are the literals this file carried (a dominated row's
+-- 8a8a8a is the legacy token "dominated"). Only an option reaches them: the
+-- all-nil table never calls either.
 
 -- row:SetBar(key, fraction, alpha) (T30, a `type = "bar"` column): the bar
 -- scaled to `fraction` (0..1) of its width, accent at `alpha` (default 0.5,
@@ -162,7 +145,7 @@ function MD.DashboardParts.CreateTable(parent, width, opts)
             key = "rowAlt"
         end
         if key then
-            row.fill:SetColorTexture(FillColor(key))
+            row.fill:SetColorTexture(MD.UI.Fill(key))
             row.fill:Show()
         else
             row.fill:Hide()
@@ -219,7 +202,7 @@ function MD.DashboardParts.CreateTable(parent, width, opts)
             row.highlight = row:CreateTexture(nil, "BACKGROUND")
             row.highlight:SetAllPoints()
             if marker == "bar" then
-                row.highlight:SetColorTexture(FillColor("hover")) -- T30
+                row.highlight:SetColorTexture(MD.UI.Fill("hover")) -- T30
             else
                 row.highlight:SetColorTexture(MD.UI.accent[1], MD.UI.accent[2], MD.UI.accent[3], 0.10)
             end
@@ -336,7 +319,7 @@ function MD.DashboardParts.CreateTable(parent, width, opts)
         -- T30: the header's rule, one texture on the pane, built on first use.
         local headerRule
         local headerHex = opts.headerColor
-            or (marker == "bar" and TextHex("muted", "|cff888888")) or "|cff888888"
+            or (marker == "bar" and MD.UI.Hex("muted")) or "|cff888888"
 
         function api:Render(rows)
             api:Release()
@@ -361,7 +344,7 @@ function MD.DashboardParts.CreateTable(parent, width, opts)
                         local c = opts.headerRule
                         headerRule:SetColorTexture(c[1], c[2], c[3], c[4] or 1)
                     else
-                        headerRule:SetColorTexture(FillColor("line"))
+                        headerRule:SetColorTexture(MD.UI.Fill("line"))
                     end
                 end
                 local px = MD.UI.px and MD.UI.px(1, pane) or 1
@@ -385,11 +368,11 @@ function MD.DashboardParts.CreateTable(parent, width, opts)
                     -- T30: no gold -- the fill, the bar and the caller's tag
                     -- mark the suggested row.
                     if r.known == false then
-                        color = TextHex("disabled", "|cff555555")
+                        color = MD.UI.Hex("disabled")
                     elseif r.dominated then
-                        color = TextHex("muted", "|cff8a8a8a")
+                        color = MD.UI.Hex("dominated")
                     else
-                        color = TextHex("text", "|cffffffff")
+                        color = MD.UI.Hex("text")
                     end
                 elseif r.known == false then
                     color = "|cff555555"

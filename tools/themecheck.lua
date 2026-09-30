@@ -5,9 +5,17 @@
 -- font offset clamped to -2..+2, UI.Pitch, UI.PIXEL, UI.LIST_STRATA), the
 -- additive half in UI/Style.lua (UI.px, StylizeFrame under UI.PIXEL and its
 -- weak registry, UI.RestylePixels), MD.API.PhysicalScreenSize and the
--- db.ui defaults in Core_Forever.lua. Forever only: the TBC TOC does not list
--- the theme, and tools/navui.lua (25) / tools/dashui.lua (56) hold TBC's look.
-HARNESS_FLAVOUR = "forever"
+-- db.ui defaults in Core_Forever.lua. The TBC TOC does not list the theme, and
+-- tools/navui.lua / tools/dashui.lua hold TBC's look.
+--
+-- T69 (P25, docs/PLAN-refactor-ux.md, review A20): the colour tokens are always
+-- present and one flag says whether the theme is on. Under tbc this suite loads
+-- UI/Style.lua (and the files whose theme test it converted) without the theme
+-- and holds: UI.THEMED false, TBC's tokens equal to the literals the shared
+-- files carried, Review's small font GameFontHighlightSmall, every UI.Hex /
+-- UI.RGB / UI.Fill token named in the tree present. Under forever: UI.THEMED
+-- true, the legacy tokens mapped onto 4.1's, no gate on UI.TEXT left in a UI file.
+HARNESS_FLAVOUR = { "forever", "tbc" }
 
 local here = arg[0]:match("^(.*)/[^/]+$")
 
@@ -22,9 +30,122 @@ local MD = dofile(here .. "/harness.lua")
 arg[0] = a0
 
 local S = _G.STUB
-local UI = MD.UI
 
 local function near(a, b, eps) return type(a) == "number" and type(b) == "number" and math.abs(a - b) < (eps or 1e-6) end
+
+--------------------------------------------------------------------------------
+-- T69 (P25): shared by both flavours -- the token shape, and scans of the tree
+--------------------------------------------------------------------------------
+local TOKENS = { "accent", "text", "text2", "label", "muted", "disabled", "mana", "good", "bad" }
+-- TBC's disagreeing literals, each under a named legacy token (P25); the theme
+-- maps each onto a 4.1 token. Unifying them is P34's question to the author.
+local LEGACY = { dominated = "muted", note = "text2", tipGold = "accent" }
+
+local function shaped(c)
+    return type(c) == "table" and type(c[1]) == "number" and type(c[2]) == "number"
+        and type(c[3]) == "number" and type(c.hex) == "string" and c.hex:match("^|cff%x%x%x%x%x%x$") ~= nil
+end
+
+-- every shipped Lua file under UI/ and the module folders
+local function UIFiles()
+    local out = {}
+    local p = io.popen("cd '" .. (S.root or ".") .. "' && ls UI/*.lua Modules/*/*.lua Modules/*/*/*.lua 2>/dev/null")
+    for line in p:lines() do out[#out + 1] = line end
+    p:close()
+    return out
+end
+local function Read(rel)
+    local f = io.open((S.root or ".") .. "/" .. rel, "r")
+    if not f then return "" end
+    local s = f:read("*a"); f:close()
+    return s
+end
+
+-- every UI.Hex("x") / UI.RGB("x") / UI.Fill("x") literal in the tree names a
+-- token the current tables carry (a typo would paint white, silently)
+local function TokenScan(UI)
+    local missing, seen = {}, 0
+    for _, rel in ipairs(UIFiles()) do
+        for fn, tok in Read(rel):gmatch("UI%.(%a+)%(\"([%w_]+)\"%)") do
+            if fn == "Hex" or fn == "RGB" then
+                seen = seen + 1
+                if not shaped(UI.TEXT[tok]) then missing[#missing + 1] = rel .. ":" .. fn .. ":" .. tok end
+            elseif fn == "Fill" then
+                seen = seen + 1
+                if type(UI.PALETTE[tok]) ~= "table" then missing[#missing + 1] = rel .. ":Fill:" .. tok end
+            end
+        end
+    end
+    return missing, seen
+end
+
+if S.flavour == "tbc" then
+    ----------------------------------------------------------------------------
+    -- T69 (P25), TBC: the kit without the theme -- the flag off, the old literals
+    ----------------------------------------------------------------------------
+    local FrameMT = getmetatable(CreateFrame("Frame"))
+    local makeFS = FrameMT.CreateFontString
+    FrameMT.CreateFontString = function(self, name, layer, template)
+        local fs = makeFS(self, name, layer, template)
+        fs.template = template
+        return fs
+    end
+    S.Load({ "UI/Style.lua", "UI/Tooltip.lua", "UI/Dashboard_Review.lua" }, "SpellTuner", MD)
+    local UI = MD.UI
+
+    check("tbc: UI.THEMED is false with UI/Style.lua alone", UI.THEMED == false, tostring(UI.THEMED))
+
+    local T = UI.TEXT or {}
+    local all = true
+    for _, k in ipairs(TOKENS) do if not shaped(T[k]) then all = false end end
+    for k in pairs(LEGACY) do if not shaped(T[k]) then all = false end end
+    check("tbc: UI.TEXT is present, every 4.1 and legacy token shaped", all)
+
+    local function hex(k) return shaped(T[k]) and T[k].hex:lower() or tostring(T[k] and T[k].hex) end
+    check("tbc: the tokens hold the literals the shared files carried",
+        all and hex("accent") == "|cffffcc00" and hex("text") == "|cffffffff" and hex("muted") == "|cff888888"
+          and hex("disabled") == "|cff555555" and hex("dominated") == "|cff8a8a8a" and hex("note") == "|cffffcc00"
+          and near(T.accent[1], 1) and near(T.accent[2], 0.8) and near(T.accent[3], 0)
+          and near(T.tipGold[1], 1) and near(T.tipGold[2], 0.82) and near(T.tipGold[3], 0),
+        "accent=" .. hex("accent") .. " muted=" .. hex("muted") .. " disabled=" .. hex("disabled")
+          .. " dominated=" .. hex("dominated") .. " note=" .. hex("note"))
+    check("tbc: UI.Hex / UI.RGB / UI.Fill read the tokens",
+        all and UI.Hex and UI.Hex("muted") == T.muted.hex and UI.RGB and select(2, UI.RGB("tipGold")) == T.tipGold[2]
+          and UI.Fill and near(select(4, UI.Fill("selected")), 0.28))
+
+    local P = UI.PALETTE or {}
+    local A = UI.accent
+    local function is(c, r, g, b, a) return type(c) == "table" and near(c[1], r, 0.002) and near(c[2], g, 0.002)
+        and near(c[3], b, 0.002) and near(c[4], a, 0.002) end
+    check("tbc: the palette keeps its window fills and carries the table's old ones",
+        is(P.frame, 0.1, 0.1, 0.1, 0.9) and is(P.header, 0.115, 0.115, 0.115, 1) and is(P.pane, 0.13, 0.13, 0.13, 1)
+          and is(P.border, 0, 0, 0, 1) and is(P.rowAlt, 1, 1, 1, 0.03) and is(P.line, 42 / 255, 42 / 255, 42 / 255, 1)
+          and is(P.hover, A[1], A[2], A[3], 0.12) and is(P.selected, A[1], A[2], A[3], 0.28)
+          and is(P.suggested, A[1], A[2], A[3], 0.10))
+
+    -- Review's small text: the kit's font under the theme only
+    local parent = CreateFrame("Frame")
+    parent:SetSize(760, 420)
+    local small, kit = 0, 0
+    local before = #S.allFrames
+    MD.DashboardParts.CreateReview(parent, 760)
+    for i = before + 1, #S.allFrames do
+        local f = S.allFrames[i]
+        if f.kind == "FontString" and f.template == "GameFontHighlightSmall" then small = small + 1 end
+        if f.kind == "FontString" and f.template == UI.FONT_SMALL then kit = kit + 1 end
+    end
+    check("tbc: Review's small text is GameFontHighlightSmall, never the kit's",
+        small >= 3 and kit == 0, small .. " GameFontHighlightSmall, " .. kit .. " UI.FONT_SMALL")
+
+    local missing, seen = TokenScan(UI)
+    check("tbc: every UI.Hex / UI.RGB / UI.Fill token in the tree is in TBC's tables",
+        seen > 0 and #missing == 0, #missing > 0 and table.concat(missing, " ") or (seen .. " reads"))
+
+    print(string.format("%d ok, %d failed", ok, #fails))
+    os.exit(#fails > 0 and 1 or 0)
+end
+
+local UI = MD.UI
 
 --------------------------------------------------------------------------------
 -- 1. The theme is on the Forever TOCs, right after UI/Style.lua, and not on TBC's
@@ -48,7 +169,6 @@ end
 --------------------------------------------------------------------------------
 -- 2. UI.TEXT: every token of 4.1, each { r, g, b, hex = "|cffrrggbb" }, no gold
 --------------------------------------------------------------------------------
-local TOKENS = { "accent", "text", "text2", "label", "muted", "disabled", "mana", "good", "bad" }
 do
     local T = UI.TEXT
     local all, shaped = type(T) == "table", true
@@ -84,6 +204,45 @@ do
           and T.label.hex:lower() == "|cff9d9d9d" and T.muted.hex:lower() == "|cff7a7a7a"
           and T.disabled.hex:lower() == "|cff4d4d4d" and T.mana.hex:lower() == "|cff4d99ff"
           and T.good.hex:lower() == "|cff5ccb6e" and T.bad.hex:lower() == "|cffe0605a")
+end
+
+--------------------------------------------------------------------------------
+-- 2b. T69 (P25): one flag, the legacy tokens on 4.1's, no gate left on UI.TEXT
+--------------------------------------------------------------------------------
+check("forever: the theme sets UI.THEMED", UI.THEMED == true, tostring(UI.THEMED))
+do
+    local T = UI.TEXT or {}
+    local same = true
+    for k, to in pairs(LEGACY) do
+        local a, b = T[k], T[to]
+        if not (shaped(a) and shaped(b) and a.hex == b.hex and near(a[1], b[1]) and near(a[2], b[2])
+                and near(a[3], b[3])) then same = false end
+    end
+    check("forever: dominated, note and tipGold read muted, text2 and accent", same)
+    check("forever: UI.Hex / UI.RGB / UI.Fill read the theme",
+        UI.Hex and UI.Hex("muted") == "|cff7a7a7a" and UI.RGB and near(select(3, UI.RGB("mana")), 1)
+          and UI.Fill and near(select(4, UI.Fill("hover")), 0.12))
+
+    -- a token read is a colour, never a gate (plan section 2): no file under UI/
+    -- or the modules tests UI.TEXT to decide anything
+    local gates = {}
+    for _, rel in ipairs(UIFiles()) do
+        local n = 0
+        for line in (Read(rel) .. "\n"):gmatch("([^\n]*)\n") do
+            n = n + 1
+            local code = line:gsub("%-%-.*$", "")
+            if code:find("UI%.TEXT and") or code:find("UI%.TEXT ~= nil") or code:find("UI%.TEXT == nil")
+               or code:find("if UI%.TEXT then") or code:find("not UI%.TEXT") or code:find("UI%.TEXT or") then
+                gates[#gates + 1] = rel .. ":" .. n
+            end
+        end
+    end
+    check("forever: no UI file gates on UI.TEXT (UI.THEMED is the switch)", #gates == 0,
+        #gates > 0 and table.concat(gates, " ") or nil)
+
+    local missing, seen = TokenScan(UI)
+    check("forever: every UI.Hex / UI.RGB / UI.Fill token in the tree is in the theme's tables",
+        seen > 0 and #missing == 0, #missing > 0 and table.concat(missing, " ") or (seen .. " reads"))
 end
 
 --------------------------------------------------------------------------------
