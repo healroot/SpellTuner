@@ -232,6 +232,60 @@ MD:OpenPractice(PR.CopySetup(MD.cdb.practiceSetup), 7)
 Tick(0.5)
 S.Fire("PLAYER_REGEN_DISABLED")
 check("entering combat ends practice", MD.Replay._live() == nil and not MD.Replay._state().frame:IsShown())
+S.Fire("PLAYER_REGEN_ENABLED")
+
+-- T51 (P7, B23): the pointer on a frame's icon ----------------------------------
+-- The client fires the button's OnLeave as the pointer moves onto one of its
+-- mouse-enabled icons, then the icon's OnEnter; leaving the icon outward fires
+-- only the icon's OnLeave. "1" is bound to Regrowth above.
+do
+    MD:OpenPractice(PR.CopySetup(MD.cdb.practiceSetup), 8)
+    local live8, st8 = MD.Replay._live(), MD.Replay._state()
+    local fn = st8.frame:GetScript("OnUpdate")
+    local function T(sec) for _ = 1, math.floor(sec / 0.05 + 0.5) do S.now = S.now + 0.05; fn(st8.frame, 0.05) end end
+    local tank8 = st8.left.frames[1]
+    local icon = tank8.dot
+    T(1.0)
+    S.mouseFocus = tank8
+    tank8:GetScript("OnEnter")(tank8)
+    S.mouseFocus = icon
+    tank8:GetScript("OnLeave")(tank8)
+    local enter = icon:GetScript("OnEnter")
+    if enter then enter(icon) end
+    local before = #(live8 and live8.own or {})
+    st8.frame:GetScript("OnKeyDown")(st8.frame, "1")
+    T(2.5)
+    local onTank = false
+    for i = before + 1, #(live8 and live8.own or {}) do
+        local o = live8.own[i]
+        if o.kind == MD.SimModel.K.OWNCAST and o.tgt == 1 then onTank = true end
+    end
+    check("T51: a key with the pointer on the Swiftmend icon heals that frame", onTank,
+        "casts " .. before .. " -> " .. #(live8 and live8.own or {}))
+
+    -- onto a HoT icon from the frame's body (the HoT icons always took the
+    -- hover on enter), then out of it, off the frame altogether
+    local hot = tank8.hots[1]
+    S.mouseFocus = tank8
+    tank8:GetScript("OnEnter")(tank8)
+    S.mouseFocus = hot
+    tank8:GetScript("OnLeave")(tank8)
+    local henter = hot:GetScript("OnEnter")
+    if henter then henter(hot) end
+    S.mouseFocus = nil
+    local leave = hot:GetScript("OnLeave")
+    if leave then leave(hot) end
+    local _, hov8 = MD.Replay._live()
+    T(2.0) -- past the GCD, so a refusal can only be the target
+    local n0 = #(live8 and live8.own or {})
+    st8.frame:GetScript("OnKeyDown")(st8.frame, "1")
+    T(0.2)
+    check("T51: after leaving an icon outward a key reports No target",
+        hov8 == nil and #(live8 and live8.own or {}) == n0
+          and (st8.frame.hint.text or ""):find("No target") ~= nil,
+        "hover=" .. tostring(hov8) .. " hint=" .. tostring(st8.frame.hint.text))
+    st8.frame:Hide()
+end
 
 print(string.format("\n%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("  FAIL " .. f) end

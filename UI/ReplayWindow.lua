@@ -115,6 +115,14 @@ local runIdx, pullIdx, curRun   -- which pull of which run is open, if any
 -- pull that time lands in, so this is a layer over the pull replay rather than a
 -- rewrite of it.
 local runMode, runTL, runT = false, nil, 0
+-- T51 (B22): the combat refusal, once per combat for the window's own re-opens
+local refusedInCombat, openingQuietly = false, false
+-- The window re-opening a pull by itself: MD:OpenReplay, its combat refusal
+-- said once per combat rather than once per frame; answers whether it opened.
+local function OpenPull(spec)
+    openingQuietly = true -- read and cleared first thing by MD:OpenReplay
+    return MD:OpenReplay(spec)
+end
 local topH = HEADER_H           -- header, plus the run strip when there is one
 -- v0.15.0: practice mode. A session (Engine/Practice.lua) is being PLAYED: the
 -- left column paints its trace as the engine writes it, the frames take presses,
@@ -454,9 +462,19 @@ local function CreateUnitFrame(parent, x, y)
     f:SetScript("OnMouseDown", Press)
     f:SetScript("OnEnter", Hover)
     f:SetScript("OnLeave", Unhover)
-    for _, ic in ipairs({ f.dot, f.defIcon, f.incoming }) do ic:HookScript("OnMouseDown", Press) end
-    for _, ic in ipairs(f.hots) do ic:HookScript("OnMouseDown", Press); ic:HookScript("OnEnter", Hover) end
-    for _, ic in ipairs(f.debuffs) do ic:HookScript("OnMouseDown", Press); ic:HookScript("OnEnter", Hover) end
+    -- T51 (B23): the button's OnLeave fires when the pointer moves onto one of
+    -- its icons, so every icon makes the button the mouseover again on enter;
+    -- and leaving an icon clears it unless the pointer is still on the button
+    -- (back onto its body), so a key never heals a frame the pointer has left.
+    local function IconLeave() if not f:IsMouseOver() then Unhover() end end
+    local icons = { f.dot, f.defIcon, f.incoming }
+    for _, ic in ipairs(f.hots) do icons[#icons + 1] = ic end
+    for _, ic in ipairs(f.debuffs) do icons[#icons + 1] = ic end
+    for _, ic in ipairs(icons) do
+        ic:HookScript("OnMouseDown", Press)
+        ic:HookScript("OnEnter", Hover)
+        ic:HookScript("OnLeave", IconLeave)
+    end
     return f
 end
 
@@ -1054,16 +1072,24 @@ end
 -- Put the run clock somewhere and make the window show it: inside a pull, open
 -- that pull (if it is not already) and seek to the offset; in a gap, paint the
 -- gap. This is the whole of run mode -- the pull machinery does the rest.
+-- T51 (B22): a refused open (combat) leaves the clock where it was and pauses,
+-- so nothing retries it; OpenPull reports the refusal once per combat.
 local function RunSeek(t, keepPlaying)
     local RTL = MD.RunTimeline
+    local was = runT
     runT = math.max(0, math.min(t or 0, runTL.dur))
     local seg, into = RTL.At(runTL, runT)
     if not seg then return end
     if seg.kind == "pull" then
         if pullIdx ~= seg.k then
-            local was = playing
-            MD:OpenReplay(runIdx .. ":" .. seg.k)
-            if (was or keepPlaying) then SetPlaying(true) end
+            local wasPlaying = playing
+            if not OpenPull(runIdx .. ":" .. seg.k) then
+                runT = was
+                SetPlaying(false)
+                Paint()
+                return
+            end
+            if (wasPlaying or keepPlaying) then SetPlaying(true) end
         end
         SeekTo(into)
     else
@@ -1082,6 +1108,7 @@ local function OnUpdate(_, elapsed)
     if runMode and runTL then
         -- one clock for the whole dungeon. Crossing out of a pull no longer
         -- stops: the gap is played too, which is where the drinking happens.
+        local was = runT
         runT = runT + dt
         if runT >= runTL.dur then
             runT = runTL.dur
@@ -1092,7 +1119,14 @@ local function OnUpdate(_, elapsed)
         local seg, into = MD.RunTimeline.At(runTL, runT)
         if seg.kind == "pull" then
             if pullIdx ~= seg.k then
-                MD:OpenReplay(runIdx .. ":" .. seg.k)
+                -- T51 (B22): refused (combat): stay before the boundary, paused,
+                -- instead of asking again on every frame
+                if not OpenPull(runIdx .. ":" .. seg.k) then
+                    runT = was
+                    SetPlaying(false)
+                    Paint()
+                    return
+                end
                 playing = true
                 SeekTo(into)
             else
@@ -1117,8 +1151,7 @@ local function OnUpdate(_, elapsed)
         if curRun and runIdx and nextK and curRun.pulls[nextK]
            and MD.db.replayNextPull ~= false then
             SetPlaying(false)
-            MD:OpenReplay(runIdx .. ":" .. nextK)
-            SetPlaying(true)
+            if OpenPull(runIdx .. ":" .. nextK) then SetPlaying(true) end
             return
         end
         SetPlaying(false)
@@ -1432,7 +1465,13 @@ local function PaintRunStrip(width)
         end
         b.pull = k
         b:SetScript("OnClick", function(self)
-            if runIdx then MD:OpenReplay(runIdx .. ":" .. self.pull) end
+            -- T51: in run mode the click moves the RUN's clock to the pull, so
+            -- the clock, the scrubber and the open pull agree
+            if runMode and runTL then
+                local seg = MD.RunTimeline.PullSeg(runTL, self.pull)
+                if seg then RunSeek(seg.from) return end
+            end
+            if runIdx then OpenPull(runIdx .. ":" .. self.pull) end
         end)
         b:SetScript("OnEnter", function(self)
             if not MD.Tip then return end
@@ -1630,19 +1669,29 @@ function MD:RebuildSuggested()
     if not (rp and openSpec) then return end
     local at = left.state and left.state.t or 0
     local wasPlaying = playing
-    MD:OpenReplay(openSpec .. (openForce and " force" or ""))
+    if not OpenPull(openSpec .. (openForce and " force" or "")) then return end
     if left.state and at > 0 then SeekTo(at) end
     if wasPlaying then SetPlaying(true) end
 end
 
+-- T51 (B22): MD:OpenReplay answers whether it opened. A refusal in combat is
+-- printed every time it is asked for by hand; the window's own re-opens (a run
+-- crossing into its next pull, a drag, a strip click, the suggested column
+-- filling in) go through OpenPull and say it once per combat.
 function MD:OpenReplay(n)
+    local quiet = openingQuietly
+    openingQuietly = false
     local FR, SP = MD.FightRecorder, MD.SimPlanner
     if live then MD:StopPractice(false) end
-    if not (FR and SP and MD.ReplayTrace) then MD:Print("replay: not loaded.") return end
+    if not (FR and SP and MD.ReplayTrace) then MD:Print("replay: not loaded.") return false end
     if MD.API.InCombatLockdown() or MD.API.UnitAffectingCombat("player") then
-        MD:Print("replay: not in combat - it is a review tool.")
-        return
+        if not (quiet and refusedInCombat) then
+            MD:Print("replay: not in combat - it is a review tool.")
+        end
+        refusedInCombat = true
+        return false
     end
+    refusedInCombat = false
     -- "3" is a single fight, "2:7" the seventh pull of run 2 (v0.9.2); "run 2"
     -- opens the first pull of run 2 with its strip (v0.9.4); a trailing "force"
     -- draws the suggested column on a fight the gates rejected (v0.9.6)
@@ -1656,28 +1705,33 @@ function MD:OpenReplay(n)
     -- "/md replay run 2" plays the WHOLE run on one clock, gaps included
     -- (v0.14.0). "2:7" still opens that one pull. "run 2 pull" opens the run's
     -- first pull the old way, for when only the fight is wanted.
+    -- T51: asked for by hand while a run plays, it starts that run afresh
+    -- (it opened the run's first pull on the old run's clock).
     local r = spec:match("^run%s*(%d+)$")
-    if r and not runMode then
-        return MD:OpenRunPlay(tonumber(r))
+    if r then
+        return MD:OpenRunPlay(tonumber(r)) and true or false
     end
-    if r then spec = r .. ":1" end
     local rp2 = spec:match("^run%s*(%d+)%s*pull$")
     if rp2 then spec = rp2 .. ":1" end
     local rec, label, run, pullK = MD:GetRecording(spec)
-    if not rec then MD:Print("replay: no recording " .. tostring(n) .. ".") return end
+    if not rec then MD:Print("replay: no recording " .. tostring(n) .. ".") return false end
     n = label
     curRun, runIdx, pullIdx = run, run and tonumber(label:match("^(%d+):")) or nil, pullK
 
     Build()
     playing = false
     local t0 = debugprofilestop and debugprofilestop() or 0
-    -- opening a single pull by hand leaves run mode; OpenRunPlay turns it back on
+    -- opening a single pull by hand leaves run mode; OpenRunPlay turns it back on.
+    -- T51: "by hand" is every open but the window's own (OpenPull): a run
+    -- crossing into its next pull stays on the run's clock, `/md replay 3`
+    -- after a run no longer plays on it.
+    if not quiet then runMode = false end
     if not runMode then runTL, runT = nil, 0 end
     openSpec, openForce = n, force
     rp = SP.Replay(rec, { dt = 0.25, force = force })
+    if not rp then MD:Print("replay: could not build the fight.") return false end
     -- v0.13.9: no plan yet? coach it now, and let the window fill in.
     if not rp.right then MD:CoachOnOpen(rec, force, rp.validation) end
-    if not rp then MD:Print("replay: could not build the fight.") return end
     if force and not rp.right then
         MD:Print(string.format("replay: nothing to force - no plan has been coached for this fight. " ..
             "|cffffff00/md coach %s force|r first.", tostring(n)))
@@ -1793,14 +1847,19 @@ function MD:OpenReplay(n)
             or "no plan yet")
     end
 
-    scrubber.settingValue = true
-    scrubber:SetMinMaxValues(0, left.state.dur)
-    scrubber:SetValue(0)
-    scrubber.settingValue = false
+    -- T51 (B21): in run mode the scrubber is the RUN's timeline, set once by
+    -- OpenRunPlay; a pull opened inside the run leaves its range alone
+    if not (runMode and runTL) then
+        scrubber.settingValue = true
+        scrubber:SetMinMaxValues(0, left.state.dur)
+        scrubber:SetValue(0)
+        scrubber.settingValue = false
+    end
     PlaceMarkers()
     SeekTo(0)
     if MD.Win then MD.Win:TakeOver("replay", "replay") end -- T34 (6.3)
     frame:Show()
+    return true
 end
 
 -- /md replay run 2 play  -- the whole dungeon on one clock (docs/SPEC-v0.14.md).
@@ -1811,16 +1870,19 @@ function MD:OpenRunPlay(idx)
     if not run then MD:Print("replay: no run " .. tostring(idx) .. ".") return end
     local tl = MD.RunTimeline.Build(run)
     if not tl or #tl.segs == 0 then MD:Print("replay: run " .. tostring(idx) .. " has nothing to play.") return end
-    MD:OpenReplay(idx .. ":1")
-    if not (frame and frame:IsShown()) then return end
+    if not MD:OpenReplay(idx .. ":1") then return false end
+    if not (frame and frame:IsShown()) then return false end
     runMode, runTL, runT = true, tl, 0
+    scrubber.settingValue = true
     scrubber:SetMinMaxValues(0, tl.dur)
+    scrubber.settingValue = false
     if not tl.hasGapHealth then
         MD:Print("replay: this run was recorded before v0.13.7, so the gaps have no health "
             .. "samples - the bars hold their last value between pulls.")
     end
     RunSeek(0)
     SetPlaying(true)
+    return true
 end
 
 function MD:ToggleReplay(arg)
@@ -1992,6 +2054,7 @@ do
     local guard = CreateFrame("Frame")
     guard:RegisterEvent("PLAYER_REGEN_DISABLED")
     guard:SetScript("OnEvent", function()
+        refusedInCombat = false -- T51 (B22): a new combat says its refusal once
         if live then
             MD:StopPractice(false)
             if frame then frame:Hide() end

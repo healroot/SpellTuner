@@ -12,8 +12,8 @@
 -- that group's minimum on the resize grip. db.ui.scale (70-120 %) is applied
 -- with SetScale, and a change converts every saved position (x * old / new) so
 -- the window stays where it was on screen. UI.RestylePixels runs on
--- UI_SCALE_CHANGED, DISPLAY_SIZE_CHANGED and a scale change, so 1-px edges stay
--- one pixel without a reload.
+-- UI_SCALE_CHANGED, DISPLAY_SIZE_CHANGED, a scale change and (T51) Register,
+-- so 1-px edges stay one pixel without a reload.
 --
 -- T33 (6.5, 6.6): the ESC stack and combat. One invisible proxy,
 -- SpellTunerEscProxy, is the only SpellTuner frame in UISpecialFrames; it is
@@ -295,6 +295,9 @@ function Win:Register(frame, spec)
     frame:SetClampedToScreen(true)
     frame:SetUserPlaced(false)
     frame:SetScale(self:Scale())
+    -- T51 (B18): the kit styled this frame's 1-px edges at UIParent's scale,
+    -- before the window scale above; re-snap them at the scale it now has
+    if UI.RestylePixels then UI.RestylePixels() end
 
     local moved, resized = frame.OnMoved, frame.OnResized
     frame.OnMoved = function(f)
@@ -334,22 +337,28 @@ end
 --------------------------------------------------------------------------------
 -- 4.3: db.ui.scale, 70-120 %. Each saved (and this session's) position is
 -- converted from the old scale to the new one before the window is re-placed.
+-- T51 (B17): the old scale is read before the new one is written, and every
+-- saved place in db.ui.win is converted, registered this session or not -- a
+-- replay or console never opened yet keeps its place in the same units as the
+-- ones that were.
 function Win:SetScale(s)
     local u = UIdb()
     if not u then return end
     s = tonumber(s) or 1
     if s < Win.SCALE_MIN then s = Win.SCALE_MIN end
     if s > Win.SCALE_MAX then s = Win.SCALE_MAX end
+    local old = self:Scale()
     u.scale = s
+    for _, sv in pairs(u.win) do
+        if type(sv) == "table" and type(sv.x) == "number" and type(sv.y) == "number" then
+            sv.x, sv.y = sv.x * old / s, sv.y * old / s
+        end
+    end
     for key, w in pairs(self.windows) do
         local f = w.frame
-        local old = f:GetScale()
-        if type(old) ~= "number" or old <= 0 then old = 1 end
-        local k = old / s
-        local sv = Saved(key)
-        if sv and type(sv.x) == "number" and type(sv.y) == "number" then
-            sv.x, sv.y = sv.x * k, sv.y * k
-        end
+        local fo = f:GetScale()
+        if type(fo) ~= "number" or fo <= 0 then fo = old end
+        local k = fo / s
         if w.pos then w.pos = { w.pos[1] * k, w.pos[2] * k } end
         f:SetScale(s)
         self:Place(key)

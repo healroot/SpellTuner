@@ -565,5 +565,113 @@ do
         MD.Replay._state().timeFS:GetText())
 end
 
+--------------------------------------------------------------------------------
+-- T51 (P7): a run of two pulls. Crossing into the second re-enters
+-- MD:OpenReplay, which set the scrubber to that one pull's range (B21), and a
+-- refused OpenReplay in combat was retried every frame (B22). The stub's
+-- slider clamps as the client's does (T45), so a drag past a pull's length
+-- lands where the client would put it.
+--------------------------------------------------------------------------------
+do
+    MD.Replay._setPlaying(false)
+    local base = MD.FightRecorder:Get(1)
+    local d = base.dur or 0
+    local function Pull(t0)
+        local c = {}
+        for k, v in pairs(base) do c[k] = v end
+        c.runT0 = t0
+        return c
+    end
+    local p1, p2 = Pull(10), Pull(10 + d + 40)
+    local run = {
+        id = 4343, name = "Two Pulls", zone = "Somewhere", pool = 7009,
+        dur = math.max(420, 10 + 2 * d + 80), stats = { wall = math.max(420, 10 + 2 * d + 80), pulls = 2 },
+        pulls = { p1, p2 },
+        mana = { t = {}, v = {} },
+        hp = { t = {}, who = {}, frac = {} },
+        ev = { t = {}, kind = {}, a = {}, b = {} },
+    }
+    local names = {}
+    for _, r in ipairs(base.roster or {}) do names[#names + 1] = r.name end
+    for t = 0, run.dur, 2 do
+        run.mana.t[#run.mana.t + 1] = t
+        run.mana.v[#run.mana.v + 1] = 5000
+        run.hp.t[#run.hp.t + 1] = t
+        run.hp.who[#run.hp.who + 1] = names
+        local fr = {}
+        for _ = 1, #names do fr[#fr + 1] = 0.9 end
+        run.hp.frac[#run.hp.frac + 1] = fr
+    end
+    MD.cdb.runs = { run }
+    MD:OpenRunPlay(1)
+    local scr = MD.Replay._state().scrubber
+    local r0 = MD.Replay._run()
+
+    -- B21: play across the boundary into pull 2
+    MD.Replay._runSeek(nil, p2.runT0 - 0.5)
+    MD.Replay._setPlaying(true)
+    local crossed = false
+    for _ = 1, 40 do
+        S.Tick(0.05)
+        local st = MD.Replay._run()
+        if st and st.seg == "pull" and st.k == 2 then crossed = true; break end
+    end
+    MD.Replay._setPlaying(false)
+    local _, hi = scr:GetMinMaxValues()
+    check("T51: after a pull crossing the scrubber's max is the run's length",
+        r0 ~= nil and crossed and math.abs((hi or 0) - r0.dur) < 1e-6,
+        string.format("crossed=%s max=%s run=%s", tostring(crossed), tostring(hi), tostring(r0 and r0.dur)))
+
+    -- B21: a drag maps to run time -- the client clamps the thumb to the range,
+    -- then hands OnValueChanged the value it holds
+    scr.dragging = true
+    scr:SetValue(300)
+    scr:GetScript("OnValueChanged")(scr, scr:GetValue(), true)
+    scr.dragging = false
+    local st = MD.Replay._run()
+    check("T51: a scrubber drag to 300 s lands at 300 s of the run",
+        st and math.abs(st.t - 300) < 1e-6, st and string.format("%.1f s", st.t))
+
+    -- the run strip: a click on a pull's block in run mode moves the RUN's
+    -- clock to that pull, so the clock, the scrubber and the pull agree
+    MD.Replay._runSeek(nil, p2.runT0 + 5)
+    local strip = MD.Replay._runStrip()
+    local b1 = strip and strip.pulls and strip.pulls[1]
+    if b1 then b1:GetScript("OnClick")(b1) end
+    local sc = MD.Replay._run()
+    local strip2 = MD.Replay._runStrip()
+    check("T51: a run-strip click in run mode moves the run clock to that pull",
+        b1 ~= nil and sc and sc.seg == "pull" and sc.k == 1 and math.abs(sc.t - p1.runT0) < 1e-6
+          and strip2 and strip2.pull == 1,
+        sc and string.format("t=%.1f seg=%s k=%s pull=%s", sc.t, tostring(sc.seg), tostring(sc.k),
+            tostring(strip2 and strip2.pull)))
+
+    -- B22: combat starts while a run plays, just before pull 2's boundary
+    MD.Replay._runSeek(nil, p1.runT0 + 1)
+    MD.Replay._runSeek(nil, p2.runT0 - 0.3)
+    local said = {}
+    local realPrint, realUAC2 = MD.Print, MD.API.UnitAffectingCombat
+    MD.Print = function(_, m) said[#said + 1] = m end
+    MD.API.UnitAffectingCombat = function() return true end
+    MD.Replay._setPlaying(true)
+    for _ = 1, 120 do S.Tick(1 / 60) end
+    local playingAfter = MD.Replay._run() and MD.Replay._run().playing
+    MD.API.UnitAffectingCombat = realUAC2
+    MD.Print = realPrint
+    MD.Replay._setPlaying(false)
+    check("T51: combat at a pull boundary prints one line in 120 frames and pauses",
+        #said == 1 and playingAfter == false,
+        string.format("%d lines, playing=%s", #said, tostring(playingAfter)))
+
+    -- a fight opened by hand after a run leaves run mode: its own clock and
+    -- its own range, not the run's (the range is now kept in run mode, so
+    -- this is what keeps a single fight from inheriting it)
+    MD:OpenReplay(1)
+    local _, hi1 = scr:GetMinMaxValues()
+    check("T51: a fight opened by hand after a run plays on its own clock and range",
+        MD.Replay._run() == nil and math.abs((hi1 or 0) - d) < 1e-6,
+        string.format("run=%s max=%s dur=%s", tostring(MD.Replay._run() ~= nil), tostring(hi1), tostring(d)))
+end
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 if #fails > 0 then for _, m in ipairs(fails) do print("  FAIL " .. m) end; os.exit(1) end

@@ -759,6 +759,60 @@ do -- T40 4: the summary does not count a hidden binding
         "summary=" .. tostring(txt) .. " hover=" .. hover)
 end
 
+--------------------------------------------------------------------------------
+-- T51 (P7, B23): a key with the pointer on one of a frame's icons. The client
+-- fires the button's OnLeave as the pointer moves onto a mouse-enabled icon,
+-- then the icon's OnEnter; leaving the icon outward fires only its OnLeave.
+--------------------------------------------------------------------------------
+do
+    MD.db.practiceBinds = { { key = "1", family = "Rejuvenation" } }
+    MD.cdb.practiceSetup = PR.CopySetup(setup)
+    MD.cdb.practiceSetup.dur = 20
+    MD:OpenPractice(PR.CopySetup(MD.cdb.practiceSetup), 9)
+    local live9, st9 = MD.Replay._live(), MD.Replay._state()
+    local own = (live9 and live9.own) or {}
+    local tank9 = st9.left.frames[1]
+    local icon = tank9.dot
+    S.Tick(1.0)
+    S.mouseFocus = tank9
+    tank9:GetScript("OnEnter")(tank9)
+    S.mouseFocus = icon
+    tank9:GetScript("OnLeave")(tank9)
+    local enter = icon:GetScript("OnEnter")
+    if enter then enter(icon) end
+    local before = #own
+    st9.frame:GetScript("OnKeyDown")(st9.frame, "1")
+    S.Tick(0.3)
+    local onTank = false
+    for i = before + 1, #own do if own[i].tgt == 1 then onTank = true end end
+    check("T51: a key with the pointer on the Swiftmend icon heals that frame", onTank,
+        "casts " .. before .. " -> " .. #own)
+
+    -- onto a HoT icon from the frame's body (the HoT icons always took the
+    -- hover on enter), then out of it, off the frame altogether
+    local hot = tank9.hots[1]
+    S.mouseFocus = tank9
+    tank9:GetScript("OnEnter")(tank9)
+    S.mouseFocus = hot
+    tank9:GetScript("OnLeave")(tank9)
+    local henter = hot:GetScript("OnEnter")
+    if henter then henter(hot) end
+    S.mouseFocus = nil
+    local leave = hot:GetScript("OnLeave")
+    if leave then leave(hot) end
+    local _, hov9 = MD.Replay._live()
+    local n0 = #own
+    S.Tick(2.0) -- past the GCD, so a refusal can only be the target
+    local n1 = #own
+    st9.frame:GetScript("OnKeyDown")(st9.frame, "1")
+    S.Tick(0.1)
+    check("T51: after leaving an icon outward a key reports No target",
+        hov9 == nil and #own == n1 and (st9.frame.hint.text or ""):find("No target") ~= nil,
+        "hover=" .. tostring(hov9) .. " casts " .. n0 .. "/" .. n1 .. "/" .. #own
+          .. " hint=" .. tostring(st9.frame.hint.text))
+    st9.frame:Hide()
+end
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("  FAIL " .. f) end
 if #fails > 0 then os.exit(1) end

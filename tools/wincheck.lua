@@ -272,6 +272,22 @@ do
     Win:SetScale(1)
 end
 
+-- T51 (P7, B17): a scale change converts EVERY saved place, not only the
+-- windows registered this session. The replay window is not built yet here, so
+-- its saved place is db.ui.win.replay alone; a change 1.0 -> 0.8 must carry it
+-- to x * 1.0 / 0.8, or the next /st replay opens 20 % toward the bottom-left.
+do
+    local notYet = Win.windows.replay == nil
+    MD.db.ui.win.replay = { x = 100, y = 700 }
+    Win:SetScale(0.8)
+    local sv = MD.db.ui.win.replay
+    check("T51: a scale change converts a saved place whose window is not registered yet",
+        notYet and near(sv.x, 100 / 0.8) and near(sv.y, 700 / 0.8),
+        "registered=" .. tostring(not notYet) .. " " .. fmt(sv.x) .. "," .. fmt(sv.y))
+    Win:SetScale(1)
+    MD.db.ui.win.replay = nil
+end
+
 --------------------------------------------------------------------------------
 -- 7. UI_SCALE_CHANGED / DISPLAY_SIZE_CHANGED restyle the pixel edges
 --------------------------------------------------------------------------------
@@ -294,6 +310,26 @@ do
     Win:SetScale(1)
     S.physicalHeight, S.physicalWidth, S.uiScale = 1080, 1920, 0.71
     S.Fire("UI_SCALE_CHANGED")
+end
+
+-- T51 (P7, B18): a frame styled at UIParent's scale and then registered at a
+-- window scale of 0.8 has its 1-px edges re-snapped at 0.8 by Register, not
+-- left at the scale it was styled under until the next UI_SCALE_CHANGED.
+do
+    Win:SetScale(0.8)
+    local f = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+    f:SetSize(300, 200)
+    UI.StylizeFrame(f)
+    local styled = f.backdrop and f.backdrop.edgeSize
+    Win:Register(f, { key = "t51edges", role = "tool" })
+    local e = f.backdrop and f.backdrop.edgeSize
+    check("T51: a frame registered at 0.8 has its 1-px edge snapped at 0.8",
+        f:GetScale() == 0.8 and near(e, UI.px(1, f)) and not near(styled, e),
+        fmt(styled) .. " -> " .. fmt(e) .. " want " .. fmt(UI.px(1, f)))
+    Win.windows.t51edges = nil
+    MD.db.ui.win.t51edges = nil
+    f:Hide()
+    Win:SetScale(1)
 end
 
 --------------------------------------------------------------------------------
