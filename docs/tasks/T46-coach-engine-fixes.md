@@ -1,6 +1,7 @@
 # T46 (P2) -- Simulation engine: Swiftmend's HoT end, the search key, the preempted decision, Swiftmend's price, the `others` store
 
-Status: **built** 2026-09-30 on branch `plan/P2` (base d8a926f), awaiting review.
+Status: **built** 2026-09-30 on branch `plan/P2` (base d8a926f); **reworked** the same day after the
+review's rejection (the B7 regression, below), awaiting review.
 
 ## The task (docs/PLAN-refactor-ux.md section 5, P2)
 
@@ -27,13 +28,13 @@ Owned files (section 4, wave 1): `Engine/SimModel.lua`, `Engine/SimPlanner.lua`,
 
 | file | change |
 |---|---|
-| `Engine/SimModel.lua` | **B8/B5:** `SM.SWIFTMEND_ORDER = { "Regrowth", "Rejuvenation" }`, `SM.SWIFTMEND_FIELD` (the kit entry's field for eating each: `swiftmendRegrowth`, `swiftmendRejuv`) and `SM.SwiftmendEats(e, row)` -> family, amount, HoT state (or nil), allocating nothing. `LandCast`'s instant branch goes through it and, after landing the heal and clearing the slot, **traces `TK.HOT_END` (tgt, hot index, 0)** at the Swiftmend. **B7:** a `decideGen` counter; every `E_DECIDE` carries the generation it was pushed under in its `a` slot, and the handler only runs `a == decideGen`. A fixed cast bumps the generation and pushes one decision at its `busyUntil` (t + GCD); the pending one (at a preempted cast's landing time, or anywhere) is dropped when it pops. Still one live chain; `HeapPush` writes into the same reused slots; `HeapLess` is untouched. |
+| `Engine/SimModel.lua` | **B8/B5:** `SM.SWIFTMEND_ORDER = { "Regrowth", "Rejuvenation" }`, `SM.SWIFTMEND_FIELD` (the kit entry's field for eating each: `swiftmendRegrowth`, `swiftmendRejuv`) and `SM.SwiftmendEats(e, row)` -> family, amount, HoT state (or nil), allocating nothing. `LandCast`'s instant branch goes through it and, after landing the heal and clearing the slot, **traces `TK.HOT_END` (tgt, hot index, 0)** at the Swiftmend. **B7:** a `decideGen` counter; every `E_DECIDE` carries the generation it was pushed under in its `a` slot, and the handler only runs `a == decideGen`. A fixed cast bumps the generation and pushes one decision at its `busyUntil` (t + GCD); the pending one (at a preempted cast's landing time, or anywhere) is dropped when it pops. Still one live chain; `HeapPush` writes into the same reused slots; `HeapLess` is untouched. **B7 follow-up (the review's rejection):** the live cast's landing is kept in four scalars (`landAt`, `landSpell`, `landTi`, `landCost`), set where `inFlight` is set, and `E_LAND` succeeds only when `inFlight` and the event's time is `landAt` (within 1e-9), with the committed spell, target and cost read from those scalars. A preempted cast's `E_LAND` still in the heap now falls through even after the plan has committed another cast; nothing is allocated. |
 | `Engine/SimPlanner.lua` | **B6:** `SP.PARAMS` -- `{ name, domain, default [, seed] }` for `swiftmendBelow`, `directBelow`, `rollStacks`, `hotBelow`, `filler` and `noDirect` (`seed = true`: fixed by the seed, not stepped by the descent). `SP.DOMAINS` and `SP.PARAM_ORDER` are derived from it (same contents as before for the five searched ones). `SP.ParamKey(params)` is the key -- every entry of `SP.PARAMS` as the plan will hold it (nil = default), `noDirect` included. `SP.NewPlan` and `Plan:Params()` loop over `SP.PARAMS`. `SP.Search`'s `Key` is `SP.ParamKey`; `SP.SearchRun`'s is `SP.ParamKey(p) .. "|below|upTo"`. `SP.SearchSeeds()` returns the search's seeds: the default point, the HoTs-only point, **the low-threshold corner `{0.30, 0.35, 0, 0.60, false}` (SearchRun's third seed) in place of the byte copy of seed 1**, and the random point, re-drawn up to 8 times while it lands on a fixed seed (left out if it still does). |
 | `Engine/SimSolver.lua` | **B8:** `Solver:Best` asks `SM.SwiftmendEats(e, S.hots[i])` -- the engine's own order -- and keeps the amount in a local `eats`; `SV.Deposits(e, st, out, eats)` takes it as a fourth argument instead of reading `e.swiftmendAmount`. Nothing is written onto the kit entry. |
 | `Modules/SpellTuner_Replay/Scenario_Forever.lua` | **A18:** `SM.ScenarioFromRecording(rec, kit, ...)` forwards `...` to `SM.ScenarioV3` and to the v2 builder. |
 | `Modules/SpellTuner_Replay/Gates_Forever.lua` | **A18:** `SM.Validate(self, rec, kit, ...)` forwards `...` on both roads. |
 | `tools/replaycheck.lua` | +2 (80 -> 82), section 10: a scripted Regrowth at 1 s and Swiftmend at 4 s traces `HOT_END` for Regrowth at 4 s and `ReplayTrace`'s `Hot(1, Regrowth)` is nil at 6 s; nothing (Regrowth or Rejuvenation) is left in the row for the Swiftmend-ready dot. |
-| `tools/solvercheck.lua` | +5 (77 -> 82), section 9: a `noDirect` plan is built during `SP.Search` (60 evaluations on the fake pull); `SP.SearchSeeds()` are distinct `SP.ParamKey`s; with both HoTs rolling the solver's Swiftmend is priced on Regrowth (entry worth 5000 on Rejuvenation, 1 on Regrowth: saved < 100); the kit entry has no `swiftmendAmount` after `Best`; B7: a plan asked at 0 for a 2.9 s cast, a fixed cast at 0.5 s, the next question at 2.0. |
+| `tools/solvercheck.lua` | +7 (77 -> 84), section 9: a `noDirect` plan is built during `SP.Search` (60 evaluations on the fake pull); `SP.SearchSeeds()` are distinct `SP.ParamKey`s; with both HoTs rolling the solver's Swiftmend is priced on Regrowth (entry worth 5000 on Rejuvenation, 1 on Regrowth: saved < 100); the kit entry has no `swiftmendAmount` after `Best`; B7: a plan asked at 0 for a 2.9 s cast, a fixed cast at 0.5 s, the next question at 2.0; **B7 follow-up (+2):** the same scenario with the plan answering Regrowth (2.0 s) at 2.0 -- the Regrowth's `CAST` is traced at 4.0, its own landing, and the preempted Healing Touch is never cast. |
 | `tools/coachforever.lua` | +1 (18 -> 19): `SM.ScenarioFromRecording(coached, kit, { coached, sameLevel, otherLevel }).targets[2].dangerPrior` equals the value through `MD.cdb.recordings`, with `cdb` holding only the coached fight. |
 | `tools/practice.lua` | +1 (80 -> 81): the session's trace carries `HOT_END` for the Rejuvenation the scripted Swiftmend ate (on MELEE), at the Swiftmend's time, and `Hot()` is nil a second later. |
 
@@ -62,7 +63,20 @@ the practice trace ends the HoT Swiftmend ate, at the Swiftmend FAIL - Swiftmend
 80 ok, 1 failed
 ```
 
-After the change all four pass (82, 82, 19, 81).
+After the change all four pass (82, 84, 19, 81).
+
+**The B7 follow-up, failing first.** The new solvercheck on the rejected commit (d0877dc) -- the
+review's repro, a Healing Touch charged and landed at 2.9 and the plan's Regrowth never landing:
+
+```
+a Regrowth committed at 2.0 after the preemption lands at 4.0, its own time FAIL - casts 0.50:8921, 2.90:26978
+the preempted Healing Touch never succeeds (its stale landing is dropped) FAIL - casts 0.50:8921, 2.90:26978
+82 ok, 2 failed
+```
+
+On the parent (d8a926f) the landing assertion fails too (`casts 0.50:8921, 4.90:9858`: the plan is
+asked only at the cancelled cast's landing time, 2.9, so the Regrowth lands at 4.9); the parent's
+whole solvercheck is 78 ok, 6 failed. With the fix, 84 ok: `casts 0.50:8921, 4.00:9858`.
 
 ## Suites (exit codes checked; the loop of docs/TOOLS.md section 1)
 
@@ -71,7 +85,7 @@ Every suite exited 0 before and after. Counts before -> after:
 | suite | before | after |
 |---|---|---|
 | replaycheck | 80 | **82** |
-| solvercheck | 77 | **82** |
+| solvercheck | 77 | **84** |
 | coachforever | 18 | **19** |
 | practice | 80 | **81** |
 | simcheck | PASS, 0 FAIL lines | PASS, 0 FAIL lines |
@@ -134,7 +148,8 @@ fixes them. The author accepted that coach cards change (plan section 8, questio
 3. **A preempted plan is asked again when it is free** (B7). A fixed cast (damage, control, a
    shift) that cancels a plan's long cast frees the healer at its own global cooldown; the plan is
    asked then, instead of at the cancelled cast's landing time, so the suggested column no longer
-   idles, and is no longer charged for idling, after a Moonfire.
+   idles, and is no longer charged for idling, after a Moonfire. The cancelled cast's landing
+   event, still queued, lands nothing: only the live cast lands, at its own time.
 4. **Swiftmend is priced on the HoT it will eat** (B8). `SM.SWIFTMEND_ORDER` (Regrowth, then
    Rejuvenation: TBC's rule) is read by the engine and the solver; the solver priced Rejuvenation
    first and wrote `swiftmendAmount` onto the shared kit entry (copied into practice recordings'
@@ -149,20 +164,20 @@ winner is the same and only the evaluation count grows (the author's practice fi
 **docs/TOOLS.md** section 1 table -- append to the rows:
 
 - `replaycheck.lua`: ` Since **T46** (82): a Swiftmend ends the HoT it eats in the trace (B5)`
-- `solvercheck.lua`: ` Since **T46** (82): the HoTs-only seed evaluated, the seeds distinct, the solver's Swiftmend priced on Regrowth first and writing nothing on the kit, a preempted plan asked again at the fixed cast's global cooldown (B6, B7, B8)`
+- `solvercheck.lua`: ` Since **T46** (84): the HoTs-only seed evaluated, the seeds distinct, the solver's Swiftmend priced on Regrowth first and writing nothing on the kit, a preempted plan asked again at the fixed cast's global cooldown, its next cast landing at its own time and the cancelled one never (B6, B7, B8)`
 - `coachforever.lua`: ` Since **T46** (19): the store passed as the third argument reaches the v3 builder (A18)`
 - `practice.lua`: ` Since **T46** (81): the practice trace ends the HoT Swiftmend ate`
 
 **CLAUDE.md** -- append to the rows:
 
-- `Engine/SimModel.lua`: ` **T46 (P2, 2026-09-30):** `SM.SWIFTMEND_ORDER` / `SM.SwiftmendEats` (Regrowth, then Rejuvenation) for the engine and the solver, a Swiftmend traces `HOT_END` for the HoT it eats, and a fixed cast starts a new decision generation at its global cooldown (the stale decision dropped) (B5, B7, B8)`
+- `Engine/SimModel.lua`: ` **T46 (P2, 2026-09-30):** `SM.SWIFTMEND_ORDER` / `SM.SwiftmendEats` (Regrowth, then Rejuvenation) for the engine and the solver, a Swiftmend traces `HOT_END` for the HoT it eats, a fixed cast starts a new decision generation at its global cooldown (the stale decision dropped), and a plan cast lands only at its own landing time (`landAt`; a preempted cast's queued landing lands nothing) (B5, B7, B8)`
 - `Engine/SimPlanner.lua`: ` **T46 (P2):** `SP.PARAMS` (name, domain, default) derives `NewPlan`, `Plan:Params()`, `SP.ParamKey`, `SP.DOMAINS` and `SP.PARAM_ORDER`; `noDirect` is in both searches' keys; `SP.SearchSeeds()` four distinct starts (B6)`
 - `Engine/SimSolver.lua`: ` **T46 (P2):** Swiftmend priced on the HoT the engine eats, the amount passed to `SV.Deposits` rather than written onto the kit entry (B8)`
 - `Modules/<Name>/` row, after the Replay review notes: ` **T46:** the Replay module's `ScenarioFromRecording` / `Validate` wrappers forward every argument (A18)`
 
 **TOCs:** none. **docs/TESTING.md:** none (no in-game check is needed; the change is engine-only
 and the coach card is checked offline). **tools/data/expected-counts.json:** it does not exist at
-this base; when P13 creates it: replaycheck 82, solvercheck 82, coachforever 19, practice 81.
+this base; when P13 creates it: replaycheck 82, solvercheck 84, coachforever 19, practice 81.
 
 ## Deviations
 
@@ -187,4 +202,7 @@ this base; when P13 creates it: replaycheck 82, solvercheck 82, coachforever 19,
   `SM.SWIFTMEND_ORDER`: it attributes a recording, it does not land a cast, and its order already
   agrees.
 - The fixture cards do not change their winner (see above); the before/after shown is the one line
-  that differs.
+  that differs. After the B7 follow-up the three fixtures' cards and `report p1` are identical to the
+  rejected commit's (none of them has a plan cast committed between a preemption and the cancelled
+  cast's landing time); only the stub's frame count in the `(the search ran across N stub frames)`
+  footnote varies, because the search slices on elapsed time.

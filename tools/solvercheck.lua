@@ -874,5 +874,44 @@ do
         "asked at " .. table.concat(shown, ", "))
 end
 
+do
+    -- B7 follow-up: after the preemption the plan answers with ANOTHER cast
+    -- that has a cast time (Regrowth, 2.0 s at 2.0). The cancelled Healing
+    -- Touch's landing event is still in the heap at 2.9; it must not land the
+    -- cancelled spell and swallow the Regrowth. What lands is the Regrowth, at
+    -- its own time, and the Healing Touch never succeeds.
+    local HT = MD.SpellData.maxRank.HealingTouch
+    local RG = MD.SpellData.maxRank.Regrowth
+    local kitP = { caster = {
+        [HT] = { family = "HealingTouch", type = "direct", cast = 2.9, cost = 100, direct = 500 },
+        [RG] = { family = "Regrowth", type = "direct", cast = 2.0, cost = 70, direct = 300 } } }
+    local n = 0
+    local plan = { Decide = function()
+        n = n + 1
+        if n == 1 then return HT, 1, 2 end
+        if n == 2 then return RG, 1, 2 end
+        return nil
+    end, noReaction = true }
+    local sc = { dur = 8, pool = 9000, initial = { mana = 9000, apiBase = 10, apiCasting = 4 },
+                 kit = kitP, floor = 0.30, ev = { t = {}, kind = {}, tgt = {}, amt = {}, x = {} },
+                 targets = { { name = "T", role = "TANK", maxHP = 10000, hp0 = 2000, tracked = true } },
+                 fixed = { { 0.5, 8921, 50, -1 } } }
+    local tr = {}
+    SM:Run(sc, plan, { critMode = "ev", trace = tr })
+    local T, TK = tr.built, SM.TK
+    local rgAt, htCast, seen = nil, false, {}
+    for i = 1, T.nEv do
+        if T.ev.kind[i] == TK.CAST then
+            seen[#seen + 1] = string.format("%.2f:%s", T.ev.t[i], tostring(T.ev.a[i]))
+            if T.ev.a[i] == RG then rgAt = T.ev.t[i] end
+            if T.ev.a[i] == HT then htCast = true end
+        end
+    end
+    check("a Regrowth committed at 2.0 after the preemption lands at 4.0, its own time",
+        rgAt ~= nil and math.abs(rgAt - 4.0) < 1e-6, "casts " .. table.concat(seen, ", "))
+    check("the preempted Healing Touch never succeeds (its stale landing is dropped)",
+        not htCast, "casts " .. table.concat(seen, ", "))
+end
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 if #fails > 0 then for _, m in ipairs(fails) do print("  FAIL " .. m) end; os.exit(1) end

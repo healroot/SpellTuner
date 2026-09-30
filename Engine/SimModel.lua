@@ -681,6 +681,12 @@ function SM:Run(scenario, plan, opts)
     local fixed = plan and scenario.fixed or nil
     local fixedN, fixedI = fixed and #fixed or 0, 1
     local inFlight = false      -- the plan has a cast committed and not yet landed
+    -- T46 (P2, review B7 follow-up): the live cast's landing, in scalars. A
+    -- preempted cast's E_LAND stays in the heap; once the plan has committed
+    -- another cast (inFlight true again) that stale event must not land the
+    -- cancelled spell and swallow the live one. E_LAND succeeds only at
+    -- `landAt`, with the committed spell, target and cost kept here.
+    local landAt, landSpell, landTi, landCost = -1, nil, nil, nil
     -- T46 (P2, review B7): the live decision chain's generation. Every
     -- E_DECIDE carries the generation it was pushed under; a fixed cast that
     -- frees the healer earlier than the pending decision starts a new one, and
@@ -934,12 +940,15 @@ function SM:Run(scenario, plan, opts)
                     Trace(TK.HOT_END, a, b, bloomed)
                 end
             elseif prio == E_LAND then
-                -- only one cast is ever in flight, so a cleared marker means a
+                -- only one cast is ever in flight. A cleared marker means a
                 -- fixed cast preempted this one: it never happened, and a
-                -- cancelled cast costs nothing
-                if inFlight then
+                -- cancelled cast costs nothing. A marker set for a DIFFERENT
+                -- landing time means the plan has committed a new cast since
+                -- the preemption: this event is the cancelled one's, and the
+                -- live cast lands at its own time (B7 follow-up).
+                if inFlight and math.abs(et - landAt) < 1e-9 then
                     inFlight = false
-                    Succeed(a, b, aux)   -- aux carries the committed cast's cost
+                    Succeed(landSpell, landTi, landCost)
                 end
             elseif prio == E_DECIDE and deciding and a == decideGen then
                 CatchUpFrames(t)
@@ -977,6 +986,7 @@ function SM:Run(scenario, plan, opts)
                     else
                         if trace then EndWait(); Trace(TK.CAST_START, ti, spellID, castTime, pendingWhy) end
                         inFlight = true
+                        landAt, landSpell, landTi, landCost = succeedAt, spellID, ti, e and e.cost or nil
                         HeapPush(h, succeedAt, E_LAND, spellID, ti, e and e.cost or nil)
                     end
                     busyUntil = succeedAt > t + GCD and succeedAt or (t + GCD)
