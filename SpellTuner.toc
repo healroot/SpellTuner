@@ -11,7 +11,9 @@ Client\API_Forever.lua
 Core.lua
 Core_Forever.lua
 Spells\Parse.lua
+Spells\RankRules.lua
 Spells\Book.lua
+Spells\Words.lua
 Spells\Tabs.lua
 Engine\ManaModel.lua
 Engine\Recordings.lua

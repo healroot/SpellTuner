@@ -1037,3 +1037,11 @@ A Forever kit rank whose cast time the book cannot read is `dataMissing` (Practi
 ## The review commands are one implementation (2026-09-30, T65)
 
 **The review commands are one implementation (T65, P21, review A1).** `/md coach`, `/md coachrun`, the validation report and Forever's `/st validate` are `Engine/ReviewCommands.lua` on both lines. Every line they print goes through `MD:PrintSafe`, so on TBC a zone, name, run name or spell with a pipe, a backslash or a non-ASCII byte now prints escaped, as it already did on Forever; and `/md coach` refuses an argument it cannot read (`1 force now`) instead of coaching recording 1 (B16, the router's rule, now on the coach's own parse too). What still differs by line is a policy the flavour installs: the copy box for a long card (TBC), the report's verb (`simreplay` / `validate`) and the slash in hints.
+
+## A stream's version picks its road (2026-09-30, T66)
+
+**A recording is replayed and validated by the road registered for its version (T66, P22, review A18).** `Engine/SimModel.lua` keeps one registry per question (`SM.scenarioBuilders`, `SM.validators`, `SM.healthReconstructors`); v1, v2 and a recording without a version take the v2 road, the Replay module registers v3. A version nobody registered is refused with a named error instead of being read as a v2 stream, because the same numbers mean other things in another version (a v3 heal is kind 15, which the engine's own kinds do not have). The v3 constants live once, in the Recorder module's `Stream_Forever.lua`, and the Replay module refuses to load if a v3 heal would collide with an engine kind. No TBC recording changes road; nothing TBC prints moved.
+
+## A spell outside the book keeps its last readable text (2026-09-30, T67)
+
+A spell read outside the book keeps its last readable text through a secret description, as a book spell does, and says it was read before combat (T67, review R41's gap). TBC is unchanged: the rank rules moved to `Spells/RankRules.lua` and mark the same ranks.

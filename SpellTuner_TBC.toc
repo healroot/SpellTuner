@@ -24,6 +24,7 @@ Engine\Overheal.lua
 Engine\ManaCooldowns.lua
 Engine\TTO.lua
 Engine\Kit.lua
+Spells\RankRules.lua
 Engine\RankMath.lua
 Engine\DamageMath.lua
 Engine\Calibration.lua

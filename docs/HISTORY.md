@@ -4074,3 +4074,38 @@ run-to-run noise (ms, table addresses, sliced search frame / evaluation counts i
 and replayui, replayui's two `search done` lines finishing in either order, simcheck's KB/run).
 Forever: coachforever's new assertion, apicheck counting 51 files. **Next:** wave 9; the author's §44
 item 17 (Forever half) and W8 on the next build.
+
+## 2026-09-30 — the refactor plan, wave 9: T66-T67 (P22-P23)
+
+Wave 9 of `docs/PLAN-refactor-ux.md` cherry-picked onto `46c09d9`, oldest first, then the
+integrator's lines (both Recorder module TOCs, the three main TOCs, CLAUDE.md, `docs/DECISIONS.md`,
+`docs/TESTING.md` §44, `docs/TOOLS.md`, `tools/data/expected-counts.json`, this entry) in one commit.
+No merge fix was needed (the two tasks share no file). The version stays 0.16.3. TOC lines:
+`Stream_Forever.lua` right before `Recorder_Forever.lua` on `SpellTuner_Recorder_Mainline.toc` and
+`SpellTuner_Recorder.toc` (still identical); `Spells\RankRules.lua` right before `Engine\RankMath.lua`
+on `SpellTuner_TBC.toc`; `Spells\RankRules.lua` after `Spells\Parse.lua` and `Spells\Words.lua` after
+`Spells\Book.lua` on `SpellTuner_Mainline.toc` and `SpellTuner.toc`.
+
+- **T66 (P22)** (`cb4cc12`, `672f489`): a stream's version picks its road (review A18) --
+  `SM.scenarioBuilders`, `SM.validators`, `SM.healthReconstructors` keyed by `v` (v1, v2 and no `v`
+  the v2 road; v3 registered by the Replay module; an unknown version raises a named error); the
+  shared gates exported from `Engine/SimModel.lua`; `MD.StreamV3` once, in the Recorder module's new
+  `Stream_Forever.lua`, with the Replay module's load-time collision check; gate 8 reads the scenario's
+  attribution (one `AttributeHeals` per validation). DECISIONS "A stream's version picks its road".
+  gatecheck forever 11.
+- **T67 (P23)** (`f6db718`, `c3191a9`): the rank rules and the spell words, once (review A13, A15's
+  R41 gap) -- new `Spells/RankRules.lua` (both lines; `RankMath:Compute` and `Book:Rows` call it on
+  `MD.Rules.SUGGESTED_FLOOR`) and `Spells/Words.lua` (Forever; SpellTip and SpellsPane render from
+  it); `SpellTip:Lines` returns `lines, outcome`; `Book:ReadSpell` keeps a spell outside the book
+  readable in combat, marked stale. DECISIONS "A spell outside the book keeps its last readable text".
+  bookcheck forever 22 and a new tbc run (2, the pre-T67 rule as an oracle), tipcheck 38.
+
+`make check`: 67 runs, all passed, in the worktree and in a `git archive` export (62 counted runs
+against 62 expected). The named suites fail on `46c09d9` first (gatecheck 9/2, tipcheck 36/2,
+bookcheck forever 21/1, tbc 1/1). Each TBC suite's full output against `46c09d9` differs only by the
+new bookcheck tbc run, releasecheck's package file counts (tbc 61, was 60; forever 28, was 26) and
+run-to-run noise (ms, table addresses, the sliced search's frame count in simwindow on one run and
+runcheck on another); `dashui`, `spelltip`,
+`simcheck`, `replayui`, `reviewui` equal. Forever: gatecheck's, tipcheck's and bookcheck's new
+assertions, apicheck 54 files, textcheck 90. **Next:** wave 10; the author's §44 W9 lines on the next
+build.

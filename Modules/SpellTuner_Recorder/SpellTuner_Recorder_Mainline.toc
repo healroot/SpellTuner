@@ -8,6 +8,7 @@
 
 Module.lua
 
+Stream_Forever.lua
 Recorder_Forever.lua
 
 Ready.lua

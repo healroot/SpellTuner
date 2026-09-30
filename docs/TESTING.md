@@ -1441,12 +1441,12 @@ the numbers.
 
 **Paste back**: the `pN` you pinned, and in words what the suggested column did differently.
 
-## 44. The refactor plan's checks (`docs/PLAN-refactor-ux.md` section 9; waves 1-8, the next build)
+## 44. The refactor plan's checks (`docs/PLAN-refactor-ux.md` section 9; waves 1-9, the next build)
 
 Paste back as in section 41. Out of combat unless a step says otherwise. The items keep the plan's
 numbers; wave 1 (T45-T47) needs items 3 and 15, wave 2 (T48-T50) adds 4, 6, 8, 10 and 14, and wave 3
 (T51-T53) adds 1, 2, 7, 9, 11 and 12, wave 4 (T54-T56) adds 5 and the TBC load-list smoke line
-(W4), wave 5 (T57-T58) adds 16, and wave 6 (T59-T61) adds 17's TBC half, and wave 7 (T62-T63) adds 18 and the kit line (W7), and wave 8 (T64-T65) adds 17's Forever half and the settings line (W8). Item 13 waits for P35's pass over this section.
+(W4), wave 5 (T57-T58) adds 16, and wave 6 (T59-T61) adds 17's TBC half, and wave 7 (T62-T63) adds 18 and the kit line (W7), and wave 8 (T64-T65) adds 17's Forever half and the settings line (W8), and wave 9 (T66-T67) adds the two rank lines (W9). Item 13 waits for P35's pass over this section.
 
 **TBC.**
 
@@ -1485,6 +1485,8 @@ W4. **The split load list (T56).** With the new TOC installed, `/md verify`, `/m
    to open your newest fight). `/md replay 1` and `/md replay p1` still open.
 W8. **Settings defaults (P20).** On a profile that never moved them, `/md` -> Settings -> General still
    shows 85 and 30 on its two sliders (a regression check: the defaults moved to `Engine/SimModel.lua`).
+W9. **The dashboard's ranks (P23).** `/md` -> Spells: the same ranks are marked dominated and the same one
+   suggested as before (a regression check: the rules moved to `Spells/RankRules.lua`).
 
 **Forever.**
 
@@ -1504,6 +1506,10 @@ W7. **The kit (P19).** With the Replay module on, `/st replay`, `/st coach N` an
     as before; after `/reload` the character's `SpellTunerDB` still carries `kit` (written when the kit
     was first built this session and again only when the spellbook or crit changed). TBC: `/md coach N`
     and `/md practice start` as before.
+W9. **A spell outside the book in combat (P23).** Link a heal you know in chat, hover the link out of
+    combat (the SpellTuner block shows), then again in combat: the block is still there, with `Text read
+    before combat` last. The Spells pane's rank table, the rank card and the spell tooltip read as before.
+    `/st tooltip why` after hovering a rank row in the Spells pane still describes your last macro hover.
 
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the
