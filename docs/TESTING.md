@@ -1441,6 +1441,20 @@ the numbers.
 
 **Paste back**: the `pN` you pinned, and in words what the suggested column did differently.
 
+## 44. The refactor plan's checks (`docs/PLAN-refactor-ux.md` section 9; waves 1-3, the next build)
+
+Paste back as in section 41. Out of combat unless a step says otherwise. The items keep the plan's
+numbers; wave 1 (T45-T47) needs items 3 and 15, and waves 2-3 add the others as they land.
+
+**TBC.**
+
+3. **Text (B3).** `/md verify`, `/md unlock`, `/md window 99`, and a gear change that moves an efficient
+   rank: no boxes; paste the verify block.
+
+**Forever.**
+
+15. **Client (P3).** `/st dump`: the first line says `forever`.
+
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the
 raw numbers. `/md profile` output is welcome with any report. I turn them into

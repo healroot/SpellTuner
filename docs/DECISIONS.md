@@ -895,3 +895,48 @@ max rank, skipped, order) on every record, and the same again as the character's
    its `export` wrote a `{ rec, kit }` fixture; `import.lua`'s Forever `export pN` writes the fight
    and its kit as a SavedVariables file of its own (`--file` reads it), and the existing fixture
    stays readable with `--fixture`.
+
+## Coach fixes (2026-09-30)
+
+The whole-project review (`docs/review/2026-09-30-project-review.md` B5-B8, A18) found four engine
+bugs that change what the coach suggests on both lines; T46 (`docs/tasks/T46-coach-engine-fixes.md`)
+fixes them. The author accepted that coach cards change (plan section 8, question 2).
+
+1. **A Swiftmend ends the HoT it eats, in the trace** (B5). The replay, the Swiftmend-ready dot and
+   the practice window stop drawing an eaten Regrowth or Rejuvenation to its nominal expiry.
+2. **The search's key is every plan parameter** (B6). One `SP.PARAMS` list derives the defaults,
+   `Plan:Params()`, the key and the domains; `noDirect` is in the key, so the HoTs-only seed is
+   evaluated (it collided with the default seed and was never run) in `SP.Search` and
+   `SP.SearchRun`. `noDirect` is fixed per seed, not stepped by the descent. The third seed, a copy
+   of the first, is now the low-threshold corner (Swiftmend 30%, direct 35%, no roll, HoT 60%) that
+   the run search already used; the random seed is re-drawn when it lands on a fixed one.
+3. **A preempted plan is asked again when it is free** (B7). A fixed cast (damage, control, a
+   shift) that cancels a plan's long cast frees the healer at its own global cooldown; the plan is
+   asked then, instead of at the cancelled cast's landing time, so the suggested column no longer
+   idles, and is no longer charged for idling, after a Moonfire. The cancelled cast's landing
+   event, still queued, lands nothing: only the live cast lands, at its own time.
+4. **Swiftmend is priced on the HoT it will eat** (B8). `SM.SWIFTMEND_ORDER` (Regrowth, then
+   Rejuvenation: TBC's rule) is read by the engine and the solver; the solver priced Rejuvenation
+   first and wrote `swiftmendAmount` onto the shared kit entry (copied into practice recordings'
+   kits by `SM.KitSnapshot`). It writes nothing now.
+5. **The `others` store reaches the v3 builder** (A18, the dropped argument): the Replay module's
+   wrappers of `SM.ScenarioFromRecording` and `SM.Validate` forward every argument.
+
+The lexicographic score and the causality invariant are unchanged. On the three fixtures tried the
+winner is the same and only the evaluation count grows (the author's practice fight: 26 -> 56).
+
+## The client is the TOC's, the interface is a fallback (2026-09-30, T47)
+
+`MD.API.client` comes from the TOC the client loaded: its first file, `Client/TOC_<X>.lua`, sets
+`SPELLTUNER_TOC = "<X>"`, and `TBC` is `tbc`, `Mainline` and `Plain` are `forever`
+(`MD.API.MARKERS`). The interface band (`MD.API.BANDS`: tbc 20000-29999, forever 16000-19999)
+decides only when that marker is absent. Why: WoW: Forever runs the retail engine, and its launch
+interface is not promised to stay in 16xxx; the band alone would turn the addon into an "unknown
+client" (and Practice's `OnForever()` false, undoing T24) the day it moves, and `release.sh` would
+refuse to build. `release.sh` classifies a TOC by the marker file it lists (a TOC under `Modules/`
+is forever), warns when the interface is outside its flavour's band and refuses only a TOC with
+neither. One table, `tools/data/flavours.txt`, is what `release.sh`, `tools/apicheck.py` and
+`tools/releasecheck.lua` read; `tools/forevercheck.lua` asserts `Client/API.lua`'s two tables
+equal it. On TBC nothing changes: its interface is inside the band and its marker says `tbc`.
+The same task made the ten TBC chat strings with an em or en dash and the window's U+00D7 close
+glyph ASCII (`tools/textcheck.py`, B3, U31) -- text only.

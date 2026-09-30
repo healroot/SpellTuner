@@ -3783,3 +3783,33 @@ this entry and the handover in the docs commit. Every suite passes; each TBC sui
 sliced search's counts). **Installed**: the Forever package, **0.16.3**, into the author's beta; no
 TBC TOC there, nothing installed into a TBC client. **Next:** the author's TESTING §38-§43 on 0.16.3
 (§43 first for a short session), then the planner's whole-project review.
+
+## 2026-09-30 — the refactor plan, wave 1: T45-T47 (P1-P3)
+
+Wave 1 of `docs/PLAN-refactor-ux.md` cherry-picked onto `d8a926f`, oldest first, then the
+integrator's lines (CLAUDE.md, `docs/DECISIONS.md`, `docs/TESTING.md` §44, `docs/TOOLS.md`, this
+entry) in one commit. No TOC changes; the version stays 0.16.3.
+
+- **T45 (P1)** (`cdb84d8`): the forever stub's secret answers type() as "number"; the knobs waves 2-4
+  need; costcheck. clockcheck 21, costcheck 3 (new, tbc), adaptercheck 22 / 15.
+- **T46 (P2)** (`cb94d8e`, `3ddd972`): the coach's engine fixes, B5-B8 and A18 -- a Swiftmend ends
+  the HoT it eats in the trace, `SP.PARAMS` puts `noDirect` in the search key (the HoTs-only seed is
+  evaluated, the seeds distinct), a preempted plan is asked again at the fixed cast's global cooldown
+  and its stale landing lands nothing, Swiftmend priced on Regrowth first with nothing written on the
+  kit, the Replay wrappers forward the `others` store. DECISIONS "Coach fixes (2026-09-30)".
+  replaycheck 82, solvercheck 84, coachforever 19, practice 81. The fixtures' winners are unchanged;
+  the searches evaluate more plans (the fake pull 28 -> 44).
+- **T47 (P3)** (`17c3e50`, `a71cf2a`, `56f85c6`): `MD.API.client` from the TOC's marker, the
+  interface band a fallback (`tools/data/flavours.txt`, read by `release.sh`, apicheck and
+  releasecheck); `tools/textcheck.py` and the eleven non-ASCII sites (the TBC chat strings, the
+  close glyph `x`, TTO's doubled pipe); simcheck exits 1 on a failure. DECISIONS "The client is the
+  TOC's, the interface is a fallback". forevercheck 16, releasecheck 16, simcheck 13, textcheck
+  --selftest 2.
+
+Every suite passes (exit codes checked), apicheck and textcheck 0 findings, in the worktree and in
+a `git archive` export. Each TBC suite's output against `d8a926f` differs only as the task files
+say: the ASCII first-run line (T47), the search's evaluation and stub-frame counts (T46, 28 -> 44),
+the new assertions, practice's record `client` `tbc` where the TBC harness said `unknown` (T47; the
+TBC stub has no `GetBuildInfo`), and simcheck's run cost 3.55 -> 3.57 KB/run (T46's per-run state;
+the "run cost is flat" test still passes) -- plus addresses and ms. **Next:** wave 2 (P4-P6);
+the author's §44 items 3 and 15 on the next build.
