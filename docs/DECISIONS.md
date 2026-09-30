@@ -1014,3 +1014,14 @@ adapter) instead of each polling `UnitAffectingCombat` or keeping a copy (review
 visible changes -- the poll already followed the events and already said "in combat" after a
 `/reload` mid-fight; that case now comes from the seed. The offline stub's TBC profile answers the
 regen events, so the clock's in-combat path has a suite (`tools/ttocheck.lua`).
+
+## Practice is a policy the flavour installs; its recording carries FightRecorder's fields (2026-09-30, T59)
+
+`Engine/Practice.lua` no longer asks which client it runs on. `MD.Practice.policy` --
+`defaultBinds`, `kitIsLive`, `client` -- is TBC's by default (the author's Cell click-casting, the
+static kit, `"tbc"`), and `Modules/SpellTuner_Replay/Kit_Forever.lua` provides Forever's
+(`MD.PracticePolicy`: no bindings, the live spellbook kit, `"forever"`); the panel and the bindings
+sheet read it, and apicheck rule 10 refuses `MD.API.client` outside `Client/` and
+`UI/Dump_Forever.lua` (review A6a). A practice recording now writes `threatOn = {}` (practice has no
+threat) and names every spell id its own events carry, the bloom's 33778 included (review A30).
+Nothing a TBC player sees changes; recordings already stored are left as they are.

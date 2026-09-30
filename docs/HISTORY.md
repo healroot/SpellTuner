@@ -3972,3 +3972,39 @@ ttocheck, lib/t, apicheck's selftest), replayui's log of the two combats it now 
 `[sim] stream discarded ...`, documented in T58) and run-to-run noise (ms, table addresses, the sliced
 search's counts, simwindow's frames). **Next:** wave 6; the author's §44 item 16 on the next TBC
 build.
+
+## 2026-09-30 — the refactor plan, wave 6: T59-T61 (P15-P17)
+
+Wave 6 of `docs/PLAN-refactor-ux.md` cherry-picked onto `8c4cc93`, oldest first, then the
+integrator's lines (CLAUDE.md, `docs/DECISIONS.md`, `docs/TESTING.md` §44, `docs/TOOLS.md`,
+`tools/data/expected-counts.json`, this entry) in one commit. The version stays 0.16.3; no TOC
+changed (no shipped file added or moved; `tools/slashcheck.lua` is not shipped).
+
+- **T59 (P15)** (`540a9b6`, `fb0f96e`, `e976729`): practice is a policy the flavour installs --
+  `MD.Practice.policy` (`defaultBinds`, `kitIsLive`, `client`), TBC's by default in
+  `Engine/Practice.lua`, Forever's provided by `Kit_Forever.lua` as `MD.PracticePolicy`; the bindings
+  sheet and the practice panel read it; apicheck rule 10 refuses `MD.API.client` outside `Client/` and
+  `UI/Dump_Forever.lua` (A6a; `--selftest` 13). A practice recording writes `threatOn = {}` and names
+  every own spell id, the bloom's 33778 included (A30; practice 83; the Forever import fixture
+  regenerated for the two new `threatOn` fields). DECISIONS "Practice is a policy the flavour
+  installs". Nothing a TBC player sees changes; stored recordings are left as they are.
+- **T60 (P16)** (`23ba195`, `bf225e8`): Dump_Forever, SpellsPane_Forever, Dashboard_Review,
+  ReplayWindow, Measure, SpendTracker, Dashboard_Waste and SimWindow use `MD.Text` / `MD.Util` (and
+  Dump `MD:ModuleStateText`) instead of their own copies; every output identical. CLAUDE.md gains the
+  "One escaping rule, one set of formatters" convention. Findings left in the task file: three
+  behaviours no suite holds (the Waste view's 10000 threshold, SpendTracker's even-count seed median,
+  the dump's modules lines) and the copies outside P16's files.
+- **T61 (P17)** (`902035a`, `fc6b0bc`, `827f584`): every TBC slash verb is an `MD:AddCommand`
+  registration in the old list's order (`help` / `unlock` hidden, `config` / `settings` / `bindings` /
+  `tip` / `calib` through the new `MD:AddAlias`); `MD:Commands()` feeds the help, TBC's About tab and
+  the tests; `MD.COMMANDS` and `MD.SlashFallback` are gone (A1). `tools/slashcheck.lua` (8) holds every
+  verb and alias word for word against a golden captured on `8c4cc93` (chat lines, 24 spied callees,
+  settings changed, with and without the callees, the About tab's rows); corecheck 24 / 24.
+
+`make check`: 61 runs, all passed, in the worktree and in a `git archive` export. Each TBC suite's full
+output against `8c4cc93` differs only by the new assertions (practice's two, corecheck's two, the new
+slashcheck), simcheck's per-run allocation measure (`9 run cost is flat`: 3.57 / 3.58 KB -> 3.51 /
+3.51 KB, steady from P17 on -- the heap the harness measures from, no engine file touched) and
+run-to-run noise (ms, table addresses, the sliced search's counts, replayui's two `search done` lines
+finishing in either order -- seen both ways on `8c4cc93` itself). **Next:** wave 7; the author's §44
+item 17 (TBC half) with item 16 on the next TBC build.
