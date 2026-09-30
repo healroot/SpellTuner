@@ -21,6 +21,10 @@ API baseline and the adapter rule (CLAUDE.md / docs/FOREVER-PLAN.md):
      alias (`local u = unit`) is not followed; a check in a branch that does
      not dominate the use still counts as a check.
 
+A Forever TOC is one that loads a forever marker file of tools/data/flavours.txt,
+or sits under Modules/, or (with neither) whose interface is in forever's band
+(T47, docs/tasks/T47-launch-safety.md).
+
 See docs/tasks/T6-apicheck.md for the full rule text (rules 1-7) and
 docs/tasks/T13a-secret-arg-check.md for rule 8.
 """
@@ -131,16 +135,52 @@ def find_tocs(root):
     return sorted(result)
 
 
-def is_forever_toc(path):
+FLAVOURS_FILE = os.path.join(HERE, "data", "flavours.txt")
+
+
+def load_flavours(path=FLAVOURS_FILE):
+    """tools/data/flavours.txt (T47): [(name, {marker files}, lo, hi)] -- the
+    table release.sh and tools/releasecheck.lua classify TOCs by, and
+    Client/API.lua's MD.API.BANDS / MD.API.MARKERS must equal."""
+    flavours = []
+    with open(path, "r", encoding="utf-8") as f:
+        for raw in f:
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            m = re.match(r"^(\S+)\s+(\S+)\s+(\d+)-(\d+)$", line)
+            if not m:
+                raise ValueError("{}: cannot read '{}'".format(path, line))
+            flavours.append((m.group(1), set(m.group(2).split(",")), int(m.group(3)), int(m.group(4))))
+    return flavours
+
+
+def toc_flavour(path, root, flavours):
+    """The marker file a TOC loads decides; a TOC under Modules/ is forever;
+    the interface band only for a TOC with neither (T47)."""
+    for _, relfile in toc_entries(path):
+        for name, markers, _, _ in flavours:
+            if relfile in markers:
+                return name
+    modules_dir = os.path.abspath(os.path.join(root, "Modules"))
+    toc_dir = os.path.abspath(os.path.dirname(path))
+    if os.path.commonpath([toc_dir, modules_dir]) == modules_dir:
+        return "forever"
+    nums = []
     with open(path, "r", encoding="utf-8", errors="replace") as f:
         for raw in f:
             line = raw.rstrip("\r\n")
             if line.lower().startswith("## interface:"):
-                nums = re.findall(r"\d+", line.split(":", 1)[1])
-                for n in nums:
-                    if 16000 <= int(n) <= 19999:
-                        return True
-    return False
+                nums = [int(n) for n in re.findall(r"\d+", line.split(":", 1)[1])]
+                break
+    for name, _, lo, hi in flavours:
+        if nums and all(lo <= n <= hi for n in nums):
+            return name
+    return None
+
+
+def is_forever_toc(path, root, flavours):
+    return toc_flavour(path, root, flavours) == "forever"
 
 
 def toc_entries(path):
@@ -436,7 +476,8 @@ def scan_rule8(abspath, relpath):
 def collect(root, baseline):
     """Returns (forever_tocs, checked_files[abspath,relpath], findings, globals_seen, per_file_globals)."""
     all_tocs = find_tocs(root)
-    forever_tocs = [t for t in all_tocs if is_forever_toc(t)]
+    flavours = load_flavours()
+    forever_tocs = [t for t in all_tocs if is_forever_toc(t, root, flavours)]
 
     findings = []
     checked = []  # (abspath, relpath)

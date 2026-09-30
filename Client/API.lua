@@ -61,26 +61,37 @@ function MD.API.Has(name)
     return answer
 end
 
--- Computed once at load. The interface-range comparison is the one piece of
--- flavour logic this shared file carries (CLAUDE.md: shared files reach every
--- client name through Has/pcall; no other flavour check).
+-- Computed once at load (T47, docs/DECISIONS.md "the client is the TOC's, the
+-- interface is a fallback"). The TOC the client picked says which line this
+-- is: every main TOC lists its Client/TOC_<X>.lua first, which sets our own
+-- global SPELLTUNER_TOC = "<X>". The interface band decides only when that
+-- marker is absent (a tool loading this file on its own), so a launch
+-- interface outside 16000-19999 changes nothing. Both tables must equal
+-- tools/data/flavours.txt (tools/forevercheck.lua). This is the one piece of
+-- flavour logic this shared file carries.
+MD.API.MARKERS = { TBC = "tbc", Mainline = "forever", Plain = "forever" }
+MD.API.BANDS = { tbc = { 20000, 29999 }, forever = { 16000, 19999 } }
+
 local client = "unknown"
 do
-    local getBuildInfo = MD.API.Has("GetBuildInfo")
-    if type(getBuildInfo) == "function" then
-        local ok, _, _, _, iface = pcall(getBuildInfo)
-        if ok then
-            local secret = false
-            local isSecret = MD.API.Has("issecretvalue")
-            if type(isSecret) == "function" then
-                local ok2, s = pcall(isSecret, iface)
-                secret = ok2 and s == true
-            end
-            if not secret and type(iface) == "number" then
-                if iface >= 16000 and iface < 20000 then
-                    client = "forever"
-                elseif iface >= 20000 and iface < 30000 then
-                    client = "tbc"
+    local marker = rawget(_G, "SPELLTUNER_TOC")
+    if type(marker) == "string" and MD.API.MARKERS[marker] then
+        client = MD.API.MARKERS[marker]
+    else
+        local getBuildInfo = MD.API.Has("GetBuildInfo")
+        if type(getBuildInfo) == "function" then
+            local ok, _, _, _, iface = pcall(getBuildInfo)
+            if ok then
+                local secret = false
+                local isSecret = MD.API.Has("issecretvalue")
+                if type(isSecret) == "function" then
+                    local ok2, s = pcall(isSecret, iface)
+                    secret = ok2 and s == true
+                end
+                if not secret and type(iface) == "number" then
+                    for name, band in pairs(MD.API.BANDS) do
+                        if iface >= band[1] and iface <= band[2] then client = name end
+                    end
                 end
             end
         end

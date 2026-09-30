@@ -41,7 +41,11 @@
 # is its own package inside the Forever one, built from ITS OWN TOCs' file lists
 # (T2); an entry under Engine/, Spells/, Data/ or UI/ that is not in the module
 # folder is a shared file, copied from the repository root to the same path (T13c).
-# A TOC's flavour is its "## Interface:" (20000-29999 tbc, 16000-19999 forever). The
+# A TOC's flavour is the marker file it loads (Client/TOC_TBC.lua tbc, Client/TOC_Mainline.lua
+# or Client/TOC_Plain.lua forever) and every TOC under Modules/ is forever; its "## Interface:"
+# band decides only for a TOC with neither, and a TOC whose interface is outside its
+# flavour's band builds with a warning (T47). Markers and bands are tools/data/flavours.txt,
+# the table Client/API.lua, tools/apicheck.py and tools/releasecheck.lua agree with. The
 # version is every TOC's "## Version:" line, which must all be equal (T22): the
 # build refuses otherwise, and --set-version bumps them together.
 set -euo pipefail
@@ -195,35 +199,93 @@ fi
 list_tocs "$SRC"
 [[ ${#TOC_LIST[@]} -gt 0 ]] || die "no SpellTuner*.toc found in $SRC"
 
-class_of_interface() {     # "20506" / "11508, 11509" -> tbc | forever | (nothing)
-    local v all_tbc=1 all_fv=1 any=0
+# The flavour table (T47): "<name> <marker files, comma-separated> <lo>-<hi>" per line.
+FLAV_FILE=""
+for cand in "$SRC/tools/data/flavours.txt" "$HERE/tools/data/flavours.txt"; do
+    if [[ -f "$cand" ]]; then FLAV_FILE="$cand"; break; fi
+done
+[[ -n "$FLAV_FILE" ]] || die "no tools/data/flavours.txt (the flavour table) in $SRC or $HERE"
+FLAV_NAMES=() FLAV_MARKERS=() FLAV_LO=() FLAV_HI=()
+while read -r fname fmarkers fband _; do
+    [[ -z "$fname" || "$fname" == \#* ]] && continue
+    [[ "$fband" =~ ^([0-9]+)-([0-9]+)$ ]] || die "$FLAV_FILE: '$fname' has no band lo-hi"
+    FLAV_NAMES+=("$fname"); FLAV_MARKERS+=("$fmarkers")
+    FLAV_LO+=("${BASH_REMATCH[1]}"); FLAV_HI+=("${BASH_REMATCH[2]}")
+done < <(tr -d '\r' < "$FLAV_FILE")
+[[ ${#FLAV_NAMES[@]} -gt 0 ]] || die "$FLAV_FILE lists no flavour"
+
+band_of() {                # tbc -> "20000-29999"
+    local i
+    for i in "${!FLAV_NAMES[@]}"; do
+        if [[ "${FLAV_NAMES[$i]}" == "$1" ]]; then echo "${FLAV_LO[$i]}-${FLAV_HI[$i]}"; return 0; fi
+    done
+    return 0
+}
+
+class_of_interface() {     # "20506" / "11508, 11509" -> the flavour whose band holds them all, or nothing
+    local v i any=0 all
+    local -a hit=()
+    for i in "${!FLAV_NAMES[@]}"; do hit[$i]=1; done
     for v in ${1//,/ }; do
         [[ "$v" =~ ^[0-9]+$ ]] || return 0
         v=$((10#$v)); any=1
-        if [[ $v -lt 20000 || $v -gt 29999 ]]; then all_tbc=0; fi
-        if [[ $v -lt 16000 || $v -gt 19999 ]]; then all_fv=0; fi
+        for i in "${!FLAV_NAMES[@]}"; do
+            if [[ $v -lt ${FLAV_LO[$i]} || $v -gt ${FLAV_HI[$i]} ]]; then hit[$i]=0; fi
+        done
     done
-    if [[ $any -eq 1 && $all_tbc -eq 1 ]]; then echo tbc
-    elif [[ $any -eq 1 && $all_fv -eq 1 ]]; then echo forever
-    fi
+    [[ $any -eq 1 ]] || return 0
+    for i in "${!FLAV_NAMES[@]}"; do
+        if [[ ${hit[$i]} -eq 1 ]]; then echo "${FLAV_NAMES[$i]}"; return 0; fi
+    done
+    return 0
+}
+
+class_of_marker() {        # a TOC -> the flavour whose marker file it loads, "conflict", or nothing
+    local found="" entry i m
+    while IFS= read -r entry; do
+        entry="${entry//\\//}"
+        entry="${entry#"${entry%%[![:space:]]*}"}"; entry="${entry%"${entry##*[![:space:]]}"}"
+        [[ -z "$entry" || "$entry" == \#* ]] && continue
+        for i in "${!FLAV_NAMES[@]}"; do
+            for m in ${FLAV_MARKERS[$i]//,/ }; do
+                if [[ "$entry" == "$m" ]]; then
+                    if [[ -n "$found" && "$found" != "${FLAV_NAMES[$i]}" ]]; then echo conflict; return 0; fi
+                    found="${FLAV_NAMES[$i]}"
+                fi
+            done
+        done
+    done < <(tr -d '\r' < "$1")
+    [[ -z "$found" ]] || echo "$found"
     return 0
 }
 
 TBC_TOCS=() FOREVER_TOCS=() MODULE_NAMES=()
 for rel in "${TOC_LIST[@]}"; do
     iface="$(read_interface "$SRC/$rel")"
-    class="$(class_of_interface "$iface")"
-    [[ -n "$class" ]] || die "$rel has interface ${iface:-(none)}: neither tbc nor forever"
+    band="$(class_of_interface "$iface")"
+    class="$(class_of_marker "$SRC/$rel")" by="its marker file"
+    [[ "$class" != conflict ]] || die "$rel loads the marker files of two flavours (tools/data/flavours.txt)"
+    if [[ -z "$class" && "$rel" == Modules/* ]]; then class=forever by="its Modules/ folder"; fi
+    if [[ -n "$class" ]]; then
+        if [[ "$band" != "$class" ]]; then
+            echo "WARNING: $rel has interface ${iface:-(none)}, outside $class's band $(band_of "$class") (tools/data/flavours.txt); packaged as $class by $by" >&2
+        fi
+    else
+        class="$band"
+        [[ -n "$class" ]] || die "$rel has no marker file and interface ${iface:-(none)} is in no band of tools/data/flavours.txt"
+    fi
     if [[ "$rel" == Modules/* ]]; then
-        [[ "$class" == forever ]] || die "$rel has interface $iface: a module TOC must be forever"
+        [[ "$class" == forever ]] || die "$rel is $class: a module TOC must be forever"
         mname="${rel#Modules/}"; mname="${mname%%/*}"
         seen=0
         for m in ${MODULE_NAMES[@]+"${MODULE_NAMES[@]}"}; do [[ "$m" == "$mname" ]] && seen=1; done
         [[ $seen -eq 1 ]] || MODULE_NAMES+=("$mname")
     elif [[ "$class" == tbc ]]; then
         TBC_TOCS+=("$rel")
-    else
+    elif [[ "$class" == forever ]]; then
         FOREVER_TOCS+=("$rel")
+    else
+        die "$rel is $class: release.sh packages tbc and forever only"
     fi
 done
 
@@ -301,10 +363,10 @@ for f in ${VALID_FLAV[@]+"${VALID_FLAV[@]}"}; do
 done
 BUILD=()
 if [[ $want_tbc -eq 1 ]]; then
-    if [[ ${#TBC_TOCS[@]} -gt 0 ]]; then BUILD+=(tbc); elif [[ $need_tbc -eq 1 ]]; then die "no TBC TOC (interface 20000-29999) in $SRC"; fi
+    if [[ ${#TBC_TOCS[@]} -gt 0 ]]; then BUILD+=(tbc); elif [[ $need_tbc -eq 1 ]]; then die "no TBC TOC in $SRC"; fi
 fi
 if [[ $want_fv -eq 1 ]]; then
-    if [[ ${#FOREVER_TOCS[@]} -gt 0 ]]; then BUILD+=(forever); elif [[ $need_fv -eq 1 ]]; then die "no Forever TOC (interface 16000-19999) in $SRC"; fi
+    if [[ ${#FOREVER_TOCS[@]} -gt 0 ]]; then BUILD+=(forever); elif [[ $need_fv -eq 1 ]]; then die "no Forever TOC in $SRC"; fi
 fi
 [[ ${#BUILD[@]} -gt 0 ]] || die "nothing to build in $SRC"
 

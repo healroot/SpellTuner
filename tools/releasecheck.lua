@@ -6,7 +6,10 @@
 -- holds exactly the TBC TOC's files, the Forever package exactly the Forever
 -- TOCs' files plus the three modules, that an install puts one flavour into one
 -- client and removes the other's, that a path of unknown flavour is refused, and
--- that the version is one thing the TOCs agree on.
+-- that the version is one thing the TOCs agree on. T47 (P3): a TOC's flavour is
+-- its marker file (or its Modules/ folder), the interface band from
+-- tools/data/flavours.txt only a fallback -- a launch interface outside every
+-- band still packages, and only a TOC with neither is refused.
 --
 -- NOTHING here writes outside tools/.lua/releasecheck/: every install goes into
 -- a scratch "AddOns" folder below it. The scratch tree is cleaned at the START
@@ -217,21 +220,47 @@ end
 --------------------------------------------------------------------------------
 -- 4-5. Interfaces and the one version.
 --------------------------------------------------------------------------------
+-- T47: the flavour table release.sh classifies by (tools/data/flavours.txt):
+-- a TOC is the flavour whose marker file it loads, a TOC under Modules/ is
+-- forever, and the interface band decides only for a TOC with neither.
+local FLAVOURS = {}
+for _, l in ipairs(Lines(ROOT .. "/tools/data/flavours.txt")) do
+    local name, files, lo, hi = l:match("^%s*([^#%s]%S*)%s+(%S+)%s+(%d+)%-(%d+)%s*$")
+    if name then
+        local markers = {}
+        for m in files:gmatch("[^,]+") do markers[m] = true end
+        FLAVOURS[#FLAVOURS + 1] = { name = name, markers = markers, lo = tonumber(lo), hi = tonumber(hi) }
+    end
+end
+
+local function FlavourOf(toc, isModule)
+    for _, e in ipairs(Entries(toc)) do
+        for _, fl in ipairs(FLAVOURS) do
+            if fl.markers[e] then return fl.name end
+        end
+    end
+    if isModule then return "forever" end
+    local nums = Interfaces(toc)
+    for _, fl in ipairs(FLAVOURS) do
+        local all = #nums > 0
+        for _, n in ipairs(nums) do if n < fl.lo or n > fl.hi then all = false end end
+        if all then return fl.name end
+    end
+    return nil
+end
+
 do
     local bad
     local tbcTocs, foreverTocs = TocsUnder(OUT .. "/tbc"), TocsUnder(OUT .. "/forever")
     for _, toc in ipairs(tbcTocs) do
-        for _, n in ipairs(Interfaces(toc)) do
-            if n < 20000 or n > 29999 then bad = toc .. " " .. n end
-        end
+        if FlavourOf(toc, false) ~= "tbc" then bad = toc .. " " .. tostring(FlavourOf(toc, false)) end
     end
     for _, toc in ipairs(foreverTocs) do
-        for _, n in ipairs(Interfaces(toc)) do
-            if n < 16000 or n > 19999 then bad = toc .. " " .. n end
-        end
+        local isModule = not toc:find("/forever/SpellTuner/", 1, true)
+        if FlavourOf(toc, isModule) ~= "forever" then bad = toc .. " " .. tostring(FlavourOf(toc, isModule)) end
     end
     check("no TOC of the other flavour is in either package",
-        bad == nil and #tbcTocs >= 1 and #foreverTocs >= 2, bad)
+        #FLAVOURS >= 2 and bad == nil and #tbcTocs >= 1 and #foreverTocs >= 2, bad or ("flavours " .. #FLAVOURS))
 end
 
 do
@@ -369,6 +398,56 @@ do
         haveCopy and rc == 0 and allNew and onlyLine and othersSame and rcBad ~= 0 and unchanged and crlfKept,
         detail or ("rc=" .. tostring(rc) .. " bad=" .. tostring(rcBad) .. " unchanged=" .. tostring(unchanged)
             .. " others=" .. tostring(othersSame) .. " " .. out:sub(1, 80)))
+end
+
+--------------------------------------------------------------------------------
+-- 14-16 (T47, P3). The client is the TOC's: a launch interface outside every
+-- band changes nothing for a TOC that loads its marker (or sits under
+-- Modules/), and only a TOC with neither is refused, by name. On the scratch
+-- copy, whose TOCs --set-version left at one version; put back afterwards.
+--------------------------------------------------------------------------------
+do
+    local MAIN = "SpellTuner_Mainline.toc"
+    local MOD = "Modules/SpellTuner_Recorder/SpellTuner_Recorder_Mainline.toc"
+    local mainText, modText = Slurp(COPY .. "/" .. MAIN), Slurp(COPY .. "/" .. MOD)
+    local function Rewrite(rel, text)
+        local f = io.open(COPY .. "/" .. rel, "wb")
+        if f then f:write((text:gsub("## Interface:[^\r\n]*", "## Interface: 120105", 1))); f:close(); return true end
+        return false
+    end
+    local wrote = haveCopy and mainText ~= nil and modText ~= nil and Rewrite(MAIN, mainText) and Rewrite(MOD, modText)
+    local launchOut = SCRATCH .. "/out launch"
+    local out, rc = "", -1
+    if wrote then out, rc = Release(COPY_RELEASE, "--out", launchOut, "--flavour", "forever") end
+    local mainFiles = FileList(launchOut .. "/forever/SpellTuner")
+    local hasMain = false
+    for _, f in ipairs(mainFiles) do if f == MAIN then hasMain = true end end
+    check("a Forever TOC at interface 120105 is packaged as forever (its marker), with a warning",
+        wrote and rc == 0 and hasMain and #FileList(launchOut .. "/tbc") == 0
+        and Has(out, "WARNING: " .. MAIN .. " has interface 120105"),
+        "rc=" .. tostring(rc) .. " " .. out:gsub("\n", " / "):sub(1, 200))
+    local recFiles = FileList(launchOut .. "/forever/SpellTuner_Recorder")
+    local hasMod = false
+    for _, f in ipairs(recFiles) do if f == "SpellTuner_Recorder_Mainline.toc" then hasMod = true end end
+    check("a module TOC at interface 120105 is packaged as forever (its folder), with a warning",
+        wrote and rc == 0 and hasMod and Has(out, "WARNING: " .. MOD .. " has interface 120105"),
+        "rc=" .. tostring(rc) .. " " .. out:gsub("\n", " / "):sub(1, 200))
+    if mainText then local f = io.open(COPY .. "/" .. MAIN, "wb"); if f then f:write(mainText); f:close() end end
+    if modText then local f = io.open(COPY .. "/" .. MOD, "wb"); if f then f:write(modText); f:close() end end
+
+    -- a TOC with no marker file, outside every band: refused, named, nothing built
+    local ODD = "SpellTuner_Odd.toc"
+    local version = Version(COPY .. "/SpellTuner_TBC.toc") or "0.0.0"
+    local f = io.open(COPY .. "/" .. ODD, "wb")
+    if f then f:write("## Interface: 120105\n## Title: SpellTuner\n## Version: " .. version .. "\n\nCore.lua\n"); f:close() end
+    local oddOut = SCRATCH .. "/out odd"
+    local out2, rc2 = "", -1
+    if haveCopy and f then out2, rc2 = Release(COPY_RELEASE, "--out", oddOut) end
+    os.remove(COPY .. "/" .. ODD)
+    check("a TOC with no marker file and an interface in no band is refused, by name",
+        haveCopy and f ~= nil and rc2 ~= 0 and Has(out2, ODD) and Has(out2, "no marker file")
+        and #DirNames(oddOut) == 0,
+        "rc=" .. tostring(rc2) .. " " .. out2:gsub("\n", " / "):sub(1, 200))
 end
 
 --------------------------------------------------------------------------------

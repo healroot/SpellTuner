@@ -274,6 +274,85 @@ do
         out == "skip: migrate.lua runs under tbc only\n")
 end
 
+--------------------------------------------------------------------------------
+-- 14-16 (T47, P3): the client is the TOC's, the interface only a fallback.
+-- Client/API.lua is re-run into a fresh table (as probecheck does for its
+-- second MD) with the marker and the build's interface set by hand, then both
+-- are put back.
+--------------------------------------------------------------------------------
+local function FreshClient(marker, iface)
+    local savedMarker, savedBuild = rawget(_G, "SPELLTUNER_TOC"), rawget(_G, "GetBuildInfo")
+    _G.SPELLTUNER_TOC = marker
+    _G.GetBuildInfo = function() return "1.60.1", "70009", "Sep 20 2026", iface end
+    local fresh = {}
+    local chunk, err = loadfile(ROOT .. "/Client/API.lua")
+    local okRun = chunk and pcall(chunk, "SpellTuner", fresh)
+    _G.SPELLTUNER_TOC, _G.GetBuildInfo = savedMarker, savedBuild
+    if not okRun then return nil, tostring(err) end
+    return fresh.API and fresh.API.client, fresh
+end
+
+do
+    local client = FreshClient("Mainline", 120105)
+    local plain = FreshClient("Plain", 120105)
+    check("the Mainline marker at interface 120105 answers forever",
+        client == "forever" and plain == "forever",
+        "Mainline " .. tostring(client) .. ", Plain " .. tostring(plain))
+end
+
+do
+    local client = FreshClient("TBC", 20506)
+    local none = FreshClient(nil, 20506)
+    local unknown = FreshClient(nil, 120105)
+    check("the TBC marker at 20506 answers tbc; no marker falls back to the band",
+        client == "tbc" and none == "tbc" and unknown == "unknown",
+        "TBC " .. tostring(client) .. ", none/20506 " .. tostring(none) .. ", none/120105 " .. tostring(unknown))
+end
+
+do
+    -- tools/data/flavours.txt: "<name> <marker files, comma-separated> <lo>-<hi>"
+    local want, wantMarkers, lines = {}, {}, 0
+    local f = io.open(ROOT .. "/tools/data/flavours.txt", "r")
+    if f then
+        for line in f:lines() do
+            line = line:gsub("\r$", "")
+            if line:match("%S") and not line:match("^%s*#") then
+                local name, files, lo, hi = line:match("^%s*(%S+)%s+(%S+)%s+(%d+)%-(%d+)%s*$")
+                if name then
+                    lines = lines + 1
+                    want[name] = { tonumber(lo), tonumber(hi) }
+                    for file in files:gmatch("[^,]+") do
+                        local m = file:match("^Client/TOC_(%w+)%.lua$")
+                        wantMarkers[m or ("?" .. file)] = name
+                    end
+                end
+            end
+        end
+        f:close()
+    end
+    local API = MD and MD.API or {}
+    local same, detail = lines >= 2 and type(API.BANDS) == "table" and type(API.MARKERS) == "table", nil
+    if same then
+        for name, band in pairs(want) do
+            local b = API.BANDS[name]
+            if not (type(b) == "table" and b[1] == band[1] and b[2] == band[2]) then same = false; detail = "band " .. name end
+        end
+        for name in pairs(API.BANDS) do if not want[name] then same = false; detail = "extra band " .. tostring(name) end end
+        for m, name in pairs(wantMarkers) do
+            if API.MARKERS[m] ~= name then same = false; detail = "marker " .. m end
+            -- and the marker file sets exactly that marker
+            local mf = io.open(ROOT .. "/Client/TOC_" .. m .. ".lua", "r")
+            local text = mf and mf:read("*a") or ""
+            if mf then mf:close() end
+            if not text:find('SPELLTUNER_TOC = "' .. m .. '"', 1, true) then same = false; detail = "Client/TOC_" .. m .. ".lua" end
+        end
+        for m in pairs(API.MARKERS) do if not wantMarkers[m] then same = false; detail = "extra marker " .. tostring(m) end end
+    else
+        detail = "flavours.txt lines " .. lines .. ", BANDS " .. type(API.BANDS) .. ", MARKERS " .. type(API.MARKERS)
+    end
+    check("MD.API.BANDS and MD.API.MARKERS equal tools/data/flavours.txt", same, detail)
+end
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("  FAIL " .. f) end
 if #fails > 0 then os.exit(1) end

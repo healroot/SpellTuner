@@ -1,0 +1,11 @@
+# Which client a TOC is for (T47, docs/tasks/T47-launch-safety.md). One line per flavour:
+#   name   marker files (comma-separated, as a TOC lists them)   interface band lo-hi
+#
+# A TOC is the flavour whose marker file it loads (Client/TOC_<X>.lua sets
+# SPELLTUNER_TOC = "<X>"); a TOC under Modules/ is forever; the band decides only
+# for a TOC with neither, and warns when a TOC's interface is outside its flavour's
+# band. Read by release.sh, tools/apicheck.py and tools/releasecheck.lua;
+# Client/API.lua's MD.API.BANDS and MD.API.MARKERS must equal it
+# (tools/forevercheck.lua).
+tbc      Client/TOC_TBC.lua                           20000-29999
+forever  Client/TOC_Mainline.lua,Client/TOC_Plain.lua 16000-19999
