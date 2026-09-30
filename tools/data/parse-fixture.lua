@@ -15,6 +15,11 @@
 -- does not list must be nil. `none = true`: the text has no heal, damage or absorb amount and
 -- Description must return nil. `loose = true`: not asserted beyond "never raises, and every
 -- number it returns appears in the text" -- the shapes the lead chose not to pin down.
+-- `refuse = true` (review B4, T50): the text carries an amount in a shape the parser does not
+-- recognise -- one tick of an unrecognised periodic clause, or an amount offered "or N healing"
+-- -- and Description must return nil rather than read it as one direct hit.
+--   unverified = wording from memory, NOT a Forever client text (review B4's own examples);
+--                kept only as the refusal's specification, never as a number to trust.
 return {
   descriptions = {
     { src = "probe HT R1",  text = "Heals a friendly target for 40 to 55.",
@@ -101,7 +106,7 @@ return {
       absorb = 48 },
     { src = "tf Priest|Penance|Rank 1",
       text = "Launches a volley of holy light at the target, causing 81 Holy damage to an enemy, or 184 healing to an ally, instantly and every 1 sec for 2 sec.",
-      loose = true },
+      refuse = true },
     { src = "tf Priest|Prayer of Mending|Rank 1",
       text = "Places a spell on the target that heals them for 172 the next time they take damage or receive non-periodic healing. When the heal occurs, Prayer of Mending jumps to a party or raid member within 20 yards. Jumps up to 5 times and lasts 30 sec after each jump. This spell can only be placed on one target at a time per caster.",
       loose = true },
@@ -161,6 +166,12 @@ return {
       damage = { over = 10, dur = 15, school = "Nature" } },
     { src = "tf Hunter|Arcane Shot|Rank 1", text = "An instant shot that causes 20 Arcane damage.",
       damage = { min = 20, max = 20, school = "Arcane" } },
+    { src = "unverified Warlock|Hellfire",
+      text = "Ignites the area surrounding you, causing 83 Fire damage to all nearby enemies every 1 sec. Lasts 15 sec.",
+      refuse = true },
+    { src = "unverified Hunter|Volley",
+      text = "Continuously fires a volley of ammo at the target area, causing 50 Arcane damage to enemy targets within 8 yards every 1 second for 6 sec.",
+      refuse = true },
     { src = "tf Druid|Bear Form|Shapeshift",
       text = "Shapeshift into a bear, increasing melee attack power by 120, armor contribution from items by 180%, and health by 180. Also protects the caster from Polymorph effects and allows the use of various bear abilities.\n\nThe act of shapeshifting frees the caster of Polymorph and Movement Impairing effects.",
       none = true },

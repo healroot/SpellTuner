@@ -182,6 +182,29 @@ local function NotCastDamage(text, s, e)
     return false
 end
 
+-- Review B4 (docs/review/2026-09-30-project-review.md): DAMAGE_SINGLE is the
+-- catch-all, so it refuses an amount the rest of its sentence says is not one
+-- direct hit (this file's own rule: refuse rather than guess):
+--   * a period phrase after the amount -- "every", "each second", "per
+--     second", "Lasts" -- makes it one tick of a periodic effect whose shape
+--     is none of the recognised ones (TICK_DAMAGE_ENEMIES / _EACHSEC):
+--     Hellfire's "83 Fire damage to all nearby enemies every 1 sec", Volley's
+--     "50 Arcane damage to enemy targets within 8 yards every 1 second";
+--   * "or N healing" offers the same number as a heal on an ally (Penance),
+--     so the amount is not damage alone.
+-- No new shape is read from these: a periodic clause worded otherwise stays
+-- unread until its wording is verified and given its own pattern.
+local function PeriodicOrEitherAfter(text, e)
+    local to = text:find("%.%s", e + 1) or #text
+    local rest = text:sub(e + 1, to):lower()
+    if rest:find("%f[%a]every%f[%A]") then return true end
+    if rest:find("each%s+second") then return true end
+    if rest:find("per%s+second") then return true end
+    if rest:find("%f[%a]lasts%f[%A]") then return true end
+    if rest:find("%f[%a]or%s+" .. NUM .. "%s+healing%f[%A]") then return true end
+    return false
+end
+
 -- Description() reads one clause shape at a time out of the cleaned text,
 -- blanking whatever it just read so a looser pattern tried afterwards never
 -- re-reads the same digits under a different (wrong) role.
@@ -303,7 +326,9 @@ function Parse.Description(text)
         -- hit" is a reactive aura's per-hit damage, not the cast's own --
         -- refused rather than read as a direct amount. Review R35: so is
         -- every other reactive or ward clause (NotCastDamage).
-        if a and not NotCastDamage(clean, a, b) then
+        -- Review B4: nor one tick of an unrecognised periodic clause, nor an
+        -- amount offered "or N healing" to an ally (PeriodicOrEitherAfter).
+        if a and not NotCastDamage(clean, a, b) and not PeriodicOrEitherAfter(clean, b) then
             damage = { min = N(x1), max = N(x1), school = NormSchool(sc1) }
             clean = Blank(clean, a, b)
         end

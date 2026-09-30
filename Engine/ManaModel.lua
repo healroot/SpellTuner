@@ -24,6 +24,7 @@ function ManaModel.New()
         fight = nil,       -- { start, spent, casts, fsrTime } while in combat
         anchor = { at = nil, why = nil },
         unpriced = 0,      -- unpriced casts since the last StartFight
+        lastCast = nil,    -- { t, cost, priced } of the last own cast made out of a fight (B19)
     }, ManaModel)
 end
 
@@ -92,6 +93,9 @@ function ManaModel:Spend(cost, t)
     if self.fight then
         self.fight.spent = self.fight.spent + (type(cost) == "number" and cost or 0)
         self.fight.casts = self.fight.casts + 1
+        self.lastCast = nil
+    else
+        self.lastCast = { t = t, cost = type(cost) == "number" and cost or 0, priced = true }
     end
 end
 
@@ -102,6 +106,11 @@ end
 function ManaModel:Unpriced(t)
     self:Advance(t)
     self.unpriced = self.unpriced + 1
+    if self.fight then
+        self.lastCast = nil
+    else
+        self.lastCast = { t = t, priced = false }
+    end
 end
 
 function ManaModel:Anchor(t, mana, why)
@@ -113,10 +122,27 @@ function ManaModel:Anchor(t, mana, why)
     self.t = t
 end
 
+-- Review B19 (docs/review/2026-09-30-project-review.md): the opener's
+-- UNIT_SPELLCAST_SUCCEEDED arrives before PLAYER_REGEN_DISABLED (review R8's
+-- window, which the recorder also uses). Its mana already left the pool; a
+-- cast made out of a fight no more than OPENER_WINDOW seconds before the flag
+-- is folded into the fight's spend, cast count and unpriced count, once.
+ManaModel.OPENER_WINDOW = 0.5
+
 function ManaModel:StartFight(t)
     self:Advance(t)
     self.fight = { start = t, spent = 0, casts = 0, fsrTime = 0 }
     self.unpriced = 0
+    local c = self.lastCast
+    self.lastCast = nil
+    if c and type(c.t) == "number" and t - c.t >= 0 and t - c.t <= ManaModel.OPENER_WINDOW then
+        if c.priced then
+            self.fight.spent = self.fight.spent + (c.cost or 0)
+            self.fight.casts = self.fight.casts + 1
+        else
+            self.unpriced = self.unpriced + 1
+        end
+    end
 end
 
 function ManaModel:EndFight(t)

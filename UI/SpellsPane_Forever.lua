@@ -162,8 +162,11 @@ local function ExportCastText(e)
     return "unknown"
 end
 
+-- Review B20: the character line's name and realm come from the client like
+-- every other string in the export, so they pass the same Esc (a name with a
+-- diaeresis exports as "\ddd", never as raw bytes).
 local function Str(v)
-    return (type(v) == "string") and v or "?"
+    return (type(v) == "string") and Esc(v) or "?"
 end
 
 local function ExportText()

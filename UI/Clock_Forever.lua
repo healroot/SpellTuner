@@ -256,6 +256,8 @@ end)
 
 MD:On("PLAYER_REGEN_DISABLED", function()
     inCombat = true
+    -- Review B19: an opener that succeeded up to 0.5 s before this flag is
+    -- folded into the fight by the model itself (ManaModel:StartFight).
     if model then model:StartFight(GetTime()) end
 end)
 

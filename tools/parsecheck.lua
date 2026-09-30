@@ -82,7 +82,7 @@ do
     local allGood = true
     local detail = nil
     for _, e in ipairs(fixture.descriptions) do
-        if not e.none and not e.loose then
+        if not e.none and not e.loose and not e.refuse then
             local got = P.Description(e.text)
             local wantHeal, wantDamage, wantAbsorb = e.heal, e.damage, e.absorb
             local good = true
@@ -121,6 +121,22 @@ do
         end
     end
     check("a description with no amount reads nil", allGood, detail)
+end
+
+--------------------------------------------------------------------------------
+-- 2b (review B4, T50): a text whose amount is one tick of an unrecognised
+-- periodic clause, or is offered "or N healing" to an ally, is refused -- one
+-- check per fixture entry marked `refuse`, so each wording fails on its own.
+--------------------------------------------------------------------------------
+for _, e in ipairs(fixture.descriptions) do
+    if e.refuse then
+        local got = P.Description(e.text)
+        local detail = nil
+        if got ~= nil then
+            detail = string.format("heal %s damage %s absorb %s", Fmt(got.heal), Fmt(got.damage), Fmt(got.absorb))
+        end
+        check("refused, not read as one direct hit: " .. e.src, got == nil, detail)
+    end
 end
 
 --------------------------------------------------------------------------------

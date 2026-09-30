@@ -447,6 +447,54 @@ do
 end
 
 --------------------------------------------------------------------------------
+-- Review B19 (docs/review/2026-09-30-project-review.md): the opener's
+-- UNIT_SPELLCAST_SUCCEEDED arrives before PLAYER_REGEN_DISABLED (R8's window).
+-- A priced opener 0.3 s before the flag counts in the fight's casts and spend;
+-- one 1 s before does not. An unpriced opener stays in the hover's count.
+--------------------------------------------------------------------------------
+local function HoverLines()
+    GameTooltip.lines = {}
+    Clock.frame:GetScript("OnEnter")(Clock.frame)
+    local out = {}
+    for _, l in ipairs(GameTooltip.lines or {}) do out[#out + 1] = table.concat(l, " ") end
+    return table.concat(out, " / ")
+end
+
+do
+    local m = Clock.model
+    S.Tick(0.5)
+    S.Cast(774)                    -- Rejuvenation rank 1, 25 mana, 1 s before the flag: not the opener
+    S.now = S.now + 0.7
+    S.Cast(774)                    -- the opener, 0.3 s before the flag
+    S.now = S.now + 0.3
+    S.inCombat = true
+    S.Fire("PLAYER_REGEN_DISABLED")
+    local casts, spent = m.fight and m.fight.casts, m.fight and m.fight.spent
+    S.Fire("PLAYER_REGEN_ENABLED")
+    S.inCombat = false
+    check("an opener 0.3 s before the combat flag counts in the fight's casts and spend",
+        casts == 1 and spent == 25,
+        string.format("casts=%s spent=%s (want 1, 25)", tostring(casts), tostring(spent)))
+end
+
+do
+    local m = Clock.model
+    MD.db.clock.shown = true
+    S.Tick(0.5)
+    S.Cast(93010)                  -- a percent-of-base-mana cost: unpriced
+    S.now = S.now + 0.3
+    S.inCombat = true
+    S.Fire("PLAYER_REGEN_DISABLED")
+    local unpriced = m.unpriced
+    local hover = HoverLines()
+    S.Fire("PLAYER_REGEN_ENABLED")
+    S.inCombat = false
+    check("an unpriced opener stays in the hover's unpriced count",
+        unpriced == 1 and hover:find("Unpriced casts: 1", 1, true) ~= nil,
+        string.format("unpriced=%s hover=%q", tostring(unpriced), hover))
+end
+
+--------------------------------------------------------------------------------
 -- review R36/R37: a login or /reload in the middle of a fight -- no
 -- PLAYER_REGEN_DISABLED will come -- starts the clock in combat: a fight
 -- under way, shown, and never worded as the out-of-combat "~FULL".

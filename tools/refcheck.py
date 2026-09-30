@@ -16,6 +16,7 @@ import json
 import os
 import re
 import sys
+import tempfile
 import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -54,10 +55,33 @@ def ascii_escape(s):
     return "".join(out)
 
 
+CLIENT_ESC_RE = re.compile(r"\\\\|\\(\d{3})|\|\|")
+
+
 def unescape_client(s):
-    # the probe's Esc doubles a literal pipe; its other escape (\ddd for a control or
-    # non-ASCII byte) is already plain ASCII text in the dump, so nothing more to undo.
-    return s.replace("||", "|")
+    # Review B26 (T50): undoes the probe's Esc (Client/Probe.lua, and the Spells pane's copy
+    # of it) in one left-to-right pass -- "\\" is a literal backslash, "\ddd" one byte, "||" a
+    # pipe -- so a curly quote is one character again before its key is looked up and its
+    # numbers counted (its escape's 226, 128, 156 are not description numbers). The bytes are
+    # the client's UTF-8. Printed text goes back through ascii_escape.
+    out = bytearray()
+    pos = 0
+    for m in CLIENT_ESC_RE.finditer(s):
+        out += s[pos:m.start()].encode("utf-8")
+        tok = m.group(0)
+        if tok == "\\\\":
+            out += b"\\"
+        elif tok == "||":
+            out += b"|"
+        else:
+            code = int(m.group(1))
+            if code > 255:
+                out += tok.encode("utf-8")
+            else:
+                out.append(code)
+        pos = m.end()
+    out += s[pos:].encode("utf-8")
+    return out.decode("utf-8", errors="replace")
 
 
 def numbers_in(s):
@@ -132,10 +156,10 @@ def compare_spell(rec, data, klass):
     rank = rec.get("rank", "")
     key = "%s|%s|%s" % (klass, name, rank)
     ref = data.get("spell_desc", {}).get(key)
-    header_main = ("%s %s %s" % (sid, name, rank)).rstrip()
+    header_main = ("%s %s %s" % (sid, ascii_escape(name), ascii_escape(rank))).rstrip()
 
     if ref is None:
-        return "missing", "%s  [not in the reference: %s]" % (header_main, key)
+        return "missing", "%s  [not in the reference: %s]" % (header_main, ascii_escape(key))
 
     lines = []
 
@@ -149,7 +173,7 @@ def compare_spell(rec, data, klass):
     ref_nums = numbers_in(ref_desc)
     if len(client_nums) != len(ref_nums):
         lines.append("  desc numbers: client %d, reference %d" % (len(client_nums), len(ref_nums)))
-        lines.append('  desc: client "%s"' % client_desc)
+        lines.append('  desc: client "%s"' % ascii_escape(client_desc))
         lines.append('  desc: reference "%s"' % ascii_escape(ref_desc))
     else:
         num_lines = []
@@ -158,7 +182,7 @@ def compare_spell(rec, data, klass):
                 num_lines.append("  desc number %d: client %s, reference %s" % (i, c, r))
         if num_lines:
             lines.extend(num_lines)
-            lines.append('  desc: client "%s"' % client_desc)
+            lines.append('  desc: client "%s"' % ascii_escape(client_desc))
             lines.append('  desc: reference "%s"' % ascii_escape(ref_desc))
 
     if "level" in rec:
@@ -171,12 +195,12 @@ def compare_spell(rec, data, klass):
     if "cost" in rec:
         ref_cost = tooltip_lines[0][0] if len(tooltip_lines) > 0 and len(tooltip_lines[0]) > 0 else None
         if ref_cost is not None and ref_cost != rec["cost"]:
-            lines.append("  cost: client %s, reference %s" % (rec["cost"], ascii_escape(ref_cost)))
+            lines.append("  cost: client %s, reference %s" % (ascii_escape(rec["cost"]), ascii_escape(ref_cost)))
 
     if "cast" in rec:
         ref_cast = tooltip_lines[1][0] if len(tooltip_lines) > 1 and len(tooltip_lines[1]) > 0 else None
         if ref_cast is not None and ref_cast != rec["cast"]:
-            lines.append("  cast: client %s, reference %s" % (rec["cast"], ascii_escape(ref_cast)))
+            lines.append("  cast: client %s, reference %s" % (ascii_escape(rec["cast"]), ascii_escape(ref_cast)))
 
     if not lines:
         return "agree", None
@@ -193,7 +217,7 @@ def compare_spell(rec, data, klass):
 
     header = "%s  [%s, s=%s, src=%s]" % (
         header_main,
-        key,
+        ascii_escape(key),
         ascii_escape(ref.get("s")),
         ascii_escape(ref.get("src")),
     )
@@ -249,7 +273,48 @@ def do_fetch(refresh):
     return 0
 
 
-def do_selftest():
+# Review B26 (T50): a client name and description with curly quotes, as the probe's Esc writes
+# them (three "\ddd" escapes per character) and with an escaped literal backslash ("\\"),
+# against the reference's own text. Before the escapes were undone the name missed its key and
+# the description counted 226, 128, 153 ... as numbers.
+ESCAPED_DUMP = "\n".join([
+    "character: Tester Realm DRUID level 60",
+    "== spells",
+    "spell 700",
+    r"  name: Nature\226\128\153s Touch",
+    "  rank: Rank 1",
+    r"  desc: Heals for 10 to 12. \226\128\156Quoted\226\128\157 from C:\\5 on.",
+    "  cost: 5 Mana",
+    "  cast: Instant",
+    "  level: 1",
+    "spell 701",
+    "  name: Quoted Touch",
+    "  rank: Rank 1",
+    r"  desc: Heals for 20 to 24. \226\128\156Quoted\226\128\157.",
+    "  cost: 5 Mana",
+    "  cast: Instant",
+    "  level: 1",
+    "",
+])
+ESCAPED_REF = {
+    "generated": "selftest",
+    "spell_desc": {
+        "Druid|Nature\u2019s Touch|Rank 1": {
+            "l": [["5 Mana", ""], ["Instant", ""]],
+            "d": "Heals for 10 to 12. \u201cQuoted\u201d from C:\\5 on.",
+            "s": "beta", "src": "selftest", "lv": "Learned at level 1", "id": 700,
+        },
+        "Druid|Quoted Touch|Rank 1": {
+            "l": [["5 Mana", ""], ["Instant", ""]],
+            "d": "Heals for 20 to 24. \u201cQuoted\u201d.",
+            "s": "beta", "src": "selftest", "lv": "Learned at level 1", "id": 701,
+        },
+    },
+}
+ESCAPED_LAST = "refcheck: 2 spells, 2 agree, 0 disagree, 0 not in the reference"
+
+
+def selftest_fixture():
     data = load_reference(os.path.join(FIXTURE_DIR, "data.json"))
     dump_path = os.path.join(FIXTURE_DIR, "dump.txt")
     expected_path = os.path.join(FIXTURE_DIR, "expected.txt")
@@ -259,9 +324,32 @@ def do_selftest():
         expected = f.read()
     if output != expected:
         sys.stderr.write("selftest: MISMATCH against %s\n" % expected_path)
-        return 1
-    print("selftest: ok")
-    return 0
+        return False
+    return True
+
+
+def selftest_escapes():
+    fd, path = tempfile.mkstemp(suffix=".txt")
+    try:
+        with os.fdopen(fd, "w", encoding="ascii") as f:
+            f.write(ESCAPED_DUMP)
+        output = run_compare(path, ESCAPED_REF, None, None)
+    finally:
+        os.remove(path)
+    sys.stdout.write(output)
+    agrees = output.rstrip("\n").endswith(ESCAPED_LAST)
+    ascii_only = all(32 <= ord(c) <= 126 or c == "\n" for c in output)
+    if not (agrees and ascii_only):
+        sys.stderr.write("selftest: an escaped curly quote does not agree with its reference\n")
+        return False
+    return True
+
+
+def do_selftest():
+    results = [selftest_fixture(), selftest_escapes()]
+    passed = sum(1 for r in results if r)
+    print("selftest: %d of %d ok" % (passed, len(results)))
+    return 0 if passed == len(results) else 1
 
 
 def do_compare(args):

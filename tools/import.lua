@@ -548,7 +548,10 @@ elseif cmd == "export" then
     local phase, kept = "head", 0
     for _, line in ipairs(lines) do
         local isRunHead = line:match("^# run %d")
-        local isRecHead = line:match("^# recording %d")
+        -- review B25: the number is captured -- without it match() returned the
+        -- whole text, which never equals tostring(n), so a single fight's
+        -- export kept the header only
+        local isRecHead = line:match("^# recording (%d+)")
         if isRunHead or isRecHead or line:match("^# calibration") then
             if want == "run" then
                 -- everything from this run's header until the next run's

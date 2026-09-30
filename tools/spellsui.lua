@@ -867,6 +867,30 @@ do
 end
 
 --------------------------------------------------------------------------------
+-- 8b (review B20, T50): the export's character line is escaped like every
+-- other client string in it -- a name with a diaeresis ("Zoe", e-umlaut, two
+-- UTF-8 bytes) exports as the probe's "\ddd" escapes, ASCII with no bare pipe.
+--------------------------------------------------------------------------------
+do
+    local player = S.units.player
+    local oldName = player.name
+    player.name = "Zo\195\171|x"
+    local captured
+    local origShow = MD.ShowCopyPopup
+    MD.ShowCopyPopup = function(self, title, text) captured = { title = title, text = text } end
+    pane.exportBtn:GetScript("OnClick")(pane.exportBtn)
+    MD.ShowCopyPopup = origShow
+    player.name = oldName
+
+    local text = captured and captured.text or ""
+    local first = text:match("^[^\n]*") or ""
+    local good, why = AsciiNoBarePipe(text)
+    check("a non-ASCII character name exports escaped, ASCII with no bare pipe",
+        good and first:find("character: Zo\\195\\171||x ", 1, true) == 1,
+        string.format("%s; line=%q", tostring(why or "ascii"), first))
+end
+
+--------------------------------------------------------------------------------
 -- 9: the pane refreshes on show and every two seconds while shown, not while
 -- hidden
 --------------------------------------------------------------------------------

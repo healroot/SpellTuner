@@ -315,6 +315,44 @@ do
         t:sub(1, 300))
 end
 
+--------------------------------------------------------------------------------
+-- 13 (review B25, T50): TBC `export N` writes the recording's own section.
+-- `^# recording %d` had no capture, so it never equalled N and every recording
+-- was cut: the file held the header only. Two v2 recordings in a TBC file
+-- written by tools/svwrite.lua; the export runs in a scratch folder of its own
+-- (it writes .logs/recordings/<id>.txt under the current directory).
+--------------------------------------------------------------------------------
+do
+    local W = dofile(root .. "/tools/svwrite.lua")
+    local dir = SCRATCH .. "/tbcexport"
+    os.execute(string.format("mkdir -p %q", dir))
+    local function Rec(id, zone)
+        return { id = id, v = 2, zone = zone, dur = 30, pool = 5000, ownCasts = 5, spent = 400,
+            roster = { { name = "Penek", class = "DRUID", role = "HEALER", maxHP = 4000 } }, tracked = { 1 },
+            initial = { mana = 5000 },
+            ev = { t = { 1, 2 }, kind = { 1, 1 }, tgt = { 1, 1 }, amt = { 100, 200 }, x = { 0, 0 } },
+            mana = { t = { 0, 2 }, v = { 5000, 4800 }, base = { 10, 10 }, cast = { 2, 2 } } }
+    end
+    W.Write(dir .. "/tbc.lua", { SpellTunerDB = { char = { ["Penek-Anniversary"] = {
+        recordings = { Rec(1790000001, "Underbog"), Rec(1790000002, "Slave Pens") }, fights = {} } } } })
+    local log = dir .. "/export.log"
+    local status = os.execute(string.format("cd %q && env -u ST_FLAVOUR -u MD_SAVEDVARS bash %q tools/import.lua --file tbc.lua export 1 > %q 2>&1",
+        dir, root .. "/tools/run.sh", log))
+    local lf = io.open(log, "r")
+    local said = lf and lf:read("*a") or ""
+    if lf then lf:close() end
+    local path = said:match("wrote (%S+)")
+    local f = path and io.open(dir .. "/" .. path, "r")
+    local text = f and f:read("*a") or ""
+    if f then f:close() end
+    local heads = 0
+    for l in text:gmatch("[^\n]+") do if l:match("^# recording ") then heads = heads + 1 end end
+    check("TBC export N writes that recording's section, not the header alone",
+        status == 0 and heads == 1 and text:find("\n# recording 1\t1790000002\tSlave Pens", 1, true) ~= nil
+        and text:find("\n# ev\n", 1, true) ~= nil and text:find("Underbog", 1, true) == nil,
+        string.format("recording sections=%d; %s", heads, (said:match("wrote [^\n]*") or said:sub(1, 200))))
+end
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("  FAIL " .. f) end
 if #fails > 0 then os.exit(1) end
