@@ -157,7 +157,15 @@ function UnitLevel(u) return S.level end
 function UnitStat(u, i) return S.stats[i] or 0, S.stats[i] or 0, 0, 0 end
 function UnitExists(u) return U(u) ~= nil end
 function UnitIsUnit(a, b) return a == b end
-function UnitAffectingCombat() return false end
+-- T58 (P14, review A28): the TBC profile's combat state answers the regen
+-- events S.Fire delivers -- PLAYER_REGEN_DISABLED sets S.inCombat before any
+-- handler runs, PLAYER_REGEN_ENABLED clears it -- where it used to answer
+-- false always, so a suite driving a whole fight had the TTO believe it was
+-- out of combat. A suite may also set S.inCombat by hand (a /reload
+-- mid-fight: the client says "in combat" and no event comes). The Forever
+-- profile keeps its own hand-set S.inCombat (S.UseProfile below).
+S.inCombat = false
+function UnitAffectingCombat() return S.inCombat == true end
 function UnitGroupRolesAssigned(u) local x = U(u); return x and x.role or "NONE" end
 function GetPartyAssignment() return false end
 function GetRealmName() return "Anniversary" end
@@ -185,7 +193,7 @@ function GetRaidRosterInfo(i)
     return name, x.rank or 0, x.subgroup or 1, x.level or S.level, loc, token,
         x.zone, x.online ~= false, x.dead == true, nil, false, x.role or "NONE"
 end
-function InCombatLockdown() return false end
+function InCombatLockdown() return S.inCombat == true end -- T58 (P14): as UnitAffectingCombat
 function UnitAura() return nil end
 -- Buffs on the player, by name, in the order the client would return them.
 -- MD:HasBuff walks UnitBuff until it returns nil, so an empty list means no
@@ -492,6 +500,29 @@ local function Child(kind, parent)
 end
 function FrameMT:CreateFontString() return Child("FontString", self) end
 function FrameMT:CreateTexture() return Child("Texture", self) end
+-- T58 (P14): an animation group (UI/Widget.lua's pulse, which tools/ttocheck.lua
+-- loads) -- the fallback made CreateAnimationGroup a no-op answering nil, and
+-- the widget indexes what it returns. Its animations take every method as a
+-- no-op; Play and Stop are counted (g.plays, g.stops) so a script can ask
+-- whether a pulse fired. Kept out of the frame registry: nothing is painted.
+local AnimMT = { __index = function(_, k)
+    if type(k) == "string" and k:match("^%u") then return noop end
+    return nil
+end }
+local AnimGroupMT = { __index = {
+    CreateAnimation = function(g, kind)
+        local a = setmetatable({ kind = kind }, AnimMT)
+        g.anims[#g.anims + 1] = a
+        return a
+    end,
+    Play = function(g) g.plays = g.plays + 1 end,
+    Stop = function(g) g.stops = g.stops + 1 end,
+    IsPlaying = function() return false end,
+} }
+setmetatable(AnimGroupMT.__index, AnimMT)
+function FrameMT:CreateAnimationGroup()
+    return setmetatable({ anims = {}, plays = 0, stops = 0, owner = self }, AnimGroupMT)
+end
 function FrameMT:GetFontString() self.fs = self.fs or Child("FontString", self); return self.fs end
 function FrameMT:SetText(t) self.text = t end
 -- T10c: a font string's word wrap, default true (the client's) -- recorded so
@@ -771,6 +802,12 @@ function S.Geometry(on)
 end
 
 function S.Fire(event, ...)
+    -- T58 (P14): the TBC profile's combat state follows the regen events, as
+    -- the client's does, before the first handler reads it.
+    if S.profile ~= "forever" then
+        if event == "PLAYER_REGEN_DISABLED" then S.inCombat = true
+        elseif event == "PLAYER_REGEN_ENABLED" then S.inCombat = false end
+    end
     for _, f in ipairs(frames) do
         if f.events[event] and f.scripts.OnEvent then f.scripts.OnEvent(f, event, ...) end
     end

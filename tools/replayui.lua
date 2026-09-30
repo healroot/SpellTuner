@@ -261,19 +261,15 @@ do
     SM.Validate = realV
 end
 
--- in combat: refuses. T16a moved this read behind MD.API.UnitAffectingCombat
--- (Client/API.lua caches a name's resolved function once, by design --
--- "functions do not move" -- so reassigning the bare global here no longer
--- reaches MD:OpenReplay's own already-cached lookup); overriding the
--- adapter's own member is the same technique this file already uses on
--- SM.Validate above.
-local realUAC = MD.API.UnitAffectingCombat
-MD.API.UnitAffectingCombat = function() return true end
+-- in combat: refuses. T58 (P14, review A28): the stub's combat state answers
+-- the regen events now, so combat is entered the way the client enters it --
+-- PLAYER_REGEN_DISABLED -- instead of patching MD.API.UnitAffectingCombat.
 local before = W.frame:IsShown()
 W.frame:Hide()
+S.Fire("PLAYER_REGEN_DISABLED")
 MD:OpenReplay(1)
 check("refuses to open in combat", not MD.Replay._state().frame:IsShown())
-MD.API.UnitAffectingCombat = realUAC
+S.Fire("PLAYER_REGEN_ENABLED")
 
 --------------------------------------------------------------------------------
 -- v0.9.7: the Swiftmend indicator belongs to a healer who HAS Swiftmend. The
@@ -650,14 +646,14 @@ do
     MD.Replay._runSeek(nil, p1.runT0 + 1)
     MD.Replay._runSeek(nil, p2.runT0 - 0.3)
     local said = {}
-    local realPrint, realUAC2 = MD.Print, MD.API.UnitAffectingCombat
+    local realPrint = MD.Print
     MD.Print = function(_, m) said[#said + 1] = m end
-    MD.API.UnitAffectingCombat = function() return true end
+    S.Fire("PLAYER_REGEN_DISABLED") -- T58 (P14): the event, not an adapter patch
     MD.Replay._setPlaying(true)
     for _ = 1, 120 do S.Tick(1 / 60) end
     local playingAfter = MD.Replay._run() and MD.Replay._run().playing
-    MD.API.UnitAffectingCombat = realUAC2
     MD.Print = realPrint
+    S.Fire("PLAYER_REGEN_ENABLED")
     MD.Replay._setPlaying(false)
     check("T51: combat at a pull boundary prints one line in 120 frames and pauses",
         #said == 1 and playingAfter == false,
