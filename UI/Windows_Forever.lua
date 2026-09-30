@@ -58,12 +58,14 @@ Win.ROLES = {
     tool     = { strata = "FULLSCREEN", level = 10, toplevel = true, combat = "stay" },
 }
 
--- 6.7: the main window's size per group, default and minimum.
+-- 6.7: the main window's size per group, default and minimum. T40: Simulate
+-- goes down to 900 x 560 now that Practice wraps its fight fields onto a
+-- second row and sizes its table to the pane (UI/PracticePanel.lua).
 Win.SIZES = {
     spells   = { w = 860,  h = 560, minW = 860,  minH = 480 },
     settings = { w = 860,  h = 560, minW = 860,  minH = 480 },
     reports  = { w = 1036, h = 646, minW = 1036, minH = 600 },
-    simulate = { w = 1036, h = 646, minW = 1036, minH = 600 },
+    simulate = { w = 1036, h = 646, minW = 900,  minH = 560 },
 }
 Win.DEFAULT_GROUP = "spells"
 

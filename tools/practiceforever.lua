@@ -279,6 +279,19 @@ local FAMILY_NAMES = { "Lifebloom", "Rejuvenation", "Regrowth", "Swiftmend", "He
 -- carries the bindings summary (the key lines, or the nothing-bound sentence)
 local function PanelBindText()
     panel:Render()
+    -- T40: under the theme the bindings are one summary line with the list in
+    -- its hover; the text read here is the line and the hover, in that order
+    local s = panel.summary
+    if s and s.fs then
+        local out = { s.fs:GetText() }
+        MD.UI.tooltip.lines = nil
+        local enter = s:GetScript("OnEnter")
+        if enter then enter(s) end
+        for _, l in ipairs(MD.UI.tooltip.lines or {}) do
+            if type(l[1]) == "string" then out[#out + 1] = l[1] end
+        end
+        return table.concat(out, "\n")
+    end
     for _, f in ipairs(S.allFrames) do
         if f.GetText and Under(f, panel.frame) and f:IsVisible() then
             local okt, txt = pcall(f.GetText, f)
@@ -549,6 +562,186 @@ do -- T27 5: learning the spell brings the binding back (Regrowth: Forever has
         hiddenBefore and #PR.Binds() == 2 and after:find("Regrowth", 1, true) ~= nil and id == 90301
         and #MD.db.practiceBinds == 2,
         "before=" .. tostring(hiddenBefore) .. " visible=" .. #PR.Binds() .. " id=" .. tostring(id) .. " text=" .. after)
+end
+
+--------------------------------------------------------------------------------
+-- T40 (docs/tasks/T40-practice-theme-manager.md; docs/SPEC-forever-ui.md 4.4,
+-- 6.2, 6.4, 6.5, 6.7): Practice under the theme and the window manager -- no
+-- Blizzard gold in the panel or the bindings sheet, the sheet an entry on the
+-- ESC stack (one ESC closes it, not the window), the fight fields wrapping at
+-- the Simulate group's new 900-px minimum, and the one-line bindings summary
+-- counting only what practice would cast.
+--------------------------------------------------------------------------------
+local function HasGold(str) return type(str) == "string" and str:lower():find("ffcc00", 1, true) ~= nil end
+local function TipLines()
+    local out = {}
+    for _, l in ipairs(MD.UI.tooltip.lines or {}) do
+        if type(l[1]) == "string" then out[#out + 1] = l[1] end
+    end
+    return out
+end
+local function Hover(f)
+    MD.UI.tooltip.lines = nil
+    local enter = f and f:GetScript("OnEnter")
+    if enter then enter(f) end
+    return TipLines()
+end
+
+do -- T40 1: no ffcc00 in the panel or the sheet
+    MD.db.practiceBinds = { { key = "1", family = "Rejuvenation" }, { key = "2", family = "HealingTouch" } }
+    panel:Render()
+    local gold = {}
+    local function Note(label, str) if HasGold(str) then gold[#gold + 1] = label .. ": " .. str end end
+    for _, f in ipairs(S.allFrames) do
+        if f.GetText and Under(f, panel.frame) then
+            local okt, txt = pcall(f.GetText, f)
+            if okt then Note("panel", txt) end
+        end
+    end
+    -- the bindings list lives in the summary's hover
+    for _, l in ipairs(Hover(panel.summary)) do Note("summary hover", l) end
+    -- the sheet: its rows, a key box waiting for a press, an import's notes
+    MD:ShowBindings()
+    local sheet = MD.BindingsWindow._frame()
+    local win = MD.BindingsWindow._rows()
+    local keyBox = win[1] and win[1].key
+    if keyBox then keyBox:GetScript("OnClick")(keyBox, "LeftButton") end
+    local waiting = keyBox and keyBox:GetText() or ""
+    local realImport = PR.ImportKeybinds
+    PR.ImportKeybinds = function()
+        return { { key = "3", family = "Rejuvenation" } },
+            { source = "your keybindings", skipped = {}, notes = { "3 casts on your target: here it casts on the frame you hover" } }
+    end
+    Click(Button("Keybindings"))
+    PR.ImportKeybinds = realImport
+    local status = MD.BindingsWindow._status()
+    for _, f in ipairs(S.allFrames) do
+        if f.GetText and Under(f, sheet) then
+            local okt, txt = pcall(f.GetText, f)
+            if okt then Note("sheet", txt) end
+        end
+    end
+    Note("waiting", waiting)
+    Note("status", status)
+    check("T40: no ffcc00 in the panel, its bindings hover or the bindings sheet",
+        #gold == 0 and waiting:find("press a key or button", 1, true) ~= nil
+        and status:find("casts on your target", 1, true) ~= nil,
+        gold[1] or ("waiting=" .. waiting .. " status=" .. status))
+    if sheet then sheet:Hide() end
+end
+
+do -- T40 2: ESC closes the sheet and not the window
+    MD.db.practiceBinds = { { key = "1", family = "Rejuvenation" } }
+    local sheet = MD:ShowBindings()
+    local main = MD.Win and MD.Win.windows.main and MD.Win.windows.main.frame
+    local g, v = MD:SelectedView()
+    local host = sheet and sheet:GetParent()
+    local wasShown = sheet ~= nil and sheet:IsShown() and main ~= nil and main:IsShown()
+    local top = MD.Win and MD.Win.stack[#MD.Win.stack]
+    local onTop = top ~= nil and top.frame == sheet
+    local queued = #(S.timers or {})
+    MD.Win.proxy:Hide()     -- what the client's ESC does to the one special frame
+    -- the next frame: only the C_Timer.After callbacks this press queued (the
+    -- proxy's re-arm), as tools/wincheck.lua's NextFrame
+    local t = S.timers or {}
+    for i = queued + 1, #t do t[i]() end
+    local sheetGone = sheet ~= nil and not sheet:IsShown()
+    local mainStays = main ~= nil and main:IsShown()
+    local inUISpecial = false
+    for _, n in ipairs(UISpecialFrames) do if n == "SpellTunerBindingsWindow" then inUISpecial = true end end
+    check("T40: the bindings sheet is on Simulate -> Practice; ESC closes it and not the window",
+        wasShown and g == "simulate" and v == "practice" and onTop and sheetGone and mainStays
+        and host ~= nil and host:IsVisible() and not inUISpecial and MD.Win.proxy:IsShown(),
+        string.format("shown=%s view=%s/%s onTop=%s gone=%s main=%s special=%s proxy=%s", tostring(wasShown),
+            tostring(g), tostring(v), tostring(onTop), tostring(sheetGone), tostring(mainStays),
+            tostring(inUISpecial), tostring(MD.Win.proxy:IsShown())))
+end
+
+do -- T40 3: at 900 wide no fight field extends past the pane's right edge
+    -- the Simulate group now goes down to 900 x 560
+    local main = MD.Win.windows.main.frame
+    MD:SelectView("simulate", "practice")
+    main:SetSize(900, 560)
+    if main.OnResized then main:OnResized() end
+    local mw, mh = main:GetWidth(), main:GetHeight()
+
+    -- this check's own geometry: points recorded, a font string as wide as
+    -- its text at a generous 7 px a character (Friz at 11-13 px averages
+    -- less), resolved along LEFT-to-RIGHT anchor chains to the pane's left
+    local FM = getmetatable(UIParent)
+    local saved = { FM.SetPoint, FM.ClearAllPoints, FM.GetStringWidth }
+    FM.ClearAllPoints = function(self) self.points = {} end
+    FM.SetPoint = function(self, p, rel, rp, x, y)
+        if type(rel) ~= "table" then rel, rp, x, y = self.parentFrame, p, rel, rp end
+        self.points = self.points or {}
+        self.points[#self.points + 1] = { p, rel, rp or p, x or 0, y or 0 }
+    end
+    FM.GetStringWidth = function(self)
+        local t = tostring(self.text or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+        return #t * 7
+    end
+    -- the pane at 900: the nav's 108 and an 8-px pad either side of the content
+    local PANE_W, PANE_H = 900 - 108 - 8 - 8, 560 - 32 - 8
+    local host = CreateFrame("Frame")
+    local p3 = MD.DashboardParts.CreatePractice(host, 912)
+    p3.frame:SetSize(PANE_W, PANE_H)
+    p3.frame:Show()
+    p3:Render()
+    local sized = p3.frame:GetScript("OnSizeChanged")
+    if sized then sized(p3.frame, PANE_W, PANE_H) end
+
+    local RightOf
+    local function LeftOf(f, depth)
+        local pt = f and f.points and f.points[1]
+        if not pt or depth > 12 then return nil end
+        local p, rel, rp, x = pt[1], pt[2], pt[3], pt[4]
+        if p ~= "LEFT" and p ~= "TOPLEFT" and p ~= "BOTTOMLEFT" then return nil end
+        if rel == p3.frame and (rp == "LEFT" or rp == "TOPLEFT" or rp == "BOTTOMLEFT") then return x end
+        if rp == "RIGHT" or rp == "TOPRIGHT" or rp == "BOTTOMRIGHT" then
+            local r = RightOf(rel, depth + 1)
+            return r and r + x
+        end
+        if rp == "LEFT" or rp == "TOPLEFT" or rp == "BOTTOMLEFT" then
+            local l = LeftOf(rel, depth + 1)
+            return l and l + x
+        end
+        return nil
+    end
+    RightOf = function(f, depth)
+        local l = LeftOf(f, depth)
+        if not l then return nil end
+        local w = f.kind == "FontString" and f:GetStringWidth() or f:GetWidth()
+        return l + w
+    end
+    local items = p3.fightFrames or {}
+    local worst, unresolved = -math.huge, nil
+    for i, f in ipairs(items) do
+        local l, r = LeftOf(f, 0), RightOf(f, 0)
+        if not l or not r then unresolved = unresolved or i
+        else
+            if r > worst then worst = r end
+            if l < 0 then unresolved = unresolved or i end
+        end
+    end
+    FM.SetPoint, FM.ClearAllPoints, FM.GetStringWidth = saved[1], saved[2], saved[3]
+    p3.frame:Hide()
+    check("T40: at 900 wide no fight field extends past the pane's right edge",
+        MD.Win.SIZES.simulate.minW == 900 and MD.Win.SIZES.simulate.minH == 560 and mw == 900 and mh == 560
+        and #items >= 8 and unresolved == nil and worst <= PANE_W,
+        string.format("window=%sx%s items=%d unresolved=%s rightmost=%s pane=%d", tostring(mw), tostring(mh),
+            #items, tostring(unresolved), tostring(worst), PANE_W))
+end
+
+do -- T40 4: the summary does not count a hidden binding
+    MD.db.practiceBinds = { { key = "1", family = "Lifebloom" }, { key = "2", family = "Rejuvenation" } }
+    panel:Render()
+    local s = panel.summary
+    local txt = s and s.fs and s.fs:GetText() or ""
+    local hover = table.concat(Hover(s), "\n")
+    check("T40: the one-line bindings summary does not count a hidden binding",
+        txt == "1 binding" and hover:find("Rejuvenation", 1, true) ~= nil and not hover:find("Lifebloom", 1, true)
+        and #MD.db.practiceBinds == 2,
+        "summary=" .. tostring(txt) .. " hover=" .. hover)
 end
 
 print(string.format("\n%d ok, %d failed", ok, #fails))

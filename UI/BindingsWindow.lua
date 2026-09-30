@@ -17,14 +17,44 @@
 --
 -- These bindings are account-wide (db.practiceBinds): your hands do not change
 -- with the character.
+--
+-- T40 (docs/SPEC-forever-ui.md 4.4, 6.2, 6.4, 6.5, 6.6): with the window
+-- manager (MD.Win, the Forever TOCs only) this is a SHEET on the Simulate ->
+-- Practice pane, not a window: BW:Build(parent) builds it there once (440 x
+-- 460, the whole pane masked), /st binds and "Edit bindings" open the main
+-- window on that view with the sheet shown, it is one entry on the ESC stack
+-- (one ESC closes the sheet and leaves the window), it hides with its pane,
+-- and it refuses to open in combat. Under the theme (UI.TEXT) the waiting key
+-- box is in the accent and an import's notes in text2, not Blizzard gold.
+-- TBC keeps its own movable window exactly as before.
 local _, MD = ...
 local UI = MD.UI
 
 local W, H = 470, 430
+local SHEET_W, SHEET_H = 440, 460 -- T40: the sheet's size (6.2)
 local ROW_H = 22
 local frame, rows, addBtn, defBtn, cellBtn, cliqueBtn, keysBtn, importFS, statusFS, list
 local hiddenLine, hiddenFS, forgetBtn -- T27: the footer for bindings kept but hidden
+local host -- T40: the practice pane the sheet sits on (nil: TBC's window)
 local capturing = nil
+
+-- T40: a colour from the theme, else today's literal (TBC)
+local function Hex(token, fallback)
+    local t = UI.TEXT and UI.TEXT[token]
+    return (t and t.hex) or fallback
+end
+
+-- a tooltip's first line takes the client's gold unless it is coloured: the
+-- accent under the theme, the text unchanged on TBC
+local function Title(text)
+    local t = UI.TEXT and UI.TEXT.accent
+    return t and (t.hex .. text .. "|r") or text
+end
+
+local function InCombat()
+    local v = MD.API.UnitAffectingCombat and MD.API.UnitAffectingCombat("player")
+    return v == true
+end
 
 local function Binds() return MD.Practice.Binds() end
 
@@ -108,7 +138,7 @@ local function Row(i)
     row.key:SetScript("OnClick", function(self, button)
         if capturing ~= row then
             capturing = row
-            self:SetText("|cffffcc00press a key or button...|r")
+            self:SetText(Hex("accent", "|cffffcc00") .. "press a key or button...|r") -- T40
             self:EnableKeyboard(true)
             Status("press the key or mouse button, with any modifiers held. Escape cancels.")
             return
@@ -143,7 +173,7 @@ local function RenderHidden()
     local one = #hidden == 1
     hiddenFS:SetText(string.format("|cff888888%d %s kept for %s you have not learned|r", #hidden,
         one and "binding" or "bindings", one and "a spell" or "spells"))
-    local tips = { "Kept for when you learn the spell" }
+    local tips = { Title("Kept for when you learn the spell") }
     for _, b in ipairs(hidden) do
         tips[#tips + 1] = (b.key ~= "" and b.key or "unbound") .. "  " .. MD.Practice.FamilyLabel(b.family)
             .. (b.rank and (" " .. b.rank) or "")
@@ -193,7 +223,7 @@ local function Report(newList, report)
     local lines = { string.format("|cff99dd99From %s: %d added, %d replaced%s. Everything else kept.|r",
         report.source or "?", added, replaced, same > 0 and string.format(", %d already the same", same) or "") }
     for _, note in ipairs(report.notes or {}) do
-        lines[#lines + 1] = "|cffffcc00" .. note .. "|r"
+        lines[#lines + 1] = Hex("text2", "|cffffcc00") .. note .. "|r" -- T40
     end
     for _, why in ipairs(report.skipped or {}) do
         lines[#lines + 1] = "|cff888888not imported - " .. why .. "|r"
@@ -208,29 +238,50 @@ local function Report(newList, report)
     statusFS:SetText(table.concat(lines, "\n"))
 end
 
-local function Build()
+-- T40: onPane (Forever, with the manager) builds the sheet on that pane;
+-- nothing (TBC) builds today's window. `root` is what everything below is
+-- built in: the sheet's body under its title row, or the window itself.
+local function Build(onPane)
     if frame then return end
-    frame = UI.CreateMovableFrame("SpellTuner: Practice bindings", "SpellTunerBindingsWindow", W, H)
-    tinsert(UISpecialFrames, "SpellTunerBindingsWindow")
-    frame:SetScript("OnHide", function() capturing = nil end)
+    local root
+    if onPane then
+        frame = UI.CreateSheet(onPane, onPane, SHEET_W, SHEET_H, "PRACTICE BINDINGS")
+        frame.bindingsSheet = true -- marks the sheet for tools/practiceforever.lua
+        host = onPane
+        root = frame:Body()
+        W, H = SHEET_W - 2, SHEET_H - 23 -- the body: inside the 1-px edge, under the title row
+        -- the kit's own OnShow / OnHide keep the mask; these only add to them
+        frame:HookScript("OnHide", function() capturing = nil end)
+        -- hides with its owner (6.2): switching view or closing the window
+        -- closes the sheet, and its OnHide takes it off the ESC stack
+        onPane:HookScript("OnHide", function() if frame:IsShown() then frame:Hide() end end)
+        local done = UI.CreateButton(frame, "Done", "accent-hover", { 50, 18 }, false, false, UI.FONT_SMALL, nil)
+        done:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -2, -2)
+        done:SetScript("OnClick", function() frame:Hide() end)
+    else
+        frame = UI.CreateMovableFrame("SpellTuner: Practice bindings", "SpellTunerBindingsWindow", W, H)
+        tinsert(UISpecialFrames, "SpellTunerBindingsWindow")
+        frame:SetScript("OnHide", function() capturing = nil end)
+        root = frame
+    end
     rows = {}
 
-    local hint = frame:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
-    hint:SetPoint("TOPLEFT", frame, "TOPLEFT", 12, -10)
+    local hint = root:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+    hint:SetPoint("TOPLEFT", root, "TOPLEFT", 12, -10)
     hint:SetWidth(W - 24)
     hint:SetJustifyH("LEFT")
     hint:SetText("In practice you hover a frame and press. Click a binding's key box, then press the key " ..
-        "or mouse button you want, modifiers held.|n|cff888888These are SpellTuner's own bindings - " ..
+        "or mouse button you want, modifiers held.|n" .. Hex("muted", "|cff888888") .. "These are SpellTuner's own bindings - " ..
         "practice never reads your keybindings, Cell or Clique while you play, so import them here.|r")
 
-    list = UI.CreateScrollFrame(frame, 0, 0)
+    list = UI.CreateScrollFrame(root, 0, 0)
     list:ClearAllPoints()
-    list:SetPoint("TOPLEFT", frame, "TOPLEFT", 12, -56)
+    list:SetPoint("TOPLEFT", root, "TOPLEFT", 12, -56)
     list:SetSize(W - 30, H - 56 - 96)
     list:SetScrollStep(ROW_H * 3)
 
-    addBtn = UI.CreateButton(frame, "+ binding", "accent-hover", { 90, 20 }, false, false, UI.FONT_SMALL, nil)
-    addBtn:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 12, 72)
+    addBtn = UI.CreateButton(root, "+ binding", "accent-hover", { 90, 20 }, false, false, UI.FONT_SMALL, nil)
+    addBtn:SetPoint("BOTTOMLEFT", root, "BOTTOMLEFT", 12, 72)
     addBtn:SetScript("OnClick", function()
         local family = "Rejuvenation"
         if MD.API.client == "forever" then family = MD.Practice.FirstFamily() end
@@ -239,8 +290,8 @@ local function Build()
         Status("click the new row's key box and press something.")
     end)
 
-    defBtn = UI.CreateButton(frame, "Defaults", "accent-hover", { 80, 20 }, false, false, UI.FONT_SMALL, nil,
-        "Back to the shipped defaults", "Read from your Cell click-casting when this was written:",
+    defBtn = UI.CreateButton(root, "Defaults", "accent-hover", { 80, 20 }, false, false, UI.FONT_SMALL, nil,
+        Title("Back to the shipped defaults"), "Read from your Cell click-casting when this was written:",
         "Button5 Lifebloom, Alt-Button5 Rejuvenation, Shift-Button5 Rejuvenation Rank 5,",
         "left Regrowth, right Swiftmend, Shift-left Healing Touch.")
     defBtn:SetPoint("LEFT", addBtn, "RIGHT", 6, 0)
@@ -256,7 +307,7 @@ local function Build()
 
     -- T27: the footer for hidden bindings, where Defaults would sit (Defaults
     -- is TBC's only, and TBC never hides one)
-    hiddenLine = CreateFrame("Frame", nil, frame)
+    hiddenLine = CreateFrame("Frame", nil, root)
     hiddenLine:SetSize(W - 24 - 90 - 12, 20)
     hiddenLine:SetPoint("LEFT", addBtn, "RIGHT", 12, 0)
     hiddenLine:EnableMouse(true)
@@ -264,7 +315,7 @@ local function Build()
     hiddenFS:SetPoint("LEFT", hiddenLine, "LEFT", 0, 0)
     hiddenFS:SetJustifyH("LEFT")
     forgetBtn = UI.CreateButton(hiddenLine, "Forget", "red-hover", { 60, 18 }, false, false, UI.FONT_SMALL, nil,
-        "Forget them", "Deletes the bindings kept for spells you have not learned.")
+        Title("Forget them"), "Deletes the bindings kept for spells you have not learned.")
     forgetBtn:SetPoint("LEFT", hiddenFS, "RIGHT", 8, 0)
     forgetBtn:SetScript("OnClick", function()
         local n = MD.Practice.ForgetHidden()
@@ -274,12 +325,12 @@ local function Build()
     end)
     hiddenLine:Hide()
 
-    importFS = frame:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
-    importFS:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 12, 48)
+    importFS = root:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+    importFS:SetPoint("BOTTOMLEFT", root, "BOTTOMLEFT", 12, 48)
     importFS:SetText("Import from")
 
-    keysBtn = UI.CreateButton(frame, "Keybindings", "accent-hover", { 100, 20 }, false, false, UI.FONT_SMALL, nil,
-        "Read the game's own keybindings", "Follows every bound key to the action-bar slot it presses and reads",
+    keysBtn = UI.CreateButton(root, "Keybindings", "accent-hover", { 100, 20 }, false, false, UI.FONT_SMALL, nil,
+        Title("Read the game's own keybindings"), "Follows every bound key to the action-bar slot it presses and reads",
         "what is in it: a spell, or a macro's first heal - which is how a mouseover",
         "macro on a bar becomes a practice binding. Blizzard's bars, ElvUI's and any",
         "bar addon whose buttons carry an `action` attribute.",
@@ -289,29 +340,58 @@ local function Build()
     keysBtn:SetPoint("LEFT", importFS, "RIGHT", 8, 0)
     keysBtn:SetScript("OnClick", function() Report(MD.Practice.ImportKeybinds()) end)
 
-    cellBtn = UI.CreateButton(frame, "Cell", "accent-hover", { 60, 20 }, false, false, UI.FONT_SMALL, nil,
-        "Read Cell's click-castings", "Takes the bindings Cell would use (its common set, or this spec's).",
+    cellBtn = UI.CreateButton(root, "Cell", "accent-hover", { 60, 20 }, false, false, UI.FONT_SMALL, nil,
+        Title("Read Cell's click-castings"), "Takes the bindings Cell would use (its common set, or this spec's).",
         "A macro binding becomes the first heal the macro casts, rank included.",
         "Targeting, the unit menu and anything this addon does not model are listed, not guessed.",
         "Adds to your list: a key you already bound casts the imported spell.")
     cellBtn:SetPoint("LEFT", keysBtn, "RIGHT", 6, 0)
     cellBtn:SetScript("OnClick", function() Report(MD.Practice.ImportCell()) end)
 
-    cliqueBtn = UI.CreateButton(frame, "Clique", "accent-hover", { 70, 20 }, false, false, UI.FONT_SMALL, nil,
-        "Read Clique's bindings", "Same idea: Clique already spells its keys the way this window does.",
+    cliqueBtn = UI.CreateButton(root, "Clique", "accent-hover", { 70, 20 }, false, false, UI.FONT_SMALL, nil,
+        Title("Read Clique's bindings"), "Same idea: Clique already spells its keys the way this window does.",
         "Adds to your list: a key you already bound casts the imported spell.")
     cliqueBtn:SetPoint("LEFT", cellBtn, "RIGHT", 6, 0)
     cliqueBtn:SetScript("OnClick", function() Report(MD.Practice.ImportClique()) end)
 
-    statusFS = frame:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
-    statusFS:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 12, 8)
+    statusFS = root:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+    statusFS:SetPoint("BOTTOMLEFT", root, "BOTTOMLEFT", 12, 8)
     statusFS:SetWidth(W - 24)
     statusFS:SetJustifyH("LEFT")
     statusFS:SetJustifyV("BOTTOM")
     Status("hover a frame in practice and press one of these.")
 end
 
-function MD:ShowBindings()
+-- T40: with the manager, the sheet on the Practice pane -- `onPane` when the
+-- pane's own "Edit bindings" asks, else the main window opened on Simulate ->
+-- Practice first (MD.Win:ShowMain, which may refuse: then nothing opens).
+-- Refused in combat (6.6). Returns the sheet or window shown, or nil.
+local function ShowSheet(onPane)
+    if InCombat() then
+        MD:Print("bindings: the bindings sheet does not open in combat")
+        return nil
+    end
+    if not (onPane and onPane:IsVisible()) and not (host and host:IsVisible()) then
+        MD.Win:ShowMain("simulate", "practice")
+    end
+    if not frame then
+        if not (onPane and onPane:IsVisible()) then
+            onPane = MD.DashboardParts and MD.DashboardParts.PracticeHost and MD.DashboardParts.PracticeHost()
+        end
+        if not onPane then return nil end
+        Build(onPane)
+    end
+    if not (host and host:IsVisible()) then return nil end
+    Render()
+    frame:Show()
+    -- 6.5: one entry on the ESC stack; the manager's OnHide hook takes it off
+    -- however the sheet closes (Done, ESC, its pane hiding)
+    MD.Win:Push(frame)
+    return frame
+end
+
+function MD:ShowBindings(onPane)
+    if MD.Win then return ShowSheet(onPane) end
     Build()
     Render()
     frame:Show()
@@ -319,12 +399,19 @@ function MD:ShowBindings()
 end
 
 function MD:ToggleBindings()
+    if MD.Win then -- T40
+        if frame and frame:IsShown() and host and host:IsVisible() then frame:Hide() else MD:ShowBindings() end
+        return
+    end
     Build()
     if frame:IsShown() then frame:Hide() else MD:ShowBindings() end
 end
 
 -- for tools/practiceui.lua
 MD.BindingsWindow = {
+    -- T40 (6.4): BW:Build(parent) -- the sheet on a practice pane, built once
+    -- (Forever); the window's own Build stays behind MD:ShowBindings on TBC
+    Build = function(_, parent) Build(parent); return frame end,
     _frame = function() return frame end,
     _rows = function() return rows end,
     _status = function() return statusFS and statusFS:GetText() or "" end,

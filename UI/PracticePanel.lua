@@ -12,6 +12,44 @@ local UI = MD.UI
 MD.DashboardParts = MD.DashboardParts or {}
 
 local ROW_H = 20
+
+-- T40 (docs/SPEC-forever-ui.md 4.4, 6.4, 6.7): under the Forever theme
+-- (UI.TEXT, set by UI/Theme_Forever.lua on the Forever TOCs only) the panel
+-- drops Blizzard gold (the role rows in text2, the key labels in the accent),
+-- shows "you" as a small accent tag after the name, wraps the fight fields
+-- onto a second row when the pane is narrower than them (the Simulate group
+-- goes down to 900 wide), sizes its table to the pane, and folds the bindings
+-- list into one summary line with the list in its hover. With the window
+-- manager (MD.Win) "Edit bindings" opens the bindings SHEET on this pane
+-- (UI/BindingsWindow.lua). TBC has neither, and every line of its panel is
+-- built exactly as before.
+local function Hex(token, fallback)
+    local t = UI.TEXT and UI.TEXT[token]
+    return (t and t.hex) or fallback
+end
+-- a tooltip's first line takes the client's gold unless it is coloured: the
+-- accent under the theme, the text unchanged on TBC
+local function Title(text)
+    local t = UI.TEXT and UI.TEXT.accent
+    return t and (t.hex .. text .. "|r") or text
+end
+
+-- T40: every practice pane built under the manager, so /st binds can find the
+-- one inside the main window (the sheet sits on it)
+local hosts = setmetatable({}, { __mode = "k" })
+function MD.DashboardParts.PracticeHost()
+    local w = MD.Win and MD.Win.windows and MD.Win.windows.main
+    local main = w and w.frame
+    if not main then return nil end
+    for pane in pairs(hosts) do
+        local f, guard = pane, 0
+        while f and guard < 50 do
+            if f == main then return pane end
+            f, guard = f:GetParent(), guard + 1
+        end
+    end
+    return nil
+end
 -- the table's columns: key, header, width, how it is shown (pct = x100)
 local COLS = {
     { "name",       "Name",        120, "text" },
@@ -52,7 +90,7 @@ local function Field(parent, width, get, set, how, tip)
     eb:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
     eb:SetScript("OnEditFocusLost", function(self) self:HighlightText(0, 0); Commit(self) end)
     function eb:Refresh() self:SetText(Fmt(get(), how)) end
-    if tip then UI.SetTooltips(eb, "ANCHOR_TOP", 0, 2, tip) end
+    if tip then UI.SetTooltips(eb, "ANCHOR_TOP", 0, 2, Title(tip)) end
     return eb
 end
 
@@ -61,6 +99,9 @@ function MD.DashboardParts.CreatePractice(parent, width)
     local pane = CreateFrame("Frame", nil, parent)
     pane:Hide()
     local api = { frame = pane }
+    local themed = UI.TEXT ~= nil                  -- T40: the Forever theme
+    local GREY = themed and Hex("muted", "|cff888888") or "|cff888888"
+    if MD.Win then hosts[pane] = true end
 
     local function Setup()
         MD.cdb.practiceSetup = MD.cdb.practiceSetup or PR.DefaultSetup("5")
@@ -73,7 +114,7 @@ function MD.DashboardParts.CreatePractice(parent, width)
     intro:SetJustifyH("LEFT")
     intro:SetText("Heal a fight you play. Set the group and the damage, press Start, then hover a frame and " ..
         "press a binding. What you play is recorded like a real pull: it opens as a replay, and the coach " ..
-        "answers it. |cff888888Every default number here is a placeholder - one healer's guess at a TBC " ..
+        "answers it. " .. GREY .. "Every default number here is a placeholder - one healer's guess at a TBC " ..
         "group - so change them to the fight you want to rehearse.|r")
 
     ----------------------------------------------------------------------------
@@ -120,24 +161,37 @@ function MD.DashboardParts.CreatePractice(parent, width)
         { "random %",          40, "jitter",       "pct", "aoe", "How far the AoE's size and timing wander." },
     }
     local anchor = nil
+    local fightItems = {}      -- T40: laid out by Layout under the theme
+    api.fightFrames = {}       -- T40: every frame of the fight row (tools/practiceforever.lua)
     for _, d in ipairs(line2) do
         local fs, eb = FightField(d[1], d[2], d[3], d[4], d[5], d[6])
-        if anchor then fs:SetPoint("LEFT", anchor, "RIGHT", 14, 0)
+        if themed then
+            fightItems[#fightItems + 1] = { lead = fs, fs = fs, ebW = d[2] }
+        elseif anchor then fs:SetPoint("LEFT", anchor, "RIGHT", 14, 0)
         else fs:SetPoint("TOPLEFT", pane, "TOPLEFT", 4, -72) end
         eb:SetPoint("LEFT", fs, "RIGHT", 4, 0)
         anchor = eb
+        api.fightFrames[#api.fightFrames + 1] = fs
+        api.fightFrames[#api.fightFrames + 1] = eb
     end
 
     local seedCB, seedEB
     seedCB = UI.CreateCheckButton(pane, "Same fight again", function(checked)
         Setup().fixedSeed = checked and (Setup().fixedSeed or (time and time()) or 1) or nil
         api:Render()
-    end, "Same fight again", "On: the damage comes out identical every time, so you can",
+    end, Title("Same fight again"), "On: the damage comes out identical every time, so you can",
         "replay a fight you lost. Off: a new roll of the dice each Start.")
-    seedCB:SetPoint("LEFT", anchor, "RIGHT", 16, 0)
+    if themed then
+        fightItems[#fightItems + 1] = { lead = seedCB, cb = seedCB, gap = 16 }
+    else
+        seedCB:SetPoint("LEFT", anchor, "RIGHT", 16, 0)
+    end
     seedEB = Field(pane, 80, function() return Setup().fixedSeed end,
         function(v) Setup().fixedSeed = math.max(1, math.floor(v)) end, "int", "The seed: the same number is the same fight.")
     seedEB:SetPoint("LEFT", seedCB.label, "RIGHT", 6, 0)
+    api.fightFrames[#api.fightFrames + 1] = seedCB
+    api.fightFrames[#api.fightFrames + 1] = seedCB.label
+    api.fightFrames[#api.fightFrames + 1] = seedEB
 
     ----------------------------------------------------------------------------
     -- the group, one row each
@@ -155,7 +209,7 @@ function MD.DashboardParts.CreatePractice(parent, width)
             fs:SetPoint("LEFT", header, "LEFT", x, 0)
             fs:SetWidth(c[3])
             fs:SetJustifyH(c[4] == "text" and "LEFT" or c[4] == "label" and "LEFT" or "RIGHT")
-            fs:SetText("|cff888888" .. c[2] .. "|r")
+            fs:SetText(GREY .. c[2] .. "|r")
             x = x + c[3] + 4
         end
     end
@@ -175,7 +229,8 @@ function MD.DashboardParts.CreatePractice(parent, width)
             if c[1] == "name" then
                 local fs = row:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
                 fs:SetPoint("LEFT", row, "LEFT", x, 0)
-                fs:SetText("|cffffcc00every " .. PR.ROLES[kind].label:lower() .. "|r")
+                fs:SetText((themed and Hex("text2", "|cffb3b3b3") or "|cffffcc00") .. "every "
+                    .. PR.ROLES[kind].label:lower() .. "|r") -- T40: text2 under the theme
             elseif c[4] ~= "label" and c[1] ~= "maxHP" then
                 local key, how = c[1], c[4]
                 local eb = Field(row, c[3], function()
@@ -220,6 +275,14 @@ function MD.DashboardParts.CreatePractice(parent, width)
                 eb:SetPoint("LEFT", row, "LEFT", x, 0)
                 eb:SetJustifyH(how == "text" and "LEFT" or "RIGHT")
                 eb.key, eb.how = key, how
+                if themed and key == "name" then
+                    -- T40: "you" as a small accent tag after the name
+                    row.nameEB = eb
+                    row.youFS = eb:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+                    row.youFS:SetPoint("RIGHT", eb, "RIGHT", -5, 0)
+                    row.youFS:SetText(Hex("accent", "|cff99dd99") .. "you|r")
+                    row.youFS:Hide()
+                end
                 eb:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
                 eb:SetScript("OnEditFocusLost", function(self)
                     self:HighlightText(0, 0)
@@ -238,7 +301,7 @@ function MD.DashboardParts.CreatePractice(parent, width)
                         self:SetText(Fmt(tg[key], how))
                     end
                 end)
-                if c[5] then UI.SetTooltips(eb, "ANCHOR_TOP", 0, 2, c[2], c[5]) end
+                if c[5] then UI.SetTooltips(eb, "ANCHOR_TOP", 0, 2, Title(c[2]), c[5]) end
                 row.fields[#row.fields + 1] = eb
             end
             x = x + c[3] + 4
@@ -250,20 +313,40 @@ function MD.DashboardParts.CreatePractice(parent, width)
     ----------------------------------------------------------------------------
     -- bindings: shown here, edited in their own window (UI/BindingsWindow.lua)
     ----------------------------------------------------------------------------
-    local BIND_X = TABLE_W + 30
-    local bindTitle = pane:CreateFontString(nil, "OVERLAY", UI.FONT)
-    bindTitle:SetPoint("TOPLEFT", pane, "TOPLEFT", BIND_X, tableTop)
-    bindTitle:SetText("What your presses cast")
-    local bindFS = pane:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
-    bindFS:SetPoint("TOPLEFT", bindTitle, "BOTTOMLEFT", 0, -6)
-    bindFS:SetWidth(width - BIND_X - 10)
-    bindFS:SetJustifyH("LEFT")
-    bindFS:SetJustifyV("TOP")
+    local bindTitle, bindFS, summary
+    if themed then
+        -- T40: one line beside the group buttons, "6 bindings  [Edit bindings]",
+        -- the list in its hover; only what practice would cast is counted
+        summary = CreateFrame("Frame", nil, pane)
+        summary:SetSize(60, 20)
+        summary:SetPoint("LEFT", groupBtns[#groupBtns], "RIGHT", 20, 0)
+        summary:EnableMouse(true)
+        summary.fs = summary:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+        summary.fs:SetPoint("LEFT", summary, "LEFT", 0, 0)
+        summary.fs:SetJustifyH("LEFT")
+        api.summary = summary
+    else
+        local BIND_X = TABLE_W + 30
+        bindTitle = pane:CreateFontString(nil, "OVERLAY", UI.FONT)
+        bindTitle:SetPoint("TOPLEFT", pane, "TOPLEFT", BIND_X, tableTop)
+        bindTitle:SetText("What your presses cast")
+        bindFS = pane:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+        bindFS:SetPoint("TOPLEFT", bindTitle, "BOTTOMLEFT", 0, -6)
+        bindFS:SetWidth(width - BIND_X - 10)
+        bindFS:SetJustifyH("LEFT")
+        bindFS:SetJustifyV("TOP")
+    end
 
     local bindBtn = UI.CreateButton(pane, "Edit bindings", "accent-hover", { 110, 20 }, false, false,
-        UI.FONT_SMALL, nil, "Practice bindings", "Set what each key and mouse button casts,",
+        UI.FONT_SMALL, nil, Title("Practice bindings"), "Set what each key and mouse button casts,",
         "or import them from Cell or Clique.")
-    bindBtn:SetScript("OnClick", function() if MD.ShowBindings then MD:ShowBindings() end end)
+    -- T40: with the manager, the sheet on this pane (6.4); TBC's own window otherwise
+    bindBtn:SetScript("OnClick", function()
+        if MD.ShowBindings then
+            if MD.Win then MD:ShowBindings(pane) else MD:ShowBindings() end
+        end
+    end)
+    if summary then bindBtn:SetPoint("LEFT", summary.fs, "RIGHT", 8, 0) end
 
     local function BindLines()
         PR.EnsureKit()
@@ -289,11 +372,43 @@ function MD.DashboardParts.CreatePractice(parent, width)
         return table.concat(out, "\n")
     end
 
+    -- T40: the summary line and its hover (the theme only)
+    local function RenderSummary()
+        PR.EnsureKit()
+        local SD = MD.SpellData
+        local binds = PR.Binds()
+        local accent, white = Hex("accent", "|cffffffff"), Hex("text", "|cffffffff")
+        local tips = { Title("What your presses cast") }
+        if #binds == 0 then
+            summary.fs:SetText("|cffff9966Nothing is bound|r")
+            tips[#tips + 1] = "Nothing is bound - Import your keybindings, Cell or Clique, or add one, in Edit bindings."
+        else
+            summary.fs:SetText(string.format("%d %s", #binds, #binds == 1 and "binding" or "bindings"))
+            for _, b in ipairs(binds) do
+                local id = PR.SpellFor(b)
+                local label = b.family and ((SD.families[b.family] and SD.families[b.family].label) or b.family)
+                    or "no spell picked"
+                if b.rank and id and SD.spells[id].rank == b.rank then label = label .. " " .. b.rank end
+                local note = ""
+                if not id and b.family then
+                    if PR.InBook(b) then note = "  |cffff9966(not trained)|r"
+                    else note = "  |cffff9966(not in your spellbook)|r" end
+                end
+                -- the label coloured on its own: after a |r a tooltip line
+                -- falls back to its default colour, not to white
+                tips[#tips + 1] = accent .. (b.key ~= "" and b.key or "unbound") .. "|r  " .. white .. label .. "|r" .. note
+            end
+            tips[#tips + 1] = GREY .. "Hover a frame and press. Import from Cell or Clique in Edit bindings.|r"
+        end
+        summary:SetWidth(math.max(20, summary.fs:GetStringWidth() + 2))
+        UI.SetTooltips(summary, "ANCHOR_BOTTOMLEFT", 0, -3, unpack(tips))
+    end
+
     ----------------------------------------------------------------------------
     -- start
     ----------------------------------------------------------------------------
     local startBtn = UI.CreateButton(pane, "Start practice", "accent", { 160, 26 }, false, false, nil, nil,
-        "Start practice", "Opens the fight. Hover a frame and press a binding;",
+        Title("Start practice"), "Opens the fight. Hover a frame and press a binding;",
         "space pauses; End (or closing the window) keeps what you played.")
     startBtn:SetPoint("BOTTOMLEFT", pane, "BOTTOMLEFT", 4, 30)
     local statusFS = pane:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
@@ -316,8 +431,55 @@ function MD.DashboardParts.CreatePractice(parent, width)
         if MD.OpenPractice then MD:OpenPractice(PR.CopySetup(st), st.fixedSeed) end
     end)
 
+    ----------------------------------------------------------------------------
+    -- T40: the layout that follows the pane's width (the theme only). The
+    -- fight fields flow left to right and wrap onto a new row when the next
+    -- one would pass the pane's right edge; the table moves down by the rows
+    -- added, and its scroll area takes the height left above Start. The TBC
+    -- panel keeps its fixed one-row layout.
+    ----------------------------------------------------------------------------
+    local FIELD_MID, FIELD_ROW = -78, 24   -- the first row's middle; a row's pitch
+    local function ItemWidth(it)
+        if it.cb then
+            -- the box, its label, the seed field beside it (shown or not)
+            return 14 + 5 + it.cb.label:GetStringWidth() + 6 + 80
+        end
+        return it.fs:GetStringWidth() + 4 + it.ebW
+    end
+    local function Layout()
+        if not themed then return end
+        local w = pane:GetWidth()
+        if type(w) ~= "number" or w <= 0 then w = width end
+        local right = w - 4
+        local x, line = 4, 0
+        for i, it in ipairs(fightItems) do
+            local iw = ItemWidth(it)
+            local gap = (i == 1) and 0 or (it.gap or 14)
+            if i > 1 and x + gap + iw > right then
+                line, x, gap = line + 1, 4, 0
+            end
+            x = x + gap
+            it.lead:ClearAllPoints()
+            it.lead:SetPoint("LEFT", pane, "TOPLEFT", x, FIELD_MID - line * FIELD_ROW)
+            x = x + iw
+        end
+        local down = line * FIELD_ROW
+        header:ClearAllPoints()
+        header:SetPoint("TOPLEFT", pane, "TOPLEFT", 4, tableTop - down)
+        intro:SetWidth(w - 20)
+        statusFS:SetWidth(math.max(40, w - 4 - 160 - 12 - 8))
+        -- the rows' scroll area: down to 8 px above Start (bottom 30, 26 tall)
+        local h = pane:GetHeight()
+        local top = -tableTop + down + ROW_H + 2 + #PR.ROLE_ORDER * ROW_H + 6
+        local sh = 250
+        if type(h) == "number" and h > top + 64 + 3 * ROW_H then sh = h - top - 64 end
+        scroll:SetSize(TABLE_W + 4, sh)
+    end
+    if themed then pane:SetScript("OnSizeChanged", function() Layout() end) end
+
     function api:Render()
         if not pane:IsShown() then return end
+        Layout() -- T40: nothing on TBC
         -- T27: a spell learned since the last paint brings back a binding that
         -- was hidden for it (Forever only; nothing on TBC)
         PR.RefreshKit()
@@ -331,8 +493,15 @@ function MD.DashboardParts.CreatePractice(parent, width)
         for i, tg in ipairs(st.targets) do
             local row = Row(i)
             row.index = i
-            row.kindFS:SetText((tg.you and "|cff99dd99you|r " or "") .. "|cff888888" ..
-                PR.ROLES[tg.kind].label:lower() .. "|r")
+            if row.youFS then
+                -- T40: the role alone in its cell, "you" a tag after the name
+                row.kindFS:SetText(GREY .. PR.ROLES[tg.kind].label:lower() .. "|r")
+                if tg.you then row.youFS:Show() else row.youFS:Hide() end
+                row.nameEB:SetTextInsets(5, tg.you and 30 or 5, 0, 0)
+            else
+                row.kindFS:SetText((tg.you and "|cff99dd99you|r " or "") .. "|cff888888" ..
+                    PR.ROLES[tg.kind].label:lower() .. "|r")
+            end
             for _, eb in ipairs(row.fields) do
                 if eb.how == "text" then eb:SetText(tg[eb.key] or "") else eb:SetText(Fmt(tg[eb.key], eb.how)) end
             end
@@ -341,9 +510,13 @@ function MD.DashboardParts.CreatePractice(parent, width)
         for i = #st.targets + 1, #rows do rows[i]:Hide() end
         scroll:SetContentHeight(math.max(1, #st.targets) * ROW_H)
 
-        bindFS:SetText(BindLines())
-        bindBtn:ClearAllPoints()
-        bindBtn:SetPoint("TOPLEFT", bindFS, "BOTTOMLEFT", 0, -8 - 12 * #PR.Binds())
+        if summary then
+            RenderSummary()
+        else
+            bindFS:SetText(BindLines())
+            bindBtn:ClearAllPoints()
+            bindBtn:SetPoint("TOPLEFT", bindFS, "BOTTOMLEFT", 0, -8 - 12 * #PR.Binds())
+        end
 
         local total = 0
         for _, tg in ipairs(st.targets) do
@@ -355,7 +528,7 @@ function MD.DashboardParts.CreatePractice(parent, width)
         local canCast = MD.player.isDruid
         if canCast then startBtn:Enable() else startBtn:Disable() end
         statusFS:SetText(canCast and string.format(
-            "|cff888888about %d damage a second for you to heal, over %d:%02d|r", total + 0.5,
+            GREY .. "about %d damage a second for you to heal, over %d:%02d|r", total + 0.5,
             math.floor((st.dur or 0) / 60), (st.dur or 0) % 60)
             or "|cffff9966Practice is Druid-only, like the rest of the healing model.|r")
     end
