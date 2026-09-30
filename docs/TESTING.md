@@ -1445,10 +1445,16 @@ the numbers.
 
 Paste back as in section 41. Out of combat unless a step says otherwise. The items keep the plan's
 numbers; wave 1 (T45-T47) needs items 3 and 15, wave 2 (T48-T50) adds 4, 6, 8, 10 and 14, and wave 3
-adds the others as it lands.
+(T51-T53) adds 1, 2, 7, 9, 11 and 12. Item 5 waits for P11 and item 13 for P35's pass over this
+section.
 
 **TBC.**
 
+1. **Cat form reload (B1).** Shift to Cat, `/reload`. The clock and the Advisor work in caster form
+   afterwards; `/md profile` says `usesMana true`. Also paste
+   `/run print(UnitPowerMax("player", 0))` while in Cat form (expected: your mana max, not 0).
+2. **Tree aura (B2).** With a second resto druid in Tree of Life in your party, stay in caster form and
+   open `/md`: no Tree label in the header, the numbers do not flip when they shift or leave range.
 3. **Text (B3).** `/md verify`, `/md unlock`, `/md window 99`, and a gear change that moves an efficient
    rank: no boxes; paste the verify block.
 4. **Casts under a rolling HoT (B9).** Keep Lifebloom rolling on the tank and hard-cast Healing Touch
@@ -1458,13 +1464,22 @@ adds the others as it lands.
    and then move during a cast: the line shows `player`, a cast GUID and the spell id.
 6. **Bloom (B10).** After a dungeon with Lifebloom, `/md calibrate` lists a bloom line; the Waste view
    has a Lifebloom bloom row.
+7. **Run replay (B21, B22).** `/md replay run 1`, let it cross into pull 2, drag the scrubber to the
+   middle: the run jumps there. Pull a mob while the run is playing: at most one chat line, and the
+   replay pauses.
 8. **Two runs (B12).** Stop a run, drink a potion, start a run: `/md run status` shows no potion.
+9. **Long lists (P9).** Open `/md` -> Reports -> Review on a run with more than 30 pulls: the list ends
+   with `... and N more (scroll: not yet)`, and N plus the rows shown is the run's pull count.
 10. **Pins (B14).** Pin three fights in `/md` -> Reports -> Review: the third is refused with a line.
 
 **Forever.**
 
 10. **Pins (B14).** Pin three fights in Review: the third is refused with a line. Pull nine times: the
     ninth is listed.
+11. **Scale before replay (B17, B18).** `/reload`, set Window size to 80 % before opening a replay, then
+    `/st replay 1`: it opens where you last left it; the window borders are one crisp pixel.
+12. **Practice icons (B23).** In practice, point at a tank's Swiftmend icon and press a bound key: it
+    heals the tank.
 14. **Coach address (B16).** `/st coach 2:7`: a refusal, no card.
 15. **Client (P3).** `/st dump`: the first line says `forever`.
 

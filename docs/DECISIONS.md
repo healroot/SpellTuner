@@ -977,3 +977,21 @@ rule) and always stores. A party member from another realm is recorded with `nam
 person to `SM.PartyMaxFromOthers` and `SM.DangerHitFromOthers`; a cast SENT at `Name-Realm` is
 matched to the full name first, then to a bare name that is unique in the roster. The suffix form
 of the SENT target follows the retail convention and has not been seen on the beta.
+
+## usesMana is whether the player has a mana pool; Tree form's buff scan is a fallback for a missing API only (2026-09-30, T52)
+
+**usesMana is whether the player has a mana pool.** `MD.player.usesMana` was the power type at login
+(`UnitPowerType("player") == 0`). A druid who logged in or reloaded in Cat or Bear form (power type 3
+or 1) therefore had the clock, the Advisor, the datatext, the self-assigned HEALER role and the mana
+cooldowns switched off for the session, and nothing re-evaluated it. It is now answered from data:
+`MD.API.UnitPowerMax("player", 0)` read plain and above 0 (a druid in any form has a mana pool; a
+warrior or rogue has a maximum of 0). There is no class list: which classes use mana on Forever's
+retail engine is not guessed. Only when that read is absent, secret or raised does the current power
+type decide, as before. Both lines (`Core.lua` is shared).
+
+**Tree form: the buff scan is a fallback for a missing API only.** `GetShapeshiftFormID` answering
+`nil` is an answer (caster form). The buff scan by name used to run on that `nil` too and found
+another resto druid's Tree of Life party aura (34123, the same name). The rank math, the kit, the
+recorder, the cast labels and the profile then thought the player was in Tree form, and
+`FORM_CHANGED` fired whenever the other druid shifted or left range. The scan now runs only when the
+function is absent or raised. TBC only (`Core_TBC.lua`).

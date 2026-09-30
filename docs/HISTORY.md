@@ -3853,3 +3853,36 @@ importcheck's TBC export -- plus ms, addresses, scratch paths and reviewui's sli
 (19/21, 39/40/42 evaluations on either commit). **Next:** wave 3 (P7-P9); the author's §44 items
 4, 6, 8, 10 and 14 on the next build (plan item 13, the opener, is T50's B19 but the task named no
 TESTING line, so it waits for P35's pass over §44).
+
+## 2026-09-30 — the refactor plan, wave 3: T51-T53 (P7-P9)
+
+Wave 3 of `docs/PLAN-refactor-ux.md` cherry-picked onto `4702b5c`, oldest first, then the
+integrator's lines (CLAUDE.md, `docs/DECISIONS.md`, `docs/TESTING.md` §44, `docs/TOOLS.md`, this
+entry) in one commit. No TOC changes; the version stays 0.16.3. `tools/data/expected-counts.json`
+does not exist yet: when P13 creates it, the wave's counts are wincheck 55, replayui 103,
+practiceui 52, practiceforever 27, corecheck 13 / 13, adaptercheck 23 / 16, reviewui 48, dashui 64.
+
+- **T51 (P7)** (`18ce073`, `2e16884`): the window manager converts every saved place in
+  `db.ui.win` on a scale change, registered or not, and `Register` re-snaps the pixel edges after
+  the window scale (B17, B18); the replay keeps a run on its clock and scrubber range across a pull
+  boundary, pauses on a combat refusal and says it once, leaves run mode on an open by hand, seeks
+  the run clock on a run-strip click (B21, B22); every unit-frame icon takes the practice hover
+  (B23). No DECISIONS entry (the plan rules these the window doing the wrong thing). wincheck 55,
+  replayui 103, practiceui 52, practiceforever 27.
+- **T52 (P8)** (`fbd1e2d`, `6f26430`): `MD.player.usesMana` from the mana pool
+  (`UnitPowerMax("player", 0)`), the power type only when that read is unreadable (B1); on TBC Tree
+  form's buff scan only when `GetShapeshiftFormID` is absent or raised (B2); a secret
+  `PLAYER_LEVEL_UP` level not stored (A31); two test seams, `MD.API.Invalidate` and
+  `MD:SetTalents` (Q15). DECISIONS "usesMana is whether the player has a mana pool; Tree form's buff
+  scan is a fallback for a missing API only". corecheck 13 / 13, adaptercheck 23 / 16.
+- **T53 (P9)** (`2c83b64`, `1bfbcb0`): Review and Waste end a list longer than the pane with a grey
+  `... and N more (scroll: not yet)` line; Review keeps the selected row on screen (U25). No
+  DECISIONS entry (the old behaviour was a silent truncation). reviewui 48, dashui 64.
+
+Every suite passes (exit codes checked), apicheck and textcheck 0 findings, in the worktree and in
+a `git archive` export; each task's new assertions fail on `4702b5c`. Each TBC suite's output
+against `4702b5c` differs only by the new assertions (replayui's five T51 lines and their replay
+opens, practiceui's two, reviewui's two, dashui's one, corecheck/tbc's five, adaptercheck/tbc's one)
+-- plus ms, table addresses and the sliced search's intermediate counts (the final 44 unchanged).
+**Next:** wave 4; the author's §44 items 1, 2, 7 and 9 (TBC) and 11 and 12 (Forever) on the next
+build.
