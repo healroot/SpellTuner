@@ -224,6 +224,12 @@ function SM.ValidateV3(rec, kit)
             local text = string.format(
                 "own %d heals paired with your casts, foreign %d; paired total %.0f vs meter %.0f (%.0f%% off, limit %.0f%%)",
                 counts.own or 0, counts.foreign or 0, pairedTotal, mOwn, d * 100, limAttrib * 100)
+            -- T101 (docs/SPEC-next.md 3 principle 8): own heals of spells the
+            -- kit does not price are paired too, and replayed as recorded
+            if (counts.recorded or 0) > 0 then
+                text = text .. string.format("; %d of them from spells the kit does not price, replayed as recorded",
+                    counts.recorded)
+            end
             if SM.HEAL_AMOUNT ~= "effective" then
                 text = text .. "; only a shortfall is checked until a heal amount is known to be effective"
             end

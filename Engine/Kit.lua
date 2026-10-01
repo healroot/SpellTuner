@@ -39,6 +39,8 @@ Kit.FORMS = { "caster", "tree" }
 --     swiftmendRejuv, swiftmendRegrowth,   -- instant (Swiftmend)
 --     channelTick, channelTicks,           -- channel (Tranquility); its period
 --                                          -- is tickPeriod (T96: Kit_Forever)
+--     party,                               -- a channel that reaches the party (T101)
+--     jumps, falloff,                      -- chain (Chain Heal, T101)
 --     cooldown,                            -- optional, per family (T90)
 --     dataMissing }                        -- a value the source could not give
 --
@@ -60,6 +62,17 @@ Kit.FIELDS = {
     -- this FAMILY can be cast again (SM.CooldownOf; one rank's cast blocks
     -- every rank). Absent, Engine/SimModel.lua's SPELL_CD answers (Swiftmend).
     cooldown = "number",
+    -- T101 (docs/SPEC-next.md 4.2 P2, 4.5): who a heal reaches beyond its
+    -- target. No positions are recorded on either line, so each is an
+    -- assumption -- optimistic, VERIFY, and said on the coach card
+    -- (Engine/SimPlanner.lua's SP.GROUP_ASSUMPTION):
+    --   jumps    a `chain` heal's jumps after its target (Chain Heal: 2), each
+    --            to the most injured member of the caster's party at the cast
+    --   falloff  each jump's share of the one before it (0.5)
+    --   party    a `channel` whose text reaches the caster's party
+    --            (Tranquility): every tick lands on each living member of it
+    jumps = "number", falloff = "number",
+    party = "boolean",
     dataMissing = "boolean",
 }
 
@@ -80,7 +93,37 @@ Kit.TYPES = {
     lifebloom = { "cost", "cast", "tick", "ticks", "tickPeriod", "duration", "bloom" },
     instant   = { "cost", "cast" },
     channel   = { "cost", "cast" },
+    -- T101 (docs/SPEC-next.md 4.2 P2, 4.5), the heals that reach several targets:
+    --   group          every living member of the caster's party (Prayer of
+    --                  Healing, Holy Nova, Wild Growth) -- a direct part, a HoT
+    --                  part or both (Kit.ANY_OF below)
+    --   chain          its target, then `jumps` more at `falloff` (Chain Heal)
+    --   selfAndTarget  its target and the caster (Binding Heal)
+    group         = { "cost", "cast" },
+    chain         = { "cost", "cast", "castBase", "direct", "directCrit", "jumps", "falloff" },
+    selfAndTarget = { "cost", "cast", "castBase", "direct", "directCrit" },
 }
+
+-- T101: a type whose value may be one of several parts owes ALL the fields of
+-- at least one of them (unless dataMissing). A group heal is a direct heal on
+-- each member (Prayer of Healing), a HoT on each (Wild Growth) or both.
+Kit.ANY_OF = {
+    group = { { "castBase", "direct", "directCrit" }, { "tick", "ticks", "tickPeriod", "duration" } },
+}
+
+-- T101: the types that land on more than the cast's own target (and a
+-- `channel` with `party`): what the coach card's group-assumption line is
+-- said for (Kit.ReachesMany).
+Kit.MULTI_TARGET = { group = true, chain = true, selfAndTarget = true }
+
+-- Kit.ReachesMany(e) -> true when a kit entry heals more than the cast's own
+-- target under 4.5's assumptions (a group, a chain, the target and the
+-- caster, a channel over the party).
+function Kit.ReachesMany(e)
+    if type(e) ~= "table" then return false end
+    if Kit.MULTI_TARGET[e.type] then return true end
+    return e.type == "channel" and e.party == true
+end
 
 -- Families a kit carries for their mana and cast only, with no heal value:
 -- Innervate, which Data/SpellData.lua lists so it is never "unknown" and which
@@ -177,6 +220,22 @@ function Kit.Validate(kit)
                         for _, k in ipairs(needs) do
                             if e[k] == nil then
                                 Say(problems, "%s (%s) has no %s", where, tostring(e.type), k)
+                            end
+                        end
+                        -- T101: and one whole part, where the type has several
+                        local parts = not Kit.UNPRICED[e.family] and Kit.ANY_OF[e.type]
+                        if parts then
+                            local whole = false
+                            for _, part in ipairs(parts) do
+                                local all = true
+                                for _, k in ipairs(part) do
+                                    if e[k] == nil then all = false; break end
+                                end
+                                if all then whole = true; break end
+                            end
+                            if not whole then
+                                Say(problems, "%s (%s) has neither a whole direct part nor a whole HoT part",
+                                    where, tostring(e.type))
                             end
                         end
                     end

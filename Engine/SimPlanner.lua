@@ -105,6 +105,36 @@ do
     SP.HOT_RULE = Copy(planner.hotRule)
 end
 
+-- T101 (docs/SPEC-next.md 4.2 P2, "the solver over the kit's families"): the
+-- families a plan may bind are SP.BINDABLE and, after it in family-key order,
+-- every family of the installed kit index (MD.SpellData, the kit's own) that
+-- the list does not name -- not excluded, not a channel (never planned,
+-- decision 11), not Kit.UNPRICED: a druid's Wild Growth, every heal family of
+-- a class with no profile file. The threshold rules read only their own
+-- families; the solver reads the kit's (SM.HotSlots(kit).families). On TBC,
+-- and for a Forever druid without Wild Growth, the list adds nothing and
+-- SP.BINDABLE itself comes back.
+function SP.Bindable()
+    local SD = MD.SpellData
+    local named = {}
+    for _, fam in ipairs(SP.BINDABLE) do named[fam] = true end
+    local unpriced = (MD.Kit and MD.Kit.UNPRICED) or {}
+    local extra
+    for fam, def in pairs(SD and SD.families or {}) do
+        if not named[fam] and type(def) == "table" and not def.exclude and def.type ~= "channel"
+            and not unpriced[fam] then
+            extra = extra or {}
+            extra[#extra + 1] = fam
+        end
+    end
+    if not extra then return SP.BINDABLE end
+    table.sort(extra)
+    local out = {}
+    for i, fam in ipairs(SP.BINDABLE) do out[i] = fam end
+    for _, fam in ipairs(extra) do out[#out + 1] = fam end
+    return out
+end
+
 --------------------------------------------------------------------------------
 -- Binds: which rank of which family the plan uses. Fixed by default to the
 -- ranks the player actually cast, because a card that silently rebinds every
@@ -127,7 +157,7 @@ function SP.BindsFromRecording(rec, kit)
     end
     local known = rec and rec.initial and rec.initial.known
     local binds = {}
-    for _, family in ipairs(SP.BINDABLE) do
+    for _, family in ipairs(SP.Bindable()) do
         local best, bestN
         for id, n in pairs(counts[family] or {}) do
             if not bestN or n > bestN then best, bestN = id, n end
@@ -143,7 +173,7 @@ end
 -- existed for the player at the time; without it, whatever they know now.
 function SP.MaxRankBinds(known)
     local SD, binds = MD.SpellData, {}
-    for _, family in ipairs(SP.BINDABLE) do
+    for _, family in ipairs(SP.Bindable()) do
         binds[family] = known and known[family] or (not known and SD.maxRank[family]) or nil
     end
     return binds
@@ -769,7 +799,7 @@ function SP.BestHPM(plan)
     if not (plan and plan.kit) then return nil end
     local kit = plan.kit.caster or {}
     local best
-    for _, fam in ipairs(SP.BINDABLE) do
+    for _, fam in ipairs(SP.Bindable()) do
         local e = plan.binds[fam] and kit[plan.binds[fam]]
         if e and (e.cost or 0) > 0 then
             local heal = (e.direct or 0) + (e.tick or 0) * (e.ticks or 0) + (e.bloom or 0)
@@ -1158,8 +1188,20 @@ function SP.CardLines(rec, best, bestResult, replayResult, baselineResults, cls,
     end
 
     local bindList = {}
-    for _, fam in ipairs({ "Lifebloom", "Rejuvenation", "Regrowth", "HealingTouch", "Swiftmend" }) do
+    local CARD_FAMILIES = { "Lifebloom", "Rejuvenation", "Regrowth", "HealingTouch", "Swiftmend" }
+    for _, fam in ipairs(CARD_FAMILIES) do
         if best.binds[fam] then bindList[#bindList + 1] = RankLabel(best.binds[fam]) end
+    end
+    -- T101: and every other family the plan binds (the kit's own, by shape),
+    -- in family-key order -- none for a druid without Wild Growth
+    do
+        local listed, others = {}, {}
+        for _, fam in ipairs(CARD_FAMILIES) do listed[fam] = true end
+        for fam, id in pairs(best.binds) do
+            if id and not listed[fam] then others[#others + 1] = fam end
+        end
+        table.sort(others)
+        for _, fam in ipairs(others) do bindList[#bindList + 1] = RankLabel(best.binds[fam]) end
     end
     add("  Bind: %s", table.concat(bindList, ", "))
     if best.binds.Swiftmend then
@@ -1346,8 +1388,31 @@ function SP.CardLines(rec, best, bestResult, replayResult, baselineResults, cls,
             or ("gates failed: " .. table.concat(failed, ", "))
     end
     caveats[#caveats + 1] = "late and idle come from running the plan alone, the rest from lockstep"
+    -- T101 (docs/SPEC-next.md 4.5, decision 12): whom a group or bounce heal
+    -- reaches is an assumption, and the card says so whenever one is in play
+    if SP.GroupAssumed(rec, best) then addT("note", "  %s", SP.GROUP_ASSUMPTION) end
     addT("note", "  caveat: %s", table.concat(caveats, "; "))
     return out
+end
+
+-- T101 (docs/SPEC-next.md 4.5): the line, word for word, and when it is said:
+-- the plan binds, or the recording casts, a heal that reaches more than its
+-- target (Kit.ReachesMany: a group, a chain, a self-and-target heal, a
+-- channel over the party) -- read from the plan's own kit. TBC's kit has none.
+SP.GROUP_ASSUMPTION = "group heals assume everyone in range (no positions recorded): an upper bound"
+function SP.GroupAssumed(rec, plan)
+    local Kit = MD.Kit
+    local list = plan and plan.kit and plan.kit.caster
+    if not (Kit and Kit.ReachesMany and type(list) == "table") then return false end
+    for _, id in pairs(plan.binds or {}) do
+        if id and Kit.ReachesMany(list[id]) then return true end
+    end
+    local ev = rec and rec.ev
+    local K = MD.SimModel.K
+    for i = 1, (rec and rec.n or 0) do
+        if ev.kind[i] == K.OWNCAST and Kit.ReachesMany(list[ev.x[i]]) then return true end
+    end
+    return false
 end
 
 --------------------------------------------------------------------------------

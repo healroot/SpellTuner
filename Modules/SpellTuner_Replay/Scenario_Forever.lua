@@ -5,6 +5,9 @@
 -- adapter's own job, not this file's. Never mutates `rec`.
 local _, MD = ...
 local SM = MD.SimModel
+-- T101: Kit.MULTI_TARGET, the kit types that reach more than their target
+-- (Engine/Kit.lua, listed before this file by the module's TOCs)
+local Kit = MD.Kit
 
 -- The v3 stream's own event-kind numbers, published once by the Recorder
 -- module's Stream_Forever.lua (T66, P22, review A18) -- this module depends on
@@ -127,24 +130,73 @@ local CRIT_MULT = 1.5
 -- inherited (not that application's own cadence) -- so a chain of recasts
 -- of any length keeps tracing back to the original application.
 --
--- Returns `own` (HEAL event index -> true) and `counts` (own/foreign/
--- ownDirect/ownTick/prepull totals) for the scenario's `attribution` field.
+-- T101 (docs/SPEC-next.md 4.2 P2, 4.5): a heal that reaches several targets
+-- makes several claims at the same instant, one per target it reaches under
+-- the engine's own assumption -- a `group` heal (and a channel over the party)
+-- one on every member of the caster's party, a `chain` heal its target and
+-- then up to `jumps` claims on any OTHER member (whom it jumped to is not in
+-- the stream: each jump claim takes the heal nearest its own share, one per
+-- member), a `selfAndTarget` heal its target and the caster. And an own cast
+-- of a heal the kit does not carry (MD:ClassifyCast says "heal": a heal on
+-- the caster alone, a refused reach) claims the heal landing with it on its
+-- target (on the caster, when its text heals only the caster): the healer's
+-- own heal, which no kit entry claims, replayed AS RECORDED (SM.K.OWNREPLAY,
+-- principle 8) instead of being called somebody else's.
+--
+-- Returns `own` (HEAL event index -> true), `counts` (own/foreign/
+-- ownDirect/ownTick/prepull totals, and T101's `recorded`) for the scenario's
+-- `attribution` field, and `replayed` (HEAL event index -> true: the own heals
+-- no kit entry claims).
 --------------------------------------------------------------------------------
+-- T101 (4.5): the caster's party in a v3 stream -- every tracked member (the
+-- Forever recorder is party-only: in a raid it tracks the player alone) --
+-- and the caster: roster index 1, the `player` token the recorder lists
+-- first, when its max was read plain (the player's own; a party member's is
+-- secret, or read through a status bar, `maxVia`). nil when that is not so:
+-- a self-and-target heal then reaches its target only (the lower bound).
+local function PartyOf(rec)
+    local out = {}
+    for _, idx in ipairs(rec.tracked or {}) do out[#out + 1] = idx end
+    table.sort(out)
+    return out
+end
+local function CasterOf(rec)
+    local r = rec.roster and rec.roster[1]
+    if type(r) == "table" and r.maxSecret == false and r.maxVia == nil then return 1 end
+    return nil
+end
+SM.CasterOfV3 = CasterOf
+
 function SM.AttributeHeals(rec, kit)
     local ev, n = rec.ev or {}, rec.n or 0
     local form = "caster" -- Forever has no Tree of Life (T15's Kit_Forever.lua Facts)
     local k = (kit and kit[form]) or {}
+    local party, caster = PartyOf(rec), CasterOf(rec)
 
     -- Own casts of a spell the healing kit knows, in time order (the stream
-    -- already is).
-    local casts = {}
+    -- already is). T101: and the own heals the kit does not carry.
+    local casts, unmodelled = {}, {}
     for i = 1, n do
         if ev.kind[i] == V3.OWNCAST then
             local id, tgt, t = ev.x[i], ev.tgt[i], ev.t[i]
             local sd = MD.SpellData.spells[id]
             local e = sd and k[id]
-            if sd and e and tgt and tgt > 0 then
+            if sd and e and e.type == "group" then
+                -- a group heal reaches the party whoever it was cast on
+                casts[#casts + 1] = { t = t, tgt = tgt or -1, family = sd.family, e = e, id = id }
+            elseif sd and e and e.type == "channel" and e.party then
+                casts[#casts + 1] = { t = t, tgt = tgt or -1, family = sd.family, e = e, id = id }
+            elseif sd and e and tgt and tgt > 0 then
                 casts[#casts + 1] = { t = t, tgt = tgt, family = sd.family, e = e, id = id }
+            elseif not e and MD.ClassifyCast then
+                local _, kind = MD:ClassifyCast(id)
+                if kind == "heal" then
+                    local on = tgt
+                    local book = MD.Book and MD.Book:Get()
+                    local be = book and book.spells and book.spells[id]
+                    if be and be.targets == "caster" then on = caster end
+                    if on and on > 0 then unmodelled[#unmodelled + 1] = { t = t, tgt = on, id = id } end
+                end
             end
         end
     end
@@ -270,19 +322,70 @@ function SM.AttributeHeals(rec, kit)
         return math.huge
     end
 
+    -- T101: the claims a heal reaching several targets makes, beside the
+    -- usual ones (below) on its own target.
+    local function AddMultiClaims(c)
+        local e, ty = c.e, c.e.type
+        if ty == "group" then
+            for _, j in ipairs(party) do
+                if (e.direct or 0) > 0 then
+                    AddClaim(c.t - 0.3, c.t + 1.0, j, "direct", nil, false, e.direct, (e.directCrit or 0) > 0)
+                end
+                if e.tick and e.tickPeriod and e.ticks then
+                    local ticks = math.floor(e.ticks + 0.5)
+                    -- until the next own cast of the same family (it reapplies
+                    -- on the whole party)
+                    local cutoff = math.huge
+                    for _, o in ipairs(casts) do
+                        if o.t > c.t and o.family == c.family then cutoff = o.t; break end
+                    end
+                    for kk = 1, ticks do
+                        local when = c.t + e.tickPeriod * kk
+                        if when >= cutoff then break end
+                        AddClaim(when - 0.4, when + 0.4, j, "tick", e.tick * 2, false)
+                    end
+                end
+            end
+        elseif ty == "chain" then
+            AddClaim(c.t - 0.3, c.t + 1.0, c.tgt, "direct", nil, false, e.direct, (e.directCrit or 0) > 0)
+            local siblings = { used = { [c.tgt] = true } }
+            local share = 1
+            for _ = 1, (e.jumps or 0) do
+                share = share * (e.falloff or 0)
+                claims[#claims + 1] = { t0 = c.t - 0.3, t1 = c.t + 1.0, tgt = nil, kindTag = "direct",
+                                        expect = (e.direct or 0) * share, crit = (e.directCrit or 0) > 0,
+                                        siblings = siblings, anyOf = party }
+            end
+        elseif ty == "selfAndTarget" then
+            AddClaim(c.t - 0.3, c.t + 1.0, c.tgt, "direct", nil, false, e.direct, (e.directCrit or 0) > 0)
+            if caster and caster ~= c.tgt then
+                AddClaim(c.t - 0.3, c.t + 1.0, caster, "direct", nil, false, e.direct, (e.directCrit or 0) > 0)
+            end
+        end
+    end
+
     for i, c in ipairs(casts) do
         local chTick, chN, chPeriod = SM.ChannelShape(c.e)
-        if chTick then
+        if Kit.MULTI_TARGET[c.e.type] then
+            AddMultiClaims(c)
+        elseif chTick then
             -- T96 (decision 11): a channel the engine lands (SM.ChannelShape)
             -- claims its ticks on its target, one per period from the cast,
             -- until the next cast breaks it -- the ticks the engine heals with,
             -- so they are not replayed a second time as foreign healing. A
             -- channel the engine cannot land keeps the lump claim below.
+            -- T101: a channel over the party claims each tick on every member.
             local cutoff = NextOwnCastAfter(c.t, c.id)
             for kk = 1, chN do
                 local when = c.t + chPeriod * kk
                 if when >= cutoff then break end
-                AddClaim(when - 0.4, when + 0.4, c.tgt, "tick", chTick * 2, false)
+                if c.e.party then
+                    for _, j in ipairs(party) do
+                        AddClaim(when - 0.4, when + 0.4, j, "tick", chTick * 2, false)
+                    end
+                else
+                    AddClaim(when - 0.4, when + 0.4, c.tgt, "tick", chTick * 2, false)
+                end
             end
         elseif c.e.direct then
             AddClaim(c.t - 0.3, c.t + 1.0, c.tgt, "direct", nil, false,
@@ -292,7 +395,7 @@ function SM.AttributeHeals(rec, kit)
             -- lump claim, same window as a direct heal.
             AddClaim(c.t - 0.3, c.t + 1.0, c.tgt, "direct", nil, false, c.eats, false)
         end
-        if c.e.tick and c.e.tickPeriod and c.e.ticks then
+        if c.e.tick and c.e.tickPeriod and c.e.ticks and not Kit.MULTI_TARGET[c.e.type] then
             local ticks = math.floor(c.e.ticks + 0.5)
             -- ends at the NEXT own cast of the same family/target (Facts),
             -- or at the Swiftmend that eats this HoT (R28)
@@ -369,6 +472,11 @@ function SM.AttributeHeals(rec, kit)
         end
     end
 
+    -- T101: the own heals no kit entry claims, one each, in the direct window
+    for _, u in ipairs(unmodelled) do
+        AddClaim(u.t - 0.3, u.t + 1.0, u.tgt, "recorded", nil, false)
+    end
+
     table.sort(claims, function(x, y) return x.t0 < y.t0 end)
 
     -- R30, pass 1: each direct claim, in time order, takes the heal in its
@@ -378,12 +486,25 @@ function SM.AttributeHeals(rec, kit)
     local healIdx = {}
     for i = 1, n do if ev.kind[i] == V3.HEAL then healIdx[#healIdx + 1] = i end end
     local takenBy = {} -- HEAL event index -> the claim that took it
+    local function AnyOfHas(list, tgt)
+        for _, j in ipairs(list) do if j == tgt then return true end end
+        return false
+    end
     for _, cl in ipairs(claims) do
-        if cl.kindTag == "direct" then
+        if cl.kindTag == "direct" or cl.kindTag == "recorded" then
             local best, bestScore
             for _, i in ipairs(healIdx) do
                 local t = ev.t[i]
-                if not takenBy[i] and ev.tgt[i] == cl.tgt and t >= cl.t0 and t <= cl.t1 then
+                -- T101: a chain's jump claims any member of the party its
+                -- siblings have not taken (cl.tgt nil)
+                local onTarget
+                if cl.tgt == nil then
+                    local tg = ev.tgt[i]
+                    onTarget = tg and AnyOfHas(cl.anyOf or {}, tg) and not cl.siblings.used[tg]
+                else
+                    onTarget = ev.tgt[i] == cl.tgt
+                end
+                if not takenBy[i] and onTarget and t >= cl.t0 and t <= cl.t1 then
                     local score = 0
                     if cl.expect then
                         local amt = ev.amt[i] or 0
@@ -396,14 +517,17 @@ function SM.AttributeHeals(rec, kit)
                     if not best or score < bestScore then best, bestScore = i, score end
                 end
             end
-            if best then takenBy[best] = cl end
+            if best then
+                takenBy[best] = cl
+                if cl.siblings then cl.siblings.used[ev.tgt[best]] = true end
+            end
         end
     end
 
     -- Pass 2: every heal no direct claim took, in stream order, against the
     -- tick claims, first fit under the size guard.
-    local consumed, own = {}, {}
-    local counts = { own = 0, foreign = 0, ownDirect = 0, ownTick = 0, prepull = 0 }
+    local consumed, own, replayed = {}, {}, {}
+    local counts = { own = 0, foreign = 0, ownDirect = 0, ownTick = 0, prepull = 0, recorded = 0 }
     for i = 1, n do
         if ev.kind[i] == V3.HEAL then
             local t, tgt, amt = ev.t[i], ev.tgt[i], ev.amt[i]
@@ -420,7 +544,11 @@ function SM.AttributeHeals(rec, kit)
             if matched then
                 own[i] = true
                 counts.own = counts.own + 1
-                if matched.kindTag == "direct" then
+                if matched.kindTag == "recorded" then
+                    -- T101: the healer's, replayed as recorded
+                    replayed[i] = true
+                    counts.recorded = counts.recorded + 1
+                elseif matched.kindTag == "direct" then
                     counts.ownDirect = counts.ownDirect + 1
                 else
                     counts.ownTick = counts.ownTick + 1
@@ -432,7 +560,7 @@ function SM.AttributeHeals(rec, kit)
         end
     end
 
-    return own, counts
+    return own, counts, replayed
 end
 
 --------------------------------------------------------------------------------
@@ -618,7 +746,7 @@ function SM.ScenarioV3(rec, kit, others)
     local trackedSet = {}
     for _, idx in ipairs(rec.tracked or {}) do trackedSet[idx] = true end
 
-    local ownSet, attrCounts = SM.AttributeHeals(rec, kit)
+    local ownSet, attrCounts, replayedSet = SM.AttributeHeals(rec, kit)
 
     local ev, n = rec.ev or {}, rec.n or 0
     local outEv = { t = {}, kind = {}, tgt = {}, amt = {}, x = {} }
@@ -642,7 +770,12 @@ function SM.ScenarioV3(rec, kit, others)
         if kind == V3.DMG then
             Push(ev.t[i], K.DMG, tgt, amt, x)
         elseif kind == V3.HEAL then
-            if not ownSet[i] then Push(ev.t[i], K.FHEAL, tgt, amt, x) end
+            if replayedSet[i] then
+                -- T101: an own heal no kit entry claims, replayed as recorded
+                Push(ev.t[i], K.OWNREPLAY, tgt, amt, x)
+            elseif not ownSet[i] then
+                Push(ev.t[i], K.FHEAL, tgt, amt, x)
+            end
         elseif kind == V3.OWNCAST then
             Push(ev.t[i], K.OWNCAST, tgt, amt, x)
         elseif kind == V3.CASTSTART then
@@ -660,6 +793,7 @@ function SM.ScenarioV3(rec, kit, others)
     local priorStore = others
     if priorStore == nil then priorStore = MD.cdb and MD.cdb.recordings end
     local targets = {}
+    local casterIdx = CasterOf(rec)   -- T101 (4.5): whom a self-and-target heal also reaches
     for i = 1, nT do
         local r = roster[i] or {}
         local list = hits[i]
@@ -681,6 +815,7 @@ function SM.ScenarioV3(rec, kit, others)
             name = r.name, role = r.role, maxHP = maxHP[i], maxEstimated = maxEstimated[i],
             maxSource = maxSource[i], danger = danger, dangerPrior = dangerPrior, hp0 = maxHP[i],
             tracked = (trackedSet[i] == true) and (hitOrHealed[i] == true) or false,
+            caster = (i == casterIdx) or nil,
         }
     end
 

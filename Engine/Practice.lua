@@ -282,6 +282,11 @@ end
 
 -- T27: a family key as a player reads it ("HealingTouch" -> "Healing Touch").
 -- The kit's own label when the book has the family; else the engine's name.
+-- T101 (docs/SPEC-next.md 4.2 P2): the names come from the KIT -- its index
+-- labels every family it carries, a class's by-shape families included, with
+-- the book's own name ("HolyLight" -> "Holy Light"); this list only names the
+-- druid's families a book lacks (Lifebloom on Forever, for an imported
+-- binding to be skipped by name), and any other key is said in words.
 PR.FAMILY_LABELS = {
     Lifebloom = "Lifebloom", Rejuvenation = "Rejuvenation", Regrowth = "Regrowth",
     Swiftmend = "Swiftmend", HealingTouch = "Healing Touch",
@@ -289,7 +294,9 @@ PR.FAMILY_LABELS = {
 function PR.FamilyLabel(family)
     local SD = MD.SpellData
     local fam = SD and SD.families and SD.families[family]
-    return (fam and fam.label) or PR.FAMILY_LABELS[family] or tostring(family)
+    if fam and fam.label then return fam.label end
+    if PR.FAMILY_LABELS[family] then return PR.FAMILY_LABELS[family] end
+    return (tostring(family):gsub("(%l)(%u)", "%1 %2"))
 end
 
 -- T27: the Forever kit is built from the spellbook, which changes when a spell
@@ -1201,8 +1208,10 @@ local function BuildScenario(setup, seed, kit)
     local targets = {}
     for i, tg in ipairs(setup.targets) do
         local maxHP = math.max(1, tg.maxHP or 1)
+        -- T101 (4.5): `caster` -- you, whom a self-and-target heal also reaches
         targets[i] = { name = tg.name, role = tg.role, maxHP = maxHP,
-                       hp0 = math.floor(maxHP * (tg.startHp or setup.startHp or 1) + 0.5), tracked = true }
+                       hp0 = math.floor(maxHP * (tg.startHp or setup.startHp or 1) + 0.5), tracked = true,
+                       caster = tg.you or nil }
     end
     local sampleT, hpT = {}, {}
     for t = 0, dur, 2 do sampleT[#sampleT + 1] = t end
@@ -1258,7 +1267,9 @@ function PR.New(setup, opts)
                 for id, e in pairs(list) do
                     local c = {}
                     for k, v in pairs(e) do c[k] = v end
-                    if c.castBase and (c.type == "direct" or c.type == "hybrid") then c.cast = c.castBase end
+                    -- T101: and the three that reach several targets (4.5)
+                    if c.castBase and (c.type == "direct" or c.type == "hybrid" or c.type == "group"
+                        or c.type == "chain" or c.type == "selfAndTarget") then c.cast = c.castBase end
                     copy[form][id] = c
                 end
             end
@@ -1378,7 +1389,9 @@ function Session:Decide(S, t, mana, form)
         end
     end
     self.lastCost = e.cost
-    if not (e.type == "hot" or e.type == "lifebloom" or e.type == "instant") then
+    -- T101: SM.IsInstant -- the older types exactly as before; Holy Nova and
+    -- Wild Growth (no cast bar) write no cast start
+    if not SM.IsInstant(e) then
         self:Note(t, SM.K.CASTSTART, ti, 0, inp.spellID)
     end
     return inp.spellID, ti, 0

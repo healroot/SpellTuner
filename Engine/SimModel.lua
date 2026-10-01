@@ -83,6 +83,14 @@ SM.K = {
     ECAST = 14,  -- a hostile cast aimed at a tracked target. tgt = that target (-1 when the
                  -- log did not carry one), x = spellID, amt = seconds until it landed
                  -- (0 until ScenarioFromRecording pairs it with the damage it did)
+    -- T101 (docs/SPEC-next.md 3 principle 8, 4.5): a SCENARIO kind, never
+    -- recorded. An own heal no kit entry claims -- a spell the healing model
+    -- does not price (a heal on the caster alone, a totem's tick) -- replayed
+    -- exactly as recorded, like a foreign heal, but the healer's: it lands
+    -- under the family "recorded", never "foreign". tgt, amt as FHEAL; x =
+    -- the spell id when the stream carried one, else 0. 16, not 15: 15 is the
+    -- v3 stream's HEAL (Scenario_Forever.lua asserts no SM.K equals it).
+    OWNREPLAY = 16,
 }
 SM.AURA_BUFF_FLAG = 1000000
 
@@ -233,7 +241,7 @@ local function BuildHotSlots(p)
              families = (planner and planner.families) or (p and p.order) or nil }
 end
 
-function SM.HotSlots(kit)
+local function ProfileSlots(kit)
     local P = MD.Profiles
     local p = P and P.ForKit and P.ForKit(kit) or nil
     if p == nil then
@@ -244,6 +252,94 @@ function SM.HotSlots(kit)
     if not slots then
         slots = BuildHotSlots(p)
         hotSlotsCache[p] = slots
+    end
+    return slots
+end
+
+--------------------------------------------------------------------------------
+-- T101 (docs/SPEC-next.md 4.2 P2, "families by shape"): a kit may carry
+-- families its profile does not name -- every heal family of a class with no
+-- profile file, and a druid's Wild Growth, which Kit_Forever.lua builds from
+-- the book by shape. SM.HotSlots(kit) is then the profile's slots PLUS, per
+-- kit (derived once, weak-keyed, read only):
+--   * a slot of its own, after the profile's, for each such family whose HoT
+--     the druid's by-type fallback cannot hold: a `group` HoT (Wild Growth
+--     beside a Rejuvenation), and every HoT of a profile with no slots of its
+--     own (the generic one) -- in family-key order;
+--   * slots.extras: the families the profile's own planner list does not
+--     name -- not excluded by the profile, not Kit.UNPRICED, not a channel
+--     (a channel is never planned, decision 11) -- in family-key order, and
+--     slots.families the profile's list followed by them (a profile with no
+--     list: them alone), so the solver's candidates are the kit's families.
+-- A kit with neither gets the profile's own table, unchanged.
+--------------------------------------------------------------------------------
+local kitSlotsCache = setmetatable({}, { __mode = "k" })
+
+local function LeavesHot(e)
+    local ty = e.type
+    if ty == "hot" or ty == "hybrid" or ty == "lifebloom" then return true end
+    return ty == "group" and (e.tick or 0) > 0 and (e.ticks or 0) > 0
+end
+
+local function KitSlots(kit, base)
+    local p = base.profile
+    local defs = p and p.families
+    local listed = {}
+    for _, fam in ipairs(base.families or EMPTY) do listed[fam] = true end
+    local hotFams, extraFams, seenHot, seenExtra = {}, {}, {}, {}
+    local UNPRICED = MD.Kit and MD.Kit.UNPRICED or EMPTY
+    for _, form in ipairs(KIT_FORMS) do
+        local list = kit[form]
+        if type(list) == "table" then
+            for _, e in pairs(list) do
+                local fam = type(e) == "table" and e.family
+                if fam then
+                    if not seenHot[fam] and base.index[fam] == nil and LeavesHot(e)
+                        and (e.type == "group" or not (p and p.hotSlots)) then
+                        seenHot[fam] = true
+                        hotFams[#hotFams + 1] = fam
+                    end
+                    local def = defs and defs[fam]
+                    if not seenExtra[fam] and not listed[fam] and e.type ~= "channel"
+                        and not (def and def.exclude) and not UNPRICED[fam] then
+                        seenExtra[fam] = true
+                        extraFams[#extraFams + 1] = fam
+                    end
+                end
+            end
+        end
+    end
+    if #hotFams == 0 and #extraFams == 0 then return base end
+    table.sort(hotFams)
+    table.sort(extraFams)
+    local index, name = base.index, base.name
+    if #hotFams > 0 then
+        index, name = {}, {}
+        for fam, slot in pairs(base.index) do index[fam] = slot end
+        for slot, fam in pairs(base.name) do name[slot] = fam end
+        local n = 0
+        for slot in pairs(name) do if slot > n then n = slot end end
+        for _, fam in ipairs(hotFams) do
+            n = n + 1
+            index[fam], name[n] = n, fam
+        end
+    end
+    local families = base.families
+    if #extraFams > 0 then
+        families = {}
+        for i, fam in ipairs(base.families or EMPTY) do families[i] = fam end
+        for _, fam in ipairs(extraFams) do families[#families + 1] = fam end
+    end
+    return { index = index, name = name, lifebloom = base.lifebloom, profile = p,
+             families = families, extras = (#extraFams > 0) and extraFams or nil }
+end
+
+function SM.HotSlots(kit)
+    if type(kit) ~= "table" then return ProfileSlots(kit) end
+    local slots = kitSlotsCache[kit]
+    if not slots then
+        slots = KitSlots(kit, ProfileSlots(kit))
+        kitSlotsCache[kit] = slots
     end
     return slots
 end
@@ -287,6 +383,110 @@ function SM.HotFamilyOf(kit, e)
     local slots = SM.HotSlots(kit)
     local fi = SM.HotSlotOf(slots, e)
     return fi and slots.name[fi] or nil
+end
+
+--------------------------------------------------------------------------------
+-- T101 (docs/SPEC-next.md 4.2 P2, 4.5): heals that reach several targets.
+-- No positions are recorded on either line, so whom they reach is 4.5's
+-- assumption -- optimistic (it can only overstate the heal), VERIFY, and said
+-- on the coach card (SP.GROUP_ASSUMPTION). Read only from the present: the
+-- roster at the cast and health now, never a later event.
+--------------------------------------------------------------------------------
+local MULTI_TYPE = { group = true, chain = true, selfAndTarget = true }
+
+-- SM.IsInstant(e): a cast with no cast bar -- the engine succeeds it the
+-- moment the plan asks (a HoT, Swiftmend), and Practice writes no cast start.
+-- The three T101 types are instant when their own cast is 0 (Holy Nova, Wild
+-- Growth); every older type answers as the engine always has (nil: no entry).
+function SM.IsInstant(e)
+    if e == nil then return true end
+    local ty = e.type
+    if ty == "hot" or ty == "lifebloom" or ty == "instant" then return true end
+    if MULTI_TYPE[ty] then return (e.cast or 0) <= 0 end
+    return false
+end
+
+-- SM.InParty(S, i): is target i a member of the caster's party -- tracked,
+-- and in the caster's recorded group (SM:Run's S.party: the scenario target
+-- the healer is, `caster = true`, and its `group`; no caster or no groups:
+-- every tracked target). A state built by hand without S.party: tracked.
+function SM.InParty(S, i)
+    local p = S.party
+    if p and p[i] ~= nil then return p[i] end
+    return S.tracked[i] == true
+end
+local InParty = SM.InParty
+
+-- SM.ChainTargets(S, ti, jumps, out) -> n: where a chain heal cast on ti
+-- jumps -- up to `jumps` living members of the caster's party other than ti,
+-- the most injured first (missing health NOW, ties by roster order), each
+-- one missing something. out[1..n] (reused: no allocation). The engine reads
+-- it when the cast lands, the solver when it decides; a burst after that
+-- moves nothing.
+function SM.ChainTargets(S, ti, jumps, out)
+    local n = 0
+    for _ = 1, (jumps or 0) do
+        local best, bestMissing
+        for i = 1, (S.nT or 0) do
+            if i ~= ti and not S.dead[i] and InParty(S, i) and (S.maxHP[i] or 0) > 0 then
+                local taken = false
+                for k = 1, n do if out[k] == i then taken = true; break end end
+                if not taken then
+                    local missing = S.maxHP[i] - S.hp[i]
+                    if missing > 0 and (not best or missing > bestMissing) then
+                        best, bestMissing = i, missing
+                    end
+                end
+            end
+        end
+        if not best then break end
+        n = n + 1
+        out[n] = best
+    end
+    return n
+end
+
+-- SM.LandMulti: one landing of a T101 type, for SM:Run's LandCast (outside Run,
+-- so a run builds no closure for it; Run's own Land, DirectAmount and ApplyHot
+-- are passed in). Every target rolls its own crit.
+--   group          each living member of the caster's party: the direct part,
+--                  then the HoT part in the family's slot (SM.HotSlotOf)
+--   chain          ti, then SM.ChainTargets at falloff, falloff^2, ...
+--   selfAndTarget  ti, then the caster (once, when ti is the caster)
+local chainLandBuf = {}
+function SM.LandMulti(S, e, spellID, ti, Land, DirectAmount, ApplyHot)
+    local ty = e.type
+    if ty == "group" then
+        local fi = LeavesHot(e) and SM.HotSlotOf(S.hotSlots, e) or nil
+        for i = 1, S.nT do
+            if InParty(S, i) and not S.dead[i] then
+                if (e.direct or 0) > 0 then
+                    local amount, didCrit = DirectAmount(e)
+                    Land(i, amount, e.family, spellID, false, didCrit)
+                end
+                if fi then ApplyHot(i, fi, e, spellID) end
+            end
+        end
+        return
+    end
+    if not ti or ti < 1 or ti > S.nT or S.dead[ti] then return end
+    local amount, didCrit = DirectAmount(e)
+    Land(ti, amount, e.family, spellID, false, didCrit)
+    if ty == "chain" then
+        local n = SM.ChainTargets(S, ti, e.jumps, chainLandBuf)
+        local share = 1
+        for k = 1, n do
+            share = share * (e.falloff or 0)
+            local a, c = DirectAmount(e)
+            Land(chainLandBuf[k], a * share, e.family, spellID, false, c)
+        end
+    elseif ty == "selfAndTarget" then
+        local me = S.caster
+        if me and me ~= ti and not S.dead[me] then
+            local a, c = DirectAmount(e)
+            Land(me, a, e.family, spellID, false, c)
+        end
+    end
 end
 -- Trailing damage per target, kept as a small circular buffer. This is the ONE
 -- derived input a plan is allowed (see the causality note in SimPlanner).
@@ -380,6 +580,7 @@ local function NewSlot()
         incoming = {},    -- [target] = { at, amount, spellID } -- the soonest cast aimed there
         hots = {},        -- [target][hotIndex] = state table (reused)
         chan = { active = false, gen = 0 }, -- T96: the healer's own channel (one at a time)
+        party = {},       -- T101: [target] = in the caster's party (SM.InParty)
         cd = {},          -- family -> time it is ready again (T90: SM.CooldownOf's key)
         dmg = {},         -- [target] = { t = {}, a = {}, head = 0 } circular, DMG_RING wide
         byFamily = {}, healByFamily = {}, ohByFamily = {},
@@ -414,6 +615,9 @@ local function StartChannel(S, t, ti, e, spellID)
     ch.gen = ch.gen + 1
     ch.active, ch.spellID, ch.family = true, spellID, e.family
     ch.tick, ch.left, ch.period, ch.target = tick, n, period, ti
+    -- T101 (4.5): a channel whose text reaches the party lands every tick on
+    -- each living member of it, whatever its target
+    ch.party = e.party == true
     HeapPush(S.heap, t + period, E_TICK, ti, CHANNEL, ch.gen)
 end
 
@@ -519,6 +723,19 @@ function SM:Run(scenario, plan, opts)
             ring.head, ring.total, ring.hits, ring.biggest, ring.firstAt = 0, 0, 0, 0, nil
         end
         for k in pairs(S.cd) do S.cd[k] = nil end
+        -- T101 (4.5): the caster's party -- the target the healer is
+        -- (`caster = true`) and every tracked target of its `group` (no
+        -- caster, or no groups recorded: every tracked target). S.caster is the
+        -- caster's index (a selfAndTarget heal's second target), or nil.
+        local casterIdx, casterGroup
+        for i = 1, nT do
+            local tg = scenario.targets[i]
+            if tg.caster and not casterIdx then casterIdx, casterGroup = i, tg.group end
+        end
+        for i = 1, nT do
+            S.party[i] = S.tracked[i] and (casterGroup == nil or scenario.targets[i].group == casterGroup)
+        end
+        S.caster = casterIdx
     end
     S.chan.active = false
 
@@ -758,6 +975,17 @@ function SM:Run(scenario, plan, opts)
     local function LandCast(spellID, ti)
         local e = kit and kit[form] and kit[form][spellID]
         if not e then return end
+        -- T101 (4.5): a heal that reaches several targets (SM.LandMulti); a
+        -- group heal needs no living target of its own (Holy Nova has none)
+        if e.type == "group" or e.type == "chain" or e.type == "selfAndTarget" then
+            SM.LandMulti(S, e, spellID, ti, Land, DirectAmount, ApplyHot)
+            return
+        end
+        -- T101: nor does a channel over the party (Tranquility)
+        if e.type == "channel" and e.party then
+            StartChannel(S, t, ti, e, spellID)
+            return
+        end
         -- no target (a self-buff, a shapeshift, a recorded cast whose target
         -- the log did not carry) and no corpse: the mana is still spent.
         if not ti or ti < 1 or ti > nT or S.dead[ti] then return end
@@ -782,8 +1010,8 @@ function SM:Run(scenario, plan, opts)
             -- the first a period after the success (a channel's SUCCEEDED is
             -- its start), until the count runs out, the target dies, or the
             -- healer casts something else (Succeed and a recorded CASTSTART
-            -- break it). Who a group channel reaches is 4.5's `group` type's
-            -- (T101), not this one's.
+            -- break it). A channel over the party (`party`, T101) is
+            -- started above, before the target is asked for.
             ------------------------------------------------------------------
             StartChannel(S, t, ti, e, spellID)
         elseif e.type == "instant" then
@@ -1082,6 +1310,9 @@ function SM:Run(scenario, plan, opts)
                 Damage(tg, amt)
             elseif k == SM.K.FHEAL then
                 Land(tg, amt, "foreign")
+            elseif k == SM.K.OWNREPLAY then
+                -- T101: the healer's own heal, replayed as recorded
+                Land(tg, amt, "recorded", (x and x > 0) and x or nil, false)
             elseif k == SM.K.FORM then
                 form = (amt == 1) and "tree" or "caster"
                 Trace(TK.FORM, 0, amt == 1 and 1 or 0, 0)
@@ -1154,7 +1385,21 @@ function SM:Run(scenario, plan, opts)
             if prio == E_TICK and b == CHANNEL then
                 -- T96: one tick of the healer's own channel
                 local chan = S.chan
-                if chan.active and chan.gen == aux then
+                if chan.active and chan.gen == aux and chan.party then
+                    -- T101 (4.5): each living member of the caster's party
+                    for i = 1, nT do
+                        if InParty(S, i) and not S.dead[i] then
+                            Land(i, chan.tick, chan.family or "channel", chan.spellID, true)
+                        end
+                    end
+                    tickCount = tickCount + 1
+                    chan.left = chan.left - 1
+                    if chan.left > 0 then
+                        HeapPush(h, et + chan.period, E_TICK, a, CHANNEL, aux)
+                    else
+                        chan.active = false
+                    end
+                elseif chan.active and chan.gen == aux then
                     if not S.dead[a] then
                         Land(a, chan.tick, chan.family or "channel", chan.spellID, true)
                         tickCount = tickCount + 1
@@ -1253,8 +1498,8 @@ function SM:Run(scenario, plan, opts)
                 elseif spellID then
                     local e = kit and kit[form] and kit[form][spellID]
                     local castTime = (e and e.cast) or GCD
-                    local instant = e == nil or e.type == "hot" or e.type == "lifebloom"
-                        or e.type == "instant"
+                    -- T101: SM.IsInstant -- the older types exactly as before
+                    local instant = SM.IsInstant(e)
                     waitRun = 0
                     -- Cast commitment: once started, the cast is locked in and
                     -- the plan is not asked again until it has landed.
@@ -1602,7 +1847,14 @@ local function ScenarioV2(rec, kit, others)
                        hp0 = hp0 >= 0 and hp0 or maxHP,
                        -- a target with no health readings cannot be scored, and
                        -- pretending otherwise would count a flat line as a pass
-                       tracked = trackedSet[i] and hp0 >= 0 or false }
+                       tracked = trackedSet[i] and hp0 >= 0 or false,
+                       -- T101 (4.5): the healer (a TBC roster's `player`
+                       -- unit; a practice fight's one member with a guid --
+                       -- Engine/Practice.lua stamps only "you") and the raid
+                       -- subgroup, for the heals that reach the caster's party
+                       caster = (roster[i].unit == "player"
+                           or (roster[i].roleSource == "practice" and roster[i].guid ~= nil)) or nil,
+                       group = roster[i].subgroup }
     end
 
     -- v0.10.2: the own casts split in two. `script` is what the healing model

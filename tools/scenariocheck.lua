@@ -496,7 +496,10 @@ do
         and druid.index.Rejuvenation == SM.HOT_INDEX.Rejuvenation
         and druid.index.Regrowth == SM.HOT_INDEX.Regrowth and druid.index.Lifebloom == SM.HOT_INDEX.Lifebloom
         and SM.HotFamilyOf(kit, regrowthLike) == "Regrowth"
-        and SM.HotSlots(plain) == SM.HotSlots({}) and MD.Profiles.ForKit(plain) == MD.Profiles.Get("DRUID"),
+        -- T101: the hot map; the slots table itself also carries the kit's
+        -- own extra families (Riptide, Renew: SM.HotSlots(kit).extras)
+        and SM.HotSlots(plain).index == SM.HotSlots({}).index
+        and MD.Profiles.ForKit(plain) == MD.Profiles.Get("DRUID"),
         string.format("slots=%s,%s riptide=%s renew=%s plainRiptide=%s", tostring(slots and slots.name[1]),
             tostring(slots and slots.name[2]), tostring(fam), tostring(famR), tostring(famPlainR)))
 end

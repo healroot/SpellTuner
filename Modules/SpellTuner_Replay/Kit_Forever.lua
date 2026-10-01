@@ -64,25 +64,122 @@ RM.FAMILY_KEY, RM.FAMILY_TYPE = FAMILY_KEY, FAMILY_TYPE
 -- ("48 over 12 sec"), only the total and the duration. /st measure (T12b)
 -- infers the real period in game; docs/TESTING.md §38 asks for it.
 local TICK_PERIOD = 3
+-- T101 (docs/SPEC-next.md 4.2 P2): a duration that is no multiple of 3 s
+-- (Wild Growth's 7 s) ticks every whole second instead -- the total spread
+-- evenly, UNIFORM ticks (VERIFY: docs/REFERENCES-FOREVER.md 4 says Wild
+-- Growth ticks every 1 s and front-loads them; the curve is not in the text,
+-- so none is invented). Every duration the druid's own HoTs have (12, 15,
+-- 21 s) keeps the 3 s ticks.
+local FINE_TICK_PERIOD = 1
 
 -- The global cooldown (Facts, ported the same way Spells/Book.lua's own GCD
 -- constant is -- to be checked against a real cast bar once one exists, T12).
 local GCD = 1.5
 
+--------------------------------------------------------------------------------
+-- T101 (docs/SPEC-next.md 2.1, 4.2 P2, 4.5): the kit is the LOGGED-IN
+-- player's (2.1: the live kit builder is one of the three readers of the
+-- logged-in profile) -- the registered profile of MD.player.class, else the
+-- generic one -- and it is built from the book in two ways:
+--   * the families the profile names, by name, with the profile's kit type
+--     (the druid's exactly as before: FAMILY_KEY / FAMILY_TYPE above are its);
+--   * every other HEAL family the book reads, by SHAPE: what its highest
+--     known rank's own text says it is and whom it reaches (Spells/Book.lua's
+--     entry.targets, Parse.Targets) --
+--       single target   direct, hot, hybrid (or a channel) as the text reads
+--       the party       group (a direct part, a HoT part or both); a channel
+--                       over the party stays a channel with `party`
+--       a chain         chain (its jumps and falloff from the text)
+--       the target and the caster   selfAndTarget
+--     keyed by its name without spaces or punctuation ("Prayer of Healing"
+--     -> PrayerOfHealing), labelled by its name. What no type models is
+--     named in SD.skipped instead of guessed into one: an absorb (T109), a
+--     heal on the caster alone, one only below a health line or with charges,
+--     a reach the parser refused.
+-- A profile carries names and types only; a number is always the text's.
+--------------------------------------------------------------------------------
+local function LiveProfile()
+    local class = MD.player and MD.player.class
+    if type(class) ~= "string" or class == "" then return DRUID, DRUID.class end
+    local p = MD.Profiles.byClass[class]
+    if p then return p, class end
+    return MD.Profiles.Get(class), class
+end
+
+-- "Prayer of Healing" -> "PrayerOfHealing", "Light's Vigil" -> "LightsVigil"
+local function KeyOf(name)
+    local key = name:gsub("'", ""):gsub("(%a)(%w*)", function(a, b) return a:upper() .. b end)
+    return (key:gsub("[^%w]", ""))
+end
+RM.KeyOf = KeyOf
+
+-- A key back into words, for a restored snapshot (which carries no names):
+-- "WildGrowth" -> "Wild Growth". The live index carries the book's own name.
+local function WordsOf(key)
+    return (tostring(key):gsub("(%l)(%u)", "%1 %2"))
+end
+
+-- The kit type a heal family the profile does not name is modelled as, from
+-- its highest known rank's text -- or nil and why not.
+local function ShapeOf(fam)
+    local e = fam.maxKnown
+    if not e then
+        for _, r in ipairs(fam.ranks or {}) do
+            if type(r.parsed) == "table" and r.parsed.heal ~= nil then e = r; break end
+        end
+    end
+    if not e then return nil, "no rank read" end
+    local heal = type(e.parsed) == "table" and e.parsed.heal
+    if type(heal) ~= "table" then return nil, "an absorb" end
+    if e.targets == nil then return nil, "a reach the text does not say plainly" end
+    local reach = e.reach or {}
+    if reach.belowPct or reach.charges then return nil, "a condition no kit type models" end
+    local channel = e.castKind == "channeled" and heal.tick ~= nil
+    local shape = fam.shape
+    local t = e.targets
+    if t == "caster" then return nil, "a heal on the caster alone" end
+    if t == "party" then
+        if channel then return "channel" end
+        if shape == "direct" or shape == "hot" or shape == "hybrid" then return "group" end
+    elseif t == "chain" then
+        if shape == "direct" then return "chain" end
+    elseif t == "selfAndTarget" then
+        if shape == "direct" then return "selfAndTarget" end
+    elseif t == "single" then
+        if channel then return "channel" end
+        if shape == "direct" or shape == "hot" or shape == "hybrid" then return shape end
+    end
+    return nil, "a shape no kit type models"
+end
+
 -- Swiftmend's own description parses to nothing (no numbers at all -- "for an
 -- amount equal to the full duration of the periodic effect"), so the book
 -- files it kindless; picked up by name here, as TBC's static kit does
 -- (SD.maxRank.Swiftmend).
-local function BuildIndex(book)
+local function BuildIndex(book, prof)
     local spells, families, known, all, maxRank, skipped = {}, {}, {}, {}, {}, {}
     local bookByID = {}
+    local keyOf, typeOf = prof:FamilyKeys(), prof:KitTypes()
+    local defs = prof.families or {}
+    local order = {}
+    for i, key in ipairs(prof.order or {}) do order[i] = key end
+    local byShape = {}
 
     for _, name in ipairs(book.order or {}) do
         local fam = book.families[name]
-        local key = FAMILY_KEY[name]
+        local key, ktype = keyOf[name], nil
+        if key then
+            ktype = typeOf[key]
+        elseif fam.kind == "heal" then
+            ktype = ShapeOf(fam)
+            key = ktype and KeyOf(name) or nil
+            if key and (families[key] or defs[key]) then key = nil end
+            if key then byShape[#byShape + 1] = key end
+        end
         if key then
             -- Tranquility is in the kit but not in the engine's plans, as on TBC.
-            families[key] = { type = FAMILY_TYPE[key], label = name, exclude = EXCLUDE[key] }
+            local def = defs[key]
+            families[key] = { type = ktype, label = name, exclude = (def and def.exclude) or nil }
             known[key], all[key] = {}, {}
             for _, e in ipairs(fam.ranks) do
                 if e.id and e.rank then
@@ -102,14 +199,17 @@ local function BuildIndex(book)
             local top = known[key][#known[key]]
             if top then maxRank[key] = top end
         elseif fam.kind == "heal" then
-            -- A healing family the book found but the engine has no slot for
-            -- (Wild Growth: a group HoT). Named so a caller can see what was
-            -- left out, never guessed into a slot it does not fit.
+            -- A healing family the book found but no kit type models (an
+            -- absorb, a heal on the caster alone, ...). Named so a caller can
+            -- see what was left out, never guessed into a type it does not fit.
             skipped[#skipped + 1] = name
         end
     end
+    -- the profile's dashboard order, then the families read by shape
+    table.sort(byShape)
+    for _, key in ipairs(byShape) do order[#order + 1] = key end
 
-    return spells, families, known, all, maxRank, skipped, bookByID
+    return spells, families, known, all, maxRank, skipped, bookByID, order
 end
 
 -- kit.crit = MD.API.SpellCritChance(4) (Nature) as a fraction, when plain;
@@ -117,8 +217,8 @@ end
 -- Never the secret value itself (Client/API.lua's Call already refuses to
 -- hand one back -- this only decides what to show instead).
 local lastCrit
-local function CritFraction()
-    local crit = MD.API.SpellCritChance(CRIT_SCHOOL)
+local function CritFraction(school)
+    local crit = MD.API.SpellCritChance(school or CRIT_SCHOOL)
     if type(crit) == "number" then
         lastCrit = crit / 100
         return lastCrit, nil
@@ -150,8 +250,10 @@ end
 
 local function ReadOver(e, be)
     if type(be.over) == "number" and type(be.dur) == "number" and be.dur > 0 then
-        e.ticks = be.dur / TICK_PERIOD
-        e.tickPeriod, e.duration = TICK_PERIOD, be.dur
+        local period = TICK_PERIOD
+        if be.dur % TICK_PERIOD ~= 0 and be.dur % FINE_TICK_PERIOD == 0 then period = FINE_TICK_PERIOD end
+        e.ticks = be.dur / period
+        e.tickPeriod, e.duration = period, be.dur
         e.tick = be.over / e.ticks
         return true
     end
@@ -189,13 +291,33 @@ local KitEntryFor = {
             e.dataMissing = true
         end
     end,
+    -- T101 (4.5): a heal on every living member of the caster's party -- a
+    -- direct part (Prayer of Healing, Holy Nova), a HoT part (Wild Growth) or
+    -- both; each member's amount is the text's, never multiplied here
+    group = function(e, be, crit)
+        local direct = ReadDirect(e, be, crit)
+        local over = ReadOver(e, be)
+        if not (direct or over) then e.dataMissing = true end
+    end,
+    -- T101 (4.5): the target, then the reach's jumps at its falloff (Chain
+    -- Heal: 2 jumps, 50 %)
+    chain = function(e, be, crit)
+        local reach = type(be.reach) == "table" and be.reach or {}
+        if ReadDirect(e, be, crit) and type(reach.jumps) == "number" and type(reach.falloff) == "number" then
+            e.jumps, e.falloff = reach.jumps, reach.falloff
+        else
+            e.dataMissing = true
+        end
+    end,
+    -- T101 (4.5): the target and the caster (Binding Heal)
+    selfAndTarget = function(e, be, crit)
+        if not ReadDirect(e, be, crit) then e.dataMissing = true end
+    end,
 }
 -- For tools/kitcheck.lua (one filler per kit type the druid profile names).
 RM.KitEntryFor = KitEntryFor
 
-local function KitEntry(family, be, crit)
-    local def = DRUID.families[family]
-    local ktype = FAMILY_TYPE[family]
+local function KitEntry(family, be, crit, def, ktype)
     local e = { family = family, rank = be.rank, type = ktype, gcd = GCD }
 
     if type(be.cost) == "table" and type(be.cost.amount) == "number" then
@@ -211,7 +333,16 @@ local function KitEntry(family, be, crit)
 
     local fill = ktype and KitEntryFor[ktype]
     if fill then fill(e, be, crit, def) end
-    if def and def.cooldown then e.cooldown = def.cooldown end
+    -- T101: a channel whose text reaches the party lands on all of it (4.5)
+    if ktype == "channel" and be.targets == "party" then e.party = true end
+    -- the profile's cooldown (Swiftmend's 15), else the book's own (T95: the
+    -- tooltip line -- Holy Shock 10 s, Riptide 6 s): the engine's per-family
+    -- cooldown (SM.CooldownOf), which a plan and a practice press respect
+    if def and def.cooldown then
+        e.cooldown = def.cooldown
+    elseif type(be.cooldown) == "number" and be.cooldown > 0 then
+        e.cooldown = be.cooldown
+    end
 
     return e
 end
@@ -224,9 +355,11 @@ local function InstallIndex(index)
         index.spells, index.families, index.known, index.all, index.maxRank, index.skipped
     -- The engine's own dashboard order (Data/SpellData.lua's familyOrder,
     -- minus the two excluded families) -- fixed, not derived from the book.
-    -- (T89: the druid profile's `order`, copied fresh as before.)
+    -- (T89: the druid profile's `order`, copied fresh as before. T101: the
+    -- kit's profile's, then the families read by shape; a restored
+    -- snapshot's index carries none and takes the druid's.)
     local order = {}
-    for i, key in ipairs(FAMILY_ORDER) do order[i] = key end
+    for i, key in ipairs(index.order or FAMILY_ORDER) do order[i] = key end
     SD.familyOrder = order
     -- No Lifebloom on Forever (Facts), so no alias id for its bloom either.
     SD.bloomID = nil
@@ -240,18 +373,22 @@ end
 -- without a generation (a caller's own) is never cached.
 local cache = {}
 
-local function Build(book, crit, critMissing)
-    local spells, families, known, all, maxRank, skipped, bookByID = BuildIndex(book)
+local function Build(book, crit, critMissing, prof, stamp)
+    local spells, families, known, all, maxRank, skipped, bookByID, order = BuildIndex(book, prof)
     local index = { spells = spells, families = families, known = known, all = all,
-                    maxRank = maxRank, skipped = skipped }
+                    maxRank = maxRank, skipped = skipped, order = order }
 
-    local kit = { caster = {}, tree = {}, crit = crit, profile = KIT_PROFILE }
+    -- T101: stamped with the class whose profile (or, with no profile file,
+    -- whose book by shape) the families came from -- "DRUID" for a druid
+    local kit = { caster = {}, tree = {}, crit = crit, profile = stamp or KIT_PROFILE }
     if critMissing then kit.critMissing = true end
     local out = kit.caster
+    local defs = prof.families or {}
 
     for family, ids in pairs(known) do
+        local ktype = families[family] and families[family].type
         for _, id in ipairs(ids) do
-            out[id] = KitEntry(family, bookByID[id], crit)
+            out[id] = KitEntry(family, bookByID[id], crit, defs[family], ktype)
         end
     end
 
@@ -277,14 +414,17 @@ end
 
 local function SpellKit(self, opts)
     local book = MD.Book:Get()
-    local crit, critMissing = CritFraction()
+    local prof, stamp = LiveProfile()
+    local crit, critMissing = CritFraction(prof.critSchool)
     local gen = book.generation
 
     local rebuilt = false
     if gen == nil or cache.kit == nil or cache.generation ~= gen
-        or cache.crit ~= crit or cache.critMissing ~= critMissing then
-        cache.kit, cache.index = Build(book, crit, critMissing)
+        or cache.crit ~= crit or cache.critMissing ~= critMissing
+        or cache.profile ~= prof or cache.stamp ~= stamp then
+        cache.kit, cache.index = Build(book, crit, critMissing, prof, stamp)
         cache.generation, cache.crit, cache.critMissing = gen, crit, critMissing
+        cache.profile, cache.stamp = prof, stamp
         rebuilt = true
     end
     InstallIndex(cache.index)
@@ -319,9 +459,13 @@ end
 -- A snapshot back into a kit AND the MD.SpellData index (Kit.Restore with
 -- Forever's families, labels and plan exclusions), installed as SpellKit
 -- installs its own. For the offline tools; the game never needs it.
-local LABEL = {}
+-- T101: every entry under its own type (a snapshot of a priest's kit, or of a
+-- druid's Wild Growth, keeps its families in the index -- a druid's families
+-- carry exactly FAMILY_TYPE's types, so a druid snapshot restores as before),
+-- labelled by the druid's names, else by its key in words.
+local LABEL = setmetatable({}, { __index = function(_, key) return WordsOf(key) end })
 for name, key in pairs(FAMILY_KEY) do LABEL[key] = name end
-local RESTORE_POLICY = { types = FAMILY_TYPE, labels = LABEL, exclude = EXCLUDE }
+local RESTORE_POLICY = { labels = LABEL, exclude = EXCLUDE }
 
 function RM.KitRestore(snap)
     local kit, index = Kit.Restore(snap, RESTORE_POLICY)

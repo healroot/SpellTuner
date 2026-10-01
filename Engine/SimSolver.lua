@@ -41,6 +41,10 @@ local MAX_DEPOSITS = 12
 
 -- Reused buffers: Decide runs tens of thousands of times inside a search.
 local depBuf, flightBuf = {}, {}
+-- T101: a second target's flight and a scaled copy of the deposits (a chain's
+-- falloff), so pricing one cast on several targets never overwrites the
+-- primary target's lists; and where a chain would jump.
+local flightBuf2, depBuf2, chainBuf = {}, {}, {}
 
 --------------------------------------------------------------------------------
 -- 1. Deposits
@@ -295,6 +299,58 @@ local Solver = {}
 Solver.__index = Solver
 SV.Solver = Solver
 
+--------------------------------------------------------------------------------
+-- T101 (docs/SPEC-next.md 4.2 P2, 4.5): a cast that heals several targets
+-- saves the SUM of what it saves on each, under 4.5's stated assumptions (no
+-- positions are recorded): a `group` heal on every living member of the
+-- caster's party (SM.InParty), a `chain` heal on its target and then the
+-- most injured members NOW (SM.ChainTargets) at falloff, falloff^2, ..., a
+-- `selfAndTarget` heal on its target and the caster. Each is read from the
+-- present only -- the roster at the decision and health now -- so the
+-- causality invariant holds; all of it is optimistic, and the card says so.
+--------------------------------------------------------------------------------
+-- What `dep` (times `scale`) saves on target j: the gap without and with,
+-- over the solver's own window. 0 for the dead, the unknown, and a target with
+-- nothing missing and nothing coming (a deposit above full buys nothing).
+local function SavedOn(self, S, j, t, dep, dn, scale)
+    local maxHP = S.maxHP[j] or 0
+    if maxHP <= 0 or S.dead[j] then return 0 end
+    local hp = S.hp[j]
+    local rate = SV.Rate(S, j, t, self)
+    if maxHP - hp <= 0 and rate <= 0 then return 0 end
+    local inbound = S.incoming and S.incoming[j] or nil
+    local flight, fn = SV.InFlight(S, j, t, flightBuf2)
+    local d = dep
+    if scale ~= 1 then
+        for k = 1, dn do
+            depBuf2[k] = depBuf2[k] or {}
+            depBuf2[k][1], depBuf2[k][2] = dep[k][1], dep[k][2] * scale
+        end
+        d = depBuf2
+    end
+    local base = Gap(hp, maxHP, rate, inbound, flight, fn, nil, 0, t, self.horizon, self.sag)
+    local with = Gap(hp, maxHP, rate, inbound, flight, fn, d, dn, t, self.horizon, self.sag)
+    return base - with
+end
+SV.SavedOn = SavedOn
+
+-- What a chain or self-and-target cast on i saves BEYOND i.
+local function SavedBeyond(self, S, e, i, t, dep, dn)
+    if e.type == "chain" then
+        local n = SM.ChainTargets(S, i, e.jumps, chainBuf)
+        local saved, share = 0, 1
+        for k = 1, n do
+            share = share * (e.falloff or 0)
+            saved = saved + SavedOn(self, S, chainBuf[k], t, dep, dn, share)
+        end
+        return saved
+    elseif e.type == "selfAndTarget" then
+        local me = S.caster
+        if me and me ~= i then return SavedOn(self, S, me, t, dep, dn, 1) end
+    end
+    return 0
+end
+
 function SV.NewPlan(binds, params, kit)
     SM = SM or MD.SimModel
     return setmetatable({
@@ -366,7 +422,8 @@ function Solver:Best(S, t, mana, form, delay)
                     -- T90: a spell on cooldown is no candidate -- now, or when
                     -- the cast would start (`delay`). Its end is on the
                     -- healer's bar, so asking is causal.
-                    if e and mana >= (e.cost or 0) and SM.Ready(S, id, t + (delay or 0)) then
+                    -- T101: a group heal is scored once, below, over the party
+                    if e and e.type ~= "group" and mana >= (e.cost or 0) and SM.Ready(S, id, t + (delay or 0)) then
                         local fi = hotIndex[fam]
                         local st = fi and S.hots[i] and S.hots[i][fi]
                         local eaten, eats = nil, nil
@@ -389,6 +446,11 @@ function Solver:Best(S, t, mana, form, delay)
                             local withGap = Gap(hp, maxHP, rate, inbound, f2, fn2,
                                                 dep, dn, t, horizon, self.sag)
                             local saved = base - withGap
+                            -- T101: a chain's jumps, the caster of a
+                            -- self-and-target heal (4.5)
+                            if e.type == "chain" or e.type == "selfAndTarget" then
+                                saved = saved + SavedBeyond(self, S, e, i, t, dep, dn)
+                            end
                             local cost = e.cost or 1
                             -- The regen this cast forfeits is part of its price --
                             -- the price of casting NOW, for the one-GCD-later
@@ -410,6 +472,39 @@ function Solver:Best(S, t, mana, form, delay)
                             end
                         end
                     end
+                end
+            end
+        end
+    end
+    -- T101: a group heal, once: what it saves summed over every living member
+    -- of the caster's party, named on the member it saves most on
+    for _, fam in ipairs(families) do
+        local id = self.binds[fam]
+        local e = id and kit[id]
+        if e and e.type == "group" and mana >= (e.cost or 0) and SM.Ready(S, id, t + (delay or 0)) then
+            local dep, dn = SV.Deposits(e, nil, depBuf)
+            if (delay or 0) > 0 then
+                for j = 1, dn do dep[j][1] = dep[j][1] + delay end
+            end
+            local saved, top, topSaved = 0, nil, nil
+            for j = 1, S.nT do
+                if S.tracked[j] and not S.dead[j] and SM.InParty(S, j) then
+                    local sj = SavedOn(self, S, j, t, dep, dn, 1)
+                    saved = saved + sj
+                    if not top or sj > topSaved then top, topSaved = j, sj end
+                end
+            end
+            if top then
+                local cost = e.cost or 1
+                local lost = SV.Forfeit(S, t, mana, e, 0)
+                local price = cost + lost
+                local v = saved / (price > 0 and price or 1)
+                if v > bestV then
+                    bestV, bestID, bestTgt = v, id, top
+                    bestSaved, bestCost = saved, cost
+                    bestRate = SV.Rate(S, top, t, self)
+                    bestDef = (S.maxHP[top] or 0) - S.hp[top]
+                    bestLost = lost
                 end
             end
         end
@@ -472,7 +567,8 @@ function Solver:Decide(S, t, mana, form)
                     local id2 = self.binds[fam]
                     local e = id2 and kit[id2]
                     if e and mana >= (e.cost or 0) and e.type ~= "instant"
-                        and SM.Ready(S, id2, t) then   -- T90: never a spell on cooldown
+                        and SM.Ready(S, id2, t)        -- T90: never a spell on cooldown
+                        and not (e.type == "group" and not SM.InParty(S, i)) then  -- T101
                         local fi = slots.index[fam]
                         local st = fi and S.hots[i] and S.hots[i][fi]
                         local dep, dn = SV.Deposits(e, st, depBuf)
