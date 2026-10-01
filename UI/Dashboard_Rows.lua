@@ -10,8 +10,8 @@
 -- renders BYTE FOR BYTE what it always has. No client call and no flavour
 -- check belong here either way -- CreateFrame and font strings are the widget
 -- toolkit (CLAUDE.md, FOREVER-PLAN.md sec3.2), and the only client-shaped reads
--- below (MD.Tip, MD.RankMath) sit behind the `not opts` branch, which a
--- Forever caller never takes.
+-- below (MD.Tip:Row / :Columns, MD.RankMath) sit behind the `not opts` branch, which a
+-- Forever caller never takes (T76: those builders are UI/Tip_TBC.lua's, TBC only).
 local _, MD = ...
 
 MD.DashboardParts = MD.DashboardParts or {}
@@ -78,7 +78,7 @@ end
 --                    `r`, given the same known/suggested/dominated colour the
 --                    TBC branch derives; called instead of the TBC rendering.
 --   opts.onEnter(row, r) / opts.onLeave(row) -- the row's hover, instead of
---                    MD.Tip/MD.RankMath (which a Forever caller must never
+--                    MD.Tip:Row/MD.RankMath (which a Forever caller must never
 --                    reach -- both are TBC-only globals, CLAUDE.md).
 --   opts.header  -- an array of header label overrides by column index; a
 --                    missing entry falls back to that column's own .label.
@@ -131,7 +131,54 @@ end
 --                       same entry (r.id, else r) within DOUBLE_CLICK seconds;
 --                       opts.onClick is still called for both clicks, first.
 --   opts.noHeader   -- no header row: the data rows start at the top.
+--
+-- T76 (P32, review U10 -- the mechanism; the words are P34's), the generic
+-- path only:
+--   col.tooltip     -- a sentence (or a list of UI/Tip.lua lines) shown when
+--                       the pointer is over that column's header label: the
+--                       label in `text`, the sentence in `text2`, through
+--                       MD.Tip:Show. A column without one has no hover; the
+--                       TBC rank table's columns have none (its glossary is
+--                       Tip:Columns on the whole header row, unchanged).
 local DOUBLE_CLICK = 0.4
+
+-- T76: one column's header hover -- a hit frame over its label, built the
+-- first time a header row carries a column with a tooltip, hidden whenever
+-- the row is released (a pooled row also serves as a data row).
+local function ColumnTip(hit)
+    local col = hit.col
+    if not (col and col.tooltip and MD.Tip) then return end
+    local lines
+    if type(col.tooltip) == "table" then
+        lines = col.tooltip
+    else
+        lines = {}
+        if col.label and col.label ~= "" then lines[#lines + 1] = { l = col.label, c = "text" } end
+        lines[#lines + 1] = { l = tostring(col.tooltip), c = "text2", wrap = true }
+    end
+    MD.Tip:Show(hit, lines, { anchor = "ANCHOR_TOPLEFT", x = 0, y = 3 })
+end
+
+local function HeaderTips(header, cols, height)
+    for _, col in ipairs(cols) do
+        if col.tooltip then
+            header.colHits = header.colHits or {}
+            local hit = header.colHits[col.key]
+            if not hit then
+                hit = CreateFrame("Frame", nil, header)
+                hit:EnableMouse(true)
+                hit:SetScript("OnEnter", ColumnTip)
+                hit:SetScript("OnLeave", function() if MD.Tip then MD.Tip:Hide() end end)
+                header.colHits[col.key] = hit
+            end
+            hit.col = col
+            hit:ClearAllPoints()
+            hit:SetPoint("TOPLEFT", header, "TOPLEFT", col.x, 0)
+            hit:SetSize(col.w, height)
+            hit:Show()
+        end
+    end
+end
 function MD.DashboardParts.CreateTable(parent, width, opts)
     local pane = CreateFrame("Frame", nil, parent)
     local rowPool, usedRows = {}, {}
@@ -337,6 +384,9 @@ function MD.DashboardParts.CreateTable(parent, width, opts)
             end
             PlaceBarCells(row, false) -- T30: back to a data row's layout
             if row.headerSized then row:SetHeight(rowH); row.headerSized = nil end -- T30
+            if row.colHits then -- T76: a column's header hover goes with the header
+                for _, hit in pairs(row.colHits) do hit:Hide() end
+            end
             row.highlight:Hide()
             row:Hide()
             rowPool[#rowPool + 1] = row
@@ -441,6 +491,7 @@ function MD.DashboardParts.CreateTable(parent, width, opts)
                 local label = (opts.header and opts.header[i]) or col.label
                 header.cells[col.key]:SetText(headerHex .. label .. "|r")
             end
+            HeaderTips(header, cols, headerH) -- T76: col.tooltip on the label
             if opts.headerRule then
                 if not headerRule then
                     headerRule = pane:CreateTexture(nil, "BORDER")

@@ -74,42 +74,76 @@ local function UpdateVisibility()
 end
 
 --------------------------------------------------------------------------------
--- Hover
+-- Hover. T76 (P32 of docs/PLAN-refactor-ux.md, review U9): label / value
+-- pairs in a healer's words, through UI/Tip.lua (MD.Tip:Show: GameTooltip, in
+-- the kit's skin under the theme) -- what the pool holds, when it runs dry,
+-- when it is full again if you stop, what you spend and get back. Every
+-- modelled number carries the clock's "~" in the mana colour, and one muted
+-- line says what "~" means; no word about the client's secrets or the
+-- model's anchor (those are /st dump's).
 --------------------------------------------------------------------------------
-local function ShowHover(self)
+-- The clock's own rounding (Engine/ManaModel.lua's Text): to 5 s, over ten
+-- minutes ">10m", nothing to show "--".
+local function Time(sec)
+    if type(sec) ~= "number" then return "--" end
+    if sec > 600 then return ">10m" end
+    sec = math.floor(sec / 5 + 0.5) * 5
+    if sec > 600 then return ">10m" end
+    return MD.Util.Clock(sec)
+end
+
+local function Rate(v)
+    if type(v) ~= "number" then return "-" end
+    return string.format("~%d a sec", math.floor(v + 0.5))
+end
+
+-- Clock:HoverLines(now): the hover's lines (UI/Tip.lua's line model), or nil
+-- before the pool has a model.
+function Clock:HoverLines(now)
     local model = MD.Pool.model
-    if not model then return end
-    GameTooltip:SetOwner(self, "ANCHOR_TOP")
-    GameTooltip:AddLine("SpellTuner mana clock (modelled)")
-    GameTooltip:AddLine(string.format("Mana %d / %d (modelled - the real pool is secret on this client)",
-        math.floor((model.mana or 0) + 0.5), math.floor((model.max or 0) + 0.5)))
-
-    local why = model.anchor.why or "not yet anchored"
-    local ago = "--"
-    if model.anchor.at then
-        local d = GetTime() - model.anchor.at
-        if d < 0 then d = 0 end
-        ago = string.format("%d:%02d", math.floor(d / 60), math.floor(d % 60))
+    if not model then return nil end
+    local function Pair(l, r, rc) return { l = l, r = r, c = "label", rc = rc or "text" } end
+    local lines = { { l = "SpellTuner mana clock", c = "accent" } }
+    local state = MD.Pool:Project(now or GetTime())
+    lines[#lines + 1] = Pair("Mana", string.format("~%d of %d", math.floor((model.mana or 0) + 0.5),
+        math.floor((model.max or 0) + 0.5)), "mana")
+    local m = state.mode
+    if m == "oom" then
+        lines[#lines + 1] = Pair("Out of mana in", "~" .. Time(state.tto), "mana")
+    elseif m == "full" then
+        lines[#lines + 1] = Pair("Full again in", "~" .. Time(state.ttf), "mana")
+    elseif m == "warmup" then
+        lines[#lines + 1] = Pair("Out of mana in", "a few more casts first", "muted")
+    elseif m == "hold" then
+        lines[#lines + 1] = Pair("Out of mana in", (state.regen == nil) and "--" or "not at this pace", "muted")
+    elseif m == "ooc" then
+        lines[#lines + 1] = Pair("Full again in", "~" .. Time(state.ttf), "mana")
+    elseif m == "fullnow" then
+        lines[#lines + 1] = Pair("Full", "now", "text")
     end
-    GameTooltip:AddLine("Anchored " .. ago .. " ago: " .. why)
-
     if MD.inCombat then
-        local state = MD.Pool:Project(GetTime())
-        local spend = type(state.spend) == "number" and string.format("%.1f", state.spend) or "-"
-        local regen = type(state.regen) == "number" and string.format("%.1f", state.regen) or "-"
+        if type(state.rest) == "number" then
+            lines[#lines + 1] = Pair("Full again in", "~" .. Time(state.rest) .. " if you stop", "mana")
+        end
         local casts = model.fight and model.fight.casts or 0
-        GameTooltip:AddLine("Spend " .. spend .. "/s over " .. tostring(casts) .. " casts, regen " .. regen .. "/s")
-    else
-        GameTooltip:AddLine("Regen rate read out of combat")
+        lines[#lines + 1] = Pair("Spending", Rate(state.spend) .. " over " .. tostring(casts)
+            .. (casts == 1 and " cast" or " casts"))
+        lines[#lines + 1] = Pair("Regen", Rate(state.regen))
     end
-
     if model.unpriced and model.unpriced > 0 then
-        GameTooltip:AddLine("Unpriced casts: " .. tostring(model.unpriced))
+        lines[#lines + 1] = Pair("Unpriced casts", tostring(model.unpriced))
     end
+    lines[#lines + 1] = {}
+    lines[#lines + 1] = { l = "~ = modelled from your casts. The bar under the clock is your real mana, "
+        .. "drawn by the game.", c = "muted", wrap = true }
+    lines[#lines + 1] = Pair("Left-click", "open the window (out of combat)")
+    return lines
+end
 
-    GameTooltip:AddLine("The bar under the clock is the real pool, drawn by the game")
-    GameTooltip:AddLine("Left-click (out of combat): open the SpellTuner window")
-    GameTooltip:Show()
+local function ShowHover(self)
+    local lines = Clock:HoverLines(GetTime())
+    if not lines then return end
+    MD.Tip:Show(self, lines, { anchor = "ANCHOR_TOP" })
 end
 
 --------------------------------------------------------------------------------
@@ -159,7 +193,7 @@ local function CreateWidget()
         MD.db.clock.point = { point, nil, relPoint, x, y }
     end)
     widget:SetScript("OnEnter", ShowHover)
-    widget:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    widget:SetScript("OnLeave", function() MD.Tip:Hide() end)
     -- T70 (U18): a left-click opens the window -- out of combat only, since
     -- the window hides in combat (decision 4) and the clock is up in every
     -- fight, where a stray click would put the window over the party.

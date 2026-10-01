@@ -50,13 +50,17 @@ local function C(name)
 end
 
 -- One line of the block: {l, r, lr,lg,lb, rr,rg,rb}; r nil for a single line.
+-- T76 (P32, review A21): each line is also UI/Tip.lua's line model -- the same
+-- text and colours as named fields (l, r, c, rc) -- so MD.Tip:Render draws it
+-- as it is; the positional fields stay one release for their readers.
 local function Pair(l, r, lTok, rTok)
     local lc, rc = C(lTok or "label"), C(rTok or "text")
-    return { l, r, lc[1], lc[2], lc[3], rc[1], rc[2], rc[3] }
+    return { l, r, lc[1], lc[2], lc[3], rc[1], rc[2], rc[3],
+             l = l, r = r, c = { lc[1], lc[2], lc[3] }, rc = { rc[1], rc[2], rc[3] } }
 end
 local function Single(l, tok)
     local c = C(tok)
-    return { l, nil, c[1], c[2], c[3] }
+    return { l, nil, c[1], c[2], c[3], l = l, c = { c[1], c[2], c[3] } }
 end
 
 -- A number that is nil renders "-", never 0 (CLAUDE.md/this task's Rules).
@@ -332,9 +336,15 @@ function SpellTip:Lines(id, detail, source)
 end
 
 -- Writes Lines' result into a tooltip, colours passed as arguments.
+-- T76 (P32, review A21): it also takes UI/Tip.lua's line model -- a line with
+-- no positional text ({ l, r, c, rc, wrap }, colours as arrays or token
+-- names) goes through MD.Tip:Render; the positional arrays are read as
+-- before, for one release.
 function SpellTip:Render(tt, lines)
     for _, line in ipairs(lines or {}) do
-        if line[2] ~= nil then
+        if line[1] == nil and (line.l ~= nil or line.r ~= nil) and MD.Tip and MD.Tip.Render then
+            MD.Tip:Render(tt, { line })
+        elseif line[2] ~= nil then
             tt:AddDoubleLine(line[1], line[2], line[3], line[4], line[5], line[6], line[7], line[8])
         else
             tt:AddLine(line[1], line[3], line[4], line[5])

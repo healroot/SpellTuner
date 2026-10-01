@@ -181,7 +181,7 @@ HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
 local MD = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB
-S.Load({ "UI/Style.lua", "UI/Tooltip.lua" }, "SpellTuner", MD)   -- Tip is what the card and reports print through
+S.Load({ "UI/Style.lua", "UI/Tip.lua", "UI/Tip_TBC.lua" }, "SpellTuner", MD)   -- Tip is what the card and reports print through
 
 -- the character: the stub's charKey is "Penek-Anniversary"; the real one is
 -- whatever the game wrote

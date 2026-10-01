@@ -144,6 +144,10 @@ UI.PALETTE = {
     info        = { 0, 0.5, 0.8, 1 },                       -- "blue-hover"'s hover
     warn        = { 0.7, 0.7, 0, 1 },                       -- "yellow-hover"'s hover
     clear       = { 0, 0, 0, 0 },                           -- "transparent" / "none"
+    -- T76 (P32, review U2): the tooltip's fill -- the kit tooltip's literal,
+    -- which UI/Tip.lua's skin also lays on a game tooltip SpellTuner owns
+    -- under the theme (its edge is `border` there, the accent on TBC).
+    tip         = { 0.1, 0.1, 0.1, 0.9 },
 }
 
 --------------------------------------------------------------------------------
@@ -222,6 +226,11 @@ end
 local tooltip = CreateFrame("GameTooltip", "SpellTunerTooltip", UIParent, "GameTooltipTemplate")
 UI.tooltip = tooltip
 
+-- T76 (P32, review U2): under UI.THEMED the kit tooltip wears the skin
+-- UI/Tip.lua lays on a game tooltip SpellTuner owns -- the `tip` fill and a
+-- 1-px `border` edge at the physical pixel -- so the two read as one; TBC
+-- keeps the accent edge it always had. Asked at every showing: this file
+-- loads before the theme.
 local function StyleTooltip()
     if tooltip.NineSlice then tooltip.NineSlice:SetAlpha(0) end
     if not tooltip.SetBackdrop and BackdropTemplateMixin then
@@ -229,6 +238,14 @@ local function StyleTooltip()
         tooltip:HookScript("OnSizeChanged", tooltip.OnBackdropSizeChanged)
     end
     if tooltip.SetBackdrop then
+        if UI.THEMED then
+            local e = UI.px(1, tooltip)
+            tooltip:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = e,
+                insets = { left = e, right = e, top = e, bottom = e } })
+            tooltip:SetBackdropColor(UI.Fill("tip"))
+            tooltip:SetBackdropBorderColor(UI.Fill("border"))
+            return
+        end
         tooltip:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = 1 })
         tooltip:SetBackdropColor(0.1, 0.1, 0.1, 0.9)
         tooltip:SetBackdropBorderColor(accent[1], accent[2], accent[3], 1)
@@ -239,9 +256,21 @@ tooltip:SetOwner(UIParent, "ANCHOR_NONE")
 tooltip:HookScript("OnShow", function() pcall(StyleTooltip) end)
 tooltip:HookScript("OnHide", function() tooltip:ClearLines() end)
 
+-- T76 (P32, review U13): under UI.THEMED a widget's tooltip is sugar over
+-- UI/Tip.lua's renderer (MD.Tip:Kit) -- the title in `text`, each later
+-- string in `text2` and wrapped, a later TABLE a line of its own (a muted
+-- hint, a pair: Tip's line model), and the anchor the LATEST UI.SetTooltips
+-- call gave (it was frozen at the first). TBC keeps its own path below,
+-- byte for byte.
 local function ShowTooltips(widget, anchor, x, y, lines)
     if type(lines) ~= "table" or #lines == 0 then
         tooltip:Hide()
+        return
+    end
+    if UI.THEMED and MD.Tip and MD.Tip.Kit then
+        local a = widget._tipAnchor
+        if a then anchor, x, y = a[1], a[2], a[3] end
+        MD.Tip:Kit(widget, MD.Tip.Simple(lines), { anchor = anchor or "ANCHOR_TOP", x = x or 0, y = y or 0 })
         return
     end
     tooltip:SetOwner(widget, anchor or "ANCHOR_TOP", x or 0, y or 0)
@@ -255,6 +284,7 @@ end
 -- UI.SetTooltips(widget, anchor, x, y, title, line2, line3, ...)
 function UI.SetTooltips(widget, anchor, x, y, ...)
     if select("#", ...) == 0 or select(1, ...) == nil then return end
+    widget._tipAnchor = { anchor, x, y } -- T76: read under the theme only
     if not widget._tooltipsInited then
         widget._tooltipsInited = true
         widget:HookScript("OnEnter", function() ShowTooltips(widget, anchor, x, y, widget.tooltips) end)
@@ -708,8 +738,22 @@ function UI.CreateButton(parent, text, buttonColor, size, noBorder, noBackground
     b:SetNormalFontObject(fontNormal or UI.FONT)
     b:SetHighlightFontObject(fontNormal or UI.FONT)
 
+    -- T76 (P32, review U13): under UI.THEMED a disabled button still takes
+    -- the pointer, so its tooltip can say why it is disabled (a Coach on a
+    -- fight that does not replay, a Start with nothing bound); its hover
+    -- colour stays off while it is disabled. TBC's disabled buttons stay
+    -- silent, as they always were.
+    local themed = UI.THEMED
+    if themed and b.SetMotionScriptsWhileDisabled then b:SetMotionScriptsWhileDisabled(true) end
     if b.hoverColor then
-        b:SetScript("OnEnter", function(self) self:SetBackdropColor(unpack(self.hoverColor)) end)
+        if themed then
+            b:SetScript("OnEnter", function(self)
+                if self.IsEnabled and self:IsEnabled() == false then return end
+                self:SetBackdropColor(unpack(self.hoverColor))
+            end)
+        else
+            b:SetScript("OnEnter", function(self) self:SetBackdropColor(unpack(self.hoverColor)) end)
+        end
         b:SetScript("OnLeave", function(self) self:SetBackdropColor(unpack(self.color)) end)
     end
     b:SetScript("PostClick", function()

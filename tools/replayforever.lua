@@ -298,19 +298,17 @@ do
     SlashCmdList.SPELLTUNER("replay 1") -- back to a single fight: the strip gone
 end
 do
-    -- MD.Tip (UI/Tooltip.lua) is the replay's and Review's hover builder: its
-    -- one gold colour, the suggested rank's note, reads the accent.
-    local calc = { label = "Healing Touch", kind = "direct", base = 100, bonus = 0, coef = 1, penalty = 1,
-                   bonusMult = 1, bonusMultName = "", bonusOut = 0, talentMult = 1, cost = 50,
-                   costSource = "live", mana = 1000, netPerCast = 50 }
-    local okRow, lines = pcall(MD.Tip.Row, MD.Tip, { calc = calc, rank = 2, suggested = true, heal = 100,
-        cast = 2, hpm = 2, hps = 50, casts = 20 })
-    local rc = okRow and lines[1] and lines[1].rc
+    -- MD.Tip is the replay's and Review's hover renderer: its one gold colour,
+    -- the suggested rank's note, reads the accent. T76 (P32, review A21): the
+    -- RankMath-bound builders (MD.Tip:Row among them) are UI/Tip_TBC.lua's, on
+    -- the TBC TOC only, so on Forever there is no Row to call; the colour Row
+    -- painted is the "tipGold" token, read here as it is on Forever.
+    local r, g, b = MD.UI.RGB("tipGold")
     local A = MD.UI.TEXT and MD.UI.TEXT.accent
     check("T43: MD.Tip's suggested-rank colour is the accent, not gold",
-        rc ~= nil and A ~= nil and rc[1] == A[1] and rc[2] == A[2] and rc[3] == A[3]
-        and not (rc[1] == 1 and rc[2] == 0.82 and rc[3] == 0),
-        okRow and (rc and string.format("%.3f %.3f %.3f", rc[1], rc[2], rc[3]) or "no rc") or tostring(lines))
+        MD.Tip ~= nil and MD.Tip.Row == nil and A ~= nil and r == A[1] and g == A[2] and b == A[3]
+        and not (r == 1 and g == 0.82 and b == 0),
+        string.format("row=%s %.3f %.3f %.3f", tostring(MD.Tip and MD.Tip.Row), r, g, b))
 end
 
 --------------------------------------------------------------------------------

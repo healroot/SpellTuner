@@ -1,29 +1,29 @@
--- The one tooltip line builder. Every hover surface in the addon (both ElvUI
--- datatexts, the minimap button, the floating widget, the dashboard's rows and
--- recap line) renders lines produced here, so they can never drift apart.
---
--- A line is a plain table:
---   { l = "left", r = "right", c = {r,g,b}, rc = {r,g,b}, wrap = bool }
--- l alone -> AddLine, l+r -> AddDoubleLine, {} -> a blank spacer. Both
--- GameTooltip and ElvUI's DT.tooltip take exactly those two calls, which is why
--- the pair is the abstraction.
+-- UI/Tip_TBC.lua (T76, P32 of docs/PLAN-refactor-ux.md; review A21): the TBC
+-- line's tooltip builders, moved out of UI/Tooltip.lua unchanged -- the clock
+-- and its regen terms (Tip:Mana), recent fights, the rank table's row and
+-- column glossary, the spell and damage blocks on the game's own tooltip, the
+-- widget / minimap composite. Every one reads the TBC engine (MD.Regen,
+-- MD.RankMath, MD.SpellData, MD:GetManaState), so this file is on the TBC TOC
+-- only; the line model, the renderer and Show / Hide are UI/Tip.lua's, which
+-- loads just before it. Every hover surface on TBC (both ElvUI datatexts, the
+-- minimap button, the floating widget, the dashboard's rows and recap line)
+-- renders lines produced here, so they can never drift apart.
 --
 -- ASCII only in every string here (default WoW fonts lack arrow/infinity
 -- glyphs) and never a bare "|" (it opens a colour escape).
 local _, MD = ...
 local UI = MD.UI
 
-local Tip = {}
-MD.Tip = Tip
+local Tip = MD.Tip
 
 local WHITE  = { 1, 1, 1 }
 local KEY    = { 0.78, 0.78, 0.78 }
 local SUB    = { 0.63, 0.63, 0.63 }
 local MUTED  = { 0.43, 0.43, 0.43 }
 local WARN   = { 1, 0.67, 0.2 }
--- T43 (docs/SPEC-forever-ui.md 4.4): the theme's accent where it is loaded
--- (Forever; UI/Theme_Forever.lua runs before any module file), else gold (TBC).
--- T69 (P25): a token read -- "tipGold", TBC's {1, 0.82, 0}, the accent themed.
+-- T43 (docs/SPEC-forever-ui.md 4.4): the theme's accent where it is loaded,
+-- else gold (TBC). T69 (P25): a token read -- "tipGold", TBC's {1, 0.82, 0},
+-- the accent themed.
 local GOLD   = { UI.RGB("tipGold") }
 local GOOD   = { 0.2, 1, 0.4 }
 local MANA   = { 0.31, 0.66, 0.94 }
@@ -34,54 +34,6 @@ end
 
 local function Plain(str)
     return (tostring(str):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""))
-end
-
---------------------------------------------------------------------------------
--- Render
---------------------------------------------------------------------------------
--- Pushes lines into any tooltip object exposing AddLine / AddDoubleLine.
-function Tip:Render(tt, lines)
-    if not tt or not lines then return end
-    for i = 1, #lines do
-        local ln = lines[i]
-        if ln.l == nil and ln.r == nil then
-            tt:AddLine(" ")
-        elseif ln.r ~= nil then
-            local c = ln.c or WHITE
-            local rc = ln.rc or ln.c or WHITE
-            tt:AddDoubleLine(ln.l or "", ln.r, c[1], c[2], c[3], rc[1], rc[2], rc[3])
-        else
-            local c = ln.c or WHITE
-            tt:AddLine(ln.l, c[1], c[2], c[3], ln.wrap)
-        end
-    end
-end
-
--- Convenience for plain GameTooltip owners: Tip:Show(frame, "ANCHOR_LEFT", lines)
-function Tip:Show(owner, anchor, ...)
-    GameTooltip:SetOwner(owner, anchor or "ANCHOR_RIGHT")
-    GameTooltip:ClearLines()
-    for i = 1, select("#", ...) do
-        Tip:Render(GameTooltip, (select(i, ...)))
-    end
-    GameTooltip:Show()
-end
-
--- Same, but pinned to a frame instead of following the owner: the dashboard's
--- rows are narrow and centred, so ANCHOR_RIGHT would run off the screen edge.
-function Tip:ShowAt(owner, point, relFrame, relPoint, x, y, ...)
-    GameTooltip:SetOwner(owner, "ANCHOR_NONE")
-    GameTooltip:ClearAllPoints()
-    GameTooltip:SetPoint(point, relFrame, relPoint, x, y)
-    GameTooltip:ClearLines()
-    for i = 1, select("#", ...) do
-        Tip:Render(GameTooltip, (select(i, ...)))
-    end
-    GameTooltip:Show()
-end
-
-function Tip:Hide()
-    GameTooltip:Hide()
 end
 
 --------------------------------------------------------------------------------

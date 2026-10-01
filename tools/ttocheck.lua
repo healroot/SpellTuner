@@ -57,7 +57,7 @@ do
     end
     -- T68 (P24): UI/Visibility.lua holds the widget's show/hide rule, so it
     -- loads before UI/Widget.lua, as in SpellTuner_TBC.toc.
-    S.Load({ "UI/Style.lua", "UI/Tooltip.lua", "UI/Visibility.lua", "UI/Widget.lua", "UI/Advisor.lua" },
+    S.Load({ "UI/Style.lua", "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/Visibility.lua", "UI/Widget.lua", "UI/Advisor.lua" },
         "SpellTuner", MD)
     MD.RegisterCallback = realReg
     for _, fn in ipairs(ready) do fn() end

@@ -382,7 +382,12 @@ do
         end
     end
     local text = table.concat(joined, "\n")
-    local hoverOk = text:find("modelled", 1, true) ~= nil and text:find("secret on this client", 1, true) ~= nil
+    -- T76 (P32, review U9): the hover says what "~" means in a healer's words
+    -- ("~ = modelled from your casts") and no longer talks about the client's
+    -- secrets or the model's anchor (that was "the real pool is secret on
+    -- this client" and "Anchored 1:20 ago: ...").
+    local hoverOk = text:find("modelled", 1, true) ~= nil and text:find("~ =", 1, true) ~= nil
+        and text:find("secret", 1, true) == nil and text:lower():find("anchored", 1, true) == nil
     check("every projection is marked modelled, in the text and the hover",
         item7TextOk and hoverOk, string.format("textHalf=%s hoverHalf=%s", tostring(item7TextOk), tostring(hoverOk)))
 
@@ -423,11 +428,64 @@ end
 print("oom: " .. Clock.text:GetText())
 print("  " .. HoverText())
 
+-- T76 (P32, review U9): the hover as label / value pairs, read at a moment.
+local function HoverPairs()
+    GameTooltip.lines = {}
+    Clock.frame:GetScript("OnEnter")(Clock.frame)
+    local out = {}
+    for _, l in ipairs(GameTooltip.lines or {}) do out[#out + 1] = { l = l[1], r = l[2], c = l.color, rc = l.rcolor } end
+    return out
+end
+local function PairOf(list, label)
+    for _, p in ipairs(list) do if p.l == label and p.r ~= nil then return p end end
+    return nil
+end
+local function SameColour(c, token)
+    local r, g, b = MD.UI.RGB(token)
+    return type(c) == "table" and c[1] == r and c[2] == g and c[3] == b
+end
+local oomText = Clock.text:GetText()
+local oomPairs = HoverPairs()
+local skinnedWhileShown = MD.Tip ~= nil and MD.Tip.Skinned ~= nil and MD.Tip:Skinned(GameTooltip)
+Clock.frame:GetScript("OnLeave")(Clock.frame)
+local skinnedAfter = MD.Tip ~= nil and MD.Tip.Skinned ~= nil and MD.Tip:Skinned(GameTooltip)
+
 S.Fire("PLAYER_REGEN_ENABLED")
 S.inCombat = false
 S.Tick(0.5)
 print("after combat: " .. Clock.text:GetText())
 print("  " .. HoverText())
+local oocText = Clock.text:GetText()
+local oocPairs = HoverPairs()
+Clock.frame:GetScript("OnLeave")(Clock.frame)
+
+do
+    local out = PairOf(oomPairs, "Out of mana in")
+    local full = PairOf(oomPairs, "Full again in")
+    local spend = PairOf(oomPairs, "Spending")
+    local mana = PairOf(oomPairs, "Mana")
+    local clockTime = oomText:match("^~OOM (%d+:%d%d)")
+    check("T76: in a fight the hover says when mana runs out and when it is full again, as pairs",
+        out ~= nil and clockTime ~= nil and out.r == "~" .. clockTime
+        and full ~= nil and full.r:find("^~%d+:%d%d if you stop$") ~= nil
+        and spend ~= nil and spend.r:find("^~%d+ a sec over %d+ casts$") ~= nil
+        and mana ~= nil and mana.r:find("^~%d+ of %d+$") ~= nil
+        and SameColour(out.c, "label") and SameColour(out.rc, "mana"),
+        string.format("clock=%q out=%s full=%s spend=%s mana=%s", oomText, tostring(out and out.r),
+            tostring(full and full.r), tostring(spend and spend.r), tostring(mana and mana.r)))
+
+    local oocFull = PairOf(oocPairs, "Full again in")
+    local oocTime = oocText:match("^~FULL (%d+:%d%d)")
+    check("T76: out of combat the hover says when it is full again, with no fight lines",
+        oocFull ~= nil and oocTime ~= nil and oocFull.r == "~" .. oocTime
+        and PairOf(oocPairs, "Out of mana in") == nil and PairOf(oocPairs, "Spending") == nil
+        and PairOf(oocPairs, "Left-click") ~= nil,
+        string.format("clock=%q full=%s", oocText, tostring(oocFull and oocFull.r)))
+
+    check("T76: the hover is MD.Tip's, in the kit skin while it shows and out of it after",
+        skinnedWhileShown == true and skinnedAfter == false and #oomPairs > 0,
+        string.format("skinned=%s after=%s", tostring(skinnedWhileShown), tostring(skinnedAfter)))
+end
 
 --------------------------------------------------------------------------------
 -- review R13: an Energy cast spends no mana -- Claw's "45 Energy" (beta
@@ -494,8 +552,9 @@ do
     local hover = HoverLines()
     S.Fire("PLAYER_REGEN_ENABLED")
     S.inCombat = false
+    -- T76: a label / value pair now ("Unpriced casts" | "1")
     check("an unpriced opener stays in the hover's unpriced count",
-        unpriced == 1 and hover:find("Unpriced casts: 1", 1, true) ~= nil,
+        unpriced == 1 and hover:find("Unpriced casts 1", 1, true) ~= nil,
         string.format("unpriced=%s hover=%q", tostring(unpriced), hover))
 end
 

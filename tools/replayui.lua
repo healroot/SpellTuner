@@ -12,7 +12,7 @@ local a0 = arg[0]; arg[0] = here .. "/harness.lua"
 local MD = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB
 
-S.Load({ "UI/Style.lua", "UI/Tooltip.lua", "UI/ReplayWindow.lua" }, "SpellTuner", MD)
+S.Load({ "UI/Style.lua", "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/ReplayWindow.lua" }, "SpellTuner", MD)
 
 local ids = dofile(here .. "/fakepull.lua")(MD, S)
 local SM, SP = MD.SimModel, MD.SimPlanner

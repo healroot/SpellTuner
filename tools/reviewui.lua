@@ -16,7 +16,7 @@ local a0 = arg[0]; arg[0] = here .. "/harness.lua"
 local MD = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB
 
-S.Load({ "UI/Style.lua", "UI/Tooltip.lua", "UI/Dashboard_Review.lua", "UI/ReplayWindow.lua" },
+S.Load({ "UI/Style.lua", "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/Dashboard_Review.lua", "UI/ReplayWindow.lua" },
     "SpellTuner", MD)
 
 local ok, fails = 0, {}

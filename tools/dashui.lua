@@ -11,7 +11,7 @@ HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
 local MD = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB
-S.Load({ "UI/Style.lua", "UI/Tooltip.lua", "UI/Dashboard_Rows.lua", "UI/Dashboard_Simulate.lua",
+S.Load({ "UI/Style.lua", "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/Dashboard_Rows.lua", "UI/Dashboard_Simulate.lua",
          "UI/Dashboard_Waste.lua", "UI/Dashboard_Review.lua", "UI/PracticePanel.lua", "UI/Dashboard.lua" }, "SpellTuner", MD)
 
 local ok, fails = 0, {}
@@ -477,6 +477,52 @@ do
     check("a long Waste list ends with the tail line", labels == 13 and last == 13 and tail == 27,
         string.format("rows=%d last=%s tail=%s", labels, tostring(last), tostring(tail)))
     OH.SpellRows = realRows
+end
+
+--------------------------------------------------------------------------------
+-- T76 (P32 of docs/PLAN-refactor-ux.md; review U10 -- the mechanism, U13): a
+-- generic table's header label shows its column's own tooltip (col.tooltip);
+-- a column without one has none, and the TBC rank table's columns carry none.
+-- And TBC's disabled kit buttons stay silent: the motion-while-disabled flag
+-- is the theme's, never set here.
+--------------------------------------------------------------------------------
+do
+    local parent = CreateFrame("Frame")
+    local api = MD.DashboardParts.CreateTable(parent, 400, {
+        cols = { { key = "casts", x = 8, w = 60, label = "Casts", tooltip = "Chain casts from a full pool." },
+                 { key = "plain", x = 80, w = 60, label = "Plain" } },
+        render = function() end,
+    })
+    api:Render({})
+    local header
+    for _, f in ipairs(S.allFrames) do
+        if f.isHeader and f.parentFrame == api.frame and f:IsShown() then header = f end
+    end
+    local hits = header and header.colHits or {}
+    local hit = hits.casts
+    GameTooltip.lines = nil
+    local enter = hit and hit:GetScript("OnEnter")
+    if enter then enter(hit) end
+    local l = GameTooltip.lines or {}
+    local shown = #l == 2 and l[1][1] == "Casts" and l[2][1] == "Chain casts from a full pool."
+    local leave = hit and hit:GetScript("OnLeave")
+    if leave then leave(hit) end
+    local rankCols = 0
+    local rankApi = MD.DashboardParts.CreateTable(CreateFrame("Frame"), 760) -- the TBC rank table (no opts)
+    for _, col in ipairs(rankApi.cols or {}) do if col.tooltip then rankCols = rankCols + 1 end end
+    check("T76: a header label shows its column's tooltip", header ~= nil and hit ~= nil and shown
+        and hits.plain == nil and not GameTooltip:IsShown() and rankCols == 0
+        and not (MD.Tip.Skinned and MD.Tip:Skinned(GameTooltip)),
+        string.format("header=%s hit=%s lines=%d plain=%s", tostring(header ~= nil), tostring(hit ~= nil), #l,
+            tostring(hits.plain ~= nil)))
+
+    local FrameMT = getmetatable(UIParent)
+    local saved = rawget(FrameMT, "SetMotionScriptsWhileDisabled")
+    FrameMT.SetMotionScriptsWhileDisabled = function(self, v) self.motionWhileDisabled = v end
+    local b = MD.UI.CreateButton(UIParent, "Coach", "accent", { 64, 20 }, nil, nil, nil, nil, "Coach")
+    FrameMT.SetMotionScriptsWhileDisabled = saved
+    check("T76: a disabled TBC button has no motion scripts", b.motionWhileDisabled == nil,
+        tostring(b.motionWhileDisabled))
 end
 
 print(string.format("\n%d ok, %d failed", ok, #fails))

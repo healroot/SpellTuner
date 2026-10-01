@@ -340,36 +340,21 @@ end
 --------------------------------------------------------------------------------
 -- Tooltips beside a row (3.5): TOPLEFT at the row's TOPRIGHT +6, or, when
 -- that runs off the screen's right edge, TOPRIGHT at the row's TOPLEFT -6.
--- Nothing anchors to the window edge.
+-- Nothing anchors to the window edge. T76 (P32, review A21 / U28): the rule
+-- is UI/Tip.lua's Tip:Place(tt, owner, "beside") now, shared with every
+-- other placed tooltip; this file only asks for it.
 --------------------------------------------------------------------------------
 local function Place(tt, row)
-    tt:ClearAllPoints()
-    local flip = false
-    local right, screen, w = row:GetRight(), UIParent:GetRight(), tt:GetWidth()
-    if type(right) == "number" and type(screen) == "number" and type(w) == "number" then
-        local rs, us, ts = row:GetEffectiveScale(), UIParent:GetEffectiveScale(), tt:GetEffectiveScale()
-        flip = (right + TIP_GAP) * rs + w * ts > screen * us
-    end
-    if flip then
-        tt:SetPoint("TOPRIGHT", row, "TOPLEFT", -TIP_GAP, 0)
-    else
-        tt:SetPoint("TOPLEFT", row, "TOPRIGHT", TIP_GAP, 0)
-    end
+    MD.Tip:Place(tt, row, "beside")
 end
 
 -- The kit tooltip (a gap row, a rank not learned, the chip): a title and
--- its lines, every colour passed, so no default gold is inherited.
+-- its lines, every colour passed, so no default gold is inherited. T76: the
+-- kit's shape (Tip.Simple: title in `text`, the rest in `text2`, wrapped)
+-- through MD.Tip:Kit, placed beside.
 local function KitTip(owner, title, ...)
-    local tt = UI.tooltip
-    if not tt then return end
-    tt:SetOwner(owner, "ANCHOR_NONE")
-    tt:AddLine(title, UI.RGB("text"))
-    for i = 1, select("#", ...) do
-        local line = select(i, ...)
-        if line then tt:AddLine(line, UI.RGB("text2")) end
-    end
-    tt:Show()
-    Place(tt, owner)
+    if not UI.tooltip then return end
+    MD.Tip:Kit(owner, MD.Tip.Simple({ title, ... }), { anchor = "beside" })
 end
 
 local function RankName(fam, rank)
@@ -379,6 +364,11 @@ end
 -- A known rank: the game's own tooltip for that id, then the block. The
 -- tooltip's guard (UI/SpellTip_Forever.lua's _spellTipId) is cleared first,
 -- so "the block is there" is read from this showing alone.
+-- T76 (P32, review U2; decision 7): still GameTooltip -- whether the Spell
+-- post-call fires for SetSpellByID on another tooltip is unverified on
+-- Forever -- with its content kept and the kit skin laid on it while this
+-- row owns it (MD.Tip:Skin; off again when it hides or another owner
+-- clears it), so it reads as the same tooltip as the rest of the window.
 local function GameTip(row, fam, e)
     local tt = GameTooltip
     tt:SetOwner(row, "ANCHOR_NONE")
@@ -396,6 +386,7 @@ local function GameTip(row, fam, e)
             MD.SpellTip:Render(tt, lines)
         end
     end
+    MD.Tip:Skin(tt, row)
     tt:Show()
     Place(tt, row)
 end

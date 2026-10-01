@@ -106,7 +106,7 @@ if S.flavour == "tbc" then
         fs.template = template
         return fs
     end
-    S.Load({ "UI/Style.lua", "UI/Tooltip.lua", "UI/Dashboard_Review.lua" }, "SpellTuner", MD)
+    S.Load({ "UI/Style.lua", "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/Dashboard_Review.lua" }, "SpellTuner", MD)
     local UI = MD.UI
 
     check("tbc: UI.THEMED is false with UI/Style.lua alone", UI.THEMED == false, tostring(UI.THEMED))

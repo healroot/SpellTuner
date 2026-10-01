@@ -1080,6 +1080,180 @@ do
             tostring(blockOutcome), tostring(noIdOutcome), tostring(notInBook), why2))
 end
 
+--------------------------------------------------------------------------------
+-- T76 (P32 of docs/PLAN-refactor-ux.md; review A21, U2, U13, U28): one tooltip.
+-- UI/Tip.lua's line model and renderer on the Forever main TOC (no module
+-- loaded here), the RankMath-bound builders not on it; token colours; the
+-- kit skin on a game tooltip SpellTuner owns; "beside" and "cursor"
+-- placement with the flip; a kit button that explains itself while disabled
+-- and a kit tooltip that is no longer white-only with a frozen anchor; and
+-- SpellTip's lines in the shared shape.
+--------------------------------------------------------------------------------
+local function FakeTip()
+    local t = { calls = {} }
+    function t:AddLine(l, r, g, b, wrap) self.calls[#self.calls + 1] = { "line", l, r, g, b, wrap } end
+    function t:AddDoubleLine(l, rt, lr, lg, lb, rr, rg, rb)
+        self.calls[#self.calls + 1] = { "double", l, rt, lr, lg, lb, rr, rg, rb }
+    end
+    return t
+end
+local function IsRGB(r, g, b, token)
+    local tr, tg, tb = MD.UI.RGB(token)
+    return r == tr and g == tg and b == tb
+end
+
+do
+    local T = MD.Tip
+    local has = T ~= nil and type(T.Show) == "function" and type(T.Render) == "function"
+        and type(T.Place) == "function" and type(T.Kit) == "function" and type(T.Skin) == "function"
+    local none = T ~= nil and T.Row == nil and T.Spell == nil and T.Mana == nil and T.Clock == nil
+        and T.Columns == nil and T.Damage == nil and T.Fights == nil
+    check("T76: MD.Tip is on the Forever main TOC, without the TBC builders",
+        has and none, string.format("tip=%s has=%s none=%s", tostring(T ~= nil), tostring(has), tostring(none)))
+end
+
+do
+    local tt = FakeTip()
+    local okR = MD.Tip and pcall(MD.Tip.Render, MD.Tip, tt, {
+        { l = "Per mana", r = "2.00", c = "label", rc = "mana" },
+        {},
+        { l = "a muted hint that wraps", c = "muted", wrap = true },
+        "a bare string",
+        { l = "array colours", c = { 0.2, 0.4, 0.6 } },
+    })
+    local c = tt.calls
+    local good = okR and #c == 5
+        and c[1][1] == "double" and c[1][2] == "Per mana" and c[1][3] == "2.00"
+        and IsRGB(c[1][4], c[1][5], c[1][6], "label") and IsRGB(c[1][7], c[1][8], c[1][9], "mana")
+        and c[2][1] == "line" and c[2][2] == " "
+        and c[3][2] == "a muted hint that wraps" and IsRGB(c[3][3], c[3][4], c[3][5], "muted") and c[3][6] == true
+        and c[4][2] == "a bare string" and c[4][3] == 1 and c[4][4] == 1 and c[4][5] == 1
+        and c[5][3] == 0.2 and c[5][4] == 0.4 and c[5][5] == 0.6
+    check("T76: one line model -- token names or arrays, a spacer, wrap, a bare string", good,
+        string.format("ok=%s calls=%d", tostring(okR), #c))
+end
+
+do
+    local owner = CreateFrame("Frame")
+    local good, detail = false, "no MD.Tip"
+    if MD.Tip then
+        GameTooltip.lines = nil
+        MD.Tip:Show(owner, { { l = "Title", c = "text" }, { l = "Label", r = "value", c = "label" } },
+            { anchor = "ANCHOR_TOP" })
+        local l = GameTooltip.lines or {}
+        local shown = #l == 2 and l[1][1] == "Title" and l[2][1] == "Label" and l[2][2] == "value"
+        local skinned = MD.Tip:Skinned(GameTooltip)
+        MD.Tip:Hide()
+        local off = not MD.Tip:Skinned(GameTooltip)
+        GameTooltip.lines = nil
+        MD.Tip:Show(owner, "ANCHOR_TOP", { { l = "legacy" } }) -- the old shape still renders
+        local legacy = GameTooltip.lines and GameTooltip.lines[1] and GameTooltip.lines[1][1] == "legacy"
+            and MD.Tip:Skinned(GameTooltip)
+        MD.Tip:Hide()
+        good = shown and skinned and off and legacy
+        detail = string.format("shown=%s skinned=%s off=%s legacy=%s", tostring(shown), tostring(skinned),
+            tostring(off), tostring(legacy))
+    end
+    check("T76: Tip:Show renders into GameTooltip in the kit skin, off again when it hides", good, detail)
+end
+
+do
+    local good, detail = false, "no MD.Tip"
+    if MD.Tip then
+        local savedW = UIParent:GetWidth()
+        UIParent:SetWidth(1000)
+        local function Owner(right, width)
+            return { GetRight = function() return right end, GetWidth = function() return width end,
+                     GetLeft = function() return right - width end, GetEffectiveScale = function() return 1 end }
+        end
+        local function Tt()
+            local t = {}
+            function t:ClearAllPoints() self.pt = nil end
+            function t:SetPoint(p, rel, rp, x, y) self.pt = { p, rel, rp, x, y } end
+            function t:GetWidth() return 200 end
+            function t:GetEffectiveScale() return 1 end
+            return t
+        end
+        local function Where(owner, anchor)
+            local t = Tt()
+            MD.Tip:Place(t, owner, anchor)
+            return t.pt or {}
+        end
+        local narrow, edge = Owner(500, 100), Owner(900, 100)
+        local a = Where(narrow, "beside")
+        local b = Where(edge, "beside")
+        local savedCursor = GetCursorPosition
+        local cx = 100
+        GetCursorPosition = function() return cx, 300 end
+        local wide = Owner(852, 852)
+        local c = Where(wide, "cursor")
+        cx = 800
+        local d = Where(wide, "cursor")
+        local e = Where(narrow, "cursor")
+        GetCursorPosition = savedCursor
+        UIParent:SetWidth(savedW)
+        good = a[1] == "TOPLEFT" and a[2] == narrow and a[3] == "TOPRIGHT" and a[4] == 6
+            and b[1] == "TOPRIGHT" and b[2] == edge and b[3] == "TOPLEFT" and b[4] == -6
+            and c[1] == "TOPLEFT" and c[2] == wide and c[3] == "TOPLEFT" and c[4] == 106
+            and d[1] == "TOPRIGHT" and d[2] == wide and d[3] == "TOPLEFT" and d[4] == 794
+            and e[1] == "TOPLEFT" and e[3] == "TOPRIGHT" and e[4] == 6
+        detail = string.format("beside=%s/%s flip=%s/%s cursor=%s/%s cursorFlip=%s/%s narrowCursor=%s/%s",
+            tostring(a[1]), tostring(a[4]), tostring(b[1]), tostring(b[4]), tostring(c[1]), tostring(c[4]),
+            tostring(d[1]), tostring(d[4]), tostring(e[1]), tostring(e[4]))
+    end
+    check("T76: beside a row, beside the pointer on a wide one, flipped at the right edge", good, detail)
+end
+
+do
+    local UI = MD.UI
+    local FrameMT = getmetatable(UIParent)
+    local savedMotion = rawget(FrameMT, "SetMotionScriptsWhileDisabled")
+    FrameMT.SetMotionScriptsWhileDisabled = function(self, v) self.motionWhileDisabled = v end
+    local b = UI.CreateButton(UIParent, "Coach", "accent", { 64, 20 })
+    FrameMT.SetMotionScriptsWhileDisabled = savedMotion
+    -- the tooltip set twice: the second call's anchor and lines are the ones shown
+    UI.SetTooltips(b, "ANCHOR_TOPLEFT", 0, 3, "Coach")
+    UI.SetTooltips(b, "ANCHOR_BOTTOM", 0, -2, "Coach", "This fight does not replay.",
+        { l = "Right-click the row for Coach anyway.", c = "muted" })
+    function b:IsEnabled() return false end
+    local tt = UI.tooltip
+    tt.lines = nil
+    local anchorSeen
+    tt.SetOwner = function(self, _, anchor) anchorSeen = anchor end
+    local okEnter = pcall(b:GetScript("OnEnter"), b)
+    tt.SetOwner = nil
+    local l = tt.lines or {}
+    local good = b.motionWhileDisabled == true and okEnter and anchorSeen == "ANCHOR_BOTTOM" and #l == 3
+        and l[1][1] == "Coach" and l[1].color and IsRGB(l[1].color[1], l[1].color[2], l[1].color[3], "text")
+        and l[2][1] == "This fight does not replay." and l[2].color
+        and IsRGB(l[2].color[1], l[2].color[2], l[2].color[3], "text2")
+        and l[3][1] == "Right-click the row for Coach anyway." and l[3].color
+        and IsRGB(l[3].color[1], l[3].color[2], l[3].color[3], "muted")
+    tt:Hide()
+    check("T76: a disabled kit button still explains itself; its tooltip takes the latest anchor and tones",
+        good, string.format("motion=%s enter=%s anchor=%s lines=%d first=%s", tostring(b.motionWhileDisabled),
+            tostring(okEnter), tostring(anchorSeen), #l, tostring(l[2] and l[2][1])))
+end
+
+do
+    local tt = FakeTip()
+    SpellTip:Render(tt, { { l = "Per mana", r = "2.00", c = "label", rc = "text" }, { l = "Stale", c = "bad" } })
+    local c = tt.calls
+    local newShape = #c == 2 and c[1][1] == "double" and c[1][2] == "Per mana" and c[1][3] == "2.00"
+        and IsRGB(c[1][4], c[1][5], c[1][6], "label") and IsRGB(c[1][7], c[1][8], c[1][9], "text")
+        and c[2][1] == "line" and c[2][2] == "Stale" and IsRGB(c[2][3], c[2][4], c[2][5], "bad")
+    local lines = SpellTip:Lines(5185) or {}
+    local named = #lines > 1
+    for _, line in ipairs(lines) do
+        if line.l ~= line[1] or line.r ~= line[2] or type(line.c) ~= "table" or line.c[1] ~= line[3]
+            or (line[2] ~= nil and (type(line.rc) ~= "table" or line.rc[3] ~= line[8])) then
+            named = false
+        end
+    end
+    check("T76: SpellTip:Render takes the shared line shape; Lines carries it beside the arrays",
+        newShape and named, string.format("render=%s named=%s calls=%d", tostring(newShape), tostring(named), #c))
+end
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("  FAIL " .. f) end
 if #fails > 0 then os.exit(1) end

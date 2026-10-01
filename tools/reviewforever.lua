@@ -395,6 +395,51 @@ local leave1 = row1 and row1:GetScript("OnLeave")
 if leave1 then leave1(row1) end
 
 --------------------------------------------------------------------------------
+-- T76 (P32 of docs/PLAN-refactor-ux.md; review U28, mockup M2's "Row hover"):
+-- a Review row is ~850 px wide, so its tooltip opens beside the POINTER (not
+-- beside the row's far edge, which was off the screen), top-aligned with the
+-- row, and flips to the pointer's left at the screen's right edge. Under
+-- S.Geometry, with a pointer reading the suite sets.
+--------------------------------------------------------------------------------
+do
+    local savedCursor = GetCursorPosition
+    local cx = 0
+    GetCursorPosition = function() return cx, 300 end
+    S.Geometry(true)
+    local function HoverAt(x)
+        cx = x
+        GameTooltip.lines = nil
+        if enter1 then enter1(row1) end
+        local n = GameTooltip:GetNumPoints()
+        local p, rel, rp, px, py = GameTooltip:GetPoint(n)
+        if leave1 then leave1(row1) end
+        return { n = n, p = p, rel = rel, rp = rp, x = px, y = py, lines = #(GameTooltip.lines or {}) }
+    end
+    local es = row1 and row1:GetEffectiveScale() or 1
+    local w = row1 and row1:GetWidth() or 0
+    local near = HoverAt(200 * es)
+    local screen = UIParent:GetRight() * UIParent:GetEffectiveScale()
+    -- the pointer near the row's right end with a tooltip too wide for the
+    -- room left of the screen's edge
+    local savedTipW = rawget(GameTooltip, "w")
+    GameTooltip:SetWidth(screen)
+    local far = HoverAt(800 * es)
+    GameTooltip.w = savedTipW
+    S.Geometry(false)
+    GetCursorPosition = savedCursor
+    local farX = 800 - 6
+    check("T76: a Review row's tooltip opens beside the pointer, top-aligned with the row",
+        row1 ~= nil and w > (MD.Tip.WIDE or 300) and near.n == 1 and near.p == "TOPLEFT" and near.rel == row1
+        and near.rp == "TOPLEFT" and math.abs((near.x or 0) - 206) < 1e-6 and near.y == 0 and near.lines > 3,
+        string.format("w=%s point=%s %s %s x=%s y=%s lines=%d", tostring(w), tostring(near.p), tostring(near.rp),
+            tostring(near.rel == row1), tostring(near.x), tostring(near.y), near.lines))
+    check("T76: at the screen's right edge it flips to the pointer's left",
+        far.n == 1 and far.p == "TOPRIGHT" and far.rel == row1 and far.rp == "TOPLEFT"
+        and math.abs((far.x or 0) - farX) < 1e-6,
+        string.format("point=%s %s x=%s want %s", tostring(far.p), tostring(far.rp), tostring(far.x), tostring(farX)))
+end
+
+--------------------------------------------------------------------------------
 -- R40 (review 2026-09-29): there is no export on Forever (MD.RunExport is
 -- Verify.lua's, TBC only), so the Export button is not offered -- it used to
 -- sit enabled and do nothing when clicked.
