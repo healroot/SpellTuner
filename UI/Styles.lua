@@ -2,6 +2,14 @@
 -- registry. Listed by every main TOC right after UI/Theme_Flat.lua (whose
 -- UI.FLAT it registers as "flat") and before any window file.
 --
+-- T100: a style may carry `resolve(style) -> style, note`, a function run at
+-- every apply that answers the table actually applied (validated like any
+-- style; a resolve that raises or answers an invalid table applies the
+-- registered one) and an optional ASCII note for the dump line. The
+-- Ellesmere style (UI/Style_Ellesmere.lua) resolves to its clone or to what
+-- EllesmereUI's getters say, read fresh each time (SKINNING_API.md: never
+-- cache them).
+--
 -- A style is PAINT ONLY: fills, text tokens, font faces and one recipe per
 -- role (UI.SKIN_ROLES), never a size, an anchor, a pitch, a font size or an
 -- inset (2.2), and never a behaviour -- UI.THEMED stays the one "new
@@ -16,6 +24,15 @@
 --   UI.Styles.Recipe(role)           the active style's recipe for a role:
 --                                    Flat's where the style names none, or
 --                                    where the art it needs is missing (5.2)
+--   UI.Styles.Refresh(key)           T100: apply the active style again when
+--                                    it is `key` (its resolve may answer
+--                                    differently now: EllesmereUI's looks
+--                                    changed, its skin facade arrived) ->
+--                                    true, STYLE_CHANGED fired once; false,
+--                                    nothing done, before CORE_LOGIN or under
+--                                    another style. db.ui.style untouched.
+--   UI.Styles.Note()                 T100: what the active style's resolve
+--                                    said about itself (the dump line's tail)
 --   UI.SetStyle(key)                 (also UI.Styles.SetStyle) -> true, or
 --                                    false, why for a key nobody registered.
 --                                    Captures what every registered region
@@ -157,6 +174,7 @@ function Styles.Validate(s)
             end
         end
     end
+    if s.resolve ~= nil and type(s.resolve) ~= "function" then bad("resolve: a function") end
     if s.needs ~= nil and type(s.needs) ~= "table" then bad("needs: a list") end
     for i, n in ipairs(type(s.needs) == "table" and s.needs or {}) do
         if type(n) ~= "table" or not ROLE_SET[n.role]
@@ -236,16 +254,33 @@ local function DumpLine()
     local roles = {}
     for r in pairs(a.fell) do roles[#roles + 1] = r end
     table.sort(roles)
-    return string.format("style: %s (accent %s) fell back: %s", a.key,
+    local line = string.format("style: %s (accent %s) fell back: %s", a.key,
         a.style.accent == "class" and "class" or "style", #roles > 0 and table.concat(roles, ", ") or "none")
+    if a.note then line = line .. "; " .. a.note end
+    return line
 end
 Styles.DumpLine = DumpLine
 
+function Styles.Note() return active and active.note end
+
+-- T100: the table a style applies as -- its resolve's answer when it has
+-- one and that answer is a valid style, else the registered table itself.
+local function Resolve(style)
+    if type(style.resolve) ~= "function" then return style, nil end
+    local okR, eff, note = pcall(style.resolve, style)
+    if not okR or type(eff) ~= "table" or not (Styles.Validate(eff)) then
+        return style, "resolve failed"
+    end
+    if type(note) ~= "string" or not Ascii(note) then note = nil end
+    return eff, note
+end
+
 local function Apply(key, style)
     local captured = UI.CaptureSkins and UI.CaptureSkins()
-    active = { key = key, style = style, fell = FellBack(style) }
-    UI.ApplyStyleTokens(style)
-    UI.ReFaceFonts(style)
+    local eff, note = Resolve(style)
+    active = { key = key, style = eff, note = note, fell = FellBack(eff) }
+    UI.ApplyStyleTokens(eff)
+    UI.ReFaceFonts(eff)
     if UI.RepaintSkins then UI.RepaintSkins(captured) end
     UI.STYLE = key
     if not dumpAdded and (key ~= "flat" or next(active.fell) ~= nil) then
@@ -276,6 +311,13 @@ function UI.SetStyle(key)
 end
 Styles.SetStyle = UI.SetStyle
 
+function Styles.Refresh(key)
+    if not loggedIn or not active or active.key ~= key or not byKey[key] then return false end
+    Apply(key, byKey[key])
+    MD:Fire("STYLE_CHANGED", key)
+    return true
+end
+
 -- Flat, from UI/Theme_Flat.lua, applied there at load: the active style
 -- until the saved one is applied at CORE_LOGIN.
 Styles.Register("flat", UI.FLAT)
@@ -305,7 +347,9 @@ MD:AddSubcommand("ui", "style", function(rest)
     end
     local okS, why = UI.SetStyle(name)
     if okS then
-        MD:Print(string.format("style: %s - %s", UI.STYLE, byKey[UI.STYLE].name))
+        local note = active and active.note
+        MD:Print(string.format("style: %s - %s%s", UI.STYLE, byKey[UI.STYLE].name,
+            note and (" (" .. note .. ")") or ""))
     else
         MD:Print(why)
     end
