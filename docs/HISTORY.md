@@ -4430,3 +4430,45 @@ addresses in practice and solvercheck, the sliced search's evaluation counts and
 equal-score `binds 3` / `binds 5` lines in replayui); wincheck tbc is new; every other TBC suite
 equal. In game: `docs/TESTING.md` §44 item 30 (needs a build newer than the 0.16.4 install).
 **Next:** wave C-b.
+
+## 2026-10-01 — the refactor plan, wave C-b: T81 (C2), T82 (C4)
+
+Wave C-b of `docs/PLAN-refactor-ux.md` cherry-picked onto `70b424d`, oldest first (C2, then C4),
+then the integrator's lines (CLAUDE.md, `docs/TESTING.md`, `docs/TOOLS.md`, `docs/DECISIONS.md`,
+`tools/data/expected-counts.json`, this entry) in one commit. No TOC line, no merge fix, no import
+fixture rebuild (nothing the code stores changed). The version stays 0.16.4.
+
+- **T81 (C2)** (`fa20cb3`, `45aefb8`; branch `plan/C2` `2778222`, `75f3312`): TBC's tables are the
+  one table (review U5 / A23, decision 10) -- the rank table (`MD.DashboardParts.CreateRankTable`,
+  right-justified Arial Narrow numbers on 20-px rows, zebra, header rule, the suggested row's fill
+  and accent bar with no gold or `*`, an HPM bar, the Tag column `best` / `max` / `beaten` /
+  `learn at N` / `rolling`, the glossary on every header, the derivation beside the row, Effective
+  mode's accent headers and `?`), Waste (one scrolled table per grouping, no tail line) and Review
+  (the unthemed list, its tail line, the `Coach*` star and shift-click deleted, unreachable since
+  T80) are opts sets on `UI/Dashboard_Rows.lua`'s table, whose no-options path and second `Render`
+  are gone (`CreateTable` raises without `opts.render`). dashui tbc 68 -> 74, reviewui tbc 49 -> 50.
+  The DECISIONS entry "TBC's tables are the one table".
+- **T82 (C4)** (`439eac4`, `fb077e1`; branch `plan/C4` `d334408`, `e90e521`): one clock look
+  (mockup M6) -- the TBC widget on the Forever clock's panel (180 x 30, the theme's `bg`, `UI.FONT`
+  centred, a 160 x 4 five-second-rule bar on a black backing), the unlock preview in the accent;
+  `Tip:Clock` in M6's words (`Tip:ClockSummary`'s label / value pairs) with `Tip:Mana` and the last
+  fight behind Shift, the widget's and the minimap button's tooltips redrawn on
+  `MODIFIER_STATE_CHANGED`. ttocheck tbc 45 -> 47, minimapcheck tbc 6 -> 7. The DECISIONS entry
+  "One clock look".
+- Left for the next owners: `Core_Forever.lua` still declares `effectiveMode` with a comment saying
+  `UI/Dashboard_Rows.lua` reads it -- after T81 nothing on the Forever TOCs does (defaultscheck
+  forever's read count 29 -> 28), and CLAUDE.md's `Core_Forever.lua` row (T64) says the same; the
+  column words (Heal/cast, HPM, HPS, To OOM) and the hint line wait for C3 (T81's deviation 1);
+  Waste's middle overheal tone is still the `ffcc66` literal (T81's deviation 6); the text-size
+  pitch of the TBC rank table and Waste is read at build time (T81's deviation 7).
+
+`make check`: 71 runs, all passed, in the worktree and in a `git archive` export (66 counted runs
+against 66 expected); apicheck 0 findings over 59 files (48 globals), textcheck 0 over 95. Each TBC
+suite's full output against `70b424d` differs only where the two task files say (dashui's T81
+checks and Waste re-base, reviewui's T81 check, ttocheck's two T82 checks, minimapcheck's two
+goldens), by what follows from them without a line of their own (themecheck's token-read count
+132 -> 148 on both flavours with the tables' and the clock's token colours; dashui's T30 frame count
+944 -> 1038 with the rank table's new frames; defaultscheck forever's read count 29 -> 28, above),
+and run-to-run noise (ms, table addresses, the sliced search's evaluation counts in reviewui); every
+other TBC suite equal. In game: `docs/TESTING.md` §44 items 31 and 32 (they need a build newer than
+the 0.16.4 install). **Next:** wave C-c (C3, the Spells view).

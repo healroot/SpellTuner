@@ -1135,3 +1135,28 @@ table with its row menu (Coach anyway, no Coach* or shift-click), and the replay
 
 The tests that pinned the unthemed TBC look were re-based on the themed one
 (`docs/tasks/T80-window-manager-and-theme-on-tbc.md` lists every value).
+
+**TBC's tables are the one table** (2026-10-01, T81 / C2; review U5 / A23, decision 10). The TBC
+rank table, Waste and Review are opts sets on `UI/Dashboard_Rows.lua`'s one table. Numbers are
+right-justified in Arial Narrow on 20-px rows, with zebra and a rule under the header.
+
+The rank table:
+- The suggested rank is marked by the row's fill and the accent bar. The gold, the `*` and the
+  "efficient rank" note are gone.
+- A Tag column says `best`, `max`, `beaten` (the author's word for dominated; its hover names
+  the rank that beats it), `learn at N` or `rolling`.
+- HPM carries a bar.
+- The column words stay TBC's (Heal/cast, HPM, HPS, To OOM) until the Spells view (C3).
+
+Waste scrolls instead of ending with "... and N more". The no-options table is deleted, so a
+table without `opts.render` raises.
+
+**One clock look** (2026-10-01, T82 / C4; U4's "two clock looks", mockup M6). The TBC clock
+widget wears the Forever clock's panel: 180 x 30, the theme's fill and edge, the kit's 13-pt font
+centred (the 14-pt OUTLINE text and its left anchor are gone), and a 160 x 4 bar on a black
+backing. On TBC the bar still shows the five-second rule (amber while it fills, green once spirit
+regen runs); on Forever it is the real pool. The two look the same but mean different things,
+which M6 accepted. The unlock preview is in the accent. The clock tooltip, on the widget and on
+the minimap button, says `Out of mana in 1:20` and `Full again in 3:40 if you stop` as pairs. The
+raw lines (the time with its spread, the net rate, the spend and its CV, the regen terms, the
+mana cooldowns, the pull budget) and the last fight move behind Shift.

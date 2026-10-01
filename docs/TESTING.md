@@ -1441,7 +1441,7 @@ the numbers.
 
 **Paste back**: the `pN` you pinned, and in words what the suggested column did differently.
 
-## 44. The refactor plan's checks (`docs/PLAN-refactor-ux.md` section 9; waves 1-17 and C-a, 0.16.4)
+## 44. The refactor plan's checks (`docs/PLAN-refactor-ux.md` section 9; waves 1-17, C-a and C-b, 0.16.4)
 
 Paste back as in section 41. Out of combat unless a step says otherwise. Install **0.16.4** on each
 client (`--install-tbc` / `--install-forever`, the top of this file and §38; never cross them). The
@@ -1653,6 +1653,31 @@ W10. **The clock and the theme (P24, P25).** The mana clock behaves exactly as o
     - Simulate -> Practice -> Edit bindings: a sheet on the pane, not a window. `/md binds` opens
       the same sheet.
     - `/md replay 1`: it opens where the old replay window was.
+
+**Wave C-b (T81, T82; TBC).** These need a build newer than the 0.16.4 install.
+
+31. **TBC tables (C2).**
+    - `/md` -> Spells -> Rejuvenation: the numbers line up on the right, the rows are taller
+      and striped, and the suggested rank has a faint fill and an orange bar at its left (no
+      gold row, no `*`). The last column says `best`, `max`, `beaten` or `learn at N`.
+    - Point at a `beaten` tag: "Beaten by Rank N" with both HPM and HPS.
+    - Point at a column header: the glossary. Point at a row: its derivation, beside the row.
+    - Tick Effective: Heal/cast, HPM and HPS turn orange; a rank with no measurement shows `?`.
+    - Lifebloom's x2 / x3 rows say `rolling`.
+    - Reports -> Waste: the numbers line up on the right; with more spells than fit, the wheel
+      scrolls (no "... and N more" line).
+    - Reports -> Review: as after C1 (the hint above the list now names the Result column and
+      Coach anyway).
+
+32. **One clock (C4).** On TBC: `/md unlock` (or Settings -> the clock's Lock box). The clock is a
+    dark flat panel with `SpellTuner - drag me` in your class colour over a full bar of the same
+    colour. Drag it and lock it. In a fight the text sits centred over a thin bar that fills amber
+    after each cast and turns green five seconds later. Say whether the centred text sliding as the
+    digits change bothers you (it used to be left-anchored). Hover the clock: `Out of mana in` /
+    `Full again in ... if you stop`, then `Left-click` and `Shift`. Hold Shift: the old raw lines
+    (spend, CV, regen, Innervate, pull budget) appear without moving the mouse, and go when you
+    release it. Hover the minimap button: the same clock lines, then Left-click / Right-click / Drag
+    and the hide line.
 
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the
