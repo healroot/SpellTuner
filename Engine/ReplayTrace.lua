@@ -91,8 +91,10 @@ function State:Apply(i, fire)
         self.casts = self.casts + 1
         self.lastCast = { spellID = a, target = tgt, t = t, why = e.why[i], n = self.casts }
         self.lastReasonI = i
-        local cd = MD.SimModel.SPELL_CD and MD.SimModel.SPELL_CD[a]
-        if cd then self.cdUntil[a] = t + cd end
+        -- T90: kept per family, as the engine keeps it (SM.CooldownOf reads
+        -- this state's scenario kit), so one rank's cast blocks every rank
+        local fam, cd = MD.SimModel.CooldownOf(self, a)
+        if cd then self.cdUntil[fam] = t + cd end
     elseif kind == TK.CANCEL then
         self.casting = nil
     elseif kind == TK.HOT then
@@ -311,16 +313,18 @@ function State:Auras(ti, out)
 end
 
 -- When this spell's cooldown ends (nil if it is not on cooldown at st.t).
+-- T90: keyed by the spell's family (SM.CooldownOf); the signature is unchanged.
 function State:CooldownUntil(spellID)
-    local until_ = self.cdUntil[spellID]
+    local until_ = self.cdUntil[(MD.SimModel.CooldownOf(self, spellID))]
     if until_ and self.t < until_ then return until_ end
     return nil
 end
 
 -- Is this spell off cooldown at st.t? Only the cooldowns the engine respects
--- (SM.SPELL_CD: Swiftmend) -- everything else is always ready.
+-- (a kit entry's `cooldown`, else SM.SPELL_CD: Swiftmend) -- everything else is
+-- always ready. Per family since T90.
 function State:Ready(spellID)
-    local until_ = self.cdUntil[spellID]
+    local until_ = self.cdUntil[(MD.SimModel.CooldownOf(self, spellID))]
     return not until_ or self.t >= until_
 end
 

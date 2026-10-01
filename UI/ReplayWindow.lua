@@ -809,8 +809,10 @@ local function PaintFrame(f, st, ti, isLeft, now)
         SetIcon(f.dot, SWIFTMEND, "Swiftmend")
         local cdUntil = st:CooldownUntil(SWIFTMEND)
         if cdUntil then
-            local cd = MD.SimModel.SPELL_CD[SWIFTMEND] or 15
-            Sweep(f.dot, cdUntil - cd, cdUntil, st.t)
+            -- T90: the length the engine and the state machine kept it by
+            -- (the kit entry's `cooldown`, else SM.SPELL_CD), not a literal
+            local _, cd = MD.SimModel.CooldownOf(st, SWIFTMEND)
+            Sweep(f.dot, cdUntil - (cd or 0), cdUntil, st.t)
             f.dot.tip = f.dot.tip or {}
             f.dot.tip[1] = { l = "Swiftmend", r = string.format("|cffff9966%.1fs|r", cdUntil - st.t) }
             f.dot.tip[2] = { l = "|cff888888a HoT to eat, the cooldown running|r", r = "" }

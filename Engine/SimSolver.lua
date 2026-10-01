@@ -349,7 +349,10 @@ function Solver:Best(S, t, mana, form, delay)
                 for _, fam in ipairs(SV.FAMILIES) do
                     local id = self.binds[fam]
                     local e = id and kit[id]
-                    if e and mana >= (e.cost or 0) then
+                    -- T90: a spell on cooldown is no candidate -- now, or when
+                    -- the cast would start (`delay`). Its end is on the
+                    -- healer's bar, so asking is causal.
+                    if e and mana >= (e.cost or 0) and SM.Ready(S, id, t + (delay or 0)) then
                         local fi = HOT_INDEX[fam]
                         local st = fi and S.hots[i] and S.hots[i][fi]
                         local eaten, eats = nil, nil
@@ -453,7 +456,8 @@ function Solver:Decide(S, t, mana, form)
                 for _, fam in ipairs(SV.FAMILIES) do
                     local id2 = self.binds[fam]
                     local e = id2 and kit[id2]
-                    if e and mana >= (e.cost or 0) and e.type ~= "instant" then
+                    if e and mana >= (e.cost or 0) and e.type ~= "instant"
+                        and SM.Ready(S, id2, t) then   -- T90: never a spell on cooldown
                         local fi = SM.HOT_INDEX[fam]
                         local st = fi and S.hots[i] and S.hots[i][fi]
                         local dep, dn = SV.Deposits(e, st, depBuf)

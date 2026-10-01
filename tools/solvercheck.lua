@@ -913,5 +913,231 @@ do
         not htCast, "casts " .. table.concat(seen, ", "))
 end
 
+--------------------------------------------------------------------------------
+-- 11. T90 (docs/SPEC-next.md 4.2 P0, decision 10): cooldowns. The solver never
+--     picks a spell on cooldown (Best and rule 8 ask SM.Ready), the engine
+--     refuses and traces a PLAN cast on cooldown and never refuses a RECORDED
+--     one, and a cooldown belongs to the family -- one rank's cast blocks them
+--     all (Holy Shock R1-R4, Riptide). R-classes' cdtest2: with Swiftmend on
+--     cooldown until 20, Decide at 10 returned 18562.
+--------------------------------------------------------------------------------
+local function cdKey(S2, id)
+    -- the key the engine keeps a cooldown under: the family since T90
+    if SM.CooldownOf then return (SM.CooldownOf(S2, id)) end
+    return id
+end
+local function emptyEv() return { t = {}, kind = {}, tgt = {}, amt = {}, x = {} } end
+
+do
+    -- (a) Best and Decide: R-classes' cdtest2 -- a Swiftmend with a
+    -- Rejuvenation to eat is the pick off cooldown, and never on it
+    local SMID = MD.SpellData.maxRank.Swiftmend
+    local kitB = { crit = 0, caster = { [SMID] = { family = "Swiftmend", rank = 1, type = "instant",
+        cost = 100, cast = 1.5, gcd = 1.5, swiftmendRejuv = 5000 } }, tree = {} }
+    local plan = SV.NewPlan({ Swiftmend = SMID }, { minValue = 0, horizon = 12 }, kitB)
+    local function hurtWithRejuv()
+        local St = state(3000, 0)
+        St.cd, St.kit = {}, kitB
+        St.hots[1][SM.HOT_INDEX.Rejuvenation] = { active = true, spellID = 0, tick = 0,
+            tickPeriod = 3, ticksLeft = 0, expires = 30, stacks = 1, bloom = 0, gen = 1,
+            family = "Rejuvenation" }
+        return St
+    end
+    local free = hurtWithRejuv()
+    local _, freeID = plan:Best(free, 10, 99999, "caster", 0)
+    local onCd = hurtWithRejuv()
+    onCd.cd[cdKey(onCd, SMID)] = 20    -- on cooldown until t = 20
+    local _, cdID = plan:Best(onCd, 10, 99999, "caster", 0)
+    local decided = plan:Decide(onCd, 10, 99999, "caster")
+    -- (b) rule 8: a cheap direct heal on cooldown is not the "cheapest cast
+    -- that holds the line"; the dearer one off cooldown is
+    local HT, RG = MD.SpellData.maxRank.HealingTouch, MD.SpellData.maxRank.Regrowth
+    local kit8 = { crit = 0, caster = {
+        [HT] = { family = "HealingTouch", rank = 1, type = "direct", cost = 10, cast = 1.5, gcd = 1.5,
+                 direct = 6000, directCrit = 0, cooldown = 10 },
+        [RG] = { family = "Regrowth", rank = 1, type = "direct", cost = 100, cast = 1.5, gcd = 1.5,
+                 direct = 6000, directCrit = 0 } }, tree = {} }
+    local plan8 = SV.NewPlan({ HealingTouch = HT, Regrowth = RG }, { minValue = 0, horizon = 12 }, kit8)
+    local S8 = state(4000, 200)   -- above the line, projected through it
+    S8.cd, S8.kit = {}, kit8
+    S8.danger, S8.dangerMeasured = { 0.3 }, {}
+    local free8, _, rFree = plan8:Decide(S8, 10, 99999, "caster")
+    S8.cd[cdKey(S8, HT)] = 18
+    local pick8, _, rCd = plan8:Decide(S8, 10, 99999, "caster")
+    check("T90: a spell on cooldown is never picked by Best or rule 8",
+        freeID == SMID and cdID ~= SMID and decided ~= SMID
+            and free8 == HT and rFree == 8 and pick8 == RG and rCd == 8,
+        string.format("Best free=%s cd=%s Decide=%s; rule 8 free=%s(r%s) cd=%s(r%s)",
+            tostring(freeID), tostring(cdID), tostring(decided), tostring(free8), tostring(rFree),
+            tostring(pick8), tostring(rCd)))
+end
+
+do
+    -- the engine refuses a plan's cast on cooldown, traces it, and the plan is
+    -- asked again; the healer's mana and global cooldown are untouched by it
+    local SMID = MD.SpellData.maxRank.Swiftmend
+    local kitR = { crit = 0, caster = { [SMID] = { family = "Swiftmend", rank = 1, type = "instant",
+        cost = 10, cast = 1.5, gcd = 1.5 } }, tree = {} }
+    local plan = { Decide = function() return SMID, 1, 7 end, noReaction = true }
+    local sc = { dur = 6, pool = 1000, initial = { mana = 1000, apiBase = 0, apiCasting = 0 },
+                 kit = kitR, floor = 0.30, ev = emptyEv(),
+                 targets = { { name = "T", role = "TANK", maxHP = 10000, hp0 = 5000, tracked = true } } }
+    local tr = {}
+    local r = SM:Run(sc, plan, { critMode = "ev", trace = tr })
+    local T, TK = tr.built, SM.TK
+    local casts, refused, firstRefused = 0, 0, nil
+    for i = 1, T.nEv do
+        if T.ev.kind[i] == TK.CAST then casts = casts + 1 end
+        if TK.REFUSED and T.ev.kind[i] == TK.REFUSED then
+            refused = refused + 1
+            if not firstRefused then firstRefused = i end
+        end
+    end
+    local fr = firstRefused
+    check("T90: a plan's cast on cooldown is refused, traced, and costs nothing",
+        casts == 1 and r.casts == 1 and refused > 0 and (r.refused or 0) == refused
+            and fr ~= nil and T.ev.a[fr] == SMID and T.ev.tgt[fr] == 1
+            and math.abs(T.ev.t[fr] - 1.5) < 1e-9 and math.abs((T.ev.b[fr] or 0) - 15) < 1e-9
+            and math.abs(r.manaSpent - 10) < 1e-9,
+        string.format("casts %d (r %s), refused %d (r %s), first at %s ready %s, spent %s",
+            casts, tostring(r.casts), refused, tostring(r.refused),
+            fr and string.format("%.2f", T.ev.t[fr]) or "-", fr and tostring(T.ev.b[fr]) or "-",
+            tostring(r.manaSpent)))
+end
+
+do
+    -- a cooldown belongs to the FAMILY: R2 cast at 0 blocks R1 until 0 + cd,
+    -- in the engine (SM.Ready, the cast itself) and in the replay's state
+    -- machine (State:CooldownUntil / Ready, keyed the same way)
+    local R1, R2 = 900001, 900002
+    local function shock(rank)
+        return { family = "HolyShock", rank = rank, type = "instant", cost = 20, cast = 1.5,
+                 gcd = 1.5, cooldown = 10 }
+    end
+    local kitF = { crit = 0, caster = { [R1] = shock(1), [R2] = shock(2) }, tree = {} }
+    local readyAt5
+    local plan = { Decide = function(_, S2, at)
+        if at == 0 then return R2, 1, 7 end
+        if at >= 5 and readyAt5 == nil then readyAt5 = SM.Ready(S2, R1, at) end
+        return R1, 1, 7
+    end, noReaction = true }
+    local sc = { dur = 12, pool = 1000, initial = { mana = 1000, apiBase = 0, apiCasting = 0 },
+                 kit = kitF, floor = 0.30, ev = emptyEv(),
+                 targets = { { name = "T", role = "TANK", maxHP = 10000, hp0 = 5000, tracked = true } } }
+    local tr = {}
+    SM:Run(sc, plan, { critMode = "ev", trace = tr })
+    local T, TK = tr.built, SM.TK
+    local seen, r1At = {}, nil
+    for i = 1, T.nEv do
+        if T.ev.kind[i] == TK.CAST then
+            seen[#seen + 1] = string.format("%.2f:%s", T.ev.t[i], tostring(T.ev.a[i]))
+            if T.ev.a[i] == R1 and not r1At then r1At = T.ev.t[i] end
+        end
+    end
+    local st = MD.ReplayTrace.New(T, sc)
+    st:Seek(5)
+    local until5, ready5 = st:CooldownUntil(R1), st:Ready(R1)
+    -- and R1's cast at 10 blocks R2 in turn, until 20
+    st:Seek(10.5)
+    local untilR2 = st:CooldownUntil(R2)
+    check("T90: a two-rank family: R2 cast at t blocks R1 until t + cd",
+        readyAt5 == false and r1At ~= nil and r1At >= 10 - 1e-9 and r1At <= 10.5 + 1e-9
+            and until5 ~= nil and math.abs(until5 - 10) < 1e-9 and ready5 == false
+            and untilR2 ~= nil and math.abs(untilR2 - r1At - 10) < 1e-9,
+        string.format("Ready(R1, 5)=%s; casts %s; replay R1 until(5)=%s ready(5)=%s, R2 until(10.5)=%s",
+            tostring(readyAt5), table.concat(seen, ", "), tostring(until5), tostring(ready5),
+            tostring(untilR2)))
+end
+
+do
+    -- a RECORDED cast inside its cooldown is the truth (a Light's Vigil'd Holy
+    -- Shock, a reset talent): the replay's script and a plan's fixed casts run
+    -- it as recorded, never refused
+    local SMID = MD.SpellData.maxRank.Swiftmend
+    local kitR = { crit = 0, caster = { [SMID] = { family = "Swiftmend", rank = 1, type = "instant",
+        cost = 10, cast = 1.5, gcd = 1.5 } }, tree = {} }
+    local function sc(extra)
+        local s = { dur = 8, pool = 1000, initial = { mana = 1000, apiBase = 0, apiCasting = 0 },
+                    kit = kitR, floor = 0.30, ev = emptyEv(),
+                    targets = { { name = "T", role = "TANK", maxHP = 10000, hp0 = 5000, tracked = true } } }
+        for k, v in pairs(extra) do s[k] = v end
+        return s
+    end
+    local function count(tr)
+        local c, rf = 0, 0
+        for i = 1, tr.built.nEv do
+            if tr.built.ev.kind[i] == SM.TK.CAST then c = c + 1 end
+            if SM.TK.REFUSED and tr.built.ev.kind[i] == SM.TK.REFUSED then rf = rf + 1 end
+        end
+        return c, rf
+    end
+    local trA = {}
+    local rA = SM:Run(sc({ script = { { 1, SMID, 10, 1 }, { 3, SMID, 10, 1 }, { 5, SMID, 10, 1 } } }),
+        nil, { critMode = "ev", trace = trA })
+    local cA, fA = count(trA)
+    local spentA = rA.manaSpent
+    local trB = {}
+    local rB = SM:Run(sc({ fixed = { { 1, SMID, 10, -1 }, { 3, SMID, 10, -1 } } }),
+        { Decide = function() return nil end, noReaction = true }, { critMode = "ev", trace = trB })
+    local cB, fB = count(trB)
+    check("T90: a recorded cast inside its cooldown is replayed as recorded",
+        cA == 3 and fA == 0 and math.abs(spentA - 30) < 1e-9 and cB == 2 and fB == 0
+            and math.abs(rB.manaSpent - 20) < 1e-9,
+        string.format("script %d casts %d refused spent %s; fixed %d casts %d refused spent %s",
+            cA, fA, tostring(spentA), cB, fB, tostring(rB.manaSpent)))
+end
+
+do
+    -- causality unchanged with a cooldown in play: a cheap, big direct heal
+    -- on an 8 s cooldown (the solver's first choice whenever it is up) beside
+    -- a dear one without. The plan casts the cooldown spell no closer than its
+    -- cooldown, and a burst at 40 s changes nothing it does before it.
+    local HT, RG = MD.SpellData.maxRank.HealingTouch, MD.SpellData.maxRank.Regrowth
+    local kitC = { crit = 0, caster = {
+        [HT] = { family = "HealingTouch", rank = 1, type = "direct", cost = 50, cast = 1.5, gcd = 1.5,
+                 castBase = 1.5, direct = 2500, directCrit = 0, cooldown = 8 },
+        [RG] = { family = "Regrowth", rank = 1, type = "direct", cost = 400, cast = 1.5, gcd = 1.5,
+                 castBase = 1.5, direct = 2500, directCrit = 0 } }, tree = {} }
+    local bindsC = { HealingTouch = HT, Regrowth = RG }
+    local function scenarioWithBurst(burst)
+        local ev = emptyEv()
+        local n = 0
+        local function add(at, amt)
+            n = n + 1
+            ev.t[n], ev.kind[n], ev.tgt[n], ev.amt[n], ev.x[n] = at, K.DMG, 1, amt, 0
+        end
+        for at = 1, 39, 2 do add(at, 900) end
+        if burst then for at = 40, 48 do add(at, 1500) end end
+        return { dur = 60, pool = 20000, initial = { mana = 20000, apiBase = 10, apiCasting = 4 },
+                 kit = kitC, floor = 0.30, ev = ev,
+                 targets = { { name = "T", role = "TANK", maxHP = 10000, hp0 = 10000, tracked = true } } }
+    end
+    local function castsOf(sc)
+        local out, cdCasts = {}, {}
+        SP.RunPlan(sc, SV.NewPlan(bindsC, { minValue = 0.05, horizon = 12 }, kitC),
+            { critMode = "ev", onCast = function(_, at, id)
+                if id == HT then cdCasts[#cdCasts + 1] = at end
+                out[#out + 1] = string.format("%.2f:%d", at, id) end })
+        return out, cdCasts
+    end
+    local quiet, cdQ = castsOf(scenarioWithBurst(false))
+    local loud = castsOf(scenarioWithBurst(true))
+    local diverged
+    for j = 1, math.min(#quiet, #loud) do
+        local at = tonumber(quiet[j]:match("^([%d%.]+)"))
+        if quiet[j] ~= loud[j] then diverged = diverged or at end
+    end
+    local closest
+    for j = 2, #cdQ do
+        local gap = cdQ[j] - cdQ[j - 1]
+        if not closest or gap < closest then closest = gap end
+    end
+    check("T90: causality unchanged with a cooldown in play",
+        #cdQ >= 2 and closest >= 8 - 1e-9 and (diverged == nil or diverged >= 39.9),
+        string.format("%d cooldown cast(s) of %d, closest %s s apart; %s", #cdQ, #quiet,
+            closest and string.format("%.2f", closest) or "-",
+            diverged and string.format("diverged at %.1fs", diverged) or "identical until the burst"))
+end
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 if #fails > 0 then for _, m in ipairs(fails) do print("  FAIL " .. m) end; os.exit(1) end

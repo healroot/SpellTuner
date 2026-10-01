@@ -95,7 +95,11 @@ local HOT_INDEX = SM.HOT_INDEX
 -- Trace event kinds (docs/SPEC-v0.8.md 2.1): what a run writes down for the
 -- replay window when opts.trace asks for it. Distinct from SM.K, which are the
 -- RECORDED kinds; neither table is ever renumbered.
-SM.TK = { CAST_START = 1, CAST = 2, CANCEL = 3, HOT = 4, HOT_END = 5, DEATH = 6, FORM = 7, WAIT = 8 }
+-- REFUSED (T90): a plan asked for a spell still on cooldown and the engine
+-- would not cast it. tgt = the target asked for, a = the spell id, b = when
+-- that cooldown ends; the plan's reason rides along. Nothing is spent.
+SM.TK = { CAST_START = 1, CAST = 2, CANCEL = 3, HOT = 4, HOT_END = 5, DEATH = 6, FORM = 7, WAIT = 8,
+          REFUSED = 9 }
 -- The trace's `why` is the Plan rule that caused a cast, 1..5. A sixth value
 -- means no rule caused it: it is one of the healer's own non-healing casts,
 -- replayed into the suggested column because the plan does not get to remove it
@@ -108,8 +112,47 @@ local EMPTY = {}
 local LIFEBLOOM_MAX_STACKS = 3
 -- Spell cooldowns the engine has to respect. Only the ones a plan can choose;
 -- Innervate and potions are recorded events, not decisions (spec 13).
+-- T90: the FALLBACK for a kit entry with no `cooldown` field (SM.CooldownOf).
 local SPELL_CD = { [18562] = 15 }   -- Swiftmend
-SM.SPELL_CD = SPELL_CD              -- read by Engine/ReplayTrace.lua for the Swiftmend-ready dot
+SM.SPELL_CD = SPELL_CD
+
+-- T90 (docs/SPEC-next.md 4.2 P0, decision 10): a cooldown belongs to the
+-- FAMILY, not the rank -- Holy Shock R1-R4 and Riptide's ranks share one, so a
+-- cast of R4 blocks R3. SM.CooldownOf(S, spellID) -> family, seconds: the key
+-- the cooldown is kept under (S.cd[family], Engine/ReplayTrace.lua's
+-- cdUntil[family]) and its length -- the kit entry's `cooldown`, else
+-- SPELL_CD[id]; seconds is nil for a spell with none. `S` is anything carrying
+-- the kit: the engine's slot (S.kit, set by SM:Run) or a ReplayTrace state
+-- (its scenario's kit). The entry is looked up in S.form, then in every form
+-- (a family's cooldown does not change with the form). With no entry the
+-- family is MD.SpellData's, else the id itself. Allocates nothing.
+local KIT_FORMS = { "caster", "tree" }
+local function KitEntry(S, spellID)
+    local kit = S and (S.kit or (S.scenario and S.scenario.kit))
+    if type(kit) ~= "table" then return nil end
+    local list = S.form and kit[S.form]
+    local e = type(list) == "table" and list[spellID] or nil
+    if e then return e end
+    for i = 1, #KIT_FORMS do
+        list = kit[KIT_FORMS[i]]
+        e = type(list) == "table" and list[spellID] or nil
+        if e then return e end
+    end
+    return nil
+end
+
+function SM.CooldownOf(S, spellID)
+    if spellID == nil then return nil, nil end
+    local e = KitEntry(S, spellID)
+    local secs = (e and e.cooldown) or SPELL_CD[spellID]
+    if secs and secs <= 0 then secs = nil end
+    local family = e and e.family
+    if not family then
+        local sd = MD.SpellData and MD.SpellData.spells and MD.SpellData.spells[spellID]
+        family = sd and sd.family
+    end
+    return family or spellID, secs
+end
 
 -- T46 (P2, review B8): which HoT Swiftmend eats, in the order it tries them --
 -- Regrowth first, else Rejuvenation (TBC's rule, Engine/RankMath.lua's
@@ -219,7 +262,7 @@ local function NewSlot()
         threat = {},      -- [target] = UnitThreatSituation 0..3 as of t
         incoming = {},    -- [target] = { at, amount, spellID } -- the soonest cast aimed there
         hots = {},        -- [target][hotIndex] = state table (reused)
-        cd = {},          -- spellID -> time it is ready again
+        cd = {},          -- family -> time it is ready again (T90: SM.CooldownOf's key)
         dmg = {},         -- [target] = { t = {}, a = {}, head = 0 } circular, DMG_RING wide
         byFamily = {}, healByFamily = {}, ohByFamily = {},
         -- deaths as parallel arrays and one reused "lowest" table: a search
@@ -295,6 +338,8 @@ function SM:Run(scenario, plan, opts)
     local critMode = opts.critMode or "ev"
     local crit = (kit and kit.crit) or 0
 
+    -- T90: the kit SM.CooldownOf / SM.Ready read a family and its cooldown from
+    S.kit = kit
     S.dangerHits = MD:Setting("simDangerHits")
     S.floor = floor
 
@@ -354,6 +399,7 @@ function SM:Run(scenario, plan, opts)
     local healed, overhealed, floorSeconds = 0, 0, 0
     local tickCount, bloomCount = 0, 0
     local waitTime, busyUntil = 0, 0
+    local refused = 0           -- T90: plan casts refused for a cooldown
     local deficitArea = 0
     local waitRun, maxWaitRun, maxWaitAt = 0, 0, 0
     -- A healer who was idle does not start the next cast the instant the model
@@ -614,7 +660,12 @@ function SM:Run(scenario, plan, opts)
             paid = paid + (before - mana)
         end
         fsrUntil = t + FSR
-        if SPELL_CD[spellID] then S.cd[spellID] = t + SPELL_CD[spellID] end
+        -- T90: kept per family, so one rank's cast blocks every rank. Every
+        -- cast that SUCCEEDS starts it, a recorded one inside a running
+        -- cooldown included (the recording is the truth: a reset talent, a
+        -- Light's Vigil'd Holy Shock); only a plan's cast is ever refused.
+        local cdFam, cdSecs = SM.CooldownOf(S, spellID)
+        if cdSecs then S.cd[cdFam] = t + cdSecs end
         casts = casts + 1
         local fam = (e and e.family) or "other"
         S.byFamily[fam] = (S.byFamily[fam] or 0) + 1
@@ -999,6 +1050,20 @@ function SM:Run(scenario, plan, opts)
                 end
                 local spellID, ti, rule = plan:Decide(S, t, mana, form)
                 pendingReason = trace and plan.reason or nil
+                -- T90: a PLAN's cast on cooldown is refused -- the game would
+                -- not cast it -- and traced with the plan's reason and when the
+                -- cooldown ends. It costs nothing and takes no global cooldown;
+                -- the plan is asked again exactly as after a wait. Recorded
+                -- casts (the script, the fixed casts) never come through here.
+                if spellID and not SM.Ready(S, spellID, t) then
+                    refused = refused + 1
+                    if trace then
+                        local cdFam = SM.CooldownOf(S, spellID)
+                        Trace(TK.REFUSED, ti, spellID, S.cd[cdFam] or t)
+                    end
+                    spellID, ti, rule = nil, nil, nil
+                    pendingReason = nil
+                end
                 -- a human at the keyboard has their own reaction time, already
                 -- spent by the time their input reaches the queue (v0.15.0)
                 if spellID and lastWasWait and reaction > 0 and not plan.noReaction then
@@ -1101,6 +1166,7 @@ function SM:Run(scenario, plan, opts)
     r.manaUsed = manaStart - mana + ruleDebt
     r.healed, r.overhealed = healed, overhealed
     r.casts, r.byFamily = casts, S.byFamily
+    r.refused = refused   -- T90: a plan's casts the engine refused for a cooldown
     r.ticks, r.blooms = tickCount, bloomCount
     r.healByFamily, r.ohByFamily = S.healByFamily, S.ohByFamily
     r.manaCurve = S.manaCurve
@@ -1200,8 +1266,12 @@ function SM.RecentDamage(S, ti, t, window)
     return sum
 end
 
+-- Is this spell off cooldown at t? T90: read per family (SM.CooldownOf), so
+-- any rank's cast blocks every rank of it; the signature is unchanged.
 function SM.Ready(S, spellID, t)
-    local at = S.cd and S.cd[spellID]
+    local cd = S and S.cd
+    if not cd then return true end
+    local at = cd[(SM.CooldownOf(S, spellID))]
     return at == nil or at <= t
 end
 

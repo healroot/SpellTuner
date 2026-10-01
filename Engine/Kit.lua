@@ -38,6 +38,7 @@ Kit.FORMS = { "caster", "tree" }
 --     bloom,                               -- lifebloom
 --     swiftmendRejuv, swiftmendRegrowth,   -- instant (Swiftmend)
 --     channelTick, channelTicks,           -- channel (Tranquility)
+--     cooldown,                            -- optional, per family (T90)
 --     dataMissing }                        -- a value the source could not give
 --
 -- A field not in this table is refused by Kit.Validate: a new field is
@@ -54,6 +55,10 @@ Kit.FIELDS = {
     bloom = "number",
     swiftmendRejuv = "number", swiftmendRegrowth = "number",
     channelTick = "number", channelTicks = "number",
+    -- T90 (docs/SPEC-next.md 4.2 P0): optional, on any entry type -- the seconds before
+    -- this FAMILY can be cast again (SM.CooldownOf; one rank's cast blocks
+    -- every rank). Absent, Engine/SimModel.lua's SPELL_CD answers (Swiftmend).
+    cooldown = "number",
     dataMissing = "boolean",
 }
 
