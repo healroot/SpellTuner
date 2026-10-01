@@ -24,7 +24,14 @@
 --      once; 11. leaving combat: FULL with the time to full;
 --   12.-13. T82 (C4, mockup M6): with the theme loaded as the TBC TOC lists
 --      it, the widget is the Forever clock's panel, font and 160 x 4 bar
---      (still the five-second rule), and the unlock preview is in the accent.
+--      (still the five-second rule), and the unlock preview is in the accent;
+--      since T93 the font check reads the three fixed segments, and the
+--      preview is the view's message line over them;
+--   14.-16. T93 (docs/SPEC-next.md 7.1 F2, decisions 14 and 17): the label,
+--      the value and the rest segment keep their x across 59s -> 1:00 ->
+--      >10m; what the segments draw is the line's text byte for byte (`vv`
+--      included); a left-click opens the window out of combat only, and the
+--      mover seam (MD.ClockWidget: ApplyPoint, ResetPosition, Preview).
 -- The stream is real events -- UNIT_SPELLCAST_SUCCEEDED priced by
 -- Data/SpellData.lua, UNIT_POWER_UPDATE, the regen events -- and a scripted
 -- GetManaRegen; nothing in the model is replaced.
@@ -61,8 +68,14 @@ do
     -- T68 (P24): UI/Visibility.lua holds the widget's show/hide rule, so it
     -- loads before UI/Widget.lua, as in SpellTuner_TBC.toc.
     -- T82 (C4): and the theme after the kit, as the TOC lists it since C1.
-    S.Load({ "UI/Style.lua", "UI/Theme_Flat.lua", "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/Visibility.lua",
-        "UI/Widget.lua", "UI/Advisor.lua" }, "SpellTuner", MD)
+    -- T93: the clock's renderer (UI/ClockView.lua) before the widget, as the TOC lists it
+    -- (skipped where the file does not exist, so the parent runs to its verdicts).
+    local files = { "UI/Style.lua", "UI/Theme_Flat.lua", "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/Visibility.lua" }
+    local cv = io.open(S.root .. "/UI/ClockView.lua", "r")
+    if cv then cv:close(); files[#files + 1] = "UI/ClockView.lua" end
+    files[#files + 1] = "UI/Widget.lua"
+    files[#files + 1] = "UI/Advisor.lua"
+    S.Load(files, "SpellTuner", MD)
     MD.RegisterCallback = realReg
     -- T82: the stub's CreateFontString takes no template and SetPoint keeps
     -- nothing (geometry off); while the widget is made, each font string
@@ -77,6 +90,7 @@ do
     end
     FrameMT.SetPoint = function(self, ...)
         self.firstPoint = self.firstPoint or { ... }
+        self.lastPoint = { ... } -- T93: the anchor a region holds now (check 14)
         if realSP then return realSP(self, ...) end
     end
     for _, fn in ipairs(ready) do fn() end
@@ -342,7 +356,12 @@ local function Same3(a, b)
 end
 do
     local P = UI.PALETTE
-    local bar, back, txt = W and W.bar, W and W.barBack, W and W.text
+    local bar, back = W and W.bar, W and W.barBack
+    -- T93 (decision 14, F2): the text is three font strings at fixed places --
+    -- the label in the kit's font from the left edge, the value in its number
+    -- font at a fixed x, the secondary segment right-aligned to the right edge
+    local view = W and W.view
+    local lab, val, sec = view and view.label, view and view.value, view and view.second
     S.Fire("PLAYER_REGEN_DISABLED")
     Cast(HT5)
     S.Tick(0.5)
@@ -357,13 +376,17 @@ do
         and W.border and Same3(W.border, P.border) and W:GetWidth() == 180 and W:GetHeight() == 30
     local function At(r, p, y) return r and r.firstPoint and r.firstPoint[1] == p and r.firstPoint[3] == p
         and r.firstPoint[5] == y end
-    local font = txt and txt.template == UI.FONT and At(txt, "TOP", -4)
+    local function Left(r, p, y) return r and r.firstPoint and r.firstPoint[1] == p and r.firstPoint[2] == W
+        and r.firstPoint[3] == p and r.firstPoint[5] == y end
+    local font = lab and lab.template == UI.FONT and Left(lab, "TOPLEFT", -4)
+        and val and val.template == UI.FONT_NUM and Left(val, "TOPLEFT", -4)
+        and sec and sec.template == UI.FONT and Left(sec, "TOPRIGHT", -4)
     local slot = bar and bar:GetWidth() == 160 and bar:GetHeight() == 4 and At(bar, "BOTTOM", 5)
         and back and back:GetWidth() == 160 + 2 * e and back:GetHeight() == 4 + 2 * e
         and back.color and back.color[1] == 0 and back.color[2] == 0 and back.color[3] == 0 and back.color[4] == 1
     local rule = Same3(inRule, { 1, 0.67, 0.2 }) and type(ruleValue) == "number" and ruleValue < 5
         and Same3(after, { 0.2, 1, 0.4 }) and afterValue == 5
-    check("widget: the kit's panel, font and a 160 x 4 five-second-rule bar (themed)",
+    check("widget: the kit's panel, fonts in fixed segments, a 160 x 4 5SR bar (themed)",
         UI.THEMED == true and panel and font and slot and rule,
         string.format("themed=%s panel=%s font=%s slot=%s rule=%s (%s -> %s)", tostring(UI.THEMED),
             tostring(panel), tostring(font), tostring(slot), tostring(rule), tostring(ruleValue),
@@ -375,7 +398,10 @@ end
 -- accent bar; locked again, the clock's text is back in the theme's `text`.
 --------------------------------------------------------------------------------
 do
-    local bar, txt = W.bar or {}, W.text or {} -- {} on a widget without them: a FAIL, not a raise
+    -- T93: the preview is the view's own centred message line (`msg`); the
+    -- three segments are hidden under it and back after
+    local view = W.view or {}
+    local bar, txt = W.bar or {}, view.msg or {} -- {} on a widget without them: a FAIL, not a raise
     MD:ForceWidgetPreview(60)
     S.Tick(0.5)
     local accent = { UI.RGB("accent") }
@@ -383,14 +409,158 @@ do
     local previewColor = txt.textColor
     local barOk = bar.value == 5 and Same3(bar.barColor, accent)
     local shownNow = W:IsShown()
+    local segsHidden = view.label ~= nil and not view.label:IsShown() and txt.shown == true
     MD:ForceWidgetPreview(0)
     S.Tick(0.5)
-    local back = txt.text ~= "SpellTuner - drag me" and Same3(txt.textColor, { UI.RGB("text") })
+    local back = segsHidden and txt.shown == false and view.label:IsShown()
+        and (view.label.text == "OOM" or view.label.text == "FULL")
     check("widget: the unlock text is in the accent, over a full accent bar",
         previewText == "SpellTuner - drag me" and Same3(previewColor, accent) and barOk and shownNow and back,
         string.format("%s %s bar=%s shown=%s back=%s", tostring(previewText),
             previewColor and table.concat(previewColor, ",") or "-", tostring(barOk), tostring(shownNow),
             tostring(back)))
+end
+
+--------------------------------------------------------------------------------
+-- 14.-16. T93 (docs/SPEC-next.md 7.1 F2, decisions 14 and 17): the clock's
+-- text drawn in three fixed segments by UI/ClockView.lua. The widget paints
+-- MD:GetClockFace(); here that call answers chosen faces, so the paint can be
+-- read at exactly 59s, 1:00 and >10m.
+--------------------------------------------------------------------------------
+local CF = MD.ClockFace
+local view = W.view or {}
+local function Seg(fs)
+    if not fs or not fs:IsShown() then return nil end
+    local t = fs.text
+    if t == nil or t == "" then return nil end
+    return Plain(t)
+end
+-- what the widget shows, read back from its font strings
+local function Drawn()
+    local l, v, s = Seg(view.label), Seg(view.value), Seg(view.second)
+    local out = l or ""
+    if v then out = out .. " " .. v end
+    if s then out = out .. "  " .. s end
+    return out
+end
+local realFace = MD.GetClockFace
+local function PaintFace(face)
+    MD.GetClockFace = function() return face end
+    S.Tick(0.5)
+    MD.GetClockFace = realFace
+end
+local function OomFace(v, tone)
+    return { mode = "oom", label = "OOM", value = v, known = "point", tone = tone, arrow = "v", combat = true,
+        modelled = false, mono = false, unstable = false, timeFmt = "auto",
+        second = { kind = "rest", label = "rest", value = 130 } }
+end
+
+do
+    -- every anchor set from here on is recorded on the region (lastPoint), as
+    -- during the build; an anchor never set again keeps the build's
+    local FrameMT = getmetatable(UIParent)
+    local realSP = rawget(FrameMT, "SetPoint")
+    local sets = 0
+    FrameMT.SetPoint = function(self, ...)
+        if self == view.label or self == view.value or self == view.second then sets = sets + 1 end
+        self.lastPoint = { ... }
+        if realSP then return realSP(self, ...) end
+    end
+    local function Anchors()
+        local out, regions = {}, { view.label, view.value, view.second }
+        for i = 1, 3 do
+            local fs = regions[i]
+            local p = fs and fs.lastPoint
+            out[i] = p and { p[1], p[2], p[3], p[4], p[5] } or {}
+        end
+        return out
+    end
+    local seen, texts = {}, {}
+    for _, f in ipairs({ OomFace(59, "warn"), OomFace(60, "normal"), OomFace(900, "normal") }) do
+        PaintFace(f)
+        seen[#seen + 1] = Anchors()
+        texts[#texts + 1] = { Seg(view.label), Seg(view.value), Seg(view.second) }
+    end
+    FrameMT.SetPoint = realSP
+    local fixed = #seen == 3 and view.label ~= nil
+    for i = 1, 3 do
+        local a = seen[1][i]
+        -- each segment hangs on the widget itself, never on another segment
+        if a[2] ~= W or type(a[4]) ~= "number" then fixed = false end
+        for k = 2, 3 do
+            local b = seen[k][i]
+            for j = 1, 5 do if a[j] ~= b[j] then fixed = false end end
+        end
+    end
+    local words = texts[1][1] == "OOM" and texts[2][1] == "OOM" and texts[3][1] == "OOM"
+        and texts[1][2] == "59s v" and texts[2][2] == "1:00 v" and texts[3][2] == ">10m v"
+        and texts[1][3] == "rest 2:10" and texts[3][3] == "rest 2:10"
+    check("T93: label, value, rest at fixed x on the widget across 59s -> 1:00 -> >10m",
+        fixed and words and sets == 0,
+        string.format("fixed=%s words=%s re-anchored=%d (%s | %s | %s)", tostring(fixed), tostring(words), sets,
+            tostring(texts[1] and texts[1][2]), tostring(texts[2] and texts[2][2]), tostring(texts[3] and texts[3][2])))
+end
+
+do
+    -- every sample face, and the three above: the drawn words are the line's
+    -- bytes (colour codes aside), the crit band's "vv" included
+    local faces = { OomFace(59, "warn"), OomFace(60, "normal"), OomFace(900, "normal") }
+    for _, smp in ipairs(CF and CF.SAMPLES or {}) do faces[#faces + 1] = smp.face end
+    local bad, sawVV = nil, false
+    for _, f in ipairs(faces) do
+        PaintFace(f)
+        local want = Plain(CF.LineString(f))
+        local got = Drawn()
+        if got ~= want then bad = bad or string.format("%q drawn as %q", want, got) end
+        if got == "OOM 15s vv" then sawVV = true end
+    end
+    check("T93: the drawn segments are the line's text byte for byte, 'OOM 15s vv' included",
+        #faces > 3 and view.label ~= nil and bad == nil and sawVV, bad)
+    S.Tick(0.5) -- the real face again
+end
+
+do
+    -- decision 17: a left-click opens the window out of combat only, as on
+    -- Forever; and the mover seam (ApplyPoint, ResetPosition, Preview) the
+    -- TBC widget exposes as MD.ClockWidget, the Forever clock as the same name
+    local calls = 0
+    local orig = MD.ToggleDashboard
+    MD.ToggleDashboard = function() calls = calls + 1 end
+    local up = W:GetScript("OnMouseUp")
+    MD.db.locked = true
+    MD.inCombat = false
+    if up then up(W, "LeftButton") end
+    local outOk = calls == 1
+    MD.inCombat = true
+    if up then up(W, "LeftButton") end
+    local inNot = calls == 1
+    MD.inCombat = false
+    MD.ToggleDashboard = orig
+
+    local M = MD.ClockWidget
+    local seam = type(M) == "table" and type(M.ApplyPoint) == "function" and type(M.ResetPosition) == "function"
+        and type(M.Preview) == "function" and M.frame == W
+    local reset, preview = false, false
+    if seam then
+        MD.db.pos = { "TOPLEFT", "TOPLEFT", 10, -10 }
+        M:ResetPosition()
+        local d = MD.DEFAULTS.pos
+        reset = MD.db.pos[1] == d[1] and MD.db.pos[2] == d[2] and MD.db.pos[3] == d[3] and MD.db.pos[4] == d[4]
+            and MD.db.pos ~= d
+        S.mana = S.manaMax
+        S.Fire("UNIT_POWER_UPDATE", "player", "MANA")
+        Ticks(2)
+        local hidden = not W:IsShown()
+        M:Preview(60)
+        preview = hidden and W:IsShown()
+        M:Preview(0)
+        Ticks(1)
+        preview = preview and not W:IsShown()
+    end
+    check("T93: left-click opens the window out of combat only; the mover seam (MD.ClockWidget)",
+        up ~= nil and outOk and inNot and seam and reset and preview,
+        string.format("out=%s inCombat=%s seam=%s reset=%s preview=%s", tostring(outOk), tostring(inNot),
+            tostring(seam), tostring(reset), tostring(preview)))
 end
 
 -- every rendered string: ASCII, no bare pipe

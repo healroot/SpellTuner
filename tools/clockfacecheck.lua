@@ -28,7 +28,11 @@
 --      is provided as ClockFace.Current, LineString of its face IS the string,
 --      the "vv" crit face and the "nodata" face are what the spec names;
 --   4. ClockFace.SAMPLES: every sample, as TBC and as Forever would draw it,
---      ASCII, no bare pipe, no "nil", and a missing value never a 0.
+--      ASCII, no bare pipe, no "nil", and a missing value never a 0;
+--   5. T93 (docs/SPEC-next.md 7.3 "When", F3): MD.Visibility.Want with a show
+--      rule -- the default rule is the parent's Want on every case, however
+--      it is asked; ooc = "never" (beside "always" and combat "never");
+--      manaUsersOnly. UI/Visibility.lua loaded with Lua's library only.
 --
 -- `--print` prints the transcript; `--golden` prints the golden blocks to paste.
 HARNESS_FLAVOUR = { "tbc", "forever" }
@@ -565,6 +569,131 @@ else
     check("4. SAMPLES: every preview chip", false, "absent")
     check("4b. SAMPLES: ASCII, no bare pipe, no nil, nil never 0, ~ kept", false, "absent")
     check("4c. the crit sample is TBC's `OOM 15s vv`", false, "absent")
+end
+
+--------------------------------------------------------------------------------
+-- 5. T93 (docs/SPEC-next.md 7.3 "When", F3): MD.Visibility.Want takes a show
+-- rule. UI/Visibility.lua is pure, so it is loaded here the way section 1
+-- loads the face -- Lua's library only -- and asked directly. The oracle is
+-- the parent's Want, copied verbatim from UI/Visibility.lua at 231525d.
+--------------------------------------------------------------------------------
+do
+    local OLD_SHOW, OLD_HIDE = 0.90, 0.95
+    local function OldWant(pct, shown, inCombat, unlocked)
+        if unlocked then return true end
+        if inCombat then return true end
+        if type(pct) ~= "number" then return false end
+        if shown then return pct <= OLD_HIDE end
+        return pct < OLD_SHOW
+    end
+
+    local V, vErr
+    local chunk, err = loadfile(S.root .. "/UI/Visibility.lua")
+    if chunk then
+        local env = setmetatable({ type = type, pairs = pairs, ipairs = ipairs, math = math, string = string,
+            tostring = tostring, error = error, setmetatable = setmetatable, rawget = rawget },
+            { __index = function(_, k) error("global " .. tostring(k), 2) end })
+        setfenv(chunk, env)
+        local fakeMD = {}
+        local okLoad, e = pcall(chunk, "SpellTuner", fakeMD)
+        if okLoad then V = fakeMD.Visibility else vErr = tostring(e) end
+    else
+        vErr = tostring(err)
+    end
+
+    local PCTS = { "nil", 0, 0.5, 0.89, 0.8999, 0.9, 0.93, 0.95, 0.9501, 1 }
+    local function Each(fn)
+        for _, p in ipairs(PCTS) do
+            local pct = (p ~= "nil") and p or nil
+            for _, shown in ipairs({ false, true }) do
+                for _, ic in ipairs({ false, true }) do
+                    for _, un in ipairs({ false, true }) do
+                        local bad = fn(pct, shown, ic, un)
+                        if bad then return bad end
+                    end
+                end
+            end
+        end
+    end
+    local function Case(pct, shown, ic, un)
+        return string.format("pct=%s shown=%s combat=%s unlocked=%s", tostring(pct), tostring(shown),
+            tostring(ic), tostring(un))
+    end
+
+    -- 5. the default rule is today's rule on every case, however it is asked
+    local bad5
+    if V and type(V.Want) == "function" and type(V.DEFAULT_RULE) == "table" then
+        bad5 = Each(function(pct, shown, ic, un)
+            local want = OldWant(pct, shown, ic, un)
+            local asks = {
+                { "4 args", V.Want(pct, shown, ic, un) },
+                { "rule nil", V.Want(pct, shown, ic, un, nil) },
+                { "DEFAULT_RULE", V.Want(pct, shown, ic, un, V.DEFAULT_RULE) },
+                { "DEFAULT_RULE, a mana user", V.Want(pct, shown, ic, un, V.DEFAULT_RULE, true) },
+                { "an empty rule", V.Want(pct, shown, ic, un, {}) },
+            }
+            for _, a in ipairs(asks) do
+                if a[2] ~= want then return Case(pct, shown, ic, un) .. " " .. a[1] .. ": " .. tostring(a[2]) end
+            end
+        end)
+    else
+        bad5 = vErr or "no Visibility.Want with a DEFAULT_RULE"
+    end
+    check("5. Visibility.Want's default rule is today's rule (" .. (#PCTS * 8) .. " cases x 5 ways of asking)",
+        bad5 == nil, bad5)
+
+    -- 5b. ooc = "never": out of combat never, in combat and while unlocked as before;
+    -- its siblings ooc = "always" and combat = "never"
+    local bad5b
+    if V and type(V.DEFAULT_RULE) == "table" then
+        local function Rule(over)
+            local r = {}
+            for k, v in pairs(V.DEFAULT_RULE) do r[k] = v end
+            for k, v in pairs(over) do r[k] = v end
+            return r
+        end
+        local never, always, noCombat = Rule({ ooc = "never" }), Rule({ ooc = "always" }), Rule({ combat = "never" })
+        bad5b = Each(function(pct, shown, ic, un)
+            local n = V.Want(pct, shown, ic, un, never)
+            local a = V.Want(pct, shown, ic, un, always)
+            local c = V.Want(pct, shown, ic, un, noCombat)
+            local wantN = un or ic
+            local wantA = true
+            local wantC = un or (not ic and OldWant(pct, shown, false, false))
+            if n ~= wantN or a ~= wantA or c ~= wantC then
+                return Case(pct, shown, ic, un) .. string.format(" never=%s always=%s combat-never=%s",
+                    tostring(n), tostring(a), tostring(c))
+            end
+        end)
+    else
+        bad5b = vErr or "no DEFAULT_RULE"
+    end
+    check("5b. ooc = \"never\" hides out of combat at any mana (ooc \"always\", combat \"never\" beside it)",
+        bad5b == nil, bad5b)
+
+    -- 5c. manaUsersOnly: a character with no mana pool gets no clock, in combat
+    -- included, unless it is being placed; off, the old answer; a mana user
+    -- (or an unknown) is untouched
+    local bad5c
+    if V and type(V.DEFAULT_RULE) == "table" and V.DEFAULT_RULE.manaUsersOnly == true then
+        local off = {}
+        for k, v in pairs(V.DEFAULT_RULE) do off[k] = v end
+        off.manaUsersOnly = false
+        bad5c = Each(function(pct, shown, ic, un)
+            local old = OldWant(pct, shown, ic, un)
+            local noPool = V.Want(pct, shown, ic, un, V.DEFAULT_RULE, false)
+            local noPoolOff = V.Want(pct, shown, ic, un, off, false)
+            local user = V.Want(pct, shown, ic, un, V.DEFAULT_RULE, true)
+            if noPool ~= un or noPoolOff ~= old or user ~= old then
+                return Case(pct, shown, ic, un) .. string.format(" noPool=%s off=%s user=%s",
+                    tostring(noPool), tostring(noPoolOff), tostring(user))
+            end
+        end)
+    else
+        bad5c = vErr or "DEFAULT_RULE.manaUsersOnly is not on"
+    end
+    check("5c. manaUsersOnly (on by default): no mana pool, no clock -- in combat too, unless being placed",
+        bad5c == nil, bad5c)
 end
 
 print(string.format("\n%d ok, %d failed", ok, #fails))

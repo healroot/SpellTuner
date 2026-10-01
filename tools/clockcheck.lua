@@ -6,6 +6,9 @@
 -- widget and its hover, painting the pool). Forever only:
 -- the modelled pool exists because current mana is secret on this client
 -- (Facts); nothing here is meaningful on TBC, which reads UnitPower directly.
+-- T93 (docs/SPEC-next.md 7.1): the clock's text is UI/ClockView.lua's three
+-- segments (read back through ClockText below), and the Forever gaps F1, F3-F6
+-- and the mover seam are held near the end.
 HARNESS_FLAVOUR = "forever"
 
 local here = arg[0]:match("^(.*)/[^/]+$")
@@ -157,6 +160,31 @@ end
 local Clock = MD.Clock
 local Pool = MD.Pool
 local model = Pool and Pool.model
+
+-- T93: the clock's words as drawn, colour codes removed. Since T93 the text is
+-- three font strings at fixed places (UI/ClockView.lua: label, value,
+-- secondary), or the preview's message line over them; before it, one font
+-- string (Clock.text). The same words either way: label, one space, the value,
+-- two spaces, the secondary.
+local function StripCodes(s) return (s:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) end
+local function ClockText()
+    local v = Clock.view
+    if v then
+        if v.msg and v.msg:IsShown() then return StripCodes(v.msg:GetText()) end
+        local function Seg(fs)
+            if not fs or not fs:IsShown() then return nil end
+            local t = fs:GetText()
+            if t == nil or t == "" then return nil end
+            return StripCodes(t)
+        end
+        local l, val, s = Seg(v.label), Seg(v.value), Seg(v.second)
+        local out = l or ""
+        if val then out = out .. " " .. val end
+        if s then out = out .. "  " .. s end
+        return out
+    end
+    return Clock.text and Clock.text:GetText() or ""
+end
 
 -- item 1: assumed full at login.
 check("the pool starts full at login and says it was assumed",
@@ -391,7 +419,7 @@ do
     check("every projection is marked modelled, in the text and the hover",
         item7TextOk and hoverOk, string.format("textHalf=%s hoverHalf=%s", tostring(item7TextOk), tostring(hoverOk)))
 
-    local widgetText = Clock.text and Clock.text:GetText() or ""
+    local widgetText = ClockText()
     check("every string the clock renders is ASCII with no bare pipe",
         allAscii and AsciiClean(widgetText))
 end
@@ -418,14 +446,14 @@ S.inCombat = true
 S.Fire("PLAYER_REGEN_DISABLED")
 S.Cast(5176) -- Wrath, cost 20 -- one cast in, still inside the warmup window
 S.Tick(0.5)
-print("warmup: " .. Clock.text:GetText())
+print("warmup: " .. ClockText())
 print("  " .. HoverText())
 
 for i = 1, 40 do
     S.Cast(5176) -- Wrath, cost 20
     S.Tick(0.5)
 end
-print("oom: " .. Clock.text:GetText())
+print("oom: " .. ClockText())
 print("  " .. HoverText())
 
 -- T76 (P32, review U9): the hover as label / value pairs, read at a moment.
@@ -444,7 +472,7 @@ local function SameColour(c, token)
     local r, g, b = MD.UI.RGB(token)
     return type(c) == "table" and c[1] == r and c[2] == g and c[3] == b
 end
-local oomText = Clock.text:GetText()
+local oomText = ClockText()
 local oomPairs = HoverPairs()
 local skinnedWhileShown = MD.Tip ~= nil and MD.Tip.Skinned ~= nil and MD.Tip:Skinned(GameTooltip)
 Clock.frame:GetScript("OnLeave")(Clock.frame)
@@ -453,9 +481,9 @@ local skinnedAfter = MD.Tip ~= nil and MD.Tip.Skinned ~= nil and MD.Tip:Skinned(
 S.Fire("PLAYER_REGEN_ENABLED")
 S.inCombat = false
 S.Tick(0.5)
-print("after combat: " .. Clock.text:GetText())
+print("after combat: " .. ClockText())
 print("  " .. HoverText())
-local oocText = Clock.text:GetText()
+local oocText = ClockText()
 local oocPairs = HoverPairs()
 Clock.frame:GetScript("OnLeave")(Clock.frame)
 
@@ -569,7 +597,7 @@ do
     MD:Fire("MD_READY") -- what PLAYER_LOGIN runs after a /reload
     local m = Pool.model
     S.Tick(0.5)
-    local text = Clock.text and Clock.text:GetText() or ""
+    local text = ClockText()
     local fightGood = m ~= model and m.fight ~= nil
     local shownGood = Clock.frame ~= nil and Clock.frame:IsShown()
     local wordGood = text:find("~OOM", 1, true) ~= nil and text:find("FULL", 1, true) == nil
@@ -655,12 +683,12 @@ do
     end
     if lock then lock:SetChecked(false); lock.onClick(false, lock) end
     local at0 = w:IsShown()
-    local word0 = Clock.text and Clock.text:GetText() or ""
+    local word0 = ClockText()
     S.Tick(59)
     local at59 = w:IsShown()
     S.Tick(1.5)
     local after = not w:IsShown()
-    local word1 = Clock.text and Clock.text:GetText() or ""
+    local word1 = ClockText()
     local frame = _G.SpellTunerDashboard
     if frame then frame:Hide() end
 
@@ -710,6 +738,187 @@ do
         down ~= nil and up ~= nil and clicked and dragNot and rightNot and combatNot and says,
         string.format("calls=%d clicked=%s drag=%s right=%s combat=%s hover=%s", calls, tostring(clicked),
             tostring(dragNot), tostring(rightNot), tostring(combatNot), tostring(says)))
+end
+
+--------------------------------------------------------------------------------
+-- T93 (docs/SPEC-next.md 7.1, F1 and F3-F6; decisions 16 and 18): the Forever
+-- clock's gaps. The clock paints MD.ManaModel.Face of the pool's projection;
+-- here the projection answers chosen states, so a paint can be read at 10 s,
+-- 45 s, 25 s. The words are UI/ClockView.lua's three segments.
+--------------------------------------------------------------------------------
+local CFace = MD.ClockFace
+local function HexRGB(hex)
+    local h = hex and hex:match("^|cff(%x%x%x%x%x%x)$")
+    if not h then return nil end
+    return tonumber(h:sub(1, 2), 16) / 255, tonumber(h:sub(3, 4), 16) / 255, tonumber(h:sub(5, 6), 16) / 255
+end
+local function Toned(fs, tone)
+    local r, g, b = HexRGB(CFace and CFace.HEX and CFace.HEX[tone])
+    local c = fs and fs.textColor
+    return r ~= nil and type(c) == "table" and math.abs(c[1] - r) < 1e-6 and math.abs(c[2] - g) < 1e-6
+        and math.abs(c[3] - b) < 1e-6
+end
+local realProject = Pool.Project
+local function WithState(st, fn)
+    Pool.Project = function(self, now)
+        local s = {}
+        for k, v in pairs(st) do s[k] = v end
+        s.mana, s.max = s.mana or model.mana, s.max or model.max
+        return s
+    end
+    local ok2, err = pcall(fn)
+    Pool.Project = realProject
+    if not ok2 then error(err, 0) end
+end
+local view = Clock.view or {}
+
+do
+    -- F1: the band's tones, TBC's literals (decision 16); never an arrow on Forever
+    local r = {}
+    MD.db.clock.shown = true
+    WithState({ mode = "oom", tto = 12 }, function()
+        Clock:Refresh()
+        r.crit = { ClockText(), Toned(view.label, "crit"), Toned(view.value, "crit") }
+    end)
+    WithState({ mode = "oom", tto = 45 }, function()
+        Clock:Refresh()
+        r.warn = { ClockText(), Toned(view.label, "muted"), Toned(view.value, "warn") }
+    end)
+    WithState({ mode = "oom", tto = 80 }, function()
+        Clock:Refresh()
+        r.normal = { ClockText(), Toned(view.label, "muted"), Toned(view.value, "normal") }
+    end)
+    local okCrit = r.crit[1] == "~OOM 0:10" and r.crit[2] and r.crit[3]
+    local okWarn = r.warn[1] == "~OOM 0:45" and r.warn[2] and r.warn[3]
+    local okNormal = r.normal[1] == "~OOM 1:20" and r.normal[2] and r.normal[3]
+    check("T93 F1: ~OOM 0:10 crit-toned with no arrow (0:45 amber, 1:20 white, labels muted)",
+        okCrit and okWarn and okNormal,
+        string.format("crit=%q %s/%s warn=%q %s/%s normal=%q %s/%s", tostring(r.crit[1]), tostring(r.crit[2]),
+            tostring(r.crit[3]), tostring(r.warn[1]), tostring(r.warn[2]), tostring(r.warn[3]),
+            tostring(r.normal[1]), tostring(r.normal[2]), tostring(r.normal[3])))
+end
+
+do
+    -- F3: a character with no mana pool (a warrior, a rogue) gets no clock,
+    -- in combat included; with a pool, the clock as before
+    local w = Clock.frame
+    local keep = MD.player.usesMana
+    MD.db.clock.shown = true
+    S.inCombat = true
+    S.Fire("PLAYER_REGEN_DISABLED")
+    MD.player.usesMana = false
+    Clock:Refresh()
+    local warriorHidden = not w:IsShown()
+    MD.player.usesMana = true
+    Clock:Refresh()
+    local healerShown = w:IsShown()
+    MD.player.usesMana = false
+    Clock:Preview()
+    local placedShown = w:IsShown()                     -- being placed: shown, whatever the class
+    Clock:SetLocked(true)
+    S.Fire("PLAYER_REGEN_ENABLED")
+    S.inCombat = false
+    MD.player.usesMana = keep
+    Clock:Refresh()
+    check("T93 F3: a Forever warrior has no clock in combat (a mana user does; a preview still shows)",
+        warriorHidden and healerShown and placedShown,
+        string.format("warrior hidden=%s healer shown=%s preview shown=%s", tostring(warriorHidden),
+            tostring(healerShown), tostring(placedShown)))
+end
+
+do
+    -- F4: click-through takes no mouse, except while the clock is being placed
+    local FrameMT = getmetatable(UIParent)
+    local realEM = rawget(FrameMT, "EnableMouse")
+    FrameMT.EnableMouse = function(self, on) self.mouseOn = on and true or false end
+    local w = Clock.frame
+    local isDefault = MD.db.clock.clickThrough == false
+    MD.db.clock.clickThrough = true
+    Clock:Refresh()
+    local through = w.mouseOn == false
+    Clock:Preview()
+    local placing = w.mouseOn == true
+    Clock:SetLocked(true)
+    MD.db.clock.clickThrough = false
+    Clock:Refresh()
+    local back = w.mouseOn == true
+    FrameMT.EnableMouse = realEM
+    check("T93 F4: click-through takes no mouse (off by default; on while being placed)",
+        isDefault and through and placing and back,
+        string.format("default off=%s through=%s placing=%s back=%s", tostring(isDefault), tostring(through),
+            tostring(placing), tostring(back)))
+end
+
+do
+    -- F5: one pulse per fight, the first time the clock reads under 30 s; and
+    -- MD:PulseWidget (MD:Alert's) pulses it while shown
+    local pulse = view.pulse
+    local n0 = pulse and pulse.plays or 0
+    MD.db.clock.shown = true
+    S.inCombat = true
+    S.Fire("PLAYER_REGEN_DISABLED")
+    local seq = {}
+    for _, t in ipairs({ 45, 25, 20, 12 }) do
+        WithState({ mode = "oom", tto = t }, function() Clock:Refresh() end)
+        seq[#seq + 1] = (pulse and pulse.plays or 0) - n0
+    end
+    S.Fire("PLAYER_REGEN_ENABLED")
+    S.Fire("PLAYER_REGEN_DISABLED")
+    WithState({ mode = "oom", tto = 25 }, function() Clock:Refresh() end)
+    local second = (pulse and pulse.plays or 0) - n0
+    local beforeAlert = pulse and pulse.plays or 0
+    if MD.PulseWidget then MD:PulseWidget() end
+    local alerted = pulse ~= nil and pulse.plays == beforeAlert + 1
+    S.Fire("PLAYER_REGEN_ENABLED")
+    S.inCombat = false
+    Clock:Refresh()
+    check("T93 F5: one pulse under 30 s per fight; MD:PulseWidget pulses the Forever clock",
+        pulse ~= nil and seq[1] == 0 and seq[2] == 1 and seq[3] == 1 and seq[4] == 1 and second == 2 and alerted,
+        string.format("plays %s, next fight %s, alert %s", table.concat(seq, ","), tostring(second), tostring(alerted)))
+end
+
+do
+    -- F6: the rest segment can be turned off (db.clock.showRest, on by default)
+    local isDefault = MD.db.clock.showRest == true
+    local on, off, secHidden
+    WithState({ mode = "oom", tto = 80, rest = 200 }, function()
+        Clock:Refresh()
+        on = ClockText()
+        MD.db.clock.showRest = false
+        Clock:Refresh()
+        off = ClockText()
+        secHidden = view.second ~= nil and not view.second:IsShown()
+        MD.db.clock.showRest = true
+        Clock:Refresh()
+    end)
+    check("T93 F6: the rest segment off (db.clock.showRest, on by default)",
+        isDefault and on == "~OOM 1:20  rest 3:20" and off == "~OOM 1:20" and secHidden,
+        string.format("default=%s on=%q off=%q second hidden=%s", tostring(isDefault), tostring(on), tostring(off),
+            tostring(secHidden)))
+end
+
+do
+    -- the mover seam (docs/SPEC-next.md 6.3): ApplyPoint, ResetPosition and
+    -- Preview on the clock, the same names the TBC widget exposes, as MD.ClockWidget
+    local w = Clock.frame
+    local realSP, realCAP = w.SetPoint, w.ClearAllPoints
+    local last
+    w.SetPoint = function(self, ...) last = { ... } end
+    w.ClearAllPoints = function() last = nil end
+    local saved = MD.db.clock.point
+    MD.db.clock.point = { "CENTER", nil, "CENTER", 40, -30 }
+    local seam = MD.ClockWidget == Clock and type(Clock.ApplyPoint) == "function"
+        and type(Clock.ResetPosition) == "function" and type(Clock.Preview) == "function" and Clock.frame == w
+    if seam then Clock:ApplyPoint() end
+    local applied = last ~= nil and last[1] == "CENTER" and last[2] == UIParent and last[3] == "CENTER"
+        and last[4] == 40 and last[5] == -30
+    if seam then Clock:ResetPosition() end
+    local reset = MD.db.clock.point == nil and last ~= nil and last[1] == "TOP" and last[5] == -120
+    w.SetPoint, w.ClearAllPoints = realSP, realCAP
+    MD.db.clock.point = saved
+    check("T93: the mover seam (ApplyPoint, ResetPosition, Preview) as MD.ClockWidget",
+        seam and applied and reset,
+        string.format("seam=%s applied=%s reset=%s", tostring(seam), tostring(applied), tostring(reset)))
 end
 
 --------------------------------------------------------------------------------
