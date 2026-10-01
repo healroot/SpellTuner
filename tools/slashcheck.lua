@@ -63,6 +63,27 @@ do
     end
 end
 
+-- T102 (docs/SPEC-next.md 2.5, 7.4): UI/ClockSettings.lua registers `clock
+-- layout`, `clock look` and `clock preview` with MD:AddSubcommand, which on
+-- TBC (no `clock` verb of its own) creates `/md clock`. It is loaded here as
+-- SpellTuner_TBC.toc lists it (after UI/ClockView.lua and UI/Widget.lua, which
+-- the harness drops too: the renderer is loaded, the widget is not, so
+-- `/md clock preview` says the clock is not loaded). The golden below is
+-- re-based for the new verb: its help and About row, and the seven `clock`
+-- lines in VERBS (no verb whose answer lists the layouts: T104's ring changes
+-- that list).
+do
+    local listed = false
+    for _, rel in ipairs(S.loadedFiles or {}) do if rel == "UI/ClockSettings.lua" then listed = true end end
+    if not listed then
+        local f = io.open((S.root or ".") .. "/UI/ClockSettings.lua", "r")
+        if f then
+            f:close()
+            S.Load({ "UI/ClockView.lua", "UI/ClockSettings.lua" }, "SpellTuner", MD)
+        end
+    end
+end
+
 local out = {}
 _G.DEFAULT_CHAT_FRAME = { AddMessage = function(_, m) out[#out + 1] = m end }
 MD.db.debug = MD.db.debug or {}
@@ -151,6 +172,8 @@ local VERBS = {
     "coachrun", "coachrun 1",
     "debug",
     "ui", "ui style", "ui style flat", "ui style Nosuch", "ui reset",
+    "clock", "Clock Layout Bar", "clock layout compact", "clock layout line", "clock look",
+    "clock look reset", "clock preview",
     "nosuch", "  MUTE  ", "Mute", "RUN Start The Underbog",
 }
 
@@ -238,7 +261,7 @@ end
 -- Compare
 --------------------------------------------------------------------------------
 local function Compare(GOLDEN)
-    T.section("the golden transcript (captured on 8c4cc93, re-based by T94 for /md ui style)")
+    T.section("the golden transcript (captured on 8c4cc93, re-based by T94 for /md ui style, by T102 for /md clock)")
     T.check("the golden has every verb of both passes and the About rows", #GOLDEN == #transcript,
         string.format("%d entries, golden %d", #transcript, #GOLDEN))
     local mismatches = {}
@@ -297,8 +320,8 @@ local function Compare(GOLDEN)
         end
     end
     T.check("every chat line and About row is ASCII with no bare pipe", allAscii, why)
-    T.check("the help is its heading and 28 rows (T94: /md ui style)", helpRows == 29,
-        helpRows ~= 29 and (tostring(helpRows) .. " lines") or nil)
+    T.check("the help is its heading and 29 rows (T94: /md ui style; T102: /md clock)", helpRows == 30,
+        helpRows ~= 30 and (tostring(helpRows) .. " lines") or nil)
 
     T.section("T87: the probe on the TBC line")
     local probeRow
@@ -319,6 +342,10 @@ end
 -- `/st ui style <name>` in both helps (and in every pass that prints the help:
 -- the bare verb aside, `nosuch`), the five `ui` verbs, two About lines; every
 -- other line equal to the 8c4cc93 golden (compared with --print before and
+-- after the edit). T102 re-based it the same way (docs/SPEC-next.md 2.5, 7.4):
+-- the new row `/st clock layout <name> / look reset / preview` in both helps
+-- and `nosuch`'s, the seven `clock` verbs of each pass, two About lines; every
+-- other line equal to the T94 golden (compared with --print before and
 -- after the edit).
 --------------------------------------------------------------------------------
 local GOLDEN = {
@@ -355,6 +382,7 @@ local GOLDEN = {
         "|cff9966ffSpellTuner:|r   |cffffff00/st coachrun [n]|r - coach a recorded RUN: one plan and a drink policy for the whole dungeon",
         "|cff9966ffSpellTuner:|r   |cffffff00/st debug|r - toggle the debug console (enable logging there, Copy to export)",
         "|cff9966ffSpellTuner:|r   |cffffff00/st ui style <name>|r - the look of SpellTuner's windows (no name: list the styles)",
+        "|cff9966ffSpellTuner:|r   |cffffff00/st clock layout <name> / look reset / preview|r - the mana clock's layout (Settings -> Clock shows each); every clock colour and bar setting back to the look's own; the clock on screen for 60 s, to see or move it",
     } },
     { cmd = "spied /md options", lines = {
         "call MD:ShowOptionsFrame()",
@@ -557,6 +585,29 @@ local GOLDEN = {
     { cmd = "spied /md ui reset", lines = {
         "|cff9966ffSpellTuner:|r usage: /st ui style <name>",
     } },
+    { cmd = "spied /md clock", lines = {
+        "|cff9966ffSpellTuner:|r usage: /st clock layout <name>",
+        "|cff9966ffSpellTuner:|r usage: /st clock look reset",
+        "|cff9966ffSpellTuner:|r usage: /st clock preview",
+    } },
+    { cmd = "spied /md Clock Layout Bar", lines = {
+        "|cff9966ffSpellTuner:|r mana clock: layout bar",
+    } },
+    { cmd = "spied /md clock layout compact", lines = {
+        "|cff9966ffSpellTuner:|r mana clock: layout compact",
+    } },
+    { cmd = "spied /md clock layout line", lines = {
+        "|cff9966ffSpellTuner:|r mana clock: layout line",
+    } },
+    { cmd = "spied /md clock look", lines = {
+        "|cff9966ffSpellTuner:|r usage: /st clock look reset",
+    } },
+    { cmd = "spied /md clock look reset", lines = {
+        "|cff9966ffSpellTuner:|r mana clock: every colour and bar setting back to the look's own",
+    } },
+    { cmd = "spied /md clock preview", lines = {
+        "|cff9966ffSpellTuner:|r mana clock: not loaded",
+    } },
     { cmd = "spied /md nosuch", lines = {
         "|cff9966ffSpellTuner:|r commands:",
         "|cff9966ffSpellTuner:|r   |cffffff00/st|r - toggle the rank dashboard",
@@ -587,6 +638,7 @@ local GOLDEN = {
         "|cff9966ffSpellTuner:|r   |cffffff00/st coachrun [n]|r - coach a recorded RUN: one plan and a drink policy for the whole dungeon",
         "|cff9966ffSpellTuner:|r   |cffffff00/st debug|r - toggle the debug console (enable logging there, Copy to export)",
         "|cff9966ffSpellTuner:|r   |cffffff00/st ui style <name>|r - the look of SpellTuner's windows (no name: list the styles)",
+        "|cff9966ffSpellTuner:|r   |cffffff00/st clock layout <name> / look reset / preview|r - the mana clock's layout (Settings -> Clock shows each); every clock colour and bar setting back to the look's own; the clock on screen for 60 s, to see or move it",
     } },
     { cmd = "spied /md   MUTE  ", lines = {
         "|cff9966ffSpellTuner:|r alerts muted.",
@@ -631,6 +683,7 @@ local GOLDEN = {
         "|cff9966ffSpellTuner:|r   |cffffff00/st coachrun [n]|r - coach a recorded RUN: one plan and a drink policy for the whole dungeon",
         "|cff9966ffSpellTuner:|r   |cffffff00/st debug|r - toggle the debug console (enable logging there, Copy to export)",
         "|cff9966ffSpellTuner:|r   |cffffff00/st ui style <name>|r - the look of SpellTuner's windows (no name: list the styles)",
+        "|cff9966ffSpellTuner:|r   |cffffff00/st clock layout <name> / look reset / preview|r - the mana clock's layout (Settings -> Clock shows each); every clock colour and bar setting back to the look's own; the clock on screen for 60 s, to see or move it",
     } },
     { cmd = "bare /md options", lines = {
     } },
@@ -792,6 +845,29 @@ local GOLDEN = {
     { cmd = "bare /md ui reset", lines = {
         "|cff9966ffSpellTuner:|r usage: /st ui style <name>",
     } },
+    { cmd = "bare /md clock", lines = {
+        "|cff9966ffSpellTuner:|r usage: /st clock layout <name>",
+        "|cff9966ffSpellTuner:|r usage: /st clock look reset",
+        "|cff9966ffSpellTuner:|r usage: /st clock preview",
+    } },
+    { cmd = "bare /md Clock Layout Bar", lines = {
+        "|cff9966ffSpellTuner:|r mana clock: layout bar",
+    } },
+    { cmd = "bare /md clock layout compact", lines = {
+        "|cff9966ffSpellTuner:|r mana clock: layout compact",
+    } },
+    { cmd = "bare /md clock layout line", lines = {
+        "|cff9966ffSpellTuner:|r mana clock: layout line",
+    } },
+    { cmd = "bare /md clock look", lines = {
+        "|cff9966ffSpellTuner:|r usage: /st clock look reset",
+    } },
+    { cmd = "bare /md clock look reset", lines = {
+        "|cff9966ffSpellTuner:|r mana clock: every colour and bar setting back to the look's own",
+    } },
+    { cmd = "bare /md clock preview", lines = {
+        "|cff9966ffSpellTuner:|r mana clock: not loaded",
+    } },
     { cmd = "bare /md nosuch", lines = {
         "|cff9966ffSpellTuner:|r commands:",
         "|cff9966ffSpellTuner:|r   |cffffff00/st|r - toggle the rank dashboard",
@@ -822,6 +898,7 @@ local GOLDEN = {
         "|cff9966ffSpellTuner:|r   |cffffff00/st coachrun [n]|r - coach a recorded RUN: one plan and a drink policy for the whole dungeon",
         "|cff9966ffSpellTuner:|r   |cffffff00/st debug|r - toggle the debug console (enable logging there, Copy to export)",
         "|cff9966ffSpellTuner:|r   |cffffff00/st ui style <name>|r - the look of SpellTuner's windows (no name: list the styles)",
+        "|cff9966ffSpellTuner:|r   |cffffff00/st clock layout <name> / look reset / preview|r - the mana clock's layout (Settings -> Clock shows each); every clock colour and bar setting back to the look's own; the clock on screen for 60 s, to see or move it",
     } },
     { cmd = "bare /md   MUTE  ", lines = {
         "|cff9966ffSpellTuner:|r alerts muted.",
@@ -890,6 +967,8 @@ local GOLDEN = {
         "toggle the debug console (enable logging there, Copy to export)",
         "/st ui style <name>",
         "the look of SpellTuner's windows (no name: list the styles)",
+        "/st clock layout <name> / look reset / preview",
+        "the mana clock's layout (Settings -> Clock shows each); every clock colour and bar setting back to the look's own; the clock on screen for 60 s, to see or move it",
     } },
 }
 Compare(GOLDEN)
