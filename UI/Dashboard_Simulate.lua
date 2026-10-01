@@ -13,6 +13,12 @@
 -- so on the stats line.
 --
 -- Split out of UI/Dashboard.lua; exports a constructor on MD.DashboardParts.
+--
+-- T83 (C3 of docs/PLAN-refactor-ux.md, review U6, mockup M6): the strip folds
+-- behind the Spells view's "What if..." button (UI/SpellsView_TBC.lua places
+-- it and shows it); its title says "What if:", its greys are the theme's
+-- tokens, and api:Active() says whether any what-if value is set (the view's
+-- chip then reads SIMULATED).
 local _, MD = ...
 local UI = MD.UI
 
@@ -54,12 +60,12 @@ function MD.DashboardParts.CreateStrip(parent, x, y, onChange)
     local title = parent:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
     title:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
     title:SetTextColor(UI.accent[1], UI.accent[2], UI.accent[3])
-    title:SetText("Simulate:")
+    title:SetText("What if:")
 
     local function AddBox(key, labelText, phFmt, anchor)
         local label = parent:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
         label:SetPoint("LEFT", anchor, "RIGHT", 10, 0)
-        label:SetTextColor(0.7, 0.7, 0.7)
+        label:SetTextColor(UI.RGB("label"))
         label:SetText(labelText)
 
         local eb = UI.CreateEditBox(parent, 56, 16, false, false, false, UI.FONT_SMALL)
@@ -68,7 +74,7 @@ function MD.DashboardParts.CreateStrip(parent, x, y, onChange)
 
         local ph = parent:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
         ph:SetPoint("LEFT", eb, "LEFT", 4, 0)
-        ph:SetTextColor(0.45, 0.45, 0.45)
+        ph:SetTextColor(UI.RGB("muted"))
 
         local function Apply(self)
             local text = strtrim(self:GetText() or "")
@@ -105,7 +111,7 @@ function MD.DashboardParts.CreateStrip(parent, x, y, onChange)
     ----------------------------------------------------------------------------
     local formLabel = parent:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
     formLabel:SetPoint("TOPLEFT", parent, "TOPLEFT", x + 62, y - ROW_GAP)
-    formLabel:SetTextColor(0.7, 0.7, 0.7)
+    formLabel:SetTextColor(UI.RGB("label"))
     formLabel:SetText("form")
 
     local formButtons, prev = {}, nil
@@ -131,7 +137,7 @@ function MD.DashboardParts.CreateStrip(parent, x, y, onChange)
 
     local mgLabel = parent:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
     mgLabel:SetPoint("LEFT", prev, "RIGHT", 14, 0)
-    mgLabel:SetTextColor(0.7, 0.7, 0.7)
+    mgLabel:SetTextColor(UI.RGB("label"))
     mgLabel:SetText("Moonglow")
 
     local mgBox = UI.CreateEditBox(parent, 34, 16, false, false, false, UI.FONT_SMALL)
@@ -139,7 +145,7 @@ function MD.DashboardParts.CreateStrip(parent, x, y, onChange)
     mgBox:SetTextInsets(3, 3, 0, 0)
     local mgPh = parent:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
     mgPh:SetPoint("LEFT", mgBox, "LEFT", 4, 0)
-    mgPh:SetTextColor(0.45, 0.45, 0.45)
+    mgPh:SetTextColor(UI.RGB("muted"))
 
     local function ApplyMoonglow(self)
         local text = strtrim(self:GetText() or "")
@@ -204,6 +210,9 @@ function MD.DashboardParts.CreateStrip(parent, x, y, onChange)
 
     api.frame = holder
     function api:SetShown(on) if on then holder:Show() else holder:Hide() end end
+    function api:IsShown() return holder:IsShown() and true or false end
+    -- T83: any what-if value set
+    function api:Active() return next(MD.sim) ~= nil end
 
     return api
 end
