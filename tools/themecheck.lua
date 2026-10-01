@@ -54,8 +54,10 @@ local function near(a, b, eps) return type(a) == "number" and type(b) == "number
 --------------------------------------------------------------------------------
 local TOKENS = { "accent", "text", "text2", "label", "muted", "disabled", "mana", "good", "bad" }
 -- TBC's disagreeing literals, each under a named legacy token (P25); the theme
--- maps each onto a 4.1 token. Unifying them is P34's question to the author.
-local LEGACY = { dominated = "muted", note = "text2", tipGold = "accent" }
+-- maps each onto a 4.1 token. T78 (P34, mockup M5): a beaten (dominated)
+-- rank's numbers read `text` on Forever; TBC's own greys unify with the
+-- theme when TBC takes it (wave C, decision 10), so the tbc half is unchanged.
+local LEGACY = { dominated = "text", note = "text2", tipGold = "accent" }
 
 local function shaped(c)
     return type(c) == "table" and type(c[1]) == "number" and type(c[2]) == "number"
@@ -259,9 +261,11 @@ do
         a and near(a[1], UI.accent[1]) and near(a[2], UI.accent[2]) and near(a[3], UI.accent[3])
           and a.hex:lower() == "|cffff7c0a",
         a and a.hex or nil)
-    check("the text tokens' values (text2 b3b3b3, muted 7a7a7a, mana 4d99ff, bad e0605a)",
+    -- T78 (P34, review U7; mockup M5): text2 and label are one grey, the
+    -- lighter B3B3B3 -- one token, `text2` its other name
+    check("the text tokens' values (label = text2 b3b3b3, muted 7a7a7a, mana 4d99ff, bad e0605a)",
         all and T.text.hex:lower() == "|cffffffff" and T.text2.hex:lower() == "|cffb3b3b3"
-          and T.label.hex:lower() == "|cff9d9d9d" and T.muted.hex:lower() == "|cff7a7a7a"
+          and T.label.hex:lower() == "|cffb3b3b3" and T.text2 == T.label and T.muted.hex:lower() == "|cff7a7a7a"
           and T.disabled.hex:lower() == "|cff4d4d4d" and T.mana.hex:lower() == "|cff4d99ff"
           and T.good.hex:lower() == "|cff5ccb6e" and T.bad.hex:lower() == "|cffe0605a")
 end
@@ -278,7 +282,7 @@ do
         if not (shaped(a) and shaped(b) and a.hex == b.hex and near(a[1], b[1]) and near(a[2], b[2])
                 and near(a[3], b[3])) then same = false end
     end
-    check("forever: dominated, note and tipGold read muted, text2 and accent", same)
+    check("forever: dominated, note and tipGold read text, text2 and accent (T78)", same)
     check("forever: UI.Hex / UI.RGB / UI.Fill read the theme",
         UI.Hex and UI.Hex("muted") == "|cff7a7a7a" and UI.RGB and near(select(3, UI.RGB("mana")), 1)
           and UI.Fill and near(select(4, UI.Fill("hover")), 0.12))

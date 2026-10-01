@@ -140,6 +140,27 @@ end
 --                       MD.Tip:Show. A column without one has no hover; the
 --                       TBC rank table's columns have none (its glossary is
 --                       Tip:Columns on the whole header row, unchanged).
+--
+-- T78 (P34, review U1 / U7 / U10; mockup M5), the generic path only, each
+-- off unless asked for:
+--   col.tooltip may also be a function(label) answering the sentence (or the
+--                       lines) for the label the header actually shows (an
+--                       opts.header override included); that label is the
+--                       tooltip's title.
+--   col.cellTooltip(r, row) -- a data row's cell explains itself: over that
+--                       column's cell the function's lines (UI/Tip.lua's line
+--                       model) are shown beside the cell. Asked when the row
+--                       is drawn: nil there and the cell has no hover of its
+--                       own (the row's hover, its click, a button the render
+--                       put there all reach the row); asked again on hover,
+--                       where nil falls back to the row's hover, and a click
+--                       on the cell is always the row's click.
+--   opts.selection = "bar" -- under marker = "bar", the selected row is a
+--                       white 2-px bar at its left and no fill: the fill (and
+--                       the accent bar) stay the suggested row's alone.
+--   opts.headerFont -- the header labels' font object (the data cells keep
+--                       opts.font); a pooled row gets its own fonts back when
+--                       it serves as a data row again.
 local DOUBLE_CLICK = 0.4
 
 -- T76: one column's header hover -- a hit frame over its label, built the
@@ -148,19 +169,81 @@ local DOUBLE_CLICK = 0.4
 local function ColumnTip(hit)
     local col = hit.col
     if not (col and col.tooltip and MD.Tip) then return end
+    local title = hit.label or col.label
+    local tip = col.tooltip
+    if type(tip) == "function" then tip = tip(title) end -- T78: by the label shown
+    if tip == nil then return end
     local lines
-    if type(col.tooltip) == "table" then
-        lines = col.tooltip
+    if type(tip) == "table" then
+        lines = tip
     else
         lines = {}
-        if col.label and col.label ~= "" then lines[#lines + 1] = { l = col.label, c = "text" } end
-        lines[#lines + 1] = { l = tostring(col.tooltip), c = "text2", wrap = true }
+        if title and title ~= "" then lines[#lines + 1] = { l = title, c = "text" } end
+        lines[#lines + 1] = { l = tostring(tip), c = "text2", wrap = true }
     end
     MD.Tip:Show(hit, lines, { anchor = "ANCHOR_TOPLEFT", x = 0, y = 3 })
 end
 
-local function HeaderTips(header, cols, height)
+-- T78: one data cell's hover (col.cellTooltip). Its lines beside the cell,
+-- else the row's own hover; a click goes to the row.
+local function CellTipEnter(hit)
+    local row, col = hit.row, hit.col
+    local r = row and row.data
+    local lines = r and col and col.cellTooltip and col.cellTooltip(r, row)
+    if type(lines) == "table" and #lines > 0 and MD.Tip then
+        hit.showing = true
+        row.highlight:Show()
+        MD.Tip:Show(hit, lines, { anchor = "beside" })
+        return
+    end
+    hit.showing = nil
+    local enter = row and row:GetScript("OnEnter")
+    if enter then enter(row) end
+end
+local function CellTipLeave(hit)
+    local row = hit.row
+    if hit.showing then
+        hit.showing = nil
+        if row then row.highlight:Hide() end
+        if MD.Tip then MD.Tip:Hide() end
+        return
+    end
+    local leave = row and row:GetScript("OnLeave")
+    if leave then leave(row) end
+end
+local function CellTipClick(hit, button)
+    local row = hit.row
+    local up = row and row:GetScript("OnMouseUp")
+    if up then up(row, button) end
+end
+
+-- A hit frame only over a cell that has something to say when the row is
+-- drawn: a cell with nothing to explain stays the row's own (its hover, its
+-- click, any button the render puts there).
+local function CellTips(row, cols, height)
     for _, col in ipairs(cols) do
+        if col.cellTooltip and row.data ~= nil and col.cellTooltip(row.data, row) ~= nil then
+            row.cellHits = row.cellHits or {}
+            local hit = row.cellHits[col.key]
+            if not hit then
+                hit = CreateFrame("Frame", nil, row)
+                hit:EnableMouse(true)
+                hit:SetScript("OnEnter", CellTipEnter)
+                hit:SetScript("OnLeave", CellTipLeave)
+                hit:SetScript("OnMouseUp", CellTipClick)
+                row.cellHits[col.key] = hit
+            end
+            hit.row, hit.col = row, col
+            hit:ClearAllPoints()
+            hit:SetPoint("TOPLEFT", row, "TOPLEFT", col.x, 0)
+            hit:SetSize(col.w, height)
+            hit:Show()
+        end
+    end
+end
+
+local function HeaderTips(header, cols, height, labels)
+    for i, col in ipairs(cols) do
         if col.tooltip then
             header.colHits = header.colHits or {}
             local hit = header.colHits[col.key]
@@ -172,6 +255,7 @@ local function HeaderTips(header, cols, height)
                 header.colHits[col.key] = hit
             end
             hit.col = col
+            hit.label = labels and labels[i] or col.label -- T78: the label shown
             hit:ClearAllPoints()
             hit:SetPoint("TOPLEFT", header, "TOPLEFT", col.x, 0)
             hit:SetSize(col.w, height)
@@ -196,6 +280,8 @@ function MD.DashboardParts.CreateTable(parent, width, opts)
     end
     local marker = opts and opts.marker
     local zebra = opts and opts.zebra
+    local pickBar = marker == "bar" and opts.selection == "bar" -- T78
+    local headerFont = opts and opts.headerFont -- T78
     local api -- the table's own api, assigned below (PaintFill reads its selection)
 
     -- T30: the row's fill under marker = "bar" / zebra -- selected over
@@ -204,7 +290,8 @@ function MD.DashboardParts.CreateTable(parent, width, opts)
         if not row.fill then return end
         local r = row.data
         local key
-        if r and marker == "bar" and (r.selected or (api.selectedId ~= nil and r.id == api.selectedId)) then
+        local picked = r and marker == "bar" and (r.selected or (api.selectedId ~= nil and r.id == api.selectedId))
+        if picked and not pickBar then
             key = "selected"
         elseif r and marker == "bar" and r.suggested then
             key = "suggested"
@@ -219,6 +306,9 @@ function MD.DashboardParts.CreateTable(parent, width, opts)
         end
         if row.mark then
             if r and r.suggested then row.mark:Show() else row.mark:Hide() end
+        end
+        if row.pick then -- T78: the selection's own mark, over the accent bar
+            if picked then row.pick:Show() else row.pick:Hide() end
         end
     end
 
@@ -261,6 +351,14 @@ function MD.DashboardParts.CreateTable(parent, width, opts)
                 row.mark:SetWidth(2)
                 row.mark:SetColorTexture(a[1], a[2], a[3], 1)
                 row.mark:Hide()
+            end
+            if pickBar then -- T78: white, above the accent bar
+                row.pick = row:CreateTexture(nil, "BORDER", nil, 1)
+                row.pick:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+                row.pick:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
+                row.pick:SetWidth(2)
+                row.pick:SetColorTexture(1, 1, 1, 1)
+                row.pick:Hide()
             end
 
             -- Hover: a faint accent wash and the full breakdown of every
@@ -348,6 +446,9 @@ function MD.DashboardParts.CreateTable(parent, width, opts)
                 fs:SetWidth(w)
                 fs:SetJustifyH(col.justify or "LEFT")
                 if opts and opts.render then fs:SetWordWrap(false) end -- T10c, generic path only
+                if headerFont then -- T78: the font a data row gets back
+                    fs.ownFont = col.font or opts.font or "GameFontHighlightSmall"
+                end
                 row.cells[col.key] = fs
             end
 
@@ -386,6 +487,16 @@ function MD.DashboardParts.CreateTable(parent, width, opts)
             if row.headerSized then row:SetHeight(rowH); row.headerSized = nil end -- T30
             if row.colHits then -- T76: a column's header hover goes with the header
                 for _, hit in pairs(row.colHits) do hit:Hide() end
+            end
+            if row.cellHits then -- T78: a cell's hover goes with its data row
+                for _, hit in pairs(row.cellHits) do hit:Hide(); hit.showing = nil end
+            end
+            if row.pick then row.pick:Hide() end -- T78
+            if row.headerFonted then -- T78: the data cells' own fonts back
+                for _, fs in pairs(row.cells) do
+                    if fs.ownFont then fs:SetFontObject(fs.ownFont) end
+                end
+                row.headerFonted = nil
             end
             row.highlight:Hide()
             row:Hide()
@@ -487,11 +598,15 @@ function MD.DashboardParts.CreateTable(parent, width, opts)
                 header.headerSized = true
             end
             PlaceBarCells(header, true) -- T30: the label over the whole column
+            local shown = {}
             for i, col in ipairs(cols) do
                 local label = (opts.header and opts.header[i]) or col.label
+                shown[i] = label
+                if headerFont then header.cells[col.key]:SetFontObject(headerFont) end -- T78
                 header.cells[col.key]:SetText(headerHex .. label .. "|r")
             end
-            HeaderTips(header, cols, headerH) -- T76: col.tooltip on the label
+            if headerFont then header.headerFonted = true end
+            HeaderTips(header, cols, headerH, shown) -- T76: col.tooltip on the label
             if opts.headerRule then
                 if not headerRule then
                     headerRule = pane:CreateTexture(nil, "BORDER")
@@ -551,6 +666,7 @@ function MD.DashboardParts.CreateTable(parent, width, opts)
                 end
 
                 PaintFill(row)
+                CellTips(row, cols, rowH) -- T78: col.cellTooltip
                 opts.render(row, r, color)
                 y = y - rowH
             end

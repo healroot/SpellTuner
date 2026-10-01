@@ -55,15 +55,22 @@ end
 local T = UI.TEXT
 T.accent   = Tok(accentHex, A[1], A[2], A[3])   -- titles, rules, selection
 T.text     = Tok("FFFFFF")   -- values
-T.text2    = Tok("B3B3B3")   -- secondary lines, comparison, spell text
-T.label    = Tok("9D9D9D")   -- labels in cards and the tooltip block
-T.muted    = Tok("7A7A7A")   -- dominated, footers, table headers, hints
-T.disabled = Tok("4D4D4D")   -- gaps, not learned, disabled buttons
+-- T78 (P34, review U7; mockup M5): text2 (B3B3B3) and label (9D9D9D) could
+-- not be told apart through the shadow, so they are one grey now, the lighter
+-- of the two: labels, headers (12 px), tags, secondary lines. `text2` stays
+-- as a name for the files that read it -- the same token, not a copy.
+T.label    = Tok("B3B3B3")   -- labels, headers, tags, secondary lines, spell text
+T.text2    = T.label
+T.muted    = Tok("7A7A7A")   -- explanations, hints, footers
+T.disabled = Tok("4D4D4D")   -- inert controls; the numbers of a rank you do not have
 T.mana     = Tok("4D99FF")   -- modelled mana figures (the clock bar's 0.3/0.6/1)
 T.good     = Tok("5CCB6E")   -- measure verdicts
 T.bad      = Tok("E0605A")   -- measure verdicts, the stale warning
--- Style.lua's legacy tokens (TBC's disagreeing literals) read 4.1's here
-T.dominated = T.muted
+-- Style.lua's legacy tokens (TBC's disagreeing literals) read 4.1's here.
+-- T78 (P34, mockup M5): a beaten rank's numbers are numbers like any other
+-- rank's -- the `beaten` tag (in `label`, with its tooltip) says what it is,
+-- so the row is no longer greyed.
+T.dominated = T.text
 T.note      = T.text2
 T.tipGold   = T.accent
 

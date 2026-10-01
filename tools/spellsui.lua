@@ -547,12 +547,13 @@ local function CastsWord(n)
     return "-"
 end
 
--- T39: the RANKS table's Tag column (3.5): best, learn at N, max, dominated.
+-- T39: the RANKS table's Tag column (3.5): best, learn at N, max, and (T78,
+-- P34, the author's word, docs/PLAN-refactor-ux.md 8.1 item 7) beaten.
 local function TagText(e, family)
     if e.suggested then return "best" end
     if e.known == false then return (type(e.level) == "number") and ("learn at " .. e.level) or "not learned" end
     if family and family.maxKnown == e then return "max" end
-    if e.dominated then return "dominated" end
+    if e.dominated then return "beaten" end
     return ""
 end
 
@@ -823,9 +824,9 @@ do
     local tip = MD.SpellTip:Lines(92050)
     local tipCasts
     for _, line in ipairs(tip or {}) do
-        -- T37: the block reads "N full, ~M now" -- its from-full count is N
+        -- T37 / T78: the block reads "N from full, ~M now" -- its from-full count is N
         if type(line[1]) == "string" and line[1]:find("Casts to OOM", 1, true) then
-            tipCasts = tostring(line[2]):match("^(%S+) full") -- T37
+            tipCasts = tostring(line[2]):match("^(%S+) from full") -- T78
         end
     end
 
@@ -1266,6 +1267,33 @@ local function Hover(rowFrame)
     if UI.tooltip then UI.tooltip.lines = nil end
     rowFrame:GetScript("OnEnter")(rowFrame)
 end
+-- T78 (P34): the lines a hover put in GameTooltip, "left|right" each, colour
+-- codes kept off; the tag cell's hover (UI/Dashboard_Rows.lua's
+-- col.cellTooltip hit frame) and a header label's (col.tooltip).
+local function TipText(tt)
+    local out = {}
+    for _, l in ipairs(tt and tt.lines or {}) do
+        out[#out + 1] = StripColor(tostring(l[1])) .. ((l[2] ~= nil) and ("|" .. StripColor(tostring(l[2]))) or "")
+    end
+    return table.concat(out, " / ")
+end
+local function TagHover(rowFrame)
+    GameTooltip.lines = nil
+    if UI.tooltip then UI.tooltip.lines = nil end
+    local hit = rowFrame and rowFrame.cellHits and rowFrame.cellHits.tag
+    if not (hit and hit:IsShown()) then return nil end
+    hit:GetScript("OnEnter")(hit)
+    return hit
+end
+local function HeadHover(header, key)
+    GameTooltip.lines = nil
+    local hit = header and header.colHits and header.colHits[key]
+    if not (hit and hit:IsShown()) then return "" end
+    hit:GetScript("OnEnter")(hit)
+    local text = TipText(GameTooltip)
+    hit:GetScript("OnLeave")(hit)
+    return text
+end
 local function Unhover(rowFrame)
     rowFrame:GetScript("OnLeave")(rowFrame)
 end
@@ -1331,7 +1359,35 @@ T36("T38 the ranks table: every rank to the highest listed, the gap, the bar and
         if fr.isHeader and fr.cells and fr.cells.value and fr:IsVisible() then header = fr end
     end
     local gapText = CellText(row3, "wide")
-    local good = table.concat(order, ",") == "rank1,rank2,gap3,rank4"
+    -- T78 (P34, review U1 / U7 / U10; mockup M5): the selected rank is a white
+    -- 2-px bar, the fill the suggested row's alone; the gap's explanation and
+    -- the tags readable (muted, label); headers 12 px in label, each with a
+    -- sentence on hover; a tag explains itself, and a row with no tag keeps
+    -- the row's own hover over the tag cell.
+    local L, M, D = UI.TEXT.label.hex, UI.TEXT.muted.hex, UI.TEXT.disabled.hex
+    local headTips = HeadHover(header, "toOOM") .. " // " .. HeadHover(header, "persec")
+        .. " // " .. HeadHover(header, "value")
+    local hit1 = TagHover(row1)
+    local bestTip = TipText(GameTooltip)
+    if hit1 then hit1:GetScript("OnLeave")(hit1) end
+    -- a row with nothing in its tag cell has no hit there: the row's hover
+    -- (the gap's reason) covers the whole row
+    local hit3 = row3.cellHits and row3.cellHits.tag
+    local gapTip = { (hit3 and hit3:IsShown()) and "a tag hit on the gap row" or "no tag hit" }
+    local t78 = row1.pick and row1.pick:IsShown() and row1.pick.w == 2 and row1.pick.color
+        and row1.pick.color[1] == 1 and row1.pick.color[2] == 1 and row1.pick.color[3] == 1
+        and not row2.pick:IsShown()
+        and (row3.cells.rank:GetText() or ""):find(D, 1, true) == 1
+        and (row3.cells.wide:GetText() or ""):find(M, 1, true) == 1
+        and (row4.cells.tag:GetText() or ""):find(L, 1, true) == 1
+        and (row2.cells.tag:GetText() or ""):find(L, 1, true) == 1
+        and (header.cells.persec:GetText() or ""):find(L, 1, true) == 1
+        and CellText(header, "persec") == "Per sec" and CellText(header, "toOOM") == "Casts"
+        and headTips == "Casts / Casts in a row from a full pool. // Per sec / Healing per second of casting."
+            .. " // Heal / The average heal of one cast, from the spell's own text."
+        and bestTip == "Best / The rank SpellTuner suggests."
+        and gapTip[1] == "no tag hit"
+    local good = t78 and table.concat(order, ",") == "rank1,rank2,gap3,rank4"
         and Cells(row1) == want1 and Cells(row2) == want2
         and CellText(row3, "rank") == "R3"
         and gapText == 'not in your spellbook - untrained, or hidden by "show all ranks"'
@@ -1342,10 +1398,10 @@ T36("T38 the ranks table: every rank to the highest listed, the gap, the bar and
         and math.abs(row2.bars.permana.fill.w - 72 * e2.perMana / e1.perMana) < 1e-6
         and not row3.bars.permana.track:IsShown()
         and row1.mark:IsShown() and not row2.mark:IsShown()
-        and f.selectedId == 93801 and Fill(row1) == 0.28 and Fill(row2) == 0.03 -- zebra on the even row
-    return good, string.format("order=%s r1=%s r2=%s gap=%q r4tag=%s fill1=%s",
-        table.concat(order, ","), Cells(row1), Cells(row2), tostring(gapText), tostring(CellText(row4, "tag")),
-        tostring(Fill(row1)))
+        and f.selectedId == 93801 and Fill(row1) == 0.10 and Fill(row2) == 0.03 -- T78: suggested's fill; zebra
+    return good, string.format("t78=%s order=%s r1=%s r2=%s gap=%q r4tag=%s fill1=%s heads=%q best=%q gapTip=%q",
+        tostring(t78), table.concat(order, ","), Cells(row1), Cells(row2), tostring(gapText),
+        tostring(CellText(row4, "tag")), tostring(Fill(row1)), headTips, bestTip, table.concat(gapTip, " / "))
 end)
 
 -- T38-3: the card follows the selected rank; a click selects another
@@ -1365,10 +1421,13 @@ T36("T38 the rank card: the suggested rank by default, a click selects another",
         and PairValue("Heals") == "90 - 115 (avg 103)" and PairValue("Crit") == "135 - 173 (x1.5 assumed)"
         and PairValue("Cost") == "55 mana" and PairValue("Cast") == "2.0 s"
         and PairValue("Per mana") == Num(e2.perMana, 2)
-        and PairValue("Per s") == Num(e2.perSec, 1) .. " over a 2.0 s cast"
-        and PairValue("To OOM") == OOMWord(FullPoolCasts(e2))
+        and PairValue("Per sec") == Num(e2.perSec, 1) .. " over a 2.0 s cast" -- T78
+        and PairValue("Casts") == OOMWord(FullPoolCasts(e2)) -- T78
         and PairValue("Now") == NowWord(Book:CastsFor(e2, pool), pool)
-        and Fill(row2) == 0.28 and Fill(row1) == 0.10 and row1.mark:IsShown()
+        -- T78 (U1): the selection moved as a white bar; no `selected` fill on
+        -- either row -- the suggested row keeps its fill and its accent bar
+        and Fill(row2) == 0.03 and row2.pick:IsShown() and not row1.pick:IsShown()
+        and Fill(row1) == 0.10 and row1.mark:IsShown()
         and f.footer:GetText() == "Values come from the spell's own text. ~ = modelled."
     return good, "before=" .. before .. " | " .. Pairs()
 end)
@@ -1431,10 +1490,20 @@ T36("T38 a HoT, a hybrid and a spell with no value: header, strip, columns and c
     local hot = f.header.sub:GetText() == "Heal over time - Rank 2 of 2 known - 12 s"
         and f.strip:IsShown() and f.strip.chipRank:GetText() == "Rank 2"
         and f.strip.compare:GetText() == "Your highest rank is also the best per mana."
-        and CellText(rj1, "tag") == "dominated"
-        and (rj1.cells.level:GetText() or ""):find(UI.TEXT.muted.hex, 1, true) == 1
+        and CellText(rj1, "tag") == "beaten" -- T78: the author's word
+        and (rj1.cells.level:GetText() or ""):find(UI.TEXT.text.hex, 1, true) == 1 -- T78: numbers, not greyed
         and PairValue("Heals") == "56 over 12 s" and PairValue("Crit") == nil
-    local hotSub = f.header.sub:GetText()
+    -- T78 (U10; mockup M5): the beaten tag names the rank that beats it
+    local rjE1, rjE2 = Book:Get().spells[774], nil
+    for _, e in ipairs(Book:Get().families["Rejuvenation"].ranks) do if e.rank == 2 then rjE2 = e end end
+    local rjHit = TagHover(rj1)
+    local beatenTip = TipText(GameTooltip)
+    if rjHit then rjHit:GetScript("OnLeave")(rjHit) end
+    local wantBeaten = "Beaten by Rank 2 / Per mana|" .. Num(rjE2.perMana, 2) .. " vs " .. Num(rjE1.perMana, 2)
+        .. " / Per sec|" .. Num(rjE2.perSec, 1) .. " vs " .. Num(rjE1.perSec, 1)
+        .. " / Rank 2 is better on both, and you know it."
+    hot = hot and beatenTip == wantBeaten and rjE1.dominatedBy == rjE2.id
+    local hotSub = f.header.sub:GetText() .. " | " .. beatenTip
 
     OpenView("Starfall")
     local hybrid = f.header.sub:GetText() == "Damage - hit and over time - Arcane - Rank 1 of 1 known"
@@ -1466,7 +1535,7 @@ T36("T38 the refresh split: mana, Now and To OOM in place; a book change re-rend
     local renders, lives = f.renderCount, f.liveCount
     local _, row1 = ViewRow(1)
     local e1 = Book:Get().spells[92050]
-    local fullBefore = PairValue("To OOM")
+    local fullBefore = PairValue("Casts") -- T78
     MD.Clock.model:Anchor(GetTime(), 100, "test: drained for T38")
     MD.Clock.model.lastSpend = GetTime() -- as after a cast: the clock does not assume it refilled
     for _ = 1, 4 do S.Tick(0.5) end
@@ -1700,7 +1769,7 @@ T36("T39 My spells: a row per listed family, suggested against highest; a click 
     local _, v = Nav():Selected()
     local good = table.concat(keys, ",") == table.concat(want, ",") and #keys > 3
         and Cells(nourish) == wantN
-        and labels == "Spell,Suggested,Value,Per mana,To OOM,Highest,Value,Per mana"
+        and labels == "Spell,Suggested,Value,Per mana,Casts,Highest,Value,Per mana" -- T78
         and bookHidden and v == "fam:Rejuvenation"
     return good, string.format("keys=%s nourish=%s labels=%s view=%s", table.concat(keys, ","),
         nourish and Cells(nourish) or "nil", labels, tostring(v))

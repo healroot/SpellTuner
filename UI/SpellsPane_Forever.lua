@@ -201,26 +201,55 @@ local SUGGESTED_RULE = Words.SuggestedRule() -- the floor is MD.Rules.SUGGESTED_
 local GAP_TEXT = 'not in your spellbook - untrained, or hidden by "show all ranks"'
 local FOOTER_TEXT = "Values come from the spell's own text. ~ = modelled."
 
+-- T78 (P34, review U9 / U10; mockup M5): one vocabulary -- "Per mana",
+-- "Per sec", "Casts" -- and every header says what it is, one sentence each,
+-- on hover (UI/Dashboard_Rows.lua's col.tooltip). What the healing words
+-- name follows the family on show: SpellsPane.headKind is "heal" or "damage"
+-- while a family's view is drawn, nil on Whole book (both kinds at once).
+local function Amount()
+    if SpellsPane.headKind == "heal" then return "Healing" end
+    if SpellsPane.headKind == "damage" then return "Damage" end
+    return "Healing or damage"
+end
+local HEAD_TIPS = {
+    level = "The level you learn this rank at.",
+    mana = "What one cast costs.",
+    value = function(label)
+        if label == "Heal" then return "The average heal of one cast, from the spell's own text." end
+        if label == "Dmg" then return "The average damage of one cast, from the spell's own text." end
+        if label == "Total" then return "All of one cast, over its whole duration, from the spell's own text." end
+        return "The average heal or damage of one cast; all of it for one over time."
+    end,
+    permana = function() return Amount() .. " for each point of mana." end,
+    persec = function() return Amount() .. " per second of casting." end,
+    cast = "Cast time; inst for an instant, chan for a channel.",
+    toOOM = "Casts in a row from a full pool.",
+}
+local TagTip -- the tag cell's hover (below, with the tags)
+
 -- The RANKS columns (3.5): 524 wide from x = 8. The Tag column starts 8 px
--- into its 60 so a tag never touches the right-justified To OOM number.
+-- into its 60 so a tag never touches the right-justified Casts number.
 local RANK_COLS = {
     { key = "rank",    x = 8,   w = 52,  label = "Rank" },
-    { key = "level",   x = 60,  w = 34,  label = "Lvl",      justify = "RIGHT" },
-    { key = "mana",    x = 94,  w = 46,  label = "Mana",     justify = "RIGHT" },
-    { key = "value",   x = 140, w = 58,  label = "Heal",     justify = "RIGHT" },
-    { key = "permana", x = 198, w = 116, label = "Per mana", justify = "RIGHT", type = "bar", barWidth = 72, gap = 4 },
-    { key = "persec",  x = 314, w = 54,  label = "Per s",    justify = "RIGHT" },
-    { key = "cast",    x = 368, w = 46,  label = "Cast",     justify = "RIGHT" },
-    { key = "toOOM",   x = 414, w = 58,  label = "To OOM",   justify = "RIGHT" },
-    { key = "tag",     x = 480, w = 52,  label = "", font = UI.FONT_SMALL },
+    { key = "level",   x = 60,  w = 34,  label = "Lvl",      justify = "RIGHT", tooltip = HEAD_TIPS.level },
+    { key = "mana",    x = 94,  w = 46,  label = "Mana",     justify = "RIGHT", tooltip = HEAD_TIPS.mana },
+    { key = "value",   x = 140, w = 58,  label = "Heal",     justify = "RIGHT", tooltip = HEAD_TIPS.value },
+    { key = "permana", x = 198, w = 116, label = "Per mana", justify = "RIGHT", type = "bar", barWidth = 72, gap = 4,
+      tooltip = HEAD_TIPS.permana },
+    { key = "persec",  x = 314, w = 54,  label = "Per sec",  justify = "RIGHT", tooltip = HEAD_TIPS.persec },
+    { key = "cast",    x = 368, w = 46,  label = "Cast",     justify = "RIGHT", tooltip = HEAD_TIPS.cast },
+    { key = "toOOM",   x = 414, w = 58,  label = "Casts",    justify = "RIGHT", tooltip = HEAD_TIPS.toOOM },
+    { key = "tag",     x = 480, w = 52,  label = "", font = UI.FONT_SMALL,
+      cellTooltip = function(r) return TagTip(r) end },
 }
 -- A family with no value (3.5 "Other-kind"): Rank / Lvl / Mana / Cast / Tag.
 local OTHER_COLS = {
     { key = "rank",  x = 8,   w = 52, label = "Rank" },
-    { key = "level", x = 60,  w = 34, label = "Lvl",  justify = "RIGHT" },
-    { key = "mana",  x = 94,  w = 46, label = "Mana", justify = "RIGHT" },
-    { key = "cast",  x = 140, w = 46, label = "Cast", justify = "RIGHT" },
-    { key = "tag",   x = 202, w = 52, label = "", font = UI.FONT_SMALL },
+    { key = "level", x = 60,  w = 34, label = "Lvl",  justify = "RIGHT", tooltip = HEAD_TIPS.level },
+    { key = "mana",  x = 94,  w = 46, label = "Mana", justify = "RIGHT", tooltip = HEAD_TIPS.mana },
+    { key = "cast",  x = 140, w = 46, label = "Cast", justify = "RIGHT", tooltip = HEAD_TIPS.cast },
+    { key = "tag",   x = 202, w = 52, label = "", font = UI.FONT_SMALL,
+      cellTooltip = function(r) return TagTip(r) end },
 }
 
 local function Round(x) return math.floor(x + 0.5) end
@@ -394,16 +423,67 @@ end
 --------------------------------------------------------------------------------
 -- 3. The RANKS rows
 --------------------------------------------------------------------------------
-local function TagText(r)
-    local e = r.entry
-    if e.suggested then return UI.Hex("accent") .. "best" .. RESET end
+-- A rank row's tag: "best", "learn at N", "max" or "beaten" (T78, the
+-- author's word for `dominated`, docs/PLAN-refactor-ux.md 8.1 item 7), nil
+-- for none or for a row that is not a rank.
+local function TagOf(r)
+    local e = r and r.kind == "rank" and r.entry
+    if not e then return nil end
+    if e.suggested then return "best" end
     if e.known == false then
-        local word = (type(e.level) == "number") and ("learn at " .. e.level) or "not learned"
-        return UI.Hex("disabled") .. word .. RESET
+        return (type(e.level) == "number") and ("learn at " .. e.level) or "not learned"
     end
-    if r.isMax then return UI.Hex("text2") .. "max" .. RESET end
-    if e.dominated then return UI.Hex("muted") .. "dominated" .. RESET end
-    return ""
+    if r.isMax then return "max" end
+    if e.dominated then return "beaten" end
+    return nil
+end
+
+-- T78 (U7): the tags in `label`, best in the accent; the explanations that
+-- used to be `disabled` grey are readable.
+local function TagText(r)
+    local tag = TagOf(r)
+    if not tag then return "" end
+    if tag == "best" then return UI.Hex("accent") .. tag .. RESET end
+    return UI.Hex("label") .. tag .. RESET
+end
+
+-- The known rank that beats `e` (Book's entry.dominatedBy, an id), or nil.
+local function BeatenBy(fam, e)
+    local id = e.dominatedBy
+    if id == nil or not fam then return nil end
+    for _, x in ipairs(fam.ranks or {}) do
+        if x.id == id then return x end
+    end
+    return nil
+end
+
+-- T78 (U10; mockup M5): a tag explains itself on hover, one sentence; a
+-- beaten rank names the rank that beats it with both numbers side by side.
+local TAG_SENTENCE = {
+    best = "The rank SpellTuner suggests.",
+    max = "Your highest known rank.",
+}
+function TagTip(r)
+    local tag = TagOf(r)
+    if not tag then return nil end
+    local e = r.entry
+    if tag == "beaten" then
+        local by = BeatenBy(r.family, e)
+        if not (by and type(by.rank) == "number") then
+            return { { l = "Beaten", c = "text" },
+                     { l = "Another rank wins on both per mana and per sec.", c = "label", wrap = true } }
+        end
+        local name = "Rank " .. by.rank
+        return {
+            { l = "Beaten by " .. name, c = "text" },
+            { l = "Per mana", r = Num(by.perMana, 2) .. " vs " .. Num(e.perMana, 2), c = "label", rc = "text" },
+            { l = "Per sec", r = Num(by.perSec, 1) .. " vs " .. Num(e.perSec, 1), c = "label", rc = "text" },
+            { l = name .. " is better on both, and you know it.", c = "muted", wrap = true },
+        }
+    end
+    local title = tag:sub(1, 1):upper() .. tag:sub(2)
+    local sentence = TAG_SENTENCE[tag] or "Not learned yet."
+    return { { l = title, c = "text" }, { l = sentence, c = "label", wrap = true } }
 end
 
 local function RankCell(e)
@@ -424,9 +504,9 @@ local function RenderRankRow(row, r, color)
     r.color = color
     for _, fs in pairs(row.cells) do fs:SetText("") end
     if r.kind == "gap" then
-        local dis = UI.Hex("disabled")
-        row.cells.rank:SetText(dis .. "R" .. r.rank .. RESET)
-        SetWide(row, RANK_COLS[2].x, dis .. GAP_TEXT .. RESET)
+        -- T78 (U7): the number disabled, its explanation readable in `muted`
+        row.cells.rank:SetText(UI.Hex("disabled") .. "R" .. r.rank .. RESET)
+        SetWide(row, RANK_COLS[2].x, UI.Hex("muted") .. GAP_TEXT .. RESET)
         if row.SetBar then row:SetBar("permana", nil) end
         return
     end
@@ -535,13 +615,13 @@ local function CardPairs(fam, e, pool)
     P("Cast", Words.Cast(e, "card"))
     if kind then
         P("Per mana", Num(e.perMana, 2))
-        P("Per s", PerSecWord(e, kind))
+        P("Per sec", PerSecWord(e, kind)) -- T78: one vocabulary
     end
     local out2 = { pairs = out }
     local amount = e.cost and e.cost.power == nil and e.cost.amount
     if kind and type(amount) == "number" and amount > 0 then
         out2.toOOM = #out + 1
-        P("To OOM", "")
+        P("Casts", "") -- T78: the table's word
         out2.now = #out + 1
         P("Now", "")
     end
@@ -676,6 +756,9 @@ local function Tables(f)
                 font = UI.FONT_NUM or UI.FONT, wideFont = UI.FONT_SMALL,
                 rowHeight = rowH, headerHeight = headH, headerRule = true,
                 zebra = true, rowWidth = true, marker = "bar",
+                -- T78 (U1 / U7; mockup M5): the selected rank a white bar,
+                -- the fill the suggested one's alone; headers 12 px in `label`
+                selection = "bar", headerFont = UI.FONT_SPECIAL, headerColor = UI.Hex("label"),
                 render = RenderRankRow, onUpdateCells = UpdateRankRow,
                 onEnter = RankRowEnter, onLeave = RankRowLeave, onClick = RankRowClick,
             })
@@ -1014,6 +1097,7 @@ function SpellsPane:RenderFamily(key, preview)
     -- 3. RANKS
     local rows = FamilyRows(fam, pool)
     local active
+    SpellsPane.headKind = fam.kind -- T78: what the header tooltips call the amount
     if fam.kind then
         -- the value column's label by shape: a total for anything over time
         local label = (fam.kind == "damage") and "Dmg" or "Heal"
@@ -1074,15 +1158,23 @@ local MINE_EMPTY = "Your list is empty - + Add on the left, or + beside a family
 
 -- My spells: 524 of columns from x = 8 (the icon at 8, the name at 28), as
 -- 3.5's table; "Per mana" fits a 50-px Arial Narrow column.
+-- T78 (U9 / U10): "Casts" as in RANKS, and a sentence on every header.
 local MINE_COLS = {
     { key = "spell",     x = 28,  w = 128, label = "Spell" },
-    { key = "suggested", x = 158, w = 62,  label = "Suggested" },
-    { key = "value",     x = 220, w = 46,  label = "Value",    justify = "RIGHT" },
-    { key = "permana",   x = 266, w = 58,  label = "Per mana", justify = "RIGHT" },
-    { key = "toOOM",     x = 324, w = 52,  label = "To OOM",   justify = "RIGHT" },
-    { key = "highest",   x = 392, w = 50,  label = "Highest" },
-    { key = "hvalue",    x = 442, w = 40,  label = "Value",    justify = "RIGHT" },
-    { key = "hpermana",  x = 482, w = 50,  label = "Per mana", justify = "RIGHT" },
+    { key = "suggested", x = 158, w = 62,  label = "Suggested",
+      tooltip = "The rank SpellTuner suggests." },
+    { key = "value",     x = 220, w = 46,  label = "Value",    justify = "RIGHT",
+      tooltip = "The suggested rank's average heal or damage; all of it for one over time." },
+    { key = "permana",   x = 266, w = 58,  label = "Per mana", justify = "RIGHT",
+      tooltip = "The suggested rank's healing or damage for each point of mana." },
+    { key = "toOOM",     x = 324, w = 52,  label = "Casts",    justify = "RIGHT",
+      tooltip = HEAD_TIPS.toOOM },
+    { key = "highest",   x = 392, w = 50,  label = "Highest",
+      tooltip = "Your highest known rank." },
+    { key = "hvalue",    x = 442, w = 40,  label = "Value",    justify = "RIGHT",
+      tooltip = "Your highest rank's average heal or damage." },
+    { key = "hpermana",  x = 482, w = 50,  label = "Per mana", justify = "RIGHT",
+      tooltip = "Your highest rank's healing or damage for each point of mana." },
 }
 -- Whole book: 3.5's RANKS columns; heals and damage share the value column.
 local BOOK_HEADER = { [4] = "Value" }
@@ -1357,6 +1449,7 @@ local function OverviewTables(pane)
                 font = UI.FONT_NUM or UI.FONT, wideFont = wideFont,
                 rowHeight = rowH, headerHeight = headH, headerRule = true,
                 zebra = true, rowWidth = true, marker = "bar",
+                headerFont = UI.FONT_SPECIAL, headerColor = UI.Hex("label"), -- T78, as RANKS
                 render = render, onUpdateCells = onUpdate,
                 onEnter = onEnter, onLeave = RankRowLeave, onClick = OverviewClick,
             })
@@ -1409,6 +1502,7 @@ function SpellsPane:RenderOverview()
     idle:Release(); idle.frame:Hide()
 
     local rows = (mode == "book") and BookRows(book, pool) or MineRows(book, pool)
+    SpellsPane.headKind = nil -- T78: Whole book holds both kinds
     active.frame:Show()
     active:Render(rows)
     pane.lastRows = rows -- tools/spellsui.lua's own hook: the exact render order

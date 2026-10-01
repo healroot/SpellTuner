@@ -245,13 +245,13 @@ do
     local perManaLine = LineAt(lines, "Per mana")
     local perManaGood = perManaLine ~= nil and perManaLine[2] == string.format("%.2f", htR1.perMana)
 
-    local perSecLine = LineAt(lines, "Per second")
+    local perSecLine = LineAt(lines, "Per sec") -- T78
     local perSecGood = perSecLine ~= nil and perSecLine[2] == string.format("%.1f", htR1.perSec)
 
     local castsLine = LineAt(lines, "Casts to OOM")
     local expectCasts
     if htR1.casts == math.huge then expectCasts = "inf"
-    else expectCasts = tostring(math.floor(htR1.casts + 0.5)) .. " full" end
+    else expectCasts = tostring(math.floor(htR1.casts + 0.5)) .. " from full" end -- T78
     local castsGood = castsLine ~= nil and castsLine[2] == expectCasts
 
     check("every number in the block is the book's",
@@ -301,7 +301,9 @@ do
     local onItself = r1Lines[2][1] == "Suggested" and r1Lines[2][2] == "this rank"
     local onTheOther = r2Lines[2]
     local onTheOtherGood = onTheOther[1] == "Suggested"
-        and onTheOther[2] == string.format("Rank 1 (%.2f per mana)", sub1.perMana)
+        -- T78 (mockup M5): the suggested rank against this one, in percent
+        and onTheOther[2] == string.format("Rank 1 (%+d%% per mana)",
+            math.floor((sub1.perMana / sub2.perMana - 1) * 100 + 0.5))
         and IsColour(onTheOther[3], onTheOther[4], onTheOther[5], "label")
         and IsColour(onTheOther[6], onTheOther[7], onTheOther[8], "accent")
 
@@ -309,7 +311,7 @@ do
     -- per mana and per second.
     local htR1 = book.spells[5185]
     local dom = SpellTip:Lines(5185)[2]
-    local domGood = htR1.dominated == true and dom[1] == "Dominated by" and dom[2] == "Rank 2"
+    local domGood = htR1.dominated == true and dom[1] == "Beaten by" and dom[2] == "Rank 2" -- T78
 
     check("the suggested rank comes first: on itself, on the others, and a dominated rank",
         suggestedIsR1 and onItself and onTheOtherGood and domGood,
@@ -342,7 +344,7 @@ do
     local lines = SpellTip:Lines(92060)
     local detail = SpellTip:Lines(92060, true)
     local shape = lines ~= nil and #lines == 3 and lines[1][1] == "SpellTuner"
-        and lines[2][1] == "Per mana" and lines[3][1] == "Per second"
+        and lines[2][1] == "Per mana" and lines[3][1] == "Per sec" -- T78
     local average = LineAt(detail, "Average")
 
     check("a spell not in the book gets the header, per mana and per second",
@@ -488,27 +490,27 @@ do
     local book = Book:Get()
 
     local castEntry = book.spells[5185]
-    local castLine = LineAt(SpellTip:Lines(5185), "Per second")
+    local castLine = LineAt(SpellTip:Lines(5185), "Per sec")
     local castGood = castLine ~= nil and castLine[2] == string.format("%.1f", castEntry.perSec)
 
     local instantEntry = book.spells[92080]
-    local instantLine = LineAt(SpellTip:Lines(92080), "Per second")
+    local instantLine = LineAt(SpellTip:Lines(92080), "Per sec")
     local instantGood = instantEntry ~= nil and instantEntry.castKind == "instant"
         and instantLine ~= nil and instantLine[2] == string.format("%.1f", instantEntry.perSec)
 
     local overEntry = book.spells[774]
-    local overLine = LineAt(SpellTip:Lines(774), "Per second")
+    local overLine = LineAt(SpellTip:Lines(774), "Per sec")
     local overGood = overEntry ~= nil and overEntry.min == nil and overEntry.max == nil
         and overLine ~= nil and overLine[2] == string.format("%.1f over %d s",
             overEntry.perSec, math.floor(overEntry.interval + 0.5))
 
     local chanEntry = book.spells[92090]
-    local chanLine = LineAt(SpellTip:Lines(92090), "Per second")
+    local chanLine = LineAt(SpellTip:Lines(92090), "Per sec")
     local chanGood = chanEntry ~= nil and chanEntry.castKind == "channeled"
         and chanLine ~= nil and chanLine[2] == string.format("%.1f over %d s",
             chanEntry.perSec, math.floor(chanEntry.interval + 0.5))
 
-    local mfLine = LineAt(SpellTip:Lines(92401), "Per second")
+    local mfLine = LineAt(SpellTip:Lines(92401), "Per sec")
     local mfGood = mfLine ~= nil and mfLine[2] == "24.7"
 
     check("per second: plain for a cast, the GCD or a hybrid, over N s for a HoT or channel",
@@ -525,12 +527,12 @@ do
     local book = Book:Get()
 
     local absInstantEntry = book.spells[92095]
-    local absInstantLine = LineAt(SpellTip:Lines(92095), "Per second")
+    local absInstantLine = LineAt(SpellTip:Lines(92095), "Per sec")
     local absInstantGood = absInstantEntry ~= nil and absInstantEntry.castKind == "instant"
         and absInstantLine ~= nil and absInstantLine[2] == string.format("%.1f", absInstantEntry.perSec)
 
     local absCastEntry = book.spells[92096]
-    local absCastLine = LineAt(SpellTip:Lines(92096), "Per second")
+    local absCastLine = LineAt(SpellTip:Lines(92096), "Per sec")
     local absCastGood = absCastEntry ~= nil and absCastEntry.castKind == "cast"
         and absCastLine ~= nil and absCastLine[2] == string.format("%.1f", absCastEntry.perSec)
 
@@ -562,7 +564,7 @@ do
     local drained = LineAt(SpellTip:Lines(92071), "Casts to OOM")
     model:Anchor(GetTime(), model.max, "test: restored")
 
-    local want = tostring(fromFull) .. " full"
+    local want = tostring(fromFull) .. " from full" -- T78 (mockup M5)
     local wantNow = want .. ", " .. T.mana.hex .. "~" .. tostring(now) .. " now|r"
     check("T37: casts to OOM from full, and ~N now only below max",
         atFull ~= nil and atFull[2] == want and drained ~= nil and drained[2] == wantNow
@@ -869,9 +871,9 @@ do
     -- the header names the rank of the family's known ranks and the key
     local head = SpellTip:Lines(5185)[1]
     local maxHead = SpellTip:Lines(92002)[1]
-    check("T37: the header says Rank N of M and the detail key in the disabled colour",
-        head[1] == "SpellTuner" and head[2] == "Rank 1 of 2  " .. T.disabled.hex .. "Shift|r"
-        and maxHead[2] == "Rank 2 of 2  " .. T.disabled.hex .. "Shift|r",
+    check("T37: the header says Rank N of M and the detail key in the muted colour (T78)",
+        head[1] == "SpellTuner" and head[2] == "Rank 1 of 2  " .. T.muted.hex .. "Shift|r"
+        and maxHead[2] == "Rank 2 of 2  " .. T.muted.hex .. "Shift|r",
         string.format("head=%s max=%s", tostring(head[2]), tostring(maxHead[2])))
 end
 
@@ -928,7 +930,7 @@ do
     local fam = book.families["Mark of the Wild"]
     local plain, detail = SpellTip:Lines(92501, false), SpellTip:Lines(92501, true)
     local casts = Book:CastsFor({ cost = book.spells[92501].cost, interval = 1.5 }, Book:DefaultPool())
-    local want = (casts == math.huge) and "inf" or (tostring(casts) .. " full")
+    local want = (casts == math.huge) and "inf" or (tostring(casts) .. " from full") -- T78
     local tt = Shown(92501, true)
     check("T37: an Other spell gets two lines and no hint",
         fam ~= nil and fam.kind == nil and plain ~= nil and #plain == 2 and #detail == 2
@@ -955,7 +957,7 @@ do
     local got = MacroTooltip({ type = MACRO, lines = { { tooltipType = 1, tooltipID = 5185 } } }, nil)
     local spell = Shown(5185, false)
     check("T37: the macro marker",
-        head[2] == "Rank 1 of 2 - macro  " .. T.disabled.hex .. "Shift|r" and other[2] == "Rank 2 of 2 - macro"
+        head[2] == "Rank 1 of 2 - macro  " .. T.muted.hex .. "Shift|r" and other[2] == "Rank 2 of 2 - macro"
         and got.lines[2] ~= nil and got.lines[2][2] == head[2]
         and spell.lines[2] ~= nil and tostring(spell.lines[2][2]):find("macro", 1, true) == nil,
         string.format("head=%s other=%s got=%s", tostring(head[2]), tostring(other[2]),
@@ -1028,7 +1030,7 @@ do
     check("T37: the detail key is a Settings -> General dropdown",
         dd ~= nil and MD.DEFAULTS.spellTooltipDetail == "SHIFT" and default == "SHIFT" and picked
         and table.concat(ids, ",") == "SHIFT,ALT,CTRL,ALWAYS,NEVER"
-        and hint == "Rank 1 of 2  " .. T.disabled.hex .. "Alt|r" and altShown == 1 + #SpellTip:Lines(5185, true),
+        and hint == "Rank 1 of 2  " .. T.muted.hex .. "Alt|r" and altShown == 1 + #SpellTip:Lines(5185, true),
         string.format("dd=%s default=%s picked=%s ids=%s hint=%s altShown=%s", tostring(dd ~= nil),
             tostring(default), tostring(picked), table.concat(ids, ","), tostring(hint), tostring(altShown)))
 end

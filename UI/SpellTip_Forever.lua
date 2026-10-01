@@ -36,7 +36,7 @@ local FALLBACK = {
     accent   = { 1, 0.486, 0.039, hex = "|cffff7c0a" },
     text     = { 1, 1, 1, hex = "|cffffffff" },
     text2    = { 0.702, 0.702, 0.702, hex = "|cffb3b3b3" },
-    label    = { 0.616, 0.616, 0.616, hex = "|cff9d9d9d" },
+    label    = { 0.702, 0.702, 0.702, hex = "|cffb3b3b3" }, -- T78: text2 and label are one grey
     muted    = { 0.478, 0.478, 0.478, hex = "|cff7a7a7a" },
     disabled = { 0.302, 0.302, 0.302, hex = "|cff4d4d4d" },
     mana     = { 0.302, 0.6, 1, hex = "|cff4d99ff" },
@@ -137,11 +137,11 @@ end
 -- Casts to OOM: from full (Book:Rows' count against Book:DefaultPool()), then
 -- "~N now" in the mana colour from the clock's modelled pool while it is
 -- below its max. `counted` is what Book:CastsFor counts (its cost and
--- interval).
+-- interval). T78 (P34, review U9; mockup M5): "6 from full, ~5 now".
 local function CastsText(full, counted)
     if full == nil then return "-" end
     if full == math.huge then return "inf" end
-    local text = Casts(full) .. " full"
+    local text = Casts(full) .. " from full"
     local pool = PoolBelowMax()
     if pool then
         local now = Book:CastsFor(counted, pool)
@@ -171,19 +171,34 @@ local function Dominator(family, entry)
     return nil
 end
 
--- The first fact: which rank, never "press" (5.1).
+-- How much more (or less) the suggested rank heals per mana than this one,
+-- as the block says it (T78, mockup M5): "+2% per mana", "-5% per mana",
+-- "same per mana"; nil when either number is missing.
+local function PerManaDiff(s, entry)
+    if type(s.perMana) ~= "number" or type(entry.perMana) ~= "number" or entry.perMana <= 0 then
+        return nil
+    end
+    local pct = math.floor((s.perMana / entry.perMana - 1) * 100 + 0.5)
+    if pct == 0 then return "same per mana" end
+    return string.format("%+d%% per mana", pct)
+end
+
+-- The first fact: which rank, never "press" (5.1). T78 (P34, review U9;
+-- mockup M5): the suggested rank against this one ("Rank 1 (+2% per mana)"),
+-- and the author's word for a dominated rank, "Beaten by".
 local function SuggestedLine(family, entry)
     if entry.suggested == true then
         return Pair("Suggested", "this rank", "label", "accent")
     end
     if entry.dominated then
         local by = Dominator(family, entry)
-        if by and by.rank then return Pair("Dominated by", "Rank " .. tostring(by.rank), "label", "accent") end
+        if by and by.rank then return Pair("Beaten by", "Rank " .. tostring(by.rank), "label", "accent") end
     end
     local s = family.suggested
     if s and s.rank then
         local text = "Rank " .. tostring(s.rank)
-        if s.perMana then text = text .. " (" .. Num(s.perMana, 2) .. " per mana)" end
+        local diff = PerManaDiff(s, entry)
+        if diff then text = text .. " (" .. diff .. ")" end
         return Pair("Suggested", text, "label", "accent")
     end
     return nil
@@ -227,7 +242,8 @@ end
 -- The header: "SpellTuner" in the accent; on the right the rank ("Rank N of
 -- M", M = this family's known ranks; "Rank N" outside a family), "- macro"
 -- when the id came from a macro (5.5), and the detail key's name in the
--- disabled colour when there are detail lines to show.
+-- muted colour when there are detail lines to show (T78, review U7: it tells
+-- you something, so it is no longer the disabled grey).
 local function Header(entry, family, source, hasDetail)
     local right
     if entry.rank then
@@ -244,7 +260,7 @@ local function Header(entry, family, source, hasDetail)
     if source == "macro" then right = right and (right .. " - macro") or "macro" end
     local mode = SpellTip:DetailMode()
     if hasDetail and KEYS[mode] then
-        local hint = C("disabled").hex .. KEYS[mode][2] .. "|r"
+        local hint = C("muted").hex .. KEYS[mode][2] .. "|r"
         right = right and (right .. "  " .. hint) or hint
     end
     if right == nil then return Single("SpellTuner", "accent") end
@@ -318,7 +334,7 @@ function SpellTip:Lines(id, detail, source)
         if s then lines[#lines + 1] = s end
     end
     lines[#lines + 1] = Pair("Per mana", PerManaText(entry))
-    lines[#lines + 1] = Pair("Per second", PerSecText(entry))
+    lines[#lines + 1] = Pair("Per sec", PerSecText(entry)) -- T78: the table's word
     -- casts to OOM: a family row's number only (a ReadSpell entry never has
     -- one, 5.4), and only for a mana cost (a Rage spell never runs dry)
     if family and (entry.cost == nil or entry.cost.power == nil) then
