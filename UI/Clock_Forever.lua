@@ -97,16 +97,17 @@ local function Rate(v)
     return string.format("~%d a sec", math.floor(v + 0.5))
 end
 
--- Clock:HoverLines(now): the hover's lines (UI/Tip.lua's line model), or nil
--- before the pool has a model.
-function Clock:HoverLines(now)
-    local model = MD.Pool.model
-    if not model then return nil end
-    local function Pair(l, r, rc) return { l = l, r = r, c = "label", rc = rc or "text" } end
-    local lines = { { l = "SpellTuner mana clock", c = "accent" } }
-    local state = MD.Pool:Project(now or GetTime())
-    lines[#lines + 1] = Pair("Mana", string.format("~%d of %d", math.floor((model.mana or 0) + 0.5),
-        math.floor((model.max or 0) + 0.5)), "mana")
+local function Pair(l, r, rc) return { l = l, r = r, c = "label", rc = rc or "text" } end
+
+-- Clock:SummaryLines(now, state): T79 (P36) -- the clock's own answer in a
+-- healer's words, the lines the hover and the minimap button's tooltip share
+-- (so the two cannot drift): when mana runs out or is full again, and in a
+-- fight when it is full again if you stop. {} before the pool has a model.
+-- `state` is the projection at `now` when the caller already has it.
+function Clock:SummaryLines(now, state)
+    local lines = {}
+    if not MD.Pool.model then return lines end
+    state = state or MD.Pool:Project(now or GetTime())
     local m = state.mode
     if m == "oom" then
         lines[#lines + 1] = Pair("Out of mana in", "~" .. Time(state.tto), "mana")
@@ -121,10 +122,36 @@ function Clock:HoverLines(now)
     elseif m == "fullnow" then
         lines[#lines + 1] = Pair("Full", "now", "text")
     end
+    if MD.inCombat and type(state.rest) == "number" then
+        lines[#lines + 1] = Pair("Full again in", "~" .. Time(state.rest) .. " if you stop", "mana")
+    end
+    return lines
+end
+
+-- T79 (P36): the minimap button's clock lines on this line (UI/MinimapButton.lua):
+-- the title, the summary, and the hints when it is given any.
+MD:Provide("MinimapLines", function(hints)
+    local lines = { { l = "SpellTuner", c = "accent" } }
+    for _, ln in ipairs(Clock:SummaryLines(GetTime())) do lines[#lines + 1] = ln end
+    if hints then
+        lines[#lines + 1] = {}
+        for _, h in ipairs(hints) do lines[#lines + 1] = { l = h, c = "muted" } end
+    end
+    return lines
+end)
+
+-- Clock:HoverLines(now): the hover's lines (UI/Tip.lua's line model), or nil
+-- before the pool has a model.
+function Clock:HoverLines(now)
+    local model = MD.Pool.model
+    if not model then return nil end
+    local lines = { { l = "SpellTuner mana clock", c = "accent" } }
+    local state = MD.Pool:Project(now or GetTime())
+    lines[#lines + 1] = Pair("Mana", string.format("~%d of %d", math.floor((model.mana or 0) + 0.5),
+        math.floor((model.max or 0) + 0.5)), "mana")
+    -- T79: the summary the minimap button shows too
+    for _, ln in ipairs(Clock:SummaryLines(now, state)) do lines[#lines + 1] = ln end
     if MD.inCombat then
-        if type(state.rest) == "number" then
-            lines[#lines + 1] = Pair("Full again in", "~" .. Time(state.rest) .. " if you stop", "mana")
-        end
         local casts = model.fight and model.fight.casts or 0
         lines[#lines + 1] = Pair("Spending", Rate(state.spend) .. " over " .. tostring(casts)
             .. (casts == 1 and " cast" or " casts"))

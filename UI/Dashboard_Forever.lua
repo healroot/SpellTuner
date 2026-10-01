@@ -102,6 +102,9 @@ local function RefreshGeneralPane()
     if p.scaleSlider and MD.Win then p.scaleSlider:SetValue(MD.Win:ScalePercent()) end
     if p.combatDropdown and MD.Win then p.combatDropdown:SetValue(MD.Win:CombatMode()) end
     if p.escCheck and MD.Win then p.escCheck:SetChecked(MD.Win:EscStackOn()) end
+    if p.minimapCheck then -- T79
+        p.minimapCheck:SetChecked(not (type(MD.db.minimap) == "table" and MD.db.minimap.hide))
+    end
 
     -- REVIEW: the Replay module registers these keys (MD:RegisterDefaults), so
     -- a value is shown and written only while it is loaded; off, the pane says so
@@ -218,7 +221,7 @@ end
 
 local function BuildWindowsSection(pane, above)
     if not MD.Win then return nil end
-    local sec = Section(pane, "WINDOWS", 100, above, "left")
+    local sec = Section(pane, "WINDOWS", 138, above, "left")
 
     -- 6.6, decision 4
     local combatLabel = sec:CreateFontString(nil, "OVERLAY", UI.FONT)
@@ -242,10 +245,23 @@ local function BuildWindowsSection(pane, above)
     esc:SetChecked(MD.Win:EscStackOn())
     pane.escCheck = esc
 
+    -- T79 (P36, section 8.1 item 10, mockup M1): the minimap button, on or off
+    -- (UI/MinimapButton.lua owns the button and its db.minimap default)
+    local mm = UI.CreateCheckButton(sec, "Minimap button", function(checked)
+        MD.db.minimap.hide = not checked
+        if MD.UpdateMinimapButton then MD:UpdateMinimapButton() end
+    end, "Minimap button", "The SpellTuner button on the minimap's rim.",
+        "Left-click opens the window, right-click opens Settings; drag it round the map.")
+    mm:SetPoint("TOPLEFT", sec, "TOPLEFT", 5, -77)
+    mm:SetChecked(not (type(MD.db.minimap) == "table" and MD.db.minimap.hide))
+    pane.minimapCheck = mm
+    local mmHint = Hint(sec, "Left-click opens the window, right-click opens Settings.", mm, 19, -3)
+    pane.minimapHint = mmHint
+
     local reset = UI.CreateButton(sec, "Reset window positions", "accent-hover", { 170, 20 }, false, false,
         nil, nil, "Reset window positions",
         "Every SpellTuner window back at its default place and size (/st ui reset).")
-    reset:SetPoint("TOPLEFT", sec, "TOPLEFT", 5, -77)
+    reset:SetPoint("TOPLEFT", mmHint, "BOTTOMLEFT", -19, -5)
     reset:SetScript("OnClick", function()
         MD.Win:Reset()
         MD:Print("windows: every position and size reset")
@@ -882,6 +898,12 @@ end
 function MD:SelectView(group, view)
     if MD.Win then return MD.Win:ShowMain(group, view) end
     return MD:OpenMainWindow(group, view)
+end
+
+-- T79 (P36): the minimap button's right-click (UI/MinimapButton.lua), as on
+-- TBC (UI/Dashboard.lua): the window on Settings -> General.
+function MD:OpenDashboardSettings()
+    return MD:SelectView("settings", "general")
 end
 
 function MD:SelectedView()

@@ -111,7 +111,11 @@ check("it reopens where it was", frame:IsShown() and MD.db.uiPath[1] ~= nil,
 --------------------------------------------------------------------------------
 -- Settings is the fourth group, not a second window (v0.11.2)
 --------------------------------------------------------------------------------
-S.Load({ "UI/OptionsFrame.lua", "UI/Options_General.lua", "UI/Options_About.lua" }, "SpellTuner", MD)
+-- T79 (P36): UI/MinimapButton.lua owns db.minimap's default, which the
+-- General pane's "Show minimap button" box reads (in game the TOC loads it
+-- before anything is shown; registered after login it back-fills MD.db).
+S.Load({ "UI/MinimapButton.lua", "UI/OptionsFrame.lua", "UI/Options_General.lua", "UI/Options_About.lua" },
+    "SpellTuner", MD)
 check("the settings panel exists", MD.optionsFrame ~= nil)
 check("it is a panel, not a window", _G.SpellTunerOptionsFrame == nil,
     tostring(_G.SpellTunerOptionsFrame))

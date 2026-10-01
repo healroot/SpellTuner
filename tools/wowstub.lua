@@ -650,6 +650,25 @@ S.allFrames = frames
 _G.UIParent = CreateFrame("Frame")
 _G.GameTooltip = CreateFrame("GameTooltip")
 
+-- T79 (P36): the minimap the SpellTuner button sits on -- 140 x 140 with its
+-- centre at S.minimapCenter and an effective scale of S.minimapScale (a suite
+-- sets them), and the pointer: GetCursorPosition answers S.cursorPos
+-- ({ x, y } in screen pixels), nothing while it is nil -- what every suite saw
+-- before, when the stub had no GetCursorPosition at all. (S.cursor is
+-- GetCursorInfo's, T36.) Both names are in apicheck's TOOLKIT and the 69893
+-- baseline.
+_G.Minimap = CreateFrame("Frame", "Minimap", UIParent) -- T79
+Minimap:SetSize(140, 140)
+S.minimapCenter = { 1200, 600 }
+S.minimapScale = 1
+Minimap.GetCenter = function() return S.minimapCenter[1], S.minimapCenter[2] end
+Minimap.GetEffectiveScale = function() return S.minimapScale end
+S.cursorPos = nil -- T79
+function GetCursorPosition() -- T79
+    if S.cursorPos then return S.cursorPos[1], S.cursorPos[2] end
+    return nil
+end
+
 --------------------------------------------------------------------------------
 -- T54 (P10, review Q12): geometry, opt-in. Off (the default), a frame has none:
 -- GetLeft 0, GetStringWidth 40, GetEffectiveScale 1, SetPoint a no-op -- what

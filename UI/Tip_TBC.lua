@@ -499,3 +499,6 @@ function Tip:Clock(hints)
     end
     return lines
 end
+
+-- T79 (P36): the minimap button's clock lines on this line (UI/MinimapButton.lua).
+MD:Provide("MinimapLines", function(hints) return Tip:Clock(hints) end)

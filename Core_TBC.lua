@@ -48,7 +48,7 @@ local DEFAULTS = {
                               -- synthetic scenarios. nil until 5 summaries exist
     healAmountGross = nil, -- latched from the combat log: does SPELL_HEAL's "amount" include the overheal?
     firstRun = true,
-    minimap = { hide = false, angle = 220 },
+    -- minimap: UI/MinimapButton.lua registers it (T79, P36: one file, both lines)
     debug = {
         enabled = false,  -- MD:Debug() is a no-op unless this is on
         maxLines = 1000,  -- memory ring size (Debug Console "keep lines")
