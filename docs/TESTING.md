@@ -996,7 +996,7 @@ not moved).
 ```
 
 At character select the AddOns list shows SpellTuner and the three modules at the newest build --
-**0.16.4** as of 2026-09-30 (§44, waves 1-10 of the refactor plan; 0.16.3 the coach and regen, §43; 0.16.2 the Forever UI, §42; 0.16.1 was build 70058's, §41), which carries everything 1.0.0-alpha.8 did (the numbering changed that
+**0.16.5** as of 2026-10-01 (§45, waves 11-17 and C of the refactor plan; 0.16.4 its waves 1-10, §44; 0.16.3 the coach and regen, §43; 0.16.2 the Forever UI, §42; 0.16.1 was build 70058's, §41), which carries everything 1.0.0-alpha.8 did (the numbering changed that
 day: one version for both lines, Forever beta builds 0.16.x, 1.0.0 at the Forever launch --
 `docs/DECISIONS.md` "One version, two installations"). Install it for every session of §38-§40;
 the steps below are written for it. Log in as Healroot, `/console scriptErrors 1`. Any
@@ -1154,7 +1154,7 @@ adds M3: the **Recorder** and **Replay** modules now do something. Nothing here 
 client yet; every step is the first time.
 
 **Install** as in §38 (`./release.sh --install-forever ...`). At character select SpellTuner and the
-three modules read the newest build (**0.16.4** as of 2026-09-30; it carries everything 1.0.0-alpha.5 and
+three modules read the newest build (**0.16.5** as of 2026-10-01; it carries everything 1.0.0-alpha.5 and
 later did).
 `/console scriptErrors 1`; any error box: note it, carry on,
 `/st dump` at the end of the session.
@@ -1221,7 +1221,7 @@ Two changes you may meet in §39's steps:
   report (the line `bar UnitHealthMax(party1): ...`). Nothing to do here; it ships off.
 
 **Install** as in §38 (`./release.sh --install-forever ...`). At character select SpellTuner and the
-three modules read the newest build (**0.16.4** as of 2026-09-30; it carries everything 1.0.0-alpha.6 and
+three modules read the newest build (**0.16.5** as of 2026-10-01; it carries everything 1.0.0-alpha.6 and
 later did).
 `/console scriptErrors 1`; any error box: note it, carry on,
 `/st dump` at the end of the session.
@@ -1316,7 +1316,7 @@ combat). Everything in the spec's task list landed (T27-T43); nothing here has r
 yet, and the shapes the tooltip's macro path rests on are still the retail engine's.
 
 **Install**: `./release.sh --install-forever "/mnt/e/Blizzard/World of Warcraft/_classic_beta_/Interface/AddOns"`.
-At character select SpellTuner and the three modules read **0.16.2** (or **0.16.3** / **0.16.4**, which carry it with §43's and §44's changes). `/console scriptErrors 1`;
+At character select SpellTuner and the three modules read **0.16.2** (or **0.16.3** / **0.16.4** / **0.16.5**, which carry it with §43's, §44's and §45's changes). `/console scriptErrors 1`;
 any error box: note it and carry on, `/st dump` at the end of the session. Out of combat unless a
 step says otherwise.
 
@@ -1441,10 +1441,10 @@ the numbers.
 
 **Paste back**: the `pN` you pinned, and in words what the suggested column did differently.
 
-## 44. The refactor plan's checks (`docs/PLAN-refactor-ux.md` section 9; waves 1-17, C-a, C-b, C-c and C-d, 0.16.4)
+## 44. The refactor plan's checks (`docs/PLAN-refactor-ux.md` section 9; waves 1-17, C-a, C-b, C-c and C-d, 0.16.4 and 0.16.5)
 
-Paste back as in section 41. Out of combat unless a step says otherwise. Install **0.16.4** on each
-client (`--install-tbc` / `--install-forever`, the top of this file and §38; never cross them). The
+Paste back as in section 41. Out of combat unless a step says otherwise. Install **0.16.5** on each
+client (§45 walks waves 11-C in sessions; 0.16.4 carried waves 1-10) (`--install-tbc` / `--install-forever`, the top of this file and §38; never cross them). The
 items keep the plan's numbers; wave 1 (T45-T47) needs items 3 and 15, wave 2 (T48-T50) adds 4, 6, 8,
 10, 13 and 14, wave 3 (T51-T53) adds 1, 2, 7, 9, 11 and 12, wave 4 (T54-T56) adds 5 and the TBC
 load-list smoke line (W4), wave 5 (T57-T58) adds 16, wave 6 (T59-T61) adds 17's TBC half, wave 7
@@ -1452,8 +1452,9 @@ load-list smoke line (W4), wave 5 (T57-T58) adds 16, wave 6 (T59-T61) adds 17's 
 line (W8), wave 9 (T66-T67) adds the two rank lines (W9), and wave 10 (T68-T69) adds only the
 regression line W10. From wave 4 on nothing visible should change: any difference not listed here is
 a regression. Wave 11 (T70-T72, built on 0.16.4 after the 0.16.4 install) adds items 20, 22 and 23,
-which change what you see on purpose, and wave 12 (T73) adds items 19 and 21, which do too. Item 24
-waits for waves 13-16.
+which change what you see on purpose, and wave 12 (T73) adds items 19 and 21, which do too. Waves
+13-17 (T74-T79) add items 24-29 and wave C (T80-T84) items 30-34, the new UI on TBC. Items 19-34 are
+on 0.16.5 and §45 walks them in five sessions.
 
 If there is only one short session: TBC 1, 4 and 16; Forever 13, 15 and W10.
 
@@ -1530,7 +1531,7 @@ W10. **The clock and the theme (P24, P25).** The mana clock behaves exactly as o
     colours. **On TBC:** `/md` and the widget look exactly as before (the colours are now named
     tokens with TBC's own values).
 
-**Wave 11 (T70-T72; Forever unless said).** These need a build newer than the 0.16.4 install.
+**Wave 11 (T70-T72; Forever unless said).** On 0.16.5 (§45).
 
 20. **Settings (P26).** Settings -> General: move the clock at full mana with Lock unticked (it shows
     for 60 s), Reset it; click the clock: the window opens. Settings -> About lists the commands; with
@@ -1551,7 +1552,7 @@ W10. **The clock and the theme (P24, P25).** The mana clock behaves exactly as o
     a mob: you can still jump and turn; after the fight Space plays the replay again only once the
     pointer has left the window and come back.
 
-**Wave 12 (T73; Forever unless said).** These need a build newer than the 0.16.4 install.
+**Wave 12 (T73; Forever unless said).** On 0.16.5 (§45).
 
 19. `/st dump`: the errors come right after the modules, before `== capabilities`. Then one summary
     (`absent:` and `forbidden events:`), then the whole table, with the debug log last.
@@ -1565,7 +1566,7 @@ W10. **The clock and the theme (P24, P25).** The mana clock behaves exactly as o
     next pull says nothing. **TBC:** `/md options` -> General: the slider reads `Danger line for built
     fights (%)`, and its hover names Simulate.
 
-**Wave 13 (T74; Forever unless said).** These need a build newer than the 0.16.4 install.
+**Wave 13 (T74; Forever unless said).** On 0.16.5 (§45).
 
 24. **Selection and edges (P30).** `/st`: the selected group on the left is a dim accent fill with a
     2-px accent bar on its left edge; move the pointer down the other groups -- each gets a faint tint,
@@ -1574,7 +1575,7 @@ W10. **The clock and the theme (P24, P25).** The mana clock behaves exactly as o
     and check-box borders are as crisp as the window's edge; change the window scale in Settings ->
     General and they stay crisp. **TBC:** `/md` -- the nav and tabs look exactly as before.
 
-**Wave 14 (T75; Forever unless said).** These need a build newer than the 0.16.4 install.
+**Wave 14 (T75; Forever unless said).** On 0.16.5 (§45).
 
 25. **Layout and sizes (P31).** `/st`: Spells and Settings have no resize grip in the bottom-right
     corner. Reports and Simulate have one, drawn as three thin diagonal lines that turn the accent
@@ -1587,7 +1588,7 @@ W10. **The clock and the theme (P24, P25).** The mana clock behaves exactly as o
     of its label: it toggles. **TBC:** `/md` -- the window, its tabs and its checkboxes look exactly as
     before.
 
-**Wave 15 (T76; Forever unless said).** These need a build newer than the 0.16.4 install.
+**Wave 15 (T76; Forever unless said).** On 0.16.5 (§45).
 
 26. **One tooltip (P32).** `/st`: hover a Settings checkbox, a Review row, a replay icon, the clock
     and a rank row in Spells -- every tooltip has the same flat dark fill and one crisp black edge (no
@@ -1602,7 +1603,7 @@ W10. **The clock and the theme (P24, P25).** The mana clock behaves exactly as o
     (a bag item, a unit frame) straight after: it has its normal Blizzard border. **TBC:** `/md` --
     every tooltip looks exactly as before.
 
-**Wave 16 (T77; Forever unless said).** These need a build newer than the 0.16.4 install.
+**Wave 16 (T77; Forever unless said).** On 0.16.5 (§45).
 
 27. **Lists and the rail (P33).** Settings -> General: move the window so the In combat dropdown sits
     near the bottom of the screen and open it: the list opens upward and its arrow points up (report
@@ -1617,7 +1618,7 @@ W10. **The clock and the theme (P24, P25).** The mana clock behaves exactly as o
     with a dropdown open closes the list, not the window. **TBC:** `/md` -- a dropdown near the
     bottom of the screen opens upward; everything else looks as before.
 
-**Wave 17 (T78, T79; Forever unless said).** These need a build newer than the 0.16.4 install.
+**Wave 17 (T78, T79; Forever unless said).** On 0.16.5 (§45).
 (The plan's section 9 numbers these after its own 24 and as 25; here they follow item 27.)
 
 28. **Words and tones (P34).** Spells -> Healing Touch (or any heal with three or more ranks): the
@@ -1638,7 +1639,7 @@ W10. **The clock and the theme (P24, P25).** The mana clock behaves exactly as o
     it. If you use a minimap-button collector, say whether it picked the button up. On TBC nothing
     changes until wave C.
 
-**Wave C-a (T80; TBC).** These need a build newer than the 0.16.4 install.
+**Wave C-a (T80; TBC).** On 0.16.5 (§45).
 
 30. **TBC window (C1).**
     - `/md`: the window is flat, the size it was, and where you last dragged it (if it opens
@@ -1654,7 +1655,7 @@ W10. **The clock and the theme (P24, P25).** The mana clock behaves exactly as o
       the same sheet.
     - `/md replay 1`: it opens where the old replay window was.
 
-**Wave C-b (T81, T82; TBC).** These need a build newer than the 0.16.4 install.
+**Wave C-b (T81, T82; TBC).** On 0.16.5 (§45).
 
 31. **TBC tables (C2).**
     - `/md` -> Spells -> Rejuvenation: the numbers line up on the right, the rows are taller
@@ -1679,7 +1680,7 @@ W10. **The clock and the theme (P24, P25).** The mana clock behaves exactly as o
     release it. Hover the minimap button: the same clock lines, then Left-click / Right-click / Drag
     and the hide line.
 
-**Wave C-c (T83; TBC).** These need a build newer than the 0.16.4 install.
+**Wave C-c (T83; TBC).** On 0.16.5 (§45).
 
 33. **TBC Spells view (C3).**
     - `/md` -> Spells -> Healing Touch: a header with the icon, "Healing Touch", "Direct heal -
@@ -1704,7 +1705,7 @@ W10. **The clock and the theme (P24, P25).** The mana clock behaves exactly as o
     - Reports -> Waste / Review: the lines above the list and the "Last fight" line at the
       bottom are as before.
 
-**Wave C-d (T84; TBC).** These need a build newer than the 0.16.4 install.
+**Wave C-d (T84; TBC).** On 0.16.5 (§45).
 
 34. **TBC spell rail (C5).**
     - `/md` (first time since the update, or after `/reload` with the window on Spells): the
@@ -1727,6 +1728,132 @@ W10. **The clock and the theme (P24, P25).** The mana clock behaves exactly as o
       Regrowth again.
     - **(If you can)** On a druid alt below level 64, train Lifebloom: it appears at the end
       of the list with a dot, and the dot goes once you open it.
+
+## 45. 0.16.5: the new UI on both clients (waves 11-17 and C of the refactor plan; five sessions, 20-30 min each)
+
+0.16.5 carries every wave of `docs/PLAN-refactor-ux.md` (T45-T84): on Forever the settings you can
+reach, Review answering in the window, the replay's band and keys, the kit (selection, edges, sizes,
+one tooltip, lists that flip, the rail's hover), the words (`beaten`, `Per sec`, `Casts`) and the
+minimap button; on TBC the same window, theme, tables, clock, Spells view and spell rail. The steps
+are §44's items 19-34 in an order you can play through; each line names its item, and §44 has the
+full wording when a line here is short. Nothing here has run on a real client yet.
+
+**Install** (done on 2026-10-01 into both clients; to redo it, never cross them):
+`./release.sh --install-forever "/mnt/e/Blizzard/World of Warcraft/_classic_beta_/Interface/AddOns"` and
+`./release.sh --install-tbc "/mnt/e/Blizzard/World of Warcraft/_anniversary_/Interface/AddOns"`.
+At character select SpellTuner (and on Forever the three modules) read **0.16.5**. On both clients
+`/console scriptErrors 1`; any error box: copy its text, carry on. On Forever `/st dump` at the end
+of a session that had one. Out of combat unless a step says otherwise. For each step, a line in the
+paste: `ok`, or what you saw instead (which window, what it did; a screenshot when it is about how
+something looks).
+
+**If there is only one short session:** 45.1 steps 1-3 and 45.4 steps 1-4.
+
+### 45.1 Forever, session 1 -- settings, modules, the dump, the minimap button (20 min, solo)
+
+1. **Settings (item 20).** `/st` -> Settings -> General: two columns -- SPELL TOOLTIPS, APPEARANCE,
+   WINDOWS on the left; MANA CLOCK, REVIEW, TOOLS on the right. At full mana untick Lock: the clock
+   shows for 60 s; drag it, then Reset. Click the clock: the window opens. Settings -> About lists the
+   commands; with Replay off, REVIEW is greyed and says so.
+2. **Placeholders and Turn on (item 21).** Settings -> Modules: untick Replay; its row reads
+   `off - unloads at your next /reload` with **Reload UI**. Click it. Reports: `Review needs the Replay
+   module`, a sentence, **Turn on**. Click Turn on: chat says Recorder and Replay loaded and the list
+   replaces the placeholder with no reload. Simulate -> Practice the same with Practice off.
+3. **The dump (item 19).** `/st dump`: the errors right after the modules, before `== capabilities`;
+   then one summary (`absent:`, `forbidden events:`), the whole table, the debug log last.
+4. **Combat line (item 21).** With the window open (Windows: hide), pull a mob: one chat line says the
+   window hides in combat and where to change that; the next pull says nothing.
+5. **Minimap button (item 29).** On the minimap's rim; drag it round, `/reload`, it stays. Left-click
+   opens the window on the view you left, again closes it; right-click opens Settings -> General;
+   unticking *Minimap button* under WINDOWS hides it. Say whether a minimap-button collector took it.
+
+**Paste back** into `docs/probe/<build>-0.16.5-s1.md`: a line per step, the `/st dump` from step 3
+whole, a screenshot of Settings -> General.
+
+### 45.2 Forever, session 2 -- the kit and the words (25 min, solo, out of combat)
+
+1. **Selection and edges (item 24).** Hover down the groups on the left: only the selected one keeps
+   its dim fill and 2-px accent bar; the selected view tab has its bar along the bottom. Button and
+   checkbox borders as crisp as the window's edge at your 0.71 scale, and again after changing Window
+   size.
+2. **Layout and sizes (item 25).** Spells and Settings have no resize grip; Reports and Simulate have
+   one (three thin lines, accent under the pointer) that still resizes. View tabs as wide as their
+   names, level with the group buttons. `+ Add` and Edit bindings: a red x on each sheet's title row.
+   Text size +2, reopen, click a checkbox at the far end of its label: it toggles.
+3. **One tooltip (item 26).** Hover a Settings checkbox, a Review row, the clock and a rank row in
+   Spells: one flat dark fill, one crisp black edge; the rank row shows the game's spell text with the
+   SpellTuner block once (say whether Shift keeps the flat look). A Review row's tooltip opens beside
+   the pointer, to its left near the screen's right edge -- also at Window size 80 % and 120 %. Another
+   addon's tooltip straight after keeps its Blizzard border.
+4. **Lists and the rail (item 27).** Move the window low and open In combat: the list opens upward,
+   arrow pointing up (say if the arrow is missing, a box or wrong). Hover a rail row: `R1` stays, one
+   red x; wait half a second: the row tooltip; right-click: Move up / Move down / Remove. A rail longer
+   than the window scrolls above `+ Add`. ESC with a dropdown open closes the list, not the window.
+5. **Words and tones (item 28).** Spells -> Healing Touch (or a heal with three ranks or more):
+   headers `Per mana  Per sec  Cast  Casts`, a sentence on each; a `beaten` tag and its `Beaten by
+   Rank N`; a clicked rank gets a white bar, the suggested row keeps its fill. Hover a rank on an
+   action bar: `Per sec`, `Casts to OOM  N from full`, `Suggested  Rank N (+M% per mana)`.
+
+**Paste back** into `docs/probe/<build>-0.16.5-s2.md`: a line per step, screenshots of Spells ->
+Healing Touch, of one tooltip and of an open dropdown near the screen's bottom.
+
+### 45.3 Forever, session 3 -- Review and the replay (25 min, a few pulls, Recorder and Replay on)
+
+1. **Review (item 22).** Pull three or four mobs. Reports -> Review: Validate a fight -- the report
+   under the list, one chat line. Double-click a row: it plays. Right-click: the menu. On a fight that
+   does not replay: Coach anyway -- the card under the list, and Play shows both columns, `FORCED`.
+2. **Replay (item 23).** Open a fight not coached yet: full width at once, right column dimmed
+   (`coaching... N plans`), filling in place without moving. The band reads `replays` in green, or
+   `does not replay: <gate>` in red with **Coach anyway**; after clicking it the right column fills in
+   without the window moving or the time jumping, and the band says `coached anyway`. Nothing in the
+   band or the column titles overlaps. Pointer over the window: Space pauses / plays, Left / Right move
+   5 s; pointer away: Space jumps.
+
+**Paste back** into `docs/probe/<build>-0.16.5-s3.md`: a line per step, a screenshot of the replay
+while it coaches and one after, and the band's text for a fight that did not replay.
+
+### 45.4 TBC, session 4 -- the window, the Spells view and the rail (25 min, out of combat)
+
+1. **The window (item 30).** `/md`: flat, its old size, where you last dragged it (say if it opens
+   centred). Drag, `/reload`: it stays. Settings -> General -> Windows: Window size 90 %, Text size +1,
+   Reset window positions. Debug console: one ESC closes it, a second the window. Simulate -> Practice
+   -> Edit bindings (and `/md binds`): a sheet on the pane.
+2. **The rail (item 34).** Spells: no tabs; `MY SPELLS`, `Overview`, then Healing Touch,
+   Rejuvenation, Regrowth, Lifebloom with an `R<n>` tag each. Overview: a row per family, the
+   suggested rank in orange; click one: its view opens and its rail row is marked. Hover a row: one
+   red x; remove Rejuvenation, then Undo. Drag a row and `/reload`: the order kept. `+ Add`: your four
+   heals under HEALS; ESC closes the picker only. Open Regrowth, close, `/md`: Regrowth again.
+3. **The Spells view (item 33).** Healing Touch: the header with icon, shape, rank and cast, your mana
+   and +healing (its hover: regen, crit, relic, Tree aura); the SUGGESTED chip and its line. Headers
+   Heal / Total, Per mana, Per sec, Casts (`inf` / `999+`), a sentence on each. Click a rank: the white
+   bar and the card move; the suggested fill stays. After overheal: the healing headers orange. What
+   if...: +heal 2000 -> SIMULATED; fold; Clear.
+4. **The tables (item 31).** Rejuvenation's rows striped, numbers right-aligned, the last column
+   `best` / `max` / `beaten` / `learn at N`; `beaten`'s hover names the rank that beats it; Lifebloom's
+   x2 / x3 say `rolling`. Reports -> Waste scrolls with the wheel.
+5. **The clock look (item 32, out of combat part).** `/md unlock`: a dark flat panel with
+   `SpellTuner - drag me` over a class-coloured bar; drag and lock. Hover the minimap button: the clock
+   lines, then Left-click / Right-click / Drag and the hide line.
+
+**Paste back** into `.logs/tbc/0.16.5-s4.md`: a line per step, screenshots of Spells -> Overview and
+Spells -> Healing Touch, and `/md profile` if anything looked wrong.
+
+### 45.5 TBC, session 5 -- in a dungeon (30 min, a party)
+
+1. **Combat (item 30).** Pull with the window open: it hides, comes back on the same view after the
+   fight, one chat line once. Set Keep them open and pull: it stays.
+2. **The clock in a fight (item 32).** The text centred over a thin bar that fills amber after each
+   cast and turns green five seconds later; say whether the centred text sliding bothers you. Hover
+   it: `Out of mana in` / `Full again in ... if you stop`; hold Shift: the old raw lines appear and go
+   on release.
+3. **Review and the replay (items 22, 23 on TBC).** After the run: Reports -> Review -- a run of 30+
+   pulls scrolls; right-click a row: the menu; Validate shows the report under the list. `/md replay 1`
+   opens where the old replay window was; the band reads as on Forever. Keep the pointer over the
+   replay and pull a mob: you can still jump and turn; after the fight Space plays the replay again
+   only once the pointer has left the window and come back.
+
+**Paste back** into `.logs/tbc/0.16.5-s5.md`: a line per step, a screenshot of the clock mid-fight
+and of the replay's band, and the run's number in Review.
 
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the

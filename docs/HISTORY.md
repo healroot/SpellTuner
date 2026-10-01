@@ -4544,3 +4544,34 @@ Overview's frames; releasecheck's TBC package 68 -> 71 and Forever 34 -> 35 file
 lines), and run-to-run noise (ms, table addresses, the sliced search's evaluation counts in
 reviewui and the order of its `replay 1 opened` line); every other TBC suite equal. In game:
 `docs/TESTING.md` §44 item 34. **Next:** the plan's finish step.
+
+## 2026-10-01 — the refactor plan finished: 0.16.5, installed in both clients
+
+The finish step of `docs/PLAN-refactor-ux.md` on `ea6eaa5`. Every wave of the plan has landed:
+waves 1-10 (P1-P25, T45-T69) at 0.16.4, then wave 11 (T70-T72: P26 settings you can reach, P27
+Review answers in the window, P28 the replay's layout, band and keys; `e00fd63`), wave 12 (T73, P29
+no dead ends; `7b77391`), waves 13-16 (T74-T77, the kit: P30 primitives, P31 layout and sizes, P32
+one tooltip, P33 behaviours; `0e7dded`, `19ffac6`, `7c32bf5`, `7fd71b3`), wave 17 (T78 P34 words and
+tones, T79 P36 the minimap button on both lines; `bf35c93`) and wave C, the new UI on TBC (T80 C1
+the window manager and the flat theme, `70b424d`; T81 C2 the one table and T82 C4 one clock look,
+`03cc1bd`; T83 C3 the Spells view, `1451738`; T84 C5 the spell rail, `ea6eaa5`). Nothing planned
+is left unlanded; the task files' deviations for later owners are listed in
+`docs/tasks/HANDOVER.md` "What did not land".
+
+- **0.16.5** on every TOC (`./release.sh --set-version 0.16.5`). The import fixture rebuilt with
+  `tools/importfixture.lua` and unchanged (its version is fixed since T54); no other fixture embeds
+  the version.
+- Docs: CLAUDE.md's intro at 0.16.5; `docs/PLAN-refactor-ux.md` section 4 gains a Status column
+  (every wave done, with its task numbers and integrator commit) and a status paragraph;
+  `docs/TESTING.md` §45 walks §44's items 19-34 in five 20-30 minute sessions (Forever 45.1
+  settings / modules / dump / minimap, 45.2 the kit and the words, 45.3 Review and the replay; TBC
+  45.4 the window / Spells view / rail, 45.5 in a dungeon), each saying what to paste back where
+  (`docs/probe/<build>-0.16.5-s<N>.md` on Forever, `.logs/tbc/0.16.5-s<N>.md` on TBC); §44 and the
+  older install lines point at 0.16.5; the handover rewritten.
+- **Installed in both clients** at the author's request ("install current version in both beta and
+  TBC - so I can test"): `--install-forever` into `_classic_beta_` (SpellTuner and the three
+  modules), `--install-tbc` into `_anniversary_`; every installed TOC reads 0.16.5.
+
+`make check`: 72 runs, all passed (67 counted runs against 67 expected); apicheck 0 findings over 60
+files (48 globals), textcheck 0 over 98. Packages: TBC 71 files, Forever 35 files plus the three
+modules. **Next:** the author's §45 sessions, then a task per failed check from the paste.

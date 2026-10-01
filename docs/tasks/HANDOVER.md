@@ -4,11 +4,15 @@ Rewritten by the lead after every commit and every hand-out. A successor continu
 alone. Worktree: `/home/penek/projects/addons/SpellTuner/.claude/worktrees/manademon-folder-continue-41eabc`,
 branch `claude/manademon-folder-continue-41eabc`.
 
-Last updated: 2026-09-30, after **waves 1-10 of `docs/PLAN-refactor-ux.md`** (P1-P25, T45-T69; the
-plan answers `docs/review/2026-09-30-project-review.md`) and the **0.16.4** version commit. 0.16.4 is
-built into `dist/` but **not installed anywhere**; the author's beta still runs 0.16.3 (Forever
-package only). The version ruling is `docs/DECISIONS.md` "One version, two installations" (0.16.x
-beta builds, 1.0.0 at the Forever launch). Install only on the author's request:
+Last updated: 2026-10-01, after **every wave of `docs/PLAN-refactor-ux.md`** (waves 1-17 and C:
+P1-P34 and P36 as T45-T79, C1-C5 as T80-T84; the plan answers
+`docs/review/2026-09-30-project-review.md`) and the **0.16.5** version commit. Both packages are
+built into `dist/` (`tbc/` and `forever/`) and **installed in both clients** on 2026-10-01 at the
+author's request ("install current version in both beta and TBC - so I can test"): the Forever
+package with its three modules into `_classic_beta_`, the TBC package into `_anniversary_`; every
+installed TOC reads 0.16.5. The author tests it from `docs/TESTING.md` §45. The
+version ruling is `docs/DECISIONS.md` "One version, two installations" (0.16.x beta builds, 1.0.0 at
+the Forever launch). Install only on the author's request:
 `./release.sh --install-forever "/mnt/e/Blizzard/World of Warcraft/_classic_beta_/Interface/AddOns"`
 and `./release.sh --install-tbc ".../_anniversary_/Interface/AddOns"`; never cross them.
 
@@ -16,7 +20,35 @@ and `./release.sh --install-tbc ".../_anniversary_/Interface/AddOns"`; never cro
 
 | hash | what |
 |---|---|
-| (the commit after 3f96611) | 0.16.4 on every TOC (`release.sh --set-version`; the import fixture rebuilt, unchanged -- fixed version since T54); P35's remainder: "Fixed in" under B1-B26 in the review, CLAUDE.md `Data/DruidSpells.lua` row and intro, TESTING §44 for waves 1-10 (item 13, W10, a one-session subset) and the install lines at 0.16.4, HISTORY's closing entry, this handover |
+| (the commit after ea6eaa5) | 0.16.5 on every TOC (installed in both clients) (`release.sh --set-version`; the import fixture rebuilt, unchanged -- fixed version since T54); the plan's finish: CLAUDE.md intro at 0.16.5, `docs/PLAN-refactor-ux.md` section 4's Status column (every wave done), TESTING §45 (waves 11-C in five sessions, both clients) and §44 pointed at 0.16.5, HISTORY's closing entry, this handover |
+| ea6eaa5 | wave C-d integrator (three main TOCs: `Spells\Families_TBC.lua`, `Spells\Tabs.lua`, `UI\SpellRail.lua`), CLAUDE.md, DECISIONS "TBC's Spells group is the rail", TESTING §44 item 34, TOOLS, expected-counts, HISTORY |
+| c51613a / 1c9517b | T84 (C5): the spell rail on TBC (`Spells/Families_TBC.lua`, `Tabs.source`, the shared `UI/SpellRail.lua`, TBC Overview); dashui tbc 84, tabscheck tbc 4 (new) |
+| 1451738 | wave C-c integrator (TBC TOC `UI\SpellsView_TBC.lua`) |
+| bd65321 / 6de233c | T83 (C3): the TBC Spells view in the Forever structure; dashui tbc 80 |
+| 03cc1bd | wave C-b integrator |
+| fa20cb3 / 45aefb8 | T81 (C2): TBC's rank table, Waste and Review on the one table; dashui tbc 74, reviewui 50 |
+| 439eac4 / fb077e1 | T82 (C4): one clock look (M6), `Tip:Clock` in M6's words; ttocheck 47, minimapcheck tbc 7 |
+| 70b424d | wave C-a integrator (three main TOCs: `UI\Theme_Flat.lua`, `UI\Windows.lua`, `UI\EscStack.lua`) |
+| cbc6730 / 9a7b422 | T80 (C1): the window manager and the flat theme on TBC; wincheck tbc 4 (new), defaultscheck tbc 49 |
+| bf35c93 | wave 17 integrator (two TOC lines for the minimap button, the import fixture rebuild) |
+| f80fe4b / f2d4902 | T79 (P36): the minimap button on both lines (`UI/MinimapButton.lua`, `MD:Provide("MinimapLines")`); minimapcheck (new) |
+| bde6fb1 / 773661d | T78 (P34): words and tones -- `beaten`, Per sec / Casts, one grey, the white selection bar |
+| 7fd71b3 | wave 16 integrator |
+| 0fcfc9e / fc3f613 | T77 (P33): lists that flip, chevrons, the rail's one-x hover and menu, row tooltips, the rail scrolling, `UI_POPUP` / `FONTS_CHANGED` |
+| 7c32bf5 | wave 15 integrator (three TOCs: `UI/Tip.lua`, `UI/Tip_TBC.lua`; `UI/Tooltip.lua` deleted) |
+| d20faae / deef06b / c8eaf31 | T76 (P32): one tooltip -- `UI/Tip.lua`, the kit skin under the theme |
+| 19ffac6 | wave 14 integrator |
+| 0aad7a0 | T75 (P31): kit layout and sizes |
+| 0e7dded | wave 13 integrator |
+| af380e2 | T74 (P30): kit primitives -- palette tokens, pixel edges, one selection language |
+| 7b77391 | wave 12 integrator |
+| f7ae260 / 4301e53 | T73 (P29): no dead ends -- `nav:ReplacePane`, Turn on, Reload UI, the combat line, the dump's order, the TBC danger label |
+| e00fd63 | wave 11 integrator |
+| 2fe4809 / 82390df / f8b944b | T72 (P28): the replay's stable layout, status band and keys |
+| 614f538 / 94de083 | T71 (P27): Review answers in the window (`SP.CardLines`, gate shorts, the result area, the row menu, `UI/ContextMenu.lua`) |
+| 90a433a / 9dc0444 | T70 (P26): settings you can reach -- General in two columns, MANA CLOCK / REVIEW / TOOLS, About |
+| cf9c6ae / e4c24ac / eadf33a | docs: plan P36 and C5, mockups M1-M6 approved, the author's answers (section 8.1) |
+| 9e634a3 | 0.16.4 on every TOC (`release.sh --set-version`; the import fixture rebuilt, unchanged -- fixed version since T54); P35's remainder: "Fixed in" under B1-B26 in the review, CLAUDE.md `Data/DruidSpells.lua` row and intro, TESTING §44 for waves 1-10 (item 13, W10, a one-session subset) and the install lines at 0.16.4, HISTORY's closing entry, this handover |
 | 3f96611 | wave 10 integrator: TOC lines (`Engine\ManaPool_Forever.lua`, `UI\Visibility.lua`), CLAUDE.md, DECISIONS, TOOLS, expected-counts, HISTORY |
 | e736481 / 1fffaeb | T69 (P25): `UI.THEMED`, colour tokens always present (TBC's literals), `UI.Hex` / `RGB` / `Fill`; themecheck forever 28, tbc 7 |
 | fa969e4 / 648c581 | T68 (P24): `Engine/ManaPool_Forever.lua` (`MD.Pool`), the clock paints only, `UI/Visibility.lua`; clockcheck 24, recordcheck 31 |
@@ -137,39 +169,34 @@ docs/HISTORY.md's 2026-09-29 entry covers T18 onwards.
 
 ## In the tree, not committed
 
-Nothing. `dist/` (gitignored) holds the 0.16.4 packages.
+Nothing. `dist/` (gitignored) holds the 0.16.5 packages (`tbc/SpellTuner`, `forever/SpellTuner` with
+the three modules, and the two zips).
 
 ## What did not land
 
-Nothing from waves 1-10. P35 is the integrator's standing task; its remainder is done in the 0.16.4
-commit except "counts removed from prose" in CLAUDE.md, which stays a rolling clean-up (the counts in
-`docs/TOOLS.md` section 1 and `tools/data/expected-counts.json` are the ones that are checked).
+Nothing planned. Every task of waves 1-17 and C landed (P1-P34, P36, C1-C5 as T45-T84; section 4 of
+`docs/PLAN-refactor-ux.md` has a Status column). P35 is the integrator's standing task; "counts
+removed from prose" in CLAUDE.md stays a rolling clean-up (the checked counts are in
+`docs/TOOLS.md` section 1 and `tools/data/expected-counts.json`). Left by the task files for the
+next owners, none of them planned: comments that still name the old files after C1
+(`Client/Probe.lua`, `UI/Style.lua`, `UI/Dashboard_Review.lua`, `UI/SpellTip_Forever.lua`,
+`tools/wowstub.lua`, and `docs/SPEC-forever-ui.md` / the plan); `Core_Forever.lua`'s
+`effectiveMode` declaration that nothing on Forever reads since T81; Waste's `ffcc66` literal and
+the build-time pitch of TBC's rank table and Waste (T81 deviations 6, 7); `Tip:Columns` dead in
+`UI/Tip_TBC.lua` and its comment in `UI/Dashboard_Rows.lua` (T83 deviation 4); Spells on TBC keeps
+1036 x 646 (T83 deviation 1); no spellbook drop, Whole book or Export on TBC's rail and Overview,
+and the rail tags refresh on events, not the 2-s tick (T84 deviations 4, 5, 7).
 
 ## Next, in order
 
-1. **The author's in-game checks, TESTING §44 on 0.16.4** (after installing it per client on the
-   author's request; the one-session subset is TBC 1, 4, 16 and Forever 13, 15, W10), then the older
-   §38-§43 items still open (below, "Waiting on the author"). A task per failed check, from the paste
-   only.
-2. **Mockups for the author** (plan section 7), added to `docs/mockups/forever-ui.html`: **M1**
-   (Settings -> General in two columns, the About view, the module placeholder -- P26, P29), **M2**
-   (Review with a result area and the row menu -- P27), **M3** (the replay while coaching, the status
-   band -- P28); later **M4** (rail rows -- P33) and **M5** (the rank table's tones and words -- P34).
-3. **The author's open questions** (plan section 8): **1** decision 10 again, the TBC opt-in (the
-   conditional wave 5.C); **5** Review conventions -- keep `Coach*` + shift-click, or only the row
-   menu's "Coach anyway" (P27); **6** placeholders -- does "Turn on" switch the module on or open
-   Settings -> Modules (P29); **7** words -- `dominated` -> `beaten` or keep it with a tooltip, and
-   unify TBC's three greys (P34); **8** one window size (U17), revisit or not; **9** cross-realm
-   targets (B15) -- a party with a connected-realm member would confirm the fix; **10** a minimap
-   button on Forever, or `/st` and the clock's click only; **12** replay keys only with the pointer
-   over the replay and never in combat (P28). Questions 2, 3, 4 and 11 were statements of changes that
-   landed; answer them only if the author objects.
-4. **Waves 11-17** (plan section 4-5), each after its mockup / answer: wave 11 P26 (M1), P27 (M2,
-   question 5), P28 (M3, question 12); wave 12 P29 (M1's placeholder, question 6); waves 13-15 P30,
-   P31, P32 (the kit, spec 4.3 already approved); wave 16 P33 (after M4); wave 17 P34 (after M5 and
-   question 7); the conditional wave C only on a yes to question 1. Integrator lines (P35) at every
-   wave end; the version bump when the author wants a build.
-5. Still not scheduled, each waiting on the author: the "Measured" line (UI spec decision 8), pair
+1. **The author's in-game checks on 0.16.5: `docs/TESTING.md` §45** -- five sessions (Forever
+   45.1-45.3, TBC 45.4-45.5), each pasting into `docs/probe/<build>-0.16.5-s<N>.md` (Forever) or
+   `.logs/tbc/0.16.5-s<N>.md` (TBC); the one-short-session subset is 45.1 steps 1-3 and 45.4 steps
+   1-4. Then §44's items 1-18 and the W lines still open from waves 1-10. A task per failed check,
+   from the paste only.
+2. The older §38-§43 items still open (below, "Waiting on the author").
+3. The next owners' list above, as a clean-up task when a file is next touched.
+4. Still not scheduled, each waiting on the author: the "Measured" line (UI spec decision 8), pair
    mode for the replay (6.3b), decision 12 of the UI spec (a macro naming a rank) after the probe's
    `macro` lines; the two TBC rows that got worse on the anniversary snapshot and the frugal floor
    re-measured where it binds. Then M5 of the roadmap (launch client, 2026-11-04).
@@ -181,20 +208,21 @@ flavours, apicheck, textcheck, the selftests and the expected counts in
 `bash tools/run.sh tools/importfixture.lua` only when what is stored changes. `releasecheck` in a
 `git archive` export needs a throwaway `git init` there.
 
-## Baselines (at the 0.16.4 commit)
+## Baselines (at the 0.16.5 commit)
 
-`make check`: 68 runs, all passed; 63 counted against 63 expected. TBC: simcheck 13, reccheck 63,
-replaycheck 82, replayui 103, runcheck 81, reviewui 49, navui 35, dashui 64, regencheck 27, simwindow
-8, solvercheck 84, restcheck 51, timeline 27, spelltip 48, practice 84, practiceui 52, migrate 7,
-costcheck 3, ttocheck 45, verifycheck 14, slashcheck 8, probecheck (tbc) 88, recordingscheck 32,
-defaultscheck 48, kitcheck 3, bookcheck 2, themecheck 7. Forever: forevercheck 16, modulecheck 19,
-kitcheck 11, recordcheck 31, recordingscheck 32, scenariocheck 14, gatecheck 11, replayforever 15,
-reviewforever 13, coachforever 21, practiceforever 28, bindscheck 6, parsecheck 15, bookcheck 22,
-tipcheck 38, clockcheck 24, spellsui 48, measurecheck 30, themecheck 28, tabscheck 24, wincheck 55,
-defaultscheck 52. Both flavours: adaptercheck 23 / 16, corecheck 24 / 24, svcheck 6 / 1,
-consolecheck 20 / 1. importcheck 21, releasecheck 21, lib/t 12. apicheck 0 findings (8 Forever
-TOCs, 56 files, 47 distinct globals), apicheck selftest 13, textcheck 0 findings over 92 files (9
-TOCs), textcheck selftest 2, refcheck selftest 2; reproduce and strategies smoke runs ok.
+`make check`: 72 runs, all passed; 67 counted against 67 expected. TBC: adaptercheck 16, bookcheck
+2, consolecheck 1, corecheck 24, costcheck 3, dashui 84, defaultscheck 49, kitcheck 3, migrate 7,
+minimapcheck 7, navui 46, practice 84, practiceui 52, probecheck 88, reccheck 63, recordingscheck 32,
+regencheck 27, replaycheck 82, replayui 107, restcheck 51, reviewui 50, runcheck 81, simcheck 13,
+simwindow 8, slashcheck 8, solvercheck 84, spelltip 49, svcheck 1, tabscheck 4, themecheck 9,
+timeline 27, ttocheck 47, verifycheck 14, wincheck 4. Forever: adaptercheck 23, bindscheck 6,
+bookcheck 22, clockcheck 29, coachforever 22, consolecheck 20, corecheck 24, defaultscheck 52,
+forevercheck 16, gatecheck 12, kitcheck 11, measurecheck 30, minimapcheck 8, modulecheck 19,
+parsecheck 15, practiceforever 29, recordcheck 31, recordingscheck 32, replayforever 28,
+reviewforever 22, scenariocheck 14, spellsui 50, svcheck 6, tabscheck 24, themecheck 37, tipcheck
+45, wincheck 66. importcheck 21, releasecheck 21, lib/t 12. apicheck 0 findings (8 Forever TOCs, 60
+files, 48 distinct globals), apicheck selftest 13, textcheck 0 findings over 98 files (9 TOCs),
+textcheck selftest 2, refcheck selftest 2; reproduce and strategies smoke runs ok.
 
 ## Open questions / hazards
 
@@ -212,9 +240,9 @@ TOCs), textcheck selftest 2, refcheck selftest 2; reproduce and strategies smoke
   HEAL amount gross or effective; that sets `SM.HEAL_AMOUNT` and makes gate 8 two-sided -- and
   §38.3, the party probe with the `bar ...` lines), §39 (the recorder, validate, replay, coach and
   Review on real pulls; the CANCEL count against casts actually cancelled, since the STOP /
-  SUCCEEDED order is UNKNOWN) and §40 (practice and the imports). All three play on **0.16.4**
-  once it is installed (0.16.3 is in the beta now; 0.16.2 the UI build, 0.16.1 build 70058's), after
-  the 70058 probe, §41, §42, §43 and §44.
+  SUCCEEDED order is UNKNOWN) and §40 (practice and the imports). All three play on **0.16.5**
+  (installed in the beta on 2026-10-01; 0.16.2 the UI build, 0.16.1 build 70058's), after the
+  70058 probe, §41, §42, §43, §44 and §45.
 - **Lesson -- parallel tasks on disjoint files still meet in the suites (T24-T26, 2026-09-29).**
   Three implementers ran at once, each told which files the others owned; that held. What it did not
   catch: T25's assertion counted Macro post-calls (`#list == 1`) and T25a, written the same hour,
