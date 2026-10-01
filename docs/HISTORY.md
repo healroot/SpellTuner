@@ -4575,3 +4575,14 @@ is left unlanded; the task files' deviations for later owners are listed in
 `make check`: 72 runs, all passed (67 counted runs against 67 expected); apicheck 0 findings over 60
 files (48 globals), textcheck 0 over 98. Packages: TBC 71 files, Forever 35 files plus the three
 modules. **Next:** the author's §45 sessions, then a task per failed check from the paste.
+
+## 2026-10-01 — T85: a spell macro's slot is its spell id (build 70124)
+
+From the build-70124 probe reports (`docs/probe/1.60.1_70124.md`): `Client/API_Forever.lua`'s
+`SlotSpell` takes `GetActionInfo`'s id as the spell when a macro's sub-type is `"spell"` and asks
+`GetMacroSpell` only for a text macro's index (sub-type empty); a low spell id that is also a live
+macro index no longer reads that other macro's spell, and `/st tooltip why` names the step
+`slot N -> macro spell <id>`. tipcheck/forever 45 -> 48 (failing first: 46 ok, 2 failed). Not fixed
+(noted in `docs/tasks/T85-macro-slot-spell.md`): practice's Import from Keybindings (`PR.SlotSpell`,
+`PR.BindsReport`) still reads a macro's id as a macro index. `make check`: 72 runs, all passed (67
+counted against 67); apicheck 0 findings. Version unchanged (0.16.5), not installed.
