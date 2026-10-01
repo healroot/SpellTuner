@@ -321,60 +321,62 @@ local function Arrow(now)
 end
 
 --------------------------------------------------------------------------------
--- Shared display string: the ElvUI datatext, the floating widget and the
--- minimap tooltip all render exactly this. ASCII only (WoW fonts have no
--- arrow/infinity glyphs) and NO bare "|" (it opens a colour escape).
--- valueHex (e.g. "|cff16c3f2") replaces the number's colour so the datatext
--- can inherit the ElvUI theme — except the critical band, which stays red.
+-- The clock's face (T88, docs/SPEC-next.md 2.4): what the display layer above
+-- decided, as the pure record Engine/ClockFace.lua words. Built from `disp`
+-- and `state` exactly as the display string branched before T88 (the branches
+-- and their order are the old ones; only the words moved out); the string is
+-- now ClockFace.LineString of this face -- the ElvUI datatext, the floating
+-- widget and the minimap tooltip all render exactly that. ASCII only (WoW
+-- fonts have no arrow/infinity glyphs) and NO bare "|" (it opens a colour
+-- escape). tools/clockfacecheck.lua holds every string byte for byte.
 --------------------------------------------------------------------------------
-local GREY  = "|cff999999"
-local WHITE = "|cffffffff"
-local WARN  = "|cffffaa33"
-local CRIT  = "|cffff4444"
-local GOOD  = "|cff33ff66"
-local MANA  = "|cff4fa9f0"
+MD.ClockFace = MD.ClockFace or {} -- Engine/ClockFace.lua, listed first, keeps a table it finds
+local CF = MD.ClockFace             -- LineString / Tone looked up at call time
 
-local function FmtTime(sec)
-    if sec > CAP then return ">10m" end
-    if sec >= 60 then
-        return string.format("%d:%02d", math.floor(sec / 60), math.floor(sec % 60))
-    end
-    return string.format("%ds", math.floor(sec))
-end
-
-function MD:GetDisplayString(valueHex)
+-- now: the caller's GetTime(), for the arrow (the clock's own when omitted).
+function MD:GetClockFace(now)
     local s = state
     local m = disp.mode
-    if not s or not m then return "" end
+    if not s or not m then return nil end
     local v = disp.value
-    local out
+    local face = {
+        mode = m, value = v, combat = s.inCombat, modelled = false, mono = false,
+        unstable = false, timeFmt = "auto", pct = s.pct, pctModelled = false,
+        mp5 = s.regenNow and s.regenNow * 5, mp5Modelled = false,
+        fsr = RM and RM:FSRRemaining() or nil,
+    }
 
     if m == "fullnow" then
-        out = GOOD .. "FULL|r"
+        face.label, face.known, face.tone = "FULL", "none", "good"
     elseif m == "nodata" then
-        out = GREY .. "FULL --|r"
+        face.label, face.known, face.tone = "FULL", "none", "muted"
     elseif m == "ooc" or m == "full" then
-        out = GREY .. "FULL|r " .. (valueHex or GOOD) .. FmtTime(v or 0) .. "|r"
-    elseif m == "warmup" then
-        out = GREY .. "OOM ...|r"
-    elseif m == "hold" then
-        local bound = (v and v <= CAP) and FmtTime(v) or "10m"
-        out = GREY .. "OOM >" .. bound .. " =|r"
-    else -- oom
+        face.label = "FULL"
         if v == nil then
-            out = GREY .. "OOM --|r"             -- never fabricate a number
-        elseif disp.bounded then
-            local bound = (v <= CAP) and FmtTime(v) or "10m"
-            out = GREY .. "OOM >" .. bound .. " =|r"  -- digits not trusted: the bound
-        elseif v < 20 then
-            out = CRIT .. "OOM " .. FmtTime(v) .. " vv|r"
+            -- not reached: the latch resets the value only on a mode the raw
+            -- state already holds, and ooc / full always carry ttf. Was
+            -- "FULL 0s" (v or 0); a missing number is "--", never a 0.
+            face.known, face.tone = "none", "muted"
         else
-            local hex = valueHex or (v < 60 and WARN or WHITE)
-            local prefix = ""
-            if not s.stable then hex, prefix = GREY, "~" end
-            local a = Arrow(GetTime())
-            local ac = (a == "^" and GOOD) or (a == "v" and WARN) or GREY
-            out = GREY .. "OOM|r " .. hex .. prefix .. FmtTime(v) .. "|r " .. ac .. a .. "|r"
+            face.known, face.tone = "point", "good"
+        end
+    elseif m == "warmup" then
+        face.label, face.known, face.tone = "OOM", "pending", "muted"
+    elseif m == "hold" then
+        -- the one-sided bound; nil or past the cap reads ">10m"
+        face.label, face.known, face.tone, face.arrow = "OOM", "bound", "muted", "="
+    else -- oom
+        face.label = "OOM"
+        if v == nil then
+            face.known, face.tone = "none", "muted"              -- never fabricate a number
+        elseif disp.bounded then
+            face.known, face.tone, face.arrow = "bound", "muted", "=" -- digits not trusted: the bound
+        elseif v < 20 then
+            face.known, face.tone, face.arrow = "point", "crit", "vv"
+        else
+            face.known, face.tone = "point", CF.Tone(v)
+            face.unstable = not s.stable
+            face.arrow = Arrow(now or GetTime())
         end
     end
 
@@ -389,25 +391,31 @@ function MD:GetDisplayString(valueHex)
     --               then already right.
     --   "rest 2:10" time to full if you stop casting now. Hidden when it is
     --               within 25% of the primary (no decision content).
-    -- Two-space separator, never a pipe.
     if s.inCombat and (m == "oom" or m == "hold" or m == "warmup") then
-        local seg
         local cd = s.cd
         if cd and cd.tto and m == "oom" and not disp.bounded and v and v <= 90
             and cd.delta >= 0.10 * math.max(s.manaMax, 1)
             and not (MD.db and MD.db.showCooldown == false) then
-            seg = MANA .. cd.short .. " " .. FmtTime(Quantize(cd.tto, cd.tto < 60 and 5 or 15)) .. "|r"
+            face.second = { kind = "cd", label = cd.short, value = Quantize(cd.tto, cd.tto < 60 and 5 or 15) }
         elseif s.rest and not (MD.db and MD.db.showRest == false) then
             local r = s.rest
             -- always when the primary is a bound or missing: nothing to compare against
             local show = disp.bounded or (v == nil) or (v > CAP) or (math.abs(r - v) / math.max(v, 1) >= 0.25)
             if show then
-                seg = GREY .. "rest " .. FmtTime(Quantize(r, r < 30 and 1 or 5)) .. "|r"
+                face.second = { kind = "rest", label = "rest", value = Quantize(r, r < 30 and 1 or 5) }
             end
         end
-        if seg then out = out .. "  " .. seg end
     end
-    return out
+    return face
+end
+MD:Provide("ClockFace.Current", function(now) return MD:GetClockFace(now) end)
+
+-- The one display string (valueHex: see ClockFace.LineString). "" before the
+-- first state, as always.
+function MD:GetDisplayString(valueHex)
+    local face = MD:GetClockFace()
+    if not face then return "" end
+    return CF.LineString(face, valueHex)
 end
 
 --------------------------------------------------------------------------------

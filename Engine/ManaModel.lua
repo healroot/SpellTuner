@@ -229,46 +229,53 @@ function ManaModel:Project(t)
 end
 
 --------------------------------------------------------------------------------
--- Rendering: ASCII only, no bare pipe, a nil time is "--" never 0, every
--- shape marked "~" for modelled. Rounded to the nearest 5s; above 600s
--- (10 minutes) reads ">10m" rather than a long number nobody trusts anyway.
+-- The face (T88, docs/SPEC-next.md 2.4): what the clock says, as the pure
+-- record Engine/ClockFace.lua words (ClockFace.LineString). ASCII only, no
+-- bare pipe, a nil time is "--" never 0, every shape marked "~" for modelled
+-- (`modelled`), one colour (`mono`: the clock paints the line in its text
+-- token). Times as shown: rounded to the nearest 5s, written M:SS
+-- (`timeFmt = "mss"`); above 600s (10 minutes) the time is kept as it is and
+-- reads ">10m" rather than a long number nobody trusts anyway.
+-- Text(state) is LineString(Face(state)), byte for byte the string it was
+-- before T88 (tools/clockfacecheck.lua's golden).
 --------------------------------------------------------------------------------
 local function Round5(sec)
     return math.floor(sec / 5 + 0.5) * 5
 end
 
-local function FmtTime(sec)
-    if type(sec) ~= "number" then return "--" end
-    if sec > 600 then return ">10m" end
+-- A time as shown: nil for no number, past 600s untouched (">10m"), else
+-- rounded to 5s and never below 0.
+local function Shown(sec)
+    if type(sec) ~= "number" then return nil end
+    if sec > 600 then return sec end
     sec = Round5(sec)
-    if sec > 600 then return ">10m" end
     if sec < 0 then sec = 0 end
-    return string.format("%d:%02d", math.floor(sec / 60), sec % 60)
+    return sec
 end
 
 -- T11b (docs/tasks/T11b-clock-modes.md): the "rest <t>" segment, worded and
--- gated exactly as TBC's MD:GetDisplayString (Engine/TTO.lua) gates its own
+-- gated exactly as TBC's MD:GetClockFace (Engine/TTO.lua) gates its own
 -- rest segment in its "Secondary segment" block -- shown whenever the primary
 -- (v) is missing (nil, TBC's "nothing to compare against"), and otherwise
 -- only when it differs from the primary by at least 25% (TBC's
--- abs(r - v) / max(v, 1) >= 0.25). Two-space separator, never a pipe (the
--- same block's `out .. "  " .. seg`). Absent entirely when there is no rest
--- reading at all. (T68, P24: citations by name, not line number.)
+-- abs(r - v) / max(v, 1) >= 0.25). Two-space separator, never a pipe
+-- (ClockFace.LineString). Absent entirely when there is no rest reading at
+-- all. (T68, P24: citations by name, not line number.)
 local function RestSegment(v, rest)
-    if type(rest) ~= "number" then return "" end
+    if type(rest) ~= "number" then return nil end
     if v == nil or math.abs(rest - v) / math.max(v, 1) >= 0.25 then
-        return "  rest " .. FmtTime(rest)
+        return { kind = "rest", label = "rest", value = Shown(rest) }
     end
-    return ""
+    return nil
 end
 
--- T11b: every mode worded as TBC's MD:GetDisplayString (Engine/TTO.lua)
--- words the same mode in its mode branches, with the "~" kept in front (T11
--- -- the pool is modelled, never the client's own).
+-- T11b: every mode worded as TBC's MD:GetClockFace (Engine/TTO.lua) words
+-- the same mode in its mode branches, with the "~" kept in front (T11 -- the
+-- pool is modelled, never the client's own).
 --   fullnow -> TBC's "FULL" (its fullnow branch)
 --   ooc/full -> TBC's "FULL <ttf>" (its shared ooc/full branch; TBC uses one
 --     word for both the out-of-combat and in-combat "trending toward full"
---     cases)
+--     cases); "~FULL --" with no ttf
 --   warmup -> TBC's "OOM ..." (its warmup branch), the rest segment allowed
 --     the same as every other in-combat mode (the "Secondary segment" block's
 --     oom / hold / warmup test)
@@ -277,19 +284,74 @@ end
 --     sigma/a mana-cooldown table this model does not have, T11 "not adopted")
 --   oom -> TBC's "OOM <t>" (its oom branch), or "OOM --" when tto is nil (the
 --     same branch's "never fabricate a number")
-function ManaModel.Text(state)
-    if type(state) ~= "table" or type(state.mode) ~= "string" then return "~OOM --" end
-    local m = state.mode
-
-    if m == "fullnow" then return "~FULL" end
-    if m == "ooc" then return "~FULL " .. FmtTime(state.ttf) end
-    if m == "full" then return "~FULL " .. FmtTime(state.ttf) end
-    if m == "warmup" then return "~OOM ..." .. RestSegment(nil, state.rest) end
-    if m == "hold" then return "~OOM --" .. RestSegment(nil, state.rest) end
-    if m == "oom" then
-        local t = FmtTime(state.tto)
-        if t == "--" then return "~OOM --" .. RestSegment(nil, state.rest) end
-        return "~OOM " .. t .. RestSegment(state.tto, state.rest)
+-- No arrow: the model keeps no history of shown values. The tone is the band
+-- of the shown value (ClockFace.Tone), carried for a renderer; the line itself
+-- is still one colour. `now` is accepted for the renderer's five-second-rule
+-- spark (docs/SPEC-next.md 7.2) and not read yet.
+function ManaModel.Face(state, now)
+    local face = { modelled = true, mono = true, unstable = false, timeFmt = "mss",
+        pctModelled = true, mp5Modelled = true, combat = false }
+    if type(state) ~= "table" or type(state.mode) ~= "string" then
+        face.mode, face.label, face.known, face.tone = "oom", "OOM", "none", "muted"
+        return face
     end
-    return "~OOM --"
+    local m = state.mode
+    face.mode = m
+    if type(state.max) == "number" and state.max > 0 and type(state.mana) == "number" then
+        face.pct = state.mana / state.max
+    end
+    if type(state.regen) == "number" then face.mp5 = state.regen * 5 end
+    face.combat = m == "warmup" or m == "hold" or m == "oom" or m == "full"
+
+    if m == "fullnow" then
+        face.label, face.known, face.tone = "FULL", "none", "good"
+    elseif m == "ooc" or m == "full" then
+        face.label, face.value = "FULL", Shown(state.ttf)
+        if face.value == nil then
+            face.known, face.tone = "none", "muted"
+        else
+            face.known, face.tone = "point", "good"
+        end
+    elseif m == "warmup" then
+        face.label, face.known, face.tone = "OOM", "pending", "muted"
+        face.second = RestSegment(nil, state.rest)
+    elseif m == "hold" then
+        face.label, face.known, face.tone = "OOM", "none", "muted"
+        face.second = RestSegment(nil, state.rest)
+    elseif m == "oom" then
+        face.label = "OOM"
+        if type(state.tto) == "number" then
+            face.value = Shown(state.tto)
+            face.known, face.tone = "point", MD.ClockFace.Tone(face.value)
+            face.second = RestSegment(state.tto, state.rest)
+        else
+            face.known, face.tone = "none", "muted"
+            face.second = RestSegment(nil, state.rest)
+        end
+    else
+        -- a mode this file never produces: "~OOM --", no segment
+        face.mode, face.label, face.known, face.tone, face.combat = "oom", "OOM", "none", "muted", false
+    end
+    return face
 end
+
+function ManaModel.Text(state)
+    return MD.ClockFace.LineString(ManaModel.Face(state))
+end
+
+-- The running clock's face: the one ManaModel instance (MD.Pool.model, made at
+-- MD_READY by Engine/ManaPool_Forever.lua) projected at `now` -- the caller's
+-- GetTime(); with no time, the model's own last tick (what the clock painted
+-- last). Before MD_READY, the no-state face ("~OOM --"). No client call here.
+-- The namespace is made here too (Engine/ClockFace.lua keeps a table it finds),
+-- so a copy of the core loaded without the face file -- tools/clockcheck.lua's
+-- T68 check -- still loads; LineString and Tone are looked up at call time.
+MD.ClockFace = MD.ClockFace or {}
+MD:Provide("ClockFace.Current", function(now)
+    local pool = MD.Pool
+    local model = pool and pool.model
+    if not model then return ManaModel.Face(nil, now) end
+    if type(now) ~= "number" then now = model.t end
+    if type(now) ~= "number" then return ManaModel.Face(nil, now) end
+    return ManaModel.Face(pool:Project(now), now)
+end)

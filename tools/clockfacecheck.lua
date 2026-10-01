@@ -440,7 +440,7 @@ if FLAVOUR == "tbc" then
     end
     local face, same
     if dispF and stateF and MD.GetClockFace and LS then
-        Put({ mode = "oom", value = 15 }, { inCombat = true, rest = 300 })
+        Put({ mode = "oom", value = 15 }, { inCombat = true })
         face = MD:GetClockFace()
         check("3a. OOM 15s vv: the crit band's face (tone crit, arrow vv, known point)",
             face and face.mode == "oom" and face.tone == "crit" and face.arrow == "vv" and face.known == "point"
@@ -557,10 +557,10 @@ if CF and type(CF.SAMPLES) == "table" and LS then
         #missing == 0, #missing > 0 and table.concat(missing, ",") or nil)
     check("4b. SAMPLES as TBC and as Forever draw them: ASCII, no bare pipe, no nil, nil never 0, ~ kept",
         bad == nil, bad)
-    local crit
-    for _, smp in ipairs(CF.SAMPLES) do if smp.key == "crit" then crit = smp.face end end
+    local by = {}
+    for _, smp in ipairs(CF.SAMPLES) do by[smp.key] = smp.face end
     check("4c. the crit sample is TBC's `OOM 15s vv`; nodata's is `FULL --`",
-        crit and Strip(LS(crit)) == "OOM 15s vv")
+        by.crit and Strip(LS(by.crit)) == "OOM 15s vv" and by.nodata and LS(by.nodata) == "|cff999999FULL --|r")
 else
     check("4. SAMPLES: every preview chip", false, "absent")
     check("4b. SAMPLES: ASCII, no bare pipe, no nil, nil never 0, ~ kept", false, "absent")
