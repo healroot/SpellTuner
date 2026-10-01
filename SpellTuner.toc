@@ -23,10 +23,12 @@ Engine\Recordings.lua
 Spells\Measure.lua
 UI\Style.lua
 UI\Theme_Flat.lua
+UI\Styles.lua
 UI\EscStack.lua
 UI\Windows.lua
 UI\ContextMenu.lua
 UI\Tip.lua
+UI\Feeds.lua
 UI\Dashboard_Rows.lua
 UI\SpellRail.lua
 UI\SpellsPane_Forever.lua
@@ -34,6 +36,7 @@ UI\Dashboard_Forever.lua
 UI\SpellTip_Forever.lua
 Engine\ManaPool_Forever.lua
 UI\Visibility.lua
+UI\ClockView.lua
 UI\Clock_Forever.lua
 UI\MinimapButton.lua
 UI\DebugConsole.lua

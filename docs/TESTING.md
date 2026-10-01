@@ -1868,6 +1868,30 @@ saw instead. Nothing here has run on a real client yet.
    paladin alt of level 10+ with a cooldown heal in the book (on a priest, shield yourself and take
    a hit, for `absorb to do`). On TBC the Forever-only sections read `absent (Forever only)` and
    nothing raises.
+2. **Clock (T93, wave N2), both clients.** In a fight, spend until the clock reads under 20 s:
+   on Forever it turns red (amber under 60 s, the label grey); on TBC as before. Watch `59s` ->
+   `1:00` (TBC) or `0:55` -> `1:00` (Forever): the label and the rest segment do not move, only
+   the number. On TBC, a left-click on the clock in combat does nothing; out of combat it opens
+   the window. On Forever: `/st clock clickthrough`, then a click on the clock passes to the
+   world (no hover either), `/st clock clickthrough` again to undo; `/st clock rest` hides the
+   rest segment. Under 30 s the clock pulses once per fight. On a Forever warrior or rogue alt:
+   no clock in combat.
+3. **ElvUI datatexts (T92, wave N2), TBC, optional.** With ElvUI on TBC, the `SpellTuner` and
+   `SpellTuner Regen` datatexts read as before (the clock line; `Regen: N`, `(5SR)` after a
+   cast), the tooltip and Shift-click unchanged.
+4. **Styles (T94, wave N2), both clients.** `/st ui style` (`/md ui style` on TBC) lists `flat`;
+   nothing else changes until a second style ships (T100).
+5. **Tooltips for other classes (T95, wave N2), Forever.** On a Forever alt (paladin, shaman or
+   priest) hover Holy Shock / Riptide / Prayer of Healing / Chain Heal / Power Word: Shield: Per
+   sec reads `N  every 10 s` (Holy Shock; 6 s Riptide; 4 s PW:S), Per mana carries `x up to 5
+   targets` (PoH, Holy Nova) or `up to 1.75x if 3 are hurt` (Chain Heal), and with the detail
+   key Reaches / Cooldown / Lockout appear; Light's Vigil shows only its casts to OOM line. On
+   the druid: Swiftmend's Per sec reads `every 15 s`, Tranquility's `every 5 min` (both from
+   their tooltip lines). Report any spell whose cooldown line is not read (a probe
+   `== cooldowns` dump shows the line).
+6. **A channel in the replay (T96, wave N2), Forever, optional.** On a Forever druid who knows
+   Tranquility, record a pull with one (`/st rec`), `/st replay N`: the Tranquility's target's
+   bar rises on the tick, and `/st validate N`'s gate 8 counts the ticks as own.
 
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the

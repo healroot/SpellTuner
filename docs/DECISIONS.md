@@ -1221,3 +1221,67 @@ talents, shapes, the damage meter, auras) and Q1-Q8 print `absent (Forever only)
 answers there. The help and the About tab do not change. The probe listens to the same events it
 does on Forever. While `ManaDemonDB` is still waiting to be adopted, the probe's record goes on
 `ManaDemonDB`, so the adoption still runs.
+
+## The clock: fixed segments, tones on Forever, the click rule, the Forever gaps (2026-10-01, T93, decisions 14, 16-18)
+
+**Fixed segments (decision 14).** On both lines the clock's text is three pieces at fixed
+places: the label from the left edge, the value in the kit's number font at a fixed x, and the
+secondary right-aligned to the right edge. When `OOM 59s` becomes `OOM 1:00` only the digits
+move. This restores "Widget text left-anchored ... centred text slides when the digit count
+changes" and reverses T82's centring. The words and colours are unchanged
+(`ClockFace.Segments` is `LineString` cut into pieces; ttocheck holds the bytes). The preview's
+`SpellTuner - drag me` stays centred.
+
+**Tones on Forever (decision 16).** The Forever clock is coloured as TBC's is, with TTO's
+literals: red from the label on under 20 s, the value amber under 60 s and white above, the
+label muted, FULL green, a warm-up or missing value grey. Forever has no arrow, so no `vv`.
+`ManaModel.Text` (the string) stays one colour.
+
+**Left-click on TBC (decision 17).** The TBC widget opens the window on a left-click out of
+combat only, as the Forever clock has since T70. The hover says `open the window (out of
+combat)`.
+
+**The Forever gaps (decision 18).** No clock for a character without a mana pool, in combat too
+(`manaUsersOnly` in the shared show rule, TBC's gate moved there). `db.clock.clickThrough` (off
+by default): no mouse except while the clock is being placed. One pulse per fight the first
+time the clock reads under 30 s, and `MD:Alert` pulses it. `db.clock.showRest` (on by default)
+drops the `rest` segment. `/st clock rest` and `/st clock clickthrough` switch the last two
+until Settings -> Clock.
+
+## T94: `/md ui style <name>` on TBC (2026-10-01, T94, decision 1 as answered: four styles; 5.4)
+
+The TBC line gains a `ui` verb, created by `UI/Styles.lua` through `MD:AddSubcommand`. Its help
+row and About row read `/st ui style <name> - the look of SpellTuner's windows (no name: list
+the styles)`. `slashcheck/tbc`'s golden was re-based for it: the row, the five `ui` lines and the
+two About lines; every other line equals the 8c4cc93 golden. With only Flat registered, nothing
+else a TBC player sees changes: Flat stays byte-identical, `stylecheck`'s golden being the
+parent's paint (its clock section re-based at integration for T93's `UI/ClockView.lua`, captured
+on the T93 merge before any T94 code and equal to what T94 paints).
+
+## Per second over the cooldown on Forever (2026-10-01, T95, proposed)
+
+Proposed, Forever only (principle 10 does not require one, but the author's druid view moves):
+per second and casts to OOM are over `max(cast, GCD, cooldown)` on Forever -- a channel or HoT
+too (`max(duration, cooldown)`), so Tranquility reads per second over its 5 min cooldown
+(sustained) rather than over its 10 s channel, and Swiftmend over 15 s. Within-family rank
+verdicts are unchanged (the cooldown is the same on every rank). A narrower reading (cooldowns
+only on direct spells) is a one-line change in `Book.IntervalFor`. `MD.API.BASE_CD_READS` ships
+`false`: the cooldown is the tooltip line's until T87's Forever report shows
+`GetSpellBaseCooldown` answering a plain number.
+
+## A channel lands its ticks; the engine reads the kit's profile (2026-10-01, T96, decision 11)
+
+A `channel` kit entry now heals in the engine (`SM.ChannelShape`: `channelTick` every
+`tickPeriod` -- Kit_Forever reads both from the spell's own text --, `channelTicks` times) on
+the cast's target, from the success until the count runs out, the target dies or the healer
+casts something else; an entry the engine cannot time (no `channelTick` or no period: TBC's
+Tranquility, `dataMissing`) lands nothing, never a guessed period. Scenario_Forever claims those
+ticks as the healer's own, so a Forever Tranquility is no longer replayed as foreign healing.
+Tranquility stays out of plans (`exclude`); who a group channel reaches is 4.5's `group` type
+(T101). And the engine's HoT slots, the solver's families and the per-family cooldowns come from
+the KIT's profile (`kit.profile`, stamped by both builders and carried by `Kit.Snapshot` /
+`Restore`; none = the druid's), never the logged-in player's, so `tools/import.lua` replays any
+character's recording on any machine. The author accepted decision 11 as recommended. The
+strategies report on the author's eight TBC recordings, the eight coach cards and replays, and
+Healroot's twelve Forever reports are **identical before and after**: TBC's Tranquility has no
+measured tick (it still lands nothing there) and no Forever recording has a Tranquility yet.

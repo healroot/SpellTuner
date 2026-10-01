@@ -241,12 +241,16 @@ end
 --------------------------------------------------------------------------------
 -- The golden: `tools/run.sh --flavour <f> tools/stylecheck.lua --golden` on
 -- 231525d (the parent, before any edit), pasted. Per section: lines, checksum.
+-- Wave N2's integrator re-based the clock section only: T93 (merged before T94)
+-- draws the clock through UI/ClockView.lua, 8 regions instead of 4; captured with
+-- --golden on 546e729 (T92 + T93 with their TOC lines, no T94 code), and equal to
+-- what this tree paints, so Flat is still the parent's paint byte for byte.
 --------------------------------------------------------------------------------
 local GOLDEN = {
     forever = {
         nav = { 29, 1225158578 },
         host = { 52, 441673342 },
-        clock = { 4, 436684712 },
+        clock = { 8, 1137838505 },
         palette = { 33, 1948568416 },
         text = { 15, 1382467428 },
         fonts = { 12, 1125933103 },
@@ -254,7 +258,7 @@ local GOLDEN = {
     tbc = {
         nav = { 29, 1015818899 },
         host = { 52, 98457140 },
-        clock = { 4, 1224158337 },
+        clock = { 8, 1079176797 },
         palette = { 33, 1948568416 },
         text = { 15, 1382467428 },
         fonts = { 12, 1125933103 },

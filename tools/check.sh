@@ -37,7 +37,7 @@ cd "$ROOT"
 # tools/*.lua that are not suites: loaded by suites, or research tools that read
 # the author's own (gitignored) data. A new file not listed here is run as a
 # suite, and fails loudly if it has no footer -- add it here if it is not one.
-NOT_SUITES=" harness wowstub stub_art fakepull foreverfixture import importforever importfixture reportlines svwrite buildintuition strategies solvercmp wclcheckkit reproduce healcheck "
+NOT_SUITES=" harness wowstub stub_art stub_hosts stub_books fakepull foreverfixture import importforever importfixture reportlines svwrite buildintuition strategies solvercmp wclcheckkit reproduce healcheck "
 
 COUNTS_FILE="$ROOT/tools/data/expected-counts.json"
 WRITE_COUNTS=0

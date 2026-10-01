@@ -4630,3 +4630,60 @@ one more: the probe's in-combat `== auras` read (T87).
 `make check`: 77 runs, all passed (72 counted runs against 72 expected); apicheck 0 findings over
 63 files (48 globals), textcheck 0 over 102. Packages: TBC 75 files, Forever 38 files plus the
 three modules. Version unchanged (0.16.5), not installed. **Next:** wave N2.
+
+## 2026-10-01 — the next round, wave N2: T92, T93, T94, T95, T96
+
+Wave N2 of `docs/SPEC-next.md` (section 11), integrated on `231525d` in that order (T92
+`7688659` + `102583b`, T93 `e936e23` + `546e729`, T94 `dfdcb01` + `08777cd`, T95 `8e82598` +
+`88c377f`, T96 `c6f26bc`), with the integrator lines of each task file in one commit.
+
+- **T92 (S3 step 1): feeds and the ElvUI surface.** `UI/Feeds.lua` (`MD.Feeds`: `clock` and
+  `regen`, `FEED_CHANGED` only when a text changed) on the three main TOCs;
+  `Integrations/ElvUIDatatext.lua` moved to `Integrations/Surface_ElvUI.lua` reading the feeds.
+  The ElvUI datatexts are byte-identical on TBC (an 89-line golden captured on `231525d`).
+  `Integrations/` now loads in the TBC harness, with every count unchanged. `tools/stub_hosts.lua`
+  (fake ElvUI DT, LibStub, LDB-1.1) is ready for T97's brokers and EllesmereUI fakes. surfacecheck
+  tbc 32 / forever 41 (new).
+- **T93 (K2): clock parity.** Both clocks draw the face through `UI/ClockView.lua` in three fixed
+  segments (decision 14). The Forever clock gets F1 (TBC's tones, decision 16) and F3-F6 (no clock
+  without a mana pool, click-through, the pulse, the rest switch; `/st clock rest` /
+  `clickthrough`; decision 18). TBC changes are the segments and the left-click rule (out of
+  combat only, decision 17). `MD.ClockWidget` is the mover seam on both lines, for T97's mover and
+  T102's settings. clockcheck 29 -> 35, ttocheck 47 -> 50, clockfacecheck tbc 17 -> 20 / forever
+  14 -> 17. DECISIONS entry for decisions 14, 16-18; TESTING §46 check 2.
+- **T94 (S2 step 1): the style registry.** `UI/Styles.lua` (`UI.Styles`, `UI.SetStyle` at
+  `CORE_LOGIN`, `/st ui style`, the lazy `style:` dump line) after `UI/Theme_Flat.lua` on the
+  three main TOCs; Flat as data (`UI.FLAT`), skins by role (`UI.skinned`, `UI.Skin`, the pixel and
+  strips painters). Flat is byte-identical to the parent's paint. `/md ui style` is a new verb on
+  TBC (slashcheck's golden re-based for that row only; DECISIONS). stylecheck 26 + 26 (new),
+  themecheck/forever 37 -> 38.
+- **T95 (P1): reading truth, display.** The Forever book carries cooldown (the tooltip line by
+  default, `BASE_CD_READS` false), targets and lockout; `IntervalFor = max(cast, GCD,
+  cooldown)`; the reach said as an upper bound on the block and the card, never multiplied;
+  priest / shaman / paladin book fixtures (`tools/stub_books.lua`, `tools/data/books/`). bookcheck
+  22 -> 29, tipcheck 48 -> 51, spellsui 50 -> 52, adaptercheck 23 -> 24. A proposed DECISIONS
+  line (per second over the cooldown on Forever); TESTING §46 check 5.
+- **T96 (decision 11): engine seams.** The kit carries its profile (`kit.profile`, round-tripped
+  by `Kit.Snapshot` / `Restore`); the engine's HoT slots, the solver's families and the
+  per-family cooldowns come from the kit's profile, never the logged-in player's; a channel lands
+  its ticks (`SM.ChannelShape`) and Scenario_Forever claims them as own; `MD.KitLive`. The
+  author's TBC strategies report, coach cards and replays and Healroot's twelve Forever reports
+  identical before and after. kitcheck forever 11 -> 16 / tbc 3 -> 5, scenariocheck 14 -> 17.
+
+**One integration fix:** T94's stylecheck golden was captured on `231525d`, before T93 put the
+clock's text into `UI/ClockView.lua` (the clock's region set 4 -> 8). Its clock section was
+re-based to a `--golden` capture on `546e729` (T92 + T93 with their TOC lines, no T94 code),
+which equals what the merged tree paints on both flavours -- so Flat is still the parent's paint
+byte for byte. `tools/data/import-forever-sv.lua` rebuilt once: `clickThrough`, `showRest`
+(T93) and `ui.style` (T94), nothing else (T96's druid snapshot names no profile).
+
+Every TBC suite's output compared with `231525d`'s: the only changes are the rows above
+(clockfacecheck, kitcheck, slashcheck, ttocheck, the new stylecheck and surfacecheck) plus
+themecheck's informational token-read count 179 -> 176 (T93: the widget's three
+`UI.RGB("text"/"accent")` calls now go through the view's tones and message line) and
+run-to-run noise (table addresses, ms, the sliced search's evaluations).
+
+`make check`: 81 runs, all passed (76 counted runs against 76 expected; profilecheck/forever's
+NOTE 48 vs 46 as before); apicheck 0 findings over 66 files (49 globals), textcheck 0 over 105.
+Packages: TBC 78 files, Forever 41 files plus the three modules. Version unchanged (0.16.5), not
+installed. **Next:** wave N3.

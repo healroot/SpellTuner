@@ -2077,7 +2077,9 @@ SpellTunerDB = {
 		},
 	},
 	["clock"] = {
+		["clickThrough"] = false,
 		["locked"] = false,
+		["showRest"] = true,
 		["shown"] = true,
 	},
 	["debug"] = {
@@ -2141,6 +2143,7 @@ SpellTunerDB = {
 		["escStack"] = true,
 		["fontOffset"] = 0,
 		["scale"] = 1,
+		["style"] = "flat",
 		["win"] = {},
 	},
 }
