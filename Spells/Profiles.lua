@@ -51,6 +51,11 @@ P.FIELDS = {
     planner = "table",         -- the planner's choices (P.PLANNER_FIELDS)
     manaCooldowns = "table",   -- list of { key, short, id, name, duration, value }
     regen = "table",           -- { inFsrTalent = { talentName, fractionPerRank } }
+    -- T106 (docs/SPEC-next.md 4.3): the class's healing spells the engine does
+    -- not model, by the spellbook's names (a totem, a next-cast modifier, a
+    -- heal the parser refuses) -- the coach card names any a fight cast
+    -- (SimPlanner's SP.Unmodelled). Never a family: a named family is modelled.
+    unmodelled = "table",
 }
 
 -- Required on every registered profile (the generic one carries only caps).
@@ -198,6 +203,14 @@ function P.Validate(p, types)
         end
     end
 
+    if p.unmodelled ~= nil then
+        CheckNames(problems, "unmodelled", p.unmodelled)
+        for _, name in ipairs(IsList(p.unmodelled) and p.unmodelled or {}) do
+            if owner[name] then
+                Say(problems, "unmodelled names %s, which is in the family %s", tostring(name), owner[name])
+            end
+        end
+    end
     if p.order ~= nil then
         CheckNames(problems, "order", p.order)
         for _, key in ipairs(IsList(p.order) and p.order or {}) do

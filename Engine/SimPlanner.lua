@@ -1204,30 +1204,43 @@ function SP.CardLines(rec, best, bestResult, replayResult, baselineResults, cls,
         for _, fam in ipairs(others) do bindList[#bindList + 1] = RankLabel(best.binds[fam]) end
     end
     add("  Bind: %s", table.concat(bindList, ", "))
-    if best.binds.Swiftmend then
-        add("  1. Anyone under %d%% with a HoT: Swiftmend", best.swiftmendBelow * 100 + 0.5)
-    end
-    if not best.noDirect then
-        local d = best.binds.Regrowth or best.binds.HealingTouch
-        if d then add("  2. Anyone under %d%%: %s", best.directBelow * 100 + 0.5, RankLabel(d)) end
-    end
-    if best.rollStacks > 0 and best.binds.Lifebloom then
-        add("  3. Keep Lifebloom x%d rolling on the tank", best.rollStacks)
-    end
-    do
-        local names = {}
-        for _, fam in ipairs(SP.HOT_RULE) do
-            if best.binds[fam] then names[#names + 1] = RankLabel(best.binds[fam]) end
+    if best.kind == "solver" then
+        -- T106 (docs/SPEC-next.md 4.2 P2): a solver plan has no thresholds --
+        -- it decides on the danger line first, then health-seconds per mana
+        -- (Engine/SimSolver.lua's rules 8, 7 and 9). The threshold lines below
+        -- read fields it does not carry.
+        add("  1. Anyone falling through the danger line: the cheapest heal that holds them above it")
+        add("  2. Otherwise the heal that saves the most health-seconds per mana, if at least %g",
+            best.minValue or 0)
+        add("  3. Otherwise wait - %d%% of the fight%s",
+            (bestResult.waitFraction or 0) * 100 + 0.5,
+            bestResult.maxWaitRun and string.format(", longest gap %.0fs", bestResult.maxWaitRun) or "")
+    else
+        if best.binds.Swiftmend then
+            add("  1. Anyone under %d%% with a HoT: Swiftmend", best.swiftmendBelow * 100 + 0.5)
         end
-        if #names > 0 then
-            add("  4. Anyone under %d%%: the HoT whose whole heal fits the deficit (%s)",
-                best.hotBelow * 100 + 0.5, table.concat(names, " or "))
+        if not best.noDirect then
+            local d = best.binds.Regrowth or best.binds.HealingTouch
+            if d then add("  2. Anyone under %d%%: %s", best.directBelow * 100 + 0.5, RankLabel(d)) end
         end
+        if best.rollStacks > 0 and best.binds.Lifebloom then
+            add("  3. Keep Lifebloom x%d rolling on the tank", best.rollStacks)
+        end
+        do
+            local names = {}
+            for _, fam in ipairs(SP.HOT_RULE) do
+                if best.binds[fam] then names[#names + 1] = RankLabel(best.binds[fam]) end
+            end
+            if #names > 0 then
+                add("  4. Anyone under %d%%: the HoT whose whole heal fits the deficit (%s)",
+                    best.hotBelow * 100 + 0.5, table.concat(names, " or "))
+            end
+        end
+        add("  5. Otherwise %s - %d%% of the fight%s",
+            best.filler and "Lifebloom on the tank" or "wait",
+            (bestResult.waitFraction or 0) * 100 + 0.5,
+            bestResult.maxWaitRun and string.format(", longest gap %.0fs", bestResult.maxWaitRun) or "")
     end
-    add("  5. Otherwise %s - %d%% of the fight%s",
-        best.filler and "Lifebloom on the tank" or "wait",
-        (bestResult.waitFraction or 0) * 100 + 0.5,
-        bestResult.maxWaitRun and string.format(", longest gap %.0fs", bestResult.maxWaitRun) or "")
 
     local function row(name, res, extra, plan)
         local owed = plan and SP.ManaOwed(res, plan) or 0
@@ -1391,7 +1404,46 @@ function SP.CardLines(rec, best, bestResult, replayResult, baselineResults, cls,
     -- T101 (docs/SPEC-next.md 4.5, decision 12): whom a group or bounce heal
     -- reaches is an assumption, and the card says so whenever one is in play
     if SP.GroupAssumed(rec, best) then addT("note", "  %s", SP.GROUP_ASSUMPTION) end
+    -- T106 (docs/SPEC-next.md 4.3): the heals this fight cast that the kit
+    -- does not model, by name -- each kept as recorded (a heal replayed as it
+    -- landed, a shield's cast and its mana), never priced or chosen
+    local unmodelled = SP.Unmodelled(rec, best and best.kit)
+    if #unmodelled > 0 then
+        addT("note", "  not modelled, kept as recorded: %s", table.concat(unmodelled, ", "))
+    end
     addT("note", "  caveat: %s", table.concat(caveats, "; "))
+    return out
+end
+
+-- T106 (docs/SPEC-next.md 4.3): the names of the heals a recording cast that
+-- the kit does not model, in the order first cast -- the healing families the
+-- book read and the kit left out by name (MD.SpellData.skipped, Kit_Forever:
+-- an absorb such as Power Word: Shield until T109, a heal on the caster alone,
+-- one only below a health line), and the healing spells the kit's own profile
+-- names as not modelled (`unmodelled`: a totem, a next-cast modifier, a heal
+-- the parser refuses). The druid's profiles name none and TBC's static table
+-- skips none, so a druid's card is unchanged. The skipped list is read from
+-- the installed kit index, as RankLabel is; the profile from the plan's kit.
+function SP.Unmodelled(rec, kit)
+    local out = {}
+    local SD = MD.SpellData
+    local skip = {}
+    for _, name in ipairs(SD and type(SD.skipped) == "table" and SD.skipped or {}) do skip[name] = true end
+    local prof = MD.Profiles and MD.Profiles.ForKit(kit)
+    for _, name in ipairs(prof and prof.unmodelled or {}) do skip[name] = true end
+    if not (rec and rec.ev and next(skip)) then return out end
+    local K = MD.SimModel.K
+    local seen = {}
+    for i = 1, (rec.n or 0) do
+        local id = rec.ev.x[i]
+        if rec.ev.kind[i] == K.OWNCAST and id and not (SD.spells and SD.spells[id]) then
+            local name = (rec.names and rec.names[id]) or MD.API.SpellName(id)
+            if name and skip[name] and not seen[name] then
+                seen[name] = true
+                out[#out + 1] = name
+            end
+        end
+    end
     return out
 end
 
@@ -1479,6 +1531,31 @@ end
 -- player's own binds with default thresholds -- which is already an honest
 -- comparison, just a coarse one.
 --------------------------------------------------------------------------------
+-- T106 (docs/SPEC-next.md 4.2 P2): the threshold rules are the druid's
+-- tactics -- every rule names a druid family -- so a kit whose profile names
+-- no rule set (every class but the druid) is coached by the solver's causal
+-- strategies instead (no prior, no foresight), each under a short row name.
+-- The druid's profiles name theirs ("druid"), so a druid's coach is
+-- unchanged; MD.Profiles.ForKit reads the KIT's profile, never the
+-- logged-in player's.
+SP.SOLVER_COACH = { { key = "solver-blind", name = "solver" },
+                    { key = "solver-frugal", name = "frugal" },
+                    { key = "solver-near", name = "reactive" } }
+function SP.SolverOnly(kit)
+    local prof = MD.Profiles and MD.Profiles.ForKit(kit)
+    return prof ~= nil and not (prof.planner and prof.planner.rules)
+end
+function SP.SolverCandidates(rec, kit)
+    local out = {}
+    if not SP.SolverOnly(kit) then return out end
+    local binds = SP.BindsFromRecording(rec, kit)
+    for _, c in ipairs(SP.SOLVER_COACH) do
+        local plan = SP.MakeStrategy(SP.Strategy(c.key), binds, kit)
+        if plan then out[#out + 1] = { name = c.name, plan = plan } end
+    end
+    return out
+end
+
 function SP.Coach(rec, opts)
     SM = SM or MD.SimModel
     if not rec then return { "coach: no recording." } end
@@ -1504,11 +1581,16 @@ function SP.Coach(rec, opts)
                   overhealed = replayResult.overhealed, lowestMana = replayResult.lowestMana,
                   lowest = { hp = replayResult.lowest.hp } }
 
-    local candidates = SP.Baselines(rec, kit)
-    candidates[#candidates + 1] = { name = "your binds",
-        plan = SP.NewPlan(SP.BindsFromRecording(rec, kit),
-            { swiftmendBelow = 0.30, directBelow = 0.45, rollStacks = 3, hotBelow = 0.80,
-              filler = false }, kit) }
+    -- T106: a kit with no threshold rules is compared on the solver's
+    -- strategies (SP.SolverCandidates); every other on the rules' baselines
+    local candidates = SP.SolverCandidates(rec, kit)
+    if #candidates == 0 then
+        candidates = SP.Baselines(rec, kit)
+        candidates[#candidates + 1] = { name = "your binds",
+            plan = SP.NewPlan(SP.BindsFromRecording(rec, kit),
+                { swiftmendBelow = 0.30, directBelow = 0.45, rollStacks = 3, hotBelow = 0.80,
+                  filler = false }, kit) }
+    end
     if opts and opts.extra then
         for _, c in ipairs(opts.extra) do candidates[#candidates + 1] = c end
     end
@@ -1923,6 +2005,27 @@ function SP.CoachAsync(rec, opts, onDone)
     if not opts.force and validation and not validation.ok then
         onDone(select(1, SP.Coach(rec, opts)), validation)
         return nil
+    end
+
+    -- T106: a kit with no threshold rules has nothing for the rules search to
+    -- tune; the coach compares the solver's strategies (SP.Coach) instead, on
+    -- the next frame -- a caller holds the handle before the card arrives, as
+    -- it does for a search -- and Cancel works as a search's does.
+    if SP.SolverOnly(kit) then
+        local handle = { cancelled = false, evals = 0 }
+        function handle:Cancel() self.cancelled = true end
+        local frame = CreateFrame("Frame")
+        frame:SetScript("OnUpdate", function()
+            frame:SetScript("OnUpdate", nil)
+            if handle.cancelled then
+                onDone({ "coach: search cancelled." }, validation,
+                    { { text = "coach: search cancelled.", tone = "note" } })
+                return
+            end
+            local lines, _, _, _, cardLines = SP.Coach(rec, { n = opts.n, force = true })
+            onDone(lines, validation, cardLines)
+        end)
+        return handle
     end
 
     local scenario = SM.ScenarioFromRecording(rec, kit)

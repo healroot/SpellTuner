@@ -10,9 +10,11 @@
 --     and are left out of the scan);
 --   * the druid's profile grants every capability the gates ask for, and the
 --     gated surfaces say today's words to a druid;
---   * a priest (the stub's S.units.player.class, the generic profile) is told
---     "<subject>: not modelled for Priest yet" on Review, the replay, practice
---     and the simulator (and, on TBC, the profile report) -- never "Druid-only";
+--   * a mage (the stub's S.units.player.class, the generic profile) is told
+--     "<subject>: not modelled for Mage yet" on Review, the replay, practice
+--     and the simulator (and, on TBC, the profile report) -- never "Druid-only"
+--     (T106: a mage, a class with no profile on either line; it was a priest
+--     until the Forever priest had a profile of its own);
 --   * on Forever, Can("coach") asks the Replay module's MD.KitLive: with the
 --     module off it answers false, "module" and Review keeps the module's own
 --     placeholder (no new words); a live kit that prices no heal answers
@@ -330,17 +332,17 @@ local function Drain()
 end
 
 --------------------------------------------------------------------------------
--- 4. A priest: the not-modelled wording on Review, replay, practice and sim
+-- 4. A mage: the not-modelled wording on Review, replay, practice and sim
 --------------------------------------------------------------------------------
-T.section("a priest")
-LogIn("PRIEST")
-check("a priest is given the generic profile", MD.ClassProfile == P.generic and MD.player.class == "PRIEST")
+T.section("a mage")
+LogIn("MAGE")
+check("a mage is given the generic profile", MD.ClassProfile == P.generic and MD.player.class == "MAGE")
 do
     local can, why = MD.ClassProfile:Can("coach")
-    check("a priest cannot be coached, for the class's sake (before any module question)",
+    check("a mage cannot be coached, for the class's sake (before any module question)",
         can == false and why == "class")
     local lineCaps = forever and { "clock", "tooltip", "rankTable" } or { "clock" }
-    check("a priest keeps what a non-druid had: " .. table.concat(lineCaps, ", "),
+    check("a mage keeps what a non-druid had: " .. table.concat(lineCaps, ", "),
         #Grants(MD.ClassProfile, lineCaps) == 0)
 end
 
@@ -348,42 +350,42 @@ end
 chat = {}
 review:Render()
 local coachBtn = Button("Coach", review.frame)
-check("Review: Coach is off for a priest", coachBtn ~= nil and not Enabled(coachBtn))
+check("Review: Coach is off for a mage", coachBtn ~= nil and not Enabled(coachBtn))
 local hover = CoachHover()
-check("Review: Coach's hover says Coaching: not modelled for Priest yet",
-    T.Has(hover, "Coaching: not modelled for Priest yet") and not T.Has(hover, "Druid"), hover)
+check("Review: Coach's hover says Coaching: not modelled for Mage yet",
+    T.Has(hover, "Coaching: not modelled for Mage yet") and not T.Has(hover, "Druid"), hover)
 review:Coach(false)
-check("Review: a Coach press prints coach: not modelled for Priest yet.",
-    Said("coach: not modelled for Priest yet.") ~= nil and MD.coachSearch == nil, chat[#chat])
+check("Review: a Coach press prints coach: not modelled for Mage yet.",
+    Said("coach: not modelled for Mage yet.") ~= nil and MD.coachSearch == nil, chat[#chat])
 
 -- the replay: no suggested column will come, and the hint says why
 chat = {}
 MD:OpenReplay("1")
 local W = MD.Replay._state()
 local hint = W.hint and T.Strip(W.hint:GetText() or "") or ""
-check("replay: the hint says Coaching: not modelled for Priest yet, and nothing is coached",
-    hint == "Coaching: not modelled for Priest yet" and MD.coachSearch == nil and MD.replayCoaching == nil, hint)
+check("replay: the hint says Coaching: not modelled for Mage yet, and nothing is coached",
+    hint == "Coaching: not modelled for Mage yet" and MD.coachSearch == nil and MD.replayCoaching == nil, hint)
 if W.frame then W.frame:Hide() end
 
 -- practice
 chat = {}
 practice:Render()
-local pstatus = TextShowing("Practice: not modelled for Priest yet")
-check("practice: the panel says Practice: not modelled for Priest yet and Start is off",
+local pstatus = TextShowing("Practice: not modelled for Mage yet")
+check("practice: the panel says Practice: not modelled for Mage yet and Start is off",
     pstatus ~= nil and not Enabled(Button("Start practice")), pstatus)
 MD:OpenPractice(MD.cdb.practiceSetup)
-check("practice: starting one prints practice: not modelled for Priest yet.",
-    Said("practice: not modelled for Priest yet.") ~= nil, chat[#chat])
+check("practice: starting one prints practice: not modelled for Mage yet.",
+    Said("practice: not modelled for Mage yet.") ~= nil, chat[#chat])
 
 if not forever then
     -- the simulator
     chat = {}
     MD:RefreshSimHeader()
-    local header = TextShowing("(Simulation: not modelled for Priest yet)")
-    check("sim: the header says (Simulation: not modelled for Priest yet)", header ~= nil, header)
+    local header = TextShowing("(Simulation: not modelled for Mage yet)")
+    check("sim: the header says (Simulation: not modelled for Mage yet)", header ~= nil, header)
     Click(Button("Run"))
-    local result = TextShowing("Simulation: not modelled for Priest yet.")
-    check("sim: Run says Simulation: not modelled for Priest yet.", result ~= nil, result)
+    local result = TextShowing("Simulation: not modelled for Mage yet.")
+    check("sim: Run says Simulation: not modelled for Mage yet.", result ~= nil, result)
 
     -- coachrun, the profile report, the summary's max-rank part
     chat = {}
@@ -391,21 +393,21 @@ if not forever then
     MD.RunRecorder.Get = function() return { name = "x", pulls = {} } end
     MD:RunCoachRun("1")
     MD.RunRecorder.Get = realGet
-    check("coachrun: prints coachrun: not modelled for Priest yet.",
-        Said("coachrun: not modelled for Priest yet.") ~= nil and MD.runSearch == nil, chat[#chat])
+    check("coachrun: prints coachrun: not modelled for Mage yet.",
+        Said("coachrun: not modelled for Mage yet.") ~= nil and MD.runSearch == nil, chat[#chat])
     local report = table.concat(MD:Profile(), "\n")
-    check("the profile report says (rank table: not modelled for Priest yet)",
-        T.Has(report, "(rank table: not modelled for Priest yet)") and not T.Has(report, "druid-only"))
+    check("the profile report says (rank table: not modelled for Mage yet)",
+        T.Has(report, "(rank table: not modelled for Mage yet)") and not T.Has(report, "druid-only"))
 end
 
--- every word a priest was shown is ASCII with no bare pipe
+-- every word a mage was shown is ASCII with no bare pipe
 do
     local bad
     for _, m in ipairs(chat) do
         local okA, why = T.Ascii(m)
         if not okA then bad = m .. ": " .. why end
     end
-    check("what a priest is told is ASCII with no bare pipe", bad == nil, bad)
+    check("what a mage is told is ASCII with no bare pipe", bad == nil, bad)
 end
 
 --------------------------------------------------------------------------------

@@ -375,8 +375,9 @@ local function RunClass(C)
         okCoach and casts > 0 and #famList >= 2 and r.deaths.n == 0,
         string.format("coach=%s casts=%d families=%s deaths=%d first=%s", tostring(okCoach), casts,
             table.concat(famList, ","), r.deaths.n, tostring(card and card[1])))
-    check(label .. ": the card's best is a solver plan (the class has no threshold rules)",
-        okCoach and best ~= nil and best.kind == "solver" and validation and validation.ok == true,
+    check(label .. ": the card's best is a solver plan, no threshold-rule rows (the druid's tactics)",
+        okCoach and best ~= nil and best.kind == "solver" and validation and validation.ok == true
+        and Has(card, "  solver ") ~= nil and Has(card, "max rank") == nil and Has(card, "your binds") == nil,
         string.format("best=%s", tostring(best and (best.kind or "rules"))))
     local okAscii, badLine = AsciiCard(card)
     check(label .. ": the card is ASCII with no bare pipe", okCoach and okAscii, badLine)
