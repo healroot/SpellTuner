@@ -4171,3 +4171,43 @@ counted against 63 expected), apicheck 0 findings over 56 files, textcheck 0 ove
 built into `dist/`; **nothing installed** (the author installs 0.16.4 per client when ready). **Next:**
 the author's §44 on 0.16.4; mockups M1-M3 (and later M4, M5) with the author's answers to plan section
 8 questions 1, 5, 6, 7, 8, 9, 10 and 12; then waves 11-17 (P26-P34).
+
+## 2026-10-01 — the refactor plan, wave 11: T70-T72 (P26-P28)
+
+Wave 11 of `docs/PLAN-refactor-ux.md` cherry-picked onto `cf9c6ae`, oldest first, then the
+integrator's lines (the three main TOCs, CLAUDE.md, `docs/DECISIONS.md`, `docs/TESTING.md`,
+`docs/TOOLS.md`, `tools/data/expected-counts.json`, this entry) in one commit. No merge fix was needed
+(the three tasks share no file). The version stays 0.16.4. TOC lines: `UI\ContextMenu.lua` after `UI\Windows_Forever.lua`, before
+`UI\Dashboard_Rows.lua` on `SpellTuner_Mainline.toc` and `SpellTuner.toc` (still identical but for
+the marker); after `UI\Style.lua`, before `UI\Tooltip.lua` on `SpellTuner_TBC.toc`. No module TOC
+changed.
+
+- **T70 (P26)** (`90a433a`, `9dc0444`): settings you can reach (review U18, U24, U15, mockup M1) --
+  Settings -> General in two columns (SPELL TOOLTIPS, APPEARANCE, WINDOWS; MANA CLOCK, REVIEW, TOOLS),
+  REVIEW live only with the Replay module loaded; Settings -> About (version, client, every command);
+  `MD.Clock:Preview` / `SetLocked` / `ResetPosition`, a left-click on the clock out of combat opening
+  the window. clockcheck forever 26 (was 24), wincheck forever 61 (was 55). DECISIONS "The Forever
+  clock opens the window out of combat only".
+- **T71 (P27)** (`614f538`, `94de083`): Review answers in the window (review U22, A17, A31) -- new
+  `UI/ContextMenu.lua` (`UI.CreateContextMenu`); under `UI.THEMED` Review is the generic table,
+  scrolled (`opts.scroll`, `onDoubleClick`, `noHeader` in `UI/Dashboard_Rows.lua`), a RESULT area with
+  the validation or the coach card (`SP.CardLines`, `SP.CardText`; `SP.Card` byte-identical) and one
+  chat line, double-click plays, the row menu with Coach anyway (no star, no shift-click; TBC keeps
+  both until wave C); every gate carries `short`. coachforever forever 22 (was 21), gatecheck forever
+  12 (was 11), reviewforever forever 18 (was 13); reviewui tbc unchanged (49). DECISIONS "Review on
+  Forever: forcing is the row menu's Coach anyway".
+- **T72 (P28)** (`2fe4809`, `82390df`, `f8b944b`): the replay's stable layout, status band and keys
+  (review U27, mockup M3) -- Space / Left / Right on both lines only under the pointer and never in
+  combat; under the theme a status band with the verdict, Coach anyway and `reconstructed`, both
+  columns laid out while the auto-coach searches or Coach anyway is offered, nothing overlapping.
+  replayforever forever 28 (was 15), replayui tbc 107 (was 103). DECISIONS "Replay keys under the
+  pointer" (the TBC behaviour change).
+
+`make check`: 68 runs, all passed, in the worktree and in a `git archive` export (63 counted runs
+against 63 expected); apicheck 0 findings over 57 files, textcheck 0 over 93. Each TBC suite's full
+output against `cf9c6ae` differs only by replayui's four T72 assertions (and the pull they drive),
+themecheck tbc's token-read count (59 -> 97: the new code's `UI.Hex` / `UI.RGB` / `UI.Fill` reads),
+releasecheck's package file counts (tbc 63, was 62; forever 31, was 30: `UI/ContextMenu.lua`) and
+run-to-run noise (ms, table addresses, the sliced search's frame and evaluation counts in reccheck,
+reviewui, replayui and simwindow); every other TBC suite equal. In game: `docs/TESTING.md` §44 items
+20, 22 and 23 (they need a build newer than the 0.16.4 install). **Next:** wave 12 (P29-).

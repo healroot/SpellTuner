@@ -1060,3 +1060,22 @@ gets the minimap button TBC has; replay keys only under the pointer and never in
 defaults the running waves used (coach cards change, old CANCELs stay, a third pin refused, an
 unreadable address refused) are confirmed.
 
+## The Forever clock opens the window out of combat only (2026-09-30, T70)
+
+Forever clock (T70): a left-click opens the window only out of combat; in combat the click does nothing, because the window hides in combat (decision 4).
+
+## Review on Forever: forcing is the row menu's Coach anyway (2026-09-30, T71)
+
+Review on Forever: forcing is the row menu's Coach anyway (T71, PLAN-refactor-ux 8.1 item 5). Under the theme the Coach* star and the shift-click on Coach, Coach pull and Play are gone. A plain Coach on a fight that does not replay shows why in the result area and searches nothing. The window's Validate and Coach answer in the result area with one chat line; the slash commands still print in full. TBC keeps the star and shift-click until wave C turns the theme on there.
+
+## Replay keys under the pointer (2026-09-30, T72, P28)
+
+The replay window takes the keyboard on both lines: Space plays and pauses, Left / Right move 5 s,
+and every other key goes on to the game (`SetPropagateKeyboardInput`, practice's pattern). Space
+and the arrows are jump and turn, and TBC does not hide the replay in combat, so the window holds
+the keyboard only after the pointer *enters* it out of combat, and lets go when the pointer leaves,
+when the window hides and on `PLAYER_REGEN_DISABLED`; after a fight it comes back only when the
+pointer enters again. A failed `SetPropagateKeyboardInput` (only `pcall`'d) can therefore swallow
+keys at most while the player points at the window out of combat. Practice keeps its own keyboard
+rules. The author's answer, `docs/PLAN-refactor-ux.md` 8.1 item 12; the play button's tooltip had
+promised Space since v0.8 without it working (review U27).

@@ -1441,7 +1441,7 @@ the numbers.
 
 **Paste back**: the `pN` you pinned, and in words what the suggested column did differently.
 
-## 44. The refactor plan's checks (`docs/PLAN-refactor-ux.md` section 9; waves 1-10, 0.16.4)
+## 44. The refactor plan's checks (`docs/PLAN-refactor-ux.md` section 9; waves 1-11, 0.16.4)
 
 Paste back as in section 41. Out of combat unless a step says otherwise. Install **0.16.4** on each
 client (`--install-tbc` / `--install-forever`, the top of this file and §38; never cross them). The
@@ -1451,7 +1451,9 @@ load-list smoke line (W4), wave 5 (T57-T58) adds 16, wave 6 (T59-T61) adds 17's 
 (T62-T63) adds 18 and the kit line (W7), wave 8 (T64-T65) adds 17's Forever half and the settings
 line (W8), wave 9 (T66-T67) adds the two rank lines (W9), and wave 10 (T68-T69) adds only the
 regression line W10. From wave 4 on nothing visible should change: any difference not listed here is
-a regression. Plan item 19 (`/st dump`'s order) waits for P29 (wave 12); items 20-24 for waves 11-16.
+a regression. Wave 11 (T70-T72, built on 0.16.4 after the 0.16.4 install) adds items 20, 22 and 23,
+which change what you see on purpose. Plan item 19 (`/st dump`'s order) waits for P29 (wave 12);
+items 21 and 24 for waves 12-16.
 
 If there is only one short session: TBC 1, 4 and 16; Forever 13, 15 and W10.
 
@@ -1527,6 +1529,27 @@ W10. **The clock and the theme (P24, P25).** The mana clock behaves exactly as o
     the pool the clock paints). The window, the tooltips, Review and practice keep their
     colours. **On TBC:** `/md` and the widget look exactly as before (the colours are now named
     tokens with TBC's own values).
+
+**Wave 11 (T70-T72; Forever unless said).** These need a build newer than the 0.16.4 install.
+
+20. **Settings (P26).** Settings -> General: move the clock at full mana with Lock unticked (it shows
+    for 60 s), Reset it; click the clock: the window opens. Settings -> About lists the commands; with
+    Replay off, REVIEW is greyed and says so.
+22. **Review (P27).** Validate a fight: the report appears under the list, chat has one line.
+    Double-click a row: it plays. Right-click: the menu. A 30+ pull run scrolls. Right-click a fight
+    that does not replay -> Coach anyway: the card appears under the list and Play shows both columns,
+    FORCED. On Forever a long list needs more than 8 fights plus pins, or 8 practice fights; the
+    30-pull run case is TBC's, after wave C.
+23. **Replay (P28).** On Forever, open a fight that has not been coached: the window opens at full
+    width with the right column dimmed (`coaching... N plans`) and fills in place without moving. The
+    band reads `replays` in green, or `does not replay: <gate>` in red with a **Coach anyway** button
+    (the window already at full width, the right column dimmed `not coached`); click it and the right
+    column fills in without the window moving or the replay's time jumping, and the band then reads
+    `..., coached anyway`. Nothing in the band or the column titles overlaps. Hover `reconstructed`
+    and a left bar. With the pointer over the window Space pauses and plays, Left / Right move 5 s;
+    with the pointer away Space jumps. **On TBC too:** open a replay, keep the pointer over it and pull
+    a mob: you can still jump and turn; after the fight Space plays the replay again only once the
+    pointer has left the window and come back.
 
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the

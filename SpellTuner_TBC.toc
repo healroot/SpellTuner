@@ -41,6 +41,7 @@ Engine\RunTimeline.lua
 Engine\ReplayTrace.lua
 Engine\Practice.lua
 UI\Style.lua
+UI\ContextMenu.lua
 UI\Tooltip.lua
 UI\SpellTooltip.lua
 UI\Visibility.lua
