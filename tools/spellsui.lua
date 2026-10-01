@@ -419,6 +419,55 @@ T36("at font offset +2 the rail rows are 22 tall (21 apart, the 1-px overlap)", 
         string.format("height=%s apart=%s header=%s back=%s", tostring(h), tostring(gap), tostring(headH), tostring(h0))
 end)
 
+-- T77 (P33 of docs/PLAN-refactor-ux.md, review A31): the pane re-pitches on
+-- the kit's FONTS_CHANGED event -- it no longer wraps UI.ApplyFonts, so the
+-- event alone (the offset already applied) re-renders the rail and the view
+T36("T77: FONTS_CHANGED alone re-pitches the rail and the spell view", function()
+    MD:SelectView("spells", "fam:Healing Touch")
+    local saved = UI.fontOffset
+    UI.fontOffset = 2
+    MD:Fire("FONTS_CHANGED", 2)
+    local a, b = RailRow("fam:Healing Touch"), RailRow("fam:Rejuvenation")
+    local h, gap = a:GetHeight(), b.top - a.top
+    local headH = SP.family.header:GetHeight()
+    UI.fontOffset = saved
+    MD:Fire("FONTS_CHANGED", saved)
+    local h0 = RailRow("fam:Healing Touch"):GetHeight()
+    return h == 22 and gap == 21 and headH == 50 and h0 == 20,
+        string.format("height=%s apart=%s header=%s back=%s", tostring(h), tostring(gap), tostring(headH), tostring(h0))
+end)
+
+-- T77 (P33, review U8; mockup M4): a rail row hovered for half a second says
+-- what its tag is -- the suggested rank among the known ones and its per
+-- mana -- and how to move it
+T36("T77: a rail row's tooltip: Suggested  Rank N of M known, Per mana, the drag hint", function()
+    MD:SelectView("spells", "overview")
+    local fam = MD.Book:Get().families["Rejuvenation"]
+    local s = fam and fam.suggested
+    local known = 0
+    for _, e in ipairs(fam and fam.ranks or {}) do if e.known ~= false then known = known + 1 end end
+    local want = s and string.format("Rank %d of %d known", s.rank, known)
+    local row = RailRow("fam:Rejuvenation")
+    local tt = UI.tooltip
+    tt:Hide(); tt.lines = {}
+    row:GetScript("OnEnter")(row)
+    S.Tick(0.2)
+    local early = tt:IsShown()
+    S.Tick(0.4)
+    local got, pm, hint = false, false, false
+    for _, l in ipairs(tt.lines or {}) do
+        if l[1] == "Suggested" and l[2] == want then got = true end
+        if l[1] == "Per mana" and l[2] == MD.Words.PerMana(s, "cell") then pm = true end
+        if l[1] == UI.RAIL_HINT then hint = true end
+    end
+    local first = tt.lines and tt.lines[1] and tt.lines[1][1]
+    local shown = tt:IsShown()
+    row:GetScript("OnLeave")(row)
+    return not early and shown and first == "Rejuvenation" and got and pm and hint and not tt:IsShown(),
+        string.format("early=%s shown=%s first=%s want=%s suggested=%s permana=%s hint=%s", tostring(early),
+            tostring(shown), tostring(first), tostring(want), tostring(got), tostring(pm), tostring(hint))
+end)
+
 --------------------------------------------------------------------------------
 -- fixtures -- named for which acceptance item they exercise. The four fixed
 -- slots (5185 Healing Touch R1, 774/1058 Rejuvenation R1/R2, 5176 Wrath R1)

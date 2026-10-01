@@ -8,6 +8,46 @@ local _, MD = ...
 local UI = {}
 MD.UI = UI
 
+--------------------------------------------------------------------------------
+-- T77 (P33 of docs/PLAN-refactor-ux.md, review A31): the kit's two events,
+-- through the kernel's pub/sub (MD:RegisterCallback / MD:Fire), so a pane and
+-- the window manager subscribe instead of wrapping a kit function or
+-- assigning a kit hook.
+--
+--   "UI_POPUP" (list, shown)  a popup list (a dropdown's list, a tree's
+--       second list, a right-click menu) was shown (true) or hidden (false).
+--       UI.Popup(list, shown) announces one; UI.OnPopup is the same function,
+--       kept under its old name for the callers that announce through it
+--       (UI/ContextMenu.lua). Nobody assigns it any more.
+--   "FONTS_CHANGED" (offset)  UI.ApplyFonts ran: every kit font is re-sized
+--       to the offset it answers. ApplyFonts is the theme's (UI/Theme_
+--       Forever.lua, Forever only); whatever function is installed under that
+--       name is kept as the sizer and called through the kit's own, which
+--       fires the event once the fonts are re-sized and answers the sizer's
+--       answer. With no sizer installed (TBC) UI.ApplyFonts is nil, as before.
+--------------------------------------------------------------------------------
+function UI.Popup(list, shown)
+    MD:Fire("UI_POPUP", list, shown)
+end
+UI.OnPopup = UI.Popup
+
+local fontSizer
+local function ApplyFontsAndAnnounce(...)
+    local offset = fontSizer(...)
+    MD:Fire("FONTS_CHANGED", offset)
+    return offset
+end
+setmetatable(UI, {
+    __index = function(_, k)
+        if k == "ApplyFonts" and fontSizer then return ApplyFontsAndAnnounce end
+        return nil
+    end,
+    __newindex = function(t, k, v)
+        if k == "ApplyFonts" then fontSizer = v; return end
+        rawset(t, k, v)
+    end,
+})
+
 local WHITE = "Interface\\Buttons\\WHITE8x8"
 UI.whiteTexture = WHITE
 
@@ -276,7 +316,11 @@ local function ShowTooltips(widget, anchor, x, y, lines)
     tooltip:SetOwner(widget, anchor or "ANCHOR_TOP", x or 0, y or 0)
     tooltip:AddLine(lines[1])
     for i = 2, #lines do
-        if lines[i] then tooltip:AddLine("|cffffffff" .. lines[i]) end
+        local v = lines[i]
+        -- T77 (P33): a line table (the rail's hint) gives its text; no TBC
+        -- caller passes one
+        if type(v) == "table" then v = v.r and ((v.l or "") .. "  " .. v.r) or v.l end
+        if v then tooltip:AddLine("|cffffffff" .. v) end
     end
     tooltip:Show()
 end
@@ -1250,14 +1294,143 @@ local function Fill(key, fallback)
     return c or fallback
 end
 
--- A popup list (a dropdown's, the rail's menu) opened or closed: the window
--- manager's hook (6.5), called only when it is set -- TBC never sets it.
+-- A popup list (a dropdown's, a tree's second list) opened or closed: the
+-- kit's UI_POPUP event (T77, P33; the window manager subscribes, 6.5). With
+-- no subscriber (TBC) nothing happens, as before.
 local function Popup(list, shown)
-    if UI.OnPopup then UI.OnPopup(list, shown) end
+    UI.Popup(list, shown)
 end
 local function WatchPopup(list)
     list:SetScript("OnShow", function(self) Popup(self, true) end)
     list:SetScript("OnHide", function(self) Popup(self, false) end)
+end
+
+--------------------------------------------------------------------------------
+-- T77 (P33, review U12): lists at the screen's edge. A dropdown's list opens
+-- below its button unless it would leave the bottom of the screen and fits
+-- above it, then it opens upward; a tree's second list opens right of its row
+-- unless it would leave the right edge and fits on the left. Both lines: a
+-- list off the screen is a bug on either. Whatever cannot be read (a frame
+-- with no position yet) keeps the old side.
+--
+-- Rectangles are compared in screen pixels (a frame's units times its
+-- effective scale). Bottom and right are derived from the top / left and the
+-- size, which is what the client answers too.
+--------------------------------------------------------------------------------
+local function Box(f)
+    if not f then return nil end
+    local l, t, w, h = f:GetLeft(), f:GetTop(), f:GetWidth(), f:GetHeight()
+    local s = f.GetEffectiveScale and f:GetEffectiveScale()
+    if type(l) ~= "number" or type(t) ~= "number" or type(w) ~= "number" or type(h) ~= "number"
+        or type(s) ~= "number" or s <= 0 then
+        return nil
+    end
+    return l * s, (t - h) * s, (l + w) * s, t * s
+end
+local function ScreenSize()
+    local s = UIParent:GetEffectiveScale()
+    local w, h = UIParent:GetWidth(), UIParent:GetHeight()
+    if type(s) ~= "number" or type(w) ~= "number" or type(h) ~= "number" then return nil end
+    return w * s, h * s
+end
+local function Extent(list, w, h)
+    local s = list:GetEffectiveScale()
+    if type(s) ~= "number" or s <= 0 then s = 1 end
+    return w * s, h * s
+end
+
+-- "up" when the list under `button` would leave the screen's bottom and fits
+-- above it, else "down".
+function UI.ListSide(button, list)
+    local _, bottom, _, top = Box(button)
+    local _, screenH = ScreenSize()
+    local h = list:GetHeight()
+    if not bottom or not screenH or type(h) ~= "number" then return "down" end
+    local _, need = Extent(list, 0, h + 1)
+    if bottom - need >= 0 then return "down" end
+    if top + need <= screenH then return "up" end
+    return "down"
+end
+
+-- "left" when a list beside `row` would leave the screen's right edge and
+-- fits on its left, else "right".
+function UI.SubListSide(row, list, gap)
+    local left, _, right = Box(row)
+    local screenW = ScreenSize()
+    local w = list:GetWidth()
+    if not left or not screenW or type(w) ~= "number" then return "right" end
+    local need = Extent(list, w + (gap or 0), 0)
+    if right + need <= screenW then return "right" end
+    if left - need >= 0 then return "left" end
+    return "right"
+end
+
+--------------------------------------------------------------------------------
+-- T77 (P33, review U12): chevrons. Under UI.THEMED an 8 x 8 texture pointing
+-- the way its list opens (down, up, right, or left once a list flips); the
+-- letter (v ^ > <) whenever the theme is off -- TBC keeps the letter it
+-- always had -- or the texture cannot be set.
+--
+-- UI.CreateChevron(parent, dir, letterFont) -> chevron  (anchor chevron:
+--   SetPoint as a region; chevron:SetDirection(dir); chevron.dir,
+--   chevron.tex, chevron.letter, chevron.textured)
+--------------------------------------------------------------------------------
+local CHEVRON_FILE = "Interface\\Buttons\\SquareButtonTextures"
+local CHEVRON_COORDS = {   -- the game's own arrows in that file (SquareButton_SetIcon)
+    up    = { 0.453125, 0.640625, 0.015625, 0.203125 },
+    down  = { 0.453125, 0.640625, 0.203125, 0.015625 },
+    left  = { 0.234375, 0.421875, 0.015625, 0.203125 },
+    right = { 0.421875, 0.234375, 0.015625, 0.203125 },
+}
+local CHEVRON_LETTER = { down = "v", up = "^", right = ">", left = "<" }
+UI.CHEVRON_FILE, UI.CHEVRON_LETTER = CHEVRON_FILE, CHEVRON_LETTER
+
+function UI.CreateChevron(parent, dir, letterFont)
+    local c = { dir = dir or "down" }
+    local letter = parent:CreateFontString(nil, "OVERLAY", letterFont or UI.FONT_SMALL)
+    letter:SetTextColor(0.7, 0.7, 0.7)
+    c.letter = letter
+    if UI.THEMED then
+        local tex = parent:CreateTexture(nil, "OVERLAY")
+        tex:SetSize(8, 8)
+        local set = tex:SetTexture(CHEVRON_FILE)
+        if set ~= false then
+            c.tex, c.textured = tex, true
+            tex:SetVertexColor(0.7, 0.7, 0.7, 1)
+        else
+            tex:Hide()
+        end
+    end
+    function c:SetPoint(...)
+        letter:SetPoint(...)
+        if c.tex then c.tex:SetPoint(...) end
+    end
+    function c:ClearAllPoints()
+        letter:ClearAllPoints()
+        if c.tex then c.tex:ClearAllPoints() end
+    end
+    function c:SetShown(on)
+        if c.textured then
+            letter:Hide()
+            if on then c.tex:Show() else c.tex:Hide() end
+        else
+            if on then letter:Show() else letter:Hide() end
+        end
+        c.shown = on and true or false
+    end
+    function c:SetDirection(d)
+        c.dir = d
+        if c.textured then
+            local tc = CHEVRON_COORDS[d] or CHEVRON_COORDS.down
+            c.tex:SetTexCoord(tc[1], tc[2], tc[3], tc[4])
+            letter:SetText("")
+        else
+            letter:SetText(CHEVRON_LETTER[d] or "v")
+        end
+    end
+    c:SetDirection(c.dir)
+    c:SetShown(true)
+    return c
 end
 
 --------------------------------------------------------------------------------
@@ -1271,8 +1444,8 @@ end
 --   opts.footerHeight   the slot pinned at the bottom (rail:Footer()), 0 if absent
 --   opts.empty          the line shown when no movable row is listed
 --   opts.onSelect(id)   a row clicked
---   opts.onMove(id, to) ONCE per reorder (a drag, ^ / v, the menu); `to` is the
---                       row's new place among the movable rows
+--   opts.onMove(id, to) ONCE per reorder (a drag, the menu); `to` is the row's
+--                       new place among the movable rows
 --   opts.onRemove(id)   the hover x or the menu's Remove
 --   opts.onDrop(at)     something dropped on the rail, to go in before movable
 --                       row `at` (#rows + 1: at the end). The kit never reads
@@ -1282,20 +1455,47 @@ end
 -- rail:SetRows(rows)   rows = { { id, text, icon, tag, new, stale, fixed,
 --                      tooltip, hidden }, ... }: fixed rows (Overview) are not
 --                      movable, and a 1-px rule follows the last of them;
---                      `stale` greys the name and drops the tag
--- rail:Select(id)      marks the row (fill + a 2-px accent bar)
--- rail:Rows()          the rows shown, in order (each .id, .index, .data)
+--                      `stale` greys the name and drops the tag; `tooltip` is a
+--                      string or a list of lines (strings, or UI/Tip.lua's line
+--                      tables: a pair, a muted line) under the row's name
+-- rail:Select(id)      marks the row (fill + a 2-px accent bar) and scrolls it
+--                      into view
+-- rail:Rows()          every listed row, in order (each .id, .index, .data,
+--                      .clipped when it is scrolled out of view, and hidden)
 -- rail:Footer()        the bottom slot's frame
 -- rail:SetRowHeight(h) a new row height (the font offset changed), rows re-laid
--- rail:OpenMenu(row)   the right-click menu: Move up / Move down / Remove from list
+-- rail:OpenMenu(row)   the right-click menu (UI/ContextMenu.lua's, as Review's):
+--                      the row's name, Move up / Move down / Remove
+--
+-- T77 (P33 of docs/PLAN-refactor-ux.md, review U8, U16; mockup M4, layout B,
+-- docs/mockups/refactor-ux.html):
+--   * on hover a movable row keeps its rank tag and shows ONE control, an
+--     18-px x; ^ / v are gone -- a row moves by dragging or from the menu;
+--   * a row hovered for half a second shows its tooltip: the name, the
+--     caller's lines (the Spells pane's "Suggested  Rank 1 of 2 known", "Per
+--     mana  1.90"), and for a movable row "Drag to reorder. Right-click for
+--     more." in the muted tone;
+--   * when the movable rows outgrow the space between the fixed rows and the
+--     footer they scroll there: the footer and the fixed rows never move, a
+--     5-px bar (the kit scroll bar's track and accent thumb) at the right,
+--     the wheel moves 3 rows a notch, and a selected row is scrolled into
+--     view. A rail that has not been laid out yet (too short to hold one row)
+--     shows every row, as before.
 --------------------------------------------------------------------------------
+local RAIL_X = 18                 -- the hover x, as the mockup's layout B
+local RAIL_TIP_DELAY = 0.5        -- seconds a row is hovered before its tooltip
+local RAIL_BAR_W = 5              -- the scroll bar
+local RAIL_WHEEL = 3              -- rows per wheel notch
+local RAIL_HINT = "Drag to reorder. Right-click for more."
+UI.RAIL_HINT, UI.RAIL_TIP_DELAY = RAIL_HINT, RAIL_TIP_DELAY
+
 function UI.CreateRail(parent, w, opts)
     opts = opts or {}
     local rowH = opts.rowHeight or 20
     local pitch = rowH - 1
     local TITLE_H = 18
     local RULE_GAP = 8          -- 3 above the 1-px rule, 4 below
-    local rail = { opts = opts, rows = {}, pool = {}, selected = nil }
+    local rail = { opts = opts, rows = {}, pool = {}, selected = nil, offset = 0 }
 
     local frame = CreateFrame("Frame", nil, parent, "BackdropTemplate")
     frame:SetWidth(w)
@@ -1335,6 +1535,16 @@ function UI.CreateRail(parent, w, opts)
     footer:SetHeight(opts.footerHeight or 0)
     function rail:Footer() return footer end
 
+    -- T77: the scroll bar (hidden until the rows outgrow the rail)
+    local bar = CreateFrame("Frame", nil, frame, "BackdropTemplate")
+    bar:SetWidth(RAIL_BAR_W)
+    UI.StylizeFrame(bar, Fill("track", { 0.1, 0.1, 0.1, 0.8 }))
+    bar:Hide()
+    local thumb = bar:CreateTexture(nil, "OVERLAY")
+    thumb:SetWidth(RAIL_BAR_W)
+    thumb:SetColorTexture(accent[1], accent[2], accent[3], 0.8)
+    rail.bar, rail.thumb = bar, thumb
+
     local function Movables()
         local n = 0
         for _, r in ipairs(rail.rows) do if r.movable then n = n + 1 end end
@@ -1342,7 +1552,7 @@ function UI.CreateRail(parent, w, opts)
     end
 
     ----------------------------------------------------------------------------
-    -- painting one row: fill, bar, name, tag, dot, controls
+    -- painting one row: fill, bar, name, tag, dot, the x
     ----------------------------------------------------------------------------
     local function Paint(row)
         local fill
@@ -1352,29 +1562,63 @@ function UI.CreateRail(parent, w, opts)
         else row.bg:SetColorTexture(0, 0, 0, 0) end
         if row.selected then row.bar:Show() else row.bar:Hide() end
         local d = row.data or {}
-        local controls = row.hovered and row.movable and (opts.onMove or opts.onRemove) and true or false
+        local x = row.hovered and row.movable and opts.onRemove and true or false
+        local tag = d.tag and d.tag ~= "" and not d.stale
+        local dot = d.new and not d.stale and not x
+        if x then row.rm:Show() else row.rm:Hide() end
+        row.tag:ClearAllPoints()
+        if x then row.tag:SetPoint("RIGHT", row.rm, "LEFT", -4, 0)
+        else row.tag:SetPoint("RIGHT", row, "RIGHT", -6, 0) end
+        if tag then row.tag:Show() else row.tag:Hide() end
+        if dot then row.dot:Show() else row.dot:Hide() end
         local right
-        if controls then
-            row.up:Show(); row.down:Show(); row.rm:Show()
-            row.tag:Hide(); row.dot:Hide()
-            right = 56
-        else
-            row.up:Hide(); row.down:Hide(); row.rm:Hide()
-            local tag = d.tag and d.tag ~= "" and not d.stale
-            local dot = d.new and not d.stale
-            if tag then row.tag:Show() else row.tag:Hide() end
-            if dot then row.dot:Show() else row.dot:Hide() end
-            right = (tag and 32 or 6) + (dot and 11 or 0)
-        end
+        if x then right = 3 + RAIL_X + 4 + (tag and 30 or 0)
+        else right = (tag and 32 or 6) + (dot and 11 or 0) end
         -- the name is truncated before whatever sits at the right
         row.name:ClearAllPoints()
         row.name:SetPoint("LEFT", row, "LEFT", row.nameX or 24, 0)
         row.name:SetPoint("RIGHT", row, "RIGHT", -right, 0)
     end
 
+    -- T77: the row's tooltip, half a second after the pointer arrived
+    local function TipLines(row)
+        local d = row.data or {}
+        local lines = { d.text or "" }
+        local t = d.tooltip
+        if type(t) == "string" then
+            lines[#lines + 1] = t
+        elseif type(t) == "table" then
+            for _, l in ipairs(t) do lines[#lines + 1] = l end
+        elseif d.stale then
+            lines[#lines + 1] = "not in your spellbook"
+        end
+        if row.movable and opts.onMove then lines[#lines + 1] = { l = RAIL_HINT, c = "muted" } end
+        return lines
+    end
+    function rail:ShowRowTip(row)
+        local lines = TipLines(row)
+        if #lines < 2 then return end
+        ShowTooltips(row, "ANCHOR_RIGHT", 2, 0, lines)
+        row.tipShown = true
+    end
+    local function HideRowTip(row)
+        row:SetScript("OnUpdate", nil)
+        if row.tipShown then
+            row.tipShown = nil
+            tooltip:Hide()
+        end
+    end
+    local function TipWait(row, elapsed)
+        row.tipWait = (row.tipWait or 0) + (type(elapsed) == "number" and elapsed or 0)
+        if row.tipWait < RAIL_TIP_DELAY then return end
+        row:SetScript("OnUpdate", nil)
+        if row.hovered and not rail.drag and row:IsShown() then rail:ShowRowTip(row) end
+    end
+
     local function Leave(row)
         if row.IsMouseOver and row:IsMouseOver() then return end   -- onto its own control
         row.hovered = nil
+        HideRowTip(row)
         Paint(row)
     end
 
@@ -1423,25 +1667,12 @@ function UI.CreateRail(parent, w, opts)
         row.name:SetJustifyH("LEFT")
         row.name:SetWordWrap(false)
 
-        -- the hover controls: ^ move up, v move down, x remove (red, as Cell's delete)
-        local function Ctl(text, color)
-            local b = UI.CreateButton(row, text, color, { 14, 14 }, false, false, UI.FONT_SMALL, UI.FONT_SMALL)
-            b:HookScript("OnLeave", function() Leave(row) end)
-            b:Hide()
-            return b
-        end
-        row.rm = Ctl("x", "red-hover")
-        row.rm:SetPoint("RIGHT", row, "RIGHT", -4, 0)
-        row.down = Ctl("v", "accent-hover")
-        row.down:SetPoint("RIGHT", row.rm, "LEFT", -2, 0)
-        row.up = Ctl("^", "accent-hover")
-        row.up:SetPoint("RIGHT", row.down, "LEFT", -2, 0)
-        row.up:SetScript("OnClick", function()
-            if row.index and row.index > 1 and opts.onMove then opts.onMove(row.id, row.index - 1) end
-        end)
-        row.down:SetScript("OnClick", function()
-            if row.index and row.index < Movables() and opts.onMove then opts.onMove(row.id, row.index + 1) end
-        end)
+        -- the hover control: one x, 18 px, red as Cell's delete (layout B)
+        row.rm = UI.CreateButton(row, "x", "red-hover", { RAIL_X, RAIL_X }, false, false,
+            UI.FONT_SMALL, UI.FONT_SMALL)
+        row.rm:HookScript("OnLeave", function() Leave(row) end)
+        row.rm:SetPoint("RIGHT", row, "RIGHT", -3, 0)
+        row.rm:Hide()
         row.rm:SetScript("OnClick", function()
             if opts.onRemove then opts.onRemove(row.id) end
         end)
@@ -1449,6 +1680,8 @@ function UI.CreateRail(parent, w, opts)
         row:SetScript("OnEnter", function(self)
             self.hovered = true
             Paint(self)
+            self.tipWait = 0
+            self:SetScript("OnUpdate", TipWait)
         end)
         row:SetScript("OnLeave", function(self) Leave(self) end)
         row:SetScript("OnClick", function(self, button)
@@ -1465,15 +1698,96 @@ function UI.CreateRail(parent, w, opts)
         row:SetScript("OnReceiveDrag", function(self)
             if opts.onDrop then opts.onDrop(DropAt(self)) end
         end)
-        row:SetScript("OnDragStart", function(self) rail:BeginDrag(self) end)
+        row:SetScript("OnDragStart", function(self) HideRowTip(self); rail:BeginDrag(self) end)
         row:SetScript("OnDragStop", function() rail:EndDrag() end)
-
-        -- the row's tooltip (a stale row's "not in your spellbook"); the
-        -- kit's hover hook is installed once, the lines set per SetRows
-        UI.SetTooltips(row, "ANCHOR_RIGHT", 2, 0, "")
-        row.tooltips = nil
         return row
     end
+
+    ----------------------------------------------------------------------------
+    -- the scroll (T77): how many movable rows fit between the fixed rows and
+    -- the footer; nil when they all do, or the rail is not laid out yet
+    ----------------------------------------------------------------------------
+    local function Capacity(n)
+        local h = frame:GetHeight()
+        if type(h) ~= "number" then return nil end
+        local avail = h - (opts.footerHeight or 0) - (rail.firstTop or TITLE_H) - 2
+        if avail < rowH then return nil end
+        local cap = math.floor((avail - rowH) / pitch) + 1
+        if cap >= n then return nil end
+        return cap
+    end
+
+    function rail:Layout()
+        local n = Movables()
+        local cap = Capacity(n)
+        rail.capacity = cap
+        local maxOff = cap and (n - cap) or 0
+        if rail.offset > maxOff then rail.offset = maxOff end
+        if rail.offset < 0 then rail.offset = 0 end
+        local inset = cap and (RAIL_BAR_W + 4) or 1
+        local firstTop = rail.firstTop or TITLE_H
+        for _, row in ipairs(rail.rows) do
+            local y, visible = row.baseTop, true
+            if row.movable then
+                local slot = row.index - rail.offset
+                visible = (not cap) or (slot >= 1 and slot <= cap)
+                y = firstTop + (slot - 1) * pitch
+            end
+            row:ClearAllPoints()
+            row:SetPoint("TOPLEFT", frame, "TOPLEFT", 1, -y)
+            row:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -inset, -y)
+            row.top = y
+            row.clipped = not visible
+            if visible then
+                row:Show()
+            else
+                if row.hovered then row.hovered = nil; HideRowTip(row); Paint(row) end
+                row:Hide()
+            end
+        end
+        if cap then
+            local trackH = (cap - 1) * pitch + rowH
+            bar:ClearAllPoints()
+            bar:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -2, -firstTop)
+            bar:SetHeight(trackH)
+            local thumbH = math.max(12, math.floor(trackH * cap / n + 0.5))
+            local at = maxOff > 0 and math.floor((trackH - thumbH) * rail.offset / maxOff + 0.5) or 0
+            thumb:ClearAllPoints()
+            thumb:SetPoint("TOPLEFT", bar, "TOPLEFT", 0, -at)
+            thumb:SetHeight(thumbH)
+            rail.thumbTop = at
+            bar:Show()
+        else
+            rail.thumbTop = nil
+            bar:Hide()
+        end
+    end
+
+    function rail:ScrollTo(offset)
+        rail.offset = math.floor(tonumber(offset) or 0)
+        rail:Layout()
+    end
+    function rail:Scroll(delta) rail:ScrollTo(rail.offset + (tonumber(delta) or 0)) end
+
+    -- the movable row with this id scrolled into view (nothing when it is
+    -- fixed, absent or already in view)
+    function rail:ScrollIntoView(id)
+        local cap = rail.capacity
+        if not cap or id == nil then return end
+        for _, r in ipairs(rail.rows) do
+            if r.id == id and r.movable then
+                if r.index <= rail.offset then rail:ScrollTo(r.index - 1)
+                elseif r.index > rail.offset + cap then rail:ScrollTo(r.index - cap) end
+                return
+            end
+        end
+    end
+
+    frame:EnableMouseWheel(true)
+    frame:SetScript("OnMouseWheel", function(_, delta)
+        if rail.capacity then rail:Scroll(-(tonumber(delta) or 0) * RAIL_WHEEL) end
+    end)
+    frame:SetScript("OnSizeChanged", function() rail:Layout() end)
 
     ----------------------------------------------------------------------------
     -- rows
@@ -1509,10 +1823,7 @@ function UI.CreateRail(parent, w, opts)
                     row.index = nil
                     sawFixed = true
                 end
-                row:ClearAllPoints()
-                row:SetPoint("TOPLEFT", frame, "TOPLEFT", 1, -y)
-                row:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -1, -y)
-                row.top = y
+                row.baseTop = y
 
                 local hasIcon = d.icon ~= nil and not d.fixed
                 if hasIcon then
@@ -1528,16 +1839,11 @@ function UI.CreateRail(parent, w, opts)
                 row.dot:ClearAllPoints()
                 if d.tag and d.tag ~= "" then row.dot:SetPoint("RIGHT", row.tag, "LEFT", -5, 0)
                 else row.dot:SetPoint("RIGHT", row, "RIGHT", -6, 0) end
-                if d.stale or d.tooltip then
-                    row.tooltips = { d.text or "", d.tooltip or "not in your spellbook" }
-                else
-                    row.tooltips = nil
-                end
                 row.selected = (rail.selected ~= nil and rail.selected == d.id)
                 row.hovered = nil
+                HideRowTip(row)
                 row:SetAlpha(1)
                 Paint(row)
-                row:Show()
                 rail.rows[i] = row
                 y = y + pitch
             end
@@ -1553,6 +1859,7 @@ function UI.CreateRail(parent, w, opts)
         else
             emptyText:Hide()
         end
+        rail:Layout()
     end
 
     function rail:Rows() return rail.rows end
@@ -1570,6 +1877,7 @@ function UI.CreateRail(parent, w, opts)
             r.selected = (r.id == id)
             Paint(r)
         end
+        rail:ScrollIntoView(id)
     end
 
     ----------------------------------------------------------------------------
@@ -1583,7 +1891,7 @@ function UI.CreateRail(parent, w, opts)
         if type(cy) ~= "number" or type(top) ~= "number" or type(s) ~= "number" or s <= 0 then return nil end
         local rel = top - cy / s
         local n = Movables()
-        local slot = math.floor((rel - (rail.firstTop or TITLE_H) + pitch / 2) / pitch) + 1
+        local slot = math.floor((rel - (rail.firstTop or TITLE_H) + pitch / 2) / pitch) + 1 + rail.offset
         if slot < 1 then slot = 1 end
         if slot > n + 1 then slot = n + 1 end
         return slot
@@ -1600,7 +1908,10 @@ function UI.CreateRail(parent, w, opts)
     function rail:TrackDrag()
         local slot = rail.drag and SlotAtCursor()
         if not slot then line:Hide(); return end
-        local y = (rail.firstTop or TITLE_H) + (slot - 1) * pitch
+        local shown = slot - rail.offset
+        if shown < 1 then shown = 1 end
+        if rail.capacity and shown > rail.capacity + 1 then shown = rail.capacity + 1 end
+        local y = (rail.firstTop or TITLE_H) + (shown - 1) * pitch
         line:ClearAllPoints()
         line:SetPoint("TOPLEFT", frame, "TOPLEFT", 4, -(y - 1))
         line:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -4, -(y - 1))
@@ -1637,42 +1948,30 @@ function UI.CreateRail(parent, w, opts)
     end)
 
     ----------------------------------------------------------------------------
-    -- the right-click menu (a kit popup list, in the lists' strata)
+    -- the right-click menu (T77: UI/ContextMenu.lua's, Review's menu): the
+    -- row's name, Move up / Move down (each disabled at its end) / Remove
     ----------------------------------------------------------------------------
-    local MENU_W, MENU_H = 130, 18
-    local menu = CreateFrame("Frame", nil, frame, "BackdropTemplate")
-    menu:SetFrameStrata(UI.LIST_STRATA or "DIALOG")
-    menu:SetWidth(MENU_W)
-    UI.StylizeFrame(menu, Fill("header", { 0.115, 0.115, 0.115, 1 }))
-    menu:Hide()
-    WatchPopup(menu)
-    rail.menu = menu
-    local items = {
-        { "Move up", function(r) if r.index > 1 and opts.onMove then opts.onMove(r.id, r.index - 1) end end },
-        { "Move down", function(r) if r.index < Movables() and opts.onMove then opts.onMove(r.id, r.index + 1) end end },
-        { "Remove from list", function(r) if opts.onRemove then opts.onRemove(r.id) end end },
-    }
-    menu.buttons = {}
-    for i, it in ipairs(items) do
-        local b = UI.CreateButton(menu, it[1], "accent-hover", { MENU_W - 2, MENU_H }, true, false,
-            UI.FONT_SMALL, UI.FONT_SMALL)
-        b:SetPoint("TOPLEFT", menu, "TOPLEFT", 1, -1 - (i - 1) * (MENU_H - 1))
-        b:SetScript("OnClick", function()
-            local r = menu.row
-            menu:Hide()
-            if r and r.movable then it[2](r) end
-        end)
-        menu.buttons[i] = b
-    end
-    menu:SetHeight(#items * (MENU_H - 1) + 3)
-
     function rail:OpenMenu(row)
-        menu.row = row
-        menu:ClearAllPoints()
-        menu:SetPoint("TOPLEFT", row, "BOTTOMLEFT", 8, 1)
-        menu:Show()
+        if not (row and row.movable) or not UI.CreateContextMenu then return end
+        rail.menu = rail.menu or UI.CreateContextMenu(frame, 130)
+        local i, n = row.index, Movables()
+        local id = row.id
+        local d = row.data or {}
+        HideRowTip(row)
+        rail.menu:Open(row, string.upper(d.text or ""), {
+            { text = "Move up", disabled = not (opts.onMove and i > 1),
+              onClick = function() opts.onMove(id, i - 1) end },
+            { text = "Move down", disabled = not (opts.onMove and i < n),
+              onClick = function() opts.onMove(id, i + 1) end },
+            { text = "Remove", disabled = not opts.onRemove,
+              onClick = function() opts.onRemove(id) end },
+        })
     end
-    frame:SetScript("OnHide", function() menu:Hide(); StopDrag() end)
+    frame:SetScript("OnHide", function()
+        if rail.menu then rail.menu:Close() end
+        StopDrag()
+        for _, r in ipairs(rail.rows) do HideRowTip(r) end
+    end)
 
     return rail
 end
@@ -1808,10 +2107,11 @@ function UI.CreateDropdown(parent, width, height, onSelect)
         UI.FONT_SMALL, UI.FONT_SMALL)
     dd.items, dd.rows, dd.value = {}, {}, nil
 
-    local arrow = dd:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+    -- T77 (P33): the chevron -- an 8 x 8 texture under the theme, else the
+    -- letter "v" (TBC's, unchanged)
+    local arrow = UI.CreateChevron(dd, "down")
     arrow:SetPoint("RIGHT", dd, "RIGHT", -4, 0)
-    arrow:SetText("v")
-    arrow:SetTextColor(0.7, 0.7, 0.7)
+    dd.arrow = arrow
 
     local list = CreateFrame("Frame", nil, parent, "BackdropTemplate")
     list:SetPoint("TOPLEFT", dd, "BOTTOMLEFT", 0, -1)
@@ -1866,8 +2166,20 @@ function UI.CreateDropdown(parent, width, height, onSelect)
         if dd.value == nil and dd.items[1] then dd:SetValue(dd.items[1].id) end
     end
 
+    -- T77 (P33, review U12): below the button, or above it when below would
+    -- leave the screen (UI.ListSide); the chevron points the way it opened
+    function dd:PlaceList()
+        local side = UI.ListSide(dd, list)
+        list:ClearAllPoints()
+        if side == "up" then list:SetPoint("BOTTOMLEFT", dd, "TOPLEFT", 0, 1)
+        else list:SetPoint("TOPLEFT", dd, "BOTTOMLEFT", 0, -1) end
+        if UI.THEMED then arrow:SetDirection(side) end
+        dd.side = side
+        return side
+    end
+
     dd:SetScript("OnClick", function()
-        if list:IsShown() then list:Hide() else list:Show() end
+        if list:IsShown() then list:Hide() else dd:PlaceList(); list:Show() end
     end)
     dd:SetScript("OnHide", function() list:Hide() end)
 
@@ -1889,10 +2201,10 @@ function UI.CreateTreeDropdown(parent, width, height, onSelect)
         UI.FONT_SMALL, UI.FONT_SMALL)
     dd.items, dd.rows, dd.subRows, dd.value = {}, {}, {}, nil
 
-    local arrow = dd:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+    -- T77 (P33): as the flat dropdown's
+    local arrow = UI.CreateChevron(dd, "down")
     arrow:SetPoint("RIGHT", dd, "RIGHT", -4, 0)
-    arrow:SetText("v")
-    arrow:SetTextColor(0.7, 0.7, 0.7)
+    dd.arrow = arrow
 
     local function Panel(strata)
         local f = CreateFrame("Frame", nil, parent, "BackdropTemplate")
@@ -1958,7 +2270,13 @@ function UI.CreateTreeDropdown(parent, width, height, onSelect)
         sub:SetHeight(math.max(height, #children * (height - 1) + 3))
         sub:SetFrameLevel(list:GetFrameLevel() + 10)   -- T31
         sub:ClearAllPoints()
-        sub:SetPoint("TOPLEFT", row, "TOPRIGHT", 2, 1)
+        -- T77 (P33, review U12): right of the row, or left of it when the
+        -- right would leave the screen (UI.SubListSide)
+        local side = UI.SubListSide(row, sub, 2)
+        if side == "left" then sub:SetPoint("TOPRIGHT", row, "TOPLEFT", -2, 1)
+        else sub:SetPoint("TOPLEFT", row, "TOPRIGHT", 2, 1) end
+        dd.subSide = side
+        if row.chevron then row.chevron:SetDirection(side) end
         sub:Show()
     end
 
@@ -1974,7 +2292,22 @@ function UI.CreateTreeDropdown(parent, width, height, onSelect)
                     UI.FONT_SMALL, UI.FONT_SMALL)
                 dd.rows[i] = r
             end
-            r:SetText(it.text .. ((it.children and #it.children > 0) and "   |cff777777>|r" or ""))
+            -- T77 (P33): under the theme a parent row's chevron is a texture at
+            -- its right edge; TBC keeps the grey ">" in the text
+            local parentRow = it.children and #it.children > 0
+            if UI.THEMED then
+                r:SetText(it.text)
+                if parentRow and not r.chevron then
+                    r.chevron = UI.CreateChevron(r, "right")
+                    r.chevron:SetPoint("RIGHT", r, "RIGHT", -6, 0)
+                end
+                if r.chevron then
+                    r.chevron:SetDirection("right")
+                    r.chevron:SetShown(parentRow)
+                end
+            else
+                r:SetText(it.text .. (parentRow and "   |cff777777>|r" or ""))
+            end
             r.item = it
             r:ClearAllPoints()
             if prev then r:SetPoint("TOPLEFT", prev, "BOTTOMLEFT", 0, 1)
@@ -1997,8 +2330,19 @@ function UI.CreateTreeDropdown(parent, width, height, onSelect)
         if dd.value == nil and dd.items[1] then dd:SetValue(dd.items[1].id) end
     end
 
+    -- T77 (P33): as the flat dropdown's
+    function dd:PlaceList()
+        local side = UI.ListSide(dd, list)
+        list:ClearAllPoints()
+        if side == "up" then list:SetPoint("BOTTOMLEFT", dd, "TOPLEFT", 0, 1)
+        else list:SetPoint("TOPLEFT", dd, "BOTTOMLEFT", 0, -1) end
+        if UI.THEMED then arrow:SetDirection(side) end
+        dd.side = side
+        return side
+    end
+
     dd:SetScript("OnClick", function()
-        if list:IsShown() then dd:Close() else list:Show() end
+        if list:IsShown() then dd:Close() else dd:PlaceList(); list:Show() end
     end)
     dd:SetScript("OnHide", function() dd:Close() end)
     return dd

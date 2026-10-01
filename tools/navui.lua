@@ -18,7 +18,9 @@ HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
 local MD = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB
-S.Load({ "UI/Style.lua" }, "SpellTuner", MD)
+-- T77 (P33): the rail's right-click menu is UI/ContextMenu.lua's (both main
+-- TOCs list it right after the kit)
+S.Load({ "UI/Style.lua", "UI/ContextMenu.lua" }, "SpellTuner", MD)
 local UI = MD.UI
 
 -- T31: geometry and layering, recorded for THIS suite only (the stub keeps
@@ -332,16 +334,21 @@ check("a mask swallows clicks on its region", sheet ~= nil and beforeHit == view
 check("and not outside it", sheet ~= nil and HitAt(80, 300) == railArea)
 if sheet then sheet:Hide() end
 
--- the dropdown lists: UI.LIST_STRATA (nil = DIALOG, TBC's), UI.OnPopup told
-UI.LIST_STRATA, UI.OnPopup = nil, nil
+-- the dropdown lists: UI.LIST_STRATA (nil = DIALOG, TBC's), the kit's
+-- UI_POPUP event told (T77, P33: it was the UI.OnPopup hook, assigned)
+UI.LIST_STRATA = nil
 local d0 = UI.CreateDropdown(UIParent, 100, 18)
-local popups = {}
+local popups, listening = {}, false
+MD:RegisterCallback("UI_POPUP", function(list, shown)
+    if listening then popups[#popups + 1] = { list, shown } end
+end)
 UI.LIST_STRATA = "FULLSCREEN_DIALOG"
-UI.OnPopup = function(list, shown) popups[#popups + 1] = { list, shown } end
 local d1 = UI.CreateDropdown(UIParent, 100, 18)
 d1:SetItems({ { id = 1, text = "A" }, { id = 2, text = "B" } })
+listening = true
 d1:GetScript("OnClick")(d1)
 d1:Close()
+listening = false
 check("a list takes UI.LIST_STRATA", d0.list:GetFrameStrata() == "DIALOG"
     and d1.list:GetFrameStrata() == "FULLSCREEN_DIALOG" and #popups == 2
     and popups[1][1] == d1.list and popups[1][2] == true and popups[2][2] == false,
@@ -357,7 +364,7 @@ check("the second list is above the first", t1.sub:IsShown()
     string.format("%s %d / %s %d", t1.list:GetFrameStrata(), t1.list:GetFrameLevel(),
         t1.sub:GetFrameStrata(), t1.sub:GetFrameLevel()))
 t1:Close()
-UI.LIST_STRATA, UI.OnPopup = nil, nil
+UI.LIST_STRATA = nil
 
 --------------------------------------------------------------------------------
 -- T75 (P31 of docs/PLAN-refactor-ux.md, review U30, U31): the view tabs' widths
@@ -411,6 +418,189 @@ do
           and gp[5] == -2 and tp[5] == -2 and gh == 22 and th == 22 and (UI.H or {}).toolbar == 22,
         string.format("tops %s / %s, heights %s / %s", tostring(gp[5]), tostring(tp[5]), tostring(gh), tostring(th)))
 end
+
+--------------------------------------------------------------------------------
+-- T77 (P33 of docs/PLAN-refactor-ux.md, review U8, U12, U16; mockup M4 layout
+-- B): lists that flip at the screen's edge (both lines), the chevrons (under
+-- the theme only), the rail's one-x hover with its menu, its tooltip after
+-- half a second, and its rows scrolling above a fixed footer. The flips need
+-- the stub's opt-in geometry: a frame anchored by one point to UIParent has
+-- a place on a 768-high screen.
+--------------------------------------------------------------------------------
+local function PointOf(f)
+    local p, rel, rp, x, y = f:GetPoint(1)
+    return { p, rel, rp, x, y }
+end
+-- each item under pcall, the geometry and the theme switched back whatever
+-- happened: on the parent commit (no flips, no chevrons, the old rail) the
+-- items fail one by one instead of stopping the suite
+local function T77(name, fn)
+    local good, cond, detail = pcall(fn)
+    S.Geometry(false)
+    UI.THEMED = false
+    if not good then check(name, false, "raised: " .. tostring(cond)) return end
+    check(name, cond == true, detail)
+end
+
+T77("T77: a list near the bottom of the screen opens upward", function()
+    S.Geometry(true)
+    local low = UI.CreateDropdown(UIParent, 120, 18)
+    low:SetItems({ { id = 1, text = "Hide, reopen after" }, { id = 2, text = "Keep them open" },
+                   { id = 3, text = "c" }, { id = 4, text = "d" } })
+    low:ClearAllPoints(); low:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", 100, 40)
+    low:GetScript("OnClick")(low)
+    local up = PointOf(low.list)
+    low:Close()
+    local high = UI.CreateDropdown(UIParent, 120, 18)
+    high:SetItems({ { id = 1, text = "a" }, { id = 2, text = "b" } })
+    high:ClearAllPoints(); high:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", 100, 700)
+    high:GetScript("OnClick")(high)
+    local down = PointOf(high.list)
+    high:Close()
+    -- TBC (no theme): the letter "v" stays, whichever way the list opened
+    local letter = low.arrow and low.arrow.letter and low.arrow.letter:GetText()
+    return up[1] == "BOTTOMLEFT" and up[2] == low and up[3] == "TOPLEFT" and low.side == "up"
+          and down[1] == "TOPLEFT" and down[2] == high and down[3] == "BOTTOMLEFT" and high.side == "down"
+          and UI.THEMED == false and low.arrow.textured == nil and letter == "v",
+        string.format("low %s/%s, high %s/%s, arrow %q", tostring(up[1]), tostring(up[3]),
+            tostring(down[1]), tostring(down[3]), tostring(letter))
+end)
+
+T77("T77: a sub-list near the right edge opens to the left", function()
+    S.Geometry(true)
+    local tree = UI.CreateTreeDropdown(UIParent, 140, 18)
+    tree:SetItems({ { id = "ht", text = "Healing Touch", children = { { id = "ht1", text = "Rank 1" },
+        { id = "ht2", text = "Rank 2" } } } })
+    tree:ClearAllPoints(); tree:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", 100, 700)
+    tree:GetScript("OnClick")(tree)
+    local row = tree.rows[1]
+    local screenW = UIParent:GetWidth()
+    row.GetLeft = function() return screenW - 150 end      -- the row's place: near the right edge
+    row:GetScript("OnEnter")(row)
+    local left = PointOf(tree.sub)
+    local leftSide = tree.subSide
+    row.GetLeft = function() return 200 end                -- and well inside the screen
+    row:GetScript("OnEnter")(row)
+    local right = PointOf(tree.sub)
+    tree:Close()
+    return leftSide == "left" and left[1] == "TOPRIGHT" and left[2] == row and left[3] == "TOPLEFT"
+          and right[1] == "TOPLEFT" and right[3] == "TOPRIGHT" and tree.subSide == "right"
+          and (row:GetText() or ""):find(">", 1, true) ~= nil,
+        string.format("near the edge %s/%s, inside %s/%s, text %q", tostring(left[1]), tostring(left[3]),
+            tostring(right[1]), tostring(right[3]), tostring(row:GetText()))
+end)
+
+T77("T77: under the theme the chevrons are 8x8 textures pointing the way the list opens", function()
+    UI.THEMED = true
+    S.Geometry(true)
+    local dd = UI.CreateDropdown(UIParent, 120, 18)
+    dd:SetItems({ { id = 1, text = "a" }, { id = 2, text = "b" }, { id = 3, text = "c" } })
+    local first = dd.arrow.textured == true and dd.arrow.dir == "down" and dd.arrow.letter:GetText() == ""
+    dd:ClearAllPoints(); dd:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", 100, 30)
+    dd:GetScript("OnClick")(dd)
+    local flipped = dd.arrow.dir == "up"
+    dd:Close()
+    local tree = UI.CreateTreeDropdown(UIParent, 140, 18)
+    tree:SetItems({ { id = "ht", text = "Healing Touch", children = { { id = "ht1", text = "Rank 1" } } },
+                    { id = "rj", text = "Rejuvenation" } })
+    local r1, r2 = tree.rows[1], tree.rows[2]
+    local rowOk = r1:GetText() == "Healing Touch" and r1.chevron ~= nil and r1.chevron.textured
+        and r1.chevron.shown and r1.chevron.dir == "right" and (r2.chevron == nil or not r2.chevron.shown)
+    return first and flipped and rowOk and dd.arrow.tex ~= nil and dd.arrow.tex:GetWidth() == 8,
+        string.format("first %s flipped %s row %s", tostring(first), tostring(flipped), tostring(rowOk))
+end)
+
+-- the rail: 25 movable rows below Overview, 400 tall with a 48-px footer
+local railMoves, railRemoves = {}, {}
+local bigRail = UI.CreateRail(UIParent, 172, { title = "MY SPELLS", footerHeight = 48,
+    onMove = function(id, to) railMoves[#railMoves + 1] = id .. ">" .. tostring(to) end,
+    onRemove = function(id) railRemoves[#railRemoves + 1] = id end })
+bigRail.frame:SetHeight(400)
+local bigRows = { { id = "overview", text = "Overview", fixed = true } }
+for i = 1, 25 do
+    bigRows[#bigRows + 1] = { id = "fam:" .. i, text = "Spell " .. i, tag = "R" .. (i % 7 + 1),
+        tooltip = { { l = "Suggested", r = "Rank 1 of 2 known" }, { l = "Per mana", r = "1.90" } } }
+end
+bigRail:SetRows(bigRows)
+
+T77("T77: 25 rail rows scroll above a fixed footer; the wheel moves 3; a selected row is scrolled to", function()
+    local rows = bigRail:Rows()
+    local function shownMovable()
+        local n, first, last = 0, nil, nil
+        for _, r in ipairs(rows) do
+            if r.movable and r:IsShown() then n = n + 1; first = first or r.index; last = r.index end
+        end
+        return n, first, last
+    end
+    local footerPt = bigRail:Footer().points and bigRail:Footer().points.BOTTOMLEFT
+    local n0, f0, l0 = shownMovable()
+    local lastTop = rows[(l0 or 0) + 1] and rows[(l0 or 0) + 1].top
+    local fits = lastTop and (lastTop + 20 <= 400 - 48)
+    local barUp = bigRail.bar ~= nil and bigRail.bar:IsShown()
+    local wheel = bigRail.frame:GetScript("OnMouseWheel")
+    if wheel then wheel(bigRail.frame, -1) end
+    local n1, f1 = shownMovable()
+    local overview = rows[1]:IsShown() and rows[1].top == 18
+    bigRail:Select("fam:25")
+    local _, _, l2 = shownMovable()
+    local selShown = rows[26]:IsShown() and rows[26].selected == true
+    if wheel then wheel(bigRail.frame, 30) end
+    local _, f3 = shownMovable()
+    local footerAfter = bigRail:Footer().points and bigRail:Footer().points.BOTTOMLEFT
+    return n0 == 16 and f0 == 1 and l0 == 16 and fits and barUp and #rows == 26
+          and rows[18].clipped == true and not rows[18]:IsShown()
+          and n1 == 16 and f1 == 4 and overview and l2 == 25 and selShown and f3 == 1
+          and footerPt ~= nil and footerAfter == footerPt and footerPt.y == 1,
+        string.format("shown %s (%s..%s), after the wheel from %s, selected to %s, back to %s, bar %s",
+            tostring(n0), tostring(f0), tostring(l0), tostring(f1), tostring(l2), tostring(f3), tostring(barUp))
+end)
+
+T77("T77: a hovered rail row keeps its tag and shows one 18-px x; right-click: Move up / Move down / Remove", function()
+    local rows = bigRail:Rows()
+    local r2 = rows[3]                                      -- the second movable row
+    r2:GetScript("OnEnter")(r2)
+    local x = r2.rm:IsShown() and r2.rm:GetWidth() == 18 and r2.rm:GetText() == "x"
+    local tagKept = r2.tag:IsShown() and r2.tag:GetText() ~= ""
+    local noArrows = r2.up == nil and r2.down == nil
+    r2:GetScript("OnClick")(r2, "RightButton")
+    local menu = bigRail.menu
+    local items = {}
+    for _, b in ipairs(menu and menu.rows or {}) do
+        if b:IsShown() then items[#items + 1] = b:GetText() .. (b:IsEnabled() and "" or "(off)") end
+    end
+    local title = menu and menu.titleText and menu.titleText:GetText()
+    local down = menu and menu.rows and menu.rows[2]
+    if down then down:GetScript("OnClick")(down) end
+    local closed = menu and menu.IsShown and not menu:IsShown()
+    local first = rows[2]
+    first:GetScript("OnClick")(first, "RightButton")
+    local upOff = menu and menu.rows and not menu.rows[1]:IsEnabled()
+    if menu and menu.Close then menu:Close() end
+    r2:GetScript("OnLeave")(r2)
+    return x and tagKept and noArrows and table.concat(items, ",") == "Move up,Move down,Remove"
+          and title == "SPELL 2" and #railMoves == 1 and railMoves[1] == "fam:2>3" and closed and upOff
+          and not r2.rm:IsShown(),
+        string.format("x %s tag %s arrows gone %s items %s title %s moves %s", tostring(x), tostring(tagKept),
+            tostring(noArrows), table.concat(items, ","), tostring(title), table.concat(railMoves, ","))
+end)
+
+T77("T77: a rail row's tooltip after half a second: its name, its lines, the drag hint", function()
+    local tt = UI.tooltip
+    local row = bigRail:Rows()[2]
+    tt:Hide(); tt.lines = {}
+    row:GetScript("OnEnter")(row)
+    S.Tick(0.3)
+    local early = tt:IsShown() and #(tt.lines or {}) > 0
+    S.Tick(0.3)
+    local texts = {}
+    for _, l in ipairs(tt.lines or {}) do texts[#texts + 1] = tostring(l[1]) end
+    local all = table.concat(texts, " / ")
+    row:GetScript("OnLeave")(row)
+    return not early and texts[1] == "Spell 1" and all:find("Rank 1 of 2 known", 1, true) ~= nil
+          and all:find("1.90", 1, true) ~= nil and UI.RAIL_HINT ~= nil
+          and (texts[#texts] or ""):find(UI.RAIL_HINT, 1, true) ~= nil and not tt:IsShown(),
+        string.format("early %s, lines %s", tostring(early), all)
+end)
 
 print(string.format("\n%d ok, %d failed", ok, #fails))
 if #fails > 0 then for _, m in ipairs(fails) do print("  FAIL " .. m) end; os.exit(1) end

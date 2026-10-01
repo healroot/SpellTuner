@@ -1543,6 +1543,28 @@ end
 --------------------------------------------------------------------------------
 -- The list: rail rows from Spells/Tabs.lua (3.2, 3.3)
 --------------------------------------------------------------------------------
+-- T77 (P33, review U8; mockup M4): a row's tooltip under its name -- the
+-- suggested rank among the known ones ("Suggested  Rank 1 of 2 known", what
+-- the R1 tag is), its per mana, and the line a stale reading earns ("Read
+-- before combat: ..."); the rail adds "Drag to reorder. Right-click for
+-- more." itself. Label/value pairs in UI/Tip.lua's line model.
+local function RailTip(fam)
+    local lines = {}
+    local s = fam.suggested
+    if s and type(s.rank) == "number" then
+        lines[#lines + 1] = { l = "Suggested", r = string.format("Rank %d of %d known", s.rank, KnownRanks(fam)),
+            c = "label", rc = "text" }
+    end
+    if s and type(s.perMana) == "number" then
+        lines[#lines + 1] = { l = "Per mana", r = Words.PerMana(s, "cell"), c = "label", rc = "text" }
+    end
+    if s and s.stale then
+        lines[#lines + 1] = { l = "Read before combat: the spell text was hidden during the fight.",
+            c = "muted", wrap = true }
+    end
+    return lines
+end
+
 -- The rail's views: Overview, then one per listed family. The first call
 -- with a book seeds the list (the seed runs on first open).
 function SpellsPane:Views()
@@ -1557,7 +1579,7 @@ function SpellsPane:Views()
             views[#views + 1] = { id = VIEW_PREFIX .. key, key = key, text = Esc(fam.name or key),
                 icon = rep and rep.icon or nil,
                 tag = (type(rank) == "number") and ("R" .. rank) or nil,
-                new = MD.Tabs:IsNew(key) }
+                new = MD.Tabs:IsNew(key), tooltip = RailTip(fam) }
         else
             views[#views + 1] = { id = VIEW_PREFIX .. key, key = key, text = Esc(key),
                 stale = true, tooltip = "not in your spellbook" }
@@ -2036,14 +2058,9 @@ function SpellsPane:FontsChanged()
     if group == "spells" then self:Show(view) end
 end
 
-if type(UI.ApplyFonts) == "function" then
-    local applyFonts = UI.ApplyFonts
-    UI.ApplyFonts = function(...)
-        local offset = applyFonts(...)
-        SpellsPane:FontsChanged()
-        return offset
-    end
-end
+-- T77 (P33, review A31): the kit's FONTS_CHANGED, once the fonts are
+-- re-sized (it wrapped UI.ApplyFonts before)
+MD:RegisterCallback("FONTS_CHANGED", function() SpellsPane:FontsChanged() end)
 
 --------------------------------------------------------------------------------
 -- Wiring (UI/Dashboard_Forever.lua)

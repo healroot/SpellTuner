@@ -535,7 +535,7 @@ end
 -- new onEsc).
 Win.stack = {}
 local hooked = setmetatable({}, { __mode = "k" })     -- frames whose OnHide we hooked
-local popups = setmetatable({}, { __mode = "k" })     -- open dropdown lists (UI.OnPopup)
+local popups = setmetatable({}, { __mode = "k" })     -- open dropdown lists (UI_POPUP)
 local special = {}                                    -- names the fallback put in UISpecialFrames
 
 function Win:EscStackOn()
@@ -702,8 +702,11 @@ function Win:Push(frame, onEsc)
     Arm()
 end
 
--- The dropdown lists join the stack through the kit's hook (UI.OnPopup, T31).
-UI.OnPopup = function(list, shown)
+-- The dropdown lists join the stack through the kit's UI_POPUP event (T77,
+-- P33, review A31: the kit announces, the manager subscribes; it assigned the
+-- kit's UI.OnPopup hook before, T31).
+MD:RegisterCallback("UI_POPUP", function(list, shown)
+    if not list then return end
     if shown then
         popups[list] = true
         Win:Push(list)
@@ -711,7 +714,7 @@ UI.OnPopup = function(list, shown)
         popups[list] = nil
         Win:Remove(list)
     end
-end
+end)
 
 -- Every open list closed (the copy box opening, 6.2).
 function Win:CloseLists()

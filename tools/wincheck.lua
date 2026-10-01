@@ -1144,5 +1144,45 @@ Guarded("T70: About", function()
 end)
 
 --------------------------------------------------------------------------------
+-- T77 (P33 of docs/PLAN-refactor-ux.md, review A31): the manager hears the
+-- kit's UI_POPUP event instead of assigning the kit's UI.OnPopup hook -- a
+-- list the event announces joins the ESC stack and leaves it when announced
+-- hidden; a tree dropdown's list and the right-click menu (UI/ContextMenu.lua,
+-- the rail's) join through it, and one ESC closes the newest, the window
+-- staying up.
+--------------------------------------------------------------------------------
+do
+    MD:SelectView("settings", "general")
+    NextFrame()
+    local up = frame:IsShown()
+    local base = #Stack()
+    local hookFree = UI.Popup ~= nil and UI.OnPopup == UI.Popup
+    local f = CreateFrame("Frame", nil, UIParent); f:Show()
+    MD:Fire("UI_POPUP", f, true)
+    local pushed = Top() == f and #Stack() == base + 1
+    MD:Fire("UI_POPUP", f, false)
+    local removed = #Stack() == base and Top() ~= f
+
+    local tree = UI.CreateTreeDropdown(frame, 140, 18)
+    tree:SetItems({ { id = "a", text = "A", children = { { id = "a1", text = "A1" } } } })
+    tree:GetScript("OnClick")(tree)
+    local treeTop = Top() == tree.list
+    local menu = UI.CreateContextMenu(frame, 130)
+    menu:Open(frame, "HEALING TOUCH", { { text = "Move up" }, { text = "Remove" } })
+    local menuTop = Top() == menu.frame and #Stack() == base + 2
+    Esc()
+    local menuGone = not menu:IsShown() and tree.list:IsShown() and frame:IsShown()
+    NextFrame()
+    Esc()
+    local treeGone = not tree.list:IsShown() and frame:IsShown() and #Stack() == base
+    NextFrame()
+    check("T77: the manager hears UI_POPUP (no hook assigned); a tree's list and the menu each close on one ESC",
+        up and hookFree and pushed and removed and treeTop and menuTop and menuGone and treeGone,
+        string.format("up %s hookFree %s pushed %s removed %s tree %s menu %s escMenu %s escTree %s",
+            tostring(up), tostring(hookFree), tostring(pushed), tostring(removed), tostring(treeTop),
+            tostring(menuTop), tostring(menuGone), tostring(treeGone)))
+end
+
+--------------------------------------------------------------------------------
 print(string.format("%d ok, %d failed", ok, #fails))
 if #fails > 0 then os.exit(1) end
