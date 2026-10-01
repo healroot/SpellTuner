@@ -13,7 +13,14 @@
 --   seeded  = true
 --
 -- The seed runs on first open (Get with a book); the reconcile runs whenever
--- Book rescans after going dirty (BOOK_CHANGED). Forever TOCs only.
+-- Book rescans after going dirty (BOOK_CHANGED).
+--
+-- T84 (C5 of docs/PLAN-refactor-ux.md, section 7.1: the rail on TBC): both
+-- lines. The book an edit reads when its caller passes none comes through
+-- one seam, Tabs.source, which defaults to MD.Book:Get() (Forever). On TBC
+-- Spells/Families_TBC.lua sets it to the TBC druid families in Book's shape
+-- and runs the reconcile on SPELLS_REBUILT, the job BOOK_CHANGED does here.
+-- The rules below are unchanged.
 local _, MD = ...
 
 MD.Tabs = MD.Tabs or {}
@@ -75,9 +82,16 @@ local function CopyList(list)
     return out
 end
 
+-- The seam's default: the spellbook Spells/Book.lua reads (Forever).
+function Tabs.BookSource()
+    if MD.Book and MD.Book.Get then return MD.Book:Get() end
+    return nil
+end
+Tabs.source = Tabs.BookSource
+
 local function BookOrDefault(book)
     if type(book) == "table" then return book end
-    if MD.Book and MD.Book.Get then return MD.Book:Get() end
+    if type(Tabs.source) == "function" then return Tabs.source() end
     return nil
 end
 

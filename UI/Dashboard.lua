@@ -1,11 +1,19 @@
 -- Rank dashboard (/md): a Cell-style movable frame (header bar with title and
--- close), the groups and their views. The Spells group's one pane is the TBC
--- Spells view (T83, C3 of docs/PLAN-refactor-ux.md: UI/SpellsView_TBC.lua --
--- the header, the chip and one comparison, the rank table T81 built, the
--- card, "After overheal" and the Simulate strip behind "What if..."), with
--- the four families along the top until C5's rail. Reports keeps its header
--- lines and the recap. Settings are in the options frame
--- (UI/OptionsFrame.lua).
+-- close), the groups and their views. Reports keeps its header lines and the
+-- recap. Settings are in the options frame (UI/OptionsFrame.lua).
+--
+-- T84 (C5 of docs/PLAN-refactor-ux.md, section 7.1; mockup M4 layout B and
+-- M6): the Spells group is the rail, as on Forever -- MY SPELLS, Overview
+-- first, then one row per family of the player's own list (Spells/Tabs.lua
+-- over Spells/Families_TBC.lua), with [ + Add ] and its picker, the Undo
+-- line, drag to reorder, one x and the right-click row menu (UI/SpellRail.lua
+-- installed on MD.SpellsTBC below). Overview is My spells
+-- (UI/SpellsView_TBC.lua's CreateSpellsOverview); a family's row ("fam:<key>")
+-- opens the TBC Spells view (T83, C3: the header, the chip and one
+-- comparison, the rank table, the card, "After overheal" and "What if...").
+-- C3's four view tabs are gone. /md opens on Overview the first time, then on
+-- the remembered row; a path saved before C5 ("spells", "Regrowth") opens
+-- that family's row.
 --
 -- T80 (C1 of docs/PLAN-refactor-ux.md, decision 10, the author's answer 1):
 -- the window is the window manager's (UI/Windows.lua) as on Forever -- placed
@@ -18,27 +26,77 @@ local UI = MD.UI
 
 local WIDTH, HEIGHT = 912, 617 -- +20% (author, 2026-09-06: not everything fit); was 760 x 514
 local frame, statsFS, calloutFS, hintFS, recapFS, messageFS
-local spellsView, wasteView, reviewView, practiceView, nav
+local spellsView, spellsOverview, spellsHost, wasteView, reviewView, practiceView, nav
 local currentGroup = "spells"
-local currentFamily = "HealingTouch"
-local userPicked = false   -- once a tab is clicked, stop picking one automatically
+local currentFamily = "overview" -- the selected VIEW id (a family's is "fam:<key>")
 
--- The family this character actually casts most (persisted counts kept by the
--- spend tracker), so the dashboard opens on the spell that matters. The first
--- dungeon log had one Healing Touch in 29 minutes and 245 Lifeblooms; it opened
--- on Healing Touch.
-local function DefaultFamily()
-    local counts = MD.cdb and MD.cdb.familyCasts
-    local best, bestN = "HealingTouch", -1
-    if counts then
-        for _, family in ipairs(MD.SpellData.familyOrder) do
-            local info = MD.SpellData.families[family]
-            if info and not info.exclude and (counts[family] or 0) > bestN then
-                best, bestN = family, counts[family] or 0
-            end
-        end
+--------------------------------------------------------------------------------
+-- T84 (C5): the Spells rail. MD.SpellsTBC carries UI/SpellRail.lua's glue
+-- (Views, RefreshRail, Remove, Undo, the footer, the picker, Group, Attach)
+-- over Spells/Families_TBC.lua's families; a row's tag is the suggested rank
+-- (RankMath), its hover the suggested rank and its per mana, as on Forever.
+--------------------------------------------------------------------------------
+local SpellsTBC = {}
+MD.SpellsTBC = SpellsTBC
+
+local VIEW_PREFIX = MD.SpellRail and MD.SpellRail.VIEW_PREFIX or "fam:"
+local function FamilyKey(viewId)
+    if type(viewId) == "string" and viewId:sub(1, #VIEW_PREFIX) == VIEW_PREFIX then
+        return viewId:sub(#VIEW_PREFIX + 1)
     end
-    return best
+    return nil
+end
+
+-- A view id as the rail names it: a bare family key (a path saved before
+-- C5, or a caller that names "Regrowth") becomes its row's id.
+local function SpellsViewId(view)
+    if type(view) == "string" and MD.SpellData.families[view] then return VIEW_PREFIX .. view end
+    return view
+end
+
+local function SuggestedRows()
+    if not (MD.RankMath and MD.player.isDruid) then return {} end
+    return MD.RankMath:Compute()
+end
+
+local function RailRow(fam, key, results)
+    local rep = fam.maxKnown or (fam.ranks and fam.ranks[1])
+    local res = results and results[key]
+    local s, known = nil, 0
+    for _, r in ipairs(res and res.rows or {}) do
+        if r.suggested then s = r end
+        if r.known and not r.virtual then known = known + 1 end
+    end
+    local tooltip = {}
+    if s then
+        tooltip[1] = { l = "Suggested", r = string.format("Rank %d of %d known", s.rank, known), c = "label", rc = "text" }
+        tooltip[2] = { l = "Per mana", r = string.format("%.2f", s.hpm), c = "label", rc = "text" }
+    end
+    return { text = fam.name or key, icon = rep and rep.icon or nil,
+        tag = s and ("R" .. s.rank) or nil, tooltip = tooltip }
+end
+
+if MD.SpellRail then
+    MD.SpellRail.Install(SpellsTBC, {
+        source = function() return MD.FamiliesTBC and MD.FamiliesTBC:Get() or nil end,
+        prepare = SuggestedRows,
+        row = RailRow,
+        label = function(key)
+            local info = MD.SpellData.families[key]
+            return info and info.label or key
+        end,
+    })
+end
+
+-- The rail's rows when the glue is not loaded: Overview only.
+local function SpellsGroup()
+    if SpellsTBC.Group then return SpellsTBC:Group() end
+    return { id = "spells", text = "Spells", layout = "rail",
+        views = { { id = "overview", text = "Overview", fixed = true } }, rail = { title = "MY SPELLS" } }
+end
+
+local function RefreshSpellRail()
+    if SpellsTBC.RefreshRail then SpellsTBC:RefreshRail() end
 end
 
 --------------------------------------------------------------------------------
@@ -80,12 +138,25 @@ local function Refresh()
     if spells then
         -- T83 (C3): the TBC Spells view -- header, chip and comparison, the
         -- rank table, the card -- in place of the four prose lines.
+        -- T84 (C5): Overview, or a family's view, by the rail's row.
         if not MD.player.isDruid then
             messageFS:Show()
             messageFS:SetText("Rank analysis is Druid-only in v1 - the OOM widget, datatext and advisor still work for your class.")
             return
         end
-        if spellsView then spellsView:Render(currentFamily) end
+        local key = FamilyKey(currentFamily)
+        if key then
+            Shown(spellsOverview and spellsOverview.frame, false)
+            Shown(spellsView and spellsView.frame, true)
+            if spellsView then spellsView:Render(key) end
+        else
+            Shown(spellsView and spellsView.frame, false)
+            Shown(spellsOverview and spellsOverview.frame, true)
+            if spellsOverview then
+                local book = MD.FamiliesTBC and MD.FamiliesTBC:Get() or nil
+                spellsOverview:Render(MD.Tabs and MD.Tabs:Get(book) or {})
+            end
+        end
         return
     end
     if not reports then return end
@@ -129,8 +200,9 @@ end
 -- view is selected and cached after, so a non-druid never builds a rank table.
 --
 -- `currentFamily` is the selected VIEW id, which is why the families and the
--- two reports can share one variable: a family id ("Rejuvenation") and a report
--- id ("Waste") are both just the view that is showing.
+-- two reports can share one variable: a family's row ("fam:Rejuvenation"
+-- since T84, the rail's) and a report id ("Waste") are both just the view
+-- that is showing.
 --------------------------------------------------------------------------------
 local CONTENT_W = 912          -- what the panes were laid out for; the window is wider by the nav
 local NAV_W, NAV_PAD = 108, 8
@@ -158,16 +230,9 @@ local function ReportViews()
 end
 
 local function Groups()
-    local spells = {}
-    for _, family in ipairs(MD.SpellData.familyOrder) do
-        local info = MD.SpellData.families[family]
-        if info and not info.exclude then
-            spells[#spells + 1] = { id = family, text = info.label or family,
-                                    hidden = not MD.player.isDruid }
-        end
-    end
     return {
-        { id = "spells", text = "Spells", views = spells },
+        -- T84 (C5): the rail -- Overview, then the player's own list
+        SpellsGroup(),
         -- Waste and Review work for any class: a recorded stream is numbers
         -- Runs appears only once one has been recorded: a view that is always
         -- empty teaches nothing, and nav:SetViews puts it there the moment a
@@ -219,15 +284,28 @@ local function CreateDashboard()
                 -- and hide themselves on the ShowOptionsTab callback
                 if MD.AdoptOptionsPanel then MD:AdoptOptionsPanel(content) end
                 return MD.optionsFrame
-            elseif group == "spells" and not spellsView and MD.player.isDruid
+            elseif group == "spells" and not spellsHost and MD.player.isDruid
                     and MD.DashboardParts.CreateSpellsView then
-                -- T83 (C3): one view for every family, UI/SpellsView_TBC.lua's
-                spellsView = MD.DashboardParts.CreateSpellsView(content, CONTENT_W, Refresh)
-                spellsView.frame:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -6)
-                spellsView.frame:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", 0, 0)
-                return spellsView.frame
+                -- T83 (C3): one view for every family, UI/SpellsView_TBC.lua's;
+                -- T84 (C5): beside Overview in one host, right of the rail
+                -- (the kit caches the host under every Spells view)
+                spellsHost = CreateFrame("Frame", nil, content)
+                spellsHost:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
+                spellsHost:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", 0, 0)
+                spellsView = MD.DashboardParts.CreateSpellsView(spellsHost, CONTENT_W, Refresh)
+                spellsView.frame:SetPoint("TOPLEFT", spellsHost, "TOPLEFT", 0, 0)
+                spellsView.frame:SetPoint("BOTTOMRIGHT", spellsHost, "BOTTOMRIGHT", 0, 0)
+                spellsView.frame:Hide()
+                if MD.DashboardParts.CreateSpellsOverview then
+                    spellsOverview = MD.DashboardParts.CreateSpellsOverview(spellsHost, CONTENT_W, function(key)
+                        MD:SelectView("spells", VIEW_PREFIX .. key)
+                    end)
+                    spellsOverview.frame:SetPoint("TOPLEFT", spellsHost, "TOPLEFT", 0, 0)
+                    spellsOverview.frame:SetPoint("BOTTOMRIGHT", spellsHost, "BOTTOMRIGHT", 0, 0)
+                end
+                return spellsHost
             end
-            return spellsView and spellsView.frame or nil
+            return spellsHost
         end,
         function(group, view)
             -- the source is set when the VIEW changes, never on a refresh: the
@@ -237,14 +315,21 @@ local function CreateDashboard()
                 reviewView:SetSource(view == "Runs" and "run" or "fights")
             end
             currentGroup, currentFamily = group, view
-            userPicked = true
             MD.Win:SetGroup("main", group) -- T80: the group's own size, the TOPLEFT kept
             MD:Fire("UI_VIEW_SELECTED", group, view)
+            -- T84: a family's row opened: no longer new (the dot goes)
+            local key = group == "spells" and FamilyKey(view)
+            if key and MD.Tabs and MD.Tabs:IsNew(key) then
+                MD.Tabs:MarkSeen(key)
+                RefreshSpellRail()
+            end
             Refresh()
 
         end)
     frame = nav.frame
     local content = nav:Content()
+    -- T84 (C5): the rail's [ + Add ] and Undo line (UI/SpellRail.lua)
+    if SpellsTBC.Attach then SpellsTBC:Attach(nav) end
 
     -- T83 (C3): "Effective" (now "After overheal") and the Simulate strip
     -- (behind "What if...") moved into the Spells view, UI/SpellsView_TBC.lua.
@@ -276,11 +361,13 @@ local function CreateDashboard()
     recapFS:SetWidth(CONTENT_W - 8)
 
     frame:SetScript("OnShow", function()
+        -- T84 (C5): Overview the first time (the rail's first row), then the
+        -- remembered row; a path saved before C5 names a bare family
         local path = MD.db.uiPath
         if path and path[1] then
-            nav:Select(path[1], path[2])
+            nav:Select(path[1], path[1] == "spells" and SpellsViewId(path[2]) or path[2])
         else
-            nav:Select("spells", DefaultFamily())
+            nav:Select("spells", nil)
         end
         Refresh()
     end)
@@ -319,7 +406,7 @@ end
 function MD:OpenMainWindow(group, view)
     if not nav then return end
     if not frame:IsShown() then frame:Show() end
-    if group then nav:Select(group, view) end
+    if group then nav:Select(group, group == "spells" and SpellsViewId(view) or view) end
 end
 
 -- Every entry point that wants a particular view goes through here: /md sim,
@@ -348,9 +435,18 @@ MD:RegisterCallback("RUN_STORED", RefreshReportViews)
 
 MD:RegisterCallback("MD_READY", CreateDashboard)
 MD:RegisterCallback("TALENTS_CHANGED", Refresh)
+-- T84 (C5): a rank trained -- Spells/Families_TBC.lua rebuilt the families
+-- and reconciled the list first (it registered earlier); the rail follows,
+-- and talents and forms move its suggested-rank tags
+MD:RegisterCallback("SPELLS_REBUILT", RefreshSpellRail)
+MD:RegisterCallback("TALENTS_CHANGED", RefreshSpellRail)
+MD:RegisterCallback("FORM_CHANGED", RefreshSpellRail)
 MD:RegisterCallback("SPELLS_REBUILT", Refresh)
 MD:RegisterCallback("FIGHT_RECORDED", Refresh)
 MD:RegisterCallback("FORM_CHANGED", Refresh) -- Tree of Life: costs and aura change
 MD:On("PLAYER_EQUIPMENT_CHANGED", function()
-    if frame and frame:IsShown() then Refresh() end
+    if frame and frame:IsShown() then
+        RefreshSpellRail() -- T84: gear moves the suggested-rank tags
+        Refresh()
+    end
 end)

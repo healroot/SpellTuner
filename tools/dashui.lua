@@ -11,12 +11,27 @@ HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
 local MD = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB
+-- T84 (C5): Spells/Tabs.lua and Spells/Families_TBC.lua are on the TBC TOC
+-- (the harness loads them from it); on a tree whose TOC does not list them
+-- yet they are loaded here, before the dashboard is built, with the same
+-- existence guard as the UI files below.
+do
+    local need = {}
+    if not MD.Tabs then need[#need + 1] = "Spells/Tabs.lua" end
+    if not MD.FamiliesTBC then need[#need + 1] = "Spells/Families_TBC.lua" end
+    local present = {}
+    for _, rel in ipairs(need) do
+        local fh = io.open((S.root or ".") .. "/" .. rel, "r")
+        if fh then fh:close(); present[#present + 1] = rel end
+    end
+    if #present > 0 then S.Load(present, "SpellTuner", MD) end
+end
 -- T80 (C1): the theme and the window manager after the kit, as the TBC TOC lists them.
 -- T83 (C3): the Spells view before UI/Dashboard.lua; before T83 the file did
 -- not exist, and the guard lets this suite run on such a commit and fail
 -- check by check.
 local UI_FILES = { "UI/Style.lua", "UI/Theme_Flat.lua", "UI/EscStack.lua", "UI/Windows.lua",
-         "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/Dashboard_Rows.lua", "UI/Dashboard_Simulate.lua",
+         "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/Dashboard_Rows.lua", "UI/SpellRail.lua", "UI/Dashboard_Simulate.lua",
          "UI/Dashboard_Waste.lua", "UI/Dashboard_Review.lua", "UI/PracticePanel.lua", "UI/SpellsView_TBC.lua",
          "UI/Dashboard.lua" }
 do
@@ -80,6 +95,28 @@ local function Painted(pat)
     return nil
 end
 
+-- T84 (C5): the Spells group is a rail; its rows are the views
+local function SpellsRail()
+    local sp = MD.SpellsTBC
+    return sp and sp.nav and sp.nav:Rail("spells") or nil
+end
+local function RailRow(id)
+    local rail = SpellsRail()
+    for _, r in ipairs(rail and rail:Rows() or {}) do if r.id == id then return r end end
+    return nil
+end
+local function RailIds()
+    local ids = {}
+    local rail = SpellsRail()
+    for _, r in ipairs(rail and rail:Rows() or {}) do ids[#ids + 1] = r.id end
+    return table.concat(ids, ",")
+end
+local function RailClick(id)
+    local r = RailRow(id)
+    if r then r:GetScript("OnClick")(r, "LeftButton") end
+    return r
+end
+
 check("the four groups are the author's, minus the two still to move",
     ButtonNamed("Spells") ~= nil and ButtonNamed("Reports") ~= nil)
 
@@ -87,17 +124,21 @@ MD:ToggleDashboard()
 check("it opens", frame:IsShown())
 
 -- opening lands on a spell, and the rank table is built
+-- T84 (C5): the first open is Overview, the rail's first row
 check("it opens on a spell", MD.db.uiPath and MD.db.uiPath[1] == "spells",
     MD.db.uiPath and table.concat(MD.db.uiPath, "/") or "no path")
 -- T83 (C3): the Spells view -- its RANKS pane, and What if... in its strip
+-- T84 (C5): a family's rail row opens it
+RailClick("fam:HealingTouch")
 check("the rank table is built for it", ShownText("^RANKS$") ~= nil)
 check("the Simulate strip is with the spells", ButtonNamed("What if...") ~= nil and ButtonNamed("Clear") ~= nil)
 
 -- switching families keeps the group
-local rg = ButtonNamed("Regrowth")
-check("a family button exists", rg ~= nil)
-Click(rg)
-check("clicking a family selects it", MD.db.uiPath[2] == "Regrowth", MD.db.uiPath[2])
+-- T84 (C5): a family is a rail row, not a view button
+local rg = RailRow("fam:Regrowth")
+check("a family rail row exists", rg ~= nil, RailIds())
+RailClick("fam:Regrowth")
+check("clicking a family selects it", MD.db.uiPath[2] == "fam:Regrowth", MD.db.uiPath[2])
 
 -- Reports: a different group, its own views, built on first sight
 Click(ButtonNamed("Reports"))
@@ -111,8 +152,10 @@ check("Review's own buttons came with it", ButtonNamed("Validate") ~= nil
     and ButtonNamed("Play") ~= nil and ButtonNamed("Start run") ~= nil)
 
 -- back to a spell: the pane is not rebuilt, and the table is drawn again
+-- T84 (C5): the Spells group button opens its first row, Overview
 Click(ButtonNamed("Spells"))
-check("going back to Spells restores the rank table", ShownText("^RANKS$") ~= nil)
+check("going back to Spells shows its first row, Overview", ShownText("^OVERVIEW$") ~= nil
+    and ShownText("^RANKS$") == nil)
 check("and the path followed", MD.db.uiPath[1] == "spells", MD.db.uiPath[1])
 
 -- the path is remembered across an open/close
@@ -325,14 +368,16 @@ check("nor over the settings", ShownText("^RANKS$") == nil and not ShownButton("
     and not ShownButton("What if..."))
 
 -- and the Spells furniture comes back when Spells does
+-- T84 (C5): Spells comes back on Overview; a family's row brings the view
 Click(ButtonNamed("Spells"))
-check("the rank table comes back with Spells", ShownText("^RANKS$") ~= nil)
+check("Overview comes back with Spells", ShownText("^OVERVIEW$") ~= nil)
+RailClick("fam:HealingTouch")
 -- T83: the strip is folded behind What if..., which comes back with Spells
 check("and so does the what-if strip", ShownButton("What if..."))
 
 -- the rank table is one frame registered under every family: switching family
 -- must not leave it hidden (the nav hides everything, then shows the keeper)
-Click(ButtonNamed("Regrowth"))
+RailClick("fam:Regrowth")
 check("switching family keeps the table visible", ShownText("^RANKS$") ~= nil)
 
 --------------------------------------------------------------------------------
@@ -499,6 +544,125 @@ do
         return on and off, string.format("on=%s off=%s", tostring(on), tostring(off))
     end)
     MD.db.effectiveMode = was
+end
+
+--------------------------------------------------------------------------------
+-- T84 (C5 of docs/PLAN-refactor-ux.md, section 7.1; mockup M4 layout B): the
+-- spell rail on TBC. The Spells group is a rail (no view row): MY SPELLS,
+-- Overview first, then the harness druid's families as Spells/Tabs.lua
+-- seeded them from Spells/Families_TBC.lua (known heals by learn level);
+-- Overview lists one row per listed family with its suggested rank; a rail
+-- row, or an Overview row, opens C3's view for that family; the row's x
+-- removes it and Undo puts it back where it was. Each check under pcall.
+--------------------------------------------------------------------------------
+do
+    local function Try(name, fn)
+        local okRun, cond, detail = pcall(fn)
+        if okRun then check(name, cond, detail) else check(name, false, tostring(cond)) end
+    end
+    local function Plain(fs) return ((fs and fs:GetText() or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) end
+    local function Overview()
+        for _, f in ipairs(S.allFrames) do
+            if f.spellsOverviewTBC and f:IsVisible() then return f end
+        end
+        return nil
+    end
+    local function View()
+        for _, f in ipairs(S.allFrames) do
+            if f.spellsViewTBC and f:IsVisible() then return f end
+        end
+        return nil
+    end
+    local SEEDED = "overview,fam:HealingTouch,fam:Rejuvenation,fam:Regrowth,fam:Lifebloom"
+
+    -- 1. a rail: MY SPELLS, Overview first (fixed), the seeded families, each
+    -- with its suggested rank's tag; no view row
+    Try("T84: the Spells group is a rail with Overview first, then the seeded families", function()
+        MD:SelectView("spells", "overview")
+        local rail = SpellsRail()
+        local views = 0
+        for _, b in ipairs(MD.SpellsTBC.nav.viewButtons or {}) do if b:IsShown() then views = views + 1 end end
+        local results = MD.RankMath:Compute()
+        local tags = true
+        for _, key in ipairs({ "HealingTouch", "Rejuvenation", "Regrowth", "Lifebloom" }) do
+            local s
+            for _, r in ipairs(results[key].rows) do if r.suggested then s = r end end
+            local row = RailRow("fam:" .. key)
+            if not (row and s and row.data.tag == "R" .. s.rank and row:IsVisible()) then tags = false end
+        end
+        local ov = RailRow("overview")
+        return rail ~= nil and RailIds() == SEEDED and views == 0 and tags
+            and ov and ov.data.fixed == true and rail.title:GetText() == "MY SPELLS"
+            and RailRow("fam:Rejuvenation").data.text == "Rejuvenation"
+            and MD.cdb.spellTabs and MD.cdb.spellTabs.seeded == true,
+            RailIds() .. " views=" .. views .. " tags=" .. tostring(tags)
+    end)
+
+    -- 2. Overview: one row per listed family, in the list's order, with its
+    -- suggested rank (the rank RankMath suggests) and the highest known
+    Try("T84: Overview lists one row per listed family, with its suggested rank", function()
+        MD:SelectView("spells", "overview")
+        local ov = Overview()
+        local api = ov and ov.api
+        local results = MD.RankMath:Compute()
+        local keys, cells, good = {}, {}, true
+        for _, r in ipairs(api.lastRows or {}) do
+            keys[#keys + 1] = r.key
+            local s
+            for _, x in ipairs(results[r.key].rows) do if x.suggested then s = x end end
+            if not (r.suggestedRow and s and r.suggestedRow.rank == s.rank and r.highestRow) then good = false end
+        end
+        for _, f in ipairs(S.allFrames) do
+            if f.parentFrame == api.table.frame and f.data and not f.isHeader and f:IsShown() then
+                cells[f.data.key] = Plain(f.cells.suggested)
+            end
+        end
+        return table.concat(keys, ",") == "HealingTouch,Rejuvenation,Regrowth,Lifebloom" and good
+            and cells.Rejuvenation == "R6" and Plain(ov.title) == "OVERVIEW" and View() == nil,
+            table.concat(keys, ",") .. " Rejuvenation=" .. tostring(cells.Rejuvenation)
+    end)
+
+    -- 3. a rail row opens C3's view for that family (and an Overview row too;
+    -- a path saved before C5 names a bare family and opens its row)
+    Try("T84: a rail row opens C3's view for that family", function()
+        RailClick("fam:Regrowth")
+        local v = View()
+        local viaRail = v ~= nil and Plain(v.header.name) == "Regrowth" and Overview() == nil
+            and MD.db.uiPath[2] == "fam:Regrowth" and ShownText("^RANKS$") ~= nil
+        MD:SelectView("spells", "overview")
+        local api = Overview().api
+        local lb
+        for _, f in ipairs(S.allFrames) do
+            if f.parentFrame == api.table.frame and f.data and f.data.key == "Lifebloom" and f:IsShown() then lb = f end
+        end
+        lb:GetScript("OnMouseUp")(lb, "LeftButton")
+        v = View()
+        local viaOverview = v ~= nil and Plain(v.header.name) == "Lifebloom" and MD.db.uiPath[2] == "fam:Lifebloom"
+        MD:SelectView("spells", "Rejuvenation")
+        local bare = MD.db.uiPath[2] == "fam:Rejuvenation" and View() ~= nil
+        return viaRail and viaOverview and bare,
+            string.format("rail=%s overview=%s bare=%s", tostring(viaRail), tostring(viaOverview), tostring(bare))
+    end)
+
+    -- 4. the hover x removes a row (Overview follows); the footer says so with Undo, which puts
+    -- it back at its old place
+    Try("T84: x removes a rail row and Undo puts it back where it was", function()
+        MD:SelectView("spells", "overview")
+        local sp = MD.SpellsTBC
+        local row = RailRow("fam:Rejuvenation")
+        row.rm:GetScript("OnClick")(row.rm)
+        local gone = RailRow("fam:Rejuvenation") == nil and not MD.Tabs:Has("Rejuvenation")
+            and MD.cdb.spellTabs.removed.Rejuvenation == true
+            and Plain(sp.undoText) == "Rejuvenation removed" and sp.undoText:IsShown() and sp.undoBtn:IsShown()
+            and #Overview().api.lastRows == 3 -- Overview follows the list
+        local mid = RailIds()
+        Click(sp.undoBtn)
+        local back = RailIds() == SEEDED and MD.Tabs:Has("Rejuvenation") and not sp.undoBtn:IsShown()
+            and MD.cdb.spellTabs.removed.Rejuvenation == nil
+        MD:SelectView("spells", "overview")
+        return gone and back and #Overview().api.lastRows == 4,
+            string.format("gone=%s (%s) back=%s (%s)", tostring(gone), mid, tostring(back), RailIds())
+    end)
 end
 
 -- no bare pipe anywhere it paints

@@ -7,8 +7,9 @@
 -- seeded kind appended once, never a removed one, never a damage or utility
 -- family into a heal list), a family the book no longer has kept and
 -- resolved as "stale", the family key and ids Book gives, Add / Remove /
--- Move / Undo / Reset, and cdb.spellTabs initialised at login. Forever only.
-HARNESS_FLAVOUR = "forever"
+-- Move / Undo / Reset, and cdb.spellTabs initialised at login. T84 (C5): under
+-- tbc, four checks of the list over Spells/Families_TBC.lua (below).
+HARNESS_FLAVOUR = { "forever", "tbc" }
 
 local here = arg[0]:match("^(.*)/[^/]+$")
 
@@ -80,6 +81,97 @@ end
 local function FreshStore()
     MD.cdb.spellTabs = nil
     return Tabs:Store()
+end
+
+--------------------------------------------------------------------------------
+-- T84 (C5 of docs/PLAN-refactor-ux.md, section 7.1): the list on TBC. Its
+-- book is Spells/Families_TBC.lua's -- the TBC rank table's druid families in
+-- Book's shape, rebuilt on SPELLS_REBUILT, which runs the reconcile -- through
+-- the one seam, Tabs.source. The rules are the Forever ones above, unchanged.
+-- Four checks, then the suite ends (the Forever half needs Spells/Book.lua).
+--------------------------------------------------------------------------------
+if S.flavour == "tbc" then
+    local SD = MD.SpellData
+    local FT = MD.FamiliesTBC
+    local LIFEBLOOM = {}
+    for _, id in ipairs(SD.all.Lifebloom) do LIFEBLOOM[id] = true end
+    -- every rank known (a level 70 druid), or every rank but Lifebloom's
+    local function Train(withLifebloom)
+        S.level = 70
+        wipe(S.known)
+        for id in pairs(SD.spells) do
+            if withLifebloom or not LIFEBLOOM[id] then S.known[id] = true end
+        end
+        SD:BuildKnown() -- fires SPELLS_REBUILT: the families rebuilt, the list reconciled
+    end
+
+    block("tbc: a level 70 druid's families seed Healing Touch, Rejuvenation, Regrowth and Lifebloom", function()
+        Train(true)
+        FreshStore()
+        local book = Tabs.source()
+        local order = Join(Tabs:Get(book))
+        local ht = book.families.HealingTouch
+        local shape = ht and ht.key == "HealingTouch" and ht.name == "Healing Touch" and ht.kind == "heal"
+            and #ht.ids == #SD.all.HealingTouch and ht.ranks[1].id == ht.ids[1] and ht.ranks[1].known == true
+            and type(ht.ranks[1].level) == "number" and type(ht.ranks[1].cost.amount) == "number"
+            and ht.maxKnown == ht.ranks[#ht.ranks]
+        check("tbc: a level 70 druid's families seed Healing Touch, Rejuvenation, Regrowth and Lifebloom",
+            order == "HealingTouch,Rejuvenation,Regrowth,Lifebloom" and shape
+                and Join(book.order) == "HealingTouch,Lifebloom,Rejuvenation,Regrowth"
+                and book.families.Tranquility == nil and book.families.Swiftmend == nil
+                and MD.cdb.spellTabs.kind == "heal" and not Tabs:IsNew("Lifebloom"),
+            "order=" .. order .. " shape=" .. tostring(shape) .. " book=" .. Join(book.order))
+    end)
+
+    block("tbc: a removed family stays removed across SPELLS_REBUILT", function()
+        Train(true)
+        FreshStore()
+        Tabs:Get(Tabs.source())
+        Tabs:Remove("Regrowth")
+        Train(true)
+        Train(true)
+        check("tbc: a removed family stays removed across SPELLS_REBUILT",
+            Join(Tabs:Get()) == "HealingTouch,Rejuvenation,Lifebloom" and not Tabs:Has("Regrowth")
+                and MD.cdb.spellTabs.removed.Regrowth == true,
+            "order=" .. Join(Tabs:Get()))
+    end)
+
+    block("tbc: a family trained later is appended with the new dot", function()
+        Train(false)
+        FreshStore()
+        local seeded = Join(Tabs:Get(Tabs.source()))
+        local known = Tabs.source().families.Lifebloom.maxKnown
+        Train(true) -- Lifebloom trained: SPELLS_REBUILT rebuilds and reconciles
+        check("tbc: a family trained later is appended with the new dot",
+            seeded == "HealingTouch,Rejuvenation,Regrowth" and known == nil
+                and Join(Tabs:Get()) == "HealingTouch,Rejuvenation,Regrowth,Lifebloom"
+                and Tabs:IsNew("Lifebloom") and not Tabs:IsNew("Regrowth")
+                and Tabs.source().families.Lifebloom.maxKnown ~= nil,
+            "seeded=" .. seeded .. " now=" .. Join(Tabs:Get()))
+    end)
+
+    -- The default source is Forever's book, whatever TBC installs: with the
+    -- seam put back on it, an edit that passes no book reads MD.Book:Get().
+    block("tbc: the TBC source is installed; the default source is MD.Book:Get() (Forever's)", function()
+        local installed = Tabs.source == FT.Source and Tabs.source() == FT:Get()
+        local fake = { families = { Wrath = { key = "Wrath", name = "Wrath", kind = "damage", ids = { 5176 },
+            ranks = { { id = 5176, rank = 1, known = true, level = 1, cost = { amount = 20 } } } } },
+            order = { "Wrath" }, spells = {} }
+        local savedBook, savedSource = MD.Book, Tabs.source
+        MD.Book = { Get = function() return fake end }
+        Tabs.source = Tabs.BookSource
+        FreshStore()
+        local default = Tabs.BookSource() == fake and Tabs:Add("Wrath") == 1 and Tabs:Resolve("Wrath") == fake.families.Wrath
+        MD.Book, Tabs.source = savedBook, savedSource
+        FreshStore()
+        check("tbc: the TBC source is installed; the default source is MD.Book:Get() (Forever's)",
+            installed and default and Tabs.source == FT.Source,
+            "installed=" .. tostring(installed) .. " default=" .. tostring(default))
+    end)
+
+    print(string.format("\n%d ok, %d failed", ok, #fails))
+    for _, f in ipairs(fails) do print("  FAIL: " .. f) end
+    os.exit(#fails == 0 and 0 or 1)
 end
 
 -- The druid at level 10: two heals, a heal not learned yet (Regrowth), a

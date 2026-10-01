@@ -26,9 +26,16 @@
 --      crit, the downrank share of +healing, the cost.
 --
 -- The rank table itself (MD.DashboardParts.CreateRankTable) moved here from
--- UI/Dashboard.lua, where T81 built it; UI/Dashboard.lua keeps the four
--- families as views along the top (C5 replaces them with the rail) and
--- builds this view as the Spells group's one pane. TBC TOC only.
+-- UI/Dashboard.lua, where T81 built it. TBC TOC only.
+--
+-- T84 (C5 of docs/PLAN-refactor-ux.md, section 7.1): the Spells group is the
+-- rail (UI/SpellRail.lua, wired in UI/Dashboard.lua), and its first row is
+-- Overview, built here (MD.DashboardParts.CreateSpellsOverview): My spells,
+-- one row per family of the player's list (Spells/Tabs.lua over
+-- Spells/Families_TBC.lua) on C2's table options, with TBC's numbers -- the
+-- suggested rank, its heal, per mana, per sec and casts, then the highest
+-- known rank and its per mana; a row click opens that family's view (the one
+-- above, C3's).
 local _, MD = ...
 local UI = MD.UI
 
@@ -850,6 +857,190 @@ function MD.DashboardParts.CreateSpellsView(parent, width, onChange)
         cardH = sel and RenderCard(sel) or PANE_TOP
         if not sel then card:Hide() end
         api:Layout()
+    end
+
+    return api
+end
+
+--------------------------------------------------------------------------------
+-- T84 (C5): Overview, the rail's first row -- My spells with TBC's numbers.
+--------------------------------------------------------------------------------
+local OVERVIEW_TOP = 32     -- the title row (20) and the 12-px gap, as Forever's
+local MINE_SEP_X = 500      -- the rule between the suggested rank and the highest
+local MINE_HINT = "Click a row to open that spell."
+local MINE_EMPTY = "Your list is empty - + Add on the left."
+
+-- One sentence per header (T78's shape), the words RANKS uses.
+local MINE_COLS = {
+    { key = "spell",     x = 28,  w = 150, label = "Spell" },
+    { key = "suggested", x = 180, w = 64,  label = "Suggested",
+      tooltip = "The rank SpellTuner suggests." },
+    { key = "heal",      x = 244, w = 60,  label = "Heal",     justify = "RIGHT",
+      tooltip = "The suggested rank's heal at your stats, with crits averaged in; all of it for one over time." },
+    { key = "hpm",       x = 304, w = 64,  label = "Per mana", justify = "RIGHT",
+      tooltip = "The suggested rank's healing for each point of mana." },
+    { key = "hps",       x = 368, w = 60,  label = "Per sec",  justify = "RIGHT",
+      tooltip = "The suggested rank's healing per second of cast (1.5 s for an instant)." },
+    { key = "casts",     x = 428, w = 60,  label = "Casts",    justify = "RIGHT",
+      tooltip = function() return HEAD_TIPS.casts() end },
+    { key = "highest",   x = 512, w = 56,  label = "Highest",
+      tooltip = "Your highest known rank." },
+    { key = "hheal",     x = 568, w = 60,  label = "Heal",     justify = "RIGHT",
+      tooltip = "Your highest rank's heal at your stats." },
+    { key = "hhpm",      x = 628, w = 64,  label = "Per mana", justify = "RIGHT",
+      tooltip = "Your highest rank's healing for each point of mana." },
+}
+
+-- A family's icon at the row's left (x = 8, 16x16 on a 1-px black edge),
+-- built on first use on a pooled row.
+local function RowIcon(row, icon)
+    if not row.famIcon then
+        row.famEdge = row:CreateTexture(nil, "ARTWORK")
+        row.famEdge:SetSize(18, 18)
+        row.famEdge:SetPoint("LEFT", row, "LEFT", 7, 0)
+        row.famEdge:SetColorTexture(0, 0, 0, 1)
+        row.famIcon = row:CreateTexture(nil, "OVERLAY")
+        row.famIcon:SetSize(16, 16)
+        row.famIcon:SetPoint("LEFT", row, "LEFT", 8, 0)
+        row.famIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    end
+    if icon then
+        row.famIcon:SetTexture(icon)
+        row.famIcon:Show(); row.famEdge:Show()
+    else
+        row.famIcon:Hide(); row.famEdge:Hide()
+    end
+end
+
+local function RankWord(r)
+    if not r then return nil end
+    return r.rankLabel or ("R" .. tostring(r.rank))
+end
+
+-- One My spells row: { key, name, icon, suggestedRow, highestRow } or
+-- { key, name, stale = true } (a key the families no longer have).
+local function RenderMine(row, r, color)
+    for _, fs in pairs(row.cells) do fs:SetText("") end
+    local c = row.cells
+    if r.stale then
+        RowIcon(row, nil)
+        local dis = UI.Hex("disabled")
+        c.spell:SetText(dis .. (r.name or r.key) .. RESET)
+        c.suggested:SetText(dis .. "not in your spellbook" .. RESET)
+        return
+    end
+    RowIcon(row, r.icon)
+    c.spell:SetText(color .. (r.name or r.key) .. RESET)
+    local effective = MD.db and MD.db.effectiveMode and true or false
+    local s, h = r.suggestedRow, r.highestRow
+    if s then
+        local heal, hpm, hps = ShownValues(s, effective)
+        c.suggested:SetText(UI.Hex("accent") .. RankWord(s) .. RESET)
+        c.heal:SetText(color .. Fmt(heal) .. RESET)
+        c.hpm:SetText(color .. Fmt(hpm, 2) .. RESET)
+        c.hps:SetText(color .. Fmt(hps) .. RESET)
+        c.casts:SetText(color .. CastsText(s.casts) .. RESET)
+    else
+        c.suggested:SetText(UI.Hex("muted") .. "-" .. RESET)
+    end
+    if h then
+        local heal, hpm = ShownValues(h, effective)
+        c.highest:SetText(color .. RankWord(h) .. RESET)
+        c.hheal:SetText(color .. Fmt(heal) .. RESET)
+        c.hhpm:SetText(color .. Fmt(hpm, 2) .. RESET)
+    end
+end
+
+local function MineEnter(row, r)
+    if not r then return end
+    if r.stale or not r.suggestedRow then
+        KitTip(row, { { l = r.name or r.key, c = "text" },
+            { l = r.stale and "Not in this character's spellbook." or "No rank learned yet.", c = "label" } })
+        return
+    end
+    RankEnter(row, r.suggestedRow)
+end
+
+-- MD.DashboardParts.CreateSpellsOverview(parent, width, onOpen) -> api:
+--   api.frame, api:Render(keys) -- keys the family keys of the player's list,
+--   in its order; onOpen(key) when a row is clicked. api.lastRows is what the
+--   table was handed (tools/dashui.lua reads it).
+function MD.DashboardParts.CreateSpellsOverview(parent, width, onOpen)
+    local api = { renderCount = 0 }
+    local f = CreateFrame("Frame", nil, parent)
+    f.spellsOverviewTBC = true -- marks this pane for tools/dashui.lua
+    f.api = api
+    api.frame = f
+
+    local title = f:CreateFontString(nil, "OVERLAY", UI.FONT_TITLE)
+    title:SetPoint("TOPLEFT", f, "TOPLEFT", 0, -3)
+    title:SetJustifyH("LEFT")
+    local a = UI.accent
+    title:SetTextColor(a[1], a[2], a[3])
+    title:SetText("OVERVIEW")
+    f.title = title
+
+    f.scroll = UI.CreateScrollFrame(f, -OVERVIEW_TOP, 4)
+    local content = f.scroll.content
+
+    local tbl = MD.DashboardParts.CreateTable(content, VIEW_W, {
+        cols = MINE_COLS,
+        font = UI.FONT_NUM or UI.FONT, wideFont = UI.FONT_SMALL,
+        rowHeight = Pitch(20), headerHeight = Pitch(22),
+        headerRule = true, zebra = true, rowWidth = true, marker = "bar",
+        headerFont = UI.FONT_SPECIAL, headerColor = UI.Hex("label"),
+        render = RenderMine, onEnter = MineEnter,
+        onLeave = function() if MD.Tip then MD.Tip:Hide() end end,
+        onClick = function(_, r) if r and r.key and onOpen then onOpen(r.key) end end,
+    })
+    tbl.frame:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
+    tbl.frame:SetWidth(VIEW_W)
+    api.table = tbl
+
+    -- the rule between the suggested rank and the highest
+    local sep = tbl.frame:CreateTexture(nil, "BORDER")
+    sep:SetWidth(1)
+    sep:SetPoint("TOPLEFT", tbl.frame, "TOPLEFT", MINE_SEP_X, -4)
+    local P = UI.PALETTE or {}
+    local lc = P.line or { 0.165, 0.165, 0.165, 1 }
+    sep:SetColorTexture(lc[1], lc[2], lc[3], lc[4] or 1)
+
+    local hint = content:CreateFontString(nil, "OVERLAY", UI.FONT_SPECIAL or UI.FONT_SMALL)
+    hint:SetJustifyH("LEFT")
+    hint:SetTextColor(UI.RGB("text2"))
+    f.hint = hint
+
+    function api:Render(keys)
+        api.renderCount = api.renderCount + 1
+        local results = MD.RankMath and MD.RankMath:Compute() or {}
+        local book = MD.FamiliesTBC and MD.FamiliesTBC:Get() or { families = {} }
+        local rows = {}
+        for _, key in ipairs(keys or {}) do
+            local fam = book.families and book.families[key]
+            local res = results[key]
+            local info = MD.SpellData.families[key]
+            local name = (fam and fam.name) or (info and info.label) or key
+            if fam and res then
+                local s
+                for _, x in ipairs(res.rows) do if x.suggested then s = x end end
+                local rep = fam.maxKnown or fam.ranks[1]
+                rows[#rows + 1] = { key = key, name = name, icon = rep and rep.icon or nil,
+                    suggestedRow = s, highestRow = KnownTop(res.rows) }
+            else
+                rows[#rows + 1] = { key = key, name = name, stale = true, known = false }
+            end
+        end
+        api.lastRows = rows
+        tbl:Render(rows)
+        local tableH = 4 + tbl.headerHeight + #rows * tbl.rowHeight
+        tbl.frame:SetHeight(tableH)
+        sep:SetHeight(tableH - 4)
+        local y = tableH + BLOCK_GAP
+        hint:ClearAllPoints()
+        hint:SetPoint("TOPLEFT", content, "TOPLEFT", 8, -y)
+        hint:SetText(#rows == 0 and MINE_EMPTY or MINE_HINT)
+        y = y + Pitch(20)
+        f.scroll:SetContentHeight(y)
     end
 
     return api
