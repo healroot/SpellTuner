@@ -1441,7 +1441,7 @@ the numbers.
 
 **Paste back**: the `pN` you pinned, and in words what the suggested column did differently.
 
-## 44. The refactor plan's checks (`docs/PLAN-refactor-ux.md` section 9; waves 1-13, 0.16.4)
+## 44. The refactor plan's checks (`docs/PLAN-refactor-ux.md` section 9; waves 1-14, 0.16.4)
 
 Paste back as in section 41. Out of combat unless a step says otherwise. Install **0.16.4** on each
 client (`--install-tbc` / `--install-forever`, the top of this file and §38; never cross them). The
@@ -1573,6 +1573,19 @@ W10. **The clock and the theme (P24, P25).** The mana clock behaves exactly as o
     top (Reports, Settings): the selected one has the bar along its bottom. At your 0.71 scale, button
     and check-box borders are as crisp as the window's edge; change the window scale in Settings ->
     General and they stay crisp. **TBC:** `/md` -- the nav and tabs look exactly as before.
+
+**Wave 14 (T75; Forever unless said).** These need a build newer than the 0.16.4 install.
+
+25. **Layout and sizes (P31).** `/st`: Spells and Settings have no resize grip in the bottom-right
+    corner. Reports and Simulate have one, drawn as three thin diagonal lines that turn the accent
+    colour under the pointer, and dragging it still resizes. The view tabs along the top (Reports,
+    Settings) are as wide as their names and as tall as the group buttons on the left, their tops and
+    bottoms in one line. Open a replay from Review: its title sits between `< SpellTuner` and the x,
+    never under either. Open Spells -> `+ Add` and Simulate -> Practice -> Edit bindings: each sheet has
+    a red x at the right of its title row that closes it; the bindings sheet's Done sits to the left of
+    the x. Set Text size to +2, close and reopen the window, and click a Settings checkbox at the far end
+    of its label: it toggles. **TBC:** `/md` -- the window, its tabs and its checkboxes look exactly as
+    before.
 
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the

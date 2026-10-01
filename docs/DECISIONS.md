@@ -1097,3 +1097,11 @@ On Forever a button group's active member is the `selected` fill plus a 2-px acc
 nav's groups, bottom elsewhere) and hover is the `hover` fill laid over any member, the active one
 included (spec 4.3, mockup `.nb.on` / `.vt.on` / `.btn.act`). TBC keeps the active button in its
 hover colour (decision 10 is wave C's).
+
+### Spells and Settings have one size (T75, P31, 2026-10-01)
+
+On Forever the Spells and Settings groups are 860 x 560 with that as their minimum: nothing in them
+reflows (the rank table and card are a fixed 540; Settings' two columns fit), so the resize grip is
+hidden there (mockup M1) and a size saved for them by an earlier session is ignored. Reports and
+Simulate keep the grip and their saved sizes (decision 6, a size per group, stands). Under the theme
+the grip is three 1-px lines; TBC keeps Blizzard's grip art (it has no resizable window).
