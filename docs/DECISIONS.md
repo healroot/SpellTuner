@@ -1176,3 +1176,23 @@ up and `999+` past 999, where it printed the raw count. A click selects a rank (
 and a card below the table shows that rank's base numbers, its heal and crit, the downrank
 share of +healing and the cost. The window keeps TBC's 1036 x 646 for Spells, and the view
 scrolls inside it. The recap line ("Last fight: ...") stays on Reports only.
+
+**TBC's Spells group is the rail** (2026-10-01, T84 / C5; section 7.1, the author's choice when
+approving the mockups, decision 10). TBC's Spells group is Forever's rail: MY SPELLS,
+Overview first, then one row per family of the player's own list, with `+ Add` and its picker,
+the "<spell> removed [Undo]" line, drag to reorder, one `x` on hover and the right-click menu
+(Move up / Move down / Remove; layout B). C3's four view tabs are gone.
+- **The list** is `Spells/Tabs.lua`'s, with its rules unchanged. It reads the TBC druid's
+  four heal families (`Spells/Families_TBC.lua`, from `Data/SpellData.lua`) through one
+  seam, `Tabs.source`. A fresh character's list is the known heal families by learn level.
+  A family trained later is appended with the new dot. A removed family stays removed until
+  Undo, the picker or "Reset to my heals". The list is kept per character in
+  `cdb.spellTabs`, as on Forever.
+- **Overview** is My spells with TBC's numbers: the suggested rank, its heal, per mana, per
+  sec and casts, then the highest known rank. A row opens the family's view (C3's).
+- **`/md` opens on Overview the first time,** then on the remembered row. A path saved before
+  C5 opens its family's row.
+- **The rail glue is one shared file** (`UI/SpellRail.lua`), and Forever shows exactly what it
+  showed.
+- **There is no spellbook drop on TBC.** The adapter has no cursor read there, so a spell is
+  added with `+ Add`.

@@ -4509,3 +4509,38 @@ TBC package 67 -> 68 files with the TOC line), and run-to-run noise (ms, table a
 search's evaluation counts in reviewui and replayui, and the order of replayui's two `search done`
 lines, which swaps between runs on the same tree); every other TBC suite equal. In game:
 `docs/TESTING.md` §44 item 33 (it needs a build newer than the 0.16.4 install). **Next:** wave C-d.
+
+## 2026-10-01 — the refactor plan, wave C-d: T84 (C5), and the install
+
+Wave C-d of `docs/PLAN-refactor-ux.md` cherry-picked onto `1451738`, then the integrator's lines
+(the three main TOCs, CLAUDE.md, `docs/TESTING.md`, `docs/TOOLS.md`, `docs/DECISIONS.md`,
+`tools/data/expected-counts.json`, this entry) in one commit. No merge fix, no import fixture
+rebuild (nothing the code stores changed). The version stays 0.16.4.
+
+- **T84 (C5)** (`c51613a`, `1c9517b`; branch `plan/C5` `c03a6a3`, `d2e6a3d`): TBC's Spells group
+  is the rail (section 7.1, decision 10) -- the new `Spells/Families_TBC.lua` (the TBC druid's
+  four heal families in Book's family shape, installed as `Tabs.source`, rebuilt and reconciled on
+  `SPELLS_REBUILT`) and `Spells/Tabs.lua` on the TBC TOC after `Engine/RankMath.lua`; the rail glue
+  moved out of `UI/SpellsPane_Forever.lua` into the shared `UI/SpellRail.lua` (all three main
+  TOCs, right after `UI/Dashboard_Rows.lua`; Forever byte-identical, spellsui 50); `UI/Dashboard.lua`'s
+  Spells group the rail (Overview first, `fam:<key>` rows, a bare family path mapped to its row);
+  `UI/SpellsView_TBC.lua`'s Overview. dashui tbc 80 -> 84, tabscheck tbc new (4). The DECISIONS
+  entry "TBC's Spells group is the rail".
+- **Installed in both clients** at the author's request ("install current version in both beta and
+  TBC"), from this tree with the TOC lines applied: the Forever package (with the three modules)
+  into `_classic_beta_`, the TBC package into `_anniversary_`, both 0.16.4. The installed build
+  carries `docs/TESTING.md` §44 items 31-34 (the "need a build newer than the 0.16.4 install" notes
+  on waves C-b, C-c and C-d now mean this install).
+- Left for the next owners: T84's deviations 4 and 5 (no spellbook drop on TBC; no Whole book or
+  Export on TBC's Overview); the rail tags refresh on events, not on the 2-s tick (deviation 7).
+
+`make check`: 72 runs, all passed, in the worktree and in a `git archive` export (67 counted runs
+against 67 expected); apicheck 0 findings over 60 files (48 globals), textcheck 0 over 98 (96 + the
+two new files). Each TBC suite's full output against `1451738` differs only where the task file
+says (dashui's four T84 checks and six re-based checks; tabscheck tbc new), by what follows from it
+without a line of its own (themecheck's token-read count 174 -> 179 on both flavours with the
+rail's and Overview's token colours; dashui's T30 frame count 1099 -> 1289 with the rail's and
+Overview's frames; releasecheck's TBC package 68 -> 71 and Forever 34 -> 35 files with the TOC
+lines), and run-to-run noise (ms, table addresses, the sliced search's evaluation counts in
+reviewui and the order of its `replay 1 opened` line); every other TBC suite equal. In game:
+`docs/TESTING.md` §44 item 34. **Next:** the plan's finish step.

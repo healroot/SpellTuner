@@ -25,6 +25,7 @@ UI\Windows.lua
 UI\ContextMenu.lua
 UI\Tip.lua
 UI\Dashboard_Rows.lua
+UI\SpellRail.lua
 UI\SpellsPane_Forever.lua
 UI\Dashboard_Forever.lua
 UI\SpellTip_Forever.lua

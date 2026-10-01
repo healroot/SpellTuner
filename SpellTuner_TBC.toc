@@ -26,6 +26,8 @@ Engine\TTO.lua
 Engine\Kit.lua
 Spells\RankRules.lua
 Engine\RankMath.lua
+Spells\Tabs.lua
+Spells\Families_TBC.lua
 Engine\DamageMath.lua
 Engine\Calibration.lua
 Engine\PullBudget.lua
@@ -51,6 +53,7 @@ UI\SpellTooltip.lua
 UI\Visibility.lua
 UI\Widget.lua
 UI\Dashboard_Rows.lua
+UI\SpellRail.lua
 UI\Dashboard_Simulate.lua
 UI\Dashboard_Waste.lua
 UI\Dashboard_Review.lua
