@@ -21,6 +21,16 @@
 --   * with tools/.cache/talentsforever.json (python3 tools/refcheck.py
 --     --fetch), every Forever `names` entry is in that class's spellbook --
 --     without the cache that check prints SKIP and is not counted as passed.
+--
+-- T106 (docs/SPEC-next.md 4.3): the three Forever class profiles
+-- (Data/Profile_{Paladin,Shaman,Priest}_Forever.lua) validate with the rest;
+-- every name they carry (families and `unmodelled`) is in that class's
+-- committed book fixture (tools/data/books/<class>_forever.lua); each grants
+-- coach and practice, is coached by the solver only (no threshold rules), and
+-- the priest has no Power Word: Shield family until T109. The non-druid who
+-- logs in to prove the derivation never reads MD.ClassProfile is a mage (a
+-- class with no profile on either line) -- it was a priest until the priest
+-- had a profile of its own.
 HARNESS_FLAVOUR = { "forever", "tbc" }
 
 local here = arg[0]:match("^(.*)/[^/]+$")
@@ -38,6 +48,24 @@ arg[0] = a0
 
 local S = _G.STUB
 local forever = S.flavour == "forever"
+
+-- T106: the Forever class profiles are listed by the Forever main TOCs (the
+-- integrator's line); until they are, they are loaded here, after every file
+-- has run -- the same thing, since no file derives anything from them at load.
+local CLASS_PROFILES = {
+    { class = "PALADIN", file = "Data/Profile_Paladin_Forever.lua", book = "paladin" },
+    { class = "SHAMAN", file = "Data/Profile_Shaman_Forever.lua", book = "shaman" },
+    { class = "PRIEST", file = "Data/Profile_Priest_Forever.lua", book = "priest" },
+}
+local classLoad = {}
+if forever then
+    for _, c in ipairs(CLASS_PROFILES) do
+        if MD.Profiles.byClass[c.class] == nil then
+            local okL, err = pcall(S.Load, { c.file }, "SpellTuner", MD)
+            if not okL then classLoad[c.class] = tostring(err) end
+        end
+    end
+end
 
 --------------------------------------------------------------------------------
 -- helpers
@@ -153,6 +181,11 @@ do
         families = { A = { names = { "A" }, kit = "direct" } }, hotSlots = { "A" } }, TYPES)
     check("a HoT slot that is not a HoT family", okSlot == false and ps and T.Has(ps[1], "hotSlots names A"),
         ps and ps[1])
+    -- T106: a spell listed as not modelled may not also be a family's name
+    local okUn, pu = P.Validate({ class = "X", label = "X", caps = {},
+        families = { A = { names = { "A" }, kit = "direct" } }, unmodelled = { "B", "A" } }, TYPES)
+    check("T106: an unmodelled name that is a family's", okUn == false and pu
+        and T.Has(pu[1], "unmodelled names A, which is in the family A"), pu and pu[1])
 end
 
 T.section("methods")
@@ -324,18 +357,20 @@ do
 end
 
 --------------------------------------------------------------------------------
--- A priest logs in. First with no priest profile (the generic one), then with
--- a test priest profile whose lists differ from the druid's in every derived
--- table; the deriving files are loaded again and must still derive the druid's.
+-- A mage logs in (T106: a class with no profile on either line -- this was a
+-- priest until the priest had a profile of its own). First with no mage
+-- profile (the generic one), then with a test mage profile whose lists differ
+-- from the druid's in every derived table; the deriving files are loaded again
+-- and must still derive the druid's.
 --------------------------------------------------------------------------------
-T.section("a priest logs in")
-S.units.player.class = "PRIEST"
+T.section("a mage logs in")
+S.units.player.class = "MAGE"
 MD:DetectProfile()
 MD:Fire("CORE_LOGIN")
-check("a priest with no profile is given the generic one", MD.ClassProfile == P.generic and MD.player.class == "PRIEST")
+check("a mage with no profile is given the generic one", MD.ClassProfile == P.generic and MD.player.class == "MAGE")
 
-local PRIEST = {
-    label = "Priest", critSchool = 2, caps = { clock = true },
+local MAGE = {
+    label = "Mage", critSchool = 6, caps = { clock = true },
     families = {
         Heal  = { names = { "Healing Touch" }, kit = "direct" },   -- a name the druid uses, on purpose
         Renew = { names = { "Renew" }, kit = "hot", hot = true },
@@ -345,13 +380,13 @@ local PRIEST = {
     planner = { bindable = { "Renew" }, hotRule = { "Renew" }, families = { "Renew" } },
 }
 if not forever then
-    PRIEST.manaCooldowns = { { key = "x", short = "x", id = 1, name = "X", duration = 1, value = "innervate" } }
-    PRIEST.regen = { inFsrTalent = { "Meditation", 0.99 } }
+    MAGE.manaCooldowns = { { key = "x", short = "x", id = 1, name = "X", duration = 1, value = "innervate" } }
+    MAGE.regen = { inFsrTalent = { "Arcane Meditation", 0.99 } }
 end
-local registered = pcall(P.Register, "PRIEST", PRIEST)
+local registered = pcall(P.Register, "MAGE", MAGE)
 MD:Fire("CORE_LOGIN")
-check("with a priest profile registered, MD.ClassProfile is the priest's",
-    registered and MD.ClassProfile == P.byClass.PRIEST and MD.ClassProfile ~= DRUID)
+check("with a mage profile registered, MD.ClassProfile is the mage's",
+    registered and MD.ClassProfile == P.byClass.MAGE and MD.ClassProfile ~= DRUID)
 
 local files
 if forever then
@@ -378,8 +413,8 @@ for _, f in ipairs(files) do
     end
 end
 check("the deriving files load again while a priest is logged in", reloaded)
-DerivedChecks("priest logged in: ")
-check("ForKit of a kit with no profile is still the druid's while a priest is logged in",
+DerivedChecks("mage logged in: ")
+check("ForKit of a kit with no profile is still the druid's while a mage is logged in",
     P.ForKit({}) == DRUID)
 
 -- And none of them names MD.ClassProfile at all (only MD.Profiles).
@@ -395,6 +430,44 @@ do
         end
     end
     check("no deriving file reads MD.ClassProfile", #named == 0, table.concat(named, " "))
+end
+
+--------------------------------------------------------------------------------
+-- T106: the Forever class profiles against their committed book fixtures.
+--------------------------------------------------------------------------------
+if forever then
+    T.section("T106: the Forever class profiles")
+    local SCHOOL = { PALADIN = 2, SHAMAN = 4, PRIEST = 2 }
+    for _, c in ipairs(CLASS_PROFILES) do
+        local p = P.byClass[c.class]
+        local okB, book = pcall(dofile, S.root .. "/tools/data/books/" .. c.book .. "_forever.lua")
+        local have = {}
+        for _, row in ipairs(okB and book.spells or {}) do have[row.name] = true end
+        local missing = {}
+        for _, def in pairs(p and p.families or {}) do
+            for _, name in ipairs(def.names) do
+                if not have[name] then missing[#missing + 1] = name end
+            end
+        end
+        for _, name in ipairs(p and p.unmodelled or {}) do
+            if not have[name] then missing[#missing + 1] = name end
+        end
+        table.sort(missing)
+        check(c.class .. ": registered, every name it carries is in its book fixture",
+            p ~= nil and okB and #missing == 0,
+            classLoad[c.class] or (not okB and tostring(book)) or table.concat(missing, ", "))
+        local caps = {}
+        for cap in pairs(p and p.caps or {}) do caps[#caps + 1] = cap end
+        table.sort(caps)
+        local shield = p and p:Family("Power Word: Shield")
+        check(c.class .. ": coach and practice granted, solver only, its crit school",
+            p ~= nil and table.concat(caps, " ") == "clock coach practice rankTable tooltip"
+            and p.planner ~= nil and p.planner.rules == nil and p.planner.bindable == nil
+            and p.critSchool == SCHOOL[c.class] and shield == nil
+            and type(p.unmodelled) == "table" and #p.unmodelled > 0,
+            string.format("caps=%s rules=%s school=%s shield=%s", table.concat(caps, " "),
+                tostring(p and p.planner and p.planner.rules), tostring(p and p.critSchool), tostring(shield)))
+    end
 end
 
 --------------------------------------------------------------------------------
@@ -481,7 +554,7 @@ if forever then
         local books = okJ and type(data) == "table" and data.spellbooks
         check("the cache reads as JSON with spellbooks", type(books) == "table", not okJ and tostring(data) or nil)
         for _, class in ipairs(classes) do
-            if class ~= "PRIEST" then   -- the test priest above is not a shipped profile
+            if class ~= "MAGE" then   -- the test mage above is not a shipped profile
                 local p = P.byClass[class]
                 local book = books and books[class:sub(1, 1) .. class:sub(2):lower()]
                 local have = {}
@@ -494,6 +567,9 @@ if forever then
                     for _, name in ipairs(def.names) do
                         if not have[name] then missing[#missing + 1] = name end
                     end
+                end
+                for _, name in ipairs(p.unmodelled or {}) do
+                    if not have[name] then missing[#missing + 1] = name end
                 end
                 table.sort(missing)
                 check(class .. ": every Forever name is in the talentsforever spellbook",
