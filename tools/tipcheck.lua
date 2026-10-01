@@ -1205,6 +1205,42 @@ do
 end
 
 do
+    -- P32 review: the owner at 80 % (the main window at db.ui.scale 80) and
+    -- GameTooltip at 1: the pointer's offset is converted into the tooltip's
+    -- units, so the tooltip lands GAP beside the pointer, not 126 px past it.
+    local good, detail = false, "no MD.Tip"
+    if MD.Tip then
+        local savedW = UIParent:GetWidth()
+        UIParent:SetWidth(1000)
+        local owner = { GetRight = function() return 1200 end, GetWidth = function() return 1200 end,
+                        GetLeft = function() return 0 end, GetEffectiveScale = function() return 0.8 end }
+        local function Where()
+            local t = {}
+            function t:ClearAllPoints() self.pt = nil end
+            function t:SetPoint(p, rel, rp, x, y) self.pt = { p, rel, rp, x, y } end
+            function t:GetWidth() return 200 end
+            function t:GetEffectiveScale() return 1 end
+            MD.Tip:Place(t, owner, "cursor")
+            return t.pt or {}
+        end
+        local savedCursor = GetCursorPosition
+        local cx = 480
+        GetCursorPosition = function() return cx, 300 end
+        local a = Where()
+        cx = 900
+        local b = Where()
+        GetCursorPosition = savedCursor
+        UIParent:SetWidth(savedW)
+        local function Near(v, want) return type(v) == "number" and math.abs(v - want) < 0.001 end
+        good = a[1] == "TOPLEFT" and a[3] == "TOPLEFT" and Near(a[4], 486)
+            and b[1] == "TOPRIGHT" and b[3] == "TOPLEFT" and Near(b[4], 894)
+        detail = string.format("pointer 480 -> %s/%s (want TOPLEFT/486); pointer 900 -> %s/%s (want TOPRIGHT/894)",
+            tostring(a[1]), tostring(a[4]), tostring(b[1]), tostring(b[4]))
+    end
+    check("T76: beside the pointer in the tooltip's units when the owner is scaled (80 %)", good, detail)
+end
+
+do
     local UI = MD.UI
     local FrameMT = getmetatable(UIParent)
     local savedMotion = rawget(FrameMT, "SetMotionScriptsWhileDisabled")

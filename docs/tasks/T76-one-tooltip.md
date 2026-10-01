@@ -80,6 +80,27 @@ Mutations, on the branch (scratch copy):
 - `Tip:Skin` returning at once: `tipcheck` 43 ok, 1 failed (`skinned=false ... legacy=false`), and
   `clockcheck` 28 ok, 1 failed (`skinned=false after=false`).
 
+## Review fix (first review)
+
+The reviewer found `Tip:Place`'s "cursor" branch handing the pointer's offset to `tt:SetPoint` in the
+**owner's** units (`x = cx / Scale(owner) - left`), while a point's offset is applied in the
+**tooltip's** own effective scale. They agree only when the two scales are equal: a Review row sits
+in the main window, which `MD.Win` scales by `db.ui.scale` (70-120 %), and GameTooltip does not take
+that scale. At 80 %, owner left edge 0, pointer at 480 physical px, the tooltip's TOPLEFT landed at
+606 px (126 px right of the pointer); flipped, its TOPRIGHT covered the pointer. Fixed: the offset
+is converted, `local off = x * rs / ts`, then `TOPLEFT ... off + gap` / `TOPRIGHT ... off - gap` -- the
+tooltip lands `Tip.GAP` beside the pointer at any window scale. The flip test already read `cx` in
+physical pixels and is unchanged; the "beside" branch's `gap` stays a constant in the tooltip's units.
+
+New `tipcheck` assertion ("beside the pointer in the tooltip's units when the owner is scaled (80
+%)"): an owner at `GetEffectiveScale() = 0.8`, 1200 wide from x 0, a tooltip at 1 and 200 wide, the
+screen 1000 wide. Pointer at 480 -> TOPLEFT at 486; pointer at 900 -> flipped, TOPRIGHT at 894.
+On the branch before the fix (scratch copy, TOC lines applied): `44 ok, 1 failed` --
+`pointer 480 -> TOPLEFT/606 (want TOPLEFT/486); pointer 900 -> TOPRIGHT/1119 (want TOPRIGHT/894)`;
+after: `45 ok, 0 failed`. `tools/check.sh` of that copy (TOC lines and the counts below applied): 68
+runs, all passed, 63 counted against 63 expected; apicheck 0 findings (8 TOCs, 57 files), textcheck
+0 findings (9 TOCs, 94 files). `luac -p` passes on `UI/Tip.lua` and `tools/tipcheck.lua`.
+
 ## Suite counts
 
 Before: `19ffac6`, `tools/check.sh` 68 runs, all passed (63 counted). After: this branch with the TOC
@@ -87,7 +108,7 @@ lines applied (scratch copy), 68 runs, all passed (63 counted):
 
 | Run | Before | After |
 |---|---|---|
-| `tipcheck/forever` | 38 | **44** |
+| `tipcheck/forever` | 38 | **45** (44 before the review fix) |
 | `clockcheck/forever` | 26 | **29** |
 | `reviewforever/forever` | 20 | **22** |
 | `dashui/tbc` | 65 | **67** |
@@ -129,7 +150,7 @@ UI\Dashboard_Rows.lua
 **`Modules/SpellTuner_Replay/SpellTuner_Replay_Mainline.toc`** and **`SpellTuner_Replay.toc`** --
 delete the line `UI\Tooltip.lua` (between `Engine\ReplayTrace.lua` and `UI\ReplayWindow.lua`).
 
-**`tools/data/expected-counts.json`**: `"tipcheck/forever": 44,` (was 38), `"clockcheck/forever":
+**`tools/data/expected-counts.json`**: `"tipcheck/forever": 45,` (was 38), `"clockcheck/forever":
 29,` (was 26), `"reviewforever/forever": 22,` (was 20), `"dashui/tbc": 67,` (was 65),
 `"spelltip/tbc": 49,` (was 48). Every other count unchanged.
 
@@ -146,7 +167,7 @@ delete the line `UI\Tooltip.lua` (between `Engine\ReplayTrace.lua` and `UI\Repla
 - The `UI/MinimapButton.lua` / `UI/Widget.lua` / `Engine/DamageMath.lua` / `UI/SpellTooltip.lua` / `UI/ReplayWindow.lua` comments that still say `UI/Tooltip.lua` are the next owner's to fix (no code reads the name).
 
 **`docs/TOOLS.md`** section 1:
-- `tipcheck.lua` row, append: ` Since **T76** (44): `MD.Tip` on the main TOC without the TBC builders; the line model with token names, a spacer, wrap and a bare string; `Tip:Show` into GameTooltip in the kit skin and out of it on hide, the old shape kept; `Tip:Place` beside / beside the pointer / flipped; a disabled kit button's tooltip (motion while disabled, the latest anchor, a muted line); `SpellTip:Render` on the shared shape`
+- `tipcheck.lua` row, append: ` Since **T76** (45): `MD.Tip` on the main TOC without the TBC builders; the line model with token names, a spacer, wrap and a bare string; `Tip:Show` into GameTooltip in the kit skin and out of it on hide, the old shape kept; `Tip:Place` beside / beside the pointer / flipped, and beside the pointer in the tooltip's units when the owner is scaled (80 % against 1); a disabled kit button's tooltip (motion while disabled, the latest anchor, a muted line); `SpellTip:Render` on the shared shape`
 - `clockcheck.lua` row, append: ` Since **T76** (29): the hover as pairs -- `Out of mana in` equal to the clock's own time, `Full again in ... if you stop`, `Spending`, `Mana`; out of combat no fight lines; skinned while shown; no "secret", no "anchored"`
 - `reviewforever.lua` row, append: ` Since **T76** (22): under `S.Geometry` and a pointer the suite sets, a row's tooltip opens beside the pointer, top-aligned, and flips at the screen's right edge`
 - `dashui.lua` row, append: ` Since **T76** (67): a generic table's header label shows `col.tooltip` (a column without one none; the rank table's columns none); a TBC kit button is never set to take the pointer while disabled`
@@ -161,7 +182,9 @@ delete the line `UI\Tooltip.lua` (between `Engine\ReplayTrace.lua` and `UI\Repla
 > game's own spell text with the SpellTuner block under it (report if the block is missing or shows
 > twice, and whether holding Shift keeps the flat look). Hover a Review row near its left end, then
 > near its right end: the tooltip opens beside the pointer, level with the row, and near the screen's
-> right edge it opens to the pointer's left. Select a fight that does not replay and hover the greyed
+> right edge it opens to the pointer's left. Do the same with Settings -> General -> window scale at
+> 80 % and at 120 %: the tooltip still opens just beside the pointer (not far right of it, not over
+> it). Select a fight that does not replay and hover the greyed
 > Coach button: it says why. Hover the clock in a fight: `Out of mana in ~1:20`, `Full again in ~2:10
 > if you stop`, no word about secrets. Hover any other addon's tooltip (a bag item, a unit frame)
 > straight after: it has its normal Blizzard border. **TBC:** `/md` -- every tooltip looks exactly as

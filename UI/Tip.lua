@@ -146,10 +146,15 @@ function Tip:Place(tt, owner, anchor)
                 if Num(screen) and Num(w) then
                     flip = cx + gap * rs + w * ts > screen * us
                 end
+                -- A point's offset is in the tooltip's own units, the
+                -- pointer's x in the owner's: they differ whenever the owner
+                -- carries a scale the tooltip does not (the main window at
+                -- db.ui.scale, GameTooltip at the UI's).
+                local off = x * rs / ts
                 if flip then
-                    tt:SetPoint("TOPRIGHT", owner, "TOPLEFT", x - gap, 0)
+                    tt:SetPoint("TOPRIGHT", owner, "TOPLEFT", off - gap, 0)
                 else
-                    tt:SetPoint("TOPLEFT", owner, "TOPLEFT", x + gap, 0)
+                    tt:SetPoint("TOPLEFT", owner, "TOPLEFT", off + gap, 0)
                 end
                 return "cursor", flip
             end
