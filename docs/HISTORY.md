@@ -4238,3 +4238,29 @@ tbc's token-read count (97 -> 99: the placeholder's `UI.RGB("accent")` / `UI.RGB
 run-to-run noise (ms, table addresses, the sliced search's evaluation counts in replayui and
 reviewui); every other TBC suite equal. In game: `docs/TESTING.md` §44 items 19 and 21 (they need a
 build newer than the 0.16.4 install). **Next:** wave 13 (P30-).
+
+## 2026-10-01 — the refactor plan, wave 13: T74 (P30)
+
+Wave 13 of `docs/PLAN-refactor-ux.md` cherry-picked onto `7b77391`, then the integrator's lines
+(CLAUDE.md, `docs/DECISIONS.md`, `docs/TESTING.md`, `docs/TOOLS.md`,
+`tools/data/expected-counts.json`, this entry) in one commit. No merge fix was needed. The version
+stays 0.16.4. No TOC changed (no new file). The task text named the base as
+`7b773917b8c0...`, which is not an object in the repository; `7b77391` (`7b77391f591c...`, wave 12's
+integrator commit, the parent of `plan/P30`) is the commit it abbreviates.
+
+- **T74 (P30)** (`af380e2`): kit primitives (review A20, U1, U3) -- in `UI/Style.lua`, `UI.PALETTE`
+  defined before the primitives with their fills (TBC's literals, which the theme leaves) and
+  `UI.TEXT.dimmed`; `BUTTON_COLORS` names palette keys (`UI.ButtonColors`); bordered buttons and the
+  check box on the pixel backdrop and registry under `UI.PIXEL`; `UI.PixelLayout` for rules, insets,
+  bars and the header overlap; under `UI.THEMED` a button group's active member is `selected` + a
+  2-px accent bar (left on the nav's groups, bottom elsewhere) with the hover layer kept on every
+  member. TBC unchanged. navui tbc 37 (was 36), themecheck forever 31 (was 28), tbc 8 (was 7).
+  DECISIONS "One selection language".
+
+`make check`: 68 runs, all passed, in the worktree and in a `git archive` export (63 counted runs
+against 63 expected); apicheck 0 findings over 57 files, textcheck 0 over 93. Each TBC suite's full
+output against `7b77391` differs only by navui's and themecheck's one new assertion each, themecheck
+tbc's token-read count (99 -> 127: the new `UI.Fill` / `UI.RGB` reads in `UI/Style.lua`) and
+run-to-run noise (ms, table addresses, the sliced search's frame and evaluation counts in reccheck,
+replayui, reviewui and simwindow); every other TBC suite equal. In game: `docs/TESTING.md` §44 item
+24 (it needs a build newer than the 0.16.4 install). **Next:** wave 14 (P31-).

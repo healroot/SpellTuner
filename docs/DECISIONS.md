@@ -1090,3 +1090,10 @@ but still loaded gets a Reload UI button there. On TBC the Options slider for `d
 T20 a plan decides on the biggest hit so far, so the flat line is what a fight built in Simulate is
 scored on (and a recorded target's fallback). The old label and tooltip called it the scoring line.
 This is a text fix; the value and its use are unchanged.
+
+## One selection language (2026-10-01, T74, P30)
+
+On Forever a button group's active member is the `selected` fill plus a 2-px accent bar (left on the
+nav's groups, bottom elsewhere) and hover is the `hover` fill laid over any member, the active one
+included (spec 4.3, mockup `.nb.on` / `.vt.on` / `.btn.act`). TBC keeps the active button in its
+hover colour (decision 10 is wave C's).

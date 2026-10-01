@@ -1441,7 +1441,7 @@ the numbers.
 
 **Paste back**: the `pN` you pinned, and in words what the suggested column did differently.
 
-## 44. The refactor plan's checks (`docs/PLAN-refactor-ux.md` section 9; waves 1-12, 0.16.4)
+## 44. The refactor plan's checks (`docs/PLAN-refactor-ux.md` section 9; waves 1-13, 0.16.4)
 
 Paste back as in section 41. Out of combat unless a step says otherwise. Install **0.16.4** on each
 client (`--install-tbc` / `--install-forever`, the top of this file and §38; never cross them). The
@@ -1564,6 +1564,15 @@ W10. **The clock and the theme (P24, P25).** The mana clock behaves exactly as o
     (Windows set to hide): one chat line says the window hides in combat and where to change that; the
     next pull says nothing. **TBC:** `/md options` -> General: the slider reads `Danger line for built
     fights (%)`, and its hover names Simulate.
+
+**Wave 13 (T74; Forever unless said).** These need a build newer than the 0.16.4 install.
+
+24. **Selection and edges (P30).** `/st`: the selected group on the left is a dim accent fill with a
+    2-px accent bar on its left edge; move the pointer down the other groups -- each gets a faint tint,
+    none looks selected; hover the selected group -- it tints too and keeps its bar. The view tabs on
+    top (Reports, Settings): the selected one has the bar along its bottom. At your 0.71 scale, button
+    and check-box borders are as crisp as the window's edge; change the window scale in Settings ->
+    General and they stay crisp. **TBC:** `/md` -- the nav and tabs look exactly as before.
 
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the
