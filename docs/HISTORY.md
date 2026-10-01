@@ -4687,3 +4687,61 @@ run-to-run noise (table addresses, ms, the sliced search's evaluations).
 NOTE 48 vs 46 as before); apicheck 0 findings over 66 files (49 globals), textcheck 0 over 105.
 Packages: TBC 78 files, Forever 41 files plus the three modules. Version unchanged (0.16.5), not
 installed. **Next:** wave N3.
+
+## 2026-10-01 — the next round, wave N3: T97, T98, T100, T99, T101
+
+Integrated on `25748e3` in this order (each task's commits cherry-picked oldest first, clean), then
+the integrator lines in one commit.
+
+- **T97 (decisions 19, 20, X1): brokers and EllesmereUI.** The two LibDataBroker objects
+  (`SpellTuner`, `SpellTuner Regen`) on both lines through `Integrations/Surface_LDB.lua`, on a
+  library borrowed from a host, never shipped; EllesmereUI's skin hand-over (`RegisterSkin` once,
+  `MD.EUISkin`, `EUI_SKIN_READY` / `EUI_LOOKS_CHANGED`, apiVersion 2 only), the `/unlock` mover
+  `SpellTuner_Clock` and the version guard (`TESTED_EUI = 9.3.4`) in
+  `Integrations/EllesmereUI_Forever.lua` (Forever TOCs, `## OptionalDeps: EllesmereUI`); the
+  minimap fixes (a collected button is never pulled back, `btn.icon` centred); apicheck rule 11
+  (host globals only under `Integrations/`, selftest 13 -> 14). euicheck 19 (new), surfacecheck
+  tbc 32 -> 34, minimapcheck tbc 7 -> 8 / forever 8 -> 9.
+- **T98 (decisions 13, 15): clock layouts.** Line, Compact and Bar in `UI/ClockView.lua`;
+  `db.clockLook` resolved over the style's clock role, then `over`; the bar's sources (pool /
+  model / time / fsr / none) and the 5SR spark; `UI.Skin(widget, "clock")`; the `clock:` dump
+  line; no visible change by default. clockui 16 + 16 (new), clockfacecheck tbc 20 -> 22 /
+  forever 17 -> 19.
+- **T100: the Ellesmere style.** `UI/Style_Ellesmere.lua` (listed right after `UI/Styles.lua` on
+  every main TOC): the clone (bronze on Forever, teal elsewhere; X5's pre-blended label), the
+  follow through `MD.EUISkin` (apiVersion 2), then `MD.EUIParent`, then the clone; `UI/Styles.lua`
+  gains a style's `resolve`, `UI.Styles.Refresh` / `Note`. stylecheck 26 -> 34 on both flavours.
+  **The integrator's one code line:** `Integrations/EllesmereUI_Forever.lua`'s `Host()` sets
+  `MD.EUIParent = EllesmereUI` where it finds the table (T100's integrator line; T97 already fired
+  both events).
+- **T99 (4.4): capability gates.** The 23 `isDruid` gates ask `MD.ClassProfile:Can(cap)`; a
+  non-druid reads `<subject>: not modelled for <Class> yet`; on Forever `Can("coach")` asks
+  `MD.KitLive` (Replay off -> `false, "module"`). Nothing changes for a druid on TBC. capscheck
+  forever 32 / tbc 34 (new).
+- **T101 (decision 12): the generic Forever kit.** Families by shape (group / chain /
+  selfAndTarget / a party channel), the solver's sums under 4.5, N same-instant claims, own heals
+  of a spell the kit lacks replayed as recorded, Wild Growth in (1 s ticks, VERIFY), Tranquility
+  on the party. kitcheck 16 -> 19, solvercheck 89 -> 95, scenariocheck 17 -> 19, practiceforever
+  29 -> 31.
+
+`tools/data/import-forever-sv.lua` rebuilt once after the TOC lines: `clockLook` (T98), `eui`
+and `feeds` (T97), 12 lines, nothing else. defaultscheck's assertion counts unchanged (49 / 52);
+its read figures tbc 44 -> 46 (`feeds`, `clockLook`), forever 28 -> 31 (`feeds`, `eui`,
+`clockLook`).
+
+Every TBC suite's output compared with `25748e3`'s: the only changes are the rows above
+(clockfacecheck, minimapcheck, surfacecheck, stylecheck -- the Ellesmere checks, `ellesmere` in
+the style lists and the clock region's role `clock` --, solvercheck, defaultscheck's read count,
+the new capscheck and clockui) plus themecheck's informational token-read count 176 -> 178
+(T98: `UI/Widget.lua`'s message line and bar fill go through `view:Message` / `view:FillBar` with
+`UI.RGB("accent")`) and run-to-run noise (table addresses, ms, the frame-sliced search's
+evaluation counts and the order in which replayui's two coach searches finish, which flips on
+`25748e3` too).
+
+Open, from the task files: the Forever broker shows the rest segment even with `/st clock rest`
+off until a file provides `MD.ClockLook()` (T97 deviation 3); `db.feeds.elvui` is declared but
+not read yet (T97 deviation 2, T102).
+
+`make check`: 86 runs, all passed (81 counted runs against 81 expected; profilecheck/forever's
+NOTE 48 vs 46 as before); apicheck 0 findings over 69 files (51 globals), textcheck 0 over 108.
+Version unchanged (0.16.5), not installed. **Next:** wave N4.

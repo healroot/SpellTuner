@@ -1892,6 +1892,48 @@ saw instead. Nothing here has run on a real client yet.
 6. **A channel in the replay (T96, wave N2), Forever, optional.** On a Forever druid who knows
    Tranquility, record a pull with one (`/st rec`), `/st replay N`: the Tranquility's target's
    bar rises on the tick, and `/st validate N`'s gate 8 counts the ticks as own.
+7. **Brokers (T97, wave N3), Forever with EllesmereUI.** Enable EllesmereUI, Options, DataBars,
+   Minimap, BlizzardSkin; `/reload`. `/eui` -> DataBars -> add a Broker Plugin block for
+   **SpellTuner** and one for **SpellTuner Regen**, Max Width ~120. The block equals the floating
+   clock on every change; the icon tint goes amber then red. Hover: one tooltip, EllesmereUI's skin,
+   no second border. Left-click opens SpellTuner, right-click Settings, neither in combat. Regen
+   reads `(5SR)` for 5 s after a cast and `~` in combat. Disable SpellTuner and `/reload`: both
+   blocks collapse. `/st dump`: the integrations line names EllesmereUI's version beside
+   `(tested 9.3.4)` and `skin apiVersion 2`.
+8. **Mover and minimap (T97, wave N3), Forever with EllesmereUI.** `/unlock`: a "SpellTuner clock"
+   mover with the clock previewed; drag, save, `/reload`: the clock stays. The SpellTuner button
+   sits in EllesmereUI's flyout with its icon centred; toggle it in Settings -> Windows: it stays
+   there. `/st probe`: no blocked action names SpellTuner.
+9. **Brokers on TBC (T97, wave N3).** With ElvUI: its datatext list shows `SpellTuner` and
+   `LDB: SpellTuner`; both read the same. (`db.feeds.ldb = false` and a `/reload` remove the
+   broker.)
+10. **Clock layouts (T98, wave N3), both clients, optional.** With the clock on screen (in a fight,
+    or Show now / `/md unlock`): `/run SpellTuner.ClockView.SetLayout("compact")`, then `"bar"`,
+    then `"line"`. Each draws the clock's words with nothing cut, and a switch never hides or shows
+    the clock. `/run SpellTuner.ClockView.Set("bar.spark", "fsr")`: after a cast a yellow mark crosses
+    the bar over five seconds. `/run SpellTuner.ClockView.Set("bar.source", "time")`: the bar drains
+    with the time to OOM. `/run SpellTuner.ClockView.ResetToStyle()` puts the bar back. On Forever,
+    `/st dump` shows `clock: layout ...` after any of these.
+11. **The Ellesmere style (T100, wave N3), both clients.** On Forever with EllesmereUI's Blizz UI
+    Enhanced (BlizzardSkin) on: `/st ui style ellesmere` -- the windows take EllesmereUI's accent,
+    panel colour and font; `/st dump` reads `style: ellesmere ... ; follows EllesmereUI (skin
+    apiVersion 2)`; changing EllesmereUI's accent recolours SpellTuner at once. With third-party
+    skinning turned off for SpellTuner, the same command still follows EllesmereUI's accent and
+    font (the parent's getters). On TBC, `/md ui style ellesmere` gives the teal clone, and
+    `/md ui style flat` returns exactly to today's look.
+12. **Capability gates (T99, wave N3), either client, optional.** On a non-druid alt, open Reports
+    -> Review and a replay (`/st replay 1` on Forever with the Replay module on): the Coach button
+    is off, its hover and the replay's hint read `Coaching: not modelled for <your class> yet`;
+    Simulate -> Practice reads `Practice: not modelled for <your class> yet`. On the druid nothing
+    changed.
+13. **Other healers (T101, wave N3), Forever.** On a paladin, shaman or priest alt, Simulate ->
+    Practice binds the class's heals by name and Holy Shock / Riptide refuse a second press inside
+    their cooldown; record a pull with Prayer of Healing or Chain Heal (`/st rec`), `/st validate
+    N`: gate 8 counts the group heal's heals as own (one per member); a Desperate Prayer counts as
+    "from spells the kit does not price, replayed as recorded". `/st coach N` with a group heal in
+    it: the card carries `group heals assume everyone in range (no positions recorded): an upper
+    bound`. On the druid, a pull with Wild Growth or Tranquility: `/st replay N` heals the whole
+    party.
 
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the

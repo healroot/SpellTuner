@@ -48,6 +48,7 @@ Engine\Practice.lua
 UI\Style.lua
 UI\Theme_Flat.lua
 UI\Styles.lua
+UI\Style_Ellesmere.lua
 UI\EscStack.lua
 UI\Windows.lua
 UI\ContextMenu.lua
@@ -77,6 +78,7 @@ UI\MinimapButton.lua
 UI\Advisor.lua
 UI\Summary.lua
 Integrations\Surface_ElvUI.lua
+Integrations\Surface_LDB.lua
 Diagnostics_TBC.lua
 Engine\RegenMeasure.lua
 Engine\SimSelfTest.lua

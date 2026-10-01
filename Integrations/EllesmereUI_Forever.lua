@@ -60,7 +60,10 @@ EUI.PREVIEW_SECONDS = 3600 -- the preview while /unlock is open; ended when it c
 
 local function Host()
     local E = EllesmereUI
-    if type(E) == "table" then return E end
+    if type(E) == "table" then
+        MD.EUIParent = E -- the parent's getters, UI/Style_Ellesmere.lua's fallback with no facade (T100)
+        return E
+    end
     return nil
 end
 

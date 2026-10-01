@@ -1285,3 +1285,92 @@ character's recording on any machine. The author accepted decision 11 as recomme
 strategies report on the author's eight TBC recordings, the eight coach cards and replays, and
 Healroot's twelve Forever reports are **identical before and after**: TBC's Tranquility has no
 measured tick (it still lands nothing there) and no Forever recording has a Tranquility yet.
+
+## Host libraries are borrowed, never shipped (2026-10-01, T97, proposed)
+
+LibDataBroker and LibStub are borrowed, never shipped. `Integrations/Surface_LDB.lua` publishes
+only through the copy a host loaded (EllesmereUI, ElvUI, Titan); with no host nothing is
+published, and `release.sh` ships no library file. Host globals (`EllesmereUI`, `LibStub`,
+`ElvUI`) are read only under `Integrations/` -- apicheck rule 11 fails on any other read.
+
+## Brokers on both lines, on by default even with ElvUI (2026-10-01, T97, decision 19, proposed)
+
+The two brokers (`SpellTuner`, `SpellTuner Regen`) are published on both lines and are on by
+default even where ElvUI's native datatexts exist. On TBC with ElvUI, its datatext list shows the
+native `SpellTuner` and the wrapped `LDB: SpellTuner`; Settings will say to pick the native one
+(T102). This is a visible TBC addition (a broker display now lists two SpellTuner objects);
+`db.feeds.ldb = false` removes them after a `/reload`.
+
+## A collected minimap button stays collected (2026-10-01, T97, decision 20, proposed)
+
+`Reposition` and the angle drag leave a button whose parent is not `Minimap` (EllesmereUI's
+flyout, MBB). On TBC this matters only with a collector addon installed, which until now had the
+button pulled back by the Settings toggle.
+
+## EllesmereUI is Forever-only and followed at skin apiVersion 2 (2026-10-01, T97, X1, proposed)
+
+`Integrations/EllesmereUI_Forever.lua` is listed by the Forever TOCs only (`## OptionalDeps:
+EllesmereUI`); its skin facade is followed only at `apiVersion == 2`, and `TESTED_EUI = 9.3.4`
+is printed beside the running version in every line that names it.
+
+## Clock layouts and the look (2026-10-01, T98, decisions 13 and 15)
+
+The clock draws in three layouts -- Line (today's, the default), Compact (one big number, no
+secondary, no bar unless asked) and Bar (a bar the width of the clock with the label and the time
+on it) -- chosen by `db.clockLook.layout`; Settings -> Clock (T102) will offer them. The look is
+the layout's defaults, then the UI style's `clock` role, then the user's overrides (`over`), and
+"Reset to style" wipes the overrides. The bar's colour defaults to its **source's own** (the 5SR
+amber then green, the pool and the model the mana blue, the time its tone) rather than the face's
+tone, so neither line's bar changes colour by default (decision 15 (a)); `bar.color = "tone"` gives
+the spec's "on Forever's pool the colour is the modelled tone". Compact and Bar size their frame
+from the widest value they can draw in their own fonts (they are wider than R-clock's 72 x 36 /
+200 x 18 sketches when the font is), so nothing is ever cut at any font offset; Line keeps
+180 x 30.
+
+## The Ellesmere style (2026-10-01, T100, proposed)
+
+The Ellesmere style's clone accent is EllesmereUI's own default for the client it runs on, read as
+EllesmereUI reads it: the interface (`MD.API.BuildInfo`) in `MD.API.BANDS.forever` gives bronze
+`#DCA77F`, anything else teal `#0CD29D`. TBC gets a new, optional look; nothing changes until a
+player picks it (`/md ui style ellesmere`). X5 accepted: EllesmereUI's white-at-alpha text is
+pre-blended into hex against the style's `bg`. With no skin facade the style follows the
+parent's getters, handed over by `Integrations/EllesmereUI_Forever.lua` as `MD.EUIParent`
+(integrator line, wave N3).
+
+## Capability gates: "not modelled for <Class> yet" (2026-10-01, T99, docs/SPEC-next.md 4.4)
+
+The 23 `MD.player.isDruid` gates in 10 files ask the logged-in player's class profile instead,
+`MD.ClassProfile:Can(cap)` (coach, practice, simulate, rankTable, tooltip, advisor). The
+druid's profiles grant every capability a druid had, so nothing changes for a druid on TBC. A
+non-druid's wording changes: "Coaching is Druid-only in v1.", "Practice is Druid-only, like the
+rest of the healing model.", "(Druid-only in v1)", "Rank analysis is Druid-only in v1",
+"(druid-only)" and the menu note "Druid only" become `<subject>: not modelled for <Class> yet`
+(`Coaching: not modelled for Priest yet`, the menu note `not modelled`), and the replay's hint
+says it instead of `no plan yet`. On Forever `Can("coach")` also asks the Replay module's live kit
+(`MD.KitLive`, T96): with the module off it answers `false, "module"` and the module's own
+placeholder stays (no new words); a druid whose live kit prices no heal is refused coaching with
+`Coaching: no heal in your spellbook is modelled yet` -- the one change a druid can see, and
+only on Forever. The summary's `max-rank casts N%` and the profile report's max-rank costs are
+the `rankTable` capability (they read Data/SpellData.lua's rank table). Reads that stay druid by
+design: `Core.lua` (the fact), `Core_TBC.lua`'s `InTreeForm` (Tree of Life is a druid form),
+`Data/SpellData.lua:193` (the druid's own cost talents on its own table); until TBC other
+classes (T111): `Engine/RankMath.lua`'s `Compute`, `Spells/Families_TBC.lua`. `tools/capscheck.lua`
+fails on any other `isDruid` read in a shipped file.
+
+## Heals that reach several targets; the Forever kit by shape (2026-10-01, T101, decision 12)
+
+On Forever the kit is the logged-in player's and every heal family its profile does not name is
+built from the book by shape: `group` (every living tracked member of the caster's party: Prayer
+of Healing, Holy Nova, Wild Growth), `chain` (its target, then the most injured party members at
+the cast at 50 %, 25 %: Chain Heal), `selfAndTarget` (Binding Heal), a channel with `party`
+(Tranquility now ticks on the whole party). No positions are recorded, so each reach is an
+optimistic assumption marked VERIFY; the coach card says `group heals assume everyone in range
+(no positions recorded): an upper bound` whenever one is bound or cast, and the solver sums what
+a cast saves over everyone it reaches. Wild Growth is in the druid's kit with its total in uniform
+1 s ticks (VERIFY: its front-loaded curve is not in the text). A kit entry carries the book's own
+cooldown when the profile names none. On Forever an own cast of a heal the kit does not carry
+claims the heal landing with it, which is replayed as recorded and counted as the healer's own
+(gate 8 says how many) instead of foreign. TBC is unchanged: its kit has none of these types, and
+the v2 road (TBC fights, practice fights) does not yet replay unclaimed own heals -- that would
+move the author's TBC replays and needs its own decision. The strategies report on the author's
+eight TBC recordings and Healroot's twelve Forever reports are identical before and after.

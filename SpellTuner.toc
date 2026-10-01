@@ -4,6 +4,7 @@
 ## Author: NeRgY
 ## Version: 0.16.5
 ## SavedVariables: SpellTunerDB
+## OptionalDeps: EllesmereUI
 
 Client\TOC_Plain.lua
 Client\API.lua
@@ -24,6 +25,7 @@ Spells\Measure.lua
 UI\Style.lua
 UI\Theme_Flat.lua
 UI\Styles.lua
+UI\Style_Ellesmere.lua
 UI\EscStack.lua
 UI\Windows.lua
 UI\ContextMenu.lua
@@ -39,6 +41,8 @@ UI\Visibility.lua
 UI\ClockView.lua
 UI\Clock_Forever.lua
 UI\MinimapButton.lua
+Integrations\Surface_LDB.lua
+Integrations\EllesmereUI_Forever.lua
 UI\DebugConsole.lua
 UI\Dump_Forever.lua
 Client\Probe.lua

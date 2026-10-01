@@ -2082,6 +2082,10 @@ SpellTunerDB = {
 		["showRest"] = true,
 		["shown"] = true,
 	},
+	["clockLook"] = {
+		["layout"] = "line",
+		["over"] = {},
+	},
 	["debug"] = {
 		["categories"] = {
 			["calib"] = true,
@@ -2100,6 +2104,14 @@ SpellTunerDB = {
 		["maxLines"] = 1000,
 	},
 	["effectiveMode"] = false,
+	["eui"] = {
+		["unlock"] = true,
+	},
+	["feeds"] = {
+		["compact"] = false,
+		["elvui"] = true,
+		["ldb"] = true,
+	},
 	["minimap"] = {
 		["angle"] = 220,
 		["hide"] = false,
