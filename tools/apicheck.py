@@ -32,6 +32,12 @@ API baseline and the adapter rule (CLAUDE.md / docs/FOREVER-PLAN.md):
      on the client in shared code (T59, review A6a). From the source text,
      comments and strings blanked; a copy of MD.API under another name than
      `API` is not followed.
+ 11. a host addon's global (`EllesmereUI`, `LibStub`, `ElvUI`: FOREIGN) read
+     outside Integrations/ -- host addons are reached only from there
+     (docs/SPEC-next.md 2, T97); under Integrations/ they are allowed. From
+     luac's GETGLOBAL, like rules 1-4; the selftest scans
+     tools/data/apicheck-fixture-foreign.lua both outside and inside
+     Integrations/.
 
 A Forever TOC is one that loads a forever marker file of tools/data/flavours.txt,
 or sits under Modules/, or (with neither) whose interface is in forever's band
@@ -101,6 +107,17 @@ FORBIDDEN_EVENT_HOME = "Client/API_Forever.lua"
 CLIENT_NAME_HOMES = ("UI/Dump_Forever.lua",)
 CLIENT_NAME_RE = re.compile(r'\bAPI\s*(?:\.\s*client\b|\[\s*["\']client["\']\s*\])')
 PROBE_FILE = "Client/Probe.lua"
+# rule 11 (T97): the selftest's foreign-global fixture and the reason the
+# rule gives (the rule itself comes with the implementation).
+FOREIGN_FIXTURE = os.path.join(HERE, "data", "apicheck-fixture-foreign.lua")
+FOREIGN_HOME = "Integrations/"
+FOREIGN_REASON = "host addon outside Integrations/"
+# rule 11 (T97, docs/SPEC-next.md 2 and 3.1): host addons' globals. Not client
+# API (the baseline does not have them), so read anywhere they were rule 1's
+# "unknown"; under Integrations/ they are allowed, anywhere else a finding of
+# their own. Presence and versions for a report stay on MD.API.IsAddOnLoaded /
+# MD.API.AddOnMetadata (Client/Probe.lua reaches them by name, as strings).
+FOREIGN = {"EllesmereUI", "LibStub", "ElvUI"}
 
 C_MEMBER_RE = re.compile(r"^(C_[A-Za-z0-9_]+)\.([A-Za-z0-9_]+)$")
 
@@ -262,9 +279,14 @@ def scan_file(luac, abspath, relpath, baseline, globals_seen, per_file_globals):
         if op == "GETGLOBAL" and comment is not None:
             name = comment
             cls = classify_with_baseline(name, baseline)
+            if name in FOREIGN and cls == "unknown":
+                cls = "foreign"
             globals_seen.add(name)
             per_file_globals.setdefault(relpath, {})[name] = cls
-            if cls == "unknown":
+            if cls == "foreign":
+                if not relpath.startswith(FOREIGN_HOME):
+                    findings.append(Finding(relpath, line, name, FOREIGN_REASON))
+            elif cls == "unknown":
                 findings.append(Finding(relpath, line, name, "not in baseline {}".format(build)))
             elif cls == "not-in-client":
                 findings.append(Finding(relpath, line, name, "not in the client's Lua"))
@@ -601,6 +623,13 @@ def main():
 
     forever_tocs, checked, findings = collect(root, baseline)
 
+    if args.selftest:
+        # T97, rule 11: the foreign-global fixture, scanned twice -- outside
+        # Integrations/ (a finding) and as if it lived there (none). It sits
+        # beside the fixture folder, so no fixture TOC lists it.
+        checked.append((FOREIGN_FIXTURE, os.path.basename(FOREIGN_FIXTURE)))
+        checked.append((FOREIGN_FIXTURE, FOREIGN_HOME + os.path.basename(FOREIGN_FIXTURE)))
+
     globals_seen = set()
     per_file_globals = {}
     for abspath, relpath in checked:
@@ -642,6 +671,9 @@ def main():
         # reads it too, and raises nothing; a comment naming it is not a read).
         expected.append(("Bad.lua", 15, "MD.API.client",
                          "read outside Client/ and UI/Dump_Forever.lua (a flavour installs a policy)"))
+        # T97, rule 11: a host addon's global read outside Integrations/ (the
+        # same file scanned as Integrations/... raises nothing).
+        expected.append((os.path.basename(FOREIGN_FIXTURE), 6, "EllesmereUI", FOREIGN_REASON))
         # rule 7: Gone.lua is missing, referenced from the fixture TOC.
         toc_rel = None
         for t in forever_tocs:

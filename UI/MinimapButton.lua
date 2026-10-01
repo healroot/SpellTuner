@@ -23,8 +23,18 @@ MD:RegisterDefaults({ minimap = { hide = false, angle = 220 } })
 
 local btn
 
+-- T97 (docs/SPEC-next.md 6.3; R-ellesmere.md 3.4): a minimap-button
+-- collector (EllesmereUI's flyout, MBB) adopts the button by reparenting it
+-- off Minimap. From then on the collector owns its place: Reposition (Settings
+-- -> Windows' toggle, MD:UpdateMinimapButton) and the angle drag leave it
+-- alone, instead of pulling it back to the minimap's edge. With no collector
+-- the parent is always Minimap and nothing changes.
+local function Collected()
+    return btn ~= nil and btn:GetParent() ~= Minimap
+end
+
 local function Reposition()
-    if not btn then return end
+    if not btn or Collected() then return end
     local angle = math.rad(MD.db.minimap.angle or 220)
     local radius = (Minimap:GetWidth() / 2) + 5
     btn:ClearAllPoints()
@@ -84,11 +94,16 @@ local function CreateButton()
     overlay:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
     overlay:SetPoint("TOPLEFT")
 
+    -- T97: the icon is the button's `icon` field, which a collector looks
+    -- for by name (EllesmereUIMinimap.lua 516-532) before it guesses by region
+    -- order, anchored CENTER at the place it always had (TOPLEFT 7, -5 of a
+    -- 20 x 20 icon in the 31 x 31 button is CENTER 1.5, 0.5).
     local icon = btn:CreateTexture(nil, "BACKGROUND")
     icon:SetSize(20, 20)
     icon:SetTexture("Interface\\Icons\\Spell_Shadow_Manaburn")
     icon:SetTexCoord(0.05, 0.95, 0.05, 0.95)
-    icon:SetPoint("TOPLEFT", 7, -5)
+    icon:SetPoint("CENTER", btn, "CENTER", 1.5, 0.5)
+    btn.icon = icon
 
     btn:SetScript("OnClick", function(_, mouseButton)
         if mouseButton == "RightButton" then
@@ -98,6 +113,7 @@ local function CreateButton()
         end
     end)
     btn:SetScript("OnDragStart", function(self)
+        if Collected() then return end -- T97: the collector owns its place
         self:SetScript("OnUpdate", OnDragUpdate)
     end)
     btn:SetScript("OnDragStop", function(self)
