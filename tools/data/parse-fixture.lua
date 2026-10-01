@@ -20,6 +20,11 @@
 -- -- and Description must return nil rather than read it as one direct hit.
 --   unverified = wording from memory, NOT a Forever client text (review B4's own examples);
 --                kept only as the refusal's specification, never as a number to trust.
+--   synthetic  = (T91) wording written for the test, NOT a client text; only ever a refusal's
+--                specification ("a wording no shape claims is refused"), never a reading.
+-- `check` (T91) names a description row parsecheck also asserts on its own. The `targets`,
+-- `cooldowns` and `manaSources` lists (T91, docs/SPEC-next.md 4.2 P1 / P4) are read by
+-- Parse.Targets, Parse.Cooldown and Parse.ManaSource; each says its own row shape.
 return {
   descriptions = {
     { src = "probe HT R1",  text = "Heals a friendly target for 40 to 55.",
@@ -172,6 +177,25 @@ return {
     { src = "unverified Hunter|Volley",
       text = "Continuously fires a volley of ammo at the target area, causing 50 Arcane damage to enemy targets within 8 yards every 1 second for 6 sec.",
       refuse = true },
+    -- T91 (docs/SPEC-next.md 4.2 P0 d): the three misreads docs/research/next/R-classes.md 1.1
+    -- ran into. `check` names a row parsecheck also asserts on its own.
+    { src = "tf Priest|Mana Burn|Rank 1",
+      text = "Drains 198 to 210 mana from a target. For each mana drained in this way, the target takes 0.5 Shadow damage.",
+      damage = { min = 0.5, max = 0.5, school = "Shadow" },
+      check = "T91: a decimal amount is one number (Mana Burn's 0.5, never 5)" },
+    { src = "tf Warrior|Execute|Rank 5",
+      text = "Attempt to finish off a wounded foe, causing 600 damage and converting each extra point of rage into 15 additional damage. Only usable on enemies that have 20% or less health.",
+      refuse = true },
+    { src = "tf Paladin|Light's Vigil|Rank 1",
+      text = "Applies Light's Vigil to the target for 30 sec. Your next Holy Shock cast on them triggers no cooldown and causes enemy targets to suffer 175 to 189 Holy damage and refund 75% of Light's Vigil's Mana cost, or allied targets to heal their party for 325 to 343. The Paladin may only have one Light's Vigil active per party.",
+      refuse = true },
+    { src = "tf Paladin|Light's Vigil|Rank 3",
+      text = "Applies Light's Vigil to the target for 30 sec. Your next Holy Shock cast on them triggers no cooldown and causes enemy targets to suffer 380 to 410 Holy damage and refund 75% of Light's Vigil's Mana cost, or allied targets to heal their party for 684 to 724. The Paladin may only have one Light's Vigil active per party.",
+      refuse = true },
+    { src = "tf Priest|Holy Nova|Rank 2",
+      text = "Causes an explosion of holy light around the caster, causing 47 to 55 Holy damage to all enemy targets within 10 yards and healing all party members within 10 yards for 80 to 90. These effects cause no threat.\n\nEach time Holy Fire deals damage, you have a 5% chance for your next Holy Nova to cost no Mana.",
+      damage = { min = 47, max = 55, school = "Holy" }, heal = { min = 80, max = 90 },
+      check = "T91: a 'your next' sentence after the cast's own text leaves that text read" },
     { src = "tf Druid|Bear Form|Shapeshift",
       text = "Shapeshift into a bear, increasing melee attack power by 120, armor contribution from items by 180%, and health by 180. Also protects the caster from Polymorph effects and allows the use of various bear abilities.\n\nThe act of shapeshifting frees the caster of Polymorph and Movement Impairing effects.",
       none = true },
@@ -199,5 +223,83 @@ return {
   ranks = {
     { text = "Rank 1", rank = 1 }, { text = "Rank 11", rank = 11 },
     { text = "Racial Passive", rank = nil }, { text = "Shapeshift", rank = nil }, { text = "", rank = nil },
+  },
+
+  -- T91 (docs/SPEC-next.md 4.2 P1, 4.5): whom a heal reaches, Parse.Targets. `want` is the whole
+  -- table (every field it does not list must be nil); `refuse = true`: nil, with a reason.
+  targets = {
+    { src = "tf Priest|Prayer of Healing|Rank 1",
+      text = "A powerful prayer that heals the target and their party for 179 to 191. Party members must be within 40 yards of target.",
+      want = { targets = "party", from = "target", range = 40 } },
+    { src = "tf Shaman|Chain Heal|Rank 3",
+      text = "Heals the friendly target for 474 to 538, then jumps to heal additional nearby targets. If cast on a party member, the heal will only jump to other party members. Each jump is 50% as effective as the previous target. Heals 3 total targets.",
+      want = { targets = "chain", count = 3, jumps = 2, falloff = 0.5, partyOnly = true } },
+    { src = "tf Priest|Binding Heal|Rank 1",
+      text = "Heals a friendly target and the caster for 236 to 284. Low threat.",
+      want = { targets = "selfAndTarget" } },
+    { src = "tf Priest|Holy Nova|Rank 1",
+      text = "Causes an explosion of holy light around the caster, causing 26 to 30 Holy damage to all enemy targets within 10 yards and healing all party members within 10 yards for 49 to 57. These effects cause no threat.",
+      want = { targets = "party", from = "caster", range = 10 } },
+    { src = "tf Priest|Power Word: Shield|Rank 10",
+      text = "Draws on the soul of the party member to shield them, absorbing 928 damage. Lasts 30 sec. While the shield holds, spellcasting will not be interrupted by damage. Once shielded, the target cannot be shielded again for 15 sec.",
+      want = { targets = "single", lockout = 15 } },
+    { src = "tf Priest|Desperate Prayer|Rank 1", text = "Instantly heals the caster for 145 to 181.",
+      want = { targets = "caster" } },
+    { src = "tf Priest|Divine Grace|Rank 1",
+      text = "Instantly heals a friendly target below 50% Health for 145 to 181 and removes Weakened Soul from that target. Cannot be cast on self.",
+      want = { targets = "single", belowPct = 50 } },
+    { src = "tf Druid|Tranquility|Rank 4",
+      text = "Regenerates all nearby party members within 20 yards for 285 every 2 sec for 10 sec. Druid must channel to maintain the spell.",
+      want = { targets = "party", from = "caster", range = 20 } },
+    { src = "tf Druid|Wild Growth|Rank 3",
+      text = "Heals the target and their party for 679 over 7 sec. Party members must be within 43 yards of target. The amount healed is applied quickly at first, and slows down as Wild Growth reaches its full duration.",
+      want = { targets = "party", from = "target", range = 43 } },
+    { src = "tf Druid|Healing Touch|Rank 11", text = "Heals a friendly target for 2,139 to 2,525.",
+      want = { targets = "single" } },
+    { src = "tf Priest|Contingency Plan|Rank 1",
+      text = "Place a Holy ward on an ally for 30 sec. The next time this ally takes damage dropping their Health below 35%, they will gain a shield absorbing 155 damage and begin healing for 125 Health over 15 sec. A target may be affected by only one Contingency Plan.",
+      refuse = true },
+    { src = "synthetic -- not a client text: a reach wording no shape claims",
+      text = "Heals up to 5 raid members within 40 yards for 100 to 120.",
+      refuse = true },
+  },
+
+  -- T91: a tooltip line's right text, Parse.Cooldown -> seconds (nil: not a cooldown).
+  cooldowns = {
+    { src = "tf Paladin|Holy Shock|Rank 1", text = "10 sec cooldown", secs = 10 },
+    { src = "tf Shaman|Riptide|Rank 1",     text = "6 sec cooldown",  secs = 6 },
+    { src = "tf Druid|Innervate|",          text = "6 min cooldown",  secs = 360 },
+    { src = "tf Paladin|Divine Intervention|", text = "1 hour cooldown", secs = 3600 },
+    { src = "tf Priest|Shadowform|",        text = "1.5 sec cooldown", secs = 1.5 },
+    { src = "tf Priest|Holy Shock|Rank 1 (range)", text = "40 yd range", secs = nil },
+    { src = "tf Warrior|Execute|Rank 5 (range)", text = "Melee Range", secs = nil },
+    { src = "tf (empty right text)",        text = "",                secs = nil },
+    { src = "synthetic -- a duration that is not a cooldown", text = "10 sec", secs = nil },
+  },
+
+  -- T91 (docs/SPEC-next.md 4.2 P4): mana a buff, totem or blessing gives, Parse.ManaSource.
+  -- `want` is the whole table; `none = true`: nil.
+  manaSources = {
+    { src = "tf Shaman|Mana Tide Totem|Rank 3",
+      text = "Summons a Mana Tide Totem with 5 health at the feet of the caster for 12 sec that restores 290 mana every 3 seconds to group members within 30 yards.",
+      want = { kind = "rate", mana = 290, period = 3, dur = 12 } },
+    { src = "tf Shaman|Mana Spring Totem|Rank 4",
+      text = "Summons a Mana Spring Totem with 5 health at the feet of the caster for 5 min that restores 10 mana every 2 seconds to group members within 30 yards.",
+      want = { kind = "rate", mana = 10, period = 2, dur = 300 } },
+    { src = "tf Paladin|Blessing of Wisdom|Rank 1",
+      text = "Places a Blessing on the friendly target, restoring 12 mana every 5 seconds for 1 hour. Players may only have one Blessing on them per Paladin at any one time.",
+      want = { kind = "rate", mana = 12, period = 5, dur = 3600 } },
+    { src = "tf Druid|Innervate|",
+      text = "Increases the target's Mana regeneration by 400% and allows 100% of the target's Mana regeneration to continue while casting. Lasts 20 sec.",
+      want = { kind = "regen", regenPct = 400, castingPct = 100, dur = 20 } },
+    { src = "tf Warlock|Life Tap|Rank 1",
+      text = "Converts 30 Health into 30 Mana for you. Spirit increases the amount converted.",
+      none = true },
+    { src = "tf Priest|Mana Burn|Rank 1",
+      text = "Drains 198 to 210 mana from a target. For each mana drained in this way, the target takes 0.5 Shadow damage.",
+      none = true },
+    { src = "synthetic -- not a client text: a regeneration increase that does not say what continues while casting",
+      text = "Increases your Mana regeneration by 50%. Lasts 10 sec.",
+      none = true },
   },
 }

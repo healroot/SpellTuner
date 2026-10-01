@@ -176,15 +176,19 @@ end
 --------------------------------------------------------------------------------
 do
     local weird = { nil, 5, {}, "", string.rep("1 2 ", 500) }
-    local funcs = { P.Clean, P.Description, P.Cost, P.Cast, P.Rank }
+    -- T91: the readers by name, so a missing one fails here rather than
+    -- ending ipairs early on a nil.
+    local names = { "Clean", "Description", "Cost", "Cast", "Rank",
+        "Targets", "Cooldown", "Lockout", "ManaSource" }
     local allGood = true
     local detail = nil
     local function tryAll(v, label)
-        for _, f in ipairs(funcs) do
-            local raised = not pcall(f, v)
+        for _, name in ipairs(names) do
+            local f = P[name]
+            local raised = type(f) ~= "function" or not pcall(f, v)
             if raised then
                 allGood = false
-                if not detail then detail = "raised on " .. label end
+                if not detail then detail = "Parse." .. name .. " raised on " .. label end
             end
         end
     end
@@ -194,6 +198,9 @@ do
     for _, e in ipairs(fixture.costs) do tryAll(e.text, e.text) end
     for _, e in ipairs(fixture.casts) do tryAll(e.text, e.text) end
     for _, e in ipairs(fixture.ranks) do tryAll(e.text, e.text) end
+    for _, e in ipairs(fixture.targets) do tryAll(e.text, e.src) end
+    for _, e in ipairs(fixture.cooldowns) do tryAll(e.text, e.src) end
+    for _, e in ipairs(fixture.manaSources) do tryAll(e.text, e.src) end
     check("Parse never raises, whatever it is given", allGood, detail)
 end
 
@@ -354,6 +361,167 @@ do
         #bad == 0 and hammerGood,
         string.format("read as damage: %s; hammer=%s", (#bad == 0) and "none" or table.concat(bad, ", "),
             Fmt(hammer and hammer.damage)))
+end
+
+--------------------------------------------------------------------------------
+-- 13 (T91, docs/SPEC-next.md 4.2 P0 d): the description rows the fixture
+-- names with `check` -- a decimal amount is one number, and a "your next"
+-- sentence after the cast's own text leaves that text read. (Execute's
+-- "15 additional damage" and Light's Vigil's "Your next Holy Shock ..." are
+-- `refuse` rows: item 2b checks each.)
+--------------------------------------------------------------------------------
+for _, e in ipairs(fixture.descriptions) do
+    if e.check then
+        local got = P.Description(e.text)
+        local good = got ~= nil and PartsEqual(e.heal, got.heal) and PartsEqual(e.damage, got.damage)
+            and e.absorb == got.absorb
+        check(e.check, good, string.format("%s -> heal %s damage %s", e.src,
+            Fmt(got and got.heal), Fmt(got and got.damage)))
+    end
+end
+
+-- A whole table, every key sorted, for the T91 rows below.
+local function FmtTable(t)
+    if type(t) ~= "table" then return tostring(t) end
+    local keys = {}
+    for k in pairs(t) do keys[#keys + 1] = k end
+    table.sort(keys)
+    local parts = {}
+    for _, k in ipairs(keys) do parts[#parts + 1] = k .. "=" .. tostring(t[k]) end
+    return "{" .. table.concat(parts, ", ") .. "}"
+end
+
+-- Equal in both directions: every wanted field read, nothing else.
+local function SameTable(want, got)
+    if type(got) ~= "table" then return false end
+    for k, v in pairs(want) do if got[k] ~= v then return false end end
+    for k, v in pairs(got) do if want[k] ~= v then return false end end
+    return true
+end
+
+-- Calls Parse[name] if the parser has it; a missing reader or a raise is
+-- reported as such, never as a reading.
+local function Try(name, text)
+    local f = P[name]
+    if type(f) ~= "function" then return false, "Parse." .. name .. " missing" end
+    local okc, a, b = pcall(f, text)
+    if not okc then return false, "raised: " .. tostring(a) end
+    return true, a, b
+end
+
+--------------------------------------------------------------------------------
+-- 14 (T91, 4.2 P1 / 4.5): whom a heal reaches, one check per fixture row --
+-- the party (the target's, the caster's, with the range the text gives), a
+-- chain with its count and falloff, the target and the caster, the caster
+-- alone, one target with a lockout or a health condition; a wording no shape
+-- claims is refused with a reason, never read as one target.
+--------------------------------------------------------------------------------
+for _, e in ipairs(fixture.targets) do
+    local okt, got, why = Try("Targets", e.text)
+    if not okt then got, why = nil, nil end
+    if e.refuse then
+        check("T91 targets, refused: " .. e.src, okt and got == nil and type(why) == "string",
+            "got " .. FmtTable(got) .. " why " .. tostring(why))
+    else
+        check("T91 targets: " .. e.src .. " -> " .. FmtTable(e.want), okt and SameTable(e.want, got),
+            "got " .. FmtTable(got) .. (why and (" why " .. tostring(why)) or ""))
+    end
+end
+
+--------------------------------------------------------------------------------
+-- 15 (T91): a tooltip line's right text reads as a cooldown in seconds, every
+-- unit the export uses; any other right text is nil
+--------------------------------------------------------------------------------
+do
+    local allGood, detail = true, nil
+    for _, e in ipairs(fixture.cooldowns) do
+        local okc, got = Try("Cooldown", e.text)
+        if not okc or got ~= e.secs then
+            allGood = false
+            if not detail then
+                detail = string.format("%q -> %s, want %s", e.text, tostring(got), tostring(e.secs))
+            end
+        end
+    end
+    check("T91: cooldown lines read as seconds; other right texts nil", allGood, detail)
+end
+
+--------------------------------------------------------------------------------
+-- 16 (T91): the lockout phrase -- Power Word: Shield's "cannot be shielded
+-- again for 15 sec" is 15; a text without one (Renew, Holy Shock) is nil
+--------------------------------------------------------------------------------
+do
+    local ok1, pws = Try("Lockout", "Draws on the soul of the party member to shield them, absorbing 928 damage. Lasts 30 sec. While the shield holds, spellcasting will not be interrupted by damage. Once shielded, the target cannot be shielded again for 15 sec.")
+    local ok2, renew = Try("Lockout", "Heals the target of 45 damage over 15 sec.")
+    local ok3, shock = Try("Lockout", "Blasts the target with Holy energy, causing 129 to 139 Holy damage to an enemy, or 110 to 118 healing to an ally.")
+    check("T91: the lockout phrase reads as seconds (PW:S 15), nil without one",
+        ok1 and ok2 and ok3 and pws == 15 and renew == nil and shock == nil,
+        string.format("pws=%s renew=%s shock=%s", tostring(pws), tostring(renew), tostring(shock)))
+end
+
+--------------------------------------------------------------------------------
+-- 17 (T91, 4.2 P4): the two mana-source shapes, one check per fixture row --
+-- "restores N mana every P sec" with the source's own duration, Innervate's
+-- regeneration increase with what continues while casting; everything else
+-- (a conversion, a drain, a shape missing a part) nil
+--------------------------------------------------------------------------------
+for _, e in ipairs(fixture.manaSources) do
+    local okm, got = Try("ManaSource", e.text)
+    if e.none then
+        check("T91 mana source, none: " .. e.src, okm and got == nil, "got " .. FmtTable(got))
+    else
+        check("T91 mana source: " .. e.src .. " -> " .. FmtTable(e.want), okm and SameTable(e.want, got),
+            "got " .. FmtTable(got))
+    end
+end
+
+--------------------------------------------------------------------------------
+-- 18 (T91): the new readers invent no number -- every count, range, percent,
+-- amount and period they return is in the text (falloff is the text's percent
+-- over 100, jumps its count less one, a duration the text's number times its
+-- unit: each checked back against that number)
+--------------------------------------------------------------------------------
+do
+    local allGood, detail = true, nil
+    local function fail(msg)
+        allGood = false
+        if not detail then detail = msg end
+    end
+    local function need(src, field, n, allowed)
+        if n ~= nil and not allowed[n] then fail(src .. ": " .. field .. "=" .. tostring(n) .. " not in text") end
+    end
+    local function needDur(src, d, allowed)
+        if d == nil then return end
+        for _, u in ipairs({ 1, 60, 3600 }) do if allowed[d / u] then return end end
+        fail(src .. ": dur=" .. tostring(d) .. " is no number of the text in any unit")
+    end
+    for _, e in ipairs(fixture.targets) do
+        local okt, t = Try("Targets", e.text)
+        if not okt then fail(e.src .. ": " .. tostring(t))
+        elseif type(t) == "table" then
+            local allowed = NumbersIn(e.text)
+            need(e.src, "range", t.range, allowed)
+            need(e.src, "count", t.count, allowed)
+            need(e.src, "belowPct", t.belowPct, allowed)
+            need(e.src, "charges", t.charges, allowed)
+            need(e.src, "lockout", t.lockout, allowed)
+            need(e.src, "falloff*100", t.falloff and t.falloff * 100, allowed)
+            need(e.src, "jumps+1", t.jumps and t.jumps + 1, allowed)
+        end
+    end
+    for _, e in ipairs(fixture.manaSources) do
+        local okm, m = Try("ManaSource", e.text)
+        if not okm then fail(e.src .. ": " .. tostring(m))
+        elseif type(m) == "table" then
+            local allowed = NumbersIn(e.text)
+            need(e.src, "mana", m.mana, allowed)
+            need(e.src, "period", m.period, allowed)
+            need(e.src, "regenPct", m.regenPct, allowed)
+            need(e.src, "castingPct", m.castingPct, allowed)
+            needDur(e.src, m.dur, allowed)
+        end
+    end
+    check("T91: Targets and ManaSource invent no number", allGood, detail)
 end
 
 --------------------------------------------------------------------------------
