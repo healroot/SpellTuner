@@ -152,10 +152,10 @@ UI.PALETTE = {
 -- T29: every font object the kit builds, by name, so UI/Theme_Forever.lua's
 -- UI.ApplyFonts can resize them in place. Nothing on TBC reads it.
 UI.fontObjects = {}
-local function MakeFont(name, size, r, g, b)
+local function MakeFont(name, size, r, g, b, face)
     local f = _G[name] or CreateFont(name)
     UI.fontObjects[name] = f
-    f:SetFont(GameFontNormal:GetFont(), size, "")
+    f:SetFont(face or GameFontNormal:GetFont(), size, "")
     f:SetTextColor(r, g, b, 1)
     f:SetShadowColor(0, 0, 0)
     f:SetShadowOffset(1, -1)
@@ -170,6 +170,49 @@ UI.FONT_SMALL = "MANADEMON_FONT_SMALL";                 MakeFont(UI.FONT_SMALL, 
 UI.FONT_SPECIAL = "MANADEMON_FONT_SPECIAL";             MakeFont(UI.FONT_SPECIAL, 12, 1, 1, 1)
 UI.FONT_CLASS_TITLE = "MANADEMON_FONT_CLASS_TITLE";     MakeFont(UI.FONT_CLASS_TITLE, 14, accent[1], accent[2], accent[3])
 UI.FONT_CLASS = "MANADEMON_FONT_CLASS";                 MakeFont(UI.FONT_CLASS, 13, accent[1], accent[2], accent[3])
+-- T75 (P31, review U26): the two number fonts (Arial Narrow: narrow,
+-- even-width digits) are the kit's, not the theme's -- they carry no colour,
+-- so both lines have them. Additive: every shared caller asks for them behind
+-- the theme (`UI.FONT_NUM_SMALL or UI.FONT_SMALL` under UI.THEMED), and a pane
+-- adopts them when it is next touched. UI/Theme_Forever.lua re-makes them at
+-- the same face and size and resizes them with the offset.
+UI.FONT_NUM = "MANADEMON_FONT_NUM";                     MakeFont(UI.FONT_NUM, 13, 1, 1, 1, "Fonts\\ARIALN.TTF")
+UI.FONT_NUM_SMALL = "MANADEMON_FONT_NUM_SMALL";         MakeFont(UI.FONT_NUM_SMALL, 11, 1, 1, 1, "Fonts\\ARIALN.TTF")
+
+-- T75 (P31, review U26): one size scale for controls -- a button, a small
+-- button, a row and a toolbar (the nav's groups and, under the theme, its
+-- view tabs). Additive: a pane adopts these when it is next touched; nothing
+-- reads them on TBC.
+UI.H = { button = 20, small = 18, row = 20, toolbar = 22 }
+
+-- T75 (P31, review U30): the width a text takes in a font. A button's own font
+-- string is measured when it holds that text (the client's), else one hidden
+-- measuring string set to the font -- so a width follows the font offset
+-- whenever it is asked again, never a character count.
+-- A font string anchored inside a button may be cut to the button's width,
+-- so its unbounded width is asked first where the client has it.
+local measure
+local function Natural(fs)
+    local w = fs.GetUnboundedStringWidth and fs:GetUnboundedStringWidth()
+    if type(w) == "number" and w > 0 then return w end
+    w = fs:GetStringWidth()
+    if type(w) == "number" and w > 0 then return w end
+    return nil
+end
+function UI.TextWidth(text, font, fs)
+    text = text or ""
+    if fs and fs.GetText and fs.GetStringWidth and fs:GetText() == text then
+        local w = Natural(fs)
+        if w then return w end
+    end
+    if not measure then
+        measure = UIParent:CreateFontString(nil, "OVERLAY", font or UI.FONT)
+        measure:Hide()
+    end
+    measure:SetFontObject(font or UI.FONT)
+    measure:SetText(text)
+    return Natural(measure) or 0
+end
 
 --------------------------------------------------------------------------------
 -- Tooltip: a private GameTooltip with the flat backdrop. The 2.5.x tooltip
@@ -334,6 +377,55 @@ function UI.CreateFrame(name, parent, width, height, isTransparent)
     return f
 end
 
+-- T75 (P31, review U14): the flat resize grip, under the theme -- three 1-px
+-- diagonal lines in the corner of the 16x16 hit area (the mockups' grip),
+-- each from (-d - 2, 2) to (-2, d + 2) off the grip's bottom-right corner for
+-- d = 4, 8, 12; the `muted` grey, the accent under the pointer. A line is the
+-- client's Line region (CreateLine: start, end, a UI.px(1) thickness) where
+-- the frame makes one, else a texture one pixel high turned 45 degrees about
+-- the same centre. Re-laid by UI.RestylePixels. grip.lines holds them.
+local GRIP_STEPS = { 4, 8, 12 }
+local function GripLine(grip, d)
+    local line = grip.CreateLine and grip:CreateLine(nil, "OVERLAY")
+    local Lay
+    if line and line.SetStartPoint and line.SetEndPoint then
+        line.kind = "line"
+        Lay = function(l)
+            if l.SetThickness then l:SetThickness(UI.px(1, grip)) end
+            l:SetStartPoint("BOTTOMRIGHT", grip, -l.step - 2, 2)
+            l:SetEndPoint("BOTTOMRIGHT", grip, -2, l.step + 2)
+        end
+    else
+        line = grip:CreateTexture(nil, "OVERLAY")
+        line.kind = "texture"
+        Lay = function(t)
+            t:SetSize(t.step * 1.41421356, UI.px(1, grip))
+            t:ClearAllPoints()
+            t:SetPoint("CENTER", grip, "BOTTOMRIGHT", -t.step / 2 - 2, t.step / 2 + 2)
+            if t.SetRotation then t:SetRotation(math.pi / 4) end
+        end
+    end
+    line.step = d
+    return line, Lay
+end
+function UI.FlatGrip(grip)
+    grip.lines = {}
+    local r, g, b = UI.RGB("muted")
+    for i, d in ipairs(GRIP_STEPS) do
+        local line, Lay = GripLine(grip, d)
+        line:SetColorTexture(r, g, b, 1)
+        grip.lines[i] = line
+        Lay(line)
+        UI.PixelLayout(line, Lay)
+    end
+    local function Tint(token)
+        local cr, cg, cb = UI.RGB(token)
+        for _, t in ipairs(grip.lines) do t:SetColorTexture(cr, cg, cb, 1) end
+    end
+    grip:SetScript("OnEnter", function() Tint("accent") end)
+    grip:SetScript("OnLeave", function() Tint("muted") end)
+end
+
 -- Frame with a 20px header bar above it (title in class colour, red x).
 -- T32: opts (additive; TBC never passes it) -- opts.resizable adds a 16x16 grip
 -- at the bottom-right corner (SetResizable, StartSizing); its mouse-up calls
@@ -393,6 +485,29 @@ function UI.CreateMovableFrame(title, name, width, height, strata, level, notUse
         header.backBtn:Hide()
     end
 
+    -- T75 (P31, review U31): under the theme the title sits between the back
+    -- button and the x -- centred on the header while there is no back button
+    -- (the same 20 + 4 kept clear on each side), centred on what is left once
+    -- the back button shows, never under either; one line, cut rather than
+    -- wrapped. TBC keeps the title centred on the whole header.
+    if UI.THEMED then
+        local fs = header.text
+        if fs.SetWordWrap then fs:SetWordWrap(false) end
+        local function LayTitle()
+            local back = header.backBtn
+            local left = (back and back:IsShown()) and back:GetWidth() or header.closeBtn:GetWidth()
+            fs:ClearAllPoints()
+            fs:SetPoint("LEFT", header, "LEFT", left + 4, 0)
+            fs:SetPoint("RIGHT", header.closeBtn, "LEFT", -4, 0)
+        end
+        header.LayTitle = LayTitle
+        LayTitle()
+        if header.backBtn then
+            header.backBtn:HookScript("OnShow", LayTitle)
+            header.backBtn:HookScript("OnHide", LayTitle)
+        end
+    end
+
     if opts and opts.resizable then -- T32
         f:SetResizable(true)
         local grip = CreateFrame("Button", nil, f)
@@ -400,9 +515,13 @@ function UI.CreateMovableFrame(title, name, width, height, strata, level, notUse
         grip:SetSize(16, 16)
         grip:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -1, 1)
         grip:SetFrameLevel(f:GetFrameLevel() + 20)
-        grip:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
-        grip:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
-        grip:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
+        if UI.THEMED then
+            UI.FlatGrip(grip)
+        else
+            grip:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+            grip:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
+            grip:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
+        end
         grip:SetScript("OnMouseDown", function(_, button)
             if button ~= "LeftButton" then return end
             f:StartSizing("BOTTOMRIGHT")
@@ -533,6 +652,19 @@ function UI.CreateButton(parent, text, buttonColor, size, noBorder, noBackground
     if parent then b:SetFrameLevel(parent:GetFrameLevel() + 1) end
     b:SetText(text or "")
     b:SetSize(size[1], size[2])
+    -- T75 (P31, review U31): a sheet's title row keeps its x at the right; a
+    -- button anchored by its TOPRIGHT to the sheet's TOPRIGHT (a caller's own
+    -- title-row control: the bindings sheet's Done) is laid left of the x
+    -- instead, at the same offsets. Only on a sheet that has the x (the theme).
+    if parent and parent.isSheet and parent.closeBtn then
+        local setPoint = b.SetPoint
+        function b:SetPoint(p, rel, rp, x, y, ...)
+            if p == "TOPRIGHT" and rel == parent and rp == "TOPRIGHT" then
+                return setPoint(self, "TOPRIGHT", parent.closeBtn, "TOPLEFT", x or 0, y or 0)
+            end
+            return setPoint(self, p, rel, rp, x, y, ...)
+        end
+    end
 
     b.color, b.hoverColor = UI.ButtonColors(buttonColor)
 
@@ -825,14 +957,15 @@ function UI.CreateNavFrame(title, name, width, height, groups, onCreate, onShow,
     local function BuildViews(group)
         ReleaseViews()
         local prev
+        local themed = UI.THEMED
         for _, v in ipairs(group.views or {}) do
             if not v.hidden then
                 local i = #nav.viewButtons + 1
-                local bw = math.max(64, #v.text * 8 + 16)
+                local bw, bh = math.max(64, #v.text * 8 + 16), 20
                 local b = nav.viewButtonPool[i]
                 if b then
                     b:SetText(v.text)
-                    b:SetSize(bw, 20)
+                    b:SetSize(bw, bh)
                     b:ClearAllPoints()
                     b:SetBackdropColor(unpack(b.color))
                     b:SetScript("OnEnter", function(self) self:SetBackdropColor(unpack(self.hoverColor)) end)
@@ -841,13 +974,31 @@ function UI.CreateNavFrame(title, name, width, height, groups, onCreate, onShow,
                     if b.selBar then b.selBar:Hide(); b.selHover:Hide() end
                     b:Show()
                 else
-                    b = UI.CreateButton(f, v.text, "accent-hover", { bw, 20 },
+                    b = UI.CreateButton(f, v.text, "accent-hover", { bw, bh },
                         false, false, UI.FONT_TITLE, UI.FONT_TITLE_DISABLE)
                     nav.viewButtonPool[i] = b
                 end
                 b.id = v.id
+                if themed then
+                    -- T75 (P31, review U30, U31): under the theme a tab is as
+                    -- wide as its text (measured, 12 each side) and as tall as
+                    -- the nav's group buttons, so the two rows line up; tabs
+                    -- overlap by one pixel. TBC keeps #text * 8 + 16 by 20.
+                    local fs = b.GetFontString and b:GetFontString()
+                    b:SetSize(math.max(40, math.ceil(UI.TextWidth(v.text, UI.FONT_TITLE, fs)) + 24),
+                        UI.H.toolbar)
+                end
                 if prev then b:SetPoint("LEFT", prev, "RIGHT", -1, 0)
                 else b:SetPoint("TOPLEFT", left, "TOPRIGHT", NAV_PAD, -2) end
+                if prev then
+                    local after = prev
+                    UI.PixelLayout(b, function(btn)
+                        btn:ClearAllPoints()
+                        btn:SetPoint("LEFT", after, "RIGHT", -UI.px(1, btn), 0)
+                    end)
+                else
+                    UI.pixelLayouts[b] = nil -- a pooled button now first: no stale neighbour
+                end
                 nav.viewButtons[#nav.viewButtons + 1] = b
                 prev = b
             end
@@ -941,11 +1092,19 @@ function UI.CreateNavFrame(title, name, width, height, groups, onCreate, onShow,
 
     local prev
     for _, g in ipairs(groups) do
-        local b = UI.CreateButton(left, g.text, "accent-hover", { NAV_W - 2, 22 }, false, false,
+        local b = UI.CreateButton(left, g.text, "accent-hover", { NAV_W - 2, UI.H.toolbar }, false, false,
             UI.FONT_TITLE, UI.FONT_TITLE_DISABLE)
         b.id = g.id
         if prev then b:SetPoint("TOP", prev, "BOTTOM", 0, 1)
         else b:SetPoint("TOP", left, "TOP", 0, -2) end
+        -- T75 (P31): the groups overlap by one pixel, not one unit (UI.PIXEL only)
+        if prev then
+            local above = prev
+            UI.PixelLayout(b, function(btn)
+                btn:ClearAllPoints()
+                btn:SetPoint("TOP", above, "BOTTOM", 0, UI.px(1, btn))
+            end)
+        end
         nav.buttons[#nav.buttons + 1] = b
         prev = b
     end
@@ -984,6 +1143,10 @@ function UI.CreateNavBox(parent, width, height, groups, onSelect)   -- one hook:
         for _, v in ipairs(group.views or {}) do
             local b = UI.CreateButton(box, v.text, "accent-hover", { math.max(56, #v.text * 7 + 14), 18 },
                 false, false, UI.FONT_SMALL, UI.FONT_SMALL)
+            if UI.THEMED then -- T75 (P31): measured, 8 each side (TBC: #text * 7 + 14)
+                local fs = b.GetFontString and b:GetFontString()
+                b:SetWidth(math.max(40, math.ceil(UI.TextWidth(v.text, UI.FONT_SMALL, fs)) + 16))
+            end
             b.id = v.id
             if prev then b:SetPoint("LEFT", prev, "RIGHT", -1, 0)
             else b:SetPoint("TOPLEFT", left, "TOPRIGHT", 6, -2) end
@@ -1476,8 +1639,10 @@ end
 -- mouse and wheel input there (Cell's CreateMask); whatever is outside that
 -- region stays live (the Spells rail while the picker is open).
 --
--- UI.CreateMask(region, level) -> mask, hidden; at `level` (default the
---   region's +30), over the whole region
+-- UI.CreateMask(region, level, text) -> mask, hidden; at `level` (default the
+--   region's +30), over the whole region. T75 (P31, review U31): an optional
+--   line of text centred on it, as Cell's mask carries (mask:SetText(t) sets
+--   or clears it later); no caller on TBC passes one.
 -- UI.CreateSheet(pane, maskRegion, w, h, title) -> sheet, hidden; a child of
 --   the pane at its level +50, the mask over maskRegion (default the pane) at
 --   the pane's +30, a 20-px title row, the `pane` fill and a 1-px accent edge;
@@ -1485,7 +1650,7 @@ end
 --   area under the title. Only one sheet is open at a time: showing one hides
 --   the other.
 --------------------------------------------------------------------------------
-function UI.CreateMask(region, level)
+function UI.CreateMask(region, level, text)
     local m = CreateFrame("Frame", nil, region)
     m:SetAllPoints(region)
     m:SetFrameLevel(level or (region:GetFrameLevel() + 30))
@@ -1496,6 +1661,18 @@ function UI.CreateMask(region, level)
     local tex = m:CreateTexture(nil, "BACKGROUND")
     tex:SetAllPoints(m)
     tex:SetColorTexture(c[1], c[2], c[3], c[4] or 0.7)
+    function m:SetText(t)
+        if not m.text then
+            if t == nil or t == "" then return end
+            local fs = m:CreateFontString(nil, "OVERLAY", UI.FONT)
+            fs:SetPoint("LEFT", m, "LEFT", 8, 0)
+            fs:SetPoint("RIGHT", m, "RIGHT", -8, 0)
+            fs:SetTextColor(UI.RGB("text2"))
+            m.text = fs
+        end
+        m.text:SetText(t or "")
+    end
+    if text then m:SetText(text) end
     m:Hide()
     return m
 end
@@ -1530,6 +1707,24 @@ function UI.CreateSheet(pane, maskRegion, w, h, title)
     s.title:SetPoint("LEFT", bar, "LEFT", 7, 0)
     s.title:SetText(title or "")
     function s:SetTitle(t) s.title:SetText(t or "") end
+
+    -- T75 (P31, review U31): under the theme a sheet has the window's 20x20 x
+    -- at the right of its title row (inside the 1-px edge); a click hides the
+    -- sheet like Done, so the OnHide hooks (the mask, the ESC entry) run. A
+    -- title-row button the caller anchors to the sheet's TOPRIGHT goes left of
+    -- it (UI.CreateButton). TBC builds no sheet.
+    s.isSheet = true
+    if UI.THEMED then
+        local x = UI.CreateButton(s, "x", "red", { 20, 20 }, false, false, UI.FONT_SPECIAL, UI.FONT_SPECIAL)
+        x:SetPoint("TOPRIGHT", s, "TOPRIGHT", -1, -1)
+        UI.PixelLayout(x, function(btn)
+            local e = UI.px(1, btn)
+            btn:ClearAllPoints()
+            btn:SetPoint("TOPRIGHT", s, "TOPRIGHT", -e, -e)
+        end)
+        x:SetScript("OnClick", function() s:Hide() end)
+        s.closeBtn = x
+    end
 
     local body = CreateFrame("Frame", nil, s)
     body:SetPoint("TOPLEFT", s, "TOPLEFT", 1, -22)
@@ -1786,6 +1981,20 @@ function UI.CreateCheckButton(parent, label, onClick, ...)
     cb:SetSize(14, 14)
     if label and strtrim(label) ~= "" then
         cb:SetHitRectInsets(0, -cb.label:GetStringWidth() - 5, 0, 0)
+    end
+    -- T75 (P31, review U30): under the theme the click area is measured from
+    -- the label again whenever the box shows (the font offset may have moved
+    -- since it was made) and by cb:Measure(); TBC measures once, as before.
+    if UI.THEMED then
+        function cb:Measure()
+            local t = cb.label:GetText()
+            if t and strtrim(t) ~= "" then
+                cb:SetHitRectInsets(0, -UI.TextWidth(t, UI.FONT, cb.label) - 5, 0, 0)
+            else
+                cb:SetHitRectInsets(0, 0, 0, 0)
+            end
+        end
+        cb:HookScript("OnShow", function() cb:Measure() end)
     end
 
     -- T74 (P30): the colours are tokens, the edge one pixel under UI.PIXEL

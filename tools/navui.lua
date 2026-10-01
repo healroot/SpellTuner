@@ -8,6 +8,11 @@
 -- T31 (docs/SPEC-forever-ui.md 3.1, 3.2, 6.2, 6.4) adds ten: a rail group (no
 -- top row, the content anchored per group, rail rows as views, one reorder per
 -- drag), the view-button pool, a sheet's mask, and the dropdown lists' strata.
+--
+-- T75 (P31 of docs/PLAN-refactor-ux.md) adds three: on TBC the view tabs keep
+-- #text * 8 + 16 by 20; under the theme (UI.THEMED switched on for Style.lua's
+-- gate, with the stub's opt-in geometry) a tab is as wide as its text and the
+-- nav's group row and view row share a top and a height.
 local here = arg[0]:match("^(.*)/[^/]+$")
 HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
@@ -353,6 +358,59 @@ check("the second list is above the first", t1.sub:IsShown()
         t1.sub:GetFrameStrata(), t1.sub:GetFrameLevel()))
 t1:Close()
 UI.LIST_STRATA, UI.OnPopup = nil, nil
+
+--------------------------------------------------------------------------------
+-- T75 (P31 of docs/PLAN-refactor-ux.md, review U30, U31): the view tabs' widths
+-- and the two rows' alignment. On TBC the tabs keep #text * 8 + 16 by 20 (the
+-- guard); under the theme (UI.THEMED, switched on here for Style.lua's gate
+-- alone, with the stub's opt-in geometry and its text metric: 6 px a
+-- character at 12) a tab is its text's width plus 12 each side and as tall as
+-- the group buttons, both rows starting 2 below the window's top.
+--------------------------------------------------------------------------------
+local function TabGroups()
+    return {
+        { id = "spells", text = "Spells", views = {
+            { id = "ht", text = "Healing Touch" }, { id = "rg", text = "Regrowth" } } },
+        { id = "settings", text = "Settings", views = { { id = "general", text = "General" } } },
+    }
+end
+check("on TBC view tabs are #text * 8 + 16 by 20", (function()
+    local navT = UI.CreateNavFrame("SpellTuner", "MDNavTabsTest", 860, 560, TabGroups(),
+        function(_, _, content) return CreateFrame("Frame", nil, content) end)
+    navT:Select("spells", "ht")
+    local a, b = navT.viewButtons[1], navT.viewButtons[2]
+    return UI.THEMED == false and a ~= nil and b ~= nil and a:GetWidth() == 13 * 8 + 16
+        and b:GetWidth() == 8 * 8 + 16 and a:GetHeight() == 20 and navT.buttons[1]:GetHeight() == 22
+end)())
+
+local themedTabs, themedRows
+do
+    UI.THEMED = true
+    S.Geometry(true)
+    local nav3 = UI.CreateNavFrame("SpellTuner", "MDNavThemedTest", 860, 560, TabGroups(),
+        function(_, _, content) return CreateFrame("Frame", nil, content) end)
+    nav3:Select("spells", "ht")
+    local a, b = nav3.viewButtons[1], nav3.viewButtons[2]
+    local want = function(text) return #text * 6 + 24 end
+    themedTabs = { a and a:GetWidth(), b and b:GetWidth(), want("Healing Touch"), want("Regrowth") }
+    local g = nav3.buttons[1]
+    local gp = { g:GetPoint(1) }
+    local tp = { a:GetPoint(1) }
+    themedRows = { gp, tp, g:GetHeight(), a:GetHeight() }
+    S.Geometry(false)
+    UI.THEMED = false
+end
+check("under the theme a view tab is as wide as its text",
+    themedTabs[1] == themedTabs[3] and themedTabs[2] == themedTabs[4],
+    string.format("%s / %s, want %s / %s", tostring(themedTabs[1]), tostring(themedTabs[2]),
+        tostring(themedTabs[3]), tostring(themedTabs[4])))
+do
+    local gp, tp, gh, th = themedRows[1], themedRows[2], themedRows[3], themedRows[4]
+    check("under the theme the nav and view rows share a top and a height",
+        gp[2] ~= nil and gp[2] == tp[2] and gp[3] == "TOP" and tp[3] == "TOPRIGHT"
+          and gp[5] == -2 and tp[5] == -2 and gh == 22 and th == 22 and (UI.H or {}).toolbar == 22,
+        string.format("tops %s / %s, heights %s / %s", tostring(gp[5]), tostring(tp[5]), tostring(gh), tostring(th)))
+end
 
 print(string.format("\n%d ok, %d failed", ok, #fails))
 if #fails > 0 then for _, m in ipairs(fails) do print("  FAIL " .. m) end; os.exit(1) end

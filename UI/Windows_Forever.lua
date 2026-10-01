@@ -61,9 +61,13 @@ Win.ROLES = {
 -- 6.7: the main window's size per group, default and minimum. T40: Simulate
 -- goes down to 900 x 560 now that Practice wraps its fight fields onto a
 -- second row and sizes its table to the pane (UI/PracticePanel.lua).
+-- T75 (P31, review U14, mockup M1): Spells and Settings do not reflow (the
+-- rank table and card are a fixed 540, Settings' two columns fit 860 x 560),
+-- so their minimum is their size: a fixed group (Win:Fixed) shows no resize
+-- grip and is always its default size, whatever an older session saved.
 Win.SIZES = {
-    spells   = { w = 860,  h = 560, minW = 860,  minH = 480 },
-    settings = { w = 860,  h = 560, minW = 860,  minH = 480 },
+    spells   = { w = 860,  h = 560, minW = 860,  minH = 560 },
+    settings = { w = 860,  h = 560, minW = 860,  minH = 560 },
     reports  = { w = 1036, h = 646, minW = 1036, minH = 600 },
     simulate = { w = 1036, h = 646, minW = 900,  minH = 560 },
 }
@@ -134,15 +138,29 @@ local function Anchor(frame, x, y)
     frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", x, y)
 end
 
+-- T75 (P31, review U14): a group whose minimum is its default size cannot be
+-- resized -- nothing in it reflows -- so it shows no grip.
+local function IsFixed(def)
+    return type(def) == "table" and def.minW >= def.w and def.minH >= def.h
+end
+function Win:Fixed(key, group)
+    local w = self.windows[key]
+    local sizes = w and w.sizes
+    return IsFixed(sizes and sizes[group or w.group or Win.DEFAULT_GROUP])
+end
+
 -- The size a window takes now: its group's saved size, else the group's
 -- default, never under the minimum; a window without groups keeps its own.
+-- T75: a fixed group is its default size (a size saved before it was fixed
+-- is ignored: there is no grip left to shrink it back with).
 local function SizeFor(w)
     local def = w.sizes and w.sizes[w.group or Win.DEFAULT_GROUP]
     if not def then return nil end
     local sw, sh = def.w, def.h
     local s = Saved(w.key)
     local mine = s and type(s.sizes) == "table" and s.sizes[w.group or Win.DEFAULT_GROUP]
-    if type(mine) == "table" and type(mine[1]) == "number" and type(mine[2]) == "number" then
+    if not IsFixed(def) and type(mine) == "table" and type(mine[1]) == "number"
+        and type(mine[2]) == "number" then
         sw, sh = mine[1], mine[2]
     end
     if sw < def.minW then sw = def.minW end
@@ -160,6 +178,10 @@ local function ApplySize(w)
         f:SetMinResize(def.minW, def.minH)
     end
     f:SetSize(sw, sh)
+    -- T75 (P31, review U14): the grip only where the group can change size
+    if f.resizeGrip then
+        if IsFixed(def) then f.resizeGrip:Hide() else f.resizeGrip:Show() end
+    end
 end
 
 -- Place a registered window: at its saved TOPLEFT, else where it was put this
@@ -253,6 +275,7 @@ function Win:SaveSize(key)
     local group = w.group or Win.DEFAULT_GROUP
     local def = w.sizes[group]
     if not def then return end
+    if IsFixed(def) then self:Place(key); return end -- T75: nothing to save
     local sw, sh = f:GetWidth(), f:GetHeight()
     if type(sw) ~= "number" or type(sh) ~= "number" then return end
     if sw < def.minW then sw = def.minW end

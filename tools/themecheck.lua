@@ -24,6 +24,13 @@
 -- with a 2-px accent bar on the left (its view tab's at the bottom), hover laid
 -- over it, never the hover colour; UI.RestylePixels re-lays a button's edge and
 -- its bar.
+--
+-- T75 (P31, docs/PLAN-refactor-ux.md, review U14, U26, U30, U31): the kit's
+-- layout and sizes. Under tbc (+1) UI.H and the two Arial Narrow fonts are in
+-- the kit, ungated. Under forever (+6) UI.H; the header title between the back
+-- button and the x; a sheet's 20x20 x, with a title-row button laid left of
+-- it; a check box's click area measured from its label when it shows; a
+-- mask's optional line of text; the resize grip as three 1-px Line regions.
 HARNESS_FLAVOUR = { "forever", "tbc" }
 
 local here = arg[0]:match("^(.*)/[^/]+$")
@@ -177,6 +184,22 @@ if S.flavour == "tbc" then
           and offLabel and near(offLabel[1], 0.4) and near(offLabel[3], 0.4),
         string.format("button %s/%s edge %s, check edge %s, %d registered", tostring(ah.color and ah.color[1]),
             tostring(ah.hoverColor and ah.hoverColor[4]), tostring(bd.edgeSize), tostring(cbd.edgeSize), regs))
+
+    -- T75 (P31, review U26): the size scale and the two number fonts are the
+    -- kit's, ungated (additive: no TBC caller reads them)
+    local H = UI.H or {}
+    local function face(name)
+        local o = name and UI.fontObjects and UI.fontObjects[name]
+        if not o then return nil end
+        return o:GetFont()
+    end
+    local np, ns = face(UI.FONT_NUM)
+    local sp, ss = face(UI.FONT_NUM_SMALL)
+    check("tbc: T75: UI.H and the two Arial Narrow fonts are in the kit",
+        H.button == 20 and H.small == 18 and H.row == 20 and H.toolbar == 22
+          and np == "Fonts\\ARIALN.TTF" and ns == 13 and sp == "Fonts\\ARIALN.TTF" and ss == 11,
+        string.format("H %s/%s/%s/%s, num %s %s, small %s %s", tostring(H.button), tostring(H.small),
+            tostring(H.row), tostring(H.toolbar), tostring(np), tostring(ns), tostring(sp), tostring(ss)))
 
     print(string.format("%d ok, %d failed", ok, #fails))
     os.exit(#fails > 0 and 1 or 0)
@@ -519,6 +542,105 @@ do
           and near(act.selBar and act.selBar.w, 2 * e2) and near(fill(act) and fill(act)[4], sel[4]),
         string.format("edge %s, bar %s", tostring(abd.edgeSize), tostring(act.selBar and act.selBar.w)))
     S.physicalHeight = 1080
+end
+
+--------------------------------------------------------------------------------
+-- 11. T75 (P31, review U14, U26, U30, U31): the kit's layout and sizes under
+-- the theme -- the size scale, the header title between the back button and
+-- the x, a sheet's x, a check box's click area measured from its label, a
+-- mask's line of text. The stub's opt-in geometry records the points.
+--------------------------------------------------------------------------------
+do
+    local H = UI.H or {}
+    check("T75: UI.H is the kit's size scale (button 20, small 18, row 20, toolbar 22)",
+        H.button == 20 and H.small == 18 and H.row == 20 and H.toolbar == 22,
+        string.format("%s/%s/%s/%s", tostring(H.button), tostring(H.small), tostring(H.row), tostring(H.toolbar)))
+
+    S.Geometry(true)
+    local function pt(f, i)
+        if not f or not f.GetNumPoints or f:GetNumPoints() < (i or 1) then return {} end
+        return { f:GetPoint(i or 1) }
+    end
+
+    -- the header title: 24 clear of each edge with no back button, between
+    -- the back button and the x once it shows
+    local w = UI.CreateMovableFrame("SpellTuner", nil, 400, 300, nil, nil, true, { back = "< SpellTuner" })
+    local h = w.header
+    local function lay()
+        local l, r = pt(h.text, 1), pt(h.text, 2)
+        return l[1] == "LEFT" and l[2] == h and l[4], r[1] == "RIGHT" and r[2] == h.closeBtn and r[3] == "LEFT" and r[4]
+    end
+    local l0, r0 = lay()
+    h.backBtn:Show()
+    local l1, r1 = lay()
+    h.backBtn:Hide()
+    local l2 = lay()
+    check("T75: the header title sits between the back button and the x",
+        l0 == 24 and r0 == -4 and l1 == 88 and r1 == -4 and l2 == 24 and h.text:GetWordWrap() == false,
+        string.format("left %s -> %s -> %s, right %s / %s", tostring(l0), tostring(l1), tostring(l2),
+            tostring(r0), tostring(r1)))
+
+    -- a sheet: the 20x20 x at the right of its title row, hiding it; a
+    -- title-row button anchored to the sheet's top right goes left of the x
+    local host = CreateFrame("Frame", nil, UIParent)
+    local sheet = UI.CreateSheet(host, host, 300, 200, "T")
+    local x = sheet.closeBtn
+    local done = UI.CreateButton(sheet, "Done", "accent-hover", { 50, 18 })
+    done:SetPoint("TOPRIGHT", sheet, "TOPRIGHT", -2, -2)
+    local xp, dp = pt(x), pt(done)
+    sheet:Show()
+    local open = sheet:IsShown() and sheet.mask:IsShown()
+    if x and x:GetScript("OnClick") then x:GetScript("OnClick")(x) end
+    check("T75: a sheet has a 20x20 x that hides it; a title-row button goes left of it",
+        x ~= nil and x:GetWidth() == 20 and x:GetHeight() == 20 and xp[1] == "TOPRIGHT" and xp[2] == sheet
+          and dp[1] == "TOPRIGHT" and dp[2] == x and dp[3] == "TOPLEFT" and dp[4] == -2 and dp[5] == -2
+          and open and not sheet:IsShown() and not sheet.mask:IsShown(),
+        string.format("x %s, done -> %s %s", tostring(x ~= nil), tostring(dp[2] == x), tostring(dp[3])))
+
+    -- a check box: its click area is the label's width, measured again when it shows
+    local text = "Close one window per ESC"
+    local cb = UI.CreateCheckButton(host, text)
+    local hit
+    cb.SetHitRectInsets = function(_, l, r, t, b) hit = { l, r, t, b } end
+    cb.label.fontSize = 15 -- the font offset moved (+2) after the box was made
+    cb:Hide(); cb:Show()
+    local want = -(#text * 6 * 15 / 12) - 5
+    check("T75: a check box's click area is measured from its label when it shows",
+        type(cb.Measure) == "function" and hit ~= nil and near(hit[2], want) and hit[1] == 0,
+        string.format("right inset %s, want %s", tostring(hit and hit[2]), tostring(want)))
+
+    -- a mask with a line of text, and one without
+    local m1 = UI.CreateMask(host, nil, "Coaching...")
+    local m0 = UI.CreateMask(host)
+    check("T75: a mask carries an optional line of text",
+        m1.text ~= nil and m1.text:GetText() == "Coaching..." and m0.text == nil,
+        tostring(m1.text and m1.text:GetText()))
+    S.Geometry(false)
+
+    -- the resize grip on the client's Line regions: the stub's frames make
+    -- none, so this check lends them a recording CreateLine for one window
+    local FM = getmetatable(UIParent)
+    local had = rawget(FM, "CreateLine")
+    FM.CreateLine = function(self)
+        local l = self:CreateTexture()
+        l.SetStartPoint = function(me, p, rel, x, y) me.from = { p, rel, x, y } end
+        l.SetEndPoint = function(me, p, rel, x, y) me.to = { p, rel, x, y } end
+        l.SetThickness = function(me, t) me.thickness = t end
+        return l
+    end
+    local rw = UI.CreateMovableFrame("SpellTuner", nil, 400, 300, nil, nil, true, { resizable = true })
+    FM.CreateLine = had
+    local g = rw.resizeGrip
+    local lines = g and g.lines or {}
+    local good = #lines == 3
+    for i, l in ipairs(lines) do
+        local d = ({ 4, 8, 12 })[i]
+        if l.kind ~= "line" or not near(l.thickness, UI.px(1, g)) or not l.from or not l.to
+            or l.from[2] ~= g or l.from[3] ~= -d - 2 or l.from[4] ~= 2
+            or l.to[3] ~= -2 or l.to[4] ~= d + 2 then good = false end
+    end
+    check("T75: the grip is three 1-px Line regions where the client makes them",
+        good, string.format("%d lines, first %s", #lines, tostring(lines[1] and lines[1].kind)))
 end
 
 --------------------------------------------------------------------------------

@@ -20,6 +20,11 @@
 -- extend this file (T33: the ESC stack and combat, section 11; T34: the
 -- replay and practice takeover, section 12; T42: Settings -> General's
 -- controls, section 13).
+--
+-- T75 (P31 of docs/PLAN-refactor-ux.md, review U14): Spells and Settings are
+-- fixed groups (their minimum is their size) with no grip, Reports keeps one;
+-- the grip under the theme is three 1-px lines; section 4's resize checks run
+-- on Reports, and a fixed group ignores an old saved size and a resize.
 HARNESS_FLAVOUR = "forever"
 
 local here = arg[0]:match("^(.*)/[^/]+$")
@@ -121,13 +126,18 @@ check("the role table gives a takeover DIALOG and a tool FULLSCREEN (6.1, 6.2)",
 --------------------------------------------------------------------------------
 -- 4. Sizes per group (6.7), the grip, the minimum
 --------------------------------------------------------------------------------
-check("Spells opens at 860 x 560 with the minimum 860 x 480",
+check("Spells opens at 860 x 560 with the minimum 860 x 560 (T75: a fixed group)",
     frame:GetWidth() == 860 and frame:GetHeight() == 560 and frame.bounds
-      and frame.bounds[1] == 860 and frame.bounds[2] == 480,
+      and frame.bounds[1] == 860 and frame.bounds[2] == 560,
     frame:GetWidth() .. "x" .. frame:GetHeight())
 check("the main window is resizable, with a 16x16 grip at the bottom right",
     frame:IsResizable() and frame.resizeGrip and frame.resizeGrip:GetWidth() == 16
       and frame.resizeGrip:GetHeight() == 16)
+-- T75 (P31, review U14, mockup M1): the grip is hidden where the group's
+-- minimum equals its size (Spells, Settings: nothing reflows) and shown where
+-- the window can change size (Reports, Simulate)
+local gripOnSpells = frame.resizeGrip and frame.resizeGrip:IsShown()
+local fixedSpells = Win.Fixed and Win:Fixed("main", "spells")
 
 local l0, t0 = frame:GetLeft(), frame:GetTop()
 MD:SelectView("reports", "review")
@@ -138,24 +148,63 @@ check("switching Spells -> Reports gives 1036 x 646 and a 1036 x 600 minimum",
 check("switching Spells -> Reports keeps the TOPLEFT (the nav stays put)",
     near(frame:GetLeft(), l0, 1e-3) and near(frame:GetTop(), t0, 1e-3),
     fmt(l0) .. "," .. fmt(t0) .. " -> " .. fmt(frame:GetLeft()) .. "," .. fmt(frame:GetTop()))
+do
+    local onReports = frame.resizeGrip and frame.resizeGrip:IsShown()
+    MD:SelectView("settings", "general")
+    local onSettings = frame.resizeGrip and frame.resizeGrip:IsShown()
+    MD:SelectView("reports", "review")
+    check("T75: no grip on Spells or Settings (minimum = size), the grip on Reports",
+        gripOnSpells == false and onSettings == false and onReports == true and fixedSpells == true
+          and Win:Fixed("main", "reports") == false,
+        string.format("spells %s settings %s reports %s", tostring(gripOnSpells), tostring(onSettings),
+          tostring(onReports)))
+end
+do
+    -- under the theme the grip is three 1-px diagonal lines, not Blizzard's art
+    local g = frame.resizeGrip
+    local lines = g and g.lines or {}
+    local e = UI.px(1, g)
+    local thin = #lines == 3
+    for _, t in ipairs(lines) do
+        if not near(t:GetHeight(), e, 1e-6) or t:GetWidth() <= t:GetHeight() then thin = false end
+    end
+    check("T75: under the theme the grip is three 1-px lines",
+        g ~= nil and thin and lines[1] and lines[1].step == 4 and lines[3] and lines[3].step == 12,
+        string.format("%d lines, px %s", #lines, fmt(e)))
+end
 
+ResizeTo(frame, 1100, 700)
 MD:SelectView("spells", "book")
-ResizeTo(frame, 900, 600)
+local spellsW, spellsH = frame:GetWidth(), frame:GetHeight()
 MD:SelectView("reports", "review")
-local reportsW = frame:GetWidth()
-MD:SelectView("spells", "book")
-check("a per-group size is restored: Spells resized to 900 x 600 comes back so",
-    reportsW == 1036 and frame:GetWidth() == 900 and frame:GetHeight() == 600,
-    tostring(reportsW) .. " / " .. frame:GetWidth() .. "x" .. frame:GetHeight())
+check("a per-group size is restored: Reports resized to 1100 x 700 comes back so",
+    spellsW == 860 and spellsH == 560 and frame:GetWidth() == 1100 and frame:GetHeight() == 700,
+    tostring(spellsW) .. "x" .. tostring(spellsH) .. " / " .. frame:GetWidth() .. "x" .. frame:GetHeight())
 do
     local sv = MD.db.ui.win.main
     check("the group's size is saved in db.ui.win.main.sizes",
-        sv and sv.sizes and sv.sizes.spells and sv.sizes.spells[1] == 900 and sv.sizes.spells[2] == 600)
+        sv and sv.sizes and sv.sizes.reports and sv.sizes.reports[1] == 1100 and sv.sizes.reports[2] == 700)
 end
 ResizeTo(frame, 700, 300)
-check("a size under the group's minimum is raised to it (860 x 480)",
-    frame:GetWidth() == 860 and frame:GetHeight() == 480,
+check("a size under the group's minimum is raised to it (1036 x 600)",
+    frame:GetWidth() == 1036 and frame:GetHeight() == 600,
     frame:GetWidth() .. "x" .. frame:GetHeight())
+do
+    -- T75: a fixed group is its default size, whatever an older session saved
+    -- or a resize says; nothing is saved for it
+    local sv = MD.db.ui.win.main
+    sv.sizes = sv.sizes or {}
+    sv.sizes.spells = { 900, 600 }
+    MD:SelectView("spells", "book")
+    local w1, h1 = frame:GetWidth(), frame:GetHeight()
+    sv.sizes.spells = nil
+    ResizeTo(frame, 950, 620)
+    check("T75: Spells keeps 860 x 560 over an old saved size and a resize, saving none",
+        w1 == 860 and h1 == 560 and frame:GetWidth() == 860 and frame:GetHeight() == 560
+          and sv.sizes.spells == nil,
+        string.format("%sx%s / %sx%s", tostring(w1), tostring(h1), frame:GetWidth(), frame:GetHeight()))
+end
+MD:SelectView("spells", "book")
 
 --------------------------------------------------------------------------------
 -- 5. A drag saves the TOPLEFT; a clamp; the saved place comes back
