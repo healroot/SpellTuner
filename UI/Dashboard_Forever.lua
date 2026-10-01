@@ -11,11 +11,22 @@
 local _, MD = ...
 local UI = MD.UI
 
--- T32 (docs/SPEC-forever-ui.md 6.7): the window's size is the window
--- manager's, one per group (UI/Windows_Forever.lua, MD.Win.SIZES) -- Reports
--- and Simulate at 1036 x 646 for the Review and Practice panes' 912-wide
--- content, Spells and Settings at 860 x 560. The late grow on MODULE_LOADED is
--- gone. These are only the size the frame is built at, before MD.Win places it.
+-- T32 (docs/SPEC-forever-ui.md 6.7): the window's size is one per group, kept
+-- by the window manager (UI/Windows.lua). T80 (C1, review A22): this table is
+-- the dashboard's own and is handed to MD.Win at Register. Reports and
+-- Simulate at 1036 x 646 for the Review and Practice panes' 912-wide content;
+-- T40: Simulate goes down to 900 x 560 now that Practice wraps its fight
+-- fields onto a second row and sizes its table to the pane. T75 (P31, review
+-- U14, mockup M1): Spells and Settings do not reflow (the rank table and card
+-- are a fixed 540, Settings' two columns fit 860 x 560), so their minimum is
+-- their size -- fixed groups, no resize grip. WIDTH / HEIGHT are only the size
+-- the frame is built at, before MD.Win places it.
+local SIZES = {
+    spells   = { w = 860,  h = 560, minW = 860,  minH = 560 },
+    settings = { w = 860,  h = 560, minW = 860,  minH = 560 },
+    reports  = { w = 1036, h = 646, minW = 1036, minH = 600 },
+    simulate = { w = 1036, h = 646, minW = 900,  minH = 560 },
+}
 local WIDTH, HEIGHT = 860, 560
 
 local nav, frame
@@ -99,9 +110,9 @@ local function RefreshGeneralPane()
     end
     local u = type(MD.db.ui) == "table" and MD.db.ui or {}
     if p.fontSlider then p.fontSlider:SetValue(Round(UI.fontOffset or u.fontOffset)) end
-    if p.scaleSlider and MD.Win then p.scaleSlider:SetValue(MD.Win:ScalePercent()) end
-    if p.combatDropdown and MD.Win then p.combatDropdown:SetValue(MD.Win:CombatMode()) end
-    if p.escCheck and MD.Win then p.escCheck:SetChecked(MD.Win:EscStackOn()) end
+    if p.scaleSlider then p.scaleSlider:SetValue(MD.Win:ScalePercent()) end
+    if p.combatDropdown then p.combatDropdown:SetValue(MD.Win:CombatMode()) end
+    if p.escCheck then p.escCheck:SetChecked(MD.Win:EscStackOn()) end
     if p.minimapCheck then -- T79
         p.minimapCheck:SetChecked(not (type(MD.db.minimap) == "table" and MD.db.minimap.hide))
     end
@@ -190,12 +201,11 @@ local function BuildAppearanceSection(pane, above)
 
     -- 4.2: -2..+2 (decision 13), every SpellTuner font; the Spells pane's
     -- pitches follow (UI.ApplyFonts is wrapped by UI/SpellsPane_Forever.lua)
-    if UI.ApplyFonts then
+    -- T80 (C1): UI.SetFontOffset (UI/Theme_Flat.lua) applies and saves it
+    do
         local lo, hi = UI.FONT_OFFSET_MIN or -2, UI.FONT_OFFSET_MAX or 2
         local slider = UI.CreateSlider("Text size", sec, lo, hi, 150, 1, function(value)
-            local u = MD.db.ui
-            if type(u) ~= "table" then u = {}; MD.db.ui = u end
-            u.fontOffset = UI.ApplyFonts(value)
+            UI.SetFontOffset(value)
         end, nil, false,
             "Text size", "Every SpellTuner text a size bigger or smaller, -2 to +2.",
             "Spells' rows and cards move apart with it.")
@@ -205,7 +215,7 @@ local function BuildAppearanceSection(pane, above)
     end
 
     -- 4.3: 70-120 %, through the window manager (the saved places converted)
-    if MD.Win then
+    do
         local lo, hi = Round(MD.Win.SCALE_MIN * 100), Round(MD.Win.SCALE_MAX * 100)
         local slider = UI.CreateSlider("Window size", sec, lo, hi, 150, 5, nil, function(value)
             MD.Win:SetScale((tonumber(value) or 100) / 100)
@@ -220,7 +230,6 @@ local function BuildAppearanceSection(pane, above)
 end
 
 local function BuildWindowsSection(pane, above)
-    if not MD.Win then return nil end
     local sec = Section(pane, "WINDOWS", 138, above, "left")
 
     -- 6.6, decision 4
@@ -830,7 +839,7 @@ local function CreateDashboard()
         end,
         function(group, view, pane)
             -- T32: the group's own size, the TOPLEFT kept (6.7)
-            if MD.Win then MD.Win:SetGroup("main", group) end
+            MD.Win:SetGroup("main", group)
             if group == "settings" and view == "general" then RefreshGeneralPane() end
             if group == "settings" and view == "modules" then RefreshModulesPane() end
             if group == "settings" and view == "about" then RefreshAboutPane() end
@@ -859,11 +868,13 @@ local function CreateDashboard()
     -- manager's ESC stack instead of a UISpecialFrames entry of its own (one
     -- ESC would otherwise close this and the top of the stack together);
     -- registered after the OnShow script above, since Register hooks OnShow.
-    if MD.Win then
-        MD.Win:Register(frame, { key = "main", role = "host", sizes = MD.Win.SIZES })
-    else
-        tinsert(UISpecialFrames, "SpellTunerDashboard") -- ESC closes
-    end
+    -- T80 (C1, review A22): the dashboard hands the manager what it knows --
+    -- its sizes, its first group, how to open it on a view, how to read the
+    -- view it shows, and the practice view a session goes back to.
+    MD.Win:Register(frame, { key = "main", role = "host", sizes = SIZES, group = "spells",
+        open = function(group, view) return MD:OpenMainWindow(group, view) end,
+        selected = function() return MD:SelectedView() end,
+        practicePath = { "simulate", "practice" } })
 end
 
 function MD:ShowDashboard()
@@ -876,10 +887,8 @@ function MD:ToggleDashboard()
     if not frame then return end
     if frame:IsShown() then
         frame:Hide()
-    elseif MD.Win then
-        MD.Win:ShowMain() -- T32: on the remembered view
     else
-        frame:Show()
+        MD.Win:ShowMain() -- T32: on the remembered view
     end
 end
 
@@ -896,8 +905,8 @@ end
 -- modules today; the same door M2/M3/M4 use). Since T32 (6.3) it goes
 -- through the window manager, which T34 teaches the takeover rules.
 function MD:SelectView(group, view)
-    if MD.Win then return MD.Win:ShowMain(group, view) end
-    return MD:OpenMainWindow(group, view)
+    CreateDashboard() -- T80: the host registers with MD.Win when it is built
+    return MD.Win:ShowMain(group, view)
 end
 
 -- T79 (P36): the minimap button's right-click (UI/MinimapButton.lua), as on

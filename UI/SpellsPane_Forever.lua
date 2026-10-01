@@ -2028,7 +2028,7 @@ function SpellsPane:OpenPicker()
     -- 6.5: a sheet is an entry on T33's ESC stack (one ESC closes the picker,
     -- not the window); Done, the window hiding or the combat hide take it off
     -- through the manager's OnHide hook.
-    if MD.Win and MD.Win.Push then MD.Win:Push(p) end
+    MD.Win:Push(p)
     self:RefreshPicker()
 end
 

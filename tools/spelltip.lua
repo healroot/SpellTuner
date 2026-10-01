@@ -28,7 +28,9 @@ local function SetSpell(id)
     return tt.lines
 end
 
-S.Load({ "UI/Style.lua", "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/SpellTooltip.lua" }, "SpellTuner", MD)
+-- T80 (C1): the theme and the window manager after the kit, as the TBC TOC lists them
+S.Load({ "UI/Style.lua", "UI/Theme_Flat.lua", "UI/EscStack.lua", "UI/Windows.lua",
+         "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/SpellTooltip.lua" }, "SpellTuner", MD)
 
 local ok, fails = 0, {}
 local function check(name, cond, detail)
@@ -261,9 +263,9 @@ check("a failing builder never breaks the game's tooltip", okCall)
 
 -- T76 (P32 of docs/PLAN-refactor-ux.md, review A21): on TBC the renderer is
 -- UI/Tip.lua's and the RankMath-bound builders UI/Tip_TBC.lua's; MD.Tip:Show
--- (its old shape, every TBC caller's) still renders into GameTooltip, with
--- nothing skinned and the kit tooltip untouched -- TBC keeps GameTooltip and
--- its look until wave C.
+-- (its old shape, every TBC caller's) still renders into GameTooltip, the kit
+-- tooltip untouched. T80 (C1, decision 10): the TBC TOC lists the theme, so
+-- that GameTooltip is drawn in the kit's flat skin, as on Forever.
 do
     local owner = CreateFrame("Frame")
     tt.lines = {}
@@ -272,9 +274,9 @@ do
     local got = #tt.lines == 2 and tt.lines[1].l == "SpellTuner" and tt.lines[2].l == "Left-click: dashboard"
     local builders = type(MD.Tip.Row) == "function" and type(MD.Tip.Spell) == "function"
         and type(MD.Tip.Clock) == "function" and type(MD.Tip.Columns) == "function"
-    check("T76: TBC's Tip:Show is GameTooltip, unskinned",
-        type(MD.Tip.Skinned) == "function" and got and not MD.Tip:Skinned(tt) and MD.UI.tooltip.lines == nil
-        and MD.UI.THEMED == false and builders,
+    check("T76/T80: TBC's Tip:Show is GameTooltip, in the kit's skin",
+        type(MD.Tip.Skinned) == "function" and got and MD.Tip:Skinned(tt) and MD.UI.tooltip.lines == nil
+        and MD.UI.THEMED == true and builders,
         string.format("lines=%d builders=%s", #tt.lines, tostring(builders)))
     MD.Tip:Hide()
 end

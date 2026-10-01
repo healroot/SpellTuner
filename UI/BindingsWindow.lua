@@ -18,15 +18,15 @@
 -- These bindings are account-wide (db.practiceBinds): your hands do not change
 -- with the character.
 --
--- T40 (docs/SPEC-forever-ui.md 4.4, 6.2, 6.4, 6.5, 6.6): with the window
--- manager (MD.Win, the Forever TOCs only) this is a SHEET on the Simulate ->
--- Practice pane, not a window: BW:Build(parent) builds it there once (440 x
--- 460, the whole pane masked), /st binds and "Edit bindings" open the main
--- window on that view with the sheet shown, it is one entry on the ESC stack
--- (one ESC closes the sheet and leaves the window), it hides with its pane,
--- and it refuses to open in combat. Under the theme (UI.THEMED) the waiting key
--- box is in the accent and an import's notes in text2, not Blizzard gold.
--- TBC keeps its own movable window exactly as before.
+-- T40 (docs/SPEC-forever-ui.md 4.4, 6.2, 6.4, 6.5, 6.6): a SHEET on the
+-- Simulate -> Practice pane, not a window: BW:Build(parent) builds it there
+-- once (440 x 460, the whole pane masked), /st binds (/md binds) and "Edit
+-- bindings" open the main window on that view with the sheet shown, it is one
+-- entry on the ESC stack (one ESC closes the sheet and leaves the window), it
+-- hides with its pane, and it refuses to open in combat. Under the theme
+-- (UI.THEMED) the waiting key box is in the accent and an import's notes in
+-- text2, not Blizzard gold. T80 (C1, decision 10): TBC takes the sheet too --
+-- its movable window ("a separate bindings window", U4's list) is gone.
 local _, MD = ...
 local UI = MD.UI
 
@@ -35,7 +35,7 @@ local SHEET_W, SHEET_H = 440, 460 -- T40: the sheet's size (6.2)
 local ROW_H = 22
 local frame, rows, addBtn, defBtn, cellBtn, cliqueBtn, keysBtn, importFS, statusFS, list
 local hiddenLine, hiddenFS, forgetBtn -- T27: the footer for bindings kept but hidden
-local host -- T40: the practice pane the sheet sits on (nil: TBC's window)
+local host -- T40: the practice pane the sheet sits on
 local capturing = nil
 
 -- T40: a colour from the theme, TBC's own literal without it. T69 (P25): a
@@ -235,32 +235,23 @@ local function Report(newList, report)
     statusFS:SetText(table.concat(lines, "\n"))
 end
 
--- T40: onPane (Forever, with the manager) builds the sheet on that pane;
--- nothing (TBC) builds today's window. `root` is what everything below is
--- built in: the sheet's body under its title row, or the window itself.
+-- T40: the sheet, built once on the practice pane `onPane`. `root` is what
+-- everything below is built in: the sheet's body under its title row.
 local function Build(onPane)
-    if frame then return end
-    local root
-    if onPane then
-        frame = UI.CreateSheet(onPane, onPane, SHEET_W, SHEET_H, "PRACTICE BINDINGS")
-        frame.bindingsSheet = true -- marks the sheet for tools/practiceforever.lua
-        host = onPane
-        root = frame:Body()
-        W, H = SHEET_W - 2, SHEET_H - 23 -- the body: inside the 1-px edge, under the title row
-        -- the kit's own OnShow / OnHide keep the mask; these only add to them
-        frame:HookScript("OnHide", function() capturing = nil end)
-        -- hides with its owner (6.2): switching view or closing the window
-        -- closes the sheet, and its OnHide takes it off the ESC stack
-        onPane:HookScript("OnHide", function() if frame:IsShown() then frame:Hide() end end)
-        local done = UI.CreateButton(frame, "Done", "accent-hover", { 50, 18 }, false, false, UI.FONT_SMALL, nil)
-        done:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -2, -2)
-        done:SetScript("OnClick", function() frame:Hide() end)
-    else
-        frame = UI.CreateMovableFrame("SpellTuner: Practice bindings", "SpellTunerBindingsWindow", W, H)
-        tinsert(UISpecialFrames, "SpellTunerBindingsWindow")
-        frame:SetScript("OnHide", function() capturing = nil end)
-        root = frame
-    end
+    if frame or not onPane then return end
+    frame = UI.CreateSheet(onPane, onPane, SHEET_W, SHEET_H, "PRACTICE BINDINGS")
+    frame.bindingsSheet = true -- marks the sheet for tools/practiceforever.lua
+    host = onPane
+    local root = frame:Body()
+    W, H = SHEET_W - 2, SHEET_H - 23 -- the body: inside the 1-px edge, under the title row
+    -- the kit's own OnShow / OnHide keep the mask; these only add to them
+    frame:HookScript("OnHide", function() capturing = nil end)
+    -- hides with its owner (6.2): switching view or closing the window
+    -- closes the sheet, and its OnHide takes it off the ESC stack
+    onPane:HookScript("OnHide", function() if frame:IsShown() then frame:Hide() end end)
+    local done = UI.CreateButton(frame, "Done", "accent-hover", { 50, 18 }, false, false, UI.FONT_SMALL, nil)
+    done:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -2, -2)
+    done:SetScript("OnClick", function() frame:Hide() end)
     rows = {}
 
     local hint = root:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
@@ -360,17 +351,17 @@ local function Build(onPane)
     Status("hover a frame in practice and press one of these.")
 end
 
--- T40: with the manager, the sheet on the Practice pane -- `onPane` when the
--- pane's own "Edit bindings" asks, else the main window opened on Simulate ->
--- Practice first (MD.Win:ShowMain, which may refuse: then nothing opens).
--- Refused in combat (6.6). Returns the sheet or window shown, or nil.
+-- T40: the sheet on the Practice pane -- `onPane` when the pane's own "Edit
+-- bindings" asks, else the main window opened on Simulate -> Practice first
+-- (MD.Win:ShowMain, which may refuse: then nothing opens). Refused in combat
+-- (6.6). Returns the sheet shown, or nil.
 local function ShowSheet(onPane)
     if InCombat() then
         MD:Print("bindings: the bindings sheet does not open in combat")
         return nil
     end
     if not (onPane and onPane:IsVisible()) and not (host and host:IsVisible()) then
-        MD.Win:ShowMain("simulate", "practice")
+        if MD.SelectView then MD:SelectView("simulate", "practice") end -- through MD.Win:ShowMain
     end
     if not frame then
         if not (onPane and onPane:IsVisible()) then
@@ -389,26 +380,17 @@ local function ShowSheet(onPane)
 end
 
 function MD:ShowBindings(onPane)
-    if MD.Win then return ShowSheet(onPane) end
-    Build()
-    Render()
-    frame:Show()
-    return frame
+    return ShowSheet(onPane)
 end
 
+-- /md binds (TBC's verb): the sheet shown, or hidden when it is up (T40)
 function MD:ToggleBindings()
-    if MD.Win then -- T40
-        if frame and frame:IsShown() and host and host:IsVisible() then frame:Hide() else MD:ShowBindings() end
-        return
-    end
-    Build()
-    if frame:IsShown() then frame:Hide() else MD:ShowBindings() end
+    if frame and frame:IsShown() and host and host:IsVisible() then frame:Hide() else MD:ShowBindings() end
 end
 
 -- for tools/practiceui.lua
 MD.BindingsWindow = {
     -- T40 (6.4): BW:Build(parent) -- the sheet on a practice pane, built once
-    -- (Forever); the window's own Build stays behind MD:ShowBindings on TBC
     Build = function(_, parent) Build(parent); return frame end,
     _frame = function() return frame end,
     _rows = function() return rows end,

@@ -1,51 +1,56 @@
 -- T32 (docs/SPEC-forever-ui.md 4.3 "Window scale", 6.1, 6.2, 6.7): the window
--- manager, MD.Win. Listed by the Forever TOCs only, after UI/Theme_Forever.lua;
--- the TBC TOC does not list it, so a shared file that calls it does so behind
--- `if MD.Win then ... end` and TBC keeps its own windows as they are.
+-- manager, MD.Win. T80 (C1 of docs/PLAN-refactor-ux.md, review A22, A6c):
+-- listed by every main TOC -- TBC's too (decision 10, the author's answer 1)
+-- -- after UI/Theme_Flat.lua and UI/EscStack.lua, so no shared file asks
+-- `if MD.Win` any more. It knows no dashboard: the window that registers as
+-- the host hands in its sizes per group, its first group, how to open it on a
+-- view, how to read the view it shows, and where a practice session's way
+-- back leads (UI/Dashboard.lua on TBC, UI/Dashboard_Forever.lua on Forever).
 --
--- The core, this task: a window registers with a key and a role; the role gives
--- its strata, level and toplevel (6.2). A window is anchored by its TOPLEFT to
+-- The core: a window registers with a key and a role; the role gives its
+-- strata, level and toplevel (6.2). A window is anchored by its TOPLEFT to
 -- UIParent's BOTTOMLEFT at its saved place (db.ui.win[key].x / .y, in the
 -- frame's own units), or centred until it is dragged; SetUserPlaced(false), so
 -- the client's layout cache never fights the manager; clamped onto the screen
--- whenever it is placed. The main window keeps a size per group (6.7), with
--- that group's minimum on the resize grip. db.ui.scale (70-120 %) is applied
--- with SetScale, and a change converts every saved position (x * old / new) so
--- the window stays where it was on screen. UI.RestylePixels runs on
+-- whenever it is placed. The host keeps a size per group (6.7), with that
+-- group's minimum on the resize grip. db.ui.scale (70-120 %) is applied with
+-- SetScale, and a change converts every saved position (x * old / new) so the
+-- window stays where it was on screen. UI.RestylePixels runs on
 -- UI_SCALE_CHANGED, DISPLAY_SIZE_CHANGED, a scale change and (T51) Register,
--- so 1-px edges stay one pixel without a reload.
+-- so 1-px edges stay one pixel without a reload. A place kept before the
+-- manager -- db.replayPos, or (spec.adoptPlaced) the place the client gave a
+-- window that was user-placed -- is adopted once (Win:Adopt).
 --
--- T33 (6.5, 6.6): the ESC stack and combat. One invisible proxy,
--- SpellTunerEscProxy, is the only SpellTuner frame in UISpecialFrames; it is
--- shown while the stack holds an entry. The client's ESC hides it; its OnHide
--- runs the top entry's onEsc (default: hide that frame) and re-shows the proxy
--- on the next frame when entries remain. Every pushed frame's OnHide removes
--- its entry, however it hides; the stack emptied by code hides the proxy
--- quietly. db.ui.escStack = false is the fallback: each window's own
--- UISpecialFrames entry, as before. Entering combat hides the main window (and
--- a review replay) under db.ui.combat = "hide"; PLAYER_REGEN_ENABLED shows them
--- again, the main window on the view it had.
+-- T33 (6.5, 6.6): the ESC stack is UI/EscStack.lua's (MD.EscStack); every
+-- registered window joins it while shown, and its calls are on MD.Win too.
+-- Entering combat hides the host (and a review replay) under db.ui.combat =
+-- "hide"; PLAYER_REGEN_ENABLED shows them again, the host on the view it had.
 --
--- T34 (6.3): the takeover. A replay or a practice session takes the main
--- window's place: Win:TakeOver, called by the window right before it shows,
--- hides the main window and remembers its path; the replay opens at its saved
--- place (db.ui.win.replay, once dragged), else with its top centre on the main
--- window's, computed in screen pixels. Its "< SpellTuner" button (the kit's
--- opts.back), the x, ESC and End close it and show the main window on that
--- path; a practice session's way back is Simulate -> Practice, and its replay
--- follows it directly, the main window never shown in between. ShowMain during
--- a takeover closes a replay and opens the requested view, and is refused
--- while a practice session runs. db.replayPos (the old anchor) is adopted
--- into db.ui.win.replay once (Win:Adopt).
+-- T34 (6.3): the takeover. A replay or a practice session takes the host's
+-- place: Win:TakeOver, called by the window right before it shows, hides the
+-- host and remembers its path; the replay opens at its saved place
+-- (db.ui.win.replay, once dragged), else with its top centre on the host's,
+-- computed in screen pixels. Its "< SpellTuner" button (the kit's opts.back),
+-- the x, ESC and End close it and show the host on that path; a practice
+-- session's way back is the host's practice view, and its replay follows it
+-- directly, the host never shown in between. ShowMain during a takeover
+-- closes a replay and opens the requested view, and is refused -- with the
+-- takeover window's own `busy` line -- while a practice session runs.
 --
 -- No client data is read here: the widget toolkit (frame geometry, strata,
--- scale) is not a client call (CLAUDE.md), and the two events go through the
+-- scale) is not a client call (CLAUDE.md), and the events go through the
 -- kernel's MD:On.
 local _, MD = ...
 local UI = MD.UI
+local Esc = MD.EscStack
 
 local Win = { windows = {} }
 MD.Win = Win
+
+-- T80 (C1): the manager's settings, declared by the file that reads them
+-- (MD:RegisterDefaults, T55), so TBC has them as soon as it lists the manager.
+-- fontOffset is the theme's (UI/Theme_Flat.lua), escStack the stack's.
+MD:RegisterDefaults({ ui = { scale = 1, combat = "hide", win = {} } })
 
 -- 6.2: strata / level / toplevel per role. Sheets and popups are not windows
 -- the manager places (6.4); T33 / T34 use the other rows. T33: what entering
@@ -58,20 +63,14 @@ Win.ROLES = {
     tool     = { strata = "FULLSCREEN", level = 10, toplevel = true, combat = "stay" },
 }
 
--- 6.7: the main window's size per group, default and minimum. T40: Simulate
--- goes down to 900 x 560 now that Practice wraps its fight fields onto a
--- second row and sizes its table to the pane (UI/PracticePanel.lua).
--- T75 (P31, review U14, mockup M1): Spells and Settings do not reflow (the
--- rank table and card are a fixed 540, Settings' two columns fit 860 x 560),
--- so their minimum is their size: a fixed group (Win:Fixed) shows no resize
--- grip and is always its default size, whatever an older session saved.
-Win.SIZES = {
-    spells   = { w = 860,  h = 560, minW = 860,  minH = 560 },
-    settings = { w = 860,  h = 560, minW = 860,  minH = 560 },
-    reports  = { w = 1036, h = 646, minW = 1036, minH = 600 },
-    simulate = { w = 1036, h = 646, minW = 900,  minH = 560 },
-}
-Win.DEFAULT_GROUP = "spells"
+-- 6.7: the host's size per group -- { [group] = { w, h, minW, minH } } -- is
+-- the host's own (T80, C1, review A22): its dashboard hands the table in at
+-- Register (spec.sizes; UI/Dashboard_Forever.lua's and UI/Dashboard.lua's
+-- SIZES), with the group it opens on (spec.group). A group whose minimum is
+-- its size (T75: nothing in it reflows) is fixed (Win:Fixed): no resize grip,
+-- always its default size, whatever an older session saved. Win.SIZES is the
+-- host's table once it has registered (nil before), for the suites.
+Win.SIZES = nil
 
 Win.SCALE_MIN, Win.SCALE_MAX = 0.7, 1.2
 local HEADER = 20 -- the kit's header hangs above the frame (UI.CreateMovableFrame)
@@ -146,7 +145,7 @@ end
 function Win:Fixed(key, group)
     local w = self.windows[key]
     local sizes = w and w.sizes
-    return IsFixed(sizes and sizes[group or w.group or Win.DEFAULT_GROUP])
+    return IsFixed(sizes and sizes[group or w.group or w.defaultGroup])
 end
 
 -- The size a window takes now: its group's saved size, else the group's
@@ -154,11 +153,11 @@ end
 -- T75: a fixed group is its default size (a size saved before it was fixed
 -- is ignored: there is no grip left to shrink it back with).
 local function SizeFor(w)
-    local def = w.sizes and w.sizes[w.group or Win.DEFAULT_GROUP]
+    local def = w.sizes and w.sizes[w.group or w.defaultGroup]
     if not def then return nil end
     local sw, sh = def.w, def.h
     local s = Saved(w.key)
-    local mine = s and type(s.sizes) == "table" and s.sizes[w.group or Win.DEFAULT_GROUP]
+    local mine = s and type(s.sizes) == "table" and s.sizes[w.group or w.defaultGroup]
     if not IsFixed(def) and type(mine) == "table" and type(mine[1]) == "number"
         and type(mine[2]) == "number" then
         sw, sh = mine[1], mine[2]
@@ -272,7 +271,7 @@ function Win:SaveSize(key)
     local w = self.windows[key]
     if not w or not w.sizes then return end
     local f = w.frame
-    local group = w.group or Win.DEFAULT_GROUP
+    local group = w.group or w.defaultGroup
     local def = w.sizes[group]
     if not def then return end
     if IsFixed(def) then self:Place(key); return end -- T75: nothing to save
@@ -287,7 +286,7 @@ function Win:SaveSize(key)
     self:Place(key)
 end
 
--- The main window's group changed (the dashboard's nav calls this on every
+-- The host's group changed (the dashboard's nav calls this on every
 -- selection): its size and minimum, the TOPLEFT kept (6.1 rule 5).
 function Win:SetGroup(key, group)
     local w = self.windows[key]
@@ -300,17 +299,45 @@ end
 --------------------------------------------------------------------------------
 -- Register
 --------------------------------------------------------------------------------
--- spec = { key = "main", role = "host", sizes = Win.SIZES?, group = "spells"?,
---          onEsc = fn(frame) -> true to stay?, combat = "hide" | "stay" | fn? }
+-- spec = { key = "main", role = "host" | "takeover" | "tool",
+--          onEsc = fn(frame) -> true to stay?, combat = "hide" | "stay" | fn?,
+--          adoptPlaced = true? (T80: the place the client gave a window it was
+--              told was user-placed, adopted once when nothing is saved),
+--   the host (T80, C1, review A22: the dashboard hands its knowledge in):
+--          sizes = { [group] = { w, h, minW, minH } }, group = the first group,
+--          open = fn(group?, view?) (opens the window, on that view or the
+--              remembered one), selected = fn() -> group, view,
+--          practicePath = { group, view } (a practice session's way back),
+--   a takeover: busy = the line ShowMain prints while it plays a practice }
 -- T33: the window joins the ESC stack whenever it shows (hooked here, so a
 -- caller sets its own OnShow script BEFORE registering: SetScript after this
 -- would drop the hook).
+
+-- T80 (C1): the one place a user-placed window holds -- a single point on
+-- UIParent, and not the kit's untouched centre -- as Win:Adopt reads it.
+local function ClientPlace(frame)
+    if not (frame.IsUserPlaced and frame:IsUserPlaced() == true) then return nil end
+    if not (frame.GetNumPoints and frame:GetNumPoints() == 1) then return nil end
+    local p, rel, rp, x, y = frame:GetPoint(1)
+    if rel ~= nil and rel ~= UIParent then return nil end
+    if type(x) ~= "number" or type(y) ~= "number" then return nil end
+    if p == "CENTER" and rp == "CENTER" and x == 0 and y == 0 then return nil end
+    return { p, rp, x, y }
+end
+
 function Win:Register(frame, spec)
     if not frame or type(spec) ~= "table" or type(spec.key) ~= "string" then return end
     local role = Win.ROLES[spec.role or "host"] or Win.ROLES.host
     local w = { frame = frame, key = spec.key, role = spec.role or "host", sizes = spec.sizes,
-                group = spec.group, onEsc = spec.onEsc, combat = spec.combat }
+                defaultGroup = spec.group, onEsc = spec.onEsc, combat = spec.combat,
+                open = spec.open, selected = spec.selected, practicePath = spec.practicePath,
+                busy = spec.busy }
     self.windows[spec.key] = w
+    if w.role == "host" then
+        self.host = w
+        self.SIZES = spec.sizes
+    end
+    local old = spec.adoptPlaced and not Saved(spec.key) and ClientPlace(frame)
 
     frame:SetFrameStrata(role.strata)
     frame:SetFrameLevel(role.level)
@@ -333,6 +360,7 @@ function Win:Register(frame, spec)
     end
 
     self:Place(spec.key)
+    if old then self:Adopt(spec.key, old) end
 
     -- T33 (6.5): on the stack while shown; its OnHide (Push's hook) takes it off
     frame:HookScript("OnShow", function(f)
@@ -342,7 +370,7 @@ function Win:Register(frame, spec)
     if frame:IsShown() then self:Push(frame, w.onEsc) end
 
     -- T34 (6.3): a takeover's back button (the kit's opts.back) and its every
-    -- close -- back, the x, ESC, End -- give the main window back
+    -- close -- back, the x, ESC, End -- give the host back
     if spec.role == "takeover" then
         if frame.header and frame.header.backBtn then
             frame.OnBack = function(f) f:Hide() end
@@ -415,11 +443,11 @@ function Win:Reset()
 end
 
 --------------------------------------------------------------------------------
--- The main window and the takeover (6.3, T34)
+-- The host and the takeover (6.3, T34)
 --------------------------------------------------------------------------------
-Win.PRACTICE_PATH = { "simulate", "practice" }
-Win.PRACTICE_REFUSED = "Practice is running: ESC pauses, ESC again ends it."
 -- Win.takeover = { key, kind = "replay" | "practice", path = { group, view } | nil }
+-- T80 (C1, review A22): the host is the window registered with role "host";
+-- its view, its opening and its practice path are its own spec's.
 
 local function SetBack(f, on)
     local b = f.header and f.header.backBtn
@@ -427,26 +455,31 @@ local function SetBack(f, on)
     if on then b:Show() else b:Hide() end
 end
 
+local function OpenHost(group, view)
+    local h = Win.host
+    if h and h.open then return h.open(group, view) end
+end
+
 -- The window `key` is about to show as `kind`: "replay" (a review replay, or
--- a practice's) or "practice" (a session being played). With the main window
--- shown, it hides and its path is remembered, and the window opens over its
--- top centre (unless it was ever dragged); with a takeover of this window
--- already on screen (End -> its replay, the next pull, the suggested column
--- filling in) the place and the way back are kept; otherwise (from chat) the
--- saved place or the centre, and no back button. A practice session always
--- takes over, and its way back is Simulate -> Practice.
+-- a practice's) or "practice" (a session being played). With the host shown,
+-- it hides and its path is remembered, and the window opens over its top
+-- centre (unless it was ever dragged); with a takeover of this window already
+-- on screen (End -> its replay, the next pull, the suggested column filling
+-- in) the place and the way back are kept; otherwise (from chat) the saved
+-- place or the centre, and no back button. A practice session always takes
+-- over, and its way back is the host's practice view.
 function Win:TakeOver(key, kind)
     local w = self.windows[key]
     if not w then return end
     local f = w.frame
-    local main = self.windows.main
+    local main = self.host
     local cur = self.takeover
     local mainShown = main and main.frame:IsShown()
     local path
     if mainShown then
         local mf = main.frame
-        if MD.SelectedView then
-            local g, v = MD:SelectedView()
+        if main.selected then
+            local g, v = main.selected()
             if g then path = { g, v } end
         end
         local ms = mf:GetEffectiveScale()
@@ -460,7 +493,10 @@ function Win:TakeOver(key, kind)
     else
         w.over, w.pos = nil, nil
     end
-    if kind == "practice" then path = { Win.PRACTICE_PATH[1], Win.PRACTICE_PATH[2] } end
+    if kind == "practice" then
+        local pp = main and main.practicePath
+        path = pp and { pp[1], pp[2] } or nil
+    end
     self.takeover = { key = key, kind = kind, path = path }
     SetBack(f, kind ~= "practice" and path ~= nil)
     self:Place(key)
@@ -468,9 +504,9 @@ function Win:TakeOver(key, kind)
 end
 
 -- The takeover window hid (its OnHide, however it closed). A combat hide keeps
--- the takeover: the window comes back after, the main window still hidden.
--- Otherwise the main window returns on the remembered path -- after combat,
--- if this happened in one under db.ui.combat = "hide".
+-- the takeover: the window comes back after, the host still hidden.
+-- Otherwise the host returns on the remembered path -- after combat, if this
+-- happened in one under db.ui.combat = "hide".
 function Win:TakeoverHidden(key)
     local t = self.takeover
     if not t or t.key ~= key then return end
@@ -479,15 +515,17 @@ function Win:TakeoverHidden(key)
     if not t.path then return end
     local u = UIdb()
     if self:InCombat() and not (u and u.combat == "keep") then
-        self.combatHidden = self.combatHidden or {}
-        table.insert(self.combatHidden, { key = "main", group = t.path[1], view = t.path[2] })
+        if self.host then
+            self.combatHidden = self.combatHidden or {}
+            table.insert(self.combatHidden, { key = self.host.key, group = t.path[1], view = t.path[2] })
+        end
         return
     end
-    if MD.OpenMainWindow then MD:OpenMainWindow(t.path[1], t.path[2]) end
+    OpenHost(t.path[1], t.path[2])
 end
 
--- Every takeover window closed without giving the main window back (ShowMain
--- opens the view asked for instead); nothing of theirs returns after combat.
+-- Every takeover window closed without giving the host back (ShowMain opens
+-- the view asked for instead); nothing of theirs returns after combat.
 function Win:CloseTakeovers()
     self.takeover = nil
     for _, w in pairs(self.windows) do
@@ -508,276 +546,46 @@ function Win:InCombat()
     return (API and API.UnitAffectingCombat and API.UnitAffectingCombat("player") == true) or false
 end
 
--- Every caller of MD:SelectView comes through here (6.3). Open the main window
--- on the view asked for (nil: the remembered one). During a practice session
--- it is refused with one line; during a replay the replay closes first -- the
--- two are never shown together by a command.
+-- Every caller of MD:SelectView comes through here (6.3). Open the host on the
+-- view asked for (nil: the remembered one). During a practice session it is
+-- refused with the session window's one line; during a replay the replay
+-- closes first -- the two are never shown together by a command.
 function Win:ShowMain(group, view)
     local t = self.takeover
     if t and t.kind == "practice" then
         local w = self.windows[t.key]
         if w and w.frame:IsShown() then
-            MD:Print(Win.PRACTICE_REFUSED)
+            if w.busy then MD:Print(w.busy) end
             return
         end
     end
     self:CloseTakeovers()
-    if MD.OpenMainWindow then return MD:OpenMainWindow(group, view) end
+    return OpenHost(group, view)
 end
 
 --------------------------------------------------------------------------------
--- The ESC stack (6.5, T33)
+-- The ESC stack (6.5, T33): UI/EscStack.lua's, on MD.Win too (T80, C1). The
+-- same table and the same proxy, so a caller of either sees one stack.
 --------------------------------------------------------------------------------
--- WoW's CloseSpecialWindows hides EVERY shown frame named in UISpecialFrames in
--- one press, which is why one ESC used to close everything. So only the proxy
--- is named there. Win.stack is last in, first out: { frame, onEsc } per shown
--- frame, one entry per frame (a frame pushed again moves to the top with its
--- new onEsc).
-Win.stack = {}
-local hooked = setmetatable({}, { __mode = "k" })     -- frames whose OnHide we hooked
-local popups = setmetatable({}, { __mode = "k" })     -- open dropdown lists (UI_POPUP)
-local special = {}                                    -- names the fallback put in UISpecialFrames
+Win.stack = Esc.stack
+Win.proxy = Esc.proxy
+function Win:Push(frame, onEsc) return Esc:Push(frame, onEsc) end
+function Win:Remove(frame) return Esc:Remove(frame) end
+function Win:Prune() return Esc:Prune() end
+function Win:OnEsc() return Esc:OnEsc() end
+function Win:CloseLists() return Esc:CloseLists() end
+function Win:TopWindow(exclude) return Esc:TopWindow(exclude) end
+function Win:EscStackOn() return Esc:On() end
+function Win:EscLine() return Esc:Line() end
 
-function Win:EscStackOn()
-    local u = UIdb()
-    return not (u and u.escStack == false)
-end
-
-local function FrameName(f)
-    local n = f.GetName and f:GetName()
-    if type(n) == "string" and n ~= "" then return n end
-    return nil
-end
-
-local function AddSpecial(name)
-    if not name or special[name] then return end
-    special[name] = true
-    tinsert(UISpecialFrames, name)
-end
-
-local function DropSpecials()
-    for i = #UISpecialFrames, 1, -1 do
-        if special[UISpecialFrames[i]] then table.remove(UISpecialFrames, i) end
-    end
-    for name in pairs(special) do special[name] = nil end
-end
-
--- Shown, and every parent up to UIParent shown: a list whose window hid is not
--- on screen even if nobody told the manager (UIParent itself is not asked, so
--- Alt+Z hiding the interface does not empty the stack).
-local function OnScreen(f)
-    local guard = 0
-    while f and f ~= UIParent and guard < 50 do
-        if not f:IsShown() then return false end
-        f = f.GetParent and f:GetParent()
-        guard = guard + 1
-    end
-    return true
-end
-
-local proxy = CreateFrame("Frame", "SpellTunerEscProxy", UIParent)
-proxy:Hide()
-Win.proxy = proxy
-tinsert(UISpecialFrames, "SpellTunerEscProxy")
-
-local function Arm()
-    if not proxy:IsShown() then proxy:Show() end
-end
-
--- The stack emptied by code: the proxy goes down quietly, so its OnHide pops
--- nothing (only a hide that ESC caused may).
-local function Disarm()
-    if proxy:IsShown() then
-        proxy.quiet = true
-        proxy:Hide()
-        proxy.quiet = nil -- a client that skipped OnHide leaves no stale flag
-    end
-end
-
-local function RemoveEntry(entry)
-    for i = #Win.stack, 1, -1 do
-        if Win.stack[i] == entry then table.remove(Win.stack, i) end
-    end
-end
-
--- What one ESC press did, for /st probe's esc= line (6.5: UNVERIFIED on
--- Forever whether a special frame can re-show itself from its own OnHide in
--- the next frame). Kept in db.ui.escTest, so a /reload does not lose it.
-local function RecordPress(rec)
-    local u = UIdb()
-    if not u then return end
-    local closed = rec.before - rec.after
-    if closed < 0 then closed = 0 end
-    local result
-    if closed > 1 then
-        result = "all"
-    elseif rec.after > 0 and not rec.rearmed then
-        result = "stuck"
-    else
-        result = "stack"
-    end
-    u.escTest = { result = result, before = rec.before, after = rec.after, rearmed = rec.rearmed }
-end
-
--- After a press: the proxy shown again on the next frame while entries remain.
-local function Rearm(rec)
-    MD.API.After(0, function()
-        if #Win.stack > 0 then Arm() end
-        rec.after = #Win.stack
-        rec.rearmed = (#Win.stack == 0) or proxy:IsShown()
-        RecordPress(rec)
-    end)
-end
-
--- One ESC: the client hid the proxy. The top entry leaves the stack first (an
--- onEsc that raises cannot wedge it), the re-arm is scheduled, then its onEsc
--- runs -- default: hide the frame. An onEsc that returns true stays on top.
-function Win:OnEsc()
-    self:Prune()
-    local rec = { before = #self.stack }
-    local e = self.stack[#self.stack]
-    Rearm(rec)
-    if not e then return end
-    table.remove(self.stack)
-    local keep
-    if e.onEsc then
-        keep = e.onEsc(e.frame)
-    else
-        e.frame:Hide()
-    end
-    if keep == true and OnScreen(e.frame) then
-        RemoveEntry(e)
-        self.stack[#self.stack + 1] = e
-    end
-end
-
--- Still shown after an OnHide: UIParent hid (Alt+Z, a loading screen), not
--- ESC -- the proxy's IsShown is false only when it was hidden itself.
-proxy:SetScript("OnHide", function(self)
-    if self.quiet then self.quiet = nil; return end
-    if self:IsShown() then return end
-    Win:OnEsc()
-end)
-
--- Every entry whose frame is no longer on screen dropped (a list whose window
--- hid, where the client did not say so to the list); the proxy down when
--- nothing is left.
-function Win:Prune()
-    for i = #self.stack, 1, -1 do
-        local e = self.stack[i]
-        if not OnScreen(e.frame) then table.remove(self.stack, i) end
-    end
-    if #self.stack == 0 then Disarm() end
-end
-
--- A frame's every entry off the stack (and whatever else left the screen).
-function Win:Remove(frame)
-    for i = #self.stack, 1, -1 do
-        if self.stack[i].frame == frame then table.remove(self.stack, i) end
-    end
-    self:Prune()
-end
-
--- A frame shown: on top of the stack, its OnHide hooked once so every close
--- (the x, a combat hide, a takeover, a parent hiding it) takes it off. With
--- the stack off, its name goes into UISpecialFrames instead (today's rule).
-function Win:Push(frame, onEsc)
-    if not frame then return end
-    if not self:EscStackOn() then
-        AddSpecial(FrameName(frame))
-        return
-    end
-    if not hooked[frame] then
-        hooked[frame] = true
-        -- a frame still shown in its own OnHide only lost its parent (UIParent
-        -- under Alt+Z keeps it on the stack; a hidden window drops its lists)
-        frame:HookScript("OnHide", function(f)
-            if f:IsShown() then Win:Prune() else Win:Remove(f) end
-        end)
-    end
-    for i = #self.stack, 1, -1 do
-        if self.stack[i].frame == frame then table.remove(self.stack, i) end
-    end
-    self.stack[#self.stack + 1] = { frame = frame, onEsc = onEsc }
-    Arm()
-end
-
--- The dropdown lists join the stack through the kit's UI_POPUP event (T77,
--- P33, review A31: the kit announces, the manager subscribes; it assigned the
--- kit's UI.OnPopup hook before, T31).
-MD:RegisterCallback("UI_POPUP", function(list, shown)
-    if not list then return end
-    if shown then
-        popups[list] = true
-        Win:Push(list)
-    else
-        popups[list] = nil
-        Win:Remove(list)
-    end
-end)
-
--- Every open list closed (the copy box opening, 6.2).
-function Win:CloseLists()
-    local open = {}
-    for list in pairs(popups) do open[#open + 1] = list end
-    for _, list in ipairs(open) do list:Hide() end
-end
-
--- The frame the copy box centres on: the newest window on the stack that is
--- not a list; nil = the screen.
-function Win:TopWindow(exclude)
-    for i = #self.stack, 1, -1 do
-        local f = self.stack[i].frame
-        if f ~= exclude and not popups[f] and OnScreen(f) then return f end
-    end
-    return nil
-end
-
--- db.ui.escStack (Settings -> General, T42): on, the stack; off, one
--- UISpecialFrames entry per window. Either way what is open now carries over.
+-- db.ui.escStack (Settings -> General, T42): what is open now carries over --
+-- turning the stack back on pushes every registered window that is shown.
 function Win:SetEscStack(on)
-    local u = UIdb()
-    if not u then return end
-    on = on and true or false
-    if on == self:EscStackOn() and u.escStack ~= nil then return end
-    if on then
-        u.escStack = true
-        DropSpecials()
-        for _, w in pairs(self.windows) do
-            if w.frame:IsShown() then self:Push(w.frame, w.onEsc) end
-        end
-    else
-        local open = {}
-        for _, e in ipairs(self.stack) do open[#open + 1] = e.frame end
-        u.escStack = false
-        for i = #self.stack, 1, -1 do self.stack[i] = nil end
-        Disarm()
-        for _, f in ipairs(open) do AddSpecial(FrameName(f)) end
+    local shown = {}
+    for _, w in pairs(self.windows) do
+        if w.frame:IsShown() then shown[#shown + 1] = { frame = w.frame, onEsc = w.onEsc } end
     end
-end
-
--- /st probe's line (6.5): what the last ESC press did.
-function Win:EscLine()
-    if not self:EscStackOn() then
-        return "esc=off (one UISpecialFrames entry per window: Settings -> General)"
-    end
-    local u = UIdb()
-    local t = u and u.escTest
-    if type(t) ~= "table" or type(t.result) ~= "string" or type(t.before) ~= "number"
-        or type(t.after) ~= "number" then
-        return "esc=untested"
-    end
-    local closed = t.before - t.after
-    if closed < 0 then closed = 0 end
-    local tail
-    if t.after == 0 then
-        tail = "nothing left open"
-    elseif t.rearmed then
-        tail = "the proxy shown again"
-    else
-        tail = "the proxy NOT shown again"
-    end
-    return string.format("esc=%s (last press: %d open, %d closed, %s)", t.result, t.before, closed, tail)
+    return Esc:Set(on, shown)
 end
 
 --------------------------------------------------------------------------------
@@ -826,7 +634,7 @@ function Win:EnterCombat()
     for key, w in pairs(self.windows) do
         if w.frame:IsShown() and CombatRule(w) == "hide" then
             local rec = { key = key }
-            if key == "main" and MD.SelectedView then rec.group, rec.view = MD:SelectedView() end
+            if w == self.host and w.selected then rec.group, rec.view = w.selected() end
             list[#list + 1] = rec
         end
     end
@@ -847,7 +655,6 @@ function Win:EnterCombat()
 end
 
 Win.COMBAT_NOTE = "the window hides in combat and comes back after. Settings -> General -> Windows."
-
 -- PLAYER_REGEN_ENABLED: what combat hid comes back where it was. During a
 -- takeover the main window was already hidden, so only the replay returns.
 function Win:LeaveCombat()
@@ -858,7 +665,7 @@ function Win:LeaveCombat()
     for _, rec in ipairs(hidden) do
         local w = self.windows[rec.key]
         if w and not w.frame:IsShown() then
-            if rec.key == "main" then
+            if w == self.host then
                 self:ShowMain(rec.group, rec.view)
             else
                 w.frame:Show()

@@ -10,14 +10,26 @@
 -- syntax check. The v0.9.2 addition it guards is the "run:pull" address -- the
 -- tab, the slash commands and the replay window all take it, so one of them
 -- getting it wrong has to fail here.
+--
+-- T80 (C1, decision 10): the TBC TOC lists the theme, so Review is P27's
+-- themed pane on TBC too (the author's answer 5): the generic table, whose
+-- rows take OnMouseUp and read a second click within 0.4 s as a
+-- double-click (ClickRow moves the clock a second first); no Coach* star and
+-- no shift-click -- the row menu's Coach anyway forces; FORCED is said in the
+-- replay's band ("coached anyway"); a long list scrolls instead of ending
+-- with a tail line. The checks that held the old pane hold these instead.
 local here = arg[0]:match("^(.*)/[^/]+$")
 HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
 local MD = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB
 
-S.Load({ "UI/Style.lua", "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/Dashboard_Review.lua", "UI/ReplayWindow.lua" },
-    "SpellTuner", MD)
+-- T80 (C1): the theme and the window manager after the kit, as the TBC TOC
+-- lists them; under the theme Review is the generic table with its row menu
+-- (UI/Dashboard_Rows.lua, UI/ContextMenu.lua -- P27), as on Forever.
+S.Load({ "UI/Style.lua", "UI/Theme_Flat.lua", "UI/EscStack.lua", "UI/Windows.lua", "UI/ContextMenu.lua",
+         "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/Dashboard_Rows.lua", "UI/Dashboard_Review.lua",
+         "UI/ReplayWindow.lua" }, "SpellTuner", MD)
 
 local ok, fails = 0, {}
 local function check(name, cond, detail)
@@ -61,6 +73,13 @@ local function ButtonNamed(text)
     return nil
 end
 local function Click(btn) local fn = btn and btn:GetScript("OnClick"); if fn then fn(btn) end end
+-- T80: a click on a row of the themed list (OnMouseUp), a second apart from
+-- the last so two selections are never one double-click
+local function ClickRow(r, button)
+    S.now = S.now + 1
+    local fn = r and (r:GetScript("OnMouseUp") or r:GetScript("OnClick"))
+    if fn then fn(r, button or "LeftButton") end
+end
 
 local rows = Rows()
 check("the fights list paints a header and a row", #rows >= 2, tostring(#rows))
@@ -150,11 +169,11 @@ end)())
 -- while a run is shown, Coach coaches the RUN and a second button coaches the
 -- selected pull; that one is off for a pull under the gate
 check("Coach becomes Coach run", ButtonNamed("Coach run") ~= nil)
-Click(pullRows[2]); api:Render()
+ClickRow(pullRows[2]); api:Render()
 local coachPull = ButtonNamed("Coach pull") or ButtonNamed("Coach pull*")
 check("Coach pull is disabled on the short pull", coachPull and coachPull.enabled == false,
     tostring(coachPull and coachPull.enabled))
-Click(pullRows[1]); api:Render()
+ClickRow(pullRows[1]); api:Render()
 coachPull = ButtonNamed("Coach pull") or ButtonNamed("Coach pull*")
 check("Coach pull is enabled on the real pull", coachPull and coachPull.enabled ~= false,
     tostring(coachPull and coachPull.enabled))
@@ -177,7 +196,7 @@ check("unpinning works", run.pinned == false)
 --------------------------------------------------------------------------------
 local realValidate = MD.SimModel.Validate
 function MD.SimModel:Validate(...) local v = realValidate(self, ...); v.ok = true; return v end
-Click(pullRows[1]); api:Render()
+ClickRow(pullRows[1]); api:Render()
 Click(ButtonNamed("Play"))
 local W = MD.Replay._state()
 check("Play opened the replay window", W.frame ~= nil and W.frame:IsShown())
@@ -257,26 +276,32 @@ check("switching back shows the single fights", (function()
 end)())
 
 --------------------------------------------------------------------------------
--- shift-clicking Coach forces it on a fight the gates reject (v0.9.8). The
--- button stays clickable for that case on purpose: a disabled button cannot be
--- shift-clicked, and a plain click still refuses.
+-- forcing Coach on a fight the gates reject. v0.9.8 made it a shift-click on a
+-- starred button; T80 (C1): under the theme, as on Forever (P27, the author's
+-- answer 5), the star and the shift-click are gone -- Coach stays clickable and
+-- refuses, and the row menu's Coach anyway forces.
 --------------------------------------------------------------------------------
 Click(ButtonNamed("Fights"))
 api:Render()
 do
+    -- T80: the replay opened above coaches in the background (v0.13.9); under
+    -- the theme a refused Coach leaves that search alone, so it is let finish
+    -- here -- what follows is about the click's own search, not that one
+    local drain = 0
+    while MD.coachSearch and drain < 20000 do S.Tick(0.016); drain = drain + 1 end
     local rec1 = MD.FightRecorder:Get(1)
     MD.SimPlanner.plans[rec1.id] = nil
     MD.SimPlanner.forced[rec1.id] = nil
     MD.player.isDruid = true
     api:Render()
-    local star = ButtonNamed("Coach*")
-    check("a rejected fight keeps a clickable Coach, marked", star ~= nil and star.enabled ~= false,
-        star and tostring(star.enabled) or "no starred button")
+    local coach = ButtonNamed("Coach")
+    check("a rejected fight keeps a clickable Coach, no star", coach ~= nil and coach.enabled ~= false
+        and ButtonNamed("Coach*") == nil, coach and tostring(coach.enabled) or "no Coach button")
 
     out = {}
     chat = {}
     S.shift = false
-    Click(star)
+    Click(coach)
     -- T57 (P13, review Q15): the refusal is decided in the click -- no search
     -- was started -- rather than "no plan after 200 frames", which a search
     -- slower than 200 frames would also pass.
@@ -297,13 +322,19 @@ do
     -- CoachOnOpen -- noted in docs/tasks/T57), so that frame runs here.
     S.Tick(0.016)
 
-    S.shift = true
-    Click(ButtonNamed("Coach*"))
+    -- the row menu (UI/ContextMenu.lua): right-click the row, Coach anyway
+    local row1
+    for _, r in ipairs(Rows()) do if CellText(r, "n") == "1" then row1 = r end end
+    ClickRow(row1, "RightButton")
+    local anyway
+    for _, f in ipairs(S.allFrames) do
+        if f.kind == "Button" and f.text == "Coach anyway" and f.shown then anyway = f end
+    end
+    Click(anyway)
     local frames = 0
     while MD.coachSearch and frames < 20000 do S.Tick(0.016); frames = frames + 1 end
-    S.shift = false
-    check("shift-click coaches it anyway", MD.SimPlanner.plans[rec1.id] ~= nil,
-        string.format("%d frames", frames))
+    check("the row menu's Coach anyway coaches it", anyway ~= nil and MD.SimPlanner.plans[rec1.id] ~= nil,
+        string.format("menu item %s, %d frames", tostring(anyway ~= nil), frames))
     check("and the forced coach is remembered for Play", MD.SimPlanner.forced[rec1.id] == true)
     MD:OpenReplay(1)
     check("so Play alone now shows both columns", MD.Replay._state().right.state ~= nil)
@@ -328,10 +359,12 @@ MD:OpenReplay(1)
 check("no suggested column on a fight that does not replay", MD.Replay._state().right.state == nil)
 MD:OpenReplay("1 force")
 check("force draws it", MD.Replay._state().right.state ~= nil)
-check("and the column says it was forced", (function()
-    local t = MD.Replay._state().right.title:GetText() or ""
-    return t:find("FORCED") ~= nil
-end)(), MD.Replay._state().right.title:GetText())
+-- T80: under the theme the band says it, not the column title (P28)
+check("and the band says it was coached anyway", (function()
+    local band = MD.Replay._state().frame.band
+    local t = band and band.verdict:GetText() or ""
+    return t:find("coached anyway", 1, true) ~= nil
+end)(), MD.Replay._state().frame.band and MD.Replay._state().frame.band.verdict:GetText())
 
 -- a forced coach is remembered, so Play alone shows it afterwards
 MD:OpenReplay(1)
@@ -341,12 +374,13 @@ MD:OpenReplay(1)
 check("a fight coached with force stays forced", MD.Replay._state().right.state ~= nil)
 MD.SimPlanner.forced[single.id] = nil
 
--- shift-clicking Play is the same thing from the tab
+-- shift-clicking Play forced it from the tab (v0.9.6); T80: under the theme
+-- Play opens the fight as it is -- forcing is the row menu's Coach anyway
 MD:OpenReplay(1)
 S.shift = true
 Click(ButtonNamed("Play"))
 S.shift = false
-check("shift-click Play forces from the tab", MD.Replay._state().right.state ~= nil)
+check("shift-click Play no longer forces (Coach anyway does)", MD.Replay._state().right.state == nil)
 
 -- a single fight has no run strip at all
 MD:OpenReplay(1)
@@ -401,7 +435,7 @@ do
     api:Render()
     local function PinRow(n)
         for _, r in ipairs(Rows()) do
-            if CellText(r, "n"):gsub("%*$", "") == tostring(n) then Click(r) end
+            if CellText(r, "n"):gsub("%*$", "") == tostring(n) then ClickRow(r) end
         end
         api:Render()
         chat = {}
@@ -421,10 +455,10 @@ do
 end
 
 --------------------------------------------------------------------------------
--- T53 (P9, review U25): a list longer than the pane says what it hides. A
--- 36-pull run in a 420-high pane has 19 slots: 18 pulls and the tail line
--- "... and 18 more". Selecting pull 36 (in a taller pane, then shrunk to the
--- same height) keeps it on screen: the list starts where 36 is the last row.
+-- T53 (P9, review U25): a list longer than the pane said what it hid with a
+-- tail line. T80 (C1): under the theme the list scrolls (P27, as on Forever):
+-- the wheel reaches pull 36 and no tail line is painted; a pull selected down
+-- there stays on screen when the pane renders again.
 --------------------------------------------------------------------------------
 do
     local realPulls = run.pulls
@@ -453,22 +487,32 @@ do
         return out
     end
     Click(ButtonNamed("Ramparts test")); api:Render()
+    local first = Numbers()
+    local listFrame = Rows()[1] and Rows()[1].parentFrame
+    local wheel = listFrame and listFrame:GetScript("OnMouseWheel")
+    local notches = 0
+    while wheel and notches < 40 do
+        local before = table.concat(Numbers(), ",")
+        wheel(listFrame, -1)
+        notches = notches + 1
+        if table.concat(Numbers(), ",") == before then break end
+    end
     local nums = Numbers()
-    check("a 36-pull run ends with the tail line", Tail() == 18 and #nums == 18
-        and nums[1] == 1 and nums[18] == 18,
-        string.format("tail=%s rows=%d (%s..%s)", tostring(Tail()), #nums, tostring(nums[1]), tostring(nums[#nums])))
+    check("a 36-pull run scrolls to pull 36, no tail line", Tail() == nil and #first > 0 and #first < 36
+        and first[1] == 1 and nums[#nums] == 36 and #nums == #first,
+        string.format("tail=%s first=%s..%s (%d) last=%s..%s", tostring(Tail()), tostring(first[1]),
+            tostring(first[#first]), #first, tostring(nums[1]), tostring(nums[#nums])))
 
-    api.frame:SetSize(760, 1000); api:Render()
     local row36
     for _, r in ipairs(Rows()) do if CellText(r, "n") == "36" then row36 = r end end
-    Click(row36)
-    api.frame:SetSize(760, 420); api:Render()
+    ClickRow(row36)
+    api:Render()
     nums = Numbers()
     local has36 = false
     for _, n in ipairs(nums) do if n == 36 then has36 = true end end
-    check("selecting pull 36 keeps it on screen", row36 ~= nil and has36 and #nums == 18
-        and nums[1] == 19 and Tail() == 18,
-        string.format("tail=%s rows=%d (%s..%s)", tostring(Tail()), #nums, tostring(nums[1]), tostring(nums[#nums])))
+    check("selecting pull 36 keeps it on screen", row36 ~= nil and has36 and Tail() == nil,
+        string.format("tail=%s rows=%d (%s..%s)", tostring(Tail()), #nums, tostring(nums[1]),
+            tostring(nums[#nums])))
     run.pulls = realPulls
     Click(ButtonNamed("Fights")); api:Render()
 end

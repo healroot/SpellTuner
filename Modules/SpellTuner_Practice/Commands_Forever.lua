@@ -12,8 +12,7 @@ MD:AddCommand("practice", function(arg)
         MD:OpenPractice(MD.Practice.CopySetup(MD.cdb.practiceSetup), MD.cdb.practiceSetup.fixedSeed)
     elseif MD.SelectView then
         -- T40: through the window manager's door (MD:SelectView -> MD.Win:ShowMain,
-        -- which opens the window itself); ShowDashboard only without it
-        if not MD.Win and MD.ShowDashboard then MD:ShowDashboard() end
+        -- which opens the window itself)
         MD:SelectView("simulate", "practice")
     end
 end, "/st practice [start]", "set up and heal a practice fight; start plays the saved setup at once")
@@ -29,11 +28,7 @@ local function ToggleBindings(arg)
     end
     -- T40 (docs/SPEC-forever-ui.md 6.4): opens Simulate -> Practice with the
     -- bindings sheet shown (a sheet on the pane, not a window of its own)
-    if MD.Win and MD.ShowBindings then
-        MD:ShowBindings()
-    elseif MD.ToggleBindings then
-        MD:ToggleBindings()
-    end
+    if MD.ShowBindings then MD:ShowBindings() end
 end
 MD:AddCommand("binds", ToggleBindings, "/st binds [check]",
     "Simulate -> Practice with the bindings sheet: what your keys and mouse buttons cast in practice; "

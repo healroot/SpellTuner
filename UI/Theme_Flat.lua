@@ -1,11 +1,16 @@
--- T29 (docs/SPEC-forever-ui.md 4.1-4.3): the Forever theme. Listed by the
--- Forever TOCs only, right after UI/Style.lua; at load, before any window is
--- built, it writes the flat palette into UI.PALETTE, the text colours into
--- UI.TEXT, builds the new fonts, and switches on the kit's pixel-snapped edges
--- (UI.PIXEL) and the dropdown lists' strata (UI.LIST_STRATA), and sets
--- UI.THEMED (T69, P25). The TBC TOC does not list it, so there UI.THEMED stays
--- false, UI.PIXEL and UI.LIST_STRATA nil, and UI.TEXT / UI.PALETTE hold
--- Style.lua's TBC values -- the literals the shared files carried.
+-- T29 (docs/SPEC-forever-ui.md 4.1-4.3): the flat theme (UI/Theme_Forever.lua
+-- until T80). T80 (C1 of docs/PLAN-refactor-ux.md, decision 10, the author's
+-- answer 1): listed by every main TOC -- TBC's included -- right after
+-- UI/Style.lua; at load, before any window is built, it writes the flat
+-- palette into UI.PALETTE, the text colours into UI.TEXT, builds the new
+-- fonts, and switches on the kit's pixel-snapped edges (UI.PIXEL) and the
+-- dropdown lists' strata (UI.LIST_STRATA), and sets UI.THEMED (T69, P25), the
+-- one switch every flat-look branch asks. Without it (a suite that loads
+-- UI/Style.lua alone) UI.THEMED stays false and UI.TEXT / UI.PALETTE hold
+-- Style.lua's old TBC values.
+--
+-- It owns db.ui.fontOffset (T80: declared here with MD:RegisterDefaults) and
+-- UI.SetFontOffset, which both Settings panes call.
 --
 -- No client data is read here: the accent is Style.lua's (UnitClass through
 -- the adapter, RAID_CLASS_COLORS), the font face is GameFontNormal's.
@@ -74,7 +79,7 @@ T.dominated = T.text
 T.note      = T.text2
 T.tipGold   = T.accent
 
--- the one switch every Forever-only branch asks (docs/PLAN-refactor-ux.md 2)
+-- the one switch every flat-look branch asks (docs/PLAN-refactor-ux.md 2)
 UI.THEMED = true
 
 --------------------------------------------------------------------------------
@@ -131,12 +136,29 @@ function UI.ApplyFonts(offset)
     return offset
 end
 
--- UI.Pitch(n): a Forever-only pane's vertical pitch grows with a positive
+-- UI.Pitch(n): a flat-look pane's vertical pitch grows with a positive
 -- offset (a negative one leaves the pitches alone); widths never change.
 function UI.Pitch(n)
     local o = UI.fontOffset or 0
     if o > 0 then return n + o end
     return n
+end
+
+-- T80 (C1): the offset's default, declared by the file that reads it (T55's
+-- MD:RegisterDefaults; it left Core_Forever.lua's DEFAULTS), so TBC has it.
+MD:RegisterDefaults({ ui = { fontOffset = 0 } })
+
+-- T80 (C1): the Text size control of both Settings panes -- the offset
+-- applied (through the kit's UI.ApplyFonts, which announces FONTS_CHANGED)
+-- and saved; answers the offset applied.
+function UI.SetFontOffset(offset)
+    local applied = UI.ApplyFonts(offset)
+    local db = MD.db
+    if type(db) == "table" then
+        if type(db.ui) ~= "table" then db.ui = {} end
+        db.ui.fontOffset = applied
+    end
+    return applied
 end
 
 -- The saved offset, once SavedVariables are in: clamped, written back, applied.

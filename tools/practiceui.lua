@@ -10,8 +10,11 @@ HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
 local MD = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB
-S.Load({ "UI/Style.lua", "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/Dashboard_Review.lua", "UI/PracticePanel.lua",
-         "UI/BindingsWindow.lua", "UI/ReplayWindow.lua" }, "SpellTuner", MD)
+-- T80 (C1): the theme and the window manager after the kit, as the TBC TOC
+-- lists them (and the generic table and row menu Review is built on under it)
+S.Load({ "UI/Style.lua", "UI/Theme_Flat.lua", "UI/EscStack.lua", "UI/Windows.lua", "UI/ContextMenu.lua",
+         "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/Dashboard_Rows.lua", "UI/Dashboard_Review.lua",
+         "UI/PracticePanel.lua", "UI/BindingsWindow.lua", "UI/ReplayWindow.lua" }, "SpellTuner", MD)
 local PR, SD = MD.Practice, MD.SpellData
 
 local ok, fails = 0, {}
@@ -43,9 +46,21 @@ Click(Button("Raid 10"))
 check("choosing Raid 10 makes ten", #MD.cdb.practiceSetup.targets == 10)
 Click(Button("Party"))
 check("and back to five", #MD.cdb.practiceSetup.targets == 5)
+-- T80 (C1): under the theme (on TBC since C1) the bindings are one summary
+-- line, "6 bindings", with the list in its hover (T40), as on Forever
 local bindSummary = nil
-for _, f in ipairs(S.allFrames) do
-    if type(f.text) == "string" and f.text:find("BUTTON5") and f.text:find("Lifebloom") then bindSummary = f end
+do
+    local s = panel.summary
+    if s and s.fs and (s.fs:GetText() or ""):find("^6 bindings") then
+        MD.UI.tooltip.lines = nil
+        local enter = s:GetScript("OnEnter")
+        if enter then enter(s) end
+        for _, l in ipairs(MD.UI.tooltip.lines or {}) do
+            if type(l[1]) == "string" and l[1]:find("BUTTON5") and l[1]:find("Lifebloom") then bindSummary = l[1] end
+        end
+        local leave = s:GetScript("OnLeave")
+        if leave then leave(s) end
+    end
 end
 check("the panel lists what your presses cast", bindSummary ~= nil)
 check("and has a button to edit them", Button("Edit bindings") ~= nil)
@@ -56,10 +71,10 @@ for _, f in ipairs(S.allFrames) do
 end
 check("no bare pipe on the panel", not pipes)
 
--- the bindings window ---------------------------------------------------------
+-- the bindings sheet (T80: TBC's window became T40's sheet on the panel) ----------
 Click(Button("Edit bindings"))
 local bw = MD.BindingsWindow._frame()
-check("the bindings window opens", bw ~= nil and bw:IsShown())
+check("the bindings sheet opens on the panel", bw ~= nil and bw:IsShown() and bw.bindingsSheet == true)
 local brows = MD.BindingsWindow._rows()
 check("one row per binding", #brows >= 6 and brows[1].key.text:find("BUTTON5") ~= nil,
     brows[1] and brows[1].key.text)

@@ -1154,7 +1154,8 @@ end
 -- T72 (P28, review U27, docs/DECISIONS.md): the replay's keyboard, on both
 -- lines. Space plays and pauses, Left / Right move 5 s, every other key goes on
 -- to the game (practice's propagate pattern). Space and the arrows are jump and
--- turn, and TBC does not hide the replay in combat, so the window takes the
+-- turn, and under "Keep them open" (db.ui.combat = "keep"; T80: on TBC too, the
+-- manager hides it by default) the replay stays in combat, so the window takes the
 -- keyboard only while the pointer is over it and never in combat: it lets go
 -- on PLAYER_REGEN_DISABLED, when the pointer leaves and when it hides, and
 -- takes it only when the pointer ENTERS out of combat. A failed
@@ -1329,16 +1330,12 @@ end
 
 local function Build()
     if frame then return end
-    -- T34: on Forever (MD.Win) the window manager places it (not user-placed)
-    -- and the header carries the "< SpellTuner" back button; TBC's call is
-    -- today's, argument for argument.
+    -- T34: the window manager places it (not user-placed) and the header
+    -- carries the "< SpellTuner" back button. T80 (C1): on both lines -- TBC's
+    -- HIGH strata and UISpecialFrames entry are gone with the manager there.
     local W = MD.Win
     frame = UI.CreateMovableFrame("SpellTuner: Replay", "SpellTunerReplayWindow", 2 * COL_W + 3 * GUTTER, 300,
-        nil, nil, W and true or nil, W and { back = "< SpellTuner" } or nil)
-    if not W then
-        frame:SetFrameStrata("HIGH")
-        tinsert(UISpecialFrames, "SpellTunerReplayWindow")
-    end
+        nil, nil, true, { back = "< SpellTuner" })
     frame:SetScript("OnUpdate", OnUpdate)
     frame:SetScript("OnHide", function()
         playing = false
@@ -1350,27 +1347,18 @@ local function Build()
     frame:SetScript("OnKeyDown", ReplayKey)
     frame:HookScript("OnEnter", PointerCheck)
     frame:HookScript("OnLeave", PointerCheck)
-    if W then
-        -- T34 (6.2, 6.3): a takeover -- DIALOG / 10, on the ESC stack, placed by
-        -- the manager (db.ui.win.replay once dragged); registered after the
-        -- OnHide script above, since Register hooks it. A practice being played
-        -- is not hidden by combat here: the guard below ends it.
-        W:Register(frame, { key = "replay", role = "takeover", onEsc = EscPress,
-                            combat = function() if live then return "stay" end return nil end })
-        if MD.db.replayPos then
-            W:Adopt("replay", MD.db.replayPos) -- once: the old key goes
-            MD.db.replayPos = nil
-        end
-    else
-        function frame:OnMoved()
-            local point, _, relPoint, x, y = self:GetPoint()
-            MD.db.replayPos = { point, relPoint, x, y }
-        end
-        if MD.db.replayPos then
-            local p = MD.db.replayPos
-            frame:ClearAllPoints()
-            frame:SetPoint(p[1], UIParent, p[2], p[3], p[4])
-        end
+    -- T34 (6.2, 6.3): a takeover -- DIALOG / 10, on the ESC stack, placed by
+    -- the manager (db.ui.win.replay once dragged); registered after the
+    -- OnHide script above, since Register hooks it. A practice being played
+    -- is not hidden by combat here: the guard below ends it; while one plays,
+    -- a command that wants the main window is refused with `busy`.
+    W:Register(frame, { key = "replay", role = "takeover", onEsc = EscPress,
+                        combat = function() if live then return "stay" end return nil end,
+                        busy = "Practice is running: ESC pauses, ESC again ends it." })
+    -- the place kept before the manager (TBC's until T80 / C1), adopted once
+    if MD.db.replayPos then
+        W:Adopt("replay", MD.db.replayPos) -- once: the old key goes
+        MD.db.replayPos = nil
     end
 
     if UI.THEMED then
@@ -2277,7 +2265,7 @@ function MD:OpenReplay(n)
     end
     PlaceMarkers()
     SeekTo(0)
-    if MD.Win then MD.Win:TakeOver("replay", "replay") end -- T34 (6.3)
+    MD.Win:TakeOver("replay", "replay") -- T34 (6.3)
     frame:Show()
     return true
 end
@@ -2445,7 +2433,7 @@ function MD:OpenPractice(setup, seed)
     speedHighlight(1)
     playing = true
     playBtn:SetText("II")
-    if MD.Win then MD.Win:TakeOver("replay", "practice") end -- T34 (6.3): always a takeover
+    MD.Win:TakeOver("replay", "practice") -- T34 (6.3): always a takeover
     frame:Show()
     return session
 end

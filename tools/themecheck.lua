@@ -1,7 +1,7 @@
 -- tools/run.sh tools/themecheck.lua
 --
 -- T29 (docs/SPEC-forever-ui.md 4.1-4.3, section 9's T29 row): the Forever theme --
--- UI/Theme_Forever.lua (the palette, UI.TEXT, the fonts, UI.ApplyFonts, the
+-- UI/Theme_Forever.lua, UI/Theme_Flat.lua since T80 (the palette, UI.TEXT, the fonts, UI.ApplyFonts, the
 -- font offset clamped to -2..+2, UI.Pitch, UI.PIXEL, UI.LIST_STRATA), the
 -- additive half in UI/Style.lua (UI.px, StylizeFrame under UI.PIXEL and its
 -- weak registry, UI.RestylePixels), MD.API.PhysicalScreenSize and the
@@ -31,6 +31,13 @@
 -- button and the x; a sheet's 20x20 x, with a title-row button laid left of
 -- it; a check box's click area measured from its label when it shows; a
 -- mask's optional line of text; the resize grip as three 1-px Line regions.
+--
+-- T80 (C1 of docs/PLAN-refactor-ux.md, decision 10): the theme is
+-- UI/Theme_Flat.lua now and every main TOC lists it, TBC's included, right
+-- after UI/Style.lua; it declares db.ui.fontOffset itself (MD:RegisterDefaults)
+-- and the window manager the rest of db.ui. The tbc half loads it as the TOC
+-- does and holds the theme there: UI.THEMED true, the tokens and fills
+-- Forever's, Review's small text the kit's, the primitives' pixel edges.
 HARNESS_FLAVOUR = { "forever", "tbc" }
 
 local here = arg[0]:match("^(.*)/[^/]+$")
@@ -99,7 +106,12 @@ end
 
 if S.flavour == "tbc" then
     ----------------------------------------------------------------------------
-    -- T69 (P25), TBC: the kit without the theme -- the flag off, the old literals
+    -- T80 (C1, decision 10): the TBC TOC lists the theme (UI/Theme_Flat.lua
+    -- right after UI/Style.lua), so this half loads it as the TOC does and
+    -- holds the theme on TBC: UI.THEMED true, TBC's tokens and fills equal to
+    -- Forever's (P25's "equal to the old literals" replaced), Review's small
+    -- text the kit's, the primitives' pixel edges. Before T80 it held the
+    -- unthemed kit (T69, T74, T75).
     ----------------------------------------------------------------------------
     local FrameMT = getmetatable(CreateFrame("Frame"))
     local makeFS = FrameMT.CreateFontString
@@ -108,10 +120,12 @@ if S.flavour == "tbc" then
         fs.template = template
         return fs
     end
-    S.Load({ "UI/Style.lua", "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/Dashboard_Review.lua" }, "SpellTuner", MD)
+    S.Load({ "UI/Style.lua", "UI/Theme_Flat.lua", "UI/EscStack.lua", "UI/Windows.lua", "UI/ContextMenu.lua",
+             "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/Dashboard_Rows.lua", "UI/Dashboard_Review.lua" }, "SpellTuner", MD)
     local UI = MD.UI
 
-    check("tbc: UI.THEMED is false with UI/Style.lua alone", UI.THEMED == false, tostring(UI.THEMED))
+    check("tbc: UI.THEMED is true with the theme loaded as the TBC TOC lists it", UI.THEMED == true,
+        tostring(UI.THEMED))
 
     local T = UI.TEXT or {}
     local all = true
@@ -119,12 +133,15 @@ if S.flavour == "tbc" then
     for k in pairs(LEGACY) do if not shaped(T[k]) then all = false end end
     check("tbc: UI.TEXT is present, every 4.1 and legacy token shaped", all)
 
+    -- Forever's values (the forever half below holds them there): the class
+    -- colour as the accent (the stub's druid), 4.1's greys and verdicts, the
+    -- legacy tokens on text, text2 and accent -- no Blizzard gold left
     local function hex(k) return shaped(T[k]) and T[k].hex:lower() or tostring(T[k] and T[k].hex) end
-    check("tbc: the tokens hold the literals the shared files carried",
-        all and hex("accent") == "|cffffcc00" and hex("text") == "|cffffffff" and hex("muted") == "|cff888888"
-          and hex("disabled") == "|cff555555" and hex("dominated") == "|cff8a8a8a" and hex("note") == "|cffffcc00"
-          and near(T.accent[1], 1) and near(T.accent[2], 0.8) and near(T.accent[3], 0)
-          and near(T.tipGold[1], 1) and near(T.tipGold[2], 0.82) and near(T.tipGold[3], 0),
+    check("tbc: the tokens equal Forever's (accent ff7c0a, label = text2 b3b3b3, muted 7a7a7a, no gold)",
+        all and hex("accent") == "|cffff7c0a" and hex("text") == "|cffffffff" and hex("text2") == "|cffb3b3b3"
+          and hex("label") == "|cffb3b3b3" and hex("muted") == "|cff7a7a7a" and hex("disabled") == "|cff4d4d4d"
+          and hex("mana") == "|cff4d99ff" and hex("good") == "|cff5ccb6e" and hex("bad") == "|cffe0605a"
+          and T.dominated == T.text and T.note == T.text2 and T.tipGold == T.accent,
         "accent=" .. hex("accent") .. " muted=" .. hex("muted") .. " disabled=" .. hex("disabled")
           .. " dominated=" .. hex("dominated") .. " note=" .. hex("note"))
     check("tbc: UI.Hex / UI.RGB / UI.Fill read the tokens",
@@ -135,13 +152,14 @@ if S.flavour == "tbc" then
     local A = UI.accent
     local function is(c, r, g, b, a) return type(c) == "table" and near(c[1], r, 0.002) and near(c[2], g, 0.002)
         and near(c[3], b, 0.002) and near(c[4], a, 0.002) end
-    check("tbc: the palette keeps its window fills and carries the table's old ones",
-        is(P.frame, 0.1, 0.1, 0.1, 0.9) and is(P.header, 0.115, 0.115, 0.115, 1) and is(P.pane, 0.13, 0.13, 0.13, 1)
+    check("tbc: the palette is Forever's (bg 0.96, nav, pane, line, rowAlt; the accent fills)",
+        is(P.frame, 22 / 255, 22 / 255, 22 / 255, 0.96) and is(P.header, 0.115, 0.115, 0.115, 1)
+          and is(P.pane, 28 / 255, 28 / 255, 28 / 255, 1)
           and is(P.border, 0, 0, 0, 1) and is(P.rowAlt, 1, 1, 1, 0.03) and is(P.line, 42 / 255, 42 / 255, 42 / 255, 1)
           and is(P.hover, A[1], A[2], A[3], 0.12) and is(P.selected, A[1], A[2], A[3], 0.28)
           and is(P.suggested, A[1], A[2], A[3], 0.10))
 
-    -- Review's small text: the kit's font under the theme only
+    -- Review's small text: the kit's font under the theme
     local parent = CreateFrame("Frame")
     parent:SetSize(760, 420)
     local small, kit = 0, 0
@@ -152,43 +170,36 @@ if S.flavour == "tbc" then
         if f.kind == "FontString" and f.template == "GameFontHighlightSmall" then small = small + 1 end
         if f.kind == "FontString" and f.template == UI.FONT_SMALL then kit = kit + 1 end
     end
-    check("tbc: Review's small text is GameFontHighlightSmall, never the kit's",
-        small >= 3 and kit == 0, small .. " GameFontHighlightSmall, " .. kit .. " UI.FONT_SMALL")
+    check("tbc: Review's small text is the kit's UI.FONT_SMALL, never GameFontHighlightSmall",
+        small == 0 and kit >= 3, small .. " GameFontHighlightSmall, " .. kit .. " UI.FONT_SMALL")
 
     local missing, seen = TokenScan(UI)
     check("tbc: every UI.Hex / UI.RGB / UI.Fill token in the tree is in TBC's tables",
         seen > 0 and #missing == 0, #missing > 0 and table.concat(missing, " ") or (seen .. " reads"))
 
-    -- T74 (P30): the primitives read tokens that hold their old literals
+    -- T74 (P30): the primitives under the theme -- pixel edges, registered
     local host = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
     local ah = UI.CreateButton(host, "Go", "accent-hover", { 60, 20 })
     local red = UI.CreateButton(host, "x", "red", { 20, 20 })
-    local plain = UI.CreateButton(host, "Plain", nil, { 60, 20 })
     local cb = UI.CreateCheckButton(host, "Tick")
     local eb = UI.CreateEditBox(host, 60, 20)
-    local bd, cbd = ah.backdrop or {}, cb.backdrop or {}
+    local bd = ah.backdrop or {}
     local function same(c, r, g, b, a) return type(c) == "table" and near(c[1], r) and near(c[2], g)
         and near(c[3], b) and near(c[4], a) end
     local regs = 0
     for fr in pairs(UI.pixelFrames or {}) do
         if fr == ah or fr == cb or fr == eb then regs = regs + 1 end
     end
-    if cb.GetScript and cb:GetScript("OnDisable") then cb:GetScript("OnDisable")(cb) end
-    local offLabel = cb.label and cb.label.textColor
-    check("tbc: a kit button, check box and edit box paint the old literals, 1-unit edges",
+    local e = UI.px(1, ah)
+    check("tbc: a kit button, check box and edit box take the theme's pixel edges, registered",
         same(ah.color, 0.115, 0.115, 0.115, 1) and same(ah.hoverColor, A[1], A[2], A[3], 0.6)
-          and same(ah.bg, 0.115, 0.115, 0.115, 1) and same(ah.border, 0, 0, 0, 1)
           and same(red.color, 0.6, 0.1, 0.1, 0.6) and same(red.hoverColor, 0.6, 0.1, 0.1, 1)
-          and same(plain.color, 0.115, 0.115, 0.115, 1) and same(plain.hoverColor, 0.23, 0.23, 0.23, 1)
-          and bd.edgeSize == 1 and type(bd.insets) == "table" and bd.insets.left == 1
-          and cbd.edgeSize == 1 and cbd.insets == nil and same(cb.bg, 0.115, 0.115, 0.115, 0.9)
-          and same(eb.bg, 0.115, 0.115, 0.115, 0.9) and regs == 0 and ah.selBar == nil
-          and offLabel and near(offLabel[1], 0.4) and near(offLabel[3], 0.4),
-        string.format("button %s/%s edge %s, check edge %s, %d registered", tostring(ah.color and ah.color[1]),
-            tostring(ah.hoverColor and ah.hoverColor[4]), tostring(bd.edgeSize), tostring(cbd.edgeSize), regs))
+          and near(bd.edgeSize, e) and type(bd.insets) == "table" and near(bd.insets.left, e)
+          and regs == 3,
+        string.format("button %s/%s edge %s (px %s), %d registered", tostring(ah.color and ah.color[1]),
+            tostring(ah.hoverColor and ah.hoverColor[4]), tostring(bd.edgeSize), tostring(e), regs))
 
-    -- T75 (P31, review U26): the size scale and the two number fonts are the
-    -- kit's, ungated (additive: no TBC caller reads them)
+    -- T75 (P31, review U26): the size scale and the two number fonts
     local H = UI.H or {}
     local function face(name)
         local o = name and UI.fontObjects and UI.fontObjects[name]
@@ -210,22 +221,24 @@ end
 local UI = MD.UI
 
 --------------------------------------------------------------------------------
--- 1. The theme is on the Forever TOCs, right after UI/Style.lua, and not on TBC's
+-- 1. The theme follows UI/Style.lua on every main TOC (T80, C1: TBC's too)
 --------------------------------------------------------------------------------
 do
     local function after(toc)
         local files = S.TocFiles(toc)
         for i, f in ipairs(files) do
-            if f == "UI/Theme_Forever.lua" then return files[i - 1] == "UI/Style.lua" end
+            if f == "UI/Theme_Flat.lua" then return files[i - 1] == "UI/Style.lua" end
         end
         return false
     end
-    local inTbc = false
-    for _, f in ipairs(S.TocFiles("SpellTuner_TBC.toc")) do
-        if f:find("Theme_Forever", 1, true) then inTbc = true end
+    local old = false
+    for _, toc in ipairs({ "SpellTuner_Mainline.toc", "SpellTuner.toc", "SpellTuner_TBC.toc" }) do
+        for _, f in ipairs(S.TocFiles(toc)) do
+            if f:find("Theme_Forever", 1, true) then old = true end
+        end
     end
-    check("the theme follows UI/Style.lua in both Forever TOCs and not in TBC's",
-        after("SpellTuner_Mainline.toc") and after("SpellTuner.toc") and not inTbc)
+    check("UI/Theme_Flat.lua follows UI/Style.lua in all three main TOCs (TBC's too)",
+        after("SpellTuner_Mainline.toc") and after("SpellTuner.toc") and after("SpellTuner_TBC.toc") and not old)
 end
 
 --------------------------------------------------------------------------------

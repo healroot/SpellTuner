@@ -546,15 +546,21 @@ else -- tbc
 try("TBC installs no error handler and keeps its Regen test button", function()
     local MD = NewSession()
     local S = _G.STUB
-    S.Load({ "UI/Style.lua", "UI/DebugConsole.lua" }, "SpellTuner", MD)
+    -- T80 (C1): the theme and the window manager after the kit, as the TBC TOC lists them
+    S.Load({ "UI/Style.lua", "UI/Theme_Flat.lua", "UI/EscStack.lua", "UI/Windows.lua", "UI/DebugConsole.lua" },
+        "SpellTuner", MD)
     MD:ToggleDebugConsole()
     local root = _G.SpellTunerDebugConsole
     local strings = StringsUnder(S, root)
-    -- T33: and its console keeps its own UISpecialFrames entry (no window
-    -- manager on TBC, so no ESC stack)
+    -- T33: on TBC the console kept its own UISpecialFrames entry; T80 (C1):
+    -- the window manager is on the TBC TOC, so it is a registered tool (on
+    -- the ESC stack while shown) and out of UISpecialFrames, as on Forever
+    local w = MD.Win and MD.Win.windows.console
+    local onStack = false
+    for _, e in ipairs(MD.Win and MD.Win.stack or {}) do if e.frame == root then onStack = true end end
     check("TBC installs no error handler and keeps its Regen test button",
         MD.errors == nil and AnyEquals(strings, "Regen test")
-        and MD.Win == nil and InSpecial("SpellTunerDebugConsole"))
+        and w ~= nil and w.role == "tool" and onStack and not InSpecial("SpellTunerDebugConsole"))
 end)
 
 end

@@ -13,6 +13,14 @@
 -- #text * 8 + 16 by 20; under the theme (UI.THEMED switched on for Style.lua's
 -- gate, with the stub's opt-in geometry) a tab is as wide as its text and the
 -- nav's group row and view row share a top and a height.
+--
+-- T80 (C1, decision 10): the TBC TOC lists the theme and the window manager
+-- now, so this suite loads them as it does (UI/Theme_Flat.lua,
+-- UI/EscStack.lua, UI/Windows.lua after the kit). The two checks that pinned
+-- TBC's unthemed look hold the theme's instead: the active group is the
+-- selected fill with a 2-px bar, and a view tab is as high as the group
+-- buttons (22). The checks that switch UI.THEMED by hand for one branch of
+-- the kit are unchanged.
 local here = arg[0]:match("^(.*)/[^/]+$")
 HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
@@ -20,7 +28,7 @@ local MD = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB
 -- T77 (P33): the rail's right-click menu is UI/ContextMenu.lua's (both main
 -- TOCs list it right after the kit)
-S.Load({ "UI/Style.lua", "UI/ContextMenu.lua" }, "SpellTuner", MD)
+S.Load({ "UI/Style.lua", "UI/Theme_Flat.lua", "UI/EscStack.lua", "UI/Windows.lua", "UI/ContextMenu.lua" }, "SpellTuner", MD)
 local UI = MD.UI
 
 -- T31: geometry and layering, recorded for THIS suite only (the stub keeps
@@ -140,23 +148,25 @@ nav:Select("nosuchgroup")
 check("an unknown group falls back to the first", nav.group == "spells", tostring(nav.group))
 
 -- T74 (P30, review U1): the theme's selection language (selected fill + a
--- 2-px bar, hover laid over) is gated on UI.THEMED; TBC keeps today's -- the
--- active button in its hover colour with its hover scripts dropped, the others
--- lighting to that colour under the pointer, no bar built.
-check("on TBC the active style is today's", (function()
+-- 2-px bar, hover laid over) is gated on UI.THEMED. T80 (C1): TBC has the
+-- theme, so its active group is the selected fill with the left bar, the
+-- view tab's bar at the bottom, and an inactive group's hover a layer over
+-- its own fill -- no longer the hover colour with the scripts dropped.
+check("on TBC the active style is the theme's", (function()
     nav:Select("spells", "ht")
     local act, other = nav.buttons[1], nav.buttons[2]
     local tab = nav.viewButtons[1]
-    local function is(c, w) return c and w and c[1] == w[1] and c[2] == w[2] and c[3] == w[3] and c[4] == w[4] end
-    local activeOk = UI.THEMED == false and is(act.bg, act.hoverColor) and act.hoverColor[4] == 0.6
-        and act:GetScript("OnEnter") == nil and act:GetScript("OnLeave") == nil and act.selBar == nil
-        and is(tab.bg, tab.hoverColor) and tab:GetScript("OnEnter") == nil and tab.selBar == nil
-    local restOk = is(other.bg, other.color) and other.color[1] == 0.115
+    local sel = UI.PALETTE.selected
+    local function near(a, b) return type(a) == "number" and type(b) == "number" and math.abs(a - b) < 1e-6 end
+    local activeOk = UI.THEMED == true and act.bg and near(act.bg[4], sel[4]) and near(act.bg[1], sel[1])
+        and act.selBar and act.selBar:IsShown() and act.selBar.side == "left"
+        and tab.selBar and tab.selBar:IsShown() and tab.selBar.side == "bottom"
+    local restOk = not (other.selBar and other.selBar:IsShown())
     local enter = other:GetScript("OnEnter")
     if enter then enter(other) end
-    local lit = is(other.bg, other.hoverColor)
+    local lit = other.selHover and other.selHover:IsShown() and other.bg and near(other.bg[4], other.color[4])
     if other:GetScript("OnLeave") then other:GetScript("OnLeave")(other) end
-    return activeOk and restOk and lit and is(other.bg, other.color) and other.selBar == nil
+    return activeOk and restOk and lit and not other.selHover:IsShown()
 end)())
 
 -- T73 (P29, review A24): nav:ReplacePane puts a new pane in a view's place
@@ -381,13 +391,15 @@ local function TabGroups()
         { id = "settings", text = "Settings", views = { { id = "general", text = "General" } } },
     }
 end
-check("on TBC view tabs are #text * 8 + 16 by 20", (function()
+-- T80 (C1): TBC's tabs are the theme's -- as high as the group buttons (the
+-- widths, which need the stub's text metric, are the next check's)
+check("on TBC view tabs are the theme's, 22 high", (function()
     local navT = UI.CreateNavFrame("SpellTuner", "MDNavTabsTest", 860, 560, TabGroups(),
         function(_, _, content) return CreateFrame("Frame", nil, content) end)
     navT:Select("spells", "ht")
     local a, b = navT.viewButtons[1], navT.viewButtons[2]
-    return UI.THEMED == false and a ~= nil and b ~= nil and a:GetWidth() == 13 * 8 + 16
-        and b:GetWidth() == 8 * 8 + 16 and a:GetHeight() == 20 and navT.buttons[1]:GetHeight() == 22
+    return UI.THEMED == true and a ~= nil and b ~= nil and a:GetWidth() ~= 13 * 8 + 16
+        and a:GetHeight() == 22 and b:GetHeight() == 22 and navT.buttons[1]:GetHeight() == 22
 end)())
 
 local themedTabs, themedRows

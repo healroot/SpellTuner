@@ -3,6 +3,13 @@
 -- table itself lives in UI/Dashboard_Rows.lua and the "Simulate" strip in
 -- UI/Dashboard_Simulate.lua; both load first and hand back a small object.
 -- Settings are in the options frame (UI/OptionsFrame.lua).
+--
+-- T80 (C1 of docs/PLAN-refactor-ux.md, decision 10, the author's answer 1):
+-- the window is the window manager's (UI/Windows.lua) as on Forever -- placed
+-- by it, a size per group handed in at Register (SIZES below), on the ESC
+-- stack instead of UISpecialFrames, hidden in combat and reopened on the same
+-- view, and every MD:SelectView through MD.Win:ShowMain. A place the client
+-- kept for it while it was user-placed is adopted once.
 local _, MD = ...
 local UI = MD.UI
 
@@ -188,6 +195,17 @@ local CONTENT_W = 912          -- what the panes were laid out for; the window i
 local NAV_W, NAV_PAD = 108, 8
 local WIN_W, WIN_H = CONTENT_W + NAV_W + 2 * NAV_PAD, 646
 
+-- T80 (C1, review A22): TBC's sizes per group, handed to the window manager
+-- at Register. Every pane here is laid out for the 912-wide content, so each
+-- group is today's 1036 x 646 and fixed (its minimum is its size: no grip).
+-- C3 gives Spells its own size.
+local SIZES = {
+    spells   = { w = WIN_W, h = WIN_H, minW = WIN_W, minH = WIN_H },
+    reports  = { w = WIN_W, h = WIN_H, minW = WIN_W, minH = WIN_H },
+    simulate = { w = WIN_W, h = WIN_H, minW = WIN_W, minH = WIN_H },
+    settings = { w = WIN_W, h = WIN_H, minW = WIN_W, minH = WIN_H },
+}
+
 -- Reports' views depend on what has been recorded.
 local function ReportViews()
     local views = { { id = "Waste", text = "Waste" }, { id = "Review", text = "Review" } }
@@ -276,12 +294,12 @@ local function CreateDashboard()
             end
             currentGroup, currentFamily = group, view
             userPicked = true
+            MD.Win:SetGroup("main", group) -- T80: the group's own size, the TOPLEFT kept
             MD:Fire("UI_VIEW_SELECTED", group, view)
             Refresh()
 
         end)
     frame = nav.frame
-    tinsert(UISpecialFrames, "SpellTunerDashboard") -- ESC closes
     local content = nav:Content()
 
     -- Settings is the fourth group now, not a button that opens a second window
@@ -333,6 +351,17 @@ local function CreateDashboard()
         Refresh()
     end)
 
+    -- T80 (C1): the window manager's host (registered after the OnShow script
+    -- above, since Register hooks OnShow): its strata, place and scale, the
+    -- sizes per group, one ESC stack entry (no UISpecialFrames line), the
+    -- combat hide; how to open it on a view and read the one it shows; the
+    -- practice view a session goes back to. adoptPlaced: the place the client
+    -- kept for it while it was user-placed (before C1) becomes its saved one.
+    MD.Win:Register(frame, { key = "main", role = "host", sizes = SIZES, group = "spells",
+        open = function(group, view) return MD:OpenMainWindow(group, view) end,
+        selected = function() return MD:SelectedView() end,
+        practicePath = { "simulate", "practice" }, adoptPlaced = true })
+
     -- The "To OOM" column follows your current mana: re-render every 2s while
     -- the frame is open (rendering only; the model is event-driven).
     local acc = 0
@@ -351,18 +380,25 @@ function MD:SelectedView()
     return nav:Selected()
 end
 
--- Every entry point that wants a particular view goes through here: /md sim,
--- /md options, the minimap button's right-click. The window opens if it is
--- closed, which is what all of them used to do with their own window.
-function MD:SelectView(group, view)
+-- What MD.Win:ShowMain opens (T80, the host's `open`): the window on the view
+-- asked for, or on the remembered one when none is named.
+function MD:OpenMainWindow(group, view)
     if not nav then return end
     if not frame:IsShown() then frame:Show() end
-    nav:Select(group, view)
+    if group then nav:Select(group, view) end
+end
+
+-- Every entry point that wants a particular view goes through here: /md sim,
+-- /md options, the minimap button's right-click. T80 (C1): through the window
+-- manager, which closes a replay first and refuses while practice plays.
+function MD:SelectView(group, view)
+    if not nav then return end
+    return MD.Win:ShowMain(group, view)
 end
 
 function MD:ToggleDashboard()
     if not frame then return end
-    if frame:IsShown() then frame:Hide() else frame:Show() end
+    if frame:IsShown() then frame:Hide() else MD.Win:ShowMain() end
 end
 
 -- Kept for the minimap button's right-click.

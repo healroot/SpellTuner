@@ -31,10 +31,11 @@ MD.DEFAULTS = {
     -- lines -- "SHIFT", "ALT", "CTRL", or "ALWAYS" / "NEVER" (Settings -> General).
     spellTooltipDetail = "SHIFT",
     clock = { shown = true, locked = false, point = nil },  -- UI/Clock_Forever.lua
-    -- T29 (docs/SPEC-forever-ui.md 4.2, 4.3, 6): fontOffset (-2..+2, clamped by
-    -- UI/Theme_Forever.lua at login), the window scale, the main window in
-    -- combat ("hide" / "keep"), one window per ESC, saved window positions.
-    ui = { fontOffset = 0, scale = 1, combat = "hide", escStack = true, win = {} },
+    -- T80 (C1 of docs/PLAN-refactor-ux.md): db.ui (T29: the font offset, the
+    -- window scale, the combat rule, one window per ESC, the saved places) is
+    -- declared by the files that read it -- UI/Theme_Flat.lua (fontOffset),
+    -- UI/EscStack.lua (escStack), UI/Windows.lua (scale, combat, win) -- with
+    -- MD:RegisterDefaults, so the TBC TOC, which lists them too, has it.
 }
 
 -- The three siblings, in dependency order (each needs only what is declared
@@ -304,9 +305,9 @@ end, "/st measure [dump [all] / clear]",
 "measure a landed cast against its own description (a diagnostic session); dump shows this version's lines, dump all every line with its stamp, clear empties the list")
 
 -- T32 (docs/SPEC-forever-ui.md 6.7): every SpellTuner window back at its
--- default place and size (UI/Windows_Forever.lua's MD.Win:Reset).
+-- default place and size (UI/Windows.lua's MD.Win:Reset).
 MD:AddCommand("ui", function(arg)
-    if arg == "reset" and MD.Win and MD.Win.Reset then
+    if arg == "reset" then
         MD.Win:Reset()
         MD:Print("windows: every position and size reset")
     else

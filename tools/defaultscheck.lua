@@ -23,6 +23,8 @@
 --      few that have none by design are listed in NO_DEFAULT with the reason);
 --   5. TBC: on a fresh database the Options sliders show 85 and 30, and still
 --      do with the two keys absent from the db (they read MD:Setting).
+--   T80 (C1): TBC: every db.ui key (fontOffset, scale, combat, escStack, win)
+--      has a default, declared by the theme, the ESC stack and the manager.
 HARNESS_FLAVOUR = { "tbc", "forever" }
 
 local here = arg[0]:match("^(.*)/[^/]+$")
@@ -306,6 +308,33 @@ do
     end
     check("no `MD.db.<key> or <literal>` left in the engine, planner, window, gates or options",
         #inOwned == 0, table.concat(inOwned, "; "))
+end
+
+--------------------------------------------------------------------------------
+-- T80 (C1 of docs/PLAN-refactor-ux.md): the TBC TOC lists the theme and the
+-- window manager, and db.ui left Core_Forever.lua's DEFAULTS for the files
+-- that read it -- UI/Theme_Flat.lua (fontOffset), UI/EscStack.lua (escStack),
+-- UI/Windows.lua (scale, combat, win) -- so TBC has every key of it.
+--------------------------------------------------------------------------------
+if flavour == "tbc" then
+    local u = MD.db.ui
+    local d = MD.DEFAULTS and MD.DEFAULTS.ui
+    local function has(t)
+        return type(t) == "table" and t.fontOffset == 0 and t.scale == 1 and t.combat == "hide"
+            and t.escStack == true and type(t.win) == "table"
+    end
+    local owners = {}
+    for _, rel in ipairs(tocFiles) do
+        for _, line in ipairs(CodeLines(rel)) do
+            if line:find("RegisterDefaults%(%s*{%s*ui%s*=") then owners[#owners + 1] = rel end
+        end
+    end
+    table.sort(owners)
+    check("tbc: every db.ui key has a default (fontOffset, scale, combat, escStack, win), declared by "
+            .. "the theme, the ESC stack and the manager",
+        has(u) and has(d) and table.concat(owners, " ") == "UI/EscStack.lua UI/Theme_Flat.lua UI/Windows.lua",
+        string.format("db %s, defaults %s, declared in %s", tostring(has(u)), tostring(has(d)),
+            table.concat(owners, ", ")))
 end
 
 --------------------------------------------------------------------------------

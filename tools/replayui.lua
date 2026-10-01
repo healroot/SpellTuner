@@ -12,7 +12,9 @@ local a0 = arg[0]; arg[0] = here .. "/harness.lua"
 local MD = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB
 
-S.Load({ "UI/Style.lua", "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/ReplayWindow.lua" }, "SpellTuner", MD)
+-- T80 (C1): the theme and the window manager after the kit, as the TBC TOC lists them
+S.Load({ "UI/Style.lua", "UI/Theme_Flat.lua", "UI/EscStack.lua", "UI/Windows.lua", "UI/ContextMenu.lua",
+         "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/ReplayWindow.lua" }, "SpellTuner", MD)
 
 local ids = dofile(here .. "/fakepull.lua")(MD, S)
 local SM, SP = MD.SimModel, MD.SimPlanner
@@ -224,20 +226,25 @@ local shown = 0
 for _, m in ipairs(W.scrubber.markers) do if m:IsShown() then shown = shown + 1 end end
 check("scrubber markers placed", shown >= 7, tostring(shown))
 
--- the left-only path
+-- the left-only path. T80 (C1): under the theme (on TBC since C1) the window
+-- lays out both columns the moment the auto-coach starts (P28, mockup M3) --
+-- the suggested one dimmed and empty, titled with the search -- so there is
+-- no narrower one-column window while it coaches, and no hint line.
 SP.plans[rec.id] = nil
 MD:OpenReplay(1)
 W = MD.Replay._state()
-check("left only without a plan", W.right.state == nil and not W.right.title:IsShown())
+check("without a plan the suggested column is laid out, dimmed and empty",
+    W.right.state == nil and W.right.title:IsShown() and W.right.dimmed == true)
 -- v0.13.9: opening without a plan COACHES it rather than telling the author to
 -- go and run another command. The fixture's fight passes its gates here (the
 -- suite forces Validate to ok), so the search starts and the window says so.
 check("opening without a plan starts coaching it",
     MD.replayCoaching == rec.id or SP.plans[rec.id] ~= nil,
     W.frame.hint:GetText())
-check("the hint says what it is doing",
-    W.frame.hint:GetText():find("coach") ~= nil, W.frame.hint:GetText())
-check("narrower window", W.frame:GetWidth() < 500, tostring(W.frame:GetWidth()))
+check("the suggested column's title says what it is doing",
+    (W.right.title:GetText() or ""):find("coaching", 1, true) ~= nil, W.right.title:GetText())
+check("two columns wide at once (968), not a narrower window", W.frame:GetWidth() == 2 * 460 + 3 * 16,
+    tostring(W.frame:GetWidth()))
 
 -- ...but a fight that does not replay is still not coached silently: it names
 -- the gate that failed and how to override it.
@@ -253,11 +260,13 @@ do
         return v
     end
     MD:OpenReplay(1)
-    local hint = MD.Replay._state().frame.hint:GetText()
+    local band = MD.Replay._state().frame.band
+    local hint = band and band.verdict:GetText() or ""
     check("a fight that does not replay is not coached silently",
         MD.replayCoaching == nil and SP.plans[rec.id] == nil, hint)
-    check("...and the hint names the gate and the way past it",
-        hint:find("does not replay") ~= nil and hint:find("force") ~= nil, hint)
+    -- T80: the band names the gate, and Coach anyway is the way past it
+    check("...and the band names the gate, with Coach anyway",
+        hint:find("does not replay: mana mean", 1, true) ~= nil and band.coach:IsShown(), hint)
     SM.Validate = realV
 end
 
@@ -642,7 +651,11 @@ do
         sc and string.format("t=%.1f seg=%s k=%s pull=%s", sc.t, tostring(sc.seg), tostring(sc.k),
             tostring(strip2 and strip2.pull)))
 
-    -- B22: combat starts while a run plays, just before pull 2's boundary
+    -- B22: combat starts while a run plays, just before pull 2's boundary.
+    -- T80 (C1): the window manager hides the replay in combat on TBC now
+    -- (decision 4); a replay still on screen in combat is the "Keep them open"
+    -- setting's, which is where the replay's own guard is what answers
+    MD.Win:SetCombat("keep")
     MD.Replay._runSeek(nil, p1.runT0 + 1)
     MD.Replay._runSeek(nil, p2.runT0 - 0.3)
     local said = {}
@@ -655,6 +668,7 @@ do
     MD.Print = realPrint
     S.Fire("PLAYER_REGEN_ENABLED")
     MD.Replay._setPlaying(false)
+    MD.Win:SetCombat("hide")
     check("T51: combat at a pull boundary prints one line in 120 frames and pauses",
         #said == 1 and playingAfter == false,
         string.format("%d lines, playing=%s", #said, tostring(playingAfter)))
@@ -675,9 +689,13 @@ end
 -- while the pointer is over it and never in combat, because Space and the
 -- arrows are jump and turn: PLAYER_REGEN_DISABLED lets go of it, and it comes
 -- back only when the pointer enters again after the fight. The status band and
--- the two-column layout while coaching are the theme's; TBC keeps its header.
+-- the two-column layout while coaching are the theme's -- TBC's too since T80
+-- (C1). Since T80 the fight hides the window on TBC too (the manager's
+-- combat rule); the keyboard rule is about a window that stays, so this runs
+-- under "Keep them open" (db.ui.combat = "keep"), where it always applied.
 --------------------------------------------------------------------------------
 do
+    MD.Win:SetCombat("keep")
     MD:OpenReplay(1)
     local st = MD.Replay._state()
     local f = st.frame
@@ -732,11 +750,12 @@ do
     S.mouseFocus = nil
     Script("OnLeave")
 
-    local h = st.headerFS:GetText() or ""
-    check("T72: TBC keeps its header, no band, no key hint",
-        f.band == nil and f.keyHint == nil and st.right.dimmed == nil
-        and h:find("|cff99dd99replays|r", 1, true) ~= nil, h)
+    -- T80 (C1): TBC has the theme's band (the verdict in good) and key hint
+    local v = f.band and f.band.verdict:GetText() or ""
+    check("T72/T80: TBC has the band, its verdict and the key hint",
+        f.band ~= nil and f.keyHint ~= nil and v:find(MD.UI.TEXT.good.hex .. "replays", 1, true) ~= nil, v)
     f.EnableKeyboard, f.SetPropagateKeyboardInput = nil, nil
+    MD.Win:SetCombat("hide")
 end
 
 print(string.format("\n%d ok, %d failed", ok, #fails))

@@ -11,7 +11,9 @@ HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
 local MD = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB
-S.Load({ "UI/Style.lua", "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/Dashboard_Rows.lua", "UI/Dashboard_Simulate.lua",
+-- T80 (C1): the theme and the window manager after the kit, as the TBC TOC lists them
+S.Load({ "UI/Style.lua", "UI/Theme_Flat.lua", "UI/EscStack.lua", "UI/Windows.lua",
+         "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/Dashboard_Rows.lua", "UI/Dashboard_Simulate.lua",
          "UI/Dashboard_Waste.lua", "UI/Dashboard_Review.lua", "UI/PracticePanel.lua", "UI/Dashboard.lua" }, "SpellTuner", MD)
 
 local ok, fails = 0, {}
@@ -148,6 +150,50 @@ check("the danger slider names built fights, truly", (function()
 end)())
 Click(ButtonNamed("About"))
 check("About is its second view", MD.db.uiPath[2] == "about", MD.db.uiPath[2])
+
+-- T80 (C1 of docs/PLAN-refactor-ux.md, mockup M1): TBC's Settings -> General
+-- gains the Windows pane -- In combat, Close one window per ESC, Text size,
+-- Window size, Reset window positions -- each writing db.ui through the
+-- window manager or the theme. A slider is typed into (its box's Enter runs
+-- both callbacks), a dropdown row and a button are clicked.
+check("T80: the Windows pane in Settings -> General writes and applies its five controls", (function()
+    MD:ShowOptionsFrame("general")
+    local wp
+    for _, f in ipairs(S.allFrames) do if f.windowsPane then wp = f.windowsPane end end
+    if not (wp and wp.combat and wp.esc and wp.font and wp.scale and wp.reset) then return false end
+    local function Type(slider, text)
+        local eb = slider.currentEditBox
+        if not eb then return end
+        eb:SetText(text)
+        eb:GetScript("OnEnterPressed")(eb)
+    end
+    local function Pick(dd, id)
+        for i, it in ipairs(dd.items or {}) do
+            if it.id == id and dd.rows and dd.rows[i] then dd.rows[i]:GetScript("OnClick")(dd.rows[i]) end
+        end
+    end
+    local u = MD.db.ui
+    Pick(wp.combat, "keep")
+    local combat = u.combat == "keep" and MD.Win:CombatMode() == "keep"
+    Pick(wp.combat, "hide")
+    combat = combat and u.combat == "hide"
+    wp.esc:SetChecked(false); wp.esc.onClick(false, wp.esc)
+    local esc = u.escStack == false and not MD.Win:EscStackOn()
+    wp.esc:SetChecked(true); wp.esc.onClick(true, wp.esc)
+    esc = esc and u.escStack == true and MD.Win:EscStackOn()
+    Type(wp.font, "2")
+    local font = u.fontOffset == 2 and MD.UI.fontOffset == 2
+    Type(wp.font, "0")
+    font = font and u.fontOffset == 0
+    Type(wp.scale, "90")
+    local scale = math.abs((u.scale or 0) - 0.9) < 1e-6 and MD.Win:ScalePercent() == 90
+    Type(wp.scale, "100")
+    scale = scale and u.scale == 1
+    u.win.main = { x = 5, y = 500 }
+    Click(wp.reset)
+    local reset = next(u.win) == nil
+    return combat and esc and font and scale and reset
+end)())
 
 -- /md options routes into the group instead of opening anything
 Click(ButtonNamed("Spells"))
@@ -487,8 +533,8 @@ end
 -- T76 (P32 of docs/PLAN-refactor-ux.md; review U10 -- the mechanism, U13): a
 -- generic table's header label shows its column's own tooltip (col.tooltip);
 -- a column without one has none, and the TBC rank table's columns carry none.
--- And TBC's disabled kit buttons stay silent: the motion-while-disabled flag
--- is the theme's, never set here.
+-- And the motion-while-disabled flag is the theme's: T80 (C1) lists the
+-- theme on TBC, so a disabled TBC button explains itself on hover too.
 --------------------------------------------------------------------------------
 do
     local parent = CreateFrame("Frame")
@@ -525,7 +571,7 @@ do
     FrameMT.SetMotionScriptsWhileDisabled = function(self, v) self.motionWhileDisabled = v end
     local b = MD.UI.CreateButton(UIParent, "Coach", "accent", { 64, 20 }, nil, nil, nil, nil, "Coach")
     FrameMT.SetMotionScriptsWhileDisabled = saved
-    check("T76: a disabled TBC button has no motion scripts", b.motionWhileDisabled == nil,
+    check("T76/T80: a disabled TBC button keeps its motion scripts (the theme's)", b.motionWhileDisabled == true,
         tostring(b.motionWhileDisabled))
 end
 

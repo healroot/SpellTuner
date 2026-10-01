@@ -1,4 +1,8 @@
 -- Options > General: everything the slash commands can do, in titled panes.
+-- T80 (C1 of docs/PLAN-refactor-ux.md, mockup M1): a third column, Windows --
+-- the window manager's controls as Forever's Settings -> General has them: In
+-- combat, Close one window per ESC, Text size, Window size, Reset window
+-- positions (UI/Windows.lua, UI/Theme_Flat.lua's UI.SetFontOffset).
 local _, MD = ...
 local UI = MD.UI
 
@@ -8,6 +12,7 @@ tab:Hide()
 
 local recordCB, rebindCB, fullHpSlider, floorSlider, runsCB, nextPullCB
 local lockCB, restCB, tipCB, cdCB, muteCB, drinkCB, minimapCB, spellTipCB, dmgTipCB, halfLifeSlider, confSlider, treeAuraCB, ngCB, calibCB
+local combatDD, escCB, fontSlider, scaleSlider -- T80: Windows
 
 --------------------------------------------------------------------------------
 -- OOM widget
@@ -256,6 +261,57 @@ local function CreateSimPane(anchor)
 end
 
 --------------------------------------------------------------------------------
+-- Windows (T80, C1; mockup M1's WINDOWS and APPEARANCE controls). Each writes
+-- its db.ui field through the manager or the theme and applies it at once;
+-- the window size waits for the mouse-up (the window must not scale under
+-- the pointer mid-drag).
+--------------------------------------------------------------------------------
+local function CreateWindowsPane()
+    local pane = UI.CreateTitledPane(tab, "Windows", 205, 236)
+    pane:SetPoint("TOPLEFT", tab, "TOPLEFT", 439, -5)
+    local Win = MD.Win
+
+    local combatLabel = pane:CreateFontString(nil, "OVERLAY", UI.FONT)
+    combatLabel:SetPoint("TOPLEFT", pane, "TOPLEFT", 5, -29)
+    combatLabel:SetText("In combat")
+    combatDD = UI.CreateDropdown(pane, 124, 18, function(id) Win:SetCombat(id) end)
+    combatDD:SetPoint("LEFT", combatLabel, "RIGHT", 8, 0)
+    combatDD:SetItems(Win.COMBAT_MODES)
+    combatDD:SetValue(Win:CombatMode())
+
+    escCB = UI.CreateCheckButton(pane, "Close one window per ESC", function(checked)
+        Win:SetEscStack(checked)
+    end, "Close one window per ESC",
+        "On: each ESC closes the window opened last, then the next.",
+        "Off: one ESC closes every SpellTuner window at once.")
+    escCB:SetPoint("TOPLEFT", pane, "TOPLEFT", 5, -55)
+
+    local lo, hi = UI.FONT_OFFSET_MIN or -2, UI.FONT_OFFSET_MAX or 2
+    fontSlider = UI.CreateSlider("Text size", pane, lo, hi, 160, 1, function(value)
+        UI.SetFontOffset(value)
+    end, nil, false, "Text size", "Every SpellTuner text a size bigger or smaller, -2 to +2.")
+    fontSlider:SetPoint("TOPLEFT", pane, "TOPLEFT", 22, -100)
+
+    scaleSlider = UI.CreateSlider("Window size", pane, math.floor(Win.SCALE_MIN * 100 + 0.5),
+        math.floor(Win.SCALE_MAX * 100 + 0.5), 160, 5, nil, function(value)
+            Win:SetScale((tonumber(value) or 100) / 100)
+        end, true, "Window size", "Makes the main, replay and practice windows bigger or smaller,",
+        "along with the console and the copy box.")
+    scaleSlider:SetPoint("TOPLEFT", fontSlider, "BOTTOMLEFT", 0, -34)
+
+    local resetBtn = UI.CreateButton(pane, "Reset window positions", "accent-hover", { 170, 17 }, false, false,
+        nil, nil, "Reset window positions", "Every SpellTuner window back at its default place and size.")
+    resetBtn:SetPoint("TOPLEFT", scaleSlider, "BOTTOMLEFT", -17, -34)
+    resetBtn:SetScript("OnClick", function()
+        Win:Reset()
+        MD:Print("windows: every position and size reset")
+    end)
+    -- the controls, for tools/dashui.lua
+    pane.windowsPane = { combat = combatDD, esc = escCB, font = fontSlider, scale = scaleSlider, reset = resetBtn }
+    return pane
+end
+
+--------------------------------------------------------------------------------
 -- build + show
 --------------------------------------------------------------------------------
 local built = false
@@ -267,6 +323,7 @@ local function Build()
     CreateSimPane(alertsPane)
     local modelPane = CreateModelPane()
     CreateMiscPane(modelPane)
+    CreateWindowsPane()
 end
 
 local function ShowTab(which)
@@ -296,5 +353,9 @@ local function ShowTab(which)
     nextPullCB:SetChecked(MD.db.replayNextPull ~= false)
     fullHpSlider:SetValue(math.floor(MD:Setting("simFullHp") * 100 + 0.5))
     floorSlider:SetValue(math.floor(MD:Setting("simFloor") * 100 + 0.5))
+    combatDD:SetValue(MD.Win:CombatMode())
+    escCB:SetChecked(MD.Win:EscStackOn())
+    fontSlider:SetValue(UI.fontOffset or 0)
+    scaleSlider:SetValue(MD.Win:ScalePercent())
 end
 MD:RegisterCallback("ShowOptionsTab", ShowTab)

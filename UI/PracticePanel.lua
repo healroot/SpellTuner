@@ -13,17 +13,17 @@ MD.DashboardParts = MD.DashboardParts or {}
 
 local ROW_H = 20
 
--- T40 (docs/SPEC-forever-ui.md 4.4, 6.4, 6.7): under the Forever theme
--- (UI.THEMED since T69/P25, set by UI/Theme_Forever.lua on the Forever TOCs
--- only; colours are token reads, TBC's tokens holding its literals) the panel
--- drops Blizzard gold (the role rows in text2, the key labels in the accent),
--- shows "you" as a small accent tag after the name, wraps the fight fields
--- onto a second row when the pane is narrower than them (the Simulate group
--- goes down to 900 wide), sizes its table to the pane, and folds the bindings
--- list into one summary line with the list in its hover. With the window
--- manager (MD.Win) "Edit bindings" opens the bindings SHEET on this pane
--- (UI/BindingsWindow.lua). TBC has neither, and every line of its panel is
--- built exactly as before.
+-- T40 (docs/SPEC-forever-ui.md 4.4, 6.4, 6.7): under the flat theme
+-- (UI.THEMED since T69/P25, set by UI/Theme_Flat.lua -- on every main TOC
+-- since T80 / C1; colours are token reads) the panel drops Blizzard gold (the
+-- role rows in text2, the key labels in the accent), shows "you" as a small
+-- accent tag after the name, wraps the fight fields onto a second row when
+-- the pane is narrower than them (the Simulate group goes down to 900 wide),
+-- sizes its table to the pane, and folds the bindings list into one summary
+-- line with the list in its hover. "Edit bindings" opens the bindings SHEET
+-- on this pane (UI/BindingsWindow.lua; T80: on both lines, the window manager
+-- being on every main TOC). Without the theme (a suite that loads the kit
+-- alone) the panel is built as TBC's was before C1.
 -- a tooltip's first line takes the client's gold unless it is coloured: the
 -- accent under the theme, the text unchanged on TBC
 local function Title(text)
@@ -31,11 +31,11 @@ local function Title(text)
     return text
 end
 
--- T40: every practice pane built under the manager, so /st binds can find the
--- one inside the main window (the sheet sits on it)
+-- T40: every practice pane built, so /st binds can find the one inside the
+-- host window (the sheet sits on it; T80: MD.Win.host, the window manager's)
 local hosts = setmetatable({}, { __mode = "k" })
 function MD.DashboardParts.PracticeHost()
-    local w = MD.Win and MD.Win.windows and MD.Win.windows.main
+    local w = MD.Win.host
     local main = w and w.frame
     if not main then return nil end
     for pane in pairs(hosts) do
@@ -98,7 +98,7 @@ function MD.DashboardParts.CreatePractice(parent, width)
     local api = { frame = pane }
     local themed = UI.THEMED                       -- T40: the Forever theme (T69: the flag)
     local GREY = UI.Hex("muted")                   -- T69: 888888 on TBC, the theme's muted on Forever
-    if MD.Win then hosts[pane] = true end
+    hosts[pane] = true
 
     local function Setup()
         MD.cdb.practiceSetup = MD.cdb.practiceSetup or PR.DefaultSetup("5")
@@ -337,11 +337,9 @@ function MD.DashboardParts.CreatePractice(parent, width)
     local bindBtn = UI.CreateButton(pane, "Edit bindings", "accent-hover", { 110, 20 }, false, false,
         UI.FONT_SMALL, nil, Title("Practice bindings"), "Set what each key and mouse button casts,",
         "or import them from Cell or Clique.")
-    -- T40: with the manager, the sheet on this pane (6.4); TBC's own window otherwise
+    -- T40: the sheet on this pane (6.4); T80 (C1): on both lines
     bindBtn:SetScript("OnClick", function()
-        if MD.ShowBindings then
-            if MD.Win then MD:ShowBindings(pane) else MD:ShowBindings() end
-        end
+        if MD.ShowBindings then MD:ShowBindings(pane) end
     end)
     if summary then bindBtn:SetPoint("LEFT", summary.fs, "RIGHT", 8, 0) end
 

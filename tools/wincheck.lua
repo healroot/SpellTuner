@@ -1,7 +1,7 @@
 -- tools/run.sh tools/wincheck.lua
 --
 -- T32 (docs/SPEC-forever-ui.md 4.3 "Window scale", 6.1, 6.2, 6.7, section 9's T32
--- row): the window manager's core -- UI/Windows_Forever.lua (MD.Win): Register
+-- row): the window manager's core -- UI/Windows_Forever.lua, UI/Windows.lua since T80 (MD.Win): Register
 -- with a role's strata / level / toplevel, the main window anchored TOPLEFT at
 -- its saved place (SetUserPlaced(false), clamped to the screen), a size and a
 -- minimum per group with the resize grip (UI.CreateMovableFrame opts.resizable),
@@ -25,7 +25,15 @@
 -- fixed groups (their minimum is their size) with no grip, Reports keeps one;
 -- the grip under the theme is three 1-px lines; section 4's resize checks run
 -- on Reports, and a fixed group ignores an old saved size and a resize.
-HARNESS_FLAVOUR = "forever"
+--
+-- T80 (C1 of docs/PLAN-refactor-ux.md, review A22, A6c, decision 10): the
+-- manager is UI/Windows.lua (its ESC stack UI/EscStack.lua) on every main TOC,
+-- TBC's included, and it knows no dashboard: the host hands in its sizes per
+-- group, its first group, its open / selected functions and its practice
+-- path at Register. Declared for both flavours: the forever half is the
+-- sections below; the tbc half (four checks, right after the geometry) holds
+-- the TBC window under the manager.
+HARNESS_FLAVOUR = { "forever", "tbc" }
 
 local here = arg[0]:match("^(.*)/[^/]+$")
 
@@ -70,16 +78,146 @@ end
 
 local Win = MD.Win
 
+
 --------------------------------------------------------------------------------
--- 1. The manager is on the Forever TOCs only
+-- T80 (C1 of docs/PLAN-refactor-ux.md, review A22, decision 10): the window
+-- manager on TBC. The TBC harness loads no UI file, so the kit, the theme,
+-- the manager and the TBC window are loaded here as the TBC TOC lists them,
+-- with the stub's geometry already on. Four checks: the TBC dashboard
+-- registers as the host with TBC's own sizes per group; a place kept before
+-- C1 is adopted (the client's place for the user-placed dashboard, and
+-- db.replayPos for the replay); one ESC closes the top window only; a fight
+-- hides the window and it comes back on the same view.
+--------------------------------------------------------------------------------
+if S.flavour == "tbc" then
+    S.Load({ "UI/Style.lua", "UI/Theme_Flat.lua", "UI/EscStack.lua", "UI/Windows.lua", "UI/ContextMenu.lua",
+             "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/Dashboard_Rows.lua", "UI/Dashboard_Simulate.lua",
+             "UI/Dashboard_Waste.lua", "UI/Dashboard_Review.lua", "UI/PracticePanel.lua", "UI/BindingsWindow.lua",
+             "UI/Dashboard.lua", "UI/OptionsFrame.lua", "UI/SimWindow.lua", "UI/ReplayWindow.lua",
+             "UI/Options_General.lua", "UI/Options_About.lua", "UI/DebugConsole.lua", "UI/MinimapButton.lua" },
+        "SpellTuner", MD)
+    UI = MD.UI
+    Win = MD.Win
+    FM.GetName = function(self) return self.frameName end
+    MD.player.isDruid = true
+
+    -- Places kept before C1. The dashboard was user-placed, so the client put
+    -- it back where it was dragged (its layout cache) as the kit built it;
+    -- the replay kept db.replayPos.
+    local makeNav = UI.CreateNavFrame
+    UI.CreateNavFrame = function(...)
+        local nav = makeNav(...)
+        if nav.frame:GetName() == "SpellTunerDashboard" and nav.frame:IsUserPlaced() then
+            nav.frame:ClearAllPoints()
+            nav.frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", 100, 700)
+        end
+        return nav
+    end
+    MD.db.ui.win = {}
+    MD.db.replayPos = { "TOPLEFT", "BOTTOMLEFT", 40, 600 }
+    MD:Fire("MD_READY") -- the TBC dashboard builds here
+    UI.CreateNavFrame = makeNav
+    local frame = _G.SpellTunerDashboard
+
+    -- 1. the host, with TBC's sizes per group (UI/Dashboard.lua's SIZES)
+    local routed = 0
+    local orig = Win.ShowMain
+    Win.ShowMain = function(self, g, v) routed = routed + 1; return orig(self, g, v) end
+    local sizes, allFixed = {}, true
+    for _, g in ipairs({ { "spells", "Rejuvenation" }, { "reports", "Review" }, { "simulate", "practice" },
+                         { "settings", "general" } }) do
+        MD:SelectView(g[1], g[2])
+        sizes[#sizes + 1] = g[1] .. "=" .. frame:GetWidth() .. "x" .. frame:GetHeight()
+        if not (frame:GetWidth() == 1036 and frame:GetHeight() == 646 and Win:Fixed("main", g[1])) then
+            allFixed = false
+        end
+    end
+    Win.ShowMain = orig
+    local w = Win.windows.main
+    local function InSpecial(name)
+        for _, n in ipairs(UISpecialFrames) do if n == name then return true end end
+        return false
+    end
+    check("tbc: the TBC window registers as the host with TBC's sizes per group (1036 x 646, fixed)",
+        w ~= nil and w.frame == frame and w.role == "host" and Win.host == w and routed == 4 and allFixed
+          and Win.SIZES ~= nil and Win.SIZES.spells.w == 1036 and Win.SIZES.reports.minH == 646
+          and frame:GetFrameStrata() == "HIGH" and frame.userPlaced == false
+          and not InSpecial("SpellTunerDashboard") and InSpecial("SpellTunerEscProxy"),
+        table.concat(sizes, " ") .. " routed=" .. routed)
+
+    -- 2. the places kept before C1, adopted once
+    local sv = MD.db.ui.win.main
+    local mainOk = sv ~= nil and near(sv.x, 100) and near(sv.y, 700)
+        and near(frame:GetLeft(), 100, 1e-3) and near(frame:GetTop(), 700, 1e-3)
+    dofile(here .. "/fakepull.lua")(MD, S)
+    MD:OpenReplay(1)
+    local rsv = MD.db.ui.win.replay
+    local replayOk = MD.db.replayPos == nil and rsv ~= nil and near(rsv.x, 40) and near(rsv.y, 600)
+    local rf = _G.SpellTunerReplayWindow
+    if rf then rf:Hide() end
+    check("tbc: a place kept before C1 is adopted (the client's dashboard place, db.replayPos)",
+        mainOk and replayOk,
+        string.format("main %s,%s replay %s,%s replayPos %s", fmt(sv and sv.x), fmt(sv and sv.y),
+            fmt(rsv and rsv.x), fmt(rsv and rsv.y), tostring(MD.db.replayPos)))
+
+    -- 3. one ESC closes the top window only: the console over the dashboard,
+    -- then the dashboard; only the proxy is a special frame
+    local function Esc()
+        local list = {}
+        for _, name in ipairs(UISpecialFrames) do list[#list + 1] = name end
+        for _, name in ipairs(list) do
+            local f = _G[name]
+            if f and f:IsShown() then f:Hide() end
+        end
+    end
+    S.Tick(0)
+    MD:SelectView("spells", "Rejuvenation")
+    MD:ToggleDebugConsole()
+    local console = _G.SpellTunerDebugConsole
+    local both = console and console:IsShown() and frame:IsShown()
+    Esc()
+    local first = console and not console:IsShown() and frame:IsShown()
+    S.Tick(0)
+    Esc()
+    S.Tick(0)
+    local second = not frame:IsShown() and #Win.stack == 0
+    check("tbc: one ESC closes the top window only (the console, then the dashboard)",
+        both and first and second and not InSpecial("SpellTunerDebugConsole"),
+        string.format("both=%s first=%s second=%s", tostring(both), tostring(first), tostring(second)))
+
+    -- 4. a fight hides the window; it comes back on the same view after
+    MD:SelectView("settings", "general")
+    local before = frame:IsShown()
+    S.Fire("PLAYER_REGEN_DISABLED")
+    local hidden = not frame:IsShown()
+    S.Fire("PLAYER_REGEN_ENABLED")
+    local g, v = MD:SelectedView()
+    check("tbc: a fight hides the window and it reopens on the same view",
+        before and hidden and frame:IsShown() and g == "settings" and v == "general"
+          and MD.db.uiPath[1] == "settings" and MD.db.uiPath[2] == "general",
+        string.format("before=%s hidden=%s after=%s view=%s/%s", tostring(before), tostring(hidden),
+            tostring(frame:IsShown()), tostring(g), tostring(v)))
+
+    print(string.format("\n%d ok, %d failed", ok, #fails))
+    for _, f in ipairs(fails) do print("  FAIL " .. f) end
+    os.exit(#fails > 0 and 1 or 0)
+end
+--------------------------------------------------------------------------------
+-- 1. The manager and its ESC stack are on every main TOC (T80: TBC's too),
+-- the stack listed before the manager
 --------------------------------------------------------------------------------
 do
     local function has(toc)
-        for _, f in ipairs(S.TocFiles(toc)) do if f == "UI/Windows_Forever.lua" then return true end end
-        return false
+        local stack, win = nil, nil
+        for i, f in ipairs(S.TocFiles(toc)) do
+            if f == "UI/EscStack.lua" then stack = i end
+            if f == "UI/Windows.lua" then win = i end
+            if f == "UI/Windows_Forever.lua" then return false end
+        end
+        return stack ~= nil and win ~= nil and stack < win
     end
-    check("UI/Windows_Forever.lua is in both Forever TOCs and not in TBC's",
-        has("SpellTuner_Mainline.toc") and has("SpellTuner.toc") and not has("SpellTuner_TBC.toc"))
+    check("UI/EscStack.lua then UI/Windows.lua are in all three main TOCs",
+        has("SpellTuner_Mainline.toc") and has("SpellTuner.toc") and has("SpellTuner_TBC.toc"))
     check("MD.Win exists with Register, ShowMain, SetScale and Reset",
         type(Win) == "table" and type(Win.Register) == "function" and type(Win.ShowMain) == "function"
           and type(Win.SetScale) == "function" and type(Win.Reset) == "function")
