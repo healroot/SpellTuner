@@ -5,6 +5,8 @@
 --
 -- Rules it keeps:
 --   * Druid only, and only for a spell Data/SpellData.lua has a row for.
+--     T99 (docs/SPEC-next.md 4.4): "druid only" is the class profile's
+--     `tooltip` capability, which only the druid's profile grants on TBC.
 --   * Once per tooltip. OnTooltipSetSpell can fire more than once for one
 --     showing, and an action button re-sets its tooltip on a timer; the id is
 --     remembered until OnTooltipCleared, which every re-set goes through.
@@ -54,7 +56,7 @@ end
 
 function MD:SpellTooltipAppend(tt)
     if MD.db and MD.db.spellTooltip == false then return end
-    if not (MD.player and MD.player.isDruid) then return end
+    if not (MD.ClassProfile and MD.ClassProfile:Can("tooltip")) then return end
     local id = SpellIDOf(tt)
     if not id then return end
     local isHeal = MD.SpellData and MD.SpellData.spells[id]

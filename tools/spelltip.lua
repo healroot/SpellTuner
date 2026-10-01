@@ -89,9 +89,12 @@ MD.db.spellTooltip = false
 check("off means nothing is added", #SetSpell(rejuv) == 0)
 MD.db.spellTooltip = true
 check("a spell the model does not know adds nothing", #SetSpell(635) == 0)
-MD.player.isDruid = false
+-- T99 (docs/SPEC-next.md 4.4): the gate is the class profile's `tooltip`
+-- capability, so a non-druid is the generic profile, not a flag
+local druidProfile = MD.ClassProfile
+MD.ClassProfile = MD.Profiles.generic
 check("a non-druid gets nothing", #SetSpell(rejuv) == 0)
-MD.player.isDruid = true
+MD.ClassProfile = druidProfile
 MD.sim = { heal = 5000 }
 local simmed = find(SetSpell(rejuv), "Total")
 MD.sim = nil

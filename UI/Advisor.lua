@@ -53,9 +53,11 @@ end)
 --------------------------------------------------------------------------------
 local toastPending = false
 
+-- T99 (docs/SPEC-next.md 4.4): the rank toast is the class profile's
+-- `advisor` capability (MD.ClassProfile:Can), the druid's on this line.
 local function CheckRankShift()
     toastPending = false
-    if not MD.player.isDruid or not MD.cdb then return end
+    if not MD.ClassProfile:Can("advisor") or not MD.cdb then return end
     if MD.sim and next(MD.sim) then return end -- dashboard simulation active: not real gear
     -- Suggestions depend on the form too (Tree of Life cost + aura), so a
     -- stored snapshot from the other form is replaced, never compared.
@@ -82,7 +84,8 @@ end)
 
 MD:RegisterCallback("MD_READY", function()
     C_Timer.After(5, function()
-        if MD.player.isDruid and MD.cdb and not (MD.cdb.suggestedRanks and MD.cdb.suggestedRanks.ranks) then
+        if MD.ClassProfile:Can("advisor") and MD.cdb
+            and not (MD.cdb.suggestedRanks and MD.cdb.suggestedRanks.ranks) then
             MD.cdb.suggestedRanks = { form = MD:InTreeForm() and "tree" or "caster",
                                       ranks = MD.RankMath:SuggestedRanks() }
         end

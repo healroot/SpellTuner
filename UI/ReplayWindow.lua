@@ -1750,12 +1750,13 @@ end
 -- moment it opens; painted blank (the plan has not happened yet).
 -- T72: does the band offer Coach anyway? A fight that does not replay, with no
 -- plan and no search for it, that the coach can take (MD:CoachOnOpen's druid).
+-- T99 (docs/SPEC-next.md 4.4): "druid" is the class profile's coach capability.
 local function CoachOffered()
     if not (UI.THEMED and rp and rp.rec and not rp.live and not rp.right) then return false end
     local v = rp.validation
     if not v or v.ok then return false end
     if MD.replayCoaching ~= nil and MD.replayCoaching == rp.rec.id then return false end
-    return MD.player.isDruid and MD.SimPlanner ~= nil or false
+    return MD.ClassProfile:Can("coach") and MD.SimPlanner ~= nil or false
 end
 
 -- A font string's text width, whatever width it was last given.
@@ -1980,7 +1981,7 @@ end
 -- not handing out advice the engine got wrong, and it survives.
 function MD:CoachOnOpen(rec, force, validation)
     local SP = MD.SimPlanner
-    if not (rec and SP and MD.player.isDruid) then return end
+    if not (rec and SP and MD.ClassProfile:Can("coach")) then return end
     -- T72: the band's Coach anyway is a request, not the automatic coach
     if MD.db and MD.db.replayAutoCoach == false and not askedToCoach then return end
     if SP.plans[rec.id] or MD.coachSearch or MD.replayCoaching then return end
@@ -2226,6 +2227,7 @@ function MD:OpenReplay(n)
         end
     end
 
+    local coachable, coachWhy = MD.ClassProfile:Can("coach")
     if rp.right then
         local p = rp.right.plan
         right.title:SetText(string.format("SUGGESTED  |cff888888(%s, %d binds)|r%s", p.name or "plan", p:BindCount(),
@@ -2240,6 +2242,10 @@ function MD:OpenReplay(n)
         coachEvals = (MD.coachSearch and MD.coachSearch.evals) or 0
         right.title:SetText(PendingTitle(coachEvals))
         frame.hint:SetText("")
+    elseif not coachable then
+        -- T99 (docs/SPEC-next.md 4.4): no suggested column will come -- say why
+        -- (a druid never reaches this: its profile coaches)
+        frame.hint:SetText(MD.Profiles.Refusal("coach", coachWhy, "Coaching"))
     elseif UI.THEMED then
         -- T72: the band says whether it replays and offers Coach anyway
         frame.hint:SetText(v and not v.ok and "" or "no plan yet")
@@ -2388,7 +2394,9 @@ function MD:OpenPractice(setup, seed)
         MD:Print("practice: not in combat.")
         return
     end
-    if not MD.player.isDruid then MD:Print("practice: Druid-only, like the rest of the healing model.") return end
+    -- T99 (4.4): the class profile's practice capability, in place of the druid check
+    local canPractise, why = MD.ClassProfile:Can("practice")
+    if not canPractise then MD:Print(MD.Profiles.Refusal("practice", why) .. ".") return end
     Build()
     if live then MD:StopPractice(false) end
     local session = PR.New(setup, { seed = seed, onError = function(msg, _, ti)

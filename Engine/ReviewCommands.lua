@@ -165,7 +165,9 @@ function MD:RunCoachRun(arg)
         return
     end
     if MD.runSearch then Say("coachrun: already searching (" .. Slash() .. " coachrun cancel).") return end
-    if not MD.player.isDruid then Say("coachrun: coaching is Druid-only in v1.") return end
+    -- T99 (docs/SPEC-next.md 4.4): the class profile's coach capability
+    local canCoach, why = MD.ClassProfile:Can("coach")
+    if not canCoach then Say(MD.Profiles.Refusal("coach", why, "coachrun") .. ".") return end
     Say(string.format("coachrun: %s - %d pull(s) through the engine, this may take a moment.",
         run.name or "?", #(run.pulls or {})))
     if force then Say("coachrun: FORCED - pulls that do not replay are coached too.") end

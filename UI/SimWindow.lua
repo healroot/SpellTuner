@@ -72,8 +72,14 @@ end
 
 local function Run()
     local SP, SM = MD.SimPlanner, MD.SimModel
-    if not (SP and SM and MD.player.isDruid) then
-        Render({ "Simulation needs the druid spell kit; it is Druid-only in v1." })
+    -- T99 (docs/SPEC-next.md 4.4): the class profile's simulate capability
+    local canSim, why = MD.ClassProfile:Can("simulate")
+    if not canSim then
+        Render({ MD.Profiles.Refusal("simulate", why, "Simulation") .. "." })
+        return
+    end
+    if not (SP and SM) then
+        Render({ "Simulation needs the engine, which is not loaded." })
         return
     end
     if searchHandle then
@@ -255,11 +261,13 @@ end
 -- navigation builds the Simulate group.
 function MD:RefreshSimHeader()
     if not headerFS then return end
+    -- T99 (4.4): the simulate capability; a refusal says why after the fight
+    local canSim, why = MD.ClassProfile:Can("simulate")
     headerFS:SetText(string.format("|cffffcc00%s, %ds%s|r",
         (function()
             for _, p in ipairs(MD.SimPresets.PARTY) do if p.id == partyID then return p.label end end
             return partyID
-        end)(), duration, MD.player.isDruid and "" or "  (Druid-only in v1)"))
+        end)(), duration, canSim and "" or ("  (" .. MD.Profiles.Refusal("simulate", why, "Simulation") .. ")")))
 end
 
 function MD:AdoptSimPanel(parent)

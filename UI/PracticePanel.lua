@@ -520,12 +520,13 @@ function MD.DashboardParts.CreatePractice(parent, width)
             if st.aoe and (st.aoe.every or 0) > 0 then total = total + (st.aoe.size or 0) * (tg.maxHP or 0) / st.aoe.every end
         end
         total = total * (1 - (st.otherHealing or 0))
-        local canCast = MD.player.isDruid
+        -- T99 (docs/SPEC-next.md 4.4): the class profile's practice capability
+        local canCast, why = MD.ClassProfile:Can("practice")
         if canCast then startBtn:Enable() else startBtn:Disable() end
         statusFS:SetText(canCast and string.format(
             GREY .. "about %d damage a second for you to heal, over %d:%02d|r", total + 0.5,
             math.floor((st.dur or 0) / 60), (st.dur or 0) % 60)
-            or "|cffff9966Practice is Druid-only, like the rest of the healing model.|r")
+            or ("|cffff9966" .. MD.Profiles.Refusal("practice", why, "Practice") .. "|r"))
     end
 
     -- the bindings window writes db.practiceBinds; this is how the summary hears

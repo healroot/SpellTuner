@@ -438,8 +438,10 @@ do
     -- one column (no Coach anyway: the coach is a druid's) and a long fight
     -- name: the fight is cut short of the verdict rather than drawn under it
     Fonted(MD.Replay._state())
-    local druid = MD.player.isDruid
-    MD.player.isDruid = false
+    -- T99 (docs/SPEC-next.md 4.4): the coach gate is the class profile's, so
+    -- a non-druid is the generic profile, not a flag
+    local druid = MD.ClassProfile
+    MD.ClassProfile = MD.Profiles.generic
     local recF = buildFixture({ meterOverridden = true })
     recF.id = 3300000000
     recF.zone = "Hellfire Citadel: The Shattered Halls of the Warchief"
@@ -455,7 +457,7 @@ do
         and fightR < vL and cut < st.headerFS:GetStringWidth(),
         string.format("width=%s fight ends %.1f verdict starts %.1f box %.1f of %.1f", tostring(st.frame:GetWidth()),
             fightR, vL, cut, st.headerFS:GetStringWidth()))
-    MD.player.isDruid = druid
+    MD.ClassProfile = druid
 end
 
 do

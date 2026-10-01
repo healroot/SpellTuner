@@ -16,8 +16,17 @@
 --
 -- Class-agnostic for listing (the stream is just numbers); Coach needs the
 -- druid spell kit.
+-- T99 (docs/SPEC-next.md 4.4): "needs the druid spell kit" is the class
+-- profile's `coach` capability (MD.ClassProfile:Can, Spells/Profiles.lua): the
+-- druid answers true wherever it did; anyone else is told "not modelled for
+-- <Class> yet" (MD.Profiles.Refusal) in place of "Druid-only in v1".
 local _, MD = ...
 local UI = MD.UI
+
+-- Can the logged-in player be coached? -> true | false, why (Profiles' Can).
+local function CanCoach()
+    return MD.ClassProfile:Can("coach")
+end
 
 MD.DashboardParts = MD.DashboardParts or {}
 
@@ -607,7 +616,8 @@ function MD.DashboardParts.CreateReview(parent, width)
         local rec, i = Selected(), selected
         if not (rec and MD.SimPlanner and MD.SimModel) then return end
         if rec.short then return end
-        if not MD.player.isDruid then MD:Print("coach: coaching is Druid-only in v1.") return end
+        local can, why = CanCoach()
+        if not can then MD:Print(MD.Profiles.Refusal("coach", why) .. ".") return end
         local v = Validation(rec)
         if not force and v and not v.ok then
             ShowResult(Title(i, rec, "does not replay"), ValidationLines(rec, v))
@@ -659,7 +669,8 @@ function MD.DashboardParts.CreateReview(parent, width)
     function api:CoachRun()
         local run = CurrentRun()
         if not (run and MD.SimPlanner) then return end
-        if not MD.player.isDruid then MD:Print("coachrun: coaching is Druid-only in v1.") return end
+        local can, why = CanCoach()
+        if not can then MD:Print(MD.Profiles.Refusal("coach", why, "coachrun") .. ".") return end
         if MD.runSearch then MD:Print("coachrun: already searching.") return end
         local title = string.format("run %s - coach card", Esc(run.name or "?"))
         ShowResult(string.format("run %s - coaching", Esc(run.name or "?")),
@@ -690,15 +701,16 @@ function MD.DashboardParts.CreateReview(parent, width)
         if not rec then return end
         local run = CurrentRun()
         local v = cache[rec.id]
-        local druid = MD.player.isDruid
-        local coachNote = rec.short and "short" or not druid and "Druid only"
+        local druid, why = CanCoach()
+        local refused = not druid and MD.Profiles.RefusalNote("coach", why) or nil
+        local coachNote = rec.short and "short" or refused
             or (v and not v.ok) and "does not replay" or nil
         local items = {
             { text = "Play", note = "double-click", disabled = MD.Replay == nil, onClick = function() api:Play() end },
             { text = "Validate", onClick = function() api:Validate() end },
             { text = run and "Coach pull" or "Coach", note = coachNote, disabled = coachNote ~= nil,
               onClick = function() api:Coach(false) end },
-            { text = "Coach anyway", note = (rec.short and "short") or (not druid and "Druid only") or nil,
+            { text = "Coach anyway", note = (rec.short and "short") or refused or nil,
               disabled = rec.short or not druid, onClick = function() api:Coach(true) end },
             { text = run and (run.pinned and "Unpin the run" or "Pin the run") or (rec.pinned and "Unpin" or "Pin"),
               onClick = function() DoPin() end },
@@ -801,10 +813,12 @@ function MD.DashboardParts.CreateReview(parent, width)
         -- disabled" rule only took effect AFTER a manual Validate, which is the
         -- one moment it was not needed. Druid-only: the gates run the druid
         -- spell kit, and running them for anyone else would print fiction.
+        -- T99: "druid" is the coach capability (CanCoach), asked once a paint.
         -- T49 (P5), B24: before the rows are painted, so the selected row's
         -- own cell and hover carry the verdict the buttons already act on.
         local rec = Selected()
-        local v = rec and MD.player.isDruid and Validation(rec) or (rec and cache[rec.id])
+        local canCoach, coachWhy = CanCoach()
+        local v = rec and canCoach and Validation(rec) or (rec and cache[rec.id])
 
         -- T71 (P27): the list is the generic table, scrolled, with the result
         -- area under it (T81: the only list, on both lines).
@@ -838,11 +852,11 @@ function MD.DashboardParts.CreateReview(parent, width)
         coachBtn:SetText(run and "Coach run" or "Coach")
         pullBtn:SetText("Coach pull")
         pullBtn:SetShown(run ~= nil)
-        Set(pullBtn, rec ~= nil and not rec.short and MD.player.isDruid)
+        Set(pullBtn, rec ~= nil and not rec.short and canCoach)
         if run then
-            Set(coachBtn, MD.player.isDruid and #(run.pulls or {}) > 0)
+            Set(coachBtn, canCoach and #(run.pulls or {}) > 0)
         else
-            Set(coachBtn, rec ~= nil and not rec.short and MD.player.isDruid)
+            Set(coachBtn, rec ~= nil and not rec.short and canCoach)
         end
         coachBtn:SetScript("OnEnter", function(self)
             if not MD.Tip then return end
@@ -860,8 +874,9 @@ function MD.DashboardParts.CreateReview(parent, width)
                 lines[#lines + 1] = { l = "|cff888888(20s and 5 casts). It is kept because a dungeon", r = "" }
                 lines[#lines + 1] = { l = "|cff888888is mostly these - but there is nothing to learn", r = "" }
                 lines[#lines + 1] = { l = "|cff888888from eight seconds.|r", r = "" }
-            elseif not MD.player.isDruid then
-                lines[#lines + 1] = { l = "|cff888888Coaching is Druid-only in v1.|r", r = "" }
+            elseif not canCoach then
+                lines[#lines + 1] = { l = "|cff888888" .. MD.Profiles.Refusal("coach", coachWhy, "Coaching") .. "|r",
+                    r = "" }
             elseif v and not v.ok then
                 lines[#lines + 1] = { l = "|cffff9966This fight does not replay, so nothing would be", r = "" }
                 lines[#lines + 1] = { l = "|cffff9966suggested from it.|r", r = "" }

@@ -54,8 +54,10 @@ local function SpellsViewId(view)
     return view
 end
 
+-- T99 (docs/SPEC-next.md 4.4): the rank table is the class profile's
+-- `rankTable` capability (MD.ClassProfile:Can) -- the druid's on this line.
 local function SuggestedRows()
-    if not (MD.RankMath and MD.player.isDruid) then return {} end
+    if not (MD.RankMath and MD.ClassProfile:Can("rankTable")) then return {} end
     return MD.RankMath:Compute()
 end
 
@@ -139,9 +141,11 @@ local function Refresh()
         -- T83 (C3): the TBC Spells view -- header, chip and comparison, the
         -- rank table, the card -- in place of the four prose lines.
         -- T84 (C5): Overview, or a family's view, by the rail's row.
-        if not MD.player.isDruid then
+        local canRank, why = MD.ClassProfile:Can("rankTable")
+        if not canRank then
             messageFS:Show()
-            messageFS:SetText("Rank analysis is Druid-only in v1 - the OOM widget, datatext and advisor still work for your class.")
+            messageFS:SetText(MD.Profiles.Refusal("rankTable", why, "Rank analysis")
+                .. " - the OOM widget, datatext and advisor still work for your class.")
             return
         end
         local key = FamilyKey(currentFamily)
@@ -284,7 +288,7 @@ local function CreateDashboard()
                 -- and hide themselves on the ShowOptionsTab callback
                 if MD.AdoptOptionsPanel then MD:AdoptOptionsPanel(content) end
                 return MD.optionsFrame
-            elseif group == "spells" and not spellsHost and MD.player.isDruid
+            elseif group == "spells" and not spellsHost and MD.ClassProfile:Can("rankTable")
                     and MD.DashboardParts.CreateSpellsView then
                 -- T83 (C3): one view for every family, UI/SpellsView_TBC.lua's;
                 -- T84 (C5): beside Overview in one host, right of the rail

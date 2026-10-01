@@ -266,12 +266,48 @@ end
 local Profile = {}
 Profile.__index = Profile
 
+-- T99 (docs/SPEC-next.md 2.1, 4.4): a capability that also needs a live
+-- answer where the line provides one. `coach` is also "the live kit prices at
+-- least one heal": on Forever the kit is built in the LoadOnDemand Replay
+-- module, which provides the answer as MD.KitLive (Kit_Forever.lua, T96).
+-- With no provider the capability is the class's alone -- unless the line
+-- DECLARED the module that would provide it (MD:DeclareModule, which only
+-- Core_Forever.lua calls: a value the flavour installs, never a client check),
+-- in which case that module is off.
+P.LIVE = {
+    coach = { provider = "KitLive", module = "SpellTuner_Replay" },
+}
+
+-- The declared module row (Core.lua's MD.modules), or nil: none on TBC.
+local function DeclaredModule(name)
+    for _, m in ipairs(MD.modules or {}) do
+        if m.name == name then return m end
+    end
+    return nil
+end
+
 -- MD.ClassProfile:Can(cap) -> true | false, why. The one replacement for the
--- MD.player.isDruid gates (task T99 moves them; this step changes no reader).
--- why = "class": this class's profile does not grant it.
+-- MD.player.isDruid gates (T99 moved the 23 of them here). why:
+--   "class"  -- this class's profile does not grant it;
+--   "kit"    -- granted, but the live kit prices no heal (MD.KitLive's answer);
+--   "module" -- granted, but the module that answers for the live kit is off
+--               (the caller keeps that module's own placeholder).
+-- The class comes first, so a class that is not modelled is told so whether
+-- or not a module is on.
 function Profile:Can(cap)
-    if self.caps and self.caps[cap] == true then return true end
-    return false, "class"
+    if not (self.caps and self.caps[cap] == true) then return false, "class" end
+    local live = P.LIVE[cap]
+    if live then
+        local fn = MD[live.provider]
+        if type(fn) == "function" then
+            local ok, answer, why = pcall(fn)
+            if not ok then return false, "kit" end
+            if answer ~= true then return false, (why == "module") and "module" or "kit" end
+        elseif DeclaredModule(live.module) then
+            return false, "module"
+        end
+    end
+    return true
 end
 
 -- p:Family(nameOrKey) -> key, def: a family key, or one of a family's
@@ -415,3 +451,55 @@ end
 MD:RegisterCallback("CORE_LOGIN", function()
     P.Select(MD.player and MD.player.class)
 end)
+
+--------------------------------------------------------------------------------
+-- T99 (docs/SPEC-next.md 4.4): the gates' words. "Druid-only in v1" became,
+-- wherever a capability is refused, "<subject>: not modelled for <Class> yet"
+-- -- a wording change for non-druids only: the druid's profiles grant every
+-- capability a druid had, so a druid never sees these. ASCII, no pipe.
+--------------------------------------------------------------------------------
+-- The two class tokens a plain title case would spell wrong.
+P.CLASS_WORDS = { DEATHKNIGHT = "Death Knight", DEMONHUNTER = "Demon Hunter" }
+
+-- P.ClassLabel(class) -> how a sentence names the class: a registered
+-- profile's label, else the token title-cased ("PRIEST" -> "Priest"), else
+-- "your class" (no class read yet). class defaults to the logged-in player's.
+function P.ClassLabel(class)
+    if class == nil then class = MD.player and MD.player.class end
+    local reg = P.byClass[class]
+    if reg and type(reg.label) == "string" and reg.label ~= "" then return reg.label end
+    if type(class) ~= "string" or not class:match("^%u+$") or class == "UNKNOWN" then
+        return "your class"
+    end
+    return P.CLASS_WORDS[class] or (class:sub(1, 1) .. class:sub(2):lower())
+end
+
+-- The module a live capability's provider lives in, as the Modules pane names it.
+local function ModuleLabel(cap)
+    local live = P.LIVE[cap]
+    local m = live and DeclaredModule(live.module)
+    return m and m.label or "Replay"
+end
+
+-- P.Refusal(cap, why, subject, class) -> the sentence for Can(cap)'s `why`:
+--   "class"  -> "<subject>: not modelled for <Class> yet"
+--   "kit"    -> "<subject>: no heal in your spellbook is modelled yet"
+--   "module" -> "<subject>: needs the <Label> module" (the module placeholder's
+--               own words, UI/Dashboard_Forever.lua)
+-- subject defaults to the capability's name. No full stop: a chat caller adds it.
+function P.Refusal(cap, why, subject, class)
+    subject = subject or tostring(cap)
+    if why == "module" then
+        return string.format("%s: needs the %s module", subject, ModuleLabel(cap))
+    elseif why == "kit" then
+        return subject .. ": no heal in your spellbook is modelled yet"
+    end
+    return string.format("%s: not modelled for %s yet", subject, P.ClassLabel(class))
+end
+
+-- P.RefusalNote(cap, why) -> the short note a menu row carries beside a
+-- refused item (Review's row menu): "not modelled", or the module's words.
+function P.RefusalNote(cap, why)
+    if why == "module" then return "needs the " .. ModuleLabel(cap) .. " module" end
+    return "not modelled"
+end

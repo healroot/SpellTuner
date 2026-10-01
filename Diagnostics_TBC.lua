@@ -224,7 +224,10 @@ function MD:Profile()
 
     add("")
     add("--- costs of known max ranks ---")
-    if MD.player.isDruid then
+    -- T99 (docs/SPEC-next.md 4.4): the max ranks are Data/SpellData.lua's
+    -- rank table, the class profile's `rankTable` capability
+    local canRank, why = MD.ClassProfile:Can("rankTable")
+    if canRank then
         for _, family in ipairs(SD.familyOrder) do
             local id = SD.maxRank[family]
             if id then
@@ -236,7 +239,7 @@ function MD:Profile()
             end
         end
     else
-        add("(druid-only)")
+        add("(%s)", MD.Profiles.Refusal("rankTable", why, "rank table"))
     end
 
     add("")

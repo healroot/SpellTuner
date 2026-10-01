@@ -493,7 +493,9 @@ MD:On("PLAYER_REGEN_ENABLED", function()
     if realized then
         parts[#parts + 1] = string.format("spirit regen realized %d%%", realized * 100)
     end
-    if MD.player.isDruid and ST.combat.casts > 0 then
+    -- T99 (docs/SPEC-next.md 4.4): "max rank" is Data/SpellData.lua's rank
+    -- table, the class profile's `rankTable` capability (the druid's on TBC)
+    if MD.ClassProfile:Can("rankTable") and ST.combat.casts > 0 then
         parts[#parts + 1] = string.format("max-rank casts %d%%",
             ST.combat.maxRankCasts / ST.combat.casts * 100)
     end

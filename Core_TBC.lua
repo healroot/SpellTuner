@@ -96,6 +96,9 @@ end
 local TREE_OF_LIFE = GetSpellInfo(33891)
 local TREE_FORM_ID = _G.TREE_FORM or 2
 function MD:InTreeForm()
+    -- Druid by design (docs/SPEC-next.md 4.4, T99): Tree of Life is a druid
+    -- form, a fact about the class rather than a capability a profile grants,
+    -- so this read stays on MD.player and never becomes MD.ClassProfile:Can.
     if not MD.player.isDruid then return false end
     if GetShapeshiftFormID then
         local ok, id = pcall(GetShapeshiftFormID)
