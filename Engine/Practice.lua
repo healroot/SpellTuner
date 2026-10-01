@@ -1249,7 +1249,9 @@ function PR.New(setup, opts)
     -- shared one is untouched; a recording replays from its cast SUCCESS times,
     -- so the replay does not depend on this.
     do
-        local copy = { crit = kit.crit }
+        -- T96: the copy keeps the kit's profile (MD.Profiles.ForKit reads it:
+        -- the engine's HoT slots), so a session and its recording are the kit's class
+        local copy = { crit = kit.crit, profile = kit.profile }
         for form, list in pairs(kit) do
             if type(list) == "table" then
                 copy[form] = {}
@@ -1363,9 +1365,13 @@ function Session:Decide(S, t, mana, form)
     if (e.cost or 0) > mana then self:Error("Not enough mana", inp.spellID, ti); return nil end
     if not SM.Ready(S, inp.spellID, t) then self:Error("Spell is not ready yet", inp.spellID, ti); return nil end
     if e.type == "instant" then
+        -- T96: the HoTs are found in the run's own slots (S.hotIndex: the
+        -- kit's profile, never the logged-in player's)
         local row = S.hots[ti]
-        local rg = row and row[SM.HOT_INDEX.Regrowth]
-        local rj = row and row[SM.HOT_INDEX.Rejuvenation]
+        local index = S.hotIndex or SM.HotSlots(self.kit).index
+        local rgI, rjI = index.Regrowth, index.Rejuvenation
+        local rg = row and rgI and row[rgI]
+        local rj = row and rjI and row[rjI]
         if not ((rg and rg.active) or (rj and rj.active)) then
             self:Error("Nothing to consume", inp.spellID, ti)
             return nil

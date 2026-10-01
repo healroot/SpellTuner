@@ -108,6 +108,38 @@ if S.flavour == "tbc" then
         aliased and restoredOk,
         string.format("aliased=%s restored=%s first=%s", tostring(aliased), tostring(restoredOk),
             tostring(restoreProblem and restoreProblem[1])))
+
+    -- T96 (docs/SPEC-next.md 2.1): RankMath stamps the druid profile (SpellData
+    -- is the druid's) and emits each family's cooldown from it -- Swiftmend's 15.
+    local sm, smN, others = nil, 0, {}
+    if built then
+        for id, e in pairs(kit.caster) do
+            if e.family == "Swiftmend" then
+                smN = smN + 1
+                if e.cooldown == 15 then sm = sm or id end
+            elseif e.cooldown ~= nil then
+                others[#others + 1] = e.family
+            end
+        end
+    end
+    local cdFam, cdSecs
+    if sm and MD.SimModel.CooldownOf then cdFam, cdSecs = MD.SimModel.CooldownOf({ kit = kit }, sm) end
+    check("tbc: RankMath stamps the druid profile and emits Swiftmend's 15 s cooldown (T96)",
+        built and kit.profile == "DRUID" and smN > 0 and sm ~= nil and #others == 0
+        and cdFam == "Swiftmend" and cdSecs == 15,
+        string.format("profile=%s swiftmend ranks=%d with 15=%s others=%s cd=%s,%s",
+            tostring(built and kit.profile), smN, tostring(sm), table.concat(others, ","),
+            tostring(cdFam), tostring(cdSecs)))
+
+    local snapP, backP = "?", "?"
+    if Kit and built then
+        local snap = Kit.Snapshot(kit)
+        snapP = tostring(snap.profile)
+        backP = tostring(Kit.Restore(snap).profile)
+    end
+    check("tbc: a druid kit's snapshot names no profile and restores as the druid's (T96)",
+        snapP == "nil" and backP == "DRUID",
+        string.format("snapshot=%s restored=%s", snapP, backP))
     Footer()
 end
 
@@ -360,6 +392,111 @@ do
             tostring(gen1), tostring(gen2), tostring(not rawequal(k1, k2)),
             tostring(k1.caster[90201].direct), tostring(e2 and e2.direct),
             tostring(saved2 and saved2.caster[90201] and saved2.caster[90201].direct)))
+end
+
+--------------------------------------------------------------------------------
+-- T96 (docs/SPEC-next.md 2.1, S1 step 2): the kit is built by its family's
+-- KIT TYPE, carries its own cooldowns, and names the profile it was built by.
+--------------------------------------------------------------------------------
+local RM = MD.RankMath
+local DRUID = MD.Profiles.Get("DRUID")
+
+-- 12: one filler per kit type, and the entries it writes
+do
+    local KEF = RM.KitEntryFor
+    local missing = {}
+    for key, def in pairs(DRUID.families) do
+        if def.kit ~= "instant" and not (KEF and type(KEF[def.kit]) == "function") then
+            missing[#missing + 1] = key .. ":" .. def.kit
+        end
+    end
+    table.sort(missing)
+    local d, h, y, c = {}, {}, {}, {}
+    if KEF then
+        KEF.direct(d, { min = 40, max = 60 }, 0.1)
+        KEF.hot(h, { over = 36, dur = 9 })
+        KEF.hybrid(y, { min = 90, max = 110, over = 60, dur = 6 }, 0.2)
+        KEF.channel(c, { parsed = { heal = { tick = 98, period = 2, periodDur = 10 } } })
+    end
+    local hy = { min = 90, max = 110 }
+    local yMissing = {}
+    if KEF then KEF.hybrid(yMissing, hy, 0) end
+    local tq = MD.RankMath:SpellKit().caster[90203]
+    check("T96: KitEntryFor fills each kit type the druid profile names",
+        KEF ~= nil and #missing == 0 and KEF.instant == nil
+        and d.direct == 50 and d.directCrit == 0.1 and d.dataMissing == nil
+        and h.tick == 12 and h.ticks == 3 and h.tickPeriod == 3 and h.duration == 9
+        and y.direct == 100 and y.directCrit == 0.2 and y.tick == 30 and y.ticks == 2
+        and yMissing.dataMissing == true and yMissing.direct == nil
+        and c.channelTick == 98 and c.channelTicks == 5 and c.tickPeriod == 2
+        and tq and tq.type == "channel" and tq.channelTick == 98 and tq.tickPeriod == 2,
+        string.format("fillers=%s missing=%s tq=%s/%s/%s", tostring(KEF ~= nil), table.concat(missing, ","),
+            tostring(tq and tq.channelTick), tostring(tq and tq.channelTicks), tostring(tq and tq.tickPeriod)))
+end
+
+-- 13: Swiftmend's cooldown is the profile's 15 s, on the kit entry, and the
+--     engine's per-family cooldown reads it
+do
+    local k = MD.RankMath:SpellKit()
+    local sm = k.caster[90202]
+    local others = {}
+    for id, e in pairs(k.caster) do
+        if id ~= 90202 and e.cooldown ~= nil then others[#others + 1] = tostring(id) end
+    end
+    local fam, secs = MD.SimModel.CooldownOf({ kit = k }, 90202)
+    check("T96: Swiftmend's kit entry carries the profile's 15 s cooldown",
+        sm and sm.cooldown == 15 and DRUID.families.Swiftmend.cooldown == 15 and #others == 0
+        and fam == "Swiftmend" and secs == 15,
+        string.format("cooldown=%s others=%s CooldownOf=%s,%s", tostring(sm and sm.cooldown),
+            table.concat(others, ","), tostring(fam), tostring(secs)))
+end
+
+-- 14: kit.profile stamped and round-tripped by Snapshot / Restore
+do
+    local k = MD.RankMath:SpellKit()
+    local valid = Kit.Validate(k)
+    local snap = Kit.Snapshot(k)
+    local back = Kit.Restore(snap)
+    local priest = CopyKit(k)
+    priest.profile = "PRIEST"
+    local pSnap = Kit.Snapshot(priest)
+    local pBack = Kit.Restore(pSnap)
+    local bad = CopyKit(k)
+    bad.profile = 7
+    local badOk = Kit.Validate(bad)
+    check("T96: kit.profile is stamped and round-trips through Snapshot / Restore",
+        k.profile == "DRUID" and k.profile == DRUID.class and valid == true
+        and snap.profile == nil and back.profile == "DRUID"
+        and pSnap.profile == "PRIEST" and pBack.profile == "PRIEST" and badOk == false,
+        string.format("profile=%s valid=%s snap=%s back=%s priest=%s/%s bad=%s", tostring(k.profile),
+            tostring(valid), tostring(snap.profile), tostring(back.profile), tostring(pSnap.profile),
+            tostring(pBack.profile), tostring(badOk)))
+end
+
+-- 15: a snapshot with no profile (every one stored before T96) restores as the
+--     druid's, and the engine reads the druid's slots for it
+do
+    local old = { crit = 0, caster = { [774] = { family = "Rejuvenation", rank = 1, type = "hot", gcd = 1.5,
+        cost = 25, cast = 0, tick = 8, ticks = 4, tickPeriod = 3, duration = 12 } }, tree = {} }
+    local back = RM.KitRestore(old)
+    local slots = MD.SimModel.HotSlots and MD.SimModel.HotSlots(back)
+    check("T96: a snapshot without a profile restores as the druid's",
+        back.profile == "DRUID" and MD.Profiles.ForKit(back) == DRUID
+        and slots and slots.index.Rejuvenation == MD.SimModel.HOT_INDEX.Rejuvenation
+        and slots.index.Regrowth == MD.SimModel.HOT_INDEX.Regrowth,
+        string.format("profile=%s forKit=%s", tostring(back.profile),
+            tostring(MD.Profiles.ForKit(back) and MD.Profiles.ForKit(back).class)))
+    MD.RankMath:SpellKit()   -- the live index back (KitRestore installed the snapshot's)
+end
+
+-- 16: MD.KitLive, the Forever half of Can("coach"): the live kit prices a heal
+do
+    local live, n = false, nil
+    if type(MD.KitLive) == "function" then live, n = MD.KitLive() end
+    check("T96: MD.KitLive is provided and the live kit prices at least one heal",
+        type(MD.KitLive) == "function" and live == true and type(n) == "number" and n > 0,
+        string.format("provided=%s live=%s n=%s", tostring(type(MD.KitLive) == "function"),
+            tostring(live), tostring(n)))
 end
 
 Footer()

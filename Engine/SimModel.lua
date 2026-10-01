@@ -88,6 +88,14 @@ SM.AURA_BUFF_FLAG = 1000000
 
 -- The three families that leave something ticking on a target. Everything else
 -- resolves the instant it lands.
+-- T96 (docs/SPEC-next.md 2.1, S1 step 2): these two are the DRUID's FALLBACK.
+-- The engine reads the slots of the kit it runs on -- SM.HotSlots(kit), from
+-- MD.Profiles.ForKit(kit), the kit's own profile, never the logged-in
+-- player's -- and these fill only what that profile leaves empty, so the
+-- druid's map on both lines is exactly this one and every trace keeps its slot
+-- numbers. Kept literal: Forever's druid profile has no Lifebloom slot, and a
+-- kit without a profile is the druid's (tools/profilecheck.lua holds the
+-- profile's slots equal to these).
 SM.HOT_INDEX = { Rejuvenation = 1, Regrowth = 2, Lifebloom = 3 }
 SM.HOT_NAME = { "Rejuvenation", "Regrowth", "Lifebloom" }
 local HOT_INDEX = SM.HOT_INDEX
@@ -164,15 +172,121 @@ SM.SWIFTMEND_FIELD = { Regrowth = "swiftmendRegrowth", Rejuvenation = "swiftmend
 
 -- What a Swiftmend (kit entry `e`) would eat out of one target's HoT row:
 -- family, amount, the HoT's state -- or nil when there is nothing it can eat.
--- Allocates nothing.
-function SM.SwiftmendEats(e, row)
+-- T96: `index` is the run's slot map (S.hotIndex, SM.HotSlots(kit).index);
+-- absent, the druid's SM.HOT_INDEX. Allocates nothing.
+function SM.SwiftmendEats(e, row, index)
     if not (e and row) then return nil end
+    index = index or HOT_INDEX
     for _, fam in ipairs(SM.SWIFTMEND_ORDER) do
-        local st = row[HOT_INDEX[fam]]
+        local fi = index[fam]
+        local st = fi and row[fi]
         local amount = e[SM.SWIFTMEND_FIELD[fam]]
         if st and st.active and amount then return fam, amount, st end
     end
     return nil
+end
+
+-- T96: the druid's slot for a HoT whose family the profile gives no slot, by
+-- its kit type -- what every kit did before profiles (LandCast: a "hybrid"
+-- rolls the Regrowth slot, a "hot" the Rejuvenation one, a "lifebloom"
+-- Lifebloom's).
+SM.HOT_TYPE_FAMILY = { hot = "Rejuvenation", hybrid = "Regrowth", lifebloom = "Lifebloom" }
+
+--------------------------------------------------------------------------------
+-- SM.HotSlots(kit) -> slots (T96, docs/SPEC-next.md 2.1 "two readers, two
+-- profiles"): the per-target HoT slots of the KIT's own profile
+-- (MD.Profiles.ForKit: the druid's when the kit names none), derived once per
+-- profile and shared -- read only, never written:
+--   slots.index[family] = slot   the profile's hotSlots, in order; a slot it
+--                                leaves empty keeps SM.HOT_INDEX's family
+--   slots.name[slot] = family    the inverse
+--   slots.lifebloom = slot|nil   the slot whose family stacks and blooms
+--   slots.families = list|nil    the solver's candidates: the profile's
+--                                planner.families, else its order; nil = the
+--                                caller's fallback (SV.FAMILIES)
+--   slots.profile                the profile itself
+-- SM:Run publishes the run's as S.hotSlots / S.hotIndex; the solver, Practice,
+-- ReplayTrace, the replay window and Scenario_Forever read the same thing, so
+-- tools/import.lua replays any character's recording on any machine.
+--------------------------------------------------------------------------------
+local hotSlotsCache = setmetatable({}, { __mode = "k" })
+local druidFallbackSlots    -- only when no profile registry is loaded at all
+
+local function BuildHotSlots(p)
+    local index, name = {}, {}
+    for slot, fam in ipairs((p and p.hotSlots) or EMPTY) do index[fam], name[slot] = slot, fam end
+    local lifebloom
+    local defs = p and p.families
+    for fam, slot in pairs(index) do
+        local def = defs and defs[fam]
+        if def and def.kit == "lifebloom" then lifebloom = slot end
+    end
+    -- the druid's fallback fills every slot the profile leaves empty
+    for slot, fam in ipairs(SM.HOT_NAME) do
+        if name[slot] == nil and index[fam] == nil then
+            index[fam], name[slot] = slot, fam
+            if fam == "Lifebloom" and lifebloom == nil then lifebloom = slot end
+        end
+    end
+    local planner = p and p.planner
+    return { index = index, name = name, lifebloom = lifebloom, profile = p,
+             families = (planner and planner.families) or (p and p.order) or nil }
+end
+
+function SM.HotSlots(kit)
+    local P = MD.Profiles
+    local p = P and P.ForKit and P.ForKit(kit) or nil
+    if p == nil then
+        druidFallbackSlots = druidFallbackSlots or BuildHotSlots(nil)
+        return druidFallbackSlots
+    end
+    local slots = hotSlotsCache[p]
+    if not slots then
+        slots = BuildHotSlots(p)
+        hotSlotsCache[p] = slots
+    end
+    return slots
+end
+
+-- SM.HotSlotOf(slots, e) -> the slot a kit entry's HoT rolls, or nil (a
+-- direct heal, an instant, a channel): its family's slot, else the druid's
+-- slot for its kit type (SM.HOT_TYPE_FAMILY). Allocates nothing.
+function SM.HotSlotOf(slots, e)
+    if not e then return nil end
+    local index = (slots and slots.index) or HOT_INDEX
+    local fi = e.family and index[e.family]
+    if fi then return fi end
+    local fam = SM.HOT_TYPE_FAMILY[e.type]
+    return fam and index[fam] or nil
+end
+
+-- SM.ChannelShape(e) -> tick, ticks, period | nil (T96, decision 11): what a
+-- "channel" kit entry lands -- channelTick every period, channelTicks times.
+-- The period is the entry's tickPeriod (the spell's own text, Kit_Forever),
+-- else its duration or its cast over the ticks; with none of them, or no
+-- channelTick (TBC's Tranquility, dataMissing), nil: it lands nothing and the
+-- period is never guessed. SM:Run and Scenario_Forever's attribution read it.
+function SM.ChannelShape(e)
+    if type(e) ~= "table" or e.type ~= "channel" then return nil end
+    local tick, n = e.channelTick, e.channelTicks
+    if not (tick and tick > 0 and n and n > 0) then return nil end
+    local period = e.tickPeriod
+    if not (period and period > 0) then
+        if e.duration and e.duration > 0 then period = e.duration / n
+        elseif e.cast and e.cast > 0 then period = e.cast / n
+        else return nil end
+    end
+    local ticks = math.floor(n + 0.5)
+    if ticks < 1 then return nil end
+    return tick, ticks, period
+end
+
+-- SM.HotFamilyOf(kit, e) -> the family whose slot a kit entry's HoT rolls in
+-- that kit's profile (Scenario_Forever's hot map), or nil.
+function SM.HotFamilyOf(kit, e)
+    local slots = SM.HotSlots(kit)
+    local fi = SM.HotSlotOf(slots, e)
+    return fi and slots.name[fi] or nil
 end
 -- Trailing damage per target, kept as a small circular buffer. This is the ONE
 -- derived input a plan is allowed (see the causality note in SimPlanner).
@@ -188,6 +302,9 @@ SM.FSR = FSR   -- the five-second rule, read by the solver's regen price (2026-0
 -- 3,000-event fight costs three integers of state instead of 3,000 heap pushes.
 --------------------------------------------------------------------------------
 local E_TICK, E_EXPIRE, E_LAND, E_DECIDE = 1, 2, 3, 4
+-- T96 (decision 11): an E_TICK whose slot is CHANNEL is the healer's own
+-- channel ticking (Tranquility), not a HoT; there is one channel at a time.
+local CHANNEL = 0
 
 --------------------------------------------------------------------------------
 -- Binary heap over parallel arrays, keyed (t, prio, seq). Never allocates once
@@ -262,6 +379,7 @@ local function NewSlot()
         threat = {},      -- [target] = UnitThreatSituation 0..3 as of t
         incoming = {},    -- [target] = { at, amount, spellID } -- the soonest cast aimed there
         hots = {},        -- [target][hotIndex] = state table (reused)
+        chan = { active = false, gen = 0 }, -- T96: the healer's own channel (one at a time)
         cd = {},          -- family -> time it is ready again (T90: SM.CooldownOf's key)
         dmg = {},         -- [target] = { t = {}, a = {}, head = 0 } circular, DMG_RING wide
         byFamily = {}, healByFamily = {}, ohByFamily = {},
@@ -285,6 +403,19 @@ local function Acquire()
 end
 
 local function Release(s) s.busy = false end
+
+-- T96: a channel starting on target `ti` at `t` (SM:Run's LandCast; outside
+-- Run so a run builds no closure for it). Its ticks are E_TICK events on the
+-- CHANNEL slot, S.chan.gen telling a live chain from a broken one.
+local function StartChannel(S, t, ti, e, spellID)
+    local tick, n, period = SM.ChannelShape(e)
+    if not tick then return end
+    local ch = S.chan
+    ch.gen = ch.gen + 1
+    ch.active, ch.spellID, ch.family = true, spellID, e.family
+    ch.tick, ch.left, ch.period, ch.target = tick, n, period, ti
+    HeapPush(S.heap, t + period, E_TICK, ti, CHANNEL, ch.gen)
+end
 
 local function HotState(S, ti, fi)
     local row = S.hots[ti]
@@ -340,6 +471,14 @@ function SM:Run(scenario, plan, opts)
 
     -- T90: the kit SM.CooldownOf / SM.Ready read a family and its cooldown from
     S.kit = kit
+    -- T96: the HoT slots of THIS kit's profile (MD.Profiles.ForKit), derived
+    -- per run -- never the logged-in player's. Published for the plan
+    -- (Engine/SimSolver.lua) and the practice queue (Engine/Practice.lua).
+    -- (The closures below read them off S, never as new upvalues: the
+    -- self-test's per-run allocation budget counts every one.)
+    local hotSlots = SM.HotSlots(kit)
+    local lbSlot = hotSlots.lifebloom
+    S.hotSlots, S.hotIndex = hotSlots, hotSlots.index
     S.dangerHits = MD:Setting("simDangerHits")
     S.floor = floor
 
@@ -373,7 +512,7 @@ function SM:Run(scenario, plan, opts)
             S.dangerPrior[i] = tg.dangerPrior
             S.threat[i], S.incoming[i] = 0, nil
             local row = S.hots[i]
-            if row then for fi = 1, 3 do local st = row[fi]; if st then st.active = false end end end
+            if row then for _, st in pairs(row) do st.active = false end end
             local ring = S.dmg[i]
             if not ring then ring = { t = {}, a = {}, head = 0 }; S.dmg[i] = ring end
             for j = 1, DMG_RING do ring.t[j], ring.a[j] = -1000, 0 end
@@ -381,6 +520,7 @@ function SM:Run(scenario, plan, opts)
         end
         for k in pairs(S.cd) do S.cd[k] = nil end
     end
+    S.chan.active = false
 
     S.nT = nT
     for k in pairs(S.byFamily) do S.byFamily[k] = nil end
@@ -553,7 +693,7 @@ function SM:Run(scenario, plan, opts)
     -- Lifebloom instead adds a stack and resets its 7s.
     local function ApplyHot(ti, fi, e, spellID)
         local st = HotState(S, ti, fi)
-        local isLB = (fi == HOT_INDEX.Lifebloom)
+        local isLB = (fi == S.hotSlots.lifebloom)
         local wasActive = st.active
         if isLB and wasActive then
             st.stacks = math.min(LIFEBLOOM_MAX_STACKS, st.stacks + 1)
@@ -624,24 +764,38 @@ function SM:Run(scenario, plan, opts)
         if e.type == "direct" then
             local amount, didCrit = DirectAmount(e)
             Land(ti, amount, e.family, spellID, false, didCrit)
-        elseif e.type == "hybrid" then
-            local amount, didCrit = DirectAmount(e)
-            Land(ti, amount, e.family, spellID, false, didCrit)
-            ApplyHot(ti, HOT_INDEX.Regrowth, e, spellID)
-        elseif e.type == "hot" then
-            ApplyHot(ti, HOT_INDEX.Rejuvenation, e, spellID)
-        elseif e.type == "lifebloom" then
-            ApplyHot(ti, HOT_INDEX.Lifebloom, e, spellID)
+        elseif e.type == "hybrid" or e.type == "hot" or e.type == "lifebloom" then
+            -- T96: the slot is the family's in the kit's profile (SM.HotSlotOf;
+            -- for the druid: hybrid Regrowth 2, hot Rejuvenation 1, Lifebloom 3)
+            if e.type == "hybrid" then
+                local amount, didCrit = DirectAmount(e)
+                Land(ti, amount, e.family, spellID, false, didCrit)
+            end
+            local fi = SM.HotSlotOf(S.hotSlots, e)
+            if fi then ApplyHot(ti, fi, e, spellID) end
+        elseif e.type == "channel" then
+            ------------------------------------------------------------------
+            -- T96 (docs/SPEC-next.md decision 11): a channel lands its ticks
+            -- (SM.ChannelShape: channelTick every period, channelTicks times;
+            -- an entry it cannot time -- TBC's Tranquility, dataMissing --
+            -- lands nothing, the period never guessed) on the cast's target,
+            -- the first a period after the success (a channel's SUCCEEDED is
+            -- its start), until the count runs out, the target dies, or the
+            -- healer casts something else (Succeed and a recorded CASTSTART
+            -- break it). Who a group channel reaches is 4.5's `group` type's
+            -- (T101), not this one's.
+            ------------------------------------------------------------------
+            StartChannel(S, t, ti, e, spellID)
         elseif e.type == "instant" then
             -- Swiftmend eats Regrowth first, else Rejuvenation (SM.SWIFTMEND_ORDER).
-            local fam, amount, st = SM.SwiftmendEats(e, S.hots[ti])
+            local fam, amount, st = SM.SwiftmendEats(e, S.hots[ti], S.hotIndex)
             if fam then
                 Land(ti, amount, e.family, spellID, false)
                 st.active = false
                 -- T46 (P2, review B5): the HoT ends HERE. Its expiry pop later
                 -- sees an inactive slot and traces nothing, so without this the
                 -- replay and the practice window drew it to its nominal end.
-                Trace(TK.HOT_END, ti, HOT_INDEX[fam], 0)
+                Trace(TK.HOT_END, ti, S.hotIndex[fam], 0)
             end
         end
     end
@@ -660,6 +814,10 @@ function SM:Run(scenario, plan, opts)
             paid = paid + (before - mana)
         end
         fsrUntil = t + FSR
+        -- T96: casting anything else ends a channel (it is cancelled, as the
+        -- client cancels it); the ticks it had left never land
+        local ch = S.chan
+        if ch.active and ch.spellID ~= spellID then ch.active = false end
         -- T90: kept per family, so one rank's cast blocks every rank. Every
         -- cast that SUCCEEDS starts it, a recorded one inside a running
         -- cooldown included (the recording is the truth: a reset talent, a
@@ -810,9 +968,11 @@ function SM:Run(scenario, plan, opts)
     ----------------------------------------------------------------------------
     if init.auras then
         for _, a in ipairs(init.auras) do
-            local sd = MD.SpellData.spells[a.spellID]
-            local fi = sd and HOT_INDEX[sd.family]
+            -- T96: the slot of the kit entry's family in the kit's profile
+            -- (it was MD.SpellData's family through SM.HOT_INDEX: the same
+            -- slot for every druid kit, whose index lists every kit entry)
             local e = kit and kit[form] and kit[form][a.spellID]
+            local fi = e and SM.HotSlotOf(hotSlots, e)
             if fi and e then
                 local st = HotState(S, a.target, fi)
                 st.active, st.spellID = true, a.spellID
@@ -926,6 +1086,9 @@ function SM:Run(scenario, plan, opts)
                 form = (amt == 1) and "tree" or "caster"
                 Trace(TK.FORM, 0, amt == 1 and 1 or 0, 0)
             elseif k == SM.K.CASTSTART then
+                -- T96: a new cast bar is the end of a channel still running
+                local ch = S.chan
+                if ch.active and ch.spellID ~= x then ch.active = false end
                 Trace(TK.CAST_START, tg, x, 0)
             elseif k == SM.K.CANCEL then
                 Trace(TK.CANCEL, tg, x, 0)
@@ -988,7 +1151,22 @@ function SM:Run(scenario, plan, opts)
             end
         elseif src == 5 then
             local et, prio, a, b, aux = HeapPop(h)
-            if prio == E_TICK then
+            if prio == E_TICK and b == CHANNEL then
+                -- T96: one tick of the healer's own channel
+                local chan = S.chan
+                if chan.active and chan.gen == aux then
+                    if not S.dead[a] then
+                        Land(a, chan.tick, chan.family or "channel", chan.spellID, true)
+                        tickCount = tickCount + 1
+                    end
+                    chan.left = chan.left - 1
+                    if chan.left > 0 and not S.dead[a] then
+                        HeapPush(h, et + chan.period, E_TICK, a, CHANNEL, aux)
+                    else
+                        chan.active = false
+                    end
+                end
+            elseif prio == E_TICK then
                 local st = S.hots[a] and S.hots[a][b]
                 if st and st.active and st.gen == aux and st.ticksLeft > 0 and not S.dead[a] then
                     Land(a, st.tick * st.stacks, st.family or "hot", st.spellID, true)
@@ -1003,7 +1181,7 @@ function SM:Run(scenario, plan, opts)
                 local st = S.hots[a] and S.hots[a][b]
                 if st and st.active and st.gen == aux then
                     local bloomed = 0
-                    if b == HOT_INDEX.Lifebloom and st.bloom > 0 and not S.dead[a] then
+                    if b == lbSlot and st.bloom > 0 and not S.dead[a] then
                         -- The bloom is ONE application's, whatever the stack --
                         -- unlike the ticks beside it, which are `st.tick *
                         -- st.stacks`. v0.14.2 scaled it by the stack on the
@@ -1189,7 +1367,7 @@ function SM:Run(scenario, plan, opts)
                 for fi, st in pairs(row) do
                     if st.active then
                         pending = pending + (st.ticksLeft or 0) * (st.tick or 0) * (st.stacks or 1)
-                        if fi == HOT_INDEX.Lifebloom then pending = pending + (st.bloom or 0) end
+                        if fi == lbSlot then pending = pending + (st.bloom or 0) end
                     end
                 end
             end

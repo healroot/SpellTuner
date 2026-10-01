@@ -770,11 +770,12 @@ local function PaintFrame(f, st, ti, isLeft, now)
     -- HoT icons with the vertical sweep of their remaining time; Lifebloom
     -- shows its stacks and its border turns white in the last second (the
     -- bloom is coming). The dot: Swiftmend has something to eat and is ready.
-    local SM = MD.SimModel
-    local HOT_INDEX = SM.HOT_INDEX
+    -- T96: a slot is named by the kit's own profile (State:HotSlots), never
+    -- the logged-in player's; for a druid's kit it is SM.HOT_NAME exactly.
+    local hotSlots = st:HotSlots()
     local eatable = false
     local slot, ho = 0, CELL.hots
-    for fi = 1, 3 do
+    for fi = 1, #f.hots do
         local ic = f.hots[fi]
         local h = (not dead) and st:Hot(ti, fi) or nil
         if h then
@@ -784,10 +785,10 @@ local function PaintFrame(f, st, ti, isLeft, now)
                 ic:ClearAllPoints()
                 ic:SetPoint(ho[1], f, ho[1], (ho[2] + ho[5] * (slot - 1) * ho[4]) * sc, ho[3] * sc)
             end
-            local fam = SM.HOT_NAME[fi]
+            local fam = hotSlots.name[fi]
             SetIcon(ic, MD.SpellData.maxRank[fam] or 0, fam)
             Sweep(ic, h.since, h.since + (h.duration or 0), st.t)
-            if fi == HOT_INDEX.Lifebloom then
+            if fi == hotSlots.lifebloom then
                 ic.count:SetText(tostring(h.stacks or 1))
                 if h.remaining <= 1 then ic:SetBackdropBorderColor(1, 1, 1, 1)
                 else ic:SetBackdropBorderColor(0, 0, 0, 1) end

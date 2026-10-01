@@ -22,6 +22,12 @@ local Kit = MD.Kit
 -- replaced (tools/profilecheck.lua).
 local DRUID = MD.Profiles.Require("DRUID", "Kit_Forever.lua")
 
+-- T96 (docs/SPEC-next.md 2.1, S1 step 2): the kit carries the profile it was
+-- built by -- the one its families come from (the druid's, by name, above) --
+-- so the engine reads that profile's HoT slots and families
+-- (MD.Profiles.ForKit), never the logged-in player's.
+local KIT_PROFILE = DRUID.class
+
 -- The book's own English name -> the engine's family key
 -- (Engine/SimPlanner.lua 49, Engine/SimSolver.lua 212). Only Healing Touch
 -- differs; every other modelled family is spelled the same both places:
@@ -125,8 +131,72 @@ end
 -- (Spells/Book.lua's Rows already flattened entry.min/max/over/dur for
 -- everything but Tranquility, whose shape survives only in entry.parsed.heal
 -- -- Book:Rows never totals a tick shape into min/max/over/dur).
+--
+-- T96 (docs/SPEC-next.md 2.1, R-arch 3.2): the value fields are filled by the
+-- family's KIT TYPE (the profile's `kit`), not by its name: KitEntryFor[type]
+-- (e, be, crit, def) writes them, or marks the entry dataMissing. A family
+-- whose type has no filler carries only its cost and cast (Swiftmend's
+-- "instant": no value of its own text at all -- priced below, once Rejuvenation
+-- and Regrowth are known). A family's own cooldown (the profile's) is copied
+-- onto every rank: the engine's per-family cooldown (SM.CooldownOf).
+local function ReadDirect(e, be, crit)
+    if type(be.min) == "number" and type(be.max) == "number" then
+        e.direct = (be.min + be.max) / 2
+        e.directCrit = crit
+        return true
+    end
+    return false
+end
+
+local function ReadOver(e, be)
+    if type(be.over) == "number" and type(be.dur) == "number" and be.dur > 0 then
+        e.ticks = be.dur / TICK_PERIOD
+        e.tickPeriod, e.duration = TICK_PERIOD, be.dur
+        e.tick = be.over / e.ticks
+        return true
+    end
+    return false
+end
+
+local KitEntryFor = {
+    direct = function(e, be, crit)
+        if not ReadDirect(e, be, crit) then e.dataMissing = true end
+    end,
+    hot = function(e, be)
+        if not ReadOver(e, be) then e.dataMissing = true end
+    end,
+    hybrid = function(e, be, crit)
+        local haveDirect = type(be.min) == "number" and type(be.max) == "number"
+        local haveOver = type(be.over) == "number" and type(be.dur) == "number" and be.dur > 0
+        if haveDirect and haveOver then
+            ReadDirect(e, be, crit)
+            ReadOver(e, be)
+        else
+            e.dataMissing = true
+        end
+    end,
+    -- T96 (decision 11): the channel lands its ticks in the engine, one every
+    -- `tickPeriod` -- the text's own period ("98 every 2 sec for 10 sec").
+    channel = function(e, be)
+        local heal = type(be.parsed) == "table" and be.parsed.heal
+        if type(heal) == "table" and type(heal.tick) == "number"
+            and type(heal.period) == "number" and heal.period > 0
+            and type(heal.periodDur) == "number" then
+            e.channelTick = heal.tick
+            e.channelTicks = heal.periodDur / heal.period
+            e.tickPeriod = heal.period
+        else
+            e.dataMissing = true
+        end
+    end,
+}
+-- For tools/kitcheck.lua (one filler per kit type the druid profile names).
+RM.KitEntryFor = KitEntryFor
+
 local function KitEntry(family, be, crit)
-    local e = { family = family, rank = be.rank, type = FAMILY_TYPE[family], gcd = GCD }
+    local def = DRUID.families[family]
+    local ktype = FAMILY_TYPE[family]
+    local e = { family = family, rank = be.rank, type = ktype, gcd = GCD }
 
     if type(be.cost) == "table" and type(be.cost.amount) == "number" then
         e.cost = be.cost.amount
@@ -139,46 +209,9 @@ local function KitEntry(family, be, crit)
     -- engine could not time it and Engine/Practice.lua refuses it.
     if type(be.cast) ~= "number" then e.dataMissing = true end
 
-    if family == "HealingTouch" then
-        if type(be.min) == "number" and type(be.max) == "number" then
-            e.direct = (be.min + be.max) / 2
-            e.directCrit = crit
-        else
-            e.dataMissing = true
-        end
-    elseif family == "Rejuvenation" then
-        if type(be.over) == "number" and type(be.dur) == "number" and be.dur > 0 then
-            e.ticks = be.dur / TICK_PERIOD
-            e.tickPeriod, e.duration = TICK_PERIOD, be.dur
-            e.tick = be.over / e.ticks
-        else
-            e.dataMissing = true
-        end
-    elseif family == "Regrowth" then
-        local haveDirect = type(be.min) == "number" and type(be.max) == "number"
-        local haveOver = type(be.over) == "number" and type(be.dur) == "number" and be.dur > 0
-        if haveDirect and haveOver then
-            e.direct = (be.min + be.max) / 2
-            e.directCrit = crit
-            e.ticks = be.dur / TICK_PERIOD
-            e.tickPeriod, e.duration = TICK_PERIOD, be.dur
-            e.tick = be.over / e.ticks
-        else
-            e.dataMissing = true
-        end
-    elseif family == "Tranquility" then
-        local heal = type(be.parsed) == "table" and be.parsed.heal
-        if type(heal) == "table" and type(heal.tick) == "number"
-            and type(heal.period) == "number" and heal.period > 0
-            and type(heal.periodDur) == "number" then
-            e.channelTick = heal.tick
-            e.channelTicks = heal.periodDur / heal.period
-        else
-            e.dataMissing = true
-        end
-    end
-    -- Swiftmend ("instant"): no value fields of its own text at all -- priced
-    -- below, once Rejuvenation and Regrowth are known.
+    local fill = ktype and KitEntryFor[ktype]
+    if fill then fill(e, be, crit, def) end
+    if def and def.cooldown then e.cooldown = def.cooldown end
 
     return e
 end
@@ -212,7 +245,7 @@ local function Build(book, crit, critMissing)
     local index = { spells = spells, families = families, known = known, all = all,
                     maxRank = maxRank, skipped = skipped }
 
-    local kit = { caster = {}, tree = {}, crit = crit }
+    local kit = { caster = {}, tree = {}, crit = crit, profile = KIT_PROFILE }
     if critMissing then kit.critMissing = true end
     local out = kit.caster
 
@@ -306,7 +339,33 @@ end
 -- TBC author's Cell click-casting); a recording is stamped "forever". Provided
 -- here, before the Practice module loads (it needs this one), and only where
 -- this file's kit is the kit.
+--
+-- T96 (docs/SPEC-next.md 2.1, 4.4): and MD.KitLive() -> true, n | false, "kit"
+-- -- whether the live kit prices at least one heal (n: how many ranks), the
+-- Forever half of MD.ClassProfile:Can("coach") (T99 asks it). Provided only
+-- here, in the LoadOnDemand Replay module: with the module off there is no
+-- provider, and the caller says the module is off.
+local function PricesAHeal(e)
+    if type(e) ~= "table" or e.dataMissing then return false end
+    if EXCLUDE[e.family] or Kit.UNPRICED[e.family] then return false end
+    return (e.direct or 0) > 0 or ((e.tick or 0) > 0 and (e.ticks or 0) > 0)
+        or (e.channelTick or 0) > 0
+        or (e.swiftmendRejuv or 0) > 0 or (e.swiftmendRegrowth or 0) > 0
+end
+
+local function KitLive()
+    local built, kit = pcall(RM.SpellKit, RM)
+    if not built or type(kit) ~= "table" then return false, "kit" end
+    local n = 0
+    for _, e in pairs(kit.caster or {}) do
+        if PricesAHeal(e) then n = n + 1 end
+    end
+    if n > 0 then return true, n end
+    return false, "kit"
+end
+
 if RM.SpellKit == nil then
     RM.SpellKit = SpellKit
     MD:Provide("PracticePolicy", { defaultBinds = {}, kitIsLive = true, client = "forever" })
+    MD:Provide("KitLive", KitLive)
 end

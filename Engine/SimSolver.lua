@@ -276,7 +276,20 @@ end
 --------------------------------------------------------------------------------
 
 -- Order only decides ties; every one of them is scored every time.
+-- T96 (docs/SPEC-next.md 2.1): the DRUID's FALLBACK. The solver reads the
+-- families of the kit it decides with -- SM.HotSlots(kit).families, the kit's
+-- own profile's planner.families (MD.Profiles.ForKit), never the logged-in
+-- player's -- and this list only when that profile names none. The druid's
+-- profile names exactly this list (tools/profilecheck.lua).
 SV.FAMILIES = { "Swiftmend", "Regrowth", "HealingTouch", "Lifebloom", "Rejuvenation" }
+
+-- T96: the slots and the candidate families this decision reads -- the run's
+-- (S.hotSlots, published by SM:Run for its kit), else the plan's own kit's
+-- (a state built by hand, tools/solvercheck.lua). Allocates nothing.
+local function SlotsFor(self, S)
+    local slots = S.hotSlots or SM.HotSlots(self.kit)
+    return slots, slots.families or SV.FAMILIES
+end
 
 local Solver = {}
 Solver.__index = Solver
@@ -331,7 +344,8 @@ end
 -- fight where the healer cast 82 times it cast 26 and let two people die.
 function Solver:Best(S, t, mana, form, delay)
     local kit = self.kit[form] or self.kit.caster
-    local HOT_INDEX = SM.HOT_INDEX
+    local slots, families = SlotsFor(self, S)
+    local hotIndex = slots.index
     local bestV, bestID, bestTgt, bestSaved, bestCost, bestRate, bestDef, bestLost = -1
     local horizon = self.horizon
     for i = 1, S.nT do
@@ -346,14 +360,14 @@ function Solver:Best(S, t, mana, form, delay)
                 local flight, fn = SV.InFlight(S, i, t, flightBuf)
                 local base = Gap(hp, maxHP, rate, inbound, flight, fn, nil, 0, t,
                                  horizon, self.sag)
-                for _, fam in ipairs(SV.FAMILIES) do
+                for _, fam in ipairs(families) do
                     local id = self.binds[fam]
                     local e = id and kit[id]
                     -- T90: a spell on cooldown is no candidate -- now, or when
                     -- the cast would start (`delay`). Its end is on the
                     -- healer's bar, so asking is causal.
                     if e and mana >= (e.cost or 0) and SM.Ready(S, id, t + (delay or 0)) then
-                        local fi = HOT_INDEX[fam]
+                        local fi = hotIndex[fam]
                         local st = fi and S.hots[i] and S.hots[i][fi]
                         local eaten, eats = nil, nil
                         if e.type == "instant" then
@@ -361,7 +375,7 @@ function Solver:Best(S, t, mana, form, delay)
                             -- Which one is the engine's rule (SM.SWIFTMEND_ORDER:
                             -- Regrowth first), so the pick is priced against the
                             -- HoT that will really be consumed (T46, review B8).
-                            eaten, eats = SM.SwiftmendEats(e, S.hots[i])
+                            eaten, eats = SM.SwiftmendEats(e, S.hots[i], hotIndex)
                         end
                         if not (e.type == "instant" and not eats) then
                             local dep, dn = SV.Deposits(e, st, depBuf, eats)
@@ -452,13 +466,14 @@ function Solver:Decide(S, t, mana, form)
             local line, when = self:AtRisk(S, t, i)
             if line then
                 local kit = self.kit[form] or self.kit.caster
+                local slots, families = SlotsFor(self, S)
                 local pick, pickCost, pickLow
-                for _, fam in ipairs(SV.FAMILIES) do
+                for _, fam in ipairs(families) do
                     local id2 = self.binds[fam]
                     local e = id2 and kit[id2]
                     if e and mana >= (e.cost or 0) and e.type ~= "instant"
                         and SM.Ready(S, id2, t) then   -- T90: never a spell on cooldown
-                        local fi = SM.HOT_INDEX[fam]
+                        local fi = slots.index[fam]
                         local st = fi and S.hots[i] and S.hots[i][fi]
                         local dep, dn = SV.Deposits(e, st, depBuf)
                         local flight, fn = SV.InFlight(S, i, t, flightBuf)

@@ -393,6 +393,145 @@ do
         string.format("hit=%s n=%s", tostring(hit), tostring(hn)))
 end
 
+--------------------------------------------------------------------------------
+-- T96 (docs/SPEC-next.md 2.1, decision 11): the engine runs on the KIT's
+-- profile, never the logged-in player's, and a channel lands its ticks.
+--------------------------------------------------------------------------------
+-- A copy of the kit with extra caster entries (and their ids in the spell
+-- index, as check 10 does), handed back with a function that undoes the index.
+local function KitWith(entries, profile)
+    local SD = MD.SpellData
+    local extra = {}
+    for id, e in pairs(entries) do extra[id] = e; SD.spells[id] = { family = e.family, rank = e.rank } end
+    local caster = setmetatable(extra, { __index = kit.caster })
+    local k = { caster = caster, tree = kit.tree, crit = kit.crit, profile = profile }
+    return k, function() for id in pairs(entries) do SD.spells[id] = nil end end
+end
+local function HotEvents(trace)
+    local out = {}
+    for i = 1, trace.nEv do
+        if trace.ev.kind[i] == SM.TK.HOT then
+            out[#out + 1] = string.format("%g:%d", trace.ev.t[i], trace.ev.a[i])
+        end
+    end
+    return table.concat(out, " ")
+end
+
+-- 15: a recorded Tranquility lands its ticks -- shaped as Kit_Forever.lua
+--     builds it (channel: 98 every 2 s for 10 s) -- on its target, the
+--     attribution claims them as the healer's own (so they are not replayed a
+--     second time as foreign healing), the replay reaches the reconstructed
+--     health, and a later cast breaks the channel.
+do
+    local TQ = 90203
+    local tq = { family = "Tranquility", rank = 1, type = "channel", gcd = 1.5, cost = 375,
+                 cast = 0, castBase = 0, channelTick = 98, channelTicks = 5, tickPeriod = 2 }
+    local tqKit, undo = KitWith({ [TQ] = tq })
+    local r = MiniRec({
+        { 1, 1, 2, 1500, 0 },
+        { 3, 3, 2, 375, TQ },
+        { 5, 15, 2, 98, 0 }, { 7, 15, 2, 98, 0 }, { 9, 15, 2, 98, 0 }, { 11, 15, 2, 98, 0 }, { 13, 15, 2, 98, 0 },
+    })
+    local _, counts = SM.AttributeHeals(r, tqKit)
+    local sc2 = SM.ScenarioFromRecording(r, tqKit)
+    local run = SM:Run(sc2, nil, { critMode = "ev" })
+    local healed = run.healByFamily and run.healByFamily.Tranquility or 0
+    local a, b = run.hpCurve[2], sc2.recordedHp.hp[2]
+    local maxDev = 0
+    for i = 1, math.min(#a, #b) do
+        local d = math.abs(a[i] - b[i]); if d > maxDev then maxDev = d end
+    end
+    -- broken at t = 8 by a Healing Touch: the ticks at 5 and 7 only
+    local broken = MiniRec({
+        { 1, 1, 2, 1500, 0 },
+        { 3, 3, 2, 375, TQ },
+        { 5, 15, 2, 98, 0 }, { 7, 15, 2, 98, 0 },
+        { 8, 3, 2, 25, 5185 }, { 8, 15, 2, 47.5, 0 },
+    })
+    local scB = SM.ScenarioFromRecording(broken, tqKit)
+    local runB = SM:Run(scB, nil, { critMode = "ev" })
+    local healedB = runB.healByFamily and runB.healByFamily.Tranquility or 0
+    undo()
+    check("T96: a recorded Tranquility lands its ticks as own; a later cast breaks it (decision 11)",
+        healed == 5 * 98 and counts.ownTick == 5 and counts.foreign == 0
+        and #a == #b and maxDev < 1e-6 and healedB == 2 * 98,
+        string.format("healed=%s ownTick=%s foreign=%s maxDev=%s broken=%s", tostring(healed),
+            tostring(counts.ownTick), tostring(counts.foreign), tostring(maxDev), tostring(healedB)))
+end
+
+-- A test class whose two HoTs sit in the OPPOSITE slots to the druid's
+-- fallback by type (its hybrid in slot 1, its HoT in slot 2), registered once.
+local P = MD.Profiles
+if not P.byClass.T96HEALER then
+    P.Register("T96HEALER", {
+        label = "Test healer", caps = { clock = true },
+        families = {
+            Riptide = { names = { "Riptide" }, kit = "hybrid", hot = true },
+            Renew = { names = { "Renew" }, kit = "hot", hot = true },
+        },
+        hotSlots = { "Riptide", "Renew" },
+    })
+end
+local RIPTIDE, RENEW = 96001, 96002
+local riptide = { family = "Riptide", rank = 1, type = "hybrid", gcd = 1.5, cost = 30, cast = 0, castBase = 0,
+                  direct = 50, directCrit = 0, tick = 10, ticks = 4, tickPeriod = 3, duration = 12 }
+local renew = { family = "Renew", rank = 1, type = "hot", gcd = 1.5, cost = 30, cast = 0,
+                tick = 12, ticks = 5, tickPeriod = 3, duration = 15 }
+
+-- 16: the hot map (Scenario_Forever's and the engine's) is the kit's profile's
+do
+    local testKit = { caster = { [RIPTIDE] = riptide, [RENEW] = renew }, tree = {}, crit = 0, profile = "T96HEALER" }
+    local plain = { caster = { [RIPTIDE] = riptide, [RENEW] = renew }, tree = {}, crit = 0 }
+    local ok1 = SM.HotSlots ~= nil and SM.HotFamilyOf ~= nil
+    local slots = ok1 and SM.HotSlots(testKit)
+    local druid = ok1 and SM.HotSlots(kit)
+    local fam = ok1 and SM.HotFamilyOf(testKit, riptide)
+    local famR = ok1 and SM.HotFamilyOf(testKit, renew)
+    local famPlainR = ok1 and SM.HotFamilyOf(plain, riptide)
+    local regrowthLike = { family = "Regrowth", type = "hybrid" }
+    check("T96: the hot map is the kit's profile's; a kit naming none is the druid's",
+        ok1 and slots.name[1] == "Riptide" and slots.name[2] == "Renew"
+        and slots.index.Riptide == 1 and slots.index.Renew == 2
+        and fam == "Riptide" and famR == "Renew" and famPlainR == "Regrowth"
+        and druid.index.Rejuvenation == SM.HOT_INDEX.Rejuvenation
+        and druid.index.Regrowth == SM.HOT_INDEX.Regrowth and druid.index.Lifebloom == SM.HOT_INDEX.Lifebloom
+        and SM.HotFamilyOf(kit, regrowthLike) == "Regrowth"
+        and SM.HotSlots(plain) == SM.HotSlots({}) and MD.Profiles.ForKit(plain) == MD.Profiles.Get("DRUID"),
+        string.format("slots=%s,%s riptide=%s renew=%s plainRiptide=%s", tostring(slots and slots.name[1]),
+            tostring(slots and slots.name[2]), tostring(fam), tostring(famR), tostring(famPlainR)))
+end
+
+-- 17: a recording replayed with a kit whose profile is the test class takes
+--     that class's slots -- Riptide in 1, Renew in 2 -- while the logged-in
+--     profile is the druid's; the same entries in a kit naming no profile take
+--     the druid's (hybrid 2, hot 1). The replay's state machine names them.
+do
+    local loggedIn = MD.ClassProfile
+    local testKit, undo = KitWith({ [RIPTIDE] = riptide, [RENEW] = renew }, "T96HEALER")
+    local plainKit = KitWith({ [RIPTIDE] = riptide, [RENEW] = renew })
+    local r = MiniRec({
+        { 1, 1, 2, 1500, 0 },
+        { 2, 3, 2, 30, RIPTIDE },
+        { 4, 3, 2, 30, RENEW },
+    })
+    local scT = SM.ScenarioFromRecording(r, testKit)
+    local runT = SM:Run(scT, nil, { critMode = "ev", trace = { dt = 0.5 } })
+    local hotsT = HotEvents(runT.trace)
+    local st = MD.ReplayTrace.New(runT.trace, scT)
+    st:Seek(5)
+    local named = st.HotFamily and st:HotFamily(1) == "Riptide" and st:HotFamily(2) == "Renew"
+        and st:Hot(2, 1) ~= nil and st:Hot(2, 2) ~= nil
+    local scP = SM.ScenarioFromRecording(r, plainKit)
+    local runP = SM:Run(scP, nil, { critMode = "ev", trace = { dt = 0.5 } })
+    local hotsP = HotEvents(runP.trace)
+    undo()
+    check("T96: a test class's kit replays in its own slots while the druid is logged in",
+        loggedIn ~= nil and loggedIn == MD.Profiles.Get("DRUID") and MD.ClassProfile == loggedIn
+        and hotsT == "2:1 4:2" and hotsP == "2:2 4:1" and named == true,
+        string.format("loggedIn=%s test=[%s] plain=[%s] named=%s", tostring(loggedIn and loggedIn.class),
+            hotsT, hotsP, tostring(named)))
+end
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("  FAIL " .. f) end
 if #fails > 0 then os.exit(1) end

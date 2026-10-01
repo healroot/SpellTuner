@@ -431,9 +431,23 @@ local KIT_FORMS = { "caster", "tree" }
 -- each, which is what a healer would actually have out.
 local SWIFTMEND_REJUV_SECONDS, SWIFTMEND_REGROWTH_SECONDS = 12, 18
 
+-- T96 (docs/SPEC-next.md 2.1, S1 step 2): this kit is the druid's -- every
+-- family it holds is Data/SpellData.lua's, which is the druid's table -- so it
+-- is stamped with the druid profile, named, and each family's own cooldown
+-- comes from that profile (Swiftmend's 15 s), the engine's per-family
+-- cooldown table (SM.CooldownOf reads the entry first). Read by name, never
+-- MD.ClassProfile: whoever is logged in, SpellData is the druid's.
+local KIT_PROFILE = "DRUID"
+local function FamilyCooldown(family)
+    local P = MD.Profiles
+    local p = P and P.byClass and P.byClass[KIT_PROFILE]
+    local def = p and p.families and p.families[family]
+    return def and def.cooldown or nil
+end
+
 function RankMath:SpellKit(opts)
     local SD = MD.SpellData
-    local kit = { caster = {}, tree = {} }
+    local kit = { caster = {}, tree = {}, profile = KIT_PROFILE }
 
     for _, form in ipairs(KIT_FORMS) do
         local healer = { inTree = (form == "tree") }
@@ -488,6 +502,8 @@ function RankMath:SpellKit(opts)
                         e.channelTicks, e.dataMissing = 4, true
                     end
                 end
+                -- T96: the family's own cooldown, from the druid profile
+                e.cooldown = FamilyCooldown(family)
                 out[id] = e
             end
         end

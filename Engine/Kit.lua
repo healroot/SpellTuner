@@ -37,7 +37,8 @@ Kit.FORMS = { "caster", "tree" }
 --     tick, ticks, tickPeriod, duration,   -- hot / hybrid / lifebloom
 --     bloom,                               -- lifebloom
 --     swiftmendRejuv, swiftmendRegrowth,   -- instant (Swiftmend)
---     channelTick, channelTicks,           -- channel (Tranquility)
+--     channelTick, channelTicks,           -- channel (Tranquility); its period
+--                                          -- is tickPeriod (T96: Kit_Forever)
 --     cooldown,                            -- optional, per family (T90)
 --     dataMissing }                        -- a value the source could not give
 --
@@ -90,10 +91,18 @@ Kit.UNPRICED = { Innervate = true }
 Kit.UNPRICED_NEEDS = { "cost", "cast" }
 
 -- The kit's own fields (a snapshot adds `at` and `level`).
+-- T96 (docs/SPEC-next.md 2.1): `profile` is the class whose profile the
+-- builder made the kit by (MD.Profiles: its families, its HoT slots) --
+-- stamped by both builders, read by the engine through MD.Profiles.ForKit.
 Kit.TOP = {
     caster = "table", tree = "table", crit = "number", critMissing = "boolean",
-    at = "number", level = "number",
+    at = "number", level = "number", profile = "string",
 }
+
+-- T96: the profile of a kit that names none -- every kit and snapshot made
+-- before profiles was a druid's (the only class ever recorded), which is
+-- MD.Profiles.ForKit's own default.
+Kit.DEFAULT_PROFILE = "DRUID"
 
 local function Finite(v)
     return v == v and v ~= math.huge and v ~= -math.huge
@@ -205,11 +214,19 @@ end
 -- (Recorder_Forever.lua) and as the character's last kit (cdb.kit, Forever).
 -- Pure copies; nothing here reads the client. Moved unchanged from
 -- Engine/SimModel.lua (SM.KitSnapshot is its alias).
+--
+-- T96: the kit's `profile` is carried -- written only when it is not
+-- Kit.DEFAULT_PROFILE, since a snapshot without one IS the druid's (every
+-- snapshot stored before T96), so a druid's snapshot is byte for byte what it
+-- was and Kit.Restore gives the profile back either way.
 --------------------------------------------------------------------------------
 function Kit.Snapshot(kit)
     if type(kit) ~= "table" then return nil end
     local snap = { crit = kit.crit, critMissing = kit.critMissing or nil,
                    at = time and time() or nil, level = MD.player and MD.player.level or nil }
+    if type(kit.profile) == "string" and kit.profile ~= Kit.DEFAULT_PROFILE then
+        snap.profile = kit.profile
+    end
     for form, list in pairs(kit) do
         if type(list) == "table" then
             local out = {}
@@ -248,6 +265,8 @@ end
 --   exclude      family key -> true for a family kept out of the plans
 --   familyOrder  the dashboard order, copied into the index
 -- Moved from Kit_Forever.lua (RankMath.KitRestore), whose policy is Forever's.
+-- T96: the kit carries the snapshot's `profile`, Kit.DEFAULT_PROFILE (the
+-- druid's) when it names none.
 --------------------------------------------------------------------------------
 local function Copy(v)
     if type(v) ~= "table" then return v end
@@ -261,7 +280,8 @@ function Kit.Restore(snap, policy)
     snap = snap or {}
     local types, labels, exclude = policy.types, policy.labels or {}, policy.exclude or {}
     local kit = { crit = snap.crit or 0, critMissing = snap.critMissing or nil,
-                  caster = Copy(snap.caster or {}), tree = Copy(snap.tree or {}) }
+                  caster = Copy(snap.caster or {}), tree = Copy(snap.tree or {}),
+                  profile = type(snap.profile) == "string" and snap.profile or Kit.DEFAULT_PROFILE }
     local spells, families, known, maxRank = {}, {}, {}, {}
     for id, e in pairs(kit.caster) do
         local key = e.family

@@ -72,10 +72,12 @@ end
 -- review-replay R28: the engine's HoT slot for a kit entry (Engine/
 -- SimModel.lua's LandCast: "hybrid" rolls the Regrowth slot, "hot" the
 -- Rejuvenation one) -- what a Swiftmend can eat.
-local function SlotOf(e)
-    if e.type == "hybrid" then return "Regrowth" end
-    if e.type == "hot" then return "Rejuvenation" end
-    return nil
+-- T96 (docs/SPEC-next.md 2.1): the hot map is the KIT's profile's
+-- (SM.HotFamilyOf: MD.Profiles.ForKit(kit), the druid's when the kit names
+-- none), never the logged-in player's -- the same slot the engine rolls.
+local function SlotOf(kit, e)
+    if e.type ~= "hybrid" and e.type ~= "hot" and e.type ~= "lifebloom" then return nil end
+    return SM.HotFamilyOf(kit, e)
 end
 
 -- The crit multiplier Engine/SimModel.lua's DirectAmount uses (vanilla's
@@ -142,7 +144,7 @@ function SM.AttributeHeals(rec, kit)
             local sd = MD.SpellData.spells[id]
             local e = sd and k[id]
             if sd and e and tgt and tgt > 0 then
-                casts[#casts + 1] = { t = t, tgt = tgt, family = sd.family, e = e }
+                casts[#casts + 1] = { t = t, tgt = tgt, family = sd.family, e = e, id = id }
             end
         end
     end
@@ -225,14 +227,14 @@ function SM.AttributeHeals(rec, kit)
         end
         for _, a in ipairs(rec.initial and rec.initial.auras or {}) do
             local e2 = a.tgt and k[a.spellId]
-            local slot = e2 and MD.SpellData.spells[a.spellId] and SlotOf(e2)
+            local slot = e2 and MD.SpellData.spells[a.spellId] and SlotOf(kit, e2)
             if slot and (a.remaining or 0) > 0 then
                 local sl = Slots(a.tgt)
                 if (a.remaining or 0) > (sl[slot] or 0) then sl[slot] = a.remaining end
             end
         end
         for _, c in ipairs(casts) do
-            local slot = SlotOf(c.e)
+            local slot = SlotOf(kit, c.e)
             local sl = Slots(c.tgt)
             if slot and c.e.tickPeriod and c.e.ticks then
                 sl[slot] = c.t + c.e.tickPeriod * c.e.ticks
@@ -256,8 +258,33 @@ function SM.AttributeHeals(rec, kit)
                                  maxAmt = maxAmt, prepull = isPrepull, expect = expect, crit = crit }
     end
 
+    -- T96 (decision 11): when the next cast of ANY spell begins or succeeds
+    -- after `t` -- where the engine breaks a channel (SM:Run's BreakChannel)
+    local function NextOwnCastAfter(t, spellID)
+        for i = 1, n do
+            local kind = ev.kind[i]
+            if ev.t[i] > t and (kind == V3.OWNCAST or kind == V3.CASTSTART) and ev.x[i] ~= spellID then
+                return ev.t[i]
+            end
+        end
+        return math.huge
+    end
+
     for i, c in ipairs(casts) do
-        if c.e.direct then
+        local chTick, chN, chPeriod = SM.ChannelShape(c.e)
+        if chTick then
+            -- T96 (decision 11): a channel the engine lands (SM.ChannelShape)
+            -- claims its ticks on its target, one per period from the cast,
+            -- until the next cast breaks it -- the ticks the engine heals with,
+            -- so they are not replayed a second time as foreign healing. A
+            -- channel the engine cannot land keeps the lump claim below.
+            local cutoff = NextOwnCastAfter(c.t, c.id)
+            for kk = 1, chN do
+                local when = c.t + chPeriod * kk
+                if when >= cutoff then break end
+                AddClaim(when - 0.4, when + 0.4, c.tgt, "tick", chTick * 2, false)
+            end
+        elseif c.e.direct then
             AddClaim(c.t - 0.3, c.t + 1.0, c.tgt, "direct", nil, false,
                 c.e.direct, (c.e.directCrit or 0) > 0)
         elseif not c.e.tick then
@@ -269,7 +296,7 @@ function SM.AttributeHeals(rec, kit)
             local ticks = math.floor(c.e.ticks + 0.5)
             -- ends at the NEXT own cast of the same family/target (Facts),
             -- or at the Swiftmend that eats this HoT (R28)
-            local mySlot = SlotOf(c.e)
+            local mySlot = SlotOf(kit, c.e)
             local cutoff = math.huge
             for j = i + 1, #casts do
                 local o = casts[j]
@@ -326,7 +353,7 @@ function SM.AttributeHeals(rec, kit)
             local e = sd and k[a.spellId]
             if sd and e and e.tick and e.tickPeriod then
                 local ticksLeft, nextTick = PrepullTicks(a.remaining or 0, e.tickPeriod)
-                local mySlot = SlotOf(e)
+                local mySlot = SlotOf(kit, e)
                 local cutoff = math.huge
                 for _, c in ipairs(casts) do
                     if c.tgt == a.tgt and (c.family == sd.family or (mySlot and c.consumes == mySlot)) then

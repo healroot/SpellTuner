@@ -282,6 +282,21 @@ function State:Hot(ti, fi)
     return { stacks = h.stacks, remaining = remaining, since = h.since, duration = h.expires - h.since }
 end
 
+-- T96 (docs/SPEC-next.md 2.1): what the trace's HoT slots MEAN -- the slots of
+-- this run's kit's own profile (SM.HotSlots: MD.Profiles.ForKit of the
+-- scenario's kit, the druid's when it names none), never the logged-in
+-- player's. `slots.name[fi]` is the family a slot holds, `slots.index[family]`
+-- its slot, `slots.lifebloom` the slot that stacks and blooms. Read only.
+function State:HotSlots()
+    local sc = self.scenario
+    return MD.SimModel.HotSlots(sc and sc.kit)
+end
+
+-- The family a HoT slot of this trace holds (nil for none).
+function State:HotFamily(fi)
+    return self:HotSlots().name[fi]
+end
+
 function State:Casting()
     local c = self.casting
     if not c then return nil end
