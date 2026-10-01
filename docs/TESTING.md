@@ -1441,7 +1441,7 @@ the numbers.
 
 **Paste back**: the `pN` you pinned, and in words what the suggested column did differently.
 
-## 44. The refactor plan's checks (`docs/PLAN-refactor-ux.md` section 9; waves 1-16, 0.16.4)
+## 44. The refactor plan's checks (`docs/PLAN-refactor-ux.md` section 9; waves 1-17, 0.16.4)
 
 Paste back as in section 41. Out of combat unless a step says otherwise. Install **0.16.4** on each
 client (`--install-tbc` / `--install-forever`, the top of this file and §38; never cross them). The
@@ -1616,6 +1616,27 @@ W10. **The clock and the theme (P24, P25).** The mana clock behaves exactly as o
     scrolls it into view. Text size +2 and back: the rail and the spell view re-pitch at once. ESC
     with a dropdown open closes the list, not the window. **TBC:** `/md` -- a dropdown near the
     bottom of the screen opens upward; everything else looks as before.
+
+**Wave 17 (T78, T79; Forever unless said).** These need a build newer than the 0.16.4 install.
+(The plan's section 9 numbers these after its own 24 and as 25; here they follow item 27.)
+
+28. **Words and tones (P34).** Spells -> Healing Touch (or any heal with three or more ranks): the
+    RANKS headers read `Per mana  Per sec  Cast  Casts`, smaller than the numbers and in one light
+    grey; hover each header: one sentence (Casts: `Casts in a row from a full pool.`). A rank
+    another rank beats is tagged `beaten`, its numbers white; hover the tag: `Beaten by Rank N` with
+    both per mana and per sec numbers. Click a rank that is not the suggested one: a white bar on
+    its left, no orange fill; the suggested row keeps its fill and orange bar. A missing rank's line
+    (`not in your spellbook ...`) and `learn at N` are readable. Hover a rank on an action bar: `Per
+    sec`, `Casts to OOM  N from full`, on a rank that is not the suggested one `Suggested  Rank N
+    (+M% per mana)`, on a beaten one `Beaten by Rank N`; the `Shift` hint is readable. Report if a
+    header's sentence or a tag's tooltip overlaps the rank row's own tooltip, or if the header text
+    looks larger than the numbers.
+
+29. **Minimap button (P36).** On Forever the SpellTuner button sits on the minimap's rim; drag it
+    round, `/reload`, and it stays there. Left-click opens the window on the view you left, again
+    closes it; right-click opens Settings -> General; unticking *Minimap button* under WINDOWS hides
+    it. If you use a minimap-button collector, say whether it picked the button up. On TBC nothing
+    changes until wave C.
 
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the

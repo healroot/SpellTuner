@@ -1111,3 +1111,11 @@ list that would leave the bottom of the screen opens upward, and a tree dropdown
 would leave the right edge opens to the left -- on TBC too, since a list off the screen is a bug on
 either line (mockup M4). Nothing else of P33 reaches TBC: the chevron textures are under
 `UI.THEMED`, and the rail is not on the TBC TOC until C5.
+
+**`beaten`, one label grey and a white selection bar on Forever (T78, P34, review U1 / U7 / U9,
+2026-10-01; the author's answer 8.1 item 7, mockup M5).** The rank a rank beats on both per mana and
+per sec is tagged `beaten`, never `dominated`, and its tag names the rank that beats it; the table,
+the card and the tooltip say `Per sec` and count `Casts` (`N from full`); `label` and `text2` are
+one grey (#B3B3B3), `muted` is for explanations, `disabled` for inert controls and the numbers of a
+rank you do not have; the selected rank is a white bar so the fill means "suggested" alone. TBC
+keeps its words and its three greys until wave C gives it the theme (decision 10).

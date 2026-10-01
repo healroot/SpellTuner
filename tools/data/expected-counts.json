@@ -23,6 +23,8 @@
   "lib/t": 12,
   "measurecheck/forever": 30,
   "migrate/tbc": 7,
+  "minimapcheck/forever": 8,
+  "minimapcheck/tbc": 6,
   "modulecheck/forever": 19,
   "navui/tbc": 46,
   "parsecheck/forever": 15,

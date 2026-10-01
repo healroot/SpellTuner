@@ -2098,6 +2098,10 @@ SpellTunerDB = {
 		["maxLines"] = 1000,
 	},
 	["effectiveMode"] = false,
+	["minimap"] = {
+		["angle"] = 220,
+		["hide"] = false,
+	},
 	["modules"] = {
 		["SpellTuner_Practice"] = true,
 		["SpellTuner_Recorder"] = true,

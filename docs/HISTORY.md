@@ -4348,3 +4348,43 @@ chevrons, the scroll, the hover and menu, the row tooltip) and run-to-run noise 
 addresses, the sliced search's evaluation counts in replayui and reviewui); every other TBC suite
 equal. In game: `docs/TESTING.md` §44 item 27 (it needs a build newer than the 0.16.4 install).
 **Next:** wave 17 (P34-).
+
+## 2026-10-01 — the refactor plan, wave 17: T78 (P34), T79 (P36)
+
+Wave 17 of `docs/PLAN-refactor-ux.md` cherry-picked onto `7fd71b3` (P34, then P36), then the
+integrator's lines (the two Forever main TOCs, the import fixture rebuilt, CLAUDE.md,
+`docs/TESTING.md`, `docs/TOOLS.md`, `docs/DECISIONS.md`, `tools/data/expected-counts.json`, this
+entry) in one commit. No merge fix. The version stays 0.16.4.
+
+- **T78 (P34)** (`bde6fb1`, `773661d`): words and tones on Forever (review U1, U7, U9, U10; the
+  author's answer 8.1 item 7, mockup M5) -- `beaten` for `dominated`, a tag's hover naming the rank
+  that beats it with both numbers; `Per sec` and `Casts` in the RANKS table, My spells, the card and
+  the tooltip (`Casts to OOM  N from full, ~M now`, `Suggested  Rank 1 (+2% per mana)`); a sentence
+  on every header; `label` and `text2` one grey (#B3B3B3), explanations `muted`, inert controls and
+  a missing rank's numbers `disabled`, a beaten row's numbers `text`; the selected rank a white
+  2-px bar, the fill and accent bar the suggested row's alone (`UI/Dashboard_Rows.lua`'s
+  `opts.selection = "bar"`, `opts.headerFont`, `col.cellTooltip`). Counts unchanged (spellsui 50,
+  tipcheck 45, themecheck 37 / 9; strings changed). The one DECISIONS entry. TBC keeps its words
+  and its three greys until wave C.
+- **T79 (P36)** (`f80fe4b`, `f2d4902`): the minimap button on both lines (section 8.1 item 10,
+  mockups M1 / M6) -- `UI/MinimapButton.lua`, now also on the Forever main TOCs after
+  `UI\Clock_Forever.lua`; the clock lines through `MD:Provide("MinimapLines")` (TBC `Tip:Clock`,
+  Forever `MD.Clock:SummaryLines`, which the clock hover reads too); the tooltip's shape by
+  `UI.THEMED` (TBC's byte for byte); `MD:OpenDashboardSettings` and the WINDOWS *Minimap button*
+  box on Forever; `db.minimap` declared once by the button file (`Core_TBC.lua`'s `DEFAULTS` line
+  gone, `tools/dashui.lua` loads the button file -- T79's deviation 1). New `minimapcheck` (tbc 6,
+  forever 8); the import fixture gains the `minimap` default (4 lines); importcheck 21.
+- Left for the next owners: `docs/SPEC-forever-ui.md` 3.5 / 5.1 still say `Per s`, `To OOM` and
+  `dominated` (M5 supersedes them; T78's deviation 7); the card's `Casts` value keeps
+  `Spells/Words.lua`'s `19 casts from full` until a task owns that file (T78's deviation 2).
+  `docs/TESTING.md` numbers the wave's two checks 28 and 29 (the plan's section 9 places them after
+  its own 24 and as 25; the doc's 24-27 were taken by waves 13-16).
+
+`make check`: 70 runs, all passed, in the worktree and in a `git archive` export (65 counted runs
+against 65 expected); apicheck 0 findings over 58 files (48 globals: `Minimap`, `GetCursorPosition`),
+textcheck 0 over 94. Each TBC suite's full output against `7fd71b3` differs only by themecheck tbc's
+token-read count (131 -> 132, T78's task file), dashui's frame count in its T30 line (811 -> 812:
+it now loads the minimap button, T79's deviation 1) and run-to-run noise (ms, table addresses, the
+sliced search's evaluation counts in replayui and reviewui, simcheck's KB per run); minimapcheck tbc
+is new; every other TBC suite equal. In game: `docs/TESTING.md` §44 items 28 and 29 (they need a
+build newer than the 0.16.4 install). **Next:** wave C, C1 alone first (the plan, "Why this order").
