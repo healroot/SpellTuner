@@ -14,9 +14,12 @@
 --   3. a synthetic five-man fight -- damage on the party, the class's heals cast
 --      on it, a spell the kit does not model cast too, recorded as the Forever
 --      recorder writes a v3 stream -- replays through the eight gates;
---   4. the solver coaches it: its plan casts the class's heals, nobody dies,
---      it is the card's best, and the card names the spells the kit does not
---      model and (Shaman, Priest) the group assumption (4.5);
+--   4. the solver coaches it (SP.Coach and the live /st coach 1, which for a
+--      kit whose profile names no threshold rules compare the solver's causal
+--      strategies -- Engine/SimPlanner.lua, T106): its plan casts the class's
+--      heals, nobody dies, it is the card's best with no threshold-rule rows,
+--      and the card names the spells the kit does not model and (Shaman,
+--      Priest) the group assumption (4.5);
 --   5. practice runs it: bindings for the class's heals, a session played
 --      against the fake clock, and the practice recording replays through the
 --      gates with the class's kit;
