@@ -60,11 +60,31 @@ local function Click(b, button) local fn = b and b:GetScript("OnClick"); if fn t
 -- 1: the Simulate group has a Practice view, a placeholder until the module
 --    is on
 --------------------------------------------------------------------------------
+-- T73 (P29, review A24): the window's nav, caught as it is built, so the swap
+-- can be seen to go through nav:ReplacePane rather than nav.panes
+local replaced = {}
+do
+    local realCreate = MD.UI.CreateNavFrame
+    MD.UI.CreateNavFrame = function(...)
+        local nav = realCreate(...)
+        local realReplace = nav.ReplacePane
+        if realReplace then
+            nav.ReplacePane = function(self, group, view, pane)
+                replaced[#replaced + 1] = group .. "/" .. view
+                return realReplace(self, group, view, pane)
+            end
+        end
+        return nav
+    end
+end
 MD:SelectView("simulate", "practice")
 local g, v = MD:SelectedView()
+-- T73 (P29, review U11, mockup M1): the placeholder names the module and
+-- carries a Turn on button (the author's answer 6: it loads the module)
 check("the Simulate group has a Practice view, a placeholder until the module is on",
     g == "simulate" and v == "practice"
-    and TextPresent("Practice needs the Practice module - Settings -> Modules")
+    and TextPresent("Practice needs the Practice module")
+    and Button("Turn on") ~= nil and Button("Turn on"):IsVisible()
     and MD:ModuleState("SpellTuner_Practice") == "off"
     and #S.loadAddOnCalls == 0,
     "group=" .. tostring(g) .. " view=" .. tostring(v))
@@ -77,7 +97,19 @@ local beforeOpenNil = (MD.OpenPractice == nil)
 CapturedChat(function() SlashCmdList.SPELLTUNER("practice") end)
 CapturedChat(function() SlashCmdList.SPELLTUNER("binds") end)
 
-MD:SetModule("SpellTuner_Practice", true) -- loads Recorder, Replay (engine/window/review) and this module's own files
+-- T73: the placeholder's Turn on, on screen again after the two commands
+MD:SelectView("simulate", "practice")
+local turnOn = Button("Turn on")
+local practiceShownBefore = turnOn ~= nil and turnOn:IsVisible()
+Click(turnOn) -- loads Recorder, Replay (engine/window/review) and this module's own files
+local practiceBuilt = MD.DashboardParts.CreatePractice ~= nil
+check("T73: Turn on loads Practice with what it needs, swapped in through nav:ReplacePane",
+    practiceShownBefore and practiceBuilt
+    and MD:ModuleState("SpellTuner_Practice") == "loaded" and MD:ModuleState("SpellTuner_Replay") == "loaded"
+    and MD:ModuleState("SpellTuner_Recorder") == "loaded"
+    and not TextPresent("Practice needs the Practice module") and not turnOn:IsVisible()
+    and #replaced == 1 and replaced[1] == "simulate/practice",
+    "replaced=" .. table.concat(replaced, ", "))
 
 check("/st practice and /st binds exist only with the Practice module on",
     beforeOpenNil and type(MD.OpenPractice) == "function" and type(MD.Practice) == "table"

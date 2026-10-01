@@ -751,6 +751,25 @@ function UI.CreateNavFrame(title, name, width, height, groups, onCreate, onShow,
 
     function nav:Selected() return nav.group, nav.view end
 
+    -- T73 (P29, review A24): put `pane` in a view's place -- a placeholder
+    -- swapped for the real pane once its module loads -- without a caller
+    -- reaching into nav.panes. The old pane is hidden (nothing is destroyed:
+    -- the client cannot); if the view is the one on screen it is re-selected,
+    -- so the new pane is shown and onShow refreshes it. Returns the old pane.
+    function nav:ReplacePane(groupID, viewID, pane)
+        nav.panes = nav.panes or {}
+        nav.panes[groupID] = nav.panes[groupID] or {}
+        local old = nav.panes[groupID][viewID]
+        nav.panes[groupID][viewID] = pane
+        if old and old ~= pane and old.Hide then old:Hide() end
+        if nav.group == groupID and nav.view == viewID then
+            nav:Select(groupID, viewID)
+        elseif pane and pane.Hide then
+            pane:Hide()
+        end
+        return old
+    end
+
     local prev
     for _, g in ipairs(groups) do
         local b = UI.CreateButton(left, g.text, "accent-hover", { NAV_W - 2, 22 }, false, false,

@@ -132,6 +132,30 @@ check("hidden views get no button", #nav.viewButtons == 1, tostring(#nav.viewBut
 nav:Select("nosuchgroup")
 check("an unknown group falls back to the first", nav.group == "spells", tostring(nav.group))
 
+-- T73 (P29, review A24): nav:ReplacePane puts a new pane in a view's place
+-- (a module placeholder swapped for the real pane) -- on screen: the old one
+-- hidden, the new one shown and refreshed; off screen: cached, kept hidden,
+-- shown when its view is next selected; nothing rebuilt by onCreate.
+check("ReplacePane swaps a view's pane on and off screen", (function()
+    if not nav.ReplacePane then return false end
+    nav:Select("reports", "review")
+    local old = nav.panes.reports.review
+    local buildsBefore, showsBefore = built["reports:review"], shows["reports:review"]
+    local fresh = CreateFrame("Frame", nil, nav:Content()); fresh.key = "reports:review"
+    local back = nav:ReplacePane("reports", "review", fresh)
+    local onScreen = back == old and not old:IsShown() and fresh:IsShown()
+        and shows["reports:review"] == showsBefore + 1 and #shownKeys() == 1
+    local off = CreateFrame("Frame", nil, nav:Content()); off.key = "spells:ht"
+    local oldHt = nav.panes.spells.ht
+    nav:ReplacePane("spells", "ht", off)
+    local offScreen = not off:IsShown() and fresh:IsShown() and nav.group == "reports"
+        and not oldHt:IsShown()
+    nav:Select("spells", "ht")
+    local later = off:IsShown() and not fresh:IsShown() and built["spells:ht"] == 1
+        and built["reports:review"] == buildsBefore
+    return onScreen and offScreen and later
+end)())
+
 --------------------------------------------------------------------------------
 -- the level-3 box: the same rule inside a pane
 --------------------------------------------------------------------------------

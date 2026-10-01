@@ -811,7 +811,16 @@ function Win:EnterCombat()
         self.windows[rec.key].frame:Hide()
     end
     self.combatHiding = nil
+    -- T73 (P29, review U11, mockup M1): the first time a fight hides a window,
+    -- one chat line says why and where to change it -- once, ever
+    -- (db.ui.combatNoted), not at every pull.
+    if #list > 0 and u and not u.combatNoted then
+        u.combatNoted = true
+        MD:Print(Win.COMBAT_NOTE)
+    end
 end
+
+Win.COMBAT_NOTE = "the window hides in combat and comes back after. Settings -> General -> Windows."
 
 -- PLAYER_REGEN_ENABLED: what combat hid comes back where it was. During a
 -- takeover the main window was already hidden, so only the replay returns.

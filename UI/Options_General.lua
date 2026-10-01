@@ -240,10 +240,16 @@ local function CreateSimPane(anchor)
         "0.85 came from the first dungeon log, not from a rulebook.")
     fullHpSlider:SetPoint("TOPLEFT", nextPullCB, "BOTTOMLEFT", 17, -30)
 
-    floorSlider = UI.CreateSlider("Danger below (%)", pane, 10, 60, 160, 1, function(value)
+    -- T73 (P29, review U24): since v0.10.3 a recorded fight measures its own
+    -- line (the biggest hit, db.simDangerHits) and since T20 a plan decides on
+    -- the biggest hit so far; this flat line is what a BUILT fight (Simulate)
+    -- is scored and planned on, and a recorded target's fallback before any
+    -- hit is known. The label and the tooltip said it was the scoring line.
+    floorSlider = UI.CreateSlider("Danger line for built fights (%)", pane, 10, 60, 160, 1, function(value)
         MD.db.simFloor = value / 100
-    end, nil, true, "Seconds a tracked target spends below this are what a plan",
-        "is scored on first, ahead of mana.")
+    end, nil, true, "Fights built in Simulate score seconds a target spends below",
+        "this first, ahead of mana. A recorded fight measures its own line:",
+        "the biggest hit each target took.")
     floorSlider:SetPoint("TOPLEFT", fullHpSlider, "BOTTOMLEFT", 0, -32)
 
     return pane

@@ -315,7 +315,7 @@ if flavour == "tbc" then
     -- the pane is built on its first showing, so the sliders are looked up after
     local function Show()
         MD:Fire("ShowOptionsTab", "general")
-        local full, floor = sliders["Full health is above (%)"], sliders["Danger below (%)"]
+        local full, floor = sliders["Full health is above (%)"], sliders["Danger line for built fights (%)"]
         return full and full:GetValue(), floor and floor:GetValue()
     end
     local f1, d1 = Show()

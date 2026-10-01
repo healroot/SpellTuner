@@ -109,6 +109,23 @@ end
 --------------------------------------------------------------------------------
 -- 1: the Forever window has a Reports group with a Review view
 --------------------------------------------------------------------------------
+-- T73 (P29, review A24): the window's nav, caught as it is built, so the swap
+-- below can be seen to go through nav:ReplacePane rather than nav.panes
+local replaced = {}
+do
+    local realCreate = MD.UI.CreateNavFrame
+    MD.UI.CreateNavFrame = function(...)
+        local nav = realCreate(...)
+        local realReplace = nav.ReplacePane
+        if realReplace then
+            nav.ReplacePane = function(self, group, view, pane)
+                replaced[#replaced + 1] = group .. "/" .. view
+                return realReplace(self, group, view, pane)
+            end
+        end
+        return nav
+    end
+end
 MD:SelectView("reports", "review")
 local g, v = MD:SelectedView()
 check("the Forever window has a Reports group with a Review view",
@@ -119,8 +136,13 @@ check("the Forever window has a Reports group with a Review view",
 -- 2: with the Replay module off the Review view says how to switch it on and
 --    loads nothing
 --------------------------------------------------------------------------------
+-- T73 (P29, review U11, mockup M1, the author's answer 6): the placeholder
+-- names the module and carries a Turn on button
+local turnOn = ButtonNamed("Turn on")
 check("with the Replay module off the Review view says how to switch it on and loads nothing",
-    TextPresent("Review needs the Replay module - Settings -> Modules")
+    TextPresent("Review needs the Replay module")
+    and TextPresent("Loads now, no reload. To turn it off again: Settings -> Modules.")
+    and turnOn ~= nil and turnOn:IsVisible()
     and MD:ModuleState("SpellTuner_Replay") == "off"
     and #S.loadAddOnCalls == 0)
 
@@ -140,11 +162,18 @@ do
         return fs
     end
 end
-MD:SetModule("SpellTuner_Replay", true) -- loads Recorder (a dependency), Kit/Scenario/Gates, the engine chain, the window and this pane
+-- T73: Turn on switches Replay on (and Recorder, which it needs) and loads
+-- both now; the real pane takes the placeholder's place through ReplacePane
+Click(turnOn) -- loads Recorder (a dependency), Kit/Scenario/Gates, the engine chain, the window and this pane
 check("switching the Replay module on replaces the placeholder with the Review tab",
-    not TextPresent("Review needs the Replay module - Settings -> Modules")
+    not TextPresent("Review needs the Replay module")
     and MD.DashboardParts.CreateReview ~= nil
-    and ButtonNamed("Fights") ~= nil)
+    and ButtonNamed("Fights") ~= nil and ButtonNamed("Fights"):IsVisible())
+check("Turn on loads Replay and Recorder, and the swap goes through nav:ReplacePane",
+    MD:ModuleState("SpellTuner_Replay") == "loaded" and MD:ModuleState("SpellTuner_Recorder") == "loaded"
+    and MD.db.modules.SpellTuner_Replay == true and MD.db.modules.SpellTuner_Recorder == true
+    and #replaced == 1 and replaced[1] == "reports/review" and not turnOn:IsVisible(),
+    table.concat(replaced, ", "))
 
 -- UI/Dashboard_Forever.lua anchors the pane to the content area with no
 -- explicit SetSize (real WoW derives it from the anchors; the stub does not
@@ -689,6 +718,35 @@ do
         and top[1] == 1 and not tail,
         string.format("first=%s..%s (%d) last=%s..%s notches=%d tail=%s", tostring(first[1]),
             tostring(first[#first]), #first, tostring(last[1]), tostring(last[#last]), notches, tostring(tail)))
+end
+
+--------------------------------------------------------------------------------
+-- T73 (P29, review U11, mockup M1): a module switched off but still loaded
+-- has a Reload UI button on its Settings -> Modules row; nothing else has one.
+-- Last in the file: it switches Replay off.
+--------------------------------------------------------------------------------
+do
+    local reloads = 0
+    _G.ReloadUI = function() reloads = reloads + 1 end
+    MD.API.Invalidate("ReloadUI")
+    MD:SelectView("settings", "modules")
+    local before = ButtonNamed("Reload UI")
+    local hiddenBefore = before == nil or not before:IsVisible()
+    CapturedChat(function() MD:SetModule("SpellTuner_Replay", false) end)
+    MD:SelectView("settings", "modules")
+    local shown = {}
+    for _, f in ipairs(S.allFrames) do
+        if f.kind == "Button" and f.text == "Reload UI" and f:IsVisible() then shown[#shown + 1] = f end
+    end
+    local stateOk = TextPresent("off - unloads at your next /reload")
+    if shown[1] then Click(shown[1]) end
+    check("T73: a module that unloads at the next reload has a Reload UI button, and it reloads",
+        hiddenBefore and #shown == 1 and stateOk and reloads == 1
+        and MD:ModuleState("SpellTuner_Replay") == "unloads",
+        string.format("hiddenBefore=%s shown=%d state=%s reloads=%d", tostring(hiddenBefore), #shown,
+            tostring(stateOk), reloads))
+    _G.ReloadUI = nil
+    MD.API.Invalidate("ReloadUI")
 end
 
 print(string.format("\n%d ok, %d failed", ok, #fails))

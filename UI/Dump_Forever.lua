@@ -1,7 +1,8 @@
 -- /st dump (T3): one copyable block for a bug report -- the client and build,
--- the adapter's capability table, the SavedVariables line, the modules and
--- their states, every distinct error with its count and first stack line, and
--- the newest debug-log lines. Forever only (UI/Dashboard_Forever.lua and
+-- the SavedVariables line, the modules and their states, every distinct error
+-- with its count and first stack line, one capabilities summary (what is
+-- absent, what is forbidden), then the adapter's whole capability table and
+-- the newest debug-log lines (T73, P29, review U19: that order). Forever only (UI/Dashboard_Forever.lua and
 -- Core_Forever.lua are its siblings); TBC never loads this file.
 local _, MD = ...
 
@@ -42,28 +43,9 @@ function MD:BuildDump()
         Field(MD.player and MD.player.charKey)))
 
     -----------------------------------------------------------------------
-    local caps = MD.API.Capabilities()
-    local absent = 0
-    for _, c in ipairs(caps) do
-        if not c.present then absent = absent + 1 end
-    end
-    add(string.format("== capabilities (%d bindings, %d absent)", #caps, absent))
-    for _, c in ipairs(caps) do
-        add(string.format("%s %s (%s)", c.present and "present" or "absent", Field(c.client), Field(c.name)))
-    end
-
-    local forbidden = {}
-    for event in pairs(MD.API._forbidden or {}) do forbidden[#forbidden + 1] = Field(event) end
-    table.sort(forbidden)
-    add("forbidden events: " .. (#forbidden > 0 and table.concat(forbidden, ", ") or "none"))
-
-    if MD.errorHandlerInstalled == true then
-        add("error handler: installed")
-    else
-        add("error handler: not installed (" .. Field(MD.errorHandlerInstalled or "unknown") .. ")")
-    end
-
-    -----------------------------------------------------------------------
+    -- T73 (P29, review U19): what a bug report is read for comes first --
+    -- the saved variables, the modules, the errors -- then one summary of the
+    -- capabilities, and the long tables (every binding, the debug log) last.
     add("== saved variables")
     add(MD.SavedVarsLine and MD:SavedVarsLine() or "SavedVariables: unknown")
 
@@ -81,11 +63,37 @@ function MD:BuildDump()
     else
         add(string.format("== errors (%d distinct, %d total)", #errs, tonumber(MD.errorTotal) or 0))
     end
+    if MD.errorHandlerInstalled == true then
+        add("error handler: installed")
+    else
+        add("error handler: not installed (" .. Field(MD.errorHandlerInstalled or "unknown") .. ")")
+    end
     for _, e in ipairs(errs) do
         add(string.format("%dx %s", tonumber(e.count) or 0, Esc(e.msg or "")))
         if e.stack then
             add("  at " .. Esc(e.stack))
         end
+    end
+
+    -----------------------------------------------------------------------
+    -- one summary: the counts, the absent names, the forbidden events
+    local caps = MD.API.Capabilities()
+    local absent = {}
+    for _, c in ipairs(caps) do
+        if not c.present then absent[#absent + 1] = Field(c.client) end
+    end
+    add(string.format("== capabilities (%d bindings, %d absent)", #caps, #absent))
+    add("absent: " .. (#absent > 0 and table.concat(absent, ", ") or "none"))
+
+    local forbidden = {}
+    for event in pairs(MD.API._forbidden or {}) do forbidden[#forbidden + 1] = Field(event) end
+    table.sort(forbidden)
+    add("forbidden events: " .. (#forbidden > 0 and table.concat(forbidden, ", ") or "none"))
+
+    -----------------------------------------------------------------------
+    add(string.format("== capability table (%d)", #caps))
+    for _, c in ipairs(caps) do
+        add(string.format("%s %s (%s)", c.present and "present" or "absent", Field(c.client), Field(c.name)))
     end
 
     -----------------------------------------------------------------------

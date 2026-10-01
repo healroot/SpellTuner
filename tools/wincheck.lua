@@ -448,6 +448,37 @@ do
     P:Hide()
 end
 
+-- T73 (P29, review U11, mockup M1): the first fight that hides the window says
+-- so in one chat line -- once, ever (db.ui.combatNoted); a fight under "keep",
+-- or with nothing shown, says nothing and does not use it up
+do
+    local said = {}
+    local cf = _G.DEFAULT_CHAT_FRAME
+    local orig = cf.AddMessage
+    cf.AddMessage = function(_, m) said[#said + 1] = m end
+    MD.db.ui.combatNoted = nil
+    MD.db.ui.combat = "keep"
+    MD:SelectView("reports", "review")
+    S.Fire("PLAYER_REGEN_DISABLED"); S.Fire("PLAYER_REGEN_ENABLED")
+    local keepSaid = #said
+    MD.db.ui.combat = "hide"
+    frame:Hide()
+    S.Fire("PLAYER_REGEN_DISABLED"); S.Fire("PLAYER_REGEN_ENABLED")
+    local closedSaid = #said
+    MD:SelectView("reports", "review")
+    for _ = 1, 3 do
+        if not frame:IsShown() then MD:SelectView("reports", "review") end
+        S.Fire("PLAYER_REGEN_DISABLED"); S.Fire("PLAYER_REGEN_ENABLED")
+    end
+    cf.AddMessage = orig
+    local line = said[1] or ""
+    check("T73: the first combat hide prints one line, once",
+        keepSaid == 0 and closedSaid == 0 and #said == 1 and MD.db.ui.combatNoted == true
+          and line:find("the window hides in combat and comes back after. Settings -> General -> Windows.", 1, true) ~= nil
+          and frame:IsShown(),
+        string.format("keep=%d closed=%d total=%d %s", keepSaid, closedSaid, #said, line))
+end
+
 -- combat: hide, then back on the same view; "keep" leaves it
 do
     MD.db.ui.combat = "hide"

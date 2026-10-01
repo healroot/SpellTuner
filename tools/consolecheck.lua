@@ -213,8 +213,13 @@ try("/st dump shows one block with every section, in order", function()
     SlashCmdList.SPELLTUNER("dump")
     MD.ShowCopyPopup = orig
 
-    local order = { "== client", "== capabilities (", "== saved variables",
-                     "== modules", "== errors (", "== debug log (" }
+    -- T73 (P29, review U19): what a report is read for first -- the saved
+    -- variables, the modules, the errors (the handler line with them) --
+    -- then one capabilities summary, the whole table and the log last
+    local order = { "== client", "== saved variables", "== modules", "== errors (",
+                     "error handler: installed", "340x ", "== capabilities (", "\nabsent: ",
+                     "forbidden events: COMBAT_LOG_EVENT_UNFILTERED", "== capability table (",
+                     "\npresent ", "== debug log (" }
     local inOrder, pos = true, 0
     for _, h in ipairs(order) do
         local at = dumpText and dumpText:find(h, pos + 1, true)

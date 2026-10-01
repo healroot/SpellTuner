@@ -122,6 +122,26 @@ check("Settings is a group of the one window", MD.db.uiPath[1] == "settings",
 check("it opens on General", MD.db.uiPath[2] == "general", MD.db.uiPath[2])
 check("the general pane is in there", ButtonNamed("Record fights") ~= nil
     or Painted("Record fights") ~= nil)
+-- T73 (P29, review U24): db.simFloor is the line for fights built in
+-- Simulate (and a recorded target's fallback); a recorded fight measures its
+-- own. The slider says so, and its tooltip does not call it the scoring line.
+check("the danger slider names built fights, truly", (function()
+    local label
+    for _, f in ipairs(S.allFrames) do
+        if f.GetText and f:GetText() == "Danger line for built fights (%)" then label = f end
+    end
+    local slider = label and label:GetParent()
+    if not (slider and slider.onEnter) or Painted("Danger below") then return false end
+    local tip = MD.UI.tooltip
+    tip.lines = {}
+    slider.onEnter()
+    local all = {}
+    for _, l in ipairs(tip.lines or {}) do all[#all + 1] = tostring(l[1]) end
+    local text = table.concat(all, " ")
+    slider.onLeave()
+    return text:find("built in Simulate", 1, true) ~= nil
+        and text:find("A recorded fight measures its own line", 1, true) ~= nil
+end)())
 Click(ButtonNamed("About"))
 check("About is its second view", MD.db.uiPath[2] == "about", MD.db.uiPath[2])
 

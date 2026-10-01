@@ -546,18 +546,19 @@ local function ModuleLabel(name)
     return name
 end
 
--- One line, from MD:ModuleState -- ASCII only, the reason already sanitised
--- by Core.lua's registry (a bad LoadAddOn reason becomes "unknown" there).
-local function StateText(name)
-    local state, reason = MD:ModuleState(name)
-    if state == "loaded" then return "loaded" end
-    if state == "on" then return "on - loads at login" end
-    if state == "failed" then return "could not load: " .. tostring(reason) end
-    if state == "unloads" then return "off - unloads at your next /reload" end
-    return "off"
-end
+-- One line, MD:ModuleStateText (Core.lua, T55) -- ASCII only, the reason
+-- already sanitised by the registry (a bad LoadAddOn reason becomes "unknown"
+-- there). T73 (P29) dropped this file's own copy of it.
+local function StateText(name) return MD:ModuleStateText(name) end
 
 local modulesPane
+
+-- T73 (P29, review U11, mockup M1): a module switched off but still loaded
+-- this session ("unloads") keeps running until a reload; its row carries a
+-- Reload UI button. ReloadUI through the adapter, as every client call.
+local function ReloadInterface()
+    MD.API.Call("ReloadUI")
+end
 
 local function RefreshModulesPane()
     if not modulesPane or not modulesPane.rows then return end
@@ -566,6 +567,7 @@ local function RefreshModulesPane()
         if row then
             row.check:SetChecked(MD.db.modules and MD.db.modules[m.name] == true)
             row.state:SetText(StateText(m.name))
+            if MD:ModuleState(m.name) == "unloads" then row.reload:Show() else row.reload:Hide() end
         end
     end
 end
@@ -617,10 +619,18 @@ local function BuildModulesPane(content)
 
         local state = row:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
         state:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -2)
-        state:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+        state:SetPoint("RIGHT", row, "RIGHT", -90, 0)
         state:SetJustifyH("LEFT")
 
-        pane.rows[m.name] = { check = check, state = state }
+        -- T73: shown only while the module unloads at the next reload
+        local reload = UI.CreateButton(row, "Reload UI", "accent-hover", { 84, 18 }, false, false,
+            UI.FONT_SMALL, UI.FONT_SMALL, "Reload UI", "Reloads the interface now, which unloads "
+            .. m.label .. ".")
+        reload:SetPoint("LEFT", state, "RIGHT", 6, 0)
+        reload:SetScript("OnClick", ReloadInterface)
+        reload:Hide()
+
+        pane.rows[m.name] = { check = check, state = state, reload = reload }
         prevRow = row
     end
 
@@ -637,29 +647,17 @@ end
 --------------------------------------------------------------------------------
 
 --------------------------------------------------------------------------------
--- Reports -> Review (T16b, docs/tasks/T16b-review-tab.md): the TBC Review tab
--- (UI/Dashboard_Review.lua, shared) with the Replay module on; a placeholder
--- naming how to switch it on, off. The placeholder never loads the module --
--- only the Modules pane's own switch does (Rules).
+-- Reports -> Review (T16b) and Simulate -> Practice (T18): the shared panes
+-- (UI/Dashboard_Review.lua, UI/PracticePanel.lua) once their module is
+-- loaded; until then a placeholder. T73 (P29, review U11 / A24, mockup M1,
+-- the author's answer 6): one MODULE_VIEWS table describes both, the
+-- placeholder carries a Turn on button that switches the module on (and what
+-- it needs) and loads it at once, and the real pane takes the placeholder's
+-- place through nav:ReplacePane -- no reaching into the kit's nav.panes.
+-- Settings -> Modules stays the way to switch one off.
 --------------------------------------------------------------------------------
 local reviewPane        -- the api object MD.DashboardParts.CreateReview hands back
-local reviewPlaceholder -- the placeholder frame, while the module is off
-
-local function BuildReviewPlaceholder(content)
-    local pane = CreateFrame("Frame", nil, content)
-    pane:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
-    pane:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", 0, 0)
-
-    local text = pane:CreateFontString(nil, "OVERLAY", UI.FONT)
-    text:SetPoint("TOPLEFT", pane, "TOPLEFT", 4, -4)
-    text:SetPoint("RIGHT", pane, "RIGHT", -4, 0)
-    text:SetJustifyH("LEFT")
-    text:SetText("Review needs the Replay module - Settings -> Modules")
-
-    pane.reviewPlaceholder = true -- marks this pane for tools/reviewforever.lua
-    reviewPlaceholder = pane
-    return pane
-end
+local practicePane      -- the api object MD.DashboardParts.CreatePractice hands back
 
 local function BuildReviewPane(content)
     reviewPane = MD.DashboardParts.CreateReview(content, 912)
@@ -672,36 +670,124 @@ local function RefreshReviewPane()
     if reviewPane then reviewPane:Render() end
 end
 
---------------------------------------------------------------------------------
--- Simulate -> Practice (T18, docs/tasks/T18-practice-forever.md): the TBC
--- practice panel (UI/PracticePanel.lua, shared with TBC) with the Practice
--- module on; a placeholder naming how to switch it on while it is off, same
--- shape as Reports -> Review's own (Rules: never loads the module itself).
---------------------------------------------------------------------------------
-local practicePane        -- the api object MD.DashboardParts.CreatePractice hands back
-local practicePlaceholder -- the placeholder frame, while the module is off
-
-local function BuildPracticePlaceholder(content)
-    local pane = CreateFrame("Frame", nil, content)
-    pane:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
-    pane:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", 0, 0)
-
-    local text = pane:CreateFontString(nil, "OVERLAY", UI.FONT)
-    text:SetPoint("TOPLEFT", pane, "TOPLEFT", 4, -4)
-    text:SetPoint("RIGHT", pane, "RIGHT", -4, 0)
-    text:SetJustifyH("LEFT")
-    text:SetText("Practice needs the Practice module - Settings -> Modules")
-
-    pane.practicePlaceholder = true -- marks this pane for tools/practiceforever.lua
-    practicePlaceholder = pane
-    return pane
-end
-
 local function BuildPracticePane(content)
     practicePane = MD.DashboardParts.CreatePractice(content, 912)
     practicePane.frame:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
     practicePane.frame:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", 0, 0)
     return practicePane.frame
+end
+
+-- One row per view a module brings: the module, the DashboardParts
+-- constructor its last file defines, the real pane's builder, and the
+-- placeholder's words (M1). `mark` names the flag the suites find the
+-- placeholder by (tools/reviewforever.lua, tools/practiceforever.lua).
+local MODULE_VIEWS = {
+    { group = "reports", view = "review", module = "SpellTuner_Replay", part = "CreateReview",
+      build = BuildReviewPane, mark = "reviewPlaceholder",
+      title = "REVIEW", heading = "Review needs the Replay module",
+      text = "Replay plays a recorded fight back as unit frames and coaches it. "
+          .. "It needs Recorder, which turns on with it." },
+    { group = "simulate", view = "practice", module = "SpellTuner_Practice", part = "CreatePractice",
+      build = BuildPracticePane, mark = "practicePlaceholder",
+      title = "PRACTICE", heading = "Practice needs the Practice module",
+      text = "Practice plays a fight you heal in real time, then reviews it like a real pull. "
+          .. "It needs Replay and Recorder, which turn on with it." },
+}
+local placeholders = {} -- MODULE_VIEWS row -> its placeholder frame, while it is the view's pane
+
+local function ModuleViewFor(group, view)
+    for _, def in ipairs(MODULE_VIEWS) do
+        if def.group == group and def.view == view then return def end
+    end
+end
+
+-- The footnote under Turn on: what it will do, or why the last try failed.
+local function PlaceholderNote(def)
+    local state, reason = MD:ModuleState(def.module)
+    if state == "failed" then
+        return "could not load: " .. tostring(reason) .. ". Settings -> Modules shows each module.", "bad"
+    end
+    return "Loads now, no reload. To turn it off again: Settings -> Modules.", "muted"
+end
+
+local function RefreshPlaceholder(def)
+    local pane = placeholders[def]
+    if not pane then return end
+    local text, token = PlaceholderNote(def)
+    pane.note:SetText(text)
+    pane.note:SetTextColor(UI.RGB(token))
+end
+
+local function BuildPlaceholder(def, content)
+    local pane = CreateFrame("Frame", nil, content)
+    pane:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
+    pane:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", 0, 0)
+
+    -- the block, centred in the pane (M1: a little above the middle)
+    local block = CreateFrame("Frame", nil, pane)
+    block:SetSize(470, 130)
+    block:SetPoint("CENTER", pane, "CENTER", 0, 20)
+
+    local title = block:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+    title:SetPoint("TOP", block, "TOP", 0, 0)
+    title:SetTextColor(UI.RGB("accent"))
+    title:SetText(def.title)
+
+    local heading = block:CreateFontString(nil, "OVERLAY", UI.FONT_HEAD or UI.FONT_TITLE)
+    heading:SetPoint("TOP", title, "BOTTOM", 0, -6)
+    heading:SetText(def.heading)
+    pane.heading = heading
+
+    local text = block:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+    text:SetPoint("TOP", heading, "BOTTOM", 0, -6)
+    text:SetWidth(470)
+    text:SetJustifyH("CENTER")
+    text:SetTextColor(UI.RGB("text2"))
+    text:SetText(def.text)
+
+    local button = UI.CreateButton(block, "Turn on", "accent", { 110, 22 }, false, false, nil, nil,
+        "Turn on", "Switches the module on, with what it needs, and loads it now.")
+    button:SetPoint("TOP", text, "BOTTOM", 0, -14)
+    button:SetScript("OnClick", function()
+        -- the swap itself is MODULE_LOADED's (below): the module's last file
+        -- fires it from inside this call once every file ran
+        MD:SetModule(def.module, true)
+        RefreshPlaceholder(def)
+    end)
+    pane.turnOn = button
+
+    local note = block:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+    note:SetPoint("TOP", button, "BOTTOM", 0, -10)
+    note:SetWidth(470)
+    note:SetJustifyH("CENTER")
+    pane.note = note
+
+    pane[def.mark] = true
+    pane.moduleView = def
+    placeholders[def] = pane
+    RefreshPlaceholder(def)
+    return pane
+end
+
+-- The view's pane: the real one when its module is loaded, else the
+-- placeholder.
+local function BuildModuleView(def, content)
+    if MD.DashboardParts[def.part] then return def.build(content) end
+    return BuildPlaceholder(def, content)
+end
+
+-- A module finished loading (its own Ready.lua) and brought a constructor:
+-- each placeholder whose pane can now be built is replaced. Loading Practice
+-- loads Replay first, so Review's placeholder is replaced on the way.
+local function SwapPlaceholders()
+    if not nav then return end
+    for _, def in ipairs(MODULE_VIEWS) do
+        if placeholders[def] and MD.DashboardParts[def.part] then
+            local pane = def.build(nav:Content())
+            placeholders[def] = nil
+            nav:ReplacePane(def.group, def.view, pane)
+        end
+    end
 end
 
 --------------------------------------------------------------------------------
@@ -713,16 +799,8 @@ local function CreateDashboard()
         function(group, view, content)
             if group == "spells" then
                 return MD.SpellsPane:Create(content) -- T36: one frame for every Spells view
-            elseif group == "reports" and view == "review" then
-                if MD.DashboardParts.CreateReview then
-                    return BuildReviewPane(content)
-                end
-                return BuildReviewPlaceholder(content)
-            elseif group == "simulate" and view == "practice" then
-                if MD.DashboardParts.CreatePractice then
-                    return BuildPracticePane(content)
-                end
-                return BuildPracticePlaceholder(content)
+            elseif ModuleViewFor(group, view) then
+                return BuildModuleView(ModuleViewFor(group, view), content) -- T73: Review, Practice
             elseif group == "settings" and view == "general" then
                 generalPane = BuildGeneralPane(content)
                 return generalPane
@@ -741,6 +819,8 @@ local function CreateDashboard()
             if group == "settings" and view == "modules" then RefreshModulesPane() end
             if group == "settings" and view == "about" then RefreshAboutPane() end
             if group == "reports" and view == "review" then RefreshReviewPane() end
+            local def = ModuleViewFor(group, view)
+            if def then RefreshPlaceholder(def) end -- T73: a failed load's reason, if any
             -- "refreshed on show" (Goal): nav:Select runs this on every visit,
             -- the FIRST included -- a plain Show()/OnShow pair would miss the
             -- first one, since a frame is created already shown (CLAUDE.md's
@@ -819,41 +899,10 @@ MD:RegisterCallback("MODULE_LOADED", RefreshModulesPane)
 MD:RegisterCallback("MODULE_LOADED", RefreshGeneralPane)
 MD:RegisterCallback("MODULE_LOADED", RefreshAboutPane)
 
--- T16b: SpellTuner_Replay finishing load (its own last file, Ready.lua)
--- brings MD.DashboardParts.CreateReview with it. If a placeholder is what the
--- Review view is currently showing, replace it with the real pane --
--- re-selecting it if it happens to be the one on screen, which both shows the
--- new pane (nav.panes already carries it) and refreshes it. (T32: the window
--- no longer grows here -- Reports has its own size, 6.7.)
-MD:RegisterCallback("MODULE_LOADED", function(name)
-    if name ~= "SpellTuner_Replay" or not MD.DashboardParts.CreateReview then return end
-    if nav and nav.panes and nav.panes.reports and nav.panes.reports.review == reviewPlaceholder
-            and reviewPlaceholder then
-        local content = nav:Content()
-        local pane = BuildReviewPane(content)
-        nav.panes.reports.review = pane
-        reviewPlaceholder:Hide()
-        reviewPlaceholder = nil
-        if nav.group == "reports" and nav.view == "review" then
-            nav:Select("reports", "review")
-        end
-    end
-end)
-
--- T18: SpellTuner_Practice finishing load brings MD.DashboardParts.CreatePractice
--- with it -- same swap as the Review one above, on the Simulate -> Practice
--- placeholder.
-MD:RegisterCallback("MODULE_LOADED", function(name)
-    if name ~= "SpellTuner_Practice" or not MD.DashboardParts.CreatePractice then return end
-    if nav and nav.panes and nav.panes.simulate and nav.panes.simulate.practice == practicePlaceholder
-            and practicePlaceholder then
-        local content = nav:Content()
-        local pane = BuildPracticePane(content)
-        nav.panes.simulate.practice = pane
-        practicePlaceholder:Hide()
-        practicePlaceholder = nil
-        if nav.group == "simulate" and nav.view == "practice" then
-            nav:Select("simulate", "practice")
-        end
-    end
-end)
+-- T16b / T18: a module finishing load (its own last file, Ready.lua) brings
+-- its DashboardParts constructor; T73 (P29, review A24): every placeholder
+-- that can now be built is replaced through nav:ReplacePane, which re-selects
+-- the view if it is the one on screen (shown and refreshed) and keeps the new
+-- pane hidden otherwise. (T32: the window no longer grows here -- Reports has
+-- its own size, 6.7.)
+MD:RegisterCallback("MODULE_LOADED", SwapPlaceholders)
