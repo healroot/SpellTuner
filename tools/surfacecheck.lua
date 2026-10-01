@@ -29,7 +29,12 @@
 --      the regen feed's words, the tooltip the minimap's lines, the click
 --      (left: the window, right: Settings, nothing in combat), a feed that
 --      raises answering its label;
---   6. FEED_CHANGED fires from the tick exactly when a feed's text changed.
+--   6. FEED_CHANGED fires from the tick exactly when a feed's text changed;
+--   8. tbc (T97): Integrations/Surface_LDB.lua, from the TBC TOC, publishes
+--      nothing with no host and both LibDataBroker objects once a broker host
+--      loads -- the clock's words without colour, the regen feed's plain
+--      words, a click only out of combat, the tooltip (Forever's brokers are
+--      tools/euicheck.lua's).
 --
 -- `--print` prints the transcript; `--golden` prints the golden block to paste.
 HARNESS_FLAVOUR = { "tbc", "forever" }
@@ -546,6 +551,60 @@ Guarded("7. a raising feed", function()
     local okT, txt = pcall(Feeds.Text, "zz-test", {})
     check("7. a feed that raises answers its label, never into the host", okT and txt == "Test", tostring(txt))
 end)
+
+--------------------------------------------------------------------------------
+-- 8. tbc: the LibDataBroker surface (T97, docs/SPEC-next.md 6.2: "On TBC the
+-- same file publishes to whatever broker display is there" -- Titan Panel,
+-- ChocolateBar, ElvUI's own Data Broker list). The TBC TOC lists
+-- Integrations/Surface_LDB.lua after Surface_ElvUI.lua; the harness logged in
+-- with no host, so nothing was published, and a broker host loading now
+-- (ADDON_LOADED) gets both objects. Forever's brokers are tools/euicheck.lua's.
+--------------------------------------------------------------------------------
+local LDB_FILE = "Integrations/Surface_LDB.lua"
+if FLAVOUR == "tbc" then
+    T.section("8. tbc: the brokers")
+    local lib
+    Guarded("8a. tbc brokers", function()
+        local byToc = Loaded(LDB_FILE)
+        if not byToc and Exists(LDB_FILE) then
+            local okLoad, err = LoadByHand({ LDB_FILE })
+            if not okLoad then print("load: " .. tostring(err)) end
+        end
+        local before = MD.SurfaceLDB and MD.SurfaceLDB.Object("clock")
+        lib = H.InstallLDB()
+        S.Fire("ADDON_LOADED", "Titan")
+        Ticks(1)
+        local c, r = lib:GetDataObjectByName("SpellTuner"), lib:GetDataObjectByName("SpellTuner Regen")
+        local face = Feeds.Face("clock")
+        local words = MD.ClockFace.JoinSegments(MD.ClockFace.Segments(face))
+        local plain = Feeds.Text("clock", { plain = true })
+        check("8a. tbc: from the TOC, nothing before a host; then two objects, the clock's words without colour",
+            byToc and before == nil and c ~= nil and r ~= nil and c.type == "data source"
+            and c.text == words and c.text == plain and T.Ascii(c.text, { noColour = true })
+            and (c.text:find("^OOM ") ~= nil or c.text:find("^FULL") ~= nil),
+            string.format("byToc=%s before=%s text=%s words=%s", tostring(byToc), tostring(before ~= nil),
+                tostring(c and c.text), tostring(words)))
+    end)
+    Guarded("8b. tbc regen broker", function()
+        local r = lib:GetDataObjectByName("SpellTuner Regen")
+        local toggles = 0
+        local rt = MD.ToggleDashboard
+        MD.ToggleDashboard = function() toggles = toggles + 1 end
+        local inFight = MD.inCombat == true
+        r.OnClick(nil, "LeftButton")         -- refused: still in section 6's fight
+        S.Fire("PLAYER_REGEN_ENABLED")
+        Ticks(1)
+        r.OnClick(nil, "LeftButton")
+        MD.ToggleDashboard = rt
+        local tt = H.LdbTooltip(r)
+        check("8b. tbc: the regen object reads the regen feed's plain words; a click only out of combat; the tooltip",
+            r.text == Feeds.Text("regen", { plain = true }) and r.text:find("^Regen %d+") ~= nil
+            and inFight and toggles == 1 and tt ~= nil and tt.shown and type(tt.log[2]) == "string"
+            and tt.log[2]:find("^AddLine\tSpellTuner\t") ~= nil and tt.log[#tt.log] == "Show",
+            string.format("text=%s fight=%s toggles=%d tip=%s", tostring(r.text), tostring(inFight), toggles,
+                tostring(tt and tt.log[2])))
+    end)
+end
 
 T.done()
 

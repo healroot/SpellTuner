@@ -34,6 +34,13 @@
 --   7. on a fresh db, db.minimap is { hide = false, angle = 220 };
 --   8. that default is declared once, by the button file (MD:RegisterDefaults),
 --      and nowhere else on any TOC.
+-- T97 (docs/SPEC-next.md 6.3; R-ellesmere.md 3.4), both halves, one check
+-- each: a minimap-button collector (EllesmereUI's flyout, MBB) reparents the
+-- button; MD:UpdateMinimapButton (Settings -> Windows' toggle) and the angle
+-- drag then leave it where the collector put it, and the icon is the
+-- button's `icon` field, anchored CENTER at the place it always had (so the
+-- collector finds it by name, not by region order). Back on Minimap, the
+-- button is repositioned as before. The TBC goldens are unchanged.
 HARNESS_FLAVOUR = { "tbc", "forever" }
 
 local here = arg[0]:match("^(.*)/[^/]+$")
@@ -224,6 +231,41 @@ local GOLDEN_TBC_DETAIL = {
     "Hide it: Settings -> General -> Windows. | nil | 0.478,0.478,0.478 | -",
 }
 
+-- T97: a collector takes the button. Its flyout reparents it and puts it in a
+-- grid (EllesmereUIMinimap.lua 474-503); the Settings toggle and the angle
+-- drag must leave it there; its icon is found by name (`btn.icon`, 516-532).
+-- Back on Minimap, MD:UpdateMinimapButton repositions it as before.
+local function CollectedCheck(name)
+    Guarded(name, function()
+        S.Geometry(true)
+        local flyout = CreateFrame("Frame", "T97FakeFlyout", UIParent)
+        B:SetParent(flyout)
+        B:ClearAllPoints()
+        B:SetPoint("TOPLEFT", flyout, "TOPLEFT", 4, -4)
+        MD:UpdateMinimapButton()
+        local p, rel, rp, x, y = B:GetPoint(1)
+        local kept = B:GetParent() == flyout and B:GetNumPoints() == 1 and p == "TOPLEFT" and rel == flyout
+            and rp == "TOPLEFT" and x == 4 and y == -4 and B:IsShown()
+        -- the angle drag starts nothing while collected
+        local angle = MD.db.minimap.angle
+        B:GetScript("OnDragStart")(B)
+        local noDrag = B:GetScript("OnUpdate") == nil
+        B:GetScript("OnDragStop")(B)
+        local icon = B.icon
+        local iconOk = type(icon) == "table" and icon.kind == "Texture" and icon.parentFrame == B
+        -- back on the minimap: repositioned at the stored angle, as before
+        B:SetParent(Minimap)
+        MD:UpdateMinimapButton()
+        local p2, rel2 = B:GetPoint(1)
+        local back = B:GetNumPoints() == 1 and p2 == "CENTER" and rel2 == Minimap
+        S.Geometry(false)
+        check(name, kept and noDrag and MD.db.minimap.angle == angle and iconOk and back,
+            string.format("kept=%s (%s %s %s %s %s) noDrag=%s angle=%s icon=%s back=%s", tostring(kept), tostring(p),
+                tostring(rel == flyout and "flyout" or rel), tostring(rp), tostring(x), tostring(y), tostring(noDrag),
+                tostring(MD.db.minimap.angle), tostring(iconOk), tostring(back)))
+    end)
+end
+
 -- Fight(): into combat and casting until the clock is out of mana, stable and
 -- trusted; answers a function that ends the fight and puts everything back.
 local function Fight()
@@ -308,6 +350,8 @@ if flavour == "tbc" then
         MD:UpdateMinimapButton()
         check("tbc: db.minimap.hide hides the button, and back", hidden and B:IsShown())
     end)
+
+    CollectedCheck("tbc: a collected button is not pulled back; its icon is btn.icon (T97)")
 
     local endFight
     Guarded("tbc: the tooltip in a fight is M6's, line for line (golden)", function()
@@ -512,6 +556,8 @@ Guarded("6. the themed tooltip is M6's, its clock lines the clock hover's own", 
             tostring(title), tostring(out), tostring(rest), tostring(spacer), tostring(hints), tostring(hide),
             tostring(fromSummary), tostring(clean), tostring(anchor), table.concat(shown, "; ")))
 end)
+
+CollectedCheck("9. a collected button is not pulled back; its icon is btn.icon (T97)")
 
 -- 8: one owner for the default (P20's rule): the button file registers it and
 -- no file on any TOC carries a `minimap = {` default of its own.
