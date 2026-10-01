@@ -4472,3 +4472,40 @@ goldens), by what follows from them without a line of their own (themecheck's to
 and run-to-run noise (ms, table addresses, the sliced search's evaluation counts in reviewui); every
 other TBC suite equal. In game: `docs/TESTING.md` §44 items 31 and 32 (they need a build newer than
 the 0.16.4 install). **Next:** wave C-c (C3, the Spells view).
+
+## 2026-10-01 — the refactor plan, wave C-c: T83 (C3)
+
+Wave C-c of `docs/PLAN-refactor-ux.md` cherry-picked onto `03cc1bd`, then the integrator's lines
+(the TBC TOC, CLAUDE.md, `docs/TESTING.md`, `docs/TOOLS.md`, `docs/DECISIONS.md`,
+`tools/data/expected-counts.json`, this entry) in one commit. No merge fix, no import fixture
+rebuild (nothing the code stores changed). The version stays 0.16.4.
+
+- **T83 (C3)** (`bd65321`, `6de233c`; branch `plan/C3` `c2bb2fa`, `cbbffc2`): TBC's Spells view is
+  the Forever structure (review U6, mockup M6, decision 10) -- the new `UI/SpellsView_TBC.lua`
+  (`MD.DashboardParts.CreateSpellsView`, listed in `SpellTuner_TBC.toc` right before
+  `UI/Dashboard.lua`) builds one family's view in one scroll frame: the header (icon, shape / rank
+  / cast, mana and +healing, the old stats line as the +healing hover), the SUGGESTED / SIMULATED
+  chip with one comparison line, After overheal (the old Effective) with its measured share, What
+  if... folding `UI/Dashboard_Simulate.lua`'s strip, RANKS (T81's rank table moved here, in M6's
+  words: Heal / Total, Per mana, Per sec, Casts reading `inf` / `999+`, a sentence per header, a
+  click selecting a rank) and the rank card. The four prose lines leave Spells; the recap stays on
+  Reports. dashui tbc 74 -> 80. The DECISIONS entry "TBC's Spells view is the Forever structure".
+- Integrator notes: the "glossary (`Tip:Columns`)" sentence the task file places in the
+  `UI/Dashboard_Rows.lua` row is in CLAUDE.md's `UI/Dashboard.lua` row (T81's sentence); it was
+  changed there. `Tip:Columns` has no caller since T83 (noted on the `UI/Tip_TBC.lua` row).
+- Left for the next owners: `UI/Dashboard_Rows.lua`'s comment at line 111 still names
+  `Tip:Columns`, and `Tip:Columns` itself is dead code in `UI/Tip_TBC.lua` (T83's deviation 4);
+  Spells keeps the window's 1036 x 646 until a task owning `tools/wincheck.lua` gives it its own
+  size (deviation 1); the view's `width` argument is unused until C5 (deviation 11); TESTING §44
+  item 31's "Point at a column header: the glossary" is superseded by item 33.
+
+`make check`: 71 runs, all passed, in the worktree and in a `git archive` export (66 counted runs
+against 66 expected); apicheck 0 findings over 59 files (48 globals), textcheck 0 over 96 (95 + the
+new file). Each TBC suite's full output against `03cc1bd` differs only where the task file says
+(dashui's six T83 checks and the two renamed / re-based T81 checks), by what follows from it
+without a line of its own (themecheck's token-read count 148 -> 174 on both flavours with the
+view's token colours; dashui's T30 frame count 1038 -> 1099 with the view's frames; releasecheck's
+TBC package 67 -> 68 files with the TOC line), and run-to-run noise (ms, table addresses, the sliced
+search's evaluation counts in reviewui and replayui, and the order of replayui's two `search done`
+lines, which swaps between runs on the same tree); every other TBC suite equal. In game:
+`docs/TESTING.md` §44 item 33 (it needs a build newer than the 0.16.4 install). **Next:** wave C-d.

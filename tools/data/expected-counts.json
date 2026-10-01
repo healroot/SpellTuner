@@ -12,7 +12,7 @@
   "corecheck/forever": 24,
   "corecheck/tbc": 24,
   "costcheck/tbc": 3,
-  "dashui/tbc": 74,
+  "dashui/tbc": 80,
   "defaultscheck/forever": 52,
   "defaultscheck/tbc": 49,
   "forevercheck/forever": 16,

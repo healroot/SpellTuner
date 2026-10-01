@@ -1160,3 +1160,19 @@ which M6 accepted. The unlock preview is in the accent. The clock tooltip, on th
 the minimap button, says `Out of mana in 1:20` and `Full again in 3:40 if you stop` as pairs. The
 raw lines (the time with its spread, the net rate, the spend and its CV, the regen terms, the
 mana cooldowns, the pull budget) and the last fight move behind Shift.
+
+**TBC's Spells view is the Forever structure** (2026-10-01, T83 / C3; review U6, mockup M6,
+decision 10). The four prose lines above the TBC rank table are gone.
+- The stats line splits into the header's mana and +healing (its regen, relic and Tree-aura
+  detail is the +healing line's hover).
+- The gold callout is one comparison line beside a SUGGESTED chip.
+- The glossary hint is a sentence on each column header.
+- The Simulate strip folds behind "What if...". While any what-if value is set, the chip says
+  SIMULATED and the header shows the changed stats in the accent.
+
+"Effective" is "After overheal", with the family's measured share under it. The column words
+are M6's: Heal (Total over time), Per mana, Per sec, Casts. Casts reads `inf` when regen keeps
+up and `999+` past 999, where it printed the raw count. A click selects a rank (the white bar)
+and a card below the table shows that rank's base numbers, its heal and crit, the downrank
+share of +healing and the cost. The window keeps TBC's 1036 x 646 for Spells, and the view
+scrolls inside it. The recap line ("Last fight: ...") stays on Reports only.

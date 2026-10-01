@@ -1441,7 +1441,7 @@ the numbers.
 
 **Paste back**: the `pN` you pinned, and in words what the suggested column did differently.
 
-## 44. The refactor plan's checks (`docs/PLAN-refactor-ux.md` section 9; waves 1-17, C-a and C-b, 0.16.4)
+## 44. The refactor plan's checks (`docs/PLAN-refactor-ux.md` section 9; waves 1-17, C-a, C-b and C-c, 0.16.4)
 
 Paste back as in section 41. Out of combat unless a step says otherwise. Install **0.16.4** on each
 client (`--install-tbc` / `--install-forever`, the top of this file and §38; never cross them). The
@@ -1678,6 +1678,31 @@ W10. **The clock and the theme (P24, P25).** The mana clock behaves exactly as o
     (spend, CV, regen, Innervate, pull budget) appear without moving the mouse, and go when you
     release it. Hover the minimap button: the same clock lines, then Left-click / Right-click / Drag
     and the hide line.
+
+**Wave C-c (T83; TBC).** These need a build newer than the 0.16.4 install.
+
+33. **TBC Spells view (C3).**
+    - `/md` -> Spells -> Healing Touch: a header with the icon, "Healing Touch", "Direct heal -
+      Rank N of M known - 2.9 s cast ...", your mana and +healing at the right. No stats line,
+      no gold line, no grey hint line above the table.
+    - Point at the +healing line: your regen, crit, relic and Tree aura.
+    - The chip says SUGGESTED / Rank N, and the line beside it compares that rank with your
+      highest (or says your highest is also the best).
+    - The table's headers read Heal (Total on Rejuvenation, Regrowth and Lifebloom), Per mana,
+      Per sec, Casts. Cheap ranks read `inf` or `999+` under Casts. Point at a header: one
+      sentence.
+    - The suggested row has the faint fill and orange bar, and a white bar marks the selected
+      one. Click another rank: the white bar and the card below move to it, and the fill stays.
+      The card: RANK N, "learned at L - you are P", the base heal, then Heals / Crit /
+      Downrank / Cost (Tick / Total on a HoT).
+    - Tick After overheal: the healing headers turn orange (the share under the box says
+      "N% measured" or "not measured yet").
+    - Click What if...: the what-if boxes appear between the strip and the table. Type +heal
+      2000 and leave the box: the chip says SIMULATED and the header's +healing turns orange.
+      Click What if... again: the boxes fold away and the values stay. Clear resets them.
+    - With 13 ranks the view scrolls with the wheel.
+    - Reports -> Waste / Review: the lines above the list and the "Last fight" line at the
+      bottom are as before.
 
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the
