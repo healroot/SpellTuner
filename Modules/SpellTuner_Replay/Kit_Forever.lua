@@ -15,26 +15,43 @@ local SD, RM = MD.SpellData, MD.RankMath
 -- before this file by the module's TOCs; T63, P19).
 local Kit = MD.Kit
 
+-- T89 (docs/SPEC-next.md 2.1): every table below that names a family is the
+-- druid profile's (Data/Profile_Druid_Forever.lua), derived at file load BY
+-- NAME -- never from MD.ClassProfile, the logged-in player's: the kit a druid's
+-- book builds is the druid's whoever reads it. Each equals the constant it
+-- replaced (tools/profilecheck.lua).
+local DRUID = MD.Profiles.Require("DRUID", "Kit_Forever.lua")
+
 -- The book's own English name -> the engine's family key
 -- (Engine/SimPlanner.lua 49, Engine/SimSolver.lua 212). Only Healing Touch
--- differs; every other modelled family is spelled the same both places.
-local FAMILY_KEY = {
-    ["Healing Touch"] = "HealingTouch",
-    ["Regrowth"]       = "Regrowth",
-    ["Rejuvenation"]   = "Rejuvenation",
-    ["Swiftmend"]      = "Swiftmend",
-    ["Tranquility"]    = "Tranquility",
-}
+-- differs; every other modelled family is spelled the same both places:
+-- Healing Touch -> HealingTouch; Regrowth, Rejuvenation, Swiftmend and
+-- Tranquility -> themselves.
+local FAMILY_KEY = DRUID:FamilyKeys()
 
 -- family key -> the shape SimModel.lua switches on. Forever has no Lifebloom
--- and no Tree of Life (Facts), so those two shapes never appear here.
-local FAMILY_TYPE = {
-    HealingTouch = "direct",
-    Regrowth     = "hybrid",
-    Rejuvenation = "hot",
-    Swiftmend    = "instant",
-    Tranquility  = "channel",
-}
+-- and no Tree of Life (Facts), so those two shapes never appear here:
+-- HealingTouch direct, Regrowth hybrid, Rejuvenation hot, Swiftmend instant,
+-- Tranquility channel.
+local FAMILY_TYPE = DRUID:KitTypes()
+
+-- The families in the kit but not in the engine's plans (Tranquility, as on
+-- TBC): the profile's `exclude` marks.
+local EXCLUDE = {}
+for key, def in pairs(DRUID.families) do
+    if def.exclude then EXCLUDE[key] = true end
+end
+
+-- The engine's own dashboard order (Data/SpellData.lua's familyOrder on TBC,
+-- minus the two excluded families and Lifebloom): HealingTouch, Rejuvenation,
+-- Regrowth.
+local FAMILY_ORDER = DRUID.order
+
+-- The school whose crit chance the kit's direct heals take (Nature).
+local CRIT_SCHOOL = DRUID.critSchool
+
+-- For tools/profilecheck.lua, which holds them equal to the old constants.
+RM.FAMILY_KEY, RM.FAMILY_TYPE = FAMILY_KEY, FAMILY_TYPE
 
 -- Vanilla's tick period for a HoT is 3s (docs/REFERENCES-FOREVER.md);
 -- UNVERIFIED on Forever -- the client's own text carries no tick period
@@ -59,7 +76,7 @@ local function BuildIndex(book)
         local key = FAMILY_KEY[name]
         if key then
             -- Tranquility is in the kit but not in the engine's plans, as on TBC.
-            families[key] = { type = FAMILY_TYPE[key], label = name, exclude = (key == "Tranquility") or nil }
+            families[key] = { type = FAMILY_TYPE[key], label = name, exclude = EXCLUDE[key] }
             known[key], all[key] = {}, {}
             for _, e in ipairs(fam.ranks) do
                 if e.id and e.rank then
@@ -95,7 +112,7 @@ end
 -- hand one back -- this only decides what to show instead).
 local lastCrit
 local function CritFraction()
-    local crit = MD.API.SpellCritChance(4)
+    local crit = MD.API.SpellCritChance(CRIT_SCHOOL)
     if type(crit) == "number" then
         lastCrit = crit / 100
         return lastCrit, nil
@@ -174,7 +191,10 @@ local function InstallIndex(index)
         index.spells, index.families, index.known, index.all, index.maxRank, index.skipped
     -- The engine's own dashboard order (Data/SpellData.lua's familyOrder,
     -- minus the two excluded families) -- fixed, not derived from the book.
-    SD.familyOrder = { "HealingTouch", "Rejuvenation", "Regrowth" }
+    -- (T89: the druid profile's `order`, copied fresh as before.)
+    local order = {}
+    for i, key in ipairs(FAMILY_ORDER) do order[i] = key end
+    SD.familyOrder = order
     -- No Lifebloom on Forever (Facts), so no alias id for its bloom either.
     SD.bloomID = nil
 end
@@ -268,7 +288,7 @@ end
 -- installs its own. For the offline tools; the game never needs it.
 local LABEL = {}
 for name, key in pairs(FAMILY_KEY) do LABEL[key] = name end
-local RESTORE_POLICY = { types = FAMILY_TYPE, labels = LABEL, exclude = { Tranquility = true } }
+local RESTORE_POLICY = { types = FAMILY_TYPE, labels = LABEL, exclude = EXCLUDE }
 
 function RM.KitRestore(snap)
     local kit, index = Kit.Restore(snap, RESTORE_POLICY)

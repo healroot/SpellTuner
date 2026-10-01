@@ -152,11 +152,23 @@ end
 -- formula read 2x low at level 64 on this client). Never feeds the TTO.
 -- Returns spiritPerSec, mp5Gear, inFSRFraction, unreportedPerSec.
 --------------------------------------------------------------------------------
+-- T89 (docs/SPEC-next.md 2.1): a class with a profile takes its row from the
+-- profile's regen.inFsrTalent, derived at file load BY NAME (never from
+-- MD.ClassProfile, the logged-in player's) and copied. The druid's equals the
+-- constant it replaced (tools/profilecheck.lua): Intensity, 0.10 per rank.
+-- RM.IN_FSR_TALENT is the same table, for that check.
+local function InFsrTalentOf(class)
+    local regen = MD.Profiles.Require(class, "Engine/RegenModel.lua").regen
+    local t = regen and regen.inFsrTalent
+    return t and { t[1], t[2] } or nil
+end
+
 local IN_FSR_TALENT = {
-    DRUID  = { "Intensity", 0.10 },
+    DRUID  = InFsrTalentOf("DRUID"),
     PRIEST = { "Meditation", 0.05 },
     MAGE   = { "Arcane Meditation", 0.05 },
 }
+RM.IN_FSR_TALENT = IN_FSR_TALENT
 
 function RM:InFSRFraction()
     local t = IN_FSR_TALENT[MD.player.class]

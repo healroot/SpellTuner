@@ -39,11 +39,31 @@ end
 --------------------------------------------------------------------------------
 -- Sources
 --------------------------------------------------------------------------------
+-- The value models a profile names (`value = "innervate"`): the arithmetic stays
+-- here, so a profile file never reads regen.
+MC.VALUES = { innervate = InnervateValue }
+
+-- T89 (docs/SPEC-next.md 2.1): a class with a profile takes its list from the
+-- profile's manaCooldowns, derived at file load BY NAME (never from MD.ClassProfile,
+-- the logged-in player's), each entry copied with its named value model
+-- resolved. The druid's equals the constant it replaced (tools/profilecheck.lua):
+-- Innervate, 29166, 20 s, InnervateValue.
+local function FromProfile(class)
+    local out = {}
+    for i, c in ipairs(MD.Profiles.Require(class, "Engine/ManaCooldowns.lua").manaCooldowns or {}) do
+        local value = MC.VALUES[c.value]
+        if value == nil then
+            error("SpellTuner: the " .. class .. " profile's mana cooldown " .. tostring(c.key)
+                .. " names the value model " .. tostring(c.value) .. ", which MC.VALUES has not")
+        end
+        out[i] = { key = c.key, short = c.short, id = c.id, name = c.name,
+                   duration = c.duration, value = value }
+    end
+    return out
+end
+
 MC.byClass = {
-    DRUID = {
-        { key = "innervate", short = "inn", id = INNERVATE, name = "Innervate",
-          duration = 20, value = InnervateValue },
-    },
+    DRUID = FromProfile("DRUID"),
     -- Phase 2: each needs a value model and one in-game log from that class.
     PRIEST  = { { key = "shadowfiend", short = "sf",  id = 34433, name = "Shadowfiend",         duration = 15 } },
     SHAMAN  = { { key = "manatide",    short = "mt",  id = 16190, name = "Mana Tide Totem",     duration = 12 } },

@@ -84,10 +84,26 @@ end
 -- The families a rule can bind. Tranquility is deliberately absent: the spell
 -- table carries no heal values for it, so no plan may spend the player's mana
 -- on a number nobody has measured (spec 13 also rules it out of v0.7 planning).
-SP.BINDABLE = { "Lifebloom", "Rejuvenation", "Regrowth", "HealingTouch", "Swiftmend" }
--- The families rule 4 may reach for. Regrowth is a direct heal with a tail and
--- belongs to rule 2; Swiftmend consumes a HoT rather than applying one.
-SP.HOT_RULE = { "Lifebloom", "Rejuvenation" }
+-- SP.HOT_RULE: the families rule 4 may reach for. Regrowth is a direct heal
+-- with a tail and belongs to rule 2; Swiftmend consumes a HoT rather than
+-- applying one.
+-- T89 (docs/SPEC-next.md 2.1): both lists are the druid profile's
+-- (Data/Profile_Druid_*.lua, planner.bindable / planner.hotRule), derived here
+-- at file load BY NAME -- never from MD.ClassProfile, the logged-in player's -- and
+-- copied, so the registered profile is never edited through them. They equal
+-- the constants they replaced (tools/profilecheck.lua): BINDABLE Lifebloom,
+-- Rejuvenation, Regrowth, HealingTouch, Swiftmend; HOT_RULE Lifebloom,
+-- Rejuvenation.
+do
+    local planner = MD.Profiles.Require("DRUID", "Engine/SimPlanner.lua").planner
+    local function Copy(list)
+        local out = {}
+        for i, v in ipairs(list) do out[i] = v end
+        return out
+    end
+    SP.BINDABLE = Copy(planner.bindable)
+    SP.HOT_RULE = Copy(planner.hotRule)
+end
 
 --------------------------------------------------------------------------------
 -- Binds: which rank of which family the plan uses. Fixed by default to the

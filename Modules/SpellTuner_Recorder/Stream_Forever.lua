@@ -25,11 +25,10 @@ MD.StreamV3 = {
 
     -- the book's own English family name -> the engine's family key (the
     -- names `rec.initial.known` is keyed by). Only Healing Touch differs.
-    FAMILY_KEY = {
-        ["Healing Touch"] = "HealingTouch",
-        ["Regrowth"]       = "Regrowth",
-        ["Rejuvenation"]   = "Rejuvenation",
-        ["Swiftmend"]      = "Swiftmend",
-        ["Tranquility"]    = "Tranquility",
-    },
+    -- T89 (docs/SPEC-next.md 2.1): the druid profile's names
+    -- (Data/Profile_Druid_Forever.lua), derived at file load BY NAME -- never
+    -- from MD.ClassProfile, the logged-in player's. Equal to the constant it
+    -- replaced (tools/profilecheck.lua): Healing Touch -> HealingTouch,
+    -- Regrowth, Rejuvenation, Swiftmend, Tranquility -> themselves.
+    FAMILY_KEY = MD.Profiles.Require("DRUID", "Stream_Forever.lua"):FamilyKeys(),
 }
