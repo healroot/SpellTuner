@@ -42,7 +42,8 @@ Engine\ReplayTrace.lua
 Engine\Practice.lua
 UI\Style.lua
 UI\ContextMenu.lua
-UI\Tooltip.lua
+UI\Tip.lua
+UI\Tip_TBC.lua
 UI\SpellTooltip.lua
 UI\Visibility.lua
 UI\Widget.lua

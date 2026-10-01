@@ -4290,3 +4290,30 @@ frame count (809 -> 811: the two font objects `UI/Style.lua` now makes at load, 
 says) and run-to-run noise (ms, table addresses, the sliced search's frame and evaluation counts in
 replayui, reviewui and simwindow); every other TBC suite equal. In game: `docs/TESTING.md` §44 item
 25 (it needs a build newer than the 0.16.4 install). **Next:** wave 15 (P32-).
+
+## 2026-10-01 — the refactor plan, wave 15: T76 (P32)
+
+Wave 15 of `docs/PLAN-refactor-ux.md` cherry-picked onto `19ffac6`, then the integrator's lines (the
+five TOCs, CLAUDE.md, `docs/TESTING.md`, `docs/TOOLS.md`, `tools/data/expected-counts.json`, this
+entry) in one commit. No merge fix was needed. The version stays 0.16.4. No DECISIONS entry.
+
+- **T76 (P32)** (`d20faae`, `c8eaf31`, the review fix `deef06b`): one tooltip (review A21, U2, U9,
+  U10, U13, U28) -- `UI/Tip.lua` on both main TOCs (the line model with token names, one renderer,
+  `Show(owner, lines, { anchor })` beside the row / beside the pointer / flipped at the screen's right
+  edge, in the tooltip's units when the owner is scaled, the old `Show` shape kept, the kit skin on a
+  GameTooltip SpellTuner owns under the theme, `Kit` for the kit tooltip); the RankMath-bound
+  builders moved unchanged to `UI/Tip_TBC.lua` (TBC TOC, right after it); `UI/Tooltip.lua` deleted
+  and gone from the Replay module's TOCs. `UI.SetTooltips` is sugar over `MD.Tip:Kit` and a disabled
+  kit button explains itself (under the theme); the Spells pane's placement and reasons on `MD.Tip`,
+  the rank row skinned; SpellTip lines carry the shared shape; the Forever clock's hover as label /
+  value pairs; `col.tooltip` on a generic table's header. TBC shows nothing different. tipcheck
+  forever 45 (was 38), clockcheck forever 29 (was 26), reviewforever forever 22 (was 20), dashui tbc
+  67 (was 65), spelltip tbc 49 (was 48).
+
+`make check`: 68 runs, all passed, in the worktree and in a `git archive` export (63 counted runs
+against 63 expected); apicheck 0 findings over 57 files, textcheck 0 over 94. Each TBC suite's full
+output against `19ffac6` differs only by dashui's two and spelltip's one new assertion, themecheck
+tbc's token-read count (129 -> 131: `UI.Fill("tip")` read twice, as the task file says) and
+run-to-run noise (ms, table addresses, the sliced search's evaluation counts in reccheck, replayui
+and reviewui); every other TBC suite equal. In game: `docs/TESTING.md` §44 item 26 (it needs a build
+newer than the 0.16.4 install). **Next:** wave 16 (P33-).

@@ -1441,7 +1441,7 @@ the numbers.
 
 **Paste back**: the `pN` you pinned, and in words what the suggested column did differently.
 
-## 44. The refactor plan's checks (`docs/PLAN-refactor-ux.md` section 9; waves 1-14, 0.16.4)
+## 44. The refactor plan's checks (`docs/PLAN-refactor-ux.md` section 9; waves 1-15, 0.16.4)
 
 Paste back as in section 41. Out of combat unless a step says otherwise. Install **0.16.4** on each
 client (`--install-tbc` / `--install-forever`, the top of this file and §38; never cross them). The
@@ -1586,6 +1586,21 @@ W10. **The clock and the theme (P24, P25).** The mana clock behaves exactly as o
     the x. Set Text size to +2, close and reopen the window, and click a Settings checkbox at the far end
     of its label: it toggles. **TBC:** `/md` -- the window, its tabs and its checkboxes look exactly as
     before.
+
+**Wave 15 (T76; Forever unless said).** These need a build newer than the 0.16.4 install.
+
+26. **One tooltip (P32).** `/st`: hover a Settings checkbox, a Review row, a replay icon, the clock
+    and a rank row in Spells -- every tooltip has the same flat dark fill and one crisp black edge (no
+    Blizzard border); the rank row still shows the game's own spell text with the SpellTuner block
+    under it (report if the block is missing or shows twice, and whether holding Shift keeps the flat
+    look). Hover a Review row near its left end, then near its right end: the tooltip opens beside the
+    pointer, level with the row, and near the screen's right edge it opens to the pointer's left. Do
+    the same with Settings -> General -> window scale at 80 % and at 120 %: the tooltip still opens
+    just beside the pointer (not far right of it, not over it). Select a fight that does not replay
+    and hover the greyed Coach button: it says why. Hover the clock in a fight: `Out of mana in
+    ~1:20`, `Full again in ~2:10 if you stop`, no word about secrets. Hover any other addon's tooltip
+    (a bag item, a unit frame) straight after: it has its normal Blizzard border. **TBC:** `/md` --
+    every tooltip looks exactly as before.
 
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the
