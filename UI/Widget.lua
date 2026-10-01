@@ -22,6 +22,15 @@
 -- view's. A left-click opens the window out of combat only, as on Forever.
 -- The mover seam (ApplyPoint, ResetPosition, Preview) is MD.Widget, provided
 -- as MD.ClockWidget -- the Forever clock provides the same name.
+--
+-- T98 (docs/SPEC-next.md 7.2-7.3, decisions 13 and 15): the view owns the
+-- layout (db.clockLook: line / compact / bar), the panel (UI.Skin(widget,
+-- "clock") -- the style's clock role, the user's overrides) and the bar
+-- (built by the view; its source the five-second rule by default, or the
+-- real pool, the time to OOM, none; the spark). This file hands it the
+-- line's facts and the two sources it reads itself (the pool, the 5SR),
+-- rebuilds the look on CLOCK_LOOK / STYLE_CHANGED, and keeps the frame, the
+-- drag, the hover and the one visibility owner.
 local _, MD = ...
 local UI = MD.UI
 
@@ -30,33 +39,40 @@ local shown = false
 local forceUntil = 0        -- first-run / unlock preview
 local flashedThisFight = false
 
--- The bar's slot and colours (M6: Forever's 160 x 4; the five-second rule's
--- amber and green as before).
-local BAR_W, BAR_H = 160, 4
-local FSR_COLOR   = { 1, 0.67, 0.2 }   -- in the five-second rule: amber, filling
-local REGEN_COLOR = { 0.2, 1, 0.4 }    -- spirit regen running
-
--- The physical pixel the panel was last snapped to (UI.px(1, widget)); nil
--- until the first snap. UI/Clock_Forever.lua's rule: the window manager never
--- touches a clock, so the clock re-snaps itself when the scale moves.
-local snappedPx
-
-local function Snap()
-    local e = UI.px(1, widget)
-    local P = UI.PALETTE or {}
-    UI.StylizeFrame(widget, P.bg, P.border)
-    barBack:SetSize(BAR_W + 2 * e, BAR_H + 2 * e)
-    snappedPx = e
+-- T98 (docs/SPEC-next.md 7.2-7.3): what this line tells the renderer about
+-- itself -- the bar's own meaning (the five-second rule, decision 15 (a)), a
+-- pool it can read (so a ring may draw it, T104), no modelled pool, its widest
+-- label, and its own switches (db.showRest / db.showCooldown: the face
+-- already obeys them, the view is told so the two agree). The bar's slot (M6:
+-- Forever's 160 x 4) and the five-second rule's amber and green are the
+-- view's (UI/ClockView.lua) under the line layout.
+local facts = { line = "tbc", source = "fsr", poolPlain = true, model = false,
+    labelSample = "FULL", show = {} }
+local function Facts()
+    facts.show.rest = MD.db.showRest ~= false
+    facts.show.cd = MD.db.showCooldown ~= false
+    return facts
 end
 
--- T93: what the view is told about this line. The face already obeys
--- db.showRest / db.showCooldown (MD:GetClockFace gates its own secondary);
--- the switches are passed too, so the view and the face agree.
--- One table, refreshed in place at each paint (4 a second).
-local look = { labelSample = "FULL", show = {} }
+-- The bar's sources this line draws itself: the real pool (read plain here)
+-- and the seconds left in the five-second rule.
+local draw = {
+    pool = function(b)
+        local max = UnitPowerMax("player", 0)
+        b:SetMinMaxValues(0, (type(max) == "number" and max > 0) and max or 1)
+        b:SetValue(UnitPower("player", 0) or 0)
+    end,
+    fsr = function() return MD.Regen and MD.Regen:FSRRemaining() or nil end,
+}
+
+-- T93 / T98: the resolved look (UI/ClockView.lua: the layout's defaults, the
+-- style's clock role, the user's overrides), made again on CLOCK_LOOK and
+-- STYLE_CHANGED; the switches refreshed in place at each paint (4 a second).
+local look
 local function Look()
-    look.show.rest = MD.db.showRest ~= false
-    look.show.cd = MD.db.showCooldown ~= false
+    local f = Facts()
+    if not look then look = MD.ClockView.Look(f) end
+    look.show.rest, look.show.cd = f.show.rest, f.show.cd
     return look
 end
 
@@ -69,25 +85,16 @@ local function CreateWidget()
     widget:EnableMouse(false)
     widget:RegisterForDrag("LeftButton")
 
-    -- T93: the words, in three fixed segments (UI/ClockView.lua)
-    view = MD.ClockView.Build(widget, Look())
+    -- T93: the words, in three fixed segments (UI/ClockView.lua); T98: and
+    -- the layout, the panel (UI.Skin(widget, "clock")) and the bar with its
+    -- black backing, the view's -- 160 x 4 under the line layout, the
+    -- five-second rule by default
+    view = MD.ClockView.Build(widget, Look(), draw)
     widget.view = view
-
-    bar = CreateFrame("StatusBar", nil, widget)
-    bar:SetSize(BAR_W, BAR_H)
-    bar:SetPoint("BOTTOM", widget, "BOTTOM", 0, 5)
-    bar:SetStatusBarTexture(UI.whiteTexture)
+    bar, barBack = view.bar, view.barBack
     bar:SetMinMaxValues(0, 5)
     widget.bar = bar
-
-    -- a texture of the widget: the bar is a child frame and draws above it,
-    -- the backdrop beneath it
-    barBack = widget:CreateTexture(nil, "ARTWORK")
-    barBack:SetColorTexture(0, 0, 0, 1)
-    barBack:SetPoint("CENTER", bar, "CENTER", 0, 0)
     widget.barBack = barBack
-
-    Snap()
 
     widget:SetScript("OnDragStart", function(self)
         -- draggable when unlocked OR during the first-run/unlock preview
@@ -137,13 +144,12 @@ local function CreateWidget()
         if acc < 0.1 then return end
         textAcc = textAcc + acc
         acc = 0
-        if UI.px(1, widget) ~= snappedPx then Snap() end -- re-snap after a scale change
+        if UI.px(1, widget) ~= view.snappedPx then view:Snap() end -- re-snap after a scale change
 
         if not MD.db.locked or GetTime() < forceUntil then
             -- T82 (M6): the preview in the accent, over a full accent bar
             view:Message("SpellTuner - drag me", UI.RGB("accent"))
-            bar:SetValue(5)
-            bar:SetStatusBarColor(UI.RGB("accent"))
+            view:FillBar(UI.RGB("accent"))
             return
         end
 
@@ -162,15 +168,32 @@ local function CreateWidget()
             end
         end
 
-        local remaining = MD.Regen:FSRRemaining()
-        bar:SetValue(5 - remaining)
-        if remaining > 0 then
-            bar:SetStatusBarColor(unpack(FSR_COLOR))
-        else
-            bar:SetStatusBarColor(unpack(REGEN_COLOR))
-        end
+        -- T98: the bar from its source (the five-second rule by default:
+        -- amber while it fills, green once spirit regen runs) and the spark
+        view:PaintBar(GetTime())
     end)
 end
+
+-- T98: a new look (a layout, an override: CLOCK_LOOK; a style: STYLE_CHANGED)
+-- -- the view rebuilt inside the frame, never shown or hidden here. After a
+-- CLOCK_LOOK (the user's change) the words and the bar are drawn at once;
+-- after a style the next paint draws them (a style changes paint only).
+local function NewLook(repaint)
+    look = nil
+    local l = Look()
+    if not view then return end
+    view:SetLook(l)
+    if not repaint then return end
+    if not MD.db.locked or GetTime() < forceUntil then
+        view:Message("SpellTuner - drag me", UI.RGB("accent"))
+        view:FillBar(UI.RGB("accent"))
+    else
+        view:Paint(MD:GetClockFace(), l)
+        view:PaintBar(GetTime())
+    end
+end
+MD:RegisterCallback("CLOCK_LOOK", function() NewLook(true) end)
+MD:RegisterCallback("STYLE_CHANGED", function() NewLook(false) end)
 
 function MD:ApplyWidgetPosition()
     if not widget then return end
@@ -260,6 +283,8 @@ end
 MD:RegisterCallback("MD_READY", function()
     CreateWidget()
     Widget.frame = widget
+    Widget.view = view   -- T98: the renderer (a preview or a suite reads its layout)
+    Widget.facts = facts -- T98: this line's bar facts (CV.SourceOK, CV.Look)
     MD:UpdateVisibility()
 end)
 

@@ -17,6 +17,17 @@
 -- rule's manaUsersOnly); db.clock.clickThrough (F4); the pulse, once per fight
 -- under 30 s and on MD:Alert (F5); db.clock.showRest (F6). The mover seam
 -- (ApplyPoint, ResetPosition, Preview) is MD.Clock, provided as MD.ClockWidget.
+--
+-- T98 (docs/SPEC-next.md 7.2-7.3, decisions 13 and 15): the view owns the
+-- layout (db.clockLook: line / compact / bar), the panel (UI.Skin(widget,
+-- "clock") -- the style's clock role, the user's overrides) and the bar
+-- (built by the view; its source the real pool by default, handed to it by
+-- MD.API.DrawUnitPower and never read, or the modelled pool, the time to OOM,
+-- the five-second rule from the model's last priced spend, none; the spark).
+-- This file hands it the line's facts and the two sources it reads itself,
+-- rebuilds the look on CLOCK_LOOK / STYLE_CHANGED (PaintFace: words and bar,
+-- no visibility pass), and keeps the frame, the drag, the hover and the one
+-- visibility owner. MD.Clock.facts / .view / .bar / .barBack for its readers.
 local _, MD = ...
 local UI = MD.UI
 
@@ -43,8 +54,7 @@ local flashedThisFight = false
 -- seeded at MD_READY through the adapter; this file keeps no copy of it.
 
 -- T41 (docs/SPEC-forever-ui.md 4.4): the physical pixel the clock was last
--- snapped to, in its own units (UI.px(1, widget)); nil until the first snap.
-local snappedPx
+-- snapped to is the view's (view.snappedPx, T98).
 
 -- T11b (docs/tasks/T11b-clock-modes.md): out-of-combat hysteresis state --
 -- the one flag that remembers which side of the 90/95 band the clock is
@@ -164,6 +174,22 @@ MD:Provide("MinimapLines", function(hints)
     return lines
 end)
 
+-- T98: what the bar is, in the hover's words, from the look the view draws
+-- (the bar's source and the layout); none: nothing said.
+local BAR_IS = {
+    pool = "your real mana, drawn by the game",
+    model = "your modelled mana",
+    time = "the time until you are out of mana",
+    fsr = "the five seconds after each spend",
+}
+local function BarWords()
+    local l = Clock.view and Clock.view.look
+    local src = l and l.bar and l.bar.source or "pool"
+    if not BAR_IS[src] then return "" end
+    local where = (l == nil or l.layout == "line") and "The bar under the clock" or "The bar"
+    return " " .. where .. " is " .. BAR_IS[src] .. "."
+end
+
 -- Clock:HoverLines(now): the hover's lines (UI/Tip.lua's line model), or nil
 -- before the pool has a model.
 function Clock:HoverLines(now)
@@ -185,8 +211,7 @@ function Clock:HoverLines(now)
         lines[#lines + 1] = Pair("Unpriced casts", tostring(model.unpriced))
     end
     lines[#lines + 1] = {}
-    lines[#lines + 1] = { l = "~ = modelled from your casts. The bar under the clock is your real mana, "
-        .. "drawn by the game.", c = "muted", wrap = true }
+    lines[#lines + 1] = { l = "~ = modelled from your casts." .. BarWords(), c = "muted", wrap = true }
     lines[#lines + 1] = Pair("Left-click", "open the window (out of combat)")
     return lines
 end
@@ -211,27 +236,46 @@ local function ApplyPoint()
     end
 end
 
--- T41 (docs/SPEC-forever-ui.md 4.4): the theme's `bg` fill and a 1-px border
--- (UI.StylizeFrame under UI.PIXEL draws the physical-pixel edge), and the
--- bar's backing sized one physical pixel around it. The window manager never
--- touches the clock (6.1), so the clock keeps itself snapped: Paint calls this
--- whenever UI.px(1) has moved (a UI scale or display change), no reload
--- needed. Without the theme the kit's own default fill is used.
-local function Snap()
-    local e = UI.px(1, widget)
-    local P = UI.PALETTE or {}
-    UI.StylizeFrame(widget, P.bg, P.border)
-    barBack:SetSize(160 + 2 * e, 4 + 2 * e)
-    snappedPx = e
+-- T41 (docs/SPEC-forever-ui.md 4.4): the theme's `bg` fill and a 1-px border,
+-- and the bar's backing sized one physical pixel around it. The window
+-- manager never touches the clock (6.1), so the clock keeps itself snapped:
+-- Paint asks the view to whenever UI.px(1) has moved (a UI scale or display
+-- change), no reload needed. T98: the panel is the view's -- UI.Skin(widget,
+-- "clock") with the style's clock role and the user's overrides.
+
+-- T98 (docs/SPEC-next.md 7.2-7.3): what this line tells the renderer about
+-- itself -- the bar's own meaning (the real pool, decision 15 (a)), a pool it
+-- can only hand to a status bar unread (no ring may draw it), a modelled pool
+-- (the face's pct), its widest label ("~FULL", the pool is modelled) and the
+-- rest switch (F6).
+local facts = { line = "forever", source = "pool", poolPlain = false, model = true,
+    labelSample = "~FULL", show = {} }
+local function Facts()
+    local c = MD.db and MD.db.clock
+    facts.show.rest = not (c and c.showRest == false)
+    return facts
 end
 
--- T93: what the view is told about this line: the widest label ("~FULL", the
--- pool is modelled) and the rest switch (F6).
--- One table, refreshed in place at each paint.
-local look = { labelSample = "~FULL", show = {} }
+-- The bar's sources this line draws itself: the real pool, handed to the bar
+-- by the adapter and never read (MD.API.DrawUnitPower), and the five-second
+-- rule from the model's last priced spend (plain: the model's own clock).
+local draw = {
+    pool = function(b) MD.API.DrawUnitPower(b, "player", 0) end,
+    fsr = function(now)
+        local m = MD.Pool and MD.Pool.model
+        if not (m and type(m.lastSpend) == "number" and type(now) == "number") then return nil end
+        return m.lastSpend + 5 - now
+    end,
+}
+
+-- T93 / T98: the resolved look (UI/ClockView.lua: the layout's defaults, the
+-- style's clock role, the user's overrides), made again on CLOCK_LOOK and
+-- STYLE_CHANGED; the rest switch refreshed in place at each paint.
+local look
 local function Look()
-    local c = MD.db and MD.db.clock
-    look.show.rest = not (c and c.showRest == false)
+    local f = Facts()
+    if not look then look = MD.ClockView.Look(f) end
+    look.show.rest = f.show.rest
     return look
 end
 
@@ -267,26 +311,19 @@ local function CreateWidget()
     end)
 
     -- T93: the words, in three fixed segments (UI/ClockView.lua); the
-    -- label slot is as wide as this line's widest label, "~FULL"
-    view = MD.ClockView.Build(widget, Look())
+    -- label slot is as wide as this line's widest label, "~FULL". T98: and
+    -- the layout, the panel and the bar with its black backing (T41: one
+    -- physical pixel wider on every side, so the bar reads on bright
+    -- ground), the view's -- 160 x 4 under the line layout, the real pool by
+    -- default, drawn by the game in the mana blue
+    view = MD.ClockView.Build(widget, Look(), draw)
     Clock.view = view
-
-    bar = CreateFrame("StatusBar", nil, widget)
-    bar:SetSize(160, 4)
-    bar:SetPoint("BOTTOM", widget, "BOTTOM", 0, 5)
-    bar:SetStatusBarTexture(UI.whiteTexture)
-    bar:SetStatusBarColor(0.3, 0.6, 1)
+    bar, barBack = view.bar, view.barBack
+    bar:SetStatusBarColor(unpack(MD.ClockView.MANA_COLOR))
     Clock.bar = bar
-
-    -- T41: a black backing one physical pixel wider than the bar on every
-    -- side, so the bar reads on bright ground. A texture of the widget: the
-    -- bar is a child frame and draws above it, the backdrop beneath it.
-    barBack = widget:CreateTexture(nil, "ARTWORK")
-    barBack:SetColorTexture(0, 0, 0, 1)
-    barBack:SetPoint("CENTER", bar, "CENTER", 0, 0)
     Clock.barBack = barBack
+    Clock.facts = facts
 
-    Snap()
     ApplyPoint()
     Clock.frame = widget
 end
@@ -295,8 +332,10 @@ end
 -- Paint: rendering only, tick-driven -- the model is event/tick driven in
 -- Engine/ManaPool_Forever.lua, whose tick runs just before this file's.
 --------------------------------------------------------------------------------
-local function Paint(now)
-    if UI.px(1, widget) ~= snappedPx then Snap() end -- T41: re-snap after a scale change
+-- T98: the words and the bar only -- what a new look repaints at once, with
+-- no visibility pass (a layout switch never shows or hides the clock).
+local function PaintFace(now)
+    if UI.px(1, widget) ~= view.snappedPx then view:Snap() end -- T41: re-snap after a scale change
     local state
     if Previewing() then
         -- T70: the preview says what it is for (TBC's words), in the accent
@@ -306,7 +345,14 @@ local function Paint(now)
         state = MD.Pool:Project(now)
         view:Paint(MD.ManaModel.Face(state, now), Look())
     end
-    MD.API.DrawUnitPower(bar, "player", 0)
+    -- T98: the bar from its source -- the real pool by default, handed to the
+    -- bar by MD.API.DrawUnitPower and never read -- and the spark
+    view:PaintBar(now)
+    return state
+end
+
+local function Paint(now)
+    local state = PaintFace(now)
     UpdateVisibility()
     -- T93 (F5): one attention event per fight, the first time the clock reads
     -- under 30 s (TBC's widget's rule, on the model's projection)
@@ -391,6 +437,20 @@ end)
 MD:On("PLAYER_REGEN_DISABLED", function()
     flashedThisFight = false
 end)
+
+-- T98: a new look (a layout, an override: CLOCK_LOOK; a style: STYLE_CHANGED)
+-- -- the view rebuilt inside the frame, which is never shown or hidden here.
+-- After a CLOCK_LOOK (the user's change) the words and the bar are drawn at
+-- once; after a style the next tick draws them (a style changes paint only).
+local function NewLook(repaint)
+    look = nil
+    local l = Look()
+    if not view then return end
+    view:SetLook(l)
+    if repaint and MD.Pool.model then PaintFace(GetTime()) end
+end
+MD:RegisterCallback("CLOCK_LOOK", function() NewLook(true) end)
+MD:RegisterCallback("STYLE_CHANGED", function() NewLook(false) end)
 
 -- T93: the mover seam under the name both lines provide (UI/Widget.lua's
 -- MD.Widget on TBC): ApplyPoint, ResetPosition, Preview, frame.
