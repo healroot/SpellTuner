@@ -1139,5 +1139,226 @@ do
             diverged and string.format("diverged at %.1fs", diverged) or "identical until the burst"))
 end
 
+--------------------------------------------------------------------------------
+-- 12. T101 (docs/SPEC-next.md 4.2 P2, 4.5, decision 12): heals that reach
+--     several targets. Nothing records positions, so who they reach is an
+--     assumption, optimistic and stated: a `group` heal reaches every living
+--     tracked member of the caster's party; a `chain` heal its target, then up
+--     to `jumps` more -- the most injured members AT THE CAST (missing health
+--     now, ties by roster order), each `falloff` times the last; a
+--     `selfAndTarget` heal its target and the caster. The solver sums what a
+--     cast saves over everyone it reaches. Hand-made kits under a profile no
+--     file registers ("T101PRIEST": the generic one), so the solver's
+--     candidates are the kit's own families.
+--------------------------------------------------------------------------------
+local function partyState(hps, maxHP)
+    local n = #hps
+    local S2 = { nT = n, tracked = {}, dead = {}, hp = {}, maxHP = {}, hots = {}, dmg = {},
+                 threat = {}, incoming = {}, cd = {} }
+    for i = 1, n do
+        S2.tracked[i], S2.dead[i], S2.hp[i], S2.maxHP[i], S2.hots[i] = true, false, hps[i], maxHP or 10000, {}
+        local ring = { t = {}, a = {}, total = 0, hits = 0, biggest = 0 }
+        for j = 1, 64 do ring.t[j], ring.a[j] = -100, 0 end
+        S2.dmg[i] = ring
+    end
+    return S2
+end
+local GH, PH, CH, BH = 910101, 910102, 910103, 910104
+local function groupKit()
+    return { crit = 0, profile = "T101PRIEST", tree = {}, caster = {
+        [GH] = { family = "GreaterHeal", rank = 1, type = "direct", cost = 300, cast = 2.5, castBase = 2.5,
+                 gcd = 1.5, direct = 1000, directCrit = 0 },
+        [PH] = { family = "PrayerOfHealing", rank = 1, type = "group", cost = 400, cast = 3, castBase = 3,
+                 gcd = 1.5, direct = 500, directCrit = 0 },
+    } }
+end
+local function chainKit()
+    return { crit = 0, profile = "T101SHAMAN", tree = {}, caster = {
+        [CH] = { family = "ChainHeal", rank = 1, type = "chain", cost = 100, cast = 2.5, castBase = 2.5,
+                 gcd = 1.5, direct = 1000, directCrit = 0, jumps = 2, falloff = 0.5 },
+    } }
+end
+-- what one deposit of `amount` at `at` saves on a target at `hp` (no damage)
+local function savedBy(hp, amount, at)
+    return SV.Gap(hp, 10000, 0, nil, {}, 0, nil, 0, 0, 12)
+        - SV.Gap(hp, 10000, 0, nil, {}, 0, { { at, amount } }, 1, 0, 12)
+end
+
+do
+    -- PoH (500 a member for 400 mana) beats Greater Heal (1000 for 300) only
+    -- when three or more of the party are hurt
+    local kitG = groupKit()
+    local plan = SV.NewPlan({ GreaterHeal = GH, PrayerOfHealing = PH }, { minValue = 0, horizon = 12 }, kitG)
+    local picks = {}
+    for hurt = 1, 5 do
+        local hps = {}
+        for i = 1, 5 do hps[i] = (i <= hurt) and 2000 or 10000 end
+        local S2 = partyState(hps)
+        local _, id = plan:Best(S2, 0, 99999, "caster", 0)
+        picks[hurt] = (id == PH) and "PoH" or (id == GH) and "GH" or tostring(id)
+    end
+    check("T101: PoH beats Greater Heal only with 3+ hurt",
+        picks[1] == "GH" and picks[2] == "GH" and picks[3] == "PoH" and picks[4] == "PoH"
+            and picks[5] == "PoH",
+        table.concat(picks, " "))
+end
+
+-- the chain cast at t = 1 on target 1, in the engine; `extra` damage events
+local function chainRun(extra)
+    local kitC = chainKit()
+    local ev = emptyEv()
+    for i, e in ipairs(extra or {}) do
+        ev.t[i], ev.kind[i], ev.tgt[i], ev.amt[i], ev.x[i] = e[1], K.DMG, e[2], e[3], 0
+    end
+    local sc = { dur = 6, pool = 1000, initial = { mana = 1000, apiBase = 0, apiCasting = 0 },
+                 kit = kitC, floor = 0.30, ev = ev, script = { { 1, CH, 100, 1 } },
+                 targets = {
+                     { name = "A", maxHP = 10000, hp0 = 5000, tracked = true },
+                     { name = "B", maxHP = 10000, hp0 = 7000, tracked = true },
+                     { name = "C", maxHP = 10000, hp0 = 9000, tracked = true },
+                     { name = "D", maxHP = 10000, hp0 = 8000, tracked = true } } }
+    local got = {}
+    SM:Run(sc, nil, { critMode = "ev", onHeal = function(at, ti, amount)
+        got[#got + 1] = string.format("%s:%g", sc.targets[ti].name, amount) end })
+    return table.concat(got, " ")
+end
+
+do
+    -- B misses 3000 and D 2000 at the cast: the two jumps go there. A burst on
+    -- C AFTER the cast moves nothing; one BEFORE it makes C the most injured.
+    local plain = chainRun()
+    local after = chainRun({ { 2, 3, 6000 } })
+    local before = chainRun({ { 0.5, 3, 6000 } })
+    check("T101: Chain Heal's jumps go to the most injured at the cast",
+        plain == "A:1000 B:500 D:250" and after == plain and before == "A:1000 C:500 B:250",
+        string.format("plain [%s] burst after [%s] burst before [%s]", plain, after, before))
+end
+
+do
+    -- each jump is `falloff` times the last, in the engine (1000, 500, 250) and
+    -- in what the solver says the cast saves
+    local plain = chainRun()
+    local kitC = chainKit()
+    local plan = SV.NewPlan({ ChainHeal = CH }, { minValue = 0, horizon = 12 }, kitC)
+    local S2 = partyState({ 5000, 7000, 9000, 8000 })
+    local _, id, tgt, saved = plan:Best(S2, 0, 99999, "caster", 0)
+    local want = savedBy(5000, 1000, 2.5) + savedBy(7000, 500, 2.5) + savedBy(8000, 250, 2.5)
+    check("T101: the falloff: 1, 0.5, 0.25 of the heal, in the engine and the solver",
+        plain == "A:1000 B:500 D:250" and id == CH and tgt == 1 and saved ~= nil
+            and math.abs(saved - want) < 1e-6,
+        string.format("engine [%s]; solver id=%s tgt=%s saved=%s want=%.1f", plain, tostring(id),
+            tostring(tgt), tostring(saved), want))
+end
+
+do
+    -- a group cast: the engine lands it on the living members of the caster's
+    -- party (the caster included; not the dead one, not another group's), and
+    -- the solver's saving is the sum over the living members only
+    local kitG = groupKit()
+    local ev = emptyEv()
+    ev.t[1], ev.kind[1], ev.tgt[1], ev.amt[1], ev.x[1] = 0.5, K.DIED, 3, 0, 0
+    local sc = { dur = 6, pool = 1000, initial = { mana = 1000, apiBase = 0, apiCasting = 0 },
+                 kit = kitG, floor = 0.30, ev = ev, script = { { 1, PH, 400, 2 } },
+                 targets = {
+                     { name = "Me", maxHP = 10000, hp0 = 6000, tracked = true, caster = true, group = 1 },
+                     { name = "Tank", maxHP = 10000, hp0 = 6000, tracked = true, group = 1 },
+                     { name = "Dead", maxHP = 10000, hp0 = 6000, tracked = true, group = 1 },
+                     { name = "Rogue", maxHP = 10000, hp0 = 6000, tracked = true, group = 1 },
+                     { name = "Other", maxHP = 10000, hp0 = 6000, tracked = true, group = 2 } } }
+    local got = {}
+    SM:Run(sc, nil, { critMode = "ev", onHeal = function(at, ti, amount)
+        got[#got + 1] = string.format("%s:%g", sc.targets[ti].name, amount) end })
+    table.sort(got)
+    local onlyPoH = { crit = 0, profile = "T101PRIEST", tree = {}, caster = { [PH] = kitG.caster[PH] } }
+    local plan = SV.NewPlan({ PrayerOfHealing = PH }, { minValue = 0, horizon = 12 }, onlyPoH)
+    local S2 = partyState({ 3000, 6000, 2000, 9000 })
+    S2.dead[3] = true
+    local _, id, _, saved = plan:Best(S2, 0, 99999, "caster", 0)
+    local want = savedBy(3000, 500, 3) + savedBy(6000, 500, 3) + savedBy(9000, 500, 3)
+    check("T101: a group cast sums over living party members only",
+        table.concat(got, " ") == "Me:500 Rogue:500 Tank:500" and id == PH and saved ~= nil
+            and math.abs(saved - want) < 1e-6,
+        string.format("engine [%s]; solver id=%s saved=%s want=%.1f", table.concat(got, " "),
+            tostring(id), tostring(saved), want))
+end
+
+do
+    -- the coach card says the group assumption whenever the plan binds (or the
+    -- recording casts) a heal that reaches several targets -- and only then
+    local rec = MD.FightRecorder:Get(1)
+    local card, _, cls, best = SP.Coach(rec, { force = true })
+    local line = SP.GROUP_ASSUMPTION
+    local function has(lines)
+        for _, l in ipairs(lines or {}) do
+            if type(l) == "string" and line and l:find(line, 1, true) then return true end
+        end
+        return false
+    end
+    local druidHas = has(card)
+    local kitG = MD.RankMath:SpellKit({ live = true })
+    local kit2 = { crit = kitG.crit, profile = kitG.profile, tree = kitG.tree, caster = {} }
+    for id, e in pairs(kitG.caster) do kit2.caster[id] = e end
+    kit2.caster[PH] = groupKit().caster[PH]
+    local binds2 = {}
+    for fam, id in pairs(best and best.binds or {}) do binds2[fam] = id end
+    binds2.PrayerOfHealing = PH
+    local plan2 = SP.NewPlan(binds2, best and best:Params() or {}, kit2)
+    local r0 = { manaSpent = 100, manaUsed = 100, healed = 100, overhealed = 0, lowestMana = 500,
+                 lowest = { hp = 0.5 }, waitFraction = 0 }
+    local okCard, lines2 = pcall(SP.CardLines, rec, plan2, r0, r0, {}, cls, nil, nil)
+    local texts = {}
+    for _, l in ipairs(okCard and lines2 or {}) do texts[#texts + 1] = l.text end
+    check("T101: the card carries the group assumption line",
+        type(line) == "string" and line:find("upper bound", 1, true) ~= nil and druidHas == false
+            and okCard and has(texts),
+        string.format("line=%s druid card has it=%s group card=%s", tostring(line), tostring(druidHas),
+            okCard and tostring(has(texts)) or tostring(lines2)))
+end
+
+do
+    -- causality unchanged with group and chain heals in play: a burst at 40 s
+    -- changes nothing the solver casts before it
+    local kitM = { crit = 0, profile = "T101SHAMAN", tree = {}, caster = {
+        [GH] = groupKit().caster[GH], [PH] = groupKit().caster[PH], [CH] = chainKit().caster[CH] } }
+    local bindsM = { GreaterHeal = GH, PrayerOfHealing = PH, ChainHeal = CH }
+    local function scenario(burst)
+        local ev = emptyEv()
+        local n = 0
+        local function add(at, tgt, amt)
+            n = n + 1
+            ev.t[n], ev.kind[n], ev.tgt[n], ev.amt[n], ev.x[n] = at, K.DMG, tgt, amt, 0
+        end
+        for at = 1, 39, 2 do add(at, 1, 900); add(at + 0.5, 2, 400); add(at + 1, 3, 300) end
+        if burst then for at = 40, 48 do add(at, 2, 1500) end end
+        return { dur = 60, pool = 30000, initial = { mana = 30000, apiBase = 10, apiCasting = 4 },
+                 kit = kitM, floor = 0.30, ev = ev,
+                 targets = {
+                     { name = "T", role = "TANK", maxHP = 10000, hp0 = 10000, tracked = true },
+                     { name = "M", role = "DAMAGER", maxHP = 10000, hp0 = 10000, tracked = true },
+                     { name = "Me", role = "HEALER", maxHP = 10000, hp0 = 10000, tracked = true, caster = true } } }
+    end
+    local function castsOf(sc)
+        local out, kinds = {}, {}
+        SP.RunPlan(sc, SV.NewPlan(bindsM, { minValue = 0.05, horizon = 12 }, kitM),
+            { critMode = "ev", onCast = function(_, at, id)
+                kinds[id] = true
+                out[#out + 1] = string.format("%.2f:%d", at, id) end })
+        return out, kinds
+    end
+    local quiet, kindsQ = castsOf(scenario(false))
+    local loud = castsOf(scenario(true))
+    local diverged
+    for j = 1, math.min(#quiet, #loud) do
+        local at = tonumber(quiet[j]:match("^([%d%.]+)"))
+        if quiet[j] ~= loud[j] then diverged = diverged or at end
+    end
+    local multi = (kindsQ[PH] and 1 or 0) + (kindsQ[CH] and 1 or 0)
+    check("T101: causality unchanged with group and chain heals",
+        #quiet > 0 and multi > 0 and (diverged == nil or diverged >= 39.9),
+        string.format("%d casts, PoH %s, Chain Heal %s; %s", #quiet, tostring(kindsQ[PH] == true),
+            tostring(kindsQ[CH] == true),
+            diverged and string.format("diverged at %.1fs", diverged) or "identical until the burst"))
+end
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 if #fails > 0 then for _, m in ipairs(fails) do print("  FAIL " .. m) end; os.exit(1) end

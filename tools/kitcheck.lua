@@ -234,15 +234,28 @@ check("Swiftmend eats the whole HoT, Forever's rule",
         tostring(sm and sm.swiftmendRejuv), tostring(sm and sm.swiftmendRegrowth), tostring(sm and sm.cast)))
 
 --------------------------------------------------------------------------------
--- 4: a rank not known, a damage spell and a family the engine cannot model
---    are not in the kit
+-- 4: a rank not known and a damage spell are not in the kit. T101 (docs/
+--    SPEC-next.md 4.2 P2): Wild Growth -- a heal family the druid profile
+--    does not name -- is, by its shape: a `group` HoT on the caster's party,
+--    its total in uniform ticks (1 s, as 7 s is no multiple of 3: VERIFY,
+--    never an invented front-loaded curve), named from the book; and
+--    Tranquility's text reaches the party, so its channel lands on it.
 --------------------------------------------------------------------------------
-check("a rank not known, a damage spell and a family the engine cannot model are not in the kit",
-    kit.caster[90205] == nil and kit.caster[5176] == nil and kit.caster[90204] == nil
-    and Contains(SD.skipped, "Wild Growth"),
-    string.format("R2=%s wrath=%s wildgrowth=%s skipped=%s",
-        tostring(kit.caster[90205]), tostring(kit.caster[5176]), tostring(kit.caster[90204]),
-        table.concat(SD.skipped or {}, ",")))
+do
+    local wg = kit.caster[90204]
+    local tq = kit.caster[90203]
+    check("a rank not known and a damage spell are not in the kit; Wild Growth is, a group HoT (T101)",
+        kit.caster[90205] == nil and kit.caster[5176] == nil
+        and wg and wg.type == "group" and wg.family == "WildGrowth" and wg.tickPeriod == 1 and wg.ticks == 7
+        and wg.tick == 97 and wg.duration == 7 and wg.direct == nil and not wg.dataMissing
+        and not Contains(SD.skipped, "Wild Growth")
+        and SD.families.WildGrowth and SD.families.WildGrowth.label == "Wild Growth"
+        and tq and tq.party == true,
+        string.format("R2=%s wrath=%s wildgrowth=%s/%s/%sx%s every %s tranquility party=%s skipped=%s",
+            tostring(kit.caster[90205]), tostring(kit.caster[5176]), tostring(wg and wg.type),
+            tostring(wg and wg.family), tostring(wg and wg.ticks), tostring(wg and wg.tick),
+            tostring(wg and wg.tickPeriod), tostring(tq and tq.party), table.concat(SD.skipped or {}, ",")))
+end
 
 --------------------------------------------------------------------------------
 -- 5: the spell index answers what the engine asks
@@ -497,6 +510,110 @@ do
         type(MD.KitLive) == "function" and live == true and type(n) == "number" and n > 0,
         string.format("provided=%s live=%s n=%s", tostring(type(MD.KitLive) == "function"),
             tostring(live), tostring(n)))
+end
+
+--------------------------------------------------------------------------------
+-- T101 (docs/SPEC-next.md 4.2 P2, 4.3, 4.5): the kit is built from the book by
+-- SHAPE for a class with no profile file -- a paladin, a shaman and a priest
+-- log in with their level 60 books (tools/stub_books.lua, talentsforever's
+-- extract of the beta client's own texts) and each book becomes a kit that
+-- validates, stamped with the class, priced from the texts: `group`, `chain`
+-- and `selfAndTarget` entries for the heals that reach several targets, the
+-- book's own cooldowns on the entries, and the heals no type models yet
+-- (absorbs, a heal on the caster alone, one only below a health line) named
+-- in the skipped list instead of guessed into a type.
+--------------------------------------------------------------------------------
+local Books = dofile(here .. "/stub_books.lua")
+local function LogIn(class)
+    S.units.player.class = class
+    MD:DetectProfile()
+    MD:Fire("CORE_LOGIN")
+end
+
+-- The class's kit, its validation, each family's highest known rank's entry,
+-- the skipped names, KitLive, and the index a snapshot of it restores.
+local function ClassKit(class)
+    local undo = Books.Install(Books.Load(class:lower()), { alone = true, MD = MD })
+    LogIn(class)
+    local out = { top = {}, skipped = {} }
+    local built, k = pcall(function() return MD.RankMath:SpellKit() end)
+    out.built, out.kit = built, built and k or nil
+    if not built then out.err = tostring(k) end
+    if built then
+        out.valid, out.problems = Kit.Validate(k)
+        for fam, id in pairs(MD.SpellData.maxRank or {}) do out.top[fam] = k.caster[id] end
+        for _, name in ipairs(MD.SpellData.skipped or {}) do out.skipped[name] = true end
+        out.labels = {}
+        for fam, def in pairs(MD.SpellData.families or {}) do out.labels[fam] = def.label end
+        if type(MD.KitLive) == "function" then out.live, out.liveN = MD.KitLive() end
+        local snap = Kit.Snapshot(k)
+        out.snapProfile = snap.profile
+        local back = RM.KitRestore(snap)
+        out.backProfile = back.profile
+        out.restored = {}
+        for fam, def in pairs(MD.SpellData.families or {}) do out.restored[fam] = def.type end
+    end
+    undo()
+    LogIn("DRUID")
+    MD.RankMath:SpellKit()
+    return out
+end
+local function Is(e, t) return type(e) == "table" and e.type == t and not e.dataMissing end
+
+-- 17: a paladin
+do
+    local c = ClassKit("PALADIN")
+    local hl, fl, hs = c.top.HolyLight, c.top.FlashOfLight, c.top.HolyShock
+    check("T101: a paladin's book becomes a valid kit",
+        c.built and c.valid and c.kit.profile == "PALADIN"
+        and Is(hl, "direct") and hl.direct == 1580 and hl.cast == 2.5 and hl.castBase == 2.5
+        and Is(fl, "direct") and Is(hs, "direct") and hs.cooldown == 10 and hl.cooldown == nil
+        and c.top.LightsVigil == nil and c.labels.HolyLight == "Holy Light"
+        and c.live == true and c.snapProfile == "PALADIN" and c.backProfile == "PALADIN"
+        and c.restored.HolyLight == "direct" and c.restored.HolyShock == "direct",
+        string.format("built=%s valid=%s first=%s profile=%s HL=%s FoL=%s HS cd=%s live=%s restored=%s",
+            tostring(c.built), tostring(c.valid), tostring(c.err or (c.problems and c.problems[1])),
+            tostring(c.kit and c.kit.profile), tostring(hl and hl.direct), tostring(fl and fl.type),
+            tostring(hs and hs.cooldown), tostring(c.live), tostring(c.restored and c.restored.HolyLight)))
+end
+
+-- 18: a shaman -- Chain Heal a chain of three at 50 %, Riptide's 6 s cooldown
+do
+    local c = ClassKit("SHAMAN")
+    local ch, rt, hw = c.top.ChainHeal, c.top.Riptide, c.top.HealingWave
+    check("T101: a shaman's book becomes a valid kit",
+        c.built and c.valid and c.kit.profile == "SHAMAN"
+        and Is(ch, "chain") and ch.direct == 506 and ch.jumps == 2 and ch.falloff == 0.5 and ch.castBase == 2.5
+        and Is(rt, "hybrid") and rt.cooldown == 6 and rt.direct == 841 and rt.ticks == 5 and rt.tickPeriod == 3
+        and Is(hw, "direct") and Is(c.top.LesserHealingWave, "direct") and c.live == true
+        and c.restored.ChainHeal == "chain",
+        string.format("built=%s valid=%s first=%s chain=%s/%s/%s riptide=%s/%s hw=%s",
+            tostring(c.built), tostring(c.valid), tostring(c.err or (c.problems and c.problems[1])),
+            tostring(ch and ch.type), tostring(ch and ch.jumps), tostring(ch and ch.falloff),
+            tostring(rt and rt.type), tostring(rt and rt.cooldown), tostring(hw and hw.type)))
+end
+
+-- 19: a priest -- Prayer of Healing and Holy Nova `group`, Binding Heal
+--     `selfAndTarget`; the shield, Desperate Prayer (the caster alone), Divine
+--     Grace (below 50 % only) and Contingency Plan skipped by name
+do
+    local c = ClassKit("PRIEST")
+    local poh, nova, bind, renew = c.top.PrayerOfHealing, c.top.HolyNova, c.top.BindingHeal, c.top.Renew
+    check("T101: a priest's book becomes a valid kit",
+        c.built and c.valid and c.kit.profile == "PRIEST"
+        and Is(poh, "group") and poh.direct == 649 and poh.castBase == 3
+        and Is(nova, "group") and nova.direct == 311
+        and Is(bind, "selfAndTarget") and bind.direct == 841
+        and Is(renew, "hot") and renew.ticks == 5 and renew.tickPeriod == 3
+        and Is(c.top.GreaterHeal, "direct")
+        and c.skipped["Power Word: Shield"] and c.skipped["Desperate Prayer"] and c.skipped["Divine Grace"]
+        and c.skipped["Contingency Plan"] and c.top.PowerWordShield == nil
+        and c.snapProfile == "PRIEST" and c.restored.PrayerOfHealing == "group",
+        string.format("built=%s valid=%s first=%s poh=%s/%s nova=%s bind=%s renew=%s skipped=%s",
+            tostring(c.built), tostring(c.valid), tostring(c.err or (c.problems and c.problems[1])),
+            tostring(poh and poh.type), tostring(poh and poh.direct), tostring(nova and nova.type),
+            tostring(bind and bind.type), tostring(renew and renew.type),
+            tostring(c.skipped["Power Word: Shield"])))
 end
 
 Footer()

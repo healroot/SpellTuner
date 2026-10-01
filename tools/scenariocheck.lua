@@ -532,6 +532,83 @@ do
             hotsT, hotsP, tostring(named)))
 end
 
+--------------------------------------------------------------------------------
+-- T101 (docs/SPEC-next.md 4.2 P2, 4.5): a heal that reaches several targets
+-- claims one heal per target it reaches, all at the same instant; and an own
+-- heal no kit entry claims is replayed as recorded -- the healer's, not
+-- somebody else's (principle 8).
+--------------------------------------------------------------------------------
+-- MiniRec's two plus a third party member (a rogue), every one tracked.
+local function MiniRec3(events)
+    local r = MiniRec(events)
+    r.roster[3] = { name = "Rogue", guid = "Party-2-guid", class = "ROGUE", role = "DAMAGER",
+                    level = 64, maxHP = 1500, maxSecret = false }
+    r.tracked = { 1, 2, 3 }
+    return r
+end
+
+-- 18: one Prayer of Healing (a `group` entry, shaped as Kit_Forever.lua builds
+--     it from the book) cast on the tank: the three heals landing at its
+--     success, one on each party member, are three same-instant claims -- all
+--     own, none foreign -- and the replay heals the three of them.
+do
+    local PH = 96101
+    local poh = { family = "PrayerOfHealing", rank = 1, type = "group", gcd = 1.5, cost = 400, cast = 3,
+                  castBase = 3, direct = 300, directCrit = 0 }
+    local pohKit, undo = KitWith({ [PH] = poh })
+    local r = MiniRec3({
+        { 1, 1, 1, 350, 0 }, { 1, 1, 2, 500, 0 }, { 1, 1, 3, 400, 0 },
+        { 5, 6, 2, 0, PH }, { 8, 3, 2, 400, PH },
+        { 8, 15, 1, 300, 0 }, { 8, 15, 2, 300, 0 }, { 8, 15, 3, 300, 0 },
+        { 9, 15, 2, 120, 0 },                           -- somebody else's heal
+    })
+    local own, counts = SM.AttributeHeals(r, pohKit)
+    local sc3 = SM.ScenarioFromRecording(r, pohKit)
+    local run = SM:Run(sc3, nil, { critMode = "ev" })
+    local healed = run.healByFamily and run.healByFamily.PrayerOfHealing or 0
+    local fheals = CountEvent(sc3, SM.K.FHEAL)
+    local ownAt8 = 0
+    for i = 1, r.n do if r.ev.kind[i] == 15 and r.ev.t[i] == 8 and own[i] then ownAt8 = ownAt8 + 1 end end
+    undo()
+    check("T101: three same-instant claims for one PoH",
+        counts.own == 3 and counts.ownDirect == 3 and counts.foreign == 1 and ownAt8 == 3
+        and fheals == 1 and math.abs(healed - 900) < 1e-6,
+        string.format("own=%s direct=%s foreign=%s at8=%d fheals=%d healed=%s", tostring(counts.own),
+            tostring(counts.ownDirect), tostring(counts.foreign), ownAt8, fheals, tostring(healed)))
+end
+
+-- 19: a cast of a heal the kit does not carry (a heal on the caster only --
+--     Desperate Prayer's reach, which no kit type models) is the healer's
+--     own: its heal is replayed exactly as recorded (SM.K.OWNREPLAY, never a
+--     foreign heal), counted as own, and the engine lands it.
+do
+    local DP = 96102
+    S.AddSpell(DP, "Desperate Prayer", "Rank 1",
+        function() return "Instantly heals the caster for 300 to 340." end, { cast = 0, cost = 0, level = 10 })
+    MD.Book:MarkDirty()
+    local live = MD.RankMath:SpellKit()
+    local inKit = live.caster[DP] ~= nil or MD.SpellData.spells[DP] ~= nil
+    local r = MiniRec({
+        { 1, 1, 1, 330, 0 },
+        { 5, 3, 1, 0, DP },
+        { 5, 15, 1, 320, 0 },
+    })
+    local own, counts = SM.AttributeHeals(r, live)
+    local sc4 = SM.ScenarioFromRecording(r, live)
+    local replayed = SM.K.OWNREPLAY and FindEvent(sc4, SM.K.OWNREPLAY)
+    local fheals = CountEvent(sc4, SM.K.FHEAL)
+    local run = SM:Run(sc4, nil, { critMode = "ev" })
+    local landed = run.healByFamily and run.healByFamily.recorded or 0
+    local healIdx = HealAt(r, 5)
+    check("T101: an unclaimed own heal is replayed as recorded",
+        not inKit and healIdx and own[healIdx] == true and counts.recorded == 1 and counts.foreign == 0
+        and replayed and replayed.amt == 320 and replayed.tgt == 1 and replayed.t == 5 and fheals == 0
+        and math.abs(landed - 320) < 1e-6,
+        string.format("inKit=%s own=%s recorded=%s foreign=%s replayed=%s fheals=%d landed=%s",
+            tostring(inKit), tostring(healIdx and own[healIdx]), tostring(counts.recorded),
+            tostring(counts.foreign), tostring(replayed and replayed.amt), fheals, tostring(landed)))
+end
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("  FAIL " .. f) end
 if #fails > 0 then os.exit(1) end

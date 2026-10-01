@@ -847,6 +847,67 @@ do
     st9.frame:Hide()
 end
 
+--------------------------------------------------------------------------------
+-- T101 (docs/SPEC-next.md 4.2 P2): practice for a class with no profile file.
+-- A paladin logs in with the level 60 paladin book (tools/stub_books.lua); the
+-- kit is built from the book by shape, Practice names the families from the
+-- kit, and the game's rules hold -- Holy Shock's own 10 s cooldown (the book's
+-- tooltip line) refuses a second press inside it.
+--------------------------------------------------------------------------------
+do
+    local Books = dofile(here .. "/stub_books.lua")
+    local undo = Books.Install(Books.Load("paladin"), { alone = true, MD = MD })
+    local function LogIn(class)
+        S.units.player.class = class
+        MD:DetectProfile()
+        MD:Fire("CORE_LOGIN")
+    end
+    LogIn("PALADIN")
+    MD.RankMath:SpellKit()
+    MD.db.practiceBinds = { { key = "1", family = "HolyLight" }, { key = "2", family = "HolyShock" } }
+    local binds = PR.Binds()
+    local hl = PR.SpellFor({ family = "HolyLight" })
+    local fam, rank = PR.ParseSpellText("Holy Light(Rank 9)")
+    check("T101: a paladin binds Holy Light",
+        #binds == 2 and hl ~= nil and hl == SD.maxRank.HolyLight and PR.InBook({ family = "HolyLight" })
+        and PR.FamilyLabel("HolyLight") == "Holy Light" and PR.FamilyLabel("HolyShock") == "Holy Shock"
+        and fam == "HolyLight" and rank == 9 and SD.spells[hl] and SD.spells[hl].family == "HolyLight",
+        string.format("binds=%d hl=%s maxRank=%s label=%s parsed=%s,%s", #binds, tostring(hl),
+            tostring(SD.maxRank.HolyLight), tostring(PR.FamilyLabel("HolyLight")), tostring(fam), tostring(rank)))
+
+    local shock = PR.SpellFor({ family = "HolyShock" })
+    local setupP = PR.DefaultSetup("2", 60)
+    setupP.dur, setupP.fixedSeed = 16, 4
+    local errs = {}
+    local sp = PR.New(PR.CopySetup(setupP), { seed = setupP.fixedSeed, noStore = true,
+        onError = function(m) errs[#errs + 1] = m end })
+    sp:Start()
+    local presses = { { 1.0, shock, 1 }, { 4.0, shock, 1 }, { 12.0, shock, 1 } }
+    local nextP = 1
+    while sp.state == "running" do
+        local p = presses[nextP]
+        if p and sp.clock >= p[1] - 1e-9 then
+            sp:Cast(p[2], p[3])
+            nextP = nextP + 1
+        end
+        sp:Update(0.05)
+    end
+    local shocks = 0
+    local recP = sp.rec
+    for i = 1, (recP and recP.n or 0) do
+        if recP.ev.kind[i] == MD.SimModel.K.OWNCAST and recP.ev.x[i] == shock then shocks = shocks + 1 end
+    end
+    local entry = MD.RankMath:SpellKit().caster[shock]
+    check("T101: a paladin's Holy Shock on cooldown is refused",
+        shock ~= nil and entry and entry.cooldown == 10 and #errs == 1 and errs[1] == "Spell is not ready yet"
+        and shocks == 2,
+        string.format("shock=%s cooldown=%s errors=[%s] casts=%d", tostring(shock),
+            tostring(entry and entry.cooldown), table.concat(errs, "; "), shocks))
+    undo()
+    LogIn("DRUID")
+    MD.RankMath:SpellKit()
+end
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("  FAIL " .. f) end
 if #fails > 0 then os.exit(1) end
