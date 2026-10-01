@@ -877,6 +877,24 @@ Each has a recommendation; the tasks implement the recommendation unless you say
 
 ---
 
+### 9.1 The author's answers (2026-10-01)
+
+- **Decision 1 (styles): all four now** -- Flat, Ellesmere, Modern **and Classic** ("Lets do all
+  four, check classicUI addon ... to see how they mimik clasic ui"). A web study of the ClassicUI addon
+  (`docs/research/next/R-classicui.md`) feeds T108; Classic still waits for `== art` from both clients
+  (T87's report) because its textures must exist, but no longer for a separate mockup approval.
+- **Decision 7 (coach classes): Paladin -> Shaman -> Priest**, after reading fixes for every class.
+- **Decision 13 (clock layouts): Line, Compact, Bar and Ring**; no Two-line (T112 not scheduled).
+- **Decision 8 (TBC other classes): tables and tooltips only, scheduled last** (T111 runs; the TBC
+  coach stays druid).
+- **Every other decision as recommended** (2-6, 9-12, 14-22). Mockups M7-M9 taken as approved with
+  these choices.
+- **Concurrency:** the author allows six agents at once (2026-10-01), so a wave runs as one batch of
+  up to six file-disjoint tasks instead of decision 21's two batches of three.
+- **Waits on the author's in-game probe (T87's new sections on both clients):** T103 (Modern, `==
+  art`), T104 (ring, Q-clock-4), T105 (mana sources, `== auras`), T108 (Classic, `== art`), T109
+  (absorbs) and the `BASE_CD_READS` flip; everything else is scheduled now.
+
 ## 10. Risks and what each costs
 
 Each risk names where it lives, what it costs if it happens, and what this spec does about it. The
