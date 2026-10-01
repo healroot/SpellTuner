@@ -1,11 +1,30 @@
--- tools/run.sh tools/probecheck.lua
+-- tools/run.sh [--flavour forever|tbc] tools/probecheck.lua
 --
 -- T0's own harness: loads the TBC line the way tools/migrate.lua does (step
 -- 1), then the Forever line fresh under the "forever" stub profile through a
 -- scripted fight (step 2), then a fresh Forever load with SavedVariables
 -- already sitting in _G, the way a real client hands them back (step 3).
+--
+-- T87 (docs/SPEC-next.md decision 22): the probe is on both clients, so this
+-- runs under both flavours. Under forever: step 1 and every Forever step, then
+-- step 15 (the five sections the next round asks for). Under tbc: step 1, then
+-- the probe on the TBC line's own file list (the T87 block right after step 1)
+-- -- and nothing of the Forever steps, which end the run there.
 local here = arg[0]:match("^(.*)/[^/]+$")
 local ROOT = arg[1] or "."
+
+HARNESS_FLAVOUR = { "forever", "tbc" }
+-- the harness's own rule: ST_FLAVOUR picks among the declared ones, the first
+-- when none is named
+local FLAVOUR = os.getenv("ST_FLAVOUR")
+if FLAVOUR == nil or FLAVOUR == "" then FLAVOUR = "forever" end
+if FLAVOUR ~= "forever" and FLAVOUR ~= "tbc" then
+    print("skip: probecheck.lua runs under forever, tbc only")
+    os.exit(3)
+end
+-- T87: the art and clock fakes (textures, atlases, GetFileIDFromPath,
+-- SetRotation, the colour curve, the colour picker), installed per step
+local ART = dofile(here .. "/stub_art.lua")
 
 local ok, fails = 0, {}
 local function check(name, cond, detail)
@@ -104,10 +123,42 @@ local function ProbeFrame(stub)
     return nil
 end
 
+-- T87: the sections the next round adds, in the order Run() prints them,
+-- between == windows and == to do.
+local NEXT_HEADERS = { "\n== windows\n", "\n== art\n", "\n== hosts\n", "\n== clock\n",
+    "\n== cooldowns\n", "\n== auras\n", "\n== to do\n" }
+local function InOrder(report, markers)
+    if type(report) ~= "string" then return false end
+    local pos = 0
+    for _, marker in ipairs(markers) do
+        local s = report:find(marker, pos + 1, true)
+        if not s then return false end
+        pos = s
+    end
+    return true
+end
+
+-- T87: a borrowed LibStub as a host addon leaves it -- a callable table with
+-- its own minor and GetLibrary(major, silent) answering the instance and its
+-- minor, nil for a library nobody loaded.
+local function FakeLibStub(libs)
+    local LS = { minor = 2, libs = {}, minors = {} }
+    for name, minor in pairs(libs) do LS.libs[name] = { name = name }; LS.minors[name] = minor end
+    function LS:GetLibrary(major, silent)
+        if not self.libs[major] then
+            if not silent then error("Cannot find a library instance of " .. tostring(major)) end
+            return nil
+        end
+        return self.libs[major], self.minors[major]
+    end
+    return setmetatable(LS, { __call = LS.GetLibrary })
+end
+
 --------------------------------------------------------------------------------
 -- Step 1: the TBC line
 --------------------------------------------------------------------------------
 HARNESS_FLAVOUR = "tbc"
+HARNESS_FORCE = true -- T87: the TBC line inside a forever run as well as a tbc one
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
 local MD1 = dofile(here .. "/harness.lua"); arg[0] = a0
 
@@ -128,6 +179,197 @@ check("the TBC line reads its version from SpellTuner_TBC.toc",
 check("Client/API.lua loads under the TBC line",
     type(MD1.API) == "table" and type(MD1.API.Has) == "function"
     and MD1.API.Has("UnitHealth") and _G.SPELLTUNER_TOC == "TBC")
+
+--------------------------------------------------------------------------------
+-- T87 (docs/SPEC-next.md decision 22, risk X10): the probe on the TBC line --
+-- a Forever-shaped file on a 20506 client. The TBC harness's own load (its file
+-- list, its UI filter, its login), with Client/Probe.lua where the integrator
+-- puts it on SpellTuner_TBC.toc -- the last line, the place the Forever TOCs
+-- give it -- while the TOC does not list it yet; once it does, the TOC's own
+-- list is loaded unchanged. The stub's TBC profile: no C_Secrets, no
+-- C_SpellBook, no C_TooltipInfo, no C_DamageMeter, no C_UnitAuras.
+--------------------------------------------------------------------------------
+if FLAVOUR == "tbc" then
+    local function KeepForTbc(rel) -- tools/harness.lua's rule
+        if rel:sub(1, 3) == "UI/" then return rel == "UI/Summary.lua" end
+        if rel:sub(1, 13) == "Integrations/" then return false end
+        return true
+    end
+    local function LoadTbc(setup)
+        dofile(here .. "/wowstub.lua")
+        local St = _G.STUB
+        St.root = ROOT
+        St.flavour = "tbc"
+        if setup then setup(St) end
+        local files, listed = {}, false
+        for _, rel in ipairs(St.TocFiles("SpellTuner_TBC.toc")) do
+            if rel == "Client/Probe.lua" then listed = true end
+            if KeepForTbc(rel) then files[#files + 1] = rel end
+        end
+        if not listed then files[#files + 1] = "Client/Probe.lua" end
+        St.loadedFiles = files
+        local MDt = {}
+        local okLoad, err = pcall(function()
+            St.Load(files, "SpellTuner", MDt)
+            MDt:SetTalents({})
+            St.Fire("ADDON_LOADED", "SpellTuner")
+            St.Fire("PLAYER_LOGIN")
+            St.Fire("PLAYER_ENTERING_WORLD")
+        end)
+        if not okLoad then print("tbc load: " .. tostring(err)) end
+        return okLoad and MDt or nil, St
+    end
+
+    -- ManaDemon's saved variables still waiting to be adopted (tools/migrate.lua's
+    -- case): the probe's ADDON_LOADED comes before Core.lua's PLAYER_LOGIN
+    -- adoption and must not make an empty SpellTunerDB that blocks it.
+    _G.SpellTunerDB = nil
+    _G.ManaDemonDB = { halfLife = 42, char = {} }
+    local MDt, St = LoadTbc(function(Sx)
+        ART.Install(Sx, { atlases = false, colorPicker = "classic" })
+        function GetBuildInfo() return "2.5.5", "65000", "Sep 1 2026", 20506 end
+        -- ElvUI loaded and a borrowed LibStub with LDB, EllesmereUI absent (it
+        -- refuses to run below 12.1 except on Forever)
+        function IsAddOnLoaded(name) return name == "SpellTuner" or name == "ElvUI" end
+        local ownMeta = GetAddOnMetadata
+        function GetAddOnMetadata(name, field)
+            if name == "ElvUI" and field == "Version" then return "13.74" end
+            if name ~= "SpellTuner" then return nil end
+            return ownMeta(name, field)
+        end
+        function GetAddOnInfo(name)
+            if name == "ElvUI" or name == "SpellTuner" then return name, name, "", true, nil end
+            return name, nil, nil, false, "MISSING"
+        end
+        _G.LibStub = FakeLibStub({ ["LibDataBroker-1.1"] = 4, ["CallbackHandler-1.0"] = 7 })
+        function GetSpellBaseCooldown(id)
+            if id == 18562 then return 15000, 0 end
+            return 0, 1500
+        end
+    end)
+    local okT = MDt ~= nil
+    local chatT = okT and ChatCapture() or {}
+    local okRun1 = okT and pcall(SlashCmdList.SPELLTUNER, "probe")
+    local rec1 = okT and type(SpellTunerDB) == "table" and type(SpellTunerDB.probe) == "table"
+        and type(SpellTunerDB.probe.reports) == "table" and SpellTunerDB.probe.reports["65000"] or nil
+    local reportT1 = type(rec1) == "table" and rec1.text or nil
+
+    -- a fight: the regen events set the TBC profile's combat flag, the clock
+    -- runs the probe's 2 s snapshot, a hit is counted by action
+    local okFight = okT and pcall(function()
+        St.Fire("PLAYER_REGEN_DISABLED")
+        St.Tick(1)
+        St.Tick(1)
+        St.Fire("UNIT_COMBAT", "player", "WOUND", "", 100, 1)
+        St.Fire("PLAYER_REGEN_ENABLED")
+        St.Tick(5) -- Core_TBC.lua's profile write, 5 s after login
+    end)
+    local okRun2, reportT2 = false, nil
+    if okT then okRun2, reportT2 = pcall(MDt.Probe.Run) end
+    if okT then NoteLeft(St, "tbc") end
+
+    check("T87 tbc: the TBC file list loads with the probe on it, its client named tbc",
+        okT and type(MDt.Probe) == "table" and type(MDt.Probe.Run) == "function"
+        and MDt.API.client == "tbc")
+
+    do
+        local row, helpNames = nil, false
+        if okT then
+            for _, c in ipairs(MDt:Commands()) do if c.name == "probe" then row = c end end
+            local lines = {}
+            local frame = _G.DEFAULT_CHAT_FRAME
+            local orig = frame.AddMessage
+            frame.AddMessage = function(_, m) lines[#lines + 1] = m end
+            pcall(SlashCmdList.SPELLTUNER, "help")
+            frame.AddMessage = orig
+            helpNames = Has(table.concat(lines, "\n"), "probe")
+        end
+        check("T87 tbc: /md probe is a hidden row, so the help does not list it",
+            row ~= nil and row.hidden == true and row.usage == "/st probe" and not helpNames)
+    end
+
+    check("T87 tbc: /md probe runs the probe and saves the report keyed by build",
+        okRun1 == true and type(reportT1) == "string" and Has(reportT1, "SpellTuner probe ")
+        and Has(table.concat(chatT, "\n"), "SpellTuner probe: build 65000")
+        and Has(table.concat(chatT, "\n"), "lines, saved."))
+
+    check("T87 tbc: no section raises -- every section in order, no <error> anywhere",
+        okFight == true and okRun2 == true and HeadersInOrder(reportT1) and HeadersInOrder(reportT2)
+        and InOrder(reportT2, NEXT_HEADERS)
+        and not Has(reportT1, "<error") and not Has(reportT2, "<error"),
+        (function()
+            if type(reportT2) ~= "string" then return "no report" end
+            return reportT2:match("[^\n]*<error[^\n]*") or "a section missing or out of order"
+        end)())
+
+    do
+        local function Section(r, header, nextHeader) return Between(r or "", header, nextHeader) end
+        check("T87 tbc: the Forever-only sections read absent, and so do the Forever questions",
+            Section(reportT2, "\n== secrets now\n", "\n== spells (") == "absent (Forever only)"
+            and Has(reportT2, "\nslots 1-500: absent (Forever only)\n")
+            and Section(reportT2, "\n== spells against the previous run\n", "\n== talents\n") == "absent (Forever only)"
+            and Section(reportT2, "\n== talents\n", "\n== shapes\n") == "absent (Forever only)"
+            and Section(reportT2, "\n== shapes\n", "\n== readings now\n") == "absent (Forever only)"
+            and Section(reportT2, "\n== damage meter\n", "\n== saved variables\n") == "absent (Forever only)"
+            and Section(reportT2, "\n== auras\n", "\n== to do\n") == "absent (Forever only)"
+            and Has(reportT2, "\nQ1-Q8: Forever questions, absent on this client\n")
+            and not Has(reportT2, "Q1 to do") and not Has(reportT2, "macro to do")
+            and Has(reportT2, "\nQ9 answered: SPELLTUNER_TOC = TBC"))
+    end
+
+    check("T87 tbc: == art reads every TBC path, the atlases absent",
+        Has(reportT2, "\n== art\nGetFileIDFromPath present, C_Texture.GetAtlasInfo absent\n")
+        and Has(reportT2, "\nfile Interface\\\\DialogFrame\\\\UI-DialogBox-Border id=137015 set=true get=137015\n")
+        and Has(reportT2, "\nfile Interface\\\\Tooltips\\\\UI-Tooltip-Border id=137017 set=true get=137017\n")
+        and Has(reportT2, "\nfile Interface\\\\Buttons\\\\UI-Panel-Button-Up id=137019 set=true get=137019\n")
+        and Has(reportT2, "\nfile Interface\\\\QuestFrame\\\\QuestBG id=absent set=false get=nil\n")
+        and Has(reportT2, "\natlas Options_List_Hover <absent>\n")
+        and Has(reportT2, "\natlas 128-RedButton-Left <absent>\n"))
+
+    check("T87 tbc: == clock answers Q-clock-3 and Q-clock-4, the curve and the secret text absent",
+        Has(reportT2, "\nQ-clock-1 colour curve: C_CurveUtil.CreateColorCurve absent, CreateColor absent, UnitPowerPercent absent\n")
+        and Has(reportT2, "\nQ-clock-2 percent as text: UnitPowerPercent <absent>\n")
+        and Has(reportT2, "\nQ-clock-3 ColorPickerFrame present, SetupColorPickerAndShow absent, SetColorRGB present\n")
+        and Has(reportT2, "\nQ-clock-4 texture Interface\\\\TargetingFrame\\\\UI-StatusBar id=137013 set=true get=137013\n")
+        and Has(reportT2, "\nQ-clock-4 texture Interface\\\\RaidFrame\\\\Raid-Bar-Hp-Fill id=absent set=false get=nil\n")
+        and Has(reportT2, "\nQ-clock-4 font Fonts\\\\MORPHEUS.ttf set=true get=Fonts\\\\MORPHEUS.ttf\n")
+        and Has(reportT2, "\nQ-clock-4 rotation SetRotation(0.5) nothing, GetRotation 0.5\n"))
+
+    check("T87 tbc: == hosts names ElvUI and the borrowed LibStub, EllesmereUI absent",
+        Has(reportT2, "\naddon ElvUI loaded=true version=13.74\n")
+        and Has(reportT2, "\naddon EllesmereUI loaded=false reason=MISSING\n")
+        and Has(reportT2, "\nEllesmereUI absent\n") and Has(reportT2, "\nElvUI absent\n")
+        and Has(reportT2, "\nLibStub present minor=2\n")
+        and Has(reportT2, "\nlib LibDataBroker-1.1 minor=4\n")
+        and Has(reportT2, "\nlib LibSharedMedia-3.0 absent\n"))
+
+    check("T87 tbc: == cooldowns reads the base cooldowns and counts a hit by action",
+        Has(reportT2, "\nGetSpellBaseCooldown(18562 Swiftmend) = 15000, 0\n")
+        and Has(reportT2, "\nGetSpellCooldown(18562 Swiftmend) = 0, 0, 1\n")
+        and Has(reportT2, "\nbook cooldown: absent (Forever only)\n")
+        and Has(reportT2, "\nUnitGetTotalAbsorbs(player) = <absent>\n")
+        and Has(reportT2, "\nUnitGetTotalAbsorbs(player) in combat = <absent>\n")
+        and Has(reportT2, "\nUNIT_COMBAT combat action=WOUND descriptor=none n=1 amount readable=1 secret=0\n"))
+
+    check("T87 tbc: the combat snapshot is taken on TBC too",
+        Has(Between(reportT2 or "", "\n== combat snapshot\n", "\n== events seen this session\n") or "", "in combat: true"))
+
+    check("T87 tbc: ManaDemon's saved variables are still adopted with the probe on the TOC",
+        okT and MDt.db ~= nil and MDt.db.halfLife == 42 and _G.ManaDemonDB == nil
+        and MDt.db == _G.SpellTunerDB and type(MDt.db.probe) == "table"
+        and type(MDt.db.probe.reports) == "table")
+
+    check("T87 tbc: the report is ASCII with no bare pipe",
+        type(reportT1) == "string" and type(reportT2) == "string" and AsciiSafe(reportT1) and AsciiSafe(reportT2))
+
+    check("review Q8: every step's timers ran on the clock; none is left pending",
+        #leftovers == 0, #leftovers > 0 and table.concat(leftovers, "; ") or nil)
+
+    print(string.format("\n%d ok, %d failed", ok, #fails))
+    for _, f in ipairs(fails) do print("  FAIL " .. f) end
+    if #fails > 0 then os.exit(1) end
+    os.exit(0)
+end
 
 --------------------------------------------------------------------------------
 -- Step 2: Forever, fresh -- a scripted fight through the real event frame
@@ -1281,6 +1523,191 @@ do
         and Has(after, "\nesc=stack (last press: 2 open, 1 closed, the proxy shown again)\n")
         and not Has(after, "esc to do") and AsciiSafe(after),
         type(after) == "string" and (Between(after, "== windows\n", "\n") or "no == windows") or "no report")
+    -- T87: the row is hidden on TBC only; Forever's help keeps listing it
+    local probeRow = nil
+    if okLoad then for _, c in ipairs(MDx:Commands()) do if c.name == "probe" then probeRow = c end end end
+    check("T87: on Forever /st probe stays a listed row",
+        probeRow ~= nil and probeRow.hidden == false and probeRow.usage == "/st probe")
+end
+
+--------------------------------------------------------------------------------
+-- Step 15 (T87, docs/SPEC-next.md 5.3, 6, 7.5, 4.2 P1/P3/P4): the five sections
+-- the next round asks for, between == windows and == to do -- == art (every
+-- path and atlas a style names), == hosts (EllesmereUI, ElvUI, LibStub, LDB),
+-- == clock (Q-clock-1..4), == cooldowns (base cooldowns, the book's cooldown
+-- spell's tooltip whole, absorbs, UNIT_COMBAT by action), == auras
+-- (ShouldAurasBeSecret out of and in combat, a mana source's fields). 15a has
+-- every function the sections ask about; 15b none of them.
+--------------------------------------------------------------------------------
+do
+    dofile(here .. "/wowstub.lua")
+    local Sn = _G.STUB
+    Sn.root = ROOT
+    Sn.UseProfile("forever")
+    ART.Install(Sn, { atlases = { Options_List_Hover = { file = 4552, width = 128, height = 32 } },
+        colorCurve = true, colorPicker = "modern" })
+    _G.SpellTunerDB, _G.ManaDemonDB, _G.SPELLTUNER_TOC = nil, nil, nil
+    -- EllesmereUI 9.3.4 loaded, with its skin and unlock entry points; LDB
+    -- borrowed through the LibStub it loaded
+    _G.EllesmereUI = { RegisterSkin = function() end, RegisterUnlockElements = function() end,
+        MakeUnlockElement = function() end }
+    _G.LibStub = FakeLibStub({ ["LibDataBroker-1.1"] = 4 })
+    Sn.addOnLoaded["EllesmereUI"] = true
+    -- one of its modules on disk but disabled, as on the author's client
+    Sn.RegisterAddOnFolder("EllesmereUIDataBars", "Nowhere")
+    Sn.addOnDisabled["EllesmereUIDataBars"] = true
+    local ownMeta = C_AddOns.GetAddOnMetadata
+    C_AddOns.GetAddOnMetadata = function(name, field)
+        if name == "EllesmereUI" and field == "Version" then return "9.3.4" end
+        return ownMeta(name, field)
+    end
+    -- Swiftmend in the book with the cooldown on its tooltip's third line, the
+    -- base cooldowns, absorbs secret for a party member (as its health is) and
+    -- for the player in combat
+    Sn.AddSpell(18562, "Swiftmend", "Rank 1",
+        function() return "Consumes a Rejuvenation or Regrowth effect on a friendly target to instantly heal them." end,
+        { cost = 205 })
+    local ownTip = C_TooltipInfo.GetSpellByID
+    C_TooltipInfo.GetSpellByID = function(id)
+        local data = ownTip(id)
+        if id == 18562 and type(data) == "table" then data.lines[3].rightText = "15 sec cooldown" end
+        return data
+    end
+    function GetSpellBaseCooldown(id)
+        if id == 18562 then return 15000, 0 end
+        return 0, 1500
+    end
+    function UnitGetTotalAbsorbs(u)
+        if u == "player" then
+            if Sn.inCombat then return Sn.Secret() end
+            return 0
+        end
+        if u == "party1" then return Sn.Secret() end
+        return nil
+    end
+    -- the player's auras: Mark of the Wild, an Innervate party1 cast, one whose
+    -- name and id are secret; in combat only the Innervate, its fields secret
+    local secretName = Sn.Secret("string")
+    C_UnitAuras.GetAuraDataByIndex = function(u, i, filter)
+        if u ~= "player" then return nil end
+        if Sn.inCombat then
+            if i == 1 then
+                return { name = "Innervate", spellId = 29166, duration = Sn.Secret(),
+                    expirationTime = Sn.Secret(), sourceUnit = Sn.Secret("string") }
+            end
+            return nil
+        end
+        local rows = {
+            { name = "Mark of the Wild", spellId = 1126, duration = 1800 },
+            { name = "Innervate", spellId = 29166, duration = 20, expirationTime = 120, sourceUnit = "party1" },
+            { name = secretName, spellId = Sn.Secret(), duration = 10 },
+        }
+        return rows[i]
+    end
+
+    local MDn = {}
+    local okN = pcall(Sn.Load, { "Client/TOC_Mainline.lua", "Client/API.lua", "Client/Probe.lua" }, "SpellTuner", MDn)
+    okN = okN and pcall(Sn.Fire, "ADDON_LOADED", "SpellTuner")
+    local okA, reportA = false, nil
+    if okN then okA, reportA = pcall(MDn.Probe.Run) end
+    local okFight = okN and pcall(function()
+        Sn.inCombat = true
+        Sn.Fire("PLAYER_REGEN_DISABLED")
+        Sn.Tick(1)
+        Sn.Tick(1)
+        Sn.Fire("UNIT_COMBAT", "player", "WOUND", "", 120, 1)
+        Sn.Fire("UNIT_COMBAT", "player", "ABSORB", "", Sn.Secret(), 1)
+        Sn.inCombat = false
+        Sn.Fire("PLAYER_REGEN_ENABLED")
+    end)
+    local okB, reportB = false, nil
+    if okN then okB, reportB = pcall(MDn.Probe.Run) end
+    NoteLeft(Sn, "step 15a")
+
+    -- 15b: a client with none of them
+    _G.EllesmereUI, _G.LibStub, _G.GetSpellBaseCooldown, _G.UnitGetTotalAbsorbs = nil, nil, nil, nil
+    _G.GetFileIDFromPath, _G.C_Texture, _G.C_CurveUtil, _G.CreateColor, _G.ColorPickerFrame = nil, nil, nil, nil, nil
+    dofile(here .. "/wowstub.lua")
+    local Sb = _G.STUB
+    Sb.root = ROOT
+    Sb.UseProfile("forever")
+    _G.SpellTunerDB, _G.SPELLTUNER_TOC = nil, nil
+    local MDb = {}
+    local okNb = pcall(Sb.Load, { "Client/TOC_Mainline.lua", "Client/API.lua", "Client/Probe.lua" }, "SpellTuner", MDb)
+    okNb = okNb and pcall(Sb.Fire, "ADDON_LOADED", "SpellTuner")
+    local okC, reportC = false, nil
+    if okNb then okC, reportC = pcall(MDb.Probe.Run) end
+    NoteLeft(Sb, "step 15b")
+
+    check("T87: five new sections between == windows and == to do, in order, and none raises",
+        okA == true and okFight == true and okB == true and okC == true
+        and InOrder(reportA, NEXT_HEADERS) and InOrder(reportB, NEXT_HEADERS) and InOrder(reportC, NEXT_HEADERS)
+        and HeadersInOrder(reportA) and HeadersInOrder(reportC))
+
+    check("T87: == art -- a file's id and texture read back, a present atlas its file and size, the rest absent",
+        Has(reportA, "\n== art\nGetFileIDFromPath present, C_Texture.GetAtlasInfo present\n")
+        and Has(reportA, "\nfile Interface\\\\Buttons\\\\WHITE8x8 id=137012 set=true get=137012\n")
+        and Has(reportA, "\nfile Interface\\\\QuestFrame\\\\QuestBG id=absent set=false get=nil\n")
+        and Has(reportA, "\natlas Options_List_Hover file=4552 128x32\n")
+        and Has(reportA, "\natlas Options_List_Active absent\n"))
+
+    check("T87: == hosts -- EllesmereUI's version and entry points, the borrowed LDB, an absent addon",
+        Has(reportA, "\naddon EllesmereUI loaded=true version=9.3.4\n")
+        and Has(reportA, "\naddon ElvUI loaded=false reason=MISSING\n")
+        and Has(reportA, "\naddon EllesmereUIDataBars loaded=false reason=DISABLED\n")
+        and Has(reportA, "\nEllesmereUI present: RegisterSkin present, RegisterUnlockElements present, MakeUnlockElement present, GetAccentColor absent, GetFontPath absent\n")
+        and Has(reportA, "\nLibStub present minor=2\n") and Has(reportA, "\nlib LibDataBroker-1.1 minor=4\n")
+        and Has(reportA, "\nlib CallbackHandler-1.0 absent\n"))
+
+    check("T87: == clock -- a curve colour into a texture, a secret into a font string, the picker, textures, fonts, rotation",
+        Has(reportA, "\nQ-clock-1 colour curve: value colour (GetRGB present), SetVertexColor ok, read back secret\n")
+        and Has(reportA, "\nQ-clock-2 percent as text: SetText ok, GetText secret, width plain 40\n")
+        and Has(reportA, "\nQ-clock-3 ColorPickerFrame present, SetupColorPickerAndShow present, SetColorRGB absent\n")
+        and Has(reportA, "\nQ-clock-4 texture Interface\\\\TargetingFrame\\\\UI-StatusBar id=137013 set=true get=137013\n")
+        and Has(reportA, "\nQ-clock-4 font Fonts\\\\FRIZQT__.TTF set=true get=Fonts\\\\FRIZQT__.TTF\n")
+        and Has(reportA, "\nQ-clock-4 rotation SetRotation(0.5) nothing, GetRotation 0.5\n"))
+
+    check("T87: == cooldowns -- base cooldowns, the book's cooldown spell with its tooltip whole, absorbs, hits by action",
+        Has(reportA, "\nGetSpellBaseCooldown(18562 Swiftmend) = 15000, 0\n")
+        and Has(reportA, "\nGetSpellBaseCooldown(20473 Holy Shock) = 0, 1500\n")
+        and Has(reportA, "\nbook cooldown 18562 Swiftmend Rank 1: base 15000\ntooltip 18562 = 4 lines\n")
+        and Has(reportA, "\n  line 3: Instant || 15 sec cooldown\n")
+        and Has(reportA, "\nUnitGetTotalAbsorbs(player) = 0\n")
+        and Has(reportA, "\nUnitGetTotalAbsorbs(party1) = <secret>\n")
+        and Has(reportA, "\nUnitGetTotalAbsorbs in combat: none this session\n")
+        and Has(reportA, "\nUNIT_COMBAT by action: none this session\n")
+        and Has(reportB, "\nUnitGetTotalAbsorbs(player) in combat = <secret>\n")
+        and Has(reportB, "\nUNIT_COMBAT combat action=WOUND descriptor=none n=1 amount readable=1 secret=0\n")
+        and Has(reportB, "\nUNIT_COMBAT combat action=ABSORB descriptor=none n=1 amount readable=0 secret=1\n"))
+
+    check("T87: == auras -- ShouldAurasBeSecret out of and in combat, a mana source readable out of combat and secret in it",
+        Has(reportA, "\n== auras\nC_Secrets.ShouldAurasBeSecret() now = false (in combat: false)\n"
+            .. "C_Secrets.ShouldAurasBeSecret() in combat = none this session\n"
+            .. "helpful auras on you: 3, mana sources 1, secret names 1, secret rows 0\n"
+            .. "aura 2 mana source: id=29166 name=Innervate duration=20 expires=120 source=party1\n"
+            .. "aura 3: id=<secret> name=<secret> duration=10 expires=nil source=nil\n"
+            .. "auras in combat: none this session\n")
+        and Has(reportB, "\nC_Secrets.ShouldAurasBeSecret() in combat = true\n")
+        and Has(reportB, "\nin combat: helpful auras on you: 1, mana sources 1, secret names 0, secret rows 0\n")
+        and Has(reportB, "\nin combat: aura 1 mana source: id=29166 name=Innervate duration=<secret> expires=<secret> source=<secret>\n"))
+
+    check("T87: with none of the functions every new line reads absent, and nothing raises",
+        okC == true
+        and Has(reportC, "\nGetFileIDFromPath absent, C_Texture.GetAtlasInfo absent\n")
+        and Has(reportC, "\nfile Interface\\\\Buttons\\\\WHITE8x8 id=<absent> set=nothing get=nothing\n")
+        and Has(reportC, "\natlas Options_List_Hover <absent>\n")
+        and Has(reportC, "\nEllesmereUI absent\n") and Has(reportC, "\nLibStub absent\n")
+        and Has(reportC, "\nQ-clock-1 colour curve: C_CurveUtil.CreateColorCurve absent, CreateColor absent, UnitPowerPercent present\n")
+        and Has(reportC, "\nQ-clock-3 ColorPickerFrame absent, SetupColorPickerAndShow absent, SetColorRGB absent\n")
+        and Has(reportC, "\nGetSpellBaseCooldown(18562 Swiftmend) = <absent>\n")
+        and Has(reportC, "\nbook cooldown: none")
+        and Has(reportC, "\nUnitGetTotalAbsorbs(player) = <absent>\n"))
+
+    check("T87: the new sections are ASCII with no bare pipe; the auras and absorb to-dos go once answered",
+        type(reportA) == "string" and type(reportB) == "string" and type(reportC) == "string"
+        and AsciiSafe(reportA) and AsciiSafe(reportB) and AsciiSafe(reportC)
+        and Has(reportA, "\nauras to do: ") and Has(reportA, "\nabsorb to do: ")
+        and not Has(reportB, "auras to do") and not Has(reportB, "absorb to do"))
 end
 
 -- T54 (P10, review Q8)

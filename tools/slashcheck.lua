@@ -35,6 +35,16 @@ local MD = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB
 local T = dofile(here .. "/lib/t.lua")
 
+-- T87 (docs/SPEC-next.md decision 22): Client/Probe.lua is on the TBC line, the
+-- TOC's last file. Until SpellTuner_TBC.toc lists it, it is loaded here where
+-- the TOC will put it, so the transcript below is the one the TBC client gets:
+-- /md probe a hidden row, the help and the About tab unchanged.
+do
+    local listed = false
+    for _, rel in ipairs(S.loadedFiles or {}) do if rel == "Client/Probe.lua" then listed = true end end
+    if not listed then S.Load({ "Client/Probe.lua" }, "SpellTuner", MD) end
+end
+
 local out = {}
 _G.DEFAULT_CHAT_FRAME = { AddMessage = function(_, m) out[#out + 1] = m end }
 MD.db.debug = MD.db.debug or {}
@@ -269,6 +279,17 @@ local function Compare(GOLDEN)
     end
     T.check("every chat line and About row is ASCII with no bare pipe", allAscii, why)
     T.check("the help is its heading and 27 rows", helpRows == 28, helpRows ~= 28 and (tostring(helpRows) .. " lines") or nil)
+
+    T.section("T87: the probe on the TBC line")
+    local probeRow
+    for _, c in ipairs(MD:Commands()) do if c.name == "probe" then probeRow = c end end
+    T.check("/md probe is registered as a hidden row (the help and About rows above are unchanged)",
+        probeRow ~= nil and probeRow.hidden == true and probeRow.usage == "/st probe")
+    out = {}
+    local ran = pcall(SlashCmdList.SPELLTUNER, "probe")
+    local said = false
+    for _, l in ipairs(out) do if l:find("SpellTuner probe: build ", 1, true) then said = true end end
+    T.check("/md probe runs the probe and says so in one chat line", ran and said)
     T.done()
 end
 

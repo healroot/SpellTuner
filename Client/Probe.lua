@@ -7,6 +7,9 @@
 -- but never lets a raw value touch arithmetic, comparison, a table key or the
 -- rendered text without going through IsSecret/Fmt/Esc first, and every call
 -- is under pcall -- the beta stops reporting errors after 100 of them.
+-- T87 (docs/SPEC-next.md decision 22): on both TOCs. On the TBC line /md probe
+-- is a hidden row, the Forever-only sections print "absent (Forever only)",
+-- and the new == art / == hosts / == clock / == cooldowns answer there too.
 local ADDON_NAME, MD = ...
 
 --------------------------------------------------------------------------------
@@ -1415,6 +1418,560 @@ local function ShapesLines(order)
 end
 
 --------------------------------------------------------------------------------
+-- T87 (docs/SPEC-next.md decision 22, 5.3, 6, 7.5, 4.2 P1/P3/P4): the probe on
+-- both clients, and five sections for the next round's questions -- == art,
+-- == hosts, == clock, == cooldowns, == auras -- printed between == windows and
+-- == to do. The same rules as every section above: each client call under
+-- pcall, every result a string, IsSecret before anything but storing, a value
+-- handed to a texture or a font string straight from the call that returned it.
+--------------------------------------------------------------------------------
+
+-- On a client other than Forever (the TOC's marker, as Client/API.lua read it),
+-- a section that only asks Forever's questions prints this one line instead
+-- (decision 22: TBC's report has only the sections that answer there).
+local FOREVER_ONLY = "absent (Forever only)"
+local function OnForever() return MD.API.client == "forever" end
+
+-- Every plain file a style names (docs/SPEC-next.md 5.1 Classic and Modern,
+-- docs/research/next/R-styles.md 5.1), the broker's icon (6.2) and the probe
+-- box's own fill -- read on both clients, each a VERIFY until a report says.
+local ART_FILES = {
+    "Interface\\Buttons\\WHITE8x8",
+    "Interface\\ChatFrame\\ChatFrameBackground",
+    "Interface\\TargetingFrame\\UI-StatusBar",
+    "Interface\\DialogFrame\\UI-DialogBox-Background",
+    "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
+    "Interface\\DialogFrame\\UI-DialogBox-Border",
+    "Interface\\DialogFrame\\UI-DialogBox-Gold-Border",
+    "Interface\\DialogFrame\\UI-DialogBox-Header",
+    "Interface\\Tooltips\\UI-Tooltip-Border",
+    "Interface\\Tooltips\\UI-Tooltip-Background",
+    "Interface\\Buttons\\UI-Panel-Button-Up",
+    "Interface\\Buttons\\UI-Panel-Button-Down",
+    "Interface\\Buttons\\UI-Panel-Button-Highlight",
+    "Interface\\Buttons\\UI-Panel-Button-Disabled",
+    "Interface\\Buttons\\UI-CheckBox-Up",
+    "Interface\\Buttons\\UI-CheckBox-Down",
+    "Interface\\Buttons\\UI-CheckBox-Highlight",
+    "Interface\\Buttons\\UI-CheckBox-Check",
+    "Interface\\Buttons\\UI-CheckBox-Check-Disabled",
+    "Interface\\Buttons\\UI-Panel-MinimizeButton-Up",
+    "Interface\\Buttons\\UI-Panel-MinimizeButton-Down",
+    "Interface\\Buttons\\UI-Panel-MinimizeButton-Highlight",
+    "Interface\\QuestFrame\\UI-QuestTitleHighlight",
+    "Interface\\Buttons\\UI-Listbox-Highlight",
+    "Interface\\Buttons\\UI-Listbox-Highlight2",
+    "Interface\\FrameGeneral\\UI-Background-Rock",
+    "Interface\\FrameGeneral\\UI-Background-Marble",
+    "Interface\\CastingBar\\UI-CastingBar-Border",
+    "Interface\\QuestFrame\\QuestBG",
+    "Interface\\AchievementFrame\\UI-Achievement-Parchment-Horizontal",
+    "Interface\\Icons\\Spell_Shadow_Manaburn",
+}
+-- The atlases Modern may use where they answer (5.1, 5.2's `atlas` painter)
+-- and the two EllesmereUI draws on Forever (R-styles 5.1). The names are the
+-- retail engine's, UNVERIFIED on Forever (which may redirect them to its own
+-- art) and absent on TBC; the button's centre piece is asked under both
+-- spellings retail has used.
+local ART_ATLASES = {
+    "Options_List_Hover", "Options_List_Active",
+    "128-RedButton-Left", "128-RedButton-Center", "_128-RedButton-Center", "128-RedButton-Right",
+    "RedButton-Exit", "AdventureMap_TopBorder", "UI-HUD-ActionBar-Frame",
+}
+-- Q-clock-4 (7.5): the bar textures and the built-in faces the clock offers.
+local CLOCK_TEXTURES = { "Interface\\TargetingFrame\\UI-StatusBar", "Interface\\RaidFrame\\Raid-Bar-Hp-Fill" }
+local CLOCK_FONTS = { "Fonts\\FRIZQT__.TTF", "Fonts\\ARIALN.TTF", "Fonts\\skurri.ttf", "Fonts\\MORPHEUS.ttf" }
+-- == hosts (6): the addons the integrations would reach, and the libraries a
+-- host may leave in LibStub for SpellTuner to borrow (principle 2).
+local HOST_ADDONS = { "EllesmereUI", "EllesmereUIDataBars", "EllesmereUIMinimap", "EllesmereUIBlizzardSkin",
+    "ElvUI", "Titan", "ChocolateBar" }
+local HOST_LIBS = { "LibDataBroker-1.1", "CallbackHandler-1.0", "LibSharedMedia-3.0" }
+local EUI_FIELDS = { "RegisterSkin", "RegisterUnlockElements", "MakeUnlockElement", "GetAccentColor", "GetFontPath" }
+-- == cooldowns (4.2 P1): two spells with a cooldown, asked by id on any class.
+local COOLDOWN_SPELLS = { { 18562, "Swiftmend" }, { 20473, "Holy Shock" } }
+-- == auras (4.2 P4): the mana sources T105 reads, by the name the aura carries
+-- (enUS, as everything else here).
+local MANA_SOURCES = {
+    ["innervate"] = true, ["mana spring"] = true, ["mana tide"] = true,
+    ["blessing of wisdom"] = true, ["greater blessing of wisdom"] = true,
+}
+local AURA_ROWS, AURA_SHOWN = 40, 8
+
+-- "present" when the dotted name is a function (or, for a table, a table).
+local function Presence(name, kind)
+    local v = MD.API.Has(name)
+    if type(v) == (kind or "function") then return "present" end
+    return "absent"
+end
+
+-- obj:method(...) under pcall, rendered as Show renders a call: "<absent>" when
+-- the object has no such method, "nothing" when it returned nothing.
+local function CallMethod(obj, method, ...)
+    if obj == nil then return "<absent>" end
+    local okF, fn = pcall(function() return obj[method] end)
+    if not okF then return "<error: " .. Fmt(fn) .. ">" end
+    if type(fn) ~= "function" then return "<absent>" end
+    local n, packed = packPcall(pcall(fn, obj, ...))
+    if not packed[1] then return "<error: " .. Fmt(packed[2]) .. ">" end
+    if n <= 1 then return "nothing" end
+    local parts = {}
+    for i = 2, n do parts[#parts + 1] = Describe(packed[i]) end
+    return table.concat(parts, ", ")
+end
+
+-- One hidden frame, one texture and one font string, built on first use and
+-- reused by every run (as the readings' status bar is), never shown.
+local artFrame, artTexture, artFontString
+local function ArtRegion(kind)
+    if not artFrame then
+        local ok, f = pcall(CreateFrame, "Frame", nil, UIParent)
+        if not ok or type(f) ~= "table" then return nil end
+        pcall(f.Hide, f)
+        artFrame = f
+    end
+    if kind == "font" then
+        if not artFontString then
+            local ok, fs = pcall(function() return artFrame:CreateFontString(nil, "OVERLAY") end)
+            if ok and type(fs) == "table" then artFontString = fs end
+        end
+        return artFontString
+    end
+    if not artTexture then
+        local ok, tex = pcall(function() return artFrame:CreateTexture(nil, "ARTWORK") end)
+        if ok and type(tex) == "table" then artTexture = tex end
+    end
+    return artTexture
+end
+
+-- GetFileIDFromPath(path): the id, "absent" when it answers nothing,
+-- "<absent>" when the client has no such function.
+local function FileIDText(path)
+    local fn = MD.API.Has("GetFileIDFromPath")
+    if type(fn) ~= "function" then return "<absent>" end
+    local n, packed = packPcall(pcall(fn, path))
+    if not packed[1] then return "<error: " .. Fmt(packed[2]) .. ">" end
+    local v = packed[2]
+    if IsSecret(v) then return "<secret>" end
+    if n <= 1 or v == nil then return "absent" end
+    return Fmt(v)
+end
+
+-- A file's line: its id, then what a texture given the path answers -- set is
+-- SetTexture's own return, get is GetTexture's after it (the texture is
+-- cleared first, so a path that does not take never reads the previous one).
+local function FileLine(prefix, path)
+    local tex = ArtRegion("texture")
+    local head = prefix .. " " .. Esc(path) .. " id=" .. FileIDText(path)
+    if not tex then return head .. " set=<error: no texture>" end
+    CallMethod(tex, "SetTexture", nil)
+    local set = CallMethod(tex, "SetTexture", path)
+    local get = CallMethod(tex, "GetTexture")
+    return head .. " set=" .. set .. " get=" .. get
+end
+
+local function AtlasLine(name)
+    local head = "atlas " .. Esc(name)
+    local fn = MD.API.Has("C_Texture.GetAtlasInfo")
+    if type(fn) ~= "function" then return head .. " <absent>" end
+    local n, packed = packPcall(pcall(fn, name))
+    if not packed[1] then return head .. " <error: " .. Fmt(packed[2]) .. ">" end
+    local info = packed[2]
+    if IsSecret(info) then return head .. " <secret>" end
+    if n <= 1 or info == nil then return head .. " absent" end
+    if type(info) ~= "table" then return head .. " " .. Fmt(info) end
+    return head .. " file=" .. KeyText(info, "file") .. " " .. KeyText(info, "width") .. "x" .. KeyText(info, "height")
+end
+
+-- == art (5.3): every path and atlas a style names, on both clients.
+local function ArtLines()
+    local lines = { "GetFileIDFromPath " .. Presence("GetFileIDFromPath")
+        .. ", C_Texture.GetAtlasInfo " .. Presence("C_Texture.GetAtlasInfo") }
+    for _, path in ipairs(ART_FILES) do lines[#lines + 1] = FileLine("file", path) end
+    for _, name in ipairs(ART_ATLASES) do lines[#lines + 1] = AtlasLine(name) end
+    return lines
+end
+
+-- An addon function's name: C_AddOns' where the client has it, else the
+-- classic global's.
+local function AddonFn(name)
+    if type(MD.API.Has("C_AddOns." .. name)) == "function" then return "C_AddOns." .. name end
+    return name
+end
+
+-- One addon: whether it is loaded; its version when it is (a metadata read of
+-- an addon that is not there is not asked), else why not -- GetAddOnInfo's
+-- reason (MISSING, DISABLED, ...), the fifth return.
+local function AddonLine(name)
+    local loaded = First(AddonFn("IsAddOnLoaded"), name)
+    local line = "addon " .. name .. " loaded=" .. loaded
+    if loaded == "true" then
+        return line .. " version=" .. First(AddonFn("GetAddOnMetadata"), name, "Version")
+    end
+    local fn = MD.API.Has(AddonFn("GetAddOnInfo"))
+    if type(fn) ~= "function" then return line .. " reason=<absent>" end
+    local n, packed = packPcall(pcall(fn, name))
+    if not packed[1] then return line .. " reason=<error: " .. Fmt(packed[2]) .. ">" end
+    if n < 6 then return line .. " reason=nil" end
+    return line .. " reason=" .. Fmt(packed[6])
+end
+
+-- == hosts (6): the addons, EllesmereUI's entry points, LibStub and the
+-- libraries in it. Each host global is reached by name, never held.
+local function HostsLines()
+    local lines = {}
+    for _, name in ipairs(HOST_ADDONS) do lines[#lines + 1] = AddonLine(name) end
+    if Presence("EllesmereUI", "table") == "present" then
+        local parts = {}
+        for _, f in ipairs(EUI_FIELDS) do parts[#parts + 1] = f .. " " .. Presence("EllesmereUI." .. f) end
+        lines[#lines + 1] = "EllesmereUI present: " .. table.concat(parts, ", ")
+    else
+        lines[#lines + 1] = "EllesmereUI absent"
+    end
+    lines[#lines + 1] = "ElvUI " .. Presence("ElvUI", "table")
+    local ls = MD.API.Has("LibStub")
+    if type(ls) ~= "table" then
+        lines[#lines + 1] = "LibStub absent"
+        return lines
+    end
+    lines[#lines + 1] = "LibStub present minor=" .. KeyText(ls, "minor")
+    for _, lib in ipairs(HOST_LIBS) do
+        local okF, getLib = pcall(function() return ls.GetLibrary end)
+        if not okF or type(getLib) ~= "function" then
+            lines[#lines + 1] = "lib " .. lib .. " <absent>"
+        else
+            local n, packed = packPcall(pcall(getLib, ls, lib, true))
+            if not packed[1] then
+                lines[#lines + 1] = "lib " .. lib .. " <error: " .. Fmt(packed[2]) .. ">"
+            elseif n <= 1 or packed[2] == nil then
+                lines[#lines + 1] = "lib " .. lib .. " absent"
+            else
+                lines[#lines + 1] = "lib " .. lib .. " minor=" .. Fmt(packed[3])
+            end
+        end
+    end
+    return lines
+end
+
+-- What a read-back says: an error, a secret, nil, or the plain value.
+local function ReadBack(ok, v)
+    if not ok then return "<error: " .. Fmt(v) .. ">" end
+    if IsSecret(v) then return "secret" end
+    if v == nil then return "nil" end
+    return "plain " .. Fmt(v)
+end
+
+-- Q-clock-1: UnitPowerPercent with a colour curve, its colour handed to a
+-- texture's SetVertexColor straight from GetRGB, then read back.
+local function CurveColourText()
+    local create = MD.API.Has("C_CurveUtil.CreateColorCurve")
+    local color = MD.API.Has("CreateColor")
+    local percent = MD.API.Has("UnitPowerPercent")
+    if type(create) ~= "function" or type(color) ~= "function" or type(percent) ~= "function" then
+        return "colour curve: C_CurveUtil.CreateColorCurve " .. Presence("C_CurveUtil.CreateColorCurve")
+            .. ", CreateColor " .. Presence("CreateColor") .. ", UnitPowerPercent " .. Presence("UnitPowerPercent")
+    end
+    local step, result = "curve", nil
+    local ok, err = pcall(function()
+        local curve = create()
+        step = "type"
+        local linear = MD.API.Constant("Enum.LuaCurveType.Linear")
+        if linear ~= nil then curve:SetType(linear) end
+        step = "points"
+        curve:AddPoint(0, color(1, 0, 0, 1))
+        curve:AddPoint(1, color(0, 0.6, 1, 1))
+        step = "UnitPowerPercent"
+        result = percent("player", 0, false, curve)
+    end)
+    if not ok then return "colour curve: " .. step .. " <error: " .. Fmt(err) .. ">" end
+    local shape
+    if IsSecret(result) then
+        shape = "<secret>"
+    elseif type(result) == "table" then
+        local okG, getRGB = pcall(function() return result.GetRGB end)
+        if okG and type(getRGB) == "function" then shape = "colour (GetRGB present)" else shape = "<table>" end
+    else
+        shape = Fmt(result)
+    end
+    local tex = ArtRegion("texture")
+    if not tex then return "colour curve: value " .. shape .. ", SetVertexColor <error: no texture>" end
+    local okS, errS = pcall(function() tex:SetVertexColor(result:GetRGB()) end)
+    if not okS then
+        return "colour curve: value " .. shape .. ", SetVertexColor <error: " .. Fmt(errS) .. ">"
+    end
+    local okR, r = pcall(function() return (tex:GetVertexColor()) end)
+    pcall(function() tex:SetVertexColor(1, 1, 1, 1) end)
+    return "colour curve: value " .. shape .. ", SetVertexColor ok, read back " .. ReadBack(okR, r)
+end
+
+-- Q-clock-2: UnitPowerPercent handed to a font string's SetText unread, then
+-- what GetText and the string's width say.
+local function PercentTextText()
+    local percent = MD.API.Has("UnitPowerPercent")
+    if type(percent) ~= "function" then return "percent as text: UnitPowerPercent <absent>" end
+    local fs = ArtRegion("font")
+    if not fs then return "percent as text: <error: no font string>" end
+    pcall(function() fs:SetFont("Fonts\\FRIZQT__.TTF", 12, "") end)
+    local okS, errS = pcall(function() fs:SetText(percent("player", 0)) end)
+    if not okS then return "percent as text: SetText <error: " .. Fmt(errS) .. ">" end
+    local okT, text = pcall(function() return (fs:GetText()) end)
+    local okW, width = pcall(function() return (fs:GetStringWidth()) end)
+    local textRead, widthRead = ReadBack(okT, text), ReadBack(okW, width)
+    pcall(function() fs:SetText("") end)
+    return "percent as text: SetText ok, GetText " .. textRead .. ", width " .. widthRead
+end
+
+-- Q-clock-4's font line: SetFont's own return, then the face GetFont answers.
+local function FontLine(path)
+    local fs = ArtRegion("font")
+    local head = "Q-clock-4 font " .. Esc(path)
+    if not fs then return head .. " set=<error: no font string>" end
+    local set = CallMethod(fs, "SetFont", path, 12, "")
+    local okG, face = pcall(function() return (fs:GetFont()) end)
+    local get
+    if not okG then get = "<error: " .. Fmt(face) .. ">" else get = Fmt(face) end
+    return head .. " set=" .. set .. " get=" .. get
+end
+
+local function RotationText()
+    local tex = ArtRegion("texture")
+    if not tex then return "rotation <error: no texture>" end
+    local set = CallMethod(tex, "SetRotation", 0.5)
+    if set == "<absent>" then return "rotation SetRotation <absent>" end
+    local get = CallMethod(tex, "GetRotation")
+    CallMethod(tex, "SetRotation", 0)
+    return "rotation SetRotation(0.5) " .. set .. ", GetRotation " .. get
+end
+
+-- == clock (7.5): Q-clock-1..4, on both clients.
+local function ClockLines()
+    local lines = {
+        "Q-clock-1 " .. CurveColourText(),
+        "Q-clock-2 " .. PercentTextText(),
+        "Q-clock-3 ColorPickerFrame " .. Presence("ColorPickerFrame", "table")
+            .. ", SetupColorPickerAndShow " .. Presence("ColorPickerFrame.SetupColorPickerAndShow")
+            .. ", SetColorRGB " .. Presence("ColorPickerFrame.SetColorRGB"),
+    }
+    for _, path in ipairs(CLOCK_TEXTURES) do lines[#lines + 1] = FileLine("Q-clock-4 texture", path) end
+    for _, path in ipairs(CLOCK_FONTS) do lines[#lines + 1] = FontLine(path) end
+    lines[#lines + 1] = "Q-clock-4 " .. RotationText()
+    return lines
+end
+
+-- UNIT_COMBAT by phase, action and descriptor (the hit into a shield, 4.2 P3),
+-- with whether its amount read plain or secret. Fed by OnCombatEvent below.
+local actionCounters, actionOrder = {}, {}
+local function ActionText(a)
+    local t = ActionOf(a)
+    if t == "" then return "none" end
+    return t
+end
+local function BumpAction(currentPhase, action, descriptor, amount)
+    local actionText, descText = ActionText(action), ActionText(descriptor)
+    local key = currentPhase .. "\1" .. actionText .. "\1" .. descText
+    local c = actionCounters[key]
+    if not c then
+        c = { phase = currentPhase, action = actionText, descriptor = descText, n = 0, readable = 0, secret = 0 }
+        actionCounters[key] = c
+        actionOrder[#actionOrder + 1] = key
+    end
+    c.n = c.n + 1
+    if IsSecret(amount) then
+        c.secret = c.secret + 1
+    elseif amount ~= nil then
+        c.readable = c.readable + 1
+    end
+end
+local function AbsorbSeen()
+    for _, key in ipairs(actionOrder) do
+        local c = actionCounters[key]
+        if c.action:find("ABSORB", 1, true) or c.descriptor:find("ABSORB", 1, true) then return true end
+    end
+    return false
+end
+
+local function AbsorbLines(suffix)
+    return {
+        "UnitGetTotalAbsorbs(player)" .. suffix .. " = " .. Show("UnitGetTotalAbsorbs", "player"),
+        "UnitGetTotalAbsorbs(party1)" .. suffix .. " = " .. Show("UnitGetTotalAbsorbs", "party1"),
+    }
+end
+
+-- A book spell's base cooldown in ms when it reads plain and above 0.
+local function BaseCooldownOf(sp)
+    local fn = MD.API.Has("GetSpellBaseCooldown")
+    if type(fn) ~= "function" then return nil end
+    local ok, ms = pcall(fn, sp.id)
+    if ok and not IsSecret(ms) and type(ms) == "number" and ms > 0 then return ms end
+    return nil
+end
+
+-- Whether a book spell's tooltip has a right text naming a cooldown -- where
+-- the cooldown is when GetSpellBaseCooldown does not answer (4.2 P1).
+local function TooltipNamesCooldown(sp)
+    local getSpell = MD.API.Has("C_TooltipInfo.GetSpellByID")
+    if type(getSpell) ~= "function" then return false end
+    local ok, found = pcall(function()
+        local data = getSpell(sp.id)
+        if IsSecret(data) or type(data) ~= "table" then return false end
+        local list, status = Field(data, "lines")
+        if status ~= "ok" or type(list) ~= "table" then return false end
+        for _, row in ipairs(list) do
+            if not IsSecret(row) and type(row) == "table" then
+                local right, rs = Field(row, "rightText")
+                if rs == "ok" and type(right) == "string" and right:lower():find("cooldown", 1, true) then return true end
+            end
+        end
+        return false
+    end)
+    return ok and found == true
+end
+
+-- == cooldowns (4.2 P1, P3): the base cooldowns, the book's first two cooldown
+-- spells with the first one's tooltip whole, absorbs out of and in combat, and
+-- UNIT_COMBAT by action.
+local function CooldownsLines(order)
+    local lines = {}
+    for _, sp in ipairs(COOLDOWN_SPELLS) do
+        local tag = sp[1] .. " " .. sp[2]
+        lines[#lines + 1] = "GetSpellBaseCooldown(" .. tag .. ") = " .. Show("GetSpellBaseCooldown", sp[1])
+        lines[#lines + 1] = "C_Spell.GetSpellCooldown(" .. tag .. ") = " .. Show("C_Spell.GetSpellCooldown", sp[1])
+        lines[#lines + 1] = "GetSpellCooldown(" .. tag .. ") = " .. Show("GetSpellCooldown", sp[1])
+    end
+    if not OnForever() then
+        lines[#lines + 1] = "book cooldown: " .. FOREVER_ONLY
+    else
+        local found = {}
+        for _, sp in ipairs(order) do
+            local ms = BaseCooldownOf(sp)
+            if ms then found[#found + 1] = { sp = sp, base = Fmt(ms) } end
+            if #found >= 2 then break end
+        end
+        if #found == 0 then
+            for _, sp in ipairs(order) do
+                if TooltipNamesCooldown(sp) then
+                    found[#found + 1] = { sp = sp, base = "not read" }
+                    if #found >= 2 then break end
+                end
+            end
+        end
+        if #found == 0 then
+            lines[#lines + 1] = "book cooldown: none (no spell in the book read a base cooldown above 0 or a cooldown line)"
+        end
+        for i, f in ipairs(found) do
+            lines[#lines + 1] = "book cooldown " .. f.sp.key .. " " .. f.sp.name .. " " .. f.sp.rank .. ": base " .. f.base
+            if i == 1 then
+                for _, l in ipairs(TooltipLines(f.sp)) do lines[#lines + 1] = l end
+            end
+        end
+    end
+    for _, l in ipairs(AbsorbLines("")) do lines[#lines + 1] = l end
+    if combatSnapshot and combatSnapshot.absorbLines then
+        for _, l in ipairs(combatSnapshot.absorbLines) do lines[#lines + 1] = l end
+    else
+        lines[#lines + 1] = "UnitGetTotalAbsorbs in combat: none this session"
+    end
+    if #actionOrder == 0 then
+        lines[#lines + 1] = "UNIT_COMBAT by action: none this session"
+    end
+    for _, key in ipairs(actionOrder) do
+        local c = actionCounters[key]
+        lines[#lines + 1] = string.format("UNIT_COMBAT %s action=%s descriptor=%s n=%d amount readable=%d secret=%d",
+            c.phase, c.action, c.descriptor, c.n, c.readable, c.secret)
+    end
+    return lines
+end
+
+-- The player's helpful auras: a count, then every mana source and every row
+-- whose name is secret (it could be one), at most AURA_SHOWN of them. Returns
+-- the lines and how many mana sources it saw.
+local function AuraScanLines(prefix)
+    local get = MD.API.Has("C_UnitAuras.GetAuraDataByIndex")
+    if type(get) ~= "function" then return { prefix .. "C_UnitAuras.GetAuraDataByIndex <absent>" }, 0 end
+    local rows, total, sources, secretNames, secretRows, shown = {}, 0, 0, 0, 0, 0
+    local stopped = nil
+    for i = 1, AURA_ROWS do
+        local ok, aura = pcall(get, "player", i, "HELPFUL")
+        if not ok then stopped = "aura " .. i .. " <error: " .. Fmt(aura) .. ">"; break end
+        if IsSecret(aura) then
+            total, secretRows = total + 1, secretRows + 1
+        elseif aura == nil then
+            break
+        elseif type(aura) ~= "table" then
+            stopped = "aura " .. i .. " " .. Fmt(aura); break
+        else
+            total = total + 1
+            local name, status = Field(aura, "name")
+            local isSource = false
+            if status == "secret" then
+                secretNames = secretNames + 1
+            elseif status == "ok" and type(name) == "string" and MANA_SOURCES[name:lower()] then
+                isSource, sources = true, sources + 1
+            end
+            if (isSource or status == "secret") and shown < AURA_SHOWN then
+                shown = shown + 1
+                rows[#rows + 1] = prefix .. string.format("aura %d%s: id=%s name=%s duration=%s expires=%s source=%s",
+                    i, isSource and " mana source" or "", KeyText(aura, "spellId"), KeyText(aura, "name"),
+                    KeyText(aura, "duration"), KeyText(aura, "expirationTime"), KeyText(aura, "sourceUnit"))
+            end
+        end
+    end
+    local lines = { prefix .. string.format("helpful auras on you: %d, mana sources %d, secret names %d, secret rows %d",
+        total, sources, secretNames, secretRows) }
+    for _, l in ipairs(rows) do lines[#lines + 1] = l end
+    if stopped then lines[#lines + 1] = prefix .. stopped end
+    return lines, sources
+end
+
+-- == auras (4.2 P4, risk X8): ShouldAurasBeSecret now and in the combat
+-- snapshot, and the mana sources on you, out of combat and in it. Forever only.
+local function AurasLines()
+    if not OnForever() then return { FOREVER_ONLY } end
+    local lines = {
+        "C_Secrets.ShouldAurasBeSecret() now = " .. Show("C_Secrets.ShouldAurasBeSecret")
+            .. " (in combat: " .. Show("UnitAffectingCombat", "player") .. ")",
+        "C_Secrets.ShouldAurasBeSecret() in combat = "
+            .. ((combatSnapshot and combatSnapshot.aurasSecret) or "none this session"),
+    }
+    local now = AuraScanLines("")
+    for _, l in ipairs(now) do lines[#lines + 1] = l end
+    if combatSnapshot and combatSnapshot.auraLines then
+        for _, l in ipairs(combatSnapshot.auraLines) do lines[#lines + 1] = l end
+    else
+        lines[#lines + 1] = "auras in combat: none this session"
+    end
+    return lines
+end
+
+-- Appends the five sections, in order, to a report under construction.
+local function NextRoundLines(lines, order)
+    local sections = {
+        { "== art", ArtLines }, { "== hosts", HostsLines }, { "== clock", ClockLines },
+        { "== cooldowns", function() return CooldownsLines(order) end }, { "== auras", AurasLines },
+    }
+    for _, s in ipairs(sections) do
+        lines[#lines + 1] = s[1]
+        local ok, got = pcall(s[2])
+        if ok and type(got) == "table" then
+            for _, l in ipairs(got) do lines[#lines + 1] = l end
+        else
+            lines[#lines + 1] = "<error: " .. Fmt(got) .. ">"
+        end
+    end
+end
+
+-- The to-do lines of the five sections (Forever only: TBC answers them in one
+-- out-of-combat run).
+local function NextRoundToDo(lines)
+    if not OnForever() then return end
+    if not (combatSnapshot and (combatSnapshot.auraSources or 0) > 0) then
+        lines[#lines + 1] = "auras to do: in a fight with an Innervate, Mana Spring or Blessing of Wisdom on you, wait 2 seconds, then type /st probe after the fight"
+    end
+    if not AbsorbSeen() then
+        lines[#lines + 1] = "absorb to do: on a priest, shield yourself (Power Word: Shield), take a hit inside the shield, then type /st probe"
+    end
+end
+
+--------------------------------------------------------------------------------
 -- Combat snapshot: taken 2s into PLAYER_REGEN_DISABLED (or at once if the
 -- client has no C_Timer.After), and kept -- the last one of the session wins,
 -- but only one taken while the fight was still on (review-probe R2).
@@ -1425,12 +1982,20 @@ local function TakeCombatSnapshot()
     local lines = {}
     for _, l in ipairs(SecretsLines()) do lines[#lines + 1] = l end
     for _, l in ipairs(ReadingsLines()) do lines[#lines + 1] = l end
+    -- T87: the auras' secrecy and the mana sources (Forever only), and the
+    -- absorbs, read at the same moment
+    local auraLines, auraSources = nil, 0
+    if OnForever() then auraLines, auraSources = AuraScanLines("in combat: ") end
     combatSnapshot = {
         stamp = SafeDate(),
         inCombat = Show("UnitAffectingCombat", "player"),
         partyExists = Show("UnitExists", "party1"),
         lines = lines,
         shapesFirstHeal = FirstHealShapesLine(knownFirstHeal),
+        aurasSecret = Show("C_Secrets.ShouldAurasBeSecret"),
+        auraLines = auraLines,
+        auraSources = auraSources,
+        absorbLines = AbsorbLines(" in combat"),
     }
     doing = savedDoing
 end
@@ -1782,22 +2347,34 @@ local function Run()
     lines[#lines + 1] = "== blocked actions"
     for _, l in ipairs(BlockedActionsLines()) do lines[#lines + 1] = l end
 
+    -- T87 (decision 22): on any other client the sections that only ask
+    -- Forever's questions (secrets, the C_SpellBook walk, the trait talents,
+    -- the shapes, the damage meter) print one line each
+    local forever = OnForever()
+
     lines[#lines + 1] = "== secrets now"
-    for _, l in ipairs(SecretsLines()) do lines[#lines + 1] = l end
+    if forever then
+        for _, l in ipairs(SecretsLines()) do lines[#lines + 1] = l end
+    else
+        lines[#lines + 1] = FOREVER_ONLY
+    end
 
     local bonusStr = Show("GetSpellBonusHealing")
     local damageStr = BonusDamageString()
     local levelStr = First("UnitLevel", "player")
-    local n, h, e, secretN, errorN, order, descByKey = SpellWalk()
+    local n, h, e, secretN, errorN, order, descByKey = 0, 0, 0, 0, 0, {}, {}
+    if forever then n, h, e, secretN, errorN, order, descByKey = SpellWalk() end
     lines[#lines + 1] = string.format("== spells (bonus healing %s, bonus damage %s)", bonusStr, damageStr)
-    lines[#lines + 1] = string.format(
-        "slots 1-500: %d with a spell, %d healing, %d empty description, %d secret, %d error",
-        n, h, e, secretN, errorN)
+    if not forever then
+        lines[#lines + 1] = "slots 1-500: " .. FOREVER_ONLY
+    else
+        lines[#lines + 1] = string.format(
+            "slots 1-500: %d with a spell, %d healing, %d empty description, %d secret, %d error",
+            n, h, e, secretN, errorN)
 
-    -- Ranks per name: how many ranks of each healing spell were found, so a
-    -- run after turning on "show all ranks" in the spellbook can be diffed
-    -- against one before.
-    do
+        -- Ranks per name: how many ranks of each healing spell were found, so a
+        -- run after turning on "show all ranks" in the spellbook can be diffed
+        -- against one before.
         local rankCounts, rankNames = {}, {}
         for _, sp in ipairs(order) do
             if sp.healing then
@@ -1816,27 +2393,44 @@ local function Run()
             for _, nm in ipairs(rankNames) do parts[#parts + 1] = nm .. " " .. rankCounts[nm] end
             lines[#lines + 1] = "ranks per name: " .. table.concat(parts, "; ")
         end
-    end
 
-    for _, sp in ipairs(order) do
-        if sp.healing then
-            lines[#lines + 1] = "spell " .. sp.key
-            lines[#lines + 1] = "  name: " .. sp.name
-            lines[#lines + 1] = "  rank: " .. sp.rank
-            lines[#lines + 1] = "  desc: " .. sp.desc
+        for _, sp in ipairs(order) do
+            if sp.healing then
+                lines[#lines + 1] = "spell " .. sp.key
+                lines[#lines + 1] = "  name: " .. sp.name
+                lines[#lines + 1] = "  rank: " .. sp.rank
+                lines[#lines + 1] = "  desc: " .. sp.desc
+            end
         end
     end
 
     local buildKey = BuildKey()
-    local againstLines, q1Info = AgainstPreviousLines(order, descByKey, bonusStr, damageStr, levelStr, buildKey)
-    for _, l in ipairs(againstLines) do lines[#lines + 1] = l end
+    local q1Info = { compared = false }
+    if forever then
+        local againstLines
+        againstLines, q1Info = AgainstPreviousLines(order, descByKey, bonusStr, damageStr, levelStr, buildKey)
+        for _, l in ipairs(againstLines) do lines[#lines + 1] = l end
+    else
+        lines[#lines + 1] = "== spells against the previous run"
+        lines[#lines + 1] = FOREVER_ONLY
+    end
 
     lines[#lines + 1] = "== talents"
-    local talentsLines, tierColumnShow = TalentsLines()
-    for _, l in ipairs(talentsLines) do lines[#lines + 1] = l end
+    local tierColumnShow = nil
+    if forever then
+        local talentsLines
+        talentsLines, tierColumnShow = TalentsLines()
+        for _, l in ipairs(talentsLines) do lines[#lines + 1] = l end
+    else
+        lines[#lines + 1] = FOREVER_ONLY
+    end
 
     lines[#lines + 1] = "== shapes"
-    for _, l in ipairs(ShapesLines(order)) do lines[#lines + 1] = l end
+    if forever then
+        for _, l in ipairs(ShapesLines(order)) do lines[#lines + 1] = l end
+    else
+        lines[#lines + 1] = FOREVER_ONLY
+    end
 
     lines[#lines + 1] = "== readings now"
     for _, l in ipairs(ReadingsLines()) do lines[#lines + 1] = l end
@@ -1851,7 +2445,11 @@ local function Run()
     for _, l in ipairs(UnitCombatTokensLines()) do lines[#lines + 1] = l end
 
     lines[#lines + 1] = "== damage meter"
-    for _, l in ipairs(DamageMeterLines()) do lines[#lines + 1] = l end
+    if forever then
+        for _, l in ipairs(DamageMeterLines()) do lines[#lines + 1] = l end
+    else
+        lines[#lines + 1] = FOREVER_ONLY
+    end
 
     lines[#lines + 1] = "== saved variables"
     for _, l in ipairs(SavedVarsLines()) do lines[#lines + 1] = l end
@@ -1863,7 +2461,13 @@ local function Run()
     local windowLines, escToDo = WindowsLines()
     for _, l in ipairs(windowLines) do lines[#lines + 1] = l end
 
+    -- T87: == art, == hosts, == clock, == cooldowns, == auras
+    NextRoundLines(lines, order)
+
     lines[#lines + 1] = "== to do"
+    -- T87: Q1-Q8 are Forever's questions (docs/FOREVER-PLAN.md 6); on any
+    -- other client the lines below are replaced by one, where qStart says
+    local qStart = #lines + 1
 
     -- T0c item 5: Q1 now also answers from a bonus-damage or a level change --
     -- either is as good a test as bonus healing when there is no +healing
@@ -1947,15 +2551,24 @@ local function Run()
         lines[#lines + 1] = "Q8 to do: cast a heal on the party member during the fight, then type /st probe after the fight"
     end
 
+    if not forever then
+        for i = #lines, qStart, -1 do lines[i] = nil end
+        lines[#lines + 1] = "Q1-Q8: Forever questions, absent on this client"
+        q1Record = nil
+    end
+
     lines[#lines + 1] = "Q9 answered: SPELLTUNER_TOC = " .. Fmt(_G.SPELLTUNER_TOC)
 
-    if macroHover.n == 0 then
+    if forever and macroHover.n == 0 then
         lines[#lines + 1] = "macro to do: put a macro that casts a spell on an action bar, hover it, then type /st probe"
     end
 
     if escToDo then
         lines[#lines + 1] = "esc to do: open the SpellTuner window (/st) and the debug console (/st debug), press ESC once, note which closed, then type /st probe"
     end
+
+    -- T87: the auras and absorb checks still waiting (Forever only)
+    NextRoundToDo(lines)
 
     local report = table.concat(lines, "\n")
 
@@ -2024,14 +2637,22 @@ local function OnAddonLoaded(loadedName)
         if type(MD.sv) == "table" and type(MD.sv.atLoad) == "string" then
             svTypeAtLoad = MD.sv.atLoad
         end
-        if type(SpellTunerDB) == "table" and type(SpellTunerDB.probe) == "table" then
-            svPrevStamp = SpellTunerDB.probe.stamp
-            if type(SpellTunerDB.probe.reports) == "table" then
+        -- T87: on the TBC line the client may hand back ManaDemon's table
+        -- instead (its .toc lists both), and Core.lua adopts it at
+        -- PLAYER_LOGIN only while SpellTunerDB is still nil -- so the probe
+        -- keeps its record on the table that is about to become SpellTunerDB
+        -- rather than making an empty one that would stop the adoption.
+        -- Forever's TOC lists no ManaDemonDB, so there it is always nil.
+        local db = SpellTunerDB
+        if db == nil and type(ManaDemonDB) == "table" then db = ManaDemonDB end
+        if type(db) == "table" and type(db.probe) == "table" then
+            svPrevStamp = db.probe.stamp
+            if type(db.probe.reports) == "table" then
                 local keys = {}
-                for k in pairs(SpellTunerDB.probe.reports) do keys[#keys + 1] = k end
+                for k in pairs(db.probe.reports) do keys[#keys + 1] = k end
                 table.sort(keys)
                 for _, k in ipairs(keys) do
-                    local rec = SpellTunerDB.probe.reports[k]
+                    local rec = db.probe.reports[k]
                     local char = (type(rec) == "table") and Fmt(rec.char) or "<absent>"
                     local at = (type(rec) == "table") and Fmt(rec.at) or "<absent>"
                     svReportsAtLoad[#svReportsAtLoad + 1] = tostring(k) .. " (" .. char .. ", " .. at .. ")"
@@ -2039,10 +2660,13 @@ local function OnAddonLoaded(loadedName)
             end
         end
 
-        if type(SpellTunerDB) ~= "table" then SpellTunerDB = {} end
-        if type(SpellTunerDB.probe) ~= "table" then SpellTunerDB.probe = {} end
-        if type(SpellTunerDB.probe.reports) ~= "table" then SpellTunerDB.probe.reports = {} end
-        SpellTunerDB.probe.stamp = SafeDate()
+        if type(db) ~= "table" then
+            SpellTunerDB = {}
+            db = SpellTunerDB
+        end
+        if type(db.probe) ~= "table" then db.probe = {} end
+        if type(db.probe.reports) ~= "table" then db.probe.reports = {} end
+        db.probe.stamp = SafeDate()
     end
     doing = savedDoing
 end
@@ -2073,6 +2697,7 @@ end
 local function OnCombatEvent(unit, action, descriptor, amount)
     BumpCombat(phase, unit, action, amount)
     BumpUnitCombatToken(phase, unit, action, amount)
+    BumpAction(phase, action, descriptor, amount) -- T87: == cooldowns
 end
 
 local function OnSpellcastSent(unit, target)
@@ -2192,7 +2817,10 @@ if type(MD.AddCommand) == "function" then
         else
             Run()
         end
-    end, "/st probe", "the capability report for the planner")
+    -- T87 (decision 22): a hidden row on TBC (/md probe, /st probe), as TBC's
+    -- help and unlock are, so the TBC help and About tab keep their rows;
+    -- Forever's help lists it as before
+    end, "/st probe", "the capability report for the planner", not OnForever())
 else
     -- No kernel: today's standalone block, unchanged, so the probe still
     -- answers if Core.lua fails to load.
