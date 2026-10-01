@@ -41,6 +41,9 @@ Engine\RunTimeline.lua
 Engine\ReplayTrace.lua
 Engine\Practice.lua
 UI\Style.lua
+UI\Theme_Flat.lua
+UI\EscStack.lua
+UI\Windows.lua
 UI\ContextMenu.lua
 UI\Tip.lua
 UI\Tip_TBC.lua

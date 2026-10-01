@@ -19,8 +19,9 @@ Engine\ManaModel.lua
 Engine\Recordings.lua
 Spells\Measure.lua
 UI\Style.lua
-UI\Theme_Forever.lua
-UI\Windows_Forever.lua
+UI\Theme_Flat.lua
+UI\EscStack.lua
+UI\Windows.lua
 UI\ContextMenu.lua
 UI\Tip.lua
 UI\Dashboard_Rows.lua

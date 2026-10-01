@@ -12,9 +12,9 @@
   "corecheck/forever": 24,
   "corecheck/tbc": 24,
   "costcheck/tbc": 3,
-  "dashui/tbc": 67,
+  "dashui/tbc": 68,
   "defaultscheck/forever": 52,
-  "defaultscheck/tbc": 48,
+  "defaultscheck/tbc": 49,
   "forevercheck/forever": 16,
   "gatecheck/forever": 12,
   "importcheck": 21,
@@ -63,5 +63,6 @@
   "tipcheck/forever": 45,
   "ttocheck/tbc": 45,
   "verifycheck/tbc": 14,
-  "wincheck/forever": 66
+  "wincheck/forever": 66,
+  "wincheck/tbc": 4
 }

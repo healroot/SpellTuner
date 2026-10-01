@@ -1441,7 +1441,7 @@ the numbers.
 
 **Paste back**: the `pN` you pinned, and in words what the suggested column did differently.
 
-## 44. The refactor plan's checks (`docs/PLAN-refactor-ux.md` section 9; waves 1-17, 0.16.4)
+## 44. The refactor plan's checks (`docs/PLAN-refactor-ux.md` section 9; waves 1-17 and C-a, 0.16.4)
 
 Paste back as in section 41. Out of combat unless a step says otherwise. Install **0.16.4** on each
 client (`--install-tbc` / `--install-forever`, the top of this file and §38; never cross them). The
@@ -1637,6 +1637,22 @@ W10. **The clock and the theme (P24, P25).** The mana clock behaves exactly as o
     closes it; right-click opens Settings -> General; unticking *Minimap button* under WINDOWS hides
     it. If you use a minimap-button collector, say whether it picked the button up. On TBC nothing
     changes until wave C.
+
+**Wave C-a (T80; TBC).** These need a build newer than the 0.16.4 install.
+
+30. **TBC window (C1).**
+    - `/md`: the window is flat, the size it was, and where you last dragged it (if it opens
+      centred, say so: the client's own saved place for it was not there to adopt).
+    - Drag it, `/reload`: it stays.
+    - Open the debug console from Settings -> General: one ESC closes the console, a second ESC
+      the window.
+    - Pull a mob with the window open: it hides and comes back on the same view after the fight;
+      one chat line says why, once.
+    - Settings -> General -> Windows: set Keep them open and pull again (it stays); set Window size
+      to 90 % (every SpellTuner window smaller); set Text size to +1; then Reset window positions.
+    - Simulate -> Practice -> Edit bindings: a sheet on the pane, not a window. `/md binds` opens
+      the same sheet.
+    - `/md replay 1`: it opens where the old replay window was.
 
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the

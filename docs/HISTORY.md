@@ -4388,3 +4388,45 @@ it now loads the minimap button, T79's deviation 1) and run-to-run noise (ms, ta
 sliced search's evaluation counts in replayui and reviewui, simcheck's KB per run); minimapcheck tbc
 is new; every other TBC suite equal. In game: `docs/TESTING.md` §44 items 28 and 29 (they need a
 build newer than the 0.16.4 install). **Next:** wave C, C1 alone first (the plan, "Why this order").
+
+## 2026-10-01 — the refactor plan, wave C-a: T80 (C1)
+
+Wave C-a of `docs/PLAN-refactor-ux.md` cherry-picked onto `bf35c93` (C1 alone, the base of wave C),
+then the integrator's lines (the three main TOCs, CLAUDE.md, `docs/TESTING.md`, `docs/TOOLS.md`,
+`docs/DECISIONS.md`, `tools/data/expected-counts.json`, this entry) in one commit. No merge fix. The
+version stays 0.16.4.
+
+- **T80 (C1)** (`cbc6730`, `9a7b422`; branch `plan/C1` `517f47a`, `b6e026f`): the window manager
+  and the flat theme on TBC (decision 10, the author's answer 1; review A22, A6c) --
+  `UI/Theme_Forever.lua` -> `UI/Theme_Flat.lua` (`fontOffset` registered there,
+  `UI.SetFontOffset`), `UI/Windows_Forever.lua` -> `UI/Windows.lua` (the host hands in `sizes`,
+  `group`, `open`, `selected`, `practicePath`; a takeover its `busy`; `Win.host`; `adoptPlaced`;
+  `scale` / `combat` / `win` registered there), the ESC stack split out into new `UI/EscStack.lua`
+  (`escStack` registered there; its calls delegated on `MD.Win`); the three listed on every main
+  TOC right after `UI\Style.lua`, TBC's included, so `UI.THEMED` is true on TBC and the looks
+  P27-P33 gated turn on there (Review's generic table and row menu, the replay's band, the
+  bindings sheet, the flat tooltips). Forever's sizes in `UI/Dashboard_Forever.lua`, TBC's (every
+  group 1036 x 646, fixed) in `UI/Dashboard.lua`, registered as the host; every `if MD.Win`
+  else-branch gone (TBC's `UISpecialFrames` lines, the `HIGH` replay, TBC's bindings window);
+  `ui` left `Core_Forever.lua`'s `DEFAULTS`; TBC's Settings -> General gains a Windows column.
+  wincheck now forever and tbc (tbc 4, new), defaultscheck tbc 48 -> 49, dashui tbc 67 -> 68; the
+  TBC UI suites load the theme and the manager and were re-based on the themed look (the task file
+  lists every changed value). The import fixture is unchanged (the same five `ui` keys, now
+  registered by the three files). The DECISIONS entry "TBC takes the Forever window".
+- Left for the next owners: comments that still name the old files (`Client/Probe.lua`,
+  `UI/Style.lua`, `UI/Dashboard_Review.lua`, `UI/SpellTip_Forever.lua`, `tools/wowstub.lua`), and
+  `docs/SPEC-forever-ui.md` / `docs/PLAN-refactor-ux.md`, which name them as they were.
+
+`make check`: 71 runs, all passed, in the worktree and in a `git archive` export (66 counted runs
+against 66 expected); apicheck 0 findings over 59 files (`UI/EscStack.lua`; 48 globals), textcheck
+0 over 95. Each TBC suite's full output against `bf35c93` differs only where T80's task file says
+(themecheck, navui, dashui, defaultscheck, spelltip, reviewui, replayui, practiceui -- the re-base
+under the theme), by what follows from the theme being on without a line of its own in that table
+(the accent `ff7c0a` for `ffcc00` in dashui's run line and practiceui's key prompt, practiceui's
+tree row losing its `   >` text for the theme's chevron, dashui's T30 frame count 812 -> 944 with
+the Windows pane, reviewui's verdict and short-pull wording and replay header in P27 / P28's shape,
+the coach card no longer printed by a refused plain click), and run-to-run noise (ms, table
+addresses in practice and solvercheck, the sliced search's evaluation counts and the order of two
+equal-score `binds 3` / `binds 5` lines in replayui); wincheck tbc is new; every other TBC suite
+equal. In game: `docs/TESTING.md` §44 item 30 (needs a build newer than the 0.16.4 install).
+**Next:** wave C-b.

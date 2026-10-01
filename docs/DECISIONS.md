@@ -1119,3 +1119,19 @@ the card and the tooltip say `Per sec` and count `Casts` (`N from full`); `label
 one grey (#B3B3B3), `muted` is for explanations, `disabled` for inert controls and the numbers of a
 rank you do not have; the selected rank is a white bar so the fill means "suggested" alone. TBC
 keeps its words and its three greys until wave C gives it the theme (decision 10).
+
+**TBC takes the Forever window** (2026-10-01, T80 / C1; U4's list, the author's answer 1 to
+decision 10). The TBC TOC lists the flat theme and the window manager, so `UI.THEMED` is true on
+TBC. Every look P27-P33 gated now applies there: the flat window and tooltips, Review's generic
+table with its row menu (Coach anyway, no Coach* or shift-click), and the replay's band.
+`/md`'s window is the manager's host:
+
+- TBC's own sizes per group (1036 x 646, fixed until C3);
+- a place the client kept for it adopted once, and the replay's `db.replayPos` likewise;
+- one ESC closes one window;
+- it hides in combat and comes back on the same view (Settings -> General -> Windows offers
+  "Keep them open");
+- the bindings are the sheet on Simulate -> Practice.
+
+The tests that pinned the unthemed TBC look were re-based on the themed one
+(`docs/tasks/T80-window-manager-and-theme-on-tbc.md` lists every value).
