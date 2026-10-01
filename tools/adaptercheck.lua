@@ -421,11 +421,12 @@ if flavour == "forever" then
             return 0, 1500
         end
         MD.API.Invalidate("GetSpellBaseCooldown")
-        local ms, gcd = MD.API.BaseCooldown(20473)
-        local none = MD.API.BaseCooldown(5185)
+        local read = type(MD.API.BaseCooldown) == "function" and MD.API.BaseCooldown or function() end
+        local ms, gcd = read(20473)
+        local none = read(5185)
         _G.GetSpellBaseCooldown = saved
         MD.API.Invalidate("GetSpellBaseCooldown")
-        local gone, why = MD.API.BaseCooldown(20473)
+        local gone, why = read(20473)
         check("T95: BaseCooldown is a Forever-only binding, read only once BASE_CD_READS is set",
             listed and MD.API._bindings.BaseCooldown == "GetSpellBaseCooldown" and MD.API.BASE_CD_READS == false
             and ms == 10000 and gcd == 1500 and none == 0 and gone == nil and why == "absent",
