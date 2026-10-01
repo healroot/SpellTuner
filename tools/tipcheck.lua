@@ -818,6 +818,66 @@ do
 end
 
 --------------------------------------------------------------------------------
+-- T85 (docs/probe/1.60.1_70124.md): build 70124's macro slot shapes -- a
+-- spell macro answers ("macro", <spell id>, "spell"), a text macro
+-- ("macro", <macro index>, ""); the spell id is the spell, never a macro
+-- index handed to GetMacroSpell
+--------------------------------------------------------------------------------
+do
+    -- a spell macro by its owner's slot and by the SetAction hook: the block
+    -- of the spell the slot names, and GetMacroSpell never asked
+    local noSpell = { type = MACRO, lines = { { tooltipType = 0, tooltipID = 9 } } }
+    S.SpellMacroAction(61, 774)
+    S.macroSpellCalls = {}
+    local viaOwner = MacroTooltip(noSpell, { action = 61 })
+    local whyOwner = Why()
+    local viaHook = S.SetActionTooltip(61)
+    local whyHook = Why()
+    local calls = #S.macroSpellCalls
+    S.actions[61] = nil
+    local want = MacroBlock(774)
+    check("T85: a spell macro's slot resolves to its own spell id, GetMacroSpell never asked",
+        SameLines(viaOwner, want) and SameLines(viaHook, want) and calls == 0
+        and Has(whyOwner, "slot 61 -> macro spell 774 -> block")
+        and Has(whyHook, "SetAction slot 61 -> macro spell 774 -> block")
+        and not Has(whyOwner .. whyHook, "GetMacroSpell"),
+        string.format("owner=%d hook=%d want=%d calls=%d why=%s // %s", viaOwner:NumLines(),
+            viaHook:NumLines(), want:NumLines(), calls, whyOwner, whyHook))
+end
+
+do
+    -- a spell id that is also a live macro index (a low id: Fireball rank 1
+    -- is 133) must not read that other macro's spell
+    S.SpellMacroAction(61, 774)
+    S.macroSpells[774] = 5185
+    local viaHook = S.SetActionTooltip(61)
+    S.actions[61], S.macroSpells[774] = nil, nil
+    local want, other = MacroBlock(774), MacroBlock(5185)
+    check("T85: a spell macro whose id is also a macro index gives its own spell, not that macro's",
+        SameLines(viaHook, want) and not SameLines(viaHook, other),
+        string.format("got=%d want=%d", viaHook:NumLines(), want:NumLines()))
+end
+
+do
+    -- a text-only macro: GetMacroSpell asked with the macro index, nothing
+    -- named, nothing added, nothing raised
+    local noSpell = { type = MACRO, lines = { { tooltipType = 0, tooltipID = 9 } } }
+    S.TextMacroAction(62, 2)
+    S.macroSpellCalls = {}
+    local okOwner, viaOwner = pcall(MacroTooltip, noSpell, { action = 62 })
+    local whyOwner = Why()
+    local okHook, viaHook = pcall(S.SetActionTooltip, 62)
+    local calls = S.macroSpellCalls
+    S.actions[62] = nil
+    check("T85: a text macro's slot resolves nothing and asks GetMacroSpell its macro index",
+        okOwner and okHook and viaOwner:NumLines() == 0 and viaHook:NumLines() == 0
+        and #calls == 2 and calls[1] == 2 and calls[2] == 2
+        and Has(whyOwner, "slot 62 -> macro 2 -> GetMacroSpell nil"),
+        string.format("ok=%s,%s lines=%s,%s calls=%d why=%s", tostring(okOwner), tostring(okHook),
+            tostring(okOwner and viaOwner:NumLines()), tostring(okHook and viaHook:NumLines()), #calls, whyOwner))
+end
+
+--------------------------------------------------------------------------------
 -- T37 (docs/SPEC-forever-ui.md 5.1-5.4b, 5.6): the block's look, its plain /
 -- detail split, the Other block, the macro marker, the detail key
 --------------------------------------------------------------------------------

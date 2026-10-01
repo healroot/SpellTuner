@@ -260,10 +260,20 @@ function GetActionInfo(slot)
     if a[3] ~= nil then return a[1], a[2], a[3] end
     return a[1], a[2]
 end
+-- T85: the two macro shapes build 70124 answered (docs/probe/1.60.1_70124.md,
+-- "What it settles"): a macro that casts a spell is ("macro", <SPELL ID>,
+-- "spell") -- the spell id itself, which GetMacroSpell does not name -- and a
+-- text-only macro is ("macro", <macro index>, "").
+function S.SpellMacroAction(slot, spellId) S.actions[slot] = { "macro", spellId, "spell" } end -- T85
+function S.TextMacroAction(slot, index) S.actions[slot] = { "macro", index, "" } end -- T85
 -- T25: a macro's spell by macro index, from S.macroSpells[index] (nil = the
--- macro casts no spell the client can name).
+-- macro casts no spell the client can name). T85: every call is logged in
+-- S.macroSpellCalls (the argument), so a suite can tell a spell id was never
+-- handed to it as a macro index.
 S.macroSpells = {}
+S.macroSpellCalls = {} -- T85
 function GetMacroSpell(index)
+    S.macroSpellCalls[#S.macroSpellCalls + 1] = index -- T85
     return S.macroSpells[index]
 end
 

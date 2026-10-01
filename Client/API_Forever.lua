@@ -153,8 +153,9 @@ MD.API.Bind({
 --       whatever its type -- what ElvUI's own Macro handler reads
 --       (`GetTooltipData().lines[1].tooltipID`, no type check);
 --   (3) the hovered button's slot (owner.action, else the "action" attribute)
---       -> GetActionInfo: "macro" with a macro index (GetMacroSpell names its
---       spell) or, on newer retail, already the spell id with sub-type "spell".
+--       -> GetActionInfo: "macro" with sub-type "spell" and the spell id
+--       itself (build 70124, T85: taken as it is), or with sub-type "" and a
+--       macro index (a text macro; GetMacroSpell names its spell, if any).
 -- T28: a candidate is handed to `fn(tooltip, id)`, which answers
 -- `done, note`: done stops the chain (a block shown, or the block switched
 -- off), anything else lets the next step try -- so a first line naming an id
@@ -269,9 +270,15 @@ local function FirstLine(data)
     return text
 end
 
--- A slot's spell, T25's order: GetActionInfo, then GetMacroSpell for a macro,
--- then a "spell" sub-type's own id. Answers the step's text, the id (plain or
--- nil) and the action's kind.
+-- A slot's spell: GetActionInfo, then, for a macro, by its sub-type. T85
+-- (docs/probe/1.60.1_70124.md, "What it settles"): build 70124 answers a
+-- macro that casts a spell as ("macro", <SPELL ID>, "spell") -- the id IS the
+-- spell, and GetMacroSpell, which takes a macro index, names nothing for it
+-- (or, for a low id that is also a live macro index, another macro's spell)
+-- -- and a text-only macro as ("macro", <macro index>, ""), the one shape
+-- GetMacroSpell is asked about. Answers the step's text, the id (plain or
+-- nil) and the action's kind. ActionInfo goes through MD.API.Call, so every
+-- return here is plain (a secret one makes kind nil).
 local function SlotSpell(slot)
     local text = "slot " .. Desc(slot)
     -- three returns; written out, never `a and f() or b`.
@@ -281,6 +288,11 @@ local function SlotSpell(slot)
         return text .. " -> ActionInfo " .. Desc(why)
     end
     if kind ~= "macro" then return text .. " -> " .. Desc(kind) .. " (not a macro)", nil, kind end
+    if subType == "spell" then
+        text = text .. " -> macro spell " .. Desc(id)
+        if PlainNumber(id) then return text, id, kind end
+        return text, nil, kind
+    end
     text = text .. " -> macro " .. Desc(id)
     if MD.API.MacroSpell then
         local spellId, why = MD.API.MacroSpell(id)
@@ -291,7 +303,6 @@ local function SlotSpell(slot)
             text = text .. " -> GetMacroSpell " .. Desc(spellId)
         end
     end
-    if subType == "spell" and PlainNumber(id) then return text .. " -> spell sub-type", id, kind end
     return text, nil, kind
 end
 
