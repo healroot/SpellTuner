@@ -464,8 +464,19 @@ do
     local joined = SP.CardText(cardLines or {})
     local same = cardLines ~= nil and #joined == #card and #card > 5
     for i = 1, #card do if joined[i] ~= card[i] then same = false end end
+    -- the chat side's own shape, independent of SP.CardText: a muted line is
+    -- the grey the card has always carried after its indent, every other
+    -- line has no colour code at all
     local muted = 0
-    for _, l in ipairs(cardLines or {}) do if l.tone == "muted" then muted = muted + 1 end end
+    for i, l in ipairs(cardLines or {}) do
+        local c = card[i] or ""
+        if l.tone == "muted" then
+            muted = muted + 1
+            if not c:find("^%s*|cff888888.-|r$") then same = false end
+        elseif c:find("|c", 1, true) then
+            same = false
+        end
+    end
     local first = ResultText()[1] or ""
     local head = Strip(card[1]):match("^(.-)used:") or "?"
     check("T71: the card lines join into the chat card byte for byte; the result area shows them",
