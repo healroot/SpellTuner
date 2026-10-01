@@ -66,10 +66,12 @@ end
 
 -- tbc: the TOC's own order minus everything that draws (UI/ other than
 -- UI/Summary.lua, which owns the combat-log handler and the fight lifecycle
--- rather than a widget; Integrations/, which only wires up ElvUI).
+-- rather than a widget). T92: Integrations/ is loaded -- with no host addon
+-- (the stub has none; tools/stub_hosts.lua fakes them for the suites that
+-- ask) a surface file must load and do nothing, which is itself held
+-- (tools/surfacecheck.lua).
 local function KeepForTbc(rel)
     if rel:sub(1, 3) == "UI/" then return rel == "UI/Summary.lua" end
-    if rel:sub(1, 13) == "Integrations/" then return false end
     return true
 end
 local allFiles = S.TocFiles("SpellTuner_TBC.toc")

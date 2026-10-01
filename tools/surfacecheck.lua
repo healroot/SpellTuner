@@ -126,7 +126,8 @@ check("1b. MD.Feeds exists", type(Feeds) == "table")
 H.Remove()
 do
     local okLoad, err = LoadSurface()
-    check("1c. no ElvUI: the surface loads and raises nothing", okLoad, tostring(err))
+    check("1c. no ElvUI: the surface loads, raises nothing, records nothing", okLoad
+        and not (MD.Surfaces and MD.Surfaces.elvui), tostring(err))
 end
 do
     local lib = H.InstallLDB()
@@ -140,7 +141,8 @@ end
 do
     H.InstallElvUI({ noDataTexts = true })
     local okLoad, err = LoadSurface()
-    check("1e. a half ElvUI (no DataTexts module): no raise", okLoad, tostring(err))
+    check("1e. a half ElvUI (no DataTexts module): no raise, nothing recorded", okLoad
+        and not (MD.Surfaces and MD.Surfaces.elvui), tostring(err))
     H.Remove()
 end
 
@@ -163,6 +165,10 @@ local function Shape(rec)
         and rec.localizedName == rec.name and rec.objectEvent == nil and rec.n == 11
 end
 check("2c. ElvUI's argument shape (update, click, enter, ApplySettings; 11 arguments)", Shape(OOM) and Shape(REG))
+local reg = MD.Surfaces and MD.Surfaces.elvui
+check("2d. what it registered is recorded (MD.Surfaces.elvui, for the INTEGRATIONS line)",
+    reg and reg.datatexts and #reg.datatexts == 2 and reg.datatexts[1] == "SpellTuner"
+    and reg.datatexts[2] == "SpellTuner Regen")
 
 -- One read of a datatext: a fresh panel, ElvUI's first OnUpdate (20000).
 local function Read(rec)
@@ -487,14 +493,18 @@ Guarded("6. FEED_CHANGED", function()
         fired[key] = (fired[key] or 0) + 1
         atFire[#atFire + 1] = { key = key, text = Feeds.Text(key, {}) }
     end)
-    Ticks(4)
+    if FLAVOUR == "tbc" then
+        S.mana = S.manaMax -- the golden fight left the pool empty
+        S.Fire("UNIT_POWER_UPDATE", "player", "MANA")
+    end
+    Ticks(14)
     fired.clock, fired.regen, atFire = 0, 0, {}
     Ticks(8)
     check("6a. nothing changes: no FEED_CHANGED", fired.clock == 0 and fired.regen == 0,
         fired.clock .. "," .. fired.regen)
 
     -- a fight: count the ticks on which each feed's text changed, beside the fires
-    local changes = { clock = 0, regen = 0 }
+    local changes, stale = { clock = 0, regen = 0 }, 0
     local last = { clock = Feeds.Text("clock", {}), regen = Feeds.Text("regen", {}) }
     if FLAVOUR == "tbc" then
         S.Fire("PLAYER_REGEN_DISABLED")
@@ -512,7 +522,11 @@ Guarded("6. FEED_CHANGED", function()
                 MD.Pool.model:Spend(150, GetTime())
             end
         end
+        local before = #atFire
         S.Tick(0.5)
+        for j = before + 1, #atFire do
+            if atFire[j].text ~= Feeds.Text(atFire[j].key, {}) then stale = stale + 1 end
+        end
         for _, k in ipairs({ "clock", "regen" }) do
             local now = Feeds.Text(k, {})
             if now ~= last[k] then changes[k] = changes[k] + 1; last[k] = now end
@@ -521,9 +535,8 @@ Guarded("6. FEED_CHANGED", function()
     check("6b. a fight: FEED_CHANGED once per tick on which the text changed",
         fired.clock == changes.clock and fired.regen == changes.regen and changes.clock > 0 and changes.regen > 0,
         string.format("clock %d/%d, regen %d/%d", fired.clock, changes.clock, fired.regen, changes.regen))
-    local fresh = true
-    for _, f in ipairs(atFire) do if f.text ~= last[f.key] and f == atFire[#atFire] then fresh = false end end
-    check("6c. a listener reads the new text when it fires", fresh)
+    check("6c. a listener reads the new text when it fires (the tick runs after the state moved)",
+        stale == 0 and #atFire > 0, tostring(stale))
 end)
 
 -- Last: a feed whose Text raises answers its label (registered here, after
