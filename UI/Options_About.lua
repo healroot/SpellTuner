@@ -43,7 +43,7 @@ local function Build()
         left:SetPoint("TOPLEFT", cmdPane, 5, y)
         left:SetWidth(118)
         left:SetJustifyH("LEFT")
-        left:SetTextColor(UI.accent[1], UI.accent[2], UI.accent[3])
+        UI.Tint(left, "text", "accent") -- T107: follows a style switch
         left:SetText(c.usage)
         local right = cmdPane:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
         right:SetPoint("TOPLEFT", cmdPane, 128, y)

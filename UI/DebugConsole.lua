@@ -146,7 +146,7 @@ function MD:ShowCopyPopup(title, text)
         copyTextArea = UI.CreateScrollEditBox(copyFrame)
         copyTextArea:SetPoint("TOPLEFT", 5, -22)
         copyTextArea:SetPoint("BOTTOMRIGHT", -5, 5)
-        UI.StylizeFrame(copyTextArea.scrollFrame, { 0, 0, 0, 0 }, { UI.accent[1], UI.accent[2], UI.accent[3], 1 })
+        UI.StylizeFrame(copyTextArea.scrollFrame, { 0, 0, 0, 0 }, UI.AccentSpec(1)) -- T107: the accent by name
 
         copyTextArea.eb:SetScript("OnEditFocusGained", function() copyTextArea.eb:HighlightText() end)
         copyTextArea.eb:SetScript("OnMouseUp", function() copyTextArea.eb:HighlightText() end)
@@ -317,6 +317,9 @@ local function CreateDebugConsoleFrame()
     UI.CreateScrollFrame(consoleFrame, -(46 + categoryRows * CATEGORY_ROW_H + errorsRowH), 5)
     consoleFrame.scrollFrame:SetScrollStep(37)
     UI.StylizeFrame(consoleFrame.scrollFrame, { 0.1, 0.1, 0.1, 0.5 })
+    -- T107: the log's category colours are the legend (docs/SPEC-next.md 5.1:
+    -- the same under every style), so a style switch's follow never enters it
+    consoleFrame.scrollFrame.restyleExempt = true
 
     content = consoleFrame.scrollFrame.content:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
     content:SetPoint("TOPLEFT", 5, -5)

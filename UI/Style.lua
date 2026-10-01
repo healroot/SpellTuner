@@ -149,6 +149,277 @@ function UI.Fill(key)
 end
 
 --------------------------------------------------------------------------------
+-- T107 (docs/SPEC-next.md 2.2 and section 11's T107 row; R-styles.md 1.3, 6):
+-- the live restyle. A style is applied in place (UI/Styles.lua: the palette
+-- and the tokens rewritten, every UI.skinned region repainted, STYLE_CHANGED);
+-- what that did not reach was a colour COPIED out of a token when a region was
+-- made. Two ways now carry a switch to those regions, both on STYLE_CHANGED
+-- (registered at the bottom of this file, before any other file's handler):
+--
+-- 1. UI.Tint(region, how, name, alpha): a region whose colour is a NAME --
+--    "accent" (UI.accent), a UI.PALETTE fill or a UI.TEXT token -- is painted
+--    through here, which records the name and the setter (weak-keyed: the
+--    registry never keeps a region alive) and paints it now; UI.RepaintTints
+--    paints every recorded region from its name in the new style. The tint IS
+--    the setter: a region whose colour changes later is tinted again (the
+--    record follows the last call), and UI.Untint(region) forgets one a caller
+--    paints by hand from then on. how / setter:
+--      "text"     SetTextColor             "texture"  SetColorTexture
+--      "vertex"   SetVertexColor           "border"   SetBackdropBorderColor
+--      "backdrop" SetBackdropColor         "bar"      SetStatusBarColor
+--    alpha nil passes what the call it replaces passed: a fill's own alpha;
+--    for a token or the accent nothing (r, g, b only); a number is passed as
+--    the fourth argument.
+-- 2. The follow (UI.FollowTokens): every font string under a SpellTuner window
+--    (the top frame of every UI.skinned region) that is NOT tinted and whose
+--    text colour is a token's colour in the style just left is given that
+--    token's colour in the new one; every colour code of such a token inside
+--    its text is swapped the same way. A colour two tokens shared that now
+--    differ is left alone (which one it was cannot be told), and a subtree
+--    marked `restyleExempt` is never entered (the replay's unit frames, the
+--    debug console's legend: colours that mean the same under every style,
+--    R-styles.md 1.3). This is what reaches the font strings of the panes
+--    T107 does not own (Settings, Review's notes, Waste, the Sim window).
+--
+-- What neither reaches -- a fill copied into a texture, or a code captured in
+-- a local, in a file T107 does not own -- is UI.Restyle.LEFT, which the
+-- Settings line "finish changing after a reload" counts (UI.Restyle.Left /
+-- UI.Restyle.Line); tools/restylecheck.lua measures every entry as left and
+-- finds nothing else.
+--------------------------------------------------------------------------------
+UI.tinted = setmetatable({}, { __mode = "k" })
+
+local TINT_SETTER = {
+    text = "SetTextColor", texture = "SetColorTexture", vertex = "SetVertexColor",
+    border = "SetBackdropBorderColor", backdrop = "SetBackdropColor", bar = "SetStatusBarColor",
+}
+UI.TINT_SETTERS = TINT_SETTER
+
+-- A name's colour now: r, g, b and a fill's own alpha (nil for a token or the
+-- accent). An unknown name is white, as UI.RGB answers.
+local function TintColour(name)
+    if name == "accent" then return accent[1], accent[2], accent[3], nil end
+    local c = UI.PALETTE and UI.PALETTE[name]
+    if c then return c[1], c[2], c[3], c[4] end
+    local t = UI.TEXT[name]
+    if t then return t[1], t[2], t[3], nil end
+    return 1, 1, 1, nil
+end
+UI.TintColour = TintColour
+
+local function PaintTint(region, how, rec)
+    local fn = region[TINT_SETTER[how]]
+    if type(fn) ~= "function" then return false end
+    local r, g, b, a = TintColour(rec.name)
+    if rec.alpha ~= nil then a = rec.alpha elseif how == "text" then a = nil end
+    if a == nil then fn(region, r, g, b) else fn(region, r, g, b, a) end
+    rec.r, rec.g, rec.b = r, g, b
+    return true
+end
+
+-- UI.Tint(region, how, name, alpha): paint now, and again on every switch.
+function UI.Tint(region, how, name, alpha)
+    if region == nil or TINT_SETTER[how] == nil then return end
+    local recs = UI.tinted[region]
+    if not recs then recs = {}; UI.tinted[region] = recs end
+    local rec = { name = name, alpha = alpha }
+    recs[how] = rec
+    PaintTint(region, how, rec)
+end
+
+-- UI.Untint(region, how): forget one setter's name (how nil: every one).
+function UI.Untint(region, how)
+    if region == nil then return end
+    if how == nil then UI.tinted[region] = nil; return end
+    local recs = UI.tinted[region]
+    if recs then recs[how] = nil end
+end
+
+-- UI.RepaintTints() -> how many it painted. A text tint whose font string now
+-- shows a colour it did not paint (painted by hand since) is forgotten, not
+-- repainted; a texture's colour cannot be read back, so its record is trusted.
+local function Far(x, y) return type(x) ~= "number" or type(y) ~= "number" or math.abs(x - y) > 0.002 end
+function UI.RepaintTints()
+    local n = 0
+    for region, recs in pairs(UI.tinted) do
+        for how, rec in pairs(recs) do
+            local keep = true
+            if how == "text" and rec.r and type(region.GetTextColor) == "function" then
+                local okC, r, g, b = pcall(region.GetTextColor, region)
+                if okC and type(r) == "number" and (Far(r, rec.r) or Far(g, rec.g) or Far(b, rec.b)) then
+                    keep = false
+                end
+            end
+            if not keep then
+                recs[how] = nil
+            elseif pcall(PaintTint, region, how, rec) then
+                n = n + 1
+            end
+        end
+    end
+    return n
+end
+
+-- The follow. `painted` is UI.TEXT as the windows were last painted in, taken
+-- at each STYLE_CHANGED (the first, at CORE_LOGIN, comes before any window is
+-- built, so it only takes the snapshot).
+local painted
+local function Snapshot()
+    local s = {}
+    for k, t in pairs(UI.TEXT) do
+        s[k] = { t[1], t[2], t[3], hex = type(t.hex) == "string" and t.hex:lower() or nil }
+    end
+    return s
+end
+local function Key3(r, g, b) return string.format("%.3f %.3f %.3f", r, g, b) end
+
+-- old colour -> new colour and old code -> new code for every token that
+-- changed; a colour (or a code) two tokens shared that now differ is dropped.
+local function Maps(old, new)
+    local rgb, hex, clash, clashHex = {}, {}, {}, {}
+    for k, o in pairs(old) do
+        local nw = new[k]
+        if nw then
+            local ok, nk = Key3(o[1], o[2], o[3]), Key3(nw[1], nw[2], nw[3])
+            local prev = rgb[ok]
+            if prev == nil then rgb[ok] = { nw[1], nw[2], nw[3], key = nk }
+            elseif prev.key ~= nk then clash[ok] = true end
+            if o.hex and nw.hex then
+                local ph = hex[o.hex]
+                if ph == nil then hex[o.hex] = nw.hex
+                elseif ph ~= nw.hex then clashHex[o.hex] = true end
+            end
+        end
+    end
+    for k in pairs(clash) do rgb[k] = nil end
+    for k in pairs(clashHex) do hex[k] = nil end
+    for k, v in pairs(rgb) do if v.key == k then rgb[k] = nil end end
+    for k, v in pairs(hex) do if v == k then hex[k] = nil end end
+    return rgb, hex
+end
+
+-- Every colour code the map names, swapped; an escaped pipe (||c...) is text.
+local function SwapCodes(text, hex)
+    local changed = false
+    local out = text:gsub("(|+)c(%x%x%x%x%x%x%x%x)", function(pipes, code)
+        if #pipes % 2 == 0 then return nil end
+        local to = hex["|c" .. code:lower()]
+        if not to then return nil end
+        changed = true
+        return pipes:sub(2) .. to
+    end)
+    return changed and out or nil
+end
+UI.SwapCodes = SwapCodes
+
+local function IsFontString(r)
+    if type(r) ~= "table" or type(r.GetObjectType) ~= "function" then return false end
+    local okT, kind = pcall(r.GetObjectType, r)
+    return okT and kind == "FontString"
+end
+
+local function FollowOne(fs, rgb, hex)
+    local moved = false
+    local recs = UI.tinted[fs]
+    if not (recs and recs.text) and next(rgb) ~= nil and type(fs.GetTextColor) == "function" then
+        local okC, r, g, b = pcall(fs.GetTextColor, fs)
+        if okC and type(r) == "number" and type(g) == "number" and type(b) == "number" then
+            local to = rgb[Key3(r, g, b)]
+            if to then fs:SetTextColor(to[1], to[2], to[3]); moved = true end
+        end
+    end
+    if next(hex) ~= nil and type(fs.GetText) == "function" then
+        local okT, text = pcall(fs.GetText, fs)
+        if okT and not MD.API.IsSecret(text) and type(text) == "string" and text:find("|c", 1, true) then
+            local out = SwapCodes(text, hex)
+            if out then fs:SetText(out); moved = true end
+        end
+    end
+    return moved
+end
+
+local function TopOf(f)
+    for _ = 1, 60 do
+        local okP, p = pcall(f.GetParent, f)
+        if not okP or type(p) ~= "table" or p == UIParent then return f end
+        f = p
+    end
+    return f
+end
+
+local function Walk(f, seen, fn)
+    if seen[f] or rawget(f, "restyleExempt") then return end
+    seen[f] = true
+    if type(f.GetRegions) == "function" then
+        local okR, regions = pcall(function() return { f:GetRegions() } end)
+        if okR then for _, r in ipairs(regions) do fn(r) end end
+    end
+    if type(f.GetChildren) == "function" then
+        local okC, children = pcall(function() return { f:GetChildren() } end)
+        if okC then
+            for _, c in ipairs(children) do
+                if type(c) == "table" then Walk(c, seen, fn) end
+            end
+        end
+    end
+end
+
+-- UI.FollowTokens() -> how many font strings it moved.
+function UI.FollowTokens()
+    local now = Snapshot()
+    local old = painted
+    painted = now
+    if not old then return 0 end
+    local rgb, hex = Maps(old, now)
+    if next(rgb) == nil and next(hex) == nil then return 0 end
+    local tops, seen, n = {}, {}, 0
+    for region in pairs(UI.skinned) do
+        if type(region) == "table" and type(region.GetParent) == "function" then tops[TopOf(region)] = true end
+    end
+    for top in pairs(tops) do
+        Walk(top, seen, function(r)
+            if not seen[r] and IsFontString(r) then
+                seen[r] = true
+                local okF, moved = pcall(FollowOne, r, rgb, hex)
+                if okF and moved then n = n + 1 end
+            end
+        end)
+    end
+    return n
+end
+
+--------------------------------------------------------------------------------
+-- UI.Restyle: what finishes changing only after a reload.
+--   UI.Restyle.LEFT  { { pane, label, file, what, sites = { "file:line" } } }:
+--       the regions neither way above reaches, by the line that makes them
+--       (tools/restylecheck.lua measures each as left, and finds no other)
+--   UI.Restyle.Left() -> n, labels      one label per entry, in order
+--   UI.Restyle.Line() -> "N windows finish changing after a reload: A, B"
+--       for Settings' line beside its Reload button, or nil when n is 0
+--------------------------------------------------------------------------------
+UI.Restyle = {
+    -- T107: both in files outside T107's row (docs/SPEC-next.md section 11);
+    -- each is one line where the pane is built (docs/tasks/T107-*.md names it)
+    LEFT = {
+        { pane = "review", label = "Reports -> Review", file = "UI/Dashboard_Review.lua",
+          what = "the rule over the result lines (a `line` fill copied when the pane is built)" },
+        { pane = "practice", label = "Simulate -> Practice", file = "UI/PracticePanel.lua",
+          what = "its grey words (the `muted` colour code kept as GREY when the pane is built)" },
+    },
+}
+function UI.Restyle.Left()
+    local labels = {}
+    for i, e in ipairs(UI.Restyle.LEFT) do labels[i] = e.label end
+    return #labels, labels
+end
+function UI.Restyle.Line()
+    local n, labels = UI.Restyle.Left()
+    if n == 0 then return nil end
+    return string.format("%d %s finish changing after a reload: %s", n, n == 1 and "window" or "windows",
+        table.concat(labels, ", "))
+end
+
+--------------------------------------------------------------------------------
 -- UI.PALETTE: fills (r, g, b, a). Defined here, before the primitives that read
 -- it (T74, P30: it used to sit with the navigation, after them). The theme
 -- (UI/Theme_Forever.lua) writes 4.1's fills over these keys in place.
@@ -286,13 +557,13 @@ local function StyleTooltip()
             local e = UI.px(1, tooltip)
             tooltip:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = e,
                 insets = { left = e, right = e, top = e, bottom = e } })
-            tooltip:SetBackdropColor(UI.Fill("tip"))
-            tooltip:SetBackdropBorderColor(UI.Fill("border"))
+            UI.Tint(tooltip, "backdrop", "tip") -- T107
+            UI.Tint(tooltip, "border", "border")
             return
         end
         tooltip:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = 1 })
         tooltip:SetBackdropColor(0.1, 0.1, 0.1, 0.9)
-        tooltip:SetBackdropBorderColor(accent[1], accent[2], accent[3], 1)
+        UI.Tint(tooltip, "border", "accent", 1) -- T107
     end
 end
 pcall(StyleTooltip)
@@ -443,6 +714,9 @@ local function Colour(spec)
     return nil
 end
 UI.SkinColour = Colour
+-- T107: the accent at an alpha as a colour SPEC (UI.StylizeFrame / UI.Skin
+-- keep it as a name, so the skin repaints it in a new style's accent)
+function UI.AccentSpec(a) return { ref = "accent", a = a or 1 } end
 
 local function Recipe(role)
     local S = UI.Styles
@@ -558,8 +832,8 @@ function UI.StylizeFrame(frame, color, borderColor)
         UI.Skin(frame, type(fill) == "string" and FILL_ROLE[fill] or "pane", fill, edge)
         return
     end
-    color = color or { 0.1, 0.1, 0.1, 0.9 }
-    borderColor = borderColor or { 0, 0, 0, 1 }
+    color = Colour(color) or { 0.1, 0.1, 0.1, 0.9 }
+    borderColor = Colour(borderColor) or { 0, 0, 0, 1 } -- T107: a spec ({ ref = "accent" }) resolved
     frame:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = 1 })
     frame:SetBackdropColor(unpack(color))
     frame:SetBackdropBorderColor(unpack(borderColor))
@@ -676,17 +950,15 @@ local function GripLine(grip, d)
 end
 function UI.FlatGrip(grip)
     grip.lines = {}
-    local r, g, b = UI.RGB("muted")
     for i, d in ipairs(GRIP_STEPS) do
         local line, Lay = GripLine(grip, d)
-        line:SetColorTexture(r, g, b, 1)
+        UI.Tint(line, "texture", "muted", 1) -- T107: the token, not its colour now
         grip.lines[i] = line
         Lay(line)
         UI.PixelLayout(line, Lay)
     end
     local function Tint(token)
-        local cr, cg, cb = UI.RGB(token)
-        for _, t in ipairs(grip.lines) do t:SetColorTexture(cr, cg, cb, 1) end
+        for _, t in ipairs(grip.lines) do UI.Tint(t, "texture", token, 1) end
     end
     grip:SetScript("OnEnter", function() Tint("accent") end)
     grip:SetScript("OnLeave", function() Tint("muted") end)
@@ -803,22 +1075,22 @@ function UI.CreateMovableFrame(title, name, width, height, strata, level, notUse
     return f
 end
 
+-- T107: with no colour given, the accent as a name (it follows a style)
 function UI.CreateSeparator(text, parent, width, color)
-    color = color or { accent[1], accent[2], accent[3], 0.777 }
     width = width or parent:GetWidth() - 10
 
     local fs = parent:CreateFontString(nil, "OVERLAY", UI.FONT_TITLE)
     fs:SetJustifyH("LEFT")
-    fs:SetTextColor(color[1], color[2], color[3])
+    if color then fs:SetTextColor(color[1], color[2], color[3]) else UI.Tint(fs, "text", "accent") end
     fs:SetText(text)
 
     local line = parent:CreateTexture()
     line:SetSize(width, 1)
-    line:SetColorTexture(unpack(color))
+    if color then line:SetColorTexture(unpack(color)) else UI.Tint(line, "texture", "accent", 0.777) end
     line:SetPoint("TOPLEFT", fs, "BOTTOMLEFT", 0, -2)
     local shadow = parent:CreateTexture()
     shadow:SetSize(width, 1)
-    shadow:SetColorTexture(UI.Fill("border"))
+    UI.Tint(shadow, "texture", "border")
     shadow:SetPoint("TOPLEFT", line, "TOPLEFT", 1, -1)
     -- T74 (P30, review U3): the rule and its shadow one pixel thick
     UI.PixelLayout(line, function(l) l:SetHeight(UI.px(1, l)) end)
@@ -838,13 +1110,13 @@ function UI.CreateTitledPane(parent, text, width, height)
     local line = pane:CreateTexture()
     pane.line = line
     line:SetHeight(1)
-    line:SetColorTexture(accent[1], accent[2], accent[3], 0.777)
+    UI.Tint(line, "texture", "accent", 0.777) -- T107
     line:SetPoint("TOPLEFT", pane, "TOPLEFT", 0, -17)
     line:SetPoint("TOPRIGHT", pane, "TOPRIGHT", 0, -17)
 
     local shadow = pane:CreateTexture()
     shadow:SetHeight(1)
-    shadow:SetColorTexture(UI.Fill("border"))
+    UI.Tint(shadow, "texture", "border")
     shadow:SetPoint("TOPLEFT", line, "TOPLEFT", 1, -1)
     shadow:SetPoint("TOPRIGHT", line, "TOPRIGHT", 1, -1)
     -- T74 (P30, review U3): the rule and its shadow one pixel thick
@@ -859,7 +1131,7 @@ function UI.CreateTitledPane(parent, text, width, height)
     local title = pane:CreateFontString(nil, "OVERLAY", UI.FONT_TITLE)
     pane.title = title
     title:SetJustifyH("LEFT")
-    title:SetTextColor(accent[1], accent[2], accent[3])
+    UI.Tint(title, "text", "accent")
     title:SetText(text)
     title:SetPoint("BOTTOMLEFT", line, "TOPLEFT", 0, 2)
 
@@ -964,9 +1236,11 @@ function UI.CreateButton(parent, text, buttonColor, size, noBorder, noBackground
             bg:SetDrawLayer("BACKGROUND", -8)
             b.bg = bg
             bg:SetAllPoints(b)
-            bg:SetColorTexture(UI.Fill("button"))
+            UI.Tint(bg, "texture", "button") -- T107
         end
-        b:SetBackdropBorderColor(UI.Fill("border"))
+        -- T107: under UI.PIXEL the skin painted the role's edge (a style's
+        -- edgeColor included); the border fill only where nothing else does
+        if noBorder or not UI.PIXEL then UI.Tint(b, "border", "border") end
         b:SetPushedTextOffset(0, -1)
     end
 
@@ -1017,10 +1291,10 @@ end
 local function SelectionParts(b, side)
     if not b.selBar then
         local hov = b:CreateTexture(nil, "BORDER")
-        hov:SetColorTexture(UI.Fill("hover"))
+        UI.Tint(hov, "texture", "hover") -- T107
         hov:Hide()
         local bar = b:CreateTexture(nil, "ARTWORK")
-        bar:SetColorTexture(UI.RGB("accent"))
+        UI.Tint(bar, "texture", "accent")
         bar:Hide()
         b.selHover, b.selBar = hov, bar
     end
@@ -1486,6 +1760,16 @@ local function Fill(key, fallback)
     local c = UI.PALETTE and UI.PALETTE[key]
     return c or fallback
 end
+-- T107: the same two reads as tints -- the token or the fill by name where
+-- the theme (TextRGB's gate) or the palette has it, else the literal as before
+local function TintText(fs, token, r, g, b)
+    if UI.THEMED and UI.TEXT[token] then UI.Tint(fs, "text", token)
+    else UI.Untint(fs, "text"); fs:SetTextColor(r, g, b) end
+end
+local function TintFill(tex, key, fallback)
+    if UI.PALETTE and UI.PALETTE[key] then UI.Tint(tex, "texture", key)
+    else UI.Untint(tex, "texture"); tex:SetColorTexture(fallback[1], fallback[2], fallback[3], fallback[4] or 1) end
+end
 
 -- A popup list (a dropdown's, a tree's second list) opened or closed: the
 -- kit's UI_POPUP event (T77, P33; the window manager subscribes, 6.5). With
@@ -1699,27 +1983,26 @@ function UI.CreateRail(parent, w, opts)
     local title = frame:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
     title:SetJustifyH("LEFT")
     title:SetPoint("TOPLEFT", frame, "TOPLEFT", 8, -5)
-    title:SetTextColor(TextRGB("muted", 0.48, 0.48, 0.48))
+    TintText(title, "muted", 0.48, 0.48, 0.48) -- T107
     title:SetText(opts.title or "")
     rail.title = title
 
     local rule = frame:CreateTexture(nil, "ARTWORK")
     rule:SetHeight(1)
-    local lc = Fill("line", { 0.165, 0.165, 0.165, 1 })
-    rule:SetColorTexture(lc[1], lc[2], lc[3], lc[4] or 1)
+    TintFill(rule, "line", { 0.165, 0.165, 0.165, 1 })
     rule:Hide()
 
     local emptyText = frame:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
     emptyText:SetJustifyH("LEFT")
     emptyText:SetPoint("LEFT", frame, "LEFT", 8, 0)
     emptyText:SetPoint("RIGHT", frame, "RIGHT", -6, 0)
-    emptyText:SetTextColor(TextRGB("muted", 0.48, 0.48, 0.48))
+    TintText(emptyText, "muted", 0.48, 0.48, 0.48)
     emptyText:Hide()
 
     -- the insertion line a drag shows (2 px, accent)
     local line = frame:CreateTexture(nil, "OVERLAY")
     line:SetHeight(2)
-    line:SetColorTexture(accent[1], accent[2], accent[3], 1)
+    UI.Tint(line, "texture", "accent", 1)
     line:Hide()
 
     local footer = CreateFrame("Frame", nil, frame)
@@ -1735,7 +2018,7 @@ function UI.CreateRail(parent, w, opts)
     bar:Hide()
     local thumb = bar:CreateTexture(nil, "OVERLAY")
     thumb:SetWidth(RAIL_BAR_W)
-    thumb:SetColorTexture(accent[1], accent[2], accent[3], 0.8)
+    UI.Tint(thumb, "texture", "accent", 0.8)
     rail.bar, rail.thumb = bar, thumb
 
     local function Movables()
@@ -1748,11 +2031,10 @@ function UI.CreateRail(parent, w, opts)
     -- painting one row: fill, bar, name, tag, dot, the x
     ----------------------------------------------------------------------------
     local function Paint(row)
-        local fill
-        if row.selected then fill = Fill("selected", { accent[1], accent[2], accent[3], 0.28 })
-        elseif row.hovered then fill = Fill("hover", { accent[1], accent[2], accent[3], 0.12 }) end
-        if fill then row.bg:SetColorTexture(fill[1], fill[2], fill[3], fill[4] or 1)
-        else row.bg:SetColorTexture(0, 0, 0, 0) end
+        -- T107: the fill by name, so a switch repaints a row it does not touch
+        if row.selected then UI.Tint(row.bg, "texture", "selected")
+        elseif row.hovered then UI.Tint(row.bg, "texture", "hover")
+        else UI.Untint(row.bg, "texture"); row.bg:SetColorTexture(0, 0, 0, 0) end
         if row.selected then row.bar:Show() else row.bar:Hide() end
         local d = row.data or {}
         local x = row.hovered and row.movable and opts.onRemove and true or false
@@ -1835,7 +2117,7 @@ function UI.CreateRail(parent, w, opts)
         row.bar:SetWidth(2)
         row.bar:SetPoint("TOPLEFT", row, "TOPLEFT", -1, 0)
         row.bar:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", -1, 0)
-        row.bar:SetColorTexture(accent[1], accent[2], accent[3], 1)
+        UI.Tint(row.bar, "texture", "accent", 1)
         row.bar:Hide()
 
         row.iconEdge = row:CreateTexture(nil, "ARTWORK")
@@ -1850,11 +2132,11 @@ function UI.CreateRail(parent, w, opts)
         row.tag = row:CreateFontString(nil, "OVERLAY", UI.FONT_NUM_SMALL or UI.FONT_SMALL)
         row.tag:SetJustifyH("RIGHT")
         row.tag:SetPoint("RIGHT", row, "RIGHT", -6, 0)
-        row.tag:SetTextColor(TextRGB("muted", 0.48, 0.48, 0.48))
+        TintText(row.tag, "muted", 0.48, 0.48, 0.48)
 
         row.dot = row:CreateTexture(nil, "OVERLAY")
         row.dot:SetSize(6, 6)
-        row.dot:SetColorTexture(accent[1], accent[2], accent[3], 1)
+        UI.Tint(row.dot, "texture", "accent", 1)
 
         row.name = row:CreateFontString(nil, "OVERLAY", UI.FONT)
         row.name:SetJustifyH("LEFT")
@@ -2026,8 +2308,8 @@ function UI.CreateRail(parent, w, opts)
                 end
                 row.nameX = d.fixed and 8 or 24
                 row.name:SetText(d.text or "")
-                if d.stale then row.name:SetTextColor(TextRGB("disabled", 0.3, 0.3, 0.3))
-                else row.name:SetTextColor(TextRGB("text", 1, 1, 1)) end
+                if d.stale then TintText(row.name, "disabled", 0.3, 0.3, 0.3)
+                else TintText(row.name, "text", 1, 1, 1) end
                 row.tag:SetText(d.tag or "")
                 row.dot:ClearAllPoints()
                 if d.tag and d.tag ~= "" then row.dot:SetPoint("RIGHT", row.tag, "LEFT", -5, 0)
@@ -2193,17 +2475,16 @@ function UI.CreateMask(region, level, text)
     m:EnableMouse(true)
     if m.EnableMouseWheel then m:EnableMouseWheel(true) end
     m:SetScript("OnMouseWheel", function() end)
-    local c = Fill("mask", { 0.15, 0.15, 0.15, 0.7 })
     local tex = m:CreateTexture(nil, "BACKGROUND")
     tex:SetAllPoints(m)
-    tex:SetColorTexture(c[1], c[2], c[3], c[4] or 0.7)
+    TintFill(tex, "mask", { 0.15, 0.15, 0.15, 0.7 }) -- T107
     function m:SetText(t)
         if not m.text then
             if t == nil or t == "" then return end
             local fs = m:CreateFontString(nil, "OVERLAY", UI.FONT)
             fs:SetPoint("LEFT", m, "LEFT", 8, 0)
             fs:SetPoint("RIGHT", m, "RIGHT", -8, 0)
-            fs:SetTextColor(UI.RGB("text2"))
+            UI.Tint(fs, "text", "text2")
             m.text = fs
         end
         m.text:SetText(t or "")
@@ -2223,15 +2504,15 @@ function UI.CreateSheet(pane, maskRegion, w, h, title)
     s:SetPoint("CENTER", maskRegion, "CENTER", 0, 0)
     s:SetFrameLevel(base + 50)
     s:EnableMouse(true)
-    UI.StylizeFrame(s, Fill("pane", { 0.11, 0.11, 0.11, 1 }), { accent[1], accent[2], accent[3], 1 })
+    -- T107: the accent edge as a name, so the skin repaints it in a new style
+    UI.StylizeFrame(s, Fill("pane", { 0.11, 0.11, 0.11, 1 }), UI.AccentSpec(1))
     s.mask = mask
 
     local bar = s:CreateTexture(nil, "ARTWORK")
     bar:SetPoint("TOPLEFT", s, "TOPLEFT", 1, -1)
     bar:SetPoint("TOPRIGHT", s, "TOPRIGHT", -1, -1)
     bar:SetHeight(20)
-    local nc = Fill("nav", Fill("header", { 0.115, 0.115, 0.115, 1 }))
-    bar:SetColorTexture(nc[1], nc[2], nc[3], nc[4] or 1)
+    TintFill(bar, Fill("nav") and "nav" or "header", { 0.115, 0.115, 0.115, 1 }) -- T107
     local edge = s:CreateTexture(nil, "ARTWORK")
     edge:SetPoint("TOPLEFT", bar, "BOTTOMLEFT", 0, 0)
     edge:SetPoint("TOPRIGHT", bar, "BOTTOMRIGHT", 0, 0)
@@ -2579,17 +2860,21 @@ function UI.CreateCheckButton(parent, label, onClick, ...)
     end
 
     -- T74 (P30): the colours are tokens, the edge one pixel under UI.PIXEL
+    -- T107: under UI.PIXEL the skin painted these two (a style's edge
+    -- included); the tokens by hand only where nothing else does
     ControlBackdrop(cb, UI.PALETTE.field, false, "field")
-    cb:SetBackdropColor(UI.Fill("field"))
-    cb:SetBackdropBorderColor(UI.Fill("border"))
+    if not UI.PIXEL then
+        UI.Tint(cb, "backdrop", "field")
+        UI.Tint(cb, "border", "border")
+    end
 
     local checkedTexture = cb:CreateTexture(nil, "ARTWORK")
-    checkedTexture:SetColorTexture(UI.Fill("check"))
+    UI.Tint(checkedTexture, "texture", "check")
     checkedTexture:SetPoint("TOPLEFT", 1, -1)
     checkedTexture:SetPoint("BOTTOMRIGHT", -1, 1)
 
     local highlightTexture = cb:CreateTexture(nil, "ARTWORK")
-    highlightTexture:SetColorTexture(UI.Fill("checkHover"))
+    UI.Tint(highlightTexture, "texture", "checkHover")
     highlightTexture:SetPoint("TOPLEFT", 1, -1)
     highlightTexture:SetPoint("BOTTOMRIGHT", -1, 1)
 
@@ -2607,13 +2892,16 @@ function UI.CreateCheckButton(parent, label, onClick, ...)
     cb:SetHighlightTexture(highlightTexture, "ADD")
 
     cb:SetScript("OnEnable", function()
-        cb.label:SetTextColor(UI.RGB("text"))
-        checkedTexture:SetColorTexture(UI.Fill("check"))
-        cb:SetBackdropBorderColor(UI.Fill("border"))
+        UI.Tint(cb.label, "text", "text")
+        UI.Tint(checkedTexture, "texture", "check")
+        -- T107: the role's own edge again (the skin), else the token
+        if UI.PIXEL then UI.Skin(cb, "field", UI.PALETTE.field, "border")
+        else UI.Tint(cb, "border", "border") end
     end)
     cb:SetScript("OnDisable", function()
-        cb.label:SetTextColor(UI.RGB("dimmed"))
-        checkedTexture:SetColorTexture(UI.RGB("dimmed"))
+        UI.Tint(cb.label, "text", "dimmed")
+        UI.Tint(checkedTexture, "texture", "dimmed")
+        UI.Untint(cb, "border")
         local r, g, b = UI.Fill("border")
         cb:SetBackdropBorderColor(r, g, b, 0.4)
     end)
@@ -2652,12 +2940,10 @@ function UI.CreateEditBox(parent, width, height, isTransparent, isMultiLine, isN
     eb:SetScript("OnEditFocusGained", function() eb:HighlightText() end)
     eb:SetScript("OnEditFocusLost", function() eb:HighlightText(0, 0) end)
     eb:SetScript("OnDisable", function()
-        local r, g, b = UI.RGB("dimmed")
-        eb:SetTextColor(r, g, b, 1)
+        UI.Tint(eb, "text", "dimmed", 1) -- T107
     end)
     eb:SetScript("OnEnable", function()
-        local r, g, b = UI.RGB("text")
-        eb:SetTextColor(r, g, b, 1)
+        UI.Tint(eb, "text", "text", 1)
     end)
     return eb
 end
@@ -2905,20 +3191,19 @@ function UI.CreateSlider(name, parent, low, high, width, step, onValueChangedFn,
     highText:SetPoint("BOTTOM", currentEditBox)
 
     local tex = slider:CreateTexture(nil, "ARTWORK")
-    tex:SetColorTexture(UI.Fill("check"))
+    UI.Tint(tex, "texture", "check") -- T107
     tex:SetSize(8, 8)
     slider:SetThumbTexture(tex)
 
     local valueBeforeClick
     slider.onEnter = function()
-        local r, g, b = UI.Fill("check")
-        tex:SetColorTexture(r, g, b, 1)
+        UI.Tint(tex, "texture", "check", 1)
         valueBeforeClick = slider:GetValue()
         if #tooltips > 0 then ShowTooltips(slider, "ANCHOR_TOPLEFT", 0, 3, tooltips) end
     end
     slider:SetScript("OnEnter", slider.onEnter)
     slider.onLeave = function()
-        tex:SetColorTexture(UI.Fill("check"))
+        UI.Tint(tex, "texture", "check")
         tooltip:Hide()
     end
     slider:SetScript("OnLeave", slider.onLeave)
@@ -2949,21 +3234,21 @@ function UI.CreateSlider(name, parent, low, high, width, step, onValueChangedFn,
     slider:SetValue(low)
 
     slider:SetScript("OnDisable", function()
-        label:SetTextColor(UI.RGB("dimmed"))
+        UI.Tint(label, "text", "dimmed")
         currentEditBox:SetEnabled(false)
         slider:SetScript("OnEnter", nil)
         slider:SetScript("OnLeave", nil)
-        local r, g, b = UI.RGB("dimmed")
-        tex:SetColorTexture(r, g, b, 0.7)
-        lowText:SetTextColor(UI.RGB("dimmed"))
-        highText:SetTextColor(UI.RGB("dimmed"))
+        UI.Tint(tex, "texture", "dimmed", 0.7)
+        UI.Tint(lowText, "text", "dimmed")
+        UI.Tint(highText, "text", "dimmed")
     end)
     slider:SetScript("OnEnable", function()
-        label:SetTextColor(UI.RGB("text"))
+        UI.Tint(label, "text", "text")
         currentEditBox:SetEnabled(true)
         slider:SetScript("OnEnter", slider.onEnter)
         slider:SetScript("OnLeave", slider.onLeave)
-        tex:SetColorTexture(UI.Fill("check"))
+        UI.Tint(tex, "texture", "check")
+        UI.Untint(lowText); UI.Untint(highText) -- the kit's literal grey, not a token
         lowText:SetTextColor(unpack(UI.grey))
         highText:SetTextColor(unpack(UI.grey))
     end)
@@ -2978,3 +3263,13 @@ function UI.CreateSlider(name, parent, low, high, width, step, onValueChangedFn,
 
     return slider
 end
+
+--------------------------------------------------------------------------------
+-- T107: a switch reaches the tinted regions, then the font strings the follow
+-- finds -- registered here, as this file loads, so it runs before any pane's
+-- own STYLE_CHANGED re-render (the clocks' NewLook, the Spells pane).
+--------------------------------------------------------------------------------
+MD:RegisterCallback("STYLE_CHANGED", function()
+    UI.RepaintTints()
+    UI.FollowTokens()
+end)

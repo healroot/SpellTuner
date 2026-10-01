@@ -39,9 +39,8 @@ local function SetBar(row, key, frac, alpha)
     b.track:Show()
     if frac <= 0 then b.fill:Hide(); return end
     if not alpha then alpha = (row.data and row.data.dominated) and 0.25 or 0.5 end
-    local a = MD.UI.accent
     b.fill:SetWidth(b.width * frac)
-    b.fill:SetColorTexture(a[1], a[2], a[3], alpha)
+    MD.UI.Tint(b.fill, "texture", "accent", alpha) -- T107: the accent by name
     b.fill:Show()
 end
 
@@ -67,7 +66,7 @@ end
 --                       and the rule sits on its bottom edge.
 --   opts.headerRule -- true (the theme's `line`) or an {r, g, b, a}: a 1-px
 --                       rule along the header's bottom edge.
---   opts.headerColor -- the header labels' colour code (default `muted`).
+--   opts.headerColor -- the header labels' colour: a token name (T107: read at each render) or a code (default `muted`).
 --   opts.zebra      -- even data rows get the `rowAlt` fill.
 --   opts.rowWidth   -- a row's width: a number, or true for the table's whole
 --                       width (default width - 60).
@@ -271,7 +270,7 @@ function MD.DashboardParts.CreateTable(parent, width, opts)
             key = "rowAlt"
         end
         if key then
-            row.fill:SetColorTexture(MD.UI.Fill(key))
+            MD.UI.Tint(row.fill, "texture", key) -- T107
             row.fill:Show()
         else
             row.fill:Hide()
@@ -316,12 +315,11 @@ function MD.DashboardParts.CreateTable(parent, width, opts)
                 row.fill:Hide()
             end
             if marker == "bar" then
-                local a = MD.UI.accent
                 row.mark = row:CreateTexture(nil, "BORDER")
                 row.mark:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
                 row.mark:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
                 row.mark:SetWidth(2)
-                row.mark:SetColorTexture(a[1], a[2], a[3], 1)
+                MD.UI.Tint(row.mark, "texture", "accent", 1) -- T107
                 row.mark:Hide()
             end
             if pickBar then -- T78: white, above the accent bar
@@ -337,9 +335,9 @@ function MD.DashboardParts.CreateTable(parent, width, opts)
             row.highlight = row:CreateTexture(nil, "BACKGROUND")
             row.highlight:SetAllPoints()
             if marker == "bar" then
-                row.highlight:SetColorTexture(MD.UI.Fill("hover")) -- T30
+                MD.UI.Tint(row.highlight, "texture", "hover") -- T30; T107: by name
             else
-                row.highlight:SetColorTexture(MD.UI.accent[1], MD.UI.accent[2], MD.UI.accent[3], 0.10)
+                MD.UI.Tint(row.highlight, "texture", "accent", 0.10)
             end
             row.highlight:Hide()
             if opts.onClick or opts.onDoubleClick then -- T30, T71
@@ -469,7 +467,13 @@ function MD.DashboardParts.CreateTable(parent, width, opts)
     -- only Render -- the TBC rank table's own went with the no-options table).
     -- T30: the header's rule, one texture on the pane, built on first use.
     local headerRule
-    local headerHex = opts.headerColor or MD.UI.Hex("muted")
+    -- T107: opts.headerColor is a token's name (read at each render, so the
+    -- header follows a style) or a colour code (kept as given); muted without it
+    local function HeaderHex()
+        local c = opts.headerColor
+        if type(c) == "string" and c:sub(1, 2) ~= "|c" then return MD.UI.Hex(c) end
+        return c or MD.UI.Hex("muted")
+    end
 
     -- T71: the scrolled window (opts.scroll) -- its state, the bar at the
     -- right edge and the wheel. Built only when asked for.
@@ -504,7 +508,6 @@ function MD.DashboardParts.CreateTable(parent, width, opts)
         bar.trackH, bar.thumbH, bar.top, bar.span = trackH, thumbH, top, span
     end
     if scroll then
-        local a = MD.UI.accent
         bar = {}
         bar.track = pane:CreateTexture(nil, "BORDER")
         bar.track:SetColorTexture(1, 1, 1, 0.06)
@@ -513,7 +516,7 @@ function MD.DashboardParts.CreateTable(parent, width, opts)
         local fill = bar.thumb:CreateTexture(nil, "ARTWORK")
         fill:SetPoint("TOPLEFT", bar.thumb, "TOPLEFT", 1, 0)
         fill:SetPoint("BOTTOMRIGHT", bar.thumb, "BOTTOMRIGHT", -1, 0)
-        fill:SetColorTexture(a[1], a[2], a[3], 0.8)
+        MD.UI.Tint(fill, "texture", "accent", 0.8) -- T107
         bar.thumb:EnableMouse(true)
         bar.thumb:Hide()
         -- dragging the thumb: the offset follows the cursor's travel over
@@ -558,7 +561,7 @@ function MD.DashboardParts.CreateTable(parent, width, opts)
             local label = (opts.header and opts.header[i]) or col.label
             shown[i] = label
             if headerFont then header.cells[col.key]:SetFontObject(headerFont) end -- T78
-            header.cells[col.key]:SetText(headerHex .. label .. "|r")
+            header.cells[col.key]:SetText(HeaderHex() .. label .. "|r")
         end
         if headerFont then header.headerFonted = true end
         HeaderTips(header, cols, headerH, shown) -- T76: col.tooltip on the label
@@ -569,7 +572,7 @@ function MD.DashboardParts.CreateTable(parent, width, opts)
                     local c = opts.headerRule
                     headerRule:SetColorTexture(c[1], c[2], c[3], c[4] or 1)
                 else
-                    headerRule:SetColorTexture(MD.UI.Fill("line"))
+                    MD.UI.Tint(headerRule, "texture", "line") -- T107
                 end
             end
             local px = MD.UI.px and MD.UI.px(1, pane) or 1

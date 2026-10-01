@@ -59,13 +59,13 @@ function MD.DashboardParts.CreateStrip(parent, x, y, onChange)
 
     local title = parent:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
     title:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
-    title:SetTextColor(UI.accent[1], UI.accent[2], UI.accent[3])
+    UI.Tint(title, "text", "accent") -- T107: names, so a style switch repaints the strip
     title:SetText("What if:")
 
     local function AddBox(key, labelText, phFmt, anchor)
         local label = parent:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
         label:SetPoint("LEFT", anchor, "RIGHT", 10, 0)
-        label:SetTextColor(UI.RGB("label"))
+        UI.Tint(label, "text", "label")
         label:SetText(labelText)
 
         local eb = UI.CreateEditBox(parent, 56, 16, false, false, false, UI.FONT_SMALL)
@@ -74,7 +74,7 @@ function MD.DashboardParts.CreateStrip(parent, x, y, onChange)
 
         local ph = parent:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
         ph:SetPoint("LEFT", eb, "LEFT", 4, 0)
-        ph:SetTextColor(UI.RGB("muted"))
+        UI.Tint(ph, "text", "muted")
 
         local function Apply(self)
             local text = strtrim(self:GetText() or "")
@@ -111,7 +111,7 @@ function MD.DashboardParts.CreateStrip(parent, x, y, onChange)
     ----------------------------------------------------------------------------
     local formLabel = parent:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
     formLabel:SetPoint("TOPLEFT", parent, "TOPLEFT", x + 62, y - ROW_GAP)
-    formLabel:SetTextColor(UI.RGB("label"))
+    UI.Tint(formLabel, "text", "label")
     formLabel:SetText("form")
 
     local formButtons, prev = {}, nil
@@ -137,7 +137,7 @@ function MD.DashboardParts.CreateStrip(parent, x, y, onChange)
 
     local mgLabel = parent:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
     mgLabel:SetPoint("LEFT", prev, "RIGHT", 14, 0)
-    mgLabel:SetTextColor(UI.RGB("label"))
+    UI.Tint(mgLabel, "text", "label")
     mgLabel:SetText("Moonglow")
 
     local mgBox = UI.CreateEditBox(parent, 34, 16, false, false, false, UI.FONT_SMALL)
@@ -145,7 +145,7 @@ function MD.DashboardParts.CreateStrip(parent, x, y, onChange)
     mgBox:SetTextInsets(3, 3, 0, 0)
     local mgPh = parent:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
     mgPh:SetPoint("LEFT", mgBox, "LEFT", 4, 0)
-    mgPh:SetTextColor(UI.RGB("muted"))
+    UI.Tint(mgPh, "text", "muted")
 
     local function ApplyMoonglow(self)
         local text = strtrim(self:GetText() or "")

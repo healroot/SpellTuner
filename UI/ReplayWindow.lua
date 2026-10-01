@@ -283,6 +283,9 @@ local function CreateUnitFrame(parent, x, y)
     local f = CreateFrame("Frame", nil, parent, "BackdropTemplate")
     f:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
     UI.StylizeFrame(f, { 0, 0, 0, 1 }, { 0, 0, 0, 1 })
+    -- T107: the author's Cell layout keeps its colours under every style
+    -- (docs/SPEC-next.md 5.1): a style switch's follow never enters it
+    f.restyleExempt = true
 
     -- Frame levels, as Cell lays them: the bars lowest, indicators above them,
     -- text on top. Two children of one button share a level by default and
@@ -400,7 +403,7 @@ local function CreateUnitFrame(parent, x, y)
     -- the icon in place of the 5px dot)
     f.dot = Icon(5)
     f.defIcon = Icon(10)
-    f.defIcon:SetBackdropBorderColor(UI.accent[1], UI.accent[2], UI.accent[3], 1)
+    UI.Tint(f.defIcon, "border", "accent", 1) -- T107
     f.debuffs = {}
     for i = 1, CELL.debuffs[6] do f.debuffs[i] = Icon(5) end
     -- v0.12.2: the two indicators the author has that show what is COMING --
@@ -1381,7 +1384,7 @@ local function Build()
         headerFS:SetWordWrap(false)
 
         band.word = band:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
-        band.word:SetTextColor(UI.RGB("muted"))
+        UI.Tint(band.word, "text", "muted")
         band.word:Hide()
         band.wordLine = band:CreateTexture(nil, "ARTWORK")   -- the word's dotted underline, drawn solid
         band.wordLine:SetPoint("TOPLEFT", band.word, "BOTTOMLEFT", 0, -1)
@@ -1533,7 +1536,7 @@ local function Build()
     scrubber:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", GUTTER, 62)
     UI.StylizeFrame(scrubber, { 0.115, 0.115, 0.115, 1 })
     local thumb = scrubber:CreateTexture(nil, "ARTWORK")
-    thumb:SetColorTexture(UI.accent[1], UI.accent[2], UI.accent[3], 1)
+    UI.Tint(thumb, "texture", "accent", 1) -- T107
     thumb:SetSize(6, 18)
     scrubber:SetThumbTexture(thumb)
     scrubber:SetMinMaxValues(0, 1)

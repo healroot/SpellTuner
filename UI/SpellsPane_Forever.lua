@@ -641,12 +641,12 @@ local function CardPair(card, i)
     p.label:SetJustifyH("LEFT")
     p.label:SetWordWrap(false)
     p.label:SetWidth(CARD_LABEL_W)
-    p.label:SetTextColor(UI.RGB("label"))
+    UI.Tint(p.label, "text", "label")
     p.value = card:CreateFontString(nil, "OVERLAY", UI.FONT_NUM or UI.FONT)
     p.value:SetJustifyH("LEFT")
     p.value:SetWordWrap(false)
     p.value:SetWidth(CARD_COL - CARD_LABEL_W - 8)
-    p.value:SetTextColor(UI.RGB("text"))
+    UI.Tint(p.value, "text", "text")
     card.pairPool[i] = p
     return p
 end
@@ -728,8 +728,7 @@ end
 --------------------------------------------------------------------------------
 local function TitledPane(parent, text)
     local pane = UI.CreateTitledPane(parent, text, VIEW_W, 60)
-    local rc = UI.PALETTE and UI.PALETTE.rule
-    if rc and pane.line then pane.line:SetColorTexture(rc[1], rc[2], rc[3], rc[4] or 0.6) end
+    if UI.PALETTE and UI.PALETTE.rule and pane.line then UI.Tint(pane.line, "texture", "rule") end -- T107
     return pane
 end
 
@@ -749,7 +748,7 @@ local function Tables(f)
                 zebra = true, rowWidth = true, marker = "bar",
                 -- T78 (U1 / U7; mockup M5): the selected rank a white bar,
                 -- the fill the suggested one's alone; headers 12 px in `label`
-                selection = "bar", headerFont = UI.FONT_SPECIAL, headerColor = UI.Hex("label"),
+                selection = "bar", headerFont = UI.FONT_SPECIAL, headerColor = "label", -- T107: a token, read at render
                 render = RenderRankRow, onUpdateCells = UpdateRankRow,
                 onEnter = RankRowEnter, onLeave = RankRowLeave, onClick = RankRowClick,
             })
@@ -798,7 +797,7 @@ local function BuildFamily(host)
     banner.text = banner:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
     banner.text:SetPoint("LEFT", banner, "LEFT", 8, 0)
     banner.text:SetJustifyH("LEFT")
-    banner.text:SetTextColor(UI.RGB("text2"))
+    UI.Tint(banner.text, "text", "text2")
     banner.text:SetText("Not in your list.")
     banner.addBtn = UI.CreateButton(banner, "+ Add to my spells", "accent-hover", { 130, 16 },
         false, false, UI.FONT_SMALL, UI.FONT_SMALL)
@@ -835,18 +834,18 @@ local function BuildFamily(host)
     header.sub:SetPoint("TOPLEFT", header.name, "BOTTOMLEFT", 0, -4)
     header.sub:SetJustifyH("LEFT")
     header.sub:SetWordWrap(false)
-    header.sub:SetTextColor(UI.RGB("text2"))
+    UI.Tint(header.sub, "text", "text2")
     header.mana = header:CreateFontString(nil, "OVERLAY", UI.FONT_NUM or UI.FONT)
     header.mana:SetPoint("TOPRIGHT", header, "TOPRIGHT", -4, -8)
     header.mana:SetJustifyH("RIGHT")
-    header.mana:SetTextColor(UI.RGB("text"))
+    UI.Tint(header.mana, "text", "text")
     f.header = header
 
     -- a family the book no longer has (3.3)
     f.staleText = content:CreateFontString(nil, "OVERLAY", UI.FONT)
     f.staleText:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 4, -BLOCK_GAP)
     f.staleText:SetJustifyH("LEFT")
-    f.staleText:SetTextColor(UI.RGB("text2"))
+    UI.Tint(f.staleText, "text", "text2")
     f.staleText:Hide()
     f.removeBtn = UI.CreateButton(content, "Remove", "accent-hover", { 70, 20 })
     f.removeBtn:SetPoint("TOPLEFT", f.staleText, "BOTTOMLEFT", 0, -8)
@@ -862,21 +861,20 @@ local function BuildFamily(host)
     chip:SetPoint("TOPLEFT", strip, "TOPLEFT", 0, 0)
     chip:SetWidth(CHIP_W)
     UI.StylizeFrame(chip, P.pane or { 0.11, 0.11, 0.11, 1 }, P.border or { 0, 0, 0, 1 })
-    local a = UI.accent
     chip.bar = chip:CreateTexture(nil, "OVERLAY")
     chip.bar:SetPoint("TOPLEFT", chip, "TOPLEFT", 0, 0)
     chip.bar:SetPoint("BOTTOMLEFT", chip, "BOTTOMLEFT", 0, 0)
     chip.bar:SetWidth(2)
-    chip.bar:SetColorTexture(a[1], a[2], a[3], 1)
+    UI.Tint(chip.bar, "texture", "accent", 1) -- T107: the accent by name
     strip.chipLabel = chip:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
     strip.chipLabel:SetPoint("TOPLEFT", chip, "TOPLEFT", 10, -4)
     strip.chipLabel:SetJustifyH("LEFT")
-    strip.chipLabel:SetTextColor(a[1], a[2], a[3])
+    UI.Tint(strip.chipLabel, "text", "accent")
     strip.chipLabel:SetText("SUGGESTED")
     strip.chipRank = chip:CreateFontString(nil, "OVERLAY", UI.FONT_BIG or UI.FONT_TITLE)
     strip.chipRank:SetPoint("TOPLEFT", chip, "TOPLEFT", 10, -17)
     strip.chipRank:SetJustifyH("LEFT")
-    strip.chipRank:SetTextColor(UI.RGB("text"))
+    UI.Tint(strip.chipRank, "text", "text")
     chip:EnableMouse(true)
     chip:SetScript("OnEnter", function(self) KitTip(self, "Suggested rank", SUGGESTED_RULE) end)
     chip:SetScript("OnLeave", function() if UI.tooltip then UI.tooltip:Hide() end end)
@@ -887,7 +885,7 @@ local function BuildFamily(host)
     strip.compare:SetJustifyH("LEFT")
     strip.compare:SetWordWrap(true)
     strip.compare:SetMaxLines(2)
-    strip.compare:SetTextColor(UI.RGB("text2"))
+    UI.Tint(strip.compare, "text", "text2")
     strip:Hide()
     f.strip = strip
 
@@ -900,21 +898,21 @@ local function BuildFamily(host)
     card.learned = card:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
     card.learned:SetPoint("BOTTOMRIGHT", card.line, "TOPRIGHT", 0, 3)
     card.learned:SetJustifyH("RIGHT")
-    card.learned:SetTextColor(UI.RGB("text2"))
+    UI.Tint(card.learned, "text", "text2")
     card.quote = card:CreateFontString(nil, "OVERLAY", UI.FONT_SPECIAL or UI.FONT_SMALL)
     card.quote:SetWidth(VIEW_W - 16)
     card.quote:SetJustifyH("LEFT")
     card.quote:SetWordWrap(true)
-    card.quote:SetTextColor(UI.RGB("text2"))
+    UI.Tint(card.quote, "text", "text2")
     card.stale = card:CreateFontString(nil, "OVERLAY", UI.FONT_SPECIAL or UI.FONT_SMALL)
     card.stale:SetJustifyH("LEFT")
-    card.stale:SetTextColor(UI.RGB("bad"))
+    UI.Tint(card.stale, "text", "bad")
     card.stale:SetText("Text read before combat - may be out of date")
     card.stale:Hide()
     f.card = card
     f.footer = content:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
     f.footer:SetJustifyH("LEFT")
-    f.footer:SetTextColor(UI.RGB("muted"))
+    UI.Tint(f.footer, "text", "muted")
     f.footer:SetText(FOOTER_TEXT)
 
     LayoutFamily(f)
@@ -1033,7 +1031,7 @@ function SpellsPane:RenderFamily(key, preview)
         f.fam = nil
         f.header.icon:Hide(); f.header.iconEdge:Hide()
         f.header.name:SetText(Esc(key))
-        f.header.name:SetTextColor(UI.RGB("disabled"))
+        UI.Tint(f.header.name, "text", "disabled")
         f.header.sub:SetText("")
         f.header.mana:SetText("")
         f.staleText:SetText(Esc(key) .. " is not in this character's spellbook.")
@@ -1061,7 +1059,7 @@ function SpellsPane:RenderFamily(key, preview)
         f.header.icon:Hide(); f.header.iconEdge:Hide()
     end
     f.header.name:SetText(Esc(fam.name or key))
-    f.header.name:SetTextColor(UI.RGB("text"))
+    UI.Tint(f.header.name, "text", "text")
     f.header.sub:SetText(HeaderSub(fam))
     f.header.mana:SetText(HeaderManaText(pool))
 
@@ -1219,7 +1217,7 @@ local function PlusParts(row)
     local fs = row:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
     fs:SetPoint("RIGHT", row, "RIGHT", -8, 0)
     fs:SetJustifyH("RIGHT")
-    fs:SetTextColor(UI.RGB("muted"))
+    UI.Tint(fs, "text", "muted")
     fs:SetText("listed")
     row.listed = fs
 end
@@ -1440,7 +1438,7 @@ local function OverviewTables(pane)
                 font = UI.FONT_NUM or UI.FONT, wideFont = wideFont,
                 rowHeight = rowH, headerHeight = headH, headerRule = true,
                 zebra = true, rowWidth = true, marker = "bar",
-                headerFont = UI.FONT_SPECIAL, headerColor = UI.Hex("label"), -- T78, as RANKS
+                headerFont = UI.FONT_SPECIAL, headerColor = "label", -- T78, as RANKS; T107: a token
                 render = render, onUpdateCells = onUpdate,
                 onEnter = onEnter, onLeave = RankRowLeave, onClick = OverviewClick,
             })
@@ -1456,9 +1454,8 @@ local function OverviewTables(pane)
         local sep = t.mine.frame:CreateTexture(nil, "BORDER")
         sep:SetWidth(1)
         sep:SetPoint("TOPLEFT", t.mine.frame, "TOPLEFT", MINE_SEP_X, -4)
-        local P = UI.PALETTE or {}
-        local lc = P.line or { 0.165, 0.165, 0.165, 1 }
-        sep:SetColorTexture(lc[1], lc[2], lc[3], lc[4] or 1)
+        if UI.PALETTE and UI.PALETTE.line then UI.Tint(sep, "texture", "line") -- T107
+        else sep:SetColorTexture(0.165, 0.165, 0.165, 1) end
         t.mine.sep = sep
         pane.tables[k] = t
     end
@@ -1564,8 +1561,7 @@ local function BuildOverview(host)
     local title = pane:CreateFontString(nil, "OVERLAY", UI.FONT_TITLE)
     title:SetPoint("TOPLEFT", pane, "TOPLEFT", 0, -3)
     title:SetJustifyH("LEFT")
-    local a = UI.accent
-    title:SetTextColor(a[1], a[2], a[3])
+    UI.Tint(title, "text", "accent") -- T107
     title:SetText("OVERVIEW")
     pane.title = title
 
@@ -1593,18 +1589,18 @@ local function BuildOverview(host)
 
     local hint = content:CreateFontString(nil, "OVERLAY", UI.FONT_SPECIAL or UI.FONT_SMALL)
     hint:SetJustifyH("LEFT")
-    hint:SetTextColor(UI.RGB("text2"))
+    UI.Tint(hint, "text", "text2")
     pane.hint = hint
     local hint2 = content:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
     hint2:SetPoint("TOPLEFT", hint, "BOTTOMLEFT", 0, -4)
     hint2:SetWidth(VIEW_W - 16)
     hint2:SetJustifyH("LEFT")
-    hint2:SetTextColor(UI.RGB("muted"))
+    UI.Tint(hint2, "text", "muted")
     hint2:SetText(MINE_HINT2)
     pane.hint2 = hint2
     local footer = content:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
     footer:SetJustifyH("LEFT")
-    footer:SetTextColor(UI.RGB("muted"))
+    UI.Tint(footer, "text", "muted")
     footer:SetText(FOOTER_TEXT)
     pane.footer = footer
 
@@ -1788,6 +1784,18 @@ end
 -- T77 (P33, review A31): the kit's FONTS_CHANGED, once the fonts are
 -- re-sized (it wrapped UI.ApplyFonts before)
 MD:RegisterCallback("FONTS_CHANGED", function() SpellsPane:FontsChanged() end)
+
+-- T107: a style switch re-renders what is shown -- the rail's rows and the
+-- view's rows are built from token codes at render (the kit's STYLE_CHANGED,
+-- registered first, has already repainted every tinted region)
+function SpellsPane:StyleChanged()
+    local nav = self.nav
+    if not nav then return end
+    self:RefreshRail()
+    local group, view = nav:Selected()
+    if group == "spells" then self:Show(view) end
+end
+MD:RegisterCallback("STYLE_CHANGED", function() SpellsPane:StyleChanged() end)
 
 --------------------------------------------------------------------------------
 -- Wiring (UI/Dashboard_Forever.lua)

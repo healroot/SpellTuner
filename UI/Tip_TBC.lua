@@ -24,12 +24,12 @@ local WARN   = { 1, 0.67, 0.2 }
 -- T43 (docs/SPEC-forever-ui.md 4.4): the theme's accent where it is loaded,
 -- else gold (TBC). T69 (P25): a token read -- "tipGold", TBC's {1, 0.82, 0},
 -- the accent themed.
-local GOLD   = { UI.RGB("tipGold") }
+local GOLD   = UI.TEXT.tipGold -- T107: the token's table (a style rewrites it in place), not a copy
 local GOOD   = { 0.2, 1, 0.4 }
 local MANA   = { 0.31, 0.66, 0.94 }
 
 local function Accent()
-    return { UI.accent[1], UI.accent[2], UI.accent[3] }
+    return UI.TEXT.accent -- T107: the token's table, read at each call
 end
 
 local function Plain(str)

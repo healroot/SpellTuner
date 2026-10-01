@@ -14,15 +14,20 @@
 --     name on STYLE_CHANGED; a region painted by hand afterwards is left alone;
 --   * Flat -> Ellesmere, every view re-visited: every visible region of the
 --     window's chrome, the Spells view (Overview and a family), Review,
---     Practice and Settings that showed Flat's accent shows Ellesmere's, at the
---     same alpha -- none still shows Flat's; and no region shows a token's or
---     a fill's Flat value that Ellesmere changed, except what UI.Restyle.LEFT
---     declares (measured here region by region: the declaration is exact);
---   * UI.Restyle.Left() / Line(): what Settings' reload line counts -- 0 left
---     for the Spells view and Settings; each LEFT entry measured as left;
+--     Practice and Settings (and Waste, Build a fight, the bindings sheet, the
+--     debug console and its copy box) that showed Flat's accent shows
+--     Ellesmere's -- at an alpha the accent was shown at there, or as
+--     Ellesmere's value of the fill it was (`selected` is the accent at 0.28 in
+--     Flat, white at 0.04 in Ellesmere) -- and none still shows Flat's;
+--   * what is left: no region shows a token's or a fill's Flat value that
+--     Ellesmere changed, except in the files UI.Restyle.LEFT declares, pane by
+--     pane (measured: the declaration is exact both ways) -- nothing for the
+--     window, the Spells view and Settings; every LEFT file outside T107's row;
+--   * UI.Restyle.Left() / Line(): what Settings' reload line counts;
 --   * Ellesmere -> Flat: every region is BYTE-IDENTICAL to the first paint;
---   * the follow (UI.FollowTokens) never enters a `restyleExempt` subtree, and
---     a colour two tokens shared that now differ is left alone.
+--   * the follow (UI.FollowTokens) never enters a `restyleExempt` subtree, a
+--     colour two tokens shared that now differ is left alone, and an escaped
+--     pipe is text.
 --
 -- The stub has no GetChildren / GetRegions / GetObjectType / GetTextColor (its
 -- fallback answers nothing); this suite installs them on the stub's frame
@@ -117,6 +122,13 @@ if _G.GetBuildInfo == nil then
 end
 local chat = {}
 _G.DEFAULT_CHAT_FRAME = { AddMessage = function(_, m) chat[#chat + 1] = m end }
+if flavour == "tbc" then
+    -- the druid knows every rank at or below the stub's level (tools/harness.lua's
+    -- rule), so the Spells rail lists families
+    for id, sp in pairs(MD.SpellData.spells) do
+        if (sp.level or 1) <= S.level then S.known[id] = true end
+    end
+end
 S.Fire("ADDON_LOADED", "SpellTuner")
 S.Fire("PLAYER_LOGIN")
 S.Fire("PLAYER_ENTERING_WORLD")
@@ -144,21 +156,29 @@ local function Code(rel)
 end
 -- A creation-time read is a colour taken out of the accent or a token and
 -- handed to a setter (or kept in a table / local that a setter is given later).
+-- SetBackdropColor is left out: a backdrop's fill is T94's skin registry's (a
+-- button group's `selected`, a hover), which reads what a region shows back
+-- by name when a style is applied.
+local SETTERS = { "SetTextColor", "SetColorTexture", "SetVertexColor", "SetBackdropBorderColor",
+    "SetStatusBarColor" }
 local PATTERNS = {
     { "UI%.accent", "UI.accent read (outside the kit)" },
-    { "Set%a*Colou?r%a*%(%s*accent%[", "setter given accent[i]" },
-    { "Set%a*Colou?r%a*%(%s*a%[1%]", "setter given a captured accent" },
     { "{%s*accent%[1%]", "accent copied into a table" },
-    { "Set%a*Colou?r%a*%(%s*UI%.RGB%(", "setter given UI.RGB(...)" },
-    { "Set%a*Colou?r%a*%(%s*UI%.Fill%(", "setter given UI.Fill(...)" },
-    { "Set%a*Colou?r%a*%(%s*MD%.UI%.Fill%(", "setter given UI.Fill(...)" },
-    { "Set%a*Colou?r%a*%(%s*TextRGB%(", "setter given TextRGB(...)" },
     { "{%s*UI%.RGB%(", "a token copied into a table" },
     { "headerColor%s*=%s*UI%.Hex%(", "a code captured for a table header" },
 }
+for _, setter in ipairs(SETTERS) do
+    for _, read in ipairs({ { "accent%[", "accent[i]" }, { "a%[1%]", "a captured accent" },
+            { "UI%.RGB%(", "UI.RGB(...)" }, { "UI%.Fill%(", "UI.Fill(...)" }, { "MD%.UI%.Fill%(", "UI.Fill(...)" },
+            { "MD%.UI%.accent", "UI.accent" }, { "TextRGB%(", "TextRGB(...)" } }) do
+        PATTERNS[#PATTERNS + 1] = { setter .. "%(%s*" .. read[1], setter .. " given " .. read[2] }
+    end
+end
 -- the kit's own lines that read the accent at paint or define it
 local KIT_OK = {
     ["UI/Style.lua"] = {
+        "UI.accent = accent",
+        "UI.accentHex = accentHex",
         "UI.classAccent = { accent[1], accent[2], accent[3] }",
         "hover     = { accent[1], accent[2], accent[3], 0.12 },",
         "selected  = { accent[1], accent[2], accent[3], 0.28 },",
@@ -225,35 +245,58 @@ check("a texture tint paints the fill with its own alpha", Near(tex.color, h[1],
 --------------------------------------------------------------------------------
 -- 3. The window, visited view by view under Flat
 --------------------------------------------------------------------------------
+-- { group, view, pane[, root] }: a view of the main window, or (root) a window
+-- of its own opened by `open`. Review, Practice, Settings and the Spells view
+-- are the listed panes; the rest are measured the same way.
+local function Bindings() MD:SelectView("simulate", "practice"); return MD:ShowBindings() ~= nil end
+local function SheetFrame() return MD.BindingsWindow and MD.BindingsWindow._frame() end
+local function Copy()
+    MD:ShowCopyPopup("Copy", "a line to copy")
+    return _G.SpellTunerDebugCopyFrame ~= nil
+end
+local function Console()
+    MD:Debug("tto", "a line in its category colour")
+    if not (_G.SpellTunerDebugConsole and _G.SpellTunerDebugConsole:IsShown()) then MD:ToggleDebugConsole() end
+    return _G.SpellTunerDebugConsole ~= nil
+end
 local VIEWS
 if flavour == "forever" then
     VIEWS = {
         { "spells", "overview", "spells" }, { "spells", "FAMILY", "spells" },
         { "reports", "review", "review" }, { "simulate", "practice", "practice" },
+        { "simulate", "bindings", "bindings", open = Bindings, root = SheetFrame },
         { "settings", "general", "settings" }, { "settings", "modules", "settings" },
         { "settings", "about", "settings" },
+        { "debug", "console", "debug", open = Console, root = "SpellTunerDebugConsole" },
+        { "debug", "copy", "copy", open = Copy, root = "SpellTunerDebugCopyFrame" },
     }
 else
     VIEWS = {
         { "spells", "overview", "spells" }, { "spells", "FAMILY", "spells" },
         { "reports", "Review", "review" }, { "reports", "Waste", "waste" },
-        { "simulate", "practice", "practice" }, { "simulate", "build", "simulate" },
+        { "simulate", "practice", "practice" },
+        { "simulate", "bindings", "bindings", open = Bindings, root = SheetFrame },
+        { "simulate", "build", "simulate" },
         { "settings", "general", "settings" }, { "settings", "about", "settings" },
+        { "debug", "console", "debug", open = Console, root = "SpellTunerDebugConsole" },
+        { "debug", "copy", "copy", open = Copy, root = "SpellTunerDebugCopyFrame" },
     }
 end
-local LISTED = { spells = true, review = true, practice = true, settings = true }
 
-local dash
+-- the Spells rail's first family row (Forever's pane, TBC's view)
 local function FamilyRow()
-    for _, f in ipairs(S.allFrames) do
-        local d = rawget(f, "data")
-        if f.kind == "Button" and type(d) == "table" and d.text and rawget(f, "id") and not d.fixed
-                and type(f.id) == "string" and f.id ~= "overview" and f:IsVisible() then
-            return f
-        end
+    local owner = MD.SpellsPane or MD.SpellsTBC
+    local rail = owner and owner.nav and owner.nav:Rail("spells")
+    for _, r in ipairs(rail and rail:Rows() or {}) do
+        if type(r.id) == "string" and r.id:find("^fam:") then return r end
     end
 end
 local function Visit(v)
+    if v.open then
+        local ok, res = pcall(v.open)
+        if not ok then print("  open " .. v[2] .. " raised: " .. tostring(res)) end
+        return ok and res
+    end
     if v[2] == "FAMILY" then
         MD:SelectView("spells", "overview")
         local row = FamilyRow()
@@ -265,15 +308,16 @@ local function Visit(v)
     if not ok then print("  select " .. v[1] .. "/" .. tostring(v[2]) .. " raised: " .. tostring(err)) end
     return ok
 end
-local function Visible()
+-- every visible region under the view's window
+local function Visible(rootName)
     local out = {}
-    dash = dash or _G.SpellTunerDashboard
+    local root = type(rootName) == "function" and rootName() or _G[rootName or "SpellTunerDashboard"]
     for _, f in ipairs(S.allFrames) do
         if REGION[f.kind] or f.bg or f.border then
             local g, under = f, false
             for _ = 1, 60 do
                 if not g then break end
-                if rawequal(g, dash) then under = true; break end
+                if rawequal(g, root) then under = true; break end
                 g = rawget(g, "parentFrame")
             end
             if under and f:IsVisible() then out[f] = true end
@@ -281,11 +325,13 @@ local function Visible()
     end
     return out
 end
+local opened = {}
 local function Round()
     local seen = {}
     for i, v in ipairs(VIEWS) do
         local ok = Visit(v)
-        seen[i] = ok and Visible() or {}
+        opened[i] = ok and true or false
+        seen[i] = ok and Visible(v.root) or {}
     end
     return seen
 end
@@ -295,11 +341,17 @@ MD:ToggleDashboard()
 -- a selection the first visit made), so the paint below is the steady one
 Round()
 local flatSeen = Round()
--- the chrome: what every view shows
+for i, v in ipairs(VIEWS) do
+    check(string.format("Flat: %s / %s opens and shows regions", v[1], v[2]),
+        opened[i] and next(flatSeen[i]) ~= nil)
+end
+-- the chrome: what every view of the main window shows
 local chrome = {}
 for f in pairs(flatSeen[1]) do
     local all = true
-    for i = 2, #flatSeen do if not flatSeen[i][f] then all = false; break end end
+    for i = 2, #flatSeen do
+        if not VIEWS[i].root and not flatSeen[i][f] then all = false; break end
+    end
     if all then chrome[f] = true end
 end
 
@@ -316,6 +368,15 @@ end
 local builtBefore = #S.allFrames
 local first = {}
 for i = 1, builtBefore do first[i] = Paint(S.allFrames[i]) end
+-- and each region's colours as tables, to compare after the switch
+local firstColour = {}
+for i = 1, builtBefore do
+    local f, c = S.allFrames[i], {}
+    for _, k in ipairs({ "textColor", "color", "bg", "border", "barColor" }) do
+        if type(f[k]) == "table" then c[k] = { f[k][1], f[k][2], f[k][3], f[k][4] } end
+    end
+    firstColour[f] = c
+end
 
 -- Flat's values, and which Ellesmere changes
 local function Copy3(t) return { t[1], t[2], t[3], t[4], hex = t.hex } end
@@ -344,6 +405,10 @@ check("the hand-painted region is left as the hand painted it; the tinted ones f
     and Near(tex.color, UI.PALETTE.hover[1], UI.PALETTE.hover[2], UI.PALETTE.hover[3], UI.PALETTE.hover[4]))
 
 local function Key(r, g, b) return string.format("%.4f %.4f %.4f", r or -1, g or -1, b or -1) end
+local function KeyA(c) return Key(c[1], c[2], c[3]) .. " " .. N(c[4] or 1) end
+-- Flat's colours Ellesmere changed: a text token's (by colour and by code) and
+-- a fill's (by colour and alpha). Opaque black is left out: it is Flat's
+-- `border` and also every icon's literal backing, so it names nothing.
 local staleText, staleHex, stalePal = {}, {}, {}
 for k, o in pairs(flatText) do
     local n = UI.TEXT[k]
@@ -351,26 +416,48 @@ for k, o in pairs(flatText) do
     if o.hex and n.hex and o.hex:lower() ~= n.hex:lower() then staleHex[o.hex:lower()] = k end
 end
 for k, o in pairs(flatPal) do
-    local n = UI.PALETTE[k]
-    local ok_ = Key(o[1], o[2], o[3]) .. " " .. N(o[4] or 1)
-    if ok_ ~= Key(n[1], n[2], n[3]) .. " " .. N(n[4] or 1) then stalePal[ok_] = k end
+    if KeyA(o) ~= KeyA(UI.PALETTE[k]) and KeyA(o) ~= KeyA({ 0, 0, 0, 1 }) then stalePal[KeyA(o)] = k end
 end
 local accentKey = Key(flatAccent[1], flatAccent[2], flatAccent[3])
+-- what a region showing Flat's accent at alpha a may show now: Ellesmere's
+-- accent at a, or Ellesmere's value of a fill that was Flat's accent at a
+-- (Flat's `selected` is the accent at 0.28; Ellesmere's is white at 0.04)
+local nowFor = {}
+for k, o in pairs(flatPal) do
+    if Key(o[1], o[2], o[3]) == accentKey then
+        local a = N(o[4] or 1)
+        nowFor[a] = nowFor[a] or {}
+        nowFor[a][KeyA(UI.PALETTE[k])] = true
+    end
+end
+
+local FIELDS = { { "textColor", "text" }, { "color", "tex" }, { "bg", "bg" }, { "border", "edge" }, { "barColor", "bar" } }
+-- a backdrop drawn without an edge file (the `strips` painter) shows no edge
+local function ShowsEdge(f) return not (type(f.backdrop) == "table" and f.backdrop.edgeFile == nil) end
+
+-- a backdrop the skin registry holds as a LITERAL (a caller's own colour, not
+-- a palette name: the debug console's body, the replay's unit frames) is a
+-- colour by design, the same under every style -- not a token left behind
+local function Literal(f, what)
+    local rec = UI.skinned and UI.skinned[f]
+    if not rec then return false end
+    if what == "bg" then return type(rec.fill) == "table" and rec.fill.ref == nil end
+    if what == "edge" then return type(rec.edge) == "table" and rec.edge.ref == nil end
+    return false
+end
 
 -- what a region still shows of Flat: "accent", or the token / fill it was
 local function Stale(f)
     local hits = {}
-    local function rgb(c, what)
-        if type(c) ~= "table" then return end
-        local k = Key(c[1], c[2], c[3])
-        if k == accentKey then hits[#hits + 1] = what .. "=accent" ; return end
-        if what == "text" and staleText[k] then hits[#hits + 1] = "text=" .. staleText[k]; return end
-        if what ~= "text" then
-            local kp = k .. " " .. N(c[4] or 1)
-            if stalePal[kp] then hits[#hits + 1] = what .. "=" .. stalePal[kp] end
+    for _, fl in ipairs(FIELDS) do
+        local c, what = f[fl[1]], fl[2]
+        if type(c) == "table" and (what ~= "edge" or ShowsEdge(f)) and not Literal(f, what) then
+            local k = Key(c[1], c[2], c[3])
+            if k == accentKey then hits[#hits + 1] = what .. "=accent"
+            elseif what == "text" and staleText[k] then hits[#hits + 1] = "text=" .. staleText[k]
+            elseif what ~= "text" and stalePal[KeyA(c)] then hits[#hits + 1] = what .. "=" .. stalePal[KeyA(c)] end
         end
     end
-    rgb(f.textColor, "text"); rgb(f.color, "tex"); rgb(f.bg, "bg"); rgb(f.border, "edge"); rgb(f.barColor, "bar")
     if type(f.text) == "string" then
         for code in f.text:gmatch("|c%x%x%x%x%x%x%x%x") do
             local c = code:lower()
@@ -381,81 +468,82 @@ local function Stale(f)
     return hits
 end
 local function IsAccent(h) return h:find("accent", 1, true) ~= nil end
-
-local elSeen = Round()
--- per pane: the stale regions, accent and the rest
-local paneOf = {}
-local accentLeft, leftBy = {}, {}
-for i, v in ipairs(VIEWS) do
-    local pane = v[3]
-    for f in pairs(elSeen[i]) do
-        local where = chrome[f] and "window" or pane
-        local hits = Stale(f)
-        for _, h in ipairs(hits) do
-            local site = (f.site or "?")
-            if IsAccent(h) then
-                accentLeft[where] = accentLeft[where] or {}
-                accentLeft[where][site .. " " .. h] = true
-            else
-                leftBy[where] = leftBy[where] or {}
-                leftBy[where][site .. " " .. h] = true
-            end
-        end
-    end
-end
 local function Keys(t)
     local out = {}
     for k in pairs(t or {}) do out[#out + 1] = k end
     table.sort(out)
     return out
 end
+
+local elSeen = Round()
+-- per pane: the regions still showing Flat, the accent apart
+local accentLeft, leftBy = {}, {}
+for i, v in ipairs(VIEWS) do
+    for f in pairs(elSeen[i]) do
+        local where = chrome[f] and "window" or v[3]
+        for _, h in ipairs(Stale(f)) do
+            local into = IsAccent(h) and accentLeft or leftBy
+            into[where] = into[where] or {}
+            into[where][(f.site or "?") .. " " .. h] = true
+        end
+    end
+end
 if mode == "print" then
     for _, w in ipairs(Keys(accentLeft)) do for _, k in ipairs(Keys(accentLeft[w])) do print("ACCENT", w, k) end end
     for _, w in ipairs(Keys(leftBy)) do for _, k in ipairs(Keys(leftBy[w])) do print("LEFT", w, k) end end
 end
 
--- every region that showed Flat's accent shows Ellesmere's, at its alpha
-local function AccentFollowed(i, pane)
+-- every region that showed Flat's accent (at alpha a) now shows Ellesmere's
+-- at a, or Ellesmere's value of the fill it was
+local seenAccent = 0
+local function AccentFollowed(i)
     local bad = {}
+    -- the alphas the accent was shown at in this view: a pooled row a
+    -- re-render hands another entry may show the accent at another of them
+    local alphas = {}
     for f in pairs(flatSeen[i]) do
-        local idx
-        for j = 1, builtBefore do if S.allFrames[j] == f then idx = j; break end end
-        if idx and elSeen[i][f] then
-            local before = first[idx]
-            local function was(c) return type(c) == "table" and Key(c[1], c[2], c[3]) == accentKey end
-            -- the paint before is a string; read the colour fields again from it
-            for _, field in ipairs({ "textColor", "color", "bg", "border", "barColor" }) do
-                local now = f[field]
-                local tag = ({ textColor = "text=", color = "tex=", bg = "bg=", border = "edge=", barColor = "bar=" })[field]
-                local was_ = before:match(tag .. "([^ ]+)")
-                if was_ and was_:find("^" .. N(flatAccent[1]):gsub("%.", "%%.") .. "," .. N(flatAccent[2]):gsub("%.", "%%.")
-                        .. "," .. N(flatAccent[3]):gsub("%.", "%%.") .. ",") then
-                    local alpha = was_:match(",([^,]+)$")
-                    if not (Near(now, E[1], E[2], E[3]) and N(now and now[4]) == alpha) then
-                        bad[#bad + 1] = (f.site or "?") .. " " .. field
+        for _, fl in ipairs(FIELDS) do
+            local c = firstColour[f] and firstColour[f][fl[1]]
+            if type(c) == "table" and Key(c[1], c[2], c[3]) == accentKey then alphas[N(c[4] or 1)] = true end
+        end
+    end
+    for f in pairs(flatSeen[i]) do
+        local was = firstColour[f]
+        if was and elSeen[i][f] then
+            for _, fl in ipairs(FIELDS) do
+                local c, now = was[fl[1]], f[fl[1]]
+                if type(c) == "table" and Key(c[1], c[2], c[3]) == accentKey
+                        and (fl[2] ~= "edge" or ShowsEdge(f)) then
+                    local a = N(c[4] or 1)
+                    seenAccent = seenAccent + 1
+                    local okNow = type(now) == "table" and ((Key(now[1], now[2], now[3]) == Key(E[1], E[2], E[3])
+                        and alphas[N(now[4] or 1)]) or (nowFor[a] and nowFor[a][KeyA(now)]))
+                    if not okNow then
+                        bad[#bad + 1] = (f.site or "?") .. " " .. fl[2] .. " " .. C(c) .. " -> " .. C(now)
                     end
                 end
             end
-            local _ = was
         end
     end
     return bad
 end
 
-local checkedPanes = {}
-for i, v in ipairs(VIEWS) do
+local done = {}
+for _, v in ipairs(VIEWS) do
     local pane = v[3]
-    if not checkedPanes[pane] and pane ~= "window" then
-        checkedPanes[pane] = true
+    if not done[pane] then
+        done[pane] = true
         local bad = {}
         for j, w in ipairs(VIEWS) do
-            if w[3] == pane then for _, b in ipairs(AccentFollowed(j, pane)) do bad[#bad + 1] = w[2] .. ": " .. b end end
+            if w[3] == pane then for _, b in ipairs(AccentFollowed(j)) do bad[#bad + 1] = w[2] .. ": " .. b end end
         end
         for _, k in ipairs(Keys(accentLeft[pane])) do bad[#bad + 1] = k end
-        check(string.format("%s: every region in Flat's accent now reads Ellesmere's (same alpha)", pane),
+        check(string.format("%s: every region in Flat's accent now reads Ellesmere's (its alpha, or its fill's)", pane),
             #bad == 0, table.concat(bad, "; "))
     end
 end
+check("the accent check is not vacuous: the views showed the accent on many regions under Flat",
+    seenAccent >= 30, tostring(seenAccent))
 check("the window's own chrome follows too (nav, tabs, rules)", accentLeft.window == nil,
     table.concat(Keys(accentLeft.window), "; "))
 
@@ -464,44 +552,59 @@ check("the window's own chrome follows too (nav, tabs, rules)", accentLeft.windo
 --------------------------------------------------------------------------------
 T.section("what is left: UI.Restyle.LEFT, measured")
 local Restyle = UI.Restyle or {}
+local owned = {}
+for _, rel in ipairs(OWNED) do owned[rel] = true end
+-- the files each pane is declared to leave, and the files measured as left
 local declared = {}
 for _, e in ipairs(Restyle.LEFT or {}) do
     declared[e.pane] = declared[e.pane] or {}
-    for _, s in ipairs(e.sites or {}) do declared[e.pane][s] = true end
+    declared[e.pane][e.file] = true
 end
-for _, pane in ipairs({ "window", "spells", "review", "practice", "settings", "waste", "simulate" }) do
-    local measured = {}
-    for k in pairs(leftBy[pane] or {}) do measured[k:match("^(%S+)")] = true end
+local panes, seenPane = {}, {}
+for _, v in ipairs(VIEWS) do
+    if not seenPane[v[3]] then seenPane[v[3]] = true; panes[#panes + 1] = v[3] end
+end
+table.insert(panes, 1, "window")
+for _, pane in ipairs(panes) do
+    local measured, sites = {}, {}
+    for _, k in ipairs(Keys(leftBy[pane])) do
+        local file = k:match("^(.-):%d+ ") or k
+        measured[file] = true
+        sites[#sites + 1] = k
+    end
     local missing, extra = {}, {}
-    for s in pairs(measured) do if not (declared[pane] or {})[s] then missing[#missing + 1] = s end end
-    for s in pairs(declared[pane] or {}) do if not measured[s] then extra[#extra + 1] = s end end
+    for f in pairs(measured) do if not (declared[pane] or {})[f] then missing[#missing + 1] = f end end
+    for f in pairs(declared[pane] or {}) do if not measured[f] then extra[#extra + 1] = f end end
     table.sort(missing); table.sort(extra)
     if pane == "spells" or pane == "settings" or pane == "window" then
-        check(pane .. ": nothing left (no token or fill of Flat's on any region)",
-            next(measured) == nil and declared[pane] == nil, table.concat(Keys(leftBy[pane]), "; "))
-    elseif VIEWS and (pane ~= "waste" and pane ~= "simulate" or flavour == "tbc") then
-        check(pane .. ": what is left is exactly what UI.Restyle.LEFT declares",
+        check(pane .. ": nothing is left (no region shows a token or a fill of Flat's)",
+            next(measured) == nil and declared[pane] == nil, table.concat(sites, "; "))
+    else
+        check(pane .. ": what is left is exactly UI.Restyle.LEFT's, file by file",
             #missing == 0 and #extra == 0,
-            (#missing > 0 and ("not declared: " .. table.concat(missing, ", ") .. " ") or "")
+            (#missing > 0 and ("not declared: " .. table.concat(sites, "; ") .. " ") or "")
             .. (#extra > 0 and ("declared but not left: " .. table.concat(extra, ", ")) or ""))
     end
 end
 do
+    local strays = {}
+    for _, e in ipairs(Restyle.LEFT or {}) do
+        if owned[e.file] or type(e.label) ~= "string" or type(e.what) ~= "string" or not T.Ascii(e.label .. e.what) then
+            strays[#strays + 1] = tostring(e.file)
+        end
+    end
+    check("every LEFT entry is a file outside T107's row, with an ASCII label and what is left",
+        #strays == 0, table.concat(strays, ", "))
     local n, labels = 0, {}
     if Restyle.Left then n, labels = Restyle.Left() end
-    local named = {}
-    for _, l in ipairs(labels or {}) do named[l] = true end
-    local listedLeft = {}
-    for _, e in ipairs(Restyle.LEFT or {}) do
-        if (e.pane == "spells" or e.pane == "settings") then listedLeft[#listedLeft + 1] = e.label end
-    end
-    check("UI.Restyle.Left() counts the LEFT entries by label; none is the Spells view or Settings",
-        Restyle.Left ~= nil and n == #(Restyle.LEFT or {}) and #listedLeft == 0,
-        tostring(n) .. " " .. table.concat(listedLeft, ", "))
+    local same = Restyle.Left ~= nil and n == #(Restyle.LEFT or {})
+    for i, e in ipairs(Restyle.LEFT or {}) do same = same and labels[i] == e.label end
+    check("UI.Restyle.Left() counts the LEFT entries and names them in order", same, tostring(n))
     local line = Restyle.Line and Restyle.Line()
     local okLine = (n == 0 and line == nil) or (type(line) == "string" and T.Ascii(line)
-        and line:find(tostring(n), 1, true) ~= nil and line:find("reload", 1, true) ~= nil)
-    check("UI.Restyle.Line(): the count and the word reload, ASCII (nil when nothing is left)",
+        and line:find(tostring(n), 1, true) == 1 and line:find("after a reload", 1, true) ~= nil)
+    for _, l in ipairs(labels or {}) do okLine = okLine and line:find(l, 1, true) ~= nil end
+    check("UI.Restyle.Line(): the count, \"after a reload\" and every label, ASCII (nil when nothing is left)",
         okLine, tostring(line))
 end
 
@@ -545,5 +648,30 @@ for i = 1, builtBefore do
 end
 check("every region the window had is byte-identical to the first Flat paint",
     #diff == 0, #diff .. " differ, first: " .. tostring(diff[1]))
+
+--------------------------------------------------------------------------------
+-- 8. The follow cannot tell two tokens apart that shared a colour
+--------------------------------------------------------------------------------
+T.section("the follow: shared colours and escaped pipes")
+local okReg = pcall(UI.Styles.Register, "restyletest", {
+    name = "Restyle test", hint = "tools/restylecheck.lua's: two tokens on one grey.", accent = "class",
+    text = { muted = "777777", disabled = "777777" },
+})
+check("a test style with `muted` and `disabled` on one grey registers", okReg)
+UI.SetStyle("restyletest")
+local shared = host:CreateFontString()
+shared:SetTextColor(UI.RGB("muted"))
+shared:SetText(UI.Hex("muted") .. "which one?|r")
+local escaped = host:CreateFontString()
+escaped:SetText("a pipe: ||" .. UI.Hex("label"):sub(2) .. " and " .. UI.Hex("label") .. "label|r")
+local labelBefore = UI.Hex("label")
+UI.SetStyle("ellesmere")
+check("a colour two tokens shared, that now differ, is left as it was (colour and code)",
+    Near(shared.textColor, 0x77 / 255, 0x77 / 255, 0x77 / 255) and shared.text == "|cff777777which one?|r",
+    C(shared.textColor) .. " " .. tostring(shared.text))
+check("an escaped pipe followed by a code's letters is text, not a code; the real code is swapped",
+    escaped.text == "a pipe: ||" .. labelBefore:sub(2) .. " and " .. UI.Hex("label") .. "label|r",
+    tostring(escaped.text))
+UI.SetStyle("flat")
 
 T.done()

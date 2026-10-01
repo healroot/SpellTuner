@@ -234,7 +234,7 @@ function MD.DashboardParts.CreateRankTable(content, width, extra)
         rowHeight = Pitch(20), headerHeight = Pitch(22),
         headerRule = true, zebra = true, rowWidth = RANK_W, marker = "bar",
         selection = extra.selection,
-        headerFont = UI.FONT_SPECIAL, headerColor = UI.Hex("label"),
+        headerFont = UI.FONT_SPECIAL, headerColor = "label", -- T107: a token, read at render
         render = RenderRank, onEnter = RankEnter, onClick = extra.onClick,
         onLeave = function() if MD.Tip then MD.Tip:Hide() end end,
     })
@@ -524,12 +524,11 @@ end
 --------------------------------------------------------------------------------
 local function TitledPane(parent, text)
     local pane = UI.CreateTitledPane(parent, text, VIEW_W, 60)
-    local rc = UI.PALETTE and UI.PALETTE.rule
-    if rc and pane.line then pane.line:SetColorTexture(rc[1], rc[2], rc[3], rc[4] or 0.6) end
+    if UI.PALETTE and UI.PALETTE.rule and pane.line then UI.Tint(pane.line, "texture", "rule") end -- T107
     pane.note = pane:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
     pane.note:SetPoint("BOTTOMRIGHT", pane.line, "TOPRIGHT", 0, 3)
     pane.note:SetJustifyH("RIGHT")
-    pane.note:SetTextColor(UI.RGB("text2"))
+    UI.Tint(pane.note, "text", "text2")
     return pane
 end
 
@@ -551,6 +550,9 @@ function MD.DashboardParts.CreateSpellsView(parent, width, onChange)
     api.frame = f
     api.renderCount = 0
     local selected = {} -- family -> SelectKey of the rank the card shows
+    -- T107: a style switch re-renders whatever the Spells group shows (its rows
+    -- are token codes at render; the kit has repainted every tinted region)
+    if onChange then MD:RegisterCallback("STYLE_CHANGED", function() onChange() end) end
 
     f.scroll = UI.CreateScrollFrame(f, 0, 4)
     local content = f.scroll.content
@@ -571,16 +573,16 @@ function MD.DashboardParts.CreateSpellsView(parent, width, onChange)
     header.name:SetPoint("TOPLEFT", header, "TOPLEFT", 46, -6)
     header.name:SetJustifyH("LEFT")
     header.name:SetWordWrap(false)
-    header.name:SetTextColor(UI.RGB("text"))
+    UI.Tint(header.name, "text", "text")
     header.sub = header:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
     header.sub:SetPoint("TOPLEFT", header.name, "BOTTOMLEFT", 0, -4)
     header.sub:SetJustifyH("LEFT")
     header.sub:SetWordWrap(false)
-    header.sub:SetTextColor(UI.RGB("text2"))
+    UI.Tint(header.sub, "text", "text2")
     header.mana = header:CreateFontString(nil, "OVERLAY", UI.FONT_NUM or UI.FONT)
     header.mana:SetPoint("TOPRIGHT", header, "TOPRIGHT", -4, -6)
     header.mana:SetJustifyH("RIGHT")
-    header.mana:SetTextColor(UI.RGB("text"))
+    UI.Tint(header.mana, "text", "text")
     header.stats = header:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
     header.stats:SetPoint("TOPRIGHT", header.mana, "BOTTOMRIGHT", 0, -6)
     header.stats:SetJustifyH("RIGHT")
@@ -601,21 +603,20 @@ function MD.DashboardParts.CreateSpellsView(parent, width, onChange)
     chip:SetPoint("TOPLEFT", strip, "TOPLEFT", 0, 0)
     chip:SetSize(CHIP_W, Pitch(STRIP_H))
     UI.StylizeFrame(chip, P.pane or { 0.11, 0.11, 0.11, 1 }, P.border or { 0, 0, 0, 1 })
-    local a = UI.accent
     chip.bar = chip:CreateTexture(nil, "OVERLAY")
     chip.bar:SetPoint("TOPLEFT", chip, "TOPLEFT", 0, 0)
     chip.bar:SetPoint("BOTTOMLEFT", chip, "BOTTOMLEFT", 0, 0)
     chip.bar:SetWidth(2)
-    chip.bar:SetColorTexture(a[1], a[2], a[3], 1)
+    UI.Tint(chip.bar, "texture", "accent", 1) -- T107: the accent by name
     strip.chipLabel = chip:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
     strip.chipLabel:SetPoint("TOPLEFT", chip, "TOPLEFT", 10, -4)
     strip.chipLabel:SetJustifyH("LEFT")
-    strip.chipLabel:SetTextColor(a[1], a[2], a[3])
+    UI.Tint(strip.chipLabel, "text", "accent")
     strip.chipLabel:SetText("SUGGESTED")
     strip.chipRank = chip:CreateFontString(nil, "OVERLAY", UI.FONT_BIG or UI.FONT_TITLE)
     strip.chipRank:SetPoint("TOPLEFT", chip, "TOPLEFT", 10, -17)
     strip.chipRank:SetJustifyH("LEFT")
-    strip.chipRank:SetTextColor(UI.RGB("text"))
+    UI.Tint(strip.chipRank, "text", "text")
     chip:EnableMouse(true)
     chip:SetScript("OnEnter", function(self)
         local lines = TagTip({ known = true, suggested = true })
@@ -634,7 +635,7 @@ function MD.DashboardParts.CreateSpellsView(parent, width, onChange)
     strip.compare:SetJustifyH("LEFT")
     strip.compare:SetWordWrap(true)
     strip.compare:SetMaxLines(2)
-    strip.compare:SetTextColor(UI.RGB("text2"))
+    UI.Tint(strip.compare, "text", "text2")
 
     -- the right column: After overheal (was "Effective"), its share, What if...
     local side = CreateFrame("Frame", nil, strip)
@@ -696,7 +697,7 @@ function MD.DashboardParts.CreateSpellsView(parent, width, onChange)
     card.base:SetWidth(VIEW_W - 16)
     card.base:SetJustifyH("LEFT")
     card.base:SetWordWrap(true)
-    card.base:SetTextColor(UI.RGB("text2"))
+    UI.Tint(card.base, "text", "text2")
     f.card = card
 
     local function CardPair(i)
@@ -707,12 +708,12 @@ function MD.DashboardParts.CreateSpellsView(parent, width, onChange)
         p.label:SetJustifyH("LEFT")
         p.label:SetWordWrap(false)
         p.label:SetWidth(CARD_LABEL_W)
-        p.label:SetTextColor(UI.RGB("label"))
+        UI.Tint(p.label, "text", "label")
         p.value = card:CreateFontString(nil, "OVERLAY", UI.FONT_NUM or UI.FONT)
         p.value:SetJustifyH("LEFT")
         p.value:SetWordWrap(false)
         p.value:SetWidth(CARD_COL - CARD_LABEL_W - 8)
-        p.value:SetTextColor(UI.RGB("text"))
+        UI.Tint(p.value, "text", "text")
         card.pairPool[i] = p
         return p
     end
@@ -975,8 +976,7 @@ function MD.DashboardParts.CreateSpellsOverview(parent, width, onOpen)
     local title = f:CreateFontString(nil, "OVERLAY", UI.FONT_TITLE)
     title:SetPoint("TOPLEFT", f, "TOPLEFT", 0, -3)
     title:SetJustifyH("LEFT")
-    local a = UI.accent
-    title:SetTextColor(a[1], a[2], a[3])
+    UI.Tint(title, "text", "accent") -- T107
     title:SetText("OVERVIEW")
     f.title = title
 
@@ -988,7 +988,7 @@ function MD.DashboardParts.CreateSpellsOverview(parent, width, onOpen)
         font = UI.FONT_NUM or UI.FONT, wideFont = UI.FONT_SMALL,
         rowHeight = Pitch(20), headerHeight = Pitch(22),
         headerRule = true, zebra = true, rowWidth = true, marker = "bar",
-        headerFont = UI.FONT_SPECIAL, headerColor = UI.Hex("label"),
+        headerFont = UI.FONT_SPECIAL, headerColor = "label", -- T107: a token, read at render
         render = RenderMine, onEnter = MineEnter,
         onLeave = function() if MD.Tip then MD.Tip:Hide() end end,
         onClick = function(_, r) if r and r.key and onOpen then onOpen(r.key) end end,
@@ -1001,13 +1001,12 @@ function MD.DashboardParts.CreateSpellsOverview(parent, width, onOpen)
     local sep = tbl.frame:CreateTexture(nil, "BORDER")
     sep:SetWidth(1)
     sep:SetPoint("TOPLEFT", tbl.frame, "TOPLEFT", MINE_SEP_X, -4)
-    local P = UI.PALETTE or {}
-    local lc = P.line or { 0.165, 0.165, 0.165, 1 }
-    sep:SetColorTexture(lc[1], lc[2], lc[3], lc[4] or 1)
+    if UI.PALETTE and UI.PALETTE.line then UI.Tint(sep, "texture", "line") -- T107
+    else sep:SetColorTexture(0.165, 0.165, 0.165, 1) end
 
     local hint = content:CreateFontString(nil, "OVERLAY", UI.FONT_SPECIAL or UI.FONT_SMALL)
     hint:SetJustifyH("LEFT")
-    hint:SetTextColor(UI.RGB("text2"))
+    UI.Tint(hint, "text", "text2")
     f.hint = hint
 
     function api:Render(keys)

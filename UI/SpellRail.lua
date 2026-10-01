@@ -215,7 +215,7 @@ function SpellRail.Install(pane, spec)
         local undoText = footer:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
         undoText:SetPoint("BOTTOMLEFT", add, "TOPLEFT", 5, 8)
         undoText:SetJustifyH("LEFT")
-        undoText:SetTextColor(UI.RGB("text2"))
+        UI.Tint(undoText, "text", "text2")
         pane.undoText = undoText
 
         local undo = UI.CreateButton(footer, "Undo", "accent-hover", { 44, 16 }, false, false,
@@ -286,14 +286,13 @@ function SpellRail.Install(pane, spec)
         s.title = s:CreateFontString(nil, "OVERLAY", UI.FONT_TITLE)
         s.title:SetPoint("TOPLEFT", s, "TOPLEFT", 2, -2)
         s.title:SetJustifyH("LEFT")
-        local a = UI.TEXT.accent
-        s.title:SetTextColor(a[1], a[2], a[3])
+        UI.Tint(s.title, "text", "accent") -- T107: names, so a switch repaints them
         s.rule = s:CreateTexture(nil, "ARTWORK")
         s.rule:SetHeight(1)
         s.rule:SetPoint("TOPLEFT", s, "TOPLEFT", 2, -17)
         s.rule:SetPoint("TOPRIGHT", s, "TOPRIGHT", -2, -17)
-        local rc = UI.PALETTE and UI.PALETTE.rule or { a[1], a[2], a[3], 0.6 }
-        s.rule:SetColorTexture(rc[1], rc[2], rc[3], rc[4] or 0.6)
+        if UI.PALETTE and UI.PALETTE.rule then UI.Tint(s.rule, "texture", "rule")
+        else UI.Tint(s.rule, "texture", "accent", 0.6) end
         p.sectionPool[i] = s
         return s
     end
@@ -324,7 +323,7 @@ function SpellRail.Install(pane, spec)
         r.range = r:CreateFontString(nil, "OVERLAY", UI.FONT_NUM_SMALL or UI.FONT_SMALL)
         r.range:SetPoint("RIGHT", r, "RIGHT", -6, 0)
         r.range:SetJustifyH("RIGHT")
-        r.range:SetTextColor(UI.RGB("muted"))
+        UI.Tint(r.range, "text", "muted")
         r.name = r:CreateFontString(nil, "OVERLAY", UI.FONT)
         r.name:SetPoint("LEFT", r, "LEFT", 46, 0)
         r.name:SetPoint("RIGHT", r, "RIGHT", -64, 0)
@@ -411,7 +410,7 @@ function SpellRail.Install(pane, spec)
         p.search = search
         local placeholder = search:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
         placeholder:SetPoint("LEFT", search, "LEFT", 6, 0)
-        placeholder:SetTextColor(UI.RGB("muted"))
+        UI.Tint(placeholder, "text", "muted")
         placeholder:SetText("search...")
         p.placeholder = placeholder
 
@@ -424,7 +423,7 @@ function SpellRail.Install(pane, spec)
         tip:SetPoint("BOTTOMLEFT", body, "BOTTOMLEFT", 8, 34)
         tip:SetPoint("RIGHT", body, "RIGHT", -8, 0)
         tip:SetJustifyH("LEFT")
-        tip:SetTextColor(UI.RGB("muted"))
+        UI.Tint(tip, "text", "muted")
         tip:SetText(spec.pickerTip or "")
         if not spec.pickerTip then tip:Hide() end
         p.tip = tip
