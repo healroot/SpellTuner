@@ -62,18 +62,23 @@ if flavour == "forever" then
     toc = "SpellTuner_Mainline.toc"
 end
 local files = S.TocFiles(toc)
-local hasStyles = io.open(root .. "/UI/Styles.lua", "r")
-if hasStyles then hasStyles:close() end
-local listed = false
-for _, rel in ipairs(files) do if rel == "UI/Styles.lua" then listed = true end end
-if hasStyles and not listed then
+-- a file the TOC does not list yet, loaded right after `after` (where the
+-- integrator puts it) when it exists in this tree
+local function InsertAfter(rel, after)
+    local h = io.open(root .. "/" .. rel, "r")
+    if not h then return end
+    h:close()
+    for _, f in ipairs(files) do if f == rel then return end end
     local out = {}
-    for _, rel in ipairs(files) do
-        out[#out + 1] = rel
-        if rel == "UI/Theme_Flat.lua" then out[#out + 1] = "UI/Styles.lua" end
+    for _, f in ipairs(files) do
+        out[#out + 1] = f
+        if f == after then out[#out + 1] = rel end
     end
     files = out
 end
+InsertAfter("UI/Styles.lua", "UI/Theme_Flat.lua")
+-- T100: the Ellesmere style, right after the registry
+InsertAfter("UI/Style_Ellesmere.lua", "UI/Styles.lua")
 S.loadedFiles = files
 S.Load(files, "SpellTuner", MD)
 local UI = MD.UI
@@ -549,6 +554,222 @@ do
     check("/st ui reset still resets with ui style registered in either order",
         okReset and resets == (flavour == "forever" and 2 or 1) and styleAfter and UI.STYLE == "flat",
         string.format("%d resets, style after %s", resets, tostring(styleAfter)))
+end
+
+--------------------------------------------------------------------------------
+-- T100 (docs/SPEC-next.md 5.1, 5.5, X4, X5; section 11's T100 row): the
+-- Ellesmere style. The clone (EllesmereUI's house look, its default accent
+-- for this client: bronze on Forever, teal elsewhere), the tokens' alpha on
+-- white pre-blended into hex against the style's bg (X5), and the follow:
+-- MD.EUISkin's getters when its apiVersion is 2, else the clone; with no
+-- skin facade the parent's getters (MD.EUIParent); a repaint on
+-- EUI_LOOKS_CHANGED and once on EUI_SKIN_READY. Both flavours run every
+-- check: the clone is a look of its own on TBC, and the follow is data-driven
+-- (the integration that hands MD.EUISkin over is Forever's, T97). Failed
+-- first on the parent (25748e3): 0 of these 8 ok on either flavour.
+--------------------------------------------------------------------------------
+T.section("T100: the Ellesmere style")
+do
+    local E = UI.Ellesmere
+    local ell = Styles.Get and Styles.Get("ellesmere")
+    local function Hex2(v) return string.format("%02x", math.floor(v * 255 + 0.5)) end
+    -- white at alpha a over the rgb of c, as a token's code
+    local function Blend(a, c)
+        return "|cff" .. Hex2(a + (1 - a) * c[1]) .. Hex2(a + (1 - a) * c[2]) .. Hex2(a + (1 - a) * c[3])
+    end
+    local function Fired(fn)
+        local before = #changed
+        fn()
+        return #changed - before, changed[#changed]
+    end
+    local function DumpLine()
+        for _, d in ipairs(MD.DumpLines and MD:DumpLines() or {}) do
+            if d.key == "style" then return d.fn() end
+        end
+    end
+    local BRONZE = { 220 / 255, 167 / 255, 127 / 255 }
+    local TEAL = { 12 / 255, 210 / 255, 157 / 255 }
+    local HOUSE = flavour == "forever" and BRONZE or TEAL
+    local PANEL = { 0.05, 0.07, 0.09 }
+    local EXPRESSWAY = "Interface\\AddOns\\EllesmereUI\\media\\fonts\\Expressway.TTF"
+    local function FakeSkin(ver, accent, panel, font, flag)
+        local S = { apiVersion = ver, reads = 0 }
+        function S.GetAccentColor() S.reads = S.reads + 1; return accent[1], accent[2], accent[3] end
+        function S.GetPanelColor() S.reads = S.reads + 1; return panel[1], panel[2], panel[3], panel[4] end
+        function S.GetFont() S.reads = S.reads + 1; return font, flag end
+        function S.GetStyle() return "eui" end
+        return S
+    end
+    -- the stub keeps no shadow offset: a spy on the body font
+    local bodyFont = UI.fontObjects[UI.FONT]
+    bodyFont.SetShadowOffset = function(self, x, y) self.shadowX, self.shadowY = x, y end
+    local function Face()
+        local face, size, flags = bodyFont:GetFont()
+        local num = UI.fontObjects[UI.FONT_NUM]:GetFont()
+        return face, size, flags, num
+    end
+    local function NavStrips(a)
+        local s = nav.frame._skinStrips
+        if type(s) ~= "table" or #s ~= 4 then return false end
+        for _, t in ipairs(s) do
+            if not (t:IsShown() and is(t.color, 1, 1, 1, a)) then return false end
+        end
+        return true
+    end
+    MD.EUISkin, MD.EUIParent = nil, nil
+
+    -- 1. registered, valid, its roles
+    local okV, whyV = false, "not registered"
+    if ell and Styles.Validate then okV, whyV = Styles.Validate(ell) end
+    local roles = ell and ell.roles or {}
+    local clockRole = roles.clock or {}
+    local resolvedOk = false
+    if ell and type(ell.resolve) == "function" and Styles.Validate then
+        local okR, eff = pcall(ell.resolve, ell)
+        resolvedOk = okR and type(eff) == "table" and (Styles.Validate(eff)) == true
+    end
+    check("Ellesmere is registered and validates (the clone it resolves to too); strips on windows and panes; its clock role",
+        okV == true and resolvedOk and ell.name == "Ellesmere" and ell.accent == "follow"
+          and roles.window ~= nil and roles.window.kind == "strips" and is(roles.window.edgeColor, 1, 1, 1, 0.10)
+          and roles.pane ~= nil and roles.pane.kind == "strips" and is(roles.pane.edgeColor, 1, 1, 1, 0.05)
+          and clockRole.kind == "strips" and clockRole.fill == "bg" and is(clockRole.edgeColor, 1, 1, 1, 0.10)
+          and type(clockRole.barFill) == "table" and clockRole.barFill.ref == "accent"
+          and near(clockRole.barFill.a, 0.75),
+        type(whyV) == "table" and table.concat(whyV, "; ") or tostring(whyV))
+
+    -- 2 + 3. the clone, its pre-blended tokens, and Flat back byte-identical
+    local pre = Paint()
+    local okE = UI.SetStyle and UI.SetStyle("ellesmere")
+    local label, muted = UI.TEXT.label.hex, UI.TEXT.muted.hex
+    check("the clone's label is white at 0.53 and muted white at 0.41, pre-blended into hex over bg (X5)",
+        okE == true and is(P.bg, PANEL[1], PANEL[2], PANEL[3], 0.96)
+          and label == Blend(0.53, PANEL) and label == "|cff8d9092" and muted == Blend(0.41, PANEL)
+          and UI.TEXT.text2 == UI.TEXT.label and UI.TEXT.text.hex == "|cffffffff",
+        string.format("label %s (want %s), muted %s (want %s)", tostring(label), Blend(0.53, PANEL),
+            tostring(muted), Blend(0.41, PANEL)))
+    local face, size, flags, num = Face()
+    local cloneOk = okE == true and UI.STYLE == "ellesmere" and near(UI.accent[1], HOUSE[1])
+        and near(UI.accent[2], HOUSE[2]) and near(UI.accent[3], HOUSE[3])
+        and is(P.pane, PANEL[1], PANEL[2], PANEL[3], 1) and is(P.hover, 1, 1, 1, 0.08) and is(P.selected, 1, 1, 1, 0.04)
+        and is(P.check, HOUSE[1], HOUSE[2], HOUSE[3], 0.75) and is(P.track, 1, 1, 1, 0.10)
+        and is(P.thumb, 1, 1, 1, 0.25)
+        and face == "Fonts\\ARIALN.TTF" and num == "Fonts\\ARIALN.TTF" and size == 13 and flags == ""
+        and bodyFont.shadowX == 1 and bodyFont.shadowY == -1
+        and NavStrips(0.10) and is(nav.frame.bg, PANEL[1], PANEL[2], PANEL[3], 0.96)
+        and is(btn.bg, 0.061, 0.095, 0.12, 0.6) and is(btn.border, 1, 1, 1, 0.30)
+        and clock ~= nil and is(clock.bg, PANEL[1], PANEL[2], PANEL[3], 0.96)
+        and E ~= nil and E.Following ~= nil and E.Following() == nil
+    local dumpClone = DumpLine()
+    local okF = UI.SetStyle and UI.SetStyle("flat")
+    local back = Paint()
+    local same = #back == #pre
+    local firstBad
+    for i, s in ipairs(pre) do
+        local b = back[i]
+        if not b or #b.lines ~= #s.lines then
+            same = false
+            firstBad = firstBad or s.name
+        else
+            for k = 1, #s.lines do
+                if s.lines[k] ~= b.lines[k] then
+                    same = false
+                    firstBad = firstBad or (s.name .. " line " .. k .. ": " .. b.lines[k])
+                    break
+                end
+            end
+        end
+    end
+    check("without S the clone on this flavour (" .. (flavour == "forever" and "bronze" or "teal")
+          .. " accent, the house panel, Arial Narrow, strips edges); Flat back is byte-identical",
+        cloneOk and dumpClone == "style: ellesmere (accent style) fell back: none" and okF == true and same,
+        string.format("clone %s, accent %s, face %s, dump %s; %s", tostring(cloneOk), C(UI.accent), tostring(face),
+            tostring(dumpClone), tostring(firstBad)))
+
+    -- 4. a skin facade (apiVersion 2) there before the style is applied (the
+    -- other order of X4): its getters; EUI_SKIN_READY then repaints nothing
+    local ACC = { 0.2, 0.4, 0.9 }
+    local PAN = { 0.10, 0.10, 0.12, 0.9 }
+    local S2 = FakeSkin(2, ACC, PAN, EXPRESSWAY, "OUTLINE")
+    MD.EUISkin = S2
+    local whileFlat = Fired(function() MD:Fire("EUI_SKIN_READY") end)
+    local nSet = Fired(function() if UI.SetStyle then UI.SetStyle("ellesmere") end end)
+    local fface, _, fflags, fnum = Face()
+    local readyAfter = Fired(function() MD:Fire("EUI_SKIN_READY") end)
+    local dumpSkin = DumpLine()
+    check("with a fake S (apiVersion 2) the accent, panel and font come from its getters; the dump says it follows",
+        whileFlat == 0 and nSet == 1 and UI.STYLE == "ellesmere" and S2.reads > 0
+          and near(UI.accent[1], 0.2) and near(UI.accent[2], 0.4) and near(UI.accent[3], 0.9)
+          and is(P.bg, 0.10, 0.10, 0.12, 0.96) and is(P.pane, 0.10, 0.10, 0.12, 1)
+          and is(P.nav, 0.09, 0.09, 0.108, 1) and UI.TEXT.label.hex == Blend(0.53, PAN)
+          and fface == EXPRESSWAY and fnum == EXPRESSWAY and fflags == "OUTLINE" and bodyFont.shadowX == 0
+          and is(nav.frame.bg, 0.10, 0.10, 0.12, 0.96) and is(P.check, 0.2, 0.4, 0.9, 0.75)
+          and E ~= nil and E.Following() == "skin" and readyAfter == 0
+          and dumpSkin == "style: ellesmere (accent style) fell back: none; follows EllesmereUI (skin apiVersion 2)",
+        string.format("flat %d, set %d, ready %d, accent %s, face %s %s, dump %s", whileFlat, nSet, readyAfter,
+            C(UI.accent), tostring(fface), tostring(fflags), tostring(dumpSkin)))
+
+    -- 5. a looks change repaints once (and does nothing under another style)
+    ACC[1], ACC[2], ACC[3] = 0.8, 0.2, 0.4
+    local nLooks, keyLooks = Fired(function() MD:Fire("EUI_LOOKS_CHANGED") end)
+    local looksOk = nLooks == 1 and keyLooks == "ellesmere" and near(UI.accent[1], 0.8) and near(UI.accent[2], 0.2)
+        and is(P.check, 0.8, 0.2, 0.4, 0.75) and UI.TEXT.accent.hex == "|cffcc3366"
+        and is(nav.frame.bg, 0.10, 0.10, 0.12, 0.96)
+    if UI.SetStyle then UI.SetStyle("flat") end
+    local nFlat = Fired(function() MD:Fire("EUI_LOOKS_CHANGED") end)
+    check("a looks change (EUI_LOOKS_CHANGED) repaints once with the new accent; under Flat it does nothing",
+        looksOk and nFlat == 0 and UI.STYLE == "flat",
+        string.format("%d then %d fired, accent %s", nLooks, nFlat, C(UI.accent)))
+
+    -- 6. X4: S arriving after the style was applied repaints once
+    MD.EUISkin = nil
+    if UI.SetStyle then UI.SetStyle("ellesmere") end
+    local wasClone = near(UI.accent[1], HOUSE[1]) and near(UI.accent[2], HOUSE[2])
+    local S3 = FakeSkin(2, { 0.5, 0.5, 1 }, { 0.2, 0.1, 0.1, 1 }, EXPRESSWAY, "")
+    MD.EUISkin = S3
+    local nReady, keyReady = Fired(function() MD:Fire("EUI_SKIN_READY") end)
+    local followed = near(UI.accent[1], 0.5) and near(UI.accent[3], 1) and is(P.bg, 0.2, 0.1, 0.1, 0.96)
+        and is(nav.frame.bg, 0.2, 0.1, 0.1, 0.96)
+    local nAgain = Fired(function() MD:Fire("EUI_SKIN_READY") end)
+    check("S arriving after SetStyle (EUI_SKIN_READY) repaints once, with its getters; a second ready repaints nothing",
+        wasClone and nReady == 1 and keyReady == "ellesmere" and followed and nAgain == 0,
+        string.format("clone first %s, %d then %d fired, accent %s", tostring(wasClone), nReady, nAgain,
+            C(UI.accent)))
+
+    -- 7. apiVersion 3: the getters unread, the clone, and the dump says why
+    local S4 = FakeSkin(3, { 0.5, 0.5, 1 }, { 0.2, 0.1, 0.1, 1 }, EXPRESSWAY, "OUTLINE")
+    MD.EUISkin = S4
+    MD:Fire("EUI_SKIN_READY")
+    local v3face = Face()
+    local dump3 = DumpLine()
+    check("apiVersion = 3 keeps the clone: its getters unread, the dump says 'skin apiVersion 3: not followed'",
+        S4.reads == 0 and near(UI.accent[1], HOUSE[1]) and near(UI.accent[2], HOUSE[2])
+          and near(UI.accent[3], HOUSE[3]) and is(P.bg, PANEL[1], PANEL[2], PANEL[3], 0.96)
+          and v3face == "Fonts\\ARIALN.TTF" and E ~= nil and E.Following() == nil
+          and dump3 == "style: ellesmere (accent style) fell back: none; skin apiVersion 3: not followed",
+        string.format("%d reads, accent %s, dump %s", S4.reads, C(UI.accent), tostring(dump3)))
+
+    -- 8. no skin facade: the parent's getters (accent, font), the house panel
+    MD.EUISkin = nil
+    local preads = 0
+    MD.EUIParent = {
+        GetAccentColor = function() preads = preads + 1; return 1, 0.5, 0.25 end,
+        GetFontPath = function() preads = preads + 1; return EXPRESSWAY end,
+    }
+    if UI.SetStyle then UI.SetStyle("ellesmere") end
+    local pface = Face()
+    local parentOk = preads == 2 and near(UI.accent[1], 1) and near(UI.accent[2], 0.5) and near(UI.accent[3], 0.25)
+        and is(P.bg, PANEL[1], PANEL[2], PANEL[3], 0.96) and pface == EXPRESSWAY
+        and E ~= nil and E.Following() == "parent"
+    MD.EUIParent = { GetAccentColor = function() return "teal" end, GetFontPath = function() error("gone") end }
+    if UI.SetStyle then UI.SetStyle("ellesmere") end
+    local badFace = Face()
+    local junkOk = near(UI.accent[1], HOUSE[1]) and near(UI.accent[2], HOUSE[2]) and badFace == "Fonts\\ARIALN.TTF"
+    MD.EUIParent = nil
+    if UI.SetStyle then UI.SetStyle("flat") end
+    check("without S the parent's getters give the accent and font; a getter that raises or answers junk gives the clone's",
+        parentOk and junkOk and UI.STYLE == "flat",
+        string.format("%d reads, face %s; junk accent %s face %s", preads, tostring(pface), C(UI.accent),
+            tostring(badFace)))
 end
 
 T.done()
