@@ -246,10 +246,43 @@ local function Groups()
         -- answered a question nobody was asking; playing it yourself does
         { id = "simulate", text = "Simulate", views = {
             { id = "practice", text = "Practice" }, { id = "build", text = "Build a fight" } } },
+        -- T102 (docs/SPEC-next.md 7.4): Clock between General and About
         { id = "settings", text = "Settings", views = {
-            { id = "general", text = "General" }, { id = "about", text = "About" } } },
+            { id = "general", text = "General" }, { id = "clock", text = "Clock" },
+            { id = "about", text = "About" } } },
     }
 end
+
+-- T102 (docs/SPEC-next.md 7.3-7.4, mockup M8g): this line's own clock switches
+-- for Settings -> Clock's Show and When tabs -- the keys the OOM Widget pane
+-- and /md rest, /md lock, /md tooltip write (UI/ClockSettings.lua never reads
+-- a line's keys itself).
+local function Visibility()
+    if MD.UpdateVisibility then MD:UpdateVisibility() end
+end
+local CLOCK_SWITCHES = {
+    show = {
+        { text = "Rest time (rest 2:10)", segment = "rest", tips = { "Show rest time",
+              "Grey 'rest 2:10' next to the clock:", "time to full if you stop casting right now. Same as /md rest." },
+          get = function() return MD.db.showRest ~= false end,
+          set = function(on) MD.db.showRest = on end },
+        { text = "Mana cooldown (inn 2:10)", segment = "cd", tips = { "Mana cooldown projection",
+              "Under 90s to OOM, with Innervate (or a potion) ready, what the clock",
+              "becomes if you press it now. It replaces 'rest' there." },
+          get = function() return MD.db.showCooldown ~= false end,
+          set = function(on) MD.db.showCooldown = on end },
+    },
+    when = {
+        { text = "Locked", tips = { "Lock widget", "Unticked: the clock stays up and can be dragged." },
+          get = function() return MD.db.locked == true end,
+          set = function(on) MD.db.locked = on; Visibility() end },
+        { text = "Tooltip and left-click", tips = { "Tooltip on the floating clock",
+              "Off: the clock takes no mouse input at all (click-through),",
+              "and stays draggable while unlocked. Same as /md tooltip." },
+          get = function() return MD.db.widgetTooltip ~= false end,
+          set = function(on) MD.db.widgetTooltip = on; Visibility() end },
+    },
+}
 
 local function CreateDashboard()
     if nav then return end     -- MD_READY can be fired more than once
@@ -283,6 +316,12 @@ local function CreateDashboard()
             elseif group == "simulate" then
                 if MD.AdoptSimPanel then return MD:AdoptSimPanel(content) end
                 return nil
+            elseif group == "settings" and view == "clock" then
+                -- T102: Settings -> Clock, a pane of its own (UI/ClockSettings.lua)
+                if MD.ClockSettings and MD.ClockSettings.Build then
+                    return MD.ClockSettings.Build(content, CLOCK_SWITCHES)
+                end
+                return nil
             elseif group == "settings" then
                 -- one panel for both settings views; the tabs inside it show
                 -- and hide themselves on the ShowOptionsTab callback
@@ -311,7 +350,9 @@ local function CreateDashboard()
             end
             return spellsHost
         end,
-        function(group, view)
+        function(group, view, pane)
+            -- T102: Settings -> Clock's controls from the saved look
+            if group == "settings" and view == "clock" and MD.ClockSettings then MD.ClockSettings.Show(pane) end
             -- the source is set when the VIEW changes, never on a refresh: the
             -- 2s ticker calls Refresh, and setting it there put the run back
             -- one second after the author clicked Fights (v0.11.6)

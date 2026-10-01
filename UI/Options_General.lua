@@ -3,6 +3,10 @@
 -- the window manager's controls as Forever's Settings -> General has them: In
 -- combat, Close one window per ESC, Text size, Window size, Reset window
 -- positions (UI/Windows.lua, UI/Theme_Flat.lua's UI.SetFontOffset).
+-- T102 (docs/SPEC-next.md 5.4, 6.3, 7.4): the Windows pane opens with the Look
+-- dropdown, "Use my class colour" and the reload line; a fourth column,
+-- Integrations; the OOM Widget pane's Customise... opens Settings -> Clock.
+-- The controls are UI/ClockSettings.lua's (shared with Forever's Settings).
 local _, MD = ...
 local UI = MD.UI
 
@@ -13,12 +17,13 @@ tab:Hide()
 local recordCB, rebindCB, fullHpSlider, floorSlider, runsCB, nextPullCB
 local lockCB, restCB, tipCB, cdCB, muteCB, drinkCB, minimapCB, spellTipCB, dmgTipCB, halfLifeSlider, confSlider, treeAuraCB, ngCB, calibCB
 local combatDD, escCB, fontSlider, scaleSlider -- T80: Windows
+local lookControls, integrationsPane -- T102: the Look controls, INTEGRATIONS
 
 --------------------------------------------------------------------------------
 -- OOM widget
 --------------------------------------------------------------------------------
 local function CreateWidgetPane()
-    local pane = UI.CreateTitledPane(tab, "OOM Widget", 205, 164)
+    local pane = UI.CreateTitledPane(tab, "OOM Widget", 205, 186)
     pane:SetPoint("TOPLEFT", tab, "TOPLEFT", 5, -5)
 
     lockCB = UI.CreateCheckButton(pane, "Lock widget", function(checked)
@@ -59,6 +64,16 @@ local function CreateWidgetPane()
         if MD.ApplyWidgetPosition then MD:ApplyWidgetPosition() end
         MD:Print("widget position reset.")
     end)
+
+    -- T102 (docs/SPEC-next.md 7.4, mockup M8g): the layout, colours and bar
+    -- live in Settings -> Clock
+    local customise = UI.CreateButton(pane, "Customise...", "accent-hover", { 150, 17 }, false, false, nil, nil,
+        "Customise the clock", "Settings -> Clock: the layout, the colours, the bar, with a preview.")
+    customise:SetPoint("TOPLEFT", resetBtn, "BOTTOMLEFT", 0, -5)
+    customise:SetScript("OnClick", function()
+        if MD.SelectView then MD:SelectView("settings", "clock") end
+    end)
+    pane.customiseButton = customise -- for tools/clocksettings.lua
     return pane
 end
 
@@ -266,13 +281,28 @@ end
 -- the window size waits for the mouse-up (the window must not scale under
 -- the pointer mid-drag).
 --------------------------------------------------------------------------------
+-- T102 (docs/SPEC-next.md 5.4, mockup M7b): the Look dropdown, "Use my class
+-- colour" and the reload line at the top (UI/ClockSettings.lua's controls);
+-- the pane's own controls sit LOOK_H lower than before.
+local LOOK_H = 84
 local function CreateWindowsPane()
-    local pane = UI.CreateTitledPane(tab, "Windows", 205, 236)
+    local pane = UI.CreateTitledPane(tab, "Windows", 205, 236 + LOOK_H)
     pane:SetPoint("TOPLEFT", tab, "TOPLEFT", 439, -5)
     local Win = MD.Win
 
+    if MD.ClockSettings and MD.ClockSettings.LookControls then
+        lookControls = MD.ClockSettings.LookControls(pane, 140)
+        lookControls.label:SetPoint("TOPLEFT", pane, "TOPLEFT", 5, -29)
+        lookControls.classCheck:SetPoint("TOPLEFT", pane, "TOPLEFT", 5, -53)
+        lookControls.reload:SetPoint("TOPLEFT", pane, "TOPLEFT", 5, -71)
+        lookControls.reload:SetPoint("RIGHT", pane, "RIGHT", 0, 0)
+        lookControls.reload:SetHeight(28)
+        lookControls.reloadText:SetWidth(132)
+        pane.lookControls = lookControls -- for tools/clocksettings.lua
+    end
+
     local combatLabel = pane:CreateFontString(nil, "OVERLAY", UI.FONT)
-    combatLabel:SetPoint("TOPLEFT", pane, "TOPLEFT", 5, -29)
+    combatLabel:SetPoint("TOPLEFT", pane, "TOPLEFT", 5, -29 - LOOK_H)
     combatLabel:SetText("In combat")
     combatDD = UI.CreateDropdown(pane, 124, 18, function(id) Win:SetCombat(id) end)
     combatDD:SetPoint("LEFT", combatLabel, "RIGHT", 8, 0)
@@ -284,13 +314,13 @@ local function CreateWindowsPane()
     end, "Close one window per ESC",
         "On: each ESC closes the window opened last, then the next.",
         "Off: one ESC closes every SpellTuner window at once.")
-    escCB:SetPoint("TOPLEFT", pane, "TOPLEFT", 5, -55)
+    escCB:SetPoint("TOPLEFT", pane, "TOPLEFT", 5, -55 - LOOK_H)
 
     local lo, hi = UI.FONT_OFFSET_MIN or -2, UI.FONT_OFFSET_MAX or 2
     fontSlider = UI.CreateSlider("Text size", pane, lo, hi, 160, 1, function(value)
         UI.SetFontOffset(value)
     end, nil, false, "Text size", "Every SpellTuner text a size bigger or smaller, -2 to +2.")
-    fontSlider:SetPoint("TOPLEFT", pane, "TOPLEFT", 22, -100)
+    fontSlider:SetPoint("TOPLEFT", pane, "TOPLEFT", 22, -100 - LOOK_H)
 
     scaleSlider = UI.CreateSlider("Window size", pane, math.floor(Win.SCALE_MIN * 100 + 0.5),
         math.floor(Win.SCALE_MAX * 100 + 0.5), 160, 5, nil, function(value)
@@ -312,6 +342,18 @@ local function CreateWindowsPane()
 end
 
 --------------------------------------------------------------------------------
+-- Integrations (T102, docs/SPEC-next.md 6.3, mockup M9d): a fourth column --
+-- what was found (ElvUI's datatexts, the brokers), the broker switches and
+-- which ElvUI entry to pick (UI/ClockSettings.lua's pane).
+--------------------------------------------------------------------------------
+local function CreateIntegrationsPane()
+    if not (MD.ClockSettings and MD.ClockSettings.BuildIntegrations) then return nil end
+    local pane = MD.ClockSettings.BuildIntegrations(tab, 205, 150)
+    pane:SetPoint("TOPLEFT", tab, "TOPLEFT", 656, -5)
+    return pane
+end
+
+--------------------------------------------------------------------------------
 -- build + show
 --------------------------------------------------------------------------------
 local built = false
@@ -324,6 +366,7 @@ local function Build()
     local modelPane = CreateModelPane()
     CreateMiscPane(modelPane)
     CreateWindowsPane()
+    integrationsPane = CreateIntegrationsPane()
 end
 
 local function ShowTab(which)
@@ -357,5 +400,7 @@ local function ShowTab(which)
     escCB:SetChecked(MD.Win:EscStackOn())
     fontSlider:SetValue(UI.fontOffset or 0)
     scaleSlider:SetValue(MD.Win:ScalePercent())
+    if lookControls then lookControls:Refresh() end
+    if integrationsPane then integrationsPane:Refresh() end
 end
 MD:RegisterCallback("ShowOptionsTab", ShowTab)

@@ -44,6 +44,8 @@ local function Groups()
             { id = "practice", text = "Practice" } } },
         { id = "settings", text = "Settings", views = {
             { id = "general", text = "General" },
+            -- T102 (docs/SPEC-next.md 7.4): the clock's look, with a preview
+            { id = "clock", text = "Clock" },
             { id = "modules", text = "Modules" },
             -- T70 (P26, U24): the version and every command
             { id = "about", text = "About" } } },
@@ -71,6 +73,10 @@ end
 --                          simAllowRebinds, simFullHp -- live only while the
 --                          Replay module is loaded (it registers them)
 --          TOOLS           the debug console, a copy of /st dump, measure
+-- T102 (docs/SPEC-next.md 5.4, 6.3, 7.4; mockups M7b, M8g, M9d): APPEARANCE
+-- opens with the Look dropdown, "Use my class colour" and the reload line;
+-- INTEGRATIONS under WINDOWS; MANA CLOCK gains Customise..., which opens the
+-- new Settings -> Clock view. Their controls are UI/ClockSettings.lua's.
 -- Each control writes its db field and applies it at once. The text size
 -- follows the slider as it moves; the window size waits for the mouse-up
 -- (Cell's rule: the window must not scale under the pointer mid-drag).
@@ -116,6 +122,8 @@ local function RefreshGeneralPane()
     if p.minimapCheck then -- T79
         p.minimapCheck:SetChecked(not (type(MD.db.minimap) == "table" and MD.db.minimap.hide))
     end
+    if p.lookControls then p.lookControls:Refresh() end -- T102
+    if p.integrations then p.integrations:Refresh() end -- T102
 
     -- REVIEW: the Replay module registers these keys (MD:RegisterDefaults), so
     -- a value is shown and written only while it is loaded; off, the pane says so
@@ -196,8 +204,22 @@ end
 local TEXT_SIZE_HINT = "Every SpellTuner text, one size bigger or smaller."
 local WINDOW_SIZE_HINT = "Every SpellTuner window, bigger or smaller."
 
+-- T102 (docs/SPEC-next.md 5.4, mockup M7b): the Look dropdown and "Use my
+-- class colour" on the section's first row, the reload line under them
+-- (UI/ClockSettings.lua's controls); the two sliders sit LOOK_H lower.
+local LOOK_H = 44
+
 local function BuildAppearanceSection(pane, above)
-    local sec = Section(pane, "APPEARANCE", 104, above, "left")
+    local sec = Section(pane, "APPEARANCE", 104 + LOOK_H, above, "left")
+
+    if MD.ClockSettings and MD.ClockSettings.LookControls then
+        local c = MD.ClockSettings.LookControls(sec, 150)
+        c.label:SetPoint("TOPLEFT", sec, "TOPLEFT", 5, -29)
+        c.classCheck:SetPoint("TOPLEFT", sec, "TOPLEFT", 200, -31)
+        c.reload:SetPoint("TOPLEFT", sec, "TOPLEFT", 5, -49)
+        c.reload:SetPoint("RIGHT", sec, "RIGHT", 0, 0)
+        pane.lookControls = c
+    end
 
     -- 4.2: -2..+2 (decision 13), every SpellTuner font; the Spells pane's
     -- pitches follow (UI.ApplyFonts is wrapped by UI/SpellsPane_Forever.lua)
@@ -209,7 +231,7 @@ local function BuildAppearanceSection(pane, above)
         end, nil, false,
             "Text size", "Every SpellTuner text a size bigger or smaller, -2 to +2.",
             "Spells' rows and cards move apart with it.")
-        slider:SetPoint("TOPLEFT", sec, "TOPLEFT", 5, -45)
+        slider:SetPoint("TOPLEFT", sec, "TOPLEFT", 5, -45 - LOOK_H)
         pane.fontSlider = slider
         pane.fontHint = Hint(sec, TEXT_SIZE_HINT, slider, 0, -20, 150)
     end
@@ -222,7 +244,7 @@ local function BuildAppearanceSection(pane, above)
         end, true,
             "Window size", "Makes the main, replay and practice windows bigger or smaller,",
             "along with the console and the copy box.")
-        slider:SetPoint("TOPLEFT", sec, "TOPLEFT", 190, -45)
+        slider:SetPoint("TOPLEFT", sec, "TOPLEFT", 190, -45 - LOOK_H)
         pane.scaleSlider = slider
         pane.scaleHint = Hint(sec, WINDOW_SIZE_HINT, slider, 0, -20, 150)
     end
@@ -328,7 +350,74 @@ local function BuildClockSection(pane)
     end)
     pane.clockShowNow = now
 
+    -- T102 (docs/SPEC-next.md 7.4, mockup M8g): the layout, colours and bar
+    -- live in Settings -> Clock
+    local customise = UI.CreateButton(sec, "Customise...", "accent-hover", { 92, 20 }, false, false,
+        nil, nil, "Customise the clock", "Settings -> Clock: the layout, the colours, the bar, with a preview.")
+    customise:SetPoint("LEFT", now, "RIGHT", 6, 0)
+    customise:SetScript("OnClick", function() MD:SelectView("settings", "clock") end)
+    pane.clockCustomise = customise
+
     Hint(sec, "Left-click the clock to open this window.", reset, 0, -6)
+    return sec
+end
+
+-- T102 (docs/SPEC-next.md 7.4): Settings -> Clock's Show and When tabs hold
+-- this line's own switches (db.clock: the rest segment, shown, locked,
+-- click-through), the keys MANA CLOCK and /st clock write.
+local function ClockDB()
+    MD.db.clock = MD.db.clock or {}
+    return MD.db.clock
+end
+local function RefreshClock()
+    if MD.Clock and MD.Clock.Refresh then MD.Clock:Refresh() end
+end
+local CLOCK_SWITCHES = {
+    show = {
+        { text = "Rest time (rest 2:10)", segment = "rest", tips = { "Rest time", "Time to full if you stop casting right now,",
+              "beside the clock. Same as /st clock rest." },
+          get = function() return ClockDB().showRest ~= false end,
+          set = function(on) ClockDB().showRest = on; RefreshClock() end },
+    },
+    when = {
+        { text = "Show the mana clock", tips = { "Show the mana clock", "Same as /st clock." },
+          get = function() return ClockDB().shown ~= false end,
+          set = function(on) ClockDB().shown = on; RefreshClock() end },
+        { text = "Locked", tips = { "Lock in place", "Unticked: it stays up for 60 s, even at full mana,",
+              "so you can drag it. Same as /st clock lock." },
+          get = function() return ClockDB().locked == true end,
+          set = function(on)
+              if MD.Clock and MD.Clock.SetLocked then MD.Clock:SetLocked(on) else ClockDB().locked = on end
+          end },
+        { text = "Click-through", tips = { "Click-through", "The clock takes no mouse input (no hover, no click)",
+              "except while you place it. Same as /st clock clickthrough." },
+          get = function() return ClockDB().clickThrough == true end,
+          set = function(on) ClockDB().clickThrough = on; RefreshClock() end },
+    },
+}
+
+-- T102 (docs/SPEC-next.md 6.3, mockup M9d): what was found, the broker
+-- switches and, with EllesmereUI loaded, its /unlock mover (db.eui.unlock,
+-- Integrations/EllesmereUI_Forever.lua's; switched off it leaves after a
+-- reload).
+local INTEGRATIONS_H = 116
+local function BuildIntegrationsSection(pane, above)
+    if not (MD.ClockSettings and MD.ClockSettings.BuildIntegrations) then return nil end
+    local mover = {
+        text = "Clock mover in EllesmereUI's /unlock",
+        tips = { "Clock mover", "The SpellTuner clock as a mover in EllesmereUI's /unlock.",
+                 "Off: after a reload it is not offered." },
+        shown = function() return MD.EUI ~= nil and MD.Surfaces ~= nil and MD.Surfaces.eui ~= nil end,
+        get = function() return not (type(MD.db.eui) == "table" and MD.db.eui.unlock == false) end,
+        set = function(on)
+            MD.db.eui = MD.db.eui or {}
+            MD.db.eui.unlock = on
+            if on and MD.EUI and MD.EUI.RegisterMover then MD.EUI.RegisterMover() end
+        end,
+    }
+    local sec = MD.ClockSettings.BuildIntegrations(pane, LEFT_W, INTEGRATIONS_H, { mover })
+    sec:SetPoint("TOPLEFT", above, "BOTTOMLEFT", 0, -PANE_GAP)
+    pane.integrations = sec
     return sec
 end
 
@@ -428,7 +517,8 @@ local function BuildGeneralPane(content)
 
     local tips = BuildTooltipSection(pane)
     local look = BuildAppearanceSection(pane, tips)
-    BuildWindowsSection(pane, look)
+    local windows = BuildWindowsSection(pane, look)
+    BuildIntegrationsSection(pane, windows) -- T102
 
     local clock = BuildClockSection(pane)
     local review = BuildReviewSection(pane, clock)
@@ -829,6 +919,12 @@ local function CreateDashboard()
             elseif group == "settings" and view == "general" then
                 generalPane = BuildGeneralPane(content)
                 return generalPane
+            elseif group == "settings" and view == "clock" then
+                -- T102: Settings -> Clock (UI/ClockSettings.lua)
+                if MD.ClockSettings and MD.ClockSettings.Build then
+                    return MD.ClockSettings.Build(content, CLOCK_SWITCHES)
+                end
+                return nil
             elseif group == "settings" and view == "modules" then
                 modulesPane = BuildModulesPane(content)
                 return modulesPane
@@ -841,6 +937,7 @@ local function CreateDashboard()
             -- T32: the group's own size, the TOPLEFT kept (6.7)
             MD.Win:SetGroup("main", group)
             if group == "settings" and view == "general" then RefreshGeneralPane() end
+            if group == "settings" and view == "clock" and MD.ClockSettings then MD.ClockSettings.Show(pane) end
             if group == "settings" and view == "modules" then RefreshModulesPane() end
             if group == "settings" and view == "about" then RefreshAboutPane() end
             if group == "reports" and view == "review" then RefreshReviewPane() end
