@@ -11,6 +11,8 @@ Client\API.lua
 Client\API_TBC.lua
 Core.lua
 Core_TBC.lua
+Spells\Profiles.lua
+Data\Profile_Druid_TBC.lua
 Data\SpellData.lua
 Data\SimFixture_BF1.lua
 Data\SimPresets.lua
@@ -22,6 +24,7 @@ Engine\SpendTracker.lua
 Engine\Targets.lua
 Engine\Overheal.lua
 Engine\ManaCooldowns.lua
+Engine\ClockFace.lua
 Engine\TTO.lua
 Engine\Kit.lua
 Spells\RankRules.lua
@@ -75,3 +78,4 @@ Diagnostics_TBC.lua
 Engine\RegenMeasure.lua
 Engine\SimSelfTest.lua
 Engine\ReviewCommands.lua
+Client\Probe.lua

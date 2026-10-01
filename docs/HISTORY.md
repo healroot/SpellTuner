@@ -4586,3 +4586,47 @@ macro index no longer reads that other macro's spell, and `/st tooltip why` name
 (noted in `docs/tasks/T85-macro-slot-spell.md`): practice's Import from Keybindings (`PR.SlotSpell`,
 `PR.BindsReport`) still reads a macro's id as a macro index. `make check`: 72 runs, all passed (67
 counted against 67); apicheck 0 findings. Version unchanged (0.16.5), not installed.
+
+## 2026-10-01 — the next round, wave N1: T88, T89, T90, T87, T91, T113
+
+Wave N1 of `docs/SPEC-next.md` (section 11), integrated on `e2b13f4` in that order (T88
+`2b583c9` + `dff6ace`, T89 `54993dc`, T90 `153d82c`, T87 `397009b`, T91 `c2e1181`, T113
+`061bae3`), with the integrator lines of each task file in one commit.
+
+- **T88 (S4 step 1): the clock face.** `Engine/ClockFace.lua` (`MD.ClockFace`: the face record,
+  `LineString` the one place the clock's words and colours are assembled) on the three main TOCs,
+  before `Engine/TTO.lua` / `Engine/ManaModel.lua`; `MD:GetClockFace` (TBC) and `ManaModel.Face`
+  (Forever) each provide `ClockFace.Current`. Both clocks' strings are byte-identical (two goldens
+  captured on `e2b13f4`, tbc 689 / forever 389 lines). The face seam S4 is what T92 (feeds) and
+  T93 (clock parity) build on. clockfacecheck tbc 17 / forever 14 (new).
+- **T89 (S1 step 1): class profiles.** `Spells/Profiles.lua` and the druid's TBC and Forever
+  profiles after each flavour core; the druid's tables (`SP.BINDABLE` / `SP.HOT_RULE`,
+  `MC.byClass.DRUID`, the in-5SR row, Kit_Forever's and Stream_Forever's `FAMILY_KEY` ...) derived
+  from the profile by name at file load, every other suite byte-identical. The logged-in profile
+  is `MD.ClassProfile` (TBC's `MD:Profile()` is `/md profile`); `docs/SPEC-next.md` renamed to
+  match, so T99 gates on `MD.ClassProfile:Can(cap)`. profilecheck forever 46 / tbc 44 (new;
+  forever 48 with the talentsforever cache, a NOTE).
+- **T90 (decision 10): cooldowns respected and kept per family.** `SM.CooldownOf`, `S.cd[family]`,
+  `Solver:Best` and rule 8 skip a spell on cooldown, a plan's cast on cooldown refused and traced
+  (`SM.TK.REFUSED`), a recorded one never; the strategies report on the author's eight TBC
+  recordings identical before and after (DECISIONS). solvercheck 84 -> 89.
+- **T87 (decision 22): the probe on both clients.** `Client\Probe.lua` is the TBC TOC's last file
+  (`/md probe` a hidden row, the Forever-only sections `absent (Forever only)`, ManaDemon's
+  adoption kept), plus `== art`, `== hosts`, `== clock`, `== cooldowns`, `== auras`;
+  `tools/stub_art.lua` on check.sh's `NOT_SUITES`; `"probe"` in corecheck's TBC verb list.
+  probecheck forever 97 (new) / tbc 88 -> 15 (the old forever-profile assertions now count under
+  forever), slashcheck/tbc 8 -> 10. TESTING §46 check 1.
+- **T91: `Spells/Parse.lua` reads decimals, refuses 'additional' and 'your next' amounts;
+  `Parse.Targets` / `Cooldown` / `Lockout` / `ManaSource` (parsecheck 15 -> 42).**
+- **T113 (S0): the kernel's subcommand and dump-line seams;** byte-identical while nothing
+  registers (help, slash outputs and the dump captured before and after, both flavours); corecheck
+  +5 both, consolecheck/forever +2.
+
+Every TBC suite's output compared with `e2b13f4`'s: the only changes are the rows above (corecheck,
+slashcheck, solvercheck, probecheck) and run-to-run noise (table addresses, ms, the sliced search's
+evaluations and frames, simcheck's KB per run). On Forever, recordcheck's `auraCalls before` reads
+one more: the probe's in-combat `== auras` read (T87).
+
+`make check`: 77 runs, all passed (72 counted runs against 72 expected); apicheck 0 findings over
+63 files (48 globals), textcheck 0 over 102. Packages: TBC 75 files, Forever 38 files plus the
+three modules. Version unchanged (0.16.5), not installed. **Next:** wave N2.

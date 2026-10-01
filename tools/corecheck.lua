@@ -404,7 +404,7 @@ local VERBS = {
         names = { "", "help", "options", "lock", "unlock", "reset", "mute", "drink", "rest",
                   "tooltip", "binds", "practice", "spelltip", "window", "verify", "profile",
                   "export", "calibrate", "fsrtest", "regentest", "spamtest", "simrun",
-                  "simreplay", "coach", "sim", "replay", "run", "coachrun", "debug" },
+                  "simreplay", "coach", "sim", "replay", "run", "coachrun", "debug", "probe" },
         aliases = { config = "options", settings = "options", bindings = "binds",
                     tip = "tooltip", calib = "calibrate" },
     },

@@ -10,11 +10,14 @@ Client\API.lua
 Client\API_Forever.lua
 Core.lua
 Core_Forever.lua
+Spells\Profiles.lua
+Data\Profile_Druid_Forever.lua
 Spells\Parse.lua
 Spells\RankRules.lua
 Spells\Book.lua
 Spells\Words.lua
 Spells\Tabs.lua
+Engine\ClockFace.lua
 Engine\ManaModel.lua
 Engine\Recordings.lua
 Spells\Measure.lua

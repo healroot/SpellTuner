@@ -1196,3 +1196,28 @@ the "<spell> removed [Undo]" line, drag to reorder, one `x` on hover and the rig
   showed.
 - **There is no spellbook drop on TBC.** The adapter has no cursor read there, so a spell is
   added with `+ Add`.
+
+## Cooldowns are respected and kept per family (2026-10-01, T90, decision 10)
+
+The solver no longer picks a spell on cooldown. `Solver:Best` asks `SM.Ready` both now and for
+the one-GCD-later candidate, and rule 8 asks it too. The engine refuses a **plan's** cast on
+cooldown: nothing is spent, no global cooldown is taken, it is traced as `SM.TK.REFUSED` and
+counted in `r.refused`. A **recorded** cast (the replay's script, a fixed cast) inside its
+cooldown is replayed as recorded and never refused, because the recording is the truth (a reset
+talent, a Light's Vigil'd Holy Shock). A cooldown belongs to the **family**:
+`SM.CooldownOf(S, id)` reads the kit entry's optional `cooldown`, else `SM.SPELL_CD`, so one
+rank's cast blocks every rank (Holy Shock R1-R4, Riptide). The author accepted this as a bug fix
+(decision 10). The strategies report on the author's eight TBC recordings is **identical before
+and after** (Rules: balanced 3 deaths / 89.1 s / 42652 used ... Solver: reactive 3 / 100.3 /
+42048; the control 4 / 145.4 / 42244). So are the eight coach cards and Healroot's twelve
+Forever reports: on those fights no plan asked for Swiftmend inside its cooldown.
+
+## The probe on TBC (2026-10-01, T87, decision 22)
+
+`Client/Probe.lua` is on `SpellTuner_TBC.toc` (its last file): `/md probe` (`/st probe`) is a
+hidden row, and the report is saved in `SpellTunerDB.probe` keyed by build, as on Forever. On TBC
+the sections that only ask Forever's questions (secrets, the spellbook walk and its comparison,
+talents, shapes, the damage meter, auras) and Q1-Q8 print `absent (Forever only)`; the rest
+answers there. The help and the About tab do not change. The probe listens to the same events it
+does on Forever. While `ManaDemonDB` is still waiting to be adopted, the probe's record goes on
+`ManaDemonDB`, so the adoption still runs.

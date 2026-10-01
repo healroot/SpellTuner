@@ -1855,6 +1855,20 @@ Spells -> Healing Touch, and `/md profile` if anything looked wrong.
 **Paste back** into `.logs/tbc/0.16.5-s5.md`: a line per step, a screenshot of the clock mid-fight
 and of the replay's band, and the run's number in Review.
 
+## 46. The next round (`docs/SPEC-next.md` section 12; checks are added here as their waves land)
+
+Out of combat unless a step says otherwise. For each step, a line in the paste: `ok`, or what you
+saw instead. Nothing here has run on a real client yet.
+
+1. **Probe (T87, wave N1), both clients.** `/st probe` on Forever, `/md probe` on TBC (new with
+   T87; a hidden row there, so the help and the About tab do not list it). Paste the five new
+   sections: `== art`, `== hosts`, `== clock`, `== cooldowns`, `== auras`. On Forever: once out of
+   combat, once after a fight with an Innervate or Mana Spring on you (the snapshot reads itself
+   2 s in), once with EllesmereUI enabled and once without, and once on a priest, shaman or
+   paladin alt of level 10+ with a cooldown heal in the book (on a priest, shield yourself and take
+   a hit, for `absorb to do`). On TBC the Forever-only sections read `absent (Forever only)` and
+   nothing raises.
+
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the
 raw numbers. `/md profile` output is welcome with any report. I turn them into
