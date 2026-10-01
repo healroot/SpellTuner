@@ -33,6 +33,10 @@
 --      rule -- the default rule is the parent's Want on every case, however
 --      it is asked; ooc = "never" (beside "always" and combat "never");
 --      manaUsersOnly. UI/Visibility.lua loaded with Lua's library only.
+--   6. T98 (docs/SPEC-next.md 7.3): the clock's look (UI/ClockView.lua's
+--      CV.Resolve) -- `over` wins over the style's clock role, the role over
+--      the layout's defaults; "Reset to style" wipes `over` (the layout kept,
+--      CLOCK_LOOK once). TBC loads the four UI files it needs here.
 --
 -- `--print` prints the transcript; `--golden` prints the golden blocks to paste.
 HARNESS_FLAVOUR = { "tbc", "forever" }
@@ -694,6 +698,76 @@ do
     end
     check("5c. manaUsersOnly (on by default): no mana pool, no clock -- in combat too, unless being placed",
         bad5c == nil, bad5c)
+end
+
+--------------------------------------------------------------------------------
+-- 6. T98 (docs/SPEC-next.md 7.3): the clock's look, resolved as
+--      the layout's defaults  <-  the active style's clock role  <-  over
+-- (UI/ClockView.lua's CV.Resolve, pure), and "Reset to style" wiping `over`.
+-- The TBC harness loads no UI file, so the kit, the theme, the registry and
+-- the renderer are loaded here, in the TOC's order (Forever has them).
+--------------------------------------------------------------------------------
+do
+    if not (MD.ClockView and MD.ClockView.Resolve) and FLAVOUR == "tbc" then
+        pcall(S.Load, { "UI/Style.lua", "UI/Theme_Flat.lua", "UI/Styles.lua", "UI/ClockView.lua" }, "SpellTuner", MD)
+    end
+    local CV = MD.ClockView or {}
+    local function Is(c, r, g, b, a)
+        return type(c) == "table" and c[1] == r and c[2] == g and c[3] == b and c[4] == a
+    end
+    local role = { kind = "pixel", fill = { 0.1, 0.2, 0.3, 1 }, edge = "border", bar = { 0.5, 0, 0, 1 },
+        barFill = { 0, 1, 0, 1 } }
+    local facts = { source = FLAVOUR == "forever" and "pool" or "fsr", poolPlain = FLAVOUR ~= "forever",
+        model = FLAVOUR == "forever", labelSample = FLAVOUR == "forever" and "~FULL" or "FULL" }
+
+    -- 6. over wins over the style, and the style over the layout's defaults
+    local ok6, why6 = pcall(function()
+        local flat = CV.Resolve({ layout = "line", over = {} }, nil, facts)
+        local styled = CV.Resolve({ layout = "line", over = {} }, role, facts)
+        local stored = { layout = "line", over = {
+            panel = { fill = { 0.9, 0.9, 0.9, 1 } },
+            bar = { color = "tone", back = { 0, 0, 1, 1 }, source = "time" },
+            colors = { crit = "ff0000" } } }
+        local over = CV.Resolve(stored, role, facts)
+        over.bar.back[1] = 0.5 -- the resolved look is a copy: the store keeps its own
+        local okDefaults = flat.panel.fill == "bg" and flat.panel.edge == "border" and Is(flat.bar.back, 0, 0, 0, 1)
+            and flat.bar.color == "source" and flat.bar.source == facts.source
+        local okStyled = Is(styled.panel.fill, 0.1, 0.2, 0.3, 1) and Is(styled.bar.back, 0.5, 0, 0, 1)
+            and Is(styled.bar.color, 0, 1, 0, 1) and styled.bar.source == facts.source
+        local okOver = Is(over.panel.fill, 0.9, 0.9, 0.9, 1) and over.panel.edge == "border"
+            and over.bar.color == "tone" and over.bar.source == "time" and over.colors.crit == "ff0000"
+            and Is(stored.over.bar.back, 0, 0, 1, 1)
+        if okDefaults and okStyled and okOver then return true end
+        return string.format("defaults %s, styled %s, over %s", tostring(okDefaults), tostring(okStyled),
+            tostring(okOver))
+    end)
+    check("6. the clock's look: over wins over the style's clock role, the role over the layout's defaults",
+        ok6 and why6 == true, (not ok6 and ("raised: " .. tostring(why6))) or (why6 ~= true and tostring(why6)) or nil)
+
+    -- 6b. Reset to style: every override gone, the layout kept, CLOCK_LOOK once,
+    -- and the look is the style's again
+    local ok6b, why6b = pcall(function()
+        local fired = 0
+        MD:RegisterCallback("CLOCK_LOOK", function() fired = fired + 1 end)
+        CV.SetLayout("bar")
+        CV.Set("bar.source", "time")
+        CV.Set("colors.crit", "ff0000")
+        local had = MD.db.clockLook.over.bar ~= nil and MD.db.clockLook.over.colors ~= nil
+        local overLook = CV.Look(facts)
+        local before = fired
+        CV.ResetToStyle()
+        local after = fired - before
+        local look = CV.Look(facts)
+        local empty = type(MD.db.clockLook.over) == "table" and next(MD.db.clockLook.over) == nil
+        local okR = had and overLook.bar.source == "time" and empty and MD.db.clockLook.layout == "bar"
+            and after == 1 and look.bar.source == facts.source and look.colors.crit == nil
+        CV.SetLayout("line")
+        if okR then return true end
+        return string.format("had %s, empty %s, layout %s, fired %d, source %s", tostring(had),
+            tostring(empty), tostring(MD.db.clockLook.layout), after, tostring(look.bar.source))
+    end)
+    check("6b. Reset to style wipes over (the layout kept, CLOCK_LOOK once, the style's look back)",
+        ok6b and why6b == true, (not ok6b and ("raised: " .. tostring(why6b))) or (why6b ~= true and tostring(why6b)) or nil)
 end
 
 print(string.format("\n%d ok, %d failed", ok, #fails))
