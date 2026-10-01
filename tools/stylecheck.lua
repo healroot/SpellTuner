@@ -95,7 +95,7 @@ local styleAtLoad = UI.STYLE
 -- STYLE_CHANGED, counted from the first event on
 local changed = {}
 if MD.RegisterCallback then
-    MD:RegisterCallback("STYLE_CHANGED", function(_, key) changed[#changed + 1] = key end)
+    MD:RegisterCallback("STYLE_CHANGED", function(key) changed[#changed + 1] = key end)
 end
 
 S.Fire("ADDON_LOADED", "SpellTuner")
@@ -358,8 +358,8 @@ local TEST = {
     text = { text = "EEEEEE", label = "878787", muted = "696969" },
     fonts = { face = "Fonts\\ARIALN.TTF", num = "Fonts\\ARIALN.TTF", flags = "OUTLINE", shadow = { 0, 0 } },
     roles = {
-        window = { kind = "strips", fill = "bg", edge = { 1, 1, 1, 0.1 } },
-        pane = { kind = "strips", fill = "pane", edge = { 1, 1, 1, 0.05 } },
+        window = { kind = "strips", fill = "bg", edge = "border", edgeColor = { 1, 1, 1, 0.1 } },
+        pane = { kind = "strips", fill = "pane", edge = "border", edgeColor = { 1, 1, 1, 0.05 } },
     },
     needs = {},
 }
@@ -409,7 +409,8 @@ do
     local face, size, flags = UI.fontObjects[UI.FONT]:GetFont()
     local cls = UI.fontObjects[UI.FONT_CLASS]
     check("the fonts are re-faced at their sizes, the class fonts in the accent",
-        face == "Fonts\\ARIALN.TTF" and size == 13 and flags == "OUTLINE" and is(cls.textColor, 0.2, 0.6, 1, nil),
+        face == "Fonts\\ARIALN.TTF" and size == 13 and flags == "OUTLINE" and type(cls.textColor) == "table" and near(cls.textColor[1], 0.2) and near(cls.textColor[2], 0.6)
+          and near(cls.textColor[3], 1),
         tostring(face) .. " " .. tostring(size) .. " " .. tostring(flags))
 end
 
@@ -441,7 +442,7 @@ do
     end
     check("Flat back: STYLE_CHANGED once, a hovered button keeps its hover",
         okBack == true and UI.STYLE == "flat" and n3 - n2 == 1 and changed[n3] == "flat" and hoverKept,
-        C(btn.bg))
+        string.format("%d fired, hover kept %s", n3 - n2, tostring(hoverKept)))
     check("Flat back is BYTE-IDENTICAL to the first paint (regions, palette, tokens, fonts)",
         #bad == 0, bad[1])
     local stripsHidden = true
@@ -477,7 +478,7 @@ do
     local NEEDY = {
         name = "Needy", hint = "an atlas no client answers for", accent = "gold",
         palette = {}, text = {}, fonts = {},
-        roles = { button = { kind = "pixel", fill = "button", edge = { 1, 0, 0, 1 } } },
+        roles = { button = { kind = "pixel", fill = "button", edge = "border", edgeColor = { 1, 0, 0, 1 } } },
         needs = { { role = "button", atlas = "Options_List_Hover" } },
     }
     local reg = Styles.Register and pcall(Styles.Register, "needy", NEEDY)

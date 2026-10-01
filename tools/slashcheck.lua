@@ -22,6 +22,8 @@
 -- build without the UI must still answer every verb without raising).
 -- A last section loads UI/Options_About.lua and reads back the command rows
 -- the About tab paints, which were MD.COMMANDS and are now MD:Commands().
+-- T94: the TBC line has a `ui` verb now (`/md ui style <name>`, created by
+-- UI/Styles.lua through MD:AddSubcommand); the golden was re-based for it.
 HARNESS_FLAVOUR = "tbc"
 
 local here = arg[0]:match("^(.*)/[^/]+$")
@@ -43,6 +45,22 @@ do
     local listed = false
     for _, rel in ipairs(S.loadedFiles or {}) do if rel == "Client/Probe.lua" then listed = true end end
     if not listed then S.Load({ "Client/Probe.lua" }, "SpellTuner", MD) end
+end
+
+-- T94 (docs/SPEC-next.md 2.5, 5.4): UI/Styles.lua registers `ui style` with
+-- MD:AddSubcommand, which on TBC (no `ui` verb of its own) creates `/md ui`.
+-- The TBC harness drops UI/ files, so the kit, the theme and the registry are
+-- loaded here as SpellTuner_TBC.toc lists them (UI/Styles.lua right after
+-- UI/Theme_Flat.lua), and CORE_LOGIN, which ran before them, runs again so
+-- the saved style is applied as at a login. The golden below is re-based for
+-- the new verb: its help and About row, and the five `ui` lines in VERBS.
+do
+    local listed = false
+    for _, rel in ipairs(S.loadedFiles or {}) do if rel == "UI/Styles.lua" then listed = true end end
+    if not listed then
+        S.Load({ "UI/Style.lua", "UI/Theme_Flat.lua", "UI/Styles.lua" }, "SpellTuner", MD)
+        MD:Fire("CORE_LOGIN")
+    end
 end
 
 local out = {}
@@ -132,6 +150,7 @@ local VERBS = {
     "run start Blood Furnace", "run status", "run stop",
     "coachrun", "coachrun 1",
     "debug",
+    "ui", "ui style", "ui style flat", "ui style Nosuch", "ui reset",
     "nosuch", "  MUTE  ", "Mute", "RUN Start The Underbog",
 }
 
@@ -219,7 +238,7 @@ end
 -- Compare
 --------------------------------------------------------------------------------
 local function Compare(GOLDEN)
-    T.section("the golden transcript (captured on 8c4cc93)")
+    T.section("the golden transcript (captured on 8c4cc93, re-based by T94 for /md ui style)")
     T.check("the golden has every verb of both passes and the About rows", #GOLDEN == #transcript,
         string.format("%d entries, golden %d", #transcript, #GOLDEN))
     local mismatches = {}
@@ -278,7 +297,8 @@ local function Compare(GOLDEN)
         end
     end
     T.check("every chat line and About row is ASCII with no bare pipe", allAscii, why)
-    T.check("the help is its heading and 27 rows", helpRows == 28, helpRows ~= 28 and (tostring(helpRows) .. " lines") or nil)
+    T.check("the help is its heading and 28 rows (T94: /md ui style)", helpRows == 29,
+        helpRows ~= 29 and (tostring(helpRows) .. " lines") or nil)
 
     T.section("T87: the probe on the TBC line")
     local probeRow
@@ -295,6 +315,11 @@ end
 
 --------------------------------------------------------------------------------
 -- The golden: `tools/run.sh tools/slashcheck.lua --golden` on 8c4cc93, pasted.
+-- T94 re-based it (docs/SPEC-next.md 2.5, 5.4): the one new row
+-- `/st ui style <name>` in both helps (and in every pass that prints the help:
+-- the bare verb aside, `nosuch`), the five `ui` verbs, two About lines; every
+-- other line equal to the 8c4cc93 golden (compared with --print before and
+-- after the edit).
 --------------------------------------------------------------------------------
 local GOLDEN = {
     { cmd = "spied /md ", lines = {
@@ -329,6 +354,7 @@ local GOLDEN = {
         "|cff9966ffSpellTuner:|r   |cffffff00/st run start / stop / status|r - record a whole dungeon: every pull and the gaps between them",
         "|cff9966ffSpellTuner:|r   |cffffff00/st coachrun [n]|r - coach a recorded RUN: one plan and a drink policy for the whole dungeon",
         "|cff9966ffSpellTuner:|r   |cffffff00/st debug|r - toggle the debug console (enable logging there, Copy to export)",
+        "|cff9966ffSpellTuner:|r   |cffffff00/st ui style <name>|r - the look of SpellTuner's windows (no name: list the styles)",
     } },
     { cmd = "spied /md options", lines = {
         "call MD:ShowOptionsFrame()",
@@ -516,6 +542,21 @@ local GOLDEN = {
     { cmd = "spied /md debug", lines = {
         "call MD:ToggleDebugConsole()",
     } },
+    { cmd = "spied /md ui", lines = {
+        "|cff9966ffSpellTuner:|r usage: /st ui style <name>",
+    } },
+    { cmd = "spied /md ui style", lines = {
+        "|cff9966ffSpellTuner:|r style: flat (styles: flat)",
+    } },
+    { cmd = "spied /md ui style flat", lines = {
+        "|cff9966ffSpellTuner:|r style: flat - Flat",
+    } },
+    { cmd = "spied /md ui style Nosuch", lines = {
+        "|cff9966ffSpellTuner:|r unknown style 'nosuch' (styles: flat)",
+    } },
+    { cmd = "spied /md ui reset", lines = {
+        "|cff9966ffSpellTuner:|r usage: /st ui style <name>",
+    } },
     { cmd = "spied /md nosuch", lines = {
         "|cff9966ffSpellTuner:|r commands:",
         "|cff9966ffSpellTuner:|r   |cffffff00/st|r - toggle the rank dashboard",
@@ -545,6 +586,7 @@ local GOLDEN = {
         "|cff9966ffSpellTuner:|r   |cffffff00/st run start / stop / status|r - record a whole dungeon: every pull and the gaps between them",
         "|cff9966ffSpellTuner:|r   |cffffff00/st coachrun [n]|r - coach a recorded RUN: one plan and a drink policy for the whole dungeon",
         "|cff9966ffSpellTuner:|r   |cffffff00/st debug|r - toggle the debug console (enable logging there, Copy to export)",
+        "|cff9966ffSpellTuner:|r   |cffffff00/st ui style <name>|r - the look of SpellTuner's windows (no name: list the styles)",
     } },
     { cmd = "spied /md   MUTE  ", lines = {
         "|cff9966ffSpellTuner:|r alerts muted.",
@@ -588,6 +630,7 @@ local GOLDEN = {
         "|cff9966ffSpellTuner:|r   |cffffff00/st run start / stop / status|r - record a whole dungeon: every pull and the gaps between them",
         "|cff9966ffSpellTuner:|r   |cffffff00/st coachrun [n]|r - coach a recorded RUN: one plan and a drink policy for the whole dungeon",
         "|cff9966ffSpellTuner:|r   |cffffff00/st debug|r - toggle the debug console (enable logging there, Copy to export)",
+        "|cff9966ffSpellTuner:|r   |cffffff00/st ui style <name>|r - the look of SpellTuner's windows (no name: list the styles)",
     } },
     { cmd = "bare /md options", lines = {
     } },
@@ -734,6 +777,21 @@ local GOLDEN = {
     } },
     { cmd = "bare /md debug", lines = {
     } },
+    { cmd = "bare /md ui", lines = {
+        "|cff9966ffSpellTuner:|r usage: /st ui style <name>",
+    } },
+    { cmd = "bare /md ui style", lines = {
+        "|cff9966ffSpellTuner:|r style: flat (styles: flat)",
+    } },
+    { cmd = "bare /md ui style flat", lines = {
+        "|cff9966ffSpellTuner:|r style: flat - Flat",
+    } },
+    { cmd = "bare /md ui style Nosuch", lines = {
+        "|cff9966ffSpellTuner:|r unknown style 'nosuch' (styles: flat)",
+    } },
+    { cmd = "bare /md ui reset", lines = {
+        "|cff9966ffSpellTuner:|r usage: /st ui style <name>",
+    } },
     { cmd = "bare /md nosuch", lines = {
         "|cff9966ffSpellTuner:|r commands:",
         "|cff9966ffSpellTuner:|r   |cffffff00/st|r - toggle the rank dashboard",
@@ -763,6 +821,7 @@ local GOLDEN = {
         "|cff9966ffSpellTuner:|r   |cffffff00/st run start / stop / status|r - record a whole dungeon: every pull and the gaps between them",
         "|cff9966ffSpellTuner:|r   |cffffff00/st coachrun [n]|r - coach a recorded RUN: one plan and a drink policy for the whole dungeon",
         "|cff9966ffSpellTuner:|r   |cffffff00/st debug|r - toggle the debug console (enable logging there, Copy to export)",
+        "|cff9966ffSpellTuner:|r   |cffffff00/st ui style <name>|r - the look of SpellTuner's windows (no name: list the styles)",
     } },
     { cmd = "bare /md   MUTE  ", lines = {
         "|cff9966ffSpellTuner:|r alerts muted.",
@@ -829,6 +888,8 @@ local GOLDEN = {
         "coach a recorded RUN: one plan and a drink policy for the whole dungeon",
         "/st debug",
         "toggle the debug console (enable logging there, Copy to export)",
+        "/st ui style <name>",
+        "the look of SpellTuner's windows (no name: list the styles)",
     } },
 }
 Compare(GOLDEN)

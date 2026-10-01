@@ -9,6 +9,15 @@
 -- UI/Style.lua alone) UI.THEMED stays false and UI.TEXT / UI.PALETTE hold
 -- Style.lua's old TBC values.
 --
+-- T94 (docs/SPEC-next.md 2.2, 5.1, S2): Flat is a STYLE now -- the data table
+-- UI.FLAT below, which UI/Styles.lua (listed right after this file) registers
+-- as "flat" -- and this file keeps the appliers every style goes through:
+-- UI.ApplyStyleTokens (the palette and the tokens, written IN PLACE, the
+-- `{ ref = "accent" }` fills resolved against the style's accent) and
+-- UI.ReFaceFonts (the faces, flags and shadow; sizes never). At load it applies
+-- Flat itself, exactly what it wrote before, so nothing changes while no other
+-- style is chosen; UI/Styles.lua applies the saved style at CORE_LOGIN.
+--
 -- It owns db.ui.fontOffset (T80: declared here with MD:RegisterDefaults) and
 -- UI.SetFontOffset, which both Settings panes call.
 --
@@ -18,77 +27,188 @@ local _, MD = ...
 local UI = MD.UI
 
 --------------------------------------------------------------------------------
--- 4.1 Palette: fills (r, g, b, a) into UI.PALETTE, mutated in place so a pane
--- that captured the table keeps reading the theme.
+-- Flat, as data (5.1's first table). Every key a style may set is here: a
+-- style that leaves one out takes Flat's, so Flat restores whatever another
+-- style changed. Fills are r, g, b, a or { ref = "accent", a = n }; text
+-- tokens a six-digit hex or { ref = "accent" }.
 --------------------------------------------------------------------------------
-local A = UI.accent
-local P = UI.PALETTE
-
 local function Grey(byte, a) local v = byte / 255; return { v, v, v, a } end
+local function Accent(a) return { ref = "accent", a = a } end
 
-P.bg        = Grey(0x16, 0.96)                     -- window body: near-opaque
-P.pane      = Grey(0x1C, 1)                        -- rail, chip, cards, sheets
-P.nav       = { 0.115, 0.115, 0.115, 1 }           -- #1D1D1D, Cell's 0.115: header, nav, buttons
-P.border    = { 0, 0, 0, 1 }                       -- 1-px edges (UI.px)
-P.rule      = { A[1], A[2], A[3], 0.6 }            -- the line under a pane title
-P.line      = Grey(0x2A, 1)                        -- table header rule, rail separators
-P.rowAlt    = { 1, 1, 1, 0.03 }                    -- zebra on even rows
-P.hover     = { A[1], A[2], A[3], 0.12 }           -- row and list hover
-P.selected  = { A[1], A[2], A[3], 0.28 }           -- selected rail row / rank (+ a 2-px bar)
-P.suggested = { A[1], A[2], A[3], 0.10 }           -- the suggested rank's row (+ a 2-px bar)
-P.mask      = Grey(0x26, 0.7)                      -- behind a sheet
-P.close     = { 0.6, 0.1, 0.1, 0.6 }               -- the x button, as in Cell
-P.closeHover = { 0.6, 0.1, 0.1, 1 }
--- The kit's own keys (UI.CreateNavFrame, the dropdown lists) follow the theme.
-P.frame     = P.bg
-P.header    = P.nav
+UI.FLAT = {
+    name = "Flat",
+    hint = "SpellTuner's own look: flat panels, 1-px edges, your class colour.",
+    accent = "class",
+    palette = {
+        -- 4.1: the theme's fills
+        bg        = Grey(0x16, 0.96),             -- window body: near-opaque
+        pane      = Grey(0x1C, 1),                -- rail, chip, cards, sheets
+        nav       = { 0.115, 0.115, 0.115, 1 },   -- #1D1D1D, Cell's 0.115: header, nav, buttons
+        border    = { 0, 0, 0, 1 },               -- 1-px edges (UI.px)
+        rule      = Accent(0.6),                  -- the line under a pane title
+        line      = Grey(0x2A, 1),                -- table header rule, rail separators
+        rowAlt    = { 1, 1, 1, 0.03 },            -- zebra on even rows
+        hover     = Accent(0.12),                 -- row and list hover
+        selected  = Accent(0.28),                 -- selected rail row / rank (+ a 2-px bar)
+        suggested = Accent(0.10),                 -- the suggested rank's row (+ a 2-px bar)
+        mask      = Grey(0x26, 0.7),              -- behind a sheet
+        close     = { 0.6, 0.1, 0.1, 0.6 },       -- the x button, as in Cell
+        closeHover = { 0.6, 0.1, 0.1, 1 },
+        -- the kit's own fills (UI/Style.lua's literals, which the theme kept)
+        button      = { 0.115, 0.115, 0.115, 1 },
+        buttonHover = { 0.23, 0.23, 0.23, 1 },
+        field       = { 0.115, 0.115, 0.115, 0.9 },
+        well        = { 0.15, 0.15, 0.15, 0.9 },
+        track       = { 0.1, 0.1, 0.1, 0.8 },
+        thumb       = Accent(0.8),
+        check       = Accent(0.7),
+        checkHover  = Accent(0.1),
+        accentFill  = Accent(0.3),
+        accentHover = Accent(0.6),
+        go          = { 0.1, 0.6, 0.1, 0.6 },
+        goHover     = { 0.1, 0.6, 0.1, 1 },
+        info        = { 0, 0.5, 0.8, 1 },
+        warn        = { 0.7, 0.7, 0, 1 },
+        clear       = { 0, 0, 0, 0 },
+        tip         = { 0.1, 0.1, 0.1, 0.9 },
+    },
+    -- 4.1's text colours. No Blizzard gold here: the accent is the class
+    -- colour (decision 2: "no gold" is this style's rule).
+    text = {
+        accent   = { ref = "accent" },  -- titles, rules, selection
+        text     = "FFFFFF",   -- values
+        -- T78 (P34, review U7; mockup M5): text2 (B3B3B3) and label (9D9D9D)
+        -- could not be told apart through the shadow, so they are one grey
+        -- now, the lighter of the two; `text2` is an alias (UI.STYLE_ALIASES)
+        label    = "B3B3B3",   -- labels, headers, tags, secondary lines, spell text
+        muted    = "7A7A7A",   -- explanations, hints, footers
+        disabled = "4D4D4D",   -- inert controls; the numbers of a rank you do not have
+        mana     = "4D99FF",   -- modelled mana figures (the clock bar's 0.3/0.6/1)
+        good     = "5CCB6E",   -- measure verdicts
+        bad      = "E0605A",   -- measure verdicts, the stale warning
+        dimmed   = "666666",   -- T74: the kit's disabled controls (Style.lua's, kept)
+    },
+    -- 4.2: Friz (GameFontNormal's face) for text, Arial Narrow for numbers,
+    -- no outline, a black shadow at (1, -1)
+    fonts = { face = "FRIZ", num = "Fonts\\ARIALN.TTF", flags = "", shadow = { 1, -1 } },
+    -- one recipe per role (docs/SPEC-next.md 2.2): the painter, and the fill
+    -- and edge UI.Skin takes when its caller names none. The clock's is the
+    -- clocks' own panel (T82, M6): the `bg` fill and a 1-px `border` edge; its
+    -- 160 x 4 bar sits on black (the layouts, T98, read `bar`).
+    roles = {
+        window    = { kind = "pixel", fill = "bg",     edge = "border" },
+        header    = { kind = "pixel", fill = "nav",    edge = "border" },
+        nav       = { kind = "pixel", fill = "nav",    edge = "border" },
+        pane      = { kind = "pixel", fill = "pane",   edge = "border" },
+        button    = { kind = "pixel", fill = "button", edge = "border" },
+        tab       = { kind = "pixel", fill = "button", edge = "border" },
+        field     = { kind = "pixel", fill = "field",  edge = "border" },
+        list      = { kind = "pixel", fill = "nav",    edge = "border" },
+        scroll    = { kind = "pixel", fill = "track",  edge = "border" },
+        tooltip   = { kind = "pixel", fill = "tip",    edge = "border" },
+        clock     = { kind = "pixel", fill = "bg",     edge = "border", bar = { 0, 0, 0, 1 } },
+        statusbar = { kind = "pixel", fill = "track",  edge = "border" },
+        rule      = { kind = "pixel", fill = "line",   edge = "border" },
+    },
+    needs = {},
+}
+
+-- Names that are one table under two keys: the kit's old keys follow the
+-- theme's (frame = bg, header = nav), and the legacy tokens read 4.1's
+-- (text2, dominated, note, tipGold; T78). Structure, not a style's to set.
+UI.STYLE_ALIASES = {
+    palette = { frame = "bg", header = "nav" },
+    text = { text2 = "label", dominated = "text", note = "label", tipGold = "accent" },
+}
 
 --------------------------------------------------------------------------------
--- 4.1 Text colours: UI.TEXT.<token> = { r, g, b, hex = "|cffrrggbb" }, written
--- over Style.lua's TBC values in place (T69, P25: the tokens are always
--- present; UI.THEMED, not UI.TEXT, says the theme is on). No Blizzard gold
--- here: the accent is the class colour.
+-- The appliers
 --------------------------------------------------------------------------------
-local Tok = UI.Token
+local FRIZ = (GameFontNormal:GetFont())
 
-local accentHex = type(UI.accentHex) == "string" and UI.accentHex:match("^|c[fF][fF](%x%x%x%x%x%x)$")
-if not accentHex then
-    accentHex = string.format("%02x%02x%02x", math.floor(A[1] * 255 + 0.5),
-        math.floor(A[2] * 255 + 0.5), math.floor(A[3] * 255 + 0.5))
+-- UI.StyleAccent(style) -> r, g, b, hex ("rrggbb", lower case), and whether
+-- it is the class colour. "class" (and "follow" until the Ellesmere style
+-- answers it, T100) is the class colour as Style.lua read it; "gold" is
+-- NORMAL_FONT_COLOR's; a table is that colour.
+function UI.StyleAccent(style)
+    local a = style and style.accent
+    if a == "gold" then return 1, 0.82, 0, "ffd100", false end
+    if type(a) == "table" then
+        local r, g, b = a[1], a[2], a[3]
+        return r, g, b, string.format("%02x%02x%02x", math.floor(r * 255 + 0.5), math.floor(g * 255 + 0.5),
+            math.floor(b * 255 + 0.5)), false
+    end
+    local C = UI.classAccent or UI.accent
+    local hex = type(UI.classAccentHex) == "string" and UI.classAccentHex:match("^|c[fF][fF](%x%x%x%x%x%x)$")
+    if not hex then
+        hex = string.format("%02x%02x%02x", math.floor(C[1] * 255 + 0.5), math.floor(C[2] * 255 + 0.5),
+            math.floor(C[3] * 255 + 0.5))
+    end
+    return C[1], C[2], C[3], hex:lower(), true
 end
 
-local T = UI.TEXT
-T.accent   = Tok(accentHex, A[1], A[2], A[3])   -- titles, rules, selection
-T.text     = Tok("FFFFFF")   -- values
--- T78 (P34, review U7; mockup M5): text2 (B3B3B3) and label (9D9D9D) could
--- not be told apart through the shadow, so they are one grey now, the lighter
--- of the two: labels, headers (12 px), tags, secondary lines. `text2` stays
--- as a name for the files that read it -- the same token, not a copy.
-T.label    = Tok("B3B3B3")   -- labels, headers, tags, secondary lines, spell text
-T.text2    = T.label
-T.muted    = Tok("7A7A7A")   -- explanations, hints, footers
-T.disabled = Tok("4D4D4D")   -- inert controls; the numbers of a rank you do not have
-T.mana     = Tok("4D99FF")   -- modelled mana figures (the clock bar's 0.3/0.6/1)
-T.good     = Tok("5CCB6E")   -- measure verdicts
-T.bad      = Tok("E0605A")   -- measure verdicts, the stale warning
--- Style.lua's legacy tokens (TBC's disagreeing literals) read 4.1's here.
--- T78 (P34, mockup M5): a beaten rank's numbers are numbers like any other
--- rank's -- the `beaten` tag (in `label`, with its tooltip) says what it is,
--- so the row is no longer greyed.
-T.dominated = T.text
-T.note      = T.text2
-T.tipGold   = T.accent
+-- UI.ApplyStyleTokens(style): the accent (UI.accent rewritten in place,
+-- UI.accentHex), every fill into UI.PALETTE and every token into UI.TEXT IN
+-- PLACE -- a pane that captured a table keeps reading the style -- each key
+-- the style leaves out taken from Flat, then the aliases.
+function UI.ApplyStyleTokens(style)
+    local flat = UI.FLAT
+    local r, g, b, hex, isClass = UI.StyleAccent(style)
+    local A = UI.accent
+    A[1], A[2], A[3] = r, g, b
+    UI.accentHex = isClass and UI.classAccentHex or ("|cff" .. hex)
 
--- the one switch every flat-look branch asks (docs/PLAN-refactor-ux.md 2)
+    local P = UI.PALETTE
+    for key, base in pairs(flat.palette) do
+        local spec = style.palette and style.palette[key]
+        if spec == nil then spec = base end
+        local c1, c2, c3, c4
+        if spec.ref == "accent" then
+            c1, c2, c3, c4 = r, g, b, spec.a or 1
+        else
+            c1, c2, c3, c4 = spec[1], spec[2], spec[3], spec[4]
+        end
+        local t = rawget(P, key)
+        if type(t) ~= "table" then t = {}; P[key] = t end
+        t[1], t[2], t[3], t[4] = c1, c2, c3, c4
+    end
+    for alias, to in pairs(UI.STYLE_ALIASES.palette) do P[alias] = P[to] end
+
+    local T = UI.TEXT
+    for key, base in pairs(flat.text) do
+        local spec = style.text and style.text[key]
+        if spec == nil then spec = base end
+        local tok
+        if type(spec) == "table" and spec.ref == "accent" then
+            tok = UI.Token(hex, r, g, b)
+        else
+            tok = UI.Token(spec)
+        end
+        local t = rawget(T, key)
+        if type(t) ~= "table" then t = {}; T[key] = t end
+        t[1], t[2], t[3], t.hex = tok[1], tok[2], tok[3], tok.hex
+    end
+    for alias, to in pairs(UI.STYLE_ALIASES.text) do T[alias] = T[to] end
+end
+
+-- The faces the fonts are drawn in now: the active style's (Flat's at load).
+local faces = { text = FRIZ, num = "Fonts\\ARIALN.TTF", flags = "", shadow = { 1, -1 } }
+local function FaceOf(name)
+    if name == nil or name == "FRIZ" then return FRIZ end
+    return name
+end
+
+-- UI.THEMED: the one switch every flat-look branch asks (docs/PLAN-refactor-ux.md 2)
 UI.THEMED = true
+
+-- Flat, applied at load: the same palette, tokens and aliases this file wrote
+-- before T94.
+UI.ApplyStyleTokens(UI.FLAT)
 
 --------------------------------------------------------------------------------
 -- 4.2 Fonts: no outline, a black shadow at (1, -1). Friz (GameFontNormal's
 -- face) for text, Arial Narrow for numbers (narrow, even-width digits).
 --------------------------------------------------------------------------------
-local FRIZ = (GameFontNormal:GetFont())
-local NUM = "Fonts\\ARIALN.TTF"
-
 local function MakeFont(name, face, size)
     local f = UI.fontObjects[name] or _G[name] or CreateFont(name)
     UI.fontObjects[name] = f
@@ -100,25 +220,34 @@ local function MakeFont(name, face, size)
     return f
 end
 
+local NUM = faces.num
 UI.FONT_HEAD = "MANADEMON_FONT_HEAD";           MakeFont(UI.FONT_HEAD, FRIZ, 16)
 UI.FONT_BIG = "MANADEMON_FONT_BIG";             MakeFont(UI.FONT_BIG, FRIZ, 18)
 UI.FONT_NUM = "MANADEMON_FONT_NUM";             MakeFont(UI.FONT_NUM, NUM, 13)
 UI.FONT_NUM_SMALL = "MANADEMON_FONT_NUM_SMALL"; MakeFont(UI.FONT_NUM_SMALL, NUM, 11)
 
 -- Every font the kit and the theme build, at offset 0 (Style.lua's sizes for
--- its own eight). UI.ApplyFonts re-sizes these objects in place, so every
--- FontString built from one follows at once.
+-- its own eight), with the face it takes from the style: "text" or "num".
+-- UI.ApplyFonts re-sizes these objects in place, so every FontString built
+-- from one follows at once.
 local BASE = {
-    { UI.FONT_TITLE, FRIZ, 14 }, { UI.FONT_TITLE_DISABLE, FRIZ, 14 },
-    { UI.FONT, FRIZ, 13 }, { UI.FONT_DISABLE, FRIZ, 13 },
-    { UI.FONT_SMALL, FRIZ, 11 }, { UI.FONT_SPECIAL, FRIZ, 12 },
-    { UI.FONT_CLASS_TITLE, FRIZ, 14 }, { UI.FONT_CLASS, FRIZ, 13 },
-    { UI.FONT_HEAD, FRIZ, 16 }, { UI.FONT_BIG, FRIZ, 18 },
-    { UI.FONT_NUM, NUM, 13 }, { UI.FONT_NUM_SMALL, NUM, 11 },
+    { UI.FONT_TITLE, "text", 14 }, { UI.FONT_TITLE_DISABLE, "text", 14 },
+    { UI.FONT, "text", 13 }, { UI.FONT_DISABLE, "text", 13 },
+    { UI.FONT_SMALL, "text", 11 }, { UI.FONT_SPECIAL, "text", 12 },
+    { UI.FONT_CLASS_TITLE, "text", 14 }, { UI.FONT_CLASS, "text", 13 },
+    { UI.FONT_HEAD, "text", 16 }, { UI.FONT_BIG, "text", 18 },
+    { UI.FONT_NUM, "num", 13 }, { UI.FONT_NUM_SMALL, "num", 11 },
 }
 
 UI.FONT_OFFSET_MIN, UI.FONT_OFFSET_MAX = -2, 2
 UI.fontOffset = 0
+
+local function SetEvery(offset)
+    for _, b in ipairs(BASE) do
+        local obj = UI.fontObjects[b[1]] or _G[b[1]]
+        if obj then obj:SetFont(faces[b[2]], b[3] + offset, faces.flags) end
+    end
+end
 
 -- UI.ApplyFonts(offset): clamp to -2..+2 (decision 13: the shared panes' 20-px
 -- rows hold a 15-px font and no more), re-size every font, return the offset
@@ -128,12 +257,32 @@ function UI.ApplyFonts(offset)
     offset = math.floor(offset + 0.5)
     if offset < UI.FONT_OFFSET_MIN then offset = UI.FONT_OFFSET_MIN end
     if offset > UI.FONT_OFFSET_MAX then offset = UI.FONT_OFFSET_MAX end
-    for _, b in ipairs(BASE) do
-        local obj = UI.fontObjects[b[1]] or _G[b[1]]
-        if obj then obj:SetFont(b[2], b[3] + offset, "") end
-    end
+    SetEvery(offset)
     UI.fontOffset = offset
     return offset
+end
+
+-- T94: UI.ReFaceFonts(style): the style's faces, flags and shadow on every
+-- font at the size it has now (the offset kept: a style never changes a
+-- size), and the two class fonts in the accent. No FONTS_CHANGED: sizes did
+-- not move; the style's own STYLE_CHANGED follows.
+function UI.ReFaceFonts(style)
+    local f = style and style.fonts or {}
+    local flat = UI.FLAT.fonts
+    faces.text = FaceOf(f.face or flat.face)
+    faces.num = FaceOf(f.num or flat.num)
+    faces.flags = f.flags or flat.flags
+    faces.shadow = f.shadow or flat.shadow
+    SetEvery(UI.fontOffset or 0)
+    local A = UI.accent
+    for _, b in ipairs(BASE) do
+        local obj = UI.fontObjects[b[1]] or _G[b[1]]
+        if obj then obj:SetShadowOffset(faces.shadow[1], faces.shadow[2]) end
+    end
+    for _, name in ipairs({ UI.FONT_CLASS_TITLE, UI.FONT_CLASS }) do
+        local obj = UI.fontObjects[name] or _G[name]
+        if obj then obj:SetTextColor(A[1], A[2], A[3], 1) end
+    end
 end
 
 -- UI.Pitch(n): a flat-look pane's vertical pitch grows with a positive
@@ -146,7 +295,10 @@ end
 
 -- T80 (C1): the offset's default, declared by the file that reads it (T55's
 -- MD:RegisterDefaults; it left Core_Forever.lua's DEFAULTS), so TBC has it.
-MD:RegisterDefaults({ ui = { fontOffset = 0 } })
+-- T94: and the saved style's, "flat" -- this file is Flat's, and UI/Styles.lua
+-- (which reads it) loads right after; db.ui's keys are declared by the theme,
+-- the ESC stack and the window manager, as tools/defaultscheck.lua holds.
+MD:RegisterDefaults({ ui = { fontOffset = 0, style = "flat" } })
 
 -- T80 (C1): the Text size control of both Settings panes -- the offset
 -- applied (through the kit's UI.ApplyFonts, which announces FONTS_CHANGED)

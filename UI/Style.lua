@@ -72,6 +72,10 @@ do
 end
 UI.accent = accent
 UI.accentHex = accentHex
+-- T94: the class colour as it was read, kept apart from UI.accent (which a
+-- style rewrites in place: UI/Styles.lua), so "class" can be restored exactly.
+UI.classAccent = { accent[1], accent[2], accent[3] }
+UI.classAccentHex = accentHex
 UI.grey = { 0.7, 0.7, 0.7 }
 function UI.GetAccentColorRGB() return accent[1], accent[2], accent[3] end
 
@@ -342,8 +346,8 @@ end
 --------------------------------------------------------------------------------
 --------------------------------------------------------------------------------
 -- T29 (docs/SPEC-forever-ui.md 4.3): pixel-perfect edges, additive. UI.PIXEL is
--- nil unless UI/Theme_Forever.lua (Forever TOCs only) sets it, so on TBC
--- StylizeFrame draws exactly the backdrop it always drew.
+-- nil unless the theme (UI/Theme_Flat.lua, every main TOC since T80) sets it;
+-- a suite that loads this file alone gets the backdrop StylizeFrame always drew.
 --
 -- UI.px(n, frame): n physical pixels in the frame's own units --
 -- n * (768 / physicalHeight) / frame:GetEffectiveScale(). The physical height
@@ -367,10 +371,22 @@ function UI.px(n, frame)
     return n * (768 / h) / (s or 1)
 end
 
--- Frames styled under UI.PIXEL, weak-keyed so the registry never keeps a frame
--- alive; the value is the colours it was styled with (the fallback when the
--- backdrop cannot say what it shows now).
-UI.pixelFrames = setmetatable({}, { __mode = "k" })
+--------------------------------------------------------------------------------
+-- T94 (docs/SPEC-next.md 2.2, S2; R-styles.md 3.3-3.4): the skin registry.
+-- A styled region is recorded by its ROLE and the names of what it shows --
+-- UI.skinned[region] = { role, fill, edge, kind } -- not by the colours it
+-- was given (UI.pixelFrames held those until T94; the name is kept for its
+-- readers). `fill` and `edge` are UI.PALETTE keys where the caller handed a
+-- palette table (mapped back by UI.PaletteKey), else the literal it handed.
+-- Weak-keyed, so the registry never keeps a frame alive (ElvUI's E.frames).
+--
+-- A role's recipe (its painter, and the fill and edge UI.Skin uses when the
+-- caller names none) is the active style's (UI.Styles.Recipe, UI/Styles.lua);
+-- with no registry loaded, the pixel painter. A style changes paint only:
+-- never a size, an anchor or an inset of the content.
+--------------------------------------------------------------------------------
+UI.skinned = setmetatable({}, { __mode = "k" })
+UI.pixelFrames = UI.skinned -- the old name (T29), the same table
 
 -- T74 (P30, review U3): what is not a backdrop -- a rule, a selection bar, a
 -- texture inset inside a px edge, an anchor that overlaps a px edge -- is laid
@@ -394,17 +410,217 @@ local function PixelBackdrop(frame)
              insets = { left = e, right = e, top = e, bottom = e } }
 end
 
+-- The roles a style paints (docs/SPEC-next.md 2.2), and the one a fill implies
+-- when a caller does not name one (UI.StylizeFrame's callers).
+UI.SKIN_ROLES = { "window", "header", "nav", "pane", "button", "tab", "field", "list", "scroll",
+                  "tooltip", "clock", "statusbar", "rule" }
+local FILL_ROLE = {
+    frame = "window", bg = "window", header = "header", nav = "header", pane = "pane",
+    button = "button", buttonHover = "button", accentFill = "button", close = "button", clear = "button",
+    field = "field", well = "field", track = "scroll", thumb = "scroll", tip = "tooltip",
+}
+local DEFAULT_RECIPE = { kind = "pixel", fill = "pane", edge = "border" }
+
+-- UI.PaletteKey(t): the UI.PALETTE key whose table t IS (a caller passed
+-- UI.PALETTE.pane), else nil. An alias (frame / bg) answers either name; both
+-- name one table.
+function UI.PaletteKey(t)
+    if type(t) ~= "table" then return nil end
+    for k, v in pairs(UI.PALETTE) do
+        if rawequal(v, t) then return k end
+    end
+    return nil
+end
+
+-- A colour spec -> an rgba table: a palette key (its table), { ref =
+-- "accent", a = n } (the accent at that alpha), or an rgba literal (itself).
+local function Colour(spec)
+    if type(spec) == "string" then return UI.PALETTE[spec] end
+    if type(spec) == "table" and spec.ref == "accent" then
+        return { accent[1], accent[2], accent[3], spec.a or 1 }
+    end
+    if type(spec) == "table" then return spec end
+    return nil
+end
+UI.SkinColour = Colour
+
+local function Recipe(role)
+    local S = UI.Styles
+    local r = S and S.Recipe and S.Recipe(role)
+    return r or DEFAULT_RECIPE
+end
+
+local function HideStrips(region)
+    for _, s in ipairs(region._skinStrips or {}) do s:Hide() end
+end
+
+-- The painters (docs/SPEC-next.md 5.2): painter(region, fill, edge), rgba
+-- tables. `pixel` is the backdrop StylizeFrame always drew under UI.PIXEL;
+-- `strips` lays the fill as a backdrop and the edge as four 1-px textures
+-- over it, so the edge's alpha is its own (UI/Tip.lua's skin, EllesmereUI's
+-- PP.CreateBorder). A later style adds its painters here by kind.
+local function PaintPixel(region, fill, edge)
+    HideStrips(region)
+    region:SetBackdrop(PixelBackdrop(region))
+    region:SetBackdropColor(unpack(fill))
+    region:SetBackdropBorderColor(unpack(edge))
+end
+
+local function PaintStrips(region, fill, edge)
+    region:SetBackdrop({ bgFile = WHITE })
+    region:SetBackdropColor(unpack(fill))
+    local s = region._skinStrips
+    if not s then
+        s = {}
+        for i = 1, 4 do s[i] = region:CreateTexture(nil, "BORDER", nil, 7) end
+        region._skinStrips = s
+    end
+    local e = UI.px(1, region)
+    local top, bottom, left, right = s[1], s[2], s[3], s[4]
+    top:ClearAllPoints()
+    top:SetPoint("TOPLEFT", region, "TOPLEFT", 0, 0)
+    top:SetPoint("TOPRIGHT", region, "TOPRIGHT", 0, 0)
+    top:SetHeight(e)
+    bottom:ClearAllPoints()
+    bottom:SetPoint("BOTTOMLEFT", region, "BOTTOMLEFT", 0, 0)
+    bottom:SetPoint("BOTTOMRIGHT", region, "BOTTOMRIGHT", 0, 0)
+    bottom:SetHeight(e)
+    left:ClearAllPoints()
+    left:SetPoint("TOPLEFT", region, "TOPLEFT", 0, -e)
+    left:SetPoint("BOTTOMLEFT", region, "BOTTOMLEFT", 0, e)
+    left:SetWidth(e)
+    right:ClearAllPoints()
+    right:SetPoint("TOPRIGHT", region, "TOPRIGHT", 0, -e)
+    right:SetPoint("BOTTOMRIGHT", region, "BOTTOMRIGHT", 0, e)
+    right:SetWidth(e)
+    for _, t in ipairs(s) do
+        t:SetColorTexture(edge[1], edge[2], edge[3], edge[4] or 1)
+        t:Show()
+    end
+end
+
+UI.PAINTERS = { pixel = PaintPixel, strips = PaintStrips }
+
+-- Paint one registered region with its role's recipe. fillSpec / edgeSpec
+-- are what it is to show (keys or literals). A recipe's edgeColor replaces
+-- the edge while that style is on; rec.edgeByRecipe remembers it, so the
+-- next style starts from the region's own edge again.
+local function Paint(region, rec, fillSpec, edgeSpec)
+    local recipe = Recipe(rec.role)
+    local kind = UI.PAINTERS[recipe.kind] and recipe.kind or "pixel"
+    local fill = Colour(fillSpec) or Colour(rec.fill) or { 0.1, 0.1, 0.1, 0.9 }
+    local edge
+    if recipe.edgeColor ~= nil then
+        edge = Colour(recipe.edgeColor) or { 0, 0, 0, 1 }
+        rec.edgeByRecipe = true
+    else
+        edge = Colour(edgeSpec) or Colour(rec.edge) or { 0, 0, 0, 1 }
+        rec.edgeByRecipe = nil
+    end
+    rec.kind = kind
+    UI.PAINTERS[kind](region, fill, edge)
+end
+
+-- A spec as it is stored: a palette table becomes its key.
+local function Spec(v)
+    if type(v) == "table" and v.ref == nil then return UI.PaletteKey(v) or v end
+    return v
+end
+
+-- UI.Skin(region, role, fill, edge): register a region by its role and paint
+-- it with the active style's recipe for that role. fill / edge are palette
+-- keys or tables (a palette table is mapped back to its key; anything else is
+-- a literal kept as given); nil takes the recipe's own (`fill` / `edge`).
+-- Without UI.PIXEL (the kit loaded without the theme) the old 1-unit
+-- backdrop, nothing registered.
+function UI.Skin(region, role, fill, edge)
+    role = role or "pane"
+    local recipe = Recipe(role)
+    fill = Spec(fill) or recipe.fill or DEFAULT_RECIPE.fill
+    edge = Spec(edge) or recipe.edge or DEFAULT_RECIPE.edge
+    if not UI.PIXEL then
+        region:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = 1 })
+        region:SetBackdropColor(unpack(Colour(fill) or { 0.1, 0.1, 0.1, 0.9 }))
+        region:SetBackdropBorderColor(unpack(Colour(edge) or { 0, 0, 0, 1 }))
+        return
+    end
+    local rec = { role = role, fill = fill, edge = edge }
+    UI.skinned[region] = rec
+    Paint(region, rec, fill, edge)
+end
+
+-- T94: StylizeFrame keeps its signature (13 callers outside the kit) and
+-- registers by role -- the role its fill implies (a literal fill: a pane).
 function UI.StylizeFrame(frame, color, borderColor)
+    if UI.PIXEL then
+        local fill = color and Spec(color) or { 0.1, 0.1, 0.1, 0.9 }
+        local edge = borderColor and Spec(borderColor) or "border"
+        UI.Skin(frame, type(fill) == "string" and FILL_ROLE[fill] or "pane", fill, edge)
+        return
+    end
     color = color or { 0.1, 0.1, 0.1, 0.9 }
     borderColor = borderColor or { 0, 0, 0, 1 }
-    if UI.PIXEL then
-        frame:SetBackdrop(PixelBackdrop(frame))
-        UI.pixelFrames[frame] = { color = color, border = borderColor }
-    else
-        frame:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = 1 })
-    end
+    frame:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = 1 })
     frame:SetBackdropColor(unpack(color))
     frame:SetBackdropBorderColor(unpack(borderColor))
+end
+
+-- What a registered region shows now, by name: its fill as the key it was
+-- given, or the key of its hover colour, or `selected` (a button group's
+-- active button) when it shows one of those, else the literal it shows (a
+-- colour set by hand); its edge likewise against its own edge. Read BEFORE
+-- the palette is rewritten, so the next style paints the same names.
+local function Same(c, r, g, b, a)
+    if type(c) ~= "table" or type(r) ~= "number" then return false end
+    local function eq(x, y) return math.abs((x or 1) - (y or 1)) < 1e-6 end
+    return eq(c[1], r) and eq(c[2], g) and eq(c[3], b) and eq(c[4], a)
+end
+local function Showing(region, rec)
+    local fill, edge = rec.fill, rec.edge
+    local r, g, b, a
+    if region.GetBackdropColor then r, g, b, a = region:GetBackdropColor() end
+    if type(r) == "number" then
+        fill = nil
+        local cands = { rec.fill, region.hoverColor and UI.PaletteKey(region.hoverColor) or false, "selected" }
+        for i = 1, 3 do
+            local c = cands[i]
+            if c and Same(Colour(c), r, g, b, a) then fill = c; break end
+        end
+        fill = fill or { r, g, b, a }
+    end
+    if not rec.edgeByRecipe and rec.kind == "pixel" and region.GetBackdropBorderColor then
+        local er, eg, eb, ea = region:GetBackdropBorderColor()
+        if type(er) == "number" and not Same(Colour(rec.edge), er, eg, eb, ea) then
+            edge = { er, eg, eb, ea }
+        end
+    end
+    return fill, edge
+end
+
+-- UI.CaptureSkins() -> what every registered region shows, by name.
+-- UI.RepaintSkins(captured) paints each region with its role's recipe in the
+-- style now active (captured nil: its own fill and edge), then re-runs every
+-- pixel layout; answers how many regions and layouts it painted. UI.SetStyle
+-- (UI/Styles.lua) captures, rewrites the palette, repaints.
+function UI.CaptureSkins()
+    local out = {}
+    for region, rec in pairs(UI.skinned) do
+        local okS, fill, edge = pcall(Showing, region, rec)
+        if okS then out[region] = { fill = fill, edge = edge } end
+    end
+    return out
+end
+
+function UI.RepaintSkins(captured)
+    local n = 0
+    for region, rec in pairs(UI.skinned) do
+        local c = captured and captured[region]
+        if pcall(Paint, region, rec, c and c.fill or rec.fill, c and c.edge or rec.edge) then n = n + 1 end
+    end
+    for region, fn in pairs(UI.pixelLayouts) do -- T74 (P30)
+        if pcall(fn, region) then n = n + 1 end
+    end
+    return n
 end
 
 -- UI.px is evaluated when a frame is styled, so a UI scale or display change
@@ -412,34 +628,10 @@ end
 -- keeping the colours it shows now (a hover may have changed them since). The
 -- window manager calls it on UI_SCALE_CHANGED / DISPLAY_SIZE_CHANGED and after
 -- db.ui.scale changes. Returns how many frames it restyled, plus (T74) how
--- many registered layouts it re-ran.
+-- many registered layouts it re-ran. T94: the registry's repaint, each region
+-- with what it shows now.
 function UI.RestylePixels()
-    local n = 0
-    for frame, rec in pairs(UI.pixelFrames) do
-        local done = pcall(function()
-            -- explicit locals: each getter's four returns kept whole
-            local r, g, b, a
-            if frame.GetBackdropColor then r, g, b, a = frame:GetBackdropColor() end
-            local br, bg, bb, ba
-            if frame.GetBackdropBorderColor then br, bg, bb, ba = frame:GetBackdropBorderColor() end
-            frame:SetBackdrop(PixelBackdrop(frame))
-            if type(r) == "number" then
-                frame:SetBackdropColor(r, g, b, a)
-            else
-                frame:SetBackdropColor(unpack(rec.color))
-            end
-            if type(br) == "number" then
-                frame:SetBackdropBorderColor(br, bg, bb, ba)
-            else
-                frame:SetBackdropBorderColor(unpack(rec.border))
-            end
-        end)
-        if done then n = n + 1 end
-    end
-    for region, fn in pairs(UI.pixelLayouts) do -- T74 (P30)
-        if pcall(fn, region) then n = n + 1 end
-    end
-    return n
+    return UI.RepaintSkins(UI.CaptureSkins())
 end
 
 function UI.CreateFrame(name, parent, width, height, isTransparent)
@@ -538,7 +730,7 @@ function UI.CreateMovableFrame(title, name, width, height, strata, level, notUse
     -- T74 (P30): the header overlaps the window's edge by one pixel, not one unit
     UI.PixelLayout(header, function(h) h:SetPoint("BOTTOM", f, "TOP", 0, -UI.px(1, h)) end)
     header:SetHeight(20)
-    UI.StylizeFrame(header, UI.PALETTE.header) -- T74: the token (0.115 on both lines)
+    UI.Skin(header, "header", UI.PALETTE.header, "border") -- T74: the token (0.115 on both lines); T94: by role
 
     header.text = header:CreateFontString(nil, "OVERLAY", UI.FONT_CLASS_TITLE)
     header.text:SetText(title)
@@ -707,11 +899,12 @@ end
 -- they are UI.px(1) and the control is registered with StylizeFrame's (so
 -- UI.RestylePixels re-applies them, keeping the colours it shows); without it,
 -- the backdrop each control always had. `insets` false = no insets (the check
--- box's old backdrop carried none).
-local function ControlBackdrop(frame, fill, insets)
+-- box's old backdrop carried none). T94: registered by role (`button`, or
+-- `field` for the check box) through UI.Skin, which paints the fill and the
+-- `border` edge; the caller's colours follow as before.
+local function ControlBackdrop(frame, fill, insets, role)
     if UI.PIXEL then
-        frame:SetBackdrop(PixelBackdrop(frame))
-        UI.pixelFrames[frame] = { color = fill, border = UI.PALETTE.border }
+        UI.Skin(frame, role or "button", fill, "border")
     elseif insets == false then
         frame:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = 1 })
     else
@@ -952,7 +1145,7 @@ function UI.CreateNavFrame(title, name, width, height, groups, onCreate, onShow,
     left:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
     left:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 0, 0)
     left:SetWidth(NAV_W)
-    UI.StylizeFrame(left, P.header, P.border)
+    UI.Skin(left, "nav", P.header, P.border) -- T94: by role
     nav.left = left
 
     -- the content area, and the row of view buttons above it
@@ -1217,7 +1410,7 @@ function UI.CreateNavBox(parent, width, height, groups, onSelect)   -- one hook:
     left:SetPoint("TOPLEFT", 1, -1)
     left:SetPoint("BOTTOMLEFT", 1, 1)
     left:SetWidth(NAV_W - 20)
-    UI.StylizeFrame(left, P.header, P.border)
+    UI.Skin(left, "nav", P.header, P.border) -- T94: by role
 
     local content = CreateFrame("Frame", nil, box)
     content:SetPoint("TOPLEFT", left, "TOPRIGHT", 6, -(NAV_TOP + 2))
@@ -2119,7 +2312,7 @@ function UI.CreateDropdown(parent, width, height, onSelect)
     -- T31 (6.2): the lists' strata is the kit's setting; nil is today's DIALOG
     -- (TBC's), the Forever theme lifts it above the replay's
     list:SetFrameStrata(UI.LIST_STRATA or "DIALOG")
-    UI.StylizeFrame(list, UI.PALETTE.header)
+    UI.Skin(list, "list", UI.PALETTE.header, "border") -- T94: by role
     list:Hide()
     WatchPopup(list)   -- T31: UI.OnPopup told, once it exists (after the first Hide)
     dd.list = list
@@ -2209,7 +2402,7 @@ function UI.CreateTreeDropdown(parent, width, height, onSelect)
     local function Panel(strata)
         local f = CreateFrame("Frame", nil, parent, "BackdropTemplate")
         f:SetFrameStrata(strata)
-        UI.StylizeFrame(f, UI.PALETTE.header)
+        UI.Skin(f, "list", UI.PALETTE.header, "border") -- T94: by role
         f:Hide()
         return f
     end
@@ -2386,7 +2579,7 @@ function UI.CreateCheckButton(parent, label, onClick, ...)
     end
 
     -- T74 (P30): the colours are tokens, the edge one pixel under UI.PIXEL
-    ControlBackdrop(cb, UI.PALETTE.field, false)
+    ControlBackdrop(cb, UI.PALETTE.field, false, "field")
     cb:SetBackdropColor(UI.Fill("field"))
     cb:SetBackdropBorderColor(UI.Fill("border"))
 
@@ -2443,7 +2636,7 @@ end
 --------------------------------------------------------------------------------
 function UI.CreateEditBox(parent, width, height, isTransparent, isMultiLine, isNumeric, font)
     local eb = CreateFrame("EditBox", nil, parent, "BackdropTemplate")
-    if not isTransparent then UI.StylizeFrame(eb, UI.PALETTE.field) end -- T74: the token
+    if not isTransparent then UI.Skin(eb, "field", UI.PALETTE.field, "border") end -- T74: the token; T94: by role
     eb:SetFontObject(font or UI.FONT)
     eb:SetMultiLine(isMultiLine)
     eb:SetMaxLetters(0)

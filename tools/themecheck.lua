@@ -38,6 +38,13 @@
 -- and the window manager the rest of db.ui. The tbc half loads it as the TOC
 -- does and holds the theme there: UI.THEMED true, the tokens and fills
 -- Forever's, Review's small text the kit's, the primitives' pixel edges.
+--
+-- T94 (docs/SPEC-next.md 2.2, S2): the theme is the Flat style's data and its
+-- appliers, and the skin registry keeps regions by role (UI.skinned; the
+-- UI.pixelFrames this suite reads is its old name). Forever (+1): no UI file
+-- but the kit, the registry and the style files branches on UI.STYLE, the
+-- paint-only axis -- the same scan as the UI.TEXT gates. tools/stylecheck.lua
+-- holds the registry itself.
 HARNESS_FLAVOUR = { "forever", "tbc" }
 
 local here = arg[0]:match("^(.*)/[^/]+$")
@@ -316,6 +323,34 @@ do
     end
     check("forever: no UI file gates on UI.TEXT (UI.THEMED is the switch)", #gates == 0,
         #gates > 0 and table.concat(gates, " ") or nil)
+
+    -- T94 (docs/SPEC-next.md 2.2): a style is paint only, so no pane asks
+    -- which one is on -- UI.STYLE is read by the kit (UI/Style.lua), the
+    -- registry (UI/Styles.lua) and the style files (UI/Style_*.lua) only.
+    -- The scan is fed one planted gate first, so it is known to see one.
+    local function StyleGates(rel, text)
+        local found, n = {}, 0
+        for line in (text .. "\n"):gmatch("([^\n]*)\n") do
+            n = n + 1
+            local code = line:gsub("%-%-.*$", "")
+            if code:find("UI%.STYLE%s*[=~]=") or code:find("[=~]=%s*UI%.STYLE[^_%w]") or code:find("if%s+UI%.STYLE[^_%w]")
+               or code:find("not%s+UI%.STYLE[^_%w]") or code:find("UI%.STYLE%s+and[^_%w]")
+               or code:find("UI%.STYLE%s+or[^_%w]") or code:find("%[%s*UI%.STYLE%s*%]") then
+                found[#found + 1] = rel .. ":" .. n
+            end
+        end
+        return found
+    end
+    local planted = #StyleGates("planted", "if UI.STYLE == \"classic\" then x() end\nlocal t = T[UI.STYLE]\n") == 2
+    local styleGates = {}
+    for _, rel in ipairs(UIFiles()) do
+        if rel ~= "UI/Style.lua" and rel ~= "UI/Styles.lua" and not rel:match("^UI/Style_[%w_]+%.lua$") then
+            for _, g in ipairs(StyleGates(rel, Read(rel))) do styleGates[#styleGates + 1] = g end
+        end
+    end
+    check("forever: T94: no UI file outside the style files branches on UI.STYLE",
+        planted and #styleGates == 0, not planted and "the scan missed a planted gate"
+            or (#styleGates > 0 and table.concat(styleGates, " ") or nil))
 
     local missing, seen = TokenScan(UI)
     check("forever: every UI.Hex / UI.RGB / UI.Fill token in the tree is in the theme's tables",
