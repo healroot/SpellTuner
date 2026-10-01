@@ -15,6 +15,10 @@
 -- T55 (P11, review A4) added cases 19-21 in 14-15's session: the same capture
 -- and forward for a handler raising inside MD:On, now that Core.lua runs every
 -- handler under xpcall, and the event's arguments reaching it -- 20 forever.
+-- T113 (docs/SPEC-next.md 2.5, S0) added cases 22-23 in a fresh session of
+-- their own, last: a line registered with MD:AddDumpLine appears once, in
+-- registration order, escaped to ASCII; and with none registered the dump is
+-- the one built without the seam, byte for byte -- 22 forever.
 HARNESS_FLAVOUR = { "forever", "tbc" }
 
 local here = arg[0]:match("^(.*)/[^/]+$")
@@ -536,6 +540,81 @@ try("a handler under xpcall receives the event's arguments (A4)", function()
         a ~= nil and a.n == 5 and a[1] == "player" and a[2] == "HEAL" and a[3] == ""
         and a[4] == 120 and a[5] == 1,
         a and ("n=" .. tostring(a.n)) or "never called")
+end)
+
+--------------------------------------------------------------------------------
+-- 22-23 (T113, docs/SPEC-next.md 2.5): dump lines. A fresh session of their
+-- own, after every case that uses an older one (see case 7's note on the
+-- globals a fresh dofile reassigns). The date is pinned so two dumps built
+-- a second apart can be compared byte for byte.
+--------------------------------------------------------------------------------
+local MD4
+local function PinnedDump(md)
+    local realDate = _G.date
+    _G.date = function() return "2026-10-01 12:00:00" end
+    local okDump, text = pcall(md.BuildDump, md)
+    _G.date = realDate
+    if not okDump then error(text, 0) end
+    return text
+end
+
+local function LinesOf(text)
+    local out = {}
+    for l in (text .. "\n"):gmatch("(.-)\n") do out[#out + 1] = l end
+    return out
+end
+
+local noneDump
+try("with no dump line registered the dump is byte-identical (T113)", function()
+    MD4 = NewSession()
+    noneDump = PinnedDump(MD4)
+    -- the seam adds nothing while nothing registers: the client section is
+    -- its two lines, the saved variables right after
+    local lines, at = LinesOf(noneDump), nil
+    for i, l in ipairs(lines) do if l == "== client" then at = i end end
+    local shape = at ~= nil and lines[at + 1]:sub(1, 8) == "client: "
+        and lines[at + 2]:sub(1, 11) == "character: " and lines[at + 3] == "== saved variables"
+    -- and one registered line is the only difference: removing it gives the
+    -- first dump back, byte for byte
+    MD4:AddDumpLine("t113one", function() return "t113one: on" end)
+    local oneDump = PinnedDump(MD4)
+    local without, removed = {}, 0
+    for _, l in ipairs(LinesOf(oneDump)) do
+        if l == "t113one: on" then removed = removed + 1 else without[#without + 1] = l end
+    end
+    check("with no dump line registered the dump is byte-identical (T113)",
+        shape and #MD4:DumpLines() == 1 and removed == 1 and table.concat(without, "\n") == noneDump,
+        "shape=" .. tostring(shape) .. " removed=" .. removed)
+end)
+
+try("a dump line appears once, in registration order, ASCII (T113)", function()
+    MD4:AddDumpLine("t113b", function() return "t113b: first" end)
+    MD4:AddDumpLine("t113a", function() return "t113a: |cffff0000red|r " .. string.char(195, 169) .. "\nsecond line" end)
+    MD4:AddDumpLine("t113raise", function() error("t113: provider raised") end)
+    MD4:AddDumpLine("t113nil", function() return nil end)
+    MD4:AddDumpLine("t113b", function() return "t113b: replaced" end) -- again: in place, once
+    local text = PinnedDump(MD4)
+    local lines = LinesOf(text)
+    local idx, count = {}, {}
+    for i, l in ipairs(lines) do
+        local key = l:match("^(t113%w+):")
+        if key then idx[key] = idx[key] or i; count[key] = (count[key] or 0) + 1 end
+    end
+    local inOrder = idx.t113one and idx.t113b and idx.t113a and idx.t113raise and idx.t113nil
+        and idx.t113one < idx.t113b and idx.t113b < idx.t113a and idx.t113a < idx.t113raise
+        and idx.t113raise < idx.t113nil
+        and lines[idx.t113nil + 1] == "== saved variables"
+    local once = count.t113one == 1 and count.t113b == 1 and count.t113a == 1
+        and count.t113raise == 1 and count.t113nil == 1
+    check("a dump line appears once, in registration order, ASCII (T113)",
+        inOrder and once and AsciiSafe(text)
+        and lines[idx.t113b] == "t113b: replaced"
+        and lines[idx.t113a] == "t113a: ||cffff0000red||r \\195\\169\\010second line"
+        and lines[idx.t113raise]:find("^t113raise: error ") ~= nil
+        and lines[idx.t113raise]:find("provider raised", 1, true) ~= nil
+        and lines[idx.t113nil] == "t113nil: no line"
+        and text:find("== saved variables", 1, true) ~= nil,
+        "a=" .. tostring(idx.t113a and lines[idx.t113a]) .. " order=" .. tostring(inOrder))
 end)
 
 else -- tbc

@@ -1,5 +1,6 @@
--- /st dump (T3): one copyable block for a bug report -- the client and build,
--- the SavedVariables line, the modules and their states, every distinct error
+-- /st dump (T3): one copyable block for a bug report -- the client and build
+-- (with every line another file added through MD:AddDumpLine, T113),
+-- then the SavedVariables line, the modules and their states, every distinct error
 -- with its count and first stack line, one capabilities summary (what is
 -- absent, what is forbidden), then the adapter's whole capability table and
 -- the newest debug-log lines (T73, P29, review U19: that order). Forever only (UI/Dashboard_Forever.lua and
@@ -41,6 +42,20 @@ function MD:BuildDump()
     add(string.format("character: %s level %s %s",
         Field(MD.player and MD.player.class), Field(MD.player and MD.player.level),
         Field(MD.player and MD.player.charKey)))
+    -- T113 (docs/SPEC-next.md 2.5): the lines other files registered with
+    -- MD:AddDumpLine, in registration order, each escaped to one ASCII line.
+    -- A provider that raises costs its own line, never the dump. None
+    -- registered: nothing added.
+    for _, d in ipairs(MD.DumpLines and MD:DumpLines() or {}) do
+        local okLine, line = pcall(d.fn)
+        if not okLine then
+            add(Esc(d.key .. ": error " .. tostring(line)))
+        elseif type(line) == "string" or type(line) == "number" then
+            add(Esc(tostring(line)))
+        else
+            add(Esc(d.key .. ": no line"))
+        end
+    end
 
     -----------------------------------------------------------------------
     -- T73 (P29, review U19): what a bug report is read for comes first --

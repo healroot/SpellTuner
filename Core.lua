@@ -646,6 +646,19 @@ end)
 --   MD.COMMAND_USAGE_COLOR
 --       a colour ("ffffff00") the help wraps each usage in; nil prints it
 --       plain. Set by the flavour core (TBC's help has always been yellow).
+--   MD:AddSubcommand(verb, sub, fn, usage, text)   (T113, docs/SPEC-next.md 2.5)
+--       `/st <verb> <sub> <rest>` runs fn(rest, rawRest); every other
+--       argument reaches the verb's own function exactly as before. The sub
+--       is the argument's first word, matched case-insensitively. usage is
+--       what follows the verb ("style <name>"; the sub's name when nil); the
+--       verb's help row gains it after " / " (one row per verb). The subs
+--       are kept when MD:AddCommand registers the verb again, so the order
+--       the owning files load in does not matter. A sub on a verb nobody
+--       registered creates it, with a function that prints its usage lines
+--       and a row of its own ("/st <verb> <usage>", text the subs' texts);
+--       a later MD:AddCommand of that verb replaces both. A sub registered
+--       again replaces its function and usage in place. Nothing changes
+--       while nothing registers one.
 local commandList = {}   -- entries, in registration order
 local commandByName = {} -- name or alias (lower-case) -> entry
 
@@ -660,11 +673,12 @@ function MD:AddCommand(name, fn, usage, text, hidden)
         e = nil
     end
     if not e then
-        e = { name = name, aliases = {} }
+        e = { name = name, aliases = {}, subs = {} }
         commandList[#commandList + 1] = e
         commandByName[name] = e
     end
     e.fn = fn
+    e.createdBySub = nil   -- a real verb now: its own usage and text, its subs kept
     -- usage/text are optional (a caller registering only to claim a name, as
     -- tools/corecheck.lua's own test command does) -- ShowCommands still has
     -- to print every entry without raising.
@@ -680,12 +694,63 @@ function MD:AddAlias(alias, name)
     e.aliases[#e.aliases + 1] = alias
 end
 
+-- The verb's help row: its own usage, then each sub's after " / ". With no
+-- sub it is the usage exactly as registered (byte-identical, T113).
+local function RowUsage(e)
+    local parts = {}
+    if e.createdBySub then
+        parts[1] = "/st " .. e.name .. " " .. (e.subs[1] and e.subs[1].usage or "")
+        for i = 2, #e.subs do parts[#parts + 1] = e.subs[i].usage end
+    else
+        parts[1] = e.usage
+        for _, sub in ipairs(e.subs) do parts[#parts + 1] = sub.usage end
+    end
+    return table.concat(parts, " / ")
+end
+
+local function RowText(e)
+    if not e.createdBySub then return e.text end
+    local texts = {}
+    for _, sub in ipairs(e.subs) do
+        if sub.text ~= "" then texts[#texts + 1] = sub.text end
+    end
+    return table.concat(texts, "; ")
+end
+
+function MD:AddSubcommand(verb, sub, fn, usage, text)
+    if type(verb) ~= "string" then error("MD:AddSubcommand: the verb must be a string", 2) end
+    if type(sub) ~= "string" or not sub:match("^%S+$") then
+        error("MD:AddSubcommand: the sub must be one word, got '" .. tostring(sub) .. "'", 2)
+    end
+    if type(fn) ~= "function" then error("MD:AddSubcommand: no function for '" .. verb .. " " .. sub .. "'", 2) end
+    verb, sub = verb:lower(), sub:lower()
+    local e = commandByName[verb]
+    if not e then
+        e = { name = verb, aliases = {}, subs = {}, usage = "", text = "", hidden = false, createdBySub = true }
+        e.fn = function()
+            for _, s in ipairs(e.subs) do
+                MD:Print("usage: /st " .. e.name .. " " .. s.usage)
+            end
+        end
+        commandList[#commandList + 1] = e
+        commandByName[verb] = e
+    end
+    local entry = e.subByName and e.subByName[sub]
+    if not entry then
+        entry = { name = sub }
+        e.subs[#e.subs + 1] = entry
+        e.subByName = e.subByName or {}
+        e.subByName[sub] = entry
+    end
+    entry.fn, entry.usage, entry.text = fn, usage or sub, text or ""
+end
+
 function MD:Commands()
     local out = {}
     for i, e in ipairs(commandList) do
         local aliases = {}
         for k, a in ipairs(e.aliases) do aliases[k] = a end
-        out[i] = { name = e.name, usage = e.usage, text = e.text, hidden = e.hidden, aliases = aliases }
+        out[i] = { name = e.name, usage = RowUsage(e), text = RowText(e), hidden = e.hidden, aliases = aliases }
     end
     return out
 end
@@ -695,8 +760,9 @@ function MD:ShowCommands()
     local color = MD.COMMAND_USAGE_COLOR
     for _, e in ipairs(commandList) do
         if not e.hidden then
-            local usage = color and ("|c" .. color .. e.usage .. "|r") or e.usage
-            MD:Print("  " .. usage .. " - " .. e.text)
+            local row = RowUsage(e)
+            local usage = color and ("|c" .. color .. row .. "|r") or row
+            MD:Print("  " .. usage .. " - " .. RowText(e))
         end
     end
 end
@@ -714,8 +780,51 @@ SlashCmdList.SPELLTUNER = function(msg)
     local _, rawArg = raw:match("^(%S*)%s*(.*)$")
     local e = commandByName[cmd]
     if e then
-        e.fn(arg, rawArg)
+        -- a sub first (T113): the argument's first word, the rest as typed
+        local subs = e.subByName
+        local word, rest = arg:match("^(%S+)%s*(.*)$")
+        local sub = subs and word and subs[word]
+        if sub then
+            local _, rawRest = rawArg:match("^(%S+)%s*(.*)$")
+            sub.fn(rest, rawRest)
+        else
+            e.fn(arg, rawArg)
+        end
     else
         MD:ShowCommands()
     end
+end
+
+--------------------------------------------------------------------------------
+-- Dump lines (T113, docs/SPEC-next.md 2.5)
+--------------------------------------------------------------------------------
+-- A file that owns some state a bug report should name (the style, the
+-- integrations, the clock's layout) adds its own line to /st dump without
+-- owning UI/Dump_Forever.lua.
+--   MD:AddDumpLine(key, fn)
+--       fn() answers one line; /st dump calls every fn in registration order
+--       and escapes each answer with MD.Text.EscASCII (so the line is ASCII,
+--       one line, no bare pipe, whatever fn said). Registering a key again
+--       replaces its fn in place. On every TOC; only Forever has a dump.
+--   MD:DumpLines()
+--       the registered { key, fn } pairs, in order, as copies -- what the
+--       dump reads. With none registered the dump is byte-identical.
+local dumpLines, dumpLineByKey = {}, {}
+
+function MD:AddDumpLine(key, fn)
+    if type(key) ~= "string" or key == "" then error("MD:AddDumpLine: the key must be a non-empty string", 2) end
+    if type(fn) ~= "function" then error("MD:AddDumpLine: no function for '" .. key .. "'", 2) end
+    local e = dumpLineByKey[key]
+    if not e then
+        e = { key = key }
+        dumpLines[#dumpLines + 1] = e
+        dumpLineByKey[key] = e
+    end
+    e.fn = fn
+end
+
+function MD:DumpLines()
+    local out = {}
+    for i, e in ipairs(dumpLines) do out[i] = { key = e.key, fn = e.fn } end
+    return out
 end

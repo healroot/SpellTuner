@@ -25,6 +25,12 @@
 -- flavour registers is in MD:Commands() (and the help is exactly its listed
 -- rows; on tbc MD.COMMANDS and MD.SlashFallback are gone), and an alias runs
 -- its verb without a second row -- 24 forever, 24 tbc.
+-- T113 (docs/SPEC-next.md 2.5, S0): five more under both flavours -- a sub
+-- runs before the verb; every other argument reaches the verb unchanged
+-- (/st clock, /st clock lock, /st ui reset on forever, /md window on tbc);
+-- MD:AddCommand after MD:AddSubcommand keeps the subs, in both load orders; a
+-- sub on an unknown verb creates it with its usage printer; the verb's help
+-- row gains the sub's usage -- 29 forever, 29 tbc.
 HARNESS_FLAVOUR = { "forever", "tbc" }
 
 local here = arg[0]:match("^(.*)/[^/]+$")
@@ -50,7 +56,7 @@ local okLoad, MD = pcall(dofile, here .. "/harness.lua")
 arg[0] = a0
 if not okLoad then
     print("harness failed to load: " .. tostring(MD))
-    print("0 ok, 24 failed")
+    print("0 ok, 29 failed")
     os.exit(1)
 end
 local S = _G.STUB
@@ -408,7 +414,8 @@ local VERBS = {
         aliases = {},
     },
 }
-local OWN = { t1btest = true, t1balias = true }
+local OWN = { t1btest = true, t1balias = true, t113verb = true, t113new = true, t113late = true,
+              t113early = true, t113row = true }
 
 -- The help as printed, colour codes out, the prefix and the row's "  " gone.
 local function HelpRows()
@@ -489,6 +496,169 @@ try("an alias runs its verb and is not listed twice (A1)", function()
         and not aliasListed and calibOk,
         string.format("arg=%s entries=%d aliasListed=%s calib=%s", tostring(gotArg), entries,
             tostring(aliasListed), tostring(calibOk)))
+end)
+
+--------------------------------------------------------------------------------
+-- T113 (docs/SPEC-next.md 2.5, S0): subcommands, both flavours
+--------------------------------------------------------------------------------
+
+-- Every chat line a slash command prints, the colour codes out.
+local function Said(msg)
+    local lines = {}
+    local frame = _G.DEFAULT_CHAT_FRAME
+    local orig = frame.AddMessage
+    frame.AddMessage = function(_, m) lines[#lines + 1] = m end
+    local runOk, err = pcall(SlashCmdList.SPELLTUNER, msg)
+    frame.AddMessage = orig
+    if not runOk then error(err, 0) end
+    for i, l in ipairs(lines) do lines[i] = l:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "") end
+    return lines
+end
+
+local function RowOf(name)
+    for _, c in ipairs(MD:Commands()) do
+        if c.name == name then return c end
+    end
+end
+
+try("a sub runs before the verb, its first word matched in any case (T113)", function()
+    local verbGot, subGot, subRaw = {}, nil, nil
+    MD:AddCommand("t113verb", function(arg, rawArg) verbGot[#verbGot + 1] = { arg, rawArg } end,
+        "/st t113verb", "a test verb")
+    MD:AddSubcommand("t113verb", "style", function(rest, rawRest) subGot, subRaw = rest, rawRest end,
+        "style <name>")
+    SlashCmdList.SPELLTUNER("T113Verb STYLE  Blood Furnace ")
+    local subFirst = subGot == "blood furnace" and subRaw == "Blood Furnace" and #verbGot == 0
+    SlashCmdList.SPELLTUNER("t113verb style")
+    local bare = subGot == "" and subRaw == "" and #verbGot == 0
+    SlashCmdList.SPELLTUNER("t113verb styles Classic")
+    local other = #verbGot == 1 and verbGot[1][1] == "styles classic" and verbGot[1][2] == "styles Classic"
+    check("a sub runs before the verb, its first word matched in any case (T113)",
+        subFirst and bare and other,
+        string.format("sub=%s raw=%s verbCalls=%d", tostring(subGot), tostring(subRaw), #verbGot))
+end)
+
+try("every other argument reaches the verb unchanged (T113)", function()
+    local subRuns = 0
+    local function Sub() subRuns = subRuns + 1 end
+    local problems = {}
+    if flavour == "forever" then
+        MD:AddSubcommand("clock", "t113sub", Sub, "t113sub")
+        MD:AddSubcommand("ui", "t113sub", Sub, "t113sub")
+        MD.db.clock = MD.db.clock or {}
+        local shown, locked = MD.db.clock.shown, MD.db.clock.locked
+        local said = Said("clock")
+        if MD.db.clock.shown == shown or not (said[1] or ""):find("mana clock: ", 1, true) then
+            problems[#problems + 1] = "/st clock did not toggle the clock"
+        end
+        said = Said("clock lock")
+        if MD.db.clock.locked == locked or MD.db.clock.shown == shown
+            or not (said[1] or ""):find("mana clock: ", 1, true) then
+            problems[#problems + 1] = "/st clock lock did not toggle the lock alone"
+        end
+        local savedWin, resets = MD.Win, 0
+        MD.Win = { Reset = function() resets = resets + 1 end }
+        local okUi, errUi = pcall(function()
+            said = Said("ui reset")
+            if resets ~= 1 or not (said[1] or ""):find("every position and size reset", 1, true) then
+                problems[#problems + 1] = "/st ui reset did not reset"
+            end
+            said = Said("ui")
+            if resets ~= 1 or said[1] ~= "SpellTuner: usage: /st ui reset" then
+                problems[#problems + 1] = "/st ui said " .. tostring(said[1])
+            end
+        end)
+        MD.Win = savedWin
+        if not okUi then error(errUi, 0) end
+        Said("clock t113sub x")
+        Said("ui t113sub")
+        MD.db.clock.shown, MD.db.clock.locked = shown, locked
+    else
+        MD:AddSubcommand("window", "t113sub", Sub, "t113sub")
+        local half = MD.db.halfLife
+        local said = Said("window 20")
+        if MD.db.halfLife ~= 20 or not (said[1] or ""):find("half-life set to 20s", 1, true) then
+            problems[#problems + 1] = "/md window 20 did not set the half-life"
+        end
+        said = Said("window")
+        if not (said[1] or ""):find("usage: /md window N", 1, true) then
+            problems[#problems + 1] = "/md window said " .. tostring(said[1])
+        end
+        Said("window t113sub")
+        Said("window T113SUB")
+        MD.db.halfLife = half
+    end
+    if subRuns ~= 2 then problems[#problems + 1] = "the subs ran " .. subRuns .. " times, not 2" end
+    check("every other argument reaches the verb unchanged (T113)", #problems == 0, problems[1])
+end)
+
+try("AddCommand after AddSubcommand keeps the subs, both load orders (T113)", function()
+    local log = {}
+    local function Rec(tag) return function(arg) log[#log + 1] = tag .. ":" .. arg end end
+    -- the verb first, then its sub, then the verb again (a later file re-registering it)
+    MD:AddCommand("t113early", Rec("verb1"), "/st t113early", "first")
+    MD:AddSubcommand("t113early", "go", Rec("sub"), "go <x>")
+    MD:AddCommand("t113early", Rec("verb2"), "/st t113early [y]", "second")
+    SlashCmdList.SPELLTUNER("t113early go a")
+    SlashCmdList.SPELLTUNER("t113early b")
+    -- the sub first (it creates the verb), then the verb
+    MD:AddSubcommand("t113late", "go", Rec("lsub"), "go <x>")
+    MD:AddCommand("t113late", Rec("lverb"), "/st t113late [y]", "late")
+    SlashCmdList.SPELLTUNER("t113late go c")
+    SlashCmdList.SPELLTUNER("t113late d")
+    local want = { "sub:a", "verb2:b", "lsub:c", "lverb:d" }
+    local same = #log == #want
+    for i = 1, #want do if log[i] ~= want[i] then same = false end end
+    local early, late = RowOf("t113early"), RowOf("t113late")
+    local rows = early and late
+        and early.usage == "/st t113early [y] / go <x>" and early.text == "second"
+        and late.usage == "/st t113late [y] / go <x>" and late.text == "late"
+    local count = 0
+    for _, c in ipairs(MD:Commands()) do
+        if c.name == "t113early" or c.name == "t113late" then count = count + 1 end
+    end
+    check("AddCommand after AddSubcommand keeps the subs, both load orders (T113)",
+        same and rows and count == 2,
+        table.concat(log, ",") .. " early=" .. tostring(early and early.usage)
+            .. " late=" .. tostring(late and late.usage) .. " rows=" .. count)
+end)
+
+try("a sub on an unknown verb creates it with its usage printer (T113)", function()
+    local got
+    MD:AddSubcommand("T113New", "Go", function(rest, rawRest) got = rawRest end, "go <name>", "go somewhere")
+    MD:AddSubcommand("t113new", "stay", function() end, "stay", "stay here")
+    local said = Said("t113new")
+    local printer = #said == 2 and said[1] == "SpellTuner: usage: /st t113new go <name>"
+        and said[2] == "SpellTuner: usage: /st t113new stay"
+    Said("t113new GO Blood Furnace")
+    local row = RowOf("t113new")
+    check("a sub on an unknown verb creates it with its usage printer (T113)",
+        printer and got == "Blood Furnace" and row ~= nil and row.hidden == false
+        and row.usage == "/st t113new go <name> / stay" and row.text == "go somewhere; stay here",
+        "said=" .. tostring(said[1]) .. " row=" .. tostring(row and row.usage) .. " got=" .. tostring(got))
+end)
+
+try("the verb's help row gains the sub's usage, one row per verb (T113)", function()
+    MD:AddCommand("t113row", function() end, "/st t113row [x]", "row text")
+    local function RowsFor()
+        local found = {}
+        for _, r in ipairs(HelpRows()) do
+            if r:find("t113row", 1, true) then found[#found + 1] = r end
+        end
+        return found
+    end
+    local before = RowsFor()
+    MD:AddSubcommand("t113row", "style", function() end, "style <name>")
+    local after = RowsFor()
+    MD:AddSubcommand("t113row", "style", function() end, "style <key>") -- again: replaced in place
+    local again = RowsFor()
+    local c = RowOf("t113row")
+    check("the verb's help row gains the sub's usage, one row per verb (T113)",
+        #before == 1 and before[1] == "/st t113row [x] - row text"
+        and #after == 1 and after[1] == "/st t113row [x] / style <name> - row text"
+        and #again == 1 and again[1] == "/st t113row [x] / style <key> - row text"
+        and c ~= nil and c.usage == "/st t113row [x] / style <key>",
+        tostring(before[1]) .. " | " .. tostring(after[1]) .. " | " .. tostring(again[1]))
 end)
 
 --------------------------------------------------------------------------------
