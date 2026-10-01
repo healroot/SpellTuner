@@ -54,6 +54,10 @@ function UI.GetAccentColorRGB() return accent[1], accent[2], accent[3] end
 --   dominated  8a8a8a  the rank table's dominated row (muted is 888888)
 --   note       ffcc00  the bindings import's notes, practice's "every <role>" rows
 --   tipGold    ffd100  MD.Tip's suggested rank ({1, 0.82, 0}; accent is ffcc00)
+-- T74 (P30): one more, the kit's own -- not a legacy token: the theme leaves
+-- it, so a disabled control is 0.4 grey on both lines, as it was (4.1's
+-- disabled, 4D4D4D, for the kit's controls too is P34's question):
+--   dimmed     666666  a disabled check box, slider or edit box (FONT_DISABLE's 0.4)
 --------------------------------------------------------------------------------
 UI.THEMED = false
 
@@ -79,6 +83,7 @@ UI.TEXT = {
     dominated = Token("8a8a8a"),              -- legacy (see above)
     note      = Token("ffcc00", 1, 0.8, 0),   -- legacy
     tipGold   = Token("ffd100", 1, 0.82, 0),  -- legacy
+    dimmed    = Token("666666", 0.4, 0.4, 0.4), -- T74: the kit's disabled controls
 }
 
 -- A token's colour code, its r, g, b, and a palette fill's r, g, b, a. An
@@ -98,6 +103,48 @@ function UI.Fill(key)
     if c then return c[1], c[2], c[3], c[4] end
     return 1, 1, 1, 1
 end
+
+--------------------------------------------------------------------------------
+-- UI.PALETTE: fills (r, g, b, a). Defined here, before the primitives that read
+-- it (T74, P30: it used to sit with the navigation, after them). The theme
+-- (UI/Theme_Forever.lua) writes 4.1's fills over these keys in place.
+--------------------------------------------------------------------------------
+UI.PALETTE = {
+    frame  = { 0.1, 0.1, 0.1, 0.9 },      -- the window itself (UI.StylizeFrame's default)
+    header = { 0.115, 0.115, 0.115, 1 },  -- the title bar and the nav columns
+    pane   = { 0.13, 0.13, 0.13, 1 },     -- a box drawn inside the content area
+    border = { 0, 0, 0, 1 },
+    -- T69 (P25): the rank table's option fills (UI/Dashboard_Rows.lua), the
+    -- literals that file carried; the theme overwrites them with 4.1's.
+    rowAlt    = { 1, 1, 1, 0.03 },
+    hover     = { accent[1], accent[2], accent[3], 0.12 },
+    selected  = { accent[1], accent[2], accent[3], 0.28 },
+    suggested = { accent[1], accent[2], accent[3], 0.10 },
+    line      = { 0x2A / 255, 0x2A / 255, 0x2A / 255, 1 },
+    -- T74 (P30, review A20): the primitives' fills (CreateButton, the check
+    -- box, the edit box, the slider, the scroll frame, the movable frame's
+    -- header). Each holds the literal the primitive carried, so TBC paints what
+    -- it painted; the theme leaves them (its close / closeHover are the same
+    -- values, and its nav, which the header follows, is this 0.115), so Forever
+    -- does too. Mapping them onto 4.1's fills is the theme's to do (P34).
+    button      = { 0.115, 0.115, 0.115, 1 },               -- a kit button, a slider's track
+    buttonHover = { 0.23, 0.23, 0.23, 1 },                  -- a plain button's hover
+    field       = { 0.115, 0.115, 0.115, 0.9 },             -- an edit box, a check box
+    well        = { 0.15, 0.15, 0.15, 0.9 },                -- the copy box's scroll area
+    track       = { 0.1, 0.1, 0.1, 0.8 },                   -- a scroll bar
+    thumb       = { accent[1], accent[2], accent[3], 0.8 }, -- its thumb
+    check       = { accent[1], accent[2], accent[3], 0.7 }, -- a ticked box, a slider's thumb
+    checkHover  = { accent[1], accent[2], accent[3], 0.1 }, -- a check box under the pointer
+    accentFill  = { accent[1], accent[2], accent[3], 0.3 }, -- "accent" buttons
+    accentHover = { accent[1], accent[2], accent[3], 0.6 }, -- "accent-hover" buttons' hover
+    close       = { 0.6, 0.1, 0.1, 0.6 },                   -- "red" (the x), as in Cell
+    closeHover  = { 0.6, 0.1, 0.1, 1 },
+    go          = { 0.1, 0.6, 0.1, 0.6 },                   -- "green"
+    goHover     = { 0.1, 0.6, 0.1, 1 },
+    info        = { 0, 0.5, 0.8, 1 },                       -- "blue-hover"'s hover
+    warn        = { 0.7, 0.7, 0, 1 },                       -- "yellow-hover"'s hover
+    clear       = { 0, 0, 0, 0 },                           -- "transparent" / "none"
+}
 
 --------------------------------------------------------------------------------
 -- Fonts (global font objects, like Cell's CELL_FONT_*)
@@ -208,6 +255,22 @@ end
 -- backdrop cannot say what it shows now).
 UI.pixelFrames = setmetatable({}, { __mode = "k" })
 
+-- T74 (P30, review U3): what is not a backdrop -- a rule, a selection bar, a
+-- texture inset inside a px edge, an anchor that overlaps a px edge -- is laid
+-- out by a function that reads UI.px, registered here (weak-keyed by the
+-- region it lays out) and run again by UI.RestylePixels. Only under
+-- UI.PIXEL: on TBC nothing is registered and every size stays the literal.
+UI.pixelLayouts = setmetatable({}, { __mode = "k" })
+
+-- UI.PixelLayout(region, fn): run fn(region) now and on every restyle when
+-- UI.PIXEL is on; returns nothing. Off, it does nothing at all -- the caller
+-- keeps its literal layout.
+function UI.PixelLayout(region, fn)
+    if not UI.PIXEL then return end
+    UI.pixelLayouts[region] = fn
+    fn(region)
+end
+
 local function PixelBackdrop(frame)
     local e = UI.px(1, frame)
     return { bgFile = WHITE, edgeFile = WHITE, edgeSize = e,
@@ -231,7 +294,8 @@ end
 -- leaves stale edges: re-apply the edge and insets to every registered frame,
 -- keeping the colours it shows now (a hover may have changed them since). The
 -- window manager calls it on UI_SCALE_CHANGED / DISPLAY_SIZE_CHANGED and after
--- db.ui.scale changes. Returns how many frames it restyled.
+-- db.ui.scale changes. Returns how many frames it restyled, plus (T74) how
+-- many registered layouts it re-ran.
 function UI.RestylePixels()
     local n = 0
     for frame, rec in pairs(UI.pixelFrames) do
@@ -254,6 +318,9 @@ function UI.RestylePixels()
             end
         end)
         if done then n = n + 1 end
+    end
+    for region, fn in pairs(UI.pixelLayouts) do -- T74 (P30)
+        if pcall(fn, region) then n = n + 1 end
     end
     return n
 end
@@ -302,8 +369,10 @@ function UI.CreateMovableFrame(title, name, width, height, strata, level, notUse
     header:SetPoint("LEFT")
     header:SetPoint("RIGHT")
     header:SetPoint("BOTTOM", f, "TOP", 0, -1)
+    -- T74 (P30): the header overlaps the window's edge by one pixel, not one unit
+    UI.PixelLayout(header, function(h) h:SetPoint("BOTTOM", f, "TOP", 0, -UI.px(1, h)) end)
     header:SetHeight(20)
-    UI.StylizeFrame(header, { 0.115, 0.115, 0.115, 1 })
+    UI.StylizeFrame(header, UI.PALETTE.header) -- T74: the token (0.115 on both lines)
 
     header.text = header:CreateFontString(nil, "OVERLAY", UI.FONT_CLASS_TITLE)
     header.text:SetText(title)
@@ -364,8 +433,15 @@ function UI.CreateSeparator(text, parent, width, color)
     line:SetPoint("TOPLEFT", fs, "BOTTOMLEFT", 0, -2)
     local shadow = parent:CreateTexture()
     shadow:SetSize(width, 1)
-    shadow:SetColorTexture(0, 0, 0, 1)
+    shadow:SetColorTexture(UI.Fill("border"))
     shadow:SetPoint("TOPLEFT", line, "TOPLEFT", 1, -1)
+    -- T74 (P30, review U3): the rule and its shadow one pixel thick
+    UI.PixelLayout(line, function(l) l:SetHeight(UI.px(1, l)) end)
+    UI.PixelLayout(shadow, function(sh)
+        local e = UI.px(1, sh)
+        sh:SetHeight(e)
+        sh:SetPoint("TOPLEFT", line, "TOPLEFT", e, -e)
+    end)
     return fs
 end
 
@@ -383,9 +459,17 @@ function UI.CreateTitledPane(parent, text, width, height)
 
     local shadow = pane:CreateTexture()
     shadow:SetHeight(1)
-    shadow:SetColorTexture(0, 0, 0, 1)
+    shadow:SetColorTexture(UI.Fill("border"))
     shadow:SetPoint("TOPLEFT", line, "TOPLEFT", 1, -1)
     shadow:SetPoint("TOPRIGHT", line, "TOPRIGHT", 1, -1)
+    -- T74 (P30, review U3): the rule and its shadow one pixel thick
+    UI.PixelLayout(line, function(l) l:SetHeight(UI.px(1, l)) end)
+    UI.PixelLayout(shadow, function(sh)
+        local e = UI.px(1, sh)
+        sh:SetHeight(e)
+        sh:SetPoint("TOPLEFT", line, "TOPLEFT", e, -e)
+        sh:SetPoint("TOPRIGHT", line, "TOPRIGHT", e, -e)
+    end)
 
     local title = pane:CreateFontString(nil, "OVERLAY", UI.FONT_TITLE)
     pane.title = title
@@ -401,18 +485,47 @@ end
 --------------------------------------------------------------------------------
 -- Buttons
 --------------------------------------------------------------------------------
+-- T74 (P30, review A20): a colour name is a pair of UI.PALETTE keys, read when
+-- the button is made -- no longer tables frozen when this file loaded, so the
+-- theme (which runs before any window is built) reaches them. The keys hold
+-- the literals this table carried, so every button paints what it painted.
 local BUTTON_COLORS = {
-    ["red"]          = { { 0.6, 0.1, 0.1, 0.6 },          { 0.6, 0.1, 0.1, 1 } },
-    ["red-hover"]    = { { 0.115, 0.115, 0.115, 1 },      { 0.6, 0.1, 0.1, 1 } },
-    ["green"]        = { { 0.1, 0.6, 0.1, 0.6 },          { 0.1, 0.6, 0.1, 1 } },
-    ["green-hover"]  = { { 0.115, 0.115, 0.115, 1 },      { 0.1, 0.6, 0.1, 1 } },
-    ["blue-hover"]   = { { 0.115, 0.115, 0.115, 1 },      { 0, 0.5, 0.8, 1 } },
-    ["yellow-hover"] = { { 0.115, 0.115, 0.115, 1 },      { 0.7, 0.7, 0, 1 } },
-    ["accent"]       = { { accent[1], accent[2], accent[3], 0.3 }, { accent[1], accent[2], accent[3], 0.6 } },
-    ["accent-hover"] = { { 0.115, 0.115, 0.115, 1 },      { accent[1], accent[2], accent[3], 0.6 } },
-    ["transparent"]  = { { 0, 0, 0, 0 },                  { accent[1], accent[2], accent[3], 0.6 } },
-    ["none"]         = { { 0, 0, 0, 0 },                  nil },
+    ["red"]          = { "close",      "closeHover" },
+    ["red-hover"]    = { "button",     "closeHover" },
+    ["green"]        = { "go",         "goHover" },
+    ["green-hover"]  = { "button",     "goHover" },
+    ["blue-hover"]   = { "button",     "info" },
+    ["yellow-hover"] = { "button",     "warn" },
+    ["accent"]       = { "accentFill", "accentHover" },
+    ["accent-hover"] = { "button",     "accentHover" },
+    ["transparent"]  = { "clear",      "accentHover" },
+    ["none"]         = { "clear",      nil },
 }
+local DEFAULT_BUTTON_COLORS = { "button", "buttonHover" }
+
+-- UI.ButtonColors(name) -> fill, hover: the palette's tables for a colour name
+-- (an unknown name is the plain grey pair); hover is nil for "none".
+function UI.ButtonColors(name)
+    local pair = BUTTON_COLORS[name] or DEFAULT_BUTTON_COLORS
+    return UI.PALETTE[pair[1]], pair[2] and UI.PALETTE[pair[2]] or nil
+end
+
+-- T74 (P30, review U3): a kit control's 1-px edge and insets. Under UI.PIXEL
+-- they are UI.px(1) and the control is registered with StylizeFrame's (so
+-- UI.RestylePixels re-applies them, keeping the colours it shows); without it,
+-- the backdrop each control always had. `insets` false = no insets (the check
+-- box's old backdrop carried none).
+local function ControlBackdrop(frame, fill, insets)
+    if UI.PIXEL then
+        frame:SetBackdrop(PixelBackdrop(frame))
+        UI.pixelFrames[frame] = { color = fill, border = UI.PALETTE.border }
+    elseif insets == false then
+        frame:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = 1 })
+    else
+        frame:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = 1,
+            insets = { left = 1, right = 1, top = 1, bottom = 1 } })
+    end
+end
 
 -- UI.CreateButton(parent, text, colorName, {w, h}, noBorder, noBackground, fontNormal, fontDisable, tooltip...)
 function UI.CreateButton(parent, text, buttonColor, size, noBorder, noBackground, fontNormal, fontDisable, ...)
@@ -421,8 +534,7 @@ function UI.CreateButton(parent, text, buttonColor, size, noBorder, noBackground
     b:SetText(text or "")
     b:SetSize(size[1], size[2])
 
-    local pair = BUTTON_COLORS[buttonColor] or { { 0.115, 0.115, 0.115, 1 }, { 0.23, 0.23, 0.23, 1 } }
-    b.color, b.hoverColor = pair[1], pair[2]
+    b.color, b.hoverColor = UI.ButtonColors(buttonColor)
 
     local s = b:GetFontString()
     b.fs = s
@@ -436,8 +548,7 @@ function UI.CreateButton(parent, text, buttonColor, size, noBorder, noBackground
     if noBorder then
         b:SetBackdrop({ bgFile = WHITE })
     else
-        b:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = 1,
-            insets = { left = 1, right = 1, top = 1, bottom = 1 } })
+        ControlBackdrop(b, b.color)
     end
 
     if buttonColor == "transparent" then
@@ -454,9 +565,9 @@ function UI.CreateButton(parent, text, buttonColor, size, noBorder, noBackground
             bg:SetDrawLayer("BACKGROUND", -8)
             b.bg = bg
             bg:SetAllPoints(b)
-            bg:SetColorTexture(0.115, 0.115, 0.115, 1)
+            bg:SetColorTexture(UI.Fill("button"))
         end
-        b:SetBackdropBorderColor(0, 0, 0, 1)
+        b:SetBackdropBorderColor(UI.Fill("border"))
         b:SetPushedTextOffset(0, -1)
     end
 
@@ -477,12 +588,81 @@ function UI.CreateButton(parent, text, buttonColor, size, noBorder, noBackground
     return b
 end
 
--- Radio-style group: the active button keeps its hover colour. Each button
--- needs an .id; onClick(id, button) fires on click. Returns Highlight(id).
-function UI.CreateButtonGroup(buttons, onClick, onActive, onInactive)
+-- Radio-style group. Each button needs an .id; onClick(id, button) fires on
+-- click. Returns Highlight(id).
+--
+-- Without the theme (TBC) the active button keeps its hover colour and loses
+-- its hover scripts, as it always did.
+--
+-- T74 (P30, review U1; docs/SPEC-forever-ui.md 4.3, the approved mockup's
+-- .nb.on / .vt.on / .btn.act): under UI.THEMED the active button is the
+-- `selected` fill plus a 2-px accent bar -- opts.bar = "left" (the nav's
+-- groups) or "bottom" (the default: view tabs and every other group) -- and
+-- hover is the `hover` fill laid over whatever the button shows, the active
+-- one included, so moving down the nav no longer lights a button like the
+-- selected one.
+local function SelectionParts(b, side)
+    if not b.selBar then
+        local hov = b:CreateTexture(nil, "BORDER")
+        hov:SetColorTexture(UI.Fill("hover"))
+        hov:Hide()
+        local bar = b:CreateTexture(nil, "ARTWORK")
+        bar:SetColorTexture(UI.RGB("accent"))
+        bar:Hide()
+        b.selHover, b.selBar = hov, bar
+    end
+    local hov, bar = b.selHover, b.selBar
+    bar.side = side
+    local function Lay()
+        local e = UI.px(1, b)
+        hov:ClearAllPoints()
+        hov:SetPoint("TOPLEFT", b, "TOPLEFT", e, -e)
+        hov:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", -e, e)
+        bar:ClearAllPoints()
+        if bar.side == "left" then
+            bar:SetPoint("TOPLEFT", b, "TOPLEFT", e, -e)
+            bar:SetPoint("BOTTOMLEFT", b, "BOTTOMLEFT", e, e)
+            bar:SetWidth(UI.px(2, b))
+        else
+            bar:SetPoint("BOTTOMLEFT", b, "BOTTOMLEFT", e, e)
+            bar:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", -e, e)
+            bar:SetHeight(UI.px(2, b))
+        end
+    end
+    Lay()
+    if UI.PIXEL then UI.pixelLayouts[bar] = Lay end
+end
+
+local function HoverOn(self) if self.selHover then self.selHover:Show() end end
+local function HoverOff(self) if self.selHover then self.selHover:Hide() end end
+
+function UI.CreateButtonGroup(buttons, onClick, onActive, onInactive, opts)
+    local themed = UI.THEMED
+    local side = opts and opts.bar == "left" and "left" or "bottom"
+    if themed then
+        for _, b in pairs(buttons) do
+            SelectionParts(b, side)
+            b:SetScript("OnEnter", HoverOn)
+            b:SetScript("OnLeave", HoverOff)
+        end
+    end
     local function Highlight(id)
         for _, b in pairs(buttons) do
-            if id == b.id then
+            if themed then
+                b:SetScript("OnEnter", HoverOn)
+                b:SetScript("OnLeave", HoverOff)
+                if id == b.id then
+                    b:SetBackdropColor(UI.Fill("selected"))
+                    b.selBar:Show()
+                    b.active = true
+                    if onActive then onActive(b.id, b) end
+                else
+                    b:SetBackdropColor(unpack(b.color))
+                    b.selBar:Hide()
+                    b.active = false
+                    if onInactive then onInactive(b.id, b) end
+                end
+            elseif id == b.id then
                 b:SetBackdropColor(unpack(b.hoverColor))
                 b:SetScript("OnEnter", nil)
                 b:SetScript("OnLeave", nil)
@@ -517,19 +697,6 @@ end
 -- author asked for the settings window's colours everywhere, and "everywhere"
 -- only holds if there is one place to change.
 --------------------------------------------------------------------------------
-UI.PALETTE = {
-    frame  = { 0.1, 0.1, 0.1, 0.9 },      -- the window itself (UI.StylizeFrame's default)
-    header = { 0.115, 0.115, 0.115, 1 },  -- the title bar and the nav columns
-    pane   = { 0.13, 0.13, 0.13, 1 },     -- a box drawn inside the content area
-    border = { 0, 0, 0, 1 },
-    -- T69 (P25): the rank table's option fills (UI/Dashboard_Rows.lua), the
-    -- literals that file carried; the theme overwrites them with 4.1's.
-    rowAlt    = { 1, 1, 1, 0.03 },
-    hover     = { accent[1], accent[2], accent[3], 0.12 },
-    selected  = { accent[1], accent[2], accent[3], 0.28 },
-    suggested = { accent[1], accent[2], accent[3], 0.10 },
-    line      = { 0x2A / 255, 0x2A / 255, 0x2A / 255, 1 },
-}
 
 local NAV_W = 108        -- the left column
 local NAV_TOP = 24       -- the horizontal view row
@@ -670,6 +837,8 @@ function UI.CreateNavFrame(title, name, width, height, groups, onCreate, onShow,
                     b:SetBackdropColor(unpack(b.color))
                     b:SetScript("OnEnter", function(self) self:SetBackdropColor(unpack(self.hoverColor)) end)
                     b:SetScript("OnLeave", function(self) self:SetBackdropColor(unpack(self.color)) end)
+                    -- T74 (P30): the theme's selection parts start hidden
+                    if b.selBar then b.selBar:Hide(); b.selHover:Hide() end
                     b:Show()
                 else
                     b = UI.CreateButton(f, v.text, "accent-hover", { bw, 20 },
@@ -780,7 +949,9 @@ function UI.CreateNavFrame(title, name, width, height, groups, onCreate, onShow,
         nav.buttons[#nav.buttons + 1] = b
         prev = b
     end
-    nav.highlightGroup = UI.CreateButtonGroup(nav.buttons, function(id) nav:Select(id, nil) end)
+    -- T74 (P30): under the theme the groups' bar is on the left (view tabs: bottom)
+    nav.highlightGroup = UI.CreateButtonGroup(nav.buttons, function(id) nav:Select(id, nil) end,
+        nil, nil, { bar = "left" })
 
     return nav
 end
@@ -847,7 +1018,9 @@ function UI.CreateNavBox(parent, width, height, groups, onSelect)   -- one hook:
         nav.buttons[#nav.buttons + 1] = b
         prev = b
     end
-    nav.highlightGroup = UI.CreateButtonGroup(nav.buttons, function(id) nav:Select(id, nil) end)
+    -- T74 (P30): under the theme the groups' bar is on the left (view tabs: bottom)
+    nav.highlightGroup = UI.CreateButtonGroup(nav.buttons, function(id) nav:Select(id, nil) end,
+        nil, nil, { bar = "left" })
 
     return nav
 end
@@ -1615,32 +1788,44 @@ function UI.CreateCheckButton(parent, label, onClick, ...)
         cb:SetHitRectInsets(0, -cb.label:GetStringWidth() - 5, 0, 0)
     end
 
-    cb:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = 1 })
-    cb:SetBackdropColor(0.115, 0.115, 0.115, 0.9)
-    cb:SetBackdropBorderColor(0, 0, 0, 1)
+    -- T74 (P30): the colours are tokens, the edge one pixel under UI.PIXEL
+    ControlBackdrop(cb, UI.PALETTE.field, false)
+    cb:SetBackdropColor(UI.Fill("field"))
+    cb:SetBackdropBorderColor(UI.Fill("border"))
 
     local checkedTexture = cb:CreateTexture(nil, "ARTWORK")
-    checkedTexture:SetColorTexture(accent[1], accent[2], accent[3], 0.7)
+    checkedTexture:SetColorTexture(UI.Fill("check"))
     checkedTexture:SetPoint("TOPLEFT", 1, -1)
     checkedTexture:SetPoint("BOTTOMRIGHT", -1, 1)
 
     local highlightTexture = cb:CreateTexture(nil, "ARTWORK")
-    highlightTexture:SetColorTexture(accent[1], accent[2], accent[3], 0.1)
+    highlightTexture:SetColorTexture(UI.Fill("checkHover"))
     highlightTexture:SetPoint("TOPLEFT", 1, -1)
     highlightTexture:SetPoint("BOTTOMRIGHT", -1, 1)
+
+    -- T74 (P30, review U3): the tick and the hover inside a one-pixel edge
+    local function Inset(t)
+        local e = UI.px(1, cb)
+        t:ClearAllPoints()
+        t:SetPoint("TOPLEFT", e, -e)
+        t:SetPoint("BOTTOMRIGHT", -e, e)
+    end
+    UI.PixelLayout(checkedTexture, Inset)
+    UI.PixelLayout(highlightTexture, Inset)
 
     cb:SetCheckedTexture(checkedTexture)
     cb:SetHighlightTexture(highlightTexture, "ADD")
 
     cb:SetScript("OnEnable", function()
-        cb.label:SetTextColor(1, 1, 1)
-        checkedTexture:SetColorTexture(accent[1], accent[2], accent[3], 0.7)
-        cb:SetBackdropBorderColor(0, 0, 0, 1)
+        cb.label:SetTextColor(UI.RGB("text"))
+        checkedTexture:SetColorTexture(UI.Fill("check"))
+        cb:SetBackdropBorderColor(UI.Fill("border"))
     end)
     cb:SetScript("OnDisable", function()
-        cb.label:SetTextColor(0.4, 0.4, 0.4)
-        checkedTexture:SetColorTexture(0.4, 0.4, 0.4)
-        cb:SetBackdropBorderColor(0, 0, 0, 0.4)
+        cb.label:SetTextColor(UI.RGB("dimmed"))
+        checkedTexture:SetColorTexture(UI.RGB("dimmed"))
+        local r, g, b = UI.Fill("border")
+        cb:SetBackdropBorderColor(r, g, b, 0.4)
     end)
 
     function cb:SetText(text)
@@ -1661,7 +1846,7 @@ end
 --------------------------------------------------------------------------------
 function UI.CreateEditBox(parent, width, height, isTransparent, isMultiLine, isNumeric, font)
     local eb = CreateFrame("EditBox", nil, parent, "BackdropTemplate")
-    if not isTransparent then UI.StylizeFrame(eb, { 0.115, 0.115, 0.115, 0.9 }) end
+    if not isTransparent then UI.StylizeFrame(eb, UI.PALETTE.field) end -- T74: the token
     eb:SetFontObject(font or UI.FONT)
     eb:SetMultiLine(isMultiLine)
     eb:SetMaxLetters(0)
@@ -1676,8 +1861,14 @@ function UI.CreateEditBox(parent, width, height, isTransparent, isMultiLine, isN
     eb:SetScript("OnEnterPressed", function() eb:ClearFocus() end)
     eb:SetScript("OnEditFocusGained", function() eb:HighlightText() end)
     eb:SetScript("OnEditFocusLost", function() eb:HighlightText(0, 0) end)
-    eb:SetScript("OnDisable", function() eb:SetTextColor(0.4, 0.4, 0.4, 1) end)
-    eb:SetScript("OnEnable", function() eb:SetTextColor(1, 1, 1, 1) end)
+    eb:SetScript("OnDisable", function()
+        local r, g, b = UI.RGB("dimmed")
+        eb:SetTextColor(r, g, b, 1)
+    end)
+    eb:SetScript("OnEnable", function()
+        local r, g, b = UI.RGB("text")
+        eb:SetTextColor(r, g, b, 1)
+    end)
     return eb
 end
 
@@ -1708,14 +1899,14 @@ function UI.CreateScrollFrame(parent, top, bottom, color, border)
     scrollbar:SetPoint("TOPLEFT", scrollFrame, "TOPRIGHT", 2, 0)
     scrollbar:SetPoint("BOTTOMRIGHT", scrollFrame, 7, 0)
     scrollbar:Hide()
-    UI.StylizeFrame(scrollbar, { 0.1, 0.1, 0.1, 0.8 })
+    UI.StylizeFrame(scrollbar, UI.PALETTE.track) -- T74: the token
     scrollFrame.scrollbar = scrollbar
 
     local scrollThumb = CreateFrame("Frame", nil, scrollbar, "BackdropTemplate")
     scrollThumb:SetWidth(5)
     scrollThumb:SetHeight(scrollbar:GetHeight())
     scrollThumb:SetPoint("TOP")
-    UI.StylizeFrame(scrollThumb, { accent[1], accent[2], accent[3], 0.8 })
+    UI.StylizeFrame(scrollThumb, UI.PALETTE.thumb)
     scrollThumb:EnableMouse(true)
     scrollThumb:SetMovable(true)
     scrollThumb:SetHitRectInsets(-5, -5, 0, 0)
@@ -1826,7 +2017,7 @@ function UI.CreateScrollEditBox(parent, onTextChanged, scrollStep)
     scrollStep = scrollStep or 1
     local frame = CreateFrame("Frame", nil, parent)
     UI.CreateScrollFrame(frame)
-    UI.StylizeFrame(frame.scrollFrame, { 0.15, 0.15, 0.15, 0.9 })
+    UI.StylizeFrame(frame.scrollFrame, UI.PALETTE.well) -- T74: the token
 
     frame.eb = UI.CreateEditBox(frame.scrollFrame.content, 10, 20, true, true)
     frame.eb:SetPoint("TOPLEFT")
@@ -1880,7 +2071,7 @@ function UI.CreateSlider(name, parent, low, high, width, step, onValueChangedFn,
     slider:SetOrientation("HORIZONTAL")
     slider:SetSize(width, 10)
     local unit = isPercentage and "%" or ""
-    UI.StylizeFrame(slider, { 0.115, 0.115, 0.115, 1 })
+    UI.StylizeFrame(slider, UI.PALETTE.button) -- T74: the token
 
     local label = slider:CreateFontString(nil, "OVERLAY", UI.FONT)
     label:SetText(name)
@@ -1924,19 +2115,20 @@ function UI.CreateSlider(name, parent, low, high, width, step, onValueChangedFn,
     highText:SetPoint("BOTTOM", currentEditBox)
 
     local tex = slider:CreateTexture(nil, "ARTWORK")
-    tex:SetColorTexture(accent[1], accent[2], accent[3], 0.7)
+    tex:SetColorTexture(UI.Fill("check"))
     tex:SetSize(8, 8)
     slider:SetThumbTexture(tex)
 
     local valueBeforeClick
     slider.onEnter = function()
-        tex:SetColorTexture(accent[1], accent[2], accent[3], 1)
+        local r, g, b = UI.Fill("check")
+        tex:SetColorTexture(r, g, b, 1)
         valueBeforeClick = slider:GetValue()
         if #tooltips > 0 then ShowTooltips(slider, "ANCHOR_TOPLEFT", 0, 3, tooltips) end
     end
     slider:SetScript("OnEnter", slider.onEnter)
     slider.onLeave = function()
-        tex:SetColorTexture(accent[1], accent[2], accent[3], 0.7)
+        tex:SetColorTexture(UI.Fill("check"))
         tooltip:Hide()
     end
     slider:SetScript("OnLeave", slider.onLeave)
@@ -1967,20 +2159,21 @@ function UI.CreateSlider(name, parent, low, high, width, step, onValueChangedFn,
     slider:SetValue(low)
 
     slider:SetScript("OnDisable", function()
-        label:SetTextColor(0.4, 0.4, 0.4)
+        label:SetTextColor(UI.RGB("dimmed"))
         currentEditBox:SetEnabled(false)
         slider:SetScript("OnEnter", nil)
         slider:SetScript("OnLeave", nil)
-        tex:SetColorTexture(0.4, 0.4, 0.4, 0.7)
-        lowText:SetTextColor(0.4, 0.4, 0.4)
-        highText:SetTextColor(0.4, 0.4, 0.4)
+        local r, g, b = UI.RGB("dimmed")
+        tex:SetColorTexture(r, g, b, 0.7)
+        lowText:SetTextColor(UI.RGB("dimmed"))
+        highText:SetTextColor(UI.RGB("dimmed"))
     end)
     slider:SetScript("OnEnable", function()
-        label:SetTextColor(1, 1, 1)
+        label:SetTextColor(UI.RGB("text"))
         currentEditBox:SetEnabled(true)
         slider:SetScript("OnEnter", slider.onEnter)
         slider:SetScript("OnLeave", slider.onLeave)
-        tex:SetColorTexture(accent[1], accent[2], accent[3], 0.7)
+        tex:SetColorTexture(UI.Fill("check"))
         lowText:SetTextColor(unpack(UI.grey))
         highText:SetTextColor(unpack(UI.grey))
     end)

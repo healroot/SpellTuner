@@ -132,6 +132,26 @@ check("hidden views get no button", #nav.viewButtons == 1, tostring(#nav.viewBut
 nav:Select("nosuchgroup")
 check("an unknown group falls back to the first", nav.group == "spells", tostring(nav.group))
 
+-- T74 (P30, review U1): the theme's selection language (selected fill + a
+-- 2-px bar, hover laid over) is gated on UI.THEMED; TBC keeps today's -- the
+-- active button in its hover colour with its hover scripts dropped, the others
+-- lighting to that colour under the pointer, no bar built.
+check("on TBC the active style is today's", (function()
+    nav:Select("spells", "ht")
+    local act, other = nav.buttons[1], nav.buttons[2]
+    local tab = nav.viewButtons[1]
+    local function is(c, w) return c and w and c[1] == w[1] and c[2] == w[2] and c[3] == w[3] and c[4] == w[4] end
+    local activeOk = UI.THEMED == false and is(act.bg, act.hoverColor) and act.hoverColor[4] == 0.6
+        and act:GetScript("OnEnter") == nil and act:GetScript("OnLeave") == nil and act.selBar == nil
+        and is(tab.bg, tab.hoverColor) and tab:GetScript("OnEnter") == nil and tab.selBar == nil
+    local restOk = is(other.bg, other.color) and other.color[1] == 0.115
+    local enter = other:GetScript("OnEnter")
+    if enter then enter(other) end
+    local lit = is(other.bg, other.hoverColor)
+    if other:GetScript("OnLeave") then other:GetScript("OnLeave")(other) end
+    return activeOk and restOk and lit and is(other.bg, other.color) and other.selBar == nil
+end)())
+
 -- T73 (P29, review A24): nav:ReplacePane puts a new pane in a view's place
 -- (a module placeholder swapped for the real pane) -- on screen: the old one
 -- hidden, the new one shown and refreshed; off screen: cached, kept hidden,

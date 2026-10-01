@@ -15,6 +15,15 @@
 -- files carried, Review's small font GameFontHighlightSmall, every UI.Hex /
 -- UI.RGB / UI.Fill token named in the tree present. Under forever: UI.THEMED
 -- true, the legacy tokens mapped onto 4.1's, no gate on UI.TEXT left in a UI file.
+--
+-- T74 (P30, docs/PLAN-refactor-ux.md, review A20, U1, U3): the kit's primitives
+-- read the palette and their edges are pixels. Under tbc (+1) a kit button, a
+-- check box and an edit box paint the literals they always did, with today's
+-- 1-unit edges, nothing registered. Under forever (+3) a button's edge is
+-- UI.px(1) and registered; a nav frame's active group is the `selected` fill
+-- with a 2-px accent bar on the left (its view tab's at the bottom), hover laid
+-- over it, never the hover colour; UI.RestylePixels re-lays a button's edge and
+-- its bar.
 HARNESS_FLAVOUR = { "forever", "tbc" }
 
 local here = arg[0]:match("^(.*)/[^/]+$")
@@ -140,6 +149,34 @@ if S.flavour == "tbc" then
     local missing, seen = TokenScan(UI)
     check("tbc: every UI.Hex / UI.RGB / UI.Fill token in the tree is in TBC's tables",
         seen > 0 and #missing == 0, #missing > 0 and table.concat(missing, " ") or (seen .. " reads"))
+
+    -- T74 (P30): the primitives read tokens that hold their old literals
+    local host = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+    local ah = UI.CreateButton(host, "Go", "accent-hover", { 60, 20 })
+    local red = UI.CreateButton(host, "x", "red", { 20, 20 })
+    local plain = UI.CreateButton(host, "Plain", nil, { 60, 20 })
+    local cb = UI.CreateCheckButton(host, "Tick")
+    local eb = UI.CreateEditBox(host, 60, 20)
+    local bd, cbd = ah.backdrop or {}, cb.backdrop or {}
+    local function same(c, r, g, b, a) return type(c) == "table" and near(c[1], r) and near(c[2], g)
+        and near(c[3], b) and near(c[4], a) end
+    local regs = 0
+    for fr in pairs(UI.pixelFrames or {}) do
+        if fr == ah or fr == cb or fr == eb then regs = regs + 1 end
+    end
+    if cb.GetScript and cb:GetScript("OnDisable") then cb:GetScript("OnDisable")(cb) end
+    local offLabel = cb.label and cb.label.textColor
+    check("tbc: a kit button, check box and edit box paint the old literals, 1-unit edges",
+        same(ah.color, 0.115, 0.115, 0.115, 1) and same(ah.hoverColor, A[1], A[2], A[3], 0.6)
+          and same(ah.bg, 0.115, 0.115, 0.115, 1) and same(ah.border, 0, 0, 0, 1)
+          and same(red.color, 0.6, 0.1, 0.1, 0.6) and same(red.hoverColor, 0.6, 0.1, 0.1, 1)
+          and same(plain.color, 0.115, 0.115, 0.115, 1) and same(plain.hoverColor, 0.23, 0.23, 0.23, 1)
+          and bd.edgeSize == 1 and type(bd.insets) == "table" and bd.insets.left == 1
+          and cbd.edgeSize == 1 and cbd.insets == nil and same(cb.bg, 0.115, 0.115, 0.115, 0.9)
+          and same(eb.bg, 0.115, 0.115, 0.115, 0.9) and regs == 0 and ah.selBar == nil
+          and offLabel and near(offLabel[1], 0.4) and near(offLabel[3], 0.4),
+        string.format("button %s/%s edge %s, check edge %s, %d registered", tostring(ah.color and ah.color[1]),
+            tostring(ah.hoverColor and ah.hoverColor[4]), tostring(bd.edgeSize), tostring(cbd.edgeSize), regs))
 
     print(string.format("%d ok, %d failed", ok, #fails))
     os.exit(#fails > 0 and 1 or 0)
@@ -413,6 +450,75 @@ do
     UI.PIXEL = true
     check("without UI.PIXEL StylizeFrame is today's 1-unit edge and records nothing",
         bg.edgeSize == 1 and bg.insets == nil and (UI.pixelFrames == nil or UI.pixelFrames[g] == nil))
+end
+
+--------------------------------------------------------------------------------
+-- 10. T74 (P30, review A20, U1, U3): the primitives' pixel edges and the one
+-- selection language
+--------------------------------------------------------------------------------
+do
+    local e = (768 / 1080) / 0.71
+    local host = scaled(0.71)
+    local b = UI.CreateButton(host, "Go", "accent-hover", { 60, 20 })
+    b.GetEffectiveScale = function() return 0.71 end
+    -- styled when made: the stub's frames all answer scale 1, so restyle once at 0.71
+    if UI.RestylePixels then UI.RestylePixels() end
+    local bd = b.backdrop or {}
+    check("T74: a kit button's edge and insets are UI.px(1), registered for restyling",
+        near(bd.edgeSize, e) and type(bd.insets) == "table" and near(bd.insets.left, e)
+          and near(bd.insets.bottom, e) and UI.pixelFrames[b] ~= nil
+          and near(b.bg and b.bg[1], 0.115) and near(b.border and b.border[4], 1),
+        tostring(bd.edgeSize))
+
+    -- a nav frame: the active group is selected + a left bar, hover laid over
+    local groups = {
+        { id = "a", text = "Spells", views = { { id = "one", text = "One" }, { id = "two", text = "Two" } } },
+        { id = "b", text = "Reports", views = { { id = "three", text = "Three" } } },
+    }
+    local nav = UI.CreateNavFrame("SpellTuner", "MDThemeNavTest", 700, 400, groups,
+        function(_, _, content) return CreateFrame("Frame", nil, content) end)
+    nav:Select("a", "one")
+    local act, other = nav.buttons[1], nav.buttons[2]
+    local tab = nav.viewButtons[1]
+    local P, A = UI.PALETTE, UI.accent
+    local function fill(f) return f and f.bg end
+    local sel = P.selected
+    local actFill = fill(act)
+    local barOk = act.selBar and act.selBar:IsShown() and act.selBar.side == "left"
+        and near(act.selBar.w, UI.px(2, act)) and act.selBar.color and near(act.selBar.color[1], A[1])
+        and not (other.selBar and other.selBar:IsShown())
+    local tabOk = tab and tab.selBar and tab.selBar:IsShown() and tab.selBar.side == "bottom"
+        and near(tab.selBar.h, UI.px(2, tab)) and near(fill(tab) and fill(tab)[4], sel[4])
+    -- hover on the inactive group: the hover layer, the fill stays its own
+    local enter, leave = other:GetScript("OnEnter"), other:GetScript("OnLeave")
+    if enter then enter(other) end
+    local otherHover = other.selHover and other.selHover:IsShown()
+        and near(fill(other) and fill(other)[4], other.color[4])
+    if leave then leave(other) end
+    local otherLeft = other.selHover and not other.selHover:IsShown()
+    -- hover kept on the active one: scripts there, the fill stays selected
+    local aEnter = act:GetScript("OnEnter")
+    if aEnter then aEnter(act) end
+    local activeHover = aEnter ~= nil and act.selHover and act.selHover:IsShown()
+        and near(fill(act) and fill(act)[4], sel[4])
+    if act:GetScript("OnLeave") then act:GetScript("OnLeave")(act) end
+    check("T74: the active nav group is selected + a 2-px left bar, never the hover fill",
+        actFill and near(actFill[1], sel[1]) and near(actFill[4], sel[4]) and not near(actFill[4], 0.6)
+          and barOk and tabOk and otherHover and otherLeft and activeHover,
+        string.format("fill %s, bar %s, tab %s, hover other %s / active %s", tostring(actFill and actFill[4]),
+            tostring(barOk), tostring(tabOk), tostring(otherHover), tostring(activeHover)))
+
+    -- a UI scale change: RestylePixels re-lays the button's edge and the bar
+    act.GetEffectiveScale = function() return 1 end
+    S.physicalHeight = 1440
+    local n = UI.RestylePixels and UI.RestylePixels()
+    local e2 = 768 / 1440
+    local abd = act.backdrop or {}
+    check("T74: UI.RestylePixels re-lays a kit button's edge and its selection bar",
+        type(n) == "number" and near(abd.edgeSize, e2) and near(abd.insets and abd.insets.left, e2)
+          and near(act.selBar and act.selBar.w, 2 * e2) and near(fill(act) and fill(act)[4], sel[4]),
+        string.format("edge %s, bar %s", tostring(abd.edgeSize), tostring(act.selBar and act.selBar.w)))
+    S.physicalHeight = 1080
 end
 
 --------------------------------------------------------------------------------
