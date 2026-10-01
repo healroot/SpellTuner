@@ -287,6 +287,53 @@ do
         string.format("calls=%d gate=%s", calls, g and g.text or "nil"))
 end
 
+--------------------------------------------------------------------------------
+-- T71 (P27, review A31): every gate carries a `short` -- its own verdict in a
+-- few words, what the Review list's Result cell shows -- on both roads: the
+-- v3 gates (a clean fixture, one with no meter reading, one with a death),
+-- the v2 gates (the author's practice fight, tools/data/practice/, and a v2
+-- stream with no mana samples). A short is ASCII, has no pipe, is at most 32
+-- characters, and is not just the gate's name (a gate that named none would
+-- get the name from SM.NewValidation).
+--------------------------------------------------------------------------------
+do
+    local cases = {}
+    cases[#cases + 1] = { "v3 clean", SM:Validate(buildFixture(), kit) }
+    cases[#cases + 1] = { "v3 no meter", SM:Validate(buildFixture({ meterOverridden = true }), kit) }
+    local dead = buildFixture()
+    dead.deaths = { { t = 5, tgt = 1 } }
+    cases[#cases + 1] = { "v3 death", SM:Validate(dead, kit) }
+    local fx = dofile(here .. "/data/practice/1790701698.lua")
+    local okP, vP = pcall(SM.Validate, SM, fx.rec, fx.kit)
+    cases[#cases + 1] = { "v2 practice", okP and vP or nil }
+    cases[#cases + 1] = { "v2 no samples", SM:Validate({
+        v = 2, dur = 10, pool = 100,
+        roster = { { name = "P", maxHP = 100, maxSecret = false } }, tracked = { 1 },
+        ev = { t = { 1 }, kind = { SM.K.DMG }, tgt = { 1 }, amt = { 10 }, x = { 0 } }, n = 1,
+        mana = { t = {}, v = {}, base = {}, cast = {} },
+        hp = { t = {}, hp = { [1] = {} }, max = { [1] = { 100 } } },
+        initial = { mana = 100, form = "caster" },
+        deaths = {}, foreignShare = 0,
+    }, kit) }
+    local bad, gates, seen = nil, 0, {}
+    for _, c in ipairs(cases) do
+        local v = c[2]
+        if not v then bad = bad or (c[1] .. ": no validation"); break end
+        for _, g in ipairs(v.gates) do
+            gates = gates + 1
+            seen[#seen + 1] = g.short
+            local s = g.short
+            if type(s) ~= "string" or s == "" or s == g.name or #s > 32
+                or s:find("[^ -~]") or s:find("|", 1, true) then
+                bad = bad or string.format("%s / %s: short=%s", c[1], g.name, tostring(s))
+            end
+        end
+    end
+    check("T71: every gate, v3 and v2, carries a short verdict (ASCII, no pipe, not its name)",
+        bad == nil and gates >= 30,
+        bad or string.format("%d gates: %s", gates, table.concat(seen, "; ")))
+end
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("  FAIL " .. f) end
 if #fails > 0 then os.exit(1) end

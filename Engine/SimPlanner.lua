@@ -1067,21 +1067,63 @@ local function RankLabel(id)
         or tostring(id)
 end
 
-function SP.Card(rec, best, bestResult, replayResult, baselineResults, cls, validation, opts)
+--------------------------------------------------------------------------------
+-- T71 (P27, review A17 / U20): the card as structured lines. SP.CardLines
+-- returns { { text = ..., tone = ... }, ... } -- `text` with no colour code,
+-- `tone` one of:
+--   head   the card's first line (the fight and the used numbers)
+--   text   an ordinary line
+--   good   a line that says something went well (headroom, one fewer drink,
+--          the "since your last card" progress)
+--   bad    a line that warns (NOT causal, an incomplete breakdown)
+--   note   a caveat a pane may show quieter; plain in chat
+--   muted  grey in chat as well (the three lines the chat card has always
+--          coloured |cff888888)
+-- and the list carries `used = { you = n, best = n }`, the two numbers the
+-- first line quotes. SP.CardText joins lines into the chat card: every line
+-- its text, a `muted` one with the grey around what follows its indent --
+-- exactly the strings SP.Card returned before (tools/reviewforever.lua holds
+-- the equality; the TBC and Forever cards were compared byte for byte, T71).
+-- The Review pane (UI/Dashboard_Review.lua, under UI.THEMED) paints the lines
+-- with its tokens instead of re-parsing the chat text.
+--------------------------------------------------------------------------------
+local MUTED = "|cff888888"
+function SP.CardText(lines)
+    local out = {}
+    for i, l in ipairs(lines or {}) do
+        local text = l.text or ""
+        if l.tone == "muted" then
+            local lead, rest = text:match("^(%s*)(.-)$")
+            text = lead .. MUTED .. rest .. "|r"
+        end
+        out[i] = text
+    end
+    return out
+end
+
+function SP.Card(...)
+    return SP.CardText(SP.CardLines(...))
+end
+
+function SP.CardLines(rec, best, bestResult, replayResult, baselineResults, cls, validation, opts)
     -- The card read a global `kit` that nothing ever set, so every price below
     -- has always used the live kit (a nil kit means that downstream). Kept nil
     -- on purpose: passing the coach's kit would change what TBC prints.
     local kit = nil
     local out = {}
-    local function add(fmt, ...) out[#out + 1] = select("#", ...) > 0 and string.format(fmt, ...) or fmt end
+    local function addT(tone, fmt, ...)
+        out[#out + 1] = { text = select("#", ...) > 0 and string.format(fmt, ...) or fmt, tone = tone }
+    end
+    local function add(fmt, ...) addT("text", fmt, ...) end
+    out.used = { you = SP.ManaUsed(replayResult), best = SP.ManaUsed(bestResult) }
 
     local nTargets = #(rec.tracked or {})
-    add("%s, %s (%s, %d targets)   used: you %s   best %s   diff %s",
+    addT("head", "%s, %s (%s, %d targets)   used: you %s   best %s   diff %s",
         rec.zone or "?", date and date("%H:%M", rec.id) or "", Clock(rec.dur or 0), nTargets,
         Fmt(SP.ManaUsed(replayResult)), Fmt(SP.ManaUsed(bestResult)),
         Fmt(math.abs(SP.ManaUsed(replayResult) - SP.ManaUsed(bestResult))))
     if best and best.foresees then
-        add("  NOT causal - sees this fight: %s", best.foreseesWhy or "a view of this fight")
+        addT("bad", "  NOT causal - sees this fight: %s", best.foreseesWhy or "a view of this fight")
     end
 
     -- verdict
@@ -1089,13 +1131,13 @@ function SP.Card(rec, best, bestResult, replayResult, baselineResults, cls, vali
     -- the tank is the honest answer to most fights.
     local budget = MD.PullBudget and MD.PullBudget:Estimate()
     if budget and budget.n >= 2 and replayResult.lowestMana - budget.perPull >= 0 then
-        add("  you had %s headroom - nothing here needed to change",
+        addT("good", "  you had %s headroom - nothing here needed to change",
             Fmt(replayResult.lowestMana - budget.perPull))
     elseif budget and budget.n >= 4 and budget.perPull > 0 then
         -- a drink is about the pool, so the saving is in mana USED
         local saved = SP.ManaUsed(replayResult) - SP.ManaUsed(bestResult)
         if saved > 0 then
-            add("  ~ one fewer drink per %d pulls", math.max(1, math.floor(budget.perPull / saved + 0.5)))
+            addT("good", "  ~ one fewer drink per %d pulls", math.max(1, math.floor(budget.perPull / saved + 0.5)))
         end
     end
 
@@ -1173,7 +1215,7 @@ function SP.Card(rec, best, bestResult, replayResult, baselineResults, cls, vali
                     or string.format("owes %s", Fmt(SP.ManaOwed(r, p))))
         end
         -- slashes, not pipes: a bare "|" is an escape sequence to the client
-        add("    |cff888888/md coach %s safe / health / cheap / regen plays that one in the replay|r",
+        addT("muted", "    /md coach %s safe / health / cheap / regen plays that one in the replay",
             tostring(opts.n or 1))
     end
 
@@ -1191,8 +1233,8 @@ function SP.Card(rec, best, bestResult, replayResult, baselineResults, cls, vali
                 tail[#tail + 1] = "and they are why you ran dry"
             end
             if #tail > 0 then add("  %s", table.concat(tail, ", ")) end
-            add("  (the fight would not have been the same fight without them - the mob lives longer.")
-            add("  This is what pressing them cost your mana, not whether to press them.)")
+            addT("note", "  (the fight would not have been the same fight without them - the mob lives longer.")
+            addT("note", "  This is what pressing them cost your mana, not whether to press them.)")
         end
         local cc = SM.CostOfCasts(rec, kit, { cc = true, utility = true, shift = true })
         if cc and cc.casts > 0 then
@@ -1245,7 +1287,7 @@ function SP.Card(rec, best, bestResult, replayResult, baselineResults, cls, vali
     MD:Debug("sim", "classifier: %d labelled vs %d spent (delta %+d)", sum, rec.spent or 0,
         sum - (rec.spent or 0))
     if math.abs(sum - (rec.spent or 0)) > math.max(50, (rec.spent or 0) * 0.02) then
-        add("  (warning: labelled %s of %s spent - the breakdown is incomplete)",
+        addT("bad", "  (warning: labelled %s of %s spent - the breakdown is incomplete)",
             Fmt(sum), Fmt(rec.spent or 0))
     end
 
@@ -1271,12 +1313,12 @@ function SP.Card(rec, best, bestResult, replayResult, baselineResults, cls, vali
             add("  why, at %.0fs - the first cast the plan would not have made:", first.t or 0)
             add("    you    %s%s", SpellName(first.spellID), onWhom)
             local yours = SP.CastWhy(first, names)
-            if yours then add("           |cff888888%s: %s|r", first.label, yours) end
+            if yours then addT("muted", "           %s: %s", first.label, yours) end
             local wantWho = first.wantedTgt and rec and rec.roster and rec.roster[first.wantedTgt]
             add("    plan   %s%s", first.wanted and SpellName(first.wanted) or "wait",
                 wantWho and (" -> " .. (wantWho.name or "?")) or "")
             local theirs = first.planReason and SP.ReasonText(first.planReason, names)
-            if theirs then add("           |cff888888%s|r", theirs) end
+            if theirs then addT("muted", "           %s", theirs) end
         end
     end
 
@@ -1288,7 +1330,7 @@ function SP.Card(rec, best, bestResult, replayResult, baselineResults, cls, vali
             or ("gates failed: " .. table.concat(failed, ", "))
     end
     caveats[#caveats + 1] = "late and idle come from running the plan alone, the rest from lockstep"
-    add("  caveat: %s", table.concat(caveats, "; "))
+    addT("note", "  caveat: %s", table.concat(caveats, "; "))
     return out
 end
 
@@ -1416,9 +1458,12 @@ function SP.Coach(rec, opts)
 
     local cls = SP.Classify(rec, scenario, best, kit)
     SP.Mark(rec, cls)
-    local card = SP.Card(rec, best, bestResult, you, results, cls, validation, opts)
+    -- T71 (P27): the structured lines, joined into the chat card; the
+    -- progress line rides on both (a fifth return for the Review pane)
+    local cardLines = SP.CardLines(rec, best, bestResult, you, results, cls, validation, opts)
     local progress = SP.Progress(rec.zone)
-    if progress then card[#card + 1] = "  " .. progress end
+    if progress then cardLines[#cardLines + 1] = { text = "  " .. progress, tone = "good" } end
+    local card = SP.CardText(cardLines)
     -- the last plan coached for this fight, so Play never searches (SPEC-v0.8 2.5)
     SP.plans[rec.id] = best
     -- A plan the author asked for ANYWAY, on a fight the gates rejected. The
@@ -1428,7 +1473,7 @@ function SP.Coach(rec, opts)
     if opts and opts.force and validation and not validation.ok then
         SP.forced[rec.id] = true
     end
-    return card, validation, cls, best
+    return card, validation, cls, best, cardLines
 end
 
 SP.plans = {}   -- [rec.id] = the plan Coach last produced for it
@@ -1803,22 +1848,36 @@ function SP.CoachAsync(rec, opts, onDone)
     local binds = SP.BindsFromRecording(rec, kit)
     if MD:Setting("simAllowRebinds") then binds = SP.MaxRankBinds(rec.initial and rec.initial.known) end
 
-    MD:Print("coach: searching (this runs across frames; /md coach cancel stops it)...")
+    -- T71 (P27, review U20): the Review pane coaches with opts.noChat (no chat
+    -- line: the pane shows the progress) and opts.onProgress(evals, max,
+    -- bestScore) for its "coaching... N of M plans". (Not opts.quiet: the
+    -- replay window's auto-coach has passed `quiet = true` since v0.13.9 and
+    -- has always printed this line -- honouring it would change TBC's chat.)
+    -- onDone's third argument is the card as structured lines (SP.CardLines), the search line included.
+    if not opts.noChat then
+        MD:Print("coach: searching (this runs across frames; /md coach cancel stops it)...")
+    end
     return SP.Search(scenario, { kit = kit, binds = binds, rec = rec },
-        function(evals) MD:Debug("sim", "search %d evaluations", evals) end,
+        function(evals, bestScore)
+            MD:Debug("sim", "search %d evaluations", evals)
+            if opts.onProgress then opts.onProgress(evals, MAX_EVALS, bestScore) end
+        end,
         function(best, bestResult, evals, alternates, winners)
             if not best then
-                onDone({ "coach: search cancelled." }, validation)
+                onDone({ "coach: search cancelled." }, validation,
+                    { { text = "coach: search cancelled.", tone = "note" } })
                 return
             end
             best.heldOn, best.heldOf = HeldOn(best, kit, rec.id)
             SP.strategies[rec.id] = winners
-            local lines = SP.Coach(rec, {
+            local lines, _, _, _, cardLines = SP.Coach(rec, {
                 n = opts.n, force = true, winners = winners,
                 extra = { { name = "best (search)", plan = best } },
             })
-            lines[#lines + 1] = string.format("  search: %d plans evaluated", evals)
-            onDone(lines, validation)
+            local searched = string.format("  search: %d plans evaluated", evals)
+            lines[#lines + 1] = searched
+            if cardLines then cardLines[#cardLines + 1] = { text = searched, tone = "note" } end
+            onDone(lines, validation, cardLines)
         end)
 end
 

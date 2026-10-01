@@ -629,6 +629,41 @@ do
         solverR.floorSeconds or 0, rulesR.floorSeconds or 0))
 end
 
+--------------------------------------------------------------------------------
+-- T71 (P27, review U20): the Review pane's coach -- SP.CoachAsync with
+-- `noChat` prints nothing to chat (the pane shows the progress instead), calls
+-- `onProgress(evals, max, bestScore)` as it searches, and hands onDone the
+-- card as structured lines (its third argument) that join into exactly the
+-- chat lines it hands beside them, the search line included.
+--------------------------------------------------------------------------------
+do
+    MD.cdb.recordings = { recGood }
+    if MD.coachSearch then MD.coachSearch:Cancel(); MD.coachSearch = nil end
+    local progress, maxSeen, lastEvals = 0, nil, 0
+    local done, chatOut, cardLines
+    local chat = CapturedChat(function()
+        local h = SP.CoachAsync(recGood, { n = 1, force = true, noChat = true,
+            onProgress = function(evals, max)
+                progress = progress + 1
+                maxSeen, lastEvals = max, evals
+            end }, function(lines, _, structured)
+                done, chatOut, cardLines = true, lines, structured
+            end)
+        local f = 0
+        while not done and f < 20000 do S.Tick(0.016); f = f + 1 end
+        if not done and h then h:Cancel() end
+    end)
+    local joined = SP.CardText(cardLines or {})
+    local same = type(chatOut) == "table" and #joined == #chatOut and #chatOut > 5
+    for i = 1, #(chatOut or {}) do if joined[i] ~= chatOut[i] then same = false end end
+    local searchLine = chatOut and chatOut[#chatOut] or ""
+    check("T71: the pane's coach is quiet in chat, reports progress, and its card lines join into its card",
+        done and #chat == 0 and progress > 0 and maxSeen == 300 and lastEvals > 0 and same
+        and searchLine:find("^  search: %d+ plans evaluated$") ~= nil,
+        string.format("done=%s chat=%d progress=%d max=%s evals=%d same=%s last=%s", tostring(done), #chat,
+            progress, tostring(maxSeen), lastEvals, tostring(same), searchLine))
+end
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("  FAIL " .. f) end
 if #fails > 0 then os.exit(1) end

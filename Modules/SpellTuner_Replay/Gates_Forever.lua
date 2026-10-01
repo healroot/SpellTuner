@@ -19,6 +19,11 @@ local STREAM = MD.StreamV3
 local V3 = STREAM.K
 local Threshold, MeanMax = SM.Threshold, SM.MeanMax
 
+-- T71 (P27, review A31): each gate's `short` (SM.NewValidation's seventh
+-- argument), the words a Review cell shows; the three meter gates share this
+-- one when there is no meter reading.
+local NO_METER = "no meter reading"
+
 -- Two new thresholds, only if some other file has not already added them
 -- (Files table). T64 (P20, review A3): their defaults are registered here,
 -- once, and the gate's `default` reads them back (Engine/SimModel.lua's
@@ -113,7 +118,8 @@ function SM.ValidateV3(rec, kit)
             limHpMean * 100, limHpMax * 100)
     end
     if anyScoredEstimated then hcText = hcText .. ", max estimated" end
-    Gate("health curves", scored > 0, hcText, nil, limHpMean, whyHp)
+    Gate("health curves", scored > 0, hcText, nil, limHpMean, whyHp,
+        scored > 0 and string.format("health, %d reproduced", scored) or "health")
 
     ----------------------------------------------------------------------------
     -- 4: no tracked death (as v2, the same gate).
@@ -131,14 +137,14 @@ function SM.ValidateV3(rec, kit)
             Gate("foreign healing", false,
                 string.format("no damage meter reading after the fight (%s)",
                     (meter and meter.why) or "no meter data"),
-                nil, limForeign, whyForeign)
+                nil, limForeign, whyForeign, NO_METER)
         else
             local total = (meter.own or 0) + (meter.others or 0)
             local fs = total > 0 and (meter.others or 0) / total or 0
             Gate("foreign healing", fs <= limForeign,
                 string.format("%.0f%% of healing on your group was somebody else's (limit %.0f%%)",
                     fs * 100, limForeign * 100),
-                fs, limForeign, whyForeign)
+                fs, limForeign, whyForeign, string.format("foreign healing %.0f%%", fs * 100))
         end
     end
 
@@ -154,7 +160,7 @@ function SM.ValidateV3(rec, kit)
             Gate("model calibrated", false,
                 string.format("no damage meter reading after the fight (%s)",
                     (meter and meter.why) or "no meter data"),
-                nil, limMeter, whyMeter)
+                nil, limMeter, whyMeter, NO_METER)
         else
             local sim = (r.healed or 0) - ((r.healByFamily and r.healByFamily.foreign) or 0)
             local mOwn = meter.own or 0
@@ -173,7 +179,8 @@ function SM.ValidateV3(rec, kit)
                     text = text .. string.format("; %s is %.0f%% of it", tostring(name), worstAmt / mOwn * 100)
                 end
             end
-            Gate("model calibrated", d <= limMeter, text, d, limMeter, whyMeter)
+            Gate("model calibrated", d <= limMeter, text, d, limMeter, whyMeter,
+                string.format("model %.0f%% off the meter", d * 100))
         end
     end
 
@@ -206,7 +213,7 @@ function SM.ValidateV3(rec, kit)
             Gate("heals attributed", false,
                 string.format("no damage meter reading after the fight (%s)",
                     (meter and meter.why) or "no meter data"),
-                nil, limAttrib, whyAttrib)
+                nil, limAttrib, whyAttrib, NO_METER)
         else
             local mOwn = meter.own or 0
             local d
@@ -220,7 +227,8 @@ function SM.ValidateV3(rec, kit)
             if SM.HEAL_AMOUNT ~= "effective" then
                 text = text .. "; only a shortfall is checked until a heal amount is known to be effective"
             end
-            Gate("heals attributed", okGate, text, d, limAttrib, whyAttrib)
+            Gate("heals attributed", okGate, text, d, limAttrib, whyAttrib,
+                string.format("heals %.0f%% off the meter", d * 100))
         end
     end
 

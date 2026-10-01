@@ -22,6 +22,9 @@ local a0 = arg[0]; arg[0] = here .. "/harness.lua"
 local MD = dofile(here .. "/harness.lua")
 arg[0] = a0
 local S = _G.STUB
+-- T71: UI/ContextMenu.lua is a main-TOC file (an integrator line); loaded
+-- here when the TOC the harness read does not list it yet
+if not MD.UI.CreateContextMenu then S.Load({ "UI/ContextMenu.lua" }, "SpellTuner", MD) end
 
 local chat = {}
 _G.DEFAULT_CHAT_FRAME = { AddMessage = function(_, m) chat[#chat + 1] = m end }
@@ -69,12 +72,35 @@ local function TextPresent(text)
     end
     return false
 end
-local function SelectRow(n)
+-- T71 (P27): under the theme the list is the generic table, whose rows take
+-- OnMouseUp(self, button) -- a click -- and count a second LeftButton on the
+-- same row within 0.4 s as a double-click. SelectRow moves the stub's clock
+-- a second first, so two selections in a row are never read as one
+-- double-click; DoubleClickRow clicks twice at the same moment.
+local function RowClick(r, button)
+    local fn = r and (r:GetScript("OnMouseUp") or r:GetScript("OnClick"))
+    if fn then fn(r, button or "LeftButton") end
+end
+local function SelectRow(n, button)
+    S.now = S.now + 1
     for _, r in ipairs(Rows()) do
         if CellText(r, "n") == tostring(n) then
-            local fn = r:GetScript("OnClick")
-            if fn then fn(r) end
+            RowClick(r, button)
             return true
+        end
+    end
+    return false
+end
+local function DoubleClickRow(n)
+    S.now = S.now + 1
+    for _, r in ipairs(Rows()) do
+        if CellText(r, "n") == tostring(n) then
+            RowClick(r, "LeftButton")
+            -- the first click re-rendered the list: find the row again
+            for _, r2 in ipairs(Rows()) do
+                if CellText(r2, "n") == tostring(n) then RowClick(r2, "LeftButton"); return true end
+            end
+            return false
         end
     end
     return false
@@ -185,15 +211,16 @@ do
     for _, r in ipairs(Rows()) do
         if CellText(r, "n") == "1" then first = CellText(r, "valid") end
     end
+    -- T71: the Result cell says "replays" where TBC's validate cell says "ok"
     check("B24: the selected, never validated row paints its verdict on the first render",
-        first ~= nil and first:find("ok", 1, true) == 1,
+        first ~= nil and first:find("replays", 1, true) == 1,
         "row1=" .. tostring(first))
 end
 
 SelectRow(1)
-Click(ButtonNamed("Validate"))
+local validateChat1 = CapturedChat(function() Click(ButtonNamed("Validate")) end)
 SelectRow(2)
-Click(ButtonNamed("Validate"))
+local validateChat2 = CapturedChat(function() Click(ButtonNamed("Validate")) end)
 
 local function ValidText(n)
     for _, r in ipairs(Rows()) do
@@ -201,10 +228,77 @@ local function ValidText(n)
     end
     return nil
 end
+-- T71 (A31): the failing row's cell is the first failing gate's own `short`
+-- ("no meter reading" for recBad's foreign healing gate), not its prose cut
+-- at the first parenthesis
 check("each recording is a row with its validate result",
-    (ValidText(1) or ""):find("ok", 1, true) ~= nil
-    and (ValidText(2) or ""):find("foreign healing", 1, true) ~= nil,
+    (ValidText(1) or ""):find("replays", 1, true) == 1
+    and ValidText(2) == "does not replay: no meter reading",
     "row1=" .. tostring(ValidText(1)) .. " row2=" .. tostring(ValidText(2)))
+
+--------------------------------------------------------------------------------
+-- T71 (P27, review U20): Validate answers in the window -- the RESULT area
+-- under the list shows the report (a row per gate: name, ok / FAIL, text),
+-- and chat gets one line.
+--------------------------------------------------------------------------------
+local function ResultRows()
+    local out = {}
+    for _, f in ipairs(S.allFrames) do
+        if f.cells and f.cells.label and f.cells.state and f:IsVisible() and f.data then
+            out[#out + 1] = f
+        end
+    end
+    table.sort(out, function(a, b) return (a.index or 0) < (b.index or 0) end)
+    return out
+end
+local function Strip(s) return ((s or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) end
+-- The result area scrolls too: its lines are read by winding it to the top
+-- with the wheel, then down a notch at a time, keyed by each row's place.
+local function ResultText()
+    local byIndex, maxIndex = {}, 0
+    local function Collect()
+        local new = 0
+        for _, r in ipairs(ResultRows()) do
+            local d = r.data
+            if r.index and not byIndex[r.index] then
+                byIndex[r.index] = d.wide and Strip(d.text)
+                    or (Strip(d.label) .. " | " .. Strip(d.state) .. " | " .. Strip(d.text))
+                if r.index > maxIndex then maxIndex = r.index end
+                new = new + 1
+            end
+        end
+        return new
+    end
+    local first = ResultRows()[1]
+    local frame = first and first.parentFrame
+    local wheel = frame and frame:GetScript("OnMouseWheel")
+    if wheel then for _ = 1, 60 do wheel(frame, 1) end end
+    Collect()
+    for _ = 1, 60 do
+        if not wheel then break end
+        wheel(frame, -1)
+        if Collect() == 0 then break end
+    end
+    if wheel then for _ = 1, 60 do wheel(frame, 1) end end
+    local parts = {}
+    for i = 1, maxIndex do parts[#parts + 1] = byIndex[i] or "?" end
+    return parts
+end
+do
+    local lines = ResultText()
+    local gateRows, failForeign, verdict = 0, false, false
+    for _, l in ipairs(lines) do
+        if l:find(" | ok | ", 1, true) or l:find(" | FAIL | ", 1, true) then gateRows = gateRows + 1 end
+        if l:find("foreign healing | FAIL | no damage meter reading", 1, true) then failForeign = true end
+        if l:find("does NOT replay", 1, true) then verdict = true end
+    end
+    local plain = Strip(validateChat2[1] or "")
+    check("T71: Validate shows the report in the result area, and chat gets one line",
+        gateRows == 8 and failForeign and verdict and #validateChat1 == 1 and #validateChat2 == 1
+        and plain:find("fight 2 validated - does not replay (foreign healing). The details are in Review.", 1, true) ~= nil,
+        string.format("gate rows=%d foreign FAIL=%s verdict=%s chat=%d/%d %s", gateRows, tostring(failForeign),
+            tostring(verdict), #validateChat1, #validateChat2, plain))
+end
 
 --------------------------------------------------------------------------------
 -- T43 (docs/SPEC-forever-ui.md 4.4): under the Forever theme the Review pane's
@@ -286,31 +380,121 @@ check("R40: with no export on this client the Export button is not offered",
     .. " enabled=" .. tostring(exportBtn and exportBtn.enabled))
 
 --------------------------------------------------------------------------------
--- 6: Coach refuses the failing fight and shift-click coaches it anyway
+-- 6: Coach refuses the failing fight -- T71 (P27, section 8.1 item 5): with
+--    no star, the refusal in the result area and one chat line; forcing is
+--    the row menu's Coach anyway (below), a shift-click no longer forces.
 --------------------------------------------------------------------------------
 SelectRow(2) -- recBad: no meter reading, fails "foreign healing" among others
-local coachBtn = ButtonNamed("Coach*") or ButtonNamed("Coach")
-assert(coachBtn ~= nil and coachBtn.text == "Coach*" and coachBtn.enabled ~= false,
-    "expected a clickable Coach*, got " .. tostring(coachBtn and coachBtn.text))
+local coachBtn = ButtonNamed("Coach")
+assert(coachBtn ~= nil and coachBtn.enabled ~= false and ButtonNamed("Coach*") == nil,
+    "expected a clickable Coach with no star, got " .. tostring(coachBtn and coachBtn.text))
 
-S.shift = false
+S.shift = true -- a held Shift changes nothing under the theme
 local plainLines = CapturedChat(function() Click(coachBtn) end)
-local refused = MD.SimPlanner.plans[recBad.id] == nil and (function()
-    for _, m in ipairs(plainLines) do if m:find("does not replay", 1, true) then return true end end
-    return false
-end)()
-
-S.shift = true
-Click(ButtonNamed("Coach*") or ButtonNamed("Coach"))
-local frames = 0
-while MD.coachSearch and frames < 20000 do S.Tick(0.016); frames = frames + 1 end
 S.shift = false
-local forced = MD.SimPlanner.plans[recBad.id] ~= nil
+-- a long line is cut into rows at word boundaries: read them as one text
+local refusedInPane = table.concat(ResultText(), " "):gsub("%s+", " ")
+    :find("Right-click the row -> Coach anyway to coach it regardless.", 1, true) ~= nil
+local refused = MD.SimPlanner.plans[recBad.id] == nil and MD.coachSearch == nil and #plainLines == 1
+    and Strip(plainLines[1]):find("fight 2 does not replay (foreign healing) - nothing to coach", 1, true) ~= nil
+check("Coach refuses the failing fight in the result area with one chat line, shift or not",
+    refused and refusedInPane,
+    string.format("refused=%s inPane=%s chat=%d (%s)", tostring(refused), tostring(refusedInPane),
+        #plainLines, tostring(plainLines[1])))
 
-check("Coach refuses the failing fight and shift-click coaches it anyway",
-    refused and forced,
-    string.format("refused=%s (%s) forced=%s (%d frames)", tostring(refused),
-        plainLines[1] or "no chat", tostring(forced), frames))
+--------------------------------------------------------------------------------
+-- T71 (P27, review U22): the right-click row menu -- Play, Validate, Coach
+-- (greyed on a fight that does not replay, the reason beside it), Coach
+-- anyway, Pin -- and its Coach anyway forces: the plan is made and marked
+-- forced, the card lands in the result area, chat has one line.
+--------------------------------------------------------------------------------
+do
+    SelectRow(2, "RightButton")
+    -- the menu is the frame holding the "Coach anyway" item (UI/ContextMenu.lua)
+    local menuFrame
+    for _, f in ipairs(S.allFrames) do
+        if f.kind == "Button" and f.text == "Coach anyway" and f.parentFrame and f.parentFrame ~= reviewFrame then
+            menuFrame = f.parentFrame
+        end
+    end
+    local labels, coachItem, anyway = {}, nil, nil
+    local items = {}
+    for _, f in ipairs(S.allFrames) do
+        if f.kind == "Button" and f.parentFrame == menuFrame and f.shown then items[#items + 1] = f end
+    end
+    -- in the order they stand (the y of each row's TOPLEFT point is not kept by
+    -- the stub, so the order is the order they were built, which is the menu's)
+    for _, r in ipairs(items) do
+        labels[#labels + 1] = r.text
+        if r.text == "Coach" then coachItem = r end
+        if r.text == "Coach anyway" then anyway = r end
+    end
+    local menu = { frame = menuFrame }
+    local menuOk = menuFrame ~= nil and menuFrame:IsShown()
+        and table.concat(labels, ",") == "Play,Validate,Coach,Coach anyway,Pin"
+        and coachItem and coachItem.enabled == false and coachItem.note:GetText() == "does not replay"
+        and anyway and anyway.enabled ~= false
+    local chat = CapturedChat(function()
+        Click(anyway)
+        local frames = 0
+        while MD.coachSearch and frames < 20000 do S.Tick(0.016); frames = frames + 1 end
+    end)
+    local SP = MD.SimPlanner
+    local card = false
+    for _, l in ipairs(ResultText()) do
+        if l:find("caveat:", 1, true) then card = true end
+    end
+    check("T71: the row menu offers Play, Validate, Coach (greyed: does not replay), Coach anyway, Pin; Coach anyway forces",
+        menuOk and not menu.frame:IsShown() and SP.plans[recBad.id] ~= nil and SP.forced[recBad.id] == true
+        and card and #chat == 1 and Strip(chat[1]):find("fight 2 coached - used: you", 1, true) ~= nil,
+        string.format("menu=%s items=%s plan=%s forced=%s card=%s chat=%d %s", tostring(menuOk),
+            table.concat(labels, ","), tostring(SP.plans[recBad.id] ~= nil), tostring(SP.forced[recBad.id]),
+            tostring(card), #chat, tostring(chat[1])))
+end
+
+--------------------------------------------------------------------------------
+-- T71 (P27, review A17): the card's structured lines (SP.CardLines) join into
+-- exactly the chat card SP.Coach returns, and the result area paints those
+-- lines -- its first line is the head of the card the menu's Coach anyway
+-- (above) made for the same fight.
+--------------------------------------------------------------------------------
+do
+    local SP = MD.SimPlanner
+    local card, _, _, _, cardLines = SP.Coach(recBad, { n = 2, force = true })
+    local joined = SP.CardText(cardLines or {})
+    local same = cardLines ~= nil and #joined == #card and #card > 5
+    for i = 1, #card do if joined[i] ~= card[i] then same = false end end
+    local muted = 0
+    for _, l in ipairs(cardLines or {}) do if l.tone == "muted" then muted = muted + 1 end end
+    local first = ResultText()[1] or ""
+    local head = Strip(card[1]):match("^(.-)used:") or "?"
+    check("T71: the card lines join into the chat card byte for byte; the result area shows them",
+        same and muted > 0 and cardLines.used ~= nil and first:find(head, 1, true) == 1,
+        string.format("lines=%d chat=%d same=%s muted=%d first=%s", cardLines and #cardLines or -1, #card,
+            tostring(same), muted, first))
+end
+
+--------------------------------------------------------------------------------
+-- T71 (P27, review U22): a double-click on a row plays it.
+--------------------------------------------------------------------------------
+do
+    local W0 = MD.Replay._state()
+    if W0.frame then W0.frame:Hide() end
+    MD:SelectView("reports", "review")
+    local opened = {}
+    local origOpen = MD.Replay.Open
+    MD.Replay.Open = function(self, spec, ...) opened[#opened + 1] = spec; return origOpen(self, spec, ...) end
+    SelectRow(2) -- a single click opens nothing
+    local afterSingle = #opened
+    DoubleClickRow(1)
+    MD.Replay.Open = origOpen
+    local W = MD.Replay._state()
+    check("T71: a double-click on a row opens the replay on it (a single click does not)",
+        afterSingle == 0 and #opened == 1 and opened[1] == "1" and W.frame ~= nil and W.frame:IsShown(),
+        string.format("single=%d opened=%s shown=%s", afterSingle, table.concat(opened, ","),
+            tostring(W.frame and W.frame:IsShown())))
+    if W.frame then W.frame:Hide() end
+end
 
 --------------------------------------------------------------------------------
 -- 7: Play opens the replay window on the selected fight
@@ -347,9 +531,10 @@ Click(ButtonNamed("Validate"))
 -- (UI/Dashboard_Review.lua's `pane`), not the window's nav chrome -- so this
 -- walk never meets UI/Style.lua's own "x" close glyph (modulecheck's own
 -- named exception for that byte; this suite has none to make).
+-- T71: the rows sit in the list table, a child of the pane; the walk starts
+-- at the pane, so the result area and the row menu are scanned too.
 local function TabRoot()
-    local r = Rows()[1]
-    return r and r.parentFrame
+    return reviewFrame
 end
 local function Under(f, root)
     if not root then return false end
@@ -440,6 +625,59 @@ do
         string.format("pins=%s,%s,%s line=%s", tostring(list[1].pinned), tostring(list[2].pinned),
             tostring(list[3].pinned), tostring(l3[1])))
     for _, r in ipairs(MD.cdb.recordings) do r.pinned = false end
+end
+
+--------------------------------------------------------------------------------
+-- T71 (P27, review U25 / U17): a list longer than the pane scrolls -- the
+-- table shows a window of rows, the mouse wheel moves it, the last row is
+-- reachable, and no "... and N more" tail line is painted (TBC keeps P9's).
+--------------------------------------------------------------------------------
+do
+    local many = {}
+    for i = 1, 36 do
+        local r = {}
+        for k, v in pairs(recGood) do r[k] = v end
+        r.id = 2000000000 + i * 60
+        r.pinned = false
+        many[i] = r
+    end
+    MD.cdb.recordings = many
+    MD:SelectView("reports", "review")
+    local function Shown()
+        local nums = {}
+        for _, r in ipairs(Rows()) do
+            local n = tonumber(CellText(r, "n"))
+            if n then nums[#nums + 1] = n end
+        end
+        table.sort(nums)
+        return nums
+    end
+    local first = Shown()
+    local listFrame = Rows()[1] and Rows()[1].parentFrame
+    local wheel = listFrame and listFrame:GetScript("OnMouseWheel")
+    local notches = 0
+    while wheel and notches < 40 do
+        local before = table.concat(Shown(), ",")
+        wheel(listFrame, -1)
+        notches = notches + 1
+        if table.concat(Shown(), ",") == before then break end
+    end
+    local last = Shown()
+    local tail = TextPresent("... and 27 more (scroll: not yet)")
+    for _, f in ipairs(S.allFrames) do
+        if f.GetText and f:IsVisible() then
+            local okt, t = pcall(f.GetText, f)
+            if okt and type(t) == "string" and t:find("more (scroll", 1, true) then tail = true end
+        end
+    end
+    -- and back up to the top
+    if wheel then for _ = 1, 40 do wheel(listFrame, 1) end end
+    local top = Shown()
+    check("T71: 36 fights scroll in the list -- the wheel reaches the last, no tail line",
+        #first >= 3 and #first < 36 and first[1] == 1 and last[#last] == 36 and #last == #first
+        and top[1] == 1 and not tail,
+        string.format("first=%s..%s (%d) last=%s..%s notches=%d tail=%s", tostring(first[1]),
+            tostring(first[#first]), #first, tostring(last[1]), tostring(last[#last]), notches, tostring(tail)))
 end
 
 print(string.format("\n%d ok, %d failed", ok, #fails))

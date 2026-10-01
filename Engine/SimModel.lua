@@ -1596,9 +1596,14 @@ function SM.NewValidation(rec, sc)
     local out = { gates = {}, excluded = {}, ok = true, rec = rec,
                   energize = (sc.initial and sc.initial.energize) or 0,
                   energizeAssumed = sc.energizeAssumed or false }
-    local function Gate(name, ok, text, value, limit, why)
+    -- T71 (P27, review A31): `short` is the gate's own verdict in a few words
+    -- ("health", "mana 3.9% off", "no meter reading") -- what a list cell
+    -- shows, so no pane parses `text`'s prose for it. A gate always has one;
+    -- the name stands in when a caller gives none.
+    local function Gate(name, ok, text, value, limit, why, short)
         out.gates[#out.gates + 1] = { name = name, ok = ok, text = text,
-                                      value = value, limit = limit, why = why }
+                                      value = value, limit = limit, why = why,
+                                      short = short or name }
         if not ok then out.ok = false end
     end
     return out, Gate
@@ -1620,12 +1625,12 @@ function SM.GateMana(Gate, r, rec, note)
             -- of an escape sequence and eats what follows (CLAUDE.md). This said
             -- "mean |d|" from v0.7.3 until the Review tab started painting it.
             string.format("mean off by %.1f%% of pool (limit %.0f%%)", mMean * 100, limMean * 100) .. note,
-            mMean, limMean, whyMean)
+            mMean, limMean, whyMean, string.format("mana %.1f%% off", mMean * 100))
         Gate("mana max", mMax <= limMax,
             string.format("worst sample off by %.1f%% of pool (limit %.0f%%)", mMax * 100, limMax * 100) .. note,
-            mMax, limMax, whyMax)
+            mMax, limMax, whyMax, string.format("mana %.1f%% off at worst", mMax * 100))
     else
-        Gate("mana curve", false, "no mana samples recorded" .. note, nil, nil, whyMean)
+        Gate("mana curve", false, "no mana samples recorded" .. note, nil, nil, whyMean, "no mana samples")
     end
     return mMean, mMax
 end
@@ -1635,17 +1640,19 @@ end
 -- before anyone died and is recorded whole, so a plan that keeps them alive
 -- is answering the fight that was really coming -- which is the question.
 function SM.GateDeath(Gate, rec)
+    local deaths = #(rec.deaths or {})
+    local short = deaths == 0 and "nobody died" or string.format("%d death(s)", deaths)
     if rec.practice then
         Gate("no tracked death", true,
-            #(rec.deaths or {}) == 0 and "nobody died"
+            deaths == 0 and "nobody died"
                 or string.format("%d death(s) - practice: the whole damage timeline is recorded", #rec.deaths),
-            nil, nil, "practice fights record damage the dead would have taken")
+            nil, nil, "practice fights record damage the dead would have taken", short)
     else
-        Gate("no tracked death", #(rec.deaths or {}) == 0,
-            #(rec.deaths or {}) == 0 and "nobody died"
+        Gate("no tracked death", deaths == 0,
+            deaths == 0 and "nobody died"
                 or string.format("%d death(s): damage after one is truncated in the log",
                     #rec.deaths),
-            nil, nil, "post-death damage truncation")
+            nil, nil, "post-death damage truncation", short)
     end
 end
 
@@ -1693,7 +1700,7 @@ function SM.GateSpend(Gate, rec, sc, kit, spend, why)
             coverage * 100, spend > 0 and modelled / spend * 100 or 0,
             spend > 0 and replayed / spend * 100 or 0,
             unclassified > 0 and string.format("; %d mana on spells nothing can name", unclassified) or ""),
-        coverage, 0.90, why)
+        coverage, 0.90, why, string.format("spend %.0f%% accounted for", coverage * 100))
 end
 
 -- Validate(rec) -> { ok, gates = { {name, ok, value, limit, why, text}, ... },
@@ -1752,7 +1759,8 @@ local function ValidateV2(rec, kit)
             excluded)
             or string.format("no target reproduced within %.0f%% mean / %.0f%% worst",
                 limHpMean * 100, limHpMax * 100),
-        nil, limHpMean, whyHp)
+        nil, limHpMean, whyHp,
+        scored > 0 and string.format("health, %d reproduced", scored) or "health")
 
     -- 5: a death truncates the damage that would have followed
     SM.GateDeath(Gate, rec)
@@ -1767,11 +1775,11 @@ local function ValidateV2(rec, kit)
         string.format("%.0f%% of healing on your group was somebody else's (%s)",
             fs * 100, rec.practice and "practice: scripted, replayed exactly"
                 or string.format("limit %.0f%%", limForeign * 100)),
-        fs, limForeign, whyForeign)
+        fs, limForeign, whyForeign, string.format("foreign healing %.0f%%", fs * 100))
 
     -- 7: is the model right about the spells that actually mattered here
     local spendBySpell, spend = SM.OwnSpend(rec)
-    local drifted, uncalibrated = nil, {}
+    local drifted, uncalibrated, driftShort = nil, {}, nil
     for spellID, mana in pairs(spendBySpell) do
         if spend > 0 and mana / spend >= 0.10 and MD.SpellData.spells[spellID] then
             local d = MD.Calibration and MD.Calibration:Drift(spellID)
@@ -1779,6 +1787,7 @@ local function ValidateV2(rec, kit)
                 uncalibrated[#uncalibrated + 1] = MD.API.SpellName(spellID) or spellID
             elseif d >= 0.03 then
                 drifted = string.format("%s is %.0f%% off the model", MD.API.SpellName(spellID) or spellID, d * 100)
+                driftShort = string.format("model %.0f%% off", d * 100)
             end
         end
     end
@@ -1786,7 +1795,8 @@ local function ValidateV2(rec, kit)
         drifted or (#uncalibrated > 0
             and ("not yet calibrated: " .. table.concat(uncalibrated, ", "))
             or "every spell worth 10% of the spend is within 3%"),
-        nil, 0.03, "Calibration ALERT_REL")
+        nil, 0.03, "Calibration ALERT_REL",
+        driftShort or (#uncalibrated > 0 and "not yet calibrated" or "calibrated"))
 
     -- 8: did the engine even know what the mana went on (SM.GateSpend)
     SM.GateSpend(Gate, rec, sc, kit, spend, "12.6% utility hole in BF-1")
