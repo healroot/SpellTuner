@@ -1079,3 +1079,14 @@ pointer enters again. A failed `SetPropagateKeyboardInput` (only `pcall`'d) can 
 keys at most while the player points at the window out of combat. Practice keeps its own keyboard
 rules. The author's answer, `docs/PLAN-refactor-ux.md` 8.1 item 12; the play button's tooltip had
 promised Space since v0.8 without it working (review U27).
+
+## No dead ends (2026-10-01, T73, P29)
+
+A placeholder's **Turn on** switches its module on, with what it needs, and loads it at once (the
+author's answer 6 to `docs/PLAN-refactor-ux.md` section 8). This retires the T16b rule "a placeholder
+never loads a module". Settings -> Modules stays the way to switch one off, and a module switched off
+but still loaded gets a Reload UI button there. On TBC the Options slider for `db.simFloor` now reads
+"Danger line for built fights (%)". Since v0.10.3 a recorded fight measures its own line, and since
+T20 a plan decides on the biggest hit so far, so the flat line is what a fight built in Simulate is
+scored on (and a recorded target's fallback). The old label and tooltip called it the scoring line.
+This is a text fix; the value and its use are unchanged.

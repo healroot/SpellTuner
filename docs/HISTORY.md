@@ -4211,3 +4211,30 @@ releasecheck's package file counts (tbc 63, was 62; forever 31, was 30: `UI/Cont
 run-to-run noise (ms, table addresses, the sliced search's frame and evaluation counts in reccheck,
 reviewui, replayui and simwindow); every other TBC suite equal. In game: `docs/TESTING.md` §44 items
 20, 22 and 23 (they need a build newer than the 0.16.4 install). **Next:** wave 12 (P29-).
+
+## 2026-10-01 — the refactor plan, wave 12: T73 (P29)
+
+Wave 12 of `docs/PLAN-refactor-ux.md` cherry-picked onto `e00fd63`, then the integrator's lines
+(CLAUDE.md, `docs/DECISIONS.md`, `docs/TESTING.md`, `docs/TOOLS.md`,
+`tools/data/expected-counts.json`, this entry) in one commit. No merge fix was needed. The version
+stays 0.16.4. No TOC changed (no new file). The optional `combatNoted = false` in
+`Core_Forever.lua`'s `DEFAULTS.ui` was not added (nil reads the same; not an integrator file).
+
+- **T73 (P29)** (`f7ae260`, `4301e53`): no dead ends (review U-items, mockup M1, the author's answer 6)
+  -- `nav:ReplacePane` in `UI/Style.lua`; the Forever host's `MODULE_VIEWS` placeholders with
+  **Turn on** (`MD:SetModule(name, true)`, loading at once) swapped for the real pane on
+  `MODULE_LOADED`; Settings -> Modules' **Reload UI** on a module that unloads at the next reload
+  (`MD.API.Call("ReloadUI")`); the first combat hide's one chat line, once ever
+  (`db.ui.combatNoted`); `/st dump`'s new order (errors after the modules, one capabilities summary
+  before the table); on TBC the `db.simFloor` slider's label "Danger line for built fights (%)".
+  dashui tbc 65 (was 64), navui tbc 36 (was 35), practiceforever forever 29 (was 28), reviewforever
+  forever 20 (was 18), wincheck forever 62 (was 61); consolecheck and defaultscheck changed in place
+  (20, 48). DECISIONS "No dead ends" (retires T16b's "a placeholder never loads a module").
+
+`make check`: 68 runs, all passed, in the worktree and in a `git archive` export (63 counted runs
+against 63 expected); apicheck 0 findings over 57 files, textcheck 0 over 93. Each TBC suite's full
+output against `e00fd63` differs only by dashui's and navui's one new assertion each, themecheck
+tbc's token-read count (97 -> 99: the placeholder's `UI.RGB("accent")` / `UI.RGB("text2")`) and
+run-to-run noise (ms, table addresses, the sliced search's evaluation counts in replayui and
+reviewui); every other TBC suite equal. In game: `docs/TESTING.md` §44 items 19 and 21 (they need a
+build newer than the 0.16.4 install). **Next:** wave 13 (P30-).

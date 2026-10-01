@@ -12,7 +12,7 @@
   "corecheck/forever": 24,
   "corecheck/tbc": 24,
   "costcheck/tbc": 3,
-  "dashui/tbc": 64,
+  "dashui/tbc": 65,
   "defaultscheck/forever": 52,
   "defaultscheck/tbc": 48,
   "forevercheck/forever": 16,
@@ -24,10 +24,10 @@
   "measurecheck/forever": 30,
   "migrate/tbc": 7,
   "modulecheck/forever": 19,
-  "navui/tbc": 35,
+  "navui/tbc": 36,
   "parsecheck/forever": 15,
   "practice/tbc": 84,
-  "practiceforever/forever": 28,
+  "practiceforever/forever": 29,
   "practiceui/tbc": 52,
   "probecheck/tbc": 88,
   "reccheck/tbc": 63,
@@ -41,7 +41,7 @@
   "replayforever/forever": 28,
   "replayui/tbc": 107,
   "restcheck/tbc": 51,
-  "reviewforever/forever": 18,
+  "reviewforever/forever": 20,
   "reviewui/tbc": 49,
   "runcheck/tbc": 81,
   "scenariocheck/forever": 14,
@@ -61,5 +61,5 @@
   "tipcheck/forever": 38,
   "ttocheck/tbc": 45,
   "verifycheck/tbc": 14,
-  "wincheck/forever": 61
+  "wincheck/forever": 62
 }
