@@ -14,10 +14,18 @@
 -- of swallowing clicks in its own rectangle, which is what a clock parked in
 -- the middle of the screen wants. The setting is THIS frame's alone: the
 -- minimap button and the ElvUI datatexts keep their tooltips.
+--
+-- T93 (docs/SPEC-next.md 7.1, decisions 14 and 17): the words are drawn by
+-- UI/ClockView.lua from MD:GetClockFace() -- the label, the value and the
+-- secondary segment at FIXED places (no longer centred), the same bytes as
+-- MD:GetDisplayString; the preview is the view's message line, the pulse the
+-- view's. A left-click opens the window out of combat only, as on Forever.
+-- The mover seam (ApplyPoint, ResetPosition, Preview) is MD.Widget, provided
+-- as MD.ClockWidget -- the Forever clock provides the same name.
 local _, MD = ...
 local UI = MD.UI
 
-local widget, text, bar, barBack
+local widget, view, bar, barBack
 local shown = false
 local forceUntil = 0        -- first-run / unlock preview
 local flashedThisFight = false
@@ -41,6 +49,17 @@ local function Snap()
     snappedPx = e
 end
 
+-- T93: what the view is told about this line. The face already obeys
+-- db.showRest / db.showCooldown (MD:GetClockFace gates its own secondary);
+-- the switches are passed too, so the view and the face agree.
+-- One table, refreshed in place at each paint (4 a second).
+local look = { labelSample = "FULL", show = {} }
+local function Look()
+    look.show.rest = MD.db.showRest ~= false
+    look.show.cd = MD.db.showCooldown ~= false
+    return look
+end
+
 local function CreateWidget()
     widget = CreateFrame("Frame", "SpellTunerWidget", UIParent, "BackdropTemplate")
     widget:SetSize(180, 30)
@@ -50,10 +69,9 @@ local function CreateWidget()
     widget:EnableMouse(false)
     widget:RegisterForDrag("LeftButton")
 
-    text = widget:CreateFontString(nil, "OVERLAY", UI.FONT)
-    text:SetPoint("TOP", widget, "TOP", 0, -4)
-    text:SetTextColor(UI.RGB("text"))
-    widget.text = text
+    -- T93: the words, in three fixed segments (UI/ClockView.lua)
+    view = MD.ClockView.Build(widget, Look())
+    widget.view = view
 
     bar = CreateFrame("StatusBar", nil, widget)
     bar:SetSize(BAR_W, BAR_H)
@@ -89,27 +107,23 @@ local function CreateWidget()
         if MD.db.widgetTooltip == false then return end
         local Tip = MD.Tip
         local detail = Tip.ClockDetail()
-        local hints = { Tip.ClockPair("Left-click", "open the window") }
+        local hints = { Tip.ClockPair("Left-click", "open the window (out of combat)") }
         if not detail then hints[2] = Tip.ClockPair("Shift", "spend, regen and cooldowns") end
         Tip:Show(self, Tip:Clock(hints, detail), { anchor = "ANCHOR_TOP" })
     end)
     widget:SetScript("OnLeave", function() MD.Tip:Hide() end)
+    -- T93 (decision 17): out of combat only -- the window hides in combat (C1)
+    -- and the clock is up in every fight, where a stray click would put the
+    -- window over the party (the Forever clock's rule, T70)
     widget:SetScript("OnMouseUp", function(_, button)
-        if button == "LeftButton" and MD.db.locked and MD.ToggleDashboard then
+        if button == "LeftButton" and MD.db.locked and not MD.inCombat and MD.ToggleDashboard then
             MD:ToggleDashboard()
         end
     end)
 
-    -- pulse animation (used by MD:Alert and the one-per-fight 30s flash)
-    local pulse = widget:CreateAnimationGroup()
-    for i, dir in ipairs({ 1, -1, 1, -1 }) do
-        local a = pulse:CreateAnimation("Alpha")
-        a:SetFromAlpha(dir > 0 and 1 or 0.2)
-        a:SetToAlpha(dir > 0 and 0.2 or 1)
-        a:SetDuration(0.25)
-        a:SetOrder(i)
-    end
-    widget.pulse = pulse
+    -- pulse animation (used by MD:Alert and the one-per-fight 30s flash):
+    -- the view's since T93
+    widget.pulse = view.pulse
 
     widget:Hide()
     MD:ApplyWidgetPosition()
@@ -127,8 +141,7 @@ local function CreateWidget()
 
         if not MD.db.locked or GetTime() < forceUntil then
             -- T82 (M6): the preview in the accent, over a full accent bar
-            text:SetText("SpellTuner - drag me")
-            text:SetTextColor(UI.RGB("accent"))
+            view:Message("SpellTuner - drag me", UI.RGB("accent"))
             bar:SetValue(5)
             bar:SetStatusBarColor(UI.RGB("accent"))
             return
@@ -136,16 +149,15 @@ local function CreateWidget()
 
         if textAcc >= 0.25 then
             textAcc = 0
-            local str = MD:GetDisplayString()
-            text:SetText(str ~= "" and str or "|cff999999OOM ...|r")
-            text:SetTextColor(UI.RGB("text"))
+            -- T93: the face, drawn in segments; no face yet draws "OOM ..."
+            view:Paint(MD:GetClockFace(), Look())
 
             -- one attention event per fight: first time TTO crosses below 30s
             if not flashedThisFight then
                 local s = MD:GetManaState()
                 if s and s.mode == "oom" and s.tto and s.tto < 30 and s.stable then
                     flashedThisFight = true
-                    widget.pulse:Play()
+                    view:Pulse()
                 end
             end
         end
@@ -172,13 +184,43 @@ function MD:ApplyWidgetPosition()
 end
 
 function MD:PulseWidget()
-    if widget and shown then widget.pulse:Play() end
+    if widget and shown then view:Pulse() end
 end
 
 function MD:ForceWidgetPreview(seconds)
     forceUntil = GetTime() + (seconds or 60)
     MD:UpdateVisibility()
 end
+
+--------------------------------------------------------------------------------
+-- T93 (docs/SPEC-next.md 6.3, the mover seam): what a mover (EllesmereUI's
+-- /unlock, T97) or Settings -> Clock (T102) calls on either line's clock,
+-- under one name, MD.ClockWidget -- here this widget, on Forever MD.Clock.
+--   ApplyPoint()        put the frame at the stored place (db.pos)
+--   ResetPosition()     the default place (MD.DEFAULTS.pos), stored and applied
+--   Preview(seconds)    the clock up and draggable for `seconds` (60), 0 ends it
+--   frame               the frame (nil until MD_READY)
+-- None of them shows or hides the frame: MD:UpdateVisibility does.
+--------------------------------------------------------------------------------
+MD.Widget = MD.Widget or {}
+local Widget = MD.Widget
+
+function Widget:ApplyPoint()
+    MD:ApplyWidgetPosition()
+end
+
+function Widget:ResetPosition()
+    local d = MD.DEFAULTS and MD.DEFAULTS.pos
+    if type(d) ~= "table" then return end
+    MD.db.pos = { d[1], d[2], d[3], d[4] }
+    MD:ApplyWidgetPosition()
+end
+
+function Widget:Preview(seconds)
+    MD:ForceWidgetPreview(tonumber(seconds) or 60)
+end
+
+MD:Provide("ClockWidget", Widget)
 
 --------------------------------------------------------------------------------
 -- Visibility: the single owner. In combat: always show. Out of combat:
@@ -196,19 +238,18 @@ function MD:UpdateVisibility()
     else
         widget:EnableMouse(MD.db.widgetTooltip ~= false)
     end
-    if not unlocked and not MD.player.usesMana then
-        wantShown = false
-    else
-        -- the mana is read only when the answer depends on it (locked, out
-        -- of combat), as before
-        local pct
-        if not unlocked and not MD.inCombat then -- T58 (P14, A28): the kernel's flag (Core.lua)
-            local mana = UnitPower("player", 0)
-            local manaMax = UnitPowerMax("player", 0)
-            pct = manaMax > 0 and mana / manaMax or 1
-        end
-        wantShown = MD.Visibility.Want(pct, shown, MD.inCombat, unlocked)
+    -- T93: "no mana pool, no clock" is the shared rule's manaUsersOnly now
+    -- (UI/Visibility.lua), the same answer as the gate that stood here. The
+    -- mana is read only when the answer depends on it (locked, out of combat,
+    -- a mana user), as before.
+    local usesMana = MD.player.usesMana
+    local pct
+    if not unlocked and not MD.inCombat and usesMana then -- T58 (P14, A28): the kernel's flag (Core.lua)
+        local mana = UnitPower("player", 0)
+        local manaMax = UnitPowerMax("player", 0)
+        pct = manaMax > 0 and mana / manaMax or 1
     end
+    wantShown = MD.Visibility.Want(pct, shown, MD.inCombat, unlocked, nil, usesMana and true or false)
 
     if wantShown ~= shown then
         shown = wantShown
@@ -218,6 +259,7 @@ end
 
 MD:RegisterCallback("MD_READY", function()
     CreateWidget()
+    Widget.frame = widget
     MD:UpdateVisibility()
 end)
 

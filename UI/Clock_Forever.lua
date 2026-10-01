@@ -9,8 +9,21 @@
 -- Engine/ManaPool_Forever.lua's (MD.Pool), which loads just before it; the
 -- clock reads MD.Pool.model and MD.Pool:Project. MD.Clock:Pool() and
 -- MD.Clock.model stay as aliases of the pool's for their existing readers.
+--
+-- T93 (docs/SPEC-next.md 7.1, decisions 14, 16 and 18): the clock's words are
+-- drawn by UI/ClockView.lua from MD.ManaModel.Face -- three segments at fixed
+-- places, each in its tone (F1: TBC's red under 20 s, amber under 60 s; never
+-- an arrow); no clock for a character without a mana pool (F3, the shared
+-- rule's manaUsersOnly); db.clock.clickThrough (F4); the pulse, once per fight
+-- under 30 s and on MD:Alert (F5); db.clock.showRest (F6). The mover seam
+-- (ApplyPoint, ResetPosition, Preview) is MD.Clock, provided as MD.ClockWidget.
 local _, MD = ...
 local UI = MD.UI
+
+-- T93: the two switches this file reads, declared here (docs/SPEC-next.md 11:
+-- a default is registered by the file that reads it). db.clock's shown /
+-- locked / point stay Core_Forever.lua's.
+MD:RegisterDefaults({ clock = { showRest = true, clickThrough = false } })
 
 MD.Clock = MD.Clock or {}
 local Clock = MD.Clock
@@ -21,7 +34,10 @@ setmetatable(Clock, { __index = function(_, k)
     if k == "model" then return MD.Pool and MD.Pool.model end
 end })
 
-local widget, text, bar, barBack
+local widget, view, bar, barBack
+
+-- T93 (F5): the once-per-fight flash under 30 s has fired in this fight.
+local flashedThisFight = false
 -- T58 (P14, review A28): "in combat" is the kernel's MD.inCombat (Core.lua),
 -- set by the two regen events before any other handler of them runs and
 -- seeded at MD_READY through the adapter; this file keeps no copy of it.
@@ -61,7 +77,12 @@ end
 --------------------------------------------------------------------------------
 local function UpdateVisibility()
     if not widget then return end
-    if not (MD.db and MD.db.clock and MD.db.clock.shown) then
+    local c = MD.db and MD.db.clock
+    -- T93 (F4): click-through takes no mouse -- no hover, no click, no drag --
+    -- except while the clock is being placed (the preview), as TBC's widget
+    -- takes the mouse while unlocked
+    widget:EnableMouse(Previewing() or not (c and c.clickThrough))
+    if not (c and c.shown) then
         widget:Hide()
         shown = false
         return
@@ -69,7 +90,10 @@ local function UpdateVisibility()
     local model = MD.Pool.model
     local pct
     if model and model.max and model.max > 0 then pct = model.mana / model.max end
-    shown = MD.Visibility.Want(pct, shown, MD.inCombat, Previewing())
+    -- T93 (F3): no mana pool (a warrior, a rogue), no clock -- the shared
+    -- rule's manaUsersOnly, the TBC widget's gate
+    local usesMana = MD.player and MD.player.usesMana
+    shown = MD.Visibility.Want(pct, shown, MD.inCombat, Previewing(), nil, usesMana ~= false)
     if shown then widget:Show() else widget:Hide() end
 end
 
@@ -177,6 +201,7 @@ end
 -- The widget
 --------------------------------------------------------------------------------
 local function ApplyPoint()
+    if not widget then return end
     local p = MD.db.clock and MD.db.clock.point
     widget:ClearAllPoints()
     if p and p[1] then
@@ -198,6 +223,16 @@ local function Snap()
     UI.StylizeFrame(widget, P.bg, P.border)
     barBack:SetSize(160 + 2 * e, 4 + 2 * e)
     snappedPx = e
+end
+
+-- T93: what the view is told about this line: the widest label ("~FULL", the
+-- pool is modelled) and the rest switch (F6).
+-- One table, refreshed in place at each paint.
+local look = { labelSample = "~FULL", show = {} }
+local function Look()
+    local c = MD.db and MD.db.clock
+    look.show.rest = not (c and c.showRest == false)
+    return look
 end
 
 local function CreateWidget()
@@ -231,9 +266,10 @@ local function CreateWidget()
         if MD.ToggleDashboard then MD:ToggleDashboard() end
     end)
 
-    text = widget:CreateFontString(nil, "OVERLAY", UI.FONT)
-    text:SetPoint("TOP", widget, "TOP", 0, -4)
-    Clock.text = text
+    -- T93: the words, in three fixed segments (UI/ClockView.lua); the
+    -- label slot is as wide as this line's widest label, "~FULL"
+    view = MD.ClockView.Build(widget, Look())
+    Clock.view = view
 
     bar = CreateFrame("StatusBar", nil, widget)
     bar:SetSize(160, 4)
@@ -261,17 +297,24 @@ end
 --------------------------------------------------------------------------------
 local function Paint(now)
     if UI.px(1, widget) ~= snappedPx then Snap() end -- T41: re-snap after a scale change
+    local state
     if Previewing() then
         -- T70: the preview says what it is for (TBC's words), in the accent
-        text:SetText("SpellTuner - drag me")
-        text:SetTextColor(UI.RGB("accent"))
+        view:Message("SpellTuner - drag me", UI.RGB("accent"))
     else
-        local state = MD.Pool:Project(now)
-        text:SetText(MD.ManaModel.Text(state))
-        text:SetTextColor(UI.RGB("text"))
+        -- T93: the face, in segments and tones (F1), the rest switch (F6)
+        state = MD.Pool:Project(now)
+        view:Paint(MD.ManaModel.Face(state, now), Look())
     end
     MD.API.DrawUnitPower(bar, "player", 0)
     UpdateVisibility()
+    -- T93 (F5): one attention event per fight, the first time the clock reads
+    -- under 30 s (TBC's widget's rule, on the model's projection)
+    if state and not flashedThisFight and shown and MD.inCombat and state.mode == "oom"
+        and type(state.tto) == "number" and state.tto < 30 then
+        flashedThisFight = true
+        view:Pulse()
+    end
 end
 
 -- Repaints without waiting for the next tick -- used by settings/commands
@@ -306,6 +349,18 @@ function Clock:SetLocked(locked)
     end
 end
 
+-- T93 (docs/SPEC-next.md 6.3, the mover seam): the frame at its stored place
+-- (db.clock.point), or the default one -- what a mover calls after writing it.
+function Clock:ApplyPoint()
+    ApplyPoint()
+end
+
+-- T93 (F5): MD:Alert's pulse (Core.lua calls MD:PulseWidget when it exists),
+-- on this clock while it is shown -- the TBC widget's own rule.
+function MD:PulseWidget()
+    if widget and view and shown then view:Pulse() end
+end
+
 -- Back at the default place (the top of the screen): the saved point cleared.
 function Clock:ResetPosition()
     MD.db.clock = MD.db.clock or {}
@@ -331,3 +386,31 @@ MD:OnTick(function()
     if not MD.Pool.model then return end
     if widget then Paint(GetTime()) end
 end)
+
+-- T93 (F5): a new fight may flash again.
+MD:On("PLAYER_REGEN_DISABLED", function()
+    flashedThisFight = false
+end)
+
+-- T93: the mover seam under the name both lines provide (UI/Widget.lua's
+-- MD.Widget on TBC): ApplyPoint, ResetPosition, Preview, frame.
+MD:Provide("ClockWidget", Clock)
+
+-- T93: the two new switches by hand until Settings -> Clock (T102) shows
+-- them -- TBC's /md rest and /md tooltip, as subcommands of /st clock
+-- (docs/SPEC-next.md 2.5: matched before the verb, so /st clock and
+-- /st clock lock are unchanged).
+MD:AddSubcommand("clock", "rest", function()
+    MD.db.clock = MD.db.clock or {}
+    MD.db.clock.showRest = MD.db.clock.showRest == false
+    MD:Print("mana clock: rest segment " .. (MD.db.clock.showRest and "on" or "off"))
+    if Clock.frame then Clock:Refresh() end
+end, "rest", "toggle the 'rest' segment (time to full if you stop casting)")
+MD:AddSubcommand("clock", "clickthrough", function()
+    MD.db.clock = MD.db.clock or {}
+    MD.db.clock.clickThrough = not MD.db.clock.clickThrough
+    MD:Print("mana clock: " .. (MD.db.clock.clickThrough
+        and "click-through - it takes no mouse input (no hover, no click) except while you place it"
+        or "takes the mouse again - hover for the breakdown, left-click opens the window"))
+    if Clock.frame then Clock:Refresh() end
+end, "clickthrough", "the clock takes no mouse input")

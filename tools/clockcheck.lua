@@ -842,11 +842,19 @@ do
     MD.db.clock.clickThrough = false
     Clock:Refresh()
     local back = w.mouseOn == true
+    -- by hand until Settings -> Clock: /st clock clickthrough, a sub matched
+    -- before the verb (the clock stays shown)
+    local shownBefore = MD.db.clock.shown
+    SlashCmdList.SPELLTUNER("clock clickthrough")
+    local cmdOn = MD.db.clock.clickThrough == true and w.mouseOn == false and MD.db.clock.shown == shownBefore
+    SlashCmdList.SPELLTUNER("clock clickthrough")
+    local cmdOff = MD.db.clock.clickThrough == false and w.mouseOn == true
     FrameMT.EnableMouse = realEM
     check("T93 F4: click-through takes no mouse (off by default; on while being placed)",
-        isDefault and through and placing and back,
-        string.format("default off=%s through=%s placing=%s back=%s", tostring(isDefault), tostring(through),
-            tostring(placing), tostring(back)))
+        isDefault and through and placing and back and cmdOn and cmdOff,
+        string.format("default off=%s through=%s placing=%s back=%s /st clock clickthrough %s/%s",
+            tostring(isDefault), tostring(through), tostring(placing), tostring(back), tostring(cmdOn),
+            tostring(cmdOff)))
 end
 
 do
@@ -891,10 +899,16 @@ do
         MD.db.clock.showRest = true
         Clock:Refresh()
     end)
+    -- by hand until Settings -> Clock: /st clock rest, a sub (the clock stays shown)
+    local shownBefore = MD.db.clock.shown
+    SlashCmdList.SPELLTUNER("clock rest")
+    local cmdOff = MD.db.clock.showRest == false and MD.db.clock.shown == shownBefore
+    SlashCmdList.SPELLTUNER("clock rest")
+    local cmdOn = MD.db.clock.showRest == true
     check("T93 F6: the rest segment off (db.clock.showRest, on by default)",
-        isDefault and on == "~OOM 1:20  rest 3:20" and off == "~OOM 1:20" and secHidden,
-        string.format("default=%s on=%q off=%q second hidden=%s", tostring(isDefault), tostring(on), tostring(off),
-            tostring(secHidden)))
+        isDefault and on == "~OOM 1:20  rest 3:20" and off == "~OOM 1:20" and secHidden and cmdOff and cmdOn,
+        string.format("default=%s on=%q off=%q second hidden=%s /st clock rest %s/%s", tostring(isDefault),
+            tostring(on), tostring(off), tostring(secHidden), tostring(cmdOff), tostring(cmdOn)))
 end
 
 do

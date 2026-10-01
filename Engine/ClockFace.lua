@@ -40,8 +40,9 @@
 -- and two facts about how its own line words it today, which LineString obeys:
 --   timeFmt  "auto" (TBC: "15s" under a minute, "1:20" above) |
 --            "mss" (Forever: always "0:15")
---   mono     true: no colour codes (the Forever clock paints its whole line in
---            one colour today -- docs/SPEC-next.md 7.1 F1 gives it tones later)
+--   mono     true: no colour codes in LineString (ManaModel.Text, the Forever
+--            string, stays one colour); the renderer (UI/ClockView.lua, T93)
+--            draws Segments below, which ignore it: F1 tones on both lines
 local _, MD = ...
 
 MD.ClockFace = MD.ClockFace or {}
@@ -135,6 +136,107 @@ function CF.LineString(face, valueHex)
         out = out .. "  " .. Paint(face, hex, (sec.label or sec.kind or "rest") .. " " .. CF.Time(sec.value, fmt))
     end
     return out
+end
+
+--------------------------------------------------------------------------------
+-- T93 (docs/SPEC-next.md 7.1 F2 and 2.4; decision 14): the same words cut into
+-- the three pieces a layout draws at fixed places, so only the value's own
+-- digits move when it changes width ("OOM 59s" -> "OOM 1:00" -> "OOM >10m"):
+--   label   { text, tone }                          "OOM", "~FULL"
+--   value   { text, tone, arrow, arrowTone } | nil  "1:20" + "v"; ">1:50" + "=";
+--                                                   "..."; "--"; nil beside "FULL" alone
+--   second  { text, tone } | nil                    "rest 2:10", "inn 2:15"
+-- Plain text and tone NAMES only (crit / warn / normal / good / muted / mana):
+-- the renderer turns a tone into a colour (ToneRGB / ToneHex, or a look's own
+-- colours), so a face is never drawn by a second colour table. The tones are
+-- the ones LineString paints with, piece for piece -- the crit band red from
+-- the label on, a bound and a warm-up all muted, otherwise a muted label, the
+-- value in its band and the arrow in its own tone (ARROW_TONE). A face's
+-- `mono` is LineString's business (the Forever string stays one colour) and is
+-- not read here: a renderer always colours (F1). JoinSegments(segs) is the
+-- line's plain text -- label, one space, the value and its arrow, two spaces,
+-- the secondary -- byte for byte LineString's with the colour codes removed.
+--   look.show.rest == false   drops a "rest" secondary (F6)
+--   look.show.cd   == false   drops a cooldown secondary
+-- An absent look, or an absent switch, keeps the segment. Never raises on a
+-- face that is not a table: nil.
+--------------------------------------------------------------------------------
+local function Shown(look, key)
+    local show = type(look) == "table" and look.show
+    if type(show) ~= "table" then return true end
+    return show[key] ~= false
+end
+
+function CF.Segments(face, look)
+    if type(face) ~= "table" then return nil end
+    local label = face.label or (FULL_LABEL[face.mode] and "FULL" or "OOM")
+    if face.modelled then label = "~" .. label end
+    local fmt, known, v = face.timeFmt, face.known, face.value
+    local segs = {}
+
+    if face.mode == "fullnow" then
+        segs.label = { text = label, tone = HEX[face.tone] and face.tone or "good" }
+    elseif known == "pending" then
+        segs.label = { text = label, tone = "muted" }
+        segs.value = { text = "...", tone = "muted" }
+    elseif known == "bound" then
+        local bound = (type(v) == "number" and v <= CF.CAP) and CF.Time(v, fmt) or "10m"
+        segs.label = { text = label, tone = "muted" }
+        segs.value = { text = ">" .. bound, tone = "muted", arrow = face.arrow or "=", arrowTone = "muted" }
+    elseif known == "point" and type(v) == "number" then
+        local t = CF.Time(v, fmt)
+        if face.tone == "crit" then
+            segs.label = { text = label, tone = "crit" }
+            segs.value = { text = t, tone = "crit", arrow = face.arrow, arrowTone = face.arrow and "crit" or nil }
+        else
+            local tone, prefix = HEX[face.tone] and face.tone or "normal", ""
+            if face.unstable then tone, prefix = "muted", "~" end
+            segs.label = { text = label, tone = "muted" }
+            segs.value = { text = prefix .. t, tone = tone, arrow = face.arrow,
+                arrowTone = face.arrow and (CF.ARROW_TONE[face.arrow] or "muted") or nil }
+        end
+    else
+        segs.label = { text = label, tone = "muted" }
+        segs.value = { text = "--", tone = "muted" }                -- never fabricate a number
+    end
+
+    local sec = face.second
+    if type(sec) == "table" and type(sec.value) == "number"
+        and Shown(look, sec.kind == "cd" and "cd" or "rest") then
+        segs.second = { text = (sec.label or sec.kind or "rest") .. " " .. CF.Time(sec.value, fmt),
+            tone = sec.kind == "cd" and "mana" or "muted" }
+    end
+    return segs
+end
+
+-- The value piece's own words: the time, then its arrow after one space.
+function CF.ValueText(value)
+    if type(value) ~= "table" then return "" end
+    if value.arrow then return value.text .. " " .. value.arrow end
+    return value.text
+end
+
+-- The line's plain text from its pieces (see Segments).
+function CF.JoinSegments(segs)
+    if type(segs) ~= "table" or type(segs.label) ~= "table" then return "" end
+    local out = segs.label.text
+    if segs.value then out = out .. " " .. CF.ValueText(segs.value) end
+    if segs.second then out = out .. "  " .. segs.second.text end
+    return out
+end
+
+-- A tone as a colour: "|cffRRGGBB" (ToneHex) or 0..1 numbers (ToneRGB).
+-- `colors` (optional) maps a tone to six hex digits ("ff4444") and wins over
+-- HEX; an unknown tone is `normal`'s.
+function CF.ToneHex(tone, colors)
+    local own = type(colors) == "table" and colors[tone]
+    if type(own) == "string" and own:match("^%x%x%x%x%x%x$") then return "|cff" .. own end
+    return HEX[tone] or HEX.normal
+end
+
+function CF.ToneRGB(tone, colors)
+    local h = CF.ToneHex(tone, colors):sub(5, 10)
+    return tonumber(h:sub(1, 2), 16) / 255, tonumber(h:sub(3, 4), 16) / 255, tonumber(h:sub(5, 6), 16) / 255
 end
 
 --------------------------------------------------------------------------------
