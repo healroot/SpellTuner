@@ -24,7 +24,7 @@
   "measurecheck/forever": 30,
   "migrate/tbc": 7,
   "modulecheck/forever": 19,
-  "navui/tbc": 40,
+  "navui/tbc": 46,
   "parsecheck/forever": 15,
   "practice/tbc": 84,
   "practiceforever/forever": 29,
@@ -49,7 +49,7 @@
   "simwindow/tbc": 8,
   "slashcheck/tbc": 8,
   "solvercheck/tbc": 84,
-  "spellsui/forever": 48,
+  "spellsui/forever": 50,
   "spelltip/tbc": 49,
   "svcheck/forever": 6,
   "svcheck/tbc": 1,
@@ -61,5 +61,5 @@
   "tipcheck/forever": 45,
   "ttocheck/tbc": 45,
   "verifycheck/tbc": 14,
-  "wincheck/forever": 65
+  "wincheck/forever": 66
 }

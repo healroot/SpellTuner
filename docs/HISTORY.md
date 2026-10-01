@@ -4317,3 +4317,34 @@ tbc's token-read count (129 -> 131: `UI.Fill("tip")` read twice, as the task fil
 run-to-run noise (ms, table addresses, the sliced search's evaluation counts in reccheck, replayui
 and reviewui); every other TBC suite equal. In game: `docs/TESTING.md` §44 item 26 (it needs a build
 newer than the 0.16.4 install). **Next:** wave 16 (P33-).
+
+## 2026-10-01 — the refactor plan, wave 16: T77 (P33)
+
+Wave 16 of `docs/PLAN-refactor-ux.md` cherry-picked onto `7c32bf5`, then the integrator's lines
+(CLAUDE.md, `docs/TESTING.md`, `docs/TOOLS.md`, `docs/DECISIONS.md`,
+`tools/data/expected-counts.json`, this entry) in one commit. No TOC line, no merge fix. The version
+stays 0.16.4.
+
+- **T77 (P33)** (`0fcfc9e`, `fc3f613`): kit behaviours (review U8, U12, U16, A31) -- the kit's
+  events: `UI.Popup` fires `UI_POPUP` (`UI.OnPopup` its alias, never assigned; the window manager
+  listens instead of assigning it) and `UI.ApplyFonts` fires `FONTS_CHANGED` through a metatable on
+  `MD.UI` that keeps the theme's sizer (the Spells pane subscribes instead of wrapping it); lists flip
+  at the screen's edge on both lines (a dropdown's list upward at the bottom, a tree's second list
+  leftward at the right edge -- the one DECISIONS entry); `UI.CreateChevron` (textures under
+  `UI.THEMED`, TBC's letters kept); the rail's one-x hover with the tag kept, the right-click menu
+  (`UI/ContextMenu.lua`'s Move up / Move down / Remove), a row tooltip after half a second, and the
+  rows scrolling above the fixed footer. navui tbc 46 (was 40), spellsui forever 50 (was 48),
+  wincheck forever 66 (was 65).
+- Comments left stale for the next owners (no code reads them): `UI/Dashboard_Forever.lua` line 189
+  still says `UI.ApplyFonts` is wrapped by the Spells pane (the kit announces it now);
+  `UI/ContextMenu.lua` calls `UI.OnPopup` (switch to `UI.Popup` when it is next touched); C1
+  (`UI/Theme_Forever.lua` -> `UI/Theme_Flat.lua`) can fire `FONTS_CHANGED` inside `UI.ApplyFonts`
+  and drop the kit's metatable.
+
+`make check`: 68 runs, all passed, in the worktree and in a `git archive` export (63 counted runs
+against 63 expected); apicheck 0 findings over 57 files, textcheck 0 over 94. Each TBC suite's full
+output against `7c32bf5` differs only by navui's six new T77 assertions (the two flips, the
+chevrons, the scroll, the hover and menu, the row tooltip) and run-to-run noise (ms, table
+addresses, the sliced search's evaluation counts in replayui and reviewui); every other TBC suite
+equal. In game: `docs/TESTING.md` §44 item 27 (it needs a build newer than the 0.16.4 install).
+**Next:** wave 17 (P34-).

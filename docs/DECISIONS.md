@@ -1105,3 +1105,9 @@ reflows (the rank table and card are a fixed 540; Settings' two columns fit), so
 hidden there (mockup M1) and a size saved for them by an earlier session is ignored. Reports and
 Simulate keep the grip and their saved sizes (decision 6, a size per group, stands). Under the theme
 the grip is three 1-px lines; TBC keeps Blizzard's grip art (it has no resizable window).
+
+**Lists flip at the screen's edge on both lines (T77, P33, review U12, 2026-10-01).** A dropdown's
+list that would leave the bottom of the screen opens upward, and a tree dropdown's second list that
+would leave the right edge opens to the left -- on TBC too, since a list off the screen is a bug on
+either line (mockup M4). Nothing else of P33 reaches TBC: the chevron textures are under
+`UI.THEMED`, and the rail is not on the TBC TOC until C5.

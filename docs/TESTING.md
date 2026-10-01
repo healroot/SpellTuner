@@ -1441,7 +1441,7 @@ the numbers.
 
 **Paste back**: the `pN` you pinned, and in words what the suggested column did differently.
 
-## 44. The refactor plan's checks (`docs/PLAN-refactor-ux.md` section 9; waves 1-15, 0.16.4)
+## 44. The refactor plan's checks (`docs/PLAN-refactor-ux.md` section 9; waves 1-16, 0.16.4)
 
 Paste back as in section 41. Out of combat unless a step says otherwise. Install **0.16.4** on each
 client (`--install-tbc` / `--install-forever`, the top of this file and §38; never cross them). The
@@ -1601,6 +1601,21 @@ W10. **The clock and the theme (P24, P25).** The mana clock behaves exactly as o
     ~1:20`, `Full again in ~2:10 if you stop`, no word about secrets. Hover any other addon's tooltip
     (a bag item, a unit frame) straight after: it has its normal Blizzard border. **TBC:** `/md` --
     every tooltip looks exactly as before.
+
+**Wave 16 (T77; Forever unless said).** These need a build newer than the 0.16.4 install.
+
+27. **Lists and the rail (P33).** Settings -> General: move the window so the In combat dropdown sits
+    near the bottom of the screen and open it: the list opens upward and its arrow points up (report
+    if the arrow is missing, a box, or points the wrong way -- the arrows are the game's own
+    `SquareButtonTextures`, not yet seen on this client). Practice -> Edit bindings with the window
+    near the right edge: a spell's ranks open to the left. Spells: hover a rail row -- the `R1` tag
+    stays and one red `x` appears; keep the pointer still for half a second: `Suggested  Rank 1 of 2
+    known`, `Per mana`, `Drag to reorder. Right-click for more.`; right-click a row: Move up / Move
+    down / Remove. Add spells until the rail is longer than the window (or set Text size +2): the rows
+    scroll with the wheel above `+ Add`, which never moves; `/st spell <a spell at the bottom>`
+    scrolls it into view. Text size +2 and back: the rail and the spell view re-pitch at once. ESC
+    with a dropdown open closes the list, not the window. **TBC:** `/md` -- a dropdown near the
+    bottom of the screen opens upward; everything else looks as before.
 
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the
