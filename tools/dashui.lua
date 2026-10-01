@@ -337,9 +337,9 @@ end
 check("no bare pipe in any painted string", bad == nil, bad)
 
 --------------------------------------------------------------------------------
--- T30 (docs/SPEC-forever-ui.md sec 9, 3.5, 4.3): the table's options. Every
--- check above is the all-nil table (today's, gold included) and stays as it
--- was; these six build one table with the options set. The stub's SetPoint,
+-- T30 (docs/SPEC-forever-ui.md sec 9, 3.5, 4.3): the table's options; these
+-- build one table with the options set (T81: and then the TBC rank table,
+-- which is such a set now, and the refusal of a table without one). The stub's SetPoint,
 -- SetJustifyH, CreateFontString and CreateTexture are no-ops that record
 -- nothing, so this section records them itself -- here, after every check
 -- above has run, so none of those sees a difference.
@@ -391,22 +391,13 @@ local t30header
 for _, f in ipairs(S.allFrames) do
     if f.isHeader and f.parentFrame == t30.frame then t30header = f end
 end
-local legacy = MD.DashboardParts.CreateTable(CreateFrame("Frame"), 700)
-legacy:Render({})
-local legacyHeader
-for _, f in ipairs(S.allFrames) do
-    if f.isHeader and f.parentFrame == legacy.frame then legacyHeader = f end
-end
-
 local function Alpha(tex) return tex and tex.color and tex.color[4] end
 local function Near(a, b) return type(a) == "number" and math.abs(a - b) < 1e-6 end
 
 check("T30 font and justify: the table's font, a column's own", R1 and R1.cells.rank.template == UI.FONT
     and R1.cells.rank.justify == "LEFT" and R1.cells.pm.template == UI.FONT
     and R1.cells.pm.justify == "RIGHT" and R1.cells.casts.justify == "RIGHT"
-    and R1.cells.tag.template == UI.FONT_SMALL
-    and legacyHeader and legacyHeader.cells.rank.template == "GameFontHighlightSmall"
-    and legacyHeader.cells.rank.justify == "LEFT",
+    and R1.cells.tag.template == UI.FONT_SMALL,
     R1 and (tostring(R1.cells.rank.template) .. "/" .. tostring(R1.cells.pm.justify)) or "no row")
 
 check("T30 rowHeight and rowWidth: 540 x 20 rows under a 22 header", R1 and R2 and t30header
@@ -433,6 +424,7 @@ check("T30 bar cell: fraction x 72, the number after it, dominated 0.25", b1 and
         tostring(R1.cells.pm.pt and R1.cells.pm.pt[4])) or "no bar")
 
 -- the one the row names: a table built with marker = "bar" carries no gold
+-- (T81: no table carries any now -- the old no-options table is gone)
 local gold
 for _, f in ipairs(S.allFrames) do
     local p, guard = f.parentFrame, 0
@@ -491,12 +483,168 @@ check("T30 bar header: the label over the whole column, the header 22 tall", hpm
         tostring(first.x), tostring(first.w), tostring(first.h), Cell(h2 and h2.cells.pm), tostring(h2 and h2.h),
         Cell(reused and reused.cells.pm), tostring(reused and reused.h)))
 
+--------------------------------------------------------------------------------
+-- T81 (C2 of docs/PLAN-refactor-ux.md, review U5 / A23; mockup M6's RANKS):
+-- the TBC rank table is an opts set on the one table -- built here as the
+-- dashboard builds it (MD.DashboardParts.CreateRankTable) and rendered with
+-- RankMath's own Rejuvenation rows (the harness druid: R6 suggested, R12 the
+-- highest known, R13 not learned, R1 beaten) -- and a table without
+-- opts.render is refused.
+--------------------------------------------------------------------------------
+-- Before T81 the dashboard's rank table was CreateTable with no options; the
+-- fallback lets this suite run on such a commit and fail check by check.
+local function RankTable(parent, width)
+    local make = MD.DashboardParts.CreateRankTable
+    if make then return make(parent, width) end
+    return MD.DashboardParts.CreateTable(parent, width)
+end
+do
+    local results = MD.RankMath:Compute()
+    local rows = results.Rejuvenation and results.Rejuvenation.rows or {}
+    local rank = RankTable(CreateFrame("Frame"), 912)
+    rank:Render(rows)
+    local byRank, header = {}, nil
+    for _, f in ipairs(S.allFrames) do
+        if f.parentFrame == rank.frame and f.cells and f:IsShown() then
+            if f.isHeader then header = f elseif f.data then byRank[f.data.rank] = f end
+        end
+    end
+    local function Plain(fs) return ((fs and fs:GetText() or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) end
+    local function RowWithTag(word)
+        for _, f in pairs(byRank) do if Plain(f.cells.tag) == word then return f end end
+        return nil
+    end
+    local r1, r4, r6 = byRank[1], byRank[4], byRank[6]
+
+    -- 1. the look: right-justified numbers in Arial Narrow, 20-px rows under
+    -- a 22 header with its rule, zebra
+    local rule
+    for _, f in ipairs(S.allFrames) do
+        if f.kind == "Texture" and f.parentFrame == rank.frame and f.layer == "BORDER" and f:IsShown() then rule = f end
+    end
+    local right = true
+    for _, key in ipairs({ "level", "cost", "heal", "hpm", "hps", "cast", "casts" }) do
+        if not (r6 and r6.cells[key].justify == "RIGHT" and r6.cells[key].template == UI.FONT_NUM) then right = false end
+    end
+    check("T81: the rank table's numbers are right-justified in Arial Narrow on 20-px rows",
+        right and r6.cells.rank.justify == "LEFT" and r6.cells.tag.template == UI.FONT_SMALL
+          and r6.h == 20 and header and header.h == 22 and rule ~= nil and rank.rowWidth == 600
+          and r4 and r4.fill and r4.fill:IsShown() and Near(Alpha(r4.fill), 0.03)
+          and byRank[3] and not byRank[3].fill:IsShown(),
+        r6 and string.format("cost %s/%s h=%s header=%s rule=%s", tostring(r6.cells.cost.justify),
+            tostring(r6.cells.cost.template), tostring(r6.h), tostring(header and header.h), tostring(rule ~= nil))
+          or "no R6 row")
+
+    -- 2. the suggested row: the fill and the 2-px accent bar, no gold, no
+    -- star; its tag says best (in the accent) and the HPM cell has its bar
+    local gold
+    for _, f in ipairs(S.allFrames) do
+        local p, guard = f.parentFrame, 0
+        while p and p ~= rank.frame and guard < 10 do p, guard = p.parentFrame, guard + 1 end
+        local t = p == rank.frame and f.GetText and f:GetText() or ""
+        if type(t) == "string" and t:lower():find("ffcc00", 1, true) then gold = gold or t end
+    end
+    local bar = r6 and r6.bars and r6.bars.hpm
+    check("T81: the suggested row is the fill and the bar, its tag best, no gold, no star", gold == nil and r6
+        and r6.data.suggested and r6.mark:IsShown() and Near(Alpha(r6.fill), 0.10)
+        and Plain(r6.cells.rank) == "R6" and Plain(r6.cells.tag) == "best"
+        and r6.cells.tag:GetText():find(UI.Hex("accent"), 1, true) == 1
+        and r4 and not r4.mark:IsShown() and bar and bar.fill:IsShown() and bar.width == 80,
+        gold or (r6 and Plain(r6.cells.rank) .. " / " .. Plain(r6.cells.tag)) or "no R6 row")
+
+    -- 3. the Tag column instead of the gold note: max, learn at N, beaten
+    -- (its hover names the rank that beats it), rolling on Lifebloom's stacks
+    local max, learn, beaten = RowWithTag("max"), byRank[13], byRank[1]
+    local tip = beaten and rank.cols[9].cellTooltip(beaten.data, beaten)
+    local by = tip and tip[1] and tip[1].l or ""
+    -- read now: the Lifebloom render below hands these pooled rows on
+    local tags = string.format("max=%s learn=%s beaten=%s", tostring(max and max.data.rank),
+        learn and Plain(learn.cells.tag) or "-", beaten and Plain(beaten.cells.tag) or "-")
+    local tagsOk = max ~= nil and max.data.rank == 12 and learn ~= nil
+        and Plain(learn.cells.tag) == "learn at " .. learn.data.level
+        and beaten ~= nil and Plain(beaten.cells.tag) == "beaten"
+    local lb = results.Lifebloom and results.Lifebloom.rows or {}
+    rank:Render(lb)
+    local rolling = 0
+    for _, f in ipairs(S.allFrames) do
+        if f.parentFrame == rank.frame and f.cells and f.data and f:IsShown() and Plain(f.cells.tag) == "rolling" then
+            rolling = rolling + 1
+        end
+    end
+    check("T81: a Tag column (max, learn at N, beaten by Rank N, rolling), no note", tagsOk
+        and by:match("^Beaten by Rank %d+$") ~= nil
+        and rank.cols[9].key == "tag" and rank.cols[9].label == "" and rolling == 2,
+        string.format("%s tip=%q rolling=%d", tags, by, rolling))
+
+    -- 4. every header label shows the glossary; a row's hover is its
+    -- derivation (Tip:Row), beside the row
+    rank:Render(rows)
+    for _, f in ipairs(S.allFrames) do
+        if f.parentFrame == rank.frame and f.isHeader and f:IsShown() then header = f end
+    end
+    local hits = 0
+    for _ in pairs(header and header.colHits or {}) do hits = hits + 1 end
+    GameTooltip.lines = nil
+    local hpmHit = header and header.colHits and header.colHits.hpm
+    if hpmHit then hpmHit:GetScript("OnEnter")(hpmHit) end
+    local glossary = GameTooltip.lines and GameTooltip.lines[1] and GameTooltip.lines[1][1]
+    GameTooltip:Hide()
+    local r6b
+    for _, f in ipairs(S.allFrames) do
+        if f.parentFrame == rank.frame and f.data and f.data.rank == 6 and not f.data.virtual and f:IsShown() then r6b = f end
+    end
+    GameTooltip.lines = nil
+    if r6b then r6b:GetScript("OnEnter")(r6b) end
+    local derivation = GameTooltip.lines and GameTooltip.lines[1] and GameTooltip.lines[1][1]
+    if r6b then r6b:GetScript("OnLeave")(r6b) end
+    check("T81: every header label explains the columns; a row's hover is its derivation",
+        hits == 8 and glossary == "What the columns mean" and type(derivation) == "string"
+          and derivation:find("Rank 6", 1, true) ~= nil and not GameTooltip:IsShown(),
+        string.format("hits=%d glossary=%s row=%s", hits, tostring(glossary), tostring(derivation)))
+
+    -- 5. Effective mode: the three healing headers in the accent, an
+    -- unmeasured heal marked "?" (the harness has no overheal measured)
+    local was = MD.db.effectiveMode
+    MD.db.effectiveMode = true
+    rank:Render(MD.RankMath:Compute().Rejuvenation.rows)
+    for _, f in ipairs(S.allFrames) do
+        if f.parentFrame == rank.frame and f.isHeader and f:IsShown() then header = f end
+    end
+    local r6e
+    for _, f in ipairs(S.allFrames) do
+        if f.parentFrame == rank.frame and f.data and f.data.rank == 6 and f:IsShown() then r6e = f end
+    end
+    local accent = UI.Hex("accent")
+    local effOk = header and header.cells.heal:GetText():find(accent, 1, true) ~= nil
+        and header.cells.hpm:GetText():find(accent, 1, true) ~= nil
+        and header.cells.hps:GetText():find(accent, 1, true) ~= nil
+        and header.cells.cost:GetText():find(accent, 1, true) == nil
+        and r6e and Plain(r6e.cells.heal):sub(-1) == "?"
+    local effDetail = (header and header.cells.heal:GetText() or "no header") .. " / " .. (r6e and Plain(r6e.cells.heal) or "no R6")
+    MD.db.effectiveMode = was
+    rank:Render(rows)
+    local plainAgain
+    for _, f in ipairs(S.allFrames) do
+        if f.parentFrame == rank.frame and f.isHeader and f:IsShown() then plainAgain = f end
+    end
+    check("T81: Effective mode puts the accent on Heal/cast, HPM, HPS and a ? on an unmeasured heal",
+        effOk and plainAgain and plainAgain.cells.heal:GetText():find(accent, 1, true) == nil, effDetail)
+
+    -- 6. one table: CreateTable without opts.render raises
+    local okNil = pcall(MD.DashboardParts.CreateTable, CreateFrame("Frame"), 700)
+    local okNoRender = pcall(MD.DashboardParts.CreateTable, CreateFrame("Frame"), 700, { cols = {} })
+    check("T81: CreateTable refuses a table without opts.render (the second table is gone)",
+        okNil == false and okNoRender == false)
+end
+
 for k, fn in pairs(saved) do rawset(MT, k, fn) end
 
 --------------------------------------------------------------------------------
--- T53 (P9, review U25): a Waste list longer than the pane ends with a tail
--- line saying how many rows it does not show. A 300-high pane has 14 slots
--- below the header: 13 rows and "... and 27 more" for a list of 40.
+-- T53 (P9, review U25): a Waste list longer than the pane ended with a tail
+-- line saying how many rows it did not show. T81 (C2): Waste is an opts set on
+-- the one table and scrolls, as Review does -- a 300-high pane shows 11 of
+-- 40 rows, the wheel reaches Spell 40, no tail line is painted; the numbers
+-- are right-justified in Arial Narrow on 20-px rows, the words are not.
 --------------------------------------------------------------------------------
 do
     local OH = MD.Overheal
@@ -509,23 +657,50 @@ do
     OH.SpellRows = function() return fake end
     local wparent = CreateFrame("Frame")
     wparent:SetSize(760, 300)
+    local justify = rawget(MT, "SetJustifyH") -- recorded while the rows are built, as T30's are
+    rawset(MT, "SetJustifyH", function(self, j) self.justify = j end)
     local waste = MD.DashboardParts.CreateWaste(wparent, 760)
     waste.frame:SetSize(760, 300)
     waste.frame:Show()
     waste:Render()
-    local labels, tail, last = 0, nil, nil
-    for _, f in ipairs(S.allFrames) do
-        if f.cells and f.cells.wev and f.shown and f:GetParent() == waste.frame then
-            local t = (f.cells.label:GetText() or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
-            if t:match("^Spell %d+$") then
-                labels = labels + 1
-                last = math.max(last or 0, tonumber(t:match("%d+")))
+    rawset(MT, "SetJustifyH", justify)
+    local function Shown()
+        local labels, tail, first, last, list = 0, nil, nil, nil, nil
+        for _, f in ipairs(S.allFrames) do
+            if f.cells and f.cells.wev and f:IsShown() and f.parentFrame and f.parentFrame:GetParent() == waste.frame then
+                local t = (f.cells.label:GetText() or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+                local n = tonumber(t:match("^Spell (%d+)$"))
+                if n then
+                    labels = labels + 1
+                    first, last = math.min(first or n, n), math.max(last or 0, n)
+                    list = f
+                end
+                local w = (f.cells.wide and f.cells.wide:GetText() or "") .. t
+                tail = tail or w:match("more %(scroll: not yet%)")
             end
-            tail = tail or tonumber(t:match("^%.%.%. and (%d+) more %(scroll: not yet%)$"))
         end
+        return labels, first, last, tail, list
     end
-    check("a long Waste list ends with the tail line", labels == 13 and last == 13 and tail == 27,
-        string.format("rows=%d last=%s tail=%s", labels, tostring(last), tostring(tail)))
+    local n0, first0, last0, tail0, row = Shown()
+    local listFrame = row and row.parentFrame
+    -- read now: the wheel's renders hand this pooled row on (a header, maybe)
+    local looks = row and { healed = row.cells.healed.justify, label = row.cells.label.justify, h = row.h } or {}
+    local wheel = listFrame and listFrame:GetScript("OnMouseWheel")
+    local notches = 0
+    while wheel and notches < 40 do
+        local _, _, before = Shown()
+        wheel(listFrame, -1)
+        notches = notches + 1
+        local _, _, after = Shown()
+        if after == before then break end
+    end
+    local n1, _, last1, tail1 = Shown()
+    check("a long Waste list scrolls to its last row, no tail line (T81)", n0 == 11 and first0 == 1 and last0 == 11
+        and n1 == 11 and last1 == 40 and tail0 == nil and tail1 == nil
+        and looks.healed == "RIGHT" and looks.label ~= "RIGHT" and looks.h == 20,
+        string.format("rows=%d %s..%s, after the wheel %d ..%s, tail=%s/%s, healed %s, h=%s", n0, tostring(first0),
+            tostring(last0), n1, tostring(last1), tostring(tail0), tostring(tail1),
+            tostring(looks.healed), tostring(looks.h)))
     OH.SpellRows = realRows
 end
 
@@ -557,11 +732,13 @@ do
     local shown = #l == 2 and l[1][1] == "Casts" and l[2][1] == "Chain casts from a full pool."
     local leave = hit and hit:GetScript("OnLeave")
     if leave then leave(hit) end
+    -- T81: the TBC rank table is an opts set now, and every labelled column
+    -- carries the glossary (Tip:Columns) as its tooltip
     local rankCols = 0
-    local rankApi = MD.DashboardParts.CreateTable(CreateFrame("Frame"), 760) -- the TBC rank table (no opts)
+    local rankApi = RankTable(CreateFrame("Frame"), 760)
     for _, col in ipairs(rankApi.cols or {}) do if col.tooltip then rankCols = rankCols + 1 end end
     check("T76: a header label shows its column's tooltip", header ~= nil and hit ~= nil and shown
-        and hits.plain == nil and not GameTooltip:IsShown() and rankCols == 0
+        and hits.plain == nil and not GameTooltip:IsShown() and rankCols == 8
         and not (MD.Tip.Skinned and MD.Tip:Skinned(GameTooltip)),
         string.format("header=%s hit=%s lines=%d plain=%s", tostring(header ~= nil), tostring(hit ~= nil), #l,
             tostring(hits.plain ~= nil)))

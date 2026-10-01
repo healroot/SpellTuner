@@ -21,26 +21,16 @@ local UI = MD.UI
 
 MD.DashboardParts = MD.DashboardParts or {}
 
--- T43 (docs/SPEC-forever-ui.md 4.1, 4.4): under the Forever theme the pane's
--- small text is the kit's UI.FONT_SMALL and the run line the accent; TBC keeps
--- GameFontHighlightSmall and gold. T69 (P25): the font asks UI.THEMED (set by
--- UI/Theme_Forever.lua, before any module file); the colour is a token read,
--- TBC's accent token being that gold.
-local SMALL  = UI.THEMED and UI.FONT_SMALL or "GameFontHighlightSmall"
+-- T43 (docs/SPEC-forever-ui.md 4.1, 4.4): the pane's small text is the kit's
+-- UI.FONT_SMALL and the run line the accent (a token read).
+-- T81 (C2 of docs/PLAN-refactor-ux.md, review U5 / A23): one pane on both
+-- lines. Since T80 (C1) the theme is on every TOC, so P27's list -- an opts
+-- set on UI/Dashboard_Rows.lua's one table, scrolled, with the result area
+-- and the row menu -- is the only list; the old TBC list (its own 16-px row
+-- pool, the tail line, the Coach* star and shift-click) is gone with its
+-- UI.THEMED branches.
+local SMALL  = UI.FONT_SMALL
 local RUN_HI = UI.Hex("accent")
-
-local ROW_HEIGHT = 16
-local COLS = {
-    { "n",      0,   22,  "#" },
-    { "when",   22,  110, "when" },
-    { "zone",   132, 150, "zone" },
-    { "dur",    282, 46,  "dur" },
-    { "tgts",   328, 40,  "tgts" },
-    { "casts",  368, 48,  "casts" },
-    { "spent",  416, 56,  "spent" },
-    { "low",    472, 66,  "low mana" },
-    { "valid",  538, 190, "validate" },
-}
 
 -- T16c, lead review (2026-09-28), correcting T16b: a zone name, a gate's own
 -- text (which can embed a target name, T14) and a roster name come straight
@@ -68,30 +58,6 @@ local function LowestMana(rec)
     return (low or pool) / pool
 end
 
--- T53 (P9, review U25): which rows of a list fit, and what the last slot says
--- when they do not all fit. `top` is the first row's y, `floor` the lowest y a
--- row may start at (the loop's old `break` condition, unchanged), so the
--- number of slots is exactly the number of rows painted before. When the
--- list is longer, the last slot is the tail line and `hidden` counts every
--- row not painted; the window starts at the selected row when the selection
--- would fall below it, backed up so the slots stay full at the list's end.
--- No slot at all (a pane with no height yet) paints nothing, as before.
-local function ListWindow(n, top, floor, selected)
-    local slots = 0
-    if top >= floor then slots = math.floor((top - floor) / ROW_HEIGHT) + 1 end
-    if n <= slots then return 1, n, 0 end
-    if slots == 0 then return 1, 0, 0 end
-    local rows = slots - 1
-    local first = 1
-    if selected and selected > rows then
-        first = math.max(1, math.min(selected, n - rows + 1))
-    end
-    return first, first + rows - 1, n - rows
-end
-local function TailText(hidden)
-    return string.format("|cff888888... and %d more (scroll: not yet)|r", hidden)
-end
-
 local function When(id)
     if not id then return "?" end
     local days = math.floor((time() - id) / 86400)
@@ -104,7 +70,6 @@ end
 function MD.DashboardParts.CreateReview(parent, width)
     local pane = CreateFrame("Frame", nil, parent)
     pane:Hide()
-    local rowPool, usedRows = {}, {}
     local selected = 1
     local source = "fights"   -- "fights" or "run1" / "run2": which list is shown
     local cache = {}     -- recording id -> validation result (validating is not cheap)
@@ -172,37 +137,25 @@ function MD.DashboardParts.CreateReview(parent, width)
         "Runs the eight gates and shows what matched and what did not.")
     local coachBtn = UI.CreateButton(pane, "Coach", "accent-hover", { 78, 18 }, false, false,
         UI.FONT_SMALL, UI.FONT_SMALL)
-    -- T71 (P27, section 8.1 item 5): under UI.THEMED the star and the
-    -- shift-click go -- forcing is the row menu's "Coach anyway" -- so neither
-    -- tooltip mentions them there. TBC keeps both until wave C.
-    local THEMED = UI.THEMED
+    -- T71 (P27, section 8.1 item 5): no star and no shift-click -- forcing is
+    -- the row menu's "Coach anyway" -- so no tooltip mentions them (T81: on
+    -- TBC too; the branch that kept them is gone).
     -- while a run is shown, Coach coaches the run and this coaches one pull
     local pullBtn = UI.CreateButton(pane, "Coach pull", "accent-hover", { 82, 18 }, false, false,
         UI.FONT_SMALL, UI.FONT_SMALL, "Coach this one pull",
         "The v0.7 card for the selected pull, inside the run.",
-        THEMED and "A pull that does not replay: right-click it for Coach anyway."
-            or "A star means the pull does not replay: shift-click to coach it anyway.")
+        "A pull that does not replay: right-click it for Coach anyway.")
     local pinBtn = UI.CreateButton(pane, "Pin", "accent-hover", { 68, 18 }, false, false,
         UI.FONT_SMALL, UI.FONT_SMALL, "Keep this recording",
         "Pinned fights are never replaced (at most two).",
         "While a run is shown this pins the whole run: a run is kept or dropped as one thing.")
     local exportBtn = UI.CreateButton(pane, "Export", "accent-hover", { 60, 18 }, false, false,
         UI.FONT_SMALL, UI.FONT_SMALL, "Copy every recording as text", "Same as /md export.")
-    local playBtn
-    if THEMED then
-        playBtn = UI.CreateButton(pane, "Play", "accent-hover", { 48, 18 }, false, false,
-            UI.FONT_SMALL, UI.FONT_SMALL, "Play this fight as unit frames",
-            "What you did on the left; what Coach suggested on the right.",
-            "Double-click a row to play it. A fight coached with Coach anyway",
-            "plays with both columns, marked FORCED.")
-    else
-        playBtn = UI.CreateButton(pane, "Play", "accent-hover", { 48, 18 }, false, false,
-            UI.FONT_SMALL, UI.FONT_SMALL, "Play this fight as unit frames",
-            "What you did on the left; what Coach suggested on the right.",
-            "Press Coach first for the right column. Any class can play the left one.",
-            "Shift-click to force the right column onto a fight that does not replay",
-            "(coach it first with /md coach N force).")
-    end
+    local playBtn = UI.CreateButton(pane, "Play", "accent-hover", { 48, 18 }, false, false,
+        UI.FONT_SMALL, UI.FONT_SMALL, "Play this fight as unit frames",
+        "What you did on the left; what Coach suggested on the right.",
+        "Double-click a row to play it. A fight coached with Coach anyway",
+        "plays with both columns, marked FORCED.")
 
     local runBtn = UI.CreateButton(pane, "Start run", "accent-hover", { 76, 18 }, false, false,
         UI.FONT_SMALL, UI.FONT_SMALL, "Record a whole dungeon",
@@ -256,42 +209,16 @@ function MD.DashboardParts.CreateReview(parent, width)
         return cache[rec.id]
     end
 
-    validateBtn:SetScript("OnClick", function()
-        if THEMED then api:Validate() return end -- T71: into the result area
-        local rec = Selected()
-        if not rec then return end
-        Validation(rec, true)
-        for _, line in ipairs(MD:ValidationReport(rec, Spec())) do MD:Print(line) end
-        api:Render()
-    end)
+    -- T71: into the result area, one chat line
+    validateBtn:SetScript("OnClick", function() api:Validate() end)
     -- On a run, Coach coaches the RUN: one plan and a drink policy for the whole
     -- dungeon, scored on time before mana. On a single fight it is v0.7's card.
-    --
-    -- v0.9.8: shift-click forces, on a fight the gates rejected. The button is
-    -- no longer DISABLED for that case -- a disabled button cannot be
-    -- shift-clicked, and it says nothing unless you happen to hover it. It is
-    -- marked instead, and a plain click still refuses, printing which gate
-    -- failed. You cannot get a card from a fight the engine gets wrong by
-    -- accident; you can get one on purpose.
-    local function Forcing()
-        return MD.API.IsShiftKeyDown and MD.API.IsShiftKeyDown() or false
-    end
+    -- A plain click on a fight the gates rejected still refuses and says which
+    -- gate failed (v0.9.8); forcing is the row menu's Coach anyway (T71).
     coachBtn:SetScript("OnClick", function()
-        local i = RunIndex()
-        if THEMED then -- T71: the card in the result area, one chat line
-            if i then api:CoachRun() else api:Coach(false) end
-            return
-        end
-        if i then
-            if MD.RunCoachRun then MD:RunCoachRun(tostring(i)) end
-        elseif MD.RunCoach then
-            MD:RunCoach(Spec() .. (Forcing() and " force" or ""))
-        end
+        if RunIndex() then api:CoachRun() else api:Coach(false) end
     end)
-    pullBtn:SetScript("OnClick", function()
-        if THEMED then api:Coach(false) return end -- T71
-        if MD.RunCoach then MD:RunCoach(Spec() .. (Forcing() and " force" or "")) end
-    end)
+    pullBtn:SetScript("OnClick", function() api:Coach(false) end)
     -- T49 (P5), B14: a single fight is pinned through the recorder's own capped
     -- Pin (Recorder_Forever.lua's on Forever), which refuses a third with a
     -- reason. TBC's Engine/FightRecorder.lua has no Pin yet (the shared
@@ -345,69 +272,11 @@ function MD.DashboardParts.CreateReview(parent, width)
     exportBtn:SetScript("OnClick", function() if MD.RunExport then MD:RunExport() end end)
     -- runtime lookup: UI/ReplayWindow.lua loads after this file
     -- on a run with no pull selected yet, Play opens its first pull with the
-    -- run strip; the strip is the map from there. Shift-click forces the
-    -- suggested column onto a fight the gates rejected -- it needs a plan, so
-    -- /md coach N force has to have run first (v0.9.6).
+    -- run strip; the strip is the map from there. A fight coached with Coach
+    -- anyway plays with both columns (SP.forced); Play itself forces nothing.
     playBtn:SetScript("OnClick", function()
-        if not MD.Replay then return end
-        if THEMED then MD.Replay:Open(Spec()) return end -- T71: no shift-click
-        local shift = MD.API.IsShiftKeyDown and MD.API.IsShiftKeyDown()
-        MD.Replay:Open(Spec() .. (shift and " force" or ""))
+        if MD.Replay then MD.Replay:Open(Spec()) end
     end)
-
-    local function AcquireRow()
-        local row = table.remove(rowPool)
-        if not row then
-            row = CreateFrame("Button", nil, pane)
-            row:SetSize(width - 60, ROW_HEIGHT)
-            row.cells = {}
-            for _, col in ipairs(COLS) do
-                local fs = row:CreateFontString(nil, "OVERLAY", SMALL)
-                fs:SetJustifyH("LEFT")
-                fs:SetPoint("LEFT", row, "LEFT", col[2], 0)
-                fs:SetWidth(col[3])
-                row.cells[col[1]] = fs
-            end
-            row.highlight = row:CreateTexture(nil, "BACKGROUND")
-            row.highlight:SetAllPoints()
-            row.highlight:SetColorTexture(1, 1, 1, 0.06)
-            row.highlight:Hide()
-        end
-        -- a pooled row still carries the last render's text in every cell it is
-        -- not given this time. The empty-state row sets only `when`, and the
-        -- header's other columns showed through underneath it (v0.11.6).
-        for _, col in ipairs(COLS) do
-            row.cells[col[1]]:SetText("")
-            row.cells[col[1]]:SetWidth(col[3])
-        end
-        row.highlight:Hide()
-        row:EnableMouse(true)
-        row:SetScript("OnClick", nil)
-        row:SetScript("OnEnter", nil)
-        row:SetScript("OnLeave", nil)
-        row:Show()
-        usedRows[#usedRows + 1] = row
-        return row
-    end
-
-    function api:Release()
-        for _, row in ipairs(usedRows) do row:Hide(); rowPool[#rowPool + 1] = row end
-        wipe(usedRows)
-    end
-
-    -- The one line that says whether a fight is usable, and why not when it is
-    -- not. The first failing gate wins: a healer does not need five reasons.
-    local function ValidateCell(v)
-        if not v then return "|cff888888not checked|r", false end
-        if v.ok then return "|cff99dd99ok|r", true end
-        for _, g in ipairs(v.gates) do
-            if not g.ok then
-                local short = g.text:match("^([^%(]+)")
-                return "|cffff9966" .. g.name .. ": " .. Esc((short or g.text):gsub("%s+$", "")) .. "|r", false
-            end
-        end
-        return "|cffff9966failed|r", false
-    end
 
     -- Habits: the same labels the summaries have carried since v0.7.0, summed
     -- over every recorded fight. `ok` is never a habit.
@@ -439,8 +308,7 @@ function MD.DashboardParts.CreateReview(parent, width)
 
     ----------------------------------------------------------------------------
     -- T71 (P27, review U20 / U22 / U25 / U17; docs/mockups/refactor-ux.html
-    -- M2). Under UI.THEMED only -- TBC's pane above and below is untouched
-    -- until wave C:
+    -- M2); on TBC too since T80 / T81 (wave C):
     --   * the list is the generic table (UI/Dashboard_Rows.lua) with T30's
     --     options, scrolled (the wheel, a thin bar) -- no tail line;
     --   * a RESULT area under it shows the last validation or coach card as
@@ -450,7 +318,7 @@ function MD.DashboardParts.CreateReview(parent, width)
     --   * the Result cell reads the gates' own `short` (SM.NewValidation), not
     --     their prose.
     ----------------------------------------------------------------------------
-    local T = { result = nil }   -- the themed pieces, built below when THEMED
+    local T = { result = nil }   -- the list, the result area and the row menu, built below
     local LIST_TOP, BOTTOM = 38, 64
     local function Tone(token, text) return UI.Hex(token) .. text .. "|r" end
 
@@ -482,7 +350,7 @@ function MD.DashboardParts.CreateReview(parent, width)
         return out
     end
 
-    if THEMED then
+    do -- T81: was `if THEMED then` (the theme is on every TOC since T80)
         local font = UI.FONT_NUM_SMALL or UI.FONT_SMALL
         local rowH = UI.Pitch and UI.Pitch(20) or 20
         local headH = UI.Pitch and UI.Pitch(22) or 22
@@ -893,7 +761,6 @@ function MD.DashboardParts.CreateReview(parent, width)
 
     function api:Render()
         if not pane:IsShown() then return end
-        api:Release()
 
         -- the selector: [Fights] plus one button per stored run
         local RR = MD.RunRecorder
@@ -939,104 +806,9 @@ function MD.DashboardParts.CreateReview(parent, width)
         local rec = Selected()
         local v = rec and MD.player.isDruid and Validation(rec) or (rec and cache[rec.id])
 
-        -- T71 (P27): under UI.THEMED the list is the generic table, scrolled,
-        -- with the result area under it; TBC paints its rows below, unchanged.
-        if THEMED then api:RenderThemed(list, run) end
-        if not THEMED then
-        local y = -38
-        local header = AcquireRow()
-        header:SetPoint("TOPLEFT", pane, "TOPLEFT", 0, y)
-        header:EnableMouse(false)
-        for _, col in ipairs(COLS) do header.cells[col[1]]:SetText("|cff888888" .. col[4] .. "|r") end
-        y = y - 18
-
-        if #list == 0 then
-            local row = AcquireRow()
-            row:SetPoint("TOPLEFT", pane, "TOPLEFT", 0, y)
-            row.cells.when:SetText(run and "|cff888888This run kept no pulls.|r"
-                or IsPractice() and "|cff888888No practice fights yet - Simulate -> Practice.|r"
-                or "|cff888888No recorded fights yet - pull something for 20s.|r")
-            row.cells.when:SetWidth(width - 80)
-        end
-
-        -- T53 (P9, review U25): the rows stop at the pane's height, as they
-        -- always have, but no longer silently -- when the list is longer, the
-        -- last slot says how many are not shown, and the selected row is kept
-        -- on screen (the list starts at it when it would fall off). There is
-        -- no scroll yet; the Forever list gets one in P27.
-        local first, last, hidden = ListWindow(#list, y, -(pane:GetHeight() - 70), selected)
-        for i = first, last do
-            local rec = list[i]
-            local row = AcquireRow()
-            row:SetPoint("TOPLEFT", pane, "TOPLEFT", 0, y)
-            row.highlight:SetShown(i == selected)
-            row:EnableMouse(true)
-            row.recIndex = i
-            row:SetScript("OnClick", function(self) selected = self.recIndex; api:Render() end)
-
-            local v = cache[rec.id]
-            local cell, ok = ValidateCell(v)
-            if rec.short then
-                -- under the recording gate (20s / 5 casts). Kept, because a
-                -- dungeon is mostly these; not coachable, and the cell says so.
-                cell, ok = "|cff888888short - under the recording gate|r", false
-            end
-            local c = ((v and not ok) or rec.short) and "|cffbbbbbb" or "|cffffffff"
-            row.cells.n:SetText(c .. i .. (rec.pinned and "*" or "") .. "|r")
-            row.cells.when:SetText(c .. (run and ("+" .. Clock(rec.runT0 or 0)) or When(rec.id)) .. "|r")
-            row.cells.zone:SetText(c .. Esc(rec.zone or "?") .. "|r")
-            row.cells.dur:SetText(c .. Clock(rec.dur or 0) .. "|r")
-            row.cells.tgts:SetText(c .. #(rec.tracked or {}) .. "|r")
-            row.cells.casts:SetText(c .. (rec.ownCasts or 0) .. "|r")
-            row.cells.spent:SetText(c .. K(rec.spent or 0) .. "|r")
-            -- R39 (review 2026-09-29): a v3 recording's mana samples are the
-            -- clock's model, not a reading (UnitPower is secret on Forever),
-            -- so the cell carries the clock's own "~". A TBC recording never
-            -- sets manaModelled and prints as it always has.
-            row.cells.low:SetText(c .. (rec.manaModelled and "~" or "")
-                .. string.format("%d%%", LowestMana(rec) * 100 + 0.5) .. "|r")
-            row.cells.valid:SetText(cell)
-
-            row:SetScript("OnEnter", function(self)
-                local tip = MD.Tip
-                if not tip then return end
-                local lines = {}
-                lines[#lines + 1] = { l = Esc(rec.zone or "?"), r = When(rec.id) }
-                lines[#lines + 1] = { l = "foreign healing",
-                    r = string.format("%d%%", (rec.foreignShare or 0) * 100 + 0.5) }
-                if rec.manaModelled then
-                    lines[#lines + 1] = { l = "low mana",
-                        r = string.format("~%d%% - modelled pool, not read", LowestMana(rec) * 100 + 0.5) }
-                end
-                if rec.truncated then
-                    lines[#lines + 1] = { l = "|cffff9966stream truncated|r", r = "over 4000 events" }
-                end
-                if v then
-                    for _, g in ipairs(v.gates) do
-                        lines[#lines + 1] = { l = (g.ok and "|cff99dd99" or "|cffff9966") .. g.name .. "|r",
-                                              r = Esc(g.text) }
-                    end
-                    for idx, why in pairs(v.excluded) do
-                        local nm = rec.roster[idx] and rec.roster[idx].name
-                        lines[#lines + 1] = { l = "  excluded " .. (nm and Esc(nm) or tostring(idx)),
-                                              r = why }
-                    end
-                else
-                    lines[#lines + 1] = { l = "|cff888888press Validate to replay this fight|r", r = "" }
-                end
-                tip:Show(self, "ANCHOR_RIGHT", lines)
-            end)
-            row:SetScript("OnLeave", function() if MD.Tip then MD.Tip:Hide() end end)
-            y = y - ROW_HEIGHT
-        end
-        if hidden > 0 then
-            local row = AcquireRow()
-            row:SetPoint("TOPLEFT", pane, "TOPLEFT", 0, y)
-            row:EnableMouse(false)
-            row.cells.when:SetText(TailText(hidden))
-            row.cells.when:SetWidth(width - 80)
-        end
-        end -- not THEMED
+        -- T71 (P27): the list is the generic table, scrolled, with the result
+        -- area under it (T81: the only list, on both lines).
+        api:RenderThemed(list, run)
 
         -- buttons follow the selection (rec and v are read above, before the rows)
         if run then
@@ -1061,13 +833,10 @@ function MD.DashboardParts.CreateReview(parent, width)
             exportBtn:Hide()
         end
         Set(runBtn, RR ~= nil)
-        -- a fight the gates rejected keeps its button, marked with a star: a
-        -- plain click refuses and names the gate, shift forces
-        local rejected = (v and not v.ok) and true or false
-        -- T71: no star under UI.THEMED (the row menu's Coach anyway forces)
-        local star = (rejected and not THEMED) and "*" or ""
-        coachBtn:SetText(run and "Coach run" or ("Coach" .. star))
-        pullBtn:SetText("Coach pull" .. star)
+        -- a fight the gates rejected keeps its button (T71: no star): a plain
+        -- click refuses and names the gate; the row menu's Coach anyway forces
+        coachBtn:SetText(run and "Coach run" or "Coach")
+        pullBtn:SetText("Coach pull")
         pullBtn:SetShown(run ~= nil)
         Set(pullBtn, rec ~= nil and not rec.short and MD.player.isDruid)
         if run then
@@ -1099,19 +868,13 @@ function MD.DashboardParts.CreateReview(parent, width)
                 for _, g in ipairs(v.gates) do
                     if not g.ok then lines[#lines + 1] = { l = "  " .. g.name, r = Esc(g.text) } end
                 end
-                if THEMED then -- T71: the row menu, not a modifier
-                    lines[#lines + 1] = { l = UI.Hex("accent") .. "right-click the row|r -> Coach anyway", r = "" }
-                    lines[#lines + 1] = { l = UI.Hex("muted") .. "Play then shows both columns, marked FORCED.|r", r = "" }
-                else
-                lines[#lines + 1] = { l = "|cffffff00shift-click|r to coach it anyway", r = "" }
-                lines[#lines + 1] = { l = "|cff888888(or /md coach " .. Spec() .. " force)|r", r = "" }
-                lines[#lines + 1] = { l = "|cff888888Play then shows both columns, marked FORCED.|r", r = "" }
-                end
+                -- T71: the row menu, not a modifier
+                lines[#lines + 1] = { l = UI.Hex("accent") .. "right-click the row|r -> Coach anyway", r = "" }
+                lines[#lines + 1] = { l = UI.Hex("muted") .. "Play then shows both columns, marked FORCED.|r", r = "" }
             elseif not v then
                 lines[#lines + 1] = { l = "|cff888888Validate first, or press Coach to do both.|r", r = "" }
             else
-                lines[#lines + 1] = { l = THEMED and "Search for a better plan; the card appears under the list."
-                    or "Search for a better plan and print the card.", r = "" }
+                lines[#lines + 1] = { l = "Search for a better plan; the card appears under the list.", r = "" }
                 lines[#lines + 1] = { l = "|cff888888Runs across frames; /md coach cancel stops it.|r", r = "" }
             end
             MD.Tip:Show(self, "ANCHOR_RIGHT", lines)

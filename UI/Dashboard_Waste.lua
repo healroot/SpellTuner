@@ -7,40 +7,57 @@
 -- Mana belongs to the SPELL, not the target, so Casts / Mana only appear in
 -- Spell mode. A role or target that was guessed rather than read carries a
 -- marker: the number is still real, its label is not certain.
+--
+-- T81 (C2 of docs/PLAN-refactor-ux.md, review U5 / A23): each grouping is an
+-- `opts` set on UI/Dashboard_Rows.lua's one table, as Review's list is --
+-- numbers right-justified in Arial Narrow on 20-px rows, zebra, a rule under
+-- the header -- and the list scrolls (the wheel, a thin bar) instead of
+-- ending with T53's "... and N more" line. The colours are token reads.
 local _, MD = ...
 local UI = MD.UI
 
 MD.DashboardParts = MD.DashboardParts or {}
 
-local ROW_HEIGHT = 16
 local MODES = { { "spell", "Spell" }, { "role", "Role" }, { "class", "Class" }, { "target", "Target" } }
+local LIST_TOP, BOTTOM = 20, 24   -- under the mode buttons; above the total line
+local RESET = "|r"
+local WARN = "|cffffcc66"         -- overheal between 30% and 45% (no theme token names it)
+local LIFE_TAP = "|cff9482c9"     -- the warlock's class colour
 
--- column sets per mode: { key, x, w, label, align }
-local COLS = {
-    spell = {
-        { "label",  12,  150, "Spell" },        { "sub",    166, 52, "" },
-        { "casts",  222, 50,  "Casts" },        { "mana",   276, 60, "Mana" },
-        { "healed", 340, 70,  "Healing" },      { "frac",   414, 64, "Overheal" },
-        { "waste",  482, 84,  "Wasted mana" },  { "wev",    570, 120, "Fully wasted" },
-    },
-    role = {
-        { "label",  12,  110, "Role" },         { "healed", 126, 80, "Healing" },
-        { "frac",   210, 64,  "Overheal" },     { "waste",  278, 84, "Wasted mana" },
-        { "wev",    366, 90,  "Fully wasted" }, { "sub",    460, 260, "Targets" },
-    },
-    class = {
-        { "label",  12,  110, "Class" },        { "healed", 126, 80, "Healing" },
-        { "frac",   210, 64,  "Overheal" },     { "waste",  278, 84, "Wasted mana" },
-        { "wev",    366, 90,  "Fully wasted" }, { "sub",    460, 260, "" },
-    },
-    target = {
-        { "label",  12,  120, "Target" },       { "sub",    136, 110, "Class" },
-        { "role",   250, 90,  "Role" },         { "healed", 344, 80, "Healing" },
-        { "frac",   428, 64,  "Overheal" },     { "waste",  496, 84, "Wasted mana" },
-        { "wev",    584, 130, "Fully wasted" },
-    },
-}
-local ALL_KEYS = { "label", "sub", "casts", "mana", "healed", "frac", "waste", "wev", "role" }
+-- column sets per mode, in the table's shape; numbers right-justified, words
+-- in the kit's small font (x and w are inside the row)
+local function Num(key, x, w, label)
+    return { key = key, x = x, w = w, label = label, justify = "RIGHT" }
+end
+local function Word(key, x, w, label)
+    return { key = key, x = x, w = w, label = label, font = UI.FONT_SMALL }
+end
+local function Cols(rowW)
+    return {
+        spell = {
+            Word("label", 8, 150, "Spell"),       Word("sub", 162, 60, ""),
+            Num("casts", 226, 50, "Casts"),        Num("mana", 280, 60, "Mana"),
+            Num("healed", 344, 70, "Healing"),     Num("frac", 418, 64, "Overheal"),
+            Num("waste", 486, 84, "Wasted mana"),  Num("wev", 574, 100, "Fully wasted"),
+        },
+        role = {
+            Word("label", 8, 110, "Role"),         Num("healed", 122, 80, "Healing"),
+            Num("frac", 206, 64, "Overheal"),      Num("waste", 274, 84, "Wasted mana"),
+            Num("wev", 362, 100, "Fully wasted"),  Word("sub", 474, rowW - 478, "Targets"),
+        },
+        class = {
+            Word("label", 8, 110, "Class"),        Num("healed", 122, 80, "Healing"),
+            Num("frac", 206, 64, "Overheal"),      Num("waste", 274, 84, "Wasted mana"),
+            Num("wev", 362, 100, "Fully wasted"),  Word("sub", 474, rowW - 478, ""),
+        },
+        target = {
+            Word("label", 8, 120, "Target"),       Word("sub", 132, 110, "Class"),
+            Word("role", 246, 90, "Role"),         Num("healed", 340, 80, "Healing"),
+            Num("frac", 424, 64, "Overheal"),      Num("waste", 492, 84, "Wasted mana"),
+            Num("wev", 580, 100, "Fully wasted"),
+        },
+    }
+end
 
 local function Pct(f) return string.format("%.1f%%", f * 100) end
 -- MD.Util.K (Core.lua; T60, P16, review A9) with this view's own threshold:
@@ -48,31 +65,22 @@ local function Pct(f) return string.format("%.1f%%", f * 100) end
 -- here (mana, healing, waste) is a sum of non-negative events.
 local K_FROM = 10000
 local function K(n) return MD.Util.K(n, K_FROM) end
-
--- T53 (P9, review U25): how many rows fit, and how many the tail line names.
--- `top` is the first row's y and `floor` the lowest y a row may start at (the
--- loop's old `break` condition, unchanged), so the slots are exactly the rows
--- painted before; a longer list gives its last slot to the tail line. No slot
--- at all (a pane with no height yet) paints nothing, as before.
-local function ListFit(n, top, floor)
-    local slots = 0
-    if top >= floor then slots = math.floor((top - floor) / ROW_HEIGHT) + 1 end
-    if n <= slots then return n, 0 end
-    if slots == 0 then return 0, 0 end
-    return slots - 1, n - (slots - 1)
-end
+local function Tone(token, text) return UI.Hex(token) .. text .. RESET end
 
 function MD.DashboardParts.CreateWaste(parent, width)
     local pane = CreateFrame("Frame", nil, parent)
     pane:Hide()
-    local rowPool, usedRows = {}, {}
     local mode, scope = "spell", "session"
     local api = { frame = pane }
+    local rowW = width - 72          -- the scroll bar sits just right of the rows
+    local rowH = UI.Pitch and UI.Pitch(20) or 20
+    local headH = UI.Pitch and UI.Pitch(22) or 22
+    local COLS = Cols(rowW)
 
     -- controls: by-mode group on the left, scope group on the right
     local byLabel = pane:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
     byLabel:SetPoint("TOPLEFT", pane, "TOPLEFT", 12, -2)
-    byLabel:SetTextColor(0.7, 0.7, 0.7)
+    byLabel:SetTextColor(UI.RGB("label"))
     byLabel:SetText("by:")
     local modeBtns, prev = {}, nil
     for _, def in ipairs(MODES) do
@@ -85,7 +93,7 @@ function MD.DashboardParts.CreateWaste(parent, width)
     local highlightMode = UI.CreateButtonGroup(modeBtns, function(id) mode = id; api:Render() end)
 
     local scopeLabel = pane:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
-    scopeLabel:SetTextColor(0.7, 0.7, 0.7)
+    scopeLabel:SetTextColor(UI.RGB("label"))
     scopeLabel:SetText("scope:")
     local sessionBtn = UI.CreateButton(pane, "session", "accent-hover", { 60, 16 }, false, false, UI.FONT_SMALL, nil,
         "This login", "Undecayed; the only scope with per-target rows.")
@@ -97,42 +105,39 @@ function MD.DashboardParts.CreateWaste(parent, width)
     scopeLabel:SetPoint("RIGHT", sessionBtn, "LEFT", -6, 0)
     local highlightScope = UI.CreateButtonGroup({ sessionBtn, allBtn }, function(id) scope = id; api:Render() end)
 
-    local totalFS = pane:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    local totalFS = pane:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
     totalFS:SetPoint("BOTTOMLEFT", pane, "BOTTOMLEFT", 12, 4)
     totalFS:SetJustifyH("LEFT")
     totalFS:SetWidth(width - 60)
 
-    local function AcquireRow()
-        local row = table.remove(rowPool)
-        if not row then
-            row = CreateFrame("Frame", nil, pane)
-            row:SetSize(width - 60, ROW_HEIGHT)
-            row.cells = {}
-            for _, key in ipairs(ALL_KEYS) do
-                local fs = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-                fs:SetJustifyH("LEFT")
-                row.cells[key] = fs
-            end
-        end
-        row:Show()
-        usedRows[#usedRows + 1] = row
-        return row
-    end
+    local emptyFS = pane:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+    emptyFS:SetPoint("TOPLEFT", pane, "TOPLEFT", 8, -(LIST_TOP + 4 + headH + 4))
+    emptyFS:SetJustifyH("LEFT")
+    emptyFS:SetTextColor(UI.RGB("muted"))
 
-    local function Layout(row, cols)
-        for _, key in ipairs(ALL_KEYS) do row.cells[key]:Hide() end
-        for _, col in ipairs(cols) do
-            local fs = row.cells[col[1]]
-            fs:ClearAllPoints()
-            fs:SetPoint("LEFT", row, "LEFT", col[2], 0)
-            fs:SetWidth(col[3])
-            fs:Show()
-        end
+    -- One table per grouping (a table's columns are fixed when it is built),
+    -- built on first sight; the others are hidden.
+    local tables = {}
+    local function RenderRow(row, r)
+        for key, fs in pairs(row.cells) do fs:SetText(r.cells[key] or "") end
+    end
+    local function TableFor(m)
+        local t = tables[m]
+        if t then return t end
+        t = MD.DashboardParts.CreateTable(pane, width, {
+            cols = COLS[m], font = UI.FONT_NUM_SMALL or UI.FONT_SMALL, wideFont = UI.FONT_SMALL,
+            rowHeight = rowH, headerHeight = headH, headerRule = true,
+            zebra = true, rowWidth = rowW, scroll = true,
+            render = RenderRow,
+        })
+        t.frame:SetPoint("TOPLEFT", pane, "TOPLEFT", 0, -LIST_TOP)
+        t.frame:SetWidth(width)
+        tables[m] = t
+        return t
     end
 
     function api:Release()
-        for _, row in ipairs(usedRows) do row:Hide(); rowPool[#rowPool + 1] = row end
-        wipe(usedRows)
+        for _, t in pairs(tables) do t:Release() end
     end
 
     -- casts + mana per family this session, for Spell mode
@@ -145,107 +150,98 @@ function MD.DashboardParts.CreateWaste(parent, width)
         return out
     end
 
+    -- One row's cells, as the old pane painted them (token colours).
+    local function Cells(r, spend, shownFam, OH)
+        local c = r.guessed and "text2" or "text"
+        local out = {}
+        out.label = Tone(c, r.label)
+        out.sub = Tone("muted", r.sub or "")
+        if mode == "spell" then
+            local id = r.key:match("^k:(%d+):")
+            local s = id and MD.SpellData.spells[tonumber(id)]
+            local fam = s and s.family
+            -- casts / mana belong to the spell as a whole: show them on the
+            -- first event-kind row of each family only
+            if fam and spend and spend[fam] and not shownFam[fam] then
+                shownFam[fam] = true
+                out.casts = Tone(c, tostring(spend[fam].casts))
+                out.mana = Tone(c, K(spend[fam].mana))
+            else
+                out.casts = Tone("disabled", "-")
+                out.mana = Tone("disabled", "-")
+            end
+        end
+        if mode == "target" then
+            local st = OH.session[r.key]
+            out.role = Tone(c, (st and st.role or "?") .. (r.guessed and " ?" or ""))
+            local guid = r.key:match("^u:(.+)$")
+            local taps = MD.Targets and MD.Targets:LifeTaps(guid) or 0
+            if taps > 0 then
+                -- overheal on a tapping warlock is partly the HoT doing its job
+                out.sub = Tone("muted", r.sub or "") .. " " .. LIFE_TAP .. "Life Tap x" .. taps .. RESET
+            end
+        end
+        out.healed = Tone(c, K(r.healed + r.overhealed))
+        local fc = r.frac >= 0.45 and UI.Hex("bad") or r.frac >= 0.30 and WARN or UI.Hex("good")
+        out.frac = fc .. Pct(r.frac) .. RESET
+        out.waste = Tone(c, r.wastedMana > 0 and K(r.wastedMana) or "-")
+        out.wev = Tone("muted", r.wastedEvents > 0 and (r.wastedEvents .. " events") or "-")
+        if mode ~= "spell" and mode ~= "target" then
+            -- who is in this bucket (session only)
+            local names = {}
+            if scope == "session" then
+                for _, t in ipairs(OH:TargetRows()) do
+                    local st = OH.session[t.key]
+                    if st and ((mode == "role" and st.role == r.label) or (mode == "class" and st.class == r.label)) then
+                        names[#names + 1] = st.name
+                    end
+                end
+            end
+            out.sub = Tone("muted", table.concat(names, ", "))
+        end
+        return out
+    end
+
     function api:Render()
         if not pane:IsShown() then return end
-        api:Release()
         highlightMode(mode); highlightScope(scope)
         local OH = MD.Overheal
-        local cols = COLS[mode]
         local rows
         if mode == "spell" then rows = OH:SpellRows(scope)
         elseif mode == "role" then rows = OH:RoleRows(scope)
         elseif mode == "class" then rows = OH:ClassRows(scope)
         else rows = OH:TargetRows() end
 
-        local y = -24
-        local header = AcquireRow()
-        Layout(header, cols)
-        header:SetPoint("TOPLEFT", pane, "TOPLEFT", 0, y)
-        for _, col in ipairs(cols) do header.cells[col[1]]:SetText("|cff888888" .. col[4] .. "|r") end
-        y = y - 18
+        for m, t in pairs(tables) do
+            if m ~= mode then t:Release(); t.frame:Hide() end
+        end
+        local t = TableFor(mode)
+        t.frame:Show()
+        -- the list's height from the pane's (a size per group, decision 6)
+        local listH = math.max(80, pane:GetHeight() - LIST_TOP - BOTTOM)
+        t.frame:SetHeight(listH)
+        t:SetVisibleRows(math.max(3, math.floor((listH - 4 - headH) / rowH)))
 
         local spend = mode == "spell" and FamilySpend() or nil
         local shownFam = {}
-        -- T53 (P9, review U25): the rows stop at the pane's height, as they
-        -- always have, but no longer silently -- when there are more than fit,
-        -- the last slot says how many are not shown. No scroll yet.
-        local shown, hidden = ListFit(#rows, y, -(pane:GetHeight() - 40))
-        for i = 1, shown do
-            local r = rows[i]
-            local row = AcquireRow()
-            Layout(row, cols)
-            row:SetPoint("TOPLEFT", pane, "TOPLEFT", 0, y)
-            local c = r.guessed and "|cffbbbbbb" or "|cffffffff"
-            row.cells.label:SetText(c .. r.label .. "|r")
-            row.cells.sub:SetText("|cff888888" .. (r.sub or "") .. (r.guessed and mode == "target" and "" or "") .. "|r")
-            if mode == "spell" then
-                local id = r.key:match("^k:(%d+):")
-                local s = id and MD.SpellData.spells[tonumber(id)]
-                local fam = s and s.family
-                -- casts / mana belong to the spell as a whole: show them on the
-                -- first event-kind row of each family only
-                if fam and spend and spend[fam] and not shownFam[fam] then
-                    shownFam[fam] = true
-                    row.cells.casts:SetText(c .. spend[fam].casts .. "|r")
-                    row.cells.mana:SetText(c .. K(spend[fam].mana) .. "|r")
-                else
-                    row.cells.casts:SetText("|cff555555-|r")
-                    row.cells.mana:SetText("|cff555555-|r")
-                end
-            end
-            if mode == "target" then
-                local st = OH.session[r.key]
-                row.cells.role:SetText((r.guessed and "|cffbbbbbb" or c) .. (st and st.role or "?") ..
-                    (r.guessed and " ?|r" or "|r"))
-                local guid = r.key:match("^u:(.+)$")
-                local taps = MD.Targets and MD.Targets:LifeTaps(guid) or 0
-                if taps > 0 then
-                    -- overheal on a tapping warlock is partly the HoT doing its job
-                    row.cells.sub:SetText("|cff888888" .. (r.sub or "") .. "|r |cff9482c9Life Tap x" .. taps .. "|r")
-                end
-            end
-            row.cells.healed:SetText(c .. K(r.healed + r.overhealed) .. "|r")
-            local fc = r.frac >= 0.45 and "|cffff6666" or r.frac >= 0.30 and "|cffffcc66" or "|cff99dd99"
-            row.cells.frac:SetText(fc .. Pct(r.frac) .. "|r")
-            row.cells.waste:SetText(c .. (r.wastedMana > 0 and K(r.wastedMana) or "-") .. "|r")
-            row.cells.wev:SetText("|cff888888" .. (r.wastedEvents > 0 and (r.wastedEvents .. " events") or "-") .. "|r")
-            if mode ~= "spell" and mode ~= "target" then
-                -- who is in this bucket (session only)
-                local names = {}
-                if scope == "session" then
-                    for _, t in ipairs(OH:TargetRows()) do
-                        local st = OH.session[t.key]
-                        if st and ((mode == "role" and st.role == r.label) or (mode == "class" and st.class == r.label)) then
-                            names[#names + 1] = st.name
-                        end
-                    end
-                end
-                row.cells.sub:SetText("|cff888888" .. table.concat(names, ", ") .. "|r")
-            end
-            y = y - ROW_HEIGHT
+        local list = {}
+        for i, r in ipairs(rows) do
+            list[i] = { id = r.key, cells = Cells(r, spend, shownFam, OH) }
         end
-        if hidden > 0 then
-            local row = AcquireRow(); Layout(row, cols)
-            row:SetPoint("TOPLEFT", pane, "TOPLEFT", 0, y)
-            -- a pooled row keeps the last render's text in every cell
-            for _, col in ipairs(cols) do row.cells[col[1]]:SetText("") end
-            row.cells.label:SetWidth(600)
-            row.cells.label:SetText(string.format("|cff888888... and %d more (scroll: not yet)|r", hidden))
+        if t.lastMode ~= mode or t.lastScope ~= scope then
+            t:ScrollTo(0)
+            t.lastMode, t.lastScope = mode, scope
         end
+        t:Render(list)
 
-        if #rows == 0 then
-            local row = AcquireRow(); Layout(row, cols)
-            row:SetPoint("TOPLEFT", pane, "TOPLEFT", 0, y)
-            row.cells.label:SetWidth(600)
-            row.cells.label:SetText("|cff666666No heals recorded" .. (scope == "session" and " this session" or "") ..
-                " yet - heal something.|r")
-        end
+        emptyFS:SetText(#rows == 0 and ("No heals recorded" .. (scope == "session" and " this session" or "") ..
+            " yet - heal something.") or "")
 
         local wm, we = OH:WastedTotal()
         local spent = MD.Spend and MD.Spend.sessionSpent or 0
         if spent > 0 then
-            totalFS:SetFormattedText("|cff888888%s spent this session, ~%s (%d%%) into targets at full health across %d events.  " ..
-                "Grey label / ? = role guessed, not read.|r", K(spent), K(wm), wm / spent * 100, we)
+            totalFS:SetFormattedText("%s%s spent this session, ~%s (%d%%) into targets at full health across %d events.  " ..
+                "Grey label / ? = role guessed, not read.|r", UI.Hex("muted"), K(spent), K(wm), wm / spent * 100, we)
         else
             totalFS:SetText("")
         end

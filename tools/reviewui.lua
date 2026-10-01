@@ -49,10 +49,16 @@ check("a single fight was recorded", #(MD.cdb.recordings or {}) == 1,
 
 local parent = CreateFrame("Frame")
 parent:SetSize(760, 420)
+-- T81: the cells' justification is recorded while the first rows are built
+-- (the stub's SetJustifyH records nothing), for the list's look below
+local FrameMT = getmetatable(CreateFrame("Frame"))
+local savedJustify = rawget(FrameMT, "SetJustifyH")
+rawset(FrameMT, "SetJustifyH", function(self, j) self.justify = j end)
 local api = MD.DashboardParts.CreateReview(parent, 760)
 api.frame:SetSize(760, 420)
 api.frame:Show()
 api:Render()
+rawset(FrameMT, "SetJustifyH", savedJustify)
 
 -- the rows the pane painted, newest first, as the author sees them
 local function Rows()
@@ -86,6 +92,21 @@ check("the fights list paints a header and a row", #rows >= 2, tostring(#rows))
 check("the fight's zone is in the row", (function()
     for _, r in ipairs(rows) do if CellText(r, "zone") == "Blood Furnace" then return true end end
     return false
+end)())
+-- T81 (C2 of docs/PLAN-refactor-ux.md, review U5 / A23): Review's list is an
+-- opts set on UI/Dashboard_Rows.lua's one table, on TBC as on Forever, and
+-- the only list the pane has (its old 16-px row pool went with T81): numbers
+-- right-justified on 20-px rows under a 22 header, the zebra / suggested
+-- fill, the marker bar, the spanning cell every table row carries.
+check("T81: Review's list is the one table: right-justified numbers, 20-px rows", (function()
+    local row, header
+    for _, r in ipairs(rows) do
+        if r.isHeader then header = r elseif CellText(r, "n") == "1" then row = r end
+    end
+    return row ~= nil and header ~= nil and row.h == 20 and header.h == 22
+        and row.cells.spent.justify == "RIGHT" and row.cells.low.justify == "RIGHT"
+        and row.cells.zone.justify == "LEFT" and row.cells.wide ~= nil
+        and row.fill ~= nil and row.mark ~= nil
 end)())
 check("no run button before a run exists", ButtonNamed("Blood Furnace test") == nil)
 -- T49 (P5), B24: the selected row is validated before the rows are painted,
