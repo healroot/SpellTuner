@@ -480,25 +480,121 @@ function Tip:Columns()
 end
 
 --------------------------------------------------------------------------------
--- The widget / minimap composite: clock, state, last fight, click hints.
+-- The widget / minimap composite (T82, C4 of docs/PLAN-refactor-ux.md, mockup
+-- M6): the title, then the clock in a healer's words as label / value pairs --
+-- `Out of mana in 1:20`, `Full again in 2:10 if you stop` -- the words the
+-- Forever clock says (UI/Clock_Forever.lua's SummaryLines), with TBC's numbers
+-- and no "~" (nothing here is modelled). The raw lines (the time +- its
+-- spread, the net rate, the spend with its CV, the regen terms, the mana
+-- cooldowns, the pull budget: Tip:Mana) and the last fight are behind the
+-- detail key, Shift on TBC as on the spell tooltip (UI/SpellTooltip.lua); a
+-- press or a release while the widget's or the minimap button's tooltip is up
+-- shows it again (the watcher below).
 --------------------------------------------------------------------------------
-function Tip:Clock(hints)
-    local lines = { { l = "SpellTuner", c = Accent() } }
-    local str = MD.GetDisplayString and MD:GetDisplayString() or ""
-    if str ~= "" then
-        lines[#lines + 1] = { l = Plain(str) }
+-- A time as the tooltip says it: under 30 s to the second, else to 5 s, over
+-- ten minutes ">10m" (the clock face's steps, Engine/TTO.lua), in M:SS.
+local function Time(sec)
+    if type(sec) ~= "number" or sec ~= sec then return "--" end
+    if sec > 600 then return ">10m" end
+    local step = sec < 30 and 1 or 5
+    sec = step * math.floor(sec / step + 0.5)
+    if sec > 600 then return ">10m" end
+    return MD.Util.Clock(sec)
+end
+Tip.ClockTime = Time
+
+-- A label / value pair: the label in `label`, the value white (M6's `w`).
+local function Pair(l, r, rc) return { l = l, r = r, c = "label", rc = rc or "text" } end
+Tip.ClockPair = Pair
+
+-- Tip:ClockSummary(s): the pairs for one mana state (MD:GetManaState()'s);
+-- {} without one.
+function Tip:ClockSummary(s)
+    local lines = {}
+    if type(s) ~= "table" or not s.mode then return lines end
+    local m = s.mode
+    if m == "oom" then
+        local r
+        if s.confident == false and type(s.bound) == "number" then
+            r = "no sooner than " .. Time(s.bound) -- the face's bound (`OOM >1:20 =`)
+        elseif s.stable == false then
+            r = "about " .. Time(s.tto)            -- the face's `~`
+        else
+            r = Time(s.tto)
+        end
+        lines[#lines + 1] = Pair("Out of mana in", r)
+    elseif m == "warmup" then
+        lines[#lines + 1] = Pair("Out of mana in", "a few more casts first", "muted")
+    elseif m == "hold" then
+        lines[#lines + 1] = Pair("Out of mana in", "not at this pace", "muted")
+    elseif m == "full" or m == "ooc" then
+        lines[#lines + 1] = Pair("Full again in", Time(s.ttf))
+    elseif m == "nodata" then
+        lines[#lines + 1] = Pair("Full again in", "--", "muted")
+    elseif m == "fullnow" then
+        lines[#lines + 1] = Pair("Full", "now")
     end
-    lines[#lines + 1] = {}
-    for _, ln in ipairs(Tip:Mana()) do lines[#lines + 1] = ln end
-    for _, ln in ipairs(Tip:Fights(1)) do lines[#lines + 1] = ln end
-    if hints then
+    -- the clock face's rule: a rest time beside an out-of-mana clock only,
+    -- never next to FULL
+    if s.inCombat and type(s.rest) == "number" and (m == "oom" or m == "hold" or m == "warmup") then
+        lines[#lines + 1] = Pair("Full again in", Time(s.rest) .. " if you stop")
+    end
+    return lines
+end
+
+-- Tip:Clock(hints, detail): the lines. `hints`: a list of strings (a muted
+-- line each) or line tables (as they are), after a spacer. `detail` adds the
+-- raw lines and the last fight between the summary and the hints.
+function Tip:Clock(hints, detail)
+    local lines = { { l = "SpellTuner", c = "accent" } }
+    local s = MD.GetManaState and MD:GetManaState()
+    for _, ln in ipairs(Tip:ClockSummary(s)) do lines[#lines + 1] = ln end
+    if detail then
+        local mana = Tip:Mana()
+        if #mana > 0 then
+            lines[#lines + 1] = {}
+            for _, ln in ipairs(mana) do lines[#lines + 1] = ln end
+        end
+        for _, ln in ipairs(Tip:Fights(1)) do lines[#lines + 1] = ln end
+    end
+    if hints and #hints > 0 then
         lines[#lines + 1] = {}
         for _, h in ipairs(hints) do
-            lines[#lines + 1] = { l = h, c = MUTED }
+            if type(h) == "table" then
+                lines[#lines + 1] = h
+            else
+                lines[#lines + 1] = { l = h, c = "muted" }
+            end
         end
     end
     return lines
 end
 
--- T79 (P36): the minimap button's clock lines on this line (UI/MinimapButton.lua).
-MD:Provide("MinimapLines", function(hints) return Tip:Clock(hints) end)
+-- The detail key: Shift, read through the adapter.
+function Tip.ClockDetail()
+    return (MD.API and MD.API.IsShiftKeyDown and MD.API.IsShiftKeyDown() == true) or false
+end
+
+-- T79 (P36): the minimap button's clock lines on this line (UI/MinimapButton.lua);
+-- T82: the detail key read at each hover.
+MD:Provide("MinimapLines", function(hints) return Tip:Clock(hints, Tip.ClockDetail()) end)
+
+-- T82: Shift pressed or released while the clock's tooltip is up -- the
+-- widget's or the minimap button's -- runs the owner's OnEnter again, so the
+-- detail lines come and go without moving the mouse (UI/SpellTooltip.lua's
+-- rule for the spell tooltip). Both owners are named frames.
+local CLOCK_OWNERS = { "SpellTunerWidget", "SpellTunerMinimapButton" }
+function Tip.OnClockModifier(key)
+    if key ~= "LSHIFT" and key ~= "RSHIFT" then return end
+    if not (GameTooltip and GameTooltip:IsShown()) then return end
+    local owner = GameTooltip.GetOwner and GameTooltip:GetOwner()
+    if not owner then return end
+    for _, name in ipairs(CLOCK_OWNERS) do
+        if owner == _G[name] then
+            local enter = owner.GetScript and owner:GetScript("OnEnter")
+            if enter then enter(owner) end
+            return
+        end
+    end
+end
+MD:On("MODIFIER_STATE_CHANGED", Tip.OnClockModifier)

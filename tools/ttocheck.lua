@@ -21,7 +21,10 @@
 --      two confident ticks;
 --   7. casting stops: "^", and rest = deficit / base out of the FSR;
 --   8. hold, 9. full (never a rest segment next to FULL), 10. bad news at
---      once; 11. leaving combat: FULL with the time to full.
+--      once; 11. leaving combat: FULL with the time to full;
+--   12.-13. T82 (C4, mockup M6): with the theme loaded as the TBC TOC lists
+--      it, the widget is the Forever clock's panel, font and 160 x 4 bar
+--      (still the five-second rule), and the unlock preview is in the accent.
 -- The stream is real events -- UNIT_SPELLCAST_SUCCEEDED priced by
 -- Data/SpellData.lua, UNIT_POWER_UPDATE, the regen events -- and a scripted
 -- GetManaRegen; nothing in the model is replaced.
@@ -57,10 +60,27 @@ do
     end
     -- T68 (P24): UI/Visibility.lua holds the widget's show/hide rule, so it
     -- loads before UI/Widget.lua, as in SpellTuner_TBC.toc.
-    S.Load({ "UI/Style.lua", "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/Visibility.lua", "UI/Widget.lua", "UI/Advisor.lua" },
-        "SpellTuner", MD)
+    -- T82 (C4): and the theme after the kit, as the TOC lists it since C1.
+    S.Load({ "UI/Style.lua", "UI/Theme_Flat.lua", "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/Visibility.lua",
+        "UI/Widget.lua", "UI/Advisor.lua" }, "SpellTuner", MD)
     MD.RegisterCallback = realReg
+    -- T82: the stub's CreateFontString takes no template and SetPoint keeps
+    -- nothing (geometry off); while the widget is made, each font string
+    -- keeps its template and each region its first point, so check 12 can
+    -- read the widget's font and layout.
+    local FrameMT = getmetatable(UIParent)
+    local realCFS, realSP = FrameMT.CreateFontString, rawget(FrameMT, "SetPoint")
+    FrameMT.CreateFontString = function(self, name, layer, tmpl)
+        local fs = realCFS(self, name, layer, tmpl)
+        fs.template = tmpl
+        return fs
+    end
+    FrameMT.SetPoint = function(self, ...)
+        self.firstPoint = self.firstPoint or { ... }
+        if realSP then return realSP(self, ...) end
+    end
     for _, fn in ipairs(ready) do fn() end
+    FrameMT.CreateFontString, FrameMT.SetPoint = realCFS, realSP
 end
 local W = _G.SpellTunerWidget
 
@@ -307,6 +327,71 @@ check("...the time to full is the deficit over the base rate",
     st.ttf and math.abs(st.ttf - (S.manaMax - S.mana) / MD.Regen.base) < 1e-6,
     string.format("%s", tostring(st.ttf)))
 check("widget: below 90% out of combat -> still shown", W and W:IsShown())
+
+--------------------------------------------------------------------------------
+-- 12. T82 (C4 of docs/PLAN-refactor-ux.md, mockup M6): one clock look. Under
+-- the theme the widget is the Forever clock's panel (UI/Clock_Forever.lua):
+-- 180 x 30 in the theme's `bg` with its border, the kit's font centred at the
+-- top, a 160 x 4 bar on a black backing one pixel wider all round -- and the
+-- bar is still the five-second rule: amber while it fills, green after.
+--------------------------------------------------------------------------------
+local UI = MD.UI
+local function Same3(a, b)
+    return type(a) == "table" and type(b) == "table" and math.abs(a[1] - b[1]) < 1e-6
+        and math.abs(a[2] - b[2]) < 1e-6 and math.abs(a[3] - b[3]) < 1e-6
+end
+do
+    local P = UI.PALETTE
+    local bar, back, txt = W and W.bar, W and W.barBack, W and W.text
+    S.Fire("PLAYER_REGEN_DISABLED")
+    Cast(HT5)
+    S.Tick(0.5)
+    local inRule = bar and bar.barColor and { bar.barColor[1], bar.barColor[2], bar.barColor[3] }
+    local ruleValue = bar and bar.value
+    Ticks(12)
+    local after = bar and bar.barColor and { bar.barColor[1], bar.barColor[2], bar.barColor[3] }
+    local afterValue = bar and bar.value
+    S.Fire("PLAYER_REGEN_ENABLED")
+    local e = UI.px(1, W)
+    local panel = W and W.backdrop ~= nil and W.bg and P and Same3(W.bg, P.bg) and W.bg[4] == P.bg[4]
+        and W.border and Same3(W.border, P.border) and W:GetWidth() == 180 and W:GetHeight() == 30
+    local function At(r, p, y) return r and r.firstPoint and r.firstPoint[1] == p and r.firstPoint[3] == p
+        and r.firstPoint[5] == y end
+    local font = txt and txt.template == UI.FONT and At(txt, "TOP", -4)
+    local slot = bar and bar:GetWidth() == 160 and bar:GetHeight() == 4 and At(bar, "BOTTOM", 5)
+        and back and back:GetWidth() == 160 + 2 * e and back:GetHeight() == 4 + 2 * e
+        and back.color and back.color[1] == 0 and back.color[2] == 0 and back.color[3] == 0 and back.color[4] == 1
+    local rule = Same3(inRule, { 1, 0.67, 0.2 }) and type(ruleValue) == "number" and ruleValue < 5
+        and Same3(after, { 0.2, 1, 0.4 }) and afterValue == 5
+    check("widget: the kit's panel, font and a 160 x 4 five-second-rule bar (themed)",
+        UI.THEMED == true and panel and font and slot and rule,
+        string.format("themed=%s panel=%s font=%s slot=%s rule=%s (%s -> %s)", tostring(UI.THEMED),
+            tostring(panel), tostring(font), tostring(slot), tostring(rule), tostring(ruleValue),
+            tostring(afterValue)))
+end
+
+--------------------------------------------------------------------------------
+-- 13. T82: the unlock preview says what it is for in the accent, over a full
+-- accent bar; locked again, the clock's text is back in the theme's `text`.
+--------------------------------------------------------------------------------
+do
+    local bar, txt = W.bar or {}, W.text or {} -- {} on a widget without them: a FAIL, not a raise
+    MD:ForceWidgetPreview(60)
+    S.Tick(0.5)
+    local accent = { UI.RGB("accent") }
+    local previewText = txt.text
+    local previewColor = txt.textColor
+    local barOk = bar.value == 5 and Same3(bar.barColor, accent)
+    local shownNow = W:IsShown()
+    MD:ForceWidgetPreview(0)
+    S.Tick(0.5)
+    local back = txt.text ~= "SpellTuner - drag me" and Same3(txt.textColor, { UI.RGB("text") })
+    check("widget: the unlock text is in the accent, over a full accent bar",
+        previewText == "SpellTuner - drag me" and Same3(previewColor, accent) and barOk and shownNow and back,
+        string.format("%s %s bar=%s shown=%s back=%s", tostring(previewText),
+            previewColor and table.concat(previewColor, ",") or "-", tostring(barOk), tostring(shownNow),
+            tostring(back)))
+end
 
 -- every rendered string: ASCII, no bare pipe
 local bad

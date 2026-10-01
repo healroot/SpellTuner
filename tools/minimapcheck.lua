@@ -11,6 +11,12 @@
 --   setting; the tooltip's anchor and every line, colours included, as a
 --   golden (GOLDEN_TBC below, captured on the parent with --print); the
 --   default on a fresh db.
+--   T82 (C4, mockup M6): the TBC half now loads the theme as SpellTuner_TBC.toc
+--   does (C1), so the tooltip is P36's themed shape, and GOLDEN_TBC is M6's
+--   lines in TBC's words (UI/Tip_TBC.lua's Tip:Clock): the title, the clock
+--   as label / value pairs, a spacer, the three hint pairs and the hide line.
+--   One check more: with Shift held -- pressed while the tooltip is up -- the
+--   raw lines follow the summary (GOLDEN_TBC_DETAIL), and released, they go.
 -- Forever half -- red on the parent, which has no button on this line:
 --   1. SpellTunerMinimapButton exists after MD_READY, parented to Minimap,
 --      loaded by the main TOC (UI/MinimapButton.lua after UI/Clock_Forever.lua);
@@ -84,7 +90,9 @@ end
 local loadErr
 if flavour == "tbc" then
     local okLoad
-    okLoad, loadErr = LoadByHand({ "UI/Style.lua", "UI/Tip.lua", "UI/Tip_TBC.lua", BUTTON_FILE })
+    -- T82: the theme after the kit, as SpellTuner_TBC.toc lists it (C1)
+    okLoad, loadErr = LoadByHand({ "UI/Style.lua", "UI/Theme_Flat.lua", "UI/Tip.lua", "UI/Tip_TBC.lua",
+        BUTTON_FILE })
     if not okLoad then print("load: " .. tostring(loadErr)) end
 elseif not loadedByToc then
     local okLoad
@@ -171,29 +179,79 @@ local function Same(a, b)
 end
 
 --------------------------------------------------------------------------------
--- TBC: the button exactly as before (golden captured on 7fd71b3 with --print)
+-- TBC: the button as before (its geometry, clicks and setting: captured on
+-- 7fd71b3). T82 (C4, mockup M6): the tooltip is M6's in TBC's words; both
+-- goldens below captured with --print on the C4 tree, red on its parent
+-- 70b424d (docs/tasks/T82-one-clock-look.md).
 --------------------------------------------------------------------------------
--- The stub's TBC druid two ticks after login: full mana, no fight yet.
+-- The stub's TBC druid in a fight (Fight below): one Healing Touch every
+-- 3.5 s against a scripted low regen, until the clock says out of mana with
+-- trusted digits -- the moment M6 draws.
 local GOLDEN_TBC = {
     "anchor ANCHOR_LEFT",
     "SpellTuner | nil | 1.000,0.490,0.040 | -",
-    "FULL | nil | 1.000,1.000,1.000 | -",
+    "Out of mana in | 1:10 | 0.702,0.702,0.702 | 1.000,1.000,1.000",
+    "Full again in | 3:40 if you stop | 0.702,0.702,0.702 | 1.000,1.000,1.000",
     "  | nil | - | -",
-    "Time to full (raw) | 0s | 1.000,1.000,1.000 | 1.000,1.000,1.000",
-    "Net rate (pessimistic) | +69 mana/s | 1.000,1.000,1.000 | 1.000,1.000,1.000",
-    "Spending | 0 +- 0 mana/s (0 casts, CV 0.00) | 1.000,1.000,1.000 | 1.000,1.000,1.000",
-    "Regen now / projected | 69 / 69 mana/s  (5SR 0% of time) | 1.000,1.000,1.000 | 1.000,1.000,1.000",
-    "Regen out of 5SR / casting | 69 / 28 mana/s | 1.000,1.000,1.000 | 1.000,1.000,1.000",
-    "Spirit / gear mp5 | ~292 / ~53 | 1.000,1.000,1.000 | 1.000,1.000,1.000",
-    "  | nil | - | -",
-    "Innervate | 4675 mana, ready | 0.780,0.780,0.780 | 0.310,0.660,0.940",
-    "  | nil | - | -",
-    "Left-click: dashboard | nil | 0.430,0.430,0.430 | -",
-    "Right-click: settings | nil | 0.430,0.430,0.430 | -",
+    "Left-click | open the window | 0.702,0.702,0.702 | 1.000,1.000,1.000",
+    "Right-click | Settings | 0.702,0.702,0.702 | 1.000,1.000,1.000",
+    "Drag | move it round the map | 0.702,0.702,0.702 | 1.000,1.000,1.000",
+    "Hide it: Settings -> General -> Windows. | nil | 0.478,0.478,0.478 | -",
 }
 
+-- The same moment with Shift pressed while the tooltip is up: the raw lines
+-- (Tip:Mana) after the summary, then the hints.
+local GOLDEN_TBC_DETAIL = {
+    "anchor ANCHOR_LEFT",
+    "SpellTuner | nil | 1.000,0.490,0.040 | -",
+    "Out of mana in | 1:10 | 0.702,0.702,0.702 | 1.000,1.000,1.000",
+    "Full again in | 3:40 if you stop | 0.702,0.702,0.702 | 1.000,1.000,1.000",
+    "  | nil | - | -",
+    "Time to OOM (raw) | 72s +- 20s | 1.000,1.000,1.000 | 1.000,1.000,1.000",
+    "Full if you stop casting | 221s | 1.000,1.000,1.000 | 1.000,1.000,1.000",
+    "Net rate (pessimistic) | -66 mana/s | 1.000,1.000,1.000 | 1.000,1.000,1.000",
+    "Spending | 53 +- 18 mana/s (9 casts, CV 0.35) | 1.000,1.000,1.000 | 1.000,1.000,1.000",
+    "Regen now / projected | 5 / 5 mana/s  (5SR 100% of time) | 1.000,1.000,1.000 | 1.000,1.000,1.000",
+    "Regen out of 5SR / casting | 10 / 5 mana/s | 1.000,1.000,1.000 | 1.000,1.000,1.000",
+    "Spirit / gear mp5 | ~35 / ~14 | 1.000,1.000,1.000 | 1.000,1.000,1.000",
+    "Spirit regen resumes | 4.5s | 1.000,0.670,0.200 | 1.000,1.000,1.000",
+    "  | nil | - | -",
+    "Innervate | 671 mana -> OOM 82s | 0.780,0.780,0.780 | 0.310,0.660,0.940",
+    "  | nil | - | -",
+    "Left-click | open the window | 0.702,0.702,0.702 | 1.000,1.000,1.000",
+    "Right-click | Settings | 0.702,0.702,0.702 | 1.000,1.000,1.000",
+    "Drag | move it round the map | 0.702,0.702,0.702 | 1.000,1.000,1.000",
+    "Hide it: Settings -> General -> Windows. | nil | 0.478,0.478,0.478 | -",
+}
+
+-- Fight(): into combat and casting until the clock is out of mana, stable and
+-- trusted; answers a function that ends the fight and puts everything back.
+local function Fight()
+    local realRegen = GetManaRegen
+    GetManaRegen = function() return 10, 5 end
+    S.Fire("PLAYER_REGEN_DISABLED")
+    local SD = MD.SpellData
+    for i = 1, 200 do
+        if i % 7 == 1 then
+            S.mana = S.mana - SD:GetCost(5189) -- Healing Touch rank 5
+            S.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-guid", 5189)
+            S.Fire("UNIT_POWER_UPDATE", "player", "MANA")
+        end
+        S.Tick(0.5)
+        local s = MD:GetManaState()
+        if i > 40 and s and s.mode == "oom" and s.stable and s.confident then break end
+    end
+    return function()
+        S.Fire("PLAYER_REGEN_ENABLED")
+        GetManaRegen = realRegen
+        S.mana = S.manaMax
+        S.Fire("UNIT_POWER_UPDATE", "player", "MANA")
+        S.Tick(0.5)
+    end
+end
+
 if flavour == "tbc" then
-    T.section("TBC: the button as it was")
+    T.section("TBC: the button, and M6's tooltip")
 
     Guarded("tbc: the button is SpellTunerMinimapButton, on Minimap, 31 x 31", function()
         check("tbc: the button is SpellTunerMinimapButton, on Minimap, 31 x 31",
@@ -251,14 +309,42 @@ if flavour == "tbc" then
         check("tbc: db.minimap.hide hides the button, and back", hidden and B:IsShown())
     end)
 
-    Guarded("tbc: the tooltip, line for line (golden)", function()
-        -- two ticks of the clock, so the mana state is there to be shown
-        S.Tick(0.5); S.Tick(0.5)
+    local endFight
+    Guarded("tbc: the tooltip in a fight is M6's, line for line (golden)", function()
+        endFight = Fight()
         local lines, anchor = Hover()
         local got = Flatten(lines, anchor)
         if PRINT then ShowGolden("GOLDEN_TBC", got) end
         local same, why = Same(got, GOLDEN_TBC)
-        check("tbc: the tooltip, line for line (golden)", same, why)
+        check("tbc: the tooltip in a fight is M6's, line for line (golden)", same, why)
+    end)
+
+    Guarded("tbc: Shift pressed over it adds the raw lines (golden); released, they go", function()
+        -- the tooltip up and owned by the button, as the game holds it
+        local realOwner = GameTooltip.GetOwner
+        GameTooltip.GetOwner = function() return B end
+        GameTooltip.lines = {}
+        B:GetScript("OnEnter")(B)
+        local plainN = #GameTooltip.lines
+        S.shift = true
+        GameTooltip.lines = {}
+        S.Fire("MODIFIER_STATE_CHANGED", "LSHIFT", 1)
+        local got = { "anchor " .. tostring(owner and owner[2]) }
+        for _, l in ipairs(GameTooltip.lines or {}) do
+            got[#got + 1] = tostring(l[1]) .. " | " .. tostring(l[2]) .. " | " .. C(l.color) .. " | " .. C(l.rcolor)
+        end
+        if PRINT then ShowGolden("GOLDEN_TBC_DETAIL", got) end
+        S.shift = false
+        GameTooltip.lines = {}
+        S.Fire("MODIFIER_STATE_CHANGED", "LSHIFT", 0)
+        local backN = #GameTooltip.lines
+        B:GetScript("OnLeave")(B)
+        GameTooltip.GetOwner = realOwner
+        if endFight then endFight() end
+        local same, why = Same(got, GOLDEN_TBC_DETAIL)
+        check("tbc: Shift pressed over it adds the raw lines (golden); released, they go",
+            same and plainN == #GOLDEN_TBC - 1 and backN == plainN,
+            string.format("%s; plain %d, released %d", tostring(why), plainN, backN))
     end)
 
     T.done()

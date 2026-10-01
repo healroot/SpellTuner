@@ -1,39 +1,75 @@
--- Floating one-line widget: "OOM 1:20 v  rest 2:10" plus a 2px five-second-
--- rule underline that fills over 5s after each mana spend (full = spirit
--- regen running). Text is LEFT-anchored so the "OOM" label never slides when
--- the digit count or the rest segment changes; the underline follows the
--- text width. All show/hide decisions live in MD:UpdateVisibility() —
--- nothing else may call Show/Hide on this frame. Hovering shows the shared
--- tooltip (UI/Tooltip.lua); that requires mouse input on the frame, so
+-- The TBC mana clock: "OOM 1:20 v  rest 2:10" over a five-second-rule bar
+-- that fills over 5 s after each mana spend (amber while it fills, green once
+-- spirit regen runs). T82 (C4 of docs/PLAN-refactor-ux.md, review U4, mockup
+-- M6): one clock look on both lines -- the kit's panel (UI.StylizeFrame in the
+-- theme's `bg` with a 1-px edge), the kit's font (UI.FONT), the text centred
+-- at the top, and the bar in Forever's 160 x 4 slot with a black backing one
+-- pixel wider all round (UI/Clock_Forever.lua's layout, 180 x 30). The bar
+-- still means the five-second rule here; on Forever it is the real pool. The
+-- unlock preview says "SpellTuner - drag me" in the accent over a full accent
+-- bar. All show/hide decisions live in MD:UpdateVisibility() -- nothing else
+-- may call Show/Hide on this frame. Hovering shows the clock tooltip
+-- (UI/Tip_TBC.lua's Tip:Clock); that requires mouse input on the frame, so
 -- db.widgetTooltip turns both off together -- and with them the frame's habit
 -- of swallowing clicks in its own rectangle, which is what a clock parked in
 -- the middle of the screen wants. The setting is THIS frame's alone: the
 -- minimap button and the ElvUI datatexts keep their tooltips.
 local _, MD = ...
+local UI = MD.UI
 
-local widget, text, underline
+local widget, text, bar, barBack
 local shown = false
 local forceUntil = 0        -- first-run / unlock preview
 local flashedThisFight = false
 
+-- The bar's slot and colours (M6: Forever's 160 x 4; the five-second rule's
+-- amber and green as before).
+local BAR_W, BAR_H = 160, 4
+local FSR_COLOR   = { 1, 0.67, 0.2 }   -- in the five-second rule: amber, filling
+local REGEN_COLOR = { 0.2, 1, 0.4 }    -- spirit regen running
+
+-- The physical pixel the panel was last snapped to (UI.px(1, widget)); nil
+-- until the first snap. UI/Clock_Forever.lua's rule: the window manager never
+-- touches a clock, so the clock re-snaps itself when the scale moves.
+local snappedPx
+
+local function Snap()
+    local e = UI.px(1, widget)
+    local P = UI.PALETTE or {}
+    UI.StylizeFrame(widget, P.bg, P.border)
+    barBack:SetSize(BAR_W + 2 * e, BAR_H + 2 * e)
+    snappedPx = e
+end
+
 local function CreateWidget()
-    widget = CreateFrame("Frame", "SpellTunerWidget", UIParent)
-    widget:SetSize(190, 22)
+    widget = CreateFrame("Frame", "SpellTunerWidget", UIParent, "BackdropTemplate")
+    widget:SetSize(180, 30)
     widget:SetFrameStrata("MEDIUM")
     widget:SetMovable(true)
     widget:SetClampedToScreen(true)
     widget:EnableMouse(false)
     widget:RegisterForDrag("LeftButton")
 
-    text = widget:CreateFontString(nil, "OVERLAY")
-    text:SetFont(STANDARD_TEXT_FONT, 14, "OUTLINE")
-    text:SetPoint("LEFT", widget, "LEFT", 6, 2)
+    text = widget:CreateFontString(nil, "OVERLAY", UI.FONT)
+    text:SetPoint("TOP", widget, "TOP", 0, -4)
+    text:SetTextColor(UI.RGB("text"))
+    widget.text = text
 
-    underline = CreateFrame("StatusBar", nil, widget)
-    underline:SetSize(60, 2)
-    underline:SetPoint("BOTTOMLEFT", widget, "BOTTOMLEFT", 6, 0)
-    underline:SetStatusBarTexture("Interface\\Buttons\\WHITE8x8")
-    underline:SetMinMaxValues(0, 5)
+    bar = CreateFrame("StatusBar", nil, widget)
+    bar:SetSize(BAR_W, BAR_H)
+    bar:SetPoint("BOTTOM", widget, "BOTTOM", 0, 5)
+    bar:SetStatusBarTexture(UI.whiteTexture)
+    bar:SetMinMaxValues(0, 5)
+    widget.bar = bar
+
+    -- a texture of the widget: the bar is a child frame and draws above it,
+    -- the backdrop beneath it
+    barBack = widget:CreateTexture(nil, "ARTWORK")
+    barBack:SetColorTexture(0, 0, 0, 1)
+    barBack:SetPoint("CENTER", bar, "CENTER", 0, 0)
+    widget.barBack = barBack
+
+    Snap()
 
     widget:SetScript("OnDragStart", function(self)
         -- draggable when unlocked OR during the first-run/unlock preview
@@ -45,12 +81,17 @@ local function CreateWidget()
         MD.db.pos = { point, relPoint, x, y }
     end)
 
-    -- Hover tooltip (the shared builder) and a left-click shortcut to the
-    -- dashboard. This needs mouse input on the widget, which also means it
-    -- swallows clicks in its own 190x22 rectangle -- hence the setting.
+    -- Hover tooltip (Tip:Clock, the minimap button's words) and a left-click
+    -- shortcut to the window. This needs mouse input on the widget, which
+    -- also means it swallows clicks in its own 180x30 rectangle -- hence the
+    -- setting. T82: the hints are label / value pairs, Shift the detail key.
     widget:SetScript("OnEnter", function(self)
         if MD.db.widgetTooltip == false then return end
-        MD.Tip:Show(self, "ANCHOR_TOPLEFT", MD.Tip:Clock({ "Left-click: dashboard" }))
+        local Tip = MD.Tip
+        local detail = Tip.ClockDetail()
+        local hints = { Tip.ClockPair("Left-click", "open the window") }
+        if not detail then hints[2] = Tip.ClockPair("Shift", "spend, regen and cooldowns") end
+        Tip:Show(self, Tip:Clock(hints, detail), { anchor = "ANCHOR_TOP" })
     end)
     widget:SetScript("OnLeave", function() MD.Tip:Hide() end)
     widget:SetScript("OnMouseUp", function(_, button)
@@ -75,19 +116,21 @@ local function CreateWidget()
 
     -- Rendering only; the model is event/tick driven elsewhere. The text is
     -- rebuilt 4x/s (the latch in TTO.lua means it can only change every 1s
-    -- anyway); the underline keeps a 10 Hz refresh so it fills smoothly.
+    -- anyway); the bar keeps a 10 Hz refresh so it fills smoothly.
     local acc, textAcc = 0, 1
     widget:SetScript("OnUpdate", function(_, elapsed)
         acc = acc + elapsed
         if acc < 0.1 then return end
         textAcc = textAcc + acc
         acc = 0
+        if UI.px(1, widget) ~= snappedPx then Snap() end -- re-snap after a scale change
 
         if not MD.db.locked or GetTime() < forceUntil then
-            text:SetText("|cff9966ffSpellTuner|r - drag me")
-            underline:SetWidth(math.max(60, text:GetStringWidth()))
-            underline:SetValue(5)
-            underline:SetStatusBarColor(0.6, 0.4, 1)
+            -- T82 (M6): the preview in the accent, over a full accent bar
+            text:SetText("SpellTuner - drag me")
+            text:SetTextColor(UI.RGB("accent"))
+            bar:SetValue(5)
+            bar:SetStatusBarColor(UI.RGB("accent"))
             return
         end
 
@@ -95,7 +138,7 @@ local function CreateWidget()
             textAcc = 0
             local str = MD:GetDisplayString()
             text:SetText(str ~= "" and str or "|cff999999OOM ...|r")
-            underline:SetWidth(math.max(60, text:GetStringWidth()))
+            text:SetTextColor(UI.RGB("text"))
 
             -- one attention event per fight: first time TTO crosses below 30s
             if not flashedThisFight then
@@ -108,11 +151,11 @@ local function CreateWidget()
         end
 
         local remaining = MD.Regen:FSRRemaining()
-        underline:SetValue(5 - remaining)
+        bar:SetValue(5 - remaining)
         if remaining > 0 then
-            underline:SetStatusBarColor(1, 0.67, 0.2)   -- in FSR: amber, filling
+            bar:SetStatusBarColor(unpack(FSR_COLOR))
         else
-            underline:SetStatusBarColor(0.2, 1, 0.4)    -- spirit regen running
+            bar:SetStatusBarColor(unpack(REGEN_COLOR))
         end
     end)
 end
