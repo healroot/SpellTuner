@@ -1352,6 +1352,104 @@ do
         newShape and named, string.format("render=%s named=%s calls=%d", tostring(newShape), tostring(named), #c))
 end
 
+--------------------------------------------------------------------------------
+-- T95 (docs/SPEC-next.md 4.2 P1, decision 12): the block on another class's
+-- spells -- a group or bounce heal's reach said as an upper bound, a cooldown
+-- named where it paces the spell, and no number multiplied by either. The
+-- priest, shaman and paladin books are tools/data/books/' extracts of
+-- talentsforever's export (CC BY 4.0), served alone by tools/stub_books.lua to
+-- a fresh addon table, so the long-lived one above keeps the stub's druid.
+--------------------------------------------------------------------------------
+local Books = dofile(here .. "/stub_books.lua")
+
+-- The block for each id, plain and with the detail, from a fresh SpellTuner
+-- over the class's book: { [id] = { plain = lines, detail = lines, entry = e } }.
+local function ClassBlocks(class, ids)
+    local restore = Books.Install(Books.Load(class), { alone = true })
+    local fresh, out = {}, {}
+    local good, err = pcall(function()
+        S.Load(S.loadedFiles, "SpellTuner", fresh)
+        local book = fresh.Book:Get()
+        for _, id in ipairs(ids) do
+            out[id] = { plain = fresh.SpellTip:Lines(id, false), detail = fresh.SpellTip:Lines(id, true),
+                        entry = book.spells[id] }
+        end
+    end)
+    restore()
+    if not good then error(err, 0) end
+    return out
+end
+local function Right(lines, left)
+    local line = LineAt(lines, left)
+    return line and line[2]
+end
+
+-- Prayer of Healing R5 (25316: 631 to 667 for 1070 mana, a 3 sec cast, "the
+-- target and their party"), Holy Nova R6 (27801: "all party members within 10
+-- yards"), Chain Heal R3 (10623: 474 to 538 for 405, 3 targets, 50%), Holy
+-- Shock R4 (20930: 307 to 333 for 325, "10 sec cooldown").
+local okRun, blocks = pcall(function()
+    local priest = ClassBlocks("priest", { 25316, 27801 })
+    local shaman = ClassBlocks("shaman", { 10623 })
+    local paladin = ClassBlocks("paladin", { 20930 })
+    return { poh = priest[25316], nova = priest[27801], chain = shaman[10623], shock = paladin[20930] }
+end)
+
+do
+    local poh, nova, chain = okRun and blocks.poh, okRun and blocks.nova, okRun and blocks.chain
+    local pm = poh and Right(poh.plain, "Per mana")
+    local reach = poh and Right(poh.detail, "Reaches")
+    local novaReach = nova and Right(nova.detail, "Reaches")
+    local cm = chain and Right(chain.plain, "Per mana")
+    local good = okRun and pm == "0.61  x up to 5 targets"
+        and reach == "the target's party within 40 yd, up to 5 - an upper bound"
+        and Right(nova.plain, "Per mana") == "0.41  x up to 5 targets"
+        and novaReach == "your party within 10 yd, up to 5 - an upper bound"
+        and cm == "1.25  up to 1.75x if 3 are hurt"
+        and Right(chain.detail, "Reaches") == "3 targets, each jump 50% of the last: up to 1.75x - an upper bound"
+    check("T95: a group heal says x up to 5 targets, a chain up to 1.75x if 3 are hurt", good,
+        okRun and string.format("poh=%q reach=%q nova=%q chain=%q", tostring(pm), tostring(reach),
+            tostring(novaReach), tostring(cm)) or tostring(blocks))
+end
+
+do
+    local shock = okRun and blocks.shock
+    local ps = shock and Right(shock.plain, "Per sec")
+    local cd = shock and Right(shock.detail, "Cooldown")
+    local good = okRun and ps == "32.0  every 10 s" and cd == "10 s"
+        and Right(shock.plain, "Cooldown") == nil -- the plain block keeps its four facts
+        and Right(blocks.poh.plain, "Per sec") == "216.3" and Right(blocks.poh.detail, "Cooldown") == nil
+    check("T95: a cooldown that paces the spell reads every 10 s", good,
+        okRun and string.format("perSec=%q cooldown=%q poh=%q", tostring(ps), tostring(cd),
+            tostring(Right(blocks.poh.plain, "Per sec"))) or tostring(blocks))
+end
+
+do
+    -- every number on the block is one target's: per mana and per sec are
+    -- the text's average over the cost and the interval, never times 5 or
+    -- times 1.75; Casts to OOM counts the same single cast
+    local function Num2(v) return string.format("%.2f", v) end
+    local function Num1(v) return string.format("%.1f", v) end
+    local good, detail = okRun, {}
+    if okRun then
+        for _, b in ipairs({ blocks.poh, blocks.nova, blocks.chain, blocks.shock }) do
+            local e = b.entry
+            local pm = (Right(b.plain, "Per mana") or ""):match("^([%d%.]+)")
+            local ps = (Right(b.plain, "Per sec") or ""):match("^([%d%.]+)")
+            local single = e.value / e.cost.amount
+            local want = pm == Num2(single) and ps == Num1(e.value / e.interval)
+                and e.perMana == single and e.interval >= 1.5
+            detail[#detail + 1] = string.format("%s %s/%s (value %s, cost %s, interval %s)", tostring(e.name),
+                tostring(pm), tostring(ps), tostring(e.value), tostring(e.cost.amount), tostring(e.interval))
+            if not want then good = false end
+        end
+        -- and the interval is the cooldown's where one paces the spell
+        good = good and blocks.shock.entry.interval == 10
+    end
+    check("T95: nothing multiplied -- per mana and per sec stay one target's", good == true,
+        okRun and table.concat(detail, "; ") or tostring(blocks))
+end
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("  FAIL " .. f) end
 if #fails > 0 then os.exit(1) end

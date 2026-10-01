@@ -90,6 +90,68 @@ local function TooltipCostInfo(tip)
     return nil
 end
 
+-- T95 (docs/SPEC-next.md 4.2 P1): the cooldown a tooltip line states on its
+-- right ("10 sec cooldown", beside the cast line), in seconds -- the first
+-- right text Parse.Cooldown reads whole (an "N yd range" or a rank text is
+-- not one). `readable` is false when the tooltip data itself did not come
+-- back (absent, secret, raised): the caller then carries the last cooldown
+-- read rather than taking "no cooldown" for an answer.
+local function TooltipCooldown(tip)
+    if type(tip) ~= "table" or type(tip.lines) ~= "table" then return nil, false end
+    for _, line in ipairs(tip.lines) do
+        if type(line) == "table" and type(line.rightText) == "string" then
+            local secs = Parse.Cooldown(line.rightText)
+            if secs ~= nil and secs > 0 then return secs, true end
+        end
+    end
+    return nil, true
+end
+
+-- T95: the cooldown, in seconds, and where it was read. By default the
+-- tooltip line's right text (the one shape the export and the probe have
+-- shown); GetSpellBaseCooldown (MD.API.BaseCooldown, Client/API_Forever.lua)
+-- only once MD.API.BASE_CD_READS is true -- false until T87's Forever report
+-- shows it answers plain (the BAR_READS_MAX pattern; the integrator flips
+-- it). A base read of 0 or nothing falls through to the tooltip line.
+-- `prev` is the previous scan's entry for this id: an unreadable tooltip
+-- keeps its cooldown, as a secret description keeps its text (ApplyStale).
+local function ReadCooldown(id, tip, prev)
+    if MD.API.BASE_CD_READS == true and type(MD.API.BaseCooldown) == "function" then
+        local ms = MD.API.BaseCooldown(id)
+        if type(ms) == "number" and ms == ms and ms > 0 then return ms / 1000, "base" end
+    end
+    local secs, readable = TooltipCooldown(tip)
+    if secs then return secs, "tooltip" end
+    if not readable and prev and type(prev.cooldown) == "number" then
+        return prev.cooldown, prev.cooldownFrom
+    end
+    return nil, nil
+end
+
+-- T95 (4.2 P1, 4.5): whom a heal reaches and its per-target lockout, from the
+-- entry's own text (the kept one when stale): entry.targets is
+-- Parse.Targets' word ("single", "party", "chain", "selfAndTarget",
+-- "caster"), entry.reach its whole answer (count, jumps, falloff, range,
+-- from, partyOnly, belowPct, charges), entry.targetsWhy the reason when it
+-- refused (an unrecognised reach is never taken for "single"). Only a text
+-- that heals or absorbs is asked: a damage spell's reach is not a heal's.
+-- entry.lockout is Parse.Lockout's seconds ("cannot be shielded again for
+-- 15 sec"), from any text.
+local function ApplyReach(entry)
+    entry.targets, entry.reach, entry.targetsWhy, entry.lockout = nil, nil, nil, nil
+    if type(entry.desc) ~= "string" or entry.desc == "" then return end
+    entry.lockout = Parse.Lockout(entry.desc)
+    local p = entry.parsed
+    if type(p) ~= "table" or (p.heal == nil and p.absorb == nil) then return end
+    local t, why = Parse.Targets(entry.desc)
+    if type(t) == "table" then
+        entry.targets = t.targets
+        entry.reach = t
+    else
+        entry.targetsWhy = why
+    end
+end
+
 local function HasTickPart(parsed)
     if type(parsed) ~= "table" then return false end
     if type(parsed.heal) == "table" and parsed.heal.tick ~= nil then return true end
@@ -156,7 +218,13 @@ end
 -- min/max), else the part's own dur for a pure over-time spell. An absorb
 -- (no part table at all) has no HoT shape to read, so it is treated as the
 -- direct/hybrid case -- one instant effect, same as a direct heal.
-local function IntervalFor(entry, part)
+--
+-- T95 (docs/SPEC-next.md 4.2 P1): and never shorter than the spell's cooldown
+-- -- max(cast, GCD, cooldown) for a direct spell, max(its own duration,
+-- cooldown) for one over time -- so per second and casts to OOM no longer
+-- assume a Holy Shock every GCD. The second return is "cooldown" when the
+-- cooldown is what sets the interval (the words then say "every 10 s").
+local function BaseInterval(entry, part)
     if entry.castKind == "channeled" then
         return part and part.periodDur or nil
     end
@@ -168,6 +236,16 @@ local function IntervalFor(entry, part)
     end
     return math.max(entry.cast or 0, GCD)
 end
+
+local function IntervalFor(entry, part)
+    local base = BaseInterval(entry, part)
+    local cd = entry.cooldown
+    if base ~= nil and type(cd) == "number" and cd > base then
+        return cd, "cooldown"
+    end
+    return base, nil
+end
+Book.IntervalFor = IntervalFor -- T95: Spells/Words.lua and the tooltip's Other lines
 
 -- value, part -- what a rank's numbers are computed from: the family's own
 -- kind names which half of Parse.Description's result is the relevant part
@@ -181,6 +259,48 @@ local function PartValue(entry, familyKind)
         if entry.parsed.damage ~= nil then return Parse.Total(entry.parsed.damage), entry.parsed.damage end
     end
     return nil, nil
+end
+
+-- One rank's numbers for its family's kind (Rows and ReadSpell share it):
+-- the value and its parts, the interval (T95: never under the cooldown, and
+-- `intervalBy` "cooldown" when the cooldown sets it), per mana and per second.
+-- Per mana and per second are ONE target's, whatever entry.targets says (T95,
+-- decision 12: a group or bounce heal's reach is said in words, never
+-- multiplied in).
+--
+-- T95 (4.2 P6, shown by role in T110): an either-or spell -- a heal family
+-- whose text also deals damage (Holy Shock, Holy Nova) -- keeps its damage
+-- half too, as entry.alt = { kind = "damage", value, min, max, over, dur,
+-- interval, perMana, perSec }; nothing shows it yet.
+local function Numbers(e, kind)
+    local value, part = PartValue(e, kind)
+    local interval, by = IntervalFor(e, part)
+    e.value = value
+    e.min = part and part.min
+    e.max = part and part.max
+    e.over = part and part.over
+    e.dur = part and part.dur
+    e.interval = interval
+    e.intervalBy = by
+
+    local amount = e.cost and e.cost.amount
+    e.perMana = (value ~= nil and amount ~= nil and amount > 0) and (value / amount) or nil
+    e.perSec = (value ~= nil and interval ~= nil and interval > 0) and (value / interval) or nil
+
+    e.alt = nil
+    if kind == "heal" and type(e.parsed) == "table" and e.parsed.damage ~= nil then
+        local dv, dp = PartValue(e, "damage")
+        if dv ~= nil then
+            local di = IntervalFor(e, dp)
+            e.alt = {
+                kind = "damage", value = dv,
+                min = dp and dp.min, max = dp and dp.max, over = dp and dp.over, dur = dp and dp.dur,
+                interval = di,
+                perMana = (amount ~= nil and amount > 0) and (dv / amount) or nil,
+                perSec = (di ~= nil and di > 0) and (dv / di) or nil,
+            }
+        end
+    end
 end
 
 --------------------------------------------------------------------------------
@@ -302,6 +422,10 @@ function Book:BuildEntry(row, slot, bank, futureConst, prevSpells)
     local costList, costReason = MD.API.SpellPowerCost(id)
     entry.cost, entry.costState = ResolveCost(costList, costReason, tip)
 
+    -- T95: the cooldown, the reach and the lockout.
+    entry.cooldown, entry.cooldownFrom = ReadCooldown(id, tip, prevSpells and prevSpells[id])
+    ApplyReach(entry)
+
     return entry
 end
 
@@ -369,6 +493,10 @@ function Book:ReadSpell(id)
     local costList, costReason = MD.API.SpellPowerCost(id)
     entry.cost, entry.costState = ResolveCost(costList, costReason, tip)
 
+    -- T95: the cooldown, the reach and the lockout, as BuildEntry reads them.
+    entry.cooldown, entry.cooldownFrom = ReadCooldown(id, tip, Book._readSpells[id])
+    ApplyReach(entry)
+
     -- The kind (heal/damage), the same rule GroupFamilies uses per family,
     -- read off this one entry's own parsed text.
     local kind
@@ -379,20 +507,7 @@ function Book:ReadSpell(id)
     end
     entry.kind = kind
 
-    if kind then
-        local value, part = PartValue(entry, kind)
-        local interval = IntervalFor(entry, part)
-        entry.value = value
-        entry.min = part and part.min
-        entry.max = part and part.max
-        entry.over = part and part.over
-        entry.dur = part and part.dur
-        entry.interval = interval
-
-        local amount = entry.cost and entry.cost.amount
-        entry.perMana = (value ~= nil and amount ~= nil and amount > 0) and (value / amount) or nil
-        entry.perSec = (value ~= nil and interval ~= nil and interval > 0) and (value / interval) or nil
-    end
+    if kind then Numbers(entry, kind) end
 
     Book._readSpells[id] = entry
     return entry
@@ -497,6 +612,18 @@ function Book:GroupFamilies(spells)
             end
         end
         fam.kind = kind
+        -- T95 (4.2 P6): an either-or heal family (Holy Shock, Holy Nova) keeps
+        -- its damage half beside it (each rank's entry.alt, Numbers above);
+        -- T110 shows the half that matches the player's role.
+        fam.altKind = nil
+        if kind == "heal" then
+            for _, e in ipairs(fam.ranks) do
+                if type(e.parsed) == "table" and e.parsed.damage ~= nil then
+                    fam.altKind = "damage"
+                    break
+                end
+            end
+        end
 
         local maxKnown
         for _, e in ipairs(fam.ranks) do
@@ -552,18 +679,7 @@ function Book:Rows(family, pool)
     if not family.kind then return end
 
     for _, e in ipairs(family.ranks) do
-        local value, part = PartValue(e, family.kind)
-        local interval = IntervalFor(e, part)
-        e.value = value
-        e.min = part and part.min
-        e.max = part and part.max
-        e.over = part and part.over
-        e.dur = part and part.dur
-        e.interval = interval
-
-        local amount = e.cost and e.cost.amount
-        e.perMana = (value ~= nil and amount ~= nil and amount > 0) and (value / amount) or nil
-        e.perSec = (value ~= nil and interval ~= nil and interval > 0) and (value / interval) or nil
+        Numbers(e, family.kind)
         e.casts = Book:CastsFor(e, pool)
         e.dominated = nil
         e.dominatedBy = nil -- T38

@@ -601,6 +601,13 @@ local function CardPairs(fam, e, pool)
         P("Per mana", Num(e.perMana, 2))
         P("Per sec", PerSecWord(e, kind)) -- T78: one vocabulary
     end
+    -- T95 (docs/SPEC-next.md 4.2 P1): the reach in words (an upper bound;
+    -- per mana and per sec above stay one target's, decision 12), the
+    -- cooldown and the per-target lockout -- each only when the book read one.
+    local reach = kind == "heal" and Words.Reach(e)
+    if reach then P("Reach", reach) end
+    if type(e.cooldown) == "number" then P("Cooldown", Words.Seconds(e.cooldown)) end
+    if type(e.lockout) == "number" then P("Lockout", Words.Seconds(e.lockout) .. " per target") end
     local out2 = { pairs = out }
     local amount = e.cost and e.cost.power == nil and e.cost.amount
     if kind and type(amount) == "number" and amount > 0 then

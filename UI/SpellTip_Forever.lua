@@ -217,6 +217,25 @@ local function ValueLines(out, entry, kind)
     return crit
 end
 
+-- T95 (docs/SPEC-next.md 4.2 P1): what the text and the tooltip line say
+-- about reach and pace -- whom it reaches (an upper bound, in words: the
+-- numbers above are one target's), the cooldown, the per-target lockout and
+-- a health condition. Each only when the book read one.
+local function ReachLines(out, entry)
+    local reach = Words.ReachDetail(entry)
+    if reach then out[#out + 1] = Pair("Reaches", reach) end
+    if type(entry.cooldown) == "number" then
+        out[#out + 1] = Pair("Cooldown", Words.Seconds(entry.cooldown))
+    end
+    if type(entry.lockout) == "number" then
+        out[#out + 1] = Pair("Lockout", Words.Seconds(entry.lockout) .. " per target")
+    end
+    local below = type(entry.reach) == "table" and entry.reach.belowPct
+    if type(below) == "number" then
+        out[#out + 1] = Pair("Only", "on a target below " .. Num(below) .. "% health")
+    end
+end
+
 -- Every known rank with a value, this one marked, when there are two or more
 -- to compare: value, per mana, casts to OOM from full.
 local function RankLines(out, family, entry)
@@ -271,7 +290,9 @@ end
 -- casts to OOM, nothing else, no hint; nil for one with no mana cost.
 local function OtherLines(entry, family, source)
     if not HasManaCost(entry) then return nil end
-    local counted = { cost = entry.cost, interval = math.max(entry.cast or 0, GCD) }
+    -- T95: never under the spell's cooldown (Book's IntervalFor, no part).
+    local counted = { cost = entry.cost, interval = (Book.IntervalFor and Book.IntervalFor(entry, nil))
+        or math.max(entry.cast or 0, GCD) }
     local full = Book:CastsFor(counted, Book:DefaultPool())
     return {
         Header(entry, family, source, false),
@@ -321,6 +342,7 @@ function SpellTip:Lines(id, detail, source)
         -- "assumed", once, and only here (5.1)
         more[#more + 1] = Pair("Crit multiplier", Words.CritNote(), "label", "muted")
     end
+    ReachLines(more, entry) -- T95
     if family then
         RankLines(more, family, entry)
         if family.gaps and #family.gaps > 0 then

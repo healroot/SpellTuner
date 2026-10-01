@@ -812,6 +812,203 @@ T38("ReadSpell keeps a spell outside the book readable in combat, read before co
         tostring(after and after.descState), tostring(after and after.stale))
 end)
 
+--------------------------------------------------------------------------------
+-- T95 (docs/SPEC-next.md 4.2 P1, docs/tasks/T95-reading-truth-display.md):
+-- reading truth for every class. The priest, shaman and paladin books are the
+-- committed extracts of talentsforever's export (tools/data/books/, CC BY 4.0),
+-- served by tools/stub_books.lua as the whole book (the stub's druid rows
+-- gone), each read by a fresh addon table so the long-lived one above keeps
+-- its own client answers. Every number below is in those texts.
+--------------------------------------------------------------------------------
+local Books = dofile(here .. "/stub_books.lua")
+
+-- Installs a class book alone, loads a fresh SpellTuner over it, runs fn with
+-- that addon table and its first scan, and restores the stub; answers what fn
+-- answered.
+local function ClassBook(class, opts, fn)
+    opts = opts or {}
+    opts.alone = true
+    local restore = Books.Install(Books.Load(class), opts)
+    local fresh = {}
+    local good, a, b = pcall(function()
+        S.Load(S.loadedFiles, "SpellTuner", fresh)
+        return fn(fresh, fresh.Book:Scan())
+    end)
+    restore()
+    if not good then return false, "raised: " .. tostring(a) end
+    return a, b
+end
+
+local function T95(name, fn)
+    local good, cond, detail = pcall(fn)
+    if not good then check(name, false, "raised: " .. tostring(cond)) return end
+    check(name, cond == true, detail)
+end
+
+local function Top(book, name)
+    local fam = book.families[name]
+    return fam, fam and (fam.maxKnown or fam.ranks[#fam.ranks])
+end
+
+-- 23: Holy Shock (Paladin R1-R4, "Instant / 10 sec cooldown") per second over
+-- its 10 s cooldown, never the GCD; its damage half kept beside the heal
+T95("T95: Holy Shock's per second is over its 10 s cooldown; its damage half kept", function()
+    return ClassBook("paladin", nil, function(fresh, book)
+        local fam, e = Top(book, "Holy Shock")
+        local every = true
+        for _, r in ipairs(fam.ranks) do
+            if r.cooldown ~= 10 or r.cooldownFrom ~= "tooltip" or r.interval ~= 10 or r.intervalBy ~= "cooldown"
+                or not ApproxEq(r.perSec, r.value / 10) then every = false end
+        end
+        -- R4: "or 307 to 333 healing", "334 to 362 Holy damage", 325 mana
+        local good = e.rank == 4 and ApproxEq(e.value, 320) and ApproxEq(e.perSec, 32) and every
+            and ApproxEq(e.perMana, 320 / 325)
+            and fam.kind == "heal" and fam.altKind == "damage" and type(e.alt) == "table"
+            and e.alt.kind == "damage" and ApproxEq(e.alt.value, 348) and e.alt.interval == 10
+            and ApproxEq(e.alt.perSec, 34.8)
+        -- a spell with no cooldown line keeps its cast-or-GCD interval
+        local _, hl = Top(book, "Holy Light")
+        good = good and hl.cooldown == nil and hl.interval == 2.5 and hl.intervalBy == nil
+        return good, string.format("rank=%s value=%s cd=%s/%s interval=%s by=%s perSec=%s every=%s alt=%s/%s hl=%s",
+            tostring(e.rank), tostring(e.value), tostring(e.cooldown), tostring(e.cooldownFrom), tostring(e.interval),
+            tostring(e.intervalBy), tostring(e.perSec), tostring(every), tostring(e.alt and e.alt.value),
+            tostring(e.alt and e.alt.perSec), tostring(hl.interval))
+    end)
+end)
+
+-- 24: Prayer of Healing reaches "the target and their party" -- targets =
+-- party, its range from the text -- and its per mana stays one member's
+T95("T95: Prayer of Healing's targets are the party, its per mana one member's", function()
+    return ClassBook("priest", nil, function(fresh, book)
+        local fam, e = Top(book, "Prayer of Healing")
+        local every = true
+        for _, r in ipairs(fam.ranks) do
+            if r.targets ~= "party" or r.reach.from ~= "target" or r.reach.range ~= 40 then every = false end
+        end
+        -- R5: "for 631 to 667", 1070 mana, a 3 sec cast
+        local good = every and e.rank == 5 and ApproxEq(e.value, 649) and ApproxEq(e.perMana, 649 / 1070)
+            and ApproxEq(e.perSec, 649 / 3)
+        local _, gh = Top(book, "Greater Heal")
+        good = good and gh.targets == "single" and gh.reach.targets == "single"
+        return good, string.format("every=%s rank=%s value=%s perMana=%s targets=%s gh=%s", tostring(every),
+            tostring(e.rank), tostring(e.value), tostring(e.perMana), tostring(e.targets), tostring(gh.targets))
+    end)
+end)
+
+-- 25: Chain Heal jumps -- 3 targets, each 50% of the last -- and its numbers
+-- stay the first target's
+T95("T95: Chain Heal's reach is a chain of 3 with a 50% falloff", function()
+    return ClassBook("shaman", nil, function(fresh, book)
+        local _, e = Top(book, "Chain Heal")
+        local r = e.reach or {}
+        -- R3: "for 474 to 538", 405 mana, a 2.5 sec cast
+        local good = e.targets == "chain" and r.count == 3 and r.jumps == 2 and r.falloff == 0.5
+            and r.partyOnly == true and ApproxEq(fresh.Words.ChainSum(r), 1.75)
+            and ApproxEq(e.value, 506) and ApproxEq(e.perMana, 506 / 405) and ApproxEq(e.perSec, 506 / 2.5)
+        local _, rt = Top(book, "Riptide")
+        good = good and rt.cooldown == 6 and rt.interval == 6 and rt.targets == "single"
+        return good, string.format("targets=%s count=%s jumps=%s falloff=%s sum=%s value=%s riptide cd=%s",
+            tostring(e.targets), tostring(r.count), tostring(r.jumps), tostring(r.falloff),
+            tostring(fresh.Words.ChainSum(r)), tostring(e.value), tostring(rt.cooldown))
+    end)
+end)
+
+-- 26: Power Word: Shield -- an absorb on one target, its 4 s cooldown read
+-- off the tooltip line, its 15 s lockout off the text
+T95("T95: Power Word: Shield's lockout is 15 s and its cooldown 4 s", function()
+    return ClassBook("priest", nil, function(fresh, book)
+        local fam, e = Top(book, "Power Word: Shield")
+        local every = true
+        for _, r in ipairs(fam.ranks) do
+            if r.lockout ~= 15 or r.cooldown ~= 4 or r.interval ~= 4 then every = false end
+        end
+        -- R10: "absorbing 928 damage", 500 mana
+        local good = every and e.targets == "single" and ApproxEq(e.value, 928) and ApproxEq(e.perSec, 232)
+        local _, renew = Top(book, "Renew")
+        good = good and renew.lockout == nil and renew.cooldown == nil
+        return good, string.format("every=%s lockout=%s cd=%s interval=%s perSec=%s renew=%s", tostring(every),
+            tostring(e.lockout), tostring(e.cooldown), tostring(e.interval), tostring(e.perSec), tostring(renew.lockout))
+    end)
+end)
+
+-- 27: Light's Vigil (a buff for the next Holy Shock, T91) has no value: no
+-- kind, no per mana, no per second, every rank -- only its cost and cooldown
+T95("T95: Light's Vigil has no value", function()
+    return ClassBook("paladin", nil, function(fresh, book)
+        local fam, e = Top(book, "Light's Vigil")
+        local blank = true
+        for _, r in ipairs(fam.ranks) do
+            if r.value ~= nil or r.perMana ~= nil or r.perSec ~= nil or r.targets ~= nil then blank = false end
+        end
+        local good = fam.kind == nil and fam.shape == "none" and #fam.ranks == 3 and blank
+            and e.cost.amount == 1340 and e.cooldown == 6
+        return good, string.format("kind=%s shape=%s ranks=%d blank=%s cost=%s cd=%s", tostring(fam.kind),
+            tostring(fam.shape), #fam.ranks, tostring(blank), tostring(e.cost and e.cost.amount), tostring(e.cooldown))
+    end)
+end)
+
+-- 28: a class coverage count -- per class, the families listed, those with a
+-- value (heal or damage), the heals, those whose tooltip states a cooldown,
+-- and the heals that reach more than one target or whose reach is refused.
+-- Pinned: a parser or book change that moves one of them shows up here.
+T95("T95: class coverage -- families, valued, heals, cooldowns, reach", function()
+    local want = {
+        paladin = "families=53 valued=10 heals=3 cooldowns=22 multi=0 refused=0",
+        priest = "families=56 valued=22 heals=12 cooldowns=24 multi=3 refused=1",
+        shaman = "families=56 valued=12 heals=4 cooldowns=18 multi=1 refused=0",
+    }
+    local bad, got = {}, {}
+    for _, class in ipairs({ "paladin", "priest", "shaman" }) do
+        local line = ClassBook(class, nil, function(fresh, book)
+            local n = { families = 0, valued = 0, heals = 0, cooldowns = 0, multi = 0, refused = 0 }
+            for _, name in ipairs(book.order) do
+                local fam = book.families[name]
+                n.families = n.families + 1
+                if fam.kind then n.valued = n.valued + 1 end
+                if fam.kind == "heal" then n.heals = n.heals + 1 end
+                local cd = false
+                for _, r in ipairs(fam.ranks) do if r.cooldown then cd = true end end
+                if cd then n.cooldowns = n.cooldowns + 1 end
+                local top = fam.maxKnown or fam.ranks[#fam.ranks]
+                if fam.kind == "heal" then
+                    if top.targets == "party" or top.targets == "chain" or top.targets == "selfAndTarget" then
+                        n.multi = n.multi + 1
+                    elseif top.targets == nil then
+                        n.refused = n.refused + 1
+                    end
+                end
+            end
+            return string.format("families=%d valued=%d heals=%d cooldowns=%d multi=%d refused=%d",
+                n.families, n.valued, n.heals, n.cooldowns, n.multi, n.refused)
+        end)
+        got[#got + 1] = class .. ": " .. tostring(line)
+        if line ~= want[class] then bad[#bad + 1] = class end
+    end
+    return #bad == 0, table.concat(got, "; ")
+end)
+
+-- 29: with MD.API.BASE_CD_READS false (as shipped) the cooldown is the
+-- tooltip line's, whatever GetSpellBaseCooldown says; set true, a base read
+-- above 0 wins and a 0 falls back to the tooltip line
+T95("T95: BASE_CD_READS false reads the tooltip line; true reads the base cooldown", function()
+    -- Holy Shock R4 (20930) answers a base cooldown its tooltip does not say;
+    -- R3 (20929) answers 0
+    return ClassBook("paladin", { baseCooldowns = { [20930] = 12000 } }, function(fresh, book)
+        local shipped = fresh.API.BASE_CD_READS
+        local r4 = book.spells[20930]
+        local offGood = shipped == false and r4.cooldown == 10 and r4.cooldownFrom == "tooltip"
+        fresh.API.BASE_CD_READS = true
+        fresh.Book:MarkDirty()
+        local on = fresh.Book:Scan()
+        local o4, o3 = on.spells[20930], on.spells[20929]
+        local onGood = o4.cooldown == 12 and o4.cooldownFrom == "base" and o4.interval == 12
+            and o3.cooldown == 10 and o3.cooldownFrom == "tooltip"
+        return offGood and onGood, string.format("shipped=%s off=%s/%s on=%s/%s r3=%s/%s", tostring(shipped),
+            tostring(r4.cooldown), tostring(r4.cooldownFrom), tostring(o4.cooldown), tostring(o4.cooldownFrom),
+            tostring(o3.cooldown), tostring(o3.cooldownFrom))
+    end)
+end)
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("  FAIL " .. f) end
 if #fails > 0 then os.exit(1) end

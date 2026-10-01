@@ -39,6 +39,19 @@ MD.API.Bind({
     SpellTooltipData = { client = "C_TooltipInfo.GetSpellByID", copy = 3 },
 })
 
+-- T95 (Spells/Book.lua, docs/SPEC-next.md 4.2 P1): a spell's base cooldown,
+-- GetSpellBaseCooldown(id) -> cooldown ms, global cooldown ms (in the 69893
+-- baseline; retail's shape, UNVERIFIED on Forever). Bound, but Book reads it
+-- only while MD.API.BASE_CD_READS is true -- false until T87's probe report
+-- from a Forever client shows `== cooldowns` answering it plain (the
+-- BAR_READS_MAX pattern, Client/API.lua; the integrator flips it). Until then
+-- the cooldown is the tooltip line's right text ("10 sec cooldown",
+-- Parse.Cooldown).
+MD.API.Bind({
+    BaseCooldown = "GetSpellBaseCooldown",
+})
+MD.API.BASE_CD_READS = false
+
 -- T12 (Spells/Measure.lua): plain out of combat, UNKNOWN in combat (Facts --
 -- stats go secret in combat, T7a's seventh report) -- read through the
 -- adapter like every other stat, printed as "?" when it does not come back a

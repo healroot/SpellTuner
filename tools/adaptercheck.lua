@@ -74,6 +74,9 @@ local FOREVER_ONLY_NAMES = {
     "CursorInfo", -- T36
     -- T38 (UI/SpellsPane_Forever.lua): the game's spell tooltip for a rank row.
     "SetTooltipSpell", -- T38
+    -- T95 (Spells/Book.lua): GetSpellBaseCooldown, read only while
+    -- MD.API.BASE_CD_READS is true.
+    "BaseCooldown", -- T95
 }
 -- T15: Client/API_TBC.lua's own binding -- GetSpellInfo, so
 -- Engine/SimModel.lua and Engine/SimPlanner.lua's four call sites can go
@@ -403,6 +406,32 @@ if flavour == "forever" then
         checkOne(hMax)
         for _, v in ipairs(r) do checkOne(v) end
         check("no secret ever leaves the adapter", none == true)
+    end
+
+    -- T95 (docs/SPEC-next.md 4.2 P1): GetSpellBaseCooldown is bound as
+    -- BaseCooldown, a Forever-only name, its answer plain (or nil, absent),
+    -- and MD.API.BASE_CD_READS ships false -- Spells/Book.lua reads the
+    -- tooltip line until T87's Forever report says the call answers plain.
+    do
+        local listed = false
+        for _, n in ipairs(FOREVER_ONLY_NAMES) do if n == "BaseCooldown" then listed = true end end
+        local saved = rawget(_G, "GetSpellBaseCooldown")
+        _G.GetSpellBaseCooldown = function(id)
+            if id == 20473 then return 10000, 1500 end
+            return 0, 1500
+        end
+        MD.API.Invalidate("GetSpellBaseCooldown")
+        local ms, gcd = MD.API.BaseCooldown(20473)
+        local none = MD.API.BaseCooldown(5185)
+        _G.GetSpellBaseCooldown = saved
+        MD.API.Invalidate("GetSpellBaseCooldown")
+        local gone, why = MD.API.BaseCooldown(20473)
+        check("T95: BaseCooldown is a Forever-only binding, read only once BASE_CD_READS is set",
+            listed and MD.API._bindings.BaseCooldown == "GetSpellBaseCooldown" and MD.API.BASE_CD_READS == false
+            and ms == 10000 and gcd == 1500 and none == 0 and gone == nil and why == "absent",
+            string.format("listed=%s binding=%s flag=%s ms=%s gcd=%s none=%s gone=%s/%s", tostring(listed),
+                tostring(MD.API._bindings.BaseCooldown), tostring(MD.API.BASE_CD_READS), tostring(ms),
+                tostring(gcd), tostring(none), tostring(gone), tostring(why)))
     end
 
     -- T17c: HealthMax, a party member's real max through a hidden status bar,

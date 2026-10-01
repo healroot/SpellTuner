@@ -1776,6 +1776,56 @@ T36("T39 My spells: a row per listed family, suggested against highest; a click 
 end)
 
 --------------------------------------------------------------------------------
+-- T95 (docs/SPEC-next.md 4.2 P1, decision 12): the rank card on another
+-- class's spells -- the cooldown that paces Holy Shock, a group heal's reach
+-- in words (an upper bound) and Power Word: Shield's lockout. The spells are
+-- tools/data/books/' extracts of talentsforever's export (CC BY 4.0), added
+-- beside the stub's book by tools/stub_books.lua for these two items only
+-- (before the ASCII walk below, so what they paint is walked too).
+--------------------------------------------------------------------------------
+local Books = dofile(here .. "/stub_books.lua")
+local CLASS_FAMILIES = { ["Holy Shock"] = true, ["Prayer of Healing"] = true, ["Power Word: Shield"] = true,
+    ["Chain Heal"] = true }
+local function ClassFamily(row) return CLASS_FAMILIES[row.name] == true end
+local restoreBooks = Books.Install(Books.Load("paladin"), { only = ClassFamily, firstSlot = 300, MD = MD })
+local restoreBooks2 = Books.Install(Books.Load("priest"), { only = ClassFamily, firstSlot = 320, MD = MD })
+local restoreBooks3 = Books.Install(Books.Load("shaman"), { only = ClassFamily, firstSlot = 340, MD = MD })
+
+-- T95-1: Holy Shock's card says its per second is over its 10 s cooldown, and
+-- names the cooldown; Holy Light-like spells without one say nothing new
+T36("T95 the rank card: a cooldown paces per sec and is named", function()
+    OpenView("Holy Shock")
+    local shockPerSec, shockCd = PairValue("Per sec"), PairValue("Cooldown")
+    local shockTitle = F().card.title:GetText()
+    OpenView("Nourish")
+    local plain = PairValue("Cooldown") == nil and PairValue("Reach") == nil and PairValue("Lockout") == nil
+    local good = shockTitle == "RANK 4" and shockPerSec == "32.0 over its 10 s cooldown" and shockCd == "10 s"
+        and plain
+    return good, string.format("title=%s perSec=%q cooldown=%q nourishPlain=%s | %s", tostring(shockTitle),
+        tostring(shockPerSec), tostring(shockCd), tostring(plain), Pairs())
+end)
+
+-- T95-2: Prayer of Healing's card says its reach in words and keeps per mana
+-- one member's; Chain Heal's says its chain; Power Word: Shield's its lockout
+T36("T95 the rank card: reach in words, per mana one target's; a lockout per target", function()
+    OpenView("Prayer of Healing")
+    local pohReach, pohMana = PairValue("Reach"), PairValue("Per mana")
+    OpenView("Chain Heal")
+    local chainReach = PairValue("Reach")
+    OpenView("Power Word: Shield")
+    local shieldLock, shieldCd, shieldReach = PairValue("Lockout"), PairValue("Cooldown"), PairValue("Reach")
+    local good = pohReach == "x up to 5 targets" and pohMana == "0.61"
+        and chainReach == "up to 1.75x if 3 are hurt"
+        and shieldLock == "15 s per target" and shieldCd == "4 s" and shieldReach == nil
+    return good, string.format("poh=%q/%q chain=%q shield=%q/%q/%q", tostring(pohReach), tostring(pohMana),
+        tostring(chainReach), tostring(shieldLock), tostring(shieldCd), tostring(shieldReach))
+end)
+
+restoreBooks3()
+restoreBooks2()
+restoreBooks()
+
+--------------------------------------------------------------------------------
 -- 11: every string the pane renders or exports is ASCII with no bare pipe
 -- (T36: run last, so the rail, the picker and the family views are in it)
 --------------------------------------------------------------------------------
