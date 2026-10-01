@@ -23,6 +23,10 @@ local MD = dofile(here .. "/harness.lua")
 arg[0] = a0
 
 local S = _G.STUB
+-- T72 (the review of P28): the stub's opt-in geometry for the whole suite, so
+-- the band's and the column titles' anchors are stored from the window's
+-- first Build on and measured by the text metric (section T72 below)
+S.Geometry(true)
 S.crit[4] = 0 -- zero Nature crit: the own-heal amounts the fixture records are the engine's own exact figures
 
 local function CapturedChat(body)
@@ -389,9 +393,77 @@ do
     SM.Validate = realV
 end
 
+-- The band and the column titles measured (the review of P28): the stub's
+-- geometry (switched on at the top) and its text metric (6 px a character at size 12), the font
+-- strings given the font objects their templates name (the stub's
+-- CreateFontString drops the template), and a resolver for the horizontal
+-- points the window sets, in the window's own x. A font string's box is the
+-- width it was given, else its text's.
+local function Fonted(st)
+    local U = MD.UI
+    st.headerFS:SetFontObject(U.fontObjects[U.FONT])
+    st.band.verdict:SetFontObject(U.fontObjects[U.FONT])
+    st.band.word:SetFontObject(U.fontObjects[U.FONT_SMALL])
+    st.right.title:SetFontObject(U.fontObjects[U.FONT_TITLE])
+end
+local function HSide(p) return p:find("LEFT") and "LEFT" or (p:find("RIGHT") and "RIGHT") or "CENTER" end
+local Span
+local function Edge(win, r, side)
+    local l, rt = Span(win, r)
+    if side == "LEFT" then return l elseif side == "RIGHT" then return rt end
+    return (l + rt) / 2
+end
+function Span(win, r)
+    if r == win then return 0, win:GetWidth() end
+    local l, rt
+    for _, pt in ipairs(r.points or {}) do
+        local p, rel, rp, x = pt[1], pt[2] or r.parentFrame, pt[3] or pt[1], pt[4] or 0
+        local at = Edge(win, rel, HSide(rp)) + x
+        if HSide(p) == "LEFT" then l = at elseif HSide(p) == "RIGHT" then rt = at end
+    end
+    local w = rawget(r, "w")
+    if not w then w = (r.kind == "FontString") and r:GetStringWidth() or r:GetWidth() end
+    if l and not rt then rt = l + w elseif rt and not l then l = rt - w end
+    return l or 0, rt or 0
+end
+-- where the fight's text ends (the reconstruction word included) and where
+-- the verdict begins, in the band
+local function BandEdges(st)
+    local f, band = st.frame, st.band
+    local _, fightR = Span(f, st.headerFS)
+    if band.word:IsShown() then _, fightR = Span(f, band.word) end
+    local vL, vR = Span(f, band.verdict)
+    return fightR, vL, vR
+end
+
+do
+    -- one column (no Coach anyway: the coach is a druid's) and a long fight
+    -- name: the fight is cut short of the verdict rather than drawn under it
+    Fonted(MD.Replay._state())
+    local druid = MD.player.isDruid
+    MD.player.isDruid = false
+    local recF = buildFixture({ meterOverridden = true })
+    recF.id = 3300000000
+    recF.zone = "Hellfire Citadel: The Shattered Halls of the Warchief"
+    MD.cdb.recordings = { recF, recGood, recBad }
+    SP.plans[recF.id] = nil
+    SlashCmdList.SPELLTUNER("replay 1")
+    local st = MD.Replay._state()
+    local fightR, vL = BandEdges(st)
+    local cut = rawget(st.headerFS, "w") or 0
+    check("T72: at one column the fight stops short of the verdict (cut, not overdrawn)",
+        st.frame:GetWidth() < TWO_COLS and not st.band.coach:IsShown() and st.band.word:IsShown()
+        and BandVerdict(st):find(BAD .. "does not replay: ", 1, true) ~= nil
+        and fightR < vL and cut < st.headerFS:GetStringWidth(),
+        string.format("width=%s fight ends %.1f verdict starts %.1f box %.1f of %.1f", tostring(st.frame:GetWidth()),
+            fightR, vL, cut, st.headerFS:GetStringWidth()))
+    MD.player.isDruid = druid
+end
+
 do
     -- a fight that does not replay: the verdict names the gate in bad, and
-    -- Coach anyway takes the place of the quoted "/md replay N force"
+    -- Coach anyway takes the place of the quoted "/md replay N force"; mockup
+    -- M3 draws that band at the two-column width, the suggested column dimmed
     local recF = buildFixture({ meterOverridden = true })
     recF.id = 3200000000
     MD.cdb.recordings = { recF, recGood, recBad }
@@ -401,10 +473,18 @@ do
     local band = st.frame.band
     local v = BandVerdict(st)
     local hint = st.hint and st.hint:GetText() or ""
+    local title0 = st.right.title:GetText() or ""
     check("T72: a fight that does not replay says so in bad, naming the gate, with Coach anyway",
         v:find(BAD .. "does not replay: ", 1, true) ~= nil and band ~= nil and band.coach:IsShown()
-        and MD.replayCoaching == nil and st.frame:GetWidth() < TWO_COLS and hint:find("force", 1, true) == nil,
-        v .. " / hint=" .. hint)
+        and MD.replayCoaching == nil and st.frame:GetWidth() == TWO_COLS and st.right.dimmed == true
+        and title0:find("not coached", 1, true) ~= nil and hint:find("force", 1, true) == nil,
+        v .. " / hint=" .. hint .. " / width=" .. tostring(st.frame:GetWidth()) .. " / " .. title0)
+    local fightR, vL, vR = BandEdges(st)
+    local cL = Span(st.frame, band.coach)
+    check("T72: the band's fight ends left of the verdict, the verdict left of Coach anyway",
+        fightR < vL and vR <= cL,
+        string.format("fight ends %.1f, verdict %.1f-%.1f, Coach anyway from %.1f", fightR, vL, vR, cL))
+    MD.Replay._seek(12) -- the reopen keeps the replay's time (RebuildSuggested's)
     local said = CapturedChat(function()
         local click = band and band.coach:GetScript("OnClick")
         if click then click(band.coach) end
@@ -414,14 +494,26 @@ do
     for _, l in ipairs(said) do if l:find("nothing to force", 1, true) then nothing = true end end
     check("T72: Coach anyway coaches it with both columns laid out at once",
         MD.replayCoaching == recF.id and st.frame:GetWidth() == TWO_COLS and st.right.dimmed == true
-        and not (band and band.coach:IsShown()) and not nothing,
-        string.format("coaching=%s width=%s lines=%s", tostring(MD.replayCoaching),
-            tostring(st.frame:GetWidth()), table.concat(said, " / ")))
+        and not (band and band.coach:IsShown()) and not nothing
+        and math.abs(st.left.state.t - 12) < 1e-6,
+        string.format("coaching=%s width=%s t=%.2f lines=%s", tostring(MD.replayCoaching),
+            tostring(st.frame:GetWidth()), st.left.state.t, table.concat(said, " / ")))
     local done = FinishSearch()
     st = MD.Replay._state()
     check("T72: ...and the forced plan is drawn at the same width, the verdict still bad",
         done and st.right.state ~= nil and st.frame:GetWidth() == TWO_COLS
         and BandVerdict(st):find(BAD .. "does not replay", 1, true) ~= nil, BandVerdict(st))
+    -- the strategy chooser shares the column titles' line: the forced plan's
+    -- title stops short of it, and FORCED is said in the band instead
+    local dd = MD.Replay._strategy()
+    local title = st.right.title:GetText() or ""
+    local _, tR = Span(st.frame, st.right.title)
+    local ddL = Span(st.frame, dd)
+    local fightR, vL = BandEdges(st)
+    check("T72: after Coach anyway the title stops short of the chooser; the band says coached anyway",
+        dd:IsShown() and tR < ddL and title:find("FORCED", 1, true) == nil
+        and BandVerdict(st):find("coached anyway", 1, true) ~= nil and fightR < vL,
+        string.format("title ends %.1f, chooser from %.1f, title=%s / %s", tR, ddL, title, BandVerdict(st)))
 end
 
 do

@@ -1,7 +1,8 @@
 # T72 -- The replay: stable layout, a readable verdict, the keys it promises (plan P28)
 
 Status: **built** 2026-09-30 on branch `plan/P28` (base `cf9c6ae`), wave 11 of
-`docs/PLAN-refactor-ux.md`, awaiting the integrator. No file was added, so no TOC line is needed.
+`docs/PLAN-refactor-ux.md`; **reworked 2026-10-01** after the review (section "After the review"
+below), awaiting the integrator. No file was added, so no TOC line is needed.
 
 ## The task (docs/PLAN-refactor-ux.md section 5, P28)
 
@@ -71,7 +72,8 @@ Owned files (section 4, wave 11): `UI/ReplayWindow.lua`, `tools/replayforever.lu
   right end: `Space play   Left  Right 5 s` with the caps in the accent while the keys are live and grey
   otherwise, plus "keys work while the pointer is over this window" on a two-column window.
 - The strategy chooser moves from the header line (where the verdict now is) to the right end of the
-  column titles' line.
+  column titles' line; under the theme the right column's title is given the room left of it (see
+  "After the review").
 
 ### The stable layout (under `UI.THEMED`)
 
@@ -90,6 +92,69 @@ as a marker, "Health then", "Engine's replay now", "Difference" (within / outsid
 one sentence. Hovering a left button outside practice shows the same tooltip (the bar's tooltip), not
 only the 8-px tick. The TBC tick tooltip and the Forever-without-theme one are unchanged (moved into one
 `TickTip` function).
+
+## After the review (2026-10-01)
+
+The reviewer measured two overlaps with the stub's text metric at the theme's sizes (FONT 13,
+FONT_SMALL 11, FONT_TITLE 14), both under `UI.THEMED` only:
+
+1. **The band overlapped itself in the case it was built for.** A fight that does not replay is not
+   auto-coached, so it opened in one column (492 px); the fight's text and the `reconstructed` word
+   reached x = 437.5 while the verdict, right-anchored left of Coach anyway, started at x = 154.
+2. **The strategy chooser covered the FORCED warning.** After Coach anyway the right title
+   (`SUGGESTED  (plan, N binds)  FORCED - this fight does not replay`) ran to x = 933 under the
+   180-px chooser at x = 772-952.
+
+The fixes (`UI/ReplayWindow.lua`, all under `UI.THEMED`; TBC's path unchanged):
+
+- **A fight the band offers Coach anyway for is laid out in two columns** (968 px), as mockup M3 draws
+  that band: `Layout`'s right column is laid out, painted blank and dimmed for it as for a search
+  (`right.waiting = "offer"`, the search's being `"search"`), titled `SUGGESTED  not coached`. The band
+  offers Coach anyway (`CoachOffered`) for a fight that does not replay, has no plan and no search,
+  **and that the coach can take** (`MD.player.isDruid`, as `MD:CoachOnOpen` requires -- a button that
+  did nothing is gone). So the window keeps one size from open through Coach anyway to the forced plan.
+- **The fight's width is bounded by the verdict** (`PlaceBand`, run on every open and practice start;
+  every band anchor moved there from `Build`): the fight's font string is given the room left of the
+  verdict (or of Coach anyway, or of the band's end) less 12 px and less the `reconstructed` word, and
+  is truncated there rather than drawn under it. This holds the remaining one-column cases (a fight
+  that replays with the auto-coach off, a non-druid's failing fight, a long zone or run name).
+- **FORCED is said in the band, not the title**: the verdict reads `does not replay: <gate>, coached
+  anyway` while a forced plan is drawn, and the right title is `SUGGESTED  (plan, N binds)` with a
+  width that stops 12 px short of the chooser (`pitch - 180 - 12`, no wrap). TBC keeps its FORCED title.
+- Minor point taken: **Coach anyway reopens as the window's own reopen** (`RebuildSuggested`, with
+  `openForce` set), so a run keeps its clock and the replay its time.
+
+`tools/replayforever.lua` now runs with `S.Geometry(true)` from the top (every other assertion is
+unchanged by it), gives the band's and the title's font strings the font objects their templates name
+(the stub's `CreateFontString` drops the template), and resolves the horizontal anchors the window
+sets in window x. Three assertions added, one changed:
+
+- (changed) a fight that does not replay opens at 968 with the right column dimmed and titled
+  `not coached` (was: `width < TWO_COLS`); Coach anyway keeps the replay's time (no count change);
+- (+1) at one column (a non-druid's failing fight, a 54-character zone) the fight ends left of the
+  verdict and was cut (its box narrower than its text);
+- (+1) at 968 the fight (the word included) ends left of the verdict, the verdict left of Coach anyway;
+- (+1) after Coach anyway the right title ends left of the chooser, carries no FORCED, and the band
+  says `coached anyway`.
+
+Failing first, with the previous commit's `UI/ReplayWindow.lua` (`1db7861`) put back and then
+restored (exit 1, 24 ok / 4 FAIL -- the reviewer's numbers):
+
+```
+T72: at one column the fight stops short of the verdict (cut, not overdrawn)  FAIL - width=492 fight ends 697.5 verdict starts 154.0 box 0.0 of 598.0
+T72: a fight that does not replay says so in bad, naming the gate, with Coach anyway  FAIL - ... width=492 / SUGGESTED  (plan, 2 binds)
+T72: the band's fight ends left of the verdict, the verdict left of Coach anyway  FAIL - fight ends 437.5, verdict 154.0-362.0, Coach anyway from 372.0
+T72: after Coach anyway the title stops short of the chooser; the band says coached anyway  FAIL - title ends 933.0, chooser from 772.0, title=SUGGESTED  (plan, 2 binds)  FORCED - this fight does not replay
+```
+
+After: 28 ok. Measured after: one column -- fight ends 256, verdict from 268; two columns -- fight
+ends 438.5, verdict 630-838, Coach anyway from 848; title ends 760, chooser from 772.
+
+Checks after the rework: `make check` 68 runs, all passed (notes: `replayforever/forever` 28 and
+`replayui/tbc` 107 against the old expected counts); `apicheck` 0 findings; `textcheck` 0 findings;
+`luac -p` on the three files. TBC: `replayui` and `practiceui` print the same lines with the
+previous commit's `UI/ReplayWindow.lua` and with this one (timings, addresses and search counts
+normalised).
 
 ## Tests first
 
@@ -139,7 +204,7 @@ dimming is read from `right.dimmed`.
 | suite | before | after |
 |---|---|---|
 | `replayui/tbc` | 103 | 107 (+4) |
-| `replayforever/forever` | 15 | 25 (+10) |
+| `replayforever/forever` | 15 | 28 (+13) |
 | every other suite | as `tools/data/expected-counts.json` | equal |
 
 `tools/check.sh`: 68 runs, all passed (the two notes are the counts above); `apicheck` 0 findings,
@@ -156,7 +221,7 @@ where the estimate now lives.
 ## Integrator lines
 
 - **TOCs**: none (no new file).
-- **`tools/data/expected-counts.json`**: `"replayforever/forever": 25,` (was 15) and
+- **`tools/data/expected-counts.json`**: `"replayforever/forever": 28,` (was 15) and
   `"replayui/tbc": 107,` (was 103).
 - **`docs/DECISIONS.md`** (the TBC behaviour change, section 2 of the plan):
 
@@ -175,18 +240,22 @@ where the estimate now lives.
 
   > **T72 (P28):** Space / Left / Right (5 s) on both lines, only while the pointer is over the
   > window and never in combat (released on `PLAYER_REGEN_DISABLED`, back only when the pointer enters
-  > again; every other key propagates). Under `UI.THEMED`: a status band (the fight, the verdict in
-  > good / bad, **Coach anyway**, `reconstructed` as one word with its hover), both columns laid out
-  > while the auto-coach searches (the right one dimmed, `coaching... N plans`), the bar's tooltip
-  > marking reconstructed health, a key hint in the footer.
+  > again; every other key propagates). Under `UI.THEMED`: a status band (the fight, cut short of the
+  > verdict, the verdict in good / bad, **Coach anyway** for a druid's fight that does not replay,
+  > `reconstructed` as one word with its hover, `coached anyway` while a forced plan is drawn), both
+  > columns laid out while the auto-coach searches (`coaching... N plans`) or Coach anyway is offered
+  > (`not coached`), the right one dimmed, its title stopping short of the strategy chooser; the bar's
+  > tooltip marking reconstructed health, a key hint in the footer.
 
-- **`docs/TOOLS.md`** section 1: `replayforever` 25 (was 15), `replayui` 107 (was 103).
+- **`docs/TOOLS.md`** section 1: `replayforever` 28 (was 15), `replayui` 107 (was 103).
 - **`docs/TESTING.md`** (section 44, the plan's check 23):
 
   > **Replay (P28).** On Forever, open a fight that has not been coached: the window opens at full
   > width with the right column dimmed (`coaching... N plans`) and fills in place without moving. The
-  > band reads `replays` in green, or `does not replay: <gate>` in red with a **Coach anyway** button;
-  > click it and the right column is laid out at once and fills in. Hover `reconstructed` and a left bar.
+  > band reads `replays` in green, or `does not replay: <gate>` in red with a **Coach anyway** button
+  > (the window already at full width, the right column dimmed `not coached`); click it and the right
+  > column fills in without the window moving or the replay's time jumping, and the band then reads
+  > `..., coached anyway`. Nothing in the band or the column titles overlaps. Hover `reconstructed` and a left bar.
   > With the pointer over the window Space pauses and plays, Left / Right move 5 s; with the pointer
   > away Space jumps. **On TBC too:** open a replay, keep the pointer over it and pull a mob: you can
   > still jump and turn; after the fight Space plays the replay again only once the pointer has left the
@@ -216,3 +285,11 @@ where the estimate now lives.
 8. Under the theme the tick tooltip drops its "a party max perhaps estimated" line; the band word's
    hover says it (only when a max was estimated).
 9. After a practice ends, the window's `OnKeyDown` is the replay's handler instead of `nil`.
+10. (after the review) **A failing fight opens at two columns under the theme**, where it opened at one;
+    the plan's "both columns when auto-coach starts" is extended to "when Coach anyway is offered",
+    following M3 (which draws that band at 968). Coach anyway is not offered to a non-druid (it did
+    nothing there).
+11. (after the review) **FORCED moved into the band** under the theme (`, coached anyway` after the
+    verdict); TBC's title keeps `FORCED - this fight does not replay`.
+12. (after the review) `replayforever` switches on the stub's geometry for the whole suite (P10's
+    opt-in), so the band's anchors are measured from the window's first build on.

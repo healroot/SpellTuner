@@ -42,6 +42,9 @@ local RUNSTRIP_H = 26          -- the run strip, drawn only when the pull belong
 -- band -- the fight on the left, the verdict on the right -- 28 px tall.
 local BAND_H = 28
 local function HeadH() return UI.THEMED and BAND_H or HEADER_H end
+local CHOOSER_W = 180          -- the strategy chooser's width (v0.11.11)
+local TITLE_GAP = 12           -- T72: what keeps a title clear of the chooser, the fight clear of the verdict
+local COACH_W = 104            -- T72: the band's Coach anyway
 local DIM_ALPHA = 0.32         -- the suggested column while its plan is being searched for
 local KEY_SEEK = 5             -- Left / Right move this many seconds
 local DT_STEP_MAX = 0.25       -- never advance more than this per frame at 1x (a hitch is not a skip)
@@ -1231,7 +1234,7 @@ local function PendingTitle(n)
         UI.Hex("muted"), n or 0)
 end
 local function CoachProgress()
-    if not (right and right.dimmed) then return end
+    if not (right and right.dimmed and right.waiting == "search") then return end
     local h = MD.coachSearch
     local n = (h and h.evals) or 0
     if n ~= coachEvals then
@@ -1375,21 +1378,18 @@ local function Build()
         -- left (headerFS: #n, where, when, how long, how many), the verdict on
         -- the right in good / bad, and Coach anyway where "/md replay N force"
         -- was quoted. The reconstruction is one word beside the fight, its
-        -- explanation that word's hover.
+        -- explanation that word's hover. Every piece is anchored by PlaceBand
+        -- on each open, which also bounds the fight's width by the verdict's.
         local band = CreateFrame("Frame", nil, frame, "BackdropTemplate")
-        band:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
-        band:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
         band:SetHeight(BAND_H)
         UI.StylizeFrame(band, UI.PALETTE.pane or { 0.11, 0.11, 0.11, 1 }, UI.PALETTE.border or { 0, 0, 0, 1 })
         frame.band = band
 
         headerFS = band:CreateFontString(nil, "OVERLAY", UI.FONT)
-        headerFS:SetPoint("LEFT", band, "LEFT", GUTTER, 0)
         headerFS:SetJustifyH("LEFT")
         headerFS:SetWordWrap(false)
 
         band.word = band:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
-        band.word:SetPoint("LEFT", headerFS, "RIGHT", 12, 0)
         band.word:SetTextColor(UI.RGB("muted"))
         band.word:Hide()
         band.wordLine = band:CreateTexture(nil, "ARTWORK")   -- the word's dotted underline, drawn solid
@@ -1415,17 +1415,15 @@ local function Build()
         band.wordHit:SetScript("OnLeave", function() if MD.Tip then MD.Tip:Hide() end end)
         band.wordHit:Hide()
 
-        band.coach = UI.CreateButton(band, "Coach anyway", "accent", { 104, 20 }, false, false, UI.FONT_SMALL, nil,
+        band.coach = UI.CreateButton(band, "Coach anyway", "accent", { COACH_W, 20 }, false, false, UI.FONT_SMALL, nil,
             "Coach anyway", "This fight does not replay within the gates, so a plan",
             "found on it may be advice the engine got wrong.")
-        band.coach:SetPoint("RIGHT", band, "RIGHT", -GUTTER, 0)
         band.coach:SetScript("OnClick", function() if MD.Replay then MD.Replay.CoachAnyway() end end)
         band.coach:Hide()
 
         band.verdict = band:CreateFontString(nil, "OVERLAY", UI.FONT)
         band.verdict:SetJustifyH("RIGHT")
         band.verdict:SetWordWrap(false)
-        band.verdict:SetPoint("RIGHT", band, "RIGHT", -GUTTER, 0)
         band.verdict:SetText("")
         band.verdictHit = CreateFrame("Frame", nil, band)
         band.verdictHit:SetAllPoints(band.verdict)
@@ -1458,7 +1456,7 @@ local function Build()
     -- rather than four buttons: the names are long and ran off the window
     -- (v0.11.11). Switching does NOT search again -- the plans are in hand and
     -- this redraws the suggested column from the chosen one.
-    stratDrop = UI.CreateDropdown(frame, 180, 16, function(id)
+    stratDrop = UI.CreateDropdown(frame, CHOOSER_W, 16, function(id)
         local SP = MD.SimPlanner
         if not (rp and rp.rec) then return end
         -- v0.13.7: two kinds of entry share this list. A search objective picks
@@ -1759,6 +1757,55 @@ end
 -- T72 (P28, review U21): the suggested column while its plan is searched for.
 -- Laid out with the rest and dimmed, so the window has its final size from the
 -- moment it opens; painted blank (the plan has not happened yet).
+-- T72: does the band offer Coach anyway? A fight that does not replay, with no
+-- plan and no search for it, that the coach can take (MD:CoachOnOpen's druid).
+local function CoachOffered()
+    if not (UI.THEMED and rp and rp.rec and not rp.live and not rp.right) then return false end
+    local v = rp.validation
+    if not v or v.ok then return false end
+    if MD.replayCoaching ~= nil and MD.replayCoaching == rp.rec.id then return false end
+    return MD.player.isDruid and MD.SimPlanner ~= nil or false
+end
+
+-- A font string's text width, whatever width it was last given.
+local function TextW(fs)
+    local w = fs.GetUnboundedStringWidth and fs:GetUnboundedStringWidth()
+    if type(w) ~= "number" then w = fs:GetStringWidth() end
+    return type(w) == "number" and w or 0
+end
+
+-- T72 (review of P28): the band's anchors, and the fight's width. The fight is
+-- anchored left and the verdict right on one line, so the fight (and the
+-- reconstruction word after it) is given the room left of the verdict -- left
+-- of Coach anyway, or of the band's end, with nothing to say -- less
+-- TITLE_GAP, and is truncated there rather than drawn under the verdict.
+local function PlaceBand()
+    local band = frame and frame.band
+    if not band then return end
+    band:ClearAllPoints()
+    band:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+    band:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
+    headerFS:ClearAllPoints()
+    headerFS:SetPoint("LEFT", band, "LEFT", GUTTER, 0)
+    band.word:ClearAllPoints()
+    band.word:SetPoint("LEFT", headerFS, "RIGHT", TITLE_GAP, 0)
+    band.coach:ClearAllPoints()
+    band.coach:SetPoint("RIGHT", band, "RIGHT", -GUTTER, 0)
+    band.verdict:ClearAllPoints()
+    local stop = frame:GetWidth() - GUTTER          -- where the verdict ends
+    if band.coach:IsShown() then
+        band.verdict:SetPoint("RIGHT", band.coach, "LEFT", -10, 0)
+        stop = stop - COACH_W - 10
+    else
+        band.verdict:SetPoint("RIGHT", band, "RIGHT", -GUTTER, 0)
+    end
+    local vw = TextW(band.verdict)
+    local room = stop - (vw > 0 and (vw + TITLE_GAP) or 0) - GUTTER
+    if band.word:IsShown() then room = room - TITLE_GAP - TextW(band.word) end
+    -- never 0: a font string given no width draws its whole text
+    headerFS:SetWidth(math.max(GUTTER, math.min(TextW(headerFS) + 1, room)))
+end
+
 local function Dim(col, on)
     local a = on and DIM_ALPHA or 1
     for _, f in pairs(col.frames) do f:SetAlpha(a) end
@@ -1826,8 +1873,14 @@ local function Layout()
     -- T72 (P28, review U21): under the theme a fight the auto-coach is
     -- searching gets both columns now, the right one dimmed, so the window
     -- does not grow and re-centre when the plan arrives
-    local pending = UI.THEMED and not rp.right and not rp.live and rp.rec ~= nil
+    local searching = UI.THEMED and not rp.right and not rp.live and rp.rec ~= nil
         and MD.replayCoaching ~= nil and MD.replayCoaching == rp.rec.id or false
+    -- T72 (review of P28): so is a fight the band offers Coach anyway for --
+    -- mockup M3 draws that band at the two-column width, where the verdict and
+    -- its button have room, and the window keeps its size when it is clicked
+    local offered = not searching and CoachOffered() or false
+    local pending = searching or offered
+    right.waiting = searching and "search" or (offered and "offer") or nil
     local hasRight = rp.right ~= nil or pending
     local width = hasRight and (2 * pitch + 3 * GUTTER) or (pitch + 2 * GUTTER)
     -- the run strip pushes everything below it down, and only exists when this
@@ -1852,6 +1905,13 @@ local function Layout()
     right.x = 2 * GUTTER + pitch
     right.title:ClearAllPoints()
     right.title:SetPoint("TOPLEFT", frame, "TOPLEFT", right.x, -(topH + 6))
+    if UI.THEMED then
+        -- T72 (review of P28): the strategy chooser shares this line at the
+        -- column's right end; the title stops short of it
+        right.title:SetJustifyH("LEFT")
+        right.title:SetWordWrap(false)
+        right.title:SetWidth(pitch - CHOOSER_W - TITLE_GAP)
+    end
     right.strip.mana:ClearAllPoints()
     right.strip.mana:SetPoint("TOPLEFT", frame, "TOPLEFT", right.x, -(topH + 30))
     PaintRunStrip(width - 2 * GUTTER)
@@ -2069,17 +2129,16 @@ function MD:OpenReplay(n)
                 tip[#tip + 1] = { l = tostring(g.name or "?"),
                     r = g.ok and (UI.Hex("good") .. "ok|r") or (UI.Hex("bad") .. "FAIL|r") }
             end
+            -- the FORCED marker the TBC title carries lives here under the
+            -- theme, where the strategy chooser does not share its line
             verdict = v.ok and (UI.Hex("good") .. "replays|r")
-                or (UI.Hex("bad") .. "does not replay: " .. (failed or "a gate failed") .. "|r")
+                or (UI.Hex("bad") .. "does not replay: " .. (failed or "a gate failed")
+                    .. (rp.right and rp.forced and ", coached anyway" or "") .. "|r")
             if fit ~= "" then tip[#tip + 1] = { l = UI.Hex("muted") .. fit .. "|r", r = "" } end
         end
         band.verdict:SetText(verdict)
         band.verdictTip = tip
-        local offerCoach = v and not v.ok and not rp.right and not right.dimmed and true or false
-        Shown(band.coach, offerCoach)
-        band.verdict:ClearAllPoints()
-        if offerCoach then band.verdict:SetPoint("RIGHT", band.coach, "LEFT", -10, 0)
-        else band.verdict:SetPoint("RIGHT", band, "RIGHT", -GUTTER, 0) end
+        Shown(band.coach, right.waiting == "offer")
     else
         headerFS:SetText(string.format(Hi() .. "#%s|r  %s%s  %s  %s   %s%s", tostring(n),
             run and (run.name .. " pull " .. tostring(pullK) .. " - ") or "", rec.zone or "?", when,
@@ -2108,6 +2167,7 @@ function MD:OpenReplay(n)
             band.wordTip = nil
         end
         Shown(band.word, recon); Shown(band.wordLine, recon); Shown(band.wordHit, recon)
+        PlaceBand()
     elseif rp.scenario and rp.scenario.reconstructed then
         local estimated = rp.scenario.maxEstimated
         frame.reconFS:SetText("health reconstructed from UNIT_COMBAT"
@@ -2178,7 +2238,11 @@ function MD:OpenReplay(n)
     if rp.right then
         local p = rp.right.plan
         right.title:SetText(string.format("SUGGESTED  |cff888888(%s, %d binds)|r%s", p.name or "plan", p:BindCount(),
-            rp.forced and "  |cffff9966FORCED - this fight does not replay|r" or ""))
+            (rp.forced and not UI.THEMED) and "  |cffff9966FORCED - this fight does not replay|r" or ""))
+        frame.hint:SetText("")
+    elseif right.waiting == "offer" then
+        -- T72 (review of P28): laid out, dimmed, waiting for Coach anyway
+        right.title:SetText(string.format("%sSUGGESTED|r  %snot coached|r", UI.Hex("muted"), UI.Hex("muted")))
         frame.hint:SetText("")
     elseif right.dimmed then
         -- T72: the dimmed column's title carries the search's progress
@@ -2374,6 +2438,7 @@ function MD:OpenPractice(setup, seed)
         frame.band.verdict:SetText("")
         frame.band.verdictTip, frame.band.wordTip = nil, nil
         frame.band.coach:Hide(); frame.band.wordLine:Hide(); frame.band.wordHit:Hide()
+        PlaceBand()
     end
     left.title:SetText("YOU")
     speed = 1
@@ -2434,8 +2499,11 @@ local function CoachAnyway()
         MD:Print("replay: another fight is being coached - this one can be coached when it finishes.")
         return
     end
+    -- the window's own reopen (RebuildSuggested's): a run keeps its clock and
+    -- the replay its time, as when the plan arrives
     askedToCoach = true
-    local ok, err = pcall(MD.OpenReplay, MD, tostring(openSpec) .. " force")
+    openForce = true
+    local ok, err = pcall(MD.RebuildSuggested, MD)
     askedToCoach = false
     if not ok then error(err, 0) end
 end
