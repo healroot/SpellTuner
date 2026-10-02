@@ -606,6 +606,68 @@ if FLAVOUR == "tbc" then
     end)
 end
 
+--------------------------------------------------------------------------------
+-- 9. T114 (docs/tasks/T114-clock-face-slots.md): the clock feed follows Line's
+-- slots -- MD.ClockLook().texts.line handed to ClockFace.LineString -- and the
+-- ElvUI datatext, which reads the feed, follows without an edit. No provider
+-- (or a look with no texts): today's string, byte for byte.
+--------------------------------------------------------------------------------
+T.section("9. T114: the clock feed follows Line's slots")
+do
+    local CF = MD.ClockFace
+    local face
+    for _, s in ipairs(CF.SAMPLES) do
+        if s.key == "oom" then
+            face = {}
+            for k, v in pairs(s.face) do face[k] = v end
+        end
+    end
+    face.pct, face.mana, face.manaMax = 0.62, 4210, 6800
+    if FLAVOUR == "forever" then
+        face.modelled, face.mono, face.timeFmt, face.arrow = true, true, "mss", nil
+        face.pctModelled, face.manaModelled = true, true
+    end
+    local WANT = FLAVOUR == "forever" and "~OOM 1:20  ~62%" or "OOM 1:20 v  62%"
+    local savedCurrent, savedLook = CF.Current, rawget(MD, "ClockLook")
+    local function WithLook(look, fn)
+        rawset(CF, "Current", function() return face end)
+        rawset(MD, "ClockLook", look)
+        local okRun, a, b, c = pcall(fn)
+        rawset(CF, "Current", savedCurrent)
+        rawset(MD, "ClockLook", savedLook)
+        if not okRun then error(a, 0) end
+        return a, b, c
+    end
+    local PCT = function() return { texts = { line = { right = "pct" } } } end
+    Guarded("9a. the clock feed", function()
+        local picked, pickedHex = WithLook(PCT, function()
+            return Feeds.Text("clock", { plain = true }), Feeds.Text("clock", { valueHex = "|cff16c3f2" })
+        end)
+        local none = WithLook(nil, function() return Feeds.Text("clock", {}) end)
+        local bare = WithLook(function() return { show = {} } end, function() return Feeds.Text("clock", {}) end)
+        local raising = WithLook(function() error("boom") end, function() return Feeds.Text("clock", {}) end)
+        local want = CF.LineString(face)
+        check("9a. the clock feed with texts.line.right = pct reads " .. WANT .. "; no provider: today's string",
+            picked == WANT and T.Strip(pickedHex) == WANT and T.Ascii(pickedHex)
+            and none == want and bare == want and raising == want,
+            string.format("picked=%s none=%s want=%s", tostring(picked), tostring(none), tostring(want)))
+    end)
+    Guarded("9b. the ElvUI datatext follows", function()
+        local dt, feed = WithLook(PCT, function() return Read(OOM), Feeds.Text("clock", {}) end)
+        Colour("16c3f2")
+        local dtHex = WithLook(PCT, function() return Read(OOM) end)
+        local defHex = WithLook(function() return { texts = { line = CF.TEXT and CF.TEXT.line or {} } } end,
+            function() return Read(OOM) end)
+        Colour(nil)
+        local def = WithLook(function() return { texts = { line = CF.TEXT and CF.TEXT.line or {} } } end,
+            function() return Read(OOM) end)
+        check("9b. the ElvUI datatext reads the same slots; with the default text its string is today's",
+            dt == feed and T.Strip(dt) == WANT and T.Strip(dtHex) == WANT and type(CF.TEXT) == "table"
+            and def == CF.LineString(face) and defHex == CF.LineString(face, "|cff16c3f2"),
+            string.format("dt=%s def=%s", tostring(dt), tostring(def)))
+    end)
+end
+
 T.done()
 
 --[=[GOLDEN_TBC

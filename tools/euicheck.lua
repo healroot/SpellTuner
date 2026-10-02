@@ -488,6 +488,57 @@ Guarded("11. a late reader", function()
 end)
 
 --------------------------------------------------------------------------------
+-- 19-20. T114 (docs/tasks/T114-clock-face-slots.md): the SpellTuner broker
+-- follows Line's slots (MD.ClockLook().texts.line), and db.feeds.compact drops
+-- both Right slots whatever they hold. A fixed face (a fight, 92 mp5, 62 %)
+-- stands in for the pool's, so the words are known.
+--------------------------------------------------------------------------------
+T.section("19-20. T114: the broker follows Line's slots")
+do
+    local CF = MD.ClockFace
+    local face = {}
+    for _, s in ipairs(CF.SAMPLES) do
+        if s.key == "oom" then for k, v in pairs(s.face) do face[k] = v end end
+    end
+    face.modelled, face.mono, face.timeFmt, face.arrow = true, true, "mss", nil
+    face.pct, face.pctModelled, face.mp5, face.mp5Modelled, face.combat = 0.62, true, 92, true, true
+    local savedCurrent, savedLook = CF.Current, rawget(MD, "ClockLook")
+    local function WithText(line, fn)
+        rawset(CF, "Current", function() return face end)
+        rawset(MD, "ClockLook", function() return { show = {}, texts = { line = line } } end)
+        local okRun, a, b = pcall(fn)
+        rawset(CF, "Current", savedCurrent)
+        rawset(MD, "ClockLook", savedLook)
+        if not okRun then error(a, 0) end
+        return a, b
+    end
+    Guarded("19. the broker follows Line's slots", function()
+        local text, obj = WithText({ right = "mp5" }, function()
+            LDBS.Update()
+            return LDBS.ClockText(false), H.LdbBlockText(Obj(NAME))
+        end)
+        Seen(text)
+        check("19. the SpellTuner broker follows Line's slots: right = mp5 reads ~92 mp5 in a fight",
+            text == "~OOM 1:20  ~92 mp5" and obj == text, tostring(text) .. " / " .. tostring(obj))
+    end)
+    Guarded("20. compact drops both Right slots", function()
+        local wide, narrow = WithText({ right = "mp5", right2 = "pct" }, function()
+            local w = LDBS.ClockText(false)
+            local was = MD.db.feeds.compact
+            MD.db.feeds.compact = true
+            LDBS.Update()
+            local n = H.LdbBlockText(Obj(NAME))
+            MD.db.feeds.compact = was
+            return w, n
+        end)
+        Seen(wide); Seen(narrow)
+        LDBS.Update()
+        check("20. db.feeds.compact drops both right and right2",
+            wide == "~OOM 1:20  ~92 mp5  ~62%" and narrow == "~OOM 1:20", tostring(wide) .. " / " .. tostring(narrow))
+    end)
+end
+
+--------------------------------------------------------------------------------
 -- 12, 14-16, 18: EllesmereUI's entry points
 --------------------------------------------------------------------------------
 T.section("12-18. EllesmereUI")

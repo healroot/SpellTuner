@@ -8,6 +8,8 @@
 -- docs/tasks/T1-client-adapter.md about what is secret on which client. Never
 -- runs under a flavour it did not declare (tools/harness.lua).
 -- T52 (P8): one more under both flavours, MD.API.Invalidate (23 forever, 16 tbc).
+-- T114: DrawPowerText, the Q-clock-2 seam -- two forever, one tbc (26 forever,
+-- 17 tbc).
 HARNESS_FLAVOUR = { "forever", "tbc" }
 
 local here = arg[0]:match("^(.*)/[^/]+$")
@@ -77,6 +79,9 @@ local FOREVER_ONLY_NAMES = {
     -- T95 (Spells/Book.lua): GetSpellBaseCooldown, read only while
     -- MD.API.BASE_CD_READS is true.
     "BaseCooldown", -- T95
+    -- T114 (docs/tasks/T114-clock-face-slots.md): the Q-clock-2 seam, a
+    -- secret power value into a font string, off until the probe says so.
+    "DrawPowerText", -- T114
 }
 -- T15: Client/API_TBC.lua's own binding -- GetSpellInfo, so
 -- Engine/SimModel.lua and Engine/SimPlanner.lua's four call sites can go
@@ -441,6 +446,55 @@ if flavour == "forever" then
                 tostring(gcd), tostring(none), tostring(gone), tostring(why)))
     end
 
+    -- T114: DrawPowerText, the Q-clock-2 seam -- a secret power value handed
+    -- straight to a font string. Ships off (MD.API.POWER_TEXT_READS false);
+    -- with the flag off it answers nil, "secret" and touches neither the font
+    -- string nor either client function.
+    do
+        local listed = false
+        for _, n in ipairs(FOREVER_ONLY_NAMES) do if n == "DrawPowerText" then listed = true end end
+        check("T114: DrawPowerText is a Forever-only binding and ships off",
+            listed and type(MD.API.DrawPowerText) == "function"
+            and MD.API._bindings.DrawPowerText == "UnitPowerPercent"
+            and MD.API.POWER_TEXT_READS == false,
+            string.format("listed=%s fn=%s binding=%s flag=%s", tostring(listed),
+                type(MD.API.DrawPowerText), tostring(MD.API._bindings.DrawPowerText),
+                tostring(MD.API.POWER_TEXT_READS)))
+    end
+
+    do
+        local savedPct, savedPow = rawget(_G, "UnitPowerPercent"), rawget(_G, "UnitPower")
+        local clientCalls, sets, last = 0, 0, nil
+        _G.UnitPowerPercent = function() clientCalls = clientCalls + 1; return 0.62 end
+        _G.UnitPower = function() clientCalls = clientCalls + 1; return 4321 end
+        MD.API.Invalidate("UnitPowerPercent")
+        MD.API.Invalidate("UnitPower")
+        local fs = { SetText = function(self, v) sets = sets + 1; last = v end }
+        local draw = type(MD.API.DrawPowerText) == "function" and MD.API.DrawPowerText
+            or function() return "missing" end
+        local origFlag = MD.API.POWER_TEXT_READS
+        local a, b = draw(fs, "player", 0, "pct")
+        local c, d = draw(fs, "player", 0, "mana")
+        local offCalls, offSets = clientCalls, sets
+        -- The flag flipped (the probe's answer): the value goes into the font
+        -- string unread, and an unknown kind is refused.
+        MD.API.POWER_TEXT_READS = true
+        local on = draw(fs, "player", 0, "mana")
+        local onLast = last
+        local bad, badWhy = draw(fs, "player", 0, "mp5")
+        MD.API.POWER_TEXT_READS = origFlag
+        _G.UnitPowerPercent, _G.UnitPower = savedPct, savedPow
+        MD.API.Invalidate("UnitPowerPercent")
+        MD.API.Invalidate("UnitPower")
+        check("T114: with POWER_TEXT_READS off, DrawPowerText gives nil, secret and touches nothing",
+            origFlag == false and a == nil and b == "secret" and c == nil and d == "secret"
+            and offCalls == 0 and offSets == 0
+            and on == true and onLast == 4321 and bad == nil and badWhy == "error",
+            string.format("a=%s/%s c=%s/%s calls=%s sets=%s on=%s last=%s bad=%s/%s", tostring(a), tostring(b),
+                tostring(c), tostring(d), tostring(offCalls), tostring(offSets), tostring(on),
+                tostring(onLast), tostring(bad), tostring(badWhy)))
+    end
+
     -- T17c: HealthMax, a party member's real max through a hidden status bar,
     -- off (MD.API.BAR_READS_MAX false) until the probe's bar readback line says
     -- a bar hands a secret back plain. The getter is replaced through the bar
@@ -523,6 +577,11 @@ if flavour == "tbc" then
             and byName.IsAddOnLoadOnDemand and byName.IsAddOnLoadOnDemand.client == "IsAddOnLoadOnDemand"
             and byName.AddOnInfo and byName.AddOnInfo.client == "GetAddOnInfo")
     end
+
+    -- T114: the Q-clock-2 seam is Forever's only; TBC reads its mana plain.
+    check("T114: DrawPowerText is absent on TBC",
+        MD.API.DrawPowerText == nil and MD.API.POWER_TEXT_READS == nil,
+        string.format("fn=%s flag=%s", type(MD.API.DrawPowerText), tostring(MD.API.POWER_TEXT_READS)))
 end
 
 _G.T1_RAISE = nil
