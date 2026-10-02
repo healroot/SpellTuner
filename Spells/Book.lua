@@ -701,6 +701,70 @@ function Book:Rows(family, pool)
     RR.DominatedBy(family.ranks, suggested, RULE_FIELDS)
 end
 
+--------------------------------------------------------------------------------
+-- The half a role casts an either-or spell for (T110, docs/SPEC-next.md 4.2
+-- P6; R-classes item 2: "show the half matching the player's role")
+--------------------------------------------------------------------------------
+
+-- One rank's damage half as an entry of its own: a shallow copy of the heal
+-- entry with Numbers run for "damage" (the value, its parts, the interval --
+-- the cooldown still pacing it --, per mana, per second), the heal's reach
+-- dropped (a heal's targets are not the damage's), `half` "damage" and `of`
+-- the heal entry it came from. The book's own entry is never written: the
+-- book's generation and every consumer of Book:Get() see what they saw.
+local function DamageHalf(e, pool)
+    local v = {}
+    for k, x in pairs(e) do v[k] = x end
+    v.kind = "damage"
+    Numbers(v, "damage")
+    v.targets, v.reach, v.targetsWhy = nil, nil, nil
+    v.dominated, v.dominatedBy, v.suggested = nil, nil, nil
+    v.casts = Book:CastsFor(v, pool)
+    v.half, v.of = "damage", e
+    return v
+end
+
+-- The family a role sees. A heal family that keeps a damage half (altKind,
+-- T95) seen by the "damage" role is a view of that half: every rank through
+-- DamageHalf, the dominance, the suggested rank and the beaten-by ids
+-- Spells/RankRules.lua gives the damage numbers, kind "damage", altKind
+-- "heal", `half` "damage", `of` the family; its key, name, ids and gaps are
+-- the family's. Every other family, and every other role, is the family
+-- itself. Built at each call, written nowhere.
+function Book:Half(family, role, pool)
+    if type(family) ~= "table" or role ~= "damage" or family.kind ~= "heal"
+        or family.altKind ~= "damage" then
+        return family
+    end
+    pool = pool or Book:DefaultPool()
+    local view = {}
+    for k, x in pairs(family) do view[k] = x end
+    view.kind, view.altKind, view.half, view.of = "damage", "heal", "damage", family
+    view.ranks, view.maxKnown, view.suggested = {}, nil, nil
+    for i, e in ipairs(family.ranks or {}) do
+        local v = DamageHalf(e, pool)
+        view.ranks[i] = v
+        if e == family.maxKnown then view.maxKnown = v end
+    end
+    view.shape = ShapeOf(view)
+    RR.Pareto(view.ranks, RULE_FIELDS)
+    local suggested = RR.Suggested(view.ranks, view.maxKnown, RULE_FIELDS)
+    if suggested then suggested.suggested = true end
+    view.suggested = suggested
+    RR.DominatedBy(view.ranks, suggested, RULE_FIELDS)
+    return view
+end
+
+-- The same for one entry with no family (Book:ReadSpell's): its damage half
+-- for the "damage" role when it keeps one (entry.alt), else the entry.
+function Book:HalfOf(entry, role, pool)
+    if type(entry) ~= "table" or role ~= "damage" or entry.kind ~= "heal"
+        or type(entry.alt) ~= "table" then
+        return entry
+    end
+    return DamageHalf(entry, pool or Book:DefaultPool())
+end
+
 -- T38 (docs/SPEC-forever-ui.md 3.5): how rank `a` stands against rank `b`,
 -- for the decision strip's one factual line -- plain numbers in percent, each
 -- nil when either side lacks what it needs (never a 0 standing in for a

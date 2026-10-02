@@ -355,3 +355,25 @@ function W.SuggestedRule()
     return "Highest heal per mana among the ranks nothing beats on both per mana and per second, with at least "
         .. Num(MD.Rules.SUGGESTED_FLOOR * 100) .. "% of your highest rank's heal."
 end
+
+-- T110 (docs/SPEC-next.md 4.2 P6): an either-or spell's other half, for the
+-- tooltip's detail -- label, text, or nil. On the damage half a role picked
+-- (Book:Half's view entry, `of` the heal entry) it is the heal: "Or heals";
+-- on a heal entry that keeps a damage half (entry.alt, T95) the damage:
+-- "Or damage". The text is the half's value and its per mana, one target's
+-- (decision 12): "320  0.98 per mana".
+function W.OtherHalf(e)
+    if type(e) ~= "table" then return nil end
+    local label, value, perMana
+    if e.half == "damage" and type(e.of) == "table" then
+        label, value, perMana = "Or heals", e.of.value, e.of.perMana
+    elseif type(e.alt) == "table" and e.alt.kind == "damage" then
+        label, value, perMana = "Or damage", e.alt.value, e.alt.perMana
+    else
+        return nil
+    end
+    if type(value) ~= "number" then return nil end
+    local text = Num(value)
+    if type(perMana) == "number" then text = text .. "  " .. Num(perMana, 2) .. " per mana" end
+    return label, text
+end

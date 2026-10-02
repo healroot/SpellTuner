@@ -68,6 +68,20 @@ MC.byClass = {
     PRIEST  = { { key = "shadowfiend", short = "sf",  id = 34433, name = "Shadowfiend",         duration = 15 } },
     SHAMAN  = { { key = "manatide",    short = "mt",  id = 16190, name = "Mana Tide Totem",     duration = 12 } },
     PALADIN = { { key = "divineillum", short = "di",  id = 31842, name = "Divine Illumination", duration = 15 } },
+    -- T110 (docs/SPEC-next.md 4.2 P6, R-classes item 3): the casters' mana
+    -- sources, inert like the three above until a value model reads its
+    -- number from the client's own text (T105's seam). Ids and words from
+    -- talentsforever.com's data.json (generated 2026-09-26, beta client
+    -- 1.60.1.70009, CC BY 4.0): Evocation 12051, "your mana regeneration is
+    -- active and increased by 1,500%. Lasts 8 sec." (the export marks the
+    -- text the same as Classic's; TBC's own text VERIFY in-game); Life Tap
+    -- rank 1 1454 (the id Engine/Targets.lua already counts), "Converts 30
+    -- Health into 30 Mana", an instant conversion with no buff, so no
+    -- duration. Mana gems are items (Conjure Mana Agate's "instantly
+    -- restore 375 to 425 mana"); their item ids are in no source here, so
+    -- they wait beside MC.potions.
+    MAGE    = { { key = "evocation",   short = "evo", id = 12051, name = "Evocation",           duration = 8 } },
+    WARLOCK = { { key = "lifetap",     short = "lt",  id = 1454,  name = "Life Tap",            instant = true } },
 }
 
 -- itemID -> max restored mana (max roll, so an alert never fires early)

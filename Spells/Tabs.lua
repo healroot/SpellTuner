@@ -145,12 +145,22 @@ local function LowestLevel(known)
     return low
 end
 
+-- A family the seed and the reconcile take for a kind. T110: a damage list
+-- also takes an either-or heal family (Book's altKind, T95: Holy Shock,
+-- Holy Nova, Penance) -- its damage half is what a damage role casts it for.
+-- A heal list is unchanged, and a book with no heal has no either-or family,
+-- so the old "no heal, then damage" seed takes exactly what it took.
+local function OfKind(fam, kind)
+    if fam.kind == kind then return true end
+    return kind == "damage" and fam.kind == "heal" and fam.altKind == "damage"
+end
+
 -- The families of one kind the seed and the reconcile may take, ordered by
 -- learn level, then name.
 local function Candidates(book, kind)
     local list = {}
     for key, fam in pairs(Families(book)) do
-        if type(fam) == "table" and fam.kind == kind and not AllPassive(fam) then
+        if type(fam) == "table" and OfKind(fam, kind) and not AllPassive(fam) then
             local known = KnownRanks(fam)
             if #known > 0 and (kind ~= "damage" or CostsMana(known)) then
                 list[#list + 1] = { key = fam.key or key, level = LowestLevel(known) }
@@ -166,8 +176,110 @@ local function Candidates(book, kind)
     return keys
 end
 
--- kind, keys -- what a seed of this book would be.
-function Tabs:SeedList(book)
+--------------------------------------------------------------------------------
+-- The role (T110, docs/SPEC-next.md 4.2 P6, docs/research/next/R-classes.md
+-- item 2: "Read the role from spec or talent points, else from the seeded
+-- list's kind"). Forever's talent API answers nothing readable (the probe:
+-- GetTalentInfo absent, C_SpecializationInfo.GetTalentInfo nil), so the
+-- talent points are read where they show: a talent's own spell in the book.
+-- The names are talentsforever.com's data.json (generated 2026-09-26, beta
+-- client 1.60.1.70009; CC BY 4.0, https://talentsforever.com):
+-- spellbooks[Class].talents, each placed in its tree by spellbooks[Class].tabs,
+-- the passive ones (Blessed Recovery) left out. A healing tree's spells say
+-- heal and a damage tree's say damage; the tank trees (Protection, Feral
+-- Combat) and the classes with no healing tree say nothing. Names only: a
+-- name the book never shows costs nothing.
+--------------------------------------------------------------------------------
+
+Tabs.ROLE_TALENT_TREES = {
+    PRIEST = {
+        heal = { "Inner Focus", "Penance", "Power Infusion",        -- Discipline
+                 "Binding Heal", "Holy Nova", "Prayer of Mending" }, -- Holy
+        damage = { "Mind Flay", "Shadowform", "Silence", "Vampiric Embrace" }, -- Shadow
+    },
+    PALADIN = {
+        heal = { "Divine Favor", "Holy Shock", "Light's Vigil", "Voice of Truth" }, -- Holy
+        damage = { "Repentance", "Seal of Command" },                               -- Retribution
+    },
+    SHAMAN = {
+        heal = { "Mana Tide Totem", "Nature's Swiftness", "Riptide", "Water Shield" }, -- Restoration
+        damage = { "Lava Burst",                                                     -- Elemental
+                   "Rage of the Farseer", "Stormstrike" },                           -- Enhancement
+    },
+    DRUID = {
+        heal = { "Nature's Swiftness", "Swiftmend", "Wild Growth" }, -- Restoration
+        damage = { "Insect Swarm", "Moonkin Form" },                 -- Balance
+    },
+}
+
+-- name -> "heal" | "damage", one map over every class (a name in two
+-- classes -- Nature's Swiftness -- must say the same role in both).
+Tabs.ROLE_TALENTS = {}
+for class, trees in pairs(Tabs.ROLE_TALENT_TREES) do
+    for role, names in pairs(trees) do
+        for _, name in ipairs(names) do
+            local was = Tabs.ROLE_TALENTS[name]
+            if was ~= nil and was ~= role then
+                error("SpellTuner: Tabs.ROLE_TALENTS: " .. name .. " is " .. was .. " and " .. role
+                    .. " (" .. class .. ")", 0)
+            end
+            Tabs.ROLE_TALENTS[name] = role
+        end
+    end
+end
+
+local function HasKnown(fam)
+    for _, e in ipairs(fam.ranks or {}) do
+        if type(e) == "table" and e.known == true and e.passive ~= true then return true end
+    end
+    return false
+end
+
+-- "heal" | "damage" | nil, and the talent families that said so: the known,
+-- not passive families the map names, counted by role; more wins, a tie or
+-- none says nothing.
+function Tabs:BookRole(book)
+    local count, names = { heal = 0, damage = 0 }, { heal = {}, damage = {} }
+    for key, fam in pairs(Families(book)) do
+        local name = type(fam) == "table" and (fam.name or fam.key or key)
+        local role = type(name) == "string" and Tabs.ROLE_TALENTS[name]
+        if role and HasKnown(fam) then
+            count[role] = count[role] + 1
+            names[role][#names[role] + 1] = name
+        end
+    end
+    table.sort(names.heal)
+    table.sort(names.damage)
+    if count.damage > count.heal then return "damage", names.damage end
+    if count.heal > count.damage then return "heal", names.heal end
+    return nil, {}
+end
+
+-- role, source: the book's talents ("talents"), else the kind the list was
+-- seeded with ("list"), else nil. What the tooltip reads to pick an
+-- either-or spell's half.
+function Tabs:Role(book)
+    book = BookOrDefault(book)
+    local role = Tabs:BookRole(book)
+    if role then return role, "talents" end
+    -- read, never created: a tooltip asks this before the list is opened
+    local st = type(MD.cdb) == "table" and MD.cdb.spellTabs or Tabs._orphan
+    if type(st) == "table" and st.seeded == true and (st.kind == "heal" or st.kind == "damage") then
+        return st.kind, "list"
+    end
+    return nil
+end
+
+-- kind, keys -- what a seed of this book would be. The role (T110) is the
+-- book's talents' unless given: a damage role takes the damage families
+-- that cost mana first (an either-or heal among them), else the heals; any
+-- other role is the old rule -- heals, else damage that costs mana.
+function Tabs:SeedList(book, role)
+    if role == nil then role = Tabs:BookRole(book) end
+    if role == "damage" then
+        local damage = Candidates(book, "damage")
+        if #damage > 0 then return "damage", damage end
+    end
     local heals = Candidates(book, "heal")
     if #heals > 0 then return "heal", heals end
     local damage = Candidates(book, "damage")
@@ -191,10 +303,10 @@ end
 --------------------------------------------------------------------------------
 
 -- Once per character: true when it seeded, false when the list already was.
-function Tabs:Seed(book)
+function Tabs:Seed(book, role)
     local st = Tabs:Store()
     if st.seeded then return false end
-    local kind, keys = Tabs:SeedList(book)
+    local kind, keys = Tabs:SeedList(book, role)
     st.order = CopyList(keys)
     st.kind = kind
     for _, key in ipairs(keys) do
@@ -301,13 +413,15 @@ function Tabs:Move(key, to)
     return to
 end
 
--- "Reset to my heals": the seed again, every removal forgotten.
+-- "Reset to my heals": the seed again, every removal forgotten. T110: it
+-- does what its button says -- the heals first whatever the book's talents
+-- say (the old rule); the seed on first open is the one that reads the role.
 function Tabs:Reset(book)
     book = BookOrDefault(book)
     local st = Tabs:Store()
     st.seeded = false
     st.removed = {}
-    Tabs:Seed(book)
+    Tabs:Seed(book, "heal")
     ClearUndo()
     return CopyList(st.order)
 end

@@ -333,6 +333,26 @@ function SpellTip:Lines(id, detail, source)
         return nil, inBook and "no value" or "not in book"
     end
 
+    -- T110 (docs/SPEC-next.md 4.2 P6): an either-or spell (Holy Shock, Holy
+    -- Nova) shows the half the player's role casts it for -- the role is
+    -- Spells/Tabs.lua's (the book's talent spells, else the list's kind) --
+    -- and names the other half behind the detail key. A heal role, no role
+    -- or any other spell: the block as it was.
+    local role = MD.Tabs and MD.Tabs.Role and MD.Tabs:Role(book)
+    if role == "damage" then
+        if family then
+            local view = Book:Half(family, role)
+            if view ~= family then
+                for _, v in ipairs(view.ranks) do
+                    if v.of == entry then entry = v break end
+                end
+                family = view
+            end
+        else
+            entry = Book:HalfOf(entry, role)
+        end
+    end
+
     local kind = family and family.kind or entry.kind
 
     -- the detail lines, built first: the header's hint says whether any exist
@@ -343,6 +363,8 @@ function SpellTip:Lines(id, detail, source)
         more[#more + 1] = Pair("Crit multiplier", Words.CritNote(), "label", "muted")
     end
     ReachLines(more, entry) -- T95
+    local otherLabel, otherText = Words.OtherHalf(entry) -- T110
+    if otherLabel then more[#more + 1] = Pair(otherLabel, otherText) end
     if family then
         RankLines(more, family, entry)
         if family.gaps and #family.gaps > 0 then
