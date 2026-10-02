@@ -13,7 +13,12 @@ Core.lua
 Core_TBC.lua
 Spells\Profiles.lua
 Data\Profile_Druid_TBC.lua
+Data\Profile_Priest_TBC.lua
+Data\Profile_Shaman_TBC.lua
+Data\Profile_Paladin_TBC.lua
 Data\SpellData.lua
+Spells\Parse.lua
+Spells\Book_TBC.lua
 Data\SimFixture_BF1.lua
 Data\SimPresets.lua
 Data\AuraList.lua

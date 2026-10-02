@@ -2050,6 +2050,29 @@ layout and of a window under Ellesmere, the coach card.
 (TBC): a line per step, screenshots of Settings -> Clock and of a window under Ellesmere, the alt's
 coach card.
 
+### 46.7 Wave N5 -- the role seed and either-or halves (Forever), other classes on TBC (15 min)
+
+**Not in the 0.16.6 packages**: wave N5 (T110, T111) was integrated after 0.16.6 was built and
+arrives with the next version -- run this section on that build.
+
+1. **The list by role (T110), a Forever shadow priest or a Retribution paladin with Holy Shock.**
+   Clear the character's `spellTabs` in `SpellTunerDB` (client closed), or use a fresh character,
+   and open the Spells rail. The list should be the damage spells that cost mana, not the heals.
+2. **Either-or halves (T110).** Hover Holy Shock: Per mana should be the damage's (`1.07` at R4),
+   and the detail key should show `Or heals`. On a holy character the same hover shows the heal
+   and `Or damage`.
+3. **An untaken talent (T110).** Report whether a talent you have **not** taken shows in the
+   spellbook at all (`/st spell Mind Flay` on a holy priest). The role assumes an untaken talent's
+   spell is absent or not known; if it is listed and known, the counts tie and the old heals-first
+   seed runs.
+4. **TBC priest, shaman or paladin (T111): nothing changes.** `/md` shows the rail with Overview
+   only, the Spells refusal reads `Rank analysis: not modelled for Priest yet` (the class's name),
+   the fight line has no max-rank share, and Review and Play behave as before. Test again once the
+   caps are granted.
+
+**Paste back** into `docs/probe/<build>-<version>-s7.md` (Forever) and `.logs/tbc/<version>-s7.md`
+(TBC): a line per step, a screenshot of Holy Shock's tooltip on each role.
+
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the
 raw numbers. `/md profile` output is welcome with any report. I turn them into

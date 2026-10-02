@@ -4835,3 +4835,32 @@ until it fetches.
 Version unchanged (0.16.6; the packages built for it do not carry wave N4), not installed.
 `docs/TESTING.md` 46.6 is wave N4's in-game section. **Next:** the author runs §46.1 on both
 clients; T103-T105, T108 and T109 on the probe's answers; T110 on T105; T111 on T106.
+
+## 2026-10-02 — the next round, wave N5: T110, T111
+
+2026-10-02: T110 (P6, partial): the list seeded by role, either-or halves by role in the tooltip,
+the casters' mana-source stubs; values wait on T105.
+
+T111 (P5, decision 8 (b)): TBC priest, shaman and paladin ranks read from the spellbook and each
+rank's tooltip (`Spells/Book_TBC.lua`, `Spells/Parse.lua` now on the TBC TOC), the class context,
+rows and rules in `Engine/RankMath.lua` (every rule VERIFY), the three TBC class profiles (caps
+`clock` only), the WCL fit with a class (`tools/wclconvert.py`, `tools/wclcheckkit.lua --fit`).
+**As shipped nothing a TBC non-druid sees changes**; granting `rankTable` / `tooltip` waits on the
+swaps the task file lists. The TBC kit stays the druid's for every class.
+
+**Integrated** on `claude/manademon-folder-continue-41eabc` from `4ff42bf`: T110's three commits and
+T111's seven (both built on `4ff42bf`, no conflict). The integrator's lines: the TBC TOC lists the
+priest, shaman and paladin profiles after the druid's and `Spells\Parse.lua`, `Spells\Book_TBC.lua`
+after `Data\SpellData.lua`; counts bookcheck forever 31, tabscheck forever 27, tipcheck forever 52,
+tbcclasscheck tbc 52 (new), profilecheck tbc 51; CLAUDE.md, TESTING 46.7, DECISIONS (two entries),
+TOOLS section 1 and section 3's class fit.
+
+Every suite's output against `4ff42bf`'s: the changes the rows document (bookcheck, tabscheck,
+tipcheck, profilecheck/tbc's three profiles, capscheck's kept-reads wording, tbcclasscheck new,
+the TBC release 81 -> 86 files, textcheck 112 -> 116 files), plus run-to-run noise (table
+addresses, ms, the frame-sliced search's evaluation lines). No TBC suite changed otherwise.
+
+`make check`: 92 runs, all passed (87 counted runs against 87 expected); apicheck 0 findings over
+73 files, textcheck 0 over 116; the same in a `git archive HEAD` export. Version unchanged
+(0.16.6), not installed. **Next:** the author runs §46.1 and 46.7; T105 for T110's values; the
+swaps listed in `docs/tasks/T111-tbc-other-classes.md` before the TBC class caps are granted.

@@ -1432,3 +1432,43 @@ role's, so a button built while Ellesmere is active shows Ellesmere's edge (it s
 `border`). Flat is unchanged, byte for byte. The two regions T107 left in files outside its row
 (Review's result rule, Practice's grey words) were converted at the wave N4 integration, so
 `UI.Restyle.LEFT` is empty and nothing waits for a reload.
+
+## T110: the role from the book (2026-10-02, T110, P6 partial)
+
+- **The role is read from the book.** Forever's talent API answers nothing readable, so the role
+  comes from the talent spells in the spellbook: talentsforever's talent lists per tree
+  (`Tabs.ROLE_TALENT_TREES`, CC BY 4.0). More evidence wins and a tie says nothing; with no
+  evidence the list's seeded kind is used. Tank trees and pure classes say nothing.
+- **An either-or spell's tooltip shows the role's half** (`Book:Half` / `HalfOf`); the other half
+  is a detail line (`Or heals` / `Or damage`).
+- **"Reset to my heals" stays heals-first** -- the button's words. The role-aware seed runs on the
+  first open only; Reset by role would change the label with it.
+- **TBC is unchanged**: its list holds druid heals only and no talent spell.
+- Whether an untaken talent's spell is absent from the Forever book is UNVERIFIED
+  (`docs/TESTING.md` 46.7); only known families count. The casters' mana sources (Evocation, Life
+  Tap) are inert stubs until T105's seam.
+
+## TBC other classes read their bases from the tooltip (2026-10-02, T111, decision 8 (b) as built)
+
+- **The machinery is in and held offline.** `Spells/Book_TBC.lua` reads a TBC priest's, shaman's
+  or paladin's ranks from the spellbook and each rank's own tooltip (`Spells/Parse.lua`, now on the
+  TBC TOC); `Engine/RankMath.lua` carries the class context, rows and rules (`ClassContext`,
+  `ClassRow`, `CLASS_RULES`, `GROUP_COEF`, every rule VERIFY); `tools/tbcclasscheck.lua` and
+  `tools/wclcheckkit.lua --fit` hold it.
+- **A TBC priest, shaman or paladin sees nothing new until their profiles grant `rankTable` /
+  `tooltip`.** The three profiles grant the clock only. That grant is a decision of its own, taken
+  once the swaps `docs/tasks/T111-tbc-other-classes.md` lists under "Before the caps are granted"
+  have landed (the ranks' source in `UI/SpellTooltip.lua`, `UI/Tip_TBC.lua`,
+  `UI/SpellsView_TBC.lua`, `UI/Dashboard.lua`; the druid-only words in `UI/Tip_TBC.lua`; the
+  max-rank share in `UI/Summary.lua` / `Engine/SpendTracker.lua` and `Diagnostics_TBC.lua`).
+- **The TBC kit, and so Review and Play, stays the druid's for every class**, even with the cap
+  granted (`RankMath:SpellKit`); `RankMath.ClassKit` is the tools' only. A class kit there is a
+  further decision.
+- **The fit** (public TBC Anniversary parses): three families agree on one +healing within 6-10%
+  on a holy priest (Simzò 6%, Deepfriedrat 10%, 1% without its three-cast Greater Heal) and a
+  restoration shaman (Scum 7%); Oldgrabli 13%, Glazedholez 14% over two families. Two findings
+  without a mechanism, so nothing was changed for them: **Greater Heal asks 8-12% less +healing**
+  than the other priest families (the model about 4% high -- Empowered Healing's coefficient or
+  Divine Fury's cast-back, unknown), and **a discipline priest (42/19/0) does not fit** (62%: its
+  direct heals 1.8-1.9x the model at any +healing up to the scan's cap; Power Infusion does not
+  explain it). No paladin parse with enough heals was found; the paladin rules stay VERIFY.
