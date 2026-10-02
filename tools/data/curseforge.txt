@@ -1,0 +1,19 @@
+# Where ./release.sh --publish uploads (T-publish, docs/tasks/T-publish-curseforge.md).
+# NOT a secret: the token is the environment variable CURSEFORGE_API_TOKEN only,
+# never this file. One "key = value" per line; "#" starts a comment.
+#
+#   project_id             the CurseForge project's numeric id (its page, "About Project");
+#                          both zips go to this one project. Empty: --publish refuses.
+#   tbc_game_versions      comma-separated game version NAMES for the TBC zip,
+#   forever_game_versions  and for the Forever zip, as GET
+#                          https://wow.curseforge.com/api/game/versions names them. A name
+#                          CurseForge lists twice (two version types) is refused; write it
+#                          as name@<gameVersionTypeID> to pick one.
+#   release_type           alpha, beta or release; --release-type overrides it.
+#
+# TO CONFIRM against the versions endpoint before the first upload: 2.5.6 is the TBC
+# TOC's interface 20506, 1.60.1 the Forever TOC's 16001 (the client's 1.60.1 builds).
+project_id =
+tbc_game_versions = 2.5.6
+forever_game_versions = 1.60.1
+release_type = beta

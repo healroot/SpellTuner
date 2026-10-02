@@ -48,7 +48,34 @@
 # the table Client/API.lua, tools/apicheck.py and tools/releasecheck.lua agree with. The
 # version is every TOC's "## Version:" line, which must all be equal (T22): the
 # build refuses otherwise, and --set-version bumps them together.
+#
+# Publishing to CurseForge (T-publish, docs/tasks/T-publish-curseforge.md):
+#
+#   ./release.sh --publish [--release-type alpha|beta|release] [--dry-run] [--only tbc|forever]
+#
+# builds both packages as above, then uploads each zip (both, or the --only one) to
+# the CurseForge project named in tools/data/curseforge.txt (project_id, each
+# flavour's game version NAMES, release_type), as "SpellTuner <version> (TBC)" /
+# "(Forever)", the changelog the newest docs/HISTORY.md entry. The token is the
+# environment variable CURSEFORGE_API_TOKEN and nothing else:
+#
+#   ~/.local/bin/secret-env run CURSEFORGE_API_TOKEN -- ./release.sh --publish --dry-run
+#
+# It is never printed, never on a command line (curl reads it from a config on
+# stdin) and never traced: this script turns xtrace off when the variable is set,
+# and no child process inherits it. Refused before anything is built: an empty
+# project_id, no token (except --dry-run), a tree with uncommitted changes or a
+# HEAD whose TOCs are not at the version, a flavour already published at this
+# version (dist/<name>/published.txt, not committed). Refused before anything is
+# uploaded: a game version name CurseForge does not list. --dry-run prints what it
+# would send, says only whether the token is present, and contacts nothing.
 set -euo pipefail
+
+# The CurseForge token (T-publish): xtrace off before it is read, taken into a
+# shell variable no child process inherits, removed from the environment.
+[[ -z "${CURSEFORGE_API_TOKEN:+set}" ]] || { set +x; } 2>/dev/null
+CF_TOKEN="${CURSEFORGE_API_TOKEN:-}"
+unset CURSEFORGE_API_TOKEN
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -157,7 +184,8 @@ menu() {
 
 # ---------------------------------------------------------------- arguments ---
 
-SRC="" OUT="" FLAVOUR_OPT="both" SET_VERSION="" SHOW_VERSION=0
+SRC="" OUT="" FLAVOUR_OPT="both" FLAVOUR_SET=0 SET_VERSION="" SHOW_VERSION=0
+PUBLISH=0 DRY_RUN=0 ONLY="" RELEASE_TYPE=""
 INST_MODE=()   # tbc | forever | detect
 INST_DIR=()
 need_arg() { [[ $# -ge 2 ]] || die "$1 needs an argument"; }
@@ -165,7 +193,11 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --src)             need_arg "$@"; SRC="$2"; shift 2 ;;
         --out)             need_arg "$@"; OUT="$2"; shift 2 ;;
-        --flavour)         need_arg "$@"; FLAVOUR_OPT="$2"; shift 2 ;;
+        --flavour)         need_arg "$@"; FLAVOUR_OPT="$2"; FLAVOUR_SET=1; shift 2 ;;
+        --publish)         PUBLISH=1; shift ;;
+        --dry-run)         DRY_RUN=1; shift ;;
+        --only)            need_arg "$@"; ONLY="$2"; shift 2 ;;
+        --release-type)    need_arg "$@"; RELEASE_TYPE="$2"; shift 2 ;;
         --install)         need_arg "$@"; INST_MODE+=("detect"); INST_DIR+=("$2"); shift 2 ;;
         --install-tbc)     need_arg "$@"; INST_MODE+=("tbc"); INST_DIR+=("$2"); shift 2 ;;
         --install-forever) need_arg "$@"; INST_MODE+=("forever"); INST_DIR+=("$2"); shift 2 ;;
@@ -179,7 +211,17 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 case "$FLAVOUR_OPT" in tbc|forever|both) ;; *) die "--flavour is tbc, forever or both, not '$FLAVOUR_OPT'" ;; esac
-if [[ ${#INST_DIR[@]} -eq 0 && -n "${WOW_ADDONS:-}" ]]; then
+if [[ $PUBLISH -eq 1 ]]; then
+    [[ -z "$SET_VERSION" && $SHOW_VERSION -eq 0 ]] || die "--publish does not combine with --set-version or --version"
+    [[ ${#INST_DIR[@]} -eq 0 ]] || die "--publish does not install; run the install on its own"
+    [[ $FLAVOUR_SET -eq 0 ]] || die "--publish builds both flavours; --only tbc|forever picks the one to upload"
+    case "$ONLY" in ""|tbc|forever) ;; *) die "--only is tbc or forever, not '$ONLY'" ;; esac
+    case "$RELEASE_TYPE" in ""|alpha|beta|release) ;; *) die "--release-type is alpha, beta or release, not '$RELEASE_TYPE'" ;; esac
+else
+    [[ $DRY_RUN -eq 0 && -z "$ONLY" && -z "$RELEASE_TYPE" ]] || die "--dry-run, --only and --release-type go with --publish"
+fi
+# a publish installs nothing, so $WOW_ADDONS is not read for it
+if [[ $PUBLISH -eq 0 && ${#INST_DIR[@]} -eq 0 && -n "${WOW_ADDONS:-}" ]]; then
     INST_MODE+=("detect"); INST_DIR+=("$WOW_ADDONS")
 fi
 
@@ -375,6 +417,81 @@ NAME="$(basename "$SRC")"
 [[ -n "$OUT" ]] || OUT="$ROOT/dist/$NAME"
 REL="${OUT#$ROOT/}"
 
+# ------------------------------------------------- publish: before building ---
+# Every refusal of --publish that needs no network comes here, before the build
+# touches the output (T-publish).
+
+CF_API="https://wow.curseforge.com/api"
+CF_FILE="$SRC/tools/data/curseforge.txt"
+CF_FLAVOURS=() CF_TMP="" CF_PROJECT="" CF_RECORD=""
+cf_label() { if [[ "$1" == tbc ]]; then echo "TBC"; else echo "Forever"; fi; }
+cf_get() {                 # the value of "key = value" in the config, or nothing
+    sed -n "s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*//p" "$CF_FILE" | tr -d '\r' | sed 's/[[:space:]]*$//' | tail -n 1
+}
+if [[ $PUBLISH -eq 1 ]]; then
+    [[ -f "$CF_FILE" ]] || die "--publish needs tools/data/curseforge.txt (project_id, the game version names) in $SRC"
+    CF_PROJECT="$(cf_get project_id)"
+    [[ -n "$CF_PROJECT" ]] || die "tools/data/curseforge.txt: project_id is empty -- fill in the CurseForge project's id ($CF_FILE) and commit it"
+    [[ "$CF_PROJECT" =~ ^[0-9]+$ ]] || die "tools/data/curseforge.txt: project_id '$CF_PROJECT' is not a number"
+    [[ -n "$RELEASE_TYPE" ]] || RELEASE_TYPE="$(cf_get release_type)"
+    [[ -n "$RELEASE_TYPE" ]] || RELEASE_TYPE="beta"
+    case "$RELEASE_TYPE" in
+        alpha|beta|release) ;;
+        *) die "tools/data/curseforge.txt: release_type is alpha, beta or release, not '$RELEASE_TYPE'" ;;
+    esac
+    if [[ -n "$ONLY" ]]; then CF_FLAVOURS=("$ONLY"); else CF_FLAVOURS=(tbc forever); fi
+    for fl in "${CF_FLAVOURS[@]}"; do
+        [[ " ${BUILD[*]} " == *" $fl "* ]] || die "--publish: no $(cf_label "$fl") TOC in $SRC"
+        [[ -n "$(cf_get "${fl}_game_versions")" ]] \
+            || die "tools/data/curseforge.txt: ${fl}_game_versions is empty -- name the game versions the $(cf_label "$fl") zip is for"
+    done
+    command -v python3 >/dev/null 2>&1 || die "--publish needs python3 (the metadata JSON and CurseForge's answers)"
+    if [[ $DRY_RUN -eq 0 ]]; then
+        [[ -n "$CF_TOKEN" ]] || die "--publish needs the CurseForge token in CURSEFORGE_API_TOKEN:" \
+            "~/.local/bin/secret-env run CURSEFORGE_API_TOKEN -- ./release.sh --publish ..."
+        [[ "$CF_TOKEN" != *[[:space:]\"\\]* ]] || die "CURSEFORGE_API_TOKEN holds whitespace, a quote or a backslash; not a token"
+        command -v curl >/dev/null 2>&1 || die "--publish needs curl"
+    fi
+    git -C "$SRC" rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "--publish needs a git checkout; $SRC is not one"
+    CF_DIRTY="$(git -C "$SRC" status --porcelain)"
+    if [[ -n "$CF_DIRTY" ]]; then
+        echo "ERROR: --publish needs a clean tree; $SRC has uncommitted changes:" >&2
+        echo "$CF_DIRTY" | head -n 10 | sed 's/^/  /' >&2
+        exit 1
+    fi
+    for rel in "${TOC_LIST[@]}"; do
+        v="$(git -C "$SRC" show "HEAD:./$rel" 2>/dev/null | sed -n 's/^## Version:[[:space:]]*//p' | tr -d '\r' | sed -n 's/[[:space:]]*$//;1p')" || v=""
+        [[ "$v" == "$VERSION" ]] || die "--publish: HEAD's $rel is at ${v:-(not committed)}, not $VERSION -- commit the version first"
+    done
+    # the upload record: "<version> TAB <flavour> TAB <file id> TAB <UTC time> TAB <project id>"
+    CF_RECORD="$OUT/published.txt"
+    for fl in "${CF_FLAVOURS[@]}"; do
+        prev=""
+        [[ ! -f "$CF_RECORD" ]] || prev="$(awk -F'\t' -v v="$VERSION" -v f="$fl" '$1 == v && $2 == f { print $3; exit }' "$CF_RECORD")"
+        [[ -z "$prev" ]] || die "SpellTuner $VERSION ($(cf_label "$fl")) was already published (file id $prev, $REL/published.txt);" \
+            "bump the version (--set-version) to publish again"
+    done
+    CF_TMP="$(mktemp -d)"
+    trap 'rm -rf "$CF_TMP"' EXIT
+    # the changelog: the newest docs/HISTORY.md entry (its "## " heading to the end), trimmed
+    [[ -f "$SRC/docs/HISTORY.md" ]] || die "--publish takes its changelog from docs/HISTORY.md; $SRC has none"
+    python3 - "$SRC/docs/HISTORY.md" "$CF_TMP/changelog.md" <<'PYEOF' || die "no '## ' entry in docs/HISTORY.md to take the changelog from"
+import sys
+LIMIT = 4000
+lines = open(sys.argv[1], encoding="utf-8").read().split("\n")
+starts = [i for i, l in enumerate(lines) if l.startswith("## ")]
+if not starts:
+    sys.exit(1)
+text = "\n".join(lines[starts[-1]:]).strip()
+if len(text) > LIMIT:
+    note = "\n\n(trimmed)"
+    cut = text.rfind("\n", 0, LIMIT - len(note))
+    text = text[:cut if cut > 0 else LIMIT - len(note)].rstrip() + note
+with open(sys.argv[2], "w", encoding="utf-8") as f:
+    f.write(text)
+PYEOF
+fi
+
 # ---------------------------------------------------------- 3. the packages ---
 
 # FILES: README.md, the flavour's root TOCs and the union (no duplicates) of
@@ -529,6 +646,157 @@ for i in "${!VALID_DIR[@]}"; do
     done
     echo "Installed $fl v$VERSION into $dir"
 done
+
+# ------------------------------------------------------ publish: the uploads ---
+# The token goes to curl in a config read from stdin (printf is a builtin, so it is
+# on no command line); xtrace is off since the token was read.
+
+# cf_curl <response file> <curl arguments...>: prints the HTTP status
+cf_curl() {
+    printf 'header = "X-Api-Token: %s"\n' "$CF_TOKEN" \
+        | curl -sS --connect-timeout 20 --max-time 600 -K - -o "$1" -w '%{http_code}' "${@:2}"
+}
+
+# cf_body <response file>: its start, for an error line, the token never in it
+cf_body() {
+    local body
+    body="$(head -c 300 "$1" 2>/dev/null | tr '\r\n' '  ')" || body=""
+    echo "${body//"$CF_TOKEN"/<token>}"
+}
+
+# cf_metadata <flavour> <comma list> names|ids: the metadata JSON (pretty with names
+# for a dry run, compact with the ids for an upload)
+cf_metadata() {
+    python3 - "$CF_TMP/changelog.md" "SpellTuner $VERSION ($(cf_label "$1"))" "$RELEASE_TYPE" "$2" "$3" <<'PYEOF'
+import json, sys
+changelog, display, release, versions, mode = sys.argv[1:6]
+items = [v.strip() for v in versions.split(",") if v.strip()]
+meta = {
+    "changelog": open(changelog, encoding="utf-8").read(),
+    "changelogType": "markdown",
+    "displayName": display,
+    "gameVersions": items if mode == "names" else [int(v) for v in items],
+    "releaseType": release,
+}
+if mode == "names":
+    print(json.dumps(meta, indent=2, sort_keys=True))
+else:
+    print(json.dumps(meta, separators=(",", ":"), sort_keys=True))
+PYEOF
+}
+
+# cf_resolve <flavour>: the ids of its game version names ("1,2"), or the reasons it cannot
+cf_resolve() {
+    python3 - "$CF_TMP/versions.json" "$(cf_get "${1}_game_versions")" <<'PYEOF'
+import json, sys
+try:
+    versions = json.load(open(sys.argv[1], encoding="utf-8"))
+except ValueError:
+    versions = None
+if not isinstance(versions, list):
+    print("CurseForge's game version list is not a JSON list")
+    sys.exit(1)
+ids, bad = [], []
+for name in [n.strip() for n in sys.argv[2].split(",") if n.strip()]:
+    want, vtype = name, None
+    if "@" in name:
+        want, _, t = name.rpartition("@")
+        vtype = int(t) if t.isdigit() else -1
+    hits = [v for v in versions if isinstance(v, dict) and v.get("name") == want
+            and (vtype is None or v.get("gameVersionTypeID") == vtype)]
+    if not hits:
+        bad.append("'%s' is not a game version CurseForge lists" % name)
+    elif len(hits) > 1:
+        bad.append("'%s' is %s -- write it as name@<gameVersionTypeID>" % (name, ", ".join(
+            "id %s (type %s)" % (h.get("id"), h.get("gameVersionTypeID")) for h in hits)))
+    elif not isinstance(hits[0].get("id"), int):
+        bad.append("'%s' has no numeric id" % name)
+    else:
+        ids.append(str(hits[0]["id"]))
+if bad:
+    print("; ".join(bad))
+    sys.exit(1)
+print(",".join(ids))
+PYEOF
+}
+
+publish() {
+    { set +x; } 2>/dev/null
+    local fl i zip label status id out
+    local -a ids=() bad=() done_fl=()
+    for fl in "${CF_FLAVOURS[@]}"; do
+        [[ -f "$OUT/SpellTuner-$fl-$VERSION.zip" ]] || die "no $REL/SpellTuner-$fl-$VERSION.zip to upload (zip or python3 makes it)"
+    done
+
+    if [[ $DRY_RUN -eq 1 ]]; then
+        echo "Dry run: nothing is sent to CurseForge."
+        if [[ -n "$CF_TOKEN" ]]; then
+            echo "  token: present (CURSEFORGE_API_TOKEN)"
+        else
+            echo "  token: absent -- the real run refuses without CURSEFORGE_API_TOKEN"
+        fi
+        echo "  first: GET $CF_API/game/versions, every name below to its id; a name it does not list stops the run before any upload"
+        for fl in "${CF_FLAVOURS[@]}"; do
+            zip="$OUT/SpellTuner-$fl-$VERSION.zip"
+            echo "SpellTuner $VERSION ($(cf_label "$fl")): POST $CF_API/projects/$CF_PROJECT/upload-file"
+            echo "  file: $REL/$(basename "$zip") ($(wc -c < "$zip" | tr -d ' ') bytes)"
+            echo "  game versions: $(cf_get "${fl}_game_versions") (names here; the upload sends their ids)"
+            echo "  metadata:"
+            cf_metadata "$fl" "$(cf_get "${fl}_game_versions")" names | sed 's/^/    /'
+        done
+        echo "A dry run records nothing in $REL/published.txt."
+        return 0
+    fi
+
+    # 1. every name to its id, before anything is uploaded
+    status="$(cf_curl "$CF_TMP/versions.json" "$CF_API/game/versions")" || die "could not read $CF_API/game/versions (curl failed); nothing uploaded"
+    [[ "$status" == 200 ]] || die "GET $CF_API/game/versions answered HTTP $status: $(cf_body "$CF_TMP/versions.json"); nothing uploaded"
+    for i in "${!CF_FLAVOURS[@]}"; do
+        fl="${CF_FLAVOURS[$i]}"
+        if out="$(cf_resolve "$fl")"; then
+            ids[$i]="$out"
+        else
+            echo "ERROR: $(cf_label "$fl") ($fl): ${fl}_game_versions in tools/data/curseforge.txt: $out" >&2
+            bad+=("$fl")
+        fi
+    done
+    if [[ ${#bad[@]} -gt 0 ]]; then
+        for fl in "${CF_FLAVOURS[@]}"; do
+            if [[ " ${bad[*]} " != *" $fl "* ]]; then
+                echo "  the $(cf_label "$fl") versions resolve: ./release.sh --publish --only $fl uploads that zip alone" >&2
+            fi
+        done
+        die "nothing uploaded"
+    fi
+
+    # 2. the uploads, each recorded as soon as CurseForge answers with its file id
+    for i in "${!CF_FLAVOURS[@]}"; do
+        fl="${CF_FLAVOURS[$i]}"
+        label="$(cf_label "$fl")"
+        zip="SpellTuner-$fl-$VERSION.zip"
+        cf_metadata "$fl" "${ids[$i]}" ids > "$CF_TMP/metadata-$fl.json"
+        echo "Uploading $REL/$zip to CurseForge project $CF_PROJECT as \"SpellTuner $VERSION ($label)\", $RELEASE_TYPE, game versions ${ids[$i]} ..."
+        local after=""
+        [[ ${#done_fl[@]} -eq 0 ]] || after=" (already uploaded and recorded: ${done_fl[*]})"
+        status="$(cd "$OUT" && cf_curl "$CF_TMP/upload-$fl.json" -F "metadata=<$CF_TMP/metadata-$fl.json" -F "file=@$zip" \
+            "$CF_API/projects/$CF_PROJECT/upload-file")" || die "the upload of $zip failed (curl)$after"
+        [[ "$status" == 200 ]] || die "CurseForge refused $zip: HTTP $status: $(cf_body "$CF_TMP/upload-$fl.json")$after"
+        id="$(python3 -c 'import json, sys
+d = json.load(open(sys.argv[1], encoding="utf-8"))
+i = d.get("id") if isinstance(d, dict) else None
+if not isinstance(i, int) or isinstance(i, bool):
+    sys.exit(1)
+print(i)' "$CF_TMP/upload-$fl.json" 2>/dev/null)" || die "CurseForge answered $zip without a file id: $(cf_body "$CF_TMP/upload-$fl.json")$after"
+        printf '%s\t%s\t%s\t%s\t%s\n' "$VERSION" "$fl" "$id" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$CF_PROJECT" >> "$CF_RECORD"
+        done_fl+=("$fl")
+        echo "Published SpellTuner $VERSION ($label) to CurseForge project $CF_PROJECT: file id $id"
+    done
+}
+
+if [[ $PUBLISH -eq 1 ]]; then
+    publish
+    exit 0
+fi
 
 if [[ ${#VALID_DIR[@]} -eq 0 ]]; then
     echo "Copy $REL/<flavour>/SpellTuner (and, for Forever, its siblings) into the matching client's Interface/AddOns folder, or:"

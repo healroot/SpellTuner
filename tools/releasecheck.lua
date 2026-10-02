@@ -16,6 +16,10 @@
 -- --set-version's one folded check is four, and the two plain Forever TOCs are
 -- asserted identical but for their marker line.
 --
+-- T-publish (docs/tasks/T-publish-curseforge.md): ./release.sh --publish on a
+-- scratch git repository of the tree, with a fake curl first on PATH -- nothing
+-- reaches CurseForge, and the token is a made-up string.
+--
 -- NOTHING here writes outside tools/.lua/releasecheck/: every install goes into
 -- a scratch "AddOns" folder below it. The scratch tree is cleaned at the START
 -- of a run so a failure can be inspected afterwards.
@@ -595,14 +599,14 @@ end
 -- stdin (the curl config the token travels in), its cwd and the metadata it was
 -- handed, and answers canned JSON. On a scratch git repository of the tree (a
 -- clean, committed copy: --publish refuses anything else), whose
--- dist/publish tree/published.txt is the upload record.
+-- dist/main/published.txt is the upload record (the root of a repository is "main").
 --------------------------------------------------------------------------------
 local PUB = SCRATCH .. "/publish tree"
 local FAKEBIN = SCRATCH .. "/fakebin"
 local CURL_LOG = SCRATCH .. "/curl log"
 local VERSIONS_JSON = SCRATCH .. "/versions.json"
 local TOKEN = "cf-TEST-token-7f3a9c0d"
-local PUB_RECORD = PUB .. "/dist/publish tree/published.txt"
+local PUB_RECORD = PUB .. "/dist/main/published.txt"
 
 local function Write(path, text)
     local f = io.open(path, "wb")
@@ -664,14 +668,14 @@ exit 0
 ]=])
     sh("chmod +x " .. q(FAKEBIN .. "/curl"))
     local _, rc = sh("cd " .. q(PUB) .. " && git init -q . && git add -A"
-        .. " && git -c user.name=releasecheck -c user.email=releasecheck@invalid commit -qm 'publish tree'")
+        .. " && git -c user.name=releasecheck -c user.email=releasecheck@invalid -c commit.gpgsign=false commit -qm 'publish tree'")
     pubReady = rc == 0 and Slurp(PUB .. "/release.sh") ~= nil
 end
 
 local function Commit(rel, text)
     Write(PUB .. "/" .. rel, text)
     return select(2, sh("cd " .. q(PUB) .. " && git add -A"
-        .. " && git -c user.name=releasecheck -c user.email=releasecheck@invalid commit -qm " .. q(rel))) == 0
+        .. " && git -c user.name=releasecheck -c user.email=releasecheck@invalid -c commit.gpgsign=false commit -qm " .. q(rel))) == 0
 end
 
 local function Config(project, tbcNames, foreverNames, releaseType)
@@ -768,8 +772,8 @@ end
 
 do
     local out, rc = Publish({}, "--publish", "--dry-run")
-    local built = Slurp(PUB .. "/dist/publish tree/SpellTuner-tbc-" .. TREE_V .. ".zip") ~= nil
-        and Slurp(PUB .. "/dist/publish tree/SpellTuner-forever-" .. TREE_V .. ".zip") ~= nil
+    local built = Slurp(PUB .. "/dist/main/SpellTuner-tbc-" .. TREE_V .. ".zip") ~= nil
+        and Slurp(PUB .. "/dist/main/SpellTuner-forever-" .. TREE_V .. ".zip") ~= nil
     check("publish --dry-run: builds both, sends nothing, records nothing",
         committed and rc == 0 and built and #Calls() == 0 and Slurp(PUB_RECORD) == nil,
         "rc=" .. tostring(rc) .. " calls " .. #Calls() .. " " .. out:gsub("\n", " / "):sub(1, 200))
