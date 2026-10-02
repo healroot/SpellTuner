@@ -54,6 +54,16 @@
 --      its view (the windows' fixed sizes, TBC 1036 x 646, Forever 860 x 560);
 --  11. Forever, under the stub's forever profile: (Live) in a fight paints
 --      without raising and no font string of the pane holds a secret.
+--
+-- T116 (clock v2, C5's Text tab): the Text tab replaces Show -- tabs Text,
+-- Colours, Frame, Bars, When, Text first. On both flavours (5b): a dropdown per
+-- slot of the layout on screen with the line's options (Cooldown on TBC only,
+-- "~ model" on Forever) writing text.<layout>.<slot>, per layout; Right 2
+-- disabled with its reason at 180 px, enabled at 300 px; Right's Rest / None /
+-- Cooldown picks and the line's switches; Time, Size (with Default), Outline,
+-- Shadow, Numbers; Labels and Mana as of max; the Forever footnote and the
+-- note under the box. Section 5: no Show tab, /md rest (/st clock rest) still
+-- drops the rest.
 HARNESS_FLAVOUR = { "tbc", "forever" }
 
 local here = arg[0]:match("^(.*)/[^/]+$")
@@ -313,7 +323,7 @@ Try("the Settings group has a Clock view, after General", function()
     return table.concat(ids, ",") == want, table.concat(ids, ",")
 end)
 
-Try("selecting it builds the pane: PREVIEW, LAYOUT, the box with five tabs", function()
+Try("selecting it builds the pane: PREVIEW, LAYOUT, the box with five tabs (Text first, no Show)", function()
     MD:SelectView("settings", "clock")
     for _, f in ipairs(S.allFrames) do if f.clockSettings then pane, p = f, f.clockSettings end end
     local g, v = MD:SelectedView()
@@ -323,7 +333,7 @@ Try("selecting it builds the pane: PREVIEW, LAYOUT, the box with five tabs", fun
     for _, t in ipairs(CS.TABS or {}) do tabs[#tabs + 1] = t.id end
     return g == "settings" and v == "clock" and pane ~= nil and pane:IsVisible()
         and table.concat(titles, ",") == "PREVIEW,LAYOUT" and p.box ~= nil
-        and table.concat(tabs, ",") == "colours,frame,bars,show,when",
+        and table.concat(tabs, ",") == "text,colours,frame,bars,when" and p.tab == "text",
         string.format("%s/%s titles %s", tostring(g), tostring(v), table.concat(titles, ","))
 end)
 
@@ -580,33 +590,38 @@ Try("Reset to style empties the overrides and keeps the layout", function()
 end)
 
 --------------------------------------------------------------------------------
-T.section("5. Show and When: the line's own switches")
+T.section("5. the line's own switches: rest (no Show tab), When")
 --------------------------------------------------------------------------------
 local function SwitchNamed(text)
     for _, cb in ipairs(p.switches or {}) do if cb.def.text:find(text, 1, true) == 1 then return cb end end
 end
 
-Try("Show: the rest switch is the line's; the rest chip and the broker's look drop the segment", function()
-    p.box:Select("show")
-    local cb = SwitchNamed("Rest time")
+Try("Show: no Show tab; the line's rest switch (" .. (forever and "/st clock rest" or "/md rest")
+        .. ") still drops the segment from the rest chip and the broker's look", function()
+    local noShow = true
+    for _, t in ipairs(CS.TABS or {}) do if t.id == "show" then noShow = false end end
     local restChip
     for _, b in ipairs(p.chips) do if b.id == "rest" then restChip = b end end
     Click(restChip)
     local with = p.view:Text()
-    cb:SetChecked(false); cb.onClick(false, cb)
+    local verb = forever and "clock rest" or "rest"
+    local slashFn = SlashCmdList and SlashCmdList.SPELLTUNER
+    Chat(function() slashFn(verb) end)
     Tick(1)
+    CS.Refresh(p)
     local key
     if forever then key = MD.db.clock and MD.db.clock.showRest else key = MD.db.showRest end
     local without = p.view:Text()
     local look = MD.ClockLook and MD.ClockLook()
     local brokerOff = type(look) == "table" and look.show and look.show.rest == false
-    cb:SetChecked(true); cb.onClick(true, cb)
+    Chat(function() slashFn(verb) end)
     Tick(1)
+    CS.Refresh(p)
     local back = p.view:Text()
-    return cb ~= nil and key == false and T.Has(with, "rest ") and not T.Has(without, "rest ")
+    return noShow and key == false and T.Has(with, "rest ") and not T.Has(without, "rest ")
         and back == with and brokerOff,
-        string.format("with %q without %q back %q key %s broker %s", tostring(with), tostring(without),
-            tostring(back), tostring(key), tostring(brokerOff))
+        string.format("no Show tab %s; with %q without %q back %q key %s broker %s", tostring(noShow), tostring(with),
+            tostring(without), tostring(back), tostring(key), tostring(brokerOff))
 end)
 
 Try("When: Locked is the line's own lock", function()
@@ -618,6 +633,182 @@ Try("When: Locked is the line's own lock", function()
     local on = forever and MD.db.clock.locked == true or (not forever and MD.db.locked == true)
     if W.Preview then W:Preview(0) end
     return cb ~= nil and off and on
+end)
+
+--------------------------------------------------------------------------------
+T.section("5b. Text: a dropdown per slot, FORMAT, the line's switches (T116)")
+--------------------------------------------------------------------------------
+local function TextOver(layout)
+    local t = Over().text
+    return type(t) == "table" and type(t[layout]) == "table" and t[layout] or {}
+end
+local function DDIds(dd)
+    local ids = {}
+    for _, it in ipairs(dd and dd.items or {}) do ids[#ids + 1] = it.id end
+    return table.concat(ids, ",")
+end
+local function ItemText(dd, id)
+    for _, it in ipairs(dd and dd.items or {}) do if it.id == id then return it.text end end
+end
+local SLOT_LABEL = { left = "Left", main = "Main", right = "Right", right2 = "Right 2", top = "Top", bottom = "Bottom" }
+local function LineOptions(layout, slot)
+    local out = {}
+    for _, id in ipairs((CF.TEXT_OPTIONS or {})[layout] and CF.TEXT_OPTIONS[layout][slot] or {}) do
+        if not (forever and id == "cd") then out[#out + 1] = id end
+    end
+    return table.concat(out, ",")
+end
+local function Slot(slot) return p.slotDD and p.slotDD[slot] end
+local function RestOn()
+    if forever then return MD.db.clock.showRest ~= false end
+    return MD.db.showRest ~= false
+end
+local function SetRest(on)
+    if forever then MD.db.clock.showRest = on else MD.db.showRest = on end
+end
+
+Try("Text: a dropdown per slot of the layout on screen, the line's options (Cooldown "
+        .. (forever and "not listed, ~ model beside Mana % / Mana / Regen" or "listed") .. ")", function()
+    MD.ClockView.ResetToStyle()
+    p.box:Select("text")
+    local bad = {}
+    for _, layout in ipairs({ "line", "compact", "bar" }) do
+        MD.ClockView.SetLayout(layout)
+        local shown = {}
+        for _, slot in ipairs(CF.TEXT_SLOTS[layout]) do
+            local dd, lab = Slot(slot), p.slotLabel and p.slotLabel[slot]
+            if not (dd and dd:IsShown() and lab and lab:IsShown() and lab:GetText() == SLOT_LABEL[slot]
+                    and DDIds(dd) == LineOptions(layout, slot)) then
+                bad[#bad + 1] = layout .. "." .. slot .. " " .. (dd and DDIds(dd) or "nil")
+            end
+            shown[slot] = true
+        end
+        for slot, dd in pairs(p.slotDD or {}) do
+            if not shown[slot] and dd:IsShown() then bad[#bad + 1] = layout .. ": " .. slot .. " shown" end
+        end
+    end
+    MD.ClockView.SetLayout("line")
+    local dd = Slot("right")
+    local words = ItemText(dd, "rest") == "Rest 2:10" and ItemText(dd, "none") == "None"
+        and ItemText(dd, "fsr") == "Five-second rule 3.0" and ItemText(Slot("main"), "time") == "Time 1:20"
+        and ItemText(Slot("left"), "label") == "Label"
+    if forever then
+        words = words and ItemText(dd, "pct") == "Mana % 62%  ~ model" and ItemText(dd, "mana") == "Mana 4210  ~ model"
+            and ItemText(dd, "mp5") == "Regen 92 mp5  ~ model" and ItemText(dd, "cd") == nil
+    else
+        words = words and ItemText(dd, "pct") == "Mana % 62%" and ItemText(dd, "mana") == "Mana 4210"
+            and ItemText(dd, "mp5") == "Regen 92 mp5" and ItemText(dd, "cd") == "Cooldown inn 2:10"
+    end
+    return p.slotDD ~= nil and #bad == 0 and words, table.concat(bad, "; ") .. "; words " .. tostring(words)
+end)
+
+Try("Text: a pick writes text.<layout>.<slot>; the clock and the preview follow, each layout its own", function()
+    MD.ClockView.SetLayout("line")
+    local okL = Pick(Slot("main"), "pct") and TextOver("line").main == "pct"
+        and WidgetLook().text.main == "pct" and p.look.text.main == "pct" and p.look.text.timeAt == "left"
+    MD.ClockView.SetLayout("compact")
+    local fresh = Slot("main"):Value() == "time"
+    local okC = Pick(Slot("bottom"), "mp5") and TextOver("compact").bottom == "mp5"
+        and WidgetLook().text.bottom == "mp5" and TextOver("line").main == "pct"
+    MD.ClockView.SetLayout("line")
+    local back = Slot("main"):Value() == "pct"
+    Pick(Slot("main"), "time")
+    local cleared = TextOver("line").main == nil
+    MD.ClockView.ResetToStyle()
+    return okL and fresh and okC and back and cleared,
+        string.format("line %s, compact fresh %s set %s, line back %s, cleared %s", tostring(okL), tostring(fresh),
+            tostring(okC), tostring(back), tostring(cleared))
+end)
+
+Try("Text: Right 2 is disabled at 180 px with its reason, enabled at 300 px, and then writes right2", function()
+    MD.ClockView.SetLayout("line")
+    local fits, need, now = p.view:FitsRight2()
+    local dd = Slot("right2")
+    local off = dd:IsEnabled() == false and fits == false and now == 180
+    local tips = table.concat(dd.tooltips or {}, " ")
+    local said = T.Has(tips, "needs " .. tostring(need) .. " px: raise the width on Frame")
+    Pick(dd, "mp5")
+    local refused = TextOver("line").right2 == nil
+    MD.ClockView.Set("frame.line.w", 300)
+    local on = dd:IsEnabled() and p.view:FitsRight2() == true
+    Pick(dd, "mp5")
+    local wrote = TextOver("line").right2 == "mp5" and WidgetLook().text.right2 == "mp5"
+    MD.ClockView.ResetToStyle()
+    return off and said and refused and on and wrote,
+        string.format("off %s (fits %s need %s now %s), tip %q, refused %s, on %s, wrote %s", tostring(off),
+            tostring(fits), tostring(need), tostring(now), tips, tostring(refused), tostring(on), tostring(wrote))
+end)
+
+Try("Text: Right's picks write the line's switches (Rest on; None leaves them"
+        .. (forever and "" or "; Cooldown on") .. ")", function()
+    MD.ClockView.SetLayout("line")
+    SetRest(false)
+    CS.Refresh(p)
+    local dd = Slot("right")
+    Pick(dd, "none")
+    local none = TextOver("line").right == "none" and not RestOn()
+    Pick(dd, "rest")
+    local rest = TextOver("line").right == nil and RestOn()
+    local cd = true
+    if not forever then
+        MD.db.showCooldown = false
+        Pick(dd, "cd")
+        cd = TextOver("line").right == "cd" and MD.db.showCooldown == true
+        Pick(dd, "rest")
+    end
+    MD.ClockView.ResetToStyle()
+    SetRest(true)
+    return none and rest and cd and TextOver("line").right == nil,
+        string.format("none %s rest %s cd %s", tostring(none), tostring(rest), tostring(cd))
+end)
+
+Try("Text: FORMAT -- Time, Size (and Default), Outline, Shadow, Numbers write their keys; the preview follows", function()
+    MD.ClockView.SetLayout("line")
+    local okT = Pick(p.timeDropdown, "sec") and TextOver("line").time == "sec" and p.look.text.time == "sec"
+    Type(p.sizeSlider, "20")
+    local _, size = p.view.value:GetFont()
+    local okS = TextOver("line").size == 20 and size == 20 and WidgetLook().text.size == 20
+    Click(p.sizeDefault)
+    local okD = TextOver("line").size == nil
+    local okO = Pick(p.outlineDropdown, "thick") and TextOver("line").outline == "thick"
+        and select(3, p.view.value:GetFont()) == "THICKOUTLINE"
+    p.shadowCheck:SetChecked(false); p.shadowCheck.onClick(false, p.shadowCheck)
+    local okSh = TextOver("line").shadow == false and p.look.text.shadow == false
+    local okN = Pick(p.numbersDropdown, "labels") and TextOver("line").numbers == "labels"
+        and p.look.text.numbers == "labels"
+    -- a default picked back removes the key: over stays sparse
+    Pick(p.timeDropdown, "line"); Pick(p.outlineDropdown, "none"); Pick(p.numbersDropdown, "number")
+    p.shadowCheck:SetChecked(true); p.shadowCheck.onClick(true, p.shadowCheck)
+    local sparse = next(TextOver("line")) == nil
+    MD.ClockView.ResetToStyle()
+    return okT and okS and okD and okO and okSh and okN and sparse,
+        string.format("time %s size %s (%s) default %s outline %s shadow %s numbers %s sparse %s", tostring(okT),
+            tostring(okS), tostring(size), tostring(okD), tostring(okO), tostring(okSh), tostring(okN), tostring(sparse))
+end)
+
+Try("Text: Labels (out / full) and Mana as 4210/6800 write labels and ofMax", function()
+    MD.ClockView.SetLayout("line")
+    local oomChip
+    for _, b in ipairs(p.chips) do if b.id == "oom" then oomChip = b end end
+    Click(oomChip)
+    local okL = Pick(p.labelsDropdown, "lower") and TextOver("line").labels == "lower"
+    local text = p.view:Text()
+    local lower = T.Has(text, "out ") and not T.Has(text, "OOM")
+    p.ofMaxCheck:SetChecked(true); p.ofMaxCheck.onClick(true, p.ofMaxCheck)
+    local okM = TextOver("line").ofMax == true and p.look.text.ofMax == true
+    MD.ClockView.ResetToStyle()
+    return okL and lower and okM, string.format("labels %s (%q) ofMax %s", tostring(okL), tostring(text), tostring(okM))
+end)
+
+Try("Text: " .. (forever and "the Forever footnote" or "no footnote on TBC") .. ", and the note under the box", function()
+    local want = "Forever: the ~ stays on every modelled number. A real mana % or number as text waits for the probe "
+        .. "(Q-clock-2); until then those picks show the model's ~ value."
+    local foot = p.textNote and p.textNote:IsShown() and p.textNote:GetText()
+    local okF
+    if forever then okF = foot == want else okF = not foot end
+    local box = p.boxNote and p.boxNote:GetText()
+    return okF and box == "Text, size and bars are kept per layout; Reset to style wipes your changes, not the layout.",
+        string.format("foot %q box %q", tostring(foot), tostring(box))
 end)
 
 --------------------------------------------------------------------------------

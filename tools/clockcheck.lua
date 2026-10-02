@@ -972,6 +972,48 @@ do
 end
 
 do
+    -- T116 (clock v2, C1): Line's Right = Mana % draws the model's "~62%"
+    -- (POWER_TEXT_READS stays off); the hover says the number is the model's;
+    -- /st clock rest still drops a Right = Rest
+    local CV = MD.ClockView
+    local okT, res = pcall(function()
+        local r = {}
+        r.set = CV.Set("text.line.right", "pct") == true
+        WithState({ mode = "oom", tto = 80, rest = 200, mana = model.max * 0.62 }, function()
+            Clock:Refresh()
+            r.pct = ClockText()
+            r.hover = false
+            for _, l in ipairs(Clock:HoverLines(GetTime()) or {}) do
+                if l.l == "~62% is the model's; the game's own number cannot be shown yet." then r.hover = true end
+            end
+        end)
+        CV.Set("text.line.right", nil)
+        WithState({ mode = "oom", tto = 80, rest = 200 }, function()
+            Clock:Refresh()
+            r.rest = ClockText()
+            SlashCmdList.SPELLTUNER("clock rest")
+            Clock:Refresh()
+            r.off = ClockText()
+            SlashCmdList.SPELLTUNER("clock rest")
+            Clock:Refresh()
+            r.on = ClockText()
+            r.noModelLine = true
+            for _, l in ipairs(Clock:HoverLines(GetTime()) or {}) do
+                if type(l.l) == "string" and l.l:find("is the model's;", 1, true) then r.noModelLine = false end
+            end
+        end)
+        return r
+    end)
+    local r = okT and res or {}
+    check("T116: Line's Right = Mana % draws the model's ~62% and the hover says so; /st clock rest drops Rest",
+        okT and r.set and r.pct == "~OOM 1:20  ~62%" and r.hover and r.rest == "~OOM 1:20  rest 3:20"
+            and r.off == "~OOM 1:20" and r.on == r.rest and r.noModelLine,
+        okT and string.format("set %s pct %q hover %s rest %q off %q on %q no model line %s", tostring(r.set),
+            tostring(r.pct), tostring(r.hover), tostring(r.rest), tostring(r.off), tostring(r.on),
+            tostring(r.noModelLine)) or ("raised: " .. tostring(res)))
+end
+
+do
     -- the mover seam (docs/SPEC-next.md 6.3): ApplyPoint, ResetPosition and
     -- Preview on the clock, the same names the TBC widget exposes, as MD.ClockWidget
     local w = Clock.frame

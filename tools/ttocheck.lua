@@ -577,6 +577,55 @@ do
 end
 
 --------------------------------------------------------------------------------
+-- 16b. T116 (clock v2, C1): the slots drawn. The default slots draw the
+-- line's bytes (vv, inn, rest); Right = Cooldown draws only a cooldown
+-- secondary (TBC offers it); /md rest off empties a Right = Rest; Right2 is
+-- part of the drawn words when the width allows.
+--------------------------------------------------------------------------------
+do
+    local CV = MD.ClockView
+    local function Sample(key)
+        for _, smp in ipairs(CF and CF.SAMPLES or {}) do if smp.key == key then return smp.face end end
+    end
+    local okS, res = pcall(function()
+        local r = { bad = nil }
+        local crit, rest, cd = Sample("crit"), Sample("rest"), Sample("cd")
+        for _, f in ipairs({ crit, rest, cd }) do
+            PaintFace(f)
+            local want = Plain(CF.LineString(f, nil, view.look and view.look.text))
+            if Drawn() ~= want or want ~= Plain(CF.LineString(f)) then
+                r.bad = r.bad or string.format("%q drawn as %q", want, Drawn())
+            end
+        end
+        r.text = view.look and type(view.look.text) == "table" and view.look.text.right == "rest"
+        r.cdSet = CV.Set("text.line.right", "cd") == true
+        PaintFace(cd)
+        r.cd = Drawn()
+        PaintFace(rest)
+        r.cdOnRest = Drawn()
+        CV.Set("text.line.right", nil)
+        PaintFace(rest)
+        r.rest = Drawn()
+        SlashCmdList.SPELLTUNER("rest")
+        PaintFace(rest)
+        r.off = Drawn()
+        r.secondHidden = view.second ~= nil and not view.second:IsShown()
+        SlashCmdList.SPELLTUNER("rest")
+        PaintFace(rest)
+        r.on = Drawn()
+        S.Tick(0.5)
+        return r
+    end)
+    local r = okS and res or {}
+    check("T116: the slots draw the line's bytes (vv, inn, rest); Right = Cooldown; /md rest empties Right",
+        okS and r.bad == nil and r.text and r.cdSet and r.cd == "OOM 1:15 v  inn 2:15" and r.cdOnRest == "OOM 1:20 ="
+            and r.rest == "OOM 1:20 =  rest 3:40" and r.off == "OOM 1:20 =" and r.secondHidden and r.on == r.rest,
+        okS and string.format("bad %s text %s cd %s %q on rest %q rest %q off %q (hidden %s) on %q", tostring(r.bad),
+            tostring(r.text), tostring(r.cdSet), tostring(r.cd), tostring(r.cdOnRest), tostring(r.rest),
+            tostring(r.off), tostring(r.secondHidden), tostring(r.on)) or ("raised: " .. tostring(res)))
+end
+
+--------------------------------------------------------------------------------
 -- 17. T115 (clock v2, C4's "Regen tick"): RM:RegenTick(now) -- the last three
 -- rises of the player's mana, in and out of combat; two gaps of 2 s (within
 -- 0.15 s) answer the last rise and the period 2, a rise older than 4 s or an

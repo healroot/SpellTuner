@@ -41,6 +41,23 @@
 --   * Forever, under the stub's forever profile: every layout x join x show x
 --     mana-from paints in a fight, only the mana bar holds the secret and
 --     nothing reads it back; TBC: the same matrix paints without raising.
+--
+-- T116 (clock v2, docs/tasks/T116-clock-text-tab.md; clock-v2.html C1): the
+-- slots drawn. Each layout's places are slots filled from one list
+-- (ClockFace.TEXT_OPTIONS), kept per layout under text.<layout> with the
+-- renderer's size / outline / shadow / numbers. Held here, on both flavours:
+--   * the defaults draw today's words at T115's places; look.text / texts;
+--   * every slot at a fixed place: 59s -> 1:00 -> >10m moves no anchor;
+--   * every option in every slot x every SAMPLES face fits at Size 8..32;
+--   * size, outline, shadow and numbers reach the font strings; an unset size
+--     follows the window text-size offset, a set one does not;
+--   * per layout (Compact's main = pct leaves Line's words alone);
+--   * Right2 drawn only where the width allows (refused with the width);
+--   * the minimum: Compact's Bottom adds 12 px, Line's right = none 30 high;
+--   * Forever's seam: POWER_TEXT_READS off draws the model's "~62%" and never
+--     calls MD.API.DrawPowerText; on (here only) the font string holds the
+--     secret unread; TBC draws plain words;
+--   * look.texts.line, whatever layout is on screen, is what the feed reads.
 HARNESS_FLAVOUR = { "tbc", "forever" }
 
 local here = arg[0]:match("^(.*)/[^/]+$")
@@ -200,7 +217,7 @@ end
 local function Misfit(v, layout)
     local fr = Rect(frame)
     local pieces = {}
-    for _, k in ipairs({ "label", "value", "second" }) do
+    for _, k in ipairs({ "label", "value", "second", "right2" }) do
         local fs = v[k]
         if fs and fs:IsShown() and (fs:GetText() or "") ~= "" then
             local r = Rect(fs)
@@ -1011,6 +1028,342 @@ Try("the dump line names the layout and the new keys once the look is not the de
 end)
 
 --------------------------------------------------------------------------------
+T.section("T116: the slots")
+--------------------------------------------------------------------------------
+local function TextSet(layout, key, value) return CV.Set("text." .. layout .. "." .. key, value) end
+local function Strip(s) return (tostring(s or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) end
+local function Words(fs)
+    if not (fs and fs:IsShown()) then return nil end
+    local t = fs:GetText()
+    if type(t) ~= "string" or t == "" then return nil end
+    return Strip(t)
+end
+-- a face with every number a slot can show: 62 %, 4210 of 6800, 92 mp5, the
+-- rule 3.0 s (Forever: the model's, "~"), in a fight
+local function Rich(f)
+    local g = {}
+    for k, x in pairs(f or {}) do g[k] = x end
+    g.pct, g.mana, g.manaMax, g.mp5, g.fsr, g.combat = 0.62, 4210, 6800, 92, 3, true
+    if forever then g.pctModelled, g.manaModelled, g.mp5Modelled = true, true, true end
+    return g
+end
+local PCT = forever and "~62%" or "62%"
+local REGIONS = { "label", "value", "second", "right2" }
+local function Points(r)
+    if not r then return "-" end
+    local out = {}
+    for _, pt in ipairs(r.points or {}) do
+        out[#out + 1] = string.format("%s:%s:%s:%s", tostring(pt[1]), tostring(pt[3]), tostring(pt[4]), tostring(pt[5]))
+    end
+    return table.concat(out, ";")
+end
+
+-- 1. the defaults: today's words at T115's places, and the look's text
+Try("text defaults: every layout draws today's words at T115's places; look.text and look.texts are the defaults", function()
+    local bad
+    local labelW = math.ceil(#(forever and "~FULL" or "FULL") * 6 * 13 / 12)
+    for _, layout in ipairs(LAYOUTS) do
+        Reset()
+        CV.SetLayout(layout)
+        local v = View()
+        local look = v.look
+        local t = look.text
+        local okT = type(t) == "table" and type(look.texts) == "table" and look.texts[layout] == t
+            and type(look.texts.line) == "table" and type(look.texts.compact) == "table"
+            and type(look.texts.bar) == "table"
+        if okT then
+            for _, slot in ipairs(CF.TEXT_SLOTS[layout]) do
+                if t[slot] ~= CF.TEXT[layout][slot] then okT = false end
+            end
+            okT = okT and t.size == nil and t.outline == "none" and t.shadow == true and t.numbers == "number"
+        end
+        if not okT and not bad then bad = layout .. ": look.text missing or not the defaults" end
+        for _, f in ipairs(faces) do
+            Paint(f.face)
+            local segs = CF.Segments(f.face, { show = look.show })
+            if layout ~= "line" then segs.second = nil end
+            local want = CF.JoinSegments(segs)
+            if v:Text() ~= want and not bad then
+                bad = string.format("%s %s: %q, want %q", layout, f.key, v:Text(), want)
+            end
+        end
+        local lp, vp, sp = Points(v.label), Points(v.value), Points(v.second)
+        local places
+        if layout == "line" then
+            places = lp == "TOPLEFT:TOPLEFT:8:-4" and vp == "TOPLEFT:TOPLEFT:" .. (8 + labelW + 6) .. ":-4"
+                and sp == "TOPRIGHT:TOPRIGHT:-8:-4"
+        elseif layout == "compact" then
+            places = lp == "TOPLEFT:TOPLEFT:6:-3" and vp == "TOPLEFT:TOPLEFT:6:-14"
+        else
+            places = lp == "LEFT:LEFT:6:0" and vp == "RIGHT:RIGHT:-6:0"
+        end
+        if not places and not bad then bad = string.format("%s places %s / %s / %s", layout, lp, vp, sp) end
+    end
+    Reset()
+    return bad == nil, bad
+end)
+
+-- 2. fixed places: only a value's own digits move
+Try("every slot at a fixed place: 59s -> 1:00 -> >10m moves no anchor (defaults and set slots, every layout)", function()
+    local configs = {
+        { "line" }, { "line", left = "pct", right = "mp5" }, { "line", main = "mana", right = "fsr" },
+        { "compact" }, { "compact", top = "time", main = "pct", bottom = "rest" },
+        { "bar" }, { "bar", left = "pct", right = "time" }, { "bar", left = "none", right = "mana" },
+    }
+    local bad, n = nil, 0
+    for _, c in ipairs(configs) do
+        Reset()
+        local layout = c[1]
+        CV.SetLayout(layout)
+        for _, slot in ipairs(CF.TEXT_SLOTS[layout]) do
+            if c[slot] then
+                local okS = TextSet(layout, slot, c[slot])
+                if not okS and not bad then bad = layout .. "." .. slot .. " = " .. c[slot] .. " not accepted" end
+            end
+        end
+        local first
+        for _, sec in ipairs({ 59, 60, 700 }) do
+            local face = Rich({ mode = "oom", known = "point", value = sec, tone = sec < 60 and "warn" or "normal",
+                arrow = "v", label = "OOM", second = { kind = "rest", label = "rest", value = 130 } })
+            if forever then face.modelled, face.mono, face.timeFmt, face.arrow = true, true, "mss", nil end
+            local v = Paint(face)
+            n = n + 1
+            local now = {}
+            for _, k in ipairs(REGIONS) do now[#now + 1] = k .. "=" .. Points(v[k]) end
+            local s = table.concat(now, " ")
+            if first == nil then first = s
+            elseif s ~= first and not bad then
+                bad = string.format("%s at %ds: %s, was %s", layout, sec, s, first)
+            end
+        end
+    end
+    Reset()
+    return bad == nil and n == #configs * 3, bad or (n .. " paints")
+end)
+
+-- 3. every option in every slot fits at every size
+Try("fits: every TEXT_OPTIONS value in every slot of every layout x every SAMPLES face at Size 8, 13, 22, 32", function()
+    local bad, n = nil, 0
+    RuleFor(3)
+    for _, layout in ipairs(LAYOUTS) do
+        for _, slot in ipairs(CF.TEXT_SLOTS[layout]) do
+            for _, kind in ipairs(CF.TEXT_OPTIONS[layout][slot]) do
+                for _, size in ipairs({ 8, 13, 22, 32 }) do
+                    Reset()
+                    CV.SetLayout(layout)
+                    TextSet(layout, slot, kind)
+                    local okZ = TextSet(layout, "size", size)
+                    if not okZ and not bad then bad = "size " .. size .. " not accepted" end
+                    if slot == "right2" then CV.Set("frame.line.w", 400) end
+                    local v = View()
+                    for _, f in ipairs(faces) do
+                        Paint(Rich(f.face))
+                        n = n + 1
+                        local why = Misfit(v, layout)
+                        local mw, mh = v:Minimum()
+                        if not why and (frame:GetWidth() < mw or frame:GetHeight() < mh) then
+                            why = string.format("frame %sx%s under its minimum %sx%s", tostring(frame:GetWidth()),
+                                tostring(frame:GetHeight()), tostring(mw), tostring(mh))
+                        end
+                        if why and not bad then
+                            bad = string.format("%s %s=%s size %d, %s: %s", layout, slot, kind, size, f.key, why)
+                        end
+                    end
+                end
+            end
+        end
+    end
+    RuleOff()
+    Reset()
+    return bad == nil and n > 0, bad or (n .. " paints")
+end)
+
+-- 4. size, outline, shadow and numbers reach the font strings
+Try("size, outline, shadow and numbers reach the font strings; unset size follows the font offset, set does not", function()
+    Reset()
+    local v = Paint(face1)
+    local function Sz(fs) return select(2, fs:GetFont()) end
+    local function Face(fs) return (fs:GetFont()) end
+    local function Flags(fs) return select(3, fs:GetFont()) end
+    local s0 = Sz(v.label)
+    UI.ApplyFonts(2)
+    Paint(face1)
+    local follows = Sz(v.label) == s0 + 2
+    UI.ApplyFonts(0)
+    TextSet("line", "size", 20)
+    Paint(face1)
+    local set = Sz(v.label) == 20 and Sz(v.value) == 20 and Sz(v.second) == 20
+    UI.ApplyFonts(2)
+    Paint(face1)
+    local fixed = Sz(v.label) == 20 and Sz(v.value) == 20
+    UI.ApplyFonts(0)
+    TextSet("line", "outline", "thick")
+    Paint(face1)
+    local outline = Flags(v.label) == "THICKOUTLINE" and Flags(v.value) == "THICKOUTLINE"
+    local shadows = {}
+    for _, k in ipairs({ "label", "value", "second" }) do
+        v[k].SetShadowOffset = function(self, x, y) shadows[k] = { x, y } end
+    end
+    TextSet("line", "shadow", false)
+    Paint(face1)
+    local off = shadows.label ~= nil and shadows.label[1] == 0 and shadows.label[2] == 0 and shadows.value ~= nil
+        and shadows.value[1] == 0
+    TextSet("line", "shadow", nil)
+    Paint(face1)
+    local on = shadows.label ~= nil and shadows.label[1] == 1 and shadows.label[2] == -1
+    for _, k in ipairs({ "label", "value", "second" }) do v[k].SetShadowOffset = nil end
+    local numFace = Face(v.value) ~= Face(v.label)
+    TextSet("line", "numbers", "labels")
+    Paint(face1)
+    local labelsFace = Face(v.value) == Face(v.label)
+    Reset()
+    CV.SetLayout("compact")
+    TextSet("compact", "size", 30)
+    Paint(face1)
+    local compact = Sz(v.value) == 30 and Sz(v.label) == 15
+    Reset()
+    Paint(face1)
+    local back = Sz(v.label) == s0
+    return follows and set and fixed and outline and off and on and numFace and labelsFace and compact and back,
+        string.format("follows %s set %s fixed %s outline %s shadow %s/%s numbers %s/%s compact %s back %s",
+            tostring(follows), tostring(set), tostring(fixed), tostring(outline), tostring(off), tostring(on),
+            tostring(numFace), tostring(labelsFace), tostring(compact), tostring(back))
+end)
+
+-- 5. per layout
+Try("per layout: Compact's main = pct leaves Line's words alone; each layout shows its own", function()
+    Reset()
+    local face = Rich(faces[1].face)
+    local v = Paint(face)
+    local lineBefore = v:Text()
+    local okSet = TextSet("compact", "main", "pct")
+    Paint(face)
+    local lineAfter = v:Text()
+    CV.SetLayout("compact")
+    Paint(face)
+    local main, top = Words(v.value), Words(v.label)
+    CV.SetLayout("line")
+    Paint(face)
+    local lineBack = v:Text()
+    Reset()
+    return okSet == true and lineAfter == lineBefore and lineBack == lineBefore and main == PCT
+        and top ~= nil and top:find("OOM", 1, true) ~= nil and top:find(":", 1, true) ~= nil,
+        string.format("line %q / %q / %q, compact top %q main %q", lineBefore, lineAfter, lineBack, tostring(top),
+            tostring(main))
+end)
+
+-- 6. Right2
+Try("Right2: refused with the measured width at 180, drawn left of Right at 300, refused again at 180", function()
+    Reset()
+    local okSet = TextSet("line", "right2", "mp5")
+    local face = Rich(faces[7].face)
+    local v = Paint(face)
+    local fits, need, now = v:FitsRight2()
+    local why = v.look.refused and v.look.refused["text.line.right2"]
+    local refused = fits == false and type(need) == "number" and need > 180 and now == 180
+        and why == string.format("needs %d px of width (now %d)", need, now) and not Shown(v.right2)
+    CV.Set("frame.line.w", 300)
+    Paint(face)
+    local fits2 = v:FitsRight2()
+    local w2 = Words(v.right2)
+    local r2, r1 = Rect(v.right2), Rect(v.second)
+    local drawn = fits2 == true and w2 == (forever and "~92 mp5" or "92 mp5") and r2 ~= nil and r1 ~= nil
+        and r2.r <= r1.l + EPS and (v.look.refused or {})["text.line.right2"] == nil
+        and v:Text():sub(-#w2 - 2) == "  " .. w2 and Misfit(v, "line") == nil
+    CV.Set("frame.line.w", nil)
+    Paint(face)
+    local again = v:FitsRight2() == false and not Shown(v.right2)
+    Reset()
+    return okSet == true and refused and drawn and again,
+        string.format("fits %s need %s now %s why %q; at 300 %s (%s); back %s", tostring(fits), tostring(need),
+            tostring(now), tostring(why), tostring(drawn), tostring(w2), tostring(again))
+end)
+
+-- 7. the minimum, from the slots set
+Try("minimum: Compact's Bottom adds 12 px of height; Line with right = none is 30 high and as narrow as no secondary", function()
+    Reset()
+    CV.SetLayout("compact")
+    local face = Rich(faces[7].face)
+    local v = Paint(face)
+    local _, h0 = v:Minimum()
+    local okB = TextSet("compact", "bottom", "rest")
+    Paint(face)
+    local _, h1 = v:Minimum()
+    local bottomShown = Words(v.second) ~= nil
+    Reset()
+    Paint(face)
+    local sh = v.look.show
+    local rest0, cd0 = sh.rest, sh.cd
+    sh.rest, sh.cd = false, false
+    Paint(face)
+    local mwNo = v:Minimum()
+    sh.rest, sh.cd = rest0, cd0
+    local okN = TextSet("line", "right", "none")
+    Paint(face)
+    local mw, mh = v:Minimum()
+    local tbc100 = forever or mw == 100
+    local secondGone = not Shown(v.second)
+    Reset()
+    return okB == true and okN == true and h1 - h0 == 12 and bottomShown and mw == mwNo and mh == 30 and tbc100
+        and secondGone,
+        string.format("compact %s -> %s (bottom shown %s); line right none %sx%s (no secondary %s)", tostring(h0),
+            tostring(h1), tostring(bottomShown), tostring(mw), tostring(mh), tostring(mwNo))
+end)
+
+-- 8. Forever's real text waits behind the seam
+Try(forever and "Forever: POWER_TEXT_READS off draws ~62% and never calls DrawPowerText; on, the font string holds the secret unread"
+        or "TBC: a Mana % slot draws plain 62% (no draw.powerText on this line)", function()
+    Reset()
+    local okSet = TextSet("line", "right", "pct")
+    local calls = 0
+    local real = MD.API.DrawPowerText
+    if real then MD.API.DrawPowerText = function(...) calls = calls + 1; return real(...) end end
+    local face = Rich(face1)
+    local v = Paint(face)
+    local words = Words(v.second)
+    local res
+    if forever then
+        local first = words == "~62%" and calls == 0 and MD.API.POWER_TEXT_READS == false
+        S.Fire("PLAYER_REGEN_DISABLED")
+        MD.API.POWER_TEXT_READS = true
+        local okP, err = pcall(function() Paint(face); return v:Text() end)
+        local raw = rawget(v.second, "text")
+        local secret = issecretvalue(raw) == true and v.second:IsShown() and calls > 0
+        MD.API.POWER_TEXT_READS = false
+        Paint(face)
+        local backWords = Words(v.second)
+        S.Fire("PLAYER_REGEN_ENABLED")
+        res = { first and okP and secret and backWords == "~62%",
+            string.format("off %q calls %d; on raised %s secret %s; back %q", tostring(words), calls,
+                tostring(not okP and err), tostring(secret), tostring(backWords)) }
+    else
+        res = { words == "62%" and calls == 0 and v.draw.powerText == nil,
+            string.format("%q, calls %d", tostring(words), calls) }
+    end
+    MD.API.DrawPowerText = real
+    Reset()
+    return okSet == true and res[1], res[2]
+end)
+
+-- 9. look.texts.line, whatever layout is on screen
+Try("look.texts.line is resolved whatever layout is on screen: the feed reads Line's right = pct while Bar shows", function()
+    Reset()
+    local okSet = TextSet("line", "right", "pct")
+    CV.SetLayout("bar")
+    Tick(1)
+    local look = MD.ClockLook and MD.ClockLook()
+    local texts = type(look) == "table" and look.texts
+    local okT = look ~= nil and look.layout == "bar" and texts and texts.line and texts.line.right == "pct"
+        and look.text == texts.bar and texts.bar.right == "time"
+    local line = texts and texts.line and Strip(CF.LineString(Rich(face1), nil, texts.line)) or ""
+    local feed = MD.Feeds and MD.Feeds.Text("clock", { plain = true }) or ""
+    Reset()
+    return okSet == true and okT and line:sub(-#PCT - 2) == "  " .. PCT and feed:find("%", 1, true) ~= nil,
+        string.format("layout %s, line.right %s, line %q, feed %q", tostring(look and look.layout),
+            tostring(texts and texts.line and texts.line.right), line, feed)
+end)
+
+--------------------------------------------------------------------------------
 T.section(forever and "secrets" or "the design matrix")
 --------------------------------------------------------------------------------
 Try(forever
@@ -1039,7 +1392,7 @@ Try(forever
                     n = n + 1
                     local tag = layout .. "/" .. join .. "/" .. show .. "/" .. mana
                     if not okP then errs[#errs + 1] = tag .. ": " .. tostring(e) end
-                    for _, k in ipairs({ "label", "value", "second" }) do
+                    for _, k in ipairs({ "label", "value", "second", "right2" }) do
                         local fs = v[k]
                         if fs and (issecretvalue and issecretvalue(fs.text)) then secretText = true end
                     end
