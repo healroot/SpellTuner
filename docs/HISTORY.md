@@ -4893,3 +4893,33 @@ files (51 globals), textcheck 0 over 116. Packages: TBC 86 files, Forever 48 fil
 modules. **Next:** the author installs 0.16.6 and runs §46.1 on both clients (it unblocks T103,
 T104, T105, T108, T109, the `BASE_CD_READS` flip and, after T105, T110's remainder), then 46.6 and
 46.7.
+
+## 2026-10-02 — the author's first 0.16.6 feedback: F1-F3 at 0.16.7, built, not installed
+
+The author's first look at 0.16.6 (the clock's look, the simulator, the Spells pane) gave three
+fixes, each built in its own worktree test first and integrated here in order. The rest of the
+feedback (text options on the clock, a customisable size, mana and the five-second rule shown
+together, time to OOM as a bar not being informative) is a design question for the next clock
+round (`docs/mockups/clock-v2.html`, untracked), not a fix.
+
+- **F1** (fix/F1): the bar's Height on the Bar layout -- the bar layout drew the frame's height
+  less 4 whatever the setting; now the bar is drawn at the Height (centred behind the text, the
+  frame growing round it) on every layout -- and the five-second rule filling every frame: an
+  OnUpdate on the bar (`View:Step`) moves the bar and the spark from `draw.fsr(now)` between two
+  paints, removed when the rule ends or the source changes; clockui 19 / 19
+  (`docs/tasks/F1-clock-bar-height-smooth.md`).
+- **F2** (fix/F2): after a hard cast the YOU strip swept the GCD as if it were an instant -- only
+  an instant sweeps now; a hard cast (a CAST_START of the same spell before its success) leaves its
+  name dimmed with an empty bar, its GCD having run under its own bar; replay and practice, both
+  lines; replayui 110, practiceui 56 (`docs/tasks/F2-hard-cast-gcd-sweep.md`).
+- **F3** (fix/F3): Whole book empty until a scroll -- the scroll frame was never told its child
+  grew; `RefreshScrollChild` at the end of `RenderOverview`; spellsui 53
+  (`docs/tasks/F3-whole-book-empty.md`).
+- Integrator lines: `tools/data/expected-counts.json`, the CLAUDE.md rows (`UI/ClockView.lua`,
+  `UI/ReplayWindow.lua`, `UI/SpellsPane_Forever.lua`), `docs/TOOLS.md` §1, `docs/TESTING.md` §47
+  (one short session, a check per fix). No TOC line, setting, slash verb or client global changed.
+- `./release.sh --set-version 0.16.7`; `tools/data/import-forever-sv.lua` rebuilt: unchanged.
+- Both packages built into the top-level `dist/` at 0.16.7. **Nothing installed.**
+
+**Next:** the author installs 0.16.7 and runs §47 (then §46.1, which still unblocks T103-T105,
+T108, T109 and the `BASE_CD_READS` flip).

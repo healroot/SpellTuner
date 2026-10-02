@@ -2078,6 +2078,30 @@ In the 0.16.6 packages as rebuilt on 2026-10-02. T110 is partial: the casters' m
 **Paste back** into `docs/probe/<build>-0.16.6-s7.md` (Forever) and `.logs/tbc/0.16.6-s7.md`
 (TBC): a line per step, a screenshot of Holy Shock's tooltip on each role.
 
+## 47. 0.16.7: the author's first 0.16.6 feedback (F1-F3; one short session, 10 min, both clients)
+
+0.16.7 is 0.16.6 plus three fixes from the author's first look at it. Nothing else changed: §46
+runs unchanged on 0.16.7. Install as in §46 (only when you ask; never cross them); at character
+select SpellTuner reads **0.16.7**. For each step, a line in the paste: `ok`, or what you saw
+instead.
+
+1. **The clock bar's Height (F1, both clients).** Settings -> Clock, Layout `Bar`. Under Bar, drag
+   Height from 2 to 24: the bar should get taller on the Bar layout too (it did not change before),
+   the clock's frame growing round it. Back to `Line`: the same slider still changes the bar.
+2. **The five-second rule fills smoothly (F1, both clients).** Under Bar, Source `Five-second rule`
+   with Spark on. Cast a spell: the bar should fill smoothly and the spark slide across, not jump in
+   steps; after five seconds the bar sits full in the regen colour and the spark is gone.
+3. **No GCD sweep after a hard cast (F2, Practice or a replay, both clients).** Cast Regrowth or
+   Healing Touch: the YOU strip fills the cast's own bar and, once it lands, shows its name dimmed
+   with no grey "instant" sweep. An instant (Rejuvenation, Lifebloom) still sweeps 1.5 s.
+4. **Whole book is not empty (F3, Forever).** Spells -> Overview -> [My spells], then
+   [Whole book]: the rows should be there at once, from the top, without touching the wheel.
+   Scroll it down, [My spells], [Whole book]: back at its top, full. A scrolled Whole book stays
+   where it is across the 2-s tick.
+
+**Paste back** into `docs/probe/<build>-0.16.7-s1.md` (Forever) and `.logs/tbc/0.16.7-s1.md`
+(TBC): a line per step.
+
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the
 raw numbers. `/md profile` output is welcome with any report. I turn them into
