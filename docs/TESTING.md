@@ -1855,85 +1855,154 @@ Spells -> Healing Touch, and `/md profile` if anything looked wrong.
 **Paste back** into `.logs/tbc/0.16.5-s5.md`: a line per step, a screenshot of the clock mid-fight
 and of the replay's band, and the run's number in Review.
 
-## 46. The next round (`docs/SPEC-next.md` section 12; checks are added here as their waves land)
+## 46. 0.16.6: the next round's first three waves on both clients (`docs/SPEC-next.md` section 12; five sessions, 20-30 min each)
 
-Out of combat unless a step says otherwise. For each step, a line in the paste: `ok`, or what you
-saw instead. Nothing here has run on a real client yet.
+0.16.6 carries waves N1-N3 of `docs/SPEC-next.md` (T87-T101 and T113): the probe on both clients
+with five new sections, the cooldown fix in the coach, the parser and the reading of cooldowns,
+targets and lockouts, the clock's tones and fixed segments, the Compact and Bar clock layouts, the
+style registry with Flat and Ellesmere, the LibDataBroker blocks and EllesmereUI's mover and skin,
+the capability gates, and the generic Forever kit for every healer. **Not in it** (section 11's
+wave N4 and N5): Settings -> Clock and the Look dropdown (T102), Modern (T103), the ring (T104),
+mana sources (T105), the Paladin / Shaman / Priest profiles (T106), live restyle (T107), Classic
+(T108), absorbs (T109) and the rest -- so styles and layouts are reached by command here, and an
+alt's Coach button and Practice still say `not modelled for <Class> yet`. Nothing here has run on
+a real client yet. §45 runs unchanged on 0.16.6. `check N` names the step of `docs/SPEC-next.md`
+section 12 a line comes from.
 
-1. **Probe (T87, wave N1), both clients.** `/st probe` on Forever, `/md probe` on TBC (new with
-   T87; a hidden row there, so the help and the About tab do not list it). Paste the five new
-   sections: `== art`, `== hosts`, `== clock`, `== cooldowns`, `== auras`. On Forever: once out of
-   combat, once after a fight with an Innervate or Mana Spring on you (the snapshot reads itself
-   2 s in), once with EllesmereUI enabled and once without, and once on a priest, shaman or
-   paladin alt of level 10+ with a cooldown heal in the book (on a priest, shield yourself and take
-   a hit, for `absorb to do`). On TBC the Forever-only sections read `absent (Forever only)` and
-   nothing raises.
-2. **Clock (T93, wave N2), both clients.** In a fight, spend until the clock reads under 20 s:
-   on Forever it turns red (amber under 60 s, the label grey); on TBC as before. Watch `59s` ->
-   `1:00` (TBC) or `0:55` -> `1:00` (Forever): the label and the rest segment do not move, only
-   the number. On TBC, a left-click on the clock in combat does nothing; out of combat it opens
-   the window. On Forever: `/st clock clickthrough`, then a click on the clock passes to the
-   world (no hover either), `/st clock clickthrough` again to undo; `/st clock rest` hides the
-   rest segment. Under 30 s the clock pulses once per fight. On a Forever warrior or rogue alt:
-   no clock in combat.
-3. **ElvUI datatexts (T92, wave N2), TBC, optional.** With ElvUI on TBC, the `SpellTuner` and
-   `SpellTuner Regen` datatexts read as before (the clock line; `Regen: N`, `(5SR)` after a
-   cast), the tooltip and Shift-click unchanged.
-4. **Styles (T94, wave N2), both clients.** `/st ui style` (`/md ui style` on TBC) lists `flat`;
-   nothing else changes until a second style ships (T100).
-5. **Tooltips for other classes (T95, wave N2), Forever.** On a Forever alt (paladin, shaman or
-   priest) hover Holy Shock / Riptide / Prayer of Healing / Chain Heal / Power Word: Shield: Per
-   sec reads `N  every 10 s` (Holy Shock; 6 s Riptide; 4 s PW:S), Per mana carries `x up to 5
-   targets` (PoH, Holy Nova) or `up to 1.75x if 3 are hurt` (Chain Heal), and with the detail
-   key Reaches / Cooldown / Lockout appear; Light's Vigil shows only its casts to OOM line. On
-   the druid: Swiftmend's Per sec reads `every 15 s`, Tranquility's `every 5 min` (both from
-   their tooltip lines). Report any spell whose cooldown line is not read (a probe
-   `== cooldowns` dump shows the line).
-6. **A channel in the replay (T96, wave N2), Forever, optional.** On a Forever druid who knows
-   Tranquility, record a pull with one (`/st rec`), `/st replay N`: the Tranquility's target's
-   bar rises on the tick, and `/st validate N`'s gate 8 counts the ticks as own.
-7. **Brokers (T97, wave N3), Forever with EllesmereUI.** Enable EllesmereUI, Options, DataBars,
-   Minimap, BlizzardSkin; `/reload`. `/eui` -> DataBars -> add a Broker Plugin block for
-   **SpellTuner** and one for **SpellTuner Regen**, Max Width ~120. The block equals the floating
-   clock on every change; the icon tint goes amber then red. Hover: one tooltip, EllesmereUI's skin,
-   no second border. Left-click opens SpellTuner, right-click Settings, neither in combat. Regen
-   reads `(5SR)` for 5 s after a cast and `~` in combat. Disable SpellTuner and `/reload`: both
-   blocks collapse. `/st dump`: the integrations line names EllesmereUI's version beside
-   `(tested 9.3.4)` and `skin apiVersion 2`.
-8. **Mover and minimap (T97, wave N3), Forever with EllesmereUI.** `/unlock`: a "SpellTuner clock"
-   mover with the clock previewed; drag, save, `/reload`: the clock stays. The SpellTuner button
-   sits in EllesmereUI's flyout with its icon centred; toggle it in Settings -> Windows: it stays
-   there. `/st probe`: no blocked action names SpellTuner.
-9. **Brokers on TBC (T97, wave N3).** With ElvUI: its datatext list shows `SpellTuner` and
-   `LDB: SpellTuner`; both read the same. (`db.feeds.ldb = false` and a `/reload` remove the
-   broker.)
-10. **Clock layouts (T98, wave N3), both clients, optional.** With the clock on screen (in a fight,
-    or Show now / `/md unlock`): `/run SpellTuner.ClockView.SetLayout("compact")`, then `"bar"`,
-    then `"line"`. Each draws the clock's words with nothing cut, and a switch never hides or shows
-    the clock. `/run SpellTuner.ClockView.Set("bar.spark", "fsr")`: after a cast a yellow mark crosses
-    the bar over five seconds. `/run SpellTuner.ClockView.Set("bar.source", "time")`: the bar drains
-    with the time to OOM. `/run SpellTuner.ClockView.ResetToStyle()` puts the bar back. On Forever,
-    `/st dump` shows `clock: layout ...` after any of these.
-11. **The Ellesmere style (T100, wave N3), both clients.** On Forever with EllesmereUI's Blizz UI
-    Enhanced (BlizzardSkin) on: `/st ui style ellesmere` -- the windows take EllesmereUI's accent,
-    panel colour and font; `/st dump` reads `style: ellesmere ... ; follows EllesmereUI (skin
-    apiVersion 2)`; changing EllesmereUI's accent recolours SpellTuner at once. With third-party
-    skinning turned off for SpellTuner, the same command still follows EllesmereUI's accent and
-    font (the parent's getters). On TBC, `/md ui style ellesmere` gives the teal clone, and
-    `/md ui style flat` returns exactly to today's look.
-12. **Capability gates (T99, wave N3), either client, optional.** On a non-druid alt, open Reports
-    -> Review and a replay (`/st replay 1` on Forever with the Replay module on): the Coach button
-    is off, its hover and the replay's hint read `Coaching: not modelled for <your class> yet`;
-    Simulate -> Practice reads `Practice: not modelled for <your class> yet`. On the druid nothing
-    changed.
-13. **Other healers (T101, wave N3), Forever.** On a paladin, shaman or priest alt, Simulate ->
-    Practice binds the class's heals by name and Holy Shock / Riptide refuse a second press inside
-    their cooldown; record a pull with Prayer of Healing or Chain Heal (`/st rec`), `/st validate
-    N`: gate 8 counts the group heal's heals as own (one per member); a Desperate Prayer counts as
-    "from spells the kit does not price, replayed as recorded". `/st coach N` with a group heal in
-    it: the card carries `group heals assume everyone in range (no positions recorded): an upper
-    bound`. On the druid, a pull with Wild Growth or Tranquility: `/st replay N` heals the whole
-    party.
+**Install** (only when you ask; never cross them):
+`./release.sh --install-forever "/mnt/e/Blizzard/World of Warcraft/_classic_beta_/Interface/AddOns"` and
+`./release.sh --install-tbc "/mnt/e/Blizzard/World of Warcraft/_anniversary_/Interface/AddOns"`.
+At character select SpellTuner (and on Forever the three modules) read **0.16.6**. On both clients
+`/console scriptErrors 1`; any error box: copy its text, carry on. On Forever `/st dump` at the end
+of a session that had one. Out of combat unless a step says otherwise. For each step, a line in the
+paste: `ok`, or what you saw instead.
+
+**Session 46.1 comes first**: its reports are what wave N4 waits on (T103 Modern needs `== art`,
+T104 the ring needs `== clock`'s Q-clock-4, T105 mana sources needs `== auras`, T108 Classic needs
+`== art`, T109 absorbs needs `== auras`' absorb lines, and the `MD.API.BASE_CD_READS` flip needs
+`== cooldowns`). **If there is only one short session:** 46.1.
+
+### 46.1 Both clients -- the probe (25 min: 15 Forever, 10 TBC; druids)
+
+1. **Forever, out of combat, EllesmereUI disabled** (check 1). `/st probe`; the copy box opens.
+   Nothing raises; the report has `== art`, `== hosts`, `== clock`, `== cooldowns` and `== auras`
+   between `== windows` and `== to do`.
+2. **Forever, in combat with a mana source on you** (check 1). Innervate yourself (or stand in a
+   shaman's Mana Spring), pull a mob inside its duration and let the fight run past 2 s (the
+   snapshot reads itself 2 s in); after the fight `/st probe` again. `auras to do` should be gone
+   from `== to do`; say if it is still there.
+3. **Forever, EllesmereUI enabled** (check 1). Enable EllesmereUI (with Options, DataBars, Minimap
+   and BlizzardSkin), `/reload`, `/st probe`: `== hosts` names EllesmereUI's version and its
+   `RegisterSkin` / unlock entry points.
+4. **TBC** (check 1). `/md probe` once out of combat and once after a fight. The Forever-only
+   sections each read `absent (Forever only)`; `== art`, `== hosts`, `== clock`, `== cooldowns`
+   answer; nothing raises. `/md help` does not list `probe` (a hidden row).
+
+**Paste back** -- the whole report each time, not only the five sections (`== to do` and
+`== blocked actions` matter too): Forever's three into `docs/probe/<build>-0.16.6-s1.md` (headed
+`out of combat`, `innervate`, `ellesmereui`), TBC's two into `.logs/tbc/0.16.6-s1.md`. The probe
+alt run is the start of 46.4.
+
+### 46.2 Forever druid -- the clock, its layouts and the coach (25 min, a few pulls)
+
+1. **Commands unchanged (T113).** `/st clock`, `/st clock lock`, `/st ui reset` do what they did on
+   0.16.5. `/st ui style` lists `flat` and `ellesmere`.
+2. **Clock tones and segments (T93, check 4).** In a fight spend until the clock reads under 60 s:
+   amber, under 20 s red, the label grey. Watch `0:55` -> `1:00`: the label and the rest segment do
+   not move, only the number. Under 30 s the clock pulses once per fight. `/st clock rest` hides the
+   rest segment (again to undo). `/st clock clickthrough`: a click on the clock passes to the world,
+   no hover (again to undo).
+3. **Layouts (T98).** With the clock on screen (in a fight, or Settings -> General -> MANA CLOCK ->
+   Show now): `/run SpellTuner.ClockView.SetLayout("compact")`, then `"bar"`, then `"line"` -- each
+   draws the clock's words with nothing cut; a switch never hides or shows the clock.
+   `/run SpellTuner.ClockView.Set("bar.spark", "fsr")`: after a cast a yellow mark crosses the bar in
+   five seconds; `/run SpellTuner.ClockView.Set("bar.source", "time")`: the bar drains with the time
+   to OOM; `/run SpellTuner.ClockView.ResetToStyle()` puts it back. `/st dump` shows `clock: layout
+   ...` after any of these. `/reload`: the layout is kept.
+4. **Tooltips (T95, check 3).** Hover Swiftmend: Per sec reads `... every 15 s`; Tranquility
+   `every 5 min` (both from the tooltip's cooldown line).
+5. **The coach and Swiftmend (T90, check 2).** Record pulls with a Swiftmend in them (`/st rec`
+   shows them). `/st coach N`: the suggested column never casts Swiftmend inside 15 s of the last
+   one; in `/st replay N` the Swiftmend-ready dot sweeps as before. Note how the card's numbers
+   moved against 0.16.5 if you still have that card.
+6. **A channel (T96, T101), optional.** A pull with Tranquility (or Wild Growth): `/st replay N` --
+   the party's bars rise on the ticks; `/st validate N`'s gate 8 counts the ticks as own.
+
+**Paste back** into `docs/probe/<build>-0.16.6-s2.md`: a line per step, a screenshot of each
+layout, the coach card from step 5.
+
+### 46.3 Forever with EllesmereUI -- brokers, the mover, the Ellesmere style (25 min)
+
+1. **Brokers (T97, check 5).** EllesmereUI on (Options, DataBars, Minimap, BlizzardSkin); `/reload`.
+   `/eui` -> DataBars -> add a Broker Plugin block for **SpellTuner** and one for **SpellTuner
+   Regen**, Max Width ~120. In a fight the block equals the floating clock on every change and its
+   icon tint goes amber then red. Hover: one tooltip in EllesmereUI's skin, no second border.
+   Left-click opens SpellTuner, right-click Settings; neither in combat. Regen reads `(5SR)` for 5 s
+   after a cast and `~` in combat. (Known: the block keeps the rest segment even with `/st clock
+   rest` off -- T97 deviation 3.)
+2. **Mover and minimap (T97, check 6).** `/unlock`: a "SpellTuner clock" mover with the clock
+   previewed; drag, save, `/reload`: the clock stays there. The SpellTuner button sits in
+   EllesmereUI's flyout with its icon centred; toggling *Minimap button* under Settings -> General
+   -> WINDOWS leaves it there.
+3. **The Ellesmere style (T100, check 8).** `/st ui style ellesmere`: the windows take
+   EllesmereUI's accent, panel colour and font; no SpellTuner window and not the clock's bar backing
+   goes transparent. Change EllesmereUI's accent: SpellTuner recolours at once (a window built
+   before the change may finish only after `/reload` -- say which). `/reload` with Ellesmere chosen:
+   the first paint already follows. Turn third-party skinning off for SpellTuner in EllesmereUI:
+   the accent and font still follow (EllesmereUI's own getters). `/st ui style flat`: exactly the
+   0.16.5 look.
+4. **The dump.** `/st dump`: the `integrations:` line names EllesmereUI's version beside `(tested
+   9.3.4)` and `skin apiVersion 2`; the `style:` line reads `ellesmere ... follows EllesmereUI`
+   while it is chosen. Disable SpellTuner and `/reload`: both broker blocks collapse. Then
+   `/st probe` (SpellTuner back on): no blocked action names SpellTuner.
+
+**Paste back** into `docs/probe/<build>-0.16.6-s3.md`: a line per step, the `/st dump`, screenshots
+of the two broker blocks and of a window under Ellesmere.
+
+### 46.4 Forever alt -- a paladin, shaman or priest of level 10+ (30 min, solo and a few pulls)
+
+1. **The probe on the alt (check 1).** With a cooldown heal in the book (Holy Shock, Riptide, ...):
+   `/st probe` out of combat, and on a priest shield yourself (Power Word: Shield), take a hit, then
+   `/st probe` again (`absorb to do` should be answered).
+2. **Tooltips (T91, T95, check 3).** Hover Holy Shock / Riptide / Prayer of Healing / Chain Heal /
+   Power Word: Shield / Light's Vigil as your class has them: Per sec reads `N  every 10 s` (Holy
+   Shock; 6 s Riptide; 4 s PW:S), Per mana carries `x up to 5 targets` (Prayer of Healing, Holy
+   Nova) or `up to 1.75x if 3 are hurt` (Chain Heal); with the detail key Reaches / Cooldown /
+   Lockout appear; Light's Vigil shows no heal value, only its casts to OOM. Name any spell whose
+   cooldown line is not read.
+3. **Measure (check 3).** `/st measure`, cast Renew or Riptide on yourself after taking damage,
+   `/st measure dump`: paste the tick period.
+4. **Gates (T99).** Reports -> Review and `/st replay 1` (Replay module on): the Coach button is off,
+   its hover and the replay's hint read `Coaching: not modelled for <your class> yet`; Simulate ->
+   Practice reads `Practice: not modelled for <your class> yet` (the class profiles are T106, not
+   in 0.16.6).
+5. **The generic kit (T101).** Record a pull with Prayer of Healing or Chain Heal in it (`/st rec`).
+   `/st validate N`: gate 8 counts the group heal's heals as own (one per member hit); a Desperate
+   Prayer or any heal the kit does not price counts as replayed as recorded. `/st coach N`: the card
+   carries `group heals assume everyone in range (no positions recorded): an upper bound`.
+
+**Paste back** into `docs/probe/<build>-0.16.6-s4.md`: the probe reports whole (headed by class),
+a line per step, the measure dump, gate 8's line and the coach card.
+
+### 46.5 TBC druid -- the clock, styles, brokers, the coach (25 min, a dungeon or a few pulls)
+
+1. **Clock (T93, check 4).** Tones as before. Watch `59s` -> `1:00`: the label does not move. A
+   left-click on the clock in combat does nothing; out of combat it opens the window.
+2. **Layouts (T98).** `/md unlock` shows the clock; then the `/run SpellTuner.ClockView...` lines
+   of 46.2 step 3, the same on TBC (the bar's default source here is the five-second rule). `/md
+   unlock` again to lock.
+3. **Styles (T94, T100, check 8).** `/md ui style` lists `flat` and `ellesmere`. `/md ui style
+   ellesmere`: the teal clone repaints the open window, nothing moves or resizes. `/md ui style
+   flat`: exactly the 0.16.5 look.
+4. **ElvUI (T92, T97, check 7), optional.** With ElvUI: the `SpellTuner` and `SpellTuner Regen`
+   datatexts read as before (the clock line; `Regen: N`, `(5SR)` after a cast; tooltip and
+   Shift-click unchanged), and ElvUI's datatext list also offers `LDB: SpellTuner`, reading the
+   same.
+5. **The coach and Swiftmend (T90, check 2).** After a few pulls with Swiftmend: `/md coach N` --
+   no suggested Swiftmend inside 15 s of the last one; `/md replay N`'s Swiftmend dot as before.
+
+**Paste back** into `.logs/tbc/0.16.6-s5.md`: a line per step, screenshots of the clock in each
+layout and of a window under Ellesmere, the coach card.
 
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the

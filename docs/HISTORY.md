@@ -4745,3 +4745,33 @@ not read yet (T97 deviation 2, T102).
 `make check`: 86 runs, all passed (81 counted runs against 81 expected; profilecheck/forever's
 NOTE 48 vs 46 as before); apicheck 0 findings over 69 files (51 globals), textcheck 0 over 108.
 Version unchanged (0.16.5), not installed. **Next:** wave N4.
+
+## 2026-10-02 — the next round's finish: 0.16.6 built, not installed
+
+The finish step of the next round's workflow (`wf_c5e72881-4a2`, resumed after the author stopped
+it in wave N4 on 2026-10-01) on `319f6cb`. Waves N1-N3 of `docs/SPEC-next.md` landed (T87-T101
+and T113; the three entries above). Wave N4 did not: the resumed run handed its finish step a
+"not landed" list calling T92-T101 skipped for "dependency not landed" -- a stale record of the
+first run, contradicted by this branch, which holds every one of them. What is really open:
+T102 (Settings -> Clock) and T106 (Paladin / Shaman / Priest profiles) are built on `next/T102`
+and `next/T106` but not reviewed or integrated (T106 carries an engine commit outside its owned
+files, bfb637f); T107 (live restyle) is half built on `saved/T107-partial-2026-10-01`; T103,
+T104, T105, T108, T109 and the `BASE_CD_READS` flip wait on the author's run of the new probe
+sections on both clients; T110 on T105; T111 on T106; T112 is not scheduled.
+
+- `docs/research/next/R-classicui.md` committed (35275c7): the ClassicUI web study, T108's input.
+- **0.16.6** on every TOC (`./release.sh --set-version 0.16.6`). The import fixture rebuilt with
+  `tools/importfixture.lua` and unchanged (fixed version since T54); no other fixture embeds the
+  version.
+- Docs: CLAUDE.md's intro at 0.16.6; `docs/TESTING.md` §46 rewritten from `docs/SPEC-next.md`
+  section 12 for what landed, as five 20-30 minute sessions -- 46.1 the probe on both clients
+  first (`== art`, `== hosts`, `== clock`, `== cooldowns`, `== auras`; pasted whole into
+  `docs/probe/<build>-0.16.6-s1.md` and `.logs/tbc/0.16.6-s1.md`), 46.2 the Forever druid's clock,
+  layouts and coach, 46.3 EllesmereUI (brokers, mover, the Ellesmere style), 46.4 a Forever
+  paladin / shaman / priest alt (its probe, tooltips, gates, the generic kit), 46.5 TBC; the
+  handover rewritten.
+- Packages built (`./release.sh`, `SRC=` this worktree) into the top-level `dist/`: TBC 80 files, Forever 44 files plus the three modules, and the two zips (`dist/manademon-folder-continue-41eabc/`).
+  **Nothing installed**; both clients still run 0.16.5.
+
+`make check`: 86 runs, all passed (81 counted runs against 81 expected; profilecheck/forever's NOTE 48 vs 46 as before); apicheck 0 findings over 69 files (51 globals), textcheck 0 over 108. **Next:** the author installs 0.16.6 and runs §46.1 on both clients;
+then T102 / T106 reviewed and integrated, T107 rebuilt, and T103-T105 on the probe's answers.
