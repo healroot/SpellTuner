@@ -1469,6 +1469,34 @@ local function OverviewTables(pane)
     return t
 end
 
+-- F3 (docs/tasks/F3-whole-book-empty.md): the author's "Whole book is empty
+-- when opened, fixed once start scrolling". RenderOverview grows the scroll
+-- child while the scroll frame is on screen (My spells' few rows -> Whole
+-- book's hundreds), and the client draws the child through the rect it last
+-- took from it; until F3 nothing in the pane gave it the new one -- the only
+-- call that did was the mouse wheel's SetVerticalScroll (UI/Style.lua's
+-- VerticalScroll), which is why a scroll "fixed" it. So every render ends by
+-- handing the frame its child again: UpdateScrollChildRect, then the offset
+-- set anew (0 on a new table -- a mode change starts at its top -- else the
+-- old one, clamped to the new range). No timer: the same frame, at once.
+local function RefreshScrollChild(scroll, top)
+    if not scroll then return end
+    if scroll.UpdateScrollChildRect then scroll:UpdateScrollChildRect() end
+    local offset = 0
+    if not top and scroll.GetVerticalScroll then
+        local now = scroll:GetVerticalScroll()
+        offset = tonumber(now) or 0
+    end
+    local range = 0
+    if scroll.GetVerticalScrollRange then
+        local r = scroll:GetVerticalScrollRange()
+        range = tonumber(r) or 0
+    end
+    if offset > range then offset = range end
+    if offset < 0 then offset = 0 end
+    if scroll.SetVerticalScroll then scroll:SetVerticalScroll(offset) end
+end
+
 -- What a full render was drawn from: the mode, the book's generation, the
 -- bonus-healing reading, the pool's max, the pitch (SpellsPane:Signature)
 -- and the list.
@@ -1494,6 +1522,7 @@ function SpellsPane:RenderOverview()
     active.frame:Show()
     active:Render(rows)
     pane.lastRows = rows -- tools/spellsui.lua's own hook: the exact render order
+    local newTable = pane.mode ~= mode -- F3: a mode change starts at the top
     pane.mode, pane.activeTable = mode, active
     local tableH = 4 + active.headerHeight + #rows * active.rowHeight
     active.frame:SetHeight(tableH)
@@ -1515,6 +1544,7 @@ function SpellsPane:RenderOverview()
     pane.footer:SetPoint("TOPLEFT", pane.scroll.content, "TOPLEFT", 8, -y)
     y = y + 16
     pane.scroll:SetContentHeight(y)
+    RefreshScrollChild(pane.scroll, newTable) -- F3
 
     pane.signature = OverviewSignature(mode)
     pane.lastRefresh = GetTime()
