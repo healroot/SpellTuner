@@ -1450,6 +1450,52 @@ do
         okRun and table.concat(detail, "; ") or tostring(blocks))
 end
 
+--------------------------------------------------------------------------------
+-- T110 (docs/SPEC-next.md 4.2 P6): an either-or spell's block shows the half
+-- the player's role casts it for, and names the other behind the detail key.
+-- The role is Spells/Tabs.lua's, read off the book's talent spells: the
+-- paladin's whole book (Holy Shock, Light's Vigil, Divine Favor, Voice of
+-- Truth against Seal of Command, Repentance) is a healer's; without the three
+-- Holy talents but Holy Shock it is a Retribution paladin's (2 to 1).
+-- Holy Shock R4 (20930): "334 to 362 Holy damage ... or 307 to 333 healing",
+-- 325 mana, a 10 sec cooldown.
+--------------------------------------------------------------------------------
+do
+    local HOLY_ONLY = { ["Light's Vigil"] = true, ["Divine Favor"] = true, ["Voice of Truth"] = true }
+    local function ShockBlock(opts)
+        local restore = Books.Install(Books.Load("paladin"), opts)
+        local fresh, out = {}, {}
+        local good, err = pcall(function()
+            S.Load(S.loadedFiles, "SpellTuner", fresh)
+            fresh.Book:Get()
+            out.role = fresh.Tabs:Role()
+            out.plain = fresh.SpellTip:Lines(20930, false)
+            out.detail = fresh.SpellTip:Lines(20930, true)
+        end)
+        restore()
+        if not good then error(err, 0) end
+        return out
+    end
+    local good, healer, ret = pcall(function()
+        return ShockBlock({ alone = true }),
+            ShockBlock({ alone = true, only = function(row) return not HOLY_ONLY[row.name] end })
+    end)
+    local cond = good and healer.role == "heal" and ret.role == "damage"
+        and Right(healer.plain, "Per mana") == "0.98" and Right(healer.plain, "Per sec") == "32.0  every 10 s"
+        and Right(healer.detail, "Or damage") == "348  1.07 per mana" and Right(healer.plain, "Or damage") == nil
+        and Right(ret.plain, "Per mana") == "1.07" and Right(ret.plain, "Per sec") == "34.8  every 10 s"
+        and Right(ret.detail, "Average") == "348 (334 - 362)"
+        and Right(ret.detail, "Or heals") == "320  0.98 per mana" and Right(ret.plain, "Or heals") == nil
+        and Right(ret.plain, "Suggested") == "this rank"
+    check("T110: Holy Shock's block shows the role's half and names the other behind the key", cond,
+        good and string.format("roles=%s/%s heal pm=%q ps=%q or=%q; ret pm=%q ps=%q avg=%q or=%q sugg=%q",
+            tostring(healer.role), tostring(ret.role), tostring(Right(healer.plain, "Per mana")),
+            tostring(Right(healer.plain, "Per sec")), tostring(Right(healer.detail, "Or damage")),
+            tostring(Right(ret.plain, "Per mana")), tostring(Right(ret.plain, "Per sec")),
+            tostring(Right(ret.detail, "Average")), tostring(Right(ret.detail, "Or heals")),
+            tostring(Right(ret.plain, "Suggested"))) or tostring(healer))
+end
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("  FAIL " .. f) end
 if #fails > 0 then os.exit(1) end

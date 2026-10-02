@@ -44,7 +44,7 @@ end
 -- A book built by Book's own grouping from synthetic entries: the family key,
 -- ids, kind and ranks exactly as Book:GroupFamilies makes them, without the
 -- stub's spellbook. spec: { name, rank, level, known, kind = "heal" |
--- "damage" | nil, cost = n | nil, power = "Rage", free = true, passive }.
+-- "damage" | "both" (T110) | nil, cost = n | nil, power = "Rage", free = true, passive }.
 --------------------------------------------------------------------------------
 local nextId = 70000
 local function MakeBook(specs)
@@ -53,7 +53,9 @@ local function MakeBook(specs)
         nextId = nextId + 1
         local id = sp.id or nextId
         local parsed
-        if sp.kind == "heal" then
+        if sp.kind == "both" then -- T110: an either-or spell (Holy Shock): a heal family, altKind damage
+            parsed = { heal = { min = 10, max = 12 }, damage = { min = 20, max = 24 } }
+        elseif sp.kind == "heal" then
             parsed = { heal = { min = 10, max = 12 } }
         elseif sp.kind == "damage" then
             parsed = { damage = { min = 10, max = 12 } }
@@ -470,6 +472,122 @@ block("a heal learned after the seed is appended when the book rescans", functio
         seeded == "Healing Touch,Rejuvenation" and Join(Tabs:Get()) == "Healing Touch,Rejuvenation,Regrowth"
             and Tabs:IsNew("Regrowth") and not Tabs:Has("Moonfire"),
         "seeded=" .. seeded .. " now=" .. Join(Tabs:Get()))
+end)
+
+--------------------------------------------------------------------------------
+-- T110 (docs/SPEC-next.md 4.2 P6): the list seeded by role. Forever's talent
+-- API answers nothing readable, so the role is read off the book: a talent's
+-- own spell (Tabs.ROLE_TALENTS, talentsforever's talent list per tree) says
+-- heal or damage, more wins, a tie or none says nothing (the old seed).
+--------------------------------------------------------------------------------
+
+-- A level 60 shadow priest: heals known, but Mind Flay, Shadowform and
+-- Vampiric Embrace in the book.
+local SHADOW = {
+    { name = "Lesser Heal", rank = 1, level = 1, kind = "heal", cost = 30 },
+    { name = "Renew", rank = 1, level = 8, kind = "heal", cost = 30 },
+    { name = "Smite", rank = 1, level = 1, kind = "damage", cost = 20 },
+    { name = "Shadow Word: Pain", rank = 1, level = 4, kind = "damage", cost = 25 },
+    { name = "Mind Blast", rank = 1, level = 10, kind = "damage", cost = 50 },
+    { name = "Mind Flay", rank = 1, level = 20, kind = "damage", cost = 45 },
+    { name = "Shadowform", rank = 1, level = 40, cost = 100 },
+    { name = "Vampiric Embrace", rank = 1, level = 30, cost = 40 },
+    { name = "Power Word: Fortitude", rank = 1, level = 1, cost = 60 },
+}
+
+block("T110: a shadow priest's list seeds damage; a holy priest's heals, Holy Nova among them", function()
+    FreshStore()
+    local book = MakeBook(SHADOW)
+    local role, said = Tabs:BookRole(book)
+    Tabs:Seed(book)
+    local order = Join(Tabs:Get())
+    local r, src = Tabs:Role(book)
+    local shadow = role == "damage" and Join(said) == "Mind Flay,Shadowform,Vampiric Embrace"
+        and order == "Smite,Shadow Word: Pain,Mind Blast,Mind Flay" and MD.cdb.spellTabs.kind == "damage"
+        and r == "damage" and src == "talents"
+
+    FreshStore()
+    local holy = MakeBook({
+        { name = "Lesser Heal", rank = 1, level = 1, kind = "heal", cost = 30 },
+        { name = "Smite", rank = 1, level = 1, kind = "damage", cost = 20 },
+        { name = "Holy Nova", rank = 1, level = 20, kind = "both", cost = 185 },
+        { name = "Binding Heal", rank = 1, level = 40, kind = "heal", cost = 300 },
+        { name = "Mind Flay", rank = 1, level = 20, kind = "damage", cost = 45 },
+    })
+    local hrole = Tabs:BookRole(holy)
+    Tabs:Seed(holy)
+    local horder = Join(Tabs:Get())
+    check("T110: a shadow priest's list seeds damage; a holy priest's heals, Holy Nova among them",
+        shadow and hrole == "heal" and horder == "Lesser Heal,Holy Nova,Binding Heal"
+            and holy.families["Holy Nova"].altKind == "damage",
+        "shadow role=" .. tostring(role) .. " said=" .. Join(said) .. " order=" .. order
+            .. " Role=" .. tostring(r) .. "/" .. tostring(src) .. "; holy role=" .. tostring(hrole)
+            .. " order=" .. horder)
+end)
+
+block("T110: a damage list takes an either-or heal; a tie seeds heals; Reset is heals; the list's kind is the fallback", function()
+    -- a Retribution paladin with Holy Shock: damage 2 (Seal of Command,
+    -- Repentance) to heal 1 (Holy Shock)
+    local ret = MakeBook({
+        { name = "Holy Light", rank = 1, level = 1, kind = "heal", cost = 35 },
+        { name = "Flash of Light", rank = 1, level = 20, kind = "heal", cost = 35 },
+        { name = "Holy Shock", rank = 1, level = 40, kind = "both", cost = 225 },
+        { name = "Exorcism", rank = 1, level = 20, kind = "damage", cost = 85 },
+        { name = "Seal of Command", rank = 1, level = 20, cost = 65 },
+        { name = "Repentance", rank = 1, level = 40, cost = 60 },
+    })
+    FreshStore()
+    Tabs:Seed(ret)
+    local seeded = Join(Tabs:Get())
+    local reset = Join(Tabs:Reset(ret))
+    local resetKind = MD.cdb.spellTabs.kind
+
+    -- one each: no role, the old seed (heals), and Role falls back on it
+    local tie = MakeBook({
+        { name = "Holy Light", rank = 1, level = 1, kind = "heal", cost = 35 },
+        { name = "Holy Shock", rank = 1, level = 40, kind = "both", cost = 225 },
+        { name = "Exorcism", rank = 1, level = 20, kind = "damage", cost = 85 },
+        { name = "Seal of Command", rank = 1, level = 20, cost = 65 },
+    })
+    FreshStore()
+    local before = Tabs:Role(tie)
+    local tieRole = Tabs:BookRole(tie)
+    Tabs:Seed(tie)
+    local tieOrder = Join(Tabs:Get())
+    local r, src = Tabs:Role(tie)
+    -- a talent not known (an untrained rank) says nothing
+    local untrained = MakeBook({
+        { name = "Holy Light", rank = 1, level = 1, kind = "heal", cost = 35 },
+        { name = "Exorcism", rank = 1, level = 20, kind = "damage", cost = 85 },
+        { name = "Seal of Command", rank = 1, level = 20, cost = 65, known = false },
+    })
+    check("T110: a damage list takes an either-or heal; a tie seeds heals; Reset is heals; the list's kind is the fallback",
+        seeded == "Exorcism,Holy Shock" and reset == "Holy Light,Flash of Light,Holy Shock" and resetKind == "heal"
+            and before == nil and tieRole == nil and tieOrder == "Holy Light,Holy Shock"
+            and r == "heal" and src == "list" and Tabs:BookRole(untrained) == nil,
+        "seeded=" .. seeded .. " reset=" .. reset .. "/" .. tostring(resetKind) .. " before=" .. tostring(before)
+            .. " tie=" .. tostring(tieRole) .. " " .. tieOrder .. " Role=" .. tostring(r) .. "/" .. tostring(src))
+end)
+
+-- Every talent name the map holds for a class with a committed book is a
+-- spell of that book (tools/data/books/, talentsforever's export), so a
+-- misspelt name cannot sit in the map unseen.
+block("T110: every role talent of the priest, paladin and shaman is a spell of their book", function()
+    local missing, count = {}, 0
+    for class, file in pairs({ PRIEST = "priest", PALADIN = "paladin", SHAMAN = "shaman" }) do
+        local data = dofile(here .. "/data/books/" .. file .. "_forever.lua")
+        local names = {}
+        for _, row in ipairs(data.spells) do names[row.name] = true end
+        for _, role in ipairs({ "heal", "damage" }) do
+            for _, name in ipairs(Tabs.ROLE_TALENT_TREES[class][role]) do
+                count = count + 1
+                if not names[name] then missing[#missing + 1] = class .. ":" .. name end
+                if Tabs.ROLE_TALENTS[name] ~= role then missing[#missing + 1] = "role:" .. name end
+            end
+        end
+    end
+    check("T110: every role talent of the priest, paladin and shaman is a spell of their book",
+        #missing == 0 and count == 23, "count=" .. count .. " missing=" .. Join(missing))
 end)
 
 --------------------------------------------------------------------------------

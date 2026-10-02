@@ -1009,6 +1009,72 @@ T95("T95: BASE_CD_READS false reads the tooltip line; true reads the base cooldo
     end)
 end)
 
+--------------------------------------------------------------------------------
+-- T110 (docs/SPEC-next.md 4.2 P6): an either-or spell keeps both halves and a
+-- role sees its own -- Book:Half(family, role) is the family itself for the
+-- heal role, and for the damage role a view of the damage half with its own
+-- numbers, dominance and suggested rank; the book's entries and generation
+-- are never written. Every number is in the texts (tools/data/books/).
+--------------------------------------------------------------------------------
+
+-- 30: Holy Shock R4 -- "334 to 362 Holy damage ... or 307 to 333 healing",
+-- 325 mana, a 10 sec cooldown
+T95("T110: Holy Shock keeps both halves; the damage role sees 348 over its cooldown", function()
+    return ClassBook("paladin", nil, function(fresh, book)
+        local B = fresh.Book
+        local fam = book.families["Holy Shock"]
+        local gen = B.generation
+        local healSide = B:Half(fam, "heal") == fam and B:Half(fam, nil) == fam
+        local view = B:Half(fam, "damage")
+        local v = view.maxKnown
+        local good = healSide and view ~= fam and view.kind == "damage" and view.altKind == "heal"
+            and view.half == "damage" and view.of == fam and view.key == fam.key and #view.ranks == #fam.ranks
+            and v ~= nil and v.rank == 4 and v.half == "damage" and v.of == fam.maxKnown and v.kind == "damage"
+            and ApproxEq(v.value, 348) and v.min == 334 and v.max == 362
+            and ApproxEq(v.perMana, 348 / 325) and ApproxEq(v.perSec, 34.8)
+            and v.interval == 10 and v.intervalBy == "cooldown" and v.alt == nil
+            and view.shape == "direct" and view.suggested == v and v.suggested == true
+        -- the book is untouched: the heal half, its alt, the generation
+        local e = fam.maxKnown
+        good = good and e.kind == nil and ApproxEq(e.value, 320) and ApproxEq(e.alt.value, 348)
+            and fam.suggested == e and B.generation == gen and B:Half(book.families["Holy Light"], "damage")
+                == book.families["Holy Light"]
+        return good, string.format("heal=%s kind=%s rank=%s value=%s perMana=%s perSec=%s by=%s sugg=%s book=%s gen=%s/%s shape=%s range=%s-%s fsugg=%s",
+            tostring(healSide), tostring(view.kind), tostring(v and v.rank), tostring(v and v.value),
+            tostring(v and v.perMana), tostring(v and v.perSec), tostring(v and v.intervalBy),
+            tostring(view.suggested == v), tostring(e.value), tostring(gen), tostring(B.generation),
+            tostring(view.shape), tostring(v and v.min), tostring(v and v.max), tostring(fam.suggested == e))
+    end)
+end)
+
+-- 31: Holy Nova R6 -- "174 to 200 Holy damage to all enemy targets ... and
+-- healing all party members ... for 288 to 334", 750 mana, instant. The
+-- damage half drops the heal's party reach; a spell read outside a family
+-- (Book:ReadSpell) takes its half through Book:HalfOf
+T95("T110: Holy Nova's damage half has its own numbers and no party reach; HalfOf reads a spell's", function()
+    return ClassBook("priest", nil, function(fresh, book)
+        local B = fresh.Book
+        local fam = book.families["Holy Nova"]
+        local e = fam.maxKnown
+        local view = B:Half(fam, "damage")
+        local v = view.maxKnown
+        local good = fam.altKind == "damage" and e.targets == "party" and ApproxEq(e.value, 311)
+            and v.rank == 6 and ApproxEq(v.value, 187) and ApproxEq(v.perMana, 187 / 750)
+            and ApproxEq(v.perSec, 187 / 1.5) and v.targets == nil and v.reach == nil
+            and v.intervalBy == nil and view.suggested == v
+        local read = B:ReadSpell(27801)
+        local half = B:HalfOf(read, "damage")
+        local plain = B:HalfOf(read, "heal")
+        local renew = B:ReadSpell(book.families["Renew"].maxKnown.id)
+        good = good and read.kind == "heal" and half ~= read and half.kind == "damage" and ApproxEq(half.value, 187)
+            and half.of == read and ApproxEq(read.value, 311) and plain == read
+            and B:HalfOf(renew, "damage") == renew
+        return good, string.format("e=%s/%s v=%s/%s/%s targets=%s read=%s half=%s", tostring(e.value),
+            tostring(e.targets), tostring(v.value), tostring(v.perMana), tostring(v.perSec), tostring(v.targets),
+            tostring(read and read.value), tostring(half and half.value))
+    end)
+end)
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("  FAIL " .. f) end
 if #fails > 0 then os.exit(1) end
