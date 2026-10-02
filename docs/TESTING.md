@@ -2102,6 +2102,31 @@ instead.
 **Paste back** into `docs/probe/<build>-0.16.7-s1.md` (Forever) and `.logs/tbc/0.16.7-s1.md`
 (TBC): a line per step.
 
+## 48. Clock v2: mana and the five-second rule together (T114, T115; both clients, 15 min)
+
+The next build after 0.16.7 (not built yet: the round's T116, the Text tab, is still to come).
+Bars replace §47 steps 1-2's Source, Spark and Height-under-Bar: on a build with T115, skip those
+two steps. For each step, a line in the paste: `ok`, or what you saw instead.
+
+1. **Bars on each layout (T115, both clients).** Settings -> Clock -> Bars, each of Line, Compact
+   and Bar. Cast a spell: the 5SR strip under the mana bar fills amber smoothly and turns green.
+   Join `One bar`: the veil drains to the right over the mana bar. Join `Swipe chip`: the square
+   beside the label sweeps (the chip's template is VERIFY on both clients -- say if it draws).
+2. **Frame (T115, both clients).** Frame -> Height 32 -> 44: only the mana bar grows; Width
+   stretches both bars; Scale 150 %: the clock's centre stays where it was. The green mark on
+   Width's and Height's tracks is the layout's minimum.
+3. **A 0.16.6 look (T115, both clients).** With a look saved on 0.16.6 or 0.16.7 whose Source was
+   `Five-second rule`, the clock reopens as 5SR only; one with `Time to OOM` reopens as Mana + 5SR;
+   on Forever `/st dump` names the dropped keys once (TBC has no dump verb).
+4. **The regen tick (T115, TBC).** Bars -> After the rule = `Regen tick`. Out of the rule a white
+   mark crosses the strip every 2 s: paste whether it lines up with the mana ticks. On Forever the
+   choice is not offered and its tooltip says why.
+5. **The clock's words unchanged (T114, both clients).** The clock line, the ElvUI datatext (TBC)
+   and the LDB broker read exactly as on 0.16.7 by default.
+
+**Paste back** into `docs/probe/<build>-<version>-s1.md` (Forever) and `.logs/tbc/<version>-s1.md`
+(TBC): a line per step.
+
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the
 raw numbers. `/md profile` output is welcome with any report. I turn them into

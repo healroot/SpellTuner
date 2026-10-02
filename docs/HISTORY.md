@@ -4923,3 +4923,29 @@ round (`docs/mockups/clock-v2.html`, untracked), not a fix.
 
 **Next:** the author installs 0.16.7 and runs §47 (then §46.1, which still unblocks T103-T105,
 T108, T109 and the `BASE_CD_READS` flip).
+
+## 2026-10-02 — clock v2, the round's first half: T114, T115 integrated, not built, not installed
+
+The author's answers to `docs/mockups/clock-v2.html` ("We can do all 3, and let user decide / And
+those that are recomended become default", `docs/SPEC-next.md` 13) became three tasks; the first
+two ran in parallel worktrees, test first, and are integrated here in order.
+
+- **T114** (next/T114): the face's slots and words -- the face's `mana` / `manaMax` /
+  `manaModelled`, `CF.KINDS`, the slots per layout (`CF.TEXT`, Right2 off by default) and their
+  options, `CF.ResolveText` (the time never lost), `CF.Slots`; `Segments` / `LineString`, the feed
+  and the LDB brokers follow Line's slots, byte-identical by default; Forever's Q-clock-2 seam
+  `DrawPowerText` with `POWER_TEXT_READS = false`. clocktextcheck 13 / 13 (new), surfacecheck
+  36 / 43, euicheck 21, adaptercheck 26 / 17 (`docs/tasks/T114-clock-face-slots.md`).
+- **T115** (next/T115): mana and the five-second rule together -- Bars (Mana + 5SR by default on
+  both lines, replacing decision 15 (a)), Join (Stacked A, the default / One bar B / Swipe chip C),
+  Order, Mana from (Forever), the strip, After the rule (green; the regen tick TBC-only,
+  `RM:RegenTick()`), texture, Mana colour; Frame width / height / scale per layout with measured
+  minimums; `CV.Migrate` reads a 0.16.6 look once; Settings -> Clock's Frame and Bars tabs.
+  clockui 32 / 32, clockfacecheck 24 / 21, clocksettings 39 / 40, ttocheck 52, clockcheck 36;
+  stylecheck's clock golden re-based (`docs/tasks/T115-clock-bars-frame.md`).
+- Integrator lines: `tools/data/expected-counts.json`, the CLAUDE.md rows, `docs/TOOLS.md` §1,
+  `docs/DECISIONS.md` "Clock v2" (the author's answers recorded once), `docs/TESTING.md` §48. No
+  TOC line or slash verb changed. `tools/data/import-forever-sv.lua` rebuilt: unchanged. Version
+  not bumped.
+
+**Next:** T116 (the slots drawn and the Text tab), then a build for the author's §48.

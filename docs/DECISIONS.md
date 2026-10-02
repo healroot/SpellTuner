@@ -1321,7 +1321,7 @@ on it) -- chosen by `db.clockLook.layout`; Settings -> Clock (T102) will offer t
 the layout's defaults, then the UI style's `clock` role, then the user's overrides (`over`), and
 "Reset to style" wipes the overrides. The bar's colour defaults to its **source's own** (the 5SR
 amber then green, the pool and the model the mana blue, the time its tone) rather than the face's
-tone, so neither line's bar changes colour by default (decision 15 (a)); `bar.color = "tone"` gives
+tone, so neither line's bar changes colour by default (decision 15 (a), replaced by "Clock v2" below); `bar.color = "tone"` gives
 the spec's "on Forever's pool the colour is the modelled tone". Compact and Bar size their frame
 from the widest value they can draw in their own fonts (they are wider than R-clock's 72 x 36 /
 200 x 18 sketches when the font is), so nothing is ever cut at any font offset; Line keeps
@@ -1472,3 +1472,34 @@ role's, so a button built while Ellesmere is active shows Ellesmere's edge (it s
   Divine Fury's cast-back, unknown), and **a discipline priest (42/19/0) does not fit** (62%: its
   direct heals 1.8-1.9x the model at any +healing up to the scan's cap; Power Infusion does not
   explain it). No paladin parse with enough heals was found; the paladin rules stay VERIFY.
+
+## Clock v2: mana and the five-second rule together (2026-10-02, T114, T115, the author's answers to clock-v2.html)
+
+The author's answers to `docs/mockups/clock-v2.html`, verbatim: "We can do all 3, and let user
+decide / And those that are recomended become default" (`docs/SPEC-next.md` 13). Read as:
+
+- **All three designs are built as choices; A is the default.** Both bars are drawn by default on
+  both lines and every layout: the mana bar over a 3-px five-second-rule strip (design **A**,
+  Stacked). The veil (**B**, One bar) and the swipe chip (**C**, Swipe chip) are options under
+  Bars -> Join. The mockup's "C is not built unless asked for" is overturned: it was asked for.
+- **Mana + 5SR on both lines. This replaces decision 15 (a)** (the 5SR on TBC, the pool on
+  Forever; the T98 entry above). Time to OOM, the Horizon and the Spark are gone as bar options;
+  a 0.16.6 look is read once as `clock-v2.html` C4's table says (`CV.Migrate`: pool -> Mana only,
+  model -> Mana only from the model, fsr -> 5SR only, time -> Mana + 5SR, none -> None; spark,
+  horizon and height dropped and named once in the dump). Every 5SR mark is placed by time alone,
+  so it means the same over the game's secret fill on Forever. Line is 180 x 32, Compact 72 x 46
+  with bars, Bar 200 x 22; Height (on the Frame tab, beside Width and Scale, per layout, each with
+  its measured minimum) gives its pixels to the mana bar.
+- **One Right slot by default (T114).** Line keeps one Right slot (the one-second glance ruling);
+  **Right2 is an option, off by default** (`CF.TEXT`'s `right2 = "none"`), offered only where the
+  clock's width allows it (T116 draws it).
+- **Forever's Mana % and Mana are the model's `~` values until Q-clock-2 (T114).** The face carries
+  the model's `mana` / `manaMax` marked `manaModelled`; the real values replace them only after a
+  Forever report answers Q-clock-2, through a seam that **ships off**
+  (`MD.API.DrawPowerText`, `MD.API.POWER_TEXT_READS = false`; the `BAR_READS_MAX` pattern).
+- **After the rule the strip stays full green; the regen-tick sweep is TBC-only (T115).** The 2-s
+  tick is learned from mana gains (`RM:RegenTick()`); Forever cannot read mana, so After the rule
+  does not offer it there and the control's tooltip says why.
+- `stylecheck`'s clock golden was re-based for the new default regions (17: the mana bar, the
+  strip, their backs, the veil and its edge, the green line, the chip, the tick mark); every other
+  section byte-identical.
