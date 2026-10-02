@@ -1775,6 +1775,67 @@ T36("T39 My spells: a row per listed family, suggested against highest; a click 
         nourish and Cells(nourish) or "nil", labels, tostring(v))
 end)
 
+-- F3 (docs/tasks/F3-whole-book-empty.md): the author on 0.16.6, "Whole book
+-- is empty when opened, fixed once start scrolling". The client draws a
+-- scroll child through the rect the scroll frame last took from it -- at the
+-- layout pass when the pane appeared, and again on UpdateScrollChildRect or
+-- SetVerticalScroll (a wheel notch is the latter). The stub has no scroll
+-- frame, so this item models that half on the Overview's own frame: a row is
+-- drawn when it is in the frame's window AND inside the rect last taken.
+-- Opening Whole book from My spells, with no wheel event, must draw every row
+-- in the window; so must every switch back and forth, and a Whole book left
+-- scrolled down comes back at its top.
+T36("F3 Whole book draws its rows when opened, no scroll needed; back and forth keeps them", function()
+    MD:SelectView("spells", "overview")
+    SP:SetOverviewMode("mine")
+    local p = FindPane()
+    local sf, content = p.scroll, p.scroll.content
+    local FRAME_H = 528 -- the Spells group's 560 less the title row and the bottom inset
+    local savedH = sf.h
+    sf:SetHeight(FRAME_H)
+    local taken, offset, wheel = content:GetHeight(), 0, 0 -- the pass when Overview appeared
+    sf.UpdateScrollChildRect = function() taken = content:GetHeight() end
+    sf.SetVerticalScroll = function(_, v) offset = tonumber(v) or 0; taken = content:GetHeight() end
+    sf.GetVerticalScroll = function() return offset end
+    local savedWheel = sf:GetScript("OnMouseWheel")
+    sf:SetScript("OnMouseWheel", function(...) wheel = wheel + 1; return savedWheel(...) end)
+    local function Drawn()
+        local tbl = p.activeTable
+        local inWindow, drawn = 0, 0
+        for _, f in ipairs(S.allFrames) do
+            if f.cells and f.data ~= nil and f.parentFrame == tbl.frame and f:IsShown() then
+                local top = -((f.points and f.points.TOPLEFT and f.points.TOPLEFT.y) or 0)
+                if top < offset + FRAME_H and top + tbl.rowHeight > offset then
+                    inWindow = inWindow + 1
+                    if top + tbl.rowHeight <= taken then drawn = drawn + 1 end
+                end
+            end
+        end
+        return inWindow, drawn
+    end
+    local log, good = {}, true
+    local function Step(label, mode, min)
+        local n, d = Drawn()
+        local shown = p.mode == mode and p.activeTable.frame:IsShown()
+        log[#log + 1] = string.format("%s %d/%d at %d", label, d, n, offset)
+        if not (shown and n >= min and d == n and offset == 0) then good = false end
+    end
+    local mineH = content:GetHeight()
+    Click(p.bookBtn);  Step("book", "book", 20)
+    Click(p.mineBtn);  Step("mine", "mine", 3)
+    Click(p.bookBtn);  Step("book again", "book", 20)
+    sf:VerticalScroll(200) -- the user scrolls Whole book down, then leaves it
+    local scrolled = offset
+    Click(p.mineBtn);  Step("mine after a scroll", "mine", 3)
+    Click(p.bookBtn);  Step("book at its top", "book", 20)
+    sf.UpdateScrollChildRect, sf.SetVerticalScroll, sf.GetVerticalScroll = nil, nil, nil
+    sf:SetScript("OnMouseWheel", savedWheel)
+    sf.h = savedH
+    return good and wheel == 0 and scrolled > 0 and content:GetHeight() > FRAME_H and FRAME_H > mineH,
+        string.format("%s wheel=%d scrolled=%d mineH=%d bookH=%d", table.concat(log, ", "), wheel, scrolled,
+            mineH, content:GetHeight())
+end)
+
 --------------------------------------------------------------------------------
 -- T95 (docs/SPEC-next.md 4.2 P1, decision 12): the rank card on another
 -- class's spells -- the cooldown that paces Holy Shock, a group heal's reach
