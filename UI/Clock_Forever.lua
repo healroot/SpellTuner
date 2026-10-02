@@ -263,6 +263,7 @@ MD.ClockView.lineFacts = facts
 local function Facts()
     local c = MD.db and MD.db.clock
     facts.show.rest = not (c and c.showRest == false)
+    facts.show.cd = false -- T115: this line has no cooldown secondary (Line's minimum)
     return facts
 end
 
@@ -291,7 +292,7 @@ local look
 local function Look()
     local f = Facts()
     if not look then look = MD.ClockView.Look(f) end
-    look.show.rest = f.show.rest
+    look.show.rest, look.show.cd = f.show.rest, f.show.cd
     return look
 end
 

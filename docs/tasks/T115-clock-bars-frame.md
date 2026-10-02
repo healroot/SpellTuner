@@ -28,6 +28,8 @@ Owned files (the only files edited, apart from this one):
 - `tools/stylecheck.lua`
 - `tools/wowstub.lua` (only to add a `Cooldown` frame that records `SetCooldown` / `Clear`, if the
   stub's fallback does not already record them)
+- `tools/euicheck.lua` (one number only: check 12's mover size `180 x 30` -> `180 x 32`, forced by
+  Line's new default height; added to this list at the review, see "Review fixes" below)
 
 The author's answers used here (`docs/SPEC-next.md` 13, verbatim "We can do all 3, and let user
 decide / And those that are recomended become default"):
@@ -388,3 +390,30 @@ Every other section (nav, host, palette, text, fonts) byte-identical; Flat's rou
 - A smoother mana fill: the mana bar keeps the line's paint cadence.
 - A spark riding the mana fill's edge on Forever (would need the game to place it from the
   secret: a probe question, not a plan).
+
+## Review fixes (2026-10-02, the review of fbca66c)
+
+- **The Bars tab's words** are the mockup's (C4 / C5): row `Bars` (was `Show`), `Mana + 5SR` /
+  `Mana only` / `5SR only` / `None`; Join `Stacked` / `One bar` / `Swipe chip`; Order `Mana over
+  5SR` / `5SR over mana`; Mana from `The game` / `The model`.
+- **Forever's After the rule:** `CV.TICK_REFUSED` is the After-the-rule dropdown's tooltip; the
+  note under the box stays.
+- **Forever's Texture** list reads `Flat (others wait for the probe)` (its dropdown 200 px wide).
+- **Frame's minimum:** a green mark (`good`, 2 x 16) on each of Width's and Height's tracks at the
+  layout's minimum (`CS.PlaceMinimum`: the track's width over its range, hidden when the minimum
+  is outside it), `min N` beside the slider in the same green, and the note `Green mark: this
+  layout's minimum at this text size.` under `Width, height and scale are kept per layout.`
+- **Order is Stacked's only:** the dropdown is disabled (its list closed) while Join is One bar or
+  Swipe chip, its tooltip says `Stacked only: One bar and Swipe chip draw a single mana bar.`,
+  and `SetBar` writes no `order` then.
+- **Line's minimum without a secondary:** `CV.HasSecondary(look)` -- false only when
+  `look.show.rest` and `look.show.cd` are both `false` -- and `METRICS.line` counts the secondary's
+  gap and width only while it is true (measured: tbc 171 -> 100, forever 178 -> 107 at the default
+  text). Forever's facts and look say `show.cd = false` (the line has no cooldown secondary), so
+  its rest switch alone decides.
+- **`tools/euicheck.lua`** named in the owned list above (its one number).
+- Checks, counts unchanged: `clocksettings` -- the Bars check also asserts Order disabled and
+  silent under One bar with its tooltip; the choices check asserts every row label and item text
+  and the After-the-rule tooltip (Forever) / its absence (TBC); the Frame check asserts both green
+  marks at the minimum and the green note. `clockui` check 5 asserts the minimum drops with no
+  secondary and comes back. `make check` green (92 runs), apicheck 0, textcheck 0.

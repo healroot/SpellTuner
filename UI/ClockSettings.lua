@@ -720,14 +720,24 @@ TAB.frame = function(p, f)
     p.scaleSlider = SizeSlider("Scale (%)", MD.ClockView.SCALE_RANGE[1], MD.ClockView.SCALE_RANGE[2], 5, 336,
         function(value) SetFrame(p, "scale", value, 100) end,
         "Scale", "The whole clock larger or smaller; its centre stays where it is.")
+    -- the layout's minimum: a green mark on the track at the minimum's
+    -- place, and "min N" in the same green over the slider's right end
+    -- (CS.PlaceMinimum moves both at each refresh)
     local function Min(slider)
+        local mark = slider:CreateTexture(nil, "OVERLAY")
+        mark:SetSize(2, 16)
+        UI.Tint(mark, "texture", "good")
+        mark:Hide()
+        slider.minMark = mark
         local fs = f:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
         fs:SetPoint("BOTTOMRIGHT", slider, "TOPRIGHT", 0, 2)
-        fs:SetTextColor(UI.RGB("muted"))
-        return fs
+        UI.Tint(fs, "text", "good")
+        return fs, mark
     end
-    p.wMin, p.hMin = Min(p.wSlider), Min(p.hSlider)
-    Note(f, "Width, height and scale are kept per layout.", nil, y - 32)
+    p.wMin, p.wMark = Min(p.wSlider)
+    p.hMin, p.hMark = Min(p.hSlider)
+    local n1 = Note(f, "Width, height and scale are kept per layout.", nil, y - 32)
+    Note(f, "Green mark: this layout's minimum at this text size.", n1, -4)
 end
 
 -- T115: the bars, per layout. Each list holds what this line may draw
@@ -735,23 +745,23 @@ end
 -- the modelled pool (Forever). The defaults are the recommended choices.
 local BAR_ITEMS = {
     show = {
-        { id = "both", text = "Mana and 5SR", tooltip = "The default: your mana and the five-second rule." },
+        { id = "both", text = "Mana + 5SR", tooltip = "The default: your mana and the five-second rule." },
         { id = "mana", text = "Mana only" },
         { id = "fsr", text = "5SR only", tooltip = "The five-second rule in the mana bar's place." },
-        { id = "none", text = "No bar" },
+        { id = "none", text = "None", tooltip = "Words only." },
     },
     join = {
         { id = "stacked", text = "Stacked", tooltip = "The default: the mana bar over a thin strip." },
-        { id = "veil", text = "Veil", tooltip = "One bar; an amber veil over its right part while the rule runs." },
-        { id = "chip", text = "Chip", tooltip = "A square beside the label sweeps the five seconds." },
+        { id = "veil", text = "One bar", tooltip = "One mana bar; an amber veil over its right part while the rule runs." },
+        { id = "chip", text = "Swipe chip", tooltip = "One mana bar; a square beside the label sweeps the five seconds." },
     },
     order = {
-        { id = "manaOver", text = "Mana on top" },
-        { id = "fsrOver", text = "5SR on top" },
+        { id = "manaOver", text = "Mana over 5SR" },
+        { id = "fsrOver", text = "5SR over mana" },
     },
     mana = {
-        { id = "game", text = "The game's", tooltip = "The default: your real mana, drawn by the game." },
-        { id = "model", text = "Modelled (~)", tooltip = "SpellTuner's modelled pool, a little transparent." },
+        { id = "game", text = "The game", tooltip = "The default: your real mana, drawn by the game." },
+        { id = "model", text = "The model", tooltip = "SpellTuner's modelled pool (~), a little transparent." },
     },
     after = {
         { id = "green", text = "Green", tooltip = "The default: the strip turns green once spirit regen runs." },
@@ -765,33 +775,50 @@ local BAR_ITEMS = {
     },
 }
 
+-- Flat is the only texture where the line cannot take the client's (Forever,
+-- until Q-clock-4), and its row says why the list is one long.
+local FLAT_ONLY = { id = "flat", text = "Flat (others wait for the probe)",
+    tooltip = "Forever's bar textures wait for the probe (Q-clock-4)." }
+
 local function BarItems(field)
     local items = {}
     local facts = Facts()
     for _, it in ipairs(BAR_ITEMS[field]) do
         if MD.ClockView.BarsOK("line", { [field] = it.id }, facts) then items[#items + 1] = it end
     end
+    if field == "texture" and not facts.textures and #items == 1 and items[1].id == "flat" then
+        items[1] = FLAT_ONLY
+    end
     return items
 end
 
--- One bars.<layout>.<field>: the default writes nil.
+-- Order is Stacked's alone: One bar and Swipe chip draw a single mana bar.
+local ORDER_TIP = "Which bar is on top. Stacked only: One bar and Swipe chip draw a single mana bar."
+local function Stacked(p)
+    local b = p.look and p.look.bars
+    return (b and b.join or "stacked") == "stacked"
+end
+
+-- One bars.<layout>.<field>: the default writes nil. Order is written only
+-- while Join is Stacked (its dropdown is disabled otherwise).
 local function SetBar(p, field, value)
+    if field == "order" and not Stacked(p) then return end
     Set("bars." .. Layout(p) .. "." .. field, (value ~= MD.ClockView.BARS_DEFAULT[field]) and value or nil)
 end
 
 local BAR_LABEL = {
-    show = "Show", join = "Join", order = "Order", mana = "Mana from", after = "After the rule", texture = "Texture",
+    show = "Bars", join = "Join", order = "Order", mana = "Mana from", after = "After the rule", texture = "Texture",
 }
 
 TAB.bars = function(p, f)
     local facts = Facts()
-    local function Row(field, x, y)
+    local function Row(field, x, y, w)
         local fs = f:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
         fs:SetPoint("TOPLEFT", f, "TOPLEFT", x, y - 3)
         fs:SetWidth(LABEL_W - 16)
         fs:SetJustifyH("LEFT")
         fs:SetText(BAR_LABEL[field])
-        local dd = UI.CreateDropdown(f, 120, 18, function(id) SetBar(p, field, id) end)
+        local dd = UI.CreateDropdown(f, w or 120, 18, function(id) SetBar(p, field, id) end)
         dd:SetPoint("TOPLEFT", f, "TOPLEFT", x + LABEL_W - 12, y)
         dd:SetItems(BarItems(field))
         p[field .. "Dropdown"] = dd
@@ -800,10 +827,15 @@ TAB.bars = function(p, f)
     local left, right = 0, 260
     Row("show", left, -2)
     Row("join", left, -2 - ROW)
-    Row("order", left, -2 - 2 * ROW)
+    local order = Row("order", left, -2 - 2 * ROW)
+    UI.SetTooltips(order, "ANCHOR_TOPLEFT", 0, 3, "Order", ORDER_TIP)
     if facts.model then Row("mana", left, -2 - 3 * ROW) end
-    Row("after", right, -2)
-    Row("texture", right, -2 - ROW)
+    local after = Row("after", right, -2)
+    if not facts.tick then
+        -- answer 5: the tick is not offered here, and the control says why
+        UI.SetTooltips(after, "ANCHOR_TOPLEFT", 0, 3, "After the rule", MD.ClockView.TICK_REFUSED)
+    end
+    Row("texture", right, -2 - ROW, (not facts.textures) and 200 or nil)
     local fsr = UI.CreateSlider("5SR strip (px)", f, MD.ClockView.FSR_RANGE[1], MD.ClockView.FSR_RANGE[2], 120, 1,
         nil, function(value)
             value = tonumber(value)
@@ -1062,6 +1094,23 @@ local function BuildBottom(p, pane)
     p.placeButton = place
 end
 
+-- CS.PlaceMinimum(slider, fs, min): the green mark on the slider's track at
+-- the layout's minimum (the track's own width over its range), "min N"
+-- beside it; no minimum, or one outside the range, hides the mark.
+function CS.PlaceMinimum(slider, fs, min)
+    if fs then fs:SetText(min and ("min " .. min) or "") end
+    local mark = slider and slider.minMark
+    if not mark then return end
+    local lo, hi = slider.low, slider.high
+    if type(min) ~= "number" or type(lo) ~= "number" or type(hi) ~= "number" or hi <= lo or min < lo or min > hi then
+        mark:Hide()
+        return
+    end
+    mark:ClearAllPoints()
+    mark:SetPoint("CENTER", slider, "LEFT", slider:GetWidth() * (min - lo) / (hi - lo), 0)
+    mark:Show()
+end
+
 -- CS.Refresh(p): every control from the resolved look and the line's
 -- switches, the preview repainted.
 function CS.Refresh(p)
@@ -1089,8 +1138,11 @@ function CS.Refresh(p)
     end
     if p.scaleSlider then p.scaleSlider:SetValue(fr.scale or 100) end
     local mw, mh = p.view:Minimum()
-    if p.wMin then p.wMin:SetText(mw and ("min " .. mw) or "") end
-    if p.hMin then p.hMin:SetText(mh and ("min " .. mh) or "") end
+    CS.PlaceMinimum(p.wSlider, p.wMin, mw)
+    CS.PlaceMinimum(p.hSlider, p.hMin, mh)
+    if p.orderDropdown then
+        if Stacked(p) then p.orderDropdown:Enable() else p.orderDropdown:Close(); p.orderDropdown:Disable() end
+    end
     if p.manaColour then
         local c = look.colors and look.colors.manaBar
         p.manaColour:SetValue((c == nil or c == "mana") and "mana" or (c == "tone" or c == "class") and c or "fixed")

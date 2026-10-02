@@ -487,10 +487,23 @@ Try("minimum: a size under it stops at it and is named; View:Minimum() is the me
     local mw2, mh2 = v:Minimum()
     UI.ApplyFonts(0)
     Paint(face1)
+    -- no secondary (rest and cooldown both off): the minimum drops by the
+    -- secondary's room (C2: 100 x 30 with no secondary)
+    local sh = v.look.show
+    local rest0, cd0 = sh.rest, sh.cd
+    sh.rest, sh.cd = false, false
+    Paint(face1)
+    local mwNo, mhNo = v:Minimum()
+    local dropped = CV.HasSecondary(v.look) == false and mwNo < mw and mwNo <= 110 and mhNo == mh
+        and frame:GetWidth() == mwNo and Misfit(v, "line") == nil
+    sh.rest, sh.cd = rest0, cd0
+    Paint(face1)
+    local back = select(1, v:Minimum()) == mw
     Reset()
-    return stopped and named and mw2 > mw and mh2 >= mh,
-        string.format("min %sx%s, frame %sx%s, refused %q, +2: %sx%s", tostring(mw), tostring(mh),
-            tostring(frame:GetWidth()), tostring(frame:GetHeight()), tostring(why), tostring(mw2), tostring(mh2))
+    return stopped and named and mw2 > mw and mh2 >= mh and dropped and back,
+        string.format("min %sx%s, frame %sx%s, refused %q, +2: %sx%s, no secondary %sx%s, back %s", tostring(mw),
+            tostring(mh), tostring(frame:GetWidth()), tostring(frame:GetHeight()), tostring(why), tostring(mw2),
+            tostring(mh2), tostring(mwNo), tostring(mhNo), tostring(back))
 end)
 
 -- 6. Scale: SetScale per layout, the centre kept

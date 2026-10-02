@@ -727,6 +727,15 @@ end
 -- { x, y, w, h } from the frame's BOTTOMLEFT.
 local METRICS = {}
 
+-- CV.HasSecondary(look) -> whether the line layout can draw a secondary
+-- segment: false only when the look's switches drop both the rest and the
+-- cooldown segment (ClockFace.Segments' look.show; an absent switch keeps it).
+function CV.HasSecondary(look)
+    local sh = type(look) == "table" and look.show
+    if type(sh) ~= "table" then return true end
+    return not (sh.rest == false and sh.cd == false)
+end
+
 METRICS.line = function(v, look)
     local b = look.bars
     local manaOn, el = Element(b)
@@ -736,7 +745,10 @@ METRICS.line = function(v, look)
     local lp = v:ProbeIn(UI.FONT)
     local labelW = Measure(lp, look.labelSample or "FULL")
     local labelH = MeasureH(lp, look.labelSample or "FULL")
-    local secondW = Measure(lp, CV.SECOND_SAMPLE)
+    -- the secondary's room only while the line can draw one (C2: 100 x 30
+    -- with no secondary): a look whose switches drop both the rest and the
+    -- cooldown segment (a line with no cooldown secondary says cd = false)
+    local secondW = CV.HasSecondary(look) and (CV.GAP + Measure(lp, CV.SECOND_SAMPLE)) or 0
     local np = v:ProbeIn(UI.FONT_NUM or UI.FONT)
     local valueW = Measure(np, CV.VALUE_SAMPLE)
     local valueH = MeasureH(np, CV.VALUE_SAMPLE)
@@ -744,7 +756,7 @@ METRICS.line = function(v, look)
     local rowH = math.ceil(math.max(labelH, valueH, FontSize(UI.FONT), FontSize(UI.FONT_NUM or UI.FONT)))
     local top = 4 + rowH + 2
     local anyBar = manaOn or el ~= nil
-    local minW = math.ceil(inset + chipOff + labelW + CV.GAP + valueW + CV.GAP + secondW + inset)
+    local minW = math.ceil(inset + chipOff + labelW + CV.GAP + valueW + secondW + inset)
     local minH = anyBar and (top + 5 + s + 1 + 2) or (rowH + 8)
     local w, h = Fit(look, minW, minH)
     local barW = w - 20

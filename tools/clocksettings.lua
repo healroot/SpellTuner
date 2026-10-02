@@ -429,18 +429,27 @@ Try("Colours: Mana colour writes colors.manaBar (by tone, class, a swatch); the 
             tostring(fixed), tostring(back))
 end)
 
-Try("Bars: each dropdown and the 5SR thickness write bars.<layout>.*; the clock draws them", function()
+Try("Bars: each dropdown and the 5SR thickness write bars.<layout>.*; the clock draws them; Order is Stacked's only", function()
     p.box:Select("bars")
-    local picks = Pick(p.showDropdown, "mana") and Pick(p.showDropdown, "both") and Pick(p.joinDropdown, "veil")
-        and Pick(p.orderDropdown, "fsrOver") and Pick(p.afterDropdown, "empty")
+    local orderOn = p.orderDropdown and p.orderDropdown:IsEnabled()
+    local picks = Pick(p.showDropdown, "mana") and Pick(p.showDropdown, "both") and Pick(p.orderDropdown, "fsrOver")
+        and Pick(p.joinDropdown, "veil") and Pick(p.afterDropdown, "empty")
     Type(p.fsrSlider, "5")
     local o = Over().bars and Over().bars.line or {}
     local wl = WidgetLook().bars or {}
     local okW = o.show == nil and o.join == "veil" and o.order == "fsrOver" and o.after == "empty" and o.fsr == 5
         and wl.join == "veil" and wl.order == "fsrOver" and wl.after == "empty" and wl.fsr == 5
         and p.look.bars.join == "veil"
-    return picks and okW, string.format("picks %s, over join %s order %s after %s fsr %s show %s", tostring(picks),
-        tostring(o.join), tostring(o.order), tostring(o.after), tostring(o.fsr), tostring(o.show))
+    -- under One bar the Order dropdown is disabled, says why, and writes nothing
+    local orderOff = p.orderDropdown:IsEnabled() == false
+    Pick(p.orderDropdown, "manaOver")
+    local kept = (Over().bars.line.order == "fsrOver")
+    local tips = table.concat(p.orderDropdown.tooltips or {}, " ")
+    local said = T.Has(tips, "Stacked only")
+    return picks and okW and orderOn and orderOff and kept and said,
+        string.format("picks %s, over join %s order %s after %s fsr %s show %s; order on %s, off %s, kept %s, tip %q",
+            tostring(picks), tostring(o.join), tostring(o.order), tostring(o.after), tostring(o.fsr), tostring(o.show),
+            tostring(orderOn), tostring(orderOff), tostring(kept), tips)
 end)
 
 Try("Bars: the choices are this line's (" .. (forever and "Mana from; no tick; flat only" or "the tick; three textures; no Mana from") .. ")", function()
@@ -451,16 +460,35 @@ Try("Bars: the choices are this line's (" .. (forever and "Mana from; no tick; f
     end
     local show, join, order = Ids(p.showDropdown), Ids(p.joinDropdown), Ids(p.orderDropdown)
     local after, tex, mana = Ids(p.afterDropdown), Ids(p.textureDropdown), p.manaDropdown and Ids(p.manaDropdown)
+    local function Texts(dd)
+        local t = {}
+        for _, it in ipairs(dd and dd.items or {}) do t[#t + 1] = it.text end
+        return table.concat(t, "/")
+    end
+    local labels = {}
+    for _, fs in ipairs(FontStrings(p.tabFrames.bars)) do labels[fs:GetText() or ""] = true end
+    local words = Texts(p.showDropdown) == "Mana + 5SR/Mana only/5SR only/None"
+        and Texts(p.joinDropdown) == "Stacked/One bar/Swipe chip"
+        and Texts(p.orderDropdown) == "Mana over 5SR/5SR over mana"
+        and labels["Bars"] and labels["Join"] and labels["Order"] and labels["After the rule"] and labels["Texture"]
+        and not labels["Show"]
     local common = show == "both,mana,fsr,none" and join == "stacked,veil,chip" and order == "manaOver,fsrOver"
+        and words
     local own
+    local afterTip = table.concat(p.afterDropdown and p.afterDropdown.tooltips or {}, " ")
     if forever then
         own = after == "green,empty" and tex == "flat" and mana == "game,model"
+            and Texts(p.textureDropdown) == "Flat (others wait for the probe)"
+            and Texts(p.manaDropdown) == "The game/The model" and labels["Mana from"]
+            and T.Has(afterTip, MD.ClockView.TICK_REFUSED)
             and T.Has(p.afterNote and p.afterNote:GetText(), "cannot be learned")
     else
         own = after == "green,empty,tick" and tex == "flat,statusbar,raid" and mana == nil
+            and Texts(p.textureDropdown) == "Flat/Status bar/Raid bar" and not labels["Mana from"]
+            and not T.Has(afterTip, "cannot be learned")
     end
-    return common and own, string.format("show %s join %s order %s after %s texture %s mana %s", show, join, order,
-        after, tex, tostring(mana))
+    return common and own, string.format("show %s join %s order %s after %s texture %s (%s) mana %s; words %s, after tip %q",
+        show, join, order, after, tex, Texts(p.textureDropdown), tostring(mana), tostring(words), afterTip)
 end)
 
 Try("Bars: a choice is kept per layout (compact has its own; line's comes back)", function()
@@ -483,13 +511,26 @@ Try("Frame: width and height write frame.<layout>.w / h; each slider names the l
     local wl = WidgetLook().frame or {}
     local okF = fr.w == 260 and fr.h == 44 and wl.w == 260 and wl.h == 44
     local okMin = p.wMin and p.wMin:GetText() == "min " .. mw and p.hMin and p.hMin:GetText() == "min " .. mh
-    local note = false
+    -- the green mark sits on the track at the minimum
+    local function MarkAt(slider, min)
+        local mark = slider and slider.minMark
+        local pt = mark and mark.points and mark.points[1]
+        if not (pt and mark:IsShown()) then return false end
+        local want = slider:GetWidth() * (min - slider.low) / (slider.high - slider.low)
+        local r, g, b = UI.RGB("good")
+        local c = mark.color or {}
+        return pt[1] == "CENTER" and pt[2] == slider and pt[3] == "LEFT" and math.abs((pt[4] or 0) - want) < 1e-6
+            and (c[1] == nil or (math.abs(c[1] - r) < 1e-6 and math.abs(c[2] - g) < 1e-6 and math.abs(c[3] - b) < 1e-6))
+    end
+    local marks = MarkAt(p.wSlider, mw) and MarkAt(p.hSlider, mh)
+    local note, green = false, false
     for _, fs in ipairs(FontStrings(p.tabFrames.frame)) do
         if fs:GetText() == "Width, height and scale are kept per layout." then note = true end
+        if fs:GetText() == "Green mark: this layout's minimum at this text size." then green = true end
     end
-    return okF and okMin and note, string.format("over %s x %s, min %s / %s (%s x %s), note %s", tostring(fr.w),
-        tostring(fr.h), tostring(p.wMin and p.wMin:GetText()), tostring(p.hMin and p.hMin:GetText()), tostring(mw),
-        tostring(mh), tostring(note))
+    return okF and okMin and marks and note and green, string.format("over %s x %s, min %s / %s (%s x %s), marks %s, notes %s / %s",
+        tostring(fr.w), tostring(fr.h), tostring(p.wMin and p.wMin:GetText()), tostring(p.hMin and p.hMin:GetText()),
+        tostring(mw), tostring(mh), tostring(marks), tostring(note), tostring(green))
 end)
 
 Try("Frame: Scale writes frame.<layout>.scale on release (a drag alone writes nothing)", function()
