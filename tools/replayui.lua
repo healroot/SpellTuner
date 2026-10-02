@@ -98,6 +98,9 @@ local sawDefIcon, sawDebuff2 = false, false
 local sawCastProgress, castProgressDetail = false, ""
 local sawTargetIcon = false
 local sawGcdSweep = false
+-- F2: a hard cast's GCD ran under its own bar; after its success the name
+-- stays, dimmed -- never a grey "instant" sweep. An instant still sweeps.
+local hardSwept, sawInstantSweep, sawRegrowthIdle = {}, false, false
 local frames = 0
 local HOT_INDEX = SM.HOT_INDEX
 while MD.Replay._state().playing and frames < 2000 do
@@ -126,6 +129,13 @@ while MD.Replay._state().playing and frames < 2000 do
         sawCastProgress = true; castProgressDetail = string.format("%.2f at %s", v, txt)
     end
     if txt:find("instant") and v > 0 and v < 1 then sawGcdSweep = true end
+    for side, col in pairs({ left = W.left, right = W.right }) do
+        local ct = col.strip.castFS:GetText() or ""
+        if ct:find("^Regrowth") and ct:find("instant") then hardSwept[#hardSwept + 1] = side .. ": " .. ct end
+    end
+    if txt:find("^Rejuvenation") and txt:find("instant") and v > 0 and v < 1 then sawInstantSweep = true end
+    -- the idle look: the hard cast's name, empty bar, after its success
+    if txt:find("^Regrowth") and not txt:find("%ds$") and v == 0 then sawRegrowthIdle = true end
     local tf = W.left.frames[tankRow]
     if tf.cast:GetText():find("^Regrowth.*%.%.%.$") and tf.border and tf.border[2] > 0.8 then sawTargetIcon = true end
     if W.left.frames[tankRow].defIcon:IsShown() then sawDefIcon = true end
@@ -166,6 +176,9 @@ check("scrubber tick coloured by label", labelled >= 1, tostring(labelled))
 check("cast bar progresses during the Regrowth", sawCastProgress, castProgressDetail)
 check("in-flight cast named on the tank with its border", sawTargetIcon)
 check("instant sweeps the GCD", sawGcdSweep)
+check("F2: a hard cast is not followed by an instant sweep", #hardSwept == 0, hardSwept[1])
+check("F2: an instant (Rejuvenation) still sweeps", sawInstantSweep)
+check("F2: a landed hard cast's name stays, bar empty", sawRegrowthIdle)
 check("last cast name stays after the fight", W.left.strip.castFS:GetText() ~= "", W.left.strip.castFS:GetText())
 check("five speeds incl. 1/4x", #W.speeds == 5 and W.speeds[1].id == 0.25, tostring(#W.speeds))
 -- v0.8.3

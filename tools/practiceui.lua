@@ -162,9 +162,20 @@ check("one column, five frames", st.rows and #st.rows == 5 and st.frame:IsShown(
 check("the scrubber is hidden: the future has not happened", not st.scrubber:IsShown())
 check("an End button is shown", Button("End") ~= nil)
 
+-- F2: every frame's YOU strip, read back while the fight plays
+local stripSeen = {}
 local function Tick(sec)
     local fn = st.frame:GetScript("OnUpdate")
-    for _ = 1, math.floor(sec / 0.05 + 0.5) do S.now = S.now + 0.05; fn(st.frame, 0.05) end
+    for _ = 1, math.floor(sec / 0.05 + 0.5) do
+        S.now = S.now + 0.05; fn(st.frame, 0.05)
+        local s = st.left.strip
+        stripSeen[#stripSeen + 1] = { text = s.castFS:GetText() or "", v = s.cast:GetValue() }
+    end
+end
+local function StripSaw(pattern, fn)
+    for _, x in ipairs(stripSeen) do
+        if x.text:find(pattern) and (not fn or fn(x)) then return x end
+    end
 end
 local tank = st.left.frames[1]
 Tick(1.0)
@@ -185,6 +196,17 @@ Tick(2.5)
 local casts = 0
 for _, o in ipairs(live.own) do if o.kind == MD.SimModel.K.OWNCAST then casts = casts + 1 end end
 check("a bound key over a frame casts on it", casts == 2, tostring(casts))
+-- F2 (the author, 0.16.6 Practice: "after direct cast it start animating gcd
+-- of the cast"): the instant Lifebloom sweeps its GCD; the hard Regrowth fills
+-- its own bar and, once it lands, its name stays dimmed with no "instant" sweep
+check("F2: an instant press sweeps the GCD",
+    StripSaw("^Lifebloom.*instant", function(x) return x.v > 0 and x.v < 1 end) ~= nil)
+check("F2: a hard cast fills its own bar", StripSaw("^Regrowth.*%ds$") ~= nil)
+local swept = StripSaw("^Regrowth.*instant")
+check("F2: no instant sweep after a hard cast lands", swept == nil, swept and swept.text)
+check("F2: the landed hard cast's name stays, bar empty",
+    (st.left.strip.castFS:GetText() or ""):find("^Regrowth") ~= nil and st.left.strip.cast:GetValue() == 0,
+    st.left.strip.castFS:GetText())
 -- a press with nothing to eat names the reason
 local ranged = st.left.frames[4]
 ranged:GetScript("OnMouseDown")(ranged, "RightButton")
