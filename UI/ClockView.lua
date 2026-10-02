@@ -66,6 +66,10 @@
 --     widest value they can draw (CV.VALUE_SAMPLE) measured in their own
 --     fonts, at each paint, resized only when a measure changed (a font
 --     offset); "line" keeps 180 x 30 (taller only for a bar over 4 px).
+--     F1: every layout draws its bar at the Height setting -- "bar" too,
+--     centred behind the text, the frame growing when the bar is taller --
+--     and while the five-second rule runs its bar and spark move every frame
+--     (View:Step, an OnUpdate on the bar only), not only at the line's paint.
 --   * The dump line (`clock: layout <key>, <n> overrides (<keys>)`) through
 --     MD:AddDumpLine, added the first time the look is not the default one,
 --     so the dump of a player who never touched the clock is what it was.
@@ -523,8 +527,13 @@ METRICS.bar = function(v, look)
     local valueH = MeasureH(vprobe, CV.VALUE_SAMPLE)
     v:ProbeIn(UI.FONT) -- the probe back in the label's font (the line's slot measure)
     local w = math.max(look.width, 2 * inset + labelW + 2 * CV.GAP + valueW)
-    local h = math.max(look.height, math.max(labelH, valueH) + 6)
-    return { w = w, h = h, inset = inset, barW = w - 4, barH = h - 4 }
+    -- F1: the bar is the Height setting (it was the frame's height less 4,
+    -- whatever the setting said): the frame at least as tall as its text
+    -- needs, the bar centred behind the text when shorter, the frame growing
+    -- 2 px round it when the bar is taller
+    local barH = look.bar.height or CV.LAYOUT.bar.bar.height
+    local h = math.max(look.height, math.max(labelH, valueH) + 6, barH + 4)
+    return { w = w, h = h, inset = inset, barW = w - 4, barH = barH }
 end
 
 local function SameMetrics(a, b)
@@ -636,6 +645,7 @@ function View:ShowBar(on)
         if self.spark then self.spark:Hide() end
     end
     self.barOn = on and true or false
+    if not self:WantsSmooth() then self:Smooth(false) end
 end
 
 -- view:Snap(): the panel (UI.Skin(frame, "clock"), the look's fill and edge)
@@ -681,6 +691,9 @@ function CV.Build(parent, look, draw)
     v.bar:SetStatusBarTexture(UI.whiteTexture)
     v.barBack = parent:CreateTexture(nil, "ARTWORK")
     v.barBack:SetPoint("CENTER", v.bar, "CENTER", 0, 0)
+    -- F1: the per-frame step of the five-second rule, made once per view
+    -- (installing it again allocates nothing)
+    v.step = function() v:Step(GetTime()) end
 
     v:SetLook(look)
     return v
@@ -807,6 +820,7 @@ function View:PaintBar(now)
     local src = b.source
     if src == "none" or not self.barOn then
         if self.spark then self.spark:Hide() end
+        self:Smooth(false)
         return
     end
     local bar = self.bar
@@ -835,6 +849,52 @@ function View:PaintBar(now)
     end
     bar:SetStatusBarColor(self:BarColour(src, remaining))
     self:PaintSpark(remaining)
+    -- F1: between two paints the rule moves every frame
+    self:Smooth(self:WantsSmooth() and type(remaining) == "number" and remaining > 0)
+end
+
+--------------------------------------------------------------------------------
+-- F1: the five-second rule, every frame. The line paints its bar at its own
+-- pace (TBC 10 a second, Forever on the 0.5 s tick); while the rule runs,
+-- an OnUpdate on the bar sets only the bar's value (source fsr) and the
+-- spark's place from the line's draw.fsr(now) -- nothing else repainted, no
+-- Show / Hide of the frame, nothing allocated per frame. It removes itself
+-- when the rule ends (the bar full in the regen colour, the spark hidden),
+-- and is removed when the source and the spark stop being the rule's, when
+-- the bar is hidden and by the preview's full bar.
+--------------------------------------------------------------------------------
+function View:WantsSmooth()
+    local b = self.look and self.look.bar
+    return self.barOn == true and type(b) == "table" and (b.source == "fsr" or b.spark == "fsr")
+end
+
+function View:Smooth(on)
+    on = on and true or false
+    if not self.bar or self.smoothing == on then return end
+    self.smoothing = on
+    self.bar:SetScript("OnUpdate", on and self.step or nil)
+end
+
+function View:Step(now)
+    local b = self.look.bar
+    local remaining = self:FSR(now)
+    if not (remaining and remaining > 0) or not self:WantsSmooth() then
+        self:Smooth(false)
+        if b.source == "fsr" and self.barOn then
+            self.bar:SetValue(5)
+            self.bar:SetStatusBarColor(self:BarColour("fsr", 0))
+        end
+        if self.spark then self.spark:Hide() end
+        return
+    end
+    if b.source == "fsr" then self.bar:SetValue(5 - remaining) end
+    if b.spark == "fsr" and self.spark and self.spark:IsShown() then self:MoveSpark(remaining) end
+end
+
+function View:MoveSpark(remaining)
+    local s = self.spark
+    s:ClearAllPoints()
+    s:SetPoint("CENTER", self.bar, "LEFT", (5 - remaining) / 5 * self.barW, 0)
 end
 
 -- The spark: yellow, sweeping the bar over the five seconds after a spend.
@@ -855,8 +915,7 @@ function View:PaintSpark(remaining)
     end
     local w = UI.px and UI.px(CV.SPARK_WIDTH, self.parent) or CV.SPARK_WIDTH
     s:SetSize(w, self.barH)
-    s:ClearAllPoints()
-    s:SetPoint("CENTER", self.bar, "LEFT", (5 - remaining) / 5 * self.barW, 0)
+    self:MoveSpark(remaining)
     s:Show()
 end
 
@@ -867,6 +926,7 @@ function View:FillBar(r, g, b)
     self.bar:SetValue(5)
     self.bar:SetStatusBarColor(r, g, b)
     if self.spark then self.spark:Hide() end
+    self:Smooth(false)
 end
 
 -- view:Message(text, r, g, b): one centred line instead of the pieces (the
