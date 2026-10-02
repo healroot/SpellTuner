@@ -589,6 +589,266 @@ do
         "rc=" .. tostring(rc) .. " " .. out:sub(-120))
 end
 
+--------------------------------------------------------------------------------
+-- T-publish: ./release.sh --publish, against a FAKE curl. Nothing here ever
+-- reaches CurseForge: fakebin/curl comes first on PATH, records its argv, its
+-- stdin (the curl config the token travels in), its cwd and the metadata it was
+-- handed, and answers canned JSON. On a scratch git repository of the tree (a
+-- clean, committed copy: --publish refuses anything else), whose
+-- dist/publish tree/published.txt is the upload record.
+--------------------------------------------------------------------------------
+local PUB = SCRATCH .. "/publish tree"
+local FAKEBIN = SCRATCH .. "/fakebin"
+local CURL_LOG = SCRATCH .. "/curl log"
+local VERSIONS_JSON = SCRATCH .. "/versions.json"
+local TOKEN = "cf-TEST-token-7f3a9c0d"
+local PUB_RECORD = PUB .. "/dist/publish tree/published.txt"
+
+local function Write(path, text)
+    local f = io.open(path, "wb")
+    if not f then return false end
+    f:write(text); f:close()
+    return true
+end
+
+local pubReady
+do
+    sh("mkdir -p " .. q(PUB) .. " " .. q(FAKEBIN))
+    sh("cd " .. q(COPY) .. " && tar -cf - --exclude=./.git . | tar -xf - -C " .. q(PUB))
+    -- the copy carries --set-version's 0.16.9 by now: back to the tree's TOCs
+    for _, rel in ipairs(AllTocs(ROOT)) do
+        local text = Slurp(ROOT .. "/" .. rel)
+        if text then Write(PUB .. "/" .. rel, text) end
+    end
+    -- a newest HISTORY entry with a quote, a backslash and a non-ASCII dash, for the changelog
+    local hist = Slurp(PUB .. "/docs/HISTORY.md") or ""
+    Write(PUB .. "/docs/HISTORY.md", hist .. "\n## 2099-01-01 \226\128\148 publish test\n\n"
+        .. "A line with \"quotes\", a back\\slash and a dash \226\128\148 here.\n\n- one item\n")
+    Write(VERSIONS_JSON, '[{"id": 7, "gameVersionTypeID": 517, "name": "11.2.0", "slug": "11-2-0"},'
+        .. ' {"id": 10101, "gameVersionTypeID": 73713, "name": "2.5.6", "slug": "2-5-6"},'
+        .. ' {"id": 10102, "gameVersionTypeID": 73713, "name": "2.5.5", "slug": "2-5-5"},'
+        .. ' {"id": 20201, "gameVersionTypeID": 99001, "name": "1.60.1", "slug": "1-60-1"}]')
+    -- The fake: argv one per line, stdin when "-K -", the cwd, the metadata file's
+    -- content, whether the file part exists; -o / -w honoured; 200 always.
+    Write(FAKEBIN .. "/curl", [=[#!/usr/bin/env bash
+mkdir -p "$FAKE_CURL_LOG"
+n=$(( $(cat "$FAKE_CURL_LOG/count" 2>/dev/null || echo 0) + 1 ))
+echo "$n" > "$FAKE_CURL_LOG/count"
+printf '%s\n' "$@" > "$FAKE_CURL_LOG/$n.argv"
+pwd > "$FAKE_CURL_LOG/$n.cwd"
+out="" fmt="" url="" stdin=0 prev=""
+for a in "$@"; do
+    case "$prev" in
+        -o) out="$a" ;;
+        -w) fmt="$a" ;;
+        -K) [[ "$a" == "-" ]] && stdin=1 ;;
+        -F)
+            case "$a" in
+                metadata=\<*) cat "${a#metadata=<}" > "$FAKE_CURL_LOG/$n.metadata" ;;
+                file=@*) f="${a#file=@}"; if [[ -f "$f" ]]; then echo "exists $f" > "$FAKE_CURL_LOG/$n.file"; else echo "missing $f" > "$FAKE_CURL_LOG/$n.file"; fi ;;
+            esac ;;
+    esac
+    case "$a" in http*) url="$a" ;; esac
+    prev="$a"
+done
+[[ $stdin -eq 1 ]] && cat > "$FAKE_CURL_LOG/$n.stdin"
+echo "$url" > "$FAKE_CURL_LOG/$n.url"
+case "$url" in
+    */api/game/versions) body="$(cat "$FAKE_CURL_VERSIONS")" ;;
+    */upload-file) body="{\"id\": $((4240 + n))}" ;;
+    *) body='{"errorMessage": "fake curl: unknown url"}' ;;
+esac
+if [[ -n "$out" ]]; then printf '%s' "$body" > "$out"; else printf '%s' "$body"; fi
+[[ -n "$fmt" ]] && printf '%s' "${fmt//%\{http_code\}/200}"
+exit 0
+]=])
+    sh("chmod +x " .. q(FAKEBIN .. "/curl"))
+    local _, rc = sh("cd " .. q(PUB) .. " && git init -q . && git add -A"
+        .. " && git -c user.name=releasecheck -c user.email=releasecheck@invalid commit -qm 'publish tree'")
+    pubReady = rc == 0 and Slurp(PUB .. "/release.sh") ~= nil
+end
+
+local function Commit(rel, text)
+    Write(PUB .. "/" .. rel, text)
+    return select(2, sh("cd " .. q(PUB) .. " && git add -A"
+        .. " && git -c user.name=releasecheck -c user.email=releasecheck@invalid commit -qm " .. q(rel))) == 0
+end
+
+local function Config(project, tbcNames, foreverNames, releaseType)
+    return "# test config\nproject_id = " .. project .. "\ntbc_game_versions = " .. tbcNames
+        .. "\nforever_game_versions = " .. foreverNames .. "\nrelease_type = " .. (releaseType or "beta") .. "\n"
+end
+
+-- One run of the scratch tree's release.sh with the fake curl first on PATH;
+-- the token set unless opts.noToken, under bash -x when opts.trace.
+local function Publish(opts, ...)
+    sh("rm -rf " .. q(CURL_LOG))
+    local args = {}
+    for _, a in ipairs({ ... }) do args[#args + 1] = q(a) end
+    local env = "env -u WOW_ADDONS -u CURSEFORGE_API_TOKEN PATH=" .. q(FAKEBIN) .. ":\"$PATH\""
+        .. " FAKE_CURL_LOG=" .. q(CURL_LOG) .. " FAKE_CURL_VERSIONS=" .. q(VERSIONS_JSON)
+    if not opts.noToken then env = env .. " CURSEFORGE_API_TOKEN=" .. q(TOKEN) end
+    return sh(env .. " bash " .. (opts.trace and "-x " or "") .. q(PUB .. "/release.sh") .. " " .. table.concat(args, " "))
+end
+
+-- What the fake recorded: one table per call, in order.
+local function Calls()
+    local t = {}
+    local n = tonumber((Slurp(CURL_LOG .. "/count") or ""):match("%d+")) or 0
+    for i = 1, n do
+        local p = CURL_LOG .. "/" .. i
+        t[i] = { argv = Slurp(p .. ".argv") or "", stdin = Slurp(p .. ".stdin") or "",
+            url = (Slurp(p .. ".url") or ""):gsub("%s+$", ""), metadata = Slurp(p .. ".metadata"),
+            file = Slurp(p .. ".file"), cwd = Slurp(p .. ".cwd") or "" }
+    end
+    return t
+end
+
+local function Uploads(calls)
+    local t = {}
+    for _, c in ipairs(calls) do if c.url:find("/upload-file", 1, true) then t[#t + 1] = c end end
+    return t
+end
+
+-- A metadata JSON as "key<TAB>value" lines (gameVersions joined by commas), through python.
+local function Meta(json)
+    if not json then return {} end
+    local path = SCRATCH .. "/meta.json"
+    Write(path, json)
+    local out = sh("python3 -c " .. q("import json, sys\n"
+        .. "m = json.load(open(sys.argv[1], encoding='utf-8'))\n"
+        .. "print('keys\\t' + ','.join(sorted(m)))\n"
+        .. "for k in ('changelogType', 'displayName', 'releaseType'): print(k + '\\t' + str(m.get(k)))\n"
+        .. "print('gameVersions\\t' + ','.join(str(v) + ':' + type(v).__name__ for v in m.get('gameVersions', [])))\n"
+        .. "sys.stdout.buffer.write(b'changelog\\t' + json.dumps(m.get('changelog')).encode() + b'\\n')") .. " " .. q(path))
+    local t = {}
+    for line in out:gmatch("[^\n]+") do
+        local k, v = line:match("^([^\t]+)\t(.*)$")
+        if k then t[k] = v end
+    end
+    return t
+end
+
+local TREE_V = tostring(TREE_VERSION)
+local CHANGELOG_JSON = '"## 2099-01-01 \\u2014 publish test\\n\\nA line with \\"quotes\\", a back\\\\slash'
+    .. ' and a dash \\u2014 here.\\n\\n- one item"'
+
+check("publish: the scratch repository of the tree is committed and clean", pubReady,
+    "release.sh " .. tostring(Slurp(PUB .. "/release.sh") ~= nil))
+
+-- the committed config: no project id yet -> refused before building, naming the file
+do
+    local cfg = Slurp(ROOT .. "/tools/data/curseforge.txt") or ""
+    local out, rc = Publish({}, "--publish")
+    check("publish: the committed tools/data/curseforge.txt has an empty project_id and refuses before building",
+        pubReady and cfg:find("\nproject_id =[ \t]*\n") ~= nil and rc ~= 0
+        and Has(out, "tools/data/curseforge.txt") and Has(out, "project_id")
+        and #DirNames(PUB .. "/dist") == 0 and #Calls() == 0,
+        "rc=" .. tostring(rc) .. " " .. out:gsub("\n", " / "):sub(1, 200))
+end
+
+local CONFIG_OK = Config("123456", "2.5.6", "1.60.1")
+local committed = pubReady and Commit("tools/data/curseforge.txt", CONFIG_OK)
+
+do
+    local out, rc = Publish({ noToken = true }, "--publish")
+    check("publish: refused with no CURSEFORGE_API_TOKEN, before building, nothing sent",
+        committed and rc ~= 0 and Has(out, "CURSEFORGE_API_TOKEN") and #DirNames(PUB .. "/dist") == 0 and #Calls() == 0,
+        "rc=" .. tostring(rc) .. " " .. out:gsub("\n", " / "):sub(1, 200))
+end
+
+do
+    Write(PUB .. "/stray.txt", "uncommitted\n")
+    local out, rc = Publish({}, "--publish")
+    os.remove(PUB .. "/stray.txt")
+    check("publish: refused on a tree with uncommitted changes, naming them",
+        committed and rc ~= 0 and Has(out, "stray.txt") and #DirNames(PUB .. "/dist") == 0 and #Calls() == 0,
+        "rc=" .. tostring(rc) .. " " .. out:gsub("\n", " / "):sub(1, 200))
+end
+
+do
+    local out, rc = Publish({}, "--publish", "--dry-run")
+    local built = Slurp(PUB .. "/dist/publish tree/SpellTuner-tbc-" .. TREE_V .. ".zip") ~= nil
+        and Slurp(PUB .. "/dist/publish tree/SpellTuner-forever-" .. TREE_V .. ".zip") ~= nil
+    check("publish --dry-run: builds both, sends nothing, records nothing",
+        committed and rc == 0 and built and #Calls() == 0 and Slurp(PUB_RECORD) == nil,
+        "rc=" .. tostring(rc) .. " calls " .. #Calls() .. " " .. out:gsub("\n", " / "):sub(1, 200))
+    check("publish --dry-run: prints both display names, the release type, the changelog and the URL, says only that the token is present",
+        rc == 0 and Has(out, "SpellTuner " .. TREE_V .. " (TBC)") and Has(out, "SpellTuner " .. TREE_V .. " (Forever)")
+        and Has(out, '"releaseType": "beta"') and Has(out, '"changelogType": "markdown"') and Has(out, "publish test")
+        and Has(out, "/api/projects/123456/upload-file") and Has(out, "token: present") and not Has(out, TOKEN),
+        out:gsub("\n", " / "):sub(1, 240))
+end
+
+do
+    -- Forever's name is one CurseForge does not list (Forever not on CurseForge yet)
+    local wrote = pubReady and Commit("tools/data/curseforge.txt", Config("123456", "2.5.6", "1.60.1, 9.9.9-nope"))
+    local out, rc = Publish({}, "--publish")
+    local calls = Calls()
+    check("publish: a game version name CurseForge does not list is refused by name before any upload",
+        wrote and rc ~= 0 and Has(out, "9.9.9-nope") and Has(out, "forever") and #calls == 1
+        and calls[1].url == "https://wow.curseforge.com/api/game/versions" and #Uploads(calls) == 0
+        and Slurp(PUB_RECORD) == nil,
+        "rc=" .. tostring(rc) .. " calls " .. #calls .. " " .. out:gsub("\n", " / "):sub(1, 200))
+    check("publish: the refusal names the flavour that does resolve and offers --only tbc",
+        rc ~= 0 and Has(out, "--only tbc"), out:gsub("\n", " / "):sub(1, 200))
+end
+
+do
+    local out, rc = Publish({ trace = true }, "--publish", "--only", "tbc", "--release-type", "alpha")
+    local calls = Calls()
+    local ups = Uploads(calls)
+    local meta = Meta(ups[1] and ups[1].metadata)
+    check("publish --only tbc: one versions read, then one upload of the TBC zip",
+        committed and rc == 0 and #calls == 2 and calls[1].url == "https://wow.curseforge.com/api/game/versions"
+        and #ups == 1 and ups[1].url == "https://wow.curseforge.com/api/projects/123456/upload-file"
+        and Has(ups[1].file, "exists") and Has(ups[1].file, "SpellTuner-tbc-" .. TREE_V .. ".zip"),
+        "rc=" .. tostring(rc) .. " calls " .. #calls .. " " .. out:gsub("\n", " / "):sub(-240))
+    check("publish: a game version name resolves to its id (2.5.6 -> 10101)",
+        meta.gameVersions == "10101:int", tostring(meta.gameVersions))
+    check("publish: the metadata JSON -- display name, markdown changelog of the newest HISTORY entry, --release-type",
+        meta.keys == "changelog,changelogType,displayName,gameVersions,releaseType"
+        and meta.displayName == "SpellTuner " .. TREE_V .. " (TBC)" and meta.changelogType == "markdown"
+        and meta.releaseType == "alpha" and meta.changelog == CHANGELOG_JSON,
+        tostring(meta.keys) .. " " .. tostring(meta.displayName) .. " " .. tostring(meta.releaseType)
+        .. " " .. tostring(meta.changelog))
+    local inArgv, viaStdin = false, true
+    for _, c in ipairs(calls) do
+        if Has(c.argv, TOKEN) or Has(c.cwd, TOKEN) then inArgv = true end
+        if not Has(c.stdin, 'header = "X-Api-Token: ' .. TOKEN .. '"') then viaStdin = false end
+    end
+    check("publish: the token reaches curl only on stdin -- in no argv and in nothing printed, even under bash -x",
+        rc == 0 and #calls == 2 and not inArgv and viaStdin and not Has(out, TOKEN) and Has(out, "+ "),
+        "argv " .. tostring(inArgv) .. " stdin " .. tostring(viaStdin) .. " printed " .. tostring(Has(out, TOKEN)))
+    local record = Slurp(PUB_RECORD) or ""
+    local id = ups[1] and (4240 + 2)
+    check("publish: the file id is printed and recorded in dist/<name>/published.txt",
+        rc == 0 and Has(out, "file id " .. tostring(id)) and Has(record, TREE_V .. "\ttbc\t" .. tostring(id)),
+        record:gsub("\n", " / "))
+end
+
+do
+    local before = Slurp(PUB_RECORD)
+    local out, rc = Publish({}, "--publish", "--only", "tbc")
+    check("publish: a second upload of the same version is refused, before anything is sent",
+        committed and rc ~= 0 and Has(out, "already published") and #Calls() == 0 and Slurp(PUB_RECORD) == before,
+        "rc=" .. tostring(rc) .. " " .. out:gsub("\n", " / "):sub(1, 200))
+end
+
+do
+    local wrote = pubReady and Commit("tools/data/curseforge.txt", Config("123456", "2.5.6", "1.60.1"))
+    local out, rc = Publish({}, "--publish", "--only", "forever")
+    local ups = Uploads(Calls())
+    local meta = Meta(ups[1] and ups[1].metadata)
+    local record = Slurp(PUB_RECORD) or ""
+    check("publish --only forever: the Forever zip under its own name, ids and the config's release type",
+        wrote and rc == 0 and #ups == 1 and Has(ups[1].file, "exists")
+        and Has(ups[1].file, "SpellTuner-forever-" .. TREE_V .. ".zip")
+        and meta.displayName == "SpellTuner " .. TREE_V .. " (Forever)" and meta.gameVersions == "20201:int"
+        and meta.releaseType == "beta" and Has(record, TREE_V .. "\ttbc\t") and Has(record, TREE_V .. "\tforever\t"),
+        "rc=" .. tostring(rc) .. " " .. out:gsub("\n", " / "):sub(-200))
+end
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("FAIL: " .. f) end
 os.exit(#fails == 0 and 0 or 1)
