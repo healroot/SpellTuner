@@ -250,12 +250,18 @@ end
 -- draws the clock through UI/ClockView.lua, 8 regions instead of 4; captured with
 -- --golden on 546e729 (T92 + T93 with their TOC lines, no T94 code), and equal to
 -- what this tree paints, so Flat is still the parent's paint byte for byte.
+-- T115 (clock v2) re-based the clock section again: 17 regions, 180 x 32 -- the
+-- panel; the line's label, the hidden measuring probe, value, secondary and the
+-- hidden message; the mana bar 160 x 4 and its black back; the 5SR strip 160 x 3
+-- and its back; the veil, its edge and the green line (hidden: Join is stacked);
+-- the chip, its fill and its Cooldown (the chip hidden); the tick mark (hidden).
+-- Captured with --golden on this task's paint; every other section unchanged.
 --------------------------------------------------------------------------------
 local GOLDEN = {
     forever = {
         nav = { 29, 1225158578 },
         host = { 52, 441673342 },
-        clock = { 8, 1137838505 },
+        clock = { 17, 1154631320 },
         palette = { 33, 1948568416 },
         text = { 15, 1382467428 },
         fonts = { 12, 1125933103 },
@@ -263,7 +269,7 @@ local GOLDEN = {
     tbc = {
         nav = { 29, 1015818899 },
         host = { 52, 98457140 },
-        clock = { 8, 1079176797 },
+        clock = { 17, 1258458495 },
         palette = { 33, 1948568416 },
         text = { 15, 1382467428 },
         fonts = { 12, 1125933103 },

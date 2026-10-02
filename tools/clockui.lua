@@ -622,18 +622,21 @@ Try("chip: SetCooldown(lastSpend, 5) once per spend, green after; the label move
     local v = Paint(face1)
     local lx0 = Rect(v.label).l
     Bars_("line", "join", "chip")
+    -- the stub counts SetCooldown over the view's life (the fits above drew
+    -- the chip too): counted from here
+    local c0 = v.cd and v.cd.cdCalls or 0
     RuleFor(4)
     local spend = forever and MD.Pool.model.lastSpend or (MD.Regen.fsrEnd - 5)
     Paint(face1)
     Paint(face1)
     S.Tick(0.03)
     local cd = v.cd
-    local once = cd ~= nil and cd.cdCalls == 1 and Near(cd.cdStart, spend, 1e-6) and cd.cdDur == 5
+    local once = cd ~= nil and cd.cdCalls - c0 == 1 and Near(cd.cdStart, spend, 1e-6) and cd.cdDur == 5
         and Shown(v.chip) and Is(v.chipBg.color, AMBER)
     local moved = Near(Rect(v.label).l, lx0 + 13)
     RuleFor(5)
     Paint(face1)
-    local again = cd ~= nil and cd.cdCalls == 2
+    local again = cd ~= nil and cd.cdCalls - c0 == 2
     RuleOff()
     Paint(face1)
     local green = Is(v.chipBg.color, GREEN) and Shown(v.chip)
@@ -847,11 +850,14 @@ Try(forever and "mana from the model: the bar holds the face's plain pct, at 0.6
         local v = Paint(face)
         local okM = Near(v.bar.value, 0.4) and Near(v.bar.maxV, 1) and not issecretvalue(v.bar.value)
             and Near(v.manaAlpha, 0.6)
+        -- the model's value and alpha, read while plain (the game's draw below
+        -- leaves a secret in the bar, which tostring may not touch)
+        local modelV, modelA = v.bar.value, v.manaAlpha
         Bars_("line", "mana", nil)
         Paint(face)
         local game = issecretvalue(v.bar.value) == true and Near(v.manaAlpha, 1)
         Reset()
-        return okM and game, string.format("model %s alpha %s, game %s", tostring(v.bar.value), tostring(v.manaAlpha),
+        return okM and game, string.format("model %s alpha %s, game %s", tostring(modelV), tostring(modelA),
             tostring(game))
     end
     local okB, why = CV.BarsOK("line", { mana = "model" }, facts)

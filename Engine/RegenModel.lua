@@ -194,6 +194,31 @@ end
 local lastMana
 local wasInFSR = false
 
+--------------------------------------------------------------------------------
+-- T115 (clock v2, docs/tasks/T115-clock-bars-frame.md, the author's answer 5):
+-- the 2-s regen tick, LEARNED from mana gains. Every rise of the player's
+-- mana (in and out of combat) is timed into a ring of the last three; when
+-- the two intervals between them are each 2.0 s within 0.15 s and the latest
+-- is under 4 s old, the tick is known: RM:RegenTick(now) -> the latest rise,
+-- 2. Anything else (drinking and potions rise irregularly; no rise for 4 s)
+-- answers nil. Read only by the clock's "After the rule = Regen tick" (the
+-- white mark sweeping the green strip, UI/ClockView.lua); nothing in the
+-- model reads it. VERIFY in game (docs/TESTING.md).
+--------------------------------------------------------------------------------
+local gainT = { nil, nil, nil }
+local TICK_PERIOD, TICK_SLACK, TICK_STALE = 2.0, 0.15, 4
+
+function RM:RegenTick(now)
+    now = now or GetTime()
+    local a, b, c = gainT[1], gainT[2], gainT[3]
+    if not (a and b and c) or now - c >= TICK_STALE then return nil end
+    if math.abs((b - a) - TICK_PERIOD) > TICK_SLACK + 1e-9
+        or math.abs((c - b) - TICK_PERIOD) > TICK_SLACK + 1e-9 then
+        return nil
+    end
+    return c, TICK_PERIOD
+end
+
 MD:On("UNIT_POWER_UPDATE", function(unit, powerType)
     if unit ~= "player" or powerType ~= "MANA" then return end
     local cur = UnitPower("player", 0)
@@ -204,18 +229,22 @@ MD:On("UNIT_POWER_UPDATE", function(unit, powerType)
         end
         RM.fsrEnd = GetTime() + 5
         MD:Fire("MANA_SPENT", lastMana - cur)
-    elseif lastMana and cur > lastMana and not combat.active then
+    elseif lastMana and cur > lastMana then
         local now = GetTime()
-        if lastGainT then
-            local r = (cur - lastMana) / math.max(now - lastGainT, 0.5)
-            if fillGains < 2 then
-                observedFill = r
-            else
-                observedFill = observedFill + (r - observedFill) * FILL_ALPHA
+        -- T115: every rise timed, in and out of combat (RM:RegenTick)
+        gainT[1], gainT[2], gainT[3] = gainT[2], gainT[3], now
+        if not combat.active then
+            if lastGainT then
+                local r = (cur - lastMana) / math.max(now - lastGainT, 0.5)
+                if fillGains < 2 then
+                    observedFill = r
+                else
+                    observedFill = observedFill + (r - observedFill) * FILL_ALPHA
+                end
             end
+            fillGains = fillGains + 1
+            lastGainT = now
         end
-        fillGains = fillGains + 1
-        lastGainT = now
     end
     if lastMana and cur ~= lastMana then
         MD:Debug("mana", "%+d -> %d/%d%s", cur - lastMana, cur, UnitPowerMax("player", 0),

@@ -367,7 +367,7 @@ CS.SAMPLE_POOL = 0.6   -- the preview's illustrative fill for the pool and the m
 CS.SAMPLE_FSR = 3      -- seconds left in the five-second rule in a sample fight
 CS.GROUND = { dark = { 0.05, 0.05, 0.05, 1 }, light = { 0.72, 0.72, 0.72, 1 } }
 
-local DEFAULT_FACTS = { source = "none", labelSample = "FULL", show = {} }
+local DEFAULT_FACTS = { labelSample = "FULL", show = {} }
 
 -- The line's facts (UI/Widget.lua's or UI/Clock_Forever.lua's, T98).
 local function Facts()
@@ -408,20 +408,43 @@ function CS.ChipName(key)
     return s and s.name or key
 end
 
-local sampleFsr = 0
-local SAMPLE_DRAW = {
-    pool = function(b)
-        b:SetMinMaxValues(0, 1)
-        b:SetValue(CS.SAMPLE_POOL)
-    end,
-    fsr = function() return sampleFsr end,
-}
+local function SamplePool(b)
+    b:SetMinMaxValues(0, 1)
+    b:SetValue(CS.SAMPLE_POOL)
+end
+
+-- T115: each pane's own sample sources -- the illustrative pool, and the
+-- five-second rule from the pane's own spend (p.ruleSpend: a sample fight's,
+-- or a rule chip's), so the preview's strip, veil and chip move as the
+-- clock's would.
+local function SampleDraw(p)
+    if p.sampleDraw then return p.sampleDraw end
+    p.sampleDraw = {
+        pool = SamplePool,
+        fsr = function(now)
+            if not p.ruleSpend then return 0 end
+            return math.max(0, p.ruleSpend + 5 - (now or GetTime()))
+        end,
+        spend = function() return p.ruleSpend end,
+    }
+    return p.sampleDraw
+end
+
+-- The pane's spend for a sample face: in a fight, the rule with
+-- CS.SAMPLE_FSR seconds left; out of one, none.
+local function RuleFromFace(p, face)
+    if face and face.combat then
+        p.ruleSpend = GetTime() - (5 - CS.SAMPLE_FSR)
+    else
+        p.ruleSpend = nil
+    end
+end
 
 -- The line's own bar sources (the pool it draws, its five-second rule).
-local function LiveDraw()
+local function LiveDraw(p)
     local W = MD.ClockWidget
     local v = W and W.view
-    return v and type(v.draw) == "table" and v.draw or SAMPLE_DRAW
+    return v and type(v.draw) == "table" and v.draw or SampleDraw(p)
 end
 
 local function LiveFace()
@@ -462,12 +485,11 @@ function CS.PaintPreview(p)
     SyncShow(p, look)
     local face
     if p.chip == "live" then
-        v.draw = LiveDraw()
+        v.draw = LiveDraw(p)
         face = LiveFace()
     else
-        v.draw = SAMPLE_DRAW
+        v.draw = SampleDraw(p)
         face = CS.SampleFace(p.chip)
-        sampleFsr = (face and face.combat) and CS.SAMPLE_FSR or 0
     end
     v:Paint(face, look)
     v:PaintBar(GetTime())
@@ -597,9 +619,13 @@ local TONE_LABEL = {
     good = "Good (FULL)", muted = "Muted", mana = "Mana cooldown",
 }
 
-local BAR_COLOURS = {
-    { id = "source", text = "By source" }, { id = "tone", text = "By tone" }, { id = "class", text = "Class colour" },
-    { id = "fixed", text = "A swatch" },
+-- T115: the mana bar's colour (the strip, the veil and the chip keep amber
+-- and green under every choice, so their meaning never changes)
+local MANA_COLOURS = {
+    { id = "mana", text = "Mana blue", tooltip = "The default: the mana blue." },
+    { id = "tone", text = "By tone", tooltip = "The value's colour: red near OOM, green when full." },
+    { id = "class", text = "Class colour" },
+    { id = "fixed", text = "A swatch", tooltip = "Pick one in the row beside it." },
 }
 
 local TAB = {}
@@ -614,23 +640,40 @@ TAB.colours = function(p, f)
         p.toneRows[tone] = row
         y = y - ROW
     end
-    RowLabel(f, "Bar colour", y - 3)
+    RowLabel(f, "Mana colour", y - 3)
     local dd = UI.CreateDropdown(f, 110, 18, function(id)
-        if id ~= "fixed" then Set("bar.color", id) end
+        if id == "mana" then Set("colors.manaBar", nil)
+        elseif id ~= "fixed" then Set("colors.manaBar", id) end
     end)
     dd:SetPoint("TOPLEFT", f, "TOPLEFT", LABEL_W, y)
-    dd:SetItems(BAR_COLOURS)
-    p.barColour = dd
+    dd:SetItems(MANA_COLOURS)
+    p.manaColour = dd
     local row = SwatchRow(f, function(hex)
-        Set("bar.color", hex and Rgba(hex) or nil)
+        Set("colors.manaBar", hex and Rgba(hex) or nil)
     end)
     row:SetPoint("LEFT", dd, "RIGHT", 8, 0)
-    p.barColourRow = row
+    p.manaColourRow = row
     y = y - ROW
     RowLabel(f, "Bar background", y - 1)
     local back = SwatchRow(f, function(hex) Set("bar.back", Rgba(hex)) end)
     back:SetPoint("TOPLEFT", f, "TOPLEFT", LABEL_W, y)
     p.barBackRow = back
+end
+
+-- T115: the layout the controls write to (each layout keeps its own bars and
+-- frame), and the layout's own defaults.
+local function Layout(p)
+    return p.look and p.look.layout or "line"
+end
+local function LayoutDef(p)
+    return MD.ClockView.LAYOUT[Layout(p)] or MD.ClockView.LAYOUT.line
+end
+
+-- One frame.<layout>.<field> from a slider: the layout's default writes nil.
+local function SetFrame(p, field, value, default)
+    value = tonumber(value)
+    if value == nil then return end
+    Set("frame." .. Layout(p) .. "." .. field, (value ~= default) and value or nil)
 end
 
 TAB.frame = function(p, f)
@@ -657,52 +700,123 @@ TAB.frame = function(p, f)
     none:SetPoint("LEFT", p.edgeRow, "RIGHT", 4, 0)
     none:SetScript("OnClick", function() Set("panel.edge", { 0, 0, 0, 0 }) end)
     p.edgeNone = none
-    y = y - ROW
-    Note(f, "The size follows the layout; the place is the clock's own (drag it, or Reset place).", nil, y - 4)
+
+    -- the size, per layout: three sliders under the swatches, each writing
+    -- on release (Width and Height never under the layout's measured
+    -- minimum, named beside them; Scale keeps the clock's centre)
+    y = y - ROW - 16
+    local d = LayoutDef(p)
+    local function SizeSlider(label, lo, hi, step, x, after, ...)
+        local s = UI.CreateSlider(label, f, lo, hi, 120, step, nil, after, false, ...)
+        s:SetPoint("TOPLEFT", f, "TOPLEFT", x, y)
+        return s
+    end
+    p.wSlider = SizeSlider("Width", d.wRange[1], d.wRange[2], 1, 4, function(value)
+        SetFrame(p, "w", value, LayoutDef(p).width)
+    end, "Width", "The clock's width in this layout; never under the minimum its words need.")
+    p.hSlider = SizeSlider("Height", d.hRange[1], d.hRange[2], 1, 170, function(value)
+        SetFrame(p, "h", value, LayoutDef(p).height)
+    end, "Height", "Extra height goes to the mana bar; the words and the strip stay as they are.")
+    p.scaleSlider = SizeSlider("Scale (%)", MD.ClockView.SCALE_RANGE[1], MD.ClockView.SCALE_RANGE[2], 5, 336,
+        function(value) SetFrame(p, "scale", value, 100) end,
+        "Scale", "The whole clock larger or smaller; its centre stays where it is.")
+    local function Min(slider)
+        local fs = f:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+        fs:SetPoint("BOTTOMRIGHT", slider, "TOPRIGHT", 0, 2)
+        fs:SetTextColor(UI.RGB("muted"))
+        return fs
+    end
+    p.wMin, p.hMin = Min(p.wSlider), Min(p.hSlider)
+    Note(f, "Width, height and scale are kept per layout.", nil, y - 32)
 end
 
-local SOURCE_TEXT = {
-    pool = "Your mana", model = "Modelled mana", time = "Time to OOM", fsr = "Five-second rule", none = "None",
+-- T115: the bars, per layout. Each list holds what this line may draw
+-- (CV.BarsOK with the line's facts): the tick, the client's textures (TBC),
+-- the modelled pool (Forever). The defaults are the recommended choices.
+local BAR_ITEMS = {
+    show = {
+        { id = "both", text = "Mana and 5SR", tooltip = "The default: your mana and the five-second rule." },
+        { id = "mana", text = "Mana only" },
+        { id = "fsr", text = "5SR only", tooltip = "The five-second rule in the mana bar's place." },
+        { id = "none", text = "No bar" },
+    },
+    join = {
+        { id = "stacked", text = "Stacked", tooltip = "The default: the mana bar over a thin strip." },
+        { id = "veil", text = "Veil", tooltip = "One bar; an amber veil over its right part while the rule runs." },
+        { id = "chip", text = "Chip", tooltip = "A square beside the label sweeps the five seconds." },
+    },
+    order = {
+        { id = "manaOver", text = "Mana on top" },
+        { id = "fsrOver", text = "5SR on top" },
+    },
+    mana = {
+        { id = "game", text = "The game's", tooltip = "The default: your real mana, drawn by the game." },
+        { id = "model", text = "Modelled (~)", tooltip = "SpellTuner's modelled pool, a little transparent." },
+    },
+    after = {
+        { id = "green", text = "Green", tooltip = "The default: the strip turns green once spirit regen runs." },
+        { id = "empty", text = "Empty" },
+        { id = "tick", text = "Regen tick", tooltip = "A white mark sweeping the green strip every 2-s regen tick." },
+    },
+    texture = {
+        { id = "flat", text = "Flat" },
+        { id = "statusbar", text = "Status bar" },
+        { id = "raid", text = "Raid bar" },
+    },
 }
 
-local function SourceItems(p)
+local function BarItems(field)
     local items = {}
     local facts = Facts()
-    local layout = p.look and p.look.layout or "line"
-    for _, s in ipairs(MD.ClockView.SOURCES or {}) do
-        if MD.ClockView.SourceOK(layout, s, facts) then
-            items[#items + 1] = { id = s, text = SOURCE_TEXT[s] or s }
-        end
+    for _, it in ipairs(BAR_ITEMS[field]) do
+        if MD.ClockView.BarsOK("line", { [field] = it.id }, facts) then items[#items + 1] = it end
     end
     return items
 end
 
-TAB.bar = function(p, f)
-    local y = -2
-    RowLabel(f, "Source", y - 3)
-    local dd = UI.CreateDropdown(f, 140, 18, function(id) Set("bar.source", id) end)
-    dd:SetPoint("TOPLEFT", f, "TOPLEFT", LABEL_W, y)
-    p.sourceDropdown = dd
-    y = y - ROW - 4
-    local spark = UI.CreateCheckButton(f, "Spark: the five-second rule", function(checked)
-        Set("bar.spark", checked and "fsr" or "none")
-    end, "Spark", "A yellow mark sweeping the bar over the five seconds after a spend,",
-        "on whatever the bar shows.")
-    spark:SetPoint("TOPLEFT", f, "TOPLEFT", 2, y)
-    p.sparkCheck = spark
-    y = y - ROW - 18
-    local height = UI.CreateSlider("Height", f, 2, 24, 140, 1, nil, function(value)
-        Set("bar.height", tonumber(value))
-    end, false, "Bar height", "2 to 24 pixels; the Line layout grows to hold it.")
-    height:SetPoint("TOPLEFT", f, "TOPLEFT", 4, y)
-    p.heightSlider = height
-    local horizon = UI.CreateSlider("Horizon (s)", f, 60, 600, 140, 30, nil, function(value)
-        Set("bar.horizon", tonumber(value))
-    end, false, "Horizon", "For 'Time to OOM': the time a full bar stands for.")
-    horizon:SetPoint("LEFT", height, "RIGHT", 40, 0)
-    p.horizonSlider = horizon
-    y = y - 42
-    Note(f, "Each line keeps its own bar by default: the five-second rule on TBC, your mana on Forever.",
+-- One bars.<layout>.<field>: the default writes nil.
+local function SetBar(p, field, value)
+    Set("bars." .. Layout(p) .. "." .. field, (value ~= MD.ClockView.BARS_DEFAULT[field]) and value or nil)
+end
+
+local BAR_LABEL = {
+    show = "Show", join = "Join", order = "Order", mana = "Mana from", after = "After the rule", texture = "Texture",
+}
+
+TAB.bars = function(p, f)
+    local facts = Facts()
+    local function Row(field, x, y)
+        local fs = f:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+        fs:SetPoint("TOPLEFT", f, "TOPLEFT", x, y - 3)
+        fs:SetWidth(LABEL_W - 16)
+        fs:SetJustifyH("LEFT")
+        fs:SetText(BAR_LABEL[field])
+        local dd = UI.CreateDropdown(f, 120, 18, function(id) SetBar(p, field, id) end)
+        dd:SetPoint("TOPLEFT", f, "TOPLEFT", x + LABEL_W - 12, y)
+        dd:SetItems(BarItems(field))
+        p[field .. "Dropdown"] = dd
+        return dd
+    end
+    local left, right = 0, 260
+    Row("show", left, -2)
+    Row("join", left, -2 - ROW)
+    Row("order", left, -2 - 2 * ROW)
+    if facts.model then Row("mana", left, -2 - 3 * ROW) end
+    Row("after", right, -2)
+    Row("texture", right, -2 - ROW)
+    local fsr = UI.CreateSlider("5SR strip (px)", f, MD.ClockView.FSR_RANGE[1], MD.ClockView.FSR_RANGE[2], 120, 1,
+        nil, function(value)
+            value = tonumber(value)
+            if value then SetBar(p, "fsr", math.floor(value + 0.5)) end
+        end, false, "Strip thickness", "1 to 8 pixels; the mana bar takes the rest of the height.")
+    fsr:SetPoint("TOPLEFT", f, "TOPLEFT", right + LABEL_W - 12, -2 - 2 * ROW - 16)
+    p.fsrSlider = fsr
+    local y = -2 - 4 * ROW - 14
+    if not facts.tick then
+        p.afterNote = Note(f, MD.ClockView.TICK_REFUSED, nil, y)
+        y = y - 16
+    end
+    Note(f, "Each layout keeps its own bars. The strip, the veil and the chip are amber while the rule runs, green after.",
         nil, y)
 end
 
@@ -736,7 +850,7 @@ TAB.when = function(p, f)
 end
 
 CS.TABS = {
-    { id = "colours", text = "Colours" }, { id = "frame", text = "Frame" }, { id = "bar", text = "Bar" },
+    { id = "colours", text = "Colours" }, { id = "frame", text = "Frame" }, { id = "bars", text = "Bars" },
     { id = "show", text = "Show" }, { id = "when", text = "When" },
 }
 
@@ -765,11 +879,27 @@ end
 local function Chip(p, key)
     p.chip = key
     if p.highlightChip then p.highlightChip(key) end
+    if key ~= "live" then RuleFromFace(p, CS.SampleFace(key)) end
+    CS.PaintPreview(p)
+end
+
+-- T115: the rule chips -- the preview's five-second rule at three moments
+-- (3.0 s left, a cast just now, regen running), on whatever face it shows.
+CS.RULE_CHIPS = {
+    { id = "rule", text = "in the rule, 3.0 s left", ago = 2 },
+    { id = "cast", text = "just cast", ago = 0 },
+    { id = "regen", text = "regen running" },
+}
+
+local function RuleChip(p, id)
+    for _, c in ipairs(CS.RULE_CHIPS) do
+        if c.id == id then p.ruleSpend = c.ago and (GetTime() - c.ago) or nil end
+    end
     CS.PaintPreview(p)
 end
 
 local function BuildPreview(p, pane)
-    local sec = Section(pane, "PREVIEW", 124)
+    local sec = Section(pane, "PREVIEW", 148)
     p.previewSection = sec
 
     -- the ground the preview sits on: dark (a dungeon) or light (a snowfield)
@@ -810,7 +940,7 @@ local function BuildPreview(p, pane)
     frame:SetPoint("CENTER", ground, "CENTER", 0, 0)
     frame:SetFrameLevel((ground:GetFrameLevel() or 1) + 2)
     p.previewFrame = frame
-    p.view = MD.ClockView.Build(frame, PreviewLook(p), SAMPLE_DRAW)
+    p.view = MD.ClockView.Build(frame, PreviewLook(p), SampleDraw(p))
 
     -- the chips
     local stateLabel = sec:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
@@ -833,7 +963,28 @@ local function BuildPreview(p, pane)
         prev = b
     end
     p.highlightChip = UI.CreateButtonGroup(p.chips, function(id) Chip(p, id) end)
-    p.chipNote = Note(sec, "A chip paints a sample face here; the clock on screen is untouched.", stateLabel, -8)
+
+    -- T115: the rule chips
+    local ruleLabel = sec:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+    ruleLabel:SetPoint("TOPLEFT", stateLabel, "BOTTOMLEFT", 0, -12)
+    ruleLabel:SetText("5SR")
+    ruleLabel:SetTextColor(UI.RGB("muted"))
+    p.ruleChips = {}
+    prev = nil
+    for _, c in ipairs(CS.RULE_CHIPS) do
+        local w = math.max(32, math.ceil(UI.TextWidth and UI.TextWidth(c.text, UI.FONT_SMALL) or (#c.text * 6)) + 12)
+        local b = UI.CreateButton(sec, c.text, "accent-hover", { w, 18 }, false, false, UI.FONT_SMALL, UI.FONT_SMALL)
+        b.id = c.id
+        if prev then
+            b:SetPoint("LEFT", prev, "RIGHT", -1, 0)
+        else
+            b:SetPoint("LEFT", ruleLabel, "RIGHT", 8, 0)
+        end
+        p.ruleChips[#p.ruleChips + 1] = b
+        prev = b
+    end
+    p.highlightRule = UI.CreateButtonGroup(p.ruleChips, function(id) RuleChip(p, id) end)
+    p.chipNote = Note(sec, "A chip paints a sample face here; the clock on screen is untouched.", ruleLabel, -8)
 end
 
 local function BuildLayoutRow(p, pane)
@@ -919,22 +1070,36 @@ function CS.Refresh(p)
     p.view:SetLook(look)
     if p.highlightLayout then p.highlightLayout(look.layout) end
     if p.styleLabel then p.styleLabel:SetText("style: " .. StyleName() .. " (Settings -> General -> Look)") end
-    if p.sourceDropdown then
-        p.sourceDropdown:SetItems(SourceItems(p))
-        p.sourceDropdown:SetValue(look.bar.source)
+    -- T115: the bars and the frame of the layout drawn
+    local bars = look.bars or {}
+    for _, field in ipairs({ "show", "join", "order", "mana", "after", "texture" }) do
+        local dd = p[field .. "Dropdown"]
+        if dd then dd:SetValue(bars[field]) end
     end
-    if p.sparkCheck then p.sparkCheck:SetChecked(look.bar.spark == "fsr") end
-    if p.heightSlider then p.heightSlider:SetValue(look.bar.height or 4) end
-    if p.horizonSlider then p.horizonSlider:SetValue(look.bar.horizon or 180) end
-    if p.barColour then
-        local c = look.bar.color
-        p.barColour:SetValue((c == "source" or c == "tone" or c == "class") and c or "fixed")
+    if p.fsrSlider then p.fsrSlider:SetValue(bars.fsr or 3) end
+    local d = MD.ClockView.LAYOUT[look.layout] or MD.ClockView.LAYOUT.line
+    local fr = look.frame or {}
+    if p.wSlider then
+        p.wSlider:UpdateMinMaxValues(d.wRange[1], d.wRange[2])
+        p.wSlider:SetValue(fr.w or d.width)
+    end
+    if p.hSlider then
+        p.hSlider:UpdateMinMaxValues(d.hRange[1], d.hRange[2])
+        p.hSlider:SetValue(fr.h or d.height)
+    end
+    if p.scaleSlider then p.scaleSlider:SetValue(fr.scale or 100) end
+    local mw, mh = p.view:Minimum()
+    if p.wMin then p.wMin:SetText(mw and ("min " .. mw) or "") end
+    if p.hMin then p.hMin:SetText(mh and ("min " .. mh) or "") end
+    if p.manaColour then
+        local c = look.colors and look.colors.manaBar
+        p.manaColour:SetValue((c == nil or c == "mana") and "mana" or (c == "tone" or c == "class") and c or "fixed")
     end
     if p.alphaSlider then
         local c = UI.SkinColour(look.panel.fill) or {}
         p.alphaSlider:SetValue(math.floor((c[4] or 1) * 100 + 0.5))
     end
-    for _, row in ipairs({ p.fillRow, p.edgeRow, p.barColourRow, p.barBackRow }) do PaintSwatches(row) end
+    for _, row in ipairs({ p.fillRow, p.edgeRow, p.manaColourRow, p.barBackRow }) do PaintSwatches(row) end
     for _, row in pairs(p.toneRows or {}) do PaintSwatches(row) end
     for _, cb in ipairs(p.switches or {}) do cb:SetChecked(cb.def.get() and true or false) end
     CS.PaintPreview(p)
@@ -956,6 +1121,7 @@ function CS.Build(content, opts)
     BuildBottom(p, pane)
     panes[p] = true
     p.highlightChip("oom")
+    RuleFromFace(p, CS.SampleFace("oom"))
     p.box:Select("colours")
     CS.Refresh(p)
     return pane

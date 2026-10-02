@@ -591,7 +591,7 @@ Guarded("12. the mover", function()
     S.Geometry(false)
     elem.clearPosition("SpellTuner_Clock")
     check("12. the mover: saves, loads, applies, clears, waits out a fight, hides with the clock; /unlock previews",
-        reg and w == 180 and h == 30 and saved and applied and loaded and cleared and applyOk and waited and afterFight
+        reg and w == 180 and h == 32 and saved and applied and loaded and cleared and applyOk and waited and afterFight
         and hiddenOff and hiddenOn and previewing and ended and E.calls.RegisterUnlockModeListener[1] == "SpellTuner",
         string.format("reg=%s size=%sx%s saved=%s applied=%s loaded=%s cleared=%s apply=%s waited=%s after=%s "
             .. "hidden=%s/%s preview=%s/%s", tostring(reg), tostring(w), tostring(h), tostring(saved), tostring(applied),

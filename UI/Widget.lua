@@ -31,10 +31,18 @@
 -- line's facts and the two sources it reads itself (the pool, the 5SR),
 -- rebuilds the look on CLOCK_LOOK / STYLE_CHANGED, and keeps the frame, the
 -- drag, the hover and the one visibility owner.
+--
+-- T115 (clock v2, docs/tasks/T115-clock-bars-frame.md): the mana bar AND the
+-- five-second rule on every layout (the view's bars.<layout>: stacked / veil /
+-- chip, the order, the strip's thickness, after the rule, the texture); this
+-- line reads the pool plain, learns the 2-s regen tick (MD.Regen:RegenTick)
+-- and offers the client's two bar textures. The frame's scale per layout
+-- (frame.<layout>.scale) is applied here with SetScale, the clock's centre
+-- kept (CV.KeepCentre) by rewriting db.pos.
 local _, MD = ...
 local UI = MD.UI
 
-local widget, view, bar, barBack
+local widget, view, bar, barBack, strip, stripBack
 local shown = false
 local forceUntil = 0        -- first-run / unlock preview
 local flashedThisFight = false
@@ -46,23 +54,40 @@ local flashedThisFight = false
 -- already obeys them, the view is told so the two agree). The bar's slot (M6:
 -- Forever's 160 x 4) and the five-second rule's amber and green are the
 -- view's (UI/ClockView.lua) under the line layout.
-local facts = { line = "tbc", source = "fsr", poolPlain = true, model = false,
+local facts = { line = "tbc", poolPlain = true, model = false, tick = true, textures = true,
     labelSample = "FULL", show = {} }
+MD.ClockView.lineFacts = facts
 local function Facts()
     facts.show.rest = MD.db.showRest ~= false
     facts.show.cd = MD.db.showCooldown ~= false
     return facts
 end
 
--- The bar's sources this line draws itself: the real pool (read plain here)
--- and the seconds left in the five-second rule.
+-- The bars' sources this line draws itself: the real pool (read plain here,
+-- drawn as a fraction), the seconds left in the five-second rule, the spend
+-- that started it (the chip's swipe) and the last regen tick (the strip's
+-- tick mark).
 local draw = {
     pool = function(b)
         local max = UnitPowerMax("player", 0)
-        b:SetMinMaxValues(0, (type(max) == "number" and max > 0) and max or 1)
-        b:SetValue(UnitPower("player", 0) or 0)
+        local cur = UnitPower("player", 0)
+        b:SetMinMaxValues(0, 1)
+        if type(max) == "number" and max > 0 and type(cur) == "number" then
+            b:SetValue(math.max(0, math.min(1, cur / max)))
+        else
+            b:SetValue(0)
+        end
     end,
     fsr = function() return MD.Regen and MD.Regen:FSRRemaining() or nil end,
+    spend = function()
+        local e = MD.Regen and MD.Regen.fsrEnd
+        if type(e) == "number" and e > 0 then return e - 5 end
+        return nil
+    end,
+    tick = function(now)
+        if MD.Regen and MD.Regen.RegenTick then return MD.Regen:RegenTick(now) end
+        return nil
+    end,
 }
 
 -- T93 / T98: the resolved look (UI/ClockView.lua: the layout's defaults, the
@@ -78,7 +103,7 @@ end
 
 local function CreateWidget()
     widget = CreateFrame("Frame", "SpellTunerWidget", UIParent, "BackdropTemplate")
-    widget:SetSize(180, 30)
+    widget:SetSize(180, 32)
     widget:SetFrameStrata("MEDIUM")
     widget:SetMovable(true)
     widget:SetClampedToScreen(true)
@@ -91,10 +116,12 @@ local function CreateWidget()
     -- five-second rule by default
     view = MD.ClockView.Build(widget, Look(), draw)
     widget.view = view
-    bar, barBack = view.bar, view.barBack
-    bar:SetMinMaxValues(0, 5)
+    bar, barBack, strip, stripBack = view.bar, view.barBack, view.strip, view.stripBack
     widget.bar = bar
     widget.barBack = barBack
+    widget.strip = strip
+    widget.stripBack = stripBack
+    widget:SetScale(view:Scale())
 
     widget:SetScript("OnDragStart", function(self)
         -- draggable when unlocked OR during the first-run/unlock preview
@@ -168,8 +195,9 @@ local function CreateWidget()
             end
         end
 
-        -- T98: the bar from its source (the five-second rule by default:
-        -- amber while it fills, green once spirit regen runs) and the spark
+        -- T115: the mana bar and the five-second rule (amber while it runs,
+        -- green once spirit regen runs; the view's step moves the rule every
+        -- frame between these paints)
         view:PaintBar(GetTime())
     end)
 end
@@ -182,7 +210,21 @@ local function NewLook(repaint)
     look = nil
     local l = Look()
     if not view then return end
+    local w0, h0 = widget:GetWidth(), widget:GetHeight()
+    local s0 = widget:GetScale()
     view:SetLook(l)
+    local s1 = view:Scale()
+    if s1 ~= s0 then
+        -- T115: the scale per layout, the clock's centre kept where it was
+        local pos = MD.db.pos
+        if type(pos) ~= "table" then pos = { "CENTER", "CENTER", 0, -140 } end
+        if #pos ~= 4 then pos = { pos[1], pos[1], pos[2], pos[3] } end
+        local x1, y1 = MD.ClockView.KeepCentre(pos[1], pos[3], pos[4], s0, s1, w0, h0,
+            widget:GetWidth(), widget:GetHeight())
+        MD.db.pos = { pos[1], pos[2], x1, y1 }
+        widget:SetScale(s1)
+        MD:ApplyWidgetPosition()
+    end
     if not repaint then return end
     if not MD.db.locked or GetTime() < forceUntil then
         view:Message("SpellTuner - drag me", UI.RGB("accent"))
@@ -284,7 +326,7 @@ MD:RegisterCallback("MD_READY", function()
     CreateWidget()
     Widget.frame = widget
     Widget.view = view   -- T98: the renderer (a preview or a suite reads its layout)
-    Widget.facts = facts -- T98: this line's bar facts (CV.SourceOK, CV.Look)
+    Widget.facts = facts -- T98: this line's bar facts (CV.BarsOK, CV.Look)
     MD:UpdateVisibility()
 end)
 

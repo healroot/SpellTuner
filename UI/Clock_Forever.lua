@@ -174,20 +174,26 @@ MD:Provide("MinimapLines", function(hints)
     return lines
 end)
 
--- T98: what the bar is, in the hover's words, from the look the view draws
--- (the bar's source and the layout); none: nothing said.
-local BAR_IS = {
-    pool = "your real mana, drawn by the game",
-    model = "your modelled mana",
-    time = "the time until you are out of mana",
-    fsr = "the five seconds after each spend",
+-- T98 / T115: what the bars are, in the hover's words, from the look the view
+-- draws (what it shows, the mana bar's source, where the five-second rule
+-- is); none: nothing said.
+local FSR_IS = "the five seconds after your last priced cast"
+local FSR_WHERE = {
+    stacked = "the strip under it",
+    veil = "the amber veil over it",
+    chip = "the square beside the label",
 }
 local function BarWords()
     local l = Clock.view and Clock.view.look
-    local src = l and l.bar and l.bar.source or "pool"
-    if not BAR_IS[src] then return "" end
-    local where = (l == nil or l.layout == "line") and "The bar under the clock" or "The bar"
-    return " " .. where .. " is " .. BAR_IS[src] .. "."
+    local b = (l and l.bars) or MD.ClockView.BARS_DEFAULT
+    local show = b.show or "both"
+    if show == "none" then return "" end
+    if show == "fsr" then return " The bar is " .. FSR_IS .. "." end
+    local manaPart = b.mana == "model" and "your modelled mana (~)" or "your real mana, drawn by the game"
+    if show == "mana" then return " The bar is " .. manaPart .. "." end
+    local where = FSR_WHERE[b.join] or FSR_WHERE.stacked
+    if (b.join == nil or b.join == "stacked") and b.order == "fsrOver" then where = "the strip over it" end
+    return " The bar is " .. manaPart .. "; " .. where .. " is " .. FSR_IS .. "."
 end
 
 -- Clock:HoverLines(now): the hover's lines (UI/Tip.lua's line model), or nil
@@ -225,6 +231,7 @@ end
 --------------------------------------------------------------------------------
 -- The widget
 --------------------------------------------------------------------------------
+local DEFAULT_POINT = { "TOP", nil, "TOP", 0, -120 }
 local function ApplyPoint()
     if not widget then return end
     local p = MD.db.clock and MD.db.clock.point
@@ -248,8 +255,11 @@ end
 -- can only hand to a status bar unread (no ring may draw it), a modelled pool
 -- (the face's pct), its widest label ("~FULL", the pool is modelled) and the
 -- rest switch (F6).
-local facts = { line = "forever", source = "pool", poolPlain = false, model = true,
+-- T115: no regen tick (the pool cannot be read, so its rises cannot be
+-- timed) and flat bars only.
+local facts = { line = "forever", poolPlain = false, model = true, tick = false, textures = false,
     labelSample = "~FULL", show = {} }
+MD.ClockView.lineFacts = facts
 local function Facts()
     local c = MD.db and MD.db.clock
     facts.show.rest = not (c and c.showRest == false)
@@ -266,6 +276,12 @@ local draw = {
         if not (m and type(m.lastSpend) == "number" and type(now) == "number") then return nil end
         return m.lastSpend + 5 - now
     end,
+    -- T115: the chip's swipe starts at the spend
+    spend = function()
+        local m = MD.Pool and MD.Pool.model
+        if m and type(m.lastSpend) == "number" then return m.lastSpend end
+        return nil
+    end,
 }
 
 -- T93 / T98: the resolved look (UI/ClockView.lua: the layout's defaults, the
@@ -281,7 +297,7 @@ end
 
 local function CreateWidget()
     widget = CreateFrame("Frame", "SpellTunerClock", UIParent, "BackdropTemplate")
-    widget:SetSize(180, 30)
+    widget:SetSize(180, 32)
     widget:SetFrameStrata("MEDIUM")
     widget:SetMovable(true)
     widget:SetClampedToScreen(true)
@@ -319,10 +335,12 @@ local function CreateWidget()
     view = MD.ClockView.Build(widget, Look(), draw)
     Clock.view = view
     bar, barBack = view.bar, view.barBack
-    bar:SetStatusBarColor(unpack(MD.ClockView.MANA_COLOR))
     Clock.bar = bar
     Clock.barBack = barBack
+    Clock.strip = view.strip
+    Clock.stripBack = view.stripBack
     Clock.facts = facts
+    widget:SetScale(view:Scale())
 
     ApplyPoint()
     Clock.frame = widget
@@ -345,8 +363,9 @@ local function PaintFace(now)
         state = MD.Pool:Project(now)
         view:Paint(MD.ManaModel.Face(state, now), Look())
     end
-    -- T98: the bar from its source -- the real pool by default, handed to the
-    -- bar by MD.API.DrawUnitPower and never read -- and the spark
+    -- T115: the mana bar -- the real pool by default, handed to the bar by
+    -- MD.API.DrawUnitPower and never read -- and the five-second rule, placed
+    -- by time alone (the view's step moves it between ticks)
     view:PaintBar(now)
     return state
 end
@@ -446,7 +465,21 @@ local function NewLook(repaint)
     look = nil
     local l = Look()
     if not view then return end
+    local w0, h0 = widget:GetWidth(), widget:GetHeight()
+    local s0 = widget:GetScale()
     view:SetLook(l)
+    local s1 = view:Scale()
+    if s1 ~= s0 then
+        -- T115: the scale per layout, the clock's centre kept where it was
+        MD.db.clock = MD.db.clock or {}
+        local p = MD.db.clock.point
+        if type(p) ~= "table" or not p[1] then p = DEFAULT_POINT end
+        local x1, y1 = MD.ClockView.KeepCentre(p[1], p[4] or 0, p[5] or 0, s0, s1, w0, h0,
+            widget:GetWidth(), widget:GetHeight())
+        MD.db.clock.point = { p[1], nil, p[3] or p[1], x1, y1 }
+        widget:SetScale(s1)
+        ApplyPoint()
+    end
     if repaint and MD.Pool.model then PaintFace(GetTime()) end
 end
 MD:RegisterCallback("CLOCK_LOOK", function() NewLook(true) end)

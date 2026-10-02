@@ -234,8 +234,8 @@ The box keeps 0.16.6's vertical tabs; **Show** stays as it is (T116 replaces it 
 Commit the suites first and run them against the parent; the new checks fail there, the re-based
 ones are listed with what they assert now.
 
-**`tools/clockui.lua`** (tbc / forever, 19 -> about **33** each; the task file states the exact
-numbers): T98's section 5 (source none), 6 (sources), 7 (spark), 8 (sources by line) and F1's
+**`tools/clockui.lua`** (tbc / forever, 19 -> **32** each, measured: on the parent 8 ok / 24 failed
+on tbc, 7 / 25 on forever): T98's section 5 (source none), 6 (sources), 7 (spark), 8 (sources by line) and F1's
 three are re-based on Bars; the rest kept. New and re-based checks:
 
 1. Defaults: every layout draws mana + strip, stacked, mana over 5SR, 3-px strip, green after;
@@ -279,7 +279,7 @@ three layouts, a new key never overwritten, TBC's `model` read as Mana only), th
 returned; **6d** migrate twice equals migrate once, and the resolved look after it equals the
 resolved look of the hand-written new keys.
 
-**`tools/clocksettings.lua`** (tbc 34 -> about **42**, forever 35 -> about **43**): the Bar tab's
+**`tools/clocksettings.lua`** (tbc 34 -> **39**, forever 35 -> **40**, measured): the Bar tab's
 checks re-based on Bars; new: the Frame tab's three sliders write `frame.<layout>.*` and the
 widget rebuilds; the minimum mark equals `View:Minimum()`; Scale writes on mouse-up only; Join's
 three values; Mana from offered on Forever only; After the rule offers Regen tick on TBC only and
@@ -298,20 +298,47 @@ the strip, both backed, re-snapped on a scale change); new: the hover's bar sent
 
 **`tools/stylecheck.lua`** (34 both, count unchanged): the clock section's golden **re-based**
 (the new default regions: mana bar, gap, strip; 180 x 32), captured from this task's paint and
-listed region by region in the task file; every other section byte-identical, Flat's round trip
+listed region by region below; every other section byte-identical, Flat's round trip
 included. A DECISIONS line records the re-base.
 
-**Unchanged:** `clocktextcheck` (T114's, if merged first), `surfacecheck`, `euicheck`,
+**Unchanged:** `clocktextcheck` (T114's, if merged first), `surfacecheck`, `euicheck` (but its one size number, below),
 `minimapcheck`, `restylecheck`, `slashcheck/tbc`, `defaultscheck` (no default registered),
 `importcheck` (no fixture rebuild), `regencheck`, `consolecheck`. `make check` green, apicheck 0
 findings, textcheck 0 findings.
 
+The re-based golden (`--golden`; tbc `clock = { 17, 1258458495 }`, forever
+`clock = { 17, 1154631320 }`, was `{ 8, ... }`), the 17 regions in creation order (`--print`):
+
+1. Frame -- the panel, 180 x 32, the kit's pixel backdrop (bg, border; Forever hidden until shown)
+2. FontString -- the label (shown)
+3. FontString -- the label slot's measuring probe (hidden)
+4. FontString -- the value (shown)
+5. FontString -- the secondary (shown)
+6. FontString -- the preview message (hidden)
+7. StatusBar -- the mana bar, 160 x 4
+8. Texture -- its back, black, one physical pixel wider each side (TBC 162 x 6)
+9. StatusBar -- the 5SR strip, 160 x 3
+10. Texture -- its back, black (TBC 162 x 5)
+11. Texture -- the veil, amber at 0.45, 4 high (hidden: Join is stacked)
+12. Texture -- the veil's edge, amber, one physical pixel wide (hidden)
+13. Texture -- the green line after the rule, 1 high (hidden)
+14. Frame -- the chip (hidden)
+15. Texture -- the chip's fill, green
+16. Cooldown -- the chip's swipe
+17. Texture -- the tick mark on the strip, white, 2 physical px x 3 (hidden)
+
+Every other section (nav, host, palette, text, fonts) byte-identical; Flat's round trip passes.
+
+**`tools/euicheck.lua`** (forever 19, count unchanged): check 12's mover size `180 x 30` -> `180 x
+32` (the clock's new default height); one number, nothing else.
+
 ## Integrator lines
 
 - **TOCs:** none.
-- **`tools/data/expected-counts.json`:** `clockui` (both), `clockfacecheck/tbc` 24,
-  `clockfacecheck/forever` 21, `clocksettings` (both), `ttocheck/tbc` 52, `clockcheck/forever` 36
-  -- the exact numbers from the task file.
+- **`tools/data/expected-counts.json`:** `clockui/tbc` 32, `clockui/forever` 32,
+  `clockfacecheck/tbc` 24, `clockfacecheck/forever` 21, `clocksettings/tbc` 39,
+  `clocksettings/forever` 40, `ttocheck/tbc` 52, `clockcheck/forever` 36 (`stylecheck` 34 and
+  `euicheck/forever` 19 unchanged).
 - **`CLAUDE.md`:** `UI/ClockView.lua`'s row: `**T115 (clock v2, C2-C4, C6):** Bars (both / mana /
   fsr / none), Join (stacked -- the default, A -- / veil, B / chip, C, a Cooldown frame's swipe),
   Order, Mana from (game / model, Forever), the 5SR strip's thickness, After the rule (green /
@@ -321,14 +348,15 @@ findings, textcheck 0 findings.
   the veil every frame; CV.Migrate reads 0.16.6's bar.source / spark / horizon / height / color
   once (C4's table) with a lazy dump line; the spark and the time source removed; decision 15 (a)
   replaced: Mana + 5SR on both lines`. `UI/Widget.lua` / `UI/Clock_Forever.lua` rows: their new
-  `draw` (`spend`, `tick` on TBC, `model` on Forever), `bar` / `strip`, the point kept on a scale
+  `draw` (`spend`, `tick` on TBC; Forever's modelled mana is the face's plain `pct`), `bar` / `strip`, the point kept on a scale
   change, the hover's sentence (Forever). `Engine/RegenModel.lua`: `**T115:** RM:RegenTick() --
   the 2-s regen tick learned from mana gains (two intervals within 2.0 +- 0.15 s, the latest under
   4 s), read only by the clock's After the rule = tick`. `UI/ClockSettings.lua`: `**T115:** Frame
   (Width / Height / Scale with the minimum mark, background, border), Bars replacing Bar, Mana
   colour on Colours, the rule chips in the preview`. The `tools/` row: the counts.
 - **`docs/TOOLS.md`** section 1: the `clockui`, `clockfacecheck`, `clocksettings`, `ttocheck`,
-  `clockcheck` rows (counts and the new sections), `stylecheck`'s re-based clock golden.
+  `clockcheck` rows (counts and the new sections), `stylecheck`'s re-based clock golden (17
+  regions), `euicheck`'s mover size 180 x 32.
 - **`docs/DECISIONS.md`**, one entry:
 
   > ## Clock v2: mana and the five-second rule together (2026-10-02, T115, the author's answers to clock-v2.html)
