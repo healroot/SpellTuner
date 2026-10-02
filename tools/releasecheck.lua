@@ -624,10 +624,11 @@ do
         local text = Slurp(ROOT .. "/" .. rel)
         if text then Write(PUB .. "/" .. rel, text) end
     end
-    -- a newest HISTORY entry with a quote, a backslash and a non-ASCII dash, for the changelog
-    local hist = Slurp(PUB .. "/docs/HISTORY.md") or ""
-    Write(PUB .. "/docs/HISTORY.md", hist .. "\n## 2099-01-01 \226\128\148 publish test\n\n"
-        .. "A line with \"quotes\", a back\\slash and a dash \226\128\148 here.\n\n- one item\n")
+    -- CHANGELOG.md's section for the tree's version, with a quote, a backslash and a non-ASCII
+    -- dash, between a newer and an older section (only this version's is taken)
+    Write(PUB .. "/CHANGELOG.md", "# Changelog\n\n## 99.0.0\n\n- not this one\n\n## " .. tostring(TREE_VERSION)
+        .. " \226\128\148 publish test\n\n"
+        .. "A line with \"quotes\", a back\\slash and a dash \226\128\148 here.\n\n- one item\n\n## 0.0.1\n\n- nor this one\n")
     Write(VERSIONS_JSON, '[{"id": 7, "gameVersionTypeID": 517, "name": "11.2.0", "slug": "11-2-0"},'
         .. ' {"id": 10101, "gameVersionTypeID": 73713, "name": "2.5.6", "slug": "2-5-6"},'
         .. ' {"id": 10102, "gameVersionTypeID": 73713, "name": "2.5.5", "slug": "2-5-5"},'
@@ -734,18 +735,28 @@ local function Meta(json)
 end
 
 local TREE_V = tostring(TREE_VERSION)
-local CHANGELOG_JSON = '"## 2099-01-01 \\u2014 publish test\\n\\nA line with \\"quotes\\", a back\\\\slash'
+local CHANGELOG_JSON = '"## ' .. TREE_V .. ' \\u2014 publish test\\n\\nA line with \\"quotes\\", a back\\\\slash'
     .. ' and a dash \\u2014 here.\\n\\n- one item"'
 
 check("publish: the scratch repository of the tree is committed and clean", pubReady,
     "release.sh " .. tostring(Slurp(PUB .. "/release.sh") ~= nil))
 
--- the committed config: no project id yet -> refused before building, naming the file
+-- the committed config names the project and both flavours' game versions
 do
     local cfg = Slurp(ROOT .. "/tools/data/curseforge.txt") or ""
+    check("publish: the committed tools/data/curseforge.txt names a numeric project_id and both flavours' game versions",
+        cfg:find("\nproject_id =[ \t]*%d+[ \t]*\n") ~= nil
+        and cfg:find("\ntbc_game_versions =[ \t]*%S") ~= nil
+        and cfg:find("\nforever_game_versions =[ \t]*%S") ~= nil,
+        cfg:gsub("\n", " / "):sub(1, 200))
+end
+
+-- an empty project id -> refused before building, naming the file
+do
+    local blank = pubReady and Commit("tools/data/curseforge.txt", Config("", "2.5.6", "1.60.1"))
     local out, rc = Publish({}, "--publish")
-    check("publish: the committed tools/data/curseforge.txt has an empty project_id and refuses before building",
-        pubReady and cfg:find("\nproject_id =[ \t]*\n") ~= nil and rc ~= 0
+    check("publish: an empty project_id in tools/data/curseforge.txt refuses before building",
+        blank and rc ~= 0
         and Has(out, "tools/data/curseforge.txt") and Has(out, "project_id")
         and #DirNames(PUB .. "/dist") == 0 and #Calls() == 0,
         "rc=" .. tostring(rc) .. " " .. out:gsub("\n", " / "):sub(1, 200))
@@ -851,6 +862,17 @@ do
         and meta.displayName == "SpellTuner " .. TREE_V .. " (Forever)" and meta.gameVersions == "20201:int"
         and meta.releaseType == "beta" and Has(record, TREE_V .. "\ttbc\t") and Has(record, TREE_V .. "\tforever\t"),
         "rc=" .. tostring(rc) .. " " .. out:gsub("\n", " / "):sub(-200))
+end
+
+do
+    -- the changelog is CHANGELOG.md's section for THIS version: none, and nothing is built or sent
+    local wrote = pubReady and Commit("CHANGELOG.md", "# Changelog\n\n## 0.0.1\n\n- an old one\n")
+    os.remove(PUB_RECORD) -- the version is published by now; the changelog is what is checked here
+    local out, rc = Publish({}, "--publish", "--dry-run")
+    check("publish: a version with no CHANGELOG.md section is refused, before anything is built or sent",
+        wrote and rc ~= 0 and Has(out, "CHANGELOG.md has no '## " .. TREE_V .. "' section") and #Calls() == 0
+        and not Has(out, "Built "),
+        "rc=" .. tostring(rc) .. " " .. out:gsub("\n", " / "):sub(1, 200))
 end
 
 print(string.format("\n%d ok, %d failed", ok, #fails))

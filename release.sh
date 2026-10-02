@@ -56,7 +56,7 @@
 # builds both packages as above, then uploads each zip (both, or the --only one) to
 # the CurseForge project named in tools/data/curseforge.txt (project_id, each
 # flavour's game version NAMES, release_type), as "SpellTuner <version> (TBC)" /
-# "(Forever)", the changelog the newest docs/HISTORY.md entry. The token is the
+# "(Forever)", the changelog CHANGELOG.md's section for the version. The token is the
 # environment variable CURSEFORGE_API_TOKEN and nothing else:
 #
 #   ~/.local/bin/secret-env run CURSEFORGE_API_TOKEN -- ./release.sh --publish --dry-run
@@ -473,16 +473,21 @@ if [[ $PUBLISH -eq 1 ]]; then
     done
     CF_TMP="$(mktemp -d)"
     trap 'rm -rf "$CF_TMP"' EXIT
-    # the changelog: the newest docs/HISTORY.md entry (its "## " heading to the end), trimmed
-    [[ -f "$SRC/docs/HISTORY.md" ]] || die "--publish takes its changelog from docs/HISTORY.md; $SRC has none"
-    python3 - "$SRC/docs/HISTORY.md" "$CF_TMP/changelog.md" <<'PYEOF' || die "no '## ' entry in docs/HISTORY.md to take the changelog from"
-import sys
+    # the changelog: CHANGELOG.md's section for this version (its "## <version>" heading to the
+    # next "## "), written for players -- docs/HISTORY.md is the developers' log, never published
+    [[ -f "$SRC/CHANGELOG.md" ]] || die "--publish takes its changelog from CHANGELOG.md; $SRC has none"
+    python3 - "$SRC/CHANGELOG.md" "$CF_TMP/changelog.md" "$VERSION" <<'PYEOF' || die "CHANGELOG.md has no '## $VERSION' section; write what changed for players first"
+import re, sys
 LIMIT = 4000
 lines = open(sys.argv[1], encoding="utf-8").read().split("\n")
-starts = [i for i, l in enumerate(lines) if l.startswith("## ")]
+head = re.compile(r"^## \[?" + re.escape(sys.argv[3]) + r"\]?(\s|$)")
+starts = [i for i, l in enumerate(lines) if head.match(l)]
 if not starts:
     sys.exit(1)
-text = "\n".join(lines[starts[-1]:]).strip()
+end = next((i for i in range(starts[0] + 1, len(lines)) if lines[i].startswith("## ")), len(lines))
+text = "\n".join(lines[starts[0]:end]).strip()
+if len(text.split("\n", 1)) < 2 or not text.split("\n", 1)[1].strip():
+    sys.exit(1)
 if len(text) > LIMIT:
     note = "\n\n(trimmed)"
     cut = text.rfind("\n", 0, LIMIT - len(note))

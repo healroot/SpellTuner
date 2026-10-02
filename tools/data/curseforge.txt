@@ -11,9 +11,9 @@
 #                          as name@<gameVersionTypeID> to pick one.
 #   release_type           alpha, beta or release; --release-type overrides it.
 #
-# TO CONFIRM against the versions endpoint before the first upload: 2.5.6 is the TBC
-# TOC's interface 20506, 1.60.1 the Forever TOC's 16001 (the client's 1.60.1 builds).
-project_id =
+# Confirmed against the versions endpoint on 2026-10-02: 2.5.6 is id 16533 (type 73246, TBC
+# Anniversary; the TBC TOC's 20506), 1.60.1 is id 17053 (type 88568, WoW: Forever; its 16001).
+project_id = 1715118
 tbc_game_versions = 2.5.6
 forever_game_versions = 1.60.1
 release_type = beta

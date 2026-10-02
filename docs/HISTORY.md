@@ -4998,3 +4998,18 @@ slots drawn and the Text tab (Show gone). Nothing in the round did not land.
 unblocks T103, T104, T105, T108, T109, the `BASE_CD_READS` flip and Forever's real Mana % / Mana
 (Q-clock-2, `MD.API.POWER_TEXT_READS`) and the Forever bar textures (Q-clock-4). Then §48 on
 0.16.8 once the author asks for it to be installed.
+
+## 2026-10-02 — T-publish integrated: CurseForge publishing, 0.16.8's first upload
+
+- `./release.sh --publish` (T-publish, built and reviewed in a worktree, cherry-picked as `37227cd` /
+  `7a5de2c`) uploads both packages to CurseForge project **1715118** as a **beta**: TBC under game
+  version `2.5.6` (id 16533), Forever under `1.60.1` (id 17053), both confirmed against the versions
+  endpoint. `tools/data/curseforge.txt` holds them (committed, not secret).
+- Integrator's change: the changelog is **`CHANGELOG.md`'s `## <version>` section**, written for
+  players, no longer the newest entry here (this file is the developers' log and is never
+  published); a version with no section is refused before anything is built. `CHANGELOG.md` starts
+  with 0.16.8. releasecheck 36 -> 38 (the CHANGELOG.md refusal; the committed config checked for a numeric project id, the empty-id refusal now on a config of its own).
+- The token: `CURSEFORGE_API_TOKEN` in the keyring through `~/.local/bin/secret-env`, which now
+  starts a session D-Bus at `/run/user/1000/bus` when WSL's own runtime mount hides systemd's.
+- Next publish: bump the version, write its `## <version>` section in `CHANGELOG.md`, commit, then
+  `secret-env run CURSEFORGE_API_TOKEN -- ./release.sh --publish --dry-run` and without `--dry-run`.

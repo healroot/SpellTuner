@@ -46,7 +46,8 @@ versions endpoint. A name CurseForge lists under two version types is refused wi
    or backslash) and curl is there; the source is a git checkout with **no uncommitted or
    untracked change** (`git status --porcelain`, listed), and **HEAD's** copy of every TOC is at
    the version; no flavour to publish is already in `dist/<name>/published.txt` at this version.
-   The changelog is taken: the newest `docs/HISTORY.md` entry (the last `## ` heading to the end),
+   The changelog is taken (integrator's change): `CHANGELOG.md`'s `## <version>` section, written for
+   players (refused when absent; `docs/HISTORY.md` is the developers' log and never published),
    cut at a line under 4000 characters with `(trimmed)` when longer.
 4. **The build**, both packages, exactly as today.
 5. **`--dry-run`** prints, per flavour, the URL, the zip and its size, the game version names and
@@ -117,7 +118,7 @@ names), apicheck 0 findings, textcheck 0 findings.
 
 ## Integrator lines
 
-- `tools/data/expected-counts.json`: `"releasecheck": 36` (was 21).
+- `tools/data/expected-counts.json`: `"releasecheck": 38` (was 21; 36 as built, +1 for the integrator's CHANGELOG.md refusal, +1 for the committed project id).
 - `CLAUDE.md`, the `release.sh` / `Makefile` row, append: **T-publish:** `--publish
   [--release-type alpha|beta|release] [--dry-run] [--only tbc|forever]` uploads the zips to the
   CurseForge project in `tools/data/curseforge.txt` (committed, not secret: `project_id`, each
