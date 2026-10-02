@@ -647,6 +647,19 @@ function CreateFrame(kind, name, parent, tmpl)
         f.GetBackdropColor = function(self) if self.bg then return unpack(self.bg) end end -- T29
         f.GetBackdropBorderColor = function(self) if self.border then return unpack(self.border) end end -- T29
     end
+    -- T115: a Cooldown frame (the clock's swipe chip) records what it is told:
+    -- SetCooldown's start and duration (counted), and Clear (counted), so a
+    -- suite can see one SetCooldown per spend and the clear after the rule
+    if kind == "Cooldown" then
+        f.SetCooldown = function(self, start, dur)
+            self.cdStart, self.cdDur = start, dur
+            self.cdCalls = (self.cdCalls or 0) + 1
+        end
+        f.Clear = function(self)
+            self.cdStart, self.cdDur = nil, nil
+            self.cdClears = (self.cdClears or 0) + 1
+        end
+    end
     frames[#frames + 1] = f
     -- a named frame is a global in the client, and addon code looks itself up
     -- that way (tinsert(UISpecialFrames, "SpellTunerDashboard"), _G[name])

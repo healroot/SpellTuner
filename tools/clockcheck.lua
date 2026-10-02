@@ -639,13 +639,19 @@ do
         string.format("bg=%s,%s,%s,%s edge=%s px=%s", tostring(w.bg and w.bg[1]), tostring(w.bg and w.bg[2]),
             tostring(w.bg and w.bg[3]), tostring(w.bg and w.bg[4]), tostring(bd.edgeSize), tostring(e)))
 
-    local back = Clock.barBack
-    check("the mana bar has a black backing one physical pixel wider on every side",
+    -- T115 (clock v2): the mana bar 160 x 4 over the 160 x 3 five-second-rule
+    -- strip, each on its own black backing
+    local back, sback = Clock.barBack, Clock.stripBack
+    check("the mana bar and the 5SR strip each have a black backing one physical pixel wider on every side",
         back ~= nil and back.parentFrame == w and SameColour(back.color, { 0, 0, 0, 1 })
         and Near(back.w, 160 + 2 * e) and Near(back.h, 4 + 2 * e)
-        and Clock.bar and Clock.bar.w == 160 and Clock.bar.h == 4,
-        string.format("back=%s w=%s h=%s want %s x %s", tostring(back ~= nil), tostring(back and back.w),
-            tostring(back and back.h), tostring(160 + 2 * e), tostring(4 + 2 * e)))
+        and Clock.bar and Clock.bar.w == 160 and Clock.bar.h == 4
+        and sback ~= nil and sback.parentFrame == w and SameColour(sback.color, { 0, 0, 0, 1 })
+        and Near(sback.w, 160 + 2 * e) and Near(sback.h, 3 + 2 * e)
+        and Clock.strip and Clock.strip.w == 160 and Clock.strip.h == 3,
+        string.format("back=%s w=%s h=%s want %s x %s; strip back=%s %s x %s", tostring(back ~= nil),
+            tostring(back and back.w), tostring(back and back.h), tostring(160 + 2 * e), tostring(4 + 2 * e),
+            tostring(sback ~= nil), tostring(sback and sback.w), tostring(sback and sback.h)))
 
     -- a UI scale change: the next tick re-snaps the edge and the backing
     w.GetEffectiveScale = function() return 0.64 end
@@ -658,6 +664,60 @@ do
         string.format("edge=%s backW=%s want px=%s", tostring(bd2.edgeSize), tostring(back and back.w), tostring(e2)))
     w.GetEffectiveScale = function() return 1 end
     S.Tick(0.5)
+end
+
+--------------------------------------------------------------------------------
+-- T115 (clock v2): the hover says what the bars are, by the look drawn --
+-- stacked (the default), the order, the veil, the chip, Mana from the model,
+-- one bar alone, none.
+--------------------------------------------------------------------------------
+do
+    local CV = MD.ClockView
+    local function Muted()
+        local lines = Clock:HoverLines(GetTime()) or {}
+        for _, l in ipairs(lines) do
+            if type(l.l) == "string" and l.l:find("^~ = ") then return l.l end
+        end
+        return ""
+    end
+    local function Set(k, v) CV.Set("bars.line." .. k, v); S.Tick(0.5) end
+    local okH, res = pcall(function()
+        local r = {}
+        CV.ResetToStyle()
+        S.Tick(0.5)
+        r.stacked = Muted()
+        Set("order", "fsrOver"); r.fsrOver = Muted(); Set("order", nil)
+        Set("join", "veil"); r.veil = Muted()
+        Set("join", "chip"); r.chip = Muted(); Set("join", nil)
+        Set("mana", "model"); r.model = Muted(); Set("mana", nil)
+        Set("show", "mana"); r.mana = Muted()
+        Set("show", "fsr"); r.fsr = Muted()
+        Set("show", "none"); r.none = Muted()
+        CV.ResetToStyle()
+        S.Tick(0.5)
+        return r
+    end)
+    local P = "~ = modelled from your casts."
+    local want = {
+        stacked = P .. " The bar is your real mana, drawn by the game; the strip under it is the five seconds after your last priced cast.",
+        fsrOver = P .. " The bar is your real mana, drawn by the game; the strip over it is the five seconds after your last priced cast.",
+        veil = P .. " The bar is your real mana, drawn by the game; the amber veil over it is the five seconds after your last priced cast.",
+        chip = P .. " The bar is your real mana, drawn by the game; the square beside the label is the five seconds after your last priced cast.",
+        model = P .. " The bar is your modelled mana (~); the strip under it is the five seconds after your last priced cast.",
+        mana = P .. " The bar is your real mana, drawn by the game.",
+        fsr = P .. " The bar is the five seconds after your last priced cast.",
+        none = P,
+    }
+    local bad
+    if not okH then
+        bad = "raised: " .. tostring(res)
+    else
+        for _, k in ipairs({ "stacked", "fsrOver", "veil", "chip", "model", "mana", "fsr", "none" }) do
+            if res[k] ~= want[k] and not bad then bad = string.format("%s: %q", k, tostring(res[k])) end
+        end
+    end
+    check("the hover names the bars as drawn: stacked, the order, veil, chip, the model, one bar, none",
+        bad == nil, bad)
 end
 
 --------------------------------------------------------------------------------

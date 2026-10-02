@@ -345,9 +345,11 @@ check("widget: below 90% out of combat -> still shown", W and W:IsShown())
 --------------------------------------------------------------------------------
 -- 12. T82 (C4 of docs/PLAN-refactor-ux.md, mockup M6): one clock look. Under
 -- the theme the widget is the Forever clock's panel (UI/Clock_Forever.lua):
--- 180 x 30 in the theme's `bg` with its border, the kit's font centred at the
--- top, a 160 x 4 bar on a black backing one pixel wider all round -- and the
--- bar is still the five-second rule: amber while it fills, green after.
+-- in the theme's `bg` with its border, the kit's font at the top. T115 (clock
+-- v2, C2 / C3): 180 x 32, the mana bar 160 x 4 over a 3-px five-second-rule
+-- strip (stacked, the default), each on a black backing one pixel wider all
+-- round; the strip amber while the rule runs, green after; the mana bar the
+-- pool (UnitPower over its max) in the mana blue.
 --------------------------------------------------------------------------------
 local UI = MD.UI
 local function Same3(a, b)
@@ -357,6 +359,7 @@ end
 do
     local P = UI.PALETTE
     local bar, back = W and W.bar, W and W.barBack
+    local strip, sback = W and W.strip, W and W.stripBack
     -- T93 (decision 14, F2): the text is three font strings at fixed places --
     -- the label in the kit's font from the left edge, the value in its number
     -- font at a fixed x, the secondary segment right-aligned to the right edge
@@ -365,32 +368,42 @@ do
     S.Fire("PLAYER_REGEN_DISABLED")
     Cast(HT5)
     S.Tick(0.5)
-    local inRule = bar and bar.barColor and { bar.barColor[1], bar.barColor[2], bar.barColor[3] }
-    local ruleValue = bar and bar.value
+    local inRule = strip and strip.barColor and { strip.barColor[1], strip.barColor[2], strip.barColor[3] }
+    local ruleValue = strip and strip.value
+    local manaValue = bar and bar.value
+    local manaWant = S.mana / S.manaMax
     Ticks(12)
-    local after = bar and bar.barColor and { bar.barColor[1], bar.barColor[2], bar.barColor[3] }
-    local afterValue = bar and bar.value
+    local after = strip and strip.barColor and { strip.barColor[1], strip.barColor[2], strip.barColor[3] }
+    local afterValue = strip and strip.value
     S.Fire("PLAYER_REGEN_ENABLED")
     local e = UI.px(1, W)
     local panel = W and W.backdrop ~= nil and W.bg and P and Same3(W.bg, P.bg) and W.bg[4] == P.bg[4]
-        and W.border and Same3(W.border, P.border) and W:GetWidth() == 180 and W:GetHeight() == 30
-    local function At(r, p, y) return r and r.firstPoint and r.firstPoint[1] == p and r.firstPoint[3] == p
-        and r.firstPoint[5] == y end
+        and W.border and Same3(W.border, P.border) and W:GetWidth() == 180 and W:GetHeight() == 32
+    local function Pt(r) return r and (r.lastPoint or r.firstPoint) end
+    local function At(r, p, x, y)
+        local pt = Pt(r)
+        return pt ~= nil and pt[1] == p and pt[3] == p and pt[4] == x and pt[5] == y
+    end
     local function Left(r, p, y) return r and r.firstPoint and r.firstPoint[1] == p and r.firstPoint[2] == W
         and r.firstPoint[3] == p and r.firstPoint[5] == y end
     local font = lab and lab.template == UI.FONT and Left(lab, "TOPLEFT", -4)
         and val and val.template == UI.FONT_NUM and Left(val, "TOPLEFT", -4)
         and sec and sec.template == UI.FONT and Left(sec, "TOPRIGHT", -4)
-    local slot = bar and bar:GetWidth() == 160 and bar:GetHeight() == 4 and At(bar, "BOTTOM", 5)
-        and back and back:GetWidth() == 160 + 2 * e and back:GetHeight() == 4 + 2 * e
-        and back.color and back.color[1] == 0 and back.color[2] == 0 and back.color[3] == 0 and back.color[4] == 1
+    local function Black(r) return r and r.color and r.color[1] == 0 and r.color[2] == 0 and r.color[3] == 0
+        and r.color[4] == 1 end
+    local slot = bar and bar:GetWidth() == 160 and bar:GetHeight() == 4 and At(bar, "BOTTOMLEFT", 10, 9)
+        and back and back:GetWidth() == 160 + 2 * e and back:GetHeight() == 4 + 2 * e and Black(back)
+        and strip and strip:GetWidth() == 160 and strip:GetHeight() == 3 and At(strip, "BOTTOMLEFT", 10, 5)
+        and sback and sback:GetWidth() == 160 + 2 * e and sback:GetHeight() == 3 + 2 * e and Black(sback)
     local rule = Same3(inRule, { 1, 0.67, 0.2 }) and type(ruleValue) == "number" and ruleValue < 5
         and Same3(after, { 0.2, 1, 0.4 }) and afterValue == 5
-    check("widget: the kit's panel, fonts in fixed segments, a 160 x 4 5SR bar (themed)",
-        UI.THEMED == true and panel and font and slot and rule,
-        string.format("themed=%s panel=%s font=%s slot=%s rule=%s (%s -> %s)", tostring(UI.THEMED),
+    local mana = type(manaValue) == "number" and math.abs(manaValue - manaWant) < 1e-6
+        and Same3(bar and bar.barColor, { 0.3, 0.6, 1 })
+    check("widget: the kit's panel, fonts in fixed segments, mana 160 x 4 over a 160 x 3 5SR strip (themed)",
+        UI.THEMED == true and panel and font and slot and rule and mana,
+        string.format("themed=%s panel=%s font=%s slot=%s rule=%s (%s -> %s) mana=%s (%s / %s)", tostring(UI.THEMED),
             tostring(panel), tostring(font), tostring(slot), tostring(rule), tostring(ruleValue),
-            tostring(afterValue)))
+            tostring(afterValue), tostring(mana), tostring(manaValue), tostring(manaWant)))
 end
 
 --------------------------------------------------------------------------------
@@ -407,7 +420,7 @@ do
     local accent = { UI.RGB("accent") }
     local previewText = txt.text
     local previewColor = txt.textColor
-    local barOk = bar.value == 5 and Same3(bar.barColor, accent)
+    local barOk = bar.maxV ~= nil and bar.value == bar.maxV and Same3(bar.barColor, accent)
     local shownNow = W:IsShown()
     local segsHidden = view.label ~= nil and not view.label:IsShown() and txt.shown == true
     MD:ForceWidgetPreview(0)
@@ -561,6 +574,54 @@ do
         up ~= nil and outOk and inNot and seam and reset and preview,
         string.format("out=%s inCombat=%s seam=%s reset=%s preview=%s", tostring(outOk), tostring(inNot),
             tostring(seam), tostring(reset), tostring(preview)))
+end
+
+--------------------------------------------------------------------------------
+-- 17. T115 (clock v2, C4's "Regen tick"): RM:RegenTick(now) -- the last three
+-- rises of the player's mana, in and out of combat; two gaps of 2 s (within
+-- 0.15 s) answer the last rise and the period 2, a rise older than 4 s or an
+-- irregular gap answer nil. What the strip's tick mark is placed from.
+--------------------------------------------------------------------------------
+do
+    local RM = MD.Regen
+    local function Rise(n)
+        S.mana = math.min(S.manaMax, S.mana + (n or 10))
+        S.Fire("UNIT_POWER_UPDATE", "player", "MANA")
+    end
+    local okR, a, b, c, d = pcall(function()
+        S.mana = S.manaMax - 500
+        S.Fire("UNIT_POWER_UPDATE", "player", "MANA")
+        Ticks(9)
+        Rise(); Ticks(4); Rise(); Ticks(4); Rise()
+        local t3 = GetTime()
+        local last, period = RM:RegenTick(GetTime())
+        Ticks(3)
+        local still = RM:RegenTick(GetTime())
+        Ticks(6) -- 4.5 s after the last rise
+        local stale = RM:RegenTick(GetTime())
+        return last == t3 and period == 2, still == t3, stale == nil, tostring(last) .. "/" .. tostring(period)
+    end)
+    check("RM:RegenTick: three rises 2 s apart answer (the last, 2); still at 1.5 s; nil 4 s after",
+        okR and a and b and c, okR and string.format("answer %s, still %s, stale %s (%s)", tostring(a), tostring(b),
+            tostring(c), tostring(d)) or ("raised: " .. tostring(a)))
+
+    local okI, x, y, z = pcall(function()
+        S.Fire("PLAYER_REGEN_DISABLED")
+        Ticks(9)
+        Rise(); Ticks(4); Rise(); Ticks(6); Rise()
+        local irregular = RM:RegenTick(GetTime())
+        Ticks(4); Rise()
+        local t4 = GetTime()
+        local mixed = RM:RegenTick(GetTime()) -- gaps 3 s, 2 s
+        Ticks(4); Rise()
+        local t5 = GetTime()
+        local inCombat = RM:RegenTick(GetTime())
+        S.Fire("PLAYER_REGEN_ENABLED")
+        return irregular == nil and mixed == nil, inCombat == t5, t4 ~= nil
+    end)
+    check("RM:RegenTick: an irregular gap answers nil; rises in combat count",
+        okI and x and y and z, okI and string.format("irregular nil %s, in combat %s", tostring(x), tostring(y))
+            or ("raised: " .. tostring(x)))
 end
 
 -- every rendered string: ASCII, no bare pipe

@@ -717,31 +717,44 @@ do
     end
     local role = { kind = "pixel", fill = { 0.1, 0.2, 0.3, 1 }, edge = "border", bar = { 0.5, 0, 0, 1 },
         barFill = { 0, 1, 0, 1 } }
-    local facts = { source = FLAVOUR == "forever" and "pool" or "fsr", poolPlain = FLAVOUR ~= "forever",
-        model = FLAVOUR == "forever", labelSample = FLAVOUR == "forever" and "~FULL" or "FULL" }
+    local forever = FLAVOUR == "forever"
+    local facts = { line = FLAVOUR, poolPlain = not forever, model = forever, tick = not forever,
+        textures = not forever, labelSample = forever and "~FULL" or "FULL", show = {} }
 
     -- 6. over wins over the style, and the style over the layout's defaults
+    -- (T115: the bars per layout, the frame per layout)
     local ok6, why6 = pcall(function()
         local flat = CV.Resolve({ layout = "line", over = {} }, nil, facts)
         local styled = CV.Resolve({ layout = "line", over = {} }, role, facts)
         local stored = { layout = "line", over = {
             panel = { fill = { 0.9, 0.9, 0.9, 1 } },
-            bar = { color = "tone", back = { 0, 0, 1, 1 }, source = "time" },
-            colors = { crit = "ff0000" } } }
+            bar = { back = { 0, 0, 1, 1 } },
+            bars = { line = { join = "veil", fsr = 5 }, bar = { join = "chip" } },
+            frame = { line = { h = 44, scale = 120 } },
+            colors = { crit = "ff0000", manaBar = "tone" } } }
         local over = CV.Resolve(stored, role, facts)
         over.bar.back[1] = 0.5 -- the resolved look is a copy: the store keeps its own
         local okDefaults = flat.panel.fill == "bg" and flat.panel.edge == "border" and Is(flat.bar.back, 0, 0, 0, 1)
-            and flat.bar.color == "source" and flat.bar.source == facts.source
+            and flat.bars.show == "both" and flat.bars.join == "stacked" and flat.bars.order == "manaOver"
+            and flat.bars.mana == "game" and flat.bars.fsr == 3 and flat.bars.after == "green"
+            and flat.bars.texture == "flat" and flat.bars.fill == nil
+            and flat.frame.w == 180 and flat.frame.h == 32 and flat.frame.scale == 100
         local okStyled = Is(styled.panel.fill, 0.1, 0.2, 0.3, 1) and Is(styled.bar.back, 0.5, 0, 0, 1)
-            and Is(styled.bar.color, 0, 1, 0, 1) and styled.bar.source == facts.source
+            and Is(styled.bars.fill, 0, 1, 0, 1) and styled.bars.join == "stacked"
         local okOver = Is(over.panel.fill, 0.9, 0.9, 0.9, 1) and over.panel.edge == "border"
-            and over.bar.color == "tone" and over.bar.source == "time" and over.colors.crit == "ff0000"
+            and over.bars.join == "veil" and over.bars.fsr == 5 and over.frame.h == 44 and over.frame.scale == 120
+            and over.frame.w == 180 and over.colors.crit == "ff0000" and over.colors.manaBar == "tone"
             and Is(stored.over.bar.back, 0, 0, 1, 1)
-        if okDefaults and okStyled and okOver then return true end
-        return string.format("defaults %s, styled %s, over %s", tostring(okDefaults), tostring(okStyled),
-            tostring(okOver))
+        -- another layout's keys are that layout's own
+        stored.layout = "bar"
+        local barLook = CV.Resolve(stored, role, facts)
+        local okPer = barLook.bars.join == "chip" and barLook.bars.fsr == 3 and barLook.frame.h == 22
+            and barLook.frame.w == 200 and barLook.frame.scale == 100
+        if okDefaults and okStyled and okOver and okPer then return true end
+        return string.format("defaults %s, styled %s, over %s, per layout %s", tostring(okDefaults),
+            tostring(okStyled), tostring(okOver), tostring(okPer))
     end)
-    check("6. the clock's look: over wins over the style's clock role, the role over the layout's defaults",
+    check("6. the clock's look: over wins over the style's clock role, the role over the layout's defaults; bars and frame per layout",
         ok6 and why6 == true, (not ok6 and ("raised: " .. tostring(why6))) or (why6 ~= true and tostring(why6)) or nil)
 
     -- 6b. Reset to style: every override gone, the layout kept, CLOCK_LOOK once,
@@ -750,24 +763,111 @@ do
         local fired = 0
         MD:RegisterCallback("CLOCK_LOOK", function() fired = fired + 1 end)
         CV.SetLayout("bar")
-        CV.Set("bar.source", "time")
+        CV.Set("bars.bar.join", "veil")
+        CV.Set("frame.bar.h", 30)
         CV.Set("colors.crit", "ff0000")
-        local had = MD.db.clockLook.over.bar ~= nil and MD.db.clockLook.over.colors ~= nil
+        local had = MD.db.clockLook.over.bars ~= nil and MD.db.clockLook.over.colors ~= nil
+            and MD.db.clockLook.over.frame ~= nil
         local overLook = CV.Look(facts)
         local before = fired
         CV.ResetToStyle()
         local after = fired - before
         local look = CV.Look(facts)
         local empty = type(MD.db.clockLook.over) == "table" and next(MD.db.clockLook.over) == nil
-        local okR = had and overLook.bar.source == "time" and empty and MD.db.clockLook.layout == "bar"
-            and after == 1 and look.bar.source == facts.source and look.colors.crit == nil
+        -- Set prunes: a key set back to nil leaves no empty table behind
+        CV.Set("bars.line.fsr", 6)
+        CV.Set("bars.line.fsr", nil)
+        local pruned = next(MD.db.clockLook.over) == nil
+        local okR = had and overLook.bars.join == "veil" and overLook.frame.h == 30 and empty
+            and MD.db.clockLook.layout == "bar" and after == 1 and look.bars.join == "stacked"
+            and look.frame.h == 22 and look.colors.crit == nil and pruned
         CV.SetLayout("line")
         if okR then return true end
-        return string.format("had %s, empty %s, layout %s, fired %d, source %s", tostring(had),
-            tostring(empty), tostring(MD.db.clockLook.layout), after, tostring(look.bar.source))
+        return string.format("had %s, empty %s, layout %s, fired %d, join %s, pruned %s", tostring(had),
+            tostring(empty), tostring(MD.db.clockLook.layout), after, tostring(look.bars.join), tostring(pruned))
     end)
-    check("6b. Reset to style wipes over (the layout kept, CLOCK_LOOK once, the style's look back)",
+    check("6b. Reset to style wipes over (the layout kept, CLOCK_LOOK once, the style's look back); Set prunes",
         ok6b and why6b == true, (not ok6b and ("raised: " .. tostring(why6b))) or (why6b ~= true and tostring(why6b)) or nil)
+
+    -- 6c. the 0.16.6 keys migrate: bar.source -> bars.<every layout>.show
+    -- (+ mana = model where the line has a model), bar.color -> colors.manaBar;
+    -- the spark, the horizon, the height and source "time" dropped, named once
+    local ok6c, why6c = pcall(function()
+        local bad = {}
+        local function Mig(over)
+            local stored = { layout = "line", over = over }
+            local changed, dropped = CV.Migrate(stored, facts)
+            return stored.over, changed, table.concat(dropped or {}, ",")
+        end
+        local o, ch, dr = Mig({ bar = { source = "pool", color = "tone", back = { 0, 0, 0, 1 } } })
+        for _, L in ipairs({ "line", "compact", "bar" }) do
+            if not (o.bars and o.bars[L] and o.bars[L].show == "mana" and o.bars[L].mana == nil) then
+                bad[#bad + 1] = "pool -> " .. L
+            end
+        end
+        if not (ch == true and dr == "" and o.colors and o.colors.manaBar == "tone" and o.bar
+            and Is(o.bar.back, 0, 0, 0, 1) and o.bar.source == nil and o.bar.color == nil) then
+            bad[#bad + 1] = "pool: changed " .. tostring(ch) .. " dropped " .. dr
+        end
+        o, ch, dr = Mig({ bar = { source = "model", spark = false, horizon = 3, height = 6 } })
+        local wantMana = forever and "model" or nil
+        if not (o.bars.line.show == "mana" and o.bars.line.mana == wantMana and o.bar == nil
+            and dr == "bar.height,bar.horizon,bar.spark") then
+            bad[#bad + 1] = "model: " .. tostring(o.bars.line.mana) .. " dropped " .. dr
+        end
+        o, ch, dr = Mig({ bar = { source = "fsr" } })
+        if o.bars.compact.show ~= "fsr" then bad[#bad + 1] = "fsr" end
+        o, ch, dr = Mig({ bar = { source = "none" } })
+        if o.bars.bar.show ~= "none" then bad[#bad + 1] = "none" end
+        o, ch, dr = Mig({ bar = { source = "time", color = "source" } })
+        if not (o.bars == nil and o.bar == nil and dr == "bar.color,bar.source") then
+            bad[#bad + 1] = "time: dropped " .. dr
+        end
+        o, ch, dr = Mig({ bar = { color = { 1, 0, 0, 1 } } })
+        if not (type(o.colors) == "table" and Is(o.colors.manaBar, 1, 0, 0, 1)) then bad[#bad + 1] = "colour" end
+        o, ch, dr = Mig({ bar = { color = "purple" } })
+        if not (o.colors == nil and dr == "bar.color") then bad[#bad + 1] = "bad colour: " .. dr end
+        -- a key already in the new shape is never overwritten
+        o, ch, dr = Mig({ bar = { source = "fsr" }, bars = { line = { show = "both" } },
+            colors = { manaBar = "class" } })
+        if not (o.bars.line.show == "both" and o.bars.bar.show == "fsr" and o.colors.manaBar == "class") then
+            bad[#bad + 1] = "kept"
+        end
+        if #bad == 0 then return true end
+        return table.concat(bad, "; ")
+    end)
+    check("6c. the 0.16.6 keys migrate (source -> bars.<layout>.show, color -> colors.manaBar); the rest dropped by name",
+        ok6c and why6c == true, (not ok6c and ("raised: " .. tostring(why6c))) or (why6c ~= true and tostring(why6c)) or nil)
+
+    -- 6d. migrating twice changes nothing; a migrated store resolves as the
+    -- same keys set by hand; the dump line names what was dropped
+    local ok6d, why6d = pcall(function()
+        local stored = { layout = "line", over = { bar = { source = "fsr", spark = true, back = { 0, 0, 0, 1 } } } }
+        local c1 = CV.Migrate(stored, facts)
+        local c2, d2 = CV.Migrate(stored, facts)
+        local hand = { layout = "line", over = { bar = { back = { 0, 0, 0, 1 } },
+            bars = { line = { show = "fsr" }, compact = { show = "fsr" }, bar = { show = "fsr" } } } }
+        local a, b = CV.Resolve(stored, nil, facts), CV.Resolve(hand, nil, facts)
+        local same = a.bars.show == b.bars.show and a.bars.show == "fsr"
+        for _, L in ipairs({ "line", "compact", "bar" }) do
+            if stored.over.bars[L].show ~= hand.over.bars[L].show then same = false end
+        end
+        -- the session's own store, migrated (forced again here), with the dump line
+        MD.db.clockLook = { layout = "line", over = { bar = { source = "time", horizon = 3 } } }
+        CV.MigrateStored(facts, true)
+        local line
+        for _, d in ipairs(MD:DumpLines()) do
+            if d.key == "clockOld" then line = d.fn() end
+        end
+        local okLine = line == "clock: 2 old clock keys dropped (bar.horizon, bar.source)"
+        local emptied = next(MD.db.clockLook.over) == nil
+        MD.db.clockLook = { layout = "line", over = {} }
+        if c1 == true and c2 == false and #(d2 or {}) == 0 and same and okLine and emptied then return true end
+        return string.format("first %s, second %s, same %s, dump %q, emptied %s", tostring(c1), tostring(c2),
+            tostring(same), tostring(line), tostring(emptied))
+    end)
+    check("6d. migrating twice changes nothing; a migrated store resolves as the same keys by hand; the dump names the dropped",
+        ok6d and why6d == true, (not ok6d and ("raised: " .. tostring(why6d))) or (why6d ~= true and tostring(why6d)) or nil)
 end
 
 print(string.format("\n%d ok, %d failed", ok, #fails))

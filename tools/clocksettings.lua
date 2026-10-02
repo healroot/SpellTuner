@@ -13,7 +13,7 @@
 -- What is held, on both flavours:
 --   1. Settings has a Clock view (TBC general, clock, about; Forever general,
 --      clock, modules, about); its pane has PREVIEW and LAYOUT and the level-3
---      box (Colours, Frame, Bar, Show, When), and the preview is a frame of
+--      box (Colours, Frame, Bars, Show, When), and the preview is a frame of
 --      its own -- neither the clock on screen nor a child of it;
 --   2. each state chip paints its ClockFace.SAMPLES face, as this line draws a
 --      face (Forever: "~", one colour, "0:15", no arrow), into the preview --
@@ -23,8 +23,10 @@
 --      MD.ClockFace.Current;
 --   3. the layout buttons save db.clockLook.layout (CLOCK_LOOK once) and the
 --      clock on screen and the preview rebuild in it;
---   4. a control writes db.clockLook.over -- a tone swatch, the bar's source,
---      the spark, the height, the background's alpha -- and the clock on
+--   4. a control writes db.clockLook.over -- a tone swatch, Mana colour, the
+--      Bars tab (bars.<layout>.*, kept per layout), the Frame tab (width,
+--      height with the minimum named, scale on release, alpha), the rule
+--      chips (T115) -- and the clock on
 --      screen rebuilds with it; Reset to style empties it, the layout kept;
 --   5. Show / When hold the line's own switches (the rest segment: the
 --      preview's rest chip loses it, and so does MD.ClockLook, the broker's
@@ -321,7 +323,7 @@ Try("selecting it builds the pane: PREVIEW, LAYOUT, the box with five tabs", fun
     for _, t in ipairs(CS.TABS or {}) do tabs[#tabs + 1] = t.id end
     return g == "settings" and v == "clock" and pane ~= nil and pane:IsVisible()
         and table.concat(titles, ",") == "PREVIEW,LAYOUT" and p.box ~= nil
-        and table.concat(tabs, ",") == "colours,frame,bar,show,when",
+        and table.concat(tabs, ",") == "colours,frame,bars,show,when",
         string.format("%s/%s titles %s", tostring(g), tostring(v), table.concat(titles, ","))
 end)
 
@@ -408,32 +410,121 @@ Try("Colours: a tone's swatch writes colors.<tone>, on the clock and the preview
         and p.look.colors.crit == "00ccff"
 end)
 
-Try("Bar: the source, the spark and the height write bar.*; the clock draws them", function()
-    p.box:Select("bar")
-    local picked = Pick(p.sourceDropdown, "time")
-    p.sparkCheck:SetChecked(true); p.sparkCheck.onClick(true, p.sparkCheck)
-    Type(p.heightSlider, "10")
-    local o = Over()
-    local wl = WidgetLook()
-    return picked and o.bar and o.bar.source == "time" and o.bar.spark == "fsr" and o.bar.height == 10
-        and wl.bar.source == "time" and wl.bar.spark == "fsr" and wl.bar.height == 10,
-        string.format("picked %s over %s/%s/%s", tostring(picked), tostring(o.bar and o.bar.source),
-            tostring(o.bar and o.bar.spark), tostring(o.bar and o.bar.height))
+Try("Colours: Mana colour writes colors.manaBar (by tone, class, a swatch); the strip keeps its own", function()
+    p.box:Select("colours")
+    local ids = {}
+    for _, it in ipairs(p.manaColour and p.manaColour.items or {}) do ids[#ids + 1] = it.id end
+    local picked = Pick(p.manaColour, "tone")
+    local toneOK = Over().colors and Over().colors.manaBar == "tone" and WidgetLook().colors.manaBar == "tone"
+    local sw
+    for _, b in ipairs(p.manaColourRow and p.manaColourRow.swatches or {}) do if b.hex == "ff8000" then sw = b end end
+    Click(sw)
+    local c = Over().colors and Over().colors.manaBar
+    local fixed = type(c) == "table" and math.abs(c[1] - 1) < 1e-9 and math.abs(c[2] - 0x80 / 255) < 1e-9
+        and p.manaColour.value == "fixed"
+    Click(p.manaColourRow and p.manaColourRow.reset)
+    local back = Over().colors == nil or Over().colors.manaBar == nil
+    return table.concat(ids, ",") == "mana,tone,class,fixed" and picked and toneOK and fixed and back,
+        string.format("items %s, tone %s, fixed %s, back %s", table.concat(ids, ","), tostring(toneOK),
+            tostring(fixed), tostring(back))
 end)
 
-Try("Bar: the sources offered are the ones this line may draw in this layout", function()
-    local ids = {}
-    for _, it in ipairs(p.sourceDropdown.items) do ids[#ids + 1] = it.id end
-    local want = forever and "pool,model,time,fsr,none" or "pool,time,fsr,none"
-    return table.concat(ids, ",") == want, table.concat(ids, ",")
+Try("Bars: each dropdown and the 5SR thickness write bars.<layout>.*; the clock draws them", function()
+    p.box:Select("bars")
+    local picks = Pick(p.showDropdown, "mana") and Pick(p.showDropdown, "both") and Pick(p.joinDropdown, "veil")
+        and Pick(p.orderDropdown, "fsrOver") and Pick(p.afterDropdown, "empty")
+    Type(p.fsrSlider, "5")
+    local o = Over().bars and Over().bars.line or {}
+    local wl = WidgetLook().bars or {}
+    local okW = o.show == nil and o.join == "veil" and o.order == "fsrOver" and o.after == "empty" and o.fsr == 5
+        and wl.join == "veil" and wl.order == "fsrOver" and wl.after == "empty" and wl.fsr == 5
+        and p.look.bars.join == "veil"
+    return picks and okW, string.format("picks %s, over join %s order %s after %s fsr %s show %s", tostring(picks),
+        tostring(o.join), tostring(o.order), tostring(o.after), tostring(o.fsr), tostring(o.show))
+end)
+
+Try("Bars: the choices are this line's (" .. (forever and "Mana from; no tick; flat only" or "the tick; three textures; no Mana from") .. ")", function()
+    local function Ids(dd)
+        local ids = {}
+        for _, it in ipairs(dd and dd.items or {}) do ids[#ids + 1] = it.id end
+        return table.concat(ids, ",")
+    end
+    local show, join, order = Ids(p.showDropdown), Ids(p.joinDropdown), Ids(p.orderDropdown)
+    local after, tex, mana = Ids(p.afterDropdown), Ids(p.textureDropdown), p.manaDropdown and Ids(p.manaDropdown)
+    local common = show == "both,mana,fsr,none" and join == "stacked,veil,chip" and order == "manaOver,fsrOver"
+    local own
+    if forever then
+        own = after == "green,empty" and tex == "flat" and mana == "game,model"
+            and T.Has(p.afterNote and p.afterNote:GetText(), "cannot be learned")
+    else
+        own = after == "green,empty,tick" and tex == "flat,statusbar,raid" and mana == nil
+    end
+    return common and own, string.format("show %s join %s order %s after %s texture %s mana %s", show, join, order,
+        after, tex, tostring(mana))
+end)
+
+Try("Bars: a choice is kept per layout (compact has its own; line's comes back)", function()
+    for _, x in ipairs(p.layoutButtons) do if x.id == "compact" then Click(x) end end
+    local fresh = p.joinDropdown.value == "stacked"
+    Pick(p.joinDropdown, "chip")
+    local compactSet = Over().bars.compact and Over().bars.compact.join == "chip"
+    for _, x in ipairs(p.layoutButtons) do if x.id == "line" then Click(x) end end
+    local lineBack = p.joinDropdown.value == "veil" and WidgetLook().bars.join == "veil"
+    return fresh and compactSet and lineBack, string.format("fresh %s, compact %s, line back %s", tostring(fresh),
+        tostring(compactSet), tostring(lineBack))
+end)
+
+Try("Frame: width and height write frame.<layout>.w / h; each slider names the layout's minimum", function()
+    p.box:Select("frame")
+    Type(p.hSlider, "44")
+    Type(p.wSlider, "260")
+    local fr = Over().frame and Over().frame.line or {}
+    local mw, mh = p.view:Minimum()
+    local wl = WidgetLook().frame or {}
+    local okF = fr.w == 260 and fr.h == 44 and wl.w == 260 and wl.h == 44
+    local okMin = p.wMin and p.wMin:GetText() == "min " .. mw and p.hMin and p.hMin:GetText() == "min " .. mh
+    local note = false
+    for _, fs in ipairs(FontStrings(p.tabFrames.frame)) do
+        if fs:GetText() == "Width, height and scale are kept per layout." then note = true end
+    end
+    return okF and okMin and note, string.format("over %s x %s, min %s / %s (%s x %s), note %s", tostring(fr.w),
+        tostring(fr.h), tostring(p.wMin and p.wMin:GetText()), tostring(p.hMin and p.hMin:GetText()), tostring(mw),
+        tostring(mh), tostring(note))
+end)
+
+Try("Frame: Scale writes frame.<layout>.scale on release (a drag alone writes nothing)", function()
+    local n0 = counts.CLOCK_LOOK
+    if p.scaleSlider.onValueChangedFn then p.scaleSlider.onValueChangedFn(150) end
+    local dragged = (Over().frame.line.scale == nil) and counts.CLOCK_LOOK == n0
+    Type(p.scaleSlider, "150")
+    local released = Over().frame.line.scale == 150 and WidgetLook().frame.scale == 150
+        and math.abs(widget:GetScale() - 1.5) < 1e-9
+    Type(p.scaleSlider, "100")
+    return dragged and released, string.format("drag wrote nothing %s, release %s", tostring(dragged),
+        tostring(released))
 end)
 
 Try("Frame: the background alpha writes panel.fill with the fill's colour", function()
-    p.box:Select("frame")
     Type(p.alphaSlider, "50")
     local f = Over().panel and Over().panel.fill
     return type(f) == "table" and math.abs((f[4] or 0) - 0.5) < 1e-9
         and math.abs((UI.SkinColour(WidgetLook().panel.fill) or {})[4] - 0.5) < 1e-9
+end)
+
+Try("the rule chips paint the preview's five-second rule: 3.0 s left, just cast, regen running", function()
+    local names, res = {}, {}
+    for _, b in ipairs(p.ruleChips or {}) do names[#names + 1] = b:GetText() end
+    MD.ClockView.ResetToStyle()
+    Click(p.chips[2]) -- a sample face
+    for _, b in ipairs(p.ruleChips or {}) do
+        Click(b)
+        res[b.id] = p.view.strip and p.view.strip.value
+    end
+    local okR = math.abs((res.rule or -1) - 2) < 0.05 and math.abs((res.cast or -1) - 0) < 0.05
+        and math.abs((res.regen or -1) - 5) < 1e-9
+    return table.concat(names, ",") == "in the rule, 3.0 s left,just cast,regen running" and okR,
+        string.format("%s: rule %s cast %s regen %s", table.concat(names, ","), tostring(res.rule),
+            tostring(res.cast), tostring(res.regen))
 end)
 
 Try("Reset to style empties the overrides and keeps the layout", function()
