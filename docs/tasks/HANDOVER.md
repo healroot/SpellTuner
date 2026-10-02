@@ -4,11 +4,13 @@ Rewritten by the lead after every commit and every hand-out. A successor continu
 alone. Worktree: `/home/penek/projects/addons/SpellTuner/.claude/worktrees/manademon-folder-continue-41eabc`,
 branch `claude/manademon-folder-continue-41eabc`.
 
-Last updated: 2026-10-02, after **waves N1-N3 of `docs/SPEC-next.md`** (the next round: more
-classes, UI styles, EllesmereUI, the clock -- T87-T101 and T113) and the **0.16.6** version commit.
-Both packages are built into the top-level `dist/` (`tbc/` and `forever/`, and the two zips);
-**nothing is installed**: both clients still run 0.16.5 (installed 2026-10-01). The version ruling
-is `docs/DECISIONS.md` "One version, two installations". Install only on the author's request:
+Last updated: 2026-10-02, after **waves N1-N5 of `docs/SPEC-next.md`** as far as they landed
+(T87-T102, T106, T107, T110, T111 and T113) and the **0.16.6** finish commit. The version stays
+0.16.6 (never released, never installed): its packages were rebuilt after waves N4 and N5 and are in
+the top-level `dist/` (`tbc/` and `forever/`, and the two zips); **nothing is installed**: both
+clients still run 0.16.5 (installed 2026-10-01). The 0.16.6 commit (7da7943) says waves N4 and N5
+did not land; they landed after it (4ff42bf, ee840e0). The version ruling is `docs/DECISIONS.md`
+"One version, two installations". Install only on the author's request:
 `./release.sh --install-forever "/mnt/e/Blizzard/World of Warcraft/_classic_beta_/Interface/AddOns"`
 and `./release.sh --install-tbc ".../_anniversary_/Interface/AddOns"`; never cross them.
 
@@ -16,7 +18,16 @@ and `./release.sh --install-tbc ".../_anniversary_/Interface/AddOns"`; never cro
 
 | hash | what |
 |---|---|
-| (the commit after 35275c7) | 0.16.6 on every TOC (`release.sh --set-version`; the import fixture rebuilt, unchanged -- fixed version since T54; no other fixture embeds the version); CLAUDE.md's intro at 0.16.6; TESTING §46 rewritten as five sessions for what landed (46.1 the probe on both clients first); HISTORY; this handover |
+| (the commit after ee840e0) | the finish at 0.16.6 (version kept): TESTING §46 for waves N1-N5 (the intro, 46.4 step 4 after T106, 46.6 / 46.7 in the packages, T97 deviation 3 closed), HISTORY, this handover; the import fixture rebuilt, unchanged; both packages rebuilt |
+| ee840e0 | wave N5 integrator (TBC TOC: the priest / shaman / paladin TBC profiles, `Spells\Parse.lua`, `Spells\Book_TBC.lua`; counts; CLAUDE.md, TESTING 46.7, DECISIONS, TOOLS) |
+| 3be8632 / 2e75430 / fa3d24f | T111 review: the five rejections as failing tests, then TBC non-druids unchanged until the caps are granted (profiles grant `clock` only), `ClassContext` / `DruidContext`, `SpellKit` the druid's for every class; tbcclasscheck 52 |
+| 35eeeec / 0d65533 / c445021 / 434d466 | T111 (decision 8 (b)): `Spells/Book_TBC.lua` (bases from each rank's tooltip), the class rules in `Engine/RankMath.lua` (VERIFY), the three TBC class profiles, twelve TBC adapter bindings, the WCL fit with a class |
+| fde54a5 / 8c02f1c / c44dc17 | T110 (P6, partial): the list seeded by role (`Tabs:Role`, `SeedList`), either-or halves (`Book:Half`), the tooltip's role half and `Or heals` / `Or damage`, inert MAGE / WARLOCK mana-cooldown rows; tabscheck 27, bookcheck 31, tipcheck 52 |
+| 4ff42bf | wave N4 integrator (TOC lines for `UI\ClockSettings.lua` and the three Forever class profiles; T107's lines 1 and 2: `UI.Restyle.LEFT = {}`; the import fixture: `useClassColour`) |
+| e391b4e / fe7124f / ce265eb | T107 (decision 4): live restyle -- `UI.Tint`, `UI.FollowTokens`, `UI.Restyle`; restylecheck 44 / 49 (new) |
+| 690742c / 9ac10c3 / 1baf1e9 / a94ddd4 | T106 (decision 7): Paladin / Shaman / Priest Forever profiles, the solver-only coach for non-druids (`SP.SolverOnly`, `SP.SOLVER_COACH`, `SP.Unmodelled`); classcoach 39 (new), profilecheck 64 (cached) / 45 |
+| 1ad3d2a / 1c083ed / facd7f5 | T102: Settings -> Clock (`UI/ClockSettings.lua`), the Look dropdown with Use my class colour, INTEGRATIONS, `/st clock layout / look reset / preview`, `MD.ClockLook`; clocksettings 34 / 35 (new) |
+| 7da7943 | 0.16.6 on every TOC (`release.sh --set-version`; the import fixture rebuilt, unchanged -- fixed version since T54; no other fixture embeds the version); CLAUDE.md's intro at 0.16.6; TESTING §46 rewritten as five sessions for what landed (46.1 the probe on both clients first); HISTORY; this handover |
 | 35275c7 | docs: `docs/research/next/R-classicui.md`, the ClassicUI web study (feeds T108's Classic style) |
 | 319f6cb | wave N3 integrator (TOC lines, `MD.EUIParent` in `Integrations/EllesmereUI_Forever.lua`, the import fixture: `clockLook`, `eui`, `feeds`) |
 | 432a5f0 / ac1c91e | T101 (decision 12): the generic Forever kit -- group / chain / selfAndTarget, the solver's sums, N same-instant claims, own heals replayed as recorded; kitcheck 19, solvercheck 95, scenariocheck 19, practiceforever 31 |
@@ -42,53 +53,53 @@ and `./release.sh --install-tbc ".../_anniversary_/Interface/AddOns"`; never cro
 
 ## In the tree, not committed
 
-Nothing. The top-level `dist/` (gitignored) holds the 0.16.6 packages. Branches kept outside
-`claude/manademon-folder-continue-41eabc` (below): `next/T102`, `next/T106` (each with its
-worktree `.claude/worktrees/wf_c5e72881-4a2-38` / `-39`), `saved/T107-partial-2026-10-01`.
+Nothing. The top-level `dist/` (gitignored) holds the rebuilt 0.16.6 packages. The wave branches
+(`next/T102`, `next/T106`, `next/T110`, `next/T111`, `saved/T107-partial-2026-10-01`) and their
+worktrees are gone; everything they held is in this branch.
 
-## What did not land, and why
+## What landed in waves N4 and N5, and what did not
 
-The next round's workflow (`wf_c5e72881-4a2`) was stopped by the author in wave N4 on 2026-10-01
-and resumed on 2026-10-02. The resumed run's finish step was handed a "not landed" list naming
-T92-T101 as "skipped: dependency not landed (T88 ...)": **that list is wrong** -- every one of T87-
-T101 and T113 is in this branch (above) and `make check` holds them. What really did not land:
+Landed (integrated on 7da7943, in this branch): **T102** Settings -> Clock / Look / INTEGRATIONS,
+**T106** the Paladin / Shaman / Priest Forever profiles and their coach, **T107** live restyle,
+**T110** (partial) the list by role and either-or halves, **T111** the TBC class book and rules
+(behind a cap not granted). Their task files are `docs/tasks/T102-*`, `T106-*`, `T107-*`, `T110-*`,
+`T111-*`.
 
 | task | state | why / what it waits on |
 |---|---|---|
-| **T102** Settings -> Clock, the Look dropdown, INTEGRATIONS | **built, not integrated** -- branch `next/T102` (553d86f tests first, b2d636d, 9696a53 the task file), on 319f6cb | the resumed run skipped it on its stale dependency record; needs its review, then the integrator lines from its task file. Nothing else waits for the author |
-| **T106** Paladin / Shaman / Priest profiles (Forever) | **built, not integrated** -- branch `next/T106` (4a4a485, bfb637f, fc601f3, e76b0e6), on 319f6cb | as T102. **bfb637f touches `Engine/SimPlanner.lua` outside the task's owned files** (a kit whose profile names no threshold rules) -- the reviewer must judge it |
-| **T107** live restyle | **partial** -- branch `saved/T107-partial-2026-10-01` (857f2d2 tests first, 9c1d7c3 the implementation; no task file) | stopped mid-build; rebuild from the branch as reference, then delete the branch |
 | **T103** Modern style | not started | `== art` from both clients (46.1) |
-| **T104** Ring clock | not started | `== clock`'s Q-clock-4 from both clients (46.1) |
+| **T104** Ring clock | not started | `== clock`'s Q-clock-4 from both clients (46.1); `/st clock layout ring` is refused until it adds the ring to `CV.LAYOUT` (T102 deviation 7) |
 | **T105** mana sources | not started | `== auras` on Forever (46.1 step 2) |
-| **T108** Classic style | not started | `== art` from both clients and T107; `docs/research/next/R-classicui.md` is its input |
-| **T109** absorbs | not started | the absorb lines of `== auras` (46.4 step 1, a priest) and T106 |
-| **T110** non-healer extras | not started | T105 (the caster mana sources) |
-| **T111** TBC other classes (tables and tooltips) | not started | T106 (decision 8: scheduled last) |
+| **T108** Classic style | not started | `== art` from both clients; T107 is in; `docs/research/next/R-classicui.md` is its input |
+| **T109** absorbs | not started | the absorb lines of `== auras` (46.4 step 1, a priest); T106 is in (the priest has no Power Word: Shield until T109) |
+| **T110's remainder** | waits | T105's seam: Evocation / mana gem / Life Tap values from text (`Spells/Parse.lua`), gem item ids, Penance's text, the Spells pane and rail showing the role's half (`docs/tasks/T110-non-healer-extras.md` "Left for after T105") |
+| **T111's cap grant** | waits | the swaps listed in `docs/tasks/T111-tbc-other-classes.md` "Before the caps are granted" (the ranks' source in `UI/SpellTooltip.lua`, `UI/Tip_TBC.lua`, `UI/SpellsView_TBC.lua`, `UI/Dashboard.lua`; Gift of Nature / `every 3s` in the spell tooltip; the max-rank share in `UI/Summary.lua`, `Engine/SpendTracker.lua`, `Diagnostics_TBC.lua`), then a decision to grant `rankTable` / `tooltip` |
 | **T112** two-line clock | not scheduled | decision 13 (the author chose Line, Compact, Bar, Ring) |
 | `MD.API.BASE_CD_READS` flip | off | `== cooldowns`' `GetSpellBaseCooldown` lines from both clients (46.1) |
 
-Open from the task files: the Forever broker shows the rest segment even with `/st clock rest` off
-until a file provides `MD.ClockLook()` (T97 deviation 3); `db.feeds.elvui` declared, not read yet
-(T97 deviation 2, T102). The refactor plan's left-overs below ("Before this round") still stand.
+Open from the task files: T102's Text tab and the other 7.3 keys the renderer does not draw yet
+(T102 deviation 1); "Use my class colour" wrapping `UI.ApplyStyleTokens` rather than living in
+`UI/Styles.lua` (T102 deviation 3); `/st coach N safe` / `health` / ... for a non-druid says to
+coach first (T106 deviation 7); `Stream_Forever.lua`'s druid `FAMILY_KEY` (T106 deviation 8);
+`db.feeds.elvui` declared, not read (T97 deviation 2). The refactor plan's left-overs below
+("Before this round") still stand.
 
 ## Next, in order
 
-1. **The author's in-game run of the new probe sections on BOTH clients: `docs/TESTING.md` 46.1**
+1. **The author's in-game probe of the new sections on BOTH clients: `docs/TESTING.md` 46.1**
    (after installing 0.16.6 on the author's word): `/st probe` on the beta (out of combat; in combat
    with an Innervate or Mana Spring on you; with EllesmereUI on) and `/md probe` on TBC -- `== art`,
    `== hosts`, `== clock`, `== cooldowns`, `== auras` -- pasted whole into
    `docs/probe/<build>-0.16.6-s1.md` and `.logs/tbc/0.16.6-s1.md`; then 46.4 step 1 on a priest
    (absorbs). These unblock **T103** Modern (`== art`), **T104** Ring (Q-clock-4), **T105** mana
-   sources (`== auras`), **T108** Classic (`== art`, after T107), **T109** absorbs and the
-   **`BASE_CD_READS` flip** (`== cooldowns`).
-2. Integrate what is built: review `next/T102` and `next/T106` (judge T106's bfb637f), merge with
-   their integrator lines; rebuild T107 from `saved/T107-partial-2026-10-01`. Resume by run id
-   (`resumeFromRunId: "wf_c5e72881-4a2"`) only after fixing its landed-task record, or dispatch them
-   by hand; the integrator checks HEAD before merging.
-3. Then wave N4's rest (T103, T104, T105) on the probe's answers, then N5 (T108, T109, T110, T111).
-4. The rest of §46 (46.2-46.5) and §45 on 0.16.6; a task per failed check, from the paste only.
-5. Still waiting on the author from before: §38-§44 items, the "Measured" line, pair mode, decision
+   sources (`== auras`), **T108** Classic (`== art`), **T109** absorbs, the **`BASE_CD_READS`
+   flip** (`== cooldowns`), and **T110's remainder** once T105 is in.
+2. Then 46.6 (Settings -> Clock, Look, live restyle, INTEGRATIONS, a paladin / shaman / priest
+   coached and practising) and 46.7 (the role seed, either-or halves, TBC other classes unchanged),
+   then 46.2-46.5 and §45 on 0.16.6; a task per failed check, from the paste only.
+3. On the probe's answers: T103, T104, T105, then T108, T109, T110's remainder; the T111 swaps and
+   the cap decision when the author asks for TBC other classes.
+4. Still waiting on the author from before: §38-§44 items, the "Measured" line, pair mode, decision
    12 of the UI spec; M5 of the roadmap (launch client, 2026-11-04).
 
 Suite loop: `make check` (`tools/check.sh`; docs/TOOLS.md section 1) -- every suite under its
@@ -98,26 +109,29 @@ flavours, apicheck, textcheck, the selftests and the expected counts in
 `bash tools/run.sh tools/importfixture.lua` whenever what is stored changes (a new default does).
 `releasecheck` in a `git archive` export needs a throwaway `git init` there.
 
-## Baselines (at the 0.16.6 commit)
+## Baselines (at the finish commit after ee840e0, 0.16.6 rebuilt)
 
-`make check`: 86 runs, all passed; 81 counted against 81 expected (profilecheck/forever's NOTE 48
-vs 46 is the talentsforever cache's two extra checks, as before). TBC: adaptercheck 16, bookcheck 2,
-capscheck 34, clockfacecheck 22, clockui 16, consolecheck 1, corecheck 29, costcheck 3, dashui 84,
-defaultscheck 49, kitcheck 5, migrate 7, minimapcheck 8, navui 46, practice 84, practiceui 52,
-probecheck 15, profilecheck 44, reccheck 63, recordingscheck 32, regencheck 27, replaycheck 82,
-replayui 107, restcheck 51, reviewui 50, runcheck 81, simcheck 13, simwindow 8, slashcheck 10,
-solvercheck 95, spelltip 49, stylecheck 34, surfacecheck 34, svcheck 1, tabscheck 4, themecheck 9,
-timeline 27, ttocheck 50, verifycheck 14, wincheck 4. Forever: adaptercheck 24, bindscheck 6,
-bookcheck 29, capscheck 32, clockcheck 35, clockfacecheck 19, clockui 16, coachforever 22,
-consolecheck 22, corecheck 29, defaultscheck 52, euicheck 19, forevercheck 16, gatecheck 12, kitcheck
-19, measurecheck 30, minimapcheck 9, modulecheck 19, parsecheck 42, practiceforever 31, probecheck
-97, profilecheck 46 (48 with the cache), recordcheck 31, recordingscheck 32, replayforever 28,
-reviewforever 22, scenariocheck 19, spellsui 52, stylecheck 34, surfacecheck 41, svcheck 6, tabscheck
-24, themecheck 38, tipcheck 51, wincheck 66. importcheck 21, releasecheck 21, lib/t 12. apicheck 0
-findings (8 Forever TOCs, 69 files, 51 distinct globals), apicheck selftest 14, textcheck 0 findings
-over 108 files (9 TOCs), textcheck selftest 2, refcheck selftest 2; reproduce and strategies smoke
-runs ok. Packages: TBC 80 files, Forever 44 files plus the three modules
-(`dist/manademon-folder-continue-41eabc/`, `SpellTuner-tbc-0.16.6.zip`, `SpellTuner-forever-0.16.6.zip`).
+`make check`: 92 runs, all passed; 87 counted against 87 expected (profilecheck/forever's expected
+count is 64, the run with `tools/.cache/talentsforever.json`; without the cache it runs 59 and the
+counts fail until `python3 tools/refcheck.py --fetch`). TBC: adaptercheck 16, bookcheck 2, capscheck
+34, clockfacecheck 22, clocksettings 34, clockui 16, consolecheck 1, corecheck 29, costcheck 3,
+dashui 84, defaultscheck 49, kitcheck 5, migrate 7, minimapcheck 8, navui 46, practice 84,
+practiceui 52, probecheck 15, profilecheck 51, reccheck 63, recordingscheck 32, regencheck 27,
+replaycheck 82, replayui 107, restcheck 51, restylecheck 49, reviewui 50, runcheck 81, simcheck 13,
+simwindow 8, slashcheck 10, solvercheck 95, spelltip 49, stylecheck 34, surfacecheck 34, svcheck 1,
+tabscheck 4, tbcclasscheck 52, themecheck 9, timeline 27, ttocheck 50, verifycheck 14, wincheck 4.
+Forever: adaptercheck 24, bindscheck 6, bookcheck 31, capscheck 32, classcoach 39, clockcheck 35,
+clockfacecheck 19, clocksettings 35, clockui 16, coachforever 22, consolecheck 22, corecheck 29,
+defaultscheck 52, euicheck 19, forevercheck 16, gatecheck 12, kitcheck 19, measurecheck 30,
+minimapcheck 9, modulecheck 19, parsecheck 42, practiceforever 31, probecheck 97, profilecheck 64,
+recordcheck 31, recordingscheck 32, replayforever 28, restylecheck 44, reviewforever 22,
+scenariocheck 19, spellsui 52, stylecheck 34, surfacecheck 41, svcheck 6, tabscheck 27, themecheck
+38, tipcheck 52, wincheck 66. importcheck 21, releasecheck 21, lib/t 12. apicheck 0 findings (8
+Forever TOCs, 73 files, 51 distinct globals), apicheck selftest 14, textcheck 0 findings over 116
+files (9 TOCs), textcheck selftest 2, refcheck selftest 2; reproduce and strategies smoke runs ok.
+Packages (`make release SRC=manademon-folder-continue-41eabc`): TBC 86 files, Forever 48 files plus
+the three modules (`dist/manademon-folder-continue-41eabc/`, `SpellTuner-tbc-0.16.6.zip`,
+`SpellTuner-forever-0.16.6.zip`). Not installed.
 
 ## Before this round: the refactor plan (0.16.4, 0.16.5)
 

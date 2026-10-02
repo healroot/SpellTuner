@@ -4864,3 +4864,32 @@ addresses, ms, the frame-sliced search's evaluation lines). No TBC suite changed
 73 files, textcheck 0 over 116; the same in a `git archive HEAD` export. Version unchanged
 (0.16.6), not installed. **Next:** the author runs §46.1 and 46.7; T105 for T110's values; the
 swaps listed in `docs/tasks/T111-tbc-other-classes.md` before the TBC class caps are granted.
+
+## 2026-10-02 — the next round's finish: waves N1-N5 at 0.16.6, rebuilt, not installed
+
+The version stays **0.16.6** (never released, never installed). Its commit (7da7943) was written
+before waves N4 and N5 and says they did not land; they landed after it on this branch: **T102**
+(Settings -> Clock, the Look dropdown with Use my class colour, INTEGRATIONS), **T106** (the
+Paladin / Shaman / Priest Forever profiles and the solver-only coach), **T107** (live restyle),
+**T110** (partial: the list seeded by role, either-or halves) and **T111** (the TBC class book and
+rules, held offline; the three TBC class profiles grant the clock only). Not landed, each waiting
+on the author's probe (TESTING 46.1): T103 Modern and T108 Classic (`== art`), T104 Ring
+(`== clock`'s Q-clock-4), T105 mana sources (`== auras`), T109 absorbs (the absorb lines), the
+`MD.API.BASE_CD_READS` flip (`== cooldowns`), and T110's remainder after T105. T111's cap grant
+waits on the swaps its task file lists.
+
+- `docs/TESTING.md` §46: the intro names what 0.16.6 now carries and what it does not; 46.1 (the
+  probe on both clients) stays first, then 46.6 and 46.7; 46.4 step 4 rewritten for T106 (the gates
+  stay closed only for classes without a profile); 46.6 / 46.7 no longer say "not in the 0.16.6
+  packages"; 46.3's broker note says T102 closed T97's deviation 3; the paste paths at 0.16.6.
+- `docs/tasks/HANDOVER.md` rewritten: the committed table with waves N4 / N5, what landed and what
+  did not and why, the next steps (the probe on both clients first), the baselines.
+- `tools/data/import-forever-sv.lua` rebuilt: unchanged.
+- Both packages rebuilt into the top-level `dist/` at 0.16.6. **Nothing installed**; both clients
+  still run 0.16.5.
+
+`make check`: 92 runs, all passed (87 counted against 87 expected); apicheck 0 findings over 73
+files (51 globals), textcheck 0 over 116. Packages: TBC 86 files, Forever 48 files plus the three
+modules. **Next:** the author installs 0.16.6 and runs §46.1 on both clients (it unblocks T103,
+T104, T105, T108, T109, the `BASE_CD_READS` flip and, after T105, T110's remainder), then 46.6 and
+46.7.

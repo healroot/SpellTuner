@@ -1855,19 +1855,22 @@ Spells -> Healing Touch, and `/md profile` if anything looked wrong.
 **Paste back** into `.logs/tbc/0.16.5-s5.md`: a line per step, a screenshot of the clock mid-fight
 and of the replay's band, and the run's number in Review.
 
-## 46. 0.16.6: the next round's first three waves on both clients (`docs/SPEC-next.md` section 12; five sessions, 20-30 min each)
+## 46. 0.16.6: the next round's waves N1-N5 on both clients (`docs/SPEC-next.md` section 12; seven sessions, 15-30 min each)
 
-0.16.6 carries waves N1-N3 of `docs/SPEC-next.md` (T87-T101 and T113): the probe on both clients
-with five new sections, the cooldown fix in the coach, the parser and the reading of cooldowns,
-targets and lockouts, the clock's tones and fixed segments, the Compact and Bar clock layouts, the
-style registry with Flat and Ellesmere, the LibDataBroker blocks and EllesmereUI's mover and skin,
-the capability gates, and the generic Forever kit for every healer. **Not in it** (section 11's
-wave N4 and N5): Settings -> Clock and the Look dropdown (T102), Modern (T103), the ring (T104),
-mana sources (T105), the Paladin / Shaman / Priest profiles (T106), live restyle (T107), Classic
-(T108), absorbs (T109) and the rest -- so styles and layouts are reached by command here, and an
-alt's Coach button and Practice still say `not modelled for <Class> yet`. Nothing here has run on
-a real client yet. §45 runs unchanged on 0.16.6. `check N` names the step of `docs/SPEC-next.md`
-section 12 a line comes from.
+0.16.6 carries waves N1-N5 of `docs/SPEC-next.md` as far as they landed (T87-T102, T106, T107,
+T110, T111 and T113; the packages were rebuilt at the same version on 2026-10-02 after waves N4
+and N5 were integrated): the probe on both clients with five new sections, the cooldown fix in the
+coach, the parser and the reading of cooldowns, targets and lockouts, the clock's tones and fixed
+segments, the Compact and Bar clock layouts, the style registry with Flat and Ellesmere, the
+LibDataBroker blocks and EllesmereUI's mover and skin, the capability gates, the generic Forever
+kit for every healer, **Settings -> Clock, the Look dropdown and INTEGRATIONS (T102)**, **the
+Paladin / Shaman / Priest coach and practice on Forever (T106)**, **live restyle (T107)**, **the
+spell list seeded by role and either-or halves (T110, partial)** and **the TBC class book and rules
+behind a cap not yet granted (T111)**. **Not in it:** Modern (T103), the ring (T104), mana sources
+(T105), Classic (T108), absorbs (T109), T110's mana-source values (after T105) and the
+`MD.API.BASE_CD_READS` flip -- each waits on 46.1's reports. Nothing here has run on a real client
+yet. §45 runs unchanged on 0.16.6. `check N` names the step of `docs/SPEC-next.md` section 12 a
+line comes from.
 
 **Install** (only when you ask; never cross them):
 `./release.sh --install-forever "/mnt/e/Blizzard/World of Warcraft/_classic_beta_/Interface/AddOns"` and
@@ -1877,10 +1880,11 @@ At character select SpellTuner (and on Forever the three modules) read **0.16.6*
 of a session that had one. Out of combat unless a step says otherwise. For each step, a line in the
 paste: `ok`, or what you saw instead.
 
-**Session 46.1 comes first**: its reports are what wave N4 waits on (T103 Modern needs `== art`,
-T104 the ring needs `== clock`'s Q-clock-4, T105 mana sources needs `== auras`, T108 Classic needs
-`== art`, T109 absorbs needs `== auras`' absorb lines, and the `MD.API.BASE_CD_READS` flip needs
-`== cooldowns`). **If there is only one short session:** 46.1.
+**Session 46.1 comes first**: its reports are what the rest of waves N4 and N5 waits on (T103
+Modern needs `== art`, T104 the ring needs `== clock`'s Q-clock-4, T105 mana sources needs
+`== auras`, T108 Classic needs `== art`, T109 absorbs needs `== auras`' absorb lines, T110's
+remainder needs T105, and the `MD.API.BASE_CD_READS` flip needs `== cooldowns`). **If there is only
+one short session:** 46.1. Then 46.6 and 46.7 (what waves N4 and N5 added), then 46.2-46.5.
 
 ### 46.1 Both clients -- the probe (25 min: 15 Forever, 10 TBC; druids)
 
@@ -1938,8 +1942,8 @@ layout, the coach card from step 5.
    Regen**, Max Width ~120. In a fight the block equals the floating clock on every change and its
    icon tint goes amber then red. Hover: one tooltip in EllesmereUI's skin, no second border.
    Left-click opens SpellTuner, right-click Settings; neither in combat. Regen reads `(5SR)` for 5 s
-   after a cast and `~` in combat. (Known: the block keeps the rest segment even with `/st clock
-   rest` off -- T97 deviation 3.)
+   after a cast and `~` in combat. With `/st clock rest` off the block drops the rest segment too
+   (T102's `MD.ClockLook` closed T97's deviation 3).
 2. **Mover and minimap (T97, check 6).** `/unlock`: a "SpellTuner clock" mover with the clock
    previewed; drag, save, `/reload`: the clock stays there. The SpellTuner button sits in
    EllesmereUI's flyout with its icon centred; toggling *Minimap button* under Settings -> General
@@ -1972,10 +1976,11 @@ of the two broker blocks and of a window under Ellesmere.
    cooldown line is not read.
 3. **Measure (check 3).** `/st measure`, cast Renew or Riptide on yourself after taking damage,
    `/st measure dump`: paste the tick period.
-4. **Gates (T99).** Reports -> Review and `/st replay 1` (Replay module on): the Coach button is off,
-   its hover and the replay's hint read `Coaching: not modelled for <your class> yet`; Simulate ->
-   Practice reads `Practice: not modelled for <your class> yet` (the class profiles are T106, not
-   in 0.16.6).
+4. **Gates (T99, T106).** On a paladin, shaman or priest the gates are open since T106: Reports ->
+   Review's Coach is on and Simulate -> Practice starts (46.6 step 5 tests them). On any other
+   class with a mana pool (a mage, a warlock) the Coach button is off, its hover and `/st replay
+   1`'s hint read `Coaching: not modelled for <your class> yet`, and Practice reads `Practice: not
+   modelled for <your class> yet`.
 5. **The generic kit (T101).** Record a pull with Prayer of Healing or Chain Heal in it (`/st rec`).
    `/st validate N`: gate 8 counts the group heal's heals as own (one per member hit); a Desperate
    Prayer or any heal the kit does not price counts as replayed as recorded. `/st coach N`: the card
@@ -2006,10 +2011,10 @@ layout and of a window under Ellesmere, the coach card.
 
 ### 46.6 Wave N4 -- Settings -> Clock, live restyle, the paladin / shaman / priest coach (both clients; 30 min)
 
-**Not in the 0.16.6 packages**: wave N4 (T102, T106, T107) was integrated on this branch after
-0.16.6 was built, and arrives with the next version -- run this section on that build. On it,
-46.4 step 4 changes: a paladin, shaman or priest alt is coached (step 11 below), and the
-`not modelled for <Class> yet` lines stay only for the classes without a profile.
+In the 0.16.6 packages as rebuilt on 2026-10-02 (a package built earlier that day lacks it: at
+character select, Settings with a Clock view tells them apart). A paladin, shaman or priest alt is
+coached (step 5); the `not modelled for <Class> yet` lines stay only for the classes without a
+profile (46.4 step 4).
 
 1. **Settings -> Clock (T102, check 9), both clients.** Settings now has a Clock view (TBC:
    General, Clock, About; Forever: General, Clock, Modules, About). Click each state chip
@@ -2046,14 +2051,14 @@ layout and of a window under Ellesmere, the coach card.
    Healing, Holy Nova, Binding Heal or Chain Heal carries the group line. Simulate -> Practice binds
    the class's heals without an import; start a session with two bindings.
 
-**Paste back** into `docs/probe/<build>-<version>-s6.md` (Forever) and `.logs/tbc/<version>-s6.md`
+**Paste back** into `docs/probe/<build>-0.16.6-s6.md` (Forever) and `.logs/tbc/0.16.6-s6.md`
 (TBC): a line per step, screenshots of Settings -> Clock and of a window under Ellesmere, the alt's
 coach card.
 
 ### 46.7 Wave N5 -- the role seed and either-or halves (Forever), other classes on TBC (15 min)
 
-**Not in the 0.16.6 packages**: wave N5 (T110, T111) was integrated after 0.16.6 was built and
-arrives with the next version -- run this section on that build.
+In the 0.16.6 packages as rebuilt on 2026-10-02. T110 is partial: the casters' mana sources
+(Evocation, Life Tap, mana gems) are named but add nothing to the clock until T105.
 
 1. **The list by role (T110), a Forever shadow priest or a Retribution paladin with Holy Shock.**
    Clear the character's `spellTabs` in `SpellTunerDB` (client closed), or use a fresh character,
@@ -2070,7 +2075,7 @@ arrives with the next version -- run this section on that build.
    the fight line has no max-rank share, and Review and Play behave as before. Test again once the
    caps are granted.
 
-**Paste back** into `docs/probe/<build>-<version>-s7.md` (Forever) and `.logs/tbc/<version>-s7.md`
+**Paste back** into `docs/probe/<build>-0.16.6-s7.md` (Forever) and `.logs/tbc/0.16.6-s7.md`
 (TBC): a line per step, a screenshot of Holy Shock's tooltip on each role.
 
 ## Reporting
