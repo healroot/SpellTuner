@@ -11,8 +11,16 @@
 --     the BASE cast, the downrank penalty, the class talents of
 --     RankMath.CLASS_RULES) and the numbers are the rule's, restated here;
 --   * Compute, Explain, SuggestedRanks and Spells/Families_TBC.lua's book
---     read the class's source, and the kit RankMath:SpellKit builds passes
+--     read the class's source, and the kit RankMath.ClassKit builds passes
 --     Engine/Kit.lua's Kit.Check, stamped with the class's profile;
+--   * every row's derivation renders through UI/Tip_TBC.lua's Row and Spell
+--     without a raise, and every row carries a level the table can print;
+--   * AS SHIPPED nothing changes for a priest, shaman or paladin: their
+--     profiles grant the clock only (`rankTable` and `tooltip` wait for the
+--     TBC files that read Data/SpellData.lua directly), so no book is built,
+--     the rank math, the spell list and the kit are what they were before
+--     T111 -- and RankMath:SpellKit stays the druid's even once the rank
+--     table is granted (decision 8 (b));
 --   * the druid is untouched (Data/SpellData.lua stays his source) and a mage
 --     (no profile on this line) gets nothing.
 --
@@ -118,6 +126,8 @@ end
 --                      the scan tooltip's lines
 --   opts.castTaken     family name -> seconds the client's cast is shorter
 --                      (a talent the client applies: Divine Fury)
+--   opts.levelLine     the scan tooltip also draws "Requires level N" (with
+--                      opts.api = false: the learn level from the tooltip)
 --   opts.extra         more { id, name, rank, cost, cast, level, text } rows
 -- Returns the id -> row index of what it installed.
 --------------------------------------------------------------------------------
@@ -209,6 +219,7 @@ local function Install(S, MD, class, opts)
             { x.cast > 0 and (x.cast .. " sec cast") or "Instant", x.cooldown and (x.cooldown .. " sec cooldown") or nil },
             { x.text },
         }
+        if opts.levelLine and x.level then table.insert(lines, 4, { "Requires level " .. x.level }) end
         for i, ln in ipairs(lines) do
             _G[SCAN .. "TextLeft" .. i] = Region(ln[1])
             _G[SCAN .. "TextRight" .. i] = ln[2] and Region(ln[2]) or nil
@@ -318,16 +329,47 @@ end
 --------------------------------------------------------------------------------
 -- 2. A priest: the texts become bases
 --------------------------------------------------------------------------------
-T.section("a priest's book")
+T.section("as shipped: a priest sees what he saw before T111")
 local PRIEST_TALENTS = { ["Spiritual Healing"] = 5, ["Empowered Healing"] = 5, ["Divine Fury"] = 5,
                          ["Improved Renew"] = 3 }
 MD:SetTalents(PRIEST_TALENTS)
 local rebuilt = 0
 MD:RegisterCallback("SPELLS_REBUILT", function() rebuilt = rebuilt + 1 end)
 LogIn("PRIEST", 70)
+do
+    local p = MD.ClassProfile
+    check("the priest's profile is selected and grants the clock only (the generic profile's caps)",
+        p == MD.Profiles.byClass.PRIEST and p:Can("clock") and not p:Can("rankTable") and not p:Can("tooltip")
+        and not p:Can("coach") and not p:Can("advisor"))
+    local before0 = rebuilt
+    local built = Rebuild()
+    check("no book is built and SPELLS_REBUILT is not fired, with every priest rank in the spellbook",
+        built == nil and rebuilt == before0 and B:Source() == nil, Show({ built ~= nil, rebuilt - before0 }))
+    check("the rank math reads Data/SpellData.lua under the druid's context, as before",
+        type(RM.IsClassBook) == "function" and RM:IsClassBook() == false and Src() == MD.SpellData
+        and RM:Context({ live = true }).class == nil)
+    local fam = MD.FamiliesTBC and MD.FamiliesTBC:Build() or { order = { "?" } }
+    check("no rank table, no suggested ranks, an empty spell list (the rail: Overview only)",
+        next(RM:Compute()) == nil and next(RM:SuggestedRanks()) == nil and #fam.order == 0)
+    local okKit, kit = pcall(function() return RM:SpellKit({ live = true }) end)
+    local valid = okKit and Kit and Kit.Validate(kit)
+    check("RankMath:SpellKit is the druid's path over Data/SpellData.lua, stamped DRUID (Review and Play unchanged)",
+        okKit and valid and kit.profile == "DRUID", okKit and tostring(kit.profile) or tostring(kit))
+end
+
+-- What the profiles' `caps` line becomes once the TBC files that read
+-- Data/SpellData.lua directly read RankMath:Source() (the task file lists
+-- them): the rest of this suite holds the machinery that switch turns on.
+local function Grant(class)
+    local caps = MD.Profiles.byClass[class].caps
+    caps.rankTable, caps.tooltip = true, true
+end
+
+T.section("a priest's book (the rank table granted)")
+for _, c in ipairs({ "PRIEST", "SHAMAN", "PALADIN" }) do Grant(c) end
 local before = rebuilt
 local src = Rebuild()
-check("the priest's profile is selected and grants the rank table, not the coach",
+check("granted: the rank table and the tooltip, not the coach",
     MD.ClassProfile == MD.Profiles.byClass.PRIEST and MD.ClassProfile:Can("rankTable")
     and MD.ClassProfile:Can("tooltip") and not MD.ClassProfile:Can("coach"))
 check("a rebuild fires SPELLS_REBUILT", rebuilt == before + 1, rebuilt .. " vs " .. before)
@@ -387,7 +429,8 @@ do
     check("the row carries every field the TBC tooltip's Row reads",
         c.kind == "direct" and c.label == "Greater Heal" and c.base and c.bonus and c.bonusOut and c.critMult
         and c.costSource and c.castBase == 2.5 and c.castNG == 2.5 and c.netPerCast and c.mana
-        and c.bonusMultName == "Empowered Healing" and c.min and c.max, Show(c))
+        and c.bonusMultName == "Empowered Healing" and c.talentName == "Spiritual Healing" and c.min and c.max,
+        Show(c))
     -- Heal 1: level 16 at 70 -> (16 + 11) / 70 x the sub-20 malus (1 - 4 x 0.0375)
     local h1 = RM:Explain(2054, nil, { live = true })
     local pen = (27 / 70) * (1 - 4 * 0.0375)
@@ -415,6 +458,69 @@ do
 end
 
 --------------------------------------------------------------------------------
+-- The rows as the TBC panes will draw them. UI/Tip_TBC.lua's Row is what the
+-- Spells view's rank hover renders (RankMath:Explain(id), no opts) and its
+-- Spell what the spell tooltip appends -- read here with Data/SpellData.lua
+-- swapped for the class's book, which is what the tooltip reads once it
+-- reads RankMath:Source() (the swap the task file names). Neither may raise,
+-- every line is printable ASCII with no pipe, and every row of the rank table
+-- carries the level and rank the table prints.
+--------------------------------------------------------------------------------
+local tipLoaded
+local function Printable(lines)
+    for _, ln in ipairs(lines) do
+        for _, k in ipairs({ "l", "r" }) do
+            local v = ln[k]
+            if v ~= nil and (type(v) ~= "string" or v:find("[^\32-\126]") or v:find("|", 1, true)) then
+                return false, tostring(v)
+            end
+        end
+    end
+    return true
+end
+local function RowsRender(label, srcX)
+    if tipLoaded == nil then
+        tipLoaded = pcall(S.Load, { "UI/Style.lua", "UI/Tip.lua", "UI/Tip_TBC.lua" }, "SpellTuner", MD)
+            and MD.Tip ~= nil and type(MD.Tip.Row) == "function" and type(MD.Tip.Spell) == "function"
+    end
+    local ids, bad = {}, {}
+    for id in pairs(srcX and srcX.spells or {}) do ids[#ids + 1] = id end
+    table.sort(ids)
+    for _, id in ipairs(ids) do
+        local ok, lines = pcall(function() return MD.Tip:Row(RM:Explain(id)) end)
+        local clean, what = ok and Printable(lines)
+        if not (ok and #lines > 0 and clean) then
+            bad[#bad + 1] = id .. " Row: " .. tostring(ok and (what or "no lines") or lines)
+        end
+        for _, detail in ipairs({ false, true }) do
+            local saved = MD.SpellData
+            MD.SpellData = srcX
+            local ok2, lines2 = pcall(MD.Tip.Spell, MD.Tip, id, detail)
+            MD.SpellData = saved
+            local clean2, what2 = ok2 and Printable(lines2)
+            if not (ok2 and #lines2 > 1 and clean2) then
+                bad[#bad + 1] = id .. " Spell: " .. tostring(ok2 and (what2 or "no lines") or lines2)
+            end
+        end
+    end
+    check(label .. ": every rank's derivation (Tip:Row) and spell tooltip (Tip:Spell, plain and Shift) "
+        .. "render without a raise, printable ASCII, no pipe",
+        tipLoaded and #ids > 0 and #bad == 0, string.format("%s, %d problems over %d ranks: %s", tostring(tipLoaded), #bad,
+            #ids, table.concat(bad, "; ", 1, math.min(#bad, 2))))
+    local rows, noLevel = 0, {}
+    for _, res in pairs(RM:Compute()) do
+        for _, r in ipairs(res.rows) do
+            rows = rows + 1
+            if type(r.level) ~= "number" or type(r.rank) ~= "number" or type(r.cost) ~= "number" then
+                noLevel[#noLevel + 1] = tostring(r.id)
+            end
+        end
+    end
+    check(label .. ": every row of the rank table has the level, rank and cost the table prints",
+        rows == #ids and #noLevel == 0, rows .. " rows of " .. #ids .. " " .. table.concat(noLevel, " "))
+end
+
+--------------------------------------------------------------------------------
 -- 4. The rank table, the tooltip's source and the kit
 --------------------------------------------------------------------------------
 T.section("the table and the kit")
@@ -438,11 +544,14 @@ do
         and book.families.Renew and book.families.Renew.maxKnown and book.families.Renew.maxKnown.id == 25222,
         table.concat(book.order, " "))
 
-    local okKit, kit = pcall(function() return RM:SpellKit({ live = true }) end)
+    local okD, dkit = pcall(function() return RM:SpellKit({ live = true }) end)
+    check("RankMath:SpellKit stays the druid's for a priest with the rank table (decision 8 (b))",
+        okD and dkit.profile == "DRUID" and dkit.caster[25213] == nil, okD and tostring(dkit.profile) or tostring(dkit))
+    local okKit, kit = pcall(function() return RM.ClassKit({ live = true }, src) end)
     local valid, problems = false, nil
     if okKit and Kit then valid, problems = Kit.Validate(kit) end
-    check("the priest's kit passes Kit.Check, stamped PRIEST", okKit and valid and kit.profile == "PRIEST",
-        okKit and Show(problems) or tostring(kit))
+    check("the priest's kit (RankMath.ClassKit) passes Kit.Check, stamped PRIEST",
+        okKit and valid and kit.profile == "PRIEST", okKit and Show(problems) or tostring(kit))
     local c = okKit and kit.caster or {}
     local ghE, rnE, phE, bhE = c[25213] or {}, c[25222] or {}, c[25308] or {}, c[32546] or {}
     check("its entries by kit type: direct, hot (5 x 3 s), group with a direct part, selfAndTarget",
@@ -451,6 +560,7 @@ do
         and Near(rnE.tick * 5, (1110 + BONUS) * 1.10 * 1.15)
         and phE.type == "group" and phE.direct ~= nil and bhE.type == "selfAndTarget",
         Show({ ghE.type, rnE.type, rnE.ticks, phE.type, bhE.type }))
+    RowsRender("the priest", src)
 end
 
 --------------------------------------------------------------------------------
@@ -472,24 +582,44 @@ restoreR()
 --------------------------------------------------------------------------------
 T.section("a shaman and a paladin")
 MD:SetTalents({ ["Purification"] = 5, ["Improved Chain Heal"] = 2 })
-local _, restoreS = Install(S, MD, "SHAMAN", { api = false })
+-- no learn level anywhere (the client's read absent, the tooltip without its
+-- line): every rank is refused, none is put on the table with a guessed one
+local rowsN, restoreN = Install(S, MD, "SHAMAN", { api = false })
 LogIn("SHAMAN", 70)
+do
+    local srcN = Rebuild()
+    local nRows, nRefused, allLevel = 0, 0, true
+    for id in pairs(rowsN) do
+        nRows = nRows + 1
+        if srcN and srcN.refused[id] then
+            nRefused = nRefused + 1
+            if not srcN.refused[id]:find(": no learn level$") then allLevel = false end
+        end
+    end
+    check("no learn level read: every rank refused for it, the table empty",
+        srcN and nRows > 0 and nRefused == nRows and allLevel and next(srcN.spells) == nil
+        and next(RM:Compute()) == nil, Show({ nRows, nRefused, srcN and srcN.refused[25423] }))
+end
+restoreN()
+local _, restoreS = Install(S, MD, "SHAMAN", { api = false, levelLine = true })
 local srcS = Rebuild()
 do
     local ch = srcS and srcS.spells[25423] or {}
-    check("Chain Heal 5 from the tooltip's lines: 833 to 950, 540 mana, 2.5 s, 3 targets at 50%",
+    check("Chain Heal 5 from the tooltip's lines: 833 to 950, 540 mana, 2.5 s, level 68, 3 targets at 50%",
         ch.healMin == 833 and ch.healMax == 950 and ch.cost == 540 and ch.cast == 2.5 and ch.count == 3
-        and ch.jumps == 2 and Near(ch.falloff, 0.5) and ch.costFrom == "tooltip" and ch.castFrom == "tooltip", Show(ch))
+        and ch.jumps == 2 and Near(ch.falloff, 0.5) and ch.costFrom == "tooltip" and ch.castFrom == "tooltip"
+        and ch.level == 68 and ch.levelFrom == "tooltip", Show(ch))
     local row = RM:Explain(25423, nil, { live = true })
-    check("no learn level read: no penalty, and the row says so",
-        row and row.calc.levelMissing == true and row.calc.penalty == 1
+    check("Chain Heal 5: 2.5/3.5, Purification x Improved Chain Heal, no downrank at 68",
+        row and row.calc.penalty == 1 and row.level == 68
         and Near(row.heal, ((833 + 950) / 2 + BONUS * 2.5 / 3.5) * 1.10 * 1.20 * (1 + 0.5 * CRIT)),
-        row and Show({ row.heal, row.calc.levelMissing }))
-    local okKit, kit = pcall(function() return RM:SpellKit({ live = true }) end)
+        row and Show({ row.heal, row.level }))
+    local okKit, kit = pcall(function() return RM.ClassKit({ live = true }, srcS) end)
     local e = okKit and kit.caster[25423] or {}
     check("the shaman's kit: a chain entry with its jumps and falloff, stamped SHAMAN",
         okKit and kit.profile == "SHAMAN" and e.type == "chain" and e.jumps == 2 and Near(e.falloff, 0.5),
         okKit and Show(e) or tostring(kit))
+    RowsRender("the shaman", srcS)
 end
 restoreS()
 
@@ -509,10 +639,11 @@ do
     check("Holy Light 11: 2.5/3.5, Healing Light x1.12",
         hl and Near(hl.heal, ((2196 + 2446) / 2 + BONUS * 2.5 / 3.5) * 1.12 * (1 + 0.5 * CRIT)),
         hl and tostring(hl.heal))
-    local okKit, kit = pcall(function() return RM:SpellKit({ live = true }) end)
+    local okKit, kit = pcall(function() return RM.ClassKit({ live = true }, srcL) end)
     check("the paladin's kit passes Kit.Check with Holy Shock's cooldown",
         okKit and kit.profile == "PALADIN" and kit.caster[33072] and kit.caster[33072].cooldown == 15,
         tostring(okKit and kit.profile or kit))
+    RowsRender("the paladin", srcL)
 end
 restoreL()
 
@@ -522,9 +653,9 @@ restoreL()
 T.section("the druid and a mage")
 LogIn("MAGE", 64)
 local mageRes, mageBuilt = RM:Compute(), Rebuild()
-check("a mage (no TBC profile): no rank table, no source",
-    next(mageRes) == nil and Src() == nil and mageBuilt == nil,
-    Show({ next(mageRes), Src() ~= nil, mageBuilt ~= nil }))
+check("a mage (no TBC profile): no rank table, no class book, Data/SpellData.lua as before",
+    next(mageRes) == nil and Src() == MD.SpellData and mageBuilt == nil and not RM:IsClassBook(),
+    Show({ next(mageRes), Src() == MD.SpellData, mageBuilt ~= nil }))
 MD:SetTalents(MD.harnessTalents)
 LogIn("DRUID", 64)
 Rebuild()
