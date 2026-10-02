@@ -5,7 +5,8 @@
 -- MD.ClassProfile:Can(cap) (Spells/Profiles.lua); this suite holds that:
 --
 --   * a SOURCE SCAN of every file a TOC ships (both main TOCs and the three
---     modules') finds `isDruid` only in the six reads 4.4 keeps -- the
+--     modules') finds `isDruid` only in the reads 4.4 keeps (four in three
+--     files since T111) -- the
 --     allow-list below, each with the reason it stays (comments are not code
 --     and are left out of the scan);
 --   * the druid's profile grants every capability the gates ask for, and the
@@ -100,10 +101,10 @@ local ALLOWED = {
     -- Data/SpellData.lua changes only from a measurement, so it is described
     -- here instead of carrying a comment
     ["Data/SpellData.lua"] = 1,
-    -- Compute over the druid's SpellData: druid until TBC other classes (T111)
-    ["Engine/RankMath.lua"] = 1,
-    -- TBC's spell book from SpellData: druid until TBC other classes (T111)
-    ["Spells/Families_TBC.lua"] = 1,
+    -- T111: Engine/RankMath.lua's Compute and Spells/Families_TBC.lua's book
+    -- left the list -- both ask MD.ClassProfile:Can("rankTable") and read
+    -- RankMath:Source() (SpellData for the druid, Spells/Book_TBC.lua for a
+    -- priest, shaman or paladin)
 }
 
 local function ReadFile(rel)
@@ -167,7 +168,7 @@ for rel, n in pairs(ALLOWED) do
     if found[rel] ~= n then missing[#missing + 1] = rel .. " x" .. tostring(found[rel] or 0) .. " (want " .. n .. ")" end
 end
 table.sort(stray); table.sort(missing)
-check("isDruid is read only in the six reads 4.4 keeps", #stray == 0 and #missing == 0,
+check("isDruid is read only in the four reads in three files 4.4 keeps", #stray == 0 and #missing == 0,
     table.concat(stray, ", ") .. ((#missing > 0) and (" missing: " .. table.concat(missing, ", ")) or ""))
 
 -- The ten gate files ask the profile and no longer say "Druid-only".

@@ -3,7 +3,8 @@
 -- the spell rail and its list model are one structure on both lines.
 --
 -- The families are the ones the TBC rank table has (Data/SpellData.lua's
--- familyOrder, the excluded Tranquility and Swiftmend left out), in Book's
+-- familyOrder, the excluded Tranquility and Swiftmend left out; since T111 a
+-- priest's, shaman's or paladin's from Spells/Book_TBC.lua), in Book's
 -- family shape (Spells/Book.lua): a `key` (SpellData's family id,
 -- "HealingTouch"), `name` (its label, "Healing Touch"), `kind = "heal"`,
 -- `ids` (every rank's spell id, lowest rank first) and `ranks` -- one entry
@@ -32,13 +33,17 @@ local function Icon(id)
     return nil
 end
 
--- A fresh book from Data/SpellData.lua: { families, order, spells }.
+-- A fresh book from the rank math's source: { families, order, spells }.
+-- T111: the source is Data/SpellData.lua for the druid and the class's own
+-- book (Spells/Book_TBC.lua) for a priest, shaman or paladin
+-- (RankMath:Source); a class whose profile has no rank table lists nothing
+-- (and its rail holds Overview only).
 function FT:Build()
-    local SD = MD.SpellData
+    local RM = MD.RankMath
+    local SD = RM and RM.Source and RM:Source() or nil
     local book = { families = {}, order = {}, spells = {} }
-    -- the table is the druid's: another class lists nothing (and its rail
-    -- holds Overview only)
-    if not SD or not (MD.player and MD.player.isDruid) then return book end
+    local profile = MD.ClassProfile
+    if not SD or not (profile and profile:Can("rankTable")) then return book end
     local knownSet = SD.knownSet or {}
     for _, key in ipairs(SD.familyOrder or {}) do
         local info = SD.families and SD.families[key]

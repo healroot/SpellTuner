@@ -80,6 +80,9 @@ RankMath.RULE_FIELDS = RULE_FIELDS -- read by tools/bookcheck.lua's tbc run
 -- it predicting Regrowth at 1488 against a real 1282 -- a simulated +healing
 -- was still in the strip).
 function RankMath:Context(opts)
+    -- T111: a class Data/SpellData.lua does not cover reads its own book
+    -- (Spells/Book_TBC.lua) under the class rules (ClassContext, below)
+    if RankMath:IsClassBook() then return RankMath.ClassContext(opts, RankMath:Source()) end
     local SD = MD.SpellData
     -- opts.healer (v0.7.1): the simulator's own stat overrides, applied exactly
     -- where the Simulate strip's are and nowhere else, so a simulated healer
@@ -195,6 +198,7 @@ end
 -- exactly like HPM and carried no information of its own.
 --------------------------------------------------------------------------------
 function RankMath:RowFor(spellID, ctx, variant, explain)
+    if ctx.class then return RankMath.ClassRow(spellID, ctx, explain) end
     local SD = MD.SpellData
     local s = SD.spells[spellID]
     if not s then return nil end
@@ -446,6 +450,7 @@ local function FamilyCooldown(family)
 end
 
 function RankMath:SpellKit(opts)
+    if RankMath:IsClassBook() then return RankMath.ClassKit(opts, RankMath:Source()) end
     local SD = MD.SpellData
     local kit = { caster = {}, tree = {}, profile = KIT_PROFILE }
 
@@ -566,9 +571,13 @@ end
 -- inputs used are left in RankMath.info (the context).
 --------------------------------------------------------------------------------
 function RankMath:Compute()
-    local SD = MD.SpellData
+    -- T111: the rank table is a capability (Spells/Profiles.lua), and its
+    -- ranks come from the logged-in class's source -- Data/SpellData.lua for
+    -- the druid, the class's own book (Spells/Book_TBC.lua) otherwise
+    local SD = RankMath:Source()
     local results = {}
-    if not MD.player.isDruid then return results end
+    local profile = MD.ClassProfile
+    if not SD or not (profile and profile:Can("rankTable")) then return results end
 
     local ctx = RankMath:Context()
     RankMath.info = ctx
@@ -652,8 +661,309 @@ function RankMath:SuggestedRanks()
     local out = {}
     for family, res in pairs(RankMath:Compute()) do
         if res.suggestedID then
-            out[family] = MD.SpellData.spells[res.suggestedID].rank
+            out[family] = RankMath:Source().spells[res.suggestedID].rank
         end
     end
     return out
+end
+
+--------------------------------------------------------------------------------
+-- T111 (docs/SPEC-next.md 4.2 P5, decision 8 (b)): the TBC rank table and
+-- spell tooltip for a priest, shaman or paladin. Their ranks are read from
+-- the client by Spells/Book_TBC.lua (each rank's base heal from its own text,
+-- its cost and cast from the client); this section puts the TBC rules on top
+-- -- the same coefficient rules as the druid's (clamp(cast, 1.5, 3.5) / 3.5
+-- for a direct heal, duration / 15 for a HoT), the same downrank penalty, the
+-- same 1.5x crit -- plus each class's healing talents. No coach: the TBC
+-- coach stays the druid's (decision 8), and the kit built here only has to be
+-- one Engine/Kit.lua accepts.
+--
+-- Every rule below is VERIFY: the talents' names are the TBC client's, their
+-- size per rank is from the 2.4 talent texts as remembered, and
+-- tools/wclcheckkit.lua --fit (the +healing each public parse needs, family
+-- by family) is the check before anyone trusts them. A talent whose rank the
+-- scan does not find counts 0, so a wrong name costs a bonus, never a number
+-- out of nowhere.
+--   healMult   x(1 + mult x rank) on the whole heal (base and bonus)
+--   coefAdd    + add x rank to the bonus coefficient of the named families
+--   castAdd    the talent took add x rank off the cast the client reports;
+--              it is added back for the coefficient (which is the BASE
+--              cast's), never for the cast bar
+--   critAdd    + add x rank to the crit chance of the family
+-- `families` limits a talent to those family keys (every heal without it).
+--------------------------------------------------------------------------------
+RankMath.CLASS_RULES = {
+    PRIEST = {
+        { name = "Spiritual Healing", healMult = 0.02 },
+        { name = "Improved Renew", healMult = 0.05, families = { Renew = true } },
+        { name = "Empowered Healing", coefAdd = { GreaterHeal = 0.04, FlashHeal = 0.02, BindingHeal = 0.02 } },
+        { name = "Divine Fury", castAdd = 0.1, families = { Heal = true, GreaterHeal = true } },
+    },
+    SHAMAN = {
+        { name = "Purification", healMult = 0.02 },
+        { name = "Improved Chain Heal", healMult = 0.10, families = { ChainHeal = true } },
+        { name = "Improved Healing Wave", castAdd = 0.1, families = { HealingWave = true } },
+        { name = "Tidal Mastery", critAdd = 0.01 },
+    },
+    PALADIN = {
+        { name = "Healing Light", healMult = 0.04, families = { HolyLight = true, FlashOfLight = true } },
+        { name = "Sanctified Light", critAdd = 0.02, families = { HolyLight = true } },
+    },
+}
+-- A heal that lands on the whole party carries half the single-target
+-- coefficient (Prayer of Healing, Circle of Healing). VERIFY.
+RankMath.GROUP_COEF = 0.5
+
+-- The ranks' source: Data/SpellData.lua for the class it is written for (the
+-- druid, Engine/Kit.lua's default profile) and whenever no class is known;
+-- the class's own book otherwise, nil until it is built (an empty table).
+function RankMath:Source()
+    local class = MD.player and MD.player.class
+    if class == nil or class == KIT_PROFILE then return MD.SpellData end
+    local B = MD.BookTBC
+    return B and B:Source() or nil
+end
+
+-- True when the logged-in class reads its own book, built or not.
+function RankMath:IsClassBook()
+    local class = MD.player and MD.player.class
+    return class ~= nil and class ~= KIT_PROFILE and MD.BookTBC ~= nil
+end
+
+local NO_SOURCE = { spells = {}, families = {}, familyOrder = {}, all = {}, known = {}, knownSet = {},
+                    maxRank = {}, GetCost = function() return nil, "unknown" end }
+
+local function SchoolCrit(school)
+    if GetSpellCritChance then
+        local ok, v = pcall(GetSpellCritChance, school or 2)
+        if ok and type(v) == "number" then return v / 100 end
+    end
+    return 0
+end
+
+-- The talents' effect on one family: heal multiplier, coefficient added,
+-- cast added back, crit added, and the names that did it.
+local function TalentsFor(class, family)
+    local out = { mult = 1, coefAdd = 0, castAdd = 0, critAdd = 0 }
+    local multNames, coefNames = {}, {}
+    for _, t in ipairs(RankMath.CLASS_RULES[class] or EMPTY) do
+        if not t.families or t.families[family] then
+            local rank = MD:TalentRank(t.name)
+            if rank > 0 then
+                if t.healMult then
+                    out.mult = out.mult * (1 + t.healMult * rank)
+                    multNames[#multNames + 1] = t.name
+                end
+                local add = type(t.coefAdd) == "table" and t.coefAdd[family] or nil
+                if add then
+                    out.coefAdd = out.coefAdd + add * rank
+                    coefNames[#coefNames + 1] = t.name
+                end
+                if t.castAdd then out.castAdd = out.castAdd + t.castAdd * rank end
+                if t.critAdd then out.critAdd = out.critAdd + t.critAdd * rank end
+            end
+        end
+    end
+    out.multName = (#multNames > 0) and table.concat(multNames, ", ") or nil
+    out.coefName = (#coefNames > 0) and table.concat(coefNames, ", ") or nil
+    return out
+end
+RankMath.TalentsFor = TalentsFor
+
+-- The class's context: the druid's inputs that are not the druid's own (no
+-- Tree of Life, relic or Nature's Grace), the crit of the profile's school.
+-- The Simulate strip's stats apply as they do for the druid.
+function RankMath.ClassContext(opts, src)
+    src = src or NO_SOURCE
+    local sim
+    if opts and opts.healer then
+        local h = opts.healer
+        sim = { heal = h.heal, crit = h.crit, casting = h.casting, base = h.base, mana = h.mana }
+        if next(sim) == nil then sim = EMPTY end
+    elseif opts and opts.live then
+        sim = EMPTY
+    else
+        sim = MD.sim or EMPTY
+    end
+    local profile = MD.ClassProfile
+    local liveBonus = BonusHealing()
+    local statBonus = sim.heal or liveBonus
+    local liveCrit = SchoolCrit(profile and profile.critSchool)
+    local liveMana = UnitPower("player", 0) or 0
+    local liveCasting = MD.Regen and MD.Regen.casting or 0
+    local liveBase = MD.Regen and MD.Regen.base or 0
+    local ctx = {
+        class = (MD.player and MD.player.class) or (profile and profile.class),
+        SD = src,
+        bonus = statBonus, statBonus = statBonus, treeAura = 0, inTree = false, relic = nil,
+        crit = sim.crit and (sim.crit / 100) or liveCrit,
+        playerLevel = MD.player.level,
+        mana = sim.mana or liveMana,
+        castingRegen = sim.casting and (sim.casting / 5) or liveCasting,
+        baseRegen = sim.base and (sim.base / 5) or liveBase,
+        naturesGrace = 0,
+        simulated = next(sim) ~= nil,
+        live = { heal = liveBonus, crit = liveCrit * 100, casting = liveCasting * 5,
+                 base = liveBase * 5, mana = liveMana },
+    }
+    ctx.ExpectedCast = function(T0) return T0 end
+    ctx.CostFor = function(id)
+        if type(src.GetCost) == "function" then return src:GetCost(id) end
+        return nil, "unknown"
+    end
+    ctx.CastsToOOM = function(cost, interval)
+        return RankMath:CastsToOOM(cost, interval, ctx.mana, ctx.castingRegen)
+    end
+    return ctx
+end
+
+-- The engine's HoT period when the text gives only the total and the
+-- duration: 3 s when the duration is a multiple of it (Renew), else 1 s
+-- (Engine/SimModel.lua's uniform ticks). VERIFY per spell.
+local function TickPeriod(duration)
+    if duration % 3 == 0 then return 3 end
+    return 1
+end
+
+local DIRECT_KINDS = { direct = true, group = true, chain = true, selfAndTarget = true }
+
+-- One row of a class's rank, in the druid row's shape (Tip_TBC's Row reads
+-- the same calc fields). The value is ONE target's (decision 12): a group,
+-- chain or self-and-target heal is never multiplied by its reach here.
+function RankMath.ClassRow(spellID, ctx, explain)
+    local SD = ctx.SD or NO_SOURCE
+    local s = SD.spells and SD.spells[spellID]
+    if not s then return nil end
+    local info = SD.families and SD.families[s.family]
+    if not info then return nil end
+    local tal = TalentsFor(ctx.class, s.family)
+    -- a rank whose learn level no read gave takes no downrank penalty, and
+    -- the row says so (calc.levelMissing)
+    local pen, levelMissing = 1, true
+    if type(s.level) == "number" and s.level > 0 then
+        pen, levelMissing = Penalty(s.level, ctx.playerLevel), false
+    end
+    local bonus = ctx.bonus
+    local heal, castTime, castBase, calc
+    local crit = math.min(1, ctx.crit + tal.critAdd)
+
+    if DIRECT_KINDS[info.type] then
+        castBase = math.max(s.cast, 1.5)
+        castTime = castBase
+        local coefCast = s.cast + tal.castAdd
+        local coef = math.min(math.max(coefCast, 1.5), 3.5) / 3.5
+        if info.type == "group" then coef = coef * RankMath.GROUP_COEF end
+        local bonusMult = 1 + tal.coefAdd / coef
+        local base = (s.healMin + s.healMax) / 2
+        local bonusOut = bonus * coef * pen * bonusMult
+        local critMult = 1 + 0.5 * crit
+        heal = (base + bonusOut) * tal.mult * critMult
+        if explain then
+            calc = { kind = "direct", base = base, relicFlat = 0,
+                     bonus = bonus, coef = coef, penalty = pen, bonusMult = bonusMult,
+                     bonusMultName = tal.coefName, bonusOut = bonusOut,
+                     talentMult = tal.mult, talentName = tal.multName, critMult = critMult, crit = crit,
+                     min = (s.healMin + bonusOut) * tal.mult,
+                     max = (s.healMax + bonusOut) * tal.mult }
+        end
+    elseif info.type == "hot" then
+        castTime = 1.5 -- GCD
+        local coef = s.hotDuration / 15
+        local bonusMult = 1 + tal.coefAdd / coef
+        local bonusOut = bonus * coef * pen * bonusMult
+        heal = (s.hotTotal + bonusOut) * tal.mult
+        if explain then
+            local period = TickPeriod(s.hotDuration)
+            calc = { kind = "hot", base = s.hotTotal, relicFlat = 0,
+                     bonus = bonus, coef = coef, penalty = pen, bonusMult = bonusMult,
+                     bonusMultName = tal.coefName, bonusOut = bonusOut,
+                     talentMult = tal.mult, talentName = tal.multName,
+                     duration = s.hotDuration, ticks = s.hotDuration / period, tickPeriod = period }
+        end
+    end
+    if not heal then return nil end
+
+    local cost, costSource = ctx.CostFor(spellID)
+    cost = cost or 0
+    -- per second over what decides how often it can be cast: the cast, the
+    -- GCD, or its own cooldown (Holy Shock; Spells/Book.lua's IntervalFor)
+    local interval = math.max(castTime, s.cooldown or 0)
+    local row = {
+        id = spellID, rank = s.rank, level = s.level,
+        cost = cost, cast = castTime, heal = heal,
+        hpm = cost > 0 and heal / cost or 0,
+        hps = heal / interval,
+        casts = ctx.CastsToOOM(cost, castTime),
+        known = SD.knownSet[spellID] or false,
+        isMax = SD.maxRank[s.family] == spellID or false,
+        ng = false,
+    }
+    if MD.Overheal then
+        local frac, n, scope = MD.Overheal:Fraction(spellID)
+        if frac then
+            local k = 1 - frac
+            row.overheal = { frac = frac, n = n, scope = scope }
+            row.effHeal = row.heal * k
+            row.effHpm = row.hpm * k
+            row.effHps = row.hps * k
+        end
+    end
+    if calc then
+        calc.family = s.family
+        calc.label = info.label
+        calc.type = info.type
+        calc.cost = cost
+        calc.costSource = costSource
+        calc.castBase = castBase or castTime
+        calc.castNG = castTime
+        calc.naturesGrace = 0
+        calc.mana = ctx.mana
+        calc.castingRegen = ctx.castingRegen
+        calc.baseRegen = ctx.baseRegen
+        calc.netPerCast = cost - ctx.castingRegen * castTime
+        calc.overheal = row.overheal
+        calc.cooldown = s.cooldown
+        calc.interval = interval
+        calc.levelMissing = levelMissing or nil
+        calc.jumps, calc.falloff = s.jumps, s.falloff
+        row.calc = calc
+    end
+    return row
+end
+
+-- The class's kit: every known rank, one form (no Tree of Life), stamped
+-- with the logged-in class's profile, in Engine/Kit.lua's shape and checked
+-- by it.
+function RankMath.ClassKit(opts, src)
+    src = src or NO_SOURCE
+    local ctx = RankMath.ClassContext({ live = true, healer = opts and opts.healer }, src)
+    local kit = { caster = {}, tree = {}, profile = ctx.class }
+    for family, list in pairs(src.known) do
+        local info = src.families[family]
+        for _, id in ipairs(list) do
+            local s = src.spells[id]
+            local e = { family = family, rank = s.rank, type = info and info.type or "direct", gcd = 1.5 }
+            local row = RankMath.ClassRow(id, ctx, true)
+            local c = row and row.calc
+            if c then
+                e.cost, e.cast, e.castBase = row.cost, row.cast, c.castBase
+                if c.kind == "direct" then
+                    e.direct = row.heal / (c.critMult or 1)
+                    e.directCrit = c.crit or 0
+                    if e.type == "chain" then e.jumps, e.falloff = s.jumps, s.falloff end
+                else
+                    e.ticks, e.tickPeriod, e.duration = c.ticks, c.tickPeriod, c.duration
+                    e.tick = row.heal / c.ticks
+                end
+            else
+                e.cost = s.cost or 0
+                e.cast = math.max(s.cast or 1.5, 1.5)
+                e.dataMissing = true
+            end
+            e.cooldown = s.cooldown
+            kit.caster[id] = e
+        end
+    end
+    kit.crit = ctx.crit
+    return MD.Kit.Check(kit, "RankMath:SpellKit")
 end

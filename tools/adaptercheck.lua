@@ -86,8 +86,14 @@ local FOREVER_ONLY_NAMES = {
 -- T18: the same bindings-import triad as Forever's own FOREVER_ONLY_NAMES,
 -- plus Specialization -- GetSpecialization, which Forever's own baseline
 -- lacks (Client/API_Forever.lua's comment).
+-- T111 (Spells/Book_TBC.lua): the TBC spellbook walk and each rank's own
+-- reads for a priest, shaman or paladin, plus SpellTooltipLines -- the
+-- scan tooltip's lines, recorded explicitly (Client/API_TBC.lua).
 local TBC_ONLY_NAMES = { "SpellName", "RealZoneText",
-    "BindingCount", "Binding", "BindingAction", "ActionInfo", "MacroInfo", "Specialization" }
+    "BindingCount", "Binding", "BindingAction", "ActionInfo", "MacroInfo", "Specialization",
+    "SpellTabCount", "SpellTabInfo", "SpellBookItemName", "SpellBookItemKind", "SpellInfoList",
+    "SpellDescription", "SpellPowerCost", "SpellLevelLearned", "BaseCooldown",
+    "SpellBonusHealing", "SpellCritChance", "SpellTooltipLines" }
 
 --------------------------------------------------------------------------------
 -- 1-9: both flavours
