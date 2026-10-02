@@ -437,6 +437,133 @@ Try("pool is refused for the ring " .. (flavour == "forever" and "on Forever" or
 end)
 
 --------------------------------------------------------------------------------
+T.section("F1: the bar's height and the smooth five-second rule")
+--------------------------------------------------------------------------------
+-- F1 (the author on 0.16.6, Settings -> Clock -> Bar: "the height does not
+-- really change anything"): every layout that shows a bar draws it at the
+-- Height setting -- the bar layout used the frame's height less 4 whatever
+-- the setting said.
+Try("Height: every layout draws its bar at the setting (two heights, two bars); the frame holds it", function()
+    local bad
+    for _, layout in ipairs(LAYOUTS) do
+        CV.SetLayout(layout)
+        CV.Set("bar.source", "fsr")
+        local drawn = {}
+        for _, h in ipairs({ 6, 14, 24 }) do
+            CV.Set("bar.height", h)
+            local v = Paint(faces[1].face)
+            drawn[h] = v.bar:GetHeight()
+            local why = Misfit(v, layout)
+            if (drawn[h] ~= h or why) and not bad then
+                bad = string.format("%s: height %d drew %s (frame %sx%s)%s", layout, h, tostring(drawn[h]),
+                    tostring(frame:GetWidth()), tostring(frame:GetHeight()), why and (", " .. why) or "")
+            end
+        end
+        if drawn[6] == drawn[14] and not bad then bad = layout .. ": 6 and 14 drew the same bar" end
+        CV.ResetToStyle()
+    end
+    CV.SetLayout("bar")
+    local v = Paint(faces[1].face)
+    local default = v.bar:GetHeight() == 14 and frame:GetHeight() >= 18
+    CV.SetLayout("line")
+    return bad == nil and default, bad or string.format("bar layout default: bar %s, frame %s",
+        tostring(v.bar:GetHeight()), tostring(frame:GetHeight()))
+end)
+
+-- F1 ("5-sec rule bar - I like it but the fillment should be more smooth"):
+-- while the rule runs the bar (source fsr) and the spark move every frame,
+-- not only at the line's paint; the per-frame step is removed when the rule
+-- ends or the source changes.
+local function RuleFor(seconds)
+    if flavour == "forever" then
+        MD.Pool.model.lastSpend = GetTime() - (5 - seconds)
+    else
+        MD.Regen.fsrEnd = GetTime() + seconds
+    end
+end
+local function RuleOff()
+    if flavour == "forever" then MD.Pool.model.lastSpend = -1e9 else MD.Regen.fsrEnd = 0 end
+end
+
+Try("smooth: the five-second rule bar and the spark move every frame between two paints", function()
+    CV.SetLayout("bar")
+    CV.Set("bar.source", "fsr")
+    CV.Set("bar.spark", "fsr")
+    local v = View()
+    RuleFor(4)
+    Paint(faces[1].face)
+    local values, sparks = { v.bar.value }, {}
+    local function SparkX()
+        local pt = v.spark and v.spark.points and v.spark.points[#v.spark.points]
+        return pt and pt[4]
+    end
+    sparks[1] = SparkX()
+    local moved, still = 0, 0
+    for i = 2, 9 do -- 0.03 s apart: under the TBC widget's 0.1 s and Forever's 0.5 s paint
+        S.Tick(0.03)
+        values[i], sparks[i] = v.bar.value, SparkX()
+        if type(values[i]) == "number" and type(values[i - 1]) == "number" and values[i] > values[i - 1] + 1e-9
+            and type(sparks[i]) == "number" and type(sparks[i - 1]) == "number" and sparks[i] > sparks[i - 1] then
+            moved = moved + 1
+        else
+            still = still + 1
+        end
+    end
+    local onTrack = Near(v.bar.value, 5 - (4 - 8 * 0.03), 1e-6)
+    local fn = v.bar:GetScript("OnUpdate")
+    RuleOff()
+    CV.ResetToStyle()
+    CV.SetLayout("line")
+    return moved == 8 and still == 0 and onTrack and fn ~= nil,
+        string.format("%d of 8 frames moved, value %s, values %s", moved, tostring(values[#values]),
+            table.concat((function()
+                local o = {}
+                for i, x in ipairs(values) do o[i] = string.format("%.3f", tonumber(x) or -1) end
+                return o
+            end)(), " "))
+end)
+
+Try("smooth: the per-frame step ends with the rule (full, green, no spark) and with a source change", function()
+    CV.SetLayout("line")
+    CV.Set("bar.source", "fsr")
+    CV.Set("bar.spark", "fsr")
+    local v = View()
+    RuleFor(0.1)
+    Paint(faces[1].face)
+    local on1 = v.bar:GetScript("OnUpdate")
+    for _ = 1, 5 do S.Tick(0.03) end
+    local ended = v.bar:GetScript("OnUpdate") == nil and Near(v.bar.value, 5)
+        and Same(v.bar.barColor, 0.2, 1, 0.4) and not (v.spark and v.spark:IsShown())
+    RuleFor(4)
+    Paint(faces[1].face)
+    local on2 = v.bar:GetScript("OnUpdate")
+    local sameFn = on1 ~= nil and on1 == on2 -- built once per view, nothing allocated per install
+    CV.Set("bar.source", "time")
+    CV.Set("bar.spark", "none")
+    local offBySource = v.bar:GetScript("OnUpdate") == nil
+    CV.Set("bar.spark", "fsr")
+    Paint(faces[1].face)
+    local sparkOnly = v.bar:GetScript("OnUpdate") ~= nil -- the spark alone still sweeps
+    -- the bar's own step alone (no line paint in between): it moves the
+    -- spark, never another source's value
+    local valueBefore, step = v.bar.value, v.bar:GetScript("OnUpdate")
+    local function X() local pt = v.spark and v.spark.points and v.spark.points[#v.spark.points]; return pt and pt[4] end
+    local x0 = X()
+    S.now = S.now + 0.03
+    if step then step(v.bar, 0.03) end
+    local timeKept = v.bar.value == valueBefore and type(X()) == "number" and type(x0) == "number" and X() > x0
+    CV.Set("bar.source", "none")
+    local offByNone = v.bar:GetScript("OnUpdate") == nil
+    RuleOff()
+    CV.ResetToStyle()
+    Paint(faces[1].face)
+    return on1 ~= nil and ended and sameFn and offBySource and sparkOnly and timeKept and offByNone,
+        string.format("installed %s, ended %s, same fn %s, off by source %s, spark only %s, time kept %s, off by none %s",
+            tostring(on1 ~= nil), tostring(ended), tostring(sameFn), tostring(offBySource), tostring(sparkOnly),
+            tostring(timeKept), tostring(offByNone))
+end)
+
+--------------------------------------------------------------------------------
 T.section("the frame's visibility: one owner")
 --------------------------------------------------------------------------------
 local function Shown() return frame:IsShown() end
