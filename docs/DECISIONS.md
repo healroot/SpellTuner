@@ -1503,3 +1503,14 @@ decide / And those that are recomended become default" (`docs/SPEC-next.md` 13).
 - `stylecheck`'s clock golden was re-based for the new default regions (17: the mana bar, the
   strip, their backs, the veil and its edge, the green line, the chip, the tick mark); every other
   section byte-identical.
+
+## Clock v2: what the clock says (2026-10-02, T114, T116, the author's answers to clock-v2.html)
+
+Every place a clock layout draws is a slot filled from one list (label, time, Mana %, Mana,
+mp5, the five-second rule, rest, cooldown, none), kept per layout with its size, outline,
+shadow and number face, in a Text tab that replaces Show. Line keeps one Right slot by default
+(the one-second glance ruling); a second Right slot is an option, off, offered only when the
+clock is wide enough. The time is never lost: when Main shows something else, the label slot
+carries it. On Forever, Mana % and Mana show the model's `~` values; the game's own number waits
+for probe Q-clock-2 (`MD.API.POWER_TEXT_READS`, off). The datatext and the brokers follow Line's
+slots. By default every word is as before.

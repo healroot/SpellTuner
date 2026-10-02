@@ -4949,3 +4949,26 @@ two ran in parallel worktrees, test first, and are integrated here in order.
   not bumped.
 
 **Next:** T116 (the slots drawn and the Text tab), then a build for the author's §48.
+
+## 2026-10-02 — clock v2, the round's second half: T116 integrated, not built, not installed
+
+The third of the tasks made from the author's answers to `docs/mockups/clock-v2.html` ("We can do
+all 3, and let user decide / And those that are recomended become default").
+
+- **T116** (next/T116): the slots drawn and the Text tab -- `UI/ClockView.lua` draws T114's slots
+  per layout (`text.<layout>` in `over`, size 8-32 following the font offset when unset, outline,
+  shadow, numbers), each slot one font string at a fixed place, the minimum from the slots set,
+  Right2 only where the width allows (`View:FitsRight2`), a Mana % / Mana slot asking
+  `draw.powerText` first (Forever: off, the model's `~` words); `UI/ClockSettings.lua`'s Text tab
+  replaces Show (a dropdown per slot, Right 2 disabled with its reason, Labels, Mana as of max,
+  Time / Size / Outline / Shadow / Numbers; Right's picks write the line's rest / cooldown
+  switches); Forever's hover names the modelled number; `facts.cd` per line. clockui 41 / 41,
+  clocksettings 46 / 47, ttocheck 53, clockcheck 37 (`docs/tasks/T116-clock-text-tab.md`).
+- Integrator lines: `tools/data/expected-counts.json`, the CLAUDE.md rows, `docs/TOOLS.md` §1,
+  `docs/DECISIONS.md` "Clock v2: what the clock says" (the author's answers stay recorded once, in
+  "Clock v2: mana and the five-second rule together"), `docs/TESTING.md` §48 step 6, the two
+  host comments that still named the Show tab (`UI/Dashboard.lua`, `UI/Dashboard_Forever.lua`).
+  No TOC line or slash verb changed. `tools/data/import-forever-sv.lua` rebuilt: unchanged. Version
+  not bumped.
+
+**Next:** a build for the author's §48.

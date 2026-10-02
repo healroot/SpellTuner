@@ -254,7 +254,7 @@ local function Groups()
 end
 
 -- T102 (docs/SPEC-next.md 7.3-7.4, mockup M8g): this line's own clock switches
--- for Settings -> Clock's Show and When tabs -- the keys the OOM Widget pane
+-- for Settings -> Clock's Text (since T116) and When tabs -- the keys the OOM Widget pane
 -- and /md rest, /md lock, /md tooltip write (UI/ClockSettings.lua never reads
 -- a line's keys itself).
 local function Visibility()

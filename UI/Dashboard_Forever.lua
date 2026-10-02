@@ -362,7 +362,7 @@ local function BuildClockSection(pane)
     return sec
 end
 
--- T102 (docs/SPEC-next.md 7.4): Settings -> Clock's Show and When tabs hold
+-- T102 (docs/SPEC-next.md 7.4): Settings -> Clock's Text (since T116) and When tabs hold
 -- this line's own switches (db.clock: the rest segment, shown, locked,
 -- click-through), the keys MANA CLOCK and /st clock write.
 local function ClockDB()

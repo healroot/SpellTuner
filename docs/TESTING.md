@@ -2102,9 +2102,9 @@ instead.
 **Paste back** into `docs/probe/<build>-0.16.7-s1.md` (Forever) and `.logs/tbc/0.16.7-s1.md`
 (TBC): a line per step.
 
-## 48. Clock v2: mana and the five-second rule together (T114, T115; both clients, 15 min)
+## 48. Clock v2: mana and the five-second rule together (T114, T115, T116; both clients, 20 min)
 
-The next build after 0.16.7 (not built yet: the round's T116, the Text tab, is still to come).
+The next build after 0.16.7 (not built yet; T116, the Text tab, is in it).
 Bars replace §47 steps 1-2's Source, Spark and Height-under-Bar: on a build with T115, skip those
 two steps. For each step, a line in the paste: `ok`, or what you saw instead.
 
@@ -2123,6 +2123,12 @@ two steps. For each step, a line in the paste: `ok`, or what you saw instead.
    choice is not offered and its tooltip says why.
 5. **The clock's words unchanged (T114, both clients).** The clock line, the ElvUI datatext (TBC)
    and the LDB broker read exactly as on 0.16.7 by default.
+6. **Text (T116, both clients).** Settings -> Clock -> Text on each of Line, Compact and Bar:
+   set Right to Mana % (TBC `62%`, Forever `~62%`), Main to Mana % (the time moves to the label:
+   `OOM 1:20 v`), Size 20 (the minimum rises on Frame), Outline thick. Right 2 is greyed at 180 px
+   (its tooltip names the width it needs) and works at 300 px. ElvUI's datatext (TBC) and the
+   SpellTuner broker (EllesmereUI on Forever) follow Line's slots. `/md rest` / `/st clock rest`
+   still drops the rest. There is no Show tab any more.
 
 **Paste back** into `docs/probe/<build>-<version>-s1.md` (Forever) and `.logs/tbc/<version>-s1.md`
 (TBC): a line per step.
