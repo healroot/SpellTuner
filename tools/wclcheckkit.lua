@@ -131,7 +131,10 @@ end
 --------------------------------------------------------------------------------
 -- T111 (docs/SPEC-next.md 4.2 P5): a TBC priest, shaman or paladin. The kit
 -- is the one Engine/RankMath.lua builds from the class's book
--- (Spells/Book_TBC.lua), and the book is tools/tbcclasscheck.lua's fixture --
+-- (RankMath.ClassKit over Spells/Book_TBC.lua's source; the class's
+-- `rankTable` is granted here, as tools/tbcclasscheck.lua does, since the
+-- shipped profiles wait for the TBC panes), and the book is
+-- tools/tbcclasscheck.lua's fixture --
 -- the client's own tooltip texts -- installed in the stub's client. Each row
 -- is held against its rank's kit entry (a direct heal's `direct`, a HoT's
 -- `tick`, a chain heal's first target); --fit solves each row alone for the
@@ -152,6 +155,10 @@ if #classKeys > 0 then
     if not MD.Parse then files[#files + 1] = "Spells/Parse.lua" end
     if not MD.BookTBC then files[#files + 1] = "Spells/Book_TBC.lua" end
     if #files > 0 then S.Load(files, "SpellTuner", MD) end
+    for _, c in ipairs({ "PRIEST", "SHAMAN", "PALADIN" }) do
+        local caps = MD.Profiles.byClass[c].caps
+        caps.rankTable, caps.tooltip = true, true
+    end
 
     for _, key in ipairs(classKeys) do
         local p, o = pre[key], OBS[key]
@@ -161,17 +168,26 @@ if #classKeys > 0 then
         local healing, crit = p.healing, p.crit
         _G.GetSpellBonusHealing = function() return healing end
         _G.GetSpellCritChance = function() return crit end
+        MD.API.Invalidate("GetSpellCritChance")
         local tal = p.talents or {}
         function MD:TalentRank(n) return tal[n] or 0 end
         local _, Restore = lib.Install(S, MD, p.class)
         S.units.player.class = p.class
         MD:DetectProfile()
         MD:Fire("CORE_LOGIN")
-        MD.BookTBC:Rebuild()
+        local src = MD.BookTBC:Rebuild()
+        local function Kit() return MD.RankMath.ClassKit({ live = true }, src) end
+        -- the row's name is the class book's family label (the log's ability
+        -- name can differ: 2060, Greater Heal rank 1, is "Heal" there)
+        local function Label(row)
+            local s = src and src.spells[row.id]
+            local f = s and src.families[s.family]
+            return (f and f.label or row.label) .. " #" .. row.id
+        end
 
         local function modelAt(H, row)
             _G.GetSpellBonusHealing = function() return H end
-            local e = MD.RankMath:SpellKit({ live = true }).caster[row.id]
+            local e = Kit().caster[row.id]
             if not e or e.dataMissing then return nil end
             if row.what == "tick" then return e.tick and e.tick * (row.stacks or 1) or nil end
             return e.direct
@@ -191,7 +207,7 @@ if #classKeys > 0 then
                 local model = modelAt(healing, row)
                 if model and model > 0 then
                     print(string.format("   %-26s %10.0f %10.0f %8.2f",
-                        row.label .. " #" .. row.id, model, row.median, row.median / model))
+                        Label(row), model, row.median, row.median / model))
                 else
                     skipped[#skipped + 1] = row.label
                 end
@@ -209,16 +225,15 @@ if #classKeys > 0 then
                         if not best or l * l < best then best, bestH = l * l, H end
                     end
                     implied[#implied + 1] = bestH
-                    -- the family is the kit's (the log's ability name can
-                    -- differ: 2060, Greater Heal rank 1, is "Heal" there);
-                    -- a family's answer is its best-sampled row's
-                    local ke = MD.RankMath:SpellKit({ live = true }).caster[row.id]
+                    -- the family is the kit's (Label, above); a family's
+                    -- answer is its best-sampled row's
+                    local ke = Kit().caster[row.id]
                     local fam = ke and ke.family or row.label
                     if not byFamily[fam] or (row.n or 0) > byFamily[fam].n then
                         byFamily[fam] = { H = bestH, n = row.n or 0 }
                     end
                     print(string.format("   %-26s %10.0f %10.0f %8d %5s",
-                        row.label .. " #" .. row.id, m0, row.median, bestH, tostring(row.n or "")))
+                        Label(row), m0, row.median, bestH, tostring(row.n or "")))
                 else
                     skipped[#skipped + 1] = row.label
                 end

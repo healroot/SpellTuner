@@ -10,7 +10,9 @@
 -- already carry the player's talents), its learn level from the client, its
 -- cooldown from the client or its tooltip's own line. Every read falls back to
 -- the spell's tooltip lines (MD.API.SpellTooltipLines) and a rank no read can
--- price is REFUSED with its reason (`source.refused[id]`), never guessed.
+-- price is REFUSED with its reason (`source.refused[id]`), never guessed --
+-- a rank with no description, no heal of its family's shape, no cast time or
+-- no learn level.
 --
 -- The rules on top -- coefficients by shape, the downrank penalty, the class
 -- talents -- are Engine/RankMath.lua's (RankMath.CLASS_RULES); this file only
@@ -28,8 +30,10 @@
 -- Built at MD_READY and whenever the spellbook or the level changes, for a
 -- logged-in class whose profile grants the rank table and is not the class
 -- Data/SpellData.lua is written for; SPELLS_REBUILT is fired after each build
--- so the spell list (Spells/Families_TBC.lua) follows. TBC TOC only, after
--- Spells/Parse.lua.
+-- so the spell list (Spells/Families_TBC.lua) follows. No TBC class profile
+-- grants the rank table yet (Data/Profile_<Class>_TBC.lua says why), so in
+-- the game this builds nothing and fires nothing until one does. TBC TOC
+-- only, after Spells/Parse.lua.
 local _, MD = ...
 
 local B = {}
@@ -212,6 +216,8 @@ function B.ReadRank(id, family, def, rankText)
     s.level, s.levelFrom = LevelOf(id, lines)
     s.cooldown = CooldownOf(id, lines)
     if s.cast == nil then return nil, "no cast time" end
+    -- the downrank penalty needs the learn level, and the rank table prints it
+    if s.level == nil then return nil, "no learn level" end
     if def.kit == "chain" or def.kit == "group" then
         local r = Reach(text)
         if def.kit == "chain" then

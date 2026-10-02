@@ -1,5 +1,6 @@
 -- T111 (docs/SPEC-next.md 4.2 P5, decision 8 (b)): the priest's profile on the
--- TBC line -- the rank table and the spell tooltip only. The TBC coach stays
+-- TBC line -- for the rank table and the spell tooltip only (not granted
+-- yet: see `caps`). The TBC coach stays
 -- the druid's (decision 8): no `coach`, `practice`, `simulate` or `advisor`,
 -- and no planner.
 --
@@ -22,7 +23,16 @@ local _, MD = ...
 MD.Profiles.Register("PRIEST", {
     label = "Priest",
     critSchool = 2,                -- Holy (GetSpellCritChance's school; VERIFY)
-    caps = { clock = true, tooltip = true, rankTable = true },
+    -- the mana clock only, as before this file (the generic profile's).
+    -- `rankTable` and `tooltip` wait until the TBC files that read
+    -- Data/SpellData.lua directly read RankMath:Source() instead
+    -- (UI/SpellsView_TBC.lua, UI/Dashboard.lua, UI/SpellTooltip.lua,
+    -- UI/Tip_TBC.lua) and the two gates that take `rankTable` to mean
+    -- Data/SpellData.lua stop doing so (UI/Summary.lua's max-rank share,
+    -- Diagnostics_TBC.lua's /md profile): granted before that, the
+    -- Spells view is half blank and the fight summary says
+    -- `max-rank casts 0%` (docs/tasks/T111-tbc-other-classes.md).
+    caps = { clock = true },
     families = {
         LesserHeal      = { names = { "Lesser Heal" },       kit = "direct" },
         Heal            = { names = { "Heal" },              kit = "direct" },

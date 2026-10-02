@@ -37,7 +37,9 @@ end
 -- T111: the source is Data/SpellData.lua for the druid and the class's own
 -- book (Spells/Book_TBC.lua) for a priest, shaman or paladin
 -- (RankMath:Source); a class whose profile has no rank table lists nothing
--- (and its rail holds Overview only).
+-- (and its rail holds Overview only) -- today every class but the druid, as
+-- before T111: the TBC class profiles do not grant `rankTable` until the
+-- Spells view reads RankMath:Source() (Data/Profile_<Class>_TBC.lua).
 function FT:Build()
     local RM = MD.RankMath
     local SD = RM and RM.Source and RM:Source() or nil

@@ -81,8 +81,17 @@ RankMath.RULE_FIELDS = RULE_FIELDS -- read by tools/bookcheck.lua's tbc run
 -- was still in the strip).
 function RankMath:Context(opts)
     -- T111: a class Data/SpellData.lua does not cover reads its own book
-    -- (Spells/Book_TBC.lua) under the class rules (ClassContext, below)
+    -- (Spells/Book_TBC.lua) under the class rules (ClassContext, below) --
+    -- only once its profile grants the rank table (RankMath:IsClassBook)
     if RankMath:IsClassBook() then return RankMath.ClassContext(opts, RankMath:Source()) end
+    return RankMath:DruidContext(opts)
+end
+
+-- T111: the druid's context over Data/SpellData.lua, whoever is logged in --
+-- what RankMath:Context answered for every class before T111, and what the
+-- kit (RankMath:SpellKit) is still built from (decision 8 (b): the TBC engine
+-- stays the druid's).
+function RankMath:DruidContext(opts)
     local SD = MD.SpellData
     -- opts.healer (v0.7.1): the simulator's own stat overrides, applied exactly
     -- where the Simulate strip's are and nowhere else, so a simulated healer
@@ -449,8 +458,12 @@ local function FamilyCooldown(family)
     return def and def.cooldown or nil
 end
 
+-- T111: the kit is the druid's, from Data/SpellData.lua, for every class
+-- (decision 8 (b): tables and tooltips only, the TBC coach stays the
+-- druid's) -- a priest's Review validation and replay run on the kit they ran
+-- on before T111. RankMath.ClassKit (below) builds a class's own kit; only the
+-- offline tools call it.
 function RankMath:SpellKit(opts)
-    if RankMath:IsClassBook() then return RankMath.ClassKit(opts, RankMath:Source()) end
     local SD = MD.SpellData
     local kit = { caster = {}, tree = {}, profile = KIT_PROFILE }
 
@@ -460,7 +473,7 @@ function RankMath:SpellKit(opts)
             for k, v in pairs(opts.healer) do healer[k] = v end
             healer.inTree = (form == "tree")
         end
-        local ctx = RankMath:Context({ live = true, healer = healer })
+        local ctx = RankMath:DruidContext({ live = true, healer = healer })
         local out = kit[form]
 
         for family, list in pairs(SD.known) do
@@ -531,7 +544,7 @@ function RankMath:SpellKit(opts)
         end
     end
 
-    kit.crit = RankMath:Context({ live = true, healer = opts and opts.healer }).crit
+    kit.crit = RankMath:DruidContext({ live = true, healer = opts and opts.healer }).crit
     return MD.Kit.Check(kit, "RankMath:SpellKit")
 end
 
@@ -678,6 +691,14 @@ end
 -- coach stays the druid's (decision 8), and the kit built here only has to be
 -- one Engine/Kit.lua accepts.
 --
+-- Reached in the game only once a class's profile grants `rankTable`
+-- (RankMath:IsClassBook); the TBC class profiles do not yet, because the TBC
+-- files that read Data/SpellData.lua directly -- the Spells view, the spell
+-- tooltip, the fight summary's max-rank share, /md profile -- would show a
+-- half-working pane or a wrong number for them (docs/tasks/T111 lists each
+-- one). Until then this is the offline tools' (tools/tbcclasscheck.lua,
+-- tools/wclcheckkit.lua --fit).
+--
 -- Every rule below is VERIFY: the talents' names are the TBC client's, their
 -- size per rank is from the 2.4 talent texts as remembered, and
 -- tools/wclcheckkit.lua --fit (the +healing each public parse needs, family
@@ -714,30 +735,44 @@ RankMath.CLASS_RULES = {
 -- coefficient (Prayer of Healing, Circle of Healing). VERIFY.
 RankMath.GROUP_COEF = 0.5
 
--- The ranks' source: Data/SpellData.lua for the class it is written for (the
--- druid, Engine/Kit.lua's default profile) and whenever no class is known;
--- the class's own book otherwise, nil until it is built (an empty table).
-function RankMath:Source()
-    local class = MD.player and MD.player.class
-    if class == nil or class == KIT_PROFILE then return MD.SpellData end
-    local B = MD.BookTBC
-    return B and B:Source() or nil
-end
-
--- True when the logged-in class reads its own book, built or not.
+-- True when the logged-in class reads its own book (built or not): a class
+-- other than the one Data/SpellData.lua is written for (the druid,
+-- Engine/Kit.lua's default profile) whose profile GRANTS the rank table.
+-- The TBC priest, shaman and paladin profiles do not grant it yet
+-- (Data/Profile_<Class>_TBC.lua says why), so until they do every class
+-- reads exactly what it read before T111 -- the druid's context over
+-- Data/SpellData.lua, and no rank table.
 function RankMath:IsClassBook()
     local class = MD.player and MD.player.class
-    return class ~= nil and class ~= KIT_PROFILE and MD.BookTBC ~= nil
+    if class == nil or class == KIT_PROFILE or MD.BookTBC == nil then return false end
+    local p = MD.ClassProfile
+    return type(p) == "table" and p.class == class and type(p.Can) == "function"
+        and p:Can("rankTable") == true
+end
+
+-- The ranks' source: the class's own book for a class book (nil until it is
+-- built), Data/SpellData.lua otherwise.
+function RankMath:Source()
+    if not RankMath:IsClassBook() then return MD.SpellData end
+    return MD.BookTBC:Source()
 end
 
 local NO_SOURCE = { spells = {}, families = {}, familyOrder = {}, all = {}, known = {}, knownSet = {},
                     maxRank = {}, GetCost = function() return nil, "unknown" end }
 
+-- The school's crit and the mana, through the adapter (Client/API_TBC.lua's
+-- SpellCritChance, the shared UnitPower); an absent or unreadable answer is 0.
 local function SchoolCrit(school)
-    if GetSpellCritChance then
-        local ok, v = pcall(GetSpellCritChance, school or 2)
-        if ok and type(v) == "number" then return v / 100 end
-    end
+    local fn = MD.API and MD.API.SpellCritChance
+    local v = type(fn) == "function" and fn(school or 2) or nil
+    if type(v) == "number" then return v / 100 end
+    return 0
+end
+
+local function PlayerMana()
+    local fn = MD.API and MD.API.UnitPower
+    local v = type(fn) == "function" and fn("player", 0) or nil
+    if type(v) == "number" then return v end
     return 0
 end
 
@@ -789,7 +824,7 @@ function RankMath.ClassContext(opts, src)
     local liveBonus = BonusHealing()
     local statBonus = sim.heal or liveBonus
     local liveCrit = SchoolCrit(profile and profile.critSchool)
-    local liveMana = UnitPower("player", 0) or 0
+    local liveMana = PlayerMana()
     local liveCasting = MD.Regen and MD.Regen.casting or 0
     local liveBase = MD.Regen and MD.Regen.base or 0
     local ctx = {
@@ -836,13 +871,12 @@ function RankMath.ClassRow(spellID, ctx, explain)
     if not s then return nil end
     local info = SD.families and SD.families[s.family]
     if not info then return nil end
+    -- a rank with no learn level has no downrank penalty to compute and no
+    -- level for the table to print: it is not a row (Spells/Book_TBC.lua
+    -- refuses it before it gets here)
+    if type(s.level) ~= "number" or s.level <= 0 then return nil end
     local tal = TalentsFor(ctx.class, s.family)
-    -- a rank whose learn level no read gave takes no downrank penalty, and
-    -- the row says so (calc.levelMissing)
-    local pen, levelMissing = 1, true
-    if type(s.level) == "number" and s.level > 0 then
-        pen, levelMissing = Penalty(s.level, ctx.playerLevel), false
-    end
+    local pen = Penalty(s.level, ctx.playerLevel)
     local bonus = ctx.bonus
     local heal, castTime, castBase, calc
     local crit = math.min(1, ctx.crit + tal.critAdd)
@@ -861,8 +895,8 @@ function RankMath.ClassRow(spellID, ctx, explain)
         if explain then
             calc = { kind = "direct", base = base, relicFlat = 0,
                      bonus = bonus, coef = coef, penalty = pen, bonusMult = bonusMult,
-                     bonusMultName = tal.coefName, bonusOut = bonusOut,
-                     talentMult = tal.mult, talentName = tal.multName, critMult = critMult, crit = crit,
+                     bonusMultName = tal.coefName or "", bonusOut = bonusOut,
+                     talentMult = tal.mult, talentName = tal.multName or "", critMult = critMult, crit = crit,
                      min = (s.healMin + bonusOut) * tal.mult,
                      max = (s.healMax + bonusOut) * tal.mult }
         end
@@ -876,8 +910,8 @@ function RankMath.ClassRow(spellID, ctx, explain)
             local period = TickPeriod(s.hotDuration)
             calc = { kind = "hot", base = s.hotTotal, relicFlat = 0,
                      bonus = bonus, coef = coef, penalty = pen, bonusMult = bonusMult,
-                     bonusMultName = tal.coefName, bonusOut = bonusOut,
-                     talentMult = tal.mult, talentName = tal.multName,
+                     bonusMultName = tal.coefName or "", bonusOut = bonusOut,
+                     talentMult = tal.mult, talentName = tal.multName or "",
                      duration = s.hotDuration, ticks = s.hotDuration / period, tickPeriod = period }
         end
     end
@@ -924,7 +958,6 @@ function RankMath.ClassRow(spellID, ctx, explain)
         calc.overheal = row.overheal
         calc.cooldown = s.cooldown
         calc.interval = interval
-        calc.levelMissing = levelMissing or nil
         calc.jumps, calc.falloff = s.jumps, s.falloff
         row.calc = calc
     end
@@ -933,7 +966,8 @@ end
 
 -- The class's kit: every known rank, one form (no Tree of Life), stamped
 -- with the logged-in class's profile, in Engine/Kit.lua's shape and checked
--- by it.
+-- by it. RankMath:SpellKit never answers it (decision 8 (b)): the offline
+-- tools call it by name.
 function RankMath.ClassKit(opts, src)
     src = src or NO_SOURCE
     local ctx = RankMath.ClassContext({ live = true, healer = opts and opts.healer }, src)
