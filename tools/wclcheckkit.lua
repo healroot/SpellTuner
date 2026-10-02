@@ -48,8 +48,11 @@ local S = _G.STUB
 local OBS = dofile(obsFile)
 
 local ratios = {}
+local classKeys = {}
 for key, p in pairs(pre) do
     local o = OBS[key]
+    -- T111: a priest, shaman or paladin is held after every druid (below)
+    if o and p.class and p.class ~= "DRUID" then classKeys[#classKeys + 1] = key; o = nil end
     if o then
         S.level = p.level; S.manaMax = p.manaMax; S.mana = p.manaMax
         if (p.intellect or 0) > 0 then S.stats[4] = p.intellect end
@@ -123,6 +126,138 @@ for key, p in pairs(pre) do
             end
         end
         print("")
+    end
+end
+--------------------------------------------------------------------------------
+-- T111 (docs/SPEC-next.md 4.2 P5): a TBC priest, shaman or paladin. The kit
+-- is the one Engine/RankMath.lua builds from the class's book
+-- (Spells/Book_TBC.lua), and the book is tools/tbcclasscheck.lua's fixture --
+-- the client's own tooltip texts -- installed in the stub's client. Each row
+-- is held against its rank's kit entry (a direct heal's `direct`, a HoT's
+-- `tick`, a chain heal's first target); --fit solves each row alone for the
+-- +healing and says how far the families' answers lie apart. A row whose
+-- spell the kit does not price (Prayer of Mending, Power Word: Shield,
+-- Earth Shield: unmodelled by the profiles) is listed and skipped.
+--------------------------------------------------------------------------------
+table.sort(classKeys)
+local classSpread = {}
+if #classKeys > 0 then
+    TBCCLASS_LIBRARY = true
+    local lib = dofile(here .. "/tbcclasscheck.lua")
+    local files = {}
+    if not MD.Profiles.byClass.PRIEST then
+        for _, f in ipairs({ "Data/Profile_Priest_TBC.lua", "Data/Profile_Shaman_TBC.lua",
+                             "Data/Profile_Paladin_TBC.lua" }) do files[#files + 1] = f end
+    end
+    if not MD.Parse then files[#files + 1] = "Spells/Parse.lua" end
+    if not MD.BookTBC then files[#files + 1] = "Spells/Book_TBC.lua" end
+    if #files > 0 then S.Load(files, "SpellTuner", MD) end
+
+    for _, key in ipairs(classKeys) do
+        local p, o = pre[key], OBS[key]
+        S.level = p.level or 70; S.manaMax = p.manaMax; S.mana = p.manaMax
+        if (p.intellect or 0) > 0 then S.stats[4] = p.intellect end
+        if (p.spirit or 0) > 0 then S.stats[5] = p.spirit end
+        local healing, crit = p.healing, p.crit
+        _G.GetSpellBonusHealing = function() return healing end
+        _G.GetSpellCritChance = function() return crit end
+        local tal = p.talents or {}
+        function MD:TalentRank(n) return tal[n] or 0 end
+        local _, Restore = lib.Install(S, MD, p.class)
+        S.units.player.class = p.class
+        MD:DetectProfile()
+        MD:Fire("CORE_LOGIN")
+        MD.BookTBC:Rebuild()
+
+        local function modelAt(H, row)
+            _G.GetSpellBonusHealing = function() return H end
+            local e = MD.RankMath:SpellKit({ live = true }).caster[row.id]
+            if not e or e.dataMissing then return nil end
+            if row.what == "tick" then return e.tick and e.tick * (row.stacks or 1) or nil end
+            return e.direct
+        end
+
+        local names = {}
+        for t, r in pairs(tal) do names[#names + 1] = t .. " " .. r end
+        table.sort(names)
+        print(string.format("== %s   %s, +%d healing%s, %.1f%% crit, talents %s",
+            key, p.class, healing,
+            (p.spellPower or 0) > 0 and string.format(" (log spellPower %d)", p.spellPower) or "",
+            crit, #names > 0 and table.concat(names, ", ") .. " (inferred)" or "none"))
+        local skipped = {}
+        if not fit then
+            print(string.format("   %-26s %10s %10s %8s", "", "model", "log", "ratio"))
+            for _, row in ipairs(o) do
+                local model = modelAt(healing, row)
+                if model and model > 0 then
+                    print(string.format("   %-26s %10.0f %10.0f %8.2f",
+                        row.label .. " #" .. row.id, model, row.median, row.median / model))
+                else
+                    skipped[#skipped + 1] = row.label
+                end
+            end
+        else
+            print(string.format("   %-26s %10s %10s %8s %5s", "", "model", "log", "implies", "n"))
+            local implied, byFamily = {}, {}
+            for _, row in ipairs(o) do
+                local m0 = modelAt(healing, row)
+                if m0 and m0 > 0 then
+                    local best, bestH
+                    for H = 0, 6000, 5 do
+                        local m = modelAt(H, row)
+                        local l = math.log(row.median / m)
+                        if not best or l * l < best then best, bestH = l * l, H end
+                    end
+                    implied[#implied + 1] = bestH
+                    -- the family is the kit's (the log's ability name can
+                    -- differ: 2060, Greater Heal rank 1, is "Heal" there);
+                    -- a family's answer is its best-sampled row's
+                    local ke = MD.RankMath:SpellKit({ live = true }).caster[row.id]
+                    local fam = ke and ke.family or row.label
+                    if not byFamily[fam] or (row.n or 0) > byFamily[fam].n then
+                        byFamily[fam] = { H = bestH, n = row.n or 0 }
+                    end
+                    print(string.format("   %-26s %10.0f %10.0f %8d %5s",
+                        row.label .. " #" .. row.id, m0, row.median, bestH, tostring(row.n or "")))
+                else
+                    skipped[#skipped + 1] = row.label
+                end
+            end
+            table.sort(implied)
+            local fams = {}
+            for fam, x in pairs(byFamily) do fams[#fams + 1] = { fam = fam, H = x.H } end
+            table.sort(fams, function(a, b) return a.H < b.H end)
+            if #fams > 0 then
+                local lo, hi = fams[1].H, fams[#fams].H
+                local mid = (lo + hi) / 2
+                local spread = mid > 0 and (hi - lo) / mid or 0
+                local parts = {}
+                for _, x in ipairs(fams) do parts[#parts + 1] = x.fam .. " " .. x.H end
+                print(string.format("   %d families: %s -- spread %.0f%% of their middle",
+                    #fams, table.concat(parts, ", "), spread * 100))
+                classSpread[#classSpread + 1] = { key = key, n = #fams, spread = spread }
+            end
+            if #implied > 0 then
+                local med = implied[math.ceil(#implied / 2)]
+                print(string.format("   %-26s %10s %10s %8d   x%.2f of the log's spellPower",
+                    "median of the rows", "", "", med,
+                    (p.spellPower or 0) > 0 and med / p.spellPower or 0))
+            end
+        end
+        if #skipped > 0 then print("   not priced by the kit: " .. table.concat(skipped, ", ")) end
+        print("")
+        Restore()
+    end
+    -- back to the druid the harness logged in
+    S.units.player.class = "DRUID"; S.level = 70
+    MD:DetectProfile(); MD:Fire("CORE_LOGIN")
+end
+if fit and #classSpread > 0 then
+    local three = 0
+    for _, x in ipairs(classSpread) do if x.n >= 3 then three = three + 1 end end
+    print(string.format("%d class parses (%d with three families or more):", #classSpread, three))
+    for _, x in ipairs(classSpread) do
+        print(string.format("   %-34s %d families, spread %.0f%%", x.key, x.n, x.spread * 100))
     end
 end
 if fit and #ratios > 0 then

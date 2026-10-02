@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """tools/wclconvert.py <raw.json> --healer <name> [<raw.json> --healer <name> ...]
-                       [--out .logs/wcl-records.lua]
+                       [--out .logs/wcl-records.lua] [--observed .logs/wcl-observed.lua]
 
 Turns a raw fight downloaded by tools/wclfetch.py into a SpellTuner recording --
 the same stream Engine/FightRecorder.lua writes -- so that somebody else's raid
@@ -21,6 +21,11 @@ What is INFERRED and marked as such:
              healer; everybody else is a damager
   healing    the spellPower the client reported on their own casts, x
              SPELLPOWER_TO_HEALING -- the log's field is SPELL DAMAGE, not +healing
+
+T111: the healer may be a priest, shaman or paladin (the log's own class);
+the profile carries that class and its inferred talents, and --observed writes
+the per-rank observed table tools/wclcheckkit.lua --fit reads (Chain Heal: the
+cast's own target only). A druid is converted exactly as before.
 
 See tools/wclfetch.py for the classResources key-name trap.
 """
@@ -50,6 +55,107 @@ SPELLPOWER_TO_HEALING = 3.08
 HP_EVERY, MANA_EVERY = 5.0, 2.0
 HEAL_FAMILIES = ("Lifebloom", "Rejuvenation", "Regrowth", "Healing Touch",
                  "Swiftmend", "Tranquility", "Nourish")
+
+# T111 (docs/SPEC-next.md 4.2 P5): a priest, shaman or paladin healer is
+# imported too -- the class is the actor's own (`subType`), the families are
+# the TBC profiles' (Data/Profile_<Class>_TBC.lua), and the observed table
+# (--observed) is what tools/wclcheckkit.lua --fit holds the class rank math
+# against. Only the druid's recordings replay through the coach (decision 8).
+CLASS_FAMILIES = {
+    "DRUID": HEAL_FAMILIES,
+    "PRIEST": ("Lesser Heal", "Heal", "Greater Heal", "Flash Heal", "Renew",
+               "Prayer of Healing", "Circle of Healing", "Binding Heal"),
+    "SHAMAN": ("Healing Wave", "Lesser Healing Wave", "Chain Heal"),
+    "PALADIN": ("Holy Light", "Flash of Light", "Holy Shock"),
+}
+
+
+def class_of(byid, hid):
+    """The healer's class token, from the log's own actor record."""
+    return (byid[hid].get("subType") or "Druid").upper()
+
+
+def infer_talents(cls, trees):
+    """The healing talents a point split all but forces, by class. INFERRED:
+    tools/wclcheckkit.lua --fit is the check -- a wrong inference shows as
+    one family asking for a different +healing from the others.
+
+    Priest [discipline, holy, shadow]: Improved Renew and Divine Fury sit in
+    holy's first two tiers, Spiritual Healing at 25 points, Empowered Healing
+    at 35. Shaman [elemental, enhancement, restoration]: Improved Healing Wave
+    in the first tier, Tidal Mastery at 15, Purification at 25, Improved Chain
+    Heal at 30. Paladin [holy, protection, retribution]: Healing Light at 5,
+    Sanctified Light at 15. Every threshold VERIFY."""
+    t = list(trees) + [0, 0, 0]
+    if cls == "PRIEST":
+        holy, out = t[1], {}
+        if holy >= 10:
+            out.update({"Improved Renew": 3, "Divine Fury": 5})
+        if holy >= 30:
+            out["Spiritual Healing"] = 5
+        if holy >= 40:
+            out["Empowered Healing"] = 5
+        return out
+    if cls == "SHAMAN":
+        resto, out = t[2], {}
+        if resto >= 5:
+            out["Improved Healing Wave"] = 5
+        if resto >= 20:
+            out["Tidal Mastery"] = 5
+        if resto >= 30:
+            out["Purification"] = 5
+        if resto >= 35:
+            out["Improved Chain Heal"] = 2
+        return out
+    if cls == "PALADIN":
+        holy, out = t[0], {}
+        if holy >= 10:
+            out["Healing Light"] = 3
+        if holy >= 20:
+            out["Sanctified Light"] = 3
+        return out
+    return {}
+
+
+def class_observed(blob, hid, abil):
+    """The median gross, non-crit amount each rank healed -- tools/wclrules.py's
+    observed_table for a priest, shaman or paladin, with Chain Heal's jumps
+    left out: only the heal on the cast's own target (the first, at 100%) is
+    the rank's value; each jump is a fraction of it."""
+    import statistics
+    chain = set(sid for sid, nm in abil.items() if nm == "Chain Heal")
+    casts = [e for e in blob["casts"] if e.get("sourceID") == hid and e.get("type") == "cast"
+             and e.get("abilityGameID") in chain]
+    heals = sorted([e for e in blob["healing"] if e.get("sourceID") == hid and not e.get("tick")
+                    and e.get("abilityGameID") in chain], key=lambda e: e["timestamp"])
+    first = set()
+    for c in casts:
+        for e in heals:
+            if id(e) in first or e["timestamp"] < c["timestamp"]:
+                continue
+            if e["timestamp"] > c["timestamp"] + 1500:
+                break
+            if e.get("targetID") == c.get("targetID") and e.get("abilityGameID") == c.get("abilityGameID"):
+                first.add(id(e))
+                break
+    g = defaultdict(list)
+    for e in blob["healing"]:
+        if e.get("sourceID") != hid or e.get("hitType") == 2:
+            continue
+        sid = e.get("abilityGameID")
+        if sid in chain and id(e) not in first:
+            continue
+        gross = (e.get("amount") or 0) + (e.get("overheal") or 0)
+        if gross > 0:
+            g[(sid, "tick" if e.get("tick") else "direct")].append(gross)
+    rows = []
+    for (sid, what), v in sorted(g.items(), key=lambda x: -len(x[1])):
+        if len(v) < 3:
+            continue
+        nm = abil.get(sid, str(sid))
+        rows.append('{id=%d,what="%s",label="%s %s",median=%.1f,stacks=1,n=%d}'
+                    % (sid, what, nm, what, statistics.median(v), len(v)))
+    return "{" + ",".join(rows) + "}"
 
 
 def hp_timeline(blob):
@@ -380,13 +486,16 @@ def convert(blob, healer):
 
     # ---- what they had, and what they were --------------------------------
     known, ranks = {}, defaultdict(list)
+    cls = class_of(byid, hid)
     for e in blob["casts"]:
         if e.get("sourceID") != hid or e.get("type") != "cast":
             continue
         nm = abil.get(e.get("abilityGameID"), "")
-        for fam in HEAL_FAMILIES:
+        for fam in CLASS_FAMILIES.get(cls, HEAL_FAMILIES):
             if nm == fam or nm.startswith(fam):
-                ranks[fam.replace(" ", "")].append(e["abilityGameID"])
+                # the profile's key: each word capitalised ("CircleOfHealing";
+                # the druid's names already are, so his keys are unchanged)
+                ranks["".join(w[:1].upper() + w[1:] for w in fam.split(" "))].append(e["abilityGameID"])
     for fam, ids in ranks.items():
         known[fam] = max(ids)
 
@@ -426,6 +535,8 @@ def convert(blob, healer):
     elif resto >= 40:
         talents = {"Gift of Nature": 5, "Improved Rejuvenation": 3,
                    "Empowered Rejuvenation": 5}
+    if cls != "DRUID":
+        talents = infer_talents(cls, trees)
     start_mana = track[0][1] if track else pool
 
     names = {}
@@ -485,7 +596,7 @@ def convert(blob, healer):
     }
 
     profile = {
-        "at": int((blob["reportStart"] + t0) / 1000), "level": 70, "class": "DRUID",
+        "at": int((blob["reportStart"] + t0) / 1000), "level": 70, "class": cls,
         "healing": int(healing), "spellPower": int(spellpower),
         "crit": round(critpct, 2),
         "spirit": int(ci.get("spirit") or 0), "intellect": int(ci.get("intellect") or 0),
@@ -501,21 +612,33 @@ def convert(blob, healer):
 
 
 def main():
-    args, jobs, out = sys.argv[1:], [], ".logs/wcl-records.lua"
+    args, jobs, out, observed = sys.argv[1:], [], ".logs/wcl-records.lua", None
     i = 0
     while i < len(args):
         if args[i] == "--out":
             out = args[i + 1]; i += 2; continue
+        if args[i] == "--observed":
+            observed = args[i + 1]; i += 2; continue
         if args[i] == "--healer":
             jobs[-1][1] = args[i + 1]; i += 2; continue
         jobs.append([args[i], None]); i += 1
     if not jobs:
         raise SystemExit(__doc__)
 
-    chars = {}
+    chars, obs = {}, []
     for path, healer in jobs:
         blob = json.load(open(path))
         stream, profile, key = convert(blob, healer)
+        if observed:
+            byid = {a["id"]: a for a in blob["actors"]}
+            abil = {a["gameID"]: a["name"] for a in blob["abilities"]}
+            hid = next(a["id"] for a in blob["actors"] if a["name"] == healer and a["type"] == "Player")
+            if profile["class"] == "DRUID":
+                # the druid's own (Lifebloom's per-stack tick): tools/wclrules.py
+                from wclrules import observed_table
+                obs.append("[%r]=%s" % (key, observed_table(blob, hid, abil, observed)))
+            else:
+                obs.append("[%r]=%s" % (key, class_observed(blob, hid, abil)))
         chars.setdefault(key, {"recordings": [], "profile": profile,
                                "fights": [], "coachMarks": {}})
         chars[key]["recordings"].append(stream)
@@ -558,6 +681,11 @@ def main():
                 "end\n")
     print("wrote %s (%.1f MB)  -- paste into the game's SavedVariables"
           % (ap, os.path.getsize(ap) / 1e6))
+
+    if observed:
+        with open(observed, "w") as f:
+            f.write("return {" + ",\n".join(obs) + "}\n")
+        print("wrote %s" % observed)
 
     db = {"char": chars, "profileKeys": {}, "global": {}}
     with open(out, "w") as f:
