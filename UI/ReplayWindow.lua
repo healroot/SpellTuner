@@ -546,7 +546,8 @@ local function CreateStrip(parent, x, y)
     s.form:SetTextColor(0.7, 0.7, 0.7)
 
     -- the cast bar: a real cast fills over its cast time in the family colour;
-    -- an instant sweeps the GCD in grey (the healer is locked either way).
+    -- an instant sweeps the GCD in grey (the healer is locked either way; a
+    -- hard cast's GCD ran under its own bar, so none follows it -- F2).
     -- The name STAYS until the next cast, dimmed once the bar is done -- the
     -- question the strip answers is "what was I doing", not "is a bar moving".
     s.cast = CreateBar(parent, COL_W - 70, 18)
@@ -620,9 +621,23 @@ local function MakeOnEvent(col)
             local tgtName = rp.rec.roster[tgt] and rp.rec.roster[tgt].name
             col.strip.lastCast = label .. (tgtName and (" -> " .. Esc(tgtName)) or "")
             col.strip.lastFamily = family
-            -- an instant: sweep the GCD from this moment (replay clock, not wall clock)
-            local c = col.state and col.state:Casting()
-            col.strip.gcdStart, col.strip.gcdUntil = t, t + GCD
+            -- F2: only an instant sweeps the GCD, from this moment (replay
+            -- clock, not wall clock). A hard cast's GCD began with its cast
+            -- bar and is over by its success, so after it the name stays,
+            -- dimmed -- no "instant" sweep of a cast that had a bar.
+            local s = col.strip
+            local hard = s.barSpell == a and s.barAt and t > s.barAt
+            s.barSpell, s.barAt = nil, nil
+            if hard then
+                s.gcdStart, s.gcdUntil = 0, 0
+            else
+                s.gcdStart, s.gcdUntil = t, t + GCD
+            end
+        elseif kind == TK.CAST_START then
+            -- F2: the bar a following CAST of this spell finishes
+            col.strip.barSpell, col.strip.barAt = a, t
+        elseif kind == TK.CANCEL then
+            col.strip.barSpell, col.strip.barAt = nil, nil
         elseif kind == RT.EV_DMG then
             if f then
                 local maxHP = rp.scenario.targets[tgt] and rp.scenario.targets[tgt].maxHP or 1
@@ -1116,7 +1131,17 @@ local function SeekTo(t)
         end
     end
     for _, col in ipairs({ left, right }) do
-        if col then col.strip.lastCast, col.strip.gcdStart, col.strip.gcdUntil = nil, 0, 0 end
+        if col then
+            col.strip.lastCast, col.strip.gcdStart, col.strip.gcdUntil = nil, 0, 0
+            -- F2: a seek into a cast bar crosses its CAST_START silently; the
+            -- state still knows it, so its success is not taken for an instant
+            local c = col.state and col.state:Casting()
+            if c and c.castTime > 0 then
+                col.strip.barSpell, col.strip.barAt = c.spellID, c.startedAt
+            else
+                col.strip.barSpell, col.strip.barAt = nil, nil
+            end
+        end
     end
     Paint()
 end
@@ -2429,7 +2454,10 @@ function MD:OpenPractice(setup, seed)
     stratDrop:Hide()
     Layout()
     LiveControls(true)
-    for _, col in ipairs({ left, right }) do col.strip.lastCast, col.strip.gcdStart, col.strip.gcdUntil = nil, 0, 0 end
+    for _, col in ipairs({ left, right }) do
+        col.strip.lastCast, col.strip.gcdStart, col.strip.gcdUntil = nil, 0, 0
+        col.strip.barSpell, col.strip.barAt = nil, nil
+    end
     local g
     for _, x in ipairs(PR.GROUPS) do if x.id == setup.group then g = x end end
     headerFS:SetText(string.format(Hi() .. "PRACTICE|r  %s, %d people   %s",
