@@ -2158,4 +2158,5 @@ SpellTunerDB = {
 		["style"] = "flat",
 		["win"] = {},
 	},
+	["useClassColour"] = false,
 }

@@ -97,7 +97,6 @@ function MD.DashboardParts.CreatePractice(parent, width)
     pane:Hide()
     local api = { frame = pane }
     local themed = UI.THEMED                       -- T40: the Forever theme (T69: the flag)
-    local GREY = UI.Hex("muted")                   -- T69: 888888 on TBC, the theme's muted on Forever
     hosts[pane] = true
 
     local function Setup()
@@ -111,7 +110,7 @@ function MD.DashboardParts.CreatePractice(parent, width)
     intro:SetJustifyH("LEFT")
     intro:SetText("Heal a fight you play. Set the group and the damage, press Start, then hover a frame and " ..
         "press a binding. What you play is recorded like a real pull: it opens as a replay, and the coach " ..
-        "answers it. " .. GREY .. "Every default number here is a placeholder - one healer's guess at a TBC " ..
+        "answers it. " .. UI.Hex("muted") .. "Every default number here is a placeholder - one healer's guess at a TBC " ..
         "group - so change them to the fight you want to rehearse.|r")
 
     ----------------------------------------------------------------------------
@@ -206,7 +205,7 @@ function MD.DashboardParts.CreatePractice(parent, width)
             fs:SetPoint("LEFT", header, "LEFT", x, 0)
             fs:SetWidth(c[3])
             fs:SetJustifyH(c[4] == "text" and "LEFT" or c[4] == "label" and "LEFT" or "RIGHT")
-            fs:SetText(GREY .. c[2] .. "|r")
+            fs:SetText(UI.Hex("muted") .. c[2] .. "|r")
             x = x + c[3] + 4
         end
     end
@@ -393,7 +392,7 @@ function MD.DashboardParts.CreatePractice(parent, width)
                 -- falls back to its default colour, not to white
                 tips[#tips + 1] = accent .. (b.key ~= "" and b.key or "unbound") .. "|r  " .. white .. label .. "|r" .. note
             end
-            tips[#tips + 1] = GREY .. "Hover a frame and press. Import from Cell or Clique in Edit bindings.|r"
+            tips[#tips + 1] = UI.Hex("muted") .. "Hover a frame and press. Import from Cell or Clique in Edit bindings.|r"
         end
         summary:SetWidth(math.max(20, summary.fs:GetStringWidth() + 2))
         UI.SetTooltips(summary, "ANCHOR_BOTTOMLEFT", 0, -3, unpack(tips))
@@ -490,7 +489,7 @@ function MD.DashboardParts.CreatePractice(parent, width)
             row.index = i
             if row.youFS then
                 -- T40: the role alone in its cell, "you" a tag after the name
-                row.kindFS:SetText(GREY .. PR.ROLES[tg.kind].label:lower() .. "|r")
+                row.kindFS:SetText(UI.Hex("muted") .. PR.ROLES[tg.kind].label:lower() .. "|r")
                 if tg.you then row.youFS:Show() else row.youFS:Hide() end
                 row.nameEB:SetTextInsets(5, tg.you and 30 or 5, 0, 0)
             else
@@ -524,7 +523,7 @@ function MD.DashboardParts.CreatePractice(parent, width)
         local canCast, why = MD.ClassProfile:Can("practice")
         if canCast then startBtn:Enable() else startBtn:Disable() end
         statusFS:SetText(canCast and string.format(
-            GREY .. "about %d damage a second for you to heal, over %d:%02d|r", total + 0.5,
+            UI.Hex("muted") .. "about %d damage a second for you to heal, over %d:%02d|r", total + 0.5,
             math.floor((st.dur or 0) / 60), (st.dur or 0) % 60)
             or ("|cffff9966" .. MD.Profiles.Refusal("practice", why, "Practice") .. "|r"))
     end

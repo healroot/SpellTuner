@@ -4775,3 +4775,63 @@ sections on both clients; T110 on T105; T111 on T106; T112 is not scheduled.
 
 `make check`: 86 runs, all passed (81 counted runs against 81 expected; profilecheck/forever's NOTE 48 vs 46 as before); apicheck 0 findings over 69 files (51 globals), textcheck 0 over 108. **Next:** the author installs 0.16.6 and runs §46.1 on both clients;
 then T102 / T106 reviewed and integrated, T107 rebuilt, and T103-T105 on the probe's answers.
+
+## 2026-10-02 — the next round, wave N4: T102, T106, T107
+
+Integrated on `7da7943` (0.16.6) in this order, each task's commits cherry-picked oldest first,
+all clean (T102 and T106 were built on `319f6cb`; the commits since are docs and version lines),
+then the integrator lines in one commit.
+
+- **T102 (decisions 3, 4, 13, 17, 19): Settings -> Clock, Look, INTEGRATIONS.** `UI/ClockSettings.lua`
+  (both lines; TBC after `UI/Widget.lua`, Forever after `UI/Clock_Forever.lua`): the clock view
+  with its own preview (never the widget), the `SAMPLES` chips and (Live), one button per layout,
+  the Colours / Frame / Bar / Show / When box and the swatch row, every control through
+  `MD.ClockView.Set`; the Look dropdown with **Use my class colour** (`db.useClassColour`, default
+  off, wrapping `UI.ApplyStyleTokens`) and the reload line; INTEGRATIONS on both lines;
+  `Customise...` on OOM Widget (TBC) and MANA CLOCK (Forever); `/st clock layout / look reset /
+  preview` through `MD:AddSubcommand` (a new `/md clock` verb on TBC; slashcheck's golden re-based,
+  additions only); `MD.ClockLook` provided, so the brokers follow the rest switch (closes T97's
+  deviation 3). No Text tab (the renderer has no such keys yet). clocksettings 34 / 35 (new).
+- **T106 (decision 7): Paladin, Shaman and Priest on Forever.** Three profiles
+  (`Data/Profile_<Class>_Forever.lua`, after the druid's on the Forever TOCs), coach and practice
+  granted by `tools/classcoach.lua`; the coach uses the solver's three causal strategies for every
+  class but the druid (`SP.SolverOnly`, `SP.SolverCandidates`, `SP.SOLVER_COACH`), the card writes a
+  solver best as three steps and names unmodelled heals (`SP.Unmodelled`, the profile's new
+  `unmodelled` field); no Power Word: Shield until T109. Its commit outside the row
+  (`Engine/SimPlanner.lua`, `Spells/Profiles.lua`, `tools/capscheck.lua`) taken with it, as the
+  task file says. classcoach 39 (new), profilecheck forever 46 -> 59 (64 with the talentsforever
+  cache, the expected count now the cached run's), tbc 44 -> 45; capscheck unchanged (a mage is the
+  class with no profile).
+- **T107 (decision 4): live restyle.** `UI.Tint` / `UI.Untint` / `UI.RepaintTints`,
+  `UI.FollowTokens`, `UI.AccentSpec`, `UI.Restyle`; the creation-time accent and token reads in
+  its ten files became tints or reads at paint; the Spells pane and view re-render on
+  `STYLE_CHANGED`; the replay's unit frames and the debug log exempt. restylecheck 44 / 49 (new).
+
+**The integrator's code lines:** T107's line 1 -- `UI/Dashboard_Review.lua`'s result rule a tint,
+`UI/PracticePanel.lua`'s `GREY` local replaced by `UI.Hex("muted")` at its five uses, and
+`UI.Restyle.LEFT = {}` (nothing waits for a reload); T107's line 2 -- `UI/ClockSettings.lua`'s
+reload line shown only while the look differs from the login's and `UI.Restyle.Line()` is non-nil,
+with that line as its text (`CS.ReloadLine`), so it stays hidden now; `tools/clocksettings.lua`'s
+style clause re-based (hidden while `UI.Restyle.Left()` is 0, else `Line()`). TOC lines for T102
+and T106. `tools/data/import-forever-sv.lua` rebuilt once after the TOC lines: one line,
+`["useClassColour"] = false`. defaultscheck counts unchanged (49 / 52); its read figures tbc
+46 -> 47, forever 31 -> 32 (`useClassColour`).
+
+Every suite's output against `7da7943`'s: the changes the rows document (capscheck's and
+profilecheck's mage, slashcheck's `/md clock`, defaultscheck's read figure, the release file
+counts tbc 80 -> 81 and forever 44 -> 48, apicheck 69 -> 73 files, textcheck 108 -> 112), plus
+themecheck's informational token-read count 178 -> 113 (T107: the creation-time `UI.Hex` /
+`UI.RGB` / `UI.Fill` reads became `UI.Tint` names), dashui's frame count 1290 -> 1293 and
+modulecheck's walk 74 -> 75 strings (T102's Settings views), and run-to-run noise (table
+addresses, ms, the frame-sliced search's evaluation lines, coachforever's progress count). No TBC
+suite changed otherwise.
+
+`profilecheck/forever`'s expected count is 64, the run with `tools/.cache/talentsforever.json`
+(`python3 tools/refcheck.py --fetch`); a checkout without the cache runs 59 and fails the counts
+until it fetches.
+
+`make check`: 91 runs, all passed (86 counted runs against 86 expected); apicheck 0 findings over
+73 files (51 globals), textcheck 0 over 112; the same in a `git archive HEAD` export.
+Version unchanged (0.16.6; the packages built for it do not carry wave N4), not installed.
+`docs/TESTING.md` 46.6 is wave N4's in-game section. **Next:** the author runs §46.1 on both
+clients; T103-T105, T108 and T109 on the probe's answers; T110 on T105; T111 on T106.

@@ -448,7 +448,7 @@ function MD.DashboardParts.CreateReview(parent, width)
         T.resultTitle:SetWordWrap(false)
         T.resultTitle:SetWidth(rowW)
         T.resultRule = pane:CreateTexture(nil, "BORDER")
-        T.resultRule:SetColorTexture(UI.Fill("line"))
+        UI.Tint(T.resultRule, "texture", "line") -- T107
         local resRowH = UI.Pitch and UI.Pitch(16) or 16
         T.resRowH = resRowH
         T.chars = math.floor((rowW - 16) / 6)

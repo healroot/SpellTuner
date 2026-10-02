@@ -32,8 +32,9 @@
 --   6. the Look dropdown on General (TBC Windows pane, Forever APPEARANCE)
 --      lists every registered style (Ellesmere by UI.Ellesmere.Label), writes
 --      db.ui.style and repaints at once (STYLE_CHANGED once, the palette is
---      the style's), the reload line shows while the look differs from the
---      login's; "Use my class colour" puts the class colour over a style's
+--      the style's), the reload line shows UI.Restyle.Line() while the look
+--      differs from the login's (hidden while UI.Restyle.Left() is 0, as since
+--      the wave N4 integration); "Use my class colour" puts the class colour over a style's
 --      accent and takes it back;
 --   7. the subcommands: /st clock layout compact / nosuch / ring (accepted
 --      only where a ring is drawn), look reset, preview; on Forever /st clock
@@ -511,7 +512,7 @@ Try("it lists every registered style, Ellesmere by its own label", function()
         table.concat(ids, ",") .. " / " .. tostring(texts.ellesmere)
 end)
 
-Try("picking a style writes db.ui.style and repaints at once (STYLE_CHANGED once); the reload line shows", function()
+Try("picking a style writes db.ui.style and repaints at once (STYLE_CHANGED once); the reload line is UI.Restyle's", function()
     local hidden = not look.reload:IsShown()
     local bg = { UI.Fill("bg") }
     local n0 = counts.STYLE_CHANGED
@@ -519,7 +520,13 @@ Try("picking a style writes db.ui.style and repaints at once (STYLE_CHANGED once
     local now = { UI.Fill("bg") }
     local fired = counts.STYLE_CHANGED - n0
     local repainted = math.abs(now[1] - bg[1]) > 1e-6 or math.abs(now[3] - bg[3]) > 1e-6
-    local shown = look.reload:IsShown() and look.reloadText:GetText() == "Some windows finish changing after a reload"
+    -- T107 (wave N4 integration): hidden while UI.Restyle.Left() is 0, else UI.Restyle.Line()
+    local shown
+    if UI.Restyle.Left() == 0 then
+        shown = not look.reload:IsShown()
+    else
+        shown = look.reload:IsShown() and look.reloadText:GetText() == UI.Restyle.Line()
+    end
     local label = p.styleLabel:GetText()
     return picked and hidden and MD.db.ui.style == "ellesmere" and UI.STYLE == "ellesmere" and fired == 1
         and repainted and shown and T.Has(label, "style: Ellesmere"),

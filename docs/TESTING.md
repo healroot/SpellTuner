@@ -2004,6 +2004,52 @@ a line per step, the measure dump, gate 8's line and the coach card.
 **Paste back** into `.logs/tbc/0.16.6-s5.md`: a line per step, screenshots of the clock in each
 layout and of a window under Ellesmere, the coach card.
 
+### 46.6 Wave N4 -- Settings -> Clock, live restyle, the paladin / shaman / priest coach (both clients; 30 min)
+
+**Not in the 0.16.6 packages**: wave N4 (T102, T106, T107) was integrated on this branch after
+0.16.6 was built, and arrives with the next version -- run this section on that build. On it,
+46.4 step 4 changes: a paladin, shaman or priest alt is coached (step 11 below), and the
+`not modelled for <Class> yet` lines stay only for the classes without a profile.
+
+1. **Settings -> Clock (T102, check 9), both clients.** Settings now has a Clock view (TBC:
+   General, Clock, About; Forever: General, Clock, Modules, About). Click each state chip
+   ((Live), OOM, OOM <20s, bound, hold, warm-up, FULL, rest, ooc): the preview changes, the real
+   clock does not move, show or hide. Switch LAYOUT to Compact, then Bar, then Line: the clock on
+   screen rebuilds in place. The box's tabs are **Colours, Frame, Bar, Show and When** (no Text
+   tab yet -- T102 deviation 1): change a tone colour and the bar's source; `Reset to style` puts
+   the style's look back. `/reload`: the layout is kept. `Customise...` (TBC: Settings -> General ->
+   OOM Widget; Forever: MANA CLOCK) opens this view. `/st clock layout compact`, `/st clock look
+   reset`, `/st clock preview` (TBC: `/md clock ...`) do the same from chat; on Forever `/st clock`
+   and `/st clock lock` behave as before.
+2. **Look and Use my class colour (T102, check 8), both clients.** Settings -> General (TBC: the
+   Windows column; Forever: APPEARANCE) -> Look: pick Ellesmere, then Flat. Tick **Use my class
+   colour** under Ellesmere: the accent becomes your class colour at once; untick: Ellesmere's
+   again. No "finish changing after a reload" line appears (nothing is left for a reload since
+   T107; if one appears, paste it).
+3. **Live restyle (T107, check 8), both clients.** With the window open on Spells -> a family,
+   `/st ui style ellesmere` (TBC: `/md ui style ellesmere`). The rail, the suggested row and its
+   bar, the chip, the card and the headers take Ellesmere's accent and greys at once, with no
+   reload. Do the same on Reports -> Review, Simulate -> Practice and Settings. The replay's unit
+   frames and the debug console's log colours do not change. `/st ui style flat` returns exactly to
+   today's look. Name any window that only finished after `/reload`.
+4. **INTEGRATIONS (T102, checks 5, 7), both clients.** The pane (TBC: the fourth column of
+   Settings -> General; Forever: under WINDOWS) names what it found (`ElvUI: 2 datatexts / Broker:
+   2 objects`, or EllesmereUI's version) and a hint (with ElvUI: pick `SpellTuner`, not `LDB:
+   SpellTuner`). *Compact broker text* drops the rest segment from the broker block at once; on
+   Forever turning the clock's rest segment off drops it from the block too (T97's deviation 3 is
+   closed). With EllesmereUI on Forever the mover switch is there.
+5. **Other healers (T106, check 11), a Forever paladin, shaman or priest alt.** Reports -> Review's
+   Coach is on. `/st coach N` on a pull that passes its gates prints a card whose rows are
+   `solver`, `frugal` and `reactive`, and whose steps start `1. Anyone falling through the danger
+   line`. A pull with Power Word: Shield, Desperate Prayer, Healing Stream Totem, Lay on Hands or
+   Divine Favor in it carries `not modelled, kept as recorded: <names>`. A pull with Prayer of
+   Healing, Holy Nova, Binding Heal or Chain Heal carries the group line. Simulate -> Practice binds
+   the class's heals without an import; start a session with two bindings.
+
+**Paste back** into `docs/probe/<build>-<version>-s6.md` (Forever) and `.logs/tbc/<version>-s6.md`
+(TBC): a line per step, screenshots of Settings -> Clock and of a window under Ellesmere, the alt's
+coach card.
+
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the
 raw numbers. `/md profile` output is welcome with any report. I turn them into

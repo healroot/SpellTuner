@@ -398,14 +398,10 @@ end
 --       for Settings' line beside its Reload button, or nil when n is 0
 --------------------------------------------------------------------------------
 UI.Restyle = {
-    -- T107: both in files outside T107's row (docs/SPEC-next.md section 11);
-    -- each is one line where the pane is built (docs/tasks/T107-*.md names it)
-    LEFT = {
-        { pane = "review", label = "Reports -> Review", file = "UI/Dashboard_Review.lua",
-          what = "the rule over the result lines (a `line` fill copied when the pane is built)" },
-        { pane = "practice", label = "Simulate -> Practice", file = "UI/PracticePanel.lua",
-          what = "its grey words (the `muted` colour code kept as GREY when the pane is built)" },
-    },
+    -- T107: nothing is left since the wave N4 integration (Review's rule and
+    -- Practice's grey words, the two entries T107 left in files outside its row,
+    -- became a tint and reads at paint); a region added here is one a reload finishes
+    LEFT = {},
 }
 function UI.Restyle.Left()
     local labels = {}

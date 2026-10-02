@@ -1374,3 +1374,61 @@ claims the heal landing with it, which is replayed as recorded and counted as th
 the v2 road (TBC fights, practice fights) does not yet replay unclaimed own heals -- that would
 move the author's TBC replays and needs its own decision. The strategies report on the author's
 eight TBC recordings and Healroot's twelve Forever reports are identical before and after.
+
+## Settings -> Clock, the class colour, and `/md clock` on TBC (2026-10-02, T102, decisions 3, 4, 13, 17, 19)
+
+- **`/md clock` on TBC** (`docs/SPEC-next.md` 2.5, 7.4). `UI/ClockSettings.lua` registers
+  `clock layout <name>`, `clock look reset` and `clock preview` through `MD:AddSubcommand`. TBC had
+  no `clock` verb, so a new `/md clock` row appears in the help and the About tab, and
+  `slashcheck/tbc`'s golden was re-based for it (additions only, as T94's `/md ui`). Forever's
+  `/st clock` and `/st clock lock` are unchanged.
+- **Use my class colour** (decision 3). It is `db.useClassColour`, default off, and puts the class
+  colour over any style's accent. It is applied by wrapping `UI.ApplyStyleTokens` in
+  `UI/ClockSettings.lua` (`UI/Styles.lua` was T103's file in wave N4; folding it into
+  `UI.StyleAccent` is a later one-file change). The active style is re-applied, with one
+  `STYLE_CHANGED`, when the switch changes. Under Flat it changes nothing.
+- **The reload line** (decision 4). It shows while the style or the accent painted differs from the
+  login's AND T107's `UI.Restyle.Line()` counts something left, with that line as its text. Since
+  the wave N4 integration nothing is left (below), so it stays hidden.
+- **The brokers follow the line's clock look** (closing T97's deviation 3). `MD.ClockLook` is
+  provided, so turning the Forever rest segment off turns it off in the brokers too.
+- Settings -> Clock's box has no Text tab and no Frame size / strata, bar texture or mp5 / pct /
+  5SR segments: the renderer (`UI/ClockView.lua`, `CV.OVER`) draws none of those keys yet. Show and
+  When are each line's existing switches, handed in by its dashboard (7.3 phase 1).
+
+## Paladin, Shaman and Priest coached on Forever; the coach's solver for every class but the druid (2026-10-01, T106, decision 7)
+
+On Forever the paladin, the shaman and the priest each have a profile
+(`Data/Profile_<Class>_Forever.lua`). It names the families the kit models, their kit types,
+the HoT slots and the class's healing spells the engine does not model. Every rule is VERIFY.
+Each is granted coach and practice, because `tools/classcoach.lua` passes on its level 60 book
+fixture: a valid kit, a synthetic party fight through the eight gates, the solver's coach,
+practice, and causality. The priest is coached without Power Word: Shield until T109; a shield
+cast is kept as recorded and named on the card.
+
+The threshold rules are the druid's tactics. Every rule names a druid family, so for another
+class they cast nothing. A kit whose profile names no rule set is therefore coached on the
+solver's three causal strategies (no intuition, frugal, reactive). `SP.Coach` compares those
+instead of the rules' baselines, and `/st coach` runs that comparison instead of the rules
+search. The card states the solver's own three steps (the danger line, health-seconds per
+mana, wait) where the rules' five thresholds were.
+
+The card also names the heals a fight cast that the kit does not model: `not modelled, kept as
+recorded: ...`. These come from the kit's skipped heals and the profile's `unmodelled` list.
+
+The druid's profiles name their rules and no unmodelled spells, and TBC's kit skips none. A
+druid's coach and card are unchanged on both lines: every suite, Healroot's twelve Forever
+reports and coach cards, and the author's TBC strategies report and coach cards are identical
+before and after. `capscheck` now uses a mage as its class with no profile; the wording on its
+test lines moves from "Priest" to "Mage". For a non-druid, `/st coach N safe` / `health` /
+`cheap` / `regen` has no stored strategies and says to coach first (T106 deviation 7).
+
+## Live restyle (2026-10-02, T107, decision 4)
+
+Decision 4 is live. A style switch repaints every region whose colour is a name (`UI.Tint`) and
+moves untinted font strings that show a token's colour (`UI.FollowTokens`). The replay's unit
+frames and the debug log are exempt. Under `UI.PIXEL` a button's and a check box's edge is the
+role's, so a button built while Ellesmere is active shows Ellesmere's edge (it showed Flat's
+`border`). Flat is unchanged, byte for byte. The two regions T107 left in files outside its row
+(Review's result rule, Practice's grey words) were converted at the wave N4 integration, so
+`UI.Restyle.LEFT` is empty and nothing waits for a reload.

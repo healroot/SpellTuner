@@ -24,9 +24,11 @@
 --   * The Look controls (5.4, M7b): the style dropdown (UI.Styles' keys; the
 --     Ellesmere entry named by UI.Ellesmere.Label, "Ellesmere (following
 --     EllesmereUI)" while it follows), "Use my class colour" (db.useClassColour,
---     registered here) and the honest reload line "Some windows finish
---     changing after a reload [Reload]" (decision 4) while what is painted
---     differs from what the session logged in with. Each line's APPEARANCE /
+--     registered here) and the honest reload line (decision 4): UI.Restyle's
+--     "N windows finish changing after a reload: ..." with [Reload], while what
+--     is painted differs from what the session logged in with AND T107 counts
+--     something left (since the wave N4 integration nothing is, so it stays
+--     hidden). Each line's APPEARANCE /
 --     Windows pane places them.
 --   * The INTEGRATIONS pane (6.3, M9d): MD.Integrations.Lines() (what was
 --     found), the broker switches (db.feeds.ldb, db.feeds.compact) and a hint;
@@ -103,6 +105,16 @@ function CS.ReloadNeeded()
     return ActiveStyle() ~= l.style or UI.accentHex ~= l.accent
 end
 
+-- CS.ReloadLine(): T107's count of what finishes after a reload
+-- ("N windows finish changing after a reload: A, B"), nil when nothing is left.
+function CS.ReloadLine()
+    local R = UI.Restyle
+    if not (R and type(R.Line) == "function") then return nil end
+    local okL, line = pcall(R.Line)
+    if okL and type(line) == "string" and line ~= "" then return line end
+    return nil
+end
+
 function CS.Reload()
     MD.API.Call("ReloadUI")
 end
@@ -166,7 +178,15 @@ local function RefreshLook(c)
     c.dropdown:SetItems(CS.LookItems())
     c.dropdown:SetValue(key)
     c.classCheck:SetChecked(CS.ClassColour())
-    if CS.ReloadNeeded() then c.reload:Show() else c.reload:Hide() end
+    -- T107 (wave N4 integration): shown only while something finishes after a
+    -- reload (UI.Restyle.Line, nil once nothing is left), with that line as its text
+    local line = CS.ReloadNeeded() and CS.ReloadLine() or nil
+    if line then
+        c.reloadText:SetText(line)
+        c.reload:Show()
+    else
+        c.reload:Hide()
+    end
 end
 
 -- CS.LookControls(parent, ddWidth) -> { label, dropdown, classCheck, reload,
