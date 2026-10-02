@@ -339,11 +339,17 @@ function MD:GetClockFace(now)
     local m = disp.mode
     if not s or not m then return nil end
     local v = disp.value
+    -- T114: mp5 is the regen feed's number (UI/Feeds.lua RegenReading reads
+    -- RM:Current() live); the state's regenNow is the last tick's and could
+    -- sit up to 0.5 s on the wrong side of the rule, so it is read live too.
+    local regenNow = RM and RM:Current()
+    if type(regenNow) ~= "number" then regenNow = s.regenNow end
     local face = {
         mode = m, value = v, combat = s.inCombat, modelled = false, mono = false,
         unstable = false, timeFmt = "auto", pct = s.pct, pctModelled = false,
-        mp5 = s.regenNow and s.regenNow * 5, mp5Modelled = false,
+        mp5 = regenNow and regenNow * 5, mp5Modelled = false,
         fsr = RM and RM:FSRRemaining() or nil,
+        mana = s.mana, manaMax = s.manaMax, manaModelled = false, -- T114: read plain
     }
 
     if m == "fullnow" then

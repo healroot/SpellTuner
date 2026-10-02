@@ -35,7 +35,10 @@
 --   clock -- ClockFace.LineString of the line's own face
 --            (MD.ClockFace.Current: TBC's MD:GetClockFace, Forever's pool);
 --            byte for byte TBC's MD:GetDisplayString. The tooltip is the
---            minimap button's lines (MD.MinimapLines).
+--            minimap button's lines (MD.MinimapLines). T114: the words
+--            follow Line's slots -- MD.ClockLook().texts.line (the resolved
+--            text of the Line layout, whatever layout is on screen) handed
+--            to LineString; no provider, no texts: today's string.
 --   regen -- the CURRENT regen: the casting rate inside the five-second rule,
 --            the full rate outside it. "Regen: 123", " (5SR)" in the rule;
 --            plain "Regen 123", "Regen 123 (5SR)"; "--" without a reading.
@@ -175,6 +178,19 @@ end
 --------------------------------------------------------------------------------
 -- clock
 --------------------------------------------------------------------------------
+-- T114: Line's resolved text from the clock look (MD:Provide "ClockLook",
+-- under pcall as Integrations/Surface_LDB.lua reads it), or nil.
+local function LineText()
+    local provide = MD.ClockLook
+    if type(provide) ~= "function" then return nil end
+    local ok, look = pcall(provide)
+    if not ok or type(look) ~= "table" or type(look.texts) ~= "table" then return nil end
+    local line = look.texts.line
+    if type(line) ~= "table" then return nil end
+    return line
+end
+Feeds.LineText = LineText
+
 Feeds.Register("clock", {
     label = "SpellTuner",
     icon = ICON,
@@ -182,7 +198,7 @@ Feeds.Register("clock", {
     Text = function(ctx)
         local face = CurrentFace()
         if not face then return "" end
-        return MD.ClockFace.LineString(face, ctx.valueHex)
+        return MD.ClockFace.LineString(face, ctx.valueHex, LineText())
     end,
     Tooltip = ClockTooltip,
     Click = OpenOnClick,

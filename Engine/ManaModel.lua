@@ -179,7 +179,10 @@ end
 -- The state every renderer (Text below, the dashboard's own numbers) reads.
 function ManaModel:Project(t)
     self:Advance(t)
-    local out = { mana = self.mana, max = self.max, unpriced = self.unpriced, anchor = self.anchor }
+    local out = { mana = self.mana, max = self.max, unpriced = self.unpriced, anchor = self.anchor,
+        -- T114: what the face's fsr and mp5 read (the rule from the last
+        -- priced spend; the rates last read plain, the regen feed's)
+        t = t, lastSpend = self.lastSpend, base = self.base, casting = self.casting }
 
     if self.fight then
         local elapsed = t - self.fight.start
@@ -286,11 +289,18 @@ end
 --     same branch's "never fabricate a number")
 -- No arrow: the model keeps no history of shown values. The tone is the band
 -- of the shown value (ClockFace.Tone), carried for a renderer; the line itself
--- is still one colour. `now` is accepted for the renderer's five-second-rule
--- spark (docs/SPEC-next.md 7.2) and not read yet.
+-- is still one colour.
+-- T114: the face also carries the model's mana / manaMax (manaModelled, the
+-- slots' "~4210"), `fsr` -- seconds left in the rule from the last PRICED
+-- spend (a free or unpriced cast never moves lastSpend), nil after it -- and
+-- `mp5`, the regen feed's number at `now` (UI/Feeds.lua RegenReading): the
+-- rates last read plain, the casting one inside the rule. `now` defaults to
+-- the state's own time (Project's t).
+local function Plain(x) return type(x) == "number" and x == x end
+
 function ManaModel.Face(state, now)
     local face = { modelled = true, mono = true, unstable = false, timeFmt = "mss",
-        pctModelled = true, mp5Modelled = true, combat = false }
+        pctModelled = true, mp5Modelled = true, manaModelled = true, combat = false }
     if type(state) ~= "table" or type(state.mode) ~= "string" then
         face.mode, face.label, face.known, face.tone = "oom", "OOM", "none", "muted"
         return face
@@ -300,7 +310,17 @@ function ManaModel.Face(state, now)
     if type(state.max) == "number" and state.max > 0 and type(state.mana) == "number" then
         face.pct = state.mana / state.max
     end
-    if type(state.regen) == "number" then face.mp5 = state.regen * 5 end
+    if Plain(state.mana) then face.mana = state.mana end
+    if Plain(state.max) and state.max > 0 then face.manaMax = state.max end
+    if not Plain(now) then now = state.t end
+    if Plain(now) and Plain(state.lastSpend) then
+        local left = state.lastSpend + 5 - now
+        local inFsr = left > 0
+        if inFsr then face.fsr = left end
+        local rate
+        if inFsr then rate = state.casting else rate = state.base end
+        if Plain(rate) then face.mp5 = rate * 5 end
+    end
     face.combat = m == "warmup" or m == "hold" or m == "oom" or m == "full"
 
     if m == "fullnow" then

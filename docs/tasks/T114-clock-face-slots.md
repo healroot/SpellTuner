@@ -266,3 +266,41 @@ under `Client/`), `python3 tools/textcheck.py` 0 findings.
 - The real Forever mana text: flipping `POWER_TEXT_READS` waits for a Forever probe report on
   Q-clock-2, and how a real percent is formatted (0..1 or 0..100) is that report's question.
 - The Ring layout (T104).
+
+## Done (next/T114)
+
+Counts, before (the parent, 2f6ac63) and after:
+
+| Suite | Before | On the parent with the new tests | After |
+|---|---|---|---|
+| clocktextcheck/tbc | -- | 0 ok, 13 failed | 13 |
+| clocktextcheck/forever | -- | 0 ok, 13 failed | 13 |
+| surfacecheck/tbc | 34 | 34 ok, 2 failed (9a, 9b) | 36 |
+| surfacecheck/forever | 41 | 41 ok, 2 failed (9a, 9b) | 43 |
+| euicheck/forever | 19 | 19 ok, 2 failed (19, 20) | 21 |
+| adaptercheck/forever | 24 | 23 ok, 3 failed (1, the two T114 checks) | 26 |
+| adaptercheck/tbc | 16 | 17 ok (DrawPowerText is already absent there) | 17 |
+| clockfacecheck tbc / forever | 22 / 19 | unchanged | 22 / 19 |
+| ttocheck/tbc, clockcheck/forever | 50, 35 | unchanged | 50, 35 |
+
+`make check` green (94 runs; its count notes are the integrator lines above), `apicheck` 0
+findings, `textcheck` 0 findings.
+
+What the build settled that the text above left open:
+
+- `CF.ResolveText(text)` returns `text, refused`; `refused` is a map `"text.<layout>.<key>" ->
+  why`, nil when nothing was refused. The resolved table also carries `timeAt` (the slot that
+  draws the time) and `timeLabel` (the time carries the label word).
+- The label rides with the time whenever the label's slot holds neither `label` nor `none` (Bar
+  `left = pct`: the left slot draws `62%`, the right slot `OOM 1:20`, the mockup's Bar row). With no slot left for the time, its
+  home goes back to `time` and the refusal names it. Compact `top = time` beside `main = time` is
+  refused (top back to `label`).
+- `CF.Slots(face, text, layout[, look])`: the optional `look` keeps `show.rest` / `show.cd`
+  working on a resolved text. `CF.Segments(face, look)` with `look.text` answers the slots plus
+  the old `label` / `value` / `second` aliases.
+- `LineString(face, valueHex, text)` takes the old bytes whenever the slots are the defaults,
+  word options included; any other slots are painted piece by piece.
+- TBC's face `mp5` is the live `RM:Current()` (the state's `regenNow` when that is not a number);
+  Forever's is the regen feed's rate (casting inside the rule, base after it) instead of the
+  fight's average regen.
+- `Feeds.LineText()` is exported (the Line text the clock feed and the brokers read).

@@ -52,6 +52,44 @@ MD.API.Bind({
 })
 MD.API.BASE_CD_READS = false
 
+-- T114 (docs/tasks/T114-clock-face-slots.md; mockup clock-v2 C1, probe
+-- Q-clock-2): the player's mana as TEXT -- the clock's Mana % / Mana slots
+-- drawn from the client rather than the model. UnitPower is secret always on
+-- this client; whether a font string shows a secret handed to SetText is
+-- Q-clock-2's question (`fs:SetText(UnitPowerPercent("player", 0))` shows a
+-- number). Until a Forever probe report answers it, POWER_TEXT_READS stays
+-- false and the slots draw the model's "~" values (the BAR_READS_MAX pattern,
+-- Client/API.lua; the integrator flips it). How a real percent is worded
+-- (0..1 or 0..100) is that report's question too.
+--   kind "pct"  -> UnitPowerPercent(unit, powerType)
+--   kind "mana" -> UnitPower(unit, powerType)
+-- The value goes straight into fs:SetText -- never read, compared,
+-- concatenated or formatted: the sanctioned path for a secret into a font
+-- string, as DrawUnitPower is for a status bar. Answers true; nil, "secret"
+-- while the flag is false (nothing touched: no client function called, no
+-- font string written); nil, "absent" without the function or the font
+-- string; nil, "error" for an unknown kind or a raise. Nothing calls it yet
+-- (T116's renderer asks the Forever line's draw.powerText for it). Recorded
+-- explicitly, as OnSpellTooltip: it is not a Bind() wrapper.
+MD.API.POWER_TEXT_READS = false
+
+local POWER_TEXT = { pct = "UnitPowerPercent", mana = "UnitPower" }
+
+function MD.API.DrawPowerText(fs, unit, powerType, kind)
+    if MD.API.POWER_TEXT_READS ~= true then return nil, "secret" end
+    local name = POWER_TEXT[kind]
+    if not name then return nil, "error" end
+    if type(fs) ~= "table" then return nil, "absent" end
+    local fn = MD.API.Has(name)
+    if type(fn) ~= "function" then return nil, "absent" end
+    local ok = pcall(function()
+        fs:SetText(fn(unit, powerType)) -- never inspected: a secret goes straight in
+    end)
+    if not ok then return nil, "error" end
+    return true
+end
+MD.API._bindings.DrawPowerText = "UnitPowerPercent"
+
 -- T12 (Spells/Measure.lua): plain out of combat, UNKNOWN in combat (Facts --
 -- stats go secret in combat, T7a's seventh report) -- read through the
 -- adapter like every other stat, printed as "?" when it does not come back a
