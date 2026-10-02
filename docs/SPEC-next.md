@@ -1063,3 +1063,71 @@ On each client named, out of combat unless a step says otherwise. Paste back as 
     group-assumption line, 4.5); start a practice session with two bindings.
 12. **Classic (T108), both, after M7.** Settings -> Look -> Classic: stone edges outside the window,
     gold plaque, panel buttons. Screenshot both clients.
+
+---
+
+## 13. Clock v2 (the author's answers, 2026-10-02)
+
+The clock v2 mockup (`docs/mockups/clock-v2.html`, C1-C6 and five questions) answers the author's
+feedback on 0.16.6 ("the height does not really change anything / I would like to have different
+text options on what to show and customizable size of the clock / ... the fillment should be more
+smooth / Show time to oom as a bar is not informative / ... make both mana and 5 sec rule to be
+visible"). The two bugs in the same message are fixed separately (F2, F3); F1 fixed the Bar
+layout's Height and made the five-second rule's fill smooth.
+
+**The author's answers, verbatim:** "We can do all 3, and let user decide / And those that are
+recomended become default". Read as:
+
+1. **Question 1 (C3).** All three mana + 5SR designs are built as user choices: **A** (two bars,
+   the mana bar over a 3-px 5SR strip) is the **default**; **B** (one bar with the 5SR veil) and
+   **C** (a mana bar and a cooldown-swipe chip) are options (Bars -> Join: Stacked / One bar /
+   Swipe chip). The mockup's "C is not built unless asked for" is overturned: it was asked for.
+2. **Question 2 (C2, C4).** The default bars are **Mana + 5SR on both lines and every layout**.
+   This replaces decision 15 (a) (5SR on TBC, the pool on Forever). Line becomes 180 x 32, Compact
+   72 x 46 with bars, Bar 200 x 22. A saved 0.16.6 look keeps what it chose, read once by C4's
+   table (`bar.source` pool -> Mana only, model -> Mana only from the model, fsr -> 5SR only, time
+   -> Mana + 5SR, none -> None; spark, horizon and height dropped and named once in the dump).
+3. **Question 3 (C1).** Line keeps **one** Right slot by default (the one-second glance ruling); a
+   **second Right slot** is a user option, off by default, offered only where the clock's width
+   allows it.
+4. **Question 4 (C1).** On Forever, Mana % and Mana are offered now as the **model's `~` values**,
+   marked modelled. The real values replace them only after probe Q-clock-2, through a seam that
+   stays off (`MD.API.POWER_TEXT_READS = false`, `MD.API.DrawPowerText`; the `BAR_READS_MAX`
+   pattern). Not part of this round beyond the seam.
+5. **Question 5 (C3, C6).** After the rule the strip stays **full green** by default. The 2-s
+   regen-tick sweep is a user option **where the tick can be known**: on TBC, learned from mana
+   gains (`RM:RegenTick()`); on Forever it is not offered, and its tooltip says why (Forever
+   cannot read mana).
+
+**Everything else exactly as the mockup recommends** (C1-C6): "Time to OOM", Horizon and Spark
+removed as bar options; Height on the Frame tab beside Width and Scale, its pixels going to the
+mana bar; a Text tab replacing Show; width, height, scale and text kept per layout, each layout
+with a minimum measured in its own fonts; the 5SR marks placed by time alone (never at the
+secret fill's edge); the smooth every-frame fill (F1's step, reused for the strip and the veil).
+
+### 13.1 Tasks
+
+Same rules as section 11: the suite fails on the parent first, `make check` green, apicheck and
+textcheck 0 findings, one task file each; integrator-owned files are edited only at the round's
+end from the lines each task states. T114 and T115 share no file and run in parallel; T116 starts
+when both are merged and green.
+
+| # | Task | Owned files | Tests that fail first | Needs |
+|---|---|---|---|---|
+| **T114** | **The face's slots and words** (C1, pure half): face `mana` / `manaMax` / `manaModelled`, `fsr` on Forever; slot kinds, the slots per layout with defaults (`CF.TEXT`, `CF.TEXT_OPTIONS`), `CF.ResolveText` (the time never lost), `CF.Slots`; `Segments` / `LineString` follow Line's slots, byte-identical by default; the feed and the broker follow `look.texts.line`; the Q-clock-2 seam, off. `docs/tasks/T114-clock-face-slots.md` | `Engine/ClockFace.lua`, `Engine/TTO.lua`, `Engine/ManaModel.lua`, `UI/Feeds.lua`, `Integrations/Surface_LDB.lua`, `Client/API_Forever.lua`, `tools/clocktextcheck.lua` (new), `tools/surfacecheck.lua`, `tools/euicheck.lua`, `tools/adaptercheck.lua` | `clocktextcheck` (new, 13 / 13); `surfacecheck` +2 / +2; `euicheck` +2; `adaptercheck` +2 forever, +1 tbc | -- |
+| **T115** | **Mana and the 5SR together, the frame, the smooth strip** (C2, C3, C4, C6, C5's Frame / Bars / Colours tabs and rule chips): Bars / Join (Stacked, One bar, Swipe chip) / Order / Mana from / 5SR thickness / After the rule (green, empty, tick on TBC) / texture / Mana colour per layout; width / height / scale per layout with measured minimums; `CV.Migrate` (C4); `RM:RegenTick()`. `docs/tasks/T115-clock-bars-frame.md` | `UI/ClockView.lua`, `UI/Widget.lua`, `UI/Clock_Forever.lua`, `UI/ClockSettings.lua`, `Engine/RegenModel.lua`, `tools/clockui.lua`, `tools/clockfacecheck.lua`, `tools/clocksettings.lua`, `tools/ttocheck.lua`, `tools/clockcheck.lua`, `tools/stylecheck.lua`, `tools/wowstub.lua` | `clockui` re-based and about +14; `clockfacecheck` +2 / +2 (the migration); `clocksettings` about +8; `ttocheck` +2; `clockcheck` +1; `stylecheck`'s clock golden re-based (DECISIONS) | -- |
+| **T116** | **The slots drawn and the Text tab** (C1, C5's Text tab): `text.<layout>` (slots, labels, of max, time format, size, outline, shadow, numbers); `look.texts`; one font string per slot at a fixed place; Right2 only where the width allows; Forever's `draw.powerText` (off). `docs/tasks/T116-clock-text-tab.md` | `UI/ClockView.lua`, `UI/ClockSettings.lua`, `UI/Clock_Forever.lua`, `UI/Widget.lua`, `tools/clockui.lua`, `tools/clocksettings.lua`, `tools/clockcheck.lua`, `tools/ttocheck.lua` | `clockui` +9; `clocksettings` +7; `ttocheck` +1; `clockcheck` +1 | T114, T115 |
+
+**Out of scope this round:** the Ring layout (T104, still waiting for Q-clock-4); the real Forever
+mana text (after a Forever report answers Q-clock-2: the integrator flips `POWER_TEXT_READS`, and
+how a real percent is worded is that report's question); Forever bar textures and fonts
+(Q-clock-4); a hatched veil (the kit ships no art); a smoother mana fill (the mana bar keeps the
+line's paint cadence); unifying the clock's position and switch storage (7.3's later step).
+
+**In-game checks** (for `docs/TESTING.md`, from each task's lines): both clients, each layout --
+cast and watch the strip fill amber smoothly and turn green; switch Join to One bar and Swipe chip
+(the chip's template is VERIFY on TBC 20506 and Forever); Frame -> Height grows only the mana bar,
+Scale keeps the clock's centre; Text -> Right = Mana % (`62%` / `~62%`), Main = Mana % (the time
+moves to the label), Right 2 greyed until the clock is wide enough; a 0.16.6 look reopens as C4
+says and `/st dump` names the dropped keys once; on TBC, After the rule = Regen tick: does the
+white mark line up with the mana ticks?
