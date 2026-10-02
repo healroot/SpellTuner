@@ -162,6 +162,21 @@ clock and the hover carries the modelled-number line; `/st clock rest` still dro
 the clock golden T115 re-based holds), `surfacecheck`, `euicheck`, `minimapcheck`, `restylecheck`,
 `slashcheck/tbc`, `defaultscheck`, `importcheck`. `make check` green, apicheck 0, textcheck 0.
 
+### Counts (recorded 2026-10-02)
+
+| Suite | Before (T115, ad4a02f) | Failing tests on the parent | After |
+|---|---|---|---|
+| `clockui/tbc` | 32 | 32 ok, 9 failed | **41** |
+| `clockui/forever` | 32 | 32 ok, 9 failed | **41** |
+| `clocksettings/tbc` | 39 | 37 ok, 9 failed | **46** |
+| `clocksettings/forever` | 40 | 38 ok, 9 failed | **47** |
+| `ttocheck/tbc` | 52 | 52 ok, 1 failed | **53** |
+| `clockcheck/forever` | 36 | 36 ok, 1 failed | **37** |
+
+The parent's 9 clocksettings failures are the 7 new 5b checks and two existing checks the tab change
+rewrote: the tab list and section 5's Show check. Every other suite's count is unchanged.
+`make check`: 94 runs, all passed. apicheck 0 findings, textcheck 0 findings.
+
 ## Integrator lines
 
 - **TOCs:** none.

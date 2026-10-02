@@ -217,6 +217,12 @@ function Clock:HoverLines(now)
         lines[#lines + 1] = Pair("Unpriced casts", tostring(model.unpriced))
     end
     lines[#lines + 1] = {}
+    -- T116: a Mana % / Mana slot drawn from the model says so
+    local words = Clock.view and Clock.view.modelledWords
+    if type(words) == "string" and words ~= "" then
+        lines[#lines + 1] = { l = words .. " is the model's; the game's own number cannot be shown yet.",
+            c = "muted", wrap = true }
+    end
     lines[#lines + 1] = { l = "~ = modelled from your casts." .. BarWords(), c = "muted", wrap = true }
     lines[#lines + 1] = Pair("Left-click", "open the window (out of combat)")
     return lines
@@ -257,8 +263,9 @@ end
 -- rest switch (F6).
 -- T115: no regen tick (the pool cannot be read, so its rises cannot be
 -- timed) and flat bars only.
+-- T116: cd = false -- no cooldown secondary, so no Text slot offers it.
 local facts = { line = "forever", poolPlain = false, model = true, tick = false, textures = false,
-    labelSample = "~FULL", show = {} }
+    labelSample = "~FULL", show = {}, cd = false }
 MD.ClockView.lineFacts = facts
 local function Facts()
     local c = MD.db and MD.db.clock
@@ -282,6 +289,14 @@ local draw = {
         local m = MD.Pool and MD.Pool.model
         if m and type(m.lastSpend) == "number" then return m.lastSpend end
         return nil
+    end,
+    -- T116 (Q-clock-2): a Mana % / Mana slot's real number, put into the font
+    -- string by the adapter and never read -- only once the probe shows the
+    -- client takes a secret there (MD.API.POWER_TEXT_READS, off). Off, the
+    -- slot draws the model's "~" value.
+    powerText = function(fs, kind)
+        if MD.API.POWER_TEXT_READS ~= true then return false end
+        return MD.API.DrawPowerText(fs, "player", 0, kind) == true
     end,
 }
 

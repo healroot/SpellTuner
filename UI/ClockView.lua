@@ -86,6 +86,29 @@
 --     height once (clock-v2.html C4's table) and names what it dropped in a
 --     lazy dump line. The spark and the "time" source are gone.
 --
+-- T116 (clock v2, C1; docs/tasks/T116-clock-text-tab.md): the slots drawn.
+--   * text.<layout>.<key> in `over`: T114's slots and words (ClockFace's
+--     TEXT_OPTIONS / TEXT_WORDS, judged by CF.ResolveText) and the renderer's
+--     own -- size (8-32; unset: the kit's fonts, following the window text
+--     size; set: that size, Compact's small slots at half of it), outline
+--     (none / outline / thick / mono), shadow (true / false) and numbers
+--     (number: the kit's number face in the time's home; labels: the labels'
+--     face). Nothing registered: `over` stays sparse.
+--   * look.text is the layout on screen's resolved text, look.texts every
+--     layout's (the feeds and brokers read look.texts.line).
+--   * Each slot is one font string at a fixed place (decision 14): Line's
+--     Left from the left edge, Main at the left slot's measured width + the
+--     gap, Right right-aligned, Right2 right-aligned left of Right two spaces
+--     away; Compact's Top, Main and Bottom (Bottom adds its row to the
+--     minimum); Bar's Left and Right on the bar. Line's second Right and
+--     Compact's Bottom are made the first time one is drawn.
+--   * The minimum is measured from the slots set, in the fonts they use.
+--     Right2 is drawn only where the frame is wide enough (View:FitsRight2;
+--     else look.refused["text.line.right2"] names the width it needs).
+--   * A pct / mana slot asks the line's draw.powerText(fs, kind) first
+--     (Forever: off until probe Q-clock-2 -- MD.API.POWER_TEXT_READS); on
+--     false the slot draws the face's words (the model's "~" on Forever).
+--
 -- What it never does: Show / Hide the frame it draws into (each line keeps
 -- the single visibility owner, CLAUDE.md; a layout switch rebuilds regions
 -- INSIDE the frame), read a client value (the face is plain; the mana pool
@@ -251,8 +274,29 @@ CV.OVER = {
     ["colors.good"] = Hex, ["colors.muted"] = Hex, ["colors.mana"] = Hex,
     ["colors.manaBar"] = function(v) return v == "mana" or v == "tone" or v == "class" or IsColour(v) end,
 }
+-- T116: the text's renderer options (beside T114's slot and word keys).
+CV.OUTLINES = { "none", "outline", "thick", "mono" }
+CV.OUTLINE_FLAGS = { outline = "OUTLINE", thick = "THICKOUTLINE", mono = "MONOCHROME" }
+CV.NUMBERS = { "number", "labels" }
+CV.TEXT_SIZE = { 8, 32 }
+local TEXT_OK = {
+    size = IntRange(CV.TEXT_SIZE[1], CV.TEXT_SIZE[2]),
+    outline = OneOf(CV.OUTLINES),
+    shadow = function(v) return type(v) == "boolean" end,
+    numbers = OneOf(CV.NUMBERS),
+}
+local function Bool(v) return type(v) == "boolean" end
+
 for _, L in ipairs(CV.LAYOUTS) do
     local d = CV.LAYOUT[L]
+    local CF = MD.ClockFace
+    for _, slot in ipairs(CF.TEXT_SLOTS[L]) do
+        CV.OVER["text." .. L .. "." .. slot] = OneOf(CF.TEXT_OPTIONS[L][slot])
+    end
+    CV.OVER["text." .. L .. ".labels"] = OneOf(CF.TEXT_WORDS.labels)
+    CV.OVER["text." .. L .. ".time"] = OneOf(CF.TEXT_WORDS.time)
+    CV.OVER["text." .. L .. ".ofMax"] = Bool
+    for k, ok in pairs(TEXT_OK) do CV.OVER["text." .. L .. "." .. k] = ok end
     for _, f in ipairs(BARS_ORDER) do CV.OVER["bars." .. L .. "." .. f] = BARS_OK[f] end
     CV.OVER["frame." .. L .. ".w"] = Range(d.wRange[1], d.wRange[2])
     CV.OVER["frame." .. L .. ".h"] = Range(d.hRange[1], d.hRange[2])
@@ -324,7 +368,8 @@ function CV.Resolve(stored, role, facts)
     if role.ring ~= nil then look.ring = Copy(role.ring) end
 
     for k, ok in pairs(CV.OVER) do
-        local v = Get(over, k)
+        local v = nil -- the text: below
+        if k:sub(1, 5) ~= "text." then v = Get(over, k) end
         if v ~= nil then
             local a, L, f = k:match("^([^.]+)%.([^.]+)%.([^.]+)$")
             if a then
@@ -347,6 +392,29 @@ function CV.Resolve(stored, role, facts)
         look.refused["bars." .. key .. "." .. field] = why
         look.bars[field] = (field == "show") and "fsr" or CV.BARS_DEFAULT[field]
     end
+
+    -- T116: every layout's text (the feeds read Line's whatever is on
+    -- screen), the one on screen as look.text
+    look.texts = {}
+    local overText = type(over.text) == "table" and over.text or {}
+    for _, L in ipairs(CV.LAYOUTS) do
+        local raw = type(overText[L]) == "table" and overText[L] or {}
+        local t, ref = MD.ClockFace.ResolveText(raw, L, { cd = facts.cd })
+        for k2, why in pairs(ref or {}) do look.refused[k2] = why end
+        local function Own(field, default)
+            local v = raw[field]
+            if v == nil then return default end
+            if TEXT_OK[field](v) then return v end
+            look.refused["text." .. L .. "." .. field] = "not accepted: " .. tostring(v)
+            return default
+        end
+        t.size = Own("size", nil)
+        t.outline = Own("outline", "none")
+        t.shadow = Own("shadow", true)
+        t.numbers = Own("numbers", "number")
+        look.texts[L] = t
+    end
+    look.text = look.texts[key]
     return look
 end
 
@@ -672,10 +740,20 @@ end
 
 local function Pieces(set)
     local out = {}
-    for _, k in ipairs({ "label", "value", "second", "msg" }) do
+    for _, k in ipairs({ "label", "value", "second", "right2", "msg" }) do
         if set[k] then out[#out + 1] = set[k] end
     end
     return out
+end
+
+-- T116: a slot region made the first time it is drawn (Line's second Right,
+-- Compact's Bottom), so a clock that never draws one keeps T115's regions.
+local function MakeRegion(host, key)
+    local fs = NewText(host, key == "second" and (UI.FONT_SMALL or UI.FONT) or UI.FONT)
+    fs:SetJustifyH(key == "right2" and "RIGHT" or "LEFT")
+    fs:SetText("")
+    fs:Hide()
+    return fs
 end
 
 function View:Set(key)
@@ -736,36 +814,174 @@ function CV.HasSecondary(look)
     return not (sh.rest == false and sh.cd == false)
 end
 
+-- T116: which region draws each slot of a layout (Line's second Right and
+-- Compact's Bottom are made the first time one is drawn).
+CV.REGION = {
+    line = { left = "label", main = "value", right = "second", right2 = "right2" },
+    compact = { top = "label", main = "value", bottom = "second" },
+    bar = { left = "label", right = "value" },
+}
+
+-- The widest word each kind draws (the slot's room, so only a value's own
+-- digits move): the time per word option, then the others. A rest / cd slot
+-- takes no room while the line's switches drop that segment.
+CV.TIME_SAMPLE = { line = CV.VALUE_SAMPLE, sec = ">600s vv", msec = ">9m59 vv" }
+CV.KIND_SAMPLE = { pct = "~100%", mana = "~99999", manaOfMax = "~99999/99999", mp5 = "~999 mp5", fsr = "5SR 5.0" }
+
+-- A look's resolved text for its layout (a look built before T116's resolver
+-- -- or by hand -- reads the layout's defaults).
+local function TextOf(look, layout)
+    local t = look.text
+    if type(t) == "table" and t.timeAt then return t end
+    local r = MD.ClockFace.ResolveText(type(t) == "table" and t or nil, layout)
+    if type(t) == "table" then
+        r.size, r.outline, r.shadow, r.numbers = t.size, t.outline, t.shadow, t.numbers
+    end
+    return r
+end
+
+-- A font object's face, size, flags and shadow offset.
+local function ObjFont(name)
+    local obj = FontObj(name)
+    local face, size, flags
+    if obj and obj.GetFont then face, size, flags = obj:GetFont() end
+    if type(face) ~= "string" then face = "Fonts\\FRIZQT__.TTF" end
+    if type(size) ~= "number" then size = 12 end
+    if type(flags) ~= "string" then flags = "" end
+    local sx, sy
+    if obj and obj.GetShadowOffset then sx, sy = obj:GetShadowOffset() end
+    if type(sx) ~= "number" or type(sy) ~= "number" then sx, sy = 1, -1 end
+    return face, size, flags, sx, sy
+end
+
+-- The font a slot draws in: { face, size, flags, shadowX, shadowY }. Unset
+-- Size: the kit's fonts as before T116 (Line and Bar 13, Compact's main 22
+-- and its small slots FONT_SMALL), each following the window text size; a
+-- set Size exactly (Compact's small slots at half of it). The time's home
+-- in the number face unless `numbers` is "labels".
+local function SlotFont(layout, slot, t)
+    local home = MD.ClockFace.TEXT_HOME[layout]
+    local small = layout == "compact" and slot ~= "main"
+    local face, size, flags, sx, sy = ObjFont(small and (UI.FONT_SMALL or UI.FONT) or UI.FONT)
+    if slot == home then
+        local nface, nsize, nflags, nsx, nsy = ObjFont(UI.FONT_NUM or UI.FONT)
+        size, flags, sx, sy = nsize, nflags, nsx, nsy
+        if layout == "compact" then size = (CV.LAYOUT.compact.valueSize or 22) + (UI.fontOffset or 0) end
+        if t.numbers ~= "labels" then face = nface end
+    end
+    if type(t.size) == "number" then
+        size = small and math.max(6, math.floor(t.size / 2 + 0.5)) or t.size
+    end
+    if t.outline and t.outline ~= "none" then flags = CV.OUTLINE_FLAGS[t.outline] or flags end
+    if t.shadow == false then sx, sy = 0, 0 end
+    return { face, size, flags, sx, sy }
+end
+
+-- A word's width and height in a slot's font (0, 0 for no word).
+local function MeasureIn(v, font, text)
+    if text == nil or text == "" then return 0, 0 end
+    local p = v:Probe()
+    p:SetFont(font[1], font[2], font[3])
+    local w = Measure(p, text)
+    local h = MeasureH(p, text)
+    return w, math.max(h, math.ceil(font[2]))
+end
+
+-- The widest word a slot holds, or nil for none.
+local function SlotSample(look, t, layout, slot)
+    local kind = t[slot]
+    local label = look.labelSample or "FULL"
+    if slot == t.timeAt then
+        local s = CV.TIME_SAMPLE[t.time] or CV.VALUE_SAMPLE
+        if t.timeLabel then return label .. " " .. s end
+        -- the label drawn nowhere: Forever's "~" stays on the time
+        if t[MD.ClockFace.TEXT_LABEL[layout]] ~= "label" and label:sub(1, 1) == "~" then s = "~" .. s end
+        return s
+    end
+    if kind == "label" then return label end
+    if kind == "pct" or kind == "mp5" or kind == "fsr" then return CV.KIND_SAMPLE[kind] end
+    if kind == "mana" then return t.ofMax and CV.KIND_SAMPLE.manaOfMax or CV.KIND_SAMPLE.mana end
+    if kind == "rest" then return CV.HasSecondary(look) and CV.SECOND_SAMPLE or nil end
+    if kind == "cd" then
+        local sh = look.show
+        if type(sh) == "table" and sh.cd == false then return nil end
+        return CV.SECOND_SAMPLE
+    end
+    return nil
+end
+
+-- Every slot of a layout measured: fonts, widths, heights.
+local function Slots(v, look, layout, t)
+    local fonts, w, h = {}, {}, {}
+    for _, slot in ipairs(MD.ClockFace.TEXT_SLOTS[layout]) do
+        fonts[slot] = SlotFont(layout, slot, t)
+        w[slot], h[slot] = MeasureIn(v, fonts[slot], SlotSample(look, t, layout, slot))
+    end
+    return fonts, w, h
+end
+
+-- The tallest drawn slot (the home's font size when nothing is drawn).
+local function RowH(fonts, w, h, slots, home)
+    local row = 0
+    for _, slot in ipairs(slots) do
+        if w[slot] > 0 and h[slot] > row then row = h[slot] end
+    end
+    if row == 0 then row = math.ceil(fonts[home][2]) end
+    return math.ceil(row)
+end
+
 METRICS.line = function(v, look)
     local b = look.bars
     local manaOn, el = Element(b)
     local s = b.fsr or 3
     local inset = CV.INSET
     local chipOff = el == "chip" and 13 or 0
-    local lp = v:ProbeIn(UI.FONT)
-    local labelW = Measure(lp, look.labelSample or "FULL")
-    local labelH = MeasureH(lp, look.labelSample or "FULL")
-    -- the secondary's room only while the line can draw one (C2: 100 x 30
-    -- with no secondary): a look whose switches drop both the rest and the
-    -- cooldown segment (a line with no cooldown secondary says cd = false)
-    local secondW = CV.HasSecondary(look) and (CV.GAP + Measure(lp, CV.SECOND_SAMPLE)) or 0
-    local np = v:ProbeIn(UI.FONT_NUM or UI.FONT)
-    local valueW = Measure(np, CV.VALUE_SAMPLE)
-    local valueH = MeasureH(np, CV.VALUE_SAMPLE)
-    v:ProbeIn(UI.FONT)
-    local rowH = math.ceil(math.max(labelH, valueH, FontSize(UI.FONT), FontSize(UI.FONT_NUM or UI.FONT)))
+    local t = TextOf(look, "line")
+    local fonts, w, h = Slots(v, look, "line", t)
+    local leftW, mainW, rightW = w.left, w.main, w.right
+    -- the minimum without Right2: Left, the gap, Main, then (C2: 100 x 30
+    -- with no secondary) the gap and Right only while Right draws something
+    local minBase = math.ceil(inset + chipOff + leftW + (leftW > 0 and CV.GAP or 0) + mainW
+        + (rightW > 0 and (CV.GAP + rightW) or 0) + inset)
+    -- Right2 (answer 3): offered only where the frame holds its widest word,
+    -- two spaces left of Right
+    local gap2 = MeasureIn(v, fonts.right2, "  ")
+    local widest = 0
+    for _, k in ipairs({ "pct", "mp5", "fsr" }) do
+        widest = math.max(widest, (MeasureIn(v, fonts.right2, CV.KIND_SAMPLE[k])))
+    end
+    widest = math.max(widest, (MeasureIn(v, fonts.right2, t.ofMax and CV.KIND_SAMPLE.manaOfMax or CV.KIND_SAMPLE.mana)),
+        (MeasureIn(v, fonts.right2, CV.SECOND_SAMPLE)))
+    local need = math.ceil(minBase + (rightW > 0 and gap2 or CV.GAP) + widest)
+    local rowH = RowH(fonts, w, h, { "left", "main", "right", "right2" }, "main")
     local top = 4 + rowH + 2
     local anyBar = manaOn or el ~= nil
-    local minW = math.ceil(inset + chipOff + labelW + CV.GAP + valueW + secondW + inset)
     local minH = anyBar and (top + 5 + s + 1 + 2) or (rowH + 8)
-    local w, h = Fit(look, minW, minH)
-    local barW = w - 20
-    local manaH = h - top - 5 - s - 1
-    local m = { w = w, h = h, minW = minW, minH = minH, manaOn = manaOn, el = el,
+    local now = Fit(look, minBase, minH)
+    local fits = now >= need
+    local wantR2 = t.right2 ~= nil and t.right2 ~= "none"
+    local drawR2 = wantR2 and fits and w.right2 > 0
+    look.refused = look.refused or {}
+    if wantR2 and not fits then
+        look.refused["text.line.right2"] = string.format("needs %d px of width (now %d)", need, now)
+    elseif look.refused["text.line.right2"] and look.refused["text.line.right2"]:find("^needs") then
+        look.refused["text.line.right2"] = nil
+    end
+    local minW = drawR2 and need or minBase
+    local fw, fh = Fit(look, minW, minH)
+    local barW = fw - 20
+    local manaH = fh - top - 5 - s - 1
+    local m = { w = fw, h = fh, minW = minW, minH = minH, manaOn = manaOn, el = el,
+        fits2 = fits, need2 = need, now2 = now,
+        fonts = { label = fonts.left, value = fonts.main, second = fonts.right },
         label = { "TOPLEFT", inset + chipOff, CV.TOP },
-        value = { "TOPLEFT", inset + chipOff + labelW + CV.GAP, CV.TOP },
+        value = { "TOPLEFT", inset + chipOff + (leftW > 0 and (leftW + CV.GAP) or 0), CV.TOP },
         second = { "TOPRIGHT", -inset, CV.TOP },
         msg = { "TOP", 0, CV.TOP } }
+    if drawR2 then
+        m.fonts.right2 = fonts.right2
+        m.right2 = { "TOPRIGHT", -(inset + (rightW > 0 and (rightW + gap2) or 0)), CV.TOP }
+    end
     if manaOn and el == "strip" then
         if b.order == "fsrOver" then
             m.bar = { 10, 5, barW, manaH }
@@ -789,27 +1005,28 @@ METRICS.compact = function(v, look)
     local s = b.fsr or 3
     local inset = look.inset or 6
     local chipOff = el == "chip" and 12 or 0
-    local probe = v:ProbeIn(UI.FONT_SMALL or UI.FONT)
-    local labelW = Measure(probe, look.labelSample or "FULL")
-    local labelH = math.ceil(math.max(MeasureH(probe, look.labelSample or "FULL"), FontSize(UI.FONT_SMALL or UI.FONT)))
-    v:ProbeIn(UI.FONT)
-    local face, size, flags = NumFont(look.valueSize or 22)
-    local sp = v:SizedProbe()
-    sp:SetFont(face, size, flags)
-    local valueW = Measure(sp, CV.VALUE_SAMPLE)
-    local valueH = math.ceil(math.max(MeasureH(sp, CV.VALUE_SAMPLE), size))
-    local textBottom = 3 + labelH + valueH
+    local t = TextOf(look, "compact")
+    local fonts, w, h = Slots(v, look, "compact", t)
+    local topW, topH = w.top, w.top > 0 and h.top or 0
+    local mainW, mainH = w.main, math.max(h.main, math.ceil(fonts.main[2]))
+    -- Bottom (C2): its row and one pixel under Main, only while it draws
+    local botW, botH = w.bottom, w.bottom > 0 and (h.bottom + 1) or 0
+    local textBottom = 3 + topH + mainH + botH
     local anyBar = manaOn or el ~= nil
-    local minW = math.ceil(2 * inset + math.max(chipOff + labelW, valueW))
+    local minW = math.ceil(2 * inset + math.max(chipOff + topW, mainW, botW))
     local minH = anyBar and (textBottom + 6 + s) or (textBottom + 4)
-    local w, h = Fit(look, minW, minH)
-    local barW = w - 2 * inset
-    local manaH = h - textBottom - 4 - s
-    local m = { w = w, h = h, minW = minW, minH = minH, manaOn = manaOn, el = el,
-        face = face, size = size, flags = flags,
+    local fw, fh = Fit(look, minW, minH)
+    local barW = fw - 2 * inset
+    local manaH = fh - textBottom - 4 - s
+    local m = { w = fw, h = fh, minW = minW, minH = minH, manaOn = manaOn, el = el,
+        fonts = { label = fonts.top, value = fonts.main },
         label = { "TOPLEFT", inset + chipOff, -3 },
-        value = { "TOPLEFT", inset, -(3 + labelH) },
-        msg = { "CENTER", 0, 0 }, msgW = w - 4 }
+        value = { "TOPLEFT", inset, -(3 + topH) },
+        msg = { "CENTER", 0, 0 }, msgW = fw - 4 }
+    if botW > 0 then
+        m.fonts.second = fonts.bottom
+        m.second = { "TOPLEFT", inset, -(3 + topH + mainH + 1) }
+    end
     if manaOn and el == "strip" then
         if b.order == "fsrOver" then
             m.bar = { inset, 2, barW, manaH }
@@ -823,7 +1040,8 @@ METRICS.compact = function(v, look)
     elseif el == "solo" then
         m.strip = { inset, 2, barW, manaH }
     end
-    if el == "chip" then m.chip = { "TOPLEFT", inset, -3 - (labelH - 9) / 2, 9 } end
+    local chipRow = topH > 0 and topH or 9
+    if el == "chip" then m.chip = { "TOPLEFT", inset, -3 - (chipRow - 9) / 2, 9 } end
     return m
 end
 
@@ -832,30 +1050,28 @@ METRICS.bar = function(v, look)
     local manaOn, el = Element(b)
     local s = b.fsr or 3
     local inset = look.inset or 6
-    local probe = v:ProbeIn(UI.FONT)
-    local labelW = Measure(probe, look.labelSample or "FULL")
-    local labelH = MeasureH(probe, look.labelSample or "FULL")
-    local vprobe = v:ProbeIn(UI.FONT_NUM or UI.FONT)
-    local valueW = Measure(vprobe, CV.VALUE_SAMPLE)
-    local valueH = MeasureH(vprobe, CV.VALUE_SAMPLE)
-    v:ProbeIn(UI.FONT) -- the probe back in the label's font (the line's slot measure)
-    local rowH = math.ceil(math.max(labelH, valueH, FontSize(UI.FONT), FontSize(UI.FONT_NUM or UI.FONT)))
+    local t = TextOf(look, "bar")
+    local fonts, w, h = Slots(v, look, "bar", t)
+    local leftW, rightW = w.left, w.right
+    local rowH = RowH(fonts, w, h, { "left", "right" }, "right")
     local anyBar = manaOn or el ~= nil
     local stacked = manaOn and el == "strip"
     local minH = anyBar and (rowH + s + 4) or (rowH + 6)
     -- the height first: the chip is as tall as the mana bar, and its width
     -- goes into the minimum width
-    local _, h = Fit(look, 0, minH)
-    local single = h - 4
+    local _, h0 = Fit(look, 0, minH)
+    local single = h0 - 4
     local chipExtra = el == "chip" and (single + 2) or 0
-    local minW = math.ceil(chipExtra + 4 + 2 * inset + labelW + 2 * CV.GAP + valueW)
-    local w = Fit(look, minW, minH)
+    local gaps = (leftW > 0 and rightW > 0) and 2 * CV.GAP or 0
+    local minW = math.ceil(chipExtra + 4 + 2 * inset + leftW + gaps + rightW)
+    local fw, fh = Fit(look, minW, minH)
     local barX = 2 + chipExtra
-    local barW = w - 4 - chipExtra
-    local m = { w = w, h = h, minW = minW, minH = minH, manaOn = manaOn, el = el,
+    local barW = fw - 4 - chipExtra
+    local m = { w = fw, h = fh, minW = minW, minH = minH, manaOn = manaOn, el = el,
+        fonts = { label = fonts.left, value = fonts.right },
         label = { "LEFT", inset, 0 }, value = { "RIGHT", -inset, 0 }, msg = { "CENTER", 0, 0 } }
     if stacked then
-        local manaH = h - s - 3
+        local manaH = fh - s - 3
         if b.order == "fsrOver" then
             m.bar = { barX, 1, barW, manaH }
             m.strip = { barX, 1 + manaH + 1, barW, s }
@@ -871,7 +1087,7 @@ METRICS.bar = function(v, look)
     if el == "chip" then m.chip = { "BOTTOMLEFT", 2, 2, single } end
     -- the text holder over the mana bar, else over the strip, else the frame
     local r = m.bar or m.strip
-    m.holder = r and { r[1], r[2], r[3], r[4] } or { 0, 0, w, h }
+    m.holder = r and { r[1], r[2], r[3], r[4] } or { 0, 0, fw, fh }
     return m
 end
 
@@ -927,10 +1143,26 @@ function View:Place(m)
         set.holder:SetFrameLevel((self.bar:GetFrameLevel() or 1) + 2)
         rel = set.holder
     end
-    if m.face then set.value:SetFont(m.face, m.size, m.flags) end
-    Anchor(set.label, m.label, rel)
-    Anchor(set.value, m.value, rel)
-    if set.second and m.second then Anchor(set.second, m.second, rel) end
+    -- T116: each slot's region in its font, at its place; a region the
+    -- metrics leave out is emptied
+    for _, k in ipairs({ "label", "value", "second", "right2" }) do
+        local spec, font = m[k], m.fonts and m.fonts[k]
+        if spec and not set[k] then set[k] = MakeRegion(rel, k) end
+        local fs = set[k]
+        if fs then
+            if spec then
+                if font then
+                    fs:SetFont(font[1], font[2], font[3])
+                    fs:SetShadowOffset(font[4], font[5])
+                end
+                Anchor(fs, spec, rel)
+            else
+                fs:SetText("")
+                fs:Hide()
+            end
+        end
+    end
+    self.label, self.value, self.second, self.right2 = set.label, set.value, set.second, set.right2
     Anchor(set.msg, m.msg, rel)
     if m.msgW then set.msg:SetWidth(m.msgW) end
 
@@ -986,6 +1218,15 @@ function View:Minimum()
     return m.minW, m.minH
 end
 
+-- view:FitsRight2() -> fits, need, now (T116, answer 3): whether the Line
+-- frame is wide enough for a second Right slot at its widest word, the width
+-- that needs and the frame's width now; nil off the Line layout.
+function View:FitsRight2()
+    local m = self.metrics
+    if not m or not self.look or self.look.layout ~= "line" or m.need2 == nil then return nil end
+    return m.fits2, m.need2, m.now2
+end
+
 -- view:Scale() -> the frame's scale this look asks for (the line applies it).
 function View:Scale()
     local fr = self.look and self.look.frame
@@ -1019,7 +1260,7 @@ function View:SetLook(look)
     end
     if set.holder then set.holder:Show() end
     self.active = set
-    self.label, self.value, self.second, self.msg = set.label, set.value, set.second, set.msg
+    self.label, self.value, self.second, self.right2, self.msg = set.label, set.value, set.second, set.right2, set.msg
 
     local back = (UI.SkinColour and UI.SkinColour(look.bar.back)) or { 0, 0, 0, 1 }
     self.barBack:SetColorTexture(back[1], back[2], back[3], back[4] or 1)
@@ -1137,44 +1378,81 @@ local function Put(fs, text, tone, colors)
     fs:Show()
 end
 
--- view:Paint(face, look): the face's pieces, each in its tone. `look`
--- replaces the build's (the line's switches may have changed); nil keeps it.
--- A face that is not a table draws the warm-up's "OOM ..." -- the TBC
--- widget's words before its first state. The face is kept for PaintBar.
+-- A piece's words with its colour codes: a label riding with the time keeps
+-- its own tone ("OOM" muted before "1:20"), the arrow its own.
+local function PieceText(piece, colors)
+    local CF = MD.ClockFace
+    local text = piece.text
+    if piece.labelText and piece.valueText and piece.labelTone and piece.labelTone ~= piece.tone then
+        text = CF.ToneHex(piece.labelTone, colors) .. piece.labelText .. "|r " .. piece.valueText
+    end
+    if piece.arrow then
+        if piece.arrowTone and piece.arrowTone ~= piece.tone then
+            text = text .. " " .. CF.ToneHex(piece.arrowTone, colors) .. piece.arrow .. "|r"
+        else
+            text = text .. " " .. piece.arrow
+        end
+    end
+    return text
+end
+
+local WARMUP_FACE = { mode = "warmup", label = "OOM", known = "pending", tone = "muted" }
+
+-- view:Paint(face, look): the face's slots (ClockFace.Slots in the look's
+-- text), each in its region and tone. `look` replaces the build's (the
+-- line's switches may have changed); nil keeps it. A face that is not a
+-- table draws the warm-up's "OOM ..." -- the TBC widget's words before its
+-- first state. The face is kept for PaintBar. A pct / mana slot (not the
+-- time's) asks the line's draw.powerText(fs, kind) first: true means the
+-- line put its own number into the font string, unread (it is left out of
+-- view:Text()); otherwise the face's words. view.modelledWords is the first
+-- modelled ("~") mana number drawn, for the line's hover.
 function View:Paint(face, look)
     if look then self.look = look end
     local CF = MD.ClockFace
-    local segs = CF.Segments(face, self.look)
-        or CF.Segments({ mode = "warmup", label = "OOM", known = "pending", tone = "muted" }, self.look)
-    local colors = self.look.colors
+    local key = CV.LAYOUT[self.look.layout] and self.look.layout or "line"
+    local f = type(face) == "table" and face or WARMUP_FACE
     self.face = type(face) == "table" and face or nil
     self:Layout()
     self.msg:SetText("")
     self.msg:Hide()
 
-    Put(self.label, segs.label.text, segs.label.tone, colors)
-    local val = segs.value
-    if val then
-        local text = val.text
-        if val.arrow then
-            if val.arrowTone and val.arrowTone ~= val.tone then
-                text = text .. " " .. CF.ToneHex(val.arrowTone, colors) .. val.arrow .. "|r"
-            else
-                text = text .. " " .. val.arrow
+    local t = TextOf(self.look, key)
+    local pieces = CF.Slots(f, t, key, self.look) or {}
+    local colors = self.look.colors
+    local m = self.metrics or {}
+    local segs, modelled = {}, nil
+    local powerText = type(self.draw) == "table" and self.draw.powerText or nil
+    for _, slot in ipairs(CF.TEXT_SLOTS[key]) do
+        local region = CV.REGION[key][slot]
+        local fs = self[region]
+        local piece = m[region] and pieces[slot] or nil
+        local kind = t[slot]
+        if fs then
+            local own = false
+            if piece and (kind == "pct" or kind == "mana") and slot ~= t.timeAt and type(powerText) == "function" then
+                local okP, res = pcall(powerText, fs, kind)
+                if okP and res == true then
+                    fs:SetTextColor(CF.ToneRGB(piece.tone, colors))
+                    fs:Show()
+                    own = true
+                end
+            end
+            if not own then
+                if piece then
+                    Put(fs, PieceText(piece, colors), piece.tone, colors)
+                    segs[region] = piece
+                    if not modelled and (kind == "pct" or kind == "mana") and slot ~= t.timeAt
+                        and piece.text:sub(1, 1) == "~" then
+                        modelled = piece.text
+                    end
+                else
+                    Put(fs, nil)
+                end
             end
         end
-        Put(self.value, text, val.tone, colors)
-    else
-        Put(self.value, nil)
     end
-    if self.second then
-        if segs.second and self.look.second ~= false then
-            Put(self.second, segs.second.text, segs.second.tone, colors)
-        else
-            Put(self.second, nil)
-        end
-    end
-    if self.look.second == false then segs.second = nil end
+    self.modelledWords = modelled
     self.segs = segs
 end
 
@@ -1361,7 +1639,7 @@ end
 -- view:Message(text, r, g, b): one centred line instead of the pieces (the
 -- preview's "SpellTuner - drag me", in the colour the line passes).
 function View:Message(text, r, g, b)
-    for _, fs in ipairs({ self.label, self.value, self.second or false }) do
+    for _, fs in ipairs({ self.label, self.value, self.second or false, self.right2 or false }) do
         if fs then
             fs:SetText("")
             fs:Hide()

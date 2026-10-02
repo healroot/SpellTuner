@@ -869,11 +869,6 @@ local function SwitchList(p, f, defs, y)
     return y
 end
 
-TAB.show = function(p, f)
-    local y = SwitchList(p, f, p.opts.show, -2)
-    Note(f, "The Line layout shows at most one secondary segment.", nil, y - 4)
-end
-
 TAB.when = function(p, f)
     local y = SwitchList(p, f, p.opts.when, -2)
     local n1 = Note(f, "In combat the clock is always up; out of combat it shows under 90% mana and hides again over 95%.",
@@ -881,9 +876,243 @@ TAB.when = function(p, f)
     Note(f, "Left-click opens the window, out of combat only.", n1, -4)
 end
 
+-- T116 (clock v2, C5): the Text tab -- a dropdown per slot of the layout on
+-- screen (ClockFace.TEXT_SLOTS / TEXT_OPTIONS; Cooldown only on a line with a
+-- cooldown secondary, "~ model" beside the numbers a modelled pool draws),
+-- Labels and Mana as of max, then FORMAT: Time, Size (with Default), Outline,
+-- Shadow, Numbers. Each writes text.<layout>.<key>; the layout's own default
+-- writes nil, so over stays sparse.
+local SLOT_LABEL = { left = "Left", main = "Main", right = "Right", right2 = "Right 2", top = "Top", bottom = "Bottom" }
+local SLOT_ORDER = { "left", "top", "main", "right", "right2", "bottom" }
+local SLOT_WORDS = {
+    label = "Label", time = "Time 1:20", pct = "Mana % 62%", mana = "Mana 4210", rest = "Rest 2:10",
+    mp5 = "Regen 92 mp5", fsr = "Five-second rule 3.0", cd = "Cooldown inn 2:10", none = "None",
+}
+local SLOT_TIPS = {
+    label = "OOM, FULL, HOLD: what the clock is counting to.",
+    time = "The time to OOM (or to full), with its arrow.",
+    pct = "Your mana as a percentage.",
+    mana = "Your mana as a number.",
+    rest = "Time to full if you stop casting now (the line's rest switch).",
+    mp5 = "Your regen per five seconds.",
+    fsr = "Seconds left in the five-second rule.",
+    cd = "What the clock becomes with your mana cooldown (the line's cooldown switch).",
+    none = "Nothing here.",
+}
+local MODELLED = { pct = true, mana = true, mp5 = true }
+local FORMAT_ITEMS = {
+    labels = {
+        { id = "caps", text = "OOM / FULL", tooltip = "The default." },
+        { id = "lower", text = "out / full" },
+    },
+    time = {
+        { id = "line", text = "1:20", tooltip = "The default: minutes and seconds, seconds under a minute." },
+        { id = "sec", text = "80s", tooltip = "Seconds only." },
+        { id = "msec", text = "1m20", tooltip = "Minutes and seconds, spelled out." },
+    },
+    outline = {
+        { id = "none", text = "None", tooltip = "The default." },
+        { id = "outline", text = "Outline" },
+        { id = "thick", text = "Thick outline" },
+        { id = "mono", text = "Monochrome" },
+    },
+    numbers = {
+        { id = "number", text = "Number font", tooltip = "The default: the narrow number font for the numbers." },
+        { id = "labels", text = "Label font", tooltip = "The numbers in the labels' font." },
+    },
+}
+local FORMAT_DEFAULT = { labels = "caps", time = "line", outline = "none", numbers = "number" }
+CS.TEXT_NOTE = "Forever: the ~ stays on every modelled number. A real mana % or number as text waits for the probe "
+    .. "(Q-clock-2); until then those picks show the model's ~ value."
+CS.BOX_NOTE = "Text, size and bars are kept per layout; Reset to style wipes your changes, not the layout."
+
+-- One slot's items on this line, for a layout.
+local function SlotItems(layout, slot)
+    local facts = Facts()
+    local items = {}
+    local CF = MD.ClockFace
+    for _, id in ipairs(CF.TEXT_OPTIONS[layout] and CF.TEXT_OPTIONS[layout][slot] or {}) do
+        if not (id == "cd" and facts.cd == false) then
+            local text = SLOT_WORDS[id] or id
+            if facts.model and MODELLED[id] then text = text .. "  ~ model" end
+            items[#items + 1] = { id = id, text = text, tooltip = SLOT_TIPS[id] }
+        end
+    end
+    return items
+end
+
+-- The line's own switch for a segment ("rest" / "cd"), on.
+local function SwitchOn(p, segment)
+    for _, def in ipairs(p.opts and p.opts.show or {}) do
+        if def.segment == segment and type(def.set) == "function" and not (def.get and def.get()) then
+            def.set(true)
+        end
+    end
+end
+
+local function SetText(p, key, value)
+    return Set("text." .. Layout(p) .. "." .. key, value)
+end
+
+-- A slot's pick: Rest and Cooldown turn the line's switch on (a slot that
+-- shows a segment the line hides would stay empty); the layout's default
+-- writes nil. Right 2 is refused while the frame is too narrow for it.
+local function PickSlot(p, slot, id)
+    local layout = Layout(p)
+    if slot == "right2" and id ~= "none" then
+        local fits = p.view and p.view:FitsRight2()
+        if fits ~= true then
+            CS.Refresh(p)
+            return
+        end
+    end
+    if id == "rest" then SwitchOn(p, "rest") end
+    if id == "cd" then SwitchOn(p, "cd") end
+    local default = MD.ClockFace.TEXT[layout] and MD.ClockFace.TEXT[layout][slot]
+    SetText(p, slot, (id ~= default) and id or nil)
+end
+
+TAB.text = function(p, f)
+    p.slotDD, p.slotLabel = {}, {}
+    for _, slot in ipairs(SLOT_ORDER) do
+        local fs = f:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+        fs:SetWidth(56)
+        fs:SetJustifyH("LEFT")
+        fs:SetText(SLOT_LABEL[slot])
+        local dd = UI.CreateDropdown(f, 150, 18, function(id) PickSlot(p, slot, id) end)
+        dd:SetItems(SlotItems(Layout(p), slot))
+        p.slotLabel[slot], p.slotDD[slot] = fs, dd
+    end
+    local y = -2 - 4 * ROW
+    local function Dropdown(label, field, x, yy, w)
+        local fs = f:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+        fs:SetPoint("TOPLEFT", f, "TOPLEFT", x, yy - 3)
+        fs:SetWidth(56)
+        fs:SetJustifyH("LEFT")
+        fs:SetText(label)
+        local dd = UI.CreateDropdown(f, w or 110, 18, function(id)
+            SetText(p, field, (id ~= FORMAT_DEFAULT[field]) and id or nil)
+        end)
+        dd:SetPoint("TOPLEFT", f, "TOPLEFT", x + 60, yy)
+        dd:SetItems(FORMAT_ITEMS[field])
+        p[field .. "Dropdown"] = dd
+        return dd
+    end
+    Dropdown("Labels", "labels", 0, y)
+    local ofMax = UI.CreateCheckButton(f, "Mana as 4210/6800", function(checked)
+        SetText(p, "ofMax", checked and true or nil)
+    end, "Mana as of max", "A Mana slot shows your mana over your maximum.")
+    ofMax:SetPoint("TOPLEFT", f, "TOPLEFT", 2, y - ROW - 2)
+    p.ofMaxCheck = ofMax
+
+    -- FORMAT, the right column
+    local x = 260
+    local head = f:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+    head:SetPoint("TOPLEFT", f, "TOPLEFT", x, -5)
+    head:SetText("FORMAT")
+    head:SetTextColor(UI.RGB("label"))
+    Dropdown("Time", "time", x, -2 - ROW)
+    Dropdown("Outline", "outline", x, -2 - 2 * ROW)
+    Dropdown("Numbers", "numbers", x, -2 - 3 * ROW)
+    local shadow = UI.CreateCheckButton(f, "Shadow", function(checked)
+        if checked then SetText(p, "shadow", nil) else SetText(p, "shadow", false) end
+    end, "Shadow", "The words' drop shadow (on by default).")
+    shadow:SetPoint("TOPLEFT", f, "TOPLEFT", x + 2, -2 - 4 * ROW - 2)
+    p.shadowCheck = shadow
+    local lo, hi = MD.ClockView.TEXT_SIZE[1], MD.ClockView.TEXT_SIZE[2]
+    local size = UI.CreateSlider("Size", f, lo, hi, 120, 1, nil, function(value)
+        value = tonumber(value)
+        if value then SetText(p, "size", math.max(lo, math.min(hi, math.floor(value + 0.5)))) end
+    end, false, "Size", "The main slot's size in this layout; the small slots follow at half.",
+        "Default: the window's text size.")
+    size:SetPoint("TOPLEFT", f, "TOPLEFT", x + 2, -2 - 5 * ROW - 16)
+    p.sizeSlider = size
+    local def = UI.CreateButton(f, "Default", "accent-hover", { 60, 18 }, false, false,
+        UI.FONT_SMALL, UI.FONT_SMALL, "Default size", "Back to the window's text size (it follows Settings -> General).")
+    def:SetPoint("LEFT", size, "RIGHT", 12, 0)
+    def:SetScript("OnClick", function() SetText(p, "size", nil) end)
+    p.sizeDefault = def
+
+    if Facts().model then
+        local note = Note(f, CS.TEXT_NOTE, nil, -2 - 6 * ROW - 4)
+        note:ClearAllPoints()
+        note:SetPoint("TOPLEFT", f, "TOPLEFT", 0, -2 - 6 * ROW - 4)
+        note:SetWidth(250)
+        p.textNote = note
+    end
+end
+
+-- The Text tab's controls from the look (CS.Refresh): the layout's slots
+-- only, in order, with this line's items; the FORMAT values; Right 2 enabled
+-- only where the frame is wide enough, its reason on its hover.
+local function RefreshText(p, look)
+    if not p.slotDD then return end
+    local CF = MD.ClockFace
+    local layout = Layout(p)
+    local t = look.text or {}
+    local on = {}
+    for i, slot in ipairs(CF.TEXT_SLOTS[layout] or {}) do
+        on[slot] = true
+        local dd, fs = p.slotDD[slot], p.slotLabel[slot]
+        if dd then
+            local yy = -2 - (i - 1) * ROW
+            fs:ClearAllPoints()
+            fs:SetPoint("TOPLEFT", dd:GetParent(), "TOPLEFT", 0, yy - 3)
+            dd:ClearAllPoints()
+            dd:SetPoint("TOPLEFT", dd:GetParent(), "TOPLEFT", 60, yy)
+            if dd.layout ~= layout then
+                dd.value = nil
+                dd:SetItems(SlotItems(layout, slot))
+                dd.layout = layout
+            end
+            dd:SetValue(t[slot] or (CF.TEXT[layout] and CF.TEXT[layout][slot]))
+            fs:Show()
+            dd:Show()
+        end
+    end
+    for slot, dd in pairs(p.slotDD) do
+        if not on[slot] then
+            dd:Close()
+            dd:Hide()
+            p.slotLabel[slot]:Hide()
+        end
+    end
+    local r2 = p.slotDD.right2
+    if r2 and on.right2 then
+        local fits, need = p.view:FitsRight2()
+        if fits == true then
+            r2:Enable()
+            UI.SetTooltips(r2, "ANCHOR_RIGHT", 0, 0, "Right 2", "A second Right slot, left of the first.")
+        else
+            r2:Close()
+            r2:Disable()
+            UI.SetTooltips(r2, "ANCHOR_RIGHT", 0, 0, "Right 2",
+                "needs " .. tostring(need or "?") .. " px: raise the width on Frame")
+        end
+    end
+    for _, field in ipairs({ "labels", "time", "outline", "numbers" }) do
+        local dd = p[field .. "Dropdown"]
+        if dd then dd:SetValue(t[field] or FORMAT_DEFAULT[field]) end
+    end
+    if p.ofMaxCheck then p.ofMaxCheck:SetChecked(t.ofMax == true) end
+    if p.shadowCheck then p.shadowCheck:SetChecked(t.shadow ~= false) end
+    if p.sizeSlider then
+        local size = t.size
+        if not size and p.view.value then
+            local _, s = p.view.value:GetFont()
+            size = tonumber(s)
+        end
+        local lo, hi = MD.ClockView.TEXT_SIZE[1], MD.ClockView.TEXT_SIZE[2]
+        size = math.max(lo, math.min(hi, math.floor((size or 13) + 0.5)))
+        p.sizeSlider:SetValue(size)
+    end
+end
+
+-- T116: Text first (it replaces Show: the rest and cooldown segments are
+-- Right's picks, the line's switches turned on by them).
 CS.TABS = {
-    { id = "colours", text = "Colours" }, { id = "frame", text = "Frame" }, { id = "bars", text = "Bars" },
-    { id = "show", text = "Show" }, { id = "when", text = "When" },
+    { id = "text", text = "Text" }, { id = "colours", text = "Colours" }, { id = "frame", text = "Frame" },
+    { id = "bars", text = "Bars" }, { id = "when", text = "When" },
 }
 
 --------------------------------------------------------------------------------
@@ -1040,7 +1269,7 @@ local function BuildLayoutRow(p, pane)
         if not okL then MD:Print("mana clock: " .. tostring(why)) end
     end)
     local reset = UI.CreateButton(sec, "Reset to style", "accent-hover", { 110, 20 }, false, false,
-        UI.FONT_SMALL, UI.FONT_SMALL, "Reset to style", "Every colour and bar setting back to the look's own.",
+        UI.FONT_SMALL, UI.FONT_SMALL, "Reset to style", "Every colour, text, frame and bar setting back to the look's own.",
         "The layout is kept.")
     reset:SetPoint("TOPRIGHT", sec, "TOPRIGHT", 0, -24)
     reset:SetScript("OnClick", function() MD.ClockView.ResetToStyle() end)
@@ -1092,6 +1321,14 @@ local function BuildBottom(p, pane)
         MD:Print("mana clock: position reset")
     end)
     p.placeButton = place
+    -- T116: what the box keeps, under it
+    local note = pane:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+    note:SetPoint("TOPLEFT", p.box.frame, "BOTTOMLEFT", 0, -34)
+    note:SetPoint("RIGHT", p.box.frame, "RIGHT", 0, 0)
+    note:SetJustifyH("LEFT")
+    note:SetTextColor(UI.RGB("muted"))
+    note:SetText(CS.BOX_NOTE)
+    p.boxNote = note
 end
 
 -- CS.PlaceMinimum(slider, fs, min): the green mark on the slider's track at
@@ -1154,6 +1391,7 @@ function CS.Refresh(p)
     for _, row in ipairs({ p.fillRow, p.edgeRow, p.manaColourRow, p.barBackRow }) do PaintSwatches(row) end
     for _, row in pairs(p.toneRows or {}) do PaintSwatches(row) end
     for _, cb in ipairs(p.switches or {}) do cb:SetChecked(cb.def.get() and true or false) end
+    RefreshText(p, look)
     CS.PaintPreview(p)
 end
 
@@ -1174,7 +1412,7 @@ function CS.Build(content, opts)
     panes[p] = true
     p.highlightChip("oom")
     RuleFromFace(p, CS.SampleFace("oom"))
-    p.box:Select("colours")
+    p.box:Select("text")
     CS.Refresh(p)
     return pane
 end

@@ -54,8 +54,10 @@ local flashedThisFight = false
 -- already obeys them, the view is told so the two agree). The bar's slot (M6:
 -- Forever's 160 x 4) and the five-second rule's amber and green are the
 -- view's (UI/ClockView.lua) under the line layout.
+-- T116: cd = true -- this line has a cooldown secondary, so the Text tab
+-- offers it in a Right slot.
 local facts = { line = "tbc", poolPlain = true, model = false, tick = true, textures = true,
-    labelSample = "FULL", show = {} }
+    labelSample = "FULL", show = {}, cd = true }
 MD.ClockView.lineFacts = facts
 local function Facts()
     facts.show.rest = MD.db.showRest ~= false
