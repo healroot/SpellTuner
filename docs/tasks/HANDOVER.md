@@ -4,21 +4,42 @@ Rewritten by the lead after every commit and every hand-out. A successor continu
 alone. Worktree: `/home/penek/projects/addons/SpellTuner/.claude/worktrees/manademon-folder-continue-41eabc`,
 branch `claude/manademon-folder-continue-41eabc`.
 
-Last updated: 2026-10-02, after **waves N1-N5 of `docs/SPEC-next.md`** as far as they landed
-(T87-T102, T106, T107, T110, T111 and T113) and the **0.16.6** finish commit. The version stays
-0.16.6 (never released, never installed): its packages were rebuilt after waves N4 and N5 and are in
-the top-level `dist/` (`tbc/` and `forever/`, and the two zips); **nothing is installed**: both
-clients still run 0.16.5 (installed 2026-10-01). The 0.16.6 commit (7da7943) says waves N4 and N5
-did not land; they landed after it (4ff42bf, ee840e0). The version ruling is `docs/DECISIONS.md`
-"One version, two installations". Install only on the author's request:
+Last updated: 2026-10-02, after **clock v2** (T114, T115, T116, all landed) and the **0.16.8**
+commit. 0.16.7 (the author's first 0.16.6 feedback, F1-F3, 6fab263) and 0.16.8 (clock v2) were
+built, never installed: the 0.16.8 packages are in the top-level `dist/` (`tbc/` and `forever/`,
+and the two zips); **nothing is installed**: both clients still run 0.16.5 (installed 2026-10-01).
+The version ruling is `docs/DECISIONS.md` "One version, two installations". Install only on the
+author's request:
 `./release.sh --install-forever "/mnt/e/Blizzard/World of Warcraft/_classic_beta_/Interface/AddOns"`
 and `./release.sh --install-tbc ".../_anniversary_/Interface/AddOns"`; never cross them.
+
+## Clock v2 (0.16.8): what landed, what did not
+
+From the author's answers to `docs/mockups/clock-v2.html`, verbatim: "We can do all 3, and let
+user decide / And those that are recomended become default" (`docs/DECISIONS.md` "Clock v2: mana
+and the five-second rule together" and "Clock v2: what the clock says"). All three tasks landed;
+**nothing did not land**.
+
+| task | commits | what |
+|---|---|---|
+| **T114** the face's slots and words | 63ec215 / 56c58b3, integrated ad4a02f | `Engine/ClockFace.lua`: `CF.KINDS`, `CF.TEXT` (Line Left / Main / Right / Right2, Compact Top / Main / Bottom, Bar Left / Right), `CF.ResolveText`; the face's `mana` / `manaMax` / `manaModelled`; the datatext and brokers follow Line's slots, byte-identical by default; Forever's `MD.API.DrawPowerText` behind `POWER_TEXT_READS = false` (Q-clock-2) |
+| **T115** Bars and Frame | 34aa2d4 / 182f513 / 18fd3b6, integrated ad4a02f | Mana + 5SR by default on both lines (replaces decision 15 (a)); Join Stacked (A, default) / One bar (B) / Swipe chip (C); Order, Mana from (Forever), the strip, After the rule (Green / Empty, Regen tick TBC only), texture (Forever flat until Q-clock-4), Mana colour; Frame Width / Height / Scale per layout with measured minimums; `CV.Migrate` reads a 0.16.6 / 0.16.7 look once (`docs/tasks/T115-clock-bars-frame.md`'s table) |
+| **T116** the slots drawn, the Text tab | 02ae0ec / 1a547d0, integrated 137599f | `UI/ClockView.lua` draws the slots at fixed places, Size 8-32 / Outline / Shadow / Numbers, the minimum from the slots set, Right2 only where the width allows; `UI/ClockSettings.lua`'s Text tab replaces Show |
+
+Still VERIFY in-game: the Swipe chip's cooldown template (both clients), the regen tick lining up
+with the mana ticks (TBC). Waiting on the probe: Forever's real Mana % / Mana (Q-clock-2), Forever's
+bar textures (Q-clock-4). `docs/TESTING.md` §48 checks all of it, one session per client.
 
 ## Committed this round (newest first)
 
 | hash | what |
 |---|---|
-| (the commit after ee840e0) | the finish at 0.16.6 (version kept): TESTING §46 for waves N1-N5 (the intro, 46.4 step 4 after T106, 46.6 / 46.7 in the packages, T97 deviation 3 closed), HISTORY, this handover; the import fixture rebuilt, unchanged; both packages rebuilt |
+| (the commit after 137599f) | 0.16.8 on every TOC (`release.sh --set-version`; the import fixture rebuilt, unchanged); TESTING §48 as one session per client; HISTORY; CLAUDE.md's version prose; this handover; both packages built, nothing installed |
+| 137599f / 1a547d0 / 02ae0ec | clock v2 second half: T116 and its integrator lines |
+| ad4a02f / 18fd3b6 / 182f513 / 34aa2d4 / 56c58b3 / 63ec215 | clock v2 first half: T114, T115 and their integrator lines |
+| 2f6ac63 | clock v2: the approved mockup (`docs/mockups/clock-v2.html`) and its tasks |
+| 6fab263 / 6e1f56b / 9e20ef2 / 2e1f6bb / eadd789 / 90f5cf9 / c71ad2d | 0.16.7: the author's first 0.16.6 feedback (F1 the clock bar's Height and a smooth 5SR, F2 no GCD sweep after a hard cast, F3 Whole book drawn at once); TESTING §47 |
+| 2ffece3 | the finish at 0.16.6 (version kept): TESTING §46 for waves N1-N5 (the intro, 46.4 step 4 after T106, 46.6 / 46.7 in the packages, T97 deviation 3 closed), HISTORY, this handover; the import fixture rebuilt, unchanged; both packages rebuilt |
 | ee840e0 | wave N5 integrator (TBC TOC: the priest / shaman / paladin TBC profiles, `Spells\Parse.lua`, `Spells\Book_TBC.lua`; counts; CLAUDE.md, TESTING 46.7, DECISIONS, TOOLS) |
 | 3be8632 / 2e75430 / fa3d24f | T111 review: the five rejections as failing tests, then TBC non-druids unchanged until the caps are granted (profiles grant `clock` only), `ClassContext` / `DruidContext`, `SpellKit` the druid's for every class; tbcclasscheck 52 |
 | 35eeeec / 0d65533 / c445021 / 434d466 | T111 (decision 8 (b)): `Spells/Book_TBC.lua` (bases from each rank's tooltip), the class rules in `Engine/RankMath.lua` (VERIFY), the three TBC class profiles, twelve TBC adapter bindings, the WCL fit with a class |
@@ -53,7 +74,7 @@ and `./release.sh --install-tbc ".../_anniversary_/Interface/AddOns"`; never cro
 
 ## In the tree, not committed
 
-Nothing. The top-level `dist/` (gitignored) holds the rebuilt 0.16.6 packages. The wave branches
+Nothing. The top-level `dist/` (gitignored) holds the 0.16.8 packages. The wave branches
 (`next/T102`, `next/T106`, `next/T110`, `next/T111`, `saved/T107-partial-2026-10-01`) and their
 worktrees are gone; everything they held is in this branch.
 
@@ -77,8 +98,8 @@ Landed (integrated on 7da7943, in this branch): **T102** Settings -> Clock / Loo
 | **T112** two-line clock | not scheduled | decision 13 (the author chose Line, Compact, Bar, Ring) |
 | `MD.API.BASE_CD_READS` flip | off | `== cooldowns`' `GetSpellBaseCooldown` lines from both clients (46.1) |
 
-Open from the task files: T102's Text tab and the other 7.3 keys the renderer does not draw yet
-(T102 deviation 1); "Use my class colour" wrapping `UI.ApplyStyleTokens` rather than living in
+Open from the task files: T102's Text tab and the other 7.3 keys (T102 deviation 1) -- closed by
+T116 (clock v2); "Use my class colour" wrapping `UI.ApplyStyleTokens` rather than living in
 `UI/Styles.lua` (T102 deviation 3); `/st coach N safe` / `health` / ... for a non-druid says to
 coach first (T106 deviation 7); `Stream_Forever.lua`'s druid `FAMILY_KEY` (T106 deviation 8);
 `db.feeds.elvui` declared, not read (T97 deviation 2). The refactor plan's left-overs below
@@ -87,17 +108,20 @@ coach first (T106 deviation 7); `Stream_Forever.lua`'s druid `FAMILY_KEY` (T106 
 ## Next, in order
 
 1. **The author's in-game probe of the new sections on BOTH clients: `docs/TESTING.md` 46.1**
-   (after installing 0.16.6 on the author's word): `/st probe` on the beta (out of combat; in combat
+   -- **still pending** (after installing 0.16.8 on the author's word; the probe sections are
+   unchanged since 0.16.6): `/st probe` on the beta (out of combat; in combat
    with an Innervate or Mana Spring on you; with EllesmereUI on) and `/md probe` on TBC -- `== art`,
    `== hosts`, `== clock`, `== cooldowns`, `== auras` -- pasted whole into
-   `docs/probe/<build>-0.16.6-s1.md` and `.logs/tbc/0.16.6-s1.md`; then 46.4 step 1 on a priest
+   `docs/probe/<build>-0.16.8-s1.md` and `.logs/tbc/0.16.8-s1.md`; then 46.4 step 1 on a priest
    (absorbs). These unblock **T103** Modern (`== art`), **T104** Ring (Q-clock-4), **T105** mana
    sources (`== auras`), **T108** Classic (`== art`), **T109** absorbs, the **`BASE_CD_READS`
    flip** (`== cooldowns`), and **T110's remainder** once T105 is in.
-2. Then 46.6 (Settings -> Clock, Look, live restyle, INTEGRATIONS, a paladin / shaman / priest
+2. **§48 on 0.16.8** (clock v2, one 20-30 minute session per client: a 0.16.7 look first, then
+   Bars, the three designs, the tick sweep on TBC, Frame, each Text slot). Then 46.6 (Settings -> Clock, Look, live restyle, INTEGRATIONS, a paladin / shaman / priest
    coached and practising) and 46.7 (the role seed, either-or halves, TBC other classes unchanged),
-   then 46.2-46.5 and §45 on 0.16.6; a task per failed check, from the paste only.
-3. On the probe's answers: T103, T104, T105, then T108, T109, T110's remainder; the T111 swaps and
+   then 46.2-46.5 and §45 on 0.16.8; a task per failed check, from the paste only.
+3. On the probe's answers: T103, T104, T105, Forever's `POWER_TEXT_READS` (Q-clock-2) and bar
+   textures (Q-clock-4), then T108, T109, T110's remainder; the T111 swaps and
    the cap decision when the author asks for TBC other classes.
 4. Still waiting on the author from before: §38-§44 items, the "Measured" line, pair mode, decision
    12 of the UI spec; M5 of the roadmap (launch client, 2026-11-04).
@@ -109,29 +133,29 @@ flavours, apicheck, textcheck, the selftests and the expected counts in
 `bash tools/run.sh tools/importfixture.lua` whenever what is stored changes (a new default does).
 `releasecheck` in a `git archive` export needs a throwaway `git init` there.
 
-## Baselines (at the finish commit after ee840e0, 0.16.6 rebuilt)
+## Baselines (at the 0.16.8 commit, clock v2)
 
-`make check`: 92 runs, all passed; 87 counted against 87 expected (profilecheck/forever's expected
+`make check`: 94 runs, all passed; 89 counted against 89 expected (profilecheck/forever's expected
 count is 64, the run with `tools/.cache/talentsforever.json`; without the cache it runs 59 and the
-counts fail until `python3 tools/refcheck.py --fetch`). TBC: adaptercheck 16, bookcheck 2, capscheck
-34, clockfacecheck 22, clocksettings 34, clockui 16, consolecheck 1, corecheck 29, costcheck 3,
-dashui 84, defaultscheck 49, kitcheck 5, migrate 7, minimapcheck 8, navui 46, practice 84,
-practiceui 52, probecheck 15, profilecheck 51, reccheck 63, recordingscheck 32, regencheck 27,
-replaycheck 82, replayui 107, restcheck 51, restylecheck 49, reviewui 50, runcheck 81, simcheck 13,
-simwindow 8, slashcheck 10, solvercheck 95, spelltip 49, stylecheck 34, surfacecheck 34, svcheck 1,
-tabscheck 4, tbcclasscheck 52, themecheck 9, timeline 27, ttocheck 50, verifycheck 14, wincheck 4.
-Forever: adaptercheck 24, bindscheck 6, bookcheck 31, capscheck 32, classcoach 39, clockcheck 35,
-clockfacecheck 19, clocksettings 35, clockui 16, coachforever 22, consolecheck 22, corecheck 29,
-defaultscheck 52, euicheck 19, forevercheck 16, gatecheck 12, kitcheck 19, measurecheck 30,
-minimapcheck 9, modulecheck 19, parsecheck 42, practiceforever 31, probecheck 97, profilecheck 64,
-recordcheck 31, recordingscheck 32, replayforever 28, restylecheck 44, reviewforever 22,
-scenariocheck 19, spellsui 52, stylecheck 34, surfacecheck 41, svcheck 6, tabscheck 27, themecheck
-38, tipcheck 52, wincheck 66. importcheck 21, releasecheck 21, lib/t 12. apicheck 0 findings (8
-Forever TOCs, 73 files, 51 distinct globals), apicheck selftest 14, textcheck 0 findings over 116
-files (9 TOCs), textcheck selftest 2, refcheck selftest 2; reproduce and strategies smoke runs ok.
-Packages (`make release SRC=manademon-folder-continue-41eabc`): TBC 86 files, Forever 48 files plus
-the three modules (`dist/manademon-folder-continue-41eabc/`, `SpellTuner-tbc-0.16.6.zip`,
-`SpellTuner-forever-0.16.6.zip`). Not installed.
+counts fail until `python3 tools/refcheck.py --fetch`). TBC: adaptercheck 17, bookcheck 2, capscheck
+34, clockfacecheck 24, clocksettings 46, clocktextcheck 13, clockui 41, consolecheck 1, corecheck 29,
+costcheck 3, dashui 84, defaultscheck 49, kitcheck 5, migrate 7, minimapcheck 8, navui 46, practice
+84, practiceui 56, probecheck 15, profilecheck 51, reccheck 63, recordingscheck 32, regencheck 27,
+replaycheck 82, replayui 110, restcheck 51, restylecheck 49, reviewui 50, runcheck 81, simcheck 13,
+simwindow 8, slashcheck 10, solvercheck 95, spelltip 49, stylecheck 34, surfacecheck 36, svcheck 1,
+tabscheck 4, tbcclasscheck 52, themecheck 9, timeline 27, ttocheck 53, verifycheck 14, wincheck 4.
+Forever: adaptercheck 26, bindscheck 6, bookcheck 31, capscheck 32, classcoach 39, clockcheck 37,
+clockfacecheck 21, clocksettings 47, clocktextcheck 13, clockui 41, coachforever 22, consolecheck 22,
+corecheck 29, defaultscheck 52, euicheck 21, forevercheck 16, gatecheck 12, kitcheck 19,
+measurecheck 30, minimapcheck 9, modulecheck 19, parsecheck 42, practiceforever 31, probecheck 97,
+profilecheck 64, recordcheck 31, recordingscheck 32, replayforever 28, restylecheck 44, reviewforever
+22, scenariocheck 19, spellsui 53, stylecheck 34, surfacecheck 43, svcheck 6, tabscheck 27,
+themecheck 38, tipcheck 52, wincheck 66. importcheck 21, releasecheck 21, lib/t 12. apicheck 0
+findings (8 Forever TOCs, 73 files, 51 distinct globals), apicheck selftest 14, textcheck 0 findings
+over 116 files (9 TOCs), textcheck selftest 2, refcheck selftest 2; reproduce and strategies smoke
+runs ok. Packages (`make release SRC=manademon-folder-continue-41eabc`): TBC 86 files, Forever 48
+files plus the three modules (`dist/manademon-folder-continue-41eabc/`, `SpellTuner-tbc-0.16.8.zip`,
+`SpellTuner-forever-0.16.8.zip`). Not installed.
 
 ## Before this round: the refactor plan (0.16.4, 0.16.5)
 

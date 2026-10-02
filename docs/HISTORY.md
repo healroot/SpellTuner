@@ -4972,3 +4972,29 @@ all 3, and let user decide / And those that are recomended become default").
   not bumped.
 
 **Next:** a build for the author's §48.
+
+## 2026-10-02 — clock v2 finished: 0.16.8 built, not installed
+
+Clock v2 is whole: the three tasks made from the author's answers to `docs/mockups/clock-v2.html`
+("We can do all 3, and let user decide / And those that are recomended become default") all
+landed -- **T114** the face's slots and words (`Engine/ClockFace.lua`), **T115** mana and the
+five-second rule together (Bars: Mana + 5SR by default on both lines, Join Stacked A the default,
+One bar B and Swipe chip C as choices, the regen tick TBC-only; Frame: Width / Height / Scale per
+layout with measured minimums; `CV.Migrate` reading a 0.16.6 / 0.16.7 look once) and **T116** the
+slots drawn and the Text tab (Show gone). Nothing in the round did not land.
+
+- `./release.sh --set-version 0.16.8` on every TOC; `tools/data/import-forever-sv.lua` rebuilt:
+  unchanged (fixed version since T54).
+- `docs/TESTING.md` §48 rewritten for 0.16.8: one 20-30 minute session per client (48.1 TBC,
+  48.2 Forever) -- a 0.16.7 look read as the migration table says (first, before anything is
+  reset), Mana + 5SR by default and the smooth strip, the three designs, the tick sweep on TBC
+  (not offered on Forever), Frame's Width / Height / Scale, each Text slot on each layout, Size /
+  Outline / Shadow, the datatext and broker following Line's slots. §47 steps 1-2 replaced by it.
+- CLAUDE.md's version prose at 0.16.8 (0.16.7 and 0.16.8 named); `docs/tasks/HANDOVER.md` updated.
+- Both packages built (`make release SRC=manademon-folder-continue-41eabc`); **nothing installed**:
+  both clients still run 0.16.5.
+
+**Next:** the author's probe run (`docs/TESTING.md` 46.1 on both clients) -- still pending; it
+unblocks T103, T104, T105, T108, T109, the `BASE_CD_READS` flip and Forever's real Mana % / Mana
+(Q-clock-2, `MD.API.POWER_TEXT_READS`) and the Forever bar textures (Q-clock-4). Then §48 on
+0.16.8 once the author asks for it to be installed.

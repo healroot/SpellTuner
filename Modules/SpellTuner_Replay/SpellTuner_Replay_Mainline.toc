@@ -2,7 +2,7 @@
 ## Title: SpellTuner Replay
 ## Notes: replays a recorded fight and coaches it. A SpellTuner module: switch it on in /st -> Settings -> Modules.
 ## Author: NeRgY
-## Version: 0.16.7
+## Version: 0.16.8
 ## Dependencies: SpellTuner, SpellTuner_Recorder
 ## LoadOnDemand: 1
 

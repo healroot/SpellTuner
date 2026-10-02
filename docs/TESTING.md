@@ -2102,36 +2102,88 @@ instead.
 **Paste back** into `docs/probe/<build>-0.16.7-s1.md` (Forever) and `.logs/tbc/0.16.7-s1.md`
 (TBC): a line per step.
 
-## 48. Clock v2: mana and the five-second rule together (T114, T115, T116; both clients, 20 min)
+## 48. 0.16.8: clock v2 (T114, T115, T116; one session per client, 20-30 min each)
 
-The next build after 0.16.7 (not built yet; T116, the Text tab, is in it).
-Bars replace §47 steps 1-2's Source, Spark and Height-under-Bar: on a build with T115, skip those
-two steps. For each step, a line in the paste: `ok`, or what you saw instead.
+0.16.8 is 0.16.7 plus clock v2, built from the author's answers to `docs/mockups/clock-v2.html`
+("We can do all 3, and let user decide / And those that are recomended become default";
+`docs/DECISIONS.md` "Clock v2: mana and the five-second rule together" and "Clock v2: what the
+clock says"): the clock's words as slots on a Text tab (T114, T116), the mana bar and the
+five-second rule together with three designs to choose from (T115), and Width / Height / Scale per
+layout on a Frame tab (T115). All three tasks landed; nothing else changed. §47 steps 1-2 (Source,
+Spark, Height under Bar) are replaced by this section: skip them on 0.16.8; §47 steps 3-4 still
+run.
 
-1. **Bars on each layout (T115, both clients).** Settings -> Clock -> Bars, each of Line, Compact
-   and Bar. Cast a spell: the 5SR strip under the mana bar fills amber smoothly and turns green.
-   Join `One bar`: the veil drains to the right over the mana bar. Join `Swipe chip`: the square
-   beside the label sweeps (the chip's template is VERIFY on both clients -- say if it draws).
-2. **Frame (T115, both clients).** Frame -> Height 32 -> 44: only the mana bar grows; Width
-   stretches both bars; Scale 150 %: the clock's centre stays where it was. The green mark on
-   Width's and Height's tracks is the layout's minimum.
-3. **A 0.16.6 look (T115, both clients).** With a look saved on 0.16.6 or 0.16.7 whose Source was
-   `Five-second rule`, the clock reopens as 5SR only; one with `Time to OOM` reopens as Mana + 5SR;
-   on Forever `/st dump` names the dropped keys once (TBC has no dump verb).
-4. **The regen tick (T115, TBC).** Bars -> After the rule = `Regen tick`. Out of the rule a white
-   mark crosses the strip every 2 s: paste whether it lines up with the mana ticks. On Forever the
-   choice is not offered and its tooltip says why.
-5. **The clock's words unchanged (T114, both clients).** The clock line, the ElvUI datatext (TBC)
-   and the LDB broker read exactly as on 0.16.7 by default.
-6. **Text (T116, both clients).** Settings -> Clock -> Text on each of Line, Compact and Bar:
-   set Right to Mana % (TBC `62%`, Forever `~62%`), Main to Mana % (the time moves to the label:
-   `OOM 1:20 v`), Size 20 (the minimum rises on Frame), Outline thick. Right 2 is greyed at 180 px
-   (its tooltip names the width it needs) and works at 300 px. ElvUI's datatext (TBC) and the
-   SpellTuner broker (EllesmereUI on Forever) follow Line's slots. `/md rest` / `/st clock rest`
-   still drops the rest. There is no Show tab any more.
+Install only when you ask (`./release.sh --install-tbc ".../_anniversary_/Interface/AddOns"` and
+`./release.sh --install-forever ".../_classic_beta_/Interface/AddOns"`; never cross them). At
+character select SpellTuner reads **0.16.8**. **Before installing, keep a copy of your
+SavedVariables** (`WTF/Account/<account>/SavedVariables/SpellTuner.lua` on each client) with the
+clock look you use on 0.16.7: step 1 reads it. For each step, a line in the paste: `ok`, or what
+you saw instead.
 
-**Paste back** into `docs/probe/<build>-<version>-s1.md` (Forever) and `.logs/tbc/<version>-s1.md`
-(TBC): a line per step.
+### 48.1 TBC (one session, 20-30 min; a druid, a dungeon or a target dummy)
+
+1. **A 0.16.7 look reads as the migration table says (T115).** Log in on 0.16.8 with the look you
+   saved on 0.16.7 and open Settings -> Clock -> Bars. What you should see, by the Source you had
+   on 0.16.7: not set (the line's own) or `Time to OOM` -> Mana + 5SR; `Your mana` -> Mana only;
+   `Five-second rule` -> 5SR only; `None` -> None. A bar colour other than `By source` (By tone,
+   Class colour or a colour) is now Bars -> Mana colour, on every layout. Spark, Horizon and the
+   old Height are gone. Paste what you had and what you see. (TBC has no `/md dump`, so the dropped keys are not
+   listed here; 48.2 step 1 checks that line on Forever.)
+2. **Mana + 5SR by default (T115).** `/md clock look reset` (`/st clock look reset` on Forever) puts
+   every clock setting back to the look's own. On each of Line, Compact and Bar: a mana bar with
+   a thin 5SR strip under it. Cast a spell: the strip fills amber **smoothly** (no steps) over five seconds and then stays full
+   green. Compact now has bars too.
+3. **The three designs (T115).** Bars -> Join: `Stacked` (A, the default: the strip under the mana
+   bar; Order `Mana over 5SR` / `5SR over mana` swaps them), `One bar` (B: a veil drains to the
+   right over the mana bar while the rule runs; Order is greyed), `Swipe chip` (C: a square beside
+   the label sweeps; its template is VERIFY -- say whether it draws). Cast once on each.
+4. **The tick sweep (T115, TBC only).** Bars -> After the rule = `Regen tick`. Out of the rule a
+   white mark crosses the strip every 2 s: paste whether it lines up with your mana ticks (watch
+   the mana number in the player frame). `Empty` leaves the strip empty after the rule; back to
+   `Green`.
+5. **Frame: Width, Height, Scale (T115).** Settings -> Clock -> Frame, on each layout. Height
+   (Line 32 -> 44): only the mana bar grows, the words stay put. Width: both bars stretch, the
+   right-hand words stay at the right edge. Scale 150 %: the clock's centre stays where it was.
+   The green mark on Width's and Height's tracks, with `min N` beside it, is the layout's minimum;
+   the slider does not go below it.
+6. **Each Text slot (T116).** Settings -> Clock -> Text, on Line: set each of Left, Main and Right
+   in turn to each pick (Label, Time, Mana %, Mana, mp5, 5SR, Rest, Cooldown, None) and check the
+   clock says it (`62%`, `4210`, ...). Main = Mana %: the time moves beside the label
+   (`OOM 1:20 v  62%`), never lost. Right 2 is greyed at Width 180 (its tooltip names the width it
+   needs); at Width 300 it is offered and draws. Then Compact (Top / Main / Bottom; a Bottom slot
+   raises the minimum height) and Bar (Left / Right). Labels, Mana as of max (`4210/6000`), Time,
+   Numbers: one change each.
+7. **Size, Outline, Shadow (T116).** Text -> Size 20: the clock grows and Frame's minimum rises with
+   it; Default puts it back. Outline thick, Shadow on: readable, nothing clipped.
+8. **The words elsewhere (T114, T116).** With the defaults back, the clock line and the ElvUI
+   datatext read exactly as on 0.16.7. Set Line's Right to Mana %: the datatext follows Line's
+   slots. `/md rest` still drops the rest. There is no Show tab any more.
+
+### 48.2 Forever (one session, 20-30 min; any mana class, a dummy or Practice)
+
+1. **A 0.16.7 look reads as the migration table says (T115).** As 48.1 step 1, with the Forever
+   meanings: `Your mana` -> Mana only; `Modelled mana` -> Mana only with Bars -> Mana from = `The model`;
+   `Five-second rule` -> 5SR only; `Time to OOM` or not set -> Mana + 5SR; `None` -> None. Then
+   `/st dump`: one line `clock: N old clock keys dropped (...)` naming what was dropped (once a
+   session; none when nothing was).
+2. **Mana + 5SR by default (T115).** As 48.1 step 2. The mana bar is the game's own fill (Mana from
+   = `The game`); `The model` draws the modelled pool instead. The strip's marks are by time, so
+   they mean the same over the game's fill.
+3. **The three designs (T115).** As 48.1 step 3.
+4. **No tick sweep on Forever (T115).** Bars -> After the rule offers `Green` and `Empty` only; the
+   control's tooltip says why the regen tick is not offered. Texture reads `Flat (others wait for
+   the probe)`.
+5. **Frame (T115).** As 48.1 step 5.
+6. **Each Text slot (T116).** As 48.1 step 6, on Line, Compact and Bar. Mana % and Mana read the
+   model's `~` values (`~62%`, `~4210`; the picks read `~ model`); the hover over the clock says
+   the number is modelled. Cooldown is not in the list (Forever models no mana cooldown).
+7. **Size, Outline, Shadow (T116).** As 48.1 step 7.
+8. **The words elsewhere (T114, T116).** With the defaults back, the clock line and the SpellTuner
+   LDB broker (EllesmereUI's data bar, if you run it) read exactly as on 0.16.7; Line's Right =
+   Mana % is followed by the broker. `/st clock rest` still drops the rest.
+
+**Paste back** into `docs/probe/<build>-0.16.8-s1.md` (Forever) and `.logs/tbc/0.16.8-s1.md`
+(TBC): a line per step, and a screenshot of each of the three designs on one client.
 
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the
