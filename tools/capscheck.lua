@@ -19,7 +19,9 @@
 --   * on Forever, Can("coach") asks the Replay module's MD.KitLive: with the
 --     module off it answers false, "module" and Review keeps the module's own
 --     placeholder (no new words); a live kit that prices no heal answers
---     false, "kit".
+--     false, "kit";
+--   * T123, on TBC: a priest's profile grants the rank table and the tooltip,
+--     and the coach stays refused for the class.
 HARNESS_FLAVOUR = { "forever", "tbc" }
 
 local here = arg[0]:match("^(.*)/[^/]+$")
@@ -409,6 +411,21 @@ do
         if not okA then bad = m .. ": " .. why end
     end
     check("what a mage is told is ASCII with no bare pipe", bad == nil, bad)
+end
+
+--------------------------------------------------------------------------------
+-- 4b. T123: a TBC priest -- the rank table and the tooltip granted by the
+--     profile's file, the coach still refused for the class
+--------------------------------------------------------------------------------
+if not forever then
+    T.section("a TBC priest (T123)")
+    LogIn("PRIEST")
+    local p = MD.ClassProfile
+    check("a TBC priest's profile grants the rank table and the tooltip",
+        p == P.Get("PRIEST") and p ~= P.generic and p:Can("rankTable") == true and p:Can("tooltip") == true)
+    local can, why = p:Can("coach")
+    check("a TBC priest is still not coached, for the class's sake", can == false and why == "class",
+        tostring(can) .. " " .. tostring(why))
 end
 
 --------------------------------------------------------------------------------

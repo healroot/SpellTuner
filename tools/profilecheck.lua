@@ -31,6 +31,10 @@
 -- logs in to prove the derivation never reads MD.ClassProfile is a mage (a
 -- class with no profile on either line) -- it was a priest until the priest
 -- had a profile of its own.
+--
+-- T123 (tbc): Validate refuses a damage family with a kind or a school
+-- Engine/DamageMath.lua does not have, a damage name that is a heal
+-- family's, and a damageOrder key that is no damage family.
 HARNESS_FLAVOUR = { "forever", "tbc" }
 
 local here = arg[0]:match("^(.*)/[^/]+$")
@@ -186,6 +190,27 @@ do
         families = { A = { names = { "A" }, kit = "direct" } }, unmodelled = { "B", "A" } }, TYPES)
     check("T106: an unmodelled name that is a family's", okUn == false and pu
         and T.Has(pu[1], "unmodelled names A, which is in the family A"), pu and pu[1])
+    if not forever then
+        -- T123: a TBC profile's damage spells (Engine/DamageMath.lua's shape)
+        local function Dmg(def, extra)
+            local p = { class = "X", label = "X", caps = {}, families = { A = { names = { "A" }, kit = "direct" } },
+                        damage = { D = def } }
+            for k, v in pairs(extra or {}) do p[k] = v end
+            return P.Validate(p, TYPES)
+        end
+        local okK, pk2 = Dmg({ school = 2, kind = "channelled", baseCast = 1.5 })
+        check("T123: a damage kind DamageMath does not have", okK == false and pk2
+            and T.Has(pk2[1], "damage.D.kind channelled"), pk2 and pk2[1])
+        local okS, ps2 = Dmg({ school = 9, kind = "direct", baseCast = 1.5 })
+        check("T123: a damage school outside 1-7", okS == false and ps2 and T.Has(ps2[1], "damage.D.school 9"),
+            ps2 and ps2[1])
+        local okN, pn = Dmg({ names = { "D", "A" }, school = 2, kind = "direct", baseCast = 1.5 })
+        check("T123: a damage name that is a heal family's", okN == false and pn
+            and T.Has(pn[1], "damage.D names A, which is the heal family A"), pn and pn[1])
+        local okO, po = Dmg({ school = 2, kind = "direct", baseCast = 1.5 }, { damageOrder = { "D", "E" } })
+        check("T123: a damageOrder key that is no damage family", okO == false and po
+            and T.Has(po[1], "damageOrder names E"), po and po[1])
+    end
 end
 
 T.section("methods")

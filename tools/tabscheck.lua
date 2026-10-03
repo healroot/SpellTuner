@@ -156,20 +156,21 @@ if S.flavour == "tbc" then
             "seeded=" .. seeded .. " now=" .. Join(Tabs:Get()))
     end)
 
-    -- The game's path until T120: the rail reads the MD.FamiliesTBC alias and
-    -- nothing reads MD.Book on its own, so the book is never primed before a
-    -- rank is trained. SPELLS_REBUILT must build it anyway, or no
-    -- BOOK_CHANGED fires and the list never reconciles.
+    -- A book nobody has read since (its cache forgotten after the seed:
+    -- T123 deleted the MD.FamiliesTBC alias that used to seed the list without
+    -- priming it): SPELLS_REBUILT must build it anyway, or no BOOK_CHANGED
+    -- fires and the list never reconciles.
     block("tbc: a family trained later is appended even when nothing read the book", function()
         Train(false)
         Book._cache, Book._cacheTime, Book._sig = nil, nil, nil
         FreshStore()
-        local seeded = Join(Tabs:Get(MD.FamiliesTBC:Get()))
+        local seeded = Join(Tabs:Get(MD.Book:Get()))
+        Book._cache, Book._cacheTime, Book._sig = nil, nil, nil
         local unread = Book._cache == nil
         Train(true)
         check("tbc: a family trained later is appended even when nothing read the book",
             unread and seeded == "HealingTouch,Rejuvenation,Regrowth"
-                and Join(Tabs:Get(MD.FamiliesTBC:Get())) == "HealingTouch,Rejuvenation,Regrowth,Lifebloom"
+                and Join(Tabs:Get(MD.Book:Get())) == "HealingTouch,Rejuvenation,Regrowth,Lifebloom"
                 and Tabs:IsNew("Lifebloom") and not Tabs:IsNew("Regrowth"),
             "unread=" .. tostring(unread) .. " seeded=" .. seeded .. " now=" .. Join(Tabs:Get()))
     end)

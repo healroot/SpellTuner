@@ -24,7 +24,7 @@
 --   9. BookShape.CheckMethods passes on the book and names a missing method;
 --  10. Words.Bonus in its three styles over the three sources, Words.Signed.
 --
--- Under tbc (16 checks):
+-- Under tbc (18 checks):
 --  11. the three files load from the TBC TOC; Words.GCD is 1.5;
 --  12. THE GOLDEN: every row of RankMath:Compute() (the druid at levels 40, 64
 --      and 70; live, Tree of Life off and on; every Lifebloom variant), every
@@ -72,8 +72,13 @@
 --      generation; an unchanged rebuild (the same gear, TALENTS_CHANGED, a
 --      party member's gear) does neither;
 --  25. a priest without the rank table: Other only, valid;
---  26. MD.FamiliesTBC:Get() (the alias) is Spells/Families_TBC.lua's book byte
---      for byte as captured on 535cff4 (as loaded, every rank, no Lifebloom).
+--  26. T123: MD.FamiliesTBC (T118's alias) is nil;
+--  27. T123: a priest's, a shaman's and a paladin's book (tools/tbcclasscheck.lua's
+--      fixture with its damage rows) passes BookShape.Validate: the source's
+--      heal families, then the profile's damage families in its damageOrder;
+--  28. T123: the druid's MD.Book (levels 64 and 70, caster and Tree of Life,
+--      the DAMAGE ranks and two Other spells walked) byte for byte as the
+--      parent (49494eb) built it.
 HARNESS_FLAVOUR = { "forever", "tbc" }
 local here = arg[0]:match("^(.*)/[^/]+$")
 local mode = "check"
@@ -516,9 +521,8 @@ local GOLDEN = {
     -- line by line with --print
     druid = { n = 900, bytes = 417569, h1 = 553152855, h2 = 1166058324 },
     class = { n = 354, bytes = 174286, h1 = 2384515562, h2 = 297317080 },
-    -- T118: Spells/Families_TBC.lua's book, captured with --golden on 535cff4
-    -- before the file was deleted (check 26 reads MD.FamiliesTBC, the alias)
-    families = { n = 132, bytes = 13169, h1 = 2734075945, h2 = 827802796 },
+    -- T123: the druid's MD.Book (check 28), captured with --golden on 49494eb
+    book = { n = 284, bytes = 184989, h1 = 1369451877, h2 = 4050973907 },
 }
 
 -- Druid damage ranks: id -> family, cast (ms), learn level (nil: the client
@@ -669,62 +673,6 @@ local function ClassTranscript()
     return lines
 end
 
--- T118 (check 26): what Spells/Families_TBC.lua's book was, before it was
--- deleted -- keys, order, ids, each rank's id / rank / level / known /
--- cost.amount, maxKnown.id -- for the harness druid as loaded (every rank
--- at or below level 64 known), then every rank known, then every rank but
--- Lifebloom's. The book is read through MD.FamiliesTBC:Get() after the
--- known-rank index is rebuilt (SD:BuildKnown fires SPELLS_REBUILT, which
--- rebuilt Families_TBC's book on the parent and rebuilds the book here).
-local function FamiliesTranscript()
-    local SD = MD.SpellData
-    local lines = {}
-    local function Add(s) lines[#lines + 1] = s end
-    local savedKnown = {}
-    for id, v in pairs(S.known) do savedKnown[id] = v end
-    local LIFEBLOOM = {}
-    for _, id in ipairs(SD.all.Lifebloom) do LIFEBLOOM[id] = true end
-    local function Dump(tag)
-        local FT = MD.FamiliesTBC
-        local book = FT and FT:Get()
-        if not book then Add(tag .. " no FamiliesTBC"); return end
-        Add(tag .. " order " .. table.concat(book.order, ","))
-        local keys = {}
-        for k in pairs(book.families) do keys[#keys + 1] = k end
-        table.sort(keys)
-        Add(tag .. " keys " .. table.concat(keys, ","))
-        for _, key in ipairs(keys) do
-            local fam = book.families[key]
-            Add(tag .. " family " .. key .. " " .. Ser({ key = fam.key, name = fam.name, kind = fam.kind,
-                ids = fam.ids, maxKnown = fam.maxKnown and fam.maxKnown.id }))
-            for i, e in ipairs(fam.ranks) do
-                Add(tag .. " family " .. key .. " #" .. i .. " " .. Ser({ id = e.id, rank = e.rank, level = e.level,
-                    known = e.known, cost = e.cost and e.cost.amount }))
-            end
-        end
-        local ids = {}
-        for id in pairs(book.spells) do ids[#ids + 1] = id end
-        table.sort(ids)
-        local fams = {}
-        for _, id in ipairs(ids) do fams[#fams + 1] = id .. ":" .. tostring(book.spells[id].name) end
-        Add(tag .. " spells " .. table.concat(fams, ","))
-    end
-    SD:BuildKnown()
-    Dump("as loaded")
-    wipe(S.known)
-    for id in pairs(SD.spells) do S.known[id] = true end
-    SD:BuildKnown()
-    Dump("every rank")
-    wipe(S.known)
-    for id in pairs(SD.spells) do if not LIFEBLOOM[id] then S.known[id] = true end end
-    SD:BuildKnown()
-    Dump("no Lifebloom")
-    wipe(S.known)
-    for id, v in pairs(savedKnown) do S.known[id] = v end
-    SD:BuildKnown()
-    return lines
-end
-
 --------------------------------------------------------------------------------
 -- T118 (docs/tasks/T118-tbc-book.md): MD.Book on TBC, Spells/Book_Model.lua
 --------------------------------------------------------------------------------
@@ -828,6 +776,49 @@ local function InstallBook(rows, opts)
     end
 end
 
+-- T123 (check 28): the druid's MD.Book as the parent (49494eb) built it --
+-- the harness druid at levels 64 and 70, caster and Tree of Life, with every
+-- DAMAGE rank above and two Other spells in the walk: the order, each
+-- family's fields and every entry, serialised. Captured with --golden on the
+-- parent before the first edit; T123 moves the damage section onto
+-- DM.FamiliesFor(class), which for the druid is DM.families in the old order.
+local function BookTranscript()
+    local lines = {}
+    local function Add(s) lines[#lines + 1] = s end
+    local rows, ranks = {}, {}
+    for _, d in ipairs(DAMAGE) do
+        ranks[d[2]] = (ranks[d[2]] or 0) + 1
+        rows[#rows + 1] = { id = d[1], name = d[2], sub = "Rank " .. ranks[d[2]], cost = 100 + 20 * #rows,
+                            cast = d[3], level = d[4], desc = d[5] }
+    end
+    rows[#rows + 1] = { id = 29166, name = "Innervate", cost = 94, cast = 0, level = 40,
+        desc = "Increases the target's Mana regeneration by 400% and allows 100% of the target's Mana regeneration to continue while casting. Lasts 20 sec." }
+    rows[#rows + 1] = { id = 26990, name = "Mark of the Wild", sub = "Rank 8", cost = 445, cast = 0, level = 70,
+        desc = "Increases the friendly target's armor by 340, all attributes by 14 and all resistances by 25 for 30 min." }
+    local savedLevel, savedPL, savedTree = S.level, MD.player.level, MD.InTreeForm
+    local restore = InstallBook(rows)
+    for _, level in ipairs({ 64, 70 }) do
+        for _, tree in ipairs({ false, true }) do
+            S.level, MD.player.level = level, level
+            MD.InTreeForm = function() return tree end
+            local tag = "L" .. level .. (tree and " tree" or " caster")
+            local book = Fresh()
+            Add(tag .. " order " .. table.concat(book.order, ","))
+            for _, key in ipairs(book.order) do
+                local fam = book.families[key]
+                Add(tag .. " family " .. key .. " " .. Ser({ key = fam.key, name = fam.name, kind = fam.kind,
+                    school = fam.school, shape = fam.shape, noSeed = fam.noSeed, ids = fam.ids,
+                    maxKnown = fam.maxKnown and fam.maxKnown.id, suggested = fam.suggested and fam.suggested.id }))
+                for i, e in ipairs(fam.ranks) do Add(tag .. " family " .. key .. " #" .. i .. " " .. Ser(e)) end
+            end
+        end
+    end
+    restore()
+    S.level, MD.player.level, MD.InTreeForm = savedLevel, savedPL, savedTree
+    pcall(Fresh)
+    return lines
+end
+
 -- A calc line as plain words: colours out, white space collapsed (the form
 -- checks 19 and 20's goldens -- Tip:Spell's Shift lines, captured on d6691fe
 -- before T121 deleted it -- are written in).
@@ -843,7 +834,7 @@ local function SameList(a, b)
     return true
 end
 
-local function BookChecks(dF)
+local function BookChecks(dB)
     local BS, RM, SD, DM, RR = MD.BookShape, MD.RankMath, MD.SpellData, MD.DamageMath, MD.RankRules
     local Book = MD.Book
     local savedLevel, savedPL, savedTree, savedSim = S.level, MD.player.level, MD.InTreeForm, MD.sim
@@ -1220,8 +1211,8 @@ local function BookChecks(dF)
               desc = "Power infuses the target increasing their Stamina by 79 for 30 min." },
         }
         local restore = InstallBook(ROWS)
-        -- as shipped: check 13's class transcript granted the priest the
-        -- rank table for its own run and left it so
+        -- as shipped (T123) the priest's file grants the rank table: taken
+        -- away for this check's own run, then given back
         local caps = MD.Profiles.byClass.PRIEST.caps
         local savedRT, savedTip = caps.rankTable, caps.tooltip
         caps.rankTable, caps.tooltip = nil, nil
@@ -1247,10 +1238,86 @@ local function BookChecks(dF)
     end
 
     -- 26 ----------------------------------------------------------------------
-    T.section("26. MD.FamiliesTBC, the alias")
+    T.section("26. MD.FamiliesTBC is gone")
+    check("26. MD.FamiliesTBC (T118's alias) is nil: every reader reads MD.Book", MD.FamiliesTBC == nil,
+        type(MD.FamiliesTBC))
+
+    -- 27 ----------------------------------------------------------------------
+    T.section("27. a priest's, a shaman's and a paladin's book, damage included")
+    do
+        TBCCLASS_LIBRARY = true
+        local lib = dofile(here .. "/tbcclasscheck.lua")
+        -- what each class's profile prices from tools/tbcclasscheck.lua's
+        -- damage fixture, in the profile's damageOrder (Mind Flay: no
+        -- channel shape DM.Parse reads, dropped from the profile)
+        local WANT = {
+            PRIEST = { "Smite", "Holy Fire", "Mind Blast", "Shadow Word: Pain" },
+            SHAMAN = { "Lightning Bolt", "Chain Lightning", "Earth Shock", "Flame Shock", "Frost Shock" },
+            PALADIN = { "Exorcism", "Holy Wrath", "Consecration" },
+        }
+        local bad = {}
+        local savedLevel = S.level
+        for _, class in ipairs({ "PRIEST", "SHAMAN", "PALADIN" }) do
+            S.level = 70
+            local okI, rows, undo = Try(lib.Install, S, MD, class, { damage = true })
+            if not okI then
+                bad[#bad + 1] = class .. " install: " .. tostring(rows)
+            else
+                S.units.player.class = class
+                MD:DetectProfile()
+                MD:Fire("CORE_LOGIN")
+                if MD.BookTBC and MD.BookTBC.Rebuild then MD.BookTBC:Rebuild() end
+                local okB, book = Try(Fresh)
+                if not okB then
+                    bad[#bad + 1] = class .. ": " .. tostring(book)
+                else
+                    local valid, problems = BS.Validate(book)
+                    if not valid then bad[#bad + 1] = class .. ": " .. Show(problems) end
+                    local heals, damage, seenDamage, healAfter = {}, {}, false, false
+                    for _, key in ipairs(book.order) do
+                        local fam = book.families[key]
+                        if fam.kind == "damage" then
+                            seenDamage = true
+                            damage[#damage + 1] = key
+                            for _, e in ipairs(fam.ranks) do
+                                if type(e.value) ~= "number" then
+                                    bad[#bad + 1] = class .. " " .. key .. " " .. e.id .. " no value"
+                                end
+                            end
+                        elseif fam.kind == "heal" then
+                            heals[#heals + 1] = key
+                            if seenDamage then healAfter = true end
+                        end
+                    end
+                    local src = MD.RankMath:Source()
+                    local wantHeals = table.concat(src and src.familyOrder or {}, ",")
+                    if table.concat(heals, ",") ~= wantHeals or healAfter or #heals == 0 then
+                        bad[#bad + 1] = class .. " heals " .. table.concat(heals, ",") .. " want " .. wantHeals
+                    end
+                    if table.concat(damage, ",") ~= table.concat(WANT[class], ",") then
+                        bad[#bad + 1] = class .. " damage " .. table.concat(damage, ",") .. " want "
+                            .. table.concat(WANT[class], ",")
+                    end
+                    print(string.format("    %s: %d heal and %d damage families", class, #heals, #damage))
+                end
+                undo()
+            end
+        end
+        S.level = savedLevel
+        S.units.player.class = "DRUID"
+        MD:DetectProfile()
+        MD:Fire("CORE_LOGIN")
+        if MD.BookTBC and MD.BookTBC.Rebuild then MD.BookTBC:Rebuild() end
+        pcall(Fresh)
+        check("27. each class book passes BookShape.Validate: its heals, then its damage families in the profile's order",
+            #bad == 0, table.concat(bad, "; "))
+    end
+
+    -- 28 ----------------------------------------------------------------------
+    T.section("28. the druid's book, as on the parent")
     local function Same(a, b) return a.n == b.n and a.bytes == b.bytes and a.h1 == b.h1 and a.h2 == b.h2 end
-    check(string.format("26. MD.FamiliesTBC:Get() is Spells/Families_TBC.lua's book, %d lines, as on the parent", dF.n),
-        Same(dF, GOLDEN.families), Show(dF) .. " vs golden " .. Show(GOLDEN.families))
+    check(string.format("28. the druid's MD.Book (heals, damage, Other), %d lines, as on the parent", dB.n),
+        Same(dB, GOLDEN.book), Show(dB) .. " vs golden " .. Show(GOLDEN.book))
 end
 
 local function TbcChecks()
@@ -1275,20 +1342,20 @@ local function TbcChecks()
     if not okD then druid = { "raised: " .. tostring(druid) } end
     local okC, class = Try(ClassTranscript)
     if not okC then class = { "raised: " .. tostring(class) } end
-    local okF, families = Try(FamiliesTranscript)
-    if not okF then families = { "raised: " .. tostring(families) } end
+    local okB, bookLines = Try(BookTranscript)
+    if not okB then bookLines = { "raised: " .. tostring(bookLines) } end
     if mode == "print" then
         for _, l in ipairs(druid) do print("druid\t" .. l) end
         for _, l in ipairs(class) do print("class\t" .. l) end
-        for _, l in ipairs(families) do print("families\t" .. l) end
+        for _, l in ipairs(bookLines) do print("book\t" .. l) end
         os.exit(0)
     end
-    local dD, dC, dF = Digest(druid), Digest(class), Digest(families)
+    local dD, dC, dB = Digest(druid), Digest(class), Digest(bookLines)
     if mode == "golden" then
         print("local GOLDEN = {")
         print(string.format("    druid = { n = %d, bytes = %d, h1 = %d, h2 = %d },", dD.n, dD.bytes, dD.h1, dD.h2))
         print(string.format("    class = { n = %d, bytes = %d, h1 = %d, h2 = %d },", dC.n, dC.bytes, dC.h1, dC.h2))
-        print(string.format("    families = { n = %d, bytes = %d, h1 = %d, h2 = %d },", dF.n, dF.bytes, dF.h1, dF.h2))
+        print(string.format("    book = { n = %d, bytes = %d, h1 = %d, h2 = %d },", dB.n, dB.bytes, dB.h1, dB.h2))
         print("}")
         os.exit(0)
     end
@@ -1324,8 +1391,8 @@ local function TbcChecks()
     end
 
     -- 15-26 (T118) ------------------------------------------------------------
-    local okK, err = Try(BookChecks, dF)
-    if not okK then check("15-26. the TBC book's checks ran", false, err) end
+    local okK, err = Try(BookChecks, dB)
+    if not okK then check("15-28. the TBC book's checks ran", false, err) end
 end
 
 if S.flavour == "forever" then ForeverChecks() else TbcChecks() end
