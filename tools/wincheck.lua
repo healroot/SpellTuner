@@ -91,9 +91,9 @@ local Win = MD.Win
 --------------------------------------------------------------------------------
 if S.flavour == "tbc" then
     S.Load({ "UI/Style.lua", "UI/Theme_Flat.lua", "UI/EscStack.lua", "UI/Windows.lua", "UI/ContextMenu.lua",
-             "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/Dashboard_Rows.lua", "UI/Dashboard_Simulate.lua",
+             "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/Dashboard_Rows.lua", "UI/SpellRail.lua", "UI/Dashboard_Simulate.lua",
              "UI/Dashboard_Waste.lua", "UI/Dashboard_Review.lua", "UI/PracticePanel.lua", "UI/BindingsWindow.lua",
-             "UI/Settings.lua", "UI/Dashboard.lua", "UI/SimWindow.lua", "UI/ReplayWindow.lua",
+             "UI/SpellsPane.lua", "UI/Settings.lua", "UI/Dashboard.lua", "UI/SimWindow.lua", "UI/ReplayWindow.lua",
              "UI/Settings_TBC.lua", "UI/DebugConsole.lua", "UI/MinimapButton.lua" },
         "SpellTuner", MD)
     UI = MD.UI
@@ -128,9 +128,10 @@ if S.flavour == "tbc" then
                          { "settings", "general" } }) do
         MD:SelectView(g[1], g[2])
         sizes[#sizes + 1] = g[1] .. "=" .. frame:GetWidth() .. "x" .. frame:GetHeight()
-        -- T119 (SPEC-one-ui 7): Settings is 860 x 560 on TBC too, the rest 1036 x 646
+        -- T119 (SPEC-one-ui 7): Settings is 860 x 560 on TBC too; T120 (D4): so is
+        -- Spells, the shared pane's; Reports and Simulate stay 1036 x 646
         local w0, h0 = 1036, 646
-        if g[1] == "settings" then w0, h0 = 860, 560 end
+        if g[1] == "settings" or g[1] == "spells" then w0, h0 = 860, 560 end
         if not (frame:GetWidth() == w0 and frame:GetHeight() == h0 and Win:Fixed("main", g[1])) then
             allFixed = false
         end
@@ -141,9 +142,9 @@ if S.flavour == "tbc" then
         for _, n in ipairs(UISpecialFrames) do if n == name then return true end end
         return false
     end
-    check("tbc: the TBC window registers as the host with TBC's sizes per group (1036 x 646, Settings 860 x 560, fixed)",
+    check("tbc: the TBC window registers as the host with TBC's sizes per group (1036 x 646, Spells and Settings 860 x 560, fixed)",
         w ~= nil and w.frame == frame and w.role == "host" and Win.host == w and routed == 4 and allFixed
-          and Win.SIZES ~= nil and Win.SIZES.spells.w == 1036 and Win.SIZES.reports.minH == 646
+          and Win.SIZES ~= nil and Win.SIZES.spells.w == 860 and Win.SIZES.reports.minH == 646
           and frame:GetFrameStrata() == "HIGH" and frame.userPlaced == false
           and not InSpecial("SpellTunerDashboard") and InSpecial("SpellTunerEscProxy"),
         table.concat(sizes, " ") .. " routed=" .. routed)

@@ -10,6 +10,9 @@
 -- T52 (P8): one more under both flavours, MD.API.Invalidate (23 forever, 16 tbc).
 -- T114: DrawPowerText, the Q-clock-2 seam -- two forever, one tbc (26 forever,
 -- 17 tbc).
+-- T120: the shared Spells pane on TBC -- CursorInfo (the drop on the rail) and
+-- SetTooltipSpell (the rank row's hover) join the TBC list, two tbc checks
+-- (26 forever, 19 tbc).
 HARNESS_FLAVOUR = { "forever", "tbc" }
 
 local here = arg[0]:match("^(.*)/[^/]+$")
@@ -98,7 +101,9 @@ local TBC_ONLY_NAMES = { "SpellName", "RealZoneText",
     "BindingCount", "Binding", "BindingAction", "ActionInfo", "MacroInfo", "Specialization",
     "SpellTabCount", "SpellTabInfo", "SpellBookItemName", "SpellBookItemKind", "SpellInfoList",
     "SpellDescription", "SpellPowerCost", "SpellLevelLearned", "BaseCooldown",
-    "SpellBonusHealing", "SpellCritChance", "SpellTooltipLines" }
+    "SpellBonusHealing", "SpellCritChance", "SpellTooltipLines",
+    -- T120: the shared Spells pane's drop and rank-row hover
+    "CursorInfo", "SetTooltipSpell" }
 
 --------------------------------------------------------------------------------
 -- 1-9: both flavours
@@ -582,6 +587,53 @@ if flavour == "tbc" then
     check("T114: DrawPowerText is absent on TBC",
         MD.API.DrawPowerText == nil and MD.API.POWER_TEXT_READS == nil,
         string.format("fn=%s flag=%s", type(MD.API.DrawPowerText), tostring(MD.API.POWER_TEXT_READS)))
+
+    -- T120: GetCursorInfo's spell shape ("spell", book slot, book type, id);
+    -- the id from the fourth return, else the slot's through the spellbook;
+    -- another kind answers the kind alone; nothing held answers nil.
+    do
+        local fn = type(MD.API.CursorInfo) == "function" and MD.API.CursorInfo
+        local ok, a, b, c, d, e, f = false
+        if fn then
+            local saved = S.cursor
+            local okCall = pcall(function()
+                S.cursor = { "spell", 3, "spell", 26979 }
+                a, b = fn()
+                S.cursor = { "item", 1234 }
+                c, d = fn()
+                S.cursor = nil
+                e, f = fn()
+            end)
+            S.cursor = saved
+            ok = okCall
+        end
+        check("T120: CursorInfo reads a dragged spell's id on TBC, the kind alone for anything else",
+            ok and a == "spell" and b == 26979 and c == "item" and d == nil and e == nil and f == nil
+            and MD.API.Has("CursorInfo"),
+            string.format("ok=%s %s %s / %s %s / %s %s", tostring(ok), tostring(a), tostring(b),
+                tostring(c), tostring(d), tostring(e), tostring(f)))
+    end
+
+    -- T120: SetTooltipSpell is GameTooltip:SetSpellByID (2.5.x has it); a
+    -- tooltip without it is absent, a raising one an error, never a raise
+    do
+        local fn = type(MD.API.SetTooltipSpell) == "function" and MD.API.SetTooltipSpell
+        local r1, r2, r3, r4, r5, r6, calls
+        local ok = fn and pcall(function()
+            S.setSpellByIdCalls = {}
+            r1 = fn(GameTooltip, 26979)
+            calls = table.concat(S.setSpellByIdCalls, ",")
+            S.setSpellByIdCalls = nil
+            r2, r3 = fn({}, 26979)
+            r4, r5 = fn({ SetSpellByID = function() error("raised") end }, 26979)
+            r6 = fn(GameTooltip, "x")
+        end)
+        check("T120: SetTooltipSpell shows the spell through GameTooltip:SetSpellByID on TBC",
+            ok and r1 == true and calls == "26979" and r2 == nil and r3 == "absent"
+            and r4 == nil and r5 == "error" and r6 == nil,
+            string.format("ok=%s r1=%s calls=%s %s/%s %s/%s %s", tostring(ok), tostring(r1), tostring(calls),
+                tostring(r2), tostring(r3), tostring(r4), tostring(r5), tostring(r6)))
+    end
 end
 
 _G.T1_RAISE = nil

@@ -673,6 +673,30 @@ S.allFrames = frames
 _G.UIParent = CreateFrame("Frame")
 _G.GameTooltip = CreateFrame("GameTooltip")
 
+-- T120: GameTooltip:SetSpellByID(id) on the TBC client (2.5.x has it) -- the
+-- game's own spell tooltip the shared Spells pane's rank row asks for through
+-- MD.API.SetTooltipSpell. Clears (firing OnTooltipCleared), writes the
+-- spell's name as the first line, then fires OnTooltipSetSpell, where the
+-- TBC hook (UI/SpellTooltip.lua) appends; GetSpell answers the spell shown.
+-- Each id is appended to S.setSpellByIdCalls when a script set it to a
+-- table. The forever profile replaces it with its post-call version (T38).
+rawset(GameTooltip, "SetSpellByID", function(tt, id) -- T120
+    if type(S.setSpellByIdCalls) == "table" then table.insert(S.setSpellByIdCalls, tostring(id)) end
+    tt.lines = {}
+    if tt.scripts.OnTooltipCleared then tt.scripts.OnTooltipCleared(tt) end
+    tt._stubSpell = id
+    local name = _G.GetSpellInfo and _G.GetSpellInfo(id)
+    tt.lines = { { name or "?" } }
+    if tt.scripts.OnTooltipSetSpell then tt.scripts.OnTooltipSetSpell(tt) end
+end)
+rawset(GameTooltip, "GetSpell", function(tt) -- T120
+    local id = rawget(tt, "_stubSpell")
+    if not id then return nil end
+    local name, rank = nil, nil
+    if _G.GetSpellInfo then name, rank = _G.GetSpellInfo(id) end
+    return name, rank, id
+end)
+
 -- T79 (P36): the minimap the SpellTuner button sits on -- 140 x 140 with its
 -- centre at S.minimapCenter and an effective scale of S.minimapScale (a suite
 -- sets them), and the pointer: GetCursorPosition answers S.cursorPos

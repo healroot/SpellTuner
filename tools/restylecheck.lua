@@ -143,7 +143,7 @@ end
 --------------------------------------------------------------------------------
 T.section("the source scan: no colour copied out of a token in T107's files")
 
-local OWNED = { "UI/Style.lua", "UI/Dashboard_Rows.lua", "UI/SpellsPane.lua", "UI/SpellsView_TBC.lua",
+local OWNED = { "UI/Style.lua", "UI/Dashboard_Rows.lua", "UI/SpellsPane.lua",
     -- T119: UI/Options_About.lua's About is UI/Settings.lua's (both lines)
     "UI/SpellRail.lua", "UI/ReplayWindow.lua", "UI/Dashboard_Simulate.lua", "UI/Settings.lua",
     "UI/DebugConsole.lua", "UI/Tip_TBC.lua" }
@@ -287,9 +287,9 @@ else
     }
 end
 
--- the Spells rail's first family row (Forever's pane, TBC's view)
+-- the Spells rail's first family row (the shared pane, both lines)
 local function FamilyRow()
-    local owner = MD.SpellsPane or MD.SpellsTBC
+    local owner = MD.SpellsPane
     local rail = owner and owner.nav and owner.nav:Rail("spells")
     for _, r in ipairs(rail and rail:Rows() or {}) do
         if type(r.id) == "string" and r.id:find("^fam:") then return r end

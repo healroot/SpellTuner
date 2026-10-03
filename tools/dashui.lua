@@ -11,28 +11,13 @@ HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
 local MD = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB
--- T84 (C5): Spells/Tabs.lua and Spells/Families_TBC.lua are on the TBC TOC
--- (the harness loads them from it); on a tree whose TOC does not list them
--- yet they are loaded here, before the dashboard is built, with the same
--- existence guard as the UI files below.
-do
-    local need = {}
-    if not MD.Tabs then need[#need + 1] = "Spells/Tabs.lua" end
-    if not MD.FamiliesTBC then need[#need + 1] = "Spells/Families_TBC.lua" end
-    local present = {}
-    for _, rel in ipairs(need) do
-        local fh = io.open((S.root or ".") .. "/" .. rel, "r")
-        if fh then fh:close(); present[#present + 1] = rel end
-    end
-    if #present > 0 then S.Load(present, "SpellTuner", MD) end
-end
 -- T80 (C1): the theme and the window manager after the kit, as the TBC TOC lists them.
--- T83 (C3): the Spells view before UI/Dashboard.lua; before T83 the file did
--- not exist, and the guard lets this suite run on such a commit and fail
--- check by check.
+-- T120: the one Spells pane (UI/SpellsPane.lua) before UI/Dashboard.lua, in
+-- UI/SpellsView_TBC.lua's place (deleted); the guard lets this suite run on
+-- a commit without it and fail check by check.
 local UI_FILES = { "UI/Style.lua", "UI/Theme_Flat.lua", "UI/EscStack.lua", "UI/Windows.lua",
          "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/Dashboard_Rows.lua", "UI/SpellRail.lua", "UI/Dashboard_Simulate.lua",
-         "UI/Dashboard_Waste.lua", "UI/Dashboard_Review.lua", "UI/PracticePanel.lua", "UI/SpellsView_TBC.lua",
+         "UI/Dashboard_Waste.lua", "UI/Dashboard_Review.lua", "UI/PracticePanel.lua", "UI/SpellsPane.lua",
          "UI/Dashboard.lua" }
 do
     local present = {}
@@ -95,9 +80,10 @@ local function Painted(pat)
     return nil
 end
 
--- T84 (C5): the Spells group is a rail; its rows are the views
+-- T84 (C5): the Spells group is a rail; its rows are the views. T120: the
+-- shared pane's (MD.SpellsPane; MD.SpellsTBC is gone)
 local function SpellsRail()
-    local sp = MD.SpellsTBC
+    local sp = MD.SpellsPane
     return sp and sp.nav and sp.nav:Rail("spells") or nil
 end
 local function RailRow(id)
@@ -131,7 +117,6 @@ check("it opens on a spell", MD.db.uiPath and MD.db.uiPath[1] == "spells",
 -- T84 (C5): a family's rail row opens it
 RailClick("fam:HealingTouch")
 check("the rank table is built for it", ShownText("^RANKS$") ~= nil)
-check("the Simulate strip is with the spells", ButtonNamed("What if...") ~= nil and ButtonNamed("Clear") ~= nil)
 
 -- switching families keeps the group
 -- T84 (C5): a family is a rail row, not a view button
@@ -376,298 +361,11 @@ check("nor over the settings", ShownText("^RANKS$") == nil and not ShownButton("
 Click(ButtonNamed("Spells"))
 check("Overview comes back with Spells", ShownText("^OVERVIEW$") ~= nil)
 RailClick("fam:HealingTouch")
--- T83: the strip is folded behind What if..., which comes back with Spells
-check("and so does the what-if strip", ShownButton("What if..."))
 
 -- the rank table is one frame registered under every family: switching family
 -- must not leave it hidden (the nav hides everything, then shows the keeper)
 RailClick("fam:Regrowth")
 check("switching family keeps the table visible", ShownText("^RANKS$") ~= nil)
-
---------------------------------------------------------------------------------
--- T83 (C3 of docs/PLAN-refactor-ux.md, review U6; mockup M6): the TBC Spells
--- view in the Forever structure -- the header, the chip and one comparison
--- line, the rank table with the suggested row's fill and bar and the
--- selection's white bar, the card, Casts reading inf / 999+, "After
--- overheal" for "Effective", and the Simulate strip folded behind
--- "What if...". The harness druid is level 64: Rejuvenation R6 suggested,
--- R12 the highest known. Each check runs under pcall, so on a commit without
--- the view every one of them fails on its own.
---------------------------------------------------------------------------------
-do
-    local function Try(name, fn)
-        local okRun, cond, detail = pcall(fn)
-        if okRun then check(name, cond, detail) else check(name, false, tostring(cond)) end
-    end
-    local function View()
-        for _, f in ipairs(S.allFrames) do
-            if f.spellsViewTBC and f:IsVisible() then return f end
-        end
-        return nil
-    end
-    local function Plain(fs) return ((fs and fs:GetText() or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) end
-    local function RowsOf(api)
-        local byKey = {}
-        for _, f in ipairs(S.allFrames) do
-            if f.parentFrame == api.rankTable.frame and f.data and not f.isHeader and f:IsShown() then
-                byKey[(f.data.rankLabel or ("R" .. f.data.rank))] = f
-            end
-        end
-        return byKey
-    end
-    local function Alpha(tex) return tex and tex.color and tex.color[4] end
-    local function Near(a, b) return type(a) == "number" and math.abs(a - b) < 1e-6 end
-    local accent = MD.UI.Hex("accent")
-    local function Open(family)
-        MD:SelectView("spells", family)
-        local v = View()
-        return v, v and v.api
-    end
-
-    -- 1. the header: name, shape / rank / cast, mana and +healing; the four
-    -- prose lines are gone
-    Try("T83: the header names the family, its shape, rank and cast, the mana and +healing; no prose lines", function()
-        local v = Open("HealingTouch")
-        local h = v.header
-        local sub = Plain(h.sub)
-        return Plain(h.name) == "Healing Touch"
-            and sub:match("^Direct heal %- Rank %d+ of %d+ known %- %d%.%d s cast") ~= nil
-            and Plain(h.mana):match("^%d+ / %d+ mana$") ~= nil
-            and Plain(h.stats):match("^%+%d+ healing") ~= nil
-            and h.icon:IsShown()
-            and ShownText("healing   regen") == nil and ShownText("Hover the header") == nil
-            and ShownText("costs %d%.%dx the mana") == nil and ShownText("No fights recorded") == nil,
-            Plain(h.name) .. " | " .. sub .. " | " .. Plain(h.mana) .. " | " .. Plain(h.stats)
-    end)
-
-    -- 2. the chip and one comparison line, After overheal and its share
-    Try("T83: the chip says SUGGESTED Rank 6 and one line compares it with your highest", function()
-        local v = Open("Rejuvenation")
-        local st = v.strip
-        local cmp = Plain(st.compare)
-        return Plain(st.chipLabel) == "SUGGESTED" and Plain(st.chipRank) == "Rank 6"
-            and cmp:match("^vs Rank 12 %(your highest%): %d+%% more healing per mana, %d+%% of the heal, the same cast%.$") ~= nil
-            and st.after.label:GetText() == "After overheal" and Plain(st.measured) == "not measured yet"
-            and ButtonNamed("Effective") == nil,
-            Plain(st.chipLabel) .. " " .. Plain(st.chipRank) .. " | " .. cmp .. " | " .. Plain(st.measured)
-    end)
-
-    -- 3. the suggested row: its fill and accent bar; it is selected by
-    -- default (the white bar) and the card is its; a click moves the white
-    -- bar and the card, never the fill
-    Try("T83: the suggested row keeps its fill and bar; a click moves the white bar and the card", function()
-        local v, api = Open("Rejuvenation")
-        local rows = RowsOf(api)
-        local r6, r12 = rows.R6, rows.R12
-        local before = r6.fill:IsShown() and Near(Alpha(r6.fill), 0.10) and r6.mark:IsShown()
-            and r6.pick ~= nil and r6.pick:IsShown() and not r12.pick:IsShown()
-            and Plain(v.card.title) == "RANK 6" and Plain(v.card.note):match("^learned at %d+ %- you are 64$") ~= nil
-        r12:GetScript("OnMouseUp")(r12, "LeftButton")
-        rows = RowsOf(api)
-        r6, r12 = rows.R6, rows.R12
-        local labels = {}
-        for _, p in ipairs(api.cardPairs or {}) do labels[#labels + 1] = p[1] end
-        local after = r12.pick:IsShown() and not r6.pick:IsShown() and r6.mark:IsShown()
-            and Near(Alpha(r6.fill), 0.10) and not r12.mark:IsShown()
-            and Plain(v.card.title) == "RANK 12" and table.concat(labels, ",") == "Tick,Total,Downrank,Cost"
-            and Plain(v.card.base):match("^Base heal %d+ over 12 s, before your %+healing") ~= nil
-        return before and after, string.format("before=%s after=%s card=%s pairs=%s", tostring(before),
-            tostring(after), Plain(v.card.title), table.concat(labels, ","))
-    end)
-
-    -- 4. Casts: 999+ past 999, inf when regen keeps up; any what-if value
-    -- turns the chip SIMULATED and puts the changed stats in the accent
-    Try("T83: Casts reads 999+ past 999 and inf when regen keeps up; a what-if value says SIMULATED", function()
-        local v, api = Open("Rejuvenation")
-        MD.sim.mana, MD.sim.casting = 200000, 0
-        api:Render("Rejuvenation")
-        local rows = RowsOf(api)
-        local big, plain = Plain(rows.R1.cells.casts), Plain(rows.R12.cells.casts)
-        local simOk = Plain(v.strip.chipLabel) == "SIMULATED" and v.header.mana:GetText():find(accent, 1, true) == 1
-            and Plain(v.header.mana):match("^200000 mana") ~= nil
-            and v.header.stats:GetText():find(accent .. "0 mp5 casting", 1, true) ~= nil
-        MD.sim.casting = 100000
-        api:Render("Rejuvenation")
-        local inf = 0
-        for _, row in pairs(RowsOf(api)) do if Plain(row.cells.casts) == "inf" then inf = inf + 1 end end
-        wipe(MD.sim)
-        api:Render("Rejuvenation")
-        return big == "999+" and tonumber(plain) ~= nil and tonumber(plain) <= 999 and inf == 13 and simOk
-            and Plain(v.strip.chipLabel) == "SUGGESTED",
-            string.format("R1=%s R12=%s inf=%d simulated=%s", big, plain, inf, tostring(simOk))
-    end)
-    wipe(MD.sim)
-
-    -- 5. What if... folds the Simulate strip: shut on first sight, open on a
-    -- click (between the strip and RANKS), shut again on the second; a value
-    -- typed in it stays
-    Try("T83: What if... unfolds the Simulate strip above RANKS and folds it again", function()
-        local v, api = Open("Rejuvenation")
-        local shut = not api:WhatIfOpen() and not ShownButton("Clear") and ShownButton("What if...")
-        -- the stub keeps no anchors: the unfolded strip shows in the view's height
-        local y0 = api.contentHeight
-        Click(ButtonNamed("What if..."))
-        local open = api:WhatIfOpen() and ShownButton("Clear") and ShownText("^What if:$") ~= nil
-        local y1 = api.contentHeight
-        local eb
-        for _, f in ipairs(S.allFrames) do
-            if f.kind == "EditBox" and f:IsVisible() and not eb then eb = f end
-        end
-        eb:SetText("1500"); eb:GetScript("OnEditFocusLost")(eb)
-        local typed = MD.sim.heal == 1500 and Plain(v.strip.chipLabel) == "SIMULATED"
-            and v.header.stats:GetText():find(accent .. "+1500", 1, true) ~= nil
-        Click(ButtonNamed("What if..."))
-        local folded = not api:WhatIfOpen() and not ShownButton("Clear") and MD.sim.heal == 1500
-            and api.contentHeight == y0
-        api.whatIf:Clear()
-        return shut and open and typed and folded and type(y0) == "number" and type(y1) == "number" and y1 > y0
-            and Plain(v.strip.chipLabel) == "SUGGESTED",
-            string.format("shut=%s open=%s typed=%s folded=%s height %s -> %s", tostring(shut), tostring(open),
-                tostring(typed), tostring(folded), tostring(y0), tostring(y1))
-    end)
-    wipe(MD.sim)
-
-    -- 6. After overheal (was Effective): the box writes db.effectiveMode and
-    -- the healing headers take the accent; a HoT's value column is Total
-    local was = MD.db.effectiveMode
-    Try("T83: After overheal puts the accent on the healing headers; a HoT's value column is Total", function()
-        local v, api = Open("Rejuvenation")
-        local function HeaderRow()
-            for _, f in ipairs(S.allFrames) do
-                if f.parentFrame == api.rankTable.frame and f.isHeader and f:IsShown() then return f end
-            end
-        end
-        v.strip.after:SetChecked(true); v.strip.after:GetScript("OnClick")(v.strip.after)
-        local hdr = HeaderRow()
-        local on = MD.db.effectiveMode == true and hdr.cells.heal:GetText():find(accent .. "Total", 1, true) ~= nil
-            and hdr.cells.hpm:GetText():find(accent .. "Per mana", 1, true) ~= nil
-        v.strip.after:SetChecked(false); v.strip.after:GetScript("OnClick")(v.strip.after)
-        hdr = HeaderRow()
-        local off = MD.db.effectiveMode == false and hdr.cells.heal:GetText():find(accent, 1, true) == nil
-            and Plain(hdr.cells.heal) == "Total" and Plain(hdr.cells.casts) == "Casts"
-        return on and off, string.format("on=%s off=%s", tostring(on), tostring(off))
-    end)
-    MD.db.effectiveMode = was
-end
-
---------------------------------------------------------------------------------
--- T84 (C5 of docs/PLAN-refactor-ux.md, section 7.1; mockup M4 layout B): the
--- spell rail on TBC. The Spells group is a rail (no view row): MY SPELLS,
--- Overview first, then the harness druid's families as Spells/Tabs.lua
--- seeded them from Spells/Families_TBC.lua (known heals by learn level);
--- Overview lists one row per listed family with its suggested rank; a rail
--- row, or an Overview row, opens C3's view for that family; the row's x
--- removes it and Undo puts it back where it was. Each check under pcall.
---------------------------------------------------------------------------------
-do
-    local function Try(name, fn)
-        local okRun, cond, detail = pcall(fn)
-        if okRun then check(name, cond, detail) else check(name, false, tostring(cond)) end
-    end
-    local function Plain(fs) return ((fs and fs:GetText() or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) end
-    local function Overview()
-        for _, f in ipairs(S.allFrames) do
-            if f.spellsOverviewTBC and f:IsVisible() then return f end
-        end
-        return nil
-    end
-    local function View()
-        for _, f in ipairs(S.allFrames) do
-            if f.spellsViewTBC and f:IsVisible() then return f end
-        end
-        return nil
-    end
-    local SEEDED = "overview,fam:HealingTouch,fam:Rejuvenation,fam:Regrowth,fam:Lifebloom"
-
-    -- 1. a rail: MY SPELLS, Overview first (fixed), the seeded families, each
-    -- with its suggested rank's tag; no view row
-    Try("T84: the Spells group is a rail with Overview first, then the seeded families", function()
-        MD:SelectView("spells", "overview")
-        local rail = SpellsRail()
-        local views = 0
-        for _, b in ipairs(MD.SpellsTBC.nav.viewButtons or {}) do if b:IsShown() then views = views + 1 end end
-        local results = MD.RankMath:Compute()
-        local tags = true
-        for _, key in ipairs({ "HealingTouch", "Rejuvenation", "Regrowth", "Lifebloom" }) do
-            local s
-            for _, r in ipairs(results[key].rows) do if r.suggested then s = r end end
-            local row = RailRow("fam:" .. key)
-            if not (row and s and row.data.tag == "R" .. s.rank and row:IsVisible()) then tags = false end
-        end
-        local ov = RailRow("overview")
-        return rail ~= nil and RailIds() == SEEDED and views == 0 and tags
-            and ov and ov.data.fixed == true and rail.title:GetText() == "MY SPELLS"
-            and RailRow("fam:Rejuvenation").data.text == "Rejuvenation"
-            and MD.cdb.spellTabs and MD.cdb.spellTabs.seeded == true,
-            RailIds() .. " views=" .. views .. " tags=" .. tostring(tags)
-    end)
-
-    -- 2. Overview: one row per listed family, in the list's order, with its
-    -- suggested rank (the rank RankMath suggests) and the highest known
-    Try("T84: Overview lists one row per listed family, with its suggested rank", function()
-        MD:SelectView("spells", "overview")
-        local ov = Overview()
-        local api = ov and ov.api
-        local results = MD.RankMath:Compute()
-        local keys, cells, good = {}, {}, true
-        for _, r in ipairs(api.lastRows or {}) do
-            keys[#keys + 1] = r.key
-            local s
-            for _, x in ipairs(results[r.key].rows) do if x.suggested then s = x end end
-            if not (r.suggestedRow and s and r.suggestedRow.rank == s.rank and r.highestRow) then good = false end
-        end
-        for _, f in ipairs(S.allFrames) do
-            if f.parentFrame == api.table.frame and f.data and not f.isHeader and f:IsShown() then
-                cells[f.data.key] = Plain(f.cells.suggested)
-            end
-        end
-        return table.concat(keys, ",") == "HealingTouch,Rejuvenation,Regrowth,Lifebloom" and good
-            and cells.Rejuvenation == "R6" and Plain(ov.title) == "OVERVIEW" and View() == nil,
-            table.concat(keys, ",") .. " Rejuvenation=" .. tostring(cells.Rejuvenation)
-    end)
-
-    -- 3. a rail row opens C3's view for that family (and an Overview row too;
-    -- a path saved before C5 names a bare family and opens its row)
-    Try("T84: a rail row opens C3's view for that family", function()
-        RailClick("fam:Regrowth")
-        local v = View()
-        local viaRail = v ~= nil and Plain(v.header.name) == "Regrowth" and Overview() == nil
-            and MD.db.uiPath[2] == "fam:Regrowth" and ShownText("^RANKS$") ~= nil
-        MD:SelectView("spells", "overview")
-        local api = Overview().api
-        local lb
-        for _, f in ipairs(S.allFrames) do
-            if f.parentFrame == api.table.frame and f.data and f.data.key == "Lifebloom" and f:IsShown() then lb = f end
-        end
-        lb:GetScript("OnMouseUp")(lb, "LeftButton")
-        v = View()
-        local viaOverview = v ~= nil and Plain(v.header.name) == "Lifebloom" and MD.db.uiPath[2] == "fam:Lifebloom"
-        MD:SelectView("spells", "Rejuvenation")
-        local bare = MD.db.uiPath[2] == "fam:Rejuvenation" and View() ~= nil
-        return viaRail and viaOverview and bare,
-            string.format("rail=%s overview=%s bare=%s", tostring(viaRail), tostring(viaOverview), tostring(bare))
-    end)
-
-    -- 4. the hover x removes a row (Overview follows); the footer says so with Undo, which puts
-    -- it back at its old place
-    Try("T84: x removes a rail row and Undo puts it back where it was", function()
-        MD:SelectView("spells", "overview")
-        local sp = MD.SpellsTBC
-        local row = RailRow("fam:Rejuvenation")
-        row.rm:GetScript("OnClick")(row.rm)
-        local gone = RailRow("fam:Rejuvenation") == nil and not MD.Tabs:Has("Rejuvenation")
-            and MD.cdb.spellTabs.removed.Rejuvenation == true
-            and Plain(sp.undoText) == "Rejuvenation removed" and sp.undoText:IsShown() and sp.undoBtn:IsShown()
-            and #Overview().api.lastRows == 3 -- Overview follows the list
-        local mid = RailIds()
-        Click(sp.undoBtn)
-        local back = RailIds() == SEEDED and MD.Tabs:Has("Rejuvenation") and not sp.undoBtn:IsShown()
-            and MD.cdb.spellTabs.removed.Rejuvenation == nil
-        MD:SelectView("spells", "overview")
-        return gone and back and #Overview().api.lastRows == 4,
-            string.format("gone=%s (%s) back=%s (%s)", tostring(gone), mid, tostring(back), RailIds())
-    end)
-end
 
 -- no bare pipe anywhere it paints
 local bad
@@ -828,156 +526,12 @@ check("T30 bar header: the label over the whole column, the header 22 tall", hpm
         Cell(reused and reused.cells.pm), tostring(reused and reused.h)))
 
 --------------------------------------------------------------------------------
--- T81 (C2 of docs/PLAN-refactor-ux.md, review U5 / A23; mockup M6's RANKS):
--- the TBC rank table is an opts set on the one table -- built here as the
--- dashboard builds it (MD.DashboardParts.CreateRankTable) and rendered with
--- RankMath's own Rejuvenation rows (the harness druid: R6 suggested, R12 the
--- highest known, R13 not learned, R1 beaten) -- and a table without
--- opts.render is refused.
+-- T81 (C2 of docs/PLAN-refactor-ux.md, review A23): one table -- a table
+-- without opts.render is refused. T120: the TBC rank table's own checks
+-- (MD.DashboardParts.CreateRankTable, UI/SpellsView_TBC.lua's) went with the
+-- view; the shared pane's RANKS are tools/spellsui.lua's (tbc).
 --------------------------------------------------------------------------------
--- Before T81 the dashboard's rank table was CreateTable with no options; the
--- fallback lets this suite run on such a commit and fail check by check.
-local function RankTable(parent, width)
-    local make = MD.DashboardParts.CreateRankTable
-    if make then return make(parent, width) end
-    return MD.DashboardParts.CreateTable(parent, width)
-end
 do
-    local results = MD.RankMath:Compute()
-    local rows = results.Rejuvenation and results.Rejuvenation.rows or {}
-    local rank = RankTable(CreateFrame("Frame"), 912)
-    rank:Render(rows)
-    local byRank, header = {}, nil
-    for _, f in ipairs(S.allFrames) do
-        if f.parentFrame == rank.frame and f.cells and f:IsShown() then
-            if f.isHeader then header = f elseif f.data then byRank[f.data.rank] = f end
-        end
-    end
-    local function Plain(fs) return ((fs and fs:GetText() or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) end
-    local function RowWithTag(word)
-        for _, f in pairs(byRank) do if Plain(f.cells.tag) == word then return f end end
-        return nil
-    end
-    local r1, r4, r6 = byRank[1], byRank[4], byRank[6]
-
-    -- 1. the look: right-justified numbers in Arial Narrow, 20-px rows under
-    -- a 22 header with its rule, zebra
-    local rule
-    for _, f in ipairs(S.allFrames) do
-        if f.kind == "Texture" and f.parentFrame == rank.frame and f.layer == "BORDER" and f:IsShown() then rule = f end
-    end
-    local right = true
-    for _, key in ipairs({ "level", "cost", "heal", "hpm", "hps", "cast", "casts" }) do
-        if not (r6 and r6.cells[key].justify == "RIGHT" and r6.cells[key].template == UI.FONT_NUM) then right = false end
-    end
-    check("T81: the rank table's numbers are right-justified in Arial Narrow on 20-px rows",
-        right and r6.cells.rank.justify == "LEFT" and r6.cells.tag.template == UI.FONT_SMALL
-          and r6.h == 20 and header and header.h == 22 and rule ~= nil and rank.rowWidth == 600
-          and r4 and r4.fill and r4.fill:IsShown() and Near(Alpha(r4.fill), 0.03)
-          and byRank[3] and not byRank[3].fill:IsShown(),
-        r6 and string.format("cost %s/%s h=%s header=%s rule=%s", tostring(r6.cells.cost.justify),
-            tostring(r6.cells.cost.template), tostring(r6.h), tostring(header and header.h), tostring(rule ~= nil))
-          or "no R6 row")
-
-    -- 2. the suggested row: the fill and the 2-px accent bar, no gold, no
-    -- star; its tag says best (in the accent) and the HPM cell has its bar
-    local gold
-    for _, f in ipairs(S.allFrames) do
-        local p, guard = f.parentFrame, 0
-        while p and p ~= rank.frame and guard < 10 do p, guard = p.parentFrame, guard + 1 end
-        local t = p == rank.frame and f.GetText and f:GetText() or ""
-        if type(t) == "string" and t:lower():find("ffcc00", 1, true) then gold = gold or t end
-    end
-    local bar = r6 and r6.bars and r6.bars.hpm
-    check("T81: the suggested row is the fill and the bar, its tag best, no gold, no star", gold == nil and r6
-        and r6.data.suggested and r6.mark:IsShown() and Near(Alpha(r6.fill), 0.10)
-        and Plain(r6.cells.rank) == "R6" and Plain(r6.cells.tag) == "best"
-        and r6.cells.tag:GetText():find(UI.Hex("accent"), 1, true) == 1
-        and r4 and not r4.mark:IsShown() and bar and bar.fill:IsShown() and bar.width == 80,
-        gold or (r6 and Plain(r6.cells.rank) .. " / " .. Plain(r6.cells.tag)) or "no R6 row")
-
-    -- 3. the Tag column instead of the gold note: max, learn at N, beaten
-    -- (its hover names the rank that beats it), rolling on Lifebloom's stacks
-    local max, learn, beaten = RowWithTag("max"), byRank[13], byRank[1]
-    local tip = beaten and rank.cols[9].cellTooltip(beaten.data, beaten)
-    local by = tip and tip[1] and tip[1].l or ""
-    -- read now: the Lifebloom render below hands these pooled rows on
-    local tags = string.format("max=%s learn=%s beaten=%s", tostring(max and max.data.rank),
-        learn and Plain(learn.cells.tag) or "-", beaten and Plain(beaten.cells.tag) or "-")
-    local tagsOk = max ~= nil and max.data.rank == 12 and learn ~= nil
-        and Plain(learn.cells.tag) == "learn at " .. learn.data.level
-        and beaten ~= nil and Plain(beaten.cells.tag) == "beaten"
-    local lb = results.Lifebloom and results.Lifebloom.rows or {}
-    rank:Render(lb)
-    local rolling = 0
-    for _, f in ipairs(S.allFrames) do
-        if f.parentFrame == rank.frame and f.cells and f.data and f:IsShown() and Plain(f.cells.tag) == "rolling" then
-            rolling = rolling + 1
-        end
-    end
-    check("T81: a Tag column (max, learn at N, beaten by Rank N, rolling), no note", tagsOk
-        and by:match("^Beaten by Rank %d+$") ~= nil
-        and rank.cols[9].key == "tag" and rank.cols[9].label == "" and rolling == 2,
-        string.format("%s tip=%q rolling=%d", tags, by, rolling))
-
-    -- 4. every header label shows the glossary; a row's hover is its
-    -- derivation (Tip:Row), beside the row
-    rank:Render(rows)
-    for _, f in ipairs(S.allFrames) do
-        if f.parentFrame == rank.frame and f.isHeader and f:IsShown() then header = f end
-    end
-    local hits = 0
-    for _ in pairs(header and header.colHits or {}) do hits = hits + 1 end
-    GameTooltip.lines = nil
-    local hpmHit = header and header.colHits and header.colHits.hpm
-    if hpmHit then hpmHit:GetScript("OnEnter")(hpmHit) end
-    -- T83 (C3): each header its own sentence (was Tip:Columns' glossary)
-    local glossary = GameTooltip.lines and GameTooltip.lines[1] and GameTooltip.lines[1][1]
-    local sentence = GameTooltip.lines and GameTooltip.lines[2] and GameTooltip.lines[2][1]
-    GameTooltip:Hide()
-    local r6b
-    for _, f in ipairs(S.allFrames) do
-        if f.parentFrame == rank.frame and f.data and f.data.rank == 6 and not f.data.virtual and f:IsShown() then r6b = f end
-    end
-    GameTooltip.lines = nil
-    if r6b then r6b:GetScript("OnEnter")(r6b) end
-    local derivation = GameTooltip.lines and GameTooltip.lines[1] and GameTooltip.lines[1][1]
-    if r6b then r6b:GetScript("OnLeave")(r6b) end
-    check("T81: every header label explains the columns; a row's hover is its derivation",
-        hits == 8 and glossary == "Per mana" and sentence == "Healing for each point of mana."
-          and type(derivation) == "string"
-          and derivation:find("Rank 6", 1, true) ~= nil and not GameTooltip:IsShown(),
-        string.format("hits=%d glossary=%s row=%s", hits, tostring(glossary), tostring(derivation)))
-
-    -- 5. Effective mode: the three healing headers in the accent, an
-    -- unmeasured heal marked "?" (the harness has no overheal measured)
-    local was = MD.db.effectiveMode
-    MD.db.effectiveMode = true
-    rank:Render(MD.RankMath:Compute().Rejuvenation.rows)
-    for _, f in ipairs(S.allFrames) do
-        if f.parentFrame == rank.frame and f.isHeader and f:IsShown() then header = f end
-    end
-    local r6e
-    for _, f in ipairs(S.allFrames) do
-        if f.parentFrame == rank.frame and f.data and f.data.rank == 6 and f:IsShown() then r6e = f end
-    end
-    local accent = UI.Hex("accent")
-    local effOk = header and header.cells.heal:GetText():find(accent, 1, true) ~= nil
-        and header.cells.hpm:GetText():find(accent, 1, true) ~= nil
-        and header.cells.hps:GetText():find(accent, 1, true) ~= nil
-        and header.cells.cost:GetText():find(accent, 1, true) == nil
-        and r6e and Plain(r6e.cells.heal):sub(-1) == "?"
-    local effDetail = (header and header.cells.heal:GetText() or "no header") .. " / " .. (r6e and Plain(r6e.cells.heal) or "no R6")
-    MD.db.effectiveMode = was
-    rank:Render(rows)
-    local plainAgain
-    for _, f in ipairs(S.allFrames) do
-        if f.parentFrame == rank.frame and f.isHeader and f:IsShown() then plainAgain = f end
-    end
-    check("T81: After overheal puts the accent on Heal, Per mana, Per sec and a ? on an unmeasured heal",
-        effOk and plainAgain and plainAgain.cells.heal:GetText():find(accent, 1, true) == nil, effDetail)
-
-    -- 6. one table: CreateTable without opts.render raises
     local okNil = pcall(MD.DashboardParts.CreateTable, CreateFrame("Frame"), 700)
     local okNoRender = pcall(MD.DashboardParts.CreateTable, CreateFrame("Frame"), 700, { cols = {} })
     check("T81: CreateTable refuses a table without opts.render (the second table is gone)",
@@ -1079,13 +633,10 @@ do
     local shown = #l == 2 and l[1][1] == "Casts" and l[2][1] == "Chain casts from a full pool."
     local leave = hit and hit:GetScript("OnLeave")
     if leave then leave(hit) end
-    -- T81: the TBC rank table is an opts set now, and every labelled column
-    -- carries a tooltip (T83: its own sentence, was Tip:Columns' glossary)
-    local rankCols = 0
-    local rankApi = RankTable(CreateFrame("Frame"), 760)
-    for _, col in ipairs(rankApi.cols or {}) do if col.tooltip then rankCols = rankCols + 1 end end
+    -- T120: the TBC rank table (and its eight tooltips) went with
+    -- UI/SpellsView_TBC.lua; the shared pane's headers are tools/spellsui.lua's
     check("T76: a header label shows its column's tooltip", header ~= nil and hit ~= nil and shown
-        and hits.plain == nil and not GameTooltip:IsShown() and rankCols == 8
+        and hits.plain == nil and not GameTooltip:IsShown()
         and not (MD.Tip.Skinned and MD.Tip:Skinned(GameTooltip)),
         string.format("header=%s hit=%s lines=%d plain=%s", tostring(header ~= nil), tostring(hit ~= nil), #l,
             tostring(hits.plain ~= nil)))

@@ -24,7 +24,14 @@
 -- rank card, the row hover (the game's tooltip through MD.API.SetTooltipSpell,
 -- the block added when no post-call runs, the edge, the kit tooltip's
 -- reasons), each shape, the refresh split and the pitches, and no gold.
-HARNESS_FLAVOUR = "forever"
+--
+-- T120 (docs/tasks/T120-one-spells-pane.md): the pane is one file on both
+-- lines (UI/SpellsPane.lua), so this suite runs under both flavours. The tbc
+-- half (eleven items, right after the harness) is the TBC druid's Spells
+-- group on Spells/Book_Model.lua; the forever half is the suite as it was,
+-- with two re-based items: T38-1 reads the header's +healing line
+-- (MD.Book:Bonus) and T38-3 the card's +Healing pair (Words.Bonus).
+HARNESS_FLAVOUR = { "forever", "tbc" }
 
 local here = arg[0]:match("^(.*)/[^/]+$")
 
@@ -41,6 +48,560 @@ arg[0] = a0
 local S = _G.STUB
 local Book = MD.Book
 local UI = MD.UI
+
+--------------------------------------------------------------------------------
+-- T120 (docs/tasks/T120-one-spells-pane.md): the TBC half. The stub druid at
+-- level 64 under S.Geometry(true); UI/SpellsPane.lua is the TBC Spells
+-- group, its numbers Spells/Book_Model.lua's (RankMath's). Eleven checks,
+-- each under pcall, so the parent (no shared pane on TBC) fails item by item:
+--   1. the group is a rail, Overview first, the druid's families as rows;
+--      860 x 560, fixed, no grip;
+--   2. Healing Touch's header: what it is with the cast note, the pool
+--      without ~, the +healing line;
+--   3. RANKS: the cells are the book's entries, the tags, the line's note;
+--   4. the card: the quote, Heals with the crit-averaged value, Crit with no
+--      "unverified", +Healing from the model, After oh., Casts and Now
+--      without ~, +Healing after Per sec, Casts / Now last;
+--   5. After overheal on: the effective numbers, the suggested row unchanged;
+--   6. Lifebloom's rolled rows x2 / x3 under its rank: not selectable, their
+--      hover;
+--   7. Whole book: Heals (Tranquility and Swiftmend with +), Damage (Wrath),
+--      Other (Innervate); Export parses as the probe's dump and names the
+--      character (DRUID level 64);
+--   8. the picker's three sections; Tranquility ticked joins the rail;
+--   9. a spellbook drop (MD.API.CursorInfo) puts Wrath in at the row;
+--  10. a priest without the rank table: Overview's refusal line, Whole book
+--      Other only, nothing raised;
+--  11. font offsets -2..+2 and a style switch: re-rendered, no block over the
+--      next, every card value inside its width, the header's sides apart.
+--------------------------------------------------------------------------------
+if S.flavour == "tbc" then
+    S.Geometry(true)
+    -- every UI file the TBC TOC lists, in its order (the harness loaded
+    -- UI/Summary.lua only): the window as the client builds it
+    local loaded = {}
+    for _, rel in ipairs(S.loadedFiles or {}) do loaded[rel] = true end
+    local present = {}
+    for _, rel in ipairs(S.TocFiles("SpellTuner_TBC.toc")) do
+        if rel:sub(1, 3) == "UI/" and not loaded[rel] then present[#present + 1] = rel end
+    end
+    S.Load(present, "SpellTuner", MD)
+    UI = MD.UI
+    MD.player.isDruid = true
+    local chat = {}
+    _G.DEFAULT_CHAT_FRAME = { AddMessage = function(_, m) chat[#chat + 1] = m end }
+
+    -- the measured overheal, seeded: a quarter of every heal, the family's
+    -- average (Engine/Overheal.lua's three readers)
+    local OH = MD.Overheal
+    OH.Fraction = function() return 0.25, 40, "family" end
+    OH.KindFraction = function() return 0.25, 40, "family" end
+    OH.FamilyFraction = function() return 0.25, 40 end
+
+    -- the spellbook the walk reads (bookshapecheck's InstallBook): Wrath,
+    -- Moonfire and Innervate; Healing Touch's text from the scan
+    local HT_DESC = "Heals a friendly target for 2707 to 3197."
+    local DRUID_WALK = {
+        { id = 5176, name = "Wrath", sub = "Rank 1", cost = 20, cast = 1500, level = 1,
+          desc = "Causes 13 to 16 Nature damage to the target." },
+        { id = 6780, name = "Wrath", sub = "Rank 2", cost = 35, cast = 2000, level = 14,
+          desc = "Causes 51 to 58 Nature damage to the target." },
+        { id = 8921, name = "Moonfire", sub = "Rank 1", cost = 25, cast = 0, level = 4,
+          desc = "Burns the enemy for 9 to 12 Arcane damage and then an additional 12 Arcane damage over 9 sec." },
+        { id = 29166, name = "Innervate", cost = 94, cast = 0, level = 40,
+          desc = "Increases the target's Mana regeneration by 400% and allows 100% of the target's Mana regeneration to continue while casting. Lasts 20 sec." },
+    }
+    local BOOK_NAMES = { "GetNumSpellTabs", "GetSpellTabInfo", "GetSpellBookItemName", "GetSpellBookItemInfo",
+        "GetSpellInfo", "GetSpellDescription", "GetSpellPowerCost", "GetSpellLevelLearned", "GetSpellBonusDamage" }
+    local ORIG = {}
+    for _, n in ipairs(BOOK_NAMES) do ORIG[n] = rawget(_G, n) end
+    local function InstallBook(rows)
+        local byId = {}
+        for _, r in ipairs(rows) do byId[r.id] = r end
+        _G.GetNumSpellTabs = function() return 1 end
+        _G.GetSpellTabInfo = function(tab) if tab == 1 then return "General", "icon", 0, #rows end end
+        _G.GetSpellBookItemName = function(slot)
+            local r = rows[slot]
+            if not r then return nil end
+            return r.name, r.sub, r.id
+        end
+        _G.GetSpellBookItemInfo = function(slot) local r = rows[slot]; if r then return "SPELL", r.id end end
+        _G.GetSpellInfo = function(id)
+            local r = byId[id]
+            if r then return r.name, r.sub, "icon", r.cast or 0, 0, 30, id end
+            if ORIG.GetSpellInfo then return ORIG.GetSpellInfo(id) end
+        end
+        _G.GetSpellDescription = function(id)
+            local r = byId[id]
+            if r then return r.desc or "" end
+            if id == 26978 then return HT_DESC end
+            return ""
+        end
+        _G.GetSpellPowerCost = function(id)
+            local r = byId[id]
+            if r then
+                if r.cost then return { { type = 0, cost = r.cost } } end
+                return {}
+            end
+            if ORIG.GetSpellPowerCost then return ORIG.GetSpellPowerCost(id) end
+        end
+        _G.GetSpellLevelLearned = function(id)
+            local r = byId[id]
+            if r then return r.level end
+            if ORIG.GetSpellLevelLearned then return ORIG.GetSpellLevelLearned(id) end
+        end
+        _G.GetSpellBonusDamage = function() return 300 end
+        for _, n in ipairs(BOOK_NAMES) do if MD.API.Invalidate then MD.API.Invalidate(n) end end
+        if MD.BookTBC and type(MD.BookTBC.Forget) == "function" then MD.BookTBC.Forget() end
+    end
+    InstallBook(DRUID_WALK)
+    MD:Fire("CORE_LOGIN") -- the style registry applies the saved style here
+    if MD.Book and MD.Book.Refresh then MD.Book:Refresh() end
+    MD:Fire("MD_READY")   -- the TBC dashboard builds here
+
+    local function Num(v, decimals)
+        if type(v) ~= "number" or v ~= v then return "-" end
+        if decimals then return string.format("%." .. decimals .. "f", v) end
+        return tostring(math.floor(v + 0.5))
+    end
+    local function AsciiNoBarePipe(text)
+        for i = 1, #text do
+            if text:byte(i) > 126 then return false, "non-ascii" end
+        end
+        local stripped = text:gsub("||", ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+        if stripped:find("|") then return false, "bare pipe" end
+        return true
+    end
+    local W = MD.Words
+    local SPn = function() return MD.SpellsPane end
+    local function T(name, fn)
+        local good, cond, detail = pcall(fn)
+        if not good then check(name, false, "raised: " .. tostring(cond)) return end
+        check(name, cond == true, detail)
+    end
+    local function Strip(s)
+        return (tostring(s or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""))
+    end
+    local function Nv() return SPn() and SPn().nav end
+    local function Rail() return Nv() and Nv():Rail("spells") end
+    local function RailIds()
+        local ids = {}
+        for _, r in ipairs(Rail() and Rail():Rows() or {}) do ids[#ids + 1] = r.id end
+        return ids
+    end
+    local function RailRow(id)
+        for _, r in ipairs(Rail() and Rail():Rows() or {}) do if r.id == id then return r end end
+        return nil
+    end
+    local function Order() return table.concat(MD.Tabs:Get(), ",") end
+    local function Click(b, button)
+        local fn = b and b:GetScript("OnClick")
+        if fn then fn(b, button or "LeftButton") end
+    end
+    local function RowFrame(r)
+        for _, f in ipairs(S.allFrames) do
+            if f.cells and f.data == r then return f end
+        end
+        return nil
+    end
+    local function Cell(row, key)
+        local fs = row and row.cells and row.cells[key]
+        return fs and Strip(fs:GetText()) or nil
+    end
+    local function Fam() return SPn().family end
+    local function OpenFam(key)
+        if not MD.Tabs:Has(key) then MD.Tabs:Add(key, nil); SPn():ListChanged() end
+        MD:SelectView("spells", "fam:" .. key)
+        return Fam()
+    end
+    local function PairsList()
+        local out = {}
+        for _, p in ipairs(Fam().card and Fam().card.shown or {}) do
+            out[#out + 1] = { Strip(p.label:GetText()), Strip(p.value:GetText()), p }
+        end
+        return out
+    end
+    local function PairValue(label)
+        for _, p in ipairs(PairsList()) do if p[1] == label then return p[2] end end
+        return nil
+    end
+    local function PairIndex(label)
+        for i, p in ipairs(PairsList()) do if p[1] == label then return i end end
+        return nil
+    end
+    local function PairsText()
+        local t = {}
+        for _, p in ipairs(PairsList()) do t[#t + 1] = p[1] .. "=" .. p[2] end
+        return table.concat(t, "; ")
+    end
+    local function FullPool()
+        local p = MD.Book:Pool()
+        return { max = p.max, regenCasting = p.regenCasting }
+    end
+    local function TagWant(fam, e)
+        if e.suggested then return "best" end
+        if e.known == false then return (type(e.level) == "number") and ("learn at " .. e.level) or "not learned" end
+        if fam.maxKnown == e then return "max" end
+        if e.dominated then return "beaten" end
+        return ""
+    end
+    local function TipLines(tt)
+        local out = {}
+        for _, l in ipairs(tt and tt.lines or {}) do
+            out[#out + 1] = Strip(l[1]) .. ((l[2] ~= nil) and ("|" .. Strip(l[2])) or "")
+        end
+        return table.concat(out, " / ")
+    end
+    local function Overview(mode)
+        MD:SelectView("spells", "overview")
+        SPn():SetOverviewMode(mode)
+        return SPn().overview
+    end
+
+    -- 1 ------------------------------------------------------------------------
+    T("T120-1 tbc: the Spells group is a rail, Overview first, the druid's families; 860 x 560, no grip", function()
+        MD:ToggleDashboard()
+        MD:SelectView("spells", "overview")
+        local frame = _G.SpellTunerDashboard
+        local ids = RailIds()
+        local book = MD.Book:Get()
+        local famRows = 0
+        for i = 2, #ids do
+            local key = ids[i]:match("^fam:(.+)$")
+            if key and book.families[key] then famRows = famRows + 1 end
+        end
+        local sz = MD.Win.SIZES and MD.Win.SIZES.spells
+        local good = Rail() ~= nil and Rail().title:GetText() == "MY SPELLS" and ids[1] == "overview"
+            and RailRow("fam:HealingTouch") ~= nil and famRows == #ids - 1 and famRows >= 4
+            and frame:GetWidth() == 860 and frame:GetHeight() == 560
+            and sz and sz.w == 860 and sz.h == 560 and sz.minW == 860 and sz.minH == 560
+            and MD.Win:Fixed("main", "spells")
+            and not (frame.resizeGrip and frame.resizeGrip:IsShown())
+        return good, "rail=" .. table.concat(ids, ",") .. " size=" .. frame:GetWidth() .. "x" .. frame:GetHeight()
+    end)
+
+    -- 2 ------------------------------------------------------------------------
+    T("T120-2 tbc: Healing Touch's header -- the cast note, the pool without ~, +healing", function()
+        local f = OpenFam("HealingTouch")
+        local pool = MD.Book:Pool()
+        local bonus = MD.Book:Bonus("heal")
+        local sub = f.header.sub:GetText()
+        local mana = Strip(f.header.mana:GetText())
+        local plus = f.header.bonus and Strip(f.header.bonus:GetText()) or "(no bonus line)"
+        local good = Strip(f.header.name:GetText()) == "Healing Touch"
+            and sub == "Direct heal - Rank 12 of 12 known - 2.9 s cast with Nature's Grace averaged"
+            and pool.modelled == false and mana == Num(pool.mana) .. " / " .. Num(pool.max) .. " mana"
+            and not mana:find("~", 1, true)
+            and bonus == 450 and plus == "+450 healing"
+        return good, string.format("sub=%q mana=%q bonus=%q", tostring(sub), mana, plus)
+    end)
+
+    -- 3 ------------------------------------------------------------------------
+    T("T120-3 tbc: RANKS -- the cells are the book's entries, the tags, the note", function()
+        local f = Fam()
+        local fam = MD.Book:Get().families.HealingTouch
+        local bad, n = {}, 0
+        for _, r in ipairs(f.lastRows or {}) do
+            if r.kind == "rank" then
+                n = n + 1
+                local e, row = r.entry, RowFrame(r)
+                local want = table.concat({ "R" .. e.rank, Num(e.level), W.Cost(e, "cell"), Num(e.value),
+                    Num(e.perMana, 2), Num(e.perSec, 1), W.Cast(e, "cell"),
+                    W.Casts(MD.Book:CastsFor(e, FullPool()), "short"), TagWant(fam, e) }, ",")
+                local got = table.concat({ Cell(row, "rank") or "?", Cell(row, "level") or "?", Cell(row, "mana") or "?",
+                    Cell(row, "value") or "?", Cell(row, "permana") or "?", Cell(row, "persec") or "?",
+                    Cell(row, "cast") or "?", Cell(row, "toOOM") or "?", Cell(row, "tag") or "?" }, ",")
+                if got ~= want then bad[#bad + 1] = got .. " vs " .. want end
+            end
+        end
+        local note = f.ranksNote and f.ranksNote:IsShown() and Strip(f.ranksNote:GetText()) or "(none)"
+        return #bad == 0 and n == #fam.ranks and n == 13 and note == "live: gear, talents, downrank rules",
+            "rows=" .. n .. " note=" .. note .. " " .. table.concat(bad, " | ")
+    end)
+
+    -- 4 ------------------------------------------------------------------------
+    T("T120-4 tbc: the card -- quote, Heals with crit, Crit, +Healing, After oh., Casts and Now", function()
+        local f = Fam()
+        local e = MD.Book:Get().families.HealingTouch.suggested
+        local heals = PairValue("Heals")
+        local crit = PairValue("Crit") or ""
+        local wantHeals = Num(e.min) .. " - " .. Num(e.max) .. " (" .. Num(e.value) .. " with "
+            .. Num(e.crit * 100) .. "% crit)"
+        local wantAfter = Num(e.afterOverheal.value) .. "  25% overheal, family average"
+        local now = PairValue("Now") or ""
+        local list = PairsList()
+        local iPs, iBonus, iAfter = PairIndex("Per sec"), PairIndex("+Healing"), PairIndex("After oh.")
+        local good = e.rank == 12 and f.card.quote:GetText() == '"' .. HT_DESC .. '"'
+            and heals == wantHeals and heals == "3194 - 3673 (3691 with 15% crit)"
+            and crit:find(Num(e.min * 1.5) .. " - " .. Num(e.max * 1.5), 1, true) == 1
+            and not crit:find("unverified", 1, true)
+            and PairValue("+Healing") == "540 of your 450 (x1.20 Empowered Touch)"
+            and PairValue("+Healing") == W.Bonus(e, "card")
+            and PairValue("After oh.") == wantAfter
+            and PairValue("Casts") == W.Casts(MD.Book:CastsFor(e, FullPool()), "card")
+            and now ~= "" and not now:find("~", 1, true)
+            and iPs and iBonus == iPs + 1 and iAfter == iBonus + 1
+            and list[#list - 1][1] == "Casts" and list[#list][1] == "Now"
+        return good, PairsText()
+    end)
+
+    -- 5 ------------------------------------------------------------------------
+    T("T120-5 tbc: After overheal on -- the effective numbers, the suggested row unchanged", function()
+        local f = Fam()
+        local fam = MD.Book:Get().families.HealingTouch
+        local cb = f.strip and f.strip.after
+        local measured = f.strip and f.strip.measured and Strip(f.strip.measured:GetText()) or "(none)"
+        if not cb then return false, "no After overheal check" end
+        cb:SetChecked(true); Click(cb)
+        local on = MD.db.effectiveMode == true
+        local bad = {}
+        local sugg
+        for _, r in ipairs(Fam().lastRows or {}) do
+            if r.kind == "rank" and r.entry.afterOverheal then
+                local e, row = r.entry, RowFrame(r)
+                local a = e.afterOverheal
+                if Cell(row, "value") ~= Num(a.value) or Cell(row, "permana") ~= Num(a.perMana, 2)
+                    or Cell(row, "persec") ~= Num(a.perSec, 1) then
+                    bad[#bad + 1] = "R" .. e.rank .. " " .. tostring(Cell(row, "value"))
+                end
+                if row.mark and row.mark:IsShown() then sugg = e end
+            end
+        end
+        local cardPm = PairValue("Per mana")
+        cb:SetChecked(false); Click(cb)
+        local off = MD.db.effectiveMode == false
+        local raw = Cell(RowFrame(Fam().lastRows[12]), "value")
+        return on and off and #bad == 0 and sugg == fam.suggested and measured == "25% measured"
+            and cardPm == Num(fam.suggested.afterOverheal.perMana, 2) and raw == Num(fam.ranks[12].value),
+            string.format("on=%s off=%s bad=%s sugg=%s measured=%q pm=%s raw=%s", tostring(on), tostring(off),
+                table.concat(bad, ","), tostring(sugg and sugg.rank), measured, tostring(cardPm), tostring(raw))
+    end)
+
+    -- 6 ------------------------------------------------------------------------
+    T("T120-6 tbc: Lifebloom's rolled rows x2 / x3 under its rank, not selectable, their hover", function()
+        local f = OpenFam("Lifebloom")
+        local e = MD.Book:Get().families.Lifebloom.ranks[1]
+        local kinds, vrows = {}, {}
+        for _, r in ipairs(f.lastRows or {}) do
+            kinds[#kinds + 1] = r.kind .. (r.rank and tostring(r.rank) or "") .. (r.variant and ("x" .. r.variant.variant) or "")
+            if r.kind == "variant" then vrows[#vrows + 1] = r end
+        end
+        if #vrows ~= 2 then return false, table.concat(kinds, ",") end
+        local bad = {}
+        for i, r in ipairs(vrows) do
+            local v, row = e.variants[i], RowFrame(r)
+            local raw = row.cells.rank:GetText() or ""
+            if Cell(row, "rank") ~= "x" .. v.variant or raw:find(UI.Hex("muted"), 1, true) ~= 1
+                or Cell(row, "value") ~= Num(v.value) or Cell(row, "permana") ~= Num(v.perMana, 2)
+                or Cell(row, "persec") ~= Num(v.perSec, 1) or Cell(row, "tag") ~= "" then
+                bad[#bad + 1] = "x" .. v.variant .. ":" .. tostring(Cell(row, "rank")) .. "/" .. tostring(Cell(row, "value"))
+            end
+        end
+        local sel = f.selectedId
+        local row2 = RowFrame(vrows[1])
+        local up = row2:GetScript("OnMouseUp")
+        if up then up(row2, "LeftButton") end
+        local still = f.selectedId == sel
+        if UI.tooltip then UI.tooltip.lines = nil end
+        row2:GetScript("OnEnter")(row2)
+        local tip = TipLines(UI.tooltip) .. " / " .. TipLines(GameTooltip)
+        row2:GetScript("OnLeave")(row2)
+        return #bad == 0 and still and kinds[1] == "rank1" and kinds[2] == "variantx2" and kinds[3] == "variantx3"
+            and tip:find("Rolled at 2 stacks: refreshed every 6 s, 6 ticks a cast, no bloom", 1, true) ~= nil,
+            string.format("rows=%s bad=%s still=%s tip=%q", table.concat(kinds, ","), table.concat(bad, ","),
+                tostring(still), tip)
+    end)
+
+    -- 7 ------------------------------------------------------------------------
+    local function ParseDump(text)
+        local lines = {}
+        for l in ((text or "") .. "\n"):gmatch("([^\n]*)\n") do lines[#lines + 1] = l end
+        if #lines > 0 and lines[#lines] == "" then lines[#lines] = nil end
+        if not (lines[1] and lines[1]:match("^character: ")) then return nil, "no character line" end
+        if lines[2] ~= "== spells" then return nil, "no == spells" end
+        local out, cur = { character = lines[1], byId = {}, n = 0 }, nil
+        for i = 3, #lines do
+            local l = lines[i]
+            local id = l:match("^spell (%d+)$")
+            if id then
+                cur = { id = tonumber(id) }
+                out.byId[cur.id] = cur
+                out.n = out.n + 1
+            else
+                local k, v = l:match("^  (%a+): (.*)$")
+                if not (cur and k) then return nil, "line " .. i .. ": " .. l end
+                cur[k] = v
+            end
+        end
+        for _, b in pairs(out.byId) do
+            for _, k in ipairs({ "name", "rank", "desc", "cost", "cast" }) do
+                if b[k] == nil then return nil, "spell " .. b.id .. " has no " .. k end
+            end
+        end
+        return out
+    end
+    T("T120-7 tbc: Whole book -- Heals, Damage, Other; Export parses and names the character", function()
+        local pane = Overview("book")
+        local sections, fams = {}, {}
+        local cur
+        for _, r in ipairs(pane.lastRows or {}) do
+            if r.kind == "section" then cur = r.text; sections[#sections + 1] = r.text end
+            if r.kind == "family" then fams[r.key] = { section = cur, listed = r.listed } end
+        end
+        local captured
+        local orig = MD.ShowCopyPopup
+        MD.ShowCopyPopup = function(_, title, text) captured = text end
+        Click(pane.exportBtn)
+        MD.ShowCopyPopup = orig
+        local dump, why = ParseDump(captured)
+        local ht = MD.Book:Get().spells[26978]
+        local good = table.concat(sections, ",") == "Heals,Damage,Other"
+            and fams.Tranquility and fams.Tranquility.section == "Heals" and fams.Tranquility.listed == false
+            and fams.Swiftmend and fams.Swiftmend.section == "Heals" and fams.Swiftmend.listed == false
+            and fams.HealingTouch and fams.HealingTouch.listed == true
+            and fams.Wrath and fams.Wrath.section == "Damage"
+            and fams.Innervate and fams.Innervate.section == "Other"
+            and dump ~= nil and dump.character:match("^character: %S+ %S+ DRUID level 64$") ~= nil
+            and dump.byId[26978] and dump.byId[26978].name == "Healing Touch" and dump.byId[26978].rank == "Rank 12"
+            and dump.byId[26978].desc == HT_DESC and dump.byId[26978].cost == W.Cost(ht, "export")
+            and dump.byId[5176] and dump.byId[5176].name == "Wrath"
+            and dump.byId[29166] and dump.byId[29166].name == "Innervate"
+            and AsciiNoBarePipe(captured or "")
+        local fl = {}
+        for k, v in pairs(fams) do fl[#fl + 1] = k .. "@" .. tostring(v.section) end
+        table.sort(fl)
+        return good, string.format("sections=%s fams=%s dump=%s", table.concat(sections, ","),
+            table.concat(fl, ","), dump and (dump.character .. " n=" .. dump.n) or tostring(why))
+    end)
+
+    -- 8 ------------------------------------------------------------------------
+    T("T120-8 tbc: the picker's three sections; Tranquility ticked joins the rail", function()
+        MD:SelectView("spells", "fam:HealingTouch")
+        Click(SPn().addBtn)
+        local p = SPn().picker
+        local function PRow(key)
+            for _, r in ipairs(p and p.rows or {}) do if r.key == key and r:IsShown() then return r end end
+            return nil
+        end
+        local ht, tq, wr, inn = PRow("HealingTouch"), PRow("Tranquility"), PRow("Wrath"), PRow("Innervate")
+        local secs = (ht and ht.section or "?") .. "," .. (wr and wr.section or "?") .. "," .. (inn and inn.section or "?")
+        local okRows = p and p:IsShown() and ht and ht.check:GetChecked() and tq and not tq.check:GetChecked()
+            and tq.section == "heal" and secs == "heal,damage,other"
+        if tq then tq.check:SetChecked(true); Click(tq.check) end
+        Click(p and p.doneBtn)
+        local listed = MD.Tabs:Has("Tranquility") and RailRow("fam:Tranquility") ~= nil
+        return okRows and listed and not p:IsShown(), "sections=" .. secs .. " order=" .. Order()
+    end)
+
+    -- 9 ------------------------------------------------------------------------
+    T("T120-9 tbc: a spellbook drop puts Wrath in at the row, the cursor kept", function()
+        if MD.Tabs:Has("Wrath") then Rail().opts.onRemove("fam:Wrath") end
+        local cursor = { "spell", 1, "spell", 5176 }
+        S.cursor = cursor
+        local row = RailRow("fam:HealingTouch")
+        row:GetScript("OnReceiveDrag")(row)
+        local list = MD.Tabs:Get()
+        local iW, iH
+        for i, k in ipairs(list) do
+            if k == "Wrath" then iW = i end
+            if k == "HealingTouch" then iH = i end
+        end
+        local kept = S.cursor == cursor
+        S.cursor = nil
+        return iW ~= nil and iH ~= nil and iW == iH - 1 and kept and RailRow("fam:Wrath") ~= nil,
+            "order=" .. Order()
+    end)
+
+    -- 10 -----------------------------------------------------------------------
+    T("T120-10 tbc: a priest without the rank table -- the refusal on Overview, Whole book Other only", function()
+        local caps = MD.Profiles.byClass.PRIEST and MD.Profiles.byClass.PRIEST.caps or {}
+        local savedRT, savedTip = caps.rankTable, caps.tooltip
+        caps.rankTable, caps.tooltip = nil, nil
+        InstallBook({
+            { id = 25213, name = "Greater Heal", sub = "Rank 7", cost = 825, cast = 3000, level = 68,
+              desc = "A slow casting spell that heals a single target for 2396 to 2784." },
+            { id = 25389, name = "Power Word: Fortitude", sub = "Rank 7", cost = 700, cast = 0, level = 70,
+              desc = "Power infuses the target increasing their Stamina by 79 for 30 min." },
+        })
+        S.units.player.class = "PRIEST"
+        local good, res = pcall(function()
+            MD:DetectProfile()
+            MD:Fire("CORE_LOGIN")
+            MD.Book:Refresh()
+            local pane = Overview("mine")
+            local note = pane.note and pane.note:IsShown() and Strip(pane.note:GetText()) or "(none)"
+            local want = MD.Profiles.Refusal("rankTable", "class", "Rank analysis")
+                .. " - the OOM widget, datatext and advisor still work for your class."
+            Overview("book")
+            local secs = {}
+            for _, r in ipairs(pane.lastRows or {}) do if r.kind == "section" then secs[#secs + 1] = r.text end end
+            MD:SelectView("spells", "fam:HealingTouch") -- a druid's row, stale for a priest
+            return { note = note, want = want, secs = table.concat(secs, ",") }
+        end)
+        S.units.player.class = "DRUID"
+        caps.rankTable, caps.tooltip = savedRT, savedTip
+        InstallBook(DRUID_WALK)
+        MD:DetectProfile()
+        MD:Fire("CORE_LOGIN")
+        MD.Book:Refresh()
+        MD:SelectView("spells", "overview")
+        if not good then return false, "raised: " .. tostring(res) end
+        return res.note == res.want and res.secs == "Other",
+            string.format("note=%q secs=%s", res.note, res.secs)
+    end)
+
+    -- 11 -----------------------------------------------------------------------
+    local function Laid(f)
+        local function Y(region)
+            local _, _, _, _, y = region:GetPoint(1)
+            return -(y or 0)
+        end
+        local problems = {}
+        local top = f.header:GetHeight()
+        local blocks = {}
+        if f.strip:IsShown() then blocks[#blocks + 1] = { "strip", f.strip } end
+        blocks[#blocks + 1] = { "ranks", f.ranks }
+        blocks[#blocks + 1] = { "card", f.card }
+        blocks[#blocks + 1] = { "footer", f.footer }
+        for _, b in ipairs(blocks) do
+            local y = Y(b[2])
+            if y < top then problems[#problems + 1] = b[1] .. " at " .. y .. " < " .. top end
+            top = y + (b[2]:GetHeight() or 0)
+        end
+        for _, p in ipairs(f.card.shown or {}) do
+            local w, sw = p.value:GetWidth(), p.value:GetStringWidth()
+            if sw > w + 0.5 then problems[#problems + 1] = Strip(p.label:GetText()) .. " " .. sw .. ">" .. w end
+        end
+        local h = f.header
+        local right = math.max(h.mana:GetStringWidth(), h.bonus and h.bonus:GetStringWidth() or 0)
+        if 46 + h.sub:GetWidth() > 540 - 4 - right then
+            problems[#problems + 1] = "header sub " .. h.sub:GetWidth() .. " runs into " .. right
+        end
+        return problems
+    end
+    T("T120-11 tbc: font offsets -2..+2 and a style switch re-render with nothing overlapping", function()
+        local f = OpenFam("HealingTouch")
+        local problems = {}
+        for _, o in ipairs({ -2, -1, 0, 1, 2 }) do
+            local before = f.renderCount
+            UI.ApplyFonts(o)
+            if f.renderCount <= before then problems[#problems + 1] = "offset " .. o .. " not re-rendered" end
+            for _, p in ipairs(Laid(f)) do problems[#problems + 1] = "offset " .. o .. ": " .. p end
+        end
+        UI.ApplyFonts(0)
+        local before = f.renderCount
+        local okStyle = UI.SetStyle and pcall(UI.SetStyle, "ellesmere")
+        local restyled = f.renderCount > before
+        if UI.SetStyle then pcall(UI.SetStyle, "flat") end
+        for _, p in ipairs(Laid(f)) do problems[#problems + 1] = "style: " .. p end
+        return #problems == 0 and okStyle and restyled,
+            string.format("style=%s restyled=%s %s", tostring(okStyle), tostring(restyled), table.concat(problems, "; "))
+    end)
+
+    print(string.format("\n%d ok, %d failed", ok, #fails))
+    for _, f in ipairs(fails) do print("FAIL: " .. f) end
+    os.exit(#fails == 0 and 0 or 1)
+end
 
 -- T36: anchors recorded for THIS suite only (the stub keeps none; navui's own
 -- instrumentation, the same three methods), so the picker's anchor and its
@@ -1321,11 +1882,15 @@ T36("T38 the header and the decision strip: which rank, and one factual line", f
     local rawMana = f.header.mana:GetText() or ""
     local manaText = StripColor(rawMana)
     local wantMana = "~" .. Num(pool.mana) .. " / " .. Num(pool.max) .. " mana"
+    local bonusNow = Book:Bonus("heal")
+    local wantBonus = bonusNow and ("+" .. Num(bonusNow) .. " healing") or ""
     local _, tildes = manaText:gsub("~", "")
     local good = StripColor(f.header.name:GetText() or "") == "Nourish"
         and f.header.sub:GetText() == "Direct heal - Rank 2 of 2 known - 2.0 s cast"
         and manaText == wantMana and tildes == 1
         and rawMana:find(UI.TEXT.mana.hex .. "~", 1, true) == 1 -- only the modelled pool in the mana colour
+        -- T120: the +healing line under the pool (MD.Book:Bonus), both lines
+        and StripColor(f.header.bonus and f.header.bonus:GetText() or "(no bonus line)") == wantBonus
         and f.strip:IsShown() and f.strip.chipLabel:GetText() == "SUGGESTED"
         and f.strip.chipRank:GetText() == "Rank 1"
         and f.strip.compare:GetText() == "vs Rank 2 (your highest): 2% more healing per mana, 46% of the heal, a 25% shorter cast."
@@ -1422,6 +1987,9 @@ T36("T38 the rank card: the suggested rank by default, a click selects another",
         and PairValue("Cost") == "55 mana" and PairValue("Cast") == "2.0 s"
         and PairValue("Per mana") == Num(e2.perMana, 2)
         and PairValue("Per sec") == Num(e2.perSec, 1) .. " over a 2.0 s cast" -- T78
+        -- T120: the +Healing pair (Words.Bonus), right after Per sec
+        and (e2.bonus == nil or (PairValue("+Healing") == MD.Words.Bonus(e2, "card")
+            and Pairs():find("Per sec=[^;]*; %+Healing=") ~= nil))
         and PairValue("Casts") == OOMWord(FullPoolCasts(e2)) -- T78
         and PairValue("Now") == NowWord(Book:CastsFor(e2, pool), pool)
         -- T78 (U1): the selection moved as a white bar; no `selected` fill on
