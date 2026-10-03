@@ -170,11 +170,15 @@ check("it reopens where it was", frame:IsShown() and MD.db.uiPath[1] ~= nil,
 -- Settings is the fourth group, not a second window (v0.11.2)
 --------------------------------------------------------------------------------
 -- T79 (P36): UI/MinimapButton.lua owns db.minimap's default, which the
--- General pane's "Show minimap button" box reads (in game the TOC loads it
+-- General pane's "Minimap button" box reads (in game the TOC loads it
 -- before anything is shown; registered after login it back-fills MD.db).
-S.Load({ "UI/MinimapButton.lua", "UI/OptionsFrame.lua", "UI/Options_General.lua", "UI/Options_About.lua" },
-    "SpellTuner", MD)
-check("the settings panel exists", MD.optionsFrame ~= nil)
+-- T119 (SPEC-one-ui 7, re-based): Settings is UI/Settings.lua's views over
+-- UI/Settings_TBC.lua's rows (the options frame, its General and About tabs
+-- are gone): "the settings panel exists" asks for MD.Settings and no
+-- MD.optionsFrame; the general pane is told by its MANA CLOCK's "Lock in
+-- place", the danger slider is found on Settings -> Review, About is a view.
+S.Load({ "UI/MinimapButton.lua", "UI/Settings.lua", "UI/Settings_TBC.lua" }, "SpellTuner", MD)
+check("the settings panel exists", MD.Settings ~= nil and MD.SettingsLine ~= nil and MD.optionsFrame == nil)
 check("it is a panel, not a window", _G.SpellTunerOptionsFrame == nil,
     tostring(_G.SpellTunerOptionsFrame))
 
@@ -182,8 +186,8 @@ Click(ButtonNamed("Settings"))
 check("Settings is a group of the one window", MD.db.uiPath[1] == "settings",
     table.concat(MD.db.uiPath, "/"))
 check("it opens on General", MD.db.uiPath[2] == "general", MD.db.uiPath[2])
-check("the general pane is in there", ButtonNamed("Record fights") ~= nil
-    or Painted("Record fights") ~= nil)
+check("the general pane is in there", ShownText("^Lock in place$") ~= nil)
+MD:SelectView("settings", "review")
 -- T73 (P29, review U24): db.simFloor is the line for fights built in
 -- Simulate (and a recorded target's fallback); a recorded fight measures its
 -- own. The slider says so, and its tooltip does not call it the scoring line.
@@ -205,7 +209,7 @@ check("the danger slider names built fights, truly", (function()
         and text:find("A recorded fight measures its own line", 1, true) ~= nil
 end)())
 Click(ButtonNamed("About"))
-check("About is its second view", MD.db.uiPath[2] == "about", MD.db.uiPath[2])
+check("About is one of its views", MD.db.uiPath[2] == "about", MD.db.uiPath[2])
 
 -- T80 (C1 of docs/PLAN-refactor-ux.md, mockup M1): TBC's Settings -> General
 -- gains the Windows pane -- In combat, Close one window per ESC, Text size,

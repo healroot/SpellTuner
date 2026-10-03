@@ -20,8 +20,9 @@
 -- Two passes: first with the spies in place (every branch reaches its callee),
 -- then with every one of those functions ABSENT (each verb's guard: a TBC
 -- build without the UI must still answer every verb without raising).
--- A last section loads UI/Options_About.lua and reads back the command rows
--- the About tab paints, which were MD.COMMANDS and are now MD:Commands().
+-- A last section loads UI/Settings.lua (UI/Options_About.lua until T119) and
+-- reads back the command rows the About page paints, which were MD.COMMANDS
+-- and are now MD:Commands().
 -- T94: the TBC line has a `ui` verb now (`/md ui style <name>`, created by
 -- UI/Styles.lua through MD:AddSubcommand); the golden was re-based for it.
 HARNESS_FLAVOUR = "tbc"
@@ -216,24 +217,21 @@ Pass("bare")
 --------------------------------------------------------------------------------
 -- The About tab's command rows (UI/Options_About.lua), painted under the stub.
 --------------------------------------------------------------------------------
+-- T119 (SPEC-one-ui 7, re-based): the About page is UI/Settings.lua's on both
+-- lines, built from TBC's MD.SettingsLine (UI/Settings_TBC.lua). Each row is
+-- read as its usage, then its whole text -- the row shows the text up to its
+-- first "; " and the hover the whole (tooltips[2]) -- so the golden's lines are
+-- the ones the old tab painted, unchanged.
 do
-    local before = #S.allFrames
-    S.Load({ "UI/Style.lua" }, "SpellTuner", MD)
-    MD.optionsFrame = MD.optionsFrame or CreateFrame("Frame", "SlashCheckOptions", UIParent)
-    MD.optionsTabHeight = MD.optionsTabHeight or {}
-    S.Load({ "UI/Options_About.lua" }, "SpellTuner", MD)
-    local from = #S.allFrames
-    MD:Fire("ShowOptionsTab", "about")
-    -- every font string the tab painted, in creation order; the command rows
-    -- are the ones between the "Commands" pane and the "Before trusting" pane
-    local lines, inRows = {}, false
-    for i = math.max(before, from) + 1, #S.allFrames do
-        local f = S.allFrames[i]
-        if f.kind == "FontString" and type(f.text) == "string" then
-            if f.text == "Commands" then inRows = true
-            elseif f.text == "Before trusting the numbers" then inRows = false
-            elseif inRows then lines[#lines + 1] = f.text end
-        end
+    S.Load({ "UI/Style.lua", "UI/Settings.lua", "UI/Settings_TBC.lua" }, "SpellTuner", MD)
+    local content = CreateFrame("Frame", nil, UIParent)
+    content:SetSize(736, 520)
+    local p = MD.Settings.Build("about", content)
+    local lines = {}
+    for i = 1, p.shown do
+        local r = p.rows[i]
+        lines[#lines + 1] = r.usage:GetText()
+        lines[#lines + 1] = (r.tooltips and r.tooltips[2]) or r.text:GetText()
     end
     transcript[#transcript + 1] = { cmd = "about tab rows", lines = lines }
 end

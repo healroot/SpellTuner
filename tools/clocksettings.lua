@@ -64,6 +64,11 @@
 -- Shadow, Numbers; Labels and Mana as of max; the Forever footnote and the
 -- note under the box. Section 5: no Show tab, /md rest (/st clock rest) still
 -- drops the rest.
+--
+-- T119 (SPEC-one-ui 7, re-based): Settings is UI/Settings.lua's on both lines
+-- -- the views gain Review (1), General's pane is MD.Settings.panes.general
+-- (6, 10), Customise... is the shared MANA CLOCK's clockCustomise on TBC too
+-- (9), and TBC's Settings content is 736 x 520 as Forever's (10).
 HARNESS_FLAVOUR = { "tbc", "forever" }
 
 local here = arg[0]:match("^(.*)/[^/]+$")
@@ -300,9 +305,10 @@ local function FontStrings(top)
 end
 
 -- the content size the dashboards' Settings views get (UI/Style.lua's nav:
--- 108-px column, 8-px pads, a 24-px view row)
-local VIEW_W = forever and (860 - 108 - 16) or (1036 - 108 - 16)
-local VIEW_H = forever and (560 - 24 - 16) or (646 - 24 - 16)
+-- 108-px column, 8-px pads, a 24-px view row). T119 (SPEC-one-ui 7): TBC's
+-- Settings group is 860 x 560 too, so both lines measure against 736 x 520.
+local VIEW_W = 860 - 108 - 16
+local VIEW_H = 560 - 24 - 16
 
 --------------------------------------------------------------------------------
 T.section("1. Settings -> Clock")
@@ -319,7 +325,8 @@ Try("the Settings group has a Clock view, after General", function()
             for _, v in ipairs(g.views or {}) do ids[#ids + 1] = v.id end
         end
     end
-    local want = forever and "general,clock,modules,about" or "general,clock,about"
+    -- T119: Review between Clock and the rest on both lines
+    local want = forever and "general,clock,review,modules,about" or "general,clock,review,about"
     return table.concat(ids, ",") == want, table.concat(ids, ",")
 end)
 
@@ -818,12 +825,9 @@ local look, generalPane
 local function FindLook()
     MD:SelectView("settings", "general")
     if not forever and MD.ShowOptionsFrame then MD:ShowOptionsFrame("general") end
-    for _, f in ipairs(S.allFrames) do
-        if f.lookControls then look, generalPane = f.lookControls, f end
-    end
-    if forever then
-        for _, f in ipairs(S.allFrames) do if f.fontSlider then generalPane = f end end
-    end
+    -- T119: one General pane on both lines, UI/Settings.lua's
+    generalPane = MD.Settings and MD.Settings.panes.general
+    look = generalPane and generalPane.lookControls
 end
 pcall(FindLook)
 
@@ -1019,8 +1023,8 @@ Try("Customise... opens Settings -> Clock", function()
     FindLook()
     local b
     for _, f in ipairs(S.allFrames) do
-        if forever and f.clockCustomise then b = f.clockCustomise end
-        if not forever and f.customiseButton then b = f.customiseButton end
+        -- T119: the shared MANA CLOCK pane's button on both lines
+        if f.clockCustomise then b = f.clockCustomise end
     end
     Click(b)
     local g, v = MD:SelectedView()
@@ -1072,7 +1076,7 @@ end)
 
 Try("every titled pane of Settings -> General lies inside the view", function()
     FindLook()
-    local base = forever and generalPane or (MD.optionsFrame and _G.SpellTunerOptionsFrame_GeneralTab)
+    local base = generalPane -- T119: the shared General pane on both lines
     local bad, n = nil, 0
     local all = { l = 0, t = 0, r = VIEW_W, b = -VIEW_H }
     for _, t in ipairs(TitledUnder(base)) do

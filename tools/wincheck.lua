@@ -93,8 +93,8 @@ if S.flavour == "tbc" then
     S.Load({ "UI/Style.lua", "UI/Theme_Flat.lua", "UI/EscStack.lua", "UI/Windows.lua", "UI/ContextMenu.lua",
              "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/Dashboard_Rows.lua", "UI/Dashboard_Simulate.lua",
              "UI/Dashboard_Waste.lua", "UI/Dashboard_Review.lua", "UI/PracticePanel.lua", "UI/BindingsWindow.lua",
-             "UI/Dashboard.lua", "UI/OptionsFrame.lua", "UI/SimWindow.lua", "UI/ReplayWindow.lua",
-             "UI/Options_General.lua", "UI/Options_About.lua", "UI/DebugConsole.lua", "UI/MinimapButton.lua" },
+             "UI/Settings.lua", "UI/Dashboard.lua", "UI/SimWindow.lua", "UI/ReplayWindow.lua",
+             "UI/Settings_TBC.lua", "UI/DebugConsole.lua", "UI/MinimapButton.lua" },
         "SpellTuner", MD)
     UI = MD.UI
     Win = MD.Win
@@ -128,7 +128,10 @@ if S.flavour == "tbc" then
                          { "settings", "general" } }) do
         MD:SelectView(g[1], g[2])
         sizes[#sizes + 1] = g[1] .. "=" .. frame:GetWidth() .. "x" .. frame:GetHeight()
-        if not (frame:GetWidth() == 1036 and frame:GetHeight() == 646 and Win:Fixed("main", g[1])) then
+        -- T119 (SPEC-one-ui 7): Settings is 860 x 560 on TBC too, the rest 1036 x 646
+        local w0, h0 = 1036, 646
+        if g[1] == "settings" then w0, h0 = 860, 560 end
+        if not (frame:GetWidth() == w0 and frame:GetHeight() == h0 and Win:Fixed("main", g[1])) then
             allFixed = false
         end
     end
@@ -138,7 +141,7 @@ if S.flavour == "tbc" then
         for _, n in ipairs(UISpecialFrames) do if n == name then return true end end
         return false
     end
-    check("tbc: the TBC window registers as the host with TBC's sizes per group (1036 x 646, fixed)",
+    check("tbc: the TBC window registers as the host with TBC's sizes per group (1036 x 646, Settings 860 x 560, fixed)",
         w ~= nil and w.frame == frame and w.role == "host" and Win.host == w and routed == 4 and allFixed
           and Win.SIZES ~= nil and Win.SIZES.spells.w == 1036 and Win.SIZES.reports.minH == 646
           and frame:GetFrameStrata() == "HIGH" and frame.userPlaced == false
@@ -761,9 +764,18 @@ end
 -- module's (Engine/SimModel.lua registers them) -- and it says so; About lists
 -- each module that is not loaded as one line instead of commands it has not
 -- registered yet.
+-- T119 (SPEC-one-ui 7): REVIEW left General for Settings -> Review (RECORDING
+-- | MODEL); General is found by its tooltip check, the review controls on
+-- their own pane.
 local function GeneralPane()
     for _, f in ipairs(S.allFrames) do
-        if f.fontSlider and f.reviewChecks then return f end
+        if f.fontSlider and f.tooltipCheck then return f end
+    end
+    return nil
+end
+local function ReviewPane()
+    for _, f in ipairs(S.allFrames) do
+        if f.reviewChecks and f.view == "review" then return f end
     end
     return nil
 end
@@ -782,8 +794,8 @@ local function AboutRows(p)
     return out
 end
 do
-    MD:SelectView("settings", "general")
-    local p = GeneralPane()
+    MD:SelectView("settings", "review") -- T119: was General's REVIEW pane
+    local p = ReviewPane()
     local allOff = p ~= nil and #p.reviewChecks == 4
     for _, c in ipairs(p and p.reviewChecks or {}) do
         if c.check:IsEnabled() then allOff = false end
@@ -1122,6 +1134,10 @@ end
 --------------------------------------------------------------------------------
 MD:SelectView("settings", "general")
 gp = GeneralPane()
+-- T119: REVIEW and Measure are Settings -> Review's (RECORDING, MODEL)
+MD:SelectView("settings", "review")
+local rp = ReviewPane()
+MD:SelectView("settings", "general")
 
 -- the pane a titled pane hangs from: follow its first point up the chain
 -- to the one anchored on the General pane itself, and read that x
@@ -1150,7 +1166,8 @@ do
     for _, t in ipairs({ "SPELL TOOLTIPS", "APPEARANCE", "WINDOWS" }) do
         if ColumnX(titles[t]) ~= 4 then left = false end
     end
-    for _, t in ipairs({ "MANA CLOCK", "REVIEW", "TOOLS" }) do
+    -- T119: REVIEW moved to Settings -> Review; INTEGRATIONS under TOOLS
+    for _, t in ipairs({ "MANA CLOCK", "TOOLS", "INTEGRATIONS" }) do
         if ColumnX(titles[t]) ~= 376 then right = false end
     end
     local named = gp and FontStringUnder(gp.fontSlider, "Text size") ~= nil
@@ -1158,7 +1175,7 @@ do
       and gp.fontHint and gp.fontHint:GetText() == "Every SpellTuner text, one size bigger or smaller."
       and gp.scaleHint and gp.scaleHint:GetText() == "Every SpellTuner window, bigger or smaller."
       and FontStringUnder(gp.fontSlider, "Font offset") == nil
-    check("T70: General in two columns (tooltips, appearance, windows | clock, review, tools); Text size, Window size",
+    check("T70: General in two columns (tooltips, appearance, windows | clock, tools, integrations); Text size, Window size",
         gp ~= nil and left and right and named and gp.clockCheck.parentFrame == titles["MANA CLOCK"],
         string.format("left=%s right=%s named=%s", tostring(left), tostring(right), tostring(named)))
 end
@@ -1202,7 +1219,7 @@ end)
 Guarded("T70: REVIEW", function()
     local keys, wrote, live = {}, true, true
     local saved = {}
-    for _, c in ipairs(gp and gp.reviewChecks or {}) do
+    for _, c in ipairs(rp and rp.reviewChecks or {}) do
         keys[#keys + 1] = c.key
         saved[c.key] = MD.db[c.key]
         if not c.check:IsEnabled() then live = false end
@@ -1212,16 +1229,16 @@ Guarded("T70: REVIEW", function()
         if MD.db[c.key] ~= false or MD:Setting(c.key) ~= false then wrote = false end
     end
     local sv = MD.db.simFullHp
-    Type(gp and gp.fullHpSlider, "90")
+    Type(rp and rp.fullHpSlider, "90")
     local hp = near(MD.db.simFullHp, 0.9) and near(MD:Setting("simFullHp"), 0.9)
-    Type(gp and gp.fullHpSlider, "120")
+    Type(rp and rp.fullHpSlider, "120")
     local clamped = near(MD.db.simFullHp, 0.99)
     MD.db.simFullHp = sv
     for k, v in pairs(saved) do MD.db[k] = v end
     check("T70: REVIEW's four checks and 'Full health is above' write their keys once Replay is loaded",
         #keys == 4 and table.concat(keys, ",") == "replayAutoCoach,replayNextPull,replayTicks,simAllowRebinds"
-          and live and wrote and hp and clamped and gp.fullHpSlider:IsEnabled()
-          and gp.reviewNote:GetText() == "needs the Replay module",
+          and live and wrote and hp and clamped and rp.fullHpSlider:IsEnabled()
+          and rp.reviewNote:GetText() == "needs the Replay module",
         string.format("keys=%s live=%s wrote=%s hp=%s clamped=%s", table.concat(keys, ","), tostring(live),
           tostring(wrote), tostring(hp), tostring(clamped)))
 end)
@@ -1240,10 +1257,10 @@ Guarded("T70: TOOLS", function()
       and copy.text:find("SpellTuner dump", 1, true) == 1
     if copy then copy:Hide() end
     local wasOn = MD.Measure.on
-    Click(gp and gp.measureButton)
-    local turnedOn = MD.Measure.on == true and gp.measureButton:GetText() == "Measure: on"
-    Click(gp and gp.measureButton)
-    local turnedOff = not MD.Measure.on and gp.measureButton:GetText() == "Measure: off"
+    Click(rp and rp.measureButton)
+    local turnedOn = MD.Measure.on == true and rp.measureButton:GetText() == "Measure: on"
+    Click(rp and rp.measureButton)
+    local turnedOff = not MD.Measure.on and rp.measureButton:GetText() == "Measure: off"
     check("T70: TOOLS opens the console, puts /st dump in the copy box, and turns measure on and off",
         consoleShown and dumped and not wasOn and turnedOn and turnedOff,
         string.format("console=%s dump=%s measure %s/%s", tostring(consoleShown), tostring(dumped),

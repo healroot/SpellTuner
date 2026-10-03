@@ -144,7 +144,8 @@ end
 T.section("the source scan: no colour copied out of a token in T107's files")
 
 local OWNED = { "UI/Style.lua", "UI/Dashboard_Rows.lua", "UI/SpellsPane.lua", "UI/SpellsView_TBC.lua",
-    "UI/SpellRail.lua", "UI/ReplayWindow.lua", "UI/Dashboard_Simulate.lua", "UI/Options_About.lua",
+    -- T119: UI/Options_About.lua's About is UI/Settings.lua's (both lines)
+    "UI/SpellRail.lua", "UI/ReplayWindow.lua", "UI/Dashboard_Simulate.lua", "UI/Settings.lua",
     "UI/DebugConsole.lua", "UI/Tip_TBC.lua" }
 local function Code(rel)
     local fh = io.open(root .. "/" .. rel, "r")
@@ -265,7 +266,9 @@ if flavour == "forever" then
         { "spells", "overview", "spells" }, { "spells", "FAMILY", "spells" },
         { "reports", "review", "review" }, { "simulate", "practice", "practice" },
         { "simulate", "bindings", "bindings", open = Bindings, root = SheetFrame },
-        { "settings", "general", "settings" }, { "settings", "modules", "settings" },
+        -- T119: Settings -> Review on both lines
+        { "settings", "general", "settings" }, { "settings", "review", "settings" },
+        { "settings", "modules", "settings" },
         { "settings", "about", "settings" },
         { "debug", "console", "debug", open = Console, root = "SpellTunerDebugConsole" },
         { "debug", "copy", "copy", open = Copy, root = "SpellTunerDebugCopyFrame" },
@@ -277,7 +280,8 @@ else
         { "simulate", "practice", "practice" },
         { "simulate", "bindings", "bindings", open = Bindings, root = SheetFrame },
         { "simulate", "build", "simulate" },
-        { "settings", "general", "settings" }, { "settings", "about", "settings" },
+        { "settings", "general", "settings" }, { "settings", "review", "settings" },
+        { "settings", "about", "settings" },
         { "debug", "console", "debug", open = Console, root = "SpellTunerDebugConsole" },
         { "debug", "copy", "copy", open = Copy, root = "SpellTunerDebugCopyFrame" },
     }

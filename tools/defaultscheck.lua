@@ -301,7 +301,7 @@ do
         end
     end
     local owned = { [SIMMODEL] = true, ["Engine/SimPlanner.lua"] = true, ["UI/ReplayWindow.lua"] = true,
-        ["UI/Options_General.lua"] = true, [GATES_FOREVER] = true }
+        ["UI/Settings_TBC.lua"] = true, ["UI/Settings.lua"] = true, [GATES_FOREVER] = true } -- T119
     local inOwned = {}
     for _, l in ipairs(left) do
         if owned[l:match("^(%S+):")] then inOwned[#inOwned + 1] = l end
@@ -341,9 +341,19 @@ end
 T.section("5. the Options sliders on a fresh database (TBC)")
 --------------------------------------------------------------------------------
 if flavour == "tbc" then
-    -- the pane is built on its first showing, so the sliders are looked up after
+    -- the pane is built on its first showing, so the sliders are looked up after.
+    -- T119 (SPEC-one-ui 7, re-based): the two sliders are Settings -> Review's
+    -- RECORDING (UI/Settings.lua over UI/Settings_TBC.lua's rows); the view is
+    -- built once and re-read by MD.Settings.Refresh, as the dashboard's onShow
+    -- does, instead of firing ShowOptionsTab.
     local function Show()
-        MD:Fire("ShowOptionsTab", "general")
+        local MS = MD.Settings
+        if not MS.panes.review then
+            local content = CreateFrame("Frame", nil, UIParent)
+            content:SetSize(736, 520)
+            MS.Build("review", content)
+        end
+        MS.Refresh("review")
         local full, floor = sliders["Full health is above (%)"], sliders["Danger line for built fights (%)"]
         return full and full:GetValue(), floor and floor:GetValue()
     end
@@ -360,8 +370,8 @@ if flavour == "tbc" then
     check("a stored value wins: 90 and 25", f3 == 90 and d3 == 25, tostring(f3) .. ", " .. tostring(d3))
     MD.db.simFullHp, MD.db.simFloor = sf, sd
 else
-    check("forever: no Options_General on this TOC (the sliders are TBC's)", (function()
-        for _, rel in ipairs(tocFiles) do if rel == "UI/Options_General.lua" then return false end end
+    check("forever: no Settings_TBC on this TOC (the sliders are TBC's)", (function()
+        for _, rel in ipairs(tocFiles) do if rel == "UI/Settings_TBC.lua" then return false end end
         return true
     end)())
 end
