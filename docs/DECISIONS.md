@@ -1514,3 +1514,11 @@ clock is wide enough. The time is never lost: when Main shows something else, th
 carries it. On Forever, Mana % and Mana show the model's `~` values; the game's own number waits
 for probe Q-clock-2 (`MD.API.POWER_TEXT_READS`, off). The datatext and the brokers follow Line's
 slots. By default every word is as before.
+
+## One book contract (2026-10-03, T117, SPEC-one-ui 3.1)
+
+Both lines' books answer one contract, `Spells/BookShape.lua`, checked at the end of every
+scan the way the kit is. An entry names its family by key (`family`), so a TBC family keeps
+SpellData's key while its spells keep their names. Lifebloom's rolled rows hang off their rank
+(`variants`) and are never ranks. The +healing rules live once, in `Spells/Coefficients.lua`;
+Forever's estimate uses them without TBC's downrank rule and says "estimated".
