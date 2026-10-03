@@ -7,8 +7,8 @@
 -- seeded kind appended once, never a removed one, never a damage or utility
 -- family into a heal list), a family the book no longer has kept and
 -- resolved as "stale", the family key and ids Book gives, Add / Remove /
--- Move / Undo / Reset, and cdb.spellTabs initialised at login. T84 (C5): under
--- tbc, four checks of the list over Spells/Families_TBC.lua (below).
+-- Move / Undo / Reset, and cdb.spellTabs initialised at login. T84 (C5) and
+-- T118: under tbc, six checks of the list over MD.Book (Spells/Book_Model.lua, below).
 HARNESS_FLAVOUR = { "forever", "tbc" }
 
 local here = arg[0]:match("^(.*)/[^/]+$")
@@ -86,15 +86,18 @@ local function FreshStore()
 end
 
 --------------------------------------------------------------------------------
--- T84 (C5 of docs/PLAN-refactor-ux.md, section 7.1): the list on TBC. Its
--- book is Spells/Families_TBC.lua's -- the TBC rank table's druid families in
--- Book's shape, rebuilt on SPELLS_REBUILT, which runs the reconcile -- through
--- the one seam, Tabs.source. The rules are the Forever ones above, unchanged.
--- Four checks, then the suite ends (the Forever half needs Spells/Book.lua).
+-- T84 (C5 of docs/PLAN-refactor-ux.md, section 7.1): the list on TBC.
+-- T118 (docs/tasks/T118-tbc-book.md): its book is MD.Book on both lines now
+-- -- TBC's is Spells/Book_Model.lua, refreshed on SPELLS_REBUILT, firing
+-- BOOK_CHANGED, which runs the reconcile, as on Forever -- through the one
+-- seam, Tabs.source, left at its default. The rules are the Forever ones
+-- above; a family marked noSeed (Tranquility, Swiftmend) is in the book but
+-- never seeded or reconciled in, only added by hand; Resolve finds a family
+-- by its entries' `family`. Six checks, then the suite ends (the Forever half
+-- needs Spells/Book.lua's grouping).
 --------------------------------------------------------------------------------
 if S.flavour == "tbc" then
     local SD = MD.SpellData
-    local FT = MD.FamiliesTBC
     local LIFEBLOOM = {}
     for _, id in ipairs(SD.all.Lifebloom) do LIFEBLOOM[id] = true end
     -- every rank known (a level 70 druid), or every rank but Lifebloom's
@@ -104,10 +107,10 @@ if S.flavour == "tbc" then
         for id in pairs(SD.spells) do
             if withLifebloom or not LIFEBLOOM[id] then S.known[id] = true end
         end
-        SD:BuildKnown() -- fires SPELLS_REBUILT: the families rebuilt, the list reconciled
+        SD:BuildKnown() -- fires SPELLS_REBUILT: the book refreshed, BOOK_CHANGED, the list reconciled
     end
 
-    block("tbc: a level 70 druid's families seed Healing Touch, Rejuvenation, Regrowth and Lifebloom", function()
+    block("tbc: a level 70 druid's book seeds Healing Touch, Rejuvenation, Regrowth and Lifebloom", function()
         Train(true)
         FreshStore()
         local book = Tabs.source()
@@ -116,11 +119,12 @@ if S.flavour == "tbc" then
         local shape = ht and ht.key == "HealingTouch" and ht.name == "Healing Touch" and ht.kind == "heal"
             and #ht.ids == #SD.all.HealingTouch and ht.ranks[1].id == ht.ids[1] and ht.ranks[1].known == true
             and type(ht.ranks[1].level) == "number" and type(ht.ranks[1].cost.amount) == "number"
-            and ht.maxKnown == ht.ranks[#ht.ranks]
-        check("tbc: a level 70 druid's families seed Healing Touch, Rejuvenation, Regrowth and Lifebloom",
+            and ht.maxKnown == ht.ranks[#ht.ranks] and ht.ranks[1].family == "HealingTouch"
+        local tq, sm = book.families.Tranquility, book.families.Swiftmend
+        check("tbc: a level 70 druid's book seeds Healing Touch, Rejuvenation, Regrowth and Lifebloom",
             order == "HealingTouch,Rejuvenation,Regrowth,Lifebloom" and shape
-                and Join(book.order) == "HealingTouch,Lifebloom,Rejuvenation,Regrowth"
-                and book.families.Tranquility == nil and book.families.Swiftmend == nil
+                and Join(book.order) == "HealingTouch,Lifebloom,Rejuvenation,Regrowth,Tranquility,Swiftmend"
+                and tq ~= nil and tq.noSeed == true and sm ~= nil and sm.noSeed == true
                 and MD.cdb.spellTabs.kind == "heal" and not Tabs:IsNew("Lifebloom"),
             "order=" .. order .. " shape=" .. tostring(shape) .. " book=" .. Join(book.order))
     end)
@@ -143,7 +147,7 @@ if S.flavour == "tbc" then
         FreshStore()
         local seeded = Join(Tabs:Get(Tabs.source()))
         local known = Tabs.source().families.Lifebloom.maxKnown
-        Train(true) -- Lifebloom trained: SPELLS_REBUILT rebuilds and reconciles
+        Train(true) -- Lifebloom trained: SPELLS_REBUILT refreshes the book, BOOK_CHANGED reconciles
         check("tbc: a family trained later is appended with the new dot",
             seeded == "HealingTouch,Rejuvenation,Regrowth" and known == nil
                 and Join(Tabs:Get()) == "HealingTouch,Rejuvenation,Regrowth,Lifebloom"
@@ -152,23 +156,39 @@ if S.flavour == "tbc" then
             "seeded=" .. seeded .. " now=" .. Join(Tabs:Get()))
     end)
 
-    -- The default source is Forever's book, whatever TBC installs: with the
-    -- seam put back on it, an edit that passes no book reads MD.Book:Get().
-    block("tbc: the TBC source is installed; the default source is MD.Book:Get() (Forever's)", function()
-        local installed = Tabs.source == FT.Source and Tabs.source() == FT:Get()
-        local fake = { families = { Wrath = { key = "Wrath", name = "Wrath", kind = "damage", ids = { 5176 },
-            ranks = { { id = 5176, rank = 1, known = true, level = 1, cost = { amount = 20 } } } } },
-            order = { "Wrath" }, spells = {} }
-        local savedBook, savedSource = MD.Book, Tabs.source
-        MD.Book = { Get = function() return fake end }
-        Tabs.source = Tabs.BookSource
+    -- One seam on both lines: TBC installs nothing, the default reads MD.Book.
+    block("tbc: the source is the default one, MD.Book:Get(), as on Forever", function()
+        local default = Tabs.source == Tabs.BookSource and MD.Book ~= nil and Tabs.source() == MD.Book:Get()
+        check("tbc: the source is the default one, MD.Book:Get(), as on Forever", default,
+            "source default=" .. tostring(Tabs.source == Tabs.BookSource) .. " book=" .. tostring(MD.Book ~= nil))
+    end)
+
+    block("tbc: noSeed families are never seeded or reconciled in, but can be added", function()
+        Train(true)
         FreshStore()
-        local default = Tabs.BookSource() == fake and Tabs:Add("Wrath") == 1 and Tabs:Resolve("Wrath") == fake.families.Wrath
-        MD.Book, Tabs.source = savedBook, savedSource
+        local seeded = Join(Tabs:Get(Tabs.source()))
+        Train(true)
+        local reconciled = Join(Tabs:Get())
+        local at = Tabs:Add("Swiftmend")
+        check("tbc: noSeed families are never seeded or reconciled in, but can be added",
+            seeded == "HealingTouch,Rejuvenation,Regrowth,Lifebloom" and reconciled == seeded
+                and at == 5 and Join(Tabs:Get()) == seeded .. ",Swiftmend",
+            "seeded=" .. seeded .. " reconciled=" .. reconciled .. " add=" .. tostring(at))
+    end)
+
+    -- A key the book no longer has, found again through an id it stored: the
+    -- entry names its family by `family` (TBC's key), not by its name.
+    block("tbc: Resolve finds a renamed family by its entries' family key", function()
+        local entry = { id = 5185, name = "Healing Touch", family = "HealingTouch" }
+        local fam = { key = "HealingTouch", name = "Healing Touch", kind = "heal", ids = { 5185 }, ranks = { entry } }
+        local fake = { families = { HealingTouch = fam }, order = { "HealingTouch" }, spells = { [5185] = entry } }
+        local store = FreshStore()
+        store.order = { "OldKey" }
+        store.ids = { OldKey = { 5185 } }
+        local got, why = Tabs:Resolve("OldKey", fake)
         FreshStore()
-        check("tbc: the TBC source is installed; the default source is MD.Book:Get() (Forever's)",
-            installed and default and Tabs.source == FT.Source,
-            "installed=" .. tostring(installed) .. " default=" .. tostring(default))
+        check("tbc: Resolve finds a renamed family by its entries' family key", got == fam,
+            "got=" .. tostring(got and got.key) .. " " .. tostring(why))
     end)
 
     print(string.format("\n%d ok, %d failed", ok, #fails))
