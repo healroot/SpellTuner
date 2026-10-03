@@ -1522,3 +1522,17 @@ scan the way the kit is. An entry names its family by key (`family`), so a TBC f
 SpellData's key while its spells keep their names. Lifebloom's rolled rows hang off their rank
 (`variants`) and are never ranks. The +healing rules live once, in `Spells/Coefficients.lua`;
 Forever's estimate uses them without TBC's downrank rule and says "estimated".
+
+## The TBC book is live (2026-10-03, T118, SPEC-one-ui 3.2)
+
+TBC's `MD.Book` is an adapter over the model: every number is RankMath's or DamageMath's
+row, never recomputed. It reads the live context only; the What if reaches it through one door,
+`Get({ whatIf = true })`, which is never cached and never announced. The gear toast's suggested
+ranks are the live ones, so a what-if can no longer fire it.
+
+## One Settings (2026-10-03, T119, SPEC-one-ui 7)
+
+Settings is one file on both lines, built from rows each line installs. Review is its own
+view (recording and the model's knobs); General keeps what every player sets. TBC's window
+is 860 x 560 for Settings, as Forever's. TBC gets no "Show the mana clock" switch: its clock
+appears by the visibility rule, and a new switch is a change to the widget, not to Settings.
