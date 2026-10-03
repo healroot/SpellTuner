@@ -1,6 +1,6 @@
 -- T111 (docs/SPEC-next.md 4.2 P5, decision 8 (b)): the paladin's profile on the
--- TBC line -- for the rank table and the spell tooltip only (not granted
--- yet: see `caps`). The TBC coach stays
+-- TBC line -- for the rank table and the spell tooltip (granted by T123,
+-- with the class's damage spells). The TBC coach stays
 -- the druid's (decision 8): no `coach`, `practice`, `simulate` or `advisor`,
 -- and no planner.
 --
@@ -19,16 +19,9 @@ local _, MD = ...
 MD.Profiles.Register("PALADIN", {
     label = "Paladin",
     critSchool = 2,                -- Holy (GetSpellCritChance's school; VERIFY)
-    -- the mana clock only, as before this file (the generic profile's).
-    -- `rankTable` and `tooltip` wait until the TBC files that read
-    -- Data/SpellData.lua directly read RankMath:Source() instead
-    -- (UI/SpellsView_TBC.lua, UI/Dashboard.lua, UI/SpellTooltip.lua,
-    -- UI/Tip_TBC.lua) and the two gates that take `rankTable` to mean
-    -- Data/SpellData.lua stop doing so (UI/Summary.lua's max-rank share,
-    -- Diagnostics_TBC.lua's /md profile): granted before that, the
-    -- Spells view is half blank and the fight summary says
-    -- `max-rank casts 0%` (docs/tasks/T111-tbc-other-classes.md).
-    caps = { clock = true },
+    -- T123: the rank table and the tooltip, now that every TBC reader of
+    -- Data/SpellData.lua reads RankMath:Source() (docs/tasks/T123-tbc-classes-damage.md)
+    caps = { clock = true, rankTable = true, tooltip = true },
     families = {
         HolyLight    = { names = { "Holy Light" },     kit = "direct" },
         FlashOfLight = { names = { "Flash of Light" }, kit = "direct" },
@@ -37,4 +30,15 @@ MD.Profiles.Register("PALADIN", {
     order = { "HolyLight", "FlashOfLight", "HolyShock" },
     hotSlots = {},
     unmodelled = { "Lay on Hands", "Divine Favor" },
+    -- T123: the damage spells Engine/DamageMath.lua values from each rank's
+    -- own tooltip text, by the spellbook's name: the school (Holy 2), the
+    -- coefficient's shape and cast, the tick (every one VERIFY; no talent of
+    -- the class is modelled on them, and the tooltip says so). Holy Shock's
+    -- damage half stays part of its heal family.
+    damage = {
+        ["Exorcism"]     = { school = 2, kind = "direct", baseCast = 1.5 },
+        ["Holy Wrath"]   = { school = 2, kind = "direct", baseCast = 2.0, aoe = true },
+        ["Consecration"] = { school = 2, kind = "dot",    baseCast = 1.5, tick = 1, aoe = true },
+    },
+    damageOrder = { "Exorcism", "Holy Wrath", "Consecration" },
 })

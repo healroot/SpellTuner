@@ -14,9 +14,10 @@
 --           stacks as `variants`; Tranquility and Swiftmend (SpellData's
 --           `exclude`) as heal families with `noSeed` and no value
 --           (Swiftmend's calc: the two "Eats" lines)
---   damage  the druid's (DM.families), walked from the spellbook, each rank
---           read from its own text; only where the rank table is
---           Data/SpellData.lua's (a class's damage is T123's)
+--   damage  the logged-in class's (DM.FamiliesFor: the druid's DM.families,
+--           else -- T123 -- the class profile's `damage`), walked from the
+--           spellbook in DM.OrderFor's order, each rank read from its own
+--           text; wherever the rank table is granted
 --   Other   every walked spell no family claims that is not passive and
 --           costs mana, one family per name (Forever's Other rule, T10c)
 --
@@ -319,7 +320,6 @@ end
 -- Damage: Engine/DamageMath.lua over the walked spellbook
 --------------------------------------------------------------------------------
 
-local DAMAGE_ORDER = { "Wrath", "Starfire", "Moonfire", "Insect Swarm", "Hurricane" }
 local DAMAGE_SHAPE = { direct = "direct", hybrid = "hybrid", dot = "hot", channel = "channel" }
 
 local function DamageWhy(c, f)
@@ -341,7 +341,9 @@ local function DamageWhy(c, f)
     return table.concat(parts, ", ")
 end
 
--- Tip:Damage's Shift lines (UI/Tip_TBC.lua), plain
+-- Tip:Damage's Shift lines (the old UI/Tip_TBC.lua's), plain. T123: a
+-- class family's (c.talentsModelled == false) says no talent is modelled,
+-- and its VERIFY sentence names no Balance talent.
 local function DamageCalc(c)
     local out = { "base damage: read from this tooltip" }
     if c.coef then
@@ -359,10 +361,15 @@ local function DamageCalc(c)
         if not seen[t] then seen[t] = true; names[#names + 1] = t end
     end
     if #names > 0 then out[#out + 1] = "talents: " .. table.concat(names, ", ") end
+    if c.talentsModelled == false then out[#out + 1] = "talents not modelled (VERIFY)" end
     if not c.penaltyKnown then
         out[#out + 1] = "the client does not say this rank's level: no downrank penalty applied"
     end
-    out[#out + 1] = "VERIFY: coefficients, tick periods and Balance talents are the"
+    if c.talentsModelled == false then
+        out[#out + 1] = "VERIFY: coefficients and tick periods are the"
+    else
+        out[#out + 1] = "VERIFY: coefficients, tick periods and Balance talents are the"
+    end
     out[#out + 1] = "standard TBC rules, not yet checked against a hit on this client"
     return out
 end
@@ -383,28 +390,30 @@ end
 local function DamageFamilies(book, walk, pool)
     local DM, RR = MD.DamageMath, MD.RankRules
     if not DM then return {} end
+    local class = MD.player and MD.player.class
+    local families = DM.FamiliesFor(class)
     local byName = {}
     for _, hit in ipairs(walk) do
-        local key = DM.Family(hit.name)
+        local key = DM.Family(hit.name, class)
         if key and not book.spells[hit.id] then
             byName[key] = byName[key] or {}
             byName[key][#byName[key] + 1] = hit
         end
     end
     local order = {}
-    for _, key in ipairs(DAMAGE_ORDER) do
+    for _, key in ipairs(DM.OrderFor(class)) do
         local hits = byName[key]
-        local f = DM.families[key]
+        local f = families[key]
         if hits and f then
-            local fam = { key = key, name = key, kind = "damage", school = DM.SchoolName(key),
+            local fam = { key = key, name = key, kind = "damage", school = DM.SchoolName(key, class),
                           shape = DAMAGE_SHAPE[f.kind] or "direct", ids = {}, ranks = {} }
             for _, hit in ipairs(hits) do
                 local id = hit.id
                 local e = { id = id, family = key, name = hit.name, rank = RankOf(hit.sub),
                             rankText = hit.sub, known = true, icon = Icon(id), school = fam.school }
                 local r = ApplyRead(e, id)
-                local base = e.desc and DM.Parse(key, e.desc) or nil
-                local c = base and DM.Compute(id, key, base) or nil
+                local base = e.desc and DM.Parse(key, e.desc, class) or nil
+                local c = base and DM.Compute(id, key, base, class) or nil
                 if c then
                     e.value, e.perMana, e.perSec = c.expected, c.dpm, c.dps
                     e.min, e.max, e.crit = c.min, c.max, c.crit
@@ -554,7 +563,7 @@ function Book:Build(whatIf)
 
     local B = Reader()
     local walk = (B and type(B.WalkAll) == "function") and B.WalkAll() or {}
-    if canTable and src == MD.SpellData then
+    if canTable then
         for _, key in ipairs(DamageFamilies(book, walk, Book.DefaultPoolFrom(ctx))) do
             book.order[#book.order + 1] = key
         end
@@ -723,8 +732,7 @@ end
 -- Rebuilt when what RankMath reads moves. SPELLS_REBUILT (login, a rank
 -- trained) always rebuilds once the saved variables are there, read or not:
 -- it is the event Spells/Families_TBC.lua reconciled the spell list on, and
--- until T120 nothing on TBC reads MD.Book on its own (the rail reads the
--- MD.FamiliesTBC alias), so the first build's BOOK_CHANGED is what runs
+-- a book nobody has read since must still fire the BOOK_CHANGED that runs
 -- Tabs:Reconcile -- a heal family trained mid-session is appended with the
 -- new dot. The other events rebuild only a book already read (a book nobody
 -- asked for is built on the first Get).
@@ -748,57 +756,6 @@ MD:On("UNIT_INVENTORY_CHANGED", function(unit)
     if unit == "player" then Rebuild() end
 end)
 MD:On("PLAYER_LEVEL_UP", Rebuild)
-
---------------------------------------------------------------------------------
--- MD.FamiliesTBC, an alias until T123: what Spells/Families_TBC.lua returned
--- (the heal families the rank table values, without Tranquility and
--- Swiftmend, each entry's `name` the family key), for its last readers --
--- UI/Dashboard.lua and UI/SpellsView_TBC.lua (T120 replaces them with the one
--- pane), tools/dashui.lua and tools/tbcclasscheck.lua (T123). Built from the
--- rank table's source as before, so a class book's families come through it
--- too; forgotten on SPELLS_REBUILT.
---------------------------------------------------------------------------------
-local FT = {}
-MD.FamiliesTBC = FT
-FT._book = nil
-
-function FT:Build()
-    local RM = MD.RankMath
-    local SD = RM and RM.Source and RM:Source() or nil
-    local book = { families = {}, order = {}, spells = {} }
-    if not SD or not CanRankTable() then return book end
-    local knownSet = SD.knownSet or {}
-    for _, key in ipairs(SD.familyOrder or {}) do
-        local info = SD.families and SD.families[key]
-        local all = SD.all and SD.all[key]
-        if info and not info.exclude and all and #all > 0 then
-            local fam = { key = key, name = info.label or key, kind = "heal", ids = {}, ranks = {} }
-            for i, id in ipairs(all) do
-                local s = SD.spells[id] or {}
-                local e = { id = id, name = key, rank = s.rank, level = s.level, known = knownSet[id] == true,
-                            cost = { amount = s.cost }, icon = Icon(id) }
-                fam.ids[i] = id
-                fam.ranks[i] = e
-                if e.known then fam.maxKnown = e end
-                book.spells[id] = e
-            end
-            book.families[key] = fam
-            book.order[#book.order + 1] = key
-        end
-    end
-    return book
-end
-
-function FT:Get()
-    if not FT._book then FT._book = FT:Build() end
-    return FT._book
-end
-
-function FT.Source()
-    return FT:Get()
-end
-
-MD:RegisterCallback("SPELLS_REBUILT", function() FT._book = nil end)
 
 -- T117: every method the contract names, present (Spells/BookShape.lua).
 if BS then BS.CheckMethods(Book, "Spells/Book_Model.lua") end

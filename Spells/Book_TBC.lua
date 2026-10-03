@@ -22,7 +22,8 @@
 -- Holy Shock's either-or sentence gives its heal half.
 --
 -- The source has Data/SpellData.lua's shape (families, familyOrder, spells,
--- all, known, knownSet, maxRank, GetCost, StaticCost, Relic, Resolve), so the
+-- all, known, knownSet, maxRank, GetCost, StaticCost, Relic, Resolve, and --
+-- T123 -- LiveCost, IsMaxKnownRank), so the
 -- rank math and the TBC book (Spells/Book_Model.lua) read either one the
 -- same way. Only the
 -- ranks the spellbook lists are in it (TBC's book lists every rank the player
@@ -35,9 +36,10 @@
 --
 -- T118: B.WalkAll() (every spell of the book) and B.Read(id) (one rank's
 -- text and reads) are every caller's, cached until SPELLS_CHANGED /
--- LEARNED_SPELL_IN_TAB or the next build. No TBC class profile
--- grants the rank table yet (Data/Profile_<Class>_TBC.lua says why), so in
--- the game this builds nothing and fires nothing until one does. TBC TOC
+-- LEARNED_SPELL_IN_TAB or the next build. T123: the priest's, shaman's and
+-- paladin's TBC profiles grant the rank table, so a logged-in priest, shaman
+-- or paladin builds here (the spend tracker, the fight summary and /md
+-- profile read it through RankMath:Source() as the rank math does). TBC TOC
 -- only, after Spells/Parse.lua.
 local _, MD = ...
 
@@ -445,6 +447,21 @@ function M:StaticCost(id)
 end
 function M:Relic() return nil end
 function M:Resolve(id) return id end
+-- T123: SD:LiveCost's answer through the adapter -- the client's mana cost,
+-- 0 for a cost list with no mana (free for our purposes), nil without one.
+function M:LiveCost(id)
+    local list = Call("SpellPowerCost", id)
+    if type(list) ~= "table" then return nil end
+    for _, c in ipairs(list) do
+        if type(c) == "table" and c.type == 0 and type(c.cost) == "number" then return c.cost end
+    end
+    return 0
+end
+-- T123: SD:IsMaxKnownRank -- the highest rank of its family the book lists.
+function M:IsMaxKnownRank(id)
+    local s = self.spells[id]
+    return s ~= nil and self.maxRank[s.family] == id
+end
 
 --- B:Source() -> the built source, or nil (the druid, a class without a
 --- profile, or not built yet).

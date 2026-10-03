@@ -56,6 +56,11 @@ P.FIELDS = {
     -- heal the parser refuses) -- the coach card names any a fight cast
     -- (SimPlanner's SP.Unmodelled). Never a family: a named family is modelled.
     unmodelled = "table",
+    -- T123 (TBC): the class's damage spells Engine/DamageMath.lua values from
+    -- their own tooltip text -- family name -> P.DAMAGE_FIELDS -- and the
+    -- order the book lists them in (damage keys; the rest follow by name).
+    damage = "table",
+    damageOrder = "table",
 }
 
 -- Required on every registered profile (the generic one carries only caps).
@@ -70,6 +75,18 @@ P.FAMILY_FIELDS = {
     cooldown = "number",       -- seconds of its own cooldown
     exclude = "boolean",       -- the line's own "not planned / not on the dashboard" mark
 }
+
+-- T123: a damage family's definition (Engine/DamageMath.lua's DM.families
+-- shape; the key is the spellbook's name, `names` any other name it shows).
+P.DAMAGE_FIELDS = {
+    names = "table",           -- more spellbook names of the same family (rare)
+    school = "number",         -- GetSpellBonusDamage / GetSpellCritChance's school, 1-7
+    kind = "string",           -- direct | hybrid | dot | channel
+    baseCast = "number",       -- the cast its coefficient is taken from (an instant: 1.5)
+    tick = "number",           -- seconds between ticks (hybrid, dot, channel)
+    aoe = "boolean",           -- it hits everything around (a channel's coefficient halved)
+}
+P.DAMAGE_KINDS = { direct = true, hybrid = true, dot = true, channel = true }
 
 -- The planner's fields: which rule set, and its ordered family lists.
 P.PLANNER_FIELDS = {
@@ -208,6 +225,49 @@ function P.Validate(p, types)
         for _, name in ipairs(IsList(p.unmodelled) and p.unmodelled or {}) do
             if owner[name] then
                 Say(problems, "unmodelled names %s, which is in the family %s", tostring(name), owner[name])
+            end
+        end
+    end
+    if p.damage ~= nil and type(p.damage) == "table" then
+        for key, def in pairs(p.damage) do
+            local where = "damage." .. tostring(key)
+            if type(key) ~= "string" or key == "" then Say(problems, "%s: the key is not a name", where) end
+            if type(def) ~= "table" then
+                Say(problems, "%s is not a table", where)
+            else
+                CheckFields(problems, where, def, P.DAMAGE_FIELDS)
+                if not P.DAMAGE_KINDS[def.kind] then Say(problems, "%s.kind %s", where, tostring(def.kind)) end
+                if not (type(def.school) == "number" and def.school >= 1 and def.school <= 7
+                        and def.school == math.floor(def.school)) then
+                    Say(problems, "%s.school %s", where, tostring(def.school))
+                end
+                if not (type(def.baseCast) == "number" and def.baseCast > 0) then
+                    Say(problems, "%s.baseCast %s", where, tostring(def.baseCast))
+                end
+                if def.kind ~= nil and def.kind ~= "direct"
+                    and not (type(def.tick) == "number" and def.tick > 0) then
+                    Say(problems, "%s.tick %s (a %s spell ticks)", where, tostring(def.tick), tostring(def.kind))
+                end
+                local names = { key }
+                if def.names ~= nil then
+                    CheckNames(problems, where .. ".names", def.names)
+                    for _, n in ipairs(IsList(def.names) and def.names or {}) do names[#names + 1] = n end
+                end
+                for _, n in ipairs(names) do
+                    local heal = owner[n] or (families[n] ~= nil and n or nil)
+                    if heal then
+                        Say(problems, "%s names %s, which is the heal family %s", where, tostring(n), heal)
+                    end
+                end
+            end
+        end
+    end
+    if p.damageOrder ~= nil then
+        CheckNames(problems, "damageOrder", p.damageOrder)
+        local dmg = type(p.damage) == "table" and p.damage or {}
+        for _, key in ipairs(IsList(p.damageOrder) and p.damageOrder or {}) do
+            if dmg[key] == nil then
+                Say(problems, "damageOrder names %s, which is not a damage family", tostring(key))
             end
         end
     end

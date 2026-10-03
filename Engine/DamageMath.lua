@@ -24,6 +24,14 @@
 --   * the Balance talents in TALENTS.
 -- A wrong one here costs a tooltip line, never a model number: nothing in the
 -- engine, the planner or the recorder reads this file.
+--
+-- T123 (docs/tasks/T123-tbc-classes-damage.md): a TBC priest's, shaman's or
+-- paladin's damage spells too. Their families are the class profile's
+-- `damage` (Data/Profile_<Class>_TBC.lua: school, kind, base cast, tick --
+-- names and rules only), read through DM.FamiliesFor(class); the same rules
+-- turn a base into a hit, and no talent of those classes is modelled (the
+-- book's lines say so). Every entry point takes the class, defaulting to the
+-- logged-in player's; the druid's answers are what they were.
 local _, MD = ...
 
 local DM = {}
@@ -43,6 +51,69 @@ DM.families = {
     ["Hurricane"]    = { school = NATURE, schoolName = "Nature", kind = "channel", baseCast = 1.5, tick = 1, aoe = true },
 }
 
+-- T123: a school id's name (GetSpellBonusDamage's schools).
+DM.SCHOOL_NAMES = { [1] = "Physical", [2] = "Holy", [3] = "Fire", [4] = "Nature", [5] = "Frost",
+                    [6] = "Shadow", [7] = "Arcane" }
+
+-- The druid's families in the order the TBC book lists them.
+DM.DRUID_ORDER = { "Wrath", "Starfire", "Moonfire", "Insect Swarm", "Hurricane" }
+
+local function ClassOf(class)
+    if class == nil then class = MD.player and MD.player.class end
+    return class
+end
+
+local derived = {}   -- class -> { families, order } derived from its profile
+local function Derived(class)
+    if derived[class] then return derived[class] end
+    local P = MD.Profiles
+    local p = P and P.byClass and P.byClass[class]
+    if type(p) ~= "table" or type(p.damage) ~= "table" then return nil end
+    local fams, keys = {}, {}
+    for key, def in pairs(p.damage) do
+        fams[key] = { school = def.school, schoolName = DM.SCHOOL_NAMES[def.school], kind = def.kind,
+                      baseCast = def.baseCast, tick = def.tick, aoe = def.aoe, class = class }
+        keys[#keys + 1] = key
+    end
+    local alias = {}
+    for key, def in pairs(p.damage) do
+        for _, n in ipairs(type(def.names) == "table" and def.names or {}) do alias[n] = key end
+    end
+    local order, seen = {}, {}
+    for _, key in ipairs(type(p.damageOrder) == "table" and p.damageOrder or {}) do
+        if fams[key] and not seen[key] then order[#order + 1] = key; seen[key] = true end
+    end
+    table.sort(keys)
+    for _, key in ipairs(keys) do
+        if not seen[key] then order[#order + 1] = key end
+    end
+    derived[class] = { families = fams, order = order, alias = alias }
+    return derived[class]
+end
+
+--- DM.FamiliesFor(class) -> family name -> definition: the druid's
+--- DM.families (also when no class is known), else the class profile's
+--- `damage` as DM.families' shape (with `schoolName`), else {}.
+function DM.FamiliesFor(class)
+    class = ClassOf(class)
+    if class == nil or class == "DRUID" then return DM.families end
+    local d = Derived(class)
+    return d and d.families or {}
+end
+
+--- DM.OrderFor(class) -> the families' order: the druid's, else the
+--- profile's damageOrder, then the rest by name.
+function DM.OrderFor(class)
+    class = ClassOf(class)
+    if class == nil or class == "DRUID" then return DM.DRUID_ORDER end
+    local d = Derived(class)
+    return d and d.order or {}
+end
+
+local function Fam(family, class)
+    return DM.FamiliesFor(class)[family]
+end
+
 -- The Balance talents that touch these spells, per rank. VERIFY.
 --   mult     damage multiplier            coef   added to the spell damage coefficient
 --   crit     added crit chance            vengeance  crit bonus +20% per rank
@@ -56,9 +127,12 @@ local TALENTS = {
     { name = "Vengeance",         per = 0.20, what = "vengeance", spells = { Wrath = true, Starfire = true, Moonfire = true } },
 }
 
-function DM.Family(name)
+function DM.Family(name, class)
     if type(name) ~= "string" then return nil end
-    return DM.families[name] and name or nil
+    if DM.FamiliesFor(class)[name] then return name end
+    class = ClassOf(class)
+    local d = class ~= nil and class ~= "DRUID" and Derived(class) or nil
+    return d and d.alias[name] or nil
 end
 
 --------------------------------------------------------------------------------
@@ -69,15 +143,21 @@ end
 --   Insect Swarm      "...causing 792 Nature damage over 12 sec."
 --   Hurricane         "...causing 206 Nature damage to enemies every 1 sec...
 --                      Lasts 10 sec."
+--   T123, Flame Shock "...causing 377 Fire damage immediately and 420 Fire
+--                      damage over 12 sec." (the hit: one amount, no range)
 -- Returns nil when the text does not carry what the family needs: a wrong
 -- parse would print a confident wrong number, and no line at all is better.
 --------------------------------------------------------------------------------
-function DM.Parse(family, text)
-    local f = DM.families[family]
+function DM.Parse(family, text, class)
+    local f = Fam(family, class)
     if not f or type(text) ~= "string" then return nil end
     local out = {}
     local lo, hi = text:match("(%d+) to (%d+)")
     if lo then out.min, out.max = tonumber(lo), tonumber(hi) end
+    if not lo then
+        local now = text:match("(%d+) %a+ damage immediately")
+        if now then out.min, out.max = tonumber(now), tonumber(now) end
+    end
     local dot, dur = text:match("(%d+) %a+ damage over (%d+) sec")
     if dot then out.dot, out.dur = tonumber(dot), tonumber(dur) end
     local tick, every = text:match("(%d+) %a+ damage[^%.]-every (%d+) sec")
@@ -116,21 +196,23 @@ function DM.Bonus(school)
 end
 
 -- T118: a family's school name ("Nature", "Arcane"), nil for another name.
-function DM.SchoolName(family)
-    local f = DM.families[family]
+function DM.SchoolName(family, class)
+    local f = Fam(family, class)
     return f and f.schoolName or nil
 end
 
-function DM.Compute(spellID, family, base)
-    local f = DM.families[family]
+function DM.Compute(spellID, family, base, class)
+    local f = Fam(family, class)
     if not (f and base) then return nil end
     local bonus = DM.Bonus(f.school)
     local crit = (Live(GetSpellCritChance, f.school) or 0) / 100
 
-    -- talents
+    -- talents: the Balance talents, the druid's families only (T123: no
+    -- talent of another class is modelled on its damage spells)
     local mult, coefAdd, critAdd, vengeance = 1, 0, 0, 0
     local used = {}
-    for _, t in ipairs(TALENTS) do
+    local druid = DM.families[family] == f
+    for _, t in ipairs(druid and TALENTS or {}) do
         if t.spells[family] then
             local r = MD:TalentRank(t.name)
             if r > 0 then
@@ -158,6 +240,7 @@ function DM.Compute(spellID, family, base)
     local c = { family = family, school = f.schoolName, bonus = bonus, crit = crit, critMult = critMult,
                 mult = mult, coefAdd = coefAdd, talents = used, penalty = pen, penaltyKnown = penKnown,
                 level = level, kind = f.kind, aoe = f.aoe }
+    if not druid then c.talentsModelled = false end
 
     local cDirect = C.Direct(f.baseCast)
     if f.kind == "direct" then

@@ -26,10 +26,25 @@ local function Prune(now)
     end
 end
 
+-- T123: the rank table's source, read at call time -- Data/SpellData.lua
+-- for the druid (and before anything is built), the class's book
+-- (Spells/Book_TBC.lua) for a TBC priest, shaman or paladin; both answer
+-- LiveCost / StaticCost / IsMaxKnownRank and carry `spells[id].family`.
+local function Source()
+    local RM = MD.RankMath
+    return (RM and RM.Source and RM:Source()) or MD.SpellData
+end
+
 -- Returns cost, source ("api" | "table") or nil when unpriceable. Live first
--- (the client applies talents / form itself), static table as fallback.
+-- (the client applies talents / form itself), static table as fallback
+-- (SD:GetCost's rule, over the source).
 local function ResolveCost(spellID)
-    return MD.SpellData:GetCost(spellID)
+    local SD = Source()
+    local live = SD:LiveCost(spellID)
+    if live ~= nil then return live, "api" end
+    local static = SD:StaticCost(spellID)
+    if static ~= nil then return static, "table" end
+    return nil
 end
 
 MD:On("UNIT_SPELLCAST_SUCCEEDED", function(unit, _, spellID)
@@ -46,7 +61,8 @@ MD:On("UNIT_SPELLCAST_SUCCEEDED", function(unit, _, spellID)
         Prune(now)
         ST.combat.casts = ST.combat.casts + 1
         ST.combat.spent = ST.combat.spent + cost
-        local isMax = MD.SpellData:IsMaxKnownRank(spellID)
+        local SD = Source()
+        local isMax = SD:IsMaxKnownRank(spellID)
         if isMax then
             ST.combat.maxRankCasts = ST.combat.maxRankCasts + 1
         end
@@ -54,7 +70,7 @@ MD:On("UNIT_SPELLCAST_SUCCEEDED", function(unit, _, spellID)
         -- (Waste view) and this fight (summary breakdown). Spells outside the
         -- druid table -- buffs, dispels, forms -- land in "other", which is the
         -- ~7% of mana the first dungeon log showed nothing was counting.
-        local sd = MD.SpellData.spells[spellID]
+        local sd = SD.spells[spellID]
         local fam = sd and sd.family or "other"
         if sd and MD.cdb then
             MD.cdb.familyCasts = MD.cdb.familyCasts or {}
@@ -84,7 +100,7 @@ MD:On("UNIT_SPELLCAST_START", function(unit, _, spellID)
     local name, _, _, startMS, endMS = UnitCastingInfo("player")
     if not startMS or not endMS then return end
     local actual = (endMS - startMS) / 1000
-    local s = spellID and MD.SpellData.spells[spellID]
+    local s = spellID and Source().spells[spellID]
     if s and s.cast then
         -- Naturalist only shortens Healing Touch (the first cut subtracted it
         -- from every spell -- harmless at rank 0, wrong after a respec).

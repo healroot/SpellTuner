@@ -224,18 +224,23 @@ function MD:Profile()
 
     add("")
     add("--- costs of known max ranks ---")
-    -- T99 (docs/SPEC-next.md 4.4): the max ranks are Data/SpellData.lua's
-    -- rank table, the class profile's `rankTable` capability
+    -- T99 (docs/SPEC-next.md 4.4): the max ranks are the rank table's, the
+    -- class profile's `rankTable` capability. T123: read through
+    -- RankMath:Source() -- Data/SpellData.lua for the druid, the class's book
+    -- (Spells/Book_TBC.lua) for a priest, shaman or paladin, whose read cost
+    -- is its static one; `--` where a source has none
     local canRank, why = MD.ClassProfile:Can("rankTable")
     if canRank then
-        for _, family in ipairs(SD.familyOrder) do
-            local id = SD.maxRank[family]
+        local RSD = MD.RankMath and MD.RankMath:Source() or SD
+        for _, family in ipairs(RSD.familyOrder) do
+            local id = RSD.maxRank[family]
             if id then
-                local spell = SD.spells[id]
-                local live = SD:LiveCost(id)
-                local static = SD:StaticCost(id)
+                local spell = RSD.spells[id]
+                local live = RSD:LiveCost(id)
+                local static = RSD:StaticCost(id)
                 add("%s R%d (%d): live %s, static %s, cast %.1fs",
-                    family, spell.rank, id, tostring(live), tostring(static), spell.cast or 1.5)
+                    family, spell.rank, id, tostring(live), static ~= nil and tostring(static) or "--",
+                    spell.cast or 1.5)
             end
         end
     else

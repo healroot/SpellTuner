@@ -1,6 +1,6 @@
 -- T111 (docs/SPEC-next.md 4.2 P5, decision 8 (b)): the priest's profile on the
--- TBC line -- for the rank table and the spell tooltip only (not granted
--- yet: see `caps`). The TBC coach stays
+-- TBC line -- for the rank table and the spell tooltip (granted by T123,
+-- with the class's damage spells). The TBC coach stays
 -- the druid's (decision 8): no `coach`, `practice`, `simulate` or `advisor`,
 -- and no planner.
 --
@@ -23,16 +23,9 @@ local _, MD = ...
 MD.Profiles.Register("PRIEST", {
     label = "Priest",
     critSchool = 2,                -- Holy (GetSpellCritChance's school; VERIFY)
-    -- the mana clock only, as before this file (the generic profile's).
-    -- `rankTable` and `tooltip` wait until the TBC files that read
-    -- Data/SpellData.lua directly read RankMath:Source() instead
-    -- (UI/SpellsView_TBC.lua, UI/Dashboard.lua, UI/SpellTooltip.lua,
-    -- UI/Tip_TBC.lua) and the two gates that take `rankTable` to mean
-    -- Data/SpellData.lua stop doing so (UI/Summary.lua's max-rank share,
-    -- Diagnostics_TBC.lua's /md profile): granted before that, the
-    -- Spells view is half blank and the fight summary says
-    -- `max-rank casts 0%` (docs/tasks/T111-tbc-other-classes.md).
-    caps = { clock = true },
+    -- T123: the rank table and the tooltip, now that every TBC reader of
+    -- Data/SpellData.lua reads RankMath:Source() (docs/tasks/T123-tbc-classes-damage.md)
+    caps = { clock = true, rankTable = true, tooltip = true },
     families = {
         LesserHeal      = { names = { "Lesser Heal" },       kit = "direct" },
         Heal            = { names = { "Heal" },              kit = "direct" },
@@ -55,4 +48,18 @@ MD.Profiles.Register("PRIEST", {
     hotSlots = { "Renew" },
     unmodelled = { "Power Word: Shield", "Desperate Prayer", "Prayer of Mending", "Holy Nova",
                    "Lightwell", "Inner Focus", "Power Infusion" },
+    -- T123: the damage spells Engine/DamageMath.lua values from each rank's
+    -- own tooltip text, by the spellbook's name: the school (Holy 2, Shadow
+    -- 6), the coefficient's shape and cast, the tick (every one VERIFY; no
+    -- talent of the class is modelled on them, and the tooltip says so).
+    -- Not here: Mind Flay -- "causing 528 Shadow damage over 3 sec and slowing
+    -- their movement speed by 50%." has no channel shape DM.Parse reads (it
+    -- wants "every N sec" and "Lasts N sec"), so it stays in Other.
+    damage = {
+        ["Smite"]             = { school = 2, kind = "direct", baseCast = 2.5 },
+        ["Holy Fire"]         = { school = 2, kind = "hybrid", baseCast = 3.5, tick = 2 },
+        ["Mind Blast"]        = { school = 6, kind = "direct", baseCast = 1.5 },
+        ["Shadow Word: Pain"] = { school = 6, kind = "dot",    baseCast = 1.5, tick = 3 },
+    },
+    damageOrder = { "Smite", "Holy Fire", "Mind Blast", "Shadow Word: Pain" },
 })

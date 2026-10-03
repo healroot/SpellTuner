@@ -1,6 +1,6 @@
 # T123 -- One UI, W6: TBC classes and damage
 
-Status: **ready** 2026-10-03, the One UI round (`docs/SPEC-one-ui.md`, version 0.17.0; mockup
+Status: **done** 2026-10-03 (branch `oneui/T123`; see "Deviations (as built)"). Was **ready** 2026-10-03, the One UI round (`docs/SPEC-one-ui.md`, version 0.17.0; mockup
 `docs/mockups/one-ui.html`). **Wave D, beside T122.** Starts on the integrated wave C: the shared
 pane (T120) and block (T121) already draw any book T118 builds, so what is left of T111's list is
 small.
@@ -157,11 +157,15 @@ to the parent's byte for byte (a golden).
 
 | Suite | Before | After |
 |---|---|---|
-| `tbcclasscheck/tbc` | 52 | measured (the flipped checks, five damage checks new) |
-| `capscheck/tbc` | today's | +2 |
-| `profilecheck/tbc` | 45 | **48** |
-| `bookshapecheck/tbc` | T118's 16 | **18** |
-| `tabscheck/tbc` | T118's | unchanged |
+| `tbcclasscheck/tbc` | 52 | **63** (measured; on the parent 17 ok, 46 failed) |
+| `capscheck/tbc` | 34 | **36** (on the parent 1 failed) |
+| `profilecheck/tbc` | 51 (the file said 45: T106 / T111 had added since) | **55** (four refusals, deviation 4; on the parent 51 ok, 4 failed) |
+| `bookshapecheck/tbc` | 16 | **18** (on the parent 16 ok, 2 failed) |
+| `tabscheck/tbc` | 7 | 7 (re-based; passes on the parent too) |
+
+Every Forever count unchanged. `make check` 99 runs, all passed (the four NOTEs are the counts
+above); `apicheck` 0 findings, `textcheck` 0 findings. `slashcheck`, `verifycheck`, `ttocheck`,
+`kitcheck` and `spelltip` unchanged.
 
 ## Integrator lines
 
@@ -183,6 +187,83 @@ to the parent's byte for byte (a golden).
   combat log.
 - **`docs/tasks/T111-tbc-other-classes.md`**: one line under its Deviations 1: "Switched on by
   T123."
+
+## Deviations (as built)
+
+1. **Mind Flay dropped** (allowed deviation 1): "causing 528 Shadow damage over 3 sec and slowing
+   their movement speed by 50%." has no channel shape `DM.Parse` reads (it wants `every N sec` and
+   `Lasts N sec`); quoted in `Data/Profile_Priest_TBC.lua`. It lands in Other (the suite checks
+   it). Holy Wrath's and Consecration's area wording parse (`N to M Holy damage`, `N Holy damage
+   over 8 sec`): both ship.
+2. **One parser line** (allowed deviation 2): `(%d+) %a+ damage immediately` gives a hit with
+   `min = max = N` when the text has no `N to M` range -- Flame Shock's "377 Fire damage
+   immediately and 420 Fire damage over 12 sec". No druid text contains it.
+3. **`UI/Tip_TBC.lua` left as it was: `Tip:Row` NOT deleted.** `tools/spelltip.lua:395` (T121's,
+   not this task's file, and listed as "unchanged") asserts `type(MD.Tip.Row) == "function"`;
+   deleting `Row` turns `spelltip/tbc` red. Nothing else calls it (the TBC panes are
+   `UI/SpellsPane.lua` since T120). The integrator line below does both edits together.
+4. **`damageOrder`** is a profile field of its own (the order the book lists damage in; the
+   druid's is `DM.DRUID_ORDER`); `Validate` refuses a `damageOrder` key that is no damage family
+   (profilecheck's fourth refusal), a damage `kind` outside direct / hybrid / dot / channel, a
+   `school` outside 1-7, a non-positive `baseCast`, a non-direct family with no `tick`, and a
+   damage name (the key or a `names` entry) that is a heal family's key or name.
+5. `DM.FamiliesFor(nil)` (no class known) is the druid's `DM.families`, as every caller saw before;
+   a class with no profile `damage` (a mage) gets `{}`. The derived tables are cached per class.
+   `DM.Compute`'s cost stays `MD.SpellData:GetCost` (live-first for any id, so a class's damage
+   rank is priced by the client; the druid's unchanged byte for byte).
+6. `Engine/SpendTracker.lua`'s `ResolveCost` is SD:GetCost's rule over the source
+   (`LiveCost`, then `StaticCost`), so a class's free spell still costs 0 rather than going
+   unpriced (`M:GetCost` has no "free" answer); hence `M:LiveCost` and `M:StaticCost` on the class
+   source, `M:GetCost` unchanged.
+7. `UI/Dashboard.lua` not edited: wave C left no `MD.SpellData.families` read in it.
+8. `UI/Summary.lua`: only the max-rank comment. Its own-cast capture (`SD:GetCost`, the `heal`
+   label from `SD.families`) still reads `Data/SpellData.lua`: a class's own casts are labelled
+   `utility` in the end-of-fight cast labels (it was so before; out of the task's list).
+9. `tools/bookshapecheck.lua`'s druid golden is the whole `MD.Book` (levels 64 and 70, caster and
+   Tree of Life, the damage ranks and two Other spells walked: 284 lines), captured on 49494eb,
+   replacing T118's `Spells/Families_TBC.lua` golden with the alias.
+10. `tools/dashui.lua` reads no `MD.FamiliesTBC` on this base (49494eb): nothing for T122 to drop.
+
+## As built: integrator lines
+
+- **`tools/data/expected-counts.json`**: `tbcclasscheck/tbc` 52 -> 63, `capscheck/tbc` 34 -> 36,
+  `profilecheck/tbc` 51 -> 55, `bookshapecheck/tbc` 16 -> 18 (`tabscheck/tbc` 7 unchanged).
+- **`tools/spelltip.lua:395` and `UI/Tip_TBC.lua`** (deviation 3), together: drop
+  `and type(MD.Tip.Row) == "function"` from the check, delete `Tip:Row` with its header comment
+  and `Num`, and the locals only it used (`GOLD`, `GOOD`; `KEY`, `SUB`, `MUTED` stay -- `Mana` and
+  `Fights` read them); the file's header becomes `Mana`, `Fights`, `Clock`. `spelltip/tbc` stays 35.
+- **`CLAUDE.md`** appends: the three TBC profile rows `**T123:**` caps `clock`, `rankTable`,
+  `tooltip`; `damage` (school, kind, baseCast, tick, aoe; every one VERIFY) and `damageOrder`;
+  coach / practice / simulate / advisor the druid's (Priest: Smite, Holy Fire, Mind Blast, Shadow
+  Word: Pain -- Mind Flay not read; Shaman: Lightning Bolt, Chain Lightning, Earth Shock, Flame
+  Shock, Frost Shock; Paladin: Exorcism, Holy Wrath, Consecration). `Spells/Profiles.lua`:
+  `**T123:**` `damage` / `damageOrder`, `P.DAMAGE_FIELDS`, `P.DAMAGE_KINDS`, Validate's damage
+  refusals. `Engine/DamageMath.lua`: `**T123:**` `DM.FamiliesFor(class)` / `DM.OrderFor(class)`
+  (the druid's, else the profile's, cached), `DM.SCHOOL_NAMES`, `DM.DRUID_ORDER`, the class
+  argument on `Family` / `Parse` / `Compute` / `SchoolName` (default the player's), the Balance
+  talents the druid's only (`c.talentsModelled = false` for a class), the `damage immediately`
+  pattern. `Spells/Book_Model.lua`: `**T123:**` the logged-in class's damage families wherever
+  the rank table is granted (`DM.OrderFor`), a class family's calc `talents not modelled
+  (VERIFY)`; the `MD.FamiliesTBC` alias deleted. `Spells/Book_TBC.lua`: `**T123:**`
+  `M:LiveCost`, `M:IsMaxKnownRank`. `Engine/SpendTracker.lua`, `UI/Summary.lua`,
+  `Diagnostics_TBC.lua`: `**T123:**` the cost, the max rank and the family through
+  `RankMath:Source()` (`/md profile`'s static cost `--` when a source has none). The
+  `Spells/Families_TBC.lua` mentions of `MD.FamiliesTBC` (the `Spells/Book_Model.lua` and
+  `UI/Dashboard.lua` rows) are history. The `Spells/Profiles.lua` row's `isDruid` count did not
+  move.
+- **`docs/TOOLS.md`**: the `tbcclasscheck` row (tbc, 63): caps as shipped, the spend tracker, the
+  block's Per mana, the class damage (DAMAGE_FIXTURE, `opts.damage`); `bookshapecheck/tbc` 18
+  (26 the alias gone, 27 the class books, 28 the druid's book golden); `profilecheck/tbc` 55,
+  `capscheck/tbc` 36.
+- **`docs/DECISIONS.md`**, under "The TBC book is live": the TBC priest's, shaman's and
+  paladin's rank table and tooltip are on (T123); their damage spells are valued by the druid's
+  coefficient rules (cast / 3.5, duration / 15, the hybrid split) with no class talent, every
+  family VERIFY; the coach, practice, the simulator and the advisor stay the druid's (decision
+  8 (b)).
+- **`docs/TESTING.md`** section 49: a priest, shaman or paladin on TBC opens `/md`, reads a heal
+  and a damage family, hovers a spell with and without Shift, and checks one cast's number in the
+  combat log; the fight summary's `max-rank casts N%` after a fight.
+- **`docs/tasks/T111-tbc-other-classes.md`**: under its Deviations 1, "Switched on by T123."
 
 ## Deviations allowed
 

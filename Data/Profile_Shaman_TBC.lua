@@ -1,6 +1,6 @@
 -- T111 (docs/SPEC-next.md 4.2 P5, decision 8 (b)): the shaman's profile on the
--- TBC line -- for the rank table and the spell tooltip only (not granted
--- yet: see `caps`). The TBC coach stays
+-- TBC line -- for the rank table and the spell tooltip (granted by T123,
+-- with the class's damage spells). The TBC coach stays
 -- the druid's (decision 8): no `coach`, `practice`, `simulate` or `advisor`,
 -- and no planner.
 --
@@ -18,16 +18,9 @@ local _, MD = ...
 MD.Profiles.Register("SHAMAN", {
     label = "Shaman",
     critSchool = 4,                -- Nature (GetSpellCritChance's school; VERIFY)
-    -- the mana clock only, as before this file (the generic profile's).
-    -- `rankTable` and `tooltip` wait until the TBC files that read
-    -- Data/SpellData.lua directly read RankMath:Source() instead
-    -- (UI/SpellsView_TBC.lua, UI/Dashboard.lua, UI/SpellTooltip.lua,
-    -- UI/Tip_TBC.lua) and the two gates that take `rankTable` to mean
-    -- Data/SpellData.lua stop doing so (UI/Summary.lua's max-rank share,
-    -- Diagnostics_TBC.lua's /md profile): granted before that, the
-    -- Spells view is half blank and the fight summary says
-    -- `max-rank casts 0%` (docs/tasks/T111-tbc-other-classes.md).
-    caps = { clock = true },
+    -- T123: the rank table and the tooltip, now that every TBC reader of
+    -- Data/SpellData.lua reads RankMath:Source() (docs/tasks/T123-tbc-classes-damage.md)
+    caps = { clock = true, rankTable = true, tooltip = true },
     families = {
         HealingWave       = { names = { "Healing Wave" },        kit = "direct" },
         LesserHealingWave = { names = { "Lesser Healing Wave" }, kit = "direct" },
@@ -38,4 +31,18 @@ MD.Profiles.Register("SHAMAN", {
     order = { "HealingWave", "LesserHealingWave", "ChainHeal" },
     hotSlots = {},
     unmodelled = { "Earth Shield", "Healing Stream Totem", "Nature's Swiftness" },
+    -- T123: the damage spells Engine/DamageMath.lua values from each rank's
+    -- own tooltip text, by the spellbook's name: the school (Fire 3, Nature
+    -- 4, Frost 5), the coefficient's shape and cast, the tick (every one
+    -- VERIFY; no talent of the class is modelled on them, and the tooltip
+    -- says so). Chain Lightning's value is its first target's; Flame Shock's
+    -- hit is the text's "N Fire damage immediately".
+    damage = {
+        ["Lightning Bolt"]  = { school = 4, kind = "direct", baseCast = 3.0 },
+        ["Chain Lightning"] = { school = 4, kind = "direct", baseCast = 2.5 },
+        ["Earth Shock"]     = { school = 4, kind = "direct", baseCast = 1.5 },
+        ["Flame Shock"]     = { school = 3, kind = "hybrid", baseCast = 1.5, tick = 3 },
+        ["Frost Shock"]     = { school = 5, kind = "direct", baseCast = 1.5 },
+    },
+    damageOrder = { "Lightning Bolt", "Chain Lightning", "Earth Shock", "Flame Shock", "Frost Shock" },
 })
