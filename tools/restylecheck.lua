@@ -145,7 +145,7 @@ T.section("the source scan: no colour copied out of a token in T107's files")
 
 local OWNED = { "UI/Style.lua", "UI/Dashboard_Rows.lua", "UI/SpellsPane.lua",
     -- T119: UI/Options_About.lua's About is UI/Settings.lua's (both lines)
-    "UI/SpellRail.lua", "UI/ReplayWindow.lua", "UI/Dashboard_Simulate.lua", "UI/Settings.lua",
+    "UI/SpellRail.lua", "UI/ReplayWindow.lua", "UI/Settings.lua",
     "UI/DebugConsole.lua", "UI/Tip_TBC.lua" }
 local function Code(rel)
     local fh = io.open(root .. "/" .. rel, "r")

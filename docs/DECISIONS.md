@@ -1530,9 +1530,23 @@ row, never recomputed. It reads the live context only; the What if reaches it th
 `Get({ whatIf = true })`, which is never cached and never announced. The gear toast's suggested
 ranks are the live ones, so a what-if can no longer fire it.
 
+The TBC priest's, shaman's and paladin's rank table and tooltip are on (T123). Their damage
+uses the druid's coefficient rules with no class talent, and every family is VERIFY. Coach,
+practice, the simulator and the advisor stay the druid's (decision 8 (b)).
+
 ## One Settings (2026-10-03, T119, SPEC-one-ui 7)
 
 Settings is one file on both lines, built from rows each line installs. Review is its own
 view (recording and the model's knobs); General keeps what every player sets. TBC's window
 is 860 x 560 for Settings, as Forever's. TBC gets no "Show the mana clock" switch: its clock
 appears by the visibility rule, and a new switch is a change to the widget, not to Settings.
+
+## What if, one lens (2026-10-03, T122, SPEC-one-ui)
+
+What if is one lens on both lines. Its values are session-only, never saved, and nothing
+outside the Spells pane reads them: the clock, the tooltip block, the kit and the book stay
+live. On TBC it is the model under `MD.sim` (written by `Spells/WhatIf_TBC.lua` only). On
+Forever, where there is no coefficient model, a rank's +healing share is measured from the
+player's own gear changes (two plain scans out of combat, `Book:MeasureBonus`) before it is
+estimated from the shared coefficient rules, and the card says which. A measurement never
+changes a shown value; it only sets how far a what-if moves a rank.

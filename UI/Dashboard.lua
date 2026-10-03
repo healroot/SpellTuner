@@ -91,7 +91,6 @@ MD.SpellsLine = {
         return MD.Profiles.Refusal("rankTable", why, "Rank analysis")
             .. " - the OOM widget, datatext and advisor still work for your class."
     end,
-    whatIf = nil, -- T122
 }
 
 local function RefreshSpellRail()

@@ -400,6 +400,7 @@ read `MD.SpellData`:
      under the cap) is held by `tools/tbcclasscheck.lua` with the cap granted in the suite, and by
      `tools/wclcheckkit.lua --fit`.
    - Switching it on is the one-line cap change per profile, after the list above.
+   - Switched on by T123.
 2. **`RankMath:SpellKit` stays the druid's for every class, even with the cap granted** (decision
    8 (b)). A class kit for Review / Play / the coach is not built in the game.
 3. **TBC's reach sentences are read in `Spells/Book_TBC.lua` (`B.Reach`), not in

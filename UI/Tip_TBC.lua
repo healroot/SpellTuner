@@ -1,9 +1,10 @@
 -- UI/Tip_TBC.lua (T76, P32 of docs/PLAN-refactor-ux.md; review A21): the TBC
--- line's tooltip builders, moved out of UI/Tooltip.lua unchanged -- the clock
--- and its regen terms (Tip:Mana), recent fights, the rank table's row, the
--- widget / minimap composite. T121: the spell and damage blocks (Tip:Spell,
--- Tip:Damage) and the column glossary (Tip:Columns) are deleted -- the game's
--- spell tooltip draws UI/SpellTip.lua's block on both lines. Every one reads the TBC engine (MD.Regen,
+-- line's tooltip builders, moved out of UI/Tooltip.lua unchanged. It holds
+-- three: the clock and its regen terms (Tip:Mana), recent fights (Tip:Fights)
+-- and the widget / minimap composite (Tip:Clock). T121: the spell and damage
+-- blocks (Tip:Spell, Tip:Damage) and the column glossary (Tip:Columns) are
+-- deleted -- the game's spell tooltip draws UI/SpellTip.lua's block on both
+-- lines. T123: the rank table's row (Tip:Row) is deleted too -- nothing called it. Every one reads the TBC engine (MD.Regen,
 -- MD.RankMath, MD.SpellData, MD:GetManaState), so this file is on the TBC TOC
 -- only; the line model, the renderer and Show / Hide are UI/Tip.lua's, which
 -- loads just before it. Every hover surface on TBC (both ElvUI datatexts, the
@@ -22,11 +23,6 @@ local KEY    = { 0.78, 0.78, 0.78 }
 local SUB    = { 0.63, 0.63, 0.63 }
 local MUTED  = { 0.43, 0.43, 0.43 }
 local WARN   = { 1, 0.67, 0.2 }
--- T43 (docs/SPEC-forever-ui.md 4.4): the theme's accent where it is loaded,
--- else gold (TBC). T69 (P25): a token read -- "tipGold", TBC's {1, 0.82, 0},
--- the accent themed.
-local GOLD   = UI.TEXT.tipGold -- T107: the token's table (a style rewrites it in place), not a copy
-local GOOD   = { 0.2, 1, 0.4 }
 local MANA   = { 0.31, 0.66, 0.94 }
 
 local function Accent()
@@ -121,122 +117,6 @@ function Tip:Fights(n)
         for i = #hist - n + 1, #hist do
             lines[#lines + 1] = { l = Plain(hist[i].summary or "-"), c = SUB, wrap = true }
         end
-    end
-    return lines
-end
-
---------------------------------------------------------------------------------
--- Dashboard row: every term behind the numbers in the table, from row.calc
--- (RankMath:Explain). Nothing is modelled here that the row did not already
--- compute -- this is a view of RankMath, not a second opinion.
---------------------------------------------------------------------------------
-local function Num(v, dec)
-    return string.format(dec and ("%." .. dec .. "f") or "%d", v)
-end
-
-function Tip:Row(row)
-    local lines = {}
-    if not row then return lines end
-    local c = row.calc
-    if not c then return lines end
-
-    local rankText = row.rankLabel and (c.label .. " (rolling " .. row.rankLabel .. ")")
-        or string.format("%s (Rank %d)", c.label, row.rank)
-    local note = row.suggested and "efficient rank" or row.isMax and "max rank"
-        or row.dominated and "dominated" or (not row.known) and "not learned" or nil
-    lines[#lines + 1] = { l = rankText, r = note,
-        rc = row.suggested and GOLD or MUTED }
-    lines[#lines + 1] = {}
-
-    -- heal breakdown
-    local healSuffix = ""
-    if c.duration then
-        healSuffix = string.format("  over %ds", c.duration)
-        if c.ticks then healSuffix = healSuffix .. string.format(" (%d ticks)", c.ticks) end
-    end
-    lines[#lines + 1] = { l = "Heal", r = Num(row.heal) .. healSuffix, c = KEY }
-
-    if c.kind == "lifebloom" then
-        lines[#lines + 1] = { l = "  tick", r = Num(c.tick) .. " x7", c = SUB, rc = SUB }
-        if not c.stacks then
-            lines[#lines + 1] = { l = "  bloom", r = Num(c.bloom), c = SUB, rc = SUB }
-        end
-        lines[#lines + 1] = { l = string.format("  +healing  %d x %.4f hot / %.4f bloom coef x %.2f pen x %.2f %s",
-            c.bonus, c.hotCoef, c.bloomCoef, c.penalty, c.bonusMult, c.bonusMultName), c = SUB }
-        if c.relicTick and c.relicTick > 0 then
-            lines[#lines + 1] = { l = "  relic", r = string.format("+%d per tick", c.relicTick), c = SUB, rc = SUB }
-        end
-    else
-        lines[#lines + 1] = { l = "  base", r = Num(c.base), c = SUB, rc = SUB }
-        if c.relicFlat and c.relicFlat > 0 then
-            local relic = MD.RankMath.info and MD.RankMath.info.relic
-            lines[#lines + 1] = { l = "  relic  " .. (relic and relic.name or "idol"),
-                r = "+" .. Num(c.relicFlat), c = SUB, rc = SUB }
-        end
-        if c.kind == "hybrid" then
-            lines[#lines + 1] = { l = string.format("  +healing direct  %d x %.2f coef x %.2f downrank",
-                c.bonus, c.directCoef, c.penalty), r = "+" .. Num(c.directBonus), c = SUB, rc = SUB }
-            lines[#lines + 1] = { l = string.format("  +healing hot  %d x %.2f coef x %.2f downrank x %.2f %s",
-                c.bonus, c.hotCoef, c.penalty, c.bonusMult, c.bonusMultName),
-                r = "+" .. Num(c.hotBonus), c = SUB, rc = SUB }
-            lines[#lines + 1] = { l = string.format("  direct %d + hot %d", c.direct, c.hot), c = SUB }
-        else
-            lines[#lines + 1] = { l = string.format("  +healing  %d x %.2f coef x %.2f downrank x %.2f %s",
-                c.bonus, c.coef, c.penalty, c.bonusMult, c.bonusMultName),
-                r = "+" .. Num(c.bonusOut), c = SUB, rc = SUB }
-        end
-    end
-    lines[#lines + 1] = { l = string.format("  talents  x%.2f", c.talentMult), c = SUB }
-    if c.critMult then
-        lines[#lines + 1] = { l = string.format("  crit  %.1f%% x1.5", c.crit * 100),
-            r = string.format("x%.3f", c.critMult), c = SUB, rc = SUB }
-    end
-
-    lines[#lines + 1] = {}
-    lines[#lines + 1] = { l = "Mana", r = Num(c.cost) .. "  " .. (c.costSource or "?"), c = KEY }
-    lines[#lines + 1] = { l = "Cast", r = Num(row.cast, 1) .. "s" .. (row.ng and "*" or "") ..
-        (row.cast <= 1.5 and "  GCD" or ""), c = KEY }
-    if row.ng then
-        lines[#lines + 1] = { l = string.format("  %.1fs base, %.1fs after a crit, %.1f%% crit -> %.2fs average",
-            c.castBase, math.max(c.castBase - c.naturesGrace, 1.5), (c.ngCrit or 0) * 100, c.castNG), c = SUB }
-        lines[#lines + 1] = { l = "  * Nature's Grace, chain-casting this one spell; an instant cast " ..
-            "in between eats the buff for nothing.", c = MUTED, wrap = true }
-    end
-
-    lines[#lines + 1] = {}
-    lines[#lines + 1] = { l = "HPM   heal per mana", r = Num(row.hpm, 2), c = KEY }
-    lines[#lines + 1] = { l = "HPS   heal per second of cast", r = Num(row.hps), c = KEY }
-    if row.casts == math.huge then
-        lines[#lines + 1] = { l = "To OOM", r = "never: regen covers the cost", c = KEY, rc = GOOD }
-    else
-        lines[#lines + 1] = { l = "To OOM",
-            r = string.format("%d casts from %d mana (net %d each)", row.casts, c.mana, c.netPerCast), c = KEY }
-    end
-
-    if row.overheal then
-        local oh = row.overheal
-        lines[#lines + 1] = {}
-        lines[#lines + 1] = { l = "Overheal",
-            r = string.format("%d%%  (%s, %d events)", oh.frac * 100,
-                oh.scope == "rank" and "measured on this rank" or "family average", oh.n), c = KEY }
-        lines[#lines + 1] = { l = "Effective",
-            r = string.format("%d heal, %.2f HPM, %d HPS", row.effHeal, row.effHpm, row.effHps), c = KEY }
-        if oh.tick then
-            lines[#lines + 1] = { l = "  ticks / bloom overheal",
-                r = string.format("%d%% / %s", oh.tick * 100 + 0.5, oh.bloom and string.format("%d%%", oh.bloom * 100 + 0.5) or "no bloom"),
-                c = SUB, rc = SUB }
-        end
-        if oh.scope == "family" then
-            lines[#lines + 1] = { l = "  A family average is the same factor on every rank, so it " ..
-                "cannot say whether downranking overheals less. That needs samples on this rank.",
-                c = MUTED, wrap = true }
-        end
-    end
-
-    if row.virtual then
-        lines[#lines + 1] = {}
-        lines[#lines + 1] = { l = "Rolling stack: refreshed before it expires, so each cast is paid " ..
-            "for with 6 ticks at the stack multiplier and never a bloom.", c = MUTED, wrap = true }
     end
     return lines
 end

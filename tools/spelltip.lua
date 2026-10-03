@@ -392,7 +392,7 @@ check("6. the watcher re-runs OnEnter for the mode's key only, and only over a b
     List({ shiftRuns, altIgnored, altRuns, shiftIgnored, ctrlRuns, alwaysIgnored, noBlock }))
 check("the old TBC builders are gone: no Tip:Spell, Tip:Damage, Tip:Columns, MD:SpellTooltipAppend",
     MD.Tip.Spell == nil and MD.Tip.Damage == nil and MD.Tip.Columns == nil and MD.SpellTooltipAppend == nil
-    and type(MD.Tip.Row) == "function" and type(MD.Tip.Clock) == "function"
+    and type(MD.Tip.Clock) == "function"
     and MD.SpellTip ~= nil and type(MD.SpellTip.OnSpell) == "function")
 
 -- T76 (P32 of docs/PLAN-refactor-ux.md, review A21): on TBC the renderer is
