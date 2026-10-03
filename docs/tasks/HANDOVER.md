@@ -59,11 +59,10 @@ Nothing. The top-level `dist/` (gitignored) holds the 0.17.0 packages beside the
 
 ## Open from the task files (none planned)
 
-- **TBC's `Book:Bonus("damage", school)`** hands `GetSpellBonusDamage` the school's NAME
-  (`fam.school`, "Nature"), not the client's school number (T120 deviation 11; `Spells/Book_Model.lua`
-  `Book:Bonus`, `UI/SpellsPane.lua` 1598). The header's `+N <School> damage` may read 0 or raise
-  into `Live`'s guard. §49.2 step 3 asks; a one-line fix (map the name through `DM.SCHOOL_NAMES`
-  or carry the number) once the paste confirms.
+- **Fixed before the install:** TBC's `Book:Bonus("damage", school)` handed `GetSpellBonusDamage`
+  the school's NAME (T120 deviation 11); it now maps the name through `DM.SCHOOL_NAMES` to the id
+  (`Spells/Book_Model.lua`), held by bookshapecheck/tbc section 21 (failed on `e5fc0db`: 0 for
+  Nature and Arcane). §49.2 step 3 still compares the header with the character sheet.
 - No TBC `IsPassiveSpell` binding (T118 deviation 3): `passive` from the rank text.
 - A TBC class's own casts are still labelled `utility` in the end-of-fight labels: `UI/Summary.lua`'s
   capture reads `Data/SpellData.lua` (T123 deviation 8).

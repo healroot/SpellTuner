@@ -5076,8 +5076,9 @@ land.**
   Both packages built; **nothing installed, nothing published**: both clients run 0.16.8
   (installed 2026-10-02, and published to CurseForge as a beta from d6de018).
 
-Open from the task files, none of them planned: TBC's `Book:Bonus("damage", school)` hands
-`GetSpellBonusDamage` the school's name, not its number (T120 deviation 11; §49.2 step 3 asks);
+Open from the task files, none of them planned (TBC's `Book:Bonus("damage", school)` handing
+`GetSpellBonusDamage` the school's name, T120 deviation 11, was fixed before the install: the name
+mapped through `DM.SCHOOL_NAMES`, bookshapecheck/tbc section 21);
 TBC's drag from the spellbook and the rank row's game tooltip UNVERIFIED (§49.1 steps 3-4); no TBC
 `IsPassiveSpell` binding (T118 deviation 3); a TBC class's own casts still labelled `utility` in
 the end-of-fight labels (T123 deviation 8); the duplicate tooltip defaults in the two cores (T121);

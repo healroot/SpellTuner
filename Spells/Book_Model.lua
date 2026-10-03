@@ -723,6 +723,16 @@ function Book:Bonus(kind, school)
     elseif kind == "damage" then
         local DM = MD.DamageMath
         if not (DM and DM.Bonus) or school == nil then return nil end
+        -- the pane hands a family's school name ("Nature"); the client
+        -- takes the school's id
+        if type(school) == "string" then
+            local id
+            for k, name in pairs(DM.SCHOOL_NAMES or {}) do
+                if name == school then id = k end
+            end
+            if id == nil then return nil end
+            school = id
+        end
         return DM.Bonus(school), false
     end
     return nil

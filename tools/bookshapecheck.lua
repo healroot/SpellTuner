@@ -1074,11 +1074,22 @@ local function BookChecks(dB)
                 print("    " .. name .. ": " .. #fam.ranks .. " ranks, suggested " .. tostring(fam.suggested and fam.suggested.id))
             end
         end
+        -- the header's +damage: the pane hands the family's school NAME; the
+        -- client takes the school's id (Nature 4, Arcane 7)
+        local realBD = _G.GetSpellBonusDamage
+        _G.GetSpellBonusDamage = function(school) return ({ [4] = 300, [7] = 310 })[school] end
+        local nat, arc, none = MD.Book:Bonus("damage", "Nature"), MD.Book:Bonus("damage", "Arcane"),
+            MD.Book:Bonus("damage", "Nowhere")
+        _G.GetSpellBonusDamage = realBD
+        print("    Bonus damage: Nature " .. tostring(nat) .. ", Arcane " .. tostring(arc) .. ", unknown " .. tostring(none))
+        if not (nat == 300 and arc == 310 and none == nil) then
+            bad[#bad + 1] = "Bonus by school name " .. Show({ nat, arc, none })
+        end
         local valid, problems = false, nil
         if okB then valid, problems = BS.Validate(book) end
         restore()
         pcall(Fresh)
-        check("21. damage entries are DM.Compute's expected / dpm / dps; suggested by RankRules; why ends VERIFY",
+        check("21. damage entries are DM.Compute's expected / dpm / dps; suggested by RankRules; why ends VERIFY; Book:Bonus takes a school name",
             okB and #bad == 0 and valid, Show({ bad, problems }))
     end
 

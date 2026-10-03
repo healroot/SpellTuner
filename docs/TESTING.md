@@ -2204,7 +2204,7 @@ sentence wherever the step says "looks".
 What is still **UNVERIFIED** and asked below: TBC's drag from the spellbook (`MD.API.CursorInfo`,
 49.1 step 4), TBC's game tooltip on a rank row (`SetSpellByID`, 49.1 step 3), the class damage
 coefficients (every row VERIFY, 49.2), the +damage number in a TBC damage spell's header (49.2
-step 3; T120 noted the TBC book hands the client a school name, not its number), and Forever's
+step 3; the school name-to-number bug T120 noted is fixed, compare it with the character sheet), and Forever's
 measured +healing share (49.3 step 4).
 
 ### 49.1 TBC druid (one session, 25-30 min; a druid of level 40+, out of combat, a few pulls at the end)
