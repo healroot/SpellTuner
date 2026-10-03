@@ -137,7 +137,16 @@ local function PointXY(rect, p)
     return x, y
 end
 local function Size(r)
-    if r.kind == "FontString" then return r:GetStringWidth(), r:GetStringHeight() end
+    if r.kind == "FontString" then
+        -- a string given a width wraps at it, as the client does (the stub's
+        -- metric does not wrap): that width, one line per width it needs
+        local w, h = r:GetStringWidth(), r:GetStringHeight()
+        local set = rawget(r, "w")
+        if type(set) == "number" and set > 0 and w > set then
+            return set, h * math.ceil(w / set - 0.001)
+        end
+        return w, h
+    end
     return r:GetWidth(), r:GetHeight()
 end
 local function Rect(r, base, bw, bh, depth)
@@ -148,6 +157,10 @@ local function Rect(r, base, bw, bh, depth)
     if #pts == 0 then return nil end
     local box = {}
     for _, pt in ipairs(pts) do
+        -- the short form SetPoint(p, x, y): the parent's same point
+        if type(pt[2]) == "number" or (pt[2] == nil and type(pt[3]) == "number") then
+            pt = { pt[1], nil, pt[1], pt[2] or 0, pt[3] or 0 }
+        end
         local rr = Rect(pt[2] or r.parentFrame, base, bw, bh, depth + 1)
         if not rr then return nil end
         local x, y = PointXY(rr, pt[3] or pt[1])
@@ -276,7 +289,9 @@ Try("every titled pane inside the view, a column's panes apart, every shown cont
                     if Under(f, sec) and Visible(f, sec) and f.points and #f.points > 0
                        and not (f.kind == "FontString" and (f:GetText() or "") == "") then
                         local fr = Rect(f, pane, VIEW_W, VIEW_H)
-                        if fr and r and not Inside(fr, r) then
+                        -- the title rule's 1-px shadow (UI.CreateTitledPane)
+                        -- sits a pixel right of the rule by design
+                        if fr and r and not Inside(fr, { l = r.l, t = r.t, r = r.r + 1, b = r.b }) then
                             bad[#bad + 1] = string.format("%+d %s %s: %s %s outside %s", o, view,
                                 sec.title:GetText(), tostring(f.kind),
                                 tostring(f.GetText and f:GetText() or f.label and f.label:GetText()), R(fr), R(r))

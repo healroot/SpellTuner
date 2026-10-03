@@ -77,11 +77,10 @@ UI\PracticePanel.lua
 UI\BindingsWindow.lua
 UI\SpellsView_TBC.lua
 UI\Dashboard.lua
-UI\OptionsFrame.lua
+UI\Settings.lua
 UI\SimWindow.lua
 UI\ReplayWindow.lua
-UI\Options_General.lua
-UI\Options_About.lua
+UI\Settings_TBC.lua
 UI\DebugConsole.lua
 UI\MinimapButton.lua
 UI\Advisor.lua

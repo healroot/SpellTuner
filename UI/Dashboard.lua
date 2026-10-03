@@ -1,6 +1,13 @@
 -- Rank dashboard (/md): a Cell-style movable frame (header bar with title and
 -- close), the groups and their views. Reports keeps its header lines and the
--- recap. Settings are in the options frame (UI/OptionsFrame.lua).
+-- recap. Settings -> General, Review and About are UI/Settings.lua's (T119),
+-- Settings -> Clock UI/ClockSettings.lua's.
+--
+-- T119 (docs/SPEC-one-ui.md 7, mockup M6): Settings is one file on both lines
+-- -- General, Clock, Review, About, built by MD.Settings from this line's rows
+-- (UI/Settings_TBC.lua) -- at 860 x 560, fixed, as Forever's. The options
+-- frame (MD.optionsFrame, UI/OptionsFrame.lua) is gone; MD:ShowOptionsFrame
+-- stays as the door /md options and the minimap button use.
 --
 -- T84 (C5 of docs/PLAN-refactor-ux.md, section 7.1; mockup M4 layout B and
 -- M6): the Spells group is the rail, as on Forever -- MY SPELLS, Overview
@@ -29,6 +36,7 @@ local frame, statsFS, calloutFS, hintFS, recapFS, messageFS
 local spellsView, spellsOverview, spellsHost, wasteView, reviewView, practiceView, nav
 local currentGroup = "spells"
 local currentFamily = "overview" -- the selected VIEW id (a family's is "fam:<key>")
+local lastSettingsView -- T119: the General / Review / About view last shown (MD:ShowOptionsFrame)
 
 --------------------------------------------------------------------------------
 -- T84 (C5): the Spells rail. MD.SpellsTBC carries UI/SpellRail.lua's glue
@@ -221,7 +229,8 @@ local SIZES = {
     spells   = { w = WIN_W, h = WIN_H, minW = WIN_W, minH = WIN_H },
     reports  = { w = WIN_W, h = WIN_H, minW = WIN_W, minH = WIN_H },
     simulate = { w = WIN_W, h = WIN_H, minW = WIN_W, minH = WIN_H },
-    settings = { w = WIN_W, h = WIN_H, minW = WIN_W, minH = WIN_H },
+    -- T119 (SPEC-one-ui 7): Settings in two columns at Forever's size
+    settings = { w = 860, h = 560, minW = 860, minH = 560 },
 }
 
 -- Reports' views depend on what has been recorded.
@@ -246,10 +255,11 @@ local function Groups()
         -- answered a question nobody was asking; playing it yourself does
         { id = "simulate", text = "Simulate", views = {
             { id = "practice", text = "Practice" }, { id = "build", text = "Build a fight" } } },
-        -- T102 (docs/SPEC-next.md 7.4): Clock between General and About
+        -- T102 (docs/SPEC-next.md 7.4): Clock between General and About;
+        -- T119: Review after it (UI/Settings.lua's views, in order)
         { id = "settings", text = "Settings", views = {
             { id = "general", text = "General" }, { id = "clock", text = "Clock" },
-            { id = "about", text = "About" } } },
+            { id = "review", text = "Review" }, { id = "about", text = "About" } } },
     }
 end
 
@@ -323,10 +333,9 @@ local function CreateDashboard()
                 end
                 return nil
             elseif group == "settings" then
-                -- one panel for both settings views; the tabs inside it show
-                -- and hide themselves on the ShowOptionsTab callback
-                if MD.AdoptOptionsPanel then MD:AdoptOptionsPanel(content) end
-                return MD.optionsFrame
+                -- T119: General, Review and About, UI/Settings.lua's
+                if MD.Settings and MD.Settings.Owns(view) then return MD.Settings.Build(view, content) end
+                return nil
             elseif group == "spells" and not spellsHost and MD.ClassProfile:Can("rankTable")
                     and MD.DashboardParts.CreateSpellsView then
                 -- T83 (C3): one view for every family, UI/SpellsView_TBC.lua's;
@@ -353,6 +362,13 @@ local function CreateDashboard()
         function(group, view, pane)
             -- T102: Settings -> Clock's controls from the saved look
             if group == "settings" and view == "clock" and MD.ClockSettings then MD.ClockSettings.Show(pane) end
+            -- T119: General, Review and About re-read what they show, and
+            -- the last of them is where /md options opens (Clock was never
+            -- one of the options frame's tabs)
+            if group == "settings" and MD.Settings and MD.Settings.Owns(view) then
+                lastSettingsView = view
+                MD.Settings.Refresh(view)
+            end
             -- the source is set when the VIEW changes, never on a refresh: the
             -- 2s ticker calls Refresh, and setting it there put the run back
             -- one second after the author clicked Fights (v0.11.6)
@@ -469,7 +485,15 @@ end
 
 -- Kept for the minimap button's right-click.
 function MD:OpenDashboardSettings()
-    MD:ShowOptionsFrame("general")
+    MD:SelectView("settings", "general")
+end
+
+-- T119: the door /md options (Core_TBC.lua) uses, kept when the options frame
+-- (UI/OptionsFrame.lua) went --
+--   MD:ShowOptionsFrame()      the settings group, on the last view used
+--   MD:ShowOptionsFrame(view)  that view
+function MD:ShowOptionsFrame(view)
+    MD:SelectView("settings", view or lastSettingsView or "general")
 end
 
 -- a run stored while the window is open makes the Runs view appear

@@ -238,11 +238,54 @@ green.
 
 | Suite | Before | After |
 |---|---|---|
-| `settingscheck/forever` | -- | **9** |
-| `settingscheck/tbc` | -- | **11** |
+| `settingscheck/forever` | -- | **10** |
+| `settingscheck/tbc` | -- | **12** |
 | the re-based suites | as today | as today unless a check is split; record any change |
 
-Record the measured numbers here when done.
+Measured when done (2026-10-03):
+
+| Suite | Before (535cff4) | After |
+|---|---|---|
+| `settingscheck/forever` | -- (fails at load) | 10 (one more than planned: section 1 also asserts the load, MD.Settings and the line's MD.SettingsLine) |
+| `settingscheck/tbc` | -- (fails at load) | 12 (the same load assertion) |
+| `restylecheck/forever` | 44 | 45 (Settings -> Review added to the views walked) |
+| `restylecheck/tbc` | 49 | 50 (the same) |
+| `wincheck/forever` / `tbc` | 66 / 4 | 66 / 4 (re-based, no check split) |
+| `clocksettings/forever` / `tbc` | 47 / 46 | 47 / 46 (re-based) |
+| `slashcheck/tbc` | 10 | 10 (the About rows read from the shared page; golden unchanged) |
+| `defaultscheck/forever` / `tbc` | 52 / 49 | 52 / 49 (re-based) |
+| `dashui/tbc` | 84 | 84 (re-based) |
+| `minimapcheck/forever` / `tbc` | 9 / 8 | 9 / 8 (no re-base needed) |
+| `tipcheck/forever`, `modulecheck/forever`, `reviewforever/forever` | 52, 19, 22 | unchanged, untouched |
+
+`make check`: 98 runs, all passed; apicheck 0 findings; textcheck 0 findings.
+
+## What landed, and the deviations
+
+- **TOCs edited by the task** (as T117 did, and listed again for the integrator):
+  `SpellTuner_TBC.toc` `UI\OptionsFrame.lua` -> `UI\Settings.lua` (after `UI\Dashboard.lua`),
+  `UI\Options_General.lua` -> `UI\Settings_TBC.lua`, `UI\Options_About.lua` removed;
+  `SpellTuner_Mainline.toc` and `SpellTuner.toc` gain `UI\Settings.lua` right before
+  `UI\Dashboard_Forever.lua`. Since `UI/Dashboard.lua` loads before `UI/Settings.lua` on TBC, the
+  TBC dashboard reads `MD.Settings` only when a pane is built or shown.
+- **`MD:ShowOptionsFrame(view)`** remembers the last of General / Review / About only (Clock was
+  never one of the options frame's tabs), so `/md options` after Customise... still opens General.
+- **About lays its rows in two columns** when one would not fit 520 px (TBC's 31 commands at
+  offset +2): the usage column narrows to 150 px and every row's hover carries the full text.
+- **Forever's "Danger line for built fights (%)"** (`simFloor`, the slider TBC had) is on
+  Review / RECORDING on both lines; on Forever it is drawn always and live with the Replay module,
+  as the other recording controls are (a row added with `when` would never appear on a pane built
+  before the module loaded).
+- **"General > Tools"**: the old About's last pane ("BEFORE TRUSTING THE NUMBERS") keeps its words
+  but points at the Debug Console's new place (General / TOOLS).
+- **The two slider sentences** wrap at their slider's width (150 px); the APPEARANCE section
+  reserves the wrapped height (the client's answer, or one font line per width needed, whichever is
+  taller), and `settingscheck` models the wrap the stub does not.
+- **`minimapcheck`** needed no re-base: TBC's part loads no Settings, Forever's finds the WINDOWS
+  pane by its marks.
+- **`settingscheck` section 3** tolerates the titled pane's 1-px rule shadow (it sits a pixel
+  right of the rule by design, `UI.CreateTitledPane`), and reads the short `SetPoint(p, x, y)`
+  form the kit's widgets use.
 
 ## Integrator lines
 

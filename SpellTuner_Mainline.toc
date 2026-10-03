@@ -39,6 +39,7 @@ UI\Feeds.lua
 UI\Dashboard_Rows.lua
 UI\SpellRail.lua
 UI\SpellsPane.lua
+UI\Settings.lua
 UI\Dashboard_Forever.lua
 UI\SpellTip.lua
 Engine\ManaPool_Forever.lua
