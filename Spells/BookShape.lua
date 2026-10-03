@@ -118,6 +118,12 @@ BS.ENTRY = {
     bonus         = O("table"),
     calc          = O("table"),
     afterOverheal = O("table"),
+    -- T118 (docs/tasks/T118-tbc-book.md): the crit chance `value` averages
+    -- in (TBC's rows; nil: no crit in it), what the cast time assumes
+    -- ("Nature's Grace averaged"), a damage entry's school name
+    crit          = O("number"),
+    castNote      = O("string"),
+    school        = O("string"),
 }
 
 -- A row a rank draws under it, never a rank of its own: not in `spells`,

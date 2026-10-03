@@ -23,14 +23,19 @@
 --
 -- The source has Data/SpellData.lua's shape (families, familyOrder, spells,
 -- all, known, knownSet, maxRank, GetCost, StaticCost, Relic, Resolve), so the
--- rank math and Spells/Families_TBC.lua read either one the same way. Only the
+-- rank math and the TBC book (Spells/Book_Model.lua) read either one the
+-- same way. Only the
 -- ranks the spellbook lists are in it (TBC's book lists every rank the player
 -- knows; an untrained rank is not listed and so not on the table).
 --
 -- Built at MD_READY and whenever the spellbook or the level changes, for a
 -- logged-in class whose profile grants the rank table and is not the class
 -- Data/SpellData.lua is written for; SPELLS_REBUILT is fired after each build
--- so the spell list (Spells/Families_TBC.lua) follows. No TBC class profile
+-- so the TBC book (Spells/Book_Model.lua) and the spell list follow.
+--
+-- T118: B.WalkAll() (every spell of the book) and B.Read(id) (one rank's
+-- text and reads) are every caller's, cached until SPELLS_CHANGED /
+-- LEARNED_SPELL_IN_TAB or the next build. No TBC class profile
 -- grants the rank table yet (Data/Profile_<Class>_TBC.lua says why), so in
 -- the game this builds nothing and fires nothing until one does. TBC TOC
 -- only, after Spells/Parse.lua.
@@ -197,11 +202,86 @@ local function Shape(kitType, d, text)
     return nil, "kit type " .. tostring(kitType) .. " is not read on this line"
 end
 
+--------------------------------------------------------------------------------
+-- T118 (docs/tasks/T118-tbc-book.md): one rank's text and reads, without the
+-- family rules, for every caller -- the class book below and the TBC book
+-- (Spells/Book_Model.lua), which reads every spell the walk lists.
+--------------------------------------------------------------------------------
+
+-- The lines a description is never: the rank's own header lines.
+local function NotDescription(l)
+    local P = MD.Parse
+    if l:match("^Requires ") then return true end
+    if type(P.Cost(l)) == "table" or type(P.Cast(l)) == "number" then return true end
+    if type(P.Cooldown(l)) == "number" then return true end
+    if l:match("yd range$") or l == "Instant" or l == "Channeled" then return true end
+    return false
+end
+
+-- The heal's text (DescriptionOf's rule), else the client's description,
+-- else the tooltip's last line from the second on that is not a header line.
+local function TextOf(id, lines)
+    local text, d = DescriptionOf(id, lines)
+    if text then return text, d end
+    if lines then
+        for i = #lines, 2, -1 do
+            local l = lines[i].l
+            if type(l) == "string" and l ~= "" and not NotDescription(l) then return l, nil end
+        end
+    end
+    return nil, nil
+end
+
+B._read = {}
+
+--- B.Read(id) -> { desc, parsed (the heal's Parse.Description, when the text
+--- heals), lines, cost, costFrom, cast, castFrom, level, levelFrom, cooldown,
+--- targets, reach, targetsWhy, lockout }. Cached per id until B.Forget().
+function B.Read(id)
+    if type(id) ~= "number" then return nil end
+    local hit = B._read[id]
+    if hit then return hit end
+    local P = MD.Parse
+    local lines = Lines(id)
+    local r = { lines = lines }
+    if P then
+        r.desc, r.parsed = TextOf(id, lines)
+        r.cost, r.costFrom = CostOf(id, lines)
+        r.cast, r.castFrom = CastOf(id, lines)
+        r.level, r.levelFrom = LevelOf(id, lines)
+        r.cooldown = CooldownOf(id, lines)
+        local text = r.desc
+        if type(text) == "string" and text ~= "" then
+            r.lockout = P.Lockout(text)
+            local d = P.Description(text)
+            if type(d) == "table" and (d.heal ~= nil or d.absorb ~= nil) then
+                local reach = Reach(text)
+                if type(reach) == "table" then
+                    r.targets, r.reach = reach.targets, reach
+                else
+                    local _, why = P.Targets(P.Clean and P.Clean(text) or text)
+                    r.targetsWhy = type(why) == "string" and why or nil
+                end
+            end
+        end
+    end
+    B._read[id] = r
+    return r
+end
+
+--- B.Forget(): the reads and the walk forgotten (a trained rank is a new id;
+--- the TBC text itself is static).
+function B.Forget()
+    B._read = {}
+    B._walk = nil
+end
+
 --- B.ReadRank(id, family, def) -> spell row, or nil plus why. Public for the
 --- suite; `def` is the profile's family definition.
 function B.ReadRank(id, family, def, rankText)
-    local lines = Lines(id)
-    local text, d = DescriptionOf(id, lines)
+    local read = B.Read(id)
+    local lines = read.lines
+    local text, d = read.desc, read.parsed
     if not text then return nil, "no description" end
     local s, why = Shape(def.kit, d, text)
     if not s then return nil, why end
@@ -211,10 +291,10 @@ function B.ReadRank(id, family, def, rankText)
     if not s.rank and lines and lines[1] then
         s.rank = MD.Parse.Rank(lines[1].r or "") or nil
     end
-    s.cost, s.costFrom = CostOf(id, lines)
-    s.cast, s.castFrom = CastOf(id, lines)
-    s.level, s.levelFrom = LevelOf(id, lines)
-    s.cooldown = CooldownOf(id, lines)
+    s.cost, s.costFrom = read.cost, read.costFrom
+    s.cast, s.castFrom = read.cast, read.castFrom
+    s.level, s.levelFrom = read.level, read.levelFrom
+    s.cooldown = read.cooldown
     if s.cast == nil then return nil, "no cast time" end
     -- the downrank penalty needs the learn level, and the rank table prints it
     if s.level == nil then return nil, "no learn level" end
@@ -242,25 +322,46 @@ local function Profile()
     return p
 end
 
--- { id -> rank text } of the spellbook's spells, by name through the profile.
-local function Walk(keyOf)
+--- B.WalkAll() -> { { id, name, sub, slot, passive }, ... }: every spell of
+--- every tab, in slot order (T118). `passive` from the adapter's
+--- SpellIsPassive when a TOC binds it, else the rank text the client prints
+--- for a passive ("Passive"). Cached until B.Forget().
+B._walk = nil
+function B.WalkAll()
+    if B._walk then return B._walk end
     local found = {}
     local tabs = Call("SpellTabCount")
-    if type(tabs) ~= "number" then return found end
-    for tab = 1, tabs do
-        local _, _, offset, count = Call("SpellTabInfo", tab)
-        if type(offset) == "number" and type(count) == "number" then
-            for slot = offset + 1, offset + count do
-                local name, sub, id = Call("SpellBookItemName", slot, "spell")
-                if type(id) ~= "number" then
-                    local kind, id2 = Call("SpellBookItemKind", slot, "spell")
-                    if kind == "SPELL" and type(id2) == "number" then id = id2 end
-                end
-                if type(name) == "string" and type(id) == "number" and keyOf[name] then
-                    found[#found + 1] = { id = id, name = name, sub = type(sub) == "string" and sub or nil }
+    if type(tabs) == "number" then
+        for tab = 1, tabs do
+            local _, _, offset, count = Call("SpellTabInfo", tab)
+            if type(offset) == "number" and type(count) == "number" then
+                for slot = offset + 1, offset + count do
+                    local name, sub, id = Call("SpellBookItemName", slot, "spell")
+                    if type(id) ~= "number" then
+                        local kind, id2 = Call("SpellBookItemKind", slot, "spell")
+                        if kind == "SPELL" and type(id2) == "number" then id = id2 end
+                    end
+                    if type(name) == "string" and type(id) == "number" then
+                        sub = type(sub) == "string" and sub or nil
+                        local passive = Call("SpellIsPassive", slot, "spell")
+                        if type(passive) ~= "boolean" then
+                            passive = (sub ~= nil and sub:find("Passive", 1, true) ~= nil) or nil
+                        end
+                        found[#found + 1] = { id = id, name = name, sub = sub, slot = slot, passive = passive }
+                    end
                 end
             end
         end
+    end
+    B._walk = found
+    return found
+end
+
+-- { id, name, sub } of the spellbook's spells whose name the profile keys.
+local function Walk(keyOf)
+    local found = {}
+    for _, hit in ipairs(B.WalkAll()) do
+        if keyOf[hit.name] then found[#found + 1] = { id = hit.id, name = hit.name, sub = hit.sub } end
     end
     return found
 end
@@ -272,6 +373,7 @@ end
 
 --- B:Build() -> source (or nil when the logged-in class reads SpellData).
 function B:Build()
+    B.Forget()
     local p = Profile()
     if not p or not MD.Parse then return nil end
     local src = Empty(p)
@@ -361,3 +463,7 @@ MD:RegisterCallback("MD_READY", OnBook)
 MD:On("SPELLS_CHANGED", OnBook)
 MD:On("LEARNED_SPELL_IN_TAB", OnBook)
 MD:On("PLAYER_LEVEL_UP", OnBook)
+-- T118: B:Build forgets the reads and the walk; these two forget them for a
+-- class that builds nothing (the druid, whose TBC book still walks)
+MD:On("SPELLS_CHANGED", B.Forget)
+MD:On("LEARNED_SPELL_IN_TAB", B.Forget)

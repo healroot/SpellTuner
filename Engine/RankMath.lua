@@ -405,6 +405,10 @@ function RankMath:RowFor(spellID, ctx, variant, explain)
         calc.castBase = castBase or castTime
         calc.castNG = castTime
         calc.ngCrit = ngCrit
+        -- T118: the talents talentMult multiplies in, by name, and the tick
+        -- period -- the words Tip:Spell printed; ClassRow carries both too
+        calc.talentName = (info.type == "hot") and "Gift of Nature, Improved Rejuvenation" or "Gift of Nature"
+        calc.tickPeriod = (info.type == "lifebloom") and 1 or 3
         calc.naturesGrace = ctx.naturesGrace
         calc.mana = ctx.mana
         calc.castingRegen = ctx.castingRegen
@@ -578,7 +582,11 @@ end
 -- Returns family -> { label, tol, rows = {...}, suggestedID, callout }; the
 -- inputs used are left in RankMath.info (the context).
 --------------------------------------------------------------------------------
-function RankMath:Compute()
+-- T118 (docs/tasks/T118-tbc-book.md): `opts` reaches Context. Compute() reads
+-- MD.sim as before (the old dashboard's what-if strip); Compute({ live = true
+-- }) ignores it (the TBC book, Spells/Book_Model.lua, and the gear toast's
+-- SuggestedRanks).
+function RankMath:Compute(opts)
     -- T111: the rank table is a capability (Spells/Profiles.lua), and its
     -- ranks come from the logged-in class's source -- Data/SpellData.lua for
     -- the druid, the class's own book (Spells/Book_TBC.lua) otherwise
@@ -587,7 +595,7 @@ function RankMath:Compute()
     local profile = MD.ClassProfile
     if not SD or not (profile and profile:Can("rankTable")) then return results end
 
-    local ctx = RankMath:Context()
+    local ctx = RankMath:Context(opts)
     RankMath.info = ctx
 
     for _, family in ipairs(SD.familyOrder) do
@@ -665,9 +673,10 @@ function RankMath:Compute()
 end
 
 -- Map of family -> suggested rank number, for the gear-change toast diff.
+-- T118: live -- a what-if value (MD.sim) never fires the toast.
 function RankMath:SuggestedRanks()
     local out = {}
-    for family, res in pairs(RankMath:Compute()) do
+    for family, res in pairs(RankMath:Compute({ live = true })) do
         if res.suggestedID then
             out[family] = RankMath:Source().spells[res.suggestedID].rank
         end

@@ -310,7 +310,63 @@ T123 delete the last readers. A comment above it names T120 and T123.
 | `bookshapecheck/tbc` | 4 (T117) | **16** |
 | `tabscheck/tbc` | 4 | **6** |
 
-Record the measured numbers here when done.
+Measured (2026-10-03, branch `oneui/T118`):
+
+| Suite | On the parent (535cff4, the tests first) | After |
+|---|---|---|
+| `bookshapecheck/tbc` | 5 ok / 11 failed (16 checks; 11-14 and 26 pass) | **16** ok |
+| `tabscheck/tbc` | 2 ok / 4 failed | **6** ok |
+| `bookshapecheck/forever` | 10 | 10 |
+| `tabscheck/forever` | 27 | 27 |
+
+Every other suite unchanged (`dashui/tbc` 84, `navui/tbc` 46, `spelltip/tbc` 49,
+`tbcclasscheck/tbc` 52, `verifycheck/tbc` 14, `slashcheck/tbc` 10, `releasecheck` 38). `make check`:
+96 runs green (the counts step notes the two new counts for the integrator); `apicheck` 0 findings;
+`textcheck` 0 findings.
+
+The druid golden (check 12) was re-based for `calc.talentName` / `calc.tickPeriod` only: the
+`--print` transcript compared line by line with the e93d367 one, 351 of 900 lines differ, and every
+difference is those two fields (0 lines differ once they are removed).
+
+## Deviations (as built)
+
+1. **The TOC line.** `SpellTuner_TBC.toc` line 41, `Spells\Families_TBC.lua` -> `Spells\Book_Model.lua`,
+   is this task's edit to an integrator-owned file (the one line the task names).
+2. **Compare / Half / HalfOf / IntervalFor copied, not moved.** `Spells/Book.lua`'s `Compare` and
+   `IntervalFor` are copied into `Book_Model.lua` with the twin named (moving them into
+   `Spells/BookShape.lua` would touch Forever's book, outside this task's files). `Half` / `HalfOf`
+   return the family / entry (no TBC family has `altKind`); Forever's need its private `Numbers`.
+3. **`passive`** comes from the adapter's `SpellIsPassive` when a TOC binds it, else from the rank
+   text the client prints ("Passive"). No TBC binding exists yet; the integrator may bind
+   `IsPassiveSpell` in `Client/API_TBC.lua`.
+4. **`Book:Refresh()`**, a method beyond the contract: rebuild now, bump and announce on a moved
+   signature. The event handlers and `Get()`'s 2-s cache call it; the suite uses it for what moves
+   without an event (the harness's level and form).
+5. **`RankMath.info` is put back** after the book's `Compute`, so a book build never changes what
+   other readers take as the last Compute's context.
+6. **A damage entry's `interval` is `c.cast`** (and `casts` counts over it, from `DefaultPool`, as
+   the task's table says); `perSec` stays `DM.Compute`'s `dps` over the Nature's Grace average,
+   with `castNote` saying so when it differs.
+7. **`CastsFor` counts from `pool.mana or pool.max`**, Forever's twin, not `pool.max or pool.mana`:
+   `Pool()`'s `mana` is the current pool, the "~N now" count.
+8. **The `why` words.** Heals: `x1.20 Empowered Touch` (with ` (HoT)` on a hybrid, where the
+   multiplier is the HoT part's), `downrank 0.70`, `level 14 x0.78` -- from
+   `Coefficients.Downrank` / `Sub20` of the rank's level, whose product is `calc.penalty`. Damage:
+   the rule (`cast 2.0 / 3.5`, `split by amount`, `duration 12 / 15`, `channel, halved for an
+   area`), `+0.10 coef from talents`, `downrank 0.50`, then `VERIFY`.
+9. **`B:Build()` calls `B.Forget()`** first, and `B.Forget` also runs on `SPELLS_CHANGED` /
+   `LEARNED_SPELL_IN_TAB`; the book's own `SPELLS_REBUILT` handler forgets first too
+   (`Data/SpellData.lua` fires it before Book_TBC's `SPELLS_CHANGED` handlers run).
+10. **No `OVERHEAL_CHANGED`** exists: the 2-s cache catches a moved overheal; the signature leaves
+    `afterOverheal` (measured, not the spell's) and `casts` out.
+11. **Event rebuilds wait for a first read**: before anything has read the book an event only
+    leaves the next `Get()` to build it (no build at login nobody asked for).
+12. **The alias** `MD.FamiliesTBC` keeps `Families_TBC`'s builder (from `RankMath:Source()`) rather
+    than a view of the book, so a class book's families come through it as before
+    (`tbcclasscheck`'s priest list) and check 26 holds byte for byte; it is forgotten on
+    `SPELLS_REBUILT` and rebuilt on the next `Get()`.
+13. **Check 25** revokes the priest's `rankTable` / `tooltip` for its run: check 13's class transcript
+    grants them and leaves them granted.
 
 ## Integrator lines
 

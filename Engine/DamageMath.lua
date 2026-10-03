@@ -108,10 +108,23 @@ local function Live(fn, ...)
     return nil
 end
 
+-- T118 (docs/tasks/T118-tbc-book.md): the +damage of one school (the id
+-- GetSpellBonusDamage takes), the one read DM.Compute and the TBC book's
+-- Book:Bonus("damage", school) share; 0 when the client gives nothing.
+function DM.Bonus(school)
+    return Live(GetSpellBonusDamage, school) or 0
+end
+
+-- T118: a family's school name ("Nature", "Arcane"), nil for another name.
+function DM.SchoolName(family)
+    local f = DM.families[family]
+    return f and f.schoolName or nil
+end
+
 function DM.Compute(spellID, family, base)
     local f = DM.families[family]
     if not (f and base) then return nil end
-    local bonus = Live(GetSpellBonusDamage, f.school) or 0
+    local bonus = DM.Bonus(f.school)
     local crit = (Live(GetSpellCritChance, f.school) or 0) / 100
 
     -- talents

@@ -38,7 +38,7 @@ Spells\RankRules.lua
 Spells\Words.lua
 Engine\RankMath.lua
 Spells\Tabs.lua
-Spells\Families_TBC.lua
+Spells\Book_Model.lua
 Engine\DamageMath.lua
 Engine\Calibration.lua
 Engine\PullBudget.lua

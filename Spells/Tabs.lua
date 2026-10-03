@@ -17,10 +17,15 @@
 --
 -- T84 (C5 of docs/PLAN-refactor-ux.md, section 7.1: the rail on TBC): both
 -- lines. The book an edit reads when its caller passes none comes through
--- one seam, Tabs.source, which defaults to MD.Book:Get() (Forever). On TBC
--- Spells/Families_TBC.lua sets it to the TBC druid families in Book's shape
--- and runs the reconcile on SPELLS_REBUILT, the job BOOK_CHANGED does here.
--- The rules below are unchanged.
+-- one seam, Tabs.source, which defaults to MD.Book:Get().
+--
+-- T118 (docs/tasks/T118-tbc-book.md): the seam is the same on both lines --
+-- MD.Book answers on TBC too (Spells/Book_Model.lua), so nothing installs a
+-- source of its own, and the reconcile runs on BOOK_CHANGED on both lines.
+-- A family marked `noSeed` (TBC's Tranquility and Swiftmend) is never seeded
+-- or reconciled in, only added by hand (the picker); Resolve finds a family
+-- by its entries' `family` (TBC's entries carry the spell's name and the
+-- family key apart). The rules below are otherwise unchanged.
 local _, MD = ...
 
 MD.Tabs = MD.Tabs or {}
@@ -156,11 +161,11 @@ local function OfKind(fam, kind)
 end
 
 -- The families of one kind the seed and the reconcile may take, ordered by
--- learn level, then name.
+-- learn level, then name. T118: never a `noSeed` family.
 local function Candidates(book, kind)
     local list = {}
     for key, fam in pairs(Families(book)) do
-        if type(fam) == "table" and OfKind(fam, kind) and not AllPassive(fam) then
+        if type(fam) == "table" and fam.noSeed ~= true and OfKind(fam, kind) and not AllPassive(fam) then
             local known = KnownRanks(fam)
             if #known > 0 and (kind ~= "damage" or CostsMana(known)) then
                 list[#list + 1] = { key = fam.key or key, level = LowestLevel(known) }
@@ -444,8 +449,11 @@ function Tabs:Resolve(key, book)
     if type(ids) == "table" then
         for _, id in ipairs(ids) do
             local e = spells[id]
-            if type(e) == "table" and type(e.name) == "string" and type(families[e.name]) == "table" then
-                return families[e.name]
+            -- T118: by the entry's family key, else its name (Forever's
+            -- entries carry the two equal)
+            local fkey = type(e) == "table" and (e.family or e.name)
+            if type(fkey) == "string" and type(families[fkey]) == "table" then
+                return families[fkey]
             end
         end
     end

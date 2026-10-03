@@ -506,7 +506,11 @@ end
 
 -- The golden, captured with --golden on e93d367 (before the first edit).
 local GOLDEN = {
-    druid = { n = 900, bytes = 400487, h1 = 4209107753, h2 = 3722721600 },
+    -- T118: re-based for the two calc fields RowFor's explain now carries
+    -- (talentName, tickPeriod); every other byte equal to the e93d367
+    -- transcript (bytes = 400487, h1 = 4209107753, h2 = 3722721600), checked
+    -- line by line with --print
+    druid = { n = 900, bytes = 417569, h1 = 553152855, h2 = 1166058324 },
     class = { n = 354, bytes = 174286, h1 = 2384515562, h2 = 297317080 },
     -- T118: Spells/Families_TBC.lua's book, captured with --golden on 535cff4
     -- before the file was deleted (check 26 reads MD.FamiliesTBC, the alias)
@@ -1211,6 +1215,11 @@ local function BookChecks(dF)
               desc = "Power infuses the target increasing their Stamina by 79 for 30 min." },
         }
         local restore = InstallBook(ROWS)
+        -- as shipped: check 13's class transcript granted the priest the
+        -- rank table for its own run and left it so
+        local caps = MD.Profiles.byClass.PRIEST.caps
+        local savedRT, savedTip = caps.rankTable, caps.tooltip
+        caps.rankTable, caps.tooltip = nil, nil
         S.units.player.class = "PRIEST"
         MD:DetectProfile()
         MD:Fire("CORE_LOGIN")
@@ -1223,6 +1232,7 @@ local function BookChecks(dF)
         if okB then valid, problems = BS.Validate(book) end
         local listed = okB and book.families["Power Word: Fortitude"] ~= nil
         restore()
+        caps.rankTable, caps.tooltip = savedRT, savedTip
         S.units.player.class = "DRUID"
         MD:DetectProfile()
         MD:Fire("CORE_LOGIN")
