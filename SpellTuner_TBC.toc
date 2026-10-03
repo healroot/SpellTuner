@@ -63,6 +63,7 @@ UI\ContextMenu.lua
 UI\Tip.lua
 UI\Tip_TBC.lua
 UI\Feeds.lua
+UI\SpellTip.lua
 UI\SpellTooltip.lua
 UI\Visibility.lua
 UI\ClockView.lua

@@ -151,9 +151,40 @@ green.
 
 | Suite | Before | After |
 |---|---|---|
-| `spelltip/tbc` | 49 | measured (the arithmetic checks re-based, 6 and 7 new) |
-| `tipcheck/forever` | 52 | **53** |
-| `tbcclasscheck/tbc` | 52 | 52 |
+| `spelltip/tbc` | 49 | **35** (measured: the per-shape arithmetic checks of Tip:Spell / Tip:Damage folded into the block's goldens; on the parent 12 ok, 23 failed) |
+| `tipcheck/forever` | 52 | **53** (on the parent 51 ok, 2 failed) |
+| `tbcclasscheck/tbc` | 52 | 52 (on the parent 49 ok, 3 failed) |
+| `bookshapecheck/tbc` | 16 | 16 |
+
+`make check`: 98 runs, green with the two counts above (the counts file is the integrator's);
+`apicheck` 0 findings, `textcheck` 0.
+
+## Deviations (as built)
+
+1. Forever keeps its own value lines (Average / Crit multiplier from the parsed text); M5's
+   Heals / Crit / Over time / Total lines are drawn for a model entry (TBC's book, no `parsed`).
+2. A family with more than 4 valued known ranks (TBC's Healing Touch, 12) gets one
+   `vs Rank N  +x% per mana, +y% per sec` line (Book:Compare) instead of a row per rank.
+3. The detail order is the same on both lines: value, After overheal, ranks / gaps, reach, the
+   other half, a spacer, How; a spacer opens the detail lines. Forever's detail lines moved order
+   (ranks before reach) and gained the spacers and How (`read from the spell's text`, then the
+   estimated +Healing share).
+4. TBC's Casts to OOM is counted from full through `Book:CastsFor(entry, Book:DefaultPool())`:
+   TBC's `entry.casts` counts from current mana. The `~N now` part reads `Book:Pool()`.
+5. `PerSecText` (a cast-paced entry's plain number) and `CritMult` (the multiplier derived from the
+   entry's value and crit, 1.5 outside 1.4..3) are local to the block; fold into Spells/Words.lua
+   later.
+6. The cost check treats TBC's `cost.power = 0` as mana (`OtherPowerCost`).
+7. A TBC costed spell outside a heal family (Fireball on a druid's walk, Other) now gets the Other
+   block; spelltip's old "adds nothing" check re-based.
+8. UI/SpellTooltip.lua asks `MD.ClassProfile:Can("tooltip")` before reading the id, as well as
+   OnSpell, so capscheck's source scan of the gate files still holds.
+9. The tooltip cap and `db.spellTooltipDamage` gate `OnSpell`, not `Lines`: the Spells pane's
+   rank-row hover keeps its block.
+10. `tools/data/import-forever-sv.lua` regenerated (`tools/importfixture.lua`): one line,
+    `spellTooltipDamage = true`, the default now registered on Forever too. Not in the owned list.
+11. Settings' Detail lines dropdown now shows on TBC (`SpellTip.DETAIL_MODES` exists there);
+    the settings suites stay green.
 
 ## Integrator lines
 

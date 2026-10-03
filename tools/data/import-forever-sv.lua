@@ -2149,6 +2149,7 @@ SpellTunerDB = {
 	["simMinActivity"] = 0,
 	["simReaction"] = 0.5,
 	["spellTooltip"] = true,
+	["spellTooltipDamage"] = true,
 	["spellTooltipDetail"] = "SHIFT",
 	["ui"] = {
 		["combat"] = "hide",

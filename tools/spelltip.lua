@@ -328,7 +328,13 @@ check("5. Wrath with Moonfury 5, Wrath of Cenarius 5, Vengeance 5: Hits 527 - 56
     tostring(R(find(L, "Hits"))) .. " / " .. tostring(R(find(L, "Crit"))))
 TL["Moonfury"], TL["Vengeance"], TL["Wrath of Cenarius"] = 0, 0, 0
 
-check("a damage spell that is not a druid's adds nothing", #Damage(133) == 0)
+-- T121: a spell outside the druid's damage families is an Other spell of the
+-- walked book (Spells/Book_Model.lua): Forever's 5.4b block, the header and
+-- casts to OOM, no hint (Tip:Damage added nothing)
+L = Damage(133)
+check("a costed spell outside the druid's damage families: the Other block (header, Casts to OOM)",
+    #L == 3 and R(find(L, "SpellTuner")) == "Rank 1 of 1" and find(L, "Casts to OOM") ~= nil
+    and find(L, "Per mana") == nil, #L .. " lines")
 MD.db.spellTooltipDamage = false
 check("the damage setting off adds nothing to a damage spell", #Damage(9912) == 0)
 check("and leaves the heals alone", #SetSpell(rejuv) > 0)

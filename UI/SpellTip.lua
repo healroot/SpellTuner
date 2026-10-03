@@ -1,5 +1,5 @@
--- UI/SpellTip.lua (T117: moved from UI/SpellTip_Forever.lua; Forever only
--- until T121 makes it the one tooltip block of both lines).
+-- UI/SpellTip.lua (T117: moved from UI/SpellTip_Forever.lua; T121: the one
+-- tooltip block of both lines).
 --
 -- T9 (docs/tasks/T9-spell-tooltip.md, M2): the SpellTuner block on every
 -- spell tooltip -- the spellbook, an action bar, a chat link -- through
@@ -16,6 +16,16 @@
 -- value and its range, the crit and its 1.5x, every known rank, a gap --
 -- behind the detail key (db.spellTooltipDetail). Colours are passed as
 -- arguments, so the tooltip's default gold is never inherited.
+-- T121 (docs/tasks/T121-one-tooltip-block.md, docs/SPEC-one-ui.md 6, mockup
+-- M5): both lines draw this block from their own MD.Book -- Forever's text
+-- read book, TBC's model book (Spells/Book_Model.lua) -- with the family by
+-- `entry.family`, the pool by MD.Book:Pool() ("~N now" only for a modelled
+-- pool) and How from `entry.calc` and the bonus behind the detail key. The
+-- three settings are registered here; the damage half (spellTooltipDamage)
+-- and the class profile's tooltip cap gate the block on both lines.
+-- SpellTip.OnSpell(tt, id, source) is exported: TBC's hook
+-- (UI/SpellTooltip.lua) hands it the id; Forever's hooks are registered at
+-- MD_READY only where the adapter has them.
 local _, MD = ...
 local Book = MD.Book
 -- T67 (P23, review A13): the words -- per mana, per second, casts, the
@@ -25,6 +35,11 @@ local Words = MD.Words
 
 MD.SpellTip = MD.SpellTip or {}
 local SpellTip = MD.SpellTip
+
+-- T121: the block's settings, the same values both cores carry (a second
+-- registration of the same value is allowed; the cores' copies go when each
+-- core is next touched).
+MD:RegisterDefaults({ spellTooltip = true, spellTooltipDamage = true, spellTooltipDetail = "SHIFT" })
 
 -- Book's own global cooldown (Spells/Book.lua's GCD): an Other spell's
 -- interval for casts to OOM, which Book:Rows never fills for a kindless
@@ -62,7 +77,7 @@ local function Pair(l, r, lTok, rTok)
              l = l, r = r, c = { lc[1], lc[2], lc[3] }, rc = { rc[1], rc[2], rc[3] } }
 end
 local function Single(l, tok)
-    local c = C(tok)
+    local c = C(tok or "text")
     return { l, nil, c[1], c[2], c[3], l = l, c = { c[1], c[2], c[3] } }
 end
 
@@ -122,44 +137,73 @@ local function PerManaText(entry)
     return Words.PerMana(entry, "tip")
 end
 
+-- T121: a TBC heal's interval is its cast or the global cooldown (the
+-- model's, intervalBy "cast"), never the HoT's own duration -- so its per
+-- second is the plain number, where Words' "tip" would say "over 2 s" for a
+-- HoT with no direct part. Fold into Spells/Words.lua's PerSec when that
+-- file is next free (T120 owns it this wave).
 local function PerSecText(entry)
+    if entry.intervalBy == "cast" and entry.castKind ~= "channeled" and type(entry.perSec) == "number" then
+        return Num(entry.perSec, 1)
+    end
     return Words.PerSec(entry, nil, "tip")
 end
 
--- The clock's modelled pool when it is below its max, else nil (5.1: at full
--- "~N now" would only repeat the first number).
-local function PoolBelowMax()
-    if not (MD.Clock and MD.Clock.Pool) then return nil end
-    local ok, pool = pcall(MD.Clock.Pool, MD.Clock)
+-- The book's pool when it is below its max, else nil (5.1: at full "N now"
+-- would only repeat the first number). T121: MD.Book:Pool() on both lines --
+-- Forever's the clock's modelled pool, TBC's the pool the client reads.
+local function NowPool()
+    if not (Book and Book.Pool) then return nil end
+    local ok, pool = pcall(Book.Pool, Book)
     if not ok or type(pool) ~= "table" then return nil end
     if type(pool.mana) ~= "number" or type(pool.max) ~= "number" then return nil end
     if pool.mana >= pool.max then return nil end
     return pool
 end
 
--- Casts to OOM: from full (Book:Rows' count against Book:DefaultPool()), then
--- "~N now" in the mana colour from the clock's modelled pool while it is
--- below its max. `counted` is what Book:CastsFor counts (its cost and
--- interval). T78 (P34, review U9; mockup M5): "6 from full, ~5 now".
+-- Casts to OOM: from full (Book:CastsFor against Book:DefaultPool()), then
+-- "N now" in the mana colour from the book's pool while it is below its max,
+-- "~N now" when that pool is modelled (Forever). `counted` is what
+-- Book:CastsFor counts (its cost and interval). T78 (P34, review U9; mockup
+-- M5): "6 from full, ~5 now".
 local function CastsText(full, counted)
     if full == nil then return "-" end
     if full == math.huge then return "inf" end
     local text = Casts(full) .. " from full"
-    local pool = PoolBelowMax()
+    local pool = NowPool()
     if pool then
         local now = Book:CastsFor(counted, pool)
         if type(now) == "number" then
-            text = text .. ", " .. C("mana").hex .. "~" .. Casts(now) .. " now|r"
+            text = text .. ", " .. C("mana").hex .. (pool.modelled == true and "~" or "") .. Casts(now) .. " now|r"
         end
     end
     return text
+end
+
+-- T121: casts to OOM from a full pool. TBC's entry.casts counts from the mana
+-- the player has now (RankMath's row); the block's first number is from
+-- full on both lines, so it is counted here; the entry's own count when the
+-- book cannot.
+local function CastsFromFull(entry)
+    local okPool, pool = pcall(Book.DefaultPool, Book)
+    if okPool and type(pool) == "table" then
+        local n = Book:CastsFor(entry, pool)
+        if n ~= nil then return n end
+    end
+    return entry.casts
+end
+
+-- T121: a cost in another power -- Forever's book names it (cost.power a
+-- word, "Rage"); TBC's book keeps the mana power type there (0).
+local function OtherPowerCost(cost)
+    return type(cost) == "table" and cost.power ~= nil and cost.power ~= 0
 end
 
 -- A mana cost Book priced (not free, not Rage, not a percent it could not
 -- turn into mana).
 local function HasManaCost(entry)
     local cost = entry.cost
-    return type(cost) == "table" and cost.power == nil and type(cost.amount) == "number" and cost.amount > 0
+    return type(cost) == "table" and not OtherPowerCost(cost) and type(cost.amount) == "number" and cost.amount > 0
 end
 
 -- The known rank that dominates `entry`: Book's own entry.dominatedBy
@@ -220,6 +264,88 @@ local function ValueLines(out, entry, kind)
     return crit
 end
 
+-- T121: the crit multiplier a model entry's value carries (TBC's book keeps
+-- no field for it): the value with crits over the average hit, the crit
+-- chance taken out -- 1.5, or Vengeance's 2.0 on a Balance druid's damage.
+-- Rounded to two places; 1.5 when it cannot be read or lands outside what a
+-- crit can be.
+local function CritMult(e)
+    local avg = (e.min + e.max) / 2
+    local crit = e.crit
+    if type(crit) ~= "number" or crit <= 0 or avg <= 0 or type(e.value) ~= "number" then return Words.CRIT_MULT end
+    local m = 1 + ((e.value - (e.over or 0)) / avg - 1) / crit
+    if m ~= m or m < 1.4 or m > 3 then return Words.CRIT_MULT end
+    return math.floor(m * 100 + 0.5) / 100
+end
+
+-- T121 (mockup M5, "TBC after, Shift held"): a model entry's value (TBC's
+-- book: no text was parsed) -- Heals / Hits min - max, Crit at its multiplier
+-- with the crit chance, the part over time and the total. Fold into
+-- Spells/Words.lua's Value when it is free.
+local function ModelValueLines(out, entry, kind)
+    local label = (kind == "damage") and "Hits" or "Heals"
+    local hasRange = type(entry.min) == "number" and type(entry.max) == "number"
+    if hasRange then
+        out[#out + 1] = Pair(label, Num(entry.min) .. " - " .. Num(entry.max))
+        local m = CritMult(entry)
+        local text = Num(entry.min * m) .. " - " .. Num(entry.max * m)
+        if type(entry.crit) == "number" then
+            text = text .. "  " .. Num(entry.crit * 100) .. "%"
+            if m > Words.CRIT_MULT + 0.01 then text = text .. string.format("  (x%.1f)", m) end
+        else
+            text = text .. "  x" .. Num(Words.CRIT_MULT, 1) .. " assumed"
+        end
+        out[#out + 1] = Pair("Crit", text)
+    end
+    if type(entry.over) == "number" then
+        local over = Num(entry.over)
+        if type(entry.dur) == "number" then over = over .. " over " .. Num(entry.dur) .. " s" end
+        out[#out + 1] = Pair(hasRange and "Over time" or label, over)
+    end
+    if type(entry.value) == "number" and type(entry.over) == "number"
+        and (hasRange or math.abs(entry.value - entry.over) > 0.5) then
+        out[#out + 1] = Pair("Total", Num(entry.value))
+    end
+end
+
+-- T121 (mockup M5): how the number was made -- the entry's calc, the first
+-- line on "How", the rest under it as they are (indented, wrapped), then the
+-- +healing (+damage) share when it was measured or estimated (a model bonus's
+-- factors are already in calc).
+local function HowLines(out, entry, kind)
+    local calc = entry.calc
+    if type(calc) ~= "table" or type(calc[1]) ~= "string" then return end
+    out[#out + 1] = Pair("How", calc[1], "label", "text2")
+    for i = 2, #calc do
+        if type(calc[i]) == "string" then
+            local line = Single("  " .. calc[i], "muted")
+            line.wrap = true
+            out[#out + 1] = line
+        end
+    end
+    local b = entry.bonus
+    if type(b) == "table" and (b.from == "measured" or b.from == "estimated") then
+        local words = Words.Bonus(entry, "how", kind)
+        if words then
+            local line = Single("  " .. words, "muted")
+            line.wrap = true
+            out[#out + 1] = line
+        end
+    end
+end
+
+-- T121 (mockup M5): the measured share of the heal that lands, behind the
+-- key (TBC's book; Forever has no combat log): "3035  25% measured".
+local function AfterOverhealLine(out, entry)
+    local a = entry.afterOverheal
+    if type(a) ~= "table" or type(a.value) ~= "number" then return end
+    local text = Num(a.value)
+    if type(a.frac) == "number" then
+        text = text .. "  " .. Num(a.frac * 100) .. "% " .. (a.scope == "family" and "family average" or "measured")
+    end
+    out[#out + 1] = Pair("After overheal", text)
+end
+
 -- T95 (docs/SPEC-next.md 4.2 P1): what the text and the tooltip line say
 -- about reach and pace -- whom it reaches (an upper bound, in words: the
 -- numbers above are one target's), the cooldown, the per-target lockout and
@@ -239,14 +365,39 @@ local function ReachLines(out, entry)
     end
 end
 
+-- T121: at most this many known ranks are listed one per line; a family
+-- with more (TBC's Healing Touch has 12) gets the one comparison line M5
+-- draws, "vs Rank N".
+local RANK_ROWS_MAX = 4
+
+-- T121 (mockup M5): "vs Rank 11  +1% per mana, +3% per sec" -- the highest
+-- known rank against the next one down, any other rank against the highest
+-- (Book:Compare's percentages). Fold into Spells/Words.lua when it is free.
+local function VsLine(out, rows, entry)
+    local top = rows[#rows]
+    local other
+    if entry == top then
+        other = rows[#rows - 1]
+    else
+        other = top
+    end
+    if not other or not other.rank then return end
+    local cmp = Book:Compare(entry, other)
+    if type(cmp) ~= "table" or (cmp.perMana == nil and cmp.perSec == nil) then return end
+    out[#out + 1] = Pair("vs Rank " .. tostring(other.rank),
+        Words.Signed(cmp.perMana) .. " per mana, " .. Words.Signed(cmp.perSec) .. " per sec")
+end
+
 -- Every known rank with a value, this one marked, when there are two or more
--- to compare: value, per mana, casts to OOM from full.
+-- to compare: value, per mana, casts to OOM from full. T121: more than
+-- RANK_ROWS_MAX of them give the one "vs Rank N" line instead.
 local function RankLines(out, family, entry)
     local rows = {}
     for _, e in ipairs(family.ranks) do
         if e.known and e.rank and e.value ~= nil then rows[#rows + 1] = e end
     end
     if #rows < 2 then return end
+    if #rows > RANK_ROWS_MAX then return VsLine(out, rows, entry) end
     for _, e in ipairs(rows) do
         local right = Num(e.value) .. "   " .. Num(e.perMana, 2) .. " per mana   " .. Casts(e.casts)
         if e == entry then
@@ -323,7 +474,9 @@ function SpellTip:Lines(id, detail, source)
     local book = Book:Get()
     local entry = book.spells[id]
     local inBook = entry ~= nil
-    local family = entry and book.families[entry.name]
+    -- T121: the family by the entry's key (TBC's book keys families by
+    -- SpellData's id, not by the spell's name)
+    local family = entry and book.families[entry.family or entry.name]
 
     if family and not family.kind then
         local other = OtherLines(entry, family, source)
@@ -331,6 +484,16 @@ function SpellTip:Lines(id, detail, source)
     end
     if not family then
         entry = Book:ReadSpell(id)
+    end
+    -- T121: a heal with no value of its own but a derivation (TBC's
+    -- Swiftmend: the two Eats lines) -- the header and its calc lines, on the
+    -- plain block, as Tip:Spell drew them
+    if entry and entry.value == nil and family and type(entry.calc) == "table" and #entry.calc > 0 then
+        local lines = { Header(entry, family, source, false) }
+        for _, s in ipairs(entry.calc) do
+            if type(s) == "string" then lines[#lines + 1] = Single(s, "text2") end
+        end
+        return lines, "block", family.kind
     end
     if not entry or entry.value == nil then
         return nil, inBook and "no value" or "not in book"
@@ -358,24 +521,39 @@ function SpellTip:Lines(id, detail, source)
 
     local kind = family and family.kind or entry.kind
 
-    -- the detail lines, built first: the header's hint says whether any exist
+    -- the detail lines, built first: the header's hint says whether any exist.
+    -- T121 (mockup M5): the value (Forever's parsed text; TBC's model entry),
+    -- After overheal, the ranks, the reach, the other half, then How.
     local more = {}
-    local crit = ValueLines(more, entry, kind)
-    if crit then
-        -- "assumed", once, and only here (5.1)
-        more[#more + 1] = Pair("Crit multiplier", Words.CritNote(), "label", "muted")
+    if type(entry.parsed) == "table" then
+        local crit = ValueLines(more, entry, kind)
+        if crit then
+            -- "assumed", once, and only here (5.1)
+            more[#more + 1] = Pair("Crit multiplier", Words.CritNote(), "label", "muted")
+        end
+    else
+        ModelValueLines(more, entry, kind)
     end
-    ReachLines(more, entry) -- T95
-    local otherLabel, otherText = Words.OtherHalf(entry) -- T110
-    if otherLabel then more[#more + 1] = Pair(otherLabel, otherText) end
+    AfterOverhealLine(more, entry)
     if family then
         RankLines(more, family, entry)
         if family.gaps and #family.gaps > 0 then
             more[#more + 1] = Pair("Not in your book", "Rank " .. table.concat(family.gaps, ", "), "muted", "muted")
         end
     end
+    ReachLines(more, entry) -- T95
+    local otherLabel, otherText = Words.OtherHalf(entry) -- T110
+    if otherLabel then more[#more + 1] = Pair(otherLabel, otherText) end
+    local how = {}
+    HowLines(how, entry, kind)
+    if #how > 0 then
+        if #more > 0 then more[#more + 1] = Single(" ") end
+        for _, line in ipairs(how) do more[#more + 1] = line end
+    end
+    local hasDetail = #more > 0
+    if hasDetail then table.insert(more, 1, Single(" ")) end
 
-    local lines = { Header(entry, family, source, #more > 0) }
+    local lines = { Header(entry, family, source, hasDetail) }
     if family then
         local s = SuggestedLine(family, entry)
         if s then lines[#lines + 1] = s end
@@ -384,8 +562,8 @@ function SpellTip:Lines(id, detail, source)
     lines[#lines + 1] = Pair("Per sec", PerSecText(entry)) -- T78: the table's word
     -- casts to OOM: a family row's number only (a ReadSpell entry never has
     -- one, 5.4), and only for a mana cost (a Rage spell never runs dry)
-    if family and (entry.cost == nil or entry.cost.power == nil) then
-        lines[#lines + 1] = Pair("Casts to OOM", CastsText(entry.casts, entry))
+    if family and not OtherPowerCost(entry.cost) then
+        lines[#lines + 1] = Pair("Casts to OOM", CastsText(CastsFromFull(entry), entry))
     end
     -- the one warning: last in the plain block, never behind the key
     if entry.stale then
@@ -395,7 +573,9 @@ function SpellTip:Lines(id, detail, source)
     if detail then
         for _, line in ipairs(more) do lines[#lines + 1] = line end
     end
-    return lines, "block"
+    -- T121: the third return is the block's kind ("heal" / "damage" / nil),
+    -- for the damage setting the hooks read
+    return lines, "block", kind
 end
 
 -- Writes Lines' result into a tooltip, colours passed as arguments.
@@ -410,7 +590,8 @@ function SpellTip:Render(tt, lines)
         elseif line[2] ~= nil then
             tt:AddDoubleLine(line[1], line[2], line[3], line[4], line[5], line[6], line[7], line[8])
         else
-            tt:AddLine(line[1], line[3], line[4], line[5])
+            -- T121: a How line under the first wraps (line.wrap)
+            tt:AddLine(line[1], line[3], line[4], line[5], line.wrap == true or nil)
         end
     end
 end
@@ -442,9 +623,15 @@ local withBlock = setmetatable({}, { __mode = "k" })
 -- clear never adds a second block, whatever the detail. Without a line count
 -- the key decides: a changed detail rebuilds. `source`
 -- is "macro" from the macro paths (5.5), nil from the Spell post-call.
+-- T121: exported as SpellTip.OnSpell (TBC's UI/SpellTooltip.lua hands it the
+-- id); the class profile's tooltip cap (T99's rule, now on both lines) and
+-- db.spellTooltipDamage (a damage family's block) gate it here, not in
+-- Lines, so the Spells pane's rank-row hover keeps its block.
 local function OnSpell(tt, id, source)
     if not tt or type(id) ~= "number" then return false, "no id" end
     if MD.db and MD.db.spellTooltip == false then return true, "off" end
+    local profile = MD.ClassProfile
+    if not (profile and profile.Can and profile:Can("tooltip")) then return true, "off" end
 
     if not tt._spellTipHooked and tt.HookScript then
         tt._spellTipHooked = true
@@ -466,12 +653,13 @@ local function OnSpell(tt, id, source)
     end
 
     -- The builder never raises into the game's tooltip.
-    local ok, lines, outcome = pcall(SpellTip.Lines, SpellTip, id, detail, source)
+    local ok, lines, outcome, kind = pcall(SpellTip.Lines, SpellTip, id, detail, source)
     if not ok then
         MD:Debug("other", "spell tooltip for %s failed: %s", tostring(id), tostring(lines))
         return false, "error"
     end
     if type(lines) ~= "table" then return false, outcome or "no value" end
+    if kind == "damage" and MD.db and MD.db.spellTooltipDamage == false then return true, "off" end
 
     tt._spellTipId = id
     tt._spellTipDetail = detail
@@ -484,6 +672,7 @@ local function OnSpell(tt, id, source)
     if tt.Show then tt:Show() end
     return true, "block"
 end
+SpellTip.OnSpell = OnSpell
 
 -- T37 (5.6): the detail key pressed or released while a tooltip carries a
 -- block refreshes that tooltip through the adapter, so the detail lines come
@@ -520,12 +709,17 @@ function SpellTip:Why()
     return line
 end
 
+-- T121: registered only where the adapter has the hooks (the presence of an
+-- adapter function, never the client's name -- apicheck rule 10). TBC's
+-- adapter has none: its hook is UI/SpellTooltip.lua, which calls OnSpell and
+-- re-runs the owner's OnEnter for the detail key itself.
 MD:RegisterCallback("MD_READY", function()
+    if not MD.API.OnSpellTooltip then return end
     MD.API.OnSpellTooltip(OnSpell)
     -- T25: a macro's tooltip gets the block of the spell it casts.
     if MD.API.OnMacroTooltip then MD.API.OnMacroTooltip(OnSpell) end
     -- T28: and so does an action button's, from the slot SetAction is handed.
     if MD.API.OnActionTooltip then MD.API.OnActionTooltip(OnSpell) end
     -- T37: the detail key's refresh.
-    MD:On("MODIFIER_STATE_CHANGED", OnModifier)
+    if MD.API.RefreshTooltip then MD:On("MODIFIER_STATE_CHANGED", OnModifier) end
 end)
