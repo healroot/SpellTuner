@@ -143,7 +143,7 @@ end
 --------------------------------------------------------------------------------
 T.section("the source scan: no colour copied out of a token in T107's files")
 
-local OWNED = { "UI/Style.lua", "UI/Dashboard_Rows.lua", "UI/SpellsPane_Forever.lua", "UI/SpellsView_TBC.lua",
+local OWNED = { "UI/Style.lua", "UI/Dashboard_Rows.lua", "UI/SpellsPane.lua", "UI/SpellsView_TBC.lua",
     "UI/SpellRail.lua", "UI/ReplayWindow.lua", "UI/Dashboard_Simulate.lua", "UI/Options_About.lua",
     "UI/DebugConsole.lua", "UI/Tip_TBC.lua" }
 local function Code(rel)

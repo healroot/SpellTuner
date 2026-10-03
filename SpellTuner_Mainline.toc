@@ -18,6 +18,8 @@ Data\Profile_Shaman_Forever.lua
 Data\Profile_Priest_Forever.lua
 Spells\Parse.lua
 Spells\RankRules.lua
+Spells\Coefficients.lua
+Spells\BookShape.lua
 Spells\Book.lua
 Spells\Words.lua
 Spells\Tabs.lua
@@ -36,9 +38,9 @@ UI\Tip.lua
 UI\Feeds.lua
 UI\Dashboard_Rows.lua
 UI\SpellRail.lua
-UI\SpellsPane_Forever.lua
+UI\SpellsPane.lua
 UI\Dashboard_Forever.lua
-UI\SpellTip_Forever.lua
+UI\SpellTip.lua
 Engine\ManaPool_Forever.lua
 UI\Visibility.lua
 UI\ClockView.lua

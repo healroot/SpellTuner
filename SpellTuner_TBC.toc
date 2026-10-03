@@ -19,6 +19,8 @@ Data\Profile_Paladin_TBC.lua
 Data\SpellData.lua
 Spells\Parse.lua
 Spells\Book_TBC.lua
+Spells\Coefficients.lua
+Spells\BookShape.lua
 Data\SimFixture_BF1.lua
 Data\SimPresets.lua
 Data\AuraList.lua
@@ -33,6 +35,7 @@ Engine\ClockFace.lua
 Engine\TTO.lua
 Engine\Kit.lua
 Spells\RankRules.lua
+Spells\Words.lua
 Engine\RankMath.lua
 Spells\Tabs.lua
 Spells\Families_TBC.lua

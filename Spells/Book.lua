@@ -9,6 +9,11 @@ local Parse = MD.Parse
 -- T67 (P23, review A13): the Pareto filter, the suggested rank and casts to
 -- OOM are Spells/RankRules.lua's, shared with the TBC dashboard.
 local RR = MD.RankRules
+-- T117 (docs/SPEC-one-ui.md 3.1): the book contract (Spells/BookShape.lua),
+-- checked at the end of every scan, and the +healing rules
+-- (Spells/Coefficients.lua) each valued rank's estimated share is read by.
+local BS = MD.BookShape
+local Coef = MD.Coefficients -- nil only where a harness loads this file alone
 
 MD.Book = MD.Book or {}
 local Book = MD.Book
@@ -272,6 +277,10 @@ end
 -- whose text also deals damage (Holy Shock, Holy Nova) -- keeps its damage
 -- half too, as entry.alt = { kind = "damage", value, min, max, over, dur,
 -- interval, perMana, perSec }; nothing shows it yet.
+--
+-- T117: a valued entry's derivation is the text itself (`calc`, one line; TBC's
+-- book fills it from RankMath:Explain).
+local CALC_TEXT = "read from the spell's text"
 local function Numbers(e, kind)
     local value, part = PartValue(e, kind)
     local interval, by = IntervalFor(e, part)
@@ -286,6 +295,7 @@ local function Numbers(e, kind)
     local amount = e.cost and e.cost.amount
     e.perMana = (value ~= nil and amount ~= nil and amount > 0) and (value / amount) or nil
     e.perSec = (value ~= nil and interval ~= nil and interval > 0) and (value / interval) or nil
+    if value ~= nil then e.calc = { CALC_TEXT } else e.calc = nil end
 
     e.alt = nil
     if kind == "heal" and type(e.parsed) == "table" and e.parsed.damage ~= nil then
@@ -302,6 +312,50 @@ local function Numbers(e, kind)
         end
     end
 end
+
+--------------------------------------------------------------------------------
+-- T117 (docs/SPEC-one-ui.md 3.1, 4.3 "Else estimated"): the share of +healing
+-- (or +damage) a valued rank gets, as this line can know it -- estimated by
+-- Spells/Coefficients.lua's rules from the rank's own cast, duration and
+-- parts, with no downrank rule (TBC's, not this client's). `amount` is that
+-- share of the caster's bonus now (Book:Bonus), `of` the bonus itself; both
+-- nil when there is no reading (always for damage on this line). A shape the
+-- rules do not cover leaves `bonus` nil. "measured" is T122's.
+--
+-- While Scan runs, the bonus is read once for the whole book (scanBonus);
+-- a Rows or ReadSpell call of its own reads it at the call.
+--------------------------------------------------------------------------------
+local scanBonus -- { [kind] = amount or false } during one Scan
+
+local function BonusNow(kind)
+    if scanBonus then
+        local v = scanBonus[kind]
+        if v == nil then
+            v = Book:Bonus(kind) or false
+            scanBonus[kind] = v
+        end
+        return v or nil
+    end
+    return (Book:Bonus(kind))
+end
+
+local function ApplyBonus(e, kind, shape)
+    e.bonus = nil
+    if e.value == nil or not kind or not Coef then return end
+    local counts, why = Coef.Estimate(e, shape)
+    if type(counts) ~= "number" then return end
+    local of = BonusNow(kind)
+    e.bonus = {
+        counts = counts, from = "estimated", why = why,
+        of = of, amount = of and counts * of or nil,
+    }
+end
+
+local PartShape -- below, with the families (ReadSpell reads it first)
+
+-- T117: the fields the talent seam (Book.adjust) added during the scan in
+-- progress -- not the contract's, so not refused by the scan's check.
+Book._seamFields = {}
 
 --------------------------------------------------------------------------------
 -- Enumeration
@@ -367,6 +421,8 @@ function Book:BuildEntry(row, slot, bank, futureConst, prevSpells)
 
     local name = MD.API.SpellName(id)
     entry.name = (type(name) == "string") and name or nil
+    -- T117: the family's key; on this line a family is keyed by its name.
+    entry.family = entry.name
 
     local rankText = MD.API.SpellSubtext(id)
     entry.rankText = (type(rankText) == "string") and rankText or nil
@@ -449,6 +505,7 @@ function Book:ReadSpell(id)
     local name = MD.API.SpellName(id)
     if type(name) ~= "string" then return nil end
     entry.name = name
+    entry.family = name -- T117: the key a family of this name has in the book
 
     local rankText = MD.API.SpellSubtext(id)
     entry.rankText = (type(rankText) == "string") and rankText or nil
@@ -507,7 +564,10 @@ function Book:ReadSpell(id)
     end
     entry.kind = kind
 
-    if kind then Numbers(entry, kind) end
+    if kind then
+        Numbers(entry, kind)
+        ApplyBonus(entry, kind, PartShape(entry, kind))
+    end
 
     Book._readSpells[id] = entry
     return entry
@@ -524,7 +584,7 @@ end
 -- or "none" (no kind: nothing the text values). Read off the family's own
 -- relevant part (heal or damage, by its kind), the highest known rank's
 -- first, else the first rank that has one; nothing is assumed.
-local function PartShape(e, kind)
+PartShape = function(e, kind)
     if type(e.parsed) ~= "table" then return nil end
     local part
     if kind == "heal" then
@@ -591,8 +651,20 @@ function Book:GroupFamilies(spells)
         for i, e in ipairs(fam.ranks) do fam.ids[i] = e.id end
 
         for _, e in ipairs(fam.ranks) do
+            -- T117: a field the seam adds is the seam's, outside the book
+            -- contract; its name is kept so the scan's check lets it pass.
+            local before
+            if #Book.adjust > 0 then
+                before = {}
+                for k in pairs(e) do before[k] = true end
+            end
             for _, fn in ipairs(Book.adjust) do
                 pcall(fn, e, fam)
+            end
+            if before then
+                for k in pairs(e) do
+                    if not before[k] then Book._seamFields[k] = true end
+                end
             end
         end
 
@@ -680,6 +752,7 @@ function Book:Rows(family, pool)
 
     for _, e in ipairs(family.ranks) do
         Numbers(e, family.kind)
+        ApplyBonus(e, family.kind, family.shape) -- T117
         e.casts = Book:CastsFor(e, pool)
         e.dominated = nil
         e.dominatedBy = nil -- T38
@@ -717,6 +790,7 @@ local function DamageHalf(e, pool)
     for k, x in pairs(e) do v[k] = x end
     v.kind = "damage"
     Numbers(v, "damage")
+    ApplyBonus(v, "damage", PartShape(v, "damage")) -- T117: the damage half's own share
     v.targets, v.reach, v.targetsWhy = nil, nil, nil
     v.dominated, v.dominatedBy, v.suggested = nil, nil, nil
     v.casts = Book:CastsFor(v, pool)
@@ -837,7 +911,12 @@ end
 -- book table Scan returns (`book.generation`).
 Book.generation = Book.generation or 0
 
-local SIG_SKIP = { casts = true }
+-- T117: `bonus` is signed apart (EntrySig): its share, source, words and
+-- date are the spell's, its amount and the bonus it is a share of are the
+-- caster's reading of the moment -- a +healing reading moving, the text
+-- unchanged, leaves the generation where it was.
+local SIG_SKIP = { casts = true, bonus = true }
+local BONUS_SIG = { "counts", "from", "why", "at" }
 
 -- A deterministic string for one value: tables by sorted key, numbers to 17
 -- significant digits, strings length-prefixed (so no two values share a
@@ -879,6 +958,13 @@ end
 local function EntrySig(entry)
     local out = {}
     Sig(entry, out, 0)
+    local b = entry.bonus
+    if type(b) == "table" then
+        local kept = {}
+        for _, k in ipairs(BONUS_SIG) do kept[k] = b[k] end
+        out[#out + 1] = "bonus"
+        Sig(kept, out, 1)
+    end
     return table.concat(out)
 end
 
@@ -906,17 +992,23 @@ function Book:Scan()
         elseif type(row) == "table" and type(row.spellID) == "number" then
             if row.itemType ~= flyoutConst and row.itemType ~= petConst then
                 local entry = Book:BuildEntry(row, slot, bank, futureConst, prevSpells)
-                spells[entry.id] = entry
+                -- T117: an entry names its family, and a family is a name on
+                -- this line; a spell whose name did not read is counted, not
+                -- kept (it never had a family to be listed in).
+                if entry.family then spells[entry.id] = entry end
                 read.spells = read.spells + 1
             end
         end
     end
 
+    Book._seamFields = {}
     local families, order = Book:GroupFamilies(spells)
     local pool = Book:DefaultPool()
+    scanBonus = {} -- T117: one +healing reading for the whole scan
     for _, name in ipairs(order) do
         Book:Rows(families[name], pool)
     end
+    scanBonus = nil
 
     -- T63: the generation moves when any entry did (see Book.generation).
     local prevSigs = Book._prevSigs
@@ -936,6 +1028,10 @@ function Book:Scan()
 
     local book = { families = families, order = order, spells = spells, read = read,
                    generation = Book.generation }
+    -- T117: the contract, checked as the kit is (Engine/Kit.lua's Check);
+    -- read at the call, so a harness loading this file alone still scans.
+    local Shape = MD.BookShape
+    if Shape then Shape.Check(book, "Spells/Book.lua", Book._seamFields) end
     Book._cache = book
     Book._cacheTime = GetTime()
     Book._prevSpells = spells
@@ -968,9 +1064,51 @@ function Book:Entry(id)
     return Book:Get().spells[id]
 end
 
+--------------------------------------------------------------------------------
+-- T117 (docs/SPEC-one-ui.md 3.1, Lead's correction 2): the pool the pane's
+-- Casts / Now and the block's "~N now" count from, and the caster's bonus.
+--------------------------------------------------------------------------------
+
+-- { max, mana, regenCasting, modelled }: the clock's modelled pool when it
+-- answers one (modelled = true), else Book:DefaultPool() counted from full
+-- (mana = max, modelled = false).
+function Book:Pool()
+    if MD.Clock and MD.Clock.Pool then
+        local ok, p = pcall(MD.Clock.Pool, MD.Clock)
+        if ok and type(p) == "table" and type(p.max) == "number" then
+            return { max = p.max, mana = p.mana, regenCasting = p.regenCasting, modelled = true }
+        end
+    end
+    local d = Book:DefaultPool()
+    return { max = d.max, mana = d.max, regenCasting = d.regenCasting, modelled = false }
+end
+
+-- amount, stale: the caster's +healing for kind "heal" -- read plain out of
+-- combat and kept; in combat (MD.inCombat), or when the read is secret or
+-- absent, the last plain reading with stale = true; nil before any. "damage"
+-- is nil on this line (no GetSpellBonusDamage binding yet). `school` is the
+-- damage family's, for the book that reads one (T118).
+-- Book._lastBonus: the last plain +healing reading, or nil before any.
+
+function Book:Bonus(kind, school)
+    if kind ~= "heal" then return nil end
+    if not MD.inCombat and MD.API.SpellBonusHealing then
+        local v = MD.API.SpellBonusHealing()
+        if type(v) == "number" and v == v then
+            Book._lastBonus = v
+            return v, false
+        end
+    end
+    if Book._lastBonus == nil then return nil end
+    return Book._lastBonus, true
+end
+
 MD:On("SPELLS_CHANGED", function() Book:MarkDirty() end)
 MD:On("PLAYER_LEVEL_UP", function() Book:MarkDirty() end)
 MD:On("PLAYER_EQUIPMENT_CHANGED", function() Book:MarkDirty() end)
 MD:On("UNIT_AURA", function(unit)
     if not MD.API.IsSecret(unit) and unit == "player" then Book:MarkDirty() end
 end)
+
+-- T117: every method the contract names, present (Spells/BookShape.lua).
+if BS then BS.CheckMethods(Book, "Spells/Book.lua") end

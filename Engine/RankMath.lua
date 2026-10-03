@@ -1,11 +1,10 @@
 -- Rank math: per-rank effective heal / HPM / HPS with TBC downranking rules.
 -- Formulas (per the design debate, confidence noted in docs/DECISIONS.md):
---   direct coefficient  = clamp(baseCast, 1.5, 3.5) / 3.5
---   HoT coefficient     = duration / 15
---   hybrid (Regrowth)   = portions weighted by c/(c+h), h/(c+h)
---   sub-level-20 malus  = 1 - (20 - spellLevel) * 0.0375
---   downrank penalty    = min(1, (spellLevel + 11) / casterLevel)
---   healing crits are 1.5x, HoTs never crit.
+-- the coefficient rules -- direct (the base cast over 3.5 s), HoT (the
+-- duration over 15 s), the hybrid's amount-weighted split, the sub-level-20
+-- malus, the downrank penalty and the group rule -- are Spells/Coefficients.lua's
+-- (T117: moved there, the numbers unchanged, so Forever's book estimates by
+-- the same rules); healing crits are 1.5x, HoTs never crit.
 -- Penalties apply to the BONUS-healing contribution, not the base heal.
 --
 -- Structure (docs/DESIGN-v0.5.md §1.3): Context() resolves every input once
@@ -37,11 +36,9 @@ local function NatureCrit()
     return 0
 end
 
-local function Penalty(spellLevel, playerLevel)
-    local downrank = math.min(1, (spellLevel + 11) / math.max(playerLevel, 1))
-    local sub20 = spellLevel < 20 and (1 - (20 - spellLevel) * 0.0375) or 1
-    return downrank * sub20
-end
+-- T117: the coefficient rules are Spells/Coefficients.lua's (read at run time:
+-- it loads before this file on the TBC TOC, but nothing here needs it at load).
+local function Coef() return MD.Coefficients end
 
 -- Chain-casts until the next cast is unaffordable: each cast nets
 -- (cost - regen * interval) mana, so floor((mana - cost) / net) + 1 casts.
@@ -214,7 +211,8 @@ function RankMath:RowFor(spellID, ctx, variant, explain)
     local info = SD.families[s.family]
     if not info then return nil end
 
-    local pen = Penalty(s.level, ctx.playerLevel)
+    local C = Coef()
+    local pen = C.Penalty(s.level, ctx.playerLevel)
     local relic = ctx.relic
     -- relic bonus for this family: flat goes on the BASE heal, perTick on
     -- each Lifebloom tick
@@ -237,7 +235,7 @@ function RankMath:RowFor(spellID, ctx, variant, explain)
         ngCrit = ctx.crit
         castTime = ctx.ExpectedCast(castBase, ngCrit)
         -- the coefficient uses the spell's BASE cast time, not the modified one
-        local coef = math.min(math.max(s.cast, 1.5), 3.5) / 3.5
+        local coef = C.Direct(s.cast)
         local base = (s.healMin + s.healMax) / 2 + relicFlat
         local bonusOut = bonus * coef * pen * ctx.empTouch
         local critMult = 1 + 0.5 * ctx.crit
@@ -254,7 +252,7 @@ function RankMath:RowFor(spellID, ctx, variant, explain)
 
     elseif info.type == "hot" then
         castTime = 1.5 -- GCD
-        local coef = s.hotDuration / 15
+        local coef = C.Hot(s.hotDuration)
         local bonusOut = bonus * coef * pen * ctx.empRejuv
         heal = (s.hotTotal + relicFlat + bonusOut) * ctx.goN * ctx.impRejuv
         if explain then
@@ -269,20 +267,17 @@ function RankMath:RowFor(spellID, ctx, variant, explain)
         castBase = math.max(s.cast, 1.5)
         ngCrit = ctx.regrowthCrit
         castTime = ctx.ExpectedCast(castBase, ngCrit)
-        local c = math.min(math.max(s.cast, 1.5), 3.5) / 3.5
-        local h = s.hotDuration / 15
         -- The hybrid's +healing is split between the direct hit and the HoT in
         -- proportion to their BASE AMOUNTS, each portion then taking its own
-        -- coefficient: direct gets c x avg/(avg+hot), the HoT h x hot/(avg+hot).
+        -- coefficient: direct gets c x avg/(avg+hot), the HoT h x hot/(avg+hot)
+        -- (T117: Spells/Coefficients.lua's Hybrid).
         -- For Regrowth that is 0.286 / 0.70 -- the widely quoted numbers. The
         -- earlier coefficient-weighted split (c^2/(c+h), h^2/(c+h) = 0.166 /
         -- 0.994) predicted a 232 tick where the first regression log showed
         -- 209; the amount-weighted split predicts 209.3 (docs/DECISIONS.md
         -- v0.6 §15). Calibration confirms or refutes it with the next run.
         local avgBase = (s.healMin + s.healMax) / 2
-        local share = avgBase / (avgBase + s.hotTotal)
-        local dCoef = c * share
-        local hCoef = h * (1 - share)
+        local dCoef, hCoef = C.Hybrid(s.cast, s.hotDuration, avgBase, s.hotTotal)
         local base = avgBase + relicFlat
         local dBonus = bonus * dCoef * pen
         local hBonus = bonus * hCoef * pen * ctx.empRejuv
@@ -685,8 +680,8 @@ end
 -- spell tooltip for a priest, shaman or paladin. Their ranks are read from
 -- the client by Spells/Book_TBC.lua (each rank's base heal from its own text,
 -- its cost and cast from the client); this section puts the TBC rules on top
--- -- the same coefficient rules as the druid's (clamp(cast, 1.5, 3.5) / 3.5
--- for a direct heal, duration / 15 for a HoT), the same downrank penalty, the
+-- -- the same coefficient rules as the druid's (Spells/Coefficients.lua's
+-- Direct for a direct heal, Hot for a HoT), the same downrank penalty, the
 -- same 1.5x crit -- plus each class's healing talents. No coach: the TBC
 -- coach stays the druid's (decision 8), and the kit built here only has to be
 -- one Engine/Kit.lua accepts.
@@ -732,8 +727,9 @@ RankMath.CLASS_RULES = {
     },
 }
 -- A heal that lands on the whole party carries half the single-target
--- coefficient (Prayer of Healing, Circle of Healing). VERIFY.
-RankMath.GROUP_COEF = 0.5
+-- coefficient (Prayer of Healing, Circle of Healing). VERIFY. T117: the rule
+-- is Spells/Coefficients.lua's GROUP; this name stays as its alias.
+RankMath.GROUP_COEF = MD.Coefficients and MD.Coefficients.GROUP
 
 -- True when the logged-in class reads its own book (built or not): a class
 -- other than the one Data/SpellData.lua is written for (the druid,
@@ -876,7 +872,8 @@ function RankMath.ClassRow(spellID, ctx, explain)
     -- refuses it before it gets here)
     if type(s.level) ~= "number" or s.level <= 0 then return nil end
     local tal = TalentsFor(ctx.class, s.family)
-    local pen = Penalty(s.level, ctx.playerLevel)
+    local C = Coef()
+    local pen = C.Penalty(s.level, ctx.playerLevel)
     local bonus = ctx.bonus
     local heal, castTime, castBase, calc
     local crit = math.min(1, ctx.crit + tal.critAdd)
@@ -885,8 +882,8 @@ function RankMath.ClassRow(spellID, ctx, explain)
         castBase = math.max(s.cast, 1.5)
         castTime = castBase
         local coefCast = s.cast + tal.castAdd
-        local coef = math.min(math.max(coefCast, 1.5), 3.5) / 3.5
-        if info.type == "group" then coef = coef * RankMath.GROUP_COEF end
+        local coef = C.Direct(coefCast)
+        if info.type == "group" then coef = coef * C.GROUP end
         local bonusMult = 1 + tal.coefAdd / coef
         local base = (s.healMin + s.healMax) / 2
         local bonusOut = bonus * coef * pen * bonusMult
@@ -902,7 +899,7 @@ function RankMath.ClassRow(spellID, ctx, explain)
         end
     elseif info.type == "hot" then
         castTime = 1.5 -- GCD
-        local coef = s.hotDuration / 15
+        local coef = C.Hot(s.hotDuration)
         local bonusMult = 1 + tal.coefAdd / coef
         local bonusOut = bonus * coef * pen * bonusMult
         heal = (s.hotTotal + bonusOut) * tal.mult

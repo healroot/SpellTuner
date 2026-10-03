@@ -1,3 +1,6 @@
+-- UI/SpellTip.lua (T117: moved from UI/SpellTip_Forever.lua; Forever only
+-- until T121 makes it the one tooltip block of both lines).
+--
 -- T9 (docs/tasks/T9-spell-tooltip.md, M2): the SpellTuner block on every
 -- spell tooltip -- the spellbook, an action bar, a chat link -- through
 -- TooltipDataProcessor (Client/API_Forever.lua's MD.API.OnSpellTooltip).

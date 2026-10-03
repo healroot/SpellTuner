@@ -18,6 +18,8 @@
 --     heals (cast/3.5, duration/15, the amount-weighted hybrid split -- which
 --     reproduces the community's Moonfire 0.15 / 0.52 exactly, as it reproduces
 --     Regrowth's), plus a halving for a channelled area spell (Hurricane);
+--     T117: all of them, the penalties included, are Spells/Coefficients.lua's
+--     (the numbers unchanged);
 --   * the DoT tick periods (Moonfire 3s, Insect Swarm 2s);
 --   * the Balance talents in TALENTS.
 -- A wrong one here costs a tooltip line, never a model number: nothing in the
@@ -131,20 +133,20 @@ function DM.Compute(spellID, family, base)
     local critMult = 1 + 0.5 * (1 + vengeance)
 
     -- downranking: the same penalty as a heal, if the client says the rank's level
+    local C = MD.Coefficients
     local level = Live(GetSpellLevelLearned, spellID)
     local pen, penKnown = 1, false
     local player = MD.player and MD.player.level or 70
     if level and level > 0 then
         penKnown = true
-        pen = math.min(1, (level + 11) / math.max(player, 1))
-        if level < 20 then pen = pen * (1 - (20 - level) * 0.0375) end
+        pen = C.Penalty(level, player)
     end
 
     local c = { family = family, school = f.schoolName, bonus = bonus, crit = crit, critMult = critMult,
                 mult = mult, coefAdd = coefAdd, talents = used, penalty = pen, penaltyKnown = penKnown,
                 level = level, kind = f.kind, aoe = f.aoe }
 
-    local cDirect = math.min(math.max(f.baseCast, 1.5), 3.5) / 3.5
+    local cDirect = C.Direct(f.baseCast)
     if f.kind == "direct" then
         c.coef = cDirect + coefAdd
         c.add = bonus * c.coef * pen
@@ -154,9 +156,9 @@ function DM.Compute(spellID, family, base)
         c.expected = c.avg * (1 + crit * (critMult - 1))
     elseif f.kind == "hybrid" then
         local avgBase = (base.min + base.max) / 2
-        local share = avgBase / (avgBase + base.dot)
-        c.coef = cDirect * share + coefAdd
-        c.dotCoef = (base.dur / 15) * (1 - share)
+        local dCoef, hCoef = C.Hybrid(f.baseCast, base.dur, avgBase, base.dot)
+        c.coef = dCoef + coefAdd
+        c.dotCoef = hCoef
         c.add = bonus * c.coef * pen
         c.dotAdd = bonus * c.dotCoef * pen
         c.min, c.max = (base.min + c.add) * mult, (base.max + c.add) * mult
@@ -169,7 +171,7 @@ function DM.Compute(spellID, family, base)
         -- the DoT never crits
         c.expected = c.avg * (1 + crit * (critMult - 1)) + c.dotTotal
     elseif f.kind == "dot" then
-        c.dotCoef = base.dur / 15
+        c.dotCoef = C.Hot(base.dur)
         c.dotAdd = bonus * c.dotCoef * pen
         c.dotTotal = (base.dot + c.dotAdd) * mult
         c.dur, c.every = base.dur, f.tick
@@ -179,7 +181,7 @@ function DM.Compute(spellID, family, base)
     elseif f.kind == "channel" then
         -- a channelled area spell: duration/3.5, halved for hitting everything
         c.ticks = math.floor(base.lasts / base.every + 0.5)
-        c.dotCoef = (base.lasts / 3.5) * 0.5
+        c.dotCoef = C.Channel(base.lasts, f.aoe)
         c.dotAdd = bonus * c.dotCoef * pen
         c.tick = (base.tickBase + c.dotAdd / c.ticks) * mult
         c.dotTotal = c.tick * c.ticks

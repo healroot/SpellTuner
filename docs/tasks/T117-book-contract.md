@@ -223,8 +223,8 @@ Under tbc:
 
 | Suite | Before | Failing tests on the parent | After |
 |---|---|---|---|
-| `bookshapecheck/forever` | -- | fails at load | **10** |
-| `bookshapecheck/tbc` | -- | fails at load | **4** |
+| `bookshapecheck/forever` | -- | 0 ok / 10 failed (measured on e93d367) | **10** (measured) |
+| `bookshapecheck/tbc` | -- | 2 ok / 2 failed (11 and 14; the goldens 12 / 13 pass by construction) | **4** (measured) |
 
 Record the measured numbers here when done (the house rule: the table is the implementer's).
 
@@ -268,3 +268,54 @@ Record the measured numbers here when done (the house rule: the table is the imp
 - The TBC book (T118), the pane (T120), the block (T121), the What if and the measured
   coefficients (T122).
 - A `GetSpellBonusDamage` binding on Forever.
+
+## Done (2026-10-03)
+
+Status: **done** on `oneui/T117`. The failing tests in their own commit first (`tools/bookshapecheck.lua`,
+on e93d367: forever 0 ok / 10 failed, tbc 2 ok / 2 failed), then the implementation.
+
+Measured after: `bookshapecheck/forever` 10, `bookshapecheck/tbc` 4; `make check` 96 runs, all
+passed; every other suite's count unchanged against the parent's run (85 suite rows compared line
+by line: `bookcheck` 31 / 4, `spellsui`, `tipcheck` 52, `spelltip`, `tbcclasscheck` 52, `dashui`,
+`profilecheck`, `capscheck`, `kitcheck`, `simcheck`, `verifycheck` 14, `restylecheck`, `clockcheck`
+37, `releasecheck` as before); `apicheck` 0 findings, `textcheck` 0 findings. The druid golden (900
+lines) and the class golden (354 lines) are equal to the parent's after RankMath and DamageMath
+call `Spells/Coefficients.lua`.
+
+### Deviations
+
+1. **The TOCs.** The workflow lists every TOC as the integrator's; this task file owns the lines
+   named in "TOC lines", so those lines (and only those) were edited here.
+2. **The golden is stored as digests**, not inline: two independent 32-bit polynomial hashes, the
+   line count and the byte count of the transcript (`--print` writes the transcript whole for a
+   diff, `--golden` prints the digests). The inline transcript would be about 575 KB.
+3. **Check 14's pattern** is `GROUP_COEF = [%d%.]` (a number after the `=`), so the alias line
+   `RankMath.GROUP_COEF = MD.Coefficients and MD.Coefficients.GROUP` the task keeps is not a finding.
+4. **`W.Bonus(e, style, kind)`** takes the family's kind as a third argument for the label
+   (`+Healing` / `+Damage`); a bonus record carries no kind of its own. A measured bonus's card
+   words are `why` when set, else "your gear change".
+5. **`Coef.Estimate` names a channelled heal** (`castKind == "channeled"` on a direct or HoT shape):
+   `channel N s / 3.5` over its interval -- the rule the TBC side already had for Tranquility /
+   Hurricane, unhalved (a heal on this line is not an area spell by the rule). The hybrid's `why` is
+   `cast X / 3.5 + over N s / 15, by amount`.
+6. **The talent seam's fields pass the scan's check.** `tools/bookcheck.lua` puts a function into
+   `Book.adjust` that writes an undeclared field (`talentSeamTouched`); the seam may add to an entry
+   by design (Q6), so `Scan` records the names of fields the seam added (`Book._seamFields`) and
+   hands them to `BS.Check(book, who, extra)` / `BS.Validate(book, extra)`. With no seam function the
+   check is the strict one, and the suite's `BS.Validate(book)` is always strict.
+7. **`Spells/Book.lua` reads `MD.BookShape` at the call** and skips the scan's check (and the
+   file-end `CheckMethods`) when it is absent; `MD.Coefficients` absent leaves `bonus` nil.
+   `tools/clockcheck.lua`'s T68 block loads `Spells/Book.lua` with a hand-made file list that does
+   not include the two new files, and that suite is not this task's to edit.
+8. **A spell whose name does not read is counted, not kept in `spells`** (`read.spells` unchanged):
+   such an entry belonged to no family before either, and the contract says every entry names one.
+   The stub's books always read a name, so no count moved.
+9. **The old file names in comments** of files this task does not own (`Client/API_Forever.lua`,
+   `UI/Dashboard_Forever.lua`, `UI/SpellRail.lua`, `UI/Tip.lua`, `UI/SpellsView_TBC.lua`,
+   `Spells/Measure.lua`, `Core_Forever.lua`, `tools/adaptercheck.lua`, `tools/wowstub.lua`,
+   `tools/tipcheck.lua`, `tools/spellsui.lua`) still say
+   `UI/SpellsPane_Forever.lua` / `UI/SpellTip_Forever.lua`; nothing loads a file by those names.
+   A later task touching those files can rename the mentions.
+10. `BS.ENTRY` declares `kind` (a `ReadSpell` entry and a `Half` copy), `half` / `of` on entries and
+    families, and `icon` as `number|string`; `BS.VARIANT`, `BS.BONUS` and `BS.AFTER_OVERHEAL` are
+    declared beside it and checked when present.

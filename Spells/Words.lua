@@ -1,8 +1,8 @@
 -- T67 (P23 of docs/PLAN-refactor-ux.md, review A13): the spell words, once.
 -- How a rank's facts are said -- its cost, its cast, per mana, per second,
 -- casts to OOM, the value's parts and the crit range -- for the two surfaces
--- that say them, UI/SpellTip_Forever.lua (the block on a spell tooltip,
--- docs/SPEC-forever-ui.md 5.x) and UI/SpellsPane_Forever.lua (the RANKS
+-- that say them, UI/SpellTip.lua (the block on a spell tooltip,
+-- docs/SPEC-forever-ui.md 5.x) and UI/SpellsPane.lua (the RANKS
 -- table, the rank card and the export, 3.5 / 3.6). Before this file each
 -- carried its own helpers, with the crit multiplier and the global cooldown
 -- copied into both. Where the spec wants different wording for the same fact
@@ -15,6 +15,12 @@
 -- words never pick a colour. Every string is ASCII with no bare pipe apart
 -- from the colour codes a caller hands in. A number that is nil renders "-",
 -- never 0 (CLAUDE.md). Forever main TOCs, after Spells/Book.lua.
+--
+-- T117 (docs/SPEC-one-ui.md 3.4, 4.3): on the TBC TOC too, right after
+-- Spells/RankRules.lua -- before TBC has a book (T118), so nothing here reads
+-- a Forever-only value at load (W.GCD falls back to 1.5). And the words of
+-- the +healing share a rank gets (W.Bonus, W.BonusLabel) and of a signed
+-- change (W.Signed, the What if footer, T122).
 local _, MD = ...
 
 MD.Words = MD.Words or {}
@@ -26,7 +32,7 @@ local W = MD.Words
 W.CRIT_MULT = 1.5
 -- Spells/Book.lua's global cooldown: the interval a direct spell's per second
 -- is over when its cast is shorter, and an Other spell's for casts to OOM.
-W.GCD = MD.Book.GCD
+W.GCD = (MD.Book and MD.Book.GCD) or 1.5
 
 function W.Num(v, decimals)
     if type(v) ~= "number" or v ~= v then return "-" end -- nil or NaN
@@ -376,4 +382,74 @@ function W.OtherHalf(e)
     local text = Num(value)
     if type(perMana) == "number" then text = text .. "  " .. Num(perMana, 2) .. " per mana" end
     return label, text
+end
+
+--------------------------------------------------------------------------------
+-- T117 (docs/SPEC-one-ui.md 3.1, 4.3; mockup M1's +Healing pair, M2's
+-- estimated hover, M5's How lines): the share of +healing (or +damage) a
+-- rank gets, from entry.bonus = { counts, from, amount, of, why, at }.
+--------------------------------------------------------------------------------
+
+-- "+Healing" for a heal, "+Damage" for a damage family.
+function W.BonusLabel(kind)
+    if kind == "damage" then return "+Damage" end
+    return "+Healing"
+end
+
+-- "+5%", "-3%": a change in percent, rounded, its sign always said.
+function W.Signed(pct)
+    if type(pct) ~= "number" or pct ~= pct then return "-" end
+    local n = math.floor(pct + 0.5)
+    if n > 0 then return "+" .. n .. "%" end
+    return n .. "%"
+end
+
+-- "2 Oct": a measurement's day, the leading zero dropped.
+local function Day(at)
+    if type(at) ~= "number" or type(date) ~= "function" then return nil end
+    local ok, s = pcall(date, "%d %b", at)
+    if not ok or type(s) ~= "string" then return nil end
+    return (s:gsub("^0", ""))
+end
+
+-- W.Bonus(e, style, kind) -> the words, or nil when the entry has no share.
+-- `kind` names the label ("heal" by default; "damage" -> "+Damage").
+--   "card" -- the rank card's +Healing value (3.5):
+--             model     "840 of your 700 (x1.20 Empowered Touch)"
+--             estimated "counts ~12% estimated (cast 1.5 / 3.5 x 0.29)"
+--             measured  "31% measured: your gear change, 2 Oct"
+--   "how"  -- the block's How line (5.x):
+--             "+Healing counts 120% (x1.20 Empowered Touch)",
+--             "+Healing counts ~12%, estimated", "+Healing counts 31%, measured 2 Oct"
+--   "tip"  -- the percentage alone: "120%", "~12%", "31%"
+-- An estimate carries "~"; the source's word is the caller's `from`.
+function W.Bonus(e, style, kind)
+    local b = type(e) == "table" and e.bonus
+    if type(b) ~= "table" or type(b.counts) ~= "number" or b.counts ~= b.counts then return nil end
+    local pct = Num(b.counts * 100) .. "%"
+    local est = (b.from == "estimated")
+    if est then pct = "~" .. pct end
+    local why = (type(b.why) == "string" and b.why ~= "") and b.why or nil
+    local day = (b.from == "measured") and Day(b.at) or nil
+
+    if style == "tip" then return pct end
+
+    if style == "how" then
+        local text = W.BonusLabel(kind) .. " counts " .. pct
+        if est then return text .. ", estimated" end
+        if b.from == "measured" then return text .. ", measured" .. (day and (" " .. day) or "") end
+        return text .. (why and (" (" .. why .. ")") or "")
+    end
+
+    -- "card"
+    if est then
+        return "counts " .. pct .. " estimated" .. (why and (" (" .. why .. ")") or "")
+    end
+    if b.from == "measured" then
+        return pct .. " measured: " .. (why or "your gear change") .. (day and (", " .. day) or "")
+    end
+    if type(b.amount) == "number" and type(b.of) == "number" then
+        return Num(b.amount) .. " of your " .. Num(b.of) .. (why and (" (" .. why .. ")") or "")
+    end
+    return "counts " .. pct .. (why and (" (" .. why .. ")") or "")
 end

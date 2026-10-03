@@ -1,3 +1,6 @@
+-- UI/SpellsPane.lua (T117: moved from UI/SpellsPane_Forever.lua; Forever only
+-- until T120 makes it the one Spells pane of both lines).
+--
 -- T36 (docs/SPEC-forever-ui.md 3.1-3.4, 3.6; docs/tasks/T36-spells-rail-picker.md):
 -- the Forever window's Spells group, split out of UI/Dashboard_Forever.lua.
 --
