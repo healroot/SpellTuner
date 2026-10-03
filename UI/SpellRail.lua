@@ -234,13 +234,21 @@ function SpellRail.Install(pane, spec)
     ----------------------------------------------------------------------------
     local function FamilyOfSpell(id, book)
         local e = book.spells and book.spells[id]
-        if type(e) == "table" and type(e.name) == "string" and book.families[e.name] then
-            return e.name
+        -- T120: the entry's family key (e.family, both books since T117);
+        -- its name where a book keys families by it
+        local fk = type(e) == "table" and (e.family or e.name)
+        if type(fk) == "string" and book.families[fk] then
+            return fk
         end
         -- a rank the book does not list under this id: the family by the spell's name
         local name = MD.API.SpellName and MD.API.SpellName(id)
-        if type(name) == "string" and not MD.API.IsSecret(name) and book.families[name] then
-            return name
+        if type(name) == "string" and not MD.API.IsSecret(name) then
+            if book.families[name] then return name end
+            -- T120: a book keyed apart from the name ("HealingTouch")
+            for _, key in ipairs(book.order or {}) do
+                local fam = book.families[key]
+                if fam and fam.name == name then return key end
+            end
         end
         return nil
     end

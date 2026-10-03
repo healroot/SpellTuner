@@ -1,5 +1,5 @@
--- UI/SpellsPane.lua (T117: moved from UI/SpellsPane_Forever.lua; Forever only
--- until T120 makes it the one Spells pane of both lines).
+-- UI/SpellsPane.lua (T117: moved from UI/SpellsPane_Forever.lua; T120: the
+-- one Spells pane of both lines -- docs/tasks/T120-one-spells-pane.md).
 --
 -- T36 (docs/SPEC-forever-ui.md 3.1-3.4, 3.6; docs/tasks/T36-spells-rail-picker.md):
 -- the Forever window's Spells group, split out of UI/Dashboard_Forever.lua.
@@ -29,8 +29,21 @@
 -- installed on SpellsPane below with the book as its source; what this pane
 -- shows is unchanged (tools/spellsui.lua byte for byte).
 --
--- Forever TOCs only. Client data only through MD.API (the book, the clock,
--- the cursor); the widget toolkit is not a client call (CLAUDE.md, T1b).
+-- T120 (docs/SPEC-one-ui.md 2, 3.3, 10 W3; mockup M1, M3, M4): on every main
+-- TOC. Everything the pane draws comes from MD.Book's contract (T117) --
+-- Spells/Book.lua on Forever, Spells/Book_Model.lua on TBC (T118): the pool
+-- (Book:Pool, the "~" only on a modelled one), the caster's bonus
+-- (Book:Bonus: the header's second right-hand line), a family by
+-- entry.family. What only TBC's book sends is drawn wherever an entry has it:
+-- the model's crit (Heals "(V with C% crit)", Crit with its chance), the cast
+-- note ("with Nature's Grace averaged"), the +Healing pair (entry.bonus),
+-- After oh. (entry.afterOverheal) and Lifebloom's rolled rows
+-- (entry.variants). What differs by line is a value the line installs,
+-- MD.SpellsLine (the footer, RANKS' note, the Crit note, the After overheal
+-- switch, Overview's note) -- never a client check (apicheck rule 10).
+--
+-- Client data only through MD.API (the book, the cursor, the tooltip); the
+-- widget toolkit is not a client call (CLAUDE.md, T1b).
 local _, MD = ...
 local UI = MD.UI
 -- T67 (P23, review A13): how a rank's cost, cast, per second, casts and
@@ -90,10 +103,38 @@ local function CastCellText(e)
     return Words.Cast(e, "cell")
 end
 
+-- T120: the book's pool -- { max, mana, regenCasting, modelled } (T117):
+-- the clock's modelled pool on Forever, the live one on TBC.
 local function Pool()
-    local pool
-    if MD.Clock and MD.Clock.Pool then pool = MD.Clock:Pool() end
-    return pool or MD.Book:DefaultPool()
+    return MD.Book:Pool()
+end
+
+-- T120: what differs by line (installed by each dashboard before the pane
+-- is built): footer, ranksNote(fam), critNote, afterOverheal { get, set,
+-- word(fam) }, overviewNote(), whatIf (T122). Absent fields are nil.
+local DEFAULT_FOOTER = "Values come from the spell's own text. ~ = modelled."
+local function Line()
+    return (type(MD.SpellsLine) == "table") and MD.SpellsLine or {}
+end
+local function FooterText()
+    local t = Line().footer
+    return (type(t) == "string") and t or DEFAULT_FOOTER
+end
+
+-- T120: After overheal on (TBC's db.effectiveMode through the line's
+-- switch): the value / per mana / per sec an entry shows, from its
+-- afterOverheal where it has one. The Pareto marks and the suggestion stay
+-- the raw ones (RankMath's rule).
+local function AfterOn()
+    local a = Line().afterOverheal
+    if type(a) ~= "table" or type(a.get) ~= "function" then return false end
+    local ok, on = pcall(a.get)
+    return ok and on == true
+end
+local function Shown(e, after)
+    local a = after and type(e.afterOverheal) == "table" and e.afterOverheal
+    if a then return a.value or e.value, a.perMana or e.perMana, a.perSec or e.perSec end
+    return e.value, e.perMana, e.perSec
 end
 
 --------------------------------------------------------------------------------
@@ -134,7 +175,9 @@ local function ExportText()
     local function DumpFamily(name2)
         for _, e in ipairs(book.families[name2].ranks) do
             lines[#lines + 1] = "spell " .. tostring(e.id)
-            lines[#lines + 1] = "  name: " .. Esc(e.name or "")
+            -- T120: the family's name (TBC's book names an entry "HealingTouch
+            -- r12" where the client's scan has no plain name)
+            lines[#lines + 1] = "  name: " .. Esc(book.families[name2].name or e.name or "")
             lines[#lines + 1] = "  rank: " .. Esc(e.rankText or "")
             lines[#lines + 1] = "  desc: " .. Esc(e.desc or "")
             lines[#lines + 1] = "  cost: " .. ExportCostText(e)
@@ -183,10 +226,13 @@ local TABLE_HEAD = 22
 local CARD_PAIR = 17
 local CARD_COL = 262
 local CARD_LABEL_W = 70
+local CARD_VALUE_W = CARD_COL - CARD_LABEL_W - 8          -- a pair in its column
+local CARD_WIDE_W = VIEW_W - 8 - CARD_LABEL_W - 2 - 8     -- T120: a pair across the row
 local TIP_GAP = 6           -- the row tooltip's distance from the row
 local SUGGESTED_RULE = Words.SuggestedRule() -- the floor is MD.Rules.SUGGESTED_FLOOR (T67)
 local GAP_TEXT = 'not in your spellbook - untrained, or hidden by "show all ranks"'
-local FOOTER_TEXT = "Values come from the spell's own text. ~ = modelled."
+local RANKS_NOTE_W = 300     -- RANKS' title-row note (T120)
+local SIDE_W = 130          -- the strip's right column: After overheal (T120)
 
 -- T78 (P34, review U9 / U10; mockup M5): one vocabulary -- "Per mana",
 -- "Per sec", "Casts" -- and every header says what it is, one sentence each,
@@ -267,7 +313,7 @@ end
 
 -- 1. The header's second line, by the family's shape (Book's family.shape).
 local function HeaderSub(fam)
-    local rep = Rep(fam)
+    local rep = Rep(fam) or {}
     local top = fam.maxKnown
     local rankPart
     if top and type(top.rank) == "number" then
@@ -282,19 +328,29 @@ local function HeaderSub(fam)
         local isAbsorb = heal and type(rep.parsed) == "table" and rep.parsed.heal == nil and rep.parsed.absorb ~= nil
         parts[1] = isAbsorb and "Absorb" or (heal and "Direct heal" or "Direct damage")
         parts[#parts + 1] = rankPart
-        parts[#parts + 1] = CastWord(rep)
-    elseif shape == "hot" then
-        parts[1] = heal and "Heal over time" or "Damage over time"
+        parts[#parts + 1] = Words.Cast(rep, "header") -- T120: with the cast note
+    elseif shape == "hot" or shape == "bloom" then
+        -- T120: Lifebloom's shape on TBC's book ("bloom")
+        parts[1] = (shape == "bloom") and "Heal over time and bloom"
+            or (heal and "Heal over time" or "Damage over time")
         parts[#parts + 1] = rankPart
         local part = PartOf(rep, fam.kind)
         local dur = part and (part.dur or part.periodDur)
+        if dur == nil and rep then dur = rep.dur end -- T120: the model's
         if type(dur) == "number" then parts[#parts + 1] = Num(dur) .. " s" end
     elseif shape == "hybrid" then
         parts[1] = heal and "Heal" or "Damage"
         parts[2] = "hit and over time"
         local part = PartOf(rep, fam.kind)
-        if part and type(part.school) == "string" then parts[3] = Esc(part.school) end
+        local school = part and part.school
+        if school == nil then school = fam.school end -- T120: TBC's damage family
+        if type(school) == "string" then parts[3] = Esc(school) end
         parts[#parts + 1] = rankPart
+    elseif shape == "channel" then
+        -- T120: Tranquility on TBC's book
+        parts[1] = heal and "Channeled heal" or (fam.kind == "damage" and "Channeled damage" or "Channeled")
+        parts[#parts + 1] = rankPart
+        parts[#parts + 1] = CostWord(rep)
     else
         parts[1] = "Utility"
         parts[#parts + 1] = rankPart
@@ -335,10 +391,12 @@ local function CompareText(a, b, kind)
 end
 
 -- The header's pool: "~364 / 364 mana", the "~" and the mana colour on the
--- modelled current pool only; the max plain.
+-- modelled current pool only; the max plain. T120: a pool the book reads
+-- live (pool.modelled false, TBC) has no "~": "6500 / 6500 mana".
 local function HeaderManaText(pool)
     if type(pool) == "table" and type(pool.mana) == "number" and type(pool.max) == "number" then
-        return UI.Hex("mana") .. "~" .. Num(pool.mana) .. RESET .. " / " .. Num(pool.max) .. " mana"
+        local tilde = pool.modelled and "~" or ""
+        return UI.Hex("mana") .. tilde .. Num(pool.mana) .. RESET .. " / " .. Num(pool.max) .. " mana"
     end
     return UI.Hex("muted") .. "mana not modelled yet" .. RESET
 end
@@ -498,21 +556,44 @@ local function RenderRankRow(row, r, color)
         return
     end
     SetWide(row, 8, "")
-    local e = r.entry
     local c = row.cells
+    if r.kind == "variant" then
+        -- T120: a rolled row (Lifebloom's x2 / x3) -- its own numbers, the
+        -- rank cell muted, no level, mana from the item, no tag
+        local v = r.entry
+        local value, perMana, perSec = Shown(v, r.after)
+        c.rank:SetText(UI.Hex("muted") .. (v.variantLabel or ("x" .. tostring(v.variant))) .. RESET)
+        c.mana:SetText(color .. Num(v.cost) .. RESET)
+        c.cast:SetText(color .. ((type(v.cast) == "number") and Words.Cast(r.parent, "cell") or "-") .. RESET)
+        c.tag:SetText("")
+        if c.value then
+            c.value:SetText(color .. Num(value) .. RESET)
+            c.permana:SetText(color .. Num(perMana, 2) .. RESET)
+            c.persec:SetText(color .. Num(perSec, 1) .. RESET)
+            c.toOOM:SetText(color .. CastsWord(r.fullCasts) .. RESET)
+            local frac
+            if type(perMana) == "number" and type(r.maxPerMana) == "number" and r.maxPerMana > 0 then
+                frac = perMana / r.maxPerMana
+            end
+            if row.SetBar then row:SetBar("permana", frac) end
+        end
+        return
+    end
+    local e = r.entry
     c.rank:SetText(color .. RankCell(e) .. RESET)
     c.level:SetText(color .. Num(e.level) .. RESET)
     c.mana:SetText(color .. ManaCellText(e) .. RESET)
     c.cast:SetText(color .. CastCellText(e) .. RESET)
     c.tag:SetText(TagText(r))
     if c.value then
-        c.value:SetText(color .. Num(e.value) .. RESET)
-        c.permana:SetText(color .. Num(e.perMana, 2) .. RESET)
-        c.persec:SetText(color .. Num(e.perSec, 1) .. RESET)
+        local value, perMana, perSec = Shown(e, r.after) -- T120: After overheal
+        c.value:SetText(color .. Num(value) .. RESET)
+        c.permana:SetText(color .. Num(perMana, 2) .. RESET)
+        c.persec:SetText(color .. Num(perSec, 1) .. RESET)
         c.toOOM:SetText(color .. CastsWord(r.fullCasts) .. RESET)
         local frac
-        if type(e.perMana) == "number" and type(r.maxPerMana) == "number" and r.maxPerMana > 0 then
-            frac = e.perMana / r.maxPerMana
+        if type(perMana) == "number" and type(r.maxPerMana) == "number" and r.maxPerMana > 0 then
+            frac = perMana / r.maxPerMana
         end
         if row.SetBar then row:SetBar("permana", frac, (e.known == false) and 0.25 or nil) end
     end
@@ -521,7 +602,7 @@ end
 -- The 2-s tick's in-place update (T30's onUpdateCells): the To OOM cell,
 -- against the full pool SpellsPane:UpdateFamilyLive read once for the tick.
 local function UpdateRankRow(row, r)
-    if r.kind ~= "rank" or not row.cells.toOOM then return end
+    if r.kind ~= "rank" or not row.cells.toOOM then return end -- T120: a variant keeps its own
     r.fullCasts = MD.Book:CastsFor(r.entry, SpellsPane.liveFull or FullPool(Pool()))
     row.cells.toOOM:SetText((r.color or "") .. CastsWord(r.fullCasts) .. RESET)
 end
@@ -531,6 +612,19 @@ local function RankRowEnter(row, r)
     local fam = r.family
     if r.kind == "gap" then
         KitTip(row, RankName(fam, r.rank), 'Not in your spellbook: untrained, or hidden by "show all ranks".')
+        return
+    end
+    if r.kind == "variant" then
+        -- T120: a rolled row explains itself (the rank's own row has the
+        -- game's tooltip): refreshed a tick before it would bloom
+        local v, e = r.entry, r.parent
+        local dur = (type(e.dur) == "number") and e.dur or 7
+        local every = math.max(1, Round(dur - 1))
+        local value, perMana = Shown(v, r.after)
+        KitTip(row, RankName(fam, e.rank) .. " rolled " .. (v.variantLabel or ""),
+            string.format("Rolled at %d stacks: refreshed every %d s, %d ticks a cast, no bloom.",
+                v.variant or 0, every, every),
+            Num(value) .. " a refresh, " .. Num(perMana, 2) .. " per mana.")
         return
     end
     local e = r.entry
@@ -558,6 +652,11 @@ end
 local function FamilyRows(fam, pool)
     local rows, byRank, unranked, maxListed = {}, {}, {}, 0
     local maxPerMana
+    local after = AfterOn() -- T120
+    local function Max(x)
+        local _, pm = Shown(x, after)
+        if type(pm) == "number" and (not maxPerMana or pm > maxPerMana) then maxPerMana = pm end
+    end
     for _, e in ipairs(fam.ranks) do
         if type(e.rank) == "number" then
             byRank[e.rank] = byRank[e.rank] or e
@@ -565,14 +664,22 @@ local function FamilyRows(fam, pool)
         else
             unranked[#unranked + 1] = e
         end
-        if type(e.perMana) == "number" and (not maxPerMana or e.perMana > maxPerMana) then maxPerMana = e.perMana end
+        Max(e)
+        for _, v in ipairs(e.variants or {}) do Max(v) end -- T120: the rolled rows' bars
     end
     local full = FullPool(pool)
     local function Add(e)
         rows[#rows + 1] = { kind = "rank", rank = e.rank, entry = e, id = e.id, family = fam,
             known = e.known, suggested = e.suggested, dominated = e.dominated,
-            isMax = (fam.maxKnown == e), maxPerMana = maxPerMana,
+            isMax = (fam.maxKnown == e), maxPerMana = maxPerMana, after = after,
             fullCasts = MD.Book:CastsFor(e, full) }
+        -- T120: Lifebloom's rolled rows under the rank they belong to; not
+        -- selectable (no id), no tag
+        for _, v in ipairs(e.variants or {}) do
+            rows[#rows + 1] = { kind = "variant", entry = v, parent = e, family = fam,
+                variant = v, known = e.known, maxPerMana = maxPerMana, after = after,
+                fullCasts = v.casts }
+        end
     end
     for n = 1, maxListed do
         if byRank[n] then Add(byRank[n])
@@ -589,20 +696,88 @@ local function PerSecWord(e, kind)
     return Words.PerSec(e, kind, "card", { muted = UI.Hex("muted"), reset = RESET })
 end
 
+-- T120: a model's value pairs (an entry with no parsed text: TBC's book) --
+-- the range with where the value comes from (Words.ValueSource), the crit
+-- range with the line's note or the model's chance; a damage family's bonus
+-- share "(+171 of your 300)"; a hybrid's hit / over time / total; a HoT's
+-- or a bloom's amount over its duration and its total.
+local function ModelValuePairs(fam, e, P)
+    local kind = fam.kind
+    local muted = UI.Hex("muted")
+    local function M(text) return text and (" " .. muted .. text .. RESET) or "" end
+    local word = (kind == "damage") and "Hits" or "Heals"
+    local source = M(Words.ValueSource(e))
+    local note = Line().critNote
+    if type(note) ~= "string" then
+        note = (type(e.crit) == "number") and (Num(e.crit * 100) .. "% chance") or nil
+    end
+    local function Crit(lo, hi)
+        return Num(lo * Words.CRIT_MULT) .. " - " .. Num(hi * Words.CRIT_MULT) .. M(note and ("(" .. note .. ")"))
+    end
+    local bonus = ""
+    local b = e.bonus
+    if kind == "damage" and type(b) == "table" and type(b.amount) == "number" and type(b.of) == "number" then
+        bonus = M("(+" .. Num(b.amount) .. " of your " .. Num(b.of) .. ")")
+    end
+    local hasRange = type(e.min) == "number" and type(e.max) == "number"
+    local hasOver = type(e.over) == "number" and type(e.dur) == "number"
+    if hasRange and hasOver then
+        P("Hit", Num(e.min) .. " - " .. Num(e.max))
+        P("Crit", Crit(e.min, e.max))
+        P("Over time", Num(e.over) .. " over " .. Num(e.dur) .. " s")
+        P("Total", Num(e.value) .. source .. bonus)
+    elseif hasRange then
+        P(word, Num(e.min) .. " - " .. Num(e.max) .. source .. bonus)
+        P("Crit", Crit(e.min, e.max))
+    elseif hasOver then
+        P("Over time", Num(e.over) .. " over " .. Num(e.dur) .. " s")
+        if type(e.value) == "number" and Round(e.value) ~= Round(e.over) then
+            P("Total", Num(e.value) .. source .. bonus)
+        end
+    elseif type(e.value) == "number" then
+        P(word, Num(e.value) .. source .. bonus)
+    end
+end
+
+-- T120: After oh. -- "3035  25% overheal, family average"
+local SCOPE_WORD = { rank = "measured", family = "family average", kind = "measured by kind" }
+local function AfterWord(a)
+    return Num(a.value) .. "  " .. UI.Hex("muted") .. Num((a.frac or 0) * 100) .. "% overheal, "
+        .. (SCOPE_WORD[a.scope] or "measured") .. RESET
+end
+
 -- The label/value pairs for one rank, by shape: { {label, value}, ... }.
 local function CardPairs(fam, e, pool)
     local out = {}
     local function P(l, v) out[#out + 1] = { l, v } end
     local kind = fam.kind
     if kind then
-        local parts = Words.Value(e, kind, "card", { muted = UI.Hex("muted"), reset = RESET })
-        for _, p in ipairs(parts) do P(p[1], p[2]) end
+        if type(e.parsed) == "table" then
+            local parts = Words.Value(e, kind, "card", { muted = UI.Hex("muted"), reset = RESET })
+            for _, p in ipairs(parts) do P(p[1], p[2]) end
+        else
+            ModelValuePairs(fam, e, P) -- T120
+        end
     end
     P("Cost", CostWord(e))
-    P("Cast", Words.Cast(e, "card"))
+    local castNote = Words.CastNote(e) -- T120
+    P("Cast", Words.Cast(e, "card") .. (castNote and ("  " .. UI.Hex("muted") .. castNote .. RESET) or ""))
     if kind then
-        P("Per mana", Num(e.perMana, 2))
-        P("Per sec", PerSecWord(e, kind)) -- T78: one vocabulary
+        local after = AfterOn() and type(e.afterOverheal) == "table"
+        local _, perMana, perSec = Shown(e, after)
+        P("Per mana", Num(perMana, 2))
+        if after then
+            P("Per sec", Num(perSec, 1))
+        else
+            P("Per sec", PerSecWord(e, kind)) -- T78: one vocabulary
+        end
+        -- T120: the share of the caster's bonus (mockup M1), then the
+        -- measured overheal
+        local bonus = Words.Bonus(e, "card", kind)
+        if bonus then P(Words.BonusLabel(kind), bonus) end
+        if type(e.afterOverheal) == "table" and type(e.afterOverheal.value) == "number" then
+            P("After oh.", AfterWord(e.afterOverheal))
+        end
     end
     -- T95 (docs/SPEC-next.md 4.2 P1): the reach in words (an upper bound;
     -- per mana and per sec above stay one target's, decision 12), the
@@ -612,7 +787,9 @@ local function CardPairs(fam, e, pool)
     if type(e.cooldown) == "number" then P("Cooldown", Words.Seconds(e.cooldown)) end
     if type(e.lockout) == "number" then P("Lockout", Words.Seconds(e.lockout) .. " per target") end
     local out2 = { pairs = out }
-    local amount = e.cost and e.cost.power == nil and e.cost.amount
+    -- a mana cost: no power named (Forever's book), or mana's power type 0
+    -- (TBC's, T118); a Rage / Energy / Focus cost names its word (R13)
+    local amount = e.cost and type(e.cost.power) ~= "string" and not e.cost.free and e.cost.amount
     if kind and type(amount) == "number" and amount > 0 then
         out2.toOOM = #out + 1
         P("Casts", "") -- T78: the table's word
@@ -633,7 +810,8 @@ local function NowWord(e, pool)
     local now = MD.Book:CastsFor(e, pool)
     local mana = UI.Hex("mana")
     if now == math.huge then return "never - regen keeps up" end
-    return mana .. "~" .. CastsWord(now) .. RESET .. " from " .. mana .. "~" .. Num(pool.mana) .. RESET .. " mana"
+    local tilde = pool.modelled and "~" or "" -- T120: only on a modelled pool
+    return mana .. tilde .. CastsWord(now) .. RESET .. " from " .. mana .. tilde .. Num(pool.mana) .. RESET .. " mana"
 end
 
 local function CardPair(card, i)
@@ -648,7 +826,7 @@ local function CardPair(card, i)
     p.value = card:CreateFontString(nil, "OVERLAY", UI.FONT_NUM or UI.FONT)
     p.value:SetJustifyH("LEFT")
     p.value:SetWordWrap(false)
-    p.value:SetWidth(CARD_COL - CARD_LABEL_W - 8)
+    p.value:SetWidth(CARD_VALUE_W)
     UI.Tint(p.value, "text", "text")
     card.pairPool[i] = p
     return p
@@ -697,22 +875,29 @@ local function RenderCard(f, fam, e, pool)
     local spec = CardPairs(fam, e, pool)
     for _, p in ipairs(card.pairPool) do p.label:Hide(); p.value:Hide() end
     card.shown, card.toOOMPair, card.nowPair = {}, nil, nil
+    -- two columns; T120: a value wider than its column takes the whole row
+    -- (+Healing, After oh. and the cast note's words do at a large offset)
+    local col, line = 0, 0
     for i, pair in ipairs(spec.pairs) do
         local p = CardPair(card, i)
-        local col, line = (i - 1) % 2, math.floor((i - 1) / 2)
+        p.value:SetWidth(CARD_WIDE_W)
+        p.value:SetText(pair[2])
+        local wide = (p.value:GetStringWidth() or 0) > CARD_VALUE_W
+        if wide and col == 1 then col, line = 0, line + 1 end
         local x, py = 8 + col * CARD_COL, y + line * card.pitch
         p.label:ClearAllPoints()
         p.label:SetPoint("TOPLEFT", card, "TOPLEFT", x, -py)
         p.value:ClearAllPoints()
         p.value:SetPoint("TOPLEFT", card, "TOPLEFT", x + CARD_LABEL_W + 2, -py)
+        if not wide then p.value:SetWidth(CARD_VALUE_W) end
         p.label:SetText(pair[1])
-        p.value:SetText(pair[2])
         p.label:Show(); p.value:Show()
         card.shown[#card.shown + 1] = p
         if i == spec.toOOM then card.toOOMPair = p end
         if i == spec.now then card.nowPair = p end
+        if wide or col == 1 then col, line = 0, line + 1 else col = 1 end
     end
-    y = y + math.ceil(#spec.pairs / 2) * card.pitch
+    y = y + (line + col) * card.pitch
     UpdateCardLive(f, pool)
 
     if e.stale then
@@ -842,6 +1027,21 @@ local function BuildFamily(host)
     header.mana:SetPoint("TOPRIGHT", header, "TOPRIGHT", -4, -8)
     header.mana:SetJustifyH("RIGHT")
     UI.Tint(header.mana, "text", "text")
+    -- T120 (spec 3.3): the caster's bonus under the pool ("+450 healing",
+    -- "+300 Nature damage"); a stale answer in `muted` with its hover
+    header.bonus = header:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+    header.bonus:SetPoint("TOPRIGHT", header.mana, "BOTTOMRIGHT", 0, -3)
+    header.bonus:SetJustifyH("RIGHT")
+    header.bonus:SetWordWrap(false)
+    header.bonusHit = CreateFrame("Frame", nil, header)
+    header.bonusHit:SetAllPoints(header.bonus)
+    header.bonusHit:EnableMouse(true)
+    header.bonusHit:SetScript("OnEnter", function(self)
+        if header.bonusStale then
+            KitTip(self, "Read before combat", "The bonus is the last reading out of combat.")
+        end
+    end)
+    header.bonusHit:SetScript("OnLeave", function() if UI.tooltip then UI.tooltip:Hide() end end)
     f.header = header
 
     -- a family the book no longer has (3.3)
@@ -882,6 +1082,24 @@ local function BuildFamily(host)
     chip:SetScript("OnEnter", function(self) KitTip(self, "Suggested rank", SUGGESTED_RULE) end)
     chip:SetScript("OnLeave", function() if UI.tooltip then UI.tooltip:Hide() end end)
     strip.chip = chip
+    -- T120: the right column, After overheal and the family's measured
+    -- share, where the line installs the switch (TBC's db.effectiveMode)
+    local side = CreateFrame("Frame", nil, strip)
+    side:SetPoint("TOPRIGHT", strip, "TOPRIGHT", 0, 0)
+    side:SetSize(SIDE_W, Pitch(STRIP_H))
+    strip.after = UI.CreateCheckButton(side, "After overheal", function(checked)
+        local a = Line().afterOverheal
+        if type(a) == "table" and type(a.set) == "function" then a.set(checked and true or false) end
+        SpellsPane:AfterOverhealChanged()
+    end, "After overheal", "Heal, Per mana and Per sec become value x (1 - measured overheal),",
+        "from your own combat log. Mana, Cast and Casts never move.")
+    strip.after:SetPoint("TOPLEFT", side, "TOPLEFT", 0, -4)
+    strip.measured = side:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+    strip.measured:SetPoint("TOPLEFT", side, "TOPLEFT", 19, -22)
+    strip.measured:SetJustifyH("LEFT")
+    UI.Tint(strip.measured, "text", "muted")
+    strip.side = side
+    side:Hide()
     strip.compare = strip:CreateFontString(nil, "OVERLAY", UI.FONT)
     strip.compare:SetPoint("LEFT", chip, "RIGHT", BLOCK_GAP, 0)
     strip.compare:SetPoint("RIGHT", strip, "RIGHT", -4, 0)
@@ -913,10 +1131,18 @@ local function BuildFamily(host)
     card.stale:SetText("Text read before combat - may be out of date")
     card.stale:Hide()
     f.card = card
+    -- T120: RANKS' note on its title row (MD.SpellsLine.ranksNote)
+    f.ranksNote = f.ranks:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+    f.ranksNote:SetPoint("BOTTOMRIGHT", f.ranks.line or f.ranks, f.ranks.line and "TOPRIGHT" or "TOPRIGHT", 0, 3)
+    f.ranksNote:SetJustifyH("RIGHT")
+    f.ranksNote:SetWordWrap(false)
+    f.ranksNote:SetWidth(RANKS_NOTE_W)
+    UI.Tint(f.ranksNote, "text", "muted")
+    f.ranksNote:Hide()
     f.footer = content:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
     f.footer:SetJustifyH("LEFT")
     UI.Tint(f.footer, "text", "muted")
-    f.footer:SetText(FOOTER_TEXT)
+    f.footer:SetText(FooterText())
 
     LayoutFamily(f)
 
@@ -942,11 +1168,37 @@ end
 -- max and the pitch.
 SpellsPane.bookGen = 0
 function SpellsPane:Signature(key, preview)
-    local bonus = MD.API.SpellBonusHealing and MD.API.SpellBonusHealing()
-    if type(bonus) == "number" and not MD.API.IsSecret(bonus) then self.lastBonus = bonus end
+    -- T120: the book's bonus (Book:Bonus: the last plain reading on Forever,
+    -- the model's on TBC) and the After overheal switch
+    local bonus, stale = MD.Book:Bonus("heal")
+    if type(bonus) == "number" then self.lastBonus = bonus end
     local pool = Pool()
     return table.concat({ tostring(key), tostring(preview and true or false), tostring(self.bookGen),
-        tostring(self.lastBonus), tostring(pool.max), tostring(Pitch(TABLE_ROW)) }, "|")
+        tostring(self.lastBonus), tostring(stale), tostring(pool.max), tostring(Pitch(TABLE_ROW)),
+        tostring(AfterOn()) }, "|")
+end
+
+-- T120: the header's bonus line for a family: "+450 healing", "+300 Nature
+-- damage"; nothing for an Other family or when the book answers nil.
+local function BonusLine(fam)
+    if fam.kind ~= "heal" and fam.kind ~= "damage" then return "", false end
+    local amount, stale = MD.Book:Bonus(fam.kind, fam.school)
+    if type(amount) ~= "number" then return "", false end
+    local what = "healing"
+    if fam.kind == "damage" then
+        what = ((type(fam.school) == "string") and (Esc(fam.school) .. " ") or "") .. "damage"
+    end
+    local text = "+" .. Num(amount) .. " " .. what
+    if stale then return UI.Hex("muted") .. text .. RESET, true end
+    return text, false
+end
+
+-- T120: the switch moved -- the view and Overview drawn again at once
+function SpellsPane:AfterOverhealChanged()
+    local nav = self.nav
+    if not nav then return end
+    local group, view = nav:Selected()
+    if group == "spells" then self:Show(view) end
 end
 
 -- The tick's in-place half: the header's mana, the card's To OOM and Now,
@@ -1037,6 +1289,8 @@ function SpellsPane:RenderFamily(key, preview)
         UI.Tint(f.header.name, "text", "disabled")
         f.header.sub:SetText("")
         f.header.mana:SetText("")
+        f.header.bonus:SetText("")
+        f.header.bonusStale = false
         f.staleText:SetText(Esc(key) .. " is not in this character's spellbook.")
         f.staleText:Show()
         f.removeBtn:Show()
@@ -1065,6 +1319,13 @@ function SpellsPane:RenderFamily(key, preview)
     UI.Tint(f.header.name, "text", "text")
     f.header.sub:SetText(HeaderSub(fam))
     f.header.mana:SetText(HeaderManaText(pool))
+    local bonusText, bonusStale = BonusLine(fam)
+    f.header.bonus:SetText(bonusText)
+    f.header.bonusStale = bonusStale
+    -- T120: the sub line stops short of the right-hand side
+    local right = math.max(f.header.mana:GetStringWidth() or 0, f.header.bonus:GetStringWidth() or 0)
+    f.header.sub:SetWidth(math.max(60, VIEW_W - 4 - right - 8 - 46))
+    f.header.name:SetWidth(math.max(60, VIEW_W - 4 - right - 8 - 46))
 
     -- 2. the strip: two or more known ranks with a value, and a suggestion
     local valued = 0
@@ -1074,6 +1335,19 @@ function SpellsPane:RenderFamily(key, preview)
     local s = fam.suggested
     f.strip:SetHeight(Pitch(STRIP_H))
     f.strip.chip:SetHeight(Pitch(STRIP_H))
+    local aoh = Line().afterOverheal
+    local side = f.strip.side
+    if type(aoh) == "table" and fam.kind then
+        side:SetHeight(Pitch(STRIP_H))
+        side:Show()
+        f.strip.after:SetChecked(AfterOn())
+        local word = type(aoh.word) == "function" and aoh.word(fam) or nil
+        f.strip.measured:SetText((type(word) == "string") and word or "not measured yet")
+        f.strip.compare:SetPoint("RIGHT", f.strip, "RIGHT", -(SIDE_W + BLOCK_GAP), 0)
+    else
+        side:Hide()
+        f.strip.compare:SetPoint("RIGHT", f.strip, "RIGHT", -4, 0)
+    end
     if fam.kind and s and valued >= 2 then
         f.strip.chipRank:SetText((type(s.rank) == "number") and ("Rank " .. s.rank) or "-")
         if s == fam.maxKnown then
@@ -1103,6 +1377,14 @@ function SpellsPane:RenderFamily(key, preview)
         t.rank:Release(); t.rank.frame:Hide()
     end
     f.activeTable = active
+    local rn = Line().ranksNote
+    local note = (type(rn) == "function") and rn(fam) or nil
+    if type(note) == "string" and note ~= "" then
+        f.ranksNote:SetText(note); f.ranksNote:Show()
+    else
+        f.ranksNote:SetText(""); f.ranksNote:Hide()
+    end
+    f.footer:SetText(FooterText())
     local sel
     if f.selectedId then
         for _, e in ipairs(fam.ranks) do if e.id == f.selectedId then sel = e end end
@@ -1241,7 +1523,7 @@ end
 --------------------------------------------------------------------------------
 local function RenderBookRow(row, r, color)
     HideExtras(row)
-    if r.kind == "rank" or r.kind == "gap" then
+    if r.kind == "rank" or r.kind == "gap" or r.kind == "variant" then -- T120: variant
         if row.cells.wide then row.cells.wide:SetFontObject(UI.FONT_SMALL) end
         RenderRankRow(row, r, color)
         if r.noValue and r.kind == "rank" then
@@ -1279,7 +1561,7 @@ end
 
 local function BookRowEnter(row, r)
     if not r then return end
-    if r.kind == "rank" or r.kind == "gap" then return RankRowEnter(row, r) end
+    if r.kind == "rank" or r.kind == "gap" or r.kind == "variant" then return RankRowEnter(row, r) end
     if r.kind == "family" then
         KitTip(row, Esc(r.family.name or r.key),
             r.listed and "In your list." or "Not in your list - + adds it.",
@@ -1289,7 +1571,7 @@ end
 
 local function OverviewClick(_, r)
     if not r then return end
-    if r.kind == "family" or r.kind == "rank" or r.kind == "gap" or r.kind == "mine" then
+    if r.kind == "family" or r.kind == "rank" or r.kind == "gap" or r.kind == "variant" or r.kind == "mine" then
         local key = r.key or (r.family and (r.family.key or r.family.name))
         if key then SpellsPane:OpenFamily(key) end
     end
@@ -1522,6 +1804,23 @@ function SpellsPane:RenderOverview()
 
     local rows = (mode == "book") and BookRows(book, pool) or MineRows(book, pool)
     SpellsPane.headKind = nil -- T78: Whole book holds both kinds
+    -- T120: the line's note over the table (TBC: a class without the rank
+    -- table is told so; Overview still lists what it can)
+    local on = Line().overviewNote
+    local note = (type(on) == "function") and on() or nil
+    local top = 0
+    if type(note) == "string" and note ~= "" then
+        pane.note:SetText(note)
+        pane.note:Show()
+        local h = pane.note:GetStringHeight()
+        top = ((type(h) == "number" and h > 0) and h or 12) + 8
+    else
+        pane.note:SetText("")
+        pane.note:Hide()
+    end
+    active.frame:ClearAllPoints()
+    active.frame:SetPoint("TOPLEFT", pane.scroll.content, "TOPLEFT", 0, -top)
+    active.frame:SetWidth(VIEW_W)
     active.frame:Show()
     active:Render(rows)
     pane.lastRows = rows -- tools/spellsui.lua's own hook: the exact render order
@@ -1531,7 +1830,7 @@ function SpellsPane:RenderOverview()
     active.frame:SetHeight(tableH)
     if t.mine.sep then t.mine.sep:SetHeight(tableH - 4) end
 
-    local y = tableH + BLOCK_GAP
+    local y = top + tableH + BLOCK_GAP
     if mode == "mine" then
         pane.hint:ClearAllPoints()
         pane.hint:SetPoint("TOPLEFT", pane.scroll.content, "TOPLEFT", 8, -y)
@@ -1543,6 +1842,7 @@ function SpellsPane:RenderOverview()
         pane.hint:Hide()
         pane.hint2:Hide()
     end
+    pane.footer:SetText(FooterText())
     pane.footer:ClearAllPoints()
     pane.footer:SetPoint("TOPLEFT", pane.scroll.content, "TOPLEFT", 8, -y)
     y = y + 16
@@ -1634,8 +1934,17 @@ local function BuildOverview(host)
     local footer = content:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
     footer:SetJustifyH("LEFT")
     UI.Tint(footer, "text", "muted")
-    footer:SetText(FOOTER_TEXT)
+    footer:SetText(FooterText())
     pane.footer = footer
+    -- T120: MD.SpellsLine.overviewNote's line, over the table
+    local note = content:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+    note:SetPoint("TOPLEFT", content, "TOPLEFT", 8, 0)
+    note:SetWidth(VIEW_W - 16)
+    note:SetJustifyH("LEFT")
+    note:SetWordWrap(true)
+    UI.Tint(note, "text", "muted")
+    note:Hide()
+    pane.note = note
 
     -- every 2 s while shown (T10's rule): a full render when what the table
     -- was drawn from changed, else the To OOM cells in place (3.5's split);
@@ -1707,7 +2016,7 @@ local function ShowOnly(which)
     if s.family then if which == "family" then s.family:Show() else s.family:Hide() end end
 end
 
--- onShow for the group (UI/Dashboard_Forever.lua): Overview, a family's view,
+-- onShow for the group (UI/Dashboard_Forever.lua, UI/Dashboard.lua): Overview, a family's view,
 -- or -- on Overview while a preview is asked for -- that family's view with
 -- the banner, no rail row selected (it is not in the list).
 function SpellsPane:Show(view)
@@ -1779,8 +2088,11 @@ function SpellsPane:Find(text)
     local listed = MD.Tabs:Get(book)
     local function Scan(list, exact)
         for _, key in ipairs(list) do
-            local n = key:lower()
-            if (exact and n == want) or (not exact and n:sub(1, #want) == want) then return key end
+            -- T120: a family's key or its name ("HealingTouch" / "Healing Touch")
+            local fam = book.families[key]
+            for _, n in ipairs({ key:lower(), (fam and type(fam.name) == "string") and fam.name:lower() or nil }) do
+                if (exact and n == want) or (not exact and n:sub(1, #want) == want) then return key end
+            end
         end
         return nil
     end
@@ -1831,7 +2143,7 @@ end
 MD:RegisterCallback("STYLE_CHANGED", function() SpellsPane:StyleChanged() end)
 
 --------------------------------------------------------------------------------
--- Wiring (UI/Dashboard_Forever.lua)
+-- Wiring (UI/Dashboard_Forever.lua and, since T120, UI/Dashboard.lua)
 --------------------------------------------------------------------------------
 -- onCreate for any Spells view: one frame holds them all (the kit shows it
 -- for each of them), Overview and a family's view inside it.

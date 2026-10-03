@@ -125,3 +125,43 @@ function MD.API.SpellTooltipLines(id)
     return out
 end
 MD.API._bindings.SpellTooltipLines = "GameTooltip.SetSpellByID"
+
+-- T120 (UI/SpellsPane.lua on both lines, docs/tasks/T120-one-spells-pane.md):
+-- what the cursor holds, for a spell dragged from the spellbook onto the
+-- Spells rail (UI/SpellRail.lua's CanDrop / Drop). The classic shape for a
+-- spell is ("spell", book slot, book type, spell id) -- UNVERIFIED on the
+-- 2.5.x client until the author drags one (docs/TESTING.md 49): the id from
+-- the fourth return, else the slot's through GetSpellBookItemInfo (the
+-- SpellBookItemKind binding above). Answers `kind, spellId` as Forever's
+-- does: the kind only when it is a plain string, the id only for a "spell";
+-- anything absent or raising answers nil. Read only: the cursor is never
+-- cleared.
+function MD.API.CursorInfo()
+    local kind, slot, bookType, id = MD.API.Call("GetCursorInfo")
+    if type(kind) ~= "string" then return nil end
+    if kind ~= "spell" then return kind, nil end
+    if type(id) == "number" then return kind, id end
+    if type(slot) == "number" then
+        local _, fromSlot = MD.API.Call("SpellBookItemKind", slot,
+            (type(bookType) == "string") and bookType or "spell")
+        if type(fromSlot) == "number" then return kind, fromSlot end
+    end
+    return kind, nil
+end
+MD.API._bindings.CursorInfo = "GetCursorInfo"
+
+-- T120: the game's own spell tooltip for one rank, the rank row's hover in a
+-- spell's view -- tooltip:SetSpellByID(id), which the 2.5.x client has (the
+-- scan tooltip above uses it); UI/SpellTooltip.lua's OnTooltipSetSpell hook
+-- then appends what it appends on the action bar. Forever's contract
+-- (Client/API_Forever.lua): true, or nil plus "absent" (no method, or an id
+-- that is not a number) / "error" (the method raised); never raises.
+function MD.API.SetTooltipSpell(tooltip, id)
+    if type(id) ~= "number" then return nil, "absent" end
+    local ok, fn = pcall(function() return type(tooltip) == "table" and tooltip.SetSpellByID end)
+    if not ok then return nil, "error" end
+    if type(fn) ~= "function" then return nil, "absent" end
+    if not pcall(fn, tooltip, id) then return nil, "error" end
+    return true
+end
+MD.API._bindings.SetTooltipSpell = "GameTooltip.SetSpellByID"

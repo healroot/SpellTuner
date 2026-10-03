@@ -1,6 +1,6 @@
 -- Forever's window (T2 of docs/ROADMAP-FOREVER.md): the Cell-style navigation
 -- frame from UI/Style.lua (shared) with four groups -- Spells (since T36 a
--- rail group, UI/SpellsPane_Forever.lua), Reports, Simulate and Settings
+-- rail group, UI/SpellsPane.lua since T120), Reports, Simulate and Settings
 -- (-> General; -> Modules switches the three LoadOnDemand siblings on or off;
 -- -> About lists every command, T70). Built on first use, not at load: TBC's
 -- own UI/Dashboard.lua stays TBC-only and reads none of this.
@@ -34,7 +34,7 @@ local nav, frame
 local function Groups()
     return {
         -- T36 (docs/SPEC-forever-ui.md 3.1): a rail group; its rows are the
-        -- player's own spell list (UI/SpellsPane_Forever.lua)
+        -- player's own spell list (UI/SpellsPane.lua)
         MD.SpellsPane:Group(),
         { id = "reports", text = "Reports", views = {
             { id = "review", text = "Review" } } },
@@ -358,7 +358,16 @@ end
 -- My spells one row per listed family, and Export moved there (3.6). This
 -- file only wires it: the group's definition, onCreate, onShow, and the
 -- rail's footer once the nav exists.
+--
+-- T120 (docs/tasks/T120-one-spells-pane.md): the pane is UI/SpellsPane.lua on
+-- both lines; what differs by line is MD.SpellsLine, Forever's here -- the
+-- footer, the card's Crit note, nothing else (no After overheal, no RANKS
+-- note, no Overview note; What if is T122's).
 --------------------------------------------------------------------------------
+MD.SpellsLine = {
+    footer = "Values come from the spell's own text. ~ = modelled.",
+    critNote = "x1.5, unverified",
+}
 
 --------------------------------------------------------------------------------
 -- Reports -> Review (T16b) and Simulate -> Practice (T18): the shared panes

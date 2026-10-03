@@ -32,7 +32,9 @@
 --   9. Show now runs MD.Widget:Preview; Customise... selects Settings -> Clock;
 --  10. MD:ShowOptionsFrame() opens General, ("about") About; MD.optionsFrame
 --      is nil;
---  11. the Settings group is 860 x 560 with no grip; Spells is still 1036 x 646.
+--  11. the Settings group is 860 x 560 with no grip; Reports is still
+--      1036 x 646 (T120 re-based: Spells went to 860 x 560 with the shared
+--      pane, docs/tasks/T120-one-spells-pane.md D4).
 -- Forever only:
 --  12. Measure is on Review / MODEL with the ~ sentence; TOOLS holds Debug
 --      console and Copy /st dump only;
@@ -556,16 +558,16 @@ if not forever then
     ----------------------------------------------------------------------------
     T.section("11. TBC: the sizes")
     ----------------------------------------------------------------------------
-    Try("Settings is 860 x 560, fixed with no grip; Spells is still 1036 x 646", function()
+    Try("Settings is 860 x 560, fixed with no grip; Reports is still 1036 x 646", function()
         local frame = _G.SpellTunerDashboard
         MD:SelectView("settings", "general")
         local sw, sh = frame:GetWidth(), frame:GetHeight()
         local fixed = MD.Win:Fixed("main", "settings")
         local z = MD.Win.SIZES and MD.Win.SIZES.settings or {}
-        MD:SelectView("spells", "overview")
+        MD:SelectView("reports", "Waste")
         local pw, ph = frame:GetWidth(), frame:GetHeight()
         return sw == 860 and sh == 560 and fixed and z.minW == 860 and z.minH == 560 and pw == 1036 and ph == 646,
-            string.format("settings %sx%s fixed=%s spells %sx%s", sw, sh, tostring(fixed), pw, ph)
+            string.format("settings %sx%s fixed=%s reports %sx%s", sw, sh, tostring(fixed), pw, ph)
     end)
 else
     ----------------------------------------------------------------------------

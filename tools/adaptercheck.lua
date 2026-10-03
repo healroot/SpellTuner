@@ -609,7 +609,7 @@ if flavour == "tbc" then
         end
         check("T120: CursorInfo reads a dragged spell's id on TBC, the kind alone for anything else",
             ok and a == "spell" and b == 26979 and c == "item" and d == nil and e == nil and f == nil
-            and MD.API.Has("CursorInfo"),
+            and MD.API._bindings.CursorInfo == "GetCursorInfo",
             string.format("ok=%s %s %s / %s %s / %s %s", tostring(ok), tostring(a), tostring(b),
                 tostring(c), tostring(d), tostring(e), tostring(f)))
     end

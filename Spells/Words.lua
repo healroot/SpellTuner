@@ -88,7 +88,16 @@ end
 --               the phrase, else "-"
 --   "export" -- the probe's words (3.6): "Instant", "Channeled",
 --               "2.0 sec cast", "unknown"
+--   "header" -- T120 (docs/tasks/T120-one-spells-pane.md): the phrase and,
+--               when the book says how the cast was counted (entry.castNote,
+--               TBC's model), "2.9 s cast with Nature's Grace averaged"
 function W.Cast(e, style)
+    if style == "header" then
+        local phrase = W.Cast(e, "phrase")
+        local note = W.CastNote(e)
+        if phrase and note then return phrase .. " with " .. note end
+        return phrase
+    end
     if style == "cell" then
         if e.castKind == "instant" then return "inst" end
         if e.castKind == "channeled" then return "chan" end
@@ -109,6 +118,26 @@ function W.Cast(e, style)
     if e.castKind == "instant" then return "instant" end
     if e.castKind == "channeled" then return "channeled" end
     if type(e.cast) == "number" then return string.format("%.1f s cast", e.cast) end
+    return nil
+end
+
+-- T120: how the book counted a cast ("Nature's Grace averaged"), or nil --
+-- entry.castNote, sent by a book whose cast time is a model's (TBC).
+function W.CastNote(e)
+    if type(e) == "table" and type(e.castNote) == "string" and e.castNote ~= "" then return e.castNote end
+    return nil
+end
+
+-- T120: where a value comes from, beside the range on the card:
+-- "(3691 with 15% crit)" when the value is crit-averaged (entry.crit, TBC's
+-- model, D1), "from the text" when it is the spell's own text (Forever's
+-- entry.parsed), else nil.
+function W.ValueSource(e)
+    if type(e) ~= "table" then return nil end
+    if type(e.crit) == "number" and type(e.value) == "number" then
+        return "(" .. Num(e.value) .. " with " .. Num(e.crit * 100) .. "% crit)"
+    end
+    if type(e.parsed) == "table" then return "from the text" end
     return nil
 end
 
@@ -262,7 +291,10 @@ function W.PerSec(e, kind, style, c)
     if e.castKind == "channeled" then
         return base .. muted .. "over the " .. Num(e.interval, 0) .. " s channel" .. reset
     end
-    if (IsAbsorb(e) and part == nil) or (part and (part.min ~= nil or part.max ~= nil)) then
+    -- T120: a model's entry (no parsed text, TBC's book) is per second over
+    -- its cast, or the global cooldown when the cast is shorter (RankMath's HPS)
+    if type(e.parsed) ~= "table" or (IsAbsorb(e) and part == nil)
+        or (part and (part.min ~= nil or part.max ~= nil)) then
         if e.castKind == "cast" and type(e.cast) == "number" and e.cast >= W.GCD then
             return base .. muted .. string.format("over a %.1f s cast", e.cast) .. reset
         end

@@ -236,3 +236,60 @@ views are the shared pane's.
 ## Out of scope
 
 - The What if pane (T122); the tooltip block (T121); class damage (T123).
+
+## Result (2026-10-03, branch `oneui/T120`)
+
+### Counts measured
+
+| Suite | On the parent (tests first) | After |
+|---|---|---|
+| `spellsui/forever` | 51 ok / 2 failed (53) | **53** ok |
+| `spellsui/tbc` | 0 ok / 11 failed | **11** ok (new) |
+| `dashui/tbc` | 61 ok / 6 failed (67; 84 before the C3 / T84 Spells checks were deleted) | **67** ok |
+| `adaptercheck/tbc` | 16 ok / 3 failed (19) | **19** ok |
+| `adaptercheck/forever` | 26 | 26 |
+| `wincheck/tbc` | 3 ok / 1 failed (4) | **4** ok (count unchanged, re-based) |
+| `wincheck/forever` | 66 | 66 |
+| `restylecheck/tbc` | 49 ok / 1 failed (50) | **50** ok |
+| `restylecheck/forever` | 45 | 45 |
+| `settingscheck/tbc` | 12 | **12** ok (one check re-based, below) |
+
+`make check`: 99 runs, all passed once `expected-counts.json` carries `spellsui/tbc` 11,
+`dashui/tbc` 67 and `adaptercheck/tbc` 19 (checked locally and reverted: the file is the
+integrator's). apicheck 0 findings, textcheck 0 findings.
+
+### Deviations
+
+1. **The stub's numbers, not the spec's**: the TBC checks read `+450 healing` and `540 of your 450
+   (x1.20 Empowered Touch)` (the stub druid's bonus is 450), not 700 / 840.
+2. **`settingscheck/tbc` 11 re-based** (not on the owned list; it asserted T119's "Spells is still
+   1036 x 646", which this task's D4 makes false): it now asserts Settings 860 x 560 fixed and
+   Reports still 1036 x 646.
+3. **`adaptercheck/tbc`'s CursorInfo check** (this task's own failing test) asked
+   `MD.API.Has("CursorInfo")`, which walks `_G` for a client name; it now asserts
+   `MD.API._bindings.CursorInfo == "GetCursorInfo"`.
+4. **`dashui/tbc` 84 -> 67**: the C3 / T84 Spells checks are deleted as the task says, and their
+   subjects are now held by `spellsui/tbc`'s 11. The count check flags any lost assertions until
+   the integrator records 67.
+5. **The TBC Export** names the client on its character line (`character: <name> <realm> DRUID level 64`),
+   and a family row's name field is the family's name (`Healing Touch`), not its key.
+6. **Forever's parsed card** keeps `(x1.5 assumed)` from `Words.Value`, and the crit note
+   (`MD.SpellsLine.critNote`) is read only on the model path (an entry with no parsed text). On
+   Forever's card nothing else changed.
+7. **A wide card pair takes the whole row**: when a value is wider than its column, e.g. `+Healing`, `After oh.` or
+   a cast with its note at a large font offset, it spans both columns. The header's name and sub
+   line stop short of the pool / bonus column.
+8. **The After overheal check sits in the strip's right column**, inside the strip, so it is
+   hidden where the strip is (Lifebloom, whose one rank has no comparison). It shows whenever the
+   line installs `afterOverheal` and the family has a kind.
+9. **The Forever pool with no clock** shows plain mana with no `~`, because `Book:Pool()` answers
+   `modelled = false` there. Before this task it read `mana not modelled yet`.
+10. **A mana cost** on the card's Casts / Now pairs is a cost whose `power` is not a word: either
+    no power (Forever's book) or TBC's power type `0` (T118's `Cost`). It was "no power" only.
+11. **For T118 to look at, not changed here**: `Book:Bonus("damage", school)` on TBC hands
+    `GetSpellBonusDamage` a school name, not the client's school number.
+12. `UI/Dashboard.lua`'s `messageFS` (only the rankTable refusal used it) is gone: the refusal is
+    `MD.SpellsLine.overviewNote`, on Overview.
+13. `UI/Dashboard_Simulate.lua` stays on the TOC unplaced, as the task says: between this task and
+    T122, TBC has no What if.
+

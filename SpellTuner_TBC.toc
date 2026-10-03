@@ -75,7 +75,7 @@ UI\Dashboard_Waste.lua
 UI\Dashboard_Review.lua
 UI\PracticePanel.lua
 UI\BindingsWindow.lua
-UI\SpellsView_TBC.lua
+UI\SpellsPane.lua
 UI\Dashboard.lua
 UI\Settings.lua
 UI\SimWindow.lua
