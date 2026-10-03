@@ -91,7 +91,7 @@ local Win = MD.Win
 --------------------------------------------------------------------------------
 if S.flavour == "tbc" then
     S.Load({ "UI/Style.lua", "UI/Theme_Flat.lua", "UI/EscStack.lua", "UI/Windows.lua", "UI/ContextMenu.lua",
-             "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/Dashboard_Rows.lua", "UI/SpellRail.lua", "UI/Dashboard_Simulate.lua",
+             "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/Dashboard_Rows.lua", "UI/SpellRail.lua",
              "UI/Dashboard_Waste.lua", "UI/Dashboard_Review.lua", "UI/PracticePanel.lua", "UI/BindingsWindow.lua",
              "UI/SpellsPane.lua", "UI/Settings.lua", "UI/Dashboard.lua", "UI/SimWindow.lua", "UI/ReplayWindow.lua",
              "UI/Settings_TBC.lua", "UI/DebugConsole.lua", "UI/MinimapButton.lua" },

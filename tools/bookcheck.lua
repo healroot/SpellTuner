@@ -1075,6 +1075,38 @@ T95("T110: Holy Nova's damage half has its own numbers and no party reach; HalfO
     end)
 end)
 
+-- 32: T122 (docs/tasks/T122-what-if.md) -- the bonus share measured. Two
+-- plain scans out of combat whose bonus healing and text both moved give
+-- the rank its own share (counts = text change / bonus change), kept in
+-- MD.cdb.bonusCounts with the time and the bonus it was read at; the entry's
+-- bonus then says "measured" and its value is still the text's
+T95("T122: two plain scans measure a rank's bonus share; the value stays the text's", function()
+    S.AddSpell(90122, "ShareSpell", "Rank 1", function()
+        local b = math.floor(0.3 * S.bonusHealing + 0.5)
+        return "Heals a friendly target for " .. (200 + b) .. " to " .. (240 + b) .. "."
+    end, { cast = 2000, cost = 80, level = 1 })
+    local savedBonus, savedCombat = S.bonusHealing, MD.inCombat
+    MD.inCombat, S.inCombat = false, false
+    S.bonusHealing = 100
+    Book:MarkDirty()
+    Book:Get()
+    S.bonusHealing = 200
+    Book:MarkDirty()
+    local book = Book:Get()
+    local store = MD.cdb and MD.cdb.bonusCounts
+    local m = store and store[90122]
+    local e = book.spells[90122]
+    S.bonusHealing, MD.inCombat = savedBonus, savedCombat
+    Book:MarkDirty()
+    local counts = m and m.counts
+    local good = type(counts) == "number" and math.abs(counts - 0.3) < 0.02 and type(m.at) == "number"
+        and m.bonus == 200 and e ~= nil and e.bonus and e.bonus.from == "measured"
+        and math.abs((e.value or 0) - 280) < 0.01
+    return good, string.format("counts=%s at=%s bonus=%s from=%s value=%s", tostring(counts),
+        tostring(m and m.at), tostring(m and m.bonus), tostring(e and e.bonus and e.bonus.from),
+        tostring(e and e.value))
+end)
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("  FAIL " .. f) end
 if #fails > 0 then os.exit(1) end

@@ -16,7 +16,7 @@ local S = _G.STUB
 -- UI/SpellsView_TBC.lua's place (deleted); the guard lets this suite run on
 -- a commit without it and fail check by check.
 local UI_FILES = { "UI/Style.lua", "UI/Theme_Flat.lua", "UI/EscStack.lua", "UI/Windows.lua",
-         "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/Dashboard_Rows.lua", "UI/SpellRail.lua", "UI/Dashboard_Simulate.lua",
+         "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/Dashboard_Rows.lua", "UI/SpellRail.lua",
          "UI/Dashboard_Waste.lua", "UI/Dashboard_Review.lua", "UI/PracticePanel.lua", "UI/SpellsPane.lua",
          "UI/Dashboard.lua" }
 do

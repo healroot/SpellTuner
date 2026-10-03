@@ -512,6 +512,186 @@ if S.flavour == "tbc" then
             "order=" .. Order()
     end)
 
+    ----------------------------------------------------------------------------
+    -- T122 (docs/tasks/T122-what-if.md; mockup M2): the WHAT IF pane on TBC.
+    -- What if... opens it between the strip and RANKS; STATS with the live
+    -- values in grey, the druid's Form / Moonglow; a typed +150 draws the
+    -- chip, the header, the accent cells and their hovers, the white mark, the
+    -- RANKS note and the footer; Shift steps; Clear restores every cell.
+    ----------------------------------------------------------------------------
+    local function WIr() return MD.WhatIf end
+    local function Raw(row, key)
+        local fs = row and row.cells and row.cells[key]
+        return fs and fs:GetText() or ""
+    end
+    local WI_CELLS = { value = "value", perMana = "permana", perSec = "persec", casts = "toOOM", cost = "mana",
+        cast = "cast" }
+    local WI_ORDER = { "value", "perMana", "perSec", "casts", "cost", "cast" }
+    local function RankRowsBy(f)
+        local out = {}
+        for _, r in ipairs(f.lastRows or {}) do
+            if r.kind == "rank" then out[r.entry.id] = { r = r, row = RowFrame(r) } end
+        end
+        return out
+    end
+    local function CellsOf(row)
+        local t = {}
+        for _, field in ipairs(WI_ORDER) do t[#t + 1] = Raw(row, WI_CELLS[field]) end
+        return table.concat(t, ",")
+    end
+    local function Box(key)
+        local p = Fam().whatIf
+        return p and p.rows and p.rows[key]
+    end
+    local function Type(key, text)
+        local b = Box(key).box
+        b:SetText(text)
+        b:GetScript("OnEnterPressed")(b)
+    end
+    local function Y(region)
+        local _, _, _, _, yy = region:GetPoint(1)
+        return -(yy or 0)
+    end
+    local htBefore
+
+    T("T122-1 tbc: What if... opens the pane -- STATS in grey, the druid's Form and Moonglow, Clear", function()
+        WIr():Clear()
+        local f = OpenFam("HealingTouch")
+        htBefore = {}
+        for id, x in pairs(RankRowsBy(f)) do htBefore[id] = CellsOf(x.row) end
+        local btn = f.strip.whatIfBtn
+        if not btn then return false, "no What if... button" end
+        local closed = not (f.whatIf and f.whatIf:IsShown())
+        Click(btn)
+        f = Fam()
+        local p = f.whatIf
+        local live = WIr():Live()
+        local heal, crit = Box("heal"), Box("crit")
+        local phText = heal and Strip(heal.ph:GetText()) or "?"
+        local phShown = heal and heal.ph:IsShown() and (heal.box:GetText() or "") == ""
+        local critPh = crit and Strip(crit.ph:GetText()) or "?"
+        local form = Box("form")
+        local labels = {}
+        for _, s in ipairs(WIr().STATS) do labels[#labels + 1] = Box(s.key) and Strip(Box(s.key).label:GetText()) or "?" end
+        local between = p and Y(p) > Y(f.strip) and Y(p) < Y(f.ranks)
+        local good = closed and p and p:IsShown() and between and phText == Num(live.heal) and phShown
+            and critPh == Num(live.crit, 1)
+            and table.concat(labels, ",") == "+Healing,Crit %,Mana,Regen while casting,Regen resting"
+            and form and form.buttons and form.buttons.live and form.buttons.caster and form.buttons.tree
+            and Box("moonglow") ~= nil and p.clearBtn and p.clearBtn:IsShown()
+            and Strip(p.classTitle:GetText()) == "DRUID" and not (p.classNote and p.classNote:IsShown())
+            and Strip(p.footer:GetText()) == "No change to the suggestion."
+        return good, string.format("open=%s between=%s ph=%q crit=%q labels=%s", tostring(p and p:IsShown()),
+            tostring(between), phText, critPh, table.concat(labels, ","))
+    end)
+
+    T("T122-2 tbc: +150 typed -- the chip, the header, accent cells and hovers, the mark, the note, the footer", function()
+        local live = WIr():Live()
+        Type("heal", tostring(live.heal + 150))
+        local f = Fam()
+        local accent = UI.Hex("accent")
+        local liveFam = MD.Book:Get().families.HealingTouch
+        local whatFam = WIr():Book().families.HealingTouch
+        local liveBy = {}
+        for _, e in ipairs(liveFam.ranks) do liveBy[e.id] = e end
+        local full = FullPool()
+        local wpool = WIr():Pool(MD.Book:Pool())
+        local wfull = { max = wpool.max, regenCasting = wpool.regenCasting }
+        local bad, accented, marks, hovered = {}, 0, 0, 0
+        for id, x in pairs(RankRowsBy(f)) do
+            local e, l = x.r.entry, liveBy[id]
+            local diff = WIr().Diff(l, e, MD.Book:CastsFor(l, full), MD.Book:CastsFor(e, wfull))
+            for field, key in pairs(WI_CELLS) do
+                local isAccent = Raw(x.row, key):find(accent, 1, true) == 1
+                if (diff[field] and true or false) ~= isAccent then bad[#bad + 1] = "R" .. e.rank .. " " .. key end
+                if isAccent then accented = accented + 1 end
+            end
+            if diff.perMana then
+                local hit = x.row.cellHits and x.row.cellHits.permana
+                if hit and hit:IsShown() then
+                    GameTooltip.lines = nil
+                    hit:GetScript("OnEnter")(hit)
+                    local text = TipLines(GameTooltip)
+                    hit:GetScript("OnLeave")(hit)
+                    if text == "live " .. Num(l.perMana, 2) .. ", what if " .. Num(e.perMana, 2) then
+                        hovered = hovered + 1
+                    else
+                        bad[#bad + 1] = "hover " .. text
+                    end
+                else
+                    bad[#bad + 1] = "no hover R" .. e.rank
+                end
+                local m = x.row.wiMark
+                if m and m:IsShown() then marks = marks + 1 else bad[#bad + 1] = "no mark R" .. e.rank end
+            elseif x.row.wiMark and x.row.wiMark:IsShown() then
+                bad[#bad + 1] = "mark without a change R" .. e.rank
+            end
+        end
+        local chipL = Strip(f.strip.chipLabel:GetText())
+        local chipR = Strip(f.strip.chipRank:GetText())
+        local chipLive = f.strip.chipLive and f.strip.chipLive:IsShown() and Strip(f.strip.chipLive:GetText()) or "(none)"
+        local bonusRaw = f.header.bonus:GetText() or ""
+        local note = f.ranksNote:IsShown() and Strip(f.ranksNote:GetText()) or "(none)"
+        local footer = Strip(f.whatIf.footer:GetText())
+        local delta = Box("heal").delta and Strip(Box("heal").delta:GetText()) or "?"
+        local good = #bad == 0 and accented > 0 and marks > 0 and hovered > 0
+            and chipL == "WHAT IF" and chipR == "Rank " .. whatFam.suggested.rank
+            and chipLive == "live: R" .. liveFam.suggested.rank
+            and bonusRaw:find(accent, 1, true) == 1 and Strip(bonusRaw) == "+" .. Num(live.heal + 150) .. " healing what if"
+            and note == "what if: +150 healing" and footer == WIr().Changes(liveFam, whatFam)
+            and footer ~= "No change to the suggestion." and delta == "+150"
+            and Strip(Box("heal").box:GetText()) == tostring(live.heal + 150)
+        return good, string.format("chip=%s/%s/%s bonus=%q note=%q footer=%q delta=%s accented=%d marks=%d bad=%s",
+            chipL, chipR, chipLive, Strip(bonusRaw), note, footer, delta, accented, marks, table.concat(bad, "; "))
+    end)
+
+    T("T122-3 tbc: - / + step by 25 (Shift 100) and 250; the Form row prices from the static table", function()
+        local live = WIr():Live()
+        WIr():Clear()
+        Click(Box("heal").plus)
+        local a = WIr():Get("heal")
+        S.shift = true
+        Click(Box("heal").plus)
+        S.shift = false
+        local b = WIr():Get("heal")
+        Click(Box("heal").minus)
+        local c = WIr():Get("heal")
+        Click(Box("mana").plus)
+        local m = WIr():Get("mana")
+        WIr():Clear()
+        Click(Box("form").buttons.tree)
+        local note = Strip(Fam().ranksNote:GetText())
+        local tree = WIr():Get("form")
+        local sim = MD.sim and MD.sim.tree
+        Click(Box("form").buttons.live)
+        local back = WIr():Get("form")
+        local good = a == live.heal + 25 and b == live.heal + 125 and c == live.heal + 100
+            and m == live.mana + 250 and tree == "tree" and sim == true and back == nil
+            and note == "what if: Tree of Life - costs from the static table"
+        return good, string.format("a=%s b=%s c=%s m=%s tree=%s back=%s note=%q", tostring(a), tostring(b),
+            tostring(c), tostring(m), tostring(tree), tostring(back), note)
+    end)
+
+    T("T122-4 tbc: Clear restores every cell, the chip, the header and the note", function()
+        Type("heal", "999")
+        Click(Fam().whatIf.clearBtn)
+        local f = Fam()
+        local bad = {}
+        for id, x in pairs(RankRowsBy(f)) do
+            if htBefore and htBefore[id] ~= CellsOf(x.row) then bad[#bad + 1] = tostring(id) end
+            if x.row.wiMark and x.row.wiMark:IsShown() then bad[#bad + 1] = "mark " .. id end
+        end
+        local note = f.ranksNote:IsShown() and Strip(f.ranksNote:GetText()) or "(none)"
+        local good = #bad == 0 and htBefore ~= nil and not WIr():Active()
+            and Strip(f.strip.chipLabel:GetText()) == "SUGGESTED"
+            and not (f.strip.chipLive and f.strip.chipLive:IsShown())
+            and note == "live: gear, talents, downrank rules" and (MD.sim == nil or next(MD.sim) == nil)
+            and Strip(f.header.bonus:GetText()) == "+450 healing"
+            and (Box("heal").box:GetText() or "") == "" and Box("heal").ph:IsShown()
+        Click(f.strip.whatIfBtn) -- closed again for the items after
+        return good and not Fam().whatIf:IsShown(), "note=" .. note .. " " .. table.concat(bad, " ")
+    end)
+
     -- 10 -----------------------------------------------------------------------
     T("T120-10 tbc: a priest without the rank table -- the refusal on Overview, Whole book Other only", function()
         local caps = MD.Profiles.byClass.PRIEST and MD.Profiles.byClass.PRIEST.caps or {}
@@ -560,6 +740,7 @@ if S.flavour == "tbc" then
         local top = f.header:GetHeight()
         local blocks = {}
         if f.strip:IsShown() then blocks[#blocks + 1] = { "strip", f.strip } end
+        if f.whatIf and f.whatIf:IsShown() then blocks[#blocks + 1] = { "what if", f.whatIf } end
         blocks[#blocks + 1] = { "ranks", f.ranks }
         blocks[#blocks + 1] = { "card", f.card }
         blocks[#blocks + 1] = { "footer", f.footer }
@@ -596,6 +777,27 @@ if S.flavour == "tbc" then
         for _, p in ipairs(Laid(f)) do problems[#problems + 1] = "style: " .. p end
         return #problems == 0 and okStyle and restyled,
             string.format("style=%s restyled=%s %s", tostring(okStyle), tostring(restyled), table.concat(problems, "; "))
+    end)
+
+    T("T122-5 tbc: the WHAT IF pane open at font offsets -2..+2 -- nothing overlapping, the rows inside it", function()
+        local f = OpenFam("HealingTouch")
+        if not (f.whatIf and f.whatIf:IsShown()) then Click(f.strip.whatIfBtn) end
+        local problems = {}
+        for _, o in ipairs({ -2, -1, 0, 1, 2 }) do
+            UI.ApplyFonts(o)
+            f = Fam()
+            for _, p in ipairs(Laid(f)) do problems[#problems + 1] = "offset " .. o .. ": " .. p end
+            local ph = f.whatIf:GetHeight()
+            for key, r in pairs(f.whatIf.rows or {}) do
+                local _, _, _, _, y = r.label:GetPoint(1)
+                if -(y or 0) + (r.label:GetHeight() or 0) > ph then
+                    problems[#problems + 1] = "offset " .. o .. ": " .. key .. " below the pane"
+                end
+            end
+        end
+        UI.ApplyFonts(0)
+        Click(Fam().strip.whatIfBtn)
+        return #problems == 0 and not Fam().whatIf:IsShown(), table.concat(problems, "; ")
     end)
 
     print(string.format("\n%d ok, %d failed", ok, #fails))
@@ -2402,6 +2604,158 @@ T36("F3 Whole book draws its rows when opened, no scroll needed; back and forth 
     return good and wheel == 0 and scrolled > 0 and content:GetHeight() > FRAME_H and FRAME_H > mineH,
         string.format("%s wheel=%d scrolled=%d mineH=%d bookH=%d", table.concat(log, ", "), wheel, scrolled,
             mineH, content:GetHeight())
+end)
+
+--------------------------------------------------------------------------------
+-- T122 (docs/tasks/T122-what-if.md; mockup M2): the WHAT IF pane on Forever,
+-- on Nourish -- the sentence in place of the class rows, +150 healing moving
+-- the estimated ranks (the chip, the accent cells and their hovers, the mark,
+-- the RANKS note with the measured / estimated count, the footer), crit 30 on
+-- the card's Crit line only, Clear.
+--------------------------------------------------------------------------------
+local WIf = function() return MD.WhatIf end
+local WI_FCELLS = { value = "value", perMana = "permana", perSec = "persec", casts = "toOOM", cost = "mana",
+    cast = "cast" }
+local WI_FORDER = { "value", "perMana", "perSec", "casts", "cost", "cast" }
+local function FRaw(row, key)
+    local fs = row and row.cells and row.cells[key]
+    return fs and fs:GetText() or ""
+end
+local function FCells(row)
+    local t = {}
+    for _, field in ipairs(WI_FORDER) do t[#t + 1] = FRaw(row, WI_FCELLS[field]) end
+    return table.concat(t, ",")
+end
+local function FRanks()
+    local out = {}
+    for _, r in ipairs(ViewRows()) do
+        if r.kind == "rank" then out[r.entry.id] = { r = r, row = RowFor(nil, r) } end
+    end
+    return out
+end
+local function FBox(key)
+    local p = F().whatIf
+    return p and p.rows and p.rows[key]
+end
+local nourishBefore
+T36("T122 forever: What if... opens the pane -- STATS, the sentence for the class rows", function()
+    WIf():Clear()
+    local f = OpenView("Nourish")
+    nourishBefore = {}
+    for id, x in pairs(FRanks()) do nourishBefore[id] = FCells(x.row) end
+    local btn = f.strip.whatIfBtn
+    if not btn then return false, "no What if... button" end
+    Click(btn)
+    local p = F().whatIf
+    local live = WIf():Live()
+    local heal = FBox("heal")
+    local ph = heal and StripColor(heal.ph:GetText() or "") or "?"
+    local good = p and p:IsShown() and heal ~= nil and ph == Num(live.heal)
+        and p.classNote and p.classNote:IsShown()
+        and StripColor(p.classNote:GetText() or "") == "Your talents are already in the spells' text, so there is no class row."
+        and not (p.classTitle and p.classTitle:IsShown()) and FBox("form") == nil
+        and FBox("mana") and FBox("mana").plus ~= nil and FBox("crit").plus == nil
+    return good, string.format("open=%s ph=%q note=%q", tostring(p and p:IsShown()), ph,
+        tostring(p and p.classNote and p.classNote:GetText()))
+end)
+
+T36("T122 forever: +150 healing -- the estimated ranks move; chip, cells, hovers, mark, note, footer", function()
+    local live = WIf():Live()
+    local box = FBox("heal").box
+    box:SetText(tostring(live.heal + 150))
+    box:GetScript("OnEnterPressed")(box)
+    local f = F()
+    local accent = UI.Hex("accent")
+    local liveFam = Book:Get().families.Nourish
+    local whatFam = WIf():Book().families.Nourish
+    local liveBy = {}
+    for _, e in ipairs(liveFam.ranks) do liveBy[e.id] = e end
+    local pool = Book:Pool()
+    local full = { max = pool.max, regenCasting = pool.regenCasting }
+    local wpool = WIf():Pool(pool)
+    local wfull = { max = wpool.max, regenCasting = wpool.regenCasting }
+    local measured, estimated, total = 0, 0, 0
+    for _, e in ipairs(liveFam.ranks) do
+        total = total + 1
+        if e.bonus and e.bonus.from == "measured" then measured = measured + 1
+        elseif e.bonus and e.bonus.from == "estimated" then estimated = estimated + 1 end
+    end
+    local wantNote = string.format("what if: +150 healing - %d of %d ranks measured, %d estimated",
+        measured, total, estimated)
+    local bad, accented, hovered, marks = {}, 0, 0, 0
+    for id, x in pairs(FRanks()) do
+        local e, l = x.r.entry, liveBy[id]
+        local diff = WIf().Diff(l, e, Book:CastsFor(l, full), Book:CastsFor(e, wfull))
+        for field, key in pairs(WI_FCELLS) do
+            local isAccent = FRaw(x.row, key):find(accent, 1, true) == 1
+            if (diff[field] and true or false) ~= isAccent then bad[#bad + 1] = "R" .. e.rank .. " " .. key end
+            if isAccent then accented = accented + 1 end
+        end
+        if diff.value then
+            local hit = x.row.cellHits and x.row.cellHits.value
+            if hit and hit:IsShown() then
+                GameTooltip.lines = nil
+                hit:GetScript("OnEnter")(hit)
+                local text = TipText(GameTooltip)
+                hit:GetScript("OnLeave")(hit)
+                if text == "live " .. Num(l.value) .. ", what if " .. Num(e.value) then hovered = hovered + 1
+                else bad[#bad + 1] = "hover " .. text end
+            else
+                bad[#bad + 1] = "no hover R" .. e.rank
+            end
+        end
+        if diff.perMana then
+            if x.row.wiMark and x.row.wiMark:IsShown() then marks = marks + 1 else bad[#bad + 1] = "mark R" .. e.rank end
+        end
+    end
+    local note = f.ranksNote:IsShown() and StripColor(f.ranksNote:GetText() or "") or "(none)"
+    local chipLive = f.strip.chipLive and f.strip.chipLive:IsShown() and StripColor(f.strip.chipLive:GetText() or "") or "(none)"
+    local footer = StripColor(f.whatIf.footer:GetText() or "")
+    local bonusRaw = f.header.bonus:GetText() or ""
+    local good = #bad == 0 and accented > 0 and hovered > 0 and marks > 0 and estimated > 0
+        and StripColor(f.strip.chipLabel:GetText() or "") == "WHAT IF"
+        and StripColor(f.strip.chipRank:GetText() or "") == "Rank " .. whatFam.suggested.rank
+        and chipLive == "live: R" .. liveFam.suggested.rank
+        and note == wantNote and footer == WIf().Changes(liveFam, whatFam)
+        and bonusRaw:find(accent, 1, true) == 1
+        and StripColor(bonusRaw) == "+" .. Num(live.heal + 150) .. " healing what if"
+        and StripColor(FBox("heal").delta:GetText() or "") == "+150"
+    return good, string.format("note=%q want=%q chip=%q footer=%q accented=%d hovered=%d marks=%d bad=%s", note,
+        wantNote, chipLive, footer, accented, hovered, marks, table.concat(bad, "; "))
+end)
+
+T36("T122 forever: crit 30 changes the card's Crit line, not the values", function()
+    WIf():Clear()
+    local before = {}
+    for id, x in pairs(FRanks()) do before[id] = FCells(x.row) end
+    local critBefore = PairValue("Crit") or ""
+    local box = FBox("crit").box
+    box:SetText("30")
+    box:GetScript("OnEnterPressed")(box)
+    local bad = {}
+    for id, x in pairs(FRanks()) do
+        if before[id] ~= FCells(x.row) then bad[#bad + 1] = tostring(id) end
+    end
+    local crit = PairValue("Crit") or ""
+    local good = #bad == 0 and critBefore:find("chance", 1, true) == nil
+        and crit:sub(-#"30% chance") == "30% chance" and crit:find(critBefore, 1, true) == 1
+    return good, string.format("crit=%q before=%q bad=%s", crit, critBefore, table.concat(bad, ","))
+end)
+
+T36("T122 forever: Clear restores every cell; the pane closes again", function()
+    Click(F().whatIf.clearBtn)
+    local f = F()
+    local bad = {}
+    for id, x in pairs(FRanks()) do
+        if nourishBefore and nourishBefore[id] ~= FCells(x.row) then bad[#bad + 1] = tostring(id) end
+        if x.row.wiMark and x.row.wiMark:IsShown() then bad[#bad + 1] = "mark " .. id end
+    end
+    local good = #bad == 0 and nourishBefore ~= nil and not WIf():Active()
+        and StripColor(f.strip.chipLabel:GetText() or "") == "SUGGESTED"
+        and not (f.strip.chipLive and f.strip.chipLive:IsShown())
+        and not f.ranksNote:IsShown()
+    Click(f.strip.whatIfBtn)
+    return good and not F().whatIf:IsShown(), table.concat(bad, " ")
 end)
 
 --------------------------------------------------------------------------------
