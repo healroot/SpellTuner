@@ -63,7 +63,8 @@
 --      rank); a passive and a free spell are not listed;
 --  23. Get() ignores MD.sim; Get({ whatIf = true }) is Compute() under it,
 --      uncached, with no BOOK_CHANGED and the generation still; SuggestedRanks
---      is live under a what-if that moves a suggested rank;
+--      is live under a what-if that moves a suggested rank, and leaves
+--      RankMath.info (the last Compute's context) where it was;
 --  24. a gear change that moves a value fires BOOK_CHANGED once and bumps the
 --      generation; an unchanged rebuild (the same gear, TALENTS_CHANGED, a
 --      party member's gear) does neither;
@@ -1169,7 +1170,10 @@ local function BookChecks(dF)
         end
         if fired ~= 0 then bad[#bad + 1] = "BOOK_CHANGED fired " .. fired end
         if chosen then MD.sim = chosen end
+        local infoBefore = { tag = "the last Compute's context" }
+        RM.info = infoBefore
         local sugg = RM:SuggestedRanks()
+        if RM.info ~= infoBefore then bad[#bad + 1] = "SuggestedRanks left RankMath.info moved" end
         MD.sim = savedSim
         for fam, rank in pairs(liveMap) do if sugg[fam] ~= rank then bad[#bad + 1] = "SuggestedRanks " .. fam end end
         if not chosen then bad[#bad + 1] = "no what-if moved a suggested rank" end

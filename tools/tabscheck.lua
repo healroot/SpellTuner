@@ -8,7 +8,7 @@
 -- family into a heal list), a family the book no longer has kept and
 -- resolved as "stale", the family key and ids Book gives, Add / Remove /
 -- Move / Undo / Reset, and cdb.spellTabs initialised at login. T84 (C5) and
--- T118: under tbc, six checks of the list over MD.Book (Spells/Book_Model.lua, below).
+-- T118: under tbc, seven checks of the list over MD.Book (Spells/Book_Model.lua, below).
 HARNESS_FLAVOUR = { "forever", "tbc" }
 
 local here = arg[0]:match("^(.*)/[^/]+$")
@@ -93,7 +93,7 @@ end
 -- seam, Tabs.source, left at its default. The rules are the Forever ones
 -- above; a family marked noSeed (Tranquility, Swiftmend) is in the book but
 -- never seeded or reconciled in, only added by hand; Resolve finds a family
--- by its entries' `family`. Six checks, then the suite ends (the Forever half
+-- by its entries' `family`. Seven checks, then the suite ends (the Forever half
 -- needs Spells/Book.lua's grouping).
 --------------------------------------------------------------------------------
 if S.flavour == "tbc" then
@@ -154,6 +154,24 @@ if S.flavour == "tbc" then
                 and Tabs:IsNew("Lifebloom") and not Tabs:IsNew("Regrowth")
                 and Tabs.source().families.Lifebloom.maxKnown ~= nil,
             "seeded=" .. seeded .. " now=" .. Join(Tabs:Get()))
+    end)
+
+    -- The game's path until T120: the rail reads the MD.FamiliesTBC alias and
+    -- nothing reads MD.Book on its own, so the book is never primed before a
+    -- rank is trained. SPELLS_REBUILT must build it anyway, or no
+    -- BOOK_CHANGED fires and the list never reconciles.
+    block("tbc: a family trained later is appended even when nothing read the book", function()
+        Train(false)
+        Book._cache, Book._cacheTime, Book._sig = nil, nil, nil
+        FreshStore()
+        local seeded = Join(Tabs:Get(MD.FamiliesTBC:Get()))
+        local unread = Book._cache == nil
+        Train(true)
+        check("tbc: a family trained later is appended even when nothing read the book",
+            unread and seeded == "HealingTouch,Rejuvenation,Regrowth"
+                and Join(Tabs:Get(MD.FamiliesTBC:Get())) == "HealingTouch,Rejuvenation,Regrowth,Lifebloom"
+                and Tabs:IsNew("Lifebloom") and not Tabs:IsNew("Regrowth"),
+            "unread=" .. tostring(unread) .. " seeded=" .. seeded .. " now=" .. Join(Tabs:Get()))
     end)
 
     -- One seam on both lines: TBC installs nothing, the default reads MD.Book.

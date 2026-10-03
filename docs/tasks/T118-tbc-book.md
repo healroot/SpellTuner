@@ -297,7 +297,9 @@ T123 delete the last readers. A comment above it names T120 and T123.
 **`tools/tabscheck.lua`, tbc** (4 today): the four checks read `MD.Book:Get()` instead of
 `MD.FamiliesTBC:Get()`; the "Tranquility and Swiftmend are not seeded" check now asserts
 `noSeed` keeps them out of `Seed` and `Reconcile` while `Add` takes one; a new check that
-`Resolve` finds `HealingTouch` from an entry whose `name` is `"Healing Touch"`. 4 -> **6**.
+`Resolve` finds `HealingTouch` from an entry whose `name` is `"Healing Touch"`; and (review fix)
+a check that seeds through `MD.FamiliesTBC:Get()` with the book never read -- the game's path until
+T120 -- trains Lifebloom and finds it appended with the new dot. 4 -> **7**.
 
 **Unchanged**: `dashui/tbc`, `navui/tbc`, `spelltip/tbc`, `tbcclasscheck/tbc` (the alias),
 `capscheck`, `profilecheck`, `verifycheck/tbc`, `slashcheck/tbc`, every forever suite, `apicheck`
@@ -308,14 +310,14 @@ T123 delete the last readers. A comment above it names T120 and T123.
 | Suite | Before | After |
 |---|---|---|
 | `bookshapecheck/tbc` | 4 (T117) | **16** |
-| `tabscheck/tbc` | 4 | **6** |
+| `tabscheck/tbc` | 4 | **7** |
 
 Measured (2026-10-03, branch `oneui/T118`):
 
 | Suite | On the parent (535cff4, the tests first) | After |
 |---|---|---|
 | `bookshapecheck/tbc` | 5 ok / 11 failed (16 checks; 11-14 and 26 pass) | **16** ok |
-| `tabscheck/tbc` | 2 ok / 4 failed | **6** ok |
+| `tabscheck/tbc` | 2 ok / 4 failed (the first six; the seventh, added by the review fix, raises on the parent, which has no TBC `MD.Book`, and fails on 3b96937: `unread=true ... now=HealingTouch,Rejuvenation,Regrowth`) | **7** ok |
 | `bookshapecheck/forever` | 10 | 10 |
 | `tabscheck/forever` | 27 | 27 |
 
@@ -359,30 +361,45 @@ difference is those two fields (0 lines differ once they are removed).
    (`Data/SpellData.lua` fires it before Book_TBC's `SPELLS_CHANGED` handlers run).
 10. **No `OVERHEAL_CHANGED`** exists: the 2-s cache catches a moved overheal; the signature leaves
     `afterOverheal` (measured, not the spell's) and `casts` out.
-11. **Event rebuilds wait for a first read**: before anything has read the book an event only
-    leaves the next `Get()` to build it (no build at login nobody asked for).
+11. **`SPELLS_REBUILT` always rebuilds; the other events wait for a first read.** Review fix:
+    `SPELLS_REBUILT` (login, a rank trained) rebuilds the book whenever `MD.db` and `MD.cdb` are
+    tables, read or not -- it is the event `Spells/Families_TBC.lua` reconciled the list on, and
+    until T120 nothing on TBC reads `MD.Book` on its own (the rail reads the `MD.FamiliesTBC`
+    alias), so its first build's `BOOK_CHANGED` is what runs `Tabs:Reconcile`. Without it a heal
+    family trained mid-session (Lifebloom) was never appended (tabscheck tbc check 7).
+    `TALENTS_CHANGED`, `FORM_CHANGED`, the player's `UNIT_INVENTORY_CHANGED` and
+    `PLAYER_LEVEL_UP` rebuild only a book already read (they never reconciled the list before).
 12. **The alias** `MD.FamiliesTBC` keeps `Families_TBC`'s builder (from `RankMath:Source()`) rather
     than a view of the book, so a class book's families come through it as before
     (`tbcclasscheck`'s priest list) and check 26 holds byte for byte; it is forgotten on
     `SPELLS_REBUILT` and rebuilt on the next `Get()`.
 13. **Check 25** revokes the priest's `rankTable` / `tooltip` for its run: check 13's class transcript
     grants them and leaves them granted.
+14. **A hybrid's `bonus.counts` is `(directCoef + hotCoef x bonusMult) x penalty`**, not the
+    task's `(directCoef + hotCoef) x penalty x bonusMult`: RankMath applies `bonusMult` (Empowered
+    Rejuvenation) to the HoT part only, so this is the share whose product with `of` is the
+    `directBonus + hotBonus` it computed (`amount`); the `why` marks the multiplier ` (HoT)`.
+15. **`RankMath:SuggestedRanks()` puts `RankMath.info` back** after its `Compute({ live = true })`
+    (review fix), as the book does (deviation 5): the old dashboard reads `RankMath.info` as the
+    context of its last (what-if) Compute, and the gear toast no longer replaces it with the live
+    one. Asserted in bookshapecheck tbc check 23 (count unchanged).
 
 ## Integrator lines
 
 - **TOC:** `Spells\Families_TBC.lua` -> `Spells\Book_Model.lua` (the task's own edit); check
   `releasecheck` (the TBC package lists the new file and not the old).
-- **`tools/data/expected-counts.json`:** `bookshapecheck/tbc`, `tabscheck/tbc`.
+- **`tools/data/expected-counts.json`:** `bookshapecheck/tbc` 4 -> 16, `tabscheck/tbc` 4 -> 7.
 - **`CLAUDE.md`:** a new row `Spells/Book_Model.lua` (`**The TBC book** (T118, SPEC-one-ui 3.2):
   MD.Book on TBC -- heal families from RankMath:Compute({ live = true }) (the rows' own numbers),
   damage from Engine/DamageMath.lua over the spellbook, Other from the walk; desc / cooldown /
   reach / lockout from the scan tooltip through Spells/Parse.lua; bonus (model), calc (the Shift
   derivation's lines), afterOverheal, Lifebloom's variants; Tranquility and Swiftmend noSeed;
-  Get({ whatIf = true }) the only door MD.sim reaches; BOOK_CHANGED on a moved signature;
-  MD.FamiliesTBC an alias until T123`). Delete the `Spells/Families_TBC.lua` row. Append
+  Get({ whatIf = true }) the only door MD.sim reaches; BOOK_CHANGED on a moved signature,
+  SPELLS_REBUILT rebuilding it read or not (the list's reconcile); MD.FamiliesTBC an alias until
+  T123`). Delete the `Spells/Families_TBC.lua` row. Append
   `**T118:**` to `Spells/Book_TBC.lua` (`B.WalkAll`, `B.Read`), `Spells/Tabs.lua` (`e.family`,
   `noSeed`, the reconcile on BOOK_CHANGED on both lines), `Engine/RankMath.lua`
-  (`Compute(opts)`, `SuggestedRanks` live, `calc.talentName` / `tickPeriod` on the druid's
+  (`Compute(opts)`, `SuggestedRanks` live with `RankMath.info` put back, `calc.talentName` / `tickPeriod` on the druid's
   rows), `Engine/DamageMath.lua` (`DM.Bonus`, `DM.SchoolName`), `Spells/BookShape.lua` (`crit`,
   `castNote`, `school`).
 - **`docs/TOOLS.md`**: the `bookshapecheck` row's tbc half.

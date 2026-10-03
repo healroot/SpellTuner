@@ -720,8 +720,14 @@ function Book:Bonus(kind, school)
 end
 
 --------------------------------------------------------------------------------
--- Rebuilt when what RankMath reads moves -- once the book has been read (a
--- book nobody asked for is built on the first Get)
+-- Rebuilt when what RankMath reads moves. SPELLS_REBUILT (login, a rank
+-- trained) always rebuilds once the saved variables are there, read or not:
+-- it is the event Spells/Families_TBC.lua reconciled the spell list on, and
+-- until T120 nothing on TBC reads MD.Book on its own (the rail reads the
+-- MD.FamiliesTBC alias), so the first build's BOOK_CHANGED is what runs
+-- Tabs:Reconcile -- a heal family trained mid-session is appended with the
+-- new dot. The other events rebuild only a book already read (a book nobody
+-- asked for is built on the first Get).
 --------------------------------------------------------------------------------
 
 local function Rebuild()
@@ -734,7 +740,7 @@ MD:RegisterCallback("SPELLS_REBUILT", function()
     -- SPELLS_CHANGED handlers forget them)
     local B = Reader()
     if B and type(B.Forget) == "function" then B.Forget() end
-    Rebuild()
+    if type(MD.db) == "table" and type(MD.cdb) == "table" then Book:Refresh() end
 end)
 MD:RegisterCallback("TALENTS_CHANGED", Rebuild)
 MD:RegisterCallback("FORM_CHANGED", Rebuild)

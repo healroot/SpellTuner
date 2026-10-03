@@ -676,7 +676,12 @@ end
 -- T118: live -- a what-if value (MD.sim) never fires the toast.
 function RankMath:SuggestedRanks()
     local out = {}
-    for family, res in pairs(RankMath:Compute({ live = true })) do
+    -- T118: the live ranks, never the what-if strip's; RankMath.info (the
+    -- last Compute's context, which the dashboard reads) is put back after
+    local savedInfo = RankMath.info
+    local results = RankMath:Compute({ live = true })
+    RankMath.info = savedInfo
+    for family, res in pairs(results) do
         if res.suggestedID then
             out[family] = RankMath:Source().spells[res.suggestedID].rank
         end
