@@ -241,3 +241,50 @@ removed checks named in the suite's comment).
 
 - A +damage what-if row (no line can price it from what it reads yet); class rows for a class
   other than the TBC druid; saving a what-if.
+
+## Closing note (2026-10-03, branch `oneui/T122`)
+
+Built as specified: `Spells/WhatIf.lua`, `Spells/WhatIf_TBC.lua`, `Spells/WhatIf_Forever.lua`
+(new), `Spells/Book.lua` (`Book:MeasureBonus`, `cdb.bonusCounts`, the measured share first in
+`ApplyBonus`, `Book.Numbers` / `Book.RULE_FIELDS` exported), `UI/SpellsPane.lua` (What if... on
+the strip, the WHAT IF pane, the chip `WHAT IF` with `live: R<n>`, accent cells with
+`live X, what if Y` hovers, the white mark on the per-mana bar, the RANKS note, the footer, the
+Overview's `what if` tag, the rail's tags through the what-if book), `UI/Dashboard_Simulate.lua`
+deleted and off the TBC TOC; the Forever TOCs list `Spells\WhatIf.lua`,
+`Spells\WhatIf_Forever.lua` after `Spells\Words.lua`, the TBC TOC `Spells\WhatIf.lua`,
+`Spells\WhatIf_TBC.lua` after `Engine\DamageMath.lua`.
+
+### Counts (printed)
+
+| Suite | Before (parent) | After |
+|---|---|---|
+| `whatifcheck/tbc` | -- (0 ok / 8 failed) | **8** |
+| `whatifcheck/forever` | -- (0 ok / 7 failed) | **7** |
+| `spellsui/tbc` | 11 | **16** |
+| `spellsui/forever` | 53 | **57** |
+| `bookcheck/forever` | 31 | **32** |
+| `dashui/tbc` | 67 | **67** (unchanged) |
+| `wincheck/tbc` | 4 | 4 |
+| `restylecheck` forever / tbc | 45 / 50 | 45 / 50 |
+
+`make check`: 101 runs, all passed (the five count NOTEs above are the integrator's);
+apicheck 0 findings, textcheck 0 findings; `importcheck` unchanged (no fixture rebuild:
+`cdb.bonusCounts` is written only by a second plain scan with a moved bonus).
+
+### Deviations
+
+1. `tools/wincheck.lua` (not in the owned list) dropped `UI/Dashboard_Simulate.lua` from its
+   TBC file list in the failing-tests commit -- one line, needed for it to load.
+2. `MD.SpellsLine.whatIf = nil` in `UI/Dashboard.lua` left for the integrator (not owned).
+3. The provider's `classRows` / `classTitle` / `ranksNote` may be values or functions
+   (`WI` calls a function); TBC's are functions (the druid's book only).
+4. The provider's RANKS note has no leading `- `: the pane joins `what if: <summary>` and the
+   note with ` - `.
+5. The chip's `live: R<n>` sits beside the rank in the chip, in `muted`.
+6. `tools/restylecheck.lua` still names `UI/Dashboard_Simulate.lua` in its file list (not
+   owned; a missing file reads as empty, harmless).
+7. The bar keeps the LIVE per mana as its fill and puts the white mark at the what-if value
+   (this task's wording; the M2 caption says the reverse).
+8. Forever's `ranksNote` counts M over every rank of the family (as written above), measured /
+   estimated by `bonus.from`.
+9. `time()` was accepted by apicheck: `at` is stored.

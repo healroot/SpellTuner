@@ -312,6 +312,7 @@ local function Numbers(e, kind)
         end
     end
 end
+Book.Numbers = Numbers -- T122: Spells/WhatIf_Forever.lua re-derives a copy's numbers
 
 --------------------------------------------------------------------------------
 -- T117 (docs/SPEC-one-ui.md 3.1, 4.3 "Else estimated"): the share of +healing
@@ -339,9 +340,30 @@ local function BonusNow(kind)
     return (Book:Bonus(kind))
 end
 
+-- T122 (docs/tasks/T122-what-if.md): a share Book:MeasureBonus measured (two
+-- plain readings out of combat whose bonus and text both moved), kept per
+-- character in MD.cdb.bonusCounts[id] = { counts, at, bonus }; it wins over
+-- the estimate.
+local function Measured(id)
+    local store = type(MD.cdb) == "table" and MD.cdb.bonusCounts
+    local m = type(store) == "table" and store[id]
+    if type(m) == "table" and type(m.counts) == "number" then return m end
+    return nil
+end
+
 local function ApplyBonus(e, kind, shape)
     e.bonus = nil
-    if e.value == nil or not kind or not Coef then return end
+    if e.value == nil or not kind then return end
+    local m = (kind == "heal") and Measured(e.id) or nil
+    if m then
+        local of = BonusNow(kind)
+        e.bonus = {
+            counts = m.counts, from = "measured", at = m.at,
+            of = of, amount = of and m.counts * of or nil,
+        }
+        return
+    end
+    if not Coef then return end
     local counts, why = Coef.Estimate(e, shape)
     if type(counts) ~= "number" then return end
     local of = BonusNow(kind)
@@ -746,6 +768,7 @@ local RULE_FIELDS = {
     eff = "perMana", rate = "perSec", value = "value",
     eligible = function(e) return e.known and e.perMana and e.perSec end,
 }
+Book.RULE_FIELDS = RULE_FIELDS -- T122: the what-if book re-runs the rules with them
 
 function Book:Rows(family, pool)
     if not family.kind then return end
@@ -968,6 +991,40 @@ local function EntrySig(entry)
     return table.concat(out)
 end
 
+-- T122 (docs/tasks/T122-what-if.md, docs/SPEC-one-ui.md 4.3 "measured"):
+-- a heal rank's share of +healing, measured. Each plain scan out of combat
+-- (MD.inCombat false and Book:Bonus's reading not stale) remembers every
+-- heal rank's readable value with the bonus it was read at
+-- (Book._lastRead); when a later such scan finds both the bonus and the
+-- text moved, the share is the text's change over the bonus's -- accepted
+-- above 0 and up to 2 (no rank takes twice the bonus) -- and kept per
+-- character in MD.cdb.bonusCounts[id] = { counts, at = time(), bonus }.
+-- The value stays the text's; only entry.bonus says "measured".
+Book._lastRead = Book._lastRead or {}
+local MAX_COUNTS = 2
+
+function Book:MeasureBonus(spells, families)
+    if MD.inCombat then return end
+    local bonus, stale = Book:Bonus("heal")
+    if type(bonus) ~= "number" or stale then return end
+    for id, e in pairs(spells) do
+        local fam = families[e.family]
+        if fam and fam.kind == "heal" and type(e.value) == "number" and not e.stale
+            and e.descState == "ok" then
+            local prev = Book._lastRead[id]
+            if prev and prev.bonus ~= bonus and prev.value ~= e.value then
+                local counts = (e.value - prev.value) / (bonus - prev.bonus)
+                if counts == counts and counts > 0 and counts <= MAX_COUNTS and type(MD.cdb) == "table" then
+                    if type(MD.cdb.bonusCounts) ~= "table" then MD.cdb.bonusCounts = {} end
+                    MD.cdb.bonusCounts[id] = { counts = counts, at = time(), bonus = bonus }
+                    ApplyBonus(e, "heal", fam.shape)
+                end
+            end
+            Book._lastRead[id] = { value = e.value, bonus = bonus }
+        end
+    end
+end
+
 function Book:Scan()
     -- T35: a scan after MarkDirty (or the first) is a changed book; the
     -- 2-second rescans of an unchanged one are not.
@@ -1008,6 +1065,7 @@ function Book:Scan()
     for _, name in ipairs(order) do
         Book:Rows(families[name], pool)
     end
+    Book:MeasureBonus(spells, families) -- T122
     scanBonus = nil
 
     -- T63: the generation moves when any entry did (see Book.generation).

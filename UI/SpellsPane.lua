@@ -137,6 +137,45 @@ local function Shown(e, after)
     return e.value, e.perMana, e.perSec
 end
 
+-- T122 (docs/tasks/T122-what-if.md, mockup M2): the What if
+-- (Spells/WhatIf.lua) is a lens on this pane only. While it is active the
+-- view, Overview and the rail read the what-if book (MD.WhatIf:Book()) and
+-- count casts from the what-if pool; the live book stays what every other
+-- surface reads. The pane's open state is per session (SpellsPane.whatIfOpen).
+local function WhatIf() return MD.WhatIf end
+local function WIActive()
+    local w = MD.WhatIf
+    return w ~= nil and w:Active() or false
+end
+-- The pool the view counts from: the live one, or the what-if's over it.
+local function ViewPool()
+    local p = Pool()
+    if WIActive() then return MD.WhatIf:Pool(p) end
+    return p
+end
+-- The book the view draws: the what-if book while active, else the live one.
+local function ViewBook()
+    if WIActive() then
+        local b = MD.WhatIf:Book()
+        if type(b) == "table" and type(b.families) == "table" then return b end
+    end
+    return MD.Book:Get()
+end
+-- An entry as its cells show it (After overheal's numbers over the entry).
+local function ShownEntry(e, after)
+    if not (after and type(e.afterOverheal) == "table") then return e end
+    local value, perMana, perSec = Shown(e, after)
+    return setmetatable({ value = value, perMana = perMana, perSec = perSec }, { __index = e })
+end
+-- A cell's what-if hover: "live 6.09, what if 6.41" (the cell's own words).
+local WI_FIELD = { value = "value", permana = "perMana", persec = "perSec", toOOM = "casts", mana = "cost",
+    cast = "cast" }
+local function WhatIfTip(r, key)
+    local field = WI_FIELD[key]
+    if not (r and r.wiDiff and field and r.wiDiff[field]) then return nil end
+    return { { l = "live " .. tostring(r.wiLive[field]) .. ", what if " .. tostring(r.wiWords[field]), c = "text" } }
+end
+
 --------------------------------------------------------------------------------
 -- Export: the probe's dump block format, so tools/refcheck.py reads it the
 -- way it reads a probe report. Scope: the whole book (3.6).
@@ -233,6 +272,7 @@ local SUGGESTED_RULE = Words.SuggestedRule() -- the floor is MD.Rules.SUGGESTED_
 local GAP_TEXT = 'not in your spellbook - untrained, or hidden by "show all ranks"'
 local RANKS_NOTE_W = 300     -- RANKS' title-row note (T120)
 local SIDE_W = 130          -- the strip's right column: After overheal (T120)
+local WI_BTN_W = 64         -- the strip's What if... (T122), right of that column
 
 -- T78 (P34, review U9 / U10; mockup M5): one vocabulary -- "Per mana",
 -- "Per sec", "Casts" -- and every header says what it is, one sentence each,
@@ -265,13 +305,19 @@ local TagTip -- the tag cell's hover (below, with the tags)
 local RANK_COLS = {
     { key = "rank",    x = 8,   w = 52,  label = "Rank" },
     { key = "level",   x = 60,  w = 34,  label = "Lvl",      justify = "RIGHT", tooltip = HEAD_TIPS.level },
-    { key = "mana",    x = 94,  w = 46,  label = "Mana",     justify = "RIGHT", tooltip = HEAD_TIPS.mana },
-    { key = "value",   x = 140, w = 58,  label = "Heal",     justify = "RIGHT", tooltip = HEAD_TIPS.value },
+    -- T122: a cell the what-if moved explains itself ("live X, what if Y")
+    { key = "mana",    x = 94,  w = 46,  label = "Mana",     justify = "RIGHT", tooltip = HEAD_TIPS.mana,
+      cellTooltip = function(r) return WhatIfTip(r, "mana") end },
+    { key = "value",   x = 140, w = 58,  label = "Heal",     justify = "RIGHT", tooltip = HEAD_TIPS.value,
+      cellTooltip = function(r) return WhatIfTip(r, "value") end },
     { key = "permana", x = 198, w = 116, label = "Per mana", justify = "RIGHT", type = "bar", barWidth = 72, gap = 4,
-      tooltip = HEAD_TIPS.permana },
-    { key = "persec",  x = 314, w = 54,  label = "Per sec",  justify = "RIGHT", tooltip = HEAD_TIPS.persec },
-    { key = "cast",    x = 368, w = 46,  label = "Cast",     justify = "RIGHT", tooltip = HEAD_TIPS.cast },
-    { key = "toOOM",   x = 414, w = 58,  label = "Casts",    justify = "RIGHT", tooltip = HEAD_TIPS.toOOM },
+      tooltip = HEAD_TIPS.permana, cellTooltip = function(r) return WhatIfTip(r, "permana") end },
+    { key = "persec",  x = 314, w = 54,  label = "Per sec",  justify = "RIGHT", tooltip = HEAD_TIPS.persec,
+      cellTooltip = function(r) return WhatIfTip(r, "persec") end },
+    { key = "cast",    x = 368, w = 46,  label = "Cast",     justify = "RIGHT", tooltip = HEAD_TIPS.cast,
+      cellTooltip = function(r) return WhatIfTip(r, "cast") end },
+    { key = "toOOM",   x = 414, w = 58,  label = "Casts",    justify = "RIGHT", tooltip = HEAD_TIPS.toOOM,
+      cellTooltip = function(r) return WhatIfTip(r, "toOOM") end },
     { key = "tag",     x = 480, w = 52,  label = "", font = UI.FONT_SMALL,
       cellTooltip = function(r) return TagTip(r) end },
 }
@@ -394,6 +440,11 @@ end
 -- modelled current pool only; the max plain. T120: a pool the book reads
 -- live (pool.modelled false, TBC) has no "~": "6500 / 6500 mana".
 local function HeaderManaText(pool)
+    -- T122: a typed Mana in the accent
+    local typed = WIActive() and MD.WhatIf:Get("mana") or nil
+    if type(typed) == "number" and type(pool) == "table" and type(pool.max) == "number" then
+        return UI.Hex("accent") .. Num(pool.mana or pool.max) .. " / " .. Num(pool.max) .. " mana" .. RESET
+    end
     if type(pool) == "table" and type(pool.mana) == "number" and type(pool.max) == "number" then
         local tilde = pool.modelled and "~" or ""
         return UI.Hex("mana") .. tilde .. Num(pool.mana) .. RESET .. " / " .. Num(pool.max) .. " mana"
@@ -545,9 +596,31 @@ local function SetWide(row, x, text)
     wide:SetText(text)
 end
 
+-- T122: the 1-px white mark on the per-mana bar at the what-if value (the
+-- fill keeps the live one); nil hides it.
+local function WhatIfMark(row, frac)
+    local m = row.wiMark
+    local bar = row.bars and row.bars.permana
+    if frac == nil or not bar then
+        if m then m:Hide() end
+        return
+    end
+    if not m then
+        m = row:CreateTexture(nil, "ARTWORK", nil, 3)
+        m:SetSize(1, 8)
+        UI.Tint(m, "texture", "text")
+        row.wiMark = m
+    end
+    frac = math.max(0, math.min(1, frac))
+    m:ClearAllPoints()
+    m:SetPoint("LEFT", bar.track, "LEFT", math.floor(frac * ((bar.width or 72) - 1) + 0.5), 0)
+    m:Show()
+end
+
 local function RenderRankRow(row, r, color)
     r.color = color
     for _, fs in pairs(row.cells) do fs:SetText("") end
+    WhatIfMark(row, nil) -- T122
     if r.kind == "gap" then
         -- T78 (U7): the number disabled, its explanation readable in `muted`
         row.cells.rank:SetText(UI.Hex("disabled") .. "R" .. r.rank .. RESET)
@@ -580,22 +653,34 @@ local function RenderRankRow(row, r, color)
         return
     end
     local e = r.entry
+    -- T122: a cell the what-if moved in the accent (WI.Diff, by the cell's
+    -- own words)
+    local diff = r.wiDiff
+    local accent = diff and UI.Hex("accent")
+    local function C(field) return (diff and diff[field]) and accent or color end
     c.rank:SetText(color .. RankCell(e) .. RESET)
     c.level:SetText(color .. Num(e.level) .. RESET)
-    c.mana:SetText(color .. ManaCellText(e) .. RESET)
-    c.cast:SetText(color .. CastCellText(e) .. RESET)
+    c.mana:SetText(C("cost") .. ManaCellText(e) .. RESET)
+    c.cast:SetText(C("cast") .. CastCellText(e) .. RESET)
     c.tag:SetText(TagText(r))
     if c.value then
         local value, perMana, perSec = Shown(e, r.after) -- T120: After overheal
-        c.value:SetText(color .. Num(value) .. RESET)
-        c.permana:SetText(color .. Num(perMana, 2) .. RESET)
-        c.persec:SetText(color .. Num(perSec, 1) .. RESET)
-        c.toOOM:SetText(color .. CastsWord(r.fullCasts) .. RESET)
+        c.value:SetText(C("value") .. Num(value) .. RESET)
+        c.permana:SetText(C("perMana") .. Num(perMana, 2) .. RESET)
+        c.persec:SetText(C("perSec") .. Num(perSec, 1) .. RESET)
+        c.toOOM:SetText(C("casts") .. CastsWord(r.fullCasts) .. RESET)
+        -- T122: the fill keeps the live per mana; the mark is the what-if's
+        local fillPm = perMana
+        if diff then fillPm = r.livePerMana end
         local frac
-        if type(perMana) == "number" and type(r.maxPerMana) == "number" and r.maxPerMana > 0 then
-            frac = perMana / r.maxPerMana
+        if type(fillPm) == "number" and type(r.maxPerMana) == "number" and r.maxPerMana > 0 then
+            frac = fillPm / r.maxPerMana
         end
         if row.SetBar then row:SetBar("permana", frac, (e.known == false) and 0.25 or nil) end
+        if diff and diff.perMana and type(perMana) == "number" and type(r.maxPerMana) == "number"
+            and r.maxPerMana > 0 then
+            WhatIfMark(row, perMana / r.maxPerMana)
+        end
     end
 end
 
@@ -603,8 +688,9 @@ end
 -- against the full pool SpellsPane:UpdateFamilyLive read once for the tick.
 local function UpdateRankRow(row, r)
     if r.kind ~= "rank" or not row.cells.toOOM then return end -- T120: a variant keeps its own
-    r.fullCasts = MD.Book:CastsFor(r.entry, SpellsPane.liveFull or FullPool(Pool()))
-    row.cells.toOOM:SetText((r.color or "") .. CastsWord(r.fullCasts) .. RESET)
+    r.fullCasts = MD.Book:CastsFor(r.entry, SpellsPane.liveFull or FullPool(ViewPool()))
+    local color = (r.wiDiff and r.wiDiff.casts) and UI.Hex("accent") or (r.color or "") -- T122
+    row.cells.toOOM:SetText(color .. CastsWord(r.fullCasts) .. RESET)
 end
 
 local function RankRowEnter(row, r)
@@ -649,7 +735,11 @@ end
 
 -- The family's rows: one per rank from 1 to the highest listed, a gap a
 -- spanning row; unranked entries (no rank number) after them, one each.
-local function FamilyRows(fam, pool)
+-- T122: `liveFam` / `livePool` while the what-if is active -- each rank
+-- row then carries the cells the what-if moved (wiDiff, by the cells' own
+-- words: WI.CellWords), the live and what-if words for their hover, and the
+-- live per mana its bar keeps.
+local function FamilyRows(fam, pool, liveFam, livePool)
     local rows, byRank, unranked, maxListed = {}, {}, {}, 0
     local maxPerMana
     local after = AfterOn() -- T120
@@ -657,6 +747,16 @@ local function FamilyRows(fam, pool)
         local _, pm = Shown(x, after)
         if type(pm) == "number" and (not maxPerMana or pm > maxPerMana) then maxPerMana = pm end
     end
+    local liveBy
+    local WI = WhatIf()
+    if WI and liveFam and liveFam ~= fam then
+        liveBy = {}
+        for _, e in ipairs(liveFam.ranks or {}) do
+            if e.id ~= nil then liveBy[e.id] = e end
+            Max(e)
+        end
+    end
+    local liveFull = FullPool(livePool or pool)
     for _, e in ipairs(fam.ranks) do
         if type(e.rank) == "number" then
             byRank[e.rank] = byRank[e.rank] or e
@@ -669,10 +769,23 @@ local function FamilyRows(fam, pool)
     end
     local full = FullPool(pool)
     local function Add(e)
-        rows[#rows + 1] = { kind = "rank", rank = e.rank, entry = e, id = e.id, family = fam,
+        local r = { kind = "rank", rank = e.rank, entry = e, id = e.id, family = fam,
             known = e.known, suggested = e.suggested, dominated = e.dominated,
             isMax = (fam.maxKnown == e), maxPerMana = maxPerMana, after = after,
             fullCasts = MD.Book:CastsFor(e, full) }
+        rows[#rows + 1] = r
+        local l = liveBy and e.id ~= nil and liveBy[e.id]
+        if l then
+            local lw = WI.CellWords(ShownEntry(l, after), MD.Book:CastsFor(l, liveFull))
+            local ww = WI.CellWords(ShownEntry(e, after), r.fullCasts)
+            local diff = {}
+            for k, v in pairs(ww) do
+                if lw[k] ~= v then diff[k] = true end
+            end
+            r.wiDiff, r.wiLive, r.wiWords = diff, lw, ww
+            local _, lpm = Shown(l, after)
+            r.livePerMana = lpm
+        end
         -- T120: Lifebloom's rolled rows under the rank they belong to; not
         -- selectable (no id), no tag
         for _, v in ipairs(e.variants or {}) do
@@ -754,7 +867,15 @@ local function CardPairs(fam, e, pool)
     if kind then
         if type(e.parsed) == "table" then
             local parts = Words.Value(e, kind, "card", { muted = UI.Hex("muted"), reset = RESET })
-            for _, p in ipairs(parts) do P(p[1], p[2]) end
+            for _, p in ipairs(parts) do
+                local v = p[2]
+                -- T122 (D1): a typed crit names its chance on the Crit line;
+                -- the text's value has no crit in it, so nothing else moves
+                if p[1] == "Crit" and type(e.crit) == "number" then
+                    v = v .. " " .. UI.Hex("muted") .. Num(e.crit * 100) .. "% chance" .. RESET
+                end
+                P(p[1], v)
+            end
         else
             ModelValuePairs(fam, e, P) -- T120
         end
@@ -968,6 +1089,273 @@ local function LayoutFamily(f)
     f.header:SetHeight(Pitch(HEADER_H))
 end
 
+--------------------------------------------------------------------------------
+-- T122 (docs/tasks/T122-what-if.md; mockup M2): the WHAT IF pane, between
+-- the strip and RANKS. STATS (MD.WhatIf.STATS) down the left: a label, a box
+-- empty with the live value in grey until typed, - / + where the row steps
+-- (Shift: the big step), the unit or the typed change in the accent; the
+-- class rows (the provider's, TBC's Form and Moonglow) or the provider's
+-- sentence on the right; Clear on the title row; one footer line
+-- (MD.WhatIf.Changes). Nothing here is saved.
+--------------------------------------------------------------------------------
+local WI_ROW = 22           -- a row's pitch at offset 0
+local WI_LABEL_W = 118
+local WI_BOX_W = 60
+local WI_CLASS_X = 280      -- the class column
+local WI_CLASS_LABEL_W = 64
+local WI_CHOICE_W = { live = 44, caster = 50, tree = 80 }
+
+-- "600", "17.5": a typed value as the box shows it
+local function BoxText(v)
+    if type(v) ~= "number" then return "" end
+    if v == math.floor(v) then return string.format("%d", v) end
+    return string.format("%.1f", v)
+end
+
+local function StepWhatIf(key, dir)
+    local WI = WhatIf()
+    local stat = WI and WI.STAT_BY[key]
+    if not (stat and stat.step) then return end
+    local big = MD.API.IsShiftKeyDown and MD.API.IsShiftKeyDown() == true
+    local step = (big and stat.bigStep) or stat.step
+    local base = WI:Get(key)
+    if type(base) ~= "number" then base = WI:Live()[key] end
+    if type(base) ~= "number" then base = 0 end
+    WI:Set(key, base + dir * step)
+end
+
+-- One row: its label, and (a number) its box with the grey live value, its
+-- steps and the change beside it; (a choice) a button group.
+local function WhatIfRow(pane, key, label, spec)
+    local row = { key = key }
+    row.label = pane:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+    row.label:SetJustifyH("LEFT")
+    row.label:SetWordWrap(false)
+    UI.Tint(row.label, "text", "label")
+    row.label:SetText(label)
+    if spec.kind == "choice" then
+        row.buttons, row.order = {}, {}
+        for _, c in ipairs(spec.choices or {}) do
+            local b = UI.CreateButton(pane, c.text, "accent-hover", { WI_CHOICE_W[c.id] or 56, 18 },
+                false, false, UI.FONT_SMALL, UI.FONT_SMALL)
+            b.id = c.id
+            row.buttons[c.id] = b
+            row.order[#row.order + 1] = b
+        end
+        row.highlight = UI.CreateButtonGroup(row.buttons, function(id)
+            local WI = WhatIf()
+            if WI then WI:Set(key, id) end
+        end)
+        return row
+    end
+    local box = UI.CreateEditBox(pane, WI_BOX_W, 18, false, false, false, UI.FONT_NUM or UI.FONT)
+    row.box = box
+    row.ph = box:CreateFontString(nil, "OVERLAY", UI.FONT_NUM or UI.FONT)
+    row.ph:SetPoint("LEFT", box, "LEFT", 5, 0)
+    row.ph:SetJustifyH("LEFT")
+    UI.Tint(row.ph, "text", "muted")
+    local function Apply(self)
+        local text = strtrim(self:GetText() or "")
+        self:ClearFocus()
+        local WI = WhatIf()
+        if not (WI and WI:Set(key, text)) then
+            -- refused or the same value: the box shows what is kept
+            self:SetText(BoxText(WI and WI:Get(key)))
+            row.ph:SetShown((self:GetText() or "") == "")
+        end
+    end
+    box:SetScript("OnEnterPressed", Apply)
+    box:SetScript("OnEscapePressed", function(self)
+        self:ClearFocus()
+        local WI = WhatIf()
+        self:SetText(BoxText(WI and WI:Get(key)))
+        row.ph:SetShown((self:GetText() or "") == "")
+    end)
+    box:SetScript("OnTextChanged", function(self)
+        row.ph:SetShown((self:GetText() or "") == "")
+    end)
+    if spec.step then
+        row.minus = UI.CreateButton(pane, "-", "accent-hover", { 16, 18 }, false, false, UI.FONT_SMALL, UI.FONT_SMALL)
+        row.minus:SetScript("OnClick", function() StepWhatIf(key, -1) end)
+        row.plus = UI.CreateButton(pane, "+", "accent-hover", { 16, 18 }, false, false, UI.FONT_SMALL, UI.FONT_SMALL)
+        row.plus:SetScript("OnClick", function() StepWhatIf(key, 1) end)
+        UI.SetTooltips(row.plus, "ANCHOR_TOPLEFT", 0, 3, label,
+            "+" .. spec.step .. " (Shift: +" .. (spec.bigStep or spec.step) .. ")")
+        UI.SetTooltips(row.minus, "ANCHOR_TOPLEFT", 0, 3, label,
+            "-" .. spec.step .. " (Shift: -" .. (spec.bigStep or spec.step) .. ")")
+    end
+    local note = spec.unit or spec.note
+    if note then
+        row.unit = pane:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+        row.unit:SetJustifyH("LEFT")
+        UI.Tint(row.unit, "text", "muted")
+        row.unit:SetText(note)
+    end
+    row.delta = pane:CreateFontString(nil, "OVERLAY", UI.FONT_NUM or UI.FONT)
+    row.delta:SetJustifyH("LEFT")
+    row.delta:SetWordWrap(false)
+    UI.Tint(row.delta, "text", "accent")
+    return row
+end
+
+-- A row at (x, y) of the pane: label, then its controls left to right.
+local function PlaceWhatIfRow(pane, row, x, y, labelW)
+    row.label:ClearAllPoints()
+    row.label:SetPoint("TOPLEFT", pane, "TOPLEFT", x, -(y + 3))
+    row.label:SetWidth(labelW)
+    local cx = x + labelW + 2
+    if row.order then
+        for _, b in ipairs(row.order) do
+            b:ClearAllPoints()
+            b:SetPoint("TOPLEFT", pane, "TOPLEFT", cx, -y)
+            cx = cx + b:GetWidth() + 2
+        end
+        return
+    end
+    row.box:ClearAllPoints()
+    row.box:SetPoint("TOPLEFT", pane, "TOPLEFT", cx, -y)
+    cx = cx + WI_BOX_W + 4
+    if row.minus then
+        row.minus:ClearAllPoints()
+        row.minus:SetPoint("TOPLEFT", pane, "TOPLEFT", cx, -y)
+        row.plus:ClearAllPoints()
+        row.plus:SetPoint("TOPLEFT", pane, "TOPLEFT", cx + 18, -y)
+        cx = cx + 40
+    end
+    if row.unit then
+        row.unit:ClearAllPoints()
+        row.unit:SetPoint("TOPLEFT", pane, "TOPLEFT", cx, -(y + 3))
+        cx = cx + (row.unit:GetStringWidth() or 24) + 6
+    end
+    row.delta:ClearAllPoints()
+    row.delta:SetPoint("TOPLEFT", pane, "TOPLEFT", cx, -(y + 3))
+end
+
+local function ShowWhatIfRow(row, on)
+    local parts = { row.label, row.box, row.minus, row.plus, row.unit, row.delta }
+    for _, b in ipairs(row.order or {}) do parts[#parts + 1] = b end
+    for _, p in pairs(parts) do
+        if on then p:Show() else p:Hide() end
+    end
+end
+
+local function BuildWhatIf(content)
+    local pane = TitledPane(content, "WHAT IF")
+    pane.rows, pane.statRows = {}, {}
+    local WI = WhatIf()
+    pane.clearBtn = UI.CreateButton(pane, "Clear", "accent-hover", { 50, 16 }, false, false,
+        UI.FONT_SMALL, UI.FONT_SMALL)
+    pane.clearBtn:SetPoint("BOTTOMRIGHT", pane.line or pane, "TOPRIGHT", 0, 3)
+    pane.clearBtn:SetScript("OnClick", function()
+        local w = WhatIf()
+        if w then w:Clear() end
+    end)
+    UI.SetTooltips(pane.clearBtn, "ANCHOR_TOPLEFT", 0, 3, "Clear",
+        "Back to your live numbers. Nothing here is saved.")
+    pane.statsTitle = pane:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+    pane.statsTitle:SetJustifyH("LEFT")
+    UI.Tint(pane.statsTitle, "text", "muted")
+    pane.statsTitle:SetText("STATS")
+    pane.classTitle = pane:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+    pane.classTitle:SetJustifyH("LEFT")
+    UI.Tint(pane.classTitle, "text", "muted")
+    pane.classNote = pane:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+    pane.classNote:SetJustifyH("LEFT")
+    pane.classNote:SetWordWrap(true)
+    pane.classNote:SetWidth(VIEW_W - WI_CLASS_X - 8)
+    UI.Tint(pane.classNote, "text", "muted")
+    pane.footer = pane:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+    pane.footer:SetJustifyH("LEFT")
+    pane.footer:SetWordWrap(false)
+    pane.footer:SetWidth(VIEW_W - 16)
+    UI.Tint(pane.footer, "text", "text2")
+    for _, s in ipairs(WI and WI.STATS or {}) do
+        local row = WhatIfRow(pane, s.key, s.label, s)
+        pane.rows[s.key] = row
+        pane.statRows[#pane.statRows + 1] = row
+    end
+    pane:Hide()
+    return pane
+end
+
+-- The pane's values for the family on screen: the boxes (typed or empty
+-- with the live value in grey), the changes, the class rows or the
+-- sentence, the footer; laid out at the current pitch. Sets its height.
+local function PaintWhatIf(f, liveFam, fam)
+    local pane = f.whatIf
+    local WI = WhatIf()
+    if not (pane and WI) then return end
+    local pitch = Pitch(WI_ROW)
+    local live = WI:Live()
+    local top = PANE_TOP
+    pane.statsTitle:ClearAllPoints()
+    pane.statsTitle:SetPoint("TOPLEFT", pane, "TOPLEFT", 8, -top)
+    local y0 = top + Pitch(16)
+    local function PaintNumber(row, decimals)
+        local v = WI:Get(row.key)
+        if not (row.box.HasFocus and row.box:HasFocus()) then row.box:SetText(BoxText(v)) end
+        row.ph:SetText(Num(live[row.key], decimals))
+        row.ph:SetShown((row.box:GetText() or "") == "")
+        row.delta:SetText(WI:Delta(row.key))
+    end
+    for i, row in ipairs(pane.statRows) do
+        PlaceWhatIfRow(pane, row, 8, y0 + (i - 1) * pitch, WI_LABEL_W)
+        ShowWhatIfRow(row, true)
+        local stat = WI.STAT_BY[row.key]
+        PaintNumber(row, stat and stat.decimals)
+    end
+    -- the class column: the provider's rows, else its sentence
+    local classRows = WI:ClassRows()
+    local wanted = {}
+    local nClass = 0
+    if classRows then
+        pane.classTitle:SetText(Esc(WI:ClassTitle() or ""))
+        pane.classTitle:ClearAllPoints()
+        pane.classTitle:SetPoint("TOPLEFT", pane, "TOPLEFT", WI_CLASS_X, -top)
+        pane.classTitle:Show()
+        pane.classNote:Hide()
+        for j, spec in ipairs(classRows) do
+            local row = pane.rows[spec.key]
+            if not row then
+                row = WhatIfRow(pane, spec.key, spec.label or spec.key, spec)
+                pane.rows[spec.key] = row
+            end
+            wanted[spec.key] = true
+            PlaceWhatIfRow(pane, row, WI_CLASS_X, y0 + (j - 1) * pitch, WI_CLASS_LABEL_W)
+            ShowWhatIfRow(row, true)
+            if row.highlight then
+                row.highlight(WI:Get(spec.key) or "live")
+            else
+                PaintNumber(row, nil)
+            end
+            nClass = j
+        end
+    else
+        pane.classTitle:SetText("")
+        pane.classTitle:Hide()
+        local note = WI:ClassNote()
+        if note then
+            pane.classNote:SetText(note)
+            pane.classNote:ClearAllPoints()
+            pane.classNote:SetPoint("TOPLEFT", pane, "TOPLEFT", WI_CLASS_X, -top)
+            pane.classNote:Show()
+        else
+            pane.classNote:SetText("")
+            pane.classNote:Hide()
+        end
+    end
+    for key, row in pairs(pane.rows) do
+        local isStat = WI.STAT_BY[key] ~= nil
+        if not isStat and not wanted[key] then ShowWhatIfRow(row, false) end
+    end
+    local n = math.max(#pane.statRows, nClass)
+    local fy = y0 + n * pitch + 4
+    pane.footer:ClearAllPoints()
+    pane.footer:SetPoint("TOPLEFT", pane, "TOPLEFT", 8, -fy)
+    pane.footer:SetText(WI.Changes(liveFam or fam, fam))
+    pane:SetHeight(fy + Pitch(16) + 4)
+end
+
 local function BuildFamily(host)
     local f = CreateFrame("Frame", nil, host)
     f:SetPoint("TOPLEFT", host, "TOPLEFT", 0, 0)
@@ -1107,8 +1495,27 @@ local function BuildFamily(host)
     strip.compare:SetWordWrap(true)
     strip.compare:SetMaxLines(2)
     UI.Tint(strip.compare, "text", "text2")
+    -- T122: the live suggestion under the chip while the what-if is active
+    -- ("live: R12"), and What if... at the strip's right
+    strip.chipLive = chip:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+    strip.chipLive:SetPoint("BOTTOMLEFT", strip.chipRank, "BOTTOMRIGHT", 8, 1)
+    strip.chipLive:SetJustifyH("LEFT")
+    UI.Tint(strip.chipLive, "text", "muted")
+    strip.chipLive:Hide()
+    strip.whatIfBtn = UI.CreateButton(strip, "What if...", "accent-hover", { WI_BTN_W, 18 }, false, false,
+        UI.FONT_SMALL, UI.FONT_SMALL)
+    strip.whatIfBtn:SetPoint("TOPRIGHT", strip, "TOPRIGHT", 0, -4)
+    strip.whatIfBtn:SetScript("OnClick", function() SpellsPane:ToggleWhatIf() end)
+    UI.SetTooltips(strip.whatIfBtn, "ANCHOR_TOPLEFT", 0, 3, "What if",
+        "Try other stats on these ranks: +healing, crit, mana, regen.",
+        "Only this pane reads it; nothing is saved.")
+    side:ClearAllPoints()
+    side:SetPoint("TOPRIGHT", strip, "TOPRIGHT", -(WI_BTN_W + 8), 0)
     strip:Hide()
     f.strip = strip
+
+    -- T122: the WHAT IF pane, between the strip and RANKS
+    f.whatIf = BuildWhatIf(content)
 
     -- 3. RANKS
     f.ranks = TitledPane(content, "RANKS")
@@ -1175,13 +1582,19 @@ function SpellsPane:Signature(key, preview)
     local pool = Pool()
     return table.concat({ tostring(key), tostring(preview and true or false), tostring(self.bookGen),
         tostring(self.lastBonus), tostring(stale), tostring(pool.max), tostring(Pitch(TABLE_ROW)),
-        tostring(AfterOn()) }, "|")
+        tostring(AfterOn()), tostring(MD.WhatIf and MD.WhatIf.serial) }, "|") -- T122: the what-if
 end
 
 -- T120: the header's bonus line for a family: "+450 healing", "+300 Nature
 -- damage"; nothing for an Other family or when the book answers nil.
 local function BonusLine(fam)
     if fam.kind ~= "heal" and fam.kind ~= "damage" then return "", false end
+    -- T122: a typed +Healing in the accent, "what if" beside it
+    local typed = WIActive() and fam.kind == "heal" and MD.WhatIf:Get("heal") or nil
+    if type(typed) == "number" then
+        return UI.Hex("accent") .. "+" .. Num(typed) .. " healing" .. RESET .. " " .. UI.Hex("muted")
+            .. "what if" .. RESET, false
+    end
     local amount, stale = MD.Book:Bonus(fam.kind, fam.school)
     if type(amount) ~= "number" then return "", false end
     local what = "healing"
@@ -1206,7 +1619,7 @@ end
 function SpellsPane:UpdateFamilyLive()
     local f = self.family
     if not f or not f.fam then return end
-    local pool = Pool()
+    local pool = ViewPool() -- T122
     f.header.mana:SetText(HeaderManaText(pool))
     UpdateCardLive(f, pool)
     self.liveFull = FullPool(pool)
@@ -1224,7 +1637,7 @@ function SpellsPane:SelectRank(id)
     if not e then return end
     f.selectedId = id
     if f.activeTable then f.activeTable:SetSelected(id) end
-    local h = RenderCard(f, f.fam, e, Pool())
+    local h = RenderCard(f, f.fam, e, ViewPool()) -- T122
     self:LayoutBlocks(h)
 end
 
@@ -1246,6 +1659,11 @@ function SpellsPane:LayoutBlocks(cardH)
         f.strip:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -y)
         y = y + f.strip:GetHeight() + BLOCK_GAP
     end
+    if f.whatIf and f.whatIf:IsShown() then -- T122
+        f.whatIf:ClearAllPoints()
+        f.whatIf:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -y)
+        y = y + f.whatIf:GetHeight() + BLOCK_GAP
+    end
     f.ranks:ClearAllPoints()
     f.ranks:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -y)
     y = y + f.ranks:GetHeight() + BLOCK_GAP
@@ -1263,7 +1681,10 @@ local function ShowBlocks(f, on)
     for _, b in ipairs({ f.ranks, f.card, f.footer }) do
         if on then b:Show() else b:Hide() end
     end
-    if not on then f.strip:Hide() end
+    if not on then
+        f.strip:Hide()
+        if f.whatIf then f.whatIf:Hide() end -- T122
+    end
 end
 
 function SpellsPane:RenderFamily(key, preview)
@@ -1279,8 +1700,16 @@ function SpellsPane:RenderFamily(key, preview)
     LayoutFamily(f)
     local t = Tables(f)
 
-    local book = MD.Book:Get()
+    -- T122: the what-if book while the what-if is active (the live family
+    -- beside it for the changes)
+    local liveBook = MD.Book:Get()
+    local book = ViewBook()
     local fam = MD.Tabs:Resolve(key, book)
+    local liveFam = fam
+    if book ~= liveBook then
+        liveFam = MD.Tabs:Resolve(key, liveBook)
+        if type(liveFam) ~= "table" then liveFam = nil end
+    end
     if type(fam) ~= "table" then
         -- 3.3: kept, greyed, never dropped silently
         f.fam = nil
@@ -1302,11 +1731,12 @@ function SpellsPane:RenderFamily(key, preview)
         f.scroll:SetContentHeight(Pitch(HEADER_H) + 60)
         return
     end
-    f.fam = fam
+    f.fam, f.liveFam = fam, liveFam
     f.staleText:Hide()
     f.removeBtn:Hide()
     ShowBlocks(f, true)
-    local pool = Pool()
+    local livePool = Pool()
+    local pool = ViewPool() -- T122: the what-if's over the live one
 
     -- 1. the header
     local rep = Rep(fam)
@@ -1343,10 +1773,21 @@ function SpellsPane:RenderFamily(key, preview)
         f.strip.after:SetChecked(AfterOn())
         local word = type(aoh.word) == "function" and aoh.word(fam) or nil
         f.strip.measured:SetText((type(word) == "string") and word or "not measured yet")
-        f.strip.compare:SetPoint("RIGHT", f.strip, "RIGHT", -(SIDE_W + BLOCK_GAP), 0)
+        f.strip.compare:SetPoint("RIGHT", f.strip, "RIGHT", -(SIDE_W + BLOCK_GAP + WI_BTN_W + 8), 0)
     else
         side:Hide()
-        f.strip.compare:SetPoint("RIGHT", f.strip, "RIGHT", -4, 0)
+        f.strip.compare:SetPoint("RIGHT", f.strip, "RIGHT", -(WI_BTN_W + BLOCK_GAP), 0)
+    end
+    local whatIf = WIActive()
+    local ls = liveFam and liveFam.suggested
+    if whatIf and ls and type(ls.rank) == "number" then -- T122
+        f.strip.chipLabel:SetText("WHAT IF")
+        f.strip.chipLive:SetText("live: R" .. ls.rank)
+        f.strip.chipLive:Show()
+    else
+        f.strip.chipLabel:SetText(whatIf and "WHAT IF" or "SUGGESTED")
+        f.strip.chipLive:SetText("")
+        f.strip.chipLive:Hide()
     end
     if fam.kind and s and valued >= 2 then
         f.strip.chipRank:SetText((type(s.rank) == "number") and ("Rank " .. s.rank) or "-")
@@ -1360,8 +1801,18 @@ function SpellsPane:RenderFamily(key, preview)
         f.strip:Hide()
     end
 
+    -- T122: the WHAT IF pane, open while the strip is (its button is there)
+    if f.whatIf then
+        if SpellsPane.whatIfOpen and f.strip:IsShown() then
+            f.whatIf:Show()
+            PaintWhatIf(f, liveFam, fam)
+        else
+            f.whatIf:Hide()
+        end
+    end
+
     -- 3. RANKS
-    local rows = FamilyRows(fam, pool)
+    local rows = FamilyRows(fam, pool, whatIf and liveFam or nil, livePool)
     local active
     SpellsPane.headKind = fam.kind -- T78: what the header tooltips call the amount
     if fam.kind then
@@ -1379,6 +1830,16 @@ function SpellsPane:RenderFamily(key, preview)
     f.activeTable = active
     local rn = Line().ranksNote
     local note = (type(rn) == "function") and rn(fam) or nil
+    f.ranksNote:SetWidth(RANKS_NOTE_W)
+    if whatIf then
+        -- T122: "what if: +150 healing - costs from the static table"
+        local WI = WhatIf()
+        local pn = WI.provider and WI.provider.ranksNote
+        if type(pn) == "function" then pn = pn(fam) end
+        note = "what if: " .. WI:Summary()
+        if type(pn) == "string" and pn ~= "" then note = note .. " - " .. pn end
+        f.ranksNote:SetWidth(VIEW_W - 80)
+    end
     if type(note) == "string" and note ~= "" then
         f.ranksNote:SetText(note); f.ranksNote:Show()
     else
@@ -1796,8 +2257,11 @@ function SpellsPane:RenderOverview()
     local mode = OverviewMode()
     if pane.highlightMode then pane.highlightMode(mode) end
     local t = OverviewTables(pane)
-    local book = MD.Book:Get()
-    local pool = Pool()
+    local book = ViewBook() -- T122: the what-if's while the lens is on
+    local pool = ViewPool()
+    if pane.wiTag then
+        if WIActive() then pane.wiTag:Show() else pane.wiTag:Hide() end
+    end
     local active, idle = t.mine, t.book
     if mode == "book" then active, idle = t.book, t.mine end
     idle:Release(); idle.frame:Hide()
@@ -1859,7 +2323,7 @@ end
 function SpellsPane:UpdateOverviewLive()
     local pane = self.overview
     if not (pane and pane.activeTable) then return end
-    self.liveFull = FullPool(Pool())
+    self.liveFull = FullPool(ViewPool())
     pane.activeTable:UpdateCells()
     self.liveFull = nil
     pane.lastRefresh = GetTime()
@@ -1897,6 +2361,13 @@ local function BuildOverview(host)
     UI.Tint(title, "text", "accent") -- T107
     title:SetText("OVERVIEW")
     pane.title = title
+    -- T122: "what if" beside the title while the lens is on
+    local wiTag = pane:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+    wiTag:SetPoint("LEFT", title, "RIGHT", 8, 0)
+    UI.Tint(wiTag, "text", "muted")
+    wiTag:SetText("what if")
+    wiTag:Hide()
+    pane.wiTag = wiTag
 
     -- [Export] at the view's right edge (556), never the window's
     local exportBtn = UI.CreateButton(pane, "Export", "accent-hover", { 70, 20 })
@@ -1997,7 +2468,7 @@ end
 -- Attach and the fields nav / addBtn / undoText / undoBtn / picker are as
 -- they were.
 MD.SpellRail.Install(SpellsPane, {
-    source = function() return MD.Book and MD.Book:Get() or nil end,
+    source = function() return MD.Book and ViewBook() or nil end, -- T122
     row = function(fam, key)
         local rep = fam.maxKnown or (fam.ranks and fam.ranks[1])
         local rank = fam.suggested and fam.suggested.rank
@@ -2141,6 +2612,23 @@ function SpellsPane:StyleChanged()
     if group == "spells" then self:Show(view) end
 end
 MD:RegisterCallback("STYLE_CHANGED", function() SpellsPane:StyleChanged() end)
+
+-- T122: What if... on the strip opens and closes the WHAT IF pane; a value
+-- changed re-renders what is shown (the rail's tags follow the lens too).
+function SpellsPane:ToggleWhatIf()
+    self.whatIfOpen = not self.whatIfOpen
+    local f = self.family
+    if f and f.key then self:RenderFamily(f.key, f.preview) end
+end
+
+function SpellsPane:WhatIfChanged()
+    local nav = self.nav
+    if not nav then return end
+    self:RefreshRail()
+    local group, view = nav:Selected()
+    if group == "spells" then self:Show(view) end
+end
+MD:RegisterCallback("WHATIF_CHANGED", function() SpellsPane:WhatIfChanged() end)
 
 --------------------------------------------------------------------------------
 -- Wiring (UI/Dashboard_Forever.lua and, since T120, UI/Dashboard.lua)

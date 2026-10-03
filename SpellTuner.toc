@@ -22,6 +22,8 @@ Spells\Coefficients.lua
 Spells\BookShape.lua
 Spells\Book.lua
 Spells\Words.lua
+Spells\WhatIf.lua
+Spells\WhatIf_Forever.lua
 Spells\Tabs.lua
 Engine\ClockFace.lua
 Engine\ManaModel.lua

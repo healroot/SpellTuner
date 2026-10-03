@@ -40,6 +40,8 @@ Engine\RankMath.lua
 Spells\Tabs.lua
 Spells\Book_Model.lua
 Engine\DamageMath.lua
+Spells\WhatIf.lua
+Spells\WhatIf_TBC.lua
 Engine\Calibration.lua
 Engine\PullBudget.lua
 Engine\SimModel.lua
@@ -71,7 +73,6 @@ UI\Widget.lua
 UI\ClockSettings.lua
 UI\Dashboard_Rows.lua
 UI\SpellRail.lua
-UI\Dashboard_Simulate.lua
 UI\Dashboard_Waste.lua
 UI\Dashboard_Review.lua
 UI\PracticePanel.lua
