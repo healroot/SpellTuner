@@ -1,7 +1,8 @@
 # SPEC: one Spells UI on both lines (0.17)
 
-Status: **draft for the author's approval** (2026-10-03). Mockup: `docs/mockups/one-ui.html`.
-Nothing here is built until the mockup and the decisions in section 9 are approved.
+Status: **approved** 2026-10-03 ("go with your recommendations"). Mockup: `docs/mockups/one-ui.html`.
+Tasks: `docs/tasks/T117-*.md` to `T123-*.md` (section 10). The lead's corrections are folded into
+the sections below and listed in section 11.
 
 ## 1. What the author asked
 
@@ -24,7 +25,7 @@ allows. Section 2 lists the rows where the client does not allow it, with the re
 |---|---|---|---|
 | Rail: MY SPELLS, Overview, one row per family | yes, the druid's 4 heals only | yes, any family | yes, any family: heals, damage, other |
 | Picker HEALS / DAMAGE / OTHER | HEALS only, the other two empty | all three | all three |
-| Drag a spell from the spellbook onto the rail | no (no `CursorInfo` binding) | yes | yes (TBC gets the binding, T-o5) |
+| Drag a spell from the spellbook onto the rail | no (no `CursorInfo` binding) | yes | yes (TBC gets the binding, T120) |
 | Overview -> My spells | yes | yes | yes |
 | Overview -> Whole book, Export | no (cut by T84) | yes | yes; one export format |
 | Family view: header, strip, RANKS, rank card | C3's own copy | T38's | **one pane**, `UI/SpellsPane.lua` |
@@ -41,7 +42,7 @@ allows. Section 2 lists the rows where the client does not allow it, with the re
 | Tooltip block | `Tip:Spell`, druid heals, "HPM / HPS" words | `SpellTip:Lines`, any class | **one block** in Forever's words, with TBC's derivation behind the detail key (section 6) |
 | Damage tooltips | `Tip:Damage`, druid only | the same block, kind damage | one block, kind damage, every class with a profile |
 | Classes | druid; others get the clock only | druid, paladin, shaman, priest | the same four on both (section 5) |
-| Settings | 4 columns of 205 px, 1036 x 646 | 2 columns, 860 x 560 | 2 columns, the same views, 860 x 560 (section 7) |
+| Settings | 4 columns of 205 px, 1036 x 646 | 2 columns, 860 x 560 | 2 columns, the same views but Modules, 860 x 560 (section 7) |
 
 Things that stay one line's and are not part of this spec: Reports -> Waste and Runs (TBC: the
 combat log), Settings -> Modules (Forever: the LoadOnDemand modules), and the advisor (TBC).
@@ -52,8 +53,13 @@ combat log), Settings -> Modules (Forever: the LoadOnDemand modules), and the ad
 
 The Forever pane reads only a small surface of `MD.Book`:
 
-- `Get()` -> `{ families, byId, generation }`
-- `CastsFor(entry, pool)`, `Compare(a, b)`, `DefaultPool()`, `Half`, `HalfOf`, `GCD`
+- `Get()` -> `{ families, order, spells, read, generation }` (`spells` is id -> entry; a family
+  is found from an entry as `families[entry.family]`, never by the display name)
+- `CastsFor(entry, pool)`, `Compare(a, b)`, `DefaultPool()`, `Half`, `HalfOf`, `IntervalFor`, `GCD`
+- new: `Pool()` -> `{ max, mana, regenCasting, modelled }` (the pane's pool: Forever the clock's
+  model, `modelled = true`; TBC the client's, `modelled = false`) and `Bonus(kind, school)` ->
+  `{ amount, stale }` or nil (the header's +healing / +damage). Both replace the pane's own client
+  reads.
 - the family fields: `key`, `name`, `kind`, `altKind`, `shape`, `ranks`, `maxKnown`, `ids`
 - the entry fields: `id`, `rank`, `rankText`, `level`, `known`, `value`, `perMana`, `perSec`,
   `cost` (`amount`, `power`), `costState`, `cast`, `castKind`, `interval`, `intervalBy`, `parsed`,
@@ -64,15 +70,24 @@ The Forever pane reads only a small surface of `MD.Book`:
 `Engine/Kit.lua` declares the kit's. It holds every field with its type and `Validate(book)`.
 Each book ends its scan with `BookShape.Check`. A new field is declared there first.
 
-Four entry fields are new, and both books may send them:
+Five entry fields are new, and both books may send them:
 
-- **`variant`, `variantLabel`**: a row the pane draws under its rank. TBC's Lifebloom rolled x2 / x3.
-- **`bonus`**: `{ counts = 0.70, from = "model" | "measured" | "estimated" }`. How much of +healing
-  (or +damage) the rank gets. It is the card's "+Healing counts" pair and the What if's coefficient.
-- **`calc`**: the line's own derivation lines for the detail key and the card. TBC fills it from
-  `RankMath:Explain`. Forever fills it from the text ("Heals 94 to 118, read from the text").
+- **`family`**: the key of the entry's family (`families[entry.family]`).
+- **`variants`**: a list of rows the pane draws under the rank, each `{ variant, variantLabel,
+  value, perMana, perSec, casts, cost, cast, afterOverheal }`; never in `spells`, `ids`, Pareto or
+  `CastsFor`. TBC's Lifebloom rolled x2 / x3.
+- **`bonus`**: `{ counts = 0.70, from = "model" | "measured" | "estimated", amount, of, why, at }`.
+  How much of +healing (or +damage) the rank gets, what that is now (`amount` of the player's
+  `of`), the rule or talent that says so (`why`) and when it was measured (`at`). It is the card's
+  "+Healing" pair and the What if's coefficient.
+- **`calc`**: an array of ASCII strings, the line's own derivation for the detail key. TBC fills it
+  from `RankMath:Explain` / `Tip:Spell`'s Shift lines (and `Tip:Damage`'s VERIFY lines). Forever
+  fills it with "read from the spell's text".
 - **`afterOverheal`**: `{ value, perMana, perSec, frac, scope }`. Present only where overheal is
   measured (TBC).
+
+T118 adds three optional ones TBC sends: `crit` (the crit chance the value averages in), `castNote`
+(`with Nature's Grace averaged`) and `school` (a damage entry's).
 
 ### 3.2 The TBC book: `Spells/Book_Model.lua` (TBC TOC)
 
@@ -86,11 +101,18 @@ Four entry fields are new, and both books may send them:
 
 `desc` comes from the scan tooltip (`MD.API.SpellTooltipLines`). `reach`, `cooldown` and
 `lockout` come from `Spells/Parse.lua` on that text, the same readers Forever uses.
-`generation` is bumped when RankMath's inputs change: gear, talents, form, a what-if value, or
-After overheal.
+**The TBC book is always live.** `Get()` builds from `RankMath:Compute({ live = true })` and never
+sees `MD.sim`; the What if reaches RankMath only through `Get({ whatIf = true })`, which is never
+cached, never bumps `generation` and never fires `BOOK_CHANGED`. `generation` follows a signature
+of the book (gear, talents, form, the spellbook) and `BOOK_CHANGED` fires when it moves, as on
+Forever. After overheal is drawn from `entry.afterOverheal` and does not rebuild the book.
+
+Tranquility and Swiftmend are heal families with no value (Swiftmend carries its `Eats` lines in
+`calc`) and `noSeed`: the list never seeds or reconciles them in; the picker offers them.
 
 `Spells/Families_TBC.lua` is retired. `Spells/Tabs.lua` reads the book through its existing
 `Tabs.source` seam, so the list, its seeding by role (T110) and its reconcile work unchanged.
+`MD.FamiliesTBC` survives as an alias over the book from T118 until T123 removes its last reader.
 
 ### 3.3 One pane: `UI/SpellsPane.lua` (every main TOC)
 
@@ -102,30 +124,38 @@ After overheal.
 
 ```lua
 MD.SpellsLine = {
-  poolWord      = "live" | "modelled",   -- "~" on Forever's current pool only
-  afterOverheal = false | provider,      -- TBC: MD.Overheal; Forever: false (D2)
-  whatIf        = provider,              -- section 4; both lines
-  gaps          = true | false,          -- Forever: gap rows; TBC: unlearned ranks are rows
-  footer        = "Values come from the spell's own text. ~ = modelled."  -- TBC: "Values from the model: your gear, talents and the downrank rules."
-  export        = function() ... end,    -- one format (D6)
+  footer        = "Values come from the spell's own text. ~ = modelled.",
+                  -- TBC: "Values from the model: your gear, talents and the downrank rules."
+  ranksNote     = function(fam) end,     -- RANKS' title-row note (TBC: "live: gear, talents, downrank rules")
+  critNote      = "x1.5, unverified",    -- the card's Crit suffix; TBC: nil (the model's crit)
+  afterOverheal = nil,                   -- TBC: { get, set, word(fam) } over db.effectiveMode; Forever: nil (D2)
+  overviewNote  = function() end,        -- a muted line on Overview (TBC: a class without the rank table)
 }
 ```
 
-- The header's right side becomes two lines on both clients: the mana, then +healing (or
-  +damage on a damage family). Forever reads its bonus out of combat
-  (`MD.API.SpellBonusHealing`, T12) and keeps the last plain reading in combat, marked stale.
+`poolWord`, `gaps` and `export` are not line values: the `~` follows `Book:Pool().modelled`, a
+book with no gap rows sends none, and the export is the pane's one function (D6). The What if's
+provider is `MD.WhatIf.provider` (section 4), not a field here.
+
+- The header's right side becomes two lines on both clients: the mana (`Book:Pool()`), then
+  +healing (or +damage on a damage family) from `Book:Bonus(kind, school)`. Forever reads its
+  bonus out of combat (`MD.API.SpellBonusHealing`, T12) and keeps the last plain reading in
+  combat, marked stale.
 
 ### 3.4 One tooltip block: `UI/SpellTip.lua` (every main TOC)
 
 - `UI/SpellTip_Forever.lua`'s `Lines` / `Render` become shared.
 - Each line hooks its own tooltip:
-  - Forever keeps `MD.API.OnSpellTooltip` / `OnMacroTooltip` / `OnActionTooltip`.
-  - TBC moves `UI/SpellTooltip.lua`'s `OnTooltipSetSpell` hook (once per showing, `pcall`, the
-    Shift refresh) onto `SpellTip:Lines`.
-- `Tip:Spell` and `Tip:Damage` in `UI/Tip_TBC.lua` are deleted once the block reproduces their
-  numbers. `tools/spelltip.lua` holds that the numbers are equal to the kit's.
+  - Forever keeps `MD.API.OnSpellTooltip` / `OnMacroTooltip` / `OnActionTooltip`, registered by
+    the block where the adapter has them.
+  - TBC keeps its `OnTooltipSetSpell` hook in `UI/SpellTooltip.lua` (TBC TOC only), which now hands
+    the id to `SpellTip.OnSpell` (once per showing, `pcall`); its modifier watcher follows the
+    detail mode's key. Moving that hook into `Client/API_TBC.lua` is a follow-up.
+- `Tip:Spell`, `Tip:Damage` and `Tip:Columns` in `UI/Tip_TBC.lua` are deleted by T121 once the
+  block reproduces their numbers; `Tip:Row` by T123. `tools/spelltip.lua` holds that the numbers
+  are equal to the kit's.
 
-`Spells/Words.lua` joins the TBC TOC.
+`Spells/Words.lua` joins the TBC TOC (T117).
 
 ## 4. What if, on both lines
 
@@ -169,8 +199,11 @@ old one-line strip of bare boxes.
 
 ### 4.3 How each line computes it
 
-**TBC.** As today: `MD.sim` is read by `RankMath:Context()` only. Form and Moonglow price costs
-from the static table, and the RANKS note says so.
+**TBC.** As today: `MD.sim` is read by `RankMath:Context()` only, and only
+`Spells/WhatIf_TBC.lua` writes it. Its book is `MD.Book:Get({ whatIf = true })`. Form and Moonglow
+price costs from the static table, and the RANKS note says so (`costs from the static table`). The
+Form and Moonglow rows show only when the book is the druid's (the rank table without a class
+book). Between T120 and T122 TBC has no What if: the old strip is unplaced.
 
 **Forever.** The values come from the spell's own text, so a what-if needs to know how much of
 +healing each rank gets: `value' = value + counts x delta`.
@@ -213,7 +246,11 @@ from the static table, and the RANKS note says so.
 - The values are read from each rank's own tooltip, so nothing is typed from memory (the
   `Data/SpellData.lua` rule).
 - The coefficient rules are `Spells/Coefficients.lua`'s, marked VERIFY on the card's detail as
-  `Tip:Damage` does today.
+  `Tip:Damage` does today. The druid keeps its Balance talents; another class's damage carries
+  `talents not modelled` (T123).
+- Each class's damage families are a `damage` table in its TBC profile (names, school, kind, the
+  cast the coefficient is taken from, tick), read by `DM.FamiliesFor(class)`; the header's +damage
+  is `Book:Bonus("damage", school)`.
 
 ## 6. The tooltip block, one vocabulary
 
@@ -227,7 +264,8 @@ Per sec     1383
 Casts to OOM  9 from full, 7 now
 ```
 
-Behind the detail key (`db.spellTooltipDetail`, now on TBC too; TBC's default is Shift, as today):
+Behind the detail key (`db.spellTooltipDetail`, now on TBC too; TBC's default is Shift, as today;
+the block registers the three tooltip settings' defaults itself):
 
 - the crit range;
 - Reach / Cooldown / Lockout;
@@ -243,7 +281,8 @@ TBC's "HPM" / "HPS" words go. The block's numbers on TBC are the model's (live v
 ## 7. Settings and window sizes
 
 - **Sizes:** TBC's Spells and Settings groups become 860 x 560, fixed, as on Forever. Reports and
-  Simulate stay 1036 x 646 on both lines.
+  Simulate stay 1036 x 646 on both lines. Settings' size is T119's; Spells' is T120's (the TBC
+  Spells view stays 1036 x 646 until the shared pane replaces it).
 - **Views** (mockup M6):
   - TBC: **General, Clock, Review, About**.
   - Forever: **General, Clock, Review, Modules, About**.
@@ -251,16 +290,19 @@ TBC's "HPM" / "HPS" words go. The block's numbers on TBC are the model's (live v
 - **General**, two columns on both lines:
   - Left: SPELL TOOLTIPS, APPEARANCE, WINDOWS.
   - Right: MANA CLOCK, ALERTS (TBC: mute, drink reminder, calibration drift), TOOLS.
-  - TBC's OOM Widget pane becomes MANA CLOCK: show, lock, reset, show now, tooltip on the clock,
-    Customise.... Show rest time and Show mana cooldown are already the Clock view's Text tab
-    (T116).
+  - TBC's OOM Widget pane becomes MANA CLOCK: lock, reset, show now, tooltip on the clock,
+    Customise.... TBC has no "Show the mana clock" switch (its clock is shown by the visibility
+    rule alone; none is added). Show rest time and Show mana cooldown are already the Clock view's
+    Text tab (T116) and leave General.
+  - TOOLS (TBC, mockup M6): debug console, copy profile, verify spell data. Forever: debug console,
+    copy /st dump.
   - INTEGRATIONS goes under TOOLS.
 - **Review** (both lines):
   - Left: RECORDING (record fights, allow run recording on TBC, coach a fight when it opens,
     next pull follows, snapshot ticks, let Coach change ranks, full health, danger line).
   - Right: MODEL.
     - TBC: spend half-life, OOM digits, Tree of Life aura, Nature's Grace, reset overheal data,
-      verify spell data, regen test, copy profile.
+      regen test. (Verify spell data and copy profile are General's TOOLS, mockup M6.)
     - Forever: Measure, plus one line on what `~` means.
 - **About:** the same page on both lines; TBC's stale blurb is replaced with the Forever text.
 
@@ -271,13 +313,17 @@ TBC's "HPM" / "HPS" words go. The block's numbers on TBC are the model's (live v
     +healing line). Every re-based line is listed in the task.
   - TBC: new goldens over the stub druid at level 64, plus a priest with the cap granted.
 - **`tools/bookshapecheck.lua`** (new, tbc / forever): both books pass `BookShape.Validate`. On
-  TBC each entry's numbers equal `RankMath:Compute()`'s row.
+  TBC each entry's numbers equal `RankMath:Compute()`'s row, and `calc` equals the old
+  `Tip:Spell` lines (goldens once that builder is deleted).
+- **`tools/settingscheck.lua`** (new, tbc / forever): the views, the two columns, the controls
+  each writing its setting.
 - **`tools/whatifcheck.lua`** (new, tbc / forever):
   - TBC: the pane's numbers equal `MD.sim`'s.
   - Forever: a measured coefficient from two scripted readings, the estimate's rule, the words
     `estimated` / `measured`, "What changes".
   - Both: nothing outside the pane changes (clock face, tooltip, kit).
-- **`tools/spelltip.lua`** and **`tools/tipcheck.lua`** on the one block, both flavours.
+- **`tools/spelltip.lua`** (tbc) and **`tools/tipcheck.lua`** (forever) on the one block: each
+  suite keeps its flavour, since each drives its own line's hook.
 - **`tools/tbcclasscheck.lua`** with the shipped caps instead of the suite's grant.
 - **`tools/wincheck.lua`** (tbc) for the new sizes, and **`tools/slashcheck.lua`**'s About rows.
 - `make check` green, apicheck 0, textcheck 0.
@@ -301,22 +347,61 @@ Recommended column. The mockup is `docs/mockups/one-ui.html` (M1-M6).
 
 ## 10. Waves (after approval; Opus, worktrees, one integrator)
 
-1. **W1, the contract.**
+1. **W1, the contract** (T117).
    - `Spells/BookShape.lua`
    - `Spells/Coefficients.lua` (moved out of RankMath; byte-identical numbers)
    - `Spells/Words.lua` on TBC
    - the new entry fields on Forever's book
-2. **W2, the TBC book.** `Spells/Book_Model.lua`: heals, damage, other, desc, reach. Then retire
+2. **W2, the TBC book** (T118). `Spells/Book_Model.lua`: heals, damage, other, desc, reach. Then retire
    `Families_TBC`.
-3. **W3, one pane.**
+3. **W3, one pane** (T120).
    - `UI/SpellsPane.lua` on both lines, with `MD.SpellsLine`
    - the TBC rail, picker, drop (`CursorInfo`), Overview with Whole book and Export
    - delete `UI/SpellsView_TBC.lua`'s view and overview
-4. **W4, What if.** The pane, both providers, the Forever coefficient store, "What changes".
-5. **W5, one tooltip block.** On TBC, deleting `Tip:Spell` / `Tip:Damage`.
-6. **W6, classes.** The T111 swaps and the caps granted.
-7. **W7, Settings.** The views, the two columns, TBC's sizes, About.
+4. **W4, What if** (T122). The pane, both providers, the Forever coefficient store, "What changes".
+5. **W5, one tooltip block** (T121). On TBC, deleting `Tip:Spell` / `Tip:Damage`.
+6. **W6, classes** (T123). The T111 swaps, the caps granted, every class's damage families.
+7. **W7, Settings** (T119). The views, the two columns, TBC's sizes, About.
 
-W1 comes first. Then W2 and W7 side by side; then W3 and W5 (W5's shared block reads the TBC
-book, so it needs W2); then W4 and W6 (both need W3).
+W1 comes first (wave A: T117). Then W2 and W7 side by side (wave B: T118, T119); then W3 and W5
+(wave C: T120, T121; W5's shared block reads the TBC book, so it needs W2); then W4 and W6 (wave D:
+T122, T123; both need W3). Wave-mates own disjoint files; a TOC is shared by line, never two
+adjacent lines in one wave. The renames (`UI/SpellsPane_Forever.lua` -> `UI/SpellsPane.lua`,
+`UI/SpellTip_Forever.lua` -> `UI/SpellTip.lua`) happen in W1 so no later wave renames a line
+beside another task's.
 The version is 0.17.0. `docs/TESTING.md` gets a section for it.
+
+## 11. Lead's corrections (2026-10-03)
+
+Found while splitting the spec into T117-T123; each is folded into the section named.
+
+1. **`Get()`'s shape** is `{ families, order, spells, read, generation }`, and every entry carries
+   `family`; the pane finds a family by `entry.family`, never by its display name (3.1).
+2. **`Book:Pool()` and `Book:Bonus(kind, school)`** are book methods; they replace the pane's
+   client reads and the spec's `poolWord` (3.1, 3.3).
+3. **`bonus`** gains `amount`, `of`, `why`, `at`; **`calc`** is an array of ASCII strings (3.1).
+4. **`variants`** is a list on the entry, not flat `variant` / `variantLabel` fields (3.1).
+5. **Tranquility and Swiftmend** are heal families with no value and `noSeed` (3.2).
+6. **`MD.SpellsLine`** is `{ footer, ranksNote, critNote, afterOverheal, overviewNote }`;
+   `poolWord`, `gaps`, `export` and `whatIf` are not line values (3.3).
+7. **The TBC book is always live**; the What if reaches it through `Get({ whatIf = true })` only,
+   and the gear toast's suggested ranks read `Compute({ live = true })` (a fix: they read `MD.sim`
+   before) (3.2, 4.3).
+8. **The two renames happen in W1** and a TOC is owned by line (10).
+9. **TBC's `CursorInfo` / `SetTooltipSpell` bindings are T120's**; the TBC tooltip hook stays in
+   `UI/SpellTooltip.lua`, calling the shared block (2, 3.4).
+10. **`Tip:Columns` and `Tip:Row` are deleted too** (T121, T123); the `MD.FamiliesTBC` alias lives
+    from W2 to W6 (3.2, 3.4).
+11. **Mockup M6 wins for TBC Settings**: copy profile and verify spell data in General's TOOLS,
+    calibration drift in ALERTS, the regen test in Review MODEL (7).
+12. **`tipcheck` stays Forever's, `spelltip` TBC's** (8).
+13. **"T-o5" is T120** (2).
+14. **A Form / Moonglow what-if notes `costs from the static table`** (4.3).
+15. **The damage header reads `Book:Bonus("damage", school)`** (3.3, 5.2).
+16. **T119 changes only the Settings size; the Spells size is T120's** (7).
+17. **No "Show the mana clock" switch on TBC** (7).
+18. **`BookShape` gains `crit`, `castNote`, `school`** (T118) (3.1).
+19. **TBC has no What if between W3 and W4** (4.3).
+20. **Class damage families are profile data** (`damage` in each TBC profile, `DM.FamiliesFor`),
+    with no class talents modelled (5.2).
+21. **The three tooltip settings' defaults are registered by the block** on both lines (6).
