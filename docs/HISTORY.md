@@ -5013,3 +5013,78 @@ unblocks T103, T104, T105, T108, T109, the `BASE_CD_READS` flip and Forever's re
   starts a session D-Bus at `/run/user/1000/bus` when WSL's own runtime mount hides systemd's.
 - Next publish: bump the version, write its `## <version>` section in `CHANGELOG.md`, commit, then
   `secret-env run CURSEFORGE_API_TOKEN -- ./release.sh --publish --dry-run` and without `--dry-run`.
+
+## 2026-10-03 — One UI finished: T117-T123 at 0.17.0, built, not installed
+
+The author asked "can we make spellbook dashboard in TBC like we did in Forever? and in general
+have mostly similar UI in both", answered the approach ("shared pane, I would like to have forever
+features in TBC and vice versa TBC feature (like what if) in forever (but make it well designed)")
+and then every decision of `docs/SPEC-one-ui.md` with "go with your recommendations" (D1-D9; the
+mockup `docs/mockups/one-ui.html`, M1-M6). The spec became seven tasks in four waves, each built
+test first in its own worktree and integrated here in order. **All seven landed; nothing did not
+land.**
+
+- **Wave A, T117** (6c2a689 / 6693faf, integrated 535cff4): the book contract -- `Spells/BookShape.lua`
+  (`MD.BookShape`: the fields `MD.Book` hands the pane and the block, `Validate`, `Check`,
+  `CheckMethods`), `Spells/Coefficients.lua` (the coefficient rules out of RankMath and DamageMath,
+  their goldens equal: 900 druid lines, 354 class lines), Forever's entry fields (`family`, the
+  estimated `bonus`, `calc`), `Book:Pool` / `Book:Bonus`, `Spells/Words.lua` on TBC, and the two
+  renames (`UI/SpellsPane.lua`, `UI/SpellTip.lua`). bookshapecheck 10 / 4 (new).
+- **Wave B, T118** (4f8c08d / 4374411 / 05117c4, integrated d6691fe): the TBC book,
+  `Spells/Book_Model.lua` -- `MD.Book` on TBC from `RankMath:Compute({ live = true })` field for
+  field (Lifebloom's rolled rows as `variants`, the model's bonus and derivation, After overheal),
+  Tranquility and Swiftmend `noSeed`, the druid's damage from `Engine/DamageMath.lua` over the
+  walked spellbook, Other from the walk; **always live**, the What if reaching it only through
+  `Get({ whatIf = true })`; `Spells/Families_TBC.lua` retired behind an alias. Review fixes:
+  `SPELLS_REBUILT` always rebuilds (a heal family trained mid-session is appended again), the gear
+  toast's `SuggestedRanks` puts `RankMath.info` back. bookshapecheck/tbc 16, tabscheck/tbc 7.
+- **Wave B, T119** (e8aa3fe / bd51052, integrated d6691fe): Settings in two columns on both lines
+  from one file, `UI/Settings.lua` (`MD.Settings`, rows as data from the line's `MD.SettingsLine`;
+  `UI/Settings_TBC.lua` from `UI/Options_General.lua`, every control and key kept;
+  `UI/OptionsFrame.lua` and `UI/Options_About.lua` deleted); views General, Clock, Review, About
+  (and Modules on Forever); TBC Settings 860 x 560. settingscheck 10 / 12 (new).
+- **Wave C, T120** (00c4c2f / 2b85b16, integrated 49494eb): one Spells pane on both lines --
+  `UI/SpellsPane.lua` on the TBC TOC (`UI/SpellsView_TBC.lua` deleted), reading `Book:Pool` /
+  `Book:Bonus` / `e.family` instead of the client, drawing TBC's fields (the cast note, the
+  crit-averaged Heals, `+Healing counts N%` for the old `Downrank 70%`, After overheal, the rolled
+  rows); what differs is `MD.SpellsLine`; TBC gets the rail's drop (`MD.API.CursorInfo`,
+  UNVERIFIED), Whole book, Export and the full picker; TBC Spells 860 x 560. spellsui/tbc 11 (new),
+  dashui/tbc 84 -> 67, adaptercheck/tbc 19.
+- **Wave C, T121** (1fa5636 / dfe6d85, integrated 49494eb): one tooltip block -- `UI/SpellTip.lua`
+  on the TBC TOC drawing TBC's book in Forever's words, the model's derivation as How behind the
+  detail key (now a TBC setting, Shift by default); `UI/SpellTooltip.lua` only TBC's hook;
+  `Tip:Spell`, `Tip:Damage`, `Tip:Columns` deleted. spelltip/tbc 49 -> 35, tipcheck/forever 53.
+- **Wave D, T122** (525eccf / 96452f4, integrated 4b5683c): What if on both lines --
+  `Spells/WhatIf.lua` (session-only values, `WHATIF_CHANGED`, the footer's "What changes"),
+  `Spells/WhatIf_TBC.lua` (the only writer of `MD.sim`; Form / Moonglow priced from the static
+  table, said so), `Spells/WhatIf_Forever.lua` (each rank moved by its measured, else estimated,
+  share of +healing; the rules re-run), `Book:MeasureBonus` (`cdb.bonusCounts` from two plain
+  scans around a gear change), M2's WHAT IF pane; `UI/Dashboard_Simulate.lua` deleted. A lens on
+  the pane only: the clock, the block, the kit, the coach and practice keep the live numbers.
+  whatifcheck 8 / 7 (new), spellsui 16 / 57, bookcheck/forever 32.
+- **Wave D, T123** (909e7c0 / 2b1e94b, integrated 4b5683c): the TBC priest, shaman and paladin
+  switched on -- T111's swaps finished (`RankMath:Source()` in SpendTracker, Summary,
+  Diagnostics), `rankTable` and `tooltip` granted (coach, practice, simulate and advisor stay the
+  druid's on TBC, decision 8 (b)), each class's damage families as profile data (`damage`,
+  `damageOrder`; every row VERIFY, talents not modelled; Mind Flay dropped: its text has no channel
+  shape the reader knows), `DM.FamiliesFor`; the `MD.FamiliesTBC` alias and `Tip:Row` deleted.
+  tbcclasscheck/tbc 63, capscheck/tbc 36, profilecheck/tbc 55, bookshapecheck/tbc 18.
+- This finish: `./release.sh --set-version 0.17.0` on every TOC; `tools/data/import-forever-sv.lua`
+  rebuilt: unchanged (fixed version since T54); `CHANGELOG.md` "## 0.17.0" for players;
+  `docs/TESTING.md` §49 (49.1 TBC druid, 49.2 TBC priest / shaman / paladin, 49.3 Forever druid,
+  20-30 minutes each); CLAUDE.md's version prose at 0.17.0; `docs/tasks/HANDOVER.md` rewritten.
+  Both packages built; **nothing installed, nothing published**: both clients run 0.16.8
+  (installed 2026-10-02, and published to CurseForge as a beta from d6de018).
+
+Open from the task files, none of them planned: TBC's `Book:Bonus("damage", school)` hands
+`GetSpellBonusDamage` the school's name, not its number (T120 deviation 11; §49.2 step 3 asks);
+TBC's drag from the spellbook and the rank row's game tooltip UNVERIFIED (§49.1 steps 3-4); no TBC
+`IsPassiveSpell` binding (T118 deviation 3); a TBC class's own casts still labelled `utility` in
+the end-of-fight labels (T123 deviation 8); the duplicate tooltip defaults in the two cores (T121);
+two block-local words to fold into `Spells/Words.lua` (T121 deviation 5); comments naming the old
+`UI/SpellsPane_Forever.lua` / `UI/SpellTip_Forever.lua` (T117 deviation 9).
+
+**Next:** the author installs 0.17.0 on request and runs §49 (and still §46.1, the probe, which
+unblocks T103-T105, T108, T109 and the `BASE_CD_READS` flip); publishing 0.17.0 is
+`secret-env run CURSEFORGE_API_TOKEN -- ./release.sh --publish --dry-run`, then without
+`--dry-run`, on the author's word.

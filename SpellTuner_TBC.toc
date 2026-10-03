@@ -2,7 +2,7 @@
 ## Title: SpellTuner
 ## Notes: Tune your spells: ranks, mana, replays, practice. (TBC line; formerly ManaDemon)
 ## Author: NeRgY
-## Version: 0.16.8
+## Version: 0.17.0
 ## SavedVariables: SpellTunerDB, ManaDemonDB
 ## OptionalDeps: ElvUI
 

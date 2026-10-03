@@ -2185,6 +2185,152 @@ you saw instead.
 **Paste back** into `docs/probe/<build>-0.16.8-s1.md` (Forever) and `.logs/tbc/0.16.8-s1.md`
 (TBC): a line per step, and a screenshot of each of the three designs on one client.
 
+## 49. 0.17.0: one Spells UI on both clients (T117-T123, `docs/SPEC-one-ui.md`; three sessions, 20-30 min each)
+
+0.17.0 is 0.16.8 plus the One UI round, built from the author's "can we make spellbook dashboard
+in TBC like we did in Forever? and in general have mostly similar UI in both" and "go with your
+recommendations" (`docs/SPEC-one-ui.md` section 9, D1-D9; mockup `docs/mockups/one-ui.html`
+M1-M6): one book contract under both lines (T117, T118), one Spells pane (T120), one tooltip
+block (T121), What if on both lines (T122), the TBC priest / shaman / paladin switched on with
+their damage (T123), and Settings in two columns at 860 x 560 on both (T119). All seven tasks
+landed; nothing else changed. §48 (clock v2) and §47 steps 3-4 still run on 0.17.0.
+
+Install only when you ask (`./release.sh --install-tbc ".../_anniversary_/Interface/AddOns"` and
+`./release.sh --install-forever ".../_classic_beta_/Interface/AddOns"`; never cross them). At
+character select SpellTuner reads **0.17.0**. Every step is out of combat unless it says so. For
+each step, a line in the paste: `ok`, or what you saw instead -- a screenshot is worth more than a
+sentence wherever the step says "looks".
+
+What is still **UNVERIFIED** and asked below: TBC's drag from the spellbook (`MD.API.CursorInfo`,
+49.1 step 4), TBC's game tooltip on a rank row (`SetSpellByID`, 49.1 step 3), the class damage
+coefficients (every row VERIFY, 49.2), the +damage number in a TBC damage spell's header (49.2
+step 3; T120 noted the TBC book hands the client a school name, not its number), and Forever's
+measured +healing share (49.3 step 4).
+
+### 49.1 TBC druid (one session, 25-30 min; a druid of level 40+, out of combat, a few pulls at the end)
+
+1. **The window (T120, T119).** `/md`. The Spells group is **860 x 560** now (it was 1036 x 646),
+   fixed: no grip. Left the rail (MY SPELLS, Overview, one row per family; `+ Add` at the foot);
+   right Overview the first time. Reports and Simulate are still the big size. Paste a screenshot.
+2. **One spell's page (T120, M1).** Click Healing Touch on the rail. The header: the name, the
+   shape / rank / cast (`2.9 s cast with Nature's Grace averaged` if you have it), and on the
+   right two lines -- your mana (`6500 / 6500 mana`, no `~` on TBC) and `+N healing`, N your
+   character sheet's bonus healing. RANKS: Heal (crit-averaged: `(4046 with 15% crit)` on the
+   card), Per mana with its bar, Per sec, Cast, Casts; unlearned ranks greyed `learn at N`; the
+   suggested row's fill. The title row's note reads `live: gear, talents, downrank rules`. Click
+   a lower rank: the card follows (Heals, Crit, Cost, Cast, Per mana, Per sec, Casts, Now,
+   **+Healing counts N%** -- 70% on a downranked rank, the old `Downrank 70%` -- and, if overheal
+   is measured, `After oh.`). The footer reads `Values from the model: your gear, talents and the
+   downrank rules.` Compare three numbers with 0.16.8's view (the same character, the same gear):
+   they should be equal.
+3. **The rank row's hover (T120, T121; UNVERIFIED).** Hover a rank row: the game's own tooltip for
+   that exact rank, with the SpellTuner block once under it (never twice). Paste whether the
+   game's tooltip draws at all.
+4. **The rail, the picker, the drop (T120; the drop UNVERIFIED).** `+ Add`: the picker has HEALS
+   (Tranquility and Swiftmend among them), **DAMAGE** (Wrath, Starfire, Moonfire, Insect Swarm,
+   Hurricane -- new on TBC) and OTHER. Add Wrath: it joins the rail; its page says `Hits`, the
+   header `+N Nature damage`, the note `live: gear, talents`. Remove it with the row's `x`;
+   `Wrath removed [Undo]` puts it back. Then open the spellbook (P) and **drag Regrowth onto the
+   rail**: it should go in at the row you drop on (if it is already listed, remove it first).
+   Paste whether the drop works; if not, what the cursor held.
+5. **Overview, Whole book, Export (T120, M3).** Overview -> [My spells] (one row per listed family:
+   suggested vs highest), then [Whole book]: Heals, Damage and Other sections, a row per rank,
+   `+` on a family not in your list. [Export]: copy the block into the paste (it is the Forever
+   probe's dump format, one format for both clients).
+6. **After overheal (T120).** On Healing Touch, tick **After overheal** in the strip (its words
+   name your measured share, `25% measured`). RANKS and the card switch to the after-overheal
+   numbers; the suggested rank does not move. Untick. Lifebloom: the x2 / x3 rolled rows under the
+   rank, greyed rank cell, not selectable, their hover saying what rolling means.
+7. **What if (T122, M2).** On Healing Touch, **What if...** at the strip's right opens the WHAT IF
+   panel between the strip and RANKS. Each box shows your live value in grey. Type +Healing
+   `+150` (or `+` 25 a click, Shift `+` 100): the chip reads **WHAT IF** with `live: R12` under the
+   rank, the header's `+healing` and the changed cells in your accent colour, a cell's hover
+   `live 6.09, what if 6.41`, a white mark on the per-mana bar at the what-if value, RANKS' note
+   `what if: +150 healing`, and one footer line (`Suggested: Rank 12 -> Rank 6 ...` or
+   `No change to the suggestion. ...`). Form `Tree of Life` and Moonglow 3: the note adds
+   `costs from the static table`. Mana 10000: Casts change, nothing else. While it is set,
+   hover Healing Touch on your action bar: the tooltip shows the LIVE numbers, and the clock does
+   not move. **Clear** puts every number back. Set it again and `/reload`: it is gone (never
+   saved).
+8. **The tooltip block (T121, M5).** Hover Healing Touch, Regrowth, Rejuvenation, Swiftmend and
+   Wrath on your bars. The plain block: `SpellTuner  Rank N of M  Shift: detail`, Suggested,
+   Per mana, Per sec, `Casts to OOM  N from full, M now` -- no `HPM / HPS`, no `Average`. Hold
+   Shift: Heals, Crit, After overheal (where measured), `vs Rank N`, reach / cooldown where the
+   text has them, then **How** with the model's derivation (base, coefficient, +healing and the
+   downrank share, talents) -- the lines 0.16.8 showed under Shift. Swiftmend shows its two Eats
+   lines. Wrath's How ends `VERIFY`. Then Settings -> General -> SPELL TOOLTIPS -> **Detail lines**
+   `Alt`: Alt now shows the detail, Shift does nothing; `Always` / `Never`; back to `Shift`.
+   `/md spelltip` still turns the block off and on.
+9. **Settings (T119, M6).** Settings is **860 x 560** with views General, Clock, Review, About.
+   General in two columns: left SPELL TOOLTIPS, APPEARANCE, WINDOWS; right MANA CLOCK (Lock in
+   place, Tooltip on the clock, Reset position, Show now, Customise...), ALERTS (Mute alerts,
+   Drink reminder, Calibration drift alerts), TOOLS (Debug Console, Verify spell data, Copy
+   profile) and INTEGRATIONS. Review: RECORDING | MODEL (Spend half-life, OOM digits, Tree of Life
+   aura, Nature's Grace, Reset overheal data, Regen test). About: the commands. Text size +2
+   (APPEARANCE): nothing clipped on any view. Change one setting on each view, `/reload`: it
+   stayed. `/md options` still opens General.
+10. **A few pulls.** In combat the window hides and comes back on the same view after; the tooltip
+    block shows on a hover in combat (TBC's text is static, so never `read before combat`).
+
+### 49.2 TBC priest, shaman or paladin (one session, 20 min; any level 20+, out of combat)
+
+1. **Switched on (T123).** `/md`: the Spells rail lists your heals (Priest: Lesser Heal, Heal,
+   Greater Heal, Flash Heal, Renew, Prayer of Healing...; Shaman: Healing Wave, Lesser Healing
+   Wave, Chain Heal; Paladin: Holy Light, Flash of Light) -- on 0.16.8 this class had the clock
+   only. Each family's page has RANKS and a card. Compare one rank's Heal with the spell's own
+   tooltip range: the base should be the tooltip's, the bonus on top.
+2. **Damage (T123).** `+ Add` -> DAMAGE lists the class's damage spells (Priest: Smite, Holy Fire,
+   Mind Blast, Shadow Word: Pain -- Mind Flay is in OTHER, its text has no shape the reader
+   knows; Shaman: Lightning Bolt, Chain Lightning, Earth Shock, Flame Shock, Frost Shock;
+   Paladin: Exorcism, Holy Wrath, Consecration). Add two. Their card's How (Shift on the tooltip)
+   says `talents not modelled (VERIFY)`. For each, paste the tooltip's own range and the card's
+   Hits.
+3. **+damage in the header (UNVERIFIED).** On a damage spell's page the header's second line reads
+   `+N <School> damage`. Paste N and your character sheet's spell damage for that school: they
+   should be equal (a `+0` where the sheet shows more is the bug T120 noted).
+4. **The tooltip block (T121, T123).** Hover a heal and a damage spell on your bars: the same block
+   as 49.1 step 8, in the class's words; Shift shows the detail and How.
+5. **What if (T122).** What if... on a heal: STATS only, no CLASS row. +150 healing moves the
+   numbers as in 49.1 step 7.
+6. **What stays the druid's (T123).** Reports -> Review: Coach and the row menu's Coach say
+   `Coaching: not modelled for <Class> yet`; Simulate -> Practice refuses Start the same way.
+   Settings: as 49.1 step 9.
+
+### 49.3 Forever druid (one session, 25-30 min; level 10+, a dummy or a few pulls)
+
+1. **The page (T120).** `/st` -> Spells -> Healing Touch (or any heal). The header's right side is
+   two lines now: `~364 / 364 mana` (the `~` because the pool is modelled), then `+N healing`
+   (your bonus healing; out of combat it is read live, in combat the last reading in grey with the
+   hover `read before combat`). The card gains **+Healing counts ~N% estimated (cast 3.0 / 3.5)**
+   on every rank before a gear change; nothing else on the card changed. No After overheal check
+   (Forever has no combat log, D2).
+2. **What if (T122, new on Forever).** What if... -> the panel with STATS and the sentence `Your
+   talents are already in the spells' text, so there is no class row.` +150 healing: the ranks'
+   Heal, Per mana and Per sec move, the suggestion may move, the footer says so, and RANKS' note
+   reads `what if: +150 healing - N of M ranks measured, K estimated`. Crit 30: only the card's
+   Crit line changes. Mana: Casts and Now. Overview and the rail's tags follow (Overview's title
+   `what if`). Clear.
+3. **The tooltip block (T121).** Hover a heal: the plain block as on 0.16.8; Shift adds the same
+   detail as before plus a **How** line at the end (`read from the spell's text`, then
+   `+Healing counts ~N%, estimated`). Settings -> General -> SPELL TOOLTIPS -> `...and to damage
+   spells` off drops Wrath's / Moonfire's block (Forever never read that switch before), on brings
+   it back.
+4. **The measured share (T122; UNVERIFIED).** Out of combat, note Healing Touch's value on the
+   card, then put on (or take off) one piece of gear with +healing and wait two seconds (one
+   scan). The card's pair should change from `~N% estimated` to `N%, measured <date>` and RANKS'
+   note's `measured` count go up. Swap back: the share stays measured. Paste both values, both
+   bonuses and the share shown. (`/st dump` is not needed; the share is kept per spell in your
+   character's saved variables, `bonusCounts`.)
+5. **Whole book, Export, the picker (T120).** As on 0.16.8 (Whole book drawn at once, Export, the
+   picker's three sections).
+6. **Settings (T119).** Settings: General, Clock, Review, Modules, About. General two columns
+   (Measure is on Review -> MODEL now, with one line on what `~` means); Review's RECORDING live
+   with the Replay module on, greyed with it off. Text size +2: nothing clipped.
+
+**Paste back** into `.logs/tbc/0.17.0-s1.md` (49.1), `.logs/tbc/0.17.0-s2.md` (49.2, with the
+class in the first line) and `docs/probe/<build>-0.17.0-s1.md` (49.3): a line per step, 49.1
+step 5's Export block whole, screenshots of 49.1 steps 1, 2 and 7.
+
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the
 raw numbers. `/md profile` output is welcome with any report. I turn them into
