@@ -1,18 +1,42 @@
--- tools/run.sh tools/spelltip.lua
+-- tools/run.sh --flavour tbc tools/spelltip.lua
 --
--- The spell tooltip (v0.14.9) under the stub: a fake GameTooltip that records
+-- The spell tooltip on TBC under the stub: a fake GameTooltip that records
 -- what was added to it, driven the way the client drives the real one -- set a
 -- spell, fire OnTooltipSetSpell (twice, as the client can), clear, re-set.
--- It holds two things: the plumbing (druid only, once per showing, off means
--- off, never a bare pipe) and the arithmetic (every number on the tooltip is
--- the model's own -- the same RankMath row the dashboard shows and the same
--- SpellKit value the simulator heals with).
+--
+-- T121 (docs/tasks/T121-one-tooltip-block.md, docs/SPEC-one-ui.md; mockup
+-- M5): the block is UI/SpellTip.lua's on both lines, drawn from the TBC book
+-- (Spells/Book_Model.lua); UI/SpellTooltip.lua is only TBC's hook into it, and
+-- Tip:Spell / Tip:Damage / Tip:Columns are deleted. Held here:
+--
+--   plumbing (kept from v0.14.9 / v0.15.3): the druid with the tooltip cap,
+--   once per showing, off means off, `spellTooltipDamage = false` drops the
+--   damage block only, never a bare pipe, a raising builder never breaks the
+--   game's tooltip, the dashboard's what-if never reaches a tooltip;
+--
+--   the arithmetic, re-based on the block's lines:
+--   1. Healing Touch R12: Per mana / Per sec are the book's entry, which is
+--      RankMath's row (the simulator's value);
+--   2. Casts to OOM "N from full" is RankMath:CastsToOOM for the entry from a
+--      full pool;
+--   3. the plain block has no HPM / Average / Downranked; the detail has
+--      Heals, Crit ... 15%, After overheal (seeded), vs Rank 11 and the How
+--      lines, equal to Tip:Spell's Shift lines captured on d6691fe (golden);
+--   4. Swiftmend: the two Eats lines (golden from Tip:Spell);
+--   5. Wrath, Moonfire, Hurricane: the block's numbers are DM.Compute's, the
+--      How lines Tip:Damage's VERIFY lines (golden), Vengeance's 2.0x crit;
+--   6. every detail mode: ALT shows the detail only with Alt, ALWAYS always,
+--      NEVER never; the watcher re-runs OnEnter for the mode's key only;
+--   7. a priest with the cap granted here (T111's fixture): the block draws
+--      from the class book.
 local here = arg[0]:match("^(.*)/[^/]+$")
 HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
 local MD = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB
 local SD, RM = MD.SpellData, MD.RankMath
+local T = dofile(here .. "/lib/t.lua")
+local check = T.check
 
 -- a GameTooltip that remembers: hooks run in order, lines are stored
 local tt = _G.GameTooltip
@@ -20,7 +44,11 @@ tt.hooks, tt.lines, tt.spell = {}, {}, nil
 function tt:HookScript(k, fn) self.hooks[k] = self.hooks[k] or {}; table.insert(self.hooks[k], fn) end
 function tt:AddLine(l) self.lines[#self.lines + 1] = { l = l } end
 function tt:AddDoubleLine(l, r) self.lines[#self.lines + 1] = { l = l, r = r } end
+function tt:NumLines() return #self.lines end
 function tt:GetSpell() if self.spell then return "Spell", self.spell end end
+function tt:IsShown() return true end
+local owner
+function tt:GetOwner() return owner end
 local function fire(k) for _, fn in ipairs(tt.hooks[k] or {}) do fn(tt) end end
 local function SetSpell(id)
     tt.lines = {}; fire("OnTooltipCleared")
@@ -28,262 +56,391 @@ local function SetSpell(id)
     return tt.lines
 end
 
--- T80 (C1): the theme and the window manager after the kit, as the TBC TOC lists them
+-- T80 (C1): the theme and the window manager after the kit, as the TBC TOC
+-- lists them; T121: the block (UI/SpellTip.lua) right before the hook
 S.Load({ "UI/Style.lua", "UI/Theme_Flat.lua", "UI/EscStack.lua", "UI/Windows.lua",
-         "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/SpellTooltip.lua" }, "SpellTuner", MD)
+         "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/SpellTip.lua", "UI/SpellTooltip.lua" }, "SpellTuner", MD)
 
-local ok, fails = 0, {}
-local function check(name, cond, detail)
-    if cond then ok = ok + 1 else fails[#fails + 1] = name .. (detail and (" - " .. detail) or "") end
-    print(string.format("%-52s %s%s", name, cond and "ok" or "FAIL", detail and (" - " .. detail) or ""))
-end
+local function Plain(s) return (T.Strip(s or ""):gsub("%s+", " "):gsub("^ ", ""):gsub(" $", "")) end
 local function find(lines, label)
     for _, ln in ipairs(lines) do
-        if ln.l and ln.l:gsub("^%s+", "") == label then return ln end
+        if ln.l and Plain(ln.l) == label then return ln end
     end
 end
-local function nums(str)
-    local out = {}
-    for n in tostring(str or ""):gmatch("%d+%.?%d*") do out[#out + 1] = tonumber(n) end
+local function R(ln) return ln and Plain(ln.r) end
+local function show(lines)
+    for _, ln in ipairs(lines) do print("    | " .. Plain(ln.l) .. (ln.r and ("   " .. Plain(ln.r)) or "")) end
+end
+-- the How lines: the How pair's right side, then every line after it
+local function HowLines(lines)
+    local out, on = {}, false
+    for _, ln in ipairs(lines) do
+        if on then
+            out[#out + 1] = Plain((ln.l or "") .. (ln.r and ("  " .. ln.r) or ""))
+        elseif ln.l and Plain(ln.l) == "How" then
+            on = true
+            out[#out + 1] = Plain(ln.r)
+        end
+    end
     return out
 end
-local function near(a, b, tol) return a and b and math.abs(a - b) <= (tol or 1) end
-local function show(lines)
-    for _, ln in ipairs(lines) do print("    | " .. tostring(ln.l) .. (ln.r and ("   " .. ln.r) or "")) end
+local function SameList(a, b)
+    if #a ~= #b then return false end
+    for i = 1, #a do if a[i] ~= b[i] then return false end end
+    return true
 end
+local function List(t)
+    local s = {}
+    for i, v in ipairs(t) do s[i] = tostring(v) end
+    return "{ " .. table.concat(s, " / ") .. " }"
+end
+local function Num(v, d)
+    if d then return string.format("%." .. d .. "f", v) end
+    return tostring(math.floor(v + 0.5))
+end
+
+local Book = MD.Book
+local function Fresh() return Book:Refresh() end
 
 MD.player.isDruid = true
-local ctx = RM:Context({ live = true })
-local kit = RM:SpellKit({ live = true }).caster
+local book = Fresh()
 
--- Rejuvenation -----------------------------------------------------------------
+--------------------------------------------------------------------------------
+T.section("plumbing")
+--------------------------------------------------------------------------------
 local rejuv = SD.maxRank.Rejuvenation
 local L = SetSpell(rejuv); show(L)
-local row = RM:RowFor(rejuv, ctx, nil, true)
-local tick, total = find(L, "Tick"), find(L, "Total")
-check("Rejuvenation: a tick line and a total", tick ~= nil and total ~= nil)
-check("  the tick is the simulator's tick", tick and near(nums(tick.r)[1], kit[rejuv].tick),
-    tick and string.format("%s vs %.1f", tick.r, kit[rejuv].tick))
-check("  ticks x count = total", tick and total and near(nums(tick.r)[1] * nums(tick.r)[2], nums(total.r)[1], 4))
-check("  the total is the dashboard's heal", total and near(nums(total.r)[1], row.heal))
-
--- the plumbing, on the same spell ------------------------------------------------
+check("Rejuvenation gets the block: a spacer, SpellTuner, Rank N of M", L[1] ~= nil and Plain(L[1].l) == ""
+    and (R(find(L, "SpellTuner")) or ""):find("^Rank %d+ of %d+") ~= nil, R(find(L, "SpellTuner")))
 local before = #tt.lines
 fire("OnTooltipSetSpell")
-check("a second OnTooltipSetSpell adds nothing", #tt.lines == before, before .. " -> " .. #tt.lines)
+check("a second OnTooltipSetSpell adds nothing", before > 0 and #tt.lines == before, before .. " -> " .. #tt.lines)
 check("re-setting after a clear adds it again", #SetSpell(rejuv) == before)
-local bare = false
-for _, ln in ipairs(L) do
-    for _, str in ipairs({ ln.l or "", ln.r or "" }) do
-        if str:gsub("||", ""):find("|", 1, true) then bare = true end
-        if str:find("[\128-\255]") then bare = true end
+local bare
+for _, id in ipairs({ rejuv, SD.maxRank.HealingTouch, SD.maxRank.Regrowth, SD.maxRank.Lifebloom,
+                      SD.maxRank.Swiftmend }) do
+    for _, key in ipairs({ false, true }) do
+        S.shift = key
+        for _, ln in ipairs(SetSpell(id)) do
+            for _, str in ipairs({ ln.l or "", ln.r or "" }) do
+                local good, why = T.Ascii(str)
+                if not good then bare = bare or (id .. ": " .. why .. " in " .. str) end
+            end
+        end
     end
 end
-check("ASCII only, no bare pipe", not bare)
-check("a hint for the derivation, not the derivation", find(L, "Shift: how it is calculated") ~= nil)
-S.shift = true
-local LS = SetSpell(rejuv)
 S.shift = false
-check("Shift adds the derivation", #LS > #L and find(LS, "HoT") ~= nil, #L .. " -> " .. #LS)
+check("ASCII only, no bare pipe, plain and detail", bare == nil, bare)
 MD.db.spellTooltip = false
 check("off means nothing is added", #SetSpell(rejuv) == 0)
 MD.db.spellTooltip = true
-check("a spell the model does not know adds nothing", #SetSpell(635) == 0)
--- T99 (docs/SPEC-next.md 4.4): the gate is the class profile's `tooltip`
--- capability, so a non-druid is the generic profile, not a flag
+check("a spell the book does not know adds nothing", #SetSpell(635) == 0)
+-- T99: the gate is the class profile's `tooltip` capability
 local druidProfile = MD.ClassProfile
 MD.ClassProfile = MD.Profiles.generic
-check("a non-druid gets nothing", #SetSpell(rejuv) == 0)
+check("a class without the tooltip cap gets nothing", #SetSpell(rejuv) == 0)
 MD.ClassProfile = druidProfile
+local htID = SD.maxRank.HealingTouch
+local pmLive = R(find(SetSpell(htID), "Per mana"))
 MD.sim = { heal = 5000 }
-local simmed = find(SetSpell(rejuv), "Total")
+local pmSim = R(find(SetSpell(htID), "Per mana"))
 MD.sim = nil
-check("the dashboard's Simulate strip never reaches a tooltip", simmed and near(nums(simmed.r)[1], row.heal))
+check("the dashboard's what-if never reaches a tooltip", pmLive ~= nil and pmSim == pmLive,
+    tostring(pmLive) .. " / " .. tostring(pmSim))
+check("Tranquility has no value and no calc: no block", #SetSpell(SD.maxRank.Tranquility) == 0)
 
--- Regrowth ---------------------------------------------------------------------
-local rg = SD.maxRank.Regrowth
-L = SetSpell(rg); show(L)
-row = RM:RowFor(rg, ctx, nil, true)
-local d, t, hot, tot = find(L, "Direct"), find(L, "Tick"), find(L, "HoT total"), find(L, "Total")
-check("Regrowth: direct, tick, HoT total, total", d and t and hot and tot and true)
-local lo, hi = d and nums(d.r)[1], d and nums(d.r)[2]
-check("  the direct range brackets the simulator's direct", lo and hi and lo < kit[rg].direct and kit[rg].direct < hi,
-    string.format("%s vs %.0f", d and d.r or "?", kit[rg].direct))
-check("  the tick is the simulator's tick", t and near(nums(t.r)[1], kit[rg].tick))
-check("  7 ticks over 21s", t and nums(t.r)[2] == 7 and hot and nums(hot.r)[2] == 21)
-check("  total = average direct + HoT total", tot and near(nums(tot.r)[1], kit[rg].direct + row.calc.hot, 1))
-check("  and with crits it is the dashboard's heal", tot and near(nums(tot.r)[2], row.heal))
-local crit = find(L, "crit " .. string.format("%d%%", row.calc.crit * 100 + 0.5))
-check("  the crit line uses Regrowth's own crit chance", crit ~= nil and near(nums(crit.r)[1], lo * 1.5, 1),
-    crit and crit.r or "missing")
+-- a builder that throws must not break the game's tooltip
+local realLines = MD.SpellTip and MD.SpellTip.Lines
+if MD.SpellTip then MD.SpellTip.Lines = function() error("boom") end end
+local okCall, got = pcall(SetSpell, rejuv)
+if MD.SpellTip then MD.SpellTip.Lines = realLines end
+check("a failing builder never breaks the game's tooltip", MD.SpellTip ~= nil and okCall and #got == 0)
 
--- Lifebloom --------------------------------------------------------------------
-local lb = SD.maxRank.Lifebloom
-L = SetSpell(lb); show(L)
-t, hot = find(L, "Tick"), find(L, "HoT total")
-local bloom, stacks = find(L, "Bloom"), find(L, "at 2 / 3 stacks")
-tot = find(L, "Total")
-check("Lifebloom: tick, stacks, HoT total, bloom, total", t and stacks and hot and bloom and tot and true)
-check("  the tick is the simulator's per-stack tick", t and near(nums(t.r)[1], kit[lb].tick))
-check("  the bloom is the simulator's bloom (flat, v0.14.4)", bloom and near(nums(bloom.r)[1], kit[lb].bloom))
-check("  stacked ticks are 2x and 3x", stacks and near(nums(stacks.r)[1], 2 * kit[lb].tick, 1)
-    and near(nums(stacks.r)[2], 3 * kit[lb].tick, 1))
-check("  total = 7 ticks + one bloom", tot and near(nums(tot.r)[1], 7 * kit[lb].tick + kit[lb].bloom, 2))
-local rolled = find(L, "Rolled at 3 stacks")
-check("  rolled at 3 is the dashboard's x3 row", rolled and near(nums(rolled.r)[2] or nums(rolled.r)[1],
-    RM:RowFor(lb, ctx, 3).heal, 2), rolled and rolled.r)
+--------------------------------------------------------------------------------
+T.section("1-3. Healing Touch R12")
+--------------------------------------------------------------------------------
+book = Fresh()
+local e = book.spells[htID]
+local ctx = RM:Context({ live = true })
+local row = RM:RowFor(htID, ctx, nil, true)
+L = SetSpell(htID); show(L)
+check("1. Per mana / Per sec are the book's entry, which is RankMath's row",
+    e ~= nil and R(find(L, "Per mana")) == Num(e.perMana, 2) and R(find(L, "Per sec")) == Num(e.perSec, 1)
+    and e.perMana == row.hpm and e.perSec == row.hps,
+    tostring(R(find(L, "Per mana"))) .. " / " .. tostring(R(find(L, "Per sec"))))
+local pool = Book:DefaultPool()
+local casts = e and RM:CastsToOOM(e.cost.amount, e.interval, pool.max, pool.regenCasting)
+check("2. Casts to OOM N from full is RankMath:CastsToOOM from a full pool",
+    type(casts) == "number" and R(find(L, "Casts to OOM")) == Num(casts) .. " from full",
+    tostring(R(find(L, "Casts to OOM"))) .. " want " .. tostring(casts))
+check("   the header says Rank 12 of 12 and the detail key", R(find(L, "SpellTuner")) == "Rank 12 of 12 Shift",
+    R(find(L, "SpellTuner")))
+check("   Suggested, then the facts; no HPM, Average, Downranked or overheal on the plain block",
+    find(L, "Suggested") ~= nil and find(L, "HPM / HPS") == nil and find(L, "Average") == nil
+    and find(L, "Heal") == nil and find(L, "Downranked") == nil and find(L, "After your overheal") == nil
+    and find(L, "After overheal") == nil and find(L, "How") == nil)
 
--- Healing Touch, and a downranked one ---------------------------------------------
-local ht = SD.maxRank.HealingTouch
-L = SetSpell(ht); show(L)
-row = RM:RowFor(ht, ctx, nil, true)
-local heal = find(L, "Heal")
-check("Healing Touch: a range around the average", heal and nums(heal.r)[1] < row.heal / row.calc.critMult
-    and row.heal / row.calc.critMult < nums(heal.r)[2])
-check("  max rank is not marked downranked", find(L, "Downranked") == nil)
-local low = SD.all.HealingTouch[7]   -- rank 7, level 38, on a level 64 druid
-L = SetSpell(low)
-local dr = find(L, "Downranked")
-check("a rank far below the player says it is downranked", dr ~= nil and dr.r:find(
-    string.format("%.2f", RM:RowFor(low, ctx, nil, true).calc.penalty), 1, true) ~= nil, dr and dr.r)
+-- the detail behind Shift, overheal seeded (bookshapecheck 17's seam)
+local OH = MD.Overheal
+local savedF, savedK = OH.Fraction, OH.KindFraction
+OH.Fraction = function() return 0.25, 20, "rank" end
+OH.KindFraction = function() return 0.25, 20, "kind" end
+book = Fresh()
+e = book.spells[htID]
+S.shift = true
+local LS = SetSpell(htID); show(LS)
+S.shift = false
+OH.Fraction, OH.KindFraction = savedF, savedK
+local heals, crit, after, vs = find(LS, "Heals"), find(LS, "Crit"), find(LS, "After overheal"), find(LS, "vs Rank 11")
+local critWant = Num(e.min * 1.5) .. " - " .. Num(e.max * 1.5) .. " " .. string.format("%d%%", e.crit * 100 + 0.5)
+local GON = "then x 1.10 Gift of Nature"
+local HOW_HT = { "2582 base + 540", "450 healing x 1.000 coef x 1.20 Emp. Touch", GON }
+local cmp = Book:Compare(e, book.spells[SD.all.HealingTouch[11]])
+check("3. detail: Heals, Crit ... 15%, After overheal (measured), vs Rank 11",
+    R(heals) == Num(e.min) .. " - " .. Num(e.max) and R(crit) == critWant
+    and e.afterOverheal ~= nil and R(after) == Num(e.afterOverheal.value) .. " 25% measured"
+    and vs ~= nil and R(vs) == (MD.Words.Signed(cmp.perMana) .. " per mana, " .. MD.Words.Signed(cmp.perSec) .. " per sec"),
+    List({ R(heals), tostring(R(crit)) .. " want " .. critWant, R(after), R(vs) }))
+check("3. the How lines are Tip:Spell's Shift lines (golden, d6691fe)", SameList(HowLines(LS), HOW_HT),
+    List(HowLines(LS)))
+S.shift = true
+local downL = SetSpell(SD.all.HealingTouch[7])
+local rgL = SetSpell(SD.maxRank.Regrowth)
+local lbL = SetSpell(SD.maxRank.Lifebloom)
+S.shift = false
+check("3. a downranked rank's How lines (golden)", SameList(HowLines(downL),
+    { "1029 base + 413", "450 healing x 1.000 coef x 0.77 downrank x 1.20 Emp. Touch", GON }), List(HowLines(downL)))
+check("3. Regrowth's and Lifebloom's How lines (golden)",
+    SameList(HowLines(rgL), { "direct 1061 base + 128", "450 healing x 0.285 coef", "HoT 1064 base + 379",
+        "450 healing x 0.701 coef x 1.20 Emp. Rejuvenation", GON })
+    and SameList(HowLines(lbL), { "HoT 273 base + 280", "450 healing x 0.519 coef x 1.20 Emp. Rejuvenation",
+        "bloom 600 base + 185", "450 healing x 0.342 coef x 1.20 Emp. Rejuvenation", GON }),
+    List(HowLines(rgL)) .. " " .. List(HowLines(lbL)))
+book = Fresh()
 
--- Swiftmend ------------------------------------------------------------------
+--------------------------------------------------------------------------------
+T.section("4. Swiftmend")
+--------------------------------------------------------------------------------
 L = SetSpell(SD.maxRank.Swiftmend); show(L)
-local eatsR, eatsG = find(L, "Eats Rejuvenation"), find(L, "Eats Regrowth")
-local smKit = kit[SD.maxRank.Swiftmend]
-check("Swiftmend: what it eats, the simulator's numbers", eatsR and eatsG
-    and near(nums(eatsR.r)[1], smKit.swiftmendRejuv, 1) and near(nums(eatsG.r)[1], smKit.swiftmendRegrowth, 1),
-    eatsR and eatsG and (eatsR.r .. " / " .. eatsG.r))
+local eats = {}
+for _, ln in ipairs(L) do
+    local p = Plain((ln.l or "") .. (ln.r and ("  " .. ln.r) or ""))
+    if p:find("^Eats ") then eats[#eats + 1] = p end
+end
+check("4. Swiftmend: the header and its two Eats lines, Tip:Spell's (golden), on the plain block",
+    find(L, "SpellTuner") ~= nil and SameList(eats, { "Eats Rejuvenation 1725 (12s of its ticks)",
+        "Eats Regrowth 1360 (18s of its ticks)" }) and find(L, "Per mana") == nil, List(eats))
 
--- damage spells (v0.15.3) ------------------------------------------------------
--- The base numbers come from the tooltip's own text, so the fake tooltip carries
--- a description the way the client draws it: line 1 the name, the rest below.
-local desc = {}
-function tt:GetName() return "GameTooltip" end
-function tt:NumLines() return #desc end
-for i = 1, 8 do _G["GameTooltipTextLeft" .. i] = { GetText = function() return desc[i] end } end
-local DAMAGE = {   -- id -> name, castTime (ms), description
-    [9912]  = { "Wrath", 2000, "Causes 278 to 312 Nature damage to the target." },
-    [26986] = { "Starfire", 3500, "Causes 540 to 636 Arcane damage to the target." },
-    [26988] = { "Moonfire", 0, "Burns the enemy for 305 to 357 Arcane damage and then an additional " ..
-                               "600 Arcane damage over 12 sec." },
-    [27013] = { "Insect Swarm", 0, "The enemy target is swarmed by insects, decreasing their chance to hit " ..
-                                   "by 2% and causing 792 Nature damage over 12 sec." },
-    [27012] = { "Hurricane", 10000, "Creates a violent storm in the target area causing 206 Nature damage " ..
-                                    "to enemies every 1 sec, and increasing the time between attacks of " ..
-                                    "enemies by 25%. Lasts 10 sec. Druid must channel to maintain the spell." },
-    [133]   = { "Fireball", 3500, "Hurls a fiery ball that causes 100 to 120 Fire damage." },
+--------------------------------------------------------------------------------
+T.section("5. damage")
+--------------------------------------------------------------------------------
+local DAMAGE = {
+    { 9912,  "Wrath",        "Rank 8", 2000,  "Causes 278 to 312 Nature damage to the target." },
+    { 26986, "Starfire",     "Rank 8", 3500,  "Causes 540 to 636 Arcane damage to the target." },
+    { 26988, "Moonfire",     "Rank 12", 0,    "Burns the enemy for 305 to 357 Arcane damage and then an additional " ..
+                                              "600 Arcane damage over 12 sec." },
+    { 27013, "Insect Swarm", "Rank 6", 0,     "The enemy target is swarmed by insects, decreasing their chance to hit " ..
+                                              "by 2% and causing 792 Nature damage over 12 sec." },
+    { 27012, "Hurricane",    "Rank 4", 10000, "Creates a violent storm in the target area causing 206 Nature damage " ..
+                                              "to enemies every 1 sec, and increasing the time between attacks of " ..
+                                              "enemies by 25%. Lasts 10 sec. Druid must channel to maintain the spell." },
+    { 133,   "Fireball",     "Rank 1", 3500,  "Hurls a fiery ball that causes 100 to 120 Fire damage." },
 }
-local realInfo = _G.GetSpellInfo
+local BOOK_NAMES = { "GetNumSpellTabs", "GetSpellTabInfo", "GetSpellBookItemName", "GetSpellBookItemInfo",
+    "GetSpellInfo", "GetSpellDescription", "GetSpellPowerCost", "GetSpellLevelLearned", "GetSpellBonusDamage" }
+local saved = {}
+for _, n in ipairs(BOOK_NAMES) do saved[n] = rawget(_G, n) end
+local byId = {}
+for _, d in ipairs(DAMAGE) do byId[d[1]] = d end
+local function Forget()
+    for _, n in ipairs(BOOK_NAMES) do if MD.API.Invalidate then MD.API.Invalidate(n) end end
+    if MD.BookTBC and MD.BookTBC.Forget then MD.BookTBC.Forget() end
+end
+_G.GetNumSpellTabs = function() return 1 end
+_G.GetSpellTabInfo = function(tab) if tab == 1 then return "Balance", "icon", 0, #DAMAGE end end
+_G.GetSpellBookItemName = function(slot) local d = DAMAGE[slot]; if d then return d[2], d[3], d[1] end end
+_G.GetSpellBookItemInfo = function(slot) local d = DAMAGE[slot]; if d then return "SPELL", d[1] end end
 _G.GetSpellInfo = function(id)
-    local d = DAMAGE[id]
-    if d then return d[1], nil, "icon", d[2] end
-    return realInfo(id)
+    local d = byId[id]
+    if d then return d[2], d[3], "icon", d[4], 0, 30, id end
+    return saved.GetSpellInfo(id)
+end
+_G.GetSpellDescription = function(id) local d = byId[id]; return d and d[5] or "" end
+_G.GetSpellPowerCost = function(id)
+    if byId[id] then return { { type = 0, cost = 340 } } end
+    return saved.GetSpellPowerCost(id)
+end
+_G.GetSpellLevelLearned = function(id)
+    if byId[id] then return nil end
+    return saved.GetSpellLevelLearned and saved.GetSpellLevelLearned(id)
 end
 _G.GetSpellBonusDamage = function() return 300 end
-local levels = {}
-_G.GetSpellLevelLearned = function(id) return levels[id] end
-local function Damage(id)
-    desc = { DAMAGE[id][1], "340 Mana", "40 yd range", DAMAGE[id][3] }
-    return SetSpell(id)
-end
-local T = MD.harnessTalents
-local saved = {}
+Forget()
+
+local TL = MD.harnessTalents
+local savedT = {}
 for _, k in ipairs({ "Moonfury", "Vengeance", "Wrath of Cenarius", "Improved Moonfire", "Focused Starlight" }) do
-    saved[k] = T[k]; T[k] = 0
+    savedT[k] = TL[k]; TL[k] = 0
 end
+local DM = MD.DamageMath
+local function Damage(id, detail)
+    Fresh()
+    S.shift = detail or false
+    local x = SetSpell(id)
+    S.shift = false
+    return x
+end
+local VERIFY = { "VERIFY: coefficients, tick periods and Balance talents are the",
+                 "standard TBC rules, not yet checked against a hit on this client" }
+local NOLEVEL = "the client does not say this rank's level: no downrank penalty applied"
 
-L = Damage(9912); show(L)
-local hit = find(L, "Hit")
--- 2.0s cast: 2/3.5 = 0.5714 of 300 = 171.4 on 278..312
-check("Wrath: the hit is base + spell damage x 2/3.5", hit and nums(hit.r)[1] == 449 and nums(hit.r)[2] == 483,
-    hit and hit.r)
-local wc = find(L, "crit 15%")
-check("  crit at 1.5x", wc and nums(wc.r)[1] == 674 and nums(wc.r)[2] == 725, wc and wc.r)
-local dpm = find(L, "DPM / DPS")
--- 501 expected over the 340 mana the tooltip printed
-check("  DPM from the cost the tooltip prints", dpm and dpm.r:find("^1%.47") ~= nil, dpm and dpm.r)
-check("  no rank level from the client: no downrank line", find(L, "Downranked") == nil)
+L = Damage(9912, true); show(L)
+local wc = DM.Compute(9912, "Wrath", DM.Parse("Wrath", byId[9912][5]))
+check("5. Wrath: Per mana / Per sec are DM.Compute's dpm / dps",
+    R(find(L, "Per mana")) == Num(wc.dpm, 2) and R(find(L, "Per sec")) == Num(wc.dps, 1) and Num(wc.dpm, 2) == "1.47",
+    tostring(R(find(L, "Per mana"))) .. " / " .. tostring(R(find(L, "Per sec"))))
+check("5. Wrath: Hits 449 - 483, Crit 674 - 725 15% (base + 300 x 2/3.5)",
+    R(find(L, "Hits")) == "449 - 483" and R(find(L, "Crit")) == "674 - 725 15%",
+    tostring(R(find(L, "Hits"))) .. " / " .. tostring(R(find(L, "Crit"))))
+check("5. Wrath: the How lines are Tip:Damage's (golden)", SameList(HowLines(L), { "base damage: read from this tooltip",
+    "hit +171 = 300 spell damage x 0.571 coef", NOLEVEL, VERIFY[1], VERIFY[2] }), List(HowLines(L)))
+L = Damage(9912, false)
+check("5. Wrath's plain block: no How, no Hits; the detail key's hint", #L > 0 and find(L, "How") == nil
+    and find(L, "Hits") == nil and (R(find(L, "SpellTuner")) or ""):find("Shift$") ~= nil, R(find(L, "SpellTuner")))
 
-T["Moonfury"], T["Vengeance"], T["Wrath of Cenarius"] = 5, 5, 5
-L = Damage(9912)
-hit = find(L, "Hit")
--- coef 0.5714 + 0.10 = 0.6714 -> +201.4, then x1.10: 527.4 .. 564.8
-check("Wrath with Moonfury 5 and Wrath of Cenarius 5", hit and nums(hit.r)[1] == 527 and nums(hit.r)[2] == 565,
-    hit and hit.r)
-wc = find(L, "crit 15%")
-check("  Vengeance 5 makes a crit 2.0x", wc and nums(wc.r)[1] == 1055 and nums(wc.r)[2] == 1130, wc and wc.r)
-T["Moonfury"], T["Vengeance"], T["Wrath of Cenarius"] = 0, 0, 0
+L = Damage(26988, true); show(L)
+check("5. Moonfire: Hits 351 - 403, Over time 755 over 12 s; How (golden)",
+    R(find(L, "Hits")) == "351 - 403" and R(find(L, "Over time")) == "755 over 12 s"
+    and SameList(HowLines(L), { "base damage: read from this tooltip", "hit +46 = 300 spell damage x 0.152 coef",
+        "DoT +155 = 300 spell damage x 0.516 coef", NOLEVEL, VERIFY[1], VERIFY[2] }),
+    tostring(R(find(L, "Hits"))) .. " / " .. tostring(R(find(L, "Over time"))) .. " " .. List(HowLines(L)))
+L = Damage(27012, true); show(L)
+check("5. Hurricane: How names the halved channel coefficient (golden)",
+    find(L, "Per sec") ~= nil
+    and SameList(HowLines(L), { "base damage: read from this tooltip",
+        "channel +429 = 300 spell damage x 1.429 coef (halved: it hits everything)", NOLEVEL, VERIFY[1], VERIFY[2] }),
+    tostring(R(find(L, "Per sec"))) .. " " .. List(HowLines(L)))
 
-L = Damage(26988); show(L)
-local mfc = MD.DamageMath.Compute(26988, "Moonfire", MD.DamageMath.Parse("Moonfire", DAMAGE[26988][3]))
-check("Moonfire's split lands on the community's 0.15 / 0.52", math.abs(mfc.coef - 0.1515) < 0.002
-    and math.abs(mfc.dotCoef - 0.52) < 0.006, string.format("%.4f / %.4f", mfc.coef, mfc.dotCoef))
-local dt = find(L, "DoT tick")
--- 600 + 300 x 0.5156 = 754.7 over 4 ticks
-check("  its DoT ticks four times", dt and nums(dt.r)[1] == 189 and nums(dt.r)[2] == 4, dt and dt.r)
-check("  and the DoT never crits: expected = crit hit + plain DoT",
-    math.abs(mfc.expected - (mfc.avg * (1 + 0.15 * 0.5) + mfc.dotTotal)) < 0.01)
+TL["Moonfury"], TL["Vengeance"], TL["Wrath of Cenarius"] = 5, 5, 5
+L = Damage(9912, true)
+check("5. Wrath with Moonfury 5, Wrath of Cenarius 5, Vengeance 5: Hits 527 - 565, Crit 1055 - 1130 at x2.0",
+    R(find(L, "Hits")) == "527 - 565" and R(find(L, "Crit")) == "1055 - 1130 15% (x2.0)",
+    tostring(R(find(L, "Hits"))) .. " / " .. tostring(R(find(L, "Crit"))))
+TL["Moonfury"], TL["Vengeance"], TL["Wrath of Cenarius"] = 0, 0, 0
 
-L = Damage(27013); show(L)
-dt = find(L, "DoT tick")
--- 792 + 300 x 12/15 = 1032 over 6 ticks
-check("Insect Swarm: 12/15 coefficient, six ticks", dt and nums(dt.r)[1] == 172 and nums(dt.r)[2] == 6, dt and dt.r)
-
-L = Damage(27012); show(L)
-local ht = find(L, "Tick")
--- 10/3.5 halved = 1.4286 of 300 = 428.6 over 10 ticks
-check("Hurricane: channelled area coefficient, halved", ht and nums(ht.r)[1] == 249 and nums(ht.r)[2] == 10,
-    ht and ht.r)
-
-levels[9912] = 40
-L = Damage(9912)
-local dr = find(L, "Downranked")
-check("a rank the client says is level 40 is downranked on a 64", dr and dr.r:find("0.80") ~= nil, dr and dr.r)
-levels[9912] = nil
-
-S.shift = true
-L = Damage(26988)
-S.shift = false
-check("Shift says where the base came from", find(L, "base damage: read from this tooltip") ~= nil)
-
-desc = { "Wrath", "Something this parser has never seen." }
-check("a description it cannot read adds nothing, rather than a guess", #SetSpell(9912) == 0)
 check("a damage spell that is not a druid's adds nothing", #Damage(133) == 0)
 MD.db.spellTooltipDamage = false
 check("the damage setting off adds nothing to a damage spell", #Damage(9912) == 0)
 check("and leaves the heals alone", #SetSpell(rejuv) > 0)
 MD.db.spellTooltipDamage = true
-for k, v in pairs(saved) do T[k] = v end
-_G.GetSpellInfo = realInfo
+check("the damage setting on again: Wrath's block is back", #Damage(9912) > 0)
 
--- a builder that throws must not break the game's tooltip
-local real = MD.Tip.Spell
-MD.Tip.Spell = function() error("boom") end
-local okCall = pcall(SetSpell, rejuv)
-MD.Tip.Spell = real
-check("a failing builder never breaks the game's tooltip", okCall)
+for k, v in pairs(savedT) do TL[k] = v end
+for _, n in ipairs(BOOK_NAMES) do _G[n] = saved[n] end
+Forget()
+Fresh()
+
+--------------------------------------------------------------------------------
+T.section("6. the detail modes and the watcher")
+--------------------------------------------------------------------------------
+local function HasDetail() return find(SetSpell(htID), "How") ~= nil end
+MD.db.spellTooltipDetail = "ALT"
+S.shift = true
+local altShift = HasDetail()
+S.shift = false; S.altDown = true
+local altAlt = HasDetail()
+S.altDown = false
+local altHint = R(find(SetSpell(htID), "SpellTuner"))
+MD.db.spellTooltipDetail = "ALWAYS"
+local always = HasDetail()
+local alwaysHint = R(find(SetSpell(htID), "SpellTuner"))
+MD.db.spellTooltipDetail = "NEVER"
+S.shift = true
+local never = HasDetail()
+S.shift = false
+MD.db.spellTooltipDetail = "SHIFT"
+check("6. ALT: the detail with Alt only; ALWAYS always; NEVER never; the hint names the key",
+    not altShift and altAlt and always and not never and altHint == "Rank 12 of 12 Alt"
+    and alwaysHint == "Rank 12 of 12",
+    List({ altShift, altAlt, always, never, altHint, alwaysHint }))
+
+local entered = 0
+owner = CreateFrame("Frame")
+owner:SetScript("OnEnter", function() entered = entered + 1 end)
+local function Press(key) entered = 0; S.Fire("MODIFIER_STATE_CHANGED", key, 1); return entered end
+SetSpell(htID)
+local shiftRuns, altIgnored = Press("LSHIFT"), Press("LALT")
+MD.db.spellTooltipDetail = "ALT"
+local altRuns, shiftIgnored = Press("RALT"), Press("RSHIFT")
+MD.db.spellTooltipDetail = "CTRL"
+local ctrlRuns = Press("LCTRL")
+MD.db.spellTooltipDetail = "ALWAYS"
+local alwaysIgnored = Press("LSHIFT")
+MD.db.spellTooltipDetail = "SHIFT"
+tt.lines = {}; fire("OnTooltipCleared")
+local noBlock = Press("LSHIFT")
+owner = nil
+check("6. the watcher re-runs OnEnter for the mode's key only, and only over a block",
+    shiftRuns == 1 and altIgnored == 0 and altRuns == 1 and shiftIgnored == 0 and ctrlRuns == 1
+    and alwaysIgnored == 0 and noBlock == 0,
+    List({ shiftRuns, altIgnored, altRuns, shiftIgnored, ctrlRuns, alwaysIgnored, noBlock }))
+check("the old TBC builders are gone: no Tip:Spell, Tip:Damage, Tip:Columns, MD:SpellTooltipAppend",
+    MD.Tip.Spell == nil and MD.Tip.Damage == nil and MD.Tip.Columns == nil and MD.SpellTooltipAppend == nil
+    and type(MD.Tip.Row) == "function" and type(MD.Tip.Clock) == "function"
+    and MD.SpellTip ~= nil and type(MD.SpellTip.OnSpell) == "function")
 
 -- T76 (P32 of docs/PLAN-refactor-ux.md, review A21): on TBC the renderer is
--- UI/Tip.lua's and the RankMath-bound builders UI/Tip_TBC.lua's; MD.Tip:Show
--- (its old shape, every TBC caller's) still renders into GameTooltip, the kit
--- tooltip untouched. T80 (C1, decision 10): the TBC TOC lists the theme, so
--- that GameTooltip is drawn in the kit's flat skin, as on Forever.
+-- UI/Tip.lua's; MD.Tip:Show (its old shape, every TBC caller's) still renders
+-- into GameTooltip, the kit tooltip untouched. T80 (C1, decision 10): the TBC
+-- TOC lists the theme, so that GameTooltip is drawn in the kit's flat skin.
 do
-    local owner = CreateFrame("Frame")
+    local o = CreateFrame("Frame")
     tt.lines = {}
     MD.UI.tooltip.lines = nil
-    MD.Tip:Show(owner, "ANCHOR_LEFT", { { l = "SpellTuner", c = { 1, 1, 1 } } }, { { l = "Left-click: dashboard" } })
-    local got = #tt.lines == 2 and tt.lines[1].l == "SpellTuner" and tt.lines[2].l == "Left-click: dashboard"
-    local builders = type(MD.Tip.Row) == "function" and type(MD.Tip.Spell) == "function"
-        and type(MD.Tip.Clock) == "function" and type(MD.Tip.Columns) == "function"
+    MD.Tip:Show(o, "ANCHOR_LEFT", { { l = "SpellTuner", c = { 1, 1, 1 } } }, { { l = "Left-click: dashboard" } })
+    local got2 = #tt.lines == 2 and tt.lines[1].l == "SpellTuner" and tt.lines[2].l == "Left-click: dashboard"
     check("T76/T80: TBC's Tip:Show is GameTooltip, in the kit's skin",
-        type(MD.Tip.Skinned) == "function" and got and MD.Tip:Skinned(tt) and MD.UI.tooltip.lines == nil
-        and MD.UI.THEMED == true and builders,
-        string.format("lines=%d builders=%s", #tt.lines, tostring(builders)))
+        type(MD.Tip.Skinned) == "function" and got2 and MD.Tip:Skinned(tt) and MD.UI.tooltip.lines == nil
+        and MD.UI.THEMED == true, string.format("lines=%d", #tt.lines))
     MD.Tip:Hide()
 end
 
-print(string.format("\n%d ok, %d failed", ok, #fails))
-for _, f in ipairs(fails) do print("  FAIL " .. f) end
-if #fails > 0 then os.exit(1) end
+--------------------------------------------------------------------------------
+T.section("7. a priest with the cap granted")
+--------------------------------------------------------------------------------
+do
+    TBCCLASS_LIBRARY = true
+    local lib = dofile(here .. "/tbcclasscheck.lua")
+    local savedLevel, savedClass = S.level, S.units.player.class
+    S.level = 70
+    local _, restore = lib.Install(S, MD, "PRIEST")
+    local caps = MD.Profiles.byClass.PRIEST and MD.Profiles.byClass.PRIEST.caps
+    local savedCaps = caps and { rankTable = caps.rankTable, tooltip = caps.tooltip }
+    local good, why = pcall(function()
+        caps.rankTable, caps.tooltip = true, true
+        S.units.player.class = "PRIEST"
+        MD:DetectProfile()
+        MD:Fire("CORE_LOGIN")
+        MD.BookTBC:Rebuild()
+        local b = Fresh()
+        local ge = b.spells[25213]
+        local lines = SetSpell(25213)
+        show(lines)
+        return ge ~= nil and ge.family == "GreaterHeal"
+            and R(find(lines, "Per mana")) == Num(ge.perMana, 2)
+            and (R(find(lines, "SpellTuner")) or ""):find("^Rank 7 of %d+") ~= nil
+            and find(lines, "Casts to OOM") ~= nil,
+            ge and R(find(lines, "SpellTuner")) or "no Greater Heal 7 in the book"
+    end)
+    restore()
+    if caps then caps.rankTable, caps.tooltip = savedCaps.rankTable, savedCaps.tooltip end
+    S.level, S.units.player.class = savedLevel, savedClass
+    MD:DetectProfile()
+    MD:Fire("CORE_LOGIN")
+    if MD.BookTBC and MD.BookTBC.Rebuild then pcall(MD.BookTBC.Rebuild, MD.BookTBC) end
+    pcall(Fresh)
+    check("7. a priest's Greater Heal 7: the block from the class book (its family, per mana, Rank N of M)",
+        good and why == true, tostring(why) .. (good and "" or " (raised)"))
+end
+
+T.done()

@@ -6,6 +6,13 @@
 -- T37 (docs/SPEC-forever-ui.md 5.1-5.4b, 5.6): the block's new shapes --
 -- SpellTip:Lines(id, detail, source) answering {l, r, lr,lg,lb, rr,rg,rb},
 -- the spacer, the plain block and the detail lines behind the key.
+-- T121 (docs/tasks/T121-one-tooltip-block.md): UI/SpellTip.lua is the one
+-- block of both lines. Re-based here: check 15's "~N now" counts from
+-- MD.Book:Pool() (the clock's modelled pool on this line, as before); the
+-- detail-key check also holds the new How lines behind the key ("How  read
+-- from the spell's text", then "+Healing counts ~N%, estimated" from T117's
+-- bonus); one new check: spellTooltipDamage = false drops a damage spell's
+-- block (Moonfire) and leaves a heal's.
 HARNESS_FLAVOUR = "forever"
 
 local here = arg[0]:match("^(.*)/[^/]+$")
@@ -560,7 +567,9 @@ do
     local atFull = LineAt(SpellTip:Lines(92071), "Casts to OOM")
 
     model:Anchor(GetTime(), 500, "test: drained for tipcheck")
-    local now = Book:CastsFor(entry, MD.Clock:Pool())
+    -- T121: the block's pool is MD.Book:Pool() (the clock's model here)
+    local pool = Book:Pool()
+    local now = pool and pool.modelled == true and Book:CastsFor(entry, pool)
     local drained = LineAt(SpellTip:Lines(92071), "Casts to OOM")
     model:Anchor(GetTime(), model.max, "test: restored")
 
@@ -963,11 +972,20 @@ do
     MD.db.spellTooltipDetail = "NEVER"
     local never = Shown(5185, true):NumLines()
     MD.db.spellTooltipDetail = "SHIFT"
-    check("T37: detail lines only with the key",
+    -- T121: the How lines behind the key -- the book's calc, then T117's
+    -- estimated bonus share -- and never on the plain block
+    local d, p = SpellTip:Lines(5185, true), SpellTip:Lines(5185, false)
+    local how, at = LineAt(d, "How")
+    local bonus = at and d[at + 1] and d[at + 1][1]
+    local howGood = how ~= nil and how[2] == "read from the spell's text" and LineAt(p, "How") == nil
+        and type(bonus) == "string" and bonus:find("+Healing counts ~", 1, true) ~= nil
+        and bonus:find(", estimated", 1, true) ~= nil
+    check("T37: detail lines only with the key (T121: How lines among them)",
         detailN > plainN and up == plainN and down == detailN and always == detailN and never == plainN
-        and alwaysHead == "Rank 1 of 2",
-        string.format("plain=%d detail=%d up=%d down=%d always=%d never=%d alwaysHead=%s", plainN, detailN,
-            up, down, always, never, tostring(alwaysHead)))
+        and alwaysHead == "Rank 1 of 2" and howGood,
+        string.format("plain=%d detail=%d up=%d down=%d always=%d never=%d alwaysHead=%s how=%s bonus=%s",
+            plainN, detailN, up, down, always, never, tostring(alwaysHead), tostring(how and how[2]),
+            tostring(bonus)))
 end
 
 do
@@ -1494,6 +1512,24 @@ do
             tostring(Right(ret.plain, "Per mana")), tostring(Right(ret.plain, "Per sec")),
             tostring(Right(ret.detail, "Average")), tostring(Right(ret.detail, "Or heals")),
             tostring(Right(ret.plain, "Suggested"))) or tostring(healer))
+end
+
+--------------------------------------------------------------------------------
+-- T121 (docs/SPEC-one-ui.md 6): spellTooltipDamage gates a damage family's
+-- block on this line too (on by default, so nothing changed before it was
+-- turned off); a heal keeps its block
+--------------------------------------------------------------------------------
+do
+    local onByDefault = MD.db.spellTooltipDamage ~= false
+    local before = Shown(92401, false):NumLines()
+    MD.db.spellTooltipDamage = false
+    local off = Shown(92401, false):NumLines()
+    local heal = Shown(5185, false):NumLines()
+    MD.db.spellTooltipDamage = true
+    local again = Shown(92401, false):NumLines()
+    check("T121: spellTooltipDamage = false drops a damage spell's block, not a heal's",
+        onByDefault and before > 0 and off == 0 and heal > 0 and again == before,
+        string.format("default=%s before=%d off=%d heal=%d again=%d", tostring(onByDefault), before, off, heal, again))
 end
 
 print(string.format("\n%d ok, %d failed", ok, #fails))

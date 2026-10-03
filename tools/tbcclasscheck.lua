@@ -13,7 +13,8 @@
 --   * Compute, Explain, SuggestedRanks and Spells/Families_TBC.lua's book
 --     read the class's source, and the kit RankMath.ClassKit builds passes
 --     Engine/Kit.lua's Kit.Check, stamped with the class's profile;
---   * every row's derivation renders through UI/Tip_TBC.lua's Row and Spell
+--   * every row's derivation renders through UI/Tip_TBC.lua's Row and (T121)
+--     UI/SpellTip.lua's block over the TBC book
 --     without a raise, and every row carries a level the table can print;
 --   * AS SHIPPED nothing changes for a priest, shaman or paladin: their
 --     profiles grant the clock only (`rankTable` and `tooltip` wait for the
@@ -478,11 +479,31 @@ local function Printable(lines)
     end
     return true
 end
+-- T121: the spell tooltip is UI/SpellTip.lua's block over the TBC book
+-- (Spells/Book_Model.lua, the class's source once `rankTable` is granted):
+-- its lines may carry well-formed colour codes (the detail key's hint, the
+-- tokens), so those are dropped before the pipe test.
+local function Uncoloured(lines)
+    local out = {}
+    for i, ln in ipairs(lines) do
+        local x = {}
+        for _, k in ipairs({ "l", "r" }) do
+            local v = ln[k]
+            if type(v) == "string" then v = v:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "") end
+            x[k] = v
+        end
+        out[i] = x
+    end
+    return out
+end
 local function RowsRender(label, srcX)
     if tipLoaded == nil then
-        tipLoaded = pcall(S.Load, { "UI/Style.lua", "UI/Tip.lua", "UI/Tip_TBC.lua" }, "SpellTuner", MD)
-            and MD.Tip ~= nil and type(MD.Tip.Row) == "function" and type(MD.Tip.Spell) == "function"
+        tipLoaded = pcall(S.Load, { "UI/Style.lua", "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/SpellTip.lua" },
+                "SpellTuner", MD)
+            and MD.Tip ~= nil and type(MD.Tip.Row) == "function"
+            and MD.SpellTip ~= nil and type(MD.SpellTip.Lines) == "function"
     end
+    if MD.Book and MD.Book.Refresh then pcall(MD.Book.Refresh, MD.Book) end
     local ids, bad = {}, {}
     for id in pairs(srcX and srcX.spells or {}) do ids[#ids + 1] = id end
     table.sort(ids)
@@ -493,17 +514,25 @@ local function RowsRender(label, srcX)
             bad[#bad + 1] = id .. " Row: " .. tostring(ok and (what or "no lines") or lines)
         end
         for _, detail in ipairs({ false, true }) do
-            local saved = MD.SpellData
-            MD.SpellData = srcX
-            local ok2, lines2 = pcall(MD.Tip.Spell, MD.Tip, id, detail)
-            MD.SpellData = saved
-            local clean2, what2 = ok2 and Printable(lines2)
-            if not (ok2 and #lines2 > 1 and clean2) then
-                bad[#bad + 1] = id .. " Spell: " .. tostring(ok2 and (what2 or "no lines") or lines2)
+            local ok2, lines2, outcome = false, "no SpellTip", nil
+            if MD.SpellTip and MD.SpellTip.Lines then
+                ok2, lines2, outcome = pcall(MD.SpellTip.Lines, MD.SpellTip, id, detail)
+            end
+            local clean2, what2 = false, nil
+            if ok2 and type(lines2) == "table" then clean2, what2 = Printable(Uncoloured(lines2)) end
+            if not (ok2 and type(lines2) == "table" and #lines2 > 1 and clean2) then
+                bad[#bad + 1] = id .. " SpellTip: " .. tostring(ok2 and (what2 or outcome or "no lines") or lines2)
+            else
+                -- the block found the rank's family in the class book (its
+                -- key, e.family): the header counts the family's known ranks
+                local head = Uncoloured({ lines2[1] })[1]
+                if not (type(head.r) == "string" and head.r:find("^Rank %d+ of %d+")) then
+                    bad[#bad + 1] = id .. " SpellTip header: " .. tostring(head.r)
+                end
             end
         end
     end
-    check(label .. ": every rank's derivation (Tip:Row) and spell tooltip (Tip:Spell, plain and Shift) "
+    check(label .. ": every rank's derivation (Tip:Row) and spell tooltip (SpellTip:Lines, plain and detail) "
         .. "render without a raise, printable ASCII, no pipe",
         tipLoaded and #ids > 0 and #bad == 0, string.format("%s, %d problems over %d ranks: %s", tostring(tipLoaded), #bad,
             #ids, table.concat(bad, "; ", 1, math.min(#bad, 2))))

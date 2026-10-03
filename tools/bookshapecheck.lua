@@ -53,9 +53,12 @@
 --      counts 1.2 of 700 = 840 "x1.20 Empowered Touch"; a downranked rank and
 --      a sub-20 rank name their factors;
 --  19. calc is Tip:Spell(id, true)'s Shift lines, plain (direct, HoT, hybrid,
---      Lifebloom, a downranked rank, Tree of Life);
+--      Lifebloom, a downranked rank, Tree of Life) -- T121: Tip:Spell is
+--      deleted, so the comparison is with its lines captured on d6691fe at
+--      +450 healing (CALC_GOLDEN), no longer a live call;
 --  20. Tranquility and Swiftmend are noSeed heal families with no value;
---      Swiftmend's calc is its two Eats lines;
+--      Swiftmend's calc is its two Eats lines (T121: the golden captured on
+--      d6691fe from Tip:Spell(18562, true));
 --  21. a druid's walked Wrath and Moonfire are damage families whose entries
 --      are DamageMath.Compute's expected / dpm / dps, the suggested rank
 --      RankRules', the bonus's why ending VERIFY;
@@ -825,24 +828,10 @@ local function InstallBook(rows, opts)
     end
 end
 
--- Tip:Spell's Shift lines as plain words, one string per line: colours out,
--- left and right joined, white space collapsed; a single-part spell's term
--- label (the first word of its base line) dropped -- the book's calc prints
--- the label only where there are two parts.
+-- A calc line as plain words: colours out, white space collapsed (the form
+-- checks 19 and 20's goldens -- Tip:Spell's Shift lines, captured on d6691fe
+-- before T121 deleted it -- are written in).
 local function Plain(s) return (T.Strip(s):gsub("%s+", " "):gsub("^ ", ""):gsub(" $", "")) end
-local function TipDetail(lines, single)
-    local out, on = {}, false
-    for _, ln in ipairs(lines) do
-        if on and (ln.l or ln.r) then
-            local t = Plain((ln.l or "") .. (ln.r and ("  " .. ln.r) or ""))
-            if single then t = t:gsub("^%a+ (%d+ base %+)", "%1") end
-            out[#out + 1] = t
-        elseif not (ln.l or ln.r) then
-            on = true
-        end
-    end
-    return out
-end
 local function PlainList(list)
     local out = {}
     for i, s in ipairs(list or {}) do out[i] = Plain(s) end
@@ -964,41 +953,57 @@ local function BookChecks(dF)
     end
 
     -- 19 ----------------------------------------------------------------------
-    T.section("19. calc is Tip:Spell's Shift lines")
+    T.section("19. calc is Tip:Spell's Shift lines (golden)")
     do
-        local okL, err = Try(function()
-            if not (MD.Tip and MD.Tip.Spell) then
-                S.Load({ "UI/Style.lua", "UI/Theme_Flat.lua", "UI/EscStack.lua", "UI/Windows.lua",
-                         "UI/Tip.lua", "UI/Tip_TBC.lua" }, "SpellTuner", MD)
-            end
-        end)
+        -- T121: Tip:Spell(id, true)'s Shift lines, plain, captured on d6691fe
+        -- before the builder was deleted (the harness's druid, +450 healing;
+        -- a single-part spell's term label dropped, as the book prints it)
+        local GON = "then x 1.10 Gift of Nature"
+        local TREE = "+healing includes 95 Tree of Life aura"
+        local CALC_GOLDEN = {
+            [26978] = { { "2582 base + 540", "450 healing x 1.000 coef x 1.20 Emp. Touch", GON },
+                        { "2582 base + 654", "545 healing x 1.000 coef x 1.20 Emp. Touch", GON, TREE } },
+            [8903] = { { "1029 base + 413", "450 healing x 1.000 coef x 0.77 downrank x 1.20 Emp. Touch", GON },
+                       { "1029 base + 501", "545 healing x 1.000 coef x 0.77 downrank x 1.20 Emp. Touch", GON, TREE } },
+            [26981] = { { "932 base + 432", "450 healing x 0.800 coef x 1.20 Emp. Rejuvenation",
+                          "then x 1.26 Gift of Nature, Improved Rejuvenation" },
+                        { "932 base + 523", "545 healing x 0.800 coef x 1.20 Emp. Rejuvenation",
+                          "then x 1.26 Gift of Nature, Improved Rejuvenation", TREE } },
+            [9858] = { { "direct 1061 base + 128", "450 healing x 0.285 coef", "HoT 1064 base + 379",
+                         "450 healing x 0.701 coef x 1.20 Emp. Rejuvenation", GON },
+                       { "direct 1061 base + 155", "545 healing x 0.285 coef", "HoT 1064 base + 458",
+                         "545 healing x 0.701 coef x 1.20 Emp. Rejuvenation", GON, TREE } },
+            [33763] = { { "HoT 273 base + 280", "450 healing x 0.519 coef x 1.20 Emp. Rejuvenation",
+                          "bloom 600 base + 185", "450 healing x 0.342 coef x 1.20 Emp. Rejuvenation", GON },
+                        { "HoT 273 base + 339", "545 healing x 0.519 coef x 1.20 Emp. Rejuvenation",
+                          "bloom 600 base + 224", "545 healing x 0.342 coef x 1.20 Emp. Rejuvenation", GON, TREE } },
+        }
         local bad, n = {}, 0
-        if not okL then bad[1] = "UI: " .. tostring(err) end
-        -- id, single-part: HT 12, HT 7 (downranked), Rejuvenation 12, Regrowth 9, Lifebloom
-        local CASES = { { 26978, true }, { 8903, true }, { 26981, true }, { 9858, false }, { 33763, false } }
-        for _, tree in ipairs({ false, true }) do
+        -- HT 12, HT 7 (downranked), Rejuvenation 12, Regrowth 9, Lifebloom
+        local CASES = { 26978, 8903, 26981, 9858, 33763 }
+        for ti, tree in ipairs({ false, true }) do
             MD.InTreeForm = function() return tree end
             local okB, book = Try(Fresh)
-            for _, c in ipairs(CASES) do
-                local e = okB and book.spells[c[1]]
-                if okL and okB and e then
+            for _, id in ipairs(CASES) do
+                local e = okB and book.spells[id]
+                if okB and e then
                     n = n + 1
-                    local want = TipDetail(MD.Tip:Spell(c[1], true), c[2])
+                    local want = CALC_GOLDEN[id][ti]
                     local got = PlainList(e.calc)
                     if not SameList(want, got) then
-                        bad[#bad + 1] = c[1] .. (tree and " tree" or "") .. ": " .. Show(got) .. " want " .. Show(want)
+                        bad[#bad + 1] = id .. (tree and " tree" or "") .. ": " .. Show(got) .. " want " .. Show(want)
                     end
-                    if c[1] == 26978 and not tree then
+                    if id == 26978 and not tree then
                         for _, l in ipairs(e.calc or {}) do print("    " .. l) end
                     end
                 else
-                    bad[#bad + 1] = c[1] .. " no entry"
+                    bad[#bad + 1] = id .. " no entry"
                 end
             end
         end
         MD.InTreeForm = savedTree
         pcall(Fresh)
-        check("19. calc equals Tip:Spell(id, true)'s Shift lines: direct, hot, hybrid, bloom, downranked, tree",
+        check("19. calc equals Tip:Spell(id, true)'s Shift lines (golden): direct, hot, hybrid, bloom, downranked, tree",
             #bad == 0 and n == 10, Show(bad))
     end
 
@@ -1019,12 +1024,8 @@ local function BookChecks(dF)
             end
         end
         local smE = sm and sm.ranks and sm.ranks[1]
-        local want = {}
-        if MD.Tip and MD.Tip.Spell then
-            for i, ln in ipairs(MD.Tip:Spell(18562, true)) do
-                if i > 1 then want[#want + 1] = Plain((ln.l or "") .. "  " .. (ln.r or "")) end
-            end
-        end
+        -- T121: Tip:Spell(18562, true)'s Eats lines, plain, captured on d6691fe
+        local want = { "Eats Rejuvenation 1725 (12s of its ticks)", "Eats Regrowth 1360 (18s of its ticks)" }
         local got = PlainList(smE and smE.calc)
         for _, l in ipairs(smE and smE.calc or {}) do print("    " .. l) end
         check("20. Tranquility and Swiftmend: noSeed heal families, no value; Swiftmend's calc is Tip:Spell's Eats lines",
