@@ -43,7 +43,7 @@ and a scratch harness run of Lifebloom's stack marks.
 ## Major
 
 **M1 -- Lifebloom's own rank row gets the family's TRADE verdict, which contradicts its tag and
-card.** `UI/SpellsPane.lua:552` (`RankTradeTip(fam, e)`, defined at 657).
+card.** Fixed in 7880c65. `UI/SpellsPane.lua:552` (`RankTradeTip(fam, e)`, defined at 657).
 - Scenario: a TBC druid with Lifebloom, harness default book. Lifebloom R1 has perMana 6.69 and
   perSec 981. Rolled x3 has 7.11 and 1043, so `RR.MarkVariants` puts `bestOfStacks` on x3.
   `TagOf` tags the R1 row `beaten`, and the card's Marks line says best is rolled x3. Hovering
@@ -61,7 +61,7 @@ card.** `UI/SpellsPane.lua:552` (`RankTradeTip(fam, e)`, defined at 657).
 
 ## Minor
 
-**m1 -- With After overheal on, the TRADE block's percentages do not match the row's cells.**
+**m1 -- With After overheal on, the TRADE block's percentages do not match the row's cells.** Fixed in 7880c65.
 `UI/SpellsPane.lua:657-664`, `Spells/Words.lua:644-646`.
 - Scenario: After overheal on, TBC Healing Touch with measured overheal. The Per mana and Per
   sec cells show `Shown(e, after)` (effHpm / effHps). The TRADE `Per mana +x%` / `Per sec -y%`
@@ -71,7 +71,7 @@ card.** `UI/SpellsPane.lua:552` (`RankTradeTip(fam, e)`, defined at 657).
   Alternatively, mark on effective numbers, but that is a rule change.
 
 **m2 -- A kindless spell's row tooltip still counts Casts to OOM from the live pool under What
-if.** `UI/SpellTip.lua:510` (`OtherLines` uses `Book:DefaultPool()` and ignores `activeView`).
+if.** Fixed in 7880c65. `UI/SpellTip.lua:510` (`OtherLines` uses `Book:DefaultPool()` and ignores `activeView`).
 - Scenario: What if with a typed Mana of 20000, then hover a mana-cost utility row in the OTHER
   table (Mark of the Wild). GameTip passes the view, but the block says `Casts to OOM` against
   the live max. The task says to fix it "for every column tip".
@@ -79,7 +79,7 @@ if.** `UI/SpellTip.lua:510` (`OtherLines` uses `Book:DefaultPool()` and ignores 
   and regenCasting).
 
 **m3 -- Leftover "worth what it loses" sentences state the old rule without "at the margin", and
-contradict the marks shown.**
+contradict the marks shown.** Fixed in 7880c65.
 - Where:
   - `UI/SpellsPane.lua:2290`, the Overview `Best` column tip.
   - `Spells/Words.lua:568-569`, MarkTip best = max: "(heals: 1% per mana for 6.7% per second)".
@@ -91,7 +91,7 @@ contradict the marks shown.**
 - Fix: add "at the margin" to both parentheticals, as `SuggestedRule` and the settings tips now
   do. Reword the Overview tip to "the rank that scores highest against max (per mana x per sec^k)".
 
-**m4 -- The strip fit test cannot catch a wrong room, only "no style fits".**
+**m4 -- The strip fit test cannot catch a wrong room, only "no style fits".** Fixed in 7880c65.
 `tools/spellsui.lua` (T128 strip case).
 - The check wraps with the same 8 px function the code is given, against `st.compareW`, the width
   the code computed itself. If `compareW` were wrong (the task's own hypothesis: room measured for
