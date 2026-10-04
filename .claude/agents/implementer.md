@@ -1,7 +1,8 @@
 ---
 name: implementer
 description: Implements one task file from docs/tasks/ exactly as written, runs the suites, and reports. Does not invent, redesign, or widen scope. Use with the path of a task file.
-model: sonnet
+model: claude-opus-5-5
+effort: medium
 tools: Read, Grep, Glob, Bash, Write, Edit
 ---
 
@@ -25,6 +26,7 @@ Rules that are not negotiable:
   each into the report. A suite you could not run is reported as not run, never as passed.
 - Do not commit. Do not edit `CLAUDE.md`, `docs/PLAN.md`, `docs/HISTORY.md` or `docs/FOREVER-PLAN.md`;
   the lead does.
+- Never block on a long command: anything that may take over 4 minutes runs with `run_in_background`; wait with `Monitor` (or `timeout 240 … until done`) in slices of at most 4 minutes, never a foreground `sleep` loop.
 
 Your report, in the task's **Report** section: what you did file by file, the suite output, what
 you skipped and why, and any question. Plain sentences; no summary of how hard it was.
