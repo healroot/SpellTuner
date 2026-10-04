@@ -5090,6 +5090,19 @@ unblocks T103-T105, T108, T109 and the `BASE_CD_READS` flip); publishing 0.17.0 
 `secret-env run CURSEFORGE_API_TOKEN -- ./release.sh --publish --dry-run`, then without
 `--dry-run`, on the author's word.
 
+## 2026-10-04 -- T124 and 0.17.1
+
+T124 (What if compares like with like, +Spell damage on both lines) built test first in the
+worktree spelltune-whatif-fair-compare-29f8cd (a017677 tests, 8a65b71 code, 0dfe218 report),
+reviewed (docs/tasks/T124-review.md, approved, m1 / m2 fixed in 70cedb7) and integrated as
+0.17.1: expected counts whatifcheck tbc 8 -> 10 / forever 7 -> 9, spellsui/forever 57 -> 58,
+bookcheck/forever 32 -> 33; every TOC at 0.17.1 (the import fixture's version is fixed, not
+rebuilt); CHANGELOG.md `## 0.17.1`; docs/TESTING.md section 50; docs/TOOLS.md three rows;
+HANDOVER updated. make check green; both packages built into dist/spelltune-whatif-fair-compare-29f8cd/;
+installed into both clients and merged to master on 2026-10-04; nothing published or pushed. Open: either-or families not moved by +Spell
+damage, MeasureBonus heal-only, no stale damage bonus on TBC (report deviations 3-5).
+Next: TESTING section 50, publish on the author's word.
+
 ## Moved from CLAUDE.md on 2026-10-04
 
 Text moved verbatim out of `CLAUDE.md` when it was trimmed (each line as it stood, including the parts that stay in `CLAUDE.md` in shorter form). Sub-headings are the `CLAUDE.md` sections the lines came from.
