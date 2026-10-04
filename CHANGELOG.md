@@ -17,6 +17,9 @@ published to CurseForge; the developers' log is `docs/HISTORY.md`.
 - Forever now measures how much of your spell damage each damage rank gets, as it already did for
   heals: out of combat, change your spell damage (swap an item) and the What if uses the measured
   share for those ranks, and the RANKS note counts them as measured.
+- What if opens as a drawer beside the window instead of a block above RANKS, so every rank stays
+  in view while you change the stats. It opens on the window's left when the right would leave
+  the screen; ESC closes the drawer first, then the window.
 
 ## 0.17.0
 

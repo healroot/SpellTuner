@@ -1113,19 +1113,29 @@ local function LayoutFamily(f)
 end
 
 --------------------------------------------------------------------------------
--- T122 (docs/tasks/T122-what-if.md; mockup M2): the WHAT IF pane, between
--- the strip and RANKS. STATS (MD.WhatIf.STATS) down the left: a label, a box
+-- T122 (docs/tasks/T122-what-if.md): the What if controls. T125
+-- (docs/tasks/T125-whatif-drawer.md; docs/mockups/whatif-side.html M2): they
+-- live in a drawer, a 220-wide panel outside the main window's right edge (its
+-- left edge when the right one would leave the screen), a child of the window
+-- so it moves, scales and hides with it. The spell view's layout is the same
+-- open or closed. STATS (MD.WhatIf.STATS) stacked: a label, under it a box
 -- empty with the live value in grey until typed, - / + where the row steps
 -- (Shift: the big step), the unit or the typed change in the accent; the
 -- class rows (the provider's, TBC's Form and Moonglow) or the provider's
--- sentence on the right; Clear on the title row; one footer line
--- (MD.WhatIf.Changes). Nothing here is saved.
+-- sentence below; Clear on the title row; the changes (MD.WhatIf.Changes)
+-- at the foot. Nothing here is saved.
 --------------------------------------------------------------------------------
-local WI_ROW = 22           -- a row's pitch at offset 0
-local WI_LABEL_W = 118
+local DRAWER_W = 220         -- the drawer's width (mockup M2)
+local DRAWER_GAP = 2         -- between the window's edge and the drawer
+local DRAWER_PAD = 8         -- the WHAT IF pane inside the drawer
+local WI_PANE_W = DRAWER_W - 2 * DRAWER_PAD -- 204
+local WI_ROW_X = 8           -- a row's indent inside the pane
+local WI_ROW_W = WI_PANE_W - 2 * WI_ROW_X   -- 188: a label, the wrapped sentences
+local WI_LABEL_H = 15        -- a row's label line at offset 0
+local WI_CTRL_H = 18         -- a row's controls
+local WI_ROW_GAP = 3
+local WI_SUB_H = 16          -- STATS / the class title
 local WI_BOX_W = 60
-local WI_CLASS_X = 280      -- the class column
-local WI_CLASS_LABEL_W = 64
 local WI_CHOICE_W = { live = 44, caster = 50, tree = 80 }
 
 -- "600", "17.5": a typed value as the box shows it
@@ -1221,12 +1231,20 @@ local function WhatIfRow(pane, key, label, spec)
     return row
 end
 
--- A row at (x, y) of the pane: label, then its controls left to right.
-local function PlaceWhatIfRow(pane, row, x, y, labelW)
+-- A row's pitch: its label line, its controls, the gap (T125: stacked).
+local function WhatIfRowPitch()
+    return Pitch(WI_LABEL_H) + WI_CTRL_H + WI_ROW_GAP
+end
+
+-- A row at y of the pane: the label on its own line, the controls under it
+-- left to right.
+local function PlaceWhatIfRow(pane, row, y)
+    local x = WI_ROW_X
     row.label:ClearAllPoints()
-    row.label:SetPoint("TOPLEFT", pane, "TOPLEFT", x, -(y + 3))
-    row.label:SetWidth(labelW)
-    local cx = x + labelW + 2
+    row.label:SetPoint("TOPLEFT", pane, "TOPLEFT", x, -y)
+    row.label:SetWidth(WI_ROW_W)
+    y = y + Pitch(WI_LABEL_H)
+    local cx = x
     if row.order then
         for _, b in ipairs(row.order) do
             b:ClearAllPoints()
@@ -1262,128 +1280,251 @@ local function ShowWhatIfRow(row, on)
     end
 end
 
-local function BuildWhatIf(content)
-    local pane = TitledPane(content, "WHAT IF")
-    pane.rows, pane.statRows = {}, {}
+-- A wrapped string's height: the client's, else (no answer) two lines.
+local function WrappedHeight(fs)
+    local h = fs.GetStringHeight and fs:GetStringHeight()
+    if type(h) == "number" and h > 0 then return h end
+    return 2 * Pitch(WI_SUB_H)
+end
+
+-- The drawer's side: right of the window unless its right edge plus the
+-- drawer would leave the screen (UIParent's right), then left. Widget
+-- geometry only (the window manager reads the same).
+function SpellsPane:PlaceDrawer()
+    local d = self.drawer
+    if not d then return end
+    local win = d:GetParent()
+    if not win then return end
+    d:SetHeight(win:GetHeight())
+    local left, w = win:GetLeft(), win:GetWidth()
+    local es = win:GetEffectiveScale()
+    local uiRight = UIParent:GetRight()
+    local ues = UIParent:GetEffectiveScale()
+    local side = "right"
+    if type(left) == "number" and type(w) == "number" and type(es) == "number" and type(uiRight) == "number"
+        and type(ues) == "number" then
+        if (left + w + DRAWER_GAP + DRAWER_W) * es > uiRight * ues + 0.5 then side = "left" end
+    end
+    if d.side ~= side or not d.anchored then
+        d:ClearAllPoints()
+        if side == "left" then
+            d:SetPoint("TOPRIGHT", win, "TOPLEFT", -DRAWER_GAP, 0)
+        else
+            d:SetPoint("TOPLEFT", win, "TOPRIGHT", DRAWER_GAP, 0)
+        end
+        d.side, d.anchored = side, true
+    end
+    return side
+end
+
+-- What closes the What if: the drawer's x, ESC on it, the strip's button.
+function SpellsPane:CloseWhatIf()
+    if not self.whatIfOpen then return end
+    self:ToggleWhatIf()
+end
+
+-- The drawer, built on the first open: a frame on the main window with its
+-- own header (title, x) above it like the window's, the WHAT IF pane inside.
+-- The fields the paint and the suites read sit on the drawer itself
+-- (rows, statRows, clearBtn, statsTitle, classTitle, classNote, footer).
+local function BuildWhatIf(win)
+    local P = UI.PALETTE or {}
+    local d = CreateFrame("Frame", nil, win, "BackdropTemplate")
+    d.spellsWhatIf = true -- marks the drawer for the suites
+    d:SetSize(DRAWER_W, win:GetHeight())
+    d:EnableMouse(true)
+    UI.StylizeFrame(d, P.frame, P.border)
+    local header = CreateFrame("Frame", nil, d, "BackdropTemplate")
+    header:SetPoint("LEFT", d, "LEFT", 0, 0)
+    header:SetPoint("RIGHT", d, "RIGHT", 0, 0)
+    header:SetPoint("BOTTOM", d, "TOP", 0, -1)
+    UI.PixelLayout(header, function(h) h:SetPoint("BOTTOM", d, "TOP", 0, -UI.px(1, h)) end)
+    header:SetHeight(20)
+    UI.Skin(header, "header", P.header, "border")
+    header.text = header:CreateFontString(nil, "OVERLAY", UI.FONT_CLASS_TITLE or UI.FONT_TITLE)
+    header.text:SetPoint("LEFT", header, "LEFT", 8, 0)
+    header.text:SetJustifyH("LEFT")
+    UI.Tint(header.text, "text", "accent")
+    header.text:SetText("What if")
+    header.closeBtn = UI.CreateButton(header, "x", "red", { 20, 20 }, false, false, UI.FONT_SPECIAL, UI.FONT_SPECIAL)
+    header.closeBtn:SetPoint("TOPRIGHT", header, "TOPRIGHT", 0, 0)
+    header.closeBtn:SetScript("OnClick", function() SpellsPane:CloseWhatIf() end)
+    d.header, d.closeBtn = header, header.closeBtn
+
+    local pane = TitledPane(d, "WHAT IF")
+    pane:SetWidth(WI_PANE_W)
+    pane:SetPoint("TOPLEFT", d, "TOPLEFT", DRAWER_PAD, -DRAWER_PAD)
+    d.pane = pane
+    d.rows, d.statRows = {}, {}
     local WI = WhatIf()
-    pane.clearBtn = UI.CreateButton(pane, "Clear", "accent-hover", { 50, 16 }, false, false,
+    d.clearBtn = UI.CreateButton(pane, "Clear", "accent-hover", { 50, 16 }, false, false,
         UI.FONT_SMALL, UI.FONT_SMALL)
-    pane.clearBtn:SetPoint("BOTTOMRIGHT", pane.line or pane, "TOPRIGHT", 0, 3)
-    pane.clearBtn:SetScript("OnClick", function()
+    d.clearBtn:SetPoint("BOTTOMRIGHT", pane.line or pane, "TOPRIGHT", 0, 3)
+    d.clearBtn:SetScript("OnClick", function()
         local w = WhatIf()
         if w then w:Clear() end
     end)
-    UI.SetTooltips(pane.clearBtn, "ANCHOR_TOPLEFT", 0, 3, "Clear",
+    UI.SetTooltips(d.clearBtn, "ANCHOR_TOPLEFT", 0, 3, "Clear",
         "Back to your live numbers. Nothing here is saved.")
-    pane.statsTitle = pane:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
-    pane.statsTitle:SetJustifyH("LEFT")
-    UI.Tint(pane.statsTitle, "text", "muted")
-    pane.statsTitle:SetText("STATS")
-    pane.classTitle = pane:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
-    pane.classTitle:SetJustifyH("LEFT")
-    UI.Tint(pane.classTitle, "text", "muted")
-    pane.classNote = pane:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
-    pane.classNote:SetJustifyH("LEFT")
-    pane.classNote:SetWordWrap(true)
-    pane.classNote:SetWidth(VIEW_W - WI_CLASS_X - 8)
-    UI.Tint(pane.classNote, "text", "muted")
-    pane.footer = pane:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
-    pane.footer:SetJustifyH("LEFT")
-    pane.footer:SetWordWrap(false)
-    pane.footer:SetWidth(VIEW_W - 16)
-    UI.Tint(pane.footer, "text", "text2")
+    d.statsTitle = pane:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+    d.statsTitle:SetJustifyH("LEFT")
+    UI.Tint(d.statsTitle, "text", "muted")
+    d.statsTitle:SetText("STATS")
+    d.classTitle = pane:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+    d.classTitle:SetJustifyH("LEFT")
+    UI.Tint(d.classTitle, "text", "muted")
+    d.classNote = pane:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+    d.classNote:SetJustifyH("LEFT")
+    d.classNote:SetWordWrap(true)
+    d.classNote:SetWidth(WI_ROW_W)
+    UI.Tint(d.classNote, "text", "muted")
+    d.footer = pane:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+    d.footer:SetJustifyH("LEFT")
+    d.footer:SetWordWrap(true)
+    d.footer:SetWidth(WI_ROW_W)
+    UI.Tint(d.footer, "text", "text2")
     for _, s in ipairs(WI and WI.STATS or {}) do
         local row = WhatIfRow(pane, s.key, s.label, s)
-        pane.rows[s.key] = row
-        pane.statRows[#pane.statRows + 1] = row
+        d.rows[s.key] = row
+        d.statRows[#d.statRows + 1] = row
     end
-    pane:Hide()
-    return pane
+
+    -- ESC (6.5): on the stack while shown, so the first ESC closes the drawer
+    -- and the next the window. Pushed on the next frame: shown with the
+    -- window, the window's own entry is pushed after its children's OnShow,
+    -- and the drawer must sit above it. The stack's OnHide hook takes it off.
+    d:SetScript("OnShow", function(self)
+        SpellsPane:PlaceDrawer()
+        MD.API.After(0, function()
+            if self:IsVisible() and MD.Win and MD.Win.Push then
+                MD.Win:Push(self, function() SpellsPane:CloseWhatIf() end)
+            end
+        end)
+    end)
+    -- the window moved, re-scaled, or the screen changed: the side again
+    -- (a few times a second at most, and only while shown)
+    d:SetScript("OnUpdate", function(self, elapsed)
+        self.sinceCheck = (self.sinceCheck or 0) + (elapsed or 0)
+        if self.sinceCheck < 0.2 then return end
+        self.sinceCheck = 0
+        local w = self:GetParent()
+        if not w then return end
+        local now = table.concat({ tostring(w:GetLeft()), tostring(w:GetWidth()), tostring(w:GetEffectiveScale()),
+            tostring(UIParent:GetRight()), tostring(UIParent:GetEffectiveScale()) }, "/")
+        if now ~= self.placedForRaw then
+            self.placedForRaw = now
+            SpellsPane:PlaceDrawer()
+        end
+    end)
+    d:Hide()
+    return d
 end
 
--- The pane's values for the family on screen: the boxes (typed or empty
+-- The drawer's values for the family on screen: the boxes (typed or empty
 -- with the live value in grey), the changes, the class rows or the
--- sentence, the footer; laid out at the current pitch. Sets its height.
+-- sentence, the footer; laid out at the current pitch. Sets d.contentH,
+-- the height the contents take from the drawer's top.
 local function PaintWhatIf(f, liveFam, fam)
-    local pane = f.whatIf
+    local d = f.whatIf
     local WI = WhatIf()
-    if not (pane and WI) then return end
-    local pitch = Pitch(WI_ROW)
+    if not (d and WI) then return end
+    local pane = d.pane
+    local pitch = WhatIfRowPitch()
     local live = WI:Live()
     local top = PANE_TOP
-    pane.statsTitle:ClearAllPoints()
-    pane.statsTitle:SetPoint("TOPLEFT", pane, "TOPLEFT", 8, -top)
-    local y0 = top + Pitch(16)
+    d.statsTitle:ClearAllPoints()
+    d.statsTitle:SetPoint("TOPLEFT", pane, "TOPLEFT", 0, -top)
+    local y0 = top + Pitch(WI_SUB_H)
     local function PaintNumber(row, decimals)
         local v = WI:Get(row.key)
         if not (row.box.HasFocus and row.box:HasFocus()) then row.box:SetText(BoxText(v)) end
-        row.ph:SetText(Num(live[row.key], decimals))        row.ph:SetShown((row.box:GetText() or "") == "")
+        row.ph:SetText(Num(live[row.key], decimals))
+        row.ph:SetShown((row.box:GetText() or "") == "")
         row.delta:SetText(WI:Delta(row.key))
     end
-    -- the labels' column is as wide as its widest label at this font
-    -- ("Regen while casting" outgrows WI_LABEL_W at offset +2)
-    local labelW = WI_LABEL_W
-    for _, row in ipairs(pane.statRows) do
-        local w = row.label:GetStringWidth() or 0
-        if w + 4 > labelW then labelW = math.ceil(w + 4) end
-    end
-    pane.labelW = labelW
-    for i, row in ipairs(pane.statRows) do
-        PlaceWhatIfRow(pane, row, 8, y0 + (i - 1) * pitch, labelW)
+    for i, row in ipairs(d.statRows) do
+        PlaceWhatIfRow(pane, row, y0 + (i - 1) * pitch)
         ShowWhatIfRow(row, true)
         local stat = WI.STAT_BY[row.key]
         PaintNumber(row, stat and stat.decimals)
     end
-    -- the class column: the provider's rows, else its sentence
+    -- the class section under STATS: the provider's rows, else its sentence
+    local cy = y0 + #d.statRows * pitch + 4
     local classRows = WI:ClassRows()
     local wanted = {}
-    local nClass = 0
+    local fy
     if classRows then
-        pane.classTitle:SetText(Esc(WI:ClassTitle() or ""))
-        pane.classTitle:ClearAllPoints()
-        pane.classTitle:SetPoint("TOPLEFT", pane, "TOPLEFT", WI_CLASS_X, -top)
-        pane.classTitle:Show()
-        pane.classNote:Hide()
+        d.classTitle:SetText(Esc(WI:ClassTitle() or ""))
+        d.classTitle:ClearAllPoints()
+        d.classTitle:SetPoint("TOPLEFT", pane, "TOPLEFT", 0, -cy)
+        d.classTitle:Show()
+        d.classNote:Hide()
+        local ry = cy + Pitch(WI_SUB_H)
+        local n = 0
         for j, spec in ipairs(classRows) do
-            local row = pane.rows[spec.key]
+            local row = d.rows[spec.key]
             if not row then
                 row = WhatIfRow(pane, spec.key, spec.label or spec.key, spec)
-                pane.rows[spec.key] = row
+                d.rows[spec.key] = row
             end
             wanted[spec.key] = true
-            PlaceWhatIfRow(pane, row, WI_CLASS_X, y0 + (j - 1) * pitch, WI_CLASS_LABEL_W)
+            PlaceWhatIfRow(pane, row, ry + (j - 1) * pitch)
             ShowWhatIfRow(row, true)
             if row.highlight then
                 row.highlight(WI:Get(spec.key) or "live")
             else
                 PaintNumber(row, nil)
             end
-            nClass = j
+            n = j
         end
+        fy = ry + n * pitch + 4
     else
-        pane.classTitle:SetText("")
-        pane.classTitle:Hide()
+        d.classTitle:SetText("")
+        d.classTitle:Hide()
         local note = WI:ClassNote()
         if note then
-            pane.classNote:SetText(note)
-            pane.classNote:ClearAllPoints()
-            pane.classNote:SetPoint("TOPLEFT", pane, "TOPLEFT", WI_CLASS_X, -top)
-            pane.classNote:Show()
+            d.classNote:SetText(note)
+            d.classNote:ClearAllPoints()
+            d.classNote:SetPoint("TOPLEFT", pane, "TOPLEFT", WI_ROW_X, -cy)
+            d.classNote:Show()
+            fy = cy + WrappedHeight(d.classNote) + 8
         else
-            pane.classNote:SetText("")
-            pane.classNote:Hide()
+            d.classNote:SetText("")
+            d.classNote:Hide()
+            fy = cy
         end
     end
-    for key, row in pairs(pane.rows) do
+    for key, row in pairs(d.rows) do
         local isStat = WI.STAT_BY[key] ~= nil
         if not isStat and not wanted[key] then ShowWhatIfRow(row, false) end
     end
-    local n = math.max(#pane.statRows, nClass)
-    local fy = y0 + n * pitch + 4
-    pane.footer:ClearAllPoints()
-    pane.footer:SetPoint("TOPLEFT", pane, "TOPLEFT", 8, -fy)
-    pane.footer:SetText(WI.Changes(liveFam or fam, fam))
-    pane:SetHeight(fy + Pitch(16) + 4)
+    d.footer:ClearAllPoints()
+    d.footer:SetPoint("TOPLEFT", pane, "TOPLEFT", WI_ROW_X, -fy)
+    d.footer:SetText(WI.Changes(liveFam or fam, fam))
+    local paneH = fy + WrappedHeight(d.footer) + 4
+    pane:SetHeight(paneH)
+    d.contentH = DRAWER_PAD + paneH + DRAWER_PAD
+end
+
+-- Shows the drawer while the What if is open and a spell's strip is on
+-- screen, hides it otherwise (whatIfOpen kept: it comes back on return).
+local function SyncWhatIf(f, liveFam, fam)
+    local s = SpellsPane
+    local want = s.whatIfOpen and f.strip:IsShown() and f:IsShown()
+        and (s.host == nil or s.host:IsShown())
+    if not want then
+        if f.whatIf then f.whatIf:Hide() end
+        return
+    end
+    if not f.whatIf then
+        local win = s.nav and s.nav.frame
+        if not win then return end
+        s.drawer = BuildWhatIf(win)
+        f.whatIf = s.drawer
+    end
+    s:PlaceDrawer()
+    f.whatIf:Show()
+    PaintWhatIf(f, liveFam, fam)
 end
 
 local function BuildFamily(host)
@@ -1559,8 +1700,10 @@ local function BuildFamily(host)
     strip:Hide()
     f.strip = strip
 
-    -- T122: the WHAT IF pane, between the strip and RANKS
-    f.whatIf = BuildWhatIf(content)
+    -- T125: the What if is a drawer on the window (SyncWhatIf builds it on
+    -- the first open); the view's own hiding takes it down, whatIfOpen kept
+    f:HookScript("OnHide", function(self) if self.whatIf then self.whatIf:Hide() end end)
+    host:HookScript("OnHide", function() if f.whatIf then f.whatIf:Hide() end end)
 
     -- 3. RANKS
     f.ranks = TitledPane(content, "RANKS")
@@ -1606,7 +1749,10 @@ local function BuildFamily(host)
         if f.lastTick and (now - f.lastTick) < 2 then return end
         f.lastTick = now
         MD.Book:Get() -- a changed book fires BOOK_CHANGED here, and bumps bookGen
-        if SpellsPane:Signature(f.key, f.preview) ~= f.signature then
+        -- T125: a drawer the view's hiding took down (Alt+Z) comes back
+        local drawerDown = SpellsPane.whatIfOpen and f.strip:IsShown()
+            and not (f.whatIf and f.whatIf:IsShown())
+        if drawerDown or SpellsPane:Signature(f.key, f.preview) ~= f.signature then
             SpellsPane:RenderFamily(f.key, f.preview)
         else
             SpellsPane:UpdateFamilyLive()
@@ -1712,11 +1858,6 @@ function SpellsPane:LayoutBlocks(cardH)
         f.strip:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -y)
         y = y + f.strip:GetHeight() + BLOCK_GAP
     end
-    if f.whatIf and f.whatIf:IsShown() then -- T122
-        f.whatIf:ClearAllPoints()
-        f.whatIf:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -y)
-        y = y + f.whatIf:GetHeight() + BLOCK_GAP
-    end
     f.ranks:ClearAllPoints()
     f.ranks:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -y)
     y = y + f.ranks:GetHeight() + BLOCK_GAP
@@ -1736,7 +1877,7 @@ local function ShowBlocks(f, on)
     end
     if not on then
         f.strip:Hide()
-        if f.whatIf then f.whatIf:Hide() end -- T122
+        if f.whatIf then f.whatIf:Hide() end -- T122 / T125: the drawer too
     end
 end
 
@@ -1861,15 +2002,8 @@ function SpellsPane:RenderFamily(key, preview)
         f.strip:Hide()
     end
 
-    -- T122: the WHAT IF pane, open while the strip is (its button is there)
-    if f.whatIf then
-        if SpellsPane.whatIfOpen and f.strip:IsShown() then
-            f.whatIf:Show()
-            PaintWhatIf(f, liveFam, fam)
-        else
-            f.whatIf:Hide()
-        end
-    end
+    -- T122 / T125: the What if drawer, open while the strip is (its button is there)
+    SyncWhatIf(f, liveFam, fam)
 
     -- 3. RANKS
     local rows = FamilyRows(fam, pool, whatIf and liveFam or nil, livePool)
@@ -2673,8 +2807,9 @@ function SpellsPane:StyleChanged()
 end
 MD:RegisterCallback("STYLE_CHANGED", function() SpellsPane:StyleChanged() end)
 
--- T122: What if... on the strip opens and closes the WHAT IF pane; a value
--- changed re-renders what is shown (the rail's tags follow the lens too).
+-- T122: What if... on the strip opens and closes the WHAT IF pane (T125: the
+-- drawer); a value changed re-renders what is shown (the rail's tags follow
+-- the lens too).
 function SpellsPane:ToggleWhatIf()
     self.whatIfOpen = not self.whatIfOpen
     local f = self.family

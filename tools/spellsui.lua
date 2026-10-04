@@ -565,6 +565,7 @@ if S.flavour == "tbc" then
         local btn = f.strip.whatIfBtn
         if not btn then return false, "no What if... button" end
         local closed = not (f.whatIf and f.whatIf:IsShown())
+        local ranksY = Y(f.ranks)
         Click(btn)
         f = Fam()
         local p = f.whatIf
@@ -576,7 +577,11 @@ if S.flavour == "tbc" then
         local form = Box("form")
         local labels = {}
         for _, s in ipairs(WIr().STATS) do labels[#labels + 1] = Box(s.key) and Strip(Box(s.key).label:GetText()) or "?" end
-        local between = p and Y(p) > Y(f.strip) and Y(p) < Y(f.ranks)
+        -- T125: a drawer on the window, outside its right edge; RANKS where it was
+        local win = SPn().nav.frame
+        local pt, rel, rp = p:GetPoint(1)
+        local between = p and p.spellsWhatIf and p:GetParent() == win and pt == "TOPLEFT" and rel == win
+            and rp == "TOPRIGHT" and Y(f.ranks) == ranksY and p:GetWidth() == 220
         local good = closed and p and p:IsShown() and between and phText == Num(live.heal) and phShown
             and critPh == Num(live.crit, 1)
             and table.concat(labels, ",") == "+Healing,+Spell damage,Crit %,Mana,Regen while casting,Regen resting"
@@ -584,7 +589,7 @@ if S.flavour == "tbc" then
             and Box("moonglow") ~= nil and p.clearBtn and p.clearBtn:IsShown()
             and Strip(p.classTitle:GetText()) == "DRUID" and not (p.classNote and p.classNote:IsShown())
             and Strip(p.footer:GetText()) == "No change to the suggestion."
-        return good, string.format("open=%s between=%s ph=%q crit=%q labels=%s", tostring(p and p:IsShown()),
+        return good, string.format("open=%s drawer=%s ph=%q crit=%q labels=%s", tostring(p and p:IsShown()),
             tostring(between), phText, critPh, table.concat(labels, ","))
     end)
 
@@ -743,7 +748,6 @@ if S.flavour == "tbc" then
         local top = f.header:GetHeight()
         local blocks = {}
         if f.strip:IsShown() then blocks[#blocks + 1] = { "strip", f.strip } end
-        if f.whatIf and f.whatIf:IsShown() then blocks[#blocks + 1] = { "what if", f.whatIf } end
         blocks[#blocks + 1] = { "ranks", f.ranks }
         blocks[#blocks + 1] = { "card", f.card }
         blocks[#blocks + 1] = { "footer", f.footer }
@@ -782,25 +786,127 @@ if S.flavour == "tbc" then
             string.format("style=%s restyled=%s %s", tostring(okStyle), tostring(restyled), table.concat(problems, "; "))
     end)
 
-    T("T122-5 tbc: the WHAT IF pane open at font offsets -2..+2 -- nothing overlapping, the rows inside it", function()
+    -- T125: the drawer open at font offsets -2..+2 -- the view laid out as
+    -- closed, every row and the footer inside the drawer's height, nothing
+    -- wider than the drawer
+    T("T125-1 tbc: the drawer open at font offsets -2..+2 -- every row inside it, the view as closed", function()
+        WIr():Clear()
         local f = OpenFam("HealingTouch")
         if not (f.whatIf and f.whatIf:IsShown()) then Click(f.strip.whatIfBtn) end
-        local problems = {}
+        local problems, sizes = {}, {}
         for _, o in ipairs({ -2, -1, 0, 1, 2 }) do
             UI.ApplyFonts(o)
             f = Fam()
             for _, p in ipairs(Laid(f)) do problems[#problems + 1] = "offset " .. o .. ": " .. p end
-            local ph = f.whatIf:GetHeight()
-            for key, r in pairs(f.whatIf.rows or {}) do
-                local _, _, _, _, y = r.label:GetPoint(1)
-                if -(y or 0) + (r.label:GetHeight() or 0) > ph then
-                    problems[#problems + 1] = "offset " .. o .. ": " .. key .. " below the pane"
+            local d = f.whatIf
+            local dh = d:GetHeight()
+            local ch = d.contentH or 9999
+            sizes[#sizes + 1] = o .. "=" .. ch .. "/" .. dh
+            if ch > dh then problems[#problems + 1] = "offset " .. o .. ": contents " .. ch .. " > " .. dh end
+            local paneY = 8
+            for key, r in pairs(d.rows or {}) do
+                if r.label:IsShown() then
+                    local parts = { r.label, r.box, r.minus, r.plus, r.unit, r.delta }
+                    for _, b in ipairs(r.order or {}) do parts[#parts + 1] = b end
+                    for _, part in ipairs(parts) do
+                        local _, _, _, x, y = part:GetPoint(1)
+                        local bottom = paneY - (y or 0) + (part:GetHeight() or 0)
+                        if bottom > ch then
+                            problems[#problems + 1] = "offset " .. o .. ": " .. key .. " at " .. bottom .. " below " .. ch
+                        end
+                        if part ~= r.delta and part ~= r.label and 8 + (x or 0) + (part:GetWidth() or 0) > 220 - 8 then
+                            problems[#problems + 1] = "offset " .. o .. ": " .. key .. " wider than the drawer"
+                        end
+                    end
                 end
             end
+            local _, _, _, _, fy = d.footer:GetPoint(1)
+            if paneY - (fy or 0) > ch then problems[#problems + 1] = "offset " .. o .. ": footer below" end
         end
         UI.ApplyFonts(0)
         Click(Fam().strip.whatIfBtn)
-        return #problems == 0 and not Fam().whatIf:IsShown(), table.concat(problems, "; ")
+        return #problems == 0 and not Fam().whatIf:IsShown(),
+            table.concat(sizes, " ") .. " " .. table.concat(problems, "; ")
+    end)
+
+    T("T125-2 tbc: hidden by default; ESC closes the drawer first, the window next", function()
+        WIr():Clear()
+        SPn().whatIfOpen = false
+        local f = OpenFam("HealingTouch")
+        local win = SPn().nav.frame
+        local hiddenFirst = not (f.whatIf and f.whatIf:IsShown())
+        Click(f.strip.whatIfBtn)
+        S.Tick(0)
+        local d = Fam().whatIf
+        local stack = MD.EscStack.stack
+        local top = stack[#stack] and stack[#stack].frame
+        local proxy = _G.SpellTunerEscProxy
+        proxy:Hide() -- one ESC
+        S.Tick(0)
+        local afterOne = { drawer = d:IsShown(), win = win:IsShown(), open = SPn().whatIfOpen,
+            proxy = proxy:IsShown() }
+        proxy:Hide() -- the next
+        S.Tick(0)
+        local winAfterTwo = win:IsShown()
+        OpenFam("HealingTouch")
+        local good = hiddenFirst and top == d and afterOne.drawer == false and afterOne.win == true
+            and afterOne.open == false and afterOne.proxy == true and winAfterTwo == false
+            and not Fam().whatIf:IsShown()
+        return good, string.format("hidden=%s top=%s one=%s/%s/%s/%s two=%s", tostring(hiddenFirst),
+            tostring(top == d), tostring(afterOne.drawer), tostring(afterOne.win), tostring(afterOne.open),
+            tostring(afterOne.proxy), tostring(winAfterTwo))
+    end)
+
+    T("T125-3 tbc: near the screen's right edge the drawer opens on the window's left; moved back, the right", function()
+        local f = OpenFam("HealingTouch")
+        local win = SPn().nav.frame
+        if not (f.whatIf and f.whatIf:IsShown()) then Click(f.strip.whatIfBtn) end
+        local d = Fam().whatIf
+        local function Side()
+            local pt, rel, rp = d:GetPoint(1)
+            return table.concat({ tostring(pt), tostring(rel == win), tostring(rp), tostring(d.side) }, ",")
+        end
+        local screenW = UIParent:GetRight()
+        win:ClearAllPoints()
+        win:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", screenW - 860 - 100, 700)
+        S.Tick(0.3)
+        local nearEdge = Side()
+        win:ClearAllPoints()
+        win:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", 20, 700)
+        S.Tick(0.3)
+        local back = Side()
+        -- shown again near the edge: decided on show
+        Click(Fam().strip.whatIfBtn)
+        win:ClearAllPoints()
+        win:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", screenW - 860 - 100, 700)
+        Click(Fam().strip.whatIfBtn)
+        local onShow = Side()
+        Click(Fam().strip.whatIfBtn)
+        MD.Win:Place("main")
+        return nearEdge == "TOPRIGHT,true,TOPLEFT,left" and back == "TOPLEFT,true,TOPRIGHT,right"
+            and onShow == "TOPRIGHT,true,TOPLEFT,left",
+            "near=" .. nearEdge .. " back=" .. back .. " onShow=" .. onShow
+    end)
+
+    T("T125-4 tbc: another view hides the drawer, the What if stays open and comes back on return", function()
+        local f = OpenFam("HealingTouch")
+        if not (f.whatIf and f.whatIf:IsShown()) then Click(f.strip.whatIfBtn) end
+        local d = Fam().whatIf
+        MD:SelectView("spells", "overview")
+        local onOverview = d:IsShown()
+        OpenFam("HealingTouch")
+        local back1 = d:IsShown()
+        MD:SelectView("reports")
+        local g = SPn().nav:Selected()
+        local onReports = d:IsShown()
+        OpenFam("HealingTouch")
+        local back2 = d:IsShown()
+        local open = SPn().whatIfOpen
+        Click(Fam().strip.whatIfBtn)
+        return g == "reports" and onOverview == false and back1 == true and onReports == false and back2 == true
+            and open == true and not d:IsShown(),
+            string.format("group=%s overview=%s back=%s reports=%s back=%s", tostring(g), tostring(onOverview),
+                tostring(back1), tostring(onReports), tostring(back2))
     end)
 
     ----------------------------------------------------------------------------
@@ -2992,6 +3098,35 @@ T36("T124 forever: Wrath's header reads +N Nature damage; +Spell damage typed sh
         and not SP.whatIfOpen
     return good, string.format("before=%q after=%q labels=%s ph=%q phLive=%s wrathLive=%s typed=%q footer=%q", before, after,
         table.concat(labels, ","), ph, tostring(phLive), tostring(wrathLive), StripColor(typedRaw), footer)
+end)
+
+-- T125 (docs/tasks/T125-whatif-drawer.md): on Forever too the What if is a
+-- drawer on the window -- outside its right edge, RANKS where it was, the
+-- first ESC closing the drawer and leaving the window
+T36("T125 forever: the drawer outside the window, RANKS unmoved, ESC closes it first", function()
+    WIf():Clear()
+    SP.whatIfOpen = false
+    local f = OpenView("Nourish")
+    local win = SP.nav.frame
+    local function RanksY()
+        local pt = F().ranks.points and F().ranks.points.TOPLEFT
+        return pt and pt.y
+    end
+    local before = RanksY()
+    Click(f.strip.whatIfBtn)
+    S.Tick(0)
+    local d = F().whatIf
+    local pt = d and d.points and d.points.TOPLEFT
+    local outside = d and d:IsShown() and d:GetParent() == win and pt and pt.rel == win and pt.rp == "TOPRIGHT"
+    local after = RanksY()
+    local stack = MD.EscStack.stack
+    local top = stack[#stack] and stack[#stack].frame
+    _G.SpellTunerEscProxy:Hide() -- one ESC
+    S.Tick(0)
+    local good = outside and before ~= nil and before == after and top == d and not d:IsShown()
+        and win:IsShown() and not SP.whatIfOpen
+    return good, string.format("outside=%s ranks=%s/%s top=%s drawer=%s win=%s", tostring(outside), tostring(before),
+        tostring(after), tostring(top == d), tostring(d and d:IsShown()), tostring(win:IsShown()))
 end)
 
 --------------------------------------------------------------------------------

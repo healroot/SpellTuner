@@ -2355,6 +2355,19 @@ On either client, `/st` (TBC `/md`) -> Spells.
    M the ranks you own whose damage moved (all of Wrath's known ranks, normally) and K the rest.
    Before the swap it read `0 of N ranks measured, N estimated`. Doing the swap in combat measures
    nothing.
+6. **The drawer (T125).** Healing Touch -> What if...: a 220-wide What if panel opens outside the
+   window's right edge, as tall as the window, with its own title bar and x. RANKS and the card
+   do not move; all ranks stay visible. At font offset +2 (Settings) nothing in the drawer is cut
+   off at the bottom. Then:
+   - **ESC**: the first press closes the drawer, the window stays; the second closes the window.
+     The x on the drawer and What if... again close it the same way.
+   - **Another view**: with the drawer open, click Overview or Reports: the drawer goes; back on
+     Healing Touch it is there again. Close and reopen the window: it comes back with it.
+   - **Screen edge**: drag the window until its right edge is near the screen's right: the drawer
+     moves to the window's left edge (within a fraction of a second). Drag it back: right again.
+     Change the window scale (Settings -> General): the same rule.
+   - **Combat**: with the drawer open, enter combat: it hides with the window, and comes back with
+     it after.
 
 **Paste back** a line per step into `.logs/tbc/0.17.1-s1.md` and `docs/probe/<build>-0.17.1-s1.md`,
 with the footer of step 1 copied whole.
