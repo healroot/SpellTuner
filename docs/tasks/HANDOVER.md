@@ -4,6 +4,18 @@ Rewritten by the lead after every commit and every hand-out. A successor continu
 alone. Worktree: `/home/penek/projects/addons/SpellTuner/.claude/worktrees/manademon-folder-continue-41eabc`,
 branch `claude/manademon-folder-continue-41eabc`.
 
+Last updated: 2026-10-04, after **T124** (What if compares like with like, +Spell damage on both
+lines; `docs/tasks/T124-*.md`, review approved with m1 / m2 fixed in 70cedb7) and the **0.17.1**
+commit, made in the worktree `.claude/worktrees/spelltune-whatif-fair-compare-29f8cd` (branch
+`claude/spelltune-whatif-fair-compare-29f8cd`; not merged into master, not pushed). 0.17.1 is
+built, **not installed and not published**: `dist/spelltune-whatif-fair-compare-29f8cd/`
+(`SpellTuner-tbc-0.17.1.zip`, `SpellTuner-forever-0.17.1.zip`). Next: merge the branch on the
+author's word, `docs/TESTING.md` §50 (and §49), publish on the author's word (CHANGELOG.md has
+`## 0.17.1`). T124's open deviations (`docs/tasks/T124-report.md`): either-or families are not
+moved by +Spell damage; `Book:MeasureBonus` stays heal-only; TBC's damage bonus has no stale
+handling.
+
+Previous state (2026-10-03):
 Last updated: 2026-10-03, after the **One UI** round (`docs/SPEC-one-ui.md`; T117-T123, all
 landed) and the **0.17.0** commit. 0.17.0 is built, **not installed and not published**: the
 packages are in the top-level `dist/manademon-folder-continue-41eabc/` (`tbc/` and `forever/`,

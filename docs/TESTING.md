@@ -2331,6 +2331,27 @@ measured +healing share (49.3 step 4).
 class in the first line) and `docs/probe/<build>-0.17.0-s1.md` (49.3): a line per step, 49.1
 step 5's Export block whole, screenshots of 49.1 steps 1, 2 and 7.
 
+## 50. 0.17.1: What if compares like with like, +Spell damage (T124; one short session per client, 10 min)
+
+On either client, `/st` (TBC `/md`) -> Spells.
+
+1. **The footer.** A family with several ranks (Healing Touch) -> What if... Type +Healing until
+   the suggestion moves. The footer reads `Suggested: Rank X -> Rank Y. With these stats Rank Y
+   gives P per mana, Rank X Q (+n%).` Both numbers should match the Per mana cells of those two
+   rows in the table. If P is below Q the line ends with ` Rank X is beaten by Rank N.` or
+   ` Rank X is under 40% of Rank M's heal.`
+2. **No move.** Type a value that leaves the suggestion where it is: the footer reads `No change
+   to the suggestion.`
+3. **+Spell damage.** Open Wrath (TBC: any damage spell with several ranks) -> What if... -> type
+   +Spell damage. The header reads `+N Nature damage what if` (the school of that spell) in the
+   accent, and the Value / Per mana cells move. Clear puts them back.
+4. **Forever only: the live reading.** With What if cleared, Wrath's header shows `+N Nature
+   damage`; it should match the character sheet's spell damage. In combat it stays at the last
+   reading, in grey.
+
+**Paste back** a line per step into `.logs/tbc/0.17.1-s1.md` and `docs/probe/<build>-0.17.1-s1.md`,
+with the footer of step 1 copied whole.
+
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the
 raw numbers. `/md profile` output is welcome with any report. I turn them into

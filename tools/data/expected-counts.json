@@ -3,7 +3,7 @@
   "adaptercheck/tbc": 19,
   "apicheck-selftest": 14,
   "bindscheck/forever": 6,
-  "bookcheck/forever": 32,
+  "bookcheck/forever": 33,
   "bookcheck/tbc": 2,
   "bookshapecheck/forever": 10,
   "bookshapecheck/tbc": 18,
@@ -72,7 +72,7 @@
   "simwindow/tbc": 8,
   "slashcheck/tbc": 10,
   "solvercheck/tbc": 95,
-  "spellsui/forever": 57,
+  "spellsui/forever": 58,
   "spellsui/tbc": 16,
   "spelltip/tbc": 35,
   "stylecheck/forever": 34,
@@ -91,8 +91,8 @@
   "tipcheck/forever": 53,
   "ttocheck/tbc": 53,
   "verifycheck/tbc": 14,
-  "whatifcheck/forever": 7,
-  "whatifcheck/tbc": 8,
+  "whatifcheck/forever": 9,
+  "whatifcheck/tbc": 10,
   "wincheck/forever": 66,
   "wincheck/tbc": 4
 }
