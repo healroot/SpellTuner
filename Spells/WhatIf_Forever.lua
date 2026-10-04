@@ -11,8 +11,10 @@
 --              re-derived through Book.Numbers and the rank rules re-run
 --              (Book.RULE_FIELDS);
 --   +Spell damage (T124)
---              each damage rank the same way by its estimated share of the
---              change in its school's bonus (the live side the school on
+--              each damage rank the same way by its share of the change in
+--              its school's bonus (entry.bonus.counts: measured when
+--              MeasureBonus has seen two plain readings of that school's
+--              spell damage, else estimated; the live side the school on
 --              screen, WI.LiveDamage; every school moves by one delta);
 --   Crit %     each valued heal rank's `crit` (a chance, 0..1) -- the values
 --              are averages without crit (the card's Crit pair names it);
@@ -190,8 +192,8 @@ provider.classNote = "Your talents are already in the spells' text, so there is 
 
 -- "2 of 3 ranks measured, 1 estimated" -- the shares the move rests on: a
 -- heal family's while +Healing is typed, a damage family's while +Spell
--- damage is (T124; damage ranks are always estimated: MeasureBonus reads
--- heals only).
+-- damage is (T124; MeasureBonus measures damage ranks too, against their
+-- school's spell damage -- an either-or heal's damage half stays estimated).
 function provider.ranksNote(fam)
     if type(fam) ~= "table" then return nil end
     if fam.kind ~= "heal" and fam.kind ~= "damage" then return nil end

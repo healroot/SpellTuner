@@ -3,7 +3,7 @@
   "adaptercheck/tbc": 19,
   "apicheck-selftest": 14,
   "bindscheck/forever": 6,
-  "bookcheck/forever": 33,
+  "bookcheck/forever": 37,
   "bookcheck/tbc": 2,
   "bookshapecheck/forever": 10,
   "bookshapecheck/tbc": 18,
@@ -91,7 +91,7 @@
   "tipcheck/forever": 53,
   "ttocheck/tbc": 53,
   "verifycheck/tbc": 14,
-  "whatifcheck/forever": 9,
+  "whatifcheck/forever": 10,
   "whatifcheck/tbc": 10,
   "wincheck/forever": 66,
   "wincheck/tbc": 4

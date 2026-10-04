@@ -2348,6 +2348,13 @@ On either client, `/st` (TBC `/md`) -> Spells.
 4. **Forever only: the live reading.** With What if cleared, Wrath's header shows `+N Nature
    damage`; it should match the character sheet's spell damage. In combat it stays at the last
    reading, in grey.
+5. **Forever only: a damage rank measured.** Out of combat, with Wrath open in the Spells pane,
+   take off (or put on) an item with +spell damage and wait a few seconds; then swap it back and
+   wait again. Each rank whose text moved with the spell damage now has a measured share. Type
+   +Spell damage under What if...: the RANKS note reads `M of N ranks measured, K estimated`, with
+   M the ranks you own whose damage moved (all of Wrath's known ranks, normally) and K the rest.
+   Before the swap it read `0 of N ranks measured, N estimated`. Doing the swap in combat measures
+   nothing.
 
 **Paste back** a line per step into `.logs/tbc/0.17.1-s1.md` and `docs/probe/<build>-0.17.1-s1.md`,
 with the footer of step 1 copied whole.

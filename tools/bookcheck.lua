@@ -1155,6 +1155,150 @@ T95("T124: Book:Bonus('damage', school) -- nil before any, plain, per school, st
     return #bad == 0, table.concat(bad, "; ")
 end)
 
+-- 33: the bonus share measured for damage ranks too (T124 follow-up): a
+-- damage family against its own school's +spell damage, stored with kind
+-- "damage" and the school; in combat or on a stale reading nothing is
+-- measured; a heal reading and a damage reading of one id never meet; a
+-- T122 entry without a kind still reads as a heal's.
+do
+    local zapFlip = "damage" -- 90126 reads as a heal or as a damage spell
+    S.AddSpell(90124, "ZapShare", "Rank 1", function()
+        local b = math.floor(0.5 * (S.bonusDamage[4] or 0) + 0.5)
+        return "Causes " .. (100 + b) .. " to " .. (120 + b) .. " Nature damage to the target."
+    end, { cast = 2000, cost = 80, level = 1 })
+    S.AddSpell(90125, "ZapQuiet", "Rank 1", function()
+        local b = math.floor(0.4 * (S.bonusDamage[4] or 0) + 0.5)
+        return "Causes " .. (50 + b) .. " to " .. (60 + b) .. " Nature damage to the target."
+    end, { cast = 1500, cost = 40, level = 1 })
+    S.AddSpell(90126, "ZapFlip", "Rank 1", function()
+        if zapFlip == "heal" then
+            return "Heals a friendly target for " .. (300 + S.bonusHealing) .. " to " .. (320 + S.bonusHealing) .. "."
+        end
+        return "Causes " .. (500 + (S.bonusDamage[4] or 0)) .. " to " .. (520 + (S.bonusDamage[4] or 0))
+            .. " Nature damage to the target."
+    end, { cast = 2500, cost = 90, level = 1 })
+    S.AddSpell(90127, "OldShare", "Rank 1", function()
+        return "Heals a friendly target for 200 to 240."
+    end, { cast = 2000, cost = 60, level = 1 })
+
+    local function Scan()
+        Book:MarkDirty()
+        return Book:Get()
+    end
+    local function Stored(id)
+        local store = MD.cdb and MD.cdb.bonusCounts
+        return store and store[id]
+    end
+    local function Around(fn)
+        local savedDmg, savedHeal, savedCombat = S.bonusDamage, S.bonusHealing, MD.inCombat
+        local savedFn = _G.GetSpellBonusDamage
+        S.bonusDamage = {}
+        MD.inCombat, S.inCombat = false, false
+        Book._lastRead = {} -- each case starts with no previous readings
+        local bad = {}
+        local function Want(cond, what) if not cond then bad[#bad + 1] = what end end
+        local good, err = pcall(fn, Want)
+        _G.GetSpellBonusDamage = savedFn
+        MD.API.Invalidate("GetSpellBonusDamage")
+        S.bonusDamage, S.bonusHealing, MD.inCombat, S.inCombat = savedDmg, savedHeal, savedCombat, savedCombat
+        Book._lastDamage = nil
+        Book:MarkDirty()
+        if not good then return false, "raised: " .. tostring(err) end
+        return #bad == 0, table.concat(bad, "; ")
+    end
+
+    T95("T124: two plain scans with different spell damage measure a damage rank's share", function()
+        return Around(function(Want)
+            S.bonusDamage[4] = 100
+            Scan()
+            S.bonusDamage[4] = 200
+            local book = Scan()
+            local m = Stored(90124)
+            local e = book.spells[90124]
+            Want(m and type(m.counts) == "number" and math.abs(m.counts - 0.5) < 0.02,
+                "counts " .. tostring(m and m.counts))
+            Want(m and m.kind == "damage" and m.school == "Nature" and m.bonus == 200 and type(m.at) == "number",
+                "shape " .. tostring(m and m.kind) .. "/" .. tostring(m and m.school) .. "/" .. tostring(m and m.bonus))
+            Want(e and e.bonus and e.bonus.from == "measured" and ApproxEq(e.bonus.counts, m and m.counts or -1)
+                and e.bonus.of == 200, "entry bonus " .. tostring(e and e.bonus and e.bonus.from))
+            Want(e and ApproxEq(e.value, 210), "value is the text's " .. tostring(e and e.value))
+        end)
+    end)
+
+    T95("T124: no damage share measured in combat or on a stale spell damage reading", function()
+        return Around(function(Want)
+            S.bonusDamage[4] = 100
+            Scan() -- the first plain reading of each rank
+            if MD.cdb and MD.cdb.bonusCounts then MD.cdb.bonusCounts[90125] = nil end
+            local before = Stored(90124)
+            -- in combat: the change in bonus is not a measurement
+            MD.inCombat, S.inCombat = true, true
+            S.bonusDamage[4] = 300
+            Scan()
+            MD.inCombat, S.inCombat = false, false
+            Want(Stored(90125) == nil, "combat measured " .. tostring(Stored(90125) and Stored(90125).counts))
+            Want(Stored(90124) == before, "combat rewrote 90124")
+            -- out of combat but the reading is secret: the last one, stale
+            _G.GetSpellBonusDamage = function() return S.Secret() end
+            MD.API.Invalidate("GetSpellBonusDamage")
+            S.bonusDamage[4] = 500
+            Scan()
+            Want(Stored(90125) == nil, "stale measured " .. tostring(Stored(90125) and Stored(90125).counts))
+            Want(Stored(90124) == before, "stale rewrote 90124")
+        end)
+    end)
+
+    T95("T124: a heal reading and a damage reading of one id never meet; kinds never cross", function()
+        return Around(function(Want)
+            if MD.cdb and MD.cdb.bonusCounts then MD.cdb.bonusCounts[90126] = nil end
+            -- a heal reading of 90126 at +healing 100, then the same id read
+            -- as damage at a different bonus and value: no share from the two
+            zapFlip = "heal"
+            S.bonusHealing, S.bonusDamage[4] = 100, 0
+            Scan()
+            zapFlip = "damage"
+            S.bonusDamage[4] = 250
+            local book = Scan()
+            Want(Stored(90126) == nil, "heal->damage measured " .. tostring(Stored(90126) and Stored(90126).counts))
+            local e = book.spells[90126]
+            Want(e and e.bonus and e.bonus.from == "estimated", "damage entry " .. tostring(e and e.bonus and e.bonus.from))
+            -- and back: the damage reading is not a heal's previous reading
+            Book._lastRead = {}
+            Scan() -- a damage reading at 250, no heal reading kept
+            zapFlip = "heal"
+            S.bonusHealing = 400
+            Scan()
+            Want(Stored(90126) == nil, "damage->heal measured " .. tostring(Stored(90126) and Stored(90126).counts))
+            -- a heal-kind share is not handed to a damage rank, nor a damage one to a heal
+            MD.cdb.bonusCounts[90126] = { counts = 0.77, at = 1, bonus = 100 }
+            zapFlip = "damage"
+            local b2 = Scan()
+            local e2 = b2.spells[90126]
+            Want(e2 and e2.bonus and e2.bonus.from == "estimated", "heal share on damage " .. tostring(e2 and e2.bonus and e2.bonus.from))
+            MD.cdb.bonusCounts[90126] = { counts = 0.66, at = 1, bonus = 100, kind = "damage", school = "Nature" }
+            zapFlip = "heal"
+            local b3 = Scan()
+            local e3 = b3.spells[90126]
+            Want(e3 and e3.bonus and e3.bonus.from == "estimated", "damage share on heal " .. tostring(e3 and e3.bonus and e3.bonus.from))
+            MD.cdb.bonusCounts[90126] = nil
+            zapFlip = "damage"
+        end)
+    end)
+
+    T95("T124: a T122 bonusCounts entry without a kind still reads as a heal's share", function()
+        return Around(function(Want)
+            if type(MD.cdb.bonusCounts) ~= "table" then MD.cdb.bonusCounts = {} end
+            MD.cdb.bonusCounts[90127] = { counts = 0.42, at = 12345, bonus = 50 }
+            local book = Scan()
+            local e = book.spells[90127]
+            Want(e and e.bonus and e.bonus.from == "measured" and ApproxEq(e.bonus.counts, 0.42) and e.bonus.at == 12345,
+                "old entry " .. tostring(e and e.bonus and e.bonus.from) .. " " .. tostring(e and e.bonus and e.bonus.counts))
+            Want(e and ApproxEq(e.value, 220), "value " .. tostring(e and e.value))
+            MD.cdb.bonusCounts[90127] = nil
+        end)
+    end)
+end
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("  FAIL " .. f) end
 if #fails > 0 then os.exit(1) end

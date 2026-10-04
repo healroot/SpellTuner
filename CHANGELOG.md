@@ -14,6 +14,9 @@ published to CurseForge; the developers' log is `docs/HISTORY.md`.
   its header shows `+N <School> damage what if`.
 - Forever now reads your spell damage per school, so a damage spell's header shows it beside your
   mana.
+- Forever now measures how much of your spell damage each damage rank gets, as it already did for
+  heals: out of combat, change your spell damage (swap an item) and the What if uses the measured
+  share for those ranks, and the RANKS note counts them as measured.
 
 ## 0.17.0
 

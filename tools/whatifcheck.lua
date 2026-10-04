@@ -681,8 +681,9 @@ else
 
     --------------------------------------------------------------------------
     -- 11 (forever, T124): +Spell damage through the provider -- a damage rank
-    -- moves by its own share x the delta (the estimate: MeasureBonus stays
-    -- heal-only), its numbers re-derived; heals ignore damage, damage ignores
+    -- moves by its own share x the delta (here the estimate: the case starts
+    -- with no earlier damage reading, so nothing is measured; 12 is the
+    -- measured share), its numbers re-derived; heals ignore damage, damage ignores
     -- heal; the RANKS note counts the active stat's kind
     --------------------------------------------------------------------------
     T("11 forever T124: +Spell damage -- damage ranks by counts x delta, heals untouched", function()
@@ -690,6 +691,9 @@ else
         MD.inCombat, S.inCombat = false, false
         local savedDmg = S.bonusDamage[4]
         S.bonusDamage[4] = 100
+        -- no earlier reading and no stored share: Wrath stays estimated
+        Book._lastRead = {}
+        if MD.cdb and MD.cdb.bonusCounts then MD.cdb.bonusCounts[5176] = nil end
         local good, detail, why = pcall(function()
             local live = Scan(200)
             local liveSer = Ser(live)
@@ -728,6 +732,62 @@ else
             local hnote = WI.provider.ranksNote(hb.families.Wrath)
             Want(hnote == nil, "heal note on Wrath " .. tostring(hnote))
             Want(MD.sim == nil or next(MD.sim) == nil, "MD.sim written")
+            return #bad == 0, table.concat(bad, "; ")
+        end)
+        WI:Clear()
+        S.bonusDamage[4] = savedDmg
+        Book:MarkDirty()
+        if not good then return false, "raised: " .. tostring(detail) end
+        return detail, why
+    end)
+
+    --------------------------------------------------------------------------
+    -- 12 (forever, T124 follow-up): a damage rank whose share MeasureBonus
+    -- measured (two plain readings of its school's +spell damage) moves by
+    -- the measured counts, and the RANKS note counts it as measured
+    --------------------------------------------------------------------------
+    T("12 forever: a measured damage rank moves by its measured counts; the note counts it", function()
+        WI:Clear()
+        MD.inCombat, S.inCombat = false, false
+        local savedDmg = S.bonusDamage[4]
+        -- "Spark": R1's text takes 60% of Nature spell damage, R2's none
+        S.AddSpell(95301, "Spark", "Rank 1", function()
+            local b = math.floor(0.6 * (S.bonusDamage[4] or 0) + 0.5)
+            return "Causes " .. (100 + b) .. " to " .. (120 + b) .. " Nature damage to the target."
+        end, { cast = 2000, cost = 50, level = 1 })
+        S.AddSpell(95302, "Spark", "Rank 2", function()
+            return "Causes 300 to 340 Nature damage to the target."
+        end, { cast = 3000, cost = 120, level = 10 })
+        Book._lastRead = {}
+        local good, detail, why = pcall(function()
+            S.bonusDamage[4] = 100
+            Scan(200)
+            S.bonusDamage[4] = 200
+            local live = Scan(200)
+            local l1, l2 = live.spells[95301], live.spells[95302]
+            local bad = {}
+            local function Want(cond, what) if not cond then bad[#bad + 1] = what end end
+            local c1, m1 = Counts(95301)
+            Want(Near(c1, 0.6) and m1 and m1.kind == "damage" and m1.school == "Nature",
+                "stored " .. tostring(c1) .. " " .. tostring(m1 and m1.kind))
+            Want(Counts(95302) == nil, "R2 measured")
+            Want(l1 and l1.bonus and l1.bonus.from == "measured" and Near(l1.bonus.counts, 0.6),
+                "R1 live bonus " .. tostring(l1 and l1.bonus and l1.bonus.from))
+            Want(l2 and l2.bonus and l2.bonus.from == "estimated", "R2 live bonus " .. tostring(l2 and l2.bonus and l2.bonus.from))
+            WI:Set("damage", 350)
+            local wb = WI:Book()
+            local w1, w2 = wb and wb.spells[95301], wb and wb.spells[95302]
+            if w1 and l1 then
+                Want(Near(w1.value, l1.value + 0.6 * 150), "R1 value " .. tostring(w1.value) .. " live " .. tostring(l1.value))
+                Want(Near(w1.perMana, w1.value / w1.cost.amount), "R1 perMana")
+                Want(w1.bonus and w1.bonus.from == "measured" and w1.bonus.of == 350, "R1 bonus " .. tostring(w1.bonus and w1.bonus.of))
+            else
+                Want(false, "copies")
+            end
+            local c2 = l2 and l2.bonus and l2.bonus.counts or 0
+            Want(w2 and l2 and Near(w2.value, l2.value + c2 * 150), "R2 value " .. tostring(w2 and w2.value))
+            local note = WI.provider.ranksNote(wb.families.Spark)
+            Want(note == "1 of 2 ranks measured, 1 estimated", "note " .. tostring(note))
             return #bad == 0, table.concat(bad, "; ")
         end)
         WI:Clear()

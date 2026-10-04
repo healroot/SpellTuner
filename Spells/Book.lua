@@ -351,20 +351,26 @@ end
 
 -- T122 (docs/tasks/T122-what-if.md): a share Book:MeasureBonus measured (two
 -- plain readings out of combat whose bonus and text both moved), kept per
--- character in MD.cdb.bonusCounts[id] = { counts, at, bonus }; it wins over
--- the estimate.
-local function Measured(id)
+-- character in MD.cdb.bonusCounts[id] = { counts, at, bonus [, kind, school] };
+-- it wins over the estimate. An entry without `kind` is a heal's (every
+-- entry T122 stored); a damage share carries kind "damage" and the school
+-- it was read against, and is never handed to a heal, nor a heal's to a
+-- damage rank (an either-or heal's damage half included: same id, kind
+-- "heal" stored, so the half stays estimated).
+local function Measured(id, kind, school)
     local store = type(MD.cdb) == "table" and MD.cdb.bonusCounts
     local m = type(store) == "table" and store[id]
-    if type(m) == "table" and type(m.counts) == "number" then return m end
-    return nil
+    if type(m) ~= "table" or type(m.counts) ~= "number" then return nil end
+    if (m.kind or "heal") ~= kind then return nil end
+    if kind == "damage" and m.school ~= nil and school ~= nil and m.school ~= school then return nil end
+    return m
 end
 
 local function ApplyBonus(e, kind, shape)
     e.bonus = nil
     if e.value == nil or not kind then return end
     local school = SchoolOf(e, kind)
-    local m = (kind == "heal") and Measured(e.id) or nil
+    local m = Measured(e.id, kind, school)
     if m then
         local of = BonusNow(kind, school)
         e.bonus = {
@@ -1011,35 +1017,66 @@ local function EntrySig(entry)
 end
 
 -- T122 (docs/tasks/T122-what-if.md, docs/SPEC-one-ui.md 4.3 "measured"):
--- a heal rank's share of +healing, measured. Each plain scan out of combat
--- (MD.inCombat false and Book:Bonus's reading not stale) remembers every
--- heal rank's readable value with the bonus it was read at
--- (Book._lastRead); when a later such scan finds both the bonus and the
--- text moved, the share is the text's change over the bonus's -- accepted
--- above 0 and up to 2 (no rank takes twice the bonus) -- and kept per
--- character in MD.cdb.bonusCounts[id] = { counts, at = time(), bonus }.
+-- a valued rank's share of its bonus, measured. Each plain scan out of
+-- combat (MD.inCombat false and Book:Bonus's reading not stale) remembers
+-- every rank's readable value with the bonus it was read at
+-- (Book._lastRead, one table per kind and school: "heal", "damageNature",
+-- so a heal reading and a damage reading never meet); when a later such
+-- scan finds both the bonus and the text moved, the share is the text's
+-- change over the bonus's -- accepted above 0 and up to 2 (no rank takes
+-- twice the bonus) -- and kept per character in MD.cdb.bonusCounts[id] =
+-- { counts, at = time(), bonus } for a heal (the T122 shape, no kind), with
+-- kind = "damage" and school added for a damage rank.
+-- Heal families against +healing; damage families (T124 follow-up) against
+-- their own school's +spell damage (Book:Bonus("damage", fam.school)).
+-- An either-or heal family (altKind "damage") is measured on its heal half
+-- only: its damage half is a view built at each call (Book:Half), never a
+-- scanned value of its own, so it keeps the estimate.
 -- The value stays the text's; only entry.bonus says "measured".
 Book._lastRead = Book._lastRead or {}
 local MAX_COUNTS = 2
 
 function Book:MeasureBonus(spells, families)
     if MD.inCombat then return end
-    local bonus, stale = Book:Bonus("heal")
-    if type(bonus) ~= "number" or stale then return end
+    local readings = {} -- slot -> plain bonus, or false (none / stale)
+    local function Reading(kind, school)
+        local slot = kind .. tostring(school or "")
+        local v = readings[slot]
+        if v == nil then
+            local bonus, stale
+            if kind == "damage" then
+                if school ~= nil then bonus, stale = Book:Bonus("damage", school) end
+            else
+                bonus, stale = Book:Bonus("heal")
+            end
+            v = (type(bonus) == "number" and not stale) and bonus or false
+            readings[slot] = v
+        end
+        return v or nil, slot
+    end
     for id, e in pairs(spells) do
         local fam = families[e.family]
-        if fam and fam.kind == "heal" and type(e.value) == "number" and not e.stale
+        local kind = fam and fam.kind
+        if (kind == "heal" or kind == "damage") and type(e.value) == "number" and not e.stale
             and e.descState == "ok" then
-            local prev = Book._lastRead[id]
-            if prev and prev.bonus ~= bonus and prev.value ~= e.value then
-                local counts = (e.value - prev.value) / (bonus - prev.bonus)
-                if counts == counts and counts > 0 and counts <= MAX_COUNTS and type(MD.cdb) == "table" then
-                    if type(MD.cdb.bonusCounts) ~= "table" then MD.cdb.bonusCounts = {} end
-                    MD.cdb.bonusCounts[id] = { counts = counts, at = time(), bonus = bonus }
-                    ApplyBonus(e, "heal", fam.shape)
+            local school = (kind == "damage") and fam.school or nil
+            local bonus, slot = Reading(kind, school)
+            if bonus ~= nil then
+                if type(Book._lastRead[slot]) ~= "table" then Book._lastRead[slot] = {} end
+                local last = Book._lastRead[slot]
+                local prev = last[id]
+                if prev and prev.bonus ~= bonus and prev.value ~= e.value then
+                    local counts = (e.value - prev.value) / (bonus - prev.bonus)
+                    if counts == counts and counts > 0 and counts <= MAX_COUNTS and type(MD.cdb) == "table" then
+                        if type(MD.cdb.bonusCounts) ~= "table" then MD.cdb.bonusCounts = {} end
+                        local m = { counts = counts, at = time(), bonus = bonus }
+                        if kind == "damage" then m.kind, m.school = "damage", school end
+                        MD.cdb.bonusCounts[id] = m
+                        ApplyBonus(e, kind, fam.shape)
+                    end
                 end
+                last[id] = { value = e.value, bonus = bonus }
             end
-            Book._lastRead[id] = { value = e.value, bonus = bonus }
         end
     end
 end
