@@ -387,7 +387,7 @@ local function ByRank(a, b)
     return a.id < b.id
 end
 
-local function DamageFamilies(book, walk, pool)
+local function DamageFamilies(book, walk, pool, dmgOpts)
     local DM, RR = MD.DamageMath, MD.RankRules
     if not DM then return {} end
     local class = MD.player and MD.player.class
@@ -413,7 +413,7 @@ local function DamageFamilies(book, walk, pool)
                             rankText = hit.sub, known = true, icon = Icon(id), school = fam.school }
                 local r = ApplyRead(e, id)
                 local base = e.desc and DM.Parse(key, e.desc, class) or nil
-                local c = base and DM.Compute(id, key, base, class) or nil
+                local c = base and DM.Compute(id, key, base, class, dmgOpts) or nil
                 if c then
                     e.value, e.perMana, e.perSec = c.expected, c.dpm, c.dps
                     e.min, e.max, e.crit = c.min, c.max, c.crit
@@ -533,6 +533,19 @@ end
 -- One book. `whatIf` reads MD.sim (RankMath:Compute()); else the live
 -- context. RankMath.info, which other readers take as the last Compute's
 -- context, is put back as it was.
+-- T124: the What if's +Spell damage on the what-if build only -- the typed
+-- value (MD.sim.damage, Spells/WhatIf_TBC.lua's) less the live one (the
+-- school on screen, MD.WhatIf:Live()), handed to DM.Compute as a delta that
+-- moves every school alike. nil when no damage is typed.
+local function WhatIfDamage()
+    local sim = MD.sim
+    if type(sim) ~= "table" or type(sim.damage) ~= "number" then return nil end
+    local WI = MD.WhatIf
+    local live = WI and WI.Live and WI:Live().damage
+    if type(live) ~= "number" then return nil end
+    return { bonusDelta = sim.damage - live }
+end
+
 function Book:Build(whatIf)
     local RM = MD.RankMath
     local book = { families = {}, order = {}, spells = {}, generation = Book.generation }
@@ -564,7 +577,9 @@ function Book:Build(whatIf)
     local B = Reader()
     local walk = (B and type(B.WalkAll) == "function") and B.WalkAll() or {}
     if canTable then
-        for _, key in ipairs(DamageFamilies(book, walk, Book.DefaultPoolFrom(ctx))) do
+        local dmgOpts
+        if whatIf then dmgOpts = WhatIfDamage() end
+        for _, key in ipairs(DamageFamilies(book, walk, Book.DefaultPoolFrom(ctx), dmgOpts)) do
             book.order[#book.order + 1] = key
         end
     end

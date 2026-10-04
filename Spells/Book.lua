@@ -320,7 +320,7 @@ Book.Numbers = Numbers -- T122: Spells/WhatIf_Forever.lua re-derives a copy's nu
 -- Spells/Coefficients.lua's rules from the rank's own cast, duration and
 -- parts, with no downrank rule (TBC's, not this client's). `amount` is that
 -- share of the caster's bonus now (Book:Bonus), `of` the bonus itself; both
--- nil when there is no reading (always for damage on this line). A shape the
+-- nil when there is no reading (damage reads its school's, T124). A shape the
 -- rules do not cover leaves `bonus` nil. "measured" is T122's.
 --
 -- While Scan runs, the bonus is read once for the whole book (scanBonus);
@@ -328,16 +328,25 @@ Book.Numbers = Numbers -- T122: Spells/WhatIf_Forever.lua re-derives a copy's nu
 --------------------------------------------------------------------------------
 local scanBonus -- { [kind] = amount or false } during one Scan
 
-local function BonusNow(kind)
+local function BonusNow(kind, school)
     if scanBonus then
-        local v = scanBonus[kind]
+        local slot = kind .. tostring(school or "")
+        local v = scanBonus[slot]
         if v == nil then
-            v = Book:Bonus(kind) or false
-            scanBonus[kind] = v
+            v = Book:Bonus(kind, school) or false
+            scanBonus[slot] = v
         end
         return v or nil
     end
-    return (Book:Bonus(kind))
+    return (Book:Bonus(kind, school))
+end
+
+-- T124: a damage entry's school name, from its own parsed damage part
+local function SchoolOf(e, kind)
+    if kind ~= "damage" then return nil end
+    local d = type(e.parsed) == "table" and e.parsed.damage
+    if type(d) == "table" and type(d.school) == "string" then return d.school end
+    return nil
 end
 
 -- T122 (docs/tasks/T122-what-if.md): a share Book:MeasureBonus measured (two
@@ -354,9 +363,10 @@ end
 local function ApplyBonus(e, kind, shape)
     e.bonus = nil
     if e.value == nil or not kind then return end
+    local school = SchoolOf(e, kind)
     local m = (kind == "heal") and Measured(e.id) or nil
     if m then
-        local of = BonusNow(kind)
+        local of = BonusNow(kind, school)
         e.bonus = {
             counts = m.counts, from = "measured", at = m.at,
             of = of, amount = of and m.counts * of or nil,
@@ -366,7 +376,7 @@ local function ApplyBonus(e, kind, shape)
     if not Coef then return end
     local counts, why = Coef.Estimate(e, shape)
     if type(counts) ~= "number" then return end
-    local of = BonusNow(kind)
+    local of = BonusNow(kind, school)
     e.bonus = {
         counts = counts, from = "estimated", why = why,
         of = of, amount = of and counts * of or nil,
@@ -706,6 +716,15 @@ function Book:GroupFamilies(spells)
             end
         end
         fam.kind = kind
+        -- T124: a damage family's school, the name its first parsed rank
+        -- gives ("Nature") -- what +Spell damage reads for it
+        fam.school = nil
+        if kind == "damage" then
+            for _, e in ipairs(fam.ranks) do
+                local sc = SchoolOf(e, "damage")
+                if sc then fam.school = sc; break end
+            end
+        end
         -- T95 (4.2 P6): an either-or heal family (Holy Shock, Holy Nova) keeps
         -- its damage half beside it (each rank's entry.alt, Numbers above);
         -- T110 shows the half that matches the player's role.
@@ -1143,12 +1162,34 @@ end
 
 -- amount, stale: the caster's +healing for kind "heal" -- read plain out of
 -- combat and kept; in combat (MD.inCombat), or when the read is secret or
--- absent, the last plain reading with stale = true; nil before any. "damage"
--- is nil on this line (no GetSpellBonusDamage binding yet). `school` is the
--- damage family's, for the book that reads one (T118).
+-- absent, the last plain reading with stale = true; nil before any.
+-- `school` is the damage family's (T118; read on this line since T124).
 -- Book._lastBonus: the last plain +healing reading, or nil before any.
 
+-- T124: "damage" reads MD.API.SpellBonusDamage for `school` (an id 1-7 or a
+-- name, "Nature"; an unknown name nil) the same way, kept per school id in
+-- Book._lastDamage.
+local SCHOOL_IDS = { Physical = 1, Holy = 2, Fire = 3, Nature = 4, Frost = 5, Shadow = 6, Arcane = 7 }
+
+local function DamageBonus(school)
+    local id = school
+    if type(school) == "string" then id = SCHOOL_IDS[school] end
+    if type(id) ~= "number" then return nil end
+    if not MD.inCombat and MD.API.SpellBonusDamage then
+        local v = MD.API.SpellBonusDamage(id)
+        if type(v) == "number" and v == v then
+            if type(Book._lastDamage) ~= "table" then Book._lastDamage = {} end
+            Book._lastDamage[id] = v
+            return v, false
+        end
+    end
+    local last = type(Book._lastDamage) == "table" and Book._lastDamage[id] or nil
+    if last == nil then return nil end
+    return last, true
+end
+
 function Book:Bonus(kind, school)
+    if kind == "damage" then return DamageBonus(school) end
     if kind ~= "heal" then return nil end
     if not MD.inCombat and MD.API.SpellBonusHealing then
         local v = MD.API.SpellBonusHealing()

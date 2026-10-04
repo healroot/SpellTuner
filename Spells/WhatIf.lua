@@ -36,6 +36,7 @@ MD.WhatIf = WI
 
 WI.STATS = {
     { key = "heal",    label = "+Healing",            step = 25,  bigStep = 100 },
+    { key = "damage",  label = "+Spell damage",       step = 25,  bigStep = 100 },
     { key = "crit",    label = "Crit %",              decimals = 1, max = 100 },
     { key = "mana",    label = "Mana",                step = 250, bigStep = 1000 },
     { key = "casting", label = "Regen while casting", unit = "mp5" },
@@ -188,6 +189,7 @@ end
 
 local SUMMARY = {
     heal = function(v) return "healing" end,
+    damage = function(v) return "spell damage" end,
     mana = function(v) return "mana" end,
 }
 
@@ -199,7 +201,7 @@ function WI:Summary()
     for _, s in ipairs(WI.STATS) do
         local v = values[s.key]
         if type(v) == "number" then
-            if s.key == "heal" or s.key == "mana" then
+            if s.key == "heal" or s.key == "damage" or s.key == "mana" then
                 local word = SUMMARY[s.key](v)
                 if type(live[s.key]) == "number" then
                     local d = WI:Delta(s.key)
@@ -268,6 +270,34 @@ function WI.Diff(a, b, aCasts, bCasts)
     return out
 end
 
+-- T124: the school +Spell damage reads live -- the damage family on screen
+-- (MD.SpellsPane's family view, a preview included), else the book's first damage
+-- family in its order; nil when the book has none. A school is a name
+-- ("Nature") or an id; both books' Bonus("damage", school) take either.
+function WI.DamageSchool(book)
+    if type(book) ~= "table" or type(book.families) ~= "table" then return nil end
+    local P = MD.SpellsPane
+    local f = P and P.family    if type(f) == "table" and f.key ~= nil and (not f.IsShown or f:IsShown()) then
+        local fam = book.families[f.key]
+        if type(fam) == "table" and fam.kind == "damage" and fam.school ~= nil then return fam.school end
+    end
+    for _, key in ipairs(book.order or {}) do
+        local fam = book.families[key]
+        if type(fam) == "table" and fam.kind == "damage" and fam.school ~= nil then return fam.school end
+    end
+    return nil
+end
+
+-- T124: the live +Spell damage of WI.DamageSchool's school, through the
+-- line's Book:Bonus; nil when there is no damage family or no reading.
+function WI.LiveDamage(Book)
+    if not (Book and Book.Get and Book.Bonus) then return nil end
+    local school = WI.DamageSchool(Book:Get())
+    if school == nil then return nil end
+    local v = Book:Bonus("damage", school)    if type(v) == "number" then return v end
+    return nil
+end
+
 local function ById(fam, id)
     for _, e in ipairs(fam and fam.ranks or {}) do
         if e.id == id then return e end
@@ -275,27 +305,30 @@ local function ById(fam, id)
     return nil
 end
 
--- The footer: "Suggested: Rank 12 -> Rank 6." when the suggestion moved,
--- else "No change to the suggestion.", then the live suggested rank's per
--- mana when its shown number moved: " Rank 12 per mana 6.09 -> 6.41 (+5%)."
+-- The footer (T124: like with like). When the suggestion moved: "Suggested:
+-- Rank 12 -> Rank 6. With these stats Rank 6 gives 7.40 per mana, Rank 12
+-- 6.83 (+8%)." -- both numbers the what-if book's; `liveFam` gives only which
+-- rank was suggested live. When the new rank gives less per mana, the reason
+-- follows (beaten, else under the floor). Else "No change to the suggestion."
 function WI.Changes(liveFam, whatFam)
-    if type(liveFam) ~= "table" or type(whatFam) ~= "table" then return "No change to the suggestion." end
+    local same = "No change to the suggestion."
+    if type(liveFam) ~= "table" or type(whatFam) ~= "table" then return same end
     local ls, ws = liveFam.suggested, whatFam.suggested
-    local text
-    if ls and ws and ls.id ~= ws.id then
-        text = "Suggested: Rank " .. tostring(ls.rank or "-") .. " -> Rank " .. tostring(ws.rank or "-") .. "."
-    else
-        text = "No change to the suggestion."
+    if not ls or not ws or ls.id == ws.id then return same end
+    local old = ById(whatFam, ls.id)
+    local new = ById(whatFam, ws.id) or ws
+    if not old then
+        return "Suggested: Rank " .. tostring(ls.rank or "-") .. " -> Rank " .. tostring(ws.rank or "-") .. "."
     end
-    if ls then
-        local w = ById(whatFam, ls.id)
-        local a, b = ls.perMana, w and w.perMana
-        if type(a) == "number" and type(b) == "number" and Num(a, 2) ~= Num(b, 2) then
-            local pct = (a > 0) and ((b / a - 1) * 100) or nil
-            local signed = (MD.Words and pct) and MD.Words.Signed(pct) or nil
-            text = text .. " Rank " .. tostring(ls.rank or "-") .. " per mana " .. Num(a, 2) .. " -> " .. Num(b, 2)
-                .. (signed and (" (" .. signed .. ")") or "") .. "."
-        end
+    local beaten
+    if old.dominatedBy ~= nil then
+        local b = ById(whatFam, old.dominatedBy)
+        if b then beaten = b.rank end
     end
-    return text
+    local top = whatFam.maxKnown and whatFam.maxKnown.rank
+    local kind = (whatFam.kind == "damage") and "damage" or "heal"
+    if MD.Words and MD.Words.SuggestionMoved then
+        return MD.Words.SuggestionMoved(old, new, beaten, top, kind)
+    end
+    return "Suggested: Rank " .. tostring(old.rank or "-") .. " -> Rank " .. tostring(new.rank or "-") .. "."
 end

@@ -639,7 +639,7 @@ if S.flavour == "tbc" then
             and chipLive == "live: R" .. liveFam.suggested.rank
             and bonusRaw:find(accent, 1, true) == 1 and Strip(bonusRaw) == "+" .. Num(live.heal + 150) .. " healing what if"
             and note == "what if: +150 healing" and footer == WIr().Changes(liveFam, whatFam)
-            and footer ~= "No change to the suggestion." and delta == "+150"
+            and delta == "+150"
             and Strip(Box("heal").box:GetText()) == tostring(live.heal + 150)
         return good, string.format("chip=%s/%s/%s bonus=%q note=%q footer=%q delta=%s accented=%d marks=%d bad=%s",
             chipL, chipR, chipLive, Strip(bonusRaw), note, footer, delta, accented, marks, table.concat(bad, "; "))
@@ -2775,35 +2775,45 @@ T36("T124 forever: Wrath's header reads +N Nature damage; +Spell damage typed sh
     Book:MarkDirty()
     local f = OpenView("Wrath")
     local after = StripColor(f.header.bonus and f.header.bonus:GetText() or "(no bonus line)")
-    Click(f.strip.whatIfBtn)
+    -- the stub's Wrath has one rank, so no strip and no What if... there; the
+    -- pane opens on Nourish (a heal on screen: the live +Spell damage is the
+    -- book's first damage family's school, Wrath's Nature)
+    local fn = OpenView("Nourish")
+    Click(fn.strip.whatIfBtn)
     local labels = {}
     for _, s in ipairs(WIf().STATS) do
         labels[#labels + 1] = FBox(s.key) and StripColor(FBox(s.key).label:GetText() or "") or "-"
     end
     local dbox = FBox("damage")
     local ph = dbox and StripColor(dbox.ph:GetText() or "") or "?"
+    -- with a heal on screen the live value is the book's first damage
+    -- family's school (this suite's Moonfire, Arcane, before Wrath)
+    local phLive = WIf():Live().damage
     local typedRaw = ""
     if dbox then
         dbox.box:SetText("200")
         dbox.box:GetScript("OnEnterPressed")(dbox.box)
-        typedRaw = F().header.bonus:GetText() or ""
     end
+    -- a damage stat moves no heal: Nourish's footer is the what-if book's own
     local footer = StripColor(F().whatIf.footer:GetText() or "")
-    local liveFam, whatFam = Book:Get().families.Wrath, WIf():Book().families.Wrath
+    local liveFam, whatFam = Book:Get().families.Nourish, WIf():Book().families.Nourish
     local wantFooter = WIf().Changes(liveFam, whatFam)
+    typedRaw = OpenView("Wrath").header.bonus:GetText() or ""
+    local wrathLive = WIf():Live().damage -- Wrath on screen: its Nature reading
     WIf():Clear()
-    Click(F().strip.whatIfBtn)
+    Click(OpenView("Nourish").strip.whatIfBtn)
     S.bonusDamage[4] = savedDmg
     Book:MarkDirty()
     if not hadWrath then MD.Tabs:Remove("Wrath"); SP:ListChanged() end
     local accent = UI.Hex("accent")
     local good = after == "+120 Nature damage" and before ~= after
         and table.concat(labels, ","):find("+Healing,+Spell damage,", 1, true) == 1
-        and ph == "120"
+        and type(phLive) == "number" and ph == Num(phLive) and wrathLive == 120
         and typedRaw:find(accent, 1, true) == 1 and StripColor(typedRaw) == "+200 Nature damage what if"
-        and footer == wantFooter
-    return good, string.format("before=%q after=%q labels=%s ph=%q typed=%q footer=%q", before, after,
-        table.concat(labels, ","), ph, StripColor(typedRaw), footer)
+        and footer == wantFooter and footer == "No change to the suggestion."
+        and not SP.whatIfOpen
+    return good, string.format("before=%q after=%q labels=%s ph=%q phLive=%s wrathLive=%s typed=%q footer=%q", before, after,
+        table.concat(labels, ","), ph, tostring(phLive), tostring(wrathLive), StripColor(typedRaw), footer)
 end)
 
 --------------------------------------------------------------------------------

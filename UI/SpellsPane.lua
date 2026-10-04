@@ -1294,8 +1294,7 @@ local function PaintWhatIf(f, liveFam, fam)
     local function PaintNumber(row, decimals)
         local v = WI:Get(row.key)
         if not (row.box.HasFocus and row.box:HasFocus()) then row.box:SetText(BoxText(v)) end
-        row.ph:SetText(Num(live[row.key], decimals))
-        row.ph:SetShown((row.box:GetText() or "") == "")
+        row.ph:SetText(Num(live[row.key], decimals))        row.ph:SetShown((row.box:GetText() or "") == "")
         row.delta:SetText(WI:Delta(row.key))
     end
     for i, row in ipairs(pane.statRows) do
@@ -1590,9 +1589,17 @@ end
 local function BonusLine(fam)
     if fam.kind ~= "heal" and fam.kind ~= "damage" then return "", false end
     -- T122: a typed +Healing in the accent, "what if" beside it
-    local typed = WIActive() and fam.kind == "heal" and MD.WhatIf:Get("heal") or nil
+    -- T124: a typed +Spell damage the same way on a damage family
+    local typed
+    if WIActive() then
+        typed = MD.WhatIf:Get(fam.kind)
+    end
     if type(typed) == "number" then
-        return UI.Hex("accent") .. "+" .. Num(typed) .. " healing" .. RESET .. " " .. UI.Hex("muted")
+        local word = "healing"
+        if fam.kind == "damage" then
+            word = ((type(fam.school) == "string") and (Esc(fam.school) .. " ") or "") .. "damage"
+        end
+        return UI.Hex("accent") .. "+" .. Num(typed) .. " " .. word .. RESET .. " " .. UI.Hex("muted")
             .. "what if" .. RESET, false
     end
     local amount, stale = MD.Book:Bonus(fam.kind, fam.school)

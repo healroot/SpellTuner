@@ -10,6 +10,10 @@
 --              its parts moved with it, then per mana / per second
 --              re-derived through Book.Numbers and the rank rules re-run
 --              (Book.RULE_FIELDS);
+--   +Spell damage (T124)
+--              each damage rank the same way by its estimated share of the
+--              change in its school's bonus (the live side the school on
+--              screen, WI.LiveDamage; every school moves by one delta);
 --   Crit %     each valued heal rank's `crit` (a chance, 0..1) -- the values
 --              are averages without crit (the card's Crit pair names it);
 --   Mana / Regen while casting
@@ -35,6 +39,7 @@ local provider = {}
 function provider.Live()
     local out = {}
     out.heal = LiveBonus()
+    out.damage = WI.LiveDamage(Book) -- T124: the school on screen
     local school = MD.ClassProfile and MD.ClassProfile.critSchool or 2
     local crit = MD.API.SpellCritChance and MD.API.SpellCritChance(school)
     if type(crit) == "number" and crit == crit then out.crit = crit end
@@ -83,29 +88,37 @@ local function ShiftPart(part, d)
     if dOver ~= 0 then part.over = part.over + dOver end
 end
 
-local function CopyEntry(e, dHeal, typedHeal, crit, kind)
+-- T124: the stat a family of `kind` moves with -- +Healing for a heal,
+-- +Spell damage for a damage family; { d = typed - live, typed } or nil.
+local function CopyEntry(e, move, crit, kind)
     local w = {}
     for k, v in pairs(e) do w[k] = v end
     local b = e.bonus
     local d = 0
-    if kind == "heal" and dHeal ~= 0 and type(b) == "table" and type(b.counts) == "number"
-        and type(e.parsed) == "table" then
-        d = b.counts * dHeal
+    local delta = move and move.delta or 0
+    local typed = move and move.typed or nil
+    if delta ~= 0 and type(b) == "table" and type(b.counts) == "number" and type(e.parsed) == "table" then
+        d = b.counts * delta
         local parsed = {}
         for k, v in pairs(e.parsed) do parsed[k] = v end
-        if parsed.heal ~= nil then
-            parsed.heal = CopyPart(parsed.heal)
-            ShiftPart(parsed.heal, d)
-        elseif type(parsed.absorb) == "number" then
-            parsed.absorb = parsed.absorb + d
+        if kind == "heal" then
+            if parsed.heal ~= nil then
+                parsed.heal = CopyPart(parsed.heal)
+                ShiftPart(parsed.heal, d)
+            elseif type(parsed.absorb) == "number" then
+                parsed.absorb = parsed.absorb + d
+            end
+        elseif kind == "damage" and parsed.damage ~= nil then
+            parsed.damage = CopyPart(parsed.damage)
+            ShiftPart(parsed.damage, d)
         end
         w.parsed = parsed
     end
-    if type(b) == "table" and kind == "heal" and typedHeal ~= nil then
+    if type(b) == "table" and typed ~= nil then
         local nb = {}
         for k, v in pairs(b) do nb[k] = v end
-        nb.of = typedHeal
-        nb.amount = (type(b.counts) == "number") and b.counts * typedHeal or nil
+        nb.of = typed
+        nb.amount = (type(b.counts) == "number") and b.counts * typed or nil
         w.bonus = nb
     end
     if d ~= 0 then Book.Numbers(w, kind) end
@@ -113,13 +126,25 @@ local function CopyEntry(e, dHeal, typedHeal, crit, kind)
     return w
 end
 
+-- { delta, typed } for the stat of `kind` that is typed, else nil; the live
+-- side read once per build (`live` caches it).
+local function Move(kind, live)
+    local key = (kind == "heal" or kind == "damage") and kind or nil
+    if not key then return nil end
+    local typed = WI:Get(key)
+    if typed == nil then return nil end
+    local base = live[key]
+    -- no live reading: nothing moves, the bonus still names the typed value
+    if type(base) ~= "number" then return { delta = 0, typed = typed } end
+    return { delta = typed - base, typed = typed }
+end
+
 function provider.Book()
     if not (Book and Book.Get) then return nil end
     local live = Book:Get()
     if type(live) ~= "table" then return nil end
-    local liveHeal = LiveBonus()
-    local typedHeal = WI:Get("heal")
-    local dHeal = (typedHeal ~= nil and liveHeal ~= nil) and (typedHeal - liveHeal) or 0
+    local liveStats = { heal = LiveBonus(), damage = WI.LiveDamage(Book) }
+    local moves = { heal = Move("heal", liveStats), damage = Move("damage", liveStats) }
     local crit = WI:Get("crit")
     local pool = WI:Pool(Book:Pool())
     local castPool = { max = pool.max, regenCasting = pool.regenCasting }
@@ -130,7 +155,7 @@ function provider.Book()
         for k, v in pairs(fam) do nf[k] = v end
         nf.ranks = {}
         for i, e in ipairs(fam.ranks or {}) do
-            local w = CopyEntry(e, dHeal, typedHeal, crit, fam.kind)
+            local w = CopyEntry(e, moves[fam.kind or ""], crit, fam.kind)
             w.casts = Book:CastsFor(w, castPool)
             nf.ranks[i] = w
             spells[e.id] = w
@@ -150,7 +175,7 @@ function provider.Book()
     end
     -- a spell outside every family (none on this line today) is copied as is
     for id, e in pairs(live.spells or {}) do
-        if spells[id] == nil then spells[id] = CopyEntry(e, 0, nil, nil, nil) end
+        if spells[id] == nil then spells[id] = CopyEntry(e, nil, nil, nil) end
     end
     return { families = families, order = live.order, spells = spells, read = live.read,
              generation = live.generation, whatIf = true }
@@ -159,9 +184,14 @@ end
 provider.classRows = nil
 provider.classNote = "Your talents are already in the spells' text, so there is no class row."
 
--- "2 of 3 ranks measured, 1 estimated" -- the +healing shares the move rests on.
+-- "2 of 3 ranks measured, 1 estimated" -- the shares the move rests on: a
+-- heal family's while +Healing is typed, a damage family's while +Spell
+-- damage is (T124; damage ranks are always estimated: MeasureBonus reads
+-- heals only).
 function provider.ranksNote(fam)
-    if WI:Get("heal") == nil or type(fam) ~= "table" then return nil end
+    if type(fam) ~= "table" then return nil end
+    if fam.kind ~= "heal" and fam.kind ~= "damage" then return nil end
+    if WI:Get(fam.kind) == nil then return nil end
     local measured, estimated = 0, 0
     local ranks = fam.ranks or {}
     for _, e in ipairs(ranks) do

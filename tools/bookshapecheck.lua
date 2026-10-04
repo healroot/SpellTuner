@@ -330,9 +330,12 @@ local function ForeverChecks()
             Step("out of combat, plain again", 300, false, function()
                 S.inCombat = false; S.bonusHealingSecretInCombat = false
             end)
-            local d = Book:Bonus("damage", "Nature")
-            steps[#steps + 1] = "damage -> " .. tostring(d)
-            if d ~= nil then ok, why = false, "damage answered " .. tostring(d) end
+            -- T124: Forever reads +damage per school now (GetSpellBonusDamage
+            -- bound); out of combat the stub's Nature reading, plain
+            local d, dStale = Book:Bonus("damage", "Nature")
+            steps[#steps + 1] = "damage -> " .. tostring(d) .. ", " .. tostring(dStale)
+            local wantD = (S.bonusDamage and S.bonusDamage[4]) or 0
+            if d ~= wantD or dStale ~= false then ok, why = false, "damage answered " .. tostring(d) end
             for _, s in ipairs(steps) do print("    " .. s) end
             S.bonusHealing, S.bonusHealingSecretInCombat, MD.inCombat, S.inCombat = savedB, savedSecret, savedIn, savedS
             Book:Bonus("heal")

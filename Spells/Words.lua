@@ -436,6 +436,36 @@ function W.Signed(pct)
     return n .. "%"
 end
 
+-- T124 (docs/tasks/T124-whatif-fair-compare-spell-damage.md): the What if's
+-- footer when the suggestion moved. `old` and `new` are the two ranks' entries
+-- read from ONE book (the what-if book: like with like); `beatenBy` the rank
+-- number that beats `old` in that book, else nil; `top` the highest known
+-- rank's number; `kind` "heal" or "damage". When the new rank gives less per
+-- mana, the rule did not pick it on per mana, so the reason follows: beaten,
+-- else under the floor (MD.Rules.SUGGESTED_FLOOR, Spells/RankRules.lua's).
+--   "Suggested: Rank 1 -> Rank 2. With these stats Rank 2 gives 7.40 per
+--    mana, Rank 1 6.83 (+8%)."
+function W.SuggestionMoved(old, new, beatenBy, top, kind)
+    local oldR, newR = tostring(old.rank or "-"), tostring(new.rank or "-")
+    local text = "Suggested: Rank " .. oldR .. " -> Rank " .. newR .. "."
+    local p, q = new.perMana, old.perMana
+    if type(p) ~= "number" or type(q) ~= "number" then return text end
+    local pct = ""
+    if q > 0 then pct = " (" .. W.Signed((p / q - 1) * 100) .. ")" end
+    text = text .. " With these stats Rank " .. newR .. " gives " .. Num(p, 2) .. " per mana, Rank " .. oldR
+        .. " " .. Num(q, 2) .. pct .. "."
+    if p < q then
+        if beatenBy ~= nil then
+            text = text .. " Rank " .. oldR .. " is beaten by Rank " .. tostring(beatenBy) .. "."
+        elseif top ~= nil then
+            local floor = (MD.Rules and MD.Rules.SUGGESTED_FLOOR) or 0.4
+            text = text .. " Rank " .. oldR .. " is under " .. Num(floor * 100) .. "% of Rank " .. tostring(top)
+                .. "'s " .. ((kind == "damage") and "damage" or "heal") .. "."
+        end
+    end
+    return text
+end
+
 -- "2 Oct": a measurement's day, the leading zero dropped.
 local function Day(at)
     if type(at) ~= "number" or type(date) ~= "function" then return nil end

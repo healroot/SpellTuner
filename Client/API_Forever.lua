@@ -98,6 +98,13 @@ MD.API.Bind({
     SpellBonusHealing = "GetSpellBonusHealing",
 })
 
+-- T124 (Spells/Book.lua's Book:Bonus("damage", school), the What if's
+-- +Spell damage): +damage per school id (1 Physical .. 7 Arcane), plain out
+-- of combat, UNKNOWN in combat -- the same reasoning as SpellBonusHealing.
+MD.API.Bind({
+    SpellBonusDamage = "GetSpellBonusDamage",
+})
+
 -- T15 (Modules/SpellTuner_Replay/Kit_Forever.lua): crit chance per school,
 -- plain out of combat (m2 296), UNKNOWN in combat -- same reasoning as
 -- SpellBonusHealing above.

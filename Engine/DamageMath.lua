@@ -201,10 +201,15 @@ function DM.SchoolName(family, class)
     return f and f.schoolName or nil
 end
 
-function DM.Compute(spellID, family, base, class)
+-- T124: `opts.bonusDelta` (optional) moves the school's bonus by that much,
+-- never below 0 -- the What if's +Spell damage, handed in by the TBC book's
+-- what-if build (Spells/Book_Model.lua); nothing here reads MD.sim.
+function DM.Compute(spellID, family, base, class, opts)
     local f = Fam(family, class)
     if not (f and base) then return nil end
     local bonus = DM.Bonus(f.school)
+    local delta = type(opts) == "table" and opts.bonusDelta or nil
+    if type(delta) == "number" and delta ~= 0 then bonus = math.max(0, bonus + delta) end
     local crit = (Live(GetSpellCritChance, f.school) or 0) / 100
 
     -- talents: the Balance talents, the druid's families only (T123: no

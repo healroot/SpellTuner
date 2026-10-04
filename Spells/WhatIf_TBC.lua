@@ -4,7 +4,8 @@
 --
 -- MD.sim is the one table RankMath:Context reads (without opts.live), and
 -- THIS FILE IS ITS ONLY WRITER (tools/whatifcheck.lua's source scan): every
--- WHATIF_CHANGED rewrites it from MD.WhatIf's values -- heal, crit, mana,
+-- WHATIF_CHANGED rewrites it from MD.WhatIf's values -- heal, damage (T124:
+-- the typed +Spell damage, read only by the book's what-if build), crit, mana,
 -- casting, base (mp5, as typed), tree (Form: true for Tree of Life, false
 -- for Caster, absent for Live), moonglow (0-3) -- and Clear leaves it empty.
 -- It stays set while the what-if is active, so UI/Advisor.lua's "simulation
@@ -23,7 +24,7 @@ local _, MD = ...
 local WI = MD.WhatIf
 if not WI then return end
 
-local KEYS = { "heal", "crit", "mana", "casting", "base", "moonglow" }
+local KEYS = { "heal", "damage", "crit", "mana", "casting", "base", "moonglow" }
 
 local function Sync()
     if type(MD.sim) ~= "table" then MD.sim = {} end
@@ -64,6 +65,7 @@ function provider.Live()
             out.heal, out.crit, out.casting, out.base = live.heal, live.crit, live.casting, live.base
         end
     end
+    out.damage = WI.LiveDamage(MD.Book) -- T124: the school on screen
     local pool = MD.Book and MD.Book.Pool and MD.Book:Pool()
     if type(pool) == "table" then out.mana = pool.max end
     if MD.InTreeForm then out.form = MD:InTreeForm() and "tree" or "caster" end
