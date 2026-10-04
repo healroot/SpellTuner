@@ -1286,7 +1286,7 @@ function SP.CardLines(rec, best, bestResult, replayResult, baselineResults, cls,
                     or string.format("owes %s", Fmt(SP.ManaOwed(r, p))))
         end
         -- slashes, not pipes: a bare "|" is an escape sequence to the client
-        addT("muted", "    /md coach %s safe / health / cheap / regen plays that one in the replay",
+        addT("muted", "    /st coach %s safe / health / cheap / regen plays that one in the replay",
             tostring(opts.n or 1))
     end
 
@@ -1566,7 +1566,7 @@ function SP.Coach(rec, opts)
         for _, g in ipairs(validation.gates) do
             if not g.ok then out[#out + 1] = "  " .. g.name .. ": " .. g.text end
         end
-        out[#out + 1] = "  /md simreplay for the full report; /md coach " ..
+        out[#out + 1] = "  /st simreplay for the full report; /st coach " ..
             tostring(opts and opts.n or 1) .. " force to see a card anyway."
         return out, validation
     end
@@ -2039,7 +2039,7 @@ function SP.CoachAsync(rec, opts, onDone)
     -- has always printed this line -- honouring it would change TBC's chat.)
     -- onDone's third argument is the card as structured lines (SP.CardLines), the search line included.
     if not opts.noChat then
-        ST:Print("coach: searching (this runs across frames; /md coach cancel stops it)...")
+        ST:Print("coach: searching (this runs across frames; /st coach cancel stops it)...")
     end
     return SP.Search(scenario, { kit = kit, binds = binds, rec = rec },
         function(evals, bestScore)
@@ -2438,7 +2438,7 @@ function SP.RunCard(run, best, chain, you, evals, gates)
             parts[#parts + 1] = string.format("pull %d %s %s", diffs[i][1],
                 diffs[i][2] > 0 and "saves" or "costs", Fmt(math.abs(diffs[i][2])))
         end
-        add("  where it differs: %s (Play one to see it: /md replay <run>:<pull>)",
+        add("  where it differs: %s (Play one to see it: /st replay <run>:<pull>)",
             table.concat(parts, ", "))
     end
 

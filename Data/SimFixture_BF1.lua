@@ -20,7 +20,7 @@
 --     (6833 = 7009 - 176); it is listed for aura state only
 -- Expected: replaying `casts` from initial.mana at these rates plus the
 -- measured energize below reproduces `mana` with mean |delta| <= 2 percent of
--- pool and max <= 5 percent. `/md simreplay fixture` also prints the fit
+-- pool and max <= 5 percent. `/st simreplay fixture` also prints the fit
 -- WITHOUT the energize, which is what the two-rate model alone can do.
 local _, ST = ...
 

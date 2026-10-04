@@ -23,7 +23,7 @@
 -- A last section loads UI/Settings.lua (UI/Options_About.lua until T119) and
 -- reads back the command rows the About page paints, which were ST.COMMANDS
 -- and are now ST:Commands().
--- T94: the TBC line has a `ui` verb now (`/md ui style <name>`, created by
+-- T94: the TBC line has a `ui` verb now (`/st ui style <name>`, created by
 -- UI/Styles.lua through ST:AddSubcommand); the golden was re-based for it.
 HARNESS_FLAVOUR = "tbc"
 
@@ -41,7 +41,7 @@ local T = dofile(here .. "/lib/t.lua")
 -- T87 (docs/SPEC-next.md decision 22): Client/Probe.lua is on the TBC line, the
 -- TOC's last file. Until SpellTuner_TBC.toc lists it, it is loaded here where
 -- the TOC will put it, so the transcript below is the one the TBC client gets:
--- /md probe a hidden row, the help and the About tab unchanged.
+-- /st probe a hidden row, the help and the About tab unchanged.
 do
     local listed = false
     for _, rel in ipairs(S.loadedFiles or {}) do if rel == "Client/Probe.lua" then listed = true end end
@@ -49,7 +49,7 @@ do
 end
 
 -- T94 (docs/SPEC-next.md 2.5, 5.4): UI/Styles.lua registers `ui style` with
--- ST:AddSubcommand, which on TBC (no `ui` verb of its own) creates `/md ui`.
+-- ST:AddSubcommand, which on TBC (no `ui` verb of its own) creates `/st ui`.
 -- The TBC harness drops UI/ files, so the kit, the theme and the registry are
 -- loaded here as SpellTuner_TBC.toc lists them (UI/Styles.lua right after
 -- UI/Theme_Flat.lua), and CORE_LOGIN, which ran before them, runs again so
@@ -66,10 +66,10 @@ end
 
 -- T102 (docs/SPEC-next.md 2.5, 7.4): UI/ClockSettings.lua registers `clock
 -- layout`, `clock look` and `clock preview` with ST:AddSubcommand, which on
--- TBC (no `clock` verb of its own) creates `/md clock`. It is loaded here as
+-- TBC (no `clock` verb of its own) creates `/st clock`. It is loaded here as
 -- SpellTuner_TBC.toc lists it (after UI/ClockView.lua and UI/Widget.lua, which
 -- the harness drops too: the renderer is loaded, the widget is not, so
--- `/md clock preview` says the clock is not loaded). The golden below is
+-- `/st clock preview` says the clock is not loaded). The golden below is
 -- re-based for the new verb: its help and About row, and the seven `clock`
 -- lines in VERBS (no verb whose answer lists the layouts: T104's ring changes
 -- that list).
@@ -205,7 +205,7 @@ local function Pass(label)
             lines[#lines + 1] = "cdb.practiceSetup: " .. before.practiceSetup .. " -> " .. after.practiceSetup
         end
         if not ran then lines[#lines + 1] = "RAISED " .. tostring(err) end
-        transcript[#transcript + 1] = { cmd = label .. " /md " .. verb, lines = lines }
+        transcript[#transcript + 1] = { cmd = label .. " /st " .. verb, lines = lines }
     end
 end
 
@@ -259,7 +259,7 @@ end
 -- Compare
 --------------------------------------------------------------------------------
 local function Compare(GOLDEN)
-    T.section("the golden transcript (captured on 8c4cc93, re-based by T94 for /md ui style, by T102 for /md clock)")
+    T.section("the golden transcript (captured on 8c4cc93, re-based by T94 for /st ui style, by T102 for /st clock)")
     T.check("the golden has every verb of both passes and the About rows", #GOLDEN == #transcript,
         string.format("%d entries, golden %d", #transcript, #GOLDEN))
     local mismatches = {}
@@ -301,10 +301,10 @@ local function Compare(GOLDEN)
         for _, l in ipairs(t.lines) do
             if l:find("^RAISED ") then seenRaise = seenRaise or (t.cmd .. ": " .. l) end
         end
-        if t.cmd == "spied /md help" then helpRows = #t.lines end
+        if t.cmd == "spied /st help" then helpRows = #t.lines end
     end
     for _, t in ipairs(transcript) do
-        if t.cmd:find("^spied ") and t.cmd ~= "spied /md " and #t.lines == 0 then anyEmpty = anyEmpty or t.cmd end
+        if t.cmd:find("^spied ") and t.cmd ~= "spied /st " and #t.lines == 0 then anyEmpty = anyEmpty or t.cmd end
     end
     T.check("no verb raised, in either pass", seenRaise == nil, seenRaise)
     T.check("every verb but the bare one answers something with the spies in place", anyEmpty == nil, anyEmpty)
@@ -318,19 +318,19 @@ local function Compare(GOLDEN)
         end
     end
     T.check("every chat line and About row is ASCII with no bare pipe", allAscii, why)
-    T.check("the help is its heading and 29 rows (T94: /md ui style; T102: /md clock)", helpRows == 30,
+    T.check("the help is its heading and 29 rows (T94: /st ui style; T102: /st clock)", helpRows == 30,
         helpRows ~= 30 and (tostring(helpRows) .. " lines") or nil)
 
     T.section("T87: the probe on the TBC line")
     local probeRow
     for _, c in ipairs(ST:Commands()) do if c.name == "probe" then probeRow = c end end
-    T.check("/md probe is registered as a hidden row (the help and About rows above are unchanged)",
+    T.check("/st probe is registered as a hidden row (the help and About rows above are unchanged)",
         probeRow ~= nil and probeRow.hidden == true and probeRow.usage == "/st probe")
     out = {}
     local ran = pcall(SlashCmdList.SPELLTUNER, "probe")
     local said = false
     for _, l in ipairs(out) do if l:find("SpellTuner probe: build ", 1, true) then said = true end end
-    T.check("/md probe runs the probe and says so in one chat line", ran and said)
+    T.check("/st probe runs the probe and says so in one chat line", ran and said)
     T.done()
 end
 
@@ -347,10 +347,10 @@ end
 -- after the edit).
 --------------------------------------------------------------------------------
 local GOLDEN = {
-    { cmd = "spied /md ", lines = {
+    { cmd = "spied /st ", lines = {
         "call ST:ToggleDashboard()",
     } },
-    { cmd = "spied /md help", lines = {
+    { cmd = "spied /st help", lines = {
         "|cff9966ffSpellTuner:|r commands:",
         "|cff9966ffSpellTuner:|r   |cffffff00/st|r - toggle the rank dashboard",
         "|cff9966ffSpellTuner:|r   |cffffff00/st options|r - open the settings window",
@@ -382,231 +382,231 @@ local GOLDEN = {
         "|cff9966ffSpellTuner:|r   |cffffff00/st ui style <name>|r - the look of SpellTuner's windows (no name: list the styles)",
         "|cff9966ffSpellTuner:|r   |cffffff00/st clock layout <name> / look reset / preview|r - the mana clock's layout (Settings -> Clock shows each); every clock colour and bar setting back to the look's own; the clock on screen for 60 s, to see or move it",
     } },
-    { cmd = "spied /md options", lines = {
+    { cmd = "spied /st options", lines = {
         "call ST:ShowOptionsFrame()",
     } },
-    { cmd = "spied /md config", lines = {
+    { cmd = "spied /st config", lines = {
         "call ST:ShowOptionsFrame()",
     } },
-    { cmd = "spied /md settings", lines = {
+    { cmd = "spied /st settings", lines = {
         "call ST:ShowOptionsFrame()",
     } },
-    { cmd = "spied /md lock", lines = {
+    { cmd = "spied /st lock", lines = {
         "|cff9966ffSpellTuner:|r widget locked.",
         "call ST:UpdateVisibility()",
     } },
-    { cmd = "spied /md unlock", lines = {
-        "|cff9966ffSpellTuner:|r widget unlocked - drag it, then /md lock.",
+    { cmd = "spied /st unlock", lines = {
+        "|cff9966ffSpellTuner:|r widget unlocked - drag it, then /st lock.",
         "call ST:UpdateVisibility()",
         "db.locked: true -> false",
     } },
-    { cmd = "spied /md reset", lines = {
+    { cmd = "spied /st reset", lines = {
         "|cff9966ffSpellTuner:|r widget position reset.",
         "call ST:ApplyWidgetPosition()",
     } },
-    { cmd = "spied /md mute", lines = {
+    { cmd = "spied /st mute", lines = {
         "|cff9966ffSpellTuner:|r alerts muted.",
         "db.muted: false -> true",
     } },
-    { cmd = "spied /md mute", lines = {
+    { cmd = "spied /st mute", lines = {
         "|cff9966ffSpellTuner:|r alerts unmuted.",
         "db.muted: true -> false",
     } },
-    { cmd = "spied /md drink", lines = {
+    { cmd = "spied /st drink", lines = {
         "|cff9966ffSpellTuner:|r drink reminder off.",
         "db.drinkReminder: true -> false",
     } },
-    { cmd = "spied /md drink", lines = {
+    { cmd = "spied /st drink", lines = {
         "|cff9966ffSpellTuner:|r drink reminder on.",
         "db.drinkReminder: false -> true",
     } },
-    { cmd = "spied /md rest", lines = {
+    { cmd = "spied /st rest", lines = {
         "|cff9966ffSpellTuner:|r rest segment off.",
         "db.showRest: true -> false",
     } },
-    { cmd = "spied /md rest", lines = {
+    { cmd = "spied /st rest", lines = {
         "|cff9966ffSpellTuner:|r rest segment on.",
         "db.showRest: false -> true",
     } },
-    { cmd = "spied /md practice", lines = {
+    { cmd = "spied /st practice", lines = {
         "call ST:ShowDashboard()",
         "call ST:SelectView(\"simulate\", \"practice\")",
     } },
-    { cmd = "spied /md practice start", lines = {
+    { cmd = "spied /st practice start", lines = {
         "call ST:OpenPractice(<table>, nil)",
         "cdb.practiceSetup: false -> true",
     } },
-    { cmd = "spied /md practice Start", lines = {
+    { cmd = "spied /st practice Start", lines = {
         "call ST:OpenPractice(<table>, nil)",
     } },
-    { cmd = "spied /md binds", lines = {
+    { cmd = "spied /st binds", lines = {
         "call ST:ToggleBindings()",
     } },
-    { cmd = "spied /md bindings", lines = {
+    { cmd = "spied /st bindings", lines = {
         "call ST:ToggleBindings()",
     } },
-    { cmd = "spied /md spelltip", lines = {
+    { cmd = "spied /st spelltip", lines = {
         "|cff9966ffSpellTuner:|r spell tooltips: off.",
         "db.spellTooltip: true -> false",
     } },
-    { cmd = "spied /md spelltip", lines = {
+    { cmd = "spied /st spelltip", lines = {
         "|cff9966ffSpellTuner:|r spell tooltips: on - hover a heal on your bars or in the spellbook; hold Shift for the maths.",
         "db.spellTooltip: false -> true",
     } },
-    { cmd = "spied /md tooltip", lines = {
+    { cmd = "spied /st tooltip", lines = {
         "|cff9966ffSpellTuner:|r floating clock: tooltip off - it takes no mouse input at all now, so it neither pops a tooltip nor swallows clicks in its rectangle, and it is still draggable while unlocked. The minimap button and the ElvUI datatexts keep theirs.",
         "call ST:UpdateVisibility()",
         "db.widgetTooltip: true -> false",
     } },
-    { cmd = "spied /md tip", lines = {
+    { cmd = "spied /st tip", lines = {
         "|cff9966ffSpellTuner:|r floating clock: tooltip on - hovering shows the breakdown, left-click opens the dashboard.",
         "call ST:UpdateVisibility()",
         "db.widgetTooltip: false -> true",
     } },
-    { cmd = "spied /md window 30", lines = {
+    { cmd = "spied /st window 30", lines = {
         "|cff9966ffSpellTuner:|r spend half-life set to 30s.",
         "db.halfLife: 15 -> 30",
     } },
-    { cmd = "spied /md window 5", lines = {
+    { cmd = "spied /st window 5", lines = {
         "|cff9966ffSpellTuner:|r spend half-life set to 5s.",
         "db.halfLife: 30 -> 5",
     } },
-    { cmd = "spied /md window 60", lines = {
+    { cmd = "spied /st window 60", lines = {
         "|cff9966ffSpellTuner:|r spend half-life set to 60s.",
         "db.halfLife: 5 -> 60",
     } },
-    { cmd = "spied /md window 4", lines = {
-        "|cff9966ffSpellTuner:|r usage: /md window N (5-60 seconds)",
+    { cmd = "spied /st window 4", lines = {
+        "|cff9966ffSpellTuner:|r usage: /st window N (5-60 seconds)",
     } },
-    { cmd = "spied /md window 61", lines = {
-        "|cff9966ffSpellTuner:|r usage: /md window N (5-60 seconds)",
+    { cmd = "spied /st window 61", lines = {
+        "|cff9966ffSpellTuner:|r usage: /st window N (5-60 seconds)",
     } },
-    { cmd = "spied /md window abc", lines = {
-        "|cff9966ffSpellTuner:|r usage: /md window N (5-60 seconds)",
+    { cmd = "spied /st window abc", lines = {
+        "|cff9966ffSpellTuner:|r usage: /st window N (5-60 seconds)",
     } },
-    { cmd = "spied /md window", lines = {
-        "|cff9966ffSpellTuner:|r usage: /md window N (5-60 seconds)",
+    { cmd = "spied /st window", lines = {
+        "|cff9966ffSpellTuner:|r usage: /st window N (5-60 seconds)",
     } },
-    { cmd = "spied /md verify", lines = {
+    { cmd = "spied /st verify", lines = {
         "call ST:RunVerify()",
     } },
-    { cmd = "spied /md profile", lines = {
+    { cmd = "spied /st profile", lines = {
         "call ST:RunProfile()",
     } },
-    { cmd = "spied /md export", lines = {
+    { cmd = "spied /st export", lines = {
         "call ST:RunExport()",
     } },
-    { cmd = "spied /md calibrate", lines = {
+    { cmd = "spied /st calibrate", lines = {
         "call ST:RunCalibrate()",
     } },
-    { cmd = "spied /md calib", lines = {
+    { cmd = "spied /st calib", lines = {
         "call ST:RunCalibrate()",
     } },
-    { cmd = "spied /md fsrtest", lines = {
+    { cmd = "spied /st fsrtest", lines = {
         "call ST:RunFSRTest()",
     } },
-    { cmd = "spied /md regentest", lines = {
+    { cmd = "spied /st regentest", lines = {
         "call ST:RunRegenTest(nil)",
     } },
-    { cmd = "spied /md regentest 45", lines = {
+    { cmd = "spied /st regentest 45", lines = {
         "call ST:RunRegenTest(\"45\")",
     } },
-    { cmd = "spied /md regentest clear", lines = {
+    { cmd = "spied /st regentest clear", lines = {
         "call ST:RunRegenTest(\"clear\")",
     } },
-    { cmd = "spied /md spamtest", lines = {
+    { cmd = "spied /st spamtest", lines = {
         "call ST:RunSpamTest()",
     } },
-    { cmd = "spied /md simrun", lines = {
+    { cmd = "spied /st simrun", lines = {
         "call ST:RunSimRun()",
     } },
-    { cmd = "spied /md simreplay", lines = {
+    { cmd = "spied /st simreplay", lines = {
         "call ST:RunSimReplay(\"\")",
     } },
-    { cmd = "spied /md simreplay fixture", lines = {
+    { cmd = "spied /st simreplay fixture", lines = {
         "call ST:RunSimReplay(\"fixture\")",
     } },
-    { cmd = "spied /md simreplay 2", lines = {
+    { cmd = "spied /st simreplay 2", lines = {
         "call ST:RunSimReplay(\"2\")",
     } },
-    { cmd = "spied /md coach", lines = {
+    { cmd = "spied /st coach", lines = {
         "call ST:RunCoach(\"\")",
     } },
-    { cmd = "spied /md coach 1 force", lines = {
+    { cmd = "spied /st coach 1 force", lines = {
         "call ST:RunCoach(\"1 force\")",
     } },
-    { cmd = "spied /md coach cancel", lines = {
+    { cmd = "spied /st coach cancel", lines = {
         "call ST:RunCoach(\"cancel\")",
     } },
-    { cmd = "spied /md sim", lines = {
+    { cmd = "spied /st sim", lines = {
         "call ST:ToggleSimWindow()",
     } },
-    { cmd = "spied /md replay", lines = {
+    { cmd = "spied /st replay", lines = {
         "call ST:ToggleReplay(\"\")",
     } },
-    { cmd = "spied /md replay 2:7 force", lines = {
+    { cmd = "spied /st replay 2:7 force", lines = {
         "call ST:ToggleReplay(\"2:7 force\")",
     } },
-    { cmd = "spied /md replay run 2", lines = {
+    { cmd = "spied /st replay run 2", lines = {
         "call ST:ToggleReplay(\"run 2\")",
     } },
-    { cmd = "spied /md run start Blood Furnace", lines = {
+    { cmd = "spied /st run start Blood Furnace", lines = {
         "call ST:RunCommand(\"start Blood Furnace\")",
     } },
-    { cmd = "spied /md run status", lines = {
+    { cmd = "spied /st run status", lines = {
         "call ST:RunCommand(\"status\")",
     } },
-    { cmd = "spied /md run stop", lines = {
+    { cmd = "spied /st run stop", lines = {
         "call ST:RunCommand(\"stop\")",
     } },
-    { cmd = "spied /md coachrun", lines = {
+    { cmd = "spied /st coachrun", lines = {
         "call ST:RunCoachRun(\"\")",
     } },
-    { cmd = "spied /md coachrun 1", lines = {
+    { cmd = "spied /st coachrun 1", lines = {
         "call ST:RunCoachRun(\"1\")",
     } },
-    { cmd = "spied /md debug", lines = {
+    { cmd = "spied /st debug", lines = {
         "call ST:ToggleDebugConsole()",
     } },
-    { cmd = "spied /md ui", lines = {
+    { cmd = "spied /st ui", lines = {
         "|cff9966ffSpellTuner:|r usage: /st ui style <name>",
     } },
-    { cmd = "spied /md ui style", lines = {
+    { cmd = "spied /st ui style", lines = {
         "|cff9966ffSpellTuner:|r style: flat (styles: flat)",
     } },
-    { cmd = "spied /md ui style flat", lines = {
+    { cmd = "spied /st ui style flat", lines = {
         "|cff9966ffSpellTuner:|r style: flat - Flat",
     } },
-    { cmd = "spied /md ui style Nosuch", lines = {
+    { cmd = "spied /st ui style Nosuch", lines = {
         "|cff9966ffSpellTuner:|r unknown style 'nosuch' (styles: flat)",
     } },
-    { cmd = "spied /md ui reset", lines = {
+    { cmd = "spied /st ui reset", lines = {
         "|cff9966ffSpellTuner:|r usage: /st ui style <name>",
     } },
-    { cmd = "spied /md clock", lines = {
+    { cmd = "spied /st clock", lines = {
         "|cff9966ffSpellTuner:|r usage: /st clock layout <name>",
         "|cff9966ffSpellTuner:|r usage: /st clock look reset",
         "|cff9966ffSpellTuner:|r usage: /st clock preview",
     } },
-    { cmd = "spied /md Clock Layout Bar", lines = {
+    { cmd = "spied /st Clock Layout Bar", lines = {
         "|cff9966ffSpellTuner:|r mana clock: layout bar",
     } },
-    { cmd = "spied /md clock layout compact", lines = {
+    { cmd = "spied /st clock layout compact", lines = {
         "|cff9966ffSpellTuner:|r mana clock: layout compact",
     } },
-    { cmd = "spied /md clock layout line", lines = {
+    { cmd = "spied /st clock layout line", lines = {
         "|cff9966ffSpellTuner:|r mana clock: layout line",
     } },
-    { cmd = "spied /md clock look", lines = {
+    { cmd = "spied /st clock look", lines = {
         "|cff9966ffSpellTuner:|r usage: /st clock look reset",
     } },
-    { cmd = "spied /md clock look reset", lines = {
+    { cmd = "spied /st clock look reset", lines = {
         "|cff9966ffSpellTuner:|r mana clock: every colour and bar setting back to the look's own",
     } },
-    { cmd = "spied /md clock preview", lines = {
+    { cmd = "spied /st clock preview", lines = {
         "|cff9966ffSpellTuner:|r mana clock: not loaded",
     } },
-    { cmd = "spied /md nosuch", lines = {
+    { cmd = "spied /st nosuch", lines = {
         "|cff9966ffSpellTuner:|r commands:",
         "|cff9966ffSpellTuner:|r   |cffffff00/st|r - toggle the rank dashboard",
         "|cff9966ffSpellTuner:|r   |cffffff00/st options|r - open the settings window",
@@ -638,20 +638,20 @@ local GOLDEN = {
         "|cff9966ffSpellTuner:|r   |cffffff00/st ui style <name>|r - the look of SpellTuner's windows (no name: list the styles)",
         "|cff9966ffSpellTuner:|r   |cffffff00/st clock layout <name> / look reset / preview|r - the mana clock's layout (Settings -> Clock shows each); every clock colour and bar setting back to the look's own; the clock on screen for 60 s, to see or move it",
     } },
-    { cmd = "spied /md   MUTE  ", lines = {
+    { cmd = "spied /st   MUTE  ", lines = {
         "|cff9966ffSpellTuner:|r alerts muted.",
         "db.muted: false -> true",
     } },
-    { cmd = "spied /md Mute", lines = {
+    { cmd = "spied /st Mute", lines = {
         "|cff9966ffSpellTuner:|r alerts unmuted.",
         "db.muted: true -> false",
     } },
-    { cmd = "spied /md RUN Start The Underbog", lines = {
+    { cmd = "spied /st RUN Start The Underbog", lines = {
         "call ST:RunCommand(\"Start The Underbog\")",
     } },
-    { cmd = "bare /md ", lines = {
+    { cmd = "bare /st ", lines = {
     } },
-    { cmd = "bare /md help", lines = {
+    { cmd = "bare /st help", lines = {
         "|cff9966ffSpellTuner:|r commands:",
         "|cff9966ffSpellTuner:|r   |cffffff00/st|r - toggle the rank dashboard",
         "|cff9966ffSpellTuner:|r   |cffffff00/st options|r - open the settings window",
@@ -683,190 +683,190 @@ local GOLDEN = {
         "|cff9966ffSpellTuner:|r   |cffffff00/st ui style <name>|r - the look of SpellTuner's windows (no name: list the styles)",
         "|cff9966ffSpellTuner:|r   |cffffff00/st clock layout <name> / look reset / preview|r - the mana clock's layout (Settings -> Clock shows each); every clock colour and bar setting back to the look's own; the clock on screen for 60 s, to see or move it",
     } },
-    { cmd = "bare /md options", lines = {
+    { cmd = "bare /st options", lines = {
     } },
-    { cmd = "bare /md config", lines = {
+    { cmd = "bare /st config", lines = {
     } },
-    { cmd = "bare /md settings", lines = {
+    { cmd = "bare /st settings", lines = {
     } },
-    { cmd = "bare /md lock", lines = {
+    { cmd = "bare /st lock", lines = {
         "|cff9966ffSpellTuner:|r widget locked.",
         "db.locked: false -> true",
     } },
-    { cmd = "bare /md unlock", lines = {
-        "|cff9966ffSpellTuner:|r widget unlocked - drag it, then /md lock.",
+    { cmd = "bare /st unlock", lines = {
+        "|cff9966ffSpellTuner:|r widget unlocked - drag it, then /st lock.",
         "db.locked: true -> false",
     } },
-    { cmd = "bare /md reset", lines = {
+    { cmd = "bare /st reset", lines = {
         "|cff9966ffSpellTuner:|r widget position reset.",
     } },
-    { cmd = "bare /md mute", lines = {
+    { cmd = "bare /st mute", lines = {
         "|cff9966ffSpellTuner:|r alerts muted.",
         "db.muted: false -> true",
     } },
-    { cmd = "bare /md mute", lines = {
+    { cmd = "bare /st mute", lines = {
         "|cff9966ffSpellTuner:|r alerts unmuted.",
         "db.muted: true -> false",
     } },
-    { cmd = "bare /md drink", lines = {
+    { cmd = "bare /st drink", lines = {
         "|cff9966ffSpellTuner:|r drink reminder off.",
         "db.drinkReminder: true -> false",
     } },
-    { cmd = "bare /md drink", lines = {
+    { cmd = "bare /st drink", lines = {
         "|cff9966ffSpellTuner:|r drink reminder on.",
         "db.drinkReminder: false -> true",
     } },
-    { cmd = "bare /md rest", lines = {
+    { cmd = "bare /st rest", lines = {
         "|cff9966ffSpellTuner:|r rest segment off.",
         "db.showRest: true -> false",
     } },
-    { cmd = "bare /md rest", lines = {
+    { cmd = "bare /st rest", lines = {
         "|cff9966ffSpellTuner:|r rest segment on.",
         "db.showRest: false -> true",
     } },
-    { cmd = "bare /md practice", lines = {
+    { cmd = "bare /st practice", lines = {
     } },
-    { cmd = "bare /md practice start", lines = {
+    { cmd = "bare /st practice start", lines = {
     } },
-    { cmd = "bare /md practice Start", lines = {
+    { cmd = "bare /st practice Start", lines = {
     } },
-    { cmd = "bare /md binds", lines = {
+    { cmd = "bare /st binds", lines = {
     } },
-    { cmd = "bare /md bindings", lines = {
+    { cmd = "bare /st bindings", lines = {
     } },
-    { cmd = "bare /md spelltip", lines = {
+    { cmd = "bare /st spelltip", lines = {
         "|cff9966ffSpellTuner:|r spell tooltips: off.",
         "db.spellTooltip: true -> false",
     } },
-    { cmd = "bare /md spelltip", lines = {
+    { cmd = "bare /st spelltip", lines = {
         "|cff9966ffSpellTuner:|r spell tooltips: on - hover a heal on your bars or in the spellbook; hold Shift for the maths.",
         "db.spellTooltip: false -> true",
     } },
-    { cmd = "bare /md tooltip", lines = {
+    { cmd = "bare /st tooltip", lines = {
         "|cff9966ffSpellTuner:|r floating clock: tooltip off - it takes no mouse input at all now, so it neither pops a tooltip nor swallows clicks in its rectangle, and it is still draggable while unlocked. The minimap button and the ElvUI datatexts keep theirs.",
         "db.widgetTooltip: true -> false",
     } },
-    { cmd = "bare /md tip", lines = {
+    { cmd = "bare /st tip", lines = {
         "|cff9966ffSpellTuner:|r floating clock: tooltip on - hovering shows the breakdown, left-click opens the dashboard.",
         "db.widgetTooltip: false -> true",
     } },
-    { cmd = "bare /md window 30", lines = {
+    { cmd = "bare /st window 30", lines = {
         "|cff9966ffSpellTuner:|r spend half-life set to 30s.",
         "db.halfLife: 60 -> 30",
     } },
-    { cmd = "bare /md window 5", lines = {
+    { cmd = "bare /st window 5", lines = {
         "|cff9966ffSpellTuner:|r spend half-life set to 5s.",
         "db.halfLife: 30 -> 5",
     } },
-    { cmd = "bare /md window 60", lines = {
+    { cmd = "bare /st window 60", lines = {
         "|cff9966ffSpellTuner:|r spend half-life set to 60s.",
         "db.halfLife: 5 -> 60",
     } },
-    { cmd = "bare /md window 4", lines = {
-        "|cff9966ffSpellTuner:|r usage: /md window N (5-60 seconds)",
+    { cmd = "bare /st window 4", lines = {
+        "|cff9966ffSpellTuner:|r usage: /st window N (5-60 seconds)",
     } },
-    { cmd = "bare /md window 61", lines = {
-        "|cff9966ffSpellTuner:|r usage: /md window N (5-60 seconds)",
+    { cmd = "bare /st window 61", lines = {
+        "|cff9966ffSpellTuner:|r usage: /st window N (5-60 seconds)",
     } },
-    { cmd = "bare /md window abc", lines = {
-        "|cff9966ffSpellTuner:|r usage: /md window N (5-60 seconds)",
+    { cmd = "bare /st window abc", lines = {
+        "|cff9966ffSpellTuner:|r usage: /st window N (5-60 seconds)",
     } },
-    { cmd = "bare /md window", lines = {
-        "|cff9966ffSpellTuner:|r usage: /md window N (5-60 seconds)",
+    { cmd = "bare /st window", lines = {
+        "|cff9966ffSpellTuner:|r usage: /st window N (5-60 seconds)",
     } },
-    { cmd = "bare /md verify", lines = {
+    { cmd = "bare /st verify", lines = {
     } },
-    { cmd = "bare /md profile", lines = {
+    { cmd = "bare /st profile", lines = {
     } },
-    { cmd = "bare /md export", lines = {
+    { cmd = "bare /st export", lines = {
     } },
-    { cmd = "bare /md calibrate", lines = {
+    { cmd = "bare /st calibrate", lines = {
     } },
-    { cmd = "bare /md calib", lines = {
+    { cmd = "bare /st calib", lines = {
     } },
-    { cmd = "bare /md fsrtest", lines = {
+    { cmd = "bare /st fsrtest", lines = {
     } },
-    { cmd = "bare /md regentest", lines = {
+    { cmd = "bare /st regentest", lines = {
     } },
-    { cmd = "bare /md regentest 45", lines = {
+    { cmd = "bare /st regentest 45", lines = {
     } },
-    { cmd = "bare /md regentest clear", lines = {
+    { cmd = "bare /st regentest clear", lines = {
     } },
-    { cmd = "bare /md spamtest", lines = {
+    { cmd = "bare /st spamtest", lines = {
     } },
-    { cmd = "bare /md simrun", lines = {
+    { cmd = "bare /st simrun", lines = {
     } },
-    { cmd = "bare /md simreplay", lines = {
+    { cmd = "bare /st simreplay", lines = {
     } },
-    { cmd = "bare /md simreplay fixture", lines = {
+    { cmd = "bare /st simreplay fixture", lines = {
     } },
-    { cmd = "bare /md simreplay 2", lines = {
+    { cmd = "bare /st simreplay 2", lines = {
     } },
-    { cmd = "bare /md coach", lines = {
+    { cmd = "bare /st coach", lines = {
     } },
-    { cmd = "bare /md coach 1 force", lines = {
+    { cmd = "bare /st coach 1 force", lines = {
     } },
-    { cmd = "bare /md coach cancel", lines = {
+    { cmd = "bare /st coach cancel", lines = {
     } },
-    { cmd = "bare /md sim", lines = {
+    { cmd = "bare /st sim", lines = {
     } },
-    { cmd = "bare /md replay", lines = {
+    { cmd = "bare /st replay", lines = {
     } },
-    { cmd = "bare /md replay 2:7 force", lines = {
+    { cmd = "bare /st replay 2:7 force", lines = {
     } },
-    { cmd = "bare /md replay run 2", lines = {
+    { cmd = "bare /st replay run 2", lines = {
     } },
-    { cmd = "bare /md run start Blood Furnace", lines = {
+    { cmd = "bare /st run start Blood Furnace", lines = {
     } },
-    { cmd = "bare /md run status", lines = {
+    { cmd = "bare /st run status", lines = {
     } },
-    { cmd = "bare /md run stop", lines = {
+    { cmd = "bare /st run stop", lines = {
     } },
-    { cmd = "bare /md coachrun", lines = {
+    { cmd = "bare /st coachrun", lines = {
     } },
-    { cmd = "bare /md coachrun 1", lines = {
+    { cmd = "bare /st coachrun 1", lines = {
     } },
-    { cmd = "bare /md debug", lines = {
+    { cmd = "bare /st debug", lines = {
     } },
-    { cmd = "bare /md ui", lines = {
+    { cmd = "bare /st ui", lines = {
         "|cff9966ffSpellTuner:|r usage: /st ui style <name>",
     } },
-    { cmd = "bare /md ui style", lines = {
+    { cmd = "bare /st ui style", lines = {
         "|cff9966ffSpellTuner:|r style: flat (styles: flat)",
     } },
-    { cmd = "bare /md ui style flat", lines = {
+    { cmd = "bare /st ui style flat", lines = {
         "|cff9966ffSpellTuner:|r style: flat - Flat",
     } },
-    { cmd = "bare /md ui style Nosuch", lines = {
+    { cmd = "bare /st ui style Nosuch", lines = {
         "|cff9966ffSpellTuner:|r unknown style 'nosuch' (styles: flat)",
     } },
-    { cmd = "bare /md ui reset", lines = {
+    { cmd = "bare /st ui reset", lines = {
         "|cff9966ffSpellTuner:|r usage: /st ui style <name>",
     } },
-    { cmd = "bare /md clock", lines = {
+    { cmd = "bare /st clock", lines = {
         "|cff9966ffSpellTuner:|r usage: /st clock layout <name>",
         "|cff9966ffSpellTuner:|r usage: /st clock look reset",
         "|cff9966ffSpellTuner:|r usage: /st clock preview",
     } },
-    { cmd = "bare /md Clock Layout Bar", lines = {
+    { cmd = "bare /st Clock Layout Bar", lines = {
         "|cff9966ffSpellTuner:|r mana clock: layout bar",
     } },
-    { cmd = "bare /md clock layout compact", lines = {
+    { cmd = "bare /st clock layout compact", lines = {
         "|cff9966ffSpellTuner:|r mana clock: layout compact",
     } },
-    { cmd = "bare /md clock layout line", lines = {
+    { cmd = "bare /st clock layout line", lines = {
         "|cff9966ffSpellTuner:|r mana clock: layout line",
     } },
-    { cmd = "bare /md clock look", lines = {
+    { cmd = "bare /st clock look", lines = {
         "|cff9966ffSpellTuner:|r usage: /st clock look reset",
     } },
-    { cmd = "bare /md clock look reset", lines = {
+    { cmd = "bare /st clock look reset", lines = {
         "|cff9966ffSpellTuner:|r mana clock: every colour and bar setting back to the look's own",
     } },
-    { cmd = "bare /md clock preview", lines = {
+    { cmd = "bare /st clock preview", lines = {
         "|cff9966ffSpellTuner:|r mana clock: not loaded",
     } },
-    { cmd = "bare /md nosuch", lines = {
+    { cmd = "bare /st nosuch", lines = {
         "|cff9966ffSpellTuner:|r commands:",
         "|cff9966ffSpellTuner:|r   |cffffff00/st|r - toggle the rank dashboard",
         "|cff9966ffSpellTuner:|r   |cffffff00/st options|r - open the settings window",
@@ -898,15 +898,15 @@ local GOLDEN = {
         "|cff9966ffSpellTuner:|r   |cffffff00/st ui style <name>|r - the look of SpellTuner's windows (no name: list the styles)",
         "|cff9966ffSpellTuner:|r   |cffffff00/st clock layout <name> / look reset / preview|r - the mana clock's layout (Settings -> Clock shows each); every clock colour and bar setting back to the look's own; the clock on screen for 60 s, to see or move it",
     } },
-    { cmd = "bare /md   MUTE  ", lines = {
+    { cmd = "bare /st   MUTE  ", lines = {
         "|cff9966ffSpellTuner:|r alerts muted.",
         "db.muted: false -> true",
     } },
-    { cmd = "bare /md Mute", lines = {
+    { cmd = "bare /st Mute", lines = {
         "|cff9966ffSpellTuner:|r alerts unmuted.",
         "db.muted: true -> false",
     } },
-    { cmd = "bare /md RUN Start The Underbog", lines = {
+    { cmd = "bare /st RUN Start The Underbog", lines = {
     } },
     { cmd = "about tab rows", lines = {
         "/st",

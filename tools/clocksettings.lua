@@ -40,7 +40,7 @@
 --      accent and takes it back;
 --   7. the subcommands: /st clock layout compact / nosuch / ring (accepted
 --      only where a ring is drawn), look reset, preview; on Forever /st clock
---      and /st clock lock answer exactly as before; on TBC /md clock prints
+--      and /st clock lock answer exactly as before; on TBC /st clock prints
 --      the subs' usage; the help row carries the three subs;
 --   8. INTEGRATIONS: the lines are ST.Integrations.Lines(), the broker and
 --      compact switches write db.feeds, the hint names the host found (TBC:
@@ -62,7 +62,7 @@
 -- disabled with its reason at 180 px, enabled at 300 px; Right's Rest / None /
 -- Cooldown picks and the line's switches; Time, Size (with Default), Outline,
 -- Shadow, Numbers; Labels and Mana as of max; the Forever footnote and the
--- note under the box. Section 5: no Show tab, /md rest (/st clock rest) still
+-- note under the box. Section 5: no Show tab, /st rest (/st clock rest) still
 -- drops the rest.
 --
 -- T119 (SPEC-one-ui 7, re-based): Settings is UI/Settings.lua's on both lines
@@ -603,7 +603,7 @@ local function SwitchNamed(text)
     for _, cb in ipairs(p.switches or {}) do if cb.def.text:find(text, 1, true) == 1 then return cb end end
 end
 
-Try("Show: no Show tab; the line's rest switch (" .. (forever and "/st clock rest" or "/md rest")
+Try("Show: no Show tab; the line's rest switch (" .. (forever and "/st clock rest" or "/st rest")
         .. ") still drops the segment from the rest chip and the broker's look", function()
     local noShow = true
     for _, t in ipairs(CS.TABS or {}) do if t.id == "show" then noShow = false end end
@@ -945,7 +945,7 @@ if forever then
             table.concat({ a[1] or "", b[1] or "", c[1] or "", d[1] or "" }, " | ")
     end)
 else
-    Try("TBC: /md clock alone prints the subs' usage", function()
+    Try("TBC: /st clock alone prints the subs' usage", function()
         local a = Plain(Chat(function() slash("clock") end))
         return table.concat(a, " | ") == "usage: /st clock layout <name> | usage: /st clock look reset | "
             .. "usage: /st clock preview", table.concat(a, " | ")

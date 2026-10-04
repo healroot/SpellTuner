@@ -27,7 +27,7 @@
 -- its verb without a second row -- 24 forever, 24 tbc.
 -- T113 (docs/SPEC-next.md 2.5, S0): five more under both flavours -- a sub
 -- runs before the verb; every other argument reaches the verb unchanged
--- (/st clock, /st clock lock, /st ui reset on forever, /md window on tbc);
+-- (/st clock, /st clock lock, /st ui reset on forever, /st window on tbc);
 -- ST:AddCommand after ST:AddSubcommand keeps the subs, in both load orders; a
 -- sub on an unknown verb creates it with its usage printer; the verb's help
 -- row gains the sub's usage -- 29 forever, 29 tbc.
@@ -480,7 +480,7 @@ try("an alias runs its verb and is not listed twice (A1)", function()
     end
     local calibOk = true
     if flavour == "tbc" then
-        -- a real alias: /md calib is /md calibrate, and the help says calibrate once
+        -- a real alias: /st calib is /st calibrate, and the help says calibrate once
         local saved, ran = ST.RunCalibrate, 0
         ST.RunCalibrate = function() ran = ran + 1 end
         SlashCmdList.SPELLTUNER("calib")
@@ -578,11 +578,11 @@ try("every other argument reaches the verb unchanged (T113)", function()
         local half = ST.db.halfLife
         local said = Said("window 20")
         if ST.db.halfLife ~= 20 or not (said[1] or ""):find("half-life set to 20s", 1, true) then
-            problems[#problems + 1] = "/md window 20 did not set the half-life"
+            problems[#problems + 1] = "/st window 20 did not set the half-life"
         end
         said = Said("window")
-        if not (said[1] or ""):find("usage: /md window N", 1, true) then
-            problems[#problems + 1] = "/md window said " .. tostring(said[1])
+        if not (said[1] or ""):find("usage: /st window N", 1, true) then
+            problems[#problems + 1] = "/st window said " .. tostring(said[1])
         end
         Said("window t113sub")
         Said("window T113SUB")

@@ -13,7 +13,7 @@
 -- (so the run measures its OWN drink rate; there is no preset), deaths and the
 -- time spent dead, zone changes, Innervates and potions.
 --
--- Runs are MANUAL: /md run start, /md run stop. Auto-start on entering an
+-- Runs are MANUAL: /st run start, /st run stop. Auto-start on entering an
 -- instance is reserved -- Start() takes a reason and db.runAutoStart ships
 -- false, so it is one `if` away when the author asks for it.
 --
@@ -557,7 +557,7 @@ ST:On("PLAYER_LOGOUT", function()
 end)
 
 --------------------------------------------------------------------------------
--- Slash command (/md run start [name] | stop | status)
+-- Slash command (/st run start [name] | stop | status)
 --------------------------------------------------------------------------------
 function ST:RunCommand(arg)
     arg = arg or ""
@@ -567,13 +567,13 @@ function ST:RunCommand(arg)
         local run, why = RR:Start("manual", rest)
         if not run then ST:Print("run: " .. why) return end
         ST:Print(string.format("run |cff33ff66%s|r recording - every pull and the gaps between them. " ..
-            "|cffffff00/md run stop|r when you leave.", run.name))
+            "|cffffff00/st run stop|r when you leave.", run.name))
     elseif sub == "stop" then
         local _, why = RR:Stop("manual")
         if why == "no run is recording" then ST:Print("run: nothing is recording.") end
     elseif sub == "status" or sub == "" then
         for _, line in ipairs(RR:Status()) do ST:Print(line) end
     else
-        ST:Print("usage: /md run start [name] || stop || status")   -- T48 (B11): no bare pipe
+        ST:Print("usage: /st run start [name] || stop || status")   -- T48 (B11): no bare pipe
     end
 end

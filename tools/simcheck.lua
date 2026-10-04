@@ -19,9 +19,9 @@ arg[0] = here .. "/harness.lua"
 local ST = dofile(here .. "/harness.lua")
 arg[0] = a0
 
-print("== /md simrun ==")
+print("== /st simrun ==")
 local tests, simFails = ST:RunSimRun()
-print("== /md simreplay fixture ==")
+print("== /st simreplay fixture ==")
 local replayPass = ST:RunSimReplay("fixture")
 
 if curve then

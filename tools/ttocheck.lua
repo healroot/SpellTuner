@@ -579,7 +579,7 @@ end
 --------------------------------------------------------------------------------
 -- 16b. T116 (clock v2, C1): the slots drawn. The default slots draw the
 -- line's bytes (vv, inn, rest); Right = Cooldown draws only a cooldown
--- secondary (TBC offers it); /md rest off empties a Right = Rest; Right2 is
+-- secondary (TBC offers it); /st rest off empties a Right = Rest; Right2 is
 -- part of the drawn words when the width allows.
 --------------------------------------------------------------------------------
 do
@@ -617,7 +617,7 @@ do
         return r
     end)
     local r = okS and res or {}
-    check("T116: the slots draw the line's bytes (vv, inn, rest); Right = Cooldown; /md rest empties Right",
+    check("T116: the slots draw the line's bytes (vv, inn, rest); Right = Cooldown; /st rest empties Right",
         okS and r.bad == nil and r.text and r.cdSet and r.cd == "OOM 1:15 v  inn 2:15" and r.cdOnRest == "OOM 1:20 ="
             and r.rest == "OOM 1:20 =  rest 3:40" and r.off == "OOM 1:20 =" and r.secondHidden and r.on == r.rest,
         okS and string.format("bad %s text %s cd %s %q on rest %q rest %q off %q (hidden %s) on %q", tostring(r.bad),

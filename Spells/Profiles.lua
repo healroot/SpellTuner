@@ -13,7 +13,7 @@
 --   * ST.ClassProfile is the LOGGED-IN player's, chosen by ST.Profiles.Select at
 --     CORE_LOGIN. Read only by the UI (gates, words), the live kit builders and
 --     the recorders. (The spec calls it ST.Profile; that name is taken on TBC
---     by Diagnostics_TBC.lua's ST:Profile(), the /md profile report, which a
+--     by Diagnostics_TBC.lua's ST:Profile(), the /st profile report, which a
 --     field of that name would replace.)
 --   * Everything that runs on a kit reads ST.Profiles.ForKit(kit) -- the
 --     kit's own profile, the druid's when the kit carries none (every kit and

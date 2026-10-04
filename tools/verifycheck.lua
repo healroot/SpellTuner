@@ -9,12 +9,12 @@
 -- equal it line for line. `--print` shows the transcript as chat would.
 --
 -- The scene: the shared scripted pull (tools/fakepull.lua) in the ring of 8,
--- then a run of two pulls, so /md coach 1, /md simreplay 1 and /md coachrun 1
+-- then a run of two pulls, so /st coach 1, /st simreplay 1 and /st coachrun 1
 -- have something to say. The harness loads no UI, so ST.ShowCopyPopup is
--- absent and /md profile, /md export and a long coach card print to chat --
--- which is what makes them comparable here. /md fsrtest and /md spamtest are
+-- absent and /st profile, /st export and a long coach card print to chat --
+-- which is what makes them comparable here. /st fsrtest and /st spamtest are
 -- driven through a short scripted mana stream (their event handlers moved
--- too); /md regentest has its own suite (tools/regencheck.lua).
+-- too); /st regentest has its own suite (tools/regencheck.lua).
 --
 -- What the suite sets so the golden holds on any machine: the stub's date()
 -- is read in UTC (the export's header and the coach card carry a time), and
@@ -32,7 +32,7 @@ local a0 = arg[0]; arg[0] = here .. "/harness.lua"
 local ST = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB
 
--- The TBC stub has no GetBuildInfo, which /md profile's first line reads; the
+-- The TBC stub has no GetBuildInfo, which /st profile's first line reads; the
 -- client always has it. A fixed answer, so the line is the same everywhere.
 if _G.GetBuildInfo == nil then
     _G.GetBuildInfo = function() return "2.5.5", "65000", "Sep 1 2026", 20506 end
@@ -75,7 +75,7 @@ end
 local function swing(dst, dstName, amount)
     ev("SWING_DAMAGE", "Mob-1", dst, dstName, amount, 0, 1, 0, 0, 0, false)
 end
--- /md fsrtest ends on a C_Timer.After(15). The stub's After only collects its
+-- /st fsrtest ends on a C_Timer.After(15). The stub's After only collects its
 -- callbacks (and wave 4's P10 may change that), so the global is replaced here
 -- by a scheduler this suite fires itself, on the stub's clock. Only calls made
 -- through the global after this line see it -- fsrtest's is one.
@@ -189,7 +189,7 @@ end
 
 if mode == "print" then
     for _, t in ipairs(transcript) do
-        print("== /md " .. t.cmd .. " (" .. #t.lines .. ")")
+        print("== /st " .. t.cmd .. " (" .. #t.lines .. ")")
         for _, l in ipairs(t.lines) do print(l) end
     end
     os.exit(0)
@@ -232,7 +232,7 @@ local function Compare(GOLDEN)
         local g = GOLDEN[i] or { cmd = "?", lines = {} }
         local detail
         if g.cmd ~= t.cmd then
-            detail = "golden is for /md " .. g.cmd
+            detail = "golden is for /st " .. g.cmd
         else
             for k = 1, math.max(#g.lines, #t.lines) do
                 if g.lines[k] ~= t.lines[k] then
@@ -243,7 +243,7 @@ local function Compare(GOLDEN)
                 end
             end
         end
-        check("/md " .. t.cmd .. " as on the parent", detail == nil and #t.lines > 0,
+        check("/st " .. t.cmd .. " as on the parent", detail == nil and #t.lines > 0,
             detail or (#t.lines == 0 and "no output" or string.format("%d lines", #t.lines)))
     end
 end
@@ -277,7 +277,7 @@ local function PipeZoneCheck()
         if stripped:find("|", 1, true) then bad = bad or ("bare pipe: " .. Quote(l)) end
         if l:find("[^ -~]") then bad = bad or ("not ASCII: " .. Quote(l)) end
     end
-    check("/md coach: a zone with a pipe prints escaped (T65)", rec ~= nil and saw and bad == nil,
+    check("/st coach: a zone with a pipe prints escaped (T65)", rec ~= nil and saw and bad == nil,
         bad or string.format("%d lines, zone printed escaped: %s", #out, tostring(saw)))
 end
 
@@ -291,7 +291,7 @@ local GOLDEN = {
         "|cff9966ffSpellTuner:|r checked 0 cast times, 0 costs - 0 mismatch(es).",
         "|cff9966ffSpellTuner:|r -- input snapshot --",
         "|cff9966ffSpellTuner:|r GetManaRegen: base 69.24/s, casting 28.33/s (x5 = 346 / 142 mp5)",
-        "|cff9966ffSpellTuner:|r measured mp5: none - run /md regentest solo to measure the beat the API omits",
+        "|cff9966ffSpellTuner:|r measured mp5: none - run /st regentest solo to measure the beat the API omits",
         "|cff9966ffSpellTuner:|r drink buff up: no; observed OOC fill 0.00/s (FSR duty 62%)",
         "|cff9966ffSpellTuner:|r spirit 380, int 425 -> spirit share 58.44/s (292 mp5), gear/buffs ~53 mp5, in-5SR fraction 30%",
         "|cff9966ffSpellTuner:|r +healing: 450 (not in Tree form)",
@@ -317,7 +317,7 @@ local GOLDEN = {
         "|cff9966ffSpellTuner:|r   [Blood Furnace] 0:26 || net -414 mp5 || spent 2.2k (RJ 46%, RG 24%, other 20%, LB 10%) || overheal 37% || spirit regen realized 100% || max-rank casts 83%",
         "|cff9966ffSpellTuner:|r   [Blood Furnace] 0:40 || net -424 mp5 || spent 3.4k (RG 61%, RJ 39%) || spirit regen realized 37% || max-rank casts 100%",
         "|cff9966ffSpellTuner:|r   [Blood Furnace] 0:36 || net -405 mp5 || spent 2.9k (RG 54%, RJ 46%) || spirit regen realized 38% || max-rank casts 100%",
-        "|cff9966ffSpellTuner:|r For the FSR anchor: stand idle at partial mana, run /md fsrtest, cast ONE Healing Touch, and watch which tick sizes appear when. For Dreamstate: /md regentest.",
+        "|cff9966ffSpellTuner:|r For the FSR anchor: stand idle at partial mana, run /st fsrtest, cast ONE Healing Touch, and watch which tick sizes appear when. For Dreamstate: /st regentest.",
     } },
     { cmd = "profile", lines = {
         "|cff9966ffSpellTuner:|r === SpellTuner v{version} profile ===",
@@ -326,7 +326,7 @@ local GOLDEN = {
         "|cff9966ffSpellTuner:|r ",
         "|cff9966ffSpellTuner:|r --- inputs ---",
         "|cff9966ffSpellTuner:|r GetManaRegen: base 69.24/s, casting 28.33/s (x5 = 346 / 142 mp5)",
-        "|cff9966ffSpellTuner:|r measured mp5: none - run /md regentest solo to measure the beat the API omits",
+        "|cff9966ffSpellTuner:|r measured mp5: none - run /st regentest solo to measure the beat the API omits",
         "|cff9966ffSpellTuner:|r drink buff up: no; observed OOC fill 0.00/s (FSR duty 62%)",
         "|cff9966ffSpellTuner:|r spirit 380, int 425 -> spirit share 58.44/s (292 mp5), gear/buffs ~53 mp5, in-5SR fraction 30%",
         "|cff9966ffSpellTuner:|r +healing: 450 (not in Tree form)",
@@ -698,10 +698,10 @@ local GOLDEN = {
         "|cff9966ffSpellTuner:|r   health curves: no target reproduced within 5% mean / 15% worst",
         "|cff9966ffSpellTuner:|r   no tracked death: 1 death(s): damage after one is truncated in the log",
         "|cff9966ffSpellTuner:|r   foreign healing: 69% of healing on your group was somebody else's (limit 25%)",
-        "|cff9966ffSpellTuner:|r   /md simreplay for the full report; /md coach 1 force to see a card anyway.",
+        "|cff9966ffSpellTuner:|r   /st simreplay for the full report; /st coach 1 force to see a card anyway.",
     } },
     { cmd = "coach 1 force", lines = {
-        "|cff9966ffSpellTuner:|r coach: searching (this runs across frames; /md coach cancel stops it)...",
+        "|cff9966ffSpellTuner:|r coach: searching (this runs across frames; /st coach cancel stops it)...",
         "|cff9966ffSpellTuner:|r Blood Furnace, 15:33 (0:26, 5 targets)   used: you 1.3k   best 1.6k   diff 250",
         "|cff9966ffSpellTuner:|r   you had 2.3k headroom - nothing here needed to change",
         "|cff9966ffSpellTuner:|r   Bind: Lifebloom R1, Rejuvenation R12, Regrowth R9, Healing Touch R12, Swiftmend R1",
@@ -719,7 +719,7 @@ local GOLDEN = {
         "|cff9966ffSpellTuner:|r   strategies (one search, four ways of reading it)",
         "|cff9966ffSpellTuner:|r     Safest = Highest health              1.9k mana   floor  25%    2.2s in danger   ends whole",
         "|cff9966ffSpellTuner:|r     Least mana = Most mana left          1.6k mana   floor  25%    2.2s in danger   ends whole",
-        "|cff9966ffSpellTuner:|r     |cff888888/md coach 1 safe / health / cheap / regen plays that one in the replay|r",
+        "|cff9966ffSpellTuner:|r     |cff888888/st coach 1 safe / health / cheap / regen plays that one in the replay|r",
         "|cff9966ffSpellTuner:|r   control, buffs and shifts: 1 for 445 mana + 61 regen = 506, kept as they were in both columns",
         "|cff9966ffSpellTuner:|r   danger line: 75% of health on Alkandari - the biggest hit they took. Seconds below it are",
         "|cff9966ffSpellTuner:|r   what a plan is scored on first, ahead of mana.",
@@ -743,7 +743,7 @@ local GOLDEN = {
         "|cff9966ffSpellTuner:|r   the plan: Swiftmend <30%, direct <45%, HoT <80%, roll 0 stack(s)",
         "|cff9966ffSpellTuner:|r   binds: Lifebloom R1, Rejuvenation R12, Regrowth R9, Healing Touch R12, Swiftmend R1",
         "|cff9966ffSpellTuner:|r   drink policy: under 60%, up to 95%   (rate unknown - no drink in the run and none observed this session)",
-        "|cff9966ffSpellTuner:|r   where it differs: pull 1 saves 2.4k, pull 2 saves 2.0k (Play one to see it: /md replay <run>:<pull>)",
+        "|cff9966ffSpellTuner:|r   where it differs: pull 1 saves 2.4k, pull 2 saves 2.0k (Play one to see it: /st replay <run>:<pull>)",
         "|cff9966ffSpellTuner:|r   pulls that do not replay: 2 of 2 (mana mean 2). Their mana still counts -- that is what a run is",
         "|cff9966ffSpellTuner:|r   scored on -- but their health curves are the engine's reconstruction, not the log's.",
         "|cff9966ffSpellTuner:|r   caveat: EV crit; gap lengths, damage and other healers as recorded; drink rate unknown - no drink in the run and none observed this session.",

@@ -258,7 +258,7 @@ ST.Rules = {
     SUGGESTED_FLOOR = 0.4,
 }
 
--- Alert respects /md mute and pulses the widget if present.
+-- Alert respects /st mute and pulses the widget if present.
 function ST:Alert(msg)
     ST:Debug("other", "alert%s: %s", (ST.db and ST.db.muted) and " (muted)" or "", tostring(msg))
     if ST.db and ST.db.muted then return end
@@ -769,10 +769,9 @@ end
 
 SLASH_SPELLTUNER1 = "/spelltuner"
 SLASH_SPELLTUNER2 = "/st"
-SLASH_SPELLTUNER3 = "/md"      -- ManaDemon's, kept for the hands that learned it
 SlashCmdList.SPELLTUNER = function(msg)
     -- commands are matched lower-case; the RAW tail is kept because a run's
-    -- name is the author's text ("/md run start Blood Furnace") and lower-casing
+    -- name is the author's text ("/st run start Blood Furnace") and lower-casing
     -- it would hand them back a name they did not type
     local raw = (msg or ""):gsub("^%s+", ""):gsub("%s+$", "")
     msg = raw:lower()

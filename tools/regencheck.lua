@@ -1,6 +1,6 @@
 -- tools/run.sh tools/regencheck.lua
 --
--- Drives /md regentest against a scripted mana stream and checks the tick
+-- Drives /st regentest against a scripted mana stream and checks the tick
 -- histogram it prints. The histogram is what turns "GetManaRegen misses
 -- something" into "it misses THESE two things", so it has to survive the case
 -- that made it necessary: several overlapping 3s phases of a party energize,
@@ -197,7 +197,7 @@ check("so the clock is not inflated by it", math.abs(RM.base - (RM.apiBase + dsR
     string.format("base %.2f", RM.base))
 out = {}
 ST:ClearMeasuredMp5()
-check("/md regentest clear forgets it", ST.cdb.mp5 == nil and found("cleared") ~= nil,
+check("/st regentest clear forgets it", ST.cdb.mp5 == nil and found("cleared") ~= nil,
     found("cleared") or "no line")
 ST.harnessTalents["Dreamstate"] = 0
 

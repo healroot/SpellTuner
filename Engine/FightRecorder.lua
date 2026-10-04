@@ -214,7 +214,7 @@ function FR:Start(t0)
         form = ST:InTreeForm() and "tree" or "caster",
         -- v0.9.0: every mana/s this character gains that GetManaRegen does not
         -- report -- Dreamstate (a talent, computed) plus the measured item-mp5
-        -- beat (/md regentest, stored in cdb.mp5). apiBase/apiCasting above are
+        -- beat (/st regentest, stored in cdb.mp5). apiBase/apiCasting above are
         -- the RAW client numbers, so the engine's `energize` term is the only
         -- place this is counted. It rides with the recording rather than being
         -- looked up at replay time, so a fight recorded before a re-measurement
@@ -681,7 +681,7 @@ function FR:Finish(duration, labels)
     return s
 end
 
--- Newest first, for the Review tab and /md export.
+-- Newest first, for the Review tab and /st export.
 function FR:List()
     local list = {}
     for _, r in ipairs(ST.cdb and ST.cdb.recordings or {}) do list[#list + 1] = r end

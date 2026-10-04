@@ -284,11 +284,11 @@ if FLAVOUR == "tbc" then
             frame.AddMessage = orig
             helpNames = Has(table.concat(lines, "\n"), "probe")
         end
-        check("T87 tbc: /md probe is a hidden row, so the help does not list it",
+        check("T87 tbc: /st probe is a hidden row, so the help does not list it",
             row ~= nil and row.hidden == true and row.usage == "/st probe" and not helpNames)
     end
 
-    check("T87 tbc: /md probe runs the probe and saves the report keyed by build",
+    check("T87 tbc: /st probe runs the probe and saves the report keyed by build",
         okRun1 == true and type(reportT1) == "string" and Has(reportT1, "SpellTuner probe ")
         and Has(table.concat(chatT, "\n"), "SpellTuner probe: build 65000")
         and Has(table.concat(chatT, "\n"), "lines, saved."))
@@ -704,15 +704,15 @@ do
     for k in pairs(_G) do if not baseline[k] then extra[#extra + 1] = k end end
     local allowed = {
         SPELLTUNER_TOC = true, SpellTunerDB = true, SLASH_SPELLTUNER1 = true,
-        SLASH_SPELLTUNER2 = true, SLASH_SPELLTUNER3 = true, SpellTunerProbeFrame = true,
+        SLASH_SPELLTUNER2 = true, SpellTunerProbeFrame = true,
     }
     local onlyAllowed = true
     for _, k in ipairs(extra) do if not allowed[k] then onlyAllowed = false end end
     check("the probe adds no global but its own", onlyAllowed, table.concat(extra, ", "))
 end
 
-check("/st and /md both reach the probe",
-    SLASH_SPELLTUNER2 == "/st" and SLASH_SPELLTUNER3 == "/md" and type(SlashCmdList.SPELLTUNER) == "function")
+check("/st and /spelltuner reach the probe, /st is gone (T126)",
+    SLASH_SPELLTUNER1 == "/spelltuner" and SLASH_SPELLTUNER2 == "/st" and SLASH_SPELLTUNER3 == nil and type(SlashCmdList.SPELLTUNER) == "function")
 
 check("the to-do list names what is left",
     Has(report1, "Q1 to do") and Has(report1, "Q2 to do")

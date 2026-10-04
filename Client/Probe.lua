@@ -7,7 +7,7 @@
 -- but never lets a raw value touch arithmetic, comparison, a table key or the
 -- rendered text without going through IsSecret/Fmt/Esc first, and every call
 -- is under pcall -- the beta stops reporting errors after 100 of them.
--- T87 (docs/SPEC-next.md decision 22): on both TOCs. On the TBC line /md probe
+-- T87 (docs/SPEC-next.md decision 22): on both TOCs. On the TBC line /st probe
 -- is a hidden row, the Forever-only sections print "absent (Forever only)",
 -- and the new == art / == hosts / == clock / == cooldowns answer there too.
 local ADDON_NAME, ST = ...
@@ -2817,7 +2817,7 @@ if type(ST.AddCommand) == "function" then
         else
             Run()
         end
-    -- T87 (decision 22): a hidden row on TBC (/md probe, /st probe), as TBC's
+    -- T87 (decision 22): a hidden row on TBC (/st probe), as TBC's
     -- help and unlock are, so the TBC help and About tab keep their rows;
     -- Forever's help lists it as before
     end, "/st probe", "the capability report for the planner", not OnForever())
@@ -2826,7 +2826,6 @@ else
     -- answers if Core.lua fails to load.
     SLASH_SPELLTUNER1 = "/spelltuner"
     SLASH_SPELLTUNER2 = "/st"
-    SLASH_SPELLTUNER3 = "/md"
     SlashCmdList.SPELLTUNER = function(msg)
         local first, second = tostring(msg or ""):match("^%s*(%S*)%s*(%S*)")
         first = (first or ""):lower()

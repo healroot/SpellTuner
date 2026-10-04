@@ -12,7 +12,7 @@
 -- ones under the recording gate included -- greyed, with Coach disabled,
 -- because a dungeon is mostly those and hiding them would misrepresent the run.
 -- Every button (Validate / Coach / Play) addresses a pull as "run:pull", which
--- is the same address the slash commands take (/md replay 2:7).
+-- is the same address the slash commands take (/st replay 2:7).
 --
 -- Class-agnostic for listing (the stream is just numbers); Coach needs the
 -- druid spell kit.
@@ -159,7 +159,7 @@ function ST.DashboardParts.CreateReview(parent, width)
         "Pinned fights are never replaced (at most two).",
         "While a run is shown this pins the whole run: a run is kept or dropped as one thing.")
     local exportBtn = UI.CreateButton(pane, "Export", "accent-hover", { 60, 18 }, false, false,
-        UI.FONT_SMALL, UI.FONT_SMALL, "Copy every recording as text", "Same as /md export.")
+        UI.FONT_SMALL, UI.FONT_SMALL, "Copy every recording as text", "Same as /st export.")
     local playBtn = UI.CreateButton(pane, "Play", "accent-hover", { 48, 18 }, false, false,
         UI.FONT_SMALL, UI.FONT_SMALL, "Play this fight as unit frames",
         "What you did on the left; what Coach suggested on the right.",
@@ -169,7 +169,7 @@ function ST.DashboardParts.CreateReview(parent, width)
     local runBtn = UI.CreateButton(pane, "Start run", "accent-hover", { 76, 18 }, false, false,
         UI.FONT_SMALL, UI.FONT_SMALL, "Record a whole dungeon",
         "Every pull and the gaps between them - drinking, deaths, the clock.",
-        "Same as /md run start; it stops itself 30s after you leave the instance.")
+        "Same as /st run start; it stops itself 30s after you leave the instance.")
     runBtn:SetPoint("BOTTOMLEFT", pane, "BOTTOMLEFT", 12, 40)
     runBtn:SetScript("OnClick", function()
         local RR = ST.RunRecorder
@@ -890,7 +890,7 @@ function ST.DashboardParts.CreateReview(parent, width)
                 lines[#lines + 1] = { l = "|cff888888Validate first, or press Coach to do both.|r", r = "" }
             else
                 lines[#lines + 1] = { l = "Search for a better plan; the card appears under the list.", r = "" }
-                lines[#lines + 1] = { l = "|cff888888Runs across frames; /md coach cancel stops it.|r", r = "" }
+                lines[#lines + 1] = { l = "|cff888888Runs across frames; /st coach cancel stops it.|r", r = "" }
             end
             ST.Tip:Show(self, "ANCHOR_RIGHT", lines)
         end)

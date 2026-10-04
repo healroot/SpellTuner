@@ -53,7 +53,7 @@ ST.SettingsLine = {
                    "Turn it OFF if the clock sits in the middle of the screen: it then",
                    "takes no mouse input at all, and stays draggable while unlocked.",
                    "The minimap button and the ElvUI datatexts keep their tooltips.",
-                   "Same as /md tooltip." } },
+                   "Same as /st tooltip." } },
         { kind = "buttons",
           { text = "Reset position", width = 112, mark = "clockReset",
             onClick = function()
@@ -85,7 +85,7 @@ ST.SettingsLine = {
         { kind = "check", text = "Calibration drift alerts", key = "calibAlerts", default = true,
           tips = { "Calibration drift alerts", "The model checks itself against every heal you land.",
                    "When a spell drifts more than 3% from it over 30+ events, one chat",
-                   "line per session says so. /md calibrate shows the whole table." } },
+                   "line per session says so. /st calibrate shows the whole table." } },
     },
 
     tools = {
@@ -95,11 +95,11 @@ ST.SettingsLine = {
                      "Enable logging there; Copy exports it as text." },
             onClick = function() if ST.ToggleDebugConsole then ST:ToggleDebugConsole() end end },
           { text = "Verify spell data", width = 120,
-            tips = { "Verify spell data", "Same as /md verify: static TBC spell table vs the live client,",
+            tips = { "Verify spell data", "Same as /st verify: static TBC spell table vs the live client,",
                      "plus an input snapshot. Output goes to chat and the debug log." },
             onClick = function() if ST.RunVerify then ST:RunVerify() end end },
           { text = "Copy profile", width = 98,
-            tips = { "Copy profile", "Same as /md profile: every model input, cost, clock state and",
+            tips = { "Copy profile", "Same as /st profile: every model input, cost, clock state and",
                      "setting in one copyable box. Paste this into a bug report." },
             onClick = function() if ST.RunProfile then ST:RunProfile() end end } },
     },
@@ -113,14 +113,14 @@ ST.SettingsLine = {
     recording = {
         { kind = "check", text = "Record fights", key = "recordFights", default = true,
           tips = { "Keep the full event stream of the last 8 interesting pulls",
-                   "so they can be replayed and reviewed (/md -> Review).",
+                   "so they can be replayed and reviewed (/st -> Review).",
                    "Fight summaries keep working either way." } },
-        -- v0.9: runs. Starting one is deliberate (/md run start, or the Review
+        -- v0.9: runs. Starting one is deliberate (/st run start, or the Review
         -- tab's button); this only says whether that is allowed at all.
         { kind = "check", text = "Allow run recording", key = "recordRuns", default = true,
           tips = { "A whole dungeon as one recording: every pull and the gaps",
                    "between them (drinking, deaths, the clock).",
-                   "Runs are always started by hand - /md run start." } },
+                   "Runs are always started by hand - /st run start." } },
         { kind = "check", text = "Next pull follows", key = "replayNextPull", default = true,
           tips = { "In a run, playing a pull to the end opens the next one.",
                    "Off: it stops at each pull's end." } },
@@ -191,9 +191,9 @@ ST.SettingsLine = {
     -- Console now is
     aboutNote = {
         title = "BEFORE TRUSTING THE NUMBERS",
-        text = "1. /md verify - spell costs and cast times against your client.  "
-            .. "2. /md regentest - idle 30s: is Dreamstate in GetManaRegen?  "
-            .. "3. /md fsrtest - cast once, watch the tick sizes.  "
+        text = "1. /st verify - spell costs and cast times against your client.  "
+            .. "2. /st regentest - idle 30s: is Dreamstate in GetManaRegen?  "
+            .. "3. /st fsrtest - cast once, watch the tick sizes.  "
             .. "Copy everything from the Debug Console (General > Tools).",
     },
 }

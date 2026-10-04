@@ -1,10 +1,10 @@
 -- Static TBC druid healing spell data. Costs are read LIVE from the client
--- (GetSpellPowerCost works on the 2.5.x anniversary client: /md verify
+-- (GetSpellPowerCost works on the 2.5.x anniversary client: /st verify
 -- checked 44 costs on 2026-09-03) and this table is the fallback plus the
 -- reference the verify harness diffs against. Heal values, cast times and
 -- coefficients still come from here.
 --
--- Costs corrected from /md verify output on 2026-09-03 (level 64 druid):
+-- Costs corrected from /st verify output on 2026-09-03 (level 64 druid):
 -- Rejuvenation R6-R12, Tranquility R1-R4, Swiftmend. Fields marked VERIFY
 -- are the least certain (heal values for ranks not yet learned).
 --
@@ -211,7 +211,7 @@ function SD:StaticCost(spellID, ctx)
         cost = cost * (1 - reduction)
 
         -- cost-only idol on this family (Budding Life, Crescent Goddess). Flat
-        -- after percent is assumed; /md verify's COST lines will say if the
+        -- after percent is assumed; /st verify's COST lines will say if the
         -- client does it the other way round the day one is equipped.
         local relic = SD:Relic()
         if relic and relic.cost and relic.family == fam then

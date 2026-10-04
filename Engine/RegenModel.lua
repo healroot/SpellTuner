@@ -1,7 +1,7 @@
 -- Regen model. The two GetManaRegen() returns (base = out of the five-second
 -- rule, casting = inside it) are used DIRECTLY for everything the client
 -- reports — no algebra on top, so Intensity / Living Spirit / gear mp5 are
--- never double-counted. Verified in-game 2026-09-03 (/md regentest, see
+-- never double-counted. Verified in-game 2026-09-03 (/st regentest, see
 -- docs/HISTORY.md): observed regen ticks match GetManaRegen within ~1%,
 -- EXCEPT Dreamstate, which the client leaves out of both values. That one
 -- talent (4/7/10% of Intellect per 5s, in and out of the 5SR) is added here
@@ -92,7 +92,7 @@ end
 
 -- The second unreported stream (v0.9.0): a constant beat the API leaves out
 -- that is NOT a talent -- item mp5 on this client, measured on three solo
--- recordings at ~31 mp5 and confirmed by /md regentest's tick histogram (a
+-- recordings at ~31 mp5 and confirmed by /st regentest's tick histogram (a
 -- 2.00s beat next to the spirit tick, in and out of the five-second rule).
 -- It is a MEASUREMENT with a date, stored per character by the test itself
 -- (Verify.lua), never a constant and never inferred from gear. No measurement
@@ -112,7 +112,7 @@ function RM:MeasuredMp5()
         if not warnedMp5 then
             warnedMp5 = true
             ST:Print(string.format("the stored measured mp5 (%d) is larger than everything the client reports (%d mp5) " ..
-                "- ignoring it. Run |cffffff00/md regentest 30|r solo to measure again, or |cffffff00/md regentest clear|r.",
+                "- ignoring it. Run |cffffff00/st regentest 30|r solo to measure again, or |cffffff00/st regentest clear|r.",
                 m.mp5 or (m.perSec * 5 + 0.5), RM.apiBase * 5 + 0.5))
         end
         return 0

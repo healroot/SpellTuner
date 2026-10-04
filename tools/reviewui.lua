@@ -263,7 +263,7 @@ end)())
 -- the same address from the command line
 ST:OpenReplay("1:2")
 ST:OpenReplay("run 1")
-check("/md replay run 1 opens the run's first pull", (function()
+check("/st replay run 1 opens the run's first pull", (function()
     for _, f in ipairs(S.allFrames) do
         local t = f.GetText and f:GetText() or ""
         if type(t) == "string" and t:find("Ramparts test pull 1") then return true end
@@ -271,7 +271,7 @@ check("/md replay run 1 opens the run's first pull", (function()
     return false
 end)())
 ST:OpenReplay("1:2")
-check("/md replay 1:2 opens the second pull", (function()
+check("/st replay 1:2 opens the second pull", (function()
     for _, f in ipairs(S.allFrames) do
         local t = f.GetText and f:GetText() or ""
         if type(t) == "string" and t:find("Ramparts test pull 2") then return true end

@@ -1,13 +1,13 @@
 # SpellTuner — what to test now (v0.7.0)
 
-**Status 2026-09-05 (evening), v0.6.8:** the author ran `/md verify`, a `/reload`, `/md
-profile` and `/md spamtest` on v0.6.7 (`.logs/regression/`). Results: **§2 verify passed**
+**Status 2026-09-05 (evening), v0.6.8:** the author ran `/st verify`, a `/reload`, `/st
+profile` and `/st spamtest` on v0.6.7 (`.logs/regression/`). Results: **§2 verify passed**
 (0 cost mismatches; the 13 CAST lines were all Naturalist and the harness now knows that);
 **§6 spamtest passed** (13 predicted, 13 measured); **§8 Nature's Grace CONFIRMED** — two
 casts after a crit read `live 1.50s`, the rest 2.00s; **§11 calibration caught a real
 model error on its first run** (Regrowth's +healing split, fixed — see DECISIONS §15) and
 exposed a sim leak (fixed). Also found: a false "cooldown used: Innervate" on every cast
-(the GCD; fixed) and the `/md profile` paste came out **empty** (see §2b).
+(the GCD; fixed) and the `/st profile` paste came out **empty** (see §2b).
 
 **Still to do, in this order:** §0b · §2b · **§12 roster in a group** (the biggest unknown)
 · **§15 (new in v0.7.0, and it depends on §12 working)** · **§16 (new in v0.7.1)** · §17 · §18 · §19 · §20 · §21 · §5 (needs a hard pull) · §9
@@ -15,7 +15,7 @@ exposed a sim leak (fixed). Also found: a false "cooldown used: Innervate" on ev
 are regression-only.
 
 Everything below is done on the druid, in-game, with the Debug Console open
-(`/md options` → General → Misc → Debug Console → tick **Enable Debug Logging**).
+(`/st options` → General → Misc → Debug Console → tick **Enable Debug Logging**).
 After each test: **Copy** in the console, paste into a file under `.logs/`
 (gitignored) named like the test. Three to five files per session is plenty. The console
 keeps 1000 lines by default — the **keep lines** box (top right, saved) raises it to 20000;
@@ -34,7 +34,7 @@ the Forever-only module folders if an older install left them there.
 ## 0. v0.5 regression pass (5 min) — DO THIS FIRST
 The v0.5.0 architecture pass rewrote four tooltips and the rank math's internals with no
 intended change to any number. What to confirm:
-- **`/md verify`** — output must be **identical to before** (0 COST mismatches, no CAST
+- **`/st verify`** — output must be **identical to before** (0 COST mismatches, no CAST
   lines but Naturalist). Paste it.
 - **Dashboard numbers** — Heal/cast, HPM, HPS, HP5 and To OOM unchanged from v0.4.9 for
   the ranks you know by heart. The **Cast** column is the one exception: Healing Touch and
@@ -64,12 +64,12 @@ intended change to any number. What to confirm:
   lines" box.
 
 ## 1. Smoke test of the UI (5 min)
-- `/md options`: tabs switch, frame drags by the tab strip, position survives `/reload`,
+- `/st options`: tabs switch, frame drags by the tab strip, position survives `/reload`,
   ESC closes. The General tab grew — check **nothing overlaps** at the bottom of the
   Model and Misc panes (new: *Average in Nature's Grace*, *Reset overheal data*,
   *Copy profile*, *Show mana cooldown*, *Tooltip on hover*).
 - Half-life slider: drag, type a value in the box + Enter, value clamps to 5–60.
-- `/md`: spell tabs highlight, Settings opens the options, the **two-row** Simulate strip
+- `/st`: spell tabs highlight, Settings opens the options, the **two-row** Simulate strip
   fits inside the frame, the header/callout/hint lines above the table do **not** wrap onto
   the rows (this is the layout risk in this build — say so if any of them does).
 - Debug Console: category checkboxes filter (there is a new **Cast** one), Clear empties,
@@ -77,16 +77,16 @@ intended change to any number. What to confirm:
 - Minimap button: left = dashboard, right = options, hover shows the clock.
 
 ## 2. Data checks (2 min)
-- `/md verify` — expect **0 COST mismatches** (Innervate is skipped). Any CAST line other
+- `/st verify` — expect **0 COST mismatches** (Innervate is skipped). Any CAST line other
   than Naturalist is a bug. Paste the output.
-- **`/md profile`** (new) — opens a copy box with every model input, the max ranks'
+- **`/st profile`** (new) — opens a copy box with every model input, the max ranks'
   live-vs-static costs, the clock state and all settings. Paste it once so the baseline is
   on record; from now on this is the thing to attach to any "this number looks wrong".
 
-## 2b. `/md profile` came out empty — NEW, 30s
-The regression paste of `/md profile` was a 0-byte file. Either the copy box was empty (a
+## 2b. `/st profile` came out empty — NEW, 30s
+The regression paste of `/st profile` was a 0-byte file. Either the copy box was empty (a
 bug — was there a Lua error? `/console scriptErrors 1`), or the paste failed. Run it again;
-if the box is empty, tell me what the chat line said. `/md verify`'s snapshot section is the
+if the box is empty, tell me what the chat line said. `/st verify`'s snapshot section is the
 same content, so nothing is lost meanwhile.
 
 ## 3. Tree of Life aura on heals — DONE 2026-09-03 (confirmed; keep for regression)
@@ -105,7 +105,7 @@ Tooltips on this client show BASE values only (932 in and out of form), so use t
    `(600 + 450 × 0.3422 × 1.20) × 1.10`.
 
 ## 4b. Relic slot (1 min)
-`/md verify` prints the equipped relic and whether the table knows it. If it says NOT in
+`/st verify` prints the equipped relic and whether the table knows it. If it says NOT in
 the relic table, paste the idol's name and tooltip text.
 
 ## 5. One real fight with logging on (the clock's constants) — STILL OUTSTANDING
@@ -119,7 +119,7 @@ the relic table, paste the idol's name and tooltip text.
   covers three tests. Use Innervate during it.
 
 ## 6. To OOM sanity (repeat only if something looks off)
-- `/md spamtest`, then chain-cast one spell to OOM. Prediction vs measured on one line.
+- `/st spamtest`, then chain-cast one spell to OOM. Prediction vs measured on one line.
 
 ## 7. Simulate strip (2 min, partly new)
 - Put next tier's +healing into **+heal** and see whether the gold row moves for Healing
@@ -165,25 +165,25 @@ of your regen, not flat mp5 or Dreamstate.
 ## 10. Overheal-calibrated numbers (needs one real raid/dungeon night) — NEW
 The dashboard learns your overheal per spell from the combat log and can apply it.
 1. Play normally for a night. Nothing to do — it records in and out of combat.
-2. Open `/md`, tick **Effective** (top right, next to Settings). Heal, HPM, HPS and HP5
+2. Open `/st`, tick **Effective** (top right, next to Settings). Heal, HPM, HPS and HP5
    become overheal-adjusted and their headers turn your class colour. A grey `?` means
    that rank has no measurement of its own yet and is showing the raw number.
 3. Hover a row: the tooltip says the fraction, how many events it is from, and whether it
    is *measured on this rank* or a *family average*.
-4. Copy `/md profile` — it lists every family and rank with its fraction and sample count.
+4. Copy `/st profile` — it lists every family and rank with its fraction and sample count.
 5. What I check: are the counts growing sensibly, and does the family-vs-rank split ever
    have enough per-rank data to be interesting? **Deliberately not applied** to the gold
    "efficient rank" or the "rebind?" toast — a noisy measurement should not move those.
 - **Also worth a look:** the fight-summary line's `overheal N%`. If it looks obviously
   wrong (say, doubled or halved), the combat log's `amount` convention was latched the
-  wrong way — `/md profile` prints which one it picked under *combat log 'amount'
+  wrong way — `/st profile` prints which one it picked under *combat log 'amount'
   convention*. Tell me what it says.
 
 ## 11. Calibration — the model against your heals (one night, then 1 min) — NEW
 The addon now compares every heal you land with what the model predicted for it, per
 spell and event kind (tick / direct / bloom), non-crit only, and keeps the ratio.
 1. Play a night. Nothing to do.
-2. `/md calibrate` (or Options → Misc → *Copy profile*, which includes it). Paste it.
+2. `/st calibrate` (or Options → Misc → *Copy profile*, which includes it). Paste it.
 3. What I check: every row with n ≥ 30 should read **ratio 1.000 ± 0.03**. A `HIGH` or
    `LOW` row is a real finding — a relic the table does not know, a wrong coefficient, an
    unmodelled buff — and you will also have seen one yellow *calibration:* chat line about
@@ -199,7 +199,7 @@ spell and event kind (tick / direct / bloom), non-crit only, and keeps the ratio
    Regrowth should sit near 25% + crit; a big gap there is a talent-model bug.
 
 ## 12. The Waste view and the roster (one dungeon, then 2 min) — NEW
-1. After a run, `/md` → **Waste**. Try all four `by:` modes and both scopes.
+1. After a run, `/st` → **Waste**. Try all four `by:` modes and both scopes.
 2. **The question that matters:** in `by: Role`, are your party's roles TANK / HEALER /
    DAMAGER, or mostly `UNKNOWN`? And in `by: Target`, do names show a grey `?` after the
    role? The design assumes `UnitGroupRolesAssigned` returns the role people picked in the
@@ -220,7 +220,7 @@ recent pulls here cost ~2.3k -- 2 more, or 4 after a drink."* Does the count mat
 would have guessed? Too optimistic is the failure mode to report.
 
 ## 14. Export (1 min) — NEW
-`/md export` opens a copy box of tab-separated fights, overheal buckets, roster and
+`/st export` opens a copy box of tab-separated fights, overheal buckets, roster and
 calibration. Paste it once alongside the debug log; from now on I analyse this rather than
 regexing prose. Also: **Copy in the Debug Console now prepends the full input snapshot**, so
 a pasted log is self-describing — no need to add your talents by hand.
@@ -249,7 +249,7 @@ spend 3800, delta +0)`. Two failure modes to report:
   that is `UnitHealth` failing to resolve group members and it breaks everything in v0.7.
 
 Also: history now keeps **200** fights instead of 20, and a fight with fewer than 4 of your
-own casts is no longer recorded at all. After a dungeon night, `/md export` should list
+own casts is no longer recorded at all. After a dungeon night, `/st export` should list
 many more fights than before.
 
 ## 16. The 116 mp5 the regen API does not report (5 min, v0.7.1) — NEW, and the most interesting
@@ -275,7 +275,7 @@ measured per fight by the recorder.
 
 What settles it, in this order:
 
-1. **Solo, out of a group, no buffs, out of combat.** `/md regentest 30` standing still. The
+1. **Solo, out of a group, no buffs, out of combat.** `/st regentest 30` standing still. The
    report now prints a **tick histogram** that does this decomposition for you — every gain
    size (clustered within ±1) with its count and its beat:
 
@@ -293,19 +293,19 @@ What settles it, in this order:
 2. **Same character, in a party with a paladin, Blessing of Wisdom on you.** Repeat. If A
    only appears here, it is the blessing.
 3. **In a dungeon with a shadow priest, then one without.** Stream B should appear and vanish
-   with them. This is the cheap version of the test; `/md export` on two recorded fights is
+   with them. This is the cheap version of the test; `/st export` on two recorded fights is
    the thorough one.
 
 Copy the log either way. If a stream shows up in step 1 it is worth 116 mp5 on your own
 character, which is more than most gear upgrades.
 
-Also, for reference: `/md simrun` should print **10 tests, all ok**, and `/md simreplay
+Also, for reference: `/st simrun` should print **10 tests, all ok**, and `/st simreplay
 fixture` should print `spend ... (exact)` and a `measured ... -> PASS` line. Those two run
 anywhere, including right after login, and are worth doing once after this update just to
 confirm nothing about your talents breaks the engine.
 
 ## 17. Fight recording (one dungeon, v0.7.2) — NEW
-Nothing to do but play. After a few pulls, `/md export` should carry `# recording 1` ..
+Nothing to do but play. After a few pulls, `/st export` should carry `# recording 1` ..
 `# recording 8` blocks, each with a roster, the initial auras, the pre-pull casts and the raw
 event stream. Paste one export after a dungeon night.
 
@@ -326,8 +326,8 @@ was ~180 KB for the streams and that is worth checking against reality. `db.reco
 false` turns recording off entirely; summaries keep working.
 
 ## 18. Does a real fight replay? (after §17, v0.7.3) — NEW
-`/md simreplay 1` takes your most recent recorded pull, runs it back through the engine and
-prints eight gates with a verdict. `/md simreplay 2` .. `8` for the older ones.
+`/st simreplay 1` takes your most recent recorded pull, runs it back through the engine and
+prints eight gates with a verdict. `/st simreplay 2` .. `8` for the older ones.
 
 This is the question the whole Coach idea rests on: **can the model reproduce a fight you
 actually played?** If it cannot, nothing will be suggested from that fight — by design.
@@ -338,7 +338,7 @@ Paste the output. The interesting failures, in order of what they would teach:
   116 mp5 from §16, so if it fails here too, §16 is the cause and the fix is there.
 - **health curves**. Only targets that actually took damage are scored, and a target that
   misses is excluded rather than failing the fight. If every target is excluded, the model's
-  heal values are wrong for the people you heal — which is what `/md calibrate` is for.
+  heal values are wrong for the people you heal — which is what `/st calibrate` is for.
 - **model calibrated**. Says "not yet calibrated" until a spell has 30 events; that is
   printed, not failed.
 - **spend coverage** under 90% means mana went on spells the model does not price — in BF-1
@@ -349,8 +349,8 @@ rejected outright and that is correct: the log truncates damage after a death, a
 somebody else healed is not your fight to learn from.
 
 ## 19. The card (after a dungeon, v0.7.4) — NEW
-`/md coach 1` on a recorded pull. If the fight did not pass §18's gates it **refuses and says
-which gate failed** — that is the intended behaviour, not a bug; `/md coach 1 force` shows a
+`/st coach 1` on a recorded pull. If the fight did not pass §18's gates it **refuses and says
+which gate failed** — that is the intended behaviour, not a bug; `/st coach 1 force` shows a
 card anyway with the failures listed in its caveat line.
 
 The card names the binds, the five rules with their thresholds, a mana comparison against
@@ -367,15 +367,15 @@ Two things to judge, and they are the whole point:
 
 Also check the debug `sim` line `classifier: N labelled vs M spent` — those two must match.
 
-**v0.7.5:** `/md coach` now searches for a better plan before drawing the card. It runs across
-frames; `/md coach cancel` stops it. **Watch for a freeze** — if the client hitches at all when
+**v0.7.5:** `/st coach` now searches for a better plan before drawing the card. It runs across
+frames; `/st coach cancel` stops it. **Watch for a freeze** — if the client hitches at all when
 you run it, say so: the slicing uses `debugprofilestop()` and if that behaves differently on
 this client the whole search would land in one frame. The debug `sim` category prints
 `search done: N evaluation(s)` with the winning tuple, and a physical-floor line that must
 never say `IMPOSSIBLE` (that would mean the engine is healing for free).
 
 ## 20. The Review tab (v0.7.6) — NEW
-`/md` → **Review** (sixth tab, after Waste). One row per recorded fight; click one to select it.
+`/st` → **Review** (sixth tab, after Waste). One row per recorded fight; click one to select it.
 
 - The **validate** column is blank until you press **Validate** (replaying is not free). After
   that it says `ok` or names the first gate that failed, and a failed fight goes grey.
@@ -386,7 +386,7 @@ never say `IMPOSSIBLE` (that would mean the engine is healing for free).
 - The bottom two lines are the habits over your summaries and, once you have three fights in a
   zone after a card, the since-your-last-card comparison.
 
-Also new: `/md options` → General → **Fight recording** (left column, under Alerts) with the
+Also new: `/st options` → General → **Fight recording** (left column, under Alerts) with the
 record toggle, "let Coach change ranks", and the two thresholds. The options window is taller
 now — check it still fits your screen.
 
@@ -394,7 +394,7 @@ Report anything that overlaps, overflows or reads wrong. This is the first new t
 and none of it can be checked outside the game.
 
 ## 21. The Simulation window (v0.7.7) — NEW
-`/md sim`. Pick a party size, a damage pattern and a starting state, set a length, press
+`/st sim`. Pick a party size, a damage pattern and a starting state, set a length, press
 **Run**. It runs the max-rank and HoTs-only baselines, then searches for a better plan, then
 runs 30 randomised replicates of the winner.
 
@@ -414,7 +414,7 @@ What to judge:
 ## 22. The trace (v0.8.0) — nothing to test in-game yet
 v0.8.0 is engine-side only: the replay window arrives in v0.8.1. What exists is verified
 offline by `tools/run.sh tools/replaycheck.lua` (27 assertions). The one thing worth doing
-after this update is the usual `/md simrun` (10 tests, all ok) and `/md coach 1` on a
+after this update is the usual `/st simrun` (10 tests, all ok) and `/st coach 1` on a
 recorded fight, because `Plan:Decide` now returns a third value and Coach caches its plan
 for the window — both are invisible if they work and loud if they do not.
 
@@ -424,7 +424,7 @@ column, your icon slots) — if anything sits differently from your raid frames,
 whole layout is one table at the top of `UI/ReplayWindow.lua`. The one thing Cell has no slot
 for is the **cast target**: the spell in flight appears in the top-centre icon slot with its
 cast-time sweep and the button's border in the family colour; it holds a moment after landing.
-Review tab → select a recorded fight → **Play** (or `/md replay 1`). Two columns if you have
+Review tab → select a recorded fight → **Play** (or `/st replay 1`). Two columns if you have
 pressed Coach on that fight, one if not — the header says which and why.
 
 1. **Press play at 1×** (1/4× and 1/2× exist for the busy moments). A Healing Touch is a
@@ -442,7 +442,7 @@ pressed Coach on that fight, one if not — the header says which and why.
 5. **The right column** (after Coach): its damage pulses land at the same instants as the
    left's — the same red flashes, different green — and `waiting 1.2s` shows while the plan
    holds. Its `spent` should be below the left's; if it is not, the card said so too.
-6. Close, reopen with `/md replay 2` (an older fight, no Coach yet): a single narrower column.
+6. Close, reopen with `/st replay 2` (an older fight, no Coach yet): a single narrower column.
 
 Report: the fight number, anything that glided, any tick that sat outside its bar for more
 than one snapshot, and whether the window felt readable at 1× — that is the design question.
@@ -482,7 +482,7 @@ prevented was recorded as prevented — they *explain* the dips.
    as it was up; hover it for the name and the time.
 2. A boss or caster debuff shows as a small icon on the right end of the bar, with its stack
    count. Hover it.
-3. `/md export` → the `# recording` line now ends with `N auras`; a long raid-style fight
+3. `/st export` → the `# recording` line now ends with `N auras`; a long raid-style fight
    says `(debuffs truncated)` rather than silently dropping anything.
 4. **Every id in `Data/AuraList.lua` is from memory and marked VERIFY.** If a defensive you
    *saw* pressed does not show, note the class and the ability: the id is wrong or missing,
@@ -504,7 +504,7 @@ logout) after a fight, because the client writes the file only then.
 full mana (spend a few hundred first):
 
 ```
-/md regentest 30
+/st regentest 30
 ```
 
 The test now prints its arithmetic on one line:
@@ -524,7 +524,7 @@ It refuses, and says why, when mana was spent, a drink was up, part of the windo
 five-second rule, fewer than 6 ticks were seen, or **you were in a group** — somebody's blessing
 would land in your own bucket.
 
-`/md regentest clear` forgets a stored measurement.
+`/st regentest clear` forgets a stored measurement.
 
 Then `/reload` and, on the machine, `tools/run.sh tools/import.lua validate 2`. Two things to
 check in the header and the gates:
@@ -546,12 +546,12 @@ A boss is a pull; a five-man is thirty pulls and the gaps between them, and the 
 the mana goes. Runs are **manual**, so at the instance door:
 
 ```
-/md run start
+/st run start
 ```
 
-It names itself after the zone and the time (`/md run start Ramparts fast` names it yourself).
-Then play the dungeon normally. At the end, `/md run stop` — or just walk out and keep going:
-the run stops itself 30 seconds after you leave the instance, and says so. `/md run status` at
+It names itself after the zone and the time (`/st run start Ramparts fast` names it yourself).
+Then play the dungeon normally. At the end, `/st run stop` — or just walk out and keep going:
+the run stops itself 30 seconds after you leave the instance, and says so. `/st run status` at
 any point prints the elapsed time, the pulls so far, the drinks and how much of the event
 budget is spent.
 
@@ -576,7 +576,7 @@ Two things to try deliberately, once:
    there are 30 seconds of grace, and returning cancels it.
 
 Then `/reload` and, on the machine, `tools/run.sh tools/import.lua list` still lists your
-single fights; the run itself reaches the tools in v0.9.2. `/md export` already carries it as a
+single fights; the run itself reaches the tools in v0.9.2. `/st export` already carries it as a
 `# run` section.
 
 Limits worth knowing: two runs are kept (pin one on the Review tab from v0.9.2 to protect it),
@@ -584,7 +584,7 @@ a run stops itself after 90 minutes, and a very long run stops *recording* new p
 events while still counting them — the stop line says `STREAM FULL` if that happened.
 
 ## 29. Review a run: the tab, and the tools (v0.9.2)
-After §28's dungeon, open `/md` → **Review**. Above the list there is now a row of buttons:
+After §28's dungeon, open `/st` → **Review**. Above the list there is now a row of buttons:
 **Fights** (the eight single pulls, as before) and one button per stored run.
 
 1. Click the run. The list becomes **its pulls, in order**, and the `when` column shows how far
@@ -598,8 +598,8 @@ After §28's dungeon, open `/md` → **Review**. Above the list there is now a r
    kept; pin the one you want to keep before the next dungeon.
 5. **Start run / Stop run** is at the left of the button row, the same as the slash command.
 
-The same address works from chat: `/md replay 1:3` plays the third pull of the first run, and
-`/md coach 1:3` coaches it.
+The same address works from chat: `/st replay 1:3` plays the third pull of the first run, and
+`/st coach 1:3` coaches it.
 
 Then `/reload` and, on the machine:
 
@@ -615,10 +615,10 @@ Report: whether the pulls in the tab match the pulls you remember (count and rou
 anything greyed that you think should not be, and the `runs` output.
 
 ## 30. Coach a run (v0.9.3)
-With a run recorded (§28), open `/md` → Review, select the run and press **Coach run** — or
-`/md coachrun 1`. It searches one plan *and one drink policy* for the whole dungeon, with the
+With a run recorded (§28), open `/st` → Review, select the run and press **Coach run** — or
+`/st coachrun 1`. It searches one plan *and one drink policy* for the whole dungeon, with the
 pulls chained (mana carried from each pull into the next) and the gaps simulated. It runs across
-frames; `/md coachrun cancel` stops it.
+frames; `/st coachrun cancel` stops it.
 
 The card's two rows are the point:
 
@@ -632,7 +632,7 @@ Report:
    plan that claims you never need to drink in a Ramparts run is telling you something is wrong
    with the model, not with your play.
 2. **`where it differs`** names the pulls with the biggest gap between what you spent and what
-   the plan would have. Open one with Play (`/md replay 1:7`) and say whether the difference is
+   the plan would have. Open one with Play (`/st replay 1:7`) and say whether the difference is
    real — whether you would actually have made that call at that moment.
 3. **`yours was: under X%, up to Y%`** is the drink policy read back out of your own run. If it
    looks nothing like how you play, the drink detection is off, so say what the buff was called.
@@ -646,7 +646,7 @@ order after seeing a card, say so — it is a decision, not a fact (`docs/DECISI
 Offline, the same thing without the game: `tools/run.sh tools/import.lua coach --run 1`.
 
 ## 31. Play a dungeon pull by pull (v0.9.4)
-`/md replay run 1` (or Play on a run in the Review tab) opens the run's first pull with a new
+`/st replay run 1` (or Play on a run in the Review tab) opens the run's first pull with a new
 **run strip** under the header: the whole dungeon on one line, each pull a block as wide as it
 was long, the one you are watching bright, short pulls grey, drinks in blue, deaths as red
 marks, and the gaps left as gaps.
@@ -667,14 +667,14 @@ A fight that fails its gates has its Coach button disabled, and until now the re
 would not draw the suggested column for it either — even after a forced coach. Now:
 
 ```
-/md coach 2 force
+/st coach 2 force
 ```
 
 **or shift-click Coach on the Review tab** — a fight that does not replay now keeps a clickable
 Coach button marked with a star, and a plain click on it still refuses and names the failing
 gate. Either way it prints the card anyway *and remembers* that you asked, so Play on that fight shows both columns
 from then on, with `FORCED - this fight does not replay` next to the column's title. Two other
-ways in: `/md replay 2 force`, and shift-clicking **Play** on the Review tab. If nothing has
+ways in: `/st replay 2 force`, and shift-clicking **Play** on the Review tab. If nothing has
 been coached for the fight, forcing says so and tells you to coach it first — the replay window
 never searches.
 
@@ -696,7 +696,7 @@ there is now a **SpellTuner** block for *that exact rank*, at your current +heal
 - If your overheal on that spell has been measured, what it heals after it.
 
 **Hold Shift** while hovering for how each number is built (base heal, +healing times
-coefficient, talents). Turn it off with `/md spelltip` or Settings -> General -> Misc.
+coefficient, talents). Turn it off with `/st spelltip` or Settings -> General -> Misc.
 
 Report: (1) any number that disagrees with what the spell actually does on a target that is
 missing health (a Lifebloom tick at 1 stack and a non-crit Regrowth are the easiest to read
@@ -719,13 +719,13 @@ VERIFY); (3) any damage spell where the block is missing (a description it could
 adds nothing, on purpose). Settings -> General -> Misc has "...and on damage spells".
 
 ## 34. Practice: heal a fight you play (v0.15.0)
-`/md practice` (or Simulate -> Practice). Out of combat.
+`/st practice` (or Simulate -> Practice). Out of combat.
 
 1. **Set up.** Pick Party. Leave the damage at the defaults for the first go. Check the right
    side: the bindings should be your Cell click-casting -- Button5 Lifebloom, Alt-Button5
    Rejuvenation, Shift-Button5 Rejuvenation Rank 5 -- plus left click Regrowth, right click
    Swiftmend, Shift-left Healing Touch. Change one: click its key box, press something.
-1b. **Bindings.** Press **Edit bindings** (or `/md binds`). **Import from Keybindings** is the
+1b. **Bindings.** Press **Edit bindings** (or `/st binds`). **Import from Keybindings** is the
    one that should fit you: it follows every bound key to its action-bar slot and reads the
    macro there, so your mouseover macros on ElvUI's bars should arrive with the right spell and
    rank. Then press **Cell**: your
@@ -771,7 +771,7 @@ its sibling folders; the Forever package carries no `SpellTuner_TBC.toc`. Leave 
 2. **Show all ranks.** Open the spellbook, hover the arrow at its top right and turn on the option
    to show all ranks of spells. The default view hides lower ranks, and the probe dumps what the
    book lists; the report prints how many ranks it found per spell so this can be checked.
-3. **First report.** `/st probe` (or `/md probe`; if both are taken by something else,
+3. **First report.** `/st probe` (if it is taken by something else,
    `/spelltuner probe`). A dark box opens: click into it, Ctrl+A, Ctrl+C, paste into a new file
    `docs/probe/<build>.md` (the build is on the report's `build:` line). If the box never opens,
    the report went to chat.
@@ -1461,41 +1461,41 @@ If there is only one short session: TBC 1, 4 and 16; Forever 13, 15 and W10.
 **TBC.**
 
 1. **Cat form reload (B1).** Shift to Cat, `/reload`. The clock and the Advisor work in caster form
-   afterwards; `/md profile` says `usesMana true`. Also paste
+   afterwards; `/st profile` says `usesMana true`. Also paste
    `/run print(UnitPowerMax("player", 0))` while in Cat form (expected: your mana max, not 0).
 2. **Tree aura (B2).** With a second resto druid in Tree of Life in your party, stay in caster form and
-   open `/md`: no Tree label in the header, the numbers do not flip when they shift or leave range.
-3. **Text (B3).** `/md verify`, `/md unlock`, `/md window 99`, and a gear change that moves an efficient
+   open `/st`: no Tree label in the header, the numbers do not flip when they shift or leave range.
+3. **Text (B3).** `/st verify`, `/st unlock`, `/st window 99`, and a gear change that moves an efficient
    rank: no boxes; paste the verify block.
 4. **Casts under a rolling HoT (B9).** Keep Lifebloom rolling on the tank and hard-cast Healing Touch
    three times in one pull, **pressing the Healing Touch button again two or three times during one of
-   the casts**; then move to cancel one cast. `/md replay 1`: three full cast bars, one cut. Also paste
+   the casts**; then move to cancel one cast. `/st replay 1`: three full cast bars, one cut. Also paste
    `/run local f=CreateFrame("Frame") f:RegisterEvent("UNIT_SPELLCAST_INTERRUPTED") f:SetScript("OnEvent",function(_,e,...) print(e,...) end)`
    and then move during a cast: the line shows `player`, a cast GUID and the spell id.
 5. **`xpcall` passes arguments (P11).** `/run print(xpcall(function(a, b) return a + b end, print, 2, 3))`
    on TBC and on Forever: expected `true 5` on both. Paste both lines.
-6. **Bloom (B10).** After a dungeon with Lifebloom, `/md calibrate` lists a bloom line; the Waste view
+6. **Bloom (B10).** After a dungeon with Lifebloom, `/st calibrate` lists a bloom line; the Waste view
    has a Lifebloom bloom row.
-7. **Run replay (B21, B22).** `/md replay run 1`, let it cross into pull 2, drag the scrubber to the
+7. **Run replay (B21, B22).** `/st replay run 1`, let it cross into pull 2, drag the scrubber to the
    middle: the run jumps there. Pull a mob while the run is playing: at most one chat line, and the
    replay pauses.
-8. **Two runs (B12).** Stop a run, drink a potion, start a run: `/md run status` shows no potion.
-9. **Long lists (P9).** Open `/md` -> Reports -> Review on a run with more than 30 pulls: the list ends
+8. **Two runs (B12).** Stop a run, drink a potion, start a run: `/st run status` shows no potion.
+9. **Long lists (P9).** Open `/st` -> Reports -> Review on a run with more than 30 pulls: the list ends
    with `... and N more (scroll: not yet)`, and N plus the rows shown is the run's pull count.
-10. **Pins (B14).** Pin three fights in `/md` -> Reports -> Review: the third is refused with a line.
-W4. **The split load list (T56).** With the new TOC installed, `/md verify`, `/md simrun`,
-   `/md regentest` (it answers "you are at full mana" or starts) and `/md coach` each answer in chat;
+10. **Pins (B14).** Pin three fights in `/st` -> Reports -> Review: the third is refused with a line.
+W4. **The split load list (T56).** With the new TOC installed, `/st verify`, `/st simrun`,
+   `/st regentest` (it answers "you are at full mana" or starts) and `/st coach` each answer in chat;
    a silent command means its file is missing from the TOC.
 16. **Reload mid-fight (P14).** `/reload` mid-fight on TBC: the clock shows the in-combat projection at
    once.
-17. **Commands (P17, the TBC half).** `/md help` lists the same 27 rows as before and the About tab the
-   same commands; `/md config`, `/md settings`, `/md bindings`, `/md tip` and `/md calib` still do what
-   `/md options`, `binds`, `tooltip` and `calibrate` do.
-18. **An unreadable address (P18).** `/md replay foo`: `replay: no recording foo.` and no window (it used
-   to open your newest fight). `/md replay 1` and `/md replay p1` still open.
-W8. **Settings defaults (P20).** On a profile that never moved them, `/md` -> Settings -> General still
+17. **Commands (P17, the TBC half).** `/st help` lists the same 27 rows as before and the About tab the
+   same commands; `/st config`, `/st settings`, `/st bindings`, `/st tip` and `/st calib` still do what
+   `/st options`, `binds`, `tooltip` and `calibrate` do.
+18. **An unreadable address (P18).** `/st replay foo`: `replay: no recording foo.` and no window (it used
+   to open your newest fight). `/st replay 1` and `/st replay p1` still open.
+W8. **Settings defaults (P20).** On a profile that never moved them, `/st` -> Settings -> General still
    shows 85 and 30 on its two sliders (a regression check: the defaults moved to `Engine/SimModel.lua`).
-W9. **The dashboard's ranks (P23).** `/md` -> Spells: the same ranks are marked dominated and the same one
+W9. **The dashboard's ranks (P23).** `/st` -> Spells: the same ranks are marked dominated and the same one
    suggested as before (a regression check: the rules moved to `Spells/RankRules.lua`).
 
 **Forever.**
@@ -1517,8 +1517,8 @@ W9. **The dashboard's ranks (P23).** `/md` -> Spells: the same ranks are marked 
     answer as before; `/st help` lists replay, validate, coach and no coachrun.
 W7. **The kit (P19).** With the Replay module on, `/st replay`, `/st coach N` and a practice fight behave
     as before; after `/reload` the character's `SpellTunerDB` still carries `kit` (written when the kit
-    was first built this session and again only when the spellbook or crit changed). TBC: `/md coach N`
-    and `/md practice start` as before.
+    was first built this session and again only when the spellbook or crit changed). TBC: `/st coach N`
+    and `/st practice start` as before.
 W9. **A spell outside the book in combat (P23).** Link a heal you know in chat, hover the link out of
     combat (the SpellTuner block shows), then again in combat: the block is still there, with `Text read
     before combat` last. The Spells pane's rank table, the rank card and the spell tooltip read as before.
@@ -1528,7 +1528,7 @@ W10. **The clock and the theme (P24, P25).** The mana clock behaves exactly as o
     after `/reload` mid-fight it shows the in-combat projection. With the Recorder and Replay modules on,
     `/st replay 1` after a pull shows your mana falling and rising as before (the recorder now samples
     the pool the clock paints). The window, the tooltips, Review and practice keep their
-    colours. **On TBC:** `/md` and the widget look exactly as before (the colours are now named
+    colours. **On TBC:** `/st` and the widget look exactly as before (the colours are now named
     tokens with TBC's own values).
 
 **Wave 11 (T70-T72; Forever unless said).** On 0.16.5 (§45).
@@ -1563,7 +1563,7 @@ W10. **The clock and the theme (P24, P25).** The mana clock behaves exactly as o
     Replay; its row reads `off - unloads at your next /reload` with a **Reload UI** button. Click it:
     the interface reloads and Review shows the placeholder again. Pull a mob with the window open
     (Windows set to hide): one chat line says the window hides in combat and where to change that; the
-    next pull says nothing. **TBC:** `/md options` -> General: the slider reads `Danger line for built
+    next pull says nothing. **TBC:** `/st options` -> General: the slider reads `Danger line for built
     fights (%)`, and its hover names Simulate.
 
 **Wave 13 (T74; Forever unless said).** On 0.16.5 (§45).
@@ -1573,7 +1573,7 @@ W10. **The clock and the theme (P24, P25).** The mana clock behaves exactly as o
     none looks selected; hover the selected group -- it tints too and keeps its bar. The view tabs on
     top (Reports, Settings): the selected one has the bar along its bottom. At your 0.71 scale, button
     and check-box borders are as crisp as the window's edge; change the window scale in Settings ->
-    General and they stay crisp. **TBC:** `/md` -- the nav and tabs look exactly as before.
+    General and they stay crisp. **TBC:** `/st` -- the nav and tabs look exactly as before.
 
 **Wave 14 (T75; Forever unless said).** On 0.16.5 (§45).
 
@@ -1585,7 +1585,7 @@ W10. **The clock and the theme (P24, P25).** The mana clock behaves exactly as o
     never under either. Open Spells -> `+ Add` and Simulate -> Practice -> Edit bindings: each sheet has
     a red x at the right of its title row that closes it; the bindings sheet's Done sits to the left of
     the x. Set Text size to +2, close and reopen the window, and click a Settings checkbox at the far end
-    of its label: it toggles. **TBC:** `/md` -- the window, its tabs and its checkboxes look exactly as
+    of its label: it toggles. **TBC:** `/st` -- the window, its tabs and its checkboxes look exactly as
     before.
 
 **Wave 15 (T76; Forever unless said).** On 0.16.5 (§45).
@@ -1600,7 +1600,7 @@ W10. **The clock and the theme (P24, P25).** The mana clock behaves exactly as o
     just beside the pointer (not far right of it, not over it). Select a fight that does not replay
     and hover the greyed Coach button: it says why. Hover the clock in a fight: `Out of mana in
     ~1:20`, `Full again in ~2:10 if you stop`, no word about secrets. Hover any other addon's tooltip
-    (a bag item, a unit frame) straight after: it has its normal Blizzard border. **TBC:** `/md` --
+    (a bag item, a unit frame) straight after: it has its normal Blizzard border. **TBC:** `/st` --
     every tooltip looks exactly as before.
 
 **Wave 16 (T77; Forever unless said).** On 0.16.5 (§45).
@@ -1615,7 +1615,7 @@ W10. **The clock and the theme (P24, P25).** The mana clock behaves exactly as o
     down / Remove. Add spells until the rail is longer than the window (or set Text size +2): the rows
     scroll with the wheel above `+ Add`, which never moves; `/st spell <a spell at the bottom>`
     scrolls it into view. Text size +2 and back: the rail and the spell view re-pitch at once. ESC
-    with a dropdown open closes the list, not the window. **TBC:** `/md` -- a dropdown near the
+    with a dropdown open closes the list, not the window. **TBC:** `/st` -- a dropdown near the
     bottom of the screen opens upward; everything else looks as before.
 
 **Wave 17 (T78, T79; Forever unless said).** On 0.16.5 (§45).
@@ -1642,7 +1642,7 @@ W10. **The clock and the theme (P24, P25).** The mana clock behaves exactly as o
 **Wave C-a (T80; TBC).** On 0.16.5 (§45).
 
 30. **TBC window (C1).**
-    - `/md`: the window is flat, the size it was, and where you last dragged it (if it opens
+    - `/st`: the window is flat, the size it was, and where you last dragged it (if it opens
       centred, say so: the client's own saved place for it was not there to adopt).
     - Drag it, `/reload`: it stays.
     - Open the debug console from Settings -> General: one ESC closes the console, a second ESC
@@ -1651,14 +1651,14 @@ W10. **The clock and the theme (P24, P25).** The mana clock behaves exactly as o
       one chat line says why, once.
     - Settings -> General -> Windows: set Keep them open and pull again (it stays); set Window size
       to 90 % (every SpellTuner window smaller); set Text size to +1; then Reset window positions.
-    - Simulate -> Practice -> Edit bindings: a sheet on the pane, not a window. `/md binds` opens
+    - Simulate -> Practice -> Edit bindings: a sheet on the pane, not a window. `/st binds` opens
       the same sheet.
-    - `/md replay 1`: it opens where the old replay window was.
+    - `/st replay 1`: it opens where the old replay window was.
 
 **Wave C-b (T81, T82; TBC).** On 0.16.5 (§45).
 
 31. **TBC tables (C2).**
-    - `/md` -> Spells -> Rejuvenation: the numbers line up on the right, the rows are taller
+    - `/st` -> Spells -> Rejuvenation: the numbers line up on the right, the rows are taller
       and striped, and the suggested rank has a faint fill and an orange bar at its left (no
       gold row, no `*`). The last column says `best`, `max`, `beaten` or `learn at N`.
     - Point at a `beaten` tag: "Beaten by Rank N" with both HPM and HPS.
@@ -1670,7 +1670,7 @@ W10. **The clock and the theme (P24, P25).** The mana clock behaves exactly as o
     - Reports -> Review: as after C1 (the hint above the list now names the Result column and
       Coach anyway).
 
-32. **One clock (C4).** On TBC: `/md unlock` (or Settings -> the clock's Lock box). The clock is a
+32. **One clock (C4).** On TBC: `/st unlock` (or Settings -> the clock's Lock box). The clock is a
     dark flat panel with `SpellTuner - drag me` in your class colour over a full bar of the same
     colour. Drag it and lock it. In a fight the text sits centred over a thin bar that fills amber
     after each cast and turns green five seconds later. Say whether the centred text sliding as the
@@ -1683,7 +1683,7 @@ W10. **The clock and the theme (P24, P25).** The mana clock behaves exactly as o
 **Wave C-c (T83; TBC).** On 0.16.5 (§45).
 
 33. **TBC Spells view (C3).**
-    - `/md` -> Spells -> Healing Touch: a header with the icon, "Healing Touch", "Direct heal -
+    - `/st` -> Spells -> Healing Touch: a header with the icon, "Healing Touch", "Direct heal -
       Rank N of M known - 2.9 s cast ...", your mana and +healing at the right. No stats line,
       no gold line, no grey hint line above the table.
     - Point at the +healing line: your regen, crit, relic and Tree aura.
@@ -1708,7 +1708,7 @@ W10. **The clock and the theme (P24, P25).** The mana clock behaves exactly as o
 **Wave C-d (T84; TBC).** On 0.16.5 (§45).
 
 34. **TBC spell rail (C5).**
-    - `/md` (first time since the update, or after `/reload` with the window on Spells): the
+    - `/st` (first time since the update, or after `/reload` with the window on Spells): the
       Spells group has no row of tabs. On its left is a list: `MY SPELLS`, `Overview`, a
       rule, then your heal families in learn-level order, Healing Touch, Rejuvenation,
       Regrowth, Lifebloom, each with an `R<n>` tag (its suggested rank).
@@ -1724,7 +1724,7 @@ W10. **The clock and the theme (P24, P25).** The mana clock behaves exactly as o
     - **`+ Add`:** the picker lists your four heals under HEALS, ticked when listed. Untick
       one and tick it back. "Reset to my heals" restores the learn-level order. ESC closes the
       picker, not the window. In combat the picker refuses with a chat line.
-    - **The window remembers the row:** open Regrowth, close the window, `/md`: it opens on
+    - **The window remembers the row:** open Regrowth, close the window, `/st`: it opens on
       Regrowth again.
     - **(If you can)** On a druid alt below level 64, train Lifebloom: it appears at the end
       of the list with a dot, and the dot goes once you open it.
@@ -1814,15 +1814,15 @@ while it coaches and one after, and the band's text for a fight that did not rep
 
 ### 45.4 TBC, session 4 -- the window, the Spells view and the rail (25 min, out of combat)
 
-1. **The window (item 30).** `/md`: flat, its old size, where you last dragged it (say if it opens
+1. **The window (item 30).** `/st`: flat, its old size, where you last dragged it (say if it opens
    centred). Drag, `/reload`: it stays. Settings -> General -> Windows: Window size 90 %, Text size +1,
    Reset window positions. Debug console: one ESC closes it, a second the window. Simulate -> Practice
-   -> Edit bindings (and `/md binds`): a sheet on the pane.
+   -> Edit bindings (and `/st binds`): a sheet on the pane.
 2. **The rail (item 34).** Spells: no tabs; `MY SPELLS`, `Overview`, then Healing Touch,
    Rejuvenation, Regrowth, Lifebloom with an `R<n>` tag each. Overview: a row per family, the
    suggested rank in orange; click one: its view opens and its rail row is marked. Hover a row: one
    red x; remove Rejuvenation, then Undo. Drag a row and `/reload`: the order kept. `+ Add`: your four
-   heals under HEALS; ESC closes the picker only. Open Regrowth, close, `/md`: Regrowth again.
+   heals under HEALS; ESC closes the picker only. Open Regrowth, close, `/st`: Regrowth again.
 3. **The Spells view (item 33).** Healing Touch: the header with icon, shape, rank and cast, your mana
    and +healing (its hover: regen, crit, relic, Tree aura); the SUGGESTED chip and its line. Headers
    Heal / Total, Per mana, Per sec, Casts (`inf` / `999+`), a sentence on each. Click a rank: the white
@@ -1831,12 +1831,12 @@ while it coaches and one after, and the band's text for a fight that did not rep
 4. **The tables (item 31).** Rejuvenation's rows striped, numbers right-aligned, the last column
    `best` / `max` / `beaten` / `learn at N`; `beaten`'s hover names the rank that beats it; Lifebloom's
    x2 / x3 say `rolling`. Reports -> Waste scrolls with the wheel.
-5. **The clock look (item 32, out of combat part).** `/md unlock`: a dark flat panel with
+5. **The clock look (item 32, out of combat part).** `/st unlock`: a dark flat panel with
    `SpellTuner - drag me` over a class-coloured bar; drag and lock. Hover the minimap button: the clock
    lines, then Left-click / Right-click / Drag and the hide line.
 
 **Paste back** into `.logs/tbc/0.16.5-s4.md`: a line per step, screenshots of Spells -> Overview and
-Spells -> Healing Touch, and `/md profile` if anything looked wrong.
+Spells -> Healing Touch, and `/st profile` if anything looked wrong.
 
 ### 45.5 TBC, session 5 -- in a dungeon (30 min, a party)
 
@@ -1847,7 +1847,7 @@ Spells -> Healing Touch, and `/md profile` if anything looked wrong.
    it: `Out of mana in` / `Full again in ... if you stop`; hold Shift: the old raw lines appear and go
    on release.
 3. **Review and the replay (items 22, 23 on TBC).** After the run: Reports -> Review -- a run of 30+
-   pulls scrolls; right-click a row: the menu; Validate shows the report under the list. `/md replay 1`
+   pulls scrolls; right-click a row: the menu; Validate shows the report under the list. `/st replay 1`
    opens where the old replay window was; the band reads as on Forever. Keep the pointer over the
    replay and pull a mob: you can still jump and turn; after the fight Space plays the replay again
    only once the pointer has left the window and come back.
@@ -1868,7 +1868,7 @@ Paladin / Shaman / Priest coach and practice on Forever (T106)**, **live restyle
 spell list seeded by role and either-or halves (T110, partial)** and **the TBC class book and rules
 behind a cap not yet granted (T111)**. **Not in it:** Modern (T103), the ring (T104), mana sources
 (T105), Classic (T108), absorbs (T109), T110's mana-source values (after T105) and the
-`MD.API.BASE_CD_READS` flip -- each waits on 46.1's reports. Nothing here has run on a real client
+`ST.API.BASE_CD_READS` flip -- each waits on 46.1's reports. Nothing here has run on a real client
 yet. §45 runs unchanged on 0.16.6. `check N` names the step of `docs/SPEC-next.md` section 12 a
 line comes from.
 
@@ -1883,7 +1883,7 @@ paste: `ok`, or what you saw instead.
 **Session 46.1 comes first**: its reports are what the rest of waves N4 and N5 waits on (T103
 Modern needs `== art`, T104 the ring needs `== clock`'s Q-clock-4, T105 mana sources needs
 `== auras`, T108 Classic needs `== art`, T109 absorbs needs `== auras`' absorb lines, T110's
-remainder needs T105, and the `MD.API.BASE_CD_READS` flip needs `== cooldowns`). **If there is only
+remainder needs T105, and the `ST.API.BASE_CD_READS` flip needs `== cooldowns`). **If there is only
 one short session:** 46.1. Then 46.6 and 46.7 (what waves N4 and N5 added), then 46.2-46.5.
 
 ### 46.1 Both clients -- the probe (25 min: 15 Forever, 10 TBC; druids)
@@ -1898,9 +1898,9 @@ one short session:** 46.1. Then 46.6 and 46.7 (what waves N4 and N5 added), then
 3. **Forever, EllesmereUI enabled** (check 1). Enable EllesmereUI (with Options, DataBars, Minimap
    and BlizzardSkin), `/reload`, `/st probe`: `== hosts` names EllesmereUI's version and its
    `RegisterSkin` / unlock entry points.
-4. **TBC** (check 1). `/md probe` once out of combat and once after a fight. The Forever-only
+4. **TBC** (check 1). `/st probe` once out of combat and once after a fight. The Forever-only
    sections each read `absent (Forever only)`; `== art`, `== hosts`, `== clock`, `== cooldowns`
-   answer; nothing raises. `/md help` does not list `probe` (a hidden row).
+   answer; nothing raises. `/st help` does not list `probe` (a hidden row).
 
 **Paste back** -- the whole report each time, not only the five sections (`== to do` and
 `== blocked actions` matter too): Forever's three into `docs/probe/<build>-0.16.6-s1.md` (headed
@@ -1943,7 +1943,7 @@ layout, the coach card from step 5.
    icon tint goes amber then red. Hover: one tooltip in EllesmereUI's skin, no second border.
    Left-click opens SpellTuner, right-click Settings; neither in combat. Regen reads `(5SR)` for 5 s
    after a cast and `~` in combat. With `/st clock rest` off the block drops the rest segment too
-   (T102's `MD.ClockLook` closed T97's deviation 3).
+   (T102's `ST.ClockLook` closed T97's deviation 3).
 2. **Mover and minimap (T97, check 6).** `/unlock`: a "SpellTuner clock" mover with the clock
    previewed; drag, save, `/reload`: the clock stays there. The SpellTuner button sits in
    EllesmereUI's flyout with its icon centred; toggling *Minimap button* under Settings -> General
@@ -1993,18 +1993,18 @@ a line per step, the measure dump, gate 8's line and the coach card.
 
 1. **Clock (T93, check 4).** Tones as before. Watch `59s` -> `1:00`: the label does not move. A
    left-click on the clock in combat does nothing; out of combat it opens the window.
-2. **Layouts (T98).** `/md unlock` shows the clock; then the `/run SpellTuner.ClockView...` lines
-   of 46.2 step 3, the same on TBC (the bar's default source here is the five-second rule). `/md
+2. **Layouts (T98).** `/st unlock` shows the clock; then the `/run SpellTuner.ClockView...` lines
+   of 46.2 step 3, the same on TBC (the bar's default source here is the five-second rule). `/st
    unlock` again to lock.
-3. **Styles (T94, T100, check 8).** `/md ui style` lists `flat` and `ellesmere`. `/md ui style
-   ellesmere`: the teal clone repaints the open window, nothing moves or resizes. `/md ui style
+3. **Styles (T94, T100, check 8).** `/st ui style` lists `flat` and `ellesmere`. `/st ui style
+   ellesmere`: the teal clone repaints the open window, nothing moves or resizes. `/st ui style
    flat`: exactly the 0.16.5 look.
 4. **ElvUI (T92, T97, check 7), optional.** With ElvUI: the `SpellTuner` and `SpellTuner Regen`
    datatexts read as before (the clock line; `Regen: N`, `(5SR)` after a cast; tooltip and
    Shift-click unchanged), and ElvUI's datatext list also offers `LDB: SpellTuner`, reading the
    same.
-5. **The coach and Swiftmend (T90, check 2).** After a few pulls with Swiftmend: `/md coach N` --
-   no suggested Swiftmend inside 15 s of the last one; `/md replay N`'s Swiftmend dot as before.
+5. **The coach and Swiftmend (T90, check 2).** After a few pulls with Swiftmend: `/st coach N` --
+   no suggested Swiftmend inside 15 s of the last one; `/st replay N`'s Swiftmend dot as before.
 
 **Paste back** into `.logs/tbc/0.16.6-s5.md`: a line per step, screenshots of the clock in each
 layout and of a window under Ellesmere, the coach card.
@@ -2024,7 +2024,7 @@ profile (46.4 step 4).
    tab yet -- T102 deviation 1): change a tone colour and the bar's source; `Reset to style` puts
    the style's look back. `/reload`: the layout is kept. `Customise...` (TBC: Settings -> General ->
    OOM Widget; Forever: MANA CLOCK) opens this view. `/st clock layout compact`, `/st clock look
-   reset`, `/st clock preview` (TBC: `/md clock ...`) do the same from chat; on Forever `/st clock`
+   reset`, `/st clock preview` (TBC: `/st clock ...`) do the same from chat; on Forever `/st clock`
    and `/st clock lock` behave as before.
 2. **Look and Use my class colour (T102, check 8), both clients.** Settings -> General (TBC: the
    Windows column; Forever: APPEARANCE) -> Look: pick Ellesmere, then Flat. Tick **Use my class
@@ -2032,7 +2032,7 @@ profile (46.4 step 4).
    again. No "finish changing after a reload" line appears (nothing is left for a reload since
    T107; if one appears, paste it).
 3. **Live restyle (T107, check 8), both clients.** With the window open on Spells -> a family,
-   `/st ui style ellesmere` (TBC: `/md ui style ellesmere`). The rail, the suggested row and its
+   `/st ui style ellesmere` (TBC: `/st ui style ellesmere`). The rail, the suggested row and its
    bar, the chip, the card and the headers take Ellesmere's accent and greys at once, with no
    reload. Do the same on Reports -> Review, Simulate -> Practice and Settings. The replay's unit
    frames and the debug console's log colours do not change. `/st ui style flat` returns exactly to
@@ -2070,7 +2070,7 @@ In the 0.16.6 packages as rebuilt on 2026-10-02. T110 is partial: the casters' m
    spellbook at all (`/st spell Mind Flay` on a holy priest). The role assumes an untaken talent's
    spell is absent or not known; if it is listed and known, the counts tie and the old heals-first
    seed runs.
-4. **TBC priest, shaman or paladin (T111): nothing changes.** `/md` shows the rail with Overview
+4. **TBC priest, shaman or paladin (T111): nothing changes.** `/st` shows the rail with Overview
    only, the Spells refusal reads `Rank analysis: not modelled for Priest yet` (the class's name),
    the fight line has no max-rank share, and Review and Play behave as before. Test again once the
    caps are granted.
@@ -2127,9 +2127,9 @@ you saw instead.
    on 0.16.7: not set (the line's own) or `Time to OOM` -> Mana + 5SR; `Your mana` -> Mana only;
    `Five-second rule` -> 5SR only; `None` -> None. A bar colour other than `By source` (By tone,
    Class colour or a colour) is now Bars -> Mana colour, on every layout. Spark, Horizon and the
-   old Height are gone. Paste what you had and what you see. (TBC has no `/md dump`, so the dropped keys are not
+   old Height are gone. Paste what you had and what you see. (TBC has no `/st dump`, so the dropped keys are not
    listed here; 48.2 step 1 checks that line on Forever.)
-2. **Mana + 5SR by default (T115).** `/md clock look reset` (`/st clock look reset` on Forever) puts
+2. **Mana + 5SR by default (T115).** `/st clock look reset` (`/st clock look reset` on Forever) puts
    every clock setting back to the look's own. On each of Line, Compact and Bar: a mana bar with
    a thin 5SR strip under it. Cast a spell: the strip fills amber **smoothly** (no steps) over five seconds and then stays full
    green. Compact now has bars too.
@@ -2157,7 +2157,7 @@ you saw instead.
    it; Default puts it back. Outline thick, Shadow on: readable, nothing clipped.
 8. **The words elsewhere (T114, T116).** With the defaults back, the clock line and the ElvUI
    datatext read exactly as on 0.16.7. Set Line's Right to Mana %: the datatext follows Line's
-   slots. `/md rest` still drops the rest. There is no Show tab any more.
+   slots. `/st rest` still drops the rest. There is no Show tab any more.
 
 ### 48.2 Forever (one session, 20-30 min; any mana class, a dummy or Practice)
 
@@ -2201,7 +2201,7 @@ character select SpellTuner reads **0.17.0**. Every step is out of combat unless
 each step, a line in the paste: `ok`, or what you saw instead -- a screenshot is worth more than a
 sentence wherever the step says "looks".
 
-What is still **UNVERIFIED** and asked below: TBC's drag from the spellbook (`MD.API.CursorInfo`,
+What is still **UNVERIFIED** and asked below: TBC's drag from the spellbook (`ST.API.CursorInfo`,
 49.1 step 4), TBC's game tooltip on a rank row (`SetSpellByID`, 49.1 step 3), the class damage
 coefficients (every row VERIFY, 49.2), the +damage number in a TBC damage spell's header (49.2
 step 3; the school name-to-number bug T120 noted is fixed, compare it with the character sheet), and Forever's
@@ -2209,7 +2209,7 @@ measured +healing share (49.3 step 4).
 
 ### 49.1 TBC druid (one session, 25-30 min; a druid of level 40+, out of combat, a few pulls at the end)
 
-1. **The window (T120, T119).** `/md`. The Spells group is **860 x 560** now (it was 1036 x 646),
+1. **The window (T120, T119).** `/st`. The Spells group is **860 x 560** now (it was 1036 x 646),
    fixed: no grip. Left the rail (MY SPELLS, Overview, one row per family; `+ Add` at the foot);
    right Overview the first time. Reports and Simulate are still the big size. Paste a screenshot.
 2. **One spell's page (T120, M1).** Click Healing Touch on the rail. The header: the name, the
@@ -2260,7 +2260,7 @@ measured +healing share (49.3 step 4).
    downrank share, talents) -- the lines 0.16.8 showed under Shift. Swiftmend shows its two Eats
    lines. Wrath's How ends `VERIFY`. Then Settings -> General -> SPELL TOOLTIPS -> **Detail lines**
    `Alt`: Alt now shows the detail, Shift does nothing; `Always` / `Never`; back to `Shift`.
-   `/md spelltip` still turns the block off and on.
+   `/st spelltip` still turns the block off and on.
 9. **Settings (T119, M6).** Settings is **860 x 560** with views General, Clock, Review, About.
    General in two columns: left SPELL TOOLTIPS, APPEARANCE, WINDOWS; right MANA CLOCK (Lock in
    place, Tooltip on the clock, Reset position, Show now, Customise...), ALERTS (Mute alerts,
@@ -2268,13 +2268,13 @@ measured +healing share (49.3 step 4).
    profile) and INTEGRATIONS. Review: RECORDING | MODEL (Spend half-life, OOM digits, Tree of Life
    aura, Nature's Grace, Reset overheal data, Regen test). About: the commands. Text size +2
    (APPEARANCE): nothing clipped on any view. Change one setting on each view, `/reload`: it
-   stayed. `/md options` still opens General.
+   stayed. `/st options` still opens General.
 10. **A few pulls.** In combat the window hides and comes back on the same view after; the tooltip
     block shows on a hover in combat (TBC's text is static, so never `read before combat`).
 
 ### 49.2 TBC priest, shaman or paladin (one session, 20 min; any level 20+, out of combat)
 
-1. **Switched on (T123).** `/md`: the Spells rail lists your heals (Priest: Lesser Heal, Heal,
+1. **Switched on (T123).** `/st`: the Spells rail lists your heals (Priest: Lesser Heal, Heal,
    Greater Heal, Flash Heal, Renew, Prayer of Healing...; Shaman: Healing Wave, Lesser Healing
    Wave, Chain Heal; Paladin: Holy Light, Flash of Light) -- on 0.16.8 this class had the clock
    only. Each family's page has RANKS and a card. Compare one rank's Heal with the spell's own
@@ -2333,7 +2333,7 @@ step 5's Export block whole, screenshots of 49.1 steps 1, 2 and 7.
 
 ## 50. 0.17.1: What if compares like with like, +Spell damage (T124; one short session per client, 10 min)
 
-On either client, `/st` (TBC `/md`) -> Spells.
+On either client, `/st` -> Spells.
 
 1. **The footer.** A family with several ranks (Healing Touch) -> What if... Type +Healing until
    the suggestion moves. The footer reads `Suggested: Rank X -> Rank Y. With these stats Rank Y
@@ -2374,6 +2374,6 @@ with the footer of step 1 copied whole.
 
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the
-raw numbers. `/md profile` output is welcome with any report. I turn them into
+raw numbers. `/st profile` output is welcome with any report. I turn them into
 `Data/SpellData.lua` / `Engine/*.lua` changes and record the outcome in
 `docs/DECISIONS.md` + `docs/HISTORY.md`.

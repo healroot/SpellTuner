@@ -128,7 +128,7 @@ end
 
 --------------------------------------------------------------------------------
 -- Copy popup: a read-only scroll edit box holding plain text, pre-selected so
--- Ctrl+C just works. Public (ST:ShowCopyPopup) because /md profile hands the
+-- Ctrl+C just works. Public (ST:ShowCopyPopup) because /st profile hands the
 -- author 40 lines of state and chat is the wrong place for that.
 --------------------------------------------------------------------------------
 local copyFrame, copyTextArea, copyTitle

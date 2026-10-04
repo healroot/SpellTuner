@@ -30,7 +30,7 @@ check("the character's recordings survived",
 check("and its practice fights", ST.db.char["Penek-Spineshatter"].practice[1].id == 2)
 check("defaults were filled around what was there", ST.db.simFullHp ~= nil)
 check("the old global is emptied so the client stops writing it", _G.ManaDemonDB == nil)
-check("/md still answers, /st is the name now", _G.SLASH_SPELLTUNER2 == "/st" and _G.SLASH_SPELLTUNER3 == "/md")
+check("/st is the name now, /st is gone (T126)", _G.SLASH_SPELLTUNER2 == "/st" and _G.SLASH_SPELLTUNER3 == nil)
 
 print(string.format("\n%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("  FAIL " .. f) end

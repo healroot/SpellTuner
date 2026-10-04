@@ -1,4 +1,4 @@
--- Rank dashboard (/md): a Cell-style movable frame (header bar with title and
+-- Rank dashboard (/st): a Cell-style movable frame (header bar with title and
 -- close), the groups and their views. Reports keeps its header lines and the
 -- recap. Settings -> General, Review and About are UI/Settings.lua's (T119),
 -- Settings -> Clock UI/ClockSettings.lua's.
@@ -7,7 +7,7 @@
 -- -- General, Clock, Review, About, built by ST.Settings from this line's rows
 -- (UI/Settings_TBC.lua) -- at 860 x 560, fixed, as Forever's. The options
 -- frame (ST.optionsFrame, UI/OptionsFrame.lua) is gone; ST:ShowOptionsFrame
--- stays as the door /md options and the minimap button use.
+-- stays as the door /st options and the minimap button use.
 --
 -- T84 (C5 of docs/PLAN-refactor-ux.md, section 7.1; mockup M4 layout B and
 -- M6): the Spells group is the rail, as on Forever -- MY SPELLS, Overview
@@ -18,7 +18,7 @@
 -- (UI/SpellsView_TBC.lua's CreateSpellsOverview); a family's row ("fam:<key>")
 -- opens the TBC Spells view (T83, C3: the header, the chip and one
 -- comparison, the rank table, the card, "After overheal" and "What if...").
--- C3's four view tabs are gone. /md opens on Overview the first time, then on
+-- C3's four view tabs are gone. /st opens on Overview the first time, then on
 -- the remembered row; a path saved before C5 ("spells", "Regrowth") opens
 -- that family's row.
 --
@@ -226,7 +226,7 @@ end
 
 -- T102 (docs/SPEC-next.md 7.3-7.4, mockup M8g): this line's own clock switches
 -- for Settings -> Clock's Text (since T116) and When tabs -- the keys the OOM Widget pane
--- and /md rest, /md lock, /md tooltip write (UI/ClockSettings.lua never reads
+-- and /st rest, /st lock, /st tooltip write (UI/ClockSettings.lua never reads
 -- a line's keys itself).
 local function Visibility()
     if ST.UpdateVisibility then ST:UpdateVisibility() end
@@ -234,7 +234,7 @@ end
 local CLOCK_SWITCHES = {
     show = {
         { text = "Rest time (rest 2:10)", segment = "rest", tips = { "Show rest time",
-              "Grey 'rest 2:10' next to the clock:", "time to full if you stop casting right now. Same as /md rest." },
+              "Grey 'rest 2:10' next to the clock:", "time to full if you stop casting right now. Same as /st rest." },
           get = function() return ST.db.showRest ~= false end,
           set = function(on) ST.db.showRest = on end },
         { text = "Mana cooldown (inn 2:10)", segment = "cd", tips = { "Mana cooldown projection",
@@ -249,7 +249,7 @@ local CLOCK_SWITCHES = {
           set = function(on) ST.db.locked = on; Visibility() end },
         { text = "Tooltip and left-click", tips = { "Tooltip on the floating clock",
               "Off: the clock takes no mouse input at all (click-through),",
-              "and stays draggable while unlocked. Same as /md tooltip." },
+              "and stays draggable while unlocked. Same as /st tooltip." },
           get = function() return ST.db.widgetTooltip ~= false end,
           set = function(on) ST.db.widgetTooltip = on; Visibility() end },
     },
@@ -306,7 +306,7 @@ local function CreateDashboard()
             -- T102: Settings -> Clock's controls from the saved look
             if group == "settings" and view == "clock" and ST.ClockSettings then ST.ClockSettings.Show(pane) end
             -- T119: General, Review and About re-read what they show, and
-            -- the last of them is where /md options opens (Clock was never
+            -- the last of them is where /st options opens (Clock was never
             -- one of the options frame's tabs)
             if group == "settings" and ST.Settings and ST.Settings.Owns(view) then
                 lastSettingsView = view
@@ -404,8 +404,8 @@ function ST:OpenMainWindow(group, view)
     if group then nav:Select(group, group == "spells" and SpellsViewId(view) or view) end
 end
 
--- Every entry point that wants a particular view goes through here: /md sim,
--- /md options, the minimap button's right-click. T80 (C1): through the window
+-- Every entry point that wants a particular view goes through here: /st sim,
+-- /st options, the minimap button's right-click. T80 (C1): through the window
 -- manager, which closes a replay first and refuses while practice plays.
 function ST:SelectView(group, view)
     if not nav then return end
@@ -422,7 +422,7 @@ function ST:OpenDashboardSettings()
     ST:SelectView("settings", "general")
 end
 
--- T119: the door /md options (Core_TBC.lua) uses, kept when the options frame
+-- T119: the door /st options (Core_TBC.lua) uses, kept when the options frame
 -- (UI/OptionsFrame.lua) went --
 --   ST:ShowOptionsFrame()      the settings group, on the last view used
 --   ST:ShowOptionsFrame(view)  that view

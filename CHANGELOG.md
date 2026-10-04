@@ -21,6 +21,9 @@ published to CurseForge; the developers' log is `docs/HISTORY.md`.
   in view while you change the stats. It opens on the window's left when the right would leave
   the screen; ESC closes the drawer first, then the window.
 
+### Commands
+- /md is gone: use /st (or /spelltuner).
+
 ## 0.17.0
 
 One Spells window and one spell tooltip on both clients: what TBC had, Forever now has, and the

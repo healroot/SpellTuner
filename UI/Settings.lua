@@ -680,7 +680,7 @@ local function BuildAbout(content)
     local both = list:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
     both:SetPoint("BOTTOMRIGHT", list.line, "TOPRIGHT", 0, 3)
     UI.Tint(both, "text", "muted")
-    both:SetText("/st and /md both answer")
+    both:SetText("/st and /spelltuner both answer")
     pane.list = list
 
     -- where the list starts, from the pane's top

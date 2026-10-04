@@ -37,7 +37,7 @@
 --     layout <name>`, `/st clock look reset`, `/st clock preview`. Forever's
 --     `/st clock` and `/st clock lock` keep their meaning (a sub is matched
 --     only on its own first word); on TBC, which had no `clock` verb, the subs
---     create `/md clock`.
+--     create `/st clock`.
 --   * ST.ClockLook (ST:Provide): the line's resolved clock look, which
 --     Integrations/Surface_LDB.lua follows so the broker drops the rest
 --     segment when the clock does (2.3 "one string, every place").

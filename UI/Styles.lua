@@ -49,7 +49,7 @@
 -- the window manager: tools/defaultscheck.lua). A saved key nobody registers
 -- (a style file that did not load) applies Flat for the session and is kept.
 --
--- `/st ui style <name>` (and `/md ui style` on TBC, where it creates the `ui`
+-- `/st ui style <name>` (on TBC, where it creates the `ui`
 -- verb) through ST:AddSubcommand, so `/st ui reset` keeps working whatever
 -- order the two files load in. The /st dump line through ST:AddDumpLine:
 -- `style: <key> (accent <class|style>) fell back: <roles|none>` -- added the

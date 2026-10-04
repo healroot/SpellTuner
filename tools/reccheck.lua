@@ -90,7 +90,7 @@ if f then
     check("row prehot > 0", (f.prehot or 0) > 0, tostring(f.prehot))
 end
 
--- /md export must render the stream without blowing up on a nil array
+-- /st export must render the stream without blowing up on a nil array
 local exported = ST:Export()
 local sections = 0
 for _, line in ipairs(exported) do if line:match("^# ") then sections = sections + 1 end end
@@ -99,7 +99,7 @@ check("export renders the stream", #exported > 60 and sections >= 8,
 
 -- Replay the recording we just made, through the real gates.
 if rec then
-    print("\n-- /md simreplay 1 --")
+    print("\n-- /st simreplay 1 --")
     local report = ST:ValidationReport(rec, 1)
     for _, line in ipairs(report) do print(line) end
     local v = ST.SimModel:Validate(rec)
@@ -118,12 +118,12 @@ end
 -- The coach must refuse a fight that does not replay, and produce a card when
 -- forced. Both paths are exercised: silence is the more important one.
 if rec then
-    print("\n-- /md coach 1 --")
+    print("\n-- /st coach 1 --")
     local refused = ST.SimPlanner.Coach(rec, { n = 1 })
     for _, l in ipairs(refused) do print(l) end
     check("coach refuses a failed replay", refused[1]:find("does not replay") ~= nil)
 
-    print("\n-- /md coach 1 force --")
+    print("\n-- /st coach 1 force --")
     local card = ST.SimPlanner.Coach(rec, { n = 1, force = true })
     for _, l in ipairs(card) do print(l) end
     check("card produced", #card > 8, tostring(#card))

@@ -38,7 +38,7 @@ local DEFAULTS = {
     recordThreat = true,  -- record the two things a healer can see coming: aggro on each tracked
                           -- target, and a hostile cast aimed at one (docs/SPEC-v0.12.md). A few
                           -- dozen events a pull; off for anyone who does not want the bytes
-    recordRuns = true,    -- allow /md run start: a whole dungeon as one recording, every pull plus
+    recordRuns = true,    -- allow /st run start: a whole dungeon as one recording, every pull plus
                           -- the gaps (Engine/RunRecorder.lua). Two runs kept, one pinnable
     runMaxMinutes = 90,   -- a recording run stops itself at this age (0 = no ceiling)
     runAutoStart = false, -- RESERVED (docs/SPEC-v0.9.md 1.1): start a run on entering a 5-man.
@@ -241,7 +241,7 @@ ST:RegisterCallback("CORE_READY", function()
 
     if ST.db.firstRun then
         ST.db.firstRun = false
-        ST:Print("first run - the widget is unlocked for 60s so you can drag it. |cffffff00/md lock|r when done, |cffffff00/md help|r for commands.")
+        ST:Print("first run - the widget is unlocked for 60s so you can drag it. |cffffff00/st lock|r when done, |cffffff00/st help|r for commands.")
         if ST.ForceWidgetPreview then ST:ForceWidgetPreview(60) end
     end
 end)
@@ -261,7 +261,7 @@ ST:On("PLAYER_EQUIPMENT_CHANGED", function()
     local m = ST.cdb.mp5
     if not m or not m.at then return end
     gearReminded = true
-    ST:Print(string.format("item mp5 was measured on %s (%d mp5); gear changed since - |cffffff00/md regentest|r " ..
+    ST:Print(string.format("item mp5 was measured on %s (%d mp5); gear changed since - |cffffff00/st regentest|r " ..
         "solo to re-measure.", date("%d %b", m.at), m.mp5 or 0))
 end)
 
@@ -296,7 +296,7 @@ end, "/st lock, unlock", "lock / unlock (drag) the OOM widget")
 ST:AddCommand("unlock", function()
     ST.db.locked = false
     if ST.UpdateVisibility then ST:UpdateVisibility() end
-    ST:Print("widget unlocked - drag it, then /md lock.")
+    ST:Print("widget unlocked - drag it, then /st lock.")
 end, nil, nil, true) -- listed on lock's row
 
 ST:AddCommand("reset", function()
@@ -337,7 +337,7 @@ end, "/st binds", "what each key and mouse button casts in practice; import from
 ST:AddAlias("bindings", "binds")
 
 ST:AddCommand("practice", function(arg)
-    -- v0.15.0: Simulate -> Practice; "/md practice start" plays the saved setup at once
+    -- v0.15.0: Simulate -> Practice; "/st practice start" plays the saved setup at once
     if arg == "start" and ST.OpenPractice and ST.Practice then
         ST.cdb.practiceSetup = ST.cdb.practiceSetup or ST.Practice.DefaultSetup("5")
         ST:OpenPractice(ST.Practice.CopySetup(ST.cdb.practiceSetup), ST.cdb.practiceSetup.fixedSeed)
@@ -360,7 +360,7 @@ ST:AddCommand("window", function(arg)
         ST.db.halfLife = n
         ST:Print("spend half-life set to " .. n .. "s.")
     else
-        ST:Print("usage: /md window N (5-60 seconds)")
+        ST:Print("usage: /st window N (5-60 seconds)")
     end
 end, "/st window N", "spend estimator half-life in seconds (5-60, default 15)")
 

@@ -1,8 +1,8 @@
 -- tools/run.sh tools/runcheck.lua
 --
--- A whole dungeon under the stub (docs/SPEC-v0.9.md 3.6): /md run start, three
+-- A whole dungeon under the stub (docs/SPEC-v0.9.md 3.6): /st run start, three
 -- pulls with the gaps between them -- a drink at a scripted rate, a death and a
--- release -- then /md run stop. The run recorder is a CONTAINER, so what this
+-- release -- then /st run stop. The run recorder is a CONTAINER, so what this
 -- checks is that nothing falls between the pulls and the gaps: the third pull
 -- is under the recording gate and must still be kept, the ring of 8 must not
 -- see any of them, the drink rate must be the scripted one and not a preset,
@@ -261,18 +261,18 @@ ST.db.recordRuns = true
 
 out = {}
 ST:RunCommand("status")
-check("/md run status lists the stored runs", found("nothing recording") ~= nil and found("leaver") ~= nil,
+check("/st run status lists the stored runs", found("nothing recording") ~= nil and found("leaver") ~= nil,
     out[1] or "no output")
 out = {}
 ST:RunCommand("start Some Dungeon")
-check("/md run start keeps the name's case", RR.active ~= nil and RR.active.name == "Some Dungeon",
+check("/st run start keeps the name's case", RR.active ~= nil and RR.active.name == "Some Dungeon",
     RR.active and RR.active.name or "nothing recording")
 out = {}
 ST:RunCommand("status")
-check("/md run status reports the live run", found("Some Dungeon") ~= nil and found("elapsed") ~= nil,
+check("/st run status reports the live run", found("Some Dungeon") ~= nil and found("elapsed") ~= nil,
     out[1] or "no output")
 ST:RunCommand("stop")
-check("/md run stop stops it", RR.active == nil)
+check("/st run stop stops it", RR.active == nil)
 
 local lines = ST:Export()
 local runHead, runEv, pullInRun = nil, 0, nil

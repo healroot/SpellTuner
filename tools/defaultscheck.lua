@@ -283,7 +283,7 @@ check(string.format("every setting read on the %s TOCs has a default (%d read)",
     #missing == 0 and counted > 0, table.concat(missing, ", "))
 do
     -- the scan sees the registered keys (it would pass vacuously otherwise);
-    -- simMinActivity is declared and shown in /md profile but read by no rule today
+    -- simMinActivity is declared and shown in /st profile but read by no rule today
     local unseen = {}
     for _, k in ipairs(Sorted(OLD)) do
         if not readIn[k] and k ~= "simMinActivity" then unseen[#unseen + 1] = k end

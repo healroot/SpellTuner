@@ -289,7 +289,7 @@ function OH:Reset()
     ST:Print("overheal data cleared.")
 end
 
--- Plain lines for /md profile and the debug log (persisted store).
+-- Plain lines for /st profile and the debug log (persisted store).
 function OH:Summary()
     local out = {}
     if not OH.stats then return out end

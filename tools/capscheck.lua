@@ -39,7 +39,7 @@ arg[0] = a0
 local S = _G.STUB
 local forever = S.flavour == "forever"
 local P = ST.Profiles
--- The TBC stub has no GetBuildInfo, which /md profile's first line reads
+-- The TBC stub has no GetBuildInfo, which /st profile's first line reads
 -- (tools/verifycheck.lua answers the same fixed build).
 if _G.GetBuildInfo == nil then
     _G.GetBuildInfo = function() return "2.5.5", "65000", "Sep 1 2026", 20506 end

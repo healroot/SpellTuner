@@ -4,7 +4,7 @@
 -- now the navigation kit, so this drives it the way a mouse would -- click a
 -- group, click a view, read back what was painted and which panes exist.
 --
--- It also holds the line the spec draws under the move: /md must behave exactly
+-- It also holds the line the spec draws under the move: /st must behave exactly
 -- as it did, and a pane must not know it lives in a different window.
 local here = arg[0]:match("^(.*)/[^/]+$")
 HARNESS_FLAVOUR = "tbc"
@@ -240,10 +240,10 @@ check("T80: the Windows pane in Settings -> General writes and applies its five 
     return combat and esc and font and scale and reset
 end)())
 
--- /md options routes into the group instead of opening anything
+-- /st options routes into the group instead of opening anything
 Click(ButtonNamed("Spells"))
 ST:ShowOptionsFrame("general")
-check("/md options selects the settings group", ST.db.uiPath[1] == "settings"
+check("/st options selects the settings group", ST.db.uiPath[1] == "settings"
     and ST.db.uiPath[2] == "general", table.concat(ST.db.uiPath, "/"))
 check("and it did not open a second window", _G.SpellTunerOptionsFrame == nil)
 
@@ -275,13 +275,13 @@ check("the simulator's result box exists", (function()
     return false
 end)())
 
--- /md sim selects the group
+-- /st sim selects the group
 Click(ButtonNamed("Spells"))
 ST:ToggleSimWindow()
-check("/md sim selects Simulate", ST.db.uiPath[1] == "simulate", table.concat(ST.db.uiPath, "/"))
+check("/st sim selects Simulate", ST.db.uiPath[1] == "simulate", table.concat(ST.db.uiPath, "/"))
 -- ...and toggles the window when it is already what is showing
 ST:ToggleSimWindow()
-check("/md sim again closes the window", not frame:IsShown())
+check("/st sim again closes the window", not frame:IsShown())
 ST:ToggleDashboard()
 
 --------------------------------------------------------------------------------

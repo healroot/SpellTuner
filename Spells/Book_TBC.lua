@@ -38,7 +38,7 @@
 -- text and reads) are every caller's, cached until SPELLS_CHANGED /
 -- LEARNED_SPELL_IN_TAB or the next build. T123: the priest's, shaman's and
 -- paladin's TBC profiles grant the rank table, so a logged-in priest, shaman
--- or paladin builds here (the spend tracker, the fight summary and /md
+-- or paladin builds here (the spend tracker, the fight summary and /st
 -- profile read it through RankMath:Source() as the rank math does). TBC TOC
 -- only, after Spells/Parse.lua.
 local _, ST = ...

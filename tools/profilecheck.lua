@@ -148,8 +148,8 @@ if DRUID == nil then T.done() end
 
 check("Select ran at CORE_LOGIN: ST.ClassProfile is the logged-in druid's", ST.ClassProfile == DRUID)
 if not forever then
-    -- The spec's name, ST.Profile, is Diagnostics_TBC.lua's /md profile report.
-    check("ST:Profile() is still the /md profile report (the registry never writes ST.Profile)",
+    -- The spec's name, ST.Profile, is Diagnostics_TBC.lua's /st profile report.
+    check("ST:Profile() is still the /st profile report (the registry never writes ST.Profile)",
         type(ST.Profile) == "function")
 end
 

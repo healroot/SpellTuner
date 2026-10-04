@@ -185,7 +185,7 @@ function Targets:RosterLine()
     return #parts > 0 and table.concat(parts, ", ") or "(solo)"
 end
 
--- Lines for /md export.
+-- Lines for /st export.
 function Targets:ExportRows()
     local out = {}
     for _, e in pairs(Targets.byGUID) do

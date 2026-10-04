@@ -1,7 +1,7 @@
--- The regen instruments (TBC TOC only): /md fsrtest logs mana ticks for 15s to
--- pin down the five-second-rule anchor, /md regentest measures idle regen
--- against GetManaRegen (Dreamstate check, the tick histogram) and /md spamtest
--- checks the dashboard's To OOM column. /md regentest is the ONLY writer of
+-- The regen instruments (TBC TOC only): /st fsrtest logs mana ticks for 15s to
+-- pin down the five-second-rule anchor, /st regentest measures idle regen
+-- against GetManaRegen (Dreamstate check, the tick histogram) and /st spamtest
+-- checks the dashboard's To OOM column. /st regentest is the ONLY writer of
 -- `cdb.mp5` (the measured leftover Engine/RegenModel.lua's RM:MeasuredMp5()
 -- reads); its shape and the "leftover <= what the client reports" bound are
 -- below. RegenModel keeps its own copy of that bound and its once-only refusal
@@ -39,7 +39,7 @@ function ST:RunFSRTest()
 end
 
 --------------------------------------------------------------------------------
--- Idle regen test (/md regentest [seconds]): does the RAW GetManaRegen()
+-- Idle regen test (/st regentest [seconds]): does the RAW GetManaRegen()
 -- include Dreamstate? Stand idle at partial mana, no drink, no casting. The
 -- window starts once the five-second rule has ended (so the API side is a
 -- single rate), observed mana gain is compared with the raw API base rate
@@ -388,7 +388,7 @@ function ST:RunRegenTest(seconds)
 end
 
 --------------------------------------------------------------------------------
--- Spam test (/md spamtest): validates the dashboard's "To OOM" column. Arm
+-- Spam test (/st spamtest): validates the dashboard's "To OOM" column. Arm
 -- it, then chain-cast ONE spell until you are out of mana (or stop for 10s).
 -- Counts the casts, the real per-cast drops and the regen that landed, and
 -- compares with the prediction made from the mana you had when you armed it.

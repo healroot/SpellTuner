@@ -1,13 +1,13 @@
--- Diagnostics (TBC TOC only): in-game verification (/md verify) -- diff the
+-- Diagnostics (TBC TOC only): in-game verification (/st verify) -- diff the
 -- static SpellData table against whatever the live client exposes, and dump
 -- the regen/healing inputs so formulas can be checked by hand before any
--- number is trusted -- plus the input snapshot, /md profile, /md export and
--- /md calibrate.
+-- number is trusted -- plus the input snapshot, /st profile, /st export and
+-- /st calibrate.
 --
 -- T56 (P12, review A2): moved out of Verify.lua unchanged. The instruments
--- (/md fsrtest, /md regentest, /md spamtest) are Engine/RegenMeasure.lua, the
--- engine's shipped self-tests (/md simrun, /md simreplay) Engine/SimSelfTest.lua,
--- and the review commands (/md coach, /md coachrun, the validation report)
+-- (/st fsrtest, /st regentest, /st spamtest) are Engine/RegenMeasure.lua, the
+-- engine's shipped self-tests (/st simrun, /st simreplay) Engine/SimSelfTest.lua,
+-- and the review commands (/st coach, /st coachrun, the validation report)
 -- Engine/ReviewCommands.lua.
 local _, ST = ...
 
@@ -98,12 +98,12 @@ function ST:RunVerify()
 
     ST:Print("-- input snapshot --")
     for _, line in ipairs(ST:Snapshot()) do ST:Print(line) end
-    ST:Print("For the FSR anchor: stand idle at partial mana, run /md fsrtest, cast ONE " ..
-        "Healing Touch, and watch which tick sizes appear when. For Dreamstate: /md regentest.")
+    ST:Print("For the FSR anchor: stand idle at partial mana, run /st fsrtest, cast ONE " ..
+        "Healing Touch, and watch which tick sizes appear when. For Dreamstate: /st regentest.")
 end
 
 --------------------------------------------------------------------------------
--- Every model input in one block. /md verify prints it, /md profile copies it,
+-- Every model input in one block. /st verify prints it, /st profile copies it,
 -- and both therefore always agree. Returns an array of plain strings (no
 -- colour escapes, so it survives a paste).
 --------------------------------------------------------------------------------
@@ -129,7 +129,7 @@ function ST:Snapshot()
                 m.source or "?", date("%Y-%m-%d %H:%M", m.at or 0), m.ticks or 0,
                 m.hint and (" at " .. m.hint) or "")
         else
-            add("measured mp5: none - run /md regentest solo to measure the beat the API omits")
+            add("measured mp5: none - run /st regentest solo to measure the beat the API omits")
         end
         local drinking = ST:HasBuff("Drink") or ST:HasBuff("Refreshment") or ST:HasBuff("Food & Drink")
         add("drink buff up: %s; observed OOC fill %.2f/s (FSR duty %d%%)",
@@ -199,7 +199,7 @@ function ST:Snapshot()
 end
 
 --------------------------------------------------------------------------------
--- /md profile: every model input in one copyable block. This is the bug report
+-- /st profile: every model input in one copyable block. This is the bug report
 -- -- chat-spamming forty lines is not one, a Ctrl+C box is, so it goes straight
 -- into the debug console's copy popup.
 --------------------------------------------------------------------------------
@@ -319,7 +319,7 @@ function ST:RunProfile()
 end
 
 --------------------------------------------------------------------------------
--- /md export: machine-readable TSV for analysis (fights, overheal buckets,
+-- /st export: machine-readable TSV for analysis (fights, overheal buckets,
 -- roster, calibration when present). Tabs, no quoting: the first dungeon log
 -- was analysed by regexing prose, which is how the analyst wants to stop.
 --------------------------------------------------------------------------------

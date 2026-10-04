@@ -462,7 +462,7 @@ end
 
 do
     -- a fight that does not replay: the verdict names the gate in bad, and
-    -- Coach anyway takes the place of the quoted "/md replay N force"; mockup
+    -- Coach anyway takes the place of the quoted "/st replay N force"; mockup
     -- M3 draws that band at the two-column width, the suggested column dimmed
     local recF = buildFixture({ meterOverridden = true })
     recF.id = 3200000000

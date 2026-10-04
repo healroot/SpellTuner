@@ -506,7 +506,7 @@ ST:RegisterCallback("STYLE_CHANGED", function() NewLook(false) end)
 ST:Provide("ClockWidget", Clock)
 
 -- T93: the two new switches by hand until Settings -> Clock (T102) shows
--- them -- TBC's /md rest and /md tooltip, as subcommands of /st clock
+-- them -- TBC's rest and tooltip verbs, as subcommands of /st clock
 -- (docs/SPEC-next.md 2.5: matched before the verb, so /st clock and
 -- /st clock lock are unchanged).
 ST:AddSubcommand("clock", "rest", function()

@@ -1,4 +1,4 @@
--- The Simulation window (/md sim): a scenario you build by hand -- party size,
+-- The Simulation window (/st sim): a scenario you build by hand -- party size,
 -- incoming damage, starting health -- run through the same engine that replays
 -- your recorded fights, so the answer you get here is the answer you would have
 -- got there.
@@ -279,7 +279,7 @@ function ST:AdoptSimPanel(parent)
     return frame
 end
 
--- /md sim: select the group. It opens the window if it is closed, and toggles
+-- /st sim: select the group. It opens the window if it is closed, and toggles
 -- the window only when Simulate is already what is showing.
 function ST:ToggleSimWindow()
     if ST.SelectView then

@@ -18,7 +18,7 @@
 --                        regenerated, USED, at the end, still owed, deaths, seconds one
 --                        hit from death, lowest health, casts (tools/reportlines.lua;
 --                        it was tools/practicereport.lua's, folded in 2026-09-30)
---   export N             the /md export text for N, written to .logs/recordings/<id>.txt
+--   export N             the /st export text for N, written to .logs/recordings/<id>.txt
 --
 -- With --run K, every command above addresses the pulls of run K instead of the
 -- ring of single fights: `list --run 1` lists that run's pulls, `validate 3
@@ -258,7 +258,7 @@ if mp5 then
         mp5.mp5 or 0, mp5.source or "?", os.date("%Y-%m-%d", mp5.at or 0), mp5.ticks or 0,
         mp5.solo == false and ", IN A GROUP" or "", ST.Regen:Unreported())
 else
-    mp5Line = "mp5:   not measured (/md regentest solo) - recordings made before it carry energize 0"
+    mp5Line = "mp5:   not measured (/st regentest solo) - recordings made before it carry energize 0"
 end
 
 local function Say(fmt, ...) print(string.format(fmt, ...)) end
@@ -348,7 +348,7 @@ if cmd == "list" then
 
 elseif cmd == "runs" then
     if #runs == 0 then
-        Say("no runs stored. In game: /md run start at the instance door, /md run stop when you leave.")
+        Say("no runs stored. In game: /st run start at the instance door, /st run stop when you leave.")
         os.exit(0)
     end
     Say("%-3s %-24s %-20s %6s %6s %6s %6s %6s  %s", "#", "name", "zone", "pulls", "wall", "combat",

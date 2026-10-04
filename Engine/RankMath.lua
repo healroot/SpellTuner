@@ -703,7 +703,7 @@ end
 -- Reached in the game only once a class's profile grants `rankTable`
 -- (RankMath:IsClassBook); the TBC class profiles do not yet, because the TBC
 -- files that read Data/SpellData.lua directly -- the Spells view, the spell
--- tooltip, the fight summary's max-rank share, /md profile -- would show a
+-- tooltip, the fight summary's max-rank share, /st profile -- would show a
 -- half-working pane or a wrong number for them (docs/tasks/T111 lists each
 -- one). Until then this is the offline tools' (tools/tbcclasscheck.lua,
 -- tools/wclcheckkit.lua --fit).

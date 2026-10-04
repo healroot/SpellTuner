@@ -3,7 +3,7 @@
 -- The combat log reports the amount the server computed; RankMath predicts it.
 -- This compares them per EVENT -- tick, direct, bloom -- and accumulates the
 -- ratio observed / predicted per spell and kind. Drift is a REPORT TO A HUMAN
--- (a chat line, /md calibrate, /md profile): it is never fed back into the
+-- (a chat line, /st calibrate, /st profile): it is never fed back into the
 -- model. Doing that would make the dashboard agree with reality while
 -- Data/SpellData.lua stayed wrong, and silently absorb every real finding --
 -- a missing relic, a wrong coefficient, an unmodelled talent. The Idol of
@@ -140,7 +140,7 @@ function CAL:CheckDrift(spellID, kind, st)
             GetSpellInfo(spellID) or "?", s and s.rank or 0, kind, math.abs(ratio - 1) * 100,
             ratio > 1 and "above" or "below", st.n)
         msg = msg .. CAL:RelicHint(spellID, kind, st)
-        ST:Print(msg .. " /md calibrate for the table.")
+        ST:Print(msg .. " /st calibrate for the table.")
     end
 end
 
@@ -197,7 +197,7 @@ function CAL:Drift(spellID)
     return worst, kindOut
 end
 
--- Lines for /md calibrate and /md profile.
+-- Lines for /st calibrate and /st profile.
 function CAL:Report()
     local out = {}
     if not CAL.data then return out end

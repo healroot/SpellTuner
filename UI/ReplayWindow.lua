@@ -1395,7 +1395,7 @@ local function Build()
     if UI.THEMED then
         -- T72 (P28, review U23, mockup M3): the status band. The fight on the
         -- left (headerFS: #n, where, when, how long, how many), the verdict on
-        -- the right in good / bad, and Coach anyway where "/md replay N force"
+        -- the right in good / bad, and Coach anyway where "/st replay N force"
         -- was quoted. The reconstruction is one word beside the fight, its
         -- explanation that word's hover. Every piece is anchored by PlaceBand
         -- on each open, which also bounds the fight's width by the verdict's.
@@ -2021,7 +2021,7 @@ function ST:CoachOnOpen(rec, force, validation)
             ST.coachSearch = nil
             ST.replayCoaching = nil
             -- one line, not the whole card: the window is the answer here, and
-            -- /md coach N still prints the card in full when it is wanted
+            -- /st coach N still prints the card in full when it is wanted
             local p = SP.plans[rec.id]
             if p then
                 ST:Print(string.format("replay: coached - %s. The suggested column is drawn.",
@@ -2073,7 +2073,7 @@ function ST:OpenReplay(n)
         spec = spec:gsub("force", ""):gsub("^%s+", ""):gsub("%s+$", "")
         if spec == "" then spec = "1" end
     end
-    -- "/md replay run 2" plays the WHOLE run on one clock, gaps included
+    -- "/st replay run 2" plays the WHOLE run on one clock, gaps included
     -- (v0.14.0). "2:7" still opens that one pull. "run 2 pull" opens the run's
     -- first pull the old way, for when only the fight is wanted.
     -- T51: asked for by hand while a run plays, it starts that run afresh
@@ -2094,7 +2094,7 @@ function ST:OpenReplay(n)
     local t0 = debugprofilestop and debugprofilestop() or 0
     -- opening a single pull by hand leaves run mode; OpenRunPlay turns it back on.
     -- T51: "by hand" is every open but the window's own (OpenPull): a run
-    -- crossing into its next pull stays on the run's clock, `/md replay 3`
+    -- crossing into its next pull stays on the run's clock, `/st replay 3`
     -- after a run no longer plays on it.
     if not quiet then runMode = false end
     if not runMode then runTL, runT = nil, 0 end
@@ -2107,7 +2107,7 @@ function ST:OpenReplay(n)
     -- something to force: the column fills in when the search ends
     if force and not rp.right and not (UI.THEMED and ST.replayCoaching == rec.id) then
         ST:Print(string.format("replay: nothing to force - no plan has been coached for this fight. " ..
-            "|cffffff00/md coach %s force|r first.", tostring(n)))
+            "|cffffff00/st coach %s force|r first.", tostring(n)))
     end
     local RT = ST.ReplayTrace
     left.state = RT.New(rp.left.trace, rp.scenario, { onEvent = MakeOnEvent(left) })
@@ -2284,7 +2284,7 @@ function ST:OpenReplay(n)
         -- coach, then play -- three commands to answer one question, and two of
         -- them only existed because the third had nothing to draw.
         frame.hint:SetText(v and not v.ok
-            and string.format("does not replay (%s) - |cffffff00/md replay %s force|r coaches it anyway",
+            and string.format("does not replay (%s) - |cffffff00/st replay %s force|r coaches it anyway",
                 (function()
                     for _, g in ipairs(v.gates or {}) do if not g.ok then return g.name end end
                     return "a gate failed"
@@ -2307,7 +2307,7 @@ function ST:OpenReplay(n)
     return true
 end
 
--- /md replay run 2 play  -- the whole dungeon on one clock (docs/SPEC-v0.14.md).
+-- /st replay run 2 play  -- the whole dungeon on one clock (docs/SPEC-v0.14.md).
 -- The pull replay is untouched; this drives it from the run's time and fills the
 -- gaps, which is half of a dungeon and where the drinking happens.
 function ST:OpenRunPlay(idx)
@@ -2500,7 +2500,7 @@ function ST:StopPractice(reopen)
         return
     end
     ST:Print(string.format("practice: %s played, %d casts, %d mana, %d dead - kept as |cffffff00p1|r " ..
-        "(Reports -> Review -> Practice, or /md replay p1).", Clock(rec.dur), rec.ownCasts or 0,
+        "(Reports -> Review -> Practice, or /st replay p1).", Clock(rec.dur), rec.ownCasts or 0,
         rec.spent or 0, #(rec.deaths or {})))
     if reopen then ST:OpenReplay("p1") end
 end
@@ -2520,7 +2520,7 @@ ST:On("PLAYER_REGEN_DISABLED", function()
     if frame then SetKeys(false) end
 end)
 
--- T72 (P28, review U23): the band's Coach anyway -- what "/md replay N force"
+-- T72 (P28, review U23): the band's Coach anyway -- what "/st replay N force"
 -- did, from the window: coach this fight although it does not replay, both
 -- columns laid out at once while the search runs.
 local function CoachAnyway()

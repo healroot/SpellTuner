@@ -1,5 +1,5 @@
 -- The review commands, both lines: the validation report for one recording
--- (ST:ValidationReport), /md coach (ST:RunCoach), /md coachrun
+-- (ST:ValidationReport), /st coach (ST:RunCoach), /st coachrun
 -- (ST:RunCoachRun) and, on Forever, /st validate.
 --
 -- T56 (P12, review A2): moved out of Verify.lua unchanged, into their final
@@ -33,15 +33,15 @@ ST.ReviewCommands = RC
 --   copyBox     a card over six lines also opens the copy box (TBC's since
 --               v0.7; Forever prints the card to chat only);
 --   reportVerb  the verb that prints the validation report and names it when
---               there is nothing to validate: TBC's is /md simreplay N
+--               there is nothing to validate: TBC's is /st simreplay N
 --               (Engine/SimSelfTest.lua), Forever's is /st validate N,
 --               registered below;
---   slash       the line's own slash command, for hints ("/md coach 1
+--   slash       the line's own slash command, for hints ("/st coach 1
 --               force") -- ST.SLASH wins when a core sets one.
 -- The TBC value below is the default. Commands_Forever.lua provides
 -- ST.ReviewPolicy before this file runs (the Replay module's TOCs list it
 -- first), and that replaces it.
-RC.TBC_POLICY = { copyBox = true, reportVerb = "simreplay", slash = "/md" }
+RC.TBC_POLICY = { copyBox = true, reportVerb = "simreplay", slash = "/st" }
 RC.policy = ST.ReviewPolicy or RC.TBC_POLICY
 
 local function Slash()
@@ -121,7 +121,7 @@ function ST:ValidationReport(rec, n)
     return out
 end
 
--- /st validate [n] (Forever's report verb; TBC's is /md simreplay n).
+-- /st validate [n] (Forever's report verb; TBC's is /st simreplay n).
 function ST:RunValidate(arg)
     if not ST.SimModel then Say("validate: not loaded.") return end
     local n = (arg and arg ~= "" and arg) or "1"
@@ -142,8 +142,8 @@ local function ShowCard(verb, title, lines)
 end
 
 --------------------------------------------------------------------------------
--- /md coachrun [n]: the whole run through the engine (docs/SPEC-v0.9.md 5).
--- The same search as /md coach, one plan for the dungeon, scored on time before
+-- /st coachrun [n]: the whole run through the engine (docs/SPEC-v0.9.md 5).
+-- The same search as /st coach, one plan for the dungeon, scored on time before
 -- mana -- because in a five-man mana is only worth the time it saves.
 --------------------------------------------------------------------------------
 function ST:RunCoachRun(arg)
@@ -154,7 +154,7 @@ function ST:RunCoachRun(arg)
         else Say("coachrun: nothing running.") end
         return
     end
-    -- "/md coachrun 2 force": coach every pull, the ones that do not replay
+    -- "/st coachrun 2 force": coach every pull, the ones that do not replay
     -- included. Same escape hatch a single fight has had since v0.9.6.
     local force = arg:find("force") ~= nil
     arg = arg:gsub("force", "")
@@ -178,7 +178,7 @@ function ST:RunCoachRun(arg)
 end
 
 --------------------------------------------------------------------------------
--- /md coach [n] [force, or safe / health / cheap / regen]
+-- /st coach [n] [force, or safe / health / cheap / regen]
 --------------------------------------------------------------------------------
 function ST:RunCoach(arg)
     if not (ST.SimPlanner and ST.FightRecorder) then Say("coach: not loaded.") return end
@@ -200,7 +200,7 @@ function ST:RunCoach(arg)
     if not rec then Say("coach: no recording " .. tostring(n) .. ".") return end
     n = label
 
-    -- /md coach 3 health: pick one of the strategies the last search on this
+    -- /st coach 3 health: pick one of the strategies the last search on this
     -- fight produced, without searching again (v0.10.4)
     local SP = ST.SimPlanner
     for _, obj in ipairs(SP.OBJECTIVES or {}) do

@@ -1,5 +1,5 @@
--- The engine's shipped self-tests (TBC TOC only): /md simrun (ST:RunSimRun,
--- the mechanics Engine/SimModel.lua is trusted on) and /md simreplay (the BF-1
+-- The engine's shipped self-tests (TBC TOC only): /st simrun (ST:RunSimRun,
+-- the mechanics Engine/SimModel.lua is trusted on) and /st simreplay (the BF-1
 -- fixture replay, or one recording's validation report). tools/simcheck.lua
 -- runs both offline and reads their verdicts back.
 --
@@ -7,7 +7,7 @@
 local _, ST = ...
 
 --------------------------------------------------------------------------------
--- /md simrun -- self-tests for Engine/SimModel.lua (docs/SPEC-v0.7.md 3.8).
+-- /st simrun -- self-tests for Engine/SimModel.lua (docs/SPEC-v0.7.md 3.8).
 --
 -- Nine assertions about mechanics nobody can eyeball once the engine is inside
 -- a search: does a Rejuvenation heal what the dashboard says it heals, does a
@@ -256,7 +256,7 @@ function ST:RunSimRun()
 end
 
 --------------------------------------------------------------------------------
--- /md simreplay fixture -- replay Data/SimFixture_BF1.lua and report how well
+-- /st simreplay fixture -- replay Data/SimFixture_BF1.lua and report how well
 -- the engine reproduces the mana curve the log actually recorded.
 --
 -- Three numbers, because they answer three different questions:
@@ -338,7 +338,7 @@ function ST:RunSimReplay(arg)
     end
     local rec, label = ST:GetRecording(arg)
     if not rec then
-        ST:Print("simreplay: no recording " .. tostring(arg) .. " (try /md simreplay fixture).")
+        ST:Print("simreplay: no recording " .. tostring(arg) .. " (try /st simreplay fixture).")
         return
     end
     for _, line in ipairs(ST:ValidationReport(rec, label)) do

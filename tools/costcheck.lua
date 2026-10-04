@@ -7,7 +7,7 @@
 -- (verified 2026-09-03), never ran offline. This sets a live cost for one druid
 -- heal and holds the three things that depend on it: GetCost prefers the live
 -- value, falls back to the static table when the client says nothing, and
--- /md verify prints a COST line when the two disagree.
+-- /st verify prints a COST line when the two disagree.
 HARNESS_FLAVOUR = "tbc"
 
 local here = arg[0]:match("^(.*)/[^/]+$")
@@ -49,7 +49,7 @@ do
         string.format("cost=%s src=%s static=%s", tostring(cost), tostring(src), tostring(static)))
 end
 
--- 3: /md verify's diff line. Live and static disagree for this rank: one COST
+-- 3: /st verify's diff line. Live and static disagree for this rank: one COST
 -- line naming it, the static figure, its base and the live one marked used.
 do
     S.liveCosts[ID] = LIVE
@@ -65,7 +65,7 @@ do
     for _, l in ipairs(lines) do
         if l:find(want, 1, true) then hits = hits + 1 end
     end
-    check("/md verify prints the COST line for a live cost that disagrees",
+    check("/st verify prints the COST line for a live cost that disagrees",
         okRun and hits == 1,
         (not okRun) and tostring(err) or string.format("hits=%d of %d lines, want %q", hits, #lines, want))
 end

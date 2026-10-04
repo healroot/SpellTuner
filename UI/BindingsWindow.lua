@@ -20,7 +20,7 @@
 --
 -- T40 (docs/SPEC-forever-ui.md 4.4, 6.2, 6.4, 6.5, 6.6): a SHEET on the
 -- Simulate -> Practice pane, not a window: BW:Build(parent) builds it there
--- once (440 x 460, the whole pane masked), /st binds (/md binds) and "Edit
+-- once (440 x 460, the whole pane masked), /st binds and "Edit
 -- bindings" open the main window on that view with the sheet shown, it is one
 -- entry on the ESC stack (one ESC closes the sheet and leaves the window), it
 -- hides with its pane, and it refuses to open in combat. Under the theme
@@ -383,7 +383,7 @@ function ST:ShowBindings(onPane)
     return ShowSheet(onPane)
 end
 
--- /md binds (TBC's verb): the sheet shown, or hidden when it is up (T40)
+-- /st binds (TBC's verb): the sheet shown, or hidden when it is up (T40)
 function ST:ToggleBindings()
     if frame and frame:IsShown() and host and host:IsVisible() then frame:Hide() else ST:ShowBindings() end
 end
