@@ -114,11 +114,15 @@ local function CopyEntry(e, move, crit, kind)
         end
         w.parsed = parsed
     end
-    if type(b) == "table" and typed ~= nil then
+    -- the bonus this rank is priced at: its own school's (or +healing's)
+    -- live reading plus the delta -- the typed value only where the entry
+    -- names no reading; with no live reading at all nothing moved, so the
+    -- entry's own bonus is left as it is
+    if type(b) == "table" and typed ~= nil and not move.noLive then
         local nb = {}
         for k, v in pairs(b) do nb[k] = v end
-        nb.of = typed
-        nb.amount = (type(b.counts) == "number") and b.counts * typed or nil
+        nb.of = (type(b.of) == "number") and (b.of + delta) or typed
+        nb.amount = (type(b.counts) == "number") and b.counts * nb.of or nil
         w.bonus = nb
     end
     if d ~= 0 then Book.Numbers(w, kind) end
@@ -134,8 +138,8 @@ local function Move(kind, live)
     local typed = WI:Get(key)
     if typed == nil then return nil end
     local base = live[key]
-    -- no live reading: nothing moves, the bonus still names the typed value
-    if type(base) ~= "number" then return { delta = 0, typed = typed } end
+    -- no live reading: nothing moves and the bonus is not rewritten
+    if type(base) ~= "number" then return { delta = 0, typed = typed, noLive = true } end
     return { delta = typed - base, typed = typed }
 end
 
