@@ -87,6 +87,9 @@ local FOREVER_ONLY_NAMES = {
     -- T114 (docs/tasks/T114-clock-face-slots.md): the Q-clock-2 seam, a
     -- secret power value into a font string, off until the probe says so.
     "DrawPowerText", -- T114
+    -- T129 (Spells/Book.lua's talent seam): the player's talent ranks by
+    -- name, the C_Traits walk, recorded explicitly.
+    "TalentRanks", -- T129
 }
 -- T15: Client/API_TBC.lua's own binding -- GetSpellInfo, so
 -- Engine/SimModel.lua and Engine/SimPlanner.lua's four call sites can go

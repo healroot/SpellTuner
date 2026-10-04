@@ -519,3 +519,89 @@ function ST.API.SetTooltipSpell(tooltip, id)
     return true
 end
 ST.API._bindings.SetTooltipSpell = "GameTooltip.SetSpellByID"
+
+-- T129 (docs/tasks/T129-forever-talent-casts.md): the player's talent ranks by
+-- name, { [talentName] = rank } with rank > 0 only, or nil plus "absent" /
+-- "error" / "secret". The walk is retail 12.x's trait API (in the 69893
+-- baseline; probe 1.60.1_70009-m2 saw GetActiveConfigID answer and C_Traits
+-- present, the walk past GetConfigInfo UNVERIFIED on Forever):
+--   C_ClassTalents.GetActiveConfigID() -> config id
+--   C_Traits.GetConfigInfo(cfg).treeIDs -> each tree's C_Traits.GetTreeNodes(tree)
+--   -> C_Traits.GetNodeInfo(cfg, node): activeRank, activeEntry.entryID
+--   -> C_Traits.GetEntryInfo(cfg, entryID).definitionID
+--   -> C_Traits.GetDefinitionInfo(def): overrideName, else spellID's name
+--      (C_Spell.GetSpellName through ST.API.SpellName).
+-- Every read goes through ST.API.Call and every table through ST.API.Copy, so
+-- the walk only ever indexes copies; a secret anywhere (a secret return, or a
+-- copy that dropped a secret field) makes the whole answer nil, "secret" --
+-- half a talent list would price a rank wrong without saying so. A node whose
+-- shape does not answer (no plain activeRank, no entry) is passed over: an
+-- untaken node is the normal case. Recorded explicitly, as CursorInfo.
+local function TraitCopy(depth, dotted, ...)
+    local v, why = ST.API.Call(dotted, ...)
+    if why ~= nil then return nil, why end
+    if v == nil then return nil, "absent" end
+    if type(v) ~= "table" then return v end
+    local c = ST.API.Copy(v, depth)
+    if type(c) ~= "table" then return nil, "error" end
+    if c._secret then return nil, "secret" end
+    return c
+end
+
+local function TalentWalk()
+    local cfg, why = ST.API.Call("C_ClassTalents.GetActiveConfigID")
+    if why ~= nil then return nil, why end
+    if type(cfg) ~= "number" then return nil, "absent" end
+
+    local info, iwhy = TraitCopy(2, "C_Traits.GetConfigInfo", cfg)
+    if type(info) ~= "table" then return nil, iwhy or "absent" end
+    if type(info.treeIDs) ~= "table" then return nil, "absent" end
+
+    local ranks = {}
+    for _, tree in ipairs(info.treeIDs) do
+        if type(tree) == "number" then
+            local nodes, nwhy = TraitCopy(1, "C_Traits.GetTreeNodes", tree)
+            if nwhy == "secret" or nwhy == "error" then return nil, nwhy end
+            if type(nodes) == "table" then
+                for _, node in ipairs(nodes) do
+                    if type(node) == "number" then
+                        local ni, why2 = TraitCopy(2, "C_Traits.GetNodeInfo", cfg, node)
+                        if why2 == "secret" or why2 == "error" then return nil, why2 end
+                        local rank = type(ni) == "table" and ni.activeRank
+                        local entry = type(ni) == "table" and type(ni.activeEntry) == "table"
+                            and ni.activeEntry.entryID
+                        if type(rank) == "number" and rank > 0 and type(entry) == "number" then
+                            local ei, why3 = TraitCopy(1, "C_Traits.GetEntryInfo", cfg, entry)
+                            if why3 == "secret" or why3 == "error" then return nil, why3 end
+                            local def = type(ei) == "table" and ei.definitionID
+                            if type(def) == "number" then
+                                local di, why4 = TraitCopy(1, "C_Traits.GetDefinitionInfo", def)
+                                if why4 == "secret" or why4 == "error" then return nil, why4 end
+                                local name
+                                if type(di) == "table" then
+                                    if type(di.overrideName) == "string" and di.overrideName ~= "" then
+                                        name = di.overrideName
+                                    elseif type(di.spellID) == "number" then
+                                        local n, why5 = ST.API.SpellName(di.spellID)
+                                        if why5 == "secret" then return nil, "secret" end
+                                        if type(n) == "string" then name = n end
+                                    end
+                                end
+                                if name then ranks[name] = rank end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return ranks
+end
+
+function ST.API.TalentRanks()
+    local ok, ranks, why = pcall(TalentWalk)
+    if not ok then return nil, "error" end
+    if type(ranks) ~= "table" then return nil, why or "absent" end
+    return ranks
+end
+ST.API._bindings.TalentRanks = "C_ClassTalents.GetActiveConfigID"

@@ -1878,12 +1878,59 @@ end
 -- Installs C_ClassTalents/C_Traits (T0b) -- called explicitly by a script that
 -- wants to test the branch where they answer, since UseProfile("forever")
 -- itself still leaves them undefined (the absent path stays the default).
-function S.AddTraits()
+-- T129: with `talents` ({ [name] = rank }, S.DRUID_TALENTS the default
+-- fixture for the talent tests) the config also answers the node walk
+-- Client/API_Forever.lua's TalentRanks reads -- treeIDs, GetTreeNodes,
+-- GetNodeInfo (activeRank, activeEntry.entryID), GetEntryInfo
+-- (definitionID), GetDefinitionInfo (overrideName) -- in retail 12.x's
+-- shapes, one node per talent plus one untaken node. opts.secret = "node"
+-- answers every GetNodeInfo with a secret table. Without `talents` the config
+-- stays the T0b one (the probe's golden line). A script that installs this
+-- after the adapter has answered for a name calls ST.API.Invalidate for it.
+S.DRUID_TALENTS = { ["Improved Wrath"] = 2 }
+function S.AddTraits(talents, opts)
     C_ClassTalents = { GetActiveConfigID = function() return 7 end }
-    C_Traits = { GetConfigInfo = function(id)
-        if id == 7 then return { ID = 7, name = "Stub loadout", type = 1 } end
-        return nil
-    end }
+    if talents == nil then
+        C_Traits = { GetConfigInfo = function(id)
+            if id == 7 then return { ID = 7, name = "Stub loadout", type = 1 } end
+            return nil
+        end }
+        return
+    end
+    opts = opts or {}
+    local names = {}
+    for name in pairs(talents) do names[#names + 1] = name end
+    table.sort(names)
+    local nodeIDs, nodes, entries, defs = { 199 }, {}, {}, {}
+    nodes[199] = { ID = 199, activeRank = 0, maxRanks = 5, entryIDs = { 299 } }
+    entries[299] = { definitionID = 399, maxRanks = 5, type = 1 }
+    defs[399] = { overrideName = "Untaken Talent" }
+    for i, name in ipairs(names) do
+        local node, entry, def = 100 + i, 200 + i, 300 + i
+        nodeIDs[#nodeIDs + 1] = node
+        nodes[node] = { ID = node, activeRank = talents[name], ranksPurchased = talents[name], maxRanks = 5,
+            entryIDs = { entry }, activeEntry = { entryID = entry, rank = talents[name] } }
+        entries[entry] = { definitionID = def, maxRanks = 5, type = 1 }
+        defs[def] = { overrideName = name, spellID = 0 }
+    end
+    C_Traits = {
+        GetConfigInfo = function(id)
+            if id == 7 then return { ID = 7, name = "Stub loadout", type = 1, treeIDs = { 1 } } end
+            return nil
+        end,
+        GetTreeNodes = function(tree)
+            if tree ~= 1 then return {} end
+            local out = {}
+            for i, n in ipairs(nodeIDs) do out[i] = n end
+            return out
+        end,
+        GetNodeInfo = function(cfg, node)
+            if opts.secret == "node" then return S.SecretTable() end
+            return nodes[node]
+        end,
+        GetEntryInfo = function(cfg, entry) return entries[entry] end,
+        GetDefinitionInfo = function(def) return defs[def] end,
+    }
 end
 
 function S.Load(files, addonName, ST)
