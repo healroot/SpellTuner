@@ -77,6 +77,9 @@ case.
 **Fix direction.** If no node in any tree answered a table, answer `nil, "absent"`. Add a
 check in `talentscheck` for each of the four shapes.
 
+**Fixed in 29235fa.** The walk answers `nil, "absent"` when no node answered a table; talentscheck 9 checks all
+four shapes (each fails on 3a7f768).
+
 ## Minors
 
 ### m1 `Spells/Book.lua:132` / `Spells/Coefficients.lua:112` -- under haste the decomposition is wrong
@@ -90,6 +93,9 @@ during a 2-second rescan with Improved Starfire 5. The client reads 3.0 / 1.1 = 
 The error itself predates T129, but the new words state wrong arithmetic as fact. Note it in
 DECISIONS, or skip the decomposition while a haste aura is up.
 
+**Known limit, no code change.** The decomposition assumes the client's cast carries no haste;
+a rescan while a haste aura is up can state a wrong base cast until the next rescan.
+
 ### m2 `Spells/Book.lua:69-75` -- the dump line can be missing
 
 **Defect.** The `talents:` dump line is added only when a cast rule is first priced.
@@ -97,6 +103,10 @@ DECISIONS, or skip the decomposition while a haste aura is up.
 **Failure scenario.** A hunter or warrior, or any class whose book has no ruled family, gets no
 `talents:` line in `/st dump`. Task section 3 asks for the line, or the reason none were
 read, without that condition.
+
+**Fixed in 29235fa.** The line is added by the book's first scan, for every class; consolecheck's
+byte-identical check stays green (its session never scans the book). talentscheck 9 checks a
+fresh session with no rule anywhere.
 
 ### m3 `Spells/Book.lua:76` -- an unread answer is re-walked once per entry, every scan
 
@@ -106,6 +116,9 @@ entry, every 2-second scan, and every `ReadSpell`.
 **Failure scenario.** Take a druid in combat whose walk answers `secret` at a late node. About
 25 Wrath, Healing Touch and Starfire ranks each trigger a full node walk every 2 seconds. Retry
 once per scan, not once per entry.
+
+**Fixed in 29235fa.** An unread answer is retried only when `Book._scanSerial` moved (once per scan) or
+on a talent event; talentscheck 9 counts one walk per scan (4 on 3a7f768).
 
 ### m4 `tools/buildtalents.py:26-28` -- the regex ignores the trailing clause
 
@@ -118,6 +131,11 @@ none (verified above). Possible fixes:
 - Accept only an empty rest, `.`, or a known non-cast clause.
 - List each accepted rest in the header.
 
+**Fixed in 29235fa.** A tail after the last amount is accepted only as nothing, `.`, or one
+`(,) and <effect>.` clause with no cast / haste / speed word; anything else skips the talent,
+named in the header "(text after the amount not recognised)". Regenerated from the same export:
+byte-identical.
+
 ### m5 `tools/talentscheck.lua` -- tests that are missing or cannot fail
 
 - The secret check (check 5) only covers a wholly secret `GetNodeInfo` table. A secret nested
@@ -127,6 +145,10 @@ none (verified above). Possible fixes:
   that half cannot fail on an `Estimate` regression. The `no "("` half carries the check.
 - `docs/TOOLS.md` says the suite checks "no TBC binding", but the suite has no such check.
 
+**Fixed in 29235fa.** Added: a secret `activeRank`, a secret talent name (`overrideName`),
+`TRAIT_CONFIG_UPDATED` (a rescan alone does not re-read), Healing Touch against literals, and a
+check that `Client/API_TBC.lua` names no `TalentRanks`; TOOLS.md describes them.
+
 ### m6 `UI/SpellTip.lua:813-820` -- tooltip why misses spells outside the book
 
 **Defect.** `/st tooltip why` looks up the last block's id in `Book:Get().spells` only.
@@ -134,3 +156,6 @@ none (verified above). Possible fixes:
 **Failure scenario.** Hover a Wrath chat link for a rank that is not in the book (a
 `ReadSpell` entry). Its `castTalent` is never shown, although the block priced it with the
 talent.
+
+**Known limit, no code change.** `/st tooltip why` names the cast talent only for a spell in the
+book; a rank shown from outside it (a chat link) is priced with the talent but not named there.
