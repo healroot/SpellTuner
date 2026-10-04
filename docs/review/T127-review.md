@@ -34,6 +34,8 @@ Commit reviewed: e9a7012 (diff vs 8aac028), against `docs/tasks/T127-rank-marks.
 
 ### M1 (major) -- Advisor gear toast compares against a snapshot taken under the old rule
 
+**Fixed in 2d63ed9.**
+
 `UI/Advisor.lua:57-77` (with `:86-90` and `Engine/RankMath.lua:681`).
 
 `CheckRankShift` compares `RankMath:SuggestedRanks()` (now the best mark) with the persisted
@@ -55,6 +57,8 @@ old snapshot, fire an equipment change, expect no toast.
 
 ### m1 (minor) -- "Suggested" wording survives beside "Best"
 
+**Fixed in 2d63ed9.**
+
 `UI/SpellsPane.lua:2192` (My spells column "Suggested", tip "The rank SpellTuner suggests."),
 `UI/SpellsPane.lua:2742` (Overview tip "Suggested  Rank N of M known"), `Spells/WhatIf.lua:315`,
 `:322`, `:341` ("Suggested: Rank X -> Rank Y", "No change to the suggestion."),
@@ -66,6 +70,8 @@ Fix: rename to Best across these surfaces and re-base the goldens.
 
 ### m2 (minor) -- Lifebloom: the suggested fill sits on R1 while the best tag is on x3
 
+**Fixed in 2d63ed9.**
+
 `UI/SpellsPane.lua:869` (`suggested = e.suggested`) with `UI/Dashboard_Rows.lua` PaintFill.
 
 Scenario: Lifebloom with x3 as `bestOfStacks`. The accent fill and the mark bar paint the R1 base
@@ -76,12 +82,16 @@ non-best rolled rows as M4 shows.
 
 ### m3 (minor) -- Dead callout string with a task tag and the old wording
 
+**Fixed in 2d63ed9.**
+
 `Engine/RankMath.lua:661`: `"Max rank (R%d) is also the best trade (T127: no lower rank saves..."`.
 No UI reads `callout`, only the goldens. A task id inside a user-style string leaks if anything
 ever shows it. Fix: drop the "(T127: ...)" from the string (keep it as a comment) or remove
 `callout` if nothing will read it.
 
 ### m4 (minor) -- bookshapecheck re-base comment understates what moved
+
+**Fixed in 2d63ed9.**
 
 `tools/bookshapecheck.lua:526-533` says only the druid's HT, Regrowth and Rejuvenation moved.
 The class golden also moved: Priest Renew, Flash Heal, Circle of Healing, Greater Heal; Shaman
@@ -90,6 +100,8 @@ does not. Fix: list every moved family so the next reviewer can audit the re-bas
 
 ### m5 (minor) -- Settings duplicate the rule constants as literals
 
+**Fixed in 2d63ed9.**
+
 `UI/Settings.lua:523`, `:529`: defaults 0.25 / 0.15 and the "40%" in the tips are typed in, not
 read from `ST.Rules.TRADE_K_DAMAGE` / `TRADE_K_HEAL` / `SUGGESTED_FLOOR`. Scenario: a later change
 of `ST.Rules.TRADE_K_HEAL` to 0.2 leaves the slider's default and the tip saying 0.15 and 40%.
@@ -97,12 +109,16 @@ Fix: read the constants (format the floor as a percentage).
 
 ### m6 (minor) -- RANK_RULES_CHANGED fires on every drag step
 
+**Fixed in 2d63ed9.**
+
 `UI/Settings.lua:520` with `UI/Style.lua:3217` (`onValueChangedFn` on each `userChanged` step).
 Scenario: dragging the heal slider from 0 to 100 at step 5 fires up to 20 events, and on TBC each
 one runs a full `Book_Model` Rebuild (RankMath Compute across every family). Fix: fire from the
 slider's after-value-changed / mouse-up callback, or coalesce to one fire per frame.
 
 ### m7 (minor) -- Words disagree with RR.Marks in edge cases
+
+**Fixed in 2d63ed9.**
 
 `Spells/Words.lua`:
 - `UnderFloor` checks only `fam.maxKnown.value`; `RR.Marks` falls back to `max.value` when top
@@ -117,6 +133,8 @@ Fix: mirror the rule's fallback in `UnderFloor`; label the fallback "(highest)";
 sentences.
 
 ### n1 (nit) -- TBC: ratio text stale after a k change that does not move best
+
+**Fixed in 2d63ed9.**
 
 `UI/SpellsPane.lua` `Signature` does not include k, and on TBC `Book_Model` Refresh fires
 `BOOK_CHANGED` only when its signature (which holds `suggested`, not k, effRank or maxRank)
