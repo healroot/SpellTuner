@@ -60,6 +60,8 @@ local FOREVER_ONLY_NAMES = {
     "OnSpellTooltip",
     -- T12: Spells/Measure.lua's own bonus-healing read.
     "SpellBonusHealing",
+    -- T124: the Spells pane's +Spell damage (Spells/Book.lua's Book:Bonus("damage")).
+    "SpellBonusDamage",
     -- T15: Modules/SpellTuner_Replay/Kit_Forever.lua's own crit reading.
     "SpellCritChance",
     -- T13: Modules/SpellTuner_Recorder/Recorder_Forever.lua's own bindings.

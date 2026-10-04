@@ -1107,6 +1107,54 @@ T95("T122: two plain scans measure a rank's bonus share; the value stays the tex
         tostring(e and e.value))
 end)
 
+T95("T124: Book:Bonus('damage', school) -- nil before any, plain, per school, stale in combat, secret -> last, a name", function()
+    local savedDmg, savedCombat = S.bonusDamage, MD.inCombat
+    local savedFn = _G.GetSpellBonusDamage
+    S.bonusDamage = {}
+    MD.inCombat, S.inCombat = false, false
+    Book._lastDamage = nil
+    local bad = {}
+    local function Want(cond, what) if not cond then bad[#bad + 1] = what end end
+    local good, err = pcall(function()
+        -- nil before any reading: the read is secret and nothing was kept
+        _G.GetSpellBonusDamage = function() return S.Secret() end
+        MD.API.Invalidate("GetSpellBonusDamage")
+        local v0, s0 = Book:Bonus("damage", 4)
+        Want(v0 == nil and s0 == nil, "before any " .. tostring(v0) .. "/" .. tostring(s0))
+        _G.GetSpellBonusDamage = savedFn
+        MD.API.Invalidate("GetSpellBonusDamage")
+        S.bonusDamage[4], S.bonusDamage[7] = 120, 80
+        local v1, s1 = Book:Bonus("damage", 4)
+        Want(v1 == 120 and s1 == false, "plain " .. tostring(v1) .. "/" .. tostring(s1))
+        local vn, sn = Book:Bonus("damage", "Nature")
+        Want(vn == 120 and sn == false, "name " .. tostring(vn) .. "/" .. tostring(sn))
+        local va = Book:Bonus("damage", "Arcane")
+        Want(va == 80, "per school " .. tostring(va))
+        Want(Book:Bonus("damage", "Nonsense") == nil, "unknown name")
+        -- in combat: the last plain reading per school, stale
+        S.bonusDamage[4] = 999
+        MD.inCombat = true
+        local v2, s2 = Book:Bonus("damage", 4)
+        Want(v2 == 120 and s2 == true, "combat " .. tostring(v2) .. "/" .. tostring(s2))
+        local v3 = Book:Bonus("damage", 7)
+        Want(v3 == 80, "combat per school " .. tostring(v3))
+        Want(Book:Bonus("damage", 3) == nil, "combat, no reading for Fire")
+        MD.inCombat = false
+        -- a secret answer out of combat: the last plain reading, stale
+        _G.GetSpellBonusDamage = function() return S.Secret() end
+        MD.API.Invalidate("GetSpellBonusDamage")
+        local v4, s4 = Book:Bonus("damage", "Nature")
+        Want(v4 == 120 and s4 == true, "secret " .. tostring(v4) .. "/" .. tostring(s4))
+    end)
+    _G.GetSpellBonusDamage = savedFn
+    MD.API.Invalidate("GetSpellBonusDamage")
+    S.bonusDamage, MD.inCombat = savedDmg, savedCombat
+    Book._lastDamage = nil
+    Book:MarkDirty()
+    if not good then return false, "raised: " .. tostring(err) end
+    return #bad == 0, table.concat(bad, "; ")
+end)
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("  FAIL " .. f) end
 if #fails > 0 then os.exit(1) end

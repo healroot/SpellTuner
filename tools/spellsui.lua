@@ -576,7 +576,7 @@ if S.flavour == "tbc" then
         local between = p and Y(p) > Y(f.strip) and Y(p) < Y(f.ranks)
         local good = closed and p and p:IsShown() and between and phText == Num(live.heal) and phShown
             and critPh == Num(live.crit, 1)
-            and table.concat(labels, ",") == "+Healing,Crit %,Mana,Regen while casting,Regen resting"
+            and table.concat(labels, ",") == "+Healing,+Spell damage,Crit %,Mana,Regen while casting,Regen resting"
             and form and form.buttons and form.buttons.live and form.buttons.caster and form.buttons.tree
             and Box("moonglow") ~= nil and p.clearBtn and p.clearBtn:IsShown()
             and Strip(p.classTitle:GetText()) == "DRUID" and not (p.classNote and p.classNote:IsShown())
@@ -2756,6 +2756,54 @@ T36("T122 forever: Clear restores every cell; the pane closes again", function()
         and not f.ranksNote:IsShown()
     Click(f.strip.whatIfBtn)
     return good and not F().whatIf:IsShown(), table.concat(bad, " ")
+end)
+
+-- T124: +Spell damage on Forever -- the header's +Damage line once a reading
+-- exists (Book:Bonus("damage", school), the family's school by name), the
+-- STATS row right after +Healing, and a typed value in the accent
+T36("T124 forever: Wrath's header reads +N Nature damage; +Spell damage typed shows what if", function()
+    WIf():Clear()
+    local hadWrath = MD.Tabs:Has("Wrath")
+    local savedDmg = S.bonusDamage[4]
+    MD.inCombat, S.inCombat = false, false
+    local before
+    do
+        local f0 = OpenView("Wrath")
+        before = StripColor(f0.header.bonus and f0.header.bonus:GetText() or "(no bonus line)")
+    end
+    S.bonusDamage[4] = 120
+    Book:MarkDirty()
+    local f = OpenView("Wrath")
+    local after = StripColor(f.header.bonus and f.header.bonus:GetText() or "(no bonus line)")
+    Click(f.strip.whatIfBtn)
+    local labels = {}
+    for _, s in ipairs(WIf().STATS) do
+        labels[#labels + 1] = FBox(s.key) and StripColor(FBox(s.key).label:GetText() or "") or "-"
+    end
+    local dbox = FBox("damage")
+    local ph = dbox and StripColor(dbox.ph:GetText() or "") or "?"
+    local typedRaw = ""
+    if dbox then
+        dbox.box:SetText("200")
+        dbox.box:GetScript("OnEnterPressed")(dbox.box)
+        typedRaw = F().header.bonus:GetText() or ""
+    end
+    local footer = StripColor(F().whatIf.footer:GetText() or "")
+    local liveFam, whatFam = Book:Get().families.Wrath, WIf():Book().families.Wrath
+    local wantFooter = WIf().Changes(liveFam, whatFam)
+    WIf():Clear()
+    Click(F().strip.whatIfBtn)
+    S.bonusDamage[4] = savedDmg
+    Book:MarkDirty()
+    if not hadWrath then MD.Tabs:Remove("Wrath"); SP:ListChanged() end
+    local accent = UI.Hex("accent")
+    local good = after == "+120 Nature damage" and before ~= after
+        and table.concat(labels, ","):find("+Healing,+Spell damage,", 1, true) == 1
+        and ph == "120"
+        and typedRaw:find(accent, 1, true) == 1 and StripColor(typedRaw) == "+200 Nature damage what if"
+        and footer == wantFooter
+    return good, string.format("before=%q after=%q labels=%s ph=%q typed=%q footer=%q", before, after,
+        table.concat(labels, ","), ph, StripColor(typedRaw), footer)
 end)
 
 --------------------------------------------------------------------------------
