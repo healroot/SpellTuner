@@ -16,6 +16,7 @@ Data\Profile_Druid_Forever.lua
 Data\Profile_Paladin_Forever.lua
 Data\Profile_Shaman_Forever.lua
 Data\Profile_Priest_Forever.lua
+Data\Talents_Forever.lua
 Spells\Parse.lua
 Spells\RankRules.lua
 Spells\Coefficients.lua
