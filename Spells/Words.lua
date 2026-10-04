@@ -394,6 +394,71 @@ function W.SuggestedRule()
         .. Num(MD.Rules.SUGGESTED_FLOOR * 100) .. "% of your highest rank's heal."
 end
 
+-- The Spells pane's decision strip (3.5): the suggested rank against the
+-- highest known, from Book:Compare's numbers `c` ({ perMana, value, cast } in
+-- percent); `rank` the highest rank's number, `kind` "heal" or "damage". The
+-- strip holds two lines beside the chip, so the pane tries the styles in
+-- W.COMPARE_STYLES order and paints the first that fits; the "full" sentence
+-- is always the hover's when a shorter one is painted.
+--   "full"  -- "vs Rank 2 (your highest): 22% more damage per mana, 61% of
+--              the damage, a 13% shorter cast."
+--   "short" -- "vs Rank 2: 22% more per mana, 61% of the damage, 13%
+--              shorter cast."
+--   "tight" -- "vs R2: +22%/mana, 61% damage, -13% cast"
+-- `c` nil (no comparison) is "".
+W.COMPARE_STYLES = { "full", "short", "tight" }
+local function Pct(x) return math.floor(math.abs(x) + 0.5) end
+function W.Compare(c, rank, kind, style)
+    if type(c) ~= "table" then return "" end
+    local dmg = (kind == "damage")
+    local what = dmg and "damage" or "healing"
+    local noun = dmg and "damage" or "heal"
+    local r = tostring(rank or "-")
+    local parts = {}
+    if style == "tight" then
+        if type(c.perMana) == "number" then
+            local p = Pct(c.perMana)
+            parts[#parts + 1] = (p == 0) and "same/mana" or ((c.perMana > 0 and "+" or "-") .. p .. "%/mana")
+        end
+        if type(c.value) == "number" then parts[#parts + 1] = Pct(c.value) .. "% " .. noun end
+        if type(c.cast) == "number" then
+            local p = Pct(c.cast)
+            parts[#parts + 1] = (p == 0) and "same cast" or ((c.cast < 0 and "-" or "+") .. p .. "% cast")
+        end
+        local head = "vs R" .. r
+        if #parts == 0 then return head end
+        return head .. ": " .. table.concat(parts, ", ")
+    end
+    local short = (style == "short")
+    if type(c.perMana) == "number" then
+        local p = Pct(c.perMana)
+        local per = short and "per mana" or (what .. " per mana")
+        if p == 0 then
+            parts[#parts + 1] = "the same " .. per
+        else
+            parts[#parts + 1] = p .. "% " .. (c.perMana > 0 and "more" or "less") .. " " .. per
+        end
+    end
+    if type(c.value) == "number" then parts[#parts + 1] = Pct(c.value) .. "% of the " .. noun end
+    if type(c.cast) == "number" then
+        local p = Pct(c.cast)
+        if p == 0 then
+            parts[#parts + 1] = "the same cast time"
+        else
+            parts[#parts + 1] = (short and "" or "a ") .. p .. "% " .. (c.cast < 0 and "shorter" or "longer") .. " cast"
+        end
+    end
+    local head = short and ("vs Rank " .. r) or ("vs Rank " .. r .. " (your highest)")
+    if #parts == 0 then return head .. "." end
+    return head .. ": " .. table.concat(parts, ", ") .. "."
+end
+
+-- The strip when the suggested rank is the highest known, by the same styles.
+function W.CompareSame(style)
+    if style == "tight" then return "Your highest is best per mana." end
+    return "Your highest rank is also the best per mana."
+end
+
 -- T110 (docs/SPEC-next.md 4.2 P6): an either-or spell's other half, for the
 -- tooltip's detail -- label, text, or nil. On the damage half a role picked
 -- (Book:Half's view entry, `of` the heal entry) it is the heal: "Or heals";

@@ -407,33 +407,53 @@ local function HeaderSub(fam)
     return table.concat(out, " - ")
 end
 
--- 2. The strip's comparison line (Book:Compare's numbers, rounded).
-local function CompareText(a, b, kind)
-    local c = MD.Book:Compare(a, b)
-    if not c then return "" end
-    local what = (kind == "damage") and "damage" or "healing"
-    local noun = (kind == "damage") and "damage" or "heal"
-    local parts = {}
-    if c.perMana then
-        local p = Round(math.abs(c.perMana))
-        if p == 0 then
-            parts[#parts + 1] = "the same " .. what .. " per mana"
+-- 2. The strip's comparison line (Book:Compare's numbers, rounded), in
+-- Spells/Words.lua's words. The strip gives it two lines between the chip and
+-- What if... (or the After overheal column), so CompareFit paints the first
+-- of Words.COMPARE_STYLES that wraps into two lines of that width, measured
+-- on the strip's hidden one-line string in the same font; the full sentence
+-- is the hover's whenever a shorter one is painted.
+local COMPARE_LINES = 2
+local COMPARE_MARGIN = 4    -- the client's wrap is not ours to the pixel
+
+-- Whether `text`, wrapped word by word at `width`, takes at most `maxLines`.
+local function WrapsWithin(measure, text, width, maxLines)
+    local lines, line = 1, nil
+    for word in text:gmatch("%S+") do
+        local cand = line and (line .. " " .. word) or word
+        measure:SetText(cand)
+        if (measure:GetStringWidth() or 0) > width then
+            if not line then return false end
+            lines = lines + 1
+            if lines > maxLines then return false end
+            measure:SetText(word)
+            if (measure:GetStringWidth() or 0) > width then return false end
+            line = word
         else
-            parts[#parts + 1] = p .. "% " .. (c.perMana > 0 and "more" or "less") .. " " .. what .. " per mana"
+            line = cand
         end
     end
-    if c.value then parts[#parts + 1] = Round(c.value) .. "% of the " .. noun end
-    if c.cast then
-        local p = Round(math.abs(c.cast))
-        if p == 0 then
-            parts[#parts + 1] = "the same cast time"
-        else
-            parts[#parts + 1] = "a " .. p .. "% " .. (c.cast < 0 and "shorter" or "longer") .. " cast"
-        end
+    measure:SetText("")
+    return true
+end
+
+-- The strip's words for `a` (the suggested rank) against `b` (the highest
+-- known): the painted text and the full sentence. `width` is the room
+-- beside the chip; b == a is the "also the best" line.
+local function CompareFit(measure, a, b, kind, width)
+    local c = (a ~= b) and MD.Book:Compare(a, b) or nil
+    if a ~= b and not c then return "", "" end
+    local function Say(style)
+        if a == b then return Words.CompareSame(style) end
+        return Words.Compare(c, b.rank, kind, style)
     end
-    local head = "vs Rank " .. tostring(b.rank or "-") .. " (your highest)"
-    if #parts == 0 then return head .. "." end
-    return head .. ": " .. table.concat(parts, ", ") .. "."
+    local full = Say("full")
+    local styles = Words.COMPARE_STYLES
+    for _, style in ipairs(styles) do
+        local text = Say(style)
+        if WrapsWithin(measure, text, width - COMPARE_MARGIN, COMPARE_LINES) then return text, full end
+    end
+    return Say(styles[#styles]), full
 end
 
 -- The header's pool: "~364 / 364 mana", the "~" and the mana colour on the
@@ -597,7 +617,9 @@ local function SetWide(row, x, text)
 end
 
 -- T122: the 1-px white mark on the per-mana bar at the what-if value (the
--- fill keeps the live one); nil hides it.
+-- fill keeps the live one); nil hides it. It is the bar's `mark` too, so the
+-- table hides it with the bar when the row is released -- a pooled row comes
+-- back as the header row, where a stale mark sat on "Per mana".
 local function WhatIfMark(row, frac)
     local m = row.wiMark
     local bar = row.bars and row.bars.permana
@@ -611,6 +633,7 @@ local function WhatIfMark(row, frac)
         UI.Tint(m, "texture", "text")
         row.wiMark = m
     end
+    bar.mark = m
     frac = math.max(0, math.min(1, frac))
     m:ClearAllPoints()
     m:SetPoint("LEFT", bar.track, "LEFT", math.floor(frac * ((bar.width or 72) - 1) + 0.5), 0)
@@ -1297,8 +1320,16 @@ local function PaintWhatIf(f, liveFam, fam)
         row.ph:SetText(Num(live[row.key], decimals))        row.ph:SetShown((row.box:GetText() or "") == "")
         row.delta:SetText(WI:Delta(row.key))
     end
+    -- the labels' column is as wide as its widest label at this font
+    -- ("Regen while casting" outgrows WI_LABEL_W at offset +2)
+    local labelW = WI_LABEL_W
+    for _, row in ipairs(pane.statRows) do
+        local w = row.label:GetStringWidth() or 0
+        if w + 4 > labelW then labelW = math.ceil(w + 4) end
+    end
+    pane.labelW = labelW
     for i, row in ipairs(pane.statRows) do
-        PlaceWhatIfRow(pane, row, 8, y0 + (i - 1) * pitch, WI_LABEL_W)
+        PlaceWhatIfRow(pane, row, 8, y0 + (i - 1) * pitch, labelW)
         ShowWhatIfRow(row, true)
         local stat = WI.STAT_BY[row.key]
         PaintNumber(row, stat and stat.decimals)
@@ -1492,8 +1523,23 @@ local function BuildFamily(host)
     strip.compare:SetPoint("RIGHT", strip, "RIGHT", -4, 0)
     strip.compare:SetJustifyH("LEFT")
     strip.compare:SetWordWrap(true)
-    strip.compare:SetMaxLines(2)
+    strip.compare:SetMaxLines(COMPARE_LINES)
     UI.Tint(strip.compare, "text", "text2")
+    -- the comparison's one-line twin, never shown: CompareFit measures on it
+    strip.measure = strip:CreateFontString(nil, "OVERLAY", UI.FONT)
+    strip.measure:SetPoint("TOPLEFT", strip, "TOPLEFT", 0, 0)
+    strip.measure:SetWordWrap(false)
+    strip.measure:Hide()
+    -- the comparison's hover: the full sentence when a shorter one is painted
+    strip.compareHit = CreateFrame("Frame", nil, strip)
+    strip.compareHit:SetPoint("TOPLEFT", chip, "TOPRIGHT", BLOCK_GAP, 0)
+    strip.compareHit:SetPoint("BOTTOMLEFT", chip, "BOTTOMRIGHT", BLOCK_GAP, 0)
+    strip.compareHit:EnableMouse(true)
+    strip.compareHit:SetScript("OnEnter", function(self)
+        if strip.compareFull then KitTip(self, "Compared with your highest rank", strip.compareFull) end
+    end)
+    strip.compareHit:SetScript("OnLeave", function() if UI.tooltip then UI.tooltip:Hide() end end)
+    strip.compareHit:Hide()
     -- T122: the live suggestion under the chip while the what-if is active
     -- ("live: R12"), and What if... at the strip's right
     strip.chipLive = chip:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
@@ -1774,17 +1820,23 @@ function SpellsPane:RenderFamily(key, preview)
     f.strip.chip:SetHeight(Pitch(STRIP_H))
     local aoh = Line().afterOverheal
     local side = f.strip.side
-    if type(aoh) == "table" and fam.kind then
+    local hasSide = type(aoh) == "table" and fam.kind ~= nil
+    if hasSide then
         side:SetHeight(Pitch(STRIP_H))
         side:Show()
         f.strip.after:SetChecked(AfterOn())
         local word = type(aoh.word) == "function" and aoh.word(fam) or nil
         f.strip.measured:SetText((type(word) == "string") and word or "not measured yet")
-        f.strip.compare:SetPoint("RIGHT", f.strip, "RIGHT", -(SIDE_W + BLOCK_GAP + WI_BTN_W + 8), 0)
     else
         side:Hide()
-        f.strip.compare:SetPoint("RIGHT", f.strip, "RIGHT", -(WI_BTN_W + BLOCK_GAP), 0)
     end
+    -- the comparison's room: from the chip to What if... or the side column
+    local inset = WI_BTN_W + BLOCK_GAP
+    if hasSide then inset = SIDE_W + BLOCK_GAP + WI_BTN_W + 8 end
+    local compareW = VIEW_W - CHIP_W - BLOCK_GAP - inset
+    f.strip.compare:SetPoint("RIGHT", f.strip, "RIGHT", -inset, 0)
+    f.strip.compareHit:SetWidth(compareW)
+    f.strip.compareW = compareW
     local whatIf = WIActive()
     local ls = liveFam and liveFam.suggested
     if whatIf and ls and type(ls.rank) == "number" then -- T122
@@ -1798,13 +1850,14 @@ function SpellsPane:RenderFamily(key, preview)
     end
     if fam.kind and s and valued >= 2 then
         f.strip.chipRank:SetText((type(s.rank) == "number") and ("Rank " .. s.rank) or "-")
-        if s == fam.maxKnown then
-            f.strip.compare:SetText("Your highest rank is also the best per mana.")
-        else
-            f.strip.compare:SetText(CompareText(s, fam.maxKnown, fam.kind))
-        end
+        local text, full = CompareFit(f.strip.measure, s, fam.maxKnown, fam.kind, compareW)
+        f.strip.compare:SetText(text)
+        f.strip.compareFull = (full ~= text) and full or nil
+        f.strip.compareHit:SetShown(f.strip.compareFull ~= nil)
         f.strip:Show()
     else
+        f.strip.compareFull = nil
+        f.strip.compareHit:Hide()
         f.strip:Hide()
     end
 

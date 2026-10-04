@@ -27,12 +27,14 @@ local ROW_HEIGHT = 16 -- a data row's pitch when opts.rowHeight is not given
 -- row:SetBar(key, fraction, alpha) (T30, a `type = "bar"` column): the bar
 -- scaled to `fraction` (0..1) of its width, accent at `alpha` (default 0.5,
 -- 0.25 on a dominated row); a fraction that is not a number hides the bar
--- and its track (a gap row, a spell with no value).
+-- and its track (a gap row, a spell with no value), and the bar's `mark`
+-- when its owner gave it one (UI/SpellsPane.lua's what-if mark).
 local function SetBar(row, key, frac, alpha)
     local b = row.bars and row.bars[key]
     if not b then return end
     if type(frac) ~= "number" or frac ~= frac then
         b.track:Hide(); b.fill:Hide()
+        if b.mark then b.mark:Hide() end
         return
     end
     if frac > 1 then frac = 1 end
@@ -438,7 +440,10 @@ function MD.DashboardParts.CreateTable(parent, width, opts)
             if row.fill then row.fill:Hide() end -- T30
             if row.mark then row.mark:Hide() end -- T30
             if row.bars then -- T30
-                for _, b in pairs(row.bars) do b.track:Hide(); b.fill:Hide() end
+                for _, b in pairs(row.bars) do
+                    b.track:Hide(); b.fill:Hide()
+                    if b.mark then b.mark:Hide() end -- a bar's mark goes with it
+                end
             end
             PlaceBarCells(row, false) -- T30: back to a data row's layout
             if row.headerSized then row:SetHeight(rowH); row.headerSized = nil end -- T30

@@ -77,6 +77,9 @@ local UI = MD.UI
 --------------------------------------------------------------------------------
 if S.flavour == "tbc" then
     S.Geometry(true)
+    -- the strip's two-line limit is read back (the stub's SetMaxLines is a no-op)
+    local FMT = getmetatable(UIParent)
+    if not rawget(FMT, "SetMaxLines") then FMT.SetMaxLines = function(self, n) self.maxLines = n end end
     -- every UI file the TBC TOC lists, in its order (the harness loaded
     -- UI/Summary.lua only): the window as the client builds it
     local loaded = {}
@@ -798,6 +801,181 @@ if S.flavour == "tbc" then
         UI.ApplyFonts(0)
         Click(Fam().strip.whatIfBtn)
         return #problems == 0 and not Fam().whatIf:IsShown(), table.concat(problems, "; ")
+    end)
+
+    ----------------------------------------------------------------------------
+    -- The author's screenshot (2026-10-04, "text does not fit"): at font
+    -- offsets -2..+2 the strip's comparison wraps into at most two lines of
+    -- the room between the chip and What if... (the After overheal column
+    -- on TBC), word-wrapped, height-limited to two lines, with the full
+    -- sentence on hover whenever a shorter wording is painted; the chip's
+    -- "Rank N  live: RN" inside the chip; the WHAT IF labels inside their
+    -- column and the RANKS note inside its width. The stub ignores a
+    -- CreateFontString template, so each string checked is handed its font
+    -- object (UI.fontObjects) and measures at the offset's size.
+    ----------------------------------------------------------------------------
+    local function Sized(fs, font)
+        if fs then fs.fontObject = UI.fontObjects[font] end
+        return fs
+    end
+    local function FontSize(fs)
+        local obj = fs and fs.fontObject
+        if obj and obj.GetFont then local _, size = obj:GetFont(); return size or 12 end
+        return 12
+    end
+    local function TextW(fs, text)
+        local plain = Strip(text):gsub("||", "|")
+        return #plain * 6 * FontSize(fs) / 12
+    end
+    -- the client's greedy word wrap under the stub's metric: the line count
+    local function WrapLines(fs, text, width)
+        local lines, line = 0, nil
+        for word in Strip(text):gmatch("%S+") do
+            local cand = line and (line .. " " .. word) or word
+            if line and TextW(fs, cand) > width then
+                lines, line = lines + 1, word
+            else
+                line = cand
+            end
+            if TextW(fs, line) > width then return 99 end
+        end
+        if line then lines = lines + 1 end
+        return lines
+    end
+    local function StripFits(f, o, problems, label)
+        local st = f.strip
+        Sized(st.compare, UI.FONT); Sized(st.measure, UI.FONT)
+        Sized(st.chipRank, UI.FONT_BIG or UI.FONT_TITLE); Sized(st.chipLive, UI.FONT_SMALL)
+        UI.ApplyFonts(o)
+        f = Fam()
+        st = f.strip
+        local where = label .. " offset " .. o .. ": "
+        if not st:IsShown() then problems[#problems + 1] = where .. "no strip"; return f end
+        local text = st.compare:GetText() or ""
+        local w = st.compareW or 0
+        local n = WrapLines(st.compare, text, w)
+        if text == "" then problems[#problems + 1] = where .. "no comparison" end
+        if n > 2 then problems[#problems + 1] = where .. n .. " lines in " .. w .. ": " .. text end
+        if n * FontSize(st.compare) > st:GetHeight() then problems[#problems + 1] = where .. "taller than the strip" end
+        if st.compare.wordWrap ~= true or st.compare.maxLines ~= 2 then
+            problems[#problems + 1] = where .. "wrap " .. tostring(st.compare.wordWrap) .. " lines " .. tostring(st.compare.maxLines)
+        end
+        local fam = MD.Book:Get().families[f.key]
+        if WIr():Active() then fam = WIr():Book().families[f.key] end
+        local s, top = fam.suggested, fam.maxKnown
+        local full
+        if s == top then full = W.CompareSame("full")
+        else full = W.Compare(MD.Book:Compare(s, top), top.rank, fam.kind, "full") end
+        if text ~= full then
+            local hit = st.compareHit
+            if not (hit and hit:IsShown()) then
+                problems[#problems + 1] = where .. "shortened with no hover"
+            else
+                GameTooltip.lines = nil
+                hit:GetScript("OnEnter")(hit)
+                local tip = TipLines(UI.tooltip or GameTooltip)
+                hit:GetScript("OnLeave")(hit)
+                if not tip:find(full, 1, true) then problems[#problems + 1] = where .. "hover " .. tip end
+            end
+        elseif st.compareHit:IsShown() then
+            problems[#problems + 1] = where .. "a hover with nothing more to say"
+        end
+        local chipEnd = 10 + TextW(st.chipRank, st.chipRank:GetText() or "")
+        if st.chipLive:IsShown() then chipEnd = chipEnd + 8 + TextW(st.chipLive, st.chipLive:GetText() or "") end
+        if chipEnd > st.chip:GetWidth() then problems[#problems + 1] = where .. "chip text " .. chipEnd end
+        return f
+    end
+    T("strip tbc: the comparison wraps into two lines beside the chip at offsets -2..+2; full sentence on hover", function()
+        local problems, seen = {}, {}
+        local function Walk(label)
+            for _, key in ipairs({ "HealingTouch", "Wrath" }) do
+                local f = OpenFam(key)
+                for _, o in ipairs({ -2, -1, 0, 1, 2 }) do
+                    f = StripFits(f, o, problems, label .. key)
+                    seen[#seen + 1] = label .. key .. o .. "=" .. Strip(f.strip.compare:GetText() or "")
+                end
+            end
+        end
+        Walk("")
+        -- a stronger Wrath Rank 1 and a dearer Rank 2, so Rank 1 is suggested
+        -- and the sentence is said
+        local walk = {}
+        for i, r in ipairs(DRUID_WALK) do walk[i] = r end
+        walk[1] = { id = 5176, name = "Wrath", sub = "Rank 1", cost = 20, cast = 1500, level = 1,
+            desc = "Causes 40 to 50 Nature damage to the target." }
+        walk[2] = { id = 6780, name = "Wrath", sub = "Rank 2", cost = 100, cast = 2000, level = 14,
+            desc = "Causes 25 to 30 Nature damage to the target." }
+        InstallBook(walk)
+        MD.Book:Refresh()
+        local good, err = pcall(Walk, "dear ")
+        -- Forever's strip has no After overheal column: the wider room
+        local aoh = MD.SpellsLine.afterOverheal
+        MD.SpellsLine.afterOverheal = nil
+        if good then good, err = pcall(Walk, "wide ") end
+        MD.SpellsLine.afterOverheal = aoh
+        InstallBook(DRUID_WALK)
+        MD.Book:Refresh()
+        UI.ApplyFonts(0)
+        OpenFam("HealingTouch")
+        if not good then return false, "raised: " .. tostring(err) end
+        return #problems == 0, table.concat(problems, "; ") .. " | " .. table.concat(seen, " / ")
+    end)
+
+    T("strip tbc: What if open at offsets -2..+2 -- strip, chip, STATS labels and the RANKS note fit", function()
+        WIr():Clear()
+        local f = OpenFam("HealingTouch")
+        if not (f.whatIf and f.whatIf:IsShown()) then Click(f.strip.whatIfBtn) end
+        Type("damage", "1000")
+        Type("heal", tostring(WIr():Live().heal + 1000))
+        local problems = {}
+        for _, o in ipairs({ -2, -1, 0, 1, 2 }) do
+            f = StripFits(Fam(), o, problems, "what if")
+            local p = f.whatIf
+            for _, row in ipairs(p.statRows or {}) do Sized(row.label, UI.FONT_SMALL) end
+            Sized(f.ranksNote, UI.FONT_SMALL)
+            UI.ApplyFonts(o)
+            f = Fam()
+            p = f.whatIf
+            for _, row in ipairs(p.statRows or {}) do
+                local lw = TextW(row.label, row.label:GetText() or "")
+                if lw > (row.label:GetWidth() or 0) then
+                    problems[#problems + 1] = "offset " .. o .. ": label " .. Strip(row.label:GetText()) .. " " .. lw
+                        .. ">" .. tostring(row.label:GetWidth())
+                end
+            end
+            local note = f.ranksNote:GetText() or ""
+            if f.ranksNote:IsShown() and TextW(f.ranksNote, note) > (f.ranksNote:GetWidth() or 0) then
+                problems[#problems + 1] = "offset " .. o .. ": RANKS note " .. Strip(note)
+            end
+        end
+        UI.ApplyFonts(0)
+        WIr():Clear()
+        Click(Fam().strip.whatIfBtn)
+        return #problems == 0 and not Fam().whatIf:IsShown(), table.concat(problems, "; ")
+    end)
+
+    T("strip tbc: a row released with the what-if mark comes back as the header without it", function()
+        WIr():Clear()
+        local f = OpenFam("HealingTouch")
+        if not (f.whatIf and f.whatIf:IsShown()) then Click(f.strip.whatIfBtn) end
+        Type("heal", tostring(WIr():Live().heal + 150))
+        local marked = 0
+        for _, x in pairs(RankRowsBy(Fam())) do
+            if x.row.wiMark and x.row.wiMark:IsShown() then marked = marked + 1 end
+        end
+        Type("heal", tostring(WIr():Live().heal + 300)) -- a re-render: every row released and taken again
+        local bad = {}
+        for _, row in ipairs(S.allFrames) do
+            if row.isHeader and row:IsShown() then
+                if row.wiMark and row.wiMark:IsShown() then bad[#bad + 1] = "header mark" end
+                for key, b in pairs(row.bars or {}) do
+                    if b.mark and b.mark:IsShown() then bad[#bad + 1] = "header bar mark " .. key end
+                end
+            end
+        end
+        WIr():Clear()
+        Click(Fam().strip.whatIfBtn)
+        return marked > 0 and #bad == 0, string.format("marked=%d %s", marked, table.concat(bad, " "))
     end)
 
     print(string.format("\n%d ok, %d failed", ok, #fails))
