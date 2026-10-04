@@ -1136,7 +1136,11 @@ if S.flavour == "tbc" then
         local s, top = fam.suggested, fam.maxRank or fam.maxKnown
         local full
         if s == top then full = W.CompareBestIsMax(fam, fam.kind, "full")
-        else full = W.Compare(ST.Book:Compare(s, top), top.rank, fam.kind, "full") end
+        else
+            -- T128: the score against max closes the full sentence
+            local score = (fam.maxRank == top) and W.ScoreOf(s, top, fam.kind) or nil
+            full = W.Compare(ST.Book:Compare(s, top), top.rank, fam.kind, "full", fam.maxRank == nil, score)
+        end
         if text ~= full then
             local hit = st.compareHit
             if not (hit and hit:IsShown()) then
@@ -1223,6 +1227,150 @@ if S.flavour == "tbc" then
         WIr():Clear()
         Click(Fam().strip.whatIfBtn)
         return #problems == 0 and not Fam().whatIf:IsShown(), table.concat(problems, "; ")
+    end)
+
+    -- T128 (docs/tasks/T128-trade-score-and-rank-tips.md 2): every rank row
+    -- explains itself -- a TRADE block against max -- and while What if is on
+    -- the row's tooltip draws from the what-if book (it showed live numbers);
+    -- off the row, the view is gone. Lifebloom's rolled rows likewise.
+    T("T128 tbc: rank-row hover under What if -- the what-if numbers and a TRADE block; rolled rows too", function()
+        WIr():Clear()
+        local f = OpenFam("Wrath")
+        if not (f.whatIf and f.whatIf:IsShown()) then Click(f.strip.whatIfBtn) end
+        Type("damage", "1000")
+        f = Fam()
+        local function PerManaOf(lines)
+            for _, x in ipairs(lines or {}) do
+                if (x.l or x[1]) == "Per mana" then return Strip(x.r or x[2] or "") end
+            end
+            return nil
+        end
+        local bad, seen = {}, {}
+        local wiBook = WIr():Book()
+        local pool = WIr():Pool(ST.Book:Pool())
+        for id, it in pairs(RankRowsBy(f)) do
+            local e = it.r.entry
+            if e.known ~= false then
+                local live = PerManaOf((ST.SpellTip:Lines(id, false)))
+                local want = PerManaOf((ST.SpellTip:Lines(id, false, nil, { book = wiBook, pool = pool })))
+                it.row:GetScript("OnEnter")(it.row)
+                local tip = TipLines(GameTooltip)
+                it.row:GetScript("OnLeave")(it.row)
+                seen[#seen + 1] = "R" .. tostring(e.rank) .. ": " .. tip
+                if not (want and live and want ~= live) then bad[#bad + 1] = "R" .. tostring(e.rank) .. " same numbers " .. tostring(want) end
+                if not tip:find("Per mana|" .. tostring(want), 1, true) then bad[#bad + 1] = "R" .. tostring(e.rank) .. " not the what-if numbers" end
+                if tip:find("Per mana|" .. tostring(live), 1, true) then bad[#bad + 1] = "R" .. tostring(e.rank) .. " live numbers" end
+                if not (tip:find("TRADE|vs max Rank ", 1, true) or tip:find("TRADE|this rank is max", 1, true))
+                    or not tip:find("Score|", 1, true) or not tip:find("Verdict|", 1, true) then
+                    bad[#bad + 1] = "R" .. tostring(e.rank) .. " no TRADE block"
+                end
+                -- off the row: the same id on the tooltip is the live block again
+                GameTooltip:SetSpellByID(id)
+                local after = TipLines(GameTooltip)
+                if after:find("Per mana|" .. tostring(want), 1, true) then bad[#bad + 1] = "R" .. tostring(e.rank) .. " view kept" end
+            end
+        end
+        WIr():Clear()
+        if Fam().whatIf and Fam().whatIf:IsShown() then Click(Fam().strip.whatIfBtn) end
+        -- a rolled row: its two lines, then the stack's TRADE block
+        f = OpenFam("Lifebloom")
+        local vr
+        for _, r in ipairs(f.lastRows or {}) do if r.kind == "variant" and not vr then vr = r end end
+        local vtip = ""
+        if vr then
+            local row = RowFrame(vr)
+            if UI.tooltip then UI.tooltip.lines = nil end
+            row:GetScript("OnEnter")(row)
+            vtip = TipLines(UI.tooltip)
+            row:GetScript("OnLeave")(row)
+        end
+        if not (vtip:find("TRADE|vs max ", 1, true) or vtip:find("TRADE|this rank is max", 1, true))
+            or not vtip:find("Score|", 1, true) then
+            bad[#bad + 1] = "rolled row: " .. vtip
+        end
+        OpenFam("HealingTouch")
+        return #bad == 0 and #seen > 0, table.concat(bad, "; ") .. " | " .. table.concat(seen, " // ") .. " || " .. vtip
+    end)
+
+    -- T128 (docs/tasks/T128-trade-score-and-rank-tips.md 3): What if on, best
+    -- not max, a damage family -- the strip that truncated in the author's
+    -- screenshot. The stub's 6 px a character at 12 pt is narrower than the
+    -- client's font, so the strip's measure and this check count 8 px: a
+    -- wording that needs three lines there is caught.
+    T("strip tbc T128: What if on, best not max, 8 px a character -- two lines at offsets -2..+2, full on hover", function()
+        WIr():Clear()
+        local walk = {}
+        for i, r in ipairs(DRUID_WALK) do walk[i] = r end
+        walk[1] = { id = 5176, name = "Wrath", sub = "Rank 1", cost = 20, cast = 1500, level = 1,
+            desc = "Causes 40 to 50 Nature damage to the target." }
+        walk[2] = { id = 6780, name = "Wrath", sub = "Rank 2", cost = 100, cast = 2000, level = 14,
+            desc = "Causes 90 to 110 Nature damage to the target." }
+        InstallBook(walk)
+        ST.Book:Refresh()
+        local f = OpenFam("Wrath")
+        if not (f.whatIf and f.whatIf:IsShown()) then Click(f.strip.whatIfBtn) end
+        Type("damage", "1000")
+        local function Wide(fs, text)
+            local plain = Strip(text or ""):gsub("||", "|")
+            return #plain * 8 * FontSize(fs) / 12
+        end
+        local function Lines8(fs, text, width)
+            local lines, line = 0, nil
+            for word in Strip(text):gmatch("%S+") do
+                local cand = line and (line .. " " .. word) or word
+                if line and Wide(fs, cand) > width then lines, line = lines + 1, word else line = cand end
+                if Wide(fs, line) > width then return 99 end
+            end
+            if line then lines = lines + 1 end
+            return lines
+        end
+        local problems, seen = {}, {}
+        local ok, err = pcall(function()
+            for _, o in ipairs({ -2, -1, 0, 1, 2 }) do
+                local st = Fam().strip
+                Sized(st.compare, UI.FONT); Sized(st.measure, UI.FONT)
+                st.measure.GetStringWidth = function(self) return Wide(self, self.text) end
+                UI.ApplyFonts(o)
+                f = Fam()
+                st = f.strip
+                local where = "offset " .. o .. ": "
+                local fam = WIr():Book().families[f.key]
+                if not (WIr():Active() and fam and fam.suggested and fam.maxRank and fam.suggested ~= fam.maxRank) then
+                    problems[#problems + 1] = where .. "best is max or no what-if book"
+                else
+                    local text = st.compare:GetText() or ""
+                    local n = Lines8(st.compare, text, st.compareW or 0)
+                    seen[#seen + 1] = o .. "=" .. Strip(text)
+                    if text == "" then problems[#problems + 1] = where .. "no comparison" end
+                    if n > 2 then problems[#problems + 1] = where .. n .. " lines in " .. tostring(st.compareW) .. ": " .. text end
+                    local s, top = fam.suggested, fam.maxRank
+                    local full = W.Compare(ST.Book:Compare(s, top), top.rank, fam.kind, "full", false,
+                        W.ScoreOf(s, top, fam.kind))
+                    if text ~= full then
+                        local hit = st.compareHit
+                        if not (hit and hit:IsShown()) then
+                            problems[#problems + 1] = where .. "shortened with no hover"
+                        else
+                            if UI.tooltip then UI.tooltip.lines = nil end
+                            GameTooltip.lines = nil
+                            hit:GetScript("OnEnter")(hit)
+                            local tip = TipLines(UI.tooltip or GameTooltip)
+                            hit:GetScript("OnLeave")(hit)
+                            if not tip:find(full, 1, true) then problems[#problems + 1] = where .. "hover " .. tip end
+                        end
+                    end
+                end
+            end
+        end)
+        Fam().strip.measure.GetStringWidth = nil
+        UI.ApplyFonts(0)
+        WIr():Clear()
+        if Fam().whatIf and Fam().whatIf:IsShown() then Click(Fam().strip.whatIfBtn) end
+        InstallBook(DRUID_WALK)
+        ST.Book:Refresh()
+        OpenFam("HealingTouch")
+        if not ok then return false, "raised: " .. tostring(err) end
+        return #problems == 0, table.concat(problems, "; ") .. " | " .. table.concat(seen, " / ")
     end)
 
     T("strip tbc: a row released with the what-if mark comes back as the header without it", function()
@@ -2562,7 +2710,7 @@ T36("T38 the header and the decision strip: which rank, and one factual line", f
         -- is max, Rank 2, and the strip names the eff rank
         and f.strip.chipRank:GetText() == "Rank 2"
         and f.strip.compare:GetText() == "Rank 2 is best and max: no rank's extra per mana is worth what it loses"
-            .. " per second (heals, 6.7:1). Rank 1 has the most per mana: 2% more for 38% less per second."
+            .. " per second (heals, 6.7:1). Rank 1 has the most per mana: 2% more for 38% less per second, score 0.948."
     return good, string.format("sub=%q mana=%q chip=%q cmp=%q", tostring(f.header.sub:GetText()), manaText,
         tostring(f.strip.chipRank and f.strip.chipRank:GetText()), tostring(f.strip.compare and f.strip.compare:GetText()))
 end)
@@ -2631,7 +2779,7 @@ T36("T38 the ranks table: every rank to the highest listed, the gap, the bar and
             .. " Press it when mana runs out before the fight does."
         and bestTip == "Best and max Rank 2 / The most per second, and no rank's extra per mana is worth what it"
             .. " loses per second (heals: 1% per mana for 6.7% per second). Most per mana is Rank 1: +2% for -38%"
-            .. " per second."
+            .. " per second, score 0.948." -- T128: the score closes it
         and gapTip[1] == "no tag hit"
     local good = t78 and table.concat(order, ",") == "rank1,rank2,gap3,rank4"
         and Cells(row1) == want1 and Cells(row2) == want2
@@ -2664,7 +2812,7 @@ T36("T38 the rank card: the suggested rank by default, a click selects another",
     local pool = ST.Clock:Pool()
     local _, row2 = ViewRow(2)
     local good = before == "RANK 2 / learned at 8"
-        and firstPairs:find("Marks=best  no trade pays at 6.7:1; Rank 1: +2% per mana, -38% per sec; "
+        and firstPairs:find("Marks=best  no trade pays at 6.7:1; Rank 1: +2% per mana, -38% per sec, score 0.948; "
             .. "=max  most per second: 51; Heals=90 - 115 (avg 103); Crit=135 - 173 (x1.5 assumed)", 1, true) == 1
         and f.selectedId == 93801 and f.card.title:GetText() == "RANK 1" and f.card.learned:GetText() == "learned at 1"
         and f.card.quote:GetText() == '"Heals a friendly target for 40 to 55."'
@@ -3243,6 +3391,45 @@ T36("T122 forever: Clear restores every cell; the pane closes again", function()
         and not f.ranksNote:IsShown()
     Click(f.strip.whatIfBtn)
     return good and not F().whatIf:IsShown(), table.concat(bad, " ")
+end)
+
+-- T128 (docs/tasks/T128-trade-score-and-rank-tips.md 2): on Forever too, a
+-- rank row's hover under What if is the what-if book's block plus a TRADE
+-- block against max.
+T36("T128 forever: rank-row hover under What if -- the what-if numbers and a TRADE block", function()
+    WIf():Clear()
+    local f = OpenView("Nourish")
+    if not (f.whatIf and f.whatIf:IsShown()) then Click(f.strip.whatIfBtn) end
+    local box = FBox("heal").box
+    box:SetText(tostring(WIf():Live().heal + 150))
+    box:GetScript("OnEnterPressed")(box)
+    local function PerManaOf(lines)
+        for _, x in ipairs(lines or {}) do
+            if (x.l or x[1]) == "Per mana" then return StripColor(x.r or x[2] or "") end
+        end
+        return nil
+    end
+    local view = { book = WIf():Book(), pool = WIf():Pool(Book:Pool()) }
+    local bad, seen = {}, {}
+    for id, x in pairs(FRanks()) do
+        if x.r.entry.known ~= false and x.row then
+            local live = PerManaOf((ST.SpellTip:Lines(id, false)))
+            local want = PerManaOf((ST.SpellTip:Lines(id, false, nil, view)))
+            Hover(x.row)
+            local tip = TipText(GameTooltip)
+            x.row:GetScript("OnLeave")(x.row)
+            seen[#seen + 1] = tip
+            if not (want and want ~= live) then bad[#bad + 1] = id .. " same numbers" end
+            if not tip:find("Per mana|" .. tostring(want), 1, true) then bad[#bad + 1] = id .. " not the what-if numbers" end
+            if not (tip:find("TRADE|vs max Rank ", 1, true) or tip:find("TRADE|this rank is max", 1, true))
+                or not tip:find("Score|", 1, true) then
+                bad[#bad + 1] = id .. " no TRADE block"
+            end
+        end
+    end
+    WIf():Clear()
+    if F().whatIf and F().whatIf:IsShown() then Click(F().strip.whatIfBtn) end
+    return #bad == 0 and #seen > 0, table.concat(bad, "; ") .. " | " .. table.concat(seen, " // ")
 end)
 
 -- T124: +Spell damage on Forever -- the header's +Damage line once a reading

@@ -539,8 +539,19 @@ local GOLDEN = {
     -- { 174286, 2384515562, 297317080 }, book { 184989, 1369451877,
     -- 4050973907 }. Review T127 m3 then dropped the task tag from the
     -- best-is-max callout (druid and class digests only)
-    druid = { n = 900, bytes = 418621, h1 = 4243151015, h2 = 1211065361 },
-    class = { n = 354, bytes = 175038, h1 = 1517985918, h2 = 53664074 },
+    -- T128: re-based for the multiplicative trade score (docs/tasks/T128-
+    -- trade-score-and-rank-tips.md): against 08ab7e4's transcript with
+    -- --print, the only lines that differ are the suggested (best) rank, its
+    -- callout and the suggested flags. Best moved:
+    --   druid  Regrowth (L40 live, L40 tree off: R4 -> R9), Healing Touch
+    --          (L40 tree on: R6 -> R12)
+    --   class  Priest Renew (L60: R7 -> R8), Paladin Flash of Light (L60:
+    --          R2 -> R5)
+    -- 08ab7e4's digests, kept as comments:
+    -- druid = { n = 900, bytes = 418621, h1 = 4243151015, h2 = 1211065361 },
+    -- class = { n = 354, bytes = 175038, h1 = 1517985918, h2 = 53664074 },
+    druid = { n = 900, bytes = 418676, h1 = 656415143, h2 = 3727462715 },
+    class = { n = 354, bytes = 175039, h1 = 1547724863, h2 = 3338796146 },
     -- T123: the druid's ST.Book (check 28), captured with --golden on 49494eb
     book = { n = 284, bytes = 185071, h1 = 1787193203, h2 = 93974256 },
 }

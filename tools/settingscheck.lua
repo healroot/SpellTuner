@@ -687,4 +687,19 @@ Try("Trade-off rows: defaults and tips from ST.Rules (k, floor), not literals", 
     return ok, string.format("defaults %s / %s; tips %q / %q", tostring(dd), tostring(hd), dt, ht)
 end)
 
+-- T128: the tips say the score as a ratio against max's 1.000.
+Try("Trade-off rows: tips say the score as a ratio against max's 1.000", function()
+    local d, h = ST.Settings.TRADE_ROWS[1], ST.Settings.TRADE_ROWS[2]
+    local function Tips(row)
+        local t = row.tips
+        if type(t) == "function" then t = t() end
+        return table.concat(t or {}, " ")
+    end
+    local dt, ht = Tips(d), Tips(h)
+    local ok = dt:find("per mana / max's x (per sec / max's)^k", 1, true) ~= nil
+        and dt:find("scores above max's 1.000", 1, true) ~= nil
+        and ht:find("scores above max's 1.000", 1, true) ~= nil
+    return ok, string.format("tips %q / %q", dt, ht)
+end)
+
 T.done()

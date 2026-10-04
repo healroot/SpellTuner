@@ -448,7 +448,10 @@ local function CompareFit(measure, a, b, kind, width, fam)
     if a ~= b and not c then return "", "" end
     local function Say(style)
         if a == b then return Words.CompareBestIsMax(fam, kind, style) end
-        return Words.Compare(c, b.rank, kind, style, fam and fam.maxRank == nil)
+        -- T128: the score against max closes the full and short sentences
+        local score
+        if fam and fam.maxRank == b then score = Words.ScoreOf(a, b, kind) end
+        return Words.Compare(c, b.rank, kind, style, fam and fam.maxRank == nil, score)
     end
     local full = Say("full")
     local styles = Words.COMPARE_STYLES
@@ -517,22 +520,39 @@ end
 -- Forever -- with its content kept and the kit skin laid on it while this
 -- row owns it (ST.Tip:Skin; off again when it hides or another owner
 -- clears it), so it reads as the same tooltip as the rest of the window.
+-- T128: a rank row's TRADE block (Words.TradeLines in UI/Tip.lua's line
+-- model), set below once BeatenBy and MarkKind exist.
+local RankTradeTip
+-- T128: the block's view while What if is active -- the what-if book and
+-- pool, so the block's numbers are the row's (UI/SpellTip.lua's SetView);
+-- nil otherwise.
+local function TipView()
+    if not WIActive() then return nil end
+    return { book = ViewBook(), pool = ViewPool() }
+end
 local function GameTip(row, fam, e)
     local tt = GameTooltip
     tt:SetOwner(row, "ANCHOR_NONE")
     tt:ClearAllPoints()
     tt:SetPoint("TOPLEFT", row, "TOPRIGHT", TIP_GAP, 0)
     tt._spellTipId = nil
+    local view = TipView()
+    if ST.SpellTip and ST.SpellTip.SetView then ST.SpellTip:SetView(tt, e.id, view) end
     local shown = ST.API.SetTooltipSpell(tt, e.id)
     if not shown then
         tt:AddLine(RankName(fam, e.rank), UI.RGB("text"))
     end
     if tt._spellTipId ~= e.id and ST.SpellTip then
-        local ok, lines = pcall(ST.SpellTip.Lines, ST.SpellTip, e.id, ST.SpellTip:DetailShown())
+        local ok, lines = pcall(ST.SpellTip.Lines, ST.SpellTip, e.id, ST.SpellTip:DetailShown(), nil, view)
         if ok and type(lines) == "table" then
             tt:AddLine(" ")
             ST.SpellTip:Render(tt, lines)
         end
+    end
+    local trade = RankTradeTip and RankTradeTip(fam, e)
+    if type(trade) == "table" and #trade > 0 then
+        tt:AddLine(" ")
+        ST.Tip:Render(tt, trade)
     end
     ST.Tip:Skin(tt, row)
     tt:Show()
@@ -613,6 +633,52 @@ end
 local function MarkKind(fam)
     if fam and fam.kind == "damage" then return "damage" end
     return "heal"
+end
+
+-- T128 (docs/tasks/T128-trade-score-and-rank-tips.md 2): Words.TradeLines'
+-- pairs as tooltip lines, the TRADE head in `text`.
+local function TradeTipLines(ctx)
+    local out = {}
+    for i, p in ipairs(Words.TradeLines(ctx)) do
+        if i == 1 then
+            out[#out + 1] = { l = p[1], r = p[2], c = "text", rc = "label" }
+        else
+            out[#out + 1] = { l = p[1], r = p[2], c = "label", rc = "text" }
+        end
+    end
+    return out
+end
+local function RankWord(x)
+    return "Rank " .. tostring(x and x.rank or "-")
+end
+-- A known rank of a family with a kind, against the family's max (the
+-- row's own book: the what-if book's family while What if is active).
+RankTradeTip = function(fam, e)
+    if type(fam) ~= "table" or not fam.kind or type(e) ~= "table" or e.known == false then return {} end
+    local kind = MarkKind(fam)
+    local floorRow
+    if Words.UnderFloor(e, fam, kind) then floorRow = fam.maxKnown or fam.maxRank end
+    local beatenBy
+    if e.dominated then beatenBy = BeatenBy(fam, e) end
+    return TradeTipLines({ e = e, best = fam.suggested, max = fam.maxRank, eff = fam.effRank,
+        beatenBy = beatenBy, floorRow = floorRow, kind = kind, name = RankWord })
+end
+-- A rolled row (or the rank it rolls), against the most per second among
+-- the rank and its rolled rows (RR.StackMarks): one cost, one GCD, a heal.
+local function StackTradeTip(parent, v)
+    local sm = ST.RankRules and ST.RankRules.StackMarks and ST.RankRules.StackMarks(parent)
+    if not sm or not sm.max then return {} end
+    local floorRow
+    if type(v.value) == "number" and type(parent.value) == "number"
+        and v.value < ST.Rules.SUGGESTED_FLOOR * parent.value then
+        floorRow = parent
+    end
+    local function Name(x)
+        if x == parent then return RankWord(parent) .. " one cast" end
+        return "rolled " .. tostring(x.variantLabel or ("x" .. tostring(x.variant)))
+    end
+    return TradeTipLines({ e = v, best = sm.best, max = sm.max, eff = sm.eff, beatenBy = sm.beatenBy[v],
+        floorRow = floorRow, kind = "heal", name = Name })
 end
 function TagTip(r)
     local tag = TagOf(r)
@@ -814,10 +880,17 @@ local function RankRowEnter(row, r)
         local dur = (type(e.dur) == "number") and e.dur or 7
         local every = math.max(1, Round(dur - 1))
         local value, perMana = Shown(v, r.after)
-        KitTip(row, RankName(fam, e.rank) .. " rolled " .. (v.variantLabel or ""),
+        -- T128: the stack's TRADE block after the row's two lines
+        local list = { RankName(fam, e.rank) .. " rolled " .. (v.variantLabel or ""),
             string.format("Rolled at %d stacks: refreshed every %d s, %d ticks a cast, no bloom.",
                 v.variant or 0, every, every),
-            Num(value) .. " a refresh, " .. Num(perMana, 2) .. " per mana.")
+            Num(value) .. " a refresh, " .. Num(perMana, 2) .. " per mana." }
+        local trade = StackTradeTip(e, v)
+        if #trade > 0 then
+            list[#list + 1] = {}
+            for _, ln in ipairs(trade) do list[#list + 1] = ln end
+        end
+        if UI.tooltip then ST.Tip:Kit(row, ST.Tip.Simple(list), { anchor = "beside" }) end
         return
     end
     local e = r.entry
@@ -831,6 +904,7 @@ local function RankRowEnter(row, r)
 end
 
 local function RankRowLeave()
+    if ST.SpellTip and ST.SpellTip.ClearView then ST.SpellTip:ClearView(GameTooltip) end
     GameTooltip:Hide()
     if UI.tooltip then UI.tooltip:Hide() end
 end

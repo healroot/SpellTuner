@@ -536,7 +536,9 @@ MS.TRADE_ROWS = {
           local k = ST.Rules.TRADE_K_DAMAGE
           return { "Trade-off: damage",
                    "How much per second a lower damage rank may give up for each",
-                   "1% it gains per mana and still be best. " .. PctOf(k) .. ": " .. Phrase(k) .. ".",
+                   "1% it gains per mana and still be best. " .. PctOf(k) .. ": " .. Phrase(k) .. ", at the margin.",
+                   "A rank is best when per mana / max's x (per sec / max's)^k scores above max's 1.000,",
+                   "so a big loss per second costs far more.",
                    "0: the most per mana wins; 100%: one for one." }
       end },
     { kind = "slider", text = "Trade-off: heals (%)", key = "tradeKHeal", min = 0, max = 100, step = 5,
@@ -547,7 +549,7 @@ MS.TRADE_ROWS = {
           return { "Trade-off: heals",
                    "The same for heals, which also need " .. PctOf(ST.Rules.SUGGESTED_FLOOR)
                        .. " of your highest rank's heal.",
-                   PctOf(k) .. ": " .. Phrase(k) .. "." }
+                   PctOf(k) .. ": " .. Phrase(k) .. ", at the margin; best scores above max's 1.000." }
       end },
 }
 

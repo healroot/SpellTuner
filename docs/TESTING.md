@@ -2383,6 +2383,18 @@ On either client, `/st` -> Spells.
    eff rank. Back to Settings, drag it to 100: Wrath's best moves towards max (the books re-mark
    when you let go of the slider). No reload needed.
    Put them back to 25 and 15.
+9. **Every rank explains itself (T128).** TBC: Starfire (or Wrath on Forever) -> What if... ->
+   type `+Spell damage` until it reads 1010 (live + 550 on the author's Starfire). Hover each rank
+   row in RANKS: under the game's tooltip and the SpellTuner block (whose Per mana and Per sec
+   must equal that row's cells, not the live ones) a `TRADE` block reads `vs max Rank 8`,
+   `Per mana +x%`, `Per sec -y%`, `Score s vs max 1.000` and a verdict: `holds best` on Rank 6,
+   `Rank 6 trades better (1.075 vs 1.054)` on Rank 7, `beaten by Rank N` on a beaten rank,
+   `trade does not pay (0.959)` on a rank that scores under 1. The best tag should sit on Rank 6
+   at 1010 and on Rank 7 at 460 (What if cleared at the author's 460). Move off the row and hover
+   the same spell in the spellbook: the live numbers again. TBC: Lifebloom's x2 / x3 rows end with
+   the same block against the stack's max. The line beside the WHAT IF chip is never cut with
+   `...` at font offsets -2..+2 (Settings -> General); hover it for the whole sentence, which ends
+   `score s vs max 1.000`.
 
 **Paste back** a line per step into `.logs/tbc/0.17.1-s1.md` and `docs/probe/<build>-0.17.1-s1.md`,
 with the footer of step 1 copied whole.

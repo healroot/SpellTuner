@@ -88,7 +88,7 @@ rows, best, max, eff = Run({ { 1, 1.36, 20, 30 }, { 2, 2.21, 36, 62 }, { 3, 3.38
 local score = RR.Score(rows[3], rows[4], F, 0.25)
 check("3. Forever damage: x0.6 per second, x3 per mana -> best = eff = Rank 3, max Rank 4",
     best == rows[3] and eff == rows[3] and max == rows[4] and score ~= nil
-    and math.abs(score - (3.38 / 1.11 - 1 - 0.25 * 0.4)) < 1e-9,
+    and math.abs(score - (3.38 / 1.11) * (54 / 90) ^ 0.25) < 1e-9, -- T128: the multiplicative score
     Said(best, max, eff) .. " score=" .. tostring(score))
 
 -- 4. a heal (mockup M3's what-if numbers): Rank 5 the most per mana but under
@@ -131,14 +131,15 @@ SetK("damage", nil)
 check("6. edges: k 0 -> the most per mana over the floor; k 1 -> one for one",
     good0 and good1 and good1d and good0d, "heal k0 " .. k0 .. " / heal k1 " .. k1)
 
--- 7. a score of exactly 0 goes to max; the first of equals wins a tie
+-- 7. a score of exactly 1 goes to max (T128: x2 per mana, x0.25 per sec at
+-- k 0.5 is 2 * 0.5); the first of equals wins a tie
 SetK("damage", 0.5)
-rows, best, max, eff = Run({ { 1, 5, 50, 100 }, { 2, 4, 100, 200 } }, "damage")
+rows, best, max, eff = Run({ { 1, 8, 25, 100 }, { 2, 4, 100, 200 } }, "damage")
 local zero = Said(best, max, eff)
 local goodZero = best == rows[2] and eff == rows[1]
 SetK("damage", nil)
 rows, best, max, eff = Run({ { 1, 5, 60, 100 }, { 2, 5, 60, 100 }, { 3, 4, 100, 200 } }, "damage")
-check("7. a score of 0 goes to max; equal rows: the first wins",
+check("7. a score of exactly 1 goes to max; equal rows: the first wins",
     goodZero and best == rows[1] and eff == rows[1] and max == rows[3], zero .. " / tie " .. Said(best, max, eff))
 
 -- 8. one known rank holds all three; no eligible row: best is the top, no
@@ -317,6 +318,88 @@ do
         sigOk and genOk,
         string.format("pane=%s sig moved=%s gen moved=%s", tostring(sig0 ~= nil), tostring(sig0 ~= sig1),
             tostring(genOk)))
+end
+
+-- 16. T128 (docs/tasks/T128-trade-score-and-rank-tips.md): the author's
+-- Starfire, What if +550 spell damage (1010) and live (460), per mana / per
+-- sec as the screenshots show them, verbatim. The score multiplies:
+-- (eff / eff of max) * (rate / rate of max) ^ k.
+local SF1010 = {
+    { 1, 6.13, 166.5 }, { 2, 5.43, 209.6 }, { 3, 5.17, 265.8 }, { 4, 4.98, 327.1 },
+    { 5, 4.95, 389.3 }, { 6, 5.02, 451.7 }, { 7, 4.87, 472.8 }, { 8, 4.59, 484.8 },
+}
+local SF460 = {
+    { 1, 3.43, 93.1 }, { 2, 3.16, 122.0 }, { 3, 3.10, 159.2 }, { 4, 3.07, 201.6 },
+    { 5, 3.12, 244.9 }, { 6, 3.20, 288.3 }, { 7, 3.16, 307.0 }, { 8, 3.02, 319.0 },
+}
+rows, best, max, eff = Run(SF1010, "damage")
+local s6, s7, s1 = RR.Score(rows[6], rows[8], F, 0.25), RR.Score(rows[7], rows[8], F, 0.25),
+    RR.Score(rows[1], rows[8], F, 0.25)
+local said1010 = Said(best, max, eff)
+local good1010 = best == rows[6] and max == rows[8] and eff == rows[1]
+    and math.abs(s6 - 1.0745) < 5e-4 and math.abs(s7 - 1.0544) < 5e-4 and math.abs(s1 - 1.0224) < 5e-4
+    and RR.Score(rows[8], rows[8], F, 0.25) == 1
+rows, best, max, eff = Run(SF460, "damage")
+local said460 = Said(best, max, eff)
+local good460 = best == rows[7] and max == rows[8] and eff == rows[1]
+check("16. Starfire at 1010 -> best R6 (1.075 > R7 1.054 > R1 1.022), at 460 -> best R7; max R8, eff R1",
+    good1010 and good460,
+    string.format("1010 %s s6=%.4f s7=%.4f s1=%.4f / 460 %s", said1010, s6 or -1, s7 or -1, s1 or -1, said460))
+
+-- 17. a small gain for a big loss never pays; a big gain for a moderate loss does
+rows, best, max, eff = Run({ { 1, 1.05, 50, 100 }, { 2, 1.00, 100, 200 } }, "damage")
+local small = best == rows[2]
+local smallSaid = Said(best, max, eff)
+rows, best, max, eff = Run({ { 1, 3.0, 60, 100 }, { 2, 1.0, 100, 200 } }, "damage")
+check("17. +5% per mana / -50% per sec -> max; x3 per mana / x0.6 per sec -> that rank",
+    small and best == rows[1], smallSaid .. " / " .. Said(best, max, eff))
+
+-- 18. k = 0: best is eff (a heal: the most per mana within the floor)
+SetK("damage", 0)
+rows, best, max, eff = Run(SF1010, "damage")
+local d0ok = best == eff and eff == rows[1]
+SetK("damage", nil)
+SetK("heal", 0)
+rows, best, max, eff = Run(HT, "heal")
+local h0ok = best == rows[6] and eff == rows[5]
+SetK("heal", nil)
+check("18. k 0 -> best is eff (heals: the most per mana over the floor)", d0ok and h0ok,
+    "damage " .. tostring(d0ok) .. " heal " .. Said(best, max, eff))
+
+-- 19. T128: the TRADE block's words (Words.TradeLines) -- the numbers against
+-- max, the score as a ratio, and one verdict per case
+do
+    local W = ST.Words
+    rows = Rows({ { 1, 6.13, 166.5, 1 }, { 2, 5.43, 209.6, 1 }, { 3, 5.17, 265.8, 1 }, { 4, 4.98, 327.1, 1 },
+        { 5, 4.95, 389.3, 1 }, { 6, 5.02, 451.7, 1 }, { 7, 4.87, 472.8, 1 }, { 8, 4.59, 484.8, 1 } })
+    RR.Pareto(rows, F)
+    best, max, eff = RR.Marks(rows, rows[8], F, "damage")
+    local function Name(r) return "Rank " .. tostring(r.rank) end
+    local function Ctx(e, extra)
+        local c = { e = e, best = best, max = max, eff = eff, kind = "damage", name = Name }
+        for k2, v in pairs(extra or {}) do c[k2] = v end
+        return c
+    end
+    local function Join(lines)
+        local out = {}
+        for _, l in ipairs(lines) do out[#out + 1] = tostring(l[1]) .. "=" .. tostring(l[2]) end
+        return table.concat(out, "; ")
+    end
+    local t6, t7 = Join(W.TradeLines(Ctx(rows[6]))), Join(W.TradeLines(Ctx(rows[7])))
+    local t5 = Join(W.TradeLines(Ctx(rows[5], { beatenBy = rows[6] })))
+    local t8, t1 = Join(W.TradeLines(Ctx(rows[8]))), Join(W.TradeLines(Ctx(rows[1])))
+    local t2 = Join(W.TradeLines(Ctx(rows[2])))
+    local tf = Join(W.TradeLines(Ctx(rows[2], { kind = "heal", floorRow = rows[8] })))
+    local good = t6:find("Per mana=+9%", 1, true) and t6:find("Per sec=-7%", 1, true)
+        and t6:find("Score=1.075 vs max 1.000", 1, true) and t6:find("holds best", 1, true)
+        and t7:find("Rank 6 trades better (1.075 vs 1.054)", 1, true)
+        and t5:find("beaten by Rank 6", 1, true)
+        and t8:find("holds max", 1, true) and t1:find("holds eff", 1, true)
+        and t1:find("Rank 6 trades better (1.075 vs 1.022)", 1, true)
+        and t2:find("trade does not pay (0.959)", 1, true)
+        and tf:find("under 40% of Rank 8's heal", 1, true)
+    check("19. Words.TradeLines: per mana / per sec against max, score as a ratio, the verdicts",
+        good and true or false, t6 .. " | " .. t7 .. " | " .. t5 .. " | " .. t8 .. " | " .. t1 .. " | " .. t2 .. " | " .. tf)
 end
 
 print(string.format("\n%d ok, %d failed", ok, #fails))

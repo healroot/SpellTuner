@@ -417,11 +417,42 @@ function W.TradePhrase(k)
 end
 local function Weight(kind) return W.TradePhrase(TradeK(kind)) end
 
+-- T128 (docs/tasks/T128-trade-score-and-rank-tips.md): the score as the rule
+-- computes it (Spells/RankRules.lua's RR.Score, multiplicative: max scores
+-- exactly 1) and as it is said, a ratio against max: "1.075".
+local SCORE_FIELDS = { eff = "perMana", rate = "perSec" }
+local function ScoreOf(e, maxR, kind)
+    local RR = ST.RankRules
+    if not (RR and RR.Score) or type(e) ~= "table" or type(maxR) ~= "table" then return nil end
+    if type(e.perMana) ~= "number" or type(e.perSec) ~= "number" then return nil end
+    return RR.Score(e, maxR, SCORE_FIELDS, TradeK(kind))
+end
+W.ScoreOf = ScoreOf
+function W.Score(x)
+    if type(x) ~= "number" or x ~= x then return "-" end
+    return string.format("%.3f", x)
+end
+-- "score 1.075 vs max 1.000"; nil without a score.
+local function ScoreVsMax(e, maxR, kind)
+    local sc = ScoreOf(e, maxR, kind)
+    if sc == nil then return nil end
+    return "score " .. W.Score(sc) .. " vs max " .. W.Score(1)
+end
+W.ScoreVsMax = ScoreVsMax
+-- ", score 0.887" -- a rank's score against max, "" without one.
+local function ScoreTail(e, maxR, kind)
+    local sc = ScoreOf(e, maxR, kind)
+    if sc == nil then return "" end
+    return ", score " .. W.Score(sc)
+end
+
 -- The best rule in words (the chip's and the best tag's hover), its weights
 -- and floor read at each call (ST.Rules, the settings).
+-- T128: the score multiplies (per mana / max's x (per sec / max's) ^ k).
 function W.SuggestedRule()
-    return "Best: the rank whose extra per mana is worth what it loses per second against max, the rank with the most per second."
-        .. " Damage: " .. Weight("damage") .. ". Heals: " .. Weight("heal") .. ", and at least "
+    return "Best: the rank that scores highest against max, the rank with the most per second."
+        .. " Score = per mana / max's x (per sec / max's) ^ k; max scores 1.000, so best must score above it."
+        .. " Damage: " .. Weight("damage") .. " at the margin. Heals: " .. Weight("heal") .. ", and at least "
         .. Num(ST.Rules.SUGGESTED_FLOOR * 100) .. "% of your highest rank's heal. Else max."
 end
 
@@ -502,14 +533,16 @@ function W.MarkReason(mark, e, fam, kind)
         local text = "no trade pays" .. At(kind)
         if pm and ps then
             text = text .. "; Rank " .. tostring(effR.rank or "-") .. ": " .. W.Signed(pm) .. " per mana, "
-                .. W.Signed(ps) .. " per sec"
+                .. W.Signed(ps) .. " per sec" .. ScoreTail(effR, e, kind) -- T128
         end
         return text
     end
     local pm, ps = Change(e.perMana, maxR.perMana), Change(e.perSec, maxR.perSec)
     if not (pm and ps) then return "the best trade against max" end
-    return W.Signed(pm) .. " per mana for " .. W.Signed(ps) .. " per second (worth it for "
-        .. ((kind == "damage") and "damage" or "heals") .. At(kind) .. ")"
+    local text = W.Signed(pm) .. " per mana for " .. W.Signed(ps) .. " per second"
+    local vs = ScoreVsMax(e, maxR, kind) -- T128: the score as a ratio
+    if vs then text = text .. ": " .. vs end
+    return text .. " (" .. ((kind == "damage") and "damage" or "heals") .. At(kind) .. ")"
 end
 
 -- The tag's hover sentence (M5), for the strongest mark `tag` of `e`.
@@ -538,7 +571,7 @@ function W.MarkTip(tag, e, fam, kind)
                 local pm, ps = Change(effR.perMana, e.perMana), Change(effR.perSec, e.perSec)
                 if pm and ps then
                     text = text .. " Most per mana is Rank " .. tostring(effR.rank or "-") .. ": " .. W.Signed(pm)
-                        .. " for " .. W.Signed(ps) .. " per second."
+                        .. " for " .. W.Signed(ps) .. " per second" .. ScoreTail(effR, e, kind) .. "." -- T128
                 end
             else
                 text = text .. " It is also the most per mana."
@@ -548,7 +581,10 @@ function W.MarkTip(tag, e, fam, kind)
         local pm, ps = Change(e.perMana, maxR.perMana), Change(e.perSec, maxR.perSec)
         local text = "The best trade against max (Rank " .. tostring(maxR.rank or "-") .. ")"
         if pm and ps then text = text .. ": " .. W.Signed(pm) .. " per mana for " .. W.Signed(ps) .. " per second" end
+        local vs = ScoreVsMax(e, maxR, kind) -- T128
+        if vs then text = text .. ", " .. vs end
         text = text .. ". For " .. (heal and "heals" or "damage") .. " " .. Weight(kind):gsub(" for ", " is worth ")
+            .. " at the margin"
         if heal then
             text = text .. ", among ranks with at least " .. Num(ST.Rules.SUGGESTED_FLOOR * 100)
                 .. "% of your highest heal."
@@ -580,6 +616,62 @@ function W.MarkTip(tag, e, fam, kind)
     return nil
 end
 
+-- T128 (docs/tasks/T128-trade-score-and-rank-tips.md section 2): a rank
+-- row's TRADE block against max, from the book the row shows (the what-if
+-- book while What if is active). `ctx`:
+--   e, best, max, eff -- the hovered row and the three marks' rows (a
+--                        family's, or a rank's rolled rows')
+--   beatenBy          -- the row that beats `e`, else nil
+--   floorRow          -- the highest known row when `e` is a heal under the
+--                        floor, else nil
+--   kind              -- "heal" or "damage" (the trade-off k)
+--   name(row)         -- "Rank 7", "rolled x3"
+-- Answers { label, text } pairs: TRADE, Per mana, Per sec, Score, then the
+-- verdict(s) -- "holds best, max", "beaten by Rank 6", "under 40% of Rank
+-- 12's heal", "Rank 6 trades better (1.075 vs 1.054)", "trade does not pay
+-- (0.959)". {} without a max to trade against.
+function W.TradeLines(ctx)
+    local out = {}
+    if type(ctx) ~= "table" then return out end
+    local e, maxR, best = ctx.e, ctx.max, ctx.best
+    if type(e) ~= "table" or type(maxR) ~= "table" then return out end
+    local name = ctx.name or function(r) return "Rank " .. tostring(r and r.rank or "-") end
+    local kind = ctx.kind
+    local sc = ScoreOf(e, maxR, kind)
+    if e == maxR then
+        out[#out + 1] = { "TRADE", "this rank is max" }
+    else
+        out[#out + 1] = { "TRADE", "vs max " .. name(maxR) }
+        local pm, ps = Change(e.perMana, maxR.perMana), Change(e.perSec, maxR.perSec)
+        if pm then out[#out + 1] = { "Per mana", W.Signed(pm) } end
+        if ps then out[#out + 1] = { "Per sec", W.Signed(ps) } end
+    end
+    if sc ~= nil then out[#out + 1] = { "Score", W.Score(sc) .. " vs max " .. W.Score(1) } end
+    local holds = {}
+    if best == e then holds[#holds + 1] = "best" end
+    if maxR == e then holds[#holds + 1] = "max" end
+    if ctx.eff == e then holds[#holds + 1] = "eff" end
+    if #holds > 0 then out[#out + 1] = { "Verdict", "holds " .. table.concat(holds, ", ") } end
+    if best ~= e then
+        local why
+        if type(ctx.beatenBy) == "table" then
+            why = "beaten by " .. name(ctx.beatenBy)
+        elseif type(ctx.floorRow) == "table" then
+            why = "under " .. Num(ST.Rules.SUGGESTED_FLOOR * 100) .. "% of " .. name(ctx.floorRow) .. "'s "
+                .. ((kind == "damage") and "damage" or "heal")
+        else
+            local bs = (type(best) == "table" and best ~= maxR) and ScoreOf(best, maxR, kind) or nil
+            if bs ~= nil and sc ~= nil and (e == maxR or sc > 1) then
+                why = name(best) .. " trades better (" .. W.Score(bs) .. " vs " .. W.Score(sc) .. ")"
+            elseif sc ~= nil and e ~= maxR then
+                why = "trade does not pay (" .. W.Score(sc) .. ")"
+            end
+        end
+        if why then out[#out + 1] = { (#holds > 0) and "" or "Verdict", why } end
+    end
+    return out
+end
+
 -- The Spells pane's decision strip (3.5): the suggested rank against the
 -- highest known, from Book:Compare's numbers `c` ({ perMana, value, cast } in
 -- percent); `rank` the highest rank's number, `kind` "heal" or "damage". The
@@ -592,24 +684,28 @@ end
 --              shorter cast."
 --   "tight" -- "vs R2: +22%/mana, 61% damage, -13% cast"
 -- `c` nil (no comparison) is "".
-W.COMPARE_STYLES = { "full", "short", "tight" }
+-- T128: "brief" drops the cast ("vs R2: +22%/mana, 61% damage") and
+-- "least" says per mana alone ("vs R2: +22%/mana"), so a narrow strip at a
+-- large font still finds a wording that fits; `score` (optional, RR.Score's
+-- number) closes the full and short sentences: "...; score 1.075 vs max 1.000."
+W.COMPARE_STYLES = { "full", "short", "tight", "brief", "least" }
 local function Pct(x) return math.floor(math.abs(x) + 0.5) end
 -- `highest` true: the rank compared against is the highest known standing in
 -- for a missing max (review T127 m7), headed "(highest)" not "(max)".
-function W.Compare(c, rank, kind, style, highest)
+function W.Compare(c, rank, kind, style, highest, score)
     if type(c) ~= "table" then return "" end
     local dmg = (kind == "damage")
     local what = dmg and "damage" or "healing"
     local noun = dmg and "damage" or "heal"
     local r = tostring(rank or "-")
     local parts = {}
-    if style == "tight" then
+    if style == "tight" or style == "brief" or style == "least" then
         if type(c.perMana) == "number" then
             local p = Pct(c.perMana)
             parts[#parts + 1] = (p == 0) and "same/mana" or ((c.perMana > 0 and "+" or "-") .. p .. "%/mana")
         end
-        if type(c.value) == "number" then parts[#parts + 1] = Pct(c.value) .. "% " .. noun end
-        if type(c.cast) == "number" then
+        if type(c.value) == "number" and style ~= "least" then parts[#parts + 1] = Pct(c.value) .. "% " .. noun end
+        if type(c.cast) == "number" and style == "tight" then
             local p = Pct(c.cast)
             parts[#parts + 1] = (p == 0) and "same cast" or ((c.cast < 0 and "-" or "+") .. p .. "% cast")
         end
@@ -640,12 +736,17 @@ function W.Compare(c, rank, kind, style, highest)
     local head = "vs Rank " .. r
     if not short then head = head .. tag end
     if #parts == 0 then return head .. "." end
-    return head .. ": " .. table.concat(parts, ", ") .. "."
+    local tail = ""
+    if type(score) == "number" then -- T128
+        if short then tail = ", score " .. W.Score(score)
+        else tail = "; score " .. W.Score(score) .. " vs max " .. W.Score(1) end
+    end
+    return head .. ": " .. table.concat(parts, ", ") .. tail .. "."
 end
 
 -- The strip when the suggested rank is the highest known, by the same styles.
 function W.CompareSame(style)
-    if style == "tight" then return "Your highest is best." end
+    if style ~= "full" and style ~= "short" then return "Your highest is best." end
     return "Your highest rank is also the best rank."
 end
 
@@ -681,12 +782,12 @@ function W.CompareBestIsMax(fam, kind, style)
     if type(best) ~= "table" or fam.maxRank ~= best then return W.CompareSame(style) end
     local rn = tostring(best.rank or "-")
     if effR == nil or effR == best then
-        if style == "tight" then return "Rank " .. rn .. " holds all three marks." end
+        if style ~= "full" and style ~= "short" then return "Rank " .. rn .. " holds all three marks." end
         return "Rank " .. rn .. " holds all three marks: the most per mana and per second. Every lower rank is beaten."
     end
     local er = tostring(effR.rank or "-")
     local pm, ps = Change(effR.perMana, best.perMana), Change(effR.perSec, best.perSec)
-    if style == "tight" or not (pm and ps) then return "Also max. Most per mana: R" .. er .. "." end
+    if (style ~= "full" and style ~= "short") or not (pm and ps) then return "Also max. Most per mana: R" .. er .. "." end
     if style == "short" then
         return "Also max. Most per mana: Rank " .. er .. ", " .. W.Signed(pm) .. " per mana, " .. W.Signed(ps) .. " per sec."
     end
@@ -696,7 +797,7 @@ function W.CompareBestIsMax(fam, kind, style)
     return "Rank " .. rn .. " is best and max: no rank's extra per mana is worth what it loses per second ("
         .. paren .. "). Rank " .. er .. " has the most per mana: " .. Num(math.abs(pm)) .. "% "
         .. ((pm >= 0) and "more" or "less") .. " for " .. Num(math.abs(ps)) .. "% "
-        .. ((ps <= 0) and "less" or "more") .. " per second."
+        .. ((ps <= 0) and "less" or "more") .. " per second" .. ScoreTail(effR, best, kind) .. "."
 end
 
 -- T110 (docs/SPEC-next.md 4.2 P6): an either-or spell's other half, for the

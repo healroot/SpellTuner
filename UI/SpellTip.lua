@@ -154,9 +154,18 @@ end
 -- The book's pool when it is below its max, else nil (5.1: at full "N now"
 -- would only repeat the first number). T121: ST.Book:Pool() on both lines --
 -- Forever's the clock's modelled pool, TBC's the pool the client reads.
+-- T128: the view a caller passed to Lines ({ book, pool }: the Spells pane's
+-- What if), for the one call in progress; nil for the live book and pool.
+local activeView
+
 local function NowPool()
-    if not (Book and Book.Pool) then return nil end
-    local ok, pool = pcall(Book.Pool, Book)
+    local ok, pool
+    if activeView and type(activeView.pool) == "table" then
+        ok, pool = true, activeView.pool
+    else
+        if not (Book and Book.Pool) then return nil end
+        ok, pool = pcall(Book.Pool, Book)
+    end
     if not ok or type(pool) ~= "table" then return nil end
     if type(pool.mana) ~= "number" or type(pool.max) ~= "number" then return nil end
     if pool.mana >= pool.max then return nil end
@@ -187,7 +196,13 @@ end
 -- full on both lines, so it is counted here; the entry's own count when the
 -- book cannot.
 local function CastsFromFull(entry)
-    local okPool, pool = pcall(Book.DefaultPool, Book)
+    local okPool, pool
+    if activeView and type(activeView.pool) == "table" then
+        -- T128: a full pool of the view's (its max and casting regen)
+        okPool, pool = true, { max = activeView.pool.max, regenCasting = activeView.pool.regenCasting }
+    else
+        okPool, pool = pcall(Book.DefaultPool, Book)
+    end
     if okPool and type(pool) == "table" then
         local n = Book:CastsFor(entry, pool)
         if n ~= nil then return n end
@@ -511,12 +526,27 @@ end
 -- was a field (SpellTip.lastOutcome) until T67, which any caller -- the
 -- Spells pane's rank-row hover -- overwrote; a return reaches only the
 -- caller that asked.
-function SpellTip:Lines(id, detail, source)
+-- T128: `view` ({ book, pool }, optional) draws the block from that book
+-- and counts casts from that pool -- the Spells pane's rank-row hover under
+-- What if, so the block's numbers are the row's. nil: the live book.
+local LinesFor
+function SpellTip:Lines(id, detail, source, view)
     if type(id) ~= "number" then
         return nil, "no id"
     end
+    if type(view) ~= "table" or type(view.book) ~= "table" or type(view.book.families) ~= "table" then
+        view = nil
+    end
+    local prev = activeView
+    activeView = view
+    local ok, lines, outcome, kind = pcall(LinesFor, id, detail, source, view)
+    activeView = prev
+    if not ok then error(lines, 0) end
+    return lines, outcome, kind
+end
 
-    local book = Book:Get()
+LinesFor = function(id, detail, source, view)
+    local book = view and view.book or Book:Get()
     local entry = book.spells[id]
     local inBook = entry ~= nil
     -- T121: the family by the entry's key (TBC's book keys families by
@@ -674,6 +704,29 @@ local withBlock = setmetatable({}, { __mode = "k" })
 -- id); the class profile's tooltip cap (T99's rule, now on both lines) and
 -- db.spellTooltipDamage (a damage family's block) gate it here, not in
 -- Lines, so the Spells pane's rank-row hover keeps its block.
+-- T128: a view set on a tooltip for one id (SpellTip:SetView, the Spells
+-- pane's rank-row hover under What if): the block that tooltip shows for that
+-- id is drawn from the view's book and pool. Cleared on ClearView, and when
+-- the tooltip hides.
+local views = setmetatable({}, { __mode = "k" })
+function SpellTip:SetView(tt, id, view)
+    if not tt then return end
+    if type(view) ~= "table" or type(id) ~= "number" then views[tt] = nil return end
+    if not tt._spellTipViewHooked and tt.HookScript then
+        tt._spellTipViewHooked = true
+        tt:HookScript("OnHide", function(self) views[self] = nil end)
+    end
+    views[tt] = { id = id, view = view }
+end
+function SpellTip:ClearView(tt)
+    if tt then views[tt] = nil end
+end
+function SpellTip:ViewFor(tt, id)
+    local v = tt and views[tt]
+    if v and v.id == id then return v.view end
+    return nil
+end
+
 local function OnSpell(tt, id, source)
     if not tt or type(id) ~= "number" then return false, "no id" end
     if ST.db and ST.db.spellTooltip == false then return true, "off" end
@@ -700,7 +753,7 @@ local function OnSpell(tt, id, source)
     end
 
     -- The builder never raises into the game's tooltip.
-    local ok, lines, outcome, kind = pcall(SpellTip.Lines, SpellTip, id, detail, source)
+    local ok, lines, outcome, kind = pcall(SpellTip.Lines, SpellTip, id, detail, source, SpellTip:ViewFor(tt, id))
     if not ok then
         ST:Debug("other", "spell tooltip for %s failed: %s", tostring(id), tostring(lines))
         return false, "error"

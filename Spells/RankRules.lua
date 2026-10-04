@@ -18,6 +18,9 @@
 -- suggested rank -- eff (the most per mana), max (the most per second) and
 -- best (the trade against max, RR.Score at RR.TradeK) -- RR.Marks; the
 -- settings tradeKDamage / tradeKHeal are registered here.
+-- T128 (docs/tasks/T128-trade-score-and-rank-tips.md): the score multiplies
+-- -- (eff / eff of max) * (rate / rate of max) ^ k, max scoring exactly 1 --
+-- so a big per-second loss costs far more than a big per-mana gain buys.
 -- Loaded by SpellTuner_TBC.toc and the Forever main TOCs, after Core.lua.
 local _, ST = ...
 
@@ -71,32 +74,35 @@ end
 -- The rule's stamp (review T127 M1): its version and both k, so a snapshot of
 -- best ranks taken under another rule (UI/Advisor.lua's gear toast) is
 -- replaced, never compared. Bump RULE_VERSION when the rule itself changes.
-RR.RULE_VERSION = 2 -- 1: the floor rule (to 0.17.1); 2: T127's three marks
+RR.RULE_VERSION = 3 -- 1: the floor rule (to 0.17.1); 2: T127's three marks; 3: T128's score
 function RR.Stamp()
     return string.format("marks%d:%.4f:%.4f:%.4f", RR.RULE_VERSION, RR.TradeK("damage"), RR.TradeK("heal"),
         ST.Rules.SUGGESTED_FLOOR)
 end
 
--- The trade of row `r` against `maxRow` (the most per second):
--- (eff / eff of max - 1) - k * (1 - rate / rate of max). Positive when the
--- per mana gained outweighs the per second lost at weight `k`; 0 for max
--- itself. nil when either row lacks a number or max's are not positive.
+-- The trade of row `r` against `maxRow` (the most per second), T128:
+-- (eff / eff of max) * (rate / rate of max) ^ k. Above 1 when the per mana
+-- gained outweighs the per second lost at weight `k` (at the margin 1% per
+-- mana is worth 1/k % per second; a big loss costs far more); exactly 1 for
+-- max itself. nil when either row lacks a number or max's are not positive.
 function RR.Score(r, maxRow, f, k)
     if not r or not maxRow then return nil end
     local e, me, s, ms = r[f.eff], maxRow[f.eff], r[f.rate], maxRow[f.rate]
     if e == nil or me == nil or s == nil or ms == nil or me <= 0 or ms <= 0 then return nil end
-    return (e / me - 1) - k * (1 - s / ms)
+    if r == maxRow then return 1 end
+    if s < 0 then return nil end
+    return (e / me) * (s / ms) ^ k
 end
 
 -- T127: the three rank marks over the competing, non-dominated rows (run
 -- RR.Pareto first). Answers best, max, eff (rows); marks nothing.
 --   eff  -- the most per mana (first of equals, in row order)
 --   max  -- the most per second (first of equals)
---   best -- the row with the highest RR.Score above 0 against max at
+--   best -- the row with the highest RR.Score above 1 against max at
 --           RR.TradeK(kind) (first of equals); a heal must also be worth at
 --           least SUGGESTED_FLOOR of `top`'s value (the highest known rank;
 --           assumption, both lines: below the floor, cast-count pressure
---           outweighs efficiency); no row above 0 -> max.
+--           outweighs efficiency); no row above 1 -> max (T128).
 -- With no competing row, best is `top` (nil without one), max and eff nil.
 function RR.Marks(rows, top, f, kind)
     local eff, max
@@ -114,7 +120,7 @@ function RR.Marks(rows, top, f, kind)
         if tv == nil then tv = max[f.value] end
         if tv ~= nil then floor = ST.Rules.SUGGESTED_FLOOR * tv end
     end
-    local best, bestScore = nil, 0
+    local best, bestScore = nil, 1
     for _, r in ipairs(rows) do
         if f.eligible(r) and not r.dominated and r ~= max then
             local passes = true
@@ -145,21 +151,49 @@ local STACK_FIELDS = {
     eff = "perMana", rate = "perSec", value = "value",
     eligible = function(p) return p.known and p.perMana ~= nil and p.perSec ~= nil end,
 }
+local function Proxy(src)
+    return { src = src, known = true, perMana = src.perMana, perSec = src.perSec, value = src.value }
+end
+-- The rank's and its rolled rows' proxies, Pareto run, and the three marks
+-- among them (proxies); nil for an entry without rolled rows or not known.
+local function Stack(entry)
+    if not entry or not entry.known or type(entry.variants) ~= "table" then return nil end
+    local proxies = { Proxy(entry) }
+    for _, v in ipairs(entry.variants) do proxies[#proxies + 1] = Proxy(v) end
+    RR.Pareto(proxies, STACK_FIELDS)
+    local best, max, eff = RR.Marks(proxies, proxies[1], STACK_FIELDS, "heal")
+    return proxies, best, max, eff
+end
 function RR.MarkVariants(entry)
     if not entry then return end
     entry.bestOfStacks = nil
     local vs = entry.variants
     if type(vs) ~= "table" then return end
     for _, v in ipairs(vs) do v.bestOfStacks = nil end
-    if not entry.known then return end
-    local function Proxy(src)
-        return { src = src, known = true, perMana = src.perMana, perSec = src.perSec, value = src.value }
+    local proxies, best = Stack(entry)
+    if proxies and best and STACK_FIELDS.eligible(best) then best.src.bestOfStacks = true end
+end
+
+-- T128: the marks among a rank and its rolled rows, for a row's TRADE block
+-- (UI/SpellsPane.lua): { best, max, eff } as the rank or its rows, and
+-- beatenBy[row] = the row that beats it (the most per mana of those that
+-- do). nil for an entry with no rolled rows, or not known.
+function RR.StackMarks(entry)
+    local proxies, best, max, eff = Stack(entry)
+    if not proxies then return nil end
+    local function Src(p) return p and p.src or nil end
+    local out = { best = Src(best), max = Src(max), eff = Src(eff), beatenBy = {} }
+    if out.best and not STACK_FIELDS.eligible(best) then out.best = nil end
+    for _, pi in ipairs(proxies) do
+        if pi.dominated then
+            local by
+            for _, pj in ipairs(proxies) do
+                if RR.Beats(pj, pi, STACK_FIELDS) and (not by or pj.perMana > by.perMana) then by = pj end
+            end
+            if by then out.beatenBy[pi.src] = by.src end
+        end
     end
-    local proxies = { Proxy(entry) }
-    for _, v in ipairs(vs) do proxies[#proxies + 1] = Proxy(v) end
-    RR.Pareto(proxies, STACK_FIELDS)
-    local best = RR.Marks(proxies, proxies[1], STACK_FIELDS, "heal")
-    if best and STACK_FIELDS.eligible(best) then best.src.bestOfStacks = true end
+    return out
 end
 
 -- For each dominated row, the id of the row that beats it: `suggested` when

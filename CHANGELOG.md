@@ -30,6 +30,16 @@ published to CurseForge; the developers' log is `docs/HISTORY.md`.
   `Best` line say which rank holds which mark and why. Lifebloom shows `best` on the way to cast
   it that wins (one cast, or rolled x3).
 - Settings -> Review -> MODEL: `Trade-off: damage` and `Trade-off: heals` set the two trades.
+- The trade now multiplies: a rank scores its per mana against max's times its per second
+  against max's to the power of the trade-off, and is best when that beats max's 1.000. A small
+  loss per second still trades at the slider's rate; a big one costs far more, so Starfire with
+  +550 spell damage marks Rank 6 best instead of Rank 1. The words say the score (`score 1.075
+  vs max 1.000`).
+- Hovering any rank in RANKS ends with a `TRADE` block against max: per mana, per second, the
+  score and the verdict (holds best, beaten by Rank N, under 40% of Rank N's heal, Rank N trades
+  better, or the trade does not pay). Lifebloom's rolled rows say the same against their stack.
+- With What if on, a rank's hover shows the What if numbers, as its cells do (it showed the live
+  ones), and the line beside the WHAT IF chip shortens instead of being cut off at large fonts.
 
 ### Commands
 - /md is gone: use /st (or /spelltuner).
