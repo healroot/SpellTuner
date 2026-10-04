@@ -1292,6 +1292,104 @@ if S.flavour == "tbc" then
         return #bad == 0 and #seen > 0, table.concat(bad, "; ") .. " | " .. table.concat(seen, " // ") .. " || " .. vtip
     end)
 
+    -- Review T128 M1: Lifebloom's own rank row is one of its stack -- its
+    -- TRADE verdict agrees with its tag (beaten when a rolled row holds best),
+    -- never the family's "holds best, max, eff" of a one-rank family; the
+    -- stack's max row says "max of the stack", no rolled row "this rank is max".
+    T("T128 tbc review M1: Lifebloom's rank row hover agrees with its tag; the stack's max says so", function()
+        WIr():Clear()
+        if Fam() and Fam().whatIf and Fam().whatIf:IsShown() then Click(Fam().strip.whatIfBtn) end
+        local f = OpenFam("Lifebloom")
+        local fam = ST.Book:Get().families.Lifebloom
+        local bad, seen = {}, {}
+        local rankRow, rankEntry
+        for _, it in pairs(RankRowsBy(f)) do
+            if type(it.r.entry.variants) == "table" then rankRow, rankEntry = it.row, it.r.entry end
+        end
+        if not rankRow then return false, "no Lifebloom rank row with rolled rows" end
+        local tag = TagWant(fam, rankEntry)
+        GameTooltip.lines = nil
+        rankRow:GetScript("OnEnter")(rankRow)
+        local tip = TipLines(GameTooltip)
+        rankRow:GetScript("OnLeave")(rankRow)
+        seen[#seen + 1] = "rank(" .. tag .. "): " .. tip
+        if tag ~= "best" and tip:find("holds best", 1, true) then bad[#bad + 1] = "rank row holds best, tag " .. tag end
+        if tag == "beaten" and not (tip:find("beaten by rolled", 1, true) or tip:find("trades better", 1, true)) then
+            bad[#bad + 1] = "rank row tagged beaten, verdict does not say by what"
+        end
+        if not tip:find("TRADE|", 1, true) then bad[#bad + 1] = "rank row: no TRADE block" end
+        local sm = ST.RankRules.StackMarks(rankEntry)
+        local maxSeen = false
+        for _, r in ipairs(f.lastRows or {}) do
+            if r.kind == "variant" then
+                local row = RowFrame(r)
+                if UI.tooltip then UI.tooltip.lines = nil end
+                row:GetScript("OnEnter")(row)
+                local vt = TipLines(UI.tooltip)
+                row:GetScript("OnLeave")(row)
+                seen[#seen + 1] = tostring(r.variant and r.variant.variantLabel) .. ": " .. vt
+                if vt:find("this rank is max", 1, true) then bad[#bad + 1] = "a rolled row says this rank is max" end
+                if vt:find("TRADE|max of the stack", 1, true) then maxSeen = true end
+            end
+        end
+        if sm and sm.max ~= rankEntry and not maxSeen then bad[#bad + 1] = "the stack's max row does not say max of the stack" end
+        if sm and sm.max == rankEntry and not tip:find("TRADE|max of the stack", 1, true) then
+            bad[#bad + 1] = "the rank is the stack's max and does not say so"
+        end
+        OpenFam("HealingTouch")
+        return #bad == 0, table.concat(bad, "; ") .. " | " .. table.concat(seen, " // ")
+    end)
+
+    -- Review T128 m1: After overheal on, the TRADE block's Per mana is the
+    -- change between the cells' numbers (afterOverheal), and a closing line
+    -- says the score is the marks', from before overheal. One rank's
+    -- afterOverheal is moved so a uniform overheal cannot hide raw numbers.
+    T("T128 tbc review m1: After overheal on -- TRADE per mana from the cells' numbers, the score's note", function()
+        WIr():Clear()
+        if Fam() and Fam().whatIf and Fam().whatIf:IsShown() then Click(Fam().strip.whatIfBtn) end
+        local f = OpenFam("HealingTouch")
+        local cb = f.strip and f.strip.after
+        if not cb then return false, "no After overheal check" end
+        cb:SetChecked(true); Click(cb)
+        f = Fam()
+        local fam = ST.Book:Get().families.HealingTouch
+        local top = fam.maxRank
+        local bad, seen = {}, {}
+        local probe
+        for _, it in pairs(RankRowsBy(f)) do
+            local e = it.r.entry
+            if e.known ~= false and e ~= top and type(e.afterOverheal) == "table" and not probe then probe = it end
+        end
+        if not (probe and type(top.afterOverheal) == "table") then
+            cb:SetChecked(false); Click(cb)
+            return false, "no rank with afterOverheal"
+        end
+        local e = probe.r.entry
+        local saved = e.afterOverheal.perMana
+        e.afterOverheal.perMana = top.afterOverheal.perMana * 1.37
+        local want = W.Signed((e.afterOverheal.perMana / top.afterOverheal.perMana - 1) * 100)
+        GameTooltip.lines = nil
+        probe.row:GetScript("OnEnter")(probe.row)
+        local tip = TipLines(GameTooltip)
+        probe.row:GetScript("OnLeave")(probe.row)
+        e.afterOverheal.perMana = saved
+        seen[#seen + 1] = "R" .. tostring(e.rank) .. ": " .. tip
+        if not tip:find("Per mana|" .. want, 1, true) then bad[#bad + 1] = "TRADE per mana not " .. want end
+        if not tip:find("before overheal", 1, true) then bad[#bad + 1] = "no note that the score is from before overheal" end
+        cb:SetChecked(false); Click(cb)
+        f = Fam()
+        local off
+        for _, it in pairs(RankRowsBy(f)) do if it.r.entry == e or it.r.entry.id == e.id then off = it end end
+        if off then
+            GameTooltip.lines = nil
+            off.row:GetScript("OnEnter")(off.row)
+            local t2 = TipLines(GameTooltip)
+            off.row:GetScript("OnLeave")(off.row)
+            if t2:find("before overheal", 1, true) then bad[#bad + 1] = "note with After overheal off" end
+        end
+        return #bad == 0, table.concat(bad, "; ") .. " | " .. table.concat(seen, " // ")
+    end)
+
     -- T128 (docs/tasks/T128-trade-score-and-rank-tips.md 3): What if on, best
     -- not max, a damage family -- the strip that truncated in the author's
     -- screenshot. The stub's 6 px a character at 12 pt is narrower than the
@@ -1324,6 +1422,35 @@ if S.flavour == "tbc" then
             if line then lines = lines + 1 end
             return lines
         end
+        -- Review T128 m4: the room is checked against the anchors, not the
+        -- width the code computed: from the chip's right edge plus the gap
+        -- to the gap before what sits at the strip's right (the side column
+        -- when shown, else What if...); the compare's own two anchors span it.
+        local function LastPoint(frame, names, rel, relNames)
+            local hit
+            for _, pt in ipairs(frame.points or {}) do
+                if names[pt[1]] and pt[2] == rel and relNames[pt[3]] then hit = pt end
+            end
+            return hit
+        end
+        local RIGHTS = { TOPRIGHT = true, RIGHT = true, BOTTOMRIGHT = true }
+        local function RoomProblems(st, where)
+            local out = {}
+            local W0 = st:GetWidth()
+            local occ = st.side:IsShown() and st.side or st.whatIfBtn
+            local op = LastPoint(occ, RIGHTS, st, RIGHTS)
+            local cp = LastPoint(st.chip, { TOPLEFT = true, LEFT = true }, st, { TOPLEFT = true, LEFT = true })
+            local lp = LastPoint(st.compare, { LEFT = true }, st.chip, { RIGHT = true })
+            local rp = LastPoint(st.compare, { RIGHT = true }, st, { RIGHT = true })
+            if not (op and cp and lp and rp) then return { where .. "anchors not found" } end
+            local occLeft = W0 + (op[4] or 0) - occ:GetWidth()
+            local chipRight = (cp[4] or 0) + st.chip:GetWidth()
+            local room = occLeft - 12 - (chipRight + 12)
+            local anchored = (W0 + (rp[4] or 0)) - (chipRight + (lp[4] or 0))
+            if st.compareW ~= room then out[#out + 1] = where .. "compareW " .. tostring(st.compareW) .. " vs room " .. room end
+            if anchored ~= room then out[#out + 1] = where .. "anchored " .. anchored .. " vs room " .. room end
+            return out
+        end
         local problems, seen = {}, {}
         local ok, err = pcall(function()
             for _, o in ipairs({ -2, -1, 0, 1, 2 }) do
@@ -1343,6 +1470,7 @@ if S.flavour == "tbc" then
                     seen[#seen + 1] = o .. "=" .. Strip(text)
                     if text == "" then problems[#problems + 1] = where .. "no comparison" end
                     if n > 2 then problems[#problems + 1] = where .. n .. " lines in " .. tostring(st.compareW) .. ": " .. text end
+                    for _, p in ipairs(RoomProblems(st, where .. "WHAT IF ")) do problems[#problems + 1] = p end
                     local s, top = fam.suggested, fam.maxRank
                     local full = W.Compare(ST.Book:Compare(s, top), top.rank, fam.kind, "full", false,
                         W.ScoreOf(s, top, fam.kind))
@@ -1366,6 +1494,10 @@ if S.flavour == "tbc" then
         UI.ApplyFonts(0)
         WIr():Clear()
         if Fam().whatIf and Fam().whatIf:IsShown() then Click(Fam().strip.whatIfBtn) end
+        -- the BEST chip state: What if off, the same room
+        f = OpenFam("Wrath")
+        if Strip(f.strip.chipLabel:GetText() or "") ~= "BEST" then problems[#problems + 1] = "BEST state not reached" end
+        for _, p in ipairs(RoomProblems(f.strip, "BEST ")) do problems[#problems + 1] = p end
         InstallBook(DRUID_WALK)
         ST.Book:Refresh()
         OpenFam("HealingTouch")
@@ -2710,7 +2842,8 @@ T36("T38 the header and the decision strip: which rank, and one factual line", f
         -- is max, Rank 2, and the strip names the eff rank
         and f.strip.chipRank:GetText() == "Rank 2"
         and f.strip.compare:GetText() == "Rank 2 is best and max: no rank's extra per mana is worth what it loses"
-            .. " per second (heals, 6.7:1). Rank 1 has the most per mana: 2% more for 38% less per second, score 0.948."
+            .. " per second (heals, 6.7:1 at the margin). Rank 1 has the most per mana: 2% more for 38% less per second," -- review T128 m3
+            .. " score 0.948."
     return good, string.format("sub=%q mana=%q chip=%q cmp=%q", tostring(f.header.sub:GetText()), manaText,
         tostring(f.strip.chipRank and f.strip.chipRank:GetText()), tostring(f.strip.compare and f.strip.compare:GetText()))
 end)
@@ -2778,7 +2911,7 @@ T36("T38 the ranks table: every rank to the highest listed, the gap, the bar and
             .. " than Rank 2. Not best: the per second it gives up costs more than the mana it saves at 6.7:1."
             .. " Press it when mana runs out before the fight does."
         and bestTip == "Best and max Rank 2 / The most per second, and no rank's extra per mana is worth what it"
-            .. " loses per second (heals: 1% per mana for 6.7% per second). Most per mana is Rank 1: +2% for -38%"
+            .. " loses per second (heals: 1% per mana for 6.7% per second at the margin). Most per mana is Rank 1: +2% for -38%" -- review T128 m3
             .. " per second, score 0.948." -- T128: the score closes it
         and gapTip[1] == "no tag hit"
     local good = t78 and table.concat(order, ",") == "rank1,rank2,gap3,rank4"

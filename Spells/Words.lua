@@ -501,7 +501,7 @@ end
 -- numbers read back; `kind` "heal" or "damage".
 --   best (also max, eff elsewhere) "no trade pays at 4:1; Rank 6: +5% per mana, -49% per sec"
 --   best (all three)               "nothing to trade: it is also the most per mana"
---   best (not max)                 "+204% per mana for -40% per second (worth it for damage at 4:1)"
+--   best (not max)                 "+9% per mana for -7% per second: score 1.075 vs max 1.000 (damage at 4:1)"
 --   max                            "most per second: 720"
 --   eff                            "most per mana: 4.44 (+5% vs Rank 10 for -49% per second)"
 --   eff under the floor            "most per mana: 4.75; under the 40% heal floor, so not best"
@@ -565,8 +565,9 @@ function W.MarkTip(tag, e, fam, kind)
     if tag == "best" then
         if type(maxR) ~= "table" then return "Best " .. rankName, W.SuggestedRule() end
         if maxR == e then
+            -- review T128 m3: the rate holds at the margin only
             local text = "The most per second, and no rank's extra per mana is worth what it loses per second ("
-                .. (heal and "heals" or "damage") .. ": " .. Weight(kind) .. ")."
+                .. (heal and "heals" or "damage") .. ": " .. Weight(kind) .. " at the margin)."
             if type(effR) == "table" and effR ~= e then
                 local pm, ps = Change(effR.perMana, e.perMana), Change(effR.perSec, e.perSec)
                 if pm and ps then
@@ -626,6 +627,12 @@ end
 --                        floor, else nil
 --   kind              -- "heal" or "damage" (the trade-off k)
 --   name(row)         -- "Rank 7", "rolled x3"
+--   shown(row)        -- optional: the numbers the row's cells show (After
+--                        overheal), for the Per mana / Per sec changes
+--                        (review T128 m1); the score stays the marks'
+--   note              -- optional: a closing line (what the score is from)
+--   selfWord          -- optional: the TRADE line when `e` is max ("this
+--                        rank is max"; a stack's "max of the stack")
 -- Answers { label, text } pairs: TRADE, Per mana, Per sec, Score, then the
 -- verdict(s) -- "holds best, max", "beaten by Rank 6", "under 40% of Rank
 -- 12's heal", "Rank 6 trades better (1.075 vs 1.054)", "trade does not pay
@@ -639,10 +646,12 @@ function W.TradeLines(ctx)
     local kind = ctx.kind
     local sc = ScoreOf(e, maxR, kind)
     if e == maxR then
-        out[#out + 1] = { "TRADE", "this rank is max" }
+        out[#out + 1] = { "TRADE", ctx.selfWord or "this rank is max" }
     else
         out[#out + 1] = { "TRADE", "vs max " .. name(maxR) }
-        local pm, ps = Change(e.perMana, maxR.perMana), Change(e.perSec, maxR.perSec)
+        local se, sm = e, maxR
+        if type(ctx.shown) == "function" then se, sm = ctx.shown(e) or e, ctx.shown(maxR) or maxR end
+        local pm, ps = Change(se.perMana, sm.perMana), Change(se.perSec, sm.perSec)
         if pm then out[#out + 1] = { "Per mana", W.Signed(pm) } end
         if ps then out[#out + 1] = { "Per sec", W.Signed(ps) } end
     end
@@ -669,6 +678,7 @@ function W.TradeLines(ctx)
         end
         if why then out[#out + 1] = { (#holds > 0) and "" or "Verdict", why } end
     end
+    if type(ctx.note) == "string" and ctx.note ~= "" then out[#out + 1] = { ctx.note } end
     return out
 end
 
@@ -757,7 +767,7 @@ end
 --                    per second. Every lower rank is beaten."
 --   eff elsewhere    full  "Rank 10 is best and max: no rank's extra per
 --                          mana is worth what it loses per second (damage,
---                          4:1). Rank 6 has the most per mana: 5% more for
+--                          4:1 at the margin). Rank 6 has the most per mana: 5% more for
 --                          49% less per second."
 --                    short "Also max. Most per mana: Rank 6, +5% per mana,
 --                          -49% per sec."
@@ -793,7 +803,7 @@ function W.CompareBestIsMax(fam, kind, style)
     end
     local ratio = W.TradeRatio(TradeK(kind))
     local paren = (kind == "damage") and "damage" or "heals"
-    if ratio then paren = paren .. ", " .. ratio end
+    if ratio then paren = paren .. ", " .. ratio .. " at the margin" end -- review T128 m3
     return "Rank " .. rn .. " is best and max: no rank's extra per mana is worth what it loses per second ("
         .. paren .. "). Rank " .. er .. " has the most per mana: " .. Num(math.abs(pm)) .. "% "
         .. ((pm >= 0) and "more" or "less") .. " for " .. Num(math.abs(ps)) .. "% "

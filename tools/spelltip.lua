@@ -335,6 +335,16 @@ L = Damage(133)
 check("a costed spell outside the druid's damage families: the Other block (header, Casts to OOM)",
     #L == 3 and R(find(L, "SpellTuner")) == "Rank 1 of 1" and find(L, "Casts to OOM") ~= nil
     and find(L, "Per mana") == nil, #L .. " lines")
+-- review T128 m2: under a view (the Spells pane's What if) the Other block
+-- counts casts to OOM from the view's pool, as the heal and damage rows do
+do
+    local live = R(find(L, "Casts to OOM"))
+    local okL, viewL = pcall(ST.SpellTip.Lines, ST.SpellTip, 133, false, nil,
+        { book = ST.Book:Get(), pool = { max = 200000, regenCasting = 0 } })
+    local inView = okL and type(viewL) == "table" and R(find(viewL, "Casts to OOM")) or nil
+    check("review T128 m2: the Other block's Casts to OOM from the view's pool, not the live one",
+        live ~= nil and inView ~= nil and inView ~= live, tostring(live) .. " vs " .. tostring(inView))
+end
 ST.db.spellTooltipDamage = false
 check("the damage setting off adds nothing to a damage spell", #Damage(9912) == 0)
 check("and leaves the heals alone", #SetSpell(rejuv) > 0)

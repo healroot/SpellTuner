@@ -642,6 +642,8 @@ local function TradeTipLines(ctx)
     for i, p in ipairs(Words.TradeLines(ctx)) do
         if i == 1 then
             out[#out + 1] = { l = p[1], r = p[2], c = "text", rc = "label" }
+        elseif p[2] == nil then
+            out[#out + 1] = { l = p[1], c = "muted", wrap = true } -- the closing note
         else
             out[#out + 1] = { l = p[1], r = p[2], c = "label", rc = "text" }
         end
@@ -651,21 +653,34 @@ end
 local function RankWord(x)
     return "Rank " .. tostring(x and x.rank or "-")
 end
+-- Review T128 m1: with After overheal on, the Per mana / Per sec changes are
+-- the cells' numbers (ShownEntry) and a closing line says the score is the
+-- marks', from before overheal; nil, nil when it is off.
+local function AfterShown()
+    if not AfterOn() then return nil, nil end
+    return function(x) return ShownEntry(x, true) end,
+        "Per mana and Per sec after overheal, as the cells; the score from before overheal (the marks')."
+end
+-- A rolled row (or the rank it rolls), against the most per second among
+-- the rank and its rolled rows (RR.StackMarks): one cost, one GCD, a heal.
+local StackTradeTip
 -- A known rank of a family with a kind, against the family's max (the
 -- row's own book: the what-if book's family while What if is active).
+-- Review T128 M1: a rank with rolled rows (Lifebloom) is one of its stack,
+-- so its block is the stack's, as its tag and card are.
 RankTradeTip = function(fam, e)
     if type(fam) ~= "table" or not fam.kind or type(e) ~= "table" or e.known == false then return {} end
+    if type(e.variants) == "table" and #e.variants > 0 then return StackTradeTip(e, e) end
     local kind = MarkKind(fam)
     local floorRow
     if Words.UnderFloor(e, fam, kind) then floorRow = fam.maxKnown or fam.maxRank end
     local beatenBy
     if e.dominated then beatenBy = BeatenBy(fam, e) end
+    local shown, note = AfterShown()
     return TradeTipLines({ e = e, best = fam.suggested, max = fam.maxRank, eff = fam.effRank,
-        beatenBy = beatenBy, floorRow = floorRow, kind = kind, name = RankWord })
+        beatenBy = beatenBy, floorRow = floorRow, kind = kind, name = RankWord, shown = shown, note = note })
 end
--- A rolled row (or the rank it rolls), against the most per second among
--- the rank and its rolled rows (RR.StackMarks): one cost, one GCD, a heal.
-local function StackTradeTip(parent, v)
+StackTradeTip = function(parent, v)
     local sm = ST.RankRules and ST.RankRules.StackMarks and ST.RankRules.StackMarks(parent)
     if not sm or not sm.max then return {} end
     local floorRow
@@ -677,8 +692,10 @@ local function StackTradeTip(parent, v)
         if x == parent then return RankWord(parent) .. " one cast" end
         return "rolled " .. tostring(x.variantLabel or ("x" .. tostring(x.variant)))
     end
+    local shown, note = AfterShown()
     return TradeTipLines({ e = v, best = sm.best, max = sm.max, eff = sm.eff, beatenBy = sm.beatenBy[v],
-        floorRow = floorRow, kind = "heal", name = Name })
+        floorRow = floorRow, kind = "heal", name = Name, selfWord = "max of the stack", shown = shown,
+        note = note })
 end
 function TagTip(r)
     local tag = TagOf(r)
@@ -2287,7 +2304,7 @@ local MINE_COLS = {
     { key = "spell",     x = 28,  w = 128, label = "Spell" },
     -- T127 (review m1): the column is the best mark, named so
     { key = "suggested", x = 158, w = 62,  label = "Best",
-      tooltip = "The best rank: the most per mana that is worth what it loses per second against max." },
+      tooltip = "The best rank: the one that scores highest against max (per mana x per sec^k)." }, -- review T128 m3
     { key = "value",     x = 220, w = 46,  label = "Value",    justify = "RIGHT",
       tooltip = "The best rank's average heal or damage; all of it for one over time." },
     { key = "permana",   x = 266, w = 58,  label = "Per mana", justify = "RIGHT",

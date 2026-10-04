@@ -195,14 +195,16 @@ end
 -- the player has now (RankMath's row); the block's first number is from
 -- full on both lines, so it is counted here; the entry's own count when the
 -- book cannot.
-local function CastsFromFull(entry)
-    local okPool, pool
+-- The full pool casts are counted from: the view's (T128: its max and
+-- casting regen) when a view is active, else Book:DefaultPool().
+local function FullPool()
     if activeView and type(activeView.pool) == "table" then
-        -- T128: a full pool of the view's (its max and casting regen)
-        okPool, pool = true, { max = activeView.pool.max, regenCasting = activeView.pool.regenCasting }
-    else
-        okPool, pool = pcall(Book.DefaultPool, Book)
+        return true, { max = activeView.pool.max, regenCasting = activeView.pool.regenCasting }
     end
+    return pcall(Book.DefaultPool, Book)
+end
+local function CastsFromFull(entry)
+    local okPool, pool = FullPool()
     if okPool and type(pool) == "table" then
         local n = Book:CastsFor(entry, pool)
         if n ~= nil then return n end
@@ -507,7 +509,10 @@ local function OtherLines(entry, family, source)
     -- T95: never under the spell's cooldown (Book's IntervalFor, no part).
     local counted = { cost = entry.cost, interval = (Book.IntervalFor and Book.IntervalFor(entry, nil))
         or math.max(entry.cast or 0, GCD) }
-    local full = Book:CastsFor(counted, Book:DefaultPool())
+    -- Review T128 m2: from the view's pool under What if, as the heal rows.
+    local okPool, pool = FullPool()
+    local full
+    if okPool and type(pool) == "table" then full = Book:CastsFor(counted, pool) end
     return {
         Header(entry, family, source, false),
         Pair("Casts to OOM", CastsText(full, counted)),
