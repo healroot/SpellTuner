@@ -9,10 +9,10 @@
 -- Only the Druid entry has a value function; the other classes are Phase 2
 -- stubs (docs/PLAN.md) and are skipped until someone of that class can log one
 -- in-game. The potion table is class-generic and always active.
-local _, MD = ...
+local _, ST = ...
 
 local MC = {}
-MD.ManaCooldowns = MC
+ST.ManaCooldowns = MC
 
 local INNERVATE = 29166
 
@@ -27,12 +27,12 @@ local INNERVATE = 29166
 -- they are added once, not five times. That split is assumed until the "regen"
 -- debug lines around the buff confirm it in-game (docs/DESIGN-v0.5.md F2).
 local function InnervateValue(entry)
-    local RM = MD.Regen
+    local RM = ST.Regen
     if not RM then return 0 end
     local spiritPerSec, mp5Gear, _, unreported = RM:Components()
     local boosted = 5 * spiritPerSec + mp5Gear / 5 + unreported
     local gain = (boosted - RM:Effective()) * entry.duration
-    local cost = MD.SpellData and MD.SpellData:GetCost(INNERVATE) or 0
+    local cost = ST.SpellData and ST.SpellData:GetCost(INNERVATE) or 0
     return math.max(0, gain - (cost or 0))
 end
 
@@ -44,13 +44,13 @@ end
 MC.VALUES = { innervate = InnervateValue }
 
 -- T89 (docs/SPEC-next.md 2.1): a class with a profile takes its list from the
--- profile's manaCooldowns, derived at file load BY NAME (never from MD.ClassProfile,
+-- profile's manaCooldowns, derived at file load BY NAME (never from ST.ClassProfile,
 -- the logged-in player's), each entry copied with its named value model
 -- resolved. The druid's equals the constant it replaced (tools/profilecheck.lua):
 -- Innervate, 29166, 20 s, InnervateValue.
 local function FromProfile(class)
     local out = {}
-    for i, c in ipairs(MD.Profiles.Require(class, "Engine/ManaCooldowns.lua").manaCooldowns or {}) do
+    for i, c in ipairs(ST.Profiles.Require(class, "Engine/ManaCooldowns.lua").manaCooldowns or {}) do
         local value = MC.VALUES[c.value]
         if value == nil then
             error("SpellTuner: the " .. class .. " profile's mana cooldown " .. tostring(c.key)
@@ -132,12 +132,12 @@ end
 -- True while one of this class's cooldown buffs is running: the client already
 -- reports the boosted regen then, so the clock must NOT add a second figure.
 function MC:Active()
-    local list = MC.byClass[MD.player.class]
+    local list = MC.byClass[ST.player.class]
     if not list then return false end
     for _, entry in ipairs(list) do
         if entry.value then
             local name = GetSpellInfo(entry.id)
-            if name and MD:HasBuff(name) then return true end
+            if name and ST:HasBuff(name) then return true end
         end
     end
     return false
@@ -157,12 +157,12 @@ function MC:All()
     if cache and now - cacheAt < 0.4 then return cache end
 
     local out = {}
-    if not MD.player.usesMana then
+    if not ST.player.usesMana then
         cache, cacheAt = out, now
         return out
     end
 
-    local list = MC.byClass[MD.player.class]
+    local list = MC.byClass[ST.player.class]
     if list then
         for _, entry in ipairs(list) do
             if entry.value and SpellKnown(entry.id) then
@@ -212,14 +212,14 @@ end
 --------------------------------------------------------------------------------
 local wasActive = false
 local wasReady = {}   -- key -> true while a source was ready last tick
-MD:OnTick(function()
-    if not (MD.db and MD.db.debug and MD.db.debug.enabled) then return end
+ST:OnTick(function()
+    if not (ST.db and ST.db.debug and ST.db.debug.enabled) then return end
     -- A source that was ready and no longer is was just used (or, for a
     -- potion, the last one was drunk). The first dungeon log had four potion
     -- alerts and no way to tell whether any was answered.
     for _, src in ipairs(MC:All()) do
         if wasReady[src.key] and not src.ready then
-            MD:Debug("spend", "cooldown used: %s (worth ~%d) at %d/%d mana",
+            ST:Debug("spend", "cooldown used: %s (worth ~%d) at %d/%d mana",
                 src.name, src.delta, UnitPower("player", 0) or 0, UnitPowerMax("player", 0) or 0)
         end
         wasReady[src.key] = src.ready or nil
@@ -227,9 +227,9 @@ MD:OnTick(function()
     local active = MC:Active()
     if active ~= wasActive then
         wasActive = active
-        local RM = MD.Regen
+        local RM = ST.Regen
         local spiritPerSec, mp5Gear, _, unreported = RM:Components()
-        MD:Debug("regen", "mana cooldown %s: GetManaRegen base %.2f/s casting %.2f/s; model expects %.2f/s while up "
+        ST:Debug("regen", "mana cooldown %s: GetManaRegen base %.2f/s casting %.2f/s; model expects %.2f/s while up "
             .. "(5 x spirit %.2f + gear %.2f + unreported %.2f)",
             active and "UP" or "faded", RM.apiBase, RM.apiCasting,
             5 * spiritPerSec + mp5Gear / 5 + unreported, spiritPerSec, mp5Gear / 5, unreported)

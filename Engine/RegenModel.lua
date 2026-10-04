@@ -7,10 +7,10 @@
 -- talent (4/7/10% of Intellect per 5s, in and out of the 5SR) is added here
 -- as RM.unreported; RM.apiBase / RM.apiCasting keep the raw client numbers
 -- for the verify harness and the display decomposition.
-local _, MD = ...
+local _, ST = ...
 
 local RM = {}
-MD.Regen = RM
+ST.Regen = RM
 
 RM.fsrEnd = 0                     -- GetTime() when the five-second rule expires
 RM.apiBase, RM.apiCasting = 0, 0  -- raw GetManaRegen("player")
@@ -85,7 +85,7 @@ end
 local DREAMSTATE_PCT = { 0.04, 0.07, 0.10 }
 
 function RM:Dreamstate()
-    local r = MD:TalentRank("Dreamstate")
+    local r = ST:TalentRank("Dreamstate")
     if r == 0 then return 0 end
     return (DREAMSTATE_PCT[r] or 0) * (UnitStat("player", 4) or 0) / 5
 end
@@ -106,12 +106,12 @@ end
 -- clamping.
 local warnedMp5 = false
 function RM:MeasuredMp5()
-    local m = MD.cdb and MD.cdb.mp5
+    local m = ST.cdb and ST.cdb.mp5
     if not m or not m.perSec or m.perSec <= 0 then return 0 end
     if RM.apiBase > 0 and m.perSec > RM.apiBase then
         if not warnedMp5 then
             warnedMp5 = true
-            MD:Print(string.format("the stored measured mp5 (%d) is larger than everything the client reports (%d mp5) " ..
+            ST:Print(string.format("the stored measured mp5 (%d) is larger than everything the client reports (%d mp5) " ..
                 "- ignoring it. Run |cffffff00/md regentest 30|r solo to measure again, or |cffffff00/md regentest clear|r.",
                 m.mp5 or (m.perSec * 5 + 0.5), RM.apiBase * 5 + 0.5))
         end
@@ -133,7 +133,7 @@ function RM:Refresh()
     local extra = RM:Unreported()
     if math.abs(base - RM.apiBase) > 0.005 or math.abs(casting - RM.apiCasting) > 0.005
         or math.abs(extra - RM.unreported) > 0.005 then
-        MD:Debug("regen", "GetManaRegen base %.2f/s casting %.2f/s (mp5 %d / %d)%s",
+        ST:Debug("regen", "GetManaRegen base %.2f/s casting %.2f/s (mp5 %d / %d)%s",
             base, casting, base * 5 + 0.5, casting * 5 + 0.5,
             extra > 0 and string.format(" + %.2f/s not in the API (%d mp5: Dreamstate %d, measured %d)",
                 extra, extra * 5 + 0.5, RM:Dreamstate() * 5 + 0.5, RM:MeasuredMp5() * 5 + 0.5) or "")
@@ -154,11 +154,11 @@ end
 --------------------------------------------------------------------------------
 -- T89 (docs/SPEC-next.md 2.1): a class with a profile takes its row from the
 -- profile's regen.inFsrTalent, derived at file load BY NAME (never from
--- MD.ClassProfile, the logged-in player's) and copied. The druid's equals the
+-- ST.ClassProfile, the logged-in player's) and copied. The druid's equals the
 -- constant it replaced (tools/profilecheck.lua): Intensity, 0.10 per rank.
 -- RM.IN_FSR_TALENT is the same table, for that check.
 local function InFsrTalentOf(class)
-    local regen = MD.Profiles.Require(class, "Engine/RegenModel.lua").regen
+    local regen = ST.Profiles.Require(class, "Engine/RegenModel.lua").regen
     local t = regen and regen.inFsrTalent
     return t and { t[1], t[2] } or nil
 end
@@ -171,8 +171,8 @@ local IN_FSR_TALENT = {
 RM.IN_FSR_TALENT = IN_FSR_TALENT
 
 function RM:InFSRFraction()
-    local t = IN_FSR_TALENT[MD.player.class]
-    return t and (t[2] * MD:TalentRank(t[1])) or 0
+    local t = IN_FSR_TALENT[ST.player.class]
+    return t and (t[2] * ST:TalentRank(t[1])) or 0
 end
 
 function RM:Components()
@@ -219,16 +219,16 @@ function RM:RegenTick(now)
     return c, TICK_PERIOD
 end
 
-MD:On("UNIT_POWER_UPDATE", function(unit, powerType)
+ST:On("UNIT_POWER_UPDATE", function(unit, powerType)
     if unit ~= "player" or powerType ~= "MANA" then return end
     local cur = UnitPower("player", 0)
     if lastMana and cur < lastMana then
         if not RM:InFSR() then
-            MD:Debug("regen", "5SR start (casting regen %.2f/s)", RM.casting)
+            ST:Debug("regen", "5SR start (casting regen %.2f/s)", RM.casting)
             wasInFSR = true
         end
         RM.fsrEnd = GetTime() + 5
-        MD:Fire("MANA_SPENT", lastMana - cur)
+        ST:Fire("MANA_SPENT", lastMana - cur)
     elseif lastMana and cur > lastMana then
         local now = GetTime()
         -- T115: every rise timed, in and out of combat (RM:RegenTick)
@@ -247,22 +247,22 @@ MD:On("UNIT_POWER_UPDATE", function(unit, powerType)
         end
     end
     if lastMana and cur ~= lastMana then
-        MD:Debug("mana", "%+d -> %d/%d%s", cur - lastMana, cur, UnitPowerMax("player", 0),
+        ST:Debug("mana", "%+d -> %d/%d%s", cur - lastMana, cur, UnitPowerMax("player", 0),
             RM:InFSR() and " (5SR)" or "")
     end
     lastMana = cur
 end)
 
-MD:RegisterCallback("MD_READY", function()
+ST:RegisterCallback("MD_READY", function()
     lastMana = UnitPower("player", 0)
     RM:Refresh()
 end)
-MD:RegisterCallback("TALENTS_CHANGED", function() RM:Refresh() end)
+ST:RegisterCallback("TALENTS_CHANGED", function() RM:Refresh() end)
 
 --------------------------------------------------------------------------------
 -- Per-combat FSR uptime → "spirit regen realized" for the fight summary.
 --------------------------------------------------------------------------------
-MD:On("PLAYER_REGEN_DISABLED", function()
+ST:On("PLAYER_REGEN_DISABLED", function()
     combat.active = true
     combat.total = 0
     combat.inFSR = 0
@@ -270,18 +270,18 @@ MD:On("PLAYER_REGEN_DISABLED", function()
     ResetFill()
 end)
 
-MD:On("PLAYER_REGEN_ENABLED", function()
+ST:On("PLAYER_REGEN_ENABLED", function()
     combat.active = false
     ResetFill()
 end)
 
 local oocLogAcc = 0
 
-MD:OnTick(function(dt)
+ST:OnTick(function(dt)
     RM:Refresh() -- cheap; keeps rates fresh through auras/procs mid-combat
     local inFSR = RM:InFSR()
     if wasInFSR and not inFSR then
-        MD:Debug("regen", "5SR end (spirit regen resumed, %.2f/s)", RM.base)
+        ST:Debug("regen", "5SR end (spirit regen resumed, %.2f/s)", RM.base)
     end
     wasInFSR = inFSR
     duty = duty + ((inFSR and 1 or 0) - duty) * (1 - 0.5 ^ (dt / DUTY_HALFLIFE))
@@ -297,7 +297,7 @@ MD:OnTick(function(dt)
             oocLogAcc = 0
             local fill = RM:ObservedFill()
             if fill > 0 and UnitPower("player", 0) < UnitPowerMax("player", 0) then
-                MD:Debug("regen", "OOC fill observed %.2f/s vs model %.2f/s (API %.2f, %s, duty %d%%)",
+                ST:Debug("regen", "OOC fill observed %.2f/s vs model %.2f/s (API %.2f, %s, duty %d%%)",
                     fill, RM:Current(), inFSR and RM.apiCasting or RM.apiBase,
                     inFSR and "5SR" or "out of 5SR", duty * 100)
             end

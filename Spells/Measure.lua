@@ -7,14 +7,14 @@
 -- on the player, damage on the target); a cast named at anyone else opens
 -- no watch (review R14/R34). Rewrites T12's
 -- attribution half; the line format and verdict words stay. Forever only --
--- needs UNIT_COMBAT and MD.Book, both Forever's own. Reaches the client only
--- through MD.API; never indexes a client table.
-local _, MD = ...
-local Parse = MD.Parse
-local Book = MD.Book
+-- needs UNIT_COMBAT and ST.Book, both Forever's own. Reaches the client only
+-- through ST.API; never indexes a client table.
+local _, ST = ...
+local Parse = ST.Parse
+local Book = ST.Book
 
-MD.Measure = MD.Measure or {}
-local Measure = MD.Measure
+ST.Measure = ST.Measure or {}
+local Measure = ST.Measure
 
 Measure.on = false
 Measure.registered = false
@@ -63,13 +63,13 @@ local sentTarget = {}    -- castGUID -> { name, time }: UNIT_SPELLCAST_SENT's ta
 
 --------------------------------------------------------------------------------
 -- Reversible ASCII escaping, Client/Probe.lua's own rule (Rules: "every
--- client string ... through Esc"): MD.Text.EscASCII, its one copy in Core.lua
+-- client string ... through Esc"): ST.Text.EscASCII, its one copy in Core.lua
 -- (T60, P16, review A9). This file's client strings (a spell's own name, a
--- UNIT_COMBAT descriptor, the build) are already read through MD.API/MD.Book,
+-- UNIT_COMBAT descriptor, the build) are already read through ST.API/ST.Book,
 -- never a client table directly, and every caller hands it a string or nil
 -- (nil is "", as it was here).
 --------------------------------------------------------------------------------
-local Esc = MD.Text.EscASCII
+local Esc = ST.Text.EscASCII
 
 -- A number that is nil renders "-", never 0 (CLAUDE.md / this task's Rules).
 local function Round(n)
@@ -571,21 +571,21 @@ end
 local BEFORE_STAMPS = "0.16.1"
 
 local function PlainOr(v)
-    if type(v) == "string" and not MD.API.IsSecret(v) then return v end
+    if type(v) == "string" and not ST.API.IsSecret(v) then return v end
     return "?"
 end
 
 local function RecordLine(line)
     if type(SpellTunerDB) ~= "table" then SpellTunerDB = {} end
     SpellTunerDB.measures = SpellTunerDB.measures or {}
-    local build = select(2, MD.API.BuildInfo())
+    local build = select(2, ST.API.BuildInfo())
     table.insert(SpellTunerDB.measures, {
         text = line,
-        version = PlainOr(MD.API.AddonVersion()),
+        version = PlainOr(ST.API.AddonVersion()),
         build = PlainOr(build),
     })
     while #SpellTunerDB.measures > 100 do table.remove(SpellTunerDB.measures, 1) end
-    MD:Print(line)
+    ST:Print(line)
 end
 
 --------------------------------------------------------------------------------
@@ -663,8 +663,8 @@ end
 
 -- A unit's name as a plain string, else nil (absent, secret, not a string).
 local function PlainUnitName(unit)
-    local n = MD.API.UnitName and MD.API.UnitName(unit)
-    if MD.API.IsSecret(n) or type(n) ~= "string" or n == "" then return nil end
+    local n = ST.API.UnitName and ST.API.UnitName(unit)
+    if ST.API.IsSecret(n) or type(n) ~= "string" or n == "" then return nil end
     return n
 end
 
@@ -696,8 +696,8 @@ local function OpenWatch(id, castTime, targetName)
 
     local bonus, bonusBeforeCombat = nil, false
     if kind == "heal" then
-        local b = MD.API.SpellBonusHealing and MD.API.SpellBonusHealing()
-        if type(b) == "number" and not MD.API.IsSecret(b) then
+        local b = ST.API.SpellBonusHealing and ST.API.SpellBonusHealing()
+        if type(b) == "number" and not ST.API.IsSecret(b) then
             bonus = b
             Measure.lastBonus = b
         elseif Measure.lastBonus ~= nil then
@@ -709,8 +709,8 @@ local function OpenWatch(id, castTime, targetName)
     -- Re-issue 1: the watch also needs the caster's own level beside the
     -- rank's learn level, since the whole point of the line is Q10 -- a
     -- shortfall growing with the gap between the two.
-    local casterLevel = MD.API.UnitLevel and MD.API.UnitLevel("player")
-    if type(casterLevel) ~= "number" or MD.API.IsSecret(casterLevel) then casterLevel = nil end
+    local casterLevel = ST.API.UnitLevel and ST.API.UnitLevel("player")
+    if type(casterLevel) ~= "number" or ST.API.IsSecret(casterLevel) then casterLevel = nil end
 
     local hasDirect = part.min ~= nil or part.max ~= nil
     local hasOver = part.over ~= nil or part.tick ~= nil
@@ -740,9 +740,9 @@ end
 -- empty one (a cast with no target) is not kept -- not known.
 local function OnCastSent(unit, target, castGUID, spellID)
     if not Measure.on then return end
-    if MD.API.IsSecret(unit) or unit ~= "player" then return end
-    if MD.API.IsSecret(castGUID) or type(castGUID) ~= "string" then return end
-    if MD.API.IsSecret(target) or type(target) ~= "string" or target == "" then return end
+    if ST.API.IsSecret(unit) or unit ~= "player" then return end
+    if ST.API.IsSecret(castGUID) or type(castGUID) ~= "string" then return end
+    if ST.API.IsSecret(target) or type(target) ~= "string" or target == "" then return end
     local now = GetTime()
     for g, rec in pairs(sentTarget) do
         if now - rec.time > HISTORY_SECS then sentTarget[g] = nil end -- a cast that never succeeded
@@ -752,16 +752,16 @@ end
 
 local function OnCastSucceeded(unit, castGUID, spellID)
     if not Measure.on then return end
-    if MD.API.IsSecret(unit) or unit ~= "player" then return end
+    if ST.API.IsSecret(unit) or unit ~= "player" then return end
 
     local now = GetTime()
     local targetName
-    if not MD.API.IsSecret(castGUID) and type(castGUID) == "string" then
+    if not ST.API.IsSecret(castGUID) and type(castGUID) == "string" then
         local rec = sentTarget[castGUID]
         sentTarget[castGUID] = nil
         targetName = rec and rec.name
     end
-    if MD.API.IsSecret(spellID) or type(spellID) ~= "number" then
+    if ST.API.IsSecret(spellID) or type(spellID) ~= "number" then
         Measure.unreadable = Measure.unreadable + 1
         return
     end
@@ -772,8 +772,8 @@ end
 -- unreadable counts as not in combat -- the deficit then adds nothing, which
 -- can only make BELOW rarer.
 local function InCombatNow()
-    local c = MD.API.UnitAffectingCombat and MD.API.UnitAffectingCombat("player")
-    if MD.API.IsSecret(c) then return false end
+    local c = ST.API.UnitAffectingCombat and ST.API.UnitAffectingCombat("player")
+    if ST.API.IsSecret(c) then return false end
     return c == true
 end
 
@@ -781,14 +781,14 @@ local function OnUnitCombat(unit, action, descriptor, amount, school)
     -- descriptor's crit shape is UNKNOWN (Facts) -- read, escaped, and only
     -- printed on a damage line below range; never relied on for a verdict.
     if not Measure.on then return end
-    if MD.API.IsSecret(unit) or type(unit) ~= "string" then return end
-    if MD.API.IsSecret(action) or type(action) ~= "string" then return end
+    if ST.API.IsSecret(unit) or type(unit) ~= "string" then return end
+    if ST.API.IsSecret(action) or type(action) ~= "string" then return end
 
     local wantedPlayer = (unit == "player") and (action == "HEAL" or action == "WOUND")
     local wantedTarget = (unit == "target") and (action == "WOUND")
     if not (wantedPlayer or wantedTarget) then return end
 
-    if MD.API.IsSecret(amount) or type(amount) ~= "number" then
+    if ST.API.IsSecret(amount) or type(amount) ~= "number" then
         Measure.unreadable = Measure.unreadable + 1
         return
     end
@@ -840,7 +840,7 @@ end
 -- what notices a watch nobody ever answered (CLAUDE.md: the model is
 -- event-driven, tickers only accumulate/render; here the "render" is closing
 -- a stale watch).
-MD:OnTick(function()
+ST:OnTick(function()
     if not Measure.on then return end
     local now = GetTime()
     local i = 1
@@ -860,11 +860,11 @@ end)
 --------------------------------------------------------------------------------
 function Measure:Toggle()
     if not Measure.registered then
-        MD:On("UNIT_SPELLCAST_SENT", OnCastSent)
-        MD:On("UNIT_SPELLCAST_SUCCEEDED", OnCastSucceeded)
-        MD:On("UNIT_COMBAT", OnUnitCombat)
-        MD:On("PLAYER_TARGET_CHANGED", OnTargetChanged)
-        MD:On("PLAYER_REGEN_ENABLED", OnCombatEnded)
+        ST:On("UNIT_SPELLCAST_SENT", OnCastSent)
+        ST:On("UNIT_SPELLCAST_SUCCEEDED", OnCastSucceeded)
+        ST:On("UNIT_COMBAT", OnUnitCombat)
+        ST:On("PLAYER_TARGET_CHANGED", OnTargetChanged)
+        ST:On("PLAYER_REGEN_ENABLED", OnCombatEnded)
         Measure.registered = true
     end
     Measure.on = not Measure.on
@@ -876,10 +876,10 @@ function Measure:Toggle()
         history.player, history.target = {}, {}
         sentTarget = {}
         Measure.deficit = 0
-        MD:Print("measure: on - cast on yourself for heals, on a target dummy for damage; several watches stay open at once")
+        ST:Print("measure: on - cast on yourself for heals, on a target dummy for damage; several watches stay open at once")
     else
         watches = {} -- discard silently: turning off is not one of the three closing triggers
-        MD:Print("measure: off")
+        ST:Print("measure: off")
     end
 end
 
@@ -888,15 +888,15 @@ function Measure:Watch()
 end
 
 -- One copy block: a header (build, character, level, date) then the kept
--- lines (Files: "shows them with a header ... in MD:ShowCopyPopup"). By default
+-- lines (Files: "shows them with a header ... in ST:ShowCopyPopup"). By default
 -- only the lines the running version wrote; `all` shows every line, each
 -- prefixed with the stamp it was written under (T26).
 function Measure:Dump(all)
-    local build = select(2, MD.API.BuildInfo())
-    if type(build) ~= "string" or MD.API.IsSecret(build) then build = "?" end
-    local charKey = (MD.player and MD.player.charKey) or "?"
-    local level = (MD.player and MD.player.level) or "?"
-    local version = MD.API.AddonVersion()
+    local build = select(2, ST.API.BuildInfo())
+    if type(build) ~= "string" or ST.API.IsSecret(build) then build = "?" end
+    local charKey = (ST.player and ST.player.charKey) or "?"
+    local level = (ST.player and ST.player.level) or "?"
+    local version = ST.API.AddonVersion()
 
     local lines = {
         string.format("=== SpellTuner measure  build %s  %s level %s  %s ===",

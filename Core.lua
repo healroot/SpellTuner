@@ -2,21 +2,21 @@
 -- Namespace, event dispatch, internal pub/sub, the ticker, Print/Alert/Debug,
 -- the player's identity, SavedVariables init, the login sequence and the
 -- slash dispatcher with a command registry. Reaches the client only through
--- MD.API (Client/API.lua) -- no flavour check here (CLAUDE.md: a file listed
+-- ST.API (Client/API.lua) -- no flavour check here (CLAUDE.md: a file listed
 -- by both TOCs contains no client call and no flavour check). Everything
 -- that is the TBC addon's own (defaults, Simulate, buffs/Tree of Life,
 -- talents, the profile snapshot, its commands) lives in Core_TBC.lua;
 -- Forever's own defaults and first two commands live in Core_Forever.lua.
 -- T55 (P11, review A3, A4, A9, A16, A28): the kernel's seams -- every event
 -- and callback handler under xpcall (one raise no longer stops the rest),
--- MD.Text / MD:PrintSafe (the escaping rules, named apart), MD.Util and
--- MD.Rules (helpers copied 3-11 times), MD:RegisterDefaults / MD:Setting,
--- MD.inCombat, MD:Provide and MD:ModuleStateText. Defined here; the
+-- ST.Text / ST:PrintSafe (the escaping rules, named apart), ST.Util and
+-- ST.Rules (helpers copied 3-11 times), ST:RegisterDefaults / ST:Setting,
+-- ST.inCombat, ST:Provide and ST:ModuleStateText. Defined here; the
 -- consumers move in P14, P16, P18, P20 and P23.
-local ADDON_NAME, MD = ...
-_G.SpellTuner = MD
+local ADDON_NAME, ST = ...
+_G.SpellTuner = ST
 
-MD.version = MD.API.AddonVersion() or "dev"
+ST.version = ST.API.AddonVersion() or "dev"
 
 --------------------------------------------------------------------------------
 -- Event dispatch
@@ -28,10 +28,10 @@ local handlers = {}
 -- an event the adapter's flavour file has forbidden (Forever's combat log)
 -- is never even attempted -- RegisterEvent trips the blocked-action dialog
 -- for it, so the first registration has to be refused, not caught.
-function MD:On(event, fn)
+function ST:On(event, fn)
     if not handlers[event] then
-        if not MD.API.CanRegisterEvent(event) then
-            MD:Debug("other", "refused event %s", event)
+        if not ST.API.CanRegisterEvent(event) then
+            ST:Debug("other", "refused event %s", event)
             return
         end
         local ok = pcall(eventFrame.RegisterEvent, eventFrame, event)
@@ -42,7 +42,7 @@ function MD:On(event, fn)
 end
 
 -- T55 (P11, review A4): fault isolation. Each handler runs as
--- xpcall(handler, MD.ErrorSink, ...), so a raise in one handler no longer
+-- xpcall(handler, ST.ErrorSink, ...), so a raise in one handler no longer
 -- stops the ones after it (PLAYER_REGEN_ENABLED has eight: the recorder
 -- closing its stream, the clock re-anchoring, the run recorder seeing the
 -- pull). The error still reaches the installed error handler exactly once.
@@ -65,15 +65,15 @@ end
 --     in an upvalue read the moment xpcall returns, with nothing between.)
 local UNSUNK = {}
 local unsunkMsg
-function MD.ErrorSink(msg)
-    local h = MD.API.GetErrorHandler()
-    if type(h) == "function" and h ~= MD.ErrorSink then
+function ST.ErrorSink(msg)
+    local h = ST.API.GetErrorHandler()
+    if type(h) == "function" and h ~= ST.ErrorSink then
         return h(msg)
     end
     unsunkMsg = msg
     return UNSUNK
 end
-local ErrorSink = MD.ErrorSink
+local ErrorSink = ST.ErrorSink
 
 local function Dispatch(list, ...)
     local unsunk
@@ -92,11 +92,11 @@ end)
 
 -- Internal pub/sub (module-to-module, not Blizzard events).
 local callbacks = {}
-function MD:RegisterCallback(name, fn)
+function ST:RegisterCallback(name, fn)
     callbacks[name] = callbacks[name] or {}
     callbacks[name][#callbacks[name] + 1] = fn
 end
-function MD:Fire(name, ...)
+function ST:Fire(name, ...)
     local list = callbacks[name]
     if not list then return end
     Dispatch(list, ...)
@@ -110,26 +110,26 @@ end
 -- reader). An unreadable answer (absent, raised, secret) leaves the flag as
 -- it was. Readers move to it in P14.
 --------------------------------------------------------------------------------
-MD.inCombat = false
-MD:On("PLAYER_REGEN_DISABLED", function() MD.inCombat = true end)
-MD:On("PLAYER_REGEN_ENABLED", function() MD.inCombat = false end)
-MD:RegisterCallback("MD_READY", function()
+ST.inCombat = false
+ST:On("PLAYER_REGEN_DISABLED", function() ST.inCombat = true end)
+ST:On("PLAYER_REGEN_ENABLED", function() ST.inCombat = false end)
+ST:RegisterCallback("MD_READY", function()
     -- (value, nil) is an answer -- nil or false out of combat, true (1 on an
     -- old client) in it; (nil, "absent" / "error" / "secret") is not.
-    local v, why = MD.API.UnitAffectingCombat("player")
-    if why == nil then MD.inCombat = (v == true or v == 1) end
+    local v, why = ST.API.UnitAffectingCombat("player")
+    if why == nil then ST.inCombat = (v == true or v == 1) end
 end)
 
 --------------------------------------------------------------------------------
 -- Master ticker: the model is event-driven; this drives accumulation/rendering.
 --------------------------------------------------------------------------------
 local tickers = {}
-function MD:OnTick(fn)
+function ST:OnTick(fn)
     tickers[#tickers + 1] = fn
 end
 
 local TICK = 0.5
-MD.API.NewTicker(TICK, function()
+ST.API.NewTicker(TICK, function()
     for i = 1, #tickers do
         tickers[i](TICK)
     end
@@ -138,9 +138,9 @@ end)
 --------------------------------------------------------------------------------
 -- Output
 --------------------------------------------------------------------------------
-function MD:Print(msg)
-    MD.API.Print("|cff9966ffSpellTuner:|r " .. tostring(msg))
-    MD:Debug("chat", tostring(msg))
+function ST:Print(msg)
+    ST.API.Print("|cff9966ffSpellTuner:|r " .. tostring(msg))
+    ST:Debug("chat", tostring(msg))
 end
 
 --------------------------------------------------------------------------------
@@ -164,12 +164,12 @@ end
 local function AsText(s)
     if type(s) == "string" then return s end
     if s == nil then return "" end
-    if MD.API.IsSecret(s) then return "<secret>" end
+    if ST.API.IsSecret(s) then return "<secret>" end
     return tostring(s)
 end
 
 local Text = {}
-MD.Text = Text
+ST.Text = Text
 
 function Text.Esc(s)
     local out = AsText(s):gsub("|", "||")
@@ -203,8 +203,8 @@ end
 
 -- A line from anywhere (a name, a card, a client string) printed safely:
 -- ASCII, no bare pipe, its own well-formed colour codes kept.
-function MD:PrintSafe(line)
-    MD:Print(Text.EscKeepColours(line))
+function ST:PrintSafe(line)
+    ST:Print(Text.EscKeepColours(line))
 end
 
 --------------------------------------------------------------------------------
@@ -213,7 +213,7 @@ end
 -- until a task moves their six copies (docs/PLAN-refactor-ux.md section 6).
 --------------------------------------------------------------------------------
 local Util = {}
-MD.Util = Util
+ST.Util = Util
 
 -- The median of a list of numbers, never sorting the caller's table (review
 -- A9: PullBudget's sorted it in place). An even count averages the two middle
@@ -252,18 +252,18 @@ end
 -- two recorders' own copies move to it in P18).
 Util.RECORD_GATE = { sec = 20, casts = 5 }
 
-MD.Rules = {
+ST.Rules = {
     -- A rank is suggested only while its value is at least this share of the
     -- highest known rank's (Spells/Book.lua, Engine/RankMath.lua; P23).
     SUGGESTED_FLOOR = 0.4,
 }
 
 -- Alert respects /md mute and pulses the widget if present.
-function MD:Alert(msg)
-    MD:Debug("other", "alert%s: %s", (MD.db and MD.db.muted) and " (muted)" or "", tostring(msg))
-    if MD.db and MD.db.muted then return end
-    MD:Print(msg)
-    if MD.PulseWidget then MD:PulseWidget() end
+function ST:Alert(msg)
+    ST:Debug("other", "alert%s: %s", (ST.db and ST.db.muted) and " (muted)" or "", tostring(msg))
+    if ST.db and ST.db.muted then return end
+    ST:Print(msg)
+    if ST.PulseWidget then ST:PulseWidget() end
 end
 
 -- Debug log (Cell-style): a no-op unless debug logging is enabled in the
@@ -271,8 +271,8 @@ end
 -- Debug Console (UI/DebugConsole.lua) shows and copies. Categories: regen,
 -- mana, spend, tto, heal, cast, calib, combat, chat, sim, other. Extra arguments go through
 -- string.format; a bad format never raises.
-function MD:Debug(category, fmt, ...)
-    local db = MD.db and MD.db.debug
+function ST:Debug(category, fmt, ...)
+    local db = ST.db and ST.db.debug
     if not (db and db.enabled) then return end
     local text
     if select("#", ...) > 0 then
@@ -281,29 +281,29 @@ function MD:Debug(category, fmt, ...)
     else
         text = tostring(fmt)
     end
-    if MD.DebugLog then MD:DebugLog(category, text) end
+    if ST.DebugLog then ST:DebugLog(category, text) end
 end
 
 --------------------------------------------------------------------------------
 -- Player profile
 --------------------------------------------------------------------------------
-MD.player = { class = "UNKNOWN", level = 0, isDruid = false, guid = "", charKey = "?" }
+ST.player = { class = "UNKNOWN", level = 0, isDruid = false, guid = "", charKey = "?" }
 
-function MD:DetectProfile()
+function ST:DetectProfile()
     -- Multi-value adapter reads: `UnitClass` returns localized, token (or
     -- nil, "<reason>" on failure) -- the localized name is not the class
     -- token, so the SECOND value is the one every reader in the tree wants,
     -- and it is only meaningful when the first (the localized name) came
     -- back at all (T1b Review, re-issue 2).
-    local loc, class = MD.API.UnitClass("player")
+    local loc, class = ST.API.UnitClass("player")
     if not loc then class = nil end
-    MD.player.class = class or "UNKNOWN"
-    MD.player.isDruid = class == "DRUID"
-    MD.player.level = MD.API.UnitLevel("player") or 0
-    MD.player.guid = MD.API.UnitGUID("player") or ""
-    local name = MD.API.UnitName("player")
-    local realm = MD.API.RealmName()
-    MD.player.charKey = (name or "?") .. "-" .. (realm or "?")
+    ST.player.class = class or "UNKNOWN"
+    ST.player.isDruid = class == "DRUID"
+    ST.player.level = ST.API.UnitLevel("player") or 0
+    ST.player.guid = ST.API.UnitGUID("player") or ""
+    local name = ST.API.UnitName("player")
+    local realm = ST.API.RealmName()
+    ST.player.charKey = (name or "?") .. "-" .. (realm or "?")
     -- T52 (P8, review B1; docs/DECISIONS.md "usesMana is whether the player
     -- has a mana pool"): answered from data -- the player's mana maximum,
     -- read plain and above 0. A druid who logs in or reloads in Cat or Bear
@@ -312,11 +312,11 @@ function MD:DetectProfile()
     -- has none. No class list: which classes use mana on Forever's retail
     -- engine is not ours to guess. Only when that read is absent, secret or
     -- raised does the current power type decide, as it did before.
-    local manaMax = MD.API.UnitPowerMax("player", 0)
-    if not MD.API.IsSecret(manaMax) and type(manaMax) == "number" then
-        MD.player.usesMana = manaMax > 0
+    local manaMax = ST.API.UnitPowerMax("player", 0)
+    if not ST.API.IsSecret(manaMax) and type(manaMax) == "number" then
+        ST.player.usesMana = manaMax > 0
     else
-        MD.player.usesMana = MD.API.UnitPowerType("player") == 0
+        ST.player.usesMana = ST.API.UnitPowerType("player") == 0
     end
 end
 
@@ -339,14 +339,14 @@ end
 --------------------------------------------------------------------------------
 -- Registered defaults (T55, P11, review A3): a feature file -- a
 -- LoadOnDemand module included, which loads after InitDB ran -- declares its
--- own settings' defaults with MD:RegisterDefaults({ key = value, ... }).
--- Before login they are merged into MD.DEFAULTS (or kept until the flavour
+-- own settings' defaults with ST:RegisterDefaults({ key = value, ... }).
+-- Before login they are merged into ST.DEFAULTS (or kept until the flavour
 -- core has assigned it) and InitDB fills them in; after login they back-fill
--- MD.db at once. Either way a value the user already has is never touched.
+-- ST.db at once. Either way a value the user already has is never touched.
 -- A key registered twice with a DIFFERENT value raises: one owner per default
 -- (the drift A3 names -- a re-measured threshold landing in one list only).
--- MD:Setting(key) answers the db value, else the registered default, else
--- MD.DEFAULTS'. Consumers move to these in P20.
+-- ST:Setting(key) answers the db value, else the registered default, else
+-- ST.DEFAULTS'. Consumers move to these in P20.
 --------------------------------------------------------------------------------
 local registered = {}
 
@@ -376,22 +376,22 @@ local function Conflict(existing, tbl, path)
     return nil
 end
 
-function MD:RegisterDefaults(tbl)
+function ST:RegisterDefaults(tbl)
     if type(tbl) ~= "table" then error("SpellTuner: RegisterDefaults takes a table", 2) end
-    local c = Conflict(registered, tbl, "") or Conflict(MD.DEFAULTS, tbl, "")
+    local c = Conflict(registered, tbl, "") or Conflict(ST.DEFAULTS, tbl, "")
     if c then error("SpellTuner: two defaults for " .. c, 2) end
     FillDefaults(registered, CopyValue(tbl))
-    if type(MD.DEFAULTS) == "table" then FillDefaults(MD.DEFAULTS, tbl) end
-    if type(MD.db) == "table" then FillDefaults(MD.db, tbl) end
+    if type(ST.DEFAULTS) == "table" then FillDefaults(ST.DEFAULTS, tbl) end
+    if type(ST.db) == "table" then FillDefaults(ST.db, tbl) end
 end
 
-function MD:Setting(key)
+function ST:Setting(key)
     local v
-    if type(MD.db) == "table" then v = MD.db[key] end -- a stored false is an answer
+    if type(ST.db) == "table" then v = ST.db[key] end -- a stored false is an answer
     if v ~= nil then return v end
     v = registered[key]
     if v ~= nil then return v end
-    if type(MD.DEFAULTS) == "table" then return MD.DEFAULTS[key] end
+    if type(ST.DEFAULTS) == "table" then return ST.DEFAULTS[key] end
     return nil
 end
 
@@ -405,25 +405,25 @@ local function InitDB()
         ManaDemonDB = nil
     end
     SpellTunerDB = SpellTunerDB or {}
-    -- A default registered before the flavour core assigned MD.DEFAULTS
+    -- A default registered before the flavour core assigned ST.DEFAULTS
     -- joins it here (the conflict check ran against what existed then; on a
-    -- key both carry, MD.DEFAULTS' value stays -- only Core.lua and Client/
+    -- key both carry, ST.DEFAULTS' value stays -- only Core.lua and Client/
     -- load before the flavour core, and neither registers anything).
-    if type(MD.DEFAULTS) == "table" then FillDefaults(MD.DEFAULTS, registered) end
-    FillDefaults(SpellTunerDB, MD.DEFAULTS or {})
+    if type(ST.DEFAULTS) == "table" then FillDefaults(ST.DEFAULTS, registered) end
+    FillDefaults(SpellTunerDB, ST.DEFAULTS or {})
     FillDefaults(SpellTunerDB, registered)
-    MD.db = SpellTunerDB
-    MD.db.char[MD.player.charKey] = MD.db.char[MD.player.charKey] or {}
-    MD.cdb = MD.db.char[MD.player.charKey]
+    ST.db = SpellTunerDB
+    ST.db.char[ST.player.charKey] = ST.db.char[ST.player.charKey] or {}
+    ST.cdb = ST.db.char[ST.player.charKey]
 end
 
-MD:On("PLAYER_LOGIN", function()
-    MD:DetectProfile()
+ST:On("PLAYER_LOGIN", function()
+    ST:DetectProfile()
     InitDB()
-    MD:Debug("other", "=== PLAYER_LOGIN === SpellTuner v%s, %s level %d, debug categories: %s",
-        MD.version, MD.player.class, MD.player.level, (function()
+    ST:Debug("other", "=== PLAYER_LOGIN === SpellTuner v%s, %s level %d, debug categories: %s",
+        ST.version, ST.player.class, ST.player.level, (function()
             local on = {}
-            for k, v in pairs(MD.db.debug.categories) do if v then on[#on + 1] = k end end
+            for k, v in pairs(ST.db.debug.categories) do if v then on[#on + 1] = k end end
             table.sort(on)
             return table.concat(on, " ")
         end)())
@@ -432,47 +432,47 @@ MD:On("PLAYER_LOGIN", function()
     -- CORE_LOGIN is for "the client is ready enough to read stats from",
     -- MD_READY is the shared readiness signal every module already listens
     -- for, CORE_READY is for "everything above has run, do your own tail now".
-    MD:Fire("CORE_LOGIN")
-    MD:Fire("MD_READY")
-    MD:Fire("CORE_READY")
+    ST:Fire("CORE_LOGIN")
+    ST:Fire("MD_READY")
+    ST:Fire("CORE_READY")
 end)
 
 -- T52 (P8, review A31): the event's argument is a client value and this file
 -- is on the Forever TOC -- asked IsSecret before tonumber, whose answer for a
 -- secret number would be the secret itself. Unreadable: the adapter's own
 -- UnitLevel, else the level we had.
-MD:On("PLAYER_LEVEL_UP", function(level)
+ST:On("PLAYER_LEVEL_UP", function(level)
     local n
-    if not MD.API.IsSecret(level) then n = tonumber(level) end
-    MD.player.level = n or MD.API.UnitLevel("player") or MD.player.level
+    if not ST.API.IsSecret(level) then n = tonumber(level) end
+    ST.player.level = n or ST.API.UnitLevel("player") or ST.player.level
 end)
 
 --------------------------------------------------------------------------------
--- MD:Provide(name, fn) (T55, P11, review A16): the one way a file fills a
--- seam another flavour or module may also fill -- MD.GetRecording,
--- MD.ClassifyCast, MD.FightRecorder.Pin -- instead of `if MD.X == nil then`,
+-- ST:Provide(name, fn) (T55, P11, review A16): the one way a file fills a
+-- seam another flavour or module may also fill -- ST.GetRecording,
+-- ST.ClassifyCast, ST.FightRecorder.Pin -- instead of `if ST.X == nil then`,
 -- a guard that always passes on Forever and would hide a load-order mistake.
 -- `name` may be dotted ("FightRecorder.Pin"); every table on the way must
 -- exist. A second provider (anything already there, however it got there)
 -- raises, naming the seam. Adopted where P18 and P22 touch those seams.
 --------------------------------------------------------------------------------
-function MD:Provide(name, fn)
+function ST:Provide(name, fn)
     if type(name) ~= "string" or name == "" then
         error("SpellTuner: Provide needs a name", 2)
     end
-    local owner, key = MD, nil
+    local owner, key = ST, nil
     local segs = {}
     for seg in name:gmatch("[^%.]+") do segs[#segs + 1] = seg end
     for i = 1, #segs - 1 do
         owner = owner[segs[i]]
         if type(owner) ~= "table" then
-            error("SpellTuner: Provide " .. name .. ": MD." .. table.concat(segs, ".", 1, i)
+            error("SpellTuner: Provide " .. name .. ": ST." .. table.concat(segs, ".", 1, i)
                 .. " is not a table", 2)
         end
     end
     key = segs[#segs]
     if owner[key] ~= nil then
-        error("SpellTuner: a second provider for MD." .. name, 2)
+        error("SpellTuner: a second provider for ST." .. name, 2)
     end
     owner[key] = fn
     return fn
@@ -480,33 +480,33 @@ end
 
 --------------------------------------------------------------------------------
 -- Module registry (T2 of docs/ROADMAP-FOREVER.md): inert until a flavour file
--- calls MD:DeclareModule -- the TBC flavour never does, so MD.modules stays
--- empty and MD.db.modules is never created (its DEFAULTS carries no such key).
+-- calls ST:DeclareModule -- the TBC flavour never does, so ST.modules stays
+-- empty and ST.db.modules is never created (its DEFAULTS carries no such key).
 -- A module is a sibling LoadOnDemand addon folder (Modules/<name>/ in this
 -- checkout, built beside SpellTuner/ by release.sh) whose own Module.lua's
--- only job is to call MD:ModuleLoaded(name) once it runs.
+-- only job is to call ST:ModuleLoaded(name) once it runs.
 --------------------------------------------------------------------------------
-MD.modules = MD.modules or {}
+ST.modules = ST.modules or {}
 local moduleIndex = {}
 
-function MD:DeclareModule(name, label, needs, text)
+function ST:DeclareModule(name, label, needs, text)
     local m = { name = name, label = label, needs = needs or {}, text = text,
                 loaded = false, failed = nil }
-    MD.modules[#MD.modules + 1] = m
+    ST.modules[#ST.modules + 1] = m
     moduleIndex[name] = m
 end
 
 -- Called by a sibling's Module.lua the moment it loads.
-function MD:ModuleLoaded(name)
+function ST:ModuleLoaded(name)
     local m = moduleIndex[name]
     if not m then return end
     m.loaded = true
     m.failed = nil
-    MD:Fire("MODULE_LOADED", name)
+    ST:Fire("MODULE_LOADED", name)
 end
 
 -- LoadAddOn's own reason ("MISSING", "DISABLED", "DEP_MISSING", ...) is shown
--- only if it survived MD.API.Call as a plain, non-secret string of exactly
+-- only if it survived ST.API.Call as a plain, non-secret string of exactly
 -- the shape the client uses; anything else (an adapter failure reason such
 -- as "absent"/"error"/"secret", or nothing at all) becomes "unknown" rather
 -- than leaking an internal detail into the chat line.
@@ -520,21 +520,21 @@ end
 -- not switched on -- the caller (SetModule, or CORE_READY below) decides that.
 local function DoLoad(m)
     if m.loaded then return end
-    local loaded, reason = MD.API.LoadAddOn(m.name)
+    local loaded, reason = ST.API.LoadAddOn(m.name)
     if loaded then
         m.loaded = true
         m.failed = nil
-        MD:Print(m.label .. ": loaded")
+        ST:Print(m.label .. ": loaded")
     else
         m.failed = CleanReason(reason)
-        MD:Print(m.label .. ": on, could not load (" .. m.failed .. ")")
+        ST:Print(m.label .. ": on, could not load (" .. m.failed .. ")")
     end
 end
 
-function MD:ModuleState(name)
+function ST:ModuleState(name)
     local m = moduleIndex[name]
     if not m then return "off" end
-    local on = MD.db and MD.db.modules and MD.db.modules[name] == true
+    local on = ST.db and ST.db.modules and ST.db.modules[name] == true
     if m.failed then return "failed", m.failed end
     if m.loaded then
         if on then return "loaded" end
@@ -548,8 +548,8 @@ end
 -- review A9: two copies, UI/Dashboard_Forever.lua's and UI/Dump_Forever.lua's;
 -- they move to this in P16). ASCII already: CleanReason only ever hands back
 -- "[A-Z_]+" or "unknown".
-function MD:ModuleStateText(name)
-    local state, reason = MD:ModuleState(name)
+function ST:ModuleStateText(name)
+    local state, reason = ST:ModuleState(name)
     if state == "loaded" then return "loaded" end
     if state == "on" then return "on - loads at login" end
     if state == "failed" then return "could not load: " .. tostring(reason) end
@@ -563,16 +563,16 @@ end
 -- off: switch off `name` and every module that (transitively) needs it.
 -- Neither direction ever unloads anything (WoW cannot); off only marks state
 -- and, for a module that WAS loaded this session, warns it takes a /reload.
-function MD:SetModule(name, on)
+function ST:SetModule(name, on)
     if not moduleIndex[name] then return end
-    MD.db.modules = MD.db.modules or {}
+    ST.db.modules = ST.db.modules or {}
     local affected = {}
     if on then
         affected[name] = true
         local changed = true
         while changed do
             changed = false
-            for _, m in ipairs(MD.modules) do
+            for _, m in ipairs(ST.modules) do
                 if affected[m.name] then
                     for _, need in ipairs(m.needs) do
                         if not affected[need] then affected[need] = true; changed = true end
@@ -580,9 +580,9 @@ function MD:SetModule(name, on)
                 end
             end
         end
-        for _, m in ipairs(MD.modules) do
+        for _, m in ipairs(ST.modules) do
             if affected[m.name] then
-                MD.db.modules[m.name] = true
+                ST.db.modules[m.name] = true
                 DoLoad(m)
             end
         end
@@ -591,7 +591,7 @@ function MD:SetModule(name, on)
         local changed = true
         while changed do
             changed = false
-            for _, m in ipairs(MD.modules) do
+            for _, m in ipairs(ST.modules) do
                 if not affected[m.name] then
                     for _, need in ipairs(m.needs) do
                         if affected[need] then affected[m.name] = true; changed = true; break end
@@ -599,14 +599,14 @@ function MD:SetModule(name, on)
                 end
             end
         end
-        for _, m in ipairs(MD.modules) do
+        for _, m in ipairs(ST.modules) do
             if affected[m.name] then
-                MD.db.modules[m.name] = false
+                ST.db.modules[m.name] = false
                 m.failed = nil
                 if m.loaded then
-                    MD:Print(m.label .. ": off - unloads at your next /reload")
+                    ST:Print(m.label .. ": off - unloads at your next /reload")
                 else
-                    MD:Print(m.label .. ": off")
+                    ST:Print(m.label .. ": off")
                 end
             end
         end
@@ -616,10 +616,10 @@ end
 -- Every declared module the player already switched on, loaded once the
 -- client is ready enough -- same order, same DoLoad, no adapter call for one
 -- whose switch is absent or false.
-MD:RegisterCallback("CORE_READY", function()
-    if not (MD.db and MD.db.modules) then return end
-    for _, m in ipairs(MD.modules) do
-        if MD.db.modules[m.name] == true then
+ST:RegisterCallback("CORE_READY", function()
+    if not (ST.db and ST.db.modules) then return end
+    for _, m in ipairs(ST.modules) do
+        if ST.db.modules[m.name] == true then
             DoLoad(m)
         end
     end
@@ -632,37 +632,37 @@ end)
 -- from Core_TBC.lua's own list and if-chain). A command is registered once,
 -- in the order the help lists it; the dispatcher looks every verb up here and
 -- prints the help for a verb it does not know.
---   MD:AddCommand(name, fn, usage, text, hidden)
+--   ST:AddCommand(name, fn, usage, text, hidden)
 --       fn(arg, rawArg): arg lower-cased, rawArg as typed. usage/text are the
 --       help row; hidden keeps a verb out of the help and the About tab (a
 --       verb another row already names, as TBC's "lock, unlock"). Registering
 --       a name again replaces its function and row in place.
---   MD:AddAlias(alias, name)
+--   ST:AddAlias(alias, name)
 --       a second spelling of a registered verb: runs its function, listed
---       only under it (MD:Commands()'s `aliases`), never as a row of its own.
---   MD:Commands()
+--       only under it (ST:Commands()'s `aliases`), never as a row of its own.
+--   ST:Commands()
 --       every registered verb in order, as copies: { name, usage, text,
 --       hidden, aliases } -- what the help, the About tab and the tests read.
---   MD.COMMAND_USAGE_COLOR
+--   ST.COMMAND_USAGE_COLOR
 --       a colour ("ffffff00") the help wraps each usage in; nil prints it
 --       plain. Set by the flavour core (TBC's help has always been yellow).
---   MD:AddSubcommand(verb, sub, fn, usage, text)   (T113, docs/SPEC-next.md 2.5)
+--   ST:AddSubcommand(verb, sub, fn, usage, text)   (T113, docs/SPEC-next.md 2.5)
 --       `/st <verb> <sub> <rest>` runs fn(rest, rawRest); every other
 --       argument reaches the verb's own function exactly as before. The sub
 --       is the argument's first word, matched case-insensitively. usage is
 --       what follows the verb ("style <name>"; the sub's name when nil); the
 --       verb's help row gains it after " / " (one row per verb). The subs
---       are kept when MD:AddCommand registers the verb again, so the order
+--       are kept when ST:AddCommand registers the verb again, so the order
 --       the owning files load in does not matter. A sub on a verb nobody
 --       registered creates it, with a function that prints its usage lines
 --       and a row of its own ("/st <verb> <usage>", text the subs' texts);
---       a later MD:AddCommand of that verb replaces both. A sub registered
+--       a later ST:AddCommand of that verb replaces both. A sub registered
 --       again replaces its function and usage in place. Nothing changes
 --       while nothing registers one.
 local commandList = {}   -- entries, in registration order
 local commandByName = {} -- name or alias (lower-case) -> entry
 
-function MD:AddCommand(name, fn, usage, text, hidden)
+function ST:AddCommand(name, fn, usage, text, hidden)
     name = name:lower()
     local e = commandByName[name]
     if e and e.name ~= name then
@@ -685,10 +685,10 @@ function MD:AddCommand(name, fn, usage, text, hidden)
     e.usage, e.text, e.hidden = usage or "", text or "", hidden and true or false
 end
 
-function MD:AddAlias(alias, name)
+function ST:AddAlias(alias, name)
     alias = alias:lower()
     local e = commandByName[name:lower()]
-    if not e then error("MD:AddAlias: no command '" .. tostring(name) .. "' for '" .. alias .. "'", 2) end
+    if not e then error("ST:AddAlias: no command '" .. tostring(name) .. "' for '" .. alias .. "'", 2) end
     if commandByName[alias] == e then return end
     commandByName[alias] = e
     e.aliases[#e.aliases + 1] = alias
@@ -717,19 +717,19 @@ local function RowText(e)
     return table.concat(texts, "; ")
 end
 
-function MD:AddSubcommand(verb, sub, fn, usage, text)
-    if type(verb) ~= "string" then error("MD:AddSubcommand: the verb must be a string", 2) end
+function ST:AddSubcommand(verb, sub, fn, usage, text)
+    if type(verb) ~= "string" then error("ST:AddSubcommand: the verb must be a string", 2) end
     if type(sub) ~= "string" or not sub:match("^%S+$") then
-        error("MD:AddSubcommand: the sub must be one word, got '" .. tostring(sub) .. "'", 2)
+        error("ST:AddSubcommand: the sub must be one word, got '" .. tostring(sub) .. "'", 2)
     end
-    if type(fn) ~= "function" then error("MD:AddSubcommand: no function for '" .. verb .. " " .. sub .. "'", 2) end
+    if type(fn) ~= "function" then error("ST:AddSubcommand: no function for '" .. verb .. " " .. sub .. "'", 2) end
     verb, sub = verb:lower(), sub:lower()
     local e = commandByName[verb]
     if not e then
         e = { name = verb, aliases = {}, subs = {}, usage = "", text = "", hidden = false, createdBySub = true }
         e.fn = function()
             for _, s in ipairs(e.subs) do
-                MD:Print("usage: /st " .. e.name .. " " .. s.usage)
+                ST:Print("usage: /st " .. e.name .. " " .. s.usage)
             end
         end
         commandList[#commandList + 1] = e
@@ -745,7 +745,7 @@ function MD:AddSubcommand(verb, sub, fn, usage, text)
     entry.fn, entry.usage, entry.text = fn, usage or sub, text or ""
 end
 
-function MD:Commands()
+function ST:Commands()
     local out = {}
     for i, e in ipairs(commandList) do
         local aliases = {}
@@ -755,14 +755,14 @@ function MD:Commands()
     return out
 end
 
-function MD:ShowCommands()
-    MD:Print("commands:")
-    local color = MD.COMMAND_USAGE_COLOR
+function ST:ShowCommands()
+    ST:Print("commands:")
+    local color = ST.COMMAND_USAGE_COLOR
     for _, e in ipairs(commandList) do
         if not e.hidden then
             local row = RowUsage(e)
             local usage = color and ("|c" .. color .. row .. "|r") or row
-            MD:Print("  " .. usage .. " - " .. RowText(e))
+            ST:Print("  " .. usage .. " - " .. RowText(e))
         end
     end
 end
@@ -791,7 +791,7 @@ SlashCmdList.SPELLTUNER = function(msg)
             e.fn(arg, rawArg)
         end
     else
-        MD:ShowCommands()
+        ST:ShowCommands()
     end
 end
 
@@ -801,19 +801,19 @@ end
 -- A file that owns some state a bug report should name (the style, the
 -- integrations, the clock's layout) adds its own line to /st dump without
 -- owning UI/Dump_Forever.lua.
---   MD:AddDumpLine(key, fn)
+--   ST:AddDumpLine(key, fn)
 --       fn() answers one line; /st dump calls every fn in registration order
---       and escapes each answer with MD.Text.EscASCII (so the line is ASCII,
+--       and escapes each answer with ST.Text.EscASCII (so the line is ASCII,
 --       one line, no bare pipe, whatever fn said). Registering a key again
 --       replaces its fn in place. On every TOC; only Forever has a dump.
---   MD:DumpLines()
+--   ST:DumpLines()
 --       the registered { key, fn } pairs, in order, as copies -- what the
 --       dump reads. With none registered the dump is byte-identical.
 local dumpLines, dumpLineByKey = {}, {}
 
-function MD:AddDumpLine(key, fn)
-    if type(key) ~= "string" or key == "" then error("MD:AddDumpLine: the key must be a non-empty string", 2) end
-    if type(fn) ~= "function" then error("MD:AddDumpLine: no function for '" .. key .. "'", 2) end
+function ST:AddDumpLine(key, fn)
+    if type(key) ~= "string" or key == "" then error("ST:AddDumpLine: the key must be a non-empty string", 2) end
+    if type(fn) ~= "function" then error("ST:AddDumpLine: no function for '" .. key .. "'", 2) end
     local e = dumpLineByKey[key]
     if not e then
         e = { key = key }
@@ -823,7 +823,7 @@ function MD:AddDumpLine(key, fn)
     e.fn = fn
 end
 
-function MD:DumpLines()
+function ST:DumpLines()
     local out = {}
     for i, e in ipairs(dumpLines) do out[i] = { key = e.key, fn = e.fn } end
     return out

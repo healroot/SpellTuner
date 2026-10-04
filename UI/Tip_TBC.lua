@@ -4,8 +4,8 @@
 -- and the widget / minimap composite (Tip:Clock). T121: the spell and damage
 -- blocks (Tip:Spell, Tip:Damage) and the column glossary (Tip:Columns) are
 -- deleted -- the game's spell tooltip draws UI/SpellTip.lua's block on both
--- lines. T123: the rank table's row (Tip:Row) is deleted too -- nothing called it. Every one reads the TBC engine (MD.Regen,
--- MD.RankMath, MD.SpellData, MD:GetManaState), so this file is on the TBC TOC
+-- lines. T123: the rank table's row (Tip:Row) is deleted too -- nothing called it. Every one reads the TBC engine (ST.Regen,
+-- ST.RankMath, ST.SpellData, ST:GetManaState), so this file is on the TBC TOC
 -- only; the line model, the renderer and Show / Hide are UI/Tip.lua's, which
 -- loads just before it. Every hover surface on TBC (both ElvUI datatexts, the
 -- minimap button, the floating widget, the dashboard's rows and recap line)
@@ -13,10 +13,10 @@
 --
 -- ASCII only in every string here (default WoW fonts lack arrow/infinity
 -- glyphs) and never a bare "|" (it opens a colour escape).
-local _, MD = ...
-local UI = MD.UI
+local _, ST = ...
+local UI = ST.UI
 
-local Tip = MD.Tip
+local Tip = ST.Tip
 
 local WHITE  = { 1, 1, 1 }
 local KEY    = { 0.78, 0.78, 0.78 }
@@ -38,9 +38,9 @@ end
 --------------------------------------------------------------------------------
 function Tip:Mana()
     local lines = {}
-    local s = MD.GetManaState and MD:GetManaState()
+    local s = ST.GetManaState and ST:GetManaState()
     if not s then return lines end
-    local RM = MD.Regen
+    local RM = ST.Regen
     local spiritPerSec, mp5Gear, _, unreported = RM:Components()
 
     if s.tto then
@@ -75,13 +75,13 @@ function Tip:Mana()
     end
 
     -- Between pulls: how many more this pool affords (Engine/PullBudget.lua).
-    if MD.PullBudget then
-        for _, ln in ipairs(MD.PullBudget:Lines()) do lines[#lines + 1] = ln end
+    if ST.PullBudget then
+        for _, ln in ipairs(ST.PullBudget:Lines()) do lines[#lines + 1] = ln end
     end
 
     -- What each mana source is worth right now, and what it buys on the clock.
-    if MD.ManaCooldowns then
-        local sources = MD.ManaCooldowns:All()
+    if ST.ManaCooldowns then
+        local sources = ST.ManaCooldowns:All()
         if #sources > 0 then
             lines[#lines + 1] = {}
             for _, src in ipairs(sources) do
@@ -106,7 +106,7 @@ end
 --------------------------------------------------------------------------------
 function Tip:Fights(n)
     local lines = {}
-    local hist = MD.fightHistory
+    local hist = ST.fightHistory
     if not hist or #hist == 0 then return lines end
     n = math.min(n or 1, #hist)
     lines[#lines + 1] = {}
@@ -141,7 +141,7 @@ local function Time(sec)
     local step = sec < 30 and 1 or 5
     sec = step * math.floor(sec / step + 0.5)
     if sec > 600 then return ">10m" end
-    return MD.Util.Clock(sec)
+    return ST.Util.Clock(sec)
 end
 Tip.ClockTime = Time
 
@@ -149,7 +149,7 @@ Tip.ClockTime = Time
 local function Pair(l, r, rc) return { l = l, r = r, c = "label", rc = rc or "text" } end
 Tip.ClockPair = Pair
 
--- Tip:ClockSummary(s): the pairs for one mana state (MD:GetManaState()'s);
+-- Tip:ClockSummary(s): the pairs for one mana state (ST:GetManaState()'s);
 -- {} without one.
 function Tip:ClockSummary(s)
     local lines = {}
@@ -189,7 +189,7 @@ end
 -- raw lines and the last fight between the summary and the hints.
 function Tip:Clock(hints, detail)
     local lines = { { l = "SpellTuner", c = "accent" } }
-    local s = MD.GetManaState and MD:GetManaState()
+    local s = ST.GetManaState and ST:GetManaState()
     for _, ln in ipairs(Tip:ClockSummary(s)) do lines[#lines + 1] = ln end
     if detail then
         local mana = Tip:Mana()
@@ -214,12 +214,12 @@ end
 
 -- The detail key: Shift, read through the adapter.
 function Tip.ClockDetail()
-    return (MD.API and MD.API.IsShiftKeyDown and MD.API.IsShiftKeyDown() == true) or false
+    return (ST.API and ST.API.IsShiftKeyDown and ST.API.IsShiftKeyDown() == true) or false
 end
 
 -- T79 (P36): the minimap button's clock lines on this line (UI/MinimapButton.lua);
 -- T82: the detail key read at each hover.
-MD:Provide("MinimapLines", function(hints) return Tip:Clock(hints, Tip.ClockDetail()) end)
+ST:Provide("MinimapLines", function(hints) return Tip:Clock(hints, Tip.ClockDetail()) end)
 
 -- T82: Shift pressed or released while the clock's tooltip is up -- the
 -- widget's or the minimap button's -- runs the owner's OnEnter again, so the
@@ -239,4 +239,4 @@ function Tip.OnClockModifier(key)
         end
     end
 end
-MD:On("MODIFIER_STATE_CHANGED", Tip.OnClockModifier)
+ST:On("MODIFIER_STATE_CHANGED", Tip.OnClockModifier)

@@ -14,11 +14,11 @@
 -- the shown value and mode are latched (bad news instant, good news needs two
 -- consecutive ticks), and the trend arrow is derived from the SHOWN value so
 -- arrow and number can never contradict each other.
-local _, MD = ...
+local _, ST = ...
 
-local RM, ST -- bound at MD_READY (load order guarantees they exist by then)
-MD:RegisterCallback("MD_READY", function()
-    RM, ST = MD.Regen, MD.Spend
+local RM, SPEND -- bound at MD_READY (load order guarantees they exist by then)
+ST:RegisterCallback("MD_READY", function()
+    RM, SPEND = ST.Regen, ST.Spend
 end)
 
 local K_SIGMA = 1.0        -- pessimistic edge, in standard deviations
@@ -50,10 +50,10 @@ local function RestTime(mana, manaMax)
 end
 
 local function Compute()
-    if not RM or not MD.player.usesMana then return nil end
+    if not RM or not ST.player.usesMana then return nil end
     local mana = UnitPower("player", 0)
     local manaMax = UnitPowerMax("player", 0)
-    local rate, sigma, n = ST:Estimate()
+    local rate, sigma, n = SPEND:Estimate()
     local regen = RM:Effective()
     local pess = rate + K_SIGMA * sigma
     local net = pess - regen
@@ -68,7 +68,7 @@ local function Compute()
         -- T58 (P14, review A28): the kernel's flag (Core.lua), set by the two
         -- regen events and seeded at MD_READY -- so a /reload mid-fight
         -- projects in combat at once, as the Forever clock already did (R36).
-        inCombat = MD.inCombat == true,
+        inCombat = ST.inCombat == true,
         rest = RestTime(mana, manaMax),
     }
     if not s.inCombat then
@@ -85,7 +85,7 @@ local function Compute()
         else
             s.mode = ttf and "ooc" or "nodata"
         end
-    elseif n < WARMUP_CASTS and not ST:Seeded() then
+    elseif n < WARMUP_CASTS and not SPEND:Seeded() then
         s.mode = "warmup"
     elseif net > sigma then
         s.mode = "oom"
@@ -98,7 +98,7 @@ local function Compute()
         -- (mana / (net + sigma), "no sooner than") that hold already uses.
         -- The mode logic is untouched; only whether digits get printed changes.
         s.rel = sigma / net
-        s.confident = s.rel <= ((MD.db and MD.db.oomConfidence) or 0.7)
+        s.confident = s.rel <= ((ST.db and ST.db.oomConfidence) or 0.7)
         s.bound = mana / (net + sigma)
     elseif net < -sigma then
         s.mode = "full"
@@ -110,8 +110,8 @@ local function Compute()
     -- Big mana cooldown: what the clock becomes if you press it now. The
     -- delta is already marginal over RM:Effective() (Engine/ManaCooldowns.lua),
     -- so it is simply added to the pool.
-    if s.inCombat and MD.ManaCooldowns then
-        local best = MD.ManaCooldowns:Best()
+    if s.inCombat and ST.ManaCooldowns then
+        local best = ST.ManaCooldowns:Best()
         if best and best.delta > 0 then
             best.tto = nil -- MC:All() caches its entries; never show a stale projection
             if s.mode == "oom" and net > 0 then
@@ -136,7 +136,7 @@ end
 -- pessimistic, net, casts, cv, stable, inCombat, rest, mode, and one of
 -- tto (oom) / ttf (full, ooc) / bound (hold); sigmaT when a horizon exists;
 -- cd = the richest ready mana cooldown { name, short, delta, tto, ... } or nil.
-function MD:GetManaState()
+function ST:GetManaState()
     return state
 end
 
@@ -240,7 +240,7 @@ local function LatchValue(q, worseIsLower, step)
     end
 end
 
-MD:OnTick(function()
+ST:OnTick(function()
     state = Compute()
     if not state then
         disp.mode = nil
@@ -330,11 +330,11 @@ end
 -- fonts have no arrow/infinity glyphs) and NO bare "|" (it opens a colour
 -- escape). tools/clockfacecheck.lua holds every string byte for byte.
 --------------------------------------------------------------------------------
-MD.ClockFace = MD.ClockFace or {} -- Engine/ClockFace.lua, listed first, keeps a table it finds
-local CF = MD.ClockFace             -- LineString / Tone looked up at call time
+ST.ClockFace = ST.ClockFace or {} -- Engine/ClockFace.lua, listed first, keeps a table it finds
+local CF = ST.ClockFace             -- LineString / Tone looked up at call time
 
 -- now: the caller's GetTime(), for the arrow (the clock's own when omitted).
-function MD:GetClockFace(now)
+function ST:GetClockFace(now)
     local s = state
     local m = disp.mode
     if not s or not m then return nil end
@@ -401,9 +401,9 @@ function MD:GetClockFace(now)
         local cd = s.cd
         if cd and cd.tto and m == "oom" and not disp.bounded and v and v <= 90
             and cd.delta >= 0.10 * math.max(s.manaMax, 1)
-            and not (MD.db and MD.db.showCooldown == false) then
+            and not (ST.db and ST.db.showCooldown == false) then
             face.second = { kind = "cd", label = cd.short, value = Quantize(cd.tto, cd.tto < 60 and 5 or 15) }
-        elseif s.rest and not (MD.db and MD.db.showRest == false) then
+        elseif s.rest and not (ST.db and ST.db.showRest == false) then
             local r = s.rest
             -- always when the primary is a bound or missing: nothing to compare against
             local show = disp.bounded or (v == nil) or (v > CAP) or (math.abs(r - v) / math.max(v, 1) >= 0.25)
@@ -414,12 +414,12 @@ function MD:GetClockFace(now)
     end
     return face
 end
-MD:Provide("ClockFace.Current", function(now) return MD:GetClockFace(now) end)
+ST:Provide("ClockFace.Current", function(now) return ST:GetClockFace(now) end)
 
 -- The one display string (valueHex: see ClockFace.LineString). "" before the
 -- first state, as always.
-function MD:GetDisplayString(valueHex)
-    local face = MD:GetClockFace()
+function ST:GetDisplayString(valueHex)
+    local face = ST:GetClockFace()
     if not face then return "" end
     return CF.LineString(face, valueHex)
 end
@@ -434,22 +434,22 @@ local function Plain(str)
     return (str:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""))
 end
 
-MD:OnTick(function(dt)
-    if not state or not (MD.db and MD.db.debug and MD.db.debug.enabled) then return end
+ST:OnTick(function(dt)
+    if not state or not (ST.db and ST.db.debug and ST.db.debug.enabled) then return end
     local s = state
     if s.mode ~= dbgMode then
-        MD:Debug("tto", "mode %s -> %s (shown: %s)", tostring(dbgMode), s.mode, Plain(MD:GetDisplayString()))
+        ST:Debug("tto", "mode %s -> %s (shown: %s)", tostring(dbgMode), s.mode, Plain(ST:GetDisplayString()))
         dbgMode = s.mode
         dbgAcc = math.huge
     end
     -- Every change of the SHOWN string, so jumpiness can be measured rather
     -- than estimated from 5s samples (79% of consecutive samples differed in
     -- the first dungeon log; how many of those were real changes is unknown).
-    local shown = Plain(MD:GetDisplayString())
+    local shown = Plain(ST:GetDisplayString())
     if shown ~= dbgShown then
         local now = GetTime()
         if dbgShown ~= nil then
-            MD:Debug("tto", "shown: '%s' (was '%s', %.1fs)", shown, dbgShown, now - (dbgShownAt or now))
+            ST:Debug("tto", "shown: '%s' (was '%s', %.1fs)", shown, dbgShown, now - (dbgShownAt or now))
         end
         dbgShown, dbgShownAt = shown, now
     end
@@ -458,14 +458,14 @@ MD:OnTick(function(dt)
         dbgAcc = 0
         local T = s.tto or s.ttf or s.bound
         -- "||" draws one pipe in the console; a bare "|" is an escape (T47, B11)
-        MD:Debug("tto", "%s '%s' || T %s rest %s || spend %.2f +- %.2f/s n=%d cv=%.2f || regen %.2f/s (duty %d%%, now %.2f) || net %+.2f/s%s || mana %d/%d",
-            s.mode, Plain(MD:GetDisplayString()),
+        ST:Debug("tto", "%s '%s' || T %s rest %s || spend %.2f +- %.2f/s n=%d cv=%.2f || regen %.2f/s (duty %d%%, now %.2f) || net %+.2f/s%s || mana %d/%d",
+            s.mode, Plain(ST:GetDisplayString()),
             T and string.format("%.0fs", T) or "-", s.rest and string.format("%.0fs", s.rest) or "-",
             s.spend, s.sigma, s.casts, s.cv, s.regen, s.duty * 100, s.regenNow, s.net,
             s.rel and string.format(" rel %.2f%s", s.rel, s.confident and "" or " BOUND") or "",
             s.mana, s.manaMax)
         if s.cd then
-            MD:Debug("tto", "  cooldown ready: %s worth %d mana -> OOM %s",
+            ST:Debug("tto", "  cooldown ready: %s worth %d mana -> OOM %s",
                 s.cd.name, s.cd.delta, s.cd.tto and string.format("%.0fs", s.cd.tto) or "-")
         end
     end

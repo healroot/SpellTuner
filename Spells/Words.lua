@@ -21,10 +21,10 @@
 -- a Forever-only value at load (W.GCD falls back to 1.5). And the words of
 -- the +healing share a rank gets (W.Bonus, W.BonusLabel) and of a signed
 -- change (W.Signed, the What if footer, T122).
-local _, MD = ...
+local _, ST = ...
 
-MD.Words = MD.Words or {}
-local W = MD.Words
+ST.Words = ST.Words or {}
+local W = ST.Words
 
 -- Vanilla's crit rule (1.5x); Forever's own is UNVERIFIED (HoTs crit since
 -- 70009, REFERENCES-FOREVER.md sec4, amount not stated). T12's /st measure
@@ -32,7 +32,7 @@ local W = MD.Words
 W.CRIT_MULT = 1.5
 -- Spells/Book.lua's global cooldown: the interval a direct spell's per second
 -- is over when its cast is shorter, and an Other spell's for casts to OOM.
-W.GCD = (MD.Book and MD.Book.GCD) or 1.5
+W.GCD = (ST.Book and ST.Book.GCD) or 1.5
 
 function W.Num(v, decimals)
     if type(v) ~= "number" or v ~= v then return "-" end -- nil or NaN
@@ -388,10 +388,10 @@ function W.CritNote()
     return "x" .. Num(W.CRIT_MULT, 1) .. ", not measured"
 end
 
--- The suggested rule in words (3.5), its floor read from MD.Rules.
+-- The suggested rule in words (3.5), its floor read from ST.Rules.
 function W.SuggestedRule()
     return "Highest heal per mana among the ranks nothing beats on both per mana and per second, with at least "
-        .. Num(MD.Rules.SUGGESTED_FLOOR * 100) .. "% of your highest rank's heal."
+        .. Num(ST.Rules.SUGGESTED_FLOOR * 100) .. "% of your highest rank's heal."
 end
 
 -- The Spells pane's decision strip (3.5): the suggested rank against the
@@ -507,7 +507,7 @@ end
 -- number that beats `old` in that book, else nil; `top` the highest known
 -- rank's number; `kind` "heal" or "damage". When the new rank gives less per
 -- mana, the rule did not pick it on per mana, so the reason follows: beaten,
--- else under the floor (MD.Rules.SUGGESTED_FLOOR, Spells/RankRules.lua's).
+-- else under the floor (ST.Rules.SUGGESTED_FLOOR, Spells/RankRules.lua's).
 --   "Suggested: Rank 1 -> Rank 2. With these stats Rank 2 gives 7.40 per
 --    mana, Rank 1 6.83 (+8%)."
 function W.SuggestionMoved(old, new, beatenBy, top, kind)
@@ -523,7 +523,7 @@ function W.SuggestionMoved(old, new, beatenBy, top, kind)
         if beatenBy ~= nil then
             text = text .. " Rank " .. oldR .. " is beaten by Rank " .. tostring(beatenBy) .. "."
         elseif top ~= nil then
-            local floor = (MD.Rules and MD.Rules.SUGGESTED_FLOOR) or 0.4
+            local floor = (ST.Rules and ST.Rules.SUGGESTED_FLOOR) or 0.4
             text = text .. " Rank " .. oldR .. " is under " .. Num(floor * 100) .. "% of Rank " .. tostring(top)
                 .. "'s " .. ((kind == "damage") and "damage" or "heal") .. "."
         end

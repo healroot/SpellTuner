@@ -12,11 +12,11 @@
 local here = arg[0]:match("^(.*)/[^/]+$")
 HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua"); arg[0] = a0
+local ST = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB
 
-local ids = dofile(here .. "/fakepull.lua")(MD, S)
-local SM, SP, RT = MD.SimModel, MD.SimPlanner, MD.ReplayTrace
+local ids = dofile(here .. "/fakepull.lua")(ST, S)
+local SM, SP, RT = ST.SimModel, ST.SimPlanner, ST.ReplayTrace
 local K, TK = SM.K, SM.TK
 
 local ok, fails = 0, {}
@@ -25,9 +25,9 @@ local function check(name, cond, detail)
     print(string.format("%-38s %s%s", name, cond and "ok" or "FAIL", detail and (" - " .. detail) or ""))
 end
 
-local rec = MD.FightRecorder:Get(1)
+local rec = ST.FightRecorder:Get(1)
 assert(rec, "no recording")
-local kit = MD.RankMath:SpellKit()
+local kit = ST.RankMath:SpellKit()
 local plan = SP.NewPlan(SP.MaxRankBinds(),
     { swiftmendBelow = 0.30, directBelow = 0.45, rollStacks = 3, hotBelow = 0.80, filler = false }, kit)
 
@@ -105,7 +105,7 @@ end
 -- BF-1 fixture does (a Lifebloom and a Regrowth rolling on the tank at the
 -- pull), and they must reach the trace as HOT events at t = 0
 do
-    local fx = MD.SimFixtures.BF1
+    local fx = ST.SimFixtures.BF1
     local targets = {}
     for i, r in ipairs(fx.roster) do targets[i] = { name = r.name, maxHP = 10000, hp0 = 10000, tracked = true } end
     local sc = { dur = fx.dur, pool = fx.pool, initial = fx.initial, targets = targets, forms = fx.forms, kit = kit }
@@ -503,8 +503,8 @@ end
 --------------------------------------------------------------------------------
 do
     local kit2 = kit
-    local lb = MD.SpellData.maxRank.Lifebloom
-    local rj = MD.SpellData.maxRank.Rejuvenation
+    local lb = ST.SpellData.maxRank.Lifebloom
+    local rj = ST.SpellData.maxRank.Rejuvenation
     local e1, e2 = kit2.caster[lb], kit2.caster[rj]
     local function hpm(e)
         return ((e.direct or 0) + (e.tick or 0) * (e.ticks or 0) + (e.bloom or 0)) / (e.cost or 1)

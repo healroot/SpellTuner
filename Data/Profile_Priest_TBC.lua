@@ -18,9 +18,9 @@
 -- totem-like object, a next-cast modifier):
 --   Power Word: Shield, Desperate Prayer, Prayer of Mending, Holy Nova,
 --   Lightwell, Inner Focus, Power Infusion.
-local _, MD = ...
+local _, ST = ...
 
-MD.Profiles.Register("PRIEST", {
+ST.Profiles.Register("PRIEST", {
     label = "Priest",
     critSchool = 2,                -- Holy (GetSpellCritChance's school; VERIFY)
     -- T123: the rank table and the tooltip, now that every TBC reader of

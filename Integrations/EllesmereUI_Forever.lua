@@ -9,7 +9,7 @@
 --    queueing stub there first). EllesmereUI's BlizzardSkin hands fn the facade
 --    S at its own PLAYER_LOGIN, or at once for a late registration, or never
 --    (third-party skinning off for SpellTuner, BlizzardSkin disabled). fn keeps
---    S as MD.EUISkin and fires EUI_SKIN_READY once, whatever the order between
+--    S as ST.EUISkin and fires EUI_SKIN_READY once, whatever the order between
 --    the two addons (X4: the Ellesmere style repaints on it). The follow is
 --    the Ellesmere style's (UI/Style_Ellesmere.lua, T100); this file reads no
 --    getter. Only apiVersion 2 -- the documented, additive-only contract -- is
@@ -28,7 +28,7 @@
 --    while /unlock is open (a clock hidden at full mana could otherwise only be
 --    placed as an empty mover) and ends it after; it never calls Show / Hide
 --    (the clock's own visibility owner does). The clock is reached through the
---    mover seam MD.ClockWidget (T93). Without RegisterUnlockElements the clock
+--    mover seam ST.ClockWidget (T93). Without RegisterUnlockElements the clock
 --    keeps its own drag and the line says "mover: not offered by this
 --    EllesmereUI". db.eui.unlock (default on) turns it off.
 -- 3. The version guard. TESTED_EUI is the version this was built against;
@@ -38,18 +38,18 @@
 --
 -- It never reads or writes EllesmereUI._ModuleNS, EllesmereUIDataBarsDB or
 -- EllesmereUIDB, never calls RegisterModule, never attaches to
--- ManaRegenSpark, registers no event on a frame of its own (MD:On), and never
+-- ManaRegenSpark, registers no event on a frame of its own (ST:On), and never
 -- moves a frame in combat (a point applied in combat waits for the end).
 -- Host addons are reached only from Integrations/ (apicheck rule 11).
-local _, MD = ...
+local _, ST = ...
 
 -- docs/SPEC-next.md 6.3: the mover's switch, declared by the file that reads it.
-MD:RegisterDefaults({ eui = { unlock = true } })
+ST:RegisterDefaults({ eui = { unlock = true } })
 
-MD.Surfaces = MD.Surfaces or {}
+ST.Surfaces = ST.Surfaces or {}
 
 local EUI = {}
-MD.EUI = EUI
+ST.EUI = EUI
 
 EUI.TESTED = "9.3.4"   -- TESTED_EUI: the EllesmereUI this was built and tested against
 EUI.API_VERSION = 2    -- the skin facade contract followed (SKINNING_API.md)
@@ -61,7 +61,7 @@ EUI.PREVIEW_SECONDS = 3600 -- the preview while /unlock is open; ended when it c
 local function Host()
     local E = EllesmereUI
     if type(E) == "table" then
-        MD.EUIParent = E -- the parent's getters, UI/Style_Ellesmere.lua's fallback with no facade (T100)
+        ST.EUIParent = E -- the parent's getters, UI/Style_Ellesmere.lua's fallback with no facade (T100)
         return E
     end
     return nil
@@ -77,13 +77,13 @@ local skinArrived = false
 local function OnSkin(S)
     if skinArrived then return end
     skinArrived = true
-    MD.EUISkin = S
+    ST.EUISkin = S
     local v = type(S) == "table" and S.apiVersion or nil
     EUI.skinApi = v
     if v == EUI.API_VERSION and type(S.OnLooksChanged) == "function" then
-        pcall(S.OnLooksChanged, function() MD:Fire("EUI_LOOKS_CHANGED") end)
+        pcall(S.OnLooksChanged, function() ST:Fire("EUI_LOOKS_CHANGED") end)
     end
-    MD:Fire("EUI_SKIN_READY", S)
+    ST:Fire("EUI_SKIN_READY", S)
 end
 
 -- Whether the facade is followed: it arrived and speaks apiVersion 2.
@@ -107,18 +107,18 @@ EUI.moverWhy = nil  -- why there is none: "off", "not offered by this EllesmereU
 local pendingApply = false
 local ourPreview = false
 
-local function Clock() return MD.ClockWidget end
+local function Clock() return ST.ClockWidget end
 
 local function ClockDB()
-    MD.db.clock = MD.db.clock or {}
-    return MD.db.clock
+    ST.db.clock = ST.db.clock or {}
+    return ST.db.clock
 end
 
 -- The clock at its stored place; in combat, after the fight.
 local function Apply()
     local W = Clock()
     if not (W and W.ApplyPoint) then return end
-    if MD.inCombat then pendingApply = true; return end
+    if ST.inCombat then pendingApply = true; return end
     pendingApply = false
     W:ApplyPoint()
 end
@@ -139,7 +139,7 @@ local function Element()
             Apply()
         end,
         loadPos = function()
-            local p = MD.db.clock and MD.db.clock.point
+            local p = ST.db.clock and ST.db.clock.point
             if type(p) == "table" and p[1] then
                 return { point = p[1], relPoint = p[3] or p[1], x = p[4] or 0, y = p[5] or 0 }
             end
@@ -150,7 +150,7 @@ local function Element()
             if W and W.ResetPosition then W:ResetPosition() end
         end,
         applyPos = function() Apply() end,
-        isHidden = function() return not (MD.db.clock and MD.db.clock.shown) end,
+        isHidden = function() return not (ST.db.clock and ST.db.clock.shown) end,
         noResize = true,
     }
 end
@@ -175,7 +175,7 @@ function EUI.RegisterMover()
     local E = Host()
     if not E then return false end
     if EUI.mover then return true end
-    if not (MD.db.eui and MD.db.eui.unlock ~= false) then EUI.moverWhy = "off"; return false end
+    if not (ST.db.eui and ST.db.eui.unlock ~= false) then EUI.moverWhy = "off"; return false end
     if type(E.RegisterUnlockElements) ~= "function" or type(E.MakeUnlockElement) ~= "function" then
         EUI.moverWhy = "not offered by this EllesmereUI"
         return false
@@ -193,17 +193,17 @@ function EUI.RegisterMover()
     return true
 end
 
-MD:On("PLAYER_REGEN_ENABLED", function()
+ST:On("PLAYER_REGEN_ENABLED", function()
     if pendingApply then Apply() end
 end)
 
 --------------------------------------------------------------------------------
--- 3. What is said about it (Surface_LDB.lua's MD.Integrations joins it)
+-- 3. What is said about it (Surface_LDB.lua's ST.Integrations joins it)
 --------------------------------------------------------------------------------
 -- The running EllesmereUI's version from its TOC, or "?".
 function EUI.Version()
-    if type(MD.API.AddOnMetadata) ~= "function" then return "?" end
-    local v = MD.API.AddOnMetadata("EllesmereUI", "Version")
+    if type(ST.API.AddOnMetadata) ~= "function" then return "?" end
+    local v = ST.API.AddOnMetadata("EllesmereUI", "Version")
     if type(v) == "string" and v ~= "" then return v end
     return "?"
 end
@@ -234,9 +234,9 @@ function EUI.DumpParts(brokers)
     return { Head(), EUI.SkinText(), brokers, EUI.MoverText(true) }
 end
 
-MD:RegisterCallback("MD_READY", function()
+ST:RegisterCallback("MD_READY", function()
     if not Host() then return end
-    MD.Surfaces.eui = { tested = EUI.TESTED }
+    ST.Surfaces.eui = { tested = EUI.TESTED }
     EUI.RegisterMover()
-    if MD.Integrations and MD.Integrations.Note then MD.Integrations.Note() end
+    if ST.Integrations and ST.Integrations.Note then ST.Integrations.Note() end
 end)

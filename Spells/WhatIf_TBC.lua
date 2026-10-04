@@ -2,33 +2,33 @@
 -- provider on TBC. TBC TOC only, after Engine/DamageMath.lua (the book and
 -- RankMath it calls at run time are loaded by then).
 --
--- MD.sim is the one table RankMath:Context reads (without opts.live), and
+-- ST.sim is the one table RankMath:Context reads (without opts.live), and
 -- THIS FILE IS ITS ONLY WRITER (tools/whatifcheck.lua's source scan): every
--- WHATIF_CHANGED rewrites it from MD.WhatIf's values -- heal, damage (T124:
+-- WHATIF_CHANGED rewrites it from ST.WhatIf's values -- heal, damage (T124:
 -- the typed +Spell damage, read only by the book's what-if build), crit, mana,
 -- casting, base (mp5, as typed), tree (Form: true for Tree of Life, false
 -- for Caster, absent for Live), moonglow (0-3) -- and Clear leaves it empty.
 -- It stays set while the what-if is active, so UI/Advisor.lua's "simulation
 -- active: not real gear" guard keeps working.
 --
--- The what-if book is MD.Book:Get({ whatIf = true }) (Spells/Book_Model.lua,
--- T118's door): RankMath:Compute() under MD.sim, built for the call, never
+-- The what-if book is ST.Book:Get({ whatIf = true }) (Spells/Book_Model.lua,
+-- T118's door): RankMath:Compute() under ST.sim, built for the call, never
 -- cached, never firing BOOK_CHANGED. The live book (Get()) never reads it.
 --
 -- Form and Moonglow price costs from SD:StaticCost (RankMath's costCtx), not
 -- the client: the RANKS note says so. The class rows (Form, Moonglow) are the
 -- druid's book only -- the rank table granted and no class book
 -- (RankMath:IsClassBook) -- never an isDruid read.
-local _, MD = ...
+local _, ST = ...
 
-local WI = MD.WhatIf
+local WI = ST.WhatIf
 if not WI then return end
 
 local KEYS = { "heal", "damage", "crit", "mana", "casting", "base", "moonglow" }
 
 local function Sync()
-    if type(MD.sim) ~= "table" then MD.sim = {} end
-    local sim = MD.sim
+    if type(ST.sim) ~= "table" then ST.sim = {} end
+    local sim = ST.sim
     for k in pairs(sim) do sim[k] = nil end
     for _, k in ipairs(KEYS) do
         local v = WI:Get(k)
@@ -39,9 +39,9 @@ local function Sync()
 end
 
 local function DruidBook()
-    local RM = MD.RankMath
-    if not (RM and MD.ClassProfile and MD.ClassProfile.Can) then return false end
-    if not MD.ClassProfile:Can("rankTable") then return false end
+    local RM = ST.RankMath
+    if not (RM and ST.ClassProfile and ST.ClassProfile.Can) then return false end
+    if not ST.ClassProfile:Can("rankTable") then return false end
     if RM.IsClassBook and RM:IsClassBook() then return false end
     return true
 end
@@ -56,7 +56,7 @@ local CLASS_ROWS = {
 local provider = {}
 
 function provider.Live()
-    local RM = MD.RankMath
+    local RM = ST.RankMath
     local out = {}
     if RM and RM.Context then
         local ok, ctx = pcall(RM.Context, RM, { live = true })
@@ -65,17 +65,17 @@ function provider.Live()
             out.heal, out.crit, out.casting, out.base = live.heal, live.crit, live.casting, live.base
         end
     end
-    out.damage = WI.LiveDamage(MD.Book) -- T124: the school on screen
-    local pool = MD.Book and MD.Book.Pool and MD.Book:Pool()
+    out.damage = WI.LiveDamage(ST.Book) -- T124: the school on screen
+    local pool = ST.Book and ST.Book.Pool and ST.Book:Pool()
     if type(pool) == "table" then out.mana = pool.max end
-    if MD.InTreeForm then out.form = MD:InTreeForm() and "tree" or "caster" end
-    if MD.TalentRank then out.moonglow = MD:TalentRank("Moonglow") end
+    if ST.InTreeForm then out.form = ST:InTreeForm() and "tree" or "caster" end
+    if ST.TalentRank then out.moonglow = ST:TalentRank("Moonglow") end
     return out
 end
 
 function provider.Book()
     Sync()
-    return MD.Book:Get({ whatIf = true })
+    return ST.Book:Get({ whatIf = true })
 end
 
 function provider.classRows()
@@ -85,7 +85,7 @@ end
 
 function provider.classTitle()
     if not DruidBook() then return nil end
-    return (MD.player and MD.player.class) or "DRUID"
+    return (ST.player and ST.player.class) or "DRUID"
 end
 
 provider.classNote = nil
@@ -97,4 +97,4 @@ end
 
 WI.provider = provider
 
-MD:RegisterCallback("WHATIF_CHANGED", Sync)
+ST:RegisterCallback("WHATIF_CHANGED", Sync)

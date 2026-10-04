@@ -17,9 +17,9 @@ local function NewSession()
     _G.SpellTunerDB = nil
     _G.ManaDemonDB = nil
     local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-    local MD = dofile(here .. "/harness.lua")
+    local ST = dofile(here .. "/harness.lua")
     arg[0] = a0
-    return MD, _G.STUB
+    return ST, _G.STUB
 end
 
 local function CapturedChat(body)
@@ -33,7 +33,7 @@ local function CapturedChat(body)
 end
 
 -- T54 (P10, review Q8): the recorder finishes a pull one second after the
--- combat flag drops (MD.API.After(1, ...): the death re-poll, the meter read,
+-- combat flag drops (ST.API.After(1, ...): the death re-poll, the meter read,
 -- the store), and the stub now fires a timer when its clock reaches it. So a
 -- pull's end is the clock ticked one second on -- never a hand flush -- and
 -- whatever is still pending after that is noted here; one check at the end
@@ -64,13 +64,13 @@ end
 -- 1: the recorder registers nothing until its module is on
 --------------------------------------------------------------------------------
 do
-    local MD, S = NewSession()
+    local ST, S = NewSession()
     -- UNIT_SPELLCAST_INTERRUPTED is the recorder's own: Client/Probe.lua
     -- already registers UNIT_COMBAT and the rest of the recorder's events at
     -- load (its own capability probe, Client/Probe.lua:1860), so this is the
     -- one event nothing else in the Forever core registers.
     local before = CountAttempts(S, "UNIT_SPELLCAST_INTERRUPTED")
-    MD:SetModule("SpellTuner_Recorder", true)
+    ST:SetModule("SpellTuner_Recorder", true)
     local after = CountAttempts(S, "UNIT_SPELLCAST_INTERRUPTED")
     check("the recorder registers nothing until its module is on",
         before == 0 and after > 0, string.format("before=%d after=%d", before, after))
@@ -80,7 +80,7 @@ end
 -- The fixture pull, driven through the real events. Kept in its own session
 -- so the ring starts empty.
 --------------------------------------------------------------------------------
-local MD, S = NewSession()
+local ST, S = NewSession()
 
 -- Player: Healroot, plain max health 375.
 S.units.player.name = "Healroot"
@@ -98,7 +98,7 @@ S.units.party1.auras = { [1] = { name = "Rejuvenation", spellId = 774, expiratio
 -- (only there for suites that never set up a fixture of their own).
 S.units.player.auras = {}
 
-MD:SetModule("SpellTuner_Recorder", true) -- loads the file; R:Refresh() runs now: player=1, Tank=2, Mage=3
+ST:SetModule("SpellTuner_Recorder", true) -- loads the file; R:Refresh() runs now: player=1, Tank=2, Mage=3
 
 local function At(t)
     while S.now < t - 1e-6 do
@@ -183,7 +183,7 @@ S.meter.sources = {
 }
 Settle(S, "fixture") -- T54 (P10): one second on, not a flush
 
-local rec = MD.FightRecorder:Get(1)
+local rec = ST.FightRecorder:Get(1)
 local K = { DMG = 1, OWNCAST = 3, CASTSTART = 6, CANCEL = 7, DIED = 9, HEAL = 15 }
 
 local function CountKind(s, kind)
@@ -265,7 +265,7 @@ check("a party member's max health is recorded unknown, the player's as read",
 
 --------------------------------------------------------------------------------
 -- 7: mana is the clock's modelled pool every two seconds, marked modelled.
--- T68 (P24): the pool is Engine/ManaPool_Forever.lua's now (MD.Pool:Sample),
+-- T68 (P24): the pool is Engine/ManaPool_Forever.lua's now (ST.Pool:Sample),
 -- no longer the clock widget's model; the fixture's track is pinned to what
 -- the parent recorded (the starting 7009, the first sample 6872.33 at the
 -- 69.24 / 28.33 regen pair, back at 7009 by the fourth), so the move leaves
@@ -332,7 +332,7 @@ end
 -- 11: a short pull is dropped, a kept one enters a ring of eight
 --------------------------------------------------------------------------------
 do
-    local before = #MD.FightRecorder:List()
+    local before = #ST.FightRecorder:List()
     At(60)
     S.inCombat = true
     S.Fire("PLAYER_REGEN_DISABLED")
@@ -342,7 +342,7 @@ do
     S.inCombat = false
     S.Fire("PLAYER_REGEN_ENABLED")
     Settle(S, "fixture") -- T54 (P10): one second on, not a flush
-    local after = #MD.FightRecorder:List()
+    local after = #ST.FightRecorder:List()
     check("a short pull is dropped, a kept one enters a ring of eight",
         before == 1 and after == 1,
         string.format("before=%d after=%d", before, after))
@@ -357,13 +357,13 @@ do
         local t = type(v)
         if t == "number" or t == "string" or t == "boolean" or t == "nil" then return true end
         if t ~= "table" then return false end
-        if MD.API.IsSecret(v) then return false end
+        if ST.API.IsSecret(v) then return false end
         seen = seen or {}
         if seen[v] then return true end
         seen[v] = true
         for k, val in pairs(v) do
-            if MD.API.IsSecret(k) or not Walk(k, seen) then return false end
-            if MD.API.IsSecret(val) or not Walk(val, seen) then return false end
+            if ST.API.IsSecret(k) or not Walk(k, seen) then return false end
+            if ST.API.IsSecret(val) or not Walk(val, seen) then return false end
         end
         return true
     end
@@ -374,7 +374,7 @@ end
 --------------------------------------------------------------------------------
 -- Lead review 1: a zone name with a pipe and a non-ASCII byte -- a second
 -- kept pull, S.zoneText set for the moment the pull starts (the only moment
--- the recorder reads it; MD.API.Has caches the resolved function per dotted
+-- the recorder reads it; ST.API.Has caches the resolved function per dotted
 -- name, so swapping the global GetRealZoneText after the first call would
 -- have no effect) and cleared right after.
 --------------------------------------------------------------------------------
@@ -413,8 +413,8 @@ do
         if stripped:find("|") then ascii = false end
     end
     check("the list command prints one ASCII line per recording",
-        #dataLines == #MD.FightRecorder:List() and ascii,
-        string.format("lines=%d list=%d ascii=%s", #dataLines, #MD.FightRecorder:List(), tostring(ascii)))
+        #dataLines == #ST.FightRecorder:List() and ascii,
+        string.format("lines=%d list=%d ascii=%s", #dataLines, #ST.FightRecorder:List(), tostring(ascii)))
 end
 
 --------------------------------------------------------------------------------
@@ -422,13 +422,13 @@ end
 --     window and Review use
 --------------------------------------------------------------------------------
 do
-    local list = MD.FightRecorder:List()
-    local got = MD.FightRecorder:Get(1)
-    local pinnedOn = MD.FightRecorder:Pin(1, true)
+    local list = ST.FightRecorder:List()
+    local got = ST.FightRecorder:Get(1)
+    local pinnedOn = ST.FightRecorder:Pin(1, true)
     local stillPinned = got.pinned == true
-    local pinnedOff = MD.FightRecorder:Pin(1, false)
-    local viaSpec, label = MD:GetRecording("1")
-    local runSpec, runLabel = MD:GetRecording("2:3")
+    local pinnedOff = ST.FightRecorder:Pin(1, false)
+    local viaSpec, label = ST:GetRecording("1")
+    local runSpec, runLabel = ST:GetRecording("2:3")
     check("the recorder answers the list, get, pin and address calls the replay window and Review use",
         #list >= 1 and got == list[1] and pinnedOn == true and stillPinned and pinnedOff == true
         and got.pinned == false and viaSpec == got and label == "1" and runSpec == nil and runLabel == "2:3")
@@ -498,7 +498,7 @@ local function Fresh(party)
         St.AddUnit("party" .. i, u)
     end
     M:SetModule("SpellTuner_Recorder", true)
-    local env = { MD = M, S = St }
+    local env = { ST = M, S = St }
     function env.Flush() Settle(St, "fresh") end -- T54 (P10)
     function env.At(t) while St.now < t - 1e-6 do St.Tick(0.5) end end
     function env.Cast(g, id, name)
@@ -564,8 +564,8 @@ do
     local E = Fresh({ Unit("G-A", "Tank", "WARRIOR", "TANK") })
     E.At(6)
     E.Cast("op1", 774, "Tank") -- out of combat: no pull yet
-    -- T68 (P24): the modelled pool's mana (MD.Pool), which the recorder reads
-    local clockMana = E.MD.Pool and (E.MD.Pool:Sample())
+    -- T68 (P24): the modelled pool's mana (ST.Pool), which the recorder reads
+    local clockMana = E.ST.Pool and (E.ST.Pool:Sample())
     E.S.Fire("UNIT_SPELLCAST_SENT", "player", "Tank", "op2", 5185) -- out of combat too
     E.S.Fire("UNIT_SPELLCAST_START", "player", "op2", 5185)
     E.Start()                  -- same frame
@@ -663,7 +663,7 @@ do
     E.Start()
     E.Five("r10b-", "Tank")
     E.At(63)
-    -- T54 (P10, review Q8): the re-poll is MD.API.After(1, ...) and its point
+    -- T54 (P10, review Q8): the re-poll is ST.API.After(1, ...) and its point
     -- is WHEN it runs -- a dead flag trailing the combat flag by half a second
     -- is still seen, because the poll waits a second. Driven by the clock:
     -- nothing is stored at +0.5 s, the pull is stored with the death at +1 s.
@@ -778,7 +778,7 @@ do
         E.Flush()
         t = t + 40
     end
-    local list = E.MD.cdb.recordings or {}
+    local list = E.ST.cdb.recordings or {}
     local before = {}
     for i, r in ipairs(list) do r.pinned = true; before[r] = i end
     local eight = #list
@@ -788,7 +788,7 @@ do
     E.At(t + 25)
     E.Stop()
     E.Flush()
-    list = E.MD.cdb.recordings or {}
+    list = E.ST.cdb.recordings or {}
     local ninth, firstTwoKept = nil, true
     for _, r in ipairs(list) do if not before[r] then ninth = r end end
     for r, i in pairs(before) do

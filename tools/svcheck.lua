@@ -29,9 +29,9 @@ local function NewSession(presetDB)
     _G.SpellTunerDB = presetDB
     _G.ManaDemonDB = nil
     local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-    local MD = dofile(here .. "/harness.lua")
+    local ST = dofile(here .. "/harness.lua")
     arg[0] = a0
-    return MD
+    return ST
 end
 
 local envFlavour = os.getenv("ST_FLAVOUR")
@@ -41,10 +41,10 @@ if flavour == "forever" then
 
 -- 1: a first run
 try("a first run says nothing came back and stamps session 1", function()
-    local MD = NewSession(nil)
+    local ST = NewSession(nil)
     check("a first run says nothing came back and stamps session 1",
-        MD.sv.atLoad == "nil"
-        and MD:SavedVarsLine() == "SavedVariables: none at load (a first run, or the client did not read the file back)"
+        ST.sv.atLoad == "nil"
+        and ST:SavedVarsLine() == "SavedVariables: none at load (a first run, or the client did not read the file back)"
         and _G.SpellTunerDB.session.count == 1
         and type(_G.SpellTunerDB.session.stamp) == "string")
 end)
@@ -60,52 +60,52 @@ try("a returning database names the previous session and keeps everything else",
         modules = modulesTbl,
         probe = probeTbl,
     }
-    local MD = NewSession(preset)
+    local ST = NewSession(preset)
     check("a returning database names the previous session and keeps everything else",
-        MD:SavedVarsLine() == "SavedVariables: came back (previous session 2026-09-27 10:00:00, this is session 5)"
-        and MD.db.char == charTbl
-        and MD.db.char["Penek-Anniversary"].x == 1
-        and MD.db.modules == modulesTbl
-        and MD.db.modules.SpellTuner_Recorder == true
+        ST:SavedVarsLine() == "SavedVariables: came back (previous session 2026-09-27 10:00:00, this is session 5)"
+        and ST.db.char == charTbl
+        and ST.db.char["Penek-Anniversary"].x == 1
+        and ST.db.modules == modulesTbl
+        and ST.db.modules.SpellTuner_Recorder == true
         and _G.SpellTunerDB.probe == probeTbl
         and type(_G.SpellTunerDB.probe.reports) == "table"
-        and MD:ModuleState("SpellTuner_Recorder") == "loaded")
+        and ST:ModuleState("SpellTuner_Recorder") == "loaded")
 end)
 
 -- 3: no stamp
 try("a database without a stamp says so", function()
-    local MD = NewSession({ probe = { stamp = "p" } })
+    local ST = NewSession({ probe = { stamp = "p" } })
     check("a database without a stamp says so",
-        MD:SavedVarsLine() == "SavedVariables: came back, with no session stamp (first run of this build of SpellTuner)"
+        ST:SavedVarsLine() == "SavedVariables: came back, with no session stamp (first run of this build of SpellTuner)"
         and _G.SpellTunerDB.session.count == 1)
 end)
 
 -- 4: broken database
 try("a broken database is replaced, not indexed", function()
-    local MD = NewSession("garbage")
+    local ST = NewSession("garbage")
     check("a broken database is replaced, not indexed",
-        MD:SavedVarsLine() == "SavedVariables: was a string, not a table - replaced with an empty one"
+        ST:SavedVarsLine() == "SavedVariables: was a string, not a table - replaced with an empty one"
         and type(_G.SpellTunerDB) == "table")
 end)
 
 -- 5: guard runs before the probe
 try("the guard runs before the probe", function()
-    local MD = NewSession(nil)
+    local ST = NewSession(nil)
     check("the guard runs before the probe",
-        MD.sv.atLoad == "nil"
+        ST.sv.atLoad == "nil"
         and type(_G.SpellTunerDB.probe) == "table")
 end)
 
 -- 6: the debug log carries the line
 try("the debug log carries the line", function()
-    local MD = NewSession({ probe = { stamp = "p" } })
+    local ST = NewSession({ probe = { stamp = "p" } })
     local expected = "SavedVariables: came back, with no session stamp (first run of this build of SpellTuner)"
     local captured = {}
-    MD.db.debug.enabled = true
-    MD.DebugLog = function(self, category, text)
+    ST.db.debug.enabled = true
+    ST.DebugLog = function(self, category, text)
         captured[#captured + 1] = { category, text }
     end
-    MD:Fire("MD_READY")
+    ST:Fire("MD_READY")
     local hits = 0
     for _, rec in ipairs(captured) do
         if rec[1] == "other" and rec[2] == expected then hits = hits + 1 end
@@ -117,9 +117,9 @@ else -- tbc
 
 -- 7: the TBC database gets no session stamp
 try("the TBC database gets no session stamp", function()
-    local MD = NewSession(nil)
+    local ST = NewSession(nil)
     check("the TBC database gets no session stamp",
-        MD.sv == nil and _G.SpellTunerDB.session == nil)
+        ST.sv == nil and _G.SpellTunerDB.session == nil)
 end)
 
 end

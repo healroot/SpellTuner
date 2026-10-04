@@ -45,9 +45,9 @@ end
 
 HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua"); arg[0] = a0
+local ST = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB
-local SM, SP = MD.SimModel, MD.SimPlanner
+local SM, SP = ST.SimModel, ST.SimPlanner
 
 local function ApplyProfile(p)
     if not p then return end
@@ -59,22 +59,22 @@ local function ApplyProfile(p)
     _G.GetSpellBonusHealing = function() return healing end
     _G.GetSpellCritChance = function() return crit end
     local tal = p.talents or {}
-    function MD:TalentRank(n) return tal[n] or 0 end
-    MD.player.class = p.class or MD.player.class
-    MD.player.isDruid = (p.class == "DRUID")
-    MD.player.level = S.level
-    if p.form == "tree" then function MD:InTreeForm() return true end
-    else function MD:InTreeForm() return false end end
+    function ST:TalentRank(n) return tal[n] or 0 end
+    ST.player.class = p.class or ST.player.class
+    ST.player.isDruid = (p.class == "DRUID")
+    ST.player.level = S.level
+    if p.form == "tree" then function ST:InTreeForm() return true end
+    else function ST:InTreeForm() return false end end
     if p.fromLog then
         local lvl = p.level or 70
         _G.IsSpellKnown = function(id)
-            local sd = MD.SpellData.spells[id]
+            local sd = ST.SpellData.spells[id]
             return sd ~= nil and (sd.level or 0) <= lvl
         end
         _G.IsPlayerSpell = _G.IsSpellKnown
     end
-    MD.SpellData:BuildKnown()
-    MD.Regen:Refresh()
+    ST.SpellData:BuildKnown()
+    ST.Regen:Refresh()
 end
 
 local allRecs = {}
@@ -133,7 +133,7 @@ local function Copy(t)
 end
 local function KitFor(e)
     if e.kit then return Copy(e.kit) end
-    return MD.RankMath:SpellKit({ live = true })
+    return ST.RankMath:SpellKit({ live = true })
 end
 table.sort(pool, function(a, b) return (a.rec.id or 0) < (b.rec.id or 0) end)
 for i, e in ipairs(pool) do allRecs[i] = e.rec end
@@ -159,7 +159,7 @@ for _, e in ipairs(pool) do
         local r = SM:Run(sc, nil, { critMode = "ev" })
         cd = cd + (r.deaths and r.deaths.n or 0)
         cf = cf + (r.floorSeconds or 0)
-        cm = cm + MD.SimPlanner.ManaUsed(r)
+        cm = cm + ST.SimPlanner.ManaUsed(r)
         cn = cn + (e.rec.ownCasts or 0)
     end
 end

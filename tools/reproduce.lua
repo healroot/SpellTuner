@@ -49,9 +49,9 @@ end
 
 HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua"); arg[0] = a0
+local ST = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB
-local SM, SP = MD.SimModel, MD.SimPlanner
+local SM, SP = ST.SimModel, ST.SimPlanner
 local OBS = obsFile and dofile(obsFile) or nil
 local K = SM.K
 
@@ -65,21 +65,21 @@ local function ApplyProfile(p)
     _G.GetSpellBonusHealing = function() return h end
     _G.GetSpellCritChance = function() return c end
     local tal = p.talents or {}
-    function MD:TalentRank(n) return tal[n] or 0 end
-    MD.player.class = p.class or "DRUID"
-    MD.player.isDruid = (p.class == "DRUID")
-    MD.player.level = S.level
-    if p.form == "tree" then function MD:InTreeForm() return true end
-    else function MD:InTreeForm() return false end end
+    function ST:TalentRank(n) return tal[n] or 0 end
+    ST.player.class = p.class or "DRUID"
+    ST.player.isDruid = (p.class == "DRUID")
+    ST.player.level = S.level
+    if p.form == "tree" then function ST:InTreeForm() return true end
+    else function ST:InTreeForm() return false end end
     if p.fromLog then
         local lvl = p.level or 70
         _G.IsSpellKnown = function(id)
-            local sd = MD.SpellData.spells[id]
+            local sd = ST.SpellData.spells[id]
             return sd ~= nil and (sd.level or 0) <= lvl
         end
         _G.IsPlayerSpell = _G.IsSpellKnown
     end
-    MD.SpellData:BuildKnown(); MD.Regen:Refresh()
+    ST.SpellData:BuildKnown(); ST.Regen:Refresh()
 end
 
 local function Calibrate(kit, who)
@@ -91,7 +91,7 @@ local function Calibrate(kit, who)
                 -- v0.14.4: Lifebloom's bloom arrives as 33778, the kit is keyed
                 -- by the HoT's 33763; without the alias the bloom was left
                 -- uncalibrated while every tick around it was scaled
-                local e = form[MD.SpellData:Resolve(row.id)]
+                local e = form[ST.SpellData:Resolve(row.id)]
                 if e then
                     local m = (row.what == "tick") and (e.tick or 0) * (row.stacks or 1)
                               or ((e.direct or 0) + (e.bloom or 0))
@@ -112,7 +112,7 @@ print(string.format("%-30s %9s %9s %7s  %s",
 for key, c in pairs(realDB.char or {}) do
     for _, rec in ipairs(c.recordings or {}) do
         ApplyProfile(pre[key])
-        local kit = Calibrate(fx and fx.kit or MD.RankMath:SpellKit({ live = true }), key)
+        local kit = Calibrate(fx and fx.kit or ST.RankMath:SpellKit({ live = true }), key)
         local sc = SM.ScenarioFromRecording(rec, kit)
         if sc then
             local fired = 0
@@ -137,7 +137,7 @@ for key, c in pairs(realDB.char or {}) do
                 #(rec.deaths or {}), r.deaths and r.deaths.n or 0,
                 stale and "   [v1 stream: log column is heal + overheal]" or ""))
             -- per family, which is what says WHERE the healing went missing
-            local SDm = MD.SpellData
+            local SDm = ST.SpellData
             local logFam = {}
             for i = 1, (rec.n or 0) do
                 local k2 = rec.ev.kind[i]

@@ -10,12 +10,12 @@
 --     CONSTANTS -- written out below as they stood at e2b13f4, and compared
 --     with the live tables the files publish (SP.BINDABLE, SP.HOT_RULE,
 --     MC.byClass.DRUID, the in-5SR talent row, Kit_Forever's FAMILY_KEY /
---     FAMILY_TYPE, MD.StreamV3.FAMILY_KEY), and with the engine constants T89
+--     FAMILY_TYPE, ST.StreamV3.FAMILY_KEY), and with the engine constants T89
 --     does not touch (SM.HOT_INDEX, SM.SWIFTMEND_ORDER, SM.SPELL_CD,
 --     SV.FAMILIES; on tbc Data/SpellData.lua's families and order);
 --   * ALSO WHEN THE STUB LOGS IN A PRIEST: the deriving files are loaded again
---     while MD.ClassProfile is a priest's, and derive the druid's tables still (the
---     derivation never reads MD.ClassProfile);
+--     while ST.ClassProfile is a priest's, and derive the druid's tables still (the
+--     derivation never reads ST.ClassProfile);
 --   * ForKit of a kit with no profile is the druid's; a second registration
 --     raises; the generic profile's caps;
 --   * with tools/.cache/talentsforever.json (python3 tools/refcheck.py
@@ -28,7 +28,7 @@
 -- committed book fixture (tools/data/books/<class>_forever.lua); each grants
 -- coach and practice, is coached by the solver only (no threshold rules), and
 -- the priest has no Power Word: Shield family until T109. The non-druid who
--- logs in to prove the derivation never reads MD.ClassProfile is a mage (a
+-- logs in to prove the derivation never reads ST.ClassProfile is a mage (a
 -- class with no profile on either line) -- it was a priest until the priest
 -- had a profile of its own.
 --
@@ -47,7 +47,7 @@ local function check(name, cond, detail)
 end
 
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua")
+local ST = dofile(here .. "/harness.lua")
 arg[0] = a0
 
 local S = _G.STUB
@@ -64,8 +64,8 @@ local CLASS_PROFILES = {
 local classLoad = {}
 if forever then
     for _, c in ipairs(CLASS_PROFILES) do
-        if MD.Profiles.byClass[c.class] == nil then
-            local okL, err = pcall(S.Load, { c.file }, "SpellTuner", MD)
+        if ST.Profiles.byClass[c.class] == nil then
+            local okL, err = pcall(S.Load, { c.file }, "SpellTuner", ST)
             if not okL then classLoad[c.class] = tostring(err) end
         end
     end
@@ -131,12 +131,12 @@ if forever then
                 "Druid must channel to maintain the spell."
         end,
         { cast = 0, cost = 375, level = 20 })
-    MD:SetModule("SpellTuner_Replay", true)
+    ST:SetModule("SpellTuner_Replay", true)
 end
 
-local P = MD.Profiles
+local P = ST.Profiles
 T.section("the registry")
-check("MD.Profiles exists, with Register / Get / Require / ForKit / Select / Validate",
+check("ST.Profiles exists, with Register / Get / Require / ForKit / Select / Validate",
     type(P) == "table" and type(P.Register) == "function" and type(P.Get) == "function"
     and type(P.Require) == "function" and type(P.ForKit) == "function"
     and type(P.Select) == "function" and type(P.Validate) == "function")
@@ -146,14 +146,14 @@ local DRUID = P.byClass.DRUID
 check("the druid profile is registered", DRUID ~= nil and DRUID.class == "DRUID" and DRUID.label == "Druid")
 if DRUID == nil then T.done() end
 
-check("Select ran at CORE_LOGIN: MD.ClassProfile is the logged-in druid's", MD.ClassProfile == DRUID)
+check("Select ran at CORE_LOGIN: ST.ClassProfile is the logged-in druid's", ST.ClassProfile == DRUID)
 if not forever then
-    -- The spec's name, MD.Profile, is Diagnostics_TBC.lua's /md profile report.
-    check("MD:Profile() is still the /md profile report (the registry never writes MD.Profile)",
-        type(MD.Profile) == "function")
+    -- The spec's name, ST.Profile, is Diagnostics_TBC.lua's /md profile report.
+    check("ST:Profile() is still the /md profile report (the registry never writes ST.Profile)",
+        type(ST.Profile) == "function")
 end
 
-local Kit = MD.Kit
+local Kit = ST.Kit
 check("Engine/Kit.lua is loaded (Kit.TYPES)", Kit ~= nil and type(Kit.TYPES) == "table")
 local TYPES = Kit and Kit.TYPES or {}
 
@@ -250,17 +250,17 @@ local IN_FSR_TALENT = {                                                         
 -- The derived tables, read off the files' published names. `reloaded` says
 -- whether this is the second pass (after a priest logged in).
 local function DerivedChecks(label)
-    local SP = MD.SimPlanner
+    local SP = ST.SimPlanner
     Same(label .. "SP.BINDABLE equals the constant", SP and SP.BINDABLE, BINDABLE)
     Same(label .. "SP.HOT_RULE equals the constant", SP and SP.HOT_RULE, HOT_RULE)
     if forever then
-        local RM = MD.RankMath
+        local RM = ST.RankMath
         Same(label .. "Kit_Forever's FAMILY_KEY equals the constant", RM and RM.FAMILY_KEY, FAMILY_KEY)
         Same(label .. "Kit_Forever's FAMILY_TYPE equals the constant", RM and RM.FAMILY_TYPE, FAMILY_TYPE)
-        Same(label .. "MD.StreamV3.FAMILY_KEY equals the constant",
-            MD.StreamV3 and MD.StreamV3.FAMILY_KEY, FAMILY_KEY)
+        Same(label .. "ST.StreamV3.FAMILY_KEY equals the constant",
+            ST.StreamV3 and ST.StreamV3.FAMILY_KEY, FAMILY_KEY)
     else
-        local MC = MD.ManaCooldowns
+        local MC = ST.ManaCooldowns
         local d = MC and MC.byClass and MC.byClass.DRUID
         local e = d and d[1]
         check(label .. "MC.byClass.DRUID equals the constant (Innervate, InnervateValue)",
@@ -273,17 +273,17 @@ local function DerivedChecks(label)
         check(label .. "MC.byClass.DRUID's entry carries exactly the constant's six fields", keys == 6,
             tostring(keys))
         Same(label .. "the in-5SR talent table equals the constant",
-            MD.Regen and MD.Regen.IN_FSR_TALENT, IN_FSR_TALENT)
+            ST.Regen and ST.Regen.IN_FSR_TALENT, IN_FSR_TALENT)
     end
 end
 
 T.section("the derived tables equal today's constants")
 DerivedChecks("")
 Same("planner.families equals the constant", DRUID.planner.families, SOLVER_FAMILIES)
-Same("planner.families equals SV.FAMILIES", DRUID.planner.families, MD.SimSolver and MD.SimSolver.FAMILIES)
+Same("planner.families equals SV.FAMILIES", DRUID.planner.families, ST.SimSolver and ST.SimSolver.FAMILIES)
 
 do
-    local SM = MD.SimModel
+    local SM = ST.SimModel
     local want = {}
     for fam, slot in pairs(HOT_INDEX) do
         if DRUID.families[fam] then want[fam] = slot end
@@ -300,19 +300,19 @@ end
 
 if forever then
     -- What Kit_Forever installs: the order, the exclude marks, the crit school.
-    local crit = MD.API.SpellCritChance
+    local crit = ST.API.SpellCritChance
     local schools = {}
-    MD.API.SpellCritChance = function(school, ...)
+    ST.API.SpellCritChance = function(school, ...)
         schools[#schools + 1] = school
         return crit(school, ...)
     end
-    local built, err = pcall(function() return MD.RankMath:SpellKit() end)
-    MD.API.SpellCritChance = crit
+    local built, err = pcall(function() return ST.RankMath:SpellKit() end)
+    ST.API.SpellCritChance = crit
     local critOk = built and #schools >= 1 and schools[1] == 4
     check("Kit_Forever reads crit from the profile's school (Nature, 4)", critOk,
         (not critOk) and ((built and "" or tostring(err)) .. " schools " .. Show(schools)) or nil)
-    local SD = MD.SpellData
-    Same("MD.SpellData.familyOrder equals the constant", SD.familyOrder, FOREVER_ORDER)
+    local SD = ST.SpellData
+    Same("ST.SpellData.familyOrder equals the constant", SD.familyOrder, FOREVER_ORDER)
     local seen = {}
     for key in pairs(SD.families or {}) do seen[#seen + 1] = key end
     table.sort(seen)
@@ -324,16 +324,16 @@ if forever then
     Same("only Tranquility is excluded from the plans (the constant's mark)", excl, { Tranquility = true })
     -- the same marks through Kit.Restore's policy (a snapshot back into a kit)
     local snapOk, restored = pcall(function()
-        MD.RankMath.KitRestore(MD.RankMath.KitSnapshot())
+        ST.RankMath.KitRestore(ST.RankMath.KitSnapshot())
         local out = {}
-        for key, fam in pairs(MD.SpellData.families) do out[key] = fam.exclude end
+        for key, fam in pairs(ST.SpellData.families) do out[key] = fam.exclude end
         return out
     end)
     check("KitRestore keeps Tranquility excluded", snapOk and restored.Tranquility == true,
         (not snapOk) and tostring(restored) or nil)
 else
     -- The TBC profile mirrors Data/SpellData.lua (which stays the verified source).
-    local SD = MD.SpellData
+    local SD = ST.SpellData
     local mismatch = {}
     for key, fam in pairs(SD.families) do
         local def = DRUID.families[key]
@@ -390,9 +390,9 @@ end
 --------------------------------------------------------------------------------
 T.section("a mage logs in")
 S.units.player.class = "MAGE"
-MD:DetectProfile()
-MD:Fire("CORE_LOGIN")
-check("a mage with no profile is given the generic one", MD.ClassProfile == P.generic and MD.player.class == "MAGE")
+ST:DetectProfile()
+ST:Fire("CORE_LOGIN")
+check("a mage with no profile is given the generic one", ST.ClassProfile == P.generic and ST.player.class == "MAGE")
 
 local MAGE = {
     label = "Mage", critSchool = 6, caps = { clock = true },
@@ -409,9 +409,9 @@ if not forever then
     MAGE.regen = { inFsrTalent = { "Arcane Meditation", 0.99 } }
 end
 local registered = pcall(P.Register, "MAGE", MAGE)
-MD:Fire("CORE_LOGIN")
-check("with a mage profile registered, MD.ClassProfile is the mage's",
-    registered and MD.ClassProfile == P.byClass.MAGE and MD.ClassProfile ~= DRUID)
+ST:Fire("CORE_LOGIN")
+check("with a mage profile registered, ST.ClassProfile is the mage's",
+    registered and ST.ClassProfile == P.byClass.MAGE and ST.ClassProfile ~= DRUID)
 
 local files
 if forever then
@@ -431,7 +431,7 @@ local reloaded = true
 for _, f in ipairs(files) do
     local chunk, err = loadfile(S.root .. "/" .. f[1])
     local ok, rerr = false, err
-    if chunk then ok, rerr = pcall(chunk, f[2], MD) end
+    if chunk then ok, rerr = pcall(chunk, f[2], ST) end
     if not ok then
         reloaded = false
         print("reload " .. f[1] .. ": " .. tostring(rerr))
@@ -442,7 +442,7 @@ DerivedChecks("mage logged in: ")
 check("ForKit of a kit with no profile is still the druid's while a mage is logged in",
     P.ForKit({}) == DRUID)
 
--- And none of them names MD.ClassProfile at all (only MD.Profiles).
+-- And none of them names ST.ClassProfile at all (only ST.Profiles).
 do
     local named = {}
     for _, f in ipairs(files) do
@@ -451,10 +451,10 @@ do
         if fh then fh:close() end
         for line in src:gmatch("[^\n]+") do
             local code = line:gsub("%-%-.*$", "")
-            if code:find("ClassProfile", 1, true) or code:find("MD%.Profile[^s]") then named[#named + 1] = f[1] end
+            if code:find("ClassProfile", 1, true) or code:find("ST%.Profile[^s]") then named[#named + 1] = f[1] end
         end
     end
-    check("no deriving file reads MD.ClassProfile", #named == 0, table.concat(named, " "))
+    check("no deriving file reads ST.ClassProfile", #named == 0, table.concat(named, " "))
 end
 
 --------------------------------------------------------------------------------

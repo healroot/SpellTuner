@@ -33,11 +33,11 @@
 -- THE KIT. On Forever the spell kit is built from the live spellbook, which offline is
 -- the stub's (Healing Touch R1, Rejuvenation R1-R2 -- no Healing Touch R2, no level).
 -- So each fight is replayed with, in order: the kit it was stored with (`rec.kit`,
--- MD.SimModel.KitSnapshot, since the recordings pipeline), else -- a practice fight stored
+-- ST.SimModel.KitSnapshot, since the recordings pipeline), else -- a practice fight stored
 -- before then -- the kit read back off its own heals, else the character's last kit
 -- (`cdb.kit`, written whenever the game builds one), else the stub's book -- and every line
 -- that prints a number says which. RM.KitRestore (Kit_Forever.lua) rebuilds the
--- MD.SpellData index from the kit's entries: nothing else of the book is stored.
+-- ST.SpellData index from the kit's entries: nothing else of the book is stored.
 local I = IMPORT
 local here, db, opts, cmd = I.here, I.db, I.opts, I.cmd
 
@@ -74,7 +74,7 @@ HARNESS_FLAVOUR = "forever"
 local realPrint = print
 print = function() end
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua")
+local ST = dofile(here .. "/harness.lua")
 arg[0] = a0
 print = realPrint
 local S = _G.STUB
@@ -84,14 +84,14 @@ local S = _G.STUB
 local chat = {}
 _G.DEFAULT_CHAT_FRAME.AddMessage = function(_, m) chat[#chat + 1] = m end
 
-MD.cdb = cdb
-MD.player.charKey = charKey
+ST.cdb = cdb
+ST.player.charKey = charKey
 -- the engine's plans and the coach are druid-only; a Forever recording
 -- carries no class of its own, and the kit it carries is a druid's
-MD.player.isDruid, MD.player.class = true, "DRUID"
-if not (MD:ModuleState("SpellTuner_Practice") == "loaded") then MD:SetModule("SpellTuner_Practice", true) end
-local RM, SD, SM, SP, RT = MD.RankMath, MD.SpellData, MD.SimModel, MD.SimPlanner, MD.ReplayTrace
-if not (RM and SM and SP and RT and MD.Practice) then
+ST.player.isDruid, ST.player.class = true, "DRUID"
+if not (ST:ModuleState("SpellTuner_Practice") == "loaded") then ST:SetModule("SpellTuner_Practice", true) end
+local RM, SD, SM, SP, RT = ST.RankMath, ST.SpellData, ST.SimModel, ST.SimPlanner, ST.ReplayTrace
+if not (RM and SM and SP and RT and ST.Practice) then
     Say("import: the Forever modules did not load (%s)", table.concat(chat, "; "))
     os.exit(2)
 end
@@ -108,8 +108,8 @@ local function Copy(v)
 end
 
 local stubSpellKit = RM.SpellKit
--- The snapshot is the kit itself (MD.SimModel.KitSnapshot); RM.KitRestore
--- (Kit_Forever.lua) rebuilds the MD.SpellData index the engine reads from its
+-- The snapshot is the kit itself (ST.SimModel.KitSnapshot); RM.KitRestore
+-- (Kit_Forever.lua) rebuilds the ST.SpellData index the engine reads from its
 -- entries, so every command below sees the fight's own spells.
 local function UseSnapshot(snap)
     RM.SpellKit = function() return RM.KitRestore(snap) end
@@ -246,15 +246,15 @@ local function UseKitFor(rec)
 end
 
 --------------------------------------------------------------------------------
--- Addresses: N a recording, pN a practice fight (MD:GetRecording's own)
+-- Addresses: N a recording, pN a practice fight (ST:GetRecording's own)
 --------------------------------------------------------------------------------
 local spec = opts.spec or tostring(I.n or 1)
 local function Get()
-    local rec, label = MD:GetRecording(spec)
+    local rec, label = ST:GetRecording(spec)
     if not rec then
         Say("no %s %s (%d recording(s), %d practice fight(s)). Try: list",
             spec:match("^p") and "practice fight" or "recording", spec,
-            #MD.FightRecorder:List(), #MD.Practice.List())
+            #ST.FightRecorder:List(), #ST.Practice.List())
         os.exit(1)
     end
     return rec, label
@@ -327,7 +327,7 @@ local function PlanFor(rec, label, validation)
         local sc = SM.ScenarioFromRecording(rec, kit)
         local plan = SP.MakeStrategy(entry, SP.BindsFromRecording(rec), kit,
             { scenario = sc, seed = rec.id or 1, encounter = rec.encounter, zone = rec.zone,
-              recs = MD.cdb.recordings, excludeID = rec.id })
+              recs = ST.cdb.recordings, excludeID = rec.id })
         if not plan then return nil, entry.label, "the strategy built no plan on this file" end
         SP.plans[rec.id] = plan
         SP.strategyPick[rec.id] = key
@@ -399,7 +399,7 @@ local function ReplayLines(rec, label, kitLine)
         label, Strip(rec.zone or "?"), When(rec.id), rec.dur or 0, casts, mana,
         rec.v == 3 and "  (v3: health reconstructed from UNIT_COMBAT)" or "")
     Add("%s", kitLine)
-    for _, line in ipairs(MD:ValidationReport(rec, label)) do Add("  %s", Strip(line)) end
+    for _, line in ipairs(ST:ValidationReport(rec, label)) do Add("  %s", Strip(line)) end
     Add("")
 
     local plan, planName, planWhy = PlanFor(rec, label, validation)
@@ -507,9 +507,9 @@ if cmd == "list" then
                 r.dur or 0, casts, mana, #(r.tracked or {}), word, Verdict(r), r.pinned and "  [pinned]" or "")
         end
     end
-    Table("recordings (v3 streams, newest first)", MD.FightRecorder:List(), "")
+    Table("recordings (v3 streams, newest first)", ST.FightRecorder:List(), "")
     Say("")
-    Table("practice fights (newest first)", MD.Practice.List(), "p")
+    Table("practice fights (newest first)", ST.Practice.List(), "p")
     Say("")
     Say("kit: recorded = the kit the fight was stored with; inferred = read back off a practice fight's own")
     Say("     heals (it was stored before fights carried their kit); last = the character's last kit (cdb.kit),")
@@ -519,7 +519,7 @@ elseif cmd == "validate" then
     local rec, label = Get()
     local _, kitLine = UseKitFor(rec)
     Say("%s", kitLine)
-    for _, line in ipairs(MD:ValidationReport(rec, label)) do Say("%s", Strip(line)) end
+    for _, line in ipairs(ST:ValidationReport(rec, label)) do Say("%s", Strip(line)) end
 
 elseif cmd == "replay" then
     local rec, label = Get()
@@ -588,7 +588,7 @@ elseif cmd == "report" then
             tostring(rec.level or "?"), tostring(rec.version or "?"), rec.build and (", build " .. rec.build) or "")
         or "")
     Say("%s", kitLine)
-    for _, line in ipairs(dofile(here .. "/reportlines.lua")(MD, rec, RM:SpellKit())) do Say("  %s", Strip(line)) end
+    for _, line in ipairs(dofile(here .. "/reportlines.lua")(ST, rec, RM:SpellKit())) do Say("  %s", Strip(line)) end
 
 elseif cmd == "export" then
     local rec, label = Get()

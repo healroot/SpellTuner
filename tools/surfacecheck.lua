@@ -1,7 +1,7 @@
 -- tools/run.sh [--flavour tbc|forever] tools/surfacecheck.lua [--print | --golden]
 --
 -- T92 (docs/SPEC-next.md 2.3, S3 step 1; R-arch.md 5): feeds and the ElvUI
--- surface. A FEED (UI/Feeds.lua, MD.Feeds: `clock`, `regen`) is one piece of
+-- surface. A FEED (UI/Feeds.lua, ST.Feeds: `clock`, `regen`) is one piece of
 -- information to show -- a text, a face, a tooltip, a click; a SURFACE shows
 -- feeds. The ElvUI datatexts moved from Integrations/ElvUIDatatext.lua to
 -- Integrations/Surface_ElvUI.lua and read the feeds; the TBC text stays byte
@@ -21,7 +21,7 @@
 --      Integrations/ElvUIDatatext.lua, BEFORE the move, and equal after;
 --      forever: the clock datatext is the pool's face, the regen datatext the
 --      pool's last plain reading (`~` in combat, `(5SR)` in the rule), never
---      MD.Regen and never a secret;
+--      ST.Regen and never a secret;
 --   4. ApplySettings recolours the value (both lines);
 --   5. the feeds' contract: two feeds in order, a second registration
 --      raising, every clock sample through the clock feed equal to
@@ -46,7 +46,7 @@ for i = 1, #arg do
 end
 
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua"); arg[0] = a0
+local ST = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB
 local T = dofile(here .. "/lib/t.lua")
 local H = dofile(here .. "/stub_hosts.lua")
@@ -76,13 +76,13 @@ end
 -- Loads files after login and hands them the MD_READY they missed (only their
 -- own handlers, captured as they register: tools/ttocheck.lua's way).
 local function LoadByHand(files)
-    local ready, realReg = {}, MD.RegisterCallback
-    MD.RegisterCallback = function(self, name, fn)
+    local ready, realReg = {}, ST.RegisterCallback
+    ST.RegisterCallback = function(self, name, fn)
         if name == "MD_READY" then ready[#ready + 1] = fn end
         return realReg(self, name, fn)
     end
-    local okLoad, err = pcall(S.Load, files, "SpellTuner", MD)
-    MD.RegisterCallback = realReg
+    local okLoad, err = pcall(S.Load, files, "SpellTuner", ST)
+    ST.RegisterCallback = realReg
     if not okLoad then return false, err end
     for _, fn in ipairs(ready) do
         local okRun, e = pcall(fn)
@@ -94,7 +94,7 @@ end
 -- A surface file loaded on its own (no MD_READY to hand it: it registers at
 -- load, as the old file did).
 local function LoadSurface()
-    return pcall(S.Load, { SURFACE }, "SpellTuner", MD)
+    return pcall(S.Load, { SURFACE }, "SpellTuner", ST)
 end
 
 --------------------------------------------------------------------------------
@@ -114,7 +114,7 @@ do
         if not okLoad then print("load: " .. tostring(err)) end
     end
 end
-local Feeds = MD.Feeds
+local Feeds = ST.Feeds
 
 --------------------------------------------------------------------------------
 -- 1. no host
@@ -126,13 +126,13 @@ if FLAVOUR == "tbc" then
 else
     check("1a. the Forever TOC lists UI/Feeds.lua", feedsByToc)
 end
-check("1b. MD.Feeds exists", type(Feeds) == "table")
+check("1b. ST.Feeds exists", type(Feeds) == "table")
 
 H.Remove()
 do
     local okLoad, err = LoadSurface()
     check("1c. no ElvUI: the surface loads, raises nothing, records nothing", okLoad
-        and not (MD.Surfaces and MD.Surfaces.elvui), tostring(err))
+        and not (ST.Surfaces and ST.Surfaces.elvui), tostring(err))
 end
 do
     local lib = H.InstallLDB()
@@ -147,7 +147,7 @@ do
     H.InstallElvUI({ noDataTexts = true })
     local okLoad, err = LoadSurface()
     check("1e. a half ElvUI (no DataTexts module): no raise, nothing recorded", okLoad
-        and not (MD.Surfaces and MD.Surfaces.elvui), tostring(err))
+        and not (ST.Surfaces and ST.Surfaces.elvui), tostring(err))
     H.Remove()
 end
 
@@ -170,8 +170,8 @@ local function Shape(rec)
         and rec.localizedName == rec.name and rec.objectEvent == nil and rec.n == 11
 end
 check("2c. ElvUI's argument shape (update, click, enter, ApplySettings; 11 arguments)", Shape(OOM) and Shape(REG))
-local reg = MD.Surfaces and MD.Surfaces.elvui
-check("2d. what it registered is recorded (MD.Surfaces.elvui, for the INTEGRATIONS line)",
+local reg = ST.Surfaces and ST.Surfaces.elvui
+check("2d. what it registered is recorded (ST.Surfaces.elvui, for the INTEGRATIONS line)",
     reg and reg.datatexts and #reg.datatexts == 2 and reg.datatexts[1] == "SpellTuner"
     and reg.datatexts[2] == "SpellTuner Regen")
 
@@ -209,7 +209,7 @@ local function Tooltip(id)
     Rec(id .. "#regen-same\t" .. tostring(same))
 end
 
-local SD = MD.SpellData
+local SD = ST.SpellData
 local HT5 = 5189
 local function Ticks(n) for _ = 1, n do S.Tick(0.5) end end
 
@@ -257,10 +257,10 @@ if FLAVOUR == "tbc" then
         Ticks(12)
         Snap("left6s")
         Tooltip("tip-after")
-        local uses = MD.player.usesMana
-        MD.player.usesMana = false
+        local uses = ST.player.usesMana
+        ST.player.usesMana = false
         Snap("nomana")
-        MD.player.usesMana = uses
+        ST.player.usesMana = uses
         -- the throttle: a write only once 0.25 s has gathered
         local p = H.Panel()
         OOM.updateFunc(p, 20000); local w1 = p.writes
@@ -270,9 +270,9 @@ if FLAVOUR == "tbc" then
         Rec("throttle\t" .. w1 .. "," .. w2 .. "," .. w3 .. "," .. w4)
         -- the clicks
         local toggles, resets = 0, 0
-        local realToggle, realReset = MD.ToggleDashboard, MD.Spend.Reset
-        MD.ToggleDashboard = function() toggles = toggles + 1 end
-        MD.Spend.Reset = function(self, ...) resets = resets + 1; return realReset(self, ...) end
+        local realToggle, realReset = ST.ToggleDashboard, ST.Spend.Reset
+        ST.ToggleDashboard = function() toggles = toggles + 1 end
+        ST.Spend.Reset = function(self, ...) resets = resets + 1; return realReset(self, ...) end
         local chat = T.CapturedChat(function()
             S.shift = false
             OOM.clickFunc(); REG.clickFunc()
@@ -280,7 +280,7 @@ if FLAVOUR == "tbc" then
             OOM.clickFunc(); REG.clickFunc()
             S.shift = false
         end)
-        MD.ToggleDashboard, MD.Spend.Reset = realToggle, realReset
+        ST.ToggleDashboard, ST.Spend.Reset = realToggle, realReset
         Rec("clicks\ttoggles=" .. toggles .. "\tresets=" .. resets .. "\tchat=" .. table.concat(chat, " / "))
     end)
 
@@ -314,20 +314,20 @@ else
     T.section("3. forever: the datatexts read the pool")
     Guarded("3. forever datatexts", function()
         Ticks(2)
-        local CF = MD.ClockFace
+        local CF = ST.ClockFace
         local face = CF.Current()
         local want = CF.LineString(face)
         check("3a. the clock datatext is the pool's face (ClockFace.Current)",
             Read(OOM) == (want ~= "" and want or "SpellTuner"), tostring(Read(OOM)) .. " / " .. tostring(want))
         check("3b. out of combat: Regen: 346 (69.24 mp1 x 5)", Read(REG) == "Regen: |cffffffff346|r", Read(REG))
 
-        -- a trap: any read of MD.Regen counted (it is nil on this line)
+        -- a trap: any read of ST.Regen counted (it is nil on this line)
         local regenReads = 0
-        local hadMeta = getmetatable(MD)
+        local hadMeta = getmetatable(ST)
         if hadMeta == nil then
-            setmetatable(MD, { __index = function(_, k) if k == "Regen" then regenReads = regenReads + 1 end end })
+            setmetatable(ST, { __index = function(_, k) if k == "Regen" then regenReads = regenReads + 1 end end })
         end
-        local model = MD.Pool.model
+        local model = ST.Pool.model
         model:Spend(100, GetTime())
         check("3c. inside the five-second rule: the casting rate and (5SR)",
             Read(REG) == "Regen: |cffffffff142|r |cffffaa33(5SR)|r", Read(REG))
@@ -340,37 +340,37 @@ else
         check("3d. in combat (ManaRegen secret): the last plain reading, marked ~",
             inFsr == "Regen: |cffffffff~142|r |cffffaa33(5SR)|r" and outFsr == "Regen: |cffffffff~346|r",
             tostring(inFsr) .. " / " .. tostring(outFsr))
-        local base, casting = MD.API.ManaRegen()
+        local base, casting = ST.API.ManaRegen()
         check("3e. ...while the client's own reading is secret (the stub's in combat)",
             base == nil and casting == "secret", tostring(base) .. ", " .. tostring(casting))
         local face2 = CF.Current()
         check("3f. the clock datatext in combat is still the face",
             Read(OOM) == CF.LineString(face2), Read(OOM))
         -- a secret where a reading should be: "--", never a raise
-        local realLast = MD.Pool.LastRegen
-        MD.Pool.LastRegen = function() return S.Secret(), S.Secret() end
+        local realLast = ST.Pool.LastRegen
+        ST.Pool.LastRegen = function() return S.Secret(), S.Secret() end
         local okR, txt = pcall(Read, REG)
-        MD.Pool.LastRegen = realLast
+        ST.Pool.LastRegen = realLast
         check("3g. a secret regen reading reads --, raises nothing", okR and txt == "Regen: |cffffffff--|r",
             tostring(txt))
-        local uses = MD.player.usesMana
-        MD.player.usesMana = false
+        local uses = ST.player.usesMana
+        ST.player.usesMana = false
         check("3h. no mana pool: Regen: --", Read(REG) == "Regen: |cffffffff--|r", Read(REG))
-        MD.player.usesMana = uses
-        if hadMeta == nil then setmetatable(MD, nil) end
-        check("3i. MD.Regen never read on this line", regenReads == 0, tostring(regenReads))
+        ST.player.usesMana = uses
+        if hadMeta == nil then setmetatable(ST, nil) end
+        check("3i. ST.Regen never read on this line", regenReads == 0, tostring(regenReads))
         S.inCombat = false
         S.Fire("PLAYER_REGEN_ENABLED")
         Ticks(2)
         -- shift-click on this line: there is no spend window to reset, the window toggles
         local toggles = 0
-        local realToggle = MD.ToggleDashboard
-        MD.ToggleDashboard = function() toggles = toggles + 1 end
+        local realToggle = ST.ToggleDashboard
+        ST.ToggleDashboard = function() toggles = toggles + 1 end
         S.shift = true
         local okC, errC = pcall(OOM.clickFunc)
         S.shift = false
         OOM.clickFunc()
-        MD.ToggleDashboard = realToggle
+        ST.ToggleDashboard = realToggle
         check("3j. a click raises nothing without TBC's spend window", okC and toggles >= 1, tostring(errC))
         DT.tooltip.log = {}
         local okT, errT = pcall(OOM.onEnterFunc)
@@ -396,15 +396,15 @@ Guarded("4. ApplySettings", function()
         and r3:find("|cffffffff", 1, true) ~= nil and not r3:find("ff0000", 1, true), r1 .. " / " .. r2)
     if FLAVOUR == "tbc" then
         -- the clock's value colour (TBC: the face is coloured; a point value takes the host's)
-        local saved = MD.ClockFace.Current
+        local saved = ST.ClockFace.Current
         local sample
-        for _, s in ipairs(MD.ClockFace.SAMPLES) do if s.key == "oom" then sample = s.face end end
-        rawset(MD.ClockFace, "Current", function() return sample end)
+        for _, s in ipairs(ST.ClockFace.SAMPLES) do if s.key == "oom" then sample = s.face end end
+        rawset(ST.ClockFace, "Current", function() return sample end)
         Colour("ff0000")
         local c1 = Read(OOM)
         Colour(nil)
         local c2 = Read(OOM)
-        rawset(MD.ClockFace, "Current", saved)
+        rawset(ST.ClockFace, "Current", saved)
         check("4b. the clock's value in the host's colour", c1:find("|cffff0000", 1, true) ~= nil
             and c2:find("|cffff0000", 1, true) == nil, c1)
     else
@@ -416,7 +416,7 @@ end)
 --------------------------------------------------------------------------------
 -- 5. the feeds' contract
 --------------------------------------------------------------------------------
-T.section("5. MD.Feeds")
+T.section("5. ST.Feeds")
 Guarded("5. feeds", function()
     local list = Feeds.List()
     check("5a. two feeds, in order: clock, regen", #list == 2 and list[1] == "clock" and list[2] == "regen",
@@ -429,7 +429,7 @@ Guarded("5. feeds", function()
     check("5e. List is a copy", (function() local l = Feeds.List(); l[1] = "x"; return Feeds.List()[1] == "clock" end)())
 
     -- every clock sample through the feed: the face's own line
-    local CF = MD.ClockFace
+    local CF = ST.ClockFace
     local saved = CF.Current
     local same, clean, plainClean, bad = true, true, true, nil
     for _, s in ipairs(CF.SAMPLES) do
@@ -456,16 +456,16 @@ Guarded("5. feeds", function()
     local plain = Feeds.Text("regen", { plain = true })
     check("5k. regen plain: 'Regen <n>' with no colour code",
         plain:match("^Regen ~?%d+$") ~= nil or plain:match("^Regen ~?%d+ %(5SR%)$") ~= nil, plain)
-    local uses = MD.player.usesMana
-    MD.player.usesMana = false
+    local uses = ST.player.usesMana
+    ST.player.usesMana = false
     local dash, dashPlain = Feeds.Text("regen", {}), Feeds.Text("regen", { plain = true })
-    MD.player.usesMana = uses
+    ST.player.usesMana = uses
     check("5l. no reading: 'Regen: --' / plain 'Regen --'", dash == "Regen: |cffffffff--|r" and dashPlain == "Regen --",
         dash .. " / " .. dashPlain)
 
     -- the tooltip: the minimap tooltip's lines
     local tip = Feeds.Tooltip("clock")
-    local mm = MD.MinimapLines and MD.MinimapLines()
+    local mm = ST.MinimapLines and ST.MinimapLines()
     local equal = type(tip) == "table" and type(mm) == "table" and #tip == #mm
     if equal then for i = 1, #tip do if tip[i].l ~= mm[i].l or tip[i].r ~= mm[i].r then equal = false end end end
     check("5m. the clock feed's tooltip is the minimap tooltip's lines", equal and #tip > 0)
@@ -473,16 +473,16 @@ Guarded("5. feeds", function()
 
     -- the click: left the window, right Settings, nothing in combat
     local toggles, settings = 0, 0
-    local rt, rs = MD.ToggleDashboard, MD.OpenDashboardSettings
-    MD.ToggleDashboard = function() toggles = toggles + 1 end
-    MD.OpenDashboardSettings = function() settings = settings + 1 end
+    local rt, rs = ST.ToggleDashboard, ST.OpenDashboardSettings
+    ST.ToggleDashboard = function() toggles = toggles + 1 end
+    ST.OpenDashboardSettings = function() settings = settings + 1 end
     Feeds.Click("clock", "LeftButton")
     Feeds.Click("regen", "RightButton")
-    local inC = MD.inCombat
-    MD.inCombat = true
+    local inC = ST.inCombat
+    ST.inCombat = true
     local refused = Feeds.Click("clock", "LeftButton")
-    MD.inCombat = inC
-    MD.ToggleDashboard, MD.OpenDashboardSettings = rt, rs
+    ST.inCombat = inC
+    ST.ToggleDashboard, ST.OpenDashboardSettings = rt, rs
     check("5o. click: left the window, right Settings, refused in combat", toggles == 1 and settings == 1
         and refused == false, toggles .. "," .. settings .. "," .. tostring(refused))
 end)
@@ -494,7 +494,7 @@ T.section("6. FEED_CHANGED")
 Guarded("6. FEED_CHANGED", function()
     local fired = { clock = 0, regen = 0 }
     local atFire = {}
-    MD:RegisterCallback("FEED_CHANGED", function(key)
+    ST:RegisterCallback("FEED_CHANGED", function(key)
         fired[key] = (fired[key] or 0) + 1
         atFire[#atFire + 1] = { key = key, text = Feeds.Text(key, {}) }
     end)
@@ -524,7 +524,7 @@ Guarded("6. FEED_CHANGED", function()
                 S.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-guid", HT5)
                 S.Fire("UNIT_POWER_UPDATE", "player", "MANA")
             else
-                MD.Pool.model:Spend(150, GetTime())
+                ST.Pool.model:Spend(150, GetTime())
             end
         end
         local before = #atFire
@@ -570,13 +570,13 @@ if FLAVOUR == "tbc" then
             local okLoad, err = LoadByHand({ LDB_FILE })
             if not okLoad then print("load: " .. tostring(err)) end
         end
-        local before = MD.SurfaceLDB and MD.SurfaceLDB.Object("clock")
+        local before = ST.SurfaceLDB and ST.SurfaceLDB.Object("clock")
         lib = H.InstallLDB()
         S.Fire("ADDON_LOADED", "Titan")
         Ticks(1)
         local c, r = lib:GetDataObjectByName("SpellTuner"), lib:GetDataObjectByName("SpellTuner Regen")
         local face = Feeds.Face("clock")
-        local words = MD.ClockFace.JoinSegments(MD.ClockFace.Segments(face))
+        local words = ST.ClockFace.JoinSegments(ST.ClockFace.Segments(face))
         local plain = Feeds.Text("clock", { plain = true })
         check("8a. tbc: from the TOC, nothing before a host; then two objects, the clock's words without colour",
             byToc and before == nil and c ~= nil and r ~= nil and c.type == "data source"
@@ -588,14 +588,14 @@ if FLAVOUR == "tbc" then
     Guarded("8b. tbc regen broker", function()
         local r = lib:GetDataObjectByName("SpellTuner Regen")
         local toggles = 0
-        local rt = MD.ToggleDashboard
-        MD.ToggleDashboard = function() toggles = toggles + 1 end
-        local inFight = MD.inCombat == true
+        local rt = ST.ToggleDashboard
+        ST.ToggleDashboard = function() toggles = toggles + 1 end
+        local inFight = ST.inCombat == true
         r.OnClick(nil, "LeftButton")         -- refused: still in section 6's fight
         S.Fire("PLAYER_REGEN_ENABLED")
         Ticks(1)
         r.OnClick(nil, "LeftButton")
-        MD.ToggleDashboard = rt
+        ST.ToggleDashboard = rt
         local tt = H.LdbTooltip(r)
         check("8b. tbc: the regen object reads the regen feed's plain words; a click only out of combat; the tooltip",
             r.text == Feeds.Text("regen", { plain = true }) and r.text:find("^Regen %d+") ~= nil
@@ -608,13 +608,13 @@ end
 
 --------------------------------------------------------------------------------
 -- 9. T114 (docs/tasks/T114-clock-face-slots.md): the clock feed follows Line's
--- slots -- MD.ClockLook().texts.line handed to ClockFace.LineString -- and the
+-- slots -- ST.ClockLook().texts.line handed to ClockFace.LineString -- and the
 -- ElvUI datatext, which reads the feed, follows without an edit. No provider
 -- (or a look with no texts): today's string, byte for byte.
 --------------------------------------------------------------------------------
 T.section("9. T114: the clock feed follows Line's slots")
 do
-    local CF = MD.ClockFace
+    local CF = ST.ClockFace
     local face
     for _, s in ipairs(CF.SAMPLES) do
         if s.key == "oom" then
@@ -628,13 +628,13 @@ do
         face.pctModelled, face.manaModelled = true, true
     end
     local WANT = FLAVOUR == "forever" and "~OOM 1:20  ~62%" or "OOM 1:20 v  62%"
-    local savedCurrent, savedLook = CF.Current, rawget(MD, "ClockLook")
+    local savedCurrent, savedLook = CF.Current, rawget(ST, "ClockLook")
     local function WithLook(look, fn)
         rawset(CF, "Current", function() return face end)
-        rawset(MD, "ClockLook", look)
+        rawset(ST, "ClockLook", look)
         local okRun, a, b, c = pcall(fn)
         rawset(CF, "Current", savedCurrent)
-        rawset(MD, "ClockLook", savedLook)
+        rawset(ST, "ClockLook", savedLook)
         if not okRun then error(a, 0) end
         return a, b, c
     end

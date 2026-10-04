@@ -9,15 +9,15 @@
 local here = arg[0]:match("^(.*)/[^/]+$")
 HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua"); arg[0] = a0
+local ST = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB
 
 -- T80 (C1): the theme and the window manager after the kit, as the TBC TOC lists them
 S.Load({ "UI/Style.lua", "UI/Theme_Flat.lua", "UI/EscStack.lua", "UI/Windows.lua", "UI/ContextMenu.lua",
-         "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/ReplayWindow.lua" }, "SpellTuner", MD)
+         "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/ReplayWindow.lua" }, "SpellTuner", ST)
 
-local ids = dofile(here .. "/fakepull.lua")(MD, S)
-local SM, SP = MD.SimModel, MD.SimPlanner
+local ids = dofile(here .. "/fakepull.lua")(ST, S)
+local SM, SP = ST.SimModel, ST.SimPlanner
 
 local ok, fails = 0, {}
 local function check(name, cond, detail)
@@ -25,8 +25,8 @@ local function check(name, cond, detail)
     print(string.format("%-38s %s%s", name, cond and "ok" or "FAIL", detail and (" - " .. detail) or ""))
 end
 
-local rec = MD.FightRecorder:Get(1)
-local kit = MD.RankMath:SpellKit()
+local rec = ST.FightRecorder:Get(1)
+local kit = ST.RankMath:SpellKit()
 -- the scripted pull fails validation on purpose (a death, 69% foreign healing);
 -- let it through so the right column is exercised too
 local realValidate = SM.Validate
@@ -34,8 +34,8 @@ function SM:Validate(...) local v = realValidate(self, ...); v.ok = true; return
 SP.plans[rec.id] = SP.NewPlan(SP.MaxRankBinds(),
     { swiftmendBelow = 0.30, directBelow = 0.45, rollStacks = 3, hotBelow = 0.80, filler = false }, kit)
 
-MD:OpenReplay(1)
-local W = MD.Replay._state()
+ST:OpenReplay(1)
+local W = ST.Replay._state()
 check("window shown", W.frame and W.frame:IsShown())
 check("five rows", #W.rows == 5, tostring(#W.rows))
 local roster = rec.roster
@@ -66,7 +66,7 @@ local function Pipes()
 end
 
 -- play through at 1x: one 0.1s frame at a time
-MD.Replay._setPlaying(true)
+ST.Replay._setPlaying(true)
 local tankRow, lockRow, mageRow = nil, nil, nil
 for _, ti in ipairs(W.rows) do
     if roster[ti].name == "Destroyka" then tankRow = ti end
@@ -103,7 +103,7 @@ local sawGcdSweep = false
 local hardSwept, sawInstantSweep, sawRegrowthIdle = {}, false, false
 local frames = 0
 local HOT_INDEX = SM.HOT_INDEX
-while MD.Replay._state().playing and frames < 2000 do
+while ST.Replay._state().playing and frames < 2000 do
     S.Tick(0.1); frames = frames + 1
     local f = W.left.frames[tankRow]
     if f.cast:GetText():find("Regrowth") then sawRegrowth = true end
@@ -142,7 +142,7 @@ while MD.Replay._state().playing and frames < 2000 do
     if mageRow and W.left.frames[mageRow].debuffs[1]:IsShown() and W.left.frames[mageRow].debuffs[1].count:GetText() == "2" then sawDebuff2 = true end
     if W.right.strip.band.color and W.right.strip.band.color[4] > 0 then sawBand = true end
 end
-check("played to the end", not MD.Replay._state().playing and W.left.state:AtEnd(), string.format("%d frames", frames))
+check("played to the end", not ST.Replay._state().playing and W.left.state:AtEnd(), string.format("%d frames", frames))
 check("cast text appeared on the tank", sawRegrowth)
 check("damage pulse appeared on the mage", sawDamage)
 check("the warlock reads dead", lockRow and W.left.frames[lockRow].pct:GetText() == "dead",
@@ -185,15 +185,15 @@ check("five speeds incl. 1/4x", #W.speeds == 5 and W.speeds[1].id == 0.25, tostr
 check("Shield Wall icon shown on the tank", sawDefIcon)
 check("debuff icon with 2 stacks on the mage", sawDebuff2)
 local ic = W.left.frames[tankRow].defIcon
-MD.Replay._seek(5.0)
+ST.Replay._seek(5.0)
 check("defensive icon at 5s with a tooltip", ic:IsShown() and ic.tip and ic.tip[1].l == "Shield Wall",
     ic.tip and ic.tip[1].l or "no tip")
 check("icon tooltip does not error", pcall(ic:GetScript("OnEnter"), ic))
-MD.Replay._seek(16.0)
+ST.Replay._seek(16.0)
 check("defensive icon gone at 16s", not ic:IsShown())
 
 -- seek back to the start: effects cleared, bars back
-MD.Replay._seek(0)
+ST.Replay._seek(0)
 check("seek clears the cast text", W.left.frames[tankRow].cast:GetText() == "")
 local anyLabel = false
 for _, ti in ipairs(W.rows) do if W.left.frames[ti].label:GetText() ~= "" then anyLabel = true end end
@@ -205,10 +205,10 @@ check("no status background when idle", not bgIdle)
 local me
 for _, ti in ipairs(W.rows) do if roster[ti].name == "Penek" then me = ti end end
 check("healer recognised by guid", me and W.left.frames[me].isHealer == true)
-MD.Replay._seek(10.0)
+ST.Replay._seek(10.0)
 check("healer's power strip shows mana", me and W.left.frames[me].power:GetValue() > 0.3 and W.left.frames[me].power:GetValue() < 1,
     me and string.format("%.2f", W.left.frames[me].power:GetValue()) or "no row")
-MD.Replay._seek(0)
+ST.Replay._seek(0)
 local anyHot = false
 for _, ti in ipairs(W.rows) do for fi = 1, 3 do if W.left.frames[ti].hots[fi]:IsShown() then anyHot = true end end end
 check("no HoT icons at t=0", not anyHot)
@@ -216,7 +216,7 @@ check("seek resets the clock", W.timeFS:GetText():match("^0:00%.0") ~= nil, W.ti
 check("warlock alive again at 0", W.left.frames[lockRow].pct:GetText() ~= "dead", W.left.frames[lockRow].pct:GetText())
 
 -- ticks: at a snapshot time the left tick is drawn, and never on the right
-MD.Replay._seek(5.0)
+ST.Replay._seek(5.0)
 local tick = W.left.frames[tankRow].tick
 check("snapshot tick drawn on the left", tick.color and tick.color[4] > 0, tick.color and tostring(tick.color[4]))
 local hit = W.left.frames[tankRow].tickHit
@@ -228,10 +228,10 @@ check("no tick on the right", W.right.frames[tankRow].tick.color[4] == 0)
 do
     local pala
     for _, ti in ipairs(W.rows) do if roster[ti].name == "Trecoda" then pala = ti end end
-    MD.Replay._seek(17.0)
+    ST.Replay._seek(17.0)
     local lb = pala and W.left.frames[pala].hots[HOT_INDEX.Lifebloom]
     check("lone Lifebloom packs into slot 1", lb and lb:IsShown() and lb.slot == 1, lb and tostring(lb.slot) or "no row")
-    MD.Replay._seek(0)
+    ST.Replay._seek(0)
 end
 
 -- markers on the scrubber: the death, the casts
@@ -244,15 +244,15 @@ check("scrubber markers placed", shown >= 7, tostring(shown))
 -- the suggested one dimmed and empty, titled with the search -- so there is
 -- no narrower one-column window while it coaches, and no hint line.
 SP.plans[rec.id] = nil
-MD:OpenReplay(1)
-W = MD.Replay._state()
+ST:OpenReplay(1)
+W = ST.Replay._state()
 check("without a plan the suggested column is laid out, dimmed and empty",
     W.right.state == nil and W.right.title:IsShown() and W.right.dimmed == true)
 -- v0.13.9: opening without a plan COACHES it rather than telling the author to
 -- go and run another command. The fixture's fight passes its gates here (the
 -- suite forces Validate to ok), so the search starts and the window says so.
 check("opening without a plan starts coaching it",
-    MD.replayCoaching == rec.id or SP.plans[rec.id] ~= nil,
+    ST.replayCoaching == rec.id or SP.plans[rec.id] ~= nil,
     W.frame.hint:GetText())
 check("the suggested column's title says what it is doing",
     (W.right.title:GetText() or ""):find("coaching", 1, true) ~= nil, W.right.title:GetText())
@@ -262,7 +262,7 @@ check("two columns wide at once (968), not a narrower window", W.frame:GetWidth(
 -- ...but a fight that does not replay is still not coached silently: it names
 -- the gate that failed and how to override it.
 do
-    MD.replayCoaching, MD.coachSearch = nil, nil
+    ST.replayCoaching, ST.coachSearch = nil, nil
     SP.plans[rec.id] = nil
     local realV = SM.Validate
     function SM:Validate(...)
@@ -272,11 +272,11 @@ do
         v.gates[1] = { name = "mana mean", ok = false }
         return v
     end
-    MD:OpenReplay(1)
-    local band = MD.Replay._state().frame.band
+    ST:OpenReplay(1)
+    local band = ST.Replay._state().frame.band
     local hint = band and band.verdict:GetText() or ""
     check("a fight that does not replay is not coached silently",
-        MD.replayCoaching == nil and SP.plans[rec.id] == nil, hint)
+        ST.replayCoaching == nil and SP.plans[rec.id] == nil, hint)
     -- T80: the band names the gate, and Coach anyway is the way past it
     check("...and the band names the gate, with Coach anyway",
         hint:find("does not replay: mana mean", 1, true) ~= nil and band.coach:IsShown(), hint)
@@ -285,12 +285,12 @@ end
 
 -- in combat: refuses. T58 (P14, review A28): the stub's combat state answers
 -- the regen events now, so combat is entered the way the client enters it --
--- PLAYER_REGEN_DISABLED -- instead of patching MD.API.UnitAffectingCombat.
+-- PLAYER_REGEN_DISABLED -- instead of patching ST.API.UnitAffectingCombat.
 local before = W.frame:IsShown()
 W.frame:Hide()
 S.Fire("PLAYER_REGEN_DISABLED")
-MD:OpenReplay(1)
-check("refuses to open in combat", not MD.Replay._state().frame:IsShown())
+ST:OpenReplay(1)
+check("refuses to open in combat", not ST.Replay._state().frame:IsShown())
 S.Fire("PLAYER_REGEN_ENABLED")
 
 --------------------------------------------------------------------------------
@@ -301,21 +301,21 @@ S.Fire("PLAYER_REGEN_ENABLED")
 --------------------------------------------------------------------------------
 do
     local function dotShown()
-        local W = MD.Replay._state()
+        local W = ST.Replay._state()
         for _, ti in ipairs(W.rows) do
             local f = W.left.frames[ti]
             if f and f.dot and f.dot:IsShown() then return true end
         end
         return false
     end
-    MD.Replay._seek(0)
-    MD.Replay._seek(12.0)      -- a Rejuvenation is rolling on the tank here
+    ST.Replay._seek(0)
+    ST.Replay._seek(12.0)      -- a Rejuvenation is rolling on the tank here
     check("the Swiftmend dot is drawn when the spell is known", dotShown())
 
     local saved = rec.initial.known
-    rec.initial.known = { Rejuvenation = MD.SpellData.maxRank.Rejuvenation }   -- no Swiftmend
-    MD:OpenReplay(1)
-    MD.Replay._seek(12.0)
+    rec.initial.known = { Rejuvenation = ST.SpellData.maxRank.Rejuvenation }   -- no Swiftmend
+    ST:OpenReplay(1)
+    ST.Replay._seek(12.0)
     check("no Swiftmend dot for a build without Swiftmend", not dotShown())
 
     -- and no plan may bind a spell the recording says the healer did not have
@@ -328,7 +328,7 @@ do
         tostring(fromRec.Swiftmend))
 
     rec.initial.known = saved
-    MD:OpenReplay(1)
+    ST:OpenReplay(1)
 end
 
 --------------------------------------------------------------------------------
@@ -336,7 +336,7 @@ end
 -- them is a redraw of the suggested column, never another search.
 --------------------------------------------------------------------------------
 do
-    local kit2 = MD.RankMath:SpellKit()
+    local kit2 = ST.RankMath:SpellKit()
     local function planWith(params)
         return SP.NewPlan(SP.MaxRankBinds(), params, kit2)
     end
@@ -352,9 +352,9 @@ do
         cheap = { plan = cheap, result = snap() }, regen = { plan = cheap, result = snap() },
     }
     SP.plans[rec.id] = cheap
-    MD:OpenReplay(1)
+    ST:OpenReplay(1)
 
-    local dd = MD.Replay._strategy()
+    local dd = ST.Replay._strategy()
     check("the strategy chooser is drawn", dd ~= nil and dd:IsVisible())
     check("it is ONE control, not one per strategy", dd ~= nil and dd:GetWidth() <= 200,
         dd and tostring(dd:GetWidth()))
@@ -370,8 +370,8 @@ do
     check("clicking it opens the list", dd.list:IsShown())
 
     -- play a little way in, then switch: the clock must not jump back
-    MD.Replay._seek(8.0)
-    local before = MD.Replay._state().left.state.t
+    ST.Replay._seek(8.0)
+    local before = ST.Replay._state().left.state.t
     local btn
     for i, it in ipairs(dd.items) do if it.id == "safe" then btn = dd.rows[i] end end
     check("the list has a row per strategy", btn ~= nil)
@@ -384,9 +384,9 @@ do
     check("switching strategy changes the plan the column draws",
         SP.plans[rec.id] == safe, tostring(SP.plans[rec.id] == safe))
     check("and keeps the clock where it was",
-        math.abs(MD.Replay._state().left.state.t - before) < 0.3,
-        string.format("%.1f vs %.1f", MD.Replay._state().left.state.t, before))
-    check("the suggested column is still drawn", MD.Replay._state().right.state ~= nil)
+        math.abs(ST.Replay._state().left.state.t - before) < 0.3,
+        string.format("%.1f vs %.1f", ST.Replay._state().left.state.t, before))
+    check("the suggested column is still drawn", ST.Replay._state().right.state ~= nil)
 
     -- choosing a strategy whose plan another objective shares still reads back
     -- as the one that was clicked
@@ -397,14 +397,14 @@ do
         for i, it in ipairs(dd.items) do if it.id == "health" then row = dd.rows[i] end end
         row:GetScript("OnClick")(row)
         check("Highest health does not read back as Safest",
-            MD.Replay._strategy():GetText() == "Search: Highest health",
-            MD.Replay._strategy():GetText())
+            ST.Replay._strategy():GetText() == "Search: Highest health",
+            ST.Replay._strategy():GetText())
     end
 
     -- v0.13.7: a planner needs no search behind it. Picking one builds the plan
     -- on the spot, which is what makes the chooser useful before Coach has run.
     do
-        local dd2 = MD.Replay._strategy()
+        local dd2 = ST.Replay._strategy()
         local row
         for i, it in ipairs(dd2.items) do if it.id == "solver-blind" then row = dd2.rows[i] end end
         check("the solver is offered without a search having run", row ~= nil)
@@ -413,35 +413,35 @@ do
             check("choosing the solver builds its plan on the spot",
                 SP.plans[rec.id] ~= nil and SP.plans[rec.id].kind == "solver",
                 SP.plans[rec.id] and tostring(SP.plans[rec.id].kind) or "no plan")
-            check("and the chooser says so", MD.Replay._strategy():GetText() == "Solver: no intuition",
-                MD.Replay._strategy():GetText())
+            check("and the chooser says so", ST.Replay._strategy():GetText() == "Solver: no intuition",
+                ST.Replay._strategy():GetText())
         end
         -- put the searched plan back: the tests below this one are about the
         -- column that plan draws, not about the chooser
         SP.plans[rec.id] = cheap
         SP.strategyPick[rec.id] = nil
-        MD:OpenReplay(1)
+        ST:OpenReplay(1)
     end
 
     -- With no search there are still the planners, so the chooser stays: what
     -- removes it is having no suggested column to point at.
     SP.strategies[rec.id] = nil
     SP.strategyPick[rec.id] = nil
-    MD:OpenReplay(1)
+    ST:OpenReplay(1)
     check("no search, but the planners are still offered",
-        MD.Replay._strategy():IsVisible() and #MD.Replay._strategy().items == #SP.STRATEGY_SET,
-        tostring(#MD.Replay._strategy().items))
+        ST.Replay._strategy():IsVisible() and #ST.Replay._strategy().items == #SP.STRATEGY_SET,
+        tostring(#ST.Replay._strategy().items))
     SP.plans[rec.id] = nil
-    MD:OpenReplay(1)
-    check("no suggested column, no chooser", not MD.Replay._strategy():IsVisible())
+    ST:OpenReplay(1)
+    check("no suggested column, no chooser", not ST.Replay._strategy():IsVisible())
     SP.plans[rec.id] = cheap        -- the sections below need a right column
 end
 
 -- v0.11.14: the strip carries the two numbers a strategy comparison needs
 do
-    MD:OpenReplay(1)
-    MD.Replay._seek(20.0)
-    local W2 = MD.Replay._state()
+    ST:OpenReplay(1)
+    ST.Replay._seek(20.0)
+    local W2 = ST.Replay._state()
     local line = W2.left.strip.score:GetText() or ""
     check("the score line carries overheal and regen",
         line:find("overheal") ~= nil and line:find("regen") ~= nil, line)
@@ -452,30 +452,30 @@ do
         oh and string.format("%.2f", oh) or "nothing healed yet")
     check("regen is what came back, not what is in the pool", (function()
         local spent = st:Score()
-        local tr = MD.Replay._state().left.state.trace
+        local tr = ST.Replay._state().left.state.trace
         return math.abs(st:Regen() - (st:Mana() - tr.mana0 + spent)) < 0.01
     end)(), string.format("%.0f", st:Regen()))
-    MD.Replay._seek(0)
+    ST.Replay._seek(0)
     check("nothing healed yet reads as no overheal, not 0%%", select(1, st:Overheal()) == nil
         or select(1, st:Overheal()) >= 0)
 end
 
 -- v0.12.2: the two indicators that show what is coming, on BOTH columns
 do
-    MD:OpenReplay(1)
-    local W3 = MD.Replay._state()
+    ST:OpenReplay(1)
+    local W3 = ST.Replay._state()
     -- the scripted Shadow Bolt goes up at ~11.5s on the tank and lands 3s later
     local tank
     for i, e in ipairs(rec.roster) do if e.name == "Destroyka" then tank = i end end
     check("the recording knows which target the cast was aimed at", tank ~= nil)
 
-    local RP = MD.Replay._state().rp
+    local RP = ST.Replay._state().rp
     local cast = nil
     for _, c in ipairs(RP.incoming and RP.incoming[tank] or {}) do cast = c end
     check("the replay indexed the incoming cast by target", cast ~= nil,
         cast and string.format("%.1fs -> %.1fs", cast.t, cast.at or -1) or "none")
 
-    MD.Replay._seek(cast.t + 0.5)
+    ST.Replay._seek(cast.t + 0.5)
     local L = W3.left.frames[tank]
     local R = W3.right.frames[tank]
     check("the cast bar shows on the left column while it is in the air", L.incoming:IsShown())
@@ -485,7 +485,7 @@ do
         and tostring(L.incoming.tip[1].r):find("lands in") ~= nil,
         L.incoming.tip and tostring(L.incoming.tip[1].r) or "no tip")
 
-    MD.Replay._seek((cast.at or cast.t) + 1.0)
+    ST.Replay._seek((cast.at or cast.t) + 1.0)
     check("and it is gone once the cast has landed", not L.incoming:IsShown())
 
     -- a cast that never landed still shows for the seconds its bar plausibly ran
@@ -495,7 +495,7 @@ do
     for _, c in ipairs(RP.incoming and RP.incoming[mage] or {}) do ghost = c end
     check("a cast that never landed is still indexed", ghost ~= nil and ghost.at == nil,
         ghost and tostring(ghost.at) or "none")
-    MD.Replay._seek(0)
+    ST.Replay._seek(0)
 end
 
 --------------------------------------------------------------------------------
@@ -504,10 +504,10 @@ end
 -- run is gap, and that is where the drinking happens.
 --------------------------------------------------------------------------------
 do
-    local RR = MD.RunRecorder
+    local RR = ST.RunRecorder
     -- a run holding the fixture's pull, with a gap after it and health sampled
     -- across the whole thing
-    local rec2 = MD.FightRecorder:Get(1)
+    local rec2 = ST.FightRecorder:Get(1)
     local run = {
         id = 4242, name = "Played Run", zone = "Somewhere", dur = 120, pool = 7009,
         pulls = { rec2 },
@@ -528,10 +528,10 @@ do
         for _ = 1, #names do fr[#fr + 1] = math.min(1, 0.35 + i2 * 0.015) end
         run.hp.frac[#run.hp.frac + 1] = fr
     end
-    MD.cdb.runs = { run }
+    ST.cdb.runs = { run }
 
-    MD:OpenRunPlay(1)
-    local r = MD.Replay._run()
+    ST:OpenRunPlay(1)
+    local r = ST.Replay._run()
     check("run mode opens on the run's clock", r ~= nil and r.dur > 100,
         r and string.format("%.0fs", r.dur) or "not in run mode")
     check("it starts in the gap before the first pull", r and r.seg == "gap", r and r.seg)
@@ -540,10 +540,10 @@ do
     -- play it: the clock must cross the pull and come out the other side without
     -- ever stopping
     local sawPull, sawGapAfter, frames = false, false, 0
-    MD.Replay._setPlaying(true)
+    ST.Replay._setPlaying(true)
     while frames < 4000 do
         S.Tick(0.1); frames = frames + 1
-        local st = MD.Replay._run()
+        local st = ST.Replay._run()
         if not st then break end
         if st.seg == "pull" then sawPull = true end
         if sawPull and st.seg == "gap" then sawGapAfter = true end
@@ -552,47 +552,47 @@ do
     check("playing crosses into the pull", sawPull)
     check("...and keeps going into the gap after it, without stopping",
         sawGapAfter, string.format("%d frames", frames))
-    local st = MD.Replay._run()
+    local st = ST.Replay._run()
     check("it reaches the end of the RUN, not the end of a pull",
         st and st.t >= st.dur - 0.5, st and string.format("%.0f of %.0f", st.t, st.dur))
 
     -- the bars move in the gap, which is the whole point
-    MD.Replay._runSeek(nil, 4)
-    local W4 = MD.Replay._state()
+    ST.Replay._runSeek(nil, 4)
+    local W4 = ST.Replay._state()
     local anyRow = W4.rows[1]
     local early = W4.left.frames[anyRow].bar:GetValue()
-    MD.Replay._runSeek(nil, 100)
+    ST.Replay._runSeek(nil, 100)
     local late = W4.left.frames[anyRow].bar:GetValue()
     check("health bars move between combats", late > early,
         string.format("%.2f at 4s -> %.2f at 100s", early, late))
 
     -- and the strip says what is going on out there
-    MD.Replay._runSeek(nil, 72)
+    ST.Replay._runSeek(nil, 72)
     check("a drink in the gap is named", W4.left.strip.castFS:GetText():find("drink") ~= nil,
         W4.left.strip.castFS:GetText())
 
     -- the clock reads the RUN, not the pull
-    MD.Replay._runSeek(nil, 100)
+    ST.Replay._runSeek(nil, 100)
     check("the clock shows the run's time", W4.timeFS:GetText():find("1:40") ~= nil,
         W4.timeFS:GetText())
     check("...and says where in the run it is",
         W4.timeFS:GetText():find("between pulls") ~= nil, W4.timeFS:GetText())
-    MD.Replay._runSeek(nil, 20)
+    ST.Replay._runSeek(nil, 20)
     check("inside a pull it names the pull",
-        MD.Replay._state().timeFS:GetText():find("pull 1") ~= nil,
-        MD.Replay._state().timeFS:GetText())
+        ST.Replay._state().timeFS:GetText():find("pull 1") ~= nil,
+        ST.Replay._state().timeFS:GetText())
 end
 
 --------------------------------------------------------------------------------
 -- T51 (P7): a run of two pulls. Crossing into the second re-enters
--- MD:OpenReplay, which set the scrubber to that one pull's range (B21), and a
+-- ST:OpenReplay, which set the scrubber to that one pull's range (B21), and a
 -- refused OpenReplay in combat was retried every frame (B22). The stub's
 -- slider clamps as the client's does (T45), so a drag past a pull's length
 -- lands where the client would put it.
 --------------------------------------------------------------------------------
 do
-    MD.Replay._setPlaying(false)
-    local base = MD.FightRecorder:Get(1)
+    ST.Replay._setPlaying(false)
+    local base = ST.FightRecorder:Get(1)
     local d = base.dur or 0
     local function Pull(t0)
         local c = {}
@@ -620,21 +620,21 @@ do
         for _ = 1, #names do fr[#fr + 1] = 0.9 end
         run.hp.frac[#run.hp.frac + 1] = fr
     end
-    MD.cdb.runs = { run }
-    MD:OpenRunPlay(1)
-    local scr = MD.Replay._state().scrubber
-    local r0 = MD.Replay._run()
+    ST.cdb.runs = { run }
+    ST:OpenRunPlay(1)
+    local scr = ST.Replay._state().scrubber
+    local r0 = ST.Replay._run()
 
     -- B21: play across the boundary into pull 2
-    MD.Replay._runSeek(nil, p2.runT0 - 0.5)
-    MD.Replay._setPlaying(true)
+    ST.Replay._runSeek(nil, p2.runT0 - 0.5)
+    ST.Replay._setPlaying(true)
     local crossed = false
     for _ = 1, 40 do
         S.Tick(0.05)
-        local st = MD.Replay._run()
+        local st = ST.Replay._run()
         if st and st.seg == "pull" and st.k == 2 then crossed = true; break end
     end
-    MD.Replay._setPlaying(false)
+    ST.Replay._setPlaying(false)
     local _, hi = scr:GetMinMaxValues()
     check("T51: after a pull crossing the scrubber's max is the run's length",
         r0 ~= nil and crossed and math.abs((hi or 0) - r0.dur) < 1e-6,
@@ -646,18 +646,18 @@ do
     scr:SetValue(300)
     scr:GetScript("OnValueChanged")(scr, scr:GetValue(), true)
     scr.dragging = false
-    local st = MD.Replay._run()
+    local st = ST.Replay._run()
     check("T51: a scrubber drag to 300 s lands at 300 s of the run",
         st and math.abs(st.t - 300) < 1e-6, st and string.format("%.1f s", st.t))
 
     -- the run strip: a click on a pull's block in run mode moves the RUN's
     -- clock to that pull, so the clock, the scrubber and the pull agree
-    MD.Replay._runSeek(nil, p2.runT0 + 5)
-    local strip = MD.Replay._runStrip()
+    ST.Replay._runSeek(nil, p2.runT0 + 5)
+    local strip = ST.Replay._runStrip()
     local b1 = strip and strip.pulls and strip.pulls[1]
     if b1 then b1:GetScript("OnClick")(b1) end
-    local sc = MD.Replay._run()
-    local strip2 = MD.Replay._runStrip()
+    local sc = ST.Replay._run()
+    local strip2 = ST.Replay._runStrip()
     check("T51: a run-strip click in run mode moves the run clock to that pull",
         b1 ~= nil and sc and sc.seg == "pull" and sc.k == 1 and math.abs(sc.t - p1.runT0) < 1e-6
           and strip2 and strip2.pull == 1,
@@ -668,20 +668,20 @@ do
     -- T80 (C1): the window manager hides the replay in combat on TBC now
     -- (decision 4); a replay still on screen in combat is the "Keep them open"
     -- setting's, which is where the replay's own guard is what answers
-    MD.Win:SetCombat("keep")
-    MD.Replay._runSeek(nil, p1.runT0 + 1)
-    MD.Replay._runSeek(nil, p2.runT0 - 0.3)
+    ST.Win:SetCombat("keep")
+    ST.Replay._runSeek(nil, p1.runT0 + 1)
+    ST.Replay._runSeek(nil, p2.runT0 - 0.3)
     local said = {}
-    local realPrint = MD.Print
-    MD.Print = function(_, m) said[#said + 1] = m end
+    local realPrint = ST.Print
+    ST.Print = function(_, m) said[#said + 1] = m end
     S.Fire("PLAYER_REGEN_DISABLED") -- T58 (P14): the event, not an adapter patch
-    MD.Replay._setPlaying(true)
+    ST.Replay._setPlaying(true)
     for _ = 1, 120 do S.Tick(1 / 60) end
-    local playingAfter = MD.Replay._run() and MD.Replay._run().playing
-    MD.Print = realPrint
+    local playingAfter = ST.Replay._run() and ST.Replay._run().playing
+    ST.Print = realPrint
     S.Fire("PLAYER_REGEN_ENABLED")
-    MD.Replay._setPlaying(false)
-    MD.Win:SetCombat("hide")
+    ST.Replay._setPlaying(false)
+    ST.Win:SetCombat("hide")
     check("T51: combat at a pull boundary prints one line in 120 frames and pauses",
         #said == 1 and playingAfter == false,
         string.format("%d lines, playing=%s", #said, tostring(playingAfter)))
@@ -689,11 +689,11 @@ do
     -- a fight opened by hand after a run leaves run mode: its own clock and
     -- its own range, not the run's (the range is now kept in run mode, so
     -- this is what keeps a single fight from inheriting it)
-    MD:OpenReplay(1)
+    ST:OpenReplay(1)
     local _, hi1 = scr:GetMinMaxValues()
     check("T51: a fight opened by hand after a run plays on its own clock and range",
-        MD.Replay._run() == nil and math.abs((hi1 or 0) - d) < 1e-6,
-        string.format("run=%s max=%s dur=%s", tostring(MD.Replay._run() ~= nil), tostring(hi1), tostring(d)))
+        ST.Replay._run() == nil and math.abs((hi1 or 0) - d) < 1e-6,
+        string.format("run=%s max=%s dur=%s", tostring(ST.Replay._run() ~= nil), tostring(hi1), tostring(d)))
 end
 
 --------------------------------------------------------------------------------
@@ -708,25 +708,25 @@ end
 -- under "Keep them open" (db.ui.combat = "keep"), where it always applied.
 --------------------------------------------------------------------------------
 do
-    MD.Win:SetCombat("keep")
-    MD:OpenReplay(1)
-    local st = MD.Replay._state()
+    ST.Win:SetCombat("keep")
+    ST:OpenReplay(1)
+    local st = ST.Replay._state()
     local f = st.frame
     local kb, prop = {}, nil
     f.EnableKeyboard = function(_, on) kb[#kb + 1] = on and true or false end
     f.SetPropagateKeyboardInput = function(_, on) prop = on end
     local function Script(name, ...) local fn = f:GetScript(name); if fn then fn(f, ...) end end
     local function Keys() return kb[#kb] == true end
-    MD.Replay._setPlaying(false)
+    ST.Replay._setPlaying(false)
 
     S.mouseFocus = f
     Script("OnEnter")
     local on = Keys()
     Script("OnKeyDown", "SPACE")
-    local played = MD.Replay._state().playing
+    local played = ST.Replay._state().playing
     Script("OnKeyDown", "SPACE")
     check("T72: Space toggles with the pointer over",
-        on and played == true and not MD.Replay._state().playing and prop == false,
+        on and played == true and not ST.Replay._state().playing and prop == false,
         string.format("kb=%s played=%s prop=%s", tostring(on), tostring(played), tostring(prop)))
 
     S.mouseFocus = nil
@@ -766,9 +766,9 @@ do
     -- T80 (C1): TBC has the theme's band (the verdict in good) and key hint
     local v = f.band and f.band.verdict:GetText() or ""
     check("T72/T80: TBC has the band, its verdict and the key hint",
-        f.band ~= nil and f.keyHint ~= nil and v:find(MD.UI.TEXT.good.hex .. "replays", 1, true) ~= nil, v)
+        f.band ~= nil and f.keyHint ~= nil and v:find(ST.UI.TEXT.good.hex .. "replays", 1, true) ~= nil, v)
     f.EnableKeyboard, f.SetPropagateKeyboardInput = nil, nil
-    MD.Win:SetCombat("hide")
+    ST.Win:SetCombat("hide")
 end
 
 print(string.format("\n%d ok, %d failed", ok, #fails))

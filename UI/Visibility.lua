@@ -1,6 +1,6 @@
 -- T68 (P24 of docs/PLAN-refactor-ux.md, review A29): the one rule for when a
 -- mana clock is on screen, shared by the TBC widget (UI/Widget.lua
--- MD:UpdateVisibility) and the Forever clock (UI/Clock_Forever.lua), which
+-- ST:UpdateVisibility) and the Forever clock (UI/Clock_Forever.lua), which
 -- until T68 each carried a copy of the 90/95 hysteresis.
 --
 -- PURE: no frame, no client call, no clock -- every input is an argument, so
@@ -11,10 +11,10 @@
 -- T93 (docs/SPEC-next.md 7.3 "When", F3): the answer follows a show RULE.
 -- With no rule, or the default one, it is exactly the rule above (held by
 -- tools/clockfacecheck.lua section 5 against the parent's Want, case by case).
-local _, MD = ...
+local _, ST = ...
 
-MD.Visibility = MD.Visibility or {}
-local Visibility = MD.Visibility
+ST.Visibility = ST.Visibility or {}
+local Visibility = ST.Visibility
 
 -- Out of combat the clock appears once mana falls BELOW 90% of max and, once
 -- shown, stays until mana is ABOVE 95% -- a band, so it never flickers where
@@ -49,7 +49,7 @@ end
 -- unlocked  being dragged or previewed: always wanted, whatever the mana,
 --           the class or the rule.
 -- rule      the show rule above; nil is the default.
--- usesMana  whether the character has a mana pool (MD.player.usesMana);
+-- usesMana  whether the character has a mana pool (ST.player.usesMana);
 --           only `false` hides under manaUsersOnly -- nil (not known) does not.
 function Visibility.Want(pct, shown, inCombat, unlocked, rule, usesMana)
     if unlocked then return true end

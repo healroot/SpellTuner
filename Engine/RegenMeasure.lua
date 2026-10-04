@@ -8,7 +8,7 @@
 -- message (docs/PLAN-refactor-ux.md section 6: sharing it is a later change).
 --
 -- T56 (P12, review A2): moved out of Verify.lua unchanged.
-local _, MD = ...
+local _, ST = ...
 
 --------------------------------------------------------------------------------
 -- FSR anchor test: log every player mana change with a timestamp for 15s.
@@ -17,24 +17,24 @@ local fsrLogging = false
 local fsrT0, fsrLast = 0, 0
 
 -- Registered once; inert unless a test is running.
-MD:On("UNIT_POWER_UPDATE", function(unit, powerType)
+ST:On("UNIT_POWER_UPDATE", function(unit, powerType)
     if not fsrLogging or unit ~= "player" or powerType ~= "MANA" then return end
     local cur = UnitPower("player", 0)
     if cur ~= fsrLast then
-        MD:Print(string.format("  t+%5.2fs  %+d  (-> %d)", GetTime() - fsrT0, cur - fsrLast, cur))
+        ST:Print(string.format("  t+%5.2fs  %+d  (-> %d)", GetTime() - fsrT0, cur - fsrLast, cur))
         fsrLast = cur
     end
 end)
 
-function MD:RunFSRTest()
+function ST:RunFSRTest()
     if fsrLogging then return end
     fsrLogging = true
     fsrT0 = GetTime()
     fsrLast = UnitPower("player", 0)
-    MD:Print("fsrtest: logging mana changes for 15s - cast one spell now.")
+    ST:Print("fsrtest: logging mana changes for 15s - cast one spell now.")
     C_Timer.After(15, function()
         fsrLogging = false
-        MD:Print("fsrtest: done.")
+        ST:Print("fsrtest: done.")
     end)
 end
 
@@ -59,7 +59,7 @@ local DREAMSTATE_PCT = { 0.04, 0.07, 0.10 }
 local regenTest = nil
 
 local function IsDrinking()
-    return MD:HasBuff("Drink") or MD:HasBuff("Refreshment") or MD:HasBuff("Food & Drink")
+    return ST:HasBuff("Drink") or ST:HasBuff("Refreshment") or ST:HasBuff("Food & Drink")
 end
 
 --------------------------------------------------------------------------------
@@ -93,18 +93,18 @@ local MP5_FLOOR = 1.0     -- mana/s (5 mp5). The tick sizes vary by +-1 and a 30
                           -- to about 0.5/s; half of that again is noise.
 
 local function ClearMeasured(reason)
-    if not (MD.cdb and MD.cdb.mp5) then return false end
-    local prev = MD.cdb.mp5
-    MD.cdb.mp5 = nil
-    if MD.Regen then MD.Regen:Refresh() end
-    MD:Print(string.format("regentest: |cffffcc00cleared|r the stored %d mp5 (measured %s) - %s.",
+    if not (ST.cdb and ST.cdb.mp5) then return false end
+    local prev = ST.cdb.mp5
+    ST.cdb.mp5 = nil
+    if ST.Regen then ST.Regen:Refresh() end
+    ST:Print(string.format("regentest: |cffffcc00cleared|r the stored %d mp5 (measured %s) - %s.",
         prev.mp5 or 0, date("%Y-%m-%d", prev.at or 0), reason))
     return true
 end
 
-function MD:ClearMeasuredMp5()
+function ST:ClearMeasuredMp5()
     if not ClearMeasured("you asked") then
-        MD:Print("regentest: nothing stored to clear.")
+        ST:Print("regentest: nothing stored to clear.")
     end
 end
 
@@ -112,7 +112,7 @@ end
 local function StoreMeasuredMp5(t, elapsed, observed, api, ds, party)
     local solo = (GetNumGroupMembers and GetNumGroupMembers() or 1) <= 1
     local why = nil
-    if not MD.cdb then why = "no character database yet"
+    if not ST.cdb then why = "no character database yet"
     elseif t.spent > 0 then why = string.format("%d mana was spent during the window", t.spent)
     elseif t.drank then why = "a drink/food buff was up"
     elseif t.fsrTime > 0.5 then why = string.format("%.1fs of the window were inside the 5SR", t.fsrTime)
@@ -120,40 +120,40 @@ local function StoreMeasuredMp5(t, elapsed, observed, api, ds, party)
     elseif not solo then why = "you are in a group - somebody else's blessing would be measured in"
     end
     if why then
-        MD:Print("regentest: not stored - " .. why .. ". Nothing was changed.")
+        ST:Print("regentest: not stored - " .. why .. ". Nothing was changed.")
         return
     end
 
     local unreported = observed - api - ds - party
-    MD:Print(string.format("regentest: observed %.2f/s = API %.2f + Dreamstate %.2f%s + unreported %+.2f (%+d mp5)",
+    ST:Print(string.format("regentest: observed %.2f/s = API %.2f + Dreamstate %.2f%s + unreported %+.2f (%+d mp5)",
         observed, api, ds, party > 0 and string.format(" + party %.2f", party) or "",
         unreported, unreported * 5 + (unreported >= 0 and 0.5 or -0.5)))
 
     if unreported > api and api > 0 then
-        MD:Print(string.format("regentest: |cffff4444not stored|r - the leftover (%d mp5) is larger than everything " ..
+        ST:Print(string.format("regentest: |cffff4444not stored|r - the leftover (%d mp5) is larger than everything " ..
             "the client reports (%d mp5). That is a broken measurement, not a discovery.",
             unreported * 5 + 0.5, api * 5 + 0.5))
         return
     end
     if unreported < MP5_FLOOR then
-        MD:Print(string.format("regentest: nothing to store - the model already accounts for everything the client " ..
+        ST:Print(string.format("regentest: nothing to store - the model already accounts for everything the client " ..
             "regenerates (leftover %+d mp5, under the %d mp5 floor this test can resolve).",
             unreported * 5 + (unreported >= 0 and 0.5 or -0.5), MP5_FLOOR * 5))
         ClearMeasured("the leftover is now inside the noise floor")
         return
     end
 
-    local prev = MD.cdb.mp5
-    MD.cdb.mp5 = {
+    local prev = ST.cdb.mp5
+    ST.cdb.mp5 = {
         perSec = unreported, mp5 = math.floor(unreported * 5 + 0.5), at = time(),
         source = "regentest", ticks = t.ticks, level = UnitLevel("player") or 0,
         hint = GetRealZoneText and GetRealZoneText() or nil,
         window = elapsed, solo = solo,
         observed = observed, api = api, dreamstate = ds, party = party,
     }
-    if MD.Regen then MD.Regen:Refresh() end
-    MD:Print(string.format("regentest: |cff33ff66stored %d mp5|r (%.2f/s left over after the API and Dreamstate, " ..
-        "%d ticks over %.0fs) - was: %s.", MD.cdb.mp5.mp5, unreported, t.ticks, elapsed,
+    if ST.Regen then ST.Regen:Refresh() end
+    ST:Print(string.format("regentest: |cff33ff66stored %d mp5|r (%.2f/s left over after the API and Dreamstate, " ..
+        "%d ticks over %.0fs) - was: %s.", ST.cdb.mp5.mp5, unreported, t.ticks, elapsed,
         prev and string.format("%d mp5 measured %s", prev.mp5 or 0, date("%Y-%m-%d", prev.at or 0)) or "none"))
 end
 
@@ -162,12 +162,12 @@ local function FinishRegenTest(reason)
     regenTest = nil
     if not t then return end
     if not t.t0 then
-        MD:Print("regentest: stopped while waiting for the 5SR to end (" .. reason .. ") - nothing measured.")
+        ST:Print("regentest: stopped while waiting for the 5SR to end (" .. reason .. ") - nothing measured.")
         return
     end
     local elapsed = GetTime() - t.t0
     if elapsed < 4 then
-        MD:Print(string.format("regentest: stopped after %.1fs (%s) - too short, nothing measured.", elapsed, reason))
+        ST:Print(string.format("regentest: stopped after %.1fs (%s) - too short, nothing measured.", elapsed, reason))
         return
     end
     local observed = t.gained / elapsed
@@ -175,24 +175,24 @@ local function FinishRegenTest(reason)
     local model = t.modelSum / elapsed    -- time-weighted RM.base (API + unreported)
     local diff = observed - api
     local intellect = UnitStat("player", 4) or 0
-    local dsRank = MD:TalentRank("Dreamstate")
+    local dsRank = ST:TalentRank("Dreamstate")
     local dsRate = (DREAMSTATE_PCT[dsRank] or 0) * intellect / 5
 
-    MD:Print(string.format("regentest: %.0fs (%s), %d mana in %d ticks -> observed %.2f/s (%d mp5); " ..
+    ST:Print(string.format("regentest: %.0fs (%s), %d mana in %d ticks -> observed %.2f/s (%d mp5); " ..
         "raw API %.2f/s (%d mp5); diff %+.2f/s (%+d mp5); model %.2f/s (%d mp5), observed - model %+.2f/s",
         elapsed, reason, t.gained, t.ticks, observed, observed * 5 + 0.5, api, api * 5 + 0.5, diff, diff * 5,
         model, model * 5 + 0.5, observed - model))
     if t.spent > 0 then
-        MD:Print(string.format("|cffff4444WARNING|r %d mana was spent during the test (5SR reset) - result unreliable.", t.spent))
+        ST:Print(string.format("|cffff4444WARNING|r %d mana was spent during the test (5SR reset) - result unreliable.", t.spent))
     end
     if t.fsrTime > 0.5 then
-        MD:Print(string.format("|cffff4444WARNING|r %.1fs of the window were inside the 5SR - result unreliable.", t.fsrTime))
+        ST:Print(string.format("|cffff4444WARNING|r %.1fs of the window were inside the 5SR - result unreliable.", t.fsrTime))
     end
     if t.drank then
-        MD:Print("|cffff4444WARNING|r a drink/food buff was up during the test - result unreliable.")
+        ST:Print("|cffff4444WARNING|r a drink/food buff was up during the test - result unreliable.")
     end
     if t.ticks < 3 then
-        MD:Print("|cffff4444WARNING|r fewer than 3 regen ticks observed - were you at full mana?")
+        ST:Print("|cffff4444WARNING|r fewer than 3 regen ticks observed - were you at full mana?")
     end
     -- Tick histogram. The whole point of a size/cadence table is that a
     -- periodic energize the API does not report (item mp5, Blessing of Wisdom,
@@ -266,7 +266,7 @@ local function FinishRegenTest(reason)
         -- one true tick as an unexplained beat -- which is the bug that stored
         -- 279 mp5 on a character regenerating 279 in total (v0.9.5).
         local expected = (t.apiSum / elapsed + dsRate) * 2
-        MD:Print("regentest: tick histogram (size x count, cadence) -")
+        ST:Print("regentest: tick histogram (size x count, cadence) -")
         for i = 1, math.min(#clusters, 6) do
             local c = clusters[i]
             table.sort(c.ts)
@@ -290,28 +290,28 @@ local function FinishRegenTest(reason)
             else
                 note = "seen too few times to read a cadence"
             end
-            MD:Print(string.format("    %7s x %-3d  %s", label, c.n, note))
+            ST:Print(string.format("    %7s x %-3d  %s", label, c.n, note))
         end
     end
     -- the rate the TICKS carry (edge-free), not the window's endpoints
     StoreMeasuredMp5(t, elapsed, ticked > 0 and ticked or observed, api, dsRate, party)
 
     if dsRank == 0 then
-        MD:Print(string.format("no Dreamstate talent: diff should be ~0 (it is %+.2f/s). A large positive diff means " ..
+        ST:Print(string.format("no Dreamstate talent: diff should be ~0 (it is %+.2f/s). A large positive diff means " ..
             "GetManaRegen misses some regen source.", diff))
     elseif diff >= 0.5 * dsRate then
-        MD:Print(string.format("|cffffcc00VERDICT|r raw GetManaRegen EXCLUDES Dreamstate: diff %.2f/s vs expected %.2f/s " ..
+        ST:Print(string.format("|cffffcc00VERDICT|r raw GetManaRegen EXCLUDES Dreamstate: diff %.2f/s vs expected %.2f/s " ..
             "(Dreamstate %d = %d%% of %d int / 5s). The model adds %.2f/s for it.", diff, dsRate, dsRank,
-            DREAMSTATE_PCT[dsRank] * 100, intellect, MD.Regen.unreported))
+            DREAMSTATE_PCT[dsRank] * 100, intellect, ST.Regen.unreported))
     else
-        MD:Print(string.format("|cffffcc00VERDICT|r raw GetManaRegen INCLUDES Dreamstate: diff %.2f/s, it would be ~%.2f/s " ..
+        ST:Print(string.format("|cffffcc00VERDICT|r raw GetManaRegen INCLUDES Dreamstate: diff %.2f/s, it would be ~%.2f/s " ..
             "if excluded (Dreamstate %d, %d int). The model's %.2f/s Dreamstate term would then double count!",
-            diff, dsRate, dsRank, intellect, MD.Regen.unreported))
+            diff, dsRate, dsRank, intellect, ST.Regen.unreported))
     end
 end
 
 -- Registered once; inert unless a test is measuring.
-MD:On("UNIT_POWER_UPDATE", function(unit, powerType)
+ST:On("UNIT_POWER_UPDATE", function(unit, powerType)
     if not regenTest or not regenTest.t0 or unit ~= "player" or powerType ~= "MANA" then return end
     local cur = UnitPower("player", 0)
     local delta = cur - regenTest.last
@@ -331,9 +331,9 @@ MD:On("UNIT_POWER_UPDATE", function(unit, powerType)
     end
 end)
 
-MD:OnTick(function(dt)
+ST:OnTick(function(dt)
     if not regenTest then return end
-    local RM = MD.Regen
+    local RM = ST.Regen
     if UnitAffectingCombat("player") then
         FinishRegenTest("entered combat")
         return
@@ -342,7 +342,7 @@ MD:OnTick(function(dt)
         if RM:InFSR() then return end
         regenTest.t0 = GetTime()
         regenTest.last = UnitPower("player", 0)
-        MD:Print(string.format("regentest: 5SR over, measuring for %ds now - stand still.", regenTest.duration))
+        ST:Print(string.format("regentest: 5SR over, measuring for %ds now - stand still.", regenTest.duration))
         return
     end
     regenTest.apiSum = regenTest.apiSum + RM.apiBase * dt
@@ -354,36 +354,36 @@ MD:OnTick(function(dt)
     end
 end)
 
-function MD:RunRegenTest(seconds)
+function ST:RunRegenTest(seconds)
     if tostring(seconds or ""):lower():match("^clear") then
-        MD:ClearMeasuredMp5()
+        ST:ClearMeasuredMp5()
         return
     end
     if regenTest then
-        MD:Print("regentest: already running.")
+        ST:Print("regentest: already running.")
         return
     end
     seconds = tonumber(seconds) or 30
     if seconds < 10 then seconds = 10 end
     if UnitAffectingCombat("player") then
-        MD:Print("regentest: leave combat first.")
+        ST:Print("regentest: leave combat first.")
         return
     end
     local mana, manaMax = UnitPower("player", 0), UnitPowerMax("player", 0)
     if mana >= manaMax then
-        MD:Print("regentest: you are at full mana - spend some first (a few casts), then run it again.")
+        ST:Print("regentest: you are at full mana - spend some first (a few casts), then run it again.")
         return
     end
-    local RM = MD.Regen
+    local RM = ST.Regen
     regenTest = {
         t0 = nil, duration = seconds, last = mana,
         gained = 0, ticks = 0, spent = 0, apiSum = 0, modelSum = 0, fsrTime = 0, drank = IsDrinking(),
         sizes = {}, -- [gain] = { n, ts = {} }
     }
-    MD:Print(string.format("regentest: %ds - do not cast or drink. Mana %d/%d, raw API base %.2f/s, model %.2f/s, " ..
+    ST:Print(string.format("regentest: %ds - do not cast or drink. Mana %d/%d, raw API base %.2f/s, model %.2f/s, " ..
         "Dreamstate %d, int %d, %s%s.", seconds, mana, manaMax, RM.apiBase, RM.base,
-        MD:TalentRank("Dreamstate"), UnitStat("player", 4) or 0,
-        MD.db.debug.enabled and "debug log on" or "debug log OFF (enable it in the Debug Console to keep the ticks)",
+        ST:TalentRank("Dreamstate"), UnitStat("player", 4) or 0,
+        ST.db.debug.enabled and "debug log on" or "debug log OFF (enable it in the Debug Console to keep the ticks)",
         RM:InFSR() and string.format("; waiting %.1fs for the 5SR to end", RM:FSRRemaining()) or ""))
 end
 
@@ -400,7 +400,7 @@ local function FinishSpamTest(reason)
     spamTest = nil
     if not t then return end
     if t.casts == 0 then
-        MD:Print("spamtest: no cast seen (" .. reason .. ").")
+        ST:Print("spamtest: no cast seen (" .. reason .. ").")
         return
     end
     local name = GetSpellInfo(t.spellID) or "?"
@@ -408,36 +408,36 @@ local function FinishSpamTest(reason)
     local interval = t.casts > 1 and duration / (t.casts - 1) or t.interval
     local avgDrop = t.spent / math.max(t.casts, 1)
     local mana = UnitPower("player", 0)
-    MD:Print(string.format("spamtest (%s): %d casts of %s (%d) in %.1fs (%.2fs apart) - %d mana spent (%.1f per cast, live cost %d), " ..
+    ST:Print(string.format("spamtest (%s): %d casts of %s (%d) in %.1fs (%.2fs apart) - %d mana spent (%.1f per cast, live cost %d), " ..
         "%d regained; mana %d -> %d.", reason, t.casts, name, t.spellID, duration, interval, t.spent, avgDrop, t.liveCost, t.gained,
         t.armMana, mana))
-    local predicted = MD.RankMath:CastsToOOM(t.liveCost, t.interval, t.armMana, t.castingRegen)
-    local predictedReal = MD.RankMath:CastsToOOM(avgDrop, interval, t.armMana, t.gained / math.max(duration, 1))
-    MD:Print(string.format("prediction from %d mana: %s casts (live cost %d, %.1fs interval, casting regen %.2f/s); " ..
+    local predicted = ST.RankMath:CastsToOOM(t.liveCost, t.interval, t.armMana, t.castingRegen)
+    local predictedReal = ST.RankMath:CastsToOOM(avgDrop, interval, t.armMana, t.gained / math.max(duration, 1))
+    ST:Print(string.format("prediction from %d mana: %s casts (live cost %d, %.1fs interval, casting regen %.2f/s); " ..
         "with the MEASURED drop and regen it would be %s. Observed regen during the spam: %.2f/s.",
         t.armMana, predicted == math.huge and "inf" or tostring(predicted), t.liveCost, t.interval, t.castingRegen,
         predictedReal == math.huge and "inf" or tostring(predictedReal), t.gained / math.max(duration, 1)))
     if math.abs(avgDrop - t.liveCost) > 1 then
-        MD:Print(string.format("|cffffaa33NOTE|r the real drop per cast (%.1f) differs from the live cost (%d) - that is the column's error source.",
+        ST:Print(string.format("|cffffaa33NOTE|r the real drop per cast (%.1f) differs from the live cost (%d) - that is the column's error source.",
             avgDrop, t.liveCost))
     end
     if t.otherCasts > 0 then
-        MD:Print(string.format("|cffffaa33NOTE|r %d cast(s) of other spells were mixed in and counted in the mana spent.", t.otherCasts))
+        ST:Print(string.format("|cffffaa33NOTE|r %d cast(s) of other spells were mixed in and counted in the mana spent.", t.otherCasts))
     end
 end
 
-MD:On("UNIT_SPELLCAST_SUCCEEDED", function(unit, _, spellID)
+ST:On("UNIT_SPELLCAST_SUCCEEDED", function(unit, _, spellID)
     if not spamTest or unit ~= "player" or type(spellID) ~= "number" then return end
     local now = GetTime()
     if not spamTest.spellID then
-        local cost = MD.SpellData:GetCost(spellID)
+        local cost = ST.SpellData:GetCost(spellID)
         if not cost or cost <= 0 then return end -- ignore free/unknown (form shift etc.)
         spamTest.spellID = spellID
         spamTest.liveCost = cost
         local _, _, _, castMs = GetSpellInfo(spellID)
         spamTest.interval = math.max((castMs or 0) / 1000, 1.5)
         spamTest.firstCastT = now
-        MD:Print(string.format("spamtest: counting %s (live cost %d, %.1fs interval) - keep casting until OOM.",
+        ST:Print(string.format("spamtest: counting %s (live cost %d, %.1fs interval) - keep casting until OOM.",
             GetSpellInfo(spellID) or "?", cost, spamTest.interval))
     end
     if spellID == spamTest.spellID then
@@ -448,7 +448,7 @@ MD:On("UNIT_SPELLCAST_SUCCEEDED", function(unit, _, spellID)
     end
 end)
 
-MD:On("UNIT_POWER_UPDATE", function(unit, powerType)
+ST:On("UNIT_POWER_UPDATE", function(unit, powerType)
     if not spamTest or unit ~= "player" or powerType ~= "MANA" then return end
     local cur = UnitPower("player", 0)
     local delta = cur - spamTest.last
@@ -460,7 +460,7 @@ MD:On("UNIT_POWER_UPDATE", function(unit, powerType)
     end
 end)
 
-MD:OnTick(function()
+ST:OnTick(function()
     if not spamTest then return end
     local now = GetTime()
     if spamTest.spellID then
@@ -474,17 +474,17 @@ MD:OnTick(function()
     end
 end)
 
-function MD:RunSpamTest()
+function ST:RunSpamTest()
     if spamTest then
-        MD:Print("spamtest: already armed.")
+        ST:Print("spamtest: already armed.")
         return
     end
     local mana = UnitPower("player", 0)
     spamTest = {
         armT = GetTime(), armMana = mana, last = mana,
-        castingRegen = MD.Regen.casting,
+        castingRegen = ST.Regen.casting,
         casts = 0, otherCasts = 0, spent = 0, gained = 0,
     }
-    MD:Print(string.format("spamtest: armed at %d mana (casting regen %.2f/s). Chain-cast ONE spell now until OOM; " ..
-        "the dashboard's To OOM column for it should match.", mana, MD.Regen.casting))
+    ST:Print(string.format("spamtest: armed at %d mana (casting regen %.2f/s). Chain-cast ONE spell now until OOM; " ..
+        "the dashboard's To OOM column for it should match.", mana, ST.Regen.casting))
 end

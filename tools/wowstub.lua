@@ -169,7 +169,7 @@ function UnitAffectingCombat() return S.inCombat == true end
 function UnitGroupRolesAssigned(u) local x = U(u); return x and x.role or "NONE" end
 function GetPartyAssignment() return false end
 function GetRealmName() return "Anniversary" end
--- Lead review 1 (T13): S.zoneText wins when a fixture sets it -- MD.API.Has
+-- Lead review 1 (T13): S.zoneText wins when a fixture sets it -- ST.API.Has
 -- caches the resolved FUNCTION per dotted name forever, so a test cannot
 -- swap the global after the first call has already been made; this same
 -- function reads a settable field instead, so the cache is never an issue.
@@ -196,7 +196,7 @@ end
 function InCombatLockdown() return S.inCombat == true end -- T58 (P14): as UnitAffectingCombat
 function UnitAura() return nil end
 -- Buffs on the player, by name, in the order the client would return them.
--- MD:HasBuff walks UnitBuff until it returns nil, so an empty list means no
+-- ST:HasBuff walks UnitBuff until it returns nil, so an empty list means no
 -- buffs -- which is what every suite but tools/runcheck.lua wants.
 S.buffs = {}
 function UnitBuff(u, i) return S.buffs[i] end
@@ -555,7 +555,7 @@ function FrameMT:SetShown(v) if v then self:Show() else self:Hide() end end
 -- T45 (P1): a slider or status bar clamps its value to its range, as the
 -- client does -- SetValue past the max stores the max, and a new range clamps
 -- the value already there. Only plain numbers are compared: a secret handed to
--- a bar (MD.API.DrawUnitPower, HealthMax) is stored unread, and a frame never
+-- a bar (ST.API.DrawUnitPower, HealthMax) is stored unread, and a frame never
 -- given a range keeps whatever it is handed, as before.
 local function Clamp(self, v)
     if rawtype(v) ~= "number" then return v end
@@ -616,7 +616,7 @@ function FrameMT:GetFont()
     return "font", 12, ""
 end
 function CreateFont() return Child("Font") end
--- T29: the physical screen (UI.px through MD.API.PhysicalScreenSize); in the
+-- T29: the physical screen (UI.px through ST.API.PhysicalScreenSize); in the
 -- 69893 baseline, so the forever profile keeps it. A script sets the fields.
 S.physicalWidth, S.physicalHeight = 1920, 1080 -- T29
 function GetPhysicalScreenSize() return S.physicalWidth, S.physicalHeight end -- T29
@@ -675,7 +675,7 @@ _G.GameTooltip = CreateFrame("GameTooltip")
 
 -- T120: GameTooltip:SetSpellByID(id) on the TBC client (2.5.x has it) -- the
 -- game's own spell tooltip the shared Spells pane's rank row asks for through
--- MD.API.SetTooltipSpell. Clears (firing OnTooltipCleared), writes the
+-- ST.API.SetTooltipSpell. Clears (firing OnTooltipCleared), writes the
 -- spell's name as the first line, then fires OnTooltipSetSpell, where the
 -- TBC hook (UI/SpellTooltip.lua) appends; GetSpell answers the spell shown.
 -- Each id is appended to S.setSpellByIdCalls when a script set it to a
@@ -1008,7 +1008,7 @@ function S.UseProfile(name)
     -- T45 (P1, review Q1): the client's type() on a secret answers the type of the
     -- value under it -- "number" for the health, power, regen and amounts this
     -- stand-in mostly stands for. The stand-in is a table, so without this every
-    -- `if MD.API.IsSecret(x) or type(x) ~= "number"` guard passed on its second
+    -- `if ST.API.IsSecret(x) or type(x) ~= "number"` guard passed on its second
     -- clause alone and the IsSecret half was never tested. S.Secret(kind) takes the
     -- type it answers ("string" for a secret name or GUID); the default is
     -- "number". A secret TABLE (S.SecretTable) still answers "table".
@@ -1492,7 +1492,7 @@ function S.UseProfile(name)
     end)
 
     -- T38: GameTooltip:SetSpellByID(id) -- the game's own spell tooltip, which
-    -- the Spells view's row hover asks for through MD.API.SetTooltipSpell
+    -- the Spells view's row hover asks for through ST.API.SetTooltipSpell
     -- (docs/SPEC-forever-ui.md 3.5). Clears (firing OnTooltipCleared), writes
     -- the spell's name as the game's first line, then runs every Spell
     -- post-call with { type = Spell, id = id } -- unless
@@ -1742,7 +1742,7 @@ function S.UseProfile(name)
     -- T13c: one fresh table for the whole addon load, not one per file -- the
     -- real client hands every file of one LoadOnDemand addon the SAME second
     -- vararg (S.Load above already does this for the main addon, passing one
-    -- MD through its whole file loop). A fresh table per FILE was
+    -- ST through its whole file loop). A fresh table per FILE was
     -- indistinguishable from a fresh table per ADDON as long as a sibling
     -- listed exactly one file (Module.lua); T13c's Ready.lua is the second,
     -- and Module.lua's proxy metatable on that table must still be the table
@@ -1793,7 +1793,7 @@ function S.UseProfile(name)
         -- An unregistered name (never seen on disk, or a typo) is MISSING; a
         -- name a test marked disabled is DISABLED; an already-loaded one is a
         -- no-op success; otherwise its own TOC's files load under one shared
-        -- table this addon's own files see as MD (T13c).
+        -- table this addon's own files see as ST (T13c).
         --
         -- T13c: a TOC entry may name a file that does not live under the
         -- module's own folder -- a shared file the release build copies in
@@ -1886,7 +1886,7 @@ function S.AddTraits()
     end }
 end
 
-function S.Load(files, addonName, MD)
+function S.Load(files, addonName, ST)
     -- Read by FrameMT:RegisterEvent's forbid stand-in (S.Fire("ADDON_ACTION_FORBIDDEN", S.addonName, ...)),
     -- which needs the addon name before any file has registered anything.
     S.addonName = addonName
@@ -1894,6 +1894,6 @@ function S.Load(files, addonName, MD)
         local path = S.root .. "/" .. rel
         local chunk, err = loadfile(path)
         if not chunk then error("load " .. rel .. ": " .. tostring(err)) end
-        chunk(addonName, MD)
+        chunk(addonName, ST)
     end
 end

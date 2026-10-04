@@ -16,17 +16,17 @@ for i = 1, #arg do if arg[i] == "--curve" then curve = true end end
 HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]
 arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua")
+local ST = dofile(here .. "/harness.lua")
 arg[0] = a0
 
 print("== /md simrun ==")
-local tests, simFails = MD:RunSimRun()
+local tests, simFails = ST:RunSimRun()
 print("== /md simreplay fixture ==")
-local replayPass = MD:RunSimReplay("fixture")
+local replayPass = ST:RunSimReplay("fixture")
 
 if curve then
-    local fx = MD.SimFixtures.BF1
-    local SM, RM = MD.SimModel, MD.RankMath
+    local fx = ST.SimFixtures.BF1
+    local SM, RM = ST.SimModel, ST.RankMath
     local sampleT, sampleM = {}, {}
     for i, m in ipairs(fx.mana) do sampleT[i], sampleM[i] = m[1], m[2] end
     local targets = {}

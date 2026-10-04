@@ -7,9 +7,9 @@
 local here = arg[0]:match("^(.*)/[^/]+$")
 HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua"); arg[0] = a0
+local ST = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB
-local P, SP, SM = MD.SimPresets, MD.SimPlanner, MD.SimModel
+local P, SP, SM = ST.SimPresets, ST.SimPlanner, ST.SimModel
 
 local ok, fails = 0, {}
 local function check(name, cond, detail)
@@ -34,7 +34,7 @@ for _, party in ipairs(P.PARTY) do
 end
 check("every preset builds a scenario", worst == nil, worst or (combos .. " combinations"))
 
-local kit = MD.RankMath:SpellKit()
+local kit = ST.RankMath:SpellKit()
 local sc = P.BuildScenario({ party = "5", damage = "dungeon", situation = "full", dur = 45 })
 sc.kit = kit
 check("dungeon preset generates damage", #sc.ev.t > 40, tostring(#sc.ev.t))

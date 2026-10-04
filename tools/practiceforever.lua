@@ -21,7 +21,7 @@ local function check(name, cond, detail)
 end
 
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua")
+local ST = dofile(here .. "/harness.lua")
 arg[0] = a0
 local S = _G.STUB
 
@@ -64,8 +64,8 @@ local function Click(b, button) local fn = b and b:GetScript("OnClick"); if fn t
 -- can be seen to go through nav:ReplacePane rather than nav.panes
 local replaced = {}
 do
-    local realCreate = MD.UI.CreateNavFrame
-    MD.UI.CreateNavFrame = function(...)
+    local realCreate = ST.UI.CreateNavFrame
+    ST.UI.CreateNavFrame = function(...)
         local nav = realCreate(...)
         local realReplace = nav.ReplacePane
         if realReplace then
@@ -77,61 +77,61 @@ do
         return nav
     end
 end
-MD:SelectView("simulate", "practice")
-local g, v = MD:SelectedView()
+ST:SelectView("simulate", "practice")
+local g, v = ST:SelectedView()
 -- T73 (P29, review U11, mockup M1): the placeholder names the module and
 -- carries a Turn on button (the author's answer 6: it loads the module)
 check("the Simulate group has a Practice view, a placeholder until the module is on",
     g == "simulate" and v == "practice"
     and TextPresent("Practice needs the Practice module")
     and Button("Turn on") ~= nil and Button("Turn on"):IsVisible()
-    and MD:ModuleState("SpellTuner_Practice") == "off"
+    and ST:ModuleState("SpellTuner_Practice") == "off"
     and #S.loadAddOnCalls == 0,
     "group=" .. tostring(g) .. " view=" .. tostring(v))
 
 --------------------------------------------------------------------------------
 -- 7: /st practice and /st binds exist only with the Practice module on
 --------------------------------------------------------------------------------
-local beforeOpenNil = (MD.OpenPractice == nil)
+local beforeOpenNil = (ST.OpenPractice == nil)
 -- would have raised, unguarded, if either command already existed
 CapturedChat(function() SlashCmdList.SPELLTUNER("practice") end)
 CapturedChat(function() SlashCmdList.SPELLTUNER("binds") end)
 
 -- T73: the placeholder's Turn on, on screen again after the two commands
-MD:SelectView("simulate", "practice")
+ST:SelectView("simulate", "practice")
 local turnOn = Button("Turn on")
 local practiceShownBefore = turnOn ~= nil and turnOn:IsVisible()
 Click(turnOn) -- loads Recorder, Replay (engine/window/review) and this module's own files
-local practiceBuilt = MD.DashboardParts.CreatePractice ~= nil
+local practiceBuilt = ST.DashboardParts.CreatePractice ~= nil
 check("T73: Turn on loads Practice with what it needs, swapped in through nav:ReplacePane",
     practiceShownBefore and practiceBuilt
-    and MD:ModuleState("SpellTuner_Practice") == "loaded" and MD:ModuleState("SpellTuner_Replay") == "loaded"
-    and MD:ModuleState("SpellTuner_Recorder") == "loaded"
+    and ST:ModuleState("SpellTuner_Practice") == "loaded" and ST:ModuleState("SpellTuner_Replay") == "loaded"
+    and ST:ModuleState("SpellTuner_Recorder") == "loaded"
     and not TextPresent("Practice needs the Practice module") and not turnOn:IsVisible()
     and #replaced == 1 and replaced[1] == "simulate/practice",
     "replaced=" .. table.concat(replaced, ", "))
 
 check("/st practice and /st binds exist only with the Practice module on",
-    beforeOpenNil and type(MD.OpenPractice) == "function" and type(MD.Practice) == "table"
-    and type(MD.ToggleBindings) == "function" and MD.SimPlanner ~= nil,
-    "beforeOpenNil=" .. tostring(beforeOpenNil) .. " afterOpen=" .. tostring(MD.OpenPractice))
+    beforeOpenNil and type(ST.OpenPractice) == "function" and type(ST.Practice) == "table"
+    and type(ST.ToggleBindings) == "function" and ST.SimPlanner ~= nil,
+    "beforeOpenNil=" .. tostring(beforeOpenNil) .. " afterOpen=" .. tostring(ST.OpenPractice))
 
-local PR, SD, SM = MD.Practice, MD.SpellData, MD.SimModel
+local PR, SD, SM = ST.Practice, ST.SpellData, ST.SimModel
 
 --------------------------------------------------------------------------------
 -- 2: the practice panel builds a fight from the Forever kit's own spells --
---    PR.SpellFor resolves through MD.SpellData (Kit_Forever.lua's own read of
+--    PR.SpellFor resolves through ST.SpellData (Kit_Forever.lua's own read of
 --    Spells/Book.lua), not a hand-kept table
 --------------------------------------------------------------------------------
-MD.player.isDruid = true
-MD.cdb.practice, MD.db.practiceBinds = {}, nil
+ST.player.isDruid = true
+ST.cdb.practice, ST.db.practiceBinds = {}, nil
 local parent = CreateFrame("Frame")
-local panel = MD.DashboardParts.CreatePractice(parent, 912)
+local panel = ST.DashboardParts.CreatePractice(parent, 912)
 panel.frame:Show()
 panel:Render()
 local rejID = PR.SpellFor({ family = "Rejuvenation" })
 check("the practice panel builds a fight from the Forever kit's spells",
-    panel.frame ~= nil and MD.cdb.practiceSetup ~= nil and #MD.cdb.practiceSetup.targets == 5
+    panel.frame ~= nil and ST.cdb.practiceSetup ~= nil and #ST.cdb.practiceSetup.targets == 5
     and rejID ~= nil and rejID == SD.maxRank.Rejuvenation
     and SD.spells[rejID] and SD.spells[rejID].family == "Rejuvenation",
     "rejID=" .. tostring(rejID) .. " maxRank=" .. tostring(SD.maxRank.Rejuvenation))
@@ -140,7 +140,7 @@ check("the practice panel builds a fight from the Forever kit's spells",
 -- 3: a session plays against a fake clock with the Forever kit and records a
 --    practice stream
 --------------------------------------------------------------------------------
-MD.db.practiceBinds = { { key = "1", family = "Rejuvenation" }, { key = "2", family = "HealingTouch" } }
+ST.db.practiceBinds = { { key = "1", family = "Rejuvenation" }, { key = "2", family = "HealingTouch" } }
 local setup = PR.DefaultSetup("2", 64) -- healer + tank, small and deterministic
 setup.dur, setup.fixedSeed = 20, 9
 local errors3 = {}
@@ -165,7 +165,7 @@ check("a session plays against a fake clock with the Forever kit and records a p
     " ownCasts=" .. tostring(rec and rec.ownCasts) .. " errors=" .. table.concat(errors3, "; "))
 
 --------------------------------------------------------------------------------
--- R4 (review 2026-09-29): the healer regenerates. MD.Regen is TBC's
+-- R4 (review 2026-09-29): the healer regenerates. ST.Regen is TBC's
 -- Engine/RegenModel.lua and is on no Forever TOC, so the regen rates come
 -- from the adapter's GetManaRegen (plain out of combat, where practice
 -- starts): the scenario, and so the recording, carry them -- not zero.
@@ -176,7 +176,7 @@ do
     local mb = rec and rec.mana and rec.mana.base and rec.mana.base[1]
     local mc = rec and rec.mana and rec.mana.cast and rec.mana.cast[1]
     check("R4: a Forever practice session regenerates at the client's own GetManaRegen rates",
-        MD.Regen == nil and type(wantBase) == "number" and wantBase > 0
+        ST.Regen == nil and type(wantBase) == "number" and wantBase > 0
         and ini.apiBase == wantBase and ini.apiCasting == wantCast and mb == wantBase and mc == wantCast,
         string.format("apiBase=%s apiCasting=%s mana.base[1]=%s want %s/%s", tostring(ini.apiBase),
             tostring(ini.apiCasting), tostring(mb), tostring(wantBase), tostring(wantCast)))
@@ -186,7 +186,7 @@ end
 -- 4: the recording replays to the health the player saw and every gate
 --    passes -- the same engine, the Forever kit
 --------------------------------------------------------------------------------
-local kit = MD.RankMath:SpellKit({ live = true })
+local kit = ST.RankMath:SpellKit({ live = true })
 local v4 = SM:Validate(rec, kit)
 local failed = {}
 for _, gate in ipairs(v4.gates) do if not gate.ok then failed[#failed + 1] = gate.name .. ": " .. tostring(gate.text) end end
@@ -221,17 +221,17 @@ end
 --------------------------------------------------------------------------------
 -- 5: a key bound to a spell casts it; an unbound key propagates
 --------------------------------------------------------------------------------
-MD.cdb.practiceSetup = PR.CopySetup(setup)
-MD.cdb.practiceSetup.dur = 20
-MD:OpenPractice(PR.CopySetup(MD.cdb.practiceSetup), 5)
-local live5 = MD.Replay._live()
-local st5 = MD.Replay._state()
+ST.cdb.practiceSetup = PR.CopySetup(setup)
+ST.cdb.practiceSetup.dur = 20
+ST:OpenPractice(PR.CopySetup(ST.cdb.practiceSetup), 5)
+local live5 = ST.Replay._live()
+local st5 = ST.Replay._state()
 assert(live5 ~= nil and live5.state == "running" and st5.frame and st5.frame:IsShown(),
     "expected practice mode to open the replay window")
 
 local tank5 = st5.left.frames[1]
 tank5:GetScript("OnEnter")(tank5)
-local _, hov5 = MD.Replay._live()
+local _, hov5 = ST.Replay._live()
 S.Tick(1.0)
 st5.frame:GetScript("OnKeyDown")(st5.frame, "1") -- bound to Rejuvenation
 S.Tick(0.3)
@@ -247,13 +247,13 @@ check("a key bound to a spell casts it; an unbound key propagates",
 -- 6: ending the session reopens it as a replay and lists it in Review
 --------------------------------------------------------------------------------
 Click(Button("End"))
-local live6 = MD.Replay._live()
-local st6 = MD.Replay._state()
-local reopened = live6 == nil and MD:GetRecording("p1") ~= nil
-    and st6.rp and not st6.rp.live and st6.rp.rec == MD:GetRecording("p1")
+local live6 = ST.Replay._live()
+local st6 = ST.Replay._state()
+local reopened = live6 == nil and ST:GetRecording("p1") ~= nil
+    and st6.rp and not st6.rp.live and st6.rp.rec == ST:GetRecording("p1")
 
 local reviewParent = CreateFrame("Frame")
-local review = MD.DashboardParts.CreateReview(reviewParent, 912)
+local review = ST.DashboardParts.CreateReview(reviewParent, 912)
 review.frame:Show()
 review:Render()
 Click(Button("Practice"))
@@ -269,7 +269,7 @@ check("ending the session reopens it as a replay and lists it in Review", reopen
 -- 8: every string the panel and the bindings window paint is ASCII with no
 --    bare pipe
 --------------------------------------------------------------------------------
-MD:ShowBindings()
+ST:ShowBindings()
 local function Pipes(str)
     -- a colour code, a reset, the client's own "|n" newline escape and a
     -- doubled pipe (Esc's own "||", a literal pipe) are all safe; anything
@@ -305,7 +305,7 @@ local function Under(f, root)
     end
     return false
 end
-local bindingsFrame = MD.BindingsWindow._frame()
+local bindingsFrame = ST.BindingsWindow._frame()
 for _, f in ipairs(S.allFrames) do
     if f.GetText and (Under(f, panel.frame) or Under(f, bindingsFrame)) then
         local okt, txt = pcall(f.GetText, f)
@@ -331,10 +331,10 @@ local function PanelBindText()
     local s = panel.summary
     if s and s.fs then
         local out = { s.fs:GetText() }
-        MD.UI.tooltip.lines = nil
+        ST.UI.tooltip.lines = nil
         local enter = s:GetScript("OnEnter")
         if enter then enter(s) end
-        for _, l in ipairs(MD.UI.tooltip.lines or {}) do
+        for _, l in ipairs(ST.UI.tooltip.lines or {}) do
             if type(l[1]) == "string" then out[#out + 1] = l[1] end
         end
         return table.concat(out, "\n")
@@ -365,13 +365,13 @@ local function CountOf(str, needle)
 end
 
 do -- 1
-    MD.db.practiceBinds = nil
+    ST.db.practiceBinds = nil
     local b = PR.Binds()
     local txt = PanelBindText()
     local nameHit
     for _, n in ipairs(FAMILY_NAMES) do if txt and txt:find(n, 1, true) then nameHit = n end end
     check("on Forever nothing is bound until you bind or import",
-        type(b) == "table" and #b == 0 and MD.db.practiceBinds == b
+        type(b) == "table" and #b == 0 and ST.db.practiceBinds == b
         and txt ~= nil and txt:find("Import", 1, true) ~= nil and txt:find("Edit bindings", 1, true) ~= nil
         and nameHit == nil,
         "n=" .. tostring(type(b) == "table" and #b) .. " text=" .. tostring(txt) .. " name=" .. tostring(nameHit))
@@ -383,12 +383,12 @@ do -- 2
         for i, d in ipairs(PR.DEFAULT_BINDS) do out[i] = { key = d.key, family = d.family, rank = d.rank } end
         return out
     end
-    MD.db.practiceBinds = CopyDefaults()
+    ST.db.practiceBinds = CopyDefaults()
     local dropped = PR.Binds()
-    local droppedOk = type(dropped) == "table" and #dropped == 0 and MD.db.practiceBinds == dropped
+    local droppedOk = type(dropped) == "table" and #dropped == 0 and ST.db.practiceBinds == dropped
     local changed = CopyDefaults()
     changed[3].key = "CTRL-Q"
-    MD.db.practiceBinds = changed
+    ST.db.practiceBinds = changed
     -- T27: "kept whole" is the STORED list (PR.AllBinds); PR.Binds() now
     -- leaves out the three whose families this book lacks (decision 9)
     local kept = PR.AllBinds()
@@ -402,7 +402,7 @@ do -- 3
     -- T27 (decision 9): a bind for a spell not in the book is no longer
     -- listed with "(not in your spellbook)" -- it is not listed at all (T24's
     -- label half of this check became the T27 checks below); the rest holds.
-    MD.db.practiceBinds = { { key = "1", family = "Lifebloom" }, { key = "2", family = "Rejuvenation" } }
+    ST.db.practiceBinds = { { key = "1", family = "Lifebloom" }, { key = "2", family = "Rejuvenation" } }
     local lines = Lines(PanelBindText())
     local lbLine, rejLine
     for _, l in ipairs(lines) do
@@ -412,12 +412,12 @@ do -- 3
     local textOk = lbLine == nil
         and rejLine and rejLine:find("(not in your spellbook)", 1, true) == nil
         and CountOf(table.concat(lines, "\n"), "(not in your spellbook)") == 0
-    local nilFor = PR.SpellFor(MD.db.practiceBinds[1]) == nil and PR.SpellFor(MD.db.practiceBinds[2]) ~= nil
+    local nilFor = PR.SpellFor(ST.db.practiceBinds[1]) == nil and PR.SpellFor(ST.db.practiceBinds[2]) ~= nil
 
     local st3 = PR.CopySetup(setup)
     st3.dur = 20
-    MD:OpenPractice(st3, 5)
-    local live3, st3w = MD.Replay._live(), MD.Replay._state()
+    ST:OpenPractice(st3, 5)
+    local live3, st3w = ST.Replay._live(), ST.Replay._state()
     assert(live3 ~= nil and live3.state == "running" and st3w.frame and st3w.frame:IsShown(),
         "expected practice mode to open the replay window")
     local tank = st3w.left.frames[1]
@@ -437,9 +437,9 @@ do -- 3
 end
 
 do -- 4
-    MD.db.practiceBinds = { { key = "1", family = "Rejuvenation" } }
-    MD:ShowBindings()
-    local win = MD.BindingsWindow._rows()
+    ST.db.practiceBinds = { { key = "1", family = "Rejuvenation" } }
+    ST:ShowBindings()
+    local win = ST.BindingsWindow._rows()
     local items = win[1] and win[1].spell.items or {}
     local bad, n = nil, 0
     for _, it in ipairs(items) do
@@ -456,8 +456,8 @@ do -- 4
 end
 
 do -- 5
-    MD.db.practiceBinds = {}
-    MD:ShowBindings()
+    ST.db.practiceBinds = {}
+    ST:ShowBindings()
     Click(Button("+ binding"))
     local b1 = PR.Binds()[1]
     local first = PR.FirstFamily()
@@ -465,7 +465,7 @@ do -- 5
 
     local savedKnown = SD.known
     SD.known = {}
-    MD.db.practiceBinds = {}
+    ST.db.practiceBinds = {}
     local emptyFirst = PR.FirstFamily()
     local okc, errc = pcall(function() Click(Button("+ binding")) end)
     local b2 = PR.Binds()[1]
@@ -477,14 +477,14 @@ do -- 5
 end
 
 do -- 6
-    MD.db.practiceBinds = {}
+    ST.db.practiceBinds = {}
     panel:Render()
     local startB
     for _, f in ipairs(S.allFrames) do
         if f.kind == "Button" and f.text == "Start practice" and Under(f, panel.frame) then startB = f end
     end
     Click(startB)
-    local live6b = MD.Replay._live()
+    local live6b = ST.Replay._live()
     local said = false
     for _, f in ipairs(S.allFrames) do
         if f.GetText and Under(f, panel.frame) and f:IsVisible() then
@@ -518,35 +518,35 @@ local function VisibleText(needle, root)
 end
 local function ShownRows()
     local n = 0
-    for _, r in ipairs(MD.BindingsWindow._rows() or {}) do if r:IsShown() then n = n + 1 end end
+    for _, r in ipairs(ST.BindingsWindow._rows() or {}) do if r:IsShown() then n = n + 1 end end
     return n
 end
 
 do -- T27 1: an import skips a spell not in your spellbook and names it
-    MD.db.practiceBinds = { { key = "2", family = "Rejuvenation" } }
+    ST.db.practiceBinds = { { key = "2", family = "Rejuvenation" } }
     _G.CellCharacterDB = { clickCastings = { useCommon = true, common = {
         { "type5", "spell", "Lifebloom" },
         { "shift-type1", "spell", "Healing Touch" },
     } } }
-    MD:ShowBindings()
+    ST:ShowBindings()
     Click(Button("Cell"))
-    local status = MD.BindingsWindow._status()
+    local status = ST.BindingsWindow._status()
     _G.CellCharacterDB = nil
     local a, r, same, skipped = PR.ApplyImport({ { key = "BUTTON5", family = "Lifebloom" } })
     local direct = a == 0 and r == 0 and same == 0 and type(skipped) == "table"
         and #skipped == 1 and skipped[1] == "Lifebloom"
     check("T27: an import skips a spell not in your spellbook and names it",
         status:find("skipped (not in your spellbook): Lifebloom", 1, true) ~= nil
-        and not Contains(MD.db.practiceBinds, "Lifebloom") and Contains(MD.db.practiceBinds, "HealingTouch")
+        and not Contains(ST.db.practiceBinds, "Lifebloom") and Contains(ST.db.practiceBinds, "HealingTouch")
         and direct,
         "status=" .. status .. " direct=" .. tostring(direct))
 end
 
 do -- T27 2: an existing binding for it is not listed, not counted, not cast
-    MD.db.practiceBinds = { { key = "1", family = "Lifebloom" }, { key = "2", family = "Rejuvenation" } }
+    ST.db.practiceBinds = { { key = "1", family = "Lifebloom" }, { key = "2", family = "Rejuvenation" } }
     local txt = PanelBindText() or ""
     local binds = PR.Binds()
-    MD:ShowBindings()
+    ST:ShowBindings()
     local rowsShown = ShownRows()
     local bound = PR.BindFor("1")
     check("T27: a binding for a spell not in your spellbook is not listed, not counted, not cast",
@@ -556,12 +556,12 @@ do -- T27 2: an existing binding for it is not listed, not counted, not cast
 end
 
 do -- T27 3: it is still in db.practiceBinds, even after the sheet edits the rest
-    MD.db.practiceBinds = { { key = "1", family = "Lifebloom" }, { key = "2", family = "Rejuvenation" } }
-    MD:ShowBindings()
-    local win = MD.BindingsWindow._rows()
+    ST.db.practiceBinds = { { key = "1", family = "Lifebloom" }, { key = "2", family = "Rejuvenation" } }
+    ST:ShowBindings()
+    local win = ST.BindingsWindow._rows()
     Click(win[1] and win[1].del)                -- the one row shown: Rejuvenation
     Click(Button("+ binding"))                  -- a new row, appended
-    local db = MD.db.practiceBinds
+    local db = ST.db.practiceBinds
     check("T27: the hidden binding is still in db.practiceBinds",
         #db == 2 and db[1].family == "Lifebloom" and db[1].key == "1"
         and db[2].family == PR.FirstFamily() and #PR.Binds() == 1 and PR.Binds()[1] == db[2],
@@ -569,23 +569,23 @@ do -- T27 3: it is still in db.practiceBinds, even after the sheet edits the res
 end
 
 do -- T27 4: Forget deletes it; the footer counted it and named it on hover
-    MD.db.practiceBinds = { { key = "1", family = "Lifebloom" }, { key = "2", family = "Rejuvenation" } }
-    MD:ShowBindings()
-    local bw = MD.BindingsWindow._frame()
+    ST.db.practiceBinds = { { key = "1", family = "Lifebloom" }, { key = "2", family = "Rejuvenation" } }
+    ST:ShowBindings()
+    local bw = ST.BindingsWindow._frame()
     local line = VisibleText("1 binding kept for a spell you have not learned", bw)
     local hovered = false
     local holder = line and line.parentFrame
     local enter = holder and holder:GetScript("OnEnter")
     if enter then
         enter(holder)
-        for _, l in ipairs(MD.UI.tooltip.lines or {}) do
+        for _, l in ipairs(ST.UI.tooltip.lines or {}) do
             if type(l[1]) == "string" and l[1]:find("Lifebloom", 1, true) then hovered = true end
         end
     end
     local hidden = PR.HiddenBinds and PR.HiddenBinds() or {}
     local forget = Button("Forget")
     Click(forget)
-    local db = MD.db.practiceBinds
+    local db = ST.db.practiceBinds
     local after = VisibleText("kept for a spell", bw)
     check("T27: the sheet's footer names the kept binding and Forget deletes it",
         line ~= nil and hovered and #hidden == 1 and hidden[1].family == "Lifebloom"
@@ -596,18 +596,18 @@ end
 
 do -- T27 5: learning the spell brings the binding back (Regrowth: Forever has
    -- no Lifebloom to learn -- Kit_Forever.lua's FAMILY_KEY has no slot for it)
-    MD.db.practiceBinds = { { key = "3", family = "Regrowth" }, { key = "2", family = "Rejuvenation" } }
+    ST.db.practiceBinds = { { key = "3", family = "Regrowth" }, { key = "2", family = "Rejuvenation" } }
     local before = PanelBindText() or ""
     local hiddenBefore = #PR.Binds() == 1 and not before:find("Regrowth", 1, true)
     S.AddSpell(90301, "Regrowth", "Rank 1",
         function() return "Heals a friendly target for 93 to 107 and another 98 over 21 sec." end,
         { cast = 2000, cost = 80, level = 1 })
-    MD.Book:MarkDirty()
+    ST.Book:MarkDirty()
     local after = PanelBindText() or ""
     local _, id = PR.BindFor("3")
     check("T27: learning the spell brings its binding back",
         hiddenBefore and #PR.Binds() == 2 and after:find("Regrowth", 1, true) ~= nil and id == 90301
-        and #MD.db.practiceBinds == 2,
+        and #ST.db.practiceBinds == 2,
         "before=" .. tostring(hiddenBefore) .. " visible=" .. #PR.Binds() .. " id=" .. tostring(id) .. " text=" .. after)
 end
 
@@ -622,20 +622,20 @@ end
 local function HasGold(str) return type(str) == "string" and str:lower():find("ffcc00", 1, true) ~= nil end
 local function TipLines()
     local out = {}
-    for _, l in ipairs(MD.UI.tooltip.lines or {}) do
+    for _, l in ipairs(ST.UI.tooltip.lines or {}) do
         if type(l[1]) == "string" then out[#out + 1] = l[1] end
     end
     return out
 end
 local function Hover(f)
-    MD.UI.tooltip.lines = nil
+    ST.UI.tooltip.lines = nil
     local enter = f and f:GetScript("OnEnter")
     if enter then enter(f) end
     return TipLines()
 end
 
 do -- T40 1: no ffcc00 in the panel or the sheet
-    MD.db.practiceBinds = { { key = "1", family = "Rejuvenation" }, { key = "2", family = "HealingTouch" } }
+    ST.db.practiceBinds = { { key = "1", family = "Rejuvenation" }, { key = "2", family = "HealingTouch" } }
     panel:Render()
     local gold = {}
     local function Note(label, str) if HasGold(str) then gold[#gold + 1] = label .. ": " .. str end end
@@ -648,9 +648,9 @@ do -- T40 1: no ffcc00 in the panel or the sheet
     -- the bindings list lives in the summary's hover
     for _, l in ipairs(Hover(panel.summary)) do Note("summary hover", l) end
     -- the sheet: its rows, a key box waiting for a press, an import's notes
-    MD:ShowBindings()
-    local sheet = MD.BindingsWindow._frame()
-    local win = MD.BindingsWindow._rows()
+    ST:ShowBindings()
+    local sheet = ST.BindingsWindow._frame()
+    local win = ST.BindingsWindow._rows()
     local keyBox = win[1] and win[1].key
     if keyBox then keyBox:GetScript("OnClick")(keyBox, "LeftButton") end
     local waiting = keyBox and keyBox:GetText() or ""
@@ -661,7 +661,7 @@ do -- T40 1: no ffcc00 in the panel or the sheet
     end
     Click(Button("Keybindings"))
     PR.ImportKeybinds = realImport
-    local status = MD.BindingsWindow._status()
+    local status = ST.BindingsWindow._status()
     for _, f in ipairs(S.allFrames) do
         if f.GetText and Under(f, sheet) then
             local okt, txt = pcall(f.GetText, f)
@@ -678,15 +678,15 @@ do -- T40 1: no ffcc00 in the panel or the sheet
 end
 
 do -- T40 2: ESC closes the sheet and not the window
-    MD.db.practiceBinds = { { key = "1", family = "Rejuvenation" } }
-    local sheet = MD:ShowBindings()
-    local main = MD.Win and MD.Win.windows.main and MD.Win.windows.main.frame
-    local g, v = MD:SelectedView()
+    ST.db.practiceBinds = { { key = "1", family = "Rejuvenation" } }
+    local sheet = ST:ShowBindings()
+    local main = ST.Win and ST.Win.windows.main and ST.Win.windows.main.frame
+    local g, v = ST:SelectedView()
     local host = sheet and sheet:GetParent()
     local wasShown = sheet ~= nil and sheet:IsShown() and main ~= nil and main:IsShown()
-    local top = MD.Win and MD.Win.stack[#MD.Win.stack]
+    local top = ST.Win and ST.Win.stack[#ST.Win.stack]
     local onTop = top ~= nil and top.frame == sheet
-    MD.Win.proxy:Hide()     -- what the client's ESC does to the one special frame
+    ST.Win.proxy:Hide()     -- what the client's ESC does to the one special frame
     -- the next frame (T54, P10: a tick of the stub's clock, which runs the
     -- C_Timer.After callbacks now due -- the proxy's re-arm -- rather than a
     -- hand-run of the queue), and nothing left pending after it
@@ -698,18 +698,18 @@ do -- T40 2: ESC closes the sheet and not the window
     for _, n in ipairs(UISpecialFrames) do if n == "SpellTunerBindingsWindow" then inUISpecial = true end end
     check("T40: the bindings sheet is on Simulate -> Practice; ESC closes it and not the window",
         wasShown and g == "simulate" and v == "practice" and onTop and sheetGone and mainStays
-        and host ~= nil and host:IsVisible() and not inUISpecial and MD.Win.proxy:IsShown(),
+        and host ~= nil and host:IsVisible() and not inUISpecial and ST.Win.proxy:IsShown(),
         string.format("shown=%s view=%s/%s onTop=%s gone=%s main=%s special=%s proxy=%s", tostring(wasShown),
             tostring(g), tostring(v), tostring(onTop), tostring(sheetGone), tostring(mainStays),
-            tostring(inUISpecial), tostring(MD.Win.proxy:IsShown())))
+            tostring(inUISpecial), tostring(ST.Win.proxy:IsShown())))
     check("review Q8: the ESC's next frame is a tick of the clock and leaves no timer pending",
         leftAfterEsc == 0, "pending " .. tostring(leftAfterEsc))
 end
 
 do -- T40 3: at 900 wide no fight field extends past the pane's right edge
     -- the Simulate group now goes down to 900 x 560
-    local main = MD.Win.windows.main.frame
-    MD:SelectView("simulate", "practice")
+    local main = ST.Win.windows.main.frame
+    ST:SelectView("simulate", "practice")
     main:SetSize(900, 560)
     if main.OnResized then main:OnResized() end
     local mw, mh = main:GetWidth(), main:GetHeight()
@@ -732,7 +732,7 @@ do -- T40 3: at 900 wide no fight field extends past the pane's right edge
     -- the pane at 900: the nav's 108 and an 8-px pad either side of the content
     local PANE_W, PANE_H = 900 - 108 - 8 - 8, 560 - 32 - 8
     local host = CreateFrame("Frame")
-    local p3 = MD.DashboardParts.CreatePractice(host, 912)
+    local p3 = ST.DashboardParts.CreatePractice(host, 912)
     p3.frame:SetSize(PANE_W, PANE_H)
     p3.frame:Show()
     p3:Render()
@@ -775,21 +775,21 @@ do -- T40 3: at 900 wide no fight field extends past the pane's right edge
     FM.SetPoint, FM.ClearAllPoints, FM.GetStringWidth = saved[1], saved[2], saved[3]
     p3.frame:Hide()
     check("T40: at 900 wide no fight field extends past the pane's right edge",
-        MD.Win.SIZES.simulate.minW == 900 and MD.Win.SIZES.simulate.minH == 560 and mw == 900 and mh == 560
+        ST.Win.SIZES.simulate.minW == 900 and ST.Win.SIZES.simulate.minH == 560 and mw == 900 and mh == 560
         and #items >= 8 and unresolved == nil and worst <= PANE_W,
         string.format("window=%sx%s items=%d unresolved=%s rightmost=%s pane=%d", tostring(mw), tostring(mh),
             #items, tostring(unresolved), tostring(worst), PANE_W))
 end
 
 do -- T40 4: the summary does not count a hidden binding
-    MD.db.practiceBinds = { { key = "1", family = "Lifebloom" }, { key = "2", family = "Rejuvenation" } }
+    ST.db.practiceBinds = { { key = "1", family = "Lifebloom" }, { key = "2", family = "Rejuvenation" } }
     panel:Render()
     local s = panel.summary
     local txt = s and s.fs and s.fs:GetText() or ""
     local hover = table.concat(Hover(s), "\n")
     check("T40: the one-line bindings summary does not count a hidden binding",
         txt == "1 binding" and hover:find("Rejuvenation", 1, true) ~= nil and not hover:find("Lifebloom", 1, true)
-        and #MD.db.practiceBinds == 2,
+        and #ST.db.practiceBinds == 2,
         "summary=" .. tostring(txt) .. " hover=" .. hover)
 end
 
@@ -799,11 +799,11 @@ end
 -- then the icon's OnEnter; leaving the icon outward fires only its OnLeave.
 --------------------------------------------------------------------------------
 do
-    MD.db.practiceBinds = { { key = "1", family = "Rejuvenation" } }
-    MD.cdb.practiceSetup = PR.CopySetup(setup)
-    MD.cdb.practiceSetup.dur = 20
-    MD:OpenPractice(PR.CopySetup(MD.cdb.practiceSetup), 9)
-    local live9, st9 = MD.Replay._live(), MD.Replay._state()
+    ST.db.practiceBinds = { { key = "1", family = "Rejuvenation" } }
+    ST.cdb.practiceSetup = PR.CopySetup(setup)
+    ST.cdb.practiceSetup.dur = 20
+    ST:OpenPractice(PR.CopySetup(ST.cdb.practiceSetup), 9)
+    local live9, st9 = ST.Replay._live(), ST.Replay._state()
     local own = (live9 and live9.own) or {}
     local tank9 = st9.left.frames[1]
     local icon = tank9.dot
@@ -834,7 +834,7 @@ do
     S.mouseFocus = nil
     local leave = hot:GetScript("OnLeave")
     if leave then leave(hot) end
-    local _, hov9 = MD.Replay._live()
+    local _, hov9 = ST.Replay._live()
     local n0 = #own
     S.Tick(2.0) -- past the GCD, so a refusal can only be the target
     local n1 = #own
@@ -856,15 +856,15 @@ end
 --------------------------------------------------------------------------------
 do
     local Books = dofile(here .. "/stub_books.lua")
-    local undo = Books.Install(Books.Load("paladin"), { alone = true, MD = MD })
+    local undo = Books.Install(Books.Load("paladin"), { alone = true, ST = ST })
     local function LogIn(class)
         S.units.player.class = class
-        MD:DetectProfile()
-        MD:Fire("CORE_LOGIN")
+        ST:DetectProfile()
+        ST:Fire("CORE_LOGIN")
     end
     LogIn("PALADIN")
-    MD.RankMath:SpellKit()
-    MD.db.practiceBinds = { { key = "1", family = "HolyLight" }, { key = "2", family = "HolyShock" } }
+    ST.RankMath:SpellKit()
+    ST.db.practiceBinds = { { key = "1", family = "HolyLight" }, { key = "2", family = "HolyShock" } }
     local binds = PR.Binds()
     local hl = PR.SpellFor({ family = "HolyLight" })
     local fam, rank = PR.ParseSpellText("Holy Light(Rank 9)")
@@ -895,9 +895,9 @@ do
     local shocks = 0
     local recP = sp.rec
     for i = 1, (recP and recP.n or 0) do
-        if recP.ev.kind[i] == MD.SimModel.K.OWNCAST and recP.ev.x[i] == shock then shocks = shocks + 1 end
+        if recP.ev.kind[i] == ST.SimModel.K.OWNCAST and recP.ev.x[i] == shock then shocks = shocks + 1 end
     end
-    local entry = MD.RankMath:SpellKit().caster[shock]
+    local entry = ST.RankMath:SpellKit().caster[shock]
     check("T101: a paladin's Holy Shock on cooldown is refused",
         shock ~= nil and entry and entry.cooldown == 10 and #errs == 1 and errs[1] == "Spell is not ready yet"
         and shocks == 2,
@@ -905,7 +905,7 @@ do
             tostring(entry and entry.cooldown), table.concat(errs, "; "), shocks))
     undo()
     LogIn("DRUID")
-    MD.RankMath:SpellKit()
+    ST.RankMath:SpellKit()
 end
 
 print(string.format("\n%d ok, %d failed", ok, #fails))

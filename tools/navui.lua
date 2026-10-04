@@ -24,12 +24,12 @@
 local here = arg[0]:match("^(.*)/[^/]+$")
 HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua"); arg[0] = a0
+local ST = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB
 -- T77 (P33): the rail's right-click menu is UI/ContextMenu.lua's (both main
 -- TOCs list it right after the kit)
-S.Load({ "UI/Style.lua", "UI/Theme_Flat.lua", "UI/EscStack.lua", "UI/Windows.lua", "UI/ContextMenu.lua" }, "SpellTuner", MD)
-local UI = MD.UI
+S.Load({ "UI/Style.lua", "UI/Theme_Flat.lua", "UI/EscStack.lua", "UI/Windows.lua", "UI/ContextMenu.lua" }, "SpellTuner", ST)
+local UI = ST.UI
 
 -- T31: geometry and layering, recorded for THIS suite only (the stub keeps
 -- none, and every other suite sees it exactly as before): anchors, strata,
@@ -125,9 +125,9 @@ check("exactly one pane is shown", #shown == 1 and shown[1] == "reports:review",
     table.concat(shown, ", "))
 
 -- the path is remembered for the next session
-check("the selection is written to the database", MD.db.uiPath ~= nil
-    and MD.db.uiPath[1] == "reports" and MD.db.uiPath[2] == "review",
-    MD.db.uiPath and table.concat(MD.db.uiPath, "/") or "nothing saved")
+check("the selection is written to the database", ST.db.uiPath ~= nil
+    and ST.db.uiPath[1] == "reports" and ST.db.uiPath[2] == "review",
+    ST.db.uiPath and table.concat(ST.db.uiPath, "/") or "nothing saved")
 
 -- a group whose views change while the window is open
 nav:SetViews("reports", { { id = "waste", text = "Waste" }, { id = "review", text = "Review" },
@@ -290,7 +290,7 @@ nav2:Select("spells", "fam:Wrath")
 local wrathRow
 for _, r in ipairs(rows) do if r.id == "fam:Wrath" then wrathRow = r end end
 check("rail rows are views", #rows == 5 and viaClick == "fam:Rejuvenation"
-    and MD.db.uiPath[2] == "fam:Wrath" and wrathRow ~= nil and wrathRow.selected == true
+    and ST.db.uiPath[2] == "fam:Wrath" and wrathRow ~= nil and wrathRow.selected == true
     and rj.selected ~= true, string.format("%d rows, click -> %s", #rows, tostring(viaClick)))
 
 -- drag Wrath (third in the list) up onto Rejuvenation's top half: one move,
@@ -349,7 +349,7 @@ if sheet then sheet:Hide() end
 UI.LIST_STRATA = nil
 local d0 = UI.CreateDropdown(UIParent, 100, 18)
 local popups, listening = {}, false
-MD:RegisterCallback("UI_POPUP", function(list, shown)
+ST:RegisterCallback("UI_POPUP", function(list, shown)
     if listening then popups[#popups + 1] = { list, shown } end
 end)
 UI.LIST_STRATA = "FULLSCREEN_DIALOG"

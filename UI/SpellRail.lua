@@ -6,12 +6,12 @@
 -- the picker, the "<spell> removed [Undo]" line, drag to reorder, one x and
 -- the right-click row menu (UI.CreateRail's, P33).
 --
--- MD.SpellRail.Install(pane, spec) puts the glue's methods on `pane` (the
+-- ST.SpellRail.Install(pane, spec) puts the glue's methods on `pane` (the
 -- Forever SpellsPane, or TBC's Spells group object), so a pane calls
 -- pane:RefreshRail(), pane:Remove(key) ... and keeps its fields where they
 -- were (pane.nav, pane.addBtn, pane.undoText, pane.undoBtn, pane.picker,
 -- pane.preview). spec:
---   source()             the book the list reads: MD.Book:Get() on Forever,
+--   source()             the book the list reads: ST.Book:Get() on Forever,
 --                        Spells/Families_TBC.lua's families on TBC (both in
 --                        Book's family shape)
 --   row(fam, key, ctx)   a listed family's rail row: { text, icon, tag,
@@ -24,13 +24,13 @@
 -- selected it). The group's id is "spells" and a family's view id is
 -- "fam:<key>" on both lines.
 --
--- Client data only through MD.API (the cursor, a spell's name, combat); the
+-- Client data only through ST.API (the cursor, a spell's name, combat); the
 -- widget toolkit is not a client call (CLAUDE.md, T1b).
-local _, MD = ...
-local UI = MD.UI
+local _, ST = ...
+local UI = ST.UI
 
 local SpellRail = {}
-MD.SpellRail = SpellRail
+ST.SpellRail = SpellRail
 
 -- 3.2 / 4.3 metrics at font offset 0; every vertical pitch goes through
 -- UI.Pitch (4.2), so it grows with a positive offset.
@@ -48,9 +48,9 @@ local function Pitch(n)
     return n
 end
 
--- The probe's escaping (MD.Text.EscASCII, T60): every name on screen stays
+-- The probe's escaping (ST.Text.EscASCII, T60): every name on screen stays
 -- ASCII with no bare pipe.
-local Esc = MD.Text.EscASCII
+local Esc = ST.Text.EscASCII
 
 -- The family key a view id names ("fam:<key>"), or nil (Overview).
 function SpellRail.FamilyKey(viewId)
@@ -71,7 +71,7 @@ local function AllPassive(fam)
 end
 
 local function InCombat()
-    local v = MD.API.UnitAffectingCombat and MD.API.UnitAffectingCombat("player")
+    local v = ST.API.UnitAffectingCombat and ST.API.UnitAffectingCombat("player")
     return v == true
 end
 
@@ -125,14 +125,14 @@ function SpellRail.Install(pane, spec)
     function pane:Views()
         local views = { { id = "overview", text = "Overview", fixed = true } }
         local book = Source()
-        if not (book and MD.Tabs) then return views end
+        if not (book and ST.Tabs) then return views end
         local ctx = spec.prepare and spec.prepare() or nil
-        for _, key in ipairs(MD.Tabs:Get(book)) do
-            local fam = MD.Tabs:Resolve(key, book)
+        for _, key in ipairs(ST.Tabs:Get(book)) do
+            local fam = ST.Tabs:Resolve(key, book)
             if type(fam) == "table" then
                 local v = spec.row and spec.row(fam, key, ctx) or { text = Esc(fam.name or key) }
                 v.id, v.key = VIEW_PREFIX .. key, key
-                v.new = MD.Tabs:IsNew(key)
+                v.new = ST.Tabs:IsNew(key)
                 views[#views + 1] = v
             else
                 views[#views + 1] = { id = VIEW_PREFIX .. key, key = key, text = Label(key),
@@ -182,18 +182,18 @@ function SpellRail.Install(pane, spec)
     end
 
     function pane:Remove(key)
-        if MD.Tabs:Remove(key) then self:ListChanged() end
+        if ST.Tabs:Remove(key) then self:ListChanged() end
     end
 
     function pane:Undo()
-        if MD.Tabs:Undo() then self:ListChanged() end
+        if ST.Tabs:Undo() then self:ListChanged() end
     end
 
     -- The rail's footer: [ + Add ] pinned at the bottom, and after a removal
     -- the line above it reads "Wrath removed  [Undo]" until the next change.
     function pane:RefreshFooter()
         if not self.undoText then return end
-        local key = MD.Tabs and MD.Tabs:UndoKey()
+        local key = ST.Tabs and ST.Tabs:UndoKey()
         if key then
             self.undoText:SetText(Label(key) .. " removed")
             self.undoText:Show()
@@ -230,7 +230,7 @@ function SpellRail.Install(pane, spec)
     -- The drop from the spellbook (3.2): the family of the spell on the
     -- cursor goes in at the drop row (moved there when it is listed already).
     -- The cursor is read, never cleared: the spell stays on it after the
-    -- drop. Only where the adapter reads the cursor (MD.API.CursorInfo).
+    -- drop. Only where the adapter reads the cursor (ST.API.CursorInfo).
     ----------------------------------------------------------------------------
     local function FamilyOfSpell(id, book)
         local e = book.spells and book.spells[id]
@@ -241,8 +241,8 @@ function SpellRail.Install(pane, spec)
             return fk
         end
         -- a rank the book does not list under this id: the family by the spell's name
-        local name = MD.API.SpellName and MD.API.SpellName(id)
-        if type(name) == "string" and not MD.API.IsSecret(name) then
+        local name = ST.API.SpellName and ST.API.SpellName(id)
+        if type(name) == "string" and not ST.API.IsSecret(name) then
             if book.families[name] then return name end
             -- T120: a book keyed apart from the name ("HealingTouch")
             for _, key in ipairs(book.order or {}) do
@@ -254,31 +254,31 @@ function SpellRail.Install(pane, spec)
     end
 
     function pane:CanDrop()
-        local kind = MD.API.CursorInfo and MD.API.CursorInfo()
+        local kind = ST.API.CursorInfo and ST.API.CursorInfo()
         return kind == "spell"
     end
 
     function pane:Drop(at)
-        if not MD.API.CursorInfo then return end
-        local kind, id = MD.API.CursorInfo()
+        if not ST.API.CursorInfo then return end
+        local kind, id = ST.API.CursorInfo()
         if kind ~= "spell" or type(id) ~= "number" then return end
         local book = Source()
         if not book then return end
         local key = FamilyOfSpell(id, book)
         if not key then
-            MD:Debug("other", "spells rail: dropped spell %s is in no family of the book", tostring(id))
+            ST:Debug("other", "spells rail: dropped spell %s is in no family of the book", tostring(id))
             return
         end
-        local order = MD.Tabs:Get()
+        local order = ST.Tabs:Get()
         local from
         for i, k in ipairs(order) do if k == key then from = i end end
         if from then
             local to = at
             if type(to) ~= "number" then to = #order end
             if to > from then to = to - 1 end
-            MD.Tabs:Move(key, to)
+            ST.Tabs:Move(key, to)
         else
-            MD.Tabs:Add(key, at, book)
+            ST.Tabs:Add(key, at, book)
         end
         if self.preview == key then self.preview = nil end
         self:ListChanged()
@@ -312,10 +312,10 @@ function SpellRail.Install(pane, spec)
         r.check = UI.CreateCheckButton(r, "", function(checked)
             if not r.key then return end
             if checked then
-                MD.Tabs:Add(r.key, nil)
+                ST.Tabs:Add(r.key, nil)
                 if pane.preview == r.key then pane.preview = nil end
             else
-                MD.Tabs:Remove(r.key)
+                ST.Tabs:Remove(r.key)
             end
             pane:ListChanged()
         end)
@@ -391,7 +391,7 @@ function SpellRail.Install(pane, spec)
                     end
                     r.name:SetText(Esc(fam.name or key))
                     r.range:SetText(RankRange(fam))
-                    r.check:SetChecked(MD.Tabs:Has(key))
+                    r.check:SetChecked(ST.Tabs:Has(key))
                     r:Show()
                     y = y + rowH - 1
                 end
@@ -439,7 +439,7 @@ function SpellRail.Install(pane, spec)
         local reset = UI.CreateButton(body, "Reset to my heals", "accent-hover", { 130, 20 })
         reset:SetPoint("BOTTOMLEFT", body, "BOTTOMLEFT", 6, 6)
         reset:SetScript("OnClick", function()
-            MD.Tabs:Reset()
+            ST.Tabs:Reset()
             pane.preview = nil
             pane:ListChanged()
         end)
@@ -458,7 +458,7 @@ function SpellRail.Install(pane, spec)
     function pane:OpenPicker()
         if not self.nav then return end
         if InCombat() then
-            MD:Print("spells: the picker does not open in combat")
+            ST:Print("spells: the picker does not open in combat")
             return
         end
         local p = self.picker or BuildPicker()
@@ -466,7 +466,7 @@ function SpellRail.Install(pane, spec)
         -- 6.5: a sheet is an entry on T33's ESC stack (one ESC closes the
         -- picker, not the window); Done, the window hiding or the combat
         -- hide take it off through the manager's OnHide hook.
-        MD.Win:Push(p)
+        ST.Win:Push(p)
         self:RefreshPicker()
     end
 
@@ -499,7 +499,7 @@ function SpellRail.Install(pane, spec)
             onSelect = function(id) if pane.RailSelected then pane:RailSelected(id) end end,
             onMove = function(id, to)
                 local key = FamilyKey(id)
-                if key and MD.Tabs:Move(key, to) then pane:ListChanged() end
+                if key and ST.Tabs:Move(key, to) then pane:ListChanged() end
             end,
             onRemove = function(id)
                 local key = FamilyKey(id)

@@ -22,10 +22,10 @@
 -- measured energize below reproduces `mana` with mean |delta| <= 2 percent of
 -- pool and max <= 5 percent. `/md simreplay fixture` also prints the fit
 -- WITHOUT the energize, which is what the two-rate model alone can do.
-local _, MD = ...
+local _, ST = ...
 
-MD.SimFixtures = MD.SimFixtures or {}
-MD.SimFixtures.BF1 = {
+ST.SimFixtures = ST.SimFixtures or {}
+ST.SimFixtures.BF1 = {
     v = 1, zone = "Hellfire Citadel", name = "BF-1 hard pull", t0 = 0, dur = 40.32, pool = 7009,
     -- energize: mana the client's regen API does not report, MEASURED off this
     -- log's own mana lines rather than assumed. Over the 40.26s window the

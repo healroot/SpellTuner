@@ -1,11 +1,11 @@
 -- Settings, both lines (T119, docs/SPEC-one-ui.md 7, mockup M6): one file
 -- builds Settings -> General, Settings -> Review and Settings -> About on TBC
 -- and on Forever. What differs is the table a line installs as
--- MD.SettingsLine (UI/Settings_TBC.lua on TBC, UI/Dashboard_Forever.lua on
+-- ST.SettingsLine (UI/Settings_TBC.lua on TBC, UI/Dashboard_Forever.lua on
 -- Forever), never a branch on the client (apicheck rule 10).
 --
 --   General  left   SPELL TOOLTIPS  the block on heals, and on damage spells,
---                                   the detail key (where MD.SpellTip has
+--                                   the detail key (where ST.SpellTip has
 --                                   DETAIL_MODES)
 --                   APPEARANCE      the Look, Text size, Window size
 --                   WINDOWS         In combat, one window per ESC, Minimap
@@ -19,7 +19,7 @@
 --                                   the title row)
 --            right  MODEL           SettingsLine.model, then modelHint
 --   About           the version, SettingsLine.client(), the blurb, COMMANDS
---                   from MD:Commands(), a line per module not loaded, the
+--                   from ST:Commands(), a line per module not loaded, the
 --                   optional SettingsLine.aboutNote
 --
 -- The sections and their spacing are Forever's (T42, T70 of
@@ -37,15 +37,15 @@
 --   { kind = "buttons", { text, onClick(button), tips, label = fn, enabled = fn,
 --     color, width, mark }, ... }
 --   { kind = "hint", text, mark, indent }
--- A key a line may not have registered is read through MD:Setting (a nil
--- answer falls back to the row's `default`), and written into MD.db.
+-- A key a line may not have registered is read through ST:Setting (a nil
+-- answer falls back to the row's `default`), and written into ST.db.
 --
 -- Colours are names (UI.Tint), so a style switch repaints them (T107).
-local _, MD = ...
-local UI = MD.UI
+local _, ST = ...
+local UI = ST.UI
 
 local MS = {}
-MD.Settings = MS
+ST.Settings = MS
 
 local PANE_GAP = 12
 local LEFT_W = 352   -- the left column (M1)
@@ -62,7 +62,7 @@ MS.BLURB = "Your spells rank by rank, your mana clock, and your fights recorded,
 local panes = {}  -- view id -> its pane, once built
 MS.panes = panes
 
-local function Line() return MD.SettingsLine or {} end
+local function Line() return ST.SettingsLine or {} end
 local function Round(v) return math.floor((tonumber(v) or 0) + 0.5) end
 -- the theme's pitch (UI/Theme_Flat.lua), the plain number before it loads
 local function Pitch(n) if UI.Pitch then return UI.Pitch(n) end return n end
@@ -96,7 +96,7 @@ end
 --------------------------------------------------------------------------------
 local function Read(row)
     if row.get then return row.get() end
-    local v = MD:Setting(row.key)
+    local v = ST:Setting(row.key)
     if v == nil then v = row.default end
     return v
 end
@@ -113,7 +113,7 @@ local function CheckedOf(row)
 end
 
 local function WriteCheck(row, on)
-    if row.set then row.set(on) else MD.db[row.key] = on end
+    if row.set then row.set(on) else ST.db[row.key] = on end
     if row.after then row.after(on) end
 end
 
@@ -121,7 +121,7 @@ local function WriteSlider(row, value)
     local v = tonumber(value)
     if not v then return end
     if row.set then row.set(v); return end
-    MD.db[row.key] = v / (row.scale or 1)
+    ST.db[row.key] = v / (row.scale or 1)
     if row.after then row.after(v) end
 end
 
@@ -324,10 +324,10 @@ local function TooltipRows()
           tips = { "Damage spells", "The same lines under the tooltip of a damage spell." } },
         -- T37 (5.6, decision 5): the key that shows the block's detail lines
         { kind = "dropdown", text = "Detail lines", width = 120, mark = "detailDropdown",
-          when = function() return MD.SpellTip ~= nil and MD.SpellTip.DETAIL_MODES ~= nil end,
-          items = function() return MD.SpellTip.DETAIL_MODES end,
-          get = function() return MD.SpellTip:DetailMode() end,
-          set = function(id) MD.db.spellTooltipDetail = id end },
+          when = function() return ST.SpellTip ~= nil and ST.SpellTip.DETAIL_MODES ~= nil end,
+          items = function() return ST.SpellTip.DETAIL_MODES end,
+          get = function() return ST.SpellTip:DetailMode() end,
+          set = function(id) ST.db.spellTooltipDetail = id end },
     }
 end
 
@@ -347,8 +347,8 @@ local function BuildAppearance(pane, above)
     local sec = Section(pane, "APPEARANCE", above, "left")
 
     local c
-    if MD.ClockSettings and MD.ClockSettings.LookControls then
-        c = MD.ClockSettings.LookControls(sec, 150)
+    if ST.ClockSettings and ST.ClockSettings.LookControls then
+        c = ST.ClockSettings.LookControls(sec, 150)
         pane.lookControls = c
     end
 
@@ -366,9 +366,9 @@ local function BuildAppearance(pane, above)
 
     -- 4.3: 70-120 %, through the window manager (the saved places converted);
     -- applied on the mouse-up (the window must not scale under the pointer)
-    local slo, shi = Round(MD.Win.SCALE_MIN * 100), Round(MD.Win.SCALE_MAX * 100)
+    local slo, shi = Round(ST.Win.SCALE_MIN * 100), Round(ST.Win.SCALE_MAX * 100)
     local scale = UI.CreateSlider("Window size", sec, slo, shi, 150, 5, nil, function(value)
-        MD.Win:SetScale((tonumber(value) or 100) / 100)
+        ST.Win:SetScale((tonumber(value) or 100) / 100)
     end, true,
         "Window size", "Makes the main, replay and practice windows bigger or smaller,",
         "along with the console and the copy box.")
@@ -402,9 +402,9 @@ local function BuildAppearance(pane, above)
     end }
     pane.controls[#pane.controls + 1] = { kind = "custom", refresh = function()
         if c then c:Refresh() end
-        local u = type(MD.db.ui) == "table" and MD.db.ui or {}
+        local u = type(ST.db.ui) == "table" and ST.db.ui or {}
         font:SetValue(Round(UI.fontOffset or u.fontOffset))
-        scale:SetValue(MD.Win:ScalePercent())
+        scale:SetValue(ST.Win:ScalePercent())
     end }
     return sec
 end
@@ -416,22 +416,22 @@ local function WindowsRows()
     return {
         -- 6.6, decision 4
         { kind = "dropdown", text = "In combat", width = 160, mark = "combatDropdown",
-          items = function() return MD.Win.COMBAT_MODES end,
-          get = function() return MD.Win:CombatMode() end,
-          set = function(id) MD.Win:SetCombat(id) end },
+          items = function() return ST.Win.COMBAT_MODES end,
+          get = function() return ST.Win:CombatMode() end,
+          set = function(id) ST.Win:SetCombat(id) end },
         -- 6.5: off is the fallback, one UISpecialFrames entry per window
         { kind = "check", text = "Close one window per ESC", mark = "escCheck",
-          get = function() return MD.Win:EscStackOn() end,
-          set = function(on) MD.Win:SetEscStack(on) end,
+          get = function() return ST.Win:EscStackOn() end,
+          set = function(on) ST.Win:SetEscStack(on) end,
           tips = { "Close one window per ESC", "On: each ESC closes the window opened last, then the next.",
                    "Off: one ESC closes every SpellTuner window at once." } },
         -- T79 (P36, mockup M1): UI/MinimapButton.lua owns the button and db.minimap
         { kind = "check", text = "Minimap button", mark = "minimapCheck",
-          get = function() return not (type(MD.db.minimap) == "table" and MD.db.minimap.hide) end,
+          get = function() return not (type(ST.db.minimap) == "table" and ST.db.minimap.hide) end,
           set = function(on)
-              MD.db.minimap = MD.db.minimap or {}
-              MD.db.minimap.hide = not on
-              if MD.UpdateMinimapButton then MD:UpdateMinimapButton() end
+              ST.db.minimap = ST.db.minimap or {}
+              ST.db.minimap.hide = not on
+              if ST.UpdateMinimapButton then ST:UpdateMinimapButton() end
           end,
           tips = { "Minimap button", "The SpellTuner button on the minimap's rim.",
                    "Left-click opens the window, right-click opens Settings; drag it round the map." } },
@@ -442,8 +442,8 @@ local function WindowsRows()
             tips = { "Reset window positions",
                      "Every SpellTuner window back at its default place and size (/st ui reset)." },
             onClick = function()
-                MD.Win:Reset()
-                MD:Print("windows: every position and size reset")
+                ST.Win:Reset()
+                ST:Print("windows: every position and size reset")
             end } },
     }
 end
@@ -464,8 +464,8 @@ local function IntegrationsHeight(sec)
 end
 
 local function BuildIntegrations(pane, above)
-    if not (MD.ClockSettings and MD.ClockSettings.BuildIntegrations) then return nil end
-    local sec = MD.ClockSettings.BuildIntegrations(pane, LEFT_W, 120, Line().integrations)
+    if not (ST.ClockSettings and ST.ClockSettings.BuildIntegrations) then return nil end
+    local sec = ST.ClockSettings.BuildIntegrations(pane, LEFT_W, 120, Line().integrations)
     sec:SetPoint("TOPLEFT", above, "BOTTOMLEFT", 0, -PANE_GAP)
     sec:SetPoint("RIGHT", pane, "RIGHT", -4, 0)
     sec.fixed = function() return IntegrationsHeight(sec) end
@@ -536,7 +536,7 @@ end
 
 --------------------------------------------------------------------------------
 -- About (T70, P26, review U24, mockup M1; one page on both lines since T119):
--- the version, the client and every command MD:Commands() lists, usage in the
+-- the version, the client and every command ST:Commands() lists, usage in the
 -- numbers font, the text cut at its first "; " (the whole on hover). Rebuilt
 -- on every show, so a module that loaded since adds its commands; a module
 -- not loaded gets one line. The rows run in two columns when one would not
@@ -605,11 +605,11 @@ end
 
 local function RefreshAbout(pane)
     local L = Line()
-    pane.version:SetText("SpellTuner " .. tostring(MD.version))
+    pane.version:SetText("SpellTuner " .. tostring(ST.version))
     pane.client:SetText(tostring(Call(L.client) or ""))
 
     local n = 0
-    for _, e in ipairs(MD:Commands()) do
+    for _, e in ipairs(ST:Commands()) do
         if not e.hidden and type(e.usage) == "string" and e.usage ~= "" then
             n = n + 1
             local r = AboutRow(pane, n)
@@ -627,8 +627,8 @@ local function RefreshAbout(pane)
             r:Show()
         end
     end
-    for _, m in ipairs(MD.modules or {}) do
-        if MD:ModuleState(m.name) ~= "loaded" then
+    for _, m in ipairs(ST.modules or {}) do
+        if ST:ModuleState(m.name) ~= "loaded" then
             n = n + 1
             local r = AboutRow(pane, n)
             r.usage:SetText(m.label)
@@ -761,8 +761,8 @@ end
 
 -- every pitch follows the font offset: lay the panes out again (T77's
 -- FONTS_CHANGED, fired once the kit's fonts are re-sized)
-if MD.RegisterCallback then
-    MD:RegisterCallback("FONTS_CHANGED", function() MS.Refresh() end)
+if ST.RegisterCallback then
+    ST:RegisterCallback("FONTS_CHANGED", function() MS.Refresh() end)
     -- T70: a module's keys go live as it loads, and About lists its commands
-    MD:RegisterCallback("MODULE_LOADED", function() MS.Refresh() end)
+    ST:RegisterCallback("MODULE_LOADED", function() MS.Refresh() end)
 end

@@ -14,15 +14,15 @@ local function check(name, cond, detail)
 end
 
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua")
+local ST = dofile(here .. "/harness.lua")
 arg[0] = a0
 
 local S = _G.STUB
 S.crit[4] = 0 -- zero Nature crit: DirectAmount(e) == e.direct exactly (critMode = "ev")
 
-MD:SetModule("SpellTuner_Replay", true) -- loads Kit_Forever.lua, Scenario_Forever.lua, Gates_Forever.lua
-local SM = MD.SimModel
-local kit = MD.RankMath:SpellKit()
+ST:SetModule("SpellTuner_Replay", true) -- loads Kit_Forever.lua, Scenario_Forever.lua, Gates_Forever.lua
+local SM = ST.SimModel
+local kit = ST.RankMath:SpellKit()
 
 local buildFixture = dofile(here .. "/foreverfixture.lua")
 
@@ -244,10 +244,10 @@ end
 -- zero for this one call so the fixture's tank (secret max) is excluded.
 --------------------------------------------------------------------------------
 do
-    local savedMean, savedMax = MD.db.simGateHpMean, MD.db.simGateHpMax
-    MD.db.simGateHpMean, MD.db.simGateHpMax = -1, -1
+    local savedMean, savedMax = ST.db.simGateHpMean, ST.db.simGateHpMax
+    ST.db.simGateHpMean, ST.db.simGateHpMax = -1, -1
     local v = SM:Validate(buildFixture(), kit)
-    MD.db.simGateHpMean, MD.db.simGateHpMax = savedMean, savedMax
+    ST.db.simGateHpMean, ST.db.simGateHpMax = savedMean, savedMax
     local why = v.excluded[2] or ""
     check("an excluded target's health percentages say when its max is estimated (R27)",
         why:find("of max health", 1, true) ~= nil and why:find("estimated", 1, true) ~= nil,

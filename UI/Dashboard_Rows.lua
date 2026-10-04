@@ -1,26 +1,26 @@
 -- The one table every list in the window is drawn on: the column layout, the
 -- row frame pool and the per-row rendering, configured by the caller's `opts`.
--- Exports a constructor on MD.DashboardParts.
+-- Exports a constructor on ST.DashboardParts.
 --
 -- T10 (docs/tasks/T10-spells-pane.md): SHARED (both TOCs) since the Forever
 -- Spellbook pane reused the row pool with its own columns/render/hover.
 -- T81 (C2 of docs/PLAN-refactor-ux.md, review U5 / A23): ONE table. Until
 -- T81, `opts == nil` was a second table in the same closure -- the TBC rank
--- table, with its own Render, its fixed columns, gold and the MD.Tip:Row /
--- MD.RankMath hover -- and every option below was a diff in a TBC-loaded
+-- table, with its own Render, its fixed columns, gold and the ST.Tip:Row /
+-- ST.RankMath hover -- and every option below was a diff in a TBC-loaded
 -- file. The TBC rank table (UI/Dashboard.lua), Waste and Review are now
 -- `opts` sets like every Forever list, and CreateTable refuses a call without
 -- opts.render. No client call and no flavour check belong here -- CreateFrame
 -- and font strings are the widget toolkit (CLAUDE.md, FOREVER-PLAN.md
 -- sec3.2) -- and nothing here reads a TBC-only table any more.
-local _, MD = ...
+local _, ST = ...
 
-MD.DashboardParts = MD.DashboardParts or {}
+ST.DashboardParts = ST.DashboardParts or {}
 
 local ROW_HEIGHT = 16 -- a data row's pitch when opts.rowHeight is not given
 
 -- T30 (docs/SPEC-forever-ui.md 3.5, 4.1, 4.3): the table options' fills and
--- text colours. T69 (P25): token reads -- MD.UI.Fill / MD.UI.Hex. T81: the
+-- text colours. T69 (P25): token reads -- ST.UI.Fill / ST.UI.Hex. T81: the
 -- row colour without marker = "bar" reads the tokens too (it was the old
 -- table's literals, gold included).
 
@@ -42,7 +42,7 @@ local function SetBar(row, key, frac, alpha)
     if frac <= 0 then b.fill:Hide(); return end
     if not alpha then alpha = (row.data and row.data.dominated) and 0.25 or 0.5 end
     b.fill:SetWidth(b.width * frac)
-    MD.UI.Tint(b.fill, "texture", "accent", alpha) -- T107: the accent by name
+    ST.UI.Tint(b.fill, "texture", "accent", alpha) -- T107: the accent by name
     b.fill:Show()
 end
 
@@ -107,7 +107,7 @@ end
 --   col.tooltip     -- a sentence (or a list of UI/Tip.lua lines) shown when
 --                       the pointer is over that column's header label: the
 --                       label in `text`, the sentence in `text2`, through
---                       MD.Tip:Show. A column without one has no hover (T81:
+--                       ST.Tip:Show. A column without one has no hover (T81:
 --                       the TBC rank table gives every column its glossary,
 --                       Tip:Columns, this way).
 --
@@ -137,7 +137,7 @@ local DOUBLE_CLICK = 0.4
 -- the row is released (a pooled row also serves as a data row).
 local function ColumnTip(hit)
     local col = hit.col
-    if not (col and col.tooltip and MD.Tip) then return end
+    if not (col and col.tooltip and ST.Tip) then return end
     local title = hit.label or col.label
     local tip = col.tooltip
     if type(tip) == "function" then tip = tip(title) end -- T78: by the label shown
@@ -150,7 +150,7 @@ local function ColumnTip(hit)
         if title and title ~= "" then lines[#lines + 1] = { l = title, c = "text" } end
         lines[#lines + 1] = { l = tostring(tip), c = "text2", wrap = true }
     end
-    MD.Tip:Show(hit, lines, { anchor = "ANCHOR_TOPLEFT", x = 0, y = 3 })
+    ST.Tip:Show(hit, lines, { anchor = "ANCHOR_TOPLEFT", x = 0, y = 3 })
 end
 
 -- T78: one data cell's hover (col.cellTooltip). Its lines beside the cell,
@@ -159,10 +159,10 @@ local function CellTipEnter(hit)
     local row, col = hit.row, hit.col
     local r = row and row.data
     local lines = r and col and col.cellTooltip and col.cellTooltip(r, row)
-    if type(lines) == "table" and #lines > 0 and MD.Tip then
+    if type(lines) == "table" and #lines > 0 and ST.Tip then
         hit.showing = true
         row.highlight:Show()
-        MD.Tip:Show(hit, lines, { anchor = "beside" })
+        ST.Tip:Show(hit, lines, { anchor = "beside" })
         return
     end
     hit.showing = nil
@@ -174,7 +174,7 @@ local function CellTipLeave(hit)
     if hit.showing then
         hit.showing = nil
         if row then row.highlight:Hide() end
-        if MD.Tip then MD.Tip:Hide() end
+        if ST.Tip then ST.Tip:Hide() end
         return
     end
     local leave = row and row:GetScript("OnLeave")
@@ -220,7 +220,7 @@ local function HeaderTips(header, cols, height, labels)
                 hit = CreateFrame("Frame", nil, header)
                 hit:EnableMouse(true)
                 hit:SetScript("OnEnter", ColumnTip)
-                hit:SetScript("OnLeave", function() if MD.Tip then MD.Tip:Hide() end end)
+                hit:SetScript("OnLeave", function() if ST.Tip then ST.Tip:Hide() end end)
                 header.colHits[col.key] = hit
             end
             hit.col = col
@@ -232,7 +232,7 @@ local function HeaderTips(header, cols, height, labels)
         end
     end
 end
-function MD.DashboardParts.CreateTable(parent, width, opts)
+function ST.DashboardParts.CreateTable(parent, width, opts)
     -- T81 (A23): one table -- the old no-options rank table is gone
     if type(opts) ~= "table" or type(opts.render) ~= "function" then
         error("CreateTable: opts.render is required (T81: the one table is configured by its caller)", 2)
@@ -272,7 +272,7 @@ function MD.DashboardParts.CreateTable(parent, width, opts)
             key = "rowAlt"
         end
         if key then
-            MD.UI.Tint(row.fill, "texture", key) -- T107
+            ST.UI.Tint(row.fill, "texture", key) -- T107
             row.fill:Show()
         else
             row.fill:Hide()
@@ -321,7 +321,7 @@ function MD.DashboardParts.CreateTable(parent, width, opts)
                 row.mark:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
                 row.mark:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
                 row.mark:SetWidth(2)
-                MD.UI.Tint(row.mark, "texture", "accent", 1) -- T107
+                ST.UI.Tint(row.mark, "texture", "accent", 1) -- T107
                 row.mark:Hide()
             end
             if pickBar then -- T78: white, above the accent bar
@@ -337,9 +337,9 @@ function MD.DashboardParts.CreateTable(parent, width, opts)
             row.highlight = row:CreateTexture(nil, "BACKGROUND")
             row.highlight:SetAllPoints()
             if marker == "bar" then
-                MD.UI.Tint(row.highlight, "texture", "hover") -- T30; T107: by name
+                ST.UI.Tint(row.highlight, "texture", "hover") -- T30; T107: by name
             else
-                MD.UI.Tint(row.highlight, "texture", "accent", 0.10)
+                ST.UI.Tint(row.highlight, "texture", "accent", 0.10)
             end
             row.highlight:Hide()
             if opts.onClick or opts.onDoubleClick then -- T30, T71
@@ -375,8 +375,8 @@ function MD.DashboardParts.CreateTable(parent, width, opts)
                 self.highlight:Hide()
                 if opts.onLeave then
                     opts.onLeave(self)
-                elseif MD.Tip then
-                    MD.Tip:Hide()
+                elseif ST.Tip then
+                    ST.Tip:Hide()
                 end
             end)
             for _, col in ipairs(cols) do
@@ -476,8 +476,8 @@ function MD.DashboardParts.CreateTable(parent, width, opts)
     -- header follows a style) or a colour code (kept as given); muted without it
     local function HeaderHex()
         local c = opts.headerColor
-        if type(c) == "string" and c:sub(1, 2) ~= "|c" then return MD.UI.Hex(c) end
-        return c or MD.UI.Hex("muted")
+        if type(c) == "string" and c:sub(1, 2) ~= "|c" then return ST.UI.Hex(c) end
+        return c or ST.UI.Hex("muted")
     end
 
     -- T71: the scrolled window (opts.scroll) -- its state, the bar at the
@@ -521,7 +521,7 @@ function MD.DashboardParts.CreateTable(parent, width, opts)
         local fill = bar.thumb:CreateTexture(nil, "ARTWORK")
         fill:SetPoint("TOPLEFT", bar.thumb, "TOPLEFT", 1, 0)
         fill:SetPoint("BOTTOMRIGHT", bar.thumb, "BOTTOMRIGHT", -1, 0)
-        MD.UI.Tint(fill, "texture", "accent", 0.8) -- T107
+        ST.UI.Tint(fill, "texture", "accent", 0.8) -- T107
         bar.thumb:EnableMouse(true)
         bar.thumb:Hide()
         -- dragging the thumb: the offset follows the cursor's travel over
@@ -577,10 +577,10 @@ function MD.DashboardParts.CreateTable(parent, width, opts)
                     local c = opts.headerRule
                     headerRule:SetColorTexture(c[1], c[2], c[3], c[4] or 1)
                 else
-                    MD.UI.Tint(headerRule, "texture", "line") -- T107
+                    ST.UI.Tint(headerRule, "texture", "line") -- T107
                 end
             end
-            local px = MD.UI.px and MD.UI.px(1, pane) or 1
+            local px = ST.UI.px and ST.UI.px(1, pane) or 1
             headerRule:ClearAllPoints()
             headerRule:SetPoint("TOPLEFT", pane, "TOPLEFT", 0, y - headerH + px)
             headerRule:SetSize(rowW, px)
@@ -612,13 +612,13 @@ function MD.DashboardParts.CreateTable(parent, width, opts)
             -- the suggested row's words take the accent (a token read).
             local color
             if r.known == false then
-                color = MD.UI.Hex("disabled")
+                color = ST.UI.Hex("disabled")
             elseif r.suggested and marker ~= "bar" then
-                color = MD.UI.Hex("accent")
+                color = ST.UI.Hex("accent")
             elseif r.dominated then
-                color = MD.UI.Hex("dominated")
+                color = ST.UI.Hex("dominated")
             else
-                color = MD.UI.Hex("text")
+                color = ST.UI.Hex("text")
             end
 
             PaintFill(row)

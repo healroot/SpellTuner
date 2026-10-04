@@ -8,7 +8,7 @@
 -- family into a heal list), a family the book no longer has kept and
 -- resolved as "stale", the family key and ids Book gives, Add / Remove /
 -- Move / Undo / Reset, and cdb.spellTabs initialised at login. T84 (C5) and
--- T118: under tbc, seven checks of the list over MD.Book (Spells/Book_Model.lua, below).
+-- T118: under tbc, seven checks of the list over ST.Book (Spells/Book_Model.lua, below).
 HARNESS_FLAVOUR = { "forever", "tbc" }
 
 local here = arg[0]:match("^(.*)/[^/]+$")
@@ -19,7 +19,7 @@ local function check(name, cond, detail)
     print(string.format("%-72s %s%s", name, cond and "ok" or "FAIL", detail and (" - " .. detail) or ""))
 end
 
--- A block that raises (on the old code: MD.Tabs is nil) is one failed
+-- A block that raises (on the old code: ST.Tabs is nil) is one failed
 -- assertion with the error, not a crashed suite.
 local function block(name, fn)
     local good, err = pcall(fn)
@@ -27,12 +27,12 @@ local function block(name, fn)
 end
 
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua")
+local ST = dofile(here .. "/harness.lua")
 arg[0] = a0
 
 local S = _G.STUB
-local Book = MD.Book
-local Tabs = MD.Tabs
+local Book = ST.Book
+local Tabs = ST.Tabs
 
 local function Join(list)
     local out = {}
@@ -79,15 +79,15 @@ local function MakeBook(specs)
     return { families = families, order = order, spells = spells, read = {} }
 end
 
--- A fresh store for each case: the list lives in MD.cdb.spellTabs.
+-- A fresh store for each case: the list lives in ST.cdb.spellTabs.
 local function FreshStore()
-    MD.cdb.spellTabs = nil
+    ST.cdb.spellTabs = nil
     return Tabs:Store()
 end
 
 --------------------------------------------------------------------------------
 -- T84 (C5 of docs/PLAN-refactor-ux.md, section 7.1): the list on TBC.
--- T118 (docs/tasks/T118-tbc-book.md): its book is MD.Book on both lines now
+-- T118 (docs/tasks/T118-tbc-book.md): its book is ST.Book on both lines now
 -- -- TBC's is Spells/Book_Model.lua, refreshed on SPELLS_REBUILT, firing
 -- BOOK_CHANGED, which runs the reconcile, as on Forever -- through the one
 -- seam, Tabs.source, left at its default. The rules are the Forever ones
@@ -97,7 +97,7 @@ end
 -- needs Spells/Book.lua's grouping).
 --------------------------------------------------------------------------------
 if S.flavour == "tbc" then
-    local SD = MD.SpellData
+    local SD = ST.SpellData
     local LIFEBLOOM = {}
     for _, id in ipairs(SD.all.Lifebloom) do LIFEBLOOM[id] = true end
     -- every rank known (a level 70 druid), or every rank but Lifebloom's
@@ -125,7 +125,7 @@ if S.flavour == "tbc" then
             order == "HealingTouch,Rejuvenation,Regrowth,Lifebloom" and shape
                 and Join(book.order) == "HealingTouch,Lifebloom,Rejuvenation,Regrowth,Tranquility,Swiftmend"
                 and tq ~= nil and tq.noSeed == true and sm ~= nil and sm.noSeed == true
-                and MD.cdb.spellTabs.kind == "heal" and not Tabs:IsNew("Lifebloom"),
+                and ST.cdb.spellTabs.kind == "heal" and not Tabs:IsNew("Lifebloom"),
             "order=" .. order .. " shape=" .. tostring(shape) .. " book=" .. Join(book.order))
     end)
 
@@ -138,7 +138,7 @@ if S.flavour == "tbc" then
         Train(true)
         check("tbc: a removed family stays removed across SPELLS_REBUILT",
             Join(Tabs:Get()) == "HealingTouch,Rejuvenation,Lifebloom" and not Tabs:Has("Regrowth")
-                and MD.cdb.spellTabs.removed.Regrowth == true,
+                and ST.cdb.spellTabs.removed.Regrowth == true,
             "order=" .. Join(Tabs:Get()))
     end)
 
@@ -157,29 +157,29 @@ if S.flavour == "tbc" then
     end)
 
     -- A book nobody has read since (its cache forgotten after the seed:
-    -- T123 deleted the MD.FamiliesTBC alias that used to seed the list without
+    -- T123 deleted the ST.FamiliesTBC alias that used to seed the list without
     -- priming it): SPELLS_REBUILT must build it anyway, or no BOOK_CHANGED
     -- fires and the list never reconciles.
     block("tbc: a family trained later is appended even when nothing read the book", function()
         Train(false)
         Book._cache, Book._cacheTime, Book._sig = nil, nil, nil
         FreshStore()
-        local seeded = Join(Tabs:Get(MD.Book:Get()))
+        local seeded = Join(Tabs:Get(ST.Book:Get()))
         Book._cache, Book._cacheTime, Book._sig = nil, nil, nil
         local unread = Book._cache == nil
         Train(true)
         check("tbc: a family trained later is appended even when nothing read the book",
             unread and seeded == "HealingTouch,Rejuvenation,Regrowth"
-                and Join(Tabs:Get(MD.Book:Get())) == "HealingTouch,Rejuvenation,Regrowth,Lifebloom"
+                and Join(Tabs:Get(ST.Book:Get())) == "HealingTouch,Rejuvenation,Regrowth,Lifebloom"
                 and Tabs:IsNew("Lifebloom") and not Tabs:IsNew("Regrowth"),
             "unread=" .. tostring(unread) .. " seeded=" .. seeded .. " now=" .. Join(Tabs:Get()))
     end)
 
-    -- One seam on both lines: TBC installs nothing, the default reads MD.Book.
-    block("tbc: the source is the default one, MD.Book:Get(), as on Forever", function()
-        local default = Tabs.source == Tabs.BookSource and MD.Book ~= nil and Tabs.source() == MD.Book:Get()
-        check("tbc: the source is the default one, MD.Book:Get(), as on Forever", default,
-            "source default=" .. tostring(Tabs.source == Tabs.BookSource) .. " book=" .. tostring(MD.Book ~= nil))
+    -- One seam on both lines: TBC installs nothing, the default reads ST.Book.
+    block("tbc: the source is the default one, ST.Book:Get(), as on Forever", function()
+        local default = Tabs.source == Tabs.BookSource and ST.Book ~= nil and Tabs.source() == ST.Book:Get()
+        check("tbc: the source is the default one, ST.Book:Get(), as on Forever", default,
+            "source default=" .. tostring(Tabs.source == Tabs.BookSource) .. " book=" .. tostring(ST.Book ~= nil))
     end)
 
     block("tbc: noSeed families are never seeded or reconciled in, but can be added", function()
@@ -244,7 +244,7 @@ end)
 -- 2: cdb.spellTabs is there after login, empty and not seeded
 --------------------------------------------------------------------------------
 block("cdb.spellTabs initialised at login: empty, not seeded", function()
-    local st = MD.cdb.spellTabs
+    local st = ST.cdb.spellTabs
     check("cdb.spellTabs initialised at login: empty, not seeded",
         type(st) == "table" and type(st.order) == "table" and #st.order == 0
             and type(st.removed) == "table" and type(st.seen) == "table"
@@ -260,7 +260,7 @@ block("the seed is the known heals by learn level", function()
     FreshStore()
     local book = MakeBook(DRUID)
     local seeded = Tabs:Seed(book)
-    local st = MD.cdb.spellTabs
+    local st = ST.cdb.spellTabs
     check("the seed is the known heals by learn level",
         seeded == true and Join(Tabs:Get()) == "Healing Touch,Rejuvenation" and st.seeded == true
             and st.kind == "heal",
@@ -304,8 +304,8 @@ block("with no heal the seed is the damage that costs mana", function()
         { name = "Arcane Intellect", rank = 1, level = 1, cost = 60 },
     }))
     check("with no heal the seed is the damage that costs mana, by learn level",
-        Join(Tabs:Get()) == "Fireball,Frostbolt" and MD.cdb.spellTabs.kind == "damage",
-        "order=" .. Join(Tabs:Get()) .. " kind=" .. tostring(MD.cdb.spellTabs.kind))
+        Join(Tabs:Get()) == "Fireball,Frostbolt" and ST.cdb.spellTabs.kind == "damage",
+        "order=" .. Join(Tabs:Get()) .. " kind=" .. tostring(ST.cdb.spellTabs.kind))
 
     FreshStore()
     Tabs:Seed(MakeBook({
@@ -313,7 +313,7 @@ block("with no heal the seed is the damage that costs mana", function()
         { name = "Battle Stance", rank = 1, level = 1, free = true },
     }))
     check("with neither the list is empty, and seeded",
-        #Tabs:Get() == 0 and MD.cdb.spellTabs.seeded == true,
+        #Tabs:Get() == 0 and ST.cdb.spellTabs.seeded == true,
         "order=" .. Join(Tabs:Get()))
 end)
 
@@ -350,7 +350,7 @@ block("the reconcile appends a newly known heal once, as new", function()
     Tabs:Remove("Regrowth")
     local added3 = Tabs:Reconcile(book)
     check("the reconcile never re-adds a removed family",
-        #added3 == 0 and not Tabs:Has("Regrowth") and MD.cdb.spellTabs.removed["Regrowth"] == true,
+        #added3 == 0 and not Tabs:Has("Regrowth") and ST.cdb.spellTabs.removed["Regrowth"] == true,
         "added=" .. Join(added3) .. " order=" .. Join(Tabs:Get()))
 end)
 
@@ -358,7 +358,7 @@ block("the reconcile does nothing before the seed", function()
     FreshStore()
     local added = Tabs:Reconcile(MakeBook(DRUID))
     check("the reconcile does nothing before the seed (the seed runs on first open)",
-        #added == 0 and #Tabs:Get() == 0 and MD.cdb.spellTabs.seeded == false,
+        #added == 0 and #Tabs:Get() == 0 and ST.cdb.spellTabs.seeded == false,
         "order=" .. Join(Tabs:Get()))
 end)
 
@@ -371,8 +371,8 @@ block("a list seeded empty takes its kind from the first heal learned", function
         { name = "Smite", rank = 1, level = 1, kind = "damage", cost = 20 },
     }))
     check("a list seeded empty takes the seed's rule when a heal is learned",
-        Join(added) == "Lesser Heal" and MD.cdb.spellTabs.kind == "heal",
-        "added=" .. Join(added) .. " kind=" .. tostring(MD.cdb.spellTabs.kind))
+        Join(added) == "Lesser Heal" and ST.cdb.spellTabs.kind == "heal",
+        "added=" .. Join(added) .. " kind=" .. tostring(ST.cdb.spellTabs.kind))
 end)
 
 --------------------------------------------------------------------------------
@@ -425,7 +425,7 @@ block("Add inserts at a row, once, and only a family the book has", function()
     check("Add inserts at a row, once, and only a family the book has",
         at == 2 and dup == nil and missing == nil
             and Join(Tabs:Get()) == "Healing Touch,Wrath,Rejuvenation" and not Tabs:IsNew("Wrath")
-            and Join(MD.cdb.spellTabs.ids["Wrath"]) == Join(book.families["Wrath"].ids),
+            and Join(ST.cdb.spellTabs.ids["Wrath"]) == Join(book.families["Wrath"].ids),
         "order=" .. Join(Tabs:Get()) .. " at=" .. tostring(at))
 end)
 
@@ -435,7 +435,7 @@ block("Remove records the family as removed; Undo puts it back where it was", fu
     Tabs:Seed(book)
     Tabs:Add("Wrath", nil, book)
     local idx = Tabs:Remove("Rejuvenation")
-    local st = MD.cdb.spellTabs
+    local st = ST.cdb.spellTabs
     local pending = Tabs:UndoKey()
     check("Remove records the family as removed",
         idx == 2 and st.removed["Rejuvenation"] == true and Join(Tabs:Get()) == "Healing Touch,Wrath"
@@ -483,7 +483,7 @@ block("Reset gives the seed back and forgets every removal", function()
     Tabs:Add("Wrath", 1, book)
     Tabs:Remove("Healing Touch")
     Tabs:Reset(book)
-    local st = MD.cdb.spellTabs
+    local st = ST.cdb.spellTabs
     check("Reset gives the seed back and forgets every removal",
         Join(Tabs:Get()) == "Healing Touch,Rejuvenation" and next(st.removed) == nil
             and Tabs:UndoKey() == nil and st.seeded == true,
@@ -542,7 +542,7 @@ block("T110: a shadow priest's list seeds damage; a holy priest's heals, Holy No
     local order = Join(Tabs:Get())
     local r, src = Tabs:Role(book)
     local shadow = role == "damage" and Join(said) == "Mind Flay,Shadowform,Vampiric Embrace"
-        and order == "Smite,Shadow Word: Pain,Mind Blast,Mind Flay" and MD.cdb.spellTabs.kind == "damage"
+        and order == "Smite,Shadow Word: Pain,Mind Blast,Mind Flay" and ST.cdb.spellTabs.kind == "damage"
         and r == "damage" and src == "talents"
 
     FreshStore()
@@ -579,7 +579,7 @@ block("T110: a damage list takes an either-or heal; a tie seeds heals; Reset is 
     Tabs:Seed(ret)
     local seeded = Join(Tabs:Get())
     local reset = Join(Tabs:Reset(ret))
-    local resetKind = MD.cdb.spellTabs.kind
+    local resetKind = ST.cdb.spellTabs.kind
 
     -- one each: no role, the old seed (heals), and Role falls back on it
     local tie = MakeBook({

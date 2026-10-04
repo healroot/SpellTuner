@@ -4,13 +4,13 @@
 -- Exists because current mana (UnitPower) is secret always on this client
 -- (Facts); the model is never the real pool and every consumer must say so.
 --
--- PURE: no client call, no MD.API call, no GetTime -- every timestamp is an
+-- PURE: no client call, no ST.API call, no GetTime -- every timestamp is an
 -- argument, so this file cannot be the one that reaches the client (CLAUDE.md:
 -- "no client call outside Client/"; this is the file that has NONE at all).
-local _, MD = ...
+local _, ST = ...
 
-MD.ManaModel = MD.ManaModel or {}
-local ManaModel = MD.ManaModel
+ST.ManaModel = ST.ManaModel or {}
+local ManaModel = ST.ManaModel
 ManaModel.__index = ManaModel
 
 function ManaModel.New()
@@ -257,7 +257,7 @@ local function Shown(sec)
 end
 
 -- T11b (docs/tasks/T11b-clock-modes.md): the "rest <t>" segment, worded and
--- gated exactly as TBC's MD:GetClockFace (Engine/TTO.lua) gates its own
+-- gated exactly as TBC's ST:GetClockFace (Engine/TTO.lua) gates its own
 -- rest segment in its "Secondary segment" block -- shown whenever the primary
 -- (v) is missing (nil, TBC's "nothing to compare against"), and otherwise
 -- only when it differs from the primary by at least 25% (TBC's
@@ -272,7 +272,7 @@ local function RestSegment(v, rest)
     return nil
 end
 
--- T11b: every mode worded as TBC's MD:GetClockFace (Engine/TTO.lua) words
+-- T11b: every mode worded as TBC's ST:GetClockFace (Engine/TTO.lua) words
 -- the same mode in its mode branches, with the "~" kept in front (T11 -- the
 -- pool is modelled, never the client's own).
 --   fullnow -> TBC's "FULL" (its fullnow branch)
@@ -342,7 +342,7 @@ function ManaModel.Face(state, now)
         face.label = "OOM"
         if type(state.tto) == "number" then
             face.value = Shown(state.tto)
-            face.known, face.tone = "point", MD.ClockFace.Tone(face.value)
+            face.known, face.tone = "point", ST.ClockFace.Tone(face.value)
             face.second = RestSegment(state.tto, state.rest)
         else
             face.known, face.tone = "none", "muted"
@@ -356,19 +356,19 @@ function ManaModel.Face(state, now)
 end
 
 function ManaModel.Text(state)
-    return MD.ClockFace.LineString(ManaModel.Face(state))
+    return ST.ClockFace.LineString(ManaModel.Face(state))
 end
 
--- The running clock's face: the one ManaModel instance (MD.Pool.model, made at
+-- The running clock's face: the one ManaModel instance (ST.Pool.model, made at
 -- MD_READY by Engine/ManaPool_Forever.lua) projected at `now` -- the caller's
 -- GetTime(); with no time, the model's own last tick (what the clock painted
 -- last). Before MD_READY, the no-state face ("~OOM --"). No client call here.
 -- The namespace is made here too (Engine/ClockFace.lua keeps a table it finds),
 -- so a copy of the core loaded without the face file -- tools/clockcheck.lua's
 -- T68 check -- still loads; LineString and Tone are looked up at call time.
-MD.ClockFace = MD.ClockFace or {}
-MD:Provide("ClockFace.Current", function(now)
-    local pool = MD.Pool
+ST.ClockFace = ST.ClockFace or {}
+ST:Provide("ClockFace.Current", function(now)
+    local pool = ST.Pool
     local model = pool and pool.model
     if not model then return ManaModel.Face(nil, now) end
     if type(now) ~= "number" then now = model.t end

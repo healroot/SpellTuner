@@ -16,7 +16,7 @@ local function check(name, cond, detail)
 end
 
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua")
+local ST = dofile(here .. "/harness.lua")
 arg[0] = a0
 
 local S = _G.STUB
@@ -50,7 +50,7 @@ end
 local function FirstDirect(kit)
     local ids = {}
     for id, e in pairs(kit.caster) do
-        if e.type == "direct" and not e.dataMissing and not MD.Kit.UNPRICED[e.family] then
+        if e.type == "direct" and not e.dataMissing and not ST.Kit.UNPRICED[e.family] then
             ids[#ids + 1] = id
         end
     end
@@ -62,7 +62,7 @@ local function CastBaseFails(kit)
     local id = FirstDirect(kit)
     local broken = CopyKit(kit)
     if id then broken.caster[id].castBase = nil end
-    local okV, problems = MD.Kit.Validate(broken)
+    local okV, problems = ST.Kit.Validate(broken)
     local named = false
     for _, p in ipairs(problems or {}) do
         if p:find("caster%[" .. tostring(id) .. "%]", 1) and p:find("castBase", 1, true) then named = true end
@@ -75,12 +75,12 @@ end
 -- validates -- Innervate, priced for its mana only, included.
 --------------------------------------------------------------------------------
 if S.flavour == "tbc" then
-    local Kit = MD.Kit
+    local Kit = ST.Kit
     local checks, realCheck = 0, Kit and Kit.Check
     if Kit then
         Kit.Check = function(...) checks = checks + 1; return realCheck(...) end
     end
-    local built, kit = pcall(function() return MD.RankMath:SpellKit() end)
+    local built, kit = pcall(function() return ST.RankMath:SpellKit() end)
     if Kit then Kit.Check = realCheck end
     local valid, problems = false, nil
     if Kit and built then valid, problems = Kit.Validate(kit) end
@@ -98,7 +98,7 @@ if S.flavour == "tbc" then
 
     local aliased, restoredOk, restoreProblem = false, false, nil
     if Kit and built then
-        aliased = MD.SimModel.KitSnapshot == Kit.Snapshot
+        aliased = ST.SimModel.KitSnapshot == Kit.Snapshot
         local snap = Kit.Snapshot(kit)
         local restored = Kit.Restore(snap)
         restoredOk, restoreProblem = Kit.Validate(restored)
@@ -123,7 +123,7 @@ if S.flavour == "tbc" then
         end
     end
     local cdFam, cdSecs
-    if sm and MD.SimModel.CooldownOf then cdFam, cdSecs = MD.SimModel.CooldownOf({ kit = kit }, sm) end
+    if sm and ST.SimModel.CooldownOf then cdFam, cdSecs = ST.SimModel.CooldownOf({ kit = kit }, sm) end
     check("tbc: RankMath stamps the druid profile and emits Swiftmend's 15 s cooldown (T96)",
         built and kit.profile == "DRUID" and smN > 0 and sm ~= nil and #others == 0
         and cdFam == "Swiftmend" and cdSecs == 15,
@@ -190,7 +190,7 @@ local function WalkSecret(t, seen)
     if seen[t] then return false end
     seen[t] = true
     for k, v in pairs(t) do
-        if MD.API.IsSecret(k) or MD.API.IsSecret(v) then return true end
+        if ST.API.IsSecret(k) or ST.API.IsSecret(v) then return true end
         if type(v) == "table" and WalkSecret(v, seen) then return true end
     end
     return false
@@ -199,18 +199,18 @@ end
 --------------------------------------------------------------------------------
 -- 1: the kit loads with the Replay module and not before
 --------------------------------------------------------------------------------
-local beforeNil = (MD.RankMath == nil)
-MD:SetModule("SpellTuner_Replay", true)
-local kitAfter = MD.RankMath and MD.RankMath:SpellKit()
+local beforeNil = (ST.RankMath == nil)
+ST:SetModule("SpellTuner_Replay", true)
+local kitAfter = ST.RankMath and ST.RankMath:SpellKit()
 check("the kit loads with the Replay module and not before",
-    beforeNil and type(MD.RankMath) == "table" and type(MD.RankMath.SpellKit) == "function"
+    beforeNil and type(ST.RankMath) == "table" and type(ST.RankMath.SpellKit) == "function"
     and type(kitAfter) == "table" and type(kitAfter.caster) == "table",
     "beforeNil=" .. tostring(beforeNil) .. " kitAfter=" .. tostring(kitAfter))
 
 --------------------------------------------------------------------------------
 -- 2: each healing rank is valued from its own text
 --------------------------------------------------------------------------------
-local kit = MD.RankMath:SpellKit()
+local kit = ST.RankMath:SpellKit()
 local c1 = kit.caster[5185]
 local c2 = kit.caster[774]
 local c3 = kit.caster[90201]
@@ -224,7 +224,7 @@ check("each healing rank is valued from its own text",
 --------------------------------------------------------------------------------
 -- 3: Swiftmend eats the whole HoT, Forever's rule
 --------------------------------------------------------------------------------
-local SD = MD.SpellData
+local SD = ST.SpellData
 local rejuvMax = kit.caster[SD.maxRank.Rejuvenation]
 local sm = kit.caster[90202]
 check("Swiftmend eats the whole HoT, Forever's rule",
@@ -285,7 +285,7 @@ do
         kit = kit,
     }
     local runOk, r = pcall(function()
-        return MD.SimModel:Run(sc, MD.SimModel.ScriptPlan({
+        return ST.SimModel:Run(sc, ST.SimModel.ScriptPlan({
             { 1, htID, eHT.cost, 1 },
             { 3, rejID, eRej.cost, 1 },
         }))
@@ -303,10 +303,10 @@ end
 do
     S.inCombat = false
     S.crit[4] = 5.1
-    local kitPlain = MD.RankMath:SpellKit()
+    local kitPlain = ST.RankMath:SpellKit()
 
     S.inCombat = true
-    local kitSecret = MD.RankMath:SpellKit()
+    local kitSecret = ST.RankMath:SpellKit()
     S.inCombat = false
 
     check("the crit chance is a fraction from the Nature school, and never secret",
@@ -319,8 +319,8 @@ end
 -- owner (Engine/Kit.lua), and the Forever kit is built once per book
 -- generation.
 --------------------------------------------------------------------------------
-local Kit = MD.Kit
-local Book = MD.Book
+local Kit = ST.Kit
+local Book = ST.Book
 
 -- 8: the Forever builder ends with Kit.Check, and its kit validates -- a rank
 --    whose cast time the book cannot read included (it is dataMissing)
@@ -328,27 +328,27 @@ do
     local checks, realCheck = 0, Kit and Kit.Check
     if Kit then Kit.Check = function(...) checks = checks + 1; return realCheck(...) end end
     S.crit[4] = 6.2                     -- a crit the cache has not seen: a build
-    local built, k = pcall(function() return MD.RankMath:SpellKit() end)
+    local built, k = pcall(function() return ST.RankMath:SpellKit() end)
     if Kit then Kit.Check = realCheck end
     local valid, problems = false, nil
     if Kit and built then valid, problems = Kit.Validate(k) end
 
     -- 5185 (Healing Touch R1) with no cast the book can read: neither
     -- SpellInfo nor the tooltip data answers
-    local API = MD.API
+    local API = ST.API
     local rawInfo, rawTip = rawget(API, "SpellInfo"), rawget(API, "SpellTooltipData")
     local info, tip = API.SpellInfo, API.SpellTooltipData
     rawset(API, "SpellInfo", function(id, ...) if id == 5185 then return nil end return info(id, ...) end)
     rawset(API, "SpellTooltipData", function(id, ...) if id == 5185 then return nil end return tip(id, ...) end)
     if Book then Book:MarkDirty() end
-    local builtNoCast, kNoCast = pcall(function() return MD.RankMath:SpellKit() end)
+    local builtNoCast, kNoCast = pcall(function() return ST.RankMath:SpellKit() end)
     rawset(API, "SpellInfo", rawInfo)
     rawset(API, "SpellTooltipData", rawTip)
     if Book then Book:MarkDirty() end
     local noCast = builtNoCast and kNoCast.caster[5185]
     local noCastOk = noCast and noCast.dataMissing == true and noCast.cast == nil
         and Kit and Kit.Validate(kNoCast)
-    local back = MD.RankMath:SpellKit().caster[5185]
+    local back = ST.RankMath:SpellKit().caster[5185]
 
     check("the Forever builder ends with Kit.Check and its kit validates, an unreadable cast as dataMissing",
         Kit ~= nil and built and checks == 1 and valid and noCastOk == true
@@ -362,7 +362,7 @@ end
 -- 9: a kit missing castBase fails validation
 do
     local failed, id, first = false, nil, nil
-    if Kit then failed, id, first = CastBaseFails(MD.RankMath:SpellKit()) end
+    if Kit then failed, id, first = CastBaseFails(ST.RankMath:SpellKit()) end
     check("a kit missing castBase fails validation, naming the entry",
         failed, string.format("id=%s first=%s", tostring(id), tostring(first)))
 end
@@ -373,30 +373,30 @@ do
     local writes, realSnap = 0, Kit and Kit.Snapshot
     if Kit then Kit.Snapshot = function(...) writes = writes + 1; return realSnap(...) end end
     S.crit[4] = 6.4                     -- a change the cache has not seen: one build, one write
-    local k1 = MD.RankMath:SpellKit()
-    local gen1, saved1 = Book and Book.generation, MD.cdb.kit
+    local k1 = ST.RankMath:SpellKit()
+    local gen1, saved1 = Book and Book.generation, ST.cdb.kit
     if Book then Book:MarkDirty() end   -- the book read again, unchanged
-    local k2 = MD.RankMath:SpellKit()
+    local k2 = ST.RankMath:SpellKit()
     if Kit then Kit.Snapshot = realSnap end
     local gen2 = Book and Book.generation
     check("two calls with an unchanged book return the same table and write cdb.kit once",
         Kit ~= nil and gen1 ~= nil and rawequal(k1, k2) and gen1 == gen2
-        and writes == 1 and rawequal(MD.cdb.kit, saved1),
+        and writes == 1 and rawequal(ST.cdb.kit, saved1),
         string.format("same=%s gen=%s->%s writes=%d cdbSame=%s",
             tostring(rawequal(k1, k2)), tostring(gen1), tostring(gen2), writes,
-            tostring(rawequal(MD.cdb.kit, saved1))))
+            tostring(rawequal(ST.cdb.kit, saved1))))
 end
 
 -- 11: a rescan that changes one entry bumps the generation and rebuilds
 do
-    local k1 = MD.RankMath:SpellKit()
-    local gen1, saved1 = Book and Book.generation, MD.cdb.kit
+    local k1 = ST.RankMath:SpellKit()
+    local gen1, saved1 = Book and Book.generation, ST.cdb.kit
     regrowthText = "Heals a friendly target for 193 to 207 and another 98 over 21 sec."
     if Book then Book:MarkDirty() end
-    local k2 = MD.RankMath:SpellKit()
+    local k2 = ST.RankMath:SpellKit()
     local gen2 = Book and Book.generation
     local e2 = k2.caster[90201]
-    local saved2 = MD.cdb.kit
+    local saved2 = ST.cdb.kit
     check("a rescan that changes one entry bumps the generation and rebuilds",
         gen1 ~= nil and gen2 == gen1 + 1 and not rawequal(k1, k2)
         and e2 and e2.direct == 200 and k1.caster[90201].direct == 100
@@ -411,8 +411,8 @@ end
 -- T96 (docs/SPEC-next.md 2.1, S1 step 2): the kit is built by its family's
 -- KIT TYPE, carries its own cooldowns, and names the profile it was built by.
 --------------------------------------------------------------------------------
-local RM = MD.RankMath
-local DRUID = MD.Profiles.Get("DRUID")
+local RM = ST.RankMath
+local DRUID = ST.Profiles.Get("DRUID")
 
 -- 12: one filler per kit type, and the entries it writes
 do
@@ -434,7 +434,7 @@ do
     local hy = { min = 90, max = 110 }
     local yMissing = {}
     if KEF then KEF.hybrid(yMissing, hy, 0) end
-    local tq = MD.RankMath:SpellKit().caster[90203]
+    local tq = ST.RankMath:SpellKit().caster[90203]
     check("T96: KitEntryFor fills each kit type the druid profile names",
         KEF ~= nil and #missing == 0 and KEF.instant == nil
         and d.direct == 50 and d.directCrit == 0.1 and d.dataMissing == nil
@@ -450,13 +450,13 @@ end
 -- 13: Swiftmend's cooldown is the profile's 15 s, on the kit entry, and the
 --     engine's per-family cooldown reads it
 do
-    local k = MD.RankMath:SpellKit()
+    local k = ST.RankMath:SpellKit()
     local sm = k.caster[90202]
     local others = {}
     for id, e in pairs(k.caster) do
         if id ~= 90202 and e.cooldown ~= nil then others[#others + 1] = tostring(id) end
     end
-    local fam, secs = MD.SimModel.CooldownOf({ kit = k }, 90202)
+    local fam, secs = ST.SimModel.CooldownOf({ kit = k }, 90202)
     check("T96: Swiftmend's kit entry carries the profile's 15 s cooldown",
         sm and sm.cooldown == 15 and DRUID.families.Swiftmend.cooldown == 15 and #others == 0
         and fam == "Swiftmend" and secs == 15,
@@ -466,7 +466,7 @@ end
 
 -- 14: kit.profile stamped and round-tripped by Snapshot / Restore
 do
-    local k = MD.RankMath:SpellKit()
+    local k = ST.RankMath:SpellKit()
     local valid = Kit.Validate(k)
     local snap = Kit.Snapshot(k)
     local back = Kit.Restore(snap)
@@ -492,23 +492,23 @@ do
     local old = { crit = 0, caster = { [774] = { family = "Rejuvenation", rank = 1, type = "hot", gcd = 1.5,
         cost = 25, cast = 0, tick = 8, ticks = 4, tickPeriod = 3, duration = 12 } }, tree = {} }
     local back = RM.KitRestore(old)
-    local slots = MD.SimModel.HotSlots and MD.SimModel.HotSlots(back)
+    local slots = ST.SimModel.HotSlots and ST.SimModel.HotSlots(back)
     check("T96: a snapshot without a profile restores as the druid's",
-        back.profile == "DRUID" and MD.Profiles.ForKit(back) == DRUID
-        and slots and slots.index.Rejuvenation == MD.SimModel.HOT_INDEX.Rejuvenation
-        and slots.index.Regrowth == MD.SimModel.HOT_INDEX.Regrowth,
+        back.profile == "DRUID" and ST.Profiles.ForKit(back) == DRUID
+        and slots and slots.index.Rejuvenation == ST.SimModel.HOT_INDEX.Rejuvenation
+        and slots.index.Regrowth == ST.SimModel.HOT_INDEX.Regrowth,
         string.format("profile=%s forKit=%s", tostring(back.profile),
-            tostring(MD.Profiles.ForKit(back) and MD.Profiles.ForKit(back).class)))
-    MD.RankMath:SpellKit()   -- the live index back (KitRestore installed the snapshot's)
+            tostring(ST.Profiles.ForKit(back) and ST.Profiles.ForKit(back).class)))
+    ST.RankMath:SpellKit()   -- the live index back (KitRestore installed the snapshot's)
 end
 
--- 16: MD.KitLive, the Forever half of Can("coach"): the live kit prices a heal
+-- 16: ST.KitLive, the Forever half of Can("coach"): the live kit prices a heal
 do
     local live, n = false, nil
-    if type(MD.KitLive) == "function" then live, n = MD.KitLive() end
-    check("T96: MD.KitLive is provided and the live kit prices at least one heal",
-        type(MD.KitLive) == "function" and live == true and type(n) == "number" and n > 0,
-        string.format("provided=%s live=%s n=%s", tostring(type(MD.KitLive) == "function"),
+    if type(ST.KitLive) == "function" then live, n = ST.KitLive() end
+    check("T96: ST.KitLive is provided and the live kit prices at least one heal",
+        type(ST.KitLive) == "function" and live == true and type(n) == "number" and n > 0,
+        string.format("provided=%s live=%s n=%s", tostring(type(ST.KitLive) == "function"),
             tostring(live), tostring(n)))
 end
 
@@ -526,36 +526,36 @@ end
 local Books = dofile(here .. "/stub_books.lua")
 local function LogIn(class)
     S.units.player.class = class
-    MD:DetectProfile()
-    MD:Fire("CORE_LOGIN")
+    ST:DetectProfile()
+    ST:Fire("CORE_LOGIN")
 end
 
 -- The class's kit, its validation, each family's highest known rank's entry,
 -- the skipped names, KitLive, and the index a snapshot of it restores.
 local function ClassKit(class)
-    local undo = Books.Install(Books.Load(class:lower()), { alone = true, MD = MD })
+    local undo = Books.Install(Books.Load(class:lower()), { alone = true, ST = ST })
     LogIn(class)
     local out = { top = {}, skipped = {} }
-    local built, k = pcall(function() return MD.RankMath:SpellKit() end)
+    local built, k = pcall(function() return ST.RankMath:SpellKit() end)
     out.built, out.kit = built, built and k or nil
     if not built then out.err = tostring(k) end
     if built then
         out.valid, out.problems = Kit.Validate(k)
-        for fam, id in pairs(MD.SpellData.maxRank or {}) do out.top[fam] = k.caster[id] end
-        for _, name in ipairs(MD.SpellData.skipped or {}) do out.skipped[name] = true end
+        for fam, id in pairs(ST.SpellData.maxRank or {}) do out.top[fam] = k.caster[id] end
+        for _, name in ipairs(ST.SpellData.skipped or {}) do out.skipped[name] = true end
         out.labels = {}
-        for fam, def in pairs(MD.SpellData.families or {}) do out.labels[fam] = def.label end
-        if type(MD.KitLive) == "function" then out.live, out.liveN = MD.KitLive() end
+        for fam, def in pairs(ST.SpellData.families or {}) do out.labels[fam] = def.label end
+        if type(ST.KitLive) == "function" then out.live, out.liveN = ST.KitLive() end
         local snap = Kit.Snapshot(k)
         out.snapProfile = snap.profile
         local back = RM.KitRestore(snap)
         out.backProfile = back.profile
         out.restored = {}
-        for fam, def in pairs(MD.SpellData.families or {}) do out.restored[fam] = def.type end
+        for fam, def in pairs(ST.SpellData.families or {}) do out.restored[fam] = def.type end
     end
     undo()
     LogIn("DRUID")
-    MD.RankMath:SpellKit()
+    ST.RankMath:SpellKit()
     return out
 end
 local function Is(e, t) return type(e) == "table" and e.type == t and not e.dataMissing end

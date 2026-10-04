@@ -7,8 +7,8 @@
 local here = arg[0]:match("^(.*)/[^/]+$")
 HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua"); arg[0] = a0
-local RT, RR = MD.RunTimeline, MD.RunRecorder
+local ST = dofile(here .. "/harness.lua"); arg[0] = a0
+local RT, RR = ST.RunTimeline, ST.RunRecorder
 
 local ok, fails = 0, {}
 local function check(name, cond, detail)

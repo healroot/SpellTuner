@@ -1,4 +1,4 @@
-local _, MD = ...
+local _, ST = ...
 
 --------------------------------------------------------------------------------
 -- The solver (docs/SPEC-v0.13.md).
@@ -33,7 +33,7 @@ local _, MD = ...
 --------------------------------------------------------------------------------
 
 local SV = {}
-MD.SimSolver = SV
+ST.SimSolver = SV
 
 local SM
 local STEP = 0.5            -- the projection's resolution, seconds
@@ -131,7 +131,7 @@ end
 -- believe the tank is about to be hit -- but once the hits are landing, what is
 -- actually happening beats what usually happens.
 function SV.Rate(S, i, t, plan)
-    SM = SM or MD.SimModel
+    SM = SM or ST.SimModel
     local seen = SM.SeenDamage(S, i, t)
     local observed = math.max(SM.RecentDamage(S, i, t, 5) / 5, seen)
     -- v0.13.2: deformed foresight of THIS fight, when the plan was given any.
@@ -139,13 +139,13 @@ function SV.Rate(S, i, t, plan)
     -- fight, so a plan carrying it is NOT causal and says so (plan.foresees).
     local guess = 0
     if plan and plan.foresight then
-        guess = MD.Foresight.Rate(plan.foresight, i, t, plan.horizon)
+        guess = ST.Foresight.Rate(plan.foresight, i, t, plan.horizon)
         if guess > observed then return guess end
     end
     local prior = plan and plan.prior
     if not prior then return observed end
     -- the prior speaks in fractions of max health, so it lands on any character
-    guess = MD.Intuition:Rate(prior, plan.zone, S.role and S.role[i], t)
+    guess = ST.Intuition:Rate(prior, plan.zone, S.role and S.role[i], t)
              * (S.maxHP[i] or 0)
     if guess <= 0 then return observed end
     -- Confidence in the guess decays as the fight gives us real evidence: at the
@@ -256,7 +256,7 @@ function SV.Forfeit(S, t, mana, e, delay)
     if lost <= 0 or not e then return 0 end
     local pool = S.manaMax or 0
     if pool <= 0 then return 0 end
-    SM = SM or MD.SimModel
+    SM = SM or ST.SimModel
     local fsr = SM.FSR or 5
     local instant = e.type == "hot" or e.type == "lifebloom" or e.type == "instant"
     local land = t + (delay or 0) + (instant and 0 or (e.cast or e.gcd or 1.5))
@@ -282,7 +282,7 @@ end
 -- Order only decides ties; every one of them is scored every time.
 -- T96 (docs/SPEC-next.md 2.1): the DRUID's FALLBACK. The solver reads the
 -- families of the kit it decides with -- SM.HotSlots(kit).families, the kit's
--- own profile's planner.families (MD.Profiles.ForKit), never the logged-in
+-- own profile's planner.families (ST.Profiles.ForKit), never the logged-in
 -- player's -- and this list only when that profile names none. The druid's
 -- profile names exactly this list (tools/profilecheck.lua).
 SV.FAMILIES = { "Swiftmend", "Regrowth", "HealingTouch", "Lifebloom", "Rejuvenation" }
@@ -352,7 +352,7 @@ local function SavedBeyond(self, S, e, i, t, dep, dn)
 end
 
 function SV.NewPlan(binds, params, kit)
-    SM = SM or MD.SimModel
+    SM = SM or ST.SimModel
     return setmetatable({
         kind = "solver",
         binds = binds, kit = kit,
@@ -519,7 +519,7 @@ end
 function Solver:AtRisk(S, t, i)
     local maxHP = S.maxHP[i] or 0
     if maxHP <= 0 or S.dead[i] then return nil end
-    local dl = (SM or MD.SimModel).DangerLine(S, i)
+    local dl = (SM or ST.SimModel).DangerLine(S, i)
     local line = (dl or 0) * maxHP
     if line <= 0 then return nil end
     -- Already there. A target sitting at a tenth of their health with the burst
@@ -550,7 +550,7 @@ function Solver:AtRisk(S, t, i)
 end
 
 function Solver:Decide(S, t, mana, form)
-    SM = SM or MD.SimModel
+    SM = SM or ST.SimModel
 
     -- SAFETY FIRST, as it always has been. If somebody is projected through the
     -- danger line inside the horizon, efficiency is not the question any more:
@@ -612,7 +612,7 @@ function Solver:Decide(S, t, mana, form)
                 end
                 if pick then
                     self.reason = { rule = 8, target = i, deficit = (S.maxHP[i] or 0) - S.hp[i],
-                                    rate = SV.Rate(S, i, t, self), below = (SM or MD.SimModel).DangerLine(S, i),
+                                    rate = SV.Rate(S, i, t, self), below = (SM or ST.SimModel).DangerLine(S, i),
                                     cost = pickCost, freeIn = when }
                     return pick, i, 8
                 end

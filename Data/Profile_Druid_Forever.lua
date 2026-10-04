@@ -7,20 +7,20 @@
 -- cache is present). Forever has no Lifebloom and no Tree of Life, so neither
 -- is a family here.
 --
--- What derives from it at file load, by name (MD.Profiles.Require("DRUID")):
+-- What derives from it at file load, by name (ST.Profiles.Require("DRUID")):
 -- the Replay module's Kit_Forever.lua (FAMILY_KEY, FAMILY_TYPE, the excluded
 -- families, the dashboard order, the crit school) and the Recorder module's
--- Stream_Forever.lua (MD.StreamV3.FAMILY_KEY), and Engine/SimPlanner.lua's
+-- Stream_Forever.lua (ST.StreamV3.FAMILY_KEY), and Engine/SimPlanner.lua's
 -- SP.BINDABLE and SP.HOT_RULE. Each derived table equals the constant it
 -- replaced (tools/profilecheck.lua).
-local _, MD = ...
+local _, ST = ...
 
 -- What this line grants EVERY class, druid or not: Spells/Book.lua reads any
 -- spellbook, so the tooltip block and the rank table already work for a class
 -- with no profile of its own (docs/SPEC-next.md 2.1, the generic profile).
-MD.Profiles.LineCaps({ tooltip = true, rankTable = true })
+ST.Profiles.LineCaps({ tooltip = true, rankTable = true })
 
-MD.Profiles.Register("DRUID", {
+ST.Profiles.Register("DRUID", {
     label = "Druid",
     critSchool = 4,                -- Nature
     -- What a druid gets on this line today (the Replay and Practice modules
@@ -38,7 +38,7 @@ MD.Profiles.Register("DRUID", {
         -- In the kit, not in the engine's plans (as on TBC).
         Tranquility  = { names = { "Tranquility" },   kit = "channel", exclude = true },
     },
-    -- The engine's own dashboard order (Kit_Forever's MD.SpellData.familyOrder).
+    -- The engine's own dashboard order (Kit_Forever's ST.SpellData.familyOrder).
     order = { "HealingTouch", "Rejuvenation", "Regrowth" },
     -- SM.HOT_INDEX's slots for the HoTs this line has, keeping their numbers.
     hotSlots = { "Rejuvenation", "Regrowth" },

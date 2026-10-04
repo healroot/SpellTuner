@@ -1,12 +1,12 @@
 -- TBC's Settings rows (T119, docs/SPEC-one-ui.md 7, mockup M6): the table
 -- UI/Settings.lua builds Settings -> General, Review and About from on this
 -- line. It was UI/Options_General.lua -- one General page of four 205-px
--- columns in MD.optionsFrame -- and every control keeps its key, its words, its
+-- columns in ST.optionsFrame -- and every control keeps its key, its words, its
 -- range and its tooltip; only its place changed:
 --
 --   OOM Widget  Lock widget ("Lock in place"), Tooltip on the clock, Reset
 --               position, Customise...  -> General / MANA CLOCK, with Show now
---               (MD.Widget:Preview, T93's mover seam) beside them
+--               (ST.Widget:Preview, T93's mover seam) beside them
 --               Show rest time, Show mana cooldown -> gone from here: Settings
 --               -> Clock -> Text holds the same keys since T116
 --   Alerts      Mute alerts, Drink reminder -> General / ALERTS
@@ -25,19 +25,19 @@
 --   Windows, Integrations -> General / APPEARANCE, WINDOWS, INTEGRATIONS (the
 --               shared sections)
 --
--- No "Show the mana clock" row: TBC's clock appears by MD.Visibility.Want, and
+-- No "Show the mana clock" row: TBC's clock appears by ST.Visibility.Want, and
 -- a switch would be a new setting in UI/Widget.lua (docs/DECISIONS.md "One
 -- Settings"). No recording note: TBC's recorder is always loaded.
-local _, MD = ...
+local _, ST = ...
 
 local function Fire(name, ...)
-    if MD.Fire then MD:Fire(name, ...) end
+    if ST.Fire then ST:Fire(name, ...) end
 end
 local function UpdateVisibility()
-    if MD.UpdateVisibility then MD:UpdateVisibility() end
+    if ST.UpdateVisibility then ST:UpdateVisibility() end
 end
 
-MD.SettingsLine = {
+ST.SettingsLine = {
     -- the words today's About printed beside the version
     client = function() return "TBC Anniversary" end,
 
@@ -57,22 +57,22 @@ MD.SettingsLine = {
         { kind = "buttons",
           { text = "Reset position", width = 112, mark = "clockReset",
             onClick = function()
-                local d = MD.DEFAULTS.pos
-                MD.db.pos = { d[1], d[2], d[3], d[4] }
-                if MD.ApplyWidgetPosition then MD:ApplyWidgetPosition() end
-                MD:Print("widget position reset.")
+                local d = ST.DEFAULTS.pos
+                ST.db.pos = { d[1], d[2], d[3], d[4] }
+                if ST.ApplyWidgetPosition then ST:ApplyWidgetPosition() end
+                ST:Print("widget position reset.")
             end },
           { text = "Show now", width = 86, mark = "clockShowNow",
             tips = { "Show now", "The clock up for 60 s at any mana level, to see or move it." },
             onClick = function()
-                if MD.Widget and MD.Widget.Preview then MD.Widget:Preview() end
+                if ST.Widget and ST.Widget.Preview then ST.Widget:Preview() end
             end },
           -- T102 (docs/SPEC-next.md 7.4, mockup M8g): the layout, colours and
           -- bar live in Settings -> Clock
           { text = "Customise...", width = 92, mark = "clockCustomise",
             tips = { "Customise the clock", "Settings -> Clock: the layout, the colours, the bar, with a preview." },
             onClick = function()
-                if MD.SelectView then MD:SelectView("settings", "clock") end
+                if ST.SelectView then ST:SelectView("settings", "clock") end
             end } },
     },
 
@@ -93,22 +93,22 @@ MD.SettingsLine = {
           { text = "Debug Console", width = 104,
             tips = { "Debug Console", "Live log of regen, mana ticks, casts and the clock state.",
                      "Enable logging there; Copy exports it as text." },
-            onClick = function() if MD.ToggleDebugConsole then MD:ToggleDebugConsole() end end },
+            onClick = function() if ST.ToggleDebugConsole then ST:ToggleDebugConsole() end end },
           { text = "Verify spell data", width = 120,
             tips = { "Verify spell data", "Same as /md verify: static TBC spell table vs the live client,",
                      "plus an input snapshot. Output goes to chat and the debug log." },
-            onClick = function() if MD.RunVerify then MD:RunVerify() end end },
+            onClick = function() if ST.RunVerify then ST:RunVerify() end end },
           { text = "Copy profile", width = 98,
             tips = { "Copy profile", "Same as /md profile: every model input, cost, clock state and",
                      "setting in one copyable box. Paste this into a bug report." },
-            onClick = function() if MD.RunProfile then MD:RunProfile() end end } },
+            onClick = function() if ST.RunProfile then ST:RunProfile() end end } },
     },
 
     -- Simulation (v0.7). Only the settings a player would actually reach for:
     -- the gate thresholds and the search's internals stay where
-    -- Engine/SimModel.lua declares them (MD:RegisterDefaults, T64) with their
+    -- Engine/SimModel.lua declares them (ST:RegisterDefaults, T64) with their
     -- provenance comments, because a slider invites tuning and these numbers
-    -- are supposed to be argued with, not nudged. The sliders read MD:Setting,
+    -- are supposed to be argued with, not nudged. The sliders read ST:Setting,
     -- so a fresh database shows the registered default.
     recording = {
         { kind = "check", text = "Record fights", key = "recordFights", default = true,
@@ -165,7 +165,7 @@ MD.SettingsLine = {
                    "above it, 'OOM >2:00' (no sooner than). 70% comes from one easy dungeon:",
                    "the hard pull sat at 34-66%, the quiet ones at a median 73%. Retune on raid logs." } },
         { kind = "check", text = "Count Tree of Life aura", key = "treeAura", default = true,
-          after = function() Fire("FORM_CHANGED", MD.InTreeForm and MD:InTreeForm()) end,
+          after = function() Fire("FORM_CHANGED", ST.InTreeForm and ST:InTreeForm()) end,
           tips = { "Tree of Life aura in heal values", "Party members under your Tree of Life aura receive",
                    "25% of your Spirit as extra healing. It is not part of the",
                    "+healing stat, so the dashboard adds it while you are in form." } },
@@ -179,12 +179,12 @@ MD.SettingsLine = {
             tips = { "Reset overheal data", "The dashboard's 'Effective' numbers come from your own combat log,",
                      "per character. Clear it after a gear jump or a change of content -",
                      "otherwise it forgets on its own over about 150 healing events." },
-            onClick = function() if MD.Overheal then MD.Overheal:Reset() end end },
+            onClick = function() if ST.Overheal then ST.Overheal:Reset() end end },
           { text = "Regen test (30s)", width = 120,
             tips = { "Regen test", "Stand idle at partial mana, no drink, no casting, for 30s.",
                      "Compares observed mana gain with GetManaRegen and tells whether",
                      "Dreamstate is included in the API value." },
-            onClick = function() if MD.RunRegenTest then MD:RunRegenTest(30) end end } },
+            onClick = function() if ST.RunRegenTest then ST:RunRegenTest(30) end end } },
     },
 
     -- the old About tab's last pane, its words unchanged but where the Debug

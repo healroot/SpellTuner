@@ -68,14 +68,14 @@ end
 
 -- Loads files after login and hands them the MD_READY they missed (their own
 -- handlers, captured as they register: tools/minimapcheck.lua's way).
-local function LoadByHand(MD, S, files)
-    local ready, realReg = {}, MD.RegisterCallback
-    MD.RegisterCallback = function(self, name, fn)
+local function LoadByHand(ST, S, files)
+    local ready, realReg = {}, ST.RegisterCallback
+    ST.RegisterCallback = function(self, name, fn)
         if name == "MD_READY" then ready[#ready + 1] = fn end
         return realReg(self, name, fn)
     end
-    local okLoad, err = pcall(S.Load, files, "SpellTuner", MD)
-    MD.RegisterCallback = realReg
+    local okLoad, err = pcall(S.Load, files, "SpellTuner", ST)
+    ST.RegisterCallback = realReg
     if not okLoad then return false, err end
     for _, fn in ipairs(ready) do
         local okRun, e = pcall(fn)
@@ -93,7 +93,7 @@ local function Session(setup)
     _G.SpellTunerDB, _G.ManaDemonDB = nil, nil
     if setup then setup() end
     local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-    local MD = dofile(here .. "/harness.lua")
+    local ST = dofile(here .. "/harness.lua")
     arg[0] = a0
     local S = _G.STUB
     local byToc = Loaded(S, LDB_FILE) and Loaded(S, EUI_FILE)
@@ -105,24 +105,24 @@ local function Session(setup)
             if f then f:close(); if not Loaded(S, rel) then files[#files + 1] = rel end end
         end
         if #files > 0 then
-            local okL, e = LoadByHand(MD, S, files)
+            local okL, e = LoadByHand(ST, S, files)
             if not okL then loadErr = e; print("load: " .. tostring(e)) end
         end
     end
-    return MD, S, byToc, loadErr
+    return ST, S, byToc, loadErr
 end
 
 local function Ticks(S, n) for _ = 1, n do S.Tick(0.5) end end
 
-local function HasDumpLine(MD, key)
-    for _, d in ipairs(MD.DumpLines and MD:DumpLines() or {}) do
+local function HasDumpLine(ST, key)
+    for _, d in ipairs(ST.DumpLines and ST:DumpLines() or {}) do
         if d.key == key then return true, d.fn end
     end
     return false
 end
 
-local function DumpLine(MD)
-    local _, fn = HasDumpLine(MD, "integrations")
+local function DumpLine(ST)
+    local _, fn = HasDumpLine(ST, "integrations")
     if not fn then return nil end
     local okD, line = pcall(fn)
     return okD and line or ("raised: " .. tostring(line))
@@ -131,8 +131,8 @@ end
 -- The clock's words as drawn (UI/ClockView.lua's three segments), colour
 -- codes removed: tools/clockcheck.lua's ClockText.
 local function StripCodes(s) return (s:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) end
-local function ClockText(MD)
-    local v = MD.Clock and MD.Clock.view
+local function ClockText(ST)
+    local v = ST.Clock and ST.Clock.view
     if not v then return nil end
     if v.msg and v.msg:IsShown() then return nil end -- the preview's message, not a face
     local function Seg(fs)
@@ -188,7 +188,7 @@ local function Seen(s) if type(s) == "string" then seen[#seen + 1] = s end end
 --------------------------------------------------------------------------------
 T.section("1. absent host")
 Guarded("1. absent host: quiet, nothing published, no global, no dump line; both files in the TOCs", function()
-    local MD, S, byToc, loadErr = Session(nil)
+    local ST, S, byToc, loadErr = Session(nil)
     Ticks(S, 20)
     local root = S.root or "."
     local tocsOk, tocWhy = true, {}
@@ -203,10 +203,10 @@ Guarded("1. absent host: quiet, nothing published, no global, no dump line; both
         if not okThis then tocsOk = false; tocWhy[#tocWhy + 1] = toc end
     end
     local quiet = rawget(_G, "LibStub") == nil and rawget(_G, "EllesmereUI") == nil
-        and MD.Surfaces and MD.Surfaces.ldb == nil and MD.Surfaces.eui == nil and MD.EUISkin == nil
-        and MD.SurfaceLDB and MD.SurfaceLDB.Object("clock") == nil
-    local noLine = not HasDumpLine(MD, "integrations")
-    local dump = MD.BuildDump and MD:BuildDump() or ""
+        and ST.Surfaces and ST.Surfaces.ldb == nil and ST.Surfaces.eui == nil and ST.EUISkin == nil
+        and ST.SurfaceLDB and ST.SurfaceLDB.Object("clock") == nil
+    local noLine = not HasDumpLine(ST, "integrations")
+    local dump = ST.BuildDump and ST:BuildDump() or ""
     check("1. absent host: quiet, nothing published, no global, no dump line; both files in the TOCs",
         byToc and tocsOk and quiet and noLine and not dump:find("integrations:", 1, true) and loadErr == nil,
         string.format("byToc=%s tocs=%s (%s) quiet=%s noLine=%s load=%s", tostring(byToc), tostring(tocsOk),
@@ -219,16 +219,16 @@ end)
 T.section("2. a half install; 11b. a late host")
 Guarded("2. half install", function()
     local E
-    local MD, S = Session(function()
+    local ST, S = Session(function()
         H.InstallLibStub()                      -- LibStub, no LibDataBroker
         E = H.InstallEllesmere({ bare = true }) -- EllesmereUI with none of its entry points
     end)
     Ticks(S, 20)
-    local LDBS, EUI = MD.SurfaceLDB, MD.EUI
+    local LDBS, EUI = ST.SurfaceLDB, ST.EUI
     local nothing = LDBS and LDBS.Object("clock") == nil and LDBS.Object("regen") == nil
-        and MD.Surfaces.ldb == nil and MD.EUISkin == nil
+        and ST.Surfaces.ldb == nil and ST.EUISkin == nil
     local mover = EUI and EUI.mover == nil and EUI.moverWhy == "not offered by this EllesmereUI"
-    local line = DumpLine(MD)
+    local line = DumpLine(ST)
     Seen(line)
     check("2. half install (LibStub without LDB, a bare EllesmereUI): quiet, nothing published, no mover",
         nothing and mover and EUI.skinRegistered == false
@@ -251,15 +251,15 @@ end)
 -- over at EllesmereUI's PLAYER_LOGIN after ours.
 --------------------------------------------------------------------------------
 local E, lib
-local MD, S = Session(function()
+local ST, S = Session(function()
     lib = H.InstallLDB()
     E = H.InstallEllesmere()
 end)
-local LDBS, EUI = MD.SurfaceLDB or {}, MD.EUI or {}
-H.AddOnMeta(MD, { EllesmereUI = { Version = "9.3.4" } })
+local LDBS, EUI = ST.SurfaceLDB or {}, ST.EUI or {}
+H.AddOnMeta(ST, { EllesmereUI = { Version = "9.3.4" } })
 local skinReady, looksChanged = {}, 0
-MD:RegisterCallback("EUI_SKIN_READY", function(s) skinReady[#skinReady + 1] = s end)
-MD:RegisterCallback("EUI_LOOKS_CHANGED", function() looksChanged = looksChanged + 1 end)
+ST:RegisterCallback("EUI_SKIN_READY", function(s) skinReady[#skinReady + 1] = s end)
+ST:RegisterCallback("EUI_LOOKS_CHANGED", function() looksChanged = looksChanged + 1 end)
 local S2 = H.SkinFacade()
 E._DispatchSkins(S2) -- BlizzardSkin's PLAYER_LOGIN, after SpellTuner's MD_READY
 Ticks(S, 4)
@@ -277,14 +277,14 @@ Guarded("3. two objects", function()
     for _ in lib:DataObjectIterator() do n = n + 1 end
     check("3. two objects, SpellTuner and SpellTuner Regen: data sources, the button's icon",
         n == 2 and Shape(c, NAME) and Shape(r, REGEN) and c == LDBS.Object("clock") and r == LDBS.Object("regen")
-        and MD.Surfaces.ldb and MD.Surfaces.ldb.objects[1] == NAME and MD.Surfaces.ldb.objects[2] == REGEN,
+        and ST.Surfaces.ldb and ST.Surfaces.ldb.objects[1] == NAME and ST.Surfaces.ldb.objects[2] == REGEN,
         "objects " .. n)
 end)
 
 -- The scripted fight check 4 walks, recording every tick.
 local fightTexts, fightMismatch, fightTicks, distinct = {}, {}, 0, {}
 local function Compare(tag)
-    local clock = ClockText(MD)
+    local clock = ClockText(ST)
     local block = H.LdbBlockText(Obj(NAME))
     fightTicks = fightTicks + 1
     Seen(block)
@@ -298,7 +298,7 @@ local function Compare(tag)
 end
 
 Guarded("4. one string", function()
-    local model = MD.Pool.model
+    local model = ST.Pool.model
     model.mana = model.max
     for i = 1, 6 do S.Tick(0.5); Compare("rest" .. i) end
     -- out of combat, a little spent: FULL in t
@@ -335,7 +335,7 @@ Guarded("4. one string", function()
 end)
 
 Guarded("6. equal writes", function()
-    local model = MD.Pool.model
+    local model = ST.Pool.model
     model.mana = model.max
     Ticks(S, 30) -- settle at full, out of combat
     local before = AnyChanges(lib, NAME) + AnyChanges(lib, REGEN)
@@ -352,7 +352,7 @@ Guarded("6. equal writes", function()
 end)
 
 Guarded("7. tint", function()
-    local CF = MD.ClockFace
+    local CF = ST.ClockFace
     local by = {}
     for _, s in ipairs(CF.SAMPLES) do by[s.key] = s.face end
     local warn = {}
@@ -371,23 +371,23 @@ Guarded("7. tint", function()
     end
     -- and the live object carries the tone of the face it shows, as RGB
     local o = Obj(NAME)
-    local r, g, b = CF.ToneRGB(LDBS.ClockTone(MD.Feeds.Face("clock")))
+    local r, g, b = CF.ToneRGB(LDBS.ClockTone(ST.Feeds.Face("clock")))
     local _, ir, ig, ib = H.LdbIcon(o)
     check("7. the tint per tone: FULL mana, bound / warm-up / no number muted, OOM by its band",
         #bad == 0 and ir == r and ig == g and ib == b, table.concat(bad, ", "))
 end)
 
 Guarded("8. regen", function()
-    local model = MD.Pool.model
+    local model = ST.Pool.model
     local function N(rate) return math.floor(rate * 5 + 0.5) end
-    local base, casting = MD.Pool:LastRegen()
+    local base, casting = ST.Pool:LastRegen()
     Ticks(S, 12)
     local out = H.LdbBlockText(Obj(REGEN))
     model:Spend(100, GetTime())
     S.Tick(0.5)
     local fsr = H.LdbBlockText(Obj(REGEN))
     local _, rr, rg, rb = H.LdbIcon(Obj(REGEN))
-    local ar, ag, ab = MD.ClockFace.ToneRGB("warn")
+    local ar, ag, ab = ST.ClockFace.ToneRGB("warn")
     S.inCombat = true
     S.Fire("PLAYER_REGEN_DISABLED")
     S.Tick(0.5)
@@ -397,11 +397,11 @@ Guarded("8. regen", function()
     S.Fire("PLAYER_REGEN_ENABLED")
     S.inCombat = false
     Ticks(S, 2)
-    local uses = MD.player.usesMana
-    MD.player.usesMana = false
+    local uses = ST.player.usesMana
+    ST.player.usesMana = false
     S.Tick(0.5)
     local none = H.LdbBlockText(Obj(REGEN))
-    MD.player.usesMana = uses
+    ST.player.usesMana = uses
     Ticks(S, 2)
     for _, s in ipairs({ out, fsr, inFsr, inCombat, none }) do Seen(s) end
     check("8. regen: 'Regen N' out of combat, (5SR) in the rule, '~' in combat, '--' without a reading",
@@ -414,18 +414,18 @@ end)
 
 Guarded("9. clicks", function()
     local toggles, settings = 0, 0
-    local rt, rs = MD.ToggleDashboard, MD.OpenDashboardSettings
-    MD.ToggleDashboard = function() toggles = toggles + 1 end
-    MD.OpenDashboardSettings = function() settings = settings + 1 end
+    local rt, rs = ST.ToggleDashboard, ST.OpenDashboardSettings
+    ST.ToggleDashboard = function() toggles = toggles + 1 end
+    ST.OpenDashboardSettings = function() settings = settings + 1 end
     local block = CreateFrame("Button", nil, UIParent)
     Obj(NAME).OnClick(block, "LeftButton")
     Obj(REGEN).OnClick(block, "RightButton")
-    local inC = MD.inCombat
-    MD.inCombat = true
+    local inC = ST.inCombat
+    ST.inCombat = true
     Obj(NAME).OnClick(block, "LeftButton")
     Obj(REGEN).OnClick(block, "RightButton")
-    MD.inCombat = inC
-    MD.ToggleDashboard, MD.OpenDashboardSettings = rt, rs
+    ST.inCombat = inC
+    ST.ToggleDashboard, ST.OpenDashboardSettings = rt, rs
     check("9. left-click opens the window, right-click Settings; both refused in combat",
         toggles == 1 and settings == 1, toggles .. "," .. settings)
 end)
@@ -436,7 +436,7 @@ Guarded("10. tooltip", function()
         return tt and tt.log or {}
     end
     local log = Lines(NAME)
-    local summary = MD.Clock:SummaryLines(GetTime())
+    local summary = ST.Clock:SummaryLines(GetTime())
     local has = {}
     for _, l in ipairs(log) do
         has[l] = true
@@ -483,32 +483,32 @@ Guarded("11. a late reader", function()
         again == true and before == 2 and Created(lib, NAME) + Created(lib, REGEN) == 2
         and found == LDBS.Object("clock") and heard >= 1,
         string.format("created %d -> %d heard %d", before, Created(lib, NAME) + Created(lib, REGEN), heard))
-    MD.Pool.model.mana = MD.Pool.model.max
+    ST.Pool.model.mana = ST.Pool.model.max
     Ticks(S, 30)
 end)
 
 --------------------------------------------------------------------------------
 -- 19-20. T114 (docs/tasks/T114-clock-face-slots.md): the SpellTuner broker
--- follows Line's slots (MD.ClockLook().texts.line), and db.feeds.compact drops
+-- follows Line's slots (ST.ClockLook().texts.line), and db.feeds.compact drops
 -- both Right slots whatever they hold. A fixed face (a fight, 92 mp5, 62 %)
 -- stands in for the pool's, so the words are known.
 --------------------------------------------------------------------------------
 T.section("19-20. T114: the broker follows Line's slots")
 do
-    local CF = MD.ClockFace
+    local CF = ST.ClockFace
     local face = {}
     for _, s in ipairs(CF.SAMPLES) do
         if s.key == "oom" then for k, v in pairs(s.face) do face[k] = v end end
     end
     face.modelled, face.mono, face.timeFmt, face.arrow = true, true, "mss", nil
     face.pct, face.pctModelled, face.mp5, face.mp5Modelled, face.combat = 0.62, true, 92, true, true
-    local savedCurrent, savedLook = CF.Current, rawget(MD, "ClockLook")
+    local savedCurrent, savedLook = CF.Current, rawget(ST, "ClockLook")
     local function WithText(line, fn)
         rawset(CF, "Current", function() return face end)
-        rawset(MD, "ClockLook", function() return { show = {}, texts = { line = line } } end)
+        rawset(ST, "ClockLook", function() return { show = {}, texts = { line = line } } end)
         local okRun, a, b = pcall(fn)
         rawset(CF, "Current", savedCurrent)
-        rawset(MD, "ClockLook", savedLook)
+        rawset(ST, "ClockLook", savedLook)
         if not okRun then error(a, 0) end
         return a, b
     end
@@ -524,11 +524,11 @@ do
     Guarded("20. compact drops both Right slots", function()
         local wide, narrow = WithText({ right = "mp5", right2 = "pct" }, function()
             local w = LDBS.ClockText(false)
-            local was = MD.db.feeds.compact
-            MD.db.feeds.compact = true
+            local was = ST.db.feeds.compact
+            ST.db.feeds.compact = true
             LDBS.Update()
             local n = H.LdbBlockText(Obj(NAME))
-            MD.db.feeds.compact = was
+            ST.db.feeds.compact = was
             return w, n
         end)
         Seen(wide); Seen(narrow)
@@ -545,14 +545,14 @@ T.section("12-18. EllesmereUI")
 local elem = E._unlockRegisteredElements and E._unlockRegisteredElements["SpellTuner_Clock"]
 
 Guarded("12. the mover", function()
-    local frame = MD.Clock.frame
+    local frame = ST.Clock.frame
     S.Geometry(true)
     local reg = elem ~= nil and elem.folder == "SpellTuner" and elem.label == "SpellTuner clock"
         and elem.group == "SpellTuner" and elem.getFrame("SpellTuner_Clock") == frame
     local w, h = elem.getSize("SpellTuner_Clock")
     -- save (EllesmereUI hands CENTER/CENTER on UIParent), load, apply
     elem.savePosition("SpellTuner_Clock", "CENTER", "CENTER", 10, -20)
-    local p = MD.db.clock.point
+    local p = ST.db.clock.point
     local saved = type(p) == "table" and p[1] == "CENTER" and p[2] == nil and p[3] == "CENTER" and p[4] == 10 and p[5] == -20
     local fp, frel, frp, fx, fy = frame:GetPoint(1)
     local applied = frame:GetNumPoints() == 1 and fp == "CENTER" and frel == UIParent and frp == "CENTER" and fx == 10 and fy == -20
@@ -561,33 +561,33 @@ Guarded("12. the mover", function()
     -- clear: the clock's reset, its default place
     elem.clearPosition("SpellTuner_Clock")
     local cp, crel, crp, cx, cy = frame:GetPoint(1)
-    local cleared = MD.db.clock.point == nil and cp == "TOP" and crel == UIParent and crp == "TOP" and cx == 0 and cy == -120
+    local cleared = ST.db.clock.point == nil and cp == "TOP" and crel == UIParent and crp == "TOP" and cx == 0 and cy == -120
         and elem.loadPosition("SpellTuner_Clock") == nil
     -- apply what is stored
-    MD.db.clock.point = { "CENTER", nil, "CENTER", -30, 40 }
+    ST.db.clock.point = { "CENTER", nil, "CENTER", -30, 40 }
     elem.applyPosition("SpellTuner_Clock")
     local _, _, _, ax, ay = frame:GetPoint(1)
     local applyOk = ax == -30 and ay == 40
     -- in a fight the point is kept and applied after it
-    MD.inCombat = true
+    ST.inCombat = true
     S.inCombat = true
     elem.savePosition("SpellTuner_Clock", "CENTER", "CENTER", 5, 5)
     local _, _, _, wx, wy = frame:GetPoint(1)
-    local waited = wx == -30 and wy == 40 and MD.db.clock.point[4] == 5
+    local waited = wx == -30 and wy == 40 and ST.db.clock.point[4] == 5
     S.inCombat = false
     S.Fire("PLAYER_REGEN_ENABLED")
     local _, _, _, ex, ey = frame:GetPoint(1)
     local afterFight = ex == 5 and ey == 5
     -- hidden with the clock
-    MD.db.clock.shown = false
+    ST.db.clock.shown = false
     local hiddenOff = elem.isHidden("SpellTuner_Clock") == true
-    MD.db.clock.shown = true
+    ST.db.clock.shown = true
     local hiddenOn = elem.isHidden("SpellTuner_Clock") == false
     -- the listener: /unlock opened previews the clock, closed ends it
     E:_NotifyUnlockModeListeners(true)
-    local previewing = MD.Clock:Previewing()
+    local previewing = ST.Clock:Previewing()
     E:_NotifyUnlockModeListeners(false, "save")
-    local ended = not MD.Clock:Previewing()
+    local ended = not ST.Clock:Previewing()
     S.Geometry(false)
     elem.clearPosition("SpellTuner_Clock")
     check("12. the mover: saves, loads, applies, clears, waits out a fight, hides with the clock; /unlock previews",
@@ -622,16 +622,16 @@ Guarded("15. whitelist", function()
 end)
 
 Guarded("16. version", function()
-    local at934 = DumpLine(MD)
-    local pane934 = MD.Integrations.Lines()
-    H.AddOnMeta(MD, { EllesmereUI = { Version = "9.4.0" } })
-    local at940 = DumpLine(MD)
-    local pane940 = MD.Integrations.Lines()
+    local at934 = DumpLine(ST)
+    local pane934 = ST.Integrations.Lines()
+    H.AddOnMeta(ST, { EllesmereUI = { Version = "9.4.0" } })
+    local at940 = DumpLine(ST)
+    local pane940 = ST.Integrations.Lines()
     Seen(at934); Seen(at940)
     for _, l in ipairs(pane934) do Seen(l) end
     for _, l in ipairs(pane940) do Seen(l) end
     local still = LDBS.Object("clock") ~= nil and EUI.mover == "SpellTuner_Clock"
-    H.AddOnMeta(MD, { EllesmereUI = { Version = "9.3.4" } })
+    H.AddOnMeta(ST, { EllesmereUI = { Version = "9.3.4" } })
     check("16. an EllesmereUI other than 9.3.4 runs; the lines say (tested 9.3.4)",
         at934 == "integrations: EllesmereUI 9.3.4 (tested 9.3.4), skin apiVersion 2, brokers SpellTuner + "
             .. "SpellTuner Regen, mover SpellTuner_Clock"
@@ -646,7 +646,7 @@ end)
 
 Guarded("18. EUI_SKIN_READY", function()
     E._DispatchSkins(S2) -- a second drain changes nothing
-    local readyOnce = #skinReady == 1 and skinReady[1] == S2 and MD.EUISkin == S2
+    local readyOnce = #skinReady == 1 and skinReady[1] == S2 and ST.EUISkin == S2
     H.LooksChanged(S2)
     local getters = (S2.reads.GetAccentColor or 0) + (S2.reads.GetPanelColor or 0) + (S2.reads.GetFont or 0)
     check("18. EUI_SKIN_READY fires once (EllesmereUI's login after ours); OnLooksChanged -> EUI_LOOKS_CHANGED",

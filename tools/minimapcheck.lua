@@ -7,7 +7,7 @@
 -- edit, and equal after it (the button must not change on TBC until wave C):
 --   the button's name, parent and size; its point at the default angle and
 --   after a drag (due east, due north, at a minimap scale of 2); the clicks
---   (left: MD:ToggleDashboard, right: MD:OpenDashboardSettings); the hide
+--   (left: ST:ToggleDashboard, right: ST:OpenDashboardSettings); the hide
 --   setting; the tooltip's anchor and every line, colours included, as a
 --   golden (GOLDEN_TBC below, captured on the parent with --print); the
 --   default on a fresh db.
@@ -30,13 +30,13 @@
 --   6. the themed tooltip is M6's -- the provider's title and clock lines with
 --      "~", a spacer, the three hint pairs, the muted hide line -- with no
 --      bare pipe, and its clock lines are the clock hover's own
---      (MD.Clock:SummaryLines, one function for both);
+--      (ST.Clock:SummaryLines, one function for both);
 --   7. on a fresh db, db.minimap is { hide = false, angle = 220 };
---   8. that default is declared once, by the button file (MD:RegisterDefaults),
+--   8. that default is declared once, by the button file (ST:RegisterDefaults),
 --      and nowhere else on any TOC.
 -- T97 (docs/SPEC-next.md 6.3; R-ellesmere.md 3.4), both halves, one check
 -- each: a minimap-button collector (EllesmereUI's flyout, MBB) reparents the
--- button; MD:UpdateMinimapButton (Settings -> Windows' toggle) and the angle
+-- button; ST:UpdateMinimapButton (Settings -> Windows' toggle) and the angle
 -- drag then leave it where the collector put it, and the icon is the
 -- button's `icon` field, anchored CENTER at the place it always had (so the
 -- collector finds it by name, not by region order). Back on Minimap, the
@@ -47,7 +47,7 @@ local here = arg[0]:match("^(.*)/[^/]+$")
 local PRINT = false
 for _, a in ipairs(arg) do if a == "--print" then PRINT = true end end
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua"); arg[0] = a0
+local ST = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB
 local T = dofile(here .. "/lib/t.lua")
 local check = T.check
@@ -79,13 +79,13 @@ end
 
 local freshMinimap -- db.minimap as a fresh db has it, read before anything moves it
 local function LoadByHand(files)
-    local ready, realReg = {}, MD.RegisterCallback
-    MD.RegisterCallback = function(self, name, fn)
+    local ready, realReg = {}, ST.RegisterCallback
+    ST.RegisterCallback = function(self, name, fn)
         if name == "MD_READY" then ready[#ready + 1] = fn end
         return realReg(self, name, fn)
     end
-    local okLoad, err = pcall(S.Load, files, "SpellTuner", MD)
-    MD.RegisterCallback = realReg
+    local okLoad, err = pcall(S.Load, files, "SpellTuner", ST)
+    ST.RegisterCallback = realReg
     if not okLoad then return false, err end
     for _, fn in ipairs(ready) do
         local okRun, e = pcall(fn)
@@ -106,8 +106,8 @@ elseif not loadedByToc then
     okLoad, loadErr = LoadByHand({ BUTTON_FILE })
     if not okLoad then print("load: " .. tostring(loadErr)) end
 end
-if type(MD.db) == "table" and type(MD.db.minimap) == "table" then
-    freshMinimap = { hide = MD.db.minimap.hide, angle = MD.db.minimap.angle }
+if type(ST.db) == "table" and type(ST.db.minimap) == "table" then
+    freshMinimap = { hide = ST.db.minimap.hide, angle = ST.db.minimap.angle }
 end
 
 local B = _G.SpellTunerMinimapButton
@@ -121,7 +121,7 @@ local function Round(v, step)
 end
 
 -- The button's point under the stub's geometry (S.Geometry keeps points),
--- after MD:UpdateMinimapButton repositioned it.
+-- after ST:UpdateMinimapButton repositioned it.
 local function PointNow()
     local p, rel, rp, x, y = B:GetPoint(1)
     return p, rel, rp, x, y
@@ -140,7 +140,7 @@ local function DragTo(dx, dy)
     B:GetScript("OnDragStop")(B)
     S.cursorPos = nil
     local _, rel, _, x, y = PointNow()
-    return MD.db.minimap.angle, x, y, rel, upd ~= nil, B:GetScript("OnUpdate") == nil
+    return ST.db.minimap.angle, x, y, rel, upd ~= nil, B:GetScript("OnUpdate") == nil
 end
 
 -- The tooltip as the game would hold it: every line's text and colours, and
@@ -234,7 +234,7 @@ local GOLDEN_TBC_DETAIL = {
 -- T97: a collector takes the button. Its flyout reparents it and puts it in a
 -- grid (EllesmereUIMinimap.lua 474-503); the Settings toggle and the angle
 -- drag must leave it there; its icon is found by name (`btn.icon`, 516-532).
--- Back on Minimap, MD:UpdateMinimapButton repositions it as before.
+-- Back on Minimap, ST:UpdateMinimapButton repositions it as before.
 local function CollectedCheck(name)
     Guarded(name, function()
         S.Geometry(true)
@@ -242,12 +242,12 @@ local function CollectedCheck(name)
         B:SetParent(flyout)
         B:ClearAllPoints()
         B:SetPoint("TOPLEFT", flyout, "TOPLEFT", 4, -4)
-        MD:UpdateMinimapButton()
+        ST:UpdateMinimapButton()
         local p, rel, rp, x, y = B:GetPoint(1)
         local kept = B:GetParent() == flyout and B:GetNumPoints() == 1 and p == "TOPLEFT" and rel == flyout
             and rp == "TOPLEFT" and x == 4 and y == -4 and B:IsShown()
         -- the angle drag starts nothing while collected
-        local angle = MD.db.minimap.angle
+        local angle = ST.db.minimap.angle
         B:GetScript("OnDragStart")(B)
         local noDrag = B:GetScript("OnUpdate") == nil
         B:GetScript("OnDragStop")(B)
@@ -255,14 +255,14 @@ local function CollectedCheck(name)
         local iconOk = type(icon) == "table" and icon.kind == "Texture" and icon.parentFrame == B
         -- back on the minimap: repositioned at the stored angle, as before
         B:SetParent(Minimap)
-        MD:UpdateMinimapButton()
+        ST:UpdateMinimapButton()
         local p2, rel2 = B:GetPoint(1)
         local back = B:GetNumPoints() == 1 and p2 == "CENTER" and rel2 == Minimap
         S.Geometry(false)
-        check(name, kept and noDrag and MD.db.minimap.angle == angle and iconOk and back,
+        check(name, kept and noDrag and ST.db.minimap.angle == angle and iconOk and back,
             string.format("kept=%s (%s %s %s %s %s) noDrag=%s angle=%s icon=%s back=%s", tostring(kept), tostring(p),
                 tostring(rel == flyout and "flyout" or rel), tostring(rp), tostring(x), tostring(y), tostring(noDrag),
-                tostring(MD.db.minimap.angle), tostring(iconOk), tostring(back)))
+                tostring(ST.db.minimap.angle), tostring(iconOk), tostring(back)))
     end)
 end
 
@@ -272,7 +272,7 @@ local function Fight()
     local realRegen = GetManaRegen
     GetManaRegen = function() return 10, 5 end
     S.Fire("PLAYER_REGEN_DISABLED")
-    local SD = MD.SpellData
+    local SD = ST.SpellData
     for i = 1, 200 do
         if i % 7 == 1 then
             S.mana = S.mana - SD:GetCost(5189) -- Healing Touch rank 5
@@ -280,7 +280,7 @@ local function Fight()
             S.Fire("UNIT_POWER_UPDATE", "player", "MANA")
         end
         S.Tick(0.5)
-        local s = MD:GetManaState()
+        local s = ST:GetManaState()
         if i > 40 and s and s.mode == "oom" and s.stable and s.confident then break end
     end
     return function()
@@ -308,7 +308,7 @@ if flavour == "tbc" then
 
     Guarded("tbc: its point at 220 degrees, then dragged east, north, and at a minimap scale of 2", function()
         S.Geometry(true)
-        MD:UpdateMinimapButton()
+        ST:UpdateMinimapButton()
         local p, rel, rp, x0, y0 = PointNow()
         local a1, x1, y1, rel1, hadUpdate, cleared = DragTo(100, 0)
         local a2, x2, y2 = DragTo(0, 40)
@@ -324,30 +324,30 @@ if flavour == "tbc" then
         check("tbc: its point at 220 degrees, then dragged east, north, and at a minimap scale of 2",
             got == want and rel1 == Minimap and hadUpdate and cleared,
             got)
-        MD.db.minimap.angle = 220
+        ST.db.minimap.angle = 220
     end)
 
     Guarded("tbc: left-click toggles the dashboard, right-click opens its settings", function()
         local toggles, settings = 0, 0
-        local rt, rs = MD.ToggleDashboard, MD.OpenDashboardSettings
-        MD.ToggleDashboard = function() toggles = toggles + 1 end
-        MD.OpenDashboardSettings = function() settings = settings + 1 end
+        local rt, rs = ST.ToggleDashboard, ST.OpenDashboardSettings
+        ST.ToggleDashboard = function() toggles = toggles + 1 end
+        ST.OpenDashboardSettings = function() settings = settings + 1 end
         local click = B:GetScript("OnClick")
         click(B, "LeftButton")
         local afterLeft = toggles == 1 and settings == 0
         click(B, "RightButton")
-        MD.ToggleDashboard, MD.OpenDashboardSettings = rt, rs
+        ST.ToggleDashboard, ST.OpenDashboardSettings = rt, rs
         check("tbc: left-click toggles the dashboard, right-click opens its settings",
             afterLeft and toggles == 1 and settings == 1,
             string.format("toggles=%d settings=%d", toggles, settings))
     end)
 
     Guarded("tbc: db.minimap.hide hides the button, and back", function()
-        MD.db.minimap.hide = true
-        MD:UpdateMinimapButton()
+        ST.db.minimap.hide = true
+        ST:UpdateMinimapButton()
         local hidden = not B:IsShown()
-        MD.db.minimap.hide = false
-        MD:UpdateMinimapButton()
+        ST.db.minimap.hide = false
+        ST:UpdateMinimapButton()
         check("tbc: db.minimap.hide hides the button, and back", hidden and B:IsShown())
     end)
 
@@ -430,18 +430,18 @@ Guarded("2. a drag due east stores angle 0 and puts the button at (75, 0)", func
     check("2. a drag due east stores angle 0 and puts the button at (75, 0)",
         a == 0 and rel == Minimap and Round(x) == 75 and Round(y) == 0,
         string.format("angle=%s x=%s y=%s", tostring(a), tostring(x), tostring(y)))
-    MD.db.minimap.angle = 220
+    ST.db.minimap.angle = 220
 end)
 
 local main = _G.SpellTunerDashboard
 Guarded("3. left-click opens the window on the remembered view (Review); again closes it", function()
     if main and main:IsShown() then main:Hide() end
-    MD.db.uiPath = { "reports", "review" }
+    ST.db.uiPath = { "reports", "review" }
     local click = B:GetScript("OnClick")
     click(B, "LeftButton")
     main = _G.SpellTunerDashboard
     local opened = main ~= nil and main:IsShown()
-    local g, v = MD:SelectedView()
+    local g, v = ST:SelectedView()
     click(B, "LeftButton")
     check("3. left-click opens the window on the remembered view (Review); again closes it",
         opened and g == "reports" and v == "review" and not main:IsShown(),
@@ -452,10 +452,10 @@ end)
 local gp -- Settings -> General
 Guarded("4. right-click opens Settings -> General", function()
     if main and main:IsShown() then main:Hide() end
-    MD.db.uiPath = { "spells" }
+    ST.db.uiPath = { "spells" }
     B:GetScript("OnClick")(B, "RightButton")
     main = _G.SpellTunerDashboard
-    local g, v = MD:SelectedView()
+    local g, v = ST:SelectedView()
     for _, f in ipairs(S.allFrames) do
         if f.fontSlider or f.tooltipCheck then gp = f end
     end
@@ -470,15 +470,15 @@ Guarded("5. WINDOWS: Minimap button hides the button and writes db.minimap.hide;
     local label = cb and cb.label and cb.label:GetText()
     local hint = gp and gp.minimapHint and gp.minimapHint:GetText()
     if cb then cb:SetChecked(false); cb.onClick(false, cb) end
-    local off = MD.db.minimap.hide == true and not B:IsShown()
+    local off = ST.db.minimap.hide == true and not B:IsShown()
     if cb then cb:SetChecked(true); cb.onClick(true, cb) end
-    local on = MD.db.minimap.hide == false and B:IsShown()
+    local on = ST.db.minimap.hide == false and B:IsShown()
     -- the pane says what the db holds when it is shown again
-    MD.db.minimap.hide = true
-    if MD.SelectView then MD:SelectView("settings", "general") end
+    ST.db.minimap.hide = true
+    if ST.SelectView then ST:SelectView("settings", "general") end
     local refreshed = cb and not cb:GetChecked()
-    MD.db.minimap.hide = false
-    MD:UpdateMinimapButton()
+    ST.db.minimap.hide = false
+    ST:UpdateMinimapButton()
     check("5. WINDOWS: Minimap button hides the button and writes db.minimap.hide; ticked, back",
         cb ~= nil and startTicked and off and on and refreshed and label == "Minimap button"
           and hint == "Left-click opens the window, right-click opens Settings.",
@@ -490,8 +490,8 @@ if main and main:IsShown() then main:Hide() end
 
 Guarded("6. the themed tooltip is M6's, its clock lines the clock hover's own", function()
     -- a fight, so the clock has an out-of-mana time and a rest time to say
-    local Clock = MD.Clock
-    local model = MD.Pool.model
+    local Clock = ST.Clock
+    local model = ST.Pool.model
     model.mana = model.max
     S.Tick(0.5)
     S.inCombat = true
@@ -514,7 +514,7 @@ Guarded("6. the themed tooltip is M6's, its clock lines the clock hover's own", 
     S.inCombat = false
 
     local function Is(c, token)
-        local r, g, b = MD.UI.RGB(token)
+        local r, g, b = ST.UI.RGB(token)
         return type(c) == "table" and c[1] == r and c[2] == g and c[3] == b
     end
     local function Pair(i, l, r) return lines[i] and lines[i].l == l and lines[i].r == r and Is(lines[i].c, "label") end
@@ -584,9 +584,9 @@ do
     local f = io.open(root .. "/" .. BUTTON_FILE, "r")
     if f then
         local src = f:read("*a"); f:close()
-        registers = src:find("MD:RegisterDefaults%(%s*{%s*minimap%s*=%s*{%s*hide%s*=%s*false%s*,%s*angle%s*=%s*220%s*}") ~= nil
+        registers = src:find("ST:RegisterDefaults%(%s*{%s*minimap%s*=%s*{%s*hide%s*=%s*false%s*,%s*angle%s*=%s*220%s*}") ~= nil
     end
-    check("8. the minimap default is declared once, by the button file (MD:RegisterDefaults)",
+    check("8. the minimap default is declared once, by the button file (ST:RegisterDefaults)",
         registers and #owners == 1 and owners[1] == BUTTON_FILE,
         "registers=" .. tostring(registers) .. " declared in: " .. table.concat(owners, ", "))
 end

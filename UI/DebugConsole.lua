@@ -1,9 +1,9 @@
--- Debug console (Cell-style): MD:Debug() lines land in an in-memory ring,
+-- Debug console (Cell-style): ST:Debug() lines land in an in-memory ring,
 -- shown in a movable window with per-category filters, and exported through
 -- a "Copy" popup (select-all edit box, Ctrl+C). Logging is off unless the
 -- "Enable Debug Logging" box is ticked; nothing is persisted.
-local _, MD = ...
-local UI = MD.UI
+local _, ST = ...
+local UI = ST.UI
 
 local CATEGORY_ORDER = { "regen", "mana", "spend", "tto", "heal", "cast", "calib", "combat", "chat", "sim", "other" }
 local CATEGORY_LABELS = {
@@ -26,7 +26,7 @@ local MIN_LINES, MAX_LINES, DEFAULT_LINES = 200, 20000, 1000
 local VIEW_LINES = 300       -- rendered in the window (newest)
 
 local function MaxLogLines()
-    local n = MD.db and MD.db.debug and tonumber(MD.db.debug.maxLines) or DEFAULT_LINES
+    local n = ST.db and ST.db.debug and tonumber(ST.db.debug.maxLines) or DEFAULT_LINES
     if n < MIN_LINES then n = MIN_LINES elseif n > MAX_LINES then n = MAX_LINES end
     return n
 end
@@ -37,12 +37,12 @@ local consoleFrame, content, categoryCBs, enableCB, countFS
 local dirty = false
 
 -- T3: "Errors this session: N distinct, M total - /st dump copies them",
--- read fresh every refresh (MD.errors is nil on TBC, so this is a no-op there).
+-- read fresh every refresh (ST.errors is nil on TBC, so this is a no-op there).
 local function RefreshErrorsLine()
     if not (consoleFrame and consoleFrame.errorsFS) then return end
-    if type(MD.errors) ~= "table" then return end
-    local distinct = #MD.errors
-    local total = tonumber(MD.errorTotal) or 0
+    if type(ST.errors) ~= "table" then return end
+    local distinct = #ST.errors
+    local total = tonumber(ST.errorTotal) or 0
     if distinct == 0 and total == 0 then
         consoleFrame.errorsFS:SetText("Errors this session: none")
     else
@@ -52,12 +52,12 @@ local function RefreshErrorsLine()
 end
 
 local function Categories()
-    return MD.db and MD.db.debug and MD.db.debug.categories or {}
+    return ST.db and ST.db.debug and ST.db.debug.categories or {}
 end
 
--- Entry point used by MD:Debug (Core.lua). Timestamp = wall clock plus
+-- Entry point used by ST:Debug (Core.lua). Timestamp = wall clock plus
 -- seconds since load, so sub-second spacing (mana ticks, 5SR edges) is visible.
-function MD:DebugLog(category, text)
+function ST:DebugLog(category, text)
     if not CATEGORY_LABELS[category] then category = "other" end
     local line = string.format("|cff888888%s +%.2f|r %s[%s]|r %s",
         date("%H:%M:%S"), GetTime() - sessionT0, CATEGORY_COLORS[category], category, tostring(text))
@@ -105,7 +105,7 @@ end
 -- plus the ring's true length so the dump's header can say "newest n of m".
 -- Unlike BuildPlainTextLog this ignores the category checkboxes: a bug report
 -- wants everything that happened, not just what is ticked on right now.
-function MD:DebugLogTail(n)
+function ST:DebugLogTail(n)
     local total = #logLines
     local start = math.max(1, total - n + 1)
     local lines = {}
@@ -128,12 +128,12 @@ end
 
 --------------------------------------------------------------------------------
 -- Copy popup: a read-only scroll edit box holding plain text, pre-selected so
--- Ctrl+C just works. Public (MD:ShowCopyPopup) because /md profile hands the
+-- Ctrl+C just works. Public (ST:ShowCopyPopup) because /md profile hands the
 -- author 40 lines of state and chat is the wrong place for that.
 --------------------------------------------------------------------------------
 local copyFrame, copyTextArea, copyTitle
 
-function MD:ShowCopyPopup(title, text)
+function ST:ShowCopyPopup(title, text)
     if not copyFrame then
         copyFrame = UI.CreateMovableFrame("Copy", "SpellTunerDebugCopyFrame", 460, 340, "FULLSCREEN_DIALOG", 10, true)
         copyFrame:SetToplevel(true)
@@ -171,16 +171,16 @@ function MD:ShowCopyPopup(title, text)
     -- once shown (Push, so it closes first).
     copyFrame:SetFrameStrata("FULLSCREEN_DIALOG")
     copyFrame:SetFrameLevel(20)
-    copyFrame:SetScale(MD.Win:Scale())
-    MD.Win:CloseLists()
-    local owner = MD.Win:TopWindow(copyFrame)
+    copyFrame:SetScale(ST.Win:Scale())
+    ST.Win:CloseLists()
+    local owner = ST.Win:TopWindow(copyFrame)
     if owner then
         copyFrame:SetPoint("CENTER", owner, "CENTER")
     else
         copyFrame:SetPoint("CENTER")
     end
     copyFrame:Show()
-    MD.Win:Push(copyFrame)
+    ST.Win:Push(copyFrame)
     copyTextArea.eb:SetFocus()
     copyTextArea.eb:HighlightText()
 end
@@ -190,14 +190,14 @@ local function ShowLogCopyPopup()
     -- say whether Nature's Grace was even talented, and the analysis had to
     -- infer it from a cast time.
     local text = BuildPlainTextLog()
-    if MD.Snapshot then
-        local head = { string.format("=== SpellTuner v%s  %s  %s level %d  %s ===", MD.version, MD.player.charKey,
-            MD.player.class, MD.player.level, date("%Y-%m-%d %H:%M")) }
-        for _, line in ipairs(MD:Snapshot()) do head[#head + 1] = line end
+    if ST.Snapshot then
+        local head = { string.format("=== SpellTuner v%s  %s  %s level %d  %s ===", ST.version, ST.player.charKey,
+            ST.player.class, ST.player.level, date("%Y-%m-%d %H:%M")) }
+        for _, line in ipairs(ST:Snapshot()) do head[#head + 1] = line end
         head[#head + 1] = "--- log ---"
         text = table.concat(head, "\n") .. "\n" .. text
     end
-    MD:ShowCopyPopup("Copy Debug Log", text)
+    ST:ShowCopyPopup("Copy Debug Log", text)
 end
 
 --------------------------------------------------------------------------------
@@ -208,16 +208,16 @@ local function CreateDebugConsoleFrame()
     consoleFrame:SetToplevel(true)
 
     enableCB = UI.CreateCheckButton(consoleFrame, "Enable Debug Logging", function(checked)
-        MD.db.debug.enabled = checked
-        -- MD:TalentSummary is Core_TBC.lua's (the TBC talent scan); Forever has
+        ST.db.debug.enabled = checked
+        -- ST:TalentSummary is Core_TBC.lua's (the TBC talent scan); Forever has
         -- no talent scan, so its header line leaves talents out rather than
         -- calling a method that is not there (review R15/R16).
-        if type(MD.TalentSummary) == "function" then
-            MD:Debug("other", "debug logging enabled (v%s, %s level %d, talents: %s)",
-                MD.version, MD.player.class, MD.player.level, MD:TalentSummary())
+        if type(ST.TalentSummary) == "function" then
+            ST:Debug("other", "debug logging enabled (v%s, %s level %d, talents: %s)",
+                ST.version, ST.player.class, ST.player.level, ST:TalentSummary())
         else
-            MD:Debug("other", "debug logging enabled (v%s, %s level %d)",
-                MD.version, MD.player.class, MD.player.level)
+            ST:Debug("other", "debug logging enabled (v%s, %s level %d)",
+                ST.version, ST.player.class, ST.player.level)
         end
         RefreshLog()
     end, "Enable Debug Logging", "Records regen / mana ticks / casts / clock state into this window (memory only, nothing is saved).", "Leave it off when you are not testing.")
@@ -235,22 +235,22 @@ local function CreateDebugConsoleFrame()
     copyBtn:SetPoint("RIGHT", clearBtn, "LEFT", -5, 0)
     copyBtn:SetScript("OnClick", ShowLogCopyPopup)
 
-    -- Only on TBC, where MD.RunRegenTest reads the TBC engine -- Forever has
+    -- Only on TBC, where ST.RunRegenTest reads the TBC engine -- Forever has
     -- no such test yet, so its console does not offer a button that would do
     -- nothing (checked at build time: this frame is built once, on first
     -- open, so a module loading later can never make the button appear).
     local regenBtn
-    if type(MD.RunRegenTest) == "function" then
+    if type(ST.RunRegenTest) == "function" then
         regenBtn = UI.CreateButton(consoleFrame, "Regen test", "accent-hover", { 80, 17 }, false, false, nil, nil,
             "Regen test (30s)", "Stand idle at partial mana, no drink, no casting.",
             "Compares observed mana gain with GetManaRegen and says whether Dreamstate is included.")
         regenBtn:SetPoint("RIGHT", copyBtn, "LEFT", -5, 0)
         regenBtn:SetScript("OnClick", function()
-            if not MD.db.debug.enabled then
+            if not ST.db.debug.enabled then
                 enableCB:SetChecked(true)
                 enableCB.onClick(true, enableCB)
             end
-            if MD.RunRegenTest then MD:RunRegenTest(30) end
+            if ST.RunRegenTest then ST:RunRegenTest(30) end
         end)
     end
 
@@ -263,7 +263,7 @@ local function CreateDebugConsoleFrame()
     categoryCBs = {}
     for i, category in ipairs(CATEGORY_ORDER) do
         local cb = UI.CreateCheckButton(consoleFrame, CATEGORY_LABELS[category], function(checked)
-            MD.db.debug.categories[category] = checked
+            ST.db.debug.categories[category] = checked
             RefreshLog()
         end)
         local col = (i - 1) % CATEGORY_COLUMNS
@@ -276,13 +276,13 @@ local function CreateDebugConsoleFrame()
     countFS:SetPoint("RIGHT", regenBtn or copyBtn, "LEFT", -8, 0)
     countFS:SetTextColor(0.6, 0.6, 0.6)
 
-    -- T3: only present when MD.errors exists (Forever only -- TBC never
-    -- installs the capture, so MD.errors stays nil and this line is absent).
+    -- T3: only present when ST.errors exists (Forever only -- TBC never
+    -- installs the capture, so ST.errors stays nil and this line is absent).
     -- Refreshed alongside the log (RefreshLog below), not just on show, so a
     -- fresh error while the console is already open is reflected at once.
     local errorsFS
     local errorsRowH = 0
-    if type(MD.errors) == "table" then
+    if type(ST.errors) == "table" then
         errorsFS = consoleFrame:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
         errorsFS:SetPoint("TOPLEFT", enableCB, "BOTTOMLEFT", 0, -12 - categoryRows * CATEGORY_ROW_H)
         errorsFS:SetTextColor(0.8, 0.5, 0.5)
@@ -305,7 +305,7 @@ local function CreateDebugConsoleFrame()
         local n = tonumber(self:GetText())
         if n then
             if n < MIN_LINES then n = MIN_LINES elseif n > MAX_LINES then n = MAX_LINES end
-            MD.db.debug.maxLines = n
+            ST.db.debug.maxLines = n
         end
         self:SetText(tostring(MaxLogLines()))
         self:HighlightText(0, 0)
@@ -329,10 +329,10 @@ local function CreateDebugConsoleFrame()
     content:SetSpacing(2)
 
     consoleFrame:SetScript("OnShow", function()
-        enableCB:SetChecked(MD.db.debug.enabled)
+        enableCB:SetChecked(ST.db.debug.enabled)
         consoleFrame.keepEB:SetText(tostring(MaxLogLines()))
         for category, cb in pairs(categoryCBs) do
-            cb:SetChecked(MD.db.debug.categories[category] ~= false)
+            cb:SetChecked(ST.db.debug.categories[category] ~= false)
         end
         RefreshLog()
     end)
@@ -352,17 +352,17 @@ local function CreateDebugConsoleFrame()
     -- replay's DIALOG; its place remembered in db.ui.win.console; one ESC
     -- stack entry instead of its own UISpecialFrames line. Registered after
     -- its OnShow script, which Register hooks.
-    MD.Win:Register(consoleFrame, { key = "console", role = "tool" })
+    ST.Win:Register(consoleFrame, { key = "console", role = "tool" })
 end
 
-function MD:ToggleDebugConsole()
+function ST:ToggleDebugConsole()
     if not consoleFrame then
         CreateDebugConsoleFrame()
     end
     if consoleFrame:IsShown() then
         consoleFrame:Hide()
     else
-        MD.Win:Place("console") -- T33: where it was left (clamped), not re-centred
+        ST.Win:Place("console") -- T33: where it was left (clamped), not re-centred
         consoleFrame:Show()
     end
 end

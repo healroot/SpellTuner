@@ -41,8 +41,8 @@
 --      Engine/RankMath.lua nor Engine/DamageMath.lua carries `/ 3.5`, `/ 15`,
 --      `0.0375` or `GROUP_COEF = <number>` outside a comment.
 --
--- T118 (docs/tasks/T118-tbc-book.md): TBC's MD.Book, Spells/Book_Model.lua.
---  15. MD.Book exists on TBC, CheckMethods passes, Get() passes Validate at
+-- T118 (docs/tasks/T118-tbc-book.md): TBC's ST.Book, Spells/Book_Model.lua.
+--  15. ST.Book exists on TBC, CheckMethods passes, Get() passes Validate at
 --      levels 40, 64 and 70, caster and Tree of Life;
 --  16. every heal entry equals its RankMath:Compute({ live = true }) row (value,
 --      per mana, per second, casts, cost, cast, known, suggested, dominated),
@@ -64,7 +64,7 @@
 --      RankRules', the bonus's why ending VERIFY;
 --  22. Other: a costed spell no family claims (Innervate, Mark of the Wild by
 --      rank); a passive and a free spell are not listed;
---  23. Get() ignores MD.sim; Get({ whatIf = true }) is Compute() under it,
+--  23. Get() ignores ST.sim; Get({ whatIf = true }) is Compute() under it,
 --      uncached, with no BOOK_CHANGED and the generation still; SuggestedRanks
 --      is live under a what-if that moves a suggested rank, and leaves
 --      RankMath.info (the last Compute's context) where it was;
@@ -72,11 +72,11 @@
 --      generation; an unchanged rebuild (the same gear, TALENTS_CHANGED, a
 --      party member's gear) does neither;
 --  25. a priest without the rank table: Other only, valid;
---  26. T123: MD.FamiliesTBC (T118's alias) is nil;
+--  26. T123: ST.FamiliesTBC (T118's alias) is nil;
 --  27. T123: a priest's, a shaman's and a paladin's book (tools/tbcclasscheck.lua's
 --      fixture with its damage rows) passes BookShape.Validate: the source's
 --      heal families, then the profile's damage families in its damageOrder;
---  28. T123: the druid's MD.Book (levels 64 and 70, caster and Tree of Life,
+--  28. T123: the druid's ST.Book (levels 64 and 70, caster and Tree of Life,
 --      the DAMAGE ranks and two Other spells walked) byte for byte as the
 --      parent (49494eb) built it.
 HARNESS_FLAVOUR = { "forever", "tbc" }
@@ -93,7 +93,7 @@ local function check(name, cond, detail)
 end
 
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua")
+local ST = dofile(here .. "/harness.lua")
 arg[0] = a0
 local S = _G.STUB
 local ROOT = S.root or "."
@@ -125,12 +125,12 @@ end
 -- FOREVER
 --------------------------------------------------------------------------------
 local function ForeverChecks()
-    local BS, Coef, W, Book = MD.BookShape, MD.Coefficients, MD.Words, MD.Book
+    local BS, Coef, W, Book = ST.BookShape, ST.Coefficients, ST.Words, ST.Book
 
     -- 1 -----------------------------------------------------------------------
     T.section("1. the contract loads and every book passes it")
     do
-        local ok, why = BS ~= nil and Coef ~= nil and W ~= nil, "MD.BookShape / MD.Coefficients / MD.Words missing"
+        local ok, why = BS ~= nil and Coef ~= nil and W ~= nil, "ST.BookShape / ST.Coefficients / ST.Words missing"
         local notes = {}
         if ok then
             local function One(label)
@@ -150,10 +150,10 @@ local function ForeverChecks()
             for _, class in ipairs({ "priest", "shaman", "paladin" }) do
                 for _, alone in ipairs({ true, false }) do
                     if ok then
-                        local restore = Books.Install(Books.Load(class), { alone = alone, MD = MD })
+                        local restore = Books.Install(Books.Load(class), { alone = alone, ST = ST })
                         ok, why = One(class .. (alone and " alone" or " beside the druid"))
                         restore()
-                        if MD.API.Invalidate then MD.API.Invalidate() end
+                        if ST.API.Invalidate then ST.API.Invalidate() end
                     end
                 end
             end
@@ -174,7 +174,7 @@ local function ForeverChecks()
     -- 2 -----------------------------------------------------------------------
     T.section("2. what Validate refuses")
     do
-        local ok, why = BS ~= nil, "no MD.BookShape"
+        local ok, why = BS ~= nil, "no ST.BookShape"
         if ok then
             -- a deep copy (shared references kept shared), mutated, never the live book
             local function Copy(v, memo)
@@ -310,7 +310,7 @@ local function ForeverChecks()
     do
         local ok, why = Book ~= nil and type(Book.Bonus) == "function", "no Book:Bonus"
         if ok then
-            local savedB, savedSecret, savedIn, savedS = S.bonusHealing, S.bonusHealingSecretInCombat, MD.inCombat, S.inCombat
+            local savedB, savedSecret, savedIn, savedS = S.bonusHealing, S.bonusHealingSecretInCombat, ST.inCombat, S.inCombat
             local steps = {}
             local function Step(label, wantA, wantStale, fn)
                 fn()
@@ -321,11 +321,11 @@ local function ForeverChecks()
                 end
             end
             Book._lastBonus = nil
-            Step("before any reading, in combat", nil, nil, function() MD.inCombat = true end)
-            Step("out of combat, 120", 120, false, function() MD.inCombat = false; S.bonusHealing = 120 end)
-            Step("in combat, the gear says 300", 120, true, function() MD.inCombat = true; S.bonusHealing = 300 end)
+            Step("before any reading, in combat", nil, nil, function() ST.inCombat = true end)
+            Step("out of combat, 120", 120, false, function() ST.inCombat = false; S.bonusHealing = 120 end)
+            Step("in combat, the gear says 300", 120, true, function() ST.inCombat = true; S.bonusHealing = 300 end)
             Step("out of combat, the read secret", 120, true, function()
-                MD.inCombat = false; S.inCombat = true; S.bonusHealingSecretInCombat = true
+                ST.inCombat = false; S.inCombat = true; S.bonusHealingSecretInCombat = true
             end)
             Step("out of combat, plain again", 300, false, function()
                 S.inCombat = false; S.bonusHealingSecretInCombat = false
@@ -337,7 +337,7 @@ local function ForeverChecks()
             local wantD = (S.bonusDamage and S.bonusDamage[4]) or 0
             if d ~= wantD or dStale ~= false then ok, why = false, "damage answered " .. tostring(d) end
             for _, s in ipairs(steps) do print("    " .. s) end
-            S.bonusHealing, S.bonusHealingSecretInCombat, MD.inCombat, S.inCombat = savedB, savedSecret, savedIn, savedS
+            S.bonusHealing, S.bonusHealingSecretInCombat, ST.inCombat, S.inCombat = savedB, savedSecret, savedIn, savedS
             Book:Bonus("heal")
         end
         check("6. Bonus: plain out of combat, the last plain one stale in combat or secret, nil before any", ok, why)
@@ -348,18 +348,18 @@ local function ForeverChecks()
     do
         local ok, why = Book ~= nil and type(Book.Pool) == "function", "no Book:Pool"
         if ok then
-            local clock = MD.Clock and MD.Clock:Pool() or {}
+            local clock = ST.Clock and ST.Clock:Pool() or {}
             local p = Book:Pool()
             print("    with the clock: " .. Show(p) .. " (the clock " .. Show(clock) .. ")")
             if not (p.modelled == true and type(clock.max) == "number" and p.max == clock.max
                 and p.mana == clock.mana and p.regenCasting == clock.regenCasting) then
                 ok, why = false, "with the clock: " .. Show(p)
             end
-            local savedClock = MD.Clock
-            MD.Clock = nil
+            local savedClock = ST.Clock
+            ST.Clock = nil
             local q = Book:Pool()
             local d = Book:DefaultPool()
-            MD.Clock = savedClock
+            ST.Clock = savedClock
             print("    without:        " .. Show(q))
             if ok and not (q.modelled == false and q.max == d.max and q.mana == d.max
                 and q.regenCasting == d.regenCasting and type(q.max) == "number") then
@@ -427,7 +427,7 @@ local function ForeverChecks()
                 end
             end
         end
-        check("9. CheckMethods passes on MD.Book; without Pool it raises naming it", ok, why)
+        check("9. CheckMethods passes on ST.Book; without Pool it raises naming it", ok, why)
     end
 
     -- 10 ----------------------------------------------------------------------
@@ -524,7 +524,7 @@ local GOLDEN = {
     -- line by line with --print
     druid = { n = 900, bytes = 417569, h1 = 553152855, h2 = 1166058324 },
     class = { n = 354, bytes = 174286, h1 = 2384515562, h2 = 297317080 },
-    -- T123: the druid's MD.Book (check 28), captured with --golden on 49494eb
+    -- T123: the druid's ST.Book (check 28), captured with --golden on 49494eb
     book = { n = 284, bytes = 184989, h1 = 1369451877, h2 = 4050973907 },
 }
 
@@ -548,17 +548,17 @@ local DAMAGE = {
 }
 
 local function DruidTranscript()
-    local RM, SD, DM = MD.RankMath, MD.SpellData, MD.DamageMath
+    local RM, SD, DM = ST.RankMath, ST.SpellData, ST.DamageMath
     local lines = {}
     local function Add(s) lines[#lines + 1] = s end
     local ids = {}
     for id in pairs(SD.spells) do ids[#ids + 1] = id end
     table.sort(ids)
-    local savedSim, savedLevel, savedPL = MD.sim, S.level, MD.player.level
+    local savedSim, savedLevel, savedPL = ST.sim, S.level, ST.player.level
     for _, level in ipairs({ 40, 64, 70 }) do
-        S.level, MD.player.level = level, level
+        S.level, ST.player.level = level, level
         for _, sim in ipairs({ { "live", nil }, { "tree off", { tree = false } }, { "tree on", { tree = true } } }) do
-            MD.sim = sim[2]
+            ST.sim = sim[2]
             local tag = "L" .. level .. " " .. sim[1]
             local res = RM:Compute()
             local fams = {}
@@ -579,7 +579,7 @@ local function DruidTranscript()
                 end
             end
         end
-        MD.sim = nil
+        ST.sim = nil
         Add("L" .. level .. " kit " .. Ser(RM:SpellKit({ live = true })))
     end
 
@@ -594,12 +594,12 @@ local function DruidTranscript()
     end
     _G.GetSpellBonusDamage = function(school) return school == 7 and 310 or 300 end
     _G.GetSpellLevelLearned = function(id) return byId[id] and byId[id][4] end
-    local TAL = MD.harnessTalents
+    local TAL = ST.harnessTalents
     local names = { "Moonfury", "Vengeance", "Wrath of Cenarius", "Improved Moonfire", "Focused Starlight" }
     local saved = {}
     for _, k in ipairs(names) do saved[k] = TAL[k] end
     for _, level in ipairs({ 64, 70 }) do
-        S.level, MD.player.level = level, level
+        S.level, ST.player.level = level, level
         for _, talents in ipairs({ 0, 5 }) do
             for _, k in ipairs(names) do TAL[k] = talents end
             if talents == 5 then TAL["Improved Moonfire"], TAL["Focused Starlight"] = 2, 2 end
@@ -613,23 +613,23 @@ local function DruidTranscript()
     end
     for k, v in pairs(saved) do TAL[k] = v end
     _G.GetSpellInfo, _G.GetSpellBonusDamage, _G.GetSpellLevelLearned = realInfo, realBonus, realLevel
-    MD.sim, S.level, MD.player.level = savedSim, savedLevel, savedPL
+    ST.sim, S.level, ST.player.level = savedSim, savedLevel, savedPL
     return lines
 end
 
 local function ClassTranscript()
-    local RM = MD.RankMath
+    local RM = ST.RankMath
     local lines = {}
     local function Add(s) lines[#lines + 1] = s end
     TBCCLASS_LIBRARY = true
     local lib = dofile(here .. "/tbcclasscheck.lua")
-    local function LoadIf(cond, files) if not cond then S.Load(files, "SpellTuner", MD) end end
-    LoadIf(MD.Profiles.byClass.PRIEST ~= nil,
+    local function LoadIf(cond, files) if not cond then S.Load(files, "SpellTuner", ST) end end
+    LoadIf(ST.Profiles.byClass.PRIEST ~= nil,
         { "Data/Profile_Priest_TBC.lua", "Data/Profile_Shaman_TBC.lua", "Data/Profile_Paladin_TBC.lua" })
-    LoadIf(MD.Parse ~= nil, { "Spells/Parse.lua" })
-    LoadIf(MD.BookTBC ~= nil, { "Spells/Book_TBC.lua" })
+    LoadIf(ST.Parse ~= nil, { "Spells/Parse.lua" })
+    LoadIf(ST.BookTBC ~= nil, { "Spells/Book_TBC.lua" })
     for _, c in ipairs({ "PRIEST", "SHAMAN", "PALADIN" }) do
-        local caps = MD.Profiles.byClass[c].caps
+        local caps = ST.Profiles.byClass[c].caps
         caps.rankTable, caps.tooltip = true, true
     end
     local CASES = {
@@ -643,12 +643,12 @@ local function ClassTranscript()
         local class = case[1]
         for _, level in ipairs({ 60, 70 }) do
             S.level = level
-            local rows, restore = lib.Install(S, MD, class, case[3])
-            MD:SetTalents(case[2])
+            local rows, restore = lib.Install(S, ST, class, case[3])
+            ST:SetTalents(case[2])
             S.units.player.class = class
-            MD:DetectProfile()
-            MD:Fire("CORE_LOGIN")
-            local src = MD.BookTBC:Rebuild()
+            ST:DetectProfile()
+            ST:Fire("CORE_LOGIN")
+            local src = ST.BookTBC:Rebuild()
             local ids = {}
             for id in pairs(rows) do ids[#ids + 1] = id end
             table.sort(ids)
@@ -668,23 +668,23 @@ local function ClassTranscript()
             restore()
         end
     end
-    MD:SetTalents(MD.harnessTalents)
+    ST:SetTalents(ST.harnessTalents)
     S.level = 64
     S.units.player.class = "DRUID"
-    MD:DetectProfile()
-    MD:Fire("CORE_LOGIN")
+    ST:DetectProfile()
+    ST:Fire("CORE_LOGIN")
     return lines
 end
 
 --------------------------------------------------------------------------------
--- T118 (docs/tasks/T118-tbc-book.md): MD.Book on TBC, Spells/Book_Model.lua
+-- T118 (docs/tasks/T118-tbc-book.md): ST.Book on TBC, Spells/Book_Model.lua
 --------------------------------------------------------------------------------
 
 -- The book now: rebuilt at once (Book:Refresh, the book's own door for what
 -- moved without an event -- the suite's level and form), else Get().
 local function Fresh()
-    local Book = MD.Book
-    if type(Book) ~= "table" then error("no MD.Book on TBC", 0) end
+    local Book = ST.Book
+    if type(Book) ~= "table" then error("no ST.Book on TBC", 0) end
     if type(Book.Refresh) == "function" then return Book:Refresh() end
     return Book:Get()
 end
@@ -768,8 +768,8 @@ local function InstallBook(rows, opts)
     end
     _G.GetSpellBonusDamage = function(school) return opts.damage or (school == 7 and 310 or 300) end
     local function Forget()
-        for _, n in ipairs(BOOK_NAMES) do if MD.API.Invalidate then MD.API.Invalidate(n) end end
-        local B = MD.BookTBC
+        for _, n in ipairs(BOOK_NAMES) do if ST.API.Invalidate then ST.API.Invalidate(n) end end
+        local B = ST.BookTBC
         if B and type(B.Forget) == "function" then B.Forget() end
     end
     Forget()
@@ -779,7 +779,7 @@ local function InstallBook(rows, opts)
     end
 end
 
--- T123 (check 28): the druid's MD.Book as the parent (49494eb) built it --
+-- T123 (check 28): the druid's ST.Book as the parent (49494eb) built it --
 -- the harness druid at levels 64 and 70, caster and Tree of Life, with every
 -- DAMAGE rank above and two Other spells in the walk: the order, each
 -- family's fields and every entry, serialised. Captured with --golden on the
@@ -798,12 +798,12 @@ local function BookTranscript()
         desc = "Increases the target's Mana regeneration by 400% and allows 100% of the target's Mana regeneration to continue while casting. Lasts 20 sec." }
     rows[#rows + 1] = { id = 26990, name = "Mark of the Wild", sub = "Rank 8", cost = 445, cast = 0, level = 70,
         desc = "Increases the friendly target's armor by 340, all attributes by 14 and all resistances by 25 for 30 min." }
-    local savedLevel, savedPL, savedTree = S.level, MD.player.level, MD.InTreeForm
+    local savedLevel, savedPL, savedTree = S.level, ST.player.level, ST.InTreeForm
     local restore = InstallBook(rows)
     for _, level in ipairs({ 64, 70 }) do
         for _, tree in ipairs({ false, true }) do
-            S.level, MD.player.level = level, level
-            MD.InTreeForm = function() return tree end
+            S.level, ST.player.level = level, level
+            ST.InTreeForm = function() return tree end
             local tag = "L" .. level .. (tree and " tree" or " caster")
             local book = Fresh()
             Add(tag .. " order " .. table.concat(book.order, ","))
@@ -817,7 +817,7 @@ local function BookTranscript()
         end
     end
     restore()
-    S.level, MD.player.level, MD.InTreeForm = savedLevel, savedPL, savedTree
+    S.level, ST.player.level, ST.InTreeForm = savedLevel, savedPL, savedTree
     pcall(Fresh)
     return lines
 end
@@ -838,14 +838,14 @@ local function SameList(a, b)
 end
 
 local function BookChecks(dB)
-    local BS, RM, SD, DM, RR = MD.BookShape, MD.RankMath, MD.SpellData, MD.DamageMath, MD.RankRules
-    local Book = MD.Book
-    local savedLevel, savedPL, savedTree, savedSim = S.level, MD.player.level, MD.InTreeForm, MD.sim
+    local BS, RM, SD, DM, RR = ST.BookShape, ST.RankMath, ST.SpellData, ST.DamageMath, ST.RankRules
+    local Book = ST.Book
+    local savedLevel, savedPL, savedTree, savedSim = S.level, ST.player.level, ST.InTreeForm, ST.sim
 
     -- 15 ----------------------------------------------------------------------
-    T.section("15. MD.Book on TBC")
+    T.section("15. ST.Book on TBC")
     do
-        local okAll, why = Book ~= nil, Book == nil and "no MD.Book on TBC" or nil
+        local okAll, why = Book ~= nil, Book == nil and "no ST.Book on TBC" or nil
         if okAll then
             local okM, err = Try(BS.CheckMethods, Book, "bookshapecheck")
             if not okM then okAll, why = false, err end
@@ -853,8 +853,8 @@ local function BookChecks(dB)
         if okAll then
             for _, level in ipairs({ 40, 64, 70 }) do
                 for _, tree in ipairs({ false, true }) do
-                    S.level, MD.player.level = level, level
-                    MD.InTreeForm = function() return tree end
+                    S.level, ST.player.level = level, level
+                    ST.InTreeForm = function() return tree end
                     local okB, book = Try(Fresh)
                     local valid, problems = false, { tostring(book) }
                     if okB then valid, problems = BS.Validate(book) end
@@ -864,9 +864,9 @@ local function BookChecks(dB)
                 end
             end
         end
-        S.level, MD.player.level, MD.InTreeForm = savedLevel, savedPL, savedTree
+        S.level, ST.player.level, ST.InTreeForm = savedLevel, savedPL, savedTree
         pcall(Fresh)
-        check("15. MD.Book on TBC: CheckMethods, and Get() valid at 40 / 64 / 70, caster and tree", okAll, why)
+        check("15. ST.Book on TBC: CheckMethods, and Get() valid at 40 / 64 / 70, caster and tree", okAll, why)
     end
 
     -- 16 ----------------------------------------------------------------------
@@ -887,7 +887,7 @@ local function BookChecks(dB)
     -- 17 ----------------------------------------------------------------------
     T.section("17. afterOverheal")
     do
-        local OH = MD.Overheal
+        local OH = ST.Overheal
         local savedF, savedK = OH.Fraction, OH.KindFraction
         OH.Fraction = function() return 0.3, 20, "rank" end
         OH.KindFraction = function(_, _, kind) return kind == "bloom" and 0.5 or 0.2, 20, "kind" end
@@ -922,7 +922,7 @@ local function BookChecks(dB)
     do
         local savedBonus = _G.GetSpellBonusHealing
         _G.GetSpellBonusHealing = function() return 700 end
-        S.level, MD.player.level = 70, 70
+        S.level, ST.player.level = 70, 70
         local okB, book = Try(Fresh)
         local function B(id)
             local e = okB and book.spells[id]
@@ -932,12 +932,12 @@ local function BookChecks(dB)
         print("    HT R12 " .. Show(b))
         print("    HT R7  " .. Show(b7))
         print("    HT R3  " .. Show(b3))
-        local C = MD.Coefficients
+        local C = ST.Coefficients
         local want7 = string.format("x1.20 Empowered Touch, downrank %.2f", C.Downrank(38, 70))
         local want3 = string.format("x1.20 Empowered Touch, downrank %.2f, level 14 x%.2f",
             C.Downrank(14, 70), C.Sub20(14))
         _G.GetSpellBonusHealing = savedBonus
-        S.level, MD.player.level = savedLevel, savedPL
+        S.level, ST.player.level = savedLevel, savedPL
         pcall(Fresh)
         check("18. HT R12 at +700: counts 1.2, of 700, amount 840, x1.20 Empowered Touch; downrank and sub-20 named",
             okB and Near(b.counts, 1.2) and b.from == "model" and b.of == 700 and Near(b.amount, 840, 1e-9)
@@ -976,7 +976,7 @@ local function BookChecks(dB)
         -- HT 12, HT 7 (downranked), Rejuvenation 12, Regrowth 9, Lifebloom
         local CASES = { 26978, 8903, 26981, 9858, 33763 }
         for ti, tree in ipairs({ false, true }) do
-            MD.InTreeForm = function() return tree end
+            ST.InTreeForm = function() return tree end
             local okB, book = Try(Fresh)
             for _, id in ipairs(CASES) do
                 local e = okB and book.spells[id]
@@ -995,7 +995,7 @@ local function BookChecks(dB)
                 end
             end
         end
-        MD.InTreeForm = savedTree
+        ST.InTreeForm = savedTree
         pcall(Fresh)
         check("19. calc equals Tip:Spell(id, true)'s Shift lines (golden): direct, hot, hybrid, bloom, downranked, tree",
             #bad == 0 and n == 10, Show(bad))
@@ -1081,8 +1081,8 @@ local function BookChecks(dB)
         -- client takes the school's id (Nature 4, Arcane 7)
         local realBD = _G.GetSpellBonusDamage
         _G.GetSpellBonusDamage = function(school) return ({ [4] = 300, [7] = 310 })[school] end
-        local nat, arc, none = MD.Book:Bonus("damage", "Nature"), MD.Book:Bonus("damage", "Arcane"),
-            MD.Book:Bonus("damage", "Nowhere")
+        local nat, arc, none = ST.Book:Bonus("damage", "Nature"), ST.Book:Bonus("damage", "Arcane"),
+            ST.Book:Bonus("damage", "Nowhere")
         _G.GetSpellBonusDamage = realBD
         print("    Bonus damage: Nature " .. tostring(nat) .. ", Arcane " .. tostring(arc) .. ", unknown " .. tostring(none))
         if not (nat == 300 and arc == 310 and none == nil) then
@@ -1129,7 +1129,7 @@ local function BookChecks(dB)
     -- 23 ----------------------------------------------------------------------
     T.section("23. live; the what-if through one door")
     do
-        MD.sim = {}
+        ST.sim = {}
         local okB, live = Try(Fresh)
         local liveMap = {}
         for fam, r in pairs(RM:Compute({ live = true })) do
@@ -1137,29 +1137,29 @@ local function BookChecks(dB)
         end
         local gen0 = Book and Book.generation
         local fired = 0
-        MD:RegisterCallback("BOOK_CHANGED", function() fired = fired + 1 end)
+        ST:RegisterCallback("BOOK_CHANGED", function() fired = fired + 1 end)
         local bad = {}
         if not okB then bad[1] = tostring(live) end
         -- a what-if that moves a suggested rank, so the live map is a real test
         local SIMS = { { heal = 150 }, { heal = 0 }, { heal = 3000 }, { mana = 600 }, { crit = 60 } }
         local chosen
         for _, sim in ipairs(SIMS) do
-            MD.sim = sim
+            ST.sim = sim
             local m = {}
             for fam, r in pairs(RM:Compute()) do
                 if r.suggestedID then m[fam] = SD.spells[r.suggestedID].rank end
             end
-            MD.sim = {}
+            ST.sim = {}
             for fam, rank in pairs(m) do if liveMap[fam] ~= rank then chosen = sim end end
             if chosen then break end
         end
-        MD.sim = { heal = 150 }
+        ST.sim = { heal = 150 }
         local okL, book = Try(Fresh)
         local okW, wi = Try(function() return Book:Get({ whatIf = true }) end)
         local simRes = RM:Compute()
         if okL then
             local b2, n2 = HealMismatches(book, RM:Compute({ live = true }))
-            if #b2 > 0 or n2 == 0 then bad[#bad + 1] = "live under MD.sim: " .. Show(b2) end
+            if #b2 > 0 or n2 == 0 then bad[#bad + 1] = "live under ST.sim: " .. Show(b2) end
         else
             bad[#bad + 1] = "live: " .. tostring(book)
         end
@@ -1175,16 +1175,16 @@ local function BookChecks(dB)
             bad[#bad + 1] = "generation moved " .. tostring(gen0) .. " -> " .. tostring(Book.generation)
         end
         if fired ~= 0 then bad[#bad + 1] = "BOOK_CHANGED fired " .. fired end
-        if chosen then MD.sim = chosen end
+        if chosen then ST.sim = chosen end
         local infoBefore = { tag = "the last Compute's context" }
         RM.info = infoBefore
         local sugg = RM:SuggestedRanks()
         if RM.info ~= infoBefore then bad[#bad + 1] = "SuggestedRanks left RankMath.info moved" end
-        MD.sim = savedSim
+        ST.sim = savedSim
         for fam, rank in pairs(liveMap) do if sugg[fam] ~= rank then bad[#bad + 1] = "SuggestedRanks " .. fam end end
         if not chosen then bad[#bad + 1] = "no what-if moved a suggested rank" end
         print("    what-if that moves a rank: " .. Show(chosen))
-        check("23. Get() ignores MD.sim, Get({ whatIf }) reads it uncached and unannounced; SuggestedRanks is live",
+        check("23. Get() ignores ST.sim, Get({ whatIf }) reads it uncached and unannounced; SuggestedRanks is live",
             #bad == 0, Show(bad))
     end
 
@@ -1193,14 +1193,14 @@ local function BookChecks(dB)
     do
         pcall(Fresh)
         local fired = 0
-        MD:RegisterCallback("BOOK_CHANGED", function() fired = fired + 1 end)
+        ST:RegisterCallback("BOOK_CHANGED", function() fired = fired + 1 end)
         local gen0 = Book and Book.generation or -1
         local savedBonus = _G.GetSpellBonusHealing
         _G.GetSpellBonusHealing = function() return 520 end
         S.Fire("UNIT_INVENTORY_CHANGED", "player")
         local afterGear, genGear = fired, Book and Book.generation
         S.Fire("UNIT_INVENTORY_CHANGED", "player")
-        MD:Fire("TALENTS_CHANGED")
+        ST:Fire("TALENTS_CHANGED")
         local afterSame, genSame = fired, Book and Book.generation
         S.Fire("UNIT_INVENTORY_CHANGED", "party1")
         local afterParty = fired
@@ -1227,12 +1227,12 @@ local function BookChecks(dB)
         local restore = InstallBook(ROWS)
         -- as shipped (T123) the priest's file grants the rank table: taken
         -- away for this check's own run, then given back
-        local caps = MD.Profiles.byClass.PRIEST.caps
+        local caps = ST.Profiles.byClass.PRIEST.caps
         local savedRT, savedTip = caps.rankTable, caps.tooltip
         caps.rankTable, caps.tooltip = nil, nil
         S.units.player.class = "PRIEST"
-        MD:DetectProfile()
-        MD:Fire("CORE_LOGIN")
+        ST:DetectProfile()
+        ST:Fire("CORE_LOGIN")
         local okB, book = Try(Fresh)
         local kinds = {}
         for key, fam in pairs(okB and book.families or {}) do
@@ -1244,17 +1244,17 @@ local function BookChecks(dB)
         restore()
         caps.rankTable, caps.tooltip = savedRT, savedTip
         S.units.player.class = "DRUID"
-        MD:DetectProfile()
-        MD:Fire("CORE_LOGIN")
+        ST:DetectProfile()
+        ST:Fire("CORE_LOGIN")
         pcall(Fresh)
         check("25. a priest without the rank table: Other only (no heal, no damage), valid",
             okB and #kinds == 0 and listed and valid, Show({ kinds = kinds, listed = listed, problems = problems }))
     end
 
     -- 26 ----------------------------------------------------------------------
-    T.section("26. MD.FamiliesTBC is gone")
-    check("26. MD.FamiliesTBC (T118's alias) is nil: every reader reads MD.Book", MD.FamiliesTBC == nil,
-        type(MD.FamiliesTBC))
+    T.section("26. ST.FamiliesTBC is gone")
+    check("26. ST.FamiliesTBC (T118's alias) is nil: every reader reads ST.Book", ST.FamiliesTBC == nil,
+        type(ST.FamiliesTBC))
 
     -- 27 ----------------------------------------------------------------------
     T.section("27. a priest's, a shaman's and a paladin's book, damage included")
@@ -1273,14 +1273,14 @@ local function BookChecks(dB)
         local savedLevel = S.level
         for _, class in ipairs({ "PRIEST", "SHAMAN", "PALADIN" }) do
             S.level = 70
-            local okI, rows, undo = Try(lib.Install, S, MD, class, { damage = true })
+            local okI, rows, undo = Try(lib.Install, S, ST, class, { damage = true })
             if not okI then
                 bad[#bad + 1] = class .. " install: " .. tostring(rows)
             else
                 S.units.player.class = class
-                MD:DetectProfile()
-                MD:Fire("CORE_LOGIN")
-                if MD.BookTBC and MD.BookTBC.Rebuild then MD.BookTBC:Rebuild() end
+                ST:DetectProfile()
+                ST:Fire("CORE_LOGIN")
+                if ST.BookTBC and ST.BookTBC.Rebuild then ST.BookTBC:Rebuild() end
                 local okB, book = Try(Fresh)
                 if not okB then
                     bad[#bad + 1] = class .. ": " .. tostring(book)
@@ -1303,7 +1303,7 @@ local function BookChecks(dB)
                             if seenDamage then healAfter = true end
                         end
                     end
-                    local src = MD.RankMath:Source()
+                    local src = ST.RankMath:Source()
                     local wantHeals = table.concat(src and src.familyOrder or {}, ",")
                     if table.concat(heals, ",") ~= wantHeals or healAfter or #heals == 0 then
                         bad[#bad + 1] = class .. " heals " .. table.concat(heals, ",") .. " want " .. wantHeals
@@ -1319,9 +1319,9 @@ local function BookChecks(dB)
         end
         S.level = savedLevel
         S.units.player.class = "DRUID"
-        MD:DetectProfile()
-        MD:Fire("CORE_LOGIN")
-        if MD.BookTBC and MD.BookTBC.Rebuild then MD.BookTBC:Rebuild() end
+        ST:DetectProfile()
+        ST:Fire("CORE_LOGIN")
+        if ST.BookTBC and ST.BookTBC.Rebuild then ST.BookTBC:Rebuild() end
         pcall(Fresh)
         check("27. each class book passes BookShape.Validate: its heals, then its damage families in the profile's order",
             #bad == 0, table.concat(bad, "; "))
@@ -1330,7 +1330,7 @@ local function BookChecks(dB)
     -- 28 ----------------------------------------------------------------------
     T.section("28. the druid's book, as on the parent")
     local function Same(a, b) return a.n == b.n and a.bytes == b.bytes and a.h1 == b.h1 and a.h2 == b.h2 end
-    check(string.format("28. the druid's MD.Book (heals, damage, Other), %d lines, as on the parent", dB.n),
+    check(string.format("28. the druid's ST.Book (heals, damage, Other), %d lines, as on the parent", dB.n),
         Same(dB, GOLDEN.book), Show(dB) .. " vs golden " .. Show(GOLDEN.book))
 end
 
@@ -1340,15 +1340,15 @@ local function TbcChecks()
     do
         local listed = {}
         for _, f in ipairs(S.TocFiles("SpellTuner_TBC.toc")) do listed[f] = true end
-        local W = MD.Words
-        -- T118: MD.Book is TBC's too now (Spells/Book_Model.lua, check 15);
+        local W = ST.Words
+        -- T118: ST.Book is TBC's too now (Spells/Book_Model.lua, check 15);
         -- Words.GCD is 1.5 either way
-        local ok = MD.Coefficients ~= nil and MD.BookShape ~= nil and W ~= nil
+        local ok = ST.Coefficients ~= nil and ST.BookShape ~= nil and W ~= nil
             and listed["Spells/Coefficients.lua"] and listed["Spells/BookShape.lua"] and listed["Spells/Words.lua"]
             and W.GCD == 1.5
         check("11. Coefficients, BookShape and Words load from the TBC TOC; Words.GCD 1.5", ok,
-            Show({ coef = MD.Coefficients ~= nil, shape = MD.BookShape ~= nil, words = W ~= nil,
-                   book = MD.Book ~= nil, gcd = W and W.GCD }))
+            Show({ coef = ST.Coefficients ~= nil, shape = ST.BookShape ~= nil, words = W ~= nil,
+                   book = ST.Book ~= nil, gcd = W and W.GCD }))
     end
 
     -- 12 / 13 -----------------------------------------------------------------
@@ -1391,7 +1391,7 @@ local function TbcChecks()
             for line in (fh and fh:lines() or function() return nil end) do
                 n = n + 1
                 local code = line:gsub("%-%-.*$", "")
-                -- GROUP_COEF stays as an alias (`= MD.Coefficients.GROUP`): its
+                -- GROUP_COEF stays as an alias (`= ST.Coefficients.GROUP`): its
                 -- number is the literal refused
                 for _, lit in ipairs({ "/ 3%.5", "/ 15", "0%.0375", "GROUP_COEF = [%d%.]" }) do
                     if code:find(lit) then found[#found + 1] = rel .. ":" .. n .. " " .. lit end

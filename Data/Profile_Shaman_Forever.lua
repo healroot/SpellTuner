@@ -26,15 +26,15 @@
 --   * Nature's Swiftness -- a next-cast modifier.
 -- (Mana Spring Totem, Mana Tide Totem and Water Shield are mana, not heals:
 -- T105's sources, not listed.)
-local _, MD = ...
+local _, ST = ...
 
-MD.Profiles.Register("SHAMAN", {
+ST.Profiles.Register("SHAMAN", {
     label = "Shaman",
     critSchool = 4,                -- Nature (VERIFY: Forever merges crit; the probe reads one value)
     -- The druid's Forever capabilities, less `simulate` (the TBC Simulate
     -- window; nothing on the Forever TOCs asks for it): coach and practice
     -- are granted because tools/classcoach.lua passes on this class's book
-    -- (docs/SPEC-next.md 4.3); on Forever `coach` also asks MD.KitLive.
+    -- (docs/SPEC-next.md 4.3); on Forever `coach` also asks ST.KitLive.
     caps = { clock = true, tooltip = true, rankTable = true, coach = true, practice = true },
     families = {
         -- single-target direct heals
@@ -49,7 +49,7 @@ MD.Profiles.Register("SHAMAN", {
         -- total and the duration only), 6 s cooldown from its tooltip line
         Riptide           = { names = { "Riptide" },             kit = "hybrid", hot = true },
     },
-    -- The dashboard order (MD.SpellData.familyOrder).
+    -- The dashboard order (ST.SpellData.familyOrder).
     order = { "HealingWave", "LesserHealingWave", "ChainHeal", "Riptide" },
     -- Riptide's HoT in slot 1 (the engine's per-target HoT slots).
     hotSlots = { "Riptide" },

@@ -7,7 +7,7 @@
 -- forever only, 19-20 under tbc only -- matching the Facts in
 -- docs/tasks/T1-client-adapter.md about what is secret on which client. Never
 -- runs under a flavour it did not declare (tools/harness.lua).
--- T52 (P8): one more under both flavours, MD.API.Invalidate (23 forever, 16 tbc).
+-- T52 (P8): one more under both flavours, ST.API.Invalidate (23 forever, 16 tbc).
 -- T114: DrawPowerText, the Q-clock-2 seam -- two forever, one tbc (26 forever,
 -- 17 tbc).
 -- T120: the shared Spells pane on TBC -- CursorInfo (the drop on the rail) and
@@ -25,10 +25,10 @@ local function check(name, cond, detail)
 end
 
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local okLoad, MD = pcall(dofile, here .. "/harness.lua")
+local okLoad, ST = pcall(dofile, here .. "/harness.lua")
 arg[0] = a0
 if not okLoad then
-    print("harness failed to load: " .. tostring(MD))
+    print("harness failed to load: " .. tostring(ST))
     os.exit(1)
 end
 local S = _G.STUB
@@ -82,7 +82,7 @@ local FOREVER_ONLY_NAMES = {
     -- T38 (UI/SpellsPane_Forever.lua): the game's spell tooltip for a rank row.
     "SetTooltipSpell", -- T38
     -- T95 (Spells/Book.lua): GetSpellBaseCooldown, read only while
-    -- MD.API.BASE_CD_READS is true.
+    -- ST.API.BASE_CD_READS is true.
     "BaseCooldown", -- T95
     -- T114 (docs/tasks/T114-clock-face-slots.md): the Q-clock-2 seam, a
     -- secret power value into a font string, off until the probe says so.
@@ -90,7 +90,7 @@ local FOREVER_ONLY_NAMES = {
 }
 -- T15: Client/API_TBC.lua's own binding -- GetSpellInfo, so
 -- Engine/SimModel.lua and Engine/SimPlanner.lua's four call sites can go
--- through MD.API.SpellName(id) on either client.
+-- through ST.API.SpellName(id) on either client.
 -- T16b (UI/Dashboard_Review.lua): RealZoneText, TBC's own GetRealZoneText --
 -- Forever's is FOREVER_ONLY_NAMES' own (Client/API_Forever.lua, T13).
 -- T18: the same bindings-import triad as Forever's own FOREVER_ONLY_NAMES,
@@ -123,10 +123,10 @@ do
 
     local allFunctions = true
     for _, n in ipairs(allNames) do
-        if type(MD.API[n]) ~= "function" then allFunctions = false end
+        if type(ST.API[n]) ~= "function" then allFunctions = false end
     end
 
-    local caps = MD.API.Capabilities()
+    local caps = ST.API.Capabilities()
     local byName = {}
     local sorted = true
     for i, c in ipairs(caps) do
@@ -139,14 +139,14 @@ do
         if not byName[n] then exactlyOne = false end
     end
 
-    check("every binding is on MD.API and in the capability table",
+    check("every binding is on ST.API and in the capability table",
         allFunctions and #caps == #allNames and exactlyOne and sorted)
 end
 
 do
-    MD.API.Bind({ T1Missing = "NoSuchNamespace.NoSuchFn" })
-    local a, b = MD.API.T1Missing()
-    local caps = MD.API.Capabilities()
+    ST.API.Bind({ T1Missing = "NoSuchNamespace.NoSuchFn" })
+    local a, b = ST.API.T1Missing()
+    local caps = ST.API.Capabilities()
     local present
     for _, c in ipairs(caps) do if c.name == "T1Missing" then present = c.present end end
     check("a missing client function answers nil, absent",
@@ -155,28 +155,28 @@ end
 
 do
     _G.T1_RAISE = function() error("boom") end
-    MD.API.Bind({ T1Raise = "T1_RAISE" })
-    local a, b, c = MD.API.T1Raise()
+    ST.API.Bind({ T1Raise = "T1_RAISE" })
+    local a, b, c = ST.API.T1Raise()
     check("a raising client function answers nil, error",
         a == nil and b == "error" and type(c) == "string" and c:find("boom", 1, true) ~= nil)
 end
 
 do
     _G.T1_MULTI = function() return nil, 5, nil end
-    MD.API.Bind({ T1Multi = "T1_MULTI" })
-    local n1 = select("#", MD.API.T1Multi())
-    local _, second = MD.API.T1Multi()
+    ST.API.Bind({ T1Multi = "T1_MULTI" })
+    local n1 = select("#", ST.API.T1Multi())
+    local _, second = ST.API.T1Multi()
     check("every return comes back, nils in the middle kept", n1 == 3 and second == 5)
 end
 
 do
-    local hadHas = MD.API.Has
-    MD.API.Bind({ Has = "T1_MULTI" })
-    local caps = MD.API.Capabilities()
+    local hadHas = ST.API.Has
+    ST.API.Bind({ Has = "T1_MULTI" })
+    local caps = ST.API.Capabilities()
     local hasEntry
     for _, c in ipairs(caps) do if c.name == "Has" then hasEntry = c end end
     check("Bind never replaces the adapter's own members",
-        MD.API.Has == hadHas and hasEntry == nil)
+        ST.API.Has == hadHas and hasEntry == nil)
 end
 
 do
@@ -190,8 +190,8 @@ do
         end
         f:close()
     end
-    check("AddonVersion reads the flavour's TOC", MD.API.AddonVersion() == expected,
-        "got " .. tostring(MD.API.AddonVersion()) .. ", expected " .. tostring(expected))
+    check("AddonVersion reads the flavour's TOC", ST.API.AddonVersion() == expected,
+        "got " .. tostring(ST.API.AddonVersion()) .. ", expected " .. tostring(expected))
 end
 
 do
@@ -199,7 +199,7 @@ do
     local frame = _G.DEFAULT_CHAT_FRAME
     local orig = frame.AddMessage
     frame.AddMessage = function(_, m) seen = m end
-    MD.API.Print("t1-print-probe")
+    ST.API.Print("t1-print-probe")
     frame.AddMessage = orig
     check("Print reaches the chat frame", seen == "t1-print-probe")
 end
@@ -208,13 +208,13 @@ do
     -- T1b re-issue: DEFAULT_CHAT_FRAME is a variable the UI may reassign
     -- (a chat addon, a UI reload) -- Print must not trust a cached table.
     local originalFrame = _G.DEFAULT_CHAT_FRAME
-    MD.API.Print("t1-print-old-frame")
+    ST.API.Print("t1-print-old-frame")
     local oldSeen
     originalFrame.AddMessage = function(_, m) oldSeen = m end
 
     local newSeen
     _G.DEFAULT_CHAT_FRAME = { AddMessage = function(_, m) newSeen = m end }
-    MD.API.Print("t1-print-new-frame")
+    ST.API.Print("t1-print-new-frame")
     _G.DEFAULT_CHAT_FRAME = originalFrame
 
     check("Print follows the chat frame the UI has now",
@@ -223,14 +223,14 @@ end
 
 do
     if flavour == "forever" then S.inCombat = false end
-    local caps = MD.API.Capabilities()
+    local caps = ST.API.Capabilities()
     local okAll = pcall(function()
         for _, c in ipairs(caps) do
-            MD.API[c.name]("player")
+            ST.API[c.name]("player")
         end
         if flavour == "forever" then S.inCombat = true end
         for _, c in ipairs(caps) do
-            MD.API[c.name]("player")
+            ST.API[c.name]("player")
         end
         if flavour == "forever" then S.inCombat = false end
     end)
@@ -251,11 +251,11 @@ do
         -- exist there; the stub (Lua 5.1) cannot trap it, and since type(secret)
         -- answers "number" the key would only be counted as a second secret.
     end
-    local copy1 = MD.API.Copy(t, 1)
-    local copy2 = MD.API.Copy(t, 2)
-    local plainScalar = MD.API.Copy(5)
-    local nilForSecret = (flavour == "forever") and MD.API.Copy(secret) == nil or true
-    local nilForFunction = MD.API.Copy(print) == nil
+    local copy1 = ST.API.Copy(t, 1)
+    local copy2 = ST.API.Copy(t, 2)
+    local plainScalar = ST.API.Copy(5)
+    local nilForSecret = (flavour == "forever") and ST.API.Copy(secret) == nil or true
+    local nilForFunction = ST.API.Copy(print) == nil
 
     local depth1Good = copy1.name == "Bob" and copy1.n == 5 and copy1.ok == true
         and copy1.nested == nil and copy1 ~= t
@@ -274,9 +274,9 @@ do
     -- Enum.SpellBookSpellBank.Player is a plain 0 on both stub profiles'
     -- Enum table on forever; on tbc there is no Enum table at all, so the
     -- walk simply answers nil rather than raising.
-    local player = MD.API.Constant("Enum.SpellBookSpellBank.Player")
-    local missing = MD.API.Constant("Enum.NoSuchThing.Nope")
-    local notAFunction = MD.API.Constant("print")
+    local player = ST.API.Constant("Enum.SpellBookSpellBank.Player")
+    local missing = ST.API.Constant("Enum.NoSuchThing.Nope")
+    local notAFunction = ST.API.Constant("print")
     local ok
     if flavour == "forever" then
         ok = player == 0
@@ -294,9 +294,9 @@ do
         if flavour == "forever" then row.secretField = S.Secret() end
         return row
     end
-    MD.API.Bind({ T7Copying = { client = "T7_COPYSRC", copy = 1 } })
-    local a = MD.API.T7Copying()
-    local b = MD.API.T7Copying()
+    ST.API.Bind({ T7Copying = { client = "T7_COPYSRC", copy = 1 } })
+    local a = ST.API.T7Copying()
+    local b = ST.API.T7Copying()
     _G.T7_COPYSRC = nil
     check("a copying binding hands back a copy, never the client's table",
         a ~= nil and a.id == 1 and a.name == "Row" and a ~= b and a.secretField == nil)
@@ -310,28 +310,28 @@ end
 --------------------------------------------------------------------------------
 do
     local bar = CreateFrame("StatusBar", nil, UIParent)
-    local drawOk = MD.API.DrawUnitPower(bar, "player", 0)
+    local drawOk = ST.API.DrawUnitPower(bar, "player", 0)
     check("DrawUnitPower hands the values over without reading them",
         drawOk == true and bar.minV == 0 and bar.maxV ~= nil and bar.value ~= nil)
 end
 
 --------------------------------------------------------------------------------
--- T52 (P8, review Q15): MD.API.Invalidate(name) clears one Has cache entry, so
+-- T52 (P8, review Q15): ST.API.Invalidate(name) clears one Has cache entry, so
 -- a test can swap a global after the adapter has already answered for it --
 -- both flavours. Before it a later Has kept the first answer forever.
 --------------------------------------------------------------------------------
 do
     local runOk, err = pcall(function()
         _G.T52_LATE = nil
-        local before = MD.API.Has("T52_LATE")
+        local before = ST.API.Has("T52_LATE")
         _G.T52_LATE = function() return 7 end
-        local stillCached = MD.API.Has("T52_LATE")
-        MD.API.Invalidate("T52_LATE")
-        local after = MD.API.Has("T52_LATE")
-        local otherKept = type(MD.API.Has("UnitLevel")) == "function"
+        local stillCached = ST.API.Has("T52_LATE")
+        ST.API.Invalidate("T52_LATE")
+        local after = ST.API.Has("T52_LATE")
+        local otherKept = type(ST.API.Has("UnitLevel")) == "function"
         _G.T52_LATE = nil
-        MD.API.Invalidate("T52_LATE")
-        local gone = MD.API.Has("T52_LATE")
+        ST.API.Invalidate("T52_LATE")
+        local gone = ST.API.Has("T52_LATE")
         check("Invalidate makes a later Has see a new global",
             before == false and stillCached == false and type(after) == "function"
             and gone == false and otherKept == true,
@@ -349,11 +349,11 @@ end
 if flavour == "forever" then
     do
         S.inCombat = false
-        local h1, hr1 = MD.API.UnitHealth("player")
-        local p1, pr1 = MD.API.UnitPower("player", 0)
+        local h1, hr1 = ST.API.UnitHealth("player")
+        local p1, pr1 = ST.API.UnitPower("player", 0)
         S.inCombat = true
-        local h2, hr2 = MD.API.UnitHealth("player")
-        local p2, pr2 = MD.API.UnitPower("player", 0)
+        local h2, hr2 = ST.API.UnitHealth("player")
+        local p2, pr2 = ST.API.UnitPower("player", 0)
         S.inCombat = false
         check("current health and power are nil, secret, in and out of combat",
             h1 == nil and hr1 == "secret" and p1 == nil and pr1 == "secret"
@@ -362,18 +362,18 @@ if flavour == "forever" then
 
     do
         if not S.units.party1 then S.AddUnit("party1", { guid = "Party-1", name = "Bob", class = "PRIEST", hp = 4000, hpMax = 4000 }) end
-        local hMax = MD.API.UnitHealthMax("player")
-        local pMax = MD.API.UnitPowerMax("player", 0)
-        local partyMax, reason = MD.API.UnitHealthMax("party1")
+        local hMax = ST.API.UnitHealthMax("player")
+        local pMax = ST.API.UnitPowerMax("player", 0)
+        local partyMax, reason = ST.API.UnitHealthMax("party1")
         check("the player's maxima are plain and a party member's health max is nil, secret",
             type(hMax) == "number" and type(pMax) == "number" and partyMax == nil and reason == "secret")
     end
 
     do
         S.inCombat = false
-        local r1a, r1b = MD.API.ManaRegen()
+        local r1a, r1b = ST.API.ManaRegen()
         S.inCombat = true
-        local r2, reason = MD.API.ManaRegen()
+        local r2, reason = ST.API.ManaRegen()
         S.inCombat = false
         check("GetManaRegen: two numbers out of combat, nil, secret in combat",
             type(r1a) == "number" and type(r1b) == "number" and r2 == nil and reason == "secret")
@@ -381,12 +381,12 @@ if flavour == "forever" then
 
     do
         check("the combat log is forbidden on Forever, other events are not",
-            MD.API.CanRegisterEvent("COMBAT_LOG_EVENT_UNFILTERED") == false
-            and MD.API.CanRegisterEvent("UNIT_COMBAT") == true)
+            ST.API.CanRegisterEvent("COMBAT_LOG_EVENT_UNFILTERED") == false
+            and ST.API.CanRegisterEvent("UNIT_COMBAT") == true)
     end
 
     do
-        local caps = MD.API.Capabilities()
+        local caps = ST.API.Capabilities()
         local byName = {}
         for _, c in ipairs(caps) do byName[c.name] = c end
         check("the add-on bindings are C_AddOns on Forever",
@@ -399,20 +399,20 @@ if flavour == "forever" then
     end
 
     do
-        local caps = MD.API.Capabilities()
+        local caps = ST.API.Capabilities()
         local values = {}
         S.inCombat = false
         for _, c in ipairs(caps) do
-            local a, b = MD.API[c.name]("player")
+            local a, b = ST.API[c.name]("player")
             values[#values + 1] = a; values[#values + 1] = b
         end
         S.inCombat = true
         for _, c in ipairs(caps) do
-            local a, b = MD.API[c.name]("player")
+            local a, b = ST.API[c.name]("player")
             values[#values + 1] = a; values[#values + 1] = b
         end
-        local hMax = MD.API.UnitHealthMax("party1")
-        local r = { MD.API.ManaRegen() }
+        local hMax = ST.API.UnitHealthMax("party1")
+        local r = { ST.API.ManaRegen() }
         S.inCombat = false
         local none = true
         local function checkOne(v)
@@ -428,7 +428,7 @@ if flavour == "forever" then
 
     -- T95 (docs/SPEC-next.md 4.2 P1): GetSpellBaseCooldown is bound as
     -- BaseCooldown, a Forever-only name, its answer plain (or nil, absent),
-    -- and MD.API.BASE_CD_READS ships false -- Spells/Book.lua reads the
+    -- and ST.API.BASE_CD_READS ships false -- Spells/Book.lua reads the
     -- tooltip line until T87's Forever report says the call answers plain.
     do
         local listed = false
@@ -438,35 +438,35 @@ if flavour == "forever" then
             if id == 20473 then return 10000, 1500 end
             return 0, 1500
         end
-        MD.API.Invalidate("GetSpellBaseCooldown")
-        local read = type(MD.API.BaseCooldown) == "function" and MD.API.BaseCooldown or function() end
+        ST.API.Invalidate("GetSpellBaseCooldown")
+        local read = type(ST.API.BaseCooldown) == "function" and ST.API.BaseCooldown or function() end
         local ms, gcd = read(20473)
         local none = read(5185)
         _G.GetSpellBaseCooldown = saved
-        MD.API.Invalidate("GetSpellBaseCooldown")
+        ST.API.Invalidate("GetSpellBaseCooldown")
         local gone, why = read(20473)
         check("T95: BaseCooldown is a Forever-only binding, read only once BASE_CD_READS is set",
-            listed and MD.API._bindings.BaseCooldown == "GetSpellBaseCooldown" and MD.API.BASE_CD_READS == false
+            listed and ST.API._bindings.BaseCooldown == "GetSpellBaseCooldown" and ST.API.BASE_CD_READS == false
             and ms == 10000 and gcd == 1500 and none == 0 and gone == nil and why == "absent",
             string.format("listed=%s binding=%s flag=%s ms=%s gcd=%s none=%s gone=%s/%s", tostring(listed),
-                tostring(MD.API._bindings.BaseCooldown), tostring(MD.API.BASE_CD_READS), tostring(ms),
+                tostring(ST.API._bindings.BaseCooldown), tostring(ST.API.BASE_CD_READS), tostring(ms),
                 tostring(gcd), tostring(none), tostring(gone), tostring(why)))
     end
 
     -- T114: DrawPowerText, the Q-clock-2 seam -- a secret power value handed
-    -- straight to a font string. Ships off (MD.API.POWER_TEXT_READS false);
+    -- straight to a font string. Ships off (ST.API.POWER_TEXT_READS false);
     -- with the flag off it answers nil, "secret" and touches neither the font
     -- string nor either client function.
     do
         local listed = false
         for _, n in ipairs(FOREVER_ONLY_NAMES) do if n == "DrawPowerText" then listed = true end end
         check("T114: DrawPowerText is a Forever-only binding and ships off",
-            listed and type(MD.API.DrawPowerText) == "function"
-            and MD.API._bindings.DrawPowerText == "UnitPowerPercent"
-            and MD.API.POWER_TEXT_READS == false,
+            listed and type(ST.API.DrawPowerText) == "function"
+            and ST.API._bindings.DrawPowerText == "UnitPowerPercent"
+            and ST.API.POWER_TEXT_READS == false,
             string.format("listed=%s fn=%s binding=%s flag=%s", tostring(listed),
-                type(MD.API.DrawPowerText), tostring(MD.API._bindings.DrawPowerText),
-                tostring(MD.API.POWER_TEXT_READS)))
+                type(ST.API.DrawPowerText), tostring(ST.API._bindings.DrawPowerText),
+                tostring(ST.API.POWER_TEXT_READS)))
     end
 
     do
@@ -474,25 +474,25 @@ if flavour == "forever" then
         local clientCalls, sets, last = 0, 0, nil
         _G.UnitPowerPercent = function() clientCalls = clientCalls + 1; return 0.62 end
         _G.UnitPower = function() clientCalls = clientCalls + 1; return 4321 end
-        MD.API.Invalidate("UnitPowerPercent")
-        MD.API.Invalidate("UnitPower")
+        ST.API.Invalidate("UnitPowerPercent")
+        ST.API.Invalidate("UnitPower")
         local fs = { SetText = function(self, v) sets = sets + 1; last = v end }
-        local draw = type(MD.API.DrawPowerText) == "function" and MD.API.DrawPowerText
+        local draw = type(ST.API.DrawPowerText) == "function" and ST.API.DrawPowerText
             or function() return "missing" end
-        local origFlag = MD.API.POWER_TEXT_READS
+        local origFlag = ST.API.POWER_TEXT_READS
         local a, b = draw(fs, "player", 0, "pct")
         local c, d = draw(fs, "player", 0, "mana")
         local offCalls, offSets = clientCalls, sets
         -- The flag flipped (the probe's answer): the value goes into the font
         -- string unread, and an unknown kind is refused.
-        MD.API.POWER_TEXT_READS = true
+        ST.API.POWER_TEXT_READS = true
         local on = draw(fs, "player", 0, "mana")
         local onLast = last
         local bad, badWhy = draw(fs, "player", 0, "mp5")
-        MD.API.POWER_TEXT_READS = origFlag
+        ST.API.POWER_TEXT_READS = origFlag
         _G.UnitPowerPercent, _G.UnitPower = savedPct, savedPow
-        MD.API.Invalidate("UnitPowerPercent")
-        MD.API.Invalidate("UnitPower")
+        ST.API.Invalidate("UnitPowerPercent")
+        ST.API.Invalidate("UnitPower")
         check("T114: with POWER_TEXT_READS off, DrawPowerText gives nil, secret and touches nothing",
             origFlag == false and a == nil and b == "secret" and c == nil and d == "secret"
             and offCalls == 0 and offSets == 0
@@ -503,20 +503,20 @@ if flavour == "forever" then
     end
 
     -- T17c: HealthMax, a party member's real max through a hidden status bar,
-    -- off (MD.API.BAR_READS_MAX false) until the probe's bar readback line says
+    -- off (ST.API.BAR_READS_MAX false) until the probe's bar readback line says
     -- a bar hands a secret back plain. The getter is replaced through the bar
     -- metatable the stub shares (T13e's own technique) and always restored.
     do
         local barMT = getmetatable(_G.UIParent)
         local origGet = barMT.GetMinMaxValues
-        local origFlag = MD.API.BAR_READS_MAX
+        local origFlag = ST.API.BAR_READS_MAX
         local calls = 0
         barMT.GetMinMaxValues = function(self) calls = calls + 1; return origGet(self) end
-        MD.API.BAR_READS_MAX = false
-        local a, b = MD.API.HealthMax("party1")
-        local p, pr = MD.API.HealthMax("player")
+        ST.API.BAR_READS_MAX = false
+        local a, b = ST.API.HealthMax("party1")
+        local p, pr = ST.API.HealthMax("player")
         barMT.GetMinMaxValues = origGet
-        MD.API.BAR_READS_MAX = origFlag
+        ST.API.BAR_READS_MAX = origFlag
         check("a party member's max through a status bar is off until the probe says so",
             origFlag == false and a == nil and b == "secret" and calls == 0
             and type(p) == "number" and p == S.units.player.hpMax and pr == nil,
@@ -524,14 +524,14 @@ if flavour == "forever" then
     end
 
     do
-        local origFlag = MD.API.BAR_READS_MAX
-        MD.API.BAR_READS_MAX = true
-        local r = { MD.API.HealthMax("party1") }
-        local n = select("#", MD.API.HealthMax("party1"))
-        MD.API.BAR_READS_MAX = origFlag
+        local origFlag = ST.API.BAR_READS_MAX
+        ST.API.BAR_READS_MAX = true
+        local r = { ST.API.HealthMax("party1") }
+        local n = select("#", ST.API.HealthMax("party1"))
+        ST.API.BAR_READS_MAX = origFlag
         local leaked = false
         for i = 1, n do
-            local v = select(i, MD.API.HealthMax("party1"))
+            local v = select(i, ST.API.HealthMax("party1"))
             if _G.issecretvalue(v) then leaked = true end
         end
         for i = 1, 2 do if _G.issecretvalue(r[i]) then leaked = true end end
@@ -543,14 +543,14 @@ if flavour == "forever" then
     do
         local barMT = getmetatable(_G.UIParent)
         local origGet = barMT.GetMinMaxValues
-        local origFlag = MD.API.BAR_READS_MAX
-        MD.API.BAR_READS_MAX = true
+        local origFlag = ST.API.BAR_READS_MAX
+        ST.API.BAR_READS_MAX = true
         barMT.GetMinMaxValues = function() return 0, 12345 end
-        local plain = MD.API.HealthMax("party1")
+        local plain = ST.API.HealthMax("party1")
         barMT.GetMinMaxValues = function() error("stub GetMinMaxValues raised") end
-        local okRaise, ra, rb = pcall(MD.API.HealthMax, "party1")
+        local okRaise, ra, rb = pcall(ST.API.HealthMax, "party1")
         barMT.GetMinMaxValues = origGet
-        MD.API.BAR_READS_MAX = origFlag
+        ST.API.BAR_READS_MAX = origFlag
         check("with the readback on, a bar that hands back a plain max gives that number, and a raising bar gives nil, error",
             plain == 12345 and okRaise == true and ra == nil and rb == "error" and origFlag == false
             and barMT.GetMinMaxValues == origGet,
@@ -564,17 +564,17 @@ end
 
 if flavour == "tbc" then
     do
-        local h = MD.API.UnitHealth("player")
-        local p = MD.API.UnitPower("player", 0)
-        local r1, r2 = MD.API.ManaRegen()
+        local h = ST.API.UnitHealth("player")
+        local p = ST.API.UnitPower("player", 0)
+        local r1, r2 = ST.API.ManaRegen()
         check("TBC readings pass through plain",
             h == 5000 and p == 7009 and type(r1) == "number" and type(r2) == "number"
-            and MD.API.CanRegisterEvent("COMBAT_LOG_EVENT_UNFILTERED") == true
-            and MD.API.IsSecret(5) == false)
+            and ST.API.CanRegisterEvent("COMBAT_LOG_EVENT_UNFILTERED") == true
+            and ST.API.IsSecret(5) == false)
     end
 
     do
-        local caps = MD.API.Capabilities()
+        local caps = ST.API.Capabilities()
         local byName = {}
         for _, c in ipairs(caps) do byName[c.name] = c end
         check("the add-on bindings are the classic globals on TBC",
@@ -587,14 +587,14 @@ if flavour == "tbc" then
 
     -- T114: the Q-clock-2 seam is Forever's only; TBC reads its mana plain.
     check("T114: DrawPowerText is absent on TBC",
-        MD.API.DrawPowerText == nil and MD.API.POWER_TEXT_READS == nil,
-        string.format("fn=%s flag=%s", type(MD.API.DrawPowerText), tostring(MD.API.POWER_TEXT_READS)))
+        ST.API.DrawPowerText == nil and ST.API.POWER_TEXT_READS == nil,
+        string.format("fn=%s flag=%s", type(ST.API.DrawPowerText), tostring(ST.API.POWER_TEXT_READS)))
 
     -- T120: GetCursorInfo's spell shape ("spell", book slot, book type, id);
     -- the id from the fourth return, else the slot's through the spellbook;
     -- another kind answers the kind alone; nothing held answers nil.
     do
-        local fn = type(MD.API.CursorInfo) == "function" and MD.API.CursorInfo
+        local fn = type(ST.API.CursorInfo) == "function" and ST.API.CursorInfo
         local ok, a, b, c, d, e, f = false
         if fn then
             local saved = S.cursor
@@ -611,7 +611,7 @@ if flavour == "tbc" then
         end
         check("T120: CursorInfo reads a dragged spell's id on TBC, the kind alone for anything else",
             ok and a == "spell" and b == 26979 and c == "item" and d == nil and e == nil and f == nil
-            and MD.API._bindings.CursorInfo == "GetCursorInfo",
+            and ST.API._bindings.CursorInfo == "GetCursorInfo",
             string.format("ok=%s %s %s / %s %s / %s %s", tostring(ok), tostring(a), tostring(b),
                 tostring(c), tostring(d), tostring(e), tostring(f)))
     end
@@ -619,7 +619,7 @@ if flavour == "tbc" then
     -- T120: SetTooltipSpell is GameTooltip:SetSpellByID (2.5.x has it); a
     -- tooltip without it is absent, a raising one an error, never a raise
     do
-        local fn = type(MD.API.SetTooltipSpell) == "function" and MD.API.SetTooltipSpell
+        local fn = type(ST.API.SetTooltipSpell) == "function" and ST.API.SetTooltipSpell
         local r1, r2, r3, r4, r5, r6, calls
         local ok = fn and pcall(function()
             S.setSpellByIdCalls = {}

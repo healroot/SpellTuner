@@ -44,7 +44,7 @@
 --     GetAccentColor / GetPanelColor / GetFont / GetStyle counting every read
 --     in S.reads, OnLooksChanged keeping its functions; H.LooksChanged(S) calls
 --     them.
---   * H.AddOnMeta(MD, map): C_AddOns.GetAddOnMetadata answers map[name][field]
+--   * H.AddOnMeta(ST, map): C_AddOns.GetAddOnMetadata answers map[name][field]
 --     for a host (the version an integration line prints), else the stub's.
 --   * The reader, what EllesmereUI's DataBars Broker Plugin block shows
 --     (EllesmereUIDataBars/Blocks/LDB.lua): H.LdbBlockText(obj) -- obj.text,
@@ -347,7 +347,7 @@ end
 -- C_AddOns.GetAddOnMetadata answering for host addons too (map[name][field]),
 -- the stub's own answer for anything else; the adapter's cached lookup is
 -- forgotten so the next read takes the new function.
-function H.AddOnMeta(MD, map)
+function H.AddOnMeta(ST, map)
     local C = _G.C_AddOns
     if type(C) ~= "table" then return end
     local real = C.GetAddOnMetadata
@@ -356,7 +356,7 @@ function H.AddOnMeta(MD, map)
         if m ~= nil then return m[field] end
         if real then return real(name, field) end
     end
-    if MD and MD.API and MD.API.Invalidate then MD.API.Invalidate("C_AddOns.GetAddOnMetadata") end
+    if ST and ST.API and ST.API.Invalidate then ST.API.Invalidate("C_AddOns.GetAddOnMetadata") end
 end
 
 --------------------------------------------------------------------------------

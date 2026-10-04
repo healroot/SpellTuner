@@ -32,10 +32,10 @@
 -- turn a base into a hit, and no talent of those classes is modelled (the
 -- book's lines say so). Every entry point takes the class, defaulting to the
 -- logged-in player's; the druid's answers are what they were.
-local _, MD = ...
+local _, ST = ...
 
 local DM = {}
-MD.DamageMath = DM
+ST.DamageMath = DM
 
 -- school ids as GetSpellBonusDamage / GetSpellCritChance take them
 local NATURE, ARCANE = 4, 7
@@ -59,14 +59,14 @@ DM.SCHOOL_NAMES = { [1] = "Physical", [2] = "Holy", [3] = "Fire", [4] = "Nature"
 DM.DRUID_ORDER = { "Wrath", "Starfire", "Moonfire", "Insect Swarm", "Hurricane" }
 
 local function ClassOf(class)
-    if class == nil then class = MD.player and MD.player.class end
+    if class == nil then class = ST.player and ST.player.class end
     return class
 end
 
 local derived = {}   -- class -> { families, order } derived from its profile
 local function Derived(class)
     if derived[class] then return derived[class] end
-    local P = MD.Profiles
+    local P = ST.Profiles
     local p = P and P.byClass and P.byClass[class]
     if type(p) ~= "table" or type(p.damage) ~= "table" then return nil end
     local fams, keys = {}, {}
@@ -203,7 +203,7 @@ end
 
 -- T124: `opts.bonusDelta` (optional) moves the school's bonus by that much,
 -- never below 0 -- the What if's +Spell damage, handed in by the TBC book's
--- what-if build (Spells/Book_Model.lua); nothing here reads MD.sim.
+-- what-if build (Spells/Book_Model.lua); nothing here reads ST.sim.
 function DM.Compute(spellID, family, base, class, opts)
     local f = Fam(family, class)
     if not (f and base) then return nil end
@@ -219,7 +219,7 @@ function DM.Compute(spellID, family, base, class, opts)
     local druid = DM.families[family] == f
     for _, t in ipairs(druid and TALENTS or {}) do
         if t.spells[family] then
-            local r = MD:TalentRank(t.name)
+            local r = ST:TalentRank(t.name)
             if r > 0 then
                 if t.what == "mult" then mult = mult * (1 + t.per * r)
                 elseif t.what == "coef" then coefAdd = coefAdd + t.per * r
@@ -233,10 +233,10 @@ function DM.Compute(spellID, family, base, class, opts)
     local critMult = 1 + 0.5 * (1 + vengeance)
 
     -- downranking: the same penalty as a heal, if the client says the rank's level
-    local C = MD.Coefficients
+    local C = ST.Coefficients
     local level = Live(GetSpellLevelLearned, spellID)
     local pen, penKnown = 1, false
-    local player = MD.player and MD.player.level or 70
+    local player = ST.player and ST.player.level or 70
     if level and level > 0 then
         penKnown = true
         pen = C.Penalty(level, player)
@@ -293,7 +293,7 @@ function DM.Compute(spellID, family, base, class, opts)
     -- cost and time: the live cost; the cast the client reports now (talents
     -- that shorten it included), else the base; Nature's Grace averaged in the
     -- way the heal tooltip averages it
-    c.cost = (MD.SpellData and MD.SpellData:GetCost(spellID)) or base.mana or 0
+    c.cost = (ST.SpellData and ST.SpellData:GetCost(spellID)) or base.mana or 0
     local cast
     if GetSpellInfo then
         -- name, rank, icon, castTime (ms) -- pcall puts its own flag first
@@ -304,7 +304,7 @@ function DM.Compute(spellID, family, base, class, opts)
     elseif not cast then cast = (f.kind == "direct") and f.baseCast or 1.5 end
     if cast < 1.5 then cast = 1.5 end
     c.cast = cast
-    local ctx = MD.RankMath and MD.RankMath:Context({ live = true })
+    local ctx = ST.RankMath and ST.RankMath:Context({ live = true })
     c.castAvg = (ctx and f.kind == "direct") and ctx.ExpectedCast(cast, crit) or cast
     c.dpm = c.cost > 0 and c.expected / c.cost or nil
     c.dps = c.expected / c.castAvg

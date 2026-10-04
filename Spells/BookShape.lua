@@ -20,12 +20,12 @@
 -- `who` and the first five problems; BS.CheckMethods(Book, who) raises
 -- naming a missing method.
 --
--- Pure: Lua's library only. No client call, no MD.db, no frame. Every main
+-- Pure: Lua's library only. No client call, no ST.db, no frame. Every main
 -- TOC (TBC after Spells/Book_TBC.lua, Forever before Spells/Book.lua).
-local _, MD = ...
+local _, ST = ...
 
-MD.BookShape = MD.BookShape or {}
-local BS = MD.BookShape
+ST.BookShape = ST.BookShape or {}
+local BS = ST.BookShape
 
 local function R(t) return { type = t, required = true } end
 local function O(t) return { type = t } end

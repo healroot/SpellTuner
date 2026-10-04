@@ -30,15 +30,15 @@
 --     text does not state.
 --   * Divine Favor -- a next-cast modifier (a crit), not a heal.
 --   * Blessing of Light -- a TARGET-side bonus, not in the caster's text.
-local _, MD = ...
+local _, ST = ...
 
-MD.Profiles.Register("PALADIN", {
+ST.Profiles.Register("PALADIN", {
     label = "Paladin",
     critSchool = 2,                -- Holy (VERIFY: Forever merges crit; the probe reads one value)
     -- The druid's Forever capabilities, less `simulate` (the TBC Simulate
     -- window; nothing on the Forever TOCs asks for it): coach and practice
     -- are granted because tools/classcoach.lua passes on this class's book
-    -- (docs/SPEC-next.md 4.3); on Forever `coach` also asks MD.KitLive, so a
+    -- (docs/SPEC-next.md 4.3); on Forever `coach` also asks ST.KitLive, so a
     -- book whose kit prices no heal is still refused, by the kit.
     caps = { clock = true, tooltip = true, rankTable = true, coach = true, practice = true },
     families = {
@@ -50,7 +50,7 @@ MD.Profiles.Register("PALADIN", {
         -- T95 -- not typed here); its damage half is T110's (VERIFY)
         HolyShock    = { names = { "Holy Shock" },     kit = "direct" },
     },
-    -- The dashboard order (MD.SpellData.familyOrder): the big heal first.
+    -- The dashboard order (ST.SpellData.familyOrder): the big heal first.
     order = { "HolyLight", "FlashOfLight", "HolyShock" },
     -- No paladin heal leaves a HoT.
     hotSlots = {},

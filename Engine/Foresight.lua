@@ -1,4 +1,4 @@
-local _, MD = ...
+local _, ST = ...
 
 --------------------------------------------------------------------------------
 -- Deformed foresight (docs/SPEC-v0.13.md §9).
@@ -32,7 +32,7 @@ local _, MD = ...
 --------------------------------------------------------------------------------
 
 local FS = {}
-MD.Foresight = FS
+ST.Foresight = FS
 
 local BUCKET = 4.0      -- seconds; the resolution a memory of a fight has
 local SIGHT = 10.0      -- seconds; how far ahead that memory reaches
@@ -52,7 +52,7 @@ end
 -- Build the deformed view of a scenario's incoming damage.
 function FS.Build(scenario, opts)
     opts = opts or {}
-    local SM = MD.SimModel
+    local SM = ST.SimModel
     local K = SM.K
     local bucket = opts.bucket or BUCKET
     local sight = opts.sight or SIGHT

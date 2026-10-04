@@ -3,17 +3,17 @@
 --
 --   * Settings -> Clock (7.4): a view of its own in the Settings group (TBC
 --     General, Clock, About; Forever General, Clock, Modules, About), built by
---     MD.ClockSettings.Build. Its PREVIEW is a separate frame drawn by
---     MD.ClockView.Build (UI/ClockView.lua), never the clock on screen, so the
+--     ST.ClockSettings.Build. Its PREVIEW is a separate frame drawn by
+--     ST.ClockView.Build (UI/ClockView.lua), never the clock on screen, so the
 --     single visibility owner of each line (CLAUDE.md) is never touched from
---     here. The state chips paint MD.ClockFace.SAMPLES -- the table
+--     here. The state chips paint ST.ClockFace.SAMPLES -- the table
 --     tools/clockfacecheck.lua and tools/clockui.lua render -- as this line
 --     draws a face (Forever: the "~", one colour, "0:15", no arrow); (Live)
---     paints MD.ClockFace.Current every tick while the view is shown. LAYOUT
---     is one button per MD.ClockView.LAYOUTS (T104's ring joins the row when
+--     paints ST.ClockFace.Current every tick while the view is shown. LAYOUT
+--     is one button per ST.ClockView.LAYOUTS (T104's ring joins the row when
 --     it is drawn) and Reset to style; under them a level-3 box
 --     (UI.CreateNavBox) with Colours, Frame, Bar, Show and When. A control
---     writes one override through MD.ClockView.Set (db.clockLook.over, read
+--     writes one override through ST.ClockView.Set (db.clockLook.over, read
 --     only by the resolver), which fires CLOCK_LOOK: the line's clock and this
 --     preview rebuild. Show and When hold the line's own switches (TBC
 --     db.showRest / showCooldown / locked / widgetTooltip, Forever
@@ -30,15 +30,15 @@
 --     something left (since the wave N4 integration nothing is, so it stays
 --     hidden). Each line's APPEARANCE /
 --     Windows pane places them.
---   * The INTEGRATIONS pane (6.3, M9d): MD.Integrations.Lines() (what was
+--   * The INTEGRATIONS pane (6.3, M9d): ST.Integrations.Lines() (what was
 --     found), the broker switches (db.feeds.ldb, db.feeds.compact) and a hint;
 --     a line adds its own switches (the Forever EllesmereUI mover).
---   * The clock subcommands (7.4, 2.5) through MD:AddSubcommand: `/st clock
+--   * The clock subcommands (7.4, 2.5) through ST:AddSubcommand: `/st clock
 --     layout <name>`, `/st clock look reset`, `/st clock preview`. Forever's
 --     `/st clock` and `/st clock lock` keep their meaning (a sub is matched
 --     only on its own first word); on TBC, which had no `clock` verb, the subs
 --     create `/md clock`.
---   * MD.ClockLook (MD:Provide): the line's resolved clock look, which
+--   * ST.ClockLook (ST:Provide): the line's resolved clock look, which
 --     Integrations/Surface_LDB.lua follows so the broker drops the rest
 --     segment when the clock does (2.3 "one string, every place").
 --
@@ -49,24 +49,24 @@
 -- it changes (one STYLE_CHANGED). Flat's accent is the class colour already,
 -- so under Flat the switch changes nothing.
 --
--- Client calls: GetTime (the preview's clock) and ReloadUI through MD.API.Call.
+-- Client calls: GetTime (the preview's clock) and ReloadUI through ST.API.Call.
 -- No secret is read: the Live preview's pool is drawn by the line's own `draw`
--- (Forever: MD.API.DrawUnitPower, never read back), everything else is the
+-- (Forever: ST.API.DrawUnitPower, never read back), everything else is the
 -- face's plain fields. Every string drawn here is ASCII with no bare pipe.
-local _, MD = ...
-local UI = MD.UI
+local _, ST = ...
+local UI = ST.UI
 
-MD.ClockSettings = MD.ClockSettings or {}
-local CS = MD.ClockSettings
+ST.ClockSettings = ST.ClockSettings or {}
+local CS = ST.ClockSettings
 
 -- decision 3: off -- each style keeps its own accent
-MD:RegisterDefaults({ useClassColour = false })
+ST:RegisterDefaults({ useClassColour = false })
 
 --------------------------------------------------------------------------------
 -- The look of SpellTuner's windows: the style, the class colour, the reload line
 --------------------------------------------------------------------------------
 function CS.ClassColour()
-    return type(MD.db) == "table" and MD.db.useClassColour == true
+    return type(ST.db) == "table" and ST.db.useClassColour == true
 end
 
 -- The applier every style goes through (UI/Theme_Flat.lua), wrapped: the
@@ -92,7 +92,7 @@ local function Login()
     if not login then login = { style = ActiveStyle(), accent = UI.accentHex } end
     return login
 end
-MD:RegisterCallback("CORE_LOGIN", function()
+ST:RegisterCallback("CORE_LOGIN", function()
     login = nil
     Login()
 end)
@@ -116,22 +116,22 @@ function CS.ReloadLine()
 end
 
 function CS.Reload()
-    MD.API.Call("ReloadUI")
+    ST.API.Call("ReloadUI")
 end
 
 local accentLine = false
 local function NoteAccent()
     if accentLine or not CS.ClassColour() then return end
     accentLine = true
-    MD:AddDumpLine("accent", function()
+    ST:AddDumpLine("accent", function()
         return "accent: " .. (CS.ClassColour() and "your class colour (Use my class colour)" or "the style's")
     end)
 end
 
 -- CS.SetClassColour(on): saved, the active style applied again.
 function CS.SetClassColour(on)
-    if type(MD.db) ~= "table" then return false end
-    MD.db.useClassColour = on and true or false
+    if type(ST.db) ~= "table" then return false end
+    ST.db.useClassColour = on and true or false
     NoteAccent()
     local S = UI.Styles
     if S and S.Refresh then S.Refresh(ActiveStyle()) end
@@ -230,13 +230,13 @@ end
 local MAX_LINES = 4
 
 local function FeedsDB()
-    if type(MD.db) ~= "table" then return {} end
-    if type(MD.db.feeds) ~= "table" then MD.db.feeds = {} end
-    return MD.db.feeds
+    if type(ST.db) ~= "table" then return {} end
+    if type(ST.db.feeds) ~= "table" then ST.db.feeds = {} end
+    return ST.db.feeds
 end
 
 function CS.IntegrationLines()
-    local INT = MD.Integrations
+    local INT = ST.Integrations
     if INT and type(INT.Lines) == "function" then
         local okL, lines = pcall(INT.Lines)
         if okL and type(lines) == "table" and #lines > 0 then return lines end
@@ -246,7 +246,7 @@ end
 
 -- The hint under the switches: where the brokers show, for what was found.
 function CS.IntegrationHint()
-    local surf = MD.Surfaces or {}
+    local surf = ST.Surfaces or {}
     local elv = surf.elvui and surf.elvui.datatexts and #surf.elvui.datatexts or 0
     local brokers = surf.ldb and surf.ldb.objects and #surf.ldb.objects or 0
     if surf.eui then return "Add them in /eui -> DataBars -> a Broker Plugin block." end
@@ -350,10 +350,10 @@ function CS.BuildIntegrations(parent, width, height, extra)
 end
 
 --------------------------------------------------------------------------------
--- The line's look for the broker: Integrations/Surface_LDB.lua's MD.ClockLook
+-- The line's look for the broker: Integrations/Surface_LDB.lua's ST.ClockLook
 --------------------------------------------------------------------------------
-MD:Provide("ClockLook", function()
-    local W = MD.ClockWidget
+ST:Provide("ClockLook", function()
+    local W = ST.ClockWidget
     local v = W and W.view
     return v and v.look or nil
 end)
@@ -371,12 +371,12 @@ local DEFAULT_FACTS = { labelSample = "FULL", show = {} }
 
 -- The line's facts (UI/Widget.lua's or UI/Clock_Forever.lua's, T98).
 local function Facts()
-    local W = MD.ClockWidget
+    local W = ST.ClockWidget
     return (W and type(W.facts) == "table") and W.facts or DEFAULT_FACTS
 end
 
 local function Sample(key)
-    for _, s in ipairs(MD.ClockFace and MD.ClockFace.SAMPLES or {}) do
+    for _, s in ipairs(ST.ClockFace and ST.ClockFace.SAMPLES or {}) do
         if s.key == key then return s end
     end
 end
@@ -442,13 +442,13 @@ end
 
 -- The line's own bar sources (the pool it draws, its five-second rule).
 local function LiveDraw(p)
-    local W = MD.ClockWidget
+    local W = ST.ClockWidget
     local v = W and W.view
     return v and type(v.draw) == "table" and v.draw or SampleDraw(p)
 end
 
 local function LiveFace()
-    local CF = MD.ClockFace
+    local CF = ST.ClockFace
     if not (CF and type(CF.Current) == "function") then return nil end
     local okF, face = pcall(CF.Current, GetTime())
     if okF and type(face) == "table" then return face end
@@ -460,7 +460,7 @@ local panes = setmetatable({}, { __mode = "k" })
 -- The look the preview draws with: the line's resolved one (the layout, the
 -- style's clock role, the overrides), its switches as the line has them now.
 local function PreviewLook(p)
-    local look = MD.ClockView.Look(Facts())
+    local look = ST.ClockView.Look(Facts())
     p.look = look
     return look
 end
@@ -513,7 +513,7 @@ end
 -- colour, eight fixed colours -- read now (a style changes the tokens).
 function CS.Swatches()
     local out = {}
-    local CF = MD.ClockFace
+    local CF = ST.ClockFace
     for _, t in ipairs(TONES) do
         local h = CF and CF.HEX and HexOf(CF.HEX[t])
         if h then out[#out + 1] = { name = "tone: " .. t, hex = h } end
@@ -605,7 +605,7 @@ local function Note(parent, text, anchor, y)
 end
 
 local function Set(key, value)
-    return MD.ClockView.Set(key, value)
+    return ST.ClockView.Set(key, value)
 end
 
 local function Rgba(hex, a)
@@ -666,7 +666,7 @@ local function Layout(p)
     return p.look and p.look.layout or "line"
 end
 local function LayoutDef(p)
-    return MD.ClockView.LAYOUT[Layout(p)] or MD.ClockView.LAYOUT.line
+    return ST.ClockView.LAYOUT[Layout(p)] or ST.ClockView.LAYOUT.line
 end
 
 -- One frame.<layout>.<field> from a slider: the layout's default writes nil.
@@ -717,7 +717,7 @@ TAB.frame = function(p, f)
     p.hSlider = SizeSlider("Height", d.hRange[1], d.hRange[2], 1, 170, function(value)
         SetFrame(p, "h", value, LayoutDef(p).height)
     end, "Height", "Extra height goes to the mana bar; the words and the strip stay as they are.")
-    p.scaleSlider = SizeSlider("Scale (%)", MD.ClockView.SCALE_RANGE[1], MD.ClockView.SCALE_RANGE[2], 5, 336,
+    p.scaleSlider = SizeSlider("Scale (%)", ST.ClockView.SCALE_RANGE[1], ST.ClockView.SCALE_RANGE[2], 5, 336,
         function(value) SetFrame(p, "scale", value, 100) end,
         "Scale", "The whole clock larger or smaller; its centre stays where it is.")
     -- the layout's minimum: a green mark on the track at the minimum's
@@ -784,7 +784,7 @@ local function BarItems(field)
     local items = {}
     local facts = Facts()
     for _, it in ipairs(BAR_ITEMS[field]) do
-        if MD.ClockView.BarsOK("line", { [field] = it.id }, facts) then items[#items + 1] = it end
+        if ST.ClockView.BarsOK("line", { [field] = it.id }, facts) then items[#items + 1] = it end
     end
     if field == "texture" and not facts.textures and #items == 1 and items[1].id == "flat" then
         items[1] = FLAT_ONLY
@@ -803,7 +803,7 @@ end
 -- while Join is Stacked (its dropdown is disabled otherwise).
 local function SetBar(p, field, value)
     if field == "order" and not Stacked(p) then return end
-    Set("bars." .. Layout(p) .. "." .. field, (value ~= MD.ClockView.BARS_DEFAULT[field]) and value or nil)
+    Set("bars." .. Layout(p) .. "." .. field, (value ~= ST.ClockView.BARS_DEFAULT[field]) and value or nil)
 end
 
 local BAR_LABEL = {
@@ -833,10 +833,10 @@ TAB.bars = function(p, f)
     local after = Row("after", right, -2)
     if not facts.tick then
         -- answer 5: the tick is not offered here, and the control says why
-        UI.SetTooltips(after, "ANCHOR_TOPLEFT", 0, 3, "After the rule", MD.ClockView.TICK_REFUSED)
+        UI.SetTooltips(after, "ANCHOR_TOPLEFT", 0, 3, "After the rule", ST.ClockView.TICK_REFUSED)
     end
     Row("texture", right, -2 - ROW, (not facts.textures) and 200 or nil)
-    local fsr = UI.CreateSlider("5SR strip (px)", f, MD.ClockView.FSR_RANGE[1], MD.ClockView.FSR_RANGE[2], 120, 1,
+    local fsr = UI.CreateSlider("5SR strip (px)", f, ST.ClockView.FSR_RANGE[1], ST.ClockView.FSR_RANGE[2], 120, 1,
         nil, function(value)
             value = tonumber(value)
             if value then SetBar(p, "fsr", math.floor(value + 0.5)) end
@@ -845,7 +845,7 @@ TAB.bars = function(p, f)
     p.fsrSlider = fsr
     local y = -2 - 4 * ROW - 14
     if not facts.tick then
-        p.afterNote = Note(f, MD.ClockView.TICK_REFUSED, nil, y)
+        p.afterNote = Note(f, ST.ClockView.TICK_REFUSED, nil, y)
         y = y - 16
     end
     Note(f, "Each layout keeps its own bars. The strip, the veil and the chip are amber while the rule runs, green after.",
@@ -930,7 +930,7 @@ CS.BOX_NOTE = "Text, size and bars are kept per layout; Reset to style wipes you
 local function SlotItems(layout, slot)
     local facts = Facts()
     local items = {}
-    local CF = MD.ClockFace
+    local CF = ST.ClockFace
     for _, id in ipairs(CF.TEXT_OPTIONS[layout] and CF.TEXT_OPTIONS[layout][slot] or {}) do
         if not (id == "cd" and facts.cd == false) then
             local text = SLOT_WORDS[id] or id
@@ -968,7 +968,7 @@ local function PickSlot(p, slot, id)
     end
     if id == "rest" then SwitchOn(p, "rest") end
     if id == "cd" then SwitchOn(p, "cd") end
-    local default = MD.ClockFace.TEXT[layout] and MD.ClockFace.TEXT[layout][slot]
+    local default = ST.ClockFace.TEXT[layout] and ST.ClockFace.TEXT[layout][slot]
     SetText(p, slot, (id ~= default) and id or nil)
 end
 
@@ -1019,7 +1019,7 @@ TAB.text = function(p, f)
     end, "Shadow", "The words' drop shadow (on by default).")
     shadow:SetPoint("TOPLEFT", f, "TOPLEFT", x + 2, -2 - 4 * ROW - 2)
     p.shadowCheck = shadow
-    local lo, hi = MD.ClockView.TEXT_SIZE[1], MD.ClockView.TEXT_SIZE[2]
+    local lo, hi = ST.ClockView.TEXT_SIZE[1], ST.ClockView.TEXT_SIZE[2]
     local size = UI.CreateSlider("Size", f, lo, hi, 120, 1, nil, function(value)
         value = tonumber(value)
         if value then SetText(p, "size", math.max(lo, math.min(hi, math.floor(value + 0.5)))) end
@@ -1047,7 +1047,7 @@ end
 -- only where the frame is wide enough, its reason on its hover.
 local function RefreshText(p, look)
     if not p.slotDD then return end
-    local CF = MD.ClockFace
+    local CF = ST.ClockFace
     local layout = Layout(p)
     local t = look.text or {}
     local on = {}
@@ -1102,7 +1102,7 @@ local function RefreshText(p, look)
             local _, s = p.view.value:GetFont()
             size = tonumber(s)
         end
-        local lo, hi = MD.ClockView.TEXT_SIZE[1], MD.ClockView.TEXT_SIZE[2]
+        local lo, hi = ST.ClockView.TEXT_SIZE[1], ST.ClockView.TEXT_SIZE[2]
         size = math.max(lo, math.min(hi, math.floor((size or 13) + 0.5)))
         p.sizeSlider:SetValue(size)
     end
@@ -1201,7 +1201,7 @@ local function BuildPreview(p, pane)
     frame:SetPoint("CENTER", ground, "CENTER", 0, 0)
     frame:SetFrameLevel((ground:GetFrameLevel() or 1) + 2)
     p.previewFrame = frame
-    p.view = MD.ClockView.Build(frame, PreviewLook(p), SampleDraw(p))
+    p.view = ST.ClockView.Build(frame, PreviewLook(p), SampleDraw(p))
 
     -- the chips
     local stateLabel = sec:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
@@ -1253,8 +1253,8 @@ local function BuildLayoutRow(p, pane)
     p.layoutSection = sec
     p.layoutButtons = {}
     local prev
-    for _, key in ipairs(MD.ClockView.LAYOUTS or {}) do
-        local d = MD.ClockView.LAYOUT[key]
+    for _, key in ipairs(ST.ClockView.LAYOUTS or {}) do
+        local d = ST.ClockView.LAYOUT[key]
         local name = d and d.name or key
         local b = UI.CreateButton(sec, name, "accent-hover", { math.max(64, #name * 8 + 16), 20 }, false, false,
             UI.FONT_SMALL, UI.FONT_SMALL)
@@ -1265,14 +1265,14 @@ local function BuildLayoutRow(p, pane)
         prev = b
     end
     p.highlightLayout = UI.CreateButtonGroup(p.layoutButtons, function(id)
-        local okL, why = MD.ClockView.SetLayout(id)
-        if not okL then MD:Print("mana clock: " .. tostring(why)) end
+        local okL, why = ST.ClockView.SetLayout(id)
+        if not okL then ST:Print("mana clock: " .. tostring(why)) end
     end)
     local reset = UI.CreateButton(sec, "Reset to style", "accent-hover", { 110, 20 }, false, false,
         UI.FONT_SMALL, UI.FONT_SMALL, "Reset to style", "Every colour, text, frame and bar setting back to the look's own.",
         "The layout is kept.")
     reset:SetPoint("TOPRIGHT", sec, "TOPRIGHT", 0, -24)
-    reset:SetScript("OnClick", function() MD.ClockView.ResetToStyle() end)
+    reset:SetScript("OnClick", function() ST.ClockView.ResetToStyle() end)
     p.resetButton = reset
     local style = sec:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
     style:SetPoint("RIGHT", reset, "LEFT", -10, 0)
@@ -1308,7 +1308,7 @@ local function BuildBottom(p, pane)
         nil, nil, "Show on screen 60 s", "The clock up for 60 s at any mana level, to see or move it.")
     show:SetPoint("TOPRIGHT", p.box.frame, "BOTTOMRIGHT", 0, -8)
     show:SetScript("OnClick", function()
-        local W = MD.ClockWidget
+        local W = ST.ClockWidget
         if W and W.Preview then W:Preview(60) end
     end)
     p.showButton = show
@@ -1316,9 +1316,9 @@ local function BuildBottom(p, pane)
         nil, nil, "Reset place", "The clock back at its default place.")
     place:SetPoint("RIGHT", show, "LEFT", -6, 0)
     place:SetScript("OnClick", function()
-        local W = MD.ClockWidget
+        local W = ST.ClockWidget
         if W and W.ResetPosition then W:ResetPosition() end
-        MD:Print("mana clock: position reset")
+        ST:Print("mana clock: position reset")
     end)
     p.placeButton = place
     -- T116: what the box keeps, under it
@@ -1363,7 +1363,7 @@ function CS.Refresh(p)
         if dd then dd:SetValue(bars[field]) end
     end
     if p.fsrSlider then p.fsrSlider:SetValue(bars.fsr or 3) end
-    local d = MD.ClockView.LAYOUT[look.layout] or MD.ClockView.LAYOUT.line
+    local d = ST.ClockView.LAYOUT[look.layout] or ST.ClockView.LAYOUT.line
     local fr = look.frame or {}
     if p.wSlider then
         p.wSlider:UpdateMinMaxValues(d.wRange[1], d.wRange[2])
@@ -1395,7 +1395,7 @@ function CS.Refresh(p)
     CS.PaintPreview(p)
 end
 
--- MD.ClockSettings.Build(content, opts) -> the Settings -> Clock pane.
+-- ST.ClockSettings.Build(content, opts) -> the Settings -> Clock pane.
 -- opts.show / opts.when: the line's own switches, each { text, tips, get, set };
 -- a Show switch with `segment` ("rest" / "cd") also drives the preview's
 -- look.show at once (the line's own facts follow at its next paint).
@@ -1430,11 +1430,11 @@ local function RefreshAll()
     for p in pairs(panes) do CS.Refresh(p) end
     for c in pairs(lookControls) do RefreshLook(c) end
 end
-MD:RegisterCallback("CLOCK_LOOK", RefreshAll)
-MD:RegisterCallback("STYLE_CHANGED", RefreshAll)
+ST:RegisterCallback("CLOCK_LOOK", RefreshAll)
+ST:RegisterCallback("STYLE_CHANGED", RefreshAll)
 
 -- (Live) follows the real face while the view is on screen.
-MD:OnTick(function()
+ST:OnTick(function()
     for p in pairs(panes) do
         if p.chip == "live" and p.pane:IsVisible() then CS.PaintPreview(p) end
     end
@@ -1443,37 +1443,37 @@ end)
 --------------------------------------------------------------------------------
 -- /st clock layout | look | preview (7.4), through the kernel's seam (2.5)
 --------------------------------------------------------------------------------
-MD:AddSubcommand("clock", "layout", function(rest)
-    local CV = MD.ClockView
+ST:AddSubcommand("clock", "layout", function(rest)
+    local CV = ST.ClockView
     local name = (rest or ""):match("^(%S+)")
     if not name then
         local look = CV.Look(Facts())
-        MD:Print(string.format("mana clock: layout %s (layouts: %s)", look.layout, table.concat(CV.LAYOUTS, ", ")))
+        ST:Print(string.format("mana clock: layout %s (layouts: %s)", look.layout, table.concat(CV.LAYOUTS, ", ")))
         return
     end
     local okL, why = CV.SetLayout(name)
     if okL then
-        MD:Print("mana clock: layout " .. name:lower())
+        ST:Print("mana clock: layout " .. name:lower())
     else
-        MD:Print("mana clock: " .. tostring(why))
+        ST:Print("mana clock: " .. tostring(why))
     end
 end, "layout <name>", "the mana clock's layout (Settings -> Clock shows each)")
 
-MD:AddSubcommand("clock", "look", function(rest)
+ST:AddSubcommand("clock", "look", function(rest)
     if (rest or ""):match("^(%S+)") == "reset" then
-        MD.ClockView.ResetToStyle()
-        MD:Print("mana clock: every colour and bar setting back to the look's own")
+        ST.ClockView.ResetToStyle()
+        ST:Print("mana clock: every colour and bar setting back to the look's own")
     else
-        MD:Print("usage: /st clock look reset")
+        ST:Print("usage: /st clock look reset")
     end
 end, "look reset", "every clock colour and bar setting back to the look's own")
 
-MD:AddSubcommand("clock", "preview", function()
-    local W = MD.ClockWidget
+ST:AddSubcommand("clock", "preview", function()
+    local W = ST.ClockWidget
     if W and W.Preview then
         W:Preview(60)
-        MD:Print("mana clock: on screen for 60 s")
+        ST:Print("mana clock: on screen for 60 s")
     else
-        MD:Print("mana clock: not loaded")
+        ST:Print("mana clock: not loaded")
     end
 end, "preview", "the clock on screen for 60 s, to see or move it")

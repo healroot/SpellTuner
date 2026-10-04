@@ -27,22 +27,22 @@
 --  * Regen is integrated continuously rather than in 2s ticks. Over a 40s pull
 --    that is worth at most one tick of phase error (~1% of a 7k pool) and it
 --    removes an arbitrary tick alignment the engine has no way to know.
-local _, MD = ...
+local _, ST = ...
 
 local SM = {}
-MD.SimModel = SM
+ST.SimModel = SM
 
 --------------------------------------------------------------------------------
 -- The settings the engine, the planner and the replay window read, declared
--- once, here (T64, P20, review A3). Every reader asks MD:Setting(key); the
+-- once, here (T64, P20, review A3). Every reader asks ST:Setting(key); the
 -- values and their provenance moved here from Core_TBC.lua's DEFAULTS
--- unchanged, and on Forever this is what back-fills MD.db when the Replay
+-- unchanged, and on Forever this is what back-fills ST.db when the Replay
 -- module loads (Core_Forever.lua's DEFAULTS never carried them). The window's
 -- own four (replay*) are declared here too, because the window loads after
 -- this file on both lines and the offline TBC harness does not load UI/.
 -- The gates' thresholds are registered with the gates below.
 --------------------------------------------------------------------------------
-MD:RegisterDefaults({
+ST:RegisterDefaults({
     simFullHp = 0.85,     -- a target at or above this fraction of health counts as "full" for the
                           -- cast labels and the replay engine (docs/SPEC-v0.7.md §2.2)
     simFloor = 0.30,      -- below this fraction of health a tracked target is "in danger": the
@@ -98,7 +98,7 @@ SM.AURA_BUFF_FLAG = 1000000
 -- resolves the instant it lands.
 -- T96 (docs/SPEC-next.md 2.1, S1 step 2): these two are the DRUID's FALLBACK.
 -- The engine reads the slots of the kit it runs on -- SM.HotSlots(kit), from
--- MD.Profiles.ForKit(kit), the kit's own profile, never the logged-in
+-- ST.Profiles.ForKit(kit), the kit's own profile, never the logged-in
 -- player's -- and these fill only what that profile leaves empty, so the
 -- druid's map on both lines is exactly this one and every trace keeps its slot
 -- numbers. Kept literal: Forever's druid profile has no Lifebloom slot, and a
@@ -141,7 +141,7 @@ SM.SPELL_CD = SPELL_CD
 -- the kit: the engine's slot (S.kit, set by SM:Run) or a ReplayTrace state
 -- (its scenario's kit). The entry is looked up in S.form, then in every form
 -- (a family's cooldown does not change with the form). With no entry the
--- family is MD.SpellData's, else the id itself. Allocates nothing.
+-- family is ST.SpellData's, else the id itself. Allocates nothing.
 local KIT_FORMS = { "caster", "tree" }
 local function KitEntry(S, spellID)
     local kit = S and (S.kit or (S.scenario and S.scenario.kit))
@@ -164,7 +164,7 @@ function SM.CooldownOf(S, spellID)
     if secs and secs <= 0 then secs = nil end
     local family = e and e.family
     if not family then
-        local sd = MD.SpellData and MD.SpellData.spells and MD.SpellData.spells[spellID]
+        local sd = ST.SpellData and ST.SpellData.spells and ST.SpellData.spells[spellID]
         family = sd and sd.family
     end
     return family or spellID, secs
@@ -203,7 +203,7 @@ SM.HOT_TYPE_FAMILY = { hot = "Rejuvenation", hybrid = "Regrowth", lifebloom = "L
 --------------------------------------------------------------------------------
 -- SM.HotSlots(kit) -> slots (T96, docs/SPEC-next.md 2.1 "two readers, two
 -- profiles"): the per-target HoT slots of the KIT's own profile
--- (MD.Profiles.ForKit: the druid's when the kit names none), derived once per
+-- (ST.Profiles.ForKit: the druid's when the kit names none), derived once per
 -- profile and shared -- read only, never written:
 --   slots.index[family] = slot   the profile's hotSlots, in order; a slot it
 --                                leaves empty keeps SM.HOT_INDEX's family
@@ -242,7 +242,7 @@ local function BuildHotSlots(p)
 end
 
 local function ProfileSlots(kit)
-    local P = MD.Profiles
+    local P = ST.Profiles
     local p = P and P.ForKit and P.ForKit(kit) or nil
     if p == nil then
         druidFallbackSlots = druidFallbackSlots or BuildHotSlots(nil)
@@ -287,7 +287,7 @@ local function KitSlots(kit, base)
     local listed = {}
     for _, fam in ipairs(base.families or EMPTY) do listed[fam] = true end
     local hotFams, extraFams, seenHot, seenExtra = {}, {}, {}, {}
-    local UNPRICED = MD.Kit and MD.Kit.UNPRICED or EMPTY
+    local UNPRICED = ST.Kit and ST.Kit.UNPRICED or EMPTY
     for _, form in ipairs(KIT_FORMS) do
         local list = kit[form]
         if type(list) == "table" then
@@ -660,8 +660,8 @@ function SM:Run(scenario, plan, opts)
     -- timer). Carried by the scenario with its own provenance; zero unless a
     -- recording measured one. See docs/DECISIONS.md v0.7 "unreported energize".
     local energize = init.energize or 0
-    local floor = scenario.floor or MD:Setting("simFloor")
-    local fullAt = scenario.fullHp or MD:Setting("simFullHp")
+    local floor = scenario.floor or ST:Setting("simFloor")
+    local fullAt = scenario.fullHp or ST:Setting("simFullHp")
     local grace = scenario.grace or 6
     local dur = scenario.dur or 0
     local refreshKeepsTicks = opts.refreshKeepsTicks or false
@@ -675,7 +675,7 @@ function SM:Run(scenario, plan, opts)
 
     -- T90: the kit SM.CooldownOf / SM.Ready read a family and its cooldown from
     S.kit = kit
-    -- T96: the HoT slots of THIS kit's profile (MD.Profiles.ForKit), derived
+    -- T96: the HoT slots of THIS kit's profile (ST.Profiles.ForKit), derived
     -- per run -- never the logged-in player's. Published for the plan
     -- (Engine/SimSolver.lua) and the practice queue (Engine/Practice.lua).
     -- (The closures below read them off S, never as new upvalues: the
@@ -683,7 +683,7 @@ function SM:Run(scenario, plan, opts)
     local hotSlots = SM.HotSlots(kit)
     local lbSlot = hotSlots.lifebloom
     S.hotSlots, S.hotIndex = hotSlots, hotSlots.index
-    S.dangerHits = MD:Setting("simDangerHits")
+    S.dangerHits = ST:Setting("simDangerHits")
     S.floor = floor
 
     -- targets
@@ -763,7 +763,7 @@ function SM:Run(scenario, plan, opts)
     -- says to. The delay applies ONLY coming out of a wait: the BF-1 log's
     -- inter-cast gaps (p10/p25 = 1.50/1.52s) show chaining happens at the GCD
     -- with no delay at all.
-    local reaction = MD:Setting("simReaction")
+    local reaction = ST:Setting("simReaction")
     local lastWasWait = false
     local fsrUntil = init.fsrUntil or -1
     local lowestTgt, lowestHp, lowestHpT = nil, 1, 0
@@ -808,7 +808,7 @@ function SM:Run(scenario, plan, opts)
         -- session's window paints this trace while it is still being written
         opts.trace.built = trace
         if gridDt ~= (opts.trace.dt or 0.25) then
-            MD:Debug("sim", "trace: dt %.2f -> %.2f to stay under %d numbers", opts.trace.dt or 0.25, gridDt, SM.TRACE_MAX_NUMBERS)
+            ST:Debug("sim", "trace: dt %.2f -> %.2f to stay under %d numbers", opts.trace.dt or 0.25, gridDt, SM.TRACE_MAX_NUMBERS)
         end
     end
     local pendingWhy = 0        -- the rule behind the cast being committed (plan runs)
@@ -1197,7 +1197,7 @@ function SM:Run(scenario, plan, opts)
     if init.auras then
         for _, a in ipairs(init.auras) do
             -- T96: the slot of the kit entry's family in the kit's profile
-            -- (it was MD.SpellData's family through SM.HOT_INDEX: the same
+            -- (it was ST.SpellData's family through SM.HOT_INDEX: the same
             -- slot for every druid kit, whose index lists every kit entry)
             local e = kit and kit[form] and kit[form][a.spellID]
             local fi = e and SM.HotSlotOf(hotSlots, e)
@@ -1442,7 +1442,7 @@ function SM:Run(scenario, plan, opts)
                         -- and the endDeficit term always had it this way.
                         -- the bloom reaches the combat log under its own id
                         Land(a, st.bloom, st.family or "Lifebloom",
-                            st.spellID and MD.SpellData.bloomID or nil, false)
+                            st.spellID and ST.SpellData.bloomID or nil, false)
                         bloomCount = bloomCount + 1
                         bloomed = 1
                     end
@@ -1777,7 +1777,7 @@ end
 -- alias for every caller that already has it (Engine/Practice.lua, the Forever
 -- recorder, the offline tools).
 --------------------------------------------------------------------------------
-SM.KitSnapshot = MD.Kit.Snapshot
+SM.KitSnapshot = ST.Kit.Snapshot
 
 --------------------------------------------------------------------------------
 -- Replay: a recorded fight as a scenario the engine can run.
@@ -1796,7 +1796,7 @@ SM.KitSnapshot = MD.Kit.Snapshot
 local function ScenarioV2(rec, kit, others)
     if not rec then return nil end
     local K = SM.K
-    if others == nil then others = MD.cdb and MD.cdb.recordings end
+    if others == nil then others = ST.cdb and ST.cdb.recordings end
     local roster = rec.roster or {}
     local trackedSet = {}
     for _, idx in ipairs(rec.tracked or {}) do trackedSet[idx] = true end
@@ -1819,7 +1819,7 @@ local function ScenarioV2(rec, kit, others)
         end
         for _, list in pairs(hits) do table.sort(list) end
     end
-    local dangerHits = MD:Setting("simDangerHits")
+    local dangerHits = ST:Setting("simDangerHits")
 
     local hp = rec.hp or {}
     local targets = {}
@@ -1876,12 +1876,12 @@ local function ScenarioV2(rec, kit, others)
             -- remove, and it is only read when a plan is deciding (which is
             -- also when `script` is dropped).
             script[#script + 1] = entry
-            if not MD.SpellData.spells[id] then
+            if not ST.SpellData.spells[id] then
                 -- `a and f()` truncates f() to one value (CLAUDE.md); the if
                 -- has to be written out or `kind` is always nil
                 local kind = "unknown"
-                if MD.ClassifyCast then
-                    local _, k = MD:ClassifyCast(id)
+                if ST.ClassifyCast then
+                    local _, k = ST:ClassifyCast(id)
                     kind = k or "unknown"
                 end
                 fixed[#fixed + 1] = { ev.t[i], id, cost, ev.tgt[i], kind }
@@ -1934,8 +1934,8 @@ local function ScenarioV2(rec, kit, others)
     -- the scenario is flagged: the replay then rests on an assumption (the
     -- gear was the same then), which every report that uses it states.
     local initial, assumed = rec.initial, false
-    if initial and (initial.energize or 0) <= 0 and MD.Regen then
-        local u = MD.Regen:Unreported()
+    if initial and (initial.energize or 0) <= 0 and ST.Regen then
+        local u = ST.Regen:Unreported()
         if u > 0 then
             local copy = {}
             for k, v in pairs(initial) do copy[k] = v end
@@ -1949,7 +1949,7 @@ local function ScenarioV2(rec, kit, others)
         targets = targets, ev = ev, rates = rates, fixed = fixed,
         incoming = incoming, threat = threat,
         sampleT = mn.t, hpSampleT = hp.t, kit = kit,
-        floor = MD:Setting("simFloor"),
+        floor = ST:Setting("simFloor"),
         script = script,
     }
 end
@@ -2019,11 +2019,11 @@ end
 --------------------------------------------------------------------------------
 --
 -- T64 (P20, review A3): each threshold's default is registered with
--- MD:RegisterDefaults, beside the gate that reads it; a gate keeps its setting
+-- ST:RegisterDefaults, beside the gate that reads it; a gate keeps its setting
 -- name and its provenance, and its `default` field is read from the registry
--- (MD.DEFAULTS, which RegisterDefaults fills on both lines) rather than kept
+-- (ST.DEFAULTS, which RegisterDefaults fills on both lines) rather than kept
 -- as a second copy. SM.Gate(setting, why) builds one, for Gates_Forever.lua.
-MD:RegisterDefaults({
+ST:RegisterDefaults({
     simGateManaMean = 0.02,   -- mean |delta| on the mana curve, as a fraction of the pool
     simGateManaMax = 0.05,    -- worst single mana sample
     simGateHpMean = 0.05,     -- mean |delta| on one target's health, fraction of its max
@@ -2033,7 +2033,7 @@ MD:RegisterDefaults({
 
 local GATE_MT = { __index = function(g, k)
     if k == "default" then
-        local d = MD.DEFAULTS
+        local d = ST.DEFAULTS
         return type(d) == "table" and d[rawget(g, "setting")] or nil
     end
     return nil
@@ -2061,7 +2061,7 @@ SM.GATES = GATES
 -- read the same arithmetic instead of carrying a copy of it.
 local function Threshold(name)
     local g = GATES[name]
-    return MD:Setting(g.setting), g.why
+    return ST:Setting(g.setting), g.why
 end
 SM.Threshold = Threshold
 
@@ -2189,7 +2189,7 @@ function SM.GateSpend(Gate, rec, sc, kit, spend, why)
             modelled = modelled + cost
         else
             local kind
-            if MD.ClassifyCast then local _, k = MD:ClassifyCast(c[2]); kind = k end
+            if ST.ClassifyCast then local _, k = ST:ClassifyCast(c[2]); kind = k end
             if kind and kind ~= "unknown" then replayed = replayed + cost
             else unclassified = unclassified + cost end
         end
@@ -2208,7 +2208,7 @@ end
 -- The v2 road (T66: registered in SM.validators; SM:Validate below dispatches).
 local function ValidateV2(rec, kit)
     if not rec then return nil end
-    kit = kit or MD.RankMath:SpellKit()
+    kit = kit or ST.RankMath:SpellKit()
     local sc = SM.ScenarioFromRecording(rec, kit)
     local r = SM:Run(sc, nil, { critMode = "ev" })
 
@@ -2281,12 +2281,12 @@ local function ValidateV2(rec, kit)
     local spendBySpell, spend = SM.OwnSpend(rec)
     local drifted, uncalibrated, driftShort = nil, {}, nil
     for spellID, mana in pairs(spendBySpell) do
-        if spend > 0 and mana / spend >= 0.10 and MD.SpellData.spells[spellID] then
-            local d = MD.Calibration and MD.Calibration:Drift(spellID)
+        if spend > 0 and mana / spend >= 0.10 and ST.SpellData.spells[spellID] then
+            local d = ST.Calibration and ST.Calibration:Drift(spellID)
             if d == nil then
-                uncalibrated[#uncalibrated + 1] = MD.API.SpellName(spellID) or spellID
+                uncalibrated[#uncalibrated + 1] = ST.API.SpellName(spellID) or spellID
             elseif d >= 0.03 then
-                drifted = string.format("%s is %.0f%% off the model", MD.API.SpellName(spellID) or spellID, d * 100)
+                drifted = string.format("%s is %.0f%% off the model", ST.API.SpellName(spellID) or spellID, d * 100)
                 driftShort = string.format("model %.0f%% off", d * 100)
             end
         end
@@ -2331,7 +2331,7 @@ end
 --------------------------------------------------------------------------------
 function SM.CostOfCasts(rec, kit, kinds)
     if not rec then return nil end
-    kit = kit or MD.RankMath:SpellKit()
+    kit = kit or ST.RankMath:SpellKit()
     kinds = kinds or { damage = true }
     local sc = SM.ScenarioFromRecording(rec, kit)
     if not sc then return nil end
@@ -2343,8 +2343,8 @@ function SM.CostOfCasts(rec, kit, kinds)
     local kept, taken = {}, {}
     for _, c in ipairs(sc.script or {}) do
         local drop = false
-        if not MD.SpellData.spells[c[2]] and MD.ClassifyCast then
-            local _, kind = MD:ClassifyCast(c[2])
+        if not ST.SpellData.spells[c[2]] and ST.ClassifyCast then
+            local _, kind = ST:ClassifyCast(c[2])
             if kind and kinds[kind] then drop = true end
         end
         if drop then taken[#taken + 1] = c else kept[#kept + 1] = c end
@@ -2367,7 +2367,7 @@ function SM.CostOfCasts(rec, kit, kinds)
     -- how many of them were cast while the healer was already low, read off the
     -- recording's own mana samples
     local mn, pool = rec.mana or {}, rec.pool or 0
-    local low, lowLine = 0, MD:Setting("simFloor")
+    local low, lowLine = 0, ST:Setting("simFloor")
     if pool > 0 and mn.t then
         for _, c in ipairs(taken) do
             local v
@@ -2413,7 +2413,7 @@ function SM.DrinkRate(run, given)
     if given and given > 0 then return given, "given" end
     local r = run and run.stats and run.stats.drinkRate
     if r and r > 0 then return r, "measured on this run" end
-    local fill = MD.Regen and MD.Regen:ObservedFill() or 0
+    local fill = ST.Regen and ST.Regen:ObservedFill() or 0
     if fill > 0 then return fill, "this session's observed fill - no drink in the run" end
     return nil, "unknown - no drink in the run and none observed this session"
 end
@@ -2424,7 +2424,7 @@ end
 -- in it and nobody drinks through it.
 local function BusyIn(run, a, b)
     local busy, ev = 0, run.ev or {}
-    local K = MD.RunRecorder and MD.RunRecorder.K
+    local K = ST.RunRecorder and ST.RunRecorder.K
     if not K then return 0 end
     for i = 1, #(ev.t or {}) do
         if ev.kind[i] == K.PULL_END and (ev.a[i] or 0) == 0 then
@@ -2439,8 +2439,8 @@ end
 
 local function PotionsIn(run, a, b)
     local gain, ev = 0, run.ev or {}
-    local K = MD.RunRecorder and MD.RunRecorder.K
-    local MC = MD.ManaCooldowns
+    local K = ST.RunRecorder and ST.RunRecorder.K
+    local MC = ST.ManaCooldowns
     if not (K and MC) then return 0 end
     for i = 1, #(ev.t or {}) do
         if ev.kind[i] == K.POTION and ev.t[i] >= a and ev.t[i] <= b then
@@ -2454,7 +2454,7 @@ end
 
 local function InnervatesIn(run, a, b)
     local n, ev = 0, run.ev or {}
-    local K = MD.RunRecorder and MD.RunRecorder.K
+    local K = ST.RunRecorder and ST.RunRecorder.K
     if not K then return 0 end
     for i = 1, #(ev.t or {}) do
         if ev.kind[i] == K.INNERVATE and ev.t[i] >= a and ev.t[i] <= b then n = n + 1 end
@@ -2468,7 +2468,7 @@ end
 function SM.ChainRun(run, kit, opts)
     if not run then return nil end
     opts = opts or {}
-    kit = kit or MD.RankMath:SpellKit()
+    kit = kit or ST.RankMath:SpellKit()
     local pulls = run.pulls or {}
     local pool = run.pool or 0
     local policy = opts.policy or SM.DRINK_POLICY

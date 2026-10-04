@@ -1,4 +1,4 @@
-local _, MD = ...
+local _, ST = ...
 
 --------------------------------------------------------------------------------
 -- The run's own clock (docs/SPEC-v0.14.md).
@@ -25,7 +25,7 @@ local _, MD = ...
 --------------------------------------------------------------------------------
 
 local RT = {}
-MD.RunTimeline = RT
+ST.RunTimeline = RT
 
 -- Build the segment list: pulls where they happened, gaps in between.
 function RT.Build(run)

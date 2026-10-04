@@ -2,15 +2,15 @@
 --
 -- T122 (docs/tasks/T122-what-if.md; docs/SPEC-one-ui.md 4, mockup M2): the
 -- What if on both lines. Spells/WhatIf.lua's session state and its shared
--- arithmetic (Changes, Diff), TBC's provider (Spells/WhatIf_TBC.lua: MD.sim
+-- arithmetic (Changes, Diff), TBC's provider (Spells/WhatIf_TBC.lua: ST.sim
 -- written there only, the druid's Form / Moonglow rows, the static-cost
 -- note), Forever's (Spells/WhatIf_Forever.lua: value + counts x delta, the
 -- rules re-run) and Spells/Book.lua's measured coefficients.
 --
---   1. MD.WhatIf: Set / Get / Clear / Active; an equal write fires nothing;
+--   1. ST.WhatIf: Set / Get / Clear / Active; an equal write fires nothing;
 --      Clear fires once; nothing lands in db or cdb (both)
 --   2. (tbc) +150 healing: the what-if book's Healing Touch is Compute()
---      under MD.sim.heal = live + 150, field for field; the live book and its
+--      under ST.sim.heal = live + 150, field for field; the live book and its
 --      generation unchanged
 --   3. (tbc) Tree of Life and Moonglow 2: costs from SD:StaticCost; the RANKS
 --      note says so
@@ -25,8 +25,8 @@
 --   7. (forever) crit 30: the values unchanged, the entry's crit set
 --   8. WI.Changes' three sentences and WI.Diff's rounding (both)
 --   9. nothing else reads it: the clock face, the tooltip block, the kit,
---      the suggested ranks (tbc) and MD.Book:Get() equal byte for byte (both)
---  10. a source scan: MD.sim written only by Spells/WhatIf_TBC.lua;
+--      the suggested ranks (tbc) and ST.Book:Get() equal byte for byte (both)
+--  10. a source scan: ST.sim written only by Spells/WhatIf_TBC.lua;
 --      UI/Dashboard_Simulate.lua on no TOC (both)
 HARNESS_FLAVOUR = { "tbc", "forever" }
 
@@ -44,7 +44,7 @@ local function T(name, fn)
 end
 
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua")
+local ST = dofile(here .. "/harness.lua")
 arg[0] = a0
 
 local S = _G.STUB
@@ -60,14 +60,14 @@ if TBC then
     for _, rel in ipairs(S.TocFiles("SpellTuner_TBC.toc")) do
         if rel:sub(1, 3) == "UI/" and not loaded[rel] then present[#present + 1] = rel end
     end
-    S.Load(present, "SpellTuner", MD)
-    MD.player.isDruid = true
+    S.Load(present, "SpellTuner", ST)
+    ST.player.isDruid = true
     _G.DEFAULT_CHAT_FRAME = { AddMessage = function() end }
-    MD:Fire("CORE_LOGIN")
-    if MD.Book and MD.Book.Refresh then MD.Book:Refresh() end
-    MD:Fire("MD_READY")
+    ST:Fire("CORE_LOGIN")
+    if ST.Book and ST.Book.Refresh then ST.Book:Refresh() end
+    ST:Fire("MD_READY")
 else
-    MD:SetModule("SpellTuner_Replay", true) -- the Forever kit (check 9)
+    ST:SetModule("SpellTuner_Replay", true) -- the Forever kit (check 9)
 end
 
 -- A deterministic dump: keys sorted, a cycle named, functions by type.
@@ -99,16 +99,16 @@ local function Near(a, b, eps)
 end
 
 local events = 0
-MD:RegisterCallback("WHATIF_CHANGED", function() events = events + 1 end)
+ST:RegisterCallback("WHATIF_CHANGED", function() events = events + 1 end)
 
 --------------------------------------------------------------------------------
 -- 1 (both)
 --------------------------------------------------------------------------------
-T("1 MD.WhatIf: Set / Get / Clear / Active; equal writes silent; not saved", function()
-    local WI = MD.WhatIf
-    if type(WI) ~= "table" then return false, "no MD.WhatIf" end
+T("1 ST.WhatIf: Set / Get / Clear / Active; equal writes silent; not saved", function()
+    local WI = ST.WhatIf
+    if type(WI) ~= "table" then return false, "no ST.WhatIf" end
     WI:Clear()
-    local db0, cdb0 = Ser(MD.db), Ser(MD.cdb)
+    local db0, cdb0 = Ser(ST.db), Ser(ST.cdb)
     local e0 = events
     local inactive = WI:Active() == false
     local moved = WI:Set("heal", 600)
@@ -127,7 +127,7 @@ T("1 MD.WhatIf: Set / Get / Clear / Active; equal writes silent; not saved", fun
     local e4 = events
     WI:Clear() -- nothing set: nothing fired
     local e5 = events
-    local saved = Ser(MD.db) == db0 and Ser(MD.cdb) == cdb0
+    local saved = Ser(ST.db) == db0 and Ser(ST.cdb) == cdb0
     local good = inactive and moved ~= false and e1 == e0 + 1 and same == false and e2 == e1
         and crit == 100 and mana == 0 and active and WI:Get("heal") == nil and e4 == e3 + 1 and e5 == e4
         and not WI:Active() and saved and #WI.STATS == 6 and WI.STATS[1].key == "heal"
@@ -137,7 +137,7 @@ T("1 MD.WhatIf: Set / Get / Clear / Active; equal writes silent; not saved", fun
         tostring(crit), tostring(mana), tostring(saved))
 end)
 
-local WI = MD.WhatIf or {}
+local WI = ST.WhatIf or {}
 
 --------------------------------------------------------------------------------
 -- 1b (both, T124): the +Spell damage row, right after +Healing, set / clear
@@ -227,9 +227,9 @@ T("8 WI.Changes: every number from the what-if book; floor / beaten reasons; ASC
 end)
 
 --------------------------------------------------------------------------------
--- 10 (both): MD.sim written by one file; Dashboard_Simulate on no TOC
+-- 10 (both): ST.sim written by one file; Dashboard_Simulate on no TOC
 --------------------------------------------------------------------------------
-T("10 MD.sim written only by Spells/WhatIf_TBC.lua; no TOC lists Dashboard_Simulate", function()
+T("10 ST.sim written only by Spells/WhatIf_TBC.lua; no TOC lists Dashboard_Simulate", function()
     local root = S.root
     local bad = {}
     local p = io.popen('cd "' .. root .. '" && find . -name "*.lua" -not -path "./tools/*" -not -path "./.git/*" '
@@ -242,8 +242,8 @@ T("10 MD.sim written only by Spells/WhatIf_TBC.lua; no TOC lists Dashboard_Simul
             for line in fh:lines() do
                 n = n + 1
                 local code = line:gsub("%-%-.*$", "")
-                if code:find("MD%.sim%.[%w_]+%s*=[^=]") or code:find("MD%.sim%[[^%]]*%]%s*=[^=]")
-                    or code:find("wipe%(%s*MD%.sim%s*%)") then
+                if code:find("ST%.sim%.[%w_]+%s*=[^=]") or code:find("ST%.sim%[[^%]]*%]%s*=[^=]")
+                    or code:find("wipe%(%s*ST%.sim%s*%)") then
                     bad[#bad + 1] = rel .. ":" .. n
                 end
             end
@@ -263,7 +263,7 @@ T("10 MD.sim written only by Spells/WhatIf_TBC.lua; no TOC lists Dashboard_Simul
 end)
 
 if TBC then
-    local RM, SD = MD.RankMath, MD.SpellData
+    local RM, SD = ST.RankMath, ST.SpellData
 
     local function HT(book)
         local fam = book.families.HealingTouch
@@ -275,17 +275,17 @@ if TBC then
     --------------------------------------------------------------------------
     -- 2 (tbc)
     --------------------------------------------------------------------------
-    T("2 tbc: +150 healing is Compute() under MD.sim, the live book untouched", function()
+    T("2 tbc: +150 healing is Compute() under ST.sim, the live book untouched", function()
         WI:Clear()
-        local liveBook = MD.Book:Get()
-        local gen0, ser0 = MD.Book.generation, Ser(liveBook)
+        local liveBook = ST.Book:Get()
+        local gen0, ser0 = ST.Book.generation, Ser(liveBook)
         local live = WI:Live()
         WI:Set("heal", live.heal + 150)
         local wb = WI:Book()
-        local savedSim, savedInfo = MD.sim, RM.info
-        MD.sim = { heal = live.heal + 150 }
+        local savedSim, savedInfo = ST.sim, RM.info
+        ST.sim = { heal = live.heal + 150 }
         local res = RM:Compute()
-        MD.sim, RM.info = savedSim, savedInfo
+        ST.sim, RM.info = savedSim, savedInfo
         local fam, by = HT(wb)
         local bad = {}
         for _, row in ipairs(res.HealingTouch.rows) do
@@ -300,10 +300,10 @@ if TBC then
                 end
             end
         end
-        local liveFam, liveBy = HT(MD.Book:Get())
+        local liveFam, liveBy = HT(ST.Book:Get())
         local moved = by[12] and liveBy[12] and by[12].value > liveBy[12].value
         local good = #bad == 0 and moved and fam.suggested and fam.suggested.id == res.HealingTouch.suggestedID
-            and MD.Book.generation == gen0 and Ser(MD.Book:Get()) == ser0 and liveFam ~= fam
+            and ST.Book.generation == gen0 and Ser(ST.Book:Get()) == ser0 and liveFam ~= fam
             and WI:Summary() == "+150 healing"
         WI:Clear()
         return good, table.concat(bad, "; ") .. " summary=" .. tostring(WI.Summary and "ok")
@@ -324,9 +324,9 @@ if TBC then
             if e.cost.amount ~= want then bad[#bad + 1] = e.id .. ":" .. tostring(e.cost.amount) .. "/" .. tostring(want) end
         end
         local note = WI.provider.ranksNote(fam)
-        local sim = MD.sim and MD.sim.tree == true and MD.sim.moonglow == 2
+        local sim = ST.sim and ST.sim.tree == true and ST.sim.moonglow == 2
         WI:Clear()
-        local wiped = MD.sim == nil or next(MD.sim) == nil
+        local wiped = ST.sim == nil or next(ST.sim) == nil
         local good = #bad == 0 and type(note) == "string" and note:find("costs from the static table", 1, true) ~= nil
             and sim and wiped
         return good, table.concat(bad, " ") .. " note=" .. tostring(note) .. " sim=" .. tostring(sim)
@@ -350,20 +350,20 @@ if TBC then
     -- 5 (tbc): a priest with the rank table granted
     --------------------------------------------------------------------------
     T("5 tbc: a priest with the rank table granted: no class row, no sentence", function()
-        local caps = MD.Profiles.byClass.PRIEST.caps
+        local caps = ST.Profiles.byClass.PRIEST.caps
         local savedRT = caps.rankTable
         caps.rankTable = true
         S.units.player.class = "PRIEST"
         local good, res = pcall(function()
-            MD:DetectProfile()
-            MD:Fire("CORE_LOGIN")
+            ST:DetectProfile()
+            ST:Fire("CORE_LOGIN")
             local rows = WI:ClassRows()
-            return { rows = rows, note = WI:ClassNote(), book = MD.RankMath:IsClassBook() }
+            return { rows = rows, note = WI:ClassNote(), book = ST.RankMath:IsClassBook() }
         end)
         S.units.player.class = "DRUID"
         caps.rankTable = savedRT
-        MD:DetectProfile()
-        MD:Fire("CORE_LOGIN")
+        ST:DetectProfile()
+        ST:Fire("CORE_LOGIN")
         if not good then return false, "raised: " .. tostring(res) end
         return (res.rows == nil or #res.rows == 0) and res.note == nil and res.book == true, Ser(res)
     end)
@@ -373,17 +373,17 @@ if TBC then
     --------------------------------------------------------------------------
     T("9 tbc: the clock, the block, the kit, the suggested ranks and the book ignore it", function()
         WI:Clear()
-        MD.Book:Refresh()
+        ST.Book:Refresh()
         local function Snap()
-            local id = MD.Book:Get().families.HealingTouch.maxKnown.id
+            local id = ST.Book:Get().families.HealingTouch.maxKnown.id
             local savedInfo = RM.info
             local out = {
-                clock = Ser(MD.ClockFace.Current(100)),
-                tip = Ser({ MD.SpellTip:Lines(id, false) }),
-                tipD = Ser({ MD.SpellTip:Lines(id, true) }),
+                clock = Ser(ST.ClockFace.Current(100)),
+                tip = Ser({ ST.SpellTip:Lines(id, false) }),
+                tipD = Ser({ ST.SpellTip:Lines(id, true) }),
                 kit = Ser(RM:SpellKit()),
                 ranks = Ser(RM:SuggestedRanks()),
-                book = Ser(MD.Book:Refresh()),
+                book = Ser(ST.Book:Refresh()),
             }
             RM.info = savedInfo
             return out
@@ -394,7 +394,7 @@ if TBC then
         WI:Set("form", "tree")
         WI:Book()
         local during = Snap()
-        local active = MD.sim and next(MD.sim) ~= nil
+        local active = ST.sim and next(ST.sim) ~= nil
         WI:Clear()
         local bad = {}
         for k, v in pairs(before) do if during[k] ~= v then bad[#bad + 1] = k end end
@@ -418,8 +418,8 @@ if TBC then
         "GetSpellInfo", "GetSpellDescription", "GetSpellPowerCost", "GetSpellLevelLearned", "GetSpellBonusDamage" }
     local dmg = { [4] = 300, [7] = 310 }
     local function Forget()
-        for _, n in ipairs(WALK_NAMES) do if MD.API.Invalidate then MD.API.Invalidate(n) end end
-        if MD.BookTBC and type(MD.BookTBC.Forget) == "function" then MD.BookTBC.Forget() end
+        for _, n in ipairs(WALK_NAMES) do if ST.API.Invalidate then ST.API.Invalidate(n) end end
+        if ST.BookTBC and type(ST.BookTBC.Forget) == "function" then ST.BookTBC.Forget() end
     end
     local function InstallWalk()
         local saved = {}
@@ -451,7 +451,7 @@ if TBC then
         return function()
             for _, n in ipairs(WALK_NAMES) do _G[n] = saved[n] end
             Forget()
-            MD.Book:Refresh()
+            ST.Book:Refresh()
         end
     end
     local function ByIdOf(fam)
@@ -460,26 +460,26 @@ if TBC then
         return out
     end
 
-    T("11 tbc T124: +Spell damage -- MD.sim.damage, the damage ranks at live + delta, heals untouched", function()
+    T("11 tbc T124: +Spell damage -- ST.sim.damage, the damage ranks at live + delta, heals untouched", function()
         WI:Clear()
         local restore = InstallWalk()
         local good, detail, why = pcall(function()
-            MD.Book:Refresh()
-            local live = MD.Book:Get()
+            ST.Book:Refresh()
+            local live = ST.Book:Get()
             local ser0 = Ser(live)
             local liveDmg = WI:Live().damage
             -- the oracle: the live book with every school 100 higher
             dmg[4], dmg[7] = 400, 410
             Forget()
-            MD.Book:Refresh()
-            local up = MD.Book:Get()
+            ST.Book:Refresh()
+            local up = ST.Book:Get()
             dmg[4], dmg[7] = 300, 310
             Forget()
-            MD.Book:Refresh()
-            live = MD.Book:Get()
+            ST.Book:Refresh()
+            live = ST.Book:Get()
             ser0 = Ser(live)
             WI:Set("damage", 400)
-            local simD = MD.sim and MD.sim.damage
+            local simD = ST.sim and ST.sim.damage
             local wb = WI:Book()
             local summary = WI:Summary()
             local bad = {}
@@ -509,7 +509,7 @@ if TBC then
             for id, l in pairs(HT) do
                 Want(WHT[id] and WHT[id].value == l.value and WHT[id].perMana == l.perMana, "HT moved on damage " .. id)
             end
-            Want(MD.Book:Get() == live and Ser(MD.Book:Get()) == ser0, "live book")
+            Want(ST.Book:Get() == live and Ser(ST.Book:Get()) == ser0, "live book")
             -- damage ranks ignore heal
             WI:Clear()
             WI:Set("heal", WI:Live().heal + 150)
@@ -521,7 +521,7 @@ if TBC then
             WI:Clear()
             WI:Set("damage", 500)
             WI:Clear()
-            Want(MD.sim == nil or next(MD.sim) == nil, "sim not emptied")
+            Want(ST.sim == nil or next(ST.sim) == nil, "sim not emptied")
             return #bad == 0, table.concat(bad, "; ")
         end)
         WI:Clear()
@@ -530,8 +530,8 @@ if TBC then
         return detail, why
     end)
 else
-    local Book = MD.Book
-    local RR = MD.RankRules
+    local Book = ST.Book
+    local RR = ST.RankRules
     local FIELDS = {
         eff = "perMana", rate = "perSec", value = "value",
         eligible = function(e) return e.known and e.perMana and e.perSec end,
@@ -558,7 +558,7 @@ else
         return Book:Get()
     end
     local function Counts(id)
-        local store = MD.cdb and MD.cdb.bonusCounts
+        local store = ST.cdb and ST.cdb.bonusCounts
         local m = store and store[id]
         return m and m.counts, m
     end
@@ -567,7 +567,7 @@ else
     -- 5 (forever)
     --------------------------------------------------------------------------
     T("5 forever: the share measured from two plain scans; the refusals", function()
-        MD.inCombat, S.inCombat = false, false
+        ST.inCombat, S.inCombat = false, false
         Scan(100)
         Scan(200)
         local c1, m1 = Counts(95201)
@@ -575,9 +575,9 @@ else
         local fixed = Counts(95221)
         local est = Counts(95202)
         -- in combat: nothing measured
-        MD.inCombat, S.inCombat = true, true
+        ST.inCombat, S.inCombat = true, true
         Scan(400)
-        MD.inCombat, S.inCombat = false, false
+        ST.inCombat, S.inCombat = false, false
         local afterCombat = select(2, Counts(95201))
         local combatOk = afterCombat and afterCombat.bonus == 200
         -- a stale bonus (the read secret out of the regen events)
@@ -660,10 +660,10 @@ else
         WI:Clear()
         local function Snap()
             return {
-                clock = Ser(MD.ClockFace.Current(100)),
-                tip = Ser({ MD.SpellTip:Lines(95201, false) }),
-                tipD = Ser({ MD.SpellTip:Lines(95201, true) }),
-                kit = Ser(MD.RankMath:SpellKit()),
+                clock = Ser(ST.ClockFace.Current(100)),
+                tip = Ser({ ST.SpellTip:Lines(95201, false) }),
+                tipD = Ser({ ST.SpellTip:Lines(95201, true) }),
+                kit = Ser(ST.RankMath:SpellKit()),
                 book = Ser(Book:Get()),
             }
         end
@@ -688,12 +688,12 @@ else
     --------------------------------------------------------------------------
     T("11 forever T124: +Spell damage -- damage ranks by counts x delta, heals untouched", function()
         WI:Clear()
-        MD.inCombat, S.inCombat = false, false
+        ST.inCombat, S.inCombat = false, false
         local savedDmg = S.bonusDamage[4]
         S.bonusDamage[4] = 100
         -- no earlier reading and no stored share: Wrath stays estimated
         Book._lastRead = {}
-        if MD.cdb and MD.cdb.bonusCounts then MD.cdb.bonusCounts[5176] = nil end
+        if ST.cdb and ST.cdb.bonusCounts then ST.cdb.bonusCounts[5176] = nil end
         local good, detail, why = pcall(function()
             local live = Scan(200)
             local liveSer = Ser(live)
@@ -731,7 +731,7 @@ else
             Want(hw and l and hw.value == l.value and hw.perMana == l.perMana, "Wrath moved on heal")
             local hnote = WI.provider.ranksNote(hb.families.Wrath)
             Want(hnote == nil, "heal note on Wrath " .. tostring(hnote))
-            Want(MD.sim == nil or next(MD.sim) == nil, "MD.sim written")
+            Want(ST.sim == nil or next(ST.sim) == nil, "ST.sim written")
             return #bad == 0, table.concat(bad, "; ")
         end)
         WI:Clear()
@@ -748,7 +748,7 @@ else
     --------------------------------------------------------------------------
     T("12 forever: a measured damage rank moves by its measured counts; the note counts it", function()
         WI:Clear()
-        MD.inCombat, S.inCombat = false, false
+        ST.inCombat, S.inCombat = false, false
         local savedDmg = S.bonusDamage[4]
         -- "Spark": R1's text takes 60% of Nature spell damage, R2's none
         S.AddSpell(95301, "Spark", "Rank 1", function()

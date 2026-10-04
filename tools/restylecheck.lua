@@ -107,7 +107,7 @@ end
 --------------------------------------------------------------------------------
 -- Load the flavour's whole TOC (UI included) and log in
 --------------------------------------------------------------------------------
-local MD = {}
+local ST = {}
 local toc = "SpellTuner_TBC.toc"
 if flavour == "forever" then
     S.UseProfile("forever")
@@ -115,8 +115,8 @@ if flavour == "forever" then
 end
 local files = S.TocFiles(toc)
 S.loadedFiles = files
-S.Load(files, "SpellTuner", MD)
-local UI = MD.UI
+S.Load(files, "SpellTuner", ST)
+local UI = ST.UI
 if _G.GetBuildInfo == nil then
     _G.GetBuildInfo = function() return "2.5.5", "65000", "Sep 1 2026", 20506 end
 end
@@ -125,7 +125,7 @@ _G.DEFAULT_CHAT_FRAME = { AddMessage = function(_, m) chat[#chat + 1] = m end }
 if flavour == "tbc" then
     -- the druid knows every rank at or below the stub's level (tools/harness.lua's
     -- rule), so the Spells rail lists families
-    for id, sp in pairs(MD.SpellData.spells) do
+    for id, sp in pairs(ST.SpellData.spells) do
         if (sp.level or 1) <= S.level then S.known[id] = true end
     end
 end
@@ -133,9 +133,9 @@ S.Fire("ADDON_LOADED", "SpellTuner")
 S.Fire("PLAYER_LOGIN")
 S.Fire("PLAYER_ENTERING_WORLD")
 if flavour == "forever" then
-    MD:SetModule("SpellTuner_Recorder", true)
-    MD:SetModule("SpellTuner_Replay", true)
-    MD:SetModule("SpellTuner_Practice", true)
+    ST:SetModule("SpellTuner_Recorder", true)
+    ST:SetModule("SpellTuner_Replay", true)
+    ST:SetModule("SpellTuner_Practice", true)
 end
 
 --------------------------------------------------------------------------------
@@ -170,8 +170,8 @@ local PATTERNS = {
 }
 for _, setter in ipairs(SETTERS) do
     for _, read in ipairs({ { "accent%[", "accent[i]" }, { "a%[1%]", "a captured accent" },
-            { "UI%.RGB%(", "UI.RGB(...)" }, { "UI%.Fill%(", "UI.Fill(...)" }, { "MD%.UI%.Fill%(", "UI.Fill(...)" },
-            { "MD%.UI%.accent", "UI.accent" }, { "TextRGB%(", "TextRGB(...)" } }) do
+            { "UI%.RGB%(", "UI.RGB(...)" }, { "UI%.Fill%(", "UI.Fill(...)" }, { "ST%.UI%.Fill%(", "UI.Fill(...)" },
+            { "ST%.UI%.accent", "UI.accent" }, { "TextRGB%(", "TextRGB(...)" } }) do
         PATTERNS[#PATTERNS + 1] = { setter .. "%(%s*" .. read[1], setter .. " given " .. read[2] }
     end
 end
@@ -249,15 +249,15 @@ check("a texture tint paints the fill with its own alpha", Near(tex.color, h[1],
 -- { group, view, pane[, root] }: a view of the main window, or (root) a window
 -- of its own opened by `open`. Review, Practice, Settings and the Spells view
 -- are the listed panes; the rest are measured the same way.
-local function Bindings() MD:SelectView("simulate", "practice"); return MD:ShowBindings() ~= nil end
-local function SheetFrame() return MD.BindingsWindow and MD.BindingsWindow._frame() end
+local function Bindings() ST:SelectView("simulate", "practice"); return ST:ShowBindings() ~= nil end
+local function SheetFrame() return ST.BindingsWindow and ST.BindingsWindow._frame() end
 local function Copy()
-    MD:ShowCopyPopup("Copy", "a line to copy")
+    ST:ShowCopyPopup("Copy", "a line to copy")
     return _G.SpellTunerDebugCopyFrame ~= nil
 end
 local function Console()
-    MD:Debug("tto", "a line in its category colour")
-    if not (_G.SpellTunerDebugConsole and _G.SpellTunerDebugConsole:IsShown()) then MD:ToggleDebugConsole() end
+    ST:Debug("tto", "a line in its category colour")
+    if not (_G.SpellTunerDebugConsole and _G.SpellTunerDebugConsole:IsShown()) then ST:ToggleDebugConsole() end
     return _G.SpellTunerDebugConsole ~= nil
 end
 local VIEWS
@@ -289,7 +289,7 @@ end
 
 -- the Spells rail's first family row (the shared pane, both lines)
 local function FamilyRow()
-    local owner = MD.SpellsPane
+    local owner = ST.SpellsPane
     local rail = owner and owner.nav and owner.nav:Rail("spells")
     for _, r in ipairs(rail and rail:Rows() or {}) do
         if type(r.id) == "string" and r.id:find("^fam:") then return r end
@@ -302,13 +302,13 @@ local function Visit(v)
         return ok and res
     end
     if v[2] == "FAMILY" then
-        MD:SelectView("spells", "overview")
+        ST:SelectView("spells", "overview")
         local row = FamilyRow()
         local fn = row and row:GetScript("OnClick")
         if fn then fn(row, "LeftButton") end
         return row ~= nil
     end
-    local ok, err = pcall(MD.SelectView, MD, v[1], v[2])
+    local ok, err = pcall(ST.SelectView, ST, v[1], v[2])
     if not ok then print("  select " .. v[1] .. "/" .. tostring(v[2]) .. " raised: " .. tostring(err)) end
     return ok
 end
@@ -340,7 +340,7 @@ local function Round()
     return seen
 end
 
-MD:ToggleDashboard()
+ST:ToggleDashboard()
 -- twice: a pane's second render settles what its first left (pooled rows,
 -- a selection the first visit made), so the paint below is the steady one
 Round()

@@ -8,13 +8,13 @@
 -- is listed before Data/SpellData.lua (right after the flavour core), so it
 -- reads nothing from it.
 --
--- What derives from it at file load, by name (MD.Profiles.Require("DRUID")):
+-- What derives from it at file load, by name (ST.Profiles.Require("DRUID")):
 -- Engine/SimPlanner.lua's SP.BINDABLE and SP.HOT_RULE, Engine/ManaCooldowns.lua's
 -- MC.byClass.DRUID, Engine/RegenModel.lua's in-5SR talent row for DRUID. Each
 -- derived table equals the constant it replaced (tools/profilecheck.lua).
-local _, MD = ...
+local _, ST = ...
 
-MD.Profiles.Register("DRUID", {
+ST.Profiles.Register("DRUID", {
     label = "Druid",
     critSchool = 4,                -- Nature
     -- What a druid gets on this line today (the isDruid gates, task T99).

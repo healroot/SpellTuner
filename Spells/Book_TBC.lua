@@ -3,13 +3,13 @@
 -- table and the spell tooltip read for a class Data/SpellData.lua does not
 -- cover (that table is the druid's and stays the druid's source).
 --
--- No number is typed in here. The spellbook is walked through MD.API
+-- No number is typed in here. The spellbook is walked through ST.API
 -- (Client/API_TBC.lua); each rank's own description is read by Spells/Parse.lua
 -- (the TBC client prints every rank's base heal in its tooltip, without the
 -- player's +healing or talents), its cost and cast time from the client (both
 -- already carry the player's talents), its learn level from the client, its
 -- cooldown from the client or its tooltip's own line. Every read falls back to
--- the spell's tooltip lines (MD.API.SpellTooltipLines) and a rank no read can
+-- the spell's tooltip lines (ST.API.SpellTooltipLines) and a rank no read can
 -- price is REFUSED with its reason (`source.refused[id]`), never guessed --
 -- a rank with no description, no heal of its family's shape, no cast time or
 -- no learn level.
@@ -41,10 +41,10 @@
 -- or paladin builds here (the spend tracker, the fight summary and /md
 -- profile read it through RankMath:Source() as the rank math does). TBC TOC
 -- only, after Spells/Parse.lua.
-local _, MD = ...
+local _, ST = ...
 
 local B = {}
-MD.BookTBC = B
+ST.BookTBC = B
 
 -- Data/SpellData.lua's class: that class reads the static table, never this.
 B.TABLE_CLASS = "DRUID"
@@ -55,7 +55,7 @@ B._src = nil
 -- The client, through the adapter only.
 --------------------------------------------------------------------------------
 local function Call(name, ...)
-    local fn = MD.API and MD.API[name]
+    local fn = ST.API and ST.API[name]
     if type(fn) ~= "function" then return nil end
     return fn(...)
 end
@@ -77,7 +77,7 @@ end
 --                target ..."
 --------------------------------------------------------------------------------
 local function Reach(text)
-    local P = MD.Parse
+    local P = ST.Parse
     local t = (P and P.Clean) and P.Clean(text) or text
     local total = tonumber(t:match("[Hh]eals (%d+) total targets"))
     local cut = tonumber(t:match("reduces the effectiveness of the heal by (%d+)%%"))
@@ -100,7 +100,7 @@ B.Reach = Reach
 -- One rank's reads.
 --------------------------------------------------------------------------------
 local function DescriptionOf(id, lines)
-    local P = MD.Parse
+    local P = ST.Parse
     local text = Call("SpellDescription", id)
     if type(text) == "string" and text ~= "" then
         local d = P.Description(text)
@@ -130,7 +130,7 @@ local function CostOf(id, lines)
         for _, ln in ipairs(lines) do
             for _, side in ipairs({ ln.l, ln.r }) do
                 if type(side) == "string" then
-                    local c = MD.Parse.Cost(side)
+                    local c = ST.Parse.Cost(side)
                     if type(c) == "table" and c.power == "Mana" and type(c.amount) == "number" then
                         return c.amount, "tooltip"
                     end
@@ -148,7 +148,7 @@ local function CastOf(id, lines)
         for _, ln in ipairs(lines) do
             for _, side in ipairs({ ln.l, ln.r }) do
                 if type(side) == "string" then
-                    local s = MD.Parse.Cast(side)
+                    local s = ST.Parse.Cast(side)
                     if type(s) == "number" then return s, "tooltip" end
                 end
             end
@@ -176,7 +176,7 @@ local function CooldownOf(id, lines)
         for _, ln in ipairs(lines) do
             for _, side in ipairs({ ln.r, ln.l }) do
                 if type(side) == "string" then
-                    local s = MD.Parse.Cooldown(side)
+                    local s = ST.Parse.Cooldown(side)
                     if type(s) == "number" and s > 0 then return s, "tooltip" end
                 end
             end
@@ -212,7 +212,7 @@ end
 
 -- The lines a description is never: the rank's own header lines.
 local function NotDescription(l)
-    local P = MD.Parse
+    local P = ST.Parse
     if l:match("^Requires ") then return true end
     if type(P.Cost(l)) == "table" or type(P.Cast(l)) == "number" then return true end
     if type(P.Cooldown(l)) == "number" then return true end
@@ -243,7 +243,7 @@ function B.Read(id)
     if type(id) ~= "number" then return nil end
     local hit = B._read[id]
     if hit then return hit end
-    local P = MD.Parse
+    local P = ST.Parse
     local lines = Lines(id)
     local r = { lines = lines }
     if P then
@@ -289,9 +289,9 @@ function B.ReadRank(id, family, def, rankText)
     if not s then return nil, why end
     s.family = family
     s.text = text
-    s.rank = (rankText and MD.Parse.Rank(rankText)) or nil
+    s.rank = (rankText and ST.Parse.Rank(rankText)) or nil
     if not s.rank and lines and lines[1] then
-        s.rank = MD.Parse.Rank(lines[1].r or "") or nil
+        s.rank = ST.Parse.Rank(lines[1].r or "") or nil
     end
     s.cost, s.costFrom = read.cost, read.costFrom
     s.cast, s.castFrom = read.cast, read.castFrom
@@ -317,7 +317,7 @@ end
 -- The walk.
 --------------------------------------------------------------------------------
 local function Profile()
-    local p = MD.ClassProfile
+    local p = ST.ClassProfile
     if type(p) ~= "table" or type(p.Can) ~= "function" then return nil end
     if p.class == B.TABLE_CLASS or not p:Can("rankTable") then return nil end
     if type(p.families) ~= "table" or next(p.families) == nil then return nil end
@@ -377,7 +377,7 @@ end
 function B:Build()
     B.Forget()
     local p = Profile()
-    if not p or not MD.Parse then return nil end
+    if not p or not ST.Parse then return nil end
     local src = Empty(p)
     local keyOf = p:FamilyKeys()
     for _, hit in ipairs(Walk(keyOf)) do
@@ -471,16 +471,16 @@ end
 
 function B:Rebuild()
     B._src = B:Build()
-    if B._src then MD:Fire("SPELLS_REBUILT") end
+    if B._src then ST:Fire("SPELLS_REBUILT") end
     return B._src
 end
 
 local function OnBook() B:Rebuild() end
-MD:RegisterCallback("MD_READY", OnBook)
-MD:On("SPELLS_CHANGED", OnBook)
-MD:On("LEARNED_SPELL_IN_TAB", OnBook)
-MD:On("PLAYER_LEVEL_UP", OnBook)
+ST:RegisterCallback("MD_READY", OnBook)
+ST:On("SPELLS_CHANGED", OnBook)
+ST:On("LEARNED_SPELL_IN_TAB", OnBook)
+ST:On("PLAYER_LEVEL_UP", OnBook)
 -- T118: B:Build forgets the reads and the walk; these two forget them for a
 -- class that builds nothing (the druid, whose TBC book still walks)
-MD:On("SPELLS_CHANGED", B.Forget)
-MD:On("LEARNED_SPELL_IN_TAB", B.Forget)
+ST:On("SPELLS_CHANGED", B.Forget)
+ST:On("LEARNED_SPELL_IN_TAB", B.Forget)

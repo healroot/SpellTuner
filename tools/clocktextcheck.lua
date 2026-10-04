@@ -7,7 +7,7 @@
 -- CF.ResolveText (the time never lost), CF.Slots, the word options (labels,
 -- ofMax, time), Segments / JoinSegments / LineString following Line's slots
 -- -- byte-identical by default -- and the two producers' new fields (TBC
--- MD:GetClockFace, Forever ManaModel.Face: mana / manaMax / manaModelled, fsr,
+-- ST:GetClockFace, Forever ManaModel.Face: mana / manaMax / manaModelled, fsr,
 -- the regen feed's mp5). Thirteen checks per flavour, all failing on the
 -- parent (no CF.Slots):
 --    1. CF.Time's formats;          2. the defaults are today's words;
@@ -22,13 +22,13 @@ HARNESS_FLAVOUR = { "tbc", "forever" }
 
 local here = arg[0]:match("^(.*)/[^/]+$")
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua"); arg[0] = a0
+local ST = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB
 local T = dofile(here .. "/lib/t.lua")
 local check = T.check
 local FLAVOUR = S.flavour
 local FOREVER = FLAVOUR == "forever"
-local CF = MD.ClockFace
+local CF = ST.ClockFace
 local HEX = "|cff16c3f2"
 
 -- A block that raises (on the parent: no CF.Slots) is one FAIL, not the end.
@@ -77,14 +77,14 @@ end
 
 -- Feeds on TBC: the harness drops UI/ (but for UI/Summary.lua); load it by
 -- hand, handing it the MD_READY it missed.
-if not MD.Feeds then
-    local ready, realReg = {}, MD.RegisterCallback
-    MD.RegisterCallback = function(self, name, fn)
+if not ST.Feeds then
+    local ready, realReg = {}, ST.RegisterCallback
+    ST.RegisterCallback = function(self, name, fn)
         if name == "MD_READY" then ready[#ready + 1] = fn end
         return realReg(self, name, fn)
     end
-    local okLoad, err = pcall(S.Load, { "UI/Feeds.lua" }, "SpellTuner", MD)
-    MD.RegisterCallback = realReg
+    local okLoad, err = pcall(S.Load, { "UI/Feeds.lua" }, "SpellTuner", ST)
+    ST.RegisterCallback = realReg
     if not okLoad then print("load UI/Feeds.lua: " .. tostring(err)) end
     for _, fn in ipairs(ready) do pcall(fn) end
 end
@@ -221,7 +221,7 @@ end)
 T.section("6. mp5 = the regen feed")
 local function Spend(n)
     if FOREVER then
-        MD.Pool.model:Spend(n, GetTime())
+        ST.Pool.model:Spend(n, GetTime())
     else
         S.Fire("UNIT_POWER_UPDATE", "player", "MANA")
         S.mana = S.mana - n
@@ -231,7 +231,7 @@ end
 local function Face() return CF.Current(GetTime()) end
 local function Mp5Words(face) return VT(CF.Slots(face, { right = "mp5" }, "line").right) end
 Guarded("6. mp5", function()
-    local read = MD.Feeds and MD.Feeds.RegenReading
+    local read = ST.Feeds and ST.Feeds.RegenReading
     local rows = {}
     local function Row(tag)
         local face, r = Face(), read()
@@ -284,13 +284,13 @@ Guarded("7. fsr", function()
     local after = FsrWords()
     local free = true
     if FOREVER then
-        local model = MD.Pool.model
+        local model = ST.Pool.model
         local last = model.lastSpend
-        local realCost = MD.Pool.CostFor
-        MD.Pool.CostFor = function(id) if id == 99001 then return 0 end return realCost(id) end
+        local realCost = ST.Pool.CostFor
+        ST.Pool.CostFor = function(id) if id == 99001 then return 0 end return realCost(id) end
         S.Cast(99001)
         Ticks(1)
-        MD.Pool.CostFor = realCost
+        ST.Pool.CostFor = realCost
         free = model.lastSpend == last and FsrWords() == nil
     else
         -- a cast with no mana leaving the pool starts nothing
@@ -467,7 +467,7 @@ end)
 --------------------------------------------------------------------------------
 T.section("13. producers")
 Guarded("13. producers", function()
-    local IsSecret = MD.API.IsSecret
+    local IsSecret = ST.API.IsSecret
     local function NoSecret(face)
         for k, v in pairs(face) do
             if IsSecret(v) then return k end
@@ -481,9 +481,9 @@ Guarded("13. producers", function()
         Spend(200)
         Ticks(2)
         local face = Face()
-        local model = MD.Pool.model
+        local model = ST.Pool.model
         local secretField = NoSecret(face)
-        local base, casting = MD.API.ManaRegen()
+        local base, casting = ST.API.ManaRegen()
         check("13. Forever ManaModel.Face: the model's mana / manaMax, manaModelled; no field a secret (in a fight)",
             face.mana == model.mana and face.manaMax == model.max and face.manaModelled == true
             and type(face.mana) == "number" and face.mana < model.max and secretField == nil
@@ -496,8 +496,8 @@ Guarded("13. producers", function()
         S.mana = 4210
         S.Fire("UNIT_POWER_UPDATE", "player", "MANA")
         Ticks(1)
-        local face = MD:GetClockFace(GetTime())
-        check("13. TBC MD:GetClockFace: mana / manaMax plain, manaModelled false",
+        local face = ST:GetClockFace(GetTime())
+        check("13. TBC ST:GetClockFace: mana / manaMax plain, manaModelled false",
             face and face.mana == 4210 and face.manaMax == S.manaMax and face.manaModelled == false
             and NoSecret(face) == nil,
             face and string.format("mana=%s max=%s modelled=%s", tostring(face.mana), tostring(face.manaMax),

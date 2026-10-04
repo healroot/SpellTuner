@@ -31,9 +31,9 @@ for k, c in pairs(realDB.char or {}) do pre[k] = { profile = c.profile, mp5 = c.
 
 HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua"); arg[0] = a0
+local ST = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB
-local SM, SP, SV = MD.SimModel, MD.SimPlanner, MD.SimSolver
+local SM, SP, SV = ST.SimModel, ST.SimPlanner, ST.SimSolver
 
 local chars = {}
 for key, c in pairs(realDB.char or {}) do
@@ -41,9 +41,9 @@ for key, c in pairs(realDB.char or {}) do
 end
 table.sort(chars)
 local charKey = opts.char or chars[1]
-MD.cdb = realDB.char[charKey]
-MD.cdb.profile = pre[charKey] and pre[charKey].profile
-MD.cdb.mp5 = pre[charKey] and pre[charKey].mp5
+ST.cdb = realDB.char[charKey]
+ST.cdb.profile = pre[charKey] and pre[charKey].profile
+ST.cdb.mp5 = pre[charKey] and pre[charKey].mp5
 
 local function ApplyProfile(p)
     if not p then return end
@@ -55,22 +55,22 @@ local function ApplyProfile(p)
     _G.GetSpellBonusHealing = function() return healing end
     _G.GetSpellCritChance = function() return crit end
     local tal = p.talents or {}
-    function MD:TalentRank(n) return tal[n] or 0 end
-    MD.player.class = p.class or MD.player.class
-    MD.player.isDruid = (p.class == "DRUID")
-    MD.player.level = S.level
-    if p.form == "tree" then function MD:InTreeForm() return true end
-    else function MD:InTreeForm() return false end end
+    function ST:TalentRank(n) return tal[n] or 0 end
+    ST.player.class = p.class or ST.player.class
+    ST.player.isDruid = (p.class == "DRUID")
+    ST.player.level = S.level
+    if p.form == "tree" then function ST:InTreeForm() return true end
+    else function ST:InTreeForm() return false end end
     if p.fromLog then
         local lvl = p.level or 70
         _G.IsSpellKnown = function(id)
-            local sd = MD.SpellData.spells[id]
+            local sd = ST.SpellData.spells[id]
             return sd ~= nil and (sd.level or 0) <= lvl
         end
         _G.IsPlayerSpell = _G.IsSpellKnown
     end
-    MD.SpellData:BuildKnown()
-    MD.Regen:Refresh()
+    ST.SpellData:BuildKnown()
+    ST.Regen:Refresh()
 end
 
 -- Every recording in the file, with the profile it belongs to. A multi-character
@@ -86,9 +86,9 @@ table.sort(pool, function(a, b) return (a.rec.id or 0) < (b.rec.id or 0) end)
 local allRecs = {}
 for i, e in ipairs(pool) do allRecs[i] = e.rec end
 
-local p = MD.cdb.profile
+local p = ST.cdb.profile
 ApplyProfile(p)
-local kit = MD.RankMath:SpellKit({ live = true })
+local kit = ST.RankMath:SpellKit({ live = true })
 local binds = SP.MaxRankBinds()
 print(string.format("char: %s   +%d healing, level %d\n", charKey,
     p and p.healing or 0, p and p.level or 0))
@@ -96,7 +96,7 @@ print(string.format("char: %s   +%d healing, level %d\n", charKey,
 local function tup(t) return string.format("deaths %d  floor %5.1fs  mana %6.0f  overheal %4.0f",
     t[1], t[2], t[3], t[6] or 0) end
 
-local IN = MD.Intuition
+local IN = ST.Intuition
 print(string.format("corpus: %d recording(s) across %d character(s)", #pool, (function()
     local n = 0; for _ in pairs(realDB.char or {}) do n = n + 1 end; return n end)()))
 print("intuition over the whole corpus: " .. IN:Describe(IN:Build(allRecs, nil)) .. "\n")
@@ -105,7 +105,7 @@ local function total(mk)
     local d, f, m = 0, 0, 0
     for _, e in ipairs(pool) do
         ApplyProfile(e.profile)
-        local kit2 = MD.RankMath:SpellKit({ live = true })
+        local kit2 = ST.RankMath:SpellKit({ live = true })
         local sc = SM.ScenarioFromRecording(e.rec, kit2)
         if sc then
             local plan = mk(e.rec, kit2)

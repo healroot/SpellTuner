@@ -27,8 +27,8 @@
 -- (UI.THEMED) the waiting key box is in the accent and an import's notes in
 -- text2, not Blizzard gold. T80 (C1, decision 10): TBC takes the sheet too --
 -- its movable window ("a separate bindings window", U4's list) is gone.
-local _, MD = ...
-local UI = MD.UI
+local _, ST = ...
+local UI = ST.UI
 
 local W, H = 470, 430
 local SHEET_W, SHEET_H = 440, 460 -- T40: the sheet's size (6.2)
@@ -49,17 +49,17 @@ local function Title(text)
 end
 
 local function InCombat()
-    local v = MD.API.UnitAffectingCombat and MD.API.UnitAffectingCombat("player")
+    local v = ST.API.UnitAffectingCombat and ST.API.UnitAffectingCombat("player")
     return v == true
 end
 
-local function Binds() return MD.Practice.Binds() end
+local function Binds() return ST.Practice.Binds() end
 
 -- One row per family, its ranks in a submenu on hover: a flat list of every
 -- rank is forty rows and ran off the bottom of the window (v0.15.2).
 local function SpellItems()
-    MD.Practice.EnsureKit()
-    local SD = MD.SpellData
+    ST.Practice.EnsureKit()
+    local SD = ST.SpellData
     local items = {}
     for _, family in ipairs({ "Lifebloom", "Rejuvenation", "Regrowth", "Swiftmend", "HealingTouch" }) do
         local known = SD.known[family]
@@ -107,7 +107,7 @@ local function Row(i)
         -- T27: removed from the stored list by the binding itself -- with a
         -- hidden one before it, the row's index is not its place in the list
         local b = Binds()[row.index]
-        if b then MD.Practice.RemoveBind(b) end
+        if b then ST.Practice.RemoveBind(b) end
         capturing = nil
         Render()
     end)
@@ -115,10 +115,10 @@ local function Row(i)
     local function Take(key)
         local b = Binds()[row.index]
         if b and key then
-            local PR = MD.Practice
-            local full = PR.Mods(MD.API.IsAltKeyDown and MD.API.IsAltKeyDown(),
-                MD.API.IsControlKeyDown and MD.API.IsControlKeyDown(),
-                MD.API.IsShiftKeyDown and MD.API.IsShiftKeyDown()) .. key
+            local PR = ST.Practice
+            local full = PR.Mods(ST.API.IsAltKeyDown and ST.API.IsAltKeyDown(),
+                ST.API.IsControlKeyDown and ST.API.IsControlKeyDown(),
+                ST.API.IsShiftKeyDown and ST.API.IsShiftKeyDown()) .. key
             for _, other in ipairs(PR.AllBinds()) do
                 -- one press, one spell: taking a key takes it from whoever had
                 -- it -- T27: a hidden binding too, so it cannot come back on
@@ -140,7 +140,7 @@ local function Row(i)
             Status("press the key or mouse button, with any modifiers held. Escape cancels.")
             return
         end
-        Take(MD.Practice.MOUSE[button])
+        Take(ST.Practice.MOUSE[button])
     end)
     row.key:SetScript("OnKeyDown", function(self, key)
         if capturing ~= row then return end
@@ -162,7 +162,7 @@ end
 -- hover naming them; shown only while a binding is hidden (never on TBC).
 local function RenderHidden()
     if not hiddenLine then return end
-    local hidden = MD.Practice.HiddenBinds()
+    local hidden = ST.Practice.HiddenBinds()
     if #hidden == 0 then
         hiddenLine:Hide()
         return
@@ -172,7 +172,7 @@ local function RenderHidden()
         one and "binding" or "bindings", one and "a spell" or "spells"))
     local tips = { Title("Kept for when you learn the spell") }
     for _, b in ipairs(hidden) do
-        tips[#tips + 1] = (b.key ~= "" and b.key or "unbound") .. "  " .. MD.Practice.FamilyLabel(b.family)
+        tips[#tips + 1] = (b.key ~= "" and b.key or "unbound") .. "  " .. ST.Practice.FamilyLabel(b.family)
             .. (b.rank and (" " .. b.rank) or "")
     end
     tips[#tips + 1] = "Not listed, not counted, never cast until then. Forget deletes them."
@@ -182,7 +182,7 @@ end
 
 Render = function()
     if not frame then return end
-    MD.Practice.RefreshKit() -- T27: a spell learned since brings its binding back (Forever only)
+    ST.Practice.RefreshKit() -- T27: a spell learned since brings its binding back (Forever only)
     local binds = Binds()
     local items = SpellItems()
     for i, b in ipairs(binds) do
@@ -203,7 +203,7 @@ Render = function()
     for i = #binds + 1, #rows do rows[i]:Hide() end
     list:SetContentHeight(math.max(1, #binds) * (ROW_H + 2))
     RenderHidden()
-    if MD.PracticeBindsChanged then MD:PracticeBindsChanged() end
+    if ST.PracticeBindsChanged then ST:PracticeBindsChanged() end
 end
 
 -- What an import did, in full: a line per binding it could not take.
@@ -212,7 +212,7 @@ local function Report(newList, report)
         Status(report and report.error or "nothing to import.", "|cffff9966")
         return
     end
-    local added, replaced, same, notInBook = MD.Practice.ApplyImport(newList)
+    local added, replaced, same, notInBook = ST.Practice.ApplyImport(newList)
     notInBook = notInBook or {}
     capturing = nil
     Render()
@@ -272,8 +272,8 @@ local function Build(onPane)
     addBtn:SetPoint("BOTTOMLEFT", root, "BOTTOMLEFT", 12, 72)
     addBtn:SetScript("OnClick", function()
         local family = "Rejuvenation"
-        if MD.Practice.policy.kitIsLive then family = MD.Practice.FirstFamily() end
-        MD.Practice.AddBind({ key = "", family = family }) -- T27: into the stored list
+        if ST.Practice.policy.kitIsLive then family = ST.Practice.FirstFamily() end
+        ST.Practice.AddBind({ key = "", family = family }) -- T27: into the stored list
         Render()
         Status("click the new row's key box and press something.")
     end)
@@ -285,9 +285,9 @@ local function Build(onPane)
     defBtn:SetPoint("LEFT", addBtn, "RIGHT", 6, 0)
     -- no defaults to go back to on a line whose policy ships none (Forever:
     -- the shipped ones are the TBC author's Cell bindings)
-    if #MD.Practice.policy.defaultBinds == 0 then defBtn:Hide() end
+    if #ST.Practice.policy.defaultBinds == 0 then defBtn:Hide() end
     defBtn:SetScript("OnClick", function()
-        MD.db.practiceBinds = nil
+        ST.db.practiceBinds = nil
         Binds()
         capturing = nil
         Render()
@@ -307,7 +307,7 @@ local function Build(onPane)
         Title("Forget them"), "Deletes the bindings kept for spells you have not learned.")
     forgetBtn:SetPoint("LEFT", hiddenFS, "RIGHT", 8, 0)
     forgetBtn:SetScript("OnClick", function()
-        local n = MD.Practice.ForgetHidden()
+        local n = ST.Practice.ForgetHidden()
         capturing = nil
         Render()
         Status(string.format("forgot %d %s.", n, n == 1 and "binding" or "bindings"))
@@ -327,7 +327,7 @@ local function Build(onPane)
         "A binding that casts on your target rather than your mouseover is imported",
         "and said so: here it casts on the frame you hover.")
     keysBtn:SetPoint("LEFT", importFS, "RIGHT", 8, 0)
-    keysBtn:SetScript("OnClick", function() Report(MD.Practice.ImportKeybinds()) end)
+    keysBtn:SetScript("OnClick", function() Report(ST.Practice.ImportKeybinds()) end)
 
     cellBtn = UI.CreateButton(root, "Cell", "accent-hover", { 60, 20 }, false, false, UI.FONT_SMALL, nil,
         Title("Read Cell's click-castings"), "Takes the bindings Cell would use (its common set, or this spec's).",
@@ -335,13 +335,13 @@ local function Build(onPane)
         "Targeting, the unit menu and anything this addon does not model are listed, not guessed.",
         "Adds to your list: a key you already bound casts the imported spell.")
     cellBtn:SetPoint("LEFT", keysBtn, "RIGHT", 6, 0)
-    cellBtn:SetScript("OnClick", function() Report(MD.Practice.ImportCell()) end)
+    cellBtn:SetScript("OnClick", function() Report(ST.Practice.ImportCell()) end)
 
     cliqueBtn = UI.CreateButton(root, "Clique", "accent-hover", { 70, 20 }, false, false, UI.FONT_SMALL, nil,
         Title("Read Clique's bindings"), "Same idea: Clique already spells its keys the way this window does.",
         "Adds to your list: a key you already bound casts the imported spell.")
     cliqueBtn:SetPoint("LEFT", cellBtn, "RIGHT", 6, 0)
-    cliqueBtn:SetScript("OnClick", function() Report(MD.Practice.ImportClique()) end)
+    cliqueBtn:SetScript("OnClick", function() Report(ST.Practice.ImportClique()) end)
 
     statusFS = root:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
     statusFS:SetPoint("BOTTOMLEFT", root, "BOTTOMLEFT", 12, 8)
@@ -353,19 +353,19 @@ end
 
 -- T40: the sheet on the Practice pane -- `onPane` when the pane's own "Edit
 -- bindings" asks, else the main window opened on Simulate -> Practice first
--- (MD.Win:ShowMain, which may refuse: then nothing opens). Refused in combat
+-- (ST.Win:ShowMain, which may refuse: then nothing opens). Refused in combat
 -- (6.6). Returns the sheet shown, or nil.
 local function ShowSheet(onPane)
     if InCombat() then
-        MD:Print("bindings: the bindings sheet does not open in combat")
+        ST:Print("bindings: the bindings sheet does not open in combat")
         return nil
     end
     if not (onPane and onPane:IsVisible()) and not (host and host:IsVisible()) then
-        if MD.SelectView then MD:SelectView("simulate", "practice") end -- through MD.Win:ShowMain
+        if ST.SelectView then ST:SelectView("simulate", "practice") end -- through ST.Win:ShowMain
     end
     if not frame then
         if not (onPane and onPane:IsVisible()) then
-            onPane = MD.DashboardParts and MD.DashboardParts.PracticeHost and MD.DashboardParts.PracticeHost()
+            onPane = ST.DashboardParts and ST.DashboardParts.PracticeHost and ST.DashboardParts.PracticeHost()
         end
         if not onPane then return nil end
         Build(onPane)
@@ -375,21 +375,21 @@ local function ShowSheet(onPane)
     frame:Show()
     -- 6.5: one entry on the ESC stack; the manager's OnHide hook takes it off
     -- however the sheet closes (Done, ESC, its pane hiding)
-    MD.Win:Push(frame)
+    ST.Win:Push(frame)
     return frame
 end
 
-function MD:ShowBindings(onPane)
+function ST:ShowBindings(onPane)
     return ShowSheet(onPane)
 end
 
 -- /md binds (TBC's verb): the sheet shown, or hidden when it is up (T40)
-function MD:ToggleBindings()
-    if frame and frame:IsShown() and host and host:IsVisible() then frame:Hide() else MD:ShowBindings() end
+function ST:ToggleBindings()
+    if frame and frame:IsShown() and host and host:IsVisible() then frame:Hide() else ST:ShowBindings() end
 end
 
 -- for tools/practiceui.lua
-MD.BindingsWindow = {
+ST.BindingsWindow = {
     -- T40 (6.4): BW:Build(parent) -- the sheet on a practice pane, built once
     Build = function(_, parent) Build(parent); return frame end,
     _frame = function() return frame end,

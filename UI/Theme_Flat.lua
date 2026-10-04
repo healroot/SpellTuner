@@ -18,13 +18,13 @@
 -- Flat itself, exactly what it wrote before, so nothing changes while no other
 -- style is chosen; UI/Styles.lua applies the saved style at CORE_LOGIN.
 --
--- It owns db.ui.fontOffset (T80: declared here with MD:RegisterDefaults) and
+-- It owns db.ui.fontOffset (T80: declared here with ST:RegisterDefaults) and
 -- UI.SetFontOffset, which both Settings panes call.
 --
 -- No client data is read here: the accent is Style.lua's (UnitClass through
 -- the adapter, RAID_CLASS_COLORS), the font face is GameFontNormal's.
-local _, MD = ...
-local UI = MD.UI
+local _, ST = ...
+local UI = ST.UI
 
 --------------------------------------------------------------------------------
 -- Flat, as data (5.1's first table). Every key a style may set is here: a
@@ -294,18 +294,18 @@ function UI.Pitch(n)
 end
 
 -- T80 (C1): the offset's default, declared by the file that reads it (T55's
--- MD:RegisterDefaults; it left Core_Forever.lua's DEFAULTS), so TBC has it.
+-- ST:RegisterDefaults; it left Core_Forever.lua's DEFAULTS), so TBC has it.
 -- T94: and the saved style's, "flat" -- this file is Flat's, and UI/Styles.lua
 -- (which reads it) loads right after; db.ui's keys are declared by the theme,
 -- the ESC stack and the window manager, as tools/defaultscheck.lua holds.
-MD:RegisterDefaults({ ui = { fontOffset = 0, style = "flat" } })
+ST:RegisterDefaults({ ui = { fontOffset = 0, style = "flat" } })
 
 -- T80 (C1): the Text size control of both Settings panes -- the offset
 -- applied (through the kit's UI.ApplyFonts, which announces FONTS_CHANGED)
 -- and saved; answers the offset applied.
 function UI.SetFontOffset(offset)
     local applied = UI.ApplyFonts(offset)
-    local db = MD.db
+    local db = ST.db
     if type(db) == "table" then
         if type(db.ui) ~= "table" then db.ui = {} end
         db.ui.fontOffset = applied
@@ -314,8 +314,8 @@ function UI.SetFontOffset(offset)
 end
 
 -- The saved offset, once SavedVariables are in: clamped, written back, applied.
-MD:RegisterCallback("CORE_LOGIN", function()
-    local u = MD.db and MD.db.ui
+ST:RegisterCallback("CORE_LOGIN", function()
+    local u = ST.db and ST.db.ui
     if type(u) ~= "table" then return end
     u.fontOffset = UI.ApplyFonts(u.fontOffset)
 end)

@@ -38,11 +38,11 @@
 --
 -- ASCII only in every string here (default WoW fonts lack arrow/infinity
 -- glyphs) and never a bare "|" (it opens a colour escape).
-local _, MD = ...
-local UI = MD.UI
+local _, ST = ...
+local UI = ST.UI
 
-local Tip = MD.Tip or {}
-MD.Tip = Tip
+local Tip = ST.Tip or {}
+ST.Tip = Tip
 
 Tip.GAP = 6     -- a placed tooltip's distance from its owner (3.5's +6)
 Tip.WIDE = 300  -- an owner wider than this is placed beside the pointer

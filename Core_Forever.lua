@@ -2,17 +2,17 @@
 -- kernel's login debug line reads, the three LoadOnDemand sibling modules
 -- (Core.lua's registry), and the first commands. UI/Dashboard_Forever.lua
 -- loads after this file and gives "/st" and "/st modules" something to open.
-local ADDON_NAME, MD = ...
+local ADDON_NAME, ST = ...
 
 -- Only this TOC's own settings. A LoadOnDemand module's settings are declared
--- by the file that reads them (MD:RegisterDefaults, T64 / P20: the engine's,
+-- by the file that reads them (ST:RegisterDefaults, T64 / P20: the engine's,
 -- the planner's, the replay window's and the gates' in Engine/SimModel.lua and
--- Gates_Forever.lua), which back-fills MD.db when the module loads -- so no
+-- Gates_Forever.lua), which back-fills ST.db when the module loads -- so no
 -- key is hand-copied here. tools/defaultscheck.lua holds that every setting a
 -- file on these TOCs reads has a default once the modules are loaded.
-MD.DEFAULTS = {
+ST.DEFAULTS = {
     debug = {
-        enabled = false,  -- MD:Debug() is a no-op unless this is on
+        enabled = false,  -- ST:Debug() is a no-op unless this is on
         maxLines = 1000,  -- memory ring size (Debug Console "keep lines")
         categories = { regen = true, mana = true, spend = true, tto = true,
                        heal = true, cast = true, calib = true, combat = true, chat = true,
@@ -22,7 +22,7 @@ MD.DEFAULTS = {
     modules = {},  -- name -> true|false, read/written by Core.lua's registry
     -- T64 (P20, review A3: "Core_Forever.lua DEFAULTS lacks keys shared files
     -- read"): two settings shared files read on this TOC, off as nil read
-    -- before -- Core.lua's MD:Alert (muted) and UI/Dashboard_Rows.lua's
+    -- before -- Core.lua's ST:Alert (muted) and UI/Dashboard_Rows.lua's
     -- Effective mode (effectiveMode, which nothing on Forever turns on).
     muted = false,
     effectiveMode = false,
@@ -35,17 +35,17 @@ MD.DEFAULTS = {
     -- window scale, the combat rule, one window per ESC, the saved places) is
     -- declared by the files that read it -- UI/Theme_Flat.lua (fontOffset),
     -- UI/EscStack.lua (escStack), UI/Windows.lua (scale, combat, win) -- with
-    -- MD:RegisterDefaults, so the TBC TOC, which lists them too, has it.
+    -- ST:RegisterDefaults, so the TBC TOC, which lists them too, has it.
 }
 
 -- The three siblings, in dependency order (each needs only what is declared
 -- before it -- Core.lua's SetModule relies on that to load in the right
 -- order without a topological sort of its own).
-MD:DeclareModule("SpellTuner_Recorder", "Recorder", {},
+ST:DeclareModule("SpellTuner_Recorder", "Recorder", {},
     "records your fights: health, heals, casts and mana")
-MD:DeclareModule("SpellTuner_Replay", "Replay", { "SpellTuner_Recorder" },
+ST:DeclareModule("SpellTuner_Replay", "Replay", { "SpellTuner_Recorder" },
     "replays a recorded fight and coaches it")
-MD:DeclareModule("SpellTuner_Practice", "Practice", { "SpellTuner_Replay" },
+ST:DeclareModule("SpellTuner_Practice", "Practice", { "SpellTuner_Replay" },
     "heal a fight you play, then review it")
 
 --------------------------------------------------------------------------------
@@ -61,22 +61,22 @@ MD:DeclareModule("SpellTuner_Practice", "Practice", { "SpellTuner_Replay" },
 -- probe's ADDON_LOADED handler touches SpellTunerDB.probe.
 --------------------------------------------------------------------------------
 local svHandled = false
-MD:On("ADDON_LOADED", function(loadedName)
-    if svHandled or MD.API.IsSecret(loadedName) or loadedName ~= ADDON_NAME then return end
+ST:On("ADDON_LOADED", function(loadedName)
+    if svHandled or ST.API.IsSecret(loadedName) or loadedName ~= ADDON_NAME then return end
     svHandled = true
 
     -- Our own SavedVariables are ours, not client values -- type() checks
     -- before any index, but no adapter is needed for them.
     local t = type(SpellTunerDB)
-    MD.sv = { atLoad = t }
+    ST.sv = { atLoad = t }
 
     local prevCount
     if t == "table" then
         local session = SpellTunerDB.session
         if type(session) == "table" and type(session.stamp) == "string"
            and type(session.count) == "number" then
-            MD.sv.prevStamp = session.stamp
-            MD.sv.prevCount = session.count
+            ST.sv.prevStamp = session.stamp
+            ST.sv.prevCount = session.count
             prevCount = session.count
         end
     elseif t ~= "nil" then
@@ -93,8 +93,8 @@ MD:On("ADDON_LOADED", function(loadedName)
 end)
 
 -- One line for /st dump (T3) and the debug log.
-function MD:SavedVarsLine()
-    local sv = MD.sv
+function ST:SavedVarsLine()
+    local sv = ST.sv
     if not sv or sv.atLoad == "nil" then
         return "SavedVariables: none at load (a first run, or the client did not read the file back)"
     elseif sv.atLoad == "table" then
@@ -109,15 +109,15 @@ function MD:SavedVarsLine()
     end
 end
 
-MD:RegisterCallback("MD_READY", function()
-    MD:Debug("other", "%s", MD:SavedVarsLine())
+ST:RegisterCallback("MD_READY", function()
+    ST:Debug("other", "%s", ST:SavedVarsLine())
 end)
 
 -- T35 (docs/SPEC-forever-ui.md 3.3): the character's spell list is in place
--- from login -- Spells/Tabs.lua creates MD.cdb.spellTabs (empty, not seeded;
+-- from login -- Spells/Tabs.lua creates ST.cdb.spellTabs (empty, not seeded;
 -- the seed runs on the Spells pane's first open) and repairs a damaged one.
-MD:RegisterCallback("CORE_LOGIN", function()
-    if MD.Tabs then MD.Tabs:Store() end
+ST:RegisterCallback("CORE_LOGIN", function()
+    if ST.Tabs then ST.Tabs:Store() end
 end)
 
 --------------------------------------------------------------------------------
@@ -132,9 +132,9 @@ end)
 -- bookkeeping, run under pcall so a "no" shows up as a recorded reason, never
 -- a login-time error; only the forward to the previous handler does not (R21).
 --------------------------------------------------------------------------------
-MD.errors = {}
-MD.errorTotal = 0
-MD.errorOverflow = 0
+ST.errors = {}
+ST.errorTotal = 0
+ST.errorOverflow = 0
 local errorIndex = {}
 local MAX_DISTINCT_ERRORS = 50
 
@@ -148,7 +148,7 @@ local function IsOurs(msg)
     return msg:find("SpellTuner", 1, true) ~= nil
 end
 
--- The stack is read through the adapter (MD.API.DebugStack -> MD.API.Call ->
+-- The stack is read through the adapter (ST.API.DebugStack -> ST.API.Call ->
 -- pcall(debugstack)), from inside Record's pcall, under the handler, under
 -- the client's call of it -- so its first lines are the capture's own frames,
 -- not the code that raised (review R22: asking for level 2, one line, always
@@ -177,16 +177,16 @@ local function FirstUsefulLine(stack)
 end
 
 -- Runs entirely under pcall's protection (both the install below and every
--- call to Record); never calls MD:Print/MD:Debug/anything that could error
+-- call to Record); never calls ST:Print/ST:Debug/anything that could error
 -- back into it.
 local function InstallErrorHandler()
-    local prev = MD.API.GetErrorHandler()
+    local prev = ST.API.GetErrorHandler()
     if type(prev) ~= "function" then prev = nil end
 
     -- Classifies and records `msg`; answers true when the previous handler
     -- should be shown it too, false for a repeat of our own error.
     local function Record(msg)
-        if type(msg) ~= "string" or MD.API.IsSecret(msg) then return true end
+        if type(msg) ~= "string" or ST.API.IsSecret(msg) then return true end
         if not IsOurs(msg) then return true end
 
         local key = msg:sub(1, 300)
@@ -195,22 +195,22 @@ local function InstallErrorHandler()
         if entry then
             entry.count = entry.count + 1
             entry.last = now
-            MD.errorTotal = MD.errorTotal + 1
+            ST.errorTotal = ST.errorTotal + 1
             return false -- a repeat of our own error is never forwarded
         end
 
-        if #MD.errors >= MAX_DISTINCT_ERRORS then
-            MD.errorOverflow = MD.errorOverflow + 1
-            MD.errorTotal = MD.errorTotal + 1
+        if #ST.errors >= MAX_DISTINCT_ERRORS then
+            ST.errorOverflow = ST.errorOverflow + 1
+            ST.errorTotal = ST.errorTotal + 1
             -- new to the client even though we stop keeping it ourselves
             return true
         end
 
         entry = { msg = key, count = 1, first = now, last = now,
-                  stack = FirstUsefulLine(MD.API.DebugStack(1, STACK_LINES, 0)) }
+                  stack = FirstUsefulLine(ST.API.DebugStack(1, STACK_LINES, 0)) }
         errorIndex[key] = entry
-        MD.errors[#MD.errors + 1] = entry
-        MD.errorTotal = MD.errorTotal + 1
+        ST.errors[#ST.errors + 1] = entry
+        ST.errorTotal = ST.errorTotal + 1
         return true
     end
 
@@ -232,105 +232,105 @@ local function InstallErrorHandler()
 
     -- nil,nil on success; nil,"absent"/"error"[,detail] if the adapter could
     -- not install it (SetErrorHandler is absent, or itself raised).
-    local _, why = MD.API.SetErrorHandler(handler)
+    local _, why = ST.API.SetErrorHandler(handler)
     return why
 end
 
 local installOk, installWhy = pcall(InstallErrorHandler)
 if installOk and installWhy == nil then
-    MD.errorHandlerInstalled = true
+    ST.errorHandlerInstalled = true
 else
-    MD.errorHandlerInstalled = (installOk and installWhy) or "error"
+    ST.errorHandlerInstalled = (installOk and installWhy) or "error"
 end
 
-MD:AddCommand("debug", function() MD:ToggleDebugConsole() end, "/st debug", "the debug console")
-MD:AddCommand("dump", function()
-    if MD.BuildDump and MD.ShowCopyPopup then
-        MD:ShowCopyPopup("SpellTuner dump", MD:BuildDump())
+ST:AddCommand("debug", function() ST:ToggleDebugConsole() end, "/st debug", "the debug console")
+ST:AddCommand("dump", function()
+    if ST.BuildDump and ST.ShowCopyPopup then
+        ST:ShowCopyPopup("SpellTuner dump", ST:BuildDump())
     end
 end, "/st dump", "one copyable block for a bug report")
 
-MD:AddCommand("", function()
-    if MD.ToggleDashboard then
-        MD:ToggleDashboard()
+ST:AddCommand("", function()
+    if ST.ToggleDashboard then
+        ST:ToggleDashboard()
     else
-        MD:ShowCommands()
+        ST:ShowCommands()
     end
 end, "/st", "open the SpellTuner window")
 
-MD:AddCommand("help", function() MD:ShowCommands() end, "/st help", "this list")
+ST:AddCommand("help", function() ST:ShowCommands() end, "/st help", "this list")
 
-MD:AddCommand("tooltip", function(arg)
+ST:AddCommand("tooltip", function(arg)
     -- T28 (docs/SPEC-forever-ui.md 5.5): one line saying why the last macro
     -- hover showed a block or none; it changes nothing.
     if arg == "why" then
-        if MD.SpellTip and MD.SpellTip.Why then
-            MD:Print(MD.SpellTip:Why())
+        if ST.SpellTip and ST.SpellTip.Why then
+            ST:Print(ST.SpellTip:Why())
         else
-            MD:Print("tooltip why: the spell tooltip is not loaded")
+            ST:Print("tooltip why: the spell tooltip is not loaded")
         end
         return
     end
-    MD.db.spellTooltip = not MD.db.spellTooltip
-    MD:Print("spell tooltip lines: " .. (MD.db.spellTooltip and "on" or "off"))
+    ST.db.spellTooltip = not ST.db.spellTooltip
+    ST:Print("spell tooltip lines: " .. (ST.db.spellTooltip and "on" or "off"))
 end, "/st tooltip [why]",
 "turn the SpellTuner block on spell tooltips on or off; why: what the last macro hover did, step by step")
 
-MD:AddCommand("clock", function(arg)
-    MD.db.clock = MD.db.clock or {}
+ST:AddCommand("clock", function(arg)
+    ST.db.clock = ST.db.clock or {}
     if arg == "lock" then
-        MD.db.clock.locked = not MD.db.clock.locked
-        MD:Print("mana clock: " .. (MD.db.clock.locked and "locked" or "unlocked"))
+        ST.db.clock.locked = not ST.db.clock.locked
+        ST:Print("mana clock: " .. (ST.db.clock.locked and "locked" or "unlocked"))
     else
-        MD.db.clock.shown = not MD.db.clock.shown
-        MD:Print("mana clock: " .. (MD.db.clock.shown and "shown" or "hidden"))
+        ST.db.clock.shown = not ST.db.clock.shown
+        ST:Print("mana clock: " .. (ST.db.clock.shown and "shown" or "hidden"))
     end
-    if MD.Clock and MD.Clock.Refresh then MD.Clock:Refresh() end
+    if ST.Clock and ST.Clock.Refresh then ST.Clock:Refresh() end
 end, "/st clock [lock]", "show or hide the mana clock, or lock it in place")
 
-MD:AddCommand("measure", function(arg)
+ST:AddCommand("measure", function(arg)
     if arg == "dump" or arg == "dump all" then
-        if MD.Measure and MD.Measure.Dump and MD.ShowCopyPopup then
-            MD:ShowCopyPopup("SpellTuner measure", MD.Measure:Dump(arg == "dump all"))
+        if ST.Measure and ST.Measure.Dump and ST.ShowCopyPopup then
+            ST:ShowCopyPopup("SpellTuner measure", ST.Measure:Dump(arg == "dump all"))
         end
     elseif arg == "clear" then
-        if MD.Measure and MD.Measure.Clear then
-            local n = MD.Measure:Clear()
-            MD:Print("measure: cleared " .. n .. " line(s)")
+        if ST.Measure and ST.Measure.Clear then
+            local n = ST.Measure:Clear()
+            ST:Print("measure: cleared " .. n .. " line(s)")
         end
-    elseif MD.Measure and MD.Measure.Toggle then
-        MD.Measure:Toggle()
+    elseif ST.Measure and ST.Measure.Toggle then
+        ST.Measure:Toggle()
     end
 end, "/st measure [dump [all] / clear]",
 "measure a landed cast against its own description (a diagnostic session); dump shows this version's lines, dump all every line with its stamp, clear empties the list")
 
 -- T32 (docs/SPEC-forever-ui.md 6.7): every SpellTuner window back at its
--- default place and size (UI/Windows.lua's MD.Win:Reset).
-MD:AddCommand("ui", function(arg)
+-- default place and size (UI/Windows.lua's ST.Win:Reset).
+ST:AddCommand("ui", function(arg)
     if arg == "reset" then
-        MD.Win:Reset()
-        MD:Print("windows: every position and size reset")
+        ST.Win:Reset()
+        ST:Print("windows: every position and size reset")
     else
-        MD:Print("usage: /st ui reset")
+        ST:Print("usage: /st ui reset")
     end
 end, "/st ui reset", "put every SpellTuner window back at its default place and size")
 
 -- T36 (docs/SPEC-forever-ui.md 3.1): a spell's view in the Spells rail, by
 -- a case-insensitive prefix of its family's name (the raw text, so the echo
 -- of a name that matches nothing is what was typed). Not in the list: its
--- preview. Through MD:SelectView, so the window manager's ShowMain decides.
-MD:AddCommand("spell", function(arg, rawArg)
-    if MD.OpenSpell then
-        MD:OpenSpell(rawArg or arg)
+-- preview. Through ST:SelectView, so the window manager's ShowMain decides.
+ST:AddCommand("spell", function(arg, rawArg)
+    if ST.OpenSpell then
+        ST:OpenSpell(rawArg or arg)
     else
-        MD:ShowCommands()
+        ST:ShowCommands()
     end
 end, "/st spell <name>", "open that spell's view in the Spells list (a preview when it is not in your list)")
 
-MD:AddCommand("modules", function()
-    if MD.SelectView then
-        MD:SelectView("settings", "modules")
+ST:AddCommand("modules", function()
+    if ST.SelectView then
+        ST:SelectView("settings", "modules")
     else
-        MD:ShowCommands()
+        ST:ShowCommands()
     end
 end, "/st modules", "switch the Recorder, Replay and Practice modules on or off")

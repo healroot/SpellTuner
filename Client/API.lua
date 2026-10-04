@@ -3,15 +3,15 @@
 -- secret scalar, or may raise partway through -- Has() turns all three into a
 -- plain answer so nothing downstream ever sees a raw client value it did not
 -- ask for.
-local ADDON_NAME, MD = ...
-MD.API = MD.API or {}
+local ADDON_NAME, ST = ...
+ST.API = ST.API or {}
 
 local cache = {}
 
 -- Walk _G.a.b.c one segment at a time inside ONE pcall (so a raise anywhere
 -- in the walk, e.g. indexing a secret table, is caught once) and cache the
 -- answer per name.
-function MD.API.Has(name)
+function ST.API.Has(name)
     local cached = cache[name]
     if cached ~= nil then return cached end
 
@@ -65,7 +65,7 @@ end
 -- _G again. For the offline tests, which swap a global after the adapter has
 -- already answered for it (the cache is otherwise forever, and the stub had
 -- grown settable fields only to route around it). Nothing in the game calls it.
-function MD.API.Invalidate(name)
+function ST.API.Invalidate(name)
     if type(name) == "string" then cache[name] = nil end
 end
 
@@ -77,27 +77,27 @@ end
 -- interface outside 16000-19999 changes nothing. Both tables must equal
 -- tools/data/flavours.txt (tools/forevercheck.lua). This is the one piece of
 -- flavour logic this shared file carries.
-MD.API.MARKERS = { TBC = "tbc", Mainline = "forever", Plain = "forever" }
-MD.API.BANDS = { tbc = { 20000, 29999 }, forever = { 16000, 19999 } }
+ST.API.MARKERS = { TBC = "tbc", Mainline = "forever", Plain = "forever" }
+ST.API.BANDS = { tbc = { 20000, 29999 }, forever = { 16000, 19999 } }
 
 local client = "unknown"
 do
     local marker = rawget(_G, "SPELLTUNER_TOC")
-    if type(marker) == "string" and MD.API.MARKERS[marker] then
-        client = MD.API.MARKERS[marker]
+    if type(marker) == "string" and ST.API.MARKERS[marker] then
+        client = ST.API.MARKERS[marker]
     else
-        local getBuildInfo = MD.API.Has("GetBuildInfo")
+        local getBuildInfo = ST.API.Has("GetBuildInfo")
         if type(getBuildInfo) == "function" then
             local ok, _, _, _, iface = pcall(getBuildInfo)
             if ok then
                 local secret = false
-                local isSecret = MD.API.Has("issecretvalue")
+                local isSecret = ST.API.Has("issecretvalue")
                 if type(isSecret) == "function" then
                     local ok2, s = pcall(isSecret, iface)
                     secret = ok2 and s == true
                 end
                 if not secret and type(iface) == "number" then
-                    for name, band in pairs(MD.API.BANDS) do
+                    for name, band in pairs(ST.API.BANDS) do
                         if iface >= band[1] and iface <= band[2] then client = name end
                     end
                 end
@@ -105,7 +105,7 @@ do
         end
     end
 end
-MD.API.client = client
+ST.API.client = client
 
 -- Packs pcall's own return alongside the count of whatever it wrapped, so a
 -- nil in the middle of a client function's return list survives being
@@ -122,13 +122,13 @@ end
 -- client missing one or both never raises) and called under its own pcall
 -- (T0b: which of the two a secret TABLE answers is unknown, so both are
 -- asked, same as Has's own internal check above).
-function MD.API.IsSecret(v)
-    local isSecretValue = MD.API.Has("issecretvalue")
+function ST.API.IsSecret(v)
+    local isSecretValue = ST.API.Has("issecretvalue")
     if type(isSecretValue) == "function" then
         local ok, secret = pcall(isSecretValue, v)
         if ok and secret == true then return true end
     end
-    local isSecretTable = MD.API.Has("issecrettable")
+    local isSecretTable = ST.API.Has("issecrettable")
     if type(isSecretTable) == "function" then
         local ok, secret = pcall(isSecretTable, v)
         if ok and secret == true then return true end
@@ -142,8 +142,8 @@ end
 -- makes the whole call secret, because a caller that got the OTHER return
 -- values would still have to decide what to do with a mix -- easier and
 -- safer for every shared file if one secret return taints the call.
-function MD.API.Call(dotted, ...)
-    local fn = MD.API.Has(dotted)
+function ST.API.Call(dotted, ...)
+    local fn = ST.API.Has(dotted)
     if type(fn) ~= "function" then return nil, "absent" end
 
     local retvals, retn = Pack(pcall(fn, ...))
@@ -151,12 +151,12 @@ function MD.API.Call(dotted, ...)
     if not ok then
         local msg = retvals[2]
         local safe = "<unreadable error>"
-        if type(msg) == "string" and not MD.API.IsSecret(msg) then safe = msg end
+        if type(msg) == "string" and not ST.API.IsSecret(msg) then safe = msg end
         return nil, "error", safe
     end
 
     for i = 2, retn do
-        if MD.API.IsSecret(retvals[i]) then return nil, "secret" end
+        if ST.API.IsSecret(retvals[i]) then return nil, "secret" end
     end
     return unpack(retvals, 2, retn)
 end
@@ -174,7 +174,7 @@ end
 -- this builds.
 local function CopyValue(v, depth, counter)
     if type(v) == "table" then
-        if MD.API.IsSecret(v) then
+        if ST.API.IsSecret(v) then
             counter.n = counter.n + 1
             return nil
         end
@@ -182,7 +182,7 @@ local function CopyValue(v, depth, counter)
         for k, val in pairs(v) do
             local kt = type(k)
             if kt == "string" or kt == "number" then
-                if MD.API.IsSecret(k) or MD.API.IsSecret(val) then
+                if ST.API.IsSecret(k) or ST.API.IsSecret(val) then
                     counter.n = counter.n + 1
                 elseif IsPlainScalar(val) then
                     out[k] = val
@@ -200,7 +200,7 @@ local function CopyValue(v, depth, counter)
         end
         return out
     end
-    if MD.API.IsSecret(v) then
+    if ST.API.IsSecret(v) then
         counter.n = counter.n + 1
         return nil
     end
@@ -216,7 +216,7 @@ end
 -- table's own scalar fields; depth 2 also copies one level of nested tables
 -- (an array of rows), and so on. Never raises: the whole walk runs inside
 -- one pcall, same reasoning as Has() and Call() above.
-function MD.API.Copy(v, depth)
+function ST.API.Copy(v, depth)
     depth = depth or 1
     local counter = { n = 0 }
     local ok, result = pcall(CopyValue, v, depth, counter)
@@ -232,14 +232,14 @@ end
 -- function, a table, or a path that does not resolve. Not cached: a
 -- constant is read once per caller, not remembered forever like Has()'s
 -- function/table answers.
-function MD.API.Constant(dotted)
+function ST.API.Constant(dotted)
     local ok, result = pcall(function()
         local obj = _G
         for segment in dotted:gmatch("[^%.]+") do
             if type(obj) ~= "table" then return nil end
             obj = obj[segment]
         end
-        if MD.API.IsSecret(obj) then return nil end
+        if ST.API.IsSecret(obj) then return nil end
         if IsPlainScalar(obj) then return obj end
         return nil
     end)
@@ -247,36 +247,36 @@ function MD.API.Constant(dotted)
     return result
 end
 
--- Installs MD.API[Name] = function(...) return MD.API.Call(dotted, ...) end
+-- Installs ST.API[Name] = function(...) return ST.API.Call(dotted, ...) end
 -- for each Name = "dotted.client.name" pair, and remembers the binding for
--- Capabilities(). A Name that is already a member of MD.API and was NOT
+-- Capabilities(). A Name that is already a member of ST.API and was NOT
 -- installed by an earlier Bind (Has, Call, client, Bind itself, ...) is left
 -- alone and not recorded -- Bind only ever adds or replaces its OWN bindings.
 -- T7: a map value may instead be `{ client = "<dotted>", copy = n }`, which
 -- installs a wrapper that runs every table RESULT through Copy(result, n)
 -- before handing it back -- so a caller of a copying binding can never end
 -- up holding the client's own table, only ever a copy of it.
-MD.API._bindings = MD.API._bindings or {}
-function MD.API.Bind(map)
+ST.API._bindings = ST.API._bindings or {}
+function ST.API.Bind(map)
     for name, spec in pairs(map) do
-        if MD.API[name] == nil or MD.API._bindings[name] then
+        if ST.API[name] == nil or ST.API._bindings[name] then
             local dotted, copyDepth = spec, nil
             if type(spec) == "table" then
                 dotted, copyDepth = spec.client, spec.copy
             end
-            MD.API._bindings[name] = dotted
+            ST.API._bindings[name] = dotted
             if copyDepth then
-                MD.API[name] = function(...)
-                    local retvals, retn = Pack(MD.API.Call(dotted, ...))
+                ST.API[name] = function(...)
+                    local retvals, retn = Pack(ST.API.Call(dotted, ...))
                     for i = 1, retn do
                         if type(retvals[i]) == "table" then
-                            retvals[i] = MD.API.Copy(retvals[i], copyDepth)
+                            retvals[i] = ST.API.Copy(retvals[i], copyDepth)
                         end
                     end
                     return unpack(retvals, 1, retn)
                 end
             else
-                MD.API[name] = function(...) return MD.API.Call(dotted, ...) end
+                ST.API[name] = function(...) return ST.API.Call(dotted, ...) end
             end
         end
     end
@@ -284,10 +284,10 @@ end
 
 -- One entry per recorded binding, sorted by name -- what tools/adaptercheck.lua
 -- and (T3) /st dump print.
-function MD.API.Capabilities()
+function ST.API.Capabilities()
     local list = {}
-    for name, dotted in pairs(MD.API._bindings) do
-        list[#list + 1] = { name = name, client = dotted, present = (type(MD.API.Has(dotted)) == "function") }
+    for name, dotted in pairs(ST.API._bindings) do
+        list[#list + 1] = { name = name, client = dotted, present = (type(ST.API.Has(dotted)) == "function") }
     end
     table.sort(list, function(a, b) return a.name < b.name end)
     return list
@@ -295,21 +295,21 @@ end
 
 -- Events a flavour file has said this client refuses to register (Forever's
 -- combat log, plan §1.2). Nothing forbidden until a flavour file says so.
-MD.API._forbidden = MD.API._forbidden or {}
-function MD.API.ForbidEvent(event)
-    MD.API._forbidden[event] = true
+ST.API._forbidden = ST.API._forbidden or {}
+function ST.API.ForbidEvent(event)
+    ST.API._forbidden[event] = true
 end
-function MD.API.CanRegisterEvent(event)
-    return not MD.API._forbidden[event]
+function ST.API.CanRegisterEvent(event)
+    return not ST.API._forbidden[event]
 end
 
 -- The chat frame is an ordinary Lua table handed to every addon, never a
 -- secret client value -- but unlike every other name on this file it is a
 -- plain global variable the UI (a chat addon, a reload) may reassign after
--- login, and today's TBC MD:Print re-reads it on every call. Has()'s cache
+-- login, and today's TBC ST:Print re-reads it on every call. Has()'s cache
 -- is right for functions, which do not move; it would be wrong here, so this
 -- one reads _G directly every time rather than going through Has.
-function MD.API.Print(text)
+function ST.API.Print(text)
     local frame = rawget(_G, "DEFAULT_CHAT_FRAME")
     if type(frame) == "table" then
         pcall(function() frame:AddMessage(text) end)
@@ -326,10 +326,10 @@ end
 -- straight to the bar inside one pcall, the same "one raise, caught once"
 -- shape as Has/Call/Copy. UnitPowerMax/UnitPower are shared names (Bind
 -- below), so this lives here rather than in a flavour file.
-function MD.API.DrawUnitPower(bar, unit, powerType)
+function ST.API.DrawUnitPower(bar, unit, powerType)
     if type(bar) ~= "table" then return false, "absent" end
-    local maxFn = MD.API.Has("UnitPowerMax")
-    local curFn = MD.API.Has("UnitPower")
+    local maxFn = ST.API.Has("UnitPowerMax")
+    local curFn = ST.API.Has("UnitPower")
     if type(maxFn) ~= "function" or type(curFn) ~= "function" then return false, "absent" end
 
     local ok = pcall(function()
@@ -349,7 +349,7 @@ end
 -- its line `bar UnitHealthMax(party1): set ok, read plain <n>` switches this on
 -- (one word, false -> true); `... read secret` leaves it off. Read at call
 -- time, so a test may flip it and must restore it.
-MD.API.BAR_READS_MAX = false
+ST.API.BAR_READS_MAX = false
 
 local maxBar -- created on first use, never named, never shown, never styled
 
@@ -359,17 +359,17 @@ local maxBar -- created on first use, never named, never shown, never styled
 -- BAR_READS_MAX, in which case it is handed -- unread -- to a hidden bar's
 -- SetMinMaxValues and the bar's second return is read back and classified
 -- before anything compares it. One raise anywhere is "error" and never leaves.
-function MD.API.HealthMax(unit)
-    local fn = MD.API.Has("UnitHealthMax")
+function ST.API.HealthMax(unit)
+    local fn = ST.API.Has("UnitHealthMax")
     if type(fn) ~= "function" then return nil, "absent" end
 
     local gotOk, v = pcall(fn, unit)
     if not gotOk then return nil, "error" end
-    if not MD.API.IsSecret(v) then
+    if not ST.API.IsSecret(v) then
         if type(v) == "number" then return v end
         return nil, "error"
     end
-    if MD.API.BAR_READS_MAX ~= true then return nil, "secret" end
+    if ST.API.BAR_READS_MAX ~= true then return nil, "secret" end
 
     if not maxBar then
         local cok, bar = pcall(CreateFrame, "StatusBar", nil, UIParent)
@@ -390,7 +390,7 @@ function MD.API.HealthMax(unit)
         return lo, hi
     end)
     if not readOk then return nil, "error" end
-    if MD.API.IsSecret(maxV) then return nil, "secret" end
+    if ST.API.IsSecret(maxV) then return nil, "secret" end
     if type(maxV) == "number" and maxV > 0 then return maxV end
     return nil, "error"
 end
@@ -399,9 +399,9 @@ end
 -- binding (C_AddOns.GetAddOnMetadata on Forever, the global on TBC) rather
 -- than assumed -- nil if that binding is absent or answers anything but a
 -- plain string.
-function MD.API.AddonVersion()
-    if type(MD.API.AddOnMetadata) ~= "function" then return nil end
-    local v = MD.API.AddOnMetadata(ADDON_NAME, "Version")
+function ST.API.AddonVersion()
+    if type(ST.API.AddOnMetadata) ~= "function" then return nil end
+    local v = ST.API.AddOnMetadata(ADDON_NAME, "Version")
     if type(v) == "string" then return v end
     return nil
 end
@@ -409,7 +409,7 @@ end
 -- The names every client answers the same way -- the flavour files add the
 -- five add-on names (different namespace per client) and Forever's forbidden
 -- event on top of this.
-MD.API.Bind({
+ST.API.Bind({
     UnitClass = "UnitClass", UnitName = "UnitName", UnitLevel = "UnitLevel",
     UnitGUID = "UnitGUID", UnitExists = "UnitExists", UnitIsDeadOrGhost = "UnitIsDeadOrGhost",
     UnitAffectingCombat = "UnitAffectingCombat", InCombatLockdown = "InCombatLockdown",

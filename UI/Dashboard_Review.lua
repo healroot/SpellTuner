@@ -17,18 +17,18 @@
 -- Class-agnostic for listing (the stream is just numbers); Coach needs the
 -- druid spell kit.
 -- T99 (docs/SPEC-next.md 4.4): "needs the druid spell kit" is the class
--- profile's `coach` capability (MD.ClassProfile:Can, Spells/Profiles.lua): the
+-- profile's `coach` capability (ST.ClassProfile:Can, Spells/Profiles.lua): the
 -- druid answers true wherever it did; anyone else is told "not modelled for
--- <Class> yet" (MD.Profiles.Refusal) in place of "Druid-only in v1".
-local _, MD = ...
-local UI = MD.UI
+-- <Class> yet" (ST.Profiles.Refusal) in place of "Druid-only in v1".
+local _, ST = ...
+local UI = ST.UI
 
 -- Can the logged-in player be coached? -> true | false, why (Profiles' Can).
 local function CanCoach()
-    return MD.ClassProfile:Can("coach")
+    return ST.ClassProfile:Can("coach")
 end
 
-MD.DashboardParts = MD.DashboardParts or {}
+ST.DashboardParts = ST.DashboardParts or {}
 
 -- T43 (docs/SPEC-forever-ui.md 4.1, 4.4): the pane's small text is the kit's
 -- UI.FONT_SMALL and the run line the accent (a token read).
@@ -47,13 +47,13 @@ local RUN_HI = UI.Hex("accent")
 -- EU-realm accented byte is not ours to mangle. Only a bare "|" is unsafe
 -- (the client reads it as the start of a colour code or texture escape);
 -- everything this pane composes itself is ASCII by construction, so nothing
--- else needs escaping, on either client. That rule is MD.Text.Esc (pipe-
--- doubling only), and the formatters are MD.Util's (Core.lua; T60, P16,
+-- else needs escaping, on either client. That rule is ST.Text.Esc (pipe-
+-- doubling only), and the formatters are ST.Util's (Core.lua; T60, P16,
 -- review A9): K is "2.3k" from 1000 on, Clock is m:ss -- every number handed
 -- to either here is a mana sum or a duration, never below zero.
-local Esc   = MD.Text.Esc
-local K     = MD.Util.K
-local Clock = MD.Util.Clock
+local Esc   = ST.Text.Esc
+local K     = ST.Util.K
+local Clock = ST.Util.Clock
 
 -- The fight's mana low-water mark, read back out of the recorded samples: the
 -- stream is the record, so nothing needs to be stored twice.
@@ -76,7 +76,7 @@ local function When(id)
     return (date and date("%d %b %H:%M", id)) or hm
 end
 
-function MD.DashboardParts.CreateReview(parent, width)
+function ST.DashboardParts.CreateReview(parent, width)
     local pane = CreateFrame("Frame", nil, parent)
     pane:Hide()
     local selected = 1
@@ -90,15 +90,15 @@ function MD.DashboardParts.CreateReview(parent, width)
     end
     local function CurrentRun()
         local i = RunIndex()
-        return i and MD.RunRecorder and MD.RunRecorder:Get(i) or nil
+        return i and ST.RunRecorder and ST.RunRecorder:Get(i) or nil
     end
     -- v0.15.0: practice fights (Engine/Practice.lua), kept apart from real ones
     local function IsPractice() return source == "practice" end
     local function Rows()
         local run = CurrentRun()
         if run then return run.pulls or {} end
-        if IsPractice() then return MD.Practice and MD.Practice.List() or {} end
-        return MD.FightRecorder and MD.FightRecorder:List() or {}
+        if IsPractice() then return ST.Practice and ST.Practice.List() or {} end
+        return ST.FightRecorder and ST.FightRecorder:List() or {}
     end
     -- The address the commands take: "3" for a single fight, "2:7" for a pull.
     local function Spec()
@@ -172,13 +172,13 @@ function MD.DashboardParts.CreateReview(parent, width)
         "Same as /md run start; it stops itself 30s after you leave the instance.")
     runBtn:SetPoint("BOTTOMLEFT", pane, "BOTTOMLEFT", 12, 40)
     runBtn:SetScript("OnClick", function()
-        local RR = MD.RunRecorder
+        local RR = ST.RunRecorder
         if not RR then return end
         if RR.active then
             RR:Stop("manual")
         else
             local run, why = RR:Start("manual")
-            if not run then MD:Print("run: " .. tostring(why)) end
+            if not run then ST:Print("run: " .. tostring(why)) end
         end
         api:Render()
     end)
@@ -199,7 +199,7 @@ function MD.DashboardParts.CreateReview(parent, width)
     -- two runs kept, choosing between them is still a click.
     function api:SetSource(which)
         if which == "run" then
-            if not RunIndex() and MD.RunRecorder and MD.RunRecorder:Get(1) then
+            if not RunIndex() and ST.RunRecorder and ST.RunRecorder:Get(1) then
                 source = "run1"
                 selected = 1
             end
@@ -213,8 +213,8 @@ function MD.DashboardParts.CreateReview(parent, width)
     local function Validation(rec, force)
         if not rec then return nil end
         if cache[rec.id] and not force then return cache[rec.id] end
-        if not (MD.SimModel and MD.RankMath) then return nil end
-        cache[rec.id] = MD.SimModel:Validate(rec)
+        if not (ST.SimModel and ST.RankMath) then return nil end
+        cache[rec.id] = ST.SimModel:Validate(rec)
         return cache[rec.id]
     end
 
@@ -236,7 +236,7 @@ function MD.DashboardParts.CreateReview(parent, width)
     -- recorder would not honour is refused instead of silently not protecting.
     local PIN_CAP = 2
     local function PinFight(rec, on)
-        local FR = MD.FightRecorder
+        local FR = ST.FightRecorder
         if not FR then return false, "no recorder" end
         local list = FR:List()
         local n
@@ -266,25 +266,25 @@ function MD.DashboardParts.CreateReview(parent, width)
         end
         local rec = Selected()
         if not rec then return end
-        if IsPractice() and MD.Practice and MD.Practice.Pin then
+        if IsPractice() and ST.Practice and ST.Practice.Pin then
             -- 2026-09-29: a practice fight a report is about is kept past the
             -- next eight; the pinned ones have a cap of their own
-            local ok, why = MD.Practice.Pin(rec)
-            if not ok then MD:Print("practice: " .. why) end
+            local ok, why = ST.Practice.Pin(rec)
+            if not ok then ST:Print("practice: " .. why) end
         else
             local ok, why = PinFight(rec, not rec.pinned)
-            if not ok then MD:Print("pin: " .. Esc(why or "refused")) end
+            if not ok then ST:Print("pin: " .. Esc(why or "refused")) end
         end
         api:Render()
     end
     pinBtn:SetScript("OnClick", DoPin)
-    exportBtn:SetScript("OnClick", function() if MD.RunExport then MD:RunExport() end end)
+    exportBtn:SetScript("OnClick", function() if ST.RunExport then ST:RunExport() end end)
     -- runtime lookup: UI/ReplayWindow.lua loads after this file
     -- on a run with no pull selected yet, Play opens its first pull with the
     -- run strip; the strip is the map from there. A fight coached with Coach
     -- anyway plays with both columns (SP.forced); Play itself forces nothing.
     playBtn:SetScript("OnClick", function()
-        if MD.Replay then MD.Replay:Open(Spec()) end
+        if ST.Replay then ST.Replay:Open(Spec()) end
     end)
 
     -- Habits: the same labels the summaries have carried since v0.7.0, summed
@@ -292,7 +292,7 @@ function MD.DashboardParts.CreateReview(parent, width)
     local function Habits()
         local mana, casts = {}, {}
         local n = 0
-        for _, f in ipairs(MD.fightHistory or {}) do
+        for _, f in ipairs(ST.fightHistory or {}) do
             if f.labels then
                 n = n + 1
                 for k, v in pairs(f.labels) do
@@ -385,7 +385,7 @@ function MD.DashboardParts.CreateReview(parent, width)
             end
         end
         local function ListEnter(row, r)
-            local tip = MD.Tip
+            local tip = ST.Tip
             if not (tip and r and r.rec) then return end
             local rec, v = r.rec, cache[r.rec.id]
             local lines = {}
@@ -414,9 +414,9 @@ function MD.DashboardParts.CreateReview(parent, width)
             lines[#lines + 1] = { l = Tone("muted", "Double-click: Play. Right-click: Play, Validate, Coach anyway, Pin, Export."), r = "" }
             tip:Show(row, "ANCHOR_CURSOR", lines)
         end
-        local function ListLeave() if MD.Tip then MD.Tip:Hide() end end
+        local function ListLeave() if ST.Tip then ST.Tip:Hide() end end
 
-        T.list = MD.DashboardParts.CreateTable(pane, width, {
+        T.list = ST.DashboardParts.CreateTable(pane, width, {
             cols = LIST_COLS, header = T.header, font = font, wideFont = UI.FONT_SMALL,
             rowHeight = rowH, headerHeight = headH, headerRule = true,
             zebra = true, rowWidth = rowW, marker = "bar", scroll = true,
@@ -453,7 +453,7 @@ function MD.DashboardParts.CreateReview(parent, width)
         T.resRowH = resRowH
         T.chars = math.floor((rowW - 16) / 6)
         T.textChars = math.floor((rowW - 214) / 6)
-        T.resultApi = MD.DashboardParts.CreateTable(pane, width, {
+        T.resultApi = ST.DashboardParts.CreateTable(pane, width, {
             cols = {
                 { key = "label", x = 8,   w = 150 },
                 { key = "state", x = 162, w = 40 },
@@ -604,7 +604,7 @@ function MD.DashboardParts.CreateReview(parent, width)
         local v = Validation(rec, true)
         ShowResult(Title(i, rec, "validated just now"), ValidationLines(rec, v))
         local g = FirstFailed(v)
-        MD:Print(string.format("%s validated - %s. The details are in Review.", Label(i),
+        ST:Print(string.format("%s validated - %s. The details are in Review.", Label(i),
             not v and "nothing to validate" or v.ok and "replays" or ("does not replay (" .. g.name .. ")")))
         api:Render()
     end
@@ -614,28 +614,28 @@ function MD.DashboardParts.CreateReview(parent, width)
     -- searches nothing.
     function api:Coach(force)
         local rec, i = Selected(), selected
-        if not (rec and MD.SimPlanner and MD.SimModel) then return end
+        if not (rec and ST.SimPlanner and ST.SimModel) then return end
         if rec.short then return end
         local can, why = CanCoach()
-        if not can then MD:Print(MD.Profiles.Refusal("coach", why) .. ".") return end
+        if not can then ST:Print(ST.Profiles.Refusal("coach", why) .. ".") return end
         local v = Validation(rec)
         if not force and v and not v.ok then
             ShowResult(Title(i, rec, "does not replay"), ValidationLines(rec, v))
-            MD:Print(string.format("%s does not replay (%s) - nothing to coach. Right-click it for Coach anyway.",
+            ST:Print(string.format("%s does not replay (%s) - nothing to coach. Right-click it for Coach anyway.",
                 Label(i), FirstFailed(v).name))
             api:Render()
             return
         end
         -- an auto-coach the replay started gives way, as /coach does
-        if MD.coachSearch and MD.replayCoaching then
-            MD.coachSearch:Cancel()
-            MD.coachSearch, MD.replayCoaching = nil, nil
+        if ST.coachSearch and ST.replayCoaching then
+            ST.coachSearch:Cancel()
+            ST.coachSearch, ST.replayCoaching = nil, nil
         end
-        if MD.coachSearch then MD:Print("coach: already searching.") return end
+        if ST.coachSearch then ST:Print("coach: already searching.") return end
         local title = Title(i, rec, force and "coach card (Coach anyway)" or "coach card")
         local coaching = Title(i, rec, "coaching")
         ShowResult(coaching, { { wide = true, text = "coaching... 0 plans", tone = "text" } })
-        local SP = MD.SimPlanner
+        local SP = ST.SimPlanner
         local handle
         handle = SP.CoachAsync(rec, {
             n = Spec(), force = force, noChat = true,
@@ -649,49 +649,49 @@ function MD.DashboardParts.CreateReview(parent, width)
                 ShowResult(coaching, lines, true)
             end,
         }, function(chat, validation, cardLines)
-            if MD.coachSearch == handle then MD.coachSearch = nil end
+            if ST.coachSearch == handle then ST.coachSearch = nil end
             ShowResult(title, CardResultLines(cardLines, chat))
             local used = type(cardLines) == "table" and cardLines.used
             if used and used.you and used.best then
                 T.saved = T.saved or {}
                 T.saved[rec.id] = used.you - used.best
-                MD:Print(string.format("%s coached - used: you %s, best %s. The card is in Review.",
+                ST:Print(string.format("%s coached - used: you %s, best %s. The card is in Review.",
                     Label(i), K(used.you), K(used.best)))
             else
-                MD:Print(string.format("%s: %s", Label(i), Esc(tostring(chat and chat[1] or "no card"))))
+                ST:Print(string.format("%s: %s", Label(i), Esc(tostring(chat and chat[1] or "no card"))))
             end
             api:Render()
         end)
-        MD.coachSearch = handle
+        ST.coachSearch = handle
     end
 
     -- Coach the run shown: one plan for the dungeon (SP.CoachRun).
     function api:CoachRun()
         local run = CurrentRun()
-        if not (run and MD.SimPlanner) then return end
+        if not (run and ST.SimPlanner) then return end
         local can, why = CanCoach()
-        if not can then MD:Print(MD.Profiles.Refusal("coach", why, "coachrun") .. ".") return end
-        if MD.runSearch then MD:Print("coachrun: already searching.") return end
+        if not can then ST:Print(ST.Profiles.Refusal("coach", why, "coachrun") .. ".") return end
+        if ST.runSearch then ST:Print("coachrun: already searching.") return end
         local title = string.format("run %s - coach card", Esc(run.name or "?"))
         ShowResult(string.format("run %s - coaching", Esc(run.name or "?")),
             { { wide = true, text = "coaching the run...", tone = "text" } })
         local handle
-        handle = MD.SimPlanner.CoachRun(run, {
+        handle = ST.SimPlanner.CoachRun(run, {
             onProgress = function(evals)
                 ShowResult(string.format("run %s - coaching", Esc(run.name or "?")),
                     { { wide = true, text = string.format("coaching the run... %d plans", evals), tone = "text" } }, true)
             end,
         }, function(lines)
-            if MD.runSearch == handle then MD.runSearch = nil end
+            if ST.runSearch == handle then ST.runSearch = nil end
             ShowResult(title, CardResultLines(nil, lines))
-            MD:Print(string.format("run %s coached - the card is in Review.", Esc(run.name or "?")))
+            ST:Print(string.format("run %s coached - the card is in Review.", Esc(run.name or "?")))
             api:Render()
         end)
-        MD.runSearch = handle
+        ST.runSearch = handle
     end
 
     function api:Play()
-        if Selected() and MD.Replay then MD.Replay:Open(Spec()) end
+        if Selected() and ST.Replay then ST.Replay:Open(Spec()) end
     end
 
     -- The row menu, on the selected row (the right-click selected it first).
@@ -702,11 +702,11 @@ function MD.DashboardParts.CreateReview(parent, width)
         local run = CurrentRun()
         local v = cache[rec.id]
         local druid, why = CanCoach()
-        local refused = not druid and MD.Profiles.RefusalNote("coach", why) or nil
+        local refused = not druid and ST.Profiles.RefusalNote("coach", why) or nil
         local coachNote = rec.short and "short" or refused
             or (v and not v.ok) and "does not replay" or nil
         local items = {
-            { text = "Play", note = "double-click", disabled = MD.Replay == nil, onClick = function() api:Play() end },
+            { text = "Play", note = "double-click", disabled = ST.Replay == nil, onClick = function() api:Play() end },
             { text = "Validate", onClick = function() api:Validate() end },
             { text = run and "Coach pull" or "Coach", note = coachNote, disabled = coachNote ~= nil,
               onClick = function() api:Coach(false) end },
@@ -715,8 +715,8 @@ function MD.DashboardParts.CreateReview(parent, width)
             { text = run and (run.pinned and "Unpin the run" or "Pin the run") or (rec.pinned and "Unpin" or "Pin"),
               onClick = function() DoPin() end },
         }
-        if MD.RunExport then
-            items[#items + 1] = { text = "Export", onClick = function() MD:RunExport() end }
+        if ST.RunExport then
+            items[#items + 1] = { text = "Export", onClick = function() ST:RunExport() end }
         end
         local where = run and ("+" .. Clock(rec.runT0 or 0)) or When(rec.id)
         T.menu:Open(T.list.frame, string.upper(Label(i)) .. " - " .. where, items)
@@ -740,7 +740,7 @@ function MD.DashboardParts.CreateReview(parent, width)
                 local g = FirstFailed(v)
                 result, rtone = "does not replay: " .. Esc(g and g.short or "failed"), "bad"
             end
-            if not rec.short and MD.SimPlanner and MD.SimPlanner.plans[rec.id] then
+            if not rec.short and ST.SimPlanner and ST.SimPlanner.plans[rec.id] then
                 local saved = T.saved and T.saved[rec.id]
                 result = result .. ((saved and saved > 0) and (" - coached: " .. K(saved) .. " less mana")
                     or " - coached")
@@ -775,7 +775,7 @@ function MD.DashboardParts.CreateReview(parent, width)
         if not pane:IsShown() then return end
 
         -- the selector: [Fights] plus one button per stored run
-        local RR = MD.RunRecorder
+        local RR = ST.RunRecorder
         local runs = RR and RR:List() or {}
         for i = 2, 3 do
             local run = runs[i - 1]
@@ -836,11 +836,11 @@ function MD.DashboardParts.CreateReview(parent, width)
         local function Set(btn, on) if on then btn:Enable() else btn:Disable() end end
         Set(pinBtn, run ~= nil or rec ~= nil)
         Set(validateBtn, rec ~= nil)
-        Set(playBtn, rec ~= nil and MD.Replay ~= nil)
-        -- R40 (review 2026-09-29): MD:RunExport is Verify.lua's, on the TBC
+        Set(playBtn, rec ~= nil and ST.Replay ~= nil)
+        -- R40 (review 2026-09-29): ST:RunExport is Verify.lua's, on the TBC
         -- TOC only. Where it does not exist the button is not offered at all
         -- rather than sitting enabled and doing nothing; TBC takes the old path.
-        if MD.RunExport then
+        if ST.RunExport then
             Set(exportBtn, #list > 0)
         else
             exportBtn:Disable()
@@ -859,14 +859,14 @@ function MD.DashboardParts.CreateReview(parent, width)
             Set(coachBtn, rec ~= nil and not rec.short and canCoach)
         end
         coachBtn:SetScript("OnEnter", function(self)
-            if not MD.Tip then return end
+            if not ST.Tip then return end
             local lines = { { l = run and "Coach run" or "Coach", r = "" } }
             if run then
                 lines[#lines + 1] = { l = "One plan and one drink policy for the whole run,", r = "" }
                 lines[#lines + 1] = { l = "with the pulls chained and the gaps simulated.", r = "" }
                 lines[#lines + 1] = { l = "|cff888888Scored on time first: added time, then drinks,", r = "" }
                 lines[#lines + 1] = { l = "|cff888888then mana. Coach pull is the single-fight card.|r", r = "" }
-                MD.Tip:Show(self, "ANCHOR_RIGHT", lines)
+                ST.Tip:Show(self, "ANCHOR_RIGHT", lines)
                 return
             end
             if rec and rec.short then
@@ -875,7 +875,7 @@ function MD.DashboardParts.CreateReview(parent, width)
                 lines[#lines + 1] = { l = "|cff888888is mostly these - but there is nothing to learn", r = "" }
                 lines[#lines + 1] = { l = "|cff888888from eight seconds.|r", r = "" }
             elseif not canCoach then
-                lines[#lines + 1] = { l = "|cff888888" .. MD.Profiles.Refusal("coach", coachWhy, "Coaching") .. "|r",
+                lines[#lines + 1] = { l = "|cff888888" .. ST.Profiles.Refusal("coach", coachWhy, "Coaching") .. "|r",
                     r = "" }
             elseif v and not v.ok then
                 lines[#lines + 1] = { l = "|cffff9966This fight does not replay, so nothing would be", r = "" }
@@ -892,13 +892,13 @@ function MD.DashboardParts.CreateReview(parent, width)
                 lines[#lines + 1] = { l = "Search for a better plan; the card appears under the list.", r = "" }
                 lines[#lines + 1] = { l = "|cff888888Runs across frames; /md coach cancel stops it.|r", r = "" }
             end
-            MD.Tip:Show(self, "ANCHOR_RIGHT", lines)
+            ST.Tip:Show(self, "ANCHOR_RIGHT", lines)
         end)
-        coachBtn:SetScript("OnLeave", function() if MD.Tip then MD.Tip:Hide() end end)
+        coachBtn:SetScript("OnLeave", function() if ST.Tip then ST.Tip:Hide() end end)
 
         habitsFS:SetText(Habits() or "|cff888888Habits appear once a few fights have been summarised.|r")
-        local zone = MD.API.RealZoneText and MD.API.RealZoneText() or nil
-        local prog = MD.SimPlanner and zone and MD.SimPlanner.Progress(zone)
+        local zone = ST.API.RealZoneText and ST.API.RealZoneText() or nil
+        local prog = ST.SimPlanner and zone and ST.SimPlanner.Progress(zone)
         progressFS:SetText(prog and ("|cff99dd99" .. prog .. "|r") or "")
     end
 

@@ -4,9 +4,9 @@
 -- Settings -> Clock UI/ClockSettings.lua's.
 --
 -- T119 (docs/SPEC-one-ui.md 7, mockup M6): Settings is one file on both lines
--- -- General, Clock, Review, About, built by MD.Settings from this line's rows
+-- -- General, Clock, Review, About, built by ST.Settings from this line's rows
 -- (UI/Settings_TBC.lua) -- at 860 x 560, fixed, as Forever's. The options
--- frame (MD.optionsFrame, UI/OptionsFrame.lua) is gone; MD:ShowOptionsFrame
+-- frame (ST.optionsFrame, UI/OptionsFrame.lua) is gone; ST:ShowOptionsFrame
 -- stays as the door /md options and the minimap button use.
 --
 -- T84 (C5 of docs/PLAN-refactor-ux.md, section 7.1; mockup M4 layout B and
@@ -14,7 +14,7 @@
 -- first, then one row per family of the player's own list (Spells/Tabs.lua
 -- over Spells/Families_TBC.lua), with [ + Add ] and its picker, the Undo
 -- line, drag to reorder, one x and the right-click row menu (UI/SpellRail.lua
--- installed on MD.SpellsTBC until T120). Overview is My spells
+-- installed on ST.SpellsTBC until T120). Overview is My spells
 -- (UI/SpellsView_TBC.lua's CreateSpellsOverview); a family's row ("fam:<key>")
 -- opens the TBC Spells view (T83, C3: the header, the chip and one
 -- comparison, the rank table, the card, "After overheal" and "What if...").
@@ -24,9 +24,9 @@
 --
 -- T120 (docs/tasks/T120-one-spells-pane.md): the Spells group is the shared
 -- pane, UI/SpellsPane.lua, wired as Forever wires it (Group, Create, Show,
--- Attach) over MD.Book (Spells/Book_Model.lua), at 860 x 560 fixed.
--- MD.SpellsTBC, UI/SpellsView_TBC.lua and the spells branch of Refresh are
--- gone; what differs on this line is MD.SpellsLine below (the footer, RANKS'
+-- Attach) over ST.Book (Spells/Book_Model.lua), at 860 x 560 fixed.
+-- ST.SpellsTBC, UI/SpellsView_TBC.lua and the spells branch of Refresh are
+-- gone; what differs on this line is ST.SpellsLine below (the footer, RANKS'
 -- note, After overheal on db.effectiveMode, Overview's refusal for a class
 -- without the rank table). No What if until T122.
 --
@@ -34,43 +34,43 @@
 -- the window is the window manager's (UI/Windows.lua) as on Forever -- placed
 -- by it, a size per group handed in at Register (SIZES below), on the ESC
 -- stack instead of UISpecialFrames, hidden in combat and reopened on the same
--- view, and every MD:SelectView through MD.Win:ShowMain. A place the client
+-- view, and every ST:SelectView through ST.Win:ShowMain. A place the client
 -- kept for it while it was user-placed is adopted once.
-local _, MD = ...
-local UI = MD.UI
+local _, ST = ...
+local UI = ST.UI
 
 local WIDTH, HEIGHT = 912, 617 -- +20% (author, 2026-09-06: not everything fit); was 760 x 514
 local frame, statsFS, calloutFS, hintFS, recapFS
 local wasteView, reviewView, practiceView, nav
 local currentGroup = "spells"
 local currentFamily = "overview" -- the selected VIEW id (a family's is "fam:<key>")
-local lastSettingsView -- T119: the General / Review / About view last shown (MD:ShowOptionsFrame)
+local lastSettingsView -- T119: the General / Review / About view last shown (ST:ShowOptionsFrame)
 
 --------------------------------------------------------------------------------
 -- T120: the Spells group is UI/SpellsPane.lua's (the rail, Overview, a
--- family's view), over MD.Book. What this line hands it is MD.SpellsLine.
+-- family's view), over ST.Book. What this line hands it is ST.SpellsLine.
 --------------------------------------------------------------------------------
-local VIEW_PREFIX = MD.SpellRail and MD.SpellRail.VIEW_PREFIX or "fam:"
+local VIEW_PREFIX = ST.SpellRail and ST.SpellRail.VIEW_PREFIX or "fam:"
 
 -- A view id as the rail names it: a bare family key (a path saved before
 -- C5, or a caller that names "Regrowth") becomes its row's id -- the
--- families are the book's (T120; MD.SpellData's before).
+-- families are the book's (T120; ST.SpellData's before).
 local function SpellsViewId(view)
     if type(view) ~= "string" or view:sub(1, #VIEW_PREFIX) == VIEW_PREFIX then return view end
-    local book = MD.Book and MD.Book:Get() or nil
+    local book = ST.Book and ST.Book:Get() or nil
     if book and book.families and book.families[view] then return VIEW_PREFIX .. view end
     return view
 end
 
 -- The family's measured overheal, "25% measured" (C3's words), or nil.
 local function MeasuredWord(fam)
-    if not (MD.Overheal and MD.Overheal.FamilyFraction and fam and fam.key) then return nil end
-    local frac = MD.Overheal:FamilyFraction(fam.key)
+    if not (ST.Overheal and ST.Overheal.FamilyFraction and fam and fam.key) then return nil end
+    local frac = ST.Overheal:FamilyFraction(fam.key)
     if type(frac) ~= "number" then return nil end
     return string.format("%d%% measured", math.floor(frac * 100 + 0.5))
 end
 
-MD.SpellsLine = {
+ST.SpellsLine = {
     footer = "Values from the model: your gear, talents and the downrank rules.",
     ranksNote = function(fam)
         if fam and fam.kind == "heal" then return "live: gear, talents, downrank rules" end
@@ -80,21 +80,21 @@ MD.SpellsLine = {
     critNote = nil, -- the crit is the model's: the card says its chance
     -- C3's "After overheal", the same setting (db.effectiveMode)
     afterOverheal = {
-        get = function() return MD.db.effectiveMode == true end,
-        set = function(on) MD.db.effectiveMode = on and true or false end,
+        get = function() return ST.db.effectiveMode == true end,
+        set = function(on) ST.db.effectiveMode = on and true or false end,
         word = MeasuredWord,
     },
     -- T99's refusal, on Overview now (it still lists what it can)
     overviewNote = function()
-        local can, why = MD.ClassProfile:Can("rankTable")
+        local can, why = ST.ClassProfile:Can("rankTable")
         if can then return nil end
-        return MD.Profiles.Refusal("rankTable", why, "Rank analysis")
+        return ST.Profiles.Refusal("rankTable", why, "Rank analysis")
             .. " - the OOM widget, datatext and advisor still work for your class."
     end,
 }
 
 local function RefreshSpellRail()
-    if MD.SpellsPane and MD.SpellsPane.RefreshRail then MD.SpellsPane:RefreshRail() end
+    if ST.SpellsPane and ST.SpellsPane.RefreshRail then ST.SpellsPane:RefreshRail() end
 end
 
 --------------------------------------------------------------------------------
@@ -105,7 +105,7 @@ local function Shown(f, on) if not f then return end if on then f:Show() else f:
 -- The regen line Reports keeps above Waste and Review (the Spells view says
 -- the same in its +healing hover since T83).
 local function StatsLine()
-    local RM = MD.Regen
+    local RM = ST.Regen
     local bonus = 0
     if GetSpellBonusHealing then
         local ok, v = pcall(GetSpellBonusHealing)
@@ -155,10 +155,10 @@ local function Refresh()
     end
 
     -- recap
-    local last = MD.fightHistory and MD.fightHistory[#MD.fightHistory]
+    local last = ST.fightHistory and ST.fightHistory[#ST.fightHistory]
     if last then
         recapFS:SetText("Last fight: " .. (last.summary or "-") ..
-            (#MD.fightHistory > 1 and ("  |cff666666(" .. #MD.fightHistory .. " fights this session)|r") or ""))
+            (#ST.fightHistory > 1 and ("  |cff666666(" .. #ST.fightHistory .. " fights this session)|r") or ""))
     else
         recapFS:SetText("|cff666666No fights recorded this session yet.|r")
     end
@@ -196,7 +196,7 @@ local SIZES = {
 -- Reports' views depend on what has been recorded.
 local function ReportViews()
     local views = { { id = "Waste", text = "Waste" }, { id = "Review", text = "Review" } }
-    if MD.RunRecorder and #(MD.RunRecorder:List()) > 0 then
+    if ST.RunRecorder and #(ST.RunRecorder:List()) > 0 then
         views[#views + 1] = { id = "Runs", text = "Runs" }
     end
     return views
@@ -206,7 +206,7 @@ local function Groups()
     return {
         -- T84 (C5): the rail -- Overview, then the player's own list;
         -- T120: UI/SpellsPane.lua's group, as on Forever
-        MD.SpellsPane:Group(),
+        ST.SpellsPane:Group(),
         -- Waste and Review work for any class: a recorded stream is numbers
         -- Runs appears only once one has been recorded: a view that is always
         -- empty teaches nothing, and nav:SetViews puts it there the moment a
@@ -229,29 +229,29 @@ end
 -- and /md rest, /md lock, /md tooltip write (UI/ClockSettings.lua never reads
 -- a line's keys itself).
 local function Visibility()
-    if MD.UpdateVisibility then MD:UpdateVisibility() end
+    if ST.UpdateVisibility then ST:UpdateVisibility() end
 end
 local CLOCK_SWITCHES = {
     show = {
         { text = "Rest time (rest 2:10)", segment = "rest", tips = { "Show rest time",
               "Grey 'rest 2:10' next to the clock:", "time to full if you stop casting right now. Same as /md rest." },
-          get = function() return MD.db.showRest ~= false end,
-          set = function(on) MD.db.showRest = on end },
+          get = function() return ST.db.showRest ~= false end,
+          set = function(on) ST.db.showRest = on end },
         { text = "Mana cooldown (inn 2:10)", segment = "cd", tips = { "Mana cooldown projection",
               "Under 90s to OOM, with Innervate (or a potion) ready, what the clock",
               "becomes if you press it now. It replaces 'rest' there." },
-          get = function() return MD.db.showCooldown ~= false end,
-          set = function(on) MD.db.showCooldown = on end },
+          get = function() return ST.db.showCooldown ~= false end,
+          set = function(on) ST.db.showCooldown = on end },
     },
     when = {
         { text = "Locked", tips = { "Lock widget", "Unticked: the clock stays up and can be dragged." },
-          get = function() return MD.db.locked == true end,
-          set = function(on) MD.db.locked = on; Visibility() end },
+          get = function() return ST.db.locked == true end,
+          set = function(on) ST.db.locked = on; Visibility() end },
         { text = "Tooltip and left-click", tips = { "Tooltip on the floating clock",
               "Off: the clock takes no mouse input at all (click-through),",
               "and stays draggable while unlocked. Same as /md tooltip." },
-          get = function() return MD.db.widgetTooltip ~= false end,
-          set = function(on) MD.db.widgetTooltip = on; Visibility() end },
+          get = function() return ST.db.widgetTooltip ~= false end,
+          set = function(on) ST.db.widgetTooltip = on; Visibility() end },
     },
 }
 
@@ -261,7 +261,7 @@ local function CreateDashboard()
         function(group, view, content)
             -- built once, on first sight
             if group == "reports" and view == "Waste" then
-                wasteView = MD.DashboardParts.CreateWaste(content, CONTENT_W)
+                wasteView = ST.DashboardParts.CreateWaste(content, CONTENT_W)
                 wasteView.frame:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -104)
                 wasteView.frame:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", 0, 24)
                 return wasteView.frame
@@ -269,48 +269,48 @@ local function CreateDashboard()
                 -- the Review pane already knows how to list a run's pulls; the
                 -- Runs view is that pane with a run selected instead of Fights
                 if not reviewView then
-                    reviewView = MD.DashboardParts.CreateReview(content, CONTENT_W)
+                    reviewView = ST.DashboardParts.CreateReview(content, CONTENT_W)
                     reviewView.frame:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -104)
                     reviewView.frame:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", 0, 24)
                 end
                 return reviewView.frame
             elseif group == "reports" and view == "Review" then
-                reviewView = MD.DashboardParts.CreateReview(content, CONTENT_W)
+                reviewView = ST.DashboardParts.CreateReview(content, CONTENT_W)
                 reviewView.frame:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -104)
                 reviewView.frame:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", 0, 24)
                 return reviewView.frame
             elseif group == "simulate" and view == "practice" then
-                practiceView = MD.DashboardParts.CreatePractice(content, CONTENT_W)
+                practiceView = ST.DashboardParts.CreatePractice(content, CONTENT_W)
                 practiceView.frame:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -6)
                 practiceView.frame:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", 0, 0)
                 return practiceView.frame
             elseif group == "simulate" then
-                if MD.AdoptSimPanel then return MD:AdoptSimPanel(content) end
+                if ST.AdoptSimPanel then return ST:AdoptSimPanel(content) end
                 return nil
             elseif group == "settings" and view == "clock" then
                 -- T102: Settings -> Clock, a pane of its own (UI/ClockSettings.lua)
-                if MD.ClockSettings and MD.ClockSettings.Build then
-                    return MD.ClockSettings.Build(content, CLOCK_SWITCHES)
+                if ST.ClockSettings and ST.ClockSettings.Build then
+                    return ST.ClockSettings.Build(content, CLOCK_SWITCHES)
                 end
                 return nil
             elseif group == "settings" then
                 -- T119: General, Review and About, UI/Settings.lua's
-                if MD.Settings and MD.Settings.Owns(view) then return MD.Settings.Build(view, content) end
+                if ST.Settings and ST.Settings.Owns(view) then return ST.Settings.Build(view, content) end
                 return nil
             elseif group == "spells" then
-                return MD.SpellsPane:Create(content) -- T120: one frame for every Spells view
+                return ST.SpellsPane:Create(content) -- T120: one frame for every Spells view
             end
             return nil
         end,
         function(group, view, pane)
             -- T102: Settings -> Clock's controls from the saved look
-            if group == "settings" and view == "clock" and MD.ClockSettings then MD.ClockSettings.Show(pane) end
+            if group == "settings" and view == "clock" and ST.ClockSettings then ST.ClockSettings.Show(pane) end
             -- T119: General, Review and About re-read what they show, and
             -- the last of them is where /md options opens (Clock was never
             -- one of the options frame's tabs)
-            if group == "settings" and MD.Settings and MD.Settings.Owns(view) then
+            if group == "settings" and ST.Settings and ST.Settings.Owns(view) then
                 lastSettingsView = view
-                MD.Settings.Refresh(view)
+                ST.Settings.Refresh(view)
             end
             -- the source is set when the VIEW changes, never on a refresh: the
             -- 2s ticker calls Refresh, and setting it there put the run back
@@ -319,10 +319,10 @@ local function CreateDashboard()
                 reviewView:SetSource(view == "Runs" and "run" or "fights")
             end
             currentGroup, currentFamily = group, view
-            MD.Win:SetGroup("main", group) -- T80: the group's own size, the TOPLEFT kept
-            MD:Fire("UI_VIEW_SELECTED", group, view)
+            ST.Win:SetGroup("main", group) -- T80: the group's own size, the TOPLEFT kept
+            ST:Fire("UI_VIEW_SELECTED", group, view)
             -- T120: the pane draws the view (and clears a row's new dot)
-            if group == "spells" then MD.SpellsPane:Show(view) end
+            if group == "spells" then ST.SpellsPane:Show(view) end
             Refresh()
 
         end)
@@ -330,7 +330,7 @@ local function CreateDashboard()
     local content = nav:Content()
     -- T84 (C5): the rail's [ + Add ] and Undo line (UI/SpellRail.lua);
     -- T120: the shared pane's
-    MD.SpellsPane:Attach(nav)
+    ST.SpellsPane:Attach(nav)
 
     -- T83 (C3): "Effective" (now "After overheal") moved into the Spells
     -- view (T120: the shared pane's strip). The lines below are Reports'
@@ -358,7 +358,7 @@ local function CreateDashboard()
     frame:SetScript("OnShow", function()
         -- T84 (C5): Overview the first time (the rail's first row), then the
         -- remembered row; a path saved before C5 names a bare family
-        local path = MD.db.uiPath
+        local path = ST.db.uiPath
         if path and path[1] then
             nav:Select(path[1], path[1] == "spells" and SpellsViewId(path[2]) or path[2])
         else
@@ -373,15 +373,15 @@ local function CreateDashboard()
     -- combat hide; how to open it on a view and read the one it shows; the
     -- practice view a session goes back to. adoptPlaced: the place the client
     -- kept for it while it was user-placed (before C1) becomes its saved one.
-    MD.Win:Register(frame, { key = "main", role = "host", sizes = SIZES, group = "spells",
-        open = function(group, view) return MD:OpenMainWindow(group, view) end,
-        selected = function() return MD:SelectedView() end,
+    ST.Win:Register(frame, { key = "main", role = "host", sizes = SIZES, group = "spells",
+        open = function(group, view) return ST:OpenMainWindow(group, view) end,
+        selected = function() return ST:SelectedView() end,
         practicePath = { "simulate", "practice" }, adoptPlaced = true })
 
     -- The Casts column follows your current mana: re-render every 2s while
     -- the frame is open (rendering only; the model is event-driven).
     local acc = 0
-    MD:OnTick(function(dt)
+    ST:OnTick(function(dt)
         if not frame:IsShown() then return end
         acc = acc + dt
         if acc >= 2 then
@@ -391,14 +391,14 @@ local function CreateDashboard()
     end)
 end
 
-function MD:SelectedView()
+function ST:SelectedView()
     if not nav then return nil end
     return nav:Selected()
 end
 
--- What MD.Win:ShowMain opens (T80, the host's `open`): the window on the view
+-- What ST.Win:ShowMain opens (T80, the host's `open`): the window on the view
 -- asked for, or on the remembered one when none is named.
-function MD:OpenMainWindow(group, view)
+function ST:OpenMainWindow(group, view)
     if not nav then return end
     if not frame:IsShown() then frame:Show() end
     if group then nav:Select(group, group == "spells" and SpellsViewId(view) or view) end
@@ -407,47 +407,47 @@ end
 -- Every entry point that wants a particular view goes through here: /md sim,
 -- /md options, the minimap button's right-click. T80 (C1): through the window
 -- manager, which closes a replay first and refuses while practice plays.
-function MD:SelectView(group, view)
+function ST:SelectView(group, view)
     if not nav then return end
-    return MD.Win:ShowMain(group, view)
+    return ST.Win:ShowMain(group, view)
 end
 
-function MD:ToggleDashboard()
+function ST:ToggleDashboard()
     if not frame then return end
-    if frame:IsShown() then frame:Hide() else MD.Win:ShowMain() end
+    if frame:IsShown() then frame:Hide() else ST.Win:ShowMain() end
 end
 
 -- Kept for the minimap button's right-click.
-function MD:OpenDashboardSettings()
-    MD:SelectView("settings", "general")
+function ST:OpenDashboardSettings()
+    ST:SelectView("settings", "general")
 end
 
 -- T119: the door /md options (Core_TBC.lua) uses, kept when the options frame
 -- (UI/OptionsFrame.lua) went --
---   MD:ShowOptionsFrame()      the settings group, on the last view used
---   MD:ShowOptionsFrame(view)  that view
-function MD:ShowOptionsFrame(view)
-    MD:SelectView("settings", view or lastSettingsView or "general")
+--   ST:ShowOptionsFrame()      the settings group, on the last view used
+--   ST:ShowOptionsFrame(view)  that view
+function ST:ShowOptionsFrame(view)
+    ST:SelectView("settings", view or lastSettingsView or "general")
 end
 
 -- a run stored while the window is open makes the Runs view appear
 local function RefreshReportViews()
     if nav then nav:SetViews("reports", ReportViews()) end
 end
-MD:RegisterCallback("RUN_STORED", RefreshReportViews)
+ST:RegisterCallback("RUN_STORED", RefreshReportViews)
 
-MD:RegisterCallback("MD_READY", CreateDashboard)
-MD:RegisterCallback("TALENTS_CHANGED", Refresh)
+ST:RegisterCallback("MD_READY", CreateDashboard)
+ST:RegisterCallback("TALENTS_CHANGED", Refresh)
 -- T84 (C5): a rank trained -- Spells/Book_Model.lua (T118) rebuilt the book
 -- and reconciled the list first (it registered earlier); the rail follows,
 -- and talents and forms move its suggested-rank tags (T120: the pane's rail)
-MD:RegisterCallback("SPELLS_REBUILT", RefreshSpellRail)
-MD:RegisterCallback("TALENTS_CHANGED", RefreshSpellRail)
-MD:RegisterCallback("FORM_CHANGED", RefreshSpellRail)
-MD:RegisterCallback("SPELLS_REBUILT", Refresh)
-MD:RegisterCallback("FIGHT_RECORDED", Refresh)
-MD:RegisterCallback("FORM_CHANGED", Refresh) -- Tree of Life: costs and aura change
-MD:On("PLAYER_EQUIPMENT_CHANGED", function()
+ST:RegisterCallback("SPELLS_REBUILT", RefreshSpellRail)
+ST:RegisterCallback("TALENTS_CHANGED", RefreshSpellRail)
+ST:RegisterCallback("FORM_CHANGED", RefreshSpellRail)
+ST:RegisterCallback("SPELLS_REBUILT", Refresh)
+ST:RegisterCallback("FIGHT_RECORDED", Refresh)
+ST:RegisterCallback("FORM_CHANGED", Refresh) -- Tree of Life: costs and aura change
+ST:On("PLAYER_EQUIPMENT_CHANGED", function()
     if frame and frame:IsShown() then
         RefreshSpellRail() -- T84: gear moves the suggested-rank tags
         Refresh()

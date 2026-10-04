@@ -8,7 +8,7 @@
 --   local data = Books.Load("paladin")                 -- the extract, as a table
 --   local restore = Books.Install(data, opts)          -- the stub's client answers it
 --
--- Install wraps, in place, the client functions Spells/Book.lua reads through MD.API
+-- Install wraps, in place, the client functions Spells/Book.lua reads through ST.API
 -- (C_SpellBook's walk, C_Spell's name / rank / text / cast / cost / level, the tooltip data and
 -- GetSpellBaseCooldown): an id or slot of the class book is answered from the extract, anything
 -- else by the stub's own function. opts (all optional):
@@ -19,7 +19,7 @@
 --   baseCooldowns { [id] = ms }: what GetSpellBaseCooldown answers for a book id (0 otherwise,
 --                 the client's answer for a spell with none); with no table the function is
 --                 left as the stub has it (absent)
---   MD            an addon table whose MD.API.Has cache is cleared for every wrapped name (and
+--   ST            an addon table whose ST.API.Has cache is cleared for every wrapped name (and
 --                 whose Book is marked dirty), so a book already scanned reads the new answers
 -- The answers' shapes are the stub's own (tools/wowstub.lua's forever profile: retail 12.x
 -- documented, NOT observed on Forever), so Book reads a class book exactly as it reads the
@@ -213,12 +213,12 @@ function Books.Install(data, opts)
         end
     end
 
-    local MD = opts.MD
+    local ST = opts.ST
     local function Forget()
-        if not (MD and MD.API and MD.API.Invalidate) then return end
-        for _, w in ipairs(WRAPPED) do MD.API.Invalidate(w[1] .. "." .. w[2]) end
-        MD.API.Invalidate("GetSpellBaseCooldown")
-        if MD.Book and MD.Book.MarkDirty then MD.Book:MarkDirty() end
+        if not (ST and ST.API and ST.API.Invalidate) then return end
+        for _, w in ipairs(WRAPPED) do ST.API.Invalidate(w[1] .. "." .. w[2]) end
+        ST.API.Invalidate("GetSpellBaseCooldown")
+        if ST.Book and ST.Book.MarkDirty then ST.Book:MarkDirty() end
     end
     Forget()
 

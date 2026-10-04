@@ -1,8 +1,8 @@
 -- tools/run.sh --flavour forever|tbc tools/capscheck.lua
 --
 -- T99 (docs/SPEC-next.md 4.4 and section 11, S1's second step): the capability
--- gates. The 23 `MD.player.isDruid` gates in 10 files became
--- MD.ClassProfile:Can(cap) (Spells/Profiles.lua); this suite holds that:
+-- gates. The 23 `ST.player.isDruid` gates in 10 files became
+-- ST.ClassProfile:Can(cap) (Spells/Profiles.lua); this suite holds that:
 --
 --   * a SOURCE SCAN of every file a TOC ships (both main TOCs and the three
 --     modules') finds `isDruid` only in the reads 4.4 keeps (four in three
@@ -16,7 +16,7 @@
 --     and the simulator (and, on TBC, the profile report) -- never "Druid-only"
 --     (T106: a mage, a class with no profile on either line; it was a priest
 --     until the Forever priest had a profile of its own);
---   * on Forever, Can("coach") asks the Replay module's MD.KitLive: with the
+--   * on Forever, Can("coach") asks the Replay module's ST.KitLive: with the
 --     module off it answers false, "module" and Review keeps the module's own
 --     placeholder (no new words); a live kit that prices no heal answers
 --     false, "kit";
@@ -33,12 +33,12 @@ local function check(name, cond, detail)
 end
 
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua")
+local ST = dofile(here .. "/harness.lua")
 arg[0] = a0
 
 local S = _G.STUB
 local forever = S.flavour == "forever"
-local P = MD.Profiles
+local P = ST.Profiles
 -- The TBC stub has no GetBuildInfo, which /md profile's first line reads
 -- (tools/verifycheck.lua answers the same fixed build).
 if _G.GetBuildInfo == nil then
@@ -46,7 +46,7 @@ if _G.GetBuildInfo == nil then
 end
 
 local chat = {}
-function MD:Print(m) chat[#chat + 1] = tostring(m) end
+function ST:Print(m) chat[#chat + 1] = tostring(m) end
 local function Said(sub)
     for _, m in ipairs(chat) do if m:find(sub, 1, true) then return m end end
     return nil
@@ -84,8 +84,8 @@ local function Enabled(b) return b ~= nil and b.enabled ~= false end
 
 local function LogIn(class)
     S.units.player.class = class
-    MD:DetectProfile()
-    MD:Fire("CORE_LOGIN")
+    ST:DetectProfile()
+    ST:Fire("CORE_LOGIN")
 end
 
 --------------------------------------------------------------------------------
@@ -95,7 +95,7 @@ T.section("the source scan")
 
 -- The reads that stay, file -> count, with the reason (docs/SPEC-next.md 4.4).
 local ALLOWED = {
-    -- defines MD.player.isDruid at load and at DetectProfile: a fact, not a gate
+    -- defines ST.player.isDruid at load and at DetectProfile: a fact, not a gate
     ["Core.lua"] = 2,
     -- InTreeForm: Tree of Life is a druid form (the comment above the read says so)
     ["Core_TBC.lua"] = 1,
@@ -104,7 +104,7 @@ local ALLOWED = {
     -- here instead of carrying a comment
     ["Data/SpellData.lua"] = 1,
     -- T111: Engine/RankMath.lua's Compute and Spells/Families_TBC.lua's book
-    -- left the list -- both ask MD.ClassProfile:Can("rankTable") and read
+    -- left the list -- both ask ST.ClassProfile:Can("rankTable") and read
     -- RankMath:Source() (SpellData for the druid, Spells/Book_TBC.lua for a
     -- priest, shaman or paladin)
 }
@@ -186,12 +186,12 @@ do
         if not code:find("ClassProfile:Can(", 1, true) then noAsk[#noAsk + 1] = rel end
         if code:lower():find("druid%-only") or code:find("Druid only", 1, true) then oldWords[#oldWords + 1] = rel end
     end
-    check("each of the ten gate files asks MD.ClassProfile:Can", #noAsk == 0, table.concat(noAsk, ", "))
+    check("each of the ten gate files asks ST.ClassProfile:Can", #noAsk == 0, table.concat(noAsk, ", "))
     check("no gate file says \"Druid-only\" any more", #oldWords == 0, table.concat(oldWords, ", "))
 end
 do
     local src = ReadFile("Core_TBC.lua") or ""
-    local before = src:match("function MD:InTreeForm%(%)\n(.-)if not MD%.player%.isDruid")
+    local before = src:match("function ST:InTreeForm%(%)\n(.-)if not ST%.player%.isDruid")
     check("Core_TBC.lua's InTreeForm read carries the comment saying why it stays",
         before ~= nil and before:find("Druid by design", 1, true) ~= nil and before:find("Tree of Life", 1, true) ~= nil)
 end
@@ -238,50 +238,50 @@ local function Grants(profile, caps, skip)
     end
     return refused
 end
-check("MD.ClassProfile is the druid's at login", MD.ClassProfile == P.Get("DRUID") and MD.player.class == "DRUID")
+check("ST.ClassProfile is the druid's at login", ST.ClassProfile == P.Get("DRUID") and ST.player.class == "DRUID")
 
 if forever then
     ----------------------------------------------------------------------------
     -- Forever: the Replay module off, then on
     ----------------------------------------------------------------------------
-    local refused = Grants(MD.ClassProfile, CAPS, "coach")
+    local refused = Grants(ST.ClassProfile, CAPS, "coach")
     check("the druid is granted every capability but coach before any module loads", #refused == 0,
         table.concat(refused, ", "))
-    local can, why = MD.ClassProfile:Can("coach")
+    local can, why = ST.ClassProfile:Can("coach")
     check("Replay module off: Can(\"coach\") is false, \"module\" (no KitLive provider)",
-        can == false and why == "module" and MD.KitLive == nil, tostring(can) .. "/" .. tostring(why))
+        can == false and why == "module" and ST.KitLive == nil, tostring(can) .. "/" .. tostring(why))
 
-    if not MD.UI.CreateContextMenu then S.Load({ "UI/ContextMenu.lua" }, "SpellTuner", MD) end
-    MD:SelectView("reports", "review")
+    if not ST.UI.CreateContextMenu then S.Load({ "UI/ContextMenu.lua" }, "SpellTuner", ST) end
+    ST:SelectView("reports", "review")
     check("Replay module off: Review is the module's own placeholder, no new words",
         TextShowing("Review needs the Replay module") ~= nil and TextShowing("not modelled") == nil
         and TextShowing("Druid") == nil)
 
-    MD:SetModule("SpellTuner_Replay", true)
-    can, why = MD.ClassProfile:Can("coach")
-    check("Replay module on: MD.KitLive is provided and the druid coaches",
-        type(MD.KitLive) == "function" and can == true and why == nil, tostring(can) .. "/" .. tostring(why))
-    MD:SetModule("SpellTuner_Practice", true)
+    ST:SetModule("SpellTuner_Replay", true)
+    can, why = ST.ClassProfile:Can("coach")
+    check("Replay module on: ST.KitLive is provided and the druid coaches",
+        type(ST.KitLive) == "function" and can == true and why == nil, tostring(can) .. "/" .. tostring(why))
+    ST:SetModule("SpellTuner_Practice", true)
 
-    local realLive = MD.KitLive
-    MD.KitLive = function() return false, "kit" end
-    can, why = MD.ClassProfile:Can("coach")
+    local realLive = ST.KitLive
+    ST.KitLive = function() return false, "kit" end
+    can, why = ST.ClassProfile:Can("coach")
     check("a live kit that prices no heal: Can(\"coach\") is false, \"kit\"", can == false and why == "kit",
         tostring(can) .. "/" .. tostring(why))
-    MD.KitLive = function() error("boom") end
-    can, why = MD.ClassProfile:Can("coach")
+    ST.KitLive = function() error("boom") end
+    can, why = ST.ClassProfile:Can("coach")
     check("a KitLive that raises answers false, \"kit\" rather than raising", can == false and why == "kit")
-    MD.KitLive = realLive
+    ST.KitLive = realLive
 else
-    local refused = Grants(MD.ClassProfile, CAPS)
+    local refused = Grants(ST.ClassProfile, CAPS)
     check("the druid is granted every capability the gates ask", #refused == 0, table.concat(refused, ", "))
-    local can, why = MD.ClassProfile:Can("coach")
+    local can, why = ST.ClassProfile:Can("coach")
     check("TBC declares no module and provides no KitLive: the druid coaches", can == true and why == nil
-        and #(MD.modules or {}) == 0 and MD.KitLive == nil)
+        and #(ST.modules or {}) == 0 and ST.KitLive == nil)
     S.Load({ "UI/Style.lua", "UI/Theme_Flat.lua", "UI/EscStack.lua", "UI/Windows.lua", "UI/ContextMenu.lua",
              "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/Dashboard_Rows.lua", "UI/Dashboard_Review.lua",
              "UI/PracticePanel.lua", "UI/BindingsWindow.lua", "UI/ReplayWindow.lua", "UI/SimWindow.lua" },
-        "SpellTuner", MD)
+        "SpellTuner", ST)
 end
 
 --------------------------------------------------------------------------------
@@ -292,38 +292,38 @@ if forever then
     local buildFixture = dofile(here .. "/foreverfixture.lua")
     local rec = buildFixture()
     rec.id = 2000000000
-    MD.cdb.recordings = { rec }
+    ST.cdb.recordings = { rec }
 else
-    dofile(here .. "/fakepull.lua")(MD, S)
+    dofile(here .. "/fakepull.lua")(ST, S)
 end
-check("one fight to review", #(MD.cdb.recordings or {}) >= 1)
+check("one fight to review", #(ST.cdb.recordings or {}) >= 1)
 
 local parent = CreateFrame("Frame")
 parent:SetSize(912, 500)
-local review = MD.DashboardParts.CreateReview(parent, 912)
+local review = ST.DashboardParts.CreateReview(parent, 912)
 review.frame:SetSize(912, 500)
 review.frame:Show()
-MD.cdb.practice, MD.db.practiceBinds = MD.cdb.practice or {}, MD.db.practiceBinds
+ST.cdb.practice, ST.db.practiceBinds = ST.cdb.practice or {}, ST.db.practiceBinds
 local pparent = CreateFrame("Frame")
-local practice = MD.DashboardParts.CreatePractice(pparent, 912)
+local practice = ST.DashboardParts.CreatePractice(pparent, 912)
 practice.frame:Show()
 local sim
 if not forever then
     local sparent = CreateFrame("Frame")
     sparent:SetSize(912, 600)
-    sim = MD:AdoptSimPanel(sparent)
+    sim = ST:AdoptSimPanel(sparent)
 end
 
 local function CoachHover()
     local coach = Button("Coach", review.frame)
-    MD.UI.tooltip.lines = nil
-    if MD.Tip then MD.Tip.lastLines = nil end
+    ST.UI.tooltip.lines = nil
+    if ST.Tip then ST.Tip.lastLines = nil end
     local lines = {}
-    local realShow = MD.Tip and MD.Tip.Show
-    if MD.Tip then MD.Tip.Show = function(_, _, _, ls) lines = ls or {} end end
+    local realShow = ST.Tip and ST.Tip.Show
+    if ST.Tip then ST.Tip.Show = function(_, _, _, ls) lines = ls or {} end end
     local enter = coach and coach:GetScript("OnEnter")
     if enter then enter(coach) end
-    if MD.Tip then MD.Tip.Show = realShow end
+    if ST.Tip then ST.Tip.Show = realShow end
     local out = {}
     for _, l in ipairs(lines) do out[#out + 1] = T.Strip(l.l or "") end
     return table.concat(out, " / ")
@@ -331,7 +331,7 @@ end
 
 local function Drain()
     local n = 0
-    while MD.coachSearch and n < 20000 do S.Tick(0.016); n = n + 1 end
+    while ST.coachSearch and n < 20000 do S.Tick(0.016); n = n + 1 end
 end
 
 --------------------------------------------------------------------------------
@@ -339,14 +339,14 @@ end
 --------------------------------------------------------------------------------
 T.section("a mage")
 LogIn("MAGE")
-check("a mage is given the generic profile", MD.ClassProfile == P.generic and MD.player.class == "MAGE")
+check("a mage is given the generic profile", ST.ClassProfile == P.generic and ST.player.class == "MAGE")
 do
-    local can, why = MD.ClassProfile:Can("coach")
+    local can, why = ST.ClassProfile:Can("coach")
     check("a mage cannot be coached, for the class's sake (before any module question)",
         can == false and why == "class")
     local lineCaps = forever and { "clock", "tooltip", "rankTable" } or { "clock" }
     check("a mage keeps what a non-druid had: " .. table.concat(lineCaps, ", "),
-        #Grants(MD.ClassProfile, lineCaps) == 0)
+        #Grants(ST.ClassProfile, lineCaps) == 0)
 end
 
 -- Review
@@ -359,15 +359,15 @@ check("Review: Coach's hover says Coaching: not modelled for Mage yet",
     T.Has(hover, "Coaching: not modelled for Mage yet") and not T.Has(hover, "Druid"), hover)
 review:Coach(false)
 check("Review: a Coach press prints coach: not modelled for Mage yet.",
-    Said("coach: not modelled for Mage yet.") ~= nil and MD.coachSearch == nil, chat[#chat])
+    Said("coach: not modelled for Mage yet.") ~= nil and ST.coachSearch == nil, chat[#chat])
 
 -- the replay: no suggested column will come, and the hint says why
 chat = {}
-MD:OpenReplay("1")
-local W = MD.Replay._state()
+ST:OpenReplay("1")
+local W = ST.Replay._state()
 local hint = W.hint and T.Strip(W.hint:GetText() or "") or ""
 check("replay: the hint says Coaching: not modelled for Mage yet, and nothing is coached",
-    hint == "Coaching: not modelled for Mage yet" and MD.coachSearch == nil and MD.replayCoaching == nil, hint)
+    hint == "Coaching: not modelled for Mage yet" and ST.coachSearch == nil and ST.replayCoaching == nil, hint)
 if W.frame then W.frame:Hide() end
 
 -- practice
@@ -376,14 +376,14 @@ practice:Render()
 local pstatus = TextShowing("Practice: not modelled for Mage yet")
 check("practice: the panel says Practice: not modelled for Mage yet and Start is off",
     pstatus ~= nil and not Enabled(Button("Start practice")), pstatus)
-MD:OpenPractice(MD.cdb.practiceSetup)
+ST:OpenPractice(ST.cdb.practiceSetup)
 check("practice: starting one prints practice: not modelled for Mage yet.",
     Said("practice: not modelled for Mage yet.") ~= nil, chat[#chat])
 
 if not forever then
     -- the simulator
     chat = {}
-    MD:RefreshSimHeader()
+    ST:RefreshSimHeader()
     local header = TextShowing("(Simulation: not modelled for Mage yet)")
     check("sim: the header says (Simulation: not modelled for Mage yet)", header ~= nil, header)
     Click(Button("Run"))
@@ -392,13 +392,13 @@ if not forever then
 
     -- coachrun, the profile report, the summary's max-rank part
     chat = {}
-    local realGet = MD.RunRecorder.Get
-    MD.RunRecorder.Get = function() return { name = "x", pulls = {} } end
-    MD:RunCoachRun("1")
-    MD.RunRecorder.Get = realGet
+    local realGet = ST.RunRecorder.Get
+    ST.RunRecorder.Get = function() return { name = "x", pulls = {} } end
+    ST:RunCoachRun("1")
+    ST.RunRecorder.Get = realGet
     check("coachrun: prints coachrun: not modelled for Mage yet.",
-        Said("coachrun: not modelled for Mage yet.") ~= nil and MD.runSearch == nil, chat[#chat])
-    local report = table.concat(MD:Profile(), "\n")
+        Said("coachrun: not modelled for Mage yet.") ~= nil and ST.runSearch == nil, chat[#chat])
+    local report = table.concat(ST:Profile(), "\n")
     check("the profile report says (rank table: not modelled for Mage yet)",
         T.Has(report, "(rank table: not modelled for Mage yet)") and not T.Has(report, "druid-only"))
 end
@@ -420,7 +420,7 @@ end
 if not forever then
     T.section("a TBC priest (T123)")
     LogIn("PRIEST")
-    local p = MD.ClassProfile
+    local p = ST.ClassProfile
     check("a TBC priest's profile grants the rank table and the tooltip",
         p == P.Get("PRIEST") and p ~= P.generic and p:Can("rankTable") == true and p:Can("tooltip") == true)
     local can, why = p:Can("coach")
@@ -443,17 +443,17 @@ local today = TextShowing("damage a second for you to heal")
 check("practice: the panel's status is today's (no refusal), Start is on",
     today ~= nil and not T.Has(today, "not modelled") and Enabled(Button("Start practice")), today)
 chat = {}
-MD:OpenReplay("1")
-W = MD.Replay._state()
+ST:OpenReplay("1")
+W = ST.Replay._state()
 hint = W.hint and T.Strip(W.hint:GetText() or "") or ""
 check("replay: the druid's hint carries no refusal", not T.Has(hint, "not modelled"), hint)
 Drain()
 if W.frame then W.frame:Hide() end
 if not forever then
-    MD:RefreshSimHeader()
+    ST:RefreshSimHeader()
     local header = TextShowing("people, ")
     check("sim: the druid's header carries no refusal", header ~= nil and not T.Has(header, "not modelled"), header)
-    local report = table.concat(MD:Profile(), "\n")
+    local report = table.concat(ST:Profile(), "\n")
     check("the profile report lists the druid's max-rank costs, as today",
         T.Has(report, "--- costs of known max ranks ---") and not T.Has(report, "not modelled"))
 end

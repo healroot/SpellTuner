@@ -8,7 +8,7 @@
 --
 -- What is held, in order:
 --   1. the stub's combat state answers the regen events (and the kernel's
---      MD.inCombat with it);
+--      ST.inCombat with it);
 --   2. out of combat at full: FULL, no rest segment, the widget hidden;
 --   3. a /reload mid-fight: the kernel's flag seeded true with no regen event
 --      and the poll left saying no -- the clock, the widget, the pull budget,
@@ -31,14 +31,14 @@
 --      the value and the rest segment keep their x across 59s -> 1:00 ->
 --      >10m; what the segments draw is the line's text byte for byte (`vv`
 --      included); a left-click opens the window out of combat only, and the
---      mover seam (MD.ClockWidget: ApplyPoint, ResetPosition, Preview).
+--      mover seam (ST.ClockWidget: ApplyPoint, ResetPosition, Preview).
 -- The stream is real events -- UNIT_SPELLCAST_SUCCEEDED priced by
 -- Data/SpellData.lua, UNIT_POWER_UPDATE, the regen events -- and a scripted
 -- GetManaRegen; nothing in the model is replaced.
 local here = arg[0]:match("^(.*)/[^/]+$")
 HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua"); arg[0] = a0
+local ST = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB
 
 local ok, fails = 0, {}
@@ -60,8 +60,8 @@ end
 -- (only their own handlers, captured as they register -- re-firing MD_READY
 -- would re-run every other module's).
 do
-    local ready, realReg = {}, MD.RegisterCallback
-    MD.RegisterCallback = function(self, name, fn)
+    local ready, realReg = {}, ST.RegisterCallback
+    ST.RegisterCallback = function(self, name, fn)
         if name == "MD_READY" then ready[#ready + 1] = fn end
         return realReg(self, name, fn)
     end
@@ -75,8 +75,8 @@ do
     if cv then cv:close(); files[#files + 1] = "UI/ClockView.lua" end
     files[#files + 1] = "UI/Widget.lua"
     files[#files + 1] = "UI/Advisor.lua"
-    S.Load(files, "SpellTuner", MD)
-    MD.RegisterCallback = realReg
+    S.Load(files, "SpellTuner", ST)
+    ST.RegisterCallback = realReg
     -- T82: the stub's CreateFontString takes no template and SetPoint keeps
     -- nothing (geometry off); while the widget is made, each font string
     -- keeps its template and each region its first point, so check 12 can
@@ -104,7 +104,7 @@ local W = _G.SpellTunerWidget
 local regenBase, regenCast = 10, 5
 function GetManaRegen() return regenBase, regenCast end
 
-local SD = MD.SpellData
+local SD = ST.SpellData
 local HT5 = 5189 -- Healing Touch rank 5: 219 mana after the harness's talents
 local function Cast(id)
     S.mana = S.mana - SD:GetCost(id)
@@ -112,8 +112,8 @@ local function Cast(id)
     S.Fire("UNIT_POWER_UPDATE", "player", "MANA")
 end
 local function Plain(s) return (s:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) end
-local function Shown() return Plain(MD:GetDisplayString()) end
-local function State() return MD:GetManaState() end
+local function Shown() return Plain(ST:GetDisplayString()) end
+local function State() return ST:GetManaState() end
 local function Ticks(n) for _ = 1, n do S.Tick(0.5) end end
 -- "1:15" -> 75, "50s" -> 50, ">10m" -> nil
 local function Secs(txt)
@@ -136,14 +136,14 @@ Ticks(4)
 -- 1. the stub answers the regen events, and the kernel's flag follows them
 --------------------------------------------------------------------------------
 check("stub: out of combat before any regen event",
-    UnitAffectingCombat("player") == false and InCombatLockdown() == false and MD.inCombat == false)
+    UnitAffectingCombat("player") == false and InCombatLockdown() == false and ST.inCombat == false)
 S.Fire("PLAYER_REGEN_DISABLED")
 check("stub: PLAYER_REGEN_DISABLED -> UnitAffectingCombat, InCombatLockdown true",
     UnitAffectingCombat("player") == true and InCombatLockdown() == true)
-check("kernel: MD.inCombat true on PLAYER_REGEN_DISABLED", MD.inCombat == true)
+check("kernel: ST.inCombat true on PLAYER_REGEN_DISABLED", ST.inCombat == true)
 S.Fire("PLAYER_REGEN_ENABLED")
-check("stub: PLAYER_REGEN_ENABLED -> both false again, MD.inCombat false",
-    UnitAffectingCombat("player") == false and InCombatLockdown() == false and MD.inCombat == false)
+check("stub: PLAYER_REGEN_ENABLED -> both false again, ST.inCombat false",
+    UnitAffectingCombat("player") == false and InCombatLockdown() == false and ST.inCombat == false)
 Ticks(2)
 
 --------------------------------------------------------------------------------
@@ -155,34 +155,34 @@ check("widget: locked, out of combat, full mana -> hidden", W and not W:IsShown(
 
 --------------------------------------------------------------------------------
 -- 3. a /reload mid-fight. PLAYER_REGEN_DISABLED already fired before the
--- reload; Core.lua seeds MD.inCombat at MD_READY through the adapter. The
+-- reload; Core.lua seeds ST.inCombat at MD_READY through the adapter. The
 -- flag is set here the way that seed sets it, and the stub's own poll is left
 -- saying "out of combat", so only a reader of the kernel's flag passes.
 --------------------------------------------------------------------------------
-local realHist = MD.fightHistory
-MD.fightHistory = {
+local realHist = ST.fightHistory
+ST.fightHistory = {
     { avgSpendRate = 10, duration = 30 }, { avgSpendRate = 20, duration = 30 },
     { avgSpendRate = 5, duration = 30 },  { avgSpendRate = 40, duration = 30 },
 }
-check("pull budget out of combat: tooltip lines", #MD.PullBudget:Lines() > 0)
+check("pull budget out of combat: tooltip lines", #ST.PullBudget:Lines() > 0)
 -- 4. the median: 300, 600, 150, 1200 -> the lower middle of 150 300 600 1200
-local e = MD.PullBudget:Estimate()
+local e = ST.PullBudget:Estimate()
 check("pull budget: median of an even count is the lower middle (300)",
     e and e.perPull == 300 and e.n == 4, e and string.format("%s of %d", tostring(e.perPull), e.n))
 check("pull budget: the history's own order is untouched",
-    MD.fightHistory[1].avgSpendRate == 10 and MD.fightHistory[3].avgSpendRate == 5)
+    ST.fightHistory[1].avgSpendRate == 10 and ST.fightHistory[3].avgSpendRate == 5)
 
-MD.inCombat = true
+ST.inCombat = true
 Ticks(1)
 check("reload mid-fight: the poll says no, the kernel's flag says yes",
-    UnitAffectingCombat("player") == false and MD.inCombat == true)
+    UnitAffectingCombat("player") == false and ST.inCombat == true)
 check("reload mid-fight: the clock projects in combat at once (warmup)",
     State().inCombat == true and State().mode == "warmup" and Shown():find("^OOM %.%.%.") ~= nil, Shown())
 check("reload mid-fight: the widget shows at full mana", W and W:IsShown())
-check("reload mid-fight: no pull-budget lines in combat", #MD.PullBudget:Lines() == 0)
+check("reload mid-fight: no pull-budget lines in combat", #ST.PullBudget:Lines() == 0)
 
 local mark = #chat + 1
-MD.cdb.mp5 = { at = 1700000000, mp5 = 12 }
+ST.cdb.mp5 = { at = 1700000000, mp5 = 12 }
 S.Fire("PLAYER_EQUIPMENT_CHANGED")
 check("reload mid-fight: no gear reminder in combat", Said("item mp5 was measured", mark) == 0)
 
@@ -198,7 +198,7 @@ check("...and that alert, the only one, pulses the widget",
     Said("Innervate now", mark) == 1 and W and W.pulse and W.pulse.plays == plays + 1)
 check("reload mid-fight: no drink reminder in combat", Said("Drink", mark) == 0)
 
-MD.inCombat = false
+ST.inCombat = false
 Ticks(1)
 check("out of combat again: the clock leaves combat", State().inCombat == false and State().mode ~= "warmup",
     State().mode)
@@ -207,9 +207,9 @@ check("out of combat: the gear reminder, once", Said("item mp5 was measured", ma
 Ticks(12)
 check("out of combat, 14% mana, standing still: the drink reminder", Said("Drink", mark) == 1,
     tostring(Said("Drink", mark)))
-check("pull budget out of combat again: tooltip lines", #MD.PullBudget:Lines() > 0)
+check("pull budget out of combat again: tooltip lines", #ST.PullBudget:Lines() > 0)
 
-MD.fightHistory = realHist
+ST.fightHistory = realHist
 S.known[29166] = nil
 S.mana = S.manaMax
 S.Fire("UNIT_POWER_UPDATE", "player", "MANA")
@@ -274,13 +274,13 @@ check("arrow while casting steadily: 'v' seen, never '^'", down > 0 and up == 0,
 -- back only after two confident ticks
 --------------------------------------------------------------------------------
 local rel = State().rel
-MD.db.oomConfidence = rel / 2
+ST.db.oomConfidence = rel / 2
 Ticks(1)
 check("rel above the gate: not confident, the bound at once",
     State().confident == false and Shown():find("^OOM >[%d:s]+ =") ~= nil, Shown())
 Ticks(2)
 check("...and it stays the bound", Shown():find("^OOM >") ~= nil, Shown())
-MD.db.oomConfidence = 0.7
+ST.db.oomConfidence = 0.7
 Ticks(1)
 check("gate restored: one confident tick still shows the bound",
     State().confident == true and Shown():find("^OOM >") ~= nil, Shown())
@@ -297,15 +297,15 @@ for _ = 1, 30 do
 end
 check("casting stops: '^' within 15 s", sawUp, stopShown .. " -> " .. Shown())
 local st = State()
-local want = (S.manaMax - S.mana) / MD.Regen.base
+local want = (S.manaMax - S.mana) / ST.Regen.base
 check("out of the five-second rule: rest = deficit / base regen",
-    st.rest and math.abs(st.rest - want) < 1e-6 and MD.Regen:FSRRemaining() == 0,
+    st.rest and math.abs(st.rest - want) < 1e-6 and ST.Regen:FSRRemaining() == 0,
     string.format("%s vs %.1f", tostring(st.rest), want))
 
 --------------------------------------------------------------------------------
 -- 8. hold: regen matched to spend + one sigma, so |net| <= sigma
 --------------------------------------------------------------------------------
-local rate, sigma = MD.Spend:Estimate()
+local rate, sigma = ST.Spend:Estimate()
 regenBase, regenCast = rate + sigma, rate + sigma
 Ticks(1)
 check("hold is better news: the first tick keeps oom", State().mode == "hold" and Shown():find("^OOM ") ~= nil
@@ -338,7 +338,7 @@ st = State()
 check("combat ends: out of combat, 'FULL <time to full>', no rest segment",
     st.inCombat == false and st.mode == "ooc" and Shown():find("^FULL [%d:s]+$") ~= nil, Shown())
 check("...the time to full is the deficit over the base rate",
-    st.ttf and math.abs(st.ttf - (S.manaMax - S.mana) / MD.Regen.base) < 1e-6,
+    st.ttf and math.abs(st.ttf - (S.manaMax - S.mana) / ST.Regen.base) < 1e-6,
     string.format("%s", tostring(st.ttf)))
 check("widget: below 90% out of combat -> still shown", W and W:IsShown())
 
@@ -351,7 +351,7 @@ check("widget: below 90% out of combat -> still shown", W and W:IsShown())
 -- round; the strip amber while the rule runs, green after; the mana bar the
 -- pool (UnitPower over its max) in the mana blue.
 --------------------------------------------------------------------------------
-local UI = MD.UI
+local UI = ST.UI
 local function Same3(a, b)
     return type(a) == "table" and type(b) == "table" and math.abs(a[1] - b[1]) < 1e-6
         and math.abs(a[2] - b[2]) < 1e-6 and math.abs(a[3] - b[3]) < 1e-6
@@ -415,7 +415,7 @@ do
     -- three segments are hidden under it and back after
     local view = W.view or {}
     local bar, txt = W.bar or {}, view.msg or {} -- {} on a widget without them: a FAIL, not a raise
-    MD:ForceWidgetPreview(60)
+    ST:ForceWidgetPreview(60)
     S.Tick(0.5)
     local accent = { UI.RGB("accent") }
     local previewText = txt.text
@@ -423,7 +423,7 @@ do
     local barOk = bar.maxV ~= nil and bar.value == bar.maxV and Same3(bar.barColor, accent)
     local shownNow = W:IsShown()
     local segsHidden = view.label ~= nil and not view.label:IsShown() and txt.shown == true
-    MD:ForceWidgetPreview(0)
+    ST:ForceWidgetPreview(0)
     S.Tick(0.5)
     local back = segsHidden and txt.shown == false and view.label:IsShown()
         and (view.label.text == "OOM" or view.label.text == "FULL")
@@ -437,10 +437,10 @@ end
 --------------------------------------------------------------------------------
 -- 14.-16. T93 (docs/SPEC-next.md 7.1 F2, decisions 14 and 17): the clock's
 -- text drawn in three fixed segments by UI/ClockView.lua. The widget paints
--- MD:GetClockFace(); here that call answers chosen faces, so the paint can be
+-- ST:GetClockFace(); here that call answers chosen faces, so the paint can be
 -- read at exactly 59s, 1:00 and >10m.
 --------------------------------------------------------------------------------
-local CF = MD.ClockFace
+local CF = ST.ClockFace
 local view = W.view or {}
 local function Seg(fs)
     if not fs or not fs:IsShown() then return nil end
@@ -456,11 +456,11 @@ local function Drawn()
     if s then out = out .. "  " .. s end
     return out
 end
-local realFace = MD.GetClockFace
+local realFace = ST.GetClockFace
 local function PaintFace(face)
-    MD.GetClockFace = function() return face end
+    ST.GetClockFace = function() return face end
     S.Tick(0.5)
-    MD.GetClockFace = realFace
+    ST.GetClockFace = realFace
 end
 local function OomFace(v, tone)
     return { mode = "oom", label = "OOM", value = v, known = "point", tone = tone, arrow = "v", combat = true,
@@ -535,31 +535,31 @@ end
 do
     -- decision 17: a left-click opens the window out of combat only, as on
     -- Forever; and the mover seam (ApplyPoint, ResetPosition, Preview) the
-    -- TBC widget exposes as MD.ClockWidget, the Forever clock as the same name
+    -- TBC widget exposes as ST.ClockWidget, the Forever clock as the same name
     local calls = 0
-    local orig = MD.ToggleDashboard
-    MD.ToggleDashboard = function() calls = calls + 1 end
+    local orig = ST.ToggleDashboard
+    ST.ToggleDashboard = function() calls = calls + 1 end
     local up = W:GetScript("OnMouseUp")
-    MD.db.locked = true
-    MD.inCombat = false
+    ST.db.locked = true
+    ST.inCombat = false
     if up then up(W, "LeftButton") end
     local outOk = calls == 1
-    MD.inCombat = true
+    ST.inCombat = true
     if up then up(W, "LeftButton") end
     local inNot = calls == 1
-    MD.inCombat = false
-    MD.ToggleDashboard = orig
+    ST.inCombat = false
+    ST.ToggleDashboard = orig
 
-    local M = MD.ClockWidget
+    local M = ST.ClockWidget
     local seam = type(M) == "table" and type(M.ApplyPoint) == "function" and type(M.ResetPosition) == "function"
         and type(M.Preview) == "function" and M.frame == W
     local reset, preview = false, false
     if seam then
-        MD.db.pos = { "TOPLEFT", "TOPLEFT", 10, -10 }
+        ST.db.pos = { "TOPLEFT", "TOPLEFT", 10, -10 }
         M:ResetPosition()
-        local d = MD.DEFAULTS.pos
-        reset = MD.db.pos[1] == d[1] and MD.db.pos[2] == d[2] and MD.db.pos[3] == d[3] and MD.db.pos[4] == d[4]
-            and MD.db.pos ~= d
+        local d = ST.DEFAULTS.pos
+        reset = ST.db.pos[1] == d[1] and ST.db.pos[2] == d[2] and ST.db.pos[3] == d[3] and ST.db.pos[4] == d[4]
+            and ST.db.pos ~= d
         S.mana = S.manaMax
         S.Fire("UNIT_POWER_UPDATE", "player", "MANA")
         Ticks(2)
@@ -570,7 +570,7 @@ do
         Ticks(1)
         preview = preview and not W:IsShown()
     end
-    check("T93: left-click opens the window out of combat only; the mover seam (MD.ClockWidget)",
+    check("T93: left-click opens the window out of combat only; the mover seam (ST.ClockWidget)",
         up ~= nil and outOk and inNot and seam and reset and preview,
         string.format("out=%s inCombat=%s seam=%s reset=%s preview=%s", tostring(outOk), tostring(inNot),
             tostring(seam), tostring(reset), tostring(preview)))
@@ -583,7 +583,7 @@ end
 -- part of the drawn words when the width allows.
 --------------------------------------------------------------------------------
 do
-    local CV = MD.ClockView
+    local CV = ST.ClockView
     local function Sample(key)
         for _, smp in ipairs(CF and CF.SAMPLES or {}) do if smp.key == key then return smp.face end end
     end
@@ -632,7 +632,7 @@ end
 -- irregular gap answer nil. What the strip's tick mark is placed from.
 --------------------------------------------------------------------------------
 do
-    local RM = MD.Regen
+    local RM = ST.Regen
     local function Rise(n)
         S.mana = math.min(S.manaMax, S.mana + (n or 10))
         S.Fire("UNIT_POWER_UPDATE", "player", "MANA")

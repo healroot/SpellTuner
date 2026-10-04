@@ -3,8 +3,8 @@
 --
 -- T9 (docs/tasks/T9-spell-tooltip.md, M2): the SpellTuner block on every
 -- spell tooltip -- the spellbook, an action bar, a chat link -- through
--- TooltipDataProcessor (Client/API_Forever.lua's MD.API.OnSpellTooltip).
--- Forever only. Reaches the client only through MD.API and Book/Parse's own
+-- TooltipDataProcessor (Client/API_Forever.lua's ST.API.OnSpellTooltip).
+-- Forever only. Reaches the client only through ST.API and Book/Parse's own
 -- output; the tooltip frame's own methods (AddLine, AddDoubleLine,
 -- HookScript, Show, NumLines, IsShown) are the widget toolkit, not a client
 -- call (CLAUDE.md).
@@ -17,29 +17,29 @@
 -- behind the detail key (db.spellTooltipDetail). Colours are passed as
 -- arguments, so the tooltip's default gold is never inherited.
 -- T121 (docs/tasks/T121-one-tooltip-block.md, docs/SPEC-one-ui.md 6, mockup
--- M5): both lines draw this block from their own MD.Book -- Forever's text
+-- M5): both lines draw this block from their own ST.Book -- Forever's text
 -- read book, TBC's model book (Spells/Book_Model.lua) -- with the family by
--- `entry.family`, the pool by MD.Book:Pool() ("~N now" only for a modelled
+-- `entry.family`, the pool by ST.Book:Pool() ("~N now" only for a modelled
 -- pool) and How from `entry.calc` and the bonus behind the detail key. The
 -- three settings are registered here; the damage half (spellTooltipDamage)
 -- and the class profile's tooltip cap gate the block on both lines.
 -- SpellTip.OnSpell(tt, id, source) is exported: TBC's hook
 -- (UI/SpellTooltip.lua) hands it the id; Forever's hooks are registered at
 -- MD_READY only where the adapter has them.
-local _, MD = ...
-local Book = MD.Book
+local _, ST = ...
+local Book = ST.Book
 -- T67 (P23, review A13): the words -- per mana, per second, casts, the
 -- value's parts, the crit range -- are Spells/Words.lua's, shared with the
 -- Spells pane; this file picks the block's style (spec 5.x) and colours.
-local Words = MD.Words
+local Words = ST.Words
 
-MD.SpellTip = MD.SpellTip or {}
-local SpellTip = MD.SpellTip
+ST.SpellTip = ST.SpellTip or {}
+local SpellTip = ST.SpellTip
 
 -- T121: the block's settings, the same values both cores carry (a second
 -- registration of the same value is allowed; the cores' copies go when each
 -- core is next touched).
-MD:RegisterDefaults({ spellTooltip = true, spellTooltipDamage = true, spellTooltipDetail = "SHIFT" })
+ST:RegisterDefaults({ spellTooltip = true, spellTooltipDamage = true, spellTooltipDetail = "SHIFT" })
 
 -- Book's own global cooldown (Spells/Book.lua's GCD): an Other spell's
 -- interval for casts to OOM, which Book:Rows never fills for a kindless
@@ -63,13 +63,13 @@ local FALLBACK = {
 -- T69 (P25): UI.TEXT is present on TBC too now (its gold among it), so the
 -- block asks UI.THEMED: without the theme it keeps these values, as before.
 local function C(name)
-    local t = MD.UI and MD.UI.THEMED and MD.UI.TEXT
+    local t = ST.UI and ST.UI.THEMED and ST.UI.TEXT
     return (t and t[name]) or FALLBACK[name]
 end
 
 -- One line of the block: {l, r, lr,lg,lb, rr,rg,rb}; r nil for a single line.
 -- T76 (P32, review A21): each line is also UI/Tip.lua's line model -- the same
--- text and colours as named fields (l, r, c, rc) -- so MD.Tip:Render draws it
+-- text and colours as named fields (l, r, c, rc) -- so ST.Tip:Render draws it
 -- as it is; the positional fields stay one release for their readers.
 local function Pair(l, r, lTok, rTok)
     local lc, rc = C(lTok or "label"), C(rTok or "text")
@@ -109,7 +109,7 @@ SpellTip.DETAIL_MODES = {
 
 -- The mode in force: anything the setting does not name is Shift.
 function SpellTip:DetailMode()
-    local m = MD.db and MD.db.spellTooltipDetail
+    local m = ST.db and ST.db.spellTooltipDetail
     if m == "ALWAYS" or m == "NEVER" or KEYS[m] then return m end
     return "SHIFT"
 end
@@ -120,7 +120,7 @@ function SpellTip:DetailShown()
     local m = SpellTip:DetailMode()
     if m == "ALWAYS" then return true end
     if m == "NEVER" then return false end
-    local read = MD.API[KEYS[m][1]]
+    local read = ST.API[KEYS[m][1]]
     if type(read) ~= "function" then return false end
     return read() == true
 end
@@ -150,7 +150,7 @@ local function PerSecText(entry)
 end
 
 -- The book's pool when it is below its max, else nil (5.1: at full "N now"
--- would only repeat the first number). T121: MD.Book:Pool() on both lines --
+-- would only repeat the first number). T121: ST.Book:Pool() on both lines --
 -- Forever's the clock's modelled pool, TBC's the pool the client reads.
 local function NowPool()
     if not (Book and Book.Pool) then return nil end
@@ -504,7 +504,7 @@ function SpellTip:Lines(id, detail, source)
     -- Spells/Tabs.lua's (the book's talent spells, else the list's kind) --
     -- and names the other half behind the detail key. A heal role, no role
     -- or any other spell: the block as it was.
-    local role = MD.Tabs and MD.Tabs.Role and MD.Tabs:Role(book)
+    local role = ST.Tabs and ST.Tabs.Role and ST.Tabs:Role(book)
     if role == "damage" then
         if family then
             local view = Book:Half(family, role)
@@ -581,12 +581,12 @@ end
 -- Writes Lines' result into a tooltip, colours passed as arguments.
 -- T76 (P32, review A21): it also takes UI/Tip.lua's line model -- a line with
 -- no positional text ({ l, r, c, rc, wrap }, colours as arrays or token
--- names) goes through MD.Tip:Render; the positional arrays are read as
+-- names) goes through ST.Tip:Render; the positional arrays are read as
 -- before, for one release.
 function SpellTip:Render(tt, lines)
     for _, line in ipairs(lines or {}) do
-        if line[1] == nil and (line.l ~= nil or line.r ~= nil) and MD.Tip and MD.Tip.Render then
-            MD.Tip:Render(tt, { line })
+        if line[1] == nil and (line.l ~= nil or line.r ~= nil) and ST.Tip and ST.Tip.Render then
+            ST.Tip:Render(tt, { line })
         elseif line[2] ~= nil then
             tt:AddDoubleLine(line[1], line[2], line[3], line[4], line[5], line[6], line[7], line[8])
         else
@@ -616,7 +616,7 @@ local withBlock = setmetatable({}, { __mode = "k" })
 -- its turn. Answers `done, outcome` for the adapter's chain and
 -- /st tooltip why: done when a block is on the tooltip or the block is off.
 -- T37 (5.6): the guard is keyed by (id, detail). The detail key's refresh
--- (MD.API.RefreshTooltip) clears the tooltip and runs the post-calls again
+-- (ST.API.RefreshTooltip) clears the tooltip and runs the post-calls again
 -- -- whether OnTooltipCleared fires on the way is UNVERIFIED on Forever -- so
 -- the same showing may rebuild its block once the block is no longer on the
 -- tooltip (fewer lines than it ended at): a post-call run again without a
@@ -629,8 +629,8 @@ local withBlock = setmetatable({}, { __mode = "k" })
 -- Lines, so the Spells pane's rank-row hover keeps its block.
 local function OnSpell(tt, id, source)
     if not tt or type(id) ~= "number" then return false, "no id" end
-    if MD.db and MD.db.spellTooltip == false then return true, "off" end
-    local profile = MD.ClassProfile
+    if ST.db and ST.db.spellTooltip == false then return true, "off" end
+    local profile = ST.ClassProfile
     if not (profile and profile.Can and profile:Can("tooltip")) then return true, "off" end
 
     if not tt._spellTipHooked and tt.HookScript then
@@ -655,11 +655,11 @@ local function OnSpell(tt, id, source)
     -- The builder never raises into the game's tooltip.
     local ok, lines, outcome, kind = pcall(SpellTip.Lines, SpellTip, id, detail, source)
     if not ok then
-        MD:Debug("other", "spell tooltip for %s failed: %s", tostring(id), tostring(lines))
+        ST:Debug("other", "spell tooltip for %s failed: %s", tostring(id), tostring(lines))
         return false, "error"
     end
     if type(lines) ~= "table" then return false, outcome or "no value" end
-    if kind == "damage" and MD.db and MD.db.spellTooltipDamage == false then return true, "off" end
+    if kind == "damage" and ST.db and ST.db.spellTooltipDamage == false then return true, "off" end
 
     tt._spellTipId = id
     tt._spellTipDetail = detail
@@ -681,26 +681,26 @@ SpellTip.OnSpell = OnSpell
 local function OnModifier(key)
     local mode = SpellTip:DetailMode()
     if not KEYS[mode] then return end
-    if MD.API.IsSecret(key) or type(key) ~= "string" or not key:find(mode, 1, true) then return end
+    if ST.API.IsSecret(key) or type(key) ~= "string" or not key:find(mode, 1, true) then return end
     local list = {}
     for tt in pairs(withBlock) do list[#list + 1] = tt end
     for _, tt in ipairs(list) do
         if tt._spellTipId ~= nil and (not tt.IsShown or tt:IsShown()) then
-            MD.API.RefreshTooltip(tt)
+            ST.API.RefreshTooltip(tt)
         end
     end
 end
 
 -- T28: /st tooltip why -- one line: whether each macro path is registered,
--- then what the last macro hover did (MD.API.LastMacroHover: the path that
+-- then what the last macro hover did (ST.API.LastMacroHover: the path that
 -- fired, each step's answer and what Lines said about each id). Every piece
 -- is the adapter's own ASCII strings.
 function SpellTip:Why()
-    local hooks = MD.API.tooltipHooks or {}
+    local hooks = ST.API.tooltipHooks or {}
     local head = "tooltip why: macro post-call " .. tostring(hooks.macro or "not registered")
         .. ", SetAction hook " .. tostring(hooks.action or "not registered")
-    if MD.db and MD.db.spellTooltip == false then head = head .. " (block off: /st tooltip)" end
-    local rec = MD.API.LastMacroHover and MD.API.LastMacroHover()
+    if ST.db and ST.db.spellTooltip == false then head = head .. " (block off: /st tooltip)" end
+    local rec = ST.API.LastMacroHover and ST.API.LastMacroHover()
     if type(rec) ~= "table" then
         return head .. "; last macro hover: path none"
     end
@@ -713,13 +713,13 @@ end
 -- adapter function, never the client's name -- apicheck rule 10). TBC's
 -- adapter has none: its hook is UI/SpellTooltip.lua, which calls OnSpell and
 -- re-runs the owner's OnEnter for the detail key itself.
-MD:RegisterCallback("MD_READY", function()
-    if not MD.API.OnSpellTooltip then return end
-    MD.API.OnSpellTooltip(OnSpell)
+ST:RegisterCallback("MD_READY", function()
+    if not ST.API.OnSpellTooltip then return end
+    ST.API.OnSpellTooltip(OnSpell)
     -- T25: a macro's tooltip gets the block of the spell it casts.
-    if MD.API.OnMacroTooltip then MD.API.OnMacroTooltip(OnSpell) end
+    if ST.API.OnMacroTooltip then ST.API.OnMacroTooltip(OnSpell) end
     -- T28: and so does an action button's, from the slot SetAction is handed.
-    if MD.API.OnActionTooltip then MD.API.OnActionTooltip(OnSpell) end
+    if ST.API.OnActionTooltip then ST.API.OnActionTooltip(OnSpell) end
     -- T37: the detail key's refresh.
-    if MD.API.RefreshTooltip then MD:On("MODIFIER_STATE_CHANGED", OnModifier) end
+    if ST.API.RefreshTooltip then ST:On("MODIFIER_STATE_CHANGED", OnModifier) end
 end)

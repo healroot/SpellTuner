@@ -9,12 +9,12 @@
 local here = arg[0]:match("^(.*)/[^/]+$")
 HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua"); arg[0] = a0
-local SM, SP, SV = MD.SimModel, MD.SimPlanner, MD.SimSolver
+local ST = dofile(here .. "/harness.lua"); arg[0] = a0
+local SM, SP, SV = ST.SimModel, ST.SimPlanner, ST.SimSolver
 local K = SM.K
 
 -- the shared scripted pull, so there is a real recording to classify against
-dofile(here .. "/fakepull.lua")(MD, _G.STUB)
+dofile(here .. "/fakepull.lua")(ST, _G.STUB)
 
 local ok, fails = 0, {}
 local function check(name, cond, detail)
@@ -22,7 +22,7 @@ local function check(name, cond, detail)
     print(string.format("%-46s %s%s", name, cond and "ok" or "FAIL", detail and (" - " .. detail) or ""))
 end
 
-local kit = MD.RankMath:SpellKit({ live = true })
+local kit = ST.RankMath:SpellKit({ live = true })
 local binds = SP.MaxRankBinds()
 
 --------------------------------------------------------------------------------
@@ -121,7 +121,7 @@ do
     -- deeply hurt, nothing incoming: the gap is NOW, so a direct heal wins
     local hurtQuiet = state(3000, 0)
     local id1 = plan:Decide(hurtQuiet, 10, 99999, "caster")
-    local sd1 = id1 and MD.SpellData.spells[id1]
+    local sd1 = id1 and ST.SpellData.spells[id1]
     check("a deep deficit with no incoming pulls a direct heal",
         sd1 ~= nil and (sd1.family == "Regrowth" or sd1.family == "HealingTouch"
                         or sd1.family == "Swiftmend"),
@@ -130,7 +130,7 @@ do
     -- barely hurt but bleeding: the gap is AHEAD, so a HoT wins
     local trickle = state(9200, 300)
     local id2 = plan:Decide(trickle, 10, 99999, "caster")
-    local sd2 = id2 and MD.SpellData.spells[id2]
+    local sd2 = id2 and ST.SpellData.spells[id2]
     check("a small deficit with damage coming pulls a HoT",
         sd2 ~= nil and (sd2.family == "Lifebloom" or sd2.family == "Rejuvenation"),
         sd2 and (sd2.family .. " r" .. sd2.rank) or tostring(id2))
@@ -192,7 +192,7 @@ end
 -- `danger` computed exactly as the TBC builder does from the scenario's own hits.
 --------------------------------------------------------------------------------
 do
-    local dangerHits = (MD.db and MD.db.simDangerHits) or 1
+    local dangerHits = (ST.db and ST.db.simDangerHits) or 1
     -- 600 every 2 s from 2 s to 38 s, and (optionally) one 7000 hit at 40 s
     local function measured(bigAt, maxHP, step, small, big, fheal)
         local ev = { t = {}, kind = {}, tgt = {}, amt = {}, x = {} }
@@ -314,7 +314,7 @@ end
 -- recordings of the same person (leave-one-out, by id); never the one built.
 --------------------------------------------------------------------------------
 do
-    local dangerHits = (MD.db and MD.db.simDangerHits) or 1
+    local dangerHits = (ST.db and ST.db.simDangerHits) or 1
     -- a hand-made TBC recording: roster Healroot + <name>, DMG events on the
     -- second, given as { { t, amount }, ... }
     local function rec(id, name, hits)
@@ -405,7 +405,7 @@ end
 -- 5. Healer intuition: a prior from OTHER fights, never from this one
 --------------------------------------------------------------------------------
 do
-    local IN = MD.Intuition
+    local IN = ST.Intuition
     -- three fake recordings in one zone: the tank eats 400/s from the pull
     local function fakeRec(id, tankDps)
         local ev = { t = {}, kind = {}, tgt = {}, amt = {}, x = {} }
@@ -503,14 +503,14 @@ do
     local id, tgt = wise:Decide(S0, 0, 99999, "caster")
     check("with a prior it pre-heals the tank before the first hit",
         id ~= nil and tgt == 1,
-        id and ((MD.SpellData.spells[id] or {}).family or tostring(id)) or "still waited")
+        id and ((ST.SpellData.spells[id] or {}).family or tostring(id)) or "still waited")
 end
 
 --------------------------------------------------------------------------------
 -- 6. Deformed foresight: it must SEE the burst and must NOT see it clearly
 --------------------------------------------------------------------------------
 do
-    local FS = MD.Foresight
+    local FS = ST.Foresight
     -- one clean burst: 8000 damage in a single second at t=40, nothing else
     local ev = { t = {}, kind = {}, tgt = {}, amt = {}, x = {} }
     local n = 0
@@ -655,8 +655,8 @@ end
 -- 9. The shipped prior: somebody else's experience, in fractions of health
 --------------------------------------------------------------------------------
 do
-    local IN = MD.Intuition
-    local t = MD.IntuitionTBC
+    local IN = ST.Intuition
+    local t = ST.IntuitionTBC
     check("a prior ships with the addon", t ~= nil and (t.fights or 0) >= 10,
         t and string.format("%d fights, %d encounters", t.fights or 0, t.encounters or 0) or "missing")
     check("it was merged from many encounters, not one raid",
@@ -708,7 +708,7 @@ do
         (function()
             local id, tgt = wise:Decide(pullState(), 0, 99999, "caster")
             return id and string.format("target %s, %s", tostring(tgt),
-                (MD.SpellData.spells[id] or {}).family or id) or "waited"
+                (ST.SpellData.spells[id] or {}).family or id) or "waited"
         end)())
 end
 
@@ -721,11 +721,11 @@ end
 -- with "attempt to compare nil with number".
 --------------------------------------------------------------------------------
 do
-    local rec = MD.FightRecorder:Get(1)
+    local rec = ST.FightRecorder:Get(1)
     check("there is a recording to classify", rec ~= nil)
     if rec then
         for _, entry in ipairs(SP.STRATEGY_SET) do
-            local kit2 = MD.RankMath:SpellKit({ live = true })
+            local kit2 = ST.RankMath:SpellKit({ live = true })
             local sc = SM.ScenarioFromRecording(rec, kit2)
             local plan = SP.MakeStrategy(entry, SP.MaxRankBinds(), kit2,
                 { scenario = sc, seed = rec.id or 1 })
@@ -739,7 +739,7 @@ do
         -- does it -- and it has no rollStacks at all, which is the point: the
         -- classifier must not assume the fields of the threshold rules.
         do
-            local kitX = MD.RankMath:SpellKit({ live = true })
+            local kitX = ST.RankMath:SpellKit({ live = true })
             local nothing = { Decide = function() return nil end,
                               BindCount = function() return 0 end,
                               Reset = function() end, binds = {}, kit = kitX }
@@ -779,7 +779,7 @@ do
         end
 
         -- and the whole replay path, which is what actually broke
-        local kit2 = MD.RankMath:SpellKit({ live = true })
+        local kit2 = ST.RankMath:SpellKit({ live = true })
         local sc = SM.ScenarioFromRecording(rec, kit2)
         SP.plans[rec.id] = SP.MakeStrategy(SP.Strategy("solver-blind"),
             SP.MaxRankBinds(), kit2, { scenario = sc, seed = rec.id or 1 })
@@ -795,8 +795,8 @@ end
 --------------------------------------------------------------------------------
 do
     -- B6: `noDirect` is in the search's key, so the HoTs-only seed is evaluated
-    local rec = MD.FightRecorder:Get(1)
-    local kitS = MD.RankMath:SpellKit()
+    local rec = ST.FightRecorder:Get(1)
+    local kitS = ST.RankMath:SpellKit()
     local sc = SM.ScenarioFromRecording(rec, kitS)
     local realNew, built, hotsOnly = SP.NewPlan, 0, 0
     SP.NewPlan = function(b, params, k)
@@ -830,7 +830,7 @@ do
     -- B8: both HoTs rolling, the engine's Swiftmend eats Regrowth (SimModel's
     -- LandCast, TBC's rule); the solver must price that one. Eating the
     -- Rejuvenation here would be worth 5000, the Regrowth 1.
-    local SMID = MD.SpellData.maxRank.Swiftmend
+    local SMID = ST.SpellData.maxRank.Swiftmend
     local entry = { family = "Swiftmend", type = "instant", cost = 100, cast = 1.5,
                     swiftmendRejuv = 5000, swiftmendRegrowth = 1 }
     local kitB = { caster = { [SMID] = entry } }
@@ -854,7 +854,7 @@ do
     -- B7: a 2.9 s cast started at 0 and preempted by a fixed cast at 0.5 frees
     -- the healer at 2.0 (the fixed cast's global cooldown); the plan is asked
     -- then, not at the cancelled cast's landing time
-    local HT = MD.SpellData.maxRank.HealingTouch
+    local HT = ST.SpellData.maxRank.HealingTouch
     local kitP = { caster = { [HT] = { family = "HealingTouch", type = "direct", cast = 2.9,
                                        cost = 100, direct = 500 } } }
     local asked = {}
@@ -880,8 +880,8 @@ do
     -- Touch's landing event is still in the heap at 2.9; it must not land the
     -- cancelled spell and swallow the Regrowth. What lands is the Regrowth, at
     -- its own time, and the Healing Touch never succeeds.
-    local HT = MD.SpellData.maxRank.HealingTouch
-    local RG = MD.SpellData.maxRank.Regrowth
+    local HT = ST.SpellData.maxRank.HealingTouch
+    local RG = ST.SpellData.maxRank.Regrowth
     local kitP = { caster = {
         [HT] = { family = "HealingTouch", type = "direct", cast = 2.9, cost = 100, direct = 500 },
         [RG] = { family = "Regrowth", type = "direct", cast = 2.0, cost = 70, direct = 300 } } }
@@ -931,7 +931,7 @@ local function emptyEv() return { t = {}, kind = {}, tgt = {}, amt = {}, x = {} 
 do
     -- (a) Best and Decide: R-classes' cdtest2 -- a Swiftmend with a
     -- Rejuvenation to eat is the pick off cooldown, and never on it
-    local SMID = MD.SpellData.maxRank.Swiftmend
+    local SMID = ST.SpellData.maxRank.Swiftmend
     local kitB = { crit = 0, caster = { [SMID] = { family = "Swiftmend", rank = 1, type = "instant",
         cost = 100, cast = 1.5, gcd = 1.5, swiftmendRejuv = 5000 } }, tree = {} }
     local plan = SV.NewPlan({ Swiftmend = SMID }, { minValue = 0, horizon = 12 }, kitB)
@@ -951,7 +951,7 @@ do
     local decided = plan:Decide(onCd, 10, 99999, "caster")
     -- (b) rule 8: a cheap direct heal on cooldown is not the "cheapest cast
     -- that holds the line"; the dearer one off cooldown is
-    local HT, RG = MD.SpellData.maxRank.HealingTouch, MD.SpellData.maxRank.Regrowth
+    local HT, RG = ST.SpellData.maxRank.HealingTouch, ST.SpellData.maxRank.Regrowth
     local kit8 = { crit = 0, caster = {
         [HT] = { family = "HealingTouch", rank = 1, type = "direct", cost = 10, cast = 1.5, gcd = 1.5,
                  direct = 6000, directCrit = 0, cooldown = 10 },
@@ -975,7 +975,7 @@ end
 do
     -- the engine refuses a plan's cast on cooldown, traces it, and the plan is
     -- asked again; the healer's mana and global cooldown are untouched by it
-    local SMID = MD.SpellData.maxRank.Swiftmend
+    local SMID = ST.SpellData.maxRank.Swiftmend
     local kitR = { crit = 0, caster = { [SMID] = { family = "Swiftmend", rank = 1, type = "instant",
         cost = 10, cast = 1.5, gcd = 1.5 } }, tree = {} }
     local plan = { Decide = function() return SMID, 1, 7 end, noReaction = true }
@@ -1034,7 +1034,7 @@ do
             if T.ev.a[i] == R1 and not r1At then r1At = T.ev.t[i] end
         end
     end
-    local st = MD.ReplayTrace.New(T, sc)
+    local st = ST.ReplayTrace.New(T, sc)
     st:Seek(5)
     local until5, ready5 = st:CooldownUntil(R1), st:Ready(R1)
     -- and R1's cast at 10 blocks R2 in turn, until 20
@@ -1053,7 +1053,7 @@ do
     -- a RECORDED cast inside its cooldown is the truth (a Light's Vigil'd Holy
     -- Shock, a reset talent): the replay's script and a plan's fixed casts run
     -- it as recorded, never refused
-    local SMID = MD.SpellData.maxRank.Swiftmend
+    local SMID = ST.SpellData.maxRank.Swiftmend
     local kitR = { crit = 0, caster = { [SMID] = { family = "Swiftmend", rank = 1, type = "instant",
         cost = 10, cast = 1.5, gcd = 1.5 } }, tree = {} }
     local function sc(extra)
@@ -1092,7 +1092,7 @@ do
     -- on an 8 s cooldown (the solver's first choice whenever it is up) beside
     -- a dear one without. The plan casts the cooldown spell no closer than its
     -- cooldown, and a burst at 40 s changes nothing it does before it.
-    local HT, RG = MD.SpellData.maxRank.HealingTouch, MD.SpellData.maxRank.Regrowth
+    local HT, RG = ST.SpellData.maxRank.HealingTouch, ST.SpellData.maxRank.Regrowth
     local kitC = { crit = 0, caster = {
         [HT] = { family = "HealingTouch", rank = 1, type = "direct", cost = 50, cast = 1.5, gcd = 1.5,
                  castBase = 1.5, direct = 2500, directCrit = 0, cooldown = 8 },
@@ -1285,7 +1285,7 @@ end
 do
     -- the coach card says the group assumption whenever the plan binds (or the
     -- recording casts) a heal that reaches several targets -- and only then
-    local rec = MD.FightRecorder:Get(1)
+    local rec = ST.FightRecorder:Get(1)
     local card, _, cls, best = SP.Coach(rec, { force = true })
     local line = SP.GROUP_ASSUMPTION
     local function has(lines)
@@ -1295,7 +1295,7 @@ do
         return false
     end
     local druidHas = has(card)
-    local kitG = MD.RankMath:SpellKit({ live = true })
+    local kitG = ST.RankMath:SpellKit({ live = true })
     local kit2 = { crit = kitG.crit, profile = kitG.profile, tree = kitG.tree, caster = {} }
     for id, e in pairs(kitG.caster) do kit2.caster[id] = e end
     kit2.caster[PH] = groupKit().caster[PH]

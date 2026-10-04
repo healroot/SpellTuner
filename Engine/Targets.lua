@@ -14,10 +14,10 @@
 -- How often "unknown" actually happens in the author's groups is not known
 -- yet; the roster debug line at each pull is what will tell us
 -- (docs/DESIGN-v0.6.md §5.1).
-local _, MD = ...
+local _, ST = ...
 
 local Targets = {}
-MD.Targets = Targets
+ST.Targets = Targets
 
 Targets.byGUID = {}   -- guid -> { name, class, role, roleSource, unit, isPet, owner }
 Targets.byName = {}   -- name -> same table (fallback when a GUID is unknown)
@@ -53,7 +53,7 @@ local function Describe(unit)
     -- the player: this addon exists for the healer, and solo there is nobody
     -- to assign a role (the first regression log filed the author's own
     -- Regrowths under UNKNOWN)
-    if not role and unit == "player" and MD.player.usesMana then role, source = "HEALER", "self" end
+    if not role and unit == "player" and ST.player.usesMana then role, source = "HEALER", "self" end
     if not role then role, source = "UNKNOWN", "unknown" end
 
     return { guid = guid, name = name or "?", class = class, role = role, roleSource = source, unit = unit }
@@ -120,7 +120,7 @@ function Targets:Rebuild()
             end
         end
     end
-    MD:Fire("ROSTER_CHANGED")
+    ST:Fire("ROSTER_CHANGED")
 end
 
 -- Roster entry for a combat-log destination, or nil for anything outside the
@@ -137,7 +137,7 @@ end
 -- Pets are not counted. A raid whose subgroups the client did not give counts
 -- everyone, as before.
 function Targets:PartySize()
-    local me = MD.player and MD.player.guid and Targets.byGUID[MD.player.guid]
+    local me = ST.player and ST.player.guid and Targets.byGUID[ST.player.guid]
     local sub = me and me.subgroup
     local n = 0
     for _, e in pairs(Targets.byGUID) do
@@ -163,7 +163,7 @@ function Targets:LifeTaps(guid)
 end
 
 function Targets:IsSelf(guid)
-    return guid ~= nil and guid == MD.player.guid
+    return guid ~= nil and guid == ST.player.guid
 end
 
 -- One line for the debug log at each pull. This is the line that will tell
@@ -175,8 +175,8 @@ function Targets:RosterLine()
         if not e.isPet then order[#order + 1] = e end
     end
     table.sort(order, function(a, b)
-        if a.guid == MD.player.guid then return true end
-        if b.guid == MD.player.guid then return false end
+        if a.guid == ST.player.guid then return true end
+        if b.guid == ST.player.guid then return false end
         return a.name < b.name
     end)
     for _, e in ipairs(order) do
@@ -195,7 +195,7 @@ function Targets:ExportRows()
     return out
 end
 
-MD:On("GROUP_ROSTER_UPDATE", function() if MD.db then Targets:Rebuild() end end)
-MD:On("PLAYER_ENTERING_WORLD", function() if MD.db then Targets:Rebuild() end end)
-MD:On("UNIT_PET", function(unit) if MD.db then Targets:Rebuild() end end)
-MD:RegisterCallback("MD_READY", function() Targets:Rebuild() end)
+ST:On("GROUP_ROSTER_UPDATE", function() if ST.db then Targets:Rebuild() end end)
+ST:On("PLAYER_ENTERING_WORLD", function() if ST.db then Targets:Rebuild() end end)
+ST:On("UNIT_PET", function(unit) if ST.db then Targets:Rebuild() end end)
+ST:RegisterCallback("MD_READY", function() Targets:Rebuild() end)

@@ -2,7 +2,7 @@
 -- list of spells the Spells rail shows, one view per family, in the player's
 -- own order. Pure: no frames and no client call -- every book it reads is
 -- the table Spells/Book.lua built (a family's `key` and `ids` are Book's),
--- and everything it keeps lives in MD.cdb.spellTabs, per character because
+-- and everything it keeps lives in ST.cdb.spellTabs, per character because
 -- spellbooks differ by class and level:
 --
 --   order   = { "Healing Touch", "Rejuvenation" }  -- family keys, your order
@@ -17,19 +17,19 @@
 --
 -- T84 (C5 of docs/PLAN-refactor-ux.md, section 7.1: the rail on TBC): both
 -- lines. The book an edit reads when its caller passes none comes through
--- one seam, Tabs.source, which defaults to MD.Book:Get().
+-- one seam, Tabs.source, which defaults to ST.Book:Get().
 --
 -- T118 (docs/tasks/T118-tbc-book.md): the seam is the same on both lines --
--- MD.Book answers on TBC too (Spells/Book_Model.lua), so nothing installs a
+-- ST.Book answers on TBC too (Spells/Book_Model.lua), so nothing installs a
 -- source of its own, and the reconcile runs on BOOK_CHANGED on both lines.
 -- A family marked `noSeed` (TBC's Tranquility and Swiftmend) is never seeded
 -- or reconciled in, only added by hand (the picker); Resolve finds a family
 -- by its entries' `family` (TBC's entries carry the spell's name and the
 -- family key apart). The rules below are otherwise unchanged.
-local _, MD = ...
+local _, ST = ...
 
-MD.Tabs = MD.Tabs or {}
-local Tabs = MD.Tabs
+ST.Tabs = ST.Tabs or {}
+local Tabs = ST.Tabs
 
 -- The one pending removal Undo can put back (3.2: "Wrath removed [Undo]"
 -- until the next change). Session memory, tied to the store it came from.
@@ -43,10 +43,10 @@ local function Fresh()
     return { order = {}, removed = {}, seen = {}, ids = {}, seeded = false }
 end
 
--- MD.cdb.spellTabs, created on first use and repaired field by field: it is
+-- ST.cdb.spellTabs, created on first use and repaired field by field: it is
 -- our own SavedVariables, so a type() check before any index is all it needs.
 function Tabs:Store()
-    local cdb = MD.cdb
+    local cdb = ST.cdb
     if type(cdb) ~= "table" then
         Tabs._orphan = Tabs._orphan or Fresh()
         return Tabs._orphan
@@ -89,7 +89,7 @@ end
 
 -- The seam's default: the spellbook Spells/Book.lua reads (Forever).
 function Tabs.BookSource()
-    if MD.Book and MD.Book.Get then return MD.Book:Get() end
+    if ST.Book and ST.Book.Get then return ST.Book:Get() end
     return nil
 end
 Tabs.source = Tabs.BookSource
@@ -268,7 +268,7 @@ function Tabs:Role(book)
     local role = Tabs:BookRole(book)
     if role then return role, "talents" end
     -- read, never created: a tooltip asks this before the list is opened
-    local st = type(MD.cdb) == "table" and MD.cdb.spellTabs or Tabs._orphan
+    local st = type(ST.cdb) == "table" and ST.cdb.spellTabs or Tabs._orphan
     if type(st) == "table" and st.seeded == true and (st.kind == "heal" or st.kind == "damage") then
         return st.kind, "list"
     end
@@ -504,6 +504,6 @@ function Tabs:Reconcile(book)
     return added
 end
 
-MD:RegisterCallback("BOOK_CHANGED", function(book)
-    if type(MD.cdb) == "table" then Tabs:Reconcile(book) end
+ST:RegisterCallback("BOOK_CHANGED", function(book)
+    if type(ST.cdb) == "table" then Tabs:Reconcile(book) end
 end)

@@ -50,18 +50,18 @@
 -- (a style file that did not load) applies Flat for the session and is kept.
 --
 -- `/st ui style <name>` (and `/md ui style` on TBC, where it creates the `ui`
--- verb) through MD:AddSubcommand, so `/st ui reset` keeps working whatever
--- order the two files load in. The /st dump line through MD:AddDumpLine:
+-- verb) through ST:AddSubcommand, so `/st ui reset` keeps working whatever
+-- order the two files load in. The /st dump line through ST:AddDumpLine:
 -- `style: <key> (accent <class|style>) fell back: <roles|none>` -- added the
 -- first time a style other than Flat is applied or a role falls back, so the
 -- dump of a player who never left Flat is byte for byte what it was.
 --
--- No client data is read here except through MD.API, and only the presence
--- checks a style's `needs` ask for (5.3: MD.API.AtlasInfo / MD.API.FileID,
+-- No client data is read here except through ST.API, and only the presence
+-- checks a style's `needs` ask for (5.3: ST.API.AtlasInfo / ST.API.FileID,
 -- when a later task binds them; with no answer a plain file is assumed present
 -- and every atlas refused).
-local _, MD = ...
-local UI = MD.UI
+local _, ST = ...
+local UI = ST.UI
 
 local Styles = {}
 UI.Styles = Styles
@@ -213,16 +213,16 @@ function Styles.Active() return active and active.key end
 -- Recipes and the presence checks
 --------------------------------------------------------------------------------
 -- A need is present when the client says so: an atlas only when
--- MD.API.AtlasInfo answers for it; a file unless MD.API.FileID answers nil
+-- ST.API.AtlasInfo answers for it; a file unless ST.API.FileID answers nil
 -- (with no FileID binding the plain Interface\ files are assumed, 5.3).
 local function Present(need)
     if need.atlas then
-        local fn = MD.API.AtlasInfo
+        local fn = ST.API.AtlasInfo
         if type(fn) ~= "function" then return false end
         local okA, info = pcall(fn, need.atlas)
         return okA and info ~= nil
     end
-    local fn = MD.API.FileID
+    local fn = ST.API.FileID
     if type(fn) ~= "function" then return true end
     local okF, id = pcall(fn, need.file)
     return okF and id ~= nil
@@ -285,7 +285,7 @@ local function Apply(key, style)
     UI.STYLE = key
     if not dumpAdded and (key ~= "flat" or next(active.fell) ~= nil) then
         dumpAdded = true
-        MD:AddDumpLine("style", DumpLine)
+        ST:AddDumpLine("style", DumpLine)
     end
 end
 
@@ -301,12 +301,12 @@ function UI.SetStyle(key)
     local style = byKey[key]
     if not style then return false, Unknown(key) end
     Apply(key, style)
-    local db = MD.db
+    local db = ST.db
     if type(db) == "table" then
         if type(db.ui) ~= "table" then db.ui = {} end
         db.ui.style = key
     end
-    MD:Fire("STYLE_CHANGED", key)
+    ST:Fire("STYLE_CHANGED", key)
     return true
 end
 Styles.SetStyle = UI.SetStyle
@@ -314,7 +314,7 @@ Styles.SetStyle = UI.SetStyle
 function Styles.Refresh(key)
     if not loggedIn or not active or active.key ~= key or not byKey[key] then return false end
     Apply(key, byKey[key])
-    MD:Fire("STYLE_CHANGED", key)
+    ST:Fire("STYLE_CHANGED", key)
     return true
 end
 
@@ -324,33 +324,33 @@ Styles.Register("flat", UI.FLAT)
 active = { key = "flat", style = UI.FLAT, fell = {} }
 UI.STYLE = "flat"
 
-MD:RegisterCallback("CORE_LOGIN", function()
+ST:RegisterCallback("CORE_LOGIN", function()
     loggedIn = true
-    local saved = MD.db and type(MD.db.ui) == "table" and MD.db.ui.style
+    local saved = ST.db and type(ST.db.ui) == "table" and ST.db.ui.style
     if type(saved) == "string" and byKey[saved:lower()] then
         UI.SetStyle(saved)
         return
     end
     -- a style nobody registered this session: Flat, the saved key kept
     Apply("flat", byKey.flat)
-    MD:Fire("STYLE_CHANGED", "flat")
+    ST:Fire("STYLE_CHANGED", "flat")
 end)
 
 --------------------------------------------------------------------------------
 -- /st ui style (5.4), through the kernel's subcommand seam (2.5)
 --------------------------------------------------------------------------------
-MD:AddSubcommand("ui", "style", function(rest)
+ST:AddSubcommand("ui", "style", function(rest)
     local name = (rest or ""):match("^(%S+)")
     if not name then
-        MD:Print(string.format("style: %s (styles: %s)", tostring(UI.STYLE), table.concat(list, ", ")))
+        ST:Print(string.format("style: %s (styles: %s)", tostring(UI.STYLE), table.concat(list, ", ")))
         return
     end
     local okS, why = UI.SetStyle(name)
     if okS then
         local note = active and active.note
-        MD:Print(string.format("style: %s - %s%s", UI.STYLE, byKey[UI.STYLE].name,
+        ST:Print(string.format("style: %s - %s%s", UI.STYLE, byKey[UI.STYLE].name,
             note and (" (" .. note .. ")") or ""))
     else
-        MD:Print(why)
+        ST:Print(why)
     end
 end, "style <name>", "the look of SpellTuner's windows (no name: list the styles)")

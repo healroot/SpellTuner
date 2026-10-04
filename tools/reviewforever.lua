@@ -19,12 +19,12 @@ local function check(name, cond, detail)
 end
 
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua")
+local ST = dofile(here .. "/harness.lua")
 arg[0] = a0
 local S = _G.STUB
 -- T71: UI/ContextMenu.lua is a main-TOC file (an integrator line); loaded
 -- here when the TOC the harness read does not list it yet
-if not MD.UI.CreateContextMenu then S.Load({ "UI/ContextMenu.lua" }, "SpellTuner", MD) end
+if not ST.UI.CreateContextMenu then S.Load({ "UI/ContextMenu.lua" }, "SpellTuner", ST) end
 
 local chat = {}
 _G.DEFAULT_CHAT_FRAME = { AddMessage = function(_, m) chat[#chat + 1] = m end }
@@ -113,8 +113,8 @@ end
 -- below can be seen to go through nav:ReplacePane rather than nav.panes
 local replaced = {}
 do
-    local realCreate = MD.UI.CreateNavFrame
-    MD.UI.CreateNavFrame = function(...)
+    local realCreate = ST.UI.CreateNavFrame
+    ST.UI.CreateNavFrame = function(...)
         local nav = realCreate(...)
         local realReplace = nav.ReplacePane
         if realReplace then
@@ -126,8 +126,8 @@ do
         return nav
     end
 end
-MD:SelectView("reports", "review")
-local g, v = MD:SelectedView()
+ST:SelectView("reports", "review")
+local g, v = ST:SelectedView()
 check("the Forever window has a Reports group with a Review view",
     g == "reports" and v == "review" and ButtonNamed("Reports") ~= nil,
     "group=" .. tostring(g) .. " view=" .. tostring(v))
@@ -143,7 +143,7 @@ check("with the Replay module off the Review view says how to switch it on and l
     TextPresent("Review needs the Replay module")
     and TextPresent("Loads now, no reload. To turn it off again: Settings -> Modules.")
     and turnOn ~= nil and turnOn:IsVisible()
-    and MD:ModuleState("SpellTuner_Replay") == "off"
+    and ST:ModuleState("SpellTuner_Replay") == "off"
     and #S.loadAddOnCalls == 0)
 
 --------------------------------------------------------------------------------
@@ -167,11 +167,11 @@ end
 Click(turnOn) -- loads Recorder (a dependency), Kit/Scenario/Gates, the engine chain, the window and this pane
 check("switching the Replay module on replaces the placeholder with the Review tab",
     not TextPresent("Review needs the Replay module")
-    and MD.DashboardParts.CreateReview ~= nil
+    and ST.DashboardParts.CreateReview ~= nil
     and ButtonNamed("Fights") ~= nil and ButtonNamed("Fights"):IsVisible())
 check("Turn on loads Replay and Recorder, and the swap goes through nav:ReplacePane",
-    MD:ModuleState("SpellTuner_Replay") == "loaded" and MD:ModuleState("SpellTuner_Recorder") == "loaded"
-    and MD.db.modules.SpellTuner_Replay == true and MD.db.modules.SpellTuner_Recorder == true
+    ST:ModuleState("SpellTuner_Replay") == "loaded" and ST:ModuleState("SpellTuner_Recorder") == "loaded"
+    and ST.db.modules.SpellTuner_Replay == true and ST.db.modules.SpellTuner_Recorder == true
     and #replaced == 1 and replaced[1] == "reports/review" and not turnOn:IsVisible(),
     table.concat(replaced, ", "))
 
@@ -195,8 +195,8 @@ if reviewFrame then reviewFrame:SetSize(912, 500) end
 local buildFixture = dofile(here .. "/foreverfixture.lua")
 S.crit[4] = 0 -- zero Nature crit: recGood's own-heal amounts are the engine's own exact figures
 
-local kit = MD.RankMath:SpellKit()
-local SM = MD.SimModel
+local kit = ST.RankMath:SpellKit()
+local SM = ST.SimModel
 local function DeepCopy(a)
     local t = {}
     for i = 1, #a do t[i] = a[i] end
@@ -212,9 +212,9 @@ recGood.id = 2000000000
 recGood.mana.v = DeepCopy(baseManaCurve)
 local recBad = buildFixture({ meterOverridden = true })
 recBad.id = 1000000000
-MD.cdb.recordings = { recGood, recBad }
+ST.cdb.recordings = { recGood, recBad }
 
-MD:SelectView("reports", "review") -- re-render now that recordings exist
+ST:SelectView("reports", "review") -- re-render now that recordings exist
 
 --------------------------------------------------------------------------------
 -- 4: each recording is a row with its validate result
@@ -341,7 +341,7 @@ do
         local inPane = p == reviewFrame or (p and p.cells and p.parentFrame == reviewFrame)
         if inPane then
             if tpl == "GameFontHighlightSmall" then gold = gold + 1
-            elseif tpl == MD.UI.FONT_SMALL then small = small + 1
+            elseif tpl == ST.UI.FONT_SMALL then small = small + 1
             else other[#other + 1] = tostring(tpl) end
         end
     end
@@ -429,7 +429,7 @@ do
     GetCursorPosition = savedCursor
     local farX = 800 - 6
     check("T76: a Review row's tooltip opens beside the pointer, top-aligned with the row",
-        row1 ~= nil and w > (MD.Tip.WIDE or 300) and near.n == 1 and near.p == "TOPLEFT" and near.rel == row1
+        row1 ~= nil and w > (ST.Tip.WIDE or 300) and near.n == 1 and near.p == "TOPLEFT" and near.rel == row1
         and near.rp == "TOPLEFT" and math.abs((near.x or 0) - 206) < 1e-6 and near.y == 0 and near.lines > 3,
         string.format("w=%s point=%s %s %s x=%s y=%s lines=%d", tostring(w), tostring(near.p), tostring(near.rp),
             tostring(near.rel == row1), tostring(near.x), tostring(near.y), near.lines))
@@ -440,7 +440,7 @@ do
 end
 
 --------------------------------------------------------------------------------
--- R40 (review 2026-09-29): there is no export on Forever (MD.RunExport is
+-- R40 (review 2026-09-29): there is no export on Forever (ST.RunExport is
 -- Verify.lua's, TBC only), so the Export button is not offered -- it used to
 -- sit enabled and do nothing when clicked.
 --------------------------------------------------------------------------------
@@ -449,8 +449,8 @@ for _, f in ipairs(S.allFrames) do
     if f.kind == "Button" and f.text == "Export" then exportBtn = f end
 end
 check("R40: with no export on this client the Export button is not offered",
-    MD.RunExport == nil and exportBtn ~= nil and (exportBtn.shown == false or exportBtn.enabled == false),
-    "RunExport=" .. tostring(MD.RunExport) .. " shown=" .. tostring(exportBtn and exportBtn.shown)
+    ST.RunExport == nil and exportBtn ~= nil and (exportBtn.shown == false or exportBtn.enabled == false),
+    "RunExport=" .. tostring(ST.RunExport) .. " shown=" .. tostring(exportBtn and exportBtn.shown)
     .. " enabled=" .. tostring(exportBtn and exportBtn.enabled))
 
 --------------------------------------------------------------------------------
@@ -469,7 +469,7 @@ S.shift = false
 -- a long line is cut into rows at word boundaries: read them as one text
 local refusedInPane = table.concat(ResultText(), " "):gsub("%s+", " ")
     :find("Right-click the row -> Coach anyway to coach it regardless.", 1, true) ~= nil
-local refused = MD.SimPlanner.plans[recBad.id] == nil and MD.coachSearch == nil and #plainLines == 1
+local refused = ST.SimPlanner.plans[recBad.id] == nil and ST.coachSearch == nil and #plainLines == 1
     and Strip(plainLines[1]):find("fight 2 does not replay (foreign healing) - nothing to coach", 1, true) ~= nil
 check("Coach refuses the failing fight in the result area with one chat line, shift or not",
     refused and refusedInPane,
@@ -511,9 +511,9 @@ do
     local chat = CapturedChat(function()
         Click(anyway)
         local frames = 0
-        while MD.coachSearch and frames < 20000 do S.Tick(0.016); frames = frames + 1 end
+        while ST.coachSearch and frames < 20000 do S.Tick(0.016); frames = frames + 1 end
     end)
-    local SP = MD.SimPlanner
+    local SP = ST.SimPlanner
     local card = false
     for _, l in ipairs(ResultText()) do
         if l:find("caveat:", 1, true) then card = true end
@@ -533,7 +533,7 @@ end
 -- (above) made for the same fight.
 --------------------------------------------------------------------------------
 do
-    local SP = MD.SimPlanner
+    local SP = ST.SimPlanner
     local card, _, _, _, cardLines = SP.Coach(recBad, { n = 2, force = true })
     local joined = SP.CardText(cardLines or {})
     local same = cardLines ~= nil and #joined == #card and #card > 5
@@ -563,17 +563,17 @@ end
 -- T71 (P27, review U22): a double-click on a row plays it.
 --------------------------------------------------------------------------------
 do
-    local W0 = MD.Replay._state()
+    local W0 = ST.Replay._state()
     if W0.frame then W0.frame:Hide() end
-    MD:SelectView("reports", "review")
+    ST:SelectView("reports", "review")
     local opened = {}
-    local origOpen = MD.Replay.Open
-    MD.Replay.Open = function(self, spec, ...) opened[#opened + 1] = spec; return origOpen(self, spec, ...) end
+    local origOpen = ST.Replay.Open
+    ST.Replay.Open = function(self, spec, ...) opened[#opened + 1] = spec; return origOpen(self, spec, ...) end
     SelectRow(2) -- a single click opens nothing
     local afterSingle = #opened
     DoubleClickRow(1)
-    MD.Replay.Open = origOpen
-    local W = MD.Replay._state()
+    ST.Replay.Open = origOpen
+    local W = ST.Replay._state()
     check("T71: a double-click on a row opens the replay on it (a single click does not)",
         afterSingle == 0 and #opened == 1 and opened[1] == "1" and W.frame ~= nil and W.frame:IsShown(),
         string.format("single=%d opened=%s shown=%s", afterSingle, table.concat(opened, ","),
@@ -584,10 +584,10 @@ end
 --------------------------------------------------------------------------------
 -- 7: Play opens the replay window on the selected fight
 --------------------------------------------------------------------------------
-MD:SelectView("reports", "review")
+ST:SelectView("reports", "review")
 SelectRow(1)
 Click(ButtonNamed("Play"))
-local W = MD.Replay._state()
+local W = ST.Replay._state()
 check("Play opens the replay window on the selected fight", W.frame ~= nil and W.frame:IsShown())
 if W.frame then W.frame:Hide() end
 
@@ -603,8 +603,8 @@ recBadName.id = 3000000000
 -- whose health curve reproduces exactly -- so this is the one name the tab
 -- is guaranteed to paint.
 recBadName.roster[1].name = "Healroot\195\169|boss" -- an EU-style byte plus a bare pipe
-MD.cdb.recordings = { recBadName, recGood, recBad }
-MD:SelectView("reports", "review")
+ST.cdb.recordings = { recBadName, recGood, recBad }
+ST:SelectView("reports", "review")
 -- a row's OnEnter closes over the validation cached at the time the row was
 -- built; select-and-Validate (as assertion 6 already does) forces a second
 -- render with that cache warm, so the "excluded" line -- the one line that
@@ -691,8 +691,8 @@ check("every string the tab paints is ASCII with no bare pipe", #bad == 0 and sa
 -- pinned and the next one lost).
 --------------------------------------------------------------------------------
 do
-    for _, r in ipairs(MD.cdb.recordings) do r.pinned = false end
-    MD:SelectView("reports", "review")
+    for _, r in ipairs(ST.cdb.recordings) do r.pinned = false end
+    ST:SelectView("reports", "review")
     local function PinRow(n)
         SelectRow(n)
         return CapturedChat(function() Click(ButtonNamed("Pin")) end)
@@ -700,7 +700,7 @@ do
     local l1 = PinRow(1)
     local l2 = PinRow(2)
     local l3 = PinRow(3)
-    local list = MD.FightRecorder:List()
+    local list = ST.FightRecorder:List()
     local refusal = l3[1] or ""
     local plain = refusal:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
     check("B14: a third pin is refused with one line, and the first two stay pinned",
@@ -709,7 +709,7 @@ do
         and not plain:find("[^ -~]") and not plain:gsub("||", ""):find("|", 1, true),
         string.format("pins=%s,%s,%s line=%s", tostring(list[1].pinned), tostring(list[2].pinned),
             tostring(list[3].pinned), tostring(l3[1])))
-    for _, r in ipairs(MD.cdb.recordings) do r.pinned = false end
+    for _, r in ipairs(ST.cdb.recordings) do r.pinned = false end
 end
 
 --------------------------------------------------------------------------------
@@ -726,8 +726,8 @@ do
         r.pinned = false
         many[i] = r
     end
-    MD.cdb.recordings = many
-    MD:SelectView("reports", "review")
+    ST.cdb.recordings = many
+    ST:SelectView("reports", "review")
     local function Shown()
         local nums = {}
         for _, r in ipairs(Rows()) do
@@ -773,12 +773,12 @@ end
 do
     local reloads = 0
     _G.ReloadUI = function() reloads = reloads + 1 end
-    MD.API.Invalidate("ReloadUI")
-    MD:SelectView("settings", "modules")
+    ST.API.Invalidate("ReloadUI")
+    ST:SelectView("settings", "modules")
     local before = ButtonNamed("Reload UI")
     local hiddenBefore = before == nil or not before:IsVisible()
-    CapturedChat(function() MD:SetModule("SpellTuner_Replay", false) end)
-    MD:SelectView("settings", "modules")
+    CapturedChat(function() ST:SetModule("SpellTuner_Replay", false) end)
+    ST:SelectView("settings", "modules")
     local shown = {}
     for _, f in ipairs(S.allFrames) do
         if f.kind == "Button" and f.text == "Reload UI" and f:IsVisible() then shown[#shown + 1] = f end
@@ -787,11 +787,11 @@ do
     if shown[1] then Click(shown[1]) end
     check("T73: a module that unloads at the next reload has a Reload UI button, and it reloads",
         hiddenBefore and #shown == 1 and stateOk and reloads == 1
-        and MD:ModuleState("SpellTuner_Replay") == "unloads",
+        and ST:ModuleState("SpellTuner_Replay") == "unloads",
         string.format("hiddenBefore=%s shown=%d state=%s reloads=%d", tostring(hiddenBefore), #shown,
             tostring(stateOk), reloads))
     _G.ReloadUI = nil
-    MD.API.Invalidate("ReloadUI")
+    ST.API.Invalidate("ReloadUI")
 end
 
 print(string.format("\n%d ok, %d failed", ok, #fails))

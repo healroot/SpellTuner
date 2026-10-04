@@ -5,19 +5,19 @@
 -- combat-log handler in UI/Summary.lua and Engine/FightRecorder.lua.
 --
 -- Returns the spell ids it used, so a harness can assert against them.
-return function(MD, S)
-local SD = MD.SpellData
+return function(ST, S)
+local SD = ST.SpellData
 S.AddUnit("party1", { guid = "Tank-1",  name = "Destroyka", class = "WARRIOR", role = "TANK",   hp = 8000, hpMax = 8000 })
 S.AddUnit("party2", { guid = "Mage-1",  name = "Alkandari", class = "MAGE",    role = "DAMAGER", hp = 4000, hpMax = 4000 })
 S.AddUnit("party3", { guid = "Lock-1",  name = "Abufaisall",class = "WARLOCK", role = "DAMAGER", hp = 4200, hpMax = 4200 })
 S.AddUnit("party4", { guid = "Pala-1",  name = "Trecoda",   class = "PALADIN", role = "DAMAGER", hp = 5200, hpMax = 5200 })
 S.Fire("GROUP_ROSTER_UPDATE")
 
-MD.db.debug.enabled = true
-function MD:DebugLog(cat, text) if cat == "sim" or cat == "combat" then print("[" .. cat .. "] " .. text) end end
+ST.db.debug.enabled = true
+function ST:DebugLog(cat, text) if cat == "sim" or cat == "combat" then print("[" .. cat .. "] " .. text) end end
 
 local PLAYER = "Player-1"
-MD.db.healAmountGross = true
+ST.db.healAmountGross = true
 local rejuv, regrowth, lifebloom = SD.maxRank.Rejuvenation, SD.maxRank.Regrowth, SD.maxRank.Lifebloom
 local MOTW = 9885
 
@@ -58,7 +58,7 @@ cast(lifebloom, "Tank-1", "Destroyka")
 for _ = 1, 4 do S.Tick(1.0); ownTick(lifebloom, "Tank-1", "Destroyka", 99, 99) end
 
 S.Fire("PLAYER_REGEN_DISABLED")
-local FR = MD.FightRecorder
+local FR = ST.FightRecorder
 assert(FR.active, "recorder did not start")
 
 local function advance(sec) for _ = 1, math.floor(sec / 0.5 + 0.5) do S.Tick(0.5) end end

@@ -8,14 +8,14 @@
 local here = arg[0]:match("^(.*)/[^/]+$")
 HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua"); arg[0] = a0
+local ST = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB
 -- T80 (C1): the theme and the window manager after the kit, as the TBC TOC
 -- lists them (and the generic table and row menu Review is built on under it)
 S.Load({ "UI/Style.lua", "UI/Theme_Flat.lua", "UI/EscStack.lua", "UI/Windows.lua", "UI/ContextMenu.lua",
          "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/Dashboard_Rows.lua", "UI/Dashboard_Review.lua",
-         "UI/PracticePanel.lua", "UI/BindingsWindow.lua", "UI/ReplayWindow.lua" }, "SpellTuner", MD)
-local PR, SD = MD.Practice, MD.SpellData
+         "UI/PracticePanel.lua", "UI/BindingsWindow.lua", "UI/ReplayWindow.lua" }, "SpellTuner", ST)
+local PR, SD = ST.Practice, ST.SpellData
 
 local ok, fails = 0, {}
 local function check(name, cond, detail)
@@ -23,7 +23,7 @@ local function check(name, cond, detail)
     print(string.format("%-56s %s%s", name, cond and "ok" or "FAIL", detail and (" - " .. detail) or ""))
 end
 local chat = {}
-function MD:Print(m) chat[#chat + 1] = m end
+function ST:Print(m) chat[#chat + 1] = m end
 local function Said(pat) for _, m in ipairs(chat) do if m:find(pat) then return m end end end
 local function Button(text, parent)
     for _, f in ipairs(S.allFrames) do
@@ -32,30 +32,30 @@ local function Button(text, parent)
 end
 local function Click(b, button) local fn = b and b:GetScript("OnClick"); if fn then fn(b, button or "LeftButton") end end
 
-MD.cdb.practice, MD.db.practiceBinds = {}, nil
-MD.player.isDruid = true
+ST.cdb.practice, ST.db.practiceBinds = {}, nil
+ST.player.isDruid = true
 
 -- the panel -------------------------------------------------------------------
 local parent = CreateFrame("Frame")
-local panel = MD.DashboardParts.CreatePractice(parent, 912)
+local panel = ST.DashboardParts.CreatePractice(parent, 912)
 panel.frame:Show()
 panel:Render()
 check("the panel builds and has a Start button", Button("Start practice") ~= nil)
-check("it starts from a party of five", MD.cdb.practiceSetup and #MD.cdb.practiceSetup.targets == 5)
+check("it starts from a party of five", ST.cdb.practiceSetup and #ST.cdb.practiceSetup.targets == 5)
 Click(Button("Raid 10"))
-check("choosing Raid 10 makes ten", #MD.cdb.practiceSetup.targets == 10)
+check("choosing Raid 10 makes ten", #ST.cdb.practiceSetup.targets == 10)
 Click(Button("Party"))
-check("and back to five", #MD.cdb.practiceSetup.targets == 5)
+check("and back to five", #ST.cdb.practiceSetup.targets == 5)
 -- T80 (C1): under the theme (on TBC since C1) the bindings are one summary
 -- line, "6 bindings", with the list in its hover (T40), as on Forever
 local bindSummary = nil
 do
     local s = panel.summary
     if s and s.fs and (s.fs:GetText() or ""):find("^6 bindings") then
-        MD.UI.tooltip.lines = nil
+        ST.UI.tooltip.lines = nil
         local enter = s:GetScript("OnEnter")
         if enter then enter(s) end
-        for _, l in ipairs(MD.UI.tooltip.lines or {}) do
+        for _, l in ipairs(ST.UI.tooltip.lines or {}) do
             if type(l[1]) == "string" and l[1]:find("BUTTON5") and l[1]:find("Lifebloom") then bindSummary = l[1] end
         end
         local leave = s:GetScript("OnLeave")
@@ -73,9 +73,9 @@ check("no bare pipe on the panel", not pipes)
 
 -- the bindings sheet (T80: TBC's window became T40's sheet on the panel) ----------
 Click(Button("Edit bindings"))
-local bw = MD.BindingsWindow._frame()
+local bw = ST.BindingsWindow._frame()
 check("the bindings sheet opens on the panel", bw ~= nil and bw:IsShown() and bw.bindingsSheet == true)
-local brows = MD.BindingsWindow._rows()
+local brows = ST.BindingsWindow._rows()
 check("one row per binding", #brows >= 6 and brows[1].key.text:find("BUTTON5") ~= nil,
     brows[1] and brows[1].key.text)
 -- rebind row 1 to Alt-Q by clicking its key box and pressing
@@ -126,13 +126,13 @@ check("Import from Cell adds on top: your own binding stays", select(2, PR.BindF
     and #PR.Binds() == 7, tostring(#PR.Binds()))
 local _, r5 = PR.BindFor("SHIFT-BUTTON5")
 check("and a key both had now casts Cell's spell", r5 and SD.spells[r5].rank == 5)
-local report = MD.BindingsWindow._status()
+local report = ST.BindingsWindow._status()
 check("it says what it added, replaced and kept", report:find("0 added") and report:find("1 replaced")
     and report:find("kept") and report:find("target"), report)
 _G.CellCharacterDB = nil
 Click(Button("Clique"))
-check("no Clique, and it says so", MD.BindingsWindow._status():find("not loaded") ~= nil,
-    MD.BindingsWindow._status())
+check("no Clique, and it says so", ST.BindingsWindow._status():find("not loaded") ~= nil,
+    ST.BindingsWindow._status())
 -- the game's own keybindings
 S.macros["Main overtime"] = "/cast [known:33763,@mouseover,help]Lifebloom;[@mouseover,help]Rejuvenation"
 S.macroOrder = { "Main overtime" }
@@ -142,8 +142,8 @@ Click(Button("Keybindings"))
 check("Import Keybindings reads your bars, on top of the rest", #PR.Binds() == 7
     and select(2, PR.BindFor("BUTTON5")) == SD.maxRank.Lifebloom
     and select(2, PR.BindFor("CTRL-E")) == SD.maxRank.Swiftmend, tostring(#PR.Binds()))
-check("and reports what it would not guess", MD.BindingsWindow._status():find("ALT%-F11") ~= nil,
-    MD.BindingsWindow._status())
+check("and reports what it would not guess", ST.BindingsWindow._status():find("ALT%-F11") ~= nil,
+    ST.BindingsWindow._status())
 S.bindings, S.actions = {}, {}
 
 Click(Button("Defaults"))
@@ -152,12 +152,12 @@ check("Defaults puts your Cell click-casting back", #PR.Binds() == 6
 bw:Hide()
 
 -- play ------------------------------------------------------------------------
-MD.cdb.practiceSetup.dur = 30
-MD.cdb.practiceSetup.fixedSeed = 5
+ST.cdb.practiceSetup.dur = 30
+ST.cdb.practiceSetup.fixedSeed = 5
 Click(Button("Start practice"))
-local live, hover = MD.Replay._live()
+local live, hover = ST.Replay._live()
 check("Start opens the window in practice mode", live ~= nil and live.state == "running")
-local st = MD.Replay._state()
+local st = ST.Replay._state()
 check("one column, five frames", st.rows and #st.rows == 5 and st.frame:IsShown())
 check("the scrubber is hidden: the future has not happened", not st.scrubber:IsShown())
 check("an End button is shown", Button("End") ~= nil)
@@ -189,12 +189,12 @@ check("the frame shows the HoT", tank.hots[3]:IsShown())
 -- a key over a frame: bind "1" to Regrowth, hover the tank, press 1
 table.insert(PR.Binds(), { key = "1", family = "Regrowth" })
 tank:GetScript("OnEnter")(tank)
-local _, hov = MD.Replay._live()
+local _, hov = ST.Replay._live()
 check("hovering a frame makes it the mouseover", hov == 1)
 st.frame:GetScript("OnKeyDown")(st.frame, "1")
 Tick(2.5)
 local casts = 0
-for _, o in ipairs(live.own) do if o.kind == MD.SimModel.K.OWNCAST then casts = casts + 1 end end
+for _, o in ipairs(live.own) do if o.kind == ST.SimModel.K.OWNCAST then casts = casts + 1 end end
 check("a bound key over a frame casts on it", casts == 2, tostring(casts))
 -- F2 (the author, 0.16.6 Practice: "after direct cast it start animating gcd
 -- of the cast"): the instant Lifebloom sweeps its GCD; the hard Regrowth fills
@@ -224,18 +224,18 @@ check("the clock reads the fight", (st.timeFS.text or ""):find("/ 0:30") ~= nil,
 
 -- end -------------------------------------------------------------------------
 Click(Button("End"))
-local live2 = MD.Replay._live()
+local live2 = ST.Replay._live()
 check("End leaves practice mode", live2 == nil)
-check("what was played is kept as p1", MD:GetRecording("p1") ~= nil and MD:GetRecording("p1").ownCasts == 2)
+check("what was played is kept as p1", ST:GetRecording("p1") ~= nil and ST:GetRecording("p1").ownCasts == 2)
 check("and says where to find it", Said("kept as") ~= nil, Said("kept as"))
-local st2 = MD.Replay._state()
-check("it opens as an ordinary replay", st2.rp and not st2.rp.live and st2.rp.rec == MD:GetRecording("p1"))
+local st2 = ST.Replay._state()
+check("it opens as an ordinary replay", st2.rp and not st2.rp.live and st2.rp.rec == ST:GetRecording("p1"))
 check("with the scrubber back", st2.scrubber:IsShown())
 check("the replay validates: same engine", st2.rp.validation and st2.rp.validation.ok)
 
 -- review ----------------------------------------------------------------------
 local reviewParent = CreateFrame("Frame")
-local review = MD.DashboardParts.CreateReview(reviewParent, 912)
+local review = ST.DashboardParts.CreateReview(reviewParent, 912)
 review.frame:Show()
 review:Render()
 Click(Button("Practice"))
@@ -250,25 +250,25 @@ local pinB = Button("Pin")
 local pinOn = pinB ~= nil and pinB:IsEnabled()
 Click(pinB); review:Render()
 check("Pin keeps a practice fight past the next eight",
-    pinOn and MD:GetRecording("p1").pinned == true and Button("Unpin") ~= nil)
+    pinOn and ST:GetRecording("p1").pinned == true and Button("Unpin") ~= nil)
 Click(Button("Unpin")); review:Render()
 
 -- closing the window mid-fight keeps it --------------------------------------------
-MD:OpenPractice(PR.CopySetup(MD.cdb.practiceSetup), 6)
-local st3 = MD.Replay._state()
+ST:OpenPractice(PR.CopySetup(ST.cdb.practiceSetup), 6)
+local st3 = ST.Replay._state()
 local f1 = st3.left.frames[1]
 Tick(0.5)
 f1:GetScript("OnMouseDown")(f1, "Button5")
 Tick(1)
 st3.frame:Hide()
-check("closing the window ends practice and keeps it", MD.Replay._live() == nil and #MD.cdb.practice == 2)
+check("closing the window ends practice and keeps it", ST.Replay._live() == nil and #ST.cdb.practice == 2)
 check("closing does not reopen the window", not st3.frame:IsShown())
 
 -- combat ends it ----------------------------------------------------------------
-MD:OpenPractice(PR.CopySetup(MD.cdb.practiceSetup), 7)
+ST:OpenPractice(PR.CopySetup(ST.cdb.practiceSetup), 7)
 Tick(0.5)
 S.Fire("PLAYER_REGEN_DISABLED")
-check("entering combat ends practice", MD.Replay._live() == nil and not MD.Replay._state().frame:IsShown())
+check("entering combat ends practice", ST.Replay._live() == nil and not ST.Replay._state().frame:IsShown())
 S.Fire("PLAYER_REGEN_ENABLED")
 
 -- T51 (P7, B23): the pointer on a frame's icon ----------------------------------
@@ -276,8 +276,8 @@ S.Fire("PLAYER_REGEN_ENABLED")
 -- mouse-enabled icons, then the icon's OnEnter; leaving the icon outward fires
 -- only the icon's OnLeave. "1" is bound to Regrowth above.
 do
-    MD:OpenPractice(PR.CopySetup(MD.cdb.practiceSetup), 8)
-    local live8, st8 = MD.Replay._live(), MD.Replay._state()
+    ST:OpenPractice(PR.CopySetup(ST.cdb.practiceSetup), 8)
+    local live8, st8 = ST.Replay._live(), ST.Replay._state()
     local fn = st8.frame:GetScript("OnUpdate")
     local function T(sec) for _ = 1, math.floor(sec / 0.05 + 0.5) do S.now = S.now + 0.05; fn(st8.frame, 0.05) end end
     local tank8 = st8.left.frames[1]
@@ -295,7 +295,7 @@ do
     local onTank = false
     for i = before + 1, #(live8 and live8.own or {}) do
         local o = live8.own[i]
-        if o.kind == MD.SimModel.K.OWNCAST and o.tgt == 1 then onTank = true end
+        if o.kind == ST.SimModel.K.OWNCAST and o.tgt == 1 then onTank = true end
     end
     check("T51: a key with the pointer on the Swiftmend icon heals that frame", onTank,
         "casts " .. before .. " -> " .. #(live8 and live8.own or {}))
@@ -312,7 +312,7 @@ do
     S.mouseFocus = nil
     local leave = hot:GetScript("OnLeave")
     if leave then leave(hot) end
-    local _, hov8 = MD.Replay._live()
+    local _, hov8 = ST.Replay._live()
     T(2.0) -- past the GCD, so a refusal can only be the target
     local n0 = #(live8 and live8.own or {})
     st8.frame:GetScript("OnKeyDown")(st8.frame, "1")

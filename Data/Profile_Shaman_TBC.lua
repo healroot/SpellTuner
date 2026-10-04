@@ -13,9 +13,9 @@
 -- Not a family, so not on the rank table: Earth Shield (a heal on a later
 -- hit, with charges), Healing Stream Totem (a totem), Nature's Swiftness (a
 -- next-cast modifier).
-local _, MD = ...
+local _, ST = ...
 
-MD.Profiles.Register("SHAMAN", {
+ST.Profiles.Register("SHAMAN", {
     label = "Shaman",
     critSchool = 4,                -- Nature (GetSpellCritChance's school; VERIFY)
     -- T123: the rank table and the tooltip, now that every TBC reader of

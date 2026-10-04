@@ -10,7 +10,7 @@
 -- T87 (docs/SPEC-next.md decision 22): on both TOCs. On the TBC line /md probe
 -- is a hidden row, the Forever-only sections print "absent (Forever only)",
 -- and the new == art / == hosts / == clock / == cooldowns answer there too.
-local ADDON_NAME, MD = ...
+local ADDON_NAME, ST = ...
 
 --------------------------------------------------------------------------------
 -- Helpers
@@ -29,12 +29,12 @@ end
 -- Each is reached through Has and called under its own pcall; an absent one counts as false,
 -- never raises, so callers can check this before anything else.
 local function IsSecret(v)
-    local isValue = MD.API.Has("issecretvalue")
+    local isValue = ST.API.Has("issecretvalue")
     if type(isValue) == "function" then
         local ok, secret = pcall(isValue, v)
         if ok and secret == true then return true end
     end
-    local isTable = MD.API.Has("issecrettable")
+    local isTable = ST.API.Has("issecrettable")
     if type(isTable) == "function" then
         local ok, secret = pcall(isTable, v)
         if ok and secret == true then return true end
@@ -111,7 +111,7 @@ end
 -- raised, else every return value through Describe, "nothing" if it returned
 -- none at all (never confused with a single nil return).
 local function Show(name, ...)
-    local fn = MD.API.Has(name)
+    local fn = ST.API.Has(name)
     if type(fn) ~= "function" then return "<absent>" end
     local n, packed = packPcall(pcall(fn, ...))
     if not packed[1] then return "<error: " .. Fmt(packed[2]) .. ">" end
@@ -125,7 +125,7 @@ end
 -- realm (realm nil on your own realm) and Show joins every return, so the character line
 -- read "Healroot, nil"; First keeps the one value the line means.
 local function First(name, ...)
-    local fn = MD.API.Has(name)
+    local fn = ST.API.Has(name)
     if type(fn) ~= "function" then return "<absent>" end
     local n, packed = packPcall(pcall(fn, ...))
     if not packed[1] then return "<error: " .. Fmt(packed[2]) .. ">" end
@@ -137,7 +137,7 @@ end
 -- T7a: a spell's cost table is one level too shallow at Show's default depth
 -- (1), which would print its inner row as "<table>" instead of the fields.
 local function ShowDepth(name, depth, ...)
-    local fn = MD.API.Has(name)
+    local fn = ST.API.Has(name)
     if type(fn) ~= "function" then return "<absent>" end
     local n, packed = packPcall(pcall(fn, ...))
     if not packed[1] then return "<error: " .. Fmt(packed[2]) .. ">" end
@@ -323,7 +323,7 @@ end
 -- Counters comment below), so two UNIT_COMBAT events can be compared for
 -- "the same moment" by plain string equality only.
 local function TimeKey()
-    local getTime = MD.API.Has("GetTime")
+    local getTime = ST.API.Has("GetTime")
     if type(getTime) ~= "function" then return "<absent>" end
     local ok, t = pcall(getTime)
     if not ok then return "<error>" end
@@ -347,7 +347,7 @@ end
 -- Fmt of GetBuildInfo()'s second return, "unknown" if the function is absent
 -- or the call raised (Save's own rule for the record's key).
 local function BuildKey()
-    local getBuild = MD.API.Has("GetBuildInfo")
+    local getBuild = ST.API.Has("GetBuildInfo")
     if type(getBuild) ~= "function" then return "unknown" end
     local ok, _, build = pcall(getBuild)
     if not ok then return "unknown" end
@@ -355,12 +355,12 @@ local function BuildKey()
 end
 
 local function Version()
-    local getMeta = MD.API.Has("C_AddOns.GetAddOnMetadata")
+    local getMeta = ST.API.Has("C_AddOns.GetAddOnMetadata")
     if type(getMeta) == "function" then
         local ok, v = pcall(getMeta, ADDON_NAME, "Version")
         if ok and type(v) == "string" and not IsSecret(v) then return Esc(v) end
     end
-    local globalMeta = MD.API.Has("GetAddOnMetadata")
+    local globalMeta = ST.API.Has("GetAddOnMetadata")
     if type(globalMeta) == "function" then
         local ok, v = pcall(globalMeta, ADDON_NAME, "Version")
         if ok and type(v) == "string" and not IsSecret(v) then return Esc(v) end
@@ -411,7 +411,7 @@ local function BumpUnitCombatToken(currentPhase, unit, action, amount)
     -- is kept for the mirror test below; nil when it could not be read.
     local guidKey = nil
     if not IsSecret(unit) and type(unit) == "string" then
-        local getGUID = MD.API.Has("UnitGUID")
+        local getGUID = ST.API.Has("UnitGUID")
         if type(getGUID) == "function" then
             local ok, guid = pcall(getGUID, unit)
             if ok then
@@ -517,7 +517,7 @@ local function BumpSucceeded(currentPhase, spellID)
     elseif spellID ~= nil then
         c.readable = c.readable + 1
         if not c.sample then c.sample = Fmt(spellID) end
-        local getCost = MD.API.Has("C_Spell.GetSpellPowerCost")
+        local getCost = ST.API.Has("C_Spell.GetSpellPowerCost")
         if type(getCost) ~= "function" then
             c.costAbsent = c.costAbsent + 1
         else
@@ -609,7 +609,7 @@ end
 local function ClientLines()
     local lines = {}
 
-    local getBuild = MD.API.Has("GetBuildInfo")
+    local getBuild = ST.API.Has("GetBuildInfo")
     if type(getBuild) ~= "function" then
         lines[#lines + 1] = "build: <absent>"
     else
@@ -622,7 +622,7 @@ local function ClientLines()
         end
     end
 
-    lines[#lines + 1] = "client: " .. Fmt(MD.API.client)
+    lines[#lines + 1] = "client: " .. Fmt(ST.API.client)
 
     local ok, id, main, classic, tbc = pcall(function()
         return _G.WOW_PROJECT_ID, _G.WOW_PROJECT_MAINLINE, _G.WOW_PROJECT_CLASSIC, _G.WOW_PROJECT_BURNING_CRUSADE_CLASSIC
@@ -635,7 +635,7 @@ local function ClientLines()
     end
 
     local classText = "<absent>"
-    local classFn = MD.API.Has("UnitClass")
+    local classFn = ST.API.Has("UnitClass")
     if type(classFn) == "function" then
         local n2, packed2 = packPcall(pcall(classFn, "player"))
         if not packed2[1] then
@@ -659,7 +659,7 @@ end
 local function FunctionsLines()
     local lines, presentN, absentN = {}, 0, 0
     for _, name in ipairs(FUNCTIONS) do
-        if MD.API.Has(name) == false then
+        if ST.API.Has(name) == false then
             lines[#lines + 1] = "absent " .. name
             absentN = absentN + 1
         else
@@ -716,7 +716,7 @@ end
 -- == secrets now -- every C_Secrets.Should* function, called with no argument
 --------------------------------------------------------------------------------
 local function SecretsLines()
-    local secretsTbl = MD.API.Has("C_Secrets")
+    local secretsTbl = ST.API.Has("C_Secrets")
     if type(secretsTbl) ~= "table" then return { "C_Secrets absent" } end
 
     local ok, names = pcall(function()
@@ -748,7 +748,7 @@ end
 -- this run reuses the same bar rather than leaking a frame per reading.
 local probeBar
 local function BarReadback(label, fnName, ...)
-    local fn = MD.API.Has(fnName)
+    local fn = ST.API.Has(fnName)
     if type(fn) ~= "function" then
         return "bar " .. label .. ": set <absent>, read nil"
     end
@@ -871,7 +871,7 @@ end
 -- row needs its bank argument (T7a: the shapes section calls the book by slot
 -- again, outside SpellWalk, and must ask for the same bank it did).
 local function PlayerBank()
-    local bankEnum = MD.API.Has("Enum.SpellBookSpellBank")
+    local bankEnum = ST.API.Has("Enum.SpellBookSpellBank")
     if type(bankEnum) ~= "table" then return nil end
     local v, status = Field(bankEnum, "Player")
     if status == "ok" then return v end
@@ -887,10 +887,10 @@ end
 local function SpellWalk()
     local playerBank = PlayerBank()
 
-    local getItem = MD.API.Has("C_SpellBook.GetSpellBookItemInfo")
-    local getName = MD.API.Has("C_Spell.GetSpellName")
-    local getSubtext = MD.API.Has("C_Spell.GetSpellSubtext")
-    local getDesc = MD.API.Has("C_Spell.GetSpellDescription")
+    local getItem = ST.API.Has("C_SpellBook.GetSpellBookItemInfo")
+    local getName = ST.API.Has("C_Spell.GetSpellName")
+    local getSubtext = ST.API.Has("C_Spell.GetSpellSubtext")
+    local getDesc = ST.API.Has("C_Spell.GetSpellDescription")
 
     local n, h, e, secretN, errorN = 0, 0, 0, 0, 0
     local seen, order, descByKey = {}, {}, {}
@@ -1008,7 +1008,7 @@ local function TalentsLines()
     lines[#lines + 1] = "C_SpecializationInfo.GetTalentInfo({tier=1, column=1}) = " .. tierColumnShow
 
     local configID, activeShow = nil, "<absent>"
-    local getActive = MD.API.Has("C_ClassTalents.GetActiveConfigID")
+    local getActive = ST.API.Has("C_ClassTalents.GetActiveConfigID")
     if type(getActive) == "function" then
         local n, packed = packPcall(pcall(getActive))
         if not packed[1] then
@@ -1112,7 +1112,7 @@ end
 -- reaches the report unescaped.
 local function TooltipLines(sp)
     local out = {}
-    local getSpell = MD.API.Has("C_TooltipInfo.GetSpellByID")
+    local getSpell = ST.API.Has("C_TooltipInfo.GetSpellByID")
     if type(getSpell) ~= "function" then
         out[1] = "tooltip = <absent>"
         return out
@@ -1187,7 +1187,7 @@ end
 --------------------------------------------------------------------------------
 -- An Enum value as text: absent when the adapter reads nothing plain.
 local function MacroConstant(dotted)
-    local v = MD.API.Constant(dotted)
+    local v = ST.API.Constant(dotted)
     if v == nil then return "absent" end
     return Fmt(v)
 end
@@ -1245,7 +1245,7 @@ end
 -- The first `Show`-style read that keeps only the first two returns (a macro's
 -- name and icon; the third is its body).
 local function ShowTwo(name, ...)
-    local fn = MD.API.Has(name)
+    local fn = ST.API.Has(name)
     if type(fn) ~= "function" then return "<absent>" end
     local n, packed = packPcall(pcall(fn, ...))
     if not packed[1] then return "<error: " .. Fmt(packed[2]) .. ">" end
@@ -1261,7 +1261,7 @@ local function MacroLines()
         .. " Macro=" .. MacroConstant("Enum.TooltipDataType.Macro")
 
     local found = 0
-    local getInfo = MD.API.Has("GetActionInfo")
+    local getInfo = ST.API.Has("GetActionInfo")
     if type(getInfo) == "function" then
         for slot = 1, MACRO_SLOTS do
             if found >= MACRO_ACTIONS then break end
@@ -1280,7 +1280,7 @@ local function MacroLines()
                 lines[#lines + 1] = string.format("macro action %d info=%s,%s,%s GetMacroSpell=%s GetMacroInfo=%s",
                     slot, Fmt(kind), Fmt(id), Fmt(sub), spellText, infoText)
 
-                local getTip = MD.API.Has("C_TooltipInfo.GetAction")
+                local getTip = ST.API.Has("C_TooltipInfo.GetAction")
                 if type(getTip) ~= "function" then
                     lines[#lines + 1] = string.format("macro action %d tooltip <absent>", slot)
                 else
@@ -1341,7 +1341,7 @@ local function ShapesLines(order)
     -- plain, small, non-secret number (never looped on a client value that
     -- could be secret, absent or absurd).
     lines[#lines + 1] = "skill lines: " .. Show("C_SpellBook.GetNumSpellBookSkillLines")
-    local getNumLines = MD.API.Has("C_SpellBook.GetNumSpellBookSkillLines")
+    local getNumLines = ST.API.Has("C_SpellBook.GetNumSpellBookSkillLines")
     if type(getNumLines) == "function" then
         local ok, n = pcall(getNumLines)
         if ok and not IsSecret(n) and type(n) == "number" and n >= 1 and n <= 20 then
@@ -1430,7 +1430,7 @@ end
 -- a section that only asks Forever's questions prints this one line instead
 -- (decision 22: TBC's report has only the sections that answer there).
 local FOREVER_ONLY = "absent (Forever only)"
-local function OnForever() return MD.API.client == "forever" end
+local function OnForever() return ST.API.client == "forever" end
 
 -- Every plain file a style names (docs/SPEC-next.md 5.1 Classic and Modern,
 -- docs/research/next/R-styles.md 5.1), the broker's icon (6.2) and the probe
@@ -1499,7 +1499,7 @@ local AURA_ROWS, AURA_SHOWN = 40, 8
 
 -- "present" when the dotted name is a function (or, for a table, a table).
 local function Presence(name, kind)
-    local v = MD.API.Has(name)
+    local v = ST.API.Has(name)
     if type(v) == (kind or "function") then return "present" end
     return "absent"
 end
@@ -1546,7 +1546,7 @@ end
 -- GetFileIDFromPath(path): the id, "absent" when it answers nothing,
 -- "<absent>" when the client has no such function.
 local function FileIDText(path)
-    local fn = MD.API.Has("GetFileIDFromPath")
+    local fn = ST.API.Has("GetFileIDFromPath")
     if type(fn) ~= "function" then return "<absent>" end
     local n, packed = packPcall(pcall(fn, path))
     if not packed[1] then return "<error: " .. Fmt(packed[2]) .. ">" end
@@ -1571,7 +1571,7 @@ end
 
 local function AtlasLine(name)
     local head = "atlas " .. Esc(name)
-    local fn = MD.API.Has("C_Texture.GetAtlasInfo")
+    local fn = ST.API.Has("C_Texture.GetAtlasInfo")
     if type(fn) ~= "function" then return head .. " <absent>" end
     local n, packed = packPcall(pcall(fn, name))
     if not packed[1] then return head .. " <error: " .. Fmt(packed[2]) .. ">" end
@@ -1594,7 +1594,7 @@ end
 -- An addon function's name: C_AddOns' where the client has it, else the
 -- classic global's.
 local function AddonFn(name)
-    if type(MD.API.Has("C_AddOns." .. name)) == "function" then return "C_AddOns." .. name end
+    if type(ST.API.Has("C_AddOns." .. name)) == "function" then return "C_AddOns." .. name end
     return name
 end
 
@@ -1607,7 +1607,7 @@ local function AddonLine(name)
     if loaded == "true" then
         return line .. " version=" .. First(AddonFn("GetAddOnMetadata"), name, "Version")
     end
-    local fn = MD.API.Has(AddonFn("GetAddOnInfo"))
+    local fn = ST.API.Has(AddonFn("GetAddOnInfo"))
     if type(fn) ~= "function" then return line .. " reason=<absent>" end
     local n, packed = packPcall(pcall(fn, name))
     if not packed[1] then return line .. " reason=<error: " .. Fmt(packed[2]) .. ">" end
@@ -1628,7 +1628,7 @@ local function HostsLines()
         lines[#lines + 1] = "EllesmereUI absent"
     end
     lines[#lines + 1] = "ElvUI " .. Presence("ElvUI", "table")
-    local ls = MD.API.Has("LibStub")
+    local ls = ST.API.Has("LibStub")
     if type(ls) ~= "table" then
         lines[#lines + 1] = "LibStub absent"
         return lines
@@ -1663,9 +1663,9 @@ end
 -- Q-clock-1: UnitPowerPercent with a colour curve, its colour handed to a
 -- texture's SetVertexColor straight from GetRGB, then read back.
 local function CurveColourText()
-    local create = MD.API.Has("C_CurveUtil.CreateColorCurve")
-    local color = MD.API.Has("CreateColor")
-    local percent = MD.API.Has("UnitPowerPercent")
+    local create = ST.API.Has("C_CurveUtil.CreateColorCurve")
+    local color = ST.API.Has("CreateColor")
+    local percent = ST.API.Has("UnitPowerPercent")
     if type(create) ~= "function" or type(color) ~= "function" or type(percent) ~= "function" then
         return "colour curve: C_CurveUtil.CreateColorCurve " .. Presence("C_CurveUtil.CreateColorCurve")
             .. ", CreateColor " .. Presence("CreateColor") .. ", UnitPowerPercent " .. Presence("UnitPowerPercent")
@@ -1674,7 +1674,7 @@ local function CurveColourText()
     local ok, err = pcall(function()
         local curve = create()
         step = "type"
-        local linear = MD.API.Constant("Enum.LuaCurveType.Linear")
+        local linear = ST.API.Constant("Enum.LuaCurveType.Linear")
         if linear ~= nil then curve:SetType(linear) end
         step = "points"
         curve:AddPoint(0, color(1, 0, 0, 1))
@@ -1706,7 +1706,7 @@ end
 -- Q-clock-2: UnitPowerPercent handed to a font string's SetText unread, then
 -- what GetText and the string's width say.
 local function PercentTextText()
-    local percent = MD.API.Has("UnitPowerPercent")
+    local percent = ST.API.Has("UnitPowerPercent")
     if type(percent) ~= "function" then return "percent as text: UnitPowerPercent <absent>" end
     local fs = ArtRegion("font")
     if not fs then return "percent as text: <error: no font string>" end
@@ -1798,7 +1798,7 @@ end
 
 -- A book spell's base cooldown in ms when it reads plain and above 0.
 local function BaseCooldownOf(sp)
-    local fn = MD.API.Has("GetSpellBaseCooldown")
+    local fn = ST.API.Has("GetSpellBaseCooldown")
     if type(fn) ~= "function" then return nil end
     local ok, ms = pcall(fn, sp.id)
     if ok and not IsSecret(ms) and type(ms) == "number" and ms > 0 then return ms end
@@ -1808,7 +1808,7 @@ end
 -- Whether a book spell's tooltip has a right text naming a cooldown -- where
 -- the cooldown is when GetSpellBaseCooldown does not answer (4.2 P1).
 local function TooltipNamesCooldown(sp)
-    local getSpell = MD.API.Has("C_TooltipInfo.GetSpellByID")
+    local getSpell = ST.API.Has("C_TooltipInfo.GetSpellByID")
     if type(getSpell) ~= "function" then return false end
     local ok, found = pcall(function()
         local data = getSpell(sp.id)
@@ -1885,7 +1885,7 @@ end
 -- whose name is secret (it could be one), at most AURA_SHOWN of them. Returns
 -- the lines and how many mana sources it saw.
 local function AuraScanLines(prefix)
-    local get = MD.API.Has("C_UnitAuras.GetAuraDataByIndex")
+    local get = ST.API.Has("C_UnitAuras.GetAuraDataByIndex")
     if type(get) ~= "function" then return { prefix .. "C_UnitAuras.GetAuraDataByIndex <absent>" }, 0 end
     local rows, total, sources, secretNames, secretRows, shown = {}, 0, 0, 0, 0, 0
     local stopped = nil
@@ -2158,15 +2158,15 @@ local function DamageMeterLines()
     -- just because it wasn't secret this time.
     local outOfCombat = First("UnitAffectingCombat", "player") == "false"
 
-    local sessTypeEnum = MD.API.Has("Enum.DamageMeterSessionType")
-    local typeEnum = MD.API.Has("Enum.DamageMeterType")
+    local sessTypeEnum = ST.API.Has("Enum.DamageMeterSessionType")
+    local typeEnum = ST.API.Has("Enum.DamageMeterType")
     local healingDone = nil
     if type(typeEnum) == "table" then
         local v, status = Field(typeEnum, "HealingDone")
         if status == "ok" then healingDone = v end
     end
-    local getSession = MD.API.Has("C_DamageMeter.GetCombatSessionFromType")
-    local getSource = MD.API.Has("C_DamageMeter.GetCombatSessionSourceFromType")
+    local getSession = ST.API.Has("C_DamageMeter.GetCombatSessionFromType")
+    local getSource = ST.API.Has("C_DamageMeter.GetCombatSessionSourceFromType")
     if type(getSession) ~= "function" then getSession = nil end
     if type(getSource) ~= "function" then getSource = nil end
 
@@ -2218,12 +2218,12 @@ end
 -- the window manager's stack -- esc=stack (one press, one window), esc=all
 -- (one press closed several), esc=stuck (the proxy did not come back), esc=off
 -- (the fallback is on), esc=untested. The line is the manager's own string
--- (UI/Windows_Forever.lua's MD.Win:EscLine), read under pcall and escaped; no
+-- (UI/Windows_Forever.lua's ST.Win:EscLine), read under pcall and escaped; no
 -- client value is involved. Returns the lines and whether a press is still to
 -- be made.
 --------------------------------------------------------------------------------
 local function WindowsLines()
-    local W = MD and MD.Win
+    local W = ST and ST.Win
     if type(W) ~= "table" or type(W.EscLine) ~= "function" then
         return { "esc=no window manager" }, false
     end
@@ -2287,7 +2287,7 @@ local function ShowReportBox(report)
             -- T33 (docs/SPEC-forever-ui.md 6.5): under the window manager the
             -- box is an ESC stack entry (pushed on every show, below), not a
             -- UISpecialFrames line of its own -- one ESC closes one thing
-            if not (MD and MD.Win and MD.Win.Push) then
+            if not (ST and ST.Win and ST.Win.Push) then
                 tinsert(UISpecialFrames, "SpellTunerProbeFrame")
             end
             probeFrame, probeEditBox = f, eb
@@ -2295,7 +2295,7 @@ local function ShowReportBox(report)
 
         probeEditBox:SetText(report)
         probeFrame:Show()
-        if MD and MD.Win and MD.Win.Push then MD.Win:Push(probeFrame) end
+        if ST and ST.Win and ST.Win.Push then ST.Win:Push(probeFrame) end
         probeEditBox:SetFocus()
         probeEditBox:HighlightText()
     end)
@@ -2634,8 +2634,8 @@ local function OnAddonLoaded(loadedName)
         -- review-probe R3: Core_Forever.lua's guard runs first and has already
         -- replaced a missing or broken SpellTunerDB with {} -- what the client
         -- handed back is the guard's own record of it, when there is one.
-        if type(MD.sv) == "table" and type(MD.sv.atLoad) == "string" then
-            svTypeAtLoad = MD.sv.atLoad
+        if type(ST.sv) == "table" and type(ST.sv.atLoad) == "string" then
+            svTypeAtLoad = ST.sv.atLoad
         end
         -- T87: on the TBC line the client may hand back ManaDemon's table
         -- instead (its .toc lists both), and Core.lua adopts it at
@@ -2673,7 +2673,7 @@ end
 
 local function OnRegenDisabled()
     phase = "combat"
-    local after = MD.API.Has("C_Timer.After")
+    local after = ST.API.Has("C_Timer.After")
     if type(after) == "function" then
         -- runs later, outside every other pcall. review-probe R2: only if the
         -- fight is still on -- a fight over within 2 s would otherwise answer
@@ -2792,8 +2792,8 @@ do
     local saved = doing
     doing = "register:macro tooltip post-call"
     pcall(function()
-        local macroType = MD.API.Constant("Enum.TooltipDataType.Macro")
-        local add = MD.API.Has("TooltipDataProcessor.AddTooltipPostCall")
+        local macroType = ST.API.Constant("Enum.TooltipDataType.Macro")
+        local add = ST.API.Has("TooltipDataProcessor.AddTooltipPostCall")
         if macroType ~= nil and type(add) == "function" then
             add(macroType, function(tooltip, data) pcall(RecordMacroHover, tooltip, data) end)
         end
@@ -2806,8 +2806,8 @@ end
 -- kernel fails to load, T0's own Goal), the probe registers through it
 -- instead of owning the slash command outright -- one dispatcher, one place
 -- that prints "commands:".
-if type(MD.AddCommand) == "function" then
-    MD:AddCommand("probe", function(arg)
+if type(ST.AddCommand) == "function" then
+    ST:AddCommand("probe", function(arg)
         if arg == "clog" then
             -- T0d: clog is gone -- never register it, and never run the probe
             -- here either, since a run saves a record and would move the
@@ -2852,7 +2852,7 @@ local function UnitCombatEventsCount()
     return #unitCombatEvents
 end
 
-MD.Probe = { Run = Run, UnitCombatEventsCount = UnitCombatEventsCount }
+ST.Probe = { Run = Run, UnitCombatEventsCount = UnitCombatEventsCount }
 
 -- The file's last statement (T0c item 1): nothing is "in flight" once load
 -- finishes.

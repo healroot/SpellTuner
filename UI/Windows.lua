@@ -1,8 +1,8 @@
 -- T32 (docs/SPEC-forever-ui.md 4.3 "Window scale", 6.1, 6.2, 6.7): the window
--- manager, MD.Win. T80 (C1 of docs/PLAN-refactor-ux.md, review A22, A6c):
+-- manager, ST.Win. T80 (C1 of docs/PLAN-refactor-ux.md, review A22, A6c):
 -- listed by every main TOC -- TBC's too (decision 10, the author's answer 1)
 -- -- after UI/Theme_Flat.lua and UI/EscStack.lua, so no shared file asks
--- `if MD.Win` any more. It knows no dashboard: the window that registers as
+-- `if ST.Win` any more. It knows no dashboard: the window that registers as
 -- the host hands in its sizes per group, its first group, how to open it on a
 -- view, how to read the view it shows, and where a practice session's way
 -- back leads (UI/Dashboard.lua on TBC, UI/Dashboard_Forever.lua on Forever).
@@ -21,8 +21,8 @@
 -- manager -- db.replayPos, or (spec.adoptPlaced) the place the client gave a
 -- window that was user-placed -- is adopted once (Win:Adopt).
 --
--- T33 (6.5, 6.6): the ESC stack is UI/EscStack.lua's (MD.EscStack); every
--- registered window joins it while shown, and its calls are on MD.Win too.
+-- T33 (6.5, 6.6): the ESC stack is UI/EscStack.lua's (ST.EscStack); every
+-- registered window joins it while shown, and its calls are on ST.Win too.
 -- Entering combat hides the host (and a review replay) under db.ui.combat =
 -- "hide"; PLAYER_REGEN_ENABLED shows them again, the host on the view it had.
 --
@@ -39,18 +39,18 @@
 --
 -- No client data is read here: the widget toolkit (frame geometry, strata,
 -- scale) is not a client call (CLAUDE.md), and the events go through the
--- kernel's MD:On.
-local _, MD = ...
-local UI = MD.UI
-local Esc = MD.EscStack
+-- kernel's ST:On.
+local _, ST = ...
+local UI = ST.UI
+local Esc = ST.EscStack
 
 local Win = { windows = {} }
-MD.Win = Win
+ST.Win = Win
 
 -- T80 (C1): the manager's settings, declared by the file that reads them
--- (MD:RegisterDefaults, T55), so TBC has them as soon as it lists the manager.
+-- (ST:RegisterDefaults, T55), so TBC has them as soon as it lists the manager.
 -- fontOffset is the theme's (UI/Theme_Flat.lua), escStack the stack's.
-MD:RegisterDefaults({ ui = { scale = 1, combat = "hide", win = {} } })
+ST:RegisterDefaults({ ui = { scale = 1, combat = "hide", win = {} } })
 
 -- 6.2: strata / level / toplevel per role. Sheets and popups are not windows
 -- the manager places (6.4); T33 / T34 use the other rows. T33: what entering
@@ -79,7 +79,7 @@ local HEADER = 20 -- the kit's header hangs above the frame (UI.CreateMovableFra
 -- Saved state: db.ui.win[key] = { x, y, sizes = { [group] = { w, h } } }
 --------------------------------------------------------------------------------
 local function UIdb()
-    local db = MD.db
+    local db = ST.db
     if type(db) ~= "table" then return nil end
     if type(db.ui) ~= "table" then db.ui = {} end
     if type(db.ui.win) ~= "table" then db.ui.win = {} end
@@ -542,11 +542,11 @@ end
 
 function Win:InCombat()
     if self.inCombat then return true end
-    local API = MD.API
+    local API = ST.API
     return (API and API.UnitAffectingCombat and API.UnitAffectingCombat("player") == true) or false
 end
 
--- Every caller of MD:SelectView comes through here (6.3). Open the host on the
+-- Every caller of ST:SelectView comes through here (6.3). Open the host on the
 -- view asked for (nil: the remembered one). During a practice session it is
 -- refused with the session window's one line; during a replay the replay
 -- closes first -- the two are never shown together by a command.
@@ -555,7 +555,7 @@ function Win:ShowMain(group, view)
     if t and t.kind == "practice" then
         local w = self.windows[t.key]
         if w and w.frame:IsShown() then
-            if w.busy then MD:Print(w.busy) end
+            if w.busy then ST:Print(w.busy) end
             return
         end
     end
@@ -564,7 +564,7 @@ function Win:ShowMain(group, view)
 end
 
 --------------------------------------------------------------------------------
--- The ESC stack (6.5, T33): UI/EscStack.lua's, on MD.Win too (T80, C1). The
+-- The ESC stack (6.5, T33): UI/EscStack.lua's, on ST.Win too (T80, C1). The
 -- same table and the same proxy, so a caller of either sees one stack.
 --------------------------------------------------------------------------------
 Win.stack = Esc.stack
@@ -651,7 +651,7 @@ function Win:EnterCombat()
     -- (db.ui.combatNoted), not at every pull.
     if #list > 0 and u and not u.combatNoted then
         u.combatNoted = true
-        MD:Print(Win.COMBAT_NOTE)
+        ST:Print(Win.COMBAT_NOTE)
     end
 end
 
@@ -675,7 +675,7 @@ function Win:LeaveCombat()
     end
 end
 
-MD:On("UI_SCALE_CHANGED", function() Win:Restyle() end)
-MD:On("DISPLAY_SIZE_CHANGED", function() Win:Restyle() end)
-MD:On("PLAYER_REGEN_DISABLED", function() Win:EnterCombat() end)
-MD:On("PLAYER_REGEN_ENABLED", function() Win:LeaveCombat() end)
+ST:On("UI_SCALE_CHANGED", function() Win:Restyle() end)
+ST:On("DISPLAY_SIZE_CHANGED", function() Win:Restyle() end)
+ST:On("PLAYER_REGEN_DISABLED", function() Win:EnterCombat() end)
+ST:On("PLAYER_REGEN_ENABLED", function() Win:LeaveCombat() end)

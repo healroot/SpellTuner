@@ -19,10 +19,10 @@
 --
 -- Nothing here is modelled. v0.9.3 chains the pulls through the engine and
 -- scores the run; this file only writes down what happened.
-local _, MD = ...
+local _, ST = ...
 
 local RR = {}
-MD.RunRecorder = RR
+ST.RunRecorder = RR
 
 -- Recorded event kinds. Do not renumber: they are in the SavedVariables.
 RR.K = { PULL = 1, PULL_END = 2, DRINK = 3, DRINK_END = 4, DEAD = 5, ALIVE = 6,
@@ -66,7 +66,7 @@ end
 
 local function IsDrinking()
     for _, name in ipairs(DRINK_NAMES) do
-        if MD:HasBuff(name) then return true end
+        if ST:HasBuff(name) then return true end
     end
     return false
 end
@@ -98,7 +98,7 @@ local function Push(run, kind, a, b)
     if n > RR.MAX_GAP_EV then
         if not run.truncated then
             run.truncated = true
-            MD:Debug("sim", "run: the gap timeline is full at %d events", RR.MAX_GAP_EV)
+            ST:Debug("sim", "run: the gap timeline is full at %d events", RR.MAX_GAP_EV)
         end
         return
     end
@@ -125,9 +125,9 @@ end
 -- of 8 does.
 --------------------------------------------------------------------------------
 local function Runs()
-    if not MD.cdb then return {} end
-    MD.cdb.runs = MD.cdb.runs or {}
-    return MD.cdb.runs
+    if not ST.cdb then return {} end
+    ST.cdb.runs = ST.cdb.runs or {}
+    return ST.cdb.runs
 end
 
 -- nil when there is room, else the reason there is not.
@@ -179,7 +179,7 @@ end
 -- T62 (P18): "a:b" is answered through the one router (Engine/Recordings.lua).
 -- No pin cap: a run is pinned whole (the Review tab's Pin, MAX_PINNED_RUNS in
 -- the retention above), never a pull on its own.
-MD.Recordings.Register(":", {
+ST.Recordings.Register(":", {
     Get = function(runIdx, k) return RR:GetPull(runIdx, k) end,
     List = function() return RR:List() end,
 })
@@ -194,8 +194,8 @@ function RR:Start(reason, name)
         return nil, string.format("a run is already recording: %s (%s)", RR.active.name,
             RR:Clock(Now(RR.active)))
     end
-    if not MD.cdb then return nil, "no character database yet" end
-    if MD.db and MD.db.recordRuns == false then
+    if not ST.cdb then return nil, "no character database yet" end
+    if ST.db and ST.db.recordRuns == false then
         return nil, "run recording is off (db.recordRuns)"
     end
     local full = RR:NoRoom()
@@ -236,10 +236,10 @@ function RR:Start(reason, name)
     RR.pullStart = nil
     run.deadTime, run.drinkTime = 0, 0
     -- the pull in progress, if any, joins the run
-    if MD.FightRecorder and MD.FightRecorder.active then
-        MD:Debug("sim", "run: a pull is already in progress and joins the run")
+    if ST.FightRecorder and ST.FightRecorder.active then
+        ST:Debug("sim", "run: a pull is already in progress and joins the run")
     end
-    MD:Debug("sim", "run started: %s (%s), pool %d", run.name, run.reason, run.pool)
+    ST:Debug("sim", "run started: %s (%s), pool %d", run.name, run.reason, run.pool)
     return run, nil
 end
 
@@ -250,7 +250,7 @@ function RR:SampleHealth(run, t)
     if not hp then return end
     if #hp.t >= RR.MAX_GAP_EV then return end
     local names, fracs = {}, {}
-    local T = MD.Targets
+    local T = ST.Targets
     for _, e in pairs((T and T.byGUID) or {}) do
         local unit = e.unit
         if unit and not e.isPet and UnitExists and UnitExists(unit) then
@@ -376,14 +376,14 @@ function RR:Stop(reason)
 
     local slot, dropped = Store(run)
     if not slot then
-        MD:Print("run " .. run.name .. ": " .. RR:Line(run) ..
+        ST:Print("run " .. run.name .. ": " .. RR:Line(run) ..
             " - |cffff4444not stored|r: both kept runs are pinned.")
         return run, "not stored"
     end
-    MD:Print(RR:Line(run) .. (run.stopReason ~= "manual" and (" [" .. run.stopReason .. "]") or "") ..
+    ST:Print(RR:Line(run) .. (run.stopReason ~= "manual" and (" [" .. run.stopReason .. "]") or "") ..
         (dropped and string.format(" - replaced %s", dropped.name or "an older run") or ""))
-    MD:Debug("sim", "run stored in slot %d: %d event(s) over %d pull(s)", slot, RR:Events(run), #run.pulls)
-    MD:Fire("RUN_STORED", run)
+    ST:Debug("sim", "run stored in slot %d: %d event(s) over %d pull(s)", slot, RR:Events(run), #run.pulls)
+    ST:Fire("RUN_STORED", run)
     return run, nil
 end
 
@@ -423,7 +423,7 @@ function RR:AddPull(stream, short)
     run.pulls[#run.pulls + 1] = stream
     local k = #run.pulls
     Push(run, RR.K.PULL_END, k, stream.dur or 0)
-    MD:Debug("sim", "run: pull %d kept (%.0fs, %d event(s)%s)", k, stream.dur or 0, stream.n or 0,
+    ST:Debug("sim", "run: pull %d kept (%.0fs, %d event(s)%s)", k, stream.dur or 0, stream.n or 0,
         short and ", under the gate" or "")
     return k
 end
@@ -452,7 +452,7 @@ end
 --------------------------------------------------------------------------------
 -- The gaps
 --------------------------------------------------------------------------------
-MD:OnTick(function(dt)
+ST:OnTick(function(dt)
     local run = RR.active
     if not run then return end
     local t = Now(run)
@@ -467,8 +467,8 @@ MD:OnTick(function(dt)
         RR:SampleHealth(run, t)
         -- a potion leaves the bags; the count is the only signal that does not
         -- need a spell id nobody has verified on this client
-        if MD.ManaCooldowns and GetItemCount then
-            for _, p in ipairs(MD.ManaCooldowns.potions or {}) do
+        if ST.ManaCooldowns and GetItemCount then
+            for _, p in ipairs(ST.ManaCooldowns.potions or {}) do
                 local have = GetItemCount(p.id) or 0
                 RR.potionCount = RR.potionCount or {}
                 local was = RR.potionCount[p.id]
@@ -508,13 +508,13 @@ MD:OnTick(function(dt)
         RR:Stop("left the instance")
         return
     end
-    local ceiling = (MD.db and MD.db.runMaxMinutes or 90) * 60
+    local ceiling = (ST.db and ST.db.runMaxMinutes or 90) * 60
     if ceiling > 0 and t >= ceiling then
         RR:Stop(string.format("%d minute ceiling", ceiling / 60))
     end
 end)
 
-MD:On("PLAYER_DEAD", function()
+ST:On("PLAYER_DEAD", function()
     local run = RR.active
     if not run or RR.deadFrom then return end
     RR.deadFrom = Now(run)
@@ -529,10 +529,10 @@ local function Alive()
     RR.deadFrom = nil
     Push(run, RR.K.ALIVE, Mana(), 0)
 end
-MD:On("PLAYER_ALIVE", Alive)
-MD:On("PLAYER_UNGHOST", Alive)
+ST:On("PLAYER_ALIVE", Alive)
+ST:On("PLAYER_UNGHOST", Alive)
 
-MD:On("ZONE_CHANGED_NEW_AREA", function()
+ST:On("ZONE_CHANGED_NEW_AREA", function()
     local run = RR.active
     if not run then return end
     local zone = GetRealZoneText and GetRealZoneText() or "?"
@@ -541,39 +541,39 @@ MD:On("ZONE_CHANGED_NEW_AREA", function()
         RR.leftAt = nil
     elseif not RR.leftAt then
         RR.leftAt = Now(run)
-        MD:Debug("sim", "run: left the instance (%s) - %ds of grace before it stops", zone, ZONE_GRACE)
+        ST:Debug("sim", "run: left the instance (%s) - %ds of grace before it stops", zone, ZONE_GRACE)
     end
 end)
 
-MD:On("UNIT_SPELLCAST_SUCCEEDED", function(unit, _, spellID)
+ST:On("UNIT_SPELLCAST_SUCCEEDED", function(unit, _, spellID)
     if unit ~= "player" or spellID ~= INNERVATE then return end
     local run = RR.active
     if not run then return end
     Push(run, RR.K.INNERVATE, Mana(), 0)
 end)
 
-MD:On("PLAYER_LOGOUT", function()
+ST:On("PLAYER_LOGOUT", function()
     if RR.active then RR:Stop("logout") end
 end)
 
 --------------------------------------------------------------------------------
 -- Slash command (/md run start [name] | stop | status)
 --------------------------------------------------------------------------------
-function MD:RunCommand(arg)
+function ST:RunCommand(arg)
     arg = arg or ""
     local sub, rest = arg:match("^(%S*)%s*(.*)$")
     sub = sub:lower()
     if sub == "start" then
         local run, why = RR:Start("manual", rest)
-        if not run then MD:Print("run: " .. why) return end
-        MD:Print(string.format("run |cff33ff66%s|r recording - every pull and the gaps between them. " ..
+        if not run then ST:Print("run: " .. why) return end
+        ST:Print(string.format("run |cff33ff66%s|r recording - every pull and the gaps between them. " ..
             "|cffffff00/md run stop|r when you leave.", run.name))
     elseif sub == "stop" then
         local _, why = RR:Stop("manual")
-        if why == "no run is recording" then MD:Print("run: nothing is recording.") end
+        if why == "no run is recording" then ST:Print("run: nothing is recording.") end
     elseif sub == "status" or sub == "" then
-        for _, line in ipairs(RR:Status()) do MD:Print(line) end
+        for _, line in ipairs(RR:Status()) do ST:Print(line) end
     else
-        MD:Print("usage: /md run start [name] || stop || status")   -- T48 (B11): no bare pipe
+        ST:Print("usage: /md run start [name] || stop || status")   -- T48 (B11): no bare pipe
     end
 end

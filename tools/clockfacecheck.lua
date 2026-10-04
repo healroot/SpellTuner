@@ -2,17 +2,17 @@
 --
 -- T88 (docs/SPEC-next.md 2.4, S4 step 1, task K1 of docs/research/next/R-clock.md):
 -- the clock face. What the mana clock SAYS is a pure record (`face`), built by
--- each line's producer -- TBC `MD:GetClockFace()` in Engine/TTO.lua, Forever
--- `MD.ManaModel.Face(state, now)` in Engine/ManaModel.lua, each provided as
--- `MD.ClockFace.Current` -- and the words and colour codes are assembled in
--- ONE place, `MD.ClockFace.LineString(face, valueHex)` (Engine/ClockFace.lua,
--- pure). `MD:GetDisplayString(valueHex)` and `MD.ManaModel.Text(state)` are
+-- each line's producer -- TBC `ST:GetClockFace()` in Engine/TTO.lua, Forever
+-- `ST.ManaModel.Face(state, now)` in Engine/ManaModel.lua, each provided as
+-- `ST.ClockFace.Current` -- and the words and colour codes are assembled in
+-- ONE place, `ST.ClockFace.LineString(face, valueHex)` (Engine/ClockFace.lua,
+-- pure). `ST:GetDisplayString(valueHex)` and `ST.ManaModel.Text(state)` are
 -- wrappers over it and must stay byte-identical.
 --
 -- What is held:
 --   1. Engine/ClockFace.lua loads, and renders every sample, in an environment
 --      holding nothing but Lua's own library -- no frame API, no client call,
---      no MD.db (an unknown global raises);
+--      no ST.db (an unknown global raises);
 --   2. the goldens, captured with --golden on the parent commit (e2b13f4)
 --      BEFORE Engine/TTO.lua or Engine/ManaModel.lua was edited:
 --        tbc:     GetDisplayString(nil) and GetDisplayString("|cff16c3f2") over
@@ -29,7 +29,7 @@
 --      the "vv" crit face and the "nodata" face are what the spec names;
 --   4. ClockFace.SAMPLES: every sample, as TBC and as Forever would draw it,
 --      ASCII, no bare pipe, no "nil", and a missing value never a 0;
---   5. T93 (docs/SPEC-next.md 7.3 "When", F3): MD.Visibility.Want with a show
+--   5. T93 (docs/SPEC-next.md 7.3 "When", F3): ST.Visibility.Want with a show
 --      rule -- the default rule is the parent's Want on every case, however
 --      it is asked; ooc = "never" (beside "always" and combat "never");
 --      manaUsersOnly. UI/Visibility.lua loaded with Lua's library only.
@@ -48,7 +48,7 @@ for i = 1, #arg do
 end
 
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua")
+local ST = dofile(here .. "/harness.lua")
 arg[0] = a0
 local S = _G.STUB
 local FLAVOUR = S.flavour
@@ -133,8 +133,8 @@ check("1. Engine/ClockFace.lua loads and renders with Lua's library only (no fra
     pureCF ~= nil and type(pureCF.LineString) == "function" and type(pureCF.SAMPLES) == "table"
         and pureErr == nil, pureErr)
 
-local CF = MD.ClockFace
-check("1b. the file is loaded by this flavour's TOC (MD.ClockFace.LineString)",
+local CF = ST.ClockFace
+check("1b. the file is loaded by this flavour's TOC (ST.ClockFace.LineString)",
     type(CF) == "table" and type(CF.LineString) == "function")
 
 --------------------------------------------------------------------------------
@@ -171,7 +171,7 @@ local function FindUpvalue(fn, name, depth, seen)
 end
 local function FindTTO(name)
     for _, key in ipairs({ "GetClockFace", "GetDisplayString" }) do
-        local f, i, v = FindUpvalue(MD[key], name)
+        local f, i, v = FindUpvalue(ST[key], name)
         if f then return f, i, v end
     end
     return nil
@@ -186,7 +186,7 @@ if FLAVOUR == "tbc" then
     ----------------------------------------------------------------------------
     local regenBase, regenCast = 10, 5
     _G.GetManaRegen = function() return regenBase, regenCast end
-    local SD = MD.SpellData
+    local SD = ST.SpellData
     local HT5 = 5189
     local function Cast(id)
         S.mana = S.mana - SD:GetCost(id)
@@ -198,7 +198,7 @@ if FLAVOUR == "tbc" then
         for _ = 1, n do
             S.Tick(0.5)
             tick = tick + 1
-            Rec(string.format("fight %03d %s", tick, label), MD:GetDisplayString(), MD:GetDisplayString(HEX))
+            Rec(string.format("fight %03d %s", tick, label), ST:GetDisplayString(), ST:GetDisplayString(HEX))
         end
     end
     Ticks(4, "full, out of combat")
@@ -245,7 +245,7 @@ if FLAVOUR == "tbc" then
         down = function(v) return { { S.now - 10, (v or 0) + 30 } } end, -- change -20 -> "v"
         up   = function(v) return { { S.now - 10, (v or 0) - 10 } } end, -- change 20 -> "^"
     }
-    local saveRest, saveCd = MD.db.showRest, MD.db.showCooldown
+    local saveRest, saveCd = ST.db.showRest, ST.db.showCooldown
     local function Render(id, d, st, dbo)
         disp.mode = d.mode
         disp.value = d.value
@@ -258,11 +258,11 @@ if FLAVOUR == "tbc" then
             inCombat = st.inCombat, stable = st.stable ~= false, rest = st.rest, cd = st.cd,
             manaMax = st.manaMax or 10000, mana = 5000, pct = 0.5, regenNow = 5, mode = d.mode,
         })
-        MD.db.showRest = dbo and dbo.showRest
-        if MD.db.showRest == nil then MD.db.showRest = saveRest end
-        MD.db.showCooldown = dbo and dbo.showCooldown
-        if MD.db.showCooldown == nil then MD.db.showCooldown = saveCd end
-        Rec(id, MD:GetDisplayString(), MD:GetDisplayString(HEX))
+        ST.db.showRest = dbo and dbo.showRest
+        if ST.db.showRest == nil then ST.db.showRest = saveRest end
+        ST.db.showCooldown = dbo and dbo.showCooldown
+        if ST.db.showCooldown == nil then ST.db.showCooldown = saveCd end
+        Rec(id, ST:GetDisplayString(), ST:GetDisplayString(HEX))
     end
 
     local MODES = { "fullnow", "nodata", "ooc", "full", "warmup", "hold", "oom" }
@@ -341,17 +341,17 @@ if FLAVOUR == "tbc" then
         local out = {}
         for _, m in ipairs({ "ooc", "full" }) do
             Render("Z " .. m .. " v=nil", { mode = m, value = nil }, { inCombat = m == "full", rest = 300 })
-            out[m] = { transcript[#transcript], MD:GetDisplayString(), MD:GetDisplayString(HEX) }
+            out[m] = { transcript[#transcript], ST:GetDisplayString(), ST:GetDisplayString(HEX) }
             transcript[#transcript] = nil
         end
         return out
     end
-    MD.db.showRest, MD.db.showCooldown = saveRest, saveCd
+    ST.db.showRest, ST.db.showCooldown = saveRest, saveCd
 else
     ----------------------------------------------------------------------------
     -- 2c. Forever: ManaModel.Text over every mode x time x rest.
     ----------------------------------------------------------------------------
-    local Text = MD.ManaModel.Text
+    local Text = ST.ManaModel.Text
     local TIMES = { nil, -3, 0, 2.4, 2.6, 10, 19, 59, 62.4, 597.6, 600, 600.4, 601, 602.6, 1e9, math.huge }
     local NT = 16
     local RESTS = { nil, "same", "x1.2", "x1.3", "x0.7", 30, 700 }
@@ -432,8 +432,8 @@ end
 --------------------------------------------------------------------------------
 local LS = CF and CF.LineString
 if FLAVOUR == "tbc" then
-    check("3. MD:GetClockFace exists and is provided as MD.ClockFace.Current",
-        type(MD.GetClockFace) == "function" and CF and type(CF.Current) == "function")
+    check("3. ST:GetClockFace exists and is provided as ST.ClockFace.Current",
+        type(ST.GetClockFace) == "function" and CF and type(CF.Current) == "function")
 
     -- Re-render a few grid states through the face and compare with the string.
     local dispF, _, disp = FindTTO("disp")
@@ -447,32 +447,32 @@ if FLAVOUR == "tbc" then
         })
     end
     local face, same
-    if dispF and stateF and MD.GetClockFace and LS then
+    if dispF and stateF and ST.GetClockFace and LS then
         Put({ mode = "oom", value = 15 }, { inCombat = true })
-        face = MD:GetClockFace()
+        face = ST:GetClockFace()
         check("3a. OOM 15s vv: the crit band's face (tone crit, arrow vv, known point)",
             face and face.mode == "oom" and face.tone == "crit" and face.arrow == "vv" and face.known == "point"
-                and face.value == 15 and Strip(LS(face)) == "OOM 15s vv" and LS(face) == MD:GetDisplayString(),
+                and face.value == 15 and Strip(LS(face)) == "OOM 15s vv" and LS(face) == ST:GetDisplayString(),
             face and Strip(LS(face)))
         Put({ mode = "nodata" }, { inCombat = false })
-        face = MD:GetClockFace()
+        face = ST:GetClockFace()
         check("3b. FULL --: the nodata face (mode nodata, known none, value nil)",
             face and face.mode == "nodata" and face.known == "none" and face.value == nil and face.label == "FULL"
                 and Strip(LS(face)) == "FULL --",
             face and Strip(LS(face)))
         Put({ mode = "oom", value = nil }, { inCombat = true })
-        face = MD:GetClockFace()
+        face = ST:GetClockFace()
         check("3c. OOM --: oom with no value (mode oom, known none) beside nodata's FULL --",
             face and face.mode == "oom" and face.known == "none" and Strip(LS(face)) == "OOM --",
             face and Strip(LS(face)))
         Put({ mode = "oom", value = 110, bounded = true }, { inCombat = true, rest = 400 })
-        face = MD:GetClockFace()
+        face = ST:GetClockFace()
         check("3d. the bound: known bound, arrow '=', the rest segment as `second`",
             face and face.known == "bound" and face.arrow == "=" and face.second and face.second.kind == "rest"
                 and Strip(LS(face)) == "OOM >1:50 =  rest 6:40",
             face and Strip(LS(face)))
         Put({ mode = "oom", value = 90 }, { inCombat = true, rest = 400, cd = { short = "inn", tto = 130, delta = 2000 } })
-        face = MD:GetClockFace()
+        face = ST:GetClockFace()
         check("3e. the cooldown segment: second = { kind cd, label inn, value 135 }",
             face and face.second and face.second.kind == "cd" and face.second.label == "inn" and face.second.value == 135
                 and not face.modelled and face.combat == true,
@@ -482,7 +482,7 @@ if FLAVOUR == "tbc" then
                 { mode = "hold", value = 330 }, { mode = "oom", value = 75 } }) do
             Put(d, { inCombat = d.mode ~= "ooc" and d.mode ~= "fullnow", rest = 20 })
             local f = CF.Current()
-            if not f or LS(f) ~= MD:GetDisplayString() or LS(f, HEX) ~= MD:GetDisplayString(HEX) then same = false end
+            if not f or LS(f) ~= ST:GetDisplayString() or LS(f, HEX) ~= ST:GetDisplayString(HEX) then same = false end
         end
         check("3f. ClockFace.Current() rendered by LineString IS GetDisplayString, with and without a hex", same)
         local z = unreachableFullNil()
@@ -492,15 +492,15 @@ if FLAVOUR == "tbc" then
             tostring(z.ooc[2]) .. " / " .. tostring(z.full[2]))
         debug.setupvalue(stateF, stateI, nil)
         check("3h. no state: no face, and the string is empty as before",
-            MD:GetClockFace() == nil and MD:GetDisplayString() == "")
+            ST:GetClockFace() == nil and ST:GetDisplayString() == "")
     else
         for _, n in ipairs({ "3a", "3b", "3c", "3d", "3e", "3f", "3g", "3h" }) do
-            check(n .. ". the face API (MD:GetClockFace, ClockFace.LineString)", false, "absent")
+            check(n .. ". the face API (ST:GetClockFace, ClockFace.LineString)", false, "absent")
         end
     end
 else
-    local MM = MD.ManaModel
-    check("3. ManaModel.Face exists and the pool's face is provided as MD.ClockFace.Current",
+    local MM = ST.ManaModel
+    check("3. ManaModel.Face exists and the pool's face is provided as ST.ClockFace.Current",
         type(MM.Face) == "function" and CF and type(CF.Current) == "function")
     if type(MM.Face) == "function" and LS then
         local same, bad = true, nil
@@ -525,8 +525,8 @@ else
         -- The provider reads the real pool: equal to the face of Pool:Project(now).
         local now = GetTime()
         local cur = CF.Current(now)
-        local want = MM.Face(MD.Pool:Project(now), now)
-        check("3e. ClockFace.Current(now) is the face of MD.Pool:Project(now)",
+        local want = MM.Face(ST.Pool:Project(now), now)
+        check("3e. ClockFace.Current(now) is the face of ST.Pool:Project(now)",
             cur and LS(cur) == LS(want) and cur.mode == want.mode and cur.modelled == true, cur and LS(cur))
         local curNoTime = CF.Current()
         check("3f. ClockFace.Current() with no time reads the model at its last tick, never raises",
@@ -576,7 +576,7 @@ else
 end
 
 --------------------------------------------------------------------------------
--- 5. T93 (docs/SPEC-next.md 7.3 "When", F3): MD.Visibility.Want takes a show
+-- 5. T93 (docs/SPEC-next.md 7.3 "When", F3): ST.Visibility.Want takes a show
 -- rule. UI/Visibility.lua is pure, so it is loaded here the way section 1
 -- loads the face -- Lua's library only -- and asked directly. The oracle is
 -- the parent's Want, copied verbatim from UI/Visibility.lua at 231525d.
@@ -708,10 +708,10 @@ end
 -- the renderer are loaded here, in the TOC's order (Forever has them).
 --------------------------------------------------------------------------------
 do
-    if not (MD.ClockView and MD.ClockView.Resolve) and FLAVOUR == "tbc" then
-        pcall(S.Load, { "UI/Style.lua", "UI/Theme_Flat.lua", "UI/Styles.lua", "UI/ClockView.lua" }, "SpellTuner", MD)
+    if not (ST.ClockView and ST.ClockView.Resolve) and FLAVOUR == "tbc" then
+        pcall(S.Load, { "UI/Style.lua", "UI/Theme_Flat.lua", "UI/Styles.lua", "UI/ClockView.lua" }, "SpellTuner", ST)
     end
-    local CV = MD.ClockView or {}
+    local CV = ST.ClockView or {}
     local function Is(c, r, g, b, a)
         return type(c) == "table" and c[1] == r and c[2] == g and c[3] == b and c[4] == a
     end
@@ -761,30 +761,30 @@ do
     -- and the look is the style's again
     local ok6b, why6b = pcall(function()
         local fired = 0
-        MD:RegisterCallback("CLOCK_LOOK", function() fired = fired + 1 end)
+        ST:RegisterCallback("CLOCK_LOOK", function() fired = fired + 1 end)
         CV.SetLayout("bar")
         CV.Set("bars.bar.join", "veil")
         CV.Set("frame.bar.h", 30)
         CV.Set("colors.crit", "ff0000")
-        local had = MD.db.clockLook.over.bars ~= nil and MD.db.clockLook.over.colors ~= nil
-            and MD.db.clockLook.over.frame ~= nil
+        local had = ST.db.clockLook.over.bars ~= nil and ST.db.clockLook.over.colors ~= nil
+            and ST.db.clockLook.over.frame ~= nil
         local overLook = CV.Look(facts)
         local before = fired
         CV.ResetToStyle()
         local after = fired - before
         local look = CV.Look(facts)
-        local empty = type(MD.db.clockLook.over) == "table" and next(MD.db.clockLook.over) == nil
+        local empty = type(ST.db.clockLook.over) == "table" and next(ST.db.clockLook.over) == nil
         -- Set prunes: a key set back to nil leaves no empty table behind
         CV.Set("bars.line.fsr", 6)
         CV.Set("bars.line.fsr", nil)
-        local pruned = next(MD.db.clockLook.over) == nil
+        local pruned = next(ST.db.clockLook.over) == nil
         local okR = had and overLook.bars.join == "veil" and overLook.frame.h == 30 and empty
-            and MD.db.clockLook.layout == "bar" and after == 1 and look.bars.join == "stacked"
+            and ST.db.clockLook.layout == "bar" and after == 1 and look.bars.join == "stacked"
             and look.frame.h == 22 and look.colors.crit == nil and pruned
         CV.SetLayout("line")
         if okR then return true end
         return string.format("had %s, empty %s, layout %s, fired %d, join %s, pruned %s", tostring(had),
-            tostring(empty), tostring(MD.db.clockLook.layout), after, tostring(look.bars.join), tostring(pruned))
+            tostring(empty), tostring(ST.db.clockLook.layout), after, tostring(look.bars.join), tostring(pruned))
     end)
     check("6b. Reset to style wipes over (the layout kept, CLOCK_LOOK once, the style's look back); Set prunes",
         ok6b and why6b == true, (not ok6b and ("raised: " .. tostring(why6b))) or (why6b ~= true and tostring(why6b)) or nil)
@@ -853,15 +853,15 @@ do
             if stored.over.bars[L].show ~= hand.over.bars[L].show then same = false end
         end
         -- the session's own store, migrated (forced again here), with the dump line
-        MD.db.clockLook = { layout = "line", over = { bar = { source = "time", horizon = 3 } } }
+        ST.db.clockLook = { layout = "line", over = { bar = { source = "time", horizon = 3 } } }
         CV.MigrateStored(facts, true)
         local line
-        for _, d in ipairs(MD:DumpLines()) do
+        for _, d in ipairs(ST:DumpLines()) do
             if d.key == "clockOld" then line = d.fn() end
         end
         local okLine = line == "clock: 2 old clock keys dropped (bar.horizon, bar.source)"
-        local emptied = next(MD.db.clockLook.over) == nil
-        MD.db.clockLook = { layout = "line", over = {} }
+        local emptied = next(ST.db.clockLook.over) == nil
+        ST.db.clockLook = { layout = "line", over = {} }
         if c1 == true and c2 == false and #(d2 or {}) == 0 and same and okLine and emptied then return true end
         return string.format("first %s, second %s, same %s, dump %q, emptied %s", tostring(c1), tostring(c2),
             tostring(same), tostring(line), tostring(emptied))

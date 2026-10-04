@@ -2,18 +2,18 @@
 -- casts. Costs come from GetSpellPowerCost (live, any class — this is what
 -- makes TTO class-generic) with the static SpellData table as fallback;
 -- spells with no resolvable cost are logged, never guessed.
-local _, MD = ...
+local _, ST = ...
 
-local ST = {}
-MD.Spend = ST
+local SPEND = {}
+ST.Spend = SPEND
 
 local events = {}          -- { {t, cost}, ... } newest last; pruned to 60s
 local WINDOW = 60
 
-ST.unknown = {}            -- spellID -> true, spells we couldn't price
-ST.combat = { casts = 0, maxRankCasts = 0, spent = 0, byFamily = {} }
-ST.session = {}            -- family -> { casts, mana } since login (Waste view)
-ST.sessionSpent = 0
+SPEND.unknown = {}            -- spellID -> true, spells we couldn't price
+SPEND.combat = { casts = 0, maxRankCasts = 0, spent = 0, byFamily = {} }
+SPEND.session = {}            -- family -> { casts, mana } since login (Waste view)
+SPEND.sessionSpent = 0
 
 -- Pull-time seed (accepted "light history" design): decays fast so real casts
 -- take over within ~10s.
@@ -31,8 +31,8 @@ end
 -- (Spells/Book_TBC.lua) for a TBC priest, shaman or paladin; both answer
 -- LiveCost / StaticCost / IsMaxKnownRank and carry `spells[id].family`.
 local function Source()
-    local RM = MD.RankMath
-    return (RM and RM.Source and RM:Source()) or MD.SpellData
+    local RM = ST.RankMath
+    return (RM and RM.Source and RM:Source()) or ST.SpellData
 end
 
 -- Returns cost, source ("api" | "table") or nil when unpriceable. Live first
@@ -47,24 +47,24 @@ local function ResolveCost(spellID)
     return nil
 end
 
-MD:On("UNIT_SPELLCAST_SUCCEEDED", function(unit, _, spellID)
+ST:On("UNIT_SPELLCAST_SUCCEEDED", function(unit, _, spellID)
     if unit ~= "player" or type(spellID) ~= "number" then return end
     local now = GetTime()
     local cost, source = ResolveCost(spellID)
     if cost == nil then
-        ST.unknown[spellID] = true
-        MD:Debug("spend", "unpriced spell %s (%d) - ignored", GetSpellInfo(spellID) or "?", spellID)
+        SPEND.unknown[spellID] = true
+        ST:Debug("spend", "unpriced spell %s (%d) - ignored", GetSpellInfo(spellID) or "?", spellID)
         return
     end
     if cost > 0 then
         events[#events + 1] = { now, cost }
         Prune(now)
-        ST.combat.casts = ST.combat.casts + 1
-        ST.combat.spent = ST.combat.spent + cost
+        SPEND.combat.casts = SPEND.combat.casts + 1
+        SPEND.combat.spent = SPEND.combat.spent + cost
         local SD = Source()
         local isMax = SD:IsMaxKnownRank(spellID)
         if isMax then
-            ST.combat.maxRankCasts = ST.combat.maxRankCasts + 1
+            SPEND.combat.maxRankCasts = SPEND.combat.maxRankCasts + 1
         end
         -- per family: lifetime casts (dashboard default tab), this session
         -- (Waste view) and this fight (summary breakdown). Spells outside the
@@ -72,19 +72,19 @@ MD:On("UNIT_SPELLCAST_SUCCEEDED", function(unit, _, spellID)
         -- ~7% of mana the first dungeon log showed nothing was counting.
         local sd = SD.spells[spellID]
         local fam = sd and sd.family or "other"
-        if sd and MD.cdb then
-            MD.cdb.familyCasts = MD.cdb.familyCasts or {}
-            MD.cdb.familyCasts[fam] = (MD.cdb.familyCasts[fam] or 0) + 1
+        if sd and ST.cdb then
+            ST.cdb.familyCasts = ST.cdb.familyCasts or {}
+            ST.cdb.familyCasts[fam] = (ST.cdb.familyCasts[fam] or 0) + 1
         end
-        ST.session[fam] = ST.session[fam] or { casts = 0, mana = 0 }
-        ST.session[fam].casts = ST.session[fam].casts + 1
-        ST.session[fam].mana = ST.session[fam].mana + cost
-        ST.sessionSpent = ST.sessionSpent + cost
-        ST.combat.byFamily[fam] = (ST.combat.byFamily[fam] or 0) + cost
-        MD:Debug("spend", "%s (%d) cost %d [%s]%s", GetSpellInfo(spellID) or "?", spellID, cost, source,
+        SPEND.session[fam] = SPEND.session[fam] or { casts = 0, mana = 0 }
+        SPEND.session[fam].casts = SPEND.session[fam].casts + 1
+        SPEND.session[fam].mana = SPEND.session[fam].mana + cost
+        SPEND.sessionSpent = SPEND.sessionSpent + cost
+        SPEND.combat.byFamily[fam] = (SPEND.combat.byFamily[fam] or 0) + cost
+        ST:Debug("spend", "%s (%d) cost %d [%s]%s", GetSpellInfo(spellID) or "?", spellID, cost, source,
             isMax and " max rank" or "")
     else
-        MD:Debug("spend", "%s (%d) free [%s]", GetSpellInfo(spellID) or "?", spellID, source)
+        ST:Debug("spend", "%s (%d) free [%s]", GetSpellInfo(spellID) or "?", spellID, source)
     end
 end)
 
@@ -92,9 +92,9 @@ end)
 -- starts, next to what the model expects. This is what settles Nature's Grace
 -- (0.5s off the next cast after a crit) and Naturalist on this client -- the
 -- spellbook tooltip shows neither. Costs nothing when the category is off.
-MD:On("UNIT_SPELLCAST_START", function(unit, _, spellID)
+ST:On("UNIT_SPELLCAST_START", function(unit, _, spellID)
     if unit ~= "player" then return end
-    local db = MD.db and MD.db.debug
+    local db = ST.db and ST.db.debug
     if not (db and db.enabled and db.categories.cast) then return end
     if not UnitCastingInfo then return end
     local name, _, _, startMS, endMS = UnitCastingInfo("player")
@@ -104,20 +104,20 @@ MD:On("UNIT_SPELLCAST_START", function(unit, _, spellID)
     if s and s.cast then
         -- Naturalist only shortens Healing Touch (the first cut subtracted it
         -- from every spell -- harmless at rank 0, wrong after a respec).
-        local naturalist = s.family == "HealingTouch" and 0.1 * MD:TalentRank("Naturalist") or 0
+        local naturalist = s.family == "HealingTouch" and 0.1 * ST:TalentRank("Naturalist") or 0
         local base = math.max(s.cast - naturalist, 1.5)
-        local ng = MD:TalentRank("Nature's Grace")
-        MD:Debug("cast", "%s R%d: live %.2fs - model %.2fs%s (table %.1fs)",
+        local ng = ST:TalentRank("Nature's Grace")
+        ST:Debug("cast", "%s R%d: live %.2fs - model %.2fs%s (table %.1fs)",
             name or "?", s.rank or 0, actual, base,
             ng > 0 and string.format(", after a crit %.2fs (Nature's Grace %d)", math.max(base - 0.5, 1.5), ng)
                     or " (Nature's Grace not talented: no reduction expected)",
             s.cast)
     else
-        MD:Debug("cast", "%s (%s): live %.2fs", name or "?", tostring(spellID), actual)
+        ST:Debug("cast", "%s (%s): live %.2fs", name or "?", tostring(spellID), actual)
     end
 end)
 
-function ST:Reset()
+function SPEND:Reset()
     wipe(events)
     seed = nil
 end
@@ -133,9 +133,9 @@ end
 -- means nothing below ~3 casts. Real casting is autocorrelated, so sigma
 -- slightly understates the truth — K and the CV threshold are first guesses.
 --------------------------------------------------------------------------------
-function ST:Estimate()
+function SPEND:Estimate()
     local now = GetTime()
-    local lambda = math.log(2) / (MD.db and MD.db.halfLife or 15)
+    local lambda = math.log(2) / (ST.db and ST.db.halfLife or 15)
     local sum, sumSq, n = 0, 0, 0
     for i = 1, #events do
         local age, c = now - events[i][1], events[i][2]
@@ -153,13 +153,13 @@ function ST:Estimate()
     return rate, sigma, n
 end
 
-function ST:Rate()
-    local rate = ST:Estimate()
+function SPEND:Rate()
+    local rate = SPEND:Estimate()
     return rate
 end
 
 -- True while the pull-time seed still carries weight (~3 half-lives).
-function ST:Seeded()
+function SPEND:Seeded()
     return seed ~= nil and (GetTime() - seed.t) < 3 * SEED_HALFLIFE
 end
 
@@ -167,7 +167,7 @@ end
 -- Window stats: last 30s in six 5s buckets → median / p25 / p75 bucket rates.
 -- No longer feeds the TTO (sigma does); kept for the tooltip/dashboard.
 --------------------------------------------------------------------------------
-function ST:WindowStats()
+function SPEND:WindowStats()
     local now = GetTime()
     local buckets = { 0, 0, 0, 0, 0, 0 }
     local casts = 0
@@ -182,9 +182,9 @@ function ST:WindowStats()
     local rates = {}
     for i = 1, 6 do rates[i] = buckets[i] / 5 end
     table.sort(rates)
-    -- six buckets: the mean of the middle two, MD.Util.Median's even-n rule
+    -- six buckets: the mean of the middle two, ST.Util.Median's even-n rule
     -- (T60, P16, review A9; the sort stays for p25 / p75)
-    local median = MD.Util.Median(rates)
+    local median = ST.Util.Median(rates)
     local p25 = rates[2]
     local p75 = rates[5]
     local stable = casts >= 6 and median > 0 and (p75 - p25) <= 0.4 * median
@@ -195,22 +195,22 @@ end
 -- Combat lifecycle: seed the estimator at pull from recent fight history when
 -- the window is cold; reset per-combat counters.
 --------------------------------------------------------------------------------
-MD:On("PLAYER_REGEN_DISABLED", function()
-    ST.combat.casts = 0
-    ST.combat.maxRankCasts = 0
-    ST.combat.spent = 0
-    wipe(ST.combat.byFamily)
+ST:On("PLAYER_REGEN_DISABLED", function()
+    SPEND.combat.casts = 0
+    SPEND.combat.maxRankCasts = 0
+    SPEND.combat.spent = 0
+    wipe(SPEND.combat.byFamily)
     local last = events[#events]
-    if (not last or GetTime() - last[1] > 30) and MD.fightHistory and #MD.fightHistory > 0 then
+    if (not last or GetTime() - last[1] > 30) and ST.fightHistory and #ST.fightHistory > 0 then
         -- "Last time here" beats "last time anywhere": the same zone usually
         -- means the same content, and spend rate is content, not character.
         -- Two fights are enough to prefer it; otherwise fall back to overall.
         local zone = GetRealZoneText and GetRealZoneText() or nil
-        local pool, source = MD:FightsInZone(zone, 5), zone
+        local pool, source = ST:FightsInZone(zone, 5), zone
         if #pool < 2 then
             pool, source = {}, "recent fights"
-            for i = math.max(1, #MD.fightHistory - 4), #MD.fightHistory do
-                pool[#pool + 1] = MD.fightHistory[i]
+            for i = math.max(1, #ST.fightHistory - 4), #ST.fightHistory do
+                pool[#pool + 1] = ST.fightHistory[i]
             end
         end
         local rates = {}
@@ -219,14 +219,14 @@ MD:On("PLAYER_REGEN_DISABLED", function()
         end
         -- The seed's median has always been rates[math.ceil(n / 2)] of the
         -- sorted list: for an even count the LOWER middle value, not the mean
-        -- of the two that MD.Util.Median answers by default. That is
-        -- MD.Util.Median's "low" mode exactly (identical for every n, nil for
+        -- of the two that ST.Util.Median answers by default. That is
+        -- ST.Util.Median's "low" mode exactly (identical for every n, nil for
         -- none), so the seed does not move (T60, P16, review A9; changing it
         -- would be a model change and needs a decision).
-        local m = MD.Util.Median(rates, "low")
+        local m = ST.Util.Median(rates, "low")
         if m and m > 0 then
             seed = { rate = m, t = GetTime() }
-            MD:Debug("spend", "pull: seeded %.2f mana/s from %d fight(s) in %s", m, #rates, tostring(source))
+            ST:Debug("spend", "pull: seeded %.2f mana/s from %d fight(s) in %s", m, #rates, tostring(source))
         end
     end
 end)

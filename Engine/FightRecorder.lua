@@ -9,12 +9,12 @@
 -- Nothing here parses the combat log. UI/Summary.lua's single handler already
 -- unpacks each event once and forwards the raw payload slots; this file decides
 -- what is worth keeping.
-local _, MD = ...
+local _, ST = ...
 
 local FR = {}
-MD.FightRecorder = FR
+ST.FightRecorder = FR
 
-local K = nil            -- MD.SimModel.K, bound lazily (load order)
+local K = nil            -- ST.SimModel.K, bound lazily (load order)
 local MAX_EV = 4000      -- events per stream; the fight keeps its summary either way
 local AURA_EVENTS = {
     SPELL_AURA_APPLIED = "apply", SPELL_AURA_REFRESH = "apply",
@@ -26,7 +26,7 @@ local MAX_STREAMS = 8
 -- Forever's recorder; read at every Store, never copied
 local RECENT_PROTECTED = 3
 local HP_SNAPSHOT_EVERY = 5   -- seconds
-local MANA_SAMPLE_TICKS = 4   -- MD:OnTick is 0.5s, so every 2s
+local MANA_SAMPLE_TICKS = 4   -- ST:OnTick is 0.5s, so every 2s
 local CRIT_FLAG = 100000      -- own-heal events carry crit as spellID + this
 
 FR.active = nil
@@ -37,10 +37,10 @@ local DAMAGE_EVENTS = {
     DAMAGE_SPLIT = "spell", ENVIRONMENTAL_DAMAGE = "env",
 }
 
-MD:RegisterCallback("MD_READY", function()
-    MD.cdb.recordings = MD.cdb.recordings or {}
-    if #MD.cdb.recordings > 0 then
-        MD:Debug("sim", "loaded %d recorded fight stream(s)", #MD.cdb.recordings)
+ST:RegisterCallback("MD_READY", function()
+    ST.cdb.recordings = ST.cdb.recordings or {}
+    if #ST.cdb.recordings > 0 then
+        ST:Debug("sim", "loaded %d recorded fight stream(s)", #ST.cdb.recordings)
     end
 end)
 
@@ -60,7 +60,7 @@ local function SubgroupOf(name)
 end
 
 local function BuildTracked()
-    local T = MD.Targets
+    local T = ST.Targets
     if not T then return {} end
     local tracked = {}
     local inRaid = IsInRaid and IsInRaid()
@@ -80,7 +80,7 @@ local function BuildTracked()
                 end
             end
             if keep then
-                local idx = MD.Recorder and MD.Recorder:Index(e.guid, e.name) or -1
+                local idx = ST.Recorder and ST.Recorder:Index(e.guid, e.name) or -1
                 if idx > 0 then tracked[idx] = true end
             end
         end
@@ -93,10 +93,10 @@ end
 -- same person without any translation.
 local function BuildRoster()
     local out = {}
-    local rec = MD.Recorder
+    local rec = ST.Recorder
     if not rec then return out end
     for i, r in ipairs(rec.roster) do
-        local e = MD.Targets and MD.Targets.byGUID[r.guid]
+        local e = ST.Targets and ST.Targets.byGUID[r.guid]
         local maxHP = -1
         if e and e.unit and UnitGUID(e.unit) == r.guid then
             maxHP = UnitHealthMax(e.unit) or -1
@@ -116,13 +116,13 @@ end
 local DRINK_BUFFS = { ["Drink"] = true, ["Refreshment"] = true, ["Food & Drink"] = true }
 
 local function ScanAuras(stream)
-    local SD = MD.SpellData
+    local SD = ST.SpellData
     local auras, buffs = {}, {}
     local now = GetTime()
 
     for idx in pairs(stream.trackedSet) do
-        local r = MD.Recorder.roster[idx]
-        local e = r and MD.Targets and MD.Targets.byGUID[r.guid]
+        local r = ST.Recorder.roster[idx]
+        local e = r and ST.Targets and ST.Targets.byGUID[r.guid]
         local unit = e and e.unit
         if unit and UnitGUID(unit) == r.guid then
             for i = 1, 40 do
@@ -157,23 +157,23 @@ end
 --------------------------------------------------------------------------------
 function FR:Start(t0)
     FR.active = nil
-    if not MD.Recorder then return end
+    if not ST.Recorder then return end
     -- v0.9.1: a run is the container for its own pulls, so it overrides
     -- db.recordFights -- turning single-fight recording off is a statement about
     -- the ring of 8, not about a dungeon the author explicitly started
     -- recording. Once the run's budget is spent, pulls are summarised only.
-    local RR = MD.RunRecorder
+    local RR = ST.RunRecorder
     local inRun = RR and RR.active ~= nil
-    if not (MD.db and MD.db.recordFights ~= false) and not inRun then return end
+    if not (ST.db and ST.db.recordFights ~= false) and not inRun then return end
     if inRun then
         RR:PullStarted()
         if RR:FullUp() then
             RR.active.truncated = true
-            MD:Debug("sim", "run full (%d events): this pull is summarised, not recorded", RR.MAX_RUN_EV)
+            ST:Debug("sim", "run full (%d events): this pull is summarised, not recorded", RR.MAX_RUN_EV)
             return
         end
     end
-    K = K or (MD.SimModel and MD.SimModel.K)
+    K = K or (ST.SimModel and ST.SimModel.K)
     if not K then return end
 
     -- tracked FIRST: it is what assigns roster indices to group members who
@@ -206,12 +206,12 @@ function FR:Start(t0)
         stream.hp.max[idx] = {}
     end
 
-    local RM = MD.Regen
+    local RM = ST.Regen
     stream.initial = {
         mana = UnitPower("player", 0) or 0,
         apiBase = RM and RM.apiBase or 0,
         apiCasting = RM and RM.apiCasting or 0,
-        form = MD:InTreeForm() and "tree" or "caster",
+        form = ST:InTreeForm() and "tree" or "caster",
         -- v0.9.0: every mana/s this character gains that GetManaRegen does not
         -- report -- Dreamstate (a talent, computed) plus the measured item-mp5
         -- beat (/md regentest, stored in cdb.mp5). apiBase/apiCasting above are
@@ -229,14 +229,14 @@ function FR:Start(t0)
         -- never trained Swiftmend, and the offline coach bound it. Six numbers.
         known = (function()
             local k = {}
-            for family, id in pairs(MD.SpellData.maxRank or {}) do k[family] = id end
+            for family, id in pairs(ST.SpellData.maxRank or {}) do k[family] = id end
             return k
         end)(),
     }
     stream.initial.auras, stream.initial.buffs = ScanAuras(stream)
 
     -- the 20s ring, flattened
-    for _, c in ipairs(MD.Recorder.ring) do
+    for _, c in ipairs(ST.Recorder.ring) do
         stream.precasts[#stream.precasts + 1] = {
             c.t - t0, c.spellID, c.cost, c.tgt, c.hpAtCast, c.form,
         }
@@ -248,7 +248,7 @@ function FR:Start(t0)
     FR.pending = nil
     FR.unitStart = nil
     FR:Snapshot(0)
-    MD:Debug("sim", "recording started: %d tracked, %d initial aura(s), %d precast(s)",
+    ST:Debug("sim", "recording started: %d tracked, %d initial aura(s), %d precast(s)",
         #stream.tracked, #stream.initial.auras, #stream.precasts)
 end
 
@@ -256,7 +256,7 @@ local function Push(s, t, kind, tgt, amt, x)
     if s.n >= MAX_EV then
         if not s.truncated then
             s.truncated = true
-            MD:Debug("sim", "recording truncated at %d events", MAX_EV)
+            ST:Debug("sim", "recording truncated at %d events", MAX_EV)
         end
         return
     end
@@ -285,8 +285,8 @@ function FR:Snapshot(t)
     local n = #hp.t + 1
     hp.t[n] = t
     for _, idx in ipairs(s.tracked) do
-        local r = MD.Recorder.roster[idx]
-        local e = r and MD.Targets and MD.Targets.byGUID[r.guid]
+        local r = ST.Recorder.roster[idx]
+        local e = r and ST.Targets and ST.Targets.byGUID[r.guid]
         local unit = e and e.unit
         local cur, max = -1, -1
         if unit and UnitGUID(unit) == r.guid then
@@ -303,7 +303,7 @@ function FR:Tick()
     local t = GetTime() - s.t0
     FR.tickCount = (FR.tickCount or 0) + 1
     if FR.tickCount % MANA_SAMPLE_TICKS == 0 then
-        local m, RM = s.mana, MD.Regen
+        local m, RM = s.mana, ST.Regen
         local n = #m.t + 1
         m.t[n], m.v[n] = t, UnitPower("player", 0) or 0
         m.base[n], m.cast[n] = RM and RM.apiBase or 0, RM and RM.apiCasting or 0
@@ -315,7 +315,7 @@ function FR:Tick()
     end
 end
 
-MD:RegisterCallback("FORM_CHANGED", function(inTree)
+ST:RegisterCallback("FORM_CHANGED", function(inTree)
     local s = FR.active
     if not s then return end
     Push(s, GetTime() - s.t0, K.FORM, -1, inTree and 1 or 0, 0)
@@ -330,8 +330,8 @@ function FR:Event(subevent, sourceGUID, destGUID, destName, p1, p2, p3, p4, p5, 
     local s = FR.active
     if not s then return end
     local t = GetTime() - s.t0
-    local isOwn = (sourceGUID == MD.player.guid)
-    local idx = destGUID and MD.Recorder:Index(destGUID, destName) or -1
+    local isOwn = (sourceGUID == ST.player.guid)
+    local idx = destGUID and ST.Recorder:Index(destGUID, destName) or -1
     local tracked = idx > 0 and s.trackedSet[idx] or false
 
     -- T48 (review B9): what ends a pending hard cast is decided in the own-cast
@@ -377,23 +377,23 @@ function FR:Event(subevent, sourceGUID, destGUID, destName, p1, p2, p3, p4, p5, 
         local periodic = (subevent == "SPELL_PERIODIC_HEAL")
         if isOwn then
             -- THE MULTI-RETURN TRAP, third time (CLAUDE.md names the two in
-            -- UI/Summary.lua). `MD.Overheal and MD.Overheal:Split(a, o)` is an
+            -- UI/Summary.lua). `ST.Overheal and ST.Overheal:Split(a, o)` is an
             -- `and` expression, so it truncates to ONE value: `gross` was always
             -- nil and the fallback always ran. On this client `amount` already
             -- includes the overheal, so every own heal in every recording was
             -- written down as heal + overheal -- up to 2x the truth. Write the
             -- `if` out.
             local gross
-            if MD.Overheal then
+            if ST.Overheal then
                 local _
-                _, gross = MD.Overheal:Split(amount, overheal)
+                _, gross = ST.Overheal:Split(amount, overheal)
             end
             if not gross then gross = amount + overheal end
             Push(s, t, periodic and K.OWNTICK or K.OWNHEAL, idx, gross,
                 (spellID or 0) + (critical and CRIT_FLAG or 0))
         elseif tracked then
             local eff = amount
-            if MD.Overheal then eff = MD.Overheal:Split(amount, overheal) end
+            if ST.Overheal then eff = ST.Overheal:Split(amount, overheal) end
             if eff > 0 then Push(s, t, K.FHEAL, idx, eff, spellID or 0) end
         end
         return
@@ -409,12 +409,12 @@ function FR:Event(subevent, sourceGUID, destGUID, destName, p1, p2, p3, p4, p5, 
         if not tracked then return end
         local spellID, auraType = p1 or 0, p4
         local isBuff = (auraType == "BUFF")
-        local list = MD.AuraList
+        local list = ST.AuraList
         if isBuff and not (list and list.Defensive(spellID)) then return end
         if not isBuff and auraType ~= "DEBUFF" then return end
         local on = s.auraOn[idx]
         if not on then on = { n = 0 }; s.auraOn[idx] = on end
-        local x = spellID + (isBuff and MD.SimModel.AURA_BUFF_FLAG or 0)
+        local x = spellID + (isBuff and ST.SimModel.AURA_BUFF_FLAG or 0)
         if aura == "remove" then
             if on[x] then
                 on[x] = nil
@@ -433,7 +433,7 @@ function FR:Event(subevent, sourceGUID, destGUID, destName, p1, p2, p3, p4, p5, 
                 if (s.auraN or 0) >= budget then
                     if not s.auraTruncated then
                         s.auraTruncated = true
-                        MD:Debug("sim", "recording: debuff budget (%d) spent, defensives only from here", budget)
+                        ST:Debug("sim", "recording: debuff budget (%d) spent, defensives only from here", budget)
                     end
                     return
                 end
@@ -452,14 +452,14 @@ function FR:Event(subevent, sourceGUID, destGUID, destName, p1, p2, p3, p4, p5, 
         -- the pending cast's own success closes it; any other success (an
         -- off-GCD instant) leaves it open
         if FR.pending and p1 == FR.pending[1] then FR.pending = nil end
-        local cost = MD.SpellData:GetCost(p1)
+        local cost = ST.SpellData:GetCost(p1)
         Push(s, t, K.OWNCAST, idx, cost or -1, p1 or 0)
         if p1 and not s.names[p1] then
             -- p2 is the combat log's own spell name; GetSpellInfo adds the rank
-            local sd = MD.SpellData.spells[p1]
+            local sd = ST.SpellData.spells[p1]
             s.names[p1] = sd and (sd.family .. " r" .. sd.rank)
                 or (type(p2) == "string" and p2) or (GetSpellInfo and GetSpellInfo(p1)) or nil
-            if MD.ClassifyCast then MD:ClassifyCast(p1) end
+            if ST.ClassifyCast then ST:ClassifyCast(p1) end
         end
         -- the two cooldowns worth replaying; potions arrive as a mana jump the
         -- sample stream already shows
@@ -514,10 +514,10 @@ function FR:UnitCast(event, unit, castGUID, spellID)
     end
 end
 
-MD:On("UNIT_SPELLCAST_START", function(unit, castGUID, spellID)
+ST:On("UNIT_SPELLCAST_START", function(unit, castGUID, spellID)
     FR:UnitCast("UNIT_SPELLCAST_START", unit, castGUID, spellID)
 end)
-MD:On("UNIT_SPELLCAST_INTERRUPTED", function(unit, castGUID, spellID)
+ST:On("UNIT_SPELLCAST_INTERRUPTED", function(unit, castGUID, spellID)
     FR:UnitCast("UNIT_SPELLCAST_INTERRUPTED", unit, castGUID, spellID)
 end)
 
@@ -539,12 +539,12 @@ end)
 function FR:EnemyCast(subevent, sourceGUID, destGUID, destName, spellID)
     local s = FR.active
     if not s or not spellID then return end
-    if not (MD.db and MD.db.recordThreat ~= false) then return end
+    if not (ST.db and ST.db.recordThreat ~= false) then return end
     if subevent ~= "SPELL_CAST_START" and subevent ~= "SPELL_CHANNEL_START" then return end
     -- a group member's cast is not an enemy cast; Index returns -1 for anybody
     -- who is not in the roster, which is exactly "a mob"
-    if MD.Recorder:Index(sourceGUID) > 0 then return end
-    local idx = destGUID and MD.Recorder:Index(destGUID, destName) or -1
+    if ST.Recorder:Index(sourceGUID) > 0 then return end
+    local idx = destGUID and ST.Recorder:Index(destGUID, destName) or -1
     if idx > 0 and not s.trackedSet[idx] then return end
     Push(s, GetTime() - s.t0, K.ECAST, idx, 0, spellID)
     if not s.names[spellID] and GetSpellInfo then s.names[spellID] = GetSpellInfo(spellID) end
@@ -554,12 +554,12 @@ end
 function FR:SampleThreat(t)
     local s = FR.active
     if not s then return end
-    if not (MD.db and MD.db.recordThreat ~= false) then return end
+    if not (ST.db and ST.db.recordThreat ~= false) then return end
     if not UnitThreatSituation then return end
     s.threatOn = s.threatOn or {}
     for _, idx in ipairs(s.tracked) do
         local e = s.roster[idx]
-        local entry = e and e.guid and MD.Targets and MD.Targets:Lookup(e.guid, e.name)
+        local entry = e and e.guid and ST.Targets and ST.Targets:Lookup(e.guid, e.name)
         local unit = entry and entry.unit
         if unit then
             local ok, status = pcall(UnitThreatSituation, unit)
@@ -576,7 +576,7 @@ end
 function FR:Died(destGUID, destName)
     local s = FR.active
     if not s then return end
-    local idx = destGUID and MD.Recorder:Index(destGUID, destName) or -1
+    local idx = destGUID and ST.Recorder:Index(destGUID, destName) or -1
     if idx > 0 and s.trackedSet[idx] then
         local t = GetTime() - s.t0
         Push(s, t, K.DIED, idx, 0, 0)
@@ -590,8 +590,8 @@ end
 -- a 6k-mana pull has something to teach, a 900-mana one does not.
 --------------------------------------------------------------------------------
 local function Store(stream)
-    MD.cdb.recordings = MD.cdb.recordings or {}
-    local list = MD.cdb.recordings
+    ST.cdb.recordings = ST.cdb.recordings or {}
+    local list = ST.cdb.recordings
     if #list < MAX_STREAMS then
         list[#list + 1] = stream
         return #list, nil
@@ -599,7 +599,7 @@ local function Store(stream)
 
     local protected = {}
     local pinnedCount = 0
-    local maxPinned = MD.Recordings.MAX_PINNED
+    local maxPinned = ST.Recordings.MAX_PINNED
     for i, r in ipairs(list) do
         if r.pinned and pinnedCount < maxPinned then
             protected[i] = true
@@ -630,7 +630,7 @@ function FR:Finish(duration, labels)
     if not s then
         -- the pull was not recorded (fight recording off, or the run's budget
         -- spent); a run still wants to know one happened and how long it was
-        if MD.RunRecorder and MD.RunRecorder.active then MD.RunRecorder:PullSkipped(duration) end
+        if ST.RunRecorder and ST.RunRecorder.active then ST.RunRecorder:PullSkipped(duration) end
         return nil
     end
     s.dur = duration
@@ -651,30 +651,30 @@ function FR:Finish(duration, labels)
     s.foreignShare = (own + foreign) > 0 and (foreign / (own + foreign)) or 0
     s.trackedSet = nil  -- a set of indices does not serialise usefully
 
-    -- T62 (P18): the gate is MD.Util.RECORD_GATE (Core.lua), one for both lines
-    local gate = MD.Util.RECORD_GATE
+    -- T62 (P18): the gate is ST.Util.RECORD_GATE (Core.lua), one for both lines
+    local gate = ST.Util.RECORD_GATE
     local short = duration < gate.sec or s.ownCasts < gate.casts
 
     -- v0.9.1: while a run is recording it takes every pull, the short ones
     -- included -- a dungeon is mostly short pulls, and the gate is about what
     -- may be COACHED from, not about what happened. The ring of 8 is left
     -- alone: a run is pinned, replaced and reviewed as one thing.
-    local RR = MD.RunRecorder
+    local RR = ST.RunRecorder
     if RR and RR.active then
         local k = RR:AddPull(s, short)
-        MD:Debug("sim", "stream %d -> run pull %d: %.0fs, %d events, %d casts, %d mana%s",
+        ST:Debug("sim", "stream %d -> run pull %d: %.0fs, %d events, %d casts, %d mana%s",
             s.id, k or 0, duration, s.n, s.ownCasts, s.spent, short and " (under the gate)" or "")
         return s
     end
 
     if short then
-        MD:Debug("sim", "stream discarded: %.0fs, %d own cast(s) (needs %ds / %d)",
+        ST:Debug("sim", "stream discarded: %.0fs, %d own cast(s) (needs %ds / %d)",
             duration, s.ownCasts, gate.sec, gate.casts)
         return nil
     end
 
     local slot, dropped = Store(s)
-    MD:Debug("sim", "stream %d recorded: %.0fs, %d events%s, %d casts, %d mana, foreign %d%%%s",
+    ST:Debug("sim", "stream %d recorded: %.0fs, %d events%s, %d casts, %d mana, foreign %d%%%s",
         s.id, duration, s.n, s.truncated and " (truncated)" or "", s.ownCasts, s.spent,
         s.foreignShare * 100 + 0.5,
         dropped and string.format(" - replaced slot %d (%d mana)", slot, dropped.spent or 0) or "")
@@ -684,7 +684,7 @@ end
 -- Newest first, for the Review tab and /md export.
 function FR:List()
     local list = {}
-    for _, r in ipairs(MD.cdb and MD.cdb.recordings or {}) do list[#list + 1] = r end
+    for _, r in ipairs(ST.cdb and ST.cdb.recordings or {}) do list[#list + 1] = r end
     table.sort(list, function(a, b) return (a.id or 0) > (b.id or 0) end)
     return list
 end
@@ -700,14 +700,14 @@ end
 function FR:Pin(n, on)
     local rec = FR:Get(n)
     if not rec then return false, "no recording " .. tostring(n or 1) end
-    return MD.Recordings.PinRecord("", rec, on and true or false)
+    return ST.Recordings.PinRecord("", rec, on and true or false)
 end
 
 -- The address ("3" the third single fight, v0.9.2) is the router's
 -- (Engine/Recordings.lua, T62): this file answers bare N.
-MD.Recordings.Register("", {
+ST.Recordings.Register("", {
     Get = function(n) return FR:Get(n) end,
     List = function() return FR:List() end,
-    pinCap = MD.Recordings.MAX_PINNED,
+    pinCap = ST.Recordings.MAX_PINNED,
     noun = "fights",
 })

@@ -10,9 +10,9 @@
 local here = arg[0]:match("^(.*)/[^/]+$")
 HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua"); arg[0] = a0
+local ST = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB
-local RR, FR = MD.RunRecorder, MD.FightRecorder
+local RR, FR = ST.RunRecorder, ST.FightRecorder
 local K = RR.K
 
 local out = {}
@@ -32,7 +32,7 @@ end
 --------------------------------------------------------------------------------
 -- The party, and one pull of it
 --------------------------------------------------------------------------------
-local SD = MD.SpellData
+local SD = ST.SpellData
 S.AddUnit("party1", { guid = "Tank-1", name = "Destroyka", class = "WARRIOR", role = "TANK",
                       hp = 8000, hpMax = 8000 })
 S.AddUnit("party2", { guid = "Mage-1", name = "Alkandari", class = "MAGE", role = "DAMAGER",
@@ -100,7 +100,7 @@ check("a second start refuses", again == nil and why2 ~= nil and why2:find("alre
 --------------------------------------------------------------------------------
 -- 2. three pulls, with a drink and a death in the gaps
 --------------------------------------------------------------------------------
-local ringBefore = #(MD.cdb.recordings or {})
+local ringBefore = #(ST.cdb.recordings or {})
 pull(40, 8)                       -- a real pull
 advance(4)
 drink(25)                         -- +3000 mana at 120/s
@@ -121,8 +121,8 @@ check("the short pull is kept and flagged", run.pulls[3] and run.pulls[3].short 
 check("the long pulls are not flagged", run.pulls[1] and not run.pulls[1].short and not run.pulls[2].short)
 check("pulls are in order", run.pulls[1].runT0 < run.pulls[2].runT0 and run.pulls[2].runT0 < run.pulls[3].runT0,
     string.format("%.0f, %.0f, %.0f", run.pulls[1].runT0, run.pulls[2].runT0, run.pulls[3].runT0))
-check("the ring of 8 is untouched", #(MD.cdb.recordings or {}) == ringBefore,
-    string.format("%d before, %d now", ringBefore, #(MD.cdb.recordings or {})))
+check("the ring of 8 is untouched", #(ST.cdb.recordings or {}) == ringBefore,
+    string.format("%d before, %d now", ringBefore, #(ST.cdb.recordings or {})))
 
 -- the events
 local kinds = {}
@@ -187,7 +187,7 @@ check("stats: mana spent is the pulls' spend", st.spent > 0 and st.spent ==
     (run.pulls[1].spent + run.pulls[2].spent + run.pulls[3].spent), tostring(st.spent))
 check("the run line names the drink and the death", found("drank 1x") ~= nil and found("1 death") ~= nil,
     found("run Blood Furnace test") or "no line")
-check("stored in cdb.runs", #(MD.cdb.runs or {}) == 1 and MD.cdb.runs[1] == run)
+check("stored in cdb.runs", #(ST.cdb.runs or {}) == 1 and ST.cdb.runs[1] == run)
 check("absolute t0 dropped on store", run.t0 == nil)
 
 --------------------------------------------------------------------------------
@@ -239,42 +239,42 @@ check("the stop line says why", found("left the instance") ~= nil, found("run le
 --------------------------------------------------------------------------------
 -- 6. retention: two kept, and both pinned means the next one refuses UP FRONT
 --------------------------------------------------------------------------------
-check("two runs kept", #MD.cdb.runs == 2, tostring(#MD.cdb.runs))
+check("two runs kept", #ST.cdb.runs == 2, tostring(#ST.cdb.runs))
 local names = {}
-for _, r in ipairs(MD.cdb.runs) do names[#names + 1] = r.name end
+for _, r in ipairs(ST.cdb.runs) do names[#names + 1] = r.name end
 table.sort(names)
 check("the oldest unpinned run was the victim", names[1] == "budget" and names[2] == "leaver",
     table.concat(names, ", "))
-for _, r in ipairs(MD.cdb.runs) do r.pinned = true end
+for _, r in ipairs(ST.cdb.runs) do r.pinned = true end
 local r4, why4 = RR:Start("manual", "refused")
 check("both pinned: start refuses before recording", r4 == nil and why4 ~= nil and why4:find("pinned"), why4)
 check("refusing leaves nothing recording", RR.active == nil)
-MD.cdb.runs[1].pinned = false
+ST.cdb.runs[1].pinned = false
 
 --------------------------------------------------------------------------------
 -- 7. the setting, the command, and the export
 --------------------------------------------------------------------------------
-MD.db.recordRuns = false
+ST.db.recordRuns = false
 local r5, why5 = RR:Start("manual")
 check("db.recordRuns off refuses", r5 == nil and why5 ~= nil and why5:find("recordRuns"), why5)
-MD.db.recordRuns = true
+ST.db.recordRuns = true
 
 out = {}
-MD:RunCommand("status")
+ST:RunCommand("status")
 check("/md run status lists the stored runs", found("nothing recording") ~= nil and found("leaver") ~= nil,
     out[1] or "no output")
 out = {}
-MD:RunCommand("start Some Dungeon")
+ST:RunCommand("start Some Dungeon")
 check("/md run start keeps the name's case", RR.active ~= nil and RR.active.name == "Some Dungeon",
     RR.active and RR.active.name or "nothing recording")
 out = {}
-MD:RunCommand("status")
+ST:RunCommand("status")
 check("/md run status reports the live run", found("Some Dungeon") ~= nil and found("elapsed") ~= nil,
     out[1] or "no output")
-MD:RunCommand("stop")
+ST:RunCommand("stop")
 check("/md run stop stops it", RR.active == nil)
 
-local lines = MD:Export()
+local lines = ST:Export()
 local runHead, runEv, pullInRun = nil, 0, nil
 for _, row in ipairs(lines) do
     if row:find("^# run %d") then runHead = row end
@@ -289,8 +289,8 @@ check("export tags each pull with its run", pullInRun ~= nil, pullInRun and pull
 -- 8. the run through the engine (v0.9.3): pulls chained with mana carried over,
 -- the gaps modelled, the drink policy simulated
 --------------------------------------------------------------------------------
-local SM, SP = MD.SimModel, MD.SimPlanner
-local kit = MD.RankMath:SpellKit()
+local SM, SP = ST.SimModel, ST.SimPlanner
+local kit = ST.RankMath:SpellKit()
 -- run 1 is the three-pull run from section 2; it was dropped by retention, so
 -- record a fresh one to chain
 S.mana = 4200
@@ -463,7 +463,7 @@ _G.DEFAULT_CHAT_FRAME = realChat
 -- where the drinking happens, which is half of what a run is for.
 --------------------------------------------------------------------------------
 do
-    local run = MD.RunRecorder.active or (MD.cdb.runs and MD.cdb.runs[1])
+    local run = ST.RunRecorder.active or (ST.cdb.runs and ST.cdb.runs[1])
     check("the run samples party health", run and run.hp ~= nil)
     if run and run.hp then
         check("it sampled health more than once", #run.hp.t >= 2,
@@ -483,7 +483,7 @@ do
         local last = run.hp.t[#run.hp.t] or 0
         local lastPullEnd = 0
         for i = 1, #run.ev.t do
-            if run.ev.kind[i] == MD.RunRecorder.K.PULL_END then lastPullEnd = run.ev.t[i] end
+            if run.ev.kind[i] == ST.RunRecorder.K.PULL_END then lastPullEnd = run.ev.t[i] end
         end
         check("health is still sampled after the last pull ends",
             last >= lastPullEnd - 0.01,
@@ -503,7 +503,7 @@ do
     local realCount = _G.GetItemCount
     local bag = { [22832] = 2 }
     _G.GetItemCount = function(id) return bag[id] or 0 end
-    for _, r in ipairs(MD.cdb.runs or {}) do r.pinned = false end
+    for _, r in ipairs(ST.cdb.runs or {}) do r.pinned = false end
     S.mana = 4000
     local runA = RR:Start("manual", "back to back A")
     advance(30)
@@ -530,7 +530,7 @@ do
     _G.GetItemCount = realCount
 
     out = {}
-    MD:RunCommand("bogus")
+    ST:RunCommand("bogus")
     local usage = found("usage") or ""
     local stripped = usage:gsub("||", ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
     check("B11: the usage line has no bare pipe", usage ~= "" and not stripped:find("|", 1, true), usage)

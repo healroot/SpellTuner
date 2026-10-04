@@ -10,7 +10,7 @@
 --
 -- The scene: the shared scripted pull (tools/fakepull.lua) in the ring of 8,
 -- then a run of two pulls, so /md coach 1, /md simreplay 1 and /md coachrun 1
--- have something to say. The harness loads no UI, so MD.ShowCopyPopup is
+-- have something to say. The harness loads no UI, so ST.ShowCopyPopup is
 -- absent and /md profile, /md export and a long coach card print to chat --
 -- which is what makes them comparable here. /md fsrtest and /md spamtest are
 -- driven through a short scripted mana stream (their event handlers moved
@@ -29,7 +29,7 @@ end
 
 HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua"); arg[0] = a0
+local ST = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB
 
 -- The TBC stub has no GetBuildInfo, which /md profile's first line reads; the
@@ -52,12 +52,12 @@ _G.DEFAULT_CHAT_FRAME = { AddMessage = function(_, m) out[#out + 1] = m end }
 --------------------------------------------------------------------------------
 -- The scene
 --------------------------------------------------------------------------------
-dofile(here .. "/fakepull.lua")(MD, S)
-MD.db.debug.enabled = false
-function MD:DebugLog() end
+dofile(here .. "/fakepull.lua")(ST, S)
+ST.db.debug.enabled = false
+function ST:DebugLog() end
 
-local SD = MD.SpellData
-local RR = MD.RunRecorder
+local SD = ST.SpellData
+local RR = ST.RunRecorder
 local PLAYER = "Player-1"
 local rejuv, regrowth = SD.maxRank.Rejuvenation, SD.maxRank.Regrowth
 local function ev(sub, src, dst, dstName, ...)
@@ -124,7 +124,7 @@ advance(6)
 --------------------------------------------------------------------------------
 local function Pump(field)
     local frames = 0
-    while MD[field] and frames < 40000 do S.Tick(0.016); frames = frames + 1 end
+    while ST[field] and frames < 40000 do S.Tick(0.016); frames = frames + 1 end
 end
 
 local function FsrStream()
@@ -166,7 +166,7 @@ local COMMANDS = {
     { "coachrun 1", "runSearch" },
 }
 
-local version = MD.version or "dev"
+local version = ST.version or "dev"
 local function Plain(s, find, repl)
     local i, j = s:find(find, 1, true)
     while i do
@@ -255,7 +255,7 @@ end
 
 --------------------------------------------------------------------------------
 -- T65 (P21, review A1): the review commands are shared with Forever and print
--- every line through MD:PrintSafe -- the one TBC change. A zone name with a
+-- every line through ST:PrintSafe -- the one TBC change. A zone name with a
 -- pipe and a non-ASCII byte reaches the coach card's header escaped (the
 -- pipe doubled, the byte as \ddd), the card's own colour codes kept. Run
 -- after the transcript, so the golden above is untouched by it.
@@ -263,7 +263,7 @@ end
 local PIPE_ZONE = "Blood|Furnace\195\169"
 local PIPE_ZONE_PRINTED = "Blood||Furnace\\195\\169"
 local function PipeZoneCheck()
-    local rec = MD:GetRecording("1")
+    local rec = ST:GetRecording("1")
     local savedZone = rec and rec.zone
     if rec then rec.zone = PIPE_ZONE end
     out = {}

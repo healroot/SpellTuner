@@ -20,7 +20,7 @@
 --      the words checked against the face built here from SAMPLES, not
 --      through the pane's own helper -- and the clock on screen is untouched
 --      (its words, its shown state, no Show / Hide on it); (Live) paints
---      MD.ClockFace.Current;
+--      ST.ClockFace.Current;
 --   3. the layout buttons save db.clockLook.layout (CLOCK_LOOK once) and the
 --      clock on screen and the preview rebuild in it;
 --   4. a control writes db.clockLook.over -- a tone swatch, Mana colour, the
@@ -29,7 +29,7 @@
 --      chips (T115) -- and the clock on
 --      screen rebuilds with it; Reset to style empties it, the layout kept;
 --   5. Show / When hold the line's own switches (the rest segment: the
---      preview's rest chip loses it, and so does MD.ClockLook, the broker's
+--      preview's rest chip loses it, and so does ST.ClockLook, the broker's
 --      look); the When tab's lock;
 --   6. the Look dropdown on General (TBC Windows pane, Forever APPEARANCE)
 --      lists every registered style (Ellesmere by UI.Ellesmere.Label), writes
@@ -42,7 +42,7 @@
 --      only where a ring is drawn), look reset, preview; on Forever /st clock
 --      and /st clock lock answer exactly as before; on TBC /md clock prints
 --      the subs' usage; the help row carries the three subs;
---   8. INTEGRATIONS: the lines are MD.Integrations.Lines(), the broker and
+--   8. INTEGRATIONS: the lines are ST.Integrations.Lines(), the broker and
 --      compact switches write db.feeds, the hint names the host found (TBC:
 --      pick SpellTuner in ElvUI; Forever: /eui -> DataBars) and Forever's
 --      EllesmereUI mover switch writes db.eui.unlock; with nothing found the
@@ -66,7 +66,7 @@
 -- drops the rest.
 --
 -- T119 (SPEC-one-ui 7, re-based): Settings is UI/Settings.lua's on both lines
--- -- the views gain Review (1), General's pane is MD.Settings.panes.general
+-- -- the views gain Review (1), General's pane is ST.Settings.panes.general
 -- (6, 10), Customise... is the shared MANA CLOCK's clockCustomise on TBC too
 -- (9), and TBC's Settings content is 736 x 520 as Forever's (10).
 HARNESS_FLAVOUR = { "tbc", "forever" }
@@ -94,7 +94,7 @@ local H = dofile(here .. "/stub_hosts.lua")
 local FILE = "UI/ClockSettings.lua"
 local AFTER = forever and "UI/Clock_Forever.lua" or "UI/Widget.lua"
 
-local MD = {}
+local ST = {}
 local toc = "SpellTuner_TBC.toc"
 if forever then
     S.UseProfile("forever")
@@ -128,10 +128,10 @@ local loadedOK, loadErr = pcall(function()
     -- one file at a time, so the kit's navigation is watched from the moment
     -- UI/Style.lua defines it
     for _, rel in ipairs(files) do
-        S.Load({ rel }, "SpellTuner", MD)
+        S.Load({ rel }, "SpellTuner", ST)
         if rel == "UI/Style.lua" then
-            local make = MD.UI.CreateNavFrame
-            MD.UI.CreateNavFrame = function(title, name, w, h, groups, ...)
+            local make = ST.UI.CreateNavFrame
+            ST.UI.CreateNavFrame = function(title, name, w, h, groups, ...)
                 if name == "SpellTunerDashboard" then navGroups = groups end
                 return make(title, name, w, h, groups, ...)
             end
@@ -139,22 +139,22 @@ local loadedOK, loadErr = pcall(function()
     end
 end)
 if not loadedOK then print("load: " .. tostring(loadErr)) end
-H.AddOnMeta(MD, { EllesmereUI = { Version = "9.3.4" } })
+H.AddOnMeta(ST, { EllesmereUI = { Version = "9.3.4" } })
 S.Fire("ADDON_LOADED", "SpellTuner")
 S.Fire("PLAYER_LOGIN")
 S.Fire("PLAYER_ENTERING_WORLD")
 
-local UI = MD.UI or {}
-local CS = MD.ClockSettings or {}
-local CV = MD.ClockView or {}
-local CF = MD.ClockFace or {}
-local W = MD.ClockWidget or {}
+local UI = ST.UI or {}
+local CS = ST.ClockSettings or {}
+local CV = ST.ClockView or {}
+local CF = ST.ClockFace or {}
+local W = ST.ClockWidget or {}
 local widget = W.frame
 
 -- the first run's placing preview ended, the clock locked
-if MD.db then MD.db.locked = true end
+if ST.db then ST.db.locked = true end
 if W.Preview then pcall(W.Preview, W, 0) end
-if forever and MD.db and type(MD.db.clock) == "table" then MD.db.clock.locked = true end
+if forever and ST.db and type(ST.db.clock) == "table" then ST.db.clock.locked = true end
 
 local function Try(name, fn)
     local okR, cond, detail = pcall(fn)
@@ -193,9 +193,9 @@ local function Plain(lines)
 end
 
 local counts = { CLOCK_LOOK = 0, STYLE_CHANGED = 0 }
-if MD.RegisterCallback then
-    MD:RegisterCallback("CLOCK_LOOK", function() counts.CLOCK_LOOK = counts.CLOCK_LOOK + 1 end)
-    MD:RegisterCallback("STYLE_CHANGED", function() counts.STYLE_CHANGED = counts.STYLE_CHANGED + 1 end)
+if ST.RegisterCallback then
+    ST:RegisterCallback("CLOCK_LOOK", function() counts.CLOCK_LOOK = counts.CLOCK_LOOK + 1 end)
+    ST:RegisterCallback("STYLE_CHANGED", function() counts.STYLE_CHANGED = counts.STYLE_CHANGED + 1 end)
 end
 
 -- every Show / Hide on the clock on screen, with the caller's name
@@ -215,7 +215,7 @@ if widget then
 end
 
 local function Over()
-    local l = MD.db and MD.db.clockLook
+    local l = ST.db and ST.db.clockLook
     return type(l) == "table" and type(l.over) == "table" and l.over or {}
 end
 local function WidgetLook() return W.view and W.view.look or {} end
@@ -318,7 +318,7 @@ check("UI/ClockSettings.lua loaded (" .. (listed and "listed by the TOC" or "whe
 
 local pane, p
 Try("the Settings group has a Clock view, after General", function()
-    MD:SelectView("settings", "general") -- the Forever window is built on first use
+    ST:SelectView("settings", "general") -- the Forever window is built on first use
     local ids = {}
     for _, g in ipairs(navGroups) do
         if g.id == "settings" then
@@ -331,9 +331,9 @@ Try("the Settings group has a Clock view, after General", function()
 end)
 
 Try("selecting it builds the pane: PREVIEW, LAYOUT, the box with five tabs (Text first, no Show)", function()
-    MD:SelectView("settings", "clock")
+    ST:SelectView("settings", "clock")
     for _, f in ipairs(S.allFrames) do if f.clockSettings then pane, p = f, f.clockSettings end end
-    local g, v = MD:SelectedView()
+    local g, v = ST:SelectedView()
     local titles = {}
     for _, t in ipairs(TitledUnder(pane)) do titles[#titles + 1] = t.title:GetText() end
     local tabs = {}
@@ -383,7 +383,7 @@ Try("the chips are the eight of 7.4 after (Live), named as SAMPLES names them", 
     return table.concat(names, ",") == "(Live),OOM,OOM <20s,bound,hold,warm-up,FULL,rest,ooc", table.concat(names, ",")
 end)
 
-Try("(Live) paints the line's own face (MD.ClockFace.Current)", function()
+Try("(Live) paints the line's own face (ST.ClockFace.Current)", function()
     Click(p.chips[1])
     local okF, face = pcall(CF.Current, GetTime())
     local want = Words(okF and face or nil, p.look)
@@ -401,13 +401,13 @@ Try("a layout button saves db.clockLook.layout, CLOCK_LOOK once, the clock and t
     for _, x in ipairs(p.layoutButtons) do if x.id == "compact" then b = x end end
     local n0 = counts.CLOCK_LOOK
     Click(b)
-    local saved = MD.db.clockLook.layout == "compact"
+    local saved = ST.db.clockLook.layout == "compact"
     local fired = counts.CLOCK_LOOK - n0
     local rebuilt = WidgetLook().layout == "compact" and p.look.layout == "compact"
     local ids = {}
     for _, x in ipairs(p.layoutButtons) do ids[#ids + 1] = x.id end
     for _, x in ipairs(p.layoutButtons) do if x.id == "line" then Click(x) end end
-    return saved and fired == 1 and rebuilt and MD.db.clockLook.layout == "line"
+    return saved and fired == 1 and rebuilt and ST.db.clockLook.layout == "line"
         and table.concat(ids, ",") == table.concat(CV.LAYOUTS, ","),
         string.format("saved %s fired %d rebuilt %s buttons %s", tostring(saved), fired, tostring(rebuilt),
             table.concat(ids, ","))
@@ -497,7 +497,7 @@ Try("Bars: the choices are this line's (" .. (forever and "Mana from; no tick; f
         own = after == "green,empty" and tex == "flat" and mana == "game,model"
             and Texts(p.textureDropdown) == "Flat (others wait for the probe)"
             and Texts(p.manaDropdown) == "The game/The model" and labels["Mana from"]
-            and T.Has(afterTip, MD.ClockView.TICK_REFUSED)
+            and T.Has(afterTip, ST.ClockView.TICK_REFUSED)
             and T.Has(p.afterNote and p.afterNote:GetText(), "cannot be learned")
     else
         own = after == "green,empty,tick" and tex == "flat,statusbar,raid" and mana == nil
@@ -572,7 +572,7 @@ end)
 Try("the rule chips paint the preview's five-second rule: 3.0 s left, just cast, regen running", function()
     local names, res = {}, {}
     for _, b in ipairs(p.ruleChips or {}) do names[#names + 1] = b:GetText() end
-    MD.ClockView.ResetToStyle()
+    ST.ClockView.ResetToStyle()
     Click(p.chips[2]) -- a sample face
     for _, b in ipairs(p.ruleChips or {}) do
         Click(b)
@@ -586,13 +586,13 @@ Try("the rule chips paint the preview's five-second rule: 3.0 s left, just cast,
 end)
 
 Try("Reset to style empties the overrides and keeps the layout", function()
-    MD.ClockView.SetLayout("bar")
+    ST.ClockView.SetLayout("bar")
     local n0 = counts.CLOCK_LOOK
     Click(p.resetButton)
     local empty = next(Over()) == nil
-    local kept = MD.db.clockLook.layout == "bar" and WidgetLook().layout == "bar"
+    local kept = ST.db.clockLook.layout == "bar" and WidgetLook().layout == "bar"
     local fired = counts.CLOCK_LOOK - n0
-    MD.ClockView.SetLayout("line")
+    ST.ClockView.SetLayout("line")
     return empty and kept and fired == 1 and WidgetLook().colors.crit == nil
 end)
 
@@ -617,9 +617,9 @@ Try("Show: no Show tab; the line's rest switch (" .. (forever and "/st clock res
     Tick(1)
     CS.Refresh(p)
     local key
-    if forever then key = MD.db.clock and MD.db.clock.showRest else key = MD.db.showRest end
+    if forever then key = ST.db.clock and ST.db.clock.showRest else key = ST.db.showRest end
     local without = p.view:Text()
-    local look = MD.ClockLook and MD.ClockLook()
+    local look = ST.ClockLook and ST.ClockLook()
     local brokerOff = type(look) == "table" and look.show and look.show.rest == false
     Chat(function() slashFn(verb) end)
     Tick(1)
@@ -635,9 +635,9 @@ Try("When: Locked is the line's own lock", function()
     p.box:Select("when")
     local cb = SwitchNamed("Locked")
     cb:SetChecked(false); cb.onClick(false, cb)
-    local off = forever and MD.db.clock.locked == false or (not forever and MD.db.locked == false)
+    local off = forever and ST.db.clock.locked == false or (not forever and ST.db.locked == false)
     cb:SetChecked(true); cb.onClick(true, cb)
-    local on = forever and MD.db.clock.locked == true or (not forever and MD.db.locked == true)
+    local on = forever and ST.db.clock.locked == true or (not forever and ST.db.locked == true)
     if W.Preview then W:Preview(0) end
     return cb ~= nil and off and on
 end)
@@ -667,20 +667,20 @@ local function LineOptions(layout, slot)
 end
 local function Slot(slot) return p.slotDD and p.slotDD[slot] end
 local function RestOn()
-    if forever then return MD.db.clock.showRest ~= false end
-    return MD.db.showRest ~= false
+    if forever then return ST.db.clock.showRest ~= false end
+    return ST.db.showRest ~= false
 end
 local function SetRest(on)
-    if forever then MD.db.clock.showRest = on else MD.db.showRest = on end
+    if forever then ST.db.clock.showRest = on else ST.db.showRest = on end
 end
 
 Try("Text: a dropdown per slot of the layout on screen, the line's options (Cooldown "
         .. (forever and "not listed, ~ model beside Mana % / Mana / Regen" or "listed") .. ")", function()
-    MD.ClockView.ResetToStyle()
+    ST.ClockView.ResetToStyle()
     p.box:Select("text")
     local bad = {}
     for _, layout in ipairs({ "line", "compact", "bar" }) do
-        MD.ClockView.SetLayout(layout)
+        ST.ClockView.SetLayout(layout)
         local shown = {}
         for _, slot in ipairs(CF.TEXT_SLOTS[layout]) do
             local dd, lab = Slot(slot), p.slotLabel and p.slotLabel[slot]
@@ -694,7 +694,7 @@ Try("Text: a dropdown per slot of the layout on screen, the line's options (Cool
             if not shown[slot] and dd:IsShown() then bad[#bad + 1] = layout .. ": " .. slot .. " shown" end
         end
     end
-    MD.ClockView.SetLayout("line")
+    ST.ClockView.SetLayout("line")
     local dd = Slot("right")
     local words = ItemText(dd, "rest") == "Rest 2:10" and ItemText(dd, "none") == "None"
         and ItemText(dd, "fsr") == "Five-second rule 3.0" and ItemText(Slot("main"), "time") == "Time 1:20"
@@ -710,25 +710,25 @@ Try("Text: a dropdown per slot of the layout on screen, the line's options (Cool
 end)
 
 Try("Text: a pick writes text.<layout>.<slot>; the clock and the preview follow, each layout its own", function()
-    MD.ClockView.SetLayout("line")
+    ST.ClockView.SetLayout("line")
     local okL = Pick(Slot("main"), "pct") and TextOver("line").main == "pct"
         and WidgetLook().text.main == "pct" and p.look.text.main == "pct" and p.look.text.timeAt == "left"
-    MD.ClockView.SetLayout("compact")
+    ST.ClockView.SetLayout("compact")
     local fresh = Slot("main"):Value() == "time"
     local okC = Pick(Slot("bottom"), "mp5") and TextOver("compact").bottom == "mp5"
         and WidgetLook().text.bottom == "mp5" and TextOver("line").main == "pct"
-    MD.ClockView.SetLayout("line")
+    ST.ClockView.SetLayout("line")
     local back = Slot("main"):Value() == "pct"
     Pick(Slot("main"), "time")
     local cleared = TextOver("line").main == nil
-    MD.ClockView.ResetToStyle()
+    ST.ClockView.ResetToStyle()
     return okL and fresh and okC and back and cleared,
         string.format("line %s, compact fresh %s set %s, line back %s, cleared %s", tostring(okL), tostring(fresh),
             tostring(okC), tostring(back), tostring(cleared))
 end)
 
 Try("Text: Right 2 is disabled at 180 px with its reason, enabled at 300 px, and then writes right2", function()
-    MD.ClockView.SetLayout("line")
+    ST.ClockView.SetLayout("line")
     local fits, need, now = p.view:FitsRight2()
     local dd = Slot("right2")
     local off = dd:IsEnabled() == false and fits == false and now == 180
@@ -736,11 +736,11 @@ Try("Text: Right 2 is disabled at 180 px with its reason, enabled at 300 px, and
     local said = T.Has(tips, "needs " .. tostring(need) .. " px: raise the width on Frame")
     Pick(dd, "mp5")
     local refused = TextOver("line").right2 == nil
-    MD.ClockView.Set("frame.line.w", 300)
+    ST.ClockView.Set("frame.line.w", 300)
     local on = dd:IsEnabled() and p.view:FitsRight2() == true
     Pick(dd, "mp5")
     local wrote = TextOver("line").right2 == "mp5" and WidgetLook().text.right2 == "mp5"
-    MD.ClockView.ResetToStyle()
+    ST.ClockView.ResetToStyle()
     return off and said and refused and on and wrote,
         string.format("off %s (fits %s need %s now %s), tip %q, refused %s, on %s, wrote %s", tostring(off),
             tostring(fits), tostring(need), tostring(now), tips, tostring(refused), tostring(on), tostring(wrote))
@@ -748,7 +748,7 @@ end)
 
 Try("Text: Right's picks write the line's switches (Rest on; None leaves them"
         .. (forever and "" or "; Cooldown on") .. ")", function()
-    MD.ClockView.SetLayout("line")
+    ST.ClockView.SetLayout("line")
     SetRest(false)
     CS.Refresh(p)
     local dd = Slot("right")
@@ -758,19 +758,19 @@ Try("Text: Right's picks write the line's switches (Rest on; None leaves them"
     local rest = TextOver("line").right == nil and RestOn()
     local cd = true
     if not forever then
-        MD.db.showCooldown = false
+        ST.db.showCooldown = false
         Pick(dd, "cd")
-        cd = TextOver("line").right == "cd" and MD.db.showCooldown == true
+        cd = TextOver("line").right == "cd" and ST.db.showCooldown == true
         Pick(dd, "rest")
     end
-    MD.ClockView.ResetToStyle()
+    ST.ClockView.ResetToStyle()
     SetRest(true)
     return none and rest and cd and TextOver("line").right == nil,
         string.format("none %s rest %s cd %s", tostring(none), tostring(rest), tostring(cd))
 end)
 
 Try("Text: FORMAT -- Time, Size (and Default), Outline, Shadow, Numbers write their keys; the preview follows", function()
-    MD.ClockView.SetLayout("line")
+    ST.ClockView.SetLayout("line")
     local okT = Pick(p.timeDropdown, "sec") and TextOver("line").time == "sec" and p.look.text.time == "sec"
     Type(p.sizeSlider, "20")
     local _, size = p.view.value:GetFont()
@@ -787,14 +787,14 @@ Try("Text: FORMAT -- Time, Size (and Default), Outline, Shadow, Numbers write th
     Pick(p.timeDropdown, "line"); Pick(p.outlineDropdown, "none"); Pick(p.numbersDropdown, "number")
     p.shadowCheck:SetChecked(true); p.shadowCheck.onClick(true, p.shadowCheck)
     local sparse = next(TextOver("line")) == nil
-    MD.ClockView.ResetToStyle()
+    ST.ClockView.ResetToStyle()
     return okT and okS and okD and okO and okSh and okN and sparse,
         string.format("time %s size %s (%s) default %s outline %s shadow %s numbers %s sparse %s", tostring(okT),
             tostring(okS), tostring(size), tostring(okD), tostring(okO), tostring(okSh), tostring(okN), tostring(sparse))
 end)
 
 Try("Text: Labels (out / full) and Mana as 4210/6800 write labels and ofMax", function()
-    MD.ClockView.SetLayout("line")
+    ST.ClockView.SetLayout("line")
     local oomChip
     for _, b in ipairs(p.chips) do if b.id == "oom" then oomChip = b end end
     Click(oomChip)
@@ -803,7 +803,7 @@ Try("Text: Labels (out / full) and Mana as 4210/6800 write labels and ofMax", fu
     local lower = T.Has(text, "out ") and not T.Has(text, "OOM")
     p.ofMaxCheck:SetChecked(true); p.ofMaxCheck.onClick(true, p.ofMaxCheck)
     local okM = TextOver("line").ofMax == true and p.look.text.ofMax == true
-    MD.ClockView.ResetToStyle()
+    ST.ClockView.ResetToStyle()
     return okL and lower and okM, string.format("labels %s (%q) ofMax %s", tostring(okL), tostring(text), tostring(okM))
 end)
 
@@ -823,10 +823,10 @@ T.section("6. the Look dropdown and Use my class colour")
 --------------------------------------------------------------------------------
 local look, generalPane
 local function FindLook()
-    MD:SelectView("settings", "general")
-    if not forever and MD.ShowOptionsFrame then MD:ShowOptionsFrame("general") end
+    ST:SelectView("settings", "general")
+    if not forever and ST.ShowOptionsFrame then ST:ShowOptionsFrame("general") end
     -- T119: one General pane on both lines, UI/Settings.lua's
-    generalPane = MD.Settings and MD.Settings.panes.general
+    generalPane = ST.Settings and ST.Settings.panes.general
     look = generalPane and generalPane.lookControls
 end
 pcall(FindLook)
@@ -855,7 +855,7 @@ Try("picking a style writes db.ui.style and repaints at once (STYLE_CHANGED once
         shown = look.reload:IsShown() and look.reloadText:GetText() == UI.Restyle.Line()
     end
     local label = p.styleLabel:GetText()
-    return picked and hidden and MD.db.ui.style == "ellesmere" and UI.STYLE == "ellesmere" and fired == 1
+    return picked and hidden and ST.db.ui.style == "ellesmere" and UI.STYLE == "ellesmere" and fired == 1
         and repainted and shown and T.Has(label, "style: Ellesmere"),
         string.format("fired %d repainted %s reload %s label %q", fired, tostring(repainted), tostring(shown),
             tostring(label))
@@ -866,11 +866,11 @@ Try("Use my class colour puts the class colour over the style's accent, and take
     local n0 = counts.STYLE_CHANGED
     local cb = look.classCheck
     cb:SetChecked(true); cb.onClick(true, cb)
-    local on = MD.db.useClassColour == true and math.abs(UI.accent[1] - UI.classAccent[1]) < 1e-6
+    local on = ST.db.useClassColour == true and math.abs(UI.accent[1] - UI.classAccent[1]) < 1e-6
         and math.abs(UI.accent[2] - UI.classAccent[2]) < 1e-6 and math.abs(UI.accent[3] - UI.classAccent[3]) < 1e-6
     local fired = counts.STYLE_CHANGED - n0
     cb:SetChecked(false); cb.onClick(false, cb)
-    local off = MD.db.useClassColour == false and math.abs(UI.accent[1] - styleAccent[1]) < 1e-6
+    local off = ST.db.useClassColour == false and math.abs(UI.accent[1] - styleAccent[1]) < 1e-6
         and math.abs(UI.accent[3] - styleAccent[3]) < 1e-6
     local differs = math.abs(styleAccent[1] - UI.classAccent[1]) > 1e-6 or math.abs(styleAccent[3] - UI.classAccent[3]) > 1e-6
     return on and off and fired == 1 and differs, string.format("on %s off %s fired %d", tostring(on), tostring(off), fired)
@@ -880,7 +880,7 @@ Try("back to Flat: the palette is Flat's, the reload line hides, the clock pane 
     Pick(look.dropdown, "flat")
     local flatBg = UI.FLAT.palette.bg
     local r, g, b = UI.Fill("bg")
-    return MD.db.ui.style == "flat" and not look.reload:IsShown() and math.abs(r - flatBg[1]) < 1e-9
+    return ST.db.ui.style == "flat" and not look.reload:IsShown() and math.abs(r - flatBg[1]) < 1e-9
         and math.abs(b - flatBg[3]) < 1e-9 and T.Has(p.styleLabel:GetText(), "style: Flat")
 end)
 
@@ -890,9 +890,9 @@ T.section("7. the subcommands")
 local slash = SlashCmdList and SlashCmdList.SPELLTUNER
 Try("/st clock layout compact saves it; nosuch is refused, naming the layouts", function()
     local a = Plain(Chat(function() slash("clock layout compact") end))
-    local saved = MD.db.clockLook.layout == "compact" and WidgetLook().layout == "compact"
+    local saved = ST.db.clockLook.layout == "compact" and WidgetLook().layout == "compact"
     local b = Plain(Chat(function() slash("clock layout Nosuch") end))
-    local kept = MD.db.clockLook.layout == "compact"
+    local kept = ST.db.clockLook.layout == "compact"
     slash("clock layout line")
     return a[1] == "mana clock: layout compact" and saved and kept
         and b[1] == "mana clock: unknown layout 'nosuch' (layouts: " .. table.concat(CV.LAYOUTS, ", ") .. ")",
@@ -904,16 +904,16 @@ Try("/st clock layout ring: saved where a ring is drawn (T104), else refused", f
     local drawn = CV.LAYOUT and CV.LAYOUT.ring ~= nil
     local okR
     if drawn then
-        okR = MD.db.clockLook.layout == "ring" and lines[1] == "mana clock: layout ring"
+        okR = ST.db.clockLook.layout == "ring" and lines[1] == "mana clock: layout ring"
     else
-        okR = MD.db.clockLook.layout == "line" and T.Has(lines[1], "unknown layout 'ring'")
+        okR = ST.db.clockLook.layout == "line" and T.Has(lines[1], "unknown layout 'ring'")
     end
     slash("clock layout line")
     return okR, tostring(lines[1])
 end)
 
 Try("/st clock look reset empties the overrides; /st clock look alone prints its usage", function()
-    MD.ClockView.Set("colors.warn", "123456")
+    ST.ClockView.Set("colors.warn", "123456")
     local a = Plain(Chat(function() slash("clock look reset") end))
     local b = Plain(Chat(function() slash("clock look") end))
     return next(Over()) == nil and a[1] == "mana clock: every colour and bar setting back to the look's own"
@@ -933,13 +933,13 @@ end)
 
 if forever then
     Try("Forever: /st clock and /st clock lock answer exactly as before", function()
-        MD.db.clock.shown, MD.db.clock.locked = true, false
+        ST.db.clock.shown, ST.db.clock.locked = true, false
         local a = Plain(Chat(function() slash("clock") end))
-        local hidden = MD.db.clock.shown == false
+        local hidden = ST.db.clock.shown == false
         local b = Plain(Chat(function() slash("clock") end))
         local c = Plain(Chat(function() slash("clock lock") end))
         local d = Plain(Chat(function() slash("clock lock") end))
-        MD.db.clock.locked = true
+        ST.db.clock.locked = true
         return hidden and a[1] == "mana clock: hidden" and b[1] == "mana clock: shown" and c[1] == "mana clock: locked"
             and d[1] == "mana clock: unlocked" and #a == 1 and #b == 1 and #c == 1 and #d == 1,
             table.concat({ a[1] or "", b[1] or "", c[1] or "", d[1] or "" }, " | ")
@@ -954,7 +954,7 @@ end
 
 Try("the clock's help row carries layout, look reset and preview", function()
     local row
-    for _, c in ipairs(MD:Commands()) do if c.name == "clock" then row = c end end
+    for _, c in ipairs(ST:Commands()) do if c.name == "clock" then row = c end end
     local want = forever and "/st clock [lock] / rest / clickthrough / layout <name> / look reset / preview"
         or "/st clock layout <name> / look reset / preview"
     return row ~= nil and row.usage == want and not row.hidden, row and row.usage
@@ -969,9 +969,9 @@ pcall(function()
     for _, f in ipairs(S.allFrames) do if f.integrations then integ = f end end
 end)
 
-Try("the pane shows MD.Integrations.Lines(), one line each", function()
+Try("the pane shows ST.Integrations.Lines(), one line each", function()
     integ:Refresh()
-    local want = MD.Integrations.Lines()
+    local want = ST.Integrations.Lines()
     local got = {}
     for _, fs in ipairs(integ.found) do if fs:IsShown() then got[#got + 1] = fs:GetText() end end
     local host = forever and T.Has(want[1], "EllesmereUI 9.3.4 (tested 9.3.4)") or T.Has(want[1], "ElvUI: 2 datatexts")
@@ -987,12 +987,12 @@ end)
 Try("the broker and compact switches write db.feeds; compact drops the rest from the broker", function()
     local ldb, compact = integ.ldbCheck, integ.compactCheck
     ldb:SetChecked(false); ldb.onClick(false, ldb)
-    local off = MD.db.feeds.ldb == false
+    local off = ST.db.feeds.ldb == false
     ldb:SetChecked(true); ldb.onClick(true, ldb)
     compact:SetChecked(true); compact.onClick(true, compact)
-    local c = MD.db.feeds.compact == true
+    local c = ST.db.feeds.compact == true
     compact:SetChecked(false); compact.onClick(false, compact)
-    return off and MD.db.feeds.ldb == true and c and MD.db.feeds.compact == false
+    return off and ST.db.feeds.ldb == true and c and ST.db.feeds.compact == false
 end)
 
 if forever then
@@ -1002,17 +1002,17 @@ if forever then
         integ:Refresh()
         local shown = mover and mover:IsShown()
         mover:SetChecked(false); mover.onClick(false, mover)
-        local off = MD.db.eui.unlock == false
+        local off = ST.db.eui.unlock == false
         mover:SetChecked(true); mover.onClick(true, mover)
-        return shown and off and MD.db.eui.unlock == true
+        return shown and off and ST.db.eui.unlock == true
     end)
 end
 
 Try("with nothing found the pane says so", function()
-    local keep = MD.Integrations
-    MD.Integrations = nil
+    local keep = ST.Integrations
+    ST.Integrations = nil
     local lines = CS.IntegrationLines()
-    MD.Integrations = keep
+    ST.Integrations = keep
     return #lines == 1 and lines[1] == "none found"
 end)
 
@@ -1027,7 +1027,7 @@ Try("Customise... opens Settings -> Clock", function()
         if f.clockCustomise then b = f.clockCustomise end
     end
     Click(b)
-    local g, v = MD:SelectedView()
+    local g, v = ST:SelectedView()
     return b ~= nil and g == "settings" and v == "clock" and b:GetText() == "Customise...", tostring(g) .. "/" .. tostring(v)
 end)
 
@@ -1091,7 +1091,7 @@ end)
 T.section("11. a fight")
 --------------------------------------------------------------------------------
 Try("(Live) in a fight paints without raising, and no word on the pane is a secret", function()
-    MD:SelectView("settings", "clock")
+    ST:SelectView("settings", "clock")
     Click(p.chips[1])
     S.Fire("PLAYER_REGEN_DISABLED")
     local okRun, err = pcall(function()

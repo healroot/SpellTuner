@@ -55,7 +55,7 @@
 --   * Right2 drawn only where the width allows (refused with the width);
 --   * the minimum: Compact's Bottom adds 12 px, Line's right = none 30 high;
 --   * Forever's seam: POWER_TEXT_READS off draws the model's "~62%" and never
---     calls MD.API.DrawPowerText; on (here only) the font string holds the
+--     calls ST.API.DrawPowerText; on (here only) the font string holds the
 --     secret unread; TBC draws plain words;
 --   * look.texts.line, whatever layout is on screen, is what the feed reads.
 HARNESS_FLAVOUR = { "tbc", "forever" }
@@ -81,7 +81,7 @@ local S = _G.STUB
 S.root = root
 S.flavour = flavour
 
-local MD = {}
+local ST = {}
 local toc = "SpellTuner_TBC.toc"
 if forever then
     S.UseProfile("forever")
@@ -94,21 +94,21 @@ for _, rel in ipairs(S.TocFiles(toc)) do
     if rel:sub(1, 13) ~= "Integrations/" then files[#files + 1] = rel end
 end
 S.loadedFiles = files
-S.Load(files, "SpellTuner", MD)
+S.Load(files, "SpellTuner", ST)
 S.Fire("ADDON_LOADED", "SpellTuner")
 S.Fire("PLAYER_LOGIN")
 S.Fire("PLAYER_ENTERING_WORLD")
 
-local UI = MD.UI
-local CV = MD.ClockView or {}
-local CF = MD.ClockFace or {}
-local W = MD.ClockWidget or {}
+local UI = ST.UI
+local CV = ST.ClockView or {}
+local CF = ST.ClockFace or {}
+local W = ST.ClockWidget or {}
 local frame = W.frame or (forever and _G.SpellTunerClock or _G.SpellTunerWidget)
-local function View() return W.view or (frame and frame.view) or (MD.Clock and MD.Clock.view) end
+local function View() return W.view or (frame and frame.view) or (ST.Clock and ST.Clock.view) end
 
 -- the first run's 60-s placing preview (TBC unlocks the clock at a first
 -- login) ended, the clock locked: what the visibility checks start from
-if MD.db then MD.db.locked = true end
+if ST.db then ST.db.locked = true end
 if W.Preview then pcall(W.Preview, W, 0) end
 
 -- A check whose body may raise (on the parent, before T115, much of what it
@@ -293,7 +293,7 @@ end
 
 -- CLOCK_LOOK, counted
 local looks = 0
-MD:RegisterCallback("CLOCK_LOOK", function() looks = looks + 1 end)
+ST:RegisterCallback("CLOCK_LOOK", function() looks = looks + 1 end)
 
 local function Paint(face)
     local v = View()
@@ -310,13 +310,13 @@ local SHOWS = { "both", "mana", "fsr", "none" }
 -- Forever, the regen model's end on TBC
 local function RuleFor(seconds)
     if forever then
-        MD.Pool.model.lastSpend = GetTime() - (5 - seconds)
+        ST.Pool.model.lastSpend = GetTime() - (5 - seconds)
     else
-        MD.Regen.fsrEnd = GetTime() + seconds
+        ST.Regen.fsrEnd = GetTime() + seconds
     end
 end
 local function RuleOff()
-    if forever then MD.Pool.model.lastSpend = -1e9 else MD.Regen.fsrEnd = 0 end
+    if forever then ST.Pool.model.lastSpend = -1e9 else ST.Regen.fsrEnd = 0 end
 end
 local function Bars_(layout, key, value) return CV.Set("bars." .. layout .. "." .. key, value) end
 local function Reset() CV.ResetToStyle(); CV.SetLayout("line") end
@@ -331,11 +331,11 @@ Try("line, compact and bar; SetLayout saves and fires CLOCK_LOOK once; an unknow
     local listed = table.concat(CV.LAYOUTS or {}, ",") == "line,compact,bar"
     local n0 = looks
     local okC = CV.SetLayout("compact")
-    local saved = MD.db.clockLook and MD.db.clockLook.layout
+    local saved = ST.db.clockLook and ST.db.clockLook.layout
     local fired = looks - n0
     local n1 = looks
     local okBad, why = CV.SetLayout("hexagon")
-    local unchanged = MD.db.clockLook.layout == "compact" and looks == n1
+    local unchanged = ST.db.clockLook.layout == "compact" and looks == n1
     CV.SetLayout("line")
     return listed and okC == true and saved == "compact" and fired == 1 and okBad == false
         and type(why) == "string" and why:find("line", 1, true) ~= nil and unchanged,
@@ -544,7 +544,7 @@ Try("scale: SetScale per layout (50-200 %), the clock's centre kept across a cha
     local sc = frame:GetScale()
     CV.SetLayout("line")
     local back = frame:GetScale()
-    local saved = forever and MD.db.clock.point or MD.db.pos
+    local saved = forever and ST.db.clock.point or ST.db.pos
     CV.Set("frame.line.scale", nil)
     local x3, y3 = Centre()
     Reset()
@@ -656,7 +656,7 @@ Try("chip: SetCooldown(lastSpend, 5) once per spend, green after; the label move
     -- the chip too): counted from here
     local c0 = v.cd and v.cd.cdCalls or 0
     RuleFor(4)
-    local spend = forever and MD.Pool.model.lastSpend or (MD.Regen.fsrEnd - 5)
+    local spend = forever and ST.Pool.model.lastSpend or (ST.Regen.fsrEnd - 5)
     Paint(face1)
     Paint(face1)
     S.Tick(0.03)
@@ -846,9 +846,9 @@ else
     Try("tick: with RM:RegenTick() answering, a white mark sweeps the strip over 2 s after the rule; without, green", function()
         Reset()
         Bars_("line", "after", "tick")
-        local realTick = MD.Regen.RegenTick
+        local realTick = ST.Regen.RegenTick
         local t0 = GetTime() - 0.5
-        MD.Regen.RegenTick = function() return t0, 2 end
+        ST.Regen.RegenTick = function() return t0, 2 end
         RuleOff()
         local v = Paint(face1)
         local m = v.tickMark
@@ -858,10 +858,10 @@ else
             and Same(m.color, 1, 1, 1)
         S.Tick(0.03)
         local swept = type(X()) == "number" and X() > x0
-        MD.Regen.RegenTick = function() return nil end
+        ST.Regen.RegenTick = function() return nil end
         Paint(face1)
         local plain = not Shown(m) and Is(v.strip.barColor, GREEN) and Near(v.strip.value, 5)
-        MD.Regen.RegenTick = realTick
+        ST.Regen.RegenTick = realTick
         Reset()
         return placed and swept and plain, string.format("placed %s (x %s), swept %s, without %s", tostring(placed),
             tostring(x0), tostring(swept), tostring(plain))
@@ -952,7 +952,7 @@ Try("a layout or design switch leaves the frame's shown state alone (shown and h
     end
     S.Fire("PLAYER_REGEN_ENABLED")
     if forever then
-        MD.Pool.model.mana = MD.Pool.model.max
+        ST.Pool.model.mana = ST.Pool.model.max
     else
         S.mana = UnitPowerMax("player", 0)
     end
@@ -988,7 +988,7 @@ Try("every Show / Hide on the frame comes from the visibility owner (counted)", 
     if W.Preview then W:Preview(60) end
     Tick(2)
     if W.Preview then W:Preview(0) end
-    if forever and MD.Clock.SetLocked then MD.Clock:SetLocked(true) end
+    if forever and ST.Clock.SetLocked then ST.Clock:SetLocked(true) end
     Tick(3)
     Reset()
     local shows, hides, other = 0, 0, {}
@@ -1006,7 +1006,7 @@ T.section("the dump line")
 --------------------------------------------------------------------------------
 Try("the dump line names the layout and the new keys once the look is not the default", function()
     local function Line()
-        for _, d in ipairs(MD:DumpLines()) do
+        for _, d in ipairs(ST:DumpLines()) do
             if d.key == "clock" then return d.fn() end
         end
         return nil
@@ -1316,20 +1316,20 @@ Try(forever and "Forever: POWER_TEXT_READS off draws ~62% and never calls DrawPo
     Reset()
     local okSet = TextSet("line", "right", "pct")
     local calls = 0
-    local real = MD.API.DrawPowerText
-    if real then MD.API.DrawPowerText = function(...) calls = calls + 1; return real(...) end end
+    local real = ST.API.DrawPowerText
+    if real then ST.API.DrawPowerText = function(...) calls = calls + 1; return real(...) end end
     local face = Rich(face1)
     local v = Paint(face)
     local words = Words(v.second)
     local res
     if forever then
-        local first = words == "~62%" and calls == 0 and MD.API.POWER_TEXT_READS == false
+        local first = words == "~62%" and calls == 0 and ST.API.POWER_TEXT_READS == false
         S.Fire("PLAYER_REGEN_DISABLED")
-        MD.API.POWER_TEXT_READS = true
+        ST.API.POWER_TEXT_READS = true
         local okP, err = pcall(function() Paint(face); return v:Text() end)
         local raw = rawget(v.second, "text")
         local secret = issecretvalue(raw) == true and v.second:IsShown() and calls > 0
-        MD.API.POWER_TEXT_READS = false
+        ST.API.POWER_TEXT_READS = false
         Paint(face)
         local backWords = Words(v.second)
         S.Fire("PLAYER_REGEN_ENABLED")
@@ -1340,7 +1340,7 @@ Try(forever and "Forever: POWER_TEXT_READS off draws ~62% and never calls DrawPo
         res = { words == "62%" and calls == 0 and v.draw.powerText == nil,
             string.format("%q, calls %d", tostring(words), calls) }
     end
-    MD.API.DrawPowerText = real
+    ST.API.DrawPowerText = real
     Reset()
     return okSet == true and res[1], res[2]
 end)
@@ -1351,12 +1351,12 @@ Try("look.texts.line is resolved whatever layout is on screen: the feed reads Li
     local okSet = TextSet("line", "right", "pct")
     CV.SetLayout("bar")
     Tick(1)
-    local look = MD.ClockLook and MD.ClockLook()
+    local look = ST.ClockLook and ST.ClockLook()
     local texts = type(look) == "table" and look.texts
     local okT = look ~= nil and look.layout == "bar" and texts and texts.line and texts.line.right == "pct"
         and look.text == texts.bar and texts.bar.right == "time"
     local line = texts and texts.line and Strip(CF.LineString(Rich(face1), nil, texts.line)) or ""
-    local feed = MD.Feeds and MD.Feeds.Text("clock", { plain = true }) or ""
+    local feed = ST.Feeds and ST.Feeds.Text("clock", { plain = true }) or ""
     Reset()
     return okSet == true and okT and line:sub(-#PCT - 2) == "  " .. PCT and feed:find("%", 1, true) ~= nil,
         string.format("layout %s, line.right %s, line %q, feed %q", tostring(look and look.layout),
@@ -1385,7 +1385,7 @@ Try(forever
                     Bars_(layout, "mana", mana ~= "game" and mana or nil)
                     RuleFor(2.5)
                     local okP, e = pcall(function()
-                        if forever then MD.Clock:Refresh() end
+                        if forever then ST.Clock:Refresh() end
                         S.Tick(0.5)
                         S.Tick(0.03)
                     end)

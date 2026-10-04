@@ -3,7 +3,7 @@
 -- two report tools became one). Not run on its own:
 --
 --   local Report = dofile(here .. "/reportlines.lua")
---   for _, line in ipairs(Report(MD, rec, kit)) do print(line) end
+--   for _, line in ipairs(Report(ST, rec, kit)) do print(line) end
 --
 -- The fight replayed through the engine (what you played) beside every
 -- strategy in SP.STRATEGY_SET on the same fight, all at expected crits: mana
@@ -12,8 +12,8 @@
 -- mana the plan's binds buy), deaths, seconds one hit from death, the lowest
 -- health, casts and the lowest mana. `kit` is the one the fight is replayed
 -- with; import.lua has already chosen it and printed which.
-return function(MD, rec, kit)
-    local SM, SP = MD.SimModel, MD.SimPlanner
+return function(ST, rec, kit)
+    local SM, SP = ST.SimModel, ST.SimPlanner
     local lines = {}
     local function Add(fmt, ...) lines[#lines + 1] = select("#", ...) > 0 and string.format(fmt, ...) or fmt end
     local function Strip(s)

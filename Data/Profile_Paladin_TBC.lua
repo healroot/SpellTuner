@@ -14,9 +14,9 @@
 -- Not a family, so not on the rank table: Lay on Hands (its amount is the
 -- paladin's whole mana), Divine Favor (a next-cast modifier). Illumination's
 -- mana back on a crit is not modelled (the cost is the client's).
-local _, MD = ...
+local _, ST = ...
 
-MD.Profiles.Register("PALADIN", {
+ST.Profiles.Register("PALADIN", {
     label = "Paladin",
     critSchool = 2,                -- Holy (GetSpellCritChance's school; VERIFY)
     -- T123: the rank table and the tooltip, now that every TBC reader of

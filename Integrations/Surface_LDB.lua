@@ -7,7 +7,7 @@
 -- ChocolateBar or ElvUI's own "Data Broker" list on TBC.
 --   "SpellTuner"        -- the `clock` feed's words, plain: "~OOM 1:20  rest
 --                          2:10" (Forever), "OOM 1:20 v" (TBC); T114: Line's
---                          slots (MD.ClockLook().texts.line). db.feeds.compact
+--                          slots (ST.ClockLook().texts.line). db.feeds.compact
 --                          drops the secondary segment (rest / a cooldown; T114:
 --                          both Right slots, whatever they hold) for a narrow bar; the honesty marks (~ > = -- ...) and
 --                          the label stay, so the words still say what is
@@ -19,9 +19,9 @@
 --                          reading, "Regen --" before one. Amber inside the
 --                          five-second rule.
 -- Both: the minimap button's icon; left-click the window, right-click
--- Settings, out of combat only (MD.Feeds.Click, decision 17); the tooltip
+-- Settings, out of combat only (ST.Feeds.Click, decision 17); the tooltip
 -- through OnTooltipShow (the display anchors and skins the GameTooltip; never
--- OnEnter, which would hand the whole tooltip to us), filled by MD.Tip:Render
+-- OnEnter, which would hand the whole tooltip to us), filled by ST.Tip:Render
 -- with the feed's lines and the click hints.
 --
 -- The library is BORROWED: LibStub's LibDataBroker-1.1, which a host loaded
@@ -31,30 +31,30 @@
 -- later ADDON_LOADED for a host that came late; a display that binds later
 -- finds the objects by name (GetDataObjectByName) -- a second NewDataObject is
 -- never attempted, and a name another addon already holds is left to it.
--- Updated from MD:OnTick (registered at MD_READY, so after the state moved);
+-- Updated from ST:OnTick (registered at MD_READY, so after the state moved);
 -- the library drops an equal write, so a display repaints only on a change.
 --
--- MD.Integrations (this file, both TOCs): what was found, for Settings ->
+-- ST.Integrations (this file, both TOCs): what was found, for Settings ->
 -- General -> INTEGRATIONS (T102 shows Lines()) and /st dump (one line through
--- MD:AddDumpLine, registered only once something was found, so a dump with no
+-- ST:AddDumpLine, registered only once something was found, so a dump with no
 -- host is byte-identical).
 --
 -- Host addons are reached only from Integrations/ (apicheck rule 11). Every
 -- string here is ASCII with no bare pipe; the broker text carries no colour
 -- code at all. Nothing in this file registers an event on a frame of its own
--- (MD:On / MD:OnTick, apicheck rule 9).
-local _, MD = ...
+-- (ST:On / ST:OnTick, apicheck rule 9).
+local _, ST = ...
 
 -- The settings this file reads (docs/SPEC-next.md 6.3). `elvui` is the
 -- ElvUI surface's switch, declared with its two siblings as the spec groups
 -- them; Integrations/Surface_ElvUI.lua registers its datatexts at file load,
 -- before any setting exists, and does not read it yet (task file, deviations).
-MD:RegisterDefaults({ feeds = { ldb = true, elvui = true, compact = false } })
+ST:RegisterDefaults({ feeds = { ldb = true, elvui = true, compact = false } })
 
-MD.Surfaces = MD.Surfaces or {}
+ST.Surfaces = ST.Surfaces or {}
 
 local LDBS = {}
-MD.SurfaceLDB = LDBS
+ST.SurfaceLDB = LDBS
 
 LDBS.ICON = "Interface\\Icons\\Spell_Shadow_Manaburn" -- the minimap button's
 LDBS.KEYS = { "clock", "regen" }
@@ -69,21 +69,21 @@ local ready = false
 -- The words
 --------------------------------------------------------------------------------
 local function Settings()
-    local f = MD.db and MD.db.feeds
+    local f = ST.db and ST.db.feeds
     if type(f) == "table" then return f end
     return {}
 end
 
 -- The look the broker draws the face with: the line's own clock look when a
--- file provides one (MD.ClockLook(), the user's clock settings: the rest
+-- file provides one (ST.ClockLook(), the user's clock settings: the rest
 -- switch, T98 / T102), else every segment the face carries; compact drops the
 -- secondary whatever the look says. T114: Line's slots (look.texts.line, the
 -- contract T116's resolver fulfils) when present, so the broker says what the
 -- datatext says whatever layout is on screen.
 local function Look(compact)
     local look
-    if type(MD.ClockLook) == "function" then
-        local okL, l = pcall(MD.ClockLook)
+    if type(ST.ClockLook) == "function" then
+        local okL, l = pcall(ST.ClockLook)
         if okL and type(l) == "table" then look = l end
     end
     local show = { rest = true, cd = true }
@@ -98,7 +98,7 @@ local function Look(compact)
 end
 
 local function UsesMana()
-    return not (MD.player and MD.player.usesMana == false)
+    return not (ST.player and ST.player.usesMana == false)
 end
 
 -- The clock's words, plain: the face cut into its segments and joined
@@ -106,7 +106,7 @@ end
 -- feed's label before a face exists, and for a character with no mana pool
 -- (no clock is shown for one, F3).
 function LDBS.ClockText(compact)
-    local Feeds, CF = MD.Feeds, MD.ClockFace
+    local Feeds, CF = ST.Feeds, ST.ClockFace
     if not (Feeds and CF and CF.Segments and CF.JoinSegments) then return LDBS.NAMES.clock end
     if not UsesMana() then return LDBS.NAMES.clock end
     local face = Feeds.Face("clock")
@@ -122,8 +122,8 @@ function LDBS.ClockText(compact)
 end
 
 function LDBS.RegenText()
-    if not MD.Feeds then return "Regen --" end
-    return MD.Feeds.Text("regen", { plain = true })
+    if not ST.Feeds then return "Regen --" end
+    return ST.Feeds.Text("regen", { plain = true })
 end
 
 --------------------------------------------------------------------------------
@@ -147,7 +147,7 @@ function LDBS.ClockTone(face)
 end
 
 function LDBS.RegenTone()
-    local read = MD.Feeds and MD.Feeds.RegenReading
+    local read = ST.Feeds and ST.Feeds.RegenReading
     local r = type(read) == "function" and read() or nil
     if not r then return "muted" end
     if r.fsr then return "warn" end
@@ -155,7 +155,7 @@ function LDBS.RegenTone()
 end
 
 local function RGB(tone)
-    local CF = MD.ClockFace
+    local CF = ST.ClockFace
     if CF and CF.ToneRGB then return CF.ToneRGB(tone) end
     return 1, 1, 1
 end
@@ -165,7 +165,7 @@ local function State(key)
     local compact = Settings().compact == true
     if key == "clock" then
         local tone = "muted"
-        if UsesMana() and MD.Feeds then tone = LDBS.ClockTone(MD.Feeds.Face("clock")) end
+        if UsesMana() and ST.Feeds then tone = LDBS.ClockTone(ST.Feeds.Face("clock")) end
         return LDBS.ClockText(compact), tone
     end
     if not UsesMana() then return LDBS.RegenText(), "muted" end
@@ -180,7 +180,7 @@ local WHITE = { 1, 1, 1 }
 
 function LDBS.TooltipLines(key)
     local lines = {}
-    local src = MD.Feeds and MD.Feeds.Tooltip(key) or {}
+    local src = ST.Feeds and ST.Feeds.Tooltip(key) or {}
     for i = 1, #src do lines[i] = src[i] end
     if #lines == 0 then lines[1] = { l = LDBS.NAMES[key] or "SpellTuner", c = "accent" } end
     lines[#lines + 1] = {}
@@ -194,8 +194,8 @@ local function Tooltip(key)
     return function(tt)
         if not tt then return end
         local lines = LDBS.TooltipLines(key)
-        if MD.Tip and MD.Tip.Render then
-            MD.Tip:Render(tt, lines)
+        if ST.Tip and ST.Tip.Render then
+            ST.Tip:Render(tt, lines)
         else
             for _, ln in ipairs(lines) do
                 if ln.r ~= nil then tt:AddDoubleLine(ln.l or "", ln.r) else tt:AddLine(ln.l or " ") end
@@ -206,7 +206,7 @@ end
 
 local function Click(key)
     return function(_, button)
-        if MD.Feeds then MD.Feeds.Click(key, button) end
+        if ST.Feeds then ST.Feeds.Click(key, button) end
     end
 end
 
@@ -253,7 +253,7 @@ end
 function LDBS.Publish()
     if next(objects) ~= nil then return true end
     if Settings().ldb == false then LDBS.why = "off"; return false end
-    if not MD.Feeds then LDBS.why = "no feeds"; return false end
+    if not ST.Feeds then LDBS.why = "no feeds"; return false end
     local lib = Lib()
     if not lib then LDBS.why = "no broker library"; return false end
     for _, key in ipairs(LDBS.KEYS) do
@@ -278,31 +278,31 @@ function LDBS.Publish()
         return false
     end
     LDBS.why = nil
-    MD.Surfaces.ldb = { objects = names }
+    ST.Surfaces.ldb = { objects = names }
     if not tickOn then
         tickOn = true
-        MD:OnTick(LDBS.Update)
+        ST:OnTick(LDBS.Update)
     end
-    if MD.Integrations then MD.Integrations.Note() end
+    if ST.Integrations then ST.Integrations.Note() end
     return true
 end
 
 -- Our object for a feed key (a suite, the INTEGRATIONS pane), or nil.
 function LDBS.Object(key) return objects[key] end
 
-MD:RegisterCallback("MD_READY", function()
+ST:RegisterCallback("MD_READY", function()
     ready = true
     LDBS.Publish()
-    if MD.Surfaces.elvui and MD.Integrations then MD.Integrations.Note() end
+    if ST.Surfaces.elvui and ST.Integrations then ST.Integrations.Note() end
 end)
 
 -- A host that loaded after us (load on demand): try once more.
-MD:On("ADDON_LOADED", function()
+ST:On("ADDON_LOADED", function()
     if ready and next(objects) == nil then LDBS.Publish() end
 end)
 
 --------------------------------------------------------------------------------
--- MD.Integrations: what was found, in one line each.
+-- ST.Integrations: what was found, in one line each.
 --   Lines()     the INTEGRATIONS pane's lines (T102 shows them):
 --               "EllesmereUI 9.3.4 (tested 9.3.4): brokers SpellTuner +
 --               SpellTuner Regen; mover SpellTuner clock", "ElvUI: 2
@@ -312,13 +312,13 @@ end)
 --               Regen, mover SpellTuner_Clock"
 --   Note()      registers the dump line (once something was found)
 -- The EllesmereUI parts are Integrations/EllesmereUI_Forever.lua's
--- (MD.EUI.PanePart / DumpParts), present on the Forever TOCs only.
+-- (ST.EUI.PanePart / DumpParts), present on the Forever TOCs only.
 --------------------------------------------------------------------------------
-MD.Integrations = MD.Integrations or {}
-local INT = MD.Integrations
+ST.Integrations = ST.Integrations or {}
+local INT = ST.Integrations
 
 function INT.BrokersText()
-    local names = MD.Surfaces.ldb and MD.Surfaces.ldb.objects
+    local names = ST.Surfaces.ldb and ST.Surfaces.ldb.objects
     if names and #names > 0 then return "brokers " .. table.concat(names, " + ") end
     if LDBS.why == "off" then return "brokers off" end
     if LDBS.why == "names taken" then return "brokers: names taken by another addon" end
@@ -326,17 +326,17 @@ function INT.BrokersText()
 end
 
 local function ElvUIDatatexts()
-    local e = MD.Surfaces.elvui
+    local e = ST.Surfaces.elvui
     return e and e.datatexts and #e.datatexts or 0
 end
 
 function INT.Lines()
     local out = {}
-    local eui = MD.EUI and MD.Surfaces.eui
-    if eui then out[#out + 1] = MD.EUI.PanePart(INT.BrokersText()) end
+    local eui = ST.EUI and ST.Surfaces.eui
+    if eui then out[#out + 1] = ST.EUI.PanePart(INT.BrokersText()) end
     local n = ElvUIDatatexts()
     if n > 0 then out[#out + 1] = string.format("ElvUI: %d datatexts", n) end
-    local names = MD.Surfaces.ldb and MD.Surfaces.ldb.objects
+    local names = ST.Surfaces.ldb and ST.Surfaces.ldb.objects
     if not eui and names and #names > 0 then
         out[#out + 1] = string.format("Broker: %d objects", #names)
     end
@@ -346,10 +346,10 @@ end
 
 function INT.DumpLine()
     local parts = {}
-    local eui = MD.EUI and MD.Surfaces.eui
+    local eui = ST.EUI and ST.Surfaces.eui
     if eui then
-        for _, p in ipairs(MD.EUI.DumpParts(INT.BrokersText())) do parts[#parts + 1] = p end
-    elseif MD.Surfaces.ldb then
+        for _, p in ipairs(ST.EUI.DumpParts(INT.BrokersText())) do parts[#parts + 1] = p end
+    elseif ST.Surfaces.ldb then
         parts[#parts + 1] = INT.BrokersText()
     end
     local n = ElvUIDatatexts()
@@ -360,7 +360,7 @@ end
 
 local noted = false
 function INT.Note()
-    if noted or not MD.AddDumpLine then return end
+    if noted or not ST.AddDumpLine then return end
     noted = true
-    MD:AddDumpLine("integrations", INT.DumpLine)
+    ST:AddDumpLine("integrations", INT.DumpLine)
 end

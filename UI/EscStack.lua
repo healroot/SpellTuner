@@ -1,7 +1,7 @@
 -- The ESC stack (docs/SPEC-forever-ui.md 6.5; T33, moved out of the window
--- manager by T80 / C1 of docs/PLAN-refactor-ux.md, review A22): MD.EscStack.
+-- manager by T80 / C1 of docs/PLAN-refactor-ux.md, review A22): ST.EscStack.
 -- Listed by every main TOC after UI/Theme_Flat.lua and before UI/Windows.lua,
--- which hands its windows to it and exposes its calls on MD.Win (Push,
+-- which hands its windows to it and exposes its calls on ST.Win (Push,
 -- Remove, Prune, OnEsc, CloseLists, TopWindow, EscStackOn, SetEscStack,
 -- EscLine, .stack, .proxy) for the files that already call them there.
 --
@@ -19,18 +19,18 @@
 -- P33, review A31: the kit announces, the stack subscribes).
 --
 -- No client data is read here: UISpecialFrames and frame visibility are the
--- widget toolkit (CLAUDE.md); the next-frame re-arm goes through MD.API.After.
-local _, MD = ...
+-- widget toolkit (CLAUDE.md); the next-frame re-arm goes through ST.API.After.
+local _, ST = ...
 
 local Esc = { stack = {} }
-MD.EscStack = Esc
+ST.EscStack = Esc
 
--- T80 (C1): the default lives with the file that reads it (MD:RegisterDefaults,
+-- T80 (C1): the default lives with the file that reads it (ST:RegisterDefaults,
 -- T55), so every line that lists the stack has it -- TBC included.
-MD:RegisterDefaults({ ui = { escStack = true } })
+ST:RegisterDefaults({ ui = { escStack = true } })
 
 local function UIdb()
-    local db = MD.db
+    local db = ST.db
     if type(db) ~= "table" then return nil end
     if type(db.ui) ~= "table" then db.ui = {} end
     return db.ui
@@ -124,7 +124,7 @@ end
 
 -- After a press: the proxy shown again on the next frame while entries remain.
 local function Rearm(rec)
-    MD.API.After(0, function()
+    ST.API.After(0, function()
         if #Esc.stack > 0 then Arm() end
         rec.after = #Esc.stack
         rec.rearmed = (#Esc.stack == 0) or proxy:IsShown()
@@ -156,11 +156,11 @@ end
 
 -- Still shown after an OnHide: UIParent hid (Alt+Z, a loading screen), not
 -- ESC -- the proxy's IsShown is false only when it was hidden itself. Through
--- MD.Win when it is there, so a suite that wraps Win:OnEsc sees the press.
+-- ST.Win when it is there, so a suite that wraps Win:OnEsc sees the press.
 proxy:SetScript("OnHide", function(self)
     if self.quiet then self.quiet = nil; return end
     if self:IsShown() then return end
-    if MD.Win and MD.Win.OnEsc then MD.Win:OnEsc() else Esc:OnEsc() end
+    if ST.Win and ST.Win.OnEsc then ST.Win:OnEsc() else Esc:OnEsc() end
 end)
 
 -- Every entry whose frame is no longer on screen dropped (a list whose window
@@ -206,7 +206,7 @@ function Esc:Push(frame, onEsc)
     Arm()
 end
 
-MD:RegisterCallback("UI_POPUP", function(list, shown)
+ST:RegisterCallback("UI_POPUP", function(list, shown)
     if not list then return end
     if shown then
         popups[list] = true

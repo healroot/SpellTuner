@@ -4,7 +4,7 @@
 --      and their values come from Engine/ManaCooldowns.lua.
 --   2. Gear-change rank toast — when +healing shifts a spell's efficient rank.
 --   3. Drink reminder — out of combat, low mana, not drinking.
-local _, MD = ...
+local _, ST = ...
 
 -- Every mana source (Innervate today, per-class cooldowns later, plus carried
 -- potions) and what it is worth right now comes from Engine/ManaCooldowns.lua,
@@ -12,13 +12,13 @@ local _, MD = ...
 -- same decision.
 local fired = {}
 
-MD:OnTick(function()
+ST:OnTick(function()
     -- T58 (P14, review A28): the kernel's combat flag (Core.lua), not a poll.
-    if not MD.db or not MD.inCombat or not MD.player.usesMana then return end
-    if not MD.ManaCooldowns then return end
+    if not ST.db or not ST.inCombat or not ST.player.usesMana then return end
+    if not ST.ManaCooldowns then return end
     local deficit = UnitPowerMax("player", 0) - UnitPower("player", 0)
 
-    local sources = MD.ManaCooldowns:All() -- richest first
+    local sources = ST.ManaCooldowns:All() -- richest first
     for i, src in ipairs(sources) do
         -- Fire the first moment the deficit swallows the whole thing: any
         -- earlier and part of the restore is wasted.
@@ -39,12 +39,12 @@ MD:OnTick(function()
                 msg = msg .. string.format(" %s is ready too but worth ~%d: hold it until you're down that far.",
                     held.name, held.delta)
             end
-            MD:Alert(msg)
+            ST:Alert(msg)
         end
     end
 end)
 
-MD:On("PLAYER_REGEN_ENABLED", function()
+ST:On("PLAYER_REGEN_ENABLED", function()
     wipe(fired)
 end)
 
@@ -54,40 +54,40 @@ end)
 local toastPending = false
 
 -- T99 (docs/SPEC-next.md 4.4): the rank toast is the class profile's
--- `advisor` capability (MD.ClassProfile:Can), the druid's on this line.
+-- `advisor` capability (ST.ClassProfile:Can), the druid's on this line.
 local function CheckRankShift()
     toastPending = false
-    if not MD.ClassProfile:Can("advisor") or not MD.cdb then return end
-    if MD.sim and next(MD.sim) then return end -- dashboard simulation active: not real gear
+    if not ST.ClassProfile:Can("advisor") or not ST.cdb then return end
+    if ST.sim and next(ST.sim) then return end -- dashboard simulation active: not real gear
     -- Suggestions depend on the form too (Tree of Life cost + aura), so a
     -- stored snapshot from the other form is replaced, never compared.
-    local current = MD.RankMath:SuggestedRanks()
-    local form = MD:InTreeForm() and "tree" or "caster"
-    local stored = MD.cdb.suggestedRanks
+    local current = ST.RankMath:SuggestedRanks()
+    local form = ST:InTreeForm() and "tree" or "caster"
+    local stored = ST.cdb.suggestedRanks
     if stored and stored.form == form and stored.ranks then
         for family, rank in pairs(current) do
             if stored.ranks[family] and stored.ranks[family] ~= rank then
-                local label = MD.SpellData.families[family].label
-                MD:Alert(string.format("gear change - %s R%d is now your efficient rank (was R%d). Rebind?",
+                local label = ST.SpellData.families[family].label
+                ST:Alert(string.format("gear change - %s R%d is now your efficient rank (was R%d). Rebind?",
                     label, rank, stored.ranks[family]))
             end
         end
     end
-    MD.cdb.suggestedRanks = { form = form, ranks = current }
+    ST.cdb.suggestedRanks = { form = form, ranks = current }
 end
 
-MD:On("PLAYER_EQUIPMENT_CHANGED", function()
-    if toastPending or not MD.db then return end
+ST:On("PLAYER_EQUIPMENT_CHANGED", function()
+    if toastPending or not ST.db then return end
     toastPending = true
     C_Timer.After(2, CheckRankShift) -- debounce a full outfit swap into one check
 end)
 
-MD:RegisterCallback("MD_READY", function()
+ST:RegisterCallback("MD_READY", function()
     C_Timer.After(5, function()
-        if MD.ClassProfile:Can("advisor") and MD.cdb
-            and not (MD.cdb.suggestedRanks and MD.cdb.suggestedRanks.ranks) then
-            MD.cdb.suggestedRanks = { form = MD:InTreeForm() and "tree" or "caster",
-                                      ranks = MD.RankMath:SuggestedRanks() }
+        if ST.ClassProfile:Can("advisor") and ST.cdb
+            and not (ST.cdb.suggestedRanks and ST.cdb.suggestedRanks.ranks) then
+            ST.cdb.suggestedRanks = { form = ST:InTreeForm() and "tree" or "caster",
+                                      ranks = ST.RankMath:SuggestedRanks() }
         end
     end)
 end)
@@ -110,9 +110,9 @@ local function IsDrinking()
     return false
 end
 
-MD:OnTick(function(dt)
-    if not MD.db or not MD.db.drinkReminder or not MD.player.usesMana then return end
-    if MD.inCombat then -- T58 (P14, A28): the kernel's flag
+ST:OnTick(function(dt)
+    if not ST.db or not ST.db.drinkReminder or not ST.player.usesMana then return end
+    if ST.inCombat then -- T58 (P14, A28): the kernel's flag
         stillSince = nil
         drinkArmed = true
         return
@@ -135,7 +135,7 @@ MD:OnTick(function(dt)
         stillSince = nil
         -- "Drink." answers nothing; "2 more pulls, or 4 after a drink" is
         -- the decision actually being made between pulls.
-        local line = MD.PullBudget and MD.PullBudget:Line()
-        MD:Alert(line and ("Drink? " .. line) or "Drink.")
+        local line = ST.PullBudget and ST.PullBudget:Line()
+        ST:Alert(line and ("Drink? " .. line) or "Drink.")
     end
 end)

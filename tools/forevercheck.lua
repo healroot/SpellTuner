@@ -28,12 +28,12 @@ for k in pairs(_G) do preStub[k] = true end
 -- 1: the Forever TOC loads under the harness with no error
 --------------------------------------------------------------------------------
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local okLoad, MD = pcall(dofile, here .. "/harness.lua")
+local okLoad, ST = pcall(dofile, here .. "/harness.lua")
 arg[0] = a0
 local S = _G.STUB
 
 check("the Forever TOC loads under the harness with no error",
-    okLoad == true and type(MD) == "table" and MD.API and MD.API.client == "forever"
+    okLoad == true and type(ST) == "table" and ST.API and ST.API.client == "forever"
     and S.flavour == "forever" and S.toc == "SpellTuner_Mainline.toc")
 
 --------------------------------------------------------------------------------
@@ -277,7 +277,7 @@ end
 --------------------------------------------------------------------------------
 -- 14-16 (T47, P3): the client is the TOC's, the interface only a fallback.
 -- Client/API.lua is re-run into a fresh table (as probecheck does for its
--- second MD) with the marker and the build's interface set by hand, then both
+-- second ST) with the marker and the build's interface set by hand, then both
 -- are put back.
 --------------------------------------------------------------------------------
 local function FreshClient(marker, iface)
@@ -330,7 +330,7 @@ do
         end
         f:close()
     end
-    local API = MD and MD.API or {}
+    local API = ST and ST.API or {}
     local same, detail = lines >= 2 and type(API.BANDS) == "table" and type(API.MARKERS) == "table", nil
     if same then
         for name, band in pairs(want) do
@@ -350,7 +350,7 @@ do
     else
         detail = "flavours.txt lines " .. lines .. ", BANDS " .. type(API.BANDS) .. ", MARKERS " .. type(API.MARKERS)
     end
-    check("MD.API.BANDS and MD.API.MARKERS equal tools/data/flavours.txt", same, detail)
+    check("ST.API.BANDS and ST.API.MARKERS equal tools/data/flavours.txt", same, detail)
 end
 
 print(string.format("\n%d ok, %d failed", ok, #fails))

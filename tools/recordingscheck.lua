@@ -3,7 +3,7 @@
 --
 -- T62 (P18, review A5, B16's root): one recordings router, Engine/Recordings.lua,
 -- on both lines. Every address a command, the Review tab or the replay window
--- hands MD:GetRecording goes through one grammar -- "" / nil the newest fight,
+-- hands ST:GetRecording goes through one grammar -- "" / nil the newest fight,
 -- "N" a fight, "pN" a practice fight, "a:b" a run's pull -- answered by the
 -- provider its shape names: Engine/FightRecorder.lua (tbc) or
 -- Recorder_Forever.lua (forever) for bare N, Engine/Practice.lua for pN,
@@ -21,7 +21,7 @@
 --   * the pin cap, shared: two fights pinned, a third refused with a line --
 --     through the router and through the recorder's own Pin -- and a pull or
 --     an unreadable address never pinned;
---   * both recorders keep a pull by MD.Util.RECORD_GATE, not a copy of it.
+--   * both recorders keep a pull by ST.Util.RECORD_GATE, not a copy of it.
 HARNESS_FLAVOUR = { "tbc", "forever" }
 
 local here = arg[0]:match("^(.*)/[^/]+$")
@@ -32,28 +32,28 @@ local function NewSession()
     _G.SpellTunerDB = nil
     _G.ManaDemonDB = nil
     local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-    local MD = dofile(here .. "/harness.lua")
+    local ST = dofile(here .. "/harness.lua")
     arg[0] = a0
-    return MD, _G.STUB
+    return ST, _G.STUB
 end
 
-local MD, S = NewSession()
+local ST, S = NewSession()
 local FOREVER = S.flavour == "forever"
 if FOREVER then
     -- Practice needs Replay, which needs Recorder: all three providers' files
-    MD:SetModule("SpellTuner_Practice", true)
+    ST:SetModule("SpellTuner_Practice", true)
 end
-local REC = MD.Recordings
+local REC = ST.Recordings
 
 --------------------------------------------------------------------------------
 T.section("the router and its providers (" .. S.flavour .. ")")
 --------------------------------------------------------------------------------
-check("Engine/Recordings.lua is loaded: MD.Recordings with Register, Get, List, Pin",
+check("Engine/Recordings.lua is loaded: ST.Recordings with Register, Get, List, Pin",
     type(REC) == "table" and type(REC.Register) == "function" and type(REC.Get) == "function"
     and type(REC.List) == "function" and type(REC.Pin) == "function",
     type(REC))
 -- Without the router (the parent commit) the grammar table below still runs
--- through MD:GetRecording, so what the old parsers answer is on record; the
+-- through ST:GetRecording, so what the old parsers answer is on record; the
 -- rest needs the router and is not reached.
 local HAVE = type(REC) == "table"
 
@@ -74,14 +74,14 @@ T.section("the grammar")
 --------------------------------------------------------------------------------
 -- Seeded out of order: every List is newest first by id.
 local f101, f102, f103 = { id = 101 }, { id = 102 }, { id = 103 }
-MD.cdb.recordings = { f101, f103, f102 }
+ST.cdb.recordings = { f101, f103, f102 }
 local p201, p202 = { id = 201 }, { id = 202 }
-MD.cdb.practice = { p202, p201 }
+ST.cdb.practice = { p202, p201 }
 local pullA = { id = 301 }
 local older = { id = 1000, pulls = {} }
 for k = 1, 7 do older.pulls[k] = (k == 7) and pullA or { id = 300 + k * 10 } end
 local newer = { id = 2000, pulls = { { id = 401 } } }
-MD.cdb.runs = { older, newer }
+ST.cdb.runs = { older, newer }
 
 -- spec -> { rec, label, run, pull } (run and pull only for a run's pull)
 local ROWS = {
@@ -114,7 +114,7 @@ local function Name(r)
     return "#" .. tostring(r.id)
 end
 for _, row in ipairs(ROWS) do
-    local rec, label, run, pull = MD:GetRecording(row.spec)
+    local rec, label, run, pull = ST:GetRecording(row.spec)
     local rec2 = HAVE and REC.Get(row.spec) or rec
     local shown = row.spec == nil and "nil" or (type(row.spec) == "number" and tostring(row.spec) .. " (a number)")
         or ('"' .. row.spec .. '"')
@@ -140,12 +140,12 @@ check("two fights pin, a third is refused with a line",
     ok1 == true and ok2 == true and ok3 == false and f101.pinned ~= true
     and why3 == "at most " .. REC.MAX_PINNED .. " fights can be pinned - unpin one first.",
     tostring(why3))
-local okFR, whyFR = MD.FightRecorder:Pin(3, true)
+local okFR, whyFR = ST.FightRecorder:Pin(3, true)
 check("...and the recorder's own Pin (what the Review tab calls) refuses it the same way",
     okFR == false and whyFR == why3 and f101.pinned ~= true, tostring(whyFR))
 local okAgain = REC.Pin("1", true)
 check("pinning a fight already pinned is not a third pin", okAgain == true and f103.pinned == true)
-local okOff = MD.FightRecorder:Pin(1, false)
+local okOff = ST.FightRecorder:Pin(1, false)
 local okNow = REC.Pin("3", true)
 check("unpin one and the third pins", okOff == true and f103.pinned == false and okNow == true
     and f101.pinned == true)
@@ -156,14 +156,14 @@ check("an unreadable address and a run's pull are never pinned",
     tostring(whyFoo) .. " / " .. tostring(whyPull))
 local okP = REC.Pin("p1", true)
 check("a practice fight pins through the router, under practice's own cap",
-    okP == true and p202.pinned == true and REC.Provider("p").pinCap == MD.Practice.MAX_PINNED)
+    okP == true and p202.pinned == true and REC.Provider("p").pinCap == ST.Practice.MAX_PINNED)
 for _, r in ipairs({ f101, f102, f103, p201, p202 }) do r.pinned = false end
 
 --------------------------------------------------------------------------------
 T.section("the recording gate")
 --------------------------------------------------------------------------------
 -- One pull of 10 s with 3 own casts: under the shipped gate (20 s / 5 casts)
--- it is not kept; with MD.Util.RECORD_GATE lowered it is. A recorder that
+-- it is not kept; with ST.Util.RECORD_GATE lowered it is. A recorder that
 -- kept its own 20 / 5 would drop it both times.
 local function OnePull(M, St)
     if FOREVER then
@@ -204,7 +204,7 @@ do
     M.Util.RECORD_GATE = { sec = 5, casts = 2 }
     local keptLowered = OnePull(M, St)
     M.Util.RECORD_GATE = shipped
-    check("the " .. (FOREVER and "Forever" or "TBC") .. " recorder keeps a pull by MD.Util.RECORD_GATE",
+    check("the " .. (FOREVER and "Forever" or "TBC") .. " recorder keeps a pull by ST.Util.RECORD_GATE",
         shipped.sec == 20 and shipped.casts == 5 and keptShipped == 0 and keptLowered == 1,
         string.format("shipped gate: %d kept, lowered: %d kept", keptShipped, keptLowered))
 end

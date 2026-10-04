@@ -39,11 +39,11 @@ local function check(name, cond, detail)
 end
 
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua")
+local ST = dofile(here .. "/harness.lua")
 arg[0] = a0
 local S = _G.STUB
 
-local P = MD.Profiles
+local P = ST.Profiles
 local PROFILE_FILES = {
     PALADIN = "Data/Profile_Paladin_Forever.lua",
     SHAMAN = "Data/Profile_Shaman_Forever.lua",
@@ -52,25 +52,25 @@ local PROFILE_FILES = {
 local loadError = {}
 for _, class in ipairs({ "PALADIN", "SHAMAN", "PRIEST" }) do
     if P.byClass[class] == nil then
-        local okL, err = pcall(S.Load, { PROFILE_FILES[class] }, "SpellTuner", MD)
+        local okL, err = pcall(S.Load, { PROFILE_FILES[class] }, "SpellTuner", ST)
         if not okL then loadError[class] = tostring(err) end
     end
 end
 
-MD:SetModule("SpellTuner_Replay", true)
-MD:SetModule("SpellTuner_Practice", true)
+ST:SetModule("SpellTuner_Replay", true)
+ST:SetModule("SpellTuner_Practice", true)
 -- No crit: every heal the engine lands is its text's exact average, so the
 -- recorded heals below are the engine's own figures.
 for school = 1, 7 do S.crit[school] = 0 end
 
-local SM, SP, SV, PR, RM, Kit = MD.SimModel, MD.SimPlanner, MD.SimSolver, MD.Practice, MD.RankMath, MD.Kit
-local V3 = MD.StreamV3.K
+local SM, SP, SV, PR, RM, Kit = ST.SimModel, ST.SimPlanner, ST.SimSolver, ST.Practice, ST.RankMath, ST.Kit
+local V3 = ST.StreamV3.K
 local Books = dofile(here .. "/stub_books.lua")
 
 local function LogIn(class)
     S.units.player.class = class
-    MD:DetectProfile()
-    MD:Fire("CORE_LOGIN")
+    ST:DetectProfile()
+    ST:Fire("CORE_LOGIN")
 end
 
 local function Copy(a)
@@ -134,14 +134,14 @@ end
 
 -- The id of a family's highest known rank in the kit's index, and its entry.
 local function Top(kit, family)
-    local id = MD.SpellData.maxRank[family]
+    local id = ST.SpellData.maxRank[family]
     return id, id and kit.caster[id]
 end
 
 -- The book's id of a spell by name (its highest rank listed), for a cast the
 -- kit does not model.
 local function BookID(name)
-    local book = MD.Book:Get()
+    local book = ST.Book:Get()
     local fam = book.families[name]
     local best
     for _, e in ipairs(fam and fam.ranks or {}) do
@@ -164,7 +164,7 @@ local function Recording(class, kit, casts, heals, opts)
         local id, e
         if type(c[2]) == "table" then
             id = BookID(c[2].name)
-            local be = MD.Book:Get().spells[id]
+            local be = ST.Book:Get().spells[id]
             e = { cost = be and type(be.cost) == "table" and be.cost.amount or 0, cast = be and be.cast or 0 }
             names[id] = c[2].name
         else
@@ -285,17 +285,17 @@ local results = {}
 local function RunClass(C)
     local class, label = C.class, C.label
     T.section(label)
-    local undo = Books.Install(Books.Load(C.book), { alone = true, MD = MD })
+    local undo = Books.Install(Books.Load(C.book), { alone = true, ST = ST })
     LogIn(class)
     local prof = P.byClass[class]
 
     ----------------------------------------------------------------------------
     -- 1. the profile, and what it grants
     ----------------------------------------------------------------------------
-    local canCoach, whyCoach = MD.ClassProfile:Can("coach")
-    local canPractise, whyPractise = MD.ClassProfile:Can("practice")
+    local canCoach, whyCoach = ST.ClassProfile:Can("coach")
+    local canPractise, whyPractise = ST.ClassProfile:Can("practice")
     check(label .. ": logs in with its own profile, granted coach and practice",
-        prof ~= nil and MD.ClassProfile == prof and canCoach == true and canPractise == true,
+        prof ~= nil and ST.ClassProfile == prof and canCoach == true and canPractise == true,
         loadError[class] or string.format("profile=%s coach=%s/%s practice=%s/%s", tostring(prof and prof.class),
             tostring(canCoach), tostring(whyCoach), tostring(canPractise), tostring(whyPractise)))
     if not prof then undo(); LogIn("DRUID"); return end
@@ -309,7 +309,7 @@ local function RunClass(C)
     if kit then valid, problems = Kit.Validate(kit) end
     local wrong = {}
     for key, def in pairs(prof and prof.families or {}) do
-        local fam = MD.SpellData.families and MD.SpellData.families[key]
+        local fam = ST.SpellData.families and ST.SpellData.families[key]
         local id, e
         if kit then id, e = Top(kit, key) end
         if not fam or fam.type ~= def.kit or not e or e.dataMissing then
@@ -325,7 +325,7 @@ local function RunClass(C)
     if not (built and kit) then undo(); LogIn("DRUID"); return end
 
     do
-        local order = MD.SpellData.familyOrder or {}
+        local order = ST.SpellData.familyOrder or {}
         local prefix = true
         for i, key in ipairs(prof.order or {}) do if order[i] ~= key then prefix = false end end
         local slots = SM.HotSlots(kit)
@@ -336,7 +336,7 @@ local function RunClass(C)
         local unmodelledOut = true
         for _, name in ipairs(C.unmodelled) do
             local id = BookID(name)
-            if not id or kit.caster[id] or MD.SpellData.spells[id] then unmodelledOut = false end
+            if not id or kit.caster[id] or ST.SpellData.spells[id] then unmodelledOut = false end
         end
         check(label .. ": the profile's order and HoT slots; the unmodelled spells are not in the kit",
             prefix and slotsOk and unmodelledOut,
@@ -349,7 +349,7 @@ local function RunClass(C)
     ----------------------------------------------------------------------------
     local rec = Fight(class, kit, C.casts, {
         id = 1790000000 + #results, extraHeals = C.extraHeals and C.extraHeals() or nil })
-    MD.cdb.recordings = { rec }
+    ST.cdb.recordings = { rec }
     local v = SM:Validate(rec, kit)
     local nGates = v and #v.gates or 0
     check(label .. ": the synthetic fight replays through the eight gates",
@@ -368,7 +368,7 @@ local function RunClass(C)
     local casts, castFams = 0, {}
     local r = SP.RunPlan(sc, solver, { critMode = "ev", onCast = function(_, _, id)
         casts = casts + 1
-        local sd = MD.SpellData.spells[id]
+        local sd = ST.SpellData.spells[id]
         if sd then castFams[sd.family] = true end
     end })
     local famList = {}
@@ -400,13 +400,13 @@ local function RunClass(C)
         local orig = frame.AddMessage
         frame.AddMessage = function(_, m) said[#said + 1] = T.Strip(m) end
         SP.plans[rec.id] = nil
-        MD:RunCoach("1")
+        ST:RunCoach("1")
         local n = 0
-        while MD.coachSearch and n < 20000 do S.Tick(0.016); n = n + 1 end
+        while ST.coachSearch and n < 20000 do S.Tick(0.016); n = n + 1 end
         frame.AddMessage = orig
         local plan = SP.plans[rec.id]
         check(label .. ": /st coach 1 coaches it with the solver and names what is not modelled",
-            plan ~= nil and plan.kind == "solver" and MD.coachSearch == nil
+            plan ~= nil and plan.kind == "solver" and ST.coachSearch == nil
             and Has(said, "the cheapest heal that holds them above it") ~= nil
             and Has(said, "not modelled, kept as recorded: " .. C.unmodelled[1]) ~= nil,
             string.format("plan=%s lines=%d last=%s", tostring(plan and (plan.kind or "rules")), #said,
@@ -426,7 +426,7 @@ local function RunClass(C)
     do
         local keys, binding = { "1", "2", "3", "4", "5", "6", "7", "8" }, {}
         for i, key in ipairs(prof.order) do binding[i] = { key = keys[i], family = key } end
-        MD.db.practiceBinds = binding
+        ST.db.practiceBinds = binding
         local shown = PR.Binds()
         local setup = PR.DefaultSetup("5", 60)
         setup.dur, setup.fixedSeed = 40, 7

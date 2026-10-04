@@ -1,10 +1,10 @@
 -- TBC's own names for the add-on-management bindings -- the classic globals,
 -- unmoved on this client. Listed by SpellTuner_TBC.toc only, right after
 -- Client/API.lua. No forbidden events: TBC registers the combat log today
--- (UI/Summary.lua, through MD:On) and this task changes none of that.
-local _, MD = ...
+-- (UI/Summary.lua, through ST:On) and this task changes none of that.
+local _, ST = ...
 
-MD.API.Bind({
+ST.API.Bind({
     AddOnMetadata = "GetAddOnMetadata",
     IsAddOnLoaded = "IsAddOnLoaded",
     LoadAddOn = "LoadAddOn",
@@ -14,8 +14,8 @@ MD.API.Bind({
 
 -- T15: GetSpellInfo's first return is the name -- all Engine/SimModel.lua and
 -- Engine/SimPlanner.lua's four call sites (both TOCs list both files) use of
--- it, so the shared code can call MD.API.SpellName(id) on either client.
-MD.API.Bind({
+-- it, so the shared code can call ST.API.SpellName(id) on either client.
+ST.API.Bind({
     SpellName = "GetSpellInfo",
 })
 
@@ -23,14 +23,14 @@ MD.API.Bind({
 -- return for the texture on the 2.5.x client; Forever's own is T7's
 -- C_Spell.GetSpellTexture (Client/API_Forever.lua). Same binding name either
 -- side.
-MD.API.Bind({
+ST.API.Bind({
     SpellTexture = "GetSpellTexture",
 })
 
 -- T16b (UI/Dashboard_Review.lua): the Review tab's own progress line reads
 -- the current zone; Forever's own binding is Client/API_Forever.lua's (T13's
 -- recorder). Same binding name, same classic global either side.
-MD.API.Bind({
+ST.API.Bind({
     RealZoneText = "GetRealZoneText",
 })
 
@@ -38,7 +38,7 @@ MD.API.Bind({
 -- Forever (Client/API_Forever.lua), the classic globals unmoved on this client
 -- -- plus GetSpecialization, which Forever's own baseline lacks (Client/
 -- API_Forever.lua's own comment).
-MD.API.Bind({
+ST.API.Bind({
     BindingCount = "GetNumBindings",
     Binding = "GetBinding",
     BindingAction = "GetBindingAction",
@@ -61,7 +61,7 @@ MD.API.Bind({
 --   SpellInfoList       GetSpellInfo's positional returns (name, rank, icon,
 --                        cast ms, min range, max range, spell id); also how a
 --                        lower rank is found by "Name(Rank N)"
-MD.API.Bind({
+ST.API.Bind({
     SpellTabCount = "GetNumSpellTabs",
     SpellTabInfo = "GetSpellTabInfo",
     SpellBookItemName = "GetSpellBookItemName",
@@ -96,7 +96,7 @@ local function LineText(region)
     if type(text) == "string" and text ~= "" then return text end
     return nil
 end
-function MD.API.SpellTooltipLines(id)
+function ST.API.SpellTooltipLines(id)
     if type(id) ~= "number" then return nil, "absent" end
     local ok, out = pcall(function()
         local tip = ScanTip()
@@ -124,7 +124,7 @@ function MD.API.SpellTooltipLines(id)
     if out == nil then return nil, "absent" end
     return out
 end
-MD.API._bindings.SpellTooltipLines = "GameTooltip.SetSpellByID"
+ST.API._bindings.SpellTooltipLines = "GameTooltip.SetSpellByID"
 
 -- T120 (UI/SpellsPane.lua on both lines, docs/tasks/T120-one-spells-pane.md):
 -- what the cursor holds, for a spell dragged from the spellbook onto the
@@ -136,19 +136,19 @@ MD.API._bindings.SpellTooltipLines = "GameTooltip.SetSpellByID"
 -- does: the kind only when it is a plain string, the id only for a "spell";
 -- anything absent or raising answers nil. Read only: the cursor is never
 -- cleared.
-function MD.API.CursorInfo()
-    local kind, slot, bookType, id = MD.API.Call("GetCursorInfo")
+function ST.API.CursorInfo()
+    local kind, slot, bookType, id = ST.API.Call("GetCursorInfo")
     if type(kind) ~= "string" then return nil end
     if kind ~= "spell" then return kind, nil end
     if type(id) == "number" then return kind, id end
     if type(slot) == "number" then
-        local _, fromSlot = MD.API.Call("SpellBookItemKind", slot,
+        local _, fromSlot = ST.API.Call("SpellBookItemKind", slot,
             (type(bookType) == "string") and bookType or "spell")
         if type(fromSlot) == "number" then return kind, fromSlot end
     end
     return kind, nil
 end
-MD.API._bindings.CursorInfo = "GetCursorInfo"
+ST.API._bindings.CursorInfo = "GetCursorInfo"
 
 -- T120: the game's own spell tooltip for one rank, the rank row's hover in a
 -- spell's view -- tooltip:SetSpellByID(id), which the 2.5.x client has (the
@@ -156,7 +156,7 @@ MD.API._bindings.CursorInfo = "GetCursorInfo"
 -- then appends what it appends on the action bar. Forever's contract
 -- (Client/API_Forever.lua): true, or nil plus "absent" (no method, or an id
 -- that is not a number) / "error" (the method raised); never raises.
-function MD.API.SetTooltipSpell(tooltip, id)
+function ST.API.SetTooltipSpell(tooltip, id)
     if type(id) ~= "number" then return nil, "absent" end
     local ok, fn = pcall(function() return type(tooltip) == "table" and tooltip.SetSpellByID end)
     if not ok then return nil, "error" end
@@ -164,4 +164,4 @@ function MD.API.SetTooltipSpell(tooltip, id)
     if not pcall(fn, tooltip, id) then return nil, "error" end
     return true
 end
-MD.API._bindings.SetTooltipSpell = "GameTooltip.SetSpellByID"
+ST.API._bindings.SetTooltipSpell = "GameTooltip.SetSpellByID"

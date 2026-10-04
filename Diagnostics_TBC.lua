@@ -9,11 +9,11 @@
 -- engine's shipped self-tests (/md simrun, /md simreplay) Engine/SimSelfTest.lua,
 -- and the review commands (/md coach, /md coachrun, the validation report)
 -- Engine/ReviewCommands.lua.
-local _, MD = ...
+local _, ST = ...
 
-function MD:RunVerify()
-    local SD = MD.SpellData
-    MD:Print("-- verify: static data vs live client --")
+function ST:RunVerify()
+    local SD = ST.SpellData
+    ST:Print("-- verify: static data vs live client --")
     local mismatches, checkedCost, checkedCast = 0, 0, 0
 
     local ids = {}
@@ -27,7 +27,7 @@ function MD:RunVerify()
 
         if not name then
             mismatches = mismatches + 1
-            MD:Print("|cffff4444MISSING|r " .. label .. " - spellID unknown to this client")
+            ST:Print("|cffff4444MISSING|r " .. label .. " - spellID unknown to this client")
         else
             -- cast time (GetSpellInfo returns milliseconds)
             if s.cast and castMs and castMs > 0 then
@@ -39,7 +39,7 @@ function MD:RunVerify()
                 -- applies (HT R1 reads 1.0s with Naturalist 5); that is fine.
                 local expect = s.cast
                 if s.family == "HealingTouch" then
-                    expect = expect - 0.1 * MD:TalentRank("Naturalist")
+                    expect = expect - 0.1 * ST:TalentRank("Naturalist")
                     local relic = SD:Relic()
                     if relic and relic.castReduce and relic.family == s.family then
                         expect = expect - relic.castReduce
@@ -47,7 +47,7 @@ function MD:RunVerify()
                 end
                 if math.abs(castMs / 1000 - expect) > 0.01 then
                     mismatches = mismatches + 1
-                    MD:Print(string.format("|cffffaa33CAST|r %s: table %.1fs%s, live %.1fs",
+                    ST:Print(string.format("|cffffaa33CAST|r %s: table %.1fs%s, live %.1fs",
                         label, s.cast, expect ~= s.cast and string.format(" (model %.1fs)", expect) or "",
                         castMs / 1000))
                 end
@@ -60,7 +60,7 @@ function MD:RunVerify()
                 checkedCost = checkedCost + 1
                 if live ~= static then
                     mismatches = mismatches + 1
-                    MD:Print(string.format("|cffffaa33COST|r %s: static %d (base %d), live %d (used)",
+                    ST:Print(string.format("|cffffaa33COST|r %s: static %d (base %d), live %d (used)",
                         label, static, s.cost, live))
                 end
             end
@@ -68,37 +68,37 @@ function MD:RunVerify()
     end
 
     if checkedCost == 0 then
-        MD:Print("|cffffaa33GetSpellPowerCost unavailable|r - the static table is in use; costs must be verified " ..
+        ST:Print("|cffffaa33GetSpellPowerCost unavailable|r - the static table is in use; costs must be verified " ..
             "by hand (cast each rank at full idle mana and read the drop; compare to the table).")
     end
-    MD:Print(string.format("checked %d cast times, %d costs - %d mismatch(es).",
+    ST:Print(string.format("checked %d cast times, %d costs - %d mismatch(es).",
         checkedCast, checkedCost, mismatches))
 
     -- Spells outside the healing model, by what they were for (v0.10.1). The
     -- ones that come back "unknown" are the author's list to correct: a wrong
     -- or missing row in Data/DruidSpells.lua costs a label, never a number.
     local unknown = {}
-    for id in pairs(MD.Spend.unknown) do unknown[#unknown + 1] = id end
+    for id in pairs(ST.Spend.unknown) do unknown[#unknown + 1] = id end
     if #unknown > 0 then
         table.sort(unknown)
         local by = { damage = {}, cc = {}, utility = {}, shift = {}, unknown = {} }
         for _, id in ipairs(unknown) do
-            local family, kind = MD:ClassifyCast(id)
+            local family, kind = ST:ClassifyCast(id)
             local list = by[kind] or by.unknown
             list[#list + 1] = (family or GetSpellInfo(id) or "?") .. " (" .. id .. ")"
         end
         for _, kind in ipairs({ "damage", "cc", "utility", "shift", "unknown" }) do
             if #by[kind] > 0 then
-                MD:Print(string.format("%s spells outside the healing model: %s",
+                ST:Print(string.format("%s spells outside the healing model: %s",
                     kind == "unknown" and "|cffff9966unclassified|r" or kind,
                     table.concat(by[kind], ", ")))
             end
         end
     end
 
-    MD:Print("-- input snapshot --")
-    for _, line in ipairs(MD:Snapshot()) do MD:Print(line) end
-    MD:Print("For the FSR anchor: stand idle at partial mana, run /md fsrtest, cast ONE " ..
+    ST:Print("-- input snapshot --")
+    for _, line in ipairs(ST:Snapshot()) do ST:Print(line) end
+    ST:Print("For the FSR anchor: stand idle at partial mana, run /md fsrtest, cast ONE " ..
         "Healing Touch, and watch which tick sizes appear when. For Dreamstate: /md regentest.")
 end
 
@@ -107,9 +107,9 @@ end
 -- and both therefore always agree. Returns an array of plain strings (no
 -- colour escapes, so it survives a paste).
 --------------------------------------------------------------------------------
-function MD:Snapshot()
-    local SD = MD.SpellData
-    local RM = MD.Regen
+function ST:Snapshot()
+    local SD = ST.SpellData
+    local RM = ST.Regen
     local out = {}
     local function add(fmt, ...)
         out[#out + 1] = select("#", ...) > 0 and string.format(fmt, ...) or fmt
@@ -123,7 +123,7 @@ function MD:Snapshot()
                 RM.unreported, RM.unreported * 5 + 0.5, RM.dreamstate * 5 + 0.5, RM.measured * 5 + 0.5,
                 RM.base, RM.casting)
         end
-        local m = MD.cdb and MD.cdb.mp5
+        local m = ST.cdb and ST.cdb.mp5
         if m then
             add("measured mp5: %d (%.2f/s) from %s on %s, %d beat(s)%s", m.mp5 or 0, m.perSec or 0,
                 m.source or "?", date("%Y-%m-%d %H:%M", m.at or 0), m.ticks or 0,
@@ -131,7 +131,7 @@ function MD:Snapshot()
         else
             add("measured mp5: none - run /md regentest solo to measure the beat the API omits")
         end
-        local drinking = MD:HasBuff("Drink") or MD:HasBuff("Refreshment") or MD:HasBuff("Food & Drink")
+        local drinking = ST:HasBuff("Drink") or ST:HasBuff("Refreshment") or ST:HasBuff("Food & Drink")
         add("drink buff up: %s; observed OOC fill %.2f/s (FSR duty %d%%)",
             drinking and "yes" or "no", RM:ObservedFill(), RM:Duty() * 100)
     end
@@ -145,15 +145,15 @@ function MD:Snapshot()
     if GetSpellBonusHealing then
         local ok, v = pcall(GetSpellBonusHealing)
         add("+healing: " .. (ok and tostring(v) or "unavailable") ..
-            (MD:InTreeForm() and string.format(" (Tree of Life form: +%d aura on party targets = 25%% of %d spirit%s)",
-                0.25 * spirit, spirit, (MD.db.treeAura == false) and ", NOT counted (setting off)" or "")
+            (ST:InTreeForm() and string.format(" (Tree of Life form: +%d aura on party targets = 25%% of %d spirit%s)",
+                0.25 * spirit, spirit, (ST.db.treeAura == false) and ", NOT counted (setting off)" or "")
              or " (not in Tree form)"))
     end
     if GetSpellCritChance then
         local ok, v = pcall(GetSpellCritChance, 4)
         add("nature crit: %s%%", ok and string.format("%.1f", v) or "unavailable")
     end
-    add("talents: " .. MD:TalentSummary())
+    add("talents: " .. ST:TalentSummary())
 
     local relic, relicID, relicName = SD:Relic()
     if relicID then
@@ -172,24 +172,24 @@ function MD:Snapshot()
         add("relic: none equipped")
     end
 
-    if MD.Overheal then
-        local oh = MD.Overheal:Summary()
+    if ST.Overheal then
+        local oh = ST.Overheal:Summary()
         if #oh > 0 then
             add("overheal (combat log, per character):")
             for _, line in ipairs(oh) do add("  " .. line) end
         else
             add("overheal: no samples yet")
         end
-        add("combat log 'amount' convention: %s", MD.db.healAmountGross == nil and "not yet latched"
-            or (MD.db.healAmountGross and "GROSS (includes overheal)" or "NET (excludes overheal)"))
+        add("combat log 'amount' convention: %s", ST.db.healAmountGross == nil and "not yet latched"
+            or (ST.db.healAmountGross and "GROSS (includes overheal)" or "NET (excludes overheal)"))
     end
 
-    if MD.Calibration then
+    if ST.Calibration then
         add("calibration (observed / model, non-crit events):")
-        for _, line in ipairs(MD.Calibration:Report()) do add("  " .. line) end
+        for _, line in ipairs(ST.Calibration:Report()) do add("  " .. line) end
     end
 
-    local hist = MD.fightHistory or {}
+    local hist = ST.fightHistory or {}
     add("recorded fights: %d", #hist)
     for i = math.max(1, #hist - 4), #hist do
         local f = hist[i]
@@ -203,24 +203,24 @@ end
 -- -- chat-spamming forty lines is not one, a Ctrl+C box is, so it goes straight
 -- into the debug console's copy popup.
 --------------------------------------------------------------------------------
-function MD:Profile()
-    local SD = MD.SpellData
+function ST:Profile()
+    local SD = ST.SpellData
     local out = {}
     local function add(fmt, ...)
         out[#out + 1] = select("#", ...) > 0 and string.format(fmt, ...) or fmt
     end
 
     local _, build, _, iface = GetBuildInfo()
-    add("=== SpellTuner v%s profile ===", MD.version)
+    add("=== SpellTuner v%s profile ===", ST.version)
     add("client build %s, interface %s, ElvUI %s", tostring(build), tostring(iface),
         ElvUI and "present" or "absent")
-    add("%s, %s level %d, form: %s, mana %d/%d", MD.player.charKey, MD.player.class,
-        MD.player.level, MD:InTreeForm() and "Tree of Life" or "caster / other",
+    add("%s, %s level %d, form: %s, mana %d/%d", ST.player.charKey, ST.player.class,
+        ST.player.level, ST:InTreeForm() and "Tree of Life" or "caster / other",
         UnitPower("player", 0) or 0, UnitPowerMax("player", 0) or 0)
 
     add("")
     add("--- inputs ---")
-    for _, line in ipairs(MD:Snapshot()) do add(line) end
+    for _, line in ipairs(ST:Snapshot()) do add(line) end
 
     add("")
     add("--- costs of known max ranks ---")
@@ -229,9 +229,9 @@ function MD:Profile()
     -- RankMath:Source() -- Data/SpellData.lua for the druid, the class's book
     -- (Spells/Book_TBC.lua) for a priest, shaman or paladin, whose read cost
     -- is its static one; `--` where a source has none
-    local canRank, why = MD.ClassProfile:Can("rankTable")
+    local canRank, why = ST.ClassProfile:Can("rankTable")
     if canRank then
-        local RSD = MD.RankMath and MD.RankMath:Source() or SD
+        local RSD = ST.RankMath and ST.RankMath:Source() or SD
         for _, family in ipairs(RSD.familyOrder) do
             local id = RSD.maxRank[family]
             if id then
@@ -244,20 +244,20 @@ function MD:Profile()
             end
         end
     else
-        add("(%s)", MD.Profiles.Refusal("rankTable", why, "rank table"))
+        add("(%s)", ST.Profiles.Refusal("rankTable", why, "rank table"))
     end
 
     add("")
     add("--- clock ---")
-    local st = MD:GetManaState()
+    local st = ST:GetManaState()
     if st then
         add("mode %s, tto %s, ttf %s, rest %s, shown \"%s\"", st.mode,
             st.tto and string.format("%.0fs", st.tto) or "-",
             st.ttf and string.format("%.0fs", st.ttf) or "-",
             st.rest and string.format("%.0fs", st.rest) or "-",
-            (MD:GetDisplayString():gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")))
+            (ST:GetDisplayString():gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")))
         add("spend %.2f +- %.2f mana/s (%d casts, cv %.2f, half-life %ds), regen %.2f/s (duty %d%%)",
-            st.spend, st.sigma, st.casts, st.cv, MD.db.halfLife or 15, st.regen, st.duty * 100)
+            st.spend, st.sigma, st.casts, st.cv, ST.db.halfLife or 15, st.regen, st.duty * 100)
         if st.cd then
             add("mana cooldown: %s worth %d mana%s", st.cd.name, st.cd.delta,
                 st.cd.tto and string.format(" -> OOM %.0fs", st.cd.tto) or "")
@@ -266,7 +266,7 @@ function MD:Profile()
         add("(no state yet)")
     end
     local unknown = {}
-    for id in pairs(MD.Spend.unknown) do unknown[#unknown + 1] = id end
+    for id in pairs(ST.Spend.unknown) do unknown[#unknown + 1] = id end
     if #unknown > 0 then
         table.sort(unknown)
         local names = {}
@@ -279,7 +279,7 @@ function MD:Profile()
     add("")
     add("--- settings ---")
     local keys = {}
-    for k, v in pairs(MD.db) do
+    for k, v in pairs(ST.db) do
         if k ~= "char" and k ~= "pos" and k ~= "optionsPos" and k ~= "debug" and type(v) ~= "table" then
             keys[#keys + 1] = k
         end
@@ -287,19 +287,19 @@ function MD:Profile()
     table.sort(keys)
     local parts = {}
     for _, k in ipairs(keys) do
-        parts[#parts + 1] = k .. "=" .. tostring(MD.db[k])
+        parts[#parts + 1] = k .. "=" .. tostring(ST.db[k])
     end
     add(table.concat(parts, "  "))
     local cats = {}
-    for k, v in pairs(MD.db.debug.categories) do
+    for k, v in pairs(ST.db.debug.categories) do
         if v then cats[#cats + 1] = k end
     end
     table.sort(cats)
     add("debug: enabled=%s, keep %d lines, categories: %s",
-        tostring(MD.db.debug.enabled), MD.db.debug.maxLines or 1000, table.concat(cats, " "))
-    if MD.sim and next(MD.sim) then
+        tostring(ST.db.debug.enabled), ST.db.debug.maxLines or 1000, table.concat(cats, " "))
+    if ST.sim and next(ST.sim) then
         local sim = {}
-        for k, v in pairs(MD.sim) do sim[#sim + 1] = k .. "=" .. tostring(v) end
+        for k, v in pairs(ST.sim) do sim[#sim + 1] = k .. "=" .. tostring(v) end
         table.sort(sim)
         add("SIMULATION ACTIVE: %s", table.concat(sim, " "))
     end
@@ -307,15 +307,15 @@ function MD:Profile()
     return out
 end
 
-function MD:RunProfile()
-    local lines = MD:Profile()
-    if MD.ShowCopyPopup then
-        MD:ShowCopyPopup("SpellTuner profile", table.concat(lines, "\n"))
-        MD:Print("profile ready - Ctrl+C in the box to copy it.")
+function ST:RunProfile()
+    local lines = ST:Profile()
+    if ST.ShowCopyPopup then
+        ST:ShowCopyPopup("SpellTuner profile", table.concat(lines, "\n"))
+        ST:Print("profile ready - Ctrl+C in the box to copy it.")
     else
-        for _, line in ipairs(lines) do MD:Print(line) end
+        for _, line in ipairs(lines) do ST:Print(line) end
     end
-    MD:Debug("other", "profile dumped (%d lines)", #lines)
+    ST:Debug("other", "profile dumped (%d lines)", #lines)
 end
 
 --------------------------------------------------------------------------------
@@ -387,51 +387,51 @@ local function DumpRecording(add, r, n, extra)
     end
 end
 
-function MD:Export()
+function ST:Export()
     local out = {}
     local function add(...) out[#out + 1] = table.concat({ ... }, "\t") end
-    add("# manademon " .. MD.version, MD.player.charKey, MD.player.class .. " " .. MD.player.level,
-        date("%Y-%m-%d %H:%M"), MD.db.healAmountGross == nil and "amount:unknown"
-            or (MD.db.healAmountGross and "amount:gross" or "amount:net"))
+    add("# manademon " .. ST.version, ST.player.charKey, ST.player.class .. " " .. ST.player.level,
+        date("%Y-%m-%d %H:%M"), ST.db.healAmountGross == nil and "amount:unknown"
+            or (ST.db.healAmountGross and "amount:gross" or "amount:net"))
 
     add("# fights")
     add("t", "zone", "dur", "spent", "netMp5", "healed", "overhealed", "oomAt")
-    for _, f in ipairs(MD.fightHistory or {}) do
+    for _, f in ipairs(ST.fightHistory or {}) do
         add(f.t or "", f.zone or "", string.format("%.1f", f.duration or 0),
             string.format("%.0f", (f.avgSpendRate or 0) * (f.duration or 0)),
             string.format("%.0f", f.netMp5 or 0), f.healed or "", f.overhealed or "",
             f.oomAt and string.format("%.1f", f.oomAt) or "")
     end
 
-    if MD.Overheal and MD.Overheal.stats then
+    if ST.Overheal and ST.Overheal.stats then
         add("# overheal")
         add("key", "n", "healed", "overhealed")
         local keys = {}
-        for k in pairs(MD.Overheal.stats) do keys[#keys + 1] = k end
+        for k in pairs(ST.Overheal.stats) do keys[#keys + 1] = k end
         table.sort(keys)
         for _, k in ipairs(keys) do
-            local st = MD.Overheal.stats[k]
+            local st = ST.Overheal.stats[k]
             add(k, st.n, string.format("%.0f", st.h), string.format("%.0f", st.o))
         end
     end
 
-    if MD.Targets then
+    if ST.Targets then
         add("# roster")
         add("name", "class", "role", "roleSource", "kind")
-        for _, row in ipairs(MD.Targets:ExportRows()) do out[#out + 1] = row end
+        for _, row in ipairs(ST.Targets:ExportRows()) do out[#out + 1] = row end
     end
 
     -- Recorded streams (v0.7.2), the ring of 8.
-    if MD.FightRecorder then
-        for n, r in ipairs(MD.FightRecorder:List()) do DumpRecording(add, r, n) end
+    if ST.FightRecorder then
+        for n, r in ipairs(ST.FightRecorder:List()) do DumpRecording(add, r, n) end
     end
 
     -- Runs (v0.9.1): the container, then every pull it kept. The run's own
     -- arrays are the GAPS -- mana across the whole run, the drinks with the mana
     -- either side of them, deaths, zone changes -- which is the half a single
     -- fight's stream cannot hold.
-    if MD.RunRecorder then
-        local RR = MD.RunRecorder
+    if ST.RunRecorder then
+        local RR = ST.RunRecorder
         for n, run in ipairs(RR:List()) do
             local st = run.stats or {}
             add("# run " .. n, run.id or "", run.name or "", run.zone or "",
@@ -461,31 +461,31 @@ function MD:Export()
         end
     end
 
-    if MD.Calibration and MD.Calibration.ExportRows then
+    if ST.Calibration and ST.Calibration.ExportRows then
         add("# calibration")
         add("spellID", "kind", "n", "obs", "pred")
-        for _, row in ipairs(MD.Calibration:ExportRows()) do out[#out + 1] = row end
+        for _, row in ipairs(ST.Calibration:ExportRows()) do out[#out + 1] = row end
     end
     return out
 end
 
-function MD:RunCalibrate()
-    if not MD.Calibration then return end
-    local lines = MD.Calibration:Report()
-    if MD.ShowCopyPopup then
-        MD:ShowCopyPopup("SpellTuner calibration: model vs your heals", table.concat(lines, "\n"))
-        MD:Print("calibration table ready - a ratio of 1.000 means the model matched the server exactly.")
+function ST:RunCalibrate()
+    if not ST.Calibration then return end
+    local lines = ST.Calibration:Report()
+    if ST.ShowCopyPopup then
+        ST:ShowCopyPopup("SpellTuner calibration: model vs your heals", table.concat(lines, "\n"))
+        ST:Print("calibration table ready - a ratio of 1.000 means the model matched the server exactly.")
     else
-        for _, line in ipairs(lines) do MD:Print(line) end
+        for _, line in ipairs(lines) do ST:Print(line) end
     end
 end
 
-function MD:RunExport()
-    local lines = MD:Export()
-    if MD.ShowCopyPopup then
-        MD:ShowCopyPopup("SpellTuner export (TSV)", table.concat(lines, "\n"))
-        MD:Print(string.format("export ready (%d lines) - Ctrl+C in the box.", #lines))
+function ST:RunExport()
+    local lines = ST:Export()
+    if ST.ShowCopyPopup then
+        ST:ShowCopyPopup("SpellTuner export (TSV)", table.concat(lines, "\n"))
+        ST:Print(string.format("export ready (%d lines) - Ctrl+C in the box.", #lines))
     else
-        for _, line in ipairs(lines) do MD:Print(line) end
+        for _, line in ipairs(lines) do ST:Print(line) end
     end
 end

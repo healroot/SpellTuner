@@ -12,11 +12,11 @@ HARNESS_FLAVOUR = "tbc"
 
 local here = arg[0]:match("^(.*)/[^/]+$")
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua")
+local ST = dofile(here .. "/harness.lua")
 arg[0] = a0
 
 local S = _G.STUB
-local SD = MD.SpellData
+local SD = ST.SpellData
 
 local ok, fails = 0, {}
 local function check(name, cond, detail)
@@ -54,10 +54,10 @@ end
 do
     S.liveCosts[ID] = LIVE
     local lines = {}
-    local origPrint = MD.Print
-    MD.Print = function(self, msg) lines[#lines + 1] = tostring(msg) end
-    local okRun, err = pcall(MD.RunVerify, MD)
-    MD.Print = origPrint
+    local origPrint = ST.Print
+    ST.Print = function(self, msg) lines[#lines + 1] = tostring(msg) end
+    local okRun, err = pcall(ST.RunVerify, ST)
+    ST.Print = origPrint
     S.liveCosts[ID] = nil
     local want = string.format("COST|r HealingTouch R1 (%d): static %d (base %d), live %d (used)",
         ID, static or -1, SD.spells[ID].cost, LIVE)

@@ -26,8 +26,8 @@
 local here = arg[0]:match("^(.*)/[^/]+$")
 HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua"); arg[0] = a0
-local SM, SP, SV, PR = MD.SimModel, MD.SimPlanner, MD.SimSolver, MD.Practice
+local ST = dofile(here .. "/harness.lua"); arg[0] = a0
+local SM, SP, SV, PR = ST.SimModel, ST.SimPlanner, ST.SimSolver, ST.Practice
 local K = SM.K
 
 local ok, fails = 0, {}
@@ -206,9 +206,9 @@ do
     check("3a base == casting: cast for cast the regen-blind solver", same and #a > 0, d)
 
     -- the shared scripted TBC pull, a whole second recording with its own rates
-    dofile(here .. "/fakepull.lua")(MD, _G.STUB)
-    local rec = MD.FightRecorder:List()[1]
-    local kit = MD.RankMath:SpellKit({ live = true })
+    dofile(here .. "/fakepull.lua")(ST, _G.STUB)
+    local rec = ST.FightRecorder:List()[1]
+    local kit = ST.RankMath:SpellKit({ live = true })
     local sc2 = SM.ScenarioFromRecording(rec, kit)
     sc2.initial.apiCasting = sc2.initial.apiBase
     sc2.rates = nil
@@ -501,7 +501,7 @@ do
     -- the replay window's header leads with it
     local fx = dofile(here .. "/data/practice/1790701698.lua")
     local rp = SP.Replay(fx.rec, { kit = fx.kit, dt = 0.25 })
-    local st = MD.ReplayTrace.New(rp.left.trace, rp.scenario)
+    local st = ST.ReplayTrace.New(rp.left.trace, rp.scenario)
     st:Seek(43.9)
     local used = st.Used and st:Used()
     check("7k the replay's USED at 0:43.9 is the pool at the pull less the pool now",

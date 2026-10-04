@@ -6,7 +6,7 @@
 -- spell is worth on the targets this player actually heals, not on a dummy at
 -- 1 hp -- and UI/Dashboard_Waste.lua asks the *Rows() readers for the view.
 --
--- Two stores. `stats` is persisted per character (MD.cdb.overheal), weighted
+-- Two stores. `stats` is persisted per character (ST.cdb.overheal), weighted
 -- by AMOUNT and decayed per event with a HALF_EVENTS half-life so a changed
 -- spec, raid slot or gear level washes out on its own. `session` is this
 -- login only, undecayed, and is the only place the per-target buckets live:
@@ -23,10 +23,10 @@
 -- that family by the same factor, so it can never reorder them -- which is why
 -- the Pareto filter and the suggested rank deliberately stay on raw values
 -- (docs/DECISIONS.md v0.5 §3).
-local _, MD = ...
+local _, ST = ...
 
 local OH = {}
-MD.Overheal = OH
+ST.Overheal = OH
 
 local HALF_EVENTS = 150
 local DECAY = 0.5 ^ (1 / HALF_EVENTS)
@@ -48,7 +48,7 @@ OH.waste = {}         -- session: key -> { events, mana }  (keys as above, plus 
 -- assumed, which is what the fight summary always did.
 --------------------------------------------------------------------------------
 local function LatchConvention(amount, overheal)
-    if overheal <= 0 or MD.db == nil or MD.db.healAmountGross ~= nil then return end
+    if overheal <= 0 or ST.db == nil or ST.db.healAmountGross ~= nil then return end
     local gross
     if amount == 0 then
         gross = false
@@ -57,8 +57,8 @@ local function LatchConvention(amount, overheal)
     else
         return -- a partial overheal says nothing
     end
-    MD.db.healAmountGross = gross
-    MD:Debug("heal", "combat log convention latched: SPELL_HEAL amount is %s overheal "
+    ST.db.healAmountGross = gross
+    ST:Debug("heal", "combat log convention latched: SPELL_HEAL amount is %s overheal "
         .. "(sample amount %d, overheal %d)", gross and "GROSS, including" or "NET, excluding",
         amount, overheal)
 end
@@ -67,7 +67,7 @@ end
 -- under whichever convention is in force.
 function OH:Split(amount, overheal)
     amount, overheal = amount or 0, overheal or 0
-    if MD.db and MD.db.healAmountGross then
+    if ST.db and ST.db.healAmountGross then
         return math.max(0, amount - overheal), amount
     end
     return amount, amount + overheal
@@ -86,12 +86,12 @@ local TICKS = { Rejuvenation = 4, Regrowth = 7, Lifebloom = 7, Tranquility = 4 }
 
 local function Attribute(spellID, spell, kind)
     if not spell then return 0 end
-    local cost = MD.SpellData:GetCost(spellID) or spell.cost or 0
-    local fam, ftype = spell.family, MD.SpellData.families[spell.family] and MD.SpellData.families[spell.family].type
+    local cost = ST.SpellData:GetCost(spellID) or spell.cost or 0
+    local fam, ftype = spell.family, ST.SpellData.families[spell.family] and ST.SpellData.families[spell.family].type
     if kind == "bloom" then return 0 end
     if ftype == "channel" then
         -- T48 (review B13): the caster's party, not the whole raid
-        local group = MD.Targets and MD.Targets:PartySize() or 1
+        local group = ST.Targets and ST.Targets:PartySize() or 1
         return cost / ((TICKS[fam] or 4) * group)
     end
     if ftype == "hybrid" then
@@ -140,8 +140,8 @@ function OH:Record(spellID, kind, amount, overheal, destGUID, destName)
     local over = gross - effective
     kind = kind or "direct"
 
-    local s = MD.SpellData and MD.SpellData.spells[MD.SpellData:Resolve(spellID)]
-    local t = MD.Targets and MD.Targets:Lookup(destGUID, destName)
+    local s = ST.SpellData and ST.SpellData.spells[ST.SpellData:Resolve(spellID)]
+    local t = ST.Targets and ST.Targets:Lookup(destGUID, destName)
     local role = t and t.role or "UNKNOWN"
     local class = t and t.class or "UNKNOWN"
 
@@ -197,7 +197,7 @@ end
 function OH:Fraction(spellID)
     local frac, n = FractionIn(OH.stats, "s:" .. spellID)
     if frac then return frac, n, "rank" end
-    local s = MD.SpellData and MD.SpellData.spells[MD.SpellData:Resolve(spellID)]
+    local s = ST.SpellData and ST.SpellData.spells[ST.SpellData:Resolve(spellID)]
     if s then
         frac, n = FractionIn(OH.stats, "f:" .. s.family)
         if frac then return frac, n, "family" end
@@ -253,7 +253,7 @@ function OH:SpellRows(scope)
     return Rows("k:", scope, function(k)
         local id, kind = k:match("^k:(%d+):(%a+)$")
         id = tonumber(id)
-        local s = id and MD.SpellData.spells[id]
+        local s = id and ST.SpellData.spells[id]
         local name = GetSpellInfo(id) or tostring(id)
         local label = s and string.format("%s R%d", name, s.rank) or name
         return label, kind
@@ -286,7 +286,7 @@ end
 function OH:Reset()
     if not OH.stats then return end
     wipe(OH.stats)
-    MD:Print("overheal data cleared.")
+    ST:Print("overheal data cleared.")
 end
 
 -- Plain lines for /md profile and the debug log (persisted store).
@@ -320,18 +320,18 @@ end
 --------------------------------------------------------------------------------
 -- Lifecycle
 --------------------------------------------------------------------------------
-MD:RegisterCallback("MD_READY", function()
-    MD.cdb.overheal = MD.cdb.overheal or {}
-    OH.stats = MD.cdb.overheal
+ST:RegisterCallback("MD_READY", function()
+    ST.cdb.overheal = ST.cdb.overheal or {}
+    OH.stats = ST.cdb.overheal
 end)
 
 -- Per-target buckets follow the group: a target who left is pruned, so the
 -- table cannot grow across a night of pugs.
-MD:RegisterCallback("ROSTER_CHANGED", function()
-    if not MD.Targets then return end
+ST:RegisterCallback("ROSTER_CHANGED", function()
+    if not ST.Targets then return end
     for k in pairs(OH.session) do
         local guid = k:match("^u:(.+)$")
-        if guid and not MD.Targets.byGUID[guid] then
+        if guid and not ST.Targets.byGUID[guid] then
             OH.session[k] = nil
             OH.waste[k] = nil
         end

@@ -77,7 +77,7 @@ function T.Ascii(s, opts)
 end
 
 -- Every line printed to the default chat frame while body() runs, in order.
--- Patches AddMessage on the frame the stub installed (MD.API.Print reads the
+-- Patches AddMessage on the frame the stub installed (ST.API.Print reads the
 -- global at every call), and puts it back even when body raises.
 function T.CapturedChat(body)
     local lines = {}

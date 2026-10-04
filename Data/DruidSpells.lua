@@ -12,13 +12,13 @@
 -- author's own recordings -- four of the five ids reproduce their recorded cost
 -- exactly, three of them only after Moonglow's -9%, which is a stronger check
 -- than the lookup on its own. Every row is VERIFY until a recording has carried
--- it. The addon does not need this table to be complete: MD:ClassifyCast falls
+-- it. The addon does not need this table to be complete: ST:ClassifyCast falls
 -- back to the spell's NAME from the client and writes what it learns into
 -- cdb.spellbook, so the map grows from the game rather than from a website.
-local _, MD = ...
+local _, ST = ...
 
 local DS = {}
-MD.DruidSpells = DS
+ST.DruidSpells = DS
 
 -- [spellID] = { family, kind }   kind: "damage" | "cc" | "utility"
 DS.byID = {
@@ -63,41 +63,41 @@ DS.KINDS = { damage = true, cc = true, utility = true, shift = true }
 -- Whatever is resolved is written into cdb.spellbook so the offline tools, and
 -- a later session, inherit it without asking the client again.
 --------------------------------------------------------------------------------
-function MD:ClassifyCast(spellID)
+function ST:ClassifyCast(spellID)
     if type(spellID) ~= "number" then return nil, "unknown" end
-    local SD = MD.SpellData
+    local SD = ST.SpellData
     local s = SD and SD.spells[spellID]
     if s then return s.family, "heal" end
 
     local row = DS.byID[spellID]
     if row then
-        MD:LearnSpell(spellID, row[1], row[2])
+        ST:LearnSpell(spellID, row[1], row[2])
         return row[1], row[2]
     end
 
-    local known = MD.cdb and MD.cdb.spellbook and MD.cdb.spellbook[spellID]
+    local known = ST.cdb and ST.cdb.spellbook and ST.cdb.spellbook[spellID]
     if known then return known.family, known.kind end
 
     local name = GetSpellInfo and GetSpellInfo(spellID) or nil
     if name then
         local kind = DS.byName[name]
         if kind then
-            MD:LearnSpell(spellID, name, kind)
+            ST:LearnSpell(spellID, name, kind)
             return name, kind
         end
-        MD:LearnSpell(spellID, name, "unknown")
+        ST:LearnSpell(spellID, name, "unknown")
         return name, "unknown"
     end
     return nil, "unknown"
 end
 
-function MD:LearnSpell(spellID, family, kind)
-    if not MD.cdb then return end
-    MD.cdb.spellbook = MD.cdb.spellbook or {}
-    local was = MD.cdb.spellbook[spellID]
+function ST:LearnSpell(spellID, family, kind)
+    if not ST.cdb then return end
+    ST.cdb.spellbook = ST.cdb.spellbook or {}
+    local was = ST.cdb.spellbook[spellID]
     if was and was.kind == kind and was.family == family then return end
-    MD.cdb.spellbook[spellID] = { family = family, kind = kind, at = time() }
-    MD:Debug("cast", "learned %s (%d) is %s", tostring(family), spellID, kind)
+    ST.cdb.spellbook[spellID] = { family = family, kind = kind, at = time() }
+    ST:Debug("cast", "learned %s (%d) is %s", tostring(family), spellID, kind)
 end
 
 -- Every non-healing cast in a recording, grouped by kind. The offline tools use
@@ -106,13 +106,13 @@ function DS.Summarise(rec)
     local out = { damage = { mana = 0, casts = 0 }, cc = { mana = 0, casts = 0 },
                   utility = { mana = 0, casts = 0 }, unknown = { mana = 0, casts = 0 },
                   shift = { mana = 0, casts = 0 }, heal = { mana = 0, casts = 0 }, byName = {} }
-    local K = MD.SimModel and MD.SimModel.K
+    local K = ST.SimModel and ST.SimModel.K
     if not (rec and K) then return out end
     for i = 1, (rec.n or 0) do
         if rec.ev.kind[i] == K.OWNCAST then
             local id, cost = rec.ev.x[i], rec.ev.amt[i] or 0
             if cost < 0 then cost = 0 end
-            local family, kind = MD:ClassifyCast(id)
+            local family, kind = ST:ClassifyCast(id)
             if kind == "unknown" and rec.names and rec.names[id] then
                 family = rec.names[id]
                 local byName = DS.byName[(family:gsub(" r%d+$", ""))]

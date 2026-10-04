@@ -7,7 +7,7 @@
 -- (Integrations/Surface_LDB.lua, T97). Before T92 every surface built its own
 -- text; now each asks the feed, so they can never say different things.
 --
---   MD.Feeds.Register(key, def)   a second registration of a key raises;
+--   ST.Feeds.Register(key, def)   a second registration of a key raises;
 --                                  def.Text is required
 --     def = { label, icon,
 --             Text(ctx)    -> string. ASCII; colour codes allowed, no bare
@@ -19,43 +19,43 @@
 --                             surface that colours by tone,
 --             Tooltip()    -> UI/Tip.lua's line model,
 --             Click(button)   left: the window; right: Settings }
---   MD.Feeds.Get(key), MD.Feeds.List()  (keys, in registration order; a copy)
---   MD.Feeds.Text(key, ctx)  the feed's text, never raising into a host: a
+--   ST.Feeds.Get(key), ST.Feeds.List()  (keys, in registration order; a copy)
+--   ST.Feeds.Text(key, ctx)  the feed's text, never raising into a host: a
 --                             feed that raises, or answers nothing, gives its
 --                             label; ctx.plain strips any colour code left
---   MD.Feeds.Face(key), MD.Feeds.Tooltip(key)  the same guard
---   MD.Feeds.Click(key, button)  refused in combat (answers false; decision
+--   ST.Feeds.Face(key), ST.Feeds.Tooltip(key)  the same guard
+--   ST.Feeds.Click(key, button)  refused in combat (answers false; decision
 --                             17, Forever's T70 rule), else true
---   MD:Fire("FEED_CHANGED", key)  from the 0.5 s tick, only when the feed's
+--   ST:Fire("FEED_CHANGED", key)  from the 0.5 s tick, only when the feed's
 --                             text (ctx {}) is not what the last tick saw;
 --                             the tick is registered at MD_READY, so it runs
 --                             after every file's own tick has moved the state
 --
 -- Two feeds:
 --   clock -- ClockFace.LineString of the line's own face
---            (MD.ClockFace.Current: TBC's MD:GetClockFace, Forever's pool);
---            byte for byte TBC's MD:GetDisplayString. The tooltip is the
---            minimap button's lines (MD.MinimapLines). T114: the words
---            follow Line's slots -- MD.ClockLook().texts.line (the resolved
+--            (ST.ClockFace.Current: TBC's ST:GetClockFace, Forever's pool);
+--            byte for byte TBC's ST:GetDisplayString. The tooltip is the
+--            minimap button's lines (ST.MinimapLines). T114: the words
+--            follow Line's slots -- ST.ClockLook().texts.line (the resolved
 --            text of the Line layout, whatever layout is on screen) handed
 --            to LineString; no provider, no texts: today's string.
 --   regen -- the CURRENT regen: the casting rate inside the five-second rule,
 --            the full rate outside it. "Regen: 123", " (5SR)" in the rule;
 --            plain "Regen 123", "Regen 123 (5SR)"; "--" without a reading.
---            On the line with a modelled pool (MD.Pool, Forever) the rates
---            are the pool's last plain readings (MD.Pool:LastRegen()) and the
+--            On the line with a modelled pool (ST.Pool, Forever) the rates
+--            are the pool's last plain readings (ST.Pool:LastRegen()) and the
 --            rule the model's own last spend -- in combat the client's rate
---            is secret, so the number is the last plain one, marked "~". MD.Regen
+--            is secret, so the number is the last plain one, marked "~". ST.Regen
 --            is never read there, and a secret never reaches a string. On TBC
 --            the rates are Engine/RegenModel.lua's, read live, as the datatext
 --            always read them (the face's mp5 is the last tick's, up to 0.5 s
 --            behind the rule it would be shown beside).
--- Which line is which is a namespace the line installs (MD.Pool), never a
+-- Which line is which is a namespace the line installs (ST.Pool), never a
 -- client test (CLAUDE.md, apicheck rule 10).
-local _, MD = ...
+local _, ST = ...
 
-MD.Feeds = MD.Feeds or {}
-local Feeds = MD.Feeds
+ST.Feeds = ST.Feeds or {}
+local Feeds = ST.Feeds
 
 local ICON = "Interface\\Icons\\Spell_Shadow_Manaburn" -- the minimap button's
 
@@ -97,7 +97,7 @@ local function Call(key, def, name, ...)
     local ok, a = pcall(fn, ...)
     if not ok then
         Feeds.errors[key] = (Feeds.errors[key] or 0) + 1
-        if MD.Debug then MD:Debug("other", "feed %s %s raised: %s", key, name, tostring(a)) end
+        if ST.Debug then ST:Debug("other", "feed %s %s raised: %s", key, name, tostring(a)) end
         return false
     end
     return true, a
@@ -131,7 +131,7 @@ end
 
 function Feeds.Click(key, button)
     local def = defs[key]
-    if not def or MD.inCombat then return false end
+    if not def or ST.inCombat then return false end
     Call(key, def, "Click", button)
     return true
 end
@@ -146,42 +146,42 @@ function Feeds.Poll()
         local s = Feeds.Text(key, {})
         if s ~= last[key] then
             last[key] = s
-            MD:Fire("FEED_CHANGED", key)
+            ST:Fire("FEED_CHANGED", key)
         end
     end
 end
-MD:RegisterCallback("MD_READY", function() MD:OnTick(Feeds.Poll) end)
+ST:RegisterCallback("MD_READY", function() ST:OnTick(Feeds.Poll) end)
 
 --------------------------------------------------------------------------------
 -- The shared parts of both feeds.
 --------------------------------------------------------------------------------
 local function CurrentFace()
-    local CF = MD.ClockFace
+    local CF = ST.ClockFace
     local current = CF and CF.Current
     if type(current) ~= "function" then return nil end
     return current()
 end
 
 local function ClockTooltip()
-    if MD.MinimapLines then return MD.MinimapLines() end
+    if ST.MinimapLines then return ST.MinimapLines() end
     return { { l = "SpellTuner", c = "accent" } }
 end
 
 local function OpenOnClick(button)
     if button == "RightButton" then
-        if MD.OpenDashboardSettings then MD:OpenDashboardSettings() end
-    elseif MD.ToggleDashboard then
-        MD:ToggleDashboard()
+        if ST.OpenDashboardSettings then ST:OpenDashboardSettings() end
+    elseif ST.ToggleDashboard then
+        ST:ToggleDashboard()
     end
 end
 
 --------------------------------------------------------------------------------
 -- clock
 --------------------------------------------------------------------------------
--- T114: Line's resolved text from the clock look (MD:Provide "ClockLook",
+-- T114: Line's resolved text from the clock look (ST:Provide "ClockLook",
 -- under pcall as Integrations/Surface_LDB.lua reads it), or nil.
 local function LineText()
-    local provide = MD.ClockLook
+    local provide = ST.ClockLook
     if type(provide) ~= "function" then return nil end
     local ok, look = pcall(provide)
     if not ok or type(look) ~= "table" or type(look.texts) ~= "table" then return nil end
@@ -198,7 +198,7 @@ Feeds.Register("clock", {
     Text = function(ctx)
         local face = CurrentFace()
         if not face then return "" end
-        return MD.ClockFace.LineString(face, ctx.valueHex, LineText())
+        return ST.ClockFace.LineString(face, ctx.valueHex, LineText())
     end,
     Tooltip = ClockTooltip,
     Click = OpenOnClick,
@@ -209,7 +209,7 @@ Feeds.Register("clock", {
 --------------------------------------------------------------------------------
 -- A rate as a plain number, or nil (a secret, a missing reading).
 local function Plain(v)
-    if v == nil or (MD.API and MD.API.IsSecret and MD.API.IsSecret(v)) then return nil end
+    if v == nil or (ST.API and ST.API.IsSecret and ST.API.IsSecret(v)) then return nil end
     if type(v) ~= "number" or v ~= v then return nil end
     return v
 end
@@ -217,9 +217,9 @@ end
 -- The reading: { mp5, fsr = in the rule, modelled = the last plain reading }
 -- or nil.
 local function RegenReading()
-    if not (MD.player and MD.player.usesMana) then return nil end
+    if not (ST.player and ST.player.usesMana) then return nil end
     local rate, inFsr, modelled
-    local pool = MD.Pool
+    local pool = ST.Pool
     if pool then
         -- Forever: the modelled pool's own rates and rule
         local model = pool.model
@@ -229,9 +229,9 @@ local function RegenReading()
         local t, lastSpend = Plain(model.t), Plain(model.lastSpend)
         inFsr = (t ~= nil and lastSpend ~= nil and t < lastSpend + 5) or false
         if inFsr then rate = casting else rate = base end
-        modelled = MD.inCombat == true
+        modelled = ST.inCombat == true
     else
-        local RM = MD.Regen
+        local RM = ST.Regen
         if not RM then return nil end
         rate = Plain(RM:Current())
         inFsr = RM:InFSR() and true or false

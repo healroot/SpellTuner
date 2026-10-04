@@ -10,12 +10,12 @@
 -- P22, review A18: it used to wrap SM.Validate) and reads the gates both
 -- roads share (mana, death, spend) and the arithmetic (SM.Threshold,
 -- SM.MeanMax) from there.
-local _, MD = ...
-local SM = MD.SimModel
+local _, ST = ...
+local SM = ST.SimModel
 
 -- The v3 stream's own kinds, published once by the Recorder module's
 -- Stream_Forever.lua (T66), which this module depends on.
-local STREAM = MD.StreamV3
+local STREAM = ST.StreamV3
 local V3 = STREAM.K
 local Threshold, MeanMax = SM.Threshold, SM.MeanMax
 
@@ -27,8 +27,8 @@ local NO_METER = "no meter reading"
 -- Two new thresholds, only if some other file has not already added them
 -- (Files table). T64 (P20, review A3): their defaults are registered here,
 -- once, and the gate's `default` reads them back (Engine/SimModel.lua's
--- SM.Gate); MD:Setting answers the player's value, else this default.
-MD:RegisterDefaults({
+-- SM.Gate); ST:Setting answers the player's value, else this default.
+ST:RegisterDefaults({
     simGateMeter = 0.10,   -- gate 6: the replay's own healing against the meter's own total
     simGateAttrib = 0.10,  -- gate 8: the paired own heals against the meter's own total
 })
@@ -51,7 +51,7 @@ SM.HEAL_AMOUNT = "unknown"
 --------------------------------------------------------------------------------
 function SM.ValidateV3(rec, kit)
     if not rec then return nil end
-    kit = kit or MD.RankMath:SpellKit()
+    kit = kit or ST.RankMath:SpellKit()
     local sc = SM.ScenarioFromRecording(rec, kit)
     local r = SM:Run(sc, nil, { critMode = "ev" })
 
@@ -175,7 +175,7 @@ function SM.ValidateV3(rec, kit)
                     if (amt / mOwn) >= 0.10 and amt > worstAmt then worstID, worstAmt = spellID, amt end
                 end
                 if worstID then
-                    local name = (MD.API and MD.API.SpellName and MD.API.SpellName(worstID)) or tostring(worstID)
+                    local name = (ST.API and ST.API.SpellName and ST.API.SpellName(worstID)) or tostring(worstID)
                     text = text .. string.format("; %s is %.0f%% of it", tostring(name), worstAmt / mOwn * 100)
                 end
             end
@@ -186,7 +186,7 @@ function SM.ValidateV3(rec, kit)
 
     ----------------------------------------------------------------------------
     -- 7: spend coverage (as v2, the same gate), classified with the Forever
-    -- `MD:ClassifyCast` (T13d).
+    -- `ST:ClassifyCast` (T13d).
     ----------------------------------------------------------------------------
     local _, spend = SM.OwnSpend(rec, V3.OWNCAST)
     SM.GateSpend(Gate, rec, sc, kit, spend, "book classification (Forever)")

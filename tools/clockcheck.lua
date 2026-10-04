@@ -20,7 +20,7 @@ local function check(name, cond, detail)
 end
 
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua")
+local ST = dofile(here .. "/harness.lua")
 arg[0] = a0
 
 local S = _G.STUB
@@ -42,11 +42,11 @@ end
 
 --------------------------------------------------------------------------------
 -- Engine/ManaModel.lua: pure model, tested directly (no client call, no
--- MD.API call -- so a fresh instance needs nothing from the stub at all).
+-- ST.API call -- so a fresh instance needs nothing from the stub at all).
 --------------------------------------------------------------------------------
-local ManaModel = MD.ManaModel
+local ManaModel = ST.ManaModel
 
--- item 1 is exercised through the real MD.Pool below (login behaviour);
+-- item 1 is exercised through the real ST.Pool below (login behaviour);
 -- this section covers 3, 6, 7 (Text), 12.
 
 -- item 3: exact numbers across the 5s boundary.
@@ -154,11 +154,11 @@ end
 --------------------------------------------------------------------------------
 -- Engine/ManaPool_Forever.lua and UI/Clock_Forever.lua: the real pool and the
 -- real clock, wired at MD_READY by the harness's own PLAYER_LOGIN. Everything
--- below drives the live MD.Pool model and the MD.Clock frame that paints it
--- (T68, P24: the model is the pool's; MD.Clock.model is only an alias).
+-- below drives the live ST.Pool model and the ST.Clock frame that paints it
+-- (T68, P24: the model is the pool's; ST.Clock.model is only an alias).
 --------------------------------------------------------------------------------
-local Clock = MD.Clock
-local Pool = MD.Pool
+local Clock = ST.Clock
+local Pool = ST.Pool
 local model = Pool and Pool.model
 
 -- T93: the clock's words as drawn, colour codes removed. Since T93 the text is
@@ -227,7 +227,7 @@ end
 -- one. It goes red when UNIT_SPELLCAST_SUCCEEDED's IsSecret(spellID) half is
 -- removed, now that type(secret) answers "number" as on the client.
 do
-    local Book = MD.Book
+    local Book = ST.Book
     local origGet, origRead = Book.Get, Book.ReadSpell
     local keys, secretKeys = 0, 0
     local function Seen(k)
@@ -307,7 +307,7 @@ do
     local origIsSecretValue = _G.issecretvalue
     _G.issecretvalue = function(v) calls[#calls + 1] = v; return origIsSecretValue(v) end
     local bar = CreateFrame("StatusBar", nil, UIParent)
-    local drawOk = MD.API.DrawUnitPower(bar, "player", 0)
+    local drawOk = ST.API.DrawUnitPower(bar, "player", 0)
     _G.issecretvalue = origIsSecretValue
 
     local sawIt = false
@@ -323,7 +323,7 @@ end
 -- item 11: shown in combat; hidden at full out of combat; off means off.
 do
     local frame = Clock.frame
-    MD.db.clock.shown = true
+    ST.db.clock.shown = true
     model.mana = model.max * 0.5
     Clock:Refresh()
     S.inCombat = true
@@ -341,7 +341,7 @@ do
     Clock:Refresh()
     local shownWhenLow = frame:IsShown()
 
-    MD.db.clock.shown = false
+    ST.db.clock.shown = false
     Clock:Refresh()
     local hiddenWhenOff = not frame:IsShown()
     S.inCombat = true
@@ -350,7 +350,7 @@ do
     local stillOffInCombat = not frame:IsShown()
     S.Fire("PLAYER_REGEN_ENABLED")
     S.inCombat = false
-    MD.db.clock.shown = true
+    ST.db.clock.shown = true
     Clock:Refresh()
 
     check("the clock shows in combat and hides at full out of combat; off means off",
@@ -361,10 +361,10 @@ do
 end
 
 -- T11b: out-of-combat hysteresis -- appears under 90% of max, stays shown
--- until back over 95% (UI/Widget.lua MD:UpdateVisibility 144-173).
+-- until back over 95% (UI/Widget.lua ST:UpdateVisibility 144-173).
 do
     local frame = Clock.frame
-    MD.db.clock.shown = true
+    ST.db.clock.shown = true
     S.inCombat = false
 
     model.mana = model.max
@@ -469,14 +469,14 @@ local function PairOf(list, label)
     return nil
 end
 local function SameColour(c, token)
-    local r, g, b = MD.UI.RGB(token)
+    local r, g, b = ST.UI.RGB(token)
     return type(c) == "table" and c[1] == r and c[2] == g and c[3] == b
 end
 local oomText = ClockText()
 local oomPairs = HoverPairs()
-local skinnedWhileShown = MD.Tip ~= nil and MD.Tip.Skinned ~= nil and MD.Tip:Skinned(GameTooltip)
+local skinnedWhileShown = ST.Tip ~= nil and ST.Tip.Skinned ~= nil and ST.Tip:Skinned(GameTooltip)
 Clock.frame:GetScript("OnLeave")(Clock.frame)
-local skinnedAfter = MD.Tip ~= nil and MD.Tip.Skinned ~= nil and MD.Tip:Skinned(GameTooltip)
+local skinnedAfter = ST.Tip ~= nil and ST.Tip.Skinned ~= nil and ST.Tip:Skinned(GameTooltip)
 
 S.Fire("PLAYER_REGEN_ENABLED")
 S.inCombat = false
@@ -510,7 +510,7 @@ do
         and PairOf(oocPairs, "Left-click") ~= nil,
         string.format("clock=%q full=%s", oocText, tostring(oocFull and oocFull.r)))
 
-    check("T76: the hover is MD.Tip's, in the kit skin while it shows and out of it after",
+    check("T76: the hover is ST.Tip's, in the kit skin while it shows and out of it after",
         skinnedWhileShown == true and skinnedAfter == false and #oomPairs > 0,
         string.format("skinned=%s after=%s", tostring(skinnedWhileShown), tostring(skinnedAfter)))
 end
@@ -526,7 +526,7 @@ do
         { cast = 0, level = 20, costLine = "45 Energy",
           costList = { { type = 3, name = "ENERGY", cost = 45, minCost = 45, costPercent = 0, costPerSec = 0,
                          requiredAuraID = 0, hasRequiredAura = false } } })
-    MD.Book:MarkDirty()
+    ST.Book:MarkDirty()
     local m = Pool.model
     m.mana = m.max * 0.5
     local before, beforeUnpriced = m.mana, m.unpriced
@@ -570,7 +570,7 @@ end
 
 do
     local m = Pool.model
-    MD.db.clock.shown = true
+    ST.db.clock.shown = true
     S.Tick(0.5)
     S.Cast(93010)                  -- a percent-of-base-mana cost: unpriced
     S.now = S.now + 0.3
@@ -592,9 +592,9 @@ end
 -- under way, shown, and never worded as the out-of-combat "~FULL".
 --------------------------------------------------------------------------------
 do
-    MD.db.clock.shown = true
+    ST.db.clock.shown = true
     S.inCombat = true
-    MD:Fire("MD_READY") -- what PLAYER_LOGIN runs after a /reload
+    ST:Fire("MD_READY") -- what PLAYER_LOGIN runs after a /reload
     local m = Pool.model
     S.Tick(0.5)
     local text = ClockText()
@@ -619,7 +619,7 @@ end
 -- scale changes, without a reload (the manager never touches the clock, 6.1).
 --------------------------------------------------------------------------------
 do
-    local UI = MD.UI
+    local UI = ST.UI
     local P = UI.PALETTE
     local w = Clock.frame
     local function Near(a, b) return type(a) == "number" and type(b) == "number" and math.abs(a - b) < 1e-9 end
@@ -672,7 +672,7 @@ end
 -- one bar alone, none.
 --------------------------------------------------------------------------------
 do
-    local CV = MD.ClockView
+    local CV = ST.ClockView
     local function Muted()
         local lines = Clock:HoverLines(GetTime()) or {}
         for _, l in ipairs(lines) do
@@ -729,14 +729,14 @@ end
 --------------------------------------------------------------------------------
 do
     local w = Clock.frame
-    MD.db.clock.shown = true
-    MD.db.clock.locked = true
+    ST.db.clock.shown = true
+    ST.db.clock.locked = true
     S.inCombat = false
     model.mana = model.max -- full: the 90/95 rule alone keeps it hidden
     Clock:Refresh()
     local hiddenAtFull = not w:IsShown()
 
-    MD:SelectView("settings", "general")
+    ST:SelectView("settings", "general")
     local lock
     for _, f in ipairs(S.allFrames) do
         if f.clockLockCheck then lock = f.clockLockCheck end
@@ -753,7 +753,7 @@ do
     if frame then frame:Hide() end
 
     check("unticking Lock shows the clock at full mana for 60 s, then it hides",
-        lock ~= nil and hiddenAtFull and MD.db.clock.locked == false and at0 and at59 and after
+        lock ~= nil and hiddenAtFull and ST.db.clock.locked == false and at0 and at59 and after
         and word0 == "SpellTuner - drag me" and word1:sub(1, 1) == "~" and model.mana == model.max,
         string.format("lock=%s hidden=%s at0=%s at59=%s after=%s word0=%q word1=%q", tostring(lock ~= nil),
             tostring(hiddenAtFull), tostring(at0), tostring(at59), tostring(after), word0, word1))
@@ -762,8 +762,8 @@ end
 do
     local w = Clock.frame
     local calls = 0
-    local orig = MD.ToggleDashboard
-    MD.ToggleDashboard = function() calls = calls + 1 end
+    local orig = ST.ToggleDashboard
+    ST.ToggleDashboard = function() calls = calls + 1 end
     local down, up = w:GetScript("OnMouseDown"), w:GetScript("OnMouseUp")
     local dragStart, dragStop = w:GetScript("OnDragStart"), w:GetScript("OnDragStop")
     local function Press(button, drag)
@@ -771,7 +771,7 @@ do
         if drag then dragStart(w); dragStop(w) end
         if up then up(w, button) end
     end
-    local savedPoint = MD.db.clock.point
+    local savedPoint = ST.db.clock.point
     S.inCombat = false
     Press("LeftButton")
     local clicked = calls == 1
@@ -785,8 +785,8 @@ do
     local combatNot = calls == 1
     S.Fire("PLAYER_REGEN_ENABLED")
     S.inCombat = false
-    MD.ToggleDashboard = orig
-    MD.db.clock.point = savedPoint
+    ST.ToggleDashboard = orig
+    ST.db.clock.point = savedPoint
 
     GameTooltip.lines = {}
     w:GetScript("OnEnter")(w)
@@ -794,7 +794,7 @@ do
     for _, l in ipairs(GameTooltip.lines or {}) do
         if type(l[1]) == "string" and l[1]:find("Left-click", 1, true) then says = true end
     end
-    check("a left-click on the clock calls MD:ToggleDashboard; a drag, a right-click or combat does not",
+    check("a left-click on the clock calls ST:ToggleDashboard; a drag, a right-click or combat does not",
         down ~= nil and up ~= nil and clicked and dragNot and rightNot and combatNot and says,
         string.format("calls=%d clicked=%s drag=%s right=%s combat=%s hover=%s", calls, tostring(clicked),
             tostring(dragNot), tostring(rightNot), tostring(combatNot), tostring(says)))
@@ -802,11 +802,11 @@ end
 
 --------------------------------------------------------------------------------
 -- T93 (docs/SPEC-next.md 7.1, F1 and F3-F6; decisions 16 and 18): the Forever
--- clock's gaps. The clock paints MD.ManaModel.Face of the pool's projection;
+-- clock's gaps. The clock paints ST.ManaModel.Face of the pool's projection;
 -- here the projection answers chosen states, so a paint can be read at 10 s,
 -- 45 s, 25 s. The words are UI/ClockView.lua's three segments.
 --------------------------------------------------------------------------------
-local CFace = MD.ClockFace
+local CFace = ST.ClockFace
 local function HexRGB(hex)
     local h = hex and hex:match("^|cff(%x%x%x%x%x%x)$")
     if not h then return nil end
@@ -835,7 +835,7 @@ local view = Clock.view or {}
 do
     -- F1: the band's tones, TBC's literals (decision 16); never an arrow on Forever
     local r = {}
-    MD.db.clock.shown = true
+    ST.db.clock.shown = true
     WithState({ mode = "oom", tto = 12 }, function()
         Clock:Refresh()
         r.crit = { ClockText(), Toned(view.label, "crit"), Toned(view.value, "crit") }
@@ -862,23 +862,23 @@ do
     -- F3: a character with no mana pool (a warrior, a rogue) gets no clock,
     -- in combat included; with a pool, the clock as before
     local w = Clock.frame
-    local keep = MD.player.usesMana
-    MD.db.clock.shown = true
+    local keep = ST.player.usesMana
+    ST.db.clock.shown = true
     S.inCombat = true
     S.Fire("PLAYER_REGEN_DISABLED")
-    MD.player.usesMana = false
+    ST.player.usesMana = false
     Clock:Refresh()
     local warriorHidden = not w:IsShown()
-    MD.player.usesMana = true
+    ST.player.usesMana = true
     Clock:Refresh()
     local healerShown = w:IsShown()
-    MD.player.usesMana = false
+    ST.player.usesMana = false
     Clock:Preview()
     local placedShown = w:IsShown()                     -- being placed: shown, whatever the class
     Clock:SetLocked(true)
     S.Fire("PLAYER_REGEN_ENABLED")
     S.inCombat = false
-    MD.player.usesMana = keep
+    ST.player.usesMana = keep
     Clock:Refresh()
     check("T93 F3: a Forever warrior has no clock in combat (a mana user does; a preview still shows)",
         warriorHidden and healerShown and placedShown,
@@ -892,23 +892,23 @@ do
     local realEM = rawget(FrameMT, "EnableMouse")
     FrameMT.EnableMouse = function(self, on) self.mouseOn = on and true or false end
     local w = Clock.frame
-    local isDefault = MD.db.clock.clickThrough == false
-    MD.db.clock.clickThrough = true
+    local isDefault = ST.db.clock.clickThrough == false
+    ST.db.clock.clickThrough = true
     Clock:Refresh()
     local through = w.mouseOn == false
     Clock:Preview()
     local placing = w.mouseOn == true
     Clock:SetLocked(true)
-    MD.db.clock.clickThrough = false
+    ST.db.clock.clickThrough = false
     Clock:Refresh()
     local back = w.mouseOn == true
     -- by hand until Settings -> Clock: /st clock clickthrough, a sub matched
     -- before the verb (the clock stays shown)
-    local shownBefore = MD.db.clock.shown
+    local shownBefore = ST.db.clock.shown
     SlashCmdList.SPELLTUNER("clock clickthrough")
-    local cmdOn = MD.db.clock.clickThrough == true and w.mouseOn == false and MD.db.clock.shown == shownBefore
+    local cmdOn = ST.db.clock.clickThrough == true and w.mouseOn == false and ST.db.clock.shown == shownBefore
     SlashCmdList.SPELLTUNER("clock clickthrough")
-    local cmdOff = MD.db.clock.clickThrough == false and w.mouseOn == true
+    local cmdOff = ST.db.clock.clickThrough == false and w.mouseOn == true
     FrameMT.EnableMouse = realEM
     check("T93 F4: click-through takes no mouse (off by default; on while being placed)",
         isDefault and through and placing and back and cmdOn and cmdOff,
@@ -919,10 +919,10 @@ end
 
 do
     -- F5: one pulse per fight, the first time the clock reads under 30 s; and
-    -- MD:PulseWidget (MD:Alert's) pulses it while shown
+    -- ST:PulseWidget (ST:Alert's) pulses it while shown
     local pulse = view.pulse
     local n0 = pulse and pulse.plays or 0
-    MD.db.clock.shown = true
+    ST.db.clock.shown = true
     S.inCombat = true
     S.Fire("PLAYER_REGEN_DISABLED")
     local seq = {}
@@ -935,36 +935,36 @@ do
     WithState({ mode = "oom", tto = 25 }, function() Clock:Refresh() end)
     local second = (pulse and pulse.plays or 0) - n0
     local beforeAlert = pulse and pulse.plays or 0
-    if MD.PulseWidget then MD:PulseWidget() end
+    if ST.PulseWidget then ST:PulseWidget() end
     local alerted = pulse ~= nil and pulse.plays == beforeAlert + 1
     S.Fire("PLAYER_REGEN_ENABLED")
     S.inCombat = false
     Clock:Refresh()
-    check("T93 F5: one pulse under 30 s per fight; MD:PulseWidget pulses the Forever clock",
+    check("T93 F5: one pulse under 30 s per fight; ST:PulseWidget pulses the Forever clock",
         pulse ~= nil and seq[1] == 0 and seq[2] == 1 and seq[3] == 1 and seq[4] == 1 and second == 2 and alerted,
         string.format("plays %s, next fight %s, alert %s", table.concat(seq, ","), tostring(second), tostring(alerted)))
 end
 
 do
     -- F6: the rest segment can be turned off (db.clock.showRest, on by default)
-    local isDefault = MD.db.clock.showRest == true
+    local isDefault = ST.db.clock.showRest == true
     local on, off, secHidden
     WithState({ mode = "oom", tto = 80, rest = 200 }, function()
         Clock:Refresh()
         on = ClockText()
-        MD.db.clock.showRest = false
+        ST.db.clock.showRest = false
         Clock:Refresh()
         off = ClockText()
         secHidden = view.second ~= nil and not view.second:IsShown()
-        MD.db.clock.showRest = true
+        ST.db.clock.showRest = true
         Clock:Refresh()
     end)
     -- by hand until Settings -> Clock: /st clock rest, a sub (the clock stays shown)
-    local shownBefore = MD.db.clock.shown
+    local shownBefore = ST.db.clock.shown
     SlashCmdList.SPELLTUNER("clock rest")
-    local cmdOff = MD.db.clock.showRest == false and MD.db.clock.shown == shownBefore
+    local cmdOff = ST.db.clock.showRest == false and ST.db.clock.shown == shownBefore
     SlashCmdList.SPELLTUNER("clock rest")
-    local cmdOn = MD.db.clock.showRest == true
+    local cmdOn = ST.db.clock.showRest == true
     check("T93 F6: the rest segment off (db.clock.showRest, on by default)",
         isDefault and on == "~OOM 1:20  rest 3:20" and off == "~OOM 1:20" and secHidden and cmdOff and cmdOn,
         string.format("default=%s on=%q off=%q second hidden=%s /st clock rest %s/%s", tostring(isDefault),
@@ -975,7 +975,7 @@ do
     -- T116 (clock v2, C1): Line's Right = Mana % draws the model's "~62%"
     -- (POWER_TEXT_READS stays off); the hover says the number is the model's;
     -- /st clock rest still drops a Right = Rest
-    local CV = MD.ClockView
+    local CV = ST.ClockView
     local okT, res = pcall(function()
         local r = {}
         r.set = CV.Set("text.line.right", "pct") == true
@@ -1015,24 +1015,24 @@ end
 
 do
     -- the mover seam (docs/SPEC-next.md 6.3): ApplyPoint, ResetPosition and
-    -- Preview on the clock, the same names the TBC widget exposes, as MD.ClockWidget
+    -- Preview on the clock, the same names the TBC widget exposes, as ST.ClockWidget
     local w = Clock.frame
     local realSP, realCAP = w.SetPoint, w.ClearAllPoints
     local last
     w.SetPoint = function(self, ...) last = { ... } end
     w.ClearAllPoints = function() last = nil end
-    local saved = MD.db.clock.point
-    MD.db.clock.point = { "CENTER", nil, "CENTER", 40, -30 }
-    local seam = MD.ClockWidget == Clock and type(Clock.ApplyPoint) == "function"
+    local saved = ST.db.clock.point
+    ST.db.clock.point = { "CENTER", nil, "CENTER", 40, -30 }
+    local seam = ST.ClockWidget == Clock and type(Clock.ApplyPoint) == "function"
         and type(Clock.ResetPosition) == "function" and type(Clock.Preview) == "function" and Clock.frame == w
     if seam then Clock:ApplyPoint() end
     local applied = last ~= nil and last[1] == "CENTER" and last[2] == UIParent and last[3] == "CENTER"
         and last[4] == 40 and last[5] == -30
     if seam then Clock:ResetPosition() end
-    local reset = MD.db.clock.point == nil and last ~= nil and last[1] == "TOP" and last[5] == -120
+    local reset = ST.db.clock.point == nil and last ~= nil and last[1] == "TOP" and last[5] == -120
     w.SetPoint, w.ClearAllPoints = realSP, realCAP
-    MD.db.clock.point = saved
-    check("T93: the mover seam (ApplyPoint, ResetPosition, Preview) as MD.ClockWidget",
+    ST.db.clock.point = saved
+    check("T93: the mover seam (ApplyPoint, ResetPosition, Preview) as ST.ClockWidget",
         seam and applied and reset,
         string.format("seam=%s applied=%s reset=%s", tostring(seam), tostring(applied), tostring(reset)))
 end

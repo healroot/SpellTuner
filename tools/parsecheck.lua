@@ -15,10 +15,10 @@ local function check(name, cond, detail)
 end
 
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua")
+local ST = dofile(here .. "/harness.lua")
 arg[0] = a0
 
-local P = MD.Parse
+local P = ST.Parse
 local fixture = dofile(ROOT .. "/tools/data/parse-fixture.lua")
 
 --------------------------------------------------------------------------------

@@ -1,11 +1,11 @@
 -- T67 (P23 of docs/PLAN-refactor-ux.md, review A13): the rank rules, once.
--- Pure -- no client call, no frame, no MD.API: rows in, marks out. Both
+-- Pure -- no client call, no frame, no ST.API: rows in, marks out. Both
 -- lines read it: Engine/RankMath.lua's Compute() (TBC, the dashboard's rows:
 -- `hpm`, `hps`, `heal`) and Spells/Book.lua's Rows() (Forever, the book's
 -- entries: `perMana`, `perSec`, `value`). Before this file each carried its
 -- own copy of the Pareto filter, the suggested rank and the casts-to-OOM
 -- count, with the floor a literal 0.4 in one and a local constant in the
--- other; the floor is now MD.Rules.SUGGESTED_FLOOR (Core.lua), read at each
+-- other; the floor is now ST.Rules.SUGGESTED_FLOOR (Core.lua), read at each
 -- call.
 --
 -- `f` names the fields a caller's rows carry and which rows take part:
@@ -15,10 +15,10 @@
 --   f.eligible -- function(row): whether a row competes at all (known, real,
 --                 and -- on Forever -- with both numbers present)
 -- Loaded by SpellTuner_TBC.toc and the Forever main TOCs, after Core.lua.
-local _, MD = ...
+local _, ST = ...
 
-MD.RankRules = MD.RankRules or {}
-local RR = MD.RankRules
+ST.RankRules = ST.RankRules or {}
+local RR = ST.RankRules
 
 -- Whether rank `rj` beats rank `ri` on both numbers (at least as good on
 -- each, strictly better on one); `rj` must itself compete.
@@ -52,7 +52,7 @@ end
 function RR.Suggested(rows, top, f)
     local best
     if top and top[f.value] ~= nil then
-        local floor = MD.Rules.SUGGESTED_FLOOR * top[f.value]
+        local floor = ST.Rules.SUGGESTED_FLOOR * top[f.value]
         for _, r in ipairs(rows) do
             if f.eligible(r) and not r.dominated and r[f.value] ~= nil and r[f.value] >= floor then
                 if not best or r[f.eff] > best[f.eff] then best = r end

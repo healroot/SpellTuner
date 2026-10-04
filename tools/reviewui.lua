@@ -21,7 +21,7 @@
 local here = arg[0]:match("^(.*)/[^/]+$")
 HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua"); arg[0] = a0
+local ST = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB
 
 -- T80 (C1): the theme and the window manager after the kit, as the TBC TOC
@@ -29,7 +29,7 @@ local S = _G.STUB
 -- (UI/Dashboard_Rows.lua, UI/ContextMenu.lua -- P27), as on Forever.
 S.Load({ "UI/Style.lua", "UI/Theme_Flat.lua", "UI/EscStack.lua", "UI/Windows.lua", "UI/ContextMenu.lua",
          "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/Dashboard_Rows.lua", "UI/Dashboard_Review.lua",
-         "UI/ReplayWindow.lua" }, "SpellTuner", MD)
+         "UI/ReplayWindow.lua" }, "SpellTuner", ST)
 
 local ok, fails = 0, {}
 local function check(name, cond, detail)
@@ -43,9 +43,9 @@ _G.DEFAULT_CHAT_FRAME = { AddMessage = function(_, m) chat[#chat + 1] = m end }
 --------------------------------------------------------------------------------
 -- one single fight (the shared scripted pull), then a run of two
 --------------------------------------------------------------------------------
-local ids = dofile(here .. "/fakepull.lua")(MD, S)
-check("a single fight was recorded", #(MD.cdb.recordings or {}) == 1,
-    tostring(#(MD.cdb.recordings or {})))
+local ids = dofile(here .. "/fakepull.lua")(ST, S)
+check("a single fight was recorded", #(ST.cdb.recordings or {}) == 1,
+    tostring(#(ST.cdb.recordings or {})))
 
 local parent = CreateFrame("Frame")
 parent:SetSize(760, 420)
@@ -54,7 +54,7 @@ parent:SetSize(760, 420)
 local FrameMT = getmetatable(CreateFrame("Frame"))
 local savedJustify = rawget(FrameMT, "SetJustifyH")
 rawset(FrameMT, "SetJustifyH", function(self, j) self.justify = j end)
-local api = MD.DashboardParts.CreateReview(parent, 760)
+local api = ST.DashboardParts.CreateReview(parent, 760)
 api.frame:SetSize(760, 420)
 api.frame:Show()
 api:Render()
@@ -127,7 +127,7 @@ end)())
 --------------------------------------------------------------------------------
 -- a run: two pulls, one of them under the recording gate
 --------------------------------------------------------------------------------
-local SD = MD.SpellData
+local SD = ST.SpellData
 local PLAYER = "Player-1"
 local function ev(sub, src, dst, dstName, ...)
     S.Combat(0, sub, false, src, "src", 0, 0, dst, dstName, 0, 0, ...)
@@ -153,12 +153,12 @@ local function pull(dur, casts)
 end
 
 S.mana = 5000
-local run = MD.RunRecorder:Start("manual", "Ramparts test")
+local run = ST.RunRecorder:Start("manual", "Ramparts test")
 pull(40, 8)
 advance(6)
 pull(8, 2)          -- under the gate
 advance(2)
-MD.RunRecorder:Stop("manual")
+ST.RunRecorder:Stop("manual")
 check("the run kept both pulls", #run.pulls == 2, tostring(#run.pulls))
 
 api:Render()
@@ -215,13 +215,13 @@ check("unpinning works", run.pinned == false)
 -- the run:pull address, end to end: the tab's Play button opens the replay
 -- window on a pull inside a run
 --------------------------------------------------------------------------------
-local realValidate = MD.SimModel.Validate
-function MD.SimModel:Validate(...) local v = realValidate(self, ...); v.ok = true; return v end
+local realValidate = ST.SimModel.Validate
+function ST.SimModel:Validate(...) local v = realValidate(self, ...); v.ok = true; return v end
 ClickRow(pullRows[1]); api:Render()
 Click(ButtonNamed("Play"))
-local W = MD.Replay._state()
+local W = ST.Replay._state()
 check("Play opened the replay window", W.frame ~= nil and W.frame:IsShown())
-local head = W.frame and MD.Replay._state() and nil
+local head = W.frame and ST.Replay._state() and nil
 local headText = (function()
     for _, f in ipairs(S.allFrames) do
         local t = f.GetText and f:GetText() or ""
@@ -230,26 +230,26 @@ local headText = (function()
     return nil
 end)()
 check("the replay header names the run and the pull", headText ~= nil, headText or "not painted")
-MD.SimModel.Validate = realValidate
+ST.SimModel.Validate = realValidate
 
 -- the run strip: the pulls of the run on one line, click to play one
-local W2 = MD.Replay._state()
+local W2 = ST.Replay._state()
 check("the run strip is drawn for a pull inside a run", (function()
-    local st = MD.Replay._runStrip and MD.Replay._runStrip()
+    local st = ST.Replay._runStrip and ST.Replay._runStrip()
     return st ~= nil and st.shown == true and #st.pulls == 2
 end)(), (function()
-    local st = MD.Replay._runStrip and MD.Replay._runStrip()
+    local st = ST.Replay._runStrip and ST.Replay._runStrip()
     return st and tostring(st.shown) .. ", " .. #st.pulls or "no strip"
 end)())
 check("the strip's blocks are as wide as the pulls were long", (function()
-    local st = MD.Replay._runStrip()
+    local st = ST.Replay._runStrip()
     local a, b = st.pulls[1], st.pulls[2]
     if not (a and b) then return false end
     -- pull 1 is 40s, pull 2 is 9s: the first block must be much the wider
     return a:GetWidth() > b:GetWidth() * 2
 end)())
 check("clicking a block opens that pull", (function()
-    local st = MD.Replay._runStrip()
+    local st = ST.Replay._runStrip()
     local fn = st.pulls[2]:GetScript("OnClick")
     if not fn then return false end
     fn(st.pulls[2])
@@ -261,8 +261,8 @@ check("clicking a block opens that pull", (function()
 end)())
 
 -- the same address from the command line
-MD:OpenReplay("1:2")
-MD:OpenReplay("run 1")
+ST:OpenReplay("1:2")
+ST:OpenReplay("run 1")
 check("/md replay run 1 opens the run's first pull", (function()
     for _, f in ipairs(S.allFrames) do
         local t = f.GetText and f:GetText() or ""
@@ -270,7 +270,7 @@ check("/md replay run 1 opens the run's first pull", (function()
     end
     return false
 end)())
-MD:OpenReplay("1:2")
+ST:OpenReplay("1:2")
 check("/md replay 1:2 opens the second pull", (function()
     for _, f in ipairs(S.allFrames) do
         local t = f.GetText and f:GetText() or ""
@@ -279,7 +279,7 @@ check("/md replay 1:2 opens the second pull", (function()
     return false
 end)())
 local before = #chat
-MD:OpenReplay("1:9")
+ST:OpenReplay("1:9")
 check("a pull that does not exist says so, and does not error",
     (chat[#chat] or ""):find("no recording 1:9") ~= nil, chat[#chat])
 
@@ -309,11 +309,11 @@ do
     -- the theme a refused Coach leaves that search alone, so it is let finish
     -- here -- what follows is about the click's own search, not that one
     local drain = 0
-    while MD.coachSearch and drain < 20000 do S.Tick(0.016); drain = drain + 1 end
-    local rec1 = MD.FightRecorder:Get(1)
-    MD.SimPlanner.plans[rec1.id] = nil
-    MD.SimPlanner.forced[rec1.id] = nil
-    MD.player.isDruid = true
+    while ST.coachSearch and drain < 20000 do S.Tick(0.016); drain = drain + 1 end
+    local rec1 = ST.FightRecorder:Get(1)
+    ST.SimPlanner.plans[rec1.id] = nil
+    ST.SimPlanner.forced[rec1.id] = nil
+    ST.player.isDruid = true
     api:Render()
     local coach = ButtonNamed("Coach")
     check("a rejected fight keeps a clickable Coach, no star", coach ~= nil and coach.enabled ~= false
@@ -326,12 +326,12 @@ do
     -- T57 (P13, review Q15): the refusal is decided in the click -- no search
     -- was started -- rather than "no plan after 200 frames", which a search
     -- slower than 200 frames would also pass.
-    check("a plain click starts no coach search", MD.coachSearch == nil
+    check("a plain click starts no coach search", ST.coachSearch == nil
         and (function()
             for _, m in ipairs(chat) do if m:find("coach: searching", 1, true) then return false end end
             return true
         end)())
-    check("a plain click refuses and names a gate", MD.SimPlanner.plans[rec1.id] == nil
+    check("a plain click refuses and names a gate", ST.SimPlanner.plans[rec1.id] == nil
         and (function()
             for _, m in ipairs(chat) do if m:find("does not replay") then return true end end
             return false
@@ -339,7 +339,7 @@ do
     -- The click also cancelled the replay window's automatic coach of the
     -- pull opened above (Engine/ReviewCommands.lua: the author's coach wins);
     -- a cancelled search closes on its next frame, and its callback clears
-    -- MD.coachSearch whatever it holds by then (UI/ReplayWindow.lua
+    -- ST.coachSearch whatever it holds by then (UI/ReplayWindow.lua
     -- CoachOnOpen -- noted in docs/tasks/T57), so that frame runs here.
     S.Tick(0.016)
 
@@ -353,13 +353,13 @@ do
     end
     Click(anyway)
     local frames = 0
-    while MD.coachSearch and frames < 20000 do S.Tick(0.016); frames = frames + 1 end
-    check("the row menu's Coach anyway coaches it", anyway ~= nil and MD.SimPlanner.plans[rec1.id] ~= nil,
+    while ST.coachSearch and frames < 20000 do S.Tick(0.016); frames = frames + 1 end
+    check("the row menu's Coach anyway coaches it", anyway ~= nil and ST.SimPlanner.plans[rec1.id] ~= nil,
         string.format("menu item %s, %d frames", tostring(anyway ~= nil), frames))
-    check("and the forced coach is remembered for Play", MD.SimPlanner.forced[rec1.id] == true)
-    MD:OpenReplay(1)
-    check("so Play alone now shows both columns", MD.Replay._state().right.state ~= nil)
-    MD.SimPlanner.forced[rec1.id] = nil
+    check("and the forced coach is remembered for Play", ST.SimPlanner.forced[rec1.id] == true)
+    ST:OpenReplay(1)
+    check("so Play alone now shows both columns", ST.Replay._state().right.state ~= nil)
+    ST.SimPlanner.forced[rec1.id] = nil
 end
 
 --------------------------------------------------------------------------------
@@ -367,49 +367,49 @@ end
 --------------------------------------------------------------------------------
 Click(ButtonNamed("Fights"))
 api:Render()
-local single = MD.FightRecorder:Get(1)
-MD.SimPlanner.plans[single.id] = MD.SimPlanner.NewPlan(MD.SimPlanner.MaxRankBinds(),
+local single = ST.FightRecorder:Get(1)
+ST.SimPlanner.plans[single.id] = ST.SimPlanner.NewPlan(ST.SimPlanner.MaxRankBinds(),
     { swiftmendBelow = 0.30, directBelow = 0.45, rollStacks = 3, hotBelow = 0.80, filler = false },
-    MD.RankMath:SpellKit())
-MD.SimPlanner.forced[single.id] = nil
+    ST.RankMath:SpellKit())
+ST.SimPlanner.forced[single.id] = nil
 check("the scripted fight really does fail its gates", (function()
-    local v = MD.SimModel:Validate(single)
+    local v = ST.SimModel:Validate(single)
     return v and not v.ok
 end)())
-MD:OpenReplay(1)
-check("no suggested column on a fight that does not replay", MD.Replay._state().right.state == nil)
-MD:OpenReplay("1 force")
-check("force draws it", MD.Replay._state().right.state ~= nil)
+ST:OpenReplay(1)
+check("no suggested column on a fight that does not replay", ST.Replay._state().right.state == nil)
+ST:OpenReplay("1 force")
+check("force draws it", ST.Replay._state().right.state ~= nil)
 -- T80: under the theme the band says it, not the column title (P28)
 check("and the band says it was coached anyway", (function()
-    local band = MD.Replay._state().frame.band
+    local band = ST.Replay._state().frame.band
     local t = band and band.verdict:GetText() or ""
     return t:find("coached anyway", 1, true) ~= nil
-end)(), MD.Replay._state().frame.band and MD.Replay._state().frame.band.verdict:GetText())
+end)(), ST.Replay._state().frame.band and ST.Replay._state().frame.band.verdict:GetText())
 
 -- a forced coach is remembered, so Play alone shows it afterwards
-MD:OpenReplay(1)
-check("without force it is hidden again", MD.Replay._state().right.state == nil)
-MD.SimPlanner.forced[single.id] = true
-MD:OpenReplay(1)
-check("a fight coached with force stays forced", MD.Replay._state().right.state ~= nil)
-MD.SimPlanner.forced[single.id] = nil
+ST:OpenReplay(1)
+check("without force it is hidden again", ST.Replay._state().right.state == nil)
+ST.SimPlanner.forced[single.id] = true
+ST:OpenReplay(1)
+check("a fight coached with force stays forced", ST.Replay._state().right.state ~= nil)
+ST.SimPlanner.forced[single.id] = nil
 
 -- shift-clicking Play forced it from the tab (v0.9.6); T80: under the theme
 -- Play opens the fight as it is -- forcing is the row menu's Coach anyway
-MD:OpenReplay(1)
+ST:OpenReplay(1)
 S.shift = true
 Click(ButtonNamed("Play"))
 S.shift = false
-check("shift-click Play no longer forces (Coach anyway does)", MD.Replay._state().right.state == nil)
+check("shift-click Play no longer forces (Coach anyway does)", ST.Replay._state().right.state == nil)
 
 -- a single fight has no run strip at all
-MD:OpenReplay(1)
+ST:OpenReplay(1)
 check("no run strip for a single fight", (function()
-    local st = MD.Replay._runStrip()
+    local st = ST.Replay._runStrip()
     return st and st.shown == false and st.run == nil
 end)(), (function()
-    local st = MD.Replay._runStrip()
+    local st = ST.Replay._runStrip()
     return st and (tostring(st.shown) .. ", run " .. tostring(st.run)) or "no strip"
 end)())
 
@@ -428,13 +428,13 @@ check("no bare pipe in any painted string", #bad == 0, bad[1])
 -- way of the author pressing Coach -- theirs wins and cancels ours.
 --------------------------------------------------------------------------------
 do
-    MD.coachSearch = { Cancel = function() end }
-    MD.replayCoaching = 12345
-    MD:RunCoach("1 force")
+    ST.coachSearch = { Cancel = function() end }
+    ST.replayCoaching = 12345
+    ST:RunCoach("1 force")
     check("an explicit coach cancels the automatic one",
-        MD.replayCoaching == nil, tostring(MD.replayCoaching))
-    if MD.coachSearch and MD.coachSearch.Cancel then MD.coachSearch:Cancel() end
-    MD.coachSearch = nil
+        ST.replayCoaching == nil, tostring(ST.replayCoaching))
+    if ST.coachSearch and ST.coachSearch.Cancel then ST.coachSearch:Cancel() end
+    ST.coachSearch = nil
 end
 
 --------------------------------------------------------------------------------
@@ -444,15 +444,15 @@ end
 --------------------------------------------------------------------------------
 do
     Click(ButtonNamed("Fights"))
-    local base = MD.cdb.recordings[1]
-    local saved = MD.cdb.recordings
+    local base = ST.cdb.recordings[1]
+    local saved = ST.cdb.recordings
     local function Copy(id)
         local c = {}
         for k, v in pairs(base) do c[k] = v end
         c.id, c.pinned = id, false
         return c
     end
-    MD.cdb.recordings = { Copy((base.id or 0) + 1), Copy((base.id or 0) + 2), Copy((base.id or 0) + 3) }
+    ST.cdb.recordings = { Copy((base.id or 0) + 1), Copy((base.id or 0) + 2), Copy((base.id or 0) + 3) }
     api:Render()
     local function PinRow(n)
         for _, r in ipairs(Rows()) do
@@ -465,14 +465,14 @@ do
         return chat
     end
     local l1, l2, l3 = #PinRow(1), #PinRow(2), PinRow(3)
-    local list = MD.FightRecorder:List()
+    local list = ST.FightRecorder:List()
     local line = (l3[1] or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
     check("a third pin is refused with a line", l1 == 0 and l2 == 0 and #l3 == 1
         and list[1].pinned and list[2].pinned and not list[3].pinned
         and line:find("pin: at most 2", 1, true) ~= nil,
         string.format("pins=%s,%s,%s line=%s", tostring(list[1].pinned), tostring(list[2].pinned),
             tostring(list[3].pinned), tostring(l3[1])))
-    MD.cdb.recordings = saved
+    ST.cdb.recordings = saved
 end
 
 --------------------------------------------------------------------------------

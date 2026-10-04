@@ -22,13 +22,13 @@
 --              the pool casts to OOM are counted from (from full).
 -- The live book, its generation and its entries are never written.
 -- No class rows: a talent is already in the text.
-local _, MD = ...
+local _, ST = ...
 
-local WI = MD.WhatIf
+local WI = ST.WhatIf
 if not WI then return end
 
-local Book = MD.Book
-local RR = MD.RankRules
+local Book = ST.Book
+local RR = ST.RankRules
 
 local function LiveBonus()
     if not (Book and Book.Bonus) then return nil end
@@ -42,16 +42,16 @@ function provider.Live()
     local out = {}
     out.heal = LiveBonus()
     out.damage = WI.LiveDamage(Book) -- T124: the school on screen
-    local school = MD.ClassProfile and MD.ClassProfile.critSchool or 2
-    local crit = MD.API.SpellCritChance and MD.API.SpellCritChance(school)
+    local school = ST.ClassProfile and ST.ClassProfile.critSchool or 2
+    local crit = ST.API.SpellCritChance and ST.API.SpellCritChance(school)
     if type(crit) == "number" and crit == crit then out.crit = crit end
     local pool = Book and Book.Pool and Book:Pool()
     if type(pool) == "table" then
         out.mana = pool.max
         if type(pool.regenCasting) == "number" then out.casting = pool.regenCasting * 5 end
     end
-    local base = MD.API.ManaRegen and MD.API.ManaRegen()
-    if type(base) ~= "number" and MD.Pool and MD.Pool.LastRegen then base = MD.Pool:LastRegen() end
+    local base = ST.API.ManaRegen and ST.API.ManaRegen()
+    if type(base) ~= "number" and ST.Pool and ST.Pool.LastRegen then base = ST.Pool:LastRegen() end
     if type(base) == "number" then out.base = base * 5 end
     return out
 end

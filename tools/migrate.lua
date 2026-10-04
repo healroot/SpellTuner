@@ -15,7 +15,7 @@ _G.ManaDemonDB = {
 
 HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua"); arg[0] = a0
+local ST = dofile(here .. "/harness.lua"); arg[0] = a0
 
 local ok, fails = 0, {}
 local function check(name, cond, detail)
@@ -23,12 +23,12 @@ local function check(name, cond, detail)
     print(string.format("%-52s %s%s", name, cond and "ok" or "FAIL", detail and (" - " .. detail) or ""))
 end
 
-check("ManaDemon's saved variables became SpellTuner's", _G.SpellTunerDB ~= nil and MD.db == _G.SpellTunerDB)
-check("a setting survived", MD.db.halfLife == 42 and MD.db.locked == false)
+check("ManaDemon's saved variables became SpellTuner's", _G.SpellTunerDB ~= nil and ST.db == _G.SpellTunerDB)
+check("a setting survived", ST.db.halfLife == 42 and ST.db.locked == false)
 check("the character's recordings survived",
-    MD.db.char["Penek-Spineshatter"].recordings[1].zone == "Hellfire Peninsula")
-check("and its practice fights", MD.db.char["Penek-Spineshatter"].practice[1].id == 2)
-check("defaults were filled around what was there", MD.db.simFullHp ~= nil)
+    ST.db.char["Penek-Spineshatter"].recordings[1].zone == "Hellfire Peninsula")
+check("and its practice fights", ST.db.char["Penek-Spineshatter"].practice[1].id == 2)
+check("defaults were filled around what was there", ST.db.simFullHp ~= nil)
 check("the old global is emptied so the client stops writing it", _G.ManaDemonDB == nil)
 check("/md still answers, /st is the name now", _G.SLASH_SPELLTUNER2 == "/st" and _G.SLASH_SPELLTUNER3 == "/md")
 

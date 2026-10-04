@@ -9,8 +9,8 @@
 -- placeholders with measurement and the header says which is in use. A plan
 -- built on invented damage is a plan about an invented fight, and the window
 -- should never let you forget which one you are looking at.
-local _, MD = ...
-local UI = MD.UI
+local _, ST = ...
+local UI = ST.UI
 
 local WIDTH, HEIGHT = 640, 470
 local frame
@@ -20,15 +20,15 @@ local derived = nil            -- SimPlanner.FromRecordings result, or nil
 local lastResult, searchHandle = nil, nil
 local resultFS, headerFS, provFS
 
--- "2.3k" from 1000 on (MD.Util.K; T60, P16, review A9) -- except below zero.
+-- "2.3k" from 1000 on (ST.Util.K; T60, P16, review A9) -- except below zero.
 -- This window's K has always printed string.format("%d", n + 0.5), which
--- truncates toward zero (-12 -> "-11"), where MD.Util.K rounds (-12 -> "-12");
+-- truncates toward zero (-12 -> "-11"), where ST.Util.K rounds (-12 -> "-12");
 -- the two agree on every n >= 0. Mana used (SP.ManaUsed) goes below zero when
 -- a plan regenerates more than it spends from a start below full, so the old
 -- rule is kept there, byte for byte, until a decision says otherwise.
 local function K(n)
     if type(n) == "number" and n < 0 then return string.format("%d", n + 0.5) end
-    return MD.Util.K(n)
+    return ST.Util.K(n)
 end
 
 --------------------------------------------------------------------------------
@@ -36,7 +36,7 @@ end
 -- placeholder damage, per role, and the header says so.
 --------------------------------------------------------------------------------
 local function BuildScenario()
-    local P = MD.SimPresets
+    local P = ST.SimPresets
     local targets = P.BuildTargets(partyID)
     local perTarget = nil
     if derived then
@@ -71,11 +71,11 @@ local function Render(lines)
 end
 
 local function Run()
-    local SP, SM = MD.SimPlanner, MD.SimModel
+    local SP, SM = ST.SimPlanner, ST.SimModel
     -- T99 (docs/SPEC-next.md 4.4): the class profile's simulate capability
-    local canSim, why = MD.ClassProfile:Can("simulate")
+    local canSim, why = ST.ClassProfile:Can("simulate")
     if not canSim then
-        Render({ MD.Profiles.Refusal("simulate", why, "Simulation") .. "." })
+        Render({ ST.Profiles.Refusal("simulate", why, "Simulation") .. "." })
         return
     end
     if not (SP and SM) then
@@ -86,7 +86,7 @@ local function Run()
         searchHandle:Cancel()
         searchHandle = nil
     end
-    local kit = MD.RankMath:SpellKit()
+    local kit = ST.RankMath:SpellKit()
     local scenario = BuildScenario()
     scenario.kit = kit
 
@@ -118,17 +118,17 @@ local function Run()
                     best.swiftmendBelow * 100 + 0.5)
             end
             if not best.noDirect and d then
-                local sd = MD.SpellData.spells[d]
+                local sd = ST.SpellData.spells[d]
                 out[#out + 1] = string.format("  2. Under %d%%: %s R%d",
-                    best.directBelow * 100 + 0.5, MD.SpellData.families[sd.family].label, sd.rank)
+                    best.directBelow * 100 + 0.5, ST.SpellData.families[sd.family].label, sd.rank)
             end
             if best.rollStacks > 0 then
                 out[#out + 1] = string.format("  3. Keep Lifebloom x%d rolling on the tank", best.rollStacks)
             end
             if best.binds.Rejuvenation then
-                local sd = MD.SpellData.spells[best.binds.Rejuvenation]
+                local sd = ST.SpellData.spells[best.binds.Rejuvenation]
                 out[#out + 1] = string.format("  4. Under %d%% without Rejuvenation: %s R%d",
-                    best.hotBelow * 100 + 0.5, MD.SpellData.families[sd.family].label, sd.rank)
+                    best.hotBelow * 100 + 0.5, ST.SpellData.families[sd.family].label, sd.rank)
             end
             out[#out + 1] = string.format("  5. Otherwise %s (%d%% of the fight)",
                 best.filler and "Lifebloom on the tank" or "wait",
@@ -140,7 +140,7 @@ local function Run()
 
             -- Monte Carlo, synthetic mode only: how often does this plan lose
             -- somebody when the fight is not exactly average?
-            local mc = MD.SimPlanner.MonteCarlo(scenario, best, derived)
+            local mc = ST.SimPlanner.MonteCarlo(scenario, best, derived)
             if mc then
                 out[#out + 1] = ""
                 out[#out + 1] = string.format(
@@ -187,11 +187,11 @@ local function Build()
         return highlight
     end
 
-    Group("party", MD.SimPresets.PARTY, 14, -34, 160,
+    Group("party", ST.SimPresets.PARTY, 14, -34, 160,
         function() return partyID end, function(id) partyID = id end)
-    Group("incoming damage", MD.SimPresets.DAMAGE, 186, -34, 190,
+    Group("incoming damage", ST.SimPresets.DAMAGE, 186, -34, 190,
         function() return damageID end, function(id) damageID = id; derived = nil end)
-    Group("situation", MD.SimPresets.SITUATION, 388, -34, 170,
+    Group("situation", ST.SimPresets.SITUATION, 388, -34, 170,
         function() return situationID end, function(id) situationID = id end)
 
     local durSlider = UI.CreateSlider("Fight length (s)", frame, 20, 300, 160, 10, function(v)
@@ -207,8 +207,8 @@ local function Build()
     fromRecBtn:SetPoint("TOPLEFT", frame, "TOPLEFT", 210, -200)
     fromRecBtn:SetScript("OnClick", function()
         local zone = GetRealZoneText and GetRealZoneText() or nil
-        derived = MD.SimPlanner and MD.SimPlanner.FromRecordings(zone)
-        if not derived then derived = MD.SimPlanner and MD.SimPlanner.FromRecordings(nil) end
+        derived = ST.SimPlanner and ST.SimPlanner.FromRecordings(zone)
+        if not derived then derived = ST.SimPlanner and ST.SimPlanner.FromRecordings(nil) end
         if provFS then
             provFS:SetText(derived
                 and ("|cff99dd99damage measured: " .. derived.provenance .. "|r")
@@ -259,18 +259,18 @@ end
 
 -- The dashboard adopts the panel into its content area once, when its
 -- navigation builds the Simulate group.
-function MD:RefreshSimHeader()
+function ST:RefreshSimHeader()
     if not headerFS then return end
     -- T99 (4.4): the simulate capability; a refusal says why after the fight
-    local canSim, why = MD.ClassProfile:Can("simulate")
+    local canSim, why = ST.ClassProfile:Can("simulate")
     headerFS:SetText(string.format("|cffffcc00%s, %ds%s|r",
         (function()
-            for _, p in ipairs(MD.SimPresets.PARTY) do if p.id == partyID then return p.label end end
+            for _, p in ipairs(ST.SimPresets.PARTY) do if p.id == partyID then return p.label end end
             return partyID
-        end)(), duration, canSim and "" or ("  (" .. MD.Profiles.Refusal("simulate", why, "Simulation") .. ")")))
+        end)(), duration, canSim and "" or ("  (" .. ST.Profiles.Refusal("simulate", why, "Simulation") .. ")")))
 end
 
-function MD:AdoptSimPanel(parent)
+function ST:AdoptSimPanel(parent)
     Build()
     frame:SetParent(parent)
     frame:ClearAllPoints()
@@ -281,19 +281,19 @@ end
 
 -- /md sim: select the group. It opens the window if it is closed, and toggles
 -- the window only when Simulate is already what is showing.
-function MD:ToggleSimWindow()
-    if MD.SelectView then
-        local g = MD.SelectedView and MD:SelectedView()
-        if g == "simulate" and MD.ToggleDashboard then MD:ToggleDashboard() return end
-        MD:SelectView("simulate", "build")
-        MD:RefreshSimHeader()
+function ST:ToggleSimWindow()
+    if ST.SelectView then
+        local g = ST.SelectedView and ST:SelectedView()
+        if g == "simulate" and ST.ToggleDashboard then ST:ToggleDashboard() return end
+        ST:SelectView("simulate", "build")
+        ST:RefreshSimHeader()
         return
     end
     Build()
     if frame:IsShown() then
         frame:Hide()
     else
-        MD:RefreshSimHeader()
+        ST:RefreshSimHeader()
         frame:Show()
     end
 end

@@ -7,9 +7,9 @@
 -- The setup is per character (cdb.practiceSetup: health depends on level) and
 -- the bindings are account-wide (db.practiceBinds: your hands do not change).
 -- Every default number is a placeholder and the panel says so.
-local _, MD = ...
-local UI = MD.UI
-MD.DashboardParts = MD.DashboardParts or {}
+local _, ST = ...
+local UI = ST.UI
+ST.DashboardParts = ST.DashboardParts or {}
 
 local ROW_H = 20
 
@@ -32,10 +32,10 @@ local function Title(text)
 end
 
 -- T40: every practice pane built, so /st binds can find the one inside the
--- host window (the sheet sits on it; T80: MD.Win.host, the window manager's)
+-- host window (the sheet sits on it; T80: ST.Win.host, the window manager's)
 local hosts = setmetatable({}, { __mode = "k" })
-function MD.DashboardParts.PracticeHost()
-    local w = MD.Win.host
+function ST.DashboardParts.PracticeHost()
+    local w = ST.Win.host
     local main = w and w.frame
     if not main then return nil end
     for pane in pairs(hosts) do
@@ -91,8 +91,8 @@ local function Field(parent, width, get, set, how, tip)
     return eb
 end
 
-function MD.DashboardParts.CreatePractice(parent, width)
-    local PR = MD.Practice
+function ST.DashboardParts.CreatePractice(parent, width)
+    local PR = ST.Practice
     local pane = CreateFrame("Frame", nil, parent)
     pane:Hide()
     local api = { frame = pane }
@@ -100,8 +100,8 @@ function MD.DashboardParts.CreatePractice(parent, width)
     hosts[pane] = true
 
     local function Setup()
-        MD.cdb.practiceSetup = MD.cdb.practiceSetup or PR.DefaultSetup("5")
-        return MD.cdb.practiceSetup
+        ST.cdb.practiceSetup = ST.cdb.practiceSetup or PR.DefaultSetup("5")
+        return ST.cdb.practiceSetup
     end
 
     local intro = pane:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
@@ -130,7 +130,7 @@ function MD.DashboardParts.CreatePractice(parent, width)
         local old = Setup()
         local new = PR.DefaultSetup(id)
         new.dur, new.startHp, new.otherHealing, new.aoe = old.dur, old.startHp, old.otherHealing, old.aoe
-        MD.cdb.practiceSetup = new
+        ST.cdb.practiceSetup = new
         api:Render()
     end)
 
@@ -338,13 +338,13 @@ function MD.DashboardParts.CreatePractice(parent, width)
         "or import them from Cell or Clique.")
     -- T40: the sheet on this pane (6.4); T80 (C1): on both lines
     bindBtn:SetScript("OnClick", function()
-        if MD.ShowBindings then MD:ShowBindings(pane) end
+        if ST.ShowBindings then ST:ShowBindings(pane) end
     end)
     if summary then bindBtn:SetPoint("LEFT", summary.fs, "RIGHT", 8, 0) end
 
     local function BindLines()
         PR.EnsureKit()
-        local SD = MD.SpellData
+        local SD = ST.SpellData
         local out = {}
         for _, b in ipairs(PR.Binds()) do
             local id = PR.SpellFor(b)
@@ -369,7 +369,7 @@ function MD.DashboardParts.CreatePractice(parent, width)
     -- T40: the summary line and its hover (the theme only)
     local function RenderSummary()
         PR.EnsureKit()
-        local SD = MD.SpellData
+        local SD = ST.SpellData
         local binds = PR.Binds()
         local accent, white = UI.Hex("accent"), UI.Hex("text")
         local tips = { Title("What your presses cast") }
@@ -422,7 +422,7 @@ function MD.DashboardParts.CreatePractice(parent, width)
             statusFS:SetText("|cffff9966No healing spell in your spellbook for practice to cast.|r")
             return
         end
-        if MD.OpenPractice then MD:OpenPractice(PR.CopySetup(st), st.fixedSeed) end
+        if ST.OpenPractice then ST:OpenPractice(PR.CopySetup(st), st.fixedSeed) end
     end)
 
     ----------------------------------------------------------------------------
@@ -520,16 +520,16 @@ function MD.DashboardParts.CreatePractice(parent, width)
         end
         total = total * (1 - (st.otherHealing or 0))
         -- T99 (docs/SPEC-next.md 4.4): the class profile's practice capability
-        local canCast, why = MD.ClassProfile:Can("practice")
+        local canCast, why = ST.ClassProfile:Can("practice")
         if canCast then startBtn:Enable() else startBtn:Disable() end
         statusFS:SetText(canCast and string.format(
             UI.Hex("muted") .. "about %d damage a second for you to heal, over %d:%02d|r", total + 0.5,
             math.floor((st.dur or 0) / 60), (st.dur or 0) % 60)
-            or ("|cffff9966" .. MD.Profiles.Refusal("practice", why, "Practice") .. "|r"))
+            or ("|cffff9966" .. ST.Profiles.Refusal("practice", why, "Practice") .. "|r"))
     end
 
     -- the bindings window writes db.practiceBinds; this is how the summary hears
-    function MD:PracticeBindsChanged() api:Render() end
+    function ST:PracticeBindsChanged() api:Render() end
 
     pane:SetScript("OnShow", function() api:Render() end)
     return api

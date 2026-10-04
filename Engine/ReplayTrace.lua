@@ -15,10 +15,10 @@
 -- are in the state a fresh machine reports and they never fire onEvent. The
 -- window paints from state every frame, so nothing is lost; what is avoided
 -- is a flash for something that happened before the window opened.
-local _, MD = ...
+local _, ST = ...
 
 local RT = {}
-MD.ReplayTrace = RT
+ST.ReplayTrace = RT
 
 -- Callback kinds beyond SM.TK: recorded damage and foreign heals are not in
 -- the trace (identical in both columns by construction) but the window still
@@ -50,7 +50,7 @@ end
 local function HotEnd(trace, i, tgt, fi)
     -- the moment this HoT instance stops: the next HOT_END on (tgt, fi), or the
     -- next HOT that replaces it (a refresh drops the old instance)
-    local TK = MD.SimModel.TK
+    local TK = ST.SimModel.TK
     local e = trace.ev
     for j = i + 1, trace.nEv do
         if e.tgt[j] == tgt and e.a[j] == fi then
@@ -67,7 +67,7 @@ end
 -- A recorded CAST_START carries no cast time (the recorder does not know it);
 -- the CAST or CANCEL that follows for the same spell does, exactly.
 local function CastEnd(trace, i, spellID)
-    local TK = MD.SimModel.TK
+    local TK = ST.SimModel.TK
     local e = trace.ev
     for j = i + 1, trace.nEv do
         local k = e.kind[j]
@@ -78,7 +78,7 @@ local function CastEnd(trace, i, spellID)
 end
 
 function State:Apply(i, fire)
-    local TK = MD.SimModel.TK
+    local TK = ST.SimModel.TK
     local e = self.trace.ev
     local kind, tgt, a, b, t = e.kind[i], e.tgt[i], e.a[i], e.b[i], e.t[i]
     if kind == TK.CAST_START then
@@ -93,7 +93,7 @@ function State:Apply(i, fire)
         self.lastReasonI = i
         -- T90: kept per family, as the engine keeps it (SM.CooldownOf reads
         -- this state's scenario kit), so one rank's cast blocks every rank
-        local fam, cd = MD.SimModel.CooldownOf(self, a)
+        local fam, cd = ST.SimModel.CooldownOf(self, a)
         if cd then self.cdUntil[fam] = t + cd end
     elseif kind == TK.CANCEL then
         self.casting = nil
@@ -143,7 +143,7 @@ end
 -- same target, or the end of the fight. Known in full because the recording
 -- is, which is what lets the icon sweep exactly.
 local function AuraEnd(sev, j, tgt, x)
-    local K = MD.SimModel.K
+    local K = ST.SimModel.K
     for k = j + 1, #sev.t do
         if sev.kind[k] == K.AURA and sev.tgt[k] == tgt and sev.x[k] == x and (sev.amt[k] or 0) < 0 then
             return sev.t[k]
@@ -156,7 +156,7 @@ end
 local function ApplyAura(self, sev, j, tgt, amt, x, t)
     local row = self.auras[tgt]
     if not row then return end
-    local FLAG = MD.SimModel.AURA_BUFF_FLAG
+    local FLAG = ST.SimModel.AURA_BUFF_FLAG
     local buff = x >= FLAG
     local spellID = buff and (x - FLAG) or x
     if amt and amt < 0 then
@@ -213,7 +213,7 @@ local function Cross(self, t0, t1, fire)
     local sc = self.scenario
     local sev = sc and sc.ev
     if sev then
-        local K = MD.SimModel.K
+        local K = ST.SimModel.K
         local j, m = self.dmgI, #sev.t
         while j <= m and sev.t[j] <= t1 do
             local k = sev.kind[j]
@@ -283,13 +283,13 @@ function State:Hot(ti, fi)
 end
 
 -- T96 (docs/SPEC-next.md 2.1): what the trace's HoT slots MEAN -- the slots of
--- this run's kit's own profile (SM.HotSlots: MD.Profiles.ForKit of the
+-- this run's kit's own profile (SM.HotSlots: ST.Profiles.ForKit of the
 -- scenario's kit, the druid's when it names none), never the logged-in
 -- player's. `slots.name[fi]` is the family a slot holds, `slots.index[family]`
 -- its slot, `slots.lifebloom` the slot that stacks and blooms. Read only.
 function State:HotSlots()
     local sc = self.scenario
-    return MD.SimModel.HotSlots(sc and sc.kit)
+    return ST.SimModel.HotSlots(sc and sc.kit)
 end
 
 -- The family a HoT slot of this trace holds (nil for none).
@@ -330,7 +330,7 @@ end
 -- When this spell's cooldown ends (nil if it is not on cooldown at st.t).
 -- T90: keyed by the spell's family (SM.CooldownOf); the signature is unchanged.
 function State:CooldownUntil(spellID)
-    local until_ = self.cdUntil[(MD.SimModel.CooldownOf(self, spellID))]
+    local until_ = self.cdUntil[(ST.SimModel.CooldownOf(self, spellID))]
     if until_ and self.t < until_ then return until_ end
     return nil
 end
@@ -339,7 +339,7 @@ end
 -- (a kit entry's `cooldown`, else SM.SPELL_CD: Swiftmend) -- everything else is
 -- always ready. Per family since T90.
 function State:Ready(spellID)
-    local until_ = self.cdUntil[(MD.SimModel.CooldownOf(self, spellID))]
+    local until_ = self.cdUntil[(ST.SimModel.CooldownOf(self, spellID))]
     return not until_ or self.t >= until_
 end
 
@@ -348,7 +348,7 @@ function State:Damage(ti, window)
     local sc = self.scenario
     local sev = sc and sc.ev
     if not sev then return 0 end
-    local K = MD.SimModel.K
+    local K = ST.SimModel.K
     local sum, j = 0, self.dmgI - 1
     local floor = self.t - (window or 0.4)
     while j >= 1 and sev.t[j] > floor do

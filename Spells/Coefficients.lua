@@ -17,13 +17,13 @@
 -- as before this file (tools/bookshapecheck.lua's golden): each function does
 -- the arithmetic the callers did, in the same order.
 --
--- Pure: Lua's library only. No client call, no MD.db, no frame. Every main
+-- Pure: Lua's library only. No client call, no ST.db, no frame. Every main
 -- TOC: TBC before Engine/RankMath.lua and Engine/DamageMath.lua (which call it
 -- at run time), Forever before Spells/Book.lua.
-local _, MD = ...
+local _, ST = ...
 
-MD.Coefficients = MD.Coefficients or {}
-local Coef = MD.Coefficients
+ST.Coefficients = ST.Coefficients or {}
+local Coef = ST.Coefficients
 
 -- A heal that lands on the whole party carries half the single-target
 -- coefficient (Prayer of Healing, Circle of Healing). VERIFY.

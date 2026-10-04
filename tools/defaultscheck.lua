@@ -10,26 +10,26 @@
 --   1. every registered default equals the literal it replaced (the values
 --      were Core_TBC.lua's DEFAULTS, Commands_Forever.lua's REPLAY_DEFAULTS
 --      and the inline `or 0.85` fallbacks -- the table OLD below, copied from
---      the parent commit 3261856), in MD.DEFAULTS, in a fresh MD.db and
---      through MD:Setting with the key absent from the db;
+--      the parent commit 3261856), in ST.DEFAULTS, in a fresh ST.db and
+--      through ST:Setting with the key absent from the db;
 --   2. a gate keeps its setting name and provenance and its `default` is read
 --      from the registry, not kept as a second copy;
 --   3. each key is declared in exactly one file on the flavour's TOCs -- its
 --      owner; since wave 8's merge Commands_Forever.lua (whose REPLAY_DEFAULTS
 --      once repeated them) declares none of them;
---   4. every setting a file on the flavour's TOCs reads -- MD.db.<key>,
---      MD.db["<key>"], MD:Setting("<key>"), a gate's setting name -- found by
+--   4. every setting a file on the flavour's TOCs reads -- ST.db.<key>,
+--      ST.db["<key>"], ST:Setting("<key>"), a gate's setting name -- found by
 --      scanning the sources, has a default once every module has loaded (the
 --      few that have none by design are listed in NO_DEFAULT with the reason);
 --   5. TBC: on a fresh database the Options sliders show 85 and 30, and still
---      do with the two keys absent from the db (they read MD:Setting).
+--      do with the two keys absent from the db (they read ST:Setting).
 --   T80 (C1): TBC: every db.ui key (fontOffset, scale, combat, escStack, win)
 --      has a default, declared by the theme, the ESC stack and the manager.
 HARNESS_FLAVOUR = { "tbc", "forever" }
 
 local here = arg[0]:match("^(.*)/[^/]+$")
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua"); arg[0] = a0
+local ST = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB
 local T = dofile(here .. "/lib/t.lua")
 local check = T.check
@@ -117,45 +117,45 @@ if flavour == "tbc" then
         if not loaded[rel] and rel:sub(1, 13) ~= "Integrations/" then rest[#rest + 1] = rel end
     end
     -- UI/Style.lua first, so its slider constructor can be watched
-    S.Load({ rest[1] }, "SpellTuner", MD)
+    S.Load({ rest[1] }, "SpellTuner", ST)
     uiStyle = rest[1] == "UI/Style.lua"
-    local Create = MD.UI.CreateSlider
-    MD.UI.CreateSlider = function(name, ...)
+    local Create = ST.UI.CreateSlider
+    ST.UI.CreateSlider = function(name, ...)
         local s = Create(name, ...)
         sliders[name] = s
         return s
     end
     local others = {}
     for i = 2, #rest do others[#others + 1] = rest[i] end
-    local ran, err = pcall(S.Load, others, "SpellTuner", MD)
+    local ran, err = pcall(S.Load, others, "SpellTuner", ST)
     check("tbc: every UI/ file on the TOC loads under the stub", ran and uiStyle, err)
 else
-    local ran, err = pcall(MD.SetModule, MD, "SpellTuner_Practice", true)
-    check("forever: the three modules load", ran and MD.SimModel ~= nil and MD.SimModel.GATES.meterOwn ~= nil, err)
+    local ran, err = pcall(ST.SetModule, ST, "SpellTuner_Practice", true)
+    check("forever: the three modules load", ran and ST.SimModel ~= nil and ST.SimModel.GATES.meterOwn ~= nil, err)
 end
-local SM = MD.SimModel
+local SM = ST.SimModel
 
 --------------------------------------------------------------------------------
 T.section("1. every registered default equals the literal it replaced")
 --------------------------------------------------------------------------------
 for _, k in ipairs(Sorted(OLD)) do
     local old = OLD[k]
-    local reg = MD.DEFAULTS and MD.DEFAULTS[k]
-    local fresh = MD.db[k]
-    local saved = MD.db[k]
-    MD.db[k] = nil
-    local viaSetting = MD:Setting(k)
-    MD.db[k] = saved
-    check(k .. " = " .. tostring(old) .. " (registered, fresh db, MD:Setting)",
+    local reg = ST.DEFAULTS and ST.DEFAULTS[k]
+    local fresh = ST.db[k]
+    local saved = ST.db[k]
+    ST.db[k] = nil
+    local viaSetting = ST:Setting(k)
+    ST.db[k] = saved
+    check(k .. " = " .. tostring(old) .. " (registered, fresh db, ST:Setting)",
         reg == old and fresh == old and viaSetting == old,
-        string.format("registered %s, fresh db %s, MD:Setting with the key absent %s",
+        string.format("registered %s, fresh db %s, ST:Setting with the key absent %s",
             tostring(reg), tostring(fresh), tostring(viaSetting)))
 end
 do
     -- one owner: a second declaration with another value is refused
-    local ran = pcall(MD.RegisterDefaults, MD, { simFullHp = 0.9 })
-    check("a second default for simFullHp (0.9) is refused", not ran and MD:Setting("simFullHp") == 0.85)
-    local same = pcall(MD.RegisterDefaults, MD, { simFloor = 0.30 })
+    local ran = pcall(ST.RegisterDefaults, ST, { simFullHp = 0.9 })
+    check("a second default for simFullHp (0.9) is refused", not ran and ST:Setting("simFullHp") == 0.85)
+    local same = pcall(ST.RegisterDefaults, ST, { simFloor = 0.30 })
     check("the same default declared again is accepted", same)
 end
 
@@ -174,10 +174,10 @@ end
 do
     -- the gate's default follows the registry, not a literal of its own
     local g = SM.GATES.manaMean
-    local keep = MD.DEFAULTS.simGateManaMean
-    MD.DEFAULTS.simGateManaMean = 0.03
+    local keep = ST.DEFAULTS.simGateManaMean
+    ST.DEFAULTS.simGateManaMean = 0.03
     local followed = g.default == 0.03
-    MD.DEFAULTS.simGateManaMean = keep
+    ST.DEFAULTS.simGateManaMean = keep
     check("gate manaMean's default is the registry's value", followed and g.default == keep)
 end
 
@@ -253,17 +253,17 @@ local function Read(key, rel, i)
 end
 for _, rel in ipairs(tocFiles) do
     for i, line in ipairs(CodeLines(rel)) do
-        -- MD.db.<key>, except where it is the target of a plain assignment
+        -- ST.db.<key>, except where it is the target of a plain assignment
         local pos = 1
         while true do
-            local a, b, key = line:find("MD%.db%.([%a_][%w_]*)", pos)
+            local a, b, key = line:find("ST%.db%.([%a_][%w_]*)", pos)
             if not a then break end
             local after = line:sub(b + 1)
             if not after:match("^%s*=[^=]") and not after:match("^%s*=$") then Read(key, rel, i) end
             pos = b + 1
         end
-        for key in line:gmatch('MD%.db%[%s*"([%w_]+)"%s*%]') do Read(key, rel, i) end
-        for key in line:gmatch('MD:Setting%(%s*"([%w_]+)"%s*%)') do Read(key, rel, i) end
+        for key in line:gmatch('ST%.db%[%s*"([%w_]+)"%s*%]') do Read(key, rel, i) end
+        for key in line:gmatch('ST:Setting%(%s*"([%w_]+)"%s*%)') do Read(key, rel, i) end
         for key in line:gmatch('SM%.Gate%(%s*"([%w_]+)"') do Read(key, rel, i) end
         for key in line:gmatch('setting%s*=%s*"([%w_]+)"') do Read(key, rel, i) end
     end
@@ -271,10 +271,10 @@ end
 local missing, counted = {}, 0
 for _, k in ipairs(Sorted(readIn)) do
     counted = counted + 1
-    local saved = MD.db[k]
-    MD.db[k] = nil
-    local d = MD:Setting(k)
-    MD.db[k] = saved
+    local saved = ST.db[k]
+    ST.db[k] = nil
+    local d = ST:Setting(k)
+    ST.db[k] = saved
     if d == nil and not replayDeclared[k] and not NO_DEFAULT[k] then
         missing[#missing + 1] = k .. " (" .. readIn[k] .. ")"
     end
@@ -295,7 +295,7 @@ do
     local left = {}
     for _, rel in ipairs(tocFiles) do
         for i, line in ipairs(CodeLines(rel)) do
-            for key in line:gmatch("MD%.db%.([%a_][%w_]*)[%)%s]*or%s+[%d%.]+") do
+            for key in line:gmatch("ST%.db%.([%a_][%w_]*)[%)%s]*or%s+[%d%.]+") do
                 if OLD[key] ~= nil then left[#left + 1] = rel .. ":" .. i .. " " .. key end
             end
         end
@@ -306,7 +306,7 @@ do
     for _, l in ipairs(left) do
         if owned[l:match("^(%S+):")] then inOwned[#inOwned + 1] = l end
     end
-    check("no `MD.db.<key> or <literal>` left in the engine, planner, window, gates or options",
+    check("no `ST.db.<key> or <literal>` left in the engine, planner, window, gates or options",
         #inOwned == 0, table.concat(inOwned, "; "))
 end
 
@@ -317,8 +317,8 @@ end
 -- UI/Windows.lua (scale, combat, win) -- so TBC has every key of it.
 --------------------------------------------------------------------------------
 if flavour == "tbc" then
-    local u = MD.db.ui
-    local d = MD.DEFAULTS and MD.DEFAULTS.ui
+    local u = ST.db.ui
+    local d = ST.DEFAULTS and ST.DEFAULTS.ui
     local function has(t)
         return type(t) == "table" and t.fontOffset == 0 and t.scale == 1 and t.combat == "hide"
             and t.escStack == true and type(t.win) == "table"
@@ -344,10 +344,10 @@ if flavour == "tbc" then
     -- the pane is built on its first showing, so the sliders are looked up after.
     -- T119 (SPEC-one-ui 7, re-based): the two sliders are Settings -> Review's
     -- RECORDING (UI/Settings.lua over UI/Settings_TBC.lua's rows); the view is
-    -- built once and re-read by MD.Settings.Refresh, as the dashboard's onShow
+    -- built once and re-read by ST.Settings.Refresh, as the dashboard's onShow
     -- does, instead of firing ShowOptionsTab.
     local function Show()
-        local MS = MD.Settings
+        local MS = ST.Settings
         if not MS.panes.review then
             local content = CreateFrame("Frame", nil, UIParent)
             content:SetSize(736, 520)
@@ -360,15 +360,15 @@ if flavour == "tbc" then
     local f1, d1 = Show()
     check("fresh db: Full health shows 85, Danger 30", f1 == 85 and d1 == 30,
         tostring(f1) .. ", " .. tostring(d1))
-    local sf, sd = MD.db.simFullHp, MD.db.simFloor
-    MD.db.simFullHp, MD.db.simFloor = nil, nil
+    local sf, sd = ST.db.simFullHp, ST.db.simFloor
+    ST.db.simFullHp, ST.db.simFloor = nil, nil
     local f2, d2 = Show()
     check("the two keys absent from the db: still 85 and 30", f2 == 85 and d2 == 30,
         tostring(f2) .. ", " .. tostring(d2))
-    MD.db.simFullHp, MD.db.simFloor = 0.9, 0.25
+    ST.db.simFullHp, ST.db.simFloor = 0.9, 0.25
     local f3, d3 = Show()
     check("a stored value wins: 90 and 25", f3 == 90 and d3 == 25, tostring(f3) .. ", " .. tostring(d3))
-    MD.db.simFullHp, MD.db.simFloor = sf, sd
+    ST.db.simFullHp, ST.db.simFloor = sf, sd
 else
     check("forever: no Settings_TBC on this TOC (the sliders are TBC's)", (function()
         for _, rel in ipairs(tocFiles) do if rel == "UI/Settings_TBC.lua" then return false end end

@@ -19,10 +19,10 @@
 -- rises, observed and predicted rise together, and anything that accumulates
 -- is a model error. Reset only when the talent build changes (the model
 -- itself changed) or by hand.
-local _, MD = ...
+local _, ST = ...
 
 local CAL = {}
-MD.Calibration = CAL
+ST.Calibration = CAL
 
 -- Alert when |ratio - 1| exceeds this with at least MIN_N events. The Idol of
 -- Rejuvenation case was 3.2%; a 5% line would have missed the one real
@@ -37,7 +37,7 @@ local FORM_GRACE = 2
 -- best fit is still off by more than this, the tick is skipped as ambiguous.
 local STACK_FIT = 0.15
 
-CAL.data = nil          -- bound to MD.cdb.calibration at MD_READY
+CAL.data = nil          -- bound to ST.cdb.calibration at MD_READY
 local alerted = {}      -- key -> true, once per session
 local lastFormChange = -math.huge
 local predCache = {}    -- spellID -> { t, pred }
@@ -52,7 +52,7 @@ local function Prediction(spellID)
     local now = GetTime()
     local c = predCache[spellID]
     if c and now - c.t < 1 then return c.pred end
-    local pred = MD.RankMath and MD.RankMath:EventPrediction(spellID)
+    local pred = ST.RankMath and ST.RankMath:EventPrediction(spellID)
     predCache[spellID] = { t = now, pred = pred }
     return pred
 end
@@ -73,7 +73,7 @@ end
 -- combat log's critical flag; kind is "tick" | "direct" | "bloom".
 function CAL:Observe(spellID, kind, amount, crit, destGUID)
     if not CAL.data or not spellID or not amount or amount <= 0 then return end
-    local s = MD.SpellData and MD.SpellData.spells[MD.SpellData:Resolve(spellID)]
+    local s = ST.SpellData and ST.SpellData.spells[ST.SpellData:Resolve(spellID)]
     if not s then return end
     if GetTime() - lastFormChange < FORM_GRACE then
         CAL.data.skippedForm = (CAL.data.skippedForm or 0) + 1
@@ -130,17 +130,17 @@ end
 function CAL:CheckDrift(spellID, kind, st)
     local ratio = st.obs / st.pred
     local key = spellID .. ":" .. kind
-    MD:Debug("calib", "%s %s: ratio %.3f over %d events (obs mean %.1f, model %.1f)",
+    ST:Debug("calib", "%s %s: ratio %.3f over %d events (obs mean %.1f, model %.1f)",
         GetSpellInfo(spellID) or spellID, kind, ratio, st.n, st.obs / st.n, st.pred / st.n)
     if math.abs(ratio - 1) > ALERT_REL and not alerted[key]
-        and not (MD.db and MD.db.calibAlerts == false) then
+        and not (ST.db and ST.db.calibAlerts == false) then
         alerted[key] = true
-        local s = MD.SpellData.spells[MD.SpellData:Resolve(spellID)]
+        local s = ST.SpellData.spells[ST.SpellData:Resolve(spellID)]
         local msg = string.format("|cffffcc00calibration:|r %s R%d %s is healing %.1f%% %s the model over %d events.",
             GetSpellInfo(spellID) or "?", s and s.rank or 0, kind, math.abs(ratio - 1) * 100,
             ratio > 1 and "above" or "below", st.n)
         msg = msg .. CAL:RelicHint(spellID, kind, st)
-        MD:Print(msg .. " /md calibrate for the table.")
+        ST:Print(msg .. " /md calibrate for the table.")
     end
 end
 
@@ -153,7 +153,7 @@ end
 -- ticks. This turns "Rejuvenation is 3.2% high" into "the idol is worth +50,
 -- the table says +87" -- the exact edit to Data/SpellData.lua.
 function CAL:RelicHint(spellID, kind, st)
-    local SD = MD.SpellData
+    local SD = ST.SpellData
     local relic, itemID, itemName = SD:Relic()
     local s = SD.spells[SD:Resolve(spellID)]
     if not s then return "" end
@@ -205,7 +205,7 @@ function CAL:Report()
     for k in pairs(CAL.data.stats) do keys[#keys + 1] = k end
     table.sort(keys, function(a, b)
         local ia, ka = a:match("^(%d+):(%a+)$"); local ib, kb = b:match("^(%d+):(%a+)$")
-        local sa, sb = MD.SpellData.spells[tonumber(ia)], MD.SpellData.spells[tonumber(ib)]
+        local sa, sb = ST.SpellData.spells[tonumber(ia)], ST.SpellData.spells[tonumber(ib)]
         local fa, fb = sa and sa.family or a, sb and sb.family or b
         if fa ~= fb then return fa < fb end
         if ia ~= ib then return (sa and sa.rank or 0) < (sb and sb.rank or 0) end
@@ -215,7 +215,7 @@ function CAL:Report()
     for _, k in ipairs(keys) do
         local id, kind = k:match("^(%d+):(%a+)$")
         local st = CAL.data.stats[k]
-        local s = MD.SpellData.spells[tonumber(id)]
+        local s = ST.SpellData.spells[tonumber(id)]
         local label = string.format("%s R%d", GetSpellInfo(tonumber(id)) or id, s and s.rank or 0)
         if st.n < 5 then
             out[#out + 1] = string.format("%-22s %-7s %5d %9s %9s %6s  too few", label, kind, st.n, "-", "-", "-")
@@ -265,35 +265,35 @@ function CAL:Reset(reason)
     wipe(CAL.data.stats)
     wipe(CAL.data.crit)
     CAL.data.skippedStack, CAL.data.skippedForm = 0, 0
-    CAL.data.talents = MD:TalentSummary()
+    CAL.data.talents = ST:TalentSummary()
     wipe(alerted)
-    MD:Debug("calib", "reset: %s", reason or "by hand")
+    ST:Debug("calib", "reset: %s", reason or "by hand")
 end
 
 --------------------------------------------------------------------------------
 -- Lifecycle
 --------------------------------------------------------------------------------
-MD:RegisterCallback("MD_READY", function()
-    MD.cdb.calibration = MD.cdb.calibration or { stats = {}, crit = {} }
-    CAL.data = MD.cdb.calibration
+ST:RegisterCallback("MD_READY", function()
+    ST.cdb.calibration = ST.cdb.calibration or { stats = {}, crit = {} }
+    CAL.data = ST.cdb.calibration
     CAL.data.stats = CAL.data.stats or {}
     CAL.data.crit = CAL.data.crit or {}
-    CAL.data.talents = CAL.data.talents or MD:TalentSummary()
+    CAL.data.talents = CAL.data.talents or ST:TalentSummary()
 end)
 
 -- TALENTS_CHANGED also fires at every login (the scan), so only a CHANGED
 -- build resets; a plain login keeps the accumulated data.
-MD:RegisterCallback("TALENTS_CHANGED", function()
+ST:RegisterCallback("TALENTS_CHANGED", function()
     if not CAL.data then return end
-    local now = MD:TalentSummary()
+    local now = ST:TalentSummary()
     if CAL.data.talents ~= now then
         CAL:Reset("talent build changed: " .. now)
     end
     wipe(predCache)
 end)
 
-MD:RegisterCallback("FORM_CHANGED", function()
+ST:RegisterCallback("FORM_CHANGED", function()
     lastFormChange = GetTime()
     wipe(predCache)
 end)
-MD:On("PLAYER_EQUIPMENT_CHANGED", function() wipe(predCache) end)
+ST:On("PLAYER_EQUIPMENT_CHANGED", function() wipe(predCache) end)

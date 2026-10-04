@@ -4,9 +4,9 @@
 -- ADDON_ACTION_FORBIDDEN fire for COMBAT_LOG_EVENT_UNFILTERED rather than a
 -- raise, and no Forever file may name that event again (FOREVER-PLAN.md
 -- §1.2). Listed by the Forever TOCs only, right after Client/API.lua.
-local _, MD = ...
+local _, ST = ...
 
-MD.API.Bind({
+ST.API.Bind({
     AddOnMetadata = "C_AddOns.GetAddOnMetadata",
     IsAddOnLoaded = "C_AddOns.IsAddOnLoaded",
     LoadAddOn = "C_AddOns.LoadAddOn",
@@ -14,13 +14,13 @@ MD.API.Bind({
     AddOnInfo = "C_AddOns.GetAddOnInfo",
 })
 
-MD.API.ForbidEvent("COMBAT_LOG_EVENT_UNFILTERED")
+ST.API.ForbidEvent("COMBAT_LOG_EVENT_UNFILTERED")
 
 -- T7 (Spells/Book.lua): the spellbook and spell bindings, most of them
 -- copying (docs/tasks/T7-spell-book.md Facts: every shape past the book walk
 -- itself is the retail 12.x documentation, UNVERIFIED here) so Book never
 -- indexes a client table directly.
-MD.API.Bind({
+ST.API.Bind({
     SpellBookItemInfo = { client = "C_SpellBook.GetSpellBookItemInfo", copy = 1 },
     SpellBookSkillLines = "C_SpellBook.GetNumSpellBookSkillLines",
     SpellBookSkillLineInfo = { client = "C_SpellBook.GetSpellBookSkillLineInfo", copy = 1 },
@@ -42,15 +42,15 @@ MD.API.Bind({
 -- T95 (Spells/Book.lua, docs/SPEC-next.md 4.2 P1): a spell's base cooldown,
 -- GetSpellBaseCooldown(id) -> cooldown ms, global cooldown ms (in the 69893
 -- baseline; retail's shape, UNVERIFIED on Forever). Bound, but Book reads it
--- only while MD.API.BASE_CD_READS is true -- false until T87's probe report
+-- only while ST.API.BASE_CD_READS is true -- false until T87's probe report
 -- from a Forever client shows `== cooldowns` answering it plain (the
 -- BAR_READS_MAX pattern, Client/API.lua; the integrator flips it). Until then
 -- the cooldown is the tooltip line's right text ("10 sec cooldown",
 -- Parse.Cooldown).
-MD.API.Bind({
+ST.API.Bind({
     BaseCooldown = "GetSpellBaseCooldown",
 })
-MD.API.BASE_CD_READS = false
+ST.API.BASE_CD_READS = false
 
 -- T114 (docs/tasks/T114-clock-face-slots.md; mockup clock-v2 C1, probe
 -- Q-clock-2): the player's mana as TEXT -- the clock's Mana % / Mana slots
@@ -71,16 +71,16 @@ MD.API.BASE_CD_READS = false
 -- string; nil, "error" for an unknown kind or a raise. Nothing calls it yet
 -- (T116's renderer asks the Forever line's draw.powerText for it). Recorded
 -- explicitly, as OnSpellTooltip: it is not a Bind() wrapper.
-MD.API.POWER_TEXT_READS = false
+ST.API.POWER_TEXT_READS = false
 
 local POWER_TEXT = { pct = "UnitPowerPercent", mana = "UnitPower" }
 
-function MD.API.DrawPowerText(fs, unit, powerType, kind)
-    if MD.API.POWER_TEXT_READS ~= true then return nil, "secret" end
+function ST.API.DrawPowerText(fs, unit, powerType, kind)
+    if ST.API.POWER_TEXT_READS ~= true then return nil, "secret" end
     local name = POWER_TEXT[kind]
     if not name then return nil, "error" end
     if type(fs) ~= "table" then return nil, "absent" end
-    local fn = MD.API.Has(name)
+    local fn = ST.API.Has(name)
     if type(fn) ~= "function" then return nil, "absent" end
     local ok = pcall(function()
         fs:SetText(fn(unit, powerType)) -- never inspected: a secret goes straight in
@@ -88,34 +88,34 @@ function MD.API.DrawPowerText(fs, unit, powerType, kind)
     if not ok then return nil, "error" end
     return true
 end
-MD.API._bindings.DrawPowerText = "UnitPowerPercent"
+ST.API._bindings.DrawPowerText = "UnitPowerPercent"
 
 -- T12 (Spells/Measure.lua): plain out of combat, UNKNOWN in combat (Facts --
 -- stats go secret in combat, T7a's seventh report) -- read through the
 -- adapter like every other stat, printed as "?" when it does not come back a
 -- plain number.
-MD.API.Bind({
+ST.API.Bind({
     SpellBonusHealing = "GetSpellBonusHealing",
 })
 
 -- T124 (Spells/Book.lua's Book:Bonus("damage", school), the What if's
 -- +Spell damage): +damage per school id (1 Physical .. 7 Arcane), plain out
 -- of combat, UNKNOWN in combat -- the same reasoning as SpellBonusHealing.
-MD.API.Bind({
+ST.API.Bind({
     SpellBonusDamage = "GetSpellBonusDamage",
 })
 
 -- T15 (Modules/SpellTuner_Replay/Kit_Forever.lua): crit chance per school,
 -- plain out of combat (m2 296), UNKNOWN in combat -- same reasoning as
 -- SpellBonusHealing above.
-MD.API.Bind({
+ST.API.Bind({
     SpellCritChance = "GetSpellCritChance",
 })
 
 -- T29 (UI/Style.lua's UI.px, docs/SPEC-forever-ui.md 4.3): the physical screen
 -- size in pixels (width, height), in the 69893 baseline; UI.px reads the height
 -- for pixel-snapped 1-px edges and returns n unchanged when it is not a number.
-MD.API.Bind({
+ST.API.Bind({
     PhysicalScreenSize = "GetPhysicalScreenSize",
 })
 
@@ -127,15 +127,15 @@ MD.API.Bind({
 -- "spell" whose fourth return is a plain number; anything secret, absent or
 -- raising answers nil (a drop then does nothing, and the picker still works).
 -- Read only: nothing here, and nothing that calls it, clears the cursor.
-function MD.API.CursorInfo()
-    local kind, _, _, id = MD.API.Call("GetCursorInfo")
-    if type(kind) ~= "string" or MD.API.IsSecret(kind) then return nil end
-    if kind == "spell" and type(id) == "number" and not MD.API.IsSecret(id) then
+function ST.API.CursorInfo()
+    local kind, _, _, id = ST.API.Call("GetCursorInfo")
+    if type(kind) ~= "string" or ST.API.IsSecret(kind) then return nil end
+    if kind == "spell" and type(id) == "number" and not ST.API.IsSecret(id) then
         return kind, id
     end
     return kind, nil
 end
-MD.API._bindings.CursorInfo = "GetCursorInfo"
+ST.API._bindings.CursorInfo = "GetCursorInfo"
 
 -- T13 (Modules/SpellTuner_Recorder/Recorder_Forever.lua): the recorder's own
 -- bindings, none of which T13b's probe added. UnitGroupRolesAssigned is the
@@ -145,7 +145,7 @@ MD.API._bindings.CursorInfo = "GetCursorInfo"
 -- named, not literal Blizzard identifiers, because the dotted target itself
 -- (GetRealZoneText, C_UnitAuras.GetAuraDataByIndex, C_DamageMeter's two
 -- session readers) says nothing about what the recorder uses it for.
-MD.API.Bind({
+ST.API.Bind({
     UnitGroupRolesAssigned = "UnitGroupRolesAssigned",
     RealZoneText = "GetRealZoneText",
     -- copy = 1: the aura row's own scalar fields only (spellId,
@@ -162,12 +162,12 @@ MD.API.Bind({
 -- through TooltipDataProcessor.AddTooltipPostCall (docs/tasks/T9-spell-tooltip.md
 -- Facts: present on 70009, UNVERIFIED whether it fires for the spellbook,
 -- action bars and chat links -- T12 checks). Not a plain Bind() wrapper (the
--- client hands the wrapper a data TABLE, not the arguments MD.API.Call
+-- client hands the wrapper a data TABLE, not the arguments ST.API.Call
 -- forwards), so the binding is recorded explicitly rather than through Bind's
 -- own bookkeeping -- Capabilities() still lists it because
--- MD.API._bindings is the one table it reads.
-function MD.API.OnSpellTooltip(fn)
-    local spellType = MD.API.Constant("Enum.TooltipDataType.Spell")
+-- ST.API._bindings is the one table it reads.
+function ST.API.OnSpellTooltip(fn)
+    local spellType = ST.API.Constant("Enum.TooltipDataType.Spell")
     if spellType == nil then return false, "absent" end
 
     local wrapper = function(tooltip, data)
@@ -176,21 +176,21 @@ function MD.API.OnSpellTooltip(fn)
         -- wrapper can raise, and a raise here must never reach the client's
         -- tooltip dispatch.
         local ok, id = pcall(function() return data and data.id end)
-        if ok and type(id) == "number" and not MD.API.IsSecret(id) then
+        if ok and type(id) == "number" and not ST.API.IsSecret(id) then
             fn(tooltip, id)
         end
     end
-    return MD.API.Call("TooltipDataProcessor.AddTooltipPostCall", spellType, wrapper)
+    return ST.API.Call("TooltipDataProcessor.AddTooltipPostCall", spellType, wrapper)
 end
-MD.API._bindings.OnSpellTooltip = "TooltipDataProcessor.AddTooltipPostCall"
+ST.API._bindings.OnSpellTooltip = "TooltipDataProcessor.AddTooltipPostCall"
 
 -- T18 (Engine/Practice.lua): the bindings-import triad plus the macro/action
 -- reads, all present on the 69893 baseline (docs/tasks/T18-practice-forever.md
 -- Facts, lead's own apicheck run). GetSpecialization is NOT -- Client/API_TBC.lua
--- binds it alone, so MD.API.Specialization stays nil on this client and every
--- caller's own `MD.API.Specialization and ...` guard already treats that as
+-- binds it alone, so ST.API.Specialization stays nil on this client and every
+-- caller's own `ST.API.Specialization and ...` guard already treats that as
 -- absent.
-MD.API.Bind({
+ST.API.Bind({
     BindingCount = "GetNumBindings",
     Binding = "GetBinding",
     BindingAction = "GetBindingAction",
@@ -223,7 +223,7 @@ MD.API.Bind({
 -- answers can all be secret or a shape past our reach, and a raise here must
 -- never reach the client's tooltip dispatch.
 local function PlainNumber(v)
-    return type(v) == "number" and not MD.API.IsSecret(v)
+    return type(v) == "number" and not ST.API.IsSecret(v)
 end
 
 -- T28: a client value as a short ASCII word for the hover record -- never
@@ -231,7 +231,7 @@ end
 -- few marks (no pipe can survive), anything else named by its type.
 local function Desc(v)
     if v == nil then return "nil" end
-    if MD.API.IsSecret(v) then return "secret" end
+    if ST.API.IsSecret(v) then return "secret" end
     local t = type(v)
     if t == "number" then
         if v ~= v then return "nan" end
@@ -250,9 +250,9 @@ end
 -- is kept on the tooltip until OnTooltipCleared, so a Macro post-call and the
 -- SetAction hook of one showing write into the same record.
 local lastHover
-MD.API.tooltipHooks = MD.API.tooltipHooks or { macro = "not registered", action = "not registered" }
+ST.API.tooltipHooks = ST.API.tooltipHooks or { macro = "not registered", action = "not registered" }
 
-function MD.API.LastMacroHover()
+function ST.API.LastMacroHover()
     return lastHover
 end
 
@@ -299,12 +299,12 @@ end
 
 -- (1)
 local function MacroSpellFromData(data, spellType)
-    if data == nil or MD.API.IsSecret(data) then return nil end
+    if data == nil or ST.API.IsSecret(data) then return nil end
     local lines = data.lines
-    if type(lines) ~= "table" or MD.API.IsSecret(lines) then return nil end
+    if type(lines) ~= "table" or ST.API.IsSecret(lines) then return nil end
     for i = 1, #lines do
         local line = lines[i]
-        if type(line) == "table" and not MD.API.IsSecret(line) then
+        if type(line) == "table" and not ST.API.IsSecret(line) then
             local lineType, lineId = line.tooltipType, line.tooltipID
             if PlainNumber(lineType) and lineType == spellType and PlainNumber(lineId) then
                 return lineId
@@ -317,11 +317,11 @@ end
 -- (2) T28: the step's text, and the id when it is a plain number.
 local function FirstLine(data)
     if data == nil then return "first line: no data" end
-    if MD.API.IsSecret(data) then return "first line: data secret" end
+    if ST.API.IsSecret(data) then return "first line: data secret" end
     local lines = data.lines
-    if type(lines) ~= "table" or MD.API.IsSecret(lines) then return "first line: none" end
+    if type(lines) ~= "table" or ST.API.IsSecret(lines) then return "first line: none" end
     local line = lines[1]
-    if type(line) ~= "table" or MD.API.IsSecret(line) then return "first line: none" end
+    if type(line) ~= "table" or ST.API.IsSecret(line) then return "first line: none" end
     local lineType, lineId = line.tooltipType, line.tooltipID
     local text = "first line: type " .. Desc(lineType) .. " id " .. Desc(lineId)
     if PlainNumber(lineId) then return text, lineId end
@@ -335,12 +335,12 @@ end
 -- (or, for a low id that is also a live macro index, another macro's spell)
 -- -- and a text-only macro as ("macro", <macro index>, ""), the one shape
 -- GetMacroSpell is asked about. Answers the step's text, the id (plain or
--- nil) and the action's kind. ActionInfo goes through MD.API.Call, so every
+-- nil) and the action's kind. ActionInfo goes through ST.API.Call, so every
 -- return here is plain (a secret one makes kind nil).
 local function SlotSpell(slot)
     local text = "slot " .. Desc(slot)
     -- three returns; written out, never `a and f() or b`.
-    local kind, id, subType = MD.API.ActionInfo(slot)
+    local kind, id, subType = ST.API.ActionInfo(slot)
     if kind == nil then
         local why = (type(id) == "string") and id or "empty"
         return text .. " -> ActionInfo " .. Desc(why)
@@ -352,8 +352,8 @@ local function SlotSpell(slot)
         return text, nil, kind
     end
     text = text .. " -> macro " .. Desc(id)
-    if MD.API.MacroSpell then
-        local spellId, why = MD.API.MacroSpell(id)
+    if ST.API.MacroSpell then
+        local spellId, why = ST.API.MacroSpell(id)
         if PlainNumber(spellId) then return text .. " -> GetMacroSpell " .. Desc(spellId), spellId, kind end
         if spellId == nil and type(why) == "string" then
             text = text .. " -> GetMacroSpell " .. Desc(why)
@@ -369,7 +369,7 @@ local function SlotFromOwner(tooltip)
     if type(tooltip) ~= "table" or not tooltip.GetOwner then return "slot: no owner" end
     local owner = tooltip:GetOwner()
     if owner == nil then return "slot: no owner" end
-    if type(owner) ~= "table" or MD.API.IsSecret(owner) then return "slot: owner " .. Desc(owner) end
+    if type(owner) ~= "table" or ST.API.IsSecret(owner) then return "slot: owner " .. Desc(owner) end
     local slot = owner.action
     if not PlainNumber(slot) then
         slot = nil
@@ -421,22 +421,22 @@ local function MacroChain(fn, tooltip, data, spellType)
     end
 end
 
-function MD.API.OnMacroTooltip(fn)
-    local macroType = MD.API.Constant("Enum.TooltipDataType.Macro")
+function ST.API.OnMacroTooltip(fn)
+    local macroType = ST.API.Constant("Enum.TooltipDataType.Macro")
     if macroType == nil then
-        MD.API.tooltipHooks.macro = "absent"
+        ST.API.tooltipHooks.macro = "absent"
         return false, "absent"
     end
-    local spellType = MD.API.Constant("Enum.TooltipDataType.Spell")
+    local spellType = ST.API.Constant("Enum.TooltipDataType.Spell")
 
     local wrapper = function(tooltip, data)
         pcall(MacroChain, fn, tooltip, data, spellType)
     end
-    local r1, why, detail = MD.API.Call("TooltipDataProcessor.AddTooltipPostCall", macroType, wrapper)
-    MD.API.tooltipHooks.macro = (type(why) == "string") and why or "on"
+    local r1, why, detail = ST.API.Call("TooltipDataProcessor.AddTooltipPostCall", macroType, wrapper)
+    ST.API.tooltipHooks.macro = (type(why) == "string") and why or "on"
     return r1, why, detail
 end
-MD.API._bindings.OnMacroTooltip = "TooltipDataProcessor.AddTooltipPostCall"
+ST.API._bindings.OnMacroTooltip = "TooltipDataProcessor.AddTooltipPostCall"
 
 -- T28 (docs/SPEC-forever-ui.md 5.5): a third path. Every Blizzard and
 -- LibActionButton bar calls GameTooltip:SetAction(slot) whatever data type
@@ -467,25 +467,25 @@ local function ActionHook(fn, tooltip, slot)
     if PlainNumber(id) then Offer(fn, tooltip, id, rec, i, {}, source) end
 end
 
-function MD.API.OnActionTooltip(fn)
-    if MD.API._actionHooked then return true end
-    if type(MD.API.Has("GameTooltip.SetAction")) ~= "function" then
-        MD.API.tooltipHooks.action = "absent"
+function ST.API.OnActionTooltip(fn)
+    if ST.API._actionHooked then return true end
+    if type(ST.API.Has("GameTooltip.SetAction")) ~= "function" then
+        ST.API.tooltipHooks.action = "absent"
         return false, "absent"
     end
     local hook = function(tooltip, slot)
         pcall(ActionHook, fn, tooltip, slot)
     end
-    local _, why, detail = MD.API.Call("hooksecurefunc", rawget(_G, "GameTooltip"), "SetAction", hook)
+    local _, why, detail = ST.API.Call("hooksecurefunc", rawget(_G, "GameTooltip"), "SetAction", hook)
     if type(why) == "string" then
-        MD.API.tooltipHooks.action = why
+        ST.API.tooltipHooks.action = why
         return false, why, detail
     end
-    MD.API._actionHooked = true
-    MD.API.tooltipHooks.action = "on"
+    ST.API._actionHooked = true
+    ST.API.tooltipHooks.action = "on"
     return true
 end
-MD.API._bindings.OnActionTooltip = "GameTooltip.SetAction"
+ST.API._bindings.OnActionTooltip = "GameTooltip.SetAction"
 
 -- T37 (UI/SpellTip_Forever.lua, docs/SPEC-forever-ui.md 5.6): the detail
 -- key's refresh -- tooltip:RefreshData(), which clears the tooltip and runs
@@ -493,14 +493,14 @@ MD.API._bindings.OnActionTooltip = "GameTooltip.SetAction"
 -- the post-calls (if it does not, the detail lines show on the next hover,
 -- as before). Guarded: a tooltip without it answers absent, a raise error;
 -- neither reaches the caller.
-function MD.API.RefreshTooltip(tooltip)
+function ST.API.RefreshTooltip(tooltip)
     local ok, fn = pcall(function() return type(tooltip) == "table" and tooltip.RefreshData end)
     if not ok then return nil, "error" end
     if type(fn) ~= "function" then return nil, "absent" end
     if not pcall(fn, tooltip) then return nil, "error" end
     return true
 end
-MD.API._bindings.RefreshTooltip = "GameTooltip.RefreshData"
+ST.API._bindings.RefreshTooltip = "GameTooltip.RefreshData"
 
 -- T38 (UI/SpellsPane_Forever.lua, docs/SPEC-forever-ui.md 3.5): the game's
 -- own spell tooltip for one rank, for a row hover in a spell's view --
@@ -510,12 +510,12 @@ MD.API._bindings.RefreshTooltip = "GameTooltip.RefreshData"
 -- checks the tooltip's own guard and adds the block itself when it did not.
 -- Answers true, or nil plus "absent" (no method, or an id that is not a plain
 -- number) / "error" (the method raised); nothing reaches the caller.
-function MD.API.SetTooltipSpell(tooltip, id)
-    if type(id) ~= "number" or MD.API.IsSecret(id) then return nil, "absent" end
+function ST.API.SetTooltipSpell(tooltip, id)
+    if type(id) ~= "number" or ST.API.IsSecret(id) then return nil, "absent" end
     local ok, fn = pcall(function() return type(tooltip) == "table" and tooltip.SetSpellByID end)
     if not ok then return nil, "error" end
     if type(fn) ~= "function" then return nil, "absent" end
     if not pcall(fn, tooltip, id) then return nil, "error" end
     return true
 end
-MD.API._bindings.SetTooltipSpell = "GameTooltip.SetSpellByID"
+ST.API._bindings.SetTooltipSpell = "GameTooltip.SetSpellByID"

@@ -1,13 +1,13 @@
 -- T13d (docs/tasks/T13d-scenario-v3.md): a v3 stream (T13,
 -- Modules/SpellTuner_Recorder/Recorder_Forever.lua) becomes a scenario of
 -- exactly the shape Engine/SimModel.lua already runs. Pure: no client call,
--- no MD.API, no GetTime() here -- MD:ClassifyCast reads MD.Book, which is the
+-- no ST.API, no GetTime() here -- ST:ClassifyCast reads ST.Book, which is the
 -- adapter's own job, not this file's. Never mutates `rec`.
-local _, MD = ...
-local SM = MD.SimModel
+local _, ST = ...
+local SM = ST.SimModel
 -- T101: Kit.MULTI_TARGET, the kit types that reach more than their target
 -- (Engine/Kit.lua, listed before this file by the module's TOCs)
-local Kit = MD.Kit
+local Kit = ST.Kit
 
 -- The v3 stream's own event-kind numbers, published once by the Recorder
 -- module's Stream_Forever.lua (T66, P22, review A18) -- this module depends on
@@ -15,9 +15,9 @@ local Kit = MD.Kit
 -- SM.Run only knows FHEAL (2), which the engine generates its own heals to
 -- match; a HEAL of unknown source is this file's job to turn into either
 -- nothing (own) or an FHEAL (foreign).
-local STREAM = MD.StreamV3
+local STREAM = ST.StreamV3
 if type(STREAM) ~= "table" or type(STREAM.K) ~= "table" then
-    error("Scenario_Forever.lua: MD.StreamV3 is missing -- the Recorder module's Stream_Forever.lua loads first")
+    error("Scenario_Forever.lua: ST.StreamV3 is missing -- the Recorder module's Stream_Forever.lua loads first")
 end
 local V3 = STREAM.K
 
@@ -76,7 +76,7 @@ end
 -- SimModel.lua's LandCast: "hybrid" rolls the Regrowth slot, "hot" the
 -- Rejuvenation one) -- what a Swiftmend can eat.
 -- T96 (docs/SPEC-next.md 2.1): the hot map is the KIT's profile's
--- (SM.HotFamilyOf: MD.Profiles.ForKit(kit), the druid's when the kit names
+-- (SM.HotFamilyOf: ST.Profiles.ForKit(kit), the druid's when the kit names
 -- none), never the logged-in player's -- the same slot the engine rolls.
 local function SlotOf(kit, e)
     if e.type ~= "hybrid" and e.type ~= "hot" and e.type ~= "lifebloom" then return nil end
@@ -137,7 +137,7 @@ local CRIT_MULT = 1.5
 -- then up to `jumps` claims on any OTHER member (whom it jumped to is not in
 -- the stream: each jump claim takes the heal nearest its own share, one per
 -- member), a `selfAndTarget` heal its target and the caster. And an own cast
--- of a heal the kit does not carry (MD:ClassifyCast says "heal": a heal on
+-- of a heal the kit does not carry (ST:ClassifyCast says "heal": a heal on
 -- the caster alone, a refused reach) claims the heal landing with it on its
 -- target (on the caster, when its text heals only the caster): the healer's
 -- own heal, which no kit entry claims, replayed AS RECORDED (SM.K.OWNREPLAY,
@@ -179,7 +179,7 @@ function SM.AttributeHeals(rec, kit)
     for i = 1, n do
         if ev.kind[i] == V3.OWNCAST then
             local id, tgt, t = ev.x[i], ev.tgt[i], ev.t[i]
-            local sd = MD.SpellData.spells[id]
+            local sd = ST.SpellData.spells[id]
             local e = sd and k[id]
             if sd and e and e.type == "group" then
                 -- a group heal reaches the party whoever it was cast on
@@ -188,11 +188,11 @@ function SM.AttributeHeals(rec, kit)
                 casts[#casts + 1] = { t = t, tgt = tgt or -1, family = sd.family, e = e, id = id }
             elseif sd and e and tgt and tgt > 0 then
                 casts[#casts + 1] = { t = t, tgt = tgt, family = sd.family, e = e, id = id }
-            elseif not e and MD.ClassifyCast then
-                local _, kind = MD:ClassifyCast(id)
+            elseif not e and ST.ClassifyCast then
+                local _, kind = ST:ClassifyCast(id)
                 if kind == "heal" then
                     local on = tgt
-                    local book = MD.Book and MD.Book:Get()
+                    local book = ST.Book and ST.Book:Get()
                     local be = book and book.spells and book.spells[id]
                     if be and be.targets == "caster" then on = caster end
                     if on and on > 0 then unmodelled[#unmodelled + 1] = { t = t, tgt = on, id = id } end
@@ -221,7 +221,7 @@ function SM.AttributeHeals(rec, kit)
         end
         for _, a in ipairs(rec.initial and rec.initial.auras or {}) do
             if a.tgt == tgt then
-                local sd = MD.SpellData.spells[a.spellId]
+                local sd = ST.SpellData.spells[a.spellId]
                 local e2 = sd and k[a.spellId]
                 if sd and sd.family == family and (a.remaining or 0) > t and e2 and e2.tickPeriod then
                     return "prepull", a
@@ -243,7 +243,7 @@ function SM.AttributeHeals(rec, kit)
     -- below): {anchor, tickPeriod, prepull = true}, or nil if the kit does
     -- not know its tick shape.
     local function PrepullCadenceOf(a)
-        local sd = MD.SpellData.spells[a.spellId]
+        local sd = ST.SpellData.spells[a.spellId]
         local e2 = sd and k[a.spellId]
         if not (e2 and e2.tickPeriod) then return nil end
         local _, nextTick = PrepullTicks(a.remaining or 0, e2.tickPeriod)
@@ -279,7 +279,7 @@ function SM.AttributeHeals(rec, kit)
         end
         for _, a in ipairs(rec.initial and rec.initial.auras or {}) do
             local e2 = a.tgt and k[a.spellId]
-            local slot = e2 and MD.SpellData.spells[a.spellId] and SlotOf(kit, e2)
+            local slot = e2 and ST.SpellData.spells[a.spellId] and SlotOf(kit, e2)
             if slot and (a.remaining or 0) > 0 then
                 local sl = Slots(a.tgt)
                 if (a.remaining or 0) > (sl[slot] or 0) then sl[slot] = a.remaining end
@@ -452,7 +452,7 @@ function SM.AttributeHeals(rec, kit)
     -- R29), ended the same way by a recast or by the Swiftmend that eats it.
     for _, a in ipairs(rec.initial and rec.initial.auras or {}) do
         if a.tgt and a.tgt > 0 then
-            local sd = MD.SpellData.spells[a.spellId]
+            local sd = ST.SpellData.spells[a.spellId]
             local e = sd and k[a.spellId]
             if sd and e and e.tick and e.tickPeriod then
                 local ticksLeft, nextTick = PrepullTicks(a.remaining or 0, e.tickPeriod)
@@ -635,9 +635,9 @@ end
 -- The one chooser both ReconstructHp and SM.ScenarioV3 use, so the two never
 -- disagree: plain in this recording -> that; else, when the recording has an
 -- id and other recordings know this person -> theirs; else this fight's own
--- estimate as before. `others` nil means MD.cdb.recordings ({} for none).
+-- estimate as before. `others` nil means ST.cdb.recordings ({} for none).
 local function ChooseMaxes(rec, others, hits, sizingMax)
-    if others == nil then others = MD.cdb and MD.cdb.recordings end
+    if others == nil then others = ST.cdb and ST.cdb.recordings end
     local roster = rec.roster or {}
     local maxHP, maxEstimated, maxSource, anyEstimated = {}, {}, {}, false
     for i = 1, #roster do
@@ -789,9 +789,9 @@ function SM.ScenarioV3(rec, kit, others)
 
     -- `danger` is the SCORE's line (the whole fight's biggest hit); a plan
     -- decides on SM.DangerLine, the biggest hit so far (T20, review R6).
-    local dangerHits = (MD.db and MD.db.simDangerHits) or 1
+    local dangerHits = (ST.db and ST.db.simDangerHits) or 1
     local priorStore = others
-    if priorStore == nil then priorStore = MD.cdb and MD.cdb.recordings end
+    if priorStore == nil then priorStore = ST.cdb and ST.cdb.recordings end
     local targets = {}
     local casterIdx = CasterOf(rec)   -- T101 (4.5): whom a self-and-target heal also reaches
     for i = 1, nT do
@@ -829,10 +829,10 @@ function SM.ScenarioV3(rec, kit, others)
             local cost = (ev.amt[i] or -1) >= 0 and ev.amt[i] or nil
             local entry = { ev.t[i], id, cost, ev.tgt[i] }
             script[#script + 1] = entry
-            if not MD.SpellData.spells[id] then
+            if not ST.SpellData.spells[id] then
                 local kindLabel = "unknown"
-                if MD.ClassifyCast then
-                    local _, kk = MD:ClassifyCast(id)
+                if ST.ClassifyCast then
+                    local _, kk = ST:ClassifyCast(id)
                     kindLabel = kk or "unknown"
                 end
                 fixed[#fixed + 1] = { ev.t[i], id, cost, ev.tgt[i], kindLabel }
@@ -846,7 +846,7 @@ function SM.ScenarioV3(rec, kit, others)
     local rinit = rec.initial or {}
     local auras = {}
     for _, a in ipairs(rinit.auras or {}) do
-        if a.tgt and a.tgt > 0 and MD.SpellData.spells[a.spellId] then
+        if a.tgt and a.tgt > 0 and ST.SpellData.spells[a.spellId] then
             local entry = { target = a.tgt, spellID = a.spellId, stacks = a.stacks, remaining = a.remaining }
             -- R29: the engine ticks it where the claims above do.
             local e = kit and kit.caster and kit.caster[a.spellId]
@@ -889,7 +889,7 @@ function SM.ScenarioV3(rec, kit, others)
         targets = targets, ev = outEv, rates = rates, fixed = fixed,
         incoming = {}, threat = {}, -- secret by policy (Facts, plan §5)
         sampleT = mn.t, hpSampleT = gridT, kit = kit,
-        floor = (MD.db and MD.db.simFloor) or 0.30,
+        floor = (ST.db and ST.db.simFloor) or 0.30,
         script = script,
         recordedHp = { t = gridT, hp = h.hp, max = h.max },
         reconstructed = true,
@@ -910,7 +910,7 @@ SM.scenarioBuilders[STREAM.V] = function(rec, kit, ...) return SM.ScenarioV3(rec
 SM.healthReconstructors[STREAM.V] = function(rec) return SM.RecordedHp(rec) end
 
 --------------------------------------------------------------------------------
--- MD:ClassifyCast(id) -> label, kind -- only if no flavour defined it yet
+-- ST:ClassifyCast(id) -> label, kind -- only if no flavour defined it yet
 -- (TBC's own is Data/DruidSpells.lua 66, per T13d's Facts). `book.spells[id]`
 -- carries no kind of its own (Spells/Book.lua's BuildEntry never sets one);
 -- the kind lives on the FAMILY (Book:GroupFamilies, one per book.families
@@ -919,9 +919,9 @@ SM.healthReconstructors[STREAM.V] = function(rec) return SM.RecordedHp(rec) end
 -- (Swiftmend has no numbers at all to parse) "utility", and a spell the book
 -- never saw at all "unknown".
 --------------------------------------------------------------------------------
-if MD.ClassifyCast == nil then
-    function MD:ClassifyCast(id)
-        local book = MD.Book and MD.Book:Get()
+if ST.ClassifyCast == nil then
+    function ST:ClassifyCast(id)
+        local book = ST.Book and ST.Book:Get()
         local entry = book and book.spells[id]
         local fam = entry and book.families[entry.name]
         if not entry then return "unknown", "unknown" end

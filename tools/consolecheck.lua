@@ -13,10 +13,10 @@
 -- (the shared session: the Enable box on Forever, R15/R16) and cases 14-15
 -- (their own session, last: the captured stack line and the forward, R22/R21).
 -- T55 (P11, review A4) added cases 19-21 in 14-15's session: the same capture
--- and forward for a handler raising inside MD:On, now that Core.lua runs every
+-- and forward for a handler raising inside ST:On, now that Core.lua runs every
 -- handler under xpcall, and the event's arguments reaching it -- 20 forever.
 -- T113 (docs/SPEC-next.md 2.5, S0) added cases 22-23 in a fresh session of
--- their own, last: a line registered with MD:AddDumpLine appears once, in
+-- their own, last: a line registered with ST:AddDumpLine appears once, in
 -- registration order, escaped to ASCII; and with none registered the dump is
 -- the one built without the seam, byte for byte -- 22 forever.
 HARNESS_FLAVOUR = { "forever", "tbc" }
@@ -40,9 +40,9 @@ local function NewSession()
     _G.SpellTunerDB = nil
     _G.ManaDemonDB = nil
     local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-    local MD = dofile(here .. "/harness.lua")
+    local ST = dofile(here .. "/harness.lua")
     arg[0] = a0
-    return MD, _G.STUB
+    return ST, _G.STUB
 end
 
 local function CountEq(list, needle)
@@ -113,7 +113,7 @@ end
 
 if flavour == "forever" then
 
-local MD, S = NewSession()
+local ST, S = NewSession()
 
 -- T33: this session's frames record their strata, level, toplevel and points
 -- (the stub's are no-ops), and UIParent is a 1920 x 1080 screen, so cases 16-18
@@ -142,8 +142,8 @@ try("our error is recorded once, counted, and shown to the client once", functio
     local msg = "Interface/AddOns/SpellTuner/Core.lua:12: boom"
     for i = 1, 340 do S.errorHandler(msg) end
     check("our error is recorded once, counted, and shown to the client once",
-        #MD.errors == 1 and MD.errors[1].count == 340 and MD.errorTotal == 340
-        and MD.errors[1].msg == msg and CountEq(S.clientErrors, msg) == 1)
+        #ST.errors == 1 and ST.errors[1].count == 340 and ST.errorTotal == 340
+        and ST.errors[1].msg == msg and CountEq(S.clientErrors, msg) == 1)
 end)
 
 --------------------------------------------------------------------------------
@@ -151,10 +151,10 @@ end)
 --------------------------------------------------------------------------------
 try("another addon's error passes through every time and is not recorded", function()
     local msg = "Interface/AddOns/EllesmereUI/x.lua:1: nope"
-    local before = #MD.errors
+    local before = #ST.errors
     for i = 1, 3 do S.errorHandler(msg) end
     check("another addon's error passes through every time and is not recorded",
-        #MD.errors == before and CountEq(S.clientErrors, msg) == 3)
+        #ST.errors == before and CountEq(S.clientErrors, msg) == 3)
 end)
 
 --------------------------------------------------------------------------------
@@ -162,17 +162,17 @@ end)
 --------------------------------------------------------------------------------
 try("a sibling module's error is ours", function()
     local msg = "Interface/AddOns/SpellTuner_Recorder/Module.lua:3: x"
-    local before = #MD.errors
+    local before = #ST.errors
     S.errorHandler(msg)
     check("a sibling module's error is ours",
-        #MD.errors == before + 1 and MD.errors[before + 1].msg == msg)
+        #ST.errors == before + 1 and ST.errors[before + 1].msg == msg)
 end)
 
 --------------------------------------------------------------------------------
 -- 4: the handler never raises, whatever it is given
 --------------------------------------------------------------------------------
 try("the handler never raises, whatever it is given", function()
-    local beforeDistinct, beforeTotal = #MD.errors, MD.errorTotal
+    local beforeDistinct, beforeTotal = #ST.errors, ST.errorTotal
     local sentinelTable = {}
     local okA = pcall(S.errorHandler, S.Secret())
     local okB = pcall(S.errorHandler, nil)
@@ -180,7 +180,7 @@ try("the handler never raises, whatever it is given", function()
     local forwardedTable = false
     for _, m in ipairs(S.clientErrors) do if m == sentinelTable then forwardedTable = true end end
     check("the handler never raises, whatever it is given",
-        okA and okB and okC and #MD.errors == beforeDistinct and MD.errorTotal == beforeTotal
+        okA and okB and okC and #ST.errors == beforeDistinct and ST.errorTotal == beforeTotal
         and forwardedTable)
 end)
 
@@ -188,9 +188,9 @@ end)
 -- 5: at most 50 distinct errors are kept, the rest counted
 --------------------------------------------------------------------------------
 try("at most 50 distinct errors are kept, the rest counted", function()
-    -- Two distinct errors of ours already sit in MD.errors (cases 1 and 3).
+    -- Two distinct errors of ours already sit in ST.errors (cases 1 and 3).
     -- Bring the running total of DISTINCT messages of ours to 60.
-    local startDistinct = #MD.errors
+    local startDistinct = #ST.errors
     local newMsgs = {}
     for i = 1, 60 - startDistinct do
         newMsgs[i] = string.format("Interface/AddOns/SpellTuner/Distinct%d.lua:1: boom", i)
@@ -201,7 +201,7 @@ try("at most 50 distinct errors are kept, the rest counted", function()
         if CountEq(S.clientErrors, m) ~= 1 then eachOnce = false end
     end
     check("at most 50 distinct errors are kept, the rest counted",
-        #MD.errors == 50 and MD.errorOverflow == 10 and eachOnce
+        #ST.errors == 50 and ST.errorOverflow == 10 and eachOnce
         and CountEq(S.clientErrors, "Interface/AddOns/SpellTuner/Core.lua:12: boom") == 1
         and CountEq(S.clientErrors, "Interface/AddOns/SpellTuner_Recorder/Module.lua:3: x") == 1)
 end)
@@ -212,10 +212,10 @@ end)
 local dumpText
 try("/st dump shows one block with every section, in order", function()
     local capturedTitle
-    local orig = MD.ShowCopyPopup
-    MD.ShowCopyPopup = function(self, title, text) capturedTitle, dumpText = title, text end
+    local orig = ST.ShowCopyPopup
+    ST.ShowCopyPopup = function(self, title, text) capturedTitle, dumpText = title, text end
     SlashCmdList.SPELLTUNER("dump")
-    MD.ShowCopyPopup = orig
+    ST.ShowCopyPopup = orig
 
     -- T73 (P29, review U19): what a report is read for first -- the saved
     -- variables, the modules, the errors (the handler line with them) --
@@ -248,7 +248,7 @@ try("/st debug opens the console, which counts the errors", function()
     local root = _G.SpellTunerDebugConsole
     local shown = root and root:IsShown()
     local expected = string.format("Errors this session: %d distinct, %d total - /st dump copies them",
-        #MD.errors, MD.errorTotal)
+        #ST.errors, ST.errorTotal)
     local strings = StringsUnder(S, root)
     check("/st debug opens the console, which counts the errors",
         shown == true and AnyEquals(strings, expected))
@@ -266,7 +266,7 @@ end)
 --------------------------------------------------------------------------------
 -- 13 (review R15/R16): ticking "Enable Debug Logging" on Forever writes its
 -- header line and raises nothing -- the callback used to call
--- MD:TalentSummary, which only Core_TBC.lua defines
+-- ST:TalentSummary, which only Core_TBC.lua defines
 --------------------------------------------------------------------------------
 try("the Forever console's Enable box logs its line and raises nothing", function()
     local root = _G.SpellTunerDebugConsole
@@ -277,15 +277,15 @@ try("the Forever console's Enable box logs its line and raises nothing", functio
             if okText and text == "Enable Debug Logging" then box = f end
         end
     end
-    local wasEnabled = MD.db.debug.enabled
+    local wasEnabled = ST.db.debug.enabled
     local clicked, err = false, nil
     if box then
         box:SetChecked(true)
         clicked, err = pcall(box:GetScript("OnClick"), box)
     end
-    local tail = MD:DebugLogTail(20)
+    local tail = ST:DebugLogTail(20)
     local _, line = AnyFind(tail, "debug logging enabled %(v")
-    MD.db.debug.enabled = wasEnabled
+    ST.db.debug.enabled = wasEnabled
     local good = box ~= nil and clicked and line ~= nil and not line:find("talents", 1, true)
     check("the Forever console's Enable box logs its line and raises nothing", good,
         (not good) and tostring(err or line) or nil)
@@ -298,7 +298,7 @@ end)
 --------------------------------------------------------------------------------
 try("the Forever console is FULLSCREEN / 10, toplevel, one stack entry, not a special frame", function()
     local root = _G.SpellTunerDebugConsole
-    local stack = MD.Win and MD.Win.stack or {}
+    local stack = ST.Win and ST.Win.stack or {}
     local n = 0
     for _, e in ipairs(stack) do if e.frame == root then n = n + 1 end end
     check("the Forever console is FULLSCREEN / 10, toplevel, one stack entry, not a special frame",
@@ -310,8 +310,8 @@ end)
 try("the Forever console opens where it was left, not re-centred", function()
     local root = _G.SpellTunerDebugConsole
     root:Hide()
-    MD.db.ui.win.console = { x = 300, y = 700 }
-    MD:ToggleDebugConsole()
+    ST.db.ui.win.console = { x = 300, y = 700 }
+    ST:ToggleDebugConsole()
     local pts = root.points or {}
     local pt = pts[#pts] or {}
     check("the Forever console opens where it was left, not re-centred",
@@ -322,13 +322,13 @@ end)
 
 try("the copy box is FULLSCREEN_DIALOG / 20, on top of the stack, and closes an open list", function()
     local root = _G.SpellTunerDebugConsole
-    local dd = MD.UI.CreateDropdown(root, 120, 18)
+    local dd = ST.UI.CreateDropdown(root, 120, 18)
     dd:SetItems({ { id = 1, text = "one" } })
     dd:GetScript("OnClick")(dd)
     local listOpen = dd.list:IsShown()
-    MD:ShowCopyPopup("T33", "text")
+    ST:ShowCopyPopup("T33", "text")
     local copy = _G.SpellTunerDebugCopyFrame
-    local stack = MD.Win and MD.Win.stack or {}
+    local stack = ST.Win and ST.Win.stack or {}
     local top = stack[#stack] and stack[#stack].frame
     check("the copy box is FULLSCREEN_DIALOG / 20, on top of the stack, and closes an open list",
         listOpen and not dd.list:IsShown() and copy and copy:IsShown()
@@ -342,7 +342,7 @@ end)
 -- 10: every TOC carries the version the addon reports
 --------------------------------------------------------------------------------
 try("every TOC carries the version the addon reports", function()
-    -- The TOCs are listed from disk, never by hand. MD.version is what the
+    -- The TOCs are listed from disk, never by hand. ST.version is what the
     -- forever session read through C_AddOns.GetAddOnMetadata, not a value this
     -- test read itself.
     local files = {}
@@ -363,7 +363,7 @@ try("every TOC carries the version the addon reports", function()
         f:close()
         return found
     end
-    local reported = MD.version
+    local reported = ST.version
     local allOk, detail = true, nil
     if #files ~= 9 then
         allOk, detail = false, "found " .. #files .. " TOCs, not 9"
@@ -407,7 +407,7 @@ end)
 -- which reassigns those globals to the fresh session's own versions -- fine
 -- for the fresh MD2/S2 pair used here, but it would silently redirect every
 -- later "SlashCmdList.SPELLTUNER(...)" call and frame creation in THIS file
--- at the outer MD if this ran any earlier than last.
+-- at the outer ST if this ran any earlier than last.
 --------------------------------------------------------------------------------
 try("the dump is ASCII with no bare pipe, whatever the errors said", function()
     local MD2, S2 = NewSession()
@@ -491,8 +491,8 @@ end)
 
 --------------------------------------------------------------------------------
 -- 19-21 (T55, P11, review A4): the same capture, now that Core.lua runs every
--- event handler under xpcall with MD.ErrorSink. A handler raising inside
--- MD:On -- fired the way the client fires an event -- must still be named by
+-- event handler under xpcall with ST.ErrorSink. A handler raising inside
+-- ST:On -- fired the way the client fires an event -- must still be named by
 -- its own file and line (not Core.lua's loop or sink, Client/API.lua or a C
 -- frame), reach the previous handler exactly once over two firings, and have
 -- received the event's arguments (the client's xpcall passes them). Same
@@ -500,7 +500,7 @@ end)
 --------------------------------------------------------------------------------
 local DISPATCH_MSG = "Interface/AddOns/SpellTuner/Dispatched.lua:3: raised in a handler"
 local dispatchLine, dispatchArgs, dispatchAfter, dispatchFired = nil, nil, 0, {}
-try("a handler raising inside MD:On is named by its own line (A4, R22)", function()
+try("a handler raising inside ST:On is named by its own line (A4, R22)", function()
     local armed = true
     MD3:On("UNIT_COMBAT", function(...)
         if not armed then return end
@@ -521,7 +521,7 @@ try("a handler raising inside MD:On is named by its own line (A4, R22)", functio
         and not stack:find("Core.lua", 1, true) and not stack:find("API.lua", 1, true)
         and not stack:find("[C]", 1, true)
         and entry.count == 2
-    check("a handler raising inside MD:On is named by its own line (A4, R22)", good,
+    check("a handler raising inside ST:On is named by its own line (A4, R22)", good,
         (not good) and (tostring(stack) .. " count=" .. tostring(entry and entry.count)) or nil)
 end)
 
@@ -623,22 +623,22 @@ else -- tbc
 -- 12: TBC installs no error handler and keeps its Regen test button
 --------------------------------------------------------------------------------
 try("TBC installs no error handler and keeps its Regen test button", function()
-    local MD = NewSession()
+    local ST = NewSession()
     local S = _G.STUB
     -- T80 (C1): the theme and the window manager after the kit, as the TBC TOC lists them
     S.Load({ "UI/Style.lua", "UI/Theme_Flat.lua", "UI/EscStack.lua", "UI/Windows.lua", "UI/DebugConsole.lua" },
-        "SpellTuner", MD)
-    MD:ToggleDebugConsole()
+        "SpellTuner", ST)
+    ST:ToggleDebugConsole()
     local root = _G.SpellTunerDebugConsole
     local strings = StringsUnder(S, root)
     -- T33: on TBC the console kept its own UISpecialFrames entry; T80 (C1):
     -- the window manager is on the TBC TOC, so it is a registered tool (on
     -- the ESC stack while shown) and out of UISpecialFrames, as on Forever
-    local w = MD.Win and MD.Win.windows.console
+    local w = ST.Win and ST.Win.windows.console
     local onStack = false
-    for _, e in ipairs(MD.Win and MD.Win.stack or {}) do if e.frame == root then onStack = true end end
+    for _, e in ipairs(ST.Win and ST.Win.stack or {}) do if e.frame == root then onStack = true end end
     check("TBC installs no error handler and keeps its Regen test button",
-        MD.errors == nil and AnyEquals(strings, "Regen test")
+        ST.errors == nil and AnyEquals(strings, "Regen test")
         and w ~= nil and w.role == "tool" and onStack and not InSpecial("SpellTunerDebugConsole"))
 end)
 

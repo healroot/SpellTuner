@@ -11,28 +11,28 @@
 -- many of those the current pool affords, now and after a drink. Shown in the
 -- mana tooltip out of combat and as the drink reminder's text. It sits beside
 -- the clock, not instead of it.
-local _, MD = ...
+local _, ST = ...
 
 local PB = {}
-MD.PullBudget = PB
+ST.PullBudget = PB
 
 local RECENT = 5
 
--- T58 (P14, review A9): the median is MD.Util's (Core.lua), which copies
+-- T58 (P14, review A9): the median is ST.Util's (Core.lua), which copies
 -- rather than sorting the caller's table in place; "low" keeps this file's
 -- own choice for an even count (the lower of the two middle values).
 local function Median(t)
-    return MD.Util.Median(t, "low")
+    return ST.Util.Median(t, "low")
 end
 
 -- { perPull, afford, afterDrink, source = <zone name | "recent fights">, n }
 -- or nil with fewer than two recorded fights.
 function PB:Estimate()
-    local hist = MD.fightHistory
+    local hist = ST.fightHistory
     if not hist or #hist < 2 then return nil end
 
     local zone = GetRealZoneText and GetRealZoneText() or nil
-    local pool, source = (MD.FightsInZone and MD:FightsInZone(zone, RECENT)) or {}, zone
+    local pool, source = (ST.FightsInZone and ST:FightsInZone(zone, RECENT)) or {}, zone
     if #pool < 2 then
         pool, source = {}, "recent fights"
         for i = math.max(1, #hist - RECENT + 1), #hist do pool[#pool + 1] = hist[i] end
@@ -72,7 +72,7 @@ end
 -- Tooltip lines (out of combat only; in combat the clock is the readout).
 function PB:Lines()
     local e = PB:Estimate()
-    if not e or MD.inCombat then return {} end -- T58 (P14, A28): the kernel's flag
+    if not e or ST.inCombat then return {} end -- T58 (P14, A28): the kernel's flag
     return {
         {},
         { l = "Pull budget", r = string.format("%d more, %d after a drink", e.afford, e.afterDrink),

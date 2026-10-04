@@ -16,7 +16,7 @@
 --                         out-of-casting value
 -- Both share the tooltip and click behaviour. Host addons are reached only
 -- from Integrations/ (docs/SPEC-next.md 2, apicheck rule 11).
-local _, MD = ...
+local _, ST = ...
 
 if not ElvUI then return end
 
@@ -26,7 +26,7 @@ if type(E) ~= "table" or type(E.GetModule) ~= "function" then return end
 local DT = E:GetModule("DataTexts", true)
 if not DT then return end
 
-local Feeds = MD.Feeds
+local Feeds = ST.Feeds
 if not Feeds then return end
 
 local hex = nil -- "|cffxxxxxx" from ApplySettings, nil until themed
@@ -43,12 +43,12 @@ end
 -- Shift-click resets TBC's spend window (Engine/SpendTracker.lua); a line
 -- without one toggles the window like a plain click.
 local function OnClick()
-    local shift = MD.API.IsShiftKeyDown and MD.API.IsShiftKeyDown()
-    if shift and MD.Spend then
-        MD.Spend:Reset()
-        MD:Print("spend window reset.")
-    elseif MD.ToggleDashboard then
-        MD:ToggleDashboard()
+    local shift = ST.API.IsShiftKeyDown and ST.API.IsShiftKeyDown()
+    if shift and ST.Spend then
+        ST.Spend:Reset()
+        ST:Print("spend window reset.")
+    elseif ST.ToggleDashboard then
+        ST:ToggleDashboard()
     end
 end
 
@@ -60,15 +60,15 @@ end
 -- UI/MinimapButton.lua): hovering a datatext is deliberate.
 local function OnEnter()
     DT.tooltip:ClearLines()
-    if MD.Tip.Mana then
+    if ST.Tip.Mana then
         DT.tooltip:AddLine("SpellTuner")
-        MD.Tip:Render(DT.tooltip, MD.Tip:Mana())
-        MD.Tip:Render(DT.tooltip, MD.Tip:Fights(1))
+        ST.Tip:Render(DT.tooltip, ST.Tip:Mana())
+        ST.Tip:Render(DT.tooltip, ST.Tip:Fights(1))
     else
-        MD.Tip:Render(DT.tooltip, Feeds.Tooltip("clock"))
+        ST.Tip:Render(DT.tooltip, Feeds.Tooltip("clock"))
     end
     DT.tooltip:AddLine(" ")
-    if MD.Spend then
+    if ST.Spend then
         DT.tooltip:AddLine("Click: dashboard   Shift-click: reset window", 0.5, 0.5, 0.5)
     else
         DT.tooltip:AddLine("Click: open the window", 0.5, 0.5, 0.5)
@@ -102,5 +102,5 @@ end
 DT:RegisterDatatext("SpellTuner Regen", nil, nil, nil, RegenUpdate, OnClick, OnEnter, nil, "SpellTuner Regen", nil, ApplySettings)
 
 -- What this surface registered, for the INTEGRATIONS line and /st dump (T97).
-MD.Surfaces = MD.Surfaces or {}
-MD.Surfaces.elvui = { datatexts = { "SpellTuner", "SpellTuner Regen" } }
+ST.Surfaces = ST.Surfaces or {}
+ST.Surfaces.elvui = { datatexts = { "SpellTuner", "SpellTuner Regen" } }

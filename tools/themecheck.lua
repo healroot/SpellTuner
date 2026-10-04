@@ -4,7 +4,7 @@
 -- UI/Theme_Forever.lua, UI/Theme_Flat.lua since T80 (the palette, UI.TEXT, the fonts, UI.ApplyFonts, the
 -- font offset clamped to -2..+2, UI.Pitch, UI.PIXEL, UI.LIST_STRATA), the
 -- additive half in UI/Style.lua (UI.px, StylizeFrame under UI.PIXEL and its
--- weak registry, UI.RestylePixels), MD.API.PhysicalScreenSize and the
+-- weak registry, UI.RestylePixels), ST.API.PhysicalScreenSize and the
 -- db.ui defaults in Core_Forever.lua. The TBC TOC does not list the theme, and
 -- tools/navui.lua / tools/dashui.lua hold TBC's look.
 --
@@ -34,7 +34,7 @@
 --
 -- T80 (C1 of docs/PLAN-refactor-ux.md, decision 10): the theme is
 -- UI/Theme_Flat.lua now and every main TOC lists it, TBC's included, right
--- after UI/Style.lua; it declares db.ui.fontOffset itself (MD:RegisterDefaults)
+-- after UI/Style.lua; it declares db.ui.fontOffset itself (ST:RegisterDefaults)
 -- and the window manager the rest of db.ui. The tbc half loads it as the TOC
 -- does and holds the theme there: UI.THEMED true, the tokens and fills
 -- Forever's, Review's small text the kit's, the primitives' pixel edges.
@@ -56,7 +56,7 @@ local function check(name, cond, detail)
 end
 
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua")
+local ST = dofile(here .. "/harness.lua")
 arg[0] = a0
 
 local S = _G.STUB
@@ -128,8 +128,8 @@ if S.flavour == "tbc" then
         return fs
     end
     S.Load({ "UI/Style.lua", "UI/Theme_Flat.lua", "UI/EscStack.lua", "UI/Windows.lua", "UI/ContextMenu.lua",
-             "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/Dashboard_Rows.lua", "UI/Dashboard_Review.lua" }, "SpellTuner", MD)
-    local UI = MD.UI
+             "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/Dashboard_Rows.lua", "UI/Dashboard_Review.lua" }, "SpellTuner", ST)
+    local UI = ST.UI
 
     check("tbc: UI.THEMED is true with the theme loaded as the TBC TOC lists it", UI.THEMED == true,
         tostring(UI.THEMED))
@@ -171,7 +171,7 @@ if S.flavour == "tbc" then
     parent:SetSize(760, 420)
     local small, kit = 0, 0
     local before = #S.allFrames
-    MD.DashboardParts.CreateReview(parent, 760)
+    ST.DashboardParts.CreateReview(parent, 760)
     for i = before + 1, #S.allFrames do
         local f = S.allFrames[i]
         if f.kind == "FontString" and f.template == "GameFontHighlightSmall" then small = small + 1 end
@@ -225,7 +225,7 @@ if S.flavour == "tbc" then
     os.exit(#fails > 0 and 1 or 0)
 end
 
-local UI = MD.UI
+local UI = ST.UI
 
 --------------------------------------------------------------------------------
 -- 1. The theme follows UI/Style.lua on every main TOC (T80, C1: TBC's too)
@@ -432,13 +432,13 @@ end
 -- 6. db.ui: the defaults, and a saved +4 clamped at login and written back
 --------------------------------------------------------------------------------
 do
-    local u = MD.db and MD.db.ui
+    local u = ST.db and ST.db.ui
     check("db.ui defaults: fontOffset 0, scale 1, combat hide, escStack on, win {}",
         type(u) == "table" and u.fontOffset == 0 and u.scale == 1 and u.combat == "hide"
           and u.escStack == true and type(u.win) == "table")
     if type(u) == "table" then
         u.fontOffset = 4
-        MD:Fire("CORE_LOGIN")
+        ST:Fire("CORE_LOGIN")
     end
     local _, size = font(UI.FONT or "?")
     check("a saved offset of +4 comes back +2 at login, applied to the fonts",
@@ -449,14 +449,14 @@ do
 end
 
 --------------------------------------------------------------------------------
--- 7. UI.PIXEL, UI.LIST_STRATA, MD.API.PhysicalScreenSize
+-- 7. UI.PIXEL, UI.LIST_STRATA, ST.API.PhysicalScreenSize
 --------------------------------------------------------------------------------
 check("the theme sets UI.PIXEL and UI.LIST_STRATA = FULLSCREEN_DIALOG",
     UI.PIXEL == true and UI.LIST_STRATA == "FULLSCREEN_DIALOG")
 do
     local w, h = nil, nil
-    if MD.API.PhysicalScreenSize then w, h = MD.API.PhysicalScreenSize() end
-    check("MD.API.PhysicalScreenSize answers the physical screen through the adapter",
+    if ST.API.PhysicalScreenSize then w, h = ST.API.PhysicalScreenSize() end
+    check("ST.API.PhysicalScreenSize answers the physical screen through the adapter",
         w == 1920 and h == 1080, tostring(w) .. "x" .. tostring(h))
 end
 

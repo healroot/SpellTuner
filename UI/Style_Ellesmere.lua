@@ -17,13 +17,13 @@
 --   * THE FOLLOW (Forever, EllesmereUI loaded): the accent, the panel colour
 --     and the font read through EllesmereUI's documented getters at every
 --     apply, never cached (SKINNING_API.md). The skin facade `S` is what
---     Integrations/EllesmereUI_Forever.lua (T97) stores as MD.EUISkin from
+--     Integrations/EllesmereUI_Forever.lua (T97) stores as ST.EUISkin from
 --     EllesmereUI.RegisterSkin's callback; it is followed only while
 --     S.apiVersion is 2 (the documented, additive-only contract) -- any other
 --     version keeps the clone and the dump says `skin apiVersion <n>: not
 --     followed` (X1). With no facade (BlizzardSkin off, or skinning turned
 --     off for SpellTuner) the parent's own getters, GetAccentColor and
---     GetFontPath, through MD.EUIParent (the EllesmereUI table the
+--     GetFontPath, through ST.EUIParent (the EllesmereUI table the
 --     integration hands over; host globals are named only under
 --     Integrations/, tools/apicheck.py rule 11); with neither, the clone. A
 --     getter that raises or answers something that is not a colour or a path
@@ -50,13 +50,13 @@
 -- alpha.
 --
 -- The client is read once, through the adapter: the interface number
--- (MD.API.BuildInfo) against the adapter's own Forever band (MD.API.BANDS),
+-- (ST.API.BuildInfo) against the adapter's own Forever band (ST.API.BANDS),
 -- which is how EllesmereUI itself picks its default theme
 -- (EllesmereUI_ClientGate.lua: EUI_CLIENT_FOREVER from the interface), so the
 -- clone's accent is the host's default for this client. Nothing else here
 -- reads the client; nothing branches on UI.STYLE.
-local _, MD = ...
-local UI = MD.UI
+local _, ST = ...
+local UI = ST.UI
 
 local E = {}
 UI.Ellesmere = E
@@ -120,11 +120,11 @@ end
 -- interface is in the Forever band, teal on any other client (or none read).
 function E.HouseAccent()
     local iface
-    if type(MD.API.BuildInfo) == "function" then
-        local ok, _, _, _, i = pcall(MD.API.BuildInfo)
+    if type(ST.API.BuildInfo) == "function" then
+        local ok, _, _, _, i = pcall(ST.API.BuildInfo)
         if ok then iface = i end
     end
-    local band = type(MD.API.BANDS) == "table" and MD.API.BANDS.forever
+    local band = type(ST.API.BANDS) == "table" and ST.API.BANDS.forever
     if type(iface) == "number" and type(band) == "table" and iface >= band[1] and iface <= band[2] then
         return E.BRONZE
     end
@@ -133,13 +133,13 @@ end
 
 -- E.Source() -> "skin", S | "parent", P | "clone", nil, why. Reads no getter.
 function E.Source()
-    local S = MD.EUISkin
+    local S = ST.EUISkin
     if S ~= nil then
         local v = Field(S, "apiVersion")
         if v == E.API_VERSION then return "skin", S end
         return "clone", nil, "skin apiVersion " .. Version(v) .. ": not followed"
     end
-    local P = MD.EUIParent
+    local P = ST.EUIParent
     if type(P) == "table" then return "parent", P end
     return "clone", nil
 end
@@ -227,7 +227,7 @@ local following = nil   -- "skin" | "parent" | nil (the clone), as last resolved
 local function Resolve()
     local accent, panel, face, flags = E.HouseAccent(), E.PANEL, E.FONT, ""
     local src, host, why = E.Source()
-    E.decidedFor = MD.EUISkin
+    E.decidedFor = ST.EUISkin
     local note = why
     if src == "skin" then
         accent = Colour(Ask(host, "GetAccentColor")) or accent
@@ -264,11 +264,11 @@ UI.ELLESMERE.accent = "follow"
 UI.ELLESMERE.resolve = function() return Resolve() end
 UI.Styles.Register("ellesmere", UI.ELLESMERE)
 
-MD:RegisterCallback("EUI_LOOKS_CHANGED", function()
+ST:RegisterCallback("EUI_LOOKS_CHANGED", function()
     UI.Styles.Refresh("ellesmere")
 end)
 
-MD:RegisterCallback("EUI_SKIN_READY", function()
-    if UI.Styles.Active() ~= "ellesmere" or rawequal(E.decidedFor, MD.EUISkin) then return end
+ST:RegisterCallback("EUI_SKIN_READY", function()
+    if UI.Styles.Active() ~= "ellesmere" or rawequal(E.decidedFor, ST.EUISkin) then return end
     UI.Styles.Refresh("ellesmere")
 end)

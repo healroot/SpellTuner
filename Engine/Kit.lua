@@ -19,10 +19,10 @@
 -- Pure: no client call, no frame. Listed by SpellTuner_TBC.toc before
 -- Engine/RankMath.lua and by the Replay module before Kit_Forever.lua (both
 -- before Engine/SimModel.lua, which aliases Kit.Snapshot at load).
-local _, MD = ...
+local _, ST = ...
 
-MD.Kit = MD.Kit or {}
-local Kit = MD.Kit
+ST.Kit = ST.Kit or {}
+local Kit = ST.Kit
 
 -- The forms a kit carries an entry list for. Forever has no Tree of Life, so
 -- its builder leaves `tree` empty; it is still a table.
@@ -135,8 +135,8 @@ Kit.UNPRICED_NEEDS = { "cost", "cast" }
 
 -- The kit's own fields (a snapshot adds `at` and `level`).
 -- T96 (docs/SPEC-next.md 2.1): `profile` is the class whose profile the
--- builder made the kit by (MD.Profiles: its families, its HoT slots) --
--- stamped by both builders, read by the engine through MD.Profiles.ForKit.
+-- builder made the kit by (ST.Profiles: its families, its HoT slots) --
+-- stamped by both builders, read by the engine through ST.Profiles.ForKit.
 Kit.TOP = {
     caster = "table", tree = "table", crit = "number", critMissing = "boolean",
     at = "number", level = "number", profile = "string",
@@ -144,7 +144,7 @@ Kit.TOP = {
 
 -- T96: the profile of a kit that names none -- every kit and snapshot made
 -- before profiles was a druid's (the only class ever recorded), which is
--- MD.Profiles.ForKit's own default.
+-- ST.Profiles.ForKit's own default.
 Kit.DEFAULT_PROFILE = "DRUID"
 
 local function Finite(v)
@@ -267,7 +267,7 @@ end
 -- entries with their number, string and boolean fields, the crit, the time and
 -- the character's level. It IS a kit -- `SM.ScenarioFromRecording(rec,
 -- rec.kit)` replays with it as it stands -- and it holds nothing a replay does
--- not read: no MD.SpellData index (on TBC that table is static; on Forever it
+-- not read: no ST.SpellData index (on TBC that table is static; on Forever it
 -- is rebuilt from these entries by Kit.Restore) and no unlearned rank. Stored
 -- on every practice fight (Engine/Practice.lua), every Forever pull
 -- (Recorder_Forever.lua) and as the character's last kit (cdb.kit, Forever).
@@ -282,7 +282,7 @@ end
 function Kit.Snapshot(kit)
     if type(kit) ~= "table" then return nil end
     local snap = { crit = kit.crit, critMissing = kit.critMissing or nil,
-                   at = time and time() or nil, level = MD.player and MD.player.level or nil }
+                   at = time and time() or nil, level = ST.player and ST.player.level or nil }
     if type(kit.profile) == "string" and kit.profile ~= Kit.DEFAULT_PROFILE then
         snap.profile = kit.profile
     end
@@ -308,13 +308,13 @@ end
 --------------------------------------------------------------------------------
 -- Kit.Restore(snap, policy) -> kit, index
 --
--- A snapshot back into a kit AND the MD.SpellData index the engine reads names,
+-- A snapshot back into a kit AND the ST.SpellData index the engine reads names,
 -- families and ranks from, rebuilt from the kit's own entries (family, rank,
 -- cost, cast). Every rank in it is a known one (a kit holds nothing else), so
 -- `all` is `known`; the unlearned ranks and the skipped families a replay never
 -- reads are not there. The kit is a fresh copy (the engine never writes into
 -- the snapshot); the index is returned, not installed -- the caller decides
--- whether it becomes MD.SpellData (Kit_Forever.lua's RankMath.KitRestore does).
+-- whether it becomes ST.SpellData (Kit_Forever.lua's RankMath.KitRestore does).
 -- Not validated: a snapshot is replayed as it was recorded.
 --
 -- policy (the flavour's, all optional):

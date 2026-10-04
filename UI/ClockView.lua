@@ -17,7 +17,7 @@
 --     arrow in its own tone where it differs;
 --   * a message line (the unlock / "Show now" preview's words), centred where
 --     T82 put the one string, drawn instead of the pieces;
---   * the pulse (F5): one animation, MD:Alert's and the once-per-fight flash
+--   * the pulse (F5): one animation, ST:Alert's and the once-per-fight flash
 --     under 30 s, played by whichever line owns the frame.
 -- The value's fixed x is the label slot's width: the widest label the line
 -- draws (`look.labelSample`, "FULL" on TBC, "~FULL" on Forever) measured in the
@@ -45,7 +45,7 @@
 --     switches (TBC db.showRest / showCooldown, Forever db.clock.showRest)
 --     stay where they are and reach the look as `show` (phase 1, 7.3).
 --   * The dump line (`clock: layout <key>, <n> overrides (<keys>)`) through
---     MD:AddDumpLine, added the first time the look is not the default one,
+--     ST:AddDumpLine, added the first time the look is not the default one,
 --     so the dump of a player who never touched the clock is what it was.
 --
 -- T115 (clock v2, docs/tasks/T115-clock-bars-frame.md, docs/mockups/
@@ -62,7 +62,7 @@
 --     once per spend; the client animates it) --, `order` (manaOver /
 --     fsrOver), `mana` (game / model: Forever's modelled pool from the face's
 --     plain pct, at 0.6 alpha), `fsr` (the strip's thickness, 1-8), `after`
---     (green / empty / tick: TBC's 2-s regen tick from MD.Regen:RegenTick, a
+--     (green / empty / tick: TBC's 2-s regen tick from ST.Regen:RegenTick, a
 --     white mark sweeping the green strip) and `texture` (flat; TBC also the
 --     client's two bar textures). CV.BarsOK says what this line may draw;
 --     a refusal falls back to the default and is named in look.refused.
@@ -106,19 +106,19 @@
 --     Right2 is drawn only where the frame is wide enough (View:FitsRight2;
 --     else look.refused["text.line.right2"] names the width it needs).
 --   * A pct / mana slot asks the line's draw.powerText(fs, kind) first
---     (Forever: off until probe Q-clock-2 -- MD.API.POWER_TEXT_READS); on
+--     (Forever: off until probe Q-clock-2 -- ST.API.POWER_TEXT_READS); on
 --     false the slot draws the face's words (the model's "~" on Forever).
 --
 -- What it never does: Show / Hide the frame it draws into (each line keeps
 -- the single visibility owner, CLAUDE.md; a layout switch rebuilds regions
 -- INSIDE the frame), read a client value (the face is plain; the mana pool
 -- and the five-second rule come from the line's `draw` callbacks), read the
--- mana bar back, or read MD.db outside the store's functions below.
-local _, MD = ...
-local UI = MD.UI
+-- mana bar back, or read ST.db outside the store's functions below.
+local _, ST = ...
+local UI = ST.UI
 
-MD.ClockView = MD.ClockView or {}
-local CV = MD.ClockView
+ST.ClockView = ST.ClockView or {}
+local CV = ST.ClockView
 
 CV.INSET = 8      -- the label's and the secondary's distance from the frame's edges
 CV.TOP = -4       -- the text row, from the frame's top (T82's)
@@ -127,7 +127,7 @@ CV.GAP = 6        -- between the label slot and the value
 -- T98: the look's store, sparse (docs/SPEC-next.md 7.3). A registered default
 -- fills every leaf, so only the layout and an empty override table are
 -- declared; what "follows the style" is resolved, never stored.
-MD:RegisterDefaults({ clockLook = { layout = "line", over = {} } })
+ST:RegisterDefaults({ clockLook = { layout = "line", over = {} } })
 
 -- The widest value a layout must hold: a prefix, four digits, an arrow of two
 -- ("~0:00 vv" is never drawn, but nothing drawn is wider); the widest
@@ -289,7 +289,7 @@ local function Bool(v) return type(v) == "boolean" end
 
 for _, L in ipairs(CV.LAYOUTS) do
     local d = CV.LAYOUT[L]
-    local CF = MD.ClockFace
+    local CF = ST.ClockFace
     for _, slot in ipairs(CF.TEXT_SLOTS[L]) do
         CV.OVER["text." .. L .. "." .. slot] = OneOf(CF.TEXT_OPTIONS[L][slot])
     end
@@ -399,7 +399,7 @@ function CV.Resolve(stored, role, facts)
     local overText = type(over.text) == "table" and over.text or {}
     for _, L in ipairs(CV.LAYOUTS) do
         local raw = type(overText[L]) == "table" and overText[L] or {}
-        local t, ref = MD.ClockFace.ResolveText(raw, L, { cd = facts.cd })
+        local t, ref = ST.ClockFace.ResolveText(raw, L, { cd = facts.cd })
         for k2, why in pairs(ref or {}) do look.refused[k2] = why end
         local function Own(field, default)
             local v = raw[field]
@@ -490,7 +490,7 @@ local dumpAdded = false
 local migrated = false
 
 local function StoredRaw()
-    local db = MD.db
+    local db = ST.db
     if type(db) ~= "table" then return nil end
     if type(db.clockLook) ~= "table" then db.clockLook = { layout = "line", over = {} } end
     if type(db.clockLook.over) ~= "table" then db.clockLook.over = {} end
@@ -509,7 +509,7 @@ function CV.MigrateStored(facts, force)
     if #dropped > 0 then
         local text = string.format("clock: %d old clock key%s dropped (%s)", #dropped, #dropped == 1 and "" or "s",
             table.concat(dropped, ", "))
-        MD:AddDumpLine("clockOld", function() return text end)
+        ST:AddDumpLine("clockOld", function() return text end)
     end
     return changed, dropped
 end
@@ -521,7 +521,7 @@ local function Stored()
     return s
 end
 
-MD:RegisterCallback("MD_READY", function() CV.MigrateStored(CV.lineFacts) end)
+ST:RegisterCallback("MD_READY", function() CV.MigrateStored(CV.lineFacts) end)
 
 local function OverKeys(over)
     local keys = {}
@@ -545,7 +545,7 @@ local function Note(s)
     if dumpAdded then return end
     if s.layout ~= "line" or #OverKeys(s.over) > 0 then
         dumpAdded = true
-        MD:AddDumpLine("clock", CV.DumpLine)
+        ST:AddDumpLine("clock", CV.DumpLine)
     end
 end
 
@@ -558,7 +558,7 @@ function CV.Look(facts)
 end
 
 local function Changed()
-    MD:Fire("CLOCK_LOOK")
+    ST:Fire("CLOCK_LOOK")
 end
 
 -- CV.SetLayout(key) -> true | false, why. Saved, CLOCK_LOOK fired.
@@ -833,7 +833,7 @@ CV.KIND_SAMPLE = { pct = "~100%", mana = "~99999", manaOfMax = "~99999/99999", m
 local function TextOf(look, layout)
     local t = look.text
     if type(t) == "table" and t.timeAt then return t end
-    local r = MD.ClockFace.ResolveText(type(t) == "table" and t or nil, layout)
+    local r = ST.ClockFace.ResolveText(type(t) == "table" and t or nil, layout)
     if type(t) == "table" then
         r.size, r.outline, r.shadow, r.numbers = t.size, t.outline, t.shadow, t.numbers
     end
@@ -860,7 +860,7 @@ end
 -- set Size exactly (Compact's small slots at half of it). The time's home
 -- in the number face unless `numbers` is "labels".
 local function SlotFont(layout, slot, t)
-    local home = MD.ClockFace.TEXT_HOME[layout]
+    local home = ST.ClockFace.TEXT_HOME[layout]
     local small = layout == "compact" and slot ~= "main"
     local face, size, flags, sx, sy = ObjFont(small and (UI.FONT_SMALL or UI.FONT) or UI.FONT)
     if slot == home then
@@ -895,7 +895,7 @@ local function SlotSample(look, t, layout, slot)
         local s = CV.TIME_SAMPLE[t.time] or CV.VALUE_SAMPLE
         if t.timeLabel then return label .. " " .. s end
         -- the label drawn nowhere: Forever's "~" stays on the time
-        if t[MD.ClockFace.TEXT_LABEL[layout]] ~= "label" and label:sub(1, 1) == "~" then s = "~" .. s end
+        if t[ST.ClockFace.TEXT_LABEL[layout]] ~= "label" and label:sub(1, 1) == "~" then s = "~" .. s end
         return s
     end
     if kind == "label" then return label end
@@ -913,7 +913,7 @@ end
 -- Every slot of a layout measured: fonts, widths, heights.
 local function Slots(v, look, layout, t)
     local fonts, w, h = {}, {}, {}
-    for _, slot in ipairs(MD.ClockFace.TEXT_SLOTS[layout]) do
+    for _, slot in ipairs(ST.ClockFace.TEXT_SLOTS[layout]) do
         fonts[slot] = SlotFont(layout, slot, t)
         w[slot], h[slot] = MeasureIn(v, fonts[slot], SlotSample(look, t, layout, slot))
     end
@@ -1284,7 +1284,7 @@ function View:Snap()
     self:SizeBack()
 end
 
--- MD.ClockView.Build(parent, look, draw) -> view. `parent` is the line's
+-- ST.ClockView.Build(parent, look, draw) -> view. `parent` is the line's
 -- frame; `look` a resolved look (CV.Look) -- or T93's shape (labelSample,
 -- colors, show), which reads as the line layout with no bars; `draw`
 -- (optional) the line's sources: pool(bar) draws the real pool into the mana
@@ -1374,14 +1374,14 @@ local function Put(fs, text, tone, colors)
         return
     end
     fs:SetText(text)
-    fs:SetTextColor(MD.ClockFace.ToneRGB(tone, colors))
+    fs:SetTextColor(ST.ClockFace.ToneRGB(tone, colors))
     fs:Show()
 end
 
 -- A piece's words with its colour codes: a label riding with the time keeps
 -- its own tone ("OOM" muted before "1:20"), the arrow its own.
 local function PieceText(piece, colors)
-    local CF = MD.ClockFace
+    local CF = ST.ClockFace
     local text = piece.text
     if piece.labelText and piece.valueText and piece.labelTone and piece.labelTone ~= piece.tone then
         text = CF.ToneHex(piece.labelTone, colors) .. piece.labelText .. "|r " .. piece.valueText
@@ -1409,7 +1409,7 @@ local WARMUP_FACE = { mode = "warmup", label = "OOM", known = "pending", tone = 
 -- modelled ("~") mana number drawn, for the line's hover.
 function View:Paint(face, look)
     if look then self.look = look end
-    local CF = MD.ClockFace
+    local CF = ST.ClockFace
     local key = CV.LAYOUT[self.look.layout] and self.look.layout or "line"
     local f = type(face) == "table" and face or WARMUP_FACE
     self.face = type(face) == "table" and face or nil
@@ -1472,7 +1472,7 @@ function View:ManaColour()
     local c = look.colors and look.colors.manaBar
     if c == "tone" then
         local face = self.face
-        return MD.ClockFace.ToneRGB(face and face.tone or "muted", look.colors)
+        return ST.ClockFace.ToneRGB(face and face.tone or "muted", look.colors)
     elseif c == "class" then
         local a = UI.classAccent or UI.accent or { 1, 1, 1 }
         return a[1], a[2], a[3]
@@ -1498,7 +1498,7 @@ function View:FSR(now)
 end
 
 -- The mana bar: the game's pool (the line draws it: TBC reads it, Forever
--- hands it to the bar through MD.API.DrawUnitPower and never reads it), or
+-- hands it to the bar through ST.API.DrawUnitPower and never reads it), or
 -- the model's from the face's plain pct at 0.6 alpha. Nothing here reads
 -- the bar back.
 function View:PaintMana()
@@ -1655,7 +1655,7 @@ end
 -- as ClockFace.JoinSegments joins them.
 function View:Text()
     if self.msg:IsShown() then return self.msg:GetText() or "" end
-    return MD.ClockFace.JoinSegments(self.segs)
+    return ST.ClockFace.JoinSegments(self.segs)
 end
 
 function View:Pulse()

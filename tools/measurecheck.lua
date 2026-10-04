@@ -4,7 +4,7 @@
 -- the measuring session (Spells/Measure.lua) -- a cast matched to what
 -- landed, judged against its own text, several watches open at once, never a
 -- BELOW verdict on an amount it cannot pin to one cast. Forever only: it
--- needs UNIT_COMBAT (Facts) and MD.Book (T7), both Forever-only.
+-- needs UNIT_COMBAT (Facts) and ST.Book (T7), both Forever-only.
 HARNESS_FLAVOUR = "forever"
 
 local here = arg[0]:match("^(.*)/[^/]+$")
@@ -16,11 +16,11 @@ local function check(name, cond, detail)
 end
 
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua")
+local ST = dofile(here .. "/harness.lua")
 arg[0] = a0
 
 local S = _G.STUB
-local Measure = MD.Measure
+local Measure = ST.Measure
 
 -- The fixed spellbook slots every forever suite already relies on (from
 -- tools/wowstub.lua's S.UseProfile("forever")):
@@ -235,7 +235,7 @@ do
     local printed = LastLine()
     check("each kept line carries the version and build that wrote it",
         type(last) == "table" and last.text == printed and type(printed) == "string"
-        and last.version == MD.API.AddonVersion() and last.version ~= nil
+        and last.version == ST.API.AddonVersion() and last.version ~= nil
         and last.build == select(2, GetBuildInfo()),
         string.format("type=%s version=%s build=%s", type(last),
             type(last) == "table" and tostring(last.version) or "-",
@@ -252,7 +252,7 @@ local function CountOf(text, needle)
 end
 
 do
-    local ver = MD.API.AddonVersion()
+    local ver = ST.API.AddonVersion()
     local build = select(2, GetBuildInfo())
     local kept = SpellTunerDB.measures
     SpellTunerDB.measures = {
@@ -288,14 +288,14 @@ do
         { text = "CURRENT alpha", version = ver, build = build },
     }
     local printed = {}
-    local origPrint = MD.Print
-    MD.Print = function(self, msg) printed[#printed + 1] = tostring(msg) end
+    local origPrint = ST.Print
+    ST.Print = function(self, msg) printed[#printed + 1] = tostring(msg) end
     local shown
-    local origPopup = MD.ShowCopyPopup
-    MD.ShowCopyPopup = function(self, title, text) shown = text end
+    local origPopup = ST.ShowCopyPopup
+    ST.ShowCopyPopup = function(self, title, text) shown = text end
     SlashCmdList.SPELLTUNER("measure clear")
     SlashCmdList.SPELLTUNER("measure dump")
-    MD.Print, MD.ShowCopyPopup = origPrint, origPopup
+    ST.Print, ST.ShowCopyPopup = origPrint, origPopup
     local named = false
     for _, l in ipairs(printed) do if l:find("cleared 2 line(s)", 1, true) then named = true end end
     check("/st measure clear empties the list and says how many",
@@ -726,7 +726,7 @@ end
 
 --------------------------------------------------------------------------------
 -- demonstration: the lines a scripted session printed (already echoed to
--- stdout above by MD:Print, which the stub's DEFAULT_CHAT_FRAME.AddMessage
+-- stdout above by ST:Print, which the stub's DEFAULT_CHAT_FRAME.AddMessage
 -- forwards to print()) -- restated here from the stored copy for the Report.
 --------------------------------------------------------------------------------
 print("\n-- demonstration: the stored measure lines --")

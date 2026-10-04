@@ -1,15 +1,15 @@
 -- T88 (docs/SPEC-next.md 2.4, seam S4 step 1; docs/research/next/R-clock.md 5.1):
 -- the clock FACE -- what the mana clock says, as a plain record, apart from how
 -- it is drawn. Each line builds its own face:
---   TBC     MD:GetClockFace(now)        Engine/TTO.lua, from the display latch
---   Forever MD.ManaModel.Face(state, now) Engine/ManaModel.lua, from the model
--- and provides it as MD.ClockFace.Current (MD:Provide, one provider per TOC),
+--   TBC     ST:GetClockFace(now)        Engine/TTO.lua, from the display latch
+--   Forever ST.ManaModel.Face(state, now) Engine/ManaModel.lua, from the model
+-- and provides it as ST.ClockFace.Current (ST:Provide, one provider per TOC),
 -- so a renderer, a feed or a preview asks for "the face now" without asking
--- which client it runs on. MD:GetDisplayString and MD.ManaModel.Text are
+-- which client it runs on. ST:GetDisplayString and ST.ManaModel.Text are
 -- wrappers over LineString below and stay byte-identical (tools/clockfacecheck.lua's
 -- goldens, captured before the split).
 --
--- PURE: Lua's own library only -- no frame, no client call, no MD.db, no
+-- PURE: Lua's own library only -- no frame, no client call, no ST.db, no
 -- GetTime (tools/clockfacecheck.lua loads it in an environment holding nothing
 -- else). Listed by every main TOC before Engine/TTO.lua / Engine/ManaModel.lua,
 -- so neither the offline tools nor the Replay module ever reach a UI file for it.
@@ -49,10 +49,10 @@
 --   mono     true: no colour codes in LineString (ManaModel.Text, the Forever
 --            string, stays one colour); the renderer (UI/ClockView.lua, T93)
 --            draws Segments below, which ignore it: F1 tones on both lines
-local _, MD = ...
+local _, ST = ...
 
-MD.ClockFace = MD.ClockFace or {}
-local CF = MD.ClockFace
+ST.ClockFace = ST.ClockFace or {}
+local CF = ST.ClockFace
 
 CF.CAP = 600 -- seconds; past this a time reads ">10m"
 

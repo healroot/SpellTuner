@@ -1,10 +1,10 @@
--- The engine's shipped self-tests (TBC TOC only): /md simrun (MD:RunSimRun,
+-- The engine's shipped self-tests (TBC TOC only): /md simrun (ST:RunSimRun,
 -- the mechanics Engine/SimModel.lua is trusted on) and /md simreplay (the BF-1
 -- fixture replay, or one recording's validation report). tools/simcheck.lua
 -- runs both offline and reads their verdicts back.
 --
 -- T56 (P12, review A2): moved out of Verify.lua unchanged.
-local _, MD = ...
+local _, ST = ...
 
 --------------------------------------------------------------------------------
 -- /md simrun -- self-tests for Engine/SimModel.lua (docs/SPEC-v0.7.md 3.8).
@@ -26,9 +26,9 @@ local function Near(a, b, tol)
     return math.abs((a or 0) - (b or 0)) <= tol
 end
 
-function MD:RunSimRun()
-    local SM, RM, SD = MD.SimModel, MD.RankMath, MD.SpellData
-    if not (SM and RM and SD) then MD:Print("simrun: engine not loaded.") return 0, 1 end
+function ST:RunSimRun()
+    local SM, RM, SD = ST.SimModel, ST.RankMath, ST.SpellData
+    if not (SM and RM and SD) then ST:Print("simrun: engine not loaded.") return 0, 1 end
 
     -- The kit's caster half is built with inTree = false, so the rows it is
     -- compared against must be too -- otherwise running this in Tree form
@@ -181,7 +181,7 @@ function MD:RunSimRun()
         local sc = { dur = 20, pool = 50000, initial = { mana = 50000, form = "caster" },
                      targets = { { name = "T1", maxHP = 1000, hp0 = 1000, tracked = true } },
                      kit = kit, grace = 0, floor = 0,
-                     ev = { t = { 1 }, kind = { MD.SimModel.K.DMG }, tgt = { 1 }, amt = { 5000 }, x = { 0 } } }
+                     ev = { t = { 1 }, kind = { ST.SimModel.K.DMG }, tgt = { 1 }, amt = { 5000 }, x = { 0 } } }
         local r = SM:Run(sc, SM.ScriptPlan({ { 2, rejuvID, e.cost, 1 } }))
         Check("6 no heals on a corpse", (r.healByFamily.Rejuvenation or 0) == 0 and r.deaths.n == 1,
             string.format("healed %.0f, deaths %d", r.healByFamily.Rejuvenation or 0, r.deaths.n))
@@ -225,7 +225,7 @@ function MD:RunSimRun()
         local n, reps = 1500, 50
         local evT, evK, evTg, evA, evX = {}, {}, {}, {}, {}
         for i = 1, n do
-            evT[i], evK[i], evTg[i], evA[i], evX[i] = i * 0.02, MD.SimModel.K.FHEAL, 1, 10, 0
+            evT[i], evK[i], evTg[i], evA[i], evX[i] = i * 0.02, ST.SimModel.K.FHEAL, 1, 10, 0
         end
         local heavy = { dur = 35, pool = 100000, initial = { mana = 100000, form = "caster" },
                         targets = SimTargets(1, BIG, 1), kit = kit,
@@ -245,11 +245,11 @@ function MD:RunSimRun()
             string.format("%.2f KB/run with %d events, %.2f KB/run with none", heavyKB, n, lightKB))
     end
 
-    MD:Print(string.format("simrun: %d test(s), %s", #out,
+    ST:Print(string.format("simrun: %d test(s), %s", #out,
         fails == 0 and "all ok" or (fails .. " FAILED")))
     for _, line in ipairs(out) do
-        MD:Print("  " .. line)
-        MD:Debug("sim", "simrun %s", line)
+        ST:Print("  " .. line)
+        ST:Debug("sim", "simrun %s", line)
     end
     -- T47 (Q3): the verdict, for tools/simcheck.lua's exit code
     return #out, fails
@@ -272,7 +272,7 @@ end
 --             argument taken out of the question.
 --------------------------------------------------------------------------------
 local function ReplayFixture(fx)
-    local SM, RM = MD.SimModel, MD.RankMath
+    local SM, RM = ST.SimModel, ST.RankMath
     local sampleT, sampleM = {}, {}
     for i, m in ipairs(fx.mana) do sampleT[i], sampleM[i] = m[1], m[2] end
 
@@ -323,26 +323,26 @@ local function ReplayFixture(fx)
     return lines, spendExact and fit
 end
 
-function MD:RunSimReplay(arg)
-    if not (MD.SimModel and MD.RankMath) then MD:Print("simreplay: engine not loaded.") return false end
+function ST:RunSimReplay(arg)
+    if not (ST.SimModel and ST.RankMath) then ST:Print("simreplay: engine not loaded.") return false end
     if arg == nil or arg == "" or arg == "fixture" or arg == "bf1" then
-        local fx = MD.SimFixtures and MD.SimFixtures.BF1
-        if not fx then MD:Print("simreplay: no fixture loaded.") return false end
+        local fx = ST.SimFixtures and ST.SimFixtures.BF1
+        if not fx then ST:Print("simreplay: no fixture loaded.") return false end
         local lines, pass = ReplayFixture(fx)
         for _, line in ipairs(lines) do
-            MD:Print(line)
-            MD:Debug("sim", "simreplay %s", line)
+            ST:Print(line)
+            ST:Debug("sim", "simreplay %s", line)
         end
         -- T47 (Q3): the fixture's verdict -- spend exact and the fit inside its gate
         return pass
     end
-    local rec, label = MD:GetRecording(arg)
+    local rec, label = ST:GetRecording(arg)
     if not rec then
-        MD:Print("simreplay: no recording " .. tostring(arg) .. " (try /md simreplay fixture).")
+        ST:Print("simreplay: no recording " .. tostring(arg) .. " (try /md simreplay fixture).")
         return
     end
-    for _, line in ipairs(MD:ValidationReport(rec, label)) do
-        MD:Print(line)
-        MD:Debug("sim", "simreplay %s", line)
+    for _, line in ipairs(ST:ValidationReport(rec, label)) do
+        ST:Print(line)
+        ST:Debug("sim", "simreplay %s", line)
     end
 end

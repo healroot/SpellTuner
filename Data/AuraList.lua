@@ -8,10 +8,10 @@
 -- explained, and they are the prerequisite for the reserved decision input
 -- (spec 7). Every id is TBC-era from memory and marked VERIFY until it has been
 -- seen in a recording; a wrong id costs an icon, never a number.
-local _, MD = ...
+local _, ST = ...
 
 local L = {}
-MD.AuraList = L
+ST.AuraList = L
 
 -- [spellID] = { name, class }  -- name is for the fallback square and the log
 L.defensive = {

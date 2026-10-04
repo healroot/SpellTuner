@@ -1,13 +1,13 @@
 -- SpellTuner: mana dynamics, time-to-OOM prediction and healing rank analysis
 -- for TBC healers. The TBC addon's own core: defaults, the Simulate table,
 -- buffs and Tree of Life, talents, the profile snapshot, gear/talent events,
--- and its slash verbs (on Core.lua's MD:AddCommand since T61). Everything
+-- and its slash verbs (on Core.lua's ST:AddCommand since T61). Everything
 -- shared with Forever (namespace, event dispatch, the ticker, Print/Alert/
 -- Debug, player identity, SavedVariables init, the login sequence, the slash
 -- dispatcher and command registry) is in Core.lua; this file hangs off it via
--- CORE_LOGIN/CORE_READY and MD:AddCommand (T1b of docs/ROADMAP-FOREVER.md).
+-- CORE_LOGIN/CORE_READY and ST:AddCommand (T1b of docs/ROADMAP-FOREVER.md).
 -- This file is on the TBC TOC only, so it keeps its direct client calls.
-local ADDON_NAME, MD = ...
+local ADDON_NAME, ST = ...
 
 local DEFAULTS = {
     pos = { "CENTER", "CENTER", 0, -140 }, -- point, relativePoint, x, y
@@ -32,7 +32,7 @@ local DEFAULTS = {
     calibAlerts = true,   -- chat line when a spell drifts >3% from the model over 30+ events
     -- The engine's, the planner's and the replay window's settings (sim*,
     -- replay*, the gate thresholds) are declared by Engine/SimModel.lua with
-    -- MD:RegisterDefaults since T64 (P20, review A3): same values, one place.
+    -- ST:RegisterDefaults since T64 (P20, review A3): same values, one place.
     recordFights = true,  -- keep the full event stream of the last 8 interesting pulls so they
                           -- can be replayed (Engine/FightRecorder.lua). Summaries run regardless
     recordThreat = true,  -- record the two things a healer can see coming: aggro on each tracked
@@ -50,7 +50,7 @@ local DEFAULTS = {
     firstRun = true,
     -- minimap: UI/MinimapButton.lua registers it (T79, P36: one file, both lines)
     debug = {
-        enabled = false,  -- MD:Debug() is a no-op unless this is on
+        enabled = false,  -- ST:Debug() is a no-op unless this is on
         maxLines = 1000,  -- memory ring size (Debug Console "keep lines")
         categories = { regen = true, mana = true, spend = true, tto = true,
                        heal = true, cast = true, calib = true, combat = true, chat = true,
@@ -60,14 +60,14 @@ local DEFAULTS = {
                           -- own position. Kept so an old database does not grow a stray key back
     char = {},
 }
-MD.DEFAULTS = DEFAULTS
+ST.DEFAULTS = DEFAULTS
 
 -- What-if overrides for the rank dashboard (never saved): heal, crit (%),
 -- casting / base (mp5), mana. nil = live. See UI/Dashboard.lua "Simulate".
-MD.sim = {}
+ST.sim = {}
 
 -- Buff scan by name; tolerates both the classic UnitBuff API and C_UnitAuras.
-function MD:HasBuff(matchName)
+function ST:HasBuff(matchName)
     if not matchName then return false end
     if UnitBuff then
         for i = 1, 40 do
@@ -95,90 +95,90 @@ end
 -- runs only when the function is absent or raised.
 local TREE_OF_LIFE = GetSpellInfo(33891)
 local TREE_FORM_ID = _G.TREE_FORM or 2
-function MD:InTreeForm()
+function ST:InTreeForm()
     -- Druid by design (docs/SPEC-next.md 4.4, T99): Tree of Life is a druid
     -- form, a fact about the class rather than a capability a profile grants,
-    -- so this read stays on MD.player and never becomes MD.ClassProfile:Can.
-    if not MD.player.isDruid then return false end
+    -- so this read stays on ST.player and never becomes ST.ClassProfile:Can.
+    if not ST.player.isDruid then return false end
     if GetShapeshiftFormID then
         local ok, id = pcall(GetShapeshiftFormID)
         if ok then return id == TREE_FORM_ID end
     end
-    return MD:HasBuff(TREE_OF_LIFE)
+    return ST:HasBuff(TREE_OF_LIFE)
 end
 
 -- Fired (as "FORM_CHANGED", inTree) when the shapeshift form changes.
 local lastTree = nil
 local function CheckForm()
-    if not MD.db then return end
-    local inTree = MD:InTreeForm()
+    if not ST.db then return end
+    local inTree = ST:InTreeForm()
     if inTree ~= lastTree then
         lastTree = inTree
-        MD:Debug("other", "form: %s", inTree and "Tree of Life" or "caster / other")
-        MD:Fire("FORM_CHANGED", inTree)
+        ST:Debug("other", "form: %s", inTree and "Tree of Life" or "caster / other")
+        ST:Fire("FORM_CHANGED", inTree)
     end
 end
-MD:On("UPDATE_SHAPESHIFT_FORM", CheckForm)
-MD:On("UPDATE_SHAPESHIFT_FORMS", CheckForm)
-MD:RegisterCallback("MD_READY", function() lastTree = MD:InTreeForm() end)
+ST:On("UPDATE_SHAPESHIFT_FORM", CheckForm)
+ST:On("UPDATE_SHAPESHIFT_FORMS", CheckForm)
+ST:RegisterCallback("MD_READY", function() lastTree = ST:InTreeForm() end)
 
 --------------------------------------------------------------------------------
 -- Talents: scanned by NAME across all tabs so positional index shifts between
 -- client builds can't silently return the wrong talent.
 --------------------------------------------------------------------------------
-MD.talents = {}
+ST.talents = {}
 
 -- Talents the model reads or that the verification output should show.
-MD.RELEVANT_TALENTS = {
+ST.RELEVANT_TALENTS = {
     "Intensity", "Dreamstate", "Living Spirit", "Lunar Guidance",
     "Moonglow", "Tranquil Spirit", "Gift of Nature", "Improved Rejuvenation",
     "Empowered Rejuvenation", "Empowered Touch", "Improved Regrowth",
     "Naturalist", "Natural Perfection", "Nature's Grace", "Tree of Life",
 }
 
--- T52 (P8, review Q15): the offline tools' seam. MD:SetTalents(tbl) makes the
+-- T52 (P8, review Q15): the offline tools' seam. ST:SetTalents(tbl) makes the
 -- ranks `tbl` -- held, not copied, so a tool that edits it later changes the
 -- ranks -- and every scan takes it instead of the client, until
--- MD:SetTalents(nil) hands the scan back to the client. Called before login it
+-- ST:SetTalents(nil) hands the scan back to the client. Called before login it
 -- is what the login scan finds; after login it rescans at once (firing
 -- TALENTS_CHANGED as a scan does). tools/harness.lua uses it instead of
--- replacing MD:TalentRank, so the real TalentRank is what the suites run.
+-- replacing ST:TalentRank, so the real TalentRank is what the suites run.
 -- Nothing in the game calls it.
 local fixedTalents = nil
-function MD:SetTalents(tbl)
-    if tbl == nil and fixedTalents ~= nil then MD.talents = {} end -- never wipe the tool's table
+function ST:SetTalents(tbl)
+    if tbl == nil and fixedTalents ~= nil then ST.talents = {} end -- never wipe the tool's table
     fixedTalents = tbl
-    if MD.db then MD:ScanTalents() end
+    if ST.db then ST:ScanTalents() end
 end
 
-function MD:ScanTalents()
+function ST:ScanTalents()
     if fixedTalents then
-        MD.talents = fixedTalents
+        ST.talents = fixedTalents
     else
-        wipe(MD.talents)
+        wipe(ST.talents)
         if not GetNumTalentTabs then return end
         for tab = 1, GetNumTalentTabs() do
             for i = 1, GetNumTalents(tab) do
                 local name, _, _, _, rank = GetTalentInfo(tab, i)
                 if name then
-                    MD.talents[name] = rank or 0
+                    ST.talents[name] = rank or 0
                 end
             end
         end
     end
-    MD:Debug("other", "talents scanned: %s", MD:TalentSummary())
-    MD:Fire("TALENTS_CHANGED")
+    ST:Debug("other", "talents scanned: %s", ST:TalentSummary())
+    ST:Fire("TALENTS_CHANGED")
 end
 
-function MD:TalentRank(name)
-    return MD.talents[name] or 0
+function ST:TalentRank(name)
+    return ST.talents[name] or 0
 end
 
 -- "Intensity 3, Moonglow 3, ..." for the relevant talents, or "none relevant".
-function MD:TalentSummary()
+function ST:TalentSummary()
     local list = {}
-    for _, t in ipairs(MD.RELEVANT_TALENTS) do
-        local r = MD:TalentRank(t)
+    for _, t in ipairs(ST.RELEVANT_TALENTS) do
+        local r = ST:TalentRank(t)
         if r > 0 then list[#list + 1] = t .. " " .. r end
     end
     return #list > 0 and table.concat(list, ", ") or "none relevant"
@@ -192,8 +192,8 @@ end
 -- login, on a talent change and on a gear change; nothing reads it in-game --
 -- in the client the live API is always better.
 --------------------------------------------------------------------------------
-function MD:WriteProfile()
-    if not MD.cdb then return end
+function ST:WriteProfile()
+    if not ST.cdb then return end
     local function pcallv(fn, ...)
         if not fn then return nil end
         local ok, v = pcall(fn, ...)
@@ -201,67 +201,67 @@ function MD:WriteProfile()
         return nil
     end
     local talents = {}
-    for _, name in ipairs(MD.RELEVANT_TALENTS) do talents[name] = MD:TalentRank(name) end
+    for _, name in ipairs(ST.RELEVANT_TALENTS) do talents[name] = ST:TalentRank(name) end
     local _, relicID = nil, nil
-    if MD.SpellData and MD.SpellData.Relic then
-        local _, id = MD.SpellData:Relic()
+    if ST.SpellData and ST.SpellData.Relic then
+        local _, id = ST.SpellData:Relic()
         relicID = id
     end
-    MD.cdb.profile = {
-        v = 1, at = time(), charKey = MD.player.charKey,
-        class = MD.player.class, level = UnitLevel("player") or MD.player.level or 0,
+    ST.cdb.profile = {
+        v = 1, at = time(), charKey = ST.player.charKey,
+        class = ST.player.class, level = UnitLevel("player") or ST.player.level or 0,
         healing = pcallv(GetSpellBonusHealing) or 0,
         crit = pcallv(GetSpellCritChance, 4) or 0,
         spirit = UnitStat("player", 5) or 0,
         intellect = UnitStat("player", 4) or 0,
         manaMax = UnitPowerMax("player", 0) or 0,
-        apiBase = MD.Regen and MD.Regen.apiBase or 0,
-        apiCasting = MD.Regen and MD.Regen.apiCasting or 0,
+        apiBase = ST.Regen and ST.Regen.apiBase or 0,
+        apiCasting = ST.Regen and ST.Regen.apiCasting or 0,
         talents = talents,
         relic = relicID,
-        form = MD:InTreeForm() and "tree" or "caster",
+        form = ST:InTreeForm() and "tree" or "caster",
     }
-    MD:Debug("other", "profile written: level %d, +%d healing, %.1f%% crit, %d spirit, %d int, relic %s",
-        MD.cdb.profile.level, MD.cdb.profile.healing, MD.cdb.profile.crit,
-        MD.cdb.profile.spirit, MD.cdb.profile.intellect, tostring(relicID))
+    ST:Debug("other", "profile written: level %d, +%d healing, %.1f%% crit, %d spirit, %d int, relic %s",
+        ST.cdb.profile.level, ST.cdb.profile.healing, ST.cdb.profile.crit,
+        ST.cdb.profile.spirit, ST.cdb.profile.intellect, tostring(relicID))
 end
 
 -- Seam 1: the kernel's login sequence fires CORE_LOGIN once the profile and
 -- SavedVariables exist but before MD_READY -- this is TBC's own talent scan.
-MD:RegisterCallback("CORE_LOGIN", function() MD:ScanTalents() end)
+ST:RegisterCallback("CORE_LOGIN", function() ST:ScanTalents() end)
 
 -- Seam 2: CORE_READY is "everything the kernel does is done" -- today's tail
 -- of the login handler, verbatim: the profile snapshot (once now, once after
 -- the client settles), the first-run message.
-MD:RegisterCallback("CORE_READY", function()
+ST:RegisterCallback("CORE_READY", function()
     -- once now, and again once the client has settled: at PLAYER_LOGIN the
     -- stat APIs can still read zero.
-    MD:WriteProfile()
-    if C_Timer and C_Timer.After then C_Timer.After(5, function() MD:WriteProfile() end) end
+    ST:WriteProfile()
+    if C_Timer and C_Timer.After then C_Timer.After(5, function() ST:WriteProfile() end) end
 
-    if MD.db.firstRun then
-        MD.db.firstRun = false
-        MD:Print("first run - the widget is unlocked for 60s so you can drag it. |cffffff00/md lock|r when done, |cffffff00/md help|r for commands.")
-        if MD.ForceWidgetPreview then MD:ForceWidgetPreview(60) end
+    if ST.db.firstRun then
+        ST.db.firstRun = false
+        ST:Print("first run - the widget is unlocked for 60s so you can drag it. |cffffff00/md lock|r when done, |cffffff00/md help|r for commands.")
+        if ST.ForceWidgetPreview then ST:ForceWidgetPreview(60) end
     end
 end)
 
-MD:On("CHARACTER_POINTS_CHANGED", function() MD:ScanTalents(); MD:WriteProfile() end)
-MD:On("PLAYER_TALENT_UPDATE", function() MD:ScanTalents(); MD:WriteProfile() end)
+ST:On("CHARACTER_POINTS_CHANGED", function() ST:ScanTalents(); ST:WriteProfile() end)
+ST:On("PLAYER_TALENT_UPDATE", function() ST:ScanTalents(); ST:WriteProfile() end)
 
 -- Gear changes move both the profile and the measured mp5. The profile is
 -- rewritten (it is free); the measurement is NOT invalidated -- an old
 -- measurement is still a measurement -- but the author is reminded once per
 -- session, out of combat, that it predates the gear they are wearing.
 local gearReminded = false
-MD:On("PLAYER_EQUIPMENT_CHANGED", function()
-    if not MD.cdb then return end
-    MD:WriteProfile()
-    if gearReminded or MD.inCombat then return end -- T58 (P14, A28): the kernel's flag
-    local m = MD.cdb.mp5
+ST:On("PLAYER_EQUIPMENT_CHANGED", function()
+    if not ST.cdb then return end
+    ST:WriteProfile()
+    if gearReminded or ST.inCombat then return end -- T58 (P14, A28): the kernel's flag
+    local m = ST.cdb.mp5
     if not m or not m.at then return end
     gearReminded = true
-    MD:Print(string.format("item mp5 was measured on %s (%d mp5); gear changed since - |cffffff00/md regentest|r " ..
+    ST:Print(string.format("item mp5 was measured on %s (%d mp5); gear changed since - |cffffff00/md regentest|r " ..
         "solo to re-measure.", date("%d %b", m.at), m.mp5 or 0))
 end)
 
@@ -269,163 +269,163 @@ end)
 -- Slash commands
 --------------------------------------------------------------------------------
 -- T61 (P17, review A1): every TBC verb registered on the kernel's one registry
--- (Core.lua's MD:AddCommand), here where the old MD.COMMANDS list and
--- MD.SlashFallback if-chain were -- no verb moved file; each moves next to its
+-- (Core.lua's ST:AddCommand), here where the old ST.COMMANDS list and
+-- ST.SlashFallback if-chain were -- no verb moved file; each moves next to its
 -- owner when that file is next touched. Registered in the old list's order, so
--- the help and the About tab (MD:Commands()) print what they printed; the
+-- the help and the About tab (ST:Commands()) print what they printed; the
 -- verbs the list never had a row for (help, unlock) are hidden, and the second
 -- spellings are aliases. tools/slashcheck.lua's golden transcript, captured
 -- before the move, holds every verb's output line for line.
-MD.COMMAND_USAGE_COLOR = "ffffff00"
+ST.COMMAND_USAGE_COLOR = "ffffff00"
 
-MD:AddCommand("", function()
-    if MD.ToggleDashboard then MD:ToggleDashboard() end
+ST:AddCommand("", function()
+    if ST.ToggleDashboard then ST:ToggleDashboard() end
 end, "/st", "toggle the rank dashboard")
 
-MD:AddCommand("options", function()
-    if MD.ShowOptionsFrame then MD:ShowOptionsFrame() end
+ST:AddCommand("options", function()
+    if ST.ShowOptionsFrame then ST:ShowOptionsFrame() end
 end, "/st options", "open the settings window")
-MD:AddAlias("config", "options")
-MD:AddAlias("settings", "options")
+ST:AddAlias("config", "options")
+ST:AddAlias("settings", "options")
 
-MD:AddCommand("lock", function()
-    MD.db.locked = true
-    if MD.UpdateVisibility then MD:UpdateVisibility() end
-    MD:Print("widget locked.")
+ST:AddCommand("lock", function()
+    ST.db.locked = true
+    if ST.UpdateVisibility then ST:UpdateVisibility() end
+    ST:Print("widget locked.")
 end, "/st lock, unlock", "lock / unlock (drag) the OOM widget")
-MD:AddCommand("unlock", function()
-    MD.db.locked = false
-    if MD.UpdateVisibility then MD:UpdateVisibility() end
-    MD:Print("widget unlocked - drag it, then /md lock.")
+ST:AddCommand("unlock", function()
+    ST.db.locked = false
+    if ST.UpdateVisibility then ST:UpdateVisibility() end
+    ST:Print("widget unlocked - drag it, then /md lock.")
 end, nil, nil, true) -- listed on lock's row
 
-MD:AddCommand("reset", function()
-    MD.db.pos = { DEFAULTS.pos[1], DEFAULTS.pos[2], DEFAULTS.pos[3], DEFAULTS.pos[4] }
-    if MD.ApplyWidgetPosition then MD:ApplyWidgetPosition() end
-    MD:Print("widget position reset.")
+ST:AddCommand("reset", function()
+    ST.db.pos = { DEFAULTS.pos[1], DEFAULTS.pos[2], DEFAULTS.pos[3], DEFAULTS.pos[4] }
+    if ST.ApplyWidgetPosition then ST:ApplyWidgetPosition() end
+    ST:Print("widget position reset.")
 end, "/st reset", "reset the widget position")
 
-MD:AddCommand("mute", function()
-    MD.db.muted = not MD.db.muted
-    MD:Print("alerts " .. (MD.db.muted and "muted." or "unmuted."))
+ST:AddCommand("mute", function()
+    ST.db.muted = not ST.db.muted
+    ST:Print("alerts " .. (ST.db.muted and "muted." or "unmuted."))
 end, "/st mute", "toggle alert messages")
 
-MD:AddCommand("drink", function()
-    MD.db.drinkReminder = not MD.db.drinkReminder
-    MD:Print("drink reminder " .. (MD.db.drinkReminder and "on." or "off."))
+ST:AddCommand("drink", function()
+    ST.db.drinkReminder = not ST.db.drinkReminder
+    ST:Print("drink reminder " .. (ST.db.drinkReminder and "on." or "off."))
 end, "/st drink", "toggle the drink reminder")
 
-MD:AddCommand("rest", function()
-    MD.db.showRest = not MD.db.showRest
-    MD:Print("rest segment " .. (MD.db.showRest and "on." or "off."))
+ST:AddCommand("rest", function()
+    ST.db.showRest = not ST.db.showRest
+    ST:Print("rest segment " .. (ST.db.showRest and "on." or "off."))
 end, "/st rest", "toggle the 'rest' segment (time to full if you stop casting)")
 
-MD:AddCommand("tooltip", function()
-    MD.db.widgetTooltip = (MD.db.widgetTooltip == false)
-    if MD.UpdateVisibility then MD:UpdateVisibility() end
-    MD:Print(MD.db.widgetTooltip
+ST:AddCommand("tooltip", function()
+    ST.db.widgetTooltip = (ST.db.widgetTooltip == false)
+    if ST.UpdateVisibility then ST:UpdateVisibility() end
+    ST:Print(ST.db.widgetTooltip
         and "floating clock: tooltip on - hovering shows the breakdown, left-click opens the dashboard."
         or "floating clock: tooltip off - it takes no mouse input at all now, so it neither pops a tooltip "
            .. "nor swallows clicks in its rectangle, and it is still draggable while unlocked. The minimap "
            .. "button and the ElvUI datatexts keep theirs.")
 end, "/st tooltip", "hover tooltip on the FLOATING clock only (off also stops it swallowing clicks)")
-MD:AddAlias("tip", "tooltip")
+ST:AddAlias("tip", "tooltip")
 
-MD:AddCommand("binds", function()
-    if MD.ToggleBindings then MD:ToggleBindings() end
+ST:AddCommand("binds", function()
+    if ST.ToggleBindings then ST:ToggleBindings() end
 end, "/st binds", "what each key and mouse button casts in practice; import from Cell or Clique")
-MD:AddAlias("bindings", "binds")
+ST:AddAlias("bindings", "binds")
 
-MD:AddCommand("practice", function(arg)
+ST:AddCommand("practice", function(arg)
     -- v0.15.0: Simulate -> Practice; "/md practice start" plays the saved setup at once
-    if arg == "start" and MD.OpenPractice and MD.Practice then
-        MD.cdb.practiceSetup = MD.cdb.practiceSetup or MD.Practice.DefaultSetup("5")
-        MD:OpenPractice(MD.Practice.CopySetup(MD.cdb.practiceSetup), MD.cdb.practiceSetup.fixedSeed)
-    elseif MD.SelectView then
-        if MD.ShowDashboard then MD:ShowDashboard() end
-        MD:SelectView("simulate", "practice")
+    if arg == "start" and ST.OpenPractice and ST.Practice then
+        ST.cdb.practiceSetup = ST.cdb.practiceSetup or ST.Practice.DefaultSetup("5")
+        ST:OpenPractice(ST.Practice.CopySetup(ST.cdb.practiceSetup), ST.cdb.practiceSetup.fixedSeed)
+    elseif ST.SelectView then
+        if ST.ShowDashboard then ST:ShowDashboard() end
+        ST:SelectView("simulate", "practice")
     end
 end, "/st practice", "heal a fight you play and get it back as a recording (start: play the saved setup now)")
 
-MD:AddCommand("spelltip", function()
-    MD.db.spellTooltip = (MD.db.spellTooltip == false)
-    MD:Print(MD.db.spellTooltip
+ST:AddCommand("spelltip", function()
+    ST.db.spellTooltip = (ST.db.spellTooltip == false)
+    ST:Print(ST.db.spellTooltip
         and "spell tooltips: on - hover a heal on your bars or in the spellbook; hold Shift for the maths."
         or "spell tooltips: off.")
 end, "/st spelltip", "heal values on the game's spell tooltips (bars, spellbook); Shift for the maths")
 
-MD:AddCommand("window", function(arg)
+ST:AddCommand("window", function(arg)
     local n = tonumber(arg)
     if n and n >= 5 and n <= 60 then
-        MD.db.halfLife = n
-        MD:Print("spend half-life set to " .. n .. "s.")
+        ST.db.halfLife = n
+        ST:Print("spend half-life set to " .. n .. "s.")
     else
-        MD:Print("usage: /md window N (5-60 seconds)")
+        ST:Print("usage: /md window N (5-60 seconds)")
     end
 end, "/st window N", "spend estimator half-life in seconds (5-60, default 15)")
 
-MD:AddCommand("verify", function()
-    if MD.RunVerify then MD:RunVerify() end
+ST:AddCommand("verify", function()
+    if ST.RunVerify then ST:RunVerify() end
 end, "/st verify", "check static spell data against the live client")
 
-MD:AddCommand("profile", function()
-    if MD.RunProfile then MD:RunProfile() end
+ST:AddCommand("profile", function()
+    if ST.RunProfile then ST:RunProfile() end
 end, "/st profile", "copyable dump of every model input - use this for bug reports")
 
-MD:AddCommand("export", function()
-    if MD.RunExport then MD:RunExport() end
+ST:AddCommand("export", function()
+    if ST.RunExport then ST:RunExport() end
 end, "/st export", "fights, overheal and roster as tab-separated text, for analysis")
 
-MD:AddCommand("calibrate", function()
-    if MD.RunCalibrate then MD:RunCalibrate() end
+ST:AddCommand("calibrate", function()
+    if ST.RunCalibrate then ST:RunCalibrate() end
 end, "/st calibrate", "the model against every heal you landed: ratio per spell and event kind")
-MD:AddAlias("calib", "calibrate")
+ST:AddAlias("calib", "calibrate")
 
-MD:AddCommand("fsrtest", function()
-    if MD.RunFSRTest then MD:RunFSRTest() end
+ST:AddCommand("fsrtest", function()
+    if ST.RunFSRTest then ST:RunFSRTest() end
 end, "/st fsrtest", "log mana ticks for 15s (five-second-rule anchor test)")
 
-MD:AddCommand("regentest", function(arg)
-    if MD.RunRegenTest then MD:RunRegenTest(arg ~= "" and arg or nil) end
+ST:AddCommand("regentest", function(arg)
+    if ST.RunRegenTest then ST:RunRegenTest(arg ~= "" and arg or nil) end
 end, "/st regentest [N or clear]",
 "idle regen check: observed mana gain vs GetManaRegen (N s, default 30; clear forgets the measurement)")
 
-MD:AddCommand("spamtest", function()
-    if MD.RunSpamTest then MD:RunSpamTest() end
+ST:AddCommand("spamtest", function()
+    if ST.RunSpamTest then ST:RunSpamTest() end
 end, "/st spamtest", "arm, then chain-cast one spell to OOM: checks the dashboard's To OOM column")
 
-MD:AddCommand("simrun", function()
-    if MD.RunSimRun then MD:RunSimRun() end
+ST:AddCommand("simrun", function()
+    if ST.RunSimRun then ST:RunSimRun() end
 end, "/st simrun", "self-tests for the simulation engine (heals, HoT refresh, GCD, 5SR)")
 
-MD:AddCommand("simreplay", function(arg)
-    if MD.RunSimReplay then MD:RunSimReplay(arg) end
+ST:AddCommand("simreplay", function(arg)
+    if ST.RunSimReplay then ST:RunSimReplay(arg) end
 end, "/st simreplay [n]", "replay recorded fight n (or the BF-1 fixture) and score it against the log")
 
-MD:AddCommand("coach", function(arg)
-    if MD.RunCoach then MD:RunCoach(arg) end
+ST:AddCommand("coach", function(arg)
+    if ST.RunCoach then ST:RunCoach(arg) end
 end, "/st coach [n]", "search for a better plan on recorded fight n and show the card (cancel stops it)")
 
-MD:AddCommand("sim", function()
-    if MD.ToggleSimWindow then MD:ToggleSimWindow() end
+ST:AddCommand("sim", function()
+    if ST.ToggleSimWindow then ST:ToggleSimWindow() end
 end, "/st sim", "simulation window: build a fight and find the cheapest plan that holds it")
 
-MD:AddCommand("replay", function(arg)
-    if MD.ToggleReplay then MD:ToggleReplay(arg) end
+ST:AddCommand("replay", function(arg)
+    if ST.ToggleReplay then ST:ToggleReplay(arg) end
 end, "/st replay [n] [force]",
 "play recorded fight n (or run:pull, or 'run N') as unit frames; force: draw the suggested column on a fight that does not replay")
 
-MD:AddCommand("run", function(_, rawArg)
-    if MD.RunCommand then MD:RunCommand(rawArg) end
+ST:AddCommand("run", function(_, rawArg)
+    if ST.RunCommand then ST:RunCommand(rawArg) end
 end, "/st run start / stop / status", "record a whole dungeon: every pull and the gaps between them")
 
-MD:AddCommand("coachrun", function(arg)
-    if MD.RunCoachRun then MD:RunCoachRun(arg) end
+ST:AddCommand("coachrun", function(arg)
+    if ST.RunCoachRun then ST:RunCoachRun(arg) end
 end, "/st coachrun [n]", "coach a recorded RUN: one plan and a drink policy for the whole dungeon")
 
-MD:AddCommand("debug", function()
-    if MD.ToggleDebugConsole then MD:ToggleDebugConsole() end
+ST:AddCommand("debug", function()
+    if ST.ToggleDebugConsole then ST:ToggleDebugConsole() end
 end, "/st debug", "toggle the debug console (enable logging there, Copy to export)")
 
 -- The list itself, not a row of it (an unknown verb prints it too: Core.lua).
-MD:AddCommand("help", function() MD:ShowCommands() end, nil, nil, true)
+ST:AddCommand("help", function() ST:ShowCommands() end, nil, nil, true)

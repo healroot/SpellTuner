@@ -29,7 +29,7 @@ local FIXED_TIME = 1790704800   -- 2026-09-29 18:00 UTC, the day the author's p1
 _G.SpellTunerDB, _G.ManaDemonDB = nil, nil
 
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua")
+local ST = dofile(here .. "/harness.lua")
 arg[0] = a0
 local S = _G.STUB
 function date(fmt, t)
@@ -38,17 +38,17 @@ function date(fmt, t)
     return os.date(fmt, t or FIXED_TIME)
 end
 function time() return FIXED_TIME end
--- T54 (P10, review Q6): nor on the addon's version. MD.version is read from
+-- T54 (P10, review Q6): nor on the addon's version. ST.version is read from
 -- the TOC at load, and a practice fight stores it: with the real one the
 -- fixture changed on every --set-version and importcheck failed until it was
 -- rebuilt, the rebuilt diff hiding any genuine change in storage. A fixed
 -- token, as the dates above and the stub's build are.
 local FIXED_VERSION = "0.0.0-fixture"
-MD.version = FIXED_VERSION
+ST.version = FIXED_VERSION
 
 -- A level 10 druid on the beta: 364 mana, the author's own p1 pool.
 S.level = 10
-MD.player.level = 10
+ST.player.level = 10
 S.mana, S.manaMax = 364, 364
 S.crit[4] = 5
 -- ...regenerating like one: 5.5 mana a second outside the five-second rule,
@@ -56,7 +56,7 @@ S.crit[4] = 5
 -- a level 64's 69/28, and the adapter has already cached that function, so
 -- the adapter's binding is replaced instead (plain out of combat, secret in
 -- it, as the client answers).
-MD.API.ManaRegen = function()
+ST.API.ManaRegen = function()
     if S.inCombat then return nil, "secret" end
     return 5.5, 0
 end
@@ -75,14 +75,14 @@ S.AddUnit("party2", { guid = "Party-2-guid", name = "Mage", class = "MAGE", role
                        hp = 240, hpMax = 240 })
 S.units.player.auras = {}
 
-MD:SetModule("SpellTuner_Practice", true)   -- Recorder, Replay (the kit) and Practice
-assert(MD.Practice and MD.RankMath and MD.RankMath.KitSnapshot, "the modules did not load")
-MD.RankMath:SpellKit()   -- the book read once, as opening the window would
+ST:SetModule("SpellTuner_Practice", true)   -- Recorder, Replay (the kit) and Practice
+assert(ST.Practice and ST.RankMath and ST.RankMath.KitSnapshot, "the modules did not load")
+ST.RankMath:SpellKit()   -- the book read once, as opening the window would
 
 --------------------------------------------------------------------------------
 -- 1: a practice session, played
 --------------------------------------------------------------------------------
-local PR, SD = MD.Practice, MD.SpellData
+local PR, SD = ST.Practice, ST.SpellData
 local HT2, HT1, RJ2 = 5186, 5185, 1058
 assert(SD.spells[HT2] and SD.spells[RJ2], "the kit has no Healing Touch R2 / Rejuvenation R2")
 
@@ -95,7 +95,7 @@ local function Play(dur, seed, presses)
     for _, kind in ipairs({ "HEALER", "MELEE", "RANGED" }) do
         PR.ApplyRole(setup, kind, { spike = 0.10, spikeEvery = 30 })
     end
-    MD.cdb.practiceSetup = PR.CopySetup(setup)
+    ST.cdb.practiceSetup = PR.CopySetup(setup)
     local session = PR.New(PR.CopySetup(setup), { seed = setup.fixedSeed })
     session:Start()
     -- presses: { at, spell, target }. A press refused because a cast or the
@@ -173,11 +173,11 @@ S.meter.sources = {
     { sourceGUID = S.units.player.guid, isLocalPlayer = true, totalAmount = 450, name = "Healroot" },
 }
 -- T54 (P10, review Q8): the recorder stores the pull one second after the
--- combat flag drops (MD.API.After(1, ...)); the stub's clock runs it there,
+-- combat flag drops (ST.API.After(1, ...)); the stub's clock runs it there,
 -- and nothing may be left pending after that second
 At(S.now + 1)
 assert(S.Pending() == 0, "a timer is still pending one second after the pull")
-local recs = MD.cdb.recordings or {}
+local recs = ST.cdb.recordings or {}
 assert(#recs == 1 and recs[1].v == 3 and recs[1].kit, "the recorder kept no v3 stream with its kit")
 
 --------------------------------------------------------------------------------
@@ -192,7 +192,7 @@ db.session = { stamp = stamp, count = 3 }
 if db.probe then db.probe.stamp = stamp end
 -- the character as the beta names it (the stub logged in as Penek-Anniversary)
 local CHAR = "Healroot-Classic Beta PvP"
-db.char[CHAR], db.char[MD.player.charKey] = db.char[MD.player.charKey], nil
+db.char[CHAR], db.char[ST.player.charKey] = db.char[ST.player.charKey], nil
 
 local W = dofile(here .. "/svwrite.lua")
 W.Write(out, { SpellTunerDB = db })

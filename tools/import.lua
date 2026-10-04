@@ -41,7 +41,7 @@
 --
 -- pN addresses practice fight N (p1 = newest) instead of recording N, on both clients.
 -- A practice fight (and on Forever every pull) carries the kit it was played with
--- (`rec.kit`, MD.SimModel.KitSnapshot); a command on one fight replays it with that kit.
+-- (`rec.kit`, ST.SimModel.KitSnapshot); a command on one fight replays it with that kit.
 --
 -- On a Forever file (WoW: Forever, the beta) the commands are the same and run on
 -- the Forever engine -- tools/importforever.lua, which says what each prints:
@@ -179,9 +179,9 @@ for key, c in pairs(realDB.char or {}) do preloaded[key] = { profile = c.profile
 
 HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua"); arg[0] = a0
+local ST = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB
-S.Load({ "UI/Style.lua", "UI/Tip.lua", "UI/Tip_TBC.lua" }, "SpellTuner", MD)   -- Tip is what the card and reports print through
+S.Load({ "UI/Style.lua", "UI/Tip.lua", "UI/Tip_TBC.lua" }, "SpellTuner", ST)   -- Tip is what the card and reports print through
 
 -- the character: the stub's charKey is "Penek-Anniversary"; the real one is
 -- whatever the game wrote
@@ -194,17 +194,17 @@ local charKey = opts.char or (chars[1] and chars[1].key)
 if not charKey or not realDB.char[charKey] then
     print("import: no character with recordings in " .. file); os.exit(2)
 end
-MD.cdb = realDB.char[charKey]
-MD.player.charKey = charKey
-MD.cdb.profile = preloaded[charKey] and preloaded[charKey].profile or nil
-MD.cdb.mp5 = preloaded[charKey] and preloaded[charKey].mp5 or nil
+ST.cdb = realDB.char[charKey]
+ST.player.charKey = charKey
+ST.cdb.profile = preloaded[charKey] and preloaded[charKey].profile or nil
+ST.cdb.mp5 = preloaded[charKey] and preloaded[charKey].mp5 or nil
 
 -- The character, applied to the stub (v0.9.0). Every number RankMath:Context()
 -- reads comes from the client in game; here it comes from the profile the addon
 -- wrote. Talents replace the harness's BF-1 build, so a spell kit built after
 -- this is THIS druid's. Anything the profile does not carry keeps the stub's
 -- value, and the header line says which of the two you are looking at.
-local profile = MD.cdb.profile
+local profile = ST.cdb.profile
 local kitLine
 if profile then
     S.level = profile.level or S.level
@@ -217,15 +217,15 @@ if profile then
     _G.GetSpellCritChance = function() return crit end
     if profile.relic then _G.GetInventoryItemID = function() return profile.relic end end
     local talents = profile.talents or {}
-    function MD:TalentRank(name) return talents[name] or 0 end
-    MD.player.class = profile.class or MD.player.class
-    MD.player.isDruid = (profile.class == "DRUID")
-    MD.player.level = S.level
+    function ST:TalentRank(name) return talents[name] or 0 end
+    ST.player.class = profile.class or ST.player.class
+    ST.player.isDruid = (profile.class == "DRUID")
+    ST.player.level = S.level
     -- the form the profile was taken in, so the Tree aura and the costs agree
     if profile.form == "tree" then
-        function MD:InTreeForm() return true end
+        function ST:InTreeForm() return true end
     elseif profile.form then
-        function MD:InTreeForm() return false end
+        function ST:InTreeForm() return false end
     end
     -- v0.13: a profile lifted out of a Warcraft Logs report. The stub's
     -- IsSpellKnown answers for the AUTHOR's spellbook, so a level 70 druid's
@@ -235,13 +235,13 @@ if profile then
     if profile.fromLog then
         local lvl = profile.level or 70
         _G.IsSpellKnown = function(id)
-            local sd = MD.SpellData.spells[id]
+            local sd = ST.SpellData.spells[id]
             return sd ~= nil and (sd.level or 0) <= lvl
         end
         _G.IsPlayerSpell = _G.IsSpellKnown
-        MD.SpellData:BuildKnown()
+        ST.SpellData:BuildKnown()
     end
-    MD.Regen:Refresh()
+    ST.Regen:Refresh()
     kitLine = string.format("kit:   the character's (profile of %s): level %d %s, +%d healing, %.1f%% crit, " ..
         "%d spirit, %d int, %s", os.date("%Y-%m-%d %H:%M", profile.at or 0), profile.level or 0,
         profile.class or "?", profile.healing or 0, profile.crit or 0, profile.spirit or 0,
@@ -251,12 +251,12 @@ else
         "log in with v0.9.0 or later and it will"
 end
 
-local mp5 = MD.cdb.mp5
+local mp5 = ST.cdb.mp5
 local mp5Line
 if mp5 then
     mp5Line = string.format("mp5:   %d measured by %s on %s (%d beats%s) - the model adds %.2f/s the API omits",
         mp5.mp5 or 0, mp5.source or "?", os.date("%Y-%m-%d", mp5.at or 0), mp5.ticks or 0,
-        mp5.solo == false and ", IN A GROUP" or "", MD.Regen:Unreported())
+        mp5.solo == false and ", IN A GROUP" or "", ST.Regen:Unreported())
 else
     mp5Line = "mp5:   not measured (/md regentest solo) - recordings made before it carry energize 0"
 end
@@ -265,12 +265,12 @@ local function Say(fmt, ...) print(string.format(fmt, ...)) end
 local function Strip(s) return (tostring(s):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) end
 
 Say("file:  %s", file)
-Say("char:  %s   (%d recording(s), %d summarised fight(s))", charKey, #(MD.cdb.recordings or {}), #(MD.cdb.fights or {}))
+Say("char:  %s   (%d recording(s), %d summarised fight(s))", charKey, #(ST.cdb.recordings or {}), #(ST.cdb.fights or {}))
 Say("%s", kitLine)
 Say("%s", mp5Line)
 Say("")
 
-local FR, SM, SP, RR = MD.FightRecorder, MD.SimModel, MD.SimPlanner, MD.RunRecorder
+local FR, SM, SP, RR = ST.FightRecorder, ST.SimModel, ST.SimPlanner, ST.RunRecorder
 
 -- What "N" addresses: the ring of single fights, or -- with --run K -- the
 -- pulls of run K, in the order they happened. Everything below reads `list`,
@@ -289,7 +289,7 @@ if opts.run then
     Say("")
 elseif opts.spec then
     -- "p3": the third newest practice fight (v0.15.0's own address)
-    list = MD.Practice and MD.Practice.List() or {}
+    list = ST.Practice and ST.Practice.List() or {}
     n = tonumber(opts.spec:sub(2))
     what = "practice fight"
 else
@@ -308,14 +308,14 @@ local function Label(i)
 end
 
 -- A fight that carries the kit it was played with (every practice fight since
--- 2026-09-29, MD.SimModel.KitSnapshot) is replayed with that kit, not the one
+-- 2026-09-29, ST.SimModel.KitSnapshot) is replayed with that kit, not the one
 -- the profile above builds: every command on one fight, and its row in list.
 local function OwnKit(rec)
     return type(rec) == "table" and type(rec.kit) == "table" and type(rec.kit.caster) == "table" and rec.kit or nil
 end
 if opts.gotN and list[n] and OwnKit(list[n]) then
     local own = OwnKit(list[n])
-    function MD.RankMath:SpellKit() return own end
+    function ST.RankMath:SpellKit() return own end
     Say("kit:   %s %s's own, stored with it (%s%s) - the profile above is not used for it", what, Label(n),
         own.level and ("level " .. tostring(own.level) .. ", ") or "",
         string.format("crit %.1f%%", (own.crit or 0) * 100))
@@ -374,7 +374,7 @@ elseif cmd == "runs" then
 elseif cmd == "spells" then
     -- what a recording spent its mana on, by kind (v0.10.1)
     local rec = list[n]; if not rec then Say("no %s %s", what, Label(n)); os.exit(1) end
-    local sum = MD.DruidSpells.Summarise(rec)
+    local sum = ST.DruidSpells.Summarise(rec)
     Say("%s %s: %s, %.0fs, %d mana", what, Label(n), rec.zone or "?", rec.dur or 0, rec.spent or 0)
     local order = { "heal", "damage", "cc", "utility", "shift", "unknown" }
     local total = 0
@@ -396,14 +396,14 @@ elseif cmd == "spells" then
 
 elseif cmd == "validate" then
     local rec = list[n]; if not rec then Say("no %s %s", what, Label(n)); os.exit(1) end
-    for _, line in ipairs(MD:ValidationReport(rec, Label(n))) do Say("%s", Strip(line)) end
+    for _, line in ipairs(ST:ValidationReport(rec, Label(n))) do Say("%s", Strip(line)) end
 
 elseif cmd == "replay" then
     local rec = list[n]; if not rec then Say("no %s %s", what, Label(n)); os.exit(1) end
     -- The reasons (v0.12.3) need a plan to reason WITH: without one there is no
     -- suggested column and no classifier labels. Offline, fall back to the
     -- default plan on the ranks this fight actually cast, and say so.
-    local kitR = MD.RankMath:SpellKit()
+    local kitR = ST.RankMath:SpellKit()
     local planR = SP.plans[rec.id]
     if not planR then
         planR = SP.NewPlan(SP.BindsFromRecording(rec, kitR),
@@ -415,7 +415,7 @@ elseif cmd == "replay" then
     Say("%s %s: %s, %.1fs, %d own casts, %d trace events, grid %d x %.2fs%s", what, Label(n), rec.zone or "?",
         rec.dur or 0, rec.ownCasts or 0, L.nEv, L.n, L.dt,
         rp.right and "  (+ the coached plan on the right)" or "")
-    for _, line in ipairs(MD:ValidationReport(rec, Label(n))) do Say("  %s", Strip(line)) end
+    for _, line in ipairs(ST:ValidationReport(rec, Label(n))) do Say("  %s", Strip(line)) end
     Say("")
     Say("%s", SP.plans[rec.id] and "labels against the coached plan"
         or "labels against the default plan on this fight's own ranks (coach it for a better one)")
@@ -424,7 +424,7 @@ elseif cmd == "replay" then
     for i = 1, L.nEv do
         if L.ev.kind[i] == TK.CAST then
             ci = ci + 1
-            local sd = MD.SpellData.spells[L.ev.a[i]]
+            local sd = ST.SpellData.spells[L.ev.a[i]]
             local name = sd and (sd.family .. " R" .. sd.rank) or ("spell " .. L.ev.a[i])
             local tgt = rec.roster[L.ev.tgt[i]] and rec.roster[L.ev.tgt[i]].name or "-"
             local rec2 = rp.casts and rp.casts[ci]
@@ -454,7 +454,7 @@ elseif cmd == "replay" then
             local reason = R2.reasons and R2.reasons[i]
             local why = reason and SP.ReasonText(reason, rec.names)
             if kind == TK.CAST and why then
-                local sd = MD.SpellData.spells[R2.ev.a[i]]
+                local sd = ST.SpellData.spells[R2.ev.a[i]]
                 Say("%7.2f  %-22s %s", R2.ev.t[i],
                     sd and (sd.family .. " R" .. sd.rank) or ("spell " .. R2.ev.a[i]), Strip(why))
             elseif kind == TK.WAIT and why and (R2.ev.a[i] or 0) >= 2 then
@@ -476,7 +476,7 @@ elseif cmd == "replay" then
 elseif cmd == "coach" and theRun and not opts.gotN then
     -- the WHOLE run: one plan and one drink policy for the dungeon, the pulls
     -- chained with mana carried over and the gaps simulated (v0.9.3)
-    if not MD.player.isDruid then MD.player.isDruid = true end
+    if not ST.player.isDruid then ST.player.isDruid = true end
     local done, out = false, nil
     SP.CoachRun(theRun, {}, function(lines) out = lines; done = true end)
     local frames = 0
@@ -487,7 +487,7 @@ elseif cmd == "coach" and theRun and not opts.gotN then
 
 elseif cmd == "coach" then
     local rec = list[n]; if not rec then Say("no %s %s", what, Label(n)); os.exit(1) end
-    if not MD.player.isDruid then MD.player.isDruid = true end
+    if not ST.player.isDruid then ST.player.isDruid = true end
     local done, out = false, nil
     local h = SP.CoachAsync(rec, { n = Label(n), force = opts.force }, function(lines) out = lines; done = true end)
     local frames = 0
@@ -502,7 +502,7 @@ elseif cmd == "report" then
         rec.ownCasts or 0, rec.client and string.format("  (played on %s, level %s, SpellTuner %s%s)",
             rec.client, tostring(rec.level or "?"), tostring(rec.version or "?"),
             rec.build and (", build " .. rec.build) or "") or "")
-    for _, line in ipairs(dofile(here .. "/reportlines.lua")(MD, rec, MD.RankMath:SpellKit())) do
+    for _, line in ipairs(dofile(here .. "/reportlines.lua")(ST, rec, ST.RankMath:SpellKit())) do
         Say("  %s", line)
     end
 
@@ -511,7 +511,7 @@ elseif cmd == "gates" then
         Say("gates: needs --run K (it validates a whole run at once).")
         os.exit(2)
     end
-    local run = MD.RunRecorder:Get(opts.run)
+    local run = ST.RunRecorder:Get(opts.run)
     if not run then Say("gates: no run %d.", opts.run); os.exit(2) end
     local g = SP.RunGates(run, kit)
     Say("")
@@ -526,10 +526,10 @@ elseif cmd == "gates" then
     if (g.failed or 0) == 0 then Say("  every gate passed on every pull") end
 
 elseif cmd == "export" then
-    -- MD:Export renders everything; this keeps the head sections (fights,
+    -- ST:Export renders everything; this keeps the head sections (fights,
     -- overheal, roster) plus exactly one section: the whole run when a run was
     -- named without a pull, else the one recording.
-    local lines = MD:Export()
+    local lines = ST:Export()
     local path, want
     if theRun and not opts.gotN then
         os.execute("mkdir -p .logs/runs")

@@ -21,7 +21,7 @@
 --
 -- T38 (docs/SPEC-forever-ui.md 3.5): eight items before the ASCII walk hold
 -- one spell's view -- the header and the decision strip, the RANKS table, the
--- rank card, the row hover (the game's tooltip through MD.API.SetTooltipSpell,
+-- rank card, the row hover (the game's tooltip through ST.API.SetTooltipSpell,
 -- the block added when no post-call runs, the edge, the kit tooltip's
 -- reasons), each shape, the refresh split and the pitches, and no gold.
 --
@@ -30,7 +30,7 @@
 -- half (eleven items, right after the harness) is the TBC druid's Spells
 -- group on Spells/Book_Model.lua; the forever half is the suite as it was,
 -- with two re-based items: T38-1 reads the header's +healing line
--- (MD.Book:Bonus) and T38-3 the card's +Healing pair (Words.Bonus).
+-- (ST.Book:Bonus) and T38-3 the card's +Healing pair (Words.Bonus).
 HARNESS_FLAVOUR = { "forever", "tbc" }
 
 local here = arg[0]:match("^(.*)/[^/]+$")
@@ -42,12 +42,12 @@ local function check(name, cond, detail)
 end
 
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua")
+local ST = dofile(here .. "/harness.lua")
 arg[0] = a0
 
 local S = _G.STUB
-local Book = MD.Book
-local UI = MD.UI
+local Book = ST.Book
+local UI = ST.UI
 
 --------------------------------------------------------------------------------
 -- T120 (docs/tasks/T120-one-spells-pane.md): the TBC half. The stub druid at
@@ -69,7 +69,7 @@ local UI = MD.UI
 --      Other (Innervate); Export parses as the probe's dump and names the
 --      character (DRUID level 64);
 --   8. the picker's three sections; Tranquility ticked joins the rail;
---   9. a spellbook drop (MD.API.CursorInfo) puts Wrath in at the row;
+--   9. a spellbook drop (ST.API.CursorInfo) puts Wrath in at the row;
 --  10. a priest without the rank table: Overview's refusal line, Whole book
 --      Other only, nothing raised;
 --  11. font offsets -2..+2 and a style switch: re-rendered, no block over the
@@ -88,15 +88,15 @@ if S.flavour == "tbc" then
     for _, rel in ipairs(S.TocFiles("SpellTuner_TBC.toc")) do
         if rel:sub(1, 3) == "UI/" and not loaded[rel] then present[#present + 1] = rel end
     end
-    S.Load(present, "SpellTuner", MD)
-    UI = MD.UI
-    MD.player.isDruid = true
+    S.Load(present, "SpellTuner", ST)
+    UI = ST.UI
+    ST.player.isDruid = true
     local chat = {}
     _G.DEFAULT_CHAT_FRAME = { AddMessage = function(_, m) chat[#chat + 1] = m end }
 
     -- the measured overheal, seeded: a quarter of every heal, the family's
     -- average (Engine/Overheal.lua's three readers)
-    local OH = MD.Overheal
+    local OH = ST.Overheal
     OH.Fraction = function() return 0.25, 40, "family" end
     OH.KindFraction = function() return 0.25, 40, "family" end
     OH.FamilyFraction = function() return 0.25, 40 end
@@ -154,13 +154,13 @@ if S.flavour == "tbc" then
             if ORIG.GetSpellLevelLearned then return ORIG.GetSpellLevelLearned(id) end
         end
         _G.GetSpellBonusDamage = function() return 300 end
-        for _, n in ipairs(BOOK_NAMES) do if MD.API.Invalidate then MD.API.Invalidate(n) end end
-        if MD.BookTBC and type(MD.BookTBC.Forget) == "function" then MD.BookTBC.Forget() end
+        for _, n in ipairs(BOOK_NAMES) do if ST.API.Invalidate then ST.API.Invalidate(n) end end
+        if ST.BookTBC and type(ST.BookTBC.Forget) == "function" then ST.BookTBC.Forget() end
     end
     InstallBook(DRUID_WALK)
-    MD:Fire("CORE_LOGIN") -- the style registry applies the saved style here
-    if MD.Book and MD.Book.Refresh then MD.Book:Refresh() end
-    MD:Fire("MD_READY")   -- the TBC dashboard builds here
+    ST:Fire("CORE_LOGIN") -- the style registry applies the saved style here
+    if ST.Book and ST.Book.Refresh then ST.Book:Refresh() end
+    ST:Fire("MD_READY")   -- the TBC dashboard builds here
 
     local function Num(v, decimals)
         if type(v) ~= "number" or v ~= v then return "-" end
@@ -175,8 +175,8 @@ if S.flavour == "tbc" then
         if stripped:find("|") then return false, "bare pipe" end
         return true
     end
-    local W = MD.Words
-    local SPn = function() return MD.SpellsPane end
+    local W = ST.Words
+    local SPn = function() return ST.SpellsPane end
     local function T(name, fn)
         local good, cond, detail = pcall(fn)
         if not good then check(name, false, "raised: " .. tostring(cond)) return end
@@ -196,7 +196,7 @@ if S.flavour == "tbc" then
         for _, r in ipairs(Rail() and Rail():Rows() or {}) do if r.id == id then return r end end
         return nil
     end
-    local function Order() return table.concat(MD.Tabs:Get(), ",") end
+    local function Order() return table.concat(ST.Tabs:Get(), ",") end
     local function Click(b, button)
         local fn = b and b:GetScript("OnClick")
         if fn then fn(b, button or "LeftButton") end
@@ -213,8 +213,8 @@ if S.flavour == "tbc" then
     end
     local function Fam() return SPn().family end
     local function OpenFam(key)
-        if not MD.Tabs:Has(key) then MD.Tabs:Add(key, nil); SPn():ListChanged() end
-        MD:SelectView("spells", "fam:" .. key)
+        if not ST.Tabs:Has(key) then ST.Tabs:Add(key, nil); SPn():ListChanged() end
+        ST:SelectView("spells", "fam:" .. key)
         return Fam()
     end
     local function PairsList()
@@ -238,7 +238,7 @@ if S.flavour == "tbc" then
         return table.concat(t, "; ")
     end
     local function FullPool()
-        local p = MD.Book:Pool()
+        local p = ST.Book:Pool()
         return { max = p.max, regenCasting = p.regenCasting }
     end
     local function TagWant(fam, e)
@@ -256,29 +256,29 @@ if S.flavour == "tbc" then
         return table.concat(out, " / ")
     end
     local function Overview(mode)
-        MD:SelectView("spells", "overview")
+        ST:SelectView("spells", "overview")
         SPn():SetOverviewMode(mode)
         return SPn().overview
     end
 
     -- 1 ------------------------------------------------------------------------
     T("T120-1 tbc: the Spells group is a rail, Overview first, the druid's families; 860 x 560, no grip", function()
-        MD:ToggleDashboard()
-        MD:SelectView("spells", "overview")
+        ST:ToggleDashboard()
+        ST:SelectView("spells", "overview")
         local frame = _G.SpellTunerDashboard
         local ids = RailIds()
-        local book = MD.Book:Get()
+        local book = ST.Book:Get()
         local famRows = 0
         for i = 2, #ids do
             local key = ids[i]:match("^fam:(.+)$")
             if key and book.families[key] then famRows = famRows + 1 end
         end
-        local sz = MD.Win.SIZES and MD.Win.SIZES.spells
+        local sz = ST.Win.SIZES and ST.Win.SIZES.spells
         local good = Rail() ~= nil and Rail().title:GetText() == "MY SPELLS" and ids[1] == "overview"
             and RailRow("fam:HealingTouch") ~= nil and famRows == #ids - 1 and famRows >= 4
             and frame:GetWidth() == 860 and frame:GetHeight() == 560
             and sz and sz.w == 860 and sz.h == 560 and sz.minW == 860 and sz.minH == 560
-            and MD.Win:Fixed("main", "spells")
+            and ST.Win:Fixed("main", "spells")
             and not (frame.resizeGrip and frame.resizeGrip:IsShown())
         return good, "rail=" .. table.concat(ids, ",") .. " size=" .. frame:GetWidth() .. "x" .. frame:GetHeight()
     end)
@@ -286,8 +286,8 @@ if S.flavour == "tbc" then
     -- 2 ------------------------------------------------------------------------
     T("T120-2 tbc: Healing Touch's header -- the cast note, the pool without ~, +healing", function()
         local f = OpenFam("HealingTouch")
-        local pool = MD.Book:Pool()
-        local bonus = MD.Book:Bonus("heal")
+        local pool = ST.Book:Pool()
+        local bonus = ST.Book:Bonus("heal")
         local sub = f.header.sub:GetText()
         local mana = Strip(f.header.mana:GetText())
         local plus = f.header.bonus and Strip(f.header.bonus:GetText()) or "(no bonus line)"
@@ -302,7 +302,7 @@ if S.flavour == "tbc" then
     -- 3 ------------------------------------------------------------------------
     T("T120-3 tbc: RANKS -- the cells are the book's entries, the tags, the note", function()
         local f = Fam()
-        local fam = MD.Book:Get().families.HealingTouch
+        local fam = ST.Book:Get().families.HealingTouch
         local bad, n = {}, 0
         for _, r in ipairs(f.lastRows or {}) do
             if r.kind == "rank" then
@@ -310,7 +310,7 @@ if S.flavour == "tbc" then
                 local e, row = r.entry, RowFrame(r)
                 local want = table.concat({ "R" .. e.rank, Num(e.level), W.Cost(e, "cell"), Num(e.value),
                     Num(e.perMana, 2), Num(e.perSec, 1), W.Cast(e, "cell"),
-                    W.Casts(MD.Book:CastsFor(e, FullPool()), "short"), TagWant(fam, e) }, ",")
+                    W.Casts(ST.Book:CastsFor(e, FullPool()), "short"), TagWant(fam, e) }, ",")
                 local got = table.concat({ Cell(row, "rank") or "?", Cell(row, "level") or "?", Cell(row, "mana") or "?",
                     Cell(row, "value") or "?", Cell(row, "permana") or "?", Cell(row, "persec") or "?",
                     Cell(row, "cast") or "?", Cell(row, "toOOM") or "?", Cell(row, "tag") or "?" }, ",")
@@ -325,7 +325,7 @@ if S.flavour == "tbc" then
     -- 4 ------------------------------------------------------------------------
     T("T120-4 tbc: the card -- quote, Heals with crit, Crit, +Healing, After oh., Casts and Now", function()
         local f = Fam()
-        local e = MD.Book:Get().families.HealingTouch.suggested
+        local e = ST.Book:Get().families.HealingTouch.suggested
         local heals = PairValue("Heals")
         local crit = PairValue("Crit") or ""
         local wantHeals = Num(e.min) .. " - " .. Num(e.max) .. " (" .. Num(e.value) .. " with "
@@ -341,7 +341,7 @@ if S.flavour == "tbc" then
             and PairValue("+Healing") == "540 of your 450 (x1.20 Empowered Touch)"
             and PairValue("+Healing") == W.Bonus(e, "card")
             and PairValue("After oh.") == wantAfter
-            and PairValue("Casts") == W.Casts(MD.Book:CastsFor(e, FullPool()), "card")
+            and PairValue("Casts") == W.Casts(ST.Book:CastsFor(e, FullPool()), "card")
             and now ~= "" and not now:find("~", 1, true)
             and iPs and iBonus == iPs + 1 and iAfter == iBonus + 1
             and list[#list - 1][1] == "Casts" and list[#list][1] == "Now"
@@ -351,12 +351,12 @@ if S.flavour == "tbc" then
     -- 5 ------------------------------------------------------------------------
     T("T120-5 tbc: After overheal on -- the effective numbers, the suggested row unchanged", function()
         local f = Fam()
-        local fam = MD.Book:Get().families.HealingTouch
+        local fam = ST.Book:Get().families.HealingTouch
         local cb = f.strip and f.strip.after
         local measured = f.strip and f.strip.measured and Strip(f.strip.measured:GetText()) or "(none)"
         if not cb then return false, "no After overheal check" end
         cb:SetChecked(true); Click(cb)
-        local on = MD.db.effectiveMode == true
+        local on = ST.db.effectiveMode == true
         local bad = {}
         local sugg
         for _, r in ipairs(Fam().lastRows or {}) do
@@ -372,7 +372,7 @@ if S.flavour == "tbc" then
         end
         local cardPm = PairValue("Per mana")
         cb:SetChecked(false); Click(cb)
-        local off = MD.db.effectiveMode == false
+        local off = ST.db.effectiveMode == false
         local raw = Cell(RowFrame(Fam().lastRows[12]), "value")
         return on and off and #bad == 0 and sugg == fam.suggested and measured == "25% measured"
             and cardPm == Num(fam.suggested.afterOverheal.perMana, 2) and raw == Num(fam.ranks[12].value),
@@ -383,7 +383,7 @@ if S.flavour == "tbc" then
     -- 6 ------------------------------------------------------------------------
     T("T120-6 tbc: Lifebloom's rolled rows x2 / x3 under its rank, not selectable, their hover", function()
         local f = OpenFam("Lifebloom")
-        local e = MD.Book:Get().families.Lifebloom.ranks[1]
+        local e = ST.Book:Get().families.Lifebloom.ranks[1]
         local kinds, vrows = {}, {}
         for _, r in ipairs(f.lastRows or {}) do
             kinds[#kinds + 1] = r.kind .. (r.rank and tostring(r.rank) or "") .. (r.variant and ("x" .. r.variant.variant) or "")
@@ -452,12 +452,12 @@ if S.flavour == "tbc" then
             if r.kind == "family" then fams[r.key] = { section = cur, listed = r.listed } end
         end
         local captured
-        local orig = MD.ShowCopyPopup
-        MD.ShowCopyPopup = function(_, title, text) captured = text end
+        local orig = ST.ShowCopyPopup
+        ST.ShowCopyPopup = function(_, title, text) captured = text end
         Click(pane.exportBtn)
-        MD.ShowCopyPopup = orig
+        ST.ShowCopyPopup = orig
         local dump, why = ParseDump(captured)
-        local ht = MD.Book:Get().spells[26978]
+        local ht = ST.Book:Get().spells[26978]
         local good = table.concat(sections, ",") == "Heals,Damage,Other"
             and fams.Tranquility and fams.Tranquility.section == "Heals" and fams.Tranquility.listed == false
             and fams.Swiftmend and fams.Swiftmend.section == "Heals" and fams.Swiftmend.listed == false
@@ -479,7 +479,7 @@ if S.flavour == "tbc" then
 
     -- 8 ------------------------------------------------------------------------
     T("T120-8 tbc: the picker's three sections; Tranquility ticked joins the rail", function()
-        MD:SelectView("spells", "fam:HealingTouch")
+        ST:SelectView("spells", "fam:HealingTouch")
         Click(SPn().addBtn)
         local p = SPn().picker
         local function PRow(key)
@@ -492,18 +492,18 @@ if S.flavour == "tbc" then
             and tq.section == "heal" and secs == "heal,damage,other"
         if tq then tq.check:SetChecked(true); Click(tq.check) end
         Click(p and p.doneBtn)
-        local listed = MD.Tabs:Has("Tranquility") and RailRow("fam:Tranquility") ~= nil
+        local listed = ST.Tabs:Has("Tranquility") and RailRow("fam:Tranquility") ~= nil
         return okRows and listed and not p:IsShown(), "sections=" .. secs .. " order=" .. Order()
     end)
 
     -- 9 ------------------------------------------------------------------------
     T("T120-9 tbc: a spellbook drop puts Wrath in at the row, the cursor kept", function()
-        if MD.Tabs:Has("Wrath") then Rail().opts.onRemove("fam:Wrath") end
+        if ST.Tabs:Has("Wrath") then Rail().opts.onRemove("fam:Wrath") end
         local cursor = { "spell", 1, "spell", 5176 }
         S.cursor = cursor
         local row = RailRow("fam:HealingTouch")
         row:GetScript("OnReceiveDrag")(row)
-        local list = MD.Tabs:Get()
+        local list = ST.Tabs:Get()
         local iW, iH
         for i, k in ipairs(list) do
             if k == "Wrath" then iW = i end
@@ -522,7 +522,7 @@ if S.flavour == "tbc" then
     -- chip, the header, the accent cells and their hovers, the white mark, the
     -- RANKS note and the footer; Shift steps; Clear restores every cell.
     ----------------------------------------------------------------------------
-    local function WIr() return MD.WhatIf end
+    local function WIr() return ST.WhatIf end
     local function Raw(row, key)
         local fs = row and row.cells and row.cells[key]
         return fs and fs:GetText() or ""
@@ -598,17 +598,17 @@ if S.flavour == "tbc" then
         Type("heal", tostring(live.heal + 150))
         local f = Fam()
         local accent = UI.Hex("accent")
-        local liveFam = MD.Book:Get().families.HealingTouch
+        local liveFam = ST.Book:Get().families.HealingTouch
         local whatFam = WIr():Book().families.HealingTouch
         local liveBy = {}
         for _, e in ipairs(liveFam.ranks) do liveBy[e.id] = e end
         local full = FullPool()
-        local wpool = WIr():Pool(MD.Book:Pool())
+        local wpool = WIr():Pool(ST.Book:Pool())
         local wfull = { max = wpool.max, regenCasting = wpool.regenCasting }
         local bad, accented, marks, hovered = {}, 0, 0, 0
         for id, x in pairs(RankRowsBy(f)) do
             local e, l = x.r.entry, liveBy[id]
-            local diff = WIr().Diff(l, e, MD.Book:CastsFor(l, full), MD.Book:CastsFor(e, wfull))
+            local diff = WIr().Diff(l, e, ST.Book:CastsFor(l, full), ST.Book:CastsFor(e, wfull))
             for field, key in pairs(WI_CELLS) do
                 local isAccent = Raw(x.row, key):find(accent, 1, true) == 1
                 if (diff[field] and true or false) ~= isAccent then bad[#bad + 1] = "R" .. e.rank .. " " .. key end
@@ -670,7 +670,7 @@ if S.flavour == "tbc" then
         Click(Box("form").buttons.tree)
         local note = Strip(Fam().ranksNote:GetText())
         local tree = WIr():Get("form")
-        local sim = MD.sim and MD.sim.tree
+        local sim = ST.sim and ST.sim.tree
         Click(Box("form").buttons.live)
         local back = WIr():Get("form")
         local good = a == live.heal + 25 and b == live.heal + 125 and c == live.heal + 100
@@ -693,7 +693,7 @@ if S.flavour == "tbc" then
         local good = #bad == 0 and htBefore ~= nil and not WIr():Active()
             and Strip(f.strip.chipLabel:GetText()) == "SUGGESTED"
             and not (f.strip.chipLive and f.strip.chipLive:IsShown())
-            and note == "live: gear, talents, downrank rules" and (MD.sim == nil or next(MD.sim) == nil)
+            and note == "live: gear, talents, downrank rules" and (ST.sim == nil or next(ST.sim) == nil)
             and Strip(f.header.bonus:GetText()) == "+450 healing"
             and (Box("heal").box:GetText() or "") == "" and Box("heal").ph:IsShown()
         Click(f.strip.whatIfBtn) -- closed again for the items after
@@ -702,7 +702,7 @@ if S.flavour == "tbc" then
 
     -- 10 -----------------------------------------------------------------------
     T("T120-10 tbc: a priest without the rank table -- the refusal on Overview, Whole book Other only", function()
-        local caps = MD.Profiles.byClass.PRIEST and MD.Profiles.byClass.PRIEST.caps or {}
+        local caps = ST.Profiles.byClass.PRIEST and ST.Profiles.byClass.PRIEST.caps or {}
         local savedRT, savedTip = caps.rankTable, caps.tooltip
         caps.rankTable, caps.tooltip = nil, nil
         InstallBook({
@@ -713,26 +713,26 @@ if S.flavour == "tbc" then
         })
         S.units.player.class = "PRIEST"
         local good, res = pcall(function()
-            MD:DetectProfile()
-            MD:Fire("CORE_LOGIN")
-            MD.Book:Refresh()
+            ST:DetectProfile()
+            ST:Fire("CORE_LOGIN")
+            ST.Book:Refresh()
             local pane = Overview("mine")
             local note = pane.note and pane.note:IsShown() and Strip(pane.note:GetText()) or "(none)"
-            local want = MD.Profiles.Refusal("rankTable", "class", "Rank analysis")
+            local want = ST.Profiles.Refusal("rankTable", "class", "Rank analysis")
                 .. " - the OOM widget, datatext and advisor still work for your class."
             Overview("book")
             local secs = {}
             for _, r in ipairs(pane.lastRows or {}) do if r.kind == "section" then secs[#secs + 1] = r.text end end
-            MD:SelectView("spells", "fam:HealingTouch") -- a druid's row, stale for a priest
+            ST:SelectView("spells", "fam:HealingTouch") -- a druid's row, stale for a priest
             return { note = note, want = want, secs = table.concat(secs, ",") }
         end)
         S.units.player.class = "DRUID"
         caps.rankTable, caps.tooltip = savedRT, savedTip
         InstallBook(DRUID_WALK)
-        MD:DetectProfile()
-        MD:Fire("CORE_LOGIN")
-        MD.Book:Refresh()
-        MD:SelectView("spells", "overview")
+        ST:DetectProfile()
+        ST:Fire("CORE_LOGIN")
+        ST.Book:Refresh()
+        ST:SelectView("spells", "overview")
         if not good then return false, "raised: " .. tostring(res) end
         return res.note == res.want and res.secs == "Other",
             string.format("note=%q secs=%s", res.note, res.secs)
@@ -875,7 +875,7 @@ if S.flavour == "tbc" then
         Click(f.strip.whatIfBtn)
         S.Tick(0)
         local d = Fam().whatIf
-        local stack = MD.EscStack.stack
+        local stack = ST.EscStack.stack
         local top = stack[#stack] and stack[#stack].frame
         local proxy = _G.SpellTunerEscProxy
         proxy:Hide() -- one ESC
@@ -919,7 +919,7 @@ if S.flavour == "tbc" then
         Click(Fam().strip.whatIfBtn)
         local onShow = Side()
         Click(Fam().strip.whatIfBtn)
-        MD.Win:Place("main")
+        ST.Win:Place("main")
         return nearEdge == "TOPRIGHT,true,TOPLEFT,left" and back == "TOPLEFT,true,TOPRIGHT,right"
             and onShow == "TOPRIGHT,true,TOPLEFT,left",
             "near=" .. nearEdge .. " back=" .. back .. " onShow=" .. onShow
@@ -929,11 +929,11 @@ if S.flavour == "tbc" then
         local f = OpenFam("HealingTouch")
         if not (f.whatIf and f.whatIf:IsShown()) then Click(f.strip.whatIfBtn) end
         local d = Fam().whatIf
-        MD:SelectView("spells", "overview")
+        ST:SelectView("spells", "overview")
         local onOverview = d:IsShown()
         OpenFam("HealingTouch")
         local back1 = d:IsShown()
-        MD:SelectView("reports")
+        ST:SelectView("reports")
         local g = SPn().nav:Selected()
         local onReports = d:IsShown()
         OpenFam("HealingTouch")
@@ -970,7 +970,7 @@ if S.flavour == "tbc" then
         S.physicalWidth = pw
         local roomy = At(20) -- a wide screen again: right, as T125-3
         Click(Fam().strip.whatIfBtn)
-        MD.Win:Place("main")
+        ST.Win:Place("main")
         return screenW < 860 + 2 * 222 and nearLeft == "right" and nearRight == "left" and clamped == true
             and roomy == "right",
             string.format("screen=%s nearLeft=%s nearRight=%s clamped=%s roomy=%s", tostring(screenW), nearLeft,
@@ -988,7 +988,7 @@ if S.flavour == "tbc" then
         if not (f.whatIf and f.whatIf:IsShown()) then Click(f.strip.whatIfBtn) end
         S.Tick(0)
         local d = Fam().whatIf
-        local topWin = MD.Win:TopWindow()
+        local topWin = ST.Win:TopWindow()
         UIParent.shown = false
         for _, fr in ipairs({ SPn().host, Fam(), d }) do
             local h = fr:GetScript("OnHide")
@@ -996,7 +996,7 @@ if S.flavour == "tbc" then
         end
         local kept = d:IsShown()
         UIParent.shown = true
-        local stack = MD.EscStack.stack
+        local stack = ST.EscStack.stack
         local top = stack[#stack] and stack[#stack].frame
         local visible = d:IsVisible()
         Click(Fam().strip.whatIfBtn)
@@ -1013,18 +1013,18 @@ if S.flavour == "tbc" then
         local f = OpenFam("HealingTouch")
         local win = SPn().nav.frame
         if f.whatIf and f.whatIf:IsShown() then Click(f.strip.whatIfBtn) end
-        MD.Win:SetEscStack(false)
+        ST.Win:SetEscStack(false)
         Click(Fam().strip.whatIfBtn)
         S.Tick(0)
         local d = Fam().whatIf
         local shownOff = d:IsShown()
-        local stack = MD.EscStack.stack
+        local stack = ST.EscStack.stack
         local emptyOff = #stack == 0
         local special = false
         for _, name in ipairs(UISpecialFrames) do
             if _G[name] == d then special = true end
         end
-        MD.Win:SetEscStack(true)
+        ST.Win:SetEscStack(true)
         local n = #stack
         local top = stack[n] and stack[n].frame
         local below = stack[n - 1] and stack[n - 1].frame
@@ -1096,12 +1096,12 @@ if S.flavour == "tbc" then
         if st.compare.wordWrap ~= true or st.compare.maxLines ~= 2 then
             problems[#problems + 1] = where .. "wrap " .. tostring(st.compare.wordWrap) .. " lines " .. tostring(st.compare.maxLines)
         end
-        local fam = MD.Book:Get().families[f.key]
+        local fam = ST.Book:Get().families[f.key]
         if WIr():Active() then fam = WIr():Book().families[f.key] end
         local s, top = fam.suggested, fam.maxKnown
         local full
         if s == top then full = W.CompareSame("full")
-        else full = W.Compare(MD.Book:Compare(s, top), top.rank, fam.kind, "full") end
+        else full = W.Compare(ST.Book:Compare(s, top), top.rank, fam.kind, "full") end
         if text ~= full then
             local hit = st.compareHit
             if not (hit and hit:IsShown()) then
@@ -1142,15 +1142,15 @@ if S.flavour == "tbc" then
         walk[2] = { id = 6780, name = "Wrath", sub = "Rank 2", cost = 100, cast = 2000, level = 14,
             desc = "Causes 25 to 30 Nature damage to the target." }
         InstallBook(walk)
-        MD.Book:Refresh()
+        ST.Book:Refresh()
         local good, err = pcall(Walk, "dear ")
         -- Forever's strip has no After overheal column: the wider room
-        local aoh = MD.SpellsLine.afterOverheal
-        MD.SpellsLine.afterOverheal = nil
+        local aoh = ST.SpellsLine.afterOverheal
+        ST.SpellsLine.afterOverheal = nil
         if good then good, err = pcall(Walk, "wide ") end
-        MD.SpellsLine.afterOverheal = aoh
+        ST.SpellsLine.afterOverheal = aoh
         InstallBook(DRUID_WALK)
-        MD.Book:Refresh()
+        ST.Book:Refresh()
         UI.ApplyFonts(0)
         OpenFam("HealingTouch")
         if not good then return false, "raised: " .. tostring(err) end
@@ -1259,10 +1259,10 @@ S.AddSpell(92201, "Swing", "",
 
 --------------------------------------------------------------------------------
 -- T36 (docs/SPEC-forever-ui.md 3.1-3.4, 3.6): the rail and the picker. Each
--- block runs under pcall, so the old code (no rail, no MD.SpellsPane) fails
+-- block runs under pcall, so the old code (no rail, no ST.SpellsPane) fails
 -- item by item instead of stopping the suite.
 --------------------------------------------------------------------------------
-local SP = MD.SpellsPane
+local SP = ST.SpellsPane
 local function T36(name, fn)
     local good, cond, detail = pcall(fn)
     if not good then check(name, false, "raised: " .. tostring(cond)) return end
@@ -1280,7 +1280,7 @@ local function RailRow(id)
     for _, r in ipairs(Rail() and Rail():Rows() or {}) do if r.id == id then return r end end
     return nil
 end
-local function Order() return table.concat(MD.Tabs:Get(), ",") end
+local function Order() return table.concat(ST.Tabs:Get(), ",") end
 local function ShownViewButtons()
     local n = 0
     for _, b in ipairs(Nav() and Nav().viewButtons or {}) do if b:IsShown() then n = n + 1 end end
@@ -1314,12 +1314,12 @@ local function Slash(msg) SlashCmdList.SPELLTUNER(msg) end
 
 -- 18: the Spells group is a rail
 T36("the Spells group is a rail: MY SPELLS, Overview, then the seeded families", function()
-    MD:SelectView("spells")
+    ST:SelectView("spells")
     local book = Book:Get()
     local rj = book.families["Rejuvenation"]
     local ids = RailIds()
     local htRow, rjRow = RailRow("fam:Healing Touch"), RailRow("fam:Rejuvenation")
-    local st = MD.cdb.spellTabs
+    local st = ST.cdb.spellTabs
     local good = Rail() ~= nil and Rail().title:GetText() == "MY SPELLS"
         and table.concat(ids, ",") == "overview,fam:Healing Touch,fam:Rejuvenation"
         and st.seeded == true and Order() == "Healing Touch,Rejuvenation"
@@ -1357,7 +1357,7 @@ T36("a tick adds the family to the rail as a view", function()
     for _, g in ipairs(Nav().groups) do
         if g.id == "spells" then for _, v in ipairs(g.views) do views[#views + 1] = v.id end end
     end
-    MD:SelectView("spells", "fam:Wrath")
+    ST:SelectView("spells", "fam:Wrath")
     local _, view = Nav():Selected()
     local good = Order() == "Healing Touch,Rejuvenation,Wrath"
         and RailRow("fam:Wrath") ~= nil and views[#views] == "fam:Wrath"
@@ -1369,7 +1369,7 @@ end)
 T36("unticking removes it, and the rail's Undo line brings it back", function()
     Click(SP.addBtn)
     Tick(PickerRow("Wrath"), false)
-    local removed = MD.cdb.spellTabs.removed["Wrath"] == true
+    local removed = ST.cdb.spellTabs.removed["Wrath"] == true
     local line = SP.undoText:IsShown() and SP.undoText:GetText() or ""
     local gone = RailRow("fam:Wrath") == nil
     Click(SP.undoBtn)
@@ -1437,15 +1437,15 @@ T36("the rail takes a drop while the picker is open, and the picker follows", fu
 end)
 
 -- 26: the adapter answers the cursor's spell id only when it is plain
-T36("MD.API.CursorInfo answers a spell id only when plain", function()
+T36("ST.API.CursorInfo answers a spell id only when plain", function()
     S.cursor = { "spell", 3, "spell", 5176 }
-    local k1, id1 = MD.API.CursorInfo()
+    local k1, id1 = ST.API.CursorInfo()
     S.cursor = { "spell", 3, "spell", S.Secret() }
-    local k2, id2 = MD.API.CursorInfo()
+    local k2, id2 = ST.API.CursorInfo()
     S.cursor = { "item", 6948 }
-    local k3, id3 = MD.API.CursorInfo()
+    local k3, id3 = ST.API.CursorInfo()
     S.cursor = nil
-    local k4, id4 = MD.API.CursorInfo()
+    local k4, id4 = ST.API.CursorInfo()
     return k1 == "spell" and id1 == 5176 and id2 == nil and k3 == "item" and id3 == nil
         and k4 == nil and id4 == nil,
         string.format("%s/%s %s/%s %s/%s %s/%s", tostring(k1), tostring(id1), tostring(k2), tostring(id2),
@@ -1453,13 +1453,13 @@ T36("MD.API.CursorInfo answers a spell id only when plain", function()
 end)
 
 -- 27: /st spell <name> selects the view, through the window manager
-T36("/st spell selects one, through MD.Win:ShowMain", function()
-    MD:SelectView("settings", "modules")
+T36("/st spell selects one, through ST.Win:ShowMain", function()
+    ST:SelectView("settings", "modules")
     local calls = {}
-    local orig = MD.Win.ShowMain
-    MD.Win.ShowMain = function(self, g, v) calls[#calls + 1] = tostring(g) .. "/" .. tostring(v); return orig(self, g, v) end
+    local orig = ST.Win.ShowMain
+    ST.Win.ShowMain = function(self, g, v) calls[#calls + 1] = tostring(g) .. "/" .. tostring(v); return orig(self, g, v) end
     Slash("spell reju")
-    MD.Win.ShowMain = orig
+    ST.Win.ShowMain = orig
     local g, view = Nav():Selected()
     return g == "spells" and view == "fam:Rejuvenation" and calls[#calls] == "spells/fam:Rejuvenation"
         and RailRow("fam:Rejuvenation").selected == true,
@@ -1494,11 +1494,11 @@ end)
 
 -- 30: a family the book no longer has stays, greyed, with its own Remove
 T36("a family the book no longer has stays in the rail, greyed, with Remove", function()
-    table.insert(MD.cdb.spellTabs.order, "Healing Wave")
+    table.insert(ST.cdb.spellTabs.order, "Healing Wave")
     SP:RefreshRail()
     local row = RailRow("fam:Healing Wave")
     local stale = row ~= nil and row.data.stale == true
-    MD:SelectView("spells", "fam:Healing Wave")
+    ST:SelectView("spells", "fam:Healing Wave")
     local msg = SP.family.staleText:IsShown() and SP.family.staleText:GetText() or ""
     Click(SP.family.removeBtn)
     return stale and msg == "Healing Wave is not in this character's spellbook." and RailRow("fam:Healing Wave") == nil
@@ -1511,17 +1511,17 @@ T36("a newly learned heal appears with the new dot until opened", function()
         function() return "Heals a friendly target for 84 to 98." end,
         { cast = 2000, cost = 80, level = 12 })
     Book:MarkDirty()
-    MD:SelectView("spells", "overview")
+    ST:SelectView("spells", "overview")
     local row = RailRow("fam:Regrowth")
     local dot = row ~= nil and row.data.new == true and row.dot:IsShown()
-    MD:SelectView("spells", "fam:Regrowth")
+    ST:SelectView("spells", "fam:Regrowth")
     row = RailRow("fam:Regrowth")
     return dot and row.data.new ~= true and not row.dot:IsShown(), "dot=" .. tostring(dot)
 end)
 
 -- 31b: a family clicked in Overview opens: its view when listed, else its preview
 T36("a family clicked in Overview opens its view, or its preview when not listed", function()
-    MD:SelectView("spells", "overview")
+    ST:SelectView("spells", "overview")
     if SP.SetOverviewMode then SP:SetOverviewMode("mine") end -- T39: a listed family clicked in My spells
     local function ClickFamily(name)
         for _, f in ipairs(S.allFrames) do
@@ -1538,7 +1538,7 @@ T36("a family clicked in Overview opens its view, or its preview when not listed
     local clickedRj = ClickFamily("Rejuvenation")
     local _, v1 = Nav():Selected()
     Rail().opts.onRemove("fam:Wrath")
-    MD:SelectView("spells", "overview")
+    ST:SelectView("spells", "overview")
     if SP.SetOverviewMode then SP:SetOverviewMode("book") end -- T39: not listed, so only Whole book has it
     local clickedWr = ClickFamily("Wrath")
     local _, v2 = Nav():Selected()
@@ -1560,7 +1560,7 @@ end)
 -- 32b (integration of T33 and T36, 6.5: "the sheets" join the ESC stack): with
 -- the picker open, one ESC closes the picker and leaves the window up
 T36("one ESC closes the picker, not the window (T33's stack)", function()
-    MD:SelectView("spells", "fam:Healing Touch")
+    ST:SelectView("spells", "fam:Healing Touch")
     local frame = _G.SpellTunerDashboard
     if frame and not frame:IsShown() then frame:Show() end
     Click(SP.addBtn)
@@ -1585,7 +1585,7 @@ end)
 
 -- 33: the pitches grow with the font offset, and the pane re-renders at once
 T36("at font offset +2 the rail rows are 22 tall (21 apart, the 1-px overlap)", function()
-    MD:SelectView("spells", "fam:Healing Touch")
+    ST:SelectView("spells", "fam:Healing Touch")
     UI.ApplyFonts(2)
     local a, b = RailRow("fam:Healing Touch"), RailRow("fam:Rejuvenation")
     local h, gap = a:GetHeight(), b.top - a.top
@@ -1600,15 +1600,15 @@ end)
 -- the kit's FONTS_CHANGED event -- it no longer wraps UI.ApplyFonts, so the
 -- event alone (the offset already applied) re-renders the rail and the view
 T36("T77: FONTS_CHANGED alone re-pitches the rail and the spell view", function()
-    MD:SelectView("spells", "fam:Healing Touch")
+    ST:SelectView("spells", "fam:Healing Touch")
     local saved = UI.fontOffset
     UI.fontOffset = 2
-    MD:Fire("FONTS_CHANGED", 2)
+    ST:Fire("FONTS_CHANGED", 2)
     local a, b = RailRow("fam:Healing Touch"), RailRow("fam:Rejuvenation")
     local h, gap = a:GetHeight(), b.top - a.top
     local headH = SP.family.header:GetHeight()
     UI.fontOffset = saved
-    MD:Fire("FONTS_CHANGED", saved)
+    ST:Fire("FONTS_CHANGED", saved)
     local h0 = RailRow("fam:Healing Touch"):GetHeight()
     return h == 22 and gap == 21 and headH == 50 and h0 == 20,
         string.format("height=%s apart=%s header=%s back=%s", tostring(h), tostring(gap), tostring(headH), tostring(h0))
@@ -1618,8 +1618,8 @@ end)
 -- what its tag is -- the suggested rank among the known ones and its per
 -- mana -- and how to move it
 T36("T77: a rail row's tooltip: Suggested  Rank N of M known, Per mana, the drag hint", function()
-    MD:SelectView("spells", "overview")
-    local fam = MD.Book:Get().families["Rejuvenation"]
+    ST:SelectView("spells", "overview")
+    local fam = ST.Book:Get().families["Rejuvenation"]
     local s = fam and fam.suggested
     local known = 0
     for _, e in ipairs(fam and fam.ranks or {}) do if e.known ~= false then known = known + 1 end end
@@ -1634,7 +1634,7 @@ T36("T77: a rail row's tooltip: Suggested  Rank N of M known, Per mana, the drag
     local got, pm, hint = false, false, false
     for _, l in ipairs(tt.lines or {}) do
         if l[1] == "Suggested" and l[2] == want then got = true end
-        if l[1] == "Per mana" and l[2] == MD.Words.PerMana(s, "cell") then pm = true end
+        if l[1] == "Per mana" and l[2] == ST.Words.PerMana(s, "cell") then pm = true end
         if l[1] == UI.RAIL_HINT then hint = true end
     end
     local first = tt.lines and tt.lines[1] and tt.lines[1][1]
@@ -1714,7 +1714,7 @@ end
 -- T39: Whole book's To OOM is 3.5's -- casts from a FULL pool at the
 -- clock's max and casting regen, never the drained current pool.
 local function FullCasts(e)
-    local pool = MD.Clock:Pool()
+    local pool = ST.Clock:Pool()
     return Book:CastsFor(e, { max = pool.max, regenCasting = pool.regenCasting })
 end
 
@@ -1788,7 +1788,7 @@ end
 -- T39: today's table is Overview -> Whole book (3.6); lastRows is the table
 -- the pane shows
 local function OpenPane()
-    MD:SelectView("spells", "overview")
+    ST:SelectView("spells", "overview")
     if SP.SetOverviewMode then SP:SetOverviewMode("book") end
     return FindPane()
 end
@@ -1988,7 +1988,7 @@ do
 
     -- drain the clock's own modelled pool below BigSpell's cost (300) --
     -- the default pool would never do this.
-    MD.Clock.model:Anchor(GetTime(), 5, "test: drained for spellsui")
+    ST.Clock.model:Anchor(GetTime(), 5, "test: drained for spellsui")
     local pane3 = OpenPane()
     local r = EntryRow(pane3.lastRows, 92050)
     local cell = CellText(RowFor(pane3.lastRows, r), "toOOM")
@@ -1998,7 +1998,7 @@ do
     -- entries Book:Get() shares -- the very scan it drew from still holds
     -- the from-full count, and so does the spell tooltip read from it.
     local cachedEntry = Book:Get().spells[92050]
-    local tip = MD.SpellTip:Lines(92050)
+    local tip = ST.SpellTip:Lines(92050)
     local tipCasts
     for _, line in ipairs(tip or {}) do
         -- T37 / T78: the block reads "N from full, ~M now" -- its from-full count is N
@@ -2019,7 +2019,7 @@ do
             tostring(cachedEntry.casts), tostring(tipCasts), tostring(defaultCasts)))
 
     -- restore a full modelled pool so nothing after this item is affected.
-    MD.Clock.model:Anchor(GetTime(), MD.Clock.model.max, "test: restored")
+    ST.Clock.model:Anchor(GetTime(), ST.Clock.model.max, "test: restored")
     pane = OpenPane()
 end
 
@@ -2052,10 +2052,10 @@ end
 local exportText
 do
     local captured
-    local origShow = MD.ShowCopyPopup
-    MD.ShowCopyPopup = function(self, title, text) captured = { title = title, text = text } end
+    local origShow = ST.ShowCopyPopup
+    ST.ShowCopyPopup = function(self, title, text) captured = { title = title, text = text } end
     pane.exportBtn:GetScript("OnClick")(pane.exportBtn)
-    MD.ShowCopyPopup = origShow
+    ST.ShowCopyPopup = origShow
 
     exportText = captured and captured.text
     local hasCharLine = exportText ~= nil and exportText:find("^character: %S+ %S+ %S+ level %d+") ~= nil
@@ -2105,10 +2105,10 @@ do
     local oldName = player.name
     player.name = "Zo\195\171|x"
     local captured
-    local origShow = MD.ShowCopyPopup
-    MD.ShowCopyPopup = function(self, title, text) captured = { title = title, text = text } end
+    local origShow = ST.ShowCopyPopup
+    ST.ShowCopyPopup = function(self, title, text) captured = { title = title, text = text } end
     pane.exportBtn:GetScript("OnClick")(pane.exportBtn)
-    MD.ShowCopyPopup = origShow
+    ST.ShowCopyPopup = origShow
     player.name = oldName
 
     local text = captured and captured.text or ""
@@ -2135,7 +2135,7 @@ do
 
     -- hide the window (select another group) -- the ticker must not refresh
     -- a hidden pane.
-    MD:SelectView("settings", "modules")
+    ST:SelectView("settings", "modules")
     for _ = 1, 8 do S.Tick(0.5) end -- 4s while hidden
     local whileHidden = pane.refreshCount
 
@@ -2182,7 +2182,7 @@ do
 
     -- an empty section has none: strip Wrath's kind so the book has no
     -- damage-kind family left, refresh, and check "Damage" is absent.
-    local book = MD.Book:Get()
+    local book = ST.Book:Get()
     local wrath = book.families["Wrath"]
     local savedKind = wrath.kind
     wrath.kind = nil
@@ -2270,10 +2270,10 @@ do
 
     local exportCapture
     do
-        local origShow = MD.ShowCopyPopup
-        MD.ShowCopyPopup = function(self, title, text) exportCapture = text end
+        local origShow = ST.ShowCopyPopup
+        ST.ShowCopyPopup = function(self, title, text) exportCapture = text end
         pane.exportBtn:GetScript("OnClick")(pane.exportBtn)
-        MD.ShowCopyPopup = origShow
+        ST.ShowCopyPopup = origShow
     end
     local exportHasBoth = exportCapture ~= nil
         and exportCapture:find("name: Oakskin", 1, true) ~= nil
@@ -2353,10 +2353,10 @@ do
 
     local exportCapture
     do
-        local origShow = MD.ShowCopyPopup
-        MD.ShowCopyPopup = function(self, title, text) exportCapture = text end
+        local origShow = ST.ShowCopyPopup
+        ST.ShowCopyPopup = function(self, title, text) exportCapture = text end
         pane.exportBtn:GetScript("OnClick")(pane.exportBtn)
-        MD.ShowCopyPopup = origShow
+        ST.ShowCopyPopup = origShow
     end
     local block
     local at = exportCapture and exportCapture:find("spell 92300\n", 1, true)
@@ -2376,7 +2376,7 @@ end
 -- T38 (docs/SPEC-forever-ui.md 3.5, docs/tasks/T38-one-spell-view.md): one
 -- spell's view -- the header, the decision strip, the RANKS table (T30's
 -- options: the per-mana bar, the gap and not-learned rows, the tags, the row
--- states), the rank card, the row hover through MD.API.SetTooltipSpell with
+-- states), the rank card, the row hover through ST.API.SetTooltipSpell with
 -- its fallback, the refresh split and the pitches. Each block under pcall
 -- (T36's T36()), so the old view fails item by item.
 --
@@ -2402,8 +2402,8 @@ Book:MarkDirty()
 
 local F = function() return SP.family end
 local function OpenView(key)
-    if not MD.Tabs:Has(key) then MD.Tabs:Add(key, nil); SP:ListChanged() end
-    MD:SelectView("spells", "fam:" .. key)
+    if not ST.Tabs:Has(key) then ST.Tabs:Add(key, nil); SP:ListChanged() end
+    ST:SelectView("spells", "fam:" .. key)
     return SP.family
 end
 local function ViewRows()
@@ -2475,7 +2475,7 @@ local function Unhover(rowFrame)
     rowFrame:GetScript("OnLeave")(rowFrame)
 end
 local function FullPoolCasts(e)
-    local pool = MD.Clock:Pool()
+    local pool = ST.Clock:Pool()
     return Book:CastsFor(e, { max = pool.max, regenCasting = pool.regenCasting })
 end
 local PAD_SCREEN = 4000
@@ -2494,7 +2494,7 @@ end
 -- T38-1: the header and the decision strip
 T36("T38 the header and the decision strip: which rank, and one factual line", function()
     local f = OpenView("Nourish")
-    local pool = MD.Clock:Pool()
+    local pool = ST.Clock:Pool()
     local rawMana = f.header.mana:GetText() or ""
     local manaText = StripColor(rawMana)
     local wantMana = "~" .. Num(pool.mana) .. " / " .. Num(pool.max) .. " mana"
@@ -2505,7 +2505,7 @@ T36("T38 the header and the decision strip: which rank, and one factual line", f
         and f.header.sub:GetText() == "Direct heal - Rank 2 of 2 known - 2.0 s cast"
         and manaText == wantMana and tildes == 1
         and rawMana:find(UI.TEXT.mana.hex .. "~", 1, true) == 1 -- only the modelled pool in the mana colour
-        -- T120: the +healing line under the pool (MD.Book:Bonus), both lines
+        -- T120: the +healing line under the pool (ST.Book:Bonus), both lines
         and StripColor(f.header.bonus and f.header.bonus:GetText() or "(no bonus line)") == wantBonus
         and f.strip:IsShown() and f.strip.chipLabel:GetText() == "SUGGESTED"
         and f.strip.chipRank:GetText() == "Rank 1"
@@ -2593,7 +2593,7 @@ T36("T38 the rank card: the suggested rank by default, a click selects another",
     local _, row2 = ViewRow(2)
     row2:GetScript("OnMouseUp")(row2, "LeftButton")
     local e2 = Book:Get().spells[93802]
-    local pool = MD.Clock:Pool()
+    local pool = ST.Clock:Pool()
     local _, row1 = ViewRow(1)
     local good = before == "RANK 1 / learned at 1"
         and firstPairs:find("Heals=40 - 55 (avg 48); Crit=60 - 83 (x1.5 assumed)", 1, true) == 1
@@ -2604,7 +2604,7 @@ T36("T38 the rank card: the suggested rank by default, a click selects another",
         and PairValue("Per mana") == Num(e2.perMana, 2)
         and PairValue("Per sec") == Num(e2.perSec, 1) .. " over a 2.0 s cast" -- T78
         -- T120: the +Healing pair (Words.Bonus), right after Per sec
-        and (e2.bonus == nil or (PairValue("+Healing") == MD.Words.Bonus(e2, "card")
+        and (e2.bonus == nil or (PairValue("+Healing") == ST.Words.Bonus(e2, "card")
             and Pairs():find("Per sec=[^;]*; %+Healing=") ~= nil))
         and PairValue("Casts") == OOMWord(FullPoolCasts(e2)) -- T78
         and PairValue("Now") == NowWord(Book:CastsFor(e2, pool), pool)
@@ -2618,7 +2618,7 @@ end)
 
 -- T38-4: a row's hover is the game's own tooltip for that rank, through the
 -- adapter, with the block under it once, beside the row
-T36("T38 row hover: the game's tooltip through MD.API.SetTooltipSpell, the block once, beside the row", function()
+T36("T38 row hover: the game's tooltip through ST.API.SetTooltipSpell, the block once, beside the row", function()
     UIParent:SetWidth(PAD_SCREEN)
     local _, row1 = ViewRow(1)
     S.setSpellByIdCalls = {}
@@ -2720,10 +2720,10 @@ T36("T38 the refresh split: mana, Now and To OOM in place; a book change re-rend
     local _, row1 = ViewRow(1)
     local e1 = Book:Get().spells[92050]
     local fullBefore = PairValue("Casts") -- T78
-    MD.Clock.model:Anchor(GetTime(), 100, "test: drained for T38")
-    MD.Clock.model.lastSpend = GetTime() -- as after a cast: the clock does not assume it refilled
+    ST.Clock.model:Anchor(GetTime(), 100, "test: drained for T38")
+    ST.Clock.model.lastSpend = GetTime() -- as after a cast: the clock does not assume it refilled
     for _ = 1, 4 do S.Tick(0.5) end
-    local pool = MD.Clock:Pool()
+    local pool = ST.Clock:Pool()
     local _, row1b = ViewRow(1)
     local inPlace = f.renderCount == renders and f.liveCount == lives + 1 and row1b == row1
         and StripColor(f.header.mana:GetText()) == "~" .. Num(pool.mana) .. " / " .. Num(pool.max) .. " mana"
@@ -2733,7 +2733,7 @@ T36("T38 the refresh split: mana, Now and To OOM in place; a book change re-rend
     local liveDetail = string.format("renders %s->%s lives %s->%s same=%s mana=%q now=%q full=%q cell=%q",
         tostring(renders), tostring(f.renderCount), tostring(lives), tostring(f.liveCount), tostring(row1b == row1),
         StripColor(f.header.mana:GetText()), tostring(PairValue("Now")), tostring(fullBefore), tostring(CellText(row1, "toOOM")))
-    MD.Clock.model:Anchor(GetTime(), MD.Clock.model.max, "test: restored")
+    ST.Clock.model:Anchor(GetTime(), ST.Clock.model.max, "test: restored")
     OpenView("Nourish")
     renders = f.renderCount
 
@@ -2892,14 +2892,14 @@ end)
 -- T39-3: + adds a family to the list (the rail follows, Overview stays); a
 -- listed family reads a grey "listed" and has no +
 T36("T39 Whole book: + adds a family to the list; a listed one reads listed", function()
-    MD.Tabs:Remove("Rend") -- not listed (a damage family the reconcile never adds)
+    ST.Tabs:Remove("Rend") -- not listed (a damage family the reconcile never adds)
     SP:ListChanged()
     local _, rows = BookRows()
     local _, rend = HeaderFor(rows, "Rend")
     local plusBefore = rend and rend.plusBtn and rend.plusBtn:IsShown()
     local listedBefore = rend and rend.listed and rend.listed:IsShown()
     Click(rend and rend.plusBtn)
-    local added = MD.Tabs:Has("Rend") and RailRow("fam:Rend") ~= nil
+    local added = ST.Tabs:Has("Rend") and RailRow("fam:Rend") ~= nil
     local g, v = Nav():Selected()
     local _, rows2 = BookRows()
     local _, rend2 = HeaderFor(rows2, "Rend")
@@ -2919,15 +2919,15 @@ end)
 -- T39-4: My spells -- one row per listed family in the list's order, its
 -- suggested rank against its highest; a click opens that family's view
 T36("T39 My spells: a row per listed family, suggested against highest; a click opens it", function()
-    MD:SelectView("spells", "overview")
+    ST:SelectView("spells", "overview")
     SP:SetOverviewMode("mine")
     local p = FindPane()
     local rows = p.lastRows or {}
     local keys = {}
     for _, r in ipairs(rows) do keys[#keys + 1] = r.key end
     local want = {}
-    for _, k in ipairs(MD.Tabs:Get()) do
-        if type(MD.Tabs:Resolve(k, Book:Get())) == "table" then want[#want + 1] = k end
+    for _, k in ipairs(ST.Tabs:Get()) do
+        if type(ST.Tabs:Resolve(k, Book:Get())) == "table" then want[#want + 1] = k end
     end
     local nourish
     for _, r in ipairs(rows) do if r.key == "Nourish" then nourish = RowFor(nil, r) end end
@@ -2970,7 +2970,7 @@ end)
 -- in the window; so must every switch back and forth, and a Whole book left
 -- scrolled down comes back at its top.
 T36("F3 Whole book draws its rows when opened, no scroll needed; back and forth keeps them", function()
-    MD:SelectView("spells", "overview")
+    ST:SelectView("spells", "overview")
     SP:SetOverviewMode("mine")
     local p = FindPane()
     local sf, content = p.scroll, p.scroll.content
@@ -3027,7 +3027,7 @@ end)
 -- the RANKS note with the measured / estimated count, the footer), crit 30 on
 -- the card's Crit line only, Clear.
 --------------------------------------------------------------------------------
-local WIf = function() return MD.WhatIf end
+local WIf = function() return ST.WhatIf end
 local WI_FCELLS = { value = "value", perMana = "permana", perSec = "persec", casts = "toOOM", cost = "mana",
     cast = "cast" }
 local WI_FORDER = { "value", "perMana", "perSec", "casts", "cost", "cast" }
@@ -3177,9 +3177,9 @@ end)
 -- STATS row right after +Healing, and a typed value in the accent
 T36("T124 forever: Wrath's header reads +N Nature damage; +Spell damage typed shows what if", function()
     WIf():Clear()
-    local hadWrath = MD.Tabs:Has("Wrath")
+    local hadWrath = ST.Tabs:Has("Wrath")
     local savedDmg = S.bonusDamage[4]
-    MD.inCombat, S.inCombat = false, false
+    ST.inCombat, S.inCombat = false, false
     local before
     do
         local f0 = OpenView("Wrath")
@@ -3218,7 +3218,7 @@ T36("T124 forever: Wrath's header reads +N Nature damage; +Spell damage typed sh
     Click(OpenView("Nourish").strip.whatIfBtn)
     S.bonusDamage[4] = savedDmg
     Book:MarkDirty()
-    if not hadWrath then MD.Tabs:Remove("Wrath"); SP:ListChanged() end
+    if not hadWrath then ST.Tabs:Remove("Wrath"); SP:ListChanged() end
     local accent = UI.Hex("accent")
     local good = after == "+120 Nature damage" and before ~= after
         and table.concat(labels, ","):find("+Healing,+Spell damage,", 1, true) == 1
@@ -3249,7 +3249,7 @@ T36("T125 forever: the drawer outside the window, RANKS unmoved, ESC closes it f
     local pt = d and d.points and d.points.TOPLEFT
     local outside = d and d:IsShown() and d:GetParent() == win and pt and pt.rel == win and pt.rp == "TOPRIGHT"
     local after = RanksY()
-    local stack = MD.EscStack.stack
+    local stack = ST.EscStack.stack
     local top = stack[#stack] and stack[#stack].frame
     _G.SpellTunerEscProxy:Hide() -- one ESC
     S.Tick(0)
@@ -3319,9 +3319,9 @@ local Books = dofile(here .. "/stub_books.lua")
 local CLASS_FAMILIES = { ["Holy Shock"] = true, ["Prayer of Healing"] = true, ["Power Word: Shield"] = true,
     ["Chain Heal"] = true }
 local function ClassFamily(row) return CLASS_FAMILIES[row.name] == true end
-local restoreBooks = Books.Install(Books.Load("paladin"), { only = ClassFamily, firstSlot = 300, MD = MD })
-local restoreBooks2 = Books.Install(Books.Load("priest"), { only = ClassFamily, firstSlot = 320, MD = MD })
-local restoreBooks3 = Books.Install(Books.Load("shaman"), { only = ClassFamily, firstSlot = 340, MD = MD })
+local restoreBooks = Books.Install(Books.Load("paladin"), { only = ClassFamily, firstSlot = 300, ST = ST })
+local restoreBooks2 = Books.Install(Books.Load("priest"), { only = ClassFamily, firstSlot = 320, ST = ST })
+local restoreBooks3 = Books.Install(Books.Load("shaman"), { only = ClassFamily, firstSlot = 340, ST = ST })
 
 -- T95-1: Holy Shock's card says its per second is over its 10 s cooldown, and
 -- names the cooldown; Holy Light-like spells without one say nothing new

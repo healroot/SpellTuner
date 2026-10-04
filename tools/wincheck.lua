@@ -1,13 +1,13 @@
 -- tools/run.sh tools/wincheck.lua
 --
 -- T32 (docs/SPEC-forever-ui.md 4.3 "Window scale", 6.1, 6.2, 6.7, section 9's T32
--- row): the window manager's core -- UI/Windows_Forever.lua, UI/Windows.lua since T80 (MD.Win): Register
+-- row): the window manager's core -- UI/Windows_Forever.lua, UI/Windows.lua since T80 (ST.Win): Register
 -- with a role's strata / level / toplevel, the main window anchored TOPLEFT at
 -- its saved place (SetUserPlaced(false), clamped to the screen), a size and a
 -- minimum per group with the resize grip (UI.CreateMovableFrame opts.resizable),
 -- db.ui.scale with the saved position converted, UI.RestylePixels on
--- UI_SCALE_CHANGED / DISPLAY_SIZE_CHANGED, MD:SelectView through
--- MD.Win:ShowMain, /st ui reset, and the late grow on MODULE_LOADED gone.
+-- UI_SCALE_CHANGED / DISPLAY_SIZE_CHANGED, ST:SelectView through
+-- ST.Win:ShowMain, /st ui reset, and the late grow on MODULE_LOADED gone.
 -- Forever only: the TBC TOC does not list the manager.
 --
 -- The stub's frames have no geometry by default (GetLeft is 0, SetPoint a
@@ -47,10 +47,10 @@ local function near(a, b, eps) return type(a) == "number" and type(b) == "number
 local function fmt(v) return type(v) == "number" and string.format("%.2f", v) or tostring(v) end
 
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua")
+local ST = dofile(here .. "/harness.lua")
 arg[0] = a0
 local S = _G.STUB
-local UI = MD.UI
+local UI = ST.UI
 
 --------------------------------------------------------------------------------
 -- Geometry: the stub's opt-in one (T54, P10, review Q12 -- this suite's own
@@ -76,7 +76,7 @@ local function ResizeTo(f, w, h)
     if up then up(f.resizeGrip, "LeftButton") end
 end
 
-local Win = MD.Win
+local Win = ST.Win
 
 
 --------------------------------------------------------------------------------
@@ -95,11 +95,11 @@ if S.flavour == "tbc" then
              "UI/Dashboard_Waste.lua", "UI/Dashboard_Review.lua", "UI/PracticePanel.lua", "UI/BindingsWindow.lua",
              "UI/SpellsPane.lua", "UI/Settings.lua", "UI/Dashboard.lua", "UI/SimWindow.lua", "UI/ReplayWindow.lua",
              "UI/Settings_TBC.lua", "UI/DebugConsole.lua", "UI/MinimapButton.lua" },
-        "SpellTuner", MD)
-    UI = MD.UI
-    Win = MD.Win
+        "SpellTuner", ST)
+    UI = ST.UI
+    Win = ST.Win
     FM.GetName = function(self) return self.frameName end
-    MD.player.isDruid = true
+    ST.player.isDruid = true
 
     -- Places kept before C1. The dashboard was user-placed, so the client put
     -- it back where it was dragged (its layout cache) as the kit built it;
@@ -113,9 +113,9 @@ if S.flavour == "tbc" then
         end
         return nav
     end
-    MD.db.ui.win = {}
-    MD.db.replayPos = { "TOPLEFT", "BOTTOMLEFT", 40, 600 }
-    MD:Fire("MD_READY") -- the TBC dashboard builds here
+    ST.db.ui.win = {}
+    ST.db.replayPos = { "TOPLEFT", "BOTTOMLEFT", 40, 600 }
+    ST:Fire("MD_READY") -- the TBC dashboard builds here
     UI.CreateNavFrame = makeNav
     local frame = _G.SpellTunerDashboard
 
@@ -126,7 +126,7 @@ if S.flavour == "tbc" then
     local sizes, allFixed = {}, true
     for _, g in ipairs({ { "spells", "Rejuvenation" }, { "reports", "Review" }, { "simulate", "practice" },
                          { "settings", "general" } }) do
-        MD:SelectView(g[1], g[2])
+        ST:SelectView(g[1], g[2])
         sizes[#sizes + 1] = g[1] .. "=" .. frame:GetWidth() .. "x" .. frame:GetHeight()
         -- T119 (SPEC-one-ui 7): Settings is 860 x 560 on TBC too; T120 (D4): so is
         -- Spells, the shared pane's; Reports and Simulate stay 1036 x 646
@@ -150,19 +150,19 @@ if S.flavour == "tbc" then
         table.concat(sizes, " ") .. " routed=" .. routed)
 
     -- 2. the places kept before C1, adopted once
-    local sv = MD.db.ui.win.main
+    local sv = ST.db.ui.win.main
     local mainOk = sv ~= nil and near(sv.x, 100) and near(sv.y, 700)
         and near(frame:GetLeft(), 100, 1e-3) and near(frame:GetTop(), 700, 1e-3)
-    dofile(here .. "/fakepull.lua")(MD, S)
-    MD:OpenReplay(1)
-    local rsv = MD.db.ui.win.replay
-    local replayOk = MD.db.replayPos == nil and rsv ~= nil and near(rsv.x, 40) and near(rsv.y, 600)
+    dofile(here .. "/fakepull.lua")(ST, S)
+    ST:OpenReplay(1)
+    local rsv = ST.db.ui.win.replay
+    local replayOk = ST.db.replayPos == nil and rsv ~= nil and near(rsv.x, 40) and near(rsv.y, 600)
     local rf = _G.SpellTunerReplayWindow
     if rf then rf:Hide() end
     check("tbc: a place kept before C1 is adopted (the client's dashboard place, db.replayPos)",
         mainOk and replayOk,
         string.format("main %s,%s replay %s,%s replayPos %s", fmt(sv and sv.x), fmt(sv and sv.y),
-            fmt(rsv and rsv.x), fmt(rsv and rsv.y), tostring(MD.db.replayPos)))
+            fmt(rsv and rsv.x), fmt(rsv and rsv.y), tostring(ST.db.replayPos)))
 
     -- 3. one ESC closes the top window only: the console over the dashboard,
     -- then the dashboard; only the proxy is a special frame
@@ -175,8 +175,8 @@ if S.flavour == "tbc" then
         end
     end
     S.Tick(0)
-    MD:SelectView("spells", "Rejuvenation")
-    MD:ToggleDebugConsole()
+    ST:SelectView("spells", "Rejuvenation")
+    ST:ToggleDebugConsole()
     local console = _G.SpellTunerDebugConsole
     local both = console and console:IsShown() and frame:IsShown()
     Esc()
@@ -190,15 +190,15 @@ if S.flavour == "tbc" then
         string.format("both=%s first=%s second=%s", tostring(both), tostring(first), tostring(second)))
 
     -- 4. a fight hides the window; it comes back on the same view after
-    MD:SelectView("settings", "general")
+    ST:SelectView("settings", "general")
     local before = frame:IsShown()
     S.Fire("PLAYER_REGEN_DISABLED")
     local hidden = not frame:IsShown()
     S.Fire("PLAYER_REGEN_ENABLED")
-    local g, v = MD:SelectedView()
+    local g, v = ST:SelectedView()
     check("tbc: a fight hides the window and it reopens on the same view",
         before and hidden and frame:IsShown() and g == "settings" and v == "general"
-          and MD.db.uiPath[1] == "settings" and MD.db.uiPath[2] == "general",
+          and ST.db.uiPath[1] == "settings" and ST.db.uiPath[2] == "general",
         string.format("before=%s hidden=%s after=%s view=%s/%s", tostring(before), tostring(hidden),
             tostring(frame:IsShown()), tostring(g), tostring(v)))
 
@@ -222,27 +222,27 @@ do
     end
     check("UI/EscStack.lua then UI/Windows.lua are in all three main TOCs",
         has("SpellTuner_Mainline.toc") and has("SpellTuner.toc") and has("SpellTuner_TBC.toc"))
-    check("MD.Win exists with Register, ShowMain, SetScale and Reset",
+    check("ST.Win exists with Register, ShowMain, SetScale and Reset",
         type(Win) == "table" and type(Win.Register) == "function" and type(Win.ShowMain) == "function"
           and type(Win.SetScale) == "function" and type(Win.Reset) == "function")
 end
 if type(Win) ~= "table" then
     -- nothing below can run without the manager
-    print(string.format("%d ok, %d failed (stopped: no MD.Win)", ok, #fails)); os.exit(1)
+    print(string.format("%d ok, %d failed (stopped: no ST.Win)", ok, #fails)); os.exit(1)
 end
 
 --------------------------------------------------------------------------------
--- 2. MD:SelectView goes through MD.Win:ShowMain; the main window registers
+-- 2. ST:SelectView goes through ST.Win:ShowMain; the main window registers
 --------------------------------------------------------------------------------
 local shown = {}
 do
     local orig = Win.ShowMain
     Win.ShowMain = function(self, g, v) shown[#shown + 1] = { g, v }; return orig(self, g, v) end
-    MD:SelectView("spells", "book")
+    ST:SelectView("spells", "book")
     Win.ShowMain = orig
 end
 local frame = _G.SpellTunerDashboard
-check("MD:SelectView is routed through MD.Win:ShowMain(group, view)",
+check("ST:SelectView is routed through ST.Win:ShowMain(group, view)",
     #shown == 1 and shown[1][1] == "spells" and shown[1][2] == "book" and frame and frame:IsShown())
 check("the main window is registered as the host",
     Win.windows and Win.windows.main and Win.windows.main.frame == frame and Win.windows.main.role == "host")
@@ -282,7 +282,7 @@ local gripOnSpells = frame.resizeGrip and frame.resizeGrip:IsShown()
 local fixedSpells = Win.Fixed and Win:Fixed("main", "spells")
 
 local l0, t0 = frame:GetLeft(), frame:GetTop()
-MD:SelectView("reports", "review")
+ST:SelectView("reports", "review")
 check("switching Spells -> Reports gives 1036 x 646 and a 1036 x 600 minimum",
     frame:GetWidth() == 1036 and frame:GetHeight() == 646 and frame.bounds
       and frame.bounds[1] == 1036 and frame.bounds[2] == 600,
@@ -292,9 +292,9 @@ check("switching Spells -> Reports keeps the TOPLEFT (the nav stays put)",
     fmt(l0) .. "," .. fmt(t0) .. " -> " .. fmt(frame:GetLeft()) .. "," .. fmt(frame:GetTop()))
 do
     local onReports = frame.resizeGrip and frame.resizeGrip:IsShown()
-    MD:SelectView("settings", "general")
+    ST:SelectView("settings", "general")
     local onSettings = frame.resizeGrip and frame.resizeGrip:IsShown()
-    MD:SelectView("reports", "review")
+    ST:SelectView("reports", "review")
     check("T75: no grip on Spells or Settings (minimum = size), the grip on Reports",
         gripOnSpells == false and onSettings == false and onReports == true and fixedSpells == true
           and Win:Fixed("main", "reports") == false,
@@ -316,14 +316,14 @@ do
 end
 
 ResizeTo(frame, 1100, 700)
-MD:SelectView("spells", "book")
+ST:SelectView("spells", "book")
 local spellsW, spellsH = frame:GetWidth(), frame:GetHeight()
-MD:SelectView("reports", "review")
+ST:SelectView("reports", "review")
 check("a per-group size is restored: Reports resized to 1100 x 700 comes back so",
     spellsW == 860 and spellsH == 560 and frame:GetWidth() == 1100 and frame:GetHeight() == 700,
     tostring(spellsW) .. "x" .. tostring(spellsH) .. " / " .. frame:GetWidth() .. "x" .. frame:GetHeight())
 do
-    local sv = MD.db.ui.win.main
+    local sv = ST.db.ui.win.main
     check("the group's size is saved in db.ui.win.main.sizes",
         sv and sv.sizes and sv.sizes.reports and sv.sizes.reports[1] == 1100 and sv.sizes.reports[2] == 700)
 end
@@ -334,10 +334,10 @@ check("a size under the group's minimum is raised to it (1036 x 600)",
 do
     -- T75: a fixed group is its default size, whatever an older session saved
     -- or a resize says; nothing is saved for it
-    local sv = MD.db.ui.win.main
+    local sv = ST.db.ui.win.main
     sv.sizes = sv.sizes or {}
     sv.sizes.spells = { 900, 600 }
-    MD:SelectView("spells", "book")
+    ST:SelectView("spells", "book")
     local w1, h1 = frame:GetWidth(), frame:GetHeight()
     sv.sizes.spells = nil
     ResizeTo(frame, 950, 620)
@@ -346,14 +346,14 @@ do
           and sv.sizes.spells == nil,
         string.format("%sx%s / %sx%s", tostring(w1), tostring(h1), frame:GetWidth(), frame:GetHeight()))
 end
-MD:SelectView("spells", "book")
+ST:SelectView("spells", "book")
 
 --------------------------------------------------------------------------------
 -- 5. A drag saves the TOPLEFT; a clamp; the saved place comes back
 --------------------------------------------------------------------------------
 DragTo(frame, 120, 900)
 do
-    local sv = MD.db.ui.win.main
+    local sv = ST.db.ui.win.main
     check("a drag saves the TOPLEFT in db.ui.win.main (frame units, from BOTTOMLEFT)",
         sv and near(sv.x, 120) and near(sv.y, 900) and frame.userPlaced == false,
         sv and (fmt(sv.x) .. "," .. fmt(sv.y)) or "nil")
@@ -366,14 +366,14 @@ do
     local right = (frame:GetLeft() + frame:GetWidth())
     check("a window dragged past the right edge is clamped back onto the screen",
         near(right, sw, 1e-3), "right " .. fmt(right) .. " screen " .. fmt(sw) .. " es " .. fmt(es))
-    MD:SelectView("reports", "review")
+    ST:SelectView("reports", "review")
     local rightReports = frame:GetLeft() + frame:GetWidth()
     check("a bigger group that would run off the screen is pulled back in",
         near(rightReports, sw, 1e-3) and frame:GetWidth() == 1036, fmt(rightReports))
     DragTo(frame, 50, 5000)
     check("a window above the screen is clamped so its header stays on it",
         near(frame:GetTop(), UIParent:GetHeight() - 20, 1e-3), fmt(frame:GetTop()))
-    MD:SelectView("spells", "book")
+    ST:SelectView("spells", "book")
 end
 
 --------------------------------------------------------------------------------
@@ -384,16 +384,16 @@ do
     local es0 = frame:GetEffectiveScale()
     local pxL, pxT = frame:GetLeft() * es0, frame:GetTop() * es0
     Win:SetScale(0.8)
-    local sv = MD.db.ui.win.main or {}
+    local sv = ST.db.ui.win.main or {}
     local es1 = frame:GetEffectiveScale()
-    check("MD.Win:SetScale(0.8) writes db.ui.scale and scales the window",
-        MD.db.ui.scale == 0.8 and frame:GetScale() == 0.8)
+    check("ST.Win:SetScale(0.8) writes db.ui.scale and scales the window",
+        ST.db.ui.scale == 0.8 and frame:GetScale() == 0.8)
     check("a scale change converts the saved position (x * old / new)",
         near(sv.x, 100 / 0.8) and near(sv.y, 700 / 0.8), fmt(sv.x) .. "," .. fmt(sv.y))
     check("after a scale change the window's TOPLEFT is where it was on screen",
         near(frame:GetLeft() * es1, pxL, 1e-3) and near(frame:GetTop() * es1, pxT, 1e-3))
     Win:SetScale(5)
-    check("the window scale is held to 70-120 %", MD.db.ui.scale == 1.2 and frame:GetScale() == 1.2)
+    check("the window scale is held to 70-120 %", ST.db.ui.scale == 1.2 and frame:GetScale() == 1.2)
     Win:SetScale(1)
 end
 
@@ -403,14 +403,14 @@ end
 -- to x * 1.0 / 0.8, or the next /st replay opens 20 % toward the bottom-left.
 do
     local notYet = Win.windows.replay == nil
-    MD.db.ui.win.replay = { x = 100, y = 700 }
+    ST.db.ui.win.replay = { x = 100, y = 700 }
     Win:SetScale(0.8)
-    local sv = MD.db.ui.win.replay
+    local sv = ST.db.ui.win.replay
     check("T51: a scale change converts a saved place whose window is not registered yet",
         notYet and near(sv.x, 100 / 0.8) and near(sv.y, 700 / 0.8),
         "registered=" .. tostring(not notYet) .. " " .. fmt(sv.x) .. "," .. fmt(sv.y))
     Win:SetScale(1)
-    MD.db.ui.win.replay = nil
+    ST.db.ui.win.replay = nil
 end
 
 --------------------------------------------------------------------------------
@@ -452,7 +452,7 @@ do
         f:GetScale() == 0.8 and near(e, UI.px(1, f)) and not near(styled, e),
         fmt(styled) .. " -> " .. fmt(e) .. " want " .. fmt(UI.px(1, f)))
     Win.windows.t51edges = nil
-    MD.db.ui.win.t51edges = nil
+    ST.db.ui.win.t51edges = nil
     f:Hide()
     Win:SetScale(1)
 end
@@ -461,15 +461,15 @@ end
 -- 8. The late grow is gone: the Replay module loading resizes nothing
 --------------------------------------------------------------------------------
 do
-    MD:SelectView("spells", "book")
+    ST:SelectView("spells", "book")
     local w, h = frame:GetWidth(), frame:GetHeight()
-    local had = MD.DashboardParts.CreateReview
-    MD.DashboardParts.CreateReview = function(parent)
+    local had = ST.DashboardParts.CreateReview
+    ST.DashboardParts.CreateReview = function(parent)
         local f = CreateFrame("Frame", nil, parent)
         return { frame = f, Render = function() end }
     end
-    MD:Fire("MODULE_LOADED", "SpellTuner_Replay")
-    MD.DashboardParts.CreateReview = had
+    ST:Fire("MODULE_LOADED", "SpellTuner_Replay")
+    ST.DashboardParts.CreateReview = had
     check("MODULE_LOADED no longer grows the window (Spells keeps its size)",
         frame:GetWidth() == w and frame:GetHeight() == h, frame:GetWidth() .. "x" .. frame:GetHeight())
 end
@@ -481,7 +481,7 @@ do
     DragTo(frame, 10, 500)
     ResizeTo(frame, 950, 620)
     SlashCmdList.SPELLTUNER("ui reset")
-    local win = MD.db.ui.win
+    local win = ST.db.ui.win
     check("/st ui reset clears db.ui.win", type(win) == "table" and next(win) == nil)
     local sw, sh = UIParent:GetWidth(), UIParent:GetHeight()
     local cx = frame:GetLeft() + frame:GetWidth() / 2
@@ -497,9 +497,9 @@ end
 --------------------------------------------------------------------------------
 do
     -- what a reload reads back: a saved place and one group's saved size
-    MD.db.ui.win.main = { x = 200, y = 800, sizes = { reports = { 1100, 700 } } }
+    ST.db.ui.win.main = { x = 200, y = 800, sizes = { reports = { 1100, 700 } } }
     Win:Place("main")
-    MD:SelectView("reports", "review")
+    ST:SelectView("reports", "review")
     check("a saved place and a group's saved size are used when the window is placed",
         near(frame:GetLeft(), 200) and near(frame:GetTop(), 800) and frame:GetWidth() == 1100
           and frame:GetHeight() == 700, fmt(frame:GetLeft()) .. "," .. fmt(frame:GetTop()))
@@ -535,8 +535,8 @@ local function EntriesFor(f)
 end
 
 NextFrame()
-MD:SelectView("spells", "book")
-MD:ToggleDebugConsole()
+ST:SelectView("spells", "book")
+ST:ToggleDebugConsole()
 local console = _G.SpellTunerDebugConsole
 local proxy = _G.SpellTunerEscProxy
 
@@ -578,8 +578,8 @@ end
 
 -- a window closed by its x leaves no entry
 do
-    MD:SelectView("spells", "book")
-    MD:ToggleDebugConsole()
+    ST:SelectView("spells", "book")
+    ST:ToggleDebugConsole()
     local two = #Stack() == 2
     console.header.closeBtn:GetScript("OnClick")(console.header.closeBtn)
     local one = #Stack() == 1 and Top() == frame and proxy ~= nil and proxy:IsShown()
@@ -599,7 +599,7 @@ do
         Win:Push(A, function() calls = calls + 1 end)
         Win:Push(B, function() calls = calls + 1 end)
     end
-    local rec = MD.db.ui.escTest
+    local rec = ST.db.ui.escTest
     local queued = S.Pending() -- T54 (P10): the pending timers
     -- UIParent hidden (Alt+Z): the client runs OnHide on frames that stay
     -- shown; neither the proxy's nor a window's may pop or drop anything
@@ -611,7 +611,7 @@ do
     A:Hide()
     check("T33: a code hide of the proxy pops nothing: no onEsc, no press recorded, quiet cleared",
         altZ and still and calls == 0 and not proxy:IsShown() and proxy.quiet == nil and #Stack() == 0
-          and MD.db.ui.escTest == rec and S.Pending() == queued,
+          and ST.db.ui.escTest == rec and S.Pending() == queued,
         tostring(altZ) .. " " .. tostring(still) .. " calls " .. calls)
 end
 
@@ -647,24 +647,24 @@ do
     local cf = _G.DEFAULT_CHAT_FRAME
     local orig = cf.AddMessage
     cf.AddMessage = function(_, m) said[#said + 1] = m end
-    MD.db.ui.combatNoted = nil
-    MD.db.ui.combat = "keep"
-    MD:SelectView("reports", "review")
+    ST.db.ui.combatNoted = nil
+    ST.db.ui.combat = "keep"
+    ST:SelectView("reports", "review")
     S.Fire("PLAYER_REGEN_DISABLED"); S.Fire("PLAYER_REGEN_ENABLED")
     local keepSaid = #said
-    MD.db.ui.combat = "hide"
+    ST.db.ui.combat = "hide"
     frame:Hide()
     S.Fire("PLAYER_REGEN_DISABLED"); S.Fire("PLAYER_REGEN_ENABLED")
     local closedSaid = #said
-    MD:SelectView("reports", "review")
+    ST:SelectView("reports", "review")
     for _ = 1, 3 do
-        if not frame:IsShown() then MD:SelectView("reports", "review") end
+        if not frame:IsShown() then ST:SelectView("reports", "review") end
         S.Fire("PLAYER_REGEN_DISABLED"); S.Fire("PLAYER_REGEN_ENABLED")
     end
     cf.AddMessage = orig
     local line = said[1] or ""
     check("T73: the first combat hide prints one line, once",
-        keepSaid == 0 and closedSaid == 0 and #said == 1 and MD.db.ui.combatNoted == true
+        keepSaid == 0 and closedSaid == 0 and #said == 1 and ST.db.ui.combatNoted == true
           and line:find("the window hides in combat and comes back after. Settings -> General -> Windows.", 1, true) ~= nil
           and frame:IsShown(),
         string.format("keep=%d closed=%d total=%d %s", keepSaid, closedSaid, #said, line))
@@ -672,20 +672,20 @@ end
 
 -- combat: hide, then back on the same view; "keep" leaves it
 do
-    MD.db.ui.combat = "hide"
-    MD:SelectView("reports", "review")
+    ST.db.ui.combat = "hide"
+    ST:SelectView("reports", "review")
     S.Fire("PLAYER_REGEN_DISABLED")
     local hidden = not frame:IsShown() and #Stack() == 0 and proxy ~= nil and not proxy:IsShown()
-    MD:SelectView("spells", "book")   -- a command in combat opens it (nothing auto-opens) ...
+    ST:SelectView("spells", "book")   -- a command in combat opens it (nothing auto-opens) ...
     frame:Hide()                      -- ... and the player closes it again
     S.Fire("PLAYER_REGEN_ENABLED")
-    local g, v = MD:SelectedView()
+    local g, v = ST:SelectedView()
     local back = frame:IsShown() and g == "reports" and v == "review" and Top() == frame
-    MD.db.ui.combat = "keep"
+    ST.db.ui.combat = "keep"
     S.Fire("PLAYER_REGEN_DISABLED")
     local kept = frame:IsShown()
     S.Fire("PLAYER_REGEN_ENABLED")
-    MD.db.ui.combat = "hide"
+    ST.db.ui.combat = "hide"
     check("T33: combat hides the main window and restores it on the same view; keep leaves it",
         hidden and back and kept, tostring(hidden) .. " " .. tostring(back) .. " " .. tostring(g) .. "/"
           .. tostring(v) .. " " .. tostring(kept))
@@ -711,15 +711,15 @@ end
 -- db.ui.escStack = false: today's per-window entries, and back
 do
     if Win.SetEscStack then Win:SetEscStack(false) end
-    MD:SelectView("spells", "book")
-    local fallback = MD.db.ui.escStack == false and InSpecial("SpellTunerDashboard")
+    ST:SelectView("spells", "book")
+    local fallback = ST.db.ui.escStack == false and InSpecial("SpellTunerDashboard")
       and proxy ~= nil and not proxy:IsShown() and #Stack() == 0
     Esc()
     local closed = not frame:IsShown()
     if Win.SetEscStack then Win:SetEscStack(true) end
-    MD:SelectView("spells", "book")
+    ST:SelectView("spells", "book")
     check("T33: db.ui.escStack = false falls back to one UISpecialFrames entry per window, and back",
-        fallback and closed and MD.db.ui.escStack == true and not InSpecial("SpellTunerDashboard")
+        fallback and closed and ST.db.ui.escStack == true and not InSpecial("SpellTunerDashboard")
           and Top() == frame and proxy ~= nil and proxy:IsShown(),
         tostring(fallback) .. " " .. tostring(closed))
 end
@@ -728,7 +728,7 @@ end
 -- 12. T34 (6.3): the replay and the practice session take the main window's
 -- place. The Practice module brings Recorder and Replay with it; the replay
 -- plays a tools/foreverfixture.lua stream. A "chat" open is one with the main
--- window hidden; Review's Play is MD.Replay:Open with it shown.
+-- window hidden; Review's Play is ST.Replay:Open with it shown.
 --------------------------------------------------------------------------------
 local function CapturedChat(body)
     local lines = {}
@@ -795,7 +795,7 @@ local function AboutRows(p)
     return out
 end
 do
-    MD:SelectView("settings", "review") -- T119: was General's REVIEW pane
+    ST:SelectView("settings", "review") -- T119: was General's REVIEW pane
     local p = ReviewPane()
     local allOff = p ~= nil and #p.reviewChecks == 4
     for _, c in ipairs(p and p.reviewChecks or {}) do
@@ -803,7 +803,7 @@ do
     end
     local sliderOff = p and p.fullHpSlider and not p.fullHpSlider:IsEnabled()
     local note = p and p.reviewNote and p.reviewNote:GetText()
-    MD:SelectView("settings", "about")
+    ST:SelectView("settings", "about")
     local rows = AboutRows(AboutPane())
     local replayLine, replayCmd = false, false
     for _, r in ipairs(rows) do
@@ -814,19 +814,19 @@ do
     end
     check("T70: with Replay not loaded, REVIEW is shown disabled and says so; About lists Replay as off",
         allOff and sliderOff and note == "needs the Replay module - off" and replayLine and not replayCmd
-          and MD:ModuleState("SpellTuner_Replay") ~= "loaded",
+          and ST:ModuleState("SpellTuner_Replay") ~= "loaded",
         string.format("checksOff=%s sliderOff=%s note=%s replayLine=%s replayCmd=%s", tostring(allOff),
           tostring(sliderOff), tostring(note), tostring(replayLine), tostring(replayCmd)))
 end
 
-MD:SetModule("SpellTuner_Practice", true)
-MD.player.isDruid = true
+ST:SetModule("SpellTuner_Practice", true)
+ST.player.isDruid = true
 local buildFixture = dofile(here .. "/foreverfixture.lua")
 local recT34 = buildFixture()
 recT34.id = 2000000000
-MD.cdb.recordings = { recT34 }
-MD.cdb.practice = {}
-MD.db.replayAutoCoach = false -- no search running under the checks
+ST.cdb.recordings = { recT34 }
+ST.cdb.practice = {}
+ST.db.replayAutoCoach = false -- no search running under the checks
 local mainShows = 0
 frame:HookScript("OnShow", function() mainShows = mainShows + 1 end)
 
@@ -835,20 +835,20 @@ frame:HookScript("OnShow", function() mainShows = mainShows + 1 end)
 local replay, backBtn
 do
     frame:Hide()
-    MD.db.replayPos = { "TOPLEFT", "BOTTOMLEFT", 40, 600 }
-    MD:OpenReplay("1")
+    ST.db.replayPos = { "TOPLEFT", "BOTTOMLEFT", 40, 600 }
+    ST:OpenReplay("1")
     replay = _G.SpellTunerReplayWindow
     backBtn = replay and replay.header and replay.header.backBtn
-    local sv = MD.db.ui.win.replay
-    local migrated = MD.db.replayPos == nil and sv ~= nil and near(sv.x, 40) and near(sv.y, 600)
+    local sv = ST.db.ui.win.replay
+    local migrated = ST.db.replayPos == nil and sv ~= nil and near(sv.x, 40) and near(sv.y, 600)
       and replay:IsShown() and near(replay:GetLeft(), 40) and near(replay:GetTop(), 600)
     if replay then DragTo(replay, 60, 620) end
-    sv = MD.db.ui.win.replay
+    sv = ST.db.ui.win.replay
     check("T34: db.replayPos is migrated into db.ui.win.replay once, then deleted",
-        migrated and MD.db.replayPos == nil and sv and near(sv.x, 60) and near(sv.y, 620),
+        migrated and ST.db.replayPos == nil and sv and near(sv.x, 60) and near(sv.y, 620),
         tostring(migrated) .. " " .. (sv and (fmt(sv.x) .. "," .. fmt(sv.y)) or "nil"))
     if replay then replay:Hide() end
-    MD.db.ui.win.replay = nil
+    ST.db.ui.win.replay = nil
 end
 if not replay then
     print(string.format("%d ok, %d failed (stopped: no replay window)", ok, #fails)); os.exit(1)
@@ -859,7 +859,7 @@ end
 do
     frame:Hide()
     local before = mainShows
-    MD:OpenReplay("1")
+    ST:OpenReplay("1")
     local sw, sh = UIParent:GetWidth(), UIParent:GetHeight()
     local cx = replay:GetLeft() + replay:GetWidth() / 2
     local cy = replay:GetTop() - replay:GetHeight() / 2
@@ -874,18 +874,18 @@ end
 
 -- Review -> Play: the main window hides with its path; back restores it
 do
-    MD:SelectView("reports", "review")
-    MD.Replay:Open("1")
+    ST:SelectView("reports", "review")
+    ST.Replay:Open("1")
     local took = replay:IsShown() and not frame:IsShown() and backBtn:IsShown() and Top() == replay
     Click(backBtn)
-    local g, v = MD:SelectedView()
+    local g, v = ST:SelectedView()
     local back = not replay:IsShown() and frame:IsShown() and g == "reports" and v == "review" and Top() == frame
     -- ESC does the same, one entry: the replay, not the main window it gives back
-    MD.Replay:Open("1")
+    ST.Replay:Open("1")
     NextFrame()
     Esc()
     NextFrame()
-    local g2, v2 = MD:SelectedView()
+    local g2, v2 = ST:SelectedView()
     local esc = not replay:IsShown() and frame:IsShown() and g2 == "reports" and v2 == "review" and Top() == frame
       and proxy:IsShown()
     check("T34: Play hides the main window with its path; < SpellTuner or ESC closes the replay and restores it",
@@ -901,10 +901,10 @@ do
     for _, us in ipairs({ 0.71, 1 }) do
         S.uiScale = us
         S.Fire("UI_SCALE_CHANGED")
-        MD:SelectView("reports", "review")
+        ST:SelectView("reports", "review")
         DragTo(frame, 150, 700)
         local mx, mt = TopCentrePx(frame)
-        MD.Replay:Open("1")
+        ST.Replay:Open("1")
         local rx, rt = TopCentrePx(replay)
         local p = replay:GetPoint(1)
         res[#res + 1] = { ok = near(mx, rx, 1e-3) and near(mt, rt, 1e-3) and p == "TOP" and not frame:IsShown(),
@@ -920,11 +920,11 @@ end
 
 -- /st during a replay takeover: the replay closes, the requested view opens
 do
-    MD:SelectView("reports", "review")
-    MD.Replay:Open("1")
+    ST:SelectView("reports", "review")
+    ST.Replay:Open("1")
     local took = replay:IsShown() and not frame:IsShown()
     SlashCmdList.SPELLTUNER("modules")
-    local g, v = MD:SelectedView()
+    local g, v = ST:SelectedView()
     check("T34: /st modules during a replay takeover closes it and opens Settings -> Modules",
         took and not replay:IsShown() and frame:IsShown() and g == "settings" and v == "modules"
           and Top() == frame,
@@ -933,16 +933,16 @@ end
 
 -- practice: always a takeover; /st refused; ESC pauses, ESC again ends it and
 -- opens its replay, the main window never shown; back is Simulate -> Practice
-local PR = MD.Practice
+local PR = ST.Practice
 local function StartPractice()
-    MD:SelectView("simulate", "practice")
-    MD.db.practiceBinds = { { key = "1", family = "Rejuvenation" } }
+    ST:SelectView("simulate", "practice")
+    ST.db.practiceBinds = { { key = "1", family = "Rejuvenation" } }
     local setup = PR.DefaultSetup("2", 64)
     setup.dur, setup.fixedSeed = 30, 9
-    MD:OpenPractice(setup, 9)
-    local live = MD.Replay._live()
+    ST:OpenPractice(setup, 9)
+    local live = ST.Replay._live()
     S.Tick(0.5)
-    if live then live:Cast(MD.SpellData.maxRank.Rejuvenation, 1) end
+    if live then live:Cast(ST.SpellData.maxRank.Rejuvenation, 1) end
     S.Tick(0.5)
     return live
 end
@@ -960,20 +960,20 @@ do
     end
     check("T34: /st during practice is refused with one line and nothing shows",
         took and refusedLine == 2 and #lines == 2 and not frame:IsShown() and mainShows == before
-          and replay:IsShown() and MD.Replay._live() == live,
+          and replay:IsShown() and ST.Replay._live() == live,
         tostring(took) .. " lines " .. #lines .. " " .. table.concat(lines, " / "))
 
     Esc()
-    local paused = MD.Replay._live() == live and live.paused == true and replay:IsShown() and Top() == replay
+    local paused = ST.Replay._live() == live and live.paused == true and replay:IsShown() and Top() == replay
     NextFrame()
     Esc()
     NextFrame()
-    local st = MD.Replay._state()
-    local reopened = MD.Replay._live() == nil and replay:IsShown() and st.rp and not st.rp.live
-      and st.rp.rec == MD:GetRecording("p1") and not frame:IsShown() and mainShows == before
+    local st = ST.Replay._state()
+    local reopened = ST.Replay._live() == nil and replay:IsShown() and st.rp and not st.rp.live
+      and st.rp.rec == ST:GetRecording("p1") and not frame:IsShown() and mainShows == before
       and backBtn:IsShown() and Top() == replay
     Click(backBtn)
-    local g, v = MD:SelectedView()
+    local g, v = ST:SelectedView()
     check("T34: practice ESC pauses, ESC again ends it into its replay; back goes to Simulate -> Practice",
         paused and reopened and frame:IsShown() and g == "simulate" and v == "practice",
         tostring(paused) .. " " .. tostring(reopened) .. " " .. tostring(g) .. "/" .. tostring(v))
@@ -985,11 +985,11 @@ do
     local before = mainShows
     local endBtn = ButtonUnder(replay, "End")
     Click(endBtn)
-    local st = MD.Replay._state()
-    local ok6 = live ~= nil and endBtn ~= nil and MD.Replay._live() == nil and replay:IsShown()
+    local st = ST.Replay._state()
+    local ok6 = live ~= nil and endBtn ~= nil and ST.Replay._live() == nil and replay:IsShown()
       and st.rp and not st.rp.live and not frame:IsShown() and mainShows == before and backBtn:IsShown()
     Click(backBtn)
-    local g, v = MD:SelectedView()
+    local g, v = ST:SelectedView()
     check("T34: End opens the replay without showing the main window; back returns to Practice",
         ok6 and frame:IsShown() and g == "simulate" and v == "practice",
         tostring(ok6) .. " " .. tostring(g) .. "/" .. tostring(v))
@@ -1001,7 +1001,7 @@ end
 -- as the player types a value into its box (the kit's OnEnterPressed runs both
 -- of its callbacks), a dropdown and a button as they are clicked.
 --------------------------------------------------------------------------------
-MD:SelectView("settings", "general")
+ST:SelectView("settings", "general")
 local gp
 for _, f in ipairs(S.allFrames) do
     if f.fontSlider then gp = f end
@@ -1043,21 +1043,21 @@ end
 
 do
     local s = gp and gp.fontSlider
-    local rail = MD.SpellsPane and MD.SpellsPane.nav and MD.SpellsPane.nav.rails
-      and MD.SpellsPane.nav.rails.spells and MD.SpellsPane.nav.rails.spells.rail
+    local rail = ST.SpellsPane and ST.SpellsPane.nav and ST.SpellsPane.nav.rails
+      and ST.SpellsPane.nav.rails.spells and ST.SpellsPane.nav.rails.spells.rail
     Type(s, "2")
     local rows = rail and rail:Rows() or {}
     local size = FontSize(UI.FONT)
     local row2 = rows[1] and rows[1]:GetHeight()
-    local applied = MD.db.ui.fontOffset == 2 and UI.fontOffset == 2 and size == 15 and row2 == 22
+    local applied = ST.db.ui.fontOffset == 2 and UI.fontOffset == 2 and size == 15 and row2 == 22
     Type(s, "4")
-    local clamped = s ~= nil and MD.db.ui.fontOffset == 2 and s.high == 2 and s.low == -2
+    local clamped = s ~= nil and ST.db.ui.fontOffset == 2 and s.high == 2 and s.low == -2
     Type(s, "0")
     local size0 = FontSize(UI.FONT)
     check("T42: the font offset slider (-2..+2) writes db.ui.fontOffset and applies it (fonts, the Spells rail)",
-        s ~= nil and applied and clamped and MD.db.ui.fontOffset == 0 and size0 == 13 and rows[1] ~= nil and rows[1]:GetHeight() == 20,
+        s ~= nil and applied and clamped and ST.db.ui.fontOffset == 0 and size0 == 13 and rows[1] ~= nil and rows[1]:GetHeight() == 20,
         s and string.format("at +2 size=%s row=%s; back at %s size=%s row=%s; range %s..%s", tostring(size),
-          tostring(row2), tostring(MD.db.ui.fontOffset), tostring(size0), tostring(rows[1] and rows[1]:GetHeight()),
+          tostring(row2), tostring(ST.db.ui.fontOffset), tostring(size0), tostring(rows[1] and rows[1]:GetHeight()),
           tostring(s.low), tostring(s.high)) or "no slider")
 end
 
@@ -1068,30 +1068,30 @@ do
     local pxL, pxT = frame:GetLeft() * es0, frame:GetTop() * es0
     Type(s, "90")
     local es1 = frame:GetEffectiveScale()
-    local applied = near(MD.db.ui.scale, 0.9) and near(frame:GetScale(), 0.9)
+    local applied = near(ST.db.ui.scale, 0.9) and near(frame:GetScale(), 0.9)
       and near(frame:GetLeft() * es1, pxL, 1e-3) and near(frame:GetTop() * es1, pxT, 1e-3)
     Type(s, "150")
-    local clamped = s ~= nil and near(MD.db.ui.scale, 1.2) and s.low == 70 and s.high == 120
+    local clamped = s ~= nil and near(ST.db.ui.scale, 1.2) and s.low == 70 and s.high == 120
     Type(s, "100")
-    check("T42: the window scale slider (70-120 %) writes db.ui.scale and applies it through MD.Win",
-        s ~= nil and applied and clamped and near(MD.db.ui.scale, 1) and near(frame:GetScale(), 1),
-        s and string.format("scale=%s frame=%s", fmt(MD.db.ui.scale), fmt(frame:GetScale())) or "no slider")
+    check("T42: the window scale slider (70-120 %) writes db.ui.scale and applies it through ST.Win",
+        s ~= nil and applied and clamped and near(ST.db.ui.scale, 1) and near(frame:GetScale(), 1),
+        s and string.format("scale=%s frame=%s", fmt(ST.db.ui.scale), fmt(frame:GetScale())) or "no slider")
 end
 
 do
     local dd = gp and gp.combatDropdown
     local shownDefault = dd and dd:Value() == "hide"
     Pick(dd, "keep")
-    local wrote = MD.db.ui.combat == "keep"
+    local wrote = ST.db.ui.combat == "keep"
     S.Fire("PLAYER_REGEN_DISABLED")
     local kept = frame:IsShown()
     S.Fire("PLAYER_REGEN_ENABLED")
     Pick(dd, "hide")
-    local wrote2 = MD.db.ui.combat == "hide"
+    local wrote2 = ST.db.ui.combat == "hide"
     S.Fire("PLAYER_REGEN_DISABLED")
     local hid = not frame:IsShown()
     S.Fire("PLAYER_REGEN_ENABLED")
-    local g, v = MD:SelectedView()
+    local g, v = ST:SelectedView()
     check("T42: the combat dropdown writes db.ui.combat (hide / keep) and the next pull follows it",
         dd ~= nil and shownDefault and wrote and kept and wrote2 and hid and frame:IsShown()
           and g == "settings" and v == "general",
@@ -1103,11 +1103,11 @@ do
     local cb = gp and gp.escCheck
     local on = cb and cb:GetChecked()
     if cb then cb:SetChecked(false); cb.onClick(false, cb) end
-    local off = MD.db.ui.escStack == false and InSpecial("SpellTunerDashboard") and #Stack() == 0
+    local off = ST.db.ui.escStack == false and InSpecial("SpellTunerDashboard") and #Stack() == 0
       and proxy ~= nil and not proxy:IsShown()
     if cb then cb:SetChecked(true); cb.onClick(true, cb) end
     check("T42: 'Close one window per ESC' writes db.ui.escStack and switches the stack at once",
-        cb ~= nil and on and off and MD.db.ui.escStack == true and not InSpecial("SpellTunerDashboard")
+        cb ~= nil and on and off and ST.db.ui.escStack == true and not InSpecial("SpellTunerDashboard")
           and Top() == frame and proxy ~= nil and proxy:IsShown(),
         tostring(on) .. " " .. tostring(off))
 end
@@ -1116,9 +1116,9 @@ do
     local b = gp and gp.resetButton
     DragTo(frame, 10, 500)
     ResizeTo(frame, 950, 620)
-    local saved = type(MD.db.ui.win.main) == "table"
+    local saved = type(ST.db.ui.win.main) == "table"
     Click(b)
-    local win = MD.db.ui.win
+    local win = ST.db.ui.win
     local sw, sh = UIParent:GetWidth(), UIParent:GetHeight()
     local cx = frame:GetLeft() + frame:GetWidth() / 2
     local cy = frame:GetTop() - frame:GetHeight() / 2
@@ -1133,12 +1133,12 @@ end
 -- Settings -> General in two columns with the MANA CLOCK, REVIEW and TOOLS
 -- panes, and Settings -> About. The Replay module is loaded here (section 12).
 --------------------------------------------------------------------------------
-MD:SelectView("settings", "general")
+ST:SelectView("settings", "general")
 gp = GeneralPane()
 -- T119: REVIEW and Measure are Settings -> Review's (RECORDING, MODEL)
-MD:SelectView("settings", "review")
+ST:SelectView("settings", "review")
 local rp = ReviewPane()
-MD:SelectView("settings", "general")
+ST:SelectView("settings", "general")
 
 -- the pane a titled pane hangs from: follow its first point up the chain
 -- to the one anchored on the General pane itself, and read that x
@@ -1190,28 +1190,28 @@ end
 
 -- MANA CLOCK: show, lock, Show now, and Reset position clearing the saved point
 Guarded("T70: MANA CLOCK", function()
-    local Clock = MD.Clock
+    local Clock = ST.Clock
     local w = Clock.frame
     local show, lock = gp and gp.clockCheck, gp and gp.clockLockCheck
     if show then show:SetChecked(false); show.onClick(false, show) end
-    local off = MD.db.clock.shown == false and w and not w:IsShown() and not gp.clockShowNow:IsEnabled()
+    local off = ST.db.clock.shown == false and w and not w:IsShown() and not gp.clockShowNow:IsEnabled()
     if show then show:SetChecked(true); show.onClick(true, show) end
-    local on = MD.db.clock.shown == true and gp.clockShowNow:IsEnabled()
+    local on = ST.db.clock.shown == true and gp.clockShowNow:IsEnabled()
     if lock then lock:SetChecked(true); lock.onClick(true, lock) end
-    local locked = MD.db.clock.locked == true and not Clock:Previewing()
+    local locked = ST.db.clock.locked == true and not Clock:Previewing()
     Click(gp and gp.clockShowNow)
     local preview = Clock:Previewing() and w:IsShown()
-    MD.db.clock.point = { "CENTER", nil, "CENTER", 40, -30 }
+    ST.db.clock.point = { "CENTER", nil, "CENTER", 40, -30 }
     w:ClearAllPoints()
     w:SetPoint("CENTER", UIParent, "CENTER", 40, -30)
     Click(gp and gp.clockReset)
     local p, rel, rp, x, y = w:GetPoint(1)
-    local reset = MD.db.clock.point == nil and p == "TOP" and rel == UIParent and rp == "TOP" and x == 0 and y == -120
+    local reset = ST.db.clock.point == nil and p == "TOP" and rel == UIParent and rp == "TOP" and x == 0 and y == -120
     if lock then lock:SetChecked(false); lock.onClick(false, lock) end
     S.Tick(61)
     check("T70: MANA CLOCK writes db.clock.shown / locked, Show now previews, Reset position clears the point",
         show ~= nil and lock ~= nil and off and on and locked and preview and reset
-          and MD.db.clock.locked == false and not Clock:Previewing(),
+          and ST.db.clock.locked == false and not Clock:Previewing(),
         string.format("off=%s on=%s locked=%s preview=%s reset=%s (%s %s %s)", tostring(off), tostring(on),
           tostring(locked), tostring(preview), tostring(reset), tostring(p), tostring(rp), tostring(y)))
 end)
@@ -1222,20 +1222,20 @@ Guarded("T70: REVIEW", function()
     local saved = {}
     for _, c in ipairs(rp and rp.reviewChecks or {}) do
         keys[#keys + 1] = c.key
-        saved[c.key] = MD.db[c.key]
+        saved[c.key] = ST.db[c.key]
         if not c.check:IsEnabled() then live = false end
         c.check:SetChecked(true); c.check.onClick(true, c.check)
-        if MD.db[c.key] ~= true or MD:Setting(c.key) ~= true then wrote = false end
+        if ST.db[c.key] ~= true or ST:Setting(c.key) ~= true then wrote = false end
         c.check:SetChecked(false); c.check.onClick(false, c.check)
-        if MD.db[c.key] ~= false or MD:Setting(c.key) ~= false then wrote = false end
+        if ST.db[c.key] ~= false or ST:Setting(c.key) ~= false then wrote = false end
     end
-    local sv = MD.db.simFullHp
+    local sv = ST.db.simFullHp
     Type(rp and rp.fullHpSlider, "90")
-    local hp = near(MD.db.simFullHp, 0.9) and near(MD:Setting("simFullHp"), 0.9)
+    local hp = near(ST.db.simFullHp, 0.9) and near(ST:Setting("simFullHp"), 0.9)
     Type(rp and rp.fullHpSlider, "120")
-    local clamped = near(MD.db.simFullHp, 0.99)
-    MD.db.simFullHp = sv
-    for k, v in pairs(saved) do MD.db[k] = v end
+    local clamped = near(ST.db.simFullHp, 0.99)
+    ST.db.simFullHp = sv
+    for k, v in pairs(saved) do ST.db[k] = v end
     check("T70: REVIEW's four checks and 'Full health is above' write their keys once Replay is loaded",
         #keys == 4 and table.concat(keys, ",") == "replayAutoCoach,replayNextPull,replayTicks,simAllowRebinds"
           and live and wrote and hp and clamped and rp.fullHpSlider:IsEnabled()
@@ -1257,26 +1257,26 @@ Guarded("T70: TOOLS", function()
     local dumped = copy ~= nil and copy:IsShown() and type(copy.text) == "string"
       and copy.text:find("SpellTuner dump", 1, true) == 1
     if copy then copy:Hide() end
-    local wasOn = MD.Measure.on
+    local wasOn = ST.Measure.on
     Click(rp and rp.measureButton)
-    local turnedOn = MD.Measure.on == true and rp.measureButton:GetText() == "Measure: on"
+    local turnedOn = ST.Measure.on == true and rp.measureButton:GetText() == "Measure: on"
     Click(rp and rp.measureButton)
-    local turnedOff = not MD.Measure.on and rp.measureButton:GetText() == "Measure: off"
+    local turnedOff = not ST.Measure.on and rp.measureButton:GetText() == "Measure: off"
     check("T70: TOOLS opens the console, puts /st dump in the copy box, and turns measure on and off",
         consoleShown and dumped and not wasOn and turnedOn and turnedOff,
         string.format("console=%s dump=%s measure %s/%s", tostring(consoleShown), tostring(dumped),
           tostring(turnedOn), tostring(turnedOff)))
 end)
 
--- About: every command MD:Commands() lists, the modules' included, cut at "; "
+-- About: every command ST:Commands() lists, the modules' included, cut at "; "
 Guarded("T70: About", function()
-    MD:SelectView("settings", "about")
+    ST:SelectView("settings", "about")
     local ap = AboutPane()
     local rows = AboutRows(ap)
     local byUsage = {}
     for _, r in ipairs(rows) do byUsage[r.usage] = r end
     local want, missing = 0, {}
-    for _, e in ipairs(MD:Commands()) do
+    for _, e in ipairs(ST:Commands()) do
         if not e.hidden and e.usage ~= "" then
             want = want + 1
             if not byUsage[e.usage] then missing[#missing + 1] = e.usage end
@@ -1291,7 +1291,7 @@ Guarded("T70: About", function()
     end
     local hasReplay = false
     for u in pairs(byUsage) do if u:find("^/st replay") then hasReplay = true end end
-    local head = ap and ap.version:GetText() == "SpellTuner " .. tostring(MD.version)
+    local head = ap and ap.version:GetText() == "SpellTuner " .. tostring(ST.version)
       and ap.client:GetText():find("^WoW: Forever") ~= nil
     check("T70: About lists every visible command (the modules' too), the long ones cut at '; ' with the rest on hover",
         ap ~= nil and #missing == 0 and #rows == want and cut and hasReplay and not offLine and head,
@@ -1308,15 +1308,15 @@ end)
 -- staying up.
 --------------------------------------------------------------------------------
 do
-    MD:SelectView("settings", "general")
+    ST:SelectView("settings", "general")
     NextFrame()
     local up = frame:IsShown()
     local base = #Stack()
     local hookFree = UI.Popup ~= nil and UI.OnPopup == UI.Popup
     local f = CreateFrame("Frame", nil, UIParent); f:Show()
-    MD:Fire("UI_POPUP", f, true)
+    ST:Fire("UI_POPUP", f, true)
     local pushed = Top() == f and #Stack() == base + 1
-    MD:Fire("UI_POPUP", f, false)
+    ST:Fire("UI_POPUP", f, false)
     local removed = #Stack() == base and Top() ~= f
 
     local tree = UI.CreateTreeDropdown(frame, 140, 18)

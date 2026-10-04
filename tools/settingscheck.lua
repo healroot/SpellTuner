@@ -1,8 +1,8 @@
 -- tools/run.sh [--flavour forever|tbc] tools/settingscheck.lua
 --
 -- T119 (docs/SPEC-one-ui.md 7, 10 W7; mockup M6): Settings is one file on both
--- lines, UI/Settings.lua (MD.Settings), built from the rows each line installs
--- as MD.SettingsLine (UI/Settings_TBC.lua on TBC, UI/Dashboard_Forever.lua on
+-- lines, UI/Settings.lua (ST.Settings), built from the rows each line installs
+-- as ST.SettingsLine (UI/Settings_TBC.lua on TBC, UI/Dashboard_Forever.lua on
 -- Forever). The flavour's whole TOC is loaded with the stub's geometry on and
 -- the fake hosts installed before it (tools/stub_hosts.lua, as
 -- tools/clocksettings.lua does), so INTEGRATIONS has something to say.
@@ -19,9 +19,9 @@
 --   4. each check writes its key and re-reads it on Refresh; each slider
 --      writes its scaled key;
 --   5. About: "SpellTuner <version>", the line's client words, the shared
---      blurb (never "TBC Anniversary"), one row per MD:Commands() row with a
+--      blurb (never "TBC Anniversary"), one row per ST:Commands() row with a
 --      usage;
---   6. the Detail lines dropdown is drawn only where MD.SpellTip has
+--   6. the Detail lines dropdown is drawn only where ST.SpellTip has
 --      DETAIL_MODES, and writes spellTooltipDetail;
 --   7. every string the three views draw, and every tooltip line, is ASCII
 --      with no bare pipe.
@@ -29,8 +29,8 @@
 --   8. every control of the parent's UI/Options_General.lua (its keys and
 --      button words, captured on 535cff4) is in its new place per the task's
 --      map; Show rest time and Show mana cooldown are not on General;
---   9. Show now runs MD.Widget:Preview; Customise... selects Settings -> Clock;
---  10. MD:ShowOptionsFrame() opens General, ("about") About; MD.optionsFrame
+--   9. Show now runs ST.Widget:Preview; Customise... selects Settings -> Clock;
+--  10. ST:ShowOptionsFrame() opens General, ("about") About; ST.optionsFrame
 --      is nil;
 --  11. the Settings group is 860 x 560 with no grip; Reports is still
 --      1036 x 646 (T120 re-based: Spells went to 860 x 560 with the shared
@@ -62,7 +62,7 @@ S.root = root
 S.flavour = flavour
 local H = dofile(here .. "/stub_hosts.lua")
 
-local MD = {}
+local ST = {}
 local toc = "SpellTuner_TBC.toc"
 if forever then
     S.UseProfile("forever")
@@ -78,10 +78,10 @@ S.loadedFiles = files
 local navGroups = {}
 local loadedOK, loadErr = pcall(function()
     for _, rel in ipairs(files) do
-        S.Load({ rel }, "SpellTuner", MD)
+        S.Load({ rel }, "SpellTuner", ST)
         if rel == "UI/Style.lua" then
-            local make = MD.UI.CreateNavFrame
-            MD.UI.CreateNavFrame = function(title, name, w, h, groups, ...)
+            local make = ST.UI.CreateNavFrame
+            ST.UI.CreateNavFrame = function(title, name, w, h, groups, ...)
                 if name == "SpellTunerDashboard" then navGroups = groups end
                 return make(title, name, w, h, groups, ...)
             end
@@ -89,15 +89,15 @@ local loadedOK, loadErr = pcall(function()
     end
 end)
 if not loadedOK then print("load: " .. tostring(loadErr)) end
-H.AddOnMeta(MD, { EllesmereUI = { Version = "9.3.4" } })
+H.AddOnMeta(ST, { EllesmereUI = { Version = "9.3.4" } })
 S.Fire("ADDON_LOADED", "SpellTuner")
 S.Fire("PLAYER_LOGIN")
 S.Fire("PLAYER_ENTERING_WORLD")
-if MD.db then MD.db.locked = true end
-if forever and MD.db and type(MD.db.clock) == "table" then MD.db.clock.locked = true end
+if ST.db then ST.db.locked = true end
+if forever and ST.db and type(ST.db.clock) == "table" then ST.db.clock.locked = true end
 
-local UI = MD.UI or {}
-local MS = MD.Settings or {}
+local UI = ST.UI or {}
+local MS = ST.Settings or {}
 
 local function Try(name, fn)
     local okR, cond, detail = pcall(fn)
@@ -126,7 +126,7 @@ local function Type(slider, text)
 end
 
 local function Pane(view)
-    MD:SelectView("settings", view)
+    ST:SelectView("settings", view)
     return MS.panes and MS.panes[view]
 end
 
@@ -241,12 +241,12 @@ end
 --------------------------------------------------------------------------------
 T.section("1. the views")
 --------------------------------------------------------------------------------
-check("UI/Settings.lua loaded: MD.Settings and the line's MD.SettingsLine",
-    loadedOK and type(MS.Build) == "function" and type(MD.SettingsLine) == "table",
+check("UI/Settings.lua loaded: ST.Settings and the line's ST.SettingsLine",
+    loadedOK and type(MS.Build) == "function" and type(ST.SettingsLine) == "table",
     loadErr and tostring(loadErr))
 
 Try("the Settings views are the table's, in order", function()
-    MD:SelectView("settings", "general")
+    ST:SelectView("settings", "general")
     local ids = {}
     for _, g in ipairs(navGroups) do
         if g.id == "settings" then
@@ -337,10 +337,10 @@ Try("each live check writes its key and re-reads it; each slider writes its scal
                 checks = checks + 1
                 local was = c.ctl:GetChecked() and true or false
                 c.ctl.onClick(not was, c.ctl)
-                if MD.db[row.key] ~= (not was) then
+                if ST.db[row.key] ~= (not was) then
                     bad[#bad + 1] = row.key .. " not written"
                 end
-                MD.db[row.key] = was
+                ST.db[row.key] = was
                 MS.Refresh(view)
                 if (c.ctl:GetChecked() and true or false) ~= was then
                     bad[#bad + 1] = row.key .. " not re-read"
@@ -350,8 +350,8 @@ Try("each live check writes its key and re-reads it; each slider writes its scal
                 local v = row.min + (row.step or 1)
                 Type(c.ctl, tostring(v))
                 local want = v / (row.scale or 1)
-                if math.abs((tonumber(MD.db[row.key]) or -1) - want) > 1e-9 then
-                    bad[#bad + 1] = row.key .. "=" .. tostring(MD.db[row.key]) .. " want " .. want
+                if math.abs((tonumber(ST.db[row.key]) or -1) - want) > 1e-9 then
+                    bad[#bad + 1] = row.key .. "=" .. tostring(ST.db[row.key]) .. " want " .. want
                 end
             end
         end
@@ -366,7 +366,7 @@ T.section("5. About")
 Try("About: the version, the line's client, the shared blurb, a row per command with a usage", function()
     local p = Pane("about")
     local want = 0
-    for _, e in ipairs(MD:Commands()) do
+    for _, e in ipairs(ST:Commands()) do
         if not e.hidden and type(e.usage) == "string" and e.usage ~= "" then want = want + 1 end
     end
     local commands = 0
@@ -374,7 +374,7 @@ Try("About: the version, the line's client, the shared blurb, a row per command 
     local client = p.client:GetText() or ""
     local clientOk = forever and client:find("^WoW: Forever") ~= nil or client == "TBC Anniversary"
     local blurb = p.blurb:GetText() or ""
-    return p.version:GetText() == "SpellTuner " .. tostring(MD.version) and clientOk
+    return p.version:GetText() == "SpellTuner " .. tostring(ST.version) and clientOk
         and blurb == "Your spells rank by rank, your mana clock, and your fights recorded, replayed and coached."
         and not T.Has(blurb, "TBC Anniversary") and commands == want and want > 10,
         string.format("version=%s client=%s commands=%d want=%d", tostring(p.version:GetText()), client,
@@ -384,12 +384,12 @@ end)
 --------------------------------------------------------------------------------
 T.section("6. the detail key")
 --------------------------------------------------------------------------------
-Try("Detail lines is drawn only where MD.SpellTip has DETAIL_MODES, and writes spellTooltipDetail", function()
-    local real = MD.SpellTip
+Try("Detail lines is drawn only where ST.SpellTip has DETAIL_MODES, and writes spellTooltipDetail", function()
+    local real = ST.SpellTip
     local general = MS.panes.general
     local modes = { { id = "SHIFT", text = "Shift" }, { id = "ALT", text = "Alt" } }
     local function Scratch(tip)
-        MD.SpellTip = tip
+        ST.SpellTip = tip
         local content = CreateFrame("Frame", nil, UIParent)
         content:SetSize(VIEW_W, VIEW_H)
         local p = MS.Build("general", content)
@@ -398,11 +398,11 @@ Try("Detail lines is drawn only where MD.SpellTip has DETAIL_MODES, and writes s
         return p
     end
     local without = Scratch(real and real.DETAIL_MODES and { } or nil)
-    local with = Scratch({ DETAIL_MODES = modes, DetailMode = function() return MD.db.spellTooltipDetail or "SHIFT" end })
-    MD.SpellTip = real
+    local with = Scratch({ DETAIL_MODES = modes, DetailMode = function() return ST.db.spellTooltipDetail or "SHIFT" end })
+    ST.SpellTip = real
     local picked = Pick(with.detailDropdown, "ALT")
-    local wrote = MD.db.spellTooltipDetail == "ALT"
-    MD.db.spellTooltipDetail = nil
+    local wrote = ST.db.spellTooltipDetail == "ALT"
+    ST.db.spellTooltipDetail = nil
     local here = (general.detailDropdown ~= nil) == (real ~= nil and real.DETAIL_MODES ~= nil)
     return without.detailDropdown == nil and with.detailDropdown ~= nil and picked and wrote and here,
         string.format("without=%s with=%s picked=%s wrote=%s line=%s", tostring(without.detailDropdown),
@@ -528,31 +528,31 @@ if not forever then
     ----------------------------------------------------------------------------
     T.section("9. TBC: Show now and Customise...")
     ----------------------------------------------------------------------------
-    Try("Show now runs MD.Widget:Preview; Customise... selects Settings -> Clock", function()
+    Try("Show now runs ST.Widget:Preview; Customise... selects Settings -> Clock", function()
         local p = Pane("general")
         local previews = 0
-        local real = MD.Widget.Preview
-        MD.Widget.Preview = function() previews = previews + 1 end
+        local real = ST.Widget.Preview
+        ST.Widget.Preview = function() previews = previews + 1 end
         Click(p.clockShowNow)
-        MD.Widget.Preview = real
+        ST.Widget.Preview = real
         Click(p.clockCustomise)
-        local g, v = MD:SelectedView()
+        local g, v = ST:SelectedView()
         return previews == 1 and g == "settings" and v == "clock",
             string.format("previews=%d view=%s/%s", previews, tostring(g), tostring(v))
     end)
 
     ----------------------------------------------------------------------------
-    T.section("10. TBC: MD:ShowOptionsFrame, the door")
+    T.section("10. TBC: ST:ShowOptionsFrame, the door")
     ----------------------------------------------------------------------------
-    Try("ShowOptionsFrame() opens General, (\"about\") About; MD.optionsFrame is nil", function()
-        MD:SelectView("reports", "Review")
-        MD:ShowOptionsFrame()
-        local g1, v1 = MD:SelectedView()
-        MD:ShowOptionsFrame("about")
-        local g2, v2 = MD:SelectedView()
+    Try("ShowOptionsFrame() opens General, (\"about\") About; ST.optionsFrame is nil", function()
+        ST:SelectView("reports", "Review")
+        ST:ShowOptionsFrame()
+        local g1, v1 = ST:SelectedView()
+        ST:ShowOptionsFrame("about")
+        local g2, v2 = ST:SelectedView()
         return g1 == "settings" and v1 == "general" and g2 == "settings" and v2 == "about"
-            and MD.optionsFrame == nil,
-            table.concat({ tostring(g1), tostring(v1), tostring(g2), tostring(v2), tostring(MD.optionsFrame) }, " ")
+            and ST.optionsFrame == nil,
+            table.concat({ tostring(g1), tostring(v1), tostring(g2), tostring(v2), tostring(ST.optionsFrame) }, " ")
     end)
 
     ----------------------------------------------------------------------------
@@ -560,11 +560,11 @@ if not forever then
     ----------------------------------------------------------------------------
     Try("Settings is 860 x 560, fixed with no grip; Reports is still 1036 x 646", function()
         local frame = _G.SpellTunerDashboard
-        MD:SelectView("settings", "general")
+        ST:SelectView("settings", "general")
         local sw, sh = frame:GetWidth(), frame:GetHeight()
-        local fixed = MD.Win:Fixed("main", "settings")
-        local z = MD.Win.SIZES and MD.Win.SIZES.settings or {}
-        MD:SelectView("reports", "Waste")
+        local fixed = ST.Win:Fixed("main", "settings")
+        local z = ST.Win.SIZES and ST.Win.SIZES.settings or {}
+        ST:SelectView("reports", "Waste")
         local pw, ph = frame:GetWidth(), frame:GetHeight()
         return sw == 860 and sh == 560 and fixed and z.minW == 860 and z.minH == 560 and pw == 1036 and ph == 646,
             string.format("settings %sx%s fixed=%s reports %sx%s", sw, sh, tostring(fixed), pw, ph)
@@ -603,10 +603,10 @@ else
             return on, off, r.reviewNote and r.reviewNote:GetText()
         end
         local on1, off1, note1 = State()
-        MD:SetModule("SpellTuner_Replay", true)
+        ST:SetModule("SpellTuner_Replay", true)
         local on2, off2, note2 = State()
         return on1 == 0 and off1 == 5 and note1 == "needs the Replay module - off"
-            and MD:ModuleState("SpellTuner_Replay") == "loaded"
+            and ST:ModuleState("SpellTuner_Replay") == "loaded"
             and off2 == 0 and on2 >= 5 and note2 == "needs the Replay module",
             string.format("off: %d/%d %s; on: %d/%d %s", on1, off1, tostring(note1), on2, off2, tostring(note2))
     end)

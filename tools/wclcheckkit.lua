@@ -41,7 +41,7 @@ local pre = {}
 for k, c in pairs(realDB.char) do pre[k] = c.profile end
 HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua"); arg[0] = a0
+local ST = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB
 
 -- observed medians, gross, non-crit: written next to the records by the converter
@@ -61,25 +61,25 @@ for key, p in pairs(pre) do
         _G.GetSpellBonusHealing = function() return healing end
         _G.GetSpellCritChance = function() return crit end
         local tal = p.talents or {}
-        function MD:TalentRank(n) return tal[n] or 0 end
-        MD.player.class = "DRUID"; MD.player.isDruid = true; MD.player.level = p.level
-        function MD:InTreeForm() return false end
+        function ST:TalentRank(n) return tal[n] or 0 end
+        ST.player.class = "DRUID"; ST.player.isDruid = true; ST.player.level = p.level
+        function ST:InTreeForm() return false end
         _G.IsSpellKnown = function(id)
-            local sd = MD.SpellData.spells[id]
+            local sd = ST.SpellData.spells[id]
             return sd ~= nil and (sd.level or 0) <= p.level
         end
         _G.IsPlayerSpell = _G.IsSpellKnown
-        MD.SpellData:BuildKnown(); MD.Regen:Refresh()
+        ST.SpellData:BuildKnown(); ST.Regen:Refresh()
 
         -- one row's model value at a given +healing
         local function modelAt(H, row)
             _G.GetSpellBonusHealing = function() return H end
-            local kit = MD.RankMath:SpellKit({ live = true }).caster
+            local kit = ST.RankMath:SpellKit({ live = true }).caster
             -- v0.14.4: a heal can arrive under a different spell id from the
             -- one cast -- Lifebloom's bloom is 33778, its HoT 33763 -- and the
             -- kit is keyed by the cast. Without the alias the bloom row silently
             -- matched nothing and the bloom was never compared at all.
-            local e = kit[MD.SpellData:Resolve(row.id)]
+            local e = kit[ST.SpellData:Resolve(row.id)]
             if not e then return nil end
             if row.what == "tick" then return (e.tick or 0) * (row.stacks or 1) end
             return (e.direct or 0) + (e.bloom or 0)
@@ -148,15 +148,15 @@ if #classKeys > 0 then
     TBCCLASS_LIBRARY = true
     local lib = dofile(here .. "/tbcclasscheck.lua")
     local files = {}
-    if not MD.Profiles.byClass.PRIEST then
+    if not ST.Profiles.byClass.PRIEST then
         for _, f in ipairs({ "Data/Profile_Priest_TBC.lua", "Data/Profile_Shaman_TBC.lua",
                              "Data/Profile_Paladin_TBC.lua" }) do files[#files + 1] = f end
     end
-    if not MD.Parse then files[#files + 1] = "Spells/Parse.lua" end
-    if not MD.BookTBC then files[#files + 1] = "Spells/Book_TBC.lua" end
-    if #files > 0 then S.Load(files, "SpellTuner", MD) end
+    if not ST.Parse then files[#files + 1] = "Spells/Parse.lua" end
+    if not ST.BookTBC then files[#files + 1] = "Spells/Book_TBC.lua" end
+    if #files > 0 then S.Load(files, "SpellTuner", ST) end
     for _, c in ipairs({ "PRIEST", "SHAMAN", "PALADIN" }) do
-        local caps = MD.Profiles.byClass[c].caps
+        local caps = ST.Profiles.byClass[c].caps
         caps.rankTable, caps.tooltip = true, true
     end
 
@@ -168,15 +168,15 @@ if #classKeys > 0 then
         local healing, crit = p.healing, p.crit
         _G.GetSpellBonusHealing = function() return healing end
         _G.GetSpellCritChance = function() return crit end
-        MD.API.Invalidate("GetSpellCritChance")
+        ST.API.Invalidate("GetSpellCritChance")
         local tal = p.talents or {}
-        function MD:TalentRank(n) return tal[n] or 0 end
-        local _, Restore = lib.Install(S, MD, p.class)
+        function ST:TalentRank(n) return tal[n] or 0 end
+        local _, Restore = lib.Install(S, ST, p.class)
         S.units.player.class = p.class
-        MD:DetectProfile()
-        MD:Fire("CORE_LOGIN")
-        local src = MD.BookTBC:Rebuild()
-        local function Kit() return MD.RankMath.ClassKit({ live = true }, src) end
+        ST:DetectProfile()
+        ST:Fire("CORE_LOGIN")
+        local src = ST.BookTBC:Rebuild()
+        local function Kit() return ST.RankMath.ClassKit({ live = true }, src) end
         -- the row's name is the class book's family label (the log's ability
         -- name can differ: 2060, Greater Heal rank 1, is "Heal" there)
         local function Label(row)
@@ -265,7 +265,7 @@ if #classKeys > 0 then
     end
     -- back to the druid the harness logged in
     S.units.player.class = "DRUID"; S.level = 70
-    MD:DetectProfile(); MD:Fire("CORE_LOGIN")
+    ST:DetectProfile(); ST:Fire("CORE_LOGIN")
 end
 if fit and #classSpread > 0 then
     local three = 0

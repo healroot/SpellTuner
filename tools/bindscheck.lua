@@ -16,12 +16,12 @@ local function check(name, cond, detail)
 end
 
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua")
+local ST = dofile(here .. "/harness.lua")
 arg[0] = a0
 local S = _G.STUB
 
-MD:SetModule("SpellTuner_Practice", true)
-local PR, SD = MD.Practice, MD.SpellData
+ST:SetModule("SpellTuner_Practice", true)
+local PR, SD = ST.Practice, ST.SpellData
 assert(PR, "the Practice module did not load")
 -- a missing or raising report is a failed check, not a crashed suite
 local function Report()
@@ -44,7 +44,7 @@ local function Lines(text)
     for l in (text .. "\n"):gmatch("(.-)\n") do t[#t + 1] = l end
     return t
 end
-MD.RankMath:SpellKit({ live = true })   -- builds MD.SpellData from the Forever book (Kit_Forever.lua)
+ST.RankMath:SpellKit({ live = true })   -- builds ST.SpellData from the Forever book (Kit_Forever.lua)
 local REJ, HT = SD.maxRank.Rejuvenation, SD.maxRank.HealingTouch
 assert(REJ and HT, "the Forever kit has no Rejuvenation / Healing Touch")
 
@@ -180,10 +180,10 @@ local iQ = text1:find("\n== Clique\n", 1, true)
 local nonAscii = text1:find("[^ -~\n]") ~= nil
 -- the command hands it to the copy box
 local shown
-local origPopup = MD.ShowCopyPopup
-MD.ShowCopyPopup = function(_, title, body) shown = { title = title, body = body } end
+local origPopup = ST.ShowCopyPopup
+ST.ShowCopyPopup = function(_, title, body) shown = { title = title, body = body } end
 SlashCmdList.SPELLTUNER("binds check")
-MD.ShowCopyPopup = origPopup
+ST.ShowCopyPopup = origPopup
 check("the report has the three sections in order, ASCII, with no bare pipe",
     iH == 1 and iK and iC and iQ and iK < iC and iC < iQ
     and Has(text1, "build 70009")

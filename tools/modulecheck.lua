@@ -5,7 +5,7 @@
 -- the Forever window with its Settings -> Modules pane (UI/Dashboard_Forever.lua).
 -- Each acceptance point gets its own fresh session (a fresh dofile of
 -- tools/harness.lua, which re-dofiles tools/wowstub.lua too) where isolation
--- matters -- a module once loaded stays loaded for the life of that MD/S pair,
+-- matters -- a module once loaded stays loaded for the life of that ST/S pair,
 -- the same way it would for the life of a game session.
 HARNESS_FLAVOUR = "forever"
 
@@ -30,13 +30,13 @@ local function NewSession(presetDB)
     _G.SpellTunerDB = presetDB
     _G.ManaDemonDB = nil
     local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-    local MD = dofile(here .. "/harness.lua")
+    local ST = dofile(here .. "/harness.lua")
     arg[0] = a0
-    return MD, _G.STUB
+    return ST, _G.STUB
 end
 
 -- Captures chat lines for the life of body(), the way corecheck/adaptercheck
--- do: patch AddMessage on the EXISTING DEFAULT_CHAT_FRAME table (MD.API.Print
+-- do: patch AddMessage on the EXISTING DEFAULT_CHAT_FRAME table (ST.API.Print
 -- reads the global fresh on every call, never through Has's cache -- T1b).
 local function CapturedChat(body)
     local lines = {}
@@ -59,8 +59,8 @@ end
 -- 1: three modules are declared, in dependency order
 --------------------------------------------------------------------------------
 try("three modules are declared, in dependency order", function()
-    local MD = NewSession()
-    local m = MD.modules
+    local ST = NewSession()
+    local m = ST.modules
     check("three modules are declared, in dependency order",
         type(m) == "table" and #m == 3
         and m[1].name == "SpellTuner_Recorder" and #m[1].needs == 0
@@ -74,23 +74,23 @@ end)
 -- 2: a module that is off is never loaded
 --------------------------------------------------------------------------------
 try("a module that is off is never loaded", function()
-    local MD, S = NewSession()
+    local ST, S = NewSession()
     check("a module that is off is never loaded",
         #S.loadAddOnCalls == 0
-        and MD:ModuleState("SpellTuner_Recorder") == "off"
-        and MD:ModuleState("SpellTuner_Replay") == "off"
-        and MD:ModuleState("SpellTuner_Practice") == "off")
+        and ST:ModuleState("SpellTuner_Recorder") == "off"
+        and ST:ModuleState("SpellTuner_Replay") == "off"
+        and ST:ModuleState("SpellTuner_Practice") == "off")
 end)
 
 --------------------------------------------------------------------------------
 -- 3: switching a module on loads it now and remembers it
 --------------------------------------------------------------------------------
 try("switching a module on loads it now and remembers it", function()
-    local MD, S = NewSession()
-    local lines = CapturedChat(function() MD:SetModule("SpellTuner_Recorder", true) end)
+    local ST, S = NewSession()
+    local lines = CapturedChat(function() ST:SetModule("SpellTuner_Recorder", true) end)
     check("switching a module on loads it now and remembers it",
-        MD.db.modules.SpellTuner_Recorder == true
-        and MD:ModuleState("SpellTuner_Recorder") == "loaded"
+        ST.db.modules.SpellTuner_Recorder == true
+        and ST:ModuleState("SpellTuner_Recorder") == "loaded"
         and ChatHas(lines, "Recorder: loaded"))
 end)
 
@@ -98,30 +98,30 @@ end)
 -- 4: switching on a module switches on what it needs, first
 --------------------------------------------------------------------------------
 try("switching on a module switches on what it needs, first", function()
-    local MD, S = NewSession()
-    MD:SetModule("SpellTuner_Practice", true)
+    local ST, S = NewSession()
+    ST:SetModule("SpellTuner_Practice", true)
     check("switching on a module switches on what it needs, first",
         #S.loadAddOnCalls == 3
         and S.loadAddOnCalls[1] == "SpellTuner_Recorder"
         and S.loadAddOnCalls[2] == "SpellTuner_Replay"
         and S.loadAddOnCalls[3] == "SpellTuner_Practice"
-        and MD:ModuleState("SpellTuner_Recorder") == "loaded"
-        and MD:ModuleState("SpellTuner_Replay") == "loaded"
-        and MD:ModuleState("SpellTuner_Practice") == "loaded")
+        and ST:ModuleState("SpellTuner_Recorder") == "loaded"
+        and ST:ModuleState("SpellTuner_Replay") == "loaded"
+        and ST:ModuleState("SpellTuner_Practice") == "loaded")
 end)
 
 --------------------------------------------------------------------------------
 -- 5: switching off a module switches off what needs it, and says so
 --------------------------------------------------------------------------------
 try("switching off a module switches off what needs it and says it unloads at the next reload", function()
-    local MD, S = NewSession()
-    MD:SetModule("SpellTuner_Practice", true)
+    local ST, S = NewSession()
+    ST:SetModule("SpellTuner_Practice", true)
     local before = #S.loadAddOnCalls
-    local lines = CapturedChat(function() MD:SetModule("SpellTuner_Recorder", false) end)
+    local lines = CapturedChat(function() ST:SetModule("SpellTuner_Recorder", false) end)
     check("switching off a module switches off what needs it and says it unloads at the next reload",
-        MD:ModuleState("SpellTuner_Recorder") == "unloads"
-        and MD:ModuleState("SpellTuner_Replay") == "unloads"
-        and MD:ModuleState("SpellTuner_Practice") == "unloads"
+        ST:ModuleState("SpellTuner_Recorder") == "unloads"
+        and ST:ModuleState("SpellTuner_Replay") == "unloads"
+        and ST:ModuleState("SpellTuner_Practice") == "unloads"
         and ChatHas(lines, "Recorder: off - unloads at your next /reload")
         and #S.loadAddOnCalls == before)
 end)
@@ -130,11 +130,11 @@ end)
 -- 6: a module that is on loads at login
 --------------------------------------------------------------------------------
 try("a module that is on loads at login", function()
-    local MD, S = NewSession({ modules = { SpellTuner_Recorder = true } })
+    local ST, S = NewSession({ modules = { SpellTuner_Recorder = true } })
     check("a module that is on loads at login",
-        MD:ModuleState("SpellTuner_Recorder") == "loaded"
-        and MD:ModuleState("SpellTuner_Replay") == "off"
-        and MD:ModuleState("SpellTuner_Practice") == "off"
+        ST:ModuleState("SpellTuner_Recorder") == "loaded"
+        and ST:ModuleState("SpellTuner_Replay") == "off"
+        and ST:ModuleState("SpellTuner_Practice") == "off"
         and #S.loadAddOnCalls == 1 and S.loadAddOnCalls[1] == "SpellTuner_Recorder")
 end)
 
@@ -142,10 +142,10 @@ end)
 -- 7: a module that cannot load says why
 --------------------------------------------------------------------------------
 try("a module that cannot load says why", function()
-    local MD, S = NewSession()
+    local ST, S = NewSession()
     S.addOnDisabled.SpellTuner_Replay = true
-    local lines = CapturedChat(function() MD:SetModule("SpellTuner_Replay", true) end)
-    local state, reason = MD:ModuleState("SpellTuner_Replay")
+    local lines = CapturedChat(function() ST:SetModule("SpellTuner_Replay", true) end)
+    local state, reason = ST:ModuleState("SpellTuner_Replay")
     check("a module that cannot load says why",
         state == "failed" and reason == "DISABLED"
         and ChatHas(lines, "Replay: on, could not load (DISABLED)"))
@@ -220,7 +220,7 @@ end
 -- 9: /st opens the window, /st again closes it
 --------------------------------------------------------------------------------
 try("/st opens the window, /st again closes it", function()
-    local MD, S = NewSession()
+    local ST, S = NewSession()
     SlashCmdList.SPELLTUNER("")
     local frame = _G.SpellTunerDashboard
     local shownAfterOpen = frame and frame:IsShown()
@@ -237,8 +237,8 @@ end)
 -- 10: the Modules pane switches a module and shows its state
 --------------------------------------------------------------------------------
 try("the Modules pane switches a module and shows its state", function()
-    local MD, S = NewSession()
-    MD:SelectView("settings", "modules")
+    local ST, S = NewSession()
+    ST:SelectView("settings", "modules")
     local pane = FindModulesPane(S)
     local rows = pane and pane.rows
     local hasThreeRows = rows ~= nil and rows.SpellTuner_Recorder ~= nil
@@ -282,9 +282,9 @@ local function UnderWindow(f, root)
 end
 
 try("every string the window renders is ASCII with no bare pipe", function()
-    local MD, S = NewSession()
-    MD:SelectView("spells", "book")
-    MD:SelectView("settings", "modules")
+    local ST, S = NewSession()
+    ST:SelectView("spells", "book")
+    ST:SelectView("settings", "modules")
     local root = _G.SpellTunerDashboard
     local bad
     local reached, titleCount, navButtonCount = 0, 0, 0
@@ -323,12 +323,12 @@ end)
 -- 12: nothing on the Forever TOC or in a sibling registers the combat log
 --------------------------------------------------------------------------------
 try("nothing on the Forever TOC or in a sibling registers the combat log", function()
-    local MD, S = NewSession()
+    local ST, S = NewSession()
     local fn = function() end
-    MD:On("COMBAT_LOG_EVENT_UNFILTERED", fn)
+    ST:On("COMBAT_LOG_EVENT_UNFILTERED", fn)
     SlashCmdList.SPELLTUNER("")
-    MD:SelectView("settings", "modules")
-    MD:SetModule("SpellTuner_Practice", true)
+    ST:SelectView("settings", "modules")
+    ST:SetModule("SpellTuner_Practice", true)
     SlashCmdList.SPELLTUNER("")
     local attempted = false
     for _, f in ipairs(S.allFrames) do
@@ -341,7 +341,7 @@ try("nothing on the Forever TOC or in a sibling registers the combat log", funct
 end)
 
 --------------------------------------------------------------------------------
--- 13: a module file reads and writes SpellTuner's namespace as MD (T13c)
+-- 13: a module file reads and writes SpellTuner's namespace as ST (T13c)
 --
 -- The scratch sibling lives under tools/data/modulecheck-fixture/T13CScratch/
 -- (a suite-only folder the stub registers with S.RegisterAddOnFolder, NOT
@@ -349,24 +349,24 @@ end)
 -- release actually builds). Its TOC lists Module.lua, a plain test file
 -- (T13cTest.lua) that does exactly what the task names, then Ready.lua.
 --------------------------------------------------------------------------------
-try("a module file reads and writes SpellTuner's namespace as MD", function()
-    local MD, S = NewSession()
+try("a module file reads and writes SpellTuner's namespace as ST", function()
+    local ST, S = NewSession()
     S.RegisterAddOnFolder("T13CScratch", "tools/data/modulecheck-fixture/T13CScratch")
-    -- MD:ModuleLoaded (Core.lua) is a no-op, and MODULE_LOADED never fires,
-    -- for a name MD:DeclareModule never registered -- the scratch sibling
+    -- ST:ModuleLoaded (Core.lua) is a no-op, and MODULE_LOADED never fires,
+    -- for a name ST:DeclareModule never registered -- the scratch sibling
     -- needs one, exactly like a real module's Core_Forever.lua declaration.
-    MD:DeclareModule("T13CScratch", "T13C Scratch", {})
+    ST:DeclareModule("T13CScratch", "T13C Scratch", {})
     -- Captured the moment MODULE_LOADED fires, so a pass here also proves
     -- Ready.lua ran AFTER the test file, not just that both eventually ran.
     local probeSetBeforeLoaded
-    MD:RegisterCallback("MODULE_LOADED", function(name)
+    ST:RegisterCallback("MODULE_LOADED", function(name)
         if name == "T13CScratch" and probeSetBeforeLoaded == nil then
             probeSetBeforeLoaded = (_G.SpellTuner.T13cProbe == "forever")
         end
     end)
     local ok = C_AddOns.LoadAddOn("T13CScratch")
-    MD:Fire("T13C")
-    check("a module file reads and writes SpellTuner's namespace as MD",
+    ST:Fire("T13C")
+    check("a module file reads and writes SpellTuner's namespace as ST",
         ok == true
         and _G.SpellTuner.T13cProbe == "forever"
         and probeSetBeforeLoaded == true
@@ -382,7 +382,7 @@ end)
 -- tools/data/modulecheck-fixture/T13CRoot/.
 --------------------------------------------------------------------------------
 try("a module TOC entry outside the module folder loads from the repository root", function()
-    local MD, S = NewSession()
+    local ST, S = NewSession()
     S.RegisterAddOnFolder("T13CRoot", "tools/data/modulecheck-fixture/T13CRoot")
     local ok = C_AddOns.LoadAddOn("T13CRoot")
     check("a module TOC entry outside the module folder loads from the repository root",

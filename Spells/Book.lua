@@ -1,22 +1,22 @@
 -- T7 (docs/tasks/T7-spell-book.md, M2 of docs/ROADMAP-FOREVER.md): the
--- spellbook, read only through MD.API, grouped into families of ranks with
+-- spellbook, read only through ST.API, grouped into families of ranks with
 -- the numbers a healer compares ranks by. Forever TOCs only -- reaches the
--- client only through MD.API and never indexes a client table (every value
+-- client only through ST.API and never indexes a client table (every value
 -- Book reads is either a plain scalar Has/Call already cleared, or a field
--- of a table MD.API.Copy already built, never the client's own table).
-local _, MD = ...
-local Parse = MD.Parse
+-- of a table ST.API.Copy already built, never the client's own table).
+local _, ST = ...
+local Parse = ST.Parse
 -- T67 (P23, review A13): the Pareto filter, the suggested rank and casts to
 -- OOM are Spells/RankRules.lua's, shared with the TBC dashboard.
-local RR = MD.RankRules
+local RR = ST.RankRules
 -- T117 (docs/SPEC-one-ui.md 3.1): the book contract (Spells/BookShape.lua),
 -- checked at the end of every scan, and the +healing rules
 -- (Spells/Coefficients.lua) each valued rank's estimated share is read by.
-local BS = MD.BookShape
-local Coef = MD.Coefficients -- nil only where a harness loads this file alone
+local BS = ST.BookShape
+local Coef = ST.Coefficients -- nil only where a harness loads this file alone
 
-MD.Book = MD.Book or {}
-local Book = MD.Book
+ST.Book = ST.Book or {}
+local Book = ST.Book
 
 -- The global cooldown, same constant Engine/RankMath.lua's TBC dashboard
 -- uses (1.5s) -- ported as-is (Facts), to be checked against a real cast bar
@@ -42,7 +42,7 @@ local MAX_WALK_SLOT = 500
 Book.adjust = {}
 
 --------------------------------------------------------------------------------
--- Small helpers -- every one reads only what MD.API already handed out plain.
+-- Small helpers -- every one reads only what ST.API already handed out plain.
 --------------------------------------------------------------------------------
 
 -- The tooltip data's own cast/cost lines are read by pattern, not by a fixed
@@ -114,15 +114,15 @@ end
 
 -- T95: the cooldown, in seconds, and where it was read. By default the
 -- tooltip line's right text (the one shape the export and the probe have
--- shown); GetSpellBaseCooldown (MD.API.BaseCooldown, Client/API_Forever.lua)
--- only once MD.API.BASE_CD_READS is true -- false until T87's Forever report
+-- shown); GetSpellBaseCooldown (ST.API.BaseCooldown, Client/API_Forever.lua)
+-- only once ST.API.BASE_CD_READS is true -- false until T87's Forever report
 -- shows it answers plain (the BAR_READS_MAX pattern; the integrator flips
 -- it). A base read of 0 or nothing falls through to the tooltip line.
 -- `prev` is the previous scan's entry for this id: an unreadable tooltip
 -- keeps its cooldown, as a secret description keeps its text (ApplyStale).
 local function ReadCooldown(id, tip, prev)
-    if MD.API.BASE_CD_READS == true and type(MD.API.BaseCooldown) == "function" then
-        local ms = MD.API.BaseCooldown(id)
+    if ST.API.BASE_CD_READS == true and type(ST.API.BaseCooldown) == "function" then
+        local ms = ST.API.BaseCooldown(id)
         if type(ms) == "number" and ms == ms and ms > 0 then return ms / 1000, "base" end
     end
     local secs, readable = TooltipCooldown(tip)
@@ -351,14 +351,14 @@ end
 
 -- T122 (docs/tasks/T122-what-if.md): a share Book:MeasureBonus measured (two
 -- plain readings out of combat whose bonus and text both moved), kept per
--- character in MD.cdb.bonusCounts[id] = { counts, at, bonus [, kind, school] };
+-- character in ST.cdb.bonusCounts[id] = { counts, at, bonus [, kind, school] };
 -- it wins over the estimate. An entry without `kind` is a heal's (every
 -- entry T122 stored); a damage share carries kind "damage" and the school
 -- it was read against, and is never handed to a heal, nor a heal's to a
 -- damage rank (an either-or heal's damage half included: same id, kind
 -- "heal" stored, so the half stays estimated).
 local function Measured(id, kind, school)
-    local store = type(MD.cdb) == "table" and MD.cdb.bonusCounts
+    local store = type(ST.cdb) == "table" and ST.cdb.bonusCounts
     local m = type(store) == "table" and store[id]
     if type(m) ~= "table" or type(m.counts) ~= "number" then return nil end
     if (m.kind or "heal") ~= kind then return nil end
@@ -403,11 +403,11 @@ Book._seamFields = {}
 -- trusted only when every line's own copy answers numeric bounds; anything
 -- else falls back to the 1..500 walk the probe also proved.
 function Book:Enumerate()
-    local numLines = MD.API.SpellBookSkillLines()
+    local numLines = ST.API.SpellBookSkillLines()
     if type(numLines) == "number" and numLines >= MIN_LINES and numLines <= MAX_LINES then
         local slots, allGood = {}, true
         for i = 1, numLines do
-            local info = MD.API.SpellBookSkillLineInfo(i)
+            local info = ST.API.SpellBookSkillLineInfo(i)
             if type(info) ~= "table" or type(info.itemIndexOffset) ~= "number"
                 or type(info.numSpellBookItems) ~= "number" then
                 allGood = false
@@ -457,16 +457,16 @@ function Book:BuildEntry(row, slot, bank, futureConst, prevSpells)
     entry.passive = (row.isPassive == true)
     entry.skillLine = (type(row.skillLineIndex) == "number") and row.skillLineIndex or nil
 
-    local name = MD.API.SpellName(id)
+    local name = ST.API.SpellName(id)
     entry.name = (type(name) == "string") and name or nil
     -- T117: the family's key; on this line a family is keyed by its name.
     entry.family = entry.name
 
-    local rankText = MD.API.SpellSubtext(id)
+    local rankText = ST.API.SpellSubtext(id)
     entry.rankText = (type(rankText) == "string") and rankText or nil
     entry.rank = Parse.Rank(entry.rankText)
 
-    local known = MD.API.SpellKnown(id)
+    local known = ST.API.SpellKnown(id)
     if type(known) == "boolean" then
         entry.known = known
     elseif futureConst ~= nil and row.itemType == futureConst then
@@ -475,10 +475,10 @@ function Book:BuildEntry(row, slot, bank, futureConst, prevSpells)
         entry.known = true
     end
 
-    local lowRank = MD.API.SpellBookItemIsLowRank(slot, bank)
+    local lowRank = ST.API.SpellBookItemIsLowRank(slot, bank)
     entry.lowRank = (type(lowRank) == "boolean") and lowRank or nil
 
-    local desc, descReason = MD.API.SpellDescription(id)
+    local desc, descReason = ST.API.SpellDescription(id)
     if type(desc) == "string" then
         entry.desc = Parse.Clean(desc)
         entry.parsed = Parse.Description(desc)
@@ -490,14 +490,14 @@ function Book:BuildEntry(row, slot, bank, futureConst, prevSpells)
     end
     ApplyStale(entry, prevSpells)
 
-    local level = MD.API.SpellLevelLearned(id)
+    local level = ST.API.SpellLevelLearned(id)
     entry.level = (type(level) == "number") and level or nil
 
     entry.icon = (type(row.iconID) == "number") and row.iconID or nil
 
-    local tip = MD.API.SpellTooltipData(id)
+    local tip = ST.API.SpellTooltipData(id)
 
-    local info = MD.API.SpellInfo(id)
+    local info = ST.API.SpellInfo(id)
     local tipSecs, tipKind = TooltipCastInfo(tip)
     if type(info) == "table" and type(info.castTime) == "number" then
         entry.cast = info.castTime / 1000
@@ -513,7 +513,7 @@ function Book:BuildEntry(row, slot, bank, futureConst, prevSpells)
         entry.castKind = "cast"
     end
 
-    local costList, costReason = MD.API.SpellPowerCost(id)
+    local costList, costReason = ST.API.SpellPowerCost(id)
     entry.cost, entry.costState = ResolveCost(costList, costReason, tip)
 
     -- T95: the cooldown, the reach and the lockout.
@@ -540,16 +540,16 @@ function Book:ReadSpell(id)
     if type(id) ~= "number" then return nil end
     local entry = { id = id }
 
-    local name = MD.API.SpellName(id)
+    local name = ST.API.SpellName(id)
     if type(name) ~= "string" then return nil end
     entry.name = name
     entry.family = name -- T117: the key a family of this name has in the book
 
-    local rankText = MD.API.SpellSubtext(id)
+    local rankText = ST.API.SpellSubtext(id)
     entry.rankText = (type(rankText) == "string") and rankText or nil
     entry.rank = Parse.Rank(entry.rankText)
 
-    local desc, descReason = MD.API.SpellDescription(id)
+    local desc, descReason = ST.API.SpellDescription(id)
     if type(desc) == "string" then
         entry.desc = Parse.Clean(desc)
         entry.parsed = Parse.Description(desc)
@@ -565,11 +565,11 @@ function Book:ReadSpell(id)
     -- link, another bar) no longer goes blank in combat.
     ApplyStale(entry, Book._readSpells)
 
-    local level = MD.API.SpellLevelLearned(id)
+    local level = ST.API.SpellLevelLearned(id)
     entry.level = (type(level) == "number") and level or nil
 
-    local tip = MD.API.SpellTooltipData(id)
-    local info = MD.API.SpellInfo(id)
+    local tip = ST.API.SpellTooltipData(id)
+    local info = ST.API.SpellInfo(id)
     local tipSecs, tipKind = TooltipCastInfo(tip)
     if type(info) == "table" and type(info.castTime) == "number" then
         entry.cast = info.castTime / 1000
@@ -585,7 +585,7 @@ function Book:ReadSpell(id)
         entry.castKind = "cast"
     end
 
-    local costList, costReason = MD.API.SpellPowerCost(id)
+    local costList, costReason = ST.API.SpellPowerCost(id)
     entry.cost, entry.costState = ResolveCost(costList, costReason, tip)
 
     -- T95: the cooldown, the reach and the lockout, as BuildEntry reads them.
@@ -809,7 +809,7 @@ function Book:Rows(family, pool)
 
     -- Pareto dominance on (perMana, perSec), known ranks with both numbers;
     -- suggested: the known, non-dominated rank with the highest per mana
-    -- whose value is still at least MD.Rules.SUGGESTED_FLOOR of the highest
+    -- whose value is still at least ST.Rules.SUGGESTED_FLOOR of the highest
     -- known rank's, else the highest known rank itself; T38 (docs/SPEC-
     -- forever-ui.md 3.5): a dominated rank names the rank that beats it, by
     -- its spell id (a plain number, never a second path to a table) -- the
@@ -925,19 +925,19 @@ end
 
 function Book:DefaultPool()
     local pool = {}
-    local maxMana = MD.API.UnitPowerMax("player", 0)
+    local maxMana = ST.API.UnitPowerMax("player", 0)
     if type(maxMana) == "number" then pool.max = maxMana end
 
-    local _, regenCasting = MD.API.ManaRegen()
+    local _, regenCasting = ST.API.ManaRegen()
     if type(regenCasting) == "number" then
         pool.regenCasting = regenCasting
-    elseif MD.Pool and MD.Pool.LastRegen then
+    elseif ST.Pool and ST.Pool.LastRegen then
         -- ManaRegen() goes secret in combat (Facts) -- the last plain reading
         -- is kept rather than losing casts-to-OOM entirely for the whole
         -- fight. T68 (P24, review A29): the reading is the modelled pool's
         -- (Engine/ManaPool_Forever.lua, read at login and every tick out of
         -- combat), not a copy this file cached from its own calls.
-        local _, lastCasting = MD.Pool:LastRegen()
+        local _, lastCasting = ST.Pool:LastRegen()
         if type(lastCasting) == "number" then pool.regenCasting = lastCasting end
     end
     return pool
@@ -1018,13 +1018,13 @@ end
 
 -- T122 (docs/tasks/T122-what-if.md, docs/SPEC-one-ui.md 4.3 "measured"):
 -- a valued rank's share of its bonus, measured. Each plain scan out of
--- combat (MD.inCombat false and Book:Bonus's reading not stale) remembers
+-- combat (ST.inCombat false and Book:Bonus's reading not stale) remembers
 -- every rank's readable value with the bonus it was read at
 -- (Book._lastRead, one table per kind and school: "heal", "damageNature",
 -- so a heal reading and a damage reading never meet); when a later such
 -- scan finds both the bonus and the text moved, the share is the text's
 -- change over the bonus's -- accepted above 0 and up to 2 (no rank takes
--- twice the bonus) -- and kept per character in MD.cdb.bonusCounts[id] =
+-- twice the bonus) -- and kept per character in ST.cdb.bonusCounts[id] =
 -- { counts, at = time(), bonus } for a heal (the T122 shape, no kind), with
 -- kind = "damage" and school added for a damage rank.
 -- Heal families against +healing; damage families (T124 follow-up) against
@@ -1037,7 +1037,7 @@ Book._lastRead = Book._lastRead or {}
 local MAX_COUNTS = 2
 
 function Book:MeasureBonus(spells, families)
-    if MD.inCombat then return end
+    if ST.inCombat then return end
     local readings = {} -- slot -> plain bonus, or false (none / stale)
     local function Reading(kind, school)
         local slot = kind .. tostring(school or "")
@@ -1067,11 +1067,11 @@ function Book:MeasureBonus(spells, families)
                 local prev = last[id]
                 if prev and prev.bonus ~= bonus and prev.value ~= e.value then
                     local counts = (e.value - prev.value) / (bonus - prev.bonus)
-                    if counts == counts and counts > 0 and counts <= MAX_COUNTS and type(MD.cdb) == "table" then
-                        if type(MD.cdb.bonusCounts) ~= "table" then MD.cdb.bonusCounts = {} end
+                    if counts == counts and counts > 0 and counts <= MAX_COUNTS and type(ST.cdb) == "table" then
+                        if type(ST.cdb.bonusCounts) ~= "table" then ST.cdb.bonusCounts = {} end
                         local m = { counts = counts, at = time(), bonus = bonus }
                         if kind == "damage" then m.kind, m.school = "damage", school end
-                        MD.cdb.bonusCounts[id] = m
+                        ST.cdb.bonusCounts[id] = m
                         ApplyBonus(e, kind, fam.shape)
                     end
                 end
@@ -1088,16 +1088,16 @@ function Book:Scan()
     local via, slotList = Book:Enumerate()
     local read = { via = via, slots = #slotList, spells = 0, secret = 0, errors = 0 }
 
-    local bank = MD.API.Constant("Enum.SpellBookSpellBank.Player")
-    local flyoutConst = MD.API.Constant("Enum.SpellBookItemType.Flyout")
-    local petConst = MD.API.Constant("Enum.SpellBookItemType.PetAction")
-    local futureConst = MD.API.Constant("Enum.SpellBookItemType.FutureSpell")
+    local bank = ST.API.Constant("Enum.SpellBookSpellBank.Player")
+    local flyoutConst = ST.API.Constant("Enum.SpellBookItemType.Flyout")
+    local petConst = ST.API.Constant("Enum.SpellBookItemType.PetAction")
+    local futureConst = ST.API.Constant("Enum.SpellBookItemType.FutureSpell")
 
     local prevSpells = Book._prevSpells
     local spells = {}
 
     for _, slot in ipairs(slotList) do
-        local row, reason = MD.API.SpellBookItemInfo(slot, bank)
+        local row, reason = ST.API.SpellBookItemInfo(slot, bank)
         if reason == "secret" then
             read.secret = read.secret + 1
         elseif reason == "error" then
@@ -1144,18 +1144,18 @@ function Book:Scan()
                    generation = Book.generation }
     -- T117: the contract, checked as the kit is (Engine/Kit.lua's Check);
     -- read at the call, so a harness loading this file alone still scans.
-    local Shape = MD.BookShape
+    local Shape = ST.BookShape
     if Shape then Shape.Check(book, "Spells/Book.lua", Book._seamFields) end
     Book._cache = book
     Book._cacheTime = GetTime()
     Book._prevSpells = spells
     Book._dirty = false
 
-    MD:Debug("other", "book scan via=%s spells=%d secret=%d errors=%d",
+    ST:Debug("other", "book scan via=%s spells=%d secret=%d errors=%d",
         read.via, read.spells, read.secret, read.errors)
     -- T35: Spells/Tabs.lua reconciles the spell list here (a newly learned
     -- heal appended), after the cache is in place.
-    if changed then MD:Fire("BOOK_CHANGED", book) end
+    if changed then ST:Fire("BOOK_CHANGED", book) end
     return book
 end
 
@@ -1187,8 +1187,8 @@ end
 -- answers one (modelled = true), else Book:DefaultPool() counted from full
 -- (mana = max, modelled = false).
 function Book:Pool()
-    if MD.Clock and MD.Clock.Pool then
-        local ok, p = pcall(MD.Clock.Pool, MD.Clock)
+    if ST.Clock and ST.Clock.Pool then
+        local ok, p = pcall(ST.Clock.Pool, ST.Clock)
         if ok and type(p) == "table" and type(p.max) == "number" then
             return { max = p.max, mana = p.mana, regenCasting = p.regenCasting, modelled = true }
         end
@@ -1198,12 +1198,12 @@ function Book:Pool()
 end
 
 -- amount, stale: the caster's +healing for kind "heal" -- read plain out of
--- combat and kept; in combat (MD.inCombat), or when the read is secret or
+-- combat and kept; in combat (ST.inCombat), or when the read is secret or
 -- absent, the last plain reading with stale = true; nil before any.
 -- `school` is the damage family's (T118; read on this line since T124).
 -- Book._lastBonus: the last plain +healing reading, or nil before any.
 
--- T124: "damage" reads MD.API.SpellBonusDamage for `school` (an id 1-7 or a
+-- T124: "damage" reads ST.API.SpellBonusDamage for `school` (an id 1-7 or a
 -- name, "Nature"; an unknown name nil) the same way, kept per school id in
 -- Book._lastDamage.
 local SCHOOL_IDS = { Physical = 1, Holy = 2, Fire = 3, Nature = 4, Frost = 5, Shadow = 6, Arcane = 7 }
@@ -1212,8 +1212,8 @@ local function DamageBonus(school)
     local id = school
     if type(school) == "string" then id = SCHOOL_IDS[school] end
     if type(id) ~= "number" then return nil end
-    if not MD.inCombat and MD.API.SpellBonusDamage then
-        local v = MD.API.SpellBonusDamage(id)
+    if not ST.inCombat and ST.API.SpellBonusDamage then
+        local v = ST.API.SpellBonusDamage(id)
         if type(v) == "number" and v == v then
             if type(Book._lastDamage) ~= "table" then Book._lastDamage = {} end
             Book._lastDamage[id] = v
@@ -1228,8 +1228,8 @@ end
 function Book:Bonus(kind, school)
     if kind == "damage" then return DamageBonus(school) end
     if kind ~= "heal" then return nil end
-    if not MD.inCombat and MD.API.SpellBonusHealing then
-        local v = MD.API.SpellBonusHealing()
+    if not ST.inCombat and ST.API.SpellBonusHealing then
+        local v = ST.API.SpellBonusHealing()
         if type(v) == "number" and v == v then
             Book._lastBonus = v
             return v, false
@@ -1239,11 +1239,11 @@ function Book:Bonus(kind, school)
     return Book._lastBonus, true
 end
 
-MD:On("SPELLS_CHANGED", function() Book:MarkDirty() end)
-MD:On("PLAYER_LEVEL_UP", function() Book:MarkDirty() end)
-MD:On("PLAYER_EQUIPMENT_CHANGED", function() Book:MarkDirty() end)
-MD:On("UNIT_AURA", function(unit)
-    if not MD.API.IsSecret(unit) and unit == "player" then Book:MarkDirty() end
+ST:On("SPELLS_CHANGED", function() Book:MarkDirty() end)
+ST:On("PLAYER_LEVEL_UP", function() Book:MarkDirty() end)
+ST:On("PLAYER_EQUIPMENT_CHANGED", function() Book:MarkDirty() end)
+ST:On("UNIT_AURA", function(unit)
+    if not ST.API.IsSecret(unit) and unit == "player" then Book:MarkDirty() end
 end)
 
 -- T117: every method the contract names, present (Spells/BookShape.lua).

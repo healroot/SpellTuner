@@ -51,17 +51,17 @@ local S = _G.STUB
 S.root = arg[1] or "."
 S.flavour = flavour
 
-local MD = {}
+local ST = {}
 
 if flavour == "forever" then
     S.UseProfile("forever")
     local files = S.TocFiles("SpellTuner_Mainline.toc")
     S.loadedFiles = files
-    S.Load(files, "SpellTuner", MD)
+    S.Load(files, "SpellTuner", ST)
     S.Fire("ADDON_LOADED", "SpellTuner")
     S.Fire("PLAYER_LOGIN")
     S.Fire("PLAYER_ENTERING_WORLD")
-    return MD
+    return ST
 end
 
 -- tbc: the TOC's own order minus everything that draws (UI/ other than
@@ -80,15 +80,15 @@ for _, rel in ipairs(allFiles) do
     if KeepForTbc(rel) then files[#files + 1] = rel end
 end
 S.loadedFiles = files
-S.Load(files, "SpellTuner", MD)
+S.Load(files, "SpellTuner", ST)
 
 -- Everything the BF-1 druid knew: every rank at or below level 64.
-local SD = MD.SpellData
+local SD = ST.SpellData
 for id, s in pairs(SD.spells) do
     if (s.level or 1) <= S.level then S.known[id] = true end
 end
 -- The client names every spell; the stub only knows the healing table, so the
--- non-healing ids the fixtures cast are named here. Without them MD:ClassifyCast
+-- non-healing ids the fixtures cast are named here. Without them ST:ClassifyCast
 -- has nothing to fall back on and calls a Mark of the Wild "unknown", which is
 -- a property of the harness rather than of the addon.
 S.spellNames = setmetatable({
@@ -112,13 +112,13 @@ local TALENTS = {
     ["Intensity"] = 3, ["Dreamstate"] = 0,
 }
 -- T52 (P8, review Q15): set through Core_TBC.lua's own seam rather than by
--- replacing MD:TalentRank, so the suites run the real TalentRank and the login
--- scan. The table is held, not copied: a suite that edits MD.harnessTalents
+-- replacing ST:TalentRank, so the suites run the real TalentRank and the login
+-- scan. The table is held, not copied: a suite that edits ST.harnessTalents
 -- (tools/regencheck.lua's Dreamstate) changes the ranks.
-MD:SetTalents(TALENTS)
-MD.harnessTalents = TALENTS
+ST:SetTalents(TALENTS)
+ST.harnessTalents = TALENTS
 
 S.Fire("ADDON_LOADED", "SpellTuner")
 S.Fire("PLAYER_LOGIN")
 S.Fire("PLAYER_ENTERING_WORLD")
-return MD
+return ST

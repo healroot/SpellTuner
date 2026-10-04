@@ -23,14 +23,14 @@
 -- practice its own (PR.MAX_PINNED); a provider without one (runs: a run is
 -- pinned whole on the Review tab, never through an address) pins nothing.
 --
--- MD:GetRecording(spec) is the router's entry point, so its callers
+-- ST:GetRecording(spec) is the router's entry point, so its callers
 -- (UI/ReplayWindow.lua, UI/Dashboard_Review.lua, Engine/ReviewCommands.lua,
 -- the Replay module's commands) did not change; it is provided here once,
--- through MD:Provide, and a second definition raises.
-local _, MD = ...
+-- through ST:Provide, and a second definition raises.
+local _, ST = ...
 
 local REC = {}
-MD.Recordings = REC
+ST.Recordings = REC
 
 -- Single fights pinned at most, on both lines (the retention of
 -- Engine/FightRecorder.lua and Recorder_Forever.lua protects this many).
@@ -47,7 +47,7 @@ local providers = {}
 --   Refusal(count, cap) -> the refusal line, when the provider words its own
 --                     (practice keeps the line it always printed)
 -- }
--- One provider per shape: a second raises, as MD:Provide does -- two
+-- One provider per shape: a second raises, as ST:Provide does -- two
 -- recorders answering one address is a load-order mistake, never a feature.
 function REC.Register(prefix, provider)
     if prefix ~= "" and prefix ~= "p" and prefix ~= ":" then
@@ -84,7 +84,7 @@ function REC.Parse(spec)
     return nil, nil, nil, s
 end
 
--- Returns recording, label, run, pullIndex -- MD:GetRecording's contract
+-- Returns recording, label, run, pullIndex -- ST:GetRecording's contract
 -- since v0.9.2. `run` and `pullIndex` only for "a:b" (the run even when the
 -- pull is not in it, as RunRecorder:GetPull answers).
 function REC.Get(spec)
@@ -140,4 +140,4 @@ function REC.Pin(spec, on)
     return REC.PinRecord(shape, rec, on)
 end
 
-MD:Provide("GetRecording", function(_, spec) return REC.Get(spec) end)
+ST:Provide("GetRecording", function(_, spec) return REC.Get(spec) end)

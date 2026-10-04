@@ -5,28 +5,28 @@
 --
 -- T79 (P36 of docs/PLAN-refactor-ux.md, section 8.1 item 10, mockups M1 and
 -- M6): one file for both lines. It calls only the widget toolkit (CreateFrame,
--- Minimap, GetCursorPosition) and MD:ToggleDashboard / MD:OpenDashboardSettings,
+-- Minimap, GetCursorPosition) and ST:ToggleDashboard / ST:OpenDashboardSettings,
 -- which both lines define (UI/Dashboard.lua, UI/Dashboard_Forever.lua). What
 -- differs per line comes through two named seams, never a client test:
---   * the tooltip's clock lines: MD.MinimapLines(hints), provided once per
---     line with MD:Provide("MinimapLines", fn) -- TBC's is Tip:Clock
---     (UI/Tip_TBC.lua), Forever's MD.Clock:SummaryLines (UI/Clock_Forever.lua);
+--   * the tooltip's clock lines: ST.MinimapLines(hints), provided once per
+--     line with ST:Provide("MinimapLines", fn) -- TBC's is Tip:Clock
+--     (UI/Tip_TBC.lua), Forever's ST.Clock:SummaryLines (UI/Clock_Forever.lua);
 --     fn answers the title and the clock lines, plus the hints when given any;
 --   * the tooltip's shape: UI.THEMED. Unthemed (TBC today) the old call, byte
 --     for byte; themed, M6's kit tooltip -- the provider's lines, a spacer, the
 --     three hint pairs and the muted line saying where to hide it.
-local _, MD = ...
+local _, ST = ...
 
 -- The default, declared once, here (P20's rule: the file that reads a setting
 -- owns its default). Core_TBC.lua's DEFAULTS carried it until T79.
-MD:RegisterDefaults({ minimap = { hide = false, angle = 220 } })
+ST:RegisterDefaults({ minimap = { hide = false, angle = 220 } })
 
 local btn
 
 -- T97 (docs/SPEC-next.md 6.3; R-ellesmere.md 3.4): a minimap-button
 -- collector (EllesmereUI's flyout, MBB) adopts the button by reparenting it
 -- off Minimap. From then on the collector owns its place: Reposition (Settings
--- -> Windows' toggle, MD:UpdateMinimapButton) and the angle drag leave it
+-- -> Windows' toggle, ST:UpdateMinimapButton) and the angle drag leave it
 -- alone, instead of pulling it back to the minimap's edge. With no collector
 -- the parent is always Minimap and nothing changes.
 local function Collected()
@@ -35,7 +35,7 @@ end
 
 local function Reposition()
     if not btn or Collected() then return end
-    local angle = math.rad(MD.db.minimap.angle or 220)
+    local angle = math.rad(ST.db.minimap.angle or 220)
     local radius = (Minimap:GetWidth() / 2) + 5
     btn:ClearAllPoints()
     btn:SetPoint("CENTER", Minimap, "CENTER",
@@ -47,13 +47,13 @@ local function OnDragUpdate()
     local cx, cy = GetCursorPosition()
     local scale = Minimap:GetEffectiveScale()
     cx, cy = cx / scale, cy / scale
-    MD.db.minimap.angle = math.deg(math.atan2(cy - my, cx - mx)) % 360
+    ST.db.minimap.angle = math.deg(math.atan2(cy - my, cx - mx)) % 360
     Reposition()
 end
 
 -- The provider's lines, or a bare title where no line provides any.
 local function ClockLines(hints)
-    if MD.MinimapLines then return MD.MinimapLines(hints) end
+    if ST.MinimapLines then return ST.MinimapLines(hints) end
     local lines = { { l = "SpellTuner", c = "accent" } }
     if hints then
         lines[#lines + 1] = {}
@@ -107,9 +107,9 @@ local function CreateButton()
 
     btn:SetScript("OnClick", function(_, mouseButton)
         if mouseButton == "RightButton" then
-            MD:OpenDashboardSettings()
+            ST:OpenDashboardSettings()
         else
-            MD:ToggleDashboard()
+            ST:ToggleDashboard()
         end
     end)
     btn:SetScript("OnDragStart", function(self)
@@ -123,23 +123,23 @@ local function CreateButton()
     -- the clock is a thing you park somewhere and stop looking at. A minimap
     -- button is a thing you go to on purpose, so its tooltip always shows.
     btn:SetScript("OnEnter", function(self)
-        if MD.UI and MD.UI.THEMED then
-            MD.Tip:Show(self, ThemedLines(), { anchor = "ANCHOR_LEFT" })
+        if ST.UI and ST.UI.THEMED then
+            ST.Tip:Show(self, ThemedLines(), { anchor = "ANCHOR_LEFT" })
         else
-            MD.Tip:Show(self, "ANCHOR_LEFT",
+            ST.Tip:Show(self, "ANCHOR_LEFT",
                 ClockLines({ "Left-click: dashboard", "Right-click: settings" }))
         end
     end)
-    btn:SetScript("OnLeave", function() MD.Tip:Hide() end)
+    btn:SetScript("OnLeave", function() ST.Tip:Hide() end)
 
     Reposition()
-    MD:UpdateMinimapButton()
+    ST:UpdateMinimapButton()
 end
 
-function MD:UpdateMinimapButton()
+function ST:UpdateMinimapButton()
     if not btn then return end
-    if MD.db.minimap.hide then btn:Hide() else btn:Show() end
+    if ST.db.minimap.hide then btn:Hide() else btn:Show() end
     Reposition()
 end
 
-MD:RegisterCallback("MD_READY", CreateButton)
+ST:RegisterCallback("MD_READY", CreateButton)

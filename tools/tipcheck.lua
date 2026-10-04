@@ -2,13 +2,13 @@
 --
 -- T9 (docs/tasks/T9-spell-tooltip.md): the SpellTuner block on every spell
 -- tooltip (UI/SpellTip_Forever.lua) through Client/API_Forever.lua's
--- MD.API.OnSpellTooltip and the stub's TooltipDataProcessor. Forever only.
+-- ST.API.OnSpellTooltip and the stub's TooltipDataProcessor. Forever only.
 -- T37 (docs/SPEC-forever-ui.md 5.1-5.4b, 5.6): the block's new shapes --
 -- SpellTip:Lines(id, detail, source) answering {l, r, lr,lg,lb, rr,rg,rb},
 -- the spacer, the plain block and the detail lines behind the key.
 -- T121 (docs/tasks/T121-one-tooltip-block.md): UI/SpellTip.lua is the one
 -- block of both lines. Re-based here: check 15's "~N now" counts from
--- MD.Book:Pool() (the clock's modelled pool on this line, as before); the
+-- ST.Book:Pool() (the clock's modelled pool on this line, as before); the
 -- detail-key check also holds the new How lines behind the key ("How  read
 -- from the spell's text", then "+Healing counts ~N%, estimated" from T117's
 -- bonus); one new check: spellTooltipDamage = false drops a damage spell's
@@ -24,12 +24,12 @@ local function check(name, cond, detail)
 end
 
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua")
+local ST = dofile(here .. "/harness.lua")
 arg[0] = a0
 
 local S = _G.STUB
-local Book = MD.Book
-local SpellTip = MD.SpellTip
+local Book = ST.Book
+local SpellTip = ST.SpellTip
 
 --------------------------------------------------------------------------------
 -- fixtures -- named for which acceptance item they are for.
@@ -156,7 +156,7 @@ local function LineAt(lines, left)
 end
 
 -- T37: the colours of theme token `name` as three numbers.
-local T = MD.UI and MD.UI.TEXT or {}
+local T = ST.UI and ST.UI.TEXT or {}
 local function IsColour(r, g, b, name)
     local c = T[name]
     return c ~= nil and ApproxEq(r, c[1], 1e-3) and ApproxEq(g, c[2], 1e-3) and ApproxEq(b, c[3], 1e-3)
@@ -190,14 +190,14 @@ end
 -- 1: the hook is registered through the adapter, for the Spell data type
 --------------------------------------------------------------------------------
 do
-    local caps = MD.API.Capabilities()
+    local caps = ST.API.Capabilities()
     local entry
     for _, c in ipairs(caps) do if c.name == "OnSpellTooltip" then entry = c end end
 
-    local registeredGood = type(MD.API.OnSpellTooltip) == "function"
+    local registeredGood = type(ST.API.OnSpellTooltip) == "function"
         and entry ~= nil and entry.client == "TooltipDataProcessor.AddTooltipPostCall" and entry.present == true
     -- harness.lua's own PLAYER_LOGIN already fired MD_READY, which is what
-    -- calls MD.API.OnSpellTooltip -- so a wrapper is already sitting in the
+    -- calls ST.API.OnSpellTooltip -- so a wrapper is already sitting in the
     -- stub's per-type table, for the Spell type specifically.
     local wrapperGood = type(Wrapper()) == "function"
         and (S.tooltipPostCalls[Enum.TooltipDataType.Damage] == nil)
@@ -435,17 +435,17 @@ end
 -- 11: off means off, from the command and the checkbox
 --------------------------------------------------------------------------------
 do
-    local onByDefault = MD.db.spellTooltip == true
+    local onByDefault = ST.db.spellTooltip == true
 
     SlashCmdList.SPELLTUNER("tooltip")
-    local offByCommand = MD.db.spellTooltip == false
+    local offByCommand = ST.db.spellTooltip == false
     local tt1 = CreateFrame("GameTooltip")
     S.ShowSpellTooltip(tt1, 5185)
     local suppressedByCommand = tt1:NumLines() == 0
     SlashCmdList.SPELLTUNER("tooltip")
-    local onAgain = MD.db.spellTooltip == true
+    local onAgain = ST.db.spellTooltip == true
 
-    MD:SelectView("settings", "general")
+    ST:SelectView("settings", "general")
     local pane
     for _, f in ipairs(S.allFrames) do
         if f.tooltipCheck then pane = f end
@@ -455,12 +455,12 @@ do
     local suppressedByCheckbox = false
     if check1 then
         check1.onClick(false, check1)
-        local offByCheckbox = MD.db.spellTooltip == false
+        local offByCheckbox = ST.db.spellTooltip == false
         local tt2 = CreateFrame("GameTooltip")
         S.ShowSpellTooltip(tt2, 5185)
         suppressedByCheckbox = tt2:NumLines() == 0
         check1.onClick(true, check1)
-        checkboxGood = offByCheckbox and MD.db.spellTooltip == true
+        checkboxGood = offByCheckbox and ST.db.spellTooltip == true
     end
 
     check("off means off, from the command and the checkbox",
@@ -562,12 +562,12 @@ do
     -- never does against the stub's regen.
     local entry = book.spells[92071]
     local fromFull = Book:CastsFor(entry, Book:DefaultPool())
-    local model = MD.Clock and MD.Clock.model
+    local model = ST.Clock and ST.Clock.model
     model:Anchor(GetTime(), model.max, "test: full")
     local atFull = LineAt(SpellTip:Lines(92071), "Casts to OOM")
 
     model:Anchor(GetTime(), 500, "test: drained for tipcheck")
-    -- T121: the block's pool is MD.Book:Pool() (the clock's model here)
+    -- T121: the block's pool is ST.Book:Pool() (the clock's model here)
     local pool = Book:Pool()
     local now = pool and pool.modelled == true and Book:CastsFor(entry, pool)
     local drained = LineAt(SpellTip:Lines(92071), "Casts to OOM")
@@ -620,7 +620,7 @@ do
 end
 
 --------------------------------------------------------------------------------
--- T25: the block on a macro's tooltip, through MD.API.OnMacroTooltip
+-- T25: the block on a macro's tooltip, through ST.API.OnMacroTooltip
 --------------------------------------------------------------------------------
 local MACRO = 25
 local function SameLines(a, b)
@@ -711,11 +711,11 @@ do
     local list = S.tooltipPostCalls[MACRO]
     local one = list ~= nil and #list == 2 and type(list[2]) == "function" -- the probe's own (T25a, at load), then the adapter's
     local entry
-    for _, c in ipairs(MD.API.Capabilities()) do if c.name == "OnMacroTooltip" then entry = c end end
-    MD.db.spellTooltip = false
+    for _, c in ipairs(ST.API.Capabilities()) do if c.name == "OnMacroTooltip" then entry = c end end
+    ST.db.spellTooltip = false
     local tt = MacroTooltip({ type = MACRO, lines = { { tooltipType = 1, tooltipID = 5185 } } }, nil)
     local off = tt:NumLines() == 0
-    MD.db.spellTooltip = true
+    ST.db.spellTooltip = true
     check("the macro hook is registered through the adapter, and off means off",
         one and off and entry ~= nil and entry.present == true,
         string.format("one=%s off=%s entry=%s", tostring(one), tostring(off), tostring(entry ~= nil)))
@@ -730,10 +730,10 @@ local function Why()
     local said = {}
     local prev = _G.DEFAULT_CHAT_FRAME
     _G.DEFAULT_CHAT_FRAME = { AddMessage = function(_, m) said[#said + 1] = m end }
-    local before = MD.db.spellTooltip
+    local before = ST.db.spellTooltip
     local okCall = pcall(SlashCmdList.SPELLTUNER, "tooltip why")
     _G.DEFAULT_CHAT_FRAME = prev
-    return table.concat(said, "\n"), okCall and MD.db.spellTooltip == before, #said
+    return table.concat(said, "\n"), okCall and ST.db.spellTooltip == before, #said
 end
 local function Has(text, part) return text:find(part, 1, true) ~= nil end
 
@@ -755,7 +755,7 @@ do
     local got = SameLines(tt, want)
     S.actions[61], S.macroSpells[3] = nil, nil
     local entry
-    for _, c in ipairs(MD.API.Capabilities()) do if c.name == "OnActionTooltip" then entry = c end end
+    for _, c in ipairs(ST.API.Capabilities()) do if c.name == "OnActionTooltip" then entry = c end end
     check("T28: the SetAction path gives the block from the slot argument, with no owner",
         got and owner == nil and S.secureHooks.SetAction == 1 and entry ~= nil and entry.present == true,
         string.format("got=%d want=%d hooks=%s entry=%s", tt:NumLines(), want:NumLines(),
@@ -966,12 +966,12 @@ do
     local plainN = 1 + #SpellTip:Lines(5185, false)
     local detailN = 1 + #SpellTip:Lines(5185, true)
     local up, down = Shown(5185, false):NumLines(), Shown(5185, true):NumLines()
-    MD.db.spellTooltipDetail = "ALWAYS"
+    ST.db.spellTooltipDetail = "ALWAYS"
     local always = Shown(5185, false):NumLines()
     local alwaysHead = SpellTip:Lines(5185)[1][2]
-    MD.db.spellTooltipDetail = "NEVER"
+    ST.db.spellTooltipDetail = "NEVER"
     local never = Shown(5185, true):NumLines()
-    MD.db.spellTooltipDetail = "SHIFT"
+    ST.db.spellTooltipDetail = "SHIFT"
     -- T121: the How lines behind the key -- the book's calc, then T117's
     -- estimated bonus share -- and never on the plain block
     local d, p = SpellTip:Lines(5185, true), SpellTip:Lines(5185, false)
@@ -1047,8 +1047,8 @@ do
     -- the adapter, and the block is rebuilt once, with its detail lines; the
     -- key up puts the plain block back; another key refreshes nothing
     local entry
-    for _, c in ipairs(MD.API.Capabilities()) do if c.name == "RefreshTooltip" then entry = c end end
-    MD.db.spellTooltipDetail = "SHIFT"
+    for _, c in ipairs(ST.API.Capabilities()) do if c.name == "RefreshTooltip" then entry = c end end
+    ST.db.spellTooltipDetail = "SHIFT"
     local plainN = 1 + #SpellTip:Lines(5185, false)
     local detailN = 1 + #SpellTip:Lines(5185, true)
     S.shift = false
@@ -1083,7 +1083,7 @@ end
 
 do
     -- the setting, in Settings -> General: Shift by default, Alt picked
-    MD:SelectView("settings", "general")
+    ST:SelectView("settings", "general")
     local pane
     for _, f in ipairs(S.allFrames) do
         if f.detailDropdown then pane = f end
@@ -1096,17 +1096,17 @@ do
             ids[#ids + 1] = it.id
             if it.id == "ALT" and dd.rows[i] then
                 dd.rows[i]:GetScript("OnClick")(dd.rows[i])
-                picked = MD.db.spellTooltipDetail == "ALT"
+                picked = ST.db.spellTooltipDetail == "ALT"
             end
         end
         hint = SpellTip:Lines(5185)[1][2]
         S.altDown = true
         altShown = Shown(5185, false):NumLines()
         S.altDown = false
-        MD.db.spellTooltipDetail = "SHIFT"
+        ST.db.spellTooltipDetail = "SHIFT"
     end
     check("T37: the detail key is a Settings -> General dropdown",
-        dd ~= nil and MD.DEFAULTS.spellTooltipDetail == "SHIFT" and default == "SHIFT" and picked
+        dd ~= nil and ST.DEFAULTS.spellTooltipDetail == "SHIFT" and default == "SHIFT" and picked
         and table.concat(ids, ",") == "SHIFT,ALT,CTRL,ALWAYS,NEVER"
         and hint == "Rank 1 of 2  " .. T.muted.hex .. "Alt|r" and altShown == 1 + #SpellTip:Lines(5185, true),
         string.format("dd=%s default=%s picked=%s ids=%s hint=%s altShown=%s", tostring(dd ~= nil),
@@ -1124,8 +1124,8 @@ do
     local why1 = Why()
 
     -- the rank-row hover: Overview -> Whole book, Healing Touch rank 1
-    MD:SelectView("spells", "overview")
-    if MD.SpellsPane.SetOverviewMode then MD.SpellsPane:SetOverviewMode("book") end
+    ST:SelectView("spells", "overview")
+    if ST.SpellsPane.SetOverviewMode then ST.SpellsPane:SetOverviewMode("book") end
     local pane
     for _, f in ipairs(S.allFrames) do if f.spellsBook then pane = f end end
     local rowData
@@ -1178,23 +1178,23 @@ local function FakeTip()
     return t
 end
 local function IsRGB(r, g, b, token)
-    local tr, tg, tb = MD.UI.RGB(token)
+    local tr, tg, tb = ST.UI.RGB(token)
     return r == tr and g == tg and b == tb
 end
 
 do
-    local T = MD.Tip
+    local T = ST.Tip
     local has = T ~= nil and type(T.Show) == "function" and type(T.Render) == "function"
         and type(T.Place) == "function" and type(T.Kit) == "function" and type(T.Skin) == "function"
     local none = T ~= nil and T.Row == nil and T.Spell == nil and T.Mana == nil and T.Clock == nil
         and T.Columns == nil and T.Damage == nil and T.Fights == nil
-    check("T76: MD.Tip is on the Forever main TOC, without the TBC builders",
+    check("T76: ST.Tip is on the Forever main TOC, without the TBC builders",
         has and none, string.format("tip=%s has=%s none=%s", tostring(T ~= nil), tostring(has), tostring(none)))
 end
 
 do
     local tt = FakeTip()
-    local okR = MD.Tip and pcall(MD.Tip.Render, MD.Tip, tt, {
+    local okR = ST.Tip and pcall(ST.Tip.Render, ST.Tip, tt, {
         { l = "Per mana", r = "2.00", c = "label", rc = "mana" },
         {},
         { l = "a muted hint that wraps", c = "muted", wrap = true },
@@ -1215,21 +1215,21 @@ end
 
 do
     local owner = CreateFrame("Frame")
-    local good, detail = false, "no MD.Tip"
-    if MD.Tip then
+    local good, detail = false, "no ST.Tip"
+    if ST.Tip then
         GameTooltip.lines = nil
-        MD.Tip:Show(owner, { { l = "Title", c = "text" }, { l = "Label", r = "value", c = "label" } },
+        ST.Tip:Show(owner, { { l = "Title", c = "text" }, { l = "Label", r = "value", c = "label" } },
             { anchor = "ANCHOR_TOP" })
         local l = GameTooltip.lines or {}
         local shown = #l == 2 and l[1][1] == "Title" and l[2][1] == "Label" and l[2][2] == "value"
-        local skinned = MD.Tip:Skinned(GameTooltip)
-        MD.Tip:Hide()
-        local off = not MD.Tip:Skinned(GameTooltip)
+        local skinned = ST.Tip:Skinned(GameTooltip)
+        ST.Tip:Hide()
+        local off = not ST.Tip:Skinned(GameTooltip)
         GameTooltip.lines = nil
-        MD.Tip:Show(owner, "ANCHOR_TOP", { { l = "legacy" } }) -- the old shape still renders
+        ST.Tip:Show(owner, "ANCHOR_TOP", { { l = "legacy" } }) -- the old shape still renders
         local legacy = GameTooltip.lines and GameTooltip.lines[1] and GameTooltip.lines[1][1] == "legacy"
-            and MD.Tip:Skinned(GameTooltip)
-        MD.Tip:Hide()
+            and ST.Tip:Skinned(GameTooltip)
+        ST.Tip:Hide()
         good = shown and skinned and off and legacy
         detail = string.format("shown=%s skinned=%s off=%s legacy=%s", tostring(shown), tostring(skinned),
             tostring(off), tostring(legacy))
@@ -1238,8 +1238,8 @@ do
 end
 
 do
-    local good, detail = false, "no MD.Tip"
-    if MD.Tip then
+    local good, detail = false, "no ST.Tip"
+    if ST.Tip then
         local savedW = UIParent:GetWidth()
         UIParent:SetWidth(1000)
         local function Owner(right, width)
@@ -1256,7 +1256,7 @@ do
         end
         local function Where(owner, anchor)
             local t = Tt()
-            MD.Tip:Place(t, owner, anchor)
+            ST.Tip:Place(t, owner, anchor)
             return t.pt or {}
         end
         local narrow, edge = Owner(500, 100), Owner(900, 100)
@@ -1288,8 +1288,8 @@ do
     -- P32 review: the owner at 80 % (the main window at db.ui.scale 80) and
     -- GameTooltip at 1: the pointer's offset is converted into the tooltip's
     -- units, so the tooltip lands GAP beside the pointer, not 126 px past it.
-    local good, detail = false, "no MD.Tip"
-    if MD.Tip then
+    local good, detail = false, "no ST.Tip"
+    if ST.Tip then
         local savedW = UIParent:GetWidth()
         UIParent:SetWidth(1000)
         local owner = { GetRight = function() return 1200 end, GetWidth = function() return 1200 end,
@@ -1300,7 +1300,7 @@ do
             function t:SetPoint(p, rel, rp, x, y) self.pt = { p, rel, rp, x, y } end
             function t:GetWidth() return 200 end
             function t:GetEffectiveScale() return 1 end
-            MD.Tip:Place(t, owner, "cursor")
+            ST.Tip:Place(t, owner, "cursor")
             return t.pt or {}
         end
         local savedCursor = GetCursorPosition
@@ -1321,7 +1321,7 @@ do
 end
 
 do
-    local UI = MD.UI
+    local UI = ST.UI
     local FrameMT = getmetatable(UIParent)
     local savedMotion = rawget(FrameMT, "SetMotionScriptsWhileDisabled")
     FrameMT.SetMotionScriptsWhileDisabled = function(self, v) self.motionWhileDisabled = v end
@@ -1520,12 +1520,12 @@ end
 -- turned off); a heal keeps its block
 --------------------------------------------------------------------------------
 do
-    local onByDefault = MD.db.spellTooltipDamage ~= false
+    local onByDefault = ST.db.spellTooltipDamage ~= false
     local before = Shown(92401, false):NumLines()
-    MD.db.spellTooltipDamage = false
+    ST.db.spellTooltipDamage = false
     local off = Shown(92401, false):NumLines()
     local heal = Shown(5185, false):NumLines()
-    MD.db.spellTooltipDamage = true
+    ST.db.spellTooltipDamage = true
     local again = Shown(92401, false):NumLines()
     check("T121: spellTooltipDamage = false drops a damage spell's block, not a heal's",
         onByDefault and before > 0 and off == 0 and heal > 0 and again == before,

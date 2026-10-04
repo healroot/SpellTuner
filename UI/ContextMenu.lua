@@ -19,8 +19,8 @@
 --   menu.frame         the list frame
 --   menu.rows[i]       the item buttons (row.note the note's font string)
 --   menu.titleText     the title font string
-local _, MD = ...
-local UI = MD.UI
+local _, ST = ...
+local UI = ST.UI
 
 local ROW_H = 18
 

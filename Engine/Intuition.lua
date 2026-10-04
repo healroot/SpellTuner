@@ -1,4 +1,4 @@
-local _, MD = ...
+local _, ST = ...
 
 --------------------------------------------------------------------------------
 -- Healer intuition (docs/SPEC-v0.13.md §8).
@@ -26,7 +26,7 @@ local _, MD = ...
 --------------------------------------------------------------------------------
 
 local IN = {}
-MD.Intuition = IN
+ST.Intuition = IN
 
 local SM
 local OPEN_UNTIL = 10       -- seconds; "the pull" as distinct from "the fight"
@@ -62,7 +62,7 @@ local function MaxHPOf(rec, ti)
 end
 
 local function Profile(rec)
-    SM = SM or MD.SimModel
+    SM = SM or ST.SimModel
     local K = SM.K
     local dur = rec.dur or 0
     if dur <= 0 or not rec.ev then return nil end

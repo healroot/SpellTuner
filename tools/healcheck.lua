@@ -43,9 +43,9 @@ local pre = {}
 for k, c in pairs(realDB.char or {}) do pre[k] = c.profile end
 HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua"); arg[0] = a0
+local ST = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB
-local SD, K = MD.SpellData, MD.SimModel.K
+local SD, K = ST.SpellData, ST.SimModel.K
 local CRIT_FLAG = 100000
 
 for key, c in pairs(realDB.char or {}) do
@@ -82,12 +82,12 @@ for key, c in pairs(realDB.char or {}) do
             _G.GetSpellBonusHealing = function() return h end
             _G.GetSpellCritChance = function() return cr end
             local tal = p.talents or {}
-            function MD:TalentRank(n) return tal[n] or 0 end
-            MD.player.class = "DRUID"; MD.player.isDruid = true; MD.player.level = p.level
-            function MD:InTreeForm() return (p.form == "tree") end
-            SD:BuildKnown(); MD.Regen:Refresh()
+            function ST:TalentRank(n) return tal[n] or 0 end
+            ST.player.class = "DRUID"; ST.player.isDruid = true; ST.player.level = p.level
+            function ST:InTreeForm() return (p.form == "tree") end
+            SD:BuildKnown(); ST.Regen:Refresh()
         end
-        local kit = MD.RankMath:SpellKit({ live = true }).caster
+        local kit = ST.RankMath:SpellKit({ live = true }).caster
         table.sort(order)
         print("== " .. key .. (p and string.format("   level %d, +%d healing, %.1f%% crit",
             p.level or 0, p.healing or 0, p.crit or 0) or "   (no profile)"))

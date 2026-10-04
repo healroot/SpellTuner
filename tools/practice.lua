@@ -14,9 +14,9 @@
 local here = arg[0]:match("^(.*)/[^/]+$")
 HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua"); arg[0] = a0
+local ST = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB
-local PR, SM, SD, SP = MD.Practice, MD.SimModel, MD.SpellData, MD.SimPlanner
+local PR, SM, SD, SP = ST.Practice, ST.SimModel, ST.SpellData, ST.SimPlanner
 
 local ok, fails = 0, {}
 local function check(name, cond, detail)
@@ -99,7 +99,7 @@ while s.state == "running" do
         -- read the LIVE trace the way the window does, mid-fight
         local tr = s.S and s:LiveTrace()
         if tr then
-            local st = MD.ReplayTrace.New(tr, s.scenario)
+            local st = ST.ReplayTrace.New(tr, s.scenario)
             st:Advance(s.clock)
             midTrace = { hp = st:Hp(TANK), mana = st:Mana(), hot = st:Hot(TANK, SM.HOT_INDEX.Lifebloom),
                          filled = tr.filled, n = tr.n }
@@ -143,7 +143,7 @@ do
         if tr.ev.kind[i] == SM.TK.HOT_END and tr.ev.tgt[i] == MELEE
            and tr.ev.a[i] == SM.HOT_INDEX.Rejuvenation then endAt = endAt or tr.ev.t[i] end
     end
-    local st = tr and MD.ReplayTrace.New(tr, s.scenario)
+    local st = tr and ST.ReplayTrace.New(tr, s.scenario)
     if st and smAt then st:Seek(smAt + 1) end
     check("the practice trace ends the HoT Swiftmend ate, at the Swiftmend",
         endAt ~= nil and smAt ~= nil and near(endAt, smAt)
@@ -187,7 +187,7 @@ do
 end
 
 -- replay: the ordinary engine, from the recording alone ----------------------------
-local kit = MD.RankMath:SpellKit({ live = true })
+local kit = ST.RankMath:SpellKit({ live = true })
 local v = SM:Validate(rec, kit)
 local failed = {}
 for _, g in ipairs(v.gates) do if not g.ok then failed[#failed + 1] = g.name .. ": " .. tostring(g.text) end end
@@ -257,7 +257,7 @@ end
 
 -- stopping early -------------------------------------------------------------------
 do
-    MD.cdb.practice = {}
+    ST.cdb.practice = {}
     local s6 = PR.New(PR.DefaultSetup("5", 64), { seed = 4 })
     s6:Start()
     while s6.clock < 15 do
@@ -273,22 +273,22 @@ do
     check("and nothing after it", after == 0, after .. " events after the end")
     check("it is marked unfinished", r6.practice and r6.practice.finished == false)
     check("an early stop still replays", SM:Validate(r6, kit).ok)
-    check("it is kept and addressed as p1", MD:GetRecording("p1") == r6)
+    check("it is kept and addressed as p1", ST:GetRecording("p1") == r6)
     -- T62 (P18): p1 reaches the practice provider through the one router
     -- (Engine/Recordings.lua), not a second parser of its own
-    local REC = MD.Recordings
+    local REC = ST.Recordings
     check("...through the router's practice provider",
         REC ~= nil and REC.Provider("p") ~= nil and REC.Provider("p").List == PR.List
         and REC.Get("p1") == r6 and REC.List("p")[1] == r6,
-        REC and "provider " .. tostring(REC.Provider("p")) or "no MD.Recordings")
-    check("practice never touches the ring of real fights", #(MD.cdb.recordings or {}) == 0)
+        REC and "provider " .. tostring(REC.Provider("p")) or "no ST.Recordings")
+    check("practice never touches the ring of real fights", #(ST.cdb.recordings or {}) == 0)
     for k = 1, PR.MAX_KEPT + 2 do
         local x = PR.New(PR.DefaultSetup("1", 64), { seed = k })
         x.startedAt = 2000000000 + k
         x:Start(); x:Cast(LB, 1); x:Update(0.2); x:Stop()
     end
-    check("only the newest " .. PR.MAX_KEPT .. " are kept", #MD.cdb.practice == PR.MAX_KEPT
-        and PR.Get(1).id == 2000000000 + PR.MAX_KEPT + 2, tostring(#MD.cdb.practice))
+    check("only the newest " .. PR.MAX_KEPT .. " are kept", #ST.cdb.practice == PR.MAX_KEPT
+        and PR.Get(1).id == 2000000000 + PR.MAX_KEPT + 2, tostring(#ST.cdb.practice))
 
     -- 2026-09-29: practice fights a report can be built from. The record
     -- carries the kit it was simulated with, the client and the version, and
@@ -309,7 +309,7 @@ do
         string.format("%d samples, worst %.2f mana off", nS, worst))
 
     -- pinned: the next eight do not push it out, and at most MAX_PINNED stay pinned
-    local oldest = MD.cdb.practice[#MD.cdb.practice]
+    local oldest = ST.cdb.practice[#ST.cdb.practice]
     check("a practice fight can be pinned", PR.Pin(oldest) == true and oldest.pinned == true)
     for k = 1, PR.MAX_KEPT do
         local x = PR.New(PR.DefaultSetup("1", 64), { seed = 50 + k })
@@ -317,28 +317,28 @@ do
         x:Start(); x:Cast(LB, 1); x:Update(0.2); x:Stop()
     end
     local still = false
-    for _, r in ipairs(MD.cdb.practice) do if r == oldest then still = true end end
-    check("...and the next " .. PR.MAX_KEPT .. " do not push it out", still and #MD.cdb.practice == PR.MAX_KEPT,
-        tostring(#MD.cdb.practice))
-    for i = 1, PR.MAX_PINNED - 1 do PR.Pin(MD.cdb.practice[i], true) end
-    local okPin, why = PR.Pin(MD.cdb.practice[PR.MAX_PINNED + 1], true)
+    for _, r in ipairs(ST.cdb.practice) do if r == oldest then still = true end end
+    check("...and the next " .. PR.MAX_KEPT .. " do not push it out", still and #ST.cdb.practice == PR.MAX_KEPT,
+        tostring(#ST.cdb.practice))
+    for i = 1, PR.MAX_PINNED - 1 do PR.Pin(ST.cdb.practice[i], true) end
+    local okPin, why = PR.Pin(ST.cdb.practice[PR.MAX_PINNED + 1], true)
     check("...and no more than " .. PR.MAX_PINNED .. " are pinned", okPin == false and why ~= nil, tostring(why))
-    for _, r in ipairs(MD.cdb.practice) do r.pinned = false end
+    for _, r in ipairs(ST.cdb.practice) do r.pinned = false end
 end
 
 -- nothing played, nothing kept ------------------------------------------------------
 do
-    local before = #MD.cdb.practice
+    local before = #ST.cdb.practice
     local x = PR.New(PR.DefaultSetup("1", 64), { seed = 99 })
     x.startedAt = 2100000000
     x:Start(); x:Update(0.2); x:Stop()
-    check("a fight with no casts is not kept", x.rec == nil and #MD.cdb.practice == before
+    check("a fight with no casts is not kept", x.rec == nil and #ST.cdb.practice == before
         and PR.Get(1).id ~= 2100000000)
 end
 
 -- bindings -----------------------------------------------------------------------
 do
-    MD.db.practiceBinds = nil
+    ST.db.practiceBinds = nil
     local b, id = PR.BindFor("BUTTON5")
     check("Button5 is Lifebloom, as in your Cell click-casting", b and id == LB)
     local _, rj = PR.BindFor("ALT-BUTTON5")
@@ -348,7 +348,7 @@ do
         and SD.spells[r5].family == "Rejuvenation")
     check("modifiers are spelled the way the client spells them", PR.Mods(true, true, true) .. "1" == "ALT-CTRL-SHIFT-1")
     check("an unbound press is nothing", PR.BindFor("CTRL-Q") == nil)
-    MD.db.practiceBinds[1].rank = 99
+    ST.db.practiceBinds[1].rank = 99
     local _, fallback = PR.BindFor("BUTTON5")
     check("a rank you do not know falls back to your highest", fallback == LB)
 end
@@ -393,7 +393,7 @@ do
     check("Rebirth on a keyboard binding is skipped, not guessed", said:find("ALT%-R") ~= nil, said)
     -- v0.15.4: an import goes ON TOP of what is there. Start from the defaults
     -- plus one binding of the player's own that Cell knows nothing about.
-    MD.db.practiceBinds = nil
+    ST.db.practiceBinds = nil
     table.insert(PR.Binds(), { key = "CTRL-E", family = "Swiftmend" })
     local before = #PR.Binds()
     local added, replaced, same = PR.ApplyImport(list)
@@ -425,12 +425,12 @@ do
     check("Clique keys are already the client's spelling", clist[1].key == "BUTTON1" and clist[1].rank == 5)
     check("a spell this addon does not model is skipped", table.concat(crep.skipped, " | "):find("Rebirth") ~= nil)
     _G.CliqueDB3 = nil
-    MD.db.practiceBinds = nil
+    ST.db.practiceBinds = nil
 end
 
 -- importing the game's own keybindings ---------------------------------------------
 do
-    MD.db.practiceBinds = nil
+    ST.db.practiceBinds = nil
     S.macros["Main overtime"] = "#showtooltip\n/cast [known:33763,@mouseover,help]Lifebloom;[@mouseover,help]Rejuvenation"
     S.macros["efficient regrow"] = "#showtooltip\n/cancelform [stance:6]\n/cast [@mouseover, help, exists][]  Regrowth(Rank 5)"
     S.macros["HT"] = "/cast [@mouseover,help,nodead][] Healing Touch"
@@ -485,7 +485,7 @@ do
     check("applying it adds three on top of the defaults and finds BUTTON5 already Lifebloom",
         ka == 3 and kr == 0 and ks == 1 and #PR.Binds() == 9 and PR.BindFor("BUTTON4").family == "Regrowth" and PR.BindFor("BUTTON4").rank == 5,
         string.format("%d / %d / %d, %d binds", ka, kr, ks, #PR.Binds()))
-    S.bindings, S.actions, MD.db.practiceBinds = {}, {}, nil
+    S.bindings, S.actions, ST.db.practiceBinds = {}, {}, nil
 end
 
 -- the search's engine is untouched --------------------------------------------------

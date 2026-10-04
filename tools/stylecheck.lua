@@ -19,9 +19,9 @@
 --   * STYLE_CHANGED once per switch; an unknown name refused (nothing changes,
 --     nothing fires); UI.SetStyle before CORE_LOGIN raises; no styled frame is
 --     built before PLAYER_LOGIN (the TOC's files register nothing at load).
---   * `/st ui style <name>` through MD:AddSubcommand, and `/st ui reset` still
+--   * `/st ui style <name>` through ST:AddSubcommand, and `/st ui reset` still
 --     reaching the window manager with `ui style` registered in either order.
---   * the dump line (MD:AddDumpLine) once a style other than Flat has been
+--   * the dump line (ST:AddDumpLine) once a style other than Flat has been
 --     applied, and the per-role fallback for art a style needs and the
 --     client does not answer for.
 --
@@ -55,7 +55,7 @@ local S = _G.STUB
 S.root = root
 S.flavour = flavour
 
-local MD = {}
+local ST = {}
 local toc = "SpellTuner_TBC.toc"
 if flavour == "forever" then
     S.UseProfile("forever")
@@ -80,8 +80,8 @@ InsertAfter("UI/Styles.lua", "UI/Theme_Flat.lua")
 -- T100: the Ellesmere style, right after the registry
 InsertAfter("UI/Style_Ellesmere.lua", "UI/Styles.lua")
 S.loadedFiles = files
-S.Load(files, "SpellTuner", MD)
-local UI = MD.UI
+S.Load(files, "SpellTuner", ST)
+local UI = ST.UI
 
 --------------------------------------------------------------------------------
 -- Between the last file and PLAYER_LOGIN
@@ -99,8 +99,8 @@ local styleAtLoad = UI.STYLE
 
 -- STYLE_CHANGED, counted from the first event on
 local changed = {}
-if MD.RegisterCallback then
-    MD:RegisterCallback("STYLE_CHANGED", function(key) changed[#changed + 1] = key end)
+if ST.RegisterCallback then
+    ST:RegisterCallback("STYLE_CHANGED", function(key) changed[#changed + 1] = key end)
 end
 
 S.Fire("ADDON_LOADED", "SpellTuner")
@@ -285,9 +285,9 @@ check("UI.SetStyle before CORE_LOGIN raises",
     UI.SetStyle ~= nil and earlyOk == false and tostring(earlyErr):find("CORE_LOGIN", 1, true) ~= nil,
     tostring(earlyErr))
 check("at login Flat is applied (UI.STYLE flat, db.ui.style flat, STYLE_CHANGED once)",
-    UI.STYLE == "flat" and MD.db and MD.db.ui and MD.db.ui.style == "flat" and changedAtLogin == 1
+    UI.STYLE == "flat" and ST.db and ST.db.ui and ST.db.ui.style == "flat" and changedAtLogin == 1
       and changed[1] == "flat",
-    string.format("STYLE %s, saved %s, %d fired", tostring(UI.STYLE), tostring(MD.db and MD.db.ui and MD.db.ui.style),
+    string.format("STYLE %s, saved %s, %d fired", tostring(UI.STYLE), tostring(ST.db and ST.db.ui and ST.db.ui.style),
         changedAtLogin))
 check("the regions are registered by role once built (UI.skinned, UI.pixelFrames its old name)",
     registry ~= nil and UI.pixelFrames == UI.skinned and registry[nav.frame] ~= nil
@@ -402,7 +402,7 @@ do
         if not (s:IsShown() and is(s.color, 1, 1, 1, 0.1)) then stripsOk = false end
     end
     check("Test applied: UI.STYLE, db.ui.style, STYLE_CHANGED once with its key",
-        okSet == true and UI.STYLE == "test" and MD.db.ui.style == "test" and n1 - n0 == 1 and changed[n1] == "test",
+        okSet == true and UI.STYLE == "test" and ST.db.ui.style == "test" and n1 - n0 == 1 and changed[n1] == "test",
         tostring(setWhy))
     check("the {ref = accent} fills and the tokens follow Test's accent",
         is(P.selected, 0.2, 0.6, 1, 0.2) and is(P.accentHover, 0.2, 0.6, 1, 0.5) and is(P.hover, 1, 1, 1, 0.08)
@@ -474,7 +474,7 @@ do
     if UI.SetStyle then okU, whyU = UI.SetStyle("nosuch") end
     check("an unknown name is refused, naming the styles; nothing changes, nothing fires",
         okU ~= true and type(whyU) == "string" and whyU:find("nosuch", 1, true) ~= nil
-          and whyU:find("flat", 1, true) ~= nil and UI.STYLE == "flat" and MD.db.ui.style == "flat"
+          and whyU:find("flat", 1, true) ~= nil and UI.STYLE == "flat" and ST.db.ui.style == "flat"
           and #changed == before,
         tostring(whyU))
 end
@@ -482,7 +482,7 @@ end
 T.section("the dump line, the per-role fallback, UI.Skin")
 do
     local function DumpLine()
-        for _, d in ipairs(MD.DumpLines and MD:DumpLines() or {}) do
+        for _, d in ipairs(ST.DumpLines and ST:DumpLines() or {}) do
             if d.key == "style" then return d.fn() end
         end
     end
@@ -535,28 +535,28 @@ do
           and s3[1] ~= nil and s3[1]:find("nosuch", 1, true) ~= nil and listsAll,
         tostring(s3[1]) .. " / " .. tostring(s4[1]))
     local row
-    for _, c in ipairs(MD:Commands()) do if c.name == "ui" then row = c end end
+    for _, c in ipairs(ST:Commands()) do if c.name == "ui" then row = c end end
     check("the ui verb's help row carries the sub's usage",
         row ~= nil and type(row.usage) == "string" and row.usage:find("style <name>", 1, true) ~= nil, row and row.usage)
 
     -- the window manager's reset, spied; the verb registered again AFTER the
     -- sub (the other load order) keeps the sub
     local resets = 0
-    local savedWin = MD.Win
-    MD.Win = setmetatable({ Reset = function() resets = resets + 1 end }, { __index = savedWin })
+    local savedWin = ST.Win
+    ST.Win = setmetatable({ Reset = function() resets = resets + 1 end }, { __index = savedWin })
     local okReset = true
     if flavour == "forever" then
         Run("ui reset")
         okReset = resets == 1
     end
-    MD:AddCommand("ui", function(arg)
-        if arg == "reset" then MD.Win:Reset() else MD:Print("usage: /st ui reset") end
+    ST:AddCommand("ui", function(arg)
+        if arg == "reset" then ST.Win:Reset() else ST:Print("usage: /st ui reset") end
     end, "/st ui reset", "put every SpellTuner window back at its default place and size")
     Run("ui reset")
     Run("ui style test")
     local styleAfter = UI.STYLE == "test"
     Run("ui style flat")
-    MD.Win = savedWin
+    ST.Win = savedWin
     check("/st ui reset still resets with ui style registered in either order",
         okReset and resets == (flavour == "forever" and 2 or 1) and styleAfter and UI.STYLE == "flat",
         string.format("%d resets, style after %s", resets, tostring(styleAfter)))
@@ -567,11 +567,11 @@ end
 -- Ellesmere style. The clone (EllesmereUI's house look, its default accent
 -- for this client: bronze on Forever, teal elsewhere), the tokens' alpha on
 -- white pre-blended into hex against the style's bg (X5), and the follow:
--- MD.EUISkin's getters when its apiVersion is 2, else the clone; with no
--- skin facade the parent's getters (MD.EUIParent); a repaint on
+-- ST.EUISkin's getters when its apiVersion is 2, else the clone; with no
+-- skin facade the parent's getters (ST.EUIParent); a repaint on
 -- EUI_LOOKS_CHANGED and once on EUI_SKIN_READY. Both flavours run every
 -- check: the clone is a look of its own on TBC, and the follow is data-driven
--- (the integration that hands MD.EUISkin over is Forever's, T97). Failed
+-- (the integration that hands ST.EUISkin over is Forever's, T97). Failed
 -- first on the parent (25748e3): 0 of these 8 ok on either flavour.
 --------------------------------------------------------------------------------
 T.section("T100: the Ellesmere style")
@@ -589,7 +589,7 @@ do
         return #changed - before, changed[#changed]
     end
     local function DumpLine()
-        for _, d in ipairs(MD.DumpLines and MD:DumpLines() or {}) do
+        for _, d in ipairs(ST.DumpLines and ST:DumpLines() or {}) do
             if d.key == "style" then return d.fn() end
         end
     end
@@ -622,7 +622,7 @@ do
         end
         return true
     end
-    MD.EUISkin, MD.EUIParent = nil, nil
+    ST.EUISkin, ST.EUIParent = nil, nil
 
     -- 1. registered, valid, its roles
     local okV, whyV = false, "not registered"
@@ -696,11 +696,11 @@ do
     local ACC = { 0.2, 0.4, 0.9 }
     local PAN = { 0.10, 0.10, 0.12, 0.9 }
     local S2 = FakeSkin(2, ACC, PAN, EXPRESSWAY, "OUTLINE")
-    MD.EUISkin = S2
-    local whileFlat = Fired(function() MD:Fire("EUI_SKIN_READY") end)
+    ST.EUISkin = S2
+    local whileFlat = Fired(function() ST:Fire("EUI_SKIN_READY") end)
     local nSet = Fired(function() if UI.SetStyle then UI.SetStyle("ellesmere") end end)
     local fface, _, fflags, fnum = Face()
-    local readyAfter = Fired(function() MD:Fire("EUI_SKIN_READY") end)
+    local readyAfter = Fired(function() ST:Fire("EUI_SKIN_READY") end)
     local dumpSkin = DumpLine()
     check("with a fake S (apiVersion 2) the accent, panel and font come from its getters; the dump says it follows",
         whileFlat == 0 and nSet == 1 and UI.STYLE == "ellesmere" and S2.reads > 0
@@ -716,26 +716,26 @@ do
 
     -- 5. a looks change repaints once (and does nothing under another style)
     ACC[1], ACC[2], ACC[3] = 0.8, 0.2, 0.4
-    local nLooks, keyLooks = Fired(function() MD:Fire("EUI_LOOKS_CHANGED") end)
+    local nLooks, keyLooks = Fired(function() ST:Fire("EUI_LOOKS_CHANGED") end)
     local looksOk = nLooks == 1 and keyLooks == "ellesmere" and near(UI.accent[1], 0.8) and near(UI.accent[2], 0.2)
         and is(P.check, 0.8, 0.2, 0.4, 0.75) and UI.TEXT.accent.hex == "|cffcc3366"
         and is(nav.frame.bg, 0.10, 0.10, 0.12, 0.96)
     if UI.SetStyle then UI.SetStyle("flat") end
-    local nFlat = Fired(function() MD:Fire("EUI_LOOKS_CHANGED") end)
+    local nFlat = Fired(function() ST:Fire("EUI_LOOKS_CHANGED") end)
     check("a looks change (EUI_LOOKS_CHANGED) repaints once with the new accent; under Flat it does nothing",
         looksOk and nFlat == 0 and UI.STYLE == "flat",
         string.format("%d then %d fired, accent %s", nLooks, nFlat, C(UI.accent)))
 
     -- 6. X4: S arriving after the style was applied repaints once
-    MD.EUISkin = nil
+    ST.EUISkin = nil
     if UI.SetStyle then UI.SetStyle("ellesmere") end
     local wasClone = near(UI.accent[1], HOUSE[1]) and near(UI.accent[2], HOUSE[2])
     local S3 = FakeSkin(2, { 0.5, 0.5, 1 }, { 0.2, 0.1, 0.1, 1 }, EXPRESSWAY, "")
-    MD.EUISkin = S3
-    local nReady, keyReady = Fired(function() MD:Fire("EUI_SKIN_READY") end)
+    ST.EUISkin = S3
+    local nReady, keyReady = Fired(function() ST:Fire("EUI_SKIN_READY") end)
     local followed = near(UI.accent[1], 0.5) and near(UI.accent[3], 1) and is(P.bg, 0.2, 0.1, 0.1, 0.96)
         and is(nav.frame.bg, 0.2, 0.1, 0.1, 0.96)
-    local nAgain = Fired(function() MD:Fire("EUI_SKIN_READY") end)
+    local nAgain = Fired(function() ST:Fire("EUI_SKIN_READY") end)
     check("S arriving after SetStyle (EUI_SKIN_READY) repaints once, with its getters; a second ready repaints nothing",
         wasClone and nReady == 1 and keyReady == "ellesmere" and followed and nAgain == 0,
         string.format("clone first %s, %d then %d fired, accent %s", tostring(wasClone), nReady, nAgain,
@@ -743,8 +743,8 @@ do
 
     -- 7. apiVersion 3: the getters unread, the clone, and the dump says why
     local S4 = FakeSkin(3, { 0.5, 0.5, 1 }, { 0.2, 0.1, 0.1, 1 }, EXPRESSWAY, "OUTLINE")
-    MD.EUISkin = S4
-    MD:Fire("EUI_SKIN_READY")
+    ST.EUISkin = S4
+    ST:Fire("EUI_SKIN_READY")
     local v3face = Face()
     local dump3 = DumpLine()
     check("apiVersion = 3 keeps the clone: its getters unread, the dump says 'skin apiVersion 3: not followed'",
@@ -755,9 +755,9 @@ do
         string.format("%d reads, accent %s, dump %s", S4.reads, C(UI.accent), tostring(dump3)))
 
     -- 8. no skin facade: the parent's getters (accent, font), the house panel
-    MD.EUISkin = nil
+    ST.EUISkin = nil
     local preads = 0
-    MD.EUIParent = {
+    ST.EUIParent = {
         GetAccentColor = function() preads = preads + 1; return 1, 0.5, 0.25 end,
         GetFontPath = function() preads = preads + 1; return EXPRESSWAY end,
     }
@@ -766,11 +766,11 @@ do
     local parentOk = preads == 2 and near(UI.accent[1], 1) and near(UI.accent[2], 0.5) and near(UI.accent[3], 0.25)
         and is(P.bg, PANEL[1], PANEL[2], PANEL[3], 0.96) and pface == EXPRESSWAY
         and E ~= nil and E.Following() == "parent"
-    MD.EUIParent = { GetAccentColor = function() return "teal" end, GetFontPath = function() error("gone") end }
+    ST.EUIParent = { GetAccentColor = function() return "teal" end, GetFontPath = function() error("gone") end }
     if UI.SetStyle then UI.SetStyle("ellesmere") end
     local badFace = Face()
     local junkOk = near(UI.accent[1], HOUSE[1]) and near(UI.accent[2], HOUSE[2]) and badFace == "Fonts\\ARIALN.TTF"
-    MD.EUIParent = nil
+    ST.EUIParent = nil
     if UI.SetStyle then UI.SetStyle("flat") end
     check("without S the parent's getters give the accent and font; a getter that raises or answers junk gives the clone's",
         parentOk and junkOk and UI.STYLE == "flat",

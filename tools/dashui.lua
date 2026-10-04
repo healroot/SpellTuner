@@ -9,7 +9,7 @@
 local here = arg[0]:match("^(.*)/[^/]+$")
 HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua"); arg[0] = a0
+local ST = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB
 -- T80 (C1): the theme and the window manager after the kit, as the TBC TOC lists them.
 -- T120: the one Spells pane (UI/SpellsPane.lua) before UI/Dashboard.lua, in
@@ -25,7 +25,7 @@ do
         local fh = io.open((S.root or ".") .. "/" .. rel, "r")
         if fh then fh:close(); present[#present + 1] = rel end
     end
-    S.Load(present, "SpellTuner", MD)
+    S.Load(present, "SpellTuner", ST)
 end
 
 local ok, fails = 0, {}
@@ -39,7 +39,7 @@ _G.DEFAULT_CHAT_FRAME = { AddMessage = function(_, m) chat[#chat + 1] = m end }
 -- the dashboard builds on MD_READY. The harness has already fired it, and
 -- firing it again used to build a SECOND window whose buttons shadowed the
 -- first: CreateDashboard is idempotent now, and this asserts it.
-MD:Fire("MD_READY")
+ST:Fire("MD_READY")
 
 local frame = _G.SpellTunerDashboard
 check("the dashboard exists", frame ~= nil)
@@ -48,7 +48,7 @@ check("firing MD_READY twice does not build a second one", (function()
     for _, f in ipairs(S.allFrames) do if f.frameName == "SpellTunerDashboard" then n = n + 1 end end
     return n == 1
 end)())
-check("it is one window, not two", frame ~= MD.optionsFrame)
+check("it is one window, not two", frame ~= ST.optionsFrame)
 
 local function ButtonNamed(text)
     for _, f in ipairs(S.allFrames) do
@@ -81,9 +81,9 @@ local function Painted(pat)
 end
 
 -- T84 (C5): the Spells group is a rail; its rows are the views. T120: the
--- shared pane's (MD.SpellsPane; MD.SpellsTBC is gone)
+-- shared pane's (ST.SpellsPane; ST.SpellsTBC is gone)
 local function SpellsRail()
-    local sp = MD.SpellsPane
+    local sp = ST.SpellsPane
     return sp and sp.nav and sp.nav:Rail("spells") or nil
 end
 local function RailRow(id)
@@ -106,13 +106,13 @@ end
 check("the four groups are the author's, minus the two still to move",
     ButtonNamed("Spells") ~= nil and ButtonNamed("Reports") ~= nil)
 
-MD:ToggleDashboard()
+ST:ToggleDashboard()
 check("it opens", frame:IsShown())
 
 -- opening lands on a spell, and the rank table is built
 -- T84 (C5): the first open is Overview, the rail's first row
-check("it opens on a spell", MD.db.uiPath and MD.db.uiPath[1] == "spells",
-    MD.db.uiPath and table.concat(MD.db.uiPath, "/") or "no path")
+check("it opens on a spell", ST.db.uiPath and ST.db.uiPath[1] == "spells",
+    ST.db.uiPath and table.concat(ST.db.uiPath, "/") or "no path")
 -- T83 (C3): the Spells view -- its RANKS pane, and What if... in its strip
 -- T84 (C5): a family's rail row opens it
 RailClick("fam:HealingTouch")
@@ -123,15 +123,15 @@ check("the rank table is built for it", ShownText("^RANKS$") ~= nil)
 local rg = RailRow("fam:Regrowth")
 check("a family rail row exists", rg ~= nil, RailIds())
 RailClick("fam:Regrowth")
-check("clicking a family selects it", MD.db.uiPath[2] == "fam:Regrowth", MD.db.uiPath[2])
+check("clicking a family selects it", ST.db.uiPath[2] == "fam:Regrowth", ST.db.uiPath[2])
 
 -- Reports: a different group, its own views, built on first sight
 Click(ButtonNamed("Reports"))
-check("Reports selects its first view", MD.db.uiPath[1] == "reports" and MD.db.uiPath[2] == "Waste",
-    table.concat(MD.db.uiPath, "/"))
+check("Reports selects its first view", ST.db.uiPath[1] == "reports" and ST.db.uiPath[2] == "Waste",
+    table.concat(ST.db.uiPath, "/"))
 check("the Waste pane says what it is", Painted("Where the mana went") ~= nil)
 Click(ButtonNamed("Review"))
-check("Review is a view of Reports", MD.db.uiPath[2] == "Review", MD.db.uiPath[2])
+check("Review is a view of Reports", ST.db.uiPath[2] == "Review", ST.db.uiPath[2])
 check("the Review pane is built", Painted("The fights this character recorded") ~= nil)
 check("Review's own buttons came with it", ButtonNamed("Validate") ~= nil
     and ButtonNamed("Play") ~= nil and ButtonNamed("Start run") ~= nil)
@@ -141,38 +141,38 @@ check("Review's own buttons came with it", ButtonNamed("Validate") ~= nil
 Click(ButtonNamed("Spells"))
 check("going back to Spells shows its first row, Overview", ShownText("^OVERVIEW$") ~= nil
     and ShownText("^RANKS$") == nil)
-check("and the path followed", MD.db.uiPath[1] == "spells", MD.db.uiPath[1])
+check("and the path followed", ST.db.uiPath[1] == "spells", ST.db.uiPath[1])
 
 -- the path is remembered across an open/close
-MD:ToggleDashboard()
+ST:ToggleDashboard()
 check("it closes", not frame:IsShown())
 Click(ButtonNamed("Reports")); -- no-op while hidden, but must not error
-MD:ToggleDashboard()
-check("it reopens where it was", frame:IsShown() and MD.db.uiPath[1] ~= nil,
-    table.concat(MD.db.uiPath, "/"))
+ST:ToggleDashboard()
+check("it reopens where it was", frame:IsShown() and ST.db.uiPath[1] ~= nil,
+    table.concat(ST.db.uiPath, "/"))
 
 --------------------------------------------------------------------------------
 -- Settings is the fourth group, not a second window (v0.11.2)
 --------------------------------------------------------------------------------
 -- T79 (P36): UI/MinimapButton.lua owns db.minimap's default, which the
 -- General pane's "Minimap button" box reads (in game the TOC loads it
--- before anything is shown; registered after login it back-fills MD.db).
+-- before anything is shown; registered after login it back-fills ST.db).
 -- T119 (SPEC-one-ui 7, re-based): Settings is UI/Settings.lua's views over
 -- UI/Settings_TBC.lua's rows (the options frame, its General and About tabs
--- are gone): "the settings panel exists" asks for MD.Settings and no
--- MD.optionsFrame; the general pane is told by its MANA CLOCK's "Lock in
+-- are gone): "the settings panel exists" asks for ST.Settings and no
+-- ST.optionsFrame; the general pane is told by its MANA CLOCK's "Lock in
 -- place", the danger slider is found on Settings -> Review, About is a view.
-S.Load({ "UI/MinimapButton.lua", "UI/Settings.lua", "UI/Settings_TBC.lua" }, "SpellTuner", MD)
-check("the settings panel exists", MD.Settings ~= nil and MD.SettingsLine ~= nil and MD.optionsFrame == nil)
+S.Load({ "UI/MinimapButton.lua", "UI/Settings.lua", "UI/Settings_TBC.lua" }, "SpellTuner", ST)
+check("the settings panel exists", ST.Settings ~= nil and ST.SettingsLine ~= nil and ST.optionsFrame == nil)
 check("it is a panel, not a window", _G.SpellTunerOptionsFrame == nil,
     tostring(_G.SpellTunerOptionsFrame))
 
 Click(ButtonNamed("Settings"))
-check("Settings is a group of the one window", MD.db.uiPath[1] == "settings",
-    table.concat(MD.db.uiPath, "/"))
-check("it opens on General", MD.db.uiPath[2] == "general", MD.db.uiPath[2])
+check("Settings is a group of the one window", ST.db.uiPath[1] == "settings",
+    table.concat(ST.db.uiPath, "/"))
+check("it opens on General", ST.db.uiPath[2] == "general", ST.db.uiPath[2])
 check("the general pane is in there", ShownText("^Lock in place$") ~= nil)
-MD:SelectView("settings", "review")
+ST:SelectView("settings", "review")
 -- T73 (P29, review U24): db.simFloor is the line for fights built in
 -- Simulate (and a recorded target's fallback); a recorded fight measures its
 -- own. The slider says so, and its tooltip does not call it the scoring line.
@@ -183,7 +183,7 @@ check("the danger slider names built fights, truly", (function()
     end
     local slider = label and label:GetParent()
     if not (slider and slider.onEnter) or Painted("Danger below") then return false end
-    local tip = MD.UI.tooltip
+    local tip = ST.UI.tooltip
     tip.lines = {}
     slider.onEnter()
     local all = {}
@@ -194,7 +194,7 @@ check("the danger slider names built fights, truly", (function()
         and text:find("A recorded fight measures its own line", 1, true) ~= nil
 end)())
 Click(ButtonNamed("About"))
-check("About is one of its views", MD.db.uiPath[2] == "about", MD.db.uiPath[2])
+check("About is one of its views", ST.db.uiPath[2] == "about", ST.db.uiPath[2])
 
 -- T80 (C1 of docs/PLAN-refactor-ux.md, mockup M1): TBC's Settings -> General
 -- gains the Windows pane -- In combat, Close one window per ESC, Text size,
@@ -202,7 +202,7 @@ check("About is one of its views", MD.db.uiPath[2] == "about", MD.db.uiPath[2])
 -- window manager or the theme. A slider is typed into (its box's Enter runs
 -- both callbacks), a dropdown row and a button are clicked.
 check("T80: the Windows pane in Settings -> General writes and applies its five controls", (function()
-    MD:ShowOptionsFrame("general")
+    ST:ShowOptionsFrame("general")
     local wp
     for _, f in ipairs(S.allFrames) do if f.windowsPane then wp = f.windowsPane end end
     if not (wp and wp.combat and wp.esc and wp.font and wp.scale and wp.reset) then return false end
@@ -217,21 +217,21 @@ check("T80: the Windows pane in Settings -> General writes and applies its five 
             if it.id == id and dd.rows and dd.rows[i] then dd.rows[i]:GetScript("OnClick")(dd.rows[i]) end
         end
     end
-    local u = MD.db.ui
+    local u = ST.db.ui
     Pick(wp.combat, "keep")
-    local combat = u.combat == "keep" and MD.Win:CombatMode() == "keep"
+    local combat = u.combat == "keep" and ST.Win:CombatMode() == "keep"
     Pick(wp.combat, "hide")
     combat = combat and u.combat == "hide"
     wp.esc:SetChecked(false); wp.esc.onClick(false, wp.esc)
-    local esc = u.escStack == false and not MD.Win:EscStackOn()
+    local esc = u.escStack == false and not ST.Win:EscStackOn()
     wp.esc:SetChecked(true); wp.esc.onClick(true, wp.esc)
-    esc = esc and u.escStack == true and MD.Win:EscStackOn()
+    esc = esc and u.escStack == true and ST.Win:EscStackOn()
     Type(wp.font, "2")
-    local font = u.fontOffset == 2 and MD.UI.fontOffset == 2
+    local font = u.fontOffset == 2 and ST.UI.fontOffset == 2
     Type(wp.font, "0")
     font = font and u.fontOffset == 0
     Type(wp.scale, "90")
-    local scale = math.abs((u.scale or 0) - 0.9) < 1e-6 and MD.Win:ScalePercent() == 90
+    local scale = math.abs((u.scale or 0) - 0.9) < 1e-6 and ST.Win:ScalePercent() == 90
     Type(wp.scale, "100")
     scale = scale and u.scale == 1
     u.win.main = { x = 5, y = 500 }
@@ -242,9 +242,9 @@ end)())
 
 -- /md options routes into the group instead of opening anything
 Click(ButtonNamed("Spells"))
-MD:ShowOptionsFrame("general")
-check("/md options selects the settings group", MD.db.uiPath[1] == "settings"
-    and MD.db.uiPath[2] == "general", table.concat(MD.db.uiPath, "/"))
+ST:ShowOptionsFrame("general")
+check("/md options selects the settings group", ST.db.uiPath[1] == "settings"
+    and ST.db.uiPath[2] == "general", table.concat(ST.db.uiPath, "/"))
 check("and it did not open a second window", _G.SpellTunerOptionsFrame == nil)
 
 -- the spell-only furniture is not drawn over the settings
@@ -255,12 +255,12 @@ check("the rank table's header lines are hidden in Settings", ShownText("^RANKS$
 --------------------------------------------------------------------------------
 -- Simulate is the third group, not a third window (v0.11.3)
 --------------------------------------------------------------------------------
-S.Load({ "UI/SimWindow.lua" }, "SpellTuner", MD)
+S.Load({ "UI/SimWindow.lua" }, "SpellTuner", ST)
 Click(ButtonNamed("Simulate"))
-check("Simulate is a group of the one window", MD.db.uiPath[1] == "simulate",
-    table.concat(MD.db.uiPath, "/"))
+check("Simulate is a group of the one window", ST.db.uiPath[1] == "simulate",
+    table.concat(ST.db.uiPath, "/"))
 -- v0.15.0: Practice is Simulate's first view
-check("Simulate opens on Practice", MD.db.uiPath[2] == "practice", table.concat(MD.db.uiPath, "/"))
+check("Simulate opens on Practice", ST.db.uiPath[2] == "practice", table.concat(ST.db.uiPath, "/"))
 check("the practice panel has its Start button", ButtonNamed("Start practice") ~= nil)
 Click(ButtonNamed("Build a fight"))
 check("it did not open a third window", _G.SpellTunerSimWindow == nil)
@@ -277,12 +277,12 @@ end)())
 
 -- /md sim selects the group
 Click(ButtonNamed("Spells"))
-MD:ToggleSimWindow()
-check("/md sim selects Simulate", MD.db.uiPath[1] == "simulate", table.concat(MD.db.uiPath, "/"))
+ST:ToggleSimWindow()
+check("/md sim selects Simulate", ST.db.uiPath[1] == "simulate", table.concat(ST.db.uiPath, "/"))
 -- ...and toggles the window when it is already what is showing
-MD:ToggleSimWindow()
+ST:ToggleSimWindow()
 check("/md sim again closes the window", not frame:IsShown())
-MD:ToggleDashboard()
+ST:ToggleDashboard()
 
 --------------------------------------------------------------------------------
 -- Runs is a Reports view, and only once there is a run (v0.11.4)
@@ -290,21 +290,21 @@ MD:ToggleDashboard()
 Click(ButtonNamed("Reports"))
 check("no Runs view before a run exists", ButtonNamed("Runs") == nil)
 
-MD.cdb.runs = { { v = 1, id = 1757000000, name = "Ramparts", zone = "Ramparts", pool = 7009,
+ST.cdb.runs = { { v = 1, id = 1757000000, name = "Ramparts", zone = "Ramparts", pool = 7009,
                   dur = 300, pulls = {}, mana = { t = {}, v = {} },
                   ev = { t = {}, kind = {}, a = {}, b = {} }, zones = { "Ramparts" },
                   stats = { pulls = 0, recorded = 0, wall = 300, combat = 0, combatPct = 0,
                             drinks = 0, drinkTime = 0, deaths = 0, deadTime = 0, spent = 0,
                             manaAtPull = {} } } }
-MD:Fire("RUN_STORED", MD.cdb.runs[1])
+ST:Fire("RUN_STORED", ST.cdb.runs[1])
 check("storing a run makes the view appear", ButtonNamed("Runs") ~= nil)
 Click(ButtonNamed("Runs"))
-check("Runs is a view of Reports", MD.db.uiPath[1] == "reports" and MD.db.uiPath[2] == "Runs",
-    table.concat(MD.db.uiPath, "/"))
+check("Runs is a view of Reports", ST.db.uiPath[1] == "reports" and ST.db.uiPath[2] == "Runs",
+    table.concat(ST.db.uiPath, "/"))
 check("it opens on the run, not on the fights", Painted("run Ramparts") ~= nil,
     Painted("run Ramparts") or "the run line was not painted")
 Click(ButtonNamed("Review"))
-check("Review goes back to the single fights", MD.db.uiPath[2] == "Review", MD.db.uiPath[2])
+check("Review goes back to the single fights", ST.db.uiPath[2] == "Review", ST.db.uiPath[2])
 
 -- On the Runs view the pane's own Fights/run selector must stick: the 2s
 -- ticker calls Refresh, and setting the source there put the run back a second
@@ -398,7 +398,7 @@ rawset(MT, "CreateTexture", function(self, name, layer, tmpl, sub)
     local c = saved.CreateTexture(self); c.layer, c.sublevel = layer, sub; return c
 end)
 
-local UI = MD.UI
+local UI = ST.UI
 local T30_COLS = {
     { key = "rank",  x = 8,   w = 52,  label = "Rank" },
     { key = "pm",    x = 60,  w = 116, label = "Per mana", justify = "RIGHT", type = "bar", barWidth = 72, gap = 4 },
@@ -406,7 +406,7 @@ local T30_COLS = {
     { key = "tag",   x = 234, w = 60,  label = "", font = UI.FONT_SMALL },
 }
 local t30rows, t30updates = {}, 0
-local t30 = MD.DashboardParts.CreateTable(CreateFrame("Frame"), 556, {
+local t30 = ST.DashboardParts.CreateTable(CreateFrame("Frame"), 556, {
     cols = T30_COLS, font = UI.FONT, rowHeight = 20, headerHeight = 22, rowWidth = 540,
     zebra = true, marker = "bar",
     render = function(row, r, color)
@@ -528,12 +528,12 @@ check("T30 bar header: the label over the whole column, the header 22 tall", hpm
 --------------------------------------------------------------------------------
 -- T81 (C2 of docs/PLAN-refactor-ux.md, review A23): one table -- a table
 -- without opts.render is refused. T120: the TBC rank table's own checks
--- (MD.DashboardParts.CreateRankTable, UI/SpellsView_TBC.lua's) went with the
+-- (ST.DashboardParts.CreateRankTable, UI/SpellsView_TBC.lua's) went with the
 -- view; the shared pane's RANKS are tools/spellsui.lua's (tbc).
 --------------------------------------------------------------------------------
 do
-    local okNil = pcall(MD.DashboardParts.CreateTable, CreateFrame("Frame"), 700)
-    local okNoRender = pcall(MD.DashboardParts.CreateTable, CreateFrame("Frame"), 700, { cols = {} })
+    local okNil = pcall(ST.DashboardParts.CreateTable, CreateFrame("Frame"), 700)
+    local okNoRender = pcall(ST.DashboardParts.CreateTable, CreateFrame("Frame"), 700, { cols = {} })
     check("T81: CreateTable refuses a table without opts.render (the second table is gone)",
         okNil == false and okNoRender == false)
 end
@@ -548,7 +548,7 @@ for k, fn in pairs(saved) do rawset(MT, k, fn) end
 -- are right-justified in Arial Narrow on 20-px rows, the words are not.
 --------------------------------------------------------------------------------
 do
-    local OH = MD.Overheal
+    local OH = ST.Overheal
     local realRows = OH.SpellRows
     local fake = {}
     for i = 1, 40 do
@@ -560,7 +560,7 @@ do
     wparent:SetSize(760, 300)
     local justify = rawget(MT, "SetJustifyH") -- recorded while the rows are built, as T30's are
     rawset(MT, "SetJustifyH", function(self, j) self.justify = j end)
-    local waste = MD.DashboardParts.CreateWaste(wparent, 760)
+    local waste = ST.DashboardParts.CreateWaste(wparent, 760)
     waste.frame:SetSize(760, 300)
     waste.frame:Show()
     waste:Render()
@@ -614,7 +614,7 @@ end
 --------------------------------------------------------------------------------
 do
     local parent = CreateFrame("Frame")
-    local api = MD.DashboardParts.CreateTable(parent, 400, {
+    local api = ST.DashboardParts.CreateTable(parent, 400, {
         cols = { { key = "casts", x = 8, w = 60, label = "Casts", tooltip = "Chain casts from a full pool." },
                  { key = "plain", x = 80, w = 60, label = "Plain" } },
         render = function() end,
@@ -637,14 +637,14 @@ do
     -- UI/SpellsView_TBC.lua; the shared pane's headers are tools/spellsui.lua's
     check("T76: a header label shows its column's tooltip", header ~= nil and hit ~= nil and shown
         and hits.plain == nil and not GameTooltip:IsShown()
-        and not (MD.Tip.Skinned and MD.Tip:Skinned(GameTooltip)),
+        and not (ST.Tip.Skinned and ST.Tip:Skinned(GameTooltip)),
         string.format("header=%s hit=%s lines=%d plain=%s", tostring(header ~= nil), tostring(hit ~= nil), #l,
             tostring(hits.plain ~= nil)))
 
     local FrameMT = getmetatable(UIParent)
     local saved = rawget(FrameMT, "SetMotionScriptsWhileDisabled")
     FrameMT.SetMotionScriptsWhileDisabled = function(self, v) self.motionWhileDisabled = v end
-    local b = MD.UI.CreateButton(UIParent, "Coach", "accent", { 64, 20 }, nil, nil, nil, nil, "Coach")
+    local b = ST.UI.CreateButton(UIParent, "Coach", "accent", { 64, 20 }, nil, nil, nil, nil, "Coach")
     FrameMT.SetMotionScriptsWhileDisabled = saved
     check("T76/T80: a disabled TBC button keeps its motion scripts (the theme's)", b.motionWhileDisabled == true,
         tostring(b.motionWhileDisabled))

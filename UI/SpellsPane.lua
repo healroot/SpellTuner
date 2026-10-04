@@ -8,10 +8,10 @@
 -- view row, a 172-px list down the content's left edge -- MY SPELLS,
 -- Overview, then one row per family of the player's own list
 -- (Spells/Tabs.lua, T35), each row a real nav view ("fam:<family>"), so
--- db.uiPath remembers it and MD:SelectView("spells", "fam:Rejuvenation")
+-- db.uiPath remembers it and ST:SelectView("spells", "fam:Rejuvenation")
 -- works. [ + Add ] opens the picker, a sheet over the spell view only (the
 -- rail stays live under it); a spell dragged from the spellbook onto the rail
--- goes in at the drop row, read through MD.API.CursorInfo -- the cursor is
+-- goes in at the drop row, read through ST.API.CursorInfo -- the cursor is
 -- NEVER cleared (a spell picked off an action bar is off the bar; clearing it
 -- would delete the player's button). /st spell <name> opens a family's view,
 -- or its preview with a banner when it is not in the list.
@@ -30,7 +30,7 @@
 -- shows is unchanged (tools/spellsui.lua byte for byte).
 --
 -- T120 (docs/SPEC-one-ui.md 2, 3.3, 10 W3; mockup M1, M3, M4): on every main
--- TOC. Everything the pane draws comes from MD.Book's contract (T117) --
+-- TOC. Everything the pane draws comes from ST.Book's contract (T117) --
 -- Spells/Book.lua on Forever, Spells/Book_Model.lua on TBC (T118): the pool
 -- (Book:Pool, the "~" only on a modelled one), the caster's bonus
 -- (Book:Bonus: the header's second right-hand line), a family by
@@ -39,20 +39,20 @@
 -- note ("with Nature's Grace averaged"), the +Healing pair (entry.bonus),
 -- After oh. (entry.afterOverheal) and Lifebloom's rolled rows
 -- (entry.variants). What differs by line is a value the line installs,
--- MD.SpellsLine (the footer, RANKS' note, the Crit note, the After overheal
+-- ST.SpellsLine (the footer, RANKS' note, the Crit note, the After overheal
 -- switch, Overview's note) -- never a client check (apicheck rule 10).
 --
--- Client data only through MD.API (the book, the cursor, the tooltip); the
+-- Client data only through ST.API (the book, the cursor, the tooltip); the
 -- widget toolkit is not a client call (CLAUDE.md, T1b).
-local _, MD = ...
-local UI = MD.UI
+local _, ST = ...
+local UI = ST.UI
 -- T67 (P23, review A13): how a rank's cost, cast, per second, casts and
 -- value are said is Spells/Words.lua's, shared with the spell tooltip's
 -- block; this file picks the styles of 3.5 / 3.6 and the colours.
-local Words = MD.Words
+local Words = ST.Words
 
 local SpellsPane = {}
-MD.SpellsPane = SpellsPane
+ST.SpellsPane = SpellsPane
 
 -- 3.2 / 4.3 metrics at font offset 0; every vertical pitch below goes through
 -- UI.Pitch (4.2), so it grows with a positive offset.
@@ -60,7 +60,7 @@ MD.SpellsPane = SpellsPane
 -- UI/SpellRail.lua.)
 local HEADER_H = 48         -- a family view's header
 local BANNER_H = 20         -- the preview banner
-local VIEW_PREFIX = MD.SpellRail.VIEW_PREFIX -- "fam:", both lines (T84)
+local VIEW_PREFIX = ST.SpellRail.VIEW_PREFIX -- "fam:", both lines (T84)
 
 local function Pitch(n)
     if UI.Pitch then return UI.Pitch(n) end
@@ -76,17 +76,17 @@ local RESET = "|r"
 -- The probe's escaping (a literal backslash doubled first, then a pipe as
 -- "||", then any non-ASCII/control byte as "\ddd"), so every client-read name
 -- on screen, in a tooltip or in the export stays ASCII with no bare pipe. Its
--- one copy is MD.Text.EscASCII in Core.lua (T60, P16, review A9); every caller
+-- one copy is ST.Text.EscASCII in Core.lua (T60, P16, review A9); every caller
 -- below hands it a string or nil (nil is "", as it was here).
-local Esc = MD.Text.EscASCII
+local Esc = ST.Text.EscASCII
 
 -- A number that is nil renders "-", never 0 (CLAUDE.md).
 local Num = Words.Num
 
-local function Book() return MD.Book end
-local function Tabs() return MD.Tabs end
+local function Book() return ST.Book end
+local function Tabs() return ST.Tabs end
 
-local FamilyKey = MD.SpellRail.FamilyKey
+local FamilyKey = ST.SpellRail.FamilyKey
 
 --------------------------------------------------------------------------------
 -- Cells every table in the pane shares (the RANKS table, Whole book, the
@@ -106,7 +106,7 @@ end
 -- T120: the book's pool -- { max, mana, regenCasting, modelled } (T117):
 -- the clock's modelled pool on Forever, the live one on TBC.
 local function Pool()
-    return MD.Book:Pool()
+    return ST.Book:Pool()
 end
 
 -- T120: what differs by line (installed by each dashboard before the pane
@@ -114,7 +114,7 @@ end
 -- word(fam) }, overviewNote(), whatIf (T122). Absent fields are nil.
 local DEFAULT_FOOTER = "Values come from the spell's own text. ~ = modelled."
 local function Line()
-    return (type(MD.SpellsLine) == "table") and MD.SpellsLine or {}
+    return (type(ST.SpellsLine) == "table") and ST.SpellsLine or {}
 end
 local function FooterText()
     local t = Line().footer
@@ -139,27 +139,27 @@ end
 
 -- T122 (docs/tasks/T122-what-if.md, mockup M2): the What if
 -- (Spells/WhatIf.lua) is a lens on this pane only. While it is active the
--- view, Overview and the rail read the what-if book (MD.WhatIf:Book()) and
+-- view, Overview and the rail read the what-if book (ST.WhatIf:Book()) and
 -- count casts from the what-if pool; the live book stays what every other
 -- surface reads. The pane's open state is per session (SpellsPane.whatIfOpen).
-local function WhatIf() return MD.WhatIf end
+local function WhatIf() return ST.WhatIf end
 local function WIActive()
-    local w = MD.WhatIf
+    local w = ST.WhatIf
     return w ~= nil and w:Active() or false
 end
 -- The pool the view counts from: the live one, or the what-if's over it.
 local function ViewPool()
     local p = Pool()
-    if WIActive() then return MD.WhatIf:Pool(p) end
+    if WIActive() then return ST.WhatIf:Pool(p) end
     return p
 end
 -- The book the view draws: the what-if book while active, else the live one.
 local function ViewBook()
     if WIActive() then
-        local b = MD.WhatIf:Book()
+        local b = ST.WhatIf:Book()
         if type(b) == "table" and type(b.families) == "table" then return b end
     end
-    return MD.Book:Get()
+    return ST.Book:Get()
 end
 -- An entry as its cells show it (After overheal's numbers over the entry).
 local function ShownEntry(e, after)
@@ -197,13 +197,13 @@ local function Str(v)
 end
 
 local function ExportText()
-    local book = MD.Book:Get()
+    local book = ST.Book:Get()
 
-    local name = MD.API.UnitName("player")
-    local realm = MD.API.RealmName()
-    local locClass, classToken = MD.API.UnitClass("player")
+    local name = ST.API.UnitName("player")
+    local realm = ST.API.RealmName()
+    local locClass, classToken = ST.API.UnitClass("player")
     if type(locClass) ~= "string" or type(classToken) ~= "string" then classToken = nil end
-    local level = MD.API.UnitLevel("player")
+    local level = ST.API.UnitLevel("player")
     local levelText = (type(level) == "number") and tostring(level) or "?"
 
     local lines = {}
@@ -248,7 +248,7 @@ end
 --      bar, the fills, the tags; no gold, no star, no legend);
 --   4. the rank card for the selected rank (the suggested one by default),
 --      and one footer line.
--- A row's hover is the game's own tooltip for that rank (MD.API.
+-- A row's hover is the game's own tooltip for that rank (ST.API.
 -- SetTooltipSpell), the SpellTuner block under it from the Spell post-call,
 -- or added here when the post-call did not run. The 2-s tick updates the
 -- header's mana, the card's Now and the To OOM cells in place; a full render
@@ -268,7 +268,7 @@ local CARD_LABEL_W = 70
 local CARD_VALUE_W = CARD_COL - CARD_LABEL_W - 8          -- a pair in its column
 local CARD_WIDE_W = VIEW_W - 8 - CARD_LABEL_W - 2 - 8     -- T120: a pair across the row
 local TIP_GAP = 6           -- the row tooltip's distance from the row
-local SUGGESTED_RULE = Words.SuggestedRule() -- the floor is MD.Rules.SUGGESTED_FLOOR (T67)
+local SUGGESTED_RULE = Words.SuggestedRule() -- the floor is ST.Rules.SUGGESTED_FLOOR (T67)
 local GAP_TEXT = 'not in your spellbook - untrained, or hidden by "show all ranks"'
 local RANKS_NOTE_W = 300     -- RANKS' title-row note (T120)
 local SIDE_W = 130          -- the strip's right column: After overheal (T120)
@@ -441,7 +441,7 @@ end
 -- known): the painted text and the full sentence. `width` is the room
 -- beside the chip; b == a is the "also the best" line.
 local function CompareFit(measure, a, b, kind, width)
-    local c = (a ~= b) and MD.Book:Compare(a, b) or nil
+    local c = (a ~= b) and ST.Book:Compare(a, b) or nil
     if a ~= b and not c then return "", "" end
     local function Say(style)
         if a == b then return Words.CompareSame(style) end
@@ -461,7 +461,7 @@ end
 -- live (pool.modelled false, TBC) has no "~": "6500 / 6500 mana".
 local function HeaderManaText(pool)
     -- T122: a typed Mana in the accent
-    local typed = WIActive() and MD.WhatIf:Get("mana") or nil
+    local typed = WIActive() and ST.WhatIf:Get("mana") or nil
     if type(typed) == "number" and type(pool) == "table" and type(pool.max) == "number" then
         return UI.Hex("accent") .. Num(pool.mana or pool.max) .. " / " .. Num(pool.max) .. " mana" .. RESET
     end
@@ -490,16 +490,16 @@ end
 -- other placed tooltip; this file only asks for it.
 --------------------------------------------------------------------------------
 local function Place(tt, row)
-    MD.Tip:Place(tt, row, "beside")
+    ST.Tip:Place(tt, row, "beside")
 end
 
 -- The kit tooltip (a gap row, a rank not learned, the chip): a title and
 -- its lines, every colour passed, so no default gold is inherited. T76: the
 -- kit's shape (Tip.Simple: title in `text`, the rest in `text2`, wrapped)
--- through MD.Tip:Kit, placed beside.
+-- through ST.Tip:Kit, placed beside.
 local function KitTip(owner, title, ...)
     if not UI.tooltip then return end
-    MD.Tip:Kit(owner, MD.Tip.Simple({ title, ... }), { anchor = "beside" })
+    ST.Tip:Kit(owner, ST.Tip.Simple({ title, ... }), { anchor = "beside" })
 end
 
 local function RankName(fam, rank)
@@ -512,7 +512,7 @@ end
 -- T76 (P32, review U2; decision 7): still GameTooltip -- whether the Spell
 -- post-call fires for SetSpellByID on another tooltip is unverified on
 -- Forever -- with its content kept and the kit skin laid on it while this
--- row owns it (MD.Tip:Skin; off again when it hides or another owner
+-- row owns it (ST.Tip:Skin; off again when it hides or another owner
 -- clears it), so it reads as the same tooltip as the rest of the window.
 local function GameTip(row, fam, e)
     local tt = GameTooltip
@@ -520,18 +520,18 @@ local function GameTip(row, fam, e)
     tt:ClearAllPoints()
     tt:SetPoint("TOPLEFT", row, "TOPRIGHT", TIP_GAP, 0)
     tt._spellTipId = nil
-    local shown = MD.API.SetTooltipSpell(tt, e.id)
+    local shown = ST.API.SetTooltipSpell(tt, e.id)
     if not shown then
         tt:AddLine(RankName(fam, e.rank), UI.RGB("text"))
     end
-    if tt._spellTipId ~= e.id and MD.SpellTip then
-        local ok, lines = pcall(MD.SpellTip.Lines, MD.SpellTip, e.id, MD.SpellTip:DetailShown())
+    if tt._spellTipId ~= e.id and ST.SpellTip then
+        local ok, lines = pcall(ST.SpellTip.Lines, ST.SpellTip, e.id, ST.SpellTip:DetailShown())
         if ok and type(lines) == "table" then
             tt:AddLine(" ")
-            MD.SpellTip:Render(tt, lines)
+            ST.SpellTip:Render(tt, lines)
         end
     end
-    MD.Tip:Skin(tt, row)
+    ST.Tip:Skin(tt, row)
     tt:Show()
     Place(tt, row)
 end
@@ -711,7 +711,7 @@ end
 -- against the full pool SpellsPane:UpdateFamilyLive read once for the tick.
 local function UpdateRankRow(row, r)
     if r.kind ~= "rank" or not row.cells.toOOM then return end -- T120: a variant keeps its own
-    r.fullCasts = MD.Book:CastsFor(r.entry, SpellsPane.liveFull or FullPool(ViewPool()))
+    r.fullCasts = ST.Book:CastsFor(r.entry, SpellsPane.liveFull or FullPool(ViewPool()))
     local color = (r.wiDiff and r.wiDiff.casts) and UI.Hex("accent") or (r.color or "") -- T122
     row.cells.toOOM:SetText(color .. CastsWord(r.fullCasts) .. RESET)
 end
@@ -795,11 +795,11 @@ local function FamilyRows(fam, pool, liveFam, livePool)
         local r = { kind = "rank", rank = e.rank, entry = e, id = e.id, family = fam,
             known = e.known, suggested = e.suggested, dominated = e.dominated,
             isMax = (fam.maxKnown == e), maxPerMana = maxPerMana, after = after,
-            fullCasts = MD.Book:CastsFor(e, full) }
+            fullCasts = ST.Book:CastsFor(e, full) }
         rows[#rows + 1] = r
         local l = liveBy and e.id ~= nil and liveBy[e.id]
         if l then
-            local lw = WI.CellWords(ShownEntry(l, after), MD.Book:CastsFor(l, liveFull))
+            local lw = WI.CellWords(ShownEntry(l, after), ST.Book:CastsFor(l, liveFull))
             local ww = WI.CellWords(ShownEntry(e, after), r.fullCasts)
             local diff = {}
             for k, v in pairs(ww) do
@@ -951,7 +951,7 @@ local function NowWord(e, pool)
     if type(pool.mana) ~= "number" then
         return UI.Hex("muted") .. "mana not modelled yet" .. RESET
     end
-    local now = MD.Book:CastsFor(e, pool)
+    local now = ST.Book:CastsFor(e, pool)
     local mana = UI.Hex("mana")
     if now == math.huge then return "never - regen keeps up" end
     local tilde = pool.modelled and "~" or "" -- T120: only on a modelled pool
@@ -981,7 +981,7 @@ local function UpdateCardLive(f, pool)
     local card = f.card
     local e = card.entry
     if not e then return end
-    if card.toOOMPair then card.toOOMPair.value:SetText(ToOOMWord(MD.Book:CastsFor(e, FullPool(pool)))) end
+    if card.toOOMPair then card.toOOMPair.value:SetText(ToOOMWord(ST.Book:CastsFor(e, FullPool(pool)))) end
     if card.nowPair then card.nowPair.value:SetText(NowWord(e, pool)) end
 end
 
@@ -1073,7 +1073,7 @@ local function Tables(f)
     local t = f.tables[k]
     if not t then
         local function Make(cols, header)
-            local api = MD.DashboardParts.CreateTable(f.ranks, VIEW_W, {
+            local api = ST.DashboardParts.CreateTable(f.ranks, VIEW_W, {
                 cols = cols, header = header,
                 font = UI.FONT_NUM or UI.FONT, wideFont = UI.FONT_SMALL,
                 rowHeight = rowH, headerHeight = headH, headerRule = true,
@@ -1118,11 +1118,11 @@ end
 -- live in a drawer, a 220-wide panel outside the main window's right edge (its
 -- left edge when the right one would leave the screen), a child of the window
 -- so it moves, scales and hides with it. The spell view's layout is the same
--- open or closed. STATS (MD.WhatIf.STATS) stacked: a label, under it a box
+-- open or closed. STATS (ST.WhatIf.STATS) stacked: a label, under it a box
 -- empty with the live value in grey until typed, - / + where the row steps
 -- (Shift: the big step), the unit or the typed change in the accent; the
 -- class rows (the provider's, TBC's Form and Moonglow) or the provider's
--- sentence below; Clear on the title row; the changes (MD.WhatIf.Changes)
+-- sentence below; Clear on the title row; the changes (ST.WhatIf.Changes)
 -- at the foot. Nothing here is saved.
 --------------------------------------------------------------------------------
 local DRAWER_W = 220         -- the drawer's width (mockup M2)
@@ -1149,7 +1149,7 @@ local function StepWhatIf(key, dir)
     local WI = WhatIf()
     local stat = WI and WI.STAT_BY[key]
     if not (stat and stat.step) then return end
-    local big = MD.API.IsShiftKeyDown and MD.API.IsShiftKeyDown() == true
+    local big = ST.API.IsShiftKeyDown and ST.API.IsShiftKeyDown() == true
     local step = (big and stat.bigStep) or stat.step
     local base = WI:Get(key)
     if type(base) ~= "number" then base = WI:Live()[key] end
@@ -1404,12 +1404,12 @@ local function BuildWhatIf(win)
     -- Marked as the window's companion: TopWindow passes over it (a copy box
     -- centres on the window), and the stack turned back on pushes it again.
     local function OnEsc() SpellsPane:CloseWhatIf() end
-    if MD.Win and MD.Win.Companion then MD.Win:Companion(d, OnEsc) end
+    if ST.Win and ST.Win.Companion then ST.Win:Companion(d, OnEsc) end
     d:SetScript("OnShow", function(self)
         SpellsPane:PlaceDrawer()
-        MD.API.After(0, function()
-            if self:IsVisible() and MD.Win and MD.Win.Push then
-                MD.Win:Push(self, OnEsc)
+        ST.API.After(0, function()
+            if self:IsVisible() and ST.Win and ST.Win.Push then
+                ST.Win:Push(self, OnEsc)
             end
         end)
     end)
@@ -1749,7 +1749,7 @@ local function BuildFamily(host)
     card.stale:SetText("Text read before combat - may be out of date")
     card.stale:Hide()
     f.card = card
-    -- T120: RANKS' note on its title row (MD.SpellsLine.ranksNote)
+    -- T120: RANKS' note on its title row (ST.SpellsLine.ranksNote)
     f.ranksNote = f.ranks:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
     f.ranksNote:SetPoint("BOTTOMRIGHT", f.ranks.line or f.ranks, f.ranks.line and "TOPRIGHT" or "TOPRIGHT", 0, 3)
     f.ranksNote:SetJustifyH("RIGHT")
@@ -1766,12 +1766,12 @@ local function BuildFamily(host)
 
     -- the refresh split (3.5): every 2 s while shown, the live numbers in
     -- place, or a full render when what the view was drawn from changed
-    MD:OnTick(function()
+    ST:OnTick(function()
         if not f:IsVisible() or not f.key then return end
         local now = GetTime()
         if f.lastTick and (now - f.lastTick) < 2 then return end
         f.lastTick = now
-        MD.Book:Get() -- a changed book fires BOOK_CHANGED here, and bumps bookGen
+        ST.Book:Get() -- a changed book fires BOOK_CHANGED here, and bumps bookGen
         if SpellsPane:Signature(f.key, f.preview) ~= f.signature then
             SpellsPane:RenderFamily(f.key, f.preview)
         else
@@ -1788,12 +1788,12 @@ SpellsPane.bookGen = 0
 function SpellsPane:Signature(key, preview)
     -- T120: the book's bonus (Book:Bonus: the last plain reading on Forever,
     -- the model's on TBC) and the After overheal switch
-    local bonus, stale = MD.Book:Bonus("heal")
+    local bonus, stale = ST.Book:Bonus("heal")
     if type(bonus) == "number" then self.lastBonus = bonus end
     local pool = Pool()
     return table.concat({ tostring(key), tostring(preview and true or false), tostring(self.bookGen),
         tostring(self.lastBonus), tostring(stale), tostring(pool.max), tostring(Pitch(TABLE_ROW)),
-        tostring(AfterOn()), tostring(MD.WhatIf and MD.WhatIf.serial) }, "|") -- T122: the what-if
+        tostring(AfterOn()), tostring(ST.WhatIf and ST.WhatIf.serial) }, "|") -- T122: the what-if
 end
 
 -- T120: the header's bonus line for a family: "+450 healing", "+300 Nature
@@ -1804,7 +1804,7 @@ local function BonusLine(fam)
     -- T124: a typed +Spell damage the same way on a damage family
     local typed
     if WIActive() then
-        typed = MD.WhatIf:Get(fam.kind)
+        typed = ST.WhatIf:Get(fam.kind)
     end
     if type(typed) == "number" then
         local word = "healing"
@@ -1814,7 +1814,7 @@ local function BonusLine(fam)
         return UI.Hex("accent") .. "+" .. Num(typed) .. " " .. word .. RESET .. " " .. UI.Hex("muted")
             .. "what if" .. RESET, false
     end
-    local amount, stale = MD.Book:Bonus(fam.kind, fam.school)
+    local amount, stale = ST.Book:Bonus(fam.kind, fam.school)
     if type(amount) ~= "number" then return "", false end
     local what = "healing"
     if fam.kind == "damage" then
@@ -1916,12 +1916,12 @@ function SpellsPane:RenderFamily(key, preview)
 
     -- T122: the what-if book while the what-if is active (the live family
     -- beside it for the changes)
-    local liveBook = MD.Book:Get()
+    local liveBook = ST.Book:Get()
     local book = ViewBook()
-    local fam = MD.Tabs:Resolve(key, book)
+    local fam = ST.Tabs:Resolve(key, book)
     local liveFam = fam
     if book ~= liveBook then
-        liveFam = MD.Tabs:Resolve(key, liveBook)
+        liveFam = ST.Tabs:Resolve(key, liveBook)
         if type(liveFam) ~= "table" then liveFam = nil end
     end
     if type(fam) ~= "table" then
@@ -2129,7 +2129,7 @@ local MINE_COLS = {
 local BOOK_HEADER = { [4] = "Value" }
 
 local function OverviewMode()
-    local ui = MD.db and MD.db.ui
+    local ui = ST.db and ST.db.ui
     local m = (type(ui) == "table") and ui.overview or SpellsPane.overviewMode
     if m == "book" or m == "mine" then return m end
     return "mine"
@@ -2262,7 +2262,7 @@ end
 -- One family: its header, a stale note, then 3.5's rows (FamilyRows).
 local function AddBookFamily(rows, fam, pool)
     local key = fam.key or fam.name
-    rows[#rows + 1] = { kind = "family", family = fam, key = key, listed = MD.Tabs:Has(key) }
+    rows[#rows + 1] = { kind = "family", family = fam, key = key, listed = ST.Tabs:Has(key) }
     local stale = false
     for _, e in ipairs(fam.ranks) do if e.stale then stale = true end end
     if stale then
@@ -2341,7 +2341,7 @@ end
 
 local function UpdateMineRow(row, r)
     if r.stale or not r.suggestedEntry or not r.family.kind then return end
-    r.fullCasts = MD.Book:CastsFor(r.suggestedEntry, SpellsPane.liveFull or FullPool(Pool()))
+    r.fullCasts = ST.Book:CastsFor(r.suggestedEntry, SpellsPane.liveFull or FullPool(Pool()))
     row.cells.toOOM:SetText((r.color or "") .. CastsWord(r.fullCasts) .. RESET)
 end
 
@@ -2367,12 +2367,12 @@ end
 local function MineRows(book, pool)
     local rows = {}
     local full = FullPool(pool)
-    for _, key in ipairs(MD.Tabs:Get(book)) do
-        local fam = MD.Tabs:Resolve(key, book)
+    for _, key in ipairs(ST.Tabs:Get(book)) do
+        local fam = ST.Tabs:Resolve(key, book)
         if type(fam) == "table" then
             local s = fam.suggested
             rows[#rows + 1] = { kind = "mine", key = key, family = fam, suggestedEntry = s,
-                fullCasts = s and MD.Book:CastsFor(s, full) or nil }
+                fullCasts = s and ST.Book:CastsFor(s, full) or nil }
         else
             rows[#rows + 1] = { kind = "mine", key = key, stale = true, known = false }
         end
@@ -2393,7 +2393,7 @@ local function OverviewTables(pane)
     if not t then
         local content = pane.scroll.content
         local function Make(cols, header, wideFont, render, onUpdate, onEnter)
-            local api = MD.DashboardParts.CreateTable(content, VIEW_W, {
+            local api = ST.DashboardParts.CreateTable(content, VIEW_W, {
                 cols = cols, header = header,
                 font = UI.FONT_NUM or UI.FONT, wideFont = wideFont,
                 rowHeight = rowH, headerHeight = headH, headerRule = true,
@@ -2461,13 +2461,13 @@ end
 -- bonus-healing reading, the pool's max, the pitch (SpellsPane:Signature)
 -- and the list.
 local function OverviewSignature(mode)
-    local list = MD.Tabs and MD.Tabs:Get() or {}
+    local list = ST.Tabs and ST.Tabs:Get() or {}
     return SpellsPane:Signature("overview:" .. mode, false) .. "|" .. table.concat(list, ",")
 end
 
 function SpellsPane:RenderOverview()
     local pane = self.overview
-    if not (pane and MD.Book and MD.Tabs) then return end
+    if not (pane and ST.Book and ST.Tabs) then return end
     local mode = OverviewMode()
     if pane.highlightMode then pane.highlightMode(mode) end
     local t = OverviewTables(pane)
@@ -2547,7 +2547,7 @@ end
 
 function SpellsPane:SetOverviewMode(mode)
     if mode ~= "mine" and mode ~= "book" then return end
-    local ui = MD.db and MD.db.ui
+    local ui = ST.db and ST.db.ui
     if type(ui) == "table" then ui.overview = mode end
     self.overviewMode = mode
     if self.overview and self.overview:IsVisible() then self:RenderOverview() end
@@ -2557,7 +2557,7 @@ end
 -- stays where it is; the rail follows (ListChanged), and the header reads
 -- "listed".
 function SpellsPane:AddFromBook(key)
-    if type(key) ~= "string" or not MD.Tabs:Add(key, nil) then return end
+    if type(key) ~= "string" or not ST.Tabs:Add(key, nil) then return end
     if self.preview == key then self.preview = nil end
     self:ListChanged()
     if self.overview and self.overview:IsVisible() then self:RenderOverview() end
@@ -2587,7 +2587,7 @@ local function BuildOverview(host)
     local exportBtn = UI.CreateButton(pane, "Export", "accent-hover", { 70, 20 })
     exportBtn:SetPoint("TOPLEFT", pane, "TOPLEFT", VIEW_W - 70, 0)
     exportBtn:SetScript("OnClick", function()
-        MD:ShowCopyPopup("SpellTuner spellbook", ExportText())
+        ST:ShowCopyPopup("SpellTuner spellbook", ExportText())
     end)
     pane.exportBtn = exportBtn
 
@@ -2621,7 +2621,7 @@ local function BuildOverview(host)
     UI.Tint(footer, "text", "muted")
     footer:SetText(FooterText())
     pane.footer = footer
-    -- T120: MD.SpellsLine.overviewNote's line, over the table
+    -- T120: ST.SpellsLine.overviewNote's line, over the table
     local note = content:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
     note:SetPoint("TOPLEFT", content, "TOPLEFT", 8, 0)
     note:SetWidth(VIEW_W - 16)
@@ -2634,11 +2634,11 @@ local function BuildOverview(host)
     -- every 2 s while shown (T10's rule): a full render when what the table
     -- was drawn from changed, else the To OOM cells in place (3.5's split);
     -- the master ticker runs at 0.5 s and this never fires while hidden
-    MD:OnTick(function()
+    ST:OnTick(function()
         if not pane:IsVisible() then return end
         local now = GetTime()
         if pane.lastRefresh and (now - pane.lastRefresh) < 2 then return end
-        MD.Book:Get() -- a changed book fires BOOK_CHANGED here, and bumps bookGen
+        ST.Book:Get() -- a changed book fires BOOK_CHANGED here, and bumps bookGen
         if OverviewSignature(OverviewMode()) ~= pane.signature then
             SpellsPane:RenderOverview()
         else
@@ -2681,8 +2681,8 @@ end
 -- RefreshFooter / CanDrop / Drop / RefreshPicker / OpenPicker / Group /
 -- Attach and the fields nav / addBtn / undoText / undoBtn / picker are as
 -- they were.
-MD.SpellRail.Install(SpellsPane, {
-    source = function() return MD.Book and ViewBook() or nil end, -- T122
+ST.SpellRail.Install(SpellsPane, {
+    source = function() return ST.Book and ViewBook() or nil end, -- T122
     row = function(fam, key)
         local rep = fam.maxKnown or (fam.ranks and fam.ranks[1])
         local rank = fam.suggested and fam.suggested.rank
@@ -2711,14 +2711,14 @@ function SpellsPane:Show(view)
         self.preview = nil
         ShowOnly("family")
         self:RenderFamily(key, false)
-        if MD.Tabs:IsNew(key) then
-            MD.Tabs:MarkSeen(key)
+        if ST.Tabs:IsNew(key) then
+            ST.Tabs:MarkSeen(key)
             self:RefreshRail()
         end
         return
     end
     local pv = self.preview
-    if pv and MD.Tabs:Has(pv) then pv = nil; self.preview = nil end
+    if pv and ST.Tabs:Has(pv) then pv = nil; self.preview = nil end
     if pv then
         ShowOnly("family")
         self:RenderFamily(pv, true)
@@ -2742,12 +2742,12 @@ end
 -- A family's view, or its preview when it is not in the list (3.6).
 function SpellsPane:OpenFamily(key)
     if type(key) ~= "string" then return end
-    if MD.Tabs:Has(key) then
+    if ST.Tabs:Has(key) then
         self.preview = nil
-        return MD:SelectView("spells", VIEW_PREFIX .. key)
+        return ST:SelectView("spells", VIEW_PREFIX .. key)
     end
     self.preview = key
-    MD:SelectView("spells", "overview")
+    ST:SelectView("spells", "overview")
     -- refused (a practice session holds the screen): nothing left pending
     local nav = self.nav
     local g, v
@@ -2759,18 +2759,18 @@ end
 
 function SpellsPane:AddFromPreview(key)
     self.preview = nil
-    MD.Tabs:Add(key, nil)
+    ST.Tabs:Add(key, nil)
     self:ListChanged()
-    MD:SelectView("spells", VIEW_PREFIX .. key)
+    ST:SelectView("spells", VIEW_PREFIX .. key)
 end
 
 -- /st spell <name>: an exact name first, then a prefix; the player's list
 -- before the rest of the book; case-insensitive.
 function SpellsPane:Find(text)
     local want = (type(text) == "string" and text or ""):lower()
-    if want == "" or not MD.Book then return nil end
-    local book = MD.Book:Get()
-    local listed = MD.Tabs:Get(book)
+    if want == "" or not ST.Book then return nil end
+    local book = ST.Book:Get()
+    local listed = ST.Tabs:Get(book)
     local function Scan(list, exact)
         for _, key in ipairs(list) do
             -- T120: a family's key or its name ("HealingTouch" / "Healing Touch")
@@ -2786,16 +2786,16 @@ end
 
 function SpellsPane:Open(text)
     text = strtrim(type(text) == "string" and text or "")
-    if text == "" then return MD:SelectView("spells") end
+    if text == "" then return ST:SelectView("spells") end
     local key = self:Find(text)
     if not key then
-        MD:Print("spell: no spell in your spellbook starts with '" .. Esc(text) .. "'")
+        ST:Print("spell: no spell in your spellbook starts with '" .. Esc(text) .. "'")
         return
     end
     return self:OpenFamily(key)
 end
 
-function MD:OpenSpell(text)
+function ST:OpenSpell(text)
     return SpellsPane:Open(text)
 end
 
@@ -2813,7 +2813,7 @@ end
 
 -- T77 (P33, review A31): the kit's FONTS_CHANGED, once the fonts are
 -- re-sized (it wrapped UI.ApplyFonts before)
-MD:RegisterCallback("FONTS_CHANGED", function() SpellsPane:FontsChanged() end)
+ST:RegisterCallback("FONTS_CHANGED", function() SpellsPane:FontsChanged() end)
 
 -- T107: a style switch re-renders what is shown -- the rail's rows and the
 -- view's rows are built from token codes at render (the kit's STYLE_CHANGED,
@@ -2825,7 +2825,7 @@ function SpellsPane:StyleChanged()
     local group, view = nav:Selected()
     if group == "spells" then self:Show(view) end
 end
-MD:RegisterCallback("STYLE_CHANGED", function() SpellsPane:StyleChanged() end)
+ST:RegisterCallback("STYLE_CHANGED", function() SpellsPane:StyleChanged() end)
 
 -- T122: What if... on the strip opens and closes the WHAT IF pane (T125: the
 -- drawer); a value changed re-renders what is shown (the rail's tags follow
@@ -2843,7 +2843,7 @@ function SpellsPane:WhatIfChanged()
     local group, view = nav:Selected()
     if group == "spells" then self:Show(view) end
 end
-MD:RegisterCallback("WHATIF_CHANGED", function() SpellsPane:WhatIfChanged() end)
+ST:RegisterCallback("WHATIF_CHANGED", function() SpellsPane:WhatIfChanged() end)
 
 --------------------------------------------------------------------------------
 -- Wiring (UI/Dashboard_Forever.lua and, since T120, UI/Dashboard.lua)
@@ -2867,7 +2867,7 @@ end
 -- registered before this file loaded): the rail follows, and (T38) a
 -- family's view re-renders on its next tick -- the book's generation is in
 -- what the view was drawn from.
-MD:RegisterCallback("BOOK_CHANGED", function()
+ST:RegisterCallback("BOOK_CHANGED", function()
     SpellsPane.bookGen = (SpellsPane.bookGen or 0) + 1
     SpellsPane:RefreshRail()
 end)

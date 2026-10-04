@@ -1,16 +1,16 @@
 -- Widget kit in the style of Cell's options UI (flat 0.115-grey panels with a
 -- 1px black border, class-colour accent, 13px widget font, tab buttons that
 -- sit on the top edge of the frame). Written from scratch for SpellTuner: no
--- libraries, no pixel-perfect layer, plain sizes. Exposed on MD.UI and used
+-- libraries, no pixel-perfect layer, plain sizes. Exposed on ST.UI and used
 -- by the options frame, the debug console and the dashboard.
-local _, MD = ...
+local _, ST = ...
 
 local UI = {}
-MD.UI = UI
+ST.UI = UI
 
 --------------------------------------------------------------------------------
 -- T77 (P33 of docs/PLAN-refactor-ux.md, review A31): the kit's two events,
--- through the kernel's pub/sub (MD:RegisterCallback / MD:Fire), so a pane and
+-- through the kernel's pub/sub (ST:RegisterCallback / ST:Fire), so a pane and
 -- the window manager subscribe instead of wrapping a kit function or
 -- assigning a kit hook.
 --
@@ -27,14 +27,14 @@ MD.UI = UI
 --       answer. With no sizer installed (TBC) UI.ApplyFonts is nil, as before.
 --------------------------------------------------------------------------------
 function UI.Popup(list, shown)
-    MD:Fire("UI_POPUP", list, shown)
+    ST:Fire("UI_POPUP", list, shown)
 end
 UI.OnPopup = UI.Popup
 
 local fontSizer
 local function ApplyFontsAndAnnounce(...)
     local offset = fontSizer(...)
-    MD:Fire("FONTS_CHANGED", offset)
+    ST:Fire("FONTS_CHANGED", offset)
     return offset
 end
 setmetatable(UI, {
@@ -61,7 +61,7 @@ do
     -- token (or nil, "<reason>" on failure) -- the token is the SECOND
     -- value, and it is only meaningful when the first came back at all
     -- (same rule as Core.lua's DetectProfile, T1b Review re-issue 2).
-    local loc, class = MD.API.UnitClass("player")
+    local loc, class = ST.API.UnitClass("player")
     if not loc then class = nil end
     local c = class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[class]
     if c then
@@ -97,7 +97,7 @@ function UI.GetAccentColorRGB() return accent[1], accent[2], accent[3] end
 -- question to the author:
 --   dominated  8a8a8a  the rank table's dominated row (muted is 888888)
 --   note       ffcc00  the bindings import's notes, practice's "every <role>" rows
---   tipGold    ffd100  MD.Tip's suggested rank ({1, 0.82, 0}; accent is ffcc00)
+--   tipGold    ffd100  ST.Tip's suggested rank ({1, 0.82, 0}; accent is ffcc00)
 -- T74 (P30): one more, the kit's own -- not a legacy token: the theme leaves
 -- it, so a disabled control is 0.4 grey on both lines, as it was (4.1's
 -- disabled, 4D4D4D, for the kit's controls too is P34's question):
@@ -330,7 +330,7 @@ local function FollowOne(fs, rgb, hex)
     end
     if next(hex) ~= nil and type(fs.GetText) == "function" then
         local okT, text = pcall(fs.GetText, fs)
-        if okT and not MD.API.IsSecret(text) and type(text) == "string" and text:find("|c", 1, true) then
+        if okT and not ST.API.IsSecret(text) and type(text) == "string" and text:find("|c", 1, true) then
             local out = SwapCodes(text, hex)
             if out then fs:SetText(out); moved = true end
         end
@@ -568,7 +568,7 @@ tooltip:HookScript("OnShow", function() pcall(StyleTooltip) end)
 tooltip:HookScript("OnHide", function() tooltip:ClearLines() end)
 
 -- T76 (P32, review U13): under UI.THEMED a widget's tooltip is sugar over
--- UI/Tip.lua's renderer (MD.Tip:Kit) -- the title in `text`, each later
+-- UI/Tip.lua's renderer (ST.Tip:Kit) -- the title in `text`, each later
 -- string in `text2` and wrapped, a later TABLE a line of its own (a muted
 -- hint, a pair: Tip's line model), and the anchor the LATEST UI.SetTooltips
 -- call gave (it was frozen at the first). TBC keeps its own path below,
@@ -578,10 +578,10 @@ local function ShowTooltips(widget, anchor, x, y, lines)
         tooltip:Hide()
         return
     end
-    if UI.THEMED and MD.Tip and MD.Tip.Kit then
+    if UI.THEMED and ST.Tip and ST.Tip.Kit then
         local a = widget._tipAnchor
         if a then anchor, x, y = a[1], a[2], a[3] end
-        MD.Tip:Kit(widget, MD.Tip.Simple(lines), { anchor = anchor or "ANCHOR_TOP", x = x or 0, y = y or 0 })
+        ST.Tip:Kit(widget, ST.Tip.Simple(lines), { anchor = anchor or "ANCHOR_TOP", x = x or 0, y = y or 0 })
         return
     end
     tooltip:SetOwner(widget, anchor or "ANCHOR_TOP", x or 0, y or 0)
@@ -618,14 +618,14 @@ end
 --
 -- UI.px(n, frame): n physical pixels in the frame's own units --
 -- n * (768 / physicalHeight) / frame:GetEffectiveScale(). The physical height
--- comes through the adapter (MD.API.PhysicalScreenSize, Forever's binding); with
+-- comes through the adapter (ST.API.PhysicalScreenSize, Forever's binding); with
 -- no usable answer (TBC, absent, secret, zero) n is returned unchanged.
 --------------------------------------------------------------------------------
 function UI.px(n, frame)
     local h
-    if MD.API.PhysicalScreenSize then
+    if ST.API.PhysicalScreenSize then
         -- explicit locals: the adapter answers (w, h) or (nil, "<reason>")
-        local w, hh = MD.API.PhysicalScreenSize()
+        local w, hh = ST.API.PhysicalScreenSize()
         if type(w) == "number" and type(hh) == "number" and hh > 0 then h = hh end
     end
     if not h then return n end
@@ -1588,7 +1588,7 @@ function UI.CreateNavFrame(title, name, width, height, groups, onCreate, onShow,
         nav.view = view and view.id or nil
         if nav.highlightGroup then nav.highlightGroup(group.id) end
         if nav.highlightView and nav.view then nav.highlightView(nav.view) end
-        if MD.db then MD.db.uiPath = { group.id, nav.view } end
+        if ST.db then ST.db.uiPath = { group.id, nav.view } end
         nav.panes = nav.panes or {}
         nav.panes[group.id] = nav.panes[group.id] or {}
         local pane = nav.view and nav.panes[group.id][nav.view] or nil
@@ -3265,7 +3265,7 @@ end
 -- finds -- registered here, as this file loads, so it runs before any pane's
 -- own STYLE_CHANGED re-render (the clocks' NewLook, the Spells pane).
 --------------------------------------------------------------------------------
-MD:RegisterCallback("STYLE_CHANGED", function()
+ST:RegisterCallback("STYLE_CHANGED", function()
     UI.RepaintTints()
     UI.FollowTokens()
 end)

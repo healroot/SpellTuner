@@ -6,17 +6,17 @@
 -- T121 (docs/tasks/T121-one-tooltip-block.md, docs/SPEC-one-ui.md 6): the
 -- block is UI/SpellTip.lua's, the one block of both lines, drawn from the TBC
 -- book (Spells/Book_Model.lua). This file only hands it the id:
--- MD.SpellTip.OnSpell(tt, id, "spell") keeps every rule -- the setting, the
+-- ST.SpellTip.OnSpell(tt, id, "spell") keeps every rule -- the setting, the
 -- class profile's tooltip cap (T99), the damage setting, once per showing
 -- (its own OnTooltipCleared hook), the builder under pcall. Tip:Spell and
 -- Tip:Damage are gone. (Moving this hook into Client/API_TBC.lua as
--- MD.API.OnSpellTooltip is a follow-up.)
+-- ST.API.OnSpellTooltip is a follow-up.)
 --
 -- The detail key: pressing or releasing the key db.spellTooltipDetail names
 -- (Shift by default; Alt, Ctrl; nothing for Always / Never) re-runs the
 -- owner's OnEnter while the tooltip shows a block, so the detail lines come
 -- and go without moving the mouse.
-local _, MD = ...
+local _, ST = ...
 
 -- 2.5.x returns (name, spellID); older builds returned (name, rank[, id]).
 -- The id is the one number among the returns.
@@ -34,10 +34,10 @@ end
 local function OnSetSpell(tt)
     -- T99's gate, asked here before the id is read (OnSpell asks it again,
     -- for Forever's hooks): a class without the tooltip cap adds nothing
-    if not (MD.ClassProfile and MD.ClassProfile:Can("tooltip")) then return end
+    if not (ST.ClassProfile and ST.ClassProfile:Can("tooltip")) then return end
     local id = SpellIDOf(tt)
-    if not id or not (MD.SpellTip and MD.SpellTip.OnSpell) then return end
-    MD.SpellTip.OnSpell(tt, id, "spell")
+    if not id or not (ST.SpellTip and ST.SpellTip.OnSpell) then return end
+    ST.SpellTip.OnSpell(tt, id, "spell")
 end
 
 local function Hook(tt)
@@ -57,7 +57,7 @@ local KEYS = {
 local watcher = CreateFrame("Frame")
 watcher:RegisterEvent("MODIFIER_STATE_CHANGED")
 watcher:SetScript("OnEvent", function(_, _, key)
-    local mode = MD.SpellTip and MD.SpellTip.DetailMode and MD.SpellTip:DetailMode()
+    local mode = ST.SpellTip and ST.SpellTip.DetailMode and ST.SpellTip:DetailMode()
     local keys = mode and KEYS[mode]
     if not (keys and type(key) == "string" and keys[key]) then return end
     if not (GameTooltip:IsShown() and GameTooltip._spellTipId) then return end

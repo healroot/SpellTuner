@@ -5,7 +5,7 @@
 -- were hand-copied into four files before, each saying why it could not read
 -- another module's locals: this file is listed first by the Recorder module's
 -- TOCs, and the Replay module depends on the Recorder module, so every reader
--- finds MD.StreamV3 already published. Pure: no client call.
+-- finds ST.StreamV3 already published. Pure: no client call.
 --
 -- The kinds a v3 stream shares with the engine's own recorded kinds keep
 -- SM.K's numbers (Engine/SimModel.lua: DMG 1, OWNCAST 3, CASTSTART 6, CANCEL 7,
@@ -14,9 +14,9 @@
 -- the scenario turns into nothing (own) or an SM.K.FHEAL (foreign) and which
 -- must never equal any SM.K value -- the Replay module asserts both at load
 -- (Scenario_Forever.lua).
-local _, MD = ...
+local _, ST = ...
 
-MD.StreamV3 = {
+ST.StreamV3 = {
     -- the stream's own version number, `rec.v`
     V = 3,
 
@@ -27,8 +27,8 @@ MD.StreamV3 = {
     -- names `rec.initial.known` is keyed by). Only Healing Touch differs.
     -- T89 (docs/SPEC-next.md 2.1): the druid profile's names
     -- (Data/Profile_Druid_Forever.lua), derived at file load BY NAME -- never
-    -- from MD.ClassProfile, the logged-in player's. Equal to the constant it
+    -- from ST.ClassProfile, the logged-in player's. Equal to the constant it
     -- replaced (tools/profilecheck.lua): Healing Touch -> HealingTouch,
     -- Regrowth, Rejuvenation, Swiftmend, Tranquility -> themselves.
-    FAMILY_KEY = MD.Profiles.Require("DRUID", "Stream_Forever.lua"):FamilyKeys(),
+    FAMILY_KEY = ST.Profiles.Require("DRUID", "Stream_Forever.lua"):FamilyKeys(),
 }

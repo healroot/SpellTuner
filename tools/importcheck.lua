@@ -124,8 +124,8 @@ check("a practice fight and a v3 pull are stored with their kit, the character w
     string.format("p1.kit=%s r1.kit=%s cdb.kit=%s p2.kit=%s", tostring(p1 and p1.kit), tostring(r1 and r1.kit),
         tostring(cdb.kit), tostring(p2 and p2.kit)))
 
--- one kit record (MD.SimModel.KitSnapshot) on every one of them: the entries a
--- replay reads and nothing else -- no copy of the MD.SpellData index, no table
+-- one kit record (ST.SimModel.KitSnapshot) on every one of them: the entries a
+-- replay reads and nothing else -- no copy of the ST.SpellData index, no table
 -- inside an entry -- and a practice fight says who played it
 local function Lean(k)
     if type(k) ~= "table" or k.sd ~= nil then return false end

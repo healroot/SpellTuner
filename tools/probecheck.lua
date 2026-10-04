@@ -409,8 +409,8 @@ end
 Do(S.Fire, "ADDON_LOADED", "SpellTuner")
 Do(S.Fire, "PLAYER_LOGIN")
 
-check("MD.API.client is forever on interface 16001", MD2.API.client == "forever")
-check("MD.API.Has walks dotted names and says false for a missing one",
+check("ST.API.client is forever on interface 16001", MD2.API.client == "forever")
+check("ST.API.Has walks dotted names and says false for a missing one",
     MD2.API.Has("C_Spell.GetSpellDescription") and MD2.API.Has("C_Spell.NoSuchThing") == false
     and MD2.API.Has("NoSuchNamespace.X") == false)
 
@@ -509,7 +509,7 @@ local report4 = SpellTunerDB.probe.reports["70009"].text
 
 --------------------------------------------------------------------------------
 -- Step 4: Forever, in combat with no snapshot taken -- exercises the Q4/Q8
--- fixes and MD.API.Has never handing back a secret.
+-- fixes and ST.API.Has never handing back a secret.
 --------------------------------------------------------------------------------
 dofile(here .. "/wowstub.lua")
 local S4 = _G.STUB
@@ -736,7 +736,7 @@ check("Q1 is answered only when both bonus readings are readable",
 check("event and secret names are escaped",
     Has(report3, "UNIT_COMBAT ooc party BLOCK||X n=1") and Has(report3, "ShouldStub||Piped = false"))
 
-check("MD.API.Has never hands back a secret", hasSecretScalar and hasSecretTable)
+check("ST.API.Has never hands back a secret", hasSecretScalar and hasSecretTable)
 
 check("a secret table is reported secret",
     Has(report2, "session Current HealingDone = <secret>"))
@@ -1034,7 +1034,7 @@ local okE, reportE = pcall(MD7.Probe.Run)
 
 --------------------------------------------------------------------------------
 -- Step 8: Forever, fresh, C_TooltipInfo missing entirely -- a FRESH load
--- (T7a assertion 6), since MD.API.Has caches its answer for the life of one
+-- (T7a assertion 6), since ST.API.Has caches its answer for the life of one
 -- API table and Step 7's MD7 already cached C_TooltipInfo.GetSpellByID as
 -- present before this could remove it.
 --------------------------------------------------------------------------------
@@ -1247,7 +1247,7 @@ do
     S11.AddUnit("target", { guid = "Creature-9", name = "Mob", class = "WARRIOR", hp = 900, hpMax = 900 })
     S11.AddUnit("nameplate1", { guid = "Creature-9", name = "Mob", class = "WARRIOR", hp = 900, hpMax = 900 })
 
-    -- R19's two spells, wrapped before the load: MD.API.Has keeps what it found.
+    -- R19's two spells, wrapped before the load: ST.API.Has keeps what it found.
     local origCost = C_Spell.GetSpellPowerCost
     C_Spell.GetSpellPowerCost = function(id)
         if id == 900201 then return end

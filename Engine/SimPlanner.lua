@@ -30,12 +30,12 @@
 -- fixed order. "Cast rank 7 here and rank 9 there" is not a strategy a person
 -- can execute at 2am in a heroic, and a suggestion nobody can follow is worse
 -- than no suggestion.
-local _, MD = ...
+local _, ST = ...
 
 local SP = {}
-MD.SimPlanner = SP
+ST.SimPlanner = SP
 
-local SM = nil  -- MD.SimModel, bound lazily
+local SM = nil  -- ST.SimModel, bound lazily
 local HOT_INDEX = { Rejuvenation = 1, Regrowth = 2, Lifebloom = 3 }
 
 -- A plan's parameters (docs/SPEC-v0.7.md 5.1), ONE list: name, domain, default.
@@ -89,13 +89,13 @@ end
 -- applying one.
 -- T89 (docs/SPEC-next.md 2.1): both lists are the druid profile's
 -- (Data/Profile_Druid_*.lua, planner.bindable / planner.hotRule), derived here
--- at file load BY NAME -- never from MD.ClassProfile, the logged-in player's -- and
+-- at file load BY NAME -- never from ST.ClassProfile, the logged-in player's -- and
 -- copied, so the registered profile is never edited through them. They equal
 -- the constants they replaced (tools/profilecheck.lua): BINDABLE Lifebloom,
 -- Rejuvenation, Regrowth, HealingTouch, Swiftmend; HOT_RULE Lifebloom,
 -- Rejuvenation.
 do
-    local planner = MD.Profiles.Require("DRUID", "Engine/SimPlanner.lua").planner
+    local planner = ST.Profiles.Require("DRUID", "Engine/SimPlanner.lua").planner
     local function Copy(list)
         local out = {}
         for i, v in ipairs(list) do out[i] = v end
@@ -107,7 +107,7 @@ end
 
 -- T101 (docs/SPEC-next.md 4.2 P2, "the solver over the kit's families"): the
 -- families a plan may bind are SP.BINDABLE and, after it in family-key order,
--- every family of the installed kit index (MD.SpellData, the kit's own) that
+-- every family of the installed kit index (ST.SpellData, the kit's own) that
 -- the list does not name -- not excluded, not a channel (never planned,
 -- decision 11), not Kit.UNPRICED: a druid's Wild Growth, every heal family of
 -- a class with no profile file. The threshold rules read only their own
@@ -115,10 +115,10 @@ end
 -- and for a Forever druid without Wild Growth, the list adds nothing and
 -- SP.BINDABLE itself comes back.
 function SP.Bindable()
-    local SD = MD.SpellData
+    local SD = ST.SpellData
     local named = {}
     for _, fam in ipairs(SP.BINDABLE) do named[fam] = true end
-    local unpriced = (MD.Kit and MD.Kit.UNPRICED) or {}
+    local unpriced = (ST.Kit and ST.Kit.UNPRICED) or {}
     local extra
     for fam, def in pairs(SD and SD.families or {}) do
         if not named[fam] and type(def) == "table" and not def.exclude and def.type ~= "channel"
@@ -141,11 +141,11 @@ end
 -- spell is a different addon's suggestion, not this fight's.
 --------------------------------------------------------------------------------
 function SP.BindsFromRecording(rec, kit)
-    local SD = MD.SpellData
+    local SD = ST.SpellData
     local counts = {}
     if rec then
         for i = 1, (rec.n or 0) do
-            if rec.ev.kind[i] == MD.SimModel.K.OWNCAST then
+            if rec.ev.kind[i] == ST.SimModel.K.OWNCAST then
                 local id = rec.ev.x[i]
                 local sd = SD.spells[id]
                 if sd and SD.families[sd.family] then
@@ -172,7 +172,7 @@ end
 -- `known` (a recording's initial.known) restricts the binds to the spells that
 -- existed for the player at the time; without it, whatever they know now.
 function SP.MaxRankBinds(known)
-    local SD, binds = MD.SpellData, {}
+    local SD, binds = ST.SpellData, {}
     for _, family in ipairs(SP.Bindable()) do
         binds[family] = known and known[family] or (not known and SD.maxRank[family]) or nil
     end
@@ -186,7 +186,7 @@ local Plan = {}
 Plan.__index = Plan
 
 function SP.NewPlan(binds, params, kit)
-    SM = SM or MD.SimModel
+    SM = SM or ST.SimModel
     local p = setmetatable({ binds = binds, kit = kit }, Plan)
     for _, d in ipairs(SP.PARAMS) do p[d.name] = ParamValue(params, d) end
     return p
@@ -520,7 +520,7 @@ end
 -- and 1194 of 1592 was thrown away" is the reason.
 function SP.CastWhy(c, names)
     if not c then return nil end
-    local SD2 = MD.SpellData
+    local SD2 = ST.SpellData
     local sd = SD2.spells[c.spellID]
     local fam = sd and sd.family or (names and names[c.spellID]) or "that cast"
     local L = c.label
@@ -584,7 +584,7 @@ function SP.ReasonText(r, names)
     if not r then return nil end
     -- the solver's own rules (v0.13): it decided on a number, so it names it
     if r.rule == 7 or r.rule == 8 or r.rule == 9 then
-        return MD.SimSolver and MD.SimSolver.ReasonText(r, names) or nil
+        return ST.SimSolver and ST.SimSolver.ReasonText(r, names) or nil
     end
     if r.rule == 1 then
         return string.format("at %d%%, under the %d%% Swiftmend line, with a HoT to eat",
@@ -708,7 +708,7 @@ SP.STRATEGY_SET = {
 -- Where it did not load (the Forever Replay module) the entry is not offered:
 -- run without its prior it would be the no-intuition solver under the prior's
 -- label. On TBC the table is there and the list is unchanged.
-if not MD.IntuitionTBC then
+if not ST.IntuitionTBC then
     for i = #SP.STRATEGY_SET, 1, -1 do
         if SP.STRATEGY_SET[i].params.corpus then table.remove(SP.STRATEGY_SET, i) end
     end
@@ -727,14 +727,14 @@ function SP.MakeStrategy(entry, binds, kit, ctx)
         local params = {}
         for k, v in pairs(entry.params) do params[k] = v end
         if params.foresight then
-            params.foresight = (ctx and ctx.scenario and MD.Foresight)
-                and MD.Foresight.Build(ctx.scenario, { seed = (ctx and ctx.seed) or 1 })
+            params.foresight = (ctx and ctx.scenario and ST.Foresight)
+                and ST.Foresight.Build(ctx.scenario, { seed = (ctx and ctx.seed) or 1 })
                 or nil
         end
         if params.corpus then
             -- the shipped prior: somebody else's experience, blurred, in
             -- fractions of health so it lands on any character
-            params.prior = MD.Intuition and MD.Intuition:Load(MD.IntuitionTBC)
+            params.prior = ST.Intuition and ST.Intuition:Load(ST.IntuitionTBC)
             -- R23: no shipped prior, no plan -- never the blind solver under
             -- this strategy's name
             if not params.prior then return nil end
@@ -742,11 +742,11 @@ function SP.MakeStrategy(entry, binds, kit, ctx)
             params.corpus = nil
         elseif params.prior then
             -- LEAVE ONE OUT: the fight being planned is never in its own prior.
-            params.prior = (ctx and ctx.recs and MD.Intuition)
-                and MD.Intuition:Build(ctx.recs, ctx.excludeID) or nil
+            params.prior = (ctx and ctx.recs and ST.Intuition)
+                and ST.Intuition:Build(ctx.recs, ctx.excludeID) or nil
             params.zone = ctx and ctx.zone or nil
         end
-        return MD.SimSolver.NewPlan(binds, params, kit)
+        return ST.SimSolver.NewPlan(binds, params, kit)
     end
     return SP.NewPlan(binds, entry.params, kit)
 end
@@ -909,7 +909,7 @@ end
 -- twice.
 --------------------------------------------------------------------------------
 function SP.RunPlan(scenario, plan, opts)
-    SM = SM or MD.SimModel
+    SM = SM or ST.SimModel
     local saved = scenario.script
     scenario.script = nil
     local r = SM:Run(scenario, plan, opts)
@@ -953,10 +953,10 @@ local SHIFT_SPELLS = { [33891] = true, [5487] = true, [9634] = true, [768] = tru
                        [783] = true, [1066] = true, [24858] = true }
 
 function SP.Classify(rec, scenario, plan, kit)
-    SM = SM or MD.SimModel
-    local SD = MD.SpellData
+    SM = SM or ST.SimModel
+    local SD = ST.SpellData
     local K = SM.K
-    local fullHp = MD:Setting("simFullHp")
+    local fullHp = ST:Setting("simFullHp")
 
     -- what the plan would do on its own, for `late` and `idle`
     local planCasts = {}
@@ -1065,14 +1065,14 @@ function SP.Classify(rec, scenario, plan, kit)
                 detail.overheal[sd.family] = (detail.overheal[sd.family] or 0) + 1
             elseif label == "unclassified" then
                 detail.unclassified[#detail.unclassified + 1] =
-                    string.format("%s at %.0fs", MD.API.SpellName(spellID) or spellID, t)
+                    string.format("%s at %.0fs", ST.API.SpellName(spellID) or spellID, t)
             end
         end,
     })
 
     -- idle: the plan cast where the player did nothing, and the target had been
     -- below the floor long enough that a human could have known
-    local reaction = MD:Setting("simReaction")
+    local reaction = ST:Setting("simReaction")
     local realT = {}
     for i = 1, (rec.n or 0) do
         if rec.ev.kind[i] == K.OWNCAST then realT[#realT + 1] = rec.ev.t[i] end
@@ -1108,8 +1108,8 @@ local function Clock(sec)
 end
 
 local function RankLabel(id)
-    local sd = MD.SpellData.spells[id]
-    return sd and string.format("%s R%d", MD.SpellData.families[sd.family].label, sd.rank)
+    local sd = ST.SpellData.spells[id]
+    return sd and string.format("%s R%d", ST.SpellData.families[sd.family].label, sd.rank)
         or tostring(id)
 end
 
@@ -1175,7 +1175,7 @@ function SP.CardLines(rec, best, bestResult, replayResult, baselineResults, cls,
     -- verdict
     -- "did this pull even need coaching": one more pull's worth of mana left in
     -- the tank is the honest answer to most fights.
-    local budget = MD.PullBudget and MD.PullBudget:Estimate()
+    local budget = ST.PullBudget and ST.PullBudget:Estimate()
     if budget and budget.n >= 2 and replayResult.lowestMana - budget.perPull >= 0 then
         addT("good", "  you had %s headroom - nothing here needed to change",
             Fmt(replayResult.lowestMana - budget.perPull))
@@ -1355,7 +1355,7 @@ function SP.CardLines(rec, best, bestResult, replayResult, baselineResults, cls,
     -- the identity, which is the reason to believe any of the above
     local sum = 0
     for _, k in ipairs(LABELS) do sum = sum + (cls.labels[k] or 0) end
-    MD:Debug("sim", "classifier: %d labelled vs %d spent (delta %+d)", sum, rec.spent or 0,
+    ST:Debug("sim", "classifier: %d labelled vs %d spent (delta %+d)", sum, rec.spent or 0,
         sum - (rec.spent or 0))
     if math.abs(sum - (rec.spent or 0)) > math.max(50, (rec.spent or 0) * 0.02) then
         addT("bad", "  (warning: labelled %s of %s spent - the breakdown is incomplete)",
@@ -1373,11 +1373,11 @@ function SP.CardLines(rec, best, bestResult, replayResult, baselineResults, cls,
         end
         if first then
             local names = rec and rec.names
-            local SD2 = MD.SpellData
+            local SD2 = ST.SpellData
             local function SpellName(id)
                 local sd = id and SD2.spells[id]
                 if sd then return string.format("%s R%d", sd.family, sd.rank) end
-                return (names and names[id]) or (id and MD.API.SpellName(id)) or "?"
+                return (names and names[id]) or (id and ST.API.SpellName(id)) or "?"
             end
             local who = first.tgt and rec and rec.roster and rec.roster[first.tgt]
             local onWhom = who and (" -> " .. (who.name or "?")) or ""
@@ -1417,7 +1417,7 @@ end
 
 -- T106 (docs/SPEC-next.md 4.3): the names of the heals a recording cast that
 -- the kit does not model, in the order first cast -- the healing families the
--- book read and the kit left out by name (MD.SpellData.skipped, Kit_Forever:
+-- book read and the kit left out by name (ST.SpellData.skipped, Kit_Forever:
 -- an absorb such as Power Word: Shield until T109, a heal on the caster alone,
 -- one only below a health line), and the healing spells the kit's own profile
 -- names as not modelled (`unmodelled`: a totem, a next-cast modifier, a heal
@@ -1426,18 +1426,18 @@ end
 -- the installed kit index, as RankLabel is; the profile from the plan's kit.
 function SP.Unmodelled(rec, kit)
     local out = {}
-    local SD = MD.SpellData
+    local SD = ST.SpellData
     local skip = {}
     for _, name in ipairs(SD and type(SD.skipped) == "table" and SD.skipped or {}) do skip[name] = true end
-    local prof = MD.Profiles and MD.Profiles.ForKit(kit)
+    local prof = ST.Profiles and ST.Profiles.ForKit(kit)
     for _, name in ipairs(prof and prof.unmodelled or {}) do skip[name] = true end
     if not (rec and rec.ev and next(skip)) then return out end
-    local K = MD.SimModel.K
+    local K = ST.SimModel.K
     local seen = {}
     for i = 1, (rec.n or 0) do
         local id = rec.ev.x[i]
         if rec.ev.kind[i] == K.OWNCAST and id and not (SD.spells and SD.spells[id]) then
-            local name = (rec.names and rec.names[id]) or MD.API.SpellName(id)
+            local name = (rec.names and rec.names[id]) or ST.API.SpellName(id)
             if name and skip[name] and not seen[name] then
                 seen[name] = true
                 out[#out + 1] = name
@@ -1453,14 +1453,14 @@ end
 -- channel over the party) -- read from the plan's own kit. TBC's kit has none.
 SP.GROUP_ASSUMPTION = "group heals assume everyone in range (no positions recorded): an upper bound"
 function SP.GroupAssumed(rec, plan)
-    local Kit = MD.Kit
+    local Kit = ST.Kit
     local list = plan and plan.kit and plan.kit.caster
     if not (Kit and Kit.ReachesMany and type(list) == "table") then return false end
     for _, id in pairs(plan.binds or {}) do
         if id and Kit.ReachesMany(list[id]) then return true end
     end
     local ev = rec and rec.ev
-    local K = MD.SimModel.K
+    local K = ST.SimModel.K
     for i = 1, (rec and rec.n or 0) do
         if ev.kind[i] == K.OWNCAST and Kit.ReachesMany(list[ev.x[i]]) then return true end
     end
@@ -1473,15 +1473,15 @@ end
 -- -- a healer who improves over runs -- and it needs a before to have an after.
 --------------------------------------------------------------------------------
 function SP.Mark(rec, cls)
-    if not (MD.cdb and rec.zone) then return end
-    MD.cdb.coachMarks = MD.cdb.coachMarks or {}
+    if not (ST.cdb and rec.zone) then return end
+    ST.cdb.coachMarks = ST.cdb.coachMarks or {}
     local healCasts, overhealCasts = 0, 0
     for _, k in ipairs(LABELS) do
         if k ~= "utility" and k ~= "shift" then healCasts = healCasts + (cls.counts[k] or 0) end
     end
     overhealCasts = cls.counts.overheal or 0
-    local budget = MD.PullBudget and MD.PullBudget:Estimate()
-    MD.cdb.coachMarks[rec.zone] = {
+    local budget = ST.PullBudget and ST.PullBudget:Estimate()
+    ST.cdb.coachMarks[rec.zone] = {
         t = time(), overhealFrac = healCasts > 0 and overhealCasts / healCasts or 0,
         manaPerPull = budget and budget.perPull or nil,
         topHabit = (function()
@@ -1498,10 +1498,10 @@ end
 
 -- "since your last card (N fights): overheal 39% -> 31%, mana/pull -0.8k"
 function SP.Progress(zone)
-    local mark = MD.cdb and MD.cdb.coachMarks and MD.cdb.coachMarks[zone]
+    local mark = ST.cdb and ST.cdb.coachMarks and ST.cdb.coachMarks[zone]
     if not mark then return nil end
     local since, over, overN = 0, 0, 0
-    for _, f in ipairs(MD.fightHistory or {}) do
+    for _, f in ipairs(ST.fightHistory or {}) do
         if f.zone == zone and (f.t or 0) > mark.t then
             since = since + 1
             if f.hpBuckets then
@@ -1512,7 +1512,7 @@ function SP.Progress(zone)
     end
     if since < 3 then return nil end
     local now = overN > 0 and (over / overN) or nil
-    local budget = MD.PullBudget and MD.PullBudget:Estimate()
+    local budget = ST.PullBudget and ST.PullBudget:Estimate()
     local parts = {}
     if now and mark.overhealFrac then
         parts[#parts + 1] = string.format("overheal %d%% -> %d%%",
@@ -1536,13 +1536,13 @@ end
 -- no rule set (every class but the druid) is coached by the solver's causal
 -- strategies instead (no prior, no foresight), each under a short row name.
 -- The druid's profiles name theirs ("druid"), so a druid's coach is
--- unchanged; MD.Profiles.ForKit reads the KIT's profile, never the
+-- unchanged; ST.Profiles.ForKit reads the KIT's profile, never the
 -- logged-in player's.
 SP.SOLVER_COACH = { { key = "solver-blind", name = "solver" },
                     { key = "solver-frugal", name = "frugal" },
                     { key = "solver-near", name = "reactive" } }
 function SP.SolverOnly(kit)
-    local prof = MD.Profiles and MD.Profiles.ForKit(kit)
+    local prof = ST.Profiles and ST.Profiles.ForKit(kit)
     return prof ~= nil and not (prof.planner and prof.planner.rules)
 end
 function SP.SolverCandidates(rec, kit)
@@ -1557,9 +1557,9 @@ function SP.SolverCandidates(rec, kit)
 end
 
 function SP.Coach(rec, opts)
-    SM = SM or MD.SimModel
+    SM = SM or ST.SimModel
     if not rec then return { "coach: no recording." } end
-    local kit = MD.RankMath:SpellKit()
+    local kit = ST.RankMath:SpellKit()
     local validation = SM:Validate(rec, kit)
     if not (opts and opts.force) and validation and not validation.ok then
         local out = { "coach: this fight does not replay, so there is nothing to suggest." }
@@ -1664,10 +1664,10 @@ local function Snap(r)
 end
 
 function SP.Replay(rec, opts)
-    SM = SM or MD.SimModel
+    SM = SM or ST.SimModel
     opts = opts or {}
     if not rec then return nil end
-    local kit = opts.kit or MD.RankMath:SpellKit()
+    local kit = opts.kit or ST.RankMath:SpellKit()
     local validation = SM:Validate(rec, kit)
     local scenario = SM.ScenarioFromRecording(rec, kit)
     local dt = opts.dt or 0.25
@@ -1818,9 +1818,9 @@ end
 -- a search that froze the client for ten seconds would be unusable in exactly
 -- the moment it is wanted (between two pulls).
 function SP.Search(scenario, opts, onProgress, onDone)
-    SM = SM or MD.SimModel
+    SM = SM or ST.SimModel
     opts = opts or {}
-    local kit = opts.kit or MD.RankMath:SpellKit()
+    local kit = opts.kit or ST.RankMath:SpellKit()
     local binds = opts.binds or SP.MaxRankBinds()
     local maxEvals = opts.maxEvals or MAX_EVALS
     local evals = 0
@@ -1918,7 +1918,7 @@ function SP.Search(scenario, opts, onProgress, onDone)
     frame:SetScript("OnUpdate", function()
         if handle.cancelled then
             frame:SetScript("OnUpdate", nil)
-            MD:Debug("sim", "search cancelled after %d evaluation(s)", evals)
+            ST:Debug("sim", "search cancelled after %d evaluation(s)", evals)
             if onDone then onDone(nil, nil, evals, nil) end
             return
         end
@@ -1929,7 +1929,7 @@ function SP.Search(scenario, opts, onProgress, onDone)
             local ok, err = coroutine.resume(co)
             if not ok then
                 frame:SetScript("OnUpdate", nil)
-                MD:Debug("sim", "search error: %s", tostring(err))
+                ST:Debug("sim", "search error: %s", tostring(err))
                 if onDone then onDone(nil, nil, evals, nil) end
                 return
             end
@@ -1939,7 +1939,7 @@ function SP.Search(scenario, opts, onProgress, onDone)
         if coroutine.status(co) == "dead" or evals >= maxEvals then
             frame:SetScript("OnUpdate", nil)
             CollectAlternates()
-            MD:Debug("sim", "search done: %d evaluation(s), best (deaths %d, floor %.1fs, mana %d, binds %d)",
+            ST:Debug("sim", "search done: %d evaluation(s), best (deaths %d, floor %.1fs, mana %d, binds %d)",
                 evals, bestScore and bestScore[1] or -1, bestScore and bestScore[2] or -1,
                 bestScore and bestScore[3] or -1, bestScore and bestScore[5] or -1)
             -- The physical floor: no plan can SPEND less than the damage taken
@@ -1964,7 +1964,7 @@ function SP.Search(scenario, opts, onProgress, onDone)
                 end
                 if bestHpm > 0 then
                     local floorMana = damage / bestHpm
-                    MD:Debug("sim", "physical floor %.0f mana vs best %.0f%s", floorMana,
+                    ST:Debug("sim", "physical floor %.0f mana vs best %.0f%s", floorMana,
                         bestResult.manaSpent,
                         bestResult.manaSpent < floorMana * 0.99 and "  <- IMPOSSIBLE, engine is wrong" or "")
                 end
@@ -1986,7 +1986,7 @@ end
 --------------------------------------------------------------------------------
 local function HeldOn(plan, kit, exceptID)
     local held, of = 0, 0
-    for _, other in ipairs(MD.FightRecorder and MD.FightRecorder:List() or {}) do
+    for _, other in ipairs(ST.FightRecorder and ST.FightRecorder:List() or {}) do
         if other.id ~= exceptID then
             of = of + 1
             local sc = SM.ScenarioFromRecording(other, kit)
@@ -1998,9 +1998,9 @@ local function HeldOn(plan, kit, exceptID)
 end
 
 function SP.CoachAsync(rec, opts, onDone)
-    SM = SM or MD.SimModel
+    SM = SM or ST.SimModel
     opts = opts or {}
-    local kit = MD.RankMath:SpellKit()
+    local kit = ST.RankMath:SpellKit()
     local validation = SM:Validate(rec, kit)
     if not opts.force and validation and not validation.ok then
         onDone(select(1, SP.Coach(rec, opts)), validation)
@@ -2030,7 +2030,7 @@ function SP.CoachAsync(rec, opts, onDone)
 
     local scenario = SM.ScenarioFromRecording(rec, kit)
     local binds = SP.BindsFromRecording(rec, kit)
-    if MD:Setting("simAllowRebinds") then binds = SP.MaxRankBinds(rec.initial and rec.initial.known) end
+    if ST:Setting("simAllowRebinds") then binds = SP.MaxRankBinds(rec.initial and rec.initial.known) end
 
     -- T71 (P27, review U20): the Review pane coaches with opts.noChat (no chat
     -- line: the pane shows the progress) and opts.onProgress(evals, max,
@@ -2039,11 +2039,11 @@ function SP.CoachAsync(rec, opts, onDone)
     -- has always printed this line -- honouring it would change TBC's chat.)
     -- onDone's third argument is the card as structured lines (SP.CardLines), the search line included.
     if not opts.noChat then
-        MD:Print("coach: searching (this runs across frames; /md coach cancel stops it)...")
+        ST:Print("coach: searching (this runs across frames; /md coach cancel stops it)...")
     end
     return SP.Search(scenario, { kit = kit, binds = binds, rec = rec },
         function(evals, bestScore)
-            MD:Debug("sim", "search %d evaluations", evals)
+            ST:Debug("sim", "search %d evaluations", evals)
             if opts.onProgress then opts.onProgress(evals, MAX_EVALS, bestScore) end
         end,
         function(best, bestResult, evals, alternates, winners)
@@ -2083,8 +2083,8 @@ local function Percentile(sorted, p)
 end
 
 function SP.FromRecordings(zone, maxFights)
-    SM = SM or MD.SimModel
-    local list = MD.FightRecorder and MD.FightRecorder:List() or {}
+    SM = SM or ST.SimModel
+    local list = ST.FightRecorder and ST.FightRecorder:List() or {}
     local byRole = {}          -- role -> { seconds, steady, bigs = {} }
     local fights, seconds = 0, 0
     local used = {}
@@ -2118,7 +2118,7 @@ function SP.FromRecordings(zone, maxFights)
                 local bucket = byRole[role]
                 if not bucket then bucket = { seconds = 0, steady = 0, bigs = {} }; byRole[role] = bucket end
                 bucket.seconds = bucket.seconds + rec.dur
-                local threshold = maxHP > 0 and maxHP * MD:Setting("simBigHit") or math.huge
+                local threshold = maxHP > 0 and maxHP * ST:Setting("simBigHit") or math.huge
                 for _, amount in pairs(secs) do
                     if amount >= threshold then
                         bucket.bigs[#bucket.bigs + 1] = amount
@@ -2162,7 +2162,7 @@ end
 local REPLICATES = 30
 
 function SP.MonteCarlo(scenario, plan, derived, k)
-    SM = SM or MD.SimModel
+    SM = SM or ST.SimModel
     k = k or REPLICATES
     local violations, deaths = 0, 0
     local amt = scenario.ev and scenario.ev.amt
@@ -2229,9 +2229,9 @@ SP.ChainSnap = ChainSnap
 -- budget scales down with the length of the dungeon rather than being a flat
 -- 300: thirty pulls at 300 evaluations would be nine thousand fight sims.
 function SP.SearchRun(run, opts, onProgress, onDone)
-    SM = SM or MD.SimModel
+    SM = SM or ST.SimModel
     opts = opts or {}
-    local kit = opts.kit or MD.RankMath:SpellKit()
+    local kit = opts.kit or ST.RankMath:SpellKit()
     local pulls = run.pulls or {}
     -- a run's plan may only use what the healer had on its first recorded pull
     local known = pulls[1] and pulls[1].initial and pulls[1].initial.known
@@ -2322,7 +2322,7 @@ function SP.SearchRun(run, opts, onProgress, onDone)
             local ok, err = coroutine.resume(co)
             if not ok then
                 frame:SetScript("OnUpdate", nil)
-                MD:Debug("sim", "run search error: %s", tostring(err))
+                ST:Debug("sim", "run search error: %s", tostring(err))
                 if onDone then onDone(nil, nil, evals) end
                 return
             end
@@ -2331,7 +2331,7 @@ function SP.SearchRun(run, opts, onProgress, onDone)
         if onProgress then onProgress(evals, bestScore) end
         if coroutine.status(co) == "dead" or evals >= maxEvals then
             frame:SetScript("OnUpdate", nil)
-            MD:Debug("sim", "run search done: %d evaluation(s) over %d pull(s), best (deaths %d, floor %.0fs, " ..
+            ST:Debug("sim", "run search done: %d evaluation(s) over %d pull(s), best (deaths %d, floor %.0fs, " ..
                 "added %.0fs, drinks %d, mana %d)", evals, #pulls, bestScore and bestScore[1] or -1,
                 bestScore and bestScore[2] or -1, bestScore and bestScore[3] or -1,
                 bestScore and bestScore[4] or -1, bestScore and bestScore[5] or -1)
@@ -2353,8 +2353,8 @@ local function Pct(x) return string.format("%d%%", (x or 0) * 100 + 0.5) end
 -- health side it is standing on. One validation per pull, once, not per search
 -- evaluation.
 function SP.RunGates(run, kit)
-    SM = SM or MD.SimModel
-    kit = kit or MD.RankMath:SpellKit()
+    SM = SM or ST.SimModel
+    kit = kit or ST.RankMath:SpellKit()
     local out = { of = 0, failed = 0, byGate = {}, order = {} }
     for _, rec in ipairs(run.pulls or {}) do
         if not rec.short then
@@ -2379,7 +2379,7 @@ function SP.RunGates(run, kit)
 end
 
 function SP.RunCard(run, best, chain, you, evals, gates)
-    local RR = MD.RunRecorder
+    local RR = ST.RunRecorder
     local out = {}
     local function add(fmt, ...) out[#out + 1] = select("#", ...) > 0 and string.format(fmt, ...) or fmt end
     local st = run.stats or {}
@@ -2479,14 +2479,14 @@ end
 -- CoachRun: the "you" chain, the search, the card.
 --------------------------------------------------------------------------------
 function SP.CoachRun(run, opts, onDone)
-    SM = SM or MD.SimModel
+    SM = SM or ST.SimModel
     opts = opts or {}
     if not run then if onDone then onDone({ "coachrun: no run." }) end return nil end
     if #(run.pulls or {}) == 0 then
         if onDone then onDone({ "coachrun: this run kept no pulls." }) end
         return nil
     end
-    local kit = opts.kit or MD.RankMath:SpellKit()
+    local kit = opts.kit or ST.RankMath:SpellKit()
     local you = ChainSnap(SM.ChainRun(run, kit, { recorded = true }))
     local gates = SP.RunGates(run, kit)
     return SP.SearchRun(run, { kit = kit, drinkRate = opts.drinkRate, maxEvals = opts.maxEvals },

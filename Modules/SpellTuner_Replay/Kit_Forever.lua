@@ -1,31 +1,31 @@
 -- T15 (docs/tasks/T15-kit-from-book.md): the engine's spell kit, built from
 -- the spellbook Spells/Book.lua already read, instead of a hand-kept static
 -- table (Data/SpellData.lua, TBC only). Reaches the client only through
--- MD.Book (already adapter-clean, T7) and MD.API -- nothing here ever indexes
+-- ST.Book (already adapter-clean, T7) and ST.API -- nothing here ever indexes
 -- a client table.
 --
--- Only creates MD.SpellData / MD.RankMath if a flavour has not already
+-- Only creates ST.SpellData / ST.RankMath if a flavour has not already
 -- (Facts: neither exists before this module loads on Forever).
-local _, MD = ...
+local _, ST = ...
 
-if MD.SpellData == nil then MD.SpellData = {} end
-if MD.RankMath == nil then MD.RankMath = {} end
-local SD, RM = MD.SpellData, MD.RankMath
+if ST.SpellData == nil then ST.SpellData = {} end
+if ST.RankMath == nil then ST.RankMath = {} end
+local SD, RM = ST.SpellData, ST.RankMath
 -- The kit's shape, its validator, Snapshot and Restore (Engine/Kit.lua, listed
 -- before this file by the module's TOCs; T63, P19).
-local Kit = MD.Kit
+local Kit = ST.Kit
 
 -- T89 (docs/SPEC-next.md 2.1): every table below that names a family is the
 -- druid profile's (Data/Profile_Druid_Forever.lua), derived at file load BY
--- NAME -- never from MD.ClassProfile, the logged-in player's: the kit a druid's
+-- NAME -- never from ST.ClassProfile, the logged-in player's: the kit a druid's
 -- book builds is the druid's whoever reads it. Each equals the constant it
 -- replaced (tools/profilecheck.lua).
-local DRUID = MD.Profiles.Require("DRUID", "Kit_Forever.lua")
+local DRUID = ST.Profiles.Require("DRUID", "Kit_Forever.lua")
 
 -- T96 (docs/SPEC-next.md 2.1, S1 step 2): the kit carries the profile it was
 -- built by -- the one its families come from (the druid's, by name, above) --
 -- so the engine reads that profile's HoT slots and families
--- (MD.Profiles.ForKit), never the logged-in player's.
+-- (ST.Profiles.ForKit), never the logged-in player's.
 local KIT_PROFILE = DRUID.class
 
 -- The book's own English name -> the engine's family key
@@ -79,7 +79,7 @@ local GCD = 1.5
 --------------------------------------------------------------------------------
 -- T101 (docs/SPEC-next.md 2.1, 4.2 P2, 4.5): the kit is the LOGGED-IN
 -- player's (2.1: the live kit builder is one of the three readers of the
--- logged-in profile) -- the registered profile of MD.player.class, else the
+-- logged-in profile) -- the registered profile of ST.player.class, else the
 -- generic one -- and it is built from the book in two ways:
 --   * the families the profile names, by name, with the profile's kit type
 --     (the druid's exactly as before: FAMILY_KEY / FAMILY_TYPE above are its);
@@ -99,11 +99,11 @@ local GCD = 1.5
 -- A profile carries names and types only; a number is always the text's.
 --------------------------------------------------------------------------------
 local function LiveProfile()
-    local class = MD.player and MD.player.class
+    local class = ST.player and ST.player.class
     if type(class) ~= "string" or class == "" then return DRUID, DRUID.class end
-    local p = MD.Profiles.byClass[class]
+    local p = ST.Profiles.byClass[class]
     if p then return p, class end
-    return MD.Profiles.Get(class), class
+    return ST.Profiles.Get(class), class
 end
 
 -- "Prayer of Healing" -> "PrayerOfHealing", "Light's Vigil" -> "LightsVigil"
@@ -212,13 +212,13 @@ local function BuildIndex(book, prof)
     return spells, families, known, all, maxRank, skipped, bookByID, order
 end
 
--- kit.crit = MD.API.SpellCritChance(4) (Nature) as a fraction, when plain;
+-- kit.crit = ST.API.SpellCritChance(4) (Nature) as a fraction, when plain;
 -- else the last plain reading this session saw; else 0 with critMissing set.
 -- Never the secret value itself (Client/API.lua's Call already refuses to
 -- hand one back -- this only decides what to show instead).
 local lastCrit
 local function CritFraction(school)
-    local crit = MD.API.SpellCritChance(school or CRIT_SCHOOL)
+    local crit = ST.API.SpellCritChance(school or CRIT_SCHOOL)
     if type(crit) == "number" then
         lastCrit = crit / 100
         return lastCrit, nil
@@ -347,7 +347,7 @@ local function KitEntry(family, be, crit, def, ktype)
     return e
 end
 
--- The index a kit is read with (MD.SpellData's fields), installed as a whole
+-- The index a kit is read with (ST.SpellData's fields), installed as a whole
 -- by both paths below: a fresh build and a cached kit handed out again (so
 -- whatever KitRestore installed meanwhile never outlives the next SpellKit).
 local function InstallIndex(index)
@@ -413,7 +413,7 @@ local function Build(book, crit, critMissing, prof, stamp)
 end
 
 local function SpellKit(self, opts)
-    local book = MD.Book:Get()
+    local book = ST.Book:Get()
     local prof, stamp = LiveProfile()
     local crit, critMissing = CritFraction(prof.critSchool)
     local gen = book.generation
@@ -434,9 +434,9 @@ local function SpellKit(self, opts)
     -- own kit (Kit.Snapshot) is replayed offline with this one, and the tool
     -- says so. Written when the kit changed (T63) -- or into a character
     -- database it has not been written to yet -- never on every call.
-    if MD.cdb and (rebuilt or cache.cdb ~= MD.cdb) then
-        MD.cdb.kit = Kit.Snapshot(cache.kit)
-        cache.cdb = MD.cdb
+    if ST.cdb and (rebuilt or cache.cdb ~= ST.cdb) then
+        ST.cdb.kit = Kit.Snapshot(cache.kit)
+        cache.cdb = ST.cdb
     end
 
     return cache.kit
@@ -449,14 +449,14 @@ end
 -- fight at the moment it is stored (`rec.kit`) and as the last kit built
 -- (cdb.kit), because the kit is built from the live spellbook and nothing
 -- offline can rebuild it: the spellbook tools/import.lua would see is the
--- stub's. The MD.SpellData index is NOT copied: KitRestore rebuilds the part
+-- stub's. The ST.SpellData index is NOT copied: KitRestore rebuilds the part
 -- a replay reads from the entries themselves.
 --------------------------------------------------------------------------------
 function RM.KitSnapshot(kit)
     return Kit.Snapshot(kit or RM:SpellKit())
 end
 
--- A snapshot back into a kit AND the MD.SpellData index (Kit.Restore with
+-- A snapshot back into a kit AND the ST.SpellData index (Kit.Restore with
 -- Forever's families, labels and plan exclusions), installed as SpellKit
 -- installs its own. For the offline tools; the game never needs it.
 -- T101: every entry under its own type (a snapshot of a priest's kit, or of a
@@ -477,16 +477,16 @@ end
 -- Engine/RankMath.lua's.
 --
 -- T59 (P15, review A6a): and with the kit, the practice policy this kit
--- implies (Engine/Practice.lua reads it as MD.Practice.policy; the TBC value
+-- implies (Engine/Practice.lua reads it as ST.Practice.policy; the TBC value
 -- is that file's default). The kit is the live spellbook's, so a family can be
 -- missing from it (`kitIsLive`); no bindings ship (the TBC defaults are the
 -- TBC author's Cell click-casting); a recording is stamped "forever". Provided
 -- here, before the Practice module loads (it needs this one), and only where
 -- this file's kit is the kit.
 --
--- T96 (docs/SPEC-next.md 2.1, 4.4): and MD.KitLive() -> true, n | false, "kit"
+-- T96 (docs/SPEC-next.md 2.1, 4.4): and ST.KitLive() -> true, n | false, "kit"
 -- -- whether the live kit prices at least one heal (n: how many ranks), the
--- Forever half of MD.ClassProfile:Can("coach") (T99 asks it). Provided only
+-- Forever half of ST.ClassProfile:Can("coach") (T99 asks it). Provided only
 -- here, in the LoadOnDemand Replay module: with the module off there is no
 -- provider, and the caller says the module is off.
 local function PricesAHeal(e)
@@ -510,6 +510,6 @@ end
 
 if RM.SpellKit == nil then
     RM.SpellKit = SpellKit
-    MD:Provide("PracticePolicy", { defaultBinds = {}, kitIsLive = true, client = "forever" })
-    MD:Provide("KitLive", KitLive)
+    ST:Provide("PracticePolicy", { defaultBinds = {}, kitIsLive = true, client = "forever" })
+    ST:Provide("KitLive", KitLive)
 end

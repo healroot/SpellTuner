@@ -25,7 +25,7 @@
 -- Not a family, so not modelled -- listed as `unmodelled`, which the coach
 -- card names when a fight casts one (each kept exactly as recorded,
 -- Scenario_Forever.lua, T101 -- never guessed into a type; the kit also skips
--- the first four by name, MD.SpellData.skipped):
+-- the first four by name, ST.SpellData.skipped):
 --   * Power Word: Shield, Contingency Plan -- absorbs (T109);
 --   * Desperate Prayer -- heals the caster alone;
 --   * Divine Grace -- heals only a target below a health line;
@@ -33,15 +33,15 @@
 --     the parser, or heals the plan cannot choose (docs/SPEC-next.md 3
 --     principle 8);
 --   * Inner Focus, Power Infusion -- next-cast modifiers.
-local _, MD = ...
+local _, ST = ...
 
-MD.Profiles.Register("PRIEST", {
+ST.Profiles.Register("PRIEST", {
     label = "Priest",
     critSchool = 2,                -- Holy (VERIFY: Forever merges crit; the probe reads one value)
     -- The druid's Forever capabilities, less `simulate` (the TBC Simulate
     -- window; nothing on the Forever TOCs asks for it): coach and practice
     -- are granted because tools/classcoach.lua passes on this class's book
-    -- (docs/SPEC-next.md 4.3); on Forever `coach` also asks MD.KitLive.
+    -- (docs/SPEC-next.md 4.3); on Forever `coach` also asks ST.KitLive.
     caps = { clock = true, tooltip = true, rankTable = true, coach = true, practice = true },
     families = {
         -- single-target direct heals
@@ -62,7 +62,7 @@ MD.Profiles.Register("PRIEST", {
         -- the target and the caster (4.5; VERIFY)
         BindingHeal     = { names = { "Binding Heal" },      kit = "selfAndTarget" },
     },
-    -- The dashboard order (MD.SpellData.familyOrder).
+    -- The dashboard order (ST.SpellData.familyOrder).
     order = { "GreaterHeal", "Heal", "FlashHeal", "LesserHeal", "Renew",
               "PrayerOfHealing", "BindingHeal", "HolyNova" },
     -- Renew's HoT in slot 1 (the engine's per-target HoT slots).

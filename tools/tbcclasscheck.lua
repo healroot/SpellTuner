@@ -5,12 +5,12 @@
 --
 --   * the client's own tooltip texts (the fixture below) become each rank's
 --     base heal through Spells/Book_TBC.lua and Spells/Parse.lua -- the
---     spellbook walked through MD.API, each read falling back to the scan
+--     spellbook walked through ST.API, each read falling back to the scan
 --     tooltip's lines, a rank no read can price refused with its reason;
 --   * Engine/RankMath.lua puts the TBC rules on top (coefficient by shape and
 --     the BASE cast, the downrank penalty, the class talents of
 --     RankMath.CLASS_RULES) and the numbers are the rule's, restated here;
---   * Compute, Explain, SuggestedRanks and MD.Book (Spells/Book_Model.lua)
+--   * Compute, Explain, SuggestedRanks and ST.Book (Spells/Book_Model.lua)
 --     read the class's source, and the kit RankMath.ClassKit builds passes
 --     Engine/Kit.lua's Kit.Check, stamped with the class's profile;
 --   * every rank's spell tooltip (T121: UI/SpellTip.lua's block over the TBC
@@ -182,7 +182,7 @@ local function TextOf(fam, r)
 end
 
 --------------------------------------------------------------------------------
--- Install(S, MD, class, opts): the class's spellbook in the stub's client.
+-- Install(S, ST, class, opts): the class's spellbook in the stub's client.
 --   opts.api = false   GetSpellDescription, GetSpellPowerCost (for these
 --                      ids), GetSpellLevelLearned, GetSpellBaseCooldown and
 --                      GetSpellInfo's cast answer nothing: every read takes
@@ -199,7 +199,7 @@ local CLIENT_NAMES = { "GetNumSpellTabs", "GetSpellTabInfo", "GetSpellBookItemNa
     "GetSpellInfo", "GetSpellDescription", "GetSpellPowerCost", "GetSpellLevelLearned",
     "GetSpellBaseCooldown" }
 
-local function Install(S, MD, class, opts)
+local function Install(S, ST, class, opts)
     opts = opts or {}
     local api = opts.api ~= false
     local rows, order = {}, {}
@@ -297,14 +297,14 @@ local function Install(S, MD, class, opts)
     function tip:NumLines() return self.n end
     _G[SCAN] = tip
 
-    if MD and MD.API and MD.API.Invalidate then
-        for _, n in ipairs(CLIENT_NAMES) do MD.API.Invalidate(n) end
+    if ST and ST.API and ST.API.Invalidate then
+        for _, n in ipairs(CLIENT_NAMES) do ST.API.Invalidate(n) end
     end
     local function Restore()
         for _, n in ipairs(CLIENT_NAMES) do _G[n] = saved[n] end
         _G[SCAN] = nil
-        if MD and MD.API and MD.API.Invalidate then
-            for _, n in ipairs(CLIENT_NAMES) do MD.API.Invalidate(n) end
+        if ST and ST.API and ST.API.Invalidate then
+            for _, n in ipairs(CLIENT_NAMES) do ST.API.Invalidate(n) end
         end
     end
     return rows, Restore
@@ -326,7 +326,7 @@ local function check(name, cond, detail)
 end
 
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua")
+local ST = dofile(here .. "/harness.lua")
 arg[0] = a0
 local S = _G.STUB
 
@@ -345,18 +345,18 @@ end
 T.section("the files")
 local function LoadIf(cond, files)
     if cond then return true end
-    local ok, err = pcall(S.Load, files, "SpellTuner", MD)
+    local ok, err = pcall(S.Load, files, "SpellTuner", ST)
     return ok, err
 end
-local okProf, errProf = LoadIf(MD.Profiles.byClass.PRIEST ~= nil,
+local okProf, errProf = LoadIf(ST.Profiles.byClass.PRIEST ~= nil,
     { "Data/Profile_Priest_TBC.lua", "Data/Profile_Shaman_TBC.lua", "Data/Profile_Paladin_TBC.lua" })
-check("the three TBC class profiles load", okProf and MD.Profiles.byClass.PRIEST ~= nil
-    and MD.Profiles.byClass.SHAMAN ~= nil and MD.Profiles.byClass.PALADIN ~= nil, tostring(errProf))
-local okParse, errParse = LoadIf(MD.Parse ~= nil, { "Spells/Parse.lua" })
-local okBook, errBook = LoadIf(MD.BookTBC ~= nil, { "Spells/Book_TBC.lua" })
+check("the three TBC class profiles load", okProf and ST.Profiles.byClass.PRIEST ~= nil
+    and ST.Profiles.byClass.SHAMAN ~= nil and ST.Profiles.byClass.PALADIN ~= nil, tostring(errProf))
+local okParse, errParse = LoadIf(ST.Parse ~= nil, { "Spells/Parse.lua" })
+local okBook, errBook = LoadIf(ST.BookTBC ~= nil, { "Spells/Book_TBC.lua" })
 check("Spells/Parse.lua and Spells/Book_TBC.lua load on the TBC line",
-    okParse and okBook and MD.Parse ~= nil and MD.BookTBC ~= nil, tostring(errParse) .. " " .. tostring(errBook))
-local B, RM, Kit = MD.BookTBC or {}, MD.RankMath, MD.Kit
+    okParse and okBook and ST.Parse ~= nil and ST.BookTBC ~= nil, tostring(errParse) .. " " .. tostring(errBook))
+local B, RM, Kit = ST.BookTBC or {}, ST.RankMath, ST.Kit
 -- the parent has no RankMath:Source (the suite then fails, it does not stop)
 local function Src() if type(RM.Source) == "function" then return RM:Source() end return nil end
 check("RankMath has the class path (Source, CLASS_RULES, ClassRow, ClassKit)",
@@ -373,8 +373,8 @@ end
 local function LogIn(class, level)
     S.level = level or 70
     S.units.player.class = class
-    MD:DetectProfile()
-    MD:Fire("CORE_LOGIN")
+    ST:DetectProfile()
+    ST:Fire("CORE_LOGIN")
 end
 local function Rebuild() return type(B.Rebuild) == "function" and B:Rebuild() or nil end
 
@@ -383,14 +383,14 @@ local function Rebuild() return type(B.Rebuild) == "function" and B:Rebuild() or
 --------------------------------------------------------------------------------
 T.section("the scan tooltip")
 S.level = 70 -- every rank of the fixture (Install lists those at or below it)
-local rowsP, restoreP = Install(S, MD, "PRIEST", { castTaken = { Heal = 0.5, ["Greater Heal"] = 0.5 } })
+local rowsP, restoreP = Install(S, ST, "PRIEST", { castTaken = { Heal = 0.5, ["Greater Heal"] = 0.5 } })
 do
-    local lines, why = (MD.API.SpellTooltipLines or function() return nil, "unbound" end)(25213)
-    check("MD.API.SpellTooltipLines reads the scan tooltip line by line",
+    local lines, why = (ST.API.SpellTooltipLines or function() return nil, "unbound" end)(25213)
+    check("ST.API.SpellTooltipLines reads the scan tooltip line by line",
         type(lines) == "table" and #lines == 4 and lines[1].l == "Greater Heal" and lines[1].r == "Rank 7"
         and lines[2].l == "825 Mana" and lines[4].l == rowsP[25213].text,
         Show(lines) .. " " .. tostring(why))
-    local none, nwhy = (MD.API.SpellTooltipLines or function() return nil, "x" end)("x")
+    local none, nwhy = (ST.API.SpellTooltipLines or function() return nil, "x" end)("x")
     check("SpellTooltipLines answers nil, absent for a non-number", none == nil and nwhy == "absent", tostring(nwhy))
 end
 
@@ -400,14 +400,14 @@ end
 T.section("as shipped (T123): a priest has the rank table and the tooltip")
 local PRIEST_TALENTS = { ["Spiritual Healing"] = 5, ["Empowered Healing"] = 5, ["Divine Fury"] = 5,
                          ["Improved Renew"] = 3 }
-MD:SetTalents(PRIEST_TALENTS)
+ST:SetTalents(PRIEST_TALENTS)
 local rebuilt = 0
-MD:RegisterCallback("SPELLS_REBUILT", function() rebuilt = rebuilt + 1 end)
+ST:RegisterCallback("SPELLS_REBUILT", function() rebuilt = rebuilt + 1 end)
 LogIn("PRIEST", 70)
 do
-    local p = MD.ClassProfile
+    local p = ST.ClassProfile
     check("the priest's profile is selected and its file grants the clock, the rank table and the tooltip",
-        p == MD.Profiles.byClass.PRIEST and p:Can("clock") and p:Can("rankTable") and p:Can("tooltip") == true)
+        p == ST.Profiles.byClass.PRIEST and p:Can("clock") and p:Can("rankTable") and p:Can("tooltip") == true)
     local wrong = {}
     for _, cap in ipairs({ "coach", "practice", "simulate", "advisor" }) do
         local ok, why = p:Can(cap)
@@ -416,12 +416,12 @@ do
     check("the coach, practice, simulate and the advisor stay refused for the class", #wrong == 0,
         table.concat(wrong, " "))
     local _, why = p:Can("coach")
-    local okW, words = pcall(MD.Profiles.Refusal, "coach", why, "Coaching")
+    local okW, words = pcall(ST.Profiles.Refusal, "coach", why, "Coaching")
     check("the refusal names the class: Coaching: not modelled for Priest yet",
         okW and words == "Coaching: not modelled for Priest yet", tostring(words))
     local files = {}
     for _, c in ipairs({ "SHAMAN", "PALADIN" }) do
-        local caps = MD.Profiles.byClass[c] and MD.Profiles.byClass[c].caps or {}
+        local caps = ST.Profiles.byClass[c] and ST.Profiles.byClass[c].caps or {}
         if not (caps.clock and caps.rankTable == true and caps.tooltip == true and not caps.coach
                 and not caps.practice and not caps.simulate and not caps.advisor) then
             files[#files + 1] = c .. Show(caps)
@@ -520,7 +520,7 @@ end
 
 --------------------------------------------------------------------------------
 -- The rows as the TBC panes draw them (T121 / T123): UI/SpellTip.lua's block
--- over MD.Book, the class's book once its profile grants the rank table. It
+-- over ST.Book, the class's book once its profile grants the rank table. It
 -- may not raise, every line is printable ASCII with no pipe, its Per mana is
 -- the book entry's in Spells/Words.lua's "tip" words, the entry's per mana
 -- is the rank row's, and every row of the rank table carries the level and
@@ -558,15 +558,15 @@ end
 local function RowsRender(label, srcX)
     if tipLoaded == nil then
         tipLoaded = pcall(S.Load, { "UI/Style.lua", "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/SpellTip.lua" },
-                "SpellTuner", MD)
-            and MD.SpellTip ~= nil and type(MD.SpellTip.Lines) == "function"
+                "SpellTuner", ST)
+            and ST.SpellTip ~= nil and type(ST.SpellTip.Lines) == "function"
     end
-    if MD.Book and MD.Book.Refresh then pcall(MD.Book.Refresh, MD.Book) end
+    if ST.Book and ST.Book.Refresh then pcall(ST.Book.Refresh, ST.Book) end
     local ids, bad = {}, {}
     for id in pairs(srcX and srcX.spells or {}) do ids[#ids + 1] = id end
     table.sort(ids)
     local okBk, bk = false, nil
-    if MD.Book and MD.Book.Get then okBk, bk = pcall(MD.Book.Get, MD.Book) end
+    if ST.Book and ST.Book.Get then okBk, bk = pcall(ST.Book.Get, ST.Book) end
     for _, id in ipairs(ids) do
         local entry = okBk and type(bk) == "table" and bk.spells[id] or nil
         local row = RM:Explain(id, nil, { live = true })
@@ -576,8 +576,8 @@ local function RowsRender(label, srcX)
         end
         for _, detail in ipairs({ false, true }) do
             local ok2, lines2, outcome = false, "no SpellTip", nil
-            if MD.SpellTip and MD.SpellTip.Lines then
-                ok2, lines2, outcome = pcall(MD.SpellTip.Lines, MD.SpellTip, id, detail)
+            if ST.SpellTip and ST.SpellTip.Lines then
+                ok2, lines2, outcome = pcall(ST.SpellTip.Lines, ST.SpellTip, id, detail)
             end
             local clean2, what2 = false, nil
             if ok2 and type(lines2) == "table" then clean2, what2 = Printable(Uncoloured(lines2)) end
@@ -592,7 +592,7 @@ local function RowsRender(label, srcX)
                 end
                 local perMana
                 for _, ln in ipairs(lines2) do if ln.l == "Per mana" then perMana = ln.r end end
-                local want = entry and MD.Words and MD.Words.PerMana(entry, "tip")
+                local want = entry and ST.Words and ST.Words.PerMana(entry, "tip")
                 if perMana == nil or perMana ~= want then
                     bad[#bad + 1] = id .. " Per mana " .. tostring(perMana) .. " vs " .. tostring(want)
                 end
@@ -634,7 +634,7 @@ do
     local ranks = RM:SuggestedRanks()
     check("SuggestedRanks reads the class's ranks", ranks.GreaterHeal == (sugg and sugg.rank),
         Show(ranks))
-    local okBk, book = pcall(function() return MD.Book:Get() end)
+    local okBk, book = pcall(function() return ST.Book:Get() end)
     local heals, valueBad = {}, {}
     if okBk and type(book) == "table" then
         for _, key in ipairs(book.order) do
@@ -650,7 +650,7 @@ do
             end
         end
     end
-    check("MD.Book's heal families are Compute's over RankMath:Source(), in the profile's order, row for row",
+    check("ST.Book's heal families are Compute's over RankMath:Source(), in the profile's order, row for row",
         okBk and table.concat(heals, " ") == table.concat(src and src.familyOrder or { "?" }, " ")
         and #valueBad == 0 and book.families.Renew and book.families.Renew.maxKnown
         and book.families.Renew.maxKnown.id == 25222,
@@ -659,14 +659,14 @@ do
     -- T123: Engine/SpendTracker.lua through RankMath:Source() -- a priest's
     -- highest Greater Heal is a max-rank cast, rank 6 is not, both counted
     -- under the family
-    local ST = MD.Spend
-    local c0 = { casts = ST.combat.casts, max = ST.combat.maxRankCasts, fam = ST.combat.byFamily.GreaterHeal or 0 }
+    local SPEND = ST.Spend
+    local c0 = { casts = SPEND.combat.casts, max = SPEND.combat.maxRankCasts, fam = SPEND.combat.byFamily.GreaterHeal or 0 }
     S.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", nil, 25213)
     S.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", nil, 25210)
     check("the spend tracker: Greater Heal 7 counted as the max rank, rank 6 not, both under GreaterHeal",
-        ST.combat.casts == c0.casts + 2 and ST.combat.maxRankCasts == c0.max + 1
-        and (ST.combat.byFamily.GreaterHeal or 0) == c0.fam + 825 + 750,
-        Show({ ST.combat.casts - c0.casts, ST.combat.maxRankCasts - c0.max, ST.combat.byFamily }))
+        SPEND.combat.casts == c0.casts + 2 and SPEND.combat.maxRankCasts == c0.max + 1
+        and (SPEND.combat.byFamily.GreaterHeal or 0) == c0.fam + 825 + 750,
+        Show({ SPEND.combat.casts - c0.casts, SPEND.combat.maxRankCasts - c0.max, SPEND.combat.byFamily }))
 
     local okD, dkit = pcall(function() return RM:SpellKit({ live = true }) end)
     check("RankMath:SpellKit stays the druid's for a priest with the rank table (decision 8 (b))",
@@ -692,7 +692,7 @@ end
 --------------------------------------------------------------------------------
 T.section("a refusal")
 restoreP()
-local _, restoreR = Install(S, MD, "PRIEST", { extra = {
+local _, restoreR = Install(S, ST, "PRIEST", { extra = {
     { id = 900001, name = "Flash Heal", rank = 10, cost = 500, cast = 1.5, level = 70,
       text = "Heals a friendly target." } } })
 local srcR = Rebuild()
@@ -705,10 +705,10 @@ restoreR()
 -- 6. A shaman read from the tooltip alone; a paladin's Holy Shock
 --------------------------------------------------------------------------------
 T.section("a shaman and a paladin")
-MD:SetTalents({ ["Purification"] = 5, ["Improved Chain Heal"] = 2 })
+ST:SetTalents({ ["Purification"] = 5, ["Improved Chain Heal"] = 2 })
 -- no learn level anywhere (the client's read absent, the tooltip without its
 -- line): every rank is refused, none is put on the table with a guessed one
-local rowsN, restoreN = Install(S, MD, "SHAMAN", { api = false })
+local rowsN, restoreN = Install(S, ST, "SHAMAN", { api = false })
 LogIn("SHAMAN", 70)
 do
     local srcN = Rebuild()
@@ -725,7 +725,7 @@ do
         and next(RM:Compute()) == nil, Show({ nRows, nRefused, srcN and srcN.refused[25423] }))
 end
 restoreN()
-local _, restoreS = Install(S, MD, "SHAMAN", { api = false, levelLine = true })
+local _, restoreS = Install(S, ST, "SHAMAN", { api = false, levelLine = true })
 local srcS = Rebuild()
 do
     local ch = srcS and srcS.spells[25423] or {}
@@ -747,8 +747,8 @@ do
 end
 restoreS()
 
-MD:SetTalents({ ["Healing Light"] = 3 })
-local _, restoreL = Install(S, MD, "PALADIN")
+ST:SetTalents({ ["Healing Light"] = 3 })
+local _, restoreL = Install(S, ST, "PALADIN")
 LogIn("PALADIN", 70)
 local srcL = Rebuild()
 do
@@ -776,19 +776,19 @@ restoreL()
 --     valued by Engine/DamageMath.lua over each rank's own text
 --------------------------------------------------------------------------------
 T.section("a class's damage (T123)")
-local DM = MD.DamageMath
+local DM = ST.DamageMath
 local DAMAGE_WANT = {
     PRIEST = { "Smite", "Holy Fire", "Mind Blast", "Shadow Word: Pain" },
     SHAMAN = { "Lightning Bolt", "Chain Lightning", "Earth Shock", "Flame Shock", "Frost Shock" },
     PALADIN = { "Exorcism", "Holy Wrath", "Consecration" },
 }
 local function DamageBook(class, talents)
-    MD:SetTalents(talents)
+    ST:SetTalents(talents)
     S.level = 70
-    local _, undo = Install(S, MD, class, { damage = true })
+    local _, undo = Install(S, ST, class, { damage = true })
     LogIn(class, 70)
     Rebuild()
-    local ok, book = pcall(function() return MD.Book:Get() end)
+    local ok, book = pcall(function() return ST.Book:Get() end)
     return ok and type(book) == "table" and book or nil, undo
 end
 -- one rank: the book's numbers are DM.Compute's over DM.Parse of its own
@@ -817,7 +817,7 @@ local function DamageFamilies(label, class, book)
     end
     check(label .. ": the profile's damage families, kind damage (the picker's DAMAGE section), in its order",
         table.concat(keys, ",") == table.concat(DAMAGE_WANT[class], ","), table.concat(keys, ","))
-    local okS, kind, seeded = pcall(MD.Tabs.SeedList, MD.Tabs, book, "damage")
+    local okS, kind, seeded = pcall(ST.Tabs.SeedList, ST.Tabs, book, "damage")
     local a, b = {}, {}
     for _, k in ipairs(okS and seeded or {}) do a[#a + 1] = k end
     for _, k in ipairs(DAMAGE_WANT[class]) do b[#b + 1] = k end
@@ -873,14 +873,14 @@ T.section("the druid and a mage")
 LogIn("MAGE", 64)
 local mageRes, mageBuilt = RM:Compute(), Rebuild()
 check("a mage (no TBC profile): no rank table, no class book, Data/SpellData.lua as before",
-    next(mageRes) == nil and Src() == MD.SpellData and mageBuilt == nil and not RM:IsClassBook(),
-    Show({ next(mageRes), Src() == MD.SpellData, mageBuilt ~= nil }))
-MD:SetTalents(MD.harnessTalents)
+    next(mageRes) == nil and Src() == ST.SpellData and mageBuilt == nil and not RM:IsClassBook(),
+    Show({ next(mageRes), Src() == ST.SpellData, mageBuilt ~= nil }))
+ST:SetTalents(ST.harnessTalents)
 LogIn("DRUID", 64)
 Rebuild()
 do
     check("the druid reads Data/SpellData.lua, and the class book builds nothing for him",
-        Src() == MD.SpellData and type(B.Source) == "function" and B:Source() == nil)
+        Src() == ST.SpellData and type(B.Source) == "function" and B:Source() == nil)
     local res, same, detail = RM:Compute(), true, {}
     for fam, b in pairs(druidBefore) do
         local r = res[fam]

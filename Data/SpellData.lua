@@ -17,10 +17,10 @@
 -- blamed on this table was the IMPORTER reading the log's spellPower as
 -- +healing; nothing here was wrong. Healing Touch R12/R13 stay marked: nobody
 -- in the corpus casts one, so nobody has measured them.
-local _, MD = ...
+local _, ST = ...
 
 local SD = {}
-MD.SpellData = SD
+ST.SpellData = SD
 
 local EMPTY = {}
 
@@ -190,13 +190,13 @@ function SD:StaticCost(spellID, ctx)
     local s = SD.spells[spellID]
     if not s or s.cost == nil then return nil end
     local cost = s.cost
-    if MD.player.isDruid and cost > 0 then
+    if ST.player.isDruid and cost > 0 then
         ctx = ctx or EMPTY
         local fam = s.family
-        local moonglow = ctx.moonglow or MD:TalentRank("Moonglow")
-        local tranquil = ctx.tranquilSpirit or MD:TalentRank("Tranquil Spirit")
+        local moonglow = ctx.moonglow or ST:TalentRank("Moonglow")
+        local tranquil = ctx.tranquilSpirit or ST:TalentRank("Tranquil Spirit")
         local inTree = ctx.inTree
-        if inTree == nil then inTree = MD:InTreeForm() end
+        if inTree == nil then inTree = ST:InTreeForm() end
 
         local reduction = 0
         -- Moonglow: -3%/rank for Healing Touch, Regrowth AND Rejuvenation.
@@ -310,7 +310,7 @@ function SD:BuildKnown()
             SD.maxRank[family] = list[top]
         end
     end
-    MD:Fire("SPELLS_REBUILT")
+    ST:Fire("SPELLS_REBUILT")
 end
 
 function SD:IsMaxKnownRank(spellID)
@@ -318,8 +318,8 @@ function SD:IsMaxKnownRank(spellID)
     return s and SD.maxRank[s.family] == spellID
 end
 
-MD:RegisterCallback("MD_READY", function() SD:BuildKnown() end)
-MD:On("LEARNED_SPELL_IN_TAB", function() SD:BuildKnown() end)
-MD:On("SPELLS_CHANGED", function()
-    if MD.db then SD:BuildKnown() end
+ST:RegisterCallback("MD_READY", function() SD:BuildKnown() end)
+ST:On("LEARNED_SPELL_IN_TAB", function() SD:BuildKnown() end)
+ST:On("SPELLS_CHANGED", function()
+    if ST.db then SD:BuildKnown() end
 end)

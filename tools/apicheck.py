@@ -24,13 +24,13 @@ API baseline and the adapter rule (CLAUDE.md / docs/FOREVER-PLAN.md):
      does not dominate the use still counts as a check.
   9. an event registered on a frame (`:RegisterEvent`, `:RegisterUnitEvent`,
      `:RegisterAllEvents`, in any spelling a call can take) outside Client/ and
-     Core.lua -- every registration goes through MD:On, which refuses what the
+     Core.lua -- every registration goes through ST:On, which refuses what the
      adapter forbids (T57, review Q2)
- 10. the client's name read (`MD.API.client`, `API.client`, `API["client"]`)
+ 10. the client's name read (`ST.API.client`, `API.client`, `API["client"]`)
      outside Client/ and UI/Dump_Forever.lua -- a flavour difference is a
      seam the flavour installs (Engine/Practice.lua's policy), never a branch
      on the client in shared code (T59, review A6a). From the source text,
-     comments and strings blanked; a copy of MD.API under another name than
+     comments and strings blanked; a copy of ST.API under another name than
      `API` is not followed.
  11. a host addon's global (`EllesmereUI`, `LibStub`, `ElvUI`: FOREIGN) read
      outside Integrations/ -- host addons are reached only from there
@@ -99,7 +99,7 @@ NOT_IN_CLIENT = {"os", "io", "require", "dofile", "loadfile", "package", "module
 MODULE_ROOT_PREFIXES = ("Engine/", "Spells/", "Data/", "UI/")
 
 FORBIDDEN_EVENT = "COMBAT_LOG_EVENT_UNFILTERED"
-# rule 9 (T57): the one file outside Client/ that registers events -- MD:On's.
+# rule 9 (T57): the one file outside Client/ that registers events -- ST:On's.
 REGISTER_HOME = "Core.lua"
 REGISTER_RE = re.compile(r'[.:]\s*(RegisterEvent|RegisterUnitEvent|RegisterAllEvents)\b')
 FORBIDDEN_EVENT_HOME = "Client/API_Forever.lua"
@@ -115,8 +115,8 @@ FOREIGN_REASON = "host addon outside Integrations/"
 # rule 11 (T97, docs/SPEC-next.md 2 and 3.1): host addons' globals. Not client
 # API (the baseline does not have them), so read anywhere they were rule 1's
 # "unknown"; under Integrations/ they are allowed, anywhere else a finding of
-# their own. Presence and versions for a report stay on MD.API.IsAddOnLoaded /
-# MD.API.AddOnMetadata (Client/Probe.lua reaches them by name, as strings).
+# their own. Presence and versions for a report stay on ST.API.IsAddOnLoaded /
+# ST.API.AddOnMetadata (Client/Probe.lua reaches them by name, as strings).
 FOREIGN = {"EllesmereUI", "LibStub", "ElvUI"}
 
 C_MEMBER_RE = re.compile(r"^(C_[A-Za-z0-9_]+)\.([A-Za-z0-9_]+)$")
@@ -176,7 +176,7 @@ FLAVOURS_FILE = os.path.join(HERE, "data", "flavours.txt")
 def load_flavours(path=FLAVOURS_FILE):
     """tools/data/flavours.txt (T47): [(name, {marker files}, lo, hi)] -- the
     table release.sh and tools/releasecheck.lua classify TOCs by, and
-    Client/API.lua's MD.API.BANDS / MD.API.MARKERS must equal."""
+    Client/API.lua's ST.API.BANDS / ST.API.MARKERS must equal."""
     flavours = []
     with open(path, "r", encoding="utf-8") as f:
         for raw in f:
@@ -320,10 +320,10 @@ def scan_file(luac, abspath, relpath, baseline, globals_seen, per_file_globals):
 # ---------------------------------------------------------------------------
 
 HANDLER_INLINE_RE = re.compile(
-    r'MD:On\(\s*"([A-Za-z_][A-Za-z0-9_]*)"\s*,\s*function\s*\(([^)]*)\)'
+    r'ST:On\(\s*"([A-Za-z_][A-Za-z0-9_]*)"\s*,\s*function\s*\(([^)]*)\)'
 )
 HANDLER_NAMED_RE = re.compile(
-    r'MD:On\(\s*"([A-Za-z_][A-Za-z0-9_]*)"\s*,\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)'
+    r'ST:On\(\s*"([A-Za-z_][A-Za-z0-9_]*)"\s*,\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)'
 )
 
 BLOCK_TOKEN_RE = re.compile(r'\b(function|if|do|repeat|until|end)\b')
@@ -506,7 +506,7 @@ def scan_rule9(abspath, relpath):
     findings = []
     for m in REGISTER_RE.finditer(stripped):
         findings.append(Finding(relpath, line_of(stripped, m.start()), m.group(1),
-                                "outside MD:On (only Client/ and Core.lua register events)"))
+                                "outside ST:On (only Client/ and Core.lua register events)"))
     return findings
 
 
@@ -525,7 +525,7 @@ def scan_rule10(abspath, relpath):
     for m in CLIENT_NAME_RE.finditer(no_comments):
         if stripped[m.start():m.start() + 3] != "API":
             continue
-        findings.append(Finding(relpath, line_of(no_comments, m.start()), "MD.API.client",
+        findings.append(Finding(relpath, line_of(no_comments, m.start()), "ST.API.client",
                                 "read outside Client/ and UI/Dump_Forever.lua (a flavour installs a policy)"))
     return findings
 
@@ -666,10 +666,10 @@ def main():
         # IsSecret; the good twin checks the alias and raises nothing.
         expected.append(("Handlers.lua", 45, "sid", "used before IsSecret in the UNIT_SPELLCAST_ALIAS_BAD handler"))
         # T57, rule 9: a raw frame registering an event outside Client/ and Core.lua.
-        expected.append(("Bad.lua", 12, "RegisterEvent", "outside MD:On (only Client/ and Core.lua register events)"))
+        expected.append(("Bad.lua", 12, "RegisterEvent", "outside ST:On (only Client/ and Core.lua register events)"))
         # T59, rule 10: the client's name read in a shared file (Client/Ok.lua
         # reads it too, and raises nothing; a comment naming it is not a read).
-        expected.append(("Bad.lua", 15, "MD.API.client",
+        expected.append(("Bad.lua", 15, "ST.API.client",
                          "read outside Client/ and UI/Dump_Forever.lua (a flavour installs a policy)"))
         # T97, rule 11: a host addon's global read outside Integrations/ (the
         # same file scanned as Integrations/... raises nothing).

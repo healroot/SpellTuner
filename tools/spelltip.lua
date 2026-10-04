@@ -32,9 +32,9 @@
 local here = arg[0]:match("^(.*)/[^/]+$")
 HARNESS_FLAVOUR = "tbc"
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua"); arg[0] = a0
+local ST = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB
-local SD, RM = MD.SpellData, MD.RankMath
+local SD, RM = ST.SpellData, ST.RankMath
 local T = dofile(here .. "/lib/t.lua")
 local check = T.check
 
@@ -59,7 +59,7 @@ end
 -- T80 (C1): the theme and the window manager after the kit, as the TBC TOC
 -- lists them; T121: the block (UI/SpellTip.lua) right before the hook
 S.Load({ "UI/Style.lua", "UI/Theme_Flat.lua", "UI/EscStack.lua", "UI/Windows.lua",
-         "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/SpellTip.lua", "UI/SpellTooltip.lua" }, "SpellTuner", MD)
+         "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/SpellTip.lua", "UI/SpellTooltip.lua" }, "SpellTuner", ST)
 
 local function Plain(s) return (T.Strip(s or ""):gsub("%s+", " "):gsub("^ ", ""):gsub(" $", "")) end
 local function find(lines, label)
@@ -99,10 +99,10 @@ local function Num(v, d)
     return tostring(math.floor(v + 0.5))
 end
 
-local Book = MD.Book
+local Book = ST.Book
 local function Fresh() return Book:Refresh() end
 
-MD.player.isDruid = true
+ST.player.isDruid = true
 local book = Fresh()
 
 --------------------------------------------------------------------------------
@@ -131,30 +131,30 @@ for _, id in ipairs({ rejuv, SD.maxRank.HealingTouch, SD.maxRank.Regrowth, SD.ma
 end
 S.shift = false
 check("ASCII only, no bare pipe, plain and detail", bare == nil, bare)
-MD.db.spellTooltip = false
+ST.db.spellTooltip = false
 check("off means nothing is added", #SetSpell(rejuv) == 0)
-MD.db.spellTooltip = true
+ST.db.spellTooltip = true
 check("a spell the book does not know adds nothing", #SetSpell(635) == 0)
 -- T99: the gate is the class profile's `tooltip` capability
-local druidProfile = MD.ClassProfile
-MD.ClassProfile = MD.Profiles.generic
+local druidProfile = ST.ClassProfile
+ST.ClassProfile = ST.Profiles.generic
 check("a class without the tooltip cap gets nothing", #SetSpell(rejuv) == 0)
-MD.ClassProfile = druidProfile
+ST.ClassProfile = druidProfile
 local htID = SD.maxRank.HealingTouch
 local pmLive = R(find(SetSpell(htID), "Per mana"))
-MD.sim = { heal = 5000 }
+ST.sim = { heal = 5000 }
 local pmSim = R(find(SetSpell(htID), "Per mana"))
-MD.sim = nil
+ST.sim = nil
 check("the dashboard's what-if never reaches a tooltip", pmLive ~= nil and pmSim == pmLive,
     tostring(pmLive) .. " / " .. tostring(pmSim))
 check("Tranquility has no value and no calc: no block", #SetSpell(SD.maxRank.Tranquility) == 0)
 
 -- a builder that throws must not break the game's tooltip
-local realLines = MD.SpellTip and MD.SpellTip.Lines
-if MD.SpellTip then MD.SpellTip.Lines = function() error("boom") end end
+local realLines = ST.SpellTip and ST.SpellTip.Lines
+if ST.SpellTip then ST.SpellTip.Lines = function() error("boom") end end
 local okCall, got = pcall(SetSpell, rejuv)
-if MD.SpellTip then MD.SpellTip.Lines = realLines end
-check("a failing builder never breaks the game's tooltip", MD.SpellTip ~= nil and okCall and #got == 0)
+if ST.SpellTip then ST.SpellTip.Lines = realLines end
+check("a failing builder never breaks the game's tooltip", ST.SpellTip ~= nil and okCall and #got == 0)
 
 --------------------------------------------------------------------------------
 T.section("1-3. Healing Touch R12")
@@ -181,7 +181,7 @@ check("   Suggested, then the facts; no HPM, Average, Downranked or overheal on 
     and find(L, "After overheal") == nil and find(L, "How") == nil)
 
 -- the detail behind Shift, overheal seeded (bookshapecheck 17's seam)
-local OH = MD.Overheal
+local OH = ST.Overheal
 local savedF, savedK = OH.Fraction, OH.KindFraction
 OH.Fraction = function() return 0.25, 20, "rank" end
 OH.KindFraction = function() return 0.25, 20, "kind" end
@@ -199,7 +199,7 @@ local cmp = Book:Compare(e, book.spells[SD.all.HealingTouch[11]])
 check("3. detail: Heals, Crit ... 15%, After overheal (measured), vs Rank 11",
     R(heals) == Num(e.min) .. " - " .. Num(e.max) and R(crit) == critWant
     and e.afterOverheal ~= nil and R(after) == Num(e.afterOverheal.value) .. " 25% measured"
-    and vs ~= nil and R(vs) == (MD.Words.Signed(cmp.perMana) .. " per mana, " .. MD.Words.Signed(cmp.perSec) .. " per sec"),
+    and vs ~= nil and R(vs) == (ST.Words.Signed(cmp.perMana) .. " per mana, " .. ST.Words.Signed(cmp.perSec) .. " per sec"),
     List({ R(heals), tostring(R(crit)) .. " want " .. critWant, R(after), R(vs) }))
 check("3. the How lines are Tip:Spell's Shift lines (golden, d6691fe)", SameList(HowLines(LS), HOW_HT),
     List(HowLines(LS)))
@@ -253,8 +253,8 @@ for _, n in ipairs(BOOK_NAMES) do saved[n] = rawget(_G, n) end
 local byId = {}
 for _, d in ipairs(DAMAGE) do byId[d[1]] = d end
 local function Forget()
-    for _, n in ipairs(BOOK_NAMES) do if MD.API.Invalidate then MD.API.Invalidate(n) end end
-    if MD.BookTBC and MD.BookTBC.Forget then MD.BookTBC.Forget() end
+    for _, n in ipairs(BOOK_NAMES) do if ST.API.Invalidate then ST.API.Invalidate(n) end end
+    if ST.BookTBC and ST.BookTBC.Forget then ST.BookTBC.Forget() end
 end
 _G.GetNumSpellTabs = function() return 1 end
 _G.GetSpellTabInfo = function(tab) if tab == 1 then return "Balance", "icon", 0, #DAMAGE end end
@@ -277,12 +277,12 @@ end
 _G.GetSpellBonusDamage = function() return 300 end
 Forget()
 
-local TL = MD.harnessTalents
+local TL = ST.harnessTalents
 local savedT = {}
 for _, k in ipairs({ "Moonfury", "Vengeance", "Wrath of Cenarius", "Improved Moonfire", "Focused Starlight" }) do
     savedT[k] = TL[k]; TL[k] = 0
 end
-local DM = MD.DamageMath
+local DM = ST.DamageMath
 local function Damage(id, detail)
     Fresh()
     S.shift = detail or false
@@ -335,10 +335,10 @@ L = Damage(133)
 check("a costed spell outside the druid's damage families: the Other block (header, Casts to OOM)",
     #L == 3 and R(find(L, "SpellTuner")) == "Rank 1 of 1" and find(L, "Casts to OOM") ~= nil
     and find(L, "Per mana") == nil, #L .. " lines")
-MD.db.spellTooltipDamage = false
+ST.db.spellTooltipDamage = false
 check("the damage setting off adds nothing to a damage spell", #Damage(9912) == 0)
 check("and leaves the heals alone", #SetSpell(rejuv) > 0)
-MD.db.spellTooltipDamage = true
+ST.db.spellTooltipDamage = true
 check("the damage setting on again: Wrath's block is back", #Damage(9912) > 0)
 
 for k, v in pairs(savedT) do TL[k] = v end
@@ -350,21 +350,21 @@ Fresh()
 T.section("6. the detail modes and the watcher")
 --------------------------------------------------------------------------------
 local function HasDetail() return find(SetSpell(htID), "How") ~= nil end
-MD.db.spellTooltipDetail = "ALT"
+ST.db.spellTooltipDetail = "ALT"
 S.shift = true
 local altShift = HasDetail()
 S.shift = false; S.altDown = true
 local altAlt = HasDetail()
 S.altDown = false
 local altHint = R(find(SetSpell(htID), "SpellTuner"))
-MD.db.spellTooltipDetail = "ALWAYS"
+ST.db.spellTooltipDetail = "ALWAYS"
 local always = HasDetail()
 local alwaysHint = R(find(SetSpell(htID), "SpellTuner"))
-MD.db.spellTooltipDetail = "NEVER"
+ST.db.spellTooltipDetail = "NEVER"
 S.shift = true
 local never = HasDetail()
 S.shift = false
-MD.db.spellTooltipDetail = "SHIFT"
+ST.db.spellTooltipDetail = "SHIFT"
 check("6. ALT: the detail with Alt only; ALWAYS always; NEVER never; the hint names the key",
     not altShift and altAlt and always and not never and altHint == "Rank 12 of 12 Alt"
     and alwaysHint == "Rank 12 of 12",
@@ -376,13 +376,13 @@ owner:SetScript("OnEnter", function() entered = entered + 1 end)
 local function Press(key) entered = 0; S.Fire("MODIFIER_STATE_CHANGED", key, 1); return entered end
 SetSpell(htID)
 local shiftRuns, altIgnored = Press("LSHIFT"), Press("LALT")
-MD.db.spellTooltipDetail = "ALT"
+ST.db.spellTooltipDetail = "ALT"
 local altRuns, shiftIgnored = Press("RALT"), Press("RSHIFT")
-MD.db.spellTooltipDetail = "CTRL"
+ST.db.spellTooltipDetail = "CTRL"
 local ctrlRuns = Press("LCTRL")
-MD.db.spellTooltipDetail = "ALWAYS"
+ST.db.spellTooltipDetail = "ALWAYS"
 local alwaysIgnored = Press("LSHIFT")
-MD.db.spellTooltipDetail = "SHIFT"
+ST.db.spellTooltipDetail = "SHIFT"
 tt.lines = {}; fire("OnTooltipCleared")
 local noBlock = Press("LSHIFT")
 owner = nil
@@ -390,25 +390,25 @@ check("6. the watcher re-runs OnEnter for the mode's key only, and only over a b
     shiftRuns == 1 and altIgnored == 0 and altRuns == 1 and shiftIgnored == 0 and ctrlRuns == 1
     and alwaysIgnored == 0 and noBlock == 0,
     List({ shiftRuns, altIgnored, altRuns, shiftIgnored, ctrlRuns, alwaysIgnored, noBlock }))
-check("the old TBC builders are gone: no Tip:Spell, Tip:Damage, Tip:Columns, MD:SpellTooltipAppend",
-    MD.Tip.Spell == nil and MD.Tip.Damage == nil and MD.Tip.Columns == nil and MD.SpellTooltipAppend == nil
-    and type(MD.Tip.Clock) == "function"
-    and MD.SpellTip ~= nil and type(MD.SpellTip.OnSpell) == "function")
+check("the old TBC builders are gone: no Tip:Spell, Tip:Damage, Tip:Columns, ST:SpellTooltipAppend",
+    ST.Tip.Spell == nil and ST.Tip.Damage == nil and ST.Tip.Columns == nil and ST.SpellTooltipAppend == nil
+    and type(ST.Tip.Clock) == "function"
+    and ST.SpellTip ~= nil and type(ST.SpellTip.OnSpell) == "function")
 
 -- T76 (P32 of docs/PLAN-refactor-ux.md, review A21): on TBC the renderer is
--- UI/Tip.lua's; MD.Tip:Show (its old shape, every TBC caller's) still renders
+-- UI/Tip.lua's; ST.Tip:Show (its old shape, every TBC caller's) still renders
 -- into GameTooltip, the kit tooltip untouched. T80 (C1, decision 10): the TBC
 -- TOC lists the theme, so that GameTooltip is drawn in the kit's flat skin.
 do
     local o = CreateFrame("Frame")
     tt.lines = {}
-    MD.UI.tooltip.lines = nil
-    MD.Tip:Show(o, "ANCHOR_LEFT", { { l = "SpellTuner", c = { 1, 1, 1 } } }, { { l = "Left-click: dashboard" } })
+    ST.UI.tooltip.lines = nil
+    ST.Tip:Show(o, "ANCHOR_LEFT", { { l = "SpellTuner", c = { 1, 1, 1 } } }, { { l = "Left-click: dashboard" } })
     local got2 = #tt.lines == 2 and tt.lines[1].l == "SpellTuner" and tt.lines[2].l == "Left-click: dashboard"
     check("T76/T80: TBC's Tip:Show is GameTooltip, in the kit's skin",
-        type(MD.Tip.Skinned) == "function" and got2 and MD.Tip:Skinned(tt) and MD.UI.tooltip.lines == nil
-        and MD.UI.THEMED == true, string.format("lines=%d", #tt.lines))
-    MD.Tip:Hide()
+        type(ST.Tip.Skinned) == "function" and got2 and ST.Tip:Skinned(tt) and ST.UI.tooltip.lines == nil
+        and ST.UI.THEMED == true, string.format("lines=%d", #tt.lines))
+    ST.Tip:Hide()
 end
 
 --------------------------------------------------------------------------------
@@ -419,15 +419,15 @@ do
     local lib = dofile(here .. "/tbcclasscheck.lua")
     local savedLevel, savedClass = S.level, S.units.player.class
     S.level = 70
-    local _, restore = lib.Install(S, MD, "PRIEST")
-    local caps = MD.Profiles.byClass.PRIEST and MD.Profiles.byClass.PRIEST.caps
+    local _, restore = lib.Install(S, ST, "PRIEST")
+    local caps = ST.Profiles.byClass.PRIEST and ST.Profiles.byClass.PRIEST.caps
     local savedCaps = caps and { rankTable = caps.rankTable, tooltip = caps.tooltip }
     local good, why = pcall(function()
         caps.rankTable, caps.tooltip = true, true
         S.units.player.class = "PRIEST"
-        MD:DetectProfile()
-        MD:Fire("CORE_LOGIN")
-        MD.BookTBC:Rebuild()
+        ST:DetectProfile()
+        ST:Fire("CORE_LOGIN")
+        ST.BookTBC:Rebuild()
         local b = Fresh()
         local ge = b.spells[25213]
         local lines = SetSpell(25213)
@@ -441,9 +441,9 @@ do
     restore()
     if caps then caps.rankTable, caps.tooltip = savedCaps.rankTable, savedCaps.tooltip end
     S.level, S.units.player.class = savedLevel, savedClass
-    MD:DetectProfile()
-    MD:Fire("CORE_LOGIN")
-    if MD.BookTBC and MD.BookTBC.Rebuild then pcall(MD.BookTBC.Rebuild, MD.BookTBC) end
+    ST:DetectProfile()
+    ST:Fire("CORE_LOGIN")
+    if ST.BookTBC and ST.BookTBC.Rebuild then pcall(ST.BookTBC.Rebuild, ST.BookTBC) end
     pcall(Fresh)
     check("7. a priest's Greater Heal 7: the block from the class book (its family, per mana, Rank N of M)",
         good and why == true, tostring(why) .. (good and "" or " (raised)"))

@@ -9,10 +9,10 @@
 --
 -- Provenance is on every table. When one of these is replaced by a measured
 -- number, replace the comment with the measurement.
-local _, MD = ...
+local _, ST = ...
 
 local P = {}
-MD.SimPresets = P
+ST.SimPresets = P
 
 --------------------------------------------------------------------------------
 -- Party: who is there, in what role, with how much health.
@@ -44,7 +44,7 @@ function P.BuildTargets(partyID, level)
     if not def then return {} end
     local out = {}
     for i, role in ipairs(def.roles) do
-        local maxHP = HP(level or (MD.player and MD.player.level) or 70, role)
+        local maxHP = HP(level or (ST.player and ST.player.level) or 70, role)
         out[i] = { name = role == "HEALER" and "you" or (role:lower() .. i), role = role,
                    maxHP = maxHP, hp0 = maxHP, tracked = true }
     end
@@ -98,7 +98,7 @@ P.SITUATION = {
 local GRID = 1.0
 
 function P.BuildScenario(opts)
-    local SM = MD.SimModel
+    local SM = ST.SimModel
     local targets = opts.targets or P.BuildTargets(opts.party or "5", opts.level)
     local dur = opts.dur or 60
 
@@ -167,21 +167,21 @@ function P.BuildScenario(opts)
         sorted.amt[j], sorted.x[j] = ev.amt[i], ev.x[i]
     end
 
-    local RM = MD.Regen
+    local RM = ST.Regen
     local pool = opts.pool or UnitPowerMax("player", 0) or 0
     -- Utility mana in a synthetic fight: buffs, dispels and shifts are real
     -- spend the plan never chooses, so they go in as one lump at t = 0 rather
     -- than being quietly ignored (they were 12.6% of BF-1).
     local utility = opts.utility
-    if utility == nil then utility = MD.db and MD.db.simUtilityPerFight or 0 end
+    if utility == nil then utility = ST.db and ST.db.simUtilityPerFight or 0 end
 
     return {
         dur = dur, pool = pool,
         initial = { mana = math.max(0, (opts.mana or pool) - (utility or 0)),
                     apiBase = RM and RM.apiBase or 0, apiCasting = RM and RM.apiCasting or 0,
-                    form = (MD.InTreeForm and MD:InTreeForm()) and "tree" or "caster" },
+                    form = (ST.InTreeForm and ST:InTreeForm()) and "tree" or "caster" },
         targets = targets, ev = sorted,
-        floor = (MD.db and MD.db.simFloor) or 0.30,
+        floor = (ST.db and ST.db.simFloor) or 0.30,
         grace = 6,
         synthetic = true, utility = utility or 0,
         damageLabel = dmg and dmg.label or "?", situationLabel = sit and sit.label or "?",

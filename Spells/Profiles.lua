@@ -10,27 +10,27 @@
 -- source, which the TBC profile only points at).
 --
 -- Two readers, two profiles (2.1):
---   * MD.ClassProfile is the LOGGED-IN player's, chosen by MD.Profiles.Select at
+--   * ST.ClassProfile is the LOGGED-IN player's, chosen by ST.Profiles.Select at
 --     CORE_LOGIN. Read only by the UI (gates, words), the live kit builders and
---     the recorders. (The spec calls it MD.Profile; that name is taken on TBC
---     by Diagnostics_TBC.lua's MD:Profile(), the /md profile report, which a
+--     the recorders. (The spec calls it ST.Profile; that name is taken on TBC
+--     by Diagnostics_TBC.lua's ST:Profile(), the /md profile report, which a
 --     field of that name would replace.)
---   * Everything that runs on a kit reads MD.Profiles.ForKit(kit) -- the
+--   * Everything that runs on a kit reads ST.Profiles.ForKit(kit) -- the
 --     kit's own profile, the druid's when the kit carries none (every kit and
 --     recording made before this file is a druid's) -- so tools/import.lua
 --     replays any character's recording on any machine.
 --   * A module-level constant derived from a profile (SP.BINDABLE,
 --     MC.byClass.DRUID, Kit_Forever's FAMILY_KEY, ...) is derived at FILE LOAD
---     from MD.Profiles.Require("DRUID") BY NAME -- never from MD.ClassProfile, which
+--     from ST.Profiles.Require("DRUID") BY NAME -- never from ST.ClassProfile, which
 --     does not exist yet at file load and names whoever logged in.
 --
--- Pure: no client call, no frame, no MD.API. Loaded right after Core.lua and
+-- Pure: no client call, no frame, no ST.API. Loaded right after Core.lua and
 -- the flavour core on every main TOC, before any Data/Profile_* file (which
 -- registers into it) and before every file that derives from it.
-local _, MD = ...
+local _, ST = ...
 
-MD.Profiles = MD.Profiles or {}
-local P = MD.Profiles
+ST.Profiles = ST.Profiles or {}
+local P = ST.Profiles
 
 -- class token -> registered profile
 P.byClass = P.byClass or {}
@@ -43,8 +43,8 @@ P.byClass = P.byClass or {}
 P.FIELDS = {
     class = "string",          -- the class token; Register sets it
     label = "string",          -- how the class is named in a sentence ("Druid")
-    critSchool = "number",     -- MD.API.SpellCritChance's school (Nature 4, Holy 2)
-    caps = "table",            -- capability -> true (MD.ClassProfile:Can)
+    critSchool = "number",     -- ST.API.SpellCritChance's school (Nature 4, Holy 2)
+    caps = "table",            -- capability -> true (ST.ClassProfile:Can)
     families = "table",        -- family key -> definition (P.FAMILY_FIELDS)
     order = "table",           -- family keys, the line's own dashboard order
     hotSlots = "table",        -- family keys; slot n = SM.HOT_INDEX's n
@@ -162,7 +162,7 @@ function P.Validate(p, types)
         Say(problems, "the profile is a %s, not a table", type(p))
         return false, problems
     end
-    if types == nil then types = MD.Kit and MD.Kit.TYPES end
+    if types == nil then types = ST.Kit and ST.Kit.TYPES end
     CheckFields(problems, "profile", p, P.FIELDS)
     for _, k in ipairs(P.REQUIRED) do
         if p[k] == nil then Say(problems, "profile has no %s", k) end
@@ -342,27 +342,27 @@ Profile.__index = Profile
 -- T99 (docs/SPEC-next.md 2.1, 4.4): a capability that also needs a live
 -- answer where the line provides one. `coach` is also "the live kit prices at
 -- least one heal": on Forever the kit is built in the LoadOnDemand Replay
--- module, which provides the answer as MD.KitLive (Kit_Forever.lua, T96).
+-- module, which provides the answer as ST.KitLive (Kit_Forever.lua, T96).
 -- With no provider the capability is the class's alone -- unless the line
--- DECLARED the module that would provide it (MD:DeclareModule, which only
+-- DECLARED the module that would provide it (ST:DeclareModule, which only
 -- Core_Forever.lua calls: a value the flavour installs, never a client check),
 -- in which case that module is off.
 P.LIVE = {
     coach = { provider = "KitLive", module = "SpellTuner_Replay" },
 }
 
--- The declared module row (Core.lua's MD.modules), or nil: none on TBC.
+-- The declared module row (Core.lua's ST.modules), or nil: none on TBC.
 local function DeclaredModule(name)
-    for _, m in ipairs(MD.modules or {}) do
+    for _, m in ipairs(ST.modules or {}) do
         if m.name == name then return m end
     end
     return nil
 end
 
--- MD.ClassProfile:Can(cap) -> true | false, why. The one replacement for the
--- MD.player.isDruid gates (T99 moved the 23 of them here). why:
+-- ST.ClassProfile:Can(cap) -> true | false, why. The one replacement for the
+-- ST.player.isDruid gates (T99 moved the 23 of them here). why:
 --   "class"  -- this class's profile does not grant it;
---   "kit"    -- granted, but the live kit prices no heal (MD.KitLive's answer);
+--   "kit"    -- granted, but the live kit prices no heal (ST.KitLive's answer);
 --   "module" -- granted, but the module that answers for the live kit is off
 --               (the caller keeps that module's own placeholder).
 -- The class comes first, so a class that is not modelled is told so whether
@@ -371,7 +371,7 @@ function Profile:Can(cap)
     if not (self.caps and self.caps[cap] == true) then return false, "class" end
     local live = P.LIVE[cap]
     if live then
-        local fn = MD[live.provider]
+        local fn = ST[live.provider]
         if type(fn) == "function" then
             local ok, answer, why = pcall(fn)
             if not ok then return false, "kit" end
@@ -455,7 +455,7 @@ end
 -- The registry
 --------------------------------------------------------------------------------
 -- P.Register(class, p): a Data/Profile_* file's one call. A second
--- registration for one class raises (MD:Provide's rule); a profile that fails
+-- registration for one class raises (ST:Provide's rule); a profile that fails
 -- P.Validate raises too, naming the first problems -- it is the file's bug, and
 -- nothing downstream should derive from it.
 local SHOWN = 3
@@ -507,22 +507,22 @@ end
 
 -- P.ForKit(kit) -> the kit's own profile: Get(kit.profile), the druid's when
 -- the kit names none (every kit made before profiles was a druid's). What the
--- engine reads; never MD.ClassProfile.
+-- engine reads; never ST.ClassProfile.
 function P.ForKit(kit)
     local class = type(kit) == "table" and kit.profile or nil
     if type(class) ~= "string" then class = "DRUID" end
     return P.Get(class)
 end
 
--- P.Select(class): MD.ClassProfile = Get(class) -- the logged-in player's. Called at
--- CORE_LOGIN (below), after Core.lua's DetectProfile set MD.player.class.
+-- P.Select(class): ST.ClassProfile = Get(class) -- the logged-in player's. Called at
+-- CORE_LOGIN (below), after Core.lua's DetectProfile set ST.player.class.
 function P.Select(class)
-    MD.ClassProfile = P.Get(class)
-    return MD.ClassProfile
+    ST.ClassProfile = P.Get(class)
+    return ST.ClassProfile
 end
 
-MD:RegisterCallback("CORE_LOGIN", function()
-    P.Select(MD.player and MD.player.class)
+ST:RegisterCallback("CORE_LOGIN", function()
+    P.Select(ST.player and ST.player.class)
 end)
 
 --------------------------------------------------------------------------------
@@ -538,7 +538,7 @@ P.CLASS_WORDS = { DEATHKNIGHT = "Death Knight", DEMONHUNTER = "Demon Hunter" }
 -- profile's label, else the token title-cased ("PRIEST" -> "Priest"), else
 -- "your class" (no class read yet). class defaults to the logged-in player's.
 function P.ClassLabel(class)
-    if class == nil then class = MD.player and MD.player.class end
+    if class == nil then class = ST.player and ST.player.class end
     local reg = P.byClass[class]
     if reg and type(reg.label) == "string" and reg.label ~= "" then return reg.label end
     if type(class) ~= "string" or not class:match("^%u+$") or class == "UNKNOWN" then

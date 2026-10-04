@@ -1,8 +1,8 @@
 -- tools/run.sh tools/slashcheck.lua [--print | --golden]
 --
 -- T61 (P17, review A1): a golden transcript of EVERY TBC slash verb and alias
--- under the stub. Core_TBC.lua's hand-kept MD.COMMANDS list and its 100-line
--- MD.SlashFallback if-chain became MD:AddCommand registrations (Core.lua's
+-- under the stub. Core_TBC.lua's hand-kept ST.COMMANDS list and its 100-line
+-- ST.SlashFallback if-chain became ST:AddCommand registrations (Core.lua's
 -- registry, the one Forever already used); this suite is what proves the move
 -- changed nothing a player sees. The golden at the bottom was captured on the
 -- parent commit (8c4cc93), before the first edit, with `--golden`, and every
@@ -13,7 +13,7 @@
 --   * every chat line (the addon's version string replaced by {version});
 --   * every call into the functions the verbs reach -- the dashboard, the
 --     options, the widget, the practice panel, the diagnostics, the simulator,
---     the replay, the run recorder, the debug console -- as "call MD:Name(args)".
+--     the replay, the run recorder, the debug console -- as "call ST:Name(args)".
 --     They are replaced by spies: what those functions then do is other suites'
 --     business (tools/verifycheck.lua runs the diagnostics for real);
 --   * every account setting a verb touched, as "db.key: before -> after".
@@ -21,10 +21,10 @@
 -- then with every one of those functions ABSENT (each verb's guard: a TBC
 -- build without the UI must still answer every verb without raising).
 -- A last section loads UI/Settings.lua (UI/Options_About.lua until T119) and
--- reads back the command rows the About page paints, which were MD.COMMANDS
--- and are now MD:Commands().
+-- reads back the command rows the About page paints, which were ST.COMMANDS
+-- and are now ST:Commands().
 -- T94: the TBC line has a `ui` verb now (`/md ui style <name>`, created by
--- UI/Styles.lua through MD:AddSubcommand); the golden was re-based for it.
+-- UI/Styles.lua through ST:AddSubcommand); the golden was re-based for it.
 HARNESS_FLAVOUR = "tbc"
 
 local here = arg[0]:match("^(.*)/[^/]+$")
@@ -34,7 +34,7 @@ for i = 2, #arg do
 end
 
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua"); arg[0] = a0
+local ST = dofile(here .. "/harness.lua"); arg[0] = a0
 local S = _G.STUB
 local T = dofile(here .. "/lib/t.lua")
 
@@ -45,11 +45,11 @@ local T = dofile(here .. "/lib/t.lua")
 do
     local listed = false
     for _, rel in ipairs(S.loadedFiles or {}) do if rel == "Client/Probe.lua" then listed = true end end
-    if not listed then S.Load({ "Client/Probe.lua" }, "SpellTuner", MD) end
+    if not listed then S.Load({ "Client/Probe.lua" }, "SpellTuner", ST) end
 end
 
 -- T94 (docs/SPEC-next.md 2.5, 5.4): UI/Styles.lua registers `ui style` with
--- MD:AddSubcommand, which on TBC (no `ui` verb of its own) creates `/md ui`.
+-- ST:AddSubcommand, which on TBC (no `ui` verb of its own) creates `/md ui`.
 -- The TBC harness drops UI/ files, so the kit, the theme and the registry are
 -- loaded here as SpellTuner_TBC.toc lists them (UI/Styles.lua right after
 -- UI/Theme_Flat.lua), and CORE_LOGIN, which ran before them, runs again so
@@ -59,13 +59,13 @@ do
     local listed = false
     for _, rel in ipairs(S.loadedFiles or {}) do if rel == "UI/Styles.lua" then listed = true end end
     if not listed then
-        S.Load({ "UI/Style.lua", "UI/Theme_Flat.lua", "UI/Styles.lua" }, "SpellTuner", MD)
-        MD:Fire("CORE_LOGIN")
+        S.Load({ "UI/Style.lua", "UI/Theme_Flat.lua", "UI/Styles.lua" }, "SpellTuner", ST)
+        ST:Fire("CORE_LOGIN")
     end
 end
 
 -- T102 (docs/SPEC-next.md 2.5, 7.4): UI/ClockSettings.lua registers `clock
--- layout`, `clock look` and `clock preview` with MD:AddSubcommand, which on
+-- layout`, `clock look` and `clock preview` with ST:AddSubcommand, which on
 -- TBC (no `clock` verb of its own) creates `/md clock`. It is loaded here as
 -- SpellTuner_TBC.toc lists it (after UI/ClockView.lua and UI/Widget.lua, which
 -- the harness drops too: the renderer is loaded, the widget is not, so
@@ -80,15 +80,15 @@ do
         local f = io.open((S.root or ".") .. "/UI/ClockSettings.lua", "r")
         if f then
             f:close()
-            S.Load({ "UI/ClockView.lua", "UI/ClockSettings.lua" }, "SpellTuner", MD)
+            S.Load({ "UI/ClockView.lua", "UI/ClockSettings.lua" }, "SpellTuner", ST)
         end
     end
 end
 
 local out = {}
 _G.DEFAULT_CHAT_FRAME = { AddMessage = function(_, m) out[#out + 1] = m end }
-MD.db.debug = MD.db.debug or {}
-MD.db.debug.enabled = false
+ST.db.debug = ST.db.debug or {}
+ST.db.debug.enabled = false
 
 -- A value as Lua source: quotes, backslashes, tabs and every other control or
 -- high byte escaped, so an editor cannot eat a tab or a trailing space.
@@ -127,15 +127,15 @@ local SPIED = {
 local calls = {}
 local function InstallSpies()
     for _, name in ipairs(SPIED) do
-        MD[name] = function(self, ...)
+        ST[name] = function(self, ...)
             local shown = {}
             for i = 1, select("#", ...) do shown[i] = Show((select(i, ...))) end
-            calls[#calls + 1] = "call MD:" .. name .. "(" .. table.concat(shown, ", ") .. ")"
+            calls[#calls + 1] = "call ST:" .. name .. "(" .. table.concat(shown, ", ") .. ")"
         end
     end
 end
 local function RemoveSpies()
-    for _, name in ipairs(SPIED) do MD[name] = nil end
+    for _, name in ipairs(SPIED) do ST[name] = nil end
 end
 
 -- The settings the verbs write.
@@ -143,8 +143,8 @@ local WATCHED = { "locked", "pos", "muted", "drinkReminder", "showRest", "spellT
                   "widgetTooltip", "halfLife" }
 local function Snapshot()
     local s = {}
-    for _, k in ipairs(WATCHED) do s[k] = Show(MD.db[k]) end
-    s.practiceSetup = Show(MD.cdb.practiceSetup ~= nil)
+    for _, k in ipairs(WATCHED) do s[k] = Show(ST.db[k]) end
+    s.practiceSetup = Show(ST.cdb.practiceSetup ~= nil)
     return s
 end
 
@@ -178,7 +178,7 @@ local VERBS = {
     "nosuch", "  MUTE  ", "Mute", "RUN Start The Underbog",
 }
 
-local version = MD.version or "dev"
+local version = ST.version or "dev"
 local function Plain(s, find, repl)
     local i, j = s:find(find, 1, true)
     while i do
@@ -218,15 +218,15 @@ Pass("bare")
 -- The About tab's command rows (UI/Options_About.lua), painted under the stub.
 --------------------------------------------------------------------------------
 -- T119 (SPEC-one-ui 7, re-based): the About page is UI/Settings.lua's on both
--- lines, built from TBC's MD.SettingsLine (UI/Settings_TBC.lua). Each row is
+-- lines, built from TBC's ST.SettingsLine (UI/Settings_TBC.lua). Each row is
 -- read as its usage, then its whole text -- the row shows the text up to its
 -- first "; " and the hover the whole (tooltips[2]) -- so the golden's lines are
 -- the ones the old tab painted, unchanged.
 do
-    S.Load({ "UI/Style.lua", "UI/Settings.lua", "UI/Settings_TBC.lua" }, "SpellTuner", MD)
+    S.Load({ "UI/Style.lua", "UI/Settings.lua", "UI/Settings_TBC.lua" }, "SpellTuner", ST)
     local content = CreateFrame("Frame", nil, UIParent)
     content:SetSize(736, 520)
-    local p = MD.Settings.Build("about", content)
+    local p = ST.Settings.Build("about", content)
     local lines = {}
     for i = 1, p.shown do
         local r = p.rows[i]
@@ -323,7 +323,7 @@ local function Compare(GOLDEN)
 
     T.section("T87: the probe on the TBC line")
     local probeRow
-    for _, c in ipairs(MD:Commands()) do if c.name == "probe" then probeRow = c end end
+    for _, c in ipairs(ST:Commands()) do if c.name == "probe" then probeRow = c end end
     T.check("/md probe is registered as a hidden row (the help and About rows above are unchanged)",
         probeRow ~= nil and probeRow.hidden == true and probeRow.usage == "/st probe")
     out = {}
@@ -348,7 +348,7 @@ end
 --------------------------------------------------------------------------------
 local GOLDEN = {
     { cmd = "spied /md ", lines = {
-        "call MD:ToggleDashboard()",
+        "call ST:ToggleDashboard()",
     } },
     { cmd = "spied /md help", lines = {
         "|cff9966ffSpellTuner:|r commands:",
@@ -383,26 +383,26 @@ local GOLDEN = {
         "|cff9966ffSpellTuner:|r   |cffffff00/st clock layout <name> / look reset / preview|r - the mana clock's layout (Settings -> Clock shows each); every clock colour and bar setting back to the look's own; the clock on screen for 60 s, to see or move it",
     } },
     { cmd = "spied /md options", lines = {
-        "call MD:ShowOptionsFrame()",
+        "call ST:ShowOptionsFrame()",
     } },
     { cmd = "spied /md config", lines = {
-        "call MD:ShowOptionsFrame()",
+        "call ST:ShowOptionsFrame()",
     } },
     { cmd = "spied /md settings", lines = {
-        "call MD:ShowOptionsFrame()",
+        "call ST:ShowOptionsFrame()",
     } },
     { cmd = "spied /md lock", lines = {
         "|cff9966ffSpellTuner:|r widget locked.",
-        "call MD:UpdateVisibility()",
+        "call ST:UpdateVisibility()",
     } },
     { cmd = "spied /md unlock", lines = {
         "|cff9966ffSpellTuner:|r widget unlocked - drag it, then /md lock.",
-        "call MD:UpdateVisibility()",
+        "call ST:UpdateVisibility()",
         "db.locked: true -> false",
     } },
     { cmd = "spied /md reset", lines = {
         "|cff9966ffSpellTuner:|r widget position reset.",
-        "call MD:ApplyWidgetPosition()",
+        "call ST:ApplyWidgetPosition()",
     } },
     { cmd = "spied /md mute", lines = {
         "|cff9966ffSpellTuner:|r alerts muted.",
@@ -429,21 +429,21 @@ local GOLDEN = {
         "db.showRest: false -> true",
     } },
     { cmd = "spied /md practice", lines = {
-        "call MD:ShowDashboard()",
-        "call MD:SelectView(\"simulate\", \"practice\")",
+        "call ST:ShowDashboard()",
+        "call ST:SelectView(\"simulate\", \"practice\")",
     } },
     { cmd = "spied /md practice start", lines = {
-        "call MD:OpenPractice(<table>, nil)",
+        "call ST:OpenPractice(<table>, nil)",
         "cdb.practiceSetup: false -> true",
     } },
     { cmd = "spied /md practice Start", lines = {
-        "call MD:OpenPractice(<table>, nil)",
+        "call ST:OpenPractice(<table>, nil)",
     } },
     { cmd = "spied /md binds", lines = {
-        "call MD:ToggleBindings()",
+        "call ST:ToggleBindings()",
     } },
     { cmd = "spied /md bindings", lines = {
-        "call MD:ToggleBindings()",
+        "call ST:ToggleBindings()",
     } },
     { cmd = "spied /md spelltip", lines = {
         "|cff9966ffSpellTuner:|r spell tooltips: off.",
@@ -455,12 +455,12 @@ local GOLDEN = {
     } },
     { cmd = "spied /md tooltip", lines = {
         "|cff9966ffSpellTuner:|r floating clock: tooltip off - it takes no mouse input at all now, so it neither pops a tooltip nor swallows clicks in its rectangle, and it is still draggable while unlocked. The minimap button and the ElvUI datatexts keep theirs.",
-        "call MD:UpdateVisibility()",
+        "call ST:UpdateVisibility()",
         "db.widgetTooltip: true -> false",
     } },
     { cmd = "spied /md tip", lines = {
         "|cff9966ffSpellTuner:|r floating clock: tooltip on - hovering shows the breakdown, left-click opens the dashboard.",
-        "call MD:UpdateVisibility()",
+        "call ST:UpdateVisibility()",
         "db.widgetTooltip: false -> true",
     } },
     { cmd = "spied /md window 30", lines = {
@@ -488,85 +488,85 @@ local GOLDEN = {
         "|cff9966ffSpellTuner:|r usage: /md window N (5-60 seconds)",
     } },
     { cmd = "spied /md verify", lines = {
-        "call MD:RunVerify()",
+        "call ST:RunVerify()",
     } },
     { cmd = "spied /md profile", lines = {
-        "call MD:RunProfile()",
+        "call ST:RunProfile()",
     } },
     { cmd = "spied /md export", lines = {
-        "call MD:RunExport()",
+        "call ST:RunExport()",
     } },
     { cmd = "spied /md calibrate", lines = {
-        "call MD:RunCalibrate()",
+        "call ST:RunCalibrate()",
     } },
     { cmd = "spied /md calib", lines = {
-        "call MD:RunCalibrate()",
+        "call ST:RunCalibrate()",
     } },
     { cmd = "spied /md fsrtest", lines = {
-        "call MD:RunFSRTest()",
+        "call ST:RunFSRTest()",
     } },
     { cmd = "spied /md regentest", lines = {
-        "call MD:RunRegenTest(nil)",
+        "call ST:RunRegenTest(nil)",
     } },
     { cmd = "spied /md regentest 45", lines = {
-        "call MD:RunRegenTest(\"45\")",
+        "call ST:RunRegenTest(\"45\")",
     } },
     { cmd = "spied /md regentest clear", lines = {
-        "call MD:RunRegenTest(\"clear\")",
+        "call ST:RunRegenTest(\"clear\")",
     } },
     { cmd = "spied /md spamtest", lines = {
-        "call MD:RunSpamTest()",
+        "call ST:RunSpamTest()",
     } },
     { cmd = "spied /md simrun", lines = {
-        "call MD:RunSimRun()",
+        "call ST:RunSimRun()",
     } },
     { cmd = "spied /md simreplay", lines = {
-        "call MD:RunSimReplay(\"\")",
+        "call ST:RunSimReplay(\"\")",
     } },
     { cmd = "spied /md simreplay fixture", lines = {
-        "call MD:RunSimReplay(\"fixture\")",
+        "call ST:RunSimReplay(\"fixture\")",
     } },
     { cmd = "spied /md simreplay 2", lines = {
-        "call MD:RunSimReplay(\"2\")",
+        "call ST:RunSimReplay(\"2\")",
     } },
     { cmd = "spied /md coach", lines = {
-        "call MD:RunCoach(\"\")",
+        "call ST:RunCoach(\"\")",
     } },
     { cmd = "spied /md coach 1 force", lines = {
-        "call MD:RunCoach(\"1 force\")",
+        "call ST:RunCoach(\"1 force\")",
     } },
     { cmd = "spied /md coach cancel", lines = {
-        "call MD:RunCoach(\"cancel\")",
+        "call ST:RunCoach(\"cancel\")",
     } },
     { cmd = "spied /md sim", lines = {
-        "call MD:ToggleSimWindow()",
+        "call ST:ToggleSimWindow()",
     } },
     { cmd = "spied /md replay", lines = {
-        "call MD:ToggleReplay(\"\")",
+        "call ST:ToggleReplay(\"\")",
     } },
     { cmd = "spied /md replay 2:7 force", lines = {
-        "call MD:ToggleReplay(\"2:7 force\")",
+        "call ST:ToggleReplay(\"2:7 force\")",
     } },
     { cmd = "spied /md replay run 2", lines = {
-        "call MD:ToggleReplay(\"run 2\")",
+        "call ST:ToggleReplay(\"run 2\")",
     } },
     { cmd = "spied /md run start Blood Furnace", lines = {
-        "call MD:RunCommand(\"start Blood Furnace\")",
+        "call ST:RunCommand(\"start Blood Furnace\")",
     } },
     { cmd = "spied /md run status", lines = {
-        "call MD:RunCommand(\"status\")",
+        "call ST:RunCommand(\"status\")",
     } },
     { cmd = "spied /md run stop", lines = {
-        "call MD:RunCommand(\"stop\")",
+        "call ST:RunCommand(\"stop\")",
     } },
     { cmd = "spied /md coachrun", lines = {
-        "call MD:RunCoachRun(\"\")",
+        "call ST:RunCoachRun(\"\")",
     } },
     { cmd = "spied /md coachrun 1", lines = {
-        "call MD:RunCoachRun(\"1\")",
+        "call ST:RunCoachRun(\"1\")",
     } },
     { cmd = "spied /md debug", lines = {
-        "call MD:ToggleDebugConsole()",
+        "call ST:ToggleDebugConsole()",
     } },
     { cmd = "spied /md ui", lines = {
         "|cff9966ffSpellTuner:|r usage: /st ui style <name>",
@@ -647,7 +647,7 @@ local GOLDEN = {
         "db.muted: true -> false",
     } },
     { cmd = "spied /md RUN Start The Underbog", lines = {
-        "call MD:RunCommand(\"Start The Underbog\")",
+        "call ST:RunCommand(\"Start The Underbog\")",
     } },
     { cmd = "bare /md ", lines = {
     } },

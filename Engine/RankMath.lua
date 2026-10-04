@@ -13,10 +13,10 @@
 -- pass, and Explain() rebuilds a single row with its intermediate terms for the
 -- dashboard tooltip. RowFor only allocates row.calc when asked, because the
 -- dashboard re-renders every 2s and those tables would be pure garbage.
-local _, MD = ...
+local _, ST = ...
 
 local RankMath = {}
-MD.RankMath = RankMath
+ST.RankMath = RankMath
 
 local EMPTY = {}
 
@@ -38,7 +38,7 @@ end
 
 -- T117: the coefficient rules are Spells/Coefficients.lua's (read at run time:
 -- it loads before this file on the TBC TOC, but nothing here needs it at load).
-local function Coef() return MD.Coefficients end
+local function Coef() return ST.Coefficients end
 
 -- Chain-casts until the next cast is unaffordable: each cast nets
 -- (cost - regen * interval) mana, so floor((mana - cost) / net) + 1 casts.
@@ -46,7 +46,7 @@ local function Coef() return MD.Coefficients end
 -- T67 (P23, review A13): the rule is Spells/RankRules.lua's, shared with the
 -- Forever book; this method stays for its callers (RegenMeasure, SimSelfTest).
 function RankMath:CastsToOOM(cost, interval, mana, regen)
-    return MD.RankRules.CastsToOOM(cost, interval, mana, regen)
+    return ST.RankRules.CastsToOOM(cost, interval, mana, regen)
 end
 
 -- T67: the dashboard's rows for Spells/RankRules.lua -- heal per mana and per
@@ -68,7 +68,7 @@ RankMath.RULE_FIELDS = RULE_FIELDS -- read by tools/bookcheck.lua's tbc run
 -- taken advertised benefit * coeff). Counted while in form unless the setting
 -- is off; only true for targets in your party.
 --
--- Simulation overrides (MD.sim, session-only, set from the dashboard's
+-- Simulation overrides (ST.sim, session-only, set from the dashboard's
 -- "Simulate" strip): nil = live value. Only the rank math reads them; the
 -- clock, widget and advisor always use real inputs.
 --------------------------------------------------------------------------------
@@ -89,7 +89,7 @@ end
 -- kit (RankMath:SpellKit) is still built from (decision 8 (b): the TBC engine
 -- stays the druid's).
 function RankMath:DruidContext(opts)
-    local SD = MD.SpellData
+    local SD = ST.SpellData
     -- opts.healer (v0.7.1): the simulator's own stat overrides, applied exactly
     -- where the Simulate strip's are and nowhere else, so a simulated healer
     -- and a simulated dashboard row go down one code path. `inTree` is the
@@ -103,7 +103,7 @@ function RankMath:DruidContext(opts)
     elseif opts and opts.live then
         sim = EMPTY
     else
-        sim = MD.sim or EMPTY
+        sim = ST.sim or EMPTY
     end
 
     local liveBonus = BonusHealing()
@@ -112,10 +112,10 @@ function RankMath:DruidContext(opts)
 
     -- A simulated form changes the aura AND the costs; keep the two in step.
     local inTree
-    if sim.tree ~= nil then inTree = sim.tree else inTree = MD:InTreeForm() end
+    if sim.tree ~= nil then inTree = sim.tree else inTree = ST:InTreeForm() end
 
     local treeAura = 0
-    if inTree and not (MD.db and MD.db.treeAura == false) then
+    if inTree and not (ST.db and ST.db.treeAura == false) then
         treeAura = 0.25 * (UnitStat("player", 5) or 0) + (relic and relic.aura or 0)
     end
 
@@ -128,8 +128,8 @@ function RankMath:DruidContext(opts)
     -- the in-5SR rate (Intensity, gear mp5, Dreamstate) since spamming keeps
     -- you inside the five-second rule the whole time.
     local liveMana = UnitPower("player", 0) or 0
-    local liveCasting = MD.Regen and MD.Regen.casting or 0
-    local liveBase = MD.Regen and MD.Regen.base or 0
+    local liveCasting = ST.Regen and ST.Regen.casting or 0
+    local liveBase = ST.Regen and ST.Regen.base or 0
 
     local ctx = {
         bonus = statBonus + treeAura,
@@ -138,22 +138,22 @@ function RankMath:DruidContext(opts)
         inTree = inTree,
         relic = relic,
         crit = crit,
-        playerLevel = MD.player.level,
+        playerLevel = ST.player.level,
         mana = sim.mana or liveMana,
         castingRegen = sim.casting and (sim.casting / 5) or liveCasting,
         baseRegen = sim.base and (sim.base / 5) or liveBase,
 
-        goN = 1 + 0.02 * MD:TalentRank("Gift of Nature"),
-        empTouch = 1 + 0.10 * MD:TalentRank("Empowered Touch"),
-        empRejuv = 1 + 0.04 * MD:TalentRank("Empowered Rejuvenation"),
-        impRejuv = 1 + 0.05 * MD:TalentRank("Improved Rejuvenation"),
-        naturalist = 0.1 * MD:TalentRank("Naturalist"), -- -0.1s HT cast per rank
+        goN = 1 + 0.02 * ST:TalentRank("Gift of Nature"),
+        empTouch = 1 + 0.10 * ST:TalentRank("Empowered Touch"),
+        empRejuv = 1 + 0.04 * ST:TalentRank("Empowered Rejuvenation"),
+        impRejuv = 1 + 0.05 * ST:TalentRank("Improved Rejuvenation"),
+        naturalist = 0.1 * ST:TalentRank("Naturalist"), -- -0.1s HT cast per rank
 
         simulated = next(sim) ~= nil,
         live = { heal = liveBonus, crit = liveCrit * 100, casting = liveCasting * 5,
                  base = liveBase * 5, mana = liveMana },
     }
-    ctx.regrowthCrit = math.min(1, crit + 0.10 * MD:TalentRank("Improved Regrowth"))
+    ctx.regrowthCrit = math.min(1, crit + 0.10 * ST:TalentRank("Improved Regrowth"))
 
     -- Nature's Grace: a spell critical takes 0.5s off the NEXT cast, never
     -- below the 1.5s GCD. Chain-casting one spell, the fraction of casts that
@@ -164,8 +164,8 @@ function RankMath:DruidContext(opts)
     -- column. HoTs never crit and sit at the GCD anyway, so it is a no-op for
     -- them twice over. Assumed 0.5s until the "cast" debug category confirms
     -- it on this client (docs/DESIGN-v0.5.md F1).
-    ctx.naturesGrace = (MD:TalentRank("Nature's Grace") > 0
-        and not (MD.db and MD.db.naturesGrace == false)) and 0.5 or 0
+    ctx.naturesGrace = (ST:TalentRank("Nature's Grace") > 0
+        and not (ST.db and ST.db.naturesGrace == false)) and 0.5 or 0
     ctx.ExpectedCast = function(T0, p)
         if ctx.naturesGrace <= 0 or p <= 0 then return T0 end
         return (1 - p) * T0 + p * math.max(T0 - ctx.naturesGrace, 1.5)
@@ -205,7 +205,7 @@ end
 --------------------------------------------------------------------------------
 function RankMath:RowFor(spellID, ctx, variant, explain)
     if ctx.class then return RankMath.ClassRow(spellID, ctx, explain) end
-    local SD = MD.SpellData
+    local SD = ST.SpellData
     local s = SD.spells[spellID]
     if not s then return nil end
     local info = SD.families[s.family]
@@ -359,7 +359,7 @@ function RankMath:RowFor(spellID, ctx, variant, explain)
     -- actually heals. Carried alongside the raw numbers, never instead of them
     -- -- the Pareto filter and the suggested rank stay on raw values so a noisy
     -- measurement can never fire a "rebind?" toast (docs/DESIGN-v0.5.md F3).
-    if MD.Overheal then
+    if ST.Overheal then
         local done = false
         -- Lifebloom: ticks and the bloom overheal very differently (38% vs 50%
         -- in the first dungeon log), and a rolling stack has no bloom at all.
@@ -367,8 +367,8 @@ function RankMath:RowFor(spellID, ctx, variant, explain)
         -- rows by the tick fraction only -- which is what finally makes the
         -- "roll it or let it bloom" question answerable for THIS player.
         if info.type == "lifebloom" and lbHot then
-            local tf, tn, tscope = MD.Overheal:KindFraction(spellID, "tick")
-            local bf, bn, bscope = MD.Overheal:KindFraction(spellID, "bloom")
+            local tf, tn, tscope = ST.Overheal:KindFraction(spellID, "tick")
+            local bf, bn, bscope = ST.Overheal:KindFraction(spellID, "bloom")
             if tf and tscope == "kind" and (variant or (bf and bscope == "kind")) then
                 local eff
                 if variant then
@@ -385,7 +385,7 @@ function RankMath:RowFor(spellID, ctx, variant, explain)
             end
         end
         if not done then
-            local frac, n, scope = MD.Overheal:Fraction(spellID)
+            local frac, n, scope = ST.Overheal:Fraction(spellID)
             if frac then
                 local k = 1 - frac
                 row.overheal = { frac = frac, n = n, scope = scope }
@@ -448,10 +448,10 @@ local SWIFTMEND_REJUV_SECONDS, SWIFTMEND_REGROWTH_SECONDS = 12, 18
 -- is stamped with the druid profile, named, and each family's own cooldown
 -- comes from that profile (Swiftmend's 15 s), the engine's per-family
 -- cooldown table (SM.CooldownOf reads the entry first). Read by name, never
--- MD.ClassProfile: whoever is logged in, SpellData is the druid's.
+-- ST.ClassProfile: whoever is logged in, SpellData is the druid's.
 local KIT_PROFILE = "DRUID"
 local function FamilyCooldown(family)
-    local P = MD.Profiles
+    local P = ST.Profiles
     local p = P and P.byClass and P.byClass[KIT_PROFILE]
     local def = p and p.families and p.families[family]
     return def and def.cooldown or nil
@@ -463,7 +463,7 @@ end
 -- on before T111. RankMath.ClassKit (below) builds a class's own kit; only the
 -- offline tools call it.
 function RankMath:SpellKit(opts)
-    local SD = MD.SpellData
+    local SD = ST.SpellData
     local kit = { caster = {}, tree = {}, profile = KIT_PROFILE }
 
     for _, form in ipairs(KIT_FORMS) do
@@ -544,7 +544,7 @@ function RankMath:SpellKit(opts)
     end
 
     kit.crit = RankMath:DruidContext({ live = true, healer = opts and opts.healer }).crit
-    return MD.Kit.Check(kit, "RankMath:SpellKit")
+    return ST.Kit.Check(kit, "RankMath:SpellKit")
 end
 
 -- One row plus its full breakdown, for the dashboard tooltip. Rebuilt from a
@@ -583,7 +583,7 @@ end
 -- inputs used are left in RankMath.info (the context).
 --------------------------------------------------------------------------------
 -- T118 (docs/tasks/T118-tbc-book.md): `opts` reaches Context. Compute() reads
--- MD.sim as before (the old dashboard's what-if strip); Compute({ live = true
+-- ST.sim as before (the old dashboard's what-if strip); Compute({ live = true
 -- }) ignores it (the TBC book, Spells/Book_Model.lua, and the gear toast's
 -- SuggestedRanks).
 function RankMath:Compute(opts)
@@ -592,7 +592,7 @@ function RankMath:Compute(opts)
     -- the druid, the class's own book (Spells/Book_TBC.lua) otherwise
     local SD = RankMath:Source()
     local results = {}
-    local profile = MD.ClassProfile
+    local profile = ST.ClassProfile
     if not SD or not (profile and profile:Can("rankTable")) then return results end
 
     local ctx = RankMath:Context(opts)
@@ -620,10 +620,10 @@ function RankMath:Compute(opts)
 
             -- Pareto dominance on (HPM, HPS) — among KNOWN, real ranks only.
             -- Suggested rank: highest-HPM known non-dominated rank that still
-            -- heals >= MD.Rules.SUGGESTED_FLOOR (40%) of the max known rank
+            -- heals >= ST.Rules.SUGGESTED_FLOOR (40%) of the max known rank
             -- (assumption: below that, cast-count pressure outweighs
             -- efficiency). T67: both rules are Spells/RankRules.lua's.
-            local RR = MD.RankRules
+            local RR = ST.RankRules
             RR.Pareto(rows, RULE_FIELDS)
             local maxRow
             for i = 1, #rows do
@@ -673,7 +673,7 @@ function RankMath:Compute(opts)
 end
 
 -- Map of family -> suggested rank number, for the gear-change toast diff.
--- T118: live -- a what-if value (MD.sim) never fires the toast.
+-- T118: live -- a what-if value (ST.sim) never fires the toast.
 function RankMath:SuggestedRanks()
     local out = {}
     -- T118: the live ranks, never the what-if strip's; RankMath.info (the
@@ -743,7 +743,7 @@ RankMath.CLASS_RULES = {
 -- A heal that lands on the whole party carries half the single-target
 -- coefficient (Prayer of Healing, Circle of Healing). VERIFY. T117: the rule
 -- is Spells/Coefficients.lua's GROUP; this name stays as its alias.
-RankMath.GROUP_COEF = MD.Coefficients and MD.Coefficients.GROUP
+RankMath.GROUP_COEF = ST.Coefficients and ST.Coefficients.GROUP
 
 -- True when the logged-in class reads its own book (built or not): a class
 -- other than the one Data/SpellData.lua is written for (the druid,
@@ -753,9 +753,9 @@ RankMath.GROUP_COEF = MD.Coefficients and MD.Coefficients.GROUP
 -- reads exactly what it read before T111 -- the druid's context over
 -- Data/SpellData.lua, and no rank table.
 function RankMath:IsClassBook()
-    local class = MD.player and MD.player.class
-    if class == nil or class == KIT_PROFILE or MD.BookTBC == nil then return false end
-    local p = MD.ClassProfile
+    local class = ST.player and ST.player.class
+    if class == nil or class == KIT_PROFILE or ST.BookTBC == nil then return false end
+    local p = ST.ClassProfile
     return type(p) == "table" and p.class == class and type(p.Can) == "function"
         and p:Can("rankTable") == true
 end
@@ -763,8 +763,8 @@ end
 -- The ranks' source: the class's own book for a class book (nil until it is
 -- built), Data/SpellData.lua otherwise.
 function RankMath:Source()
-    if not RankMath:IsClassBook() then return MD.SpellData end
-    return MD.BookTBC:Source()
+    if not RankMath:IsClassBook() then return ST.SpellData end
+    return ST.BookTBC:Source()
 end
 
 local NO_SOURCE = { spells = {}, families = {}, familyOrder = {}, all = {}, known = {}, knownSet = {},
@@ -773,14 +773,14 @@ local NO_SOURCE = { spells = {}, families = {}, familyOrder = {}, all = {}, know
 -- The school's crit and the mana, through the adapter (Client/API_TBC.lua's
 -- SpellCritChance, the shared UnitPower); an absent or unreadable answer is 0.
 local function SchoolCrit(school)
-    local fn = MD.API and MD.API.SpellCritChance
+    local fn = ST.API and ST.API.SpellCritChance
     local v = type(fn) == "function" and fn(school or 2) or nil
     if type(v) == "number" then return v / 100 end
     return 0
 end
 
 local function PlayerMana()
-    local fn = MD.API and MD.API.UnitPower
+    local fn = ST.API and ST.API.UnitPower
     local v = type(fn) == "function" and fn("player", 0) or nil
     if type(v) == "number" then return v end
     return 0
@@ -793,7 +793,7 @@ local function TalentsFor(class, family)
     local multNames, coefNames = {}, {}
     for _, t in ipairs(RankMath.CLASS_RULES[class] or EMPTY) do
         if not t.families or t.families[family] then
-            local rank = MD:TalentRank(t.name)
+            local rank = ST:TalentRank(t.name)
             if rank > 0 then
                 if t.healMult then
                     out.mult = out.mult * (1 + t.healMult * rank)
@@ -828,21 +828,21 @@ function RankMath.ClassContext(opts, src)
     elseif opts and opts.live then
         sim = EMPTY
     else
-        sim = MD.sim or EMPTY
+        sim = ST.sim or EMPTY
     end
-    local profile = MD.ClassProfile
+    local profile = ST.ClassProfile
     local liveBonus = BonusHealing()
     local statBonus = sim.heal or liveBonus
     local liveCrit = SchoolCrit(profile and profile.critSchool)
     local liveMana = PlayerMana()
-    local liveCasting = MD.Regen and MD.Regen.casting or 0
-    local liveBase = MD.Regen and MD.Regen.base or 0
+    local liveCasting = ST.Regen and ST.Regen.casting or 0
+    local liveBase = ST.Regen and ST.Regen.base or 0
     local ctx = {
-        class = (MD.player and MD.player.class) or (profile and profile.class),
+        class = (ST.player and ST.player.class) or (profile and profile.class),
         SD = src,
         bonus = statBonus, statBonus = statBonus, treeAura = 0, inTree = false, relic = nil,
         crit = sim.crit and (sim.crit / 100) or liveCrit,
-        playerLevel = MD.player.level,
+        playerLevel = ST.player.level,
         mana = sim.mana or liveMana,
         castingRegen = sim.casting and (sim.casting / 5) or liveCasting,
         baseRegen = sim.base and (sim.base / 5) or liveBase,
@@ -943,8 +943,8 @@ function RankMath.ClassRow(spellID, ctx, explain)
         isMax = SD.maxRank[s.family] == spellID or false,
         ng = false,
     }
-    if MD.Overheal then
-        local frac, n, scope = MD.Overheal:Fraction(spellID)
+    if ST.Overheal then
+        local frac, n, scope = ST.Overheal:Fraction(spellID)
         if frac then
             local k = 1 - frac
             row.overheal = { frac = frac, n = n, scope = scope }
@@ -1010,5 +1010,5 @@ function RankMath.ClassKit(opts, src)
         end
     end
     kit.crit = ctx.crit
-    return MD.Kit.Check(kit, "RankMath:SpellKit")
+    return ST.Kit.Check(kit, "RankMath:SpellKit")
 end

@@ -21,7 +21,7 @@ local function check(name, cond, detail)
 end
 
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua")
+local ST = dofile(here .. "/harness.lua")
 arg[0] = a0
 local S = _G.STUB
 S.crit[4] = 0 -- zero Nature crit: the fixture's own-heal amounts are the engine's exact figures
@@ -36,11 +36,11 @@ local function CapturedChat(body)
     return lines
 end
 
-MD:SetModule("SpellTuner_Replay", true) -- loads Recorder, Kit/Scenario/Gates, the engine chain and this module's commands
+ST:SetModule("SpellTuner_Replay", true) -- loads Recorder, Kit/Scenario/Gates, the engine chain and this module's commands
 
 local buildFixture = dofile(here .. "/foreverfixture.lua")
-local SM, SP, SV = MD.SimModel, MD.SimPlanner, MD.SimSolver
-local kit = MD.RankMath:SpellKit()
+local SM, SP, SV = ST.SimModel, ST.SimPlanner, ST.SimSolver
+local kit = ST.RankMath:SpellKit()
 
 --------------------------------------------------------------------------------
 -- The clean recording, consistent (tools/reviewforever.lua's own pattern):
@@ -61,7 +61,7 @@ local recGood = buildFixture({ meter = { own = baseSimOwn, others = 0, bySource 
 recGood.id = 2000000000
 recGood.zone = "Blood Furnace"
 recGood.mana.v = DeepCopy(baseManaCurve)
-MD.cdb.recordings = { recGood }
+ST.cdb.recordings = { recGood }
 
 --------------------------------------------------------------------------------
 -- 1: the coach finds a plan for a clean v3 recording
@@ -81,7 +81,7 @@ do
     -- the fixture also casts) is a legitimate bind; a family absent from
     -- `known` altogether, or a rank ABOVE what `known` names, is not.
     local known = recGood.initial.known
-    local SD = MD.SpellData
+    local SD = ST.SpellData
     local badBind
     for _, fam in ipairs(SP.BINDABLE) do
         local id = best.binds[fam]
@@ -168,7 +168,7 @@ do
                      why = "test", params = { minValue = 15, horizon = 18, corpus = true } }
     local plan = SP.MakeStrategy(handIn, binds, kit, { scenario = sc })
     check("R23: with no shipped prior the many-raids strategy is neither offered nor run without it",
-        MD.IntuitionTBC == nil and not offered and SP.Strategy("solver-corpus") == nil and plan == nil,
+        ST.IntuitionTBC == nil and not offered and SP.Strategy("solver-corpus") == nil and plan == nil,
         "offered=" .. tostring(offered) .. " plan=" .. tostring(plan))
 end
 
@@ -230,8 +230,8 @@ do
     -- The store for this assertion: ONE other recording of Tank (same level,
     -- a different id, no burst), and neither the quiet nor the loud one --
     -- they are two versions of one fight. Restored afterwards.
-    local savedStore = MD.cdb.recordings
-    MD.cdb.recordings = { scenarioRec(false, { id = 9000000003 }) }
+    local savedStore = ST.cdb.recordings
+    ST.cdb.recordings = { scenarioRec(false, { id = 9000000003 }) }
 
     local function castsOf(burst)
         local out = {}
@@ -242,7 +242,7 @@ do
     end
 
     local quiet, loud = castsOf(false), castsOf(true)
-    MD.cdb.recordings = savedStore
+    ST.cdb.recordings = savedStore
     local diverged
     for j = 1, math.min(#quiet, #loud) do
         local at = tonumber(quiet[j]:match("^([%d%.]+)"))
@@ -254,7 +254,7 @@ do
 
     -- T20 (review R6): the same two recordings through the SOLVER, whose
     -- at-risk line came from the whole fight's biggest hit.
-    MD.cdb.recordings = { scenarioRec(false, { id = 9000000003 }) }
+    ST.cdb.recordings = { scenarioRec(false, { id = 9000000003 }) }
     local function solverCasts(burst)
         local out = {}
         local sc = SM.ScenarioFromRecording(scenarioRec(burst), kit)
@@ -265,7 +265,7 @@ do
         return out
     end
     local sq, sl = solverCasts(false), solverCasts(true)
-    MD.cdb.recordings = savedStore
+    ST.cdb.recordings = savedStore
     local sdiv
     for j = 1, math.min(#sq, #sl) do
         local at = math.min(tonumber(sq[j]:match("^([%d%.]+)")), tonumber(sl[j]:match("^([%d%.]+)")))
@@ -312,7 +312,7 @@ do
             unreadable = 0, truncated = false, raid = false, pinned = false,
         }
     end
-    local saved = MD.cdb.recordings
+    local saved = ST.cdb.recordings
 
     -- 9: same name AND level only, never the one coached
     do
@@ -320,11 +320,11 @@ do
         local sameLevel = tankRec(9100000002, "Tank", 64, 300, true) -- sizing 1500, hits 300
         local otherLevel = tankRec(9100000003, "Tank", 60, 2000, true)
         local otherName = tankRec(9100000004, "Bob", 64, 4000, true)
-        MD.cdb.recordings = { coached, sameLevel, otherLevel, otherName }
+        ST.cdb.recordings = { coached, sameLevel, otherLevel, otherName }
         local want = SM.EstimateMaxHP({ 1500 }, { 300, 300, 300, 300, 300 })
         local a = SM.ScenarioFromRecording(coached, kit).targets[2]
         local calm = tankRec(9100000001, "Tank", 64, 300, true) -- the coached one without its burst
-        MD.cdb.recordings = { calm, sameLevel, otherLevel, otherName }
+        ST.cdb.recordings = { calm, sameLevel, otherLevel, otherName }
         local b = SM.ScenarioFromRecording(calm, kit).targets[2]
         check("a party member's max comes from other recordings of the same name and level, never the one coached",
             a.maxHP == want and a.maxSource == "others" and b.maxHP == want and b.maxSource == "others",
@@ -336,7 +336,7 @@ do
     do
         local coached = tankRec(9100000011, "Tank", 64, 300, true)
         local plain = tankRec(9100000012, "Tank", 64, 300, false, 5000)
-        MD.cdb.recordings = { coached, plain }
+        ST.cdb.recordings = { coached, plain }
         local t = SM.ScenarioFromRecording(coached, kit).targets[2]
         check("a plain max in another recording is taken as it is",
             t.maxHP == 5000 and t.maxSource == "recorded",
@@ -349,7 +349,7 @@ do
         local recs = { other }
         local okCall = pcall(SM.PartyMaxFromOthers, recs, nil, "Tank", 64)
         local noId = tankRec(nil, "Tank", 64, 300, true)
-        MD.cdb.recordings = { other, noId }
+        ST.cdb.recordings = { other, noId }
         local t = SM.ScenarioFromRecording(noId, kit).targets[2]
         check("the exclusion is required",
             okCall == false and t.maxSource == "this fight",
@@ -359,15 +359,15 @@ do
     -- T20b: a target's danger prior is the biggest hit that person took in
     -- OTHER recordings of the same name and level, over this scenario's max
     do
-        local dangerHits = (MD.db and MD.db.simDangerHits) or 1
+        local dangerHits = (ST.db and ST.db.simDangerHits) or 1
         local coached = tankRec(9100000031, "Tank", 64, 300, true, nil, true)
         local sameLevel = tankRec(9100000032, "Tank", 64, 700, false, 5000) -- biggest hit H = 700
         local otherLevel = tankRec(9100000033, "Tank", 60, 2000, true)      -- a bigger hit, another level
-        MD.cdb.recordings = { coached, sameLevel, otherLevel }
+        ST.cdb.recordings = { coached, sameLevel, otherLevel }
         local t = SM.ScenarioFromRecording(coached, kit).targets[2]
         local want = math.min(1, 700 * dangerHits / t.maxHP)
         local noId = tankRec(nil, "Tank", 64, 300, true, nil, true)
-        MD.cdb.recordings = { noId, sameLevel, otherLevel }
+        ST.cdb.recordings = { noId, sameLevel, otherLevel }
         local u = SM.ScenarioFromRecording(noId, kit).targets[2]
         check("a Forever target's danger prior comes from other recordings of the same name and level",
             t.dangerPrior == want and u.dangerPrior == nil,
@@ -377,22 +377,22 @@ do
         -- T46 (P2, review A18): the store handed in as the third argument
         -- reaches the v3 builder. The Replay module's wrapper was `(rec, kit)`
         -- and dropped it, so a curated leave-one-out store was ignored and the
-        -- prior came from MD.cdb.recordings (here: nothing but the coached fight).
-        MD.cdb.recordings = { coached }
+        -- prior came from ST.cdb.recordings (here: nothing but the coached fight).
+        ST.cdb.recordings = { coached }
         local v = SM.ScenarioFromRecording(coached, kit, { coached, sameLevel, otherLevel }).targets[2]
         check("the store passed as ScenarioFromRecording's third argument reaches the v3 builder",
             v.dangerPrior ~= nil and v.dangerPrior == t.dangerPrior,
             string.format("passed=%s via cdb=%s", tostring(v.dangerPrior), tostring(t.dangerPrior)))
     end
 
-    MD.cdb.recordings = saved
+    ST.cdb.recordings = saved
 end
 
 --------------------------------------------------------------------------------
 -- 7: the zone's marks are kept and read back
 --------------------------------------------------------------------------------
 do
-    local mark = MD.cdb.coachMarks and MD.cdb.coachMarks[recGood.zone]
+    local mark = ST.cdb.coachMarks and ST.cdb.coachMarks[recGood.zone]
     local wroteOnCoach = mark ~= nil and mark.t ~= nil
 
     -- a mark for a DIFFERENT zone must not clobber this one -- the same
@@ -402,13 +402,13 @@ do
     otherRec.zone = "Ramparts"
     otherRec.mana.v = DeepCopy(baseManaCurve)
     local _, otherValidation = SP.Coach(otherRec, { n = 2 })
-    local stillHere = MD.cdb.coachMarks[recGood.zone] ~= nil
-    local otherHere = MD.cdb.coachMarks["Ramparts"] ~= nil
+    local stillHere = ST.cdb.coachMarks[recGood.zone] ~= nil
+    local otherHere = ST.cdb.coachMarks["Ramparts"] ~= nil
 
     -- read back: three later fights in the same zone let SP.Progress speak
-    MD.fightHistory = MD.fightHistory or {}
+    ST.fightHistory = ST.fightHistory or {}
     for i = 1, 3 do
-        MD.fightHistory[#MD.fightHistory + 1] = { zone = recGood.zone, t = (mark and mark.t or 0) + i,
+        ST.fightHistory[#ST.fightHistory + 1] = { zone = recGood.zone, t = (mark and mark.t or 0) + i,
             hpBuckets = { 10, 5, 2 } }
     end
     local progress = SP.Progress(recGood.zone)
@@ -424,13 +424,13 @@ end
 --    column
 --------------------------------------------------------------------------------
 do
-    MD.cdb.recordings = { recGood }
+    ST.cdb.recordings = { recGood }
     SlashCmdList.SPELLTUNER("coach 1 force")
     local frames = 0
-    while MD.coachSearch and frames < 20000 do S.Tick(0.016); frames = frames + 1 end
-    assert(MD.coachSearch == nil, "coach search never finished (" .. frames .. " frames)")
+    while ST.coachSearch and frames < 20000 do S.Tick(0.016); frames = frames + 1 end
+    assert(ST.coachSearch == nil, "coach search never finished (" .. frames .. " frames)")
     SlashCmdList.SPELLTUNER("replay 1")
-    local W = MD.Replay._state()
+    local W = ST.Replay._state()
     check("the asynchronous coach finishes and fills the replay window's suggested column",
         W.right ~= nil and W.right.state ~= nil and W.rp.right ~= nil,
         string.format("frames=%d right=%s", frames, tostring(W.right)))
@@ -442,7 +442,7 @@ end
 -- when a party member's max had to come from the fight being coached.
 --------------------------------------------------------------------------------
 do
-    local saved = MD.cdb.recordings
+    local saved = ST.cdb.recordings
     local function causalLines(c)
         local starts, any = 0, 0
         local first
@@ -453,7 +453,7 @@ do
         return starts, any, first
     end
 
-    MD.cdb.recordings = { recGood }
+    ST.cdb.recordings = { recGood }
     local c12, _, _, best12 = SP.Coach(recGood, { n = 1 })
     local starts12, _, first12 = causalLines(c12 or {})
     print("--- the card, store holding only the coached recording:")
@@ -467,13 +467,13 @@ do
     another.id = 2300000000
     another.zone = "Blood Furnace"
     another.mana.v = DeepCopy(baseManaCurve)
-    MD.cdb.recordings = { recGood, another }
+    ST.cdb.recordings = { recGood, another }
     local c13, v13, _, best13 = SP.Coach(recGood, { n = 1, force = true })
     local _, any13 = causalLines(c13 or {})
     check("with another recording of them, the plan is not flagged and the card says nothing",
         best13 ~= nil and best13.foresees ~= true and any13 == 0,
         "foresees=" .. tostring(best13 and best13.foresees) .. " lines=" .. any13)
-    MD.cdb.recordings = saved
+    ST.cdb.recordings = saved
 end
 
 --------------------------------------------------------------------------------
@@ -485,12 +485,12 @@ end
 -- it says to run one first.
 --------------------------------------------------------------------------------
 do
-    local saved = MD.cdb.recordings
-    MD.cdb.recordings = { recGood }
+    local saved = ST.cdb.recordings
+    ST.cdb.recordings = { recGood }
     local lines = CapturedChat(function()
         SlashCmdList.SPELLTUNER("coach 1")
         local f = 0
-        while MD.coachSearch and f < 20000 do S.Tick(0.016); f = f + 1 end
+        while ST.coachSearch and f < 20000 do S.Tick(0.016); f = f + 1 end
     end)
     local sawColour, escaped, bare = false, nil, nil
     for _, l in ipairs(lines) do
@@ -506,20 +506,20 @@ do
     local w = SP.strategies[recGood.id] and SP.strategies[recGood.id].health
     SP.plans[recGood.id] = nil
     local picked = CapturedChat(function() SlashCmdList.SPELLTUNER("coach 1 health") end)
-    local startedSearch = MD.coachSearch ~= nil
-    if MD.coachSearch then MD.coachSearch:Cancel(); MD.coachSearch = nil end
+    local startedSearch = ST.coachSearch ~= nil
+    if ST.coachSearch then ST.coachSearch:Cancel(); ST.coachSearch = nil end
     local saidIt = false
     for _, l in ipairs(picked) do if l:find("Highest health", 1, true) then saidIt = true end end
 
     local savedStrat = SP.strategies[recGood.id]
     SP.strategies[recGood.id] = nil
     local none = CapturedChat(function() SlashCmdList.SPELLTUNER("coach 1 cheap") end)
-    local startedSearch2 = MD.coachSearch ~= nil
-    if MD.coachSearch then MD.coachSearch:Cancel(); MD.coachSearch = nil end
+    local startedSearch2 = ST.coachSearch ~= nil
+    if ST.coachSearch then ST.coachSearch:Cancel(); ST.coachSearch = nil end
     SP.strategies[recGood.id] = savedStrat
     local saidFirst = false
     for _, l in ipairs(none) do if l:find("no strategies", 1, true) then saidFirst = true end end
-    MD.cdb.recordings = saved
+    ST.cdb.recordings = saved
 
     check("/st coach N health plays that strategy without searching again, and says to search first (R12)",
         w ~= nil and SP.plans[recGood.id] == w.plan and not startedSearch and saidIt
@@ -535,18 +535,18 @@ end
 -- and print that fight's card under the wrong address.
 --------------------------------------------------------------------------------
 do
-    local saved = MD.cdb.recordings
-    MD.cdb.recordings = { recGood }
-    if MD.coachSearch then MD.coachSearch:Cancel(); MD.coachSearch = nil end
+    local saved = ST.cdb.recordings
+    ST.cdb.recordings = { recGood }
+    if ST.coachSearch then ST.coachSearch:Cancel(); ST.coachSearch = nil end
     local savedPlan = SP.plans[recGood.id]
     SP.plans[recGood.id] = nil
     local function Try(arg)
         local started
         local lines = CapturedChat(function()
             SlashCmdList.SPELLTUNER("coach " .. arg)
-            started = MD.coachSearch ~= nil
+            started = ST.coachSearch ~= nil
             local f = 0
-            while MD.coachSearch and f < 20000 do S.Tick(0.016); f = f + 1 end
+            while ST.coachSearch and f < 20000 do S.Tick(0.016); f = f + 1 end
         end)
         return lines, started
     end
@@ -558,7 +558,7 @@ do
     end
     local noPlan = SP.plans[recGood.id] == nil
     SP.plans[recGood.id] = savedPlan
-    MD.cdb.recordings = saved
+    ST.cdb.recordings = saved
     check("/st coach 2:7 with no such recording is refused, and no card (B16)",
         Said(l1, "coach: no recording 2:7") and not s1 and #l1 == 1
         and Said(l2, "coach: no recording 1 force now") and not s2 and #l2 == 1 and noPlan,
@@ -568,16 +568,16 @@ end
 
 --------------------------------------------------------------------------------
 -- T65 (P21, review A1): the review commands are shared with TBC
--- (Engine/ReviewCommands.lua) and print every line through MD:PrintSafe. A
+-- (Engine/ReviewCommands.lua) and print every line through ST:PrintSafe. A
 -- zone name with a pipe and a non-ASCII byte still prints escaped on Forever,
 -- as it did through Commands_Forever.lua's own Esc: /st validate's header and
 -- the coach card's header carry it with the pipe doubled and the byte as
 -- \ddd, and no line has a bare pipe or a non-ASCII byte.
 --------------------------------------------------------------------------------
 do
-    local saved = MD.cdb.recordings
-    MD.cdb.recordings = { recGood }
-    if MD.coachSearch then MD.coachSearch:Cancel(); MD.coachSearch = nil end
+    local saved = ST.cdb.recordings
+    ST.cdb.recordings = { recGood }
+    if ST.coachSearch then ST.coachSearch:Cancel(); ST.coachSearch = nil end
     local savedZone = recGood.zone
     recGood.zone = "Blood|Furnace\195\169"
     local PRINTED = "Blood||Furnace\\195\\169"
@@ -585,10 +585,10 @@ do
     local cl = CapturedChat(function()
         SlashCmdList.SPELLTUNER("coach 1 force")
         local f = 0
-        while MD.coachSearch and f < 20000 do S.Tick(0.016); f = f + 1 end
+        while ST.coachSearch and f < 20000 do S.Tick(0.016); f = f + 1 end
     end)
     recGood.zone = savedZone
-    MD.cdb.recordings = saved
+    ST.cdb.recordings = saved
     local function Scan(lines)
         local saw, bad = false, nil
         for _, l in ipairs(lines) do
@@ -637,8 +637,8 @@ end
 -- chat lines it hands beside them, the search line included.
 --------------------------------------------------------------------------------
 do
-    MD.cdb.recordings = { recGood }
-    if MD.coachSearch then MD.coachSearch:Cancel(); MD.coachSearch = nil end
+    ST.cdb.recordings = { recGood }
+    if ST.coachSearch then ST.coachSearch:Cancel(); ST.coachSearch = nil end
     local progress, maxSeen, lastEvals = 0, nil, 0
     local done, chatOut, cardLines
     local chat = CapturedChat(function()

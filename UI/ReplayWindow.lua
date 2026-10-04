@@ -12,8 +12,8 @@
 -- clock. Nothing is interpolated: a heal is a jump and between grid points the
 -- bar holds. The window never opens in combat, never runs the search (Play
 -- shows what Coach found), and never touches the recorder.
-local _, MD = ...
-local UI = MD.UI
+local _, ST = ...
+local UI = ST.UI
 
 -- T16c, lead review (2026-09-28), correcting T16a: a target's name and a
 -- fallback spell name come straight from the client and paint in the game's
@@ -21,10 +21,10 @@ local UI = MD.UI
 -- it reads on this window exactly as it reads on the game's own frames. Only
 -- a bare "|" is unsafe (the client reads it as the start of a colour code or
 -- texture escape); everything this file composes itself is ASCII by
--- construction, so nothing else needs escaping. That rule is MD.Text.Esc
+-- construction, so nothing else needs escaping. That rule is ST.Text.Esc
 -- (pipe-doubling only; Core.lua, T60, P16, review A9). Every caller here
 -- tests the name first (`name and Esc(name)`), so a nil never reaches it.
-local Esc = MD.Text.Esc
+local Esc = ST.Text.Esc
 
 -- T43 (docs/SPEC-forever-ui.md 4.1, 4.4): the window's own highlighted words
 -- (the header's #n and PRACTICE, the run strip's name, "paused") open with the
@@ -126,11 +126,11 @@ local runIdx, pullIdx, curRun   -- which pull of which run is open, if any
 local runMode, runTL, runT = false, nil, 0
 -- T51 (B22): the combat refusal, once per combat for the window's own re-opens
 local refusedInCombat, openingQuietly = false, false
--- The window re-opening a pull by itself: MD:OpenReplay, its combat refusal
+-- The window re-opening a pull by itself: ST:OpenReplay, its combat refusal
 -- said once per combat rather than once per frame; answers whether it opened.
 local function OpenPull(spec)
-    openingQuietly = true -- read and cleared first thing by MD:OpenReplay
-    return MD:OpenReplay(spec)
+    openingQuietly = true -- read and cleared first thing by ST:OpenReplay
+    return ST:OpenReplay(spec)
 end
 local topH = HEADER_H           -- header, plus the run strip when there is one
 -- v0.15.0: practice mode. A session (Engine/Practice.lua) is being PLAYED: the
@@ -154,7 +154,7 @@ local coachEvals = nil     -- the search's plan count last written into the dimm
 local function HasSwiftmend()
     local known = rp and rp.rec and rp.rec.initial and rp.rec.initial.known
     if known then return known.Swiftmend ~= nil end
-    return (MD.SpellData.maxRank or {}).Swiftmend ~= nil
+    return (ST.SpellData.maxRank or {}).Swiftmend ~= nil
 end
 local rows = {}            -- roster indices in display order
 local playing, speed = false, 1
@@ -175,7 +175,7 @@ end
 
 local rankCount = nil
 local function SpellLabel(spellID)
-    local SD = MD.SpellData
+    local SD = ST.SpellData
     local sd = SD.spells[spellID]
     if sd then
         if not rankCount then
@@ -187,22 +187,22 @@ local function SpellLabel(spellID)
         if (rankCount[sd.family] or 1) > 1 then name = string.format("%s R%d", name, sd.rank) end
         return name, sd.family
     end
-    local name = MD.API.SpellName(spellID)
+    local name = ST.API.SpellName(spellID)
     return (name and Esc(name)) or ("spell " .. tostring(spellID)), "other"
 end
 
--- m:ss.t, a negative time 0:00.0 (MD.Util.Clock; T60, P16, review A9).
-local function Clock(sec) return MD.Util.Clock(sec, true) end
+-- m:ss.t, a negative time 0:00.0 (ST.Util.Clock; T60, P16, review A9).
+local function Clock(sec) return ST.Util.Clock(sec, true) end
 
--- "2.3k" from 1000 on (MD.Util.K; T60, P16, review A9) -- except below zero.
+-- "2.3k" from 1000 on (ST.Util.K; T60, P16, review A9) -- except below zero.
 -- This window's K has always printed string.format("%d", n + 0.5), which
--- truncates toward zero (-12 -> "-11"), where MD.Util.K rounds (-12 -> "-12");
+-- truncates toward zero (-12 -> "-11"), where ST.Util.K rounds (-12 -> "-12");
 -- the two agree on every n >= 0. The score line's used and regen go below zero
 -- when the pool gains more than it spends (a pull started below full), so the
 -- old rule is kept there, byte for byte, until a decision says otherwise.
 local function K(n)
     if type(n) == "number" and n < 0 then return string.format("%d", n + 0.5) end
-    return MD.Util.K(n)
+    return ST.Util.K(n)
 end
 
 --------------------------------------------------------------------------------
@@ -236,14 +236,14 @@ end
 -- The snapshot tick's tooltip, owned by the tick's hover frame (and, under the
 -- theme, by the whole button: the bar's tooltip).
 local function TickTip(owner, f)
-    if not (MD.Tip and f.tickInfo) then return end
+    if not (ST.Tip and f.tickInfo) then return end
     local ti = f.tickInfo
     if ti.recon and UI.THEMED then
         -- T72 (P28, mockup M3): the bar's tooltip, the reconstruction one
         -- marker on its title line and one sentence under it
         local within = math.abs(ti.rec - ti.sim) <= 0.05
         local m = UI.Hex("muted")
-        MD.Tip:Show(owner, "ANCHOR_RIGHT", {
+        ST.Tip:Show(owner, "ANCHOR_RIGHT", {
             { l = f.name:GetText() or "", r = m .. "reconstructed|r" },
             { l = "Health then", r = string.format("%d%% at %s", ti.rec * 100 + 0.5, Clock(ti.at)) },
             { l = "Engine's replay now", r = string.format("%d%%", ti.sim * 100 + 0.5) },
@@ -258,7 +258,7 @@ local function TickTip(owner, f)
         -- R5 (review 2026-09-29): a v3 (Forever) tick is SM.RecordedHp's
         -- reconstruction -- no health was ever read -- so it is not
         -- called recorded, real or the truth.
-        MD.Tip:Show(owner, "ANCHOR_RIGHT", {
+        ST.Tip:Show(owner, "ANCHOR_RIGHT", {
             { l = "Reconstructed health", r = string.format("%d%% at %s", ti.rec * 100 + 0.5, Clock(ti.at)) },
             { l = "Engine's replay now", r = string.format("%d%%", ti.sim * 100 + 0.5) },
             { l = string.format("|cff888888%s|r", math.abs(ti.rec - ti.sim) <= 0.05
@@ -269,7 +269,7 @@ local function TickTip(owner, f)
         })
         return
     end
-    MD.Tip:Show(owner, "ANCHOR_RIGHT", {
+    ST.Tip:Show(owner, "ANCHOR_RIGHT", {
         { l = "Recorded health", r = string.format("%d%% at %s", ti.rec * 100 + 0.5, Clock(ti.at)) },
         { l = "Engine's reconstruction now", r = string.format("%d%%", ti.sim * 100 + 0.5) },
         { l = string.format("|cff888888%s|r", math.abs(ti.rec - ti.sim) <= 0.05
@@ -318,7 +318,7 @@ local function CreateUnitFrame(parent, x, y)
     f.tickHit:EnableMouse(true)
     f.tickHit:Hide()
     f.tickHit:SetScript("OnEnter", function(self) TickTip(self, f) end)
-    f.tickHit:SetScript("OnLeave", function() if MD.Tip then MD.Tip:Hide() end end)
+    f.tickHit:SetScript("OnLeave", function() if ST.Tip then ST.Tip:Hide() end end)
 
     -- nameText: centred on the bar, class colour, 75% of the bar's width
     f.name = f.bar:CreateFontString(nil, "OVERLAY", UI.FONT)
@@ -389,9 +389,9 @@ local function CreateUnitFrame(parent, x, y)
         ic.text = ic.count   -- older name, kept for the harness
         ic:EnableMouse(true)
         ic:SetScript("OnEnter", function(self)
-            if MD.Tip and self.tip then MD.Tip:Show(self, "ANCHOR_RIGHT", self.tip) end
+            if ST.Tip and self.tip then ST.Tip:Show(self, "ANCHOR_RIGHT", self.tip) end
         end)
-        ic:SetScript("OnLeave", function() if MD.Tip then MD.Tip:Hide() end end)
+        ic:SetScript("OnLeave", function() if ST.Tip then ST.Tip:Hide() end end)
         ic:Hide()
         return ic
     end
@@ -512,7 +512,7 @@ local function CreateUnitFrame(parent, x, y)
         end)
         f:SetScript("OnLeave", function()
             Unhover()
-            if not f.onHover and MD.Tip then MD.Tip:Hide() end
+            if not f.onHover and ST.Tip then ST.Tip:Hide() end
         end)
     else
         f:SetScript("OnEnter", Hover)
@@ -567,10 +567,10 @@ local function CreateStrip(parent, x, y)
     -- hovering the cast bar names the rule behind the current cast or wait
     s.cast:EnableMouse(true)
     s.cast:SetScript("OnEnter", function(self)
-        if not (MD.Tip and s.why) then return end
-        MD.Tip:Show(self, "ANCHOR_TOP", s.why)
+        if not (ST.Tip and s.why) then return end
+        ST.Tip:Show(self, "ANCHOR_TOP", s.why)
     end)
-    s.cast:SetScript("OnLeave", function() if MD.Tip then MD.Tip:Hide() end end)
+    s.cast:SetScript("OnLeave", function() if ST.Tip then ST.Tip:Hide() end end)
 
     s.score = parent:CreateFontString(nil, "OVERLAY", UI.FONT)
     s.score:SetPoint("TOPLEFT", s.cast, "BOTTOMLEFT", 0, -8)
@@ -594,7 +594,7 @@ end
 -- the machine every frame; these only start the short-lived effects.
 --------------------------------------------------------------------------------
 local function MakeOnEvent(col)
-    local RT, TK = MD.ReplayTrace, MD.SimModel.TK
+    local RT, TK = ST.ReplayTrace, ST.SimModel.TK
     return function(kind, tgt, a, b, t)
         local now = GetTime()
         local f = tgt and col.frames[tgt]
@@ -659,9 +659,9 @@ end
 -- Painting a moment
 --------------------------------------------------------------------------------
 local function AuraName(spellID)
-    local d = MD.AuraList and MD.AuraList.Defensive(spellID)
+    local d = ST.AuraList and ST.AuraList.Defensive(spellID)
     if d then return d[1] end
-    local name = MD.API.SpellName(spellID)
+    local name = ST.API.SpellName(spellID)
     return (name and Esc(name)) or ("spell " .. tostring(spellID))
 end
 
@@ -669,17 +669,17 @@ local textureCache = {}
 local function SpellTexture(spellID)
     local tex = textureCache[spellID]
     if tex ~= nil then return tex or nil end
-    local t = MD.API.SpellTexture(spellID)
+    local t = ST.API.SpellTexture(spellID)
     if not t then
-        -- this client may not have GetSpellTexture; MD.API.SpellName's third
+        -- this client may not have GetSpellTexture; ST.API.SpellName's third
         -- return is the icon on the 2.5.x client (T7/T15's Bind of
         -- SpellName -> GetSpellInfo there); Forever's own SpellTexture binding
         -- (Client/API_Forever.lua's C_Spell.GetSpellTexture) always answers
         -- one way or the other, so this fallback is TBC-only in practice.
-        local icon = select(3, MD.API.SpellName(spellID))
+        local icon = select(3, ST.API.SpellName(spellID))
         if icon then t = icon end
     end
-    if not t then MD:Debug("sim", "replay: no texture for spell %d", spellID); t = false end
+    if not t then ST:Debug("sim", "replay: no texture for spell %d", spellID); t = false end
     textureCache[spellID] = t
     return t or nil
 end
@@ -804,7 +804,7 @@ local function PaintFrame(f, st, ti, isLeft, now)
                 ic:SetPoint(ho[1], f, ho[1], (ho[2] + ho[5] * (slot - 1) * ho[4]) * sc, ho[3] * sc)
             end
             local fam = hotSlots.name[fi]
-            SetIcon(ic, MD.SpellData.maxRank[fam] or 0, fam)
+            SetIcon(ic, ST.SpellData.maxRank[fam] or 0, fam)
             Sweep(ic, h.since, h.since + (h.duration or 0), st.t)
             if fi == hotSlots.lifebloom then
                 ic.count:SetText(tostring(h.stacks or 1))
@@ -830,7 +830,7 @@ local function PaintFrame(f, st, ti, isLeft, now)
         if cdUntil then
             -- T90: the length the engine and the state machine kept it by
             -- (the kit entry's `cooldown`, else SM.SPELL_CD), not a literal
-            local _, cd = MD.SimModel.CooldownOf(st, SWIFTMEND)
+            local _, cd = ST.SimModel.CooldownOf(st, SWIFTMEND)
             Sweep(f.dot, cdUntil - (cd or 0), cdUntil, st.t)
             f.dot.tip = f.dot.tip or {}
             f.dot.tip[1] = { l = "Swiftmend", r = string.format("|cffff9966%.1fs|r", cdUntil - st.t) }
@@ -899,7 +899,7 @@ local function PaintFrame(f, st, ti, isLeft, now)
 
     -- the snapshot tick: the latest recorded HP at or before t, fading until
     -- the next one is due
-    if isLeft and MD.db.replayTicks and rp.ticks and rp.ticks.hp[ti] then
+    if isLeft and ST.db.replayTicks and rp.ticks and rp.ticks.hp[ti] then
         local ts, col = rp.ticks.t, rp.ticks.hp[ti]
         local t = st.t
         local j = f.tickIdx or 1
@@ -973,7 +973,7 @@ local function PaintStrip(s, st, pool, now, col)
     -- plan's reasons; left: none are on record)
     -- v0.12.3: the rule, and the numbers that made it fire. A rule name says
     -- what kind of decision it was; the sentence says why THIS one, here, now.
-    local SP2 = MD.SimPlanner
+    local SP2 = ST.SimPlanner
     local reason = st.LastReason and st:LastReason() or nil
     local why = (c and c.why) or (st.lastCast and st.lastCast.why) or 0
     local sentence = reason and SP2.ReasonText(reason, rp and rp.rec and rp.rec.names) or nil
@@ -991,7 +991,7 @@ local function PaintStrip(s, st, pool, now, col)
     -- from the other side -- why THAT cast, in the recording's numbers
     if col and col.isLeft and rp and rp.casts and st.lastCast and st.lastCast.n then
         local rec2 = rp.casts[st.lastCast.n]
-        local text = rec2 and MD.SimPlanner.CastWhy(rec2, rp.rec and rp.rec.names)
+        local text = rec2 and ST.SimPlanner.CastWhy(rec2, rp.rec and rp.rec.names)
         if text then
             s.why = s.why or {}
             s.why[1] = { l = string.format("%s: %s", rec2.label, text), r = "" }
@@ -1020,7 +1020,7 @@ end
 -- belongs to a fight -- cast bars, HoT icons, labels -- is cleared, because
 -- nothing is happening and the last pull's leftovers would be a lie.
 local function PaintGap()
-    local RTL = MD.RunTimeline
+    local RTL = ST.RunTimeline
     local hpBy = RTL.HpAt(runTL, runT)
     local mana = RTL.ManaAt(runTL, runT)
     local pool = (runTL.run and runTL.run.pool) or (rp and rp.scenario.pool) or 1
@@ -1049,7 +1049,7 @@ local function PaintGap()
         end
     end
     local e = RTL.EventAt(runTL, runT, 8)
-    local RRK = MD.RunRecorder.K
+    local RRK = ST.RunRecorder.K
     local what = "out of combat"
     if e then
         if e.kind == RRK.DRINK then what = "drinking"
@@ -1080,7 +1080,7 @@ local function Paint()
     -- them from the last pull's state afterwards would immediately undo it.
     local inGap = false
     if runMode and runTL then
-        local seg = MD.RunTimeline.At(runTL, runT)
+        local seg = ST.RunTimeline.At(runTL, runT)
         inGap = seg and seg.kind == "gap" or false
     end
     if inGap then
@@ -1096,7 +1096,7 @@ local function Paint()
     if runMode and runTL then
         -- the RUN's clock. A clock that resets to 0:00 at every pull is what
         -- made a dungeon feel like thirty-six separate videos.
-        local seg = MD.RunTimeline.At(runTL, runT)
+        local seg = ST.RunTimeline.At(runTL, runT)
         timeFS:SetText(string.format("%s / %s   %s", Clock(runT), Clock(runTL.dur),
             seg and (seg.kind == "pull" and ("pull " .. tostring(seg.k)) or "between pulls") or ""))
         if not scrubber.dragging then
@@ -1159,7 +1159,7 @@ end
 -- T51 (B22): a refused open (combat) leaves the clock where it was and pauses,
 -- so nothing retries it; OpenPull reports the refusal once per combat.
 local function RunSeek(t, keepPlaying)
-    local RTL = MD.RunTimeline
+    local RTL = ST.RunTimeline
     local was = runT
     runT = math.max(0, math.min(t or 0, runTL.dur))
     local seg, into = RTL.At(runTL, runT)
@@ -1199,7 +1199,7 @@ local function Propagate(on)
 end
 
 local function InCombat()
-    return MD.API.InCombatLockdown() or MD.API.UnitAffectingCombat("player") or false
+    return ST.API.InCombatLockdown() or ST.API.UnitAffectingCombat("player") or false
 end
 
 -- The key hint under the theme: the caps light in the accent while the keys
@@ -1267,7 +1267,7 @@ local function PendingTitle(n)
 end
 local function CoachProgress()
     if not (right and right.dimmed and right.waiting == "search") then return end
-    local h = MD.coachSearch
+    local h = ST.coachSearch
     local n = (h and h.evals) or 0
     if n ~= coachEvals then
         coachEvals = n
@@ -1296,7 +1296,7 @@ local function OnUpdate(_, elapsed)
             Paint()
             return
         end
-        local seg, into = MD.RunTimeline.At(runTL, runT)
+        local seg, into = ST.RunTimeline.At(runTL, runT)
         if seg.kind == "pull" then
             if pullIdx ~= seg.k then
                 -- T51 (B22): refused (combat): stay before the boundary, paused,
@@ -1329,7 +1329,7 @@ local function OnUpdate(_, elapsed)
         -- makes it a chore. db.replayNextPull turns it off.
         local nextK = pullIdx and (pullIdx + 1)
         if curRun and runIdx and nextK and curRun.pulls[nextK]
-           and MD.db.replayNextPull ~= false then
+           and ST.db.replayNextPull ~= false then
             SetPlaying(false)
             if OpenPull(runIdx .. ":" .. nextK) then SetPlaying(true) end
             return
@@ -1352,7 +1352,7 @@ local function EscPress(f)
             live:SetPaused(true)
             return true
         end
-        MD:StopPractice(true)
+        ST:StopPractice(true)
         if f:IsShown() then return true end
         return nil
     end
@@ -1364,13 +1364,13 @@ local function Build()
     -- T34: the window manager places it (not user-placed) and the header
     -- carries the "< SpellTuner" back button. T80 (C1): on both lines -- TBC's
     -- HIGH strata and UISpecialFrames entry are gone with the manager there.
-    local W = MD.Win
+    local W = ST.Win
     frame = UI.CreateMovableFrame("SpellTuner: Replay", "SpellTunerReplayWindow", 2 * COL_W + 3 * GUTTER, 300,
         nil, nil, true, { back = "< SpellTuner" })
     frame:SetScript("OnUpdate", OnUpdate)
     frame:SetScript("OnHide", function()
         playing = false
-        if live and MD.StopPractice then MD:StopPractice(false) end
+        if live and ST.StopPractice then ST:StopPractice(false) end
         SetKeys(false) -- T72: a hidden window holds no keys
         pointerIn = false
     end)
@@ -1387,9 +1387,9 @@ local function Build()
                         combat = function() if live then return "stay" end return nil end,
                         busy = "Practice is running: ESC pauses, ESC again ends it." })
     -- the place kept before the manager (TBC's until T80 / C1), adopted once
-    if MD.db.replayPos then
-        W:Adopt("replay", MD.db.replayPos) -- once: the old key goes
-        MD.db.replayPos = nil
+    if ST.db.replayPos then
+        W:Adopt("replay", ST.db.replayPos) -- once: the old key goes
+        ST.db.replayPos = nil
     end
 
     if UI.THEMED then
@@ -1424,20 +1424,20 @@ local function Build()
         band.wordHit:SetAllPoints(band.word)
         band.wordHit:EnableMouse(true)
         band.wordHit:SetScript("OnEnter", function(self)
-            if not (MD.Tip and band.wordTip) then return end
+            if not (ST.Tip and band.wordTip) then return end
             local lines = { { l = band.wordTip[1] or "", r = "" } }
             for i = 2, #band.wordTip do
                 lines[#lines + 1] = { l = UI.Hex("muted") .. band.wordTip[i] .. "|r", r = "" }
             end
-            MD.Tip:Show(self, "ANCHOR_BOTTOM", lines)
+            ST.Tip:Show(self, "ANCHOR_BOTTOM", lines)
         end)
-        band.wordHit:SetScript("OnLeave", function() if MD.Tip then MD.Tip:Hide() end end)
+        band.wordHit:SetScript("OnLeave", function() if ST.Tip then ST.Tip:Hide() end end)
         band.wordHit:Hide()
 
         band.coach = UI.CreateButton(band, "Coach anyway", "accent", { COACH_W, 20 }, false, false, UI.FONT_SMALL, nil,
             "Coach anyway", "This fight does not replay within the gates, so a plan",
             "found on it may be advice the engine got wrong.")
-        band.coach:SetScript("OnClick", function() if MD.Replay then MD.Replay.CoachAnyway() end end)
+        band.coach:SetScript("OnClick", function() if ST.Replay then ST.Replay.CoachAnyway() end end)
         band.coach:Hide()
 
         band.verdict = band:CreateFontString(nil, "OVERLAY", UI.FONT)
@@ -1448,9 +1448,9 @@ local function Build()
         band.verdictHit:SetAllPoints(band.verdict)
         band.verdictHit:EnableMouse(true)
         band.verdictHit:SetScript("OnEnter", function(self)
-            if MD.Tip and band.verdictTip then MD.Tip:Show(self, "ANCHOR_BOTTOM", band.verdictTip) end
+            if ST.Tip and band.verdictTip then ST.Tip:Show(self, "ANCHOR_BOTTOM", band.verdictTip) end
         end)
-        band.verdictHit:SetScript("OnLeave", function() if MD.Tip then MD.Tip:Hide() end end)
+        band.verdictHit:SetScript("OnLeave", function() if ST.Tip then ST.Tip:Hide() end end)
 
         frame.reconFS = band.word
     else
@@ -1476,7 +1476,7 @@ local function Build()
     -- (v0.11.11). Switching does NOT search again -- the plans are in hand and
     -- this redraws the suggested column from the chosen one.
     stratDrop = UI.CreateDropdown(frame, CHOOSER_W, 16, function(id)
-        local SP = MD.SimPlanner
+        local SP = ST.SimPlanner
         if not (rp and rp.rec) then return end
         -- v0.13.7: two kinds of entry share this list. A search objective picks
         -- one of the plans the search already found; a STRATEGY_SET entry is a
@@ -1485,13 +1485,13 @@ local function Build()
         -- the chooser now has something to offer before Coach has ever run.
         local entry = SP.Strategy and SP.Strategy(id)
         if entry then
-            local kit = MD.RankMath:SpellKit({ live = true })
-            local sc = MD.SimModel.ScenarioFromRecording(rp.rec, kit)
+            local kit = ST.RankMath:SpellKit({ live = true })
+            local sc = ST.SimModel.ScenarioFromRecording(rp.rec, kit)
             local plan = SP.MakeStrategy(entry, SP.BindsFromRecording and
                 SP.BindsFromRecording(rp.rec) or SP.MaxRankBinds(), kit,
                 { scenario = sc, seed = rp.rec.id or 1,
                   encounter = rp.rec.encounter, zone = rp.rec.zone,
-                  recs = MD.cdb and MD.cdb.recordings, excludeID = rp.rec.id })
+                  recs = ST.cdb and ST.cdb.recordings, excludeID = rp.rec.id })
             if not plan then return end
             SP.plans[rp.rec.id] = plan
         else
@@ -1501,7 +1501,7 @@ local function Build()
             SP.plans[rp.rec.id] = w.plan
         end
         SP.strategyPick[rp.rec.id] = id
-        MD:RebuildSuggested()
+        ST:RebuildSuggested()
     end)
     stratDrop:Hide()
 
@@ -1539,14 +1539,14 @@ local function Build()
     speedButtons = speeds
     speedHighlight = UI.CreateButtonGroup(speeds, function(id)
         speed = id
-        MD.db.replaySpeed = id
+        ST.db.replaySpeed = id
     end)
 
     -- v0.15.0: ends a practice fight and opens it as a replay
     endBtn = UI.CreateButton(frame, "End", "red-hover", { 48, 22 }, false, false, UI.FONT_SMALL, nil,
         "End the practice", "What you played so far is kept, and opens as a replay.")
     endBtn:SetPoint("LEFT", prev, "RIGHT", 12, 0)
-    endBtn:SetScript("OnClick", function() if MD.StopPractice then MD:StopPractice(true) end end)
+    endBtn:SetScript("OnClick", function() if ST.StopPractice then ST:StopPractice(true) end end)
     endBtn:Hide()
 
     timeFS = frame:CreateFontString(nil, "OVERLAY", UI.FONT)
@@ -1582,7 +1582,7 @@ local function Build()
     scrubber.markers = {}
 
     local ticksCB = UI.CreateCheckButton(frame, "ticks", function(checked)
-        MD.db.replayTicks = checked
+        ST.db.replayTicks = checked
         Paint()
     end, TICKS_TIPS[1], TICKS_TIPS[2], TICKS_TIPS[3])
     -- anchored from the right edge, label included, so it cannot fall off a
@@ -1590,7 +1590,7 @@ local function Build()
     local labelW = (ticksCB.label and ticksCB.label.GetStringWidth and ticksCB.label:GetStringWidth()) or 32
     ticksCB:SetPoint("RIGHT", frame, "RIGHT", -(GUTTER + labelW + 6), 0)
     ticksCB:SetPoint("BOTTOM", playBtn, "BOTTOM", 0, 4)
-    ticksCB:SetChecked(MD.db.replayTicks ~= false)
+    ticksCB:SetChecked(ST.db.replayTicks ~= false)
     frame.ticksCB = ticksCB
 
     -- the hint on its own line at the very bottom, never under a control
@@ -1630,7 +1630,7 @@ local function PlaceMarkers()
         m:SetPoint("LEFT", scrubber, "LEFT", dur > 0 and (t / dur) * scrubber:GetWidth() or 0, 0)
         m:Show()
     end
-    local TK, K = MD.SimModel.TK, MD.SimModel.K
+    local TK, K = ST.SimModel.TK, ST.SimModel.K
     local L = rp.left.trace
     local n = 0
     for i = 1, L.nEv do
@@ -1645,7 +1645,7 @@ local function PlaceMarkers()
             end
         end
     end
-    local big = MD:Setting("simBigHit")
+    local big = ST:Setting("simBigHit")
     local sev = rp.scenario.ev
     if sev then
         for i = 1, #sev.t do
@@ -1716,14 +1716,14 @@ local function PaintRunStrip(width)
             -- T51: in run mode the click moves the RUN's clock to the pull, so
             -- the clock, the scrubber and the open pull agree
             if runMode and runTL then
-                local seg = MD.RunTimeline.PullSeg(runTL, self.pull)
+                local seg = ST.RunTimeline.PullSeg(runTL, self.pull)
                 if seg then RunSeek(seg.from) return end
             end
             if runIdx then OpenPull(runIdx .. ":" .. self.pull) end
         end)
         b:SetScript("OnEnter", function(self)
-            if not MD.Tip then return end
-            MD.Tip:Show(self, "ANCHOR_BOTTOM", {
+            if not ST.Tip then return end
+            ST.Tip:Show(self, "ANCHOR_BOTTOM", {
                 { l = string.format("pull %d%s", self.pull, rec.short and " (short)" or ""),
                   r = Clock(rec.dur or 0) },
                 { l = "into the run", r = Clock(rec.runT0 or 0) },
@@ -1731,11 +1731,11 @@ local function PaintRunStrip(width)
                 { l = "|cff888888click to play this pull|r", r = "" },
             })
         end)
-        b:SetScript("OnLeave", function() if MD.Tip then MD.Tip:Hide() end end)
+        b:SetScript("OnLeave", function() if ST.Tip then ST.Tip:Hide() end end)
     end
 
     -- drinks and deaths from the run's own timeline
-    local RR = MD.RunRecorder
+    local RR = ST.RunRecorder
     local ev = curRun.ev or {}
     local nD, nM, openDrink = 0, 0, nil
     for i = 1, #(ev.t or {}) do
@@ -1777,14 +1777,14 @@ end
 -- Laid out with the rest and dimmed, so the window has its final size from the
 -- moment it opens; painted blank (the plan has not happened yet).
 -- T72: does the band offer Coach anyway? A fight that does not replay, with no
--- plan and no search for it, that the coach can take (MD:CoachOnOpen's druid).
+-- plan and no search for it, that the coach can take (ST:CoachOnOpen's druid).
 -- T99 (docs/SPEC-next.md 4.4): "druid" is the class profile's coach capability.
 local function CoachOffered()
     if not (UI.THEMED and rp and rp.rec and not rp.live and not rp.right) then return false end
     local v = rp.validation
     if not v or v.ok then return false end
-    if MD.replayCoaching ~= nil and MD.replayCoaching == rp.rec.id then return false end
-    return MD.ClassProfile:Can("coach") and MD.SimPlanner ~= nil or false
+    if ST.replayCoaching ~= nil and ST.replayCoaching == rp.rec.id then return false end
+    return ST.ClassProfile:Can("coach") and ST.SimPlanner ~= nil or false
 end
 
 -- A font string's text width, whatever width it was last given.
@@ -1871,9 +1871,9 @@ local function Layout()
     table.sort(rows)
     local roster = rp.rec.roster
     local healerIdx = nil
-    local myName = MD.API.UnitName("player")
+    local myName = ST.API.UnitName("player")
     for i, r in ipairs(roster) do
-        if (r.guid and r.guid == MD.player.guid) or (not r.guid and myName and r.name == myName) then healerIdx = i end
+        if (r.guid and r.guid == ST.player.guid) or (not r.guid and myName and r.name == myName) then healerIdx = i end
     end
 
     local n = #rows
@@ -1894,7 +1894,7 @@ local function Layout()
     -- searching gets both columns now, the right one dimmed, so the window
     -- does not grow and re-centre when the plan arrives
     local searching = UI.THEMED and not rp.right and not rp.live and rp.rec ~= nil
-        and MD.replayCoaching ~= nil and MD.replayCoaching == rp.rec.id or false
+        and ST.replayCoaching ~= nil and ST.replayCoaching == rp.rec.id or false
     -- T72 (review of P28): so is a fight the band offers Coach anyway for --
     -- mockup M3 draws that band at the two-column width, where the verdict and
     -- its button have room, and the window keeps its size when it is clicked
@@ -1976,8 +1976,8 @@ local function Layout()
                 if live and ci == 1 then
                     local unit = ti
                     f.onPress = function(button)
-                        local key = MD.Practice.MOUSE[button]
-                        if key then MD:PracticePress(key, unit) end
+                        local key = ST.Practice.MOUSE[button]
+                        if key then ST:PracticePress(key, unit) end
                     end
                     f.onHover = function(on)
                         if on then hoverTi = unit elseif hoverTi == unit then hoverTi = nil end
@@ -2007,36 +2007,36 @@ end
 -- A fight that does not replay is still NOT coached silently: the window says
 -- which gate failed and names the force spelling. That rule (v0.9.6) is about
 -- not handing out advice the engine got wrong, and it survives.
-function MD:CoachOnOpen(rec, force, validation)
-    local SP = MD.SimPlanner
-    if not (rec and SP and MD.ClassProfile:Can("coach")) then return end
+function ST:CoachOnOpen(rec, force, validation)
+    local SP = ST.SimPlanner
+    if not (rec and SP and ST.ClassProfile:Can("coach")) then return end
     -- T72: the band's Coach anyway is a request, not the automatic coach
-    if MD.db and MD.db.replayAutoCoach == false and not askedToCoach then return end
-    if SP.plans[rec.id] or MD.coachSearch or MD.replayCoaching then return end
+    if ST.db and ST.db.replayAutoCoach == false and not askedToCoach then return end
+    if SP.plans[rec.id] or ST.coachSearch or ST.replayCoaching then return end
     if not force and not (validation and validation.ok) then return end
-    MD.replayCoaching = rec.id
-    MD:Print("replay: no plan for this fight yet - coaching it now.")
-    MD.coachSearch = SP.CoachAsync(rec, { n = openSpec, force = force, quiet = true },
+    ST.replayCoaching = rec.id
+    ST:Print("replay: no plan for this fight yet - coaching it now.")
+    ST.coachSearch = SP.CoachAsync(rec, { n = openSpec, force = force, quiet = true },
         function(lines)
-            MD.coachSearch = nil
-            MD.replayCoaching = nil
+            ST.coachSearch = nil
+            ST.replayCoaching = nil
             -- one line, not the whole card: the window is the answer here, and
             -- /md coach N still prints the card in full when it is wanted
             local p = SP.plans[rec.id]
             if p then
-                MD:Print(string.format("replay: coached - %s. The suggested column is drawn.",
+                ST:Print(string.format("replay: coached - %s. The suggested column is drawn.",
                     p.name or "plan"))
             elseif lines and lines[1] then
-                MD:Print(lines[1])
+                ST:Print(lines[1])
             end
             -- only redraw if the window is still on the fight we coached
             if frame and frame:IsShown() and rp and rp.rec and rp.rec.id == rec.id then
-                MD:RebuildSuggested()
+                ST:RebuildSuggested()
             end
         end)
 end
 
-function MD:RebuildSuggested()
+function ST:RebuildSuggested()
     if not (rp and openSpec) then return end
     local at = left.state and left.state.t or 0
     local wasPlaying = playing
@@ -2045,19 +2045,19 @@ function MD:RebuildSuggested()
     if wasPlaying then SetPlaying(true) end
 end
 
--- T51 (B22): MD:OpenReplay answers whether it opened. A refusal in combat is
+-- T51 (B22): ST:OpenReplay answers whether it opened. A refusal in combat is
 -- printed every time it is asked for by hand; the window's own re-opens (a run
 -- crossing into its next pull, a drag, a strip click, the suggested column
 -- filling in) go through OpenPull and say it once per combat.
-function MD:OpenReplay(n)
+function ST:OpenReplay(n)
     local quiet = openingQuietly
     openingQuietly = false
-    local FR, SP = MD.FightRecorder, MD.SimPlanner
-    if live then MD:StopPractice(false) end
-    if not (FR and SP and MD.ReplayTrace) then MD:Print("replay: not loaded.") return false end
-    if MD.API.InCombatLockdown() or MD.API.UnitAffectingCombat("player") then
+    local FR, SP = ST.FightRecorder, ST.SimPlanner
+    if live then ST:StopPractice(false) end
+    if not (FR and SP and ST.ReplayTrace) then ST:Print("replay: not loaded.") return false end
+    if ST.API.InCombatLockdown() or ST.API.UnitAffectingCombat("player") then
         if not (quiet and refusedInCombat) then
-            MD:Print("replay: not in combat - it is a review tool.")
+            ST:Print("replay: not in combat - it is a review tool.")
         end
         refusedInCombat = true
         return false
@@ -2080,12 +2080,12 @@ function MD:OpenReplay(n)
     -- (it opened the run's first pull on the old run's clock).
     local r = spec:match("^run%s*(%d+)$")
     if r then
-        return MD:OpenRunPlay(tonumber(r)) and true or false
+        return ST:OpenRunPlay(tonumber(r)) and true or false
     end
     local rp2 = spec:match("^run%s*(%d+)%s*pull$")
     if rp2 then spec = rp2 .. ":1" end
-    local rec, label, run, pullK = MD:GetRecording(spec)
-    if not rec then MD:Print("replay: no recording " .. tostring(n) .. ".") return false end
+    local rec, label, run, pullK = ST:GetRecording(spec)
+    if not rec then ST:Print("replay: no recording " .. tostring(n) .. ".") return false end
     n = label
     curRun, runIdx, pullIdx = run, run and tonumber(label:match("^(%d+):")) or nil, pullK
 
@@ -2100,24 +2100,24 @@ function MD:OpenReplay(n)
     if not runMode then runTL, runT = nil, 0 end
     openSpec, openForce = n, force
     rp = SP.Replay(rec, { dt = 0.25, force = force })
-    if not rp then MD:Print("replay: could not build the fight.") return false end
+    if not rp then ST:Print("replay: could not build the fight.") return false end
     -- v0.13.9: no plan yet? coach it now, and let the window fill in.
-    if not rp.right then MD:CoachOnOpen(rec, force, rp.validation) end
+    if not rp.right then ST:CoachOnOpen(rec, force, rp.validation) end
     -- T72: under the theme a forced open that started the coach has
     -- something to force: the column fills in when the search ends
-    if force and not rp.right and not (UI.THEMED and MD.replayCoaching == rec.id) then
-        MD:Print(string.format("replay: nothing to force - no plan has been coached for this fight. " ..
+    if force and not rp.right and not (UI.THEMED and ST.replayCoaching == rec.id) then
+        ST:Print(string.format("replay: nothing to force - no plan has been coached for this fight. " ..
             "|cffffff00/md coach %s force|r first.", tostring(n)))
     end
-    local RT = MD.ReplayTrace
+    local RT = ST.ReplayTrace
     left.state = RT.New(rp.left.trace, rp.scenario, { onEvent = MakeOnEvent(left) })
     right.state = rp.right and RT.New(rp.right.trace, rp.scenario, { onEvent = MakeOnEvent(right) }) or nil
-    MD:Debug("sim", "replay %s opened: %d rows, %d/%d trace events, dt %.2f, %.0f ms", tostring(n), #(rec.tracked or {}),
+    ST:Debug("sim", "replay %s opened: %d rows, %d/%d trace events, dt %.2f, %.0f ms", tostring(n), #(rec.tracked or {}),
         rp.left.trace.nEv, rp.right and rp.right.trace.nEv or 0, rp.left.trace.dt,
         (debugprofilestop and debugprofilestop() or 0) - t0)
 
     Layout()
-    speed = MD:Setting("replaySpeed")
+    speed = ST:Setting("replaySpeed")
     speedHighlight(speed)
 
     local v = rp.validation
@@ -2138,7 +2138,7 @@ function MD:OpenReplay(n)
         local t2 = UI.Hex("text2")
         headerFS:SetText(string.format(Hi() .. "#%s|r  %s%s  %s%s|r  %s%s|r  %s%d targets|r", tostring(n),
             run and (Esc(run.name or "run") .. " pull " .. tostring(pullK) .. " - ") or "",
-            Esc(rec.zone or "?"), t2, day, t2, MD.Util.Clock(rec.dur or 0), t2, #rows))
+            Esc(rec.zone or "?"), t2, day, t2, ST.Util.Clock(rec.dur or 0), t2, #rows))
         local band = frame.band
         local verdict, tip = "", nil
         if v then
@@ -2211,7 +2211,7 @@ function MD:OpenReplay(n)
     end
     -- the strategy chooser, when a search has produced strategies for this fight
     do
-        local SP = MD.SimPlanner
+        local SP = ST.SimPlanner
         local winners = rp.rec and SP.strategies[rp.rec.id]
         local items, current = {}, nil
         if rp.right and rp.rec then
@@ -2255,7 +2255,7 @@ function MD:OpenReplay(n)
         end
     end
 
-    local coachable, coachWhy = MD.ClassProfile:Can("coach")
+    local coachable, coachWhy = ST.ClassProfile:Can("coach")
     if rp.right then
         local p = rp.right.plan
         right.title:SetText(string.format("SUGGESTED  |cff888888(%s, %d binds)|r%s", p.name or "plan", p:BindCount(),
@@ -2267,17 +2267,17 @@ function MD:OpenReplay(n)
         frame.hint:SetText("")
     elseif right.dimmed then
         -- T72: the dimmed column's title carries the search's progress
-        coachEvals = (MD.coachSearch and MD.coachSearch.evals) or 0
+        coachEvals = (ST.coachSearch and ST.coachSearch.evals) or 0
         right.title:SetText(PendingTitle(coachEvals))
         frame.hint:SetText("")
     elseif not coachable then
         -- T99 (docs/SPEC-next.md 4.4): no suggested column will come -- say why
         -- (a druid never reaches this: its profile coaches)
-        frame.hint:SetText(MD.Profiles.Refusal("coach", coachWhy, "Coaching"))
+        frame.hint:SetText(ST.Profiles.Refusal("coach", coachWhy, "Coaching"))
     elseif UI.THEMED then
         -- T72: the band says whether it replays and offers Coach anyway
         frame.hint:SetText(v and not v.ok and "" or "no plan yet")
-    elseif MD.replayCoaching == (rp.rec and rp.rec.id) then
+    elseif ST.replayCoaching == (rp.rec and rp.rec.id) then
         frame.hint:SetText("coaching this fight - the suggested column fills in when the search finishes")
     else
         -- v0.13.9: opening a replay coaches it. The old flow was validate, then
@@ -2302,7 +2302,7 @@ function MD:OpenReplay(n)
     end
     PlaceMarkers()
     SeekTo(0)
-    MD.Win:TakeOver("replay", "replay") -- T34 (6.3)
+    ST.Win:TakeOver("replay", "replay") -- T34 (6.3)
     frame:Show()
     return true
 end
@@ -2310,19 +2310,19 @@ end
 -- /md replay run 2 play  -- the whole dungeon on one clock (docs/SPEC-v0.14.md).
 -- The pull replay is untouched; this drives it from the run's time and fills the
 -- gaps, which is half of a dungeon and where the drinking happens.
-function MD:OpenRunPlay(idx)
-    local run = MD.RunRecorder and MD.RunRecorder:Get(idx)
-    if not run then MD:Print("replay: no run " .. tostring(idx) .. ".") return end
-    local tl = MD.RunTimeline.Build(run)
-    if not tl or #tl.segs == 0 then MD:Print("replay: run " .. tostring(idx) .. " has nothing to play.") return end
-    if not MD:OpenReplay(idx .. ":1") then return false end
+function ST:OpenRunPlay(idx)
+    local run = ST.RunRecorder and ST.RunRecorder:Get(idx)
+    if not run then ST:Print("replay: no run " .. tostring(idx) .. ".") return end
+    local tl = ST.RunTimeline.Build(run)
+    if not tl or #tl.segs == 0 then ST:Print("replay: run " .. tostring(idx) .. " has nothing to play.") return end
+    if not ST:OpenReplay(idx .. ":1") then return false end
     if not (frame and frame:IsShown()) then return false end
     runMode, runTL, runT = true, tl, 0
     scrubber.settingValue = true
     scrubber:SetMinMaxValues(0, tl.dur)
     scrubber.settingValue = false
     if not tl.hasGapHealth then
-        MD:Print("replay: this run was recorded before v0.13.7, so the gaps have no health "
+        ST:Print("replay: this run was recorded before v0.13.7, so the gaps have no health "
             .. "samples - the bars hold their last value between pulls.")
     end
     RunSeek(0)
@@ -2330,12 +2330,12 @@ function MD:OpenRunPlay(idx)
     return true
 end
 
-function MD:ToggleReplay(arg)
+function ST:ToggleReplay(arg)
     if frame and frame:IsShown() and (arg == nil or arg == "") then
         frame:Hide()
         return
     end
-    MD:OpenReplay(arg)
+    ST:OpenReplay(arg)
 end
 
 --------------------------------------------------------------------------------
@@ -2366,11 +2366,11 @@ local function LiveControls(on)
             if live then live:SetPaused(not playing) end
             return
         end
-        local mods = MD.Practice.Mods(MD.API.IsAltKeyDown(), MD.API.IsControlKeyDown(),
-            MD.API.IsShiftKeyDown())
-        if MD.Practice.BindFor(mods .. key) then
+        local mods = ST.Practice.Mods(ST.API.IsAltKeyDown(), ST.API.IsControlKeyDown(),
+            ST.API.IsShiftKeyDown())
+        if ST.Practice.BindFor(mods .. key) then
             Propagate(false)
-            MD:PracticePress(key, hoverTi)
+            ST:PracticePress(key, hoverTi)
         else
             Propagate(true)
         end
@@ -2380,11 +2380,11 @@ end
 
 -- A press, from a mouse button on a frame or a key over one. `key` is bare
 -- ("BUTTON5", "1"); the modifiers are read now, as the client reads them.
-function MD:PracticePress(key, ti)
+function ST:PracticePress(key, ti)
     if not live then return end
-    local PR = MD.Practice
-    local mods = PR.Mods(MD.API.IsAltKeyDown(), MD.API.IsControlKeyDown(),
-        MD.API.IsShiftKeyDown())
+    local PR = ST.Practice
+    local mods = PR.Mods(ST.API.IsAltKeyDown(), ST.API.IsControlKeyDown(),
+        ST.API.IsShiftKeyDown())
     local bind, spellID = PR.BindFor(mods .. key)
     if not bind then return end
     if not spellID then live:Error("You don't know " .. bind.family, nil, ti) return end
@@ -2411,28 +2411,28 @@ LiveUpdate = function(elapsed)
         if f then f.SetCast(practiceErr); f.cast:SetTextColor(1, 0.25, 0.25); f.textUntil = practiceErrUntil end
         practiceErrTi = nil
     end
-    if live.state == "done" or live.state == "failed" then MD:StopPractice(true) end
+    if live.state == "done" or live.state == "failed" then ST:StopPractice(true) end
 end
 
 -- setup: Engine/Practice.lua's shape (the Simulate -> Practice panel builds it)
-function MD:OpenPractice(setup, seed)
-    local PR = MD.Practice
-    if not (PR and MD.ReplayTrace) then MD:Print("practice: not loaded.") return end
-    if MD.API.InCombatLockdown() or MD.API.UnitAffectingCombat("player") then
-        MD:Print("practice: not in combat.")
+function ST:OpenPractice(setup, seed)
+    local PR = ST.Practice
+    if not (PR and ST.ReplayTrace) then ST:Print("practice: not loaded.") return end
+    if ST.API.InCombatLockdown() or ST.API.UnitAffectingCombat("player") then
+        ST:Print("practice: not in combat.")
         return
     end
     -- T99 (4.4): the class profile's practice capability, in place of the druid check
-    local canPractise, why = MD.ClassProfile:Can("practice")
-    if not canPractise then MD:Print(MD.Profiles.Refusal("practice", why) .. ".") return end
+    local canPractise, why = ST.ClassProfile:Can("practice")
+    if not canPractise then ST:Print(ST.Profiles.Refusal("practice", why) .. ".") return end
     Build()
-    if live then MD:StopPractice(false) end
+    if live then ST:StopPractice(false) end
     local session = PR.New(setup, { seed = seed, onError = function(msg, _, ti)
         practiceErr, practiceErrUntil, practiceErrTi = msg, GetTime() + 1.5, ti
     end })
     session:Start()
     if session.state ~= "running" or not session:LiveTrace() then
-        MD:Print("practice: the session did not start - " .. tostring(session.failure))
+        ST:Print("practice: the session did not start - " .. tostring(session.failure))
         return
     end
     live = session
@@ -2440,15 +2440,15 @@ function MD:OpenPractice(setup, seed)
     local roster, tracked = {}, {}
     for i, tg in ipairs(setup.targets) do
         roster[i] = { name = tg.name, class = tg.class, role = tg.role,
-                      guid = tg.you and MD.player.guid or nil }
+                      guid = tg.you and ST.player.guid or nil }
         tracked[i] = i
     end
     local known = {}
-    for family, id in pairs(MD.SpellData.maxRank or {}) do known[family] = id end
+    for family, id in pairs(ST.SpellData.maxRank or {}) do known[family] = id end
     rp = { live = true, scenario = session.scenario, kit = session.kit,
            rec = { roster = roster, tracked = tracked, initial = { known = known }, names = {} },
            left = { trace = session:LiveTrace() } }
-    left.state = MD.ReplayTrace.New(rp.left.trace, rp.scenario, { onEvent = MakeOnEvent(left) })
+    left.state = ST.ReplayTrace.New(rp.left.trace, rp.scenario, { onEvent = MakeOnEvent(left) })
     right.state = nil
     stratDrop:Close()
     stratDrop:Hide()
@@ -2475,14 +2475,14 @@ function MD:OpenPractice(setup, seed)
     speedHighlight(1)
     playing = true
     playBtn:SetText("II")
-    MD.Win:TakeOver("replay", "practice") -- T34 (6.3): always a takeover
+    ST.Win:TakeOver("replay", "practice") -- T34 (6.3): always a takeover
     frame:Show()
     return session
 end
 
 -- End the practice. `reopen`: open what was played as a replay (the End
 -- button, and the fight running out); closing the window only keeps it.
-function MD:StopPractice(reopen)
+function ST:StopPractice(reopen)
     local s = live
     if not s then return end
     live = nil
@@ -2491,28 +2491,28 @@ function MD:StopPractice(reopen)
     playing = false
     local rec = s.rec
     if s.state == "failed" then
-        MD:Print("practice: the session failed - " .. tostring(s.failure))
+        ST:Print("practice: the session failed - " .. tostring(s.failure))
         return
     end
     if not rec then
-        MD:Print("practice: nothing was cast, so nothing was kept.")
+        ST:Print("practice: nothing was cast, so nothing was kept.")
         if reopen and frame then frame:Hide() end
         return
     end
-    MD:Print(string.format("practice: %s played, %d casts, %d mana, %d dead - kept as |cffffff00p1|r " ..
+    ST:Print(string.format("practice: %s played, %d casts, %d mana, %d dead - kept as |cffffff00p1|r " ..
         "(Reports -> Review -> Practice, or /md replay p1).", Clock(rec.dur), rec.ownCasts or 0,
         rec.spent or 0, #(rec.deaths or {})))
-    if reopen then MD:OpenReplay("p1") end
+    if reopen then ST:OpenReplay("p1") end
 end
 
 -- combat ends practice: the window is a review tool, and the keyboard is yours
--- T57 (P13, review Q2): through the kernel's MD:On like every other event
+-- T57 (P13, review Q2): through the kernel's ST:On like every other event
 -- (tools/apicheck.py rule 9), not a raw frame of its own -- same event, same
 -- handler.
-MD:On("PLAYER_REGEN_DISABLED", function()
+ST:On("PLAYER_REGEN_DISABLED", function()
     refusedInCombat = false -- T51 (B22): a new combat says its refusal once
     if live then
-        MD:StopPractice(false)
+        ST:StopPractice(false)
         if frame then frame:Hide() end
     end
     -- T72: combat takes the keyboard back, and it stays back until the pointer
@@ -2525,21 +2525,21 @@ end)
 -- columns laid out at once while the search runs.
 local function CoachAnyway()
     if live or not (rp and rp.rec and openSpec) then return end
-    if MD.coachSearch then
-        MD:Print("replay: another fight is being coached - this one can be coached when it finishes.")
+    if ST.coachSearch then
+        ST:Print("replay: another fight is being coached - this one can be coached when it finishes.")
         return
     end
     -- the window's own reopen (RebuildSuggested's): a run keeps its clock and
     -- the replay its time, as when the plan arrives
     askedToCoach = true
     openForce = true
-    local ok, err = pcall(MD.RebuildSuggested, MD)
+    local ok, err = pcall(ST.RebuildSuggested, ST)
     askedToCoach = false
     if not ok then error(err, 0) end
 end
 
-MD.Replay = {
-    Open = function(_, n) MD:OpenReplay(n) end,
+ST.Replay = {
+    Open = function(_, n) ST:OpenReplay(n) end,
     CoachAnyway = CoachAnyway, -- T72: the band's button
     _live = function() return live, hoverTi end,
     -- for tools/replayui.lua: what the window is showing, read-only
@@ -2547,7 +2547,7 @@ MD.Replay = {
     -- happening there
     _run = function()
         if not (runMode and runTL) then return nil end
-        local seg, into = MD.RunTimeline.At(runTL, runT)
+        local seg, into = ST.RunTimeline.At(runTL, runT)
         return { t = runT, dur = runTL.dur, seg = seg and seg.kind, k = seg and seg.k,
                  into = into, hasGapHealth = runTL.hasGapHealth, playing = playing }
     end,

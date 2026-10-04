@@ -1,12 +1,12 @@
 -- T8 (docs/tasks/T8-spell-parse.md): a spell's own client-drawn text into plain
--- numbers. Pure Lua, no client call, no MD.API call -- everything here reads a
+-- numbers. Pure Lua, no client call, no ST.API call -- everything here reads a
 -- string and answers a table or nil. Q1 (FOREVER-PLAN.md Sec6) is answered
 -- dynamic: the client already prints the caster's own value, so this file
 -- supplies no coefficient, no default, no per-school table. The one number it
 -- is allowed to invent is arithmetic on numbers it already read (Total).
-local _, MD = ...
-MD.Parse = MD.Parse or {}
-local Parse = MD.Parse
+local _, ST = ...
+ST.Parse = ST.Parse or {}
+local Parse = ST.Parse
 
 -- A digit run that may carry thousands commas ("2,139"). Comma removal
 -- happens only when a captured string is turned into a number (N()), never

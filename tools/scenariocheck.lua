@@ -14,15 +14,15 @@ local function check(name, cond, detail)
 end
 
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua")
+local ST = dofile(here .. "/harness.lua")
 arg[0] = a0
 
 local S = _G.STUB
 S.crit[4] = 0 -- zero Nature crit: DirectAmount(e) == e.direct exactly (critMode = "ev")
 
-MD:SetModule("SpellTuner_Replay", true) -- loads Kit_Forever.lua and Scenario_Forever.lua
-local SM = MD.SimModel
-local kit = MD.RankMath:SpellKit() -- also builds MD.SpellData.spells, which ScenarioV3 reads
+ST:SetModule("SpellTuner_Replay", true) -- loads Kit_Forever.lua and Scenario_Forever.lua
+local SM = ST.SimModel
+local kit = ST.RankMath:SpellKit() -- also builds ST.SpellData.spells, which ScenarioV3 reads
 
 local buildFixture = dofile(here .. "/foreverfixture.lua")
 
@@ -301,7 +301,7 @@ end
 --------------------------------------------------------------------------------
 do
     local SMID = 18562
-    local SD = MD.SpellData
+    local SD = ST.SpellData
     SD.spells[SMID] = { family = "Swiftmend", rank = 1 }
     local caster = setmetatable({ [SMID] = { family = "Swiftmend", type = "instant", swiftmendRejuv = 32, cast = 1.5 } },
         { __index = kit.caster })
@@ -400,7 +400,7 @@ end
 -- A copy of the kit with extra caster entries (and their ids in the spell
 -- index, as check 10 does), handed back with a function that undoes the index.
 local function KitWith(entries, profile)
-    local SD = MD.SpellData
+    local SD = ST.SpellData
     local extra = {}
     for id, e in pairs(entries) do extra[id] = e; SD.spells[id] = { family = e.family, rank = e.rank } end
     local caster = setmetatable(extra, { __index = kit.caster })
@@ -461,7 +461,7 @@ end
 
 -- A test class whose two HoTs sit in the OPPOSITE slots to the druid's
 -- fallback by type (its hybrid in slot 1, its HoT in slot 2), registered once.
-local P = MD.Profiles
+local P = ST.Profiles
 if not P.byClass.T96HEALER then
     P.Register("T96HEALER", {
         label = "Test healer", caps = { clock = true },
@@ -499,7 +499,7 @@ do
         -- T101: the hot map; the slots table itself also carries the kit's
         -- own extra families (Riptide, Renew: SM.HotSlots(kit).extras)
         and SM.HotSlots(plain).index == SM.HotSlots({}).index
-        and MD.Profiles.ForKit(plain) == MD.Profiles.Get("DRUID"),
+        and ST.Profiles.ForKit(plain) == ST.Profiles.Get("DRUID"),
         string.format("slots=%s,%s riptide=%s renew=%s plainRiptide=%s", tostring(slots and slots.name[1]),
             tostring(slots and slots.name[2]), tostring(fam), tostring(famR), tostring(famPlainR)))
 end
@@ -509,7 +509,7 @@ end
 --     profile is the druid's; the same entries in a kit naming no profile take
 --     the druid's (hybrid 2, hot 1). The replay's state machine names them.
 do
-    local loggedIn = MD.ClassProfile
+    local loggedIn = ST.ClassProfile
     local testKit, undo = KitWith({ [RIPTIDE] = riptide, [RENEW] = renew }, "T96HEALER")
     local plainKit = KitWith({ [RIPTIDE] = riptide, [RENEW] = renew })
     local r = MiniRec({
@@ -520,7 +520,7 @@ do
     local scT = SM.ScenarioFromRecording(r, testKit)
     local runT = SM:Run(scT, nil, { critMode = "ev", trace = { dt = 0.5 } })
     local hotsT = HotEvents(runT.trace)
-    local st = MD.ReplayTrace.New(runT.trace, scT)
+    local st = ST.ReplayTrace.New(runT.trace, scT)
     st:Seek(5)
     local named = st.HotFamily and st:HotFamily(1) == "Riptide" and st:HotFamily(2) == "Renew"
         and st:Hot(2, 1) ~= nil and st:Hot(2, 2) ~= nil
@@ -529,7 +529,7 @@ do
     local hotsP = HotEvents(runP.trace)
     undo()
     check("T96: a test class's kit replays in its own slots while the druid is logged in",
-        loggedIn ~= nil and loggedIn == MD.Profiles.Get("DRUID") and MD.ClassProfile == loggedIn
+        loggedIn ~= nil and loggedIn == ST.Profiles.Get("DRUID") and ST.ClassProfile == loggedIn
         and hotsT == "2:1 4:2" and hotsP == "2:2 4:1" and named == true,
         string.format("loggedIn=%s test=[%s] plain=[%s] named=%s", tostring(loggedIn and loggedIn.class),
             hotsT, hotsP, tostring(named)))
@@ -588,9 +588,9 @@ do
     local DP = 96102
     S.AddSpell(DP, "Desperate Prayer", "Rank 1",
         function() return "Instantly heals the caster for 300 to 340." end, { cast = 0, cost = 0, level = 10 })
-    MD.Book:MarkDirty()
-    local live = MD.RankMath:SpellKit()
-    local inKit = live.caster[DP] ~= nil or MD.SpellData.spells[DP] ~= nil
+    ST.Book:MarkDirty()
+    local live = ST.RankMath:SpellKit()
+    local inKit = live.caster[DP] ~= nil or ST.SpellData.spells[DP] ~= nil
     local r = MiniRec({
         { 1, 1, 1, 330, 0 },
         { 5, 3, 1, 0, DP },

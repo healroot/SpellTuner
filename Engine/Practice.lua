@@ -17,10 +17,10 @@
 -- Every default in PR.ROLES is a placeholder with its provenance, and the
 -- setup panel says so. It is a way to rehearse decisions, and a recording the
 -- coach can answer.
-local _, MD = ...
+local _, ST = ...
 
 local PR = {}
-MD.Practice = PR
+ST.Practice = PR
 
 PR.MAX_KEPT = 8
 -- 2026-09-29: a practice fight a report is about must not be pushed out by the
@@ -80,7 +80,7 @@ local function DefaultHP(level, kind)
 end
 
 function PR.DefaultSetup(groupID, level)
-    level = level or (MD.player and MD.player.level) or 70
+    level = level or (ST.player and ST.player.level) or 70
     local group
     for _, g in ipairs(PR.GROUPS) do if g.id == groupID then group = g end end
     group = group or PR.GROUPS[3]
@@ -95,7 +95,7 @@ function PR.DefaultSetup(groupID, level)
         local classes = CLASSES[kind]
         setup.targets[i] = {
             kind = kind, role = r.role,
-            name = isYou and ((MD.API.UnitName and MD.API.UnitName("player")) or "You")
+            name = isYou and ((ST.API.UnitName and ST.API.UnitName("player")) or "You")
                 or (r.label .. (count[kind] > 1 and (" " .. count[kind]) or "")),
             class = isYou and "DRUID" or classes[(count[kind] - 1) % #classes + 1],
             you = isYou or nil,
@@ -159,11 +159,11 @@ PR.MOUSE = { LeftButton = "BUTTON1", RightButton = "BUTTON2", MiddleButton = "BU
 --                 Data/SpellData.lua);
 --   client        the stamp a recording carries (rec.client).
 -- The TBC value below is the default. Kit_Forever.lua provides
--- MD.PracticePolicy before this file runs (the Practice module needs the
+-- ST.PracticePolicy before this file runs (the Practice module needs the
 -- Replay module), and that replaces it.
 --------------------------------------------------------------------------------
 PR.TBC_POLICY = { defaultBinds = PR.DEFAULT_BINDS, kitIsLive = false, client = "tbc" }
-PR.policy = MD.PracticePolicy or PR.TBC_POLICY
+PR.policy = ST.PracticePolicy or PR.TBC_POLICY
 
 local function KitIsLive()
     return PR.policy.kitIsLive == true
@@ -188,7 +188,7 @@ end
 -- (db.practiceBinds), so a caller that adds or removes a row edits what is
 -- saved. PR.Binds() below is what is SHOWN and CAST.
 function PR.AllBinds()
-    local db = MD.db
+    local db = ST.db
     local defaults = PR.policy.defaultBinds
     if db and type(db.practiceBinds) == "table" then
         -- only an exact copy of the TBC defaults, on a line whose own defaults
@@ -196,8 +196,8 @@ function PR.AllBinds()
         -- the player's own and is kept whole
         if defaults ~= PR.DEFAULT_BINDS and IsShippedDefaults(db.practiceBinds) then
             db.practiceBinds = {}
-            if MD.Debug then
-                MD:Debug("other", "practice: the shipped TBC default bindings were saved on this client; dropped")
+            if ST.Debug then
+                ST:Debug("other", "practice: the shipped TBC default bindings were saved on this client; dropped")
             end
         end
         return db.practiceBinds
@@ -292,7 +292,7 @@ PR.FAMILY_LABELS = {
     Swiftmend = "Swiftmend", HealingTouch = "Healing Touch",
 }
 function PR.FamilyLabel(family)
-    local SD = MD.SpellData
+    local SD = ST.SpellData
     local fam = SD and SD.families and SD.families[family]
     if fam and fam.label then return fam.label end
     if PR.FAMILY_LABELS[family] then return PR.FAMILY_LABELS[family] end
@@ -306,8 +306,8 @@ end
 -- static.
 function PR.RefreshKit()
     if not KitIsLive() then return end
-    if MD.RankMath and MD.RankMath.SpellKit then
-        MD.RankMath:SpellKit({ live = true })
+    if ST.RankMath and ST.RankMath.SpellKit then
+        ST.RankMath:SpellKit({ live = true })
     end
 end
 
@@ -317,17 +317,17 @@ function PR.Mods(alt, ctrl, shift)
 end
 
 -- Forever's own kit (Modules/SpellTuner_Replay/Kit_Forever.lua) fills
--- MD.SpellData's tables (spells/families/known/all/maxRank) lazily, the
--- first time anything calls MD.RankMath:SpellKit() -- TBC's own Data/
+-- ST.SpellData's tables (spells/families/known/all/maxRank) lazily, the
+-- first time anything calls ST.RankMath:SpellKit() -- TBC's own Data/
 -- SpellData.lua carries every one of those as a table from load, always
 -- (SD.maxRank = {} at file scope, populated later by a scan, never nil). The
 -- bindings list (below) reads them before a session ever starts one, so it
 -- warms the kit itself, once -- a no-op on TBC, where SD.maxRank is never
 -- nil and this guard is always false.
 function PR.EnsureKit()
-    local SD = MD.SpellData
-    if not SD.maxRank and MD.RankMath and MD.RankMath.SpellKit then
-        MD.RankMath:SpellKit({ live = true })
+    local SD = ST.SpellData
+    if not SD.maxRank and ST.RankMath and ST.RankMath.SpellKit then
+        ST.RankMath:SpellKit({ live = true })
     end
 end
 
@@ -338,7 +338,7 @@ function PR.InBook(bind)
     if not KitIsLive() then return true end
     if not bind or not bind.family then return false end
     PR.EnsureKit()
-    local all = MD.SpellData.all
+    local all = ST.SpellData.all
     local ranks = all and all[bind.family]
     return type(ranks) == "table" and #ranks > 0
 end
@@ -347,7 +347,7 @@ end
 -- order, then Swiftmend -- else nil.
 function PR.FirstFamily()
     PR.EnsureKit()
-    local SD = MD.SpellData
+    local SD = ST.SpellData
     if not SD.known then return nil end
     local order = {}
     for _, f in ipairs(SD.familyOrder or {}) do order[#order + 1] = f end
@@ -362,7 +362,7 @@ end
 -- A binding's spell id: that rank if you know it, else your highest. A bind
 -- whose family is not in the spellbook (Forever) casts nothing.
 function PR.SpellFor(bind)
-    local SD = MD.SpellData
+    local SD = ST.SpellData
     if not bind or not bind.family then return nil end
     if not PR.InBook(bind) then return nil end
     if not SD.known or not SD.maxRank then return nil end
@@ -403,7 +403,7 @@ function PR.ParseSpellText(text)
     local name, rank = text:match("^%s*(.-)%s*%(%s*[Rr]ank%s*(%d+)%s*%)%s*$")
     if not name then name = text:match("^%s*(.-)%s*$") end
     if not name or name == "" then return nil end
-    local SD = MD.SpellData
+    local SD = ST.SpellData
     for family, info in pairs(SD.families) do
         if name == (info.label or family) or name == family then
             if SD.known[family] or SD.all[family] then return family, tonumber(rank) end
@@ -423,7 +423,7 @@ function PR.ParseSpellText(text)
 end
 
 function PR.SpellFromID(id)
-    local s = MD.SpellData.spells[tonumber(id) or 0]
+    local s = ST.SpellData.spells[tonumber(id) or 0]
     if not s then return nil end
     return s.family, s.rank
 end
@@ -465,9 +465,9 @@ end
 
 -- Reversible ASCII escaping, the probe's rule: a backslash doubled, "|" ->
 -- "||", then every byte outside printable ASCII -> "\ddd". T59 (P15): Core.lua's
--- MD.Text.EscASCII, no longer this file's own copy (T19). Every caller hands
+-- ST.Text.EscASCII, no longer this file's own copy (T19). Every caller hands
 -- it a string.
-local Esc = MD.Text.EscASCII
+local Esc = ST.Text.EscASCII
 
 local function Safe(t, k)
     if type(t) ~= "table" then return nil end
@@ -538,7 +538,7 @@ local function Found(entryIndex, e)
 end
 
 local function MacroBody(name)
-    local _, _, body = MD.API.MacroInfo(name)
+    local _, _, body = ST.API.MacroInfo(name)
     if type(body) == "string" then return body end
     return nil
 end
@@ -591,7 +591,7 @@ local function CellPick()
         if type(common) == "table" then return common, "Cell (common bindings)" end
         return nil, "expected clickCastings.common to be a table (useCommon is set) - found " .. TypeName(common)
     end
-    local i = (MD.API.Specialization and MD.API.Specialization()) or 1
+    local i = (ST.API.Specialization and ST.API.Specialization()) or 1
     local bySpec = Safe(cc, i)
     if type(bySpec) == "table" then return bySpec, "Cell (spec " .. tostring(i) .. ")" end
     local first = Safe(cc, 1)
@@ -676,8 +676,8 @@ local function CliquePick()
             if type(profiles) ~= "table" then
                 reason = reason or ("expected " .. name .. ".profiles to be a table - found " .. TypeName(profiles))
             else
-                local key = (MD.API.UnitName and MD.API.UnitName("player") or "") ..
-                    " - " .. (MD.API.RealmName and MD.API.RealmName() or "")
+                local key = (ST.API.UnitName and ST.API.UnitName("player") or "") ..
+                    " - " .. (ST.API.RealmName and ST.API.RealmName() or "")
                 local p = Safe(profiles, key)
                 if p == nil then
                     -- any profile, the first by name so the answer does not depend on table order
@@ -811,7 +811,7 @@ end
 -- What an action-bar slot casts: family, rank, and how it picks its target.
 function PR.SlotSpell(slot)
     if not slot then return nil end
-    local kind, id = MD.API.ActionInfo(slot)
+    local kind, id = ST.API.ActionInfo(slot)
     if type(kind) ~= "string" then return nil end
     if kind == "spell" then
         local family, rank = PR.SpellFromID(id)
@@ -837,7 +837,7 @@ local function BindingKeys(r)
     local keys = {}
     for j = 2, (r.n or #r) do
         local v = r[j]
-        if type(v) == "string" and v ~= "" and MD.API.BindingAction(v) == command then
+        if type(v) == "string" and v ~= "" and ST.API.BindingAction(v) == command then
             keys[#keys + 1] = v
         end
     end
@@ -847,12 +847,12 @@ end
 -- GetBinding(i) with every return kept, a trailing nil included
 local function PackBinding(i)
     local function pack(...) return { n = select("#", ...), ... } end
-    return pack(MD.API.Binding(i))
+    return pack(ST.API.Binding(i))
 end
 
 -- Every binding the client has, as practice bindings.
 function PR.ImportKeybinds()
-    local n = MD.API.BindingCount()
+    local n = ST.API.BindingCount()
     if type(n) ~= "number" then
         return nil, { source = "your keybindings", error = "this client does not expose its bindings." }
     end
@@ -948,9 +948,9 @@ function PR.BindsReport()
     local out = {}
     local function add(line) out[#out + 1] = line end
 
-    local _, build = MD.API.BuildInfo()
-    local name = MD.API.UnitName("player")
-    local realm = MD.API.RealmName()
+    local _, build = ST.API.BuildInfo()
+    local name = ST.API.UnitName("player")
+    local realm = ST.API.RealmName()
     add(string.format("=== SpellTuner binds check  build %s  %s-%s  %s ===",
         Esc(build == nil and "unknown" or tostring(build)),
         Esc(name == nil and "?" or tostring(name)),
@@ -959,7 +959,7 @@ function PR.BindsReport()
 
     ---------------------------------------------------------------------------
     add("== keybindings")
-    local n, why = MD.API.BindingCount()
+    local n, why = ST.API.BindingCount()
     if type(n) ~= "number" then
         add("count: absent" .. (why and (" (" .. Esc(why) .. ")") or ""))
         n = 0
@@ -981,15 +981,15 @@ function PR.BindsReport()
             local slot = PR.SlotForCommand(command)
             if slot then
                 resolved = resolved + 1
-                local kind, id = MD.API.ActionInfo(slot)
+                local kind, id = ST.API.ActionInfo(slot)
                 local what = "empty"
                 if kind == "spell" then
                     spells = spells + 1
-                    local sp = MD.SpellData and MD.SpellData.spells and MD.SpellData.spells[tonumber(id) or 0]
+                    local sp = ST.SpellData and ST.SpellData.spells and ST.SpellData.spells[tonumber(id) or 0]
                     what = "spell " .. Esc(tostring(id)) .. (sp and (" (" .. Esc(tostring(sp.family)) .. ")") or "")
                 elseif kind == "macro" then
                     macros = macros + 1
-                    local mname = MD.API.MacroInfo(id)
+                    local mname = ST.API.MacroInfo(id)
                     what = "macro " .. (type(mname) == "string" and ('"' .. Esc(mname) .. '"') or Esc(tostring(id)))
                 elseif kind ~= nil then
                     what = Esc(tostring(kind))
@@ -1103,7 +1103,7 @@ function PR.ApplyImport(list)
             added = added + 1
         end
     end
-    MD.db.practiceBinds = binds
+    ST.db.practiceBinds = binds
     return added, replaced, same, skipped
 end
 
@@ -1127,7 +1127,7 @@ local function Wander(r, mean, jitter)
 end
 
 function PR.BuildDamage(setup, seed)
-    local SM = MD.SimModel
+    local SM = ST.SimModel
     local K = SM.K
     local r = Rng(seed)
     local dur = setup.dur or 120
@@ -1202,7 +1202,7 @@ Session.__index = Session
 -- The scenario the engine runs. The healer is THIS character: pool, regen and
 -- the spell kit are read live, exactly what a recording made now would carry.
 local function BuildScenario(setup, seed, kit)
-    local RM = MD.Regen
+    local RM = ST.Regen
     local dur = math.min(PR.MAX_DUR, math.max(10, setup.dur or 120))
     setup.dur = dur
     local targets = {}
@@ -1216,20 +1216,20 @@ local function BuildScenario(setup, seed, kit)
     local sampleT, hpT = {}, {}
     for t = 0, dur, 2 do sampleT[#sampleT + 1] = t end
     for t = 0, dur, 5 do hpT[#hpT + 1] = t end
-    local pool = (MD.API.UnitPowerMax and MD.API.UnitPowerMax("player", 0)) or 0
+    local pool = (ST.API.UnitPowerMax and ST.API.UnitPowerMax("player", 0)) or 0
     local apiBase, apiCasting, energize
     if RM then
         apiBase, apiCasting, energize = RM.apiBase or 0, RM.apiCasting or 0, RM:Unreported()
     else
-        -- R4 (review 2026-09-29): MD.Regen is Engine/RegenModel.lua, on the TBC
+        -- R4 (review 2026-09-29): ST.Regen is Engine/RegenModel.lua, on the TBC
         -- TOC only. Without it (Forever) the rates are the client's own
         -- GetManaRegen through the adapter -- plain out of combat, which is
         -- where a session starts -- as UI/Clock_Forever.lua reads them. A
         -- secret or absent answer leaves them 0, as before. Nothing unreported
         -- is modelled on Forever, so energize stays 0.
         apiBase, apiCasting, energize = 0, 0, 0
-        if MD.API.ManaRegen then
-            local base, casting = MD.API.ManaRegen()
+        if ST.API.ManaRegen then
+            local base, casting = ST.API.ManaRegen()
             if type(base) == "number" and type(casting) == "number" then
                 apiBase, apiCasting = base, casting
             end
@@ -1238,10 +1238,10 @@ local function BuildScenario(setup, seed, kit)
     return {
         dur = dur, pool = pool,
         initial = { mana = pool, apiBase = apiBase, apiCasting = apiCasting,
-                    form = (MD.InTreeForm and MD:InTreeForm()) and "tree" or "caster",
+                    form = (ST.InTreeForm and ST:InTreeForm()) and "tree" or "caster",
                     energize = energize or 0 },
         targets = targets, ev = PR.BuildDamage(setup, seed),
-        floor = (MD.db and MD.db.simFloor) or 0.30, grace = 6,
+        floor = (ST.db and ST.db.simFloor) or 0.30, grace = 6,
         sampleT = sampleT, hpSampleT = hpT, kit = kit, synthetic = true,
     }
 end
@@ -1250,15 +1250,15 @@ end
 -- (msg, spellID, target), opts.kit (tests)
 function PR.New(setup, opts)
     opts = opts or {}
-    local SM = MD.SimModel
+    local SM = ST.SimModel
     local seed = opts.seed or ((time and time()) or 1)
-    local kit = opts.kit or MD.RankMath:SpellKit({ live = true })
+    local kit = opts.kit or ST.RankMath:SpellKit({ live = true })
     -- A player waits through the real cast bar, not the Nature's Grace average
     -- the planner uses for throughput. The session's own copy of the kit, so the
     -- shared one is untouched; a recording replays from its cast SUCCESS times,
     -- so the replay does not depend on this.
     do
-        -- T96: the copy keeps the kit's profile (MD.Profiles.ForKit reads it:
+        -- T96: the copy keeps the kit's profile (ST.Profiles.ForKit reads it:
         -- the engine's HoT slots), so a session and its recording are the kit's class
         local copy = { crit = kit.crit, profile = kit.profile }
         for form, list in pairs(kit) do
@@ -1366,7 +1366,7 @@ function Session:Decide(S, t, mana, form)
         self:Error("Another action is in progress", inp.spellID, inp.target)
         return nil
     end
-    local SM = MD.SimModel
+    local SM = ST.SimModel
     local e = self.kit[form] and self.kit[form][inp.spellID]
     local ti = inp.target
     if not e then self:Error("You can't cast that here", inp.spellID, ti); return nil end
@@ -1408,7 +1408,7 @@ function Session:Resume()
     if not ok then
         self.state = "failed"
         self.failure = r
-        MD:Debug("sim", "practice session failed: %s", tostring(r))
+        ST:Debug("sim", "practice session failed: %s", tostring(r))
         return
     end
     if coroutine.status(self.co) == "dead" then
@@ -1444,7 +1444,7 @@ end
 function Session:Finish()
     if self.state == "done" then return self.rec end
     self.state = "done"
-    local SM = MD.SimModel
+    local SM = ST.SimModel
     local K = SM.K
     local sc = self.scenario
     local S = self.S
@@ -1455,7 +1455,7 @@ function Session:Finish()
     for i, tg in ipairs(self.setup.targets) do
         roster[i] = { name = tg.name, class = tg.class, role = tg.role, roleSource = "practice",
                       maxHP = sc.targets[i].maxHP,
-                      guid = tg.you and MD.player and MD.player.guid or nil }
+                      guid = tg.you and ST.player and ST.player.guid or nil }
         tracked[i] = i
     end
 
@@ -1481,7 +1481,7 @@ function Session:Finish()
     -- it -- for every id the healer's own events carry (T59, P15, review A30:
     -- the heals and ticks too, and the bloom's own id, which no cast carries).
     -- A heal's crit flag (+100000) is not part of the id.
-    local SD = MD.SpellData
+    local SD = ST.SpellData
     local spent, casts, names = 0, 0, {}
     local function Name(x)
         local id = (x >= 100000) and (x - 100000) or x
@@ -1546,7 +1546,7 @@ function Session:Finish()
     end
 
     local known = {}
-    for family, id in pairs(MD.SpellData.maxRank or {}) do known[family] = id end
+    for family, id in pairs(ST.SpellData.maxRank or {}) do known[family] = id end
     local initial = {}
     for k, v in pairs(sc.initial) do initial[k] = v end
     initial.known = known
@@ -1563,7 +1563,7 @@ function Session:Finish()
     if casts == 0 then
         -- nothing was played: not a fight worth a slot
         self.rec = nil
-        MD:Debug("sim", "practice ended after %.0fs with no casts: not kept", endT)
+        ST:Debug("sim", "practice ended after %.0fs with no casts: not kept", endT)
         if self.opts.onFinish then self.opts.onFinish(nil) end
         return nil
     end
@@ -1575,14 +1575,14 @@ function Session:Finish()
     -- The build only as the plain string GetBuildInfo gives: the adapter's
     -- failure answers (nil plus "absent" / "error" / "secret") leave it nil.
     local build
-    if MD.API.BuildInfo then
-        local ver, b = MD.API.BuildInfo()
+    if ST.API.BuildInfo then
+        local ver, b = ST.API.BuildInfo()
         if ver ~= nil and type(b) == "string" then build = b end
     end
     local rec = {
         v = 2, id = self.startedAt, t0 = 0, dur = endT, pool = sc.pool,
-        kit = MD.SimModel.KitSnapshot(self.kit), client = PR.policy.client, level = MD.player and MD.player.level,
-        build = build, version = MD.version,
+        kit = ST.SimModel.KitSnapshot(self.kit), client = PR.policy.client, level = ST.player and ST.player.level,
+        build = build, version = ST.version,
         zone = "Practice: " .. (g and g.label or "custom"), encounter = "Practice",
         roster = roster, tracked = tracked, ev = ev, n = #ev.t,
         hp = hp, mana = mana, initial = initial, precasts = {}, deaths = deaths,
@@ -1599,8 +1599,8 @@ function Session:Finish()
                      errors = self.errors },
     }
     self.rec = rec
-    if MD.cdb and not self.opts.noStore then PR.Store(rec) end
-    MD:Debug("sim", "practice recorded: %.0fs, %d events, %d casts, %d mana, %d dead",
+    if ST.cdb and not self.opts.noStore then PR.Store(rec) end
+    ST:Debug("sim", "practice recorded: %.0fs, %d events, %d casts, %d mana, %d dead",
         endT, rec.n, casts, spent, #deaths)
     if self.opts.onFinish then self.opts.onFinish(rec) end
     return rec
@@ -1627,8 +1627,8 @@ end
 -- practice evening never pushes a dungeon pull out.
 --------------------------------------------------------------------------------
 function PR.Store(rec)
-    MD.cdb.practice = MD.cdb.practice or {}
-    local list = MD.cdb.practice
+    ST.cdb.practice = ST.cdb.practice or {}
+    local list = ST.cdb.practice
     list[#list + 1] = rec
     table.sort(list, function(a, b) return (a.id or 0) > (b.id or 0) end)
     -- the oldest UNPINNED goes; a pinned fight stays until it is unpinned
@@ -1648,12 +1648,12 @@ end
 -- practice's own number and its own line.
 function PR.Pin(rec, on)
     if not rec then return false, "no practice fight selected" end
-    return MD.Recordings.PinRecord("p", rec, on)
+    return ST.Recordings.PinRecord("p", rec, on)
 end
 
 function PR.List()
     local list = {}
-    for _, r in ipairs(MD.cdb and MD.cdb.practice or {}) do list[#list + 1] = r end
+    for _, r in ipairs(ST.cdb and ST.cdb.practice or {}) do list[#list + 1] = r end
     table.sort(list, function(a, b) return (a.id or 0) > (b.id or 0) end)
     return list
 end
@@ -1661,7 +1661,7 @@ end
 function PR.Get(n) return PR.List()[n or 1] end
 
 -- "p2" is the second practice fight (v0.15.0), answered through the router.
-MD.Recordings.Register("p", {
+ST.Recordings.Register("p", {
     Get = PR.Get,
     List = PR.List,
     pinCap = PR.MAX_PINNED,

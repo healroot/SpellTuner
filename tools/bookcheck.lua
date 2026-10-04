@@ -15,7 +15,7 @@ local function check(name, cond, detail)
 end
 
 local a0 = arg[0]; arg[0] = here .. "/harness.lua"
-local MD = dofile(here .. "/harness.lua")
+local ST = dofile(here .. "/harness.lua")
 arg[0] = a0
 
 local S = _G.STUB
@@ -29,7 +29,7 @@ local S = _G.STUB
 -- where the floor and a virtual row decide.
 --------------------------------------------------------------------------------
 if S.flavour == "tbc" then
-    local RM, RR = MD.RankMath, MD.RankRules
+    local RM, RR = ST.RankMath, ST.RankRules
 
     -- Engine/RankMath.lua's Compute() before T67, the rule part only.
     local function OldRule(rows)
@@ -117,8 +117,8 @@ if S.flavour == "tbc" then
         RR.Pareto(under, F); sUnder = RR.Suggested(under, under[2], F)
     end
     local noneDominated = at[1].dominated == nil and at[2].dominated == nil and at[5].dominated == true
-    check("tbc: the floor is MD.Rules.SUGGESTED_FLOOR, a virtual or unknown row beats nothing",
-        F ~= nil and MD.Rules.SUGGESTED_FLOOR == 0.4 and noneDominated and sAt == at[1] and sUnder == under[2]
+    check("tbc: the floor is ST.Rules.SUGGESTED_FLOOR, a virtual or unknown row beats nothing",
+        F ~= nil and ST.Rules.SUGGESTED_FLOOR == 0.4 and noneDominated and sAt == at[1] and sUnder == under[2]
         and RM:CastsToOOM(100, 2, 1000, 10) == 12 and RM:CastsToOOM(0, 2, 1000, 10) == math.huge
         and RM:CastsToOOM(100, 2, 50, 10) == 0 and RM:CastsToOOM(100, 2, 1000, 60) == math.huge,
         string.format("fields=%s dominated=%s/%s/%s at200=%s at199=%s casts=%s", tostring(F ~= nil),
@@ -130,7 +130,7 @@ if S.flavour == "tbc" then
     os.exit(#fails > 0 and 1 or 0)
 end
 
-local Book = MD.Book
+local Book = ST.Book
 
 --------------------------------------------------------------------------------
 -- fixtures -- six extra spells beyond T7a's fixed five (5185, 774, 5176, 1058,
@@ -204,12 +204,12 @@ local function ApproxEq(a, b, eps)
     return math.abs(a - b) < eps
 end
 
--- MD.API.Has caches a resolved function OBJECT forever, by design (the real
+-- ST.API.Has caches a resolved function OBJECT forever, by design (the real
 -- client's API surface does not change mid-session) -- so reassigning a
 -- global AFTER Book has already scanned once (and so already asked Has for
 -- it) changes nothing: Call() keeps invoking the stale cached reference. To
 -- test "this function is missing/raises/answers a secret", the mutation has
--- to be in place BEFORE the very first ask, which means a brand new MD
+-- to be in place BEFORE the very first ask, which means a brand new ST
 -- table (a fresh Client/API.lua load -> a fresh, empty Has cache) rather
 -- than the long-lived one every other item in this suite shares.
 local function FreshBook(mutate)
@@ -786,7 +786,7 @@ T38("ReadSpell keeps a spell outside the book readable in combat, read before co
     S.inCombat = true
     local first = Book:ReadSpell(90094)
     local second = Book:ReadSpell(90094)
-    local lines = MD.SpellTip:Lines(90094) or {}
+    local lines = ST.SpellTip:Lines(90094) or {}
     local never = Book:ReadSpell(90095)
     S.inCombat = false
     local after = Book:ReadSpell(90094)
@@ -987,7 +987,7 @@ T95("T95: class coverage -- families, valued, heals, cooldowns, reach", function
     return #bad == 0, table.concat(got, "; ")
 end)
 
--- 29: with MD.API.BASE_CD_READS false (as shipped) the cooldown is the
+-- 29: with ST.API.BASE_CD_READS false (as shipped) the cooldown is the
 -- tooltip line's, whatever GetSpellBaseCooldown says; set true, a base read
 -- above 0 wins and a 0 falls back to the tooltip line
 T95("T95: BASE_CD_READS false reads the tooltip line; true reads the base cooldown", function()
@@ -1078,25 +1078,25 @@ end)
 -- 32: T122 (docs/tasks/T122-what-if.md) -- the bonus share measured. Two
 -- plain scans out of combat whose bonus healing and text both moved give
 -- the rank its own share (counts = text change / bonus change), kept in
--- MD.cdb.bonusCounts with the time and the bonus it was read at; the entry's
+-- ST.cdb.bonusCounts with the time and the bonus it was read at; the entry's
 -- bonus then says "measured" and its value is still the text's
 T95("T122: two plain scans measure a rank's bonus share; the value stays the text's", function()
     S.AddSpell(90122, "ShareSpell", "Rank 1", function()
         local b = math.floor(0.3 * S.bonusHealing + 0.5)
         return "Heals a friendly target for " .. (200 + b) .. " to " .. (240 + b) .. "."
     end, { cast = 2000, cost = 80, level = 1 })
-    local savedBonus, savedCombat = S.bonusHealing, MD.inCombat
-    MD.inCombat, S.inCombat = false, false
+    local savedBonus, savedCombat = S.bonusHealing, ST.inCombat
+    ST.inCombat, S.inCombat = false, false
     S.bonusHealing = 100
     Book:MarkDirty()
     Book:Get()
     S.bonusHealing = 200
     Book:MarkDirty()
     local book = Book:Get()
-    local store = MD.cdb and MD.cdb.bonusCounts
+    local store = ST.cdb and ST.cdb.bonusCounts
     local m = store and store[90122]
     local e = book.spells[90122]
-    S.bonusHealing, MD.inCombat = savedBonus, savedCombat
+    S.bonusHealing, ST.inCombat = savedBonus, savedCombat
     Book:MarkDirty()
     local counts = m and m.counts
     local good = type(counts) == "number" and math.abs(counts - 0.3) < 0.02 and type(m.at) == "number"
@@ -1108,21 +1108,21 @@ T95("T122: two plain scans measure a rank's bonus share; the value stays the tex
 end)
 
 T95("T124: Book:Bonus('damage', school) -- nil before any, plain, per school, stale in combat, secret -> last, a name", function()
-    local savedDmg, savedCombat = S.bonusDamage, MD.inCombat
+    local savedDmg, savedCombat = S.bonusDamage, ST.inCombat
     local savedFn = _G.GetSpellBonusDamage
     S.bonusDamage = {}
-    MD.inCombat, S.inCombat = false, false
+    ST.inCombat, S.inCombat = false, false
     Book._lastDamage = nil
     local bad = {}
     local function Want(cond, what) if not cond then bad[#bad + 1] = what end end
     local good, err = pcall(function()
         -- nil before any reading: the read is secret and nothing was kept
         _G.GetSpellBonusDamage = function() return S.Secret() end
-        MD.API.Invalidate("GetSpellBonusDamage")
+        ST.API.Invalidate("GetSpellBonusDamage")
         local v0, s0 = Book:Bonus("damage", 4)
         Want(v0 == nil and s0 == nil, "before any " .. tostring(v0) .. "/" .. tostring(s0))
         _G.GetSpellBonusDamage = savedFn
-        MD.API.Invalidate("GetSpellBonusDamage")
+        ST.API.Invalidate("GetSpellBonusDamage")
         S.bonusDamage[4], S.bonusDamage[7] = 120, 80
         local v1, s1 = Book:Bonus("damage", 4)
         Want(v1 == 120 and s1 == false, "plain " .. tostring(v1) .. "/" .. tostring(s1))
@@ -1133,22 +1133,22 @@ T95("T124: Book:Bonus('damage', school) -- nil before any, plain, per school, st
         Want(Book:Bonus("damage", "Nonsense") == nil, "unknown name")
         -- in combat: the last plain reading per school, stale
         S.bonusDamage[4] = 999
-        MD.inCombat = true
+        ST.inCombat = true
         local v2, s2 = Book:Bonus("damage", 4)
         Want(v2 == 120 and s2 == true, "combat " .. tostring(v2) .. "/" .. tostring(s2))
         local v3 = Book:Bonus("damage", 7)
         Want(v3 == 80, "combat per school " .. tostring(v3))
         Want(Book:Bonus("damage", 3) == nil, "combat, no reading for Fire")
-        MD.inCombat = false
+        ST.inCombat = false
         -- a secret answer out of combat: the last plain reading, stale
         _G.GetSpellBonusDamage = function() return S.Secret() end
-        MD.API.Invalidate("GetSpellBonusDamage")
+        ST.API.Invalidate("GetSpellBonusDamage")
         local v4, s4 = Book:Bonus("damage", "Nature")
         Want(v4 == 120 and s4 == true, "secret " .. tostring(v4) .. "/" .. tostring(s4))
     end)
     _G.GetSpellBonusDamage = savedFn
-    MD.API.Invalidate("GetSpellBonusDamage")
-    S.bonusDamage, MD.inCombat = savedDmg, savedCombat
+    ST.API.Invalidate("GetSpellBonusDamage")
+    S.bonusDamage, ST.inCombat = savedDmg, savedCombat
     Book._lastDamage = nil
     Book:MarkDirty()
     if not good then return false, "raised: " .. tostring(err) end
@@ -1186,21 +1186,21 @@ do
         return Book:Get()
     end
     local function Stored(id)
-        local store = MD.cdb and MD.cdb.bonusCounts
+        local store = ST.cdb and ST.cdb.bonusCounts
         return store and store[id]
     end
     local function Around(fn)
-        local savedDmg, savedHeal, savedCombat = S.bonusDamage, S.bonusHealing, MD.inCombat
+        local savedDmg, savedHeal, savedCombat = S.bonusDamage, S.bonusHealing, ST.inCombat
         local savedFn = _G.GetSpellBonusDamage
         S.bonusDamage = {}
-        MD.inCombat, S.inCombat = false, false
+        ST.inCombat, S.inCombat = false, false
         Book._lastRead = {} -- each case starts with no previous readings
         local bad = {}
         local function Want(cond, what) if not cond then bad[#bad + 1] = what end end
         local good, err = pcall(fn, Want)
         _G.GetSpellBonusDamage = savedFn
-        MD.API.Invalidate("GetSpellBonusDamage")
-        S.bonusDamage, S.bonusHealing, MD.inCombat, S.inCombat = savedDmg, savedHeal, savedCombat, savedCombat
+        ST.API.Invalidate("GetSpellBonusDamage")
+        S.bonusDamage, S.bonusHealing, ST.inCombat, S.inCombat = savedDmg, savedHeal, savedCombat, savedCombat
         Book._lastDamage = nil
         Book:MarkDirty()
         if not good then return false, "raised: " .. tostring(err) end
@@ -1229,18 +1229,18 @@ do
         return Around(function(Want)
             S.bonusDamage[4] = 100
             Scan() -- the first plain reading of each rank
-            if MD.cdb and MD.cdb.bonusCounts then MD.cdb.bonusCounts[90125] = nil end
+            if ST.cdb and ST.cdb.bonusCounts then ST.cdb.bonusCounts[90125] = nil end
             local before = Stored(90124)
             -- in combat: the change in bonus is not a measurement
-            MD.inCombat, S.inCombat = true, true
+            ST.inCombat, S.inCombat = true, true
             S.bonusDamage[4] = 300
             Scan()
-            MD.inCombat, S.inCombat = false, false
+            ST.inCombat, S.inCombat = false, false
             Want(Stored(90125) == nil, "combat measured " .. tostring(Stored(90125) and Stored(90125).counts))
             Want(Stored(90124) == before, "combat rewrote 90124")
             -- out of combat but the reading is secret: the last one, stale
             _G.GetSpellBonusDamage = function() return S.Secret() end
-            MD.API.Invalidate("GetSpellBonusDamage")
+            ST.API.Invalidate("GetSpellBonusDamage")
             S.bonusDamage[4] = 500
             Scan()
             Want(Stored(90125) == nil, "stale measured " .. tostring(Stored(90125) and Stored(90125).counts))
@@ -1250,7 +1250,7 @@ do
 
     T95("T124: a heal reading and a damage reading of one id never meet; kinds never cross", function()
         return Around(function(Want)
-            if MD.cdb and MD.cdb.bonusCounts then MD.cdb.bonusCounts[90126] = nil end
+            if ST.cdb and ST.cdb.bonusCounts then ST.cdb.bonusCounts[90126] = nil end
             -- a heal reading of 90126 at +healing 100, then the same id read
             -- as damage at a different bonus and value: no share from the two
             zapFlip = "heal"
@@ -1270,31 +1270,31 @@ do
             Scan()
             Want(Stored(90126) == nil, "damage->heal measured " .. tostring(Stored(90126) and Stored(90126).counts))
             -- a heal-kind share is not handed to a damage rank, nor a damage one to a heal
-            MD.cdb.bonusCounts[90126] = { counts = 0.77, at = 1, bonus = 100 }
+            ST.cdb.bonusCounts[90126] = { counts = 0.77, at = 1, bonus = 100 }
             zapFlip = "damage"
             local b2 = Scan()
             local e2 = b2.spells[90126]
             Want(e2 and e2.bonus and e2.bonus.from == "estimated", "heal share on damage " .. tostring(e2 and e2.bonus and e2.bonus.from))
-            MD.cdb.bonusCounts[90126] = { counts = 0.66, at = 1, bonus = 100, kind = "damage", school = "Nature" }
+            ST.cdb.bonusCounts[90126] = { counts = 0.66, at = 1, bonus = 100, kind = "damage", school = "Nature" }
             zapFlip = "heal"
             local b3 = Scan()
             local e3 = b3.spells[90126]
             Want(e3 and e3.bonus and e3.bonus.from == "estimated", "damage share on heal " .. tostring(e3 and e3.bonus and e3.bonus.from))
-            MD.cdb.bonusCounts[90126] = nil
+            ST.cdb.bonusCounts[90126] = nil
             zapFlip = "damage"
         end)
     end)
 
     T95("T124: a T122 bonusCounts entry without a kind still reads as a heal's share", function()
         return Around(function(Want)
-            if type(MD.cdb.bonusCounts) ~= "table" then MD.cdb.bonusCounts = {} end
-            MD.cdb.bonusCounts[90127] = { counts = 0.42, at = 12345, bonus = 50 }
+            if type(ST.cdb.bonusCounts) ~= "table" then ST.cdb.bonusCounts = {} end
+            ST.cdb.bonusCounts[90127] = { counts = 0.42, at = 12345, bonus = 50 }
             local book = Scan()
             local e = book.spells[90127]
             Want(e and e.bonus and e.bonus.from == "measured" and ApproxEq(e.bonus.counts, 0.42) and e.bonus.at == 12345,
                 "old entry " .. tostring(e and e.bonus and e.bonus.from) .. " " .. tostring(e and e.bonus and e.bonus.counts))
             Want(e and ApproxEq(e.value, 220), "value " .. tostring(e and e.value))
-            MD.cdb.bonusCounts[90127] = nil
+            ST.cdb.bonusCounts[90127] = nil
         end)
     end)
 end

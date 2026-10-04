@@ -1,13 +1,13 @@
 -- The review commands, both lines: the validation report for one recording
--- (MD:ValidationReport), /md coach (MD:RunCoach), /md coachrun
--- (MD:RunCoachRun) and, on Forever, /st validate.
+-- (ST:ValidationReport), /md coach (ST:RunCoach), /md coachrun
+-- (ST:RunCoachRun) and, on Forever, /st validate.
 --
 -- T56 (P12, review A2): moved out of Verify.lua unchanged, into their final
 -- home. T65 (P21, review A1): listed by the TBC TOC and by the Replay
 -- module's TOCs, replacing the second implementation that lived in
 -- Modules/SpellTuner_Replay/Commands_Forever.lua. Where the two differed, the
 -- one below is what both lines do now:
---   * every line printed goes through MD:PrintSafe (Core.lua's
+--   * every line printed goes through ST:PrintSafe (Core.lua's
 --     EscKeepColours: ASCII, no bare pipe, the card's own colour codes kept) --
 --     TBC printed raw, so a zone, name or spell with a pipe, a backslash or a
 --     non-ASCII byte now prints escaped there too (docs/DECISIONS.md);
@@ -22,10 +22,10 @@
 -- A verb the flavour core already registered (TBC's coach and coachrun, in
 -- Core_TBC.lua) keeps its row; this file registers only the ones it has not,
 -- so neither line's /help moves.
-local _, MD = ...
+local _, ST = ...
 
 local RC = {}
-MD.ReviewCommands = RC
+ST.ReviewCommands = RC
 
 -- The review POLICY (the T59 pattern, Engine/Practice.lua): what differs
 -- between the two lines is installed by the flavour, never asked of the
@@ -37,26 +37,26 @@ MD.ReviewCommands = RC
 --               (Engine/SimSelfTest.lua), Forever's is /st validate N,
 --               registered below;
 --   slash       the line's own slash command, for hints ("/md coach 1
---               force") -- MD.SLASH wins when a core sets one.
+--               force") -- ST.SLASH wins when a core sets one.
 -- The TBC value below is the default. Commands_Forever.lua provides
--- MD.ReviewPolicy before this file runs (the Replay module's TOCs list it
+-- ST.ReviewPolicy before this file runs (the Replay module's TOCs list it
 -- first), and that replaces it.
 RC.TBC_POLICY = { copyBox = true, reportVerb = "simreplay", slash = "/md" }
-RC.policy = MD.ReviewPolicy or RC.TBC_POLICY
+RC.policy = ST.ReviewPolicy or RC.TBC_POLICY
 
 local function Slash()
-    return MD.SLASH or RC.policy.slash or "/st"
+    return ST.SLASH or RC.policy.slash or "/st"
 end
 RC.Slash = Slash
 
 local function Say(line)
-    MD:PrintSafe(line)
+    ST:PrintSafe(line)
 end
 
 -- The header's casts and mana: the recorder's own counters when the
 -- recording has them (TBC since v0.7, Forever since T13f), else counted from
 -- a v3 stream, by the v3 kinds the Recorder module publishes once
--- (Modules/SpellTuner_Recorder/Stream_Forever.lua's MD.StreamV3, T66; read at
+-- (Modules/SpellTuner_Recorder/Stream_Forever.lua's ST.StreamV3, T66; read at
 -- call time -- absent on TBC, where no v3 stream exists). A v2 stream without
 -- the counters reads 0, as it always did.
 local function CastsAndMana(rec)
@@ -65,7 +65,7 @@ local function CastsAndMana(rec)
     end
     local casts, mana = 0, 0
     local ev = rec.ev
-    local stream = MD.StreamV3
+    local stream = ST.StreamV3
     if not stream or rec.v ~= stream.V or type(ev) ~= "table" or type(ev.kind) ~= "table" then
         return casts, mana
     end
@@ -88,8 +88,8 @@ RC.CastsAndMana = CastsAndMana
 -- the Replay module's own gates (Gates_Forever.lua). The lines are returned
 -- raw: whoever prints them escapes them.
 --------------------------------------------------------------------------------
-function MD:ValidationReport(rec, n)
-    local v = MD.SimModel:Validate(rec)
+function ST:ValidationReport(rec, n)
+    local v = ST.SimModel:Validate(rec)
     if not v then return { RC.policy.reportVerb .. ": nothing to validate." } end
     local casts, mana = CastsAndMana(rec)
     local out = {
@@ -122,22 +122,22 @@ function MD:ValidationReport(rec, n)
 end
 
 -- /st validate [n] (Forever's report verb; TBC's is /md simreplay n).
-function MD:RunValidate(arg)
-    if not MD.SimModel then Say("validate: not loaded.") return end
+function ST:RunValidate(arg)
+    if not ST.SimModel then Say("validate: not loaded.") return end
     local n = (arg and arg ~= "" and arg) or "1"
-    local rec, label = MD:GetRecording(n)
+    local rec, label = ST:GetRecording(n)
     if not rec then Say("validate: no recording " .. tostring(n) .. ".") return end
-    for _, line in ipairs(MD:ValidationReport(rec, label)) do Say(line) end
+    for _, line in ipairs(ST:ValidationReport(rec, label)) do Say(line) end
 end
 
 -- A finished card: chat, the debug log, and on TBC the copy box as well.
 local function ShowCard(verb, title, lines)
-    if RC.policy.copyBox and MD.ShowCopyPopup and #lines > 6 then
-        MD:ShowCopyPopup(title, table.concat(lines, "\n"))
+    if RC.policy.copyBox and ST.ShowCopyPopup and #lines > 6 then
+        ST:ShowCopyPopup(title, table.concat(lines, "\n"))
     end
     for _, line in ipairs(lines) do
         Say(line)
-        MD:Debug("sim", "%s %s", verb, line)
+        ST:Debug("sim", "%s %s", verb, line)
     end
 end
 
@@ -146,11 +146,11 @@ end
 -- The same search as /md coach, one plan for the dungeon, scored on time before
 -- mana -- because in a five-man mana is only worth the time it saves.
 --------------------------------------------------------------------------------
-function MD:RunCoachRun(arg)
-    if not (MD.SimPlanner and MD.RunRecorder) then Say("coachrun: not loaded.") return end
+function ST:RunCoachRun(arg)
+    if not (ST.SimPlanner and ST.RunRecorder) then Say("coachrun: not loaded.") return end
     arg = tostring(arg or ""):gsub("%s+", "")
     if arg == "cancel" then
-        if MD.runSearch then MD.runSearch:Cancel(); MD.runSearch = nil
+        if ST.runSearch then ST.runSearch:Cancel(); ST.runSearch = nil
         else Say("coachrun: nothing running.") end
         return
     end
@@ -159,20 +159,20 @@ function MD:RunCoachRun(arg)
     local force = arg:find("force") ~= nil
     arg = arg:gsub("force", "")
     local n = tonumber(arg) or 1
-    local run = MD.RunRecorder:Get(n)
+    local run = ST.RunRecorder:Get(n)
     if not run then
         Say("coachrun: no run " .. n .. " (" .. Slash() .. " run status lists them).")
         return
     end
-    if MD.runSearch then Say("coachrun: already searching (" .. Slash() .. " coachrun cancel).") return end
+    if ST.runSearch then Say("coachrun: already searching (" .. Slash() .. " coachrun cancel).") return end
     -- T99 (docs/SPEC-next.md 4.4): the class profile's coach capability
-    local canCoach, why = MD.ClassProfile:Can("coach")
-    if not canCoach then Say(MD.Profiles.Refusal("coach", why, "coachrun") .. ".") return end
+    local canCoach, why = ST.ClassProfile:Can("coach")
+    if not canCoach then Say(ST.Profiles.Refusal("coach", why, "coachrun") .. ".") return end
     Say(string.format("coachrun: %s - %d pull(s) through the engine, this may take a moment.",
         run.name or "?", #(run.pulls or {})))
     if force then Say("coachrun: FORCED - pulls that do not replay are coached too.") end
-    MD.runSearch = MD.SimPlanner.CoachRun(run, { force = force }, function(lines)
-        MD.runSearch = nil
+    ST.runSearch = ST.SimPlanner.CoachRun(run, { force = force }, function(lines)
+        ST.runSearch = nil
         ShowCard("coachrun", "SpellTuner coach: " .. (run.name or "run"), lines)
     end)
 end
@@ -180,11 +180,11 @@ end
 --------------------------------------------------------------------------------
 -- /md coach [n] [force, or safe / health / cheap / regen]
 --------------------------------------------------------------------------------
-function MD:RunCoach(arg)
-    if not (MD.SimPlanner and MD.FightRecorder) then Say("coach: not loaded.") return end
+function ST:RunCoach(arg)
+    if not (ST.SimPlanner and ST.FightRecorder) then Say("coach: not loaded.") return end
     arg = arg or ""
     if arg == "cancel" then
-        if MD.coachSearch then MD.coachSearch:Cancel(); MD.coachSearch = nil
+        if ST.coachSearch then ST.coachSearch:Cancel(); ST.coachSearch = nil
         else Say("coach: nothing running.") end
         return
     end
@@ -196,13 +196,13 @@ function MD:RunCoach(arg)
     local n, rest = arg:match("^([pP]?[%d:]*)%s*(%a*)$")
     if not n then Say("coach: no recording " .. arg .. ".") return end
     if n == "" then n = "1" end
-    local rec, label = MD:GetRecording(n)
+    local rec, label = ST:GetRecording(n)
     if not rec then Say("coach: no recording " .. tostring(n) .. ".") return end
     n = label
 
     -- /md coach 3 health: pick one of the strategies the last search on this
     -- fight produced, without searching again (v0.10.4)
-    local SP = MD.SimPlanner
+    local SP = ST.SimPlanner
     for _, obj in ipairs(SP.OBJECTIVES or {}) do
         if rest == obj.key then
             local w = SP.strategies and SP.strategies[rec.id] and SP.strategies[rec.id][obj.key]
@@ -223,14 +223,14 @@ function MD:RunCoach(arg)
     end
     -- v0.13.9: an auto-coach kicked off by opening the replay must not block the
     -- author asking for one. Theirs wins: cancel ours and run it.
-    if MD.coachSearch and MD.replayCoaching then
-        MD.coachSearch:Cancel()
-        MD.coachSearch, MD.replayCoaching = nil, nil
+    if ST.coachSearch and ST.replayCoaching then
+        ST.coachSearch:Cancel()
+        ST.coachSearch, ST.replayCoaching = nil, nil
     end
-    if MD.coachSearch then Say("coach: already searching (" .. Slash() .. " coach cancel).") return end
+    if ST.coachSearch then Say("coach: already searching (" .. Slash() .. " coach cancel).") return end
 
-    MD.coachSearch = MD.SimPlanner.CoachAsync(rec, { n = n, force = (rest == "force") }, function(lines)
-        MD.coachSearch = nil
+    ST.coachSearch = ST.SimPlanner.CoachAsync(rec, { n = n, force = (rest == "force") }, function(lines)
+        ST.coachSearch = nil
         ShowCard("coach", "SpellTuner coach: recording " .. tostring(n), lines)
     end)
 end
@@ -242,7 +242,7 @@ end
 -- coach are, with the rows Commands_Forever.lua gave them.
 --------------------------------------------------------------------------------
 local function Registered(name)
-    for _, c in ipairs(MD:Commands()) do
+    for _, c in ipairs(ST:Commands()) do
         if c.name == name then return true end
         for _, a in ipairs(c.aliases or {}) do if a == name then return true end end
     end
@@ -250,20 +250,20 @@ local function Registered(name)
 end
 
 if RC.policy.reportVerb == "validate" and not Registered("validate") then
-    MD:AddCommand("validate", function(arg)
-        if MD.RunValidate then MD:RunValidate(arg) end
+    ST:AddCommand("validate", function(arg)
+        if ST.RunValidate then ST:RunValidate(arg) end
     end, Slash() .. " validate [n]", "check whether recording n replays through the engine, gate by gate")
 end
 
 if not Registered("coach") then
-    MD:AddCommand("coach", function(arg)
-        if MD.RunCoach then MD:RunCoach(arg) end
+    ST:AddCommand("coach", function(arg)
+        if ST.RunCoach then ST:RunCoach(arg) end
     end, Slash() .. " coach [n] [force, or safe / health / cheap / regen]",
         "search for a better plan on recorded fight n and show the card (cancel stops it); a strategy name plays that one")
 end
 
-if MD.RunRecorder and not Registered("coachrun") then
-    MD:AddCommand("coachrun", function(arg)
-        if MD.RunCoachRun then MD:RunCoachRun(arg) end
+if ST.RunRecorder and not Registered("coachrun") then
+    ST:AddCommand("coachrun", function(arg)
+        if ST.RunCoachRun then ST:RunCoachRun(arg) end
     end, Slash() .. " coachrun [n]", "coach a recorded RUN: one plan and a drink policy for the whole dungeon")
 end

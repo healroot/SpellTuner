@@ -5,22 +5,22 @@
 -- -> About lists every command, T70). Built on first use, not at load: TBC's
 -- own UI/Dashboard.lua stays TBC-only and reads none of this.
 --
--- Client calls only through MD.API; nothing here calls one directly (the
+-- Client calls only through ST.API; nothing here calls one directly (the
 -- widget toolkit and WoW's Lua extensions are not client calls -- CLAUDE.md,
 -- T1b Facts).
-local _, MD = ...
-local UI = MD.UI
+local _, ST = ...
+local UI = ST.UI
 
 -- T32 (docs/SPEC-forever-ui.md 6.7): the window's size is one per group, kept
 -- by the window manager (UI/Windows.lua). T80 (C1, review A22): this table is
--- the dashboard's own and is handed to MD.Win at Register. Reports and
+-- the dashboard's own and is handed to ST.Win at Register. Reports and
 -- Simulate at 1036 x 646 for the Review and Practice panes' 912-wide content;
 -- T40: Simulate goes down to 900 x 560 now that Practice wraps its fight
 -- fields onto a second row and sizes its table to the pane. T75 (P31, review
 -- U14, mockup M1): Spells and Settings do not reflow (the rank table and card
 -- are a fixed 540, Settings' two columns fit 860 x 560), so their minimum is
 -- their size -- fixed groups, no resize grip. WIDTH / HEIGHT are only the size
--- the frame is built at, before MD.Win places it.
+-- the frame is built at, before ST.Win places it.
 local SIZES = {
     spells   = { w = 860,  h = 560, minW = 860,  minH = 560 },
     settings = { w = 860,  h = 560, minW = 860,  minH = 560 },
@@ -35,7 +35,7 @@ local function Groups()
     return {
         -- T36 (docs/SPEC-forever-ui.md 3.1): a rail group; its rows are the
         -- player's own spell list (UI/SpellsPane.lua)
-        MD.SpellsPane:Group(),
+        ST.SpellsPane:Group(),
         { id = "reports", text = "Reports", views = {
             { id = "review", text = "Review" } } },
         -- T18: a placeholder until the Practice module is on (Files/Rules),
@@ -44,7 +44,7 @@ local function Groups()
             { id = "practice", text = "Practice" } } },
         -- T119 (docs/SPEC-one-ui.md 7): UI/Settings.lua's views in its order
         -- -- General, Clock (T102), Review, this line's Modules, About (T70)
-        { id = "settings", text = "Settings", views = MD.Settings and MD.Settings.Views() or {
+        { id = "settings", text = "Settings", views = ST.Settings and ST.Settings.Views() or {
             { id = "general", text = "General" }, { id = "clock", text = "Clock" },
             { id = "modules", text = "Modules" }, { id = "about", text = "About" } } },
     }
@@ -72,22 +72,22 @@ end
 local REPLAY = "SpellTuner_Replay"
 
 local function ReplayLoaded()
-    return MD:ModuleState(REPLAY) == "loaded"
+    return ST:ModuleState(REPLAY) == "loaded"
 end
 
 local function MeasureLabel()
-    return (MD.Measure and MD.Measure.on) and "Measure: on" or "Measure: off"
+    return (ST.Measure and ST.Measure.on) and "Measure: on" or "Measure: off"
 end
 
 -- T102 (docs/SPEC-next.md 7.4): Settings -> Clock's Text (since T116) and When tabs hold
 -- this line's own switches (db.clock: the rest segment, shown, locked,
 -- click-through), the keys MANA CLOCK and /st clock write.
 local function ClockDB()
-    MD.db.clock = MD.db.clock or {}
-    return MD.db.clock
+    ST.db.clock = ST.db.clock or {}
+    return ST.db.clock
 end
 local function RefreshClock()
-    if MD.Clock and MD.Clock.Refresh then MD.Clock:Refresh() end
+    if ST.Clock and ST.Clock.Refresh then ST.Clock:Refresh() end
 end
 local CLOCK_SWITCHES = {
     show = {
@@ -104,7 +104,7 @@ local CLOCK_SWITCHES = {
               "so you can drag it. Same as /st clock lock." },
           get = function() return ClockDB().locked == true end,
           set = function(on)
-              if MD.Clock and MD.Clock.SetLocked then MD.Clock:SetLocked(on) else ClockDB().locked = on end
+              if ST.Clock and ST.Clock.SetLocked then ST.Clock:SetLocked(on) else ClockDB().locked = on end
           end },
         { text = "Click-through", tips = { "Click-through", "The clock takes no mouse input (no hover, no click)",
               "except while you place it. Same as /st clock clickthrough." },
@@ -116,7 +116,7 @@ local CLOCK_SWITCHES = {
 local function ClientLine()
     -- This file is on the Forever TOCs only, so the client is named here, not
     -- read (apicheck: the client's name is a flavour's policy, not a branch).
-    local version, build = MD.API.BuildInfo()
+    local version, build = ST.API.BuildInfo()
     local parts = { "WoW: Forever" }
     if type(build) == "string" and build ~= "" then
         parts[#parts + 1] = "build " .. build
@@ -160,7 +160,7 @@ local REVIEW_CHECKS = {
                "the biggest hit each target took." } },
 }
 
-MD.SettingsLine = {
+ST.SettingsLine = {
     client = ClientLine,
     -- T119: Settings -> Modules, between Review and About
     views = { { id = "modules", text = "Modules" } },
@@ -176,7 +176,7 @@ MD.SettingsLine = {
         { kind = "check", text = "Lock in place", mark = "clockLockCheck",
           get = function() return ClockDB().locked == true end,
           set = function(on)
-              if MD.Clock and MD.Clock.SetLocked then MD.Clock:SetLocked(on) else ClockDB().locked = on end
+              if ST.Clock and ST.Clock.SetLocked then ST.Clock:SetLocked(on) else ClockDB().locked = on end
           end,
           tips = { "Lock in place", "Locked: the clock cannot be dragged.",
                    "Unticked: it stays up for 60 s, even at full mana, so you can drag it.",
@@ -187,18 +187,18 @@ MD.SettingsLine = {
           { text = "Reset position", width = 112, mark = "clockReset",
             tips = { "Reset position", "The clock back at the top of the screen." },
             onClick = function()
-                if MD.Clock and MD.Clock.ResetPosition then MD.Clock:ResetPosition() end
-                MD:Print("mana clock: position reset")
+                if ST.Clock and ST.Clock.ResetPosition then ST.Clock:ResetPosition() end
+                ST:Print("mana clock: position reset")
             end },
           { text = "Show now", width = 86, mark = "clockShowNow",
             enabled = function() return ClockDB().shown ~= false end,
             tips = { "Show now", "The clock up for 60 s at any mana level, to see or move it." },
             onClick = function()
-                if MD.Clock and MD.Clock.Preview then MD.Clock:Preview() end
+                if ST.Clock and ST.Clock.Preview then ST.Clock:Preview() end
             end },
           { text = "Customise...", width = 92, mark = "clockCustomise",
             tips = { "Customise the clock", "Settings -> Clock: the layout, the colours, the bar, with a preview." },
-            onClick = function() MD:SelectView("settings", "clock") end } },
+            onClick = function() ST:SelectView("settings", "clock") end } },
         { kind = "hint", text = "Left-click the clock to open this window." },
     },
 
@@ -207,12 +207,12 @@ MD.SettingsLine = {
         { kind = "buttons",
           { text = "Debug console", width = 104, mark = "consoleButton",
             tips = { "Debug console", "The debug log, filterable, with a copy box (/st debug)." },
-            onClick = function() if MD.ToggleDebugConsole then MD:ToggleDebugConsole() end end },
+            onClick = function() if ST.ToggleDebugConsole then ST:ToggleDebugConsole() end end },
           { text = "Copy /st dump", width = 108, mark = "dumpButton",
             tips = { "Copy /st dump", "One copyable block for a bug report: the client, the saved",
                      "variables, the modules, the errors and the debug log." },
             onClick = function()
-                if MD.BuildDump and MD.ShowCopyPopup then MD:ShowCopyPopup("SpellTuner dump", MD:BuildDump()) end
+                if ST.BuildDump and ST.ShowCopyPopup then ST:ShowCopyPopup("SpellTuner dump", ST:BuildDump()) end
             end } },
     },
 
@@ -224,12 +224,12 @@ MD.SettingsLine = {
             text = "Clock mover in EllesmereUI's /unlock",
             tips = { "Clock mover", "The SpellTuner clock as a mover in EllesmereUI's /unlock.",
                      "Off: after a reload it is not offered." },
-            shown = function() return MD.EUI ~= nil and MD.Surfaces ~= nil and MD.Surfaces.eui ~= nil end,
-            get = function() return not (type(MD.db.eui) == "table" and MD.db.eui.unlock == false) end,
+            shown = function() return ST.EUI ~= nil and ST.Surfaces ~= nil and ST.Surfaces.eui ~= nil end,
+            get = function() return not (type(ST.db.eui) == "table" and ST.db.eui.unlock == false) end,
             set = function(on)
-                MD.db.eui = MD.db.eui or {}
-                MD.db.eui.unlock = on
-                if on and MD.EUI and MD.EUI.RegisterMover then MD.EUI.RegisterMover() end
+                ST.db.eui = ST.db.eui or {}
+                ST.db.eui.unlock = on
+                if on and ST.EUI and ST.EUI.RegisterMover then ST.EUI.RegisterMover() end
             end,
         },
     },
@@ -244,7 +244,7 @@ MD.SettingsLine = {
           { text = "Measure: off", label = MeasureLabel, width = 98, mark = "measureButton",
             tips = { "Measure", "Each own cast matched to what landed and judged against its own",
                      "text, one line in chat per cast (/st measure; /st measure dump for the list)." },
-            onClick = function() if MD.Measure and MD.Measure.Toggle then MD.Measure:Toggle() end end } },
+            onClick = function() if ST.Measure and ST.Measure.Toggle then ST.Measure:Toggle() end end } },
         { kind = "hint", text = "Measure checks each cast that lands against its own text." },
     },
     modelHint = "~ marks a number the model computed, not one the game showed.",
@@ -254,16 +254,16 @@ MD.SettingsLine = {
 -- Settings -> Modules
 --------------------------------------------------------------------------------
 local function ModuleLabel(name)
-    for _, m in ipairs(MD.modules or {}) do
+    for _, m in ipairs(ST.modules or {}) do
         if m.name == name then return m.label end
     end
     return name
 end
 
--- One line, MD:ModuleStateText (Core.lua, T55) -- ASCII only, the reason
+-- One line, ST:ModuleStateText (Core.lua, T55) -- ASCII only, the reason
 -- already sanitised by the registry (a bad LoadAddOn reason becomes "unknown"
 -- there). T73 (P29) dropped this file's own copy of it.
-local function StateText(name) return MD:ModuleStateText(name) end
+local function StateText(name) return ST:ModuleStateText(name) end
 
 local modulesPane
 
@@ -271,17 +271,17 @@ local modulesPane
 -- this session ("unloads") keeps running until a reload; its row carries a
 -- Reload UI button. ReloadUI through the adapter, as every client call.
 local function ReloadInterface()
-    MD.API.Call("ReloadUI")
+    ST.API.Call("ReloadUI")
 end
 
 local function RefreshModulesPane()
     if not modulesPane or not modulesPane.rows then return end
-    for _, m in ipairs(MD.modules or {}) do
+    for _, m in ipairs(ST.modules or {}) do
         local row = modulesPane.rows[m.name]
         if row then
-            row.check:SetChecked(MD.db.modules and MD.db.modules[m.name] == true)
+            row.check:SetChecked(ST.db.modules and ST.db.modules[m.name] == true)
             row.state:SetText(StateText(m.name))
-            if MD:ModuleState(m.name) == "unloads" then row.reload:Show() else row.reload:Hide() end
+            if ST:ModuleState(m.name) == "unloads" then row.reload:Show() else row.reload:Hide() end
         end
     end
 end
@@ -297,7 +297,7 @@ local function BuildModulesPane(content)
     title:SetText("Modules")
 
     local prevRow
-    for _, m in ipairs(MD.modules or {}) do
+    for _, m in ipairs(ST.modules or {}) do
         local row = CreateFrame("Frame", nil, pane)
         if prevRow then
             row:SetPoint("TOPLEFT", prevRow, "BOTTOMLEFT", 0, -10)
@@ -308,7 +308,7 @@ local function BuildModulesPane(content)
         row:SetHeight(48)
 
         local check = UI.CreateCheckButton(row, m.label, function(checked)
-            MD:SetModule(m.name, checked)
+            ST:SetModule(m.name, checked)
             RefreshModulesPane()
         end)
         check:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
@@ -360,11 +360,11 @@ end
 -- rail's footer once the nav exists.
 --
 -- T120 (docs/tasks/T120-one-spells-pane.md): the pane is UI/SpellsPane.lua on
--- both lines; what differs by line is MD.SpellsLine, Forever's here -- the
+-- both lines; what differs by line is ST.SpellsLine, Forever's here -- the
 -- footer, the card's Crit note, nothing else (no After overheal, no RANKS
 -- note, no Overview note; What if is T122's).
 --------------------------------------------------------------------------------
-MD.SpellsLine = {
+ST.SpellsLine = {
     footer = "Values come from the spell's own text. ~ = modelled.",
     critNote = "x1.5, unverified",
 }
@@ -379,11 +379,11 @@ MD.SpellsLine = {
 -- place through nav:ReplacePane -- no reaching into the kit's nav.panes.
 -- Settings -> Modules stays the way to switch one off.
 --------------------------------------------------------------------------------
-local reviewPane        -- the api object MD.DashboardParts.CreateReview hands back
-local practicePane      -- the api object MD.DashboardParts.CreatePractice hands back
+local reviewPane        -- the api object ST.DashboardParts.CreateReview hands back
+local practicePane      -- the api object ST.DashboardParts.CreatePractice hands back
 
 local function BuildReviewPane(content)
-    reviewPane = MD.DashboardParts.CreateReview(content, 912)
+    reviewPane = ST.DashboardParts.CreateReview(content, 912)
     reviewPane.frame:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
     reviewPane.frame:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", 0, 0)
     return reviewPane.frame
@@ -394,7 +394,7 @@ local function RefreshReviewPane()
 end
 
 local function BuildPracticePane(content)
-    practicePane = MD.DashboardParts.CreatePractice(content, 912)
+    practicePane = ST.DashboardParts.CreatePractice(content, 912)
     practicePane.frame:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
     practicePane.frame:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", 0, 0)
     return practicePane.frame
@@ -426,7 +426,7 @@ end
 
 -- The footnote under Turn on: what it will do, or why the last try failed.
 local function PlaceholderNote(def)
-    local state, reason = MD:ModuleState(def.module)
+    local state, reason = ST:ModuleState(def.module)
     if state == "failed" then
         return "could not load: " .. tostring(reason) .. ". Settings -> Modules shows each module.", "bad"
     end
@@ -474,7 +474,7 @@ local function BuildPlaceholder(def, content)
     button:SetScript("OnClick", function()
         -- the swap itself is MODULE_LOADED's (below): the module's last file
         -- fires it from inside this call once every file ran
-        MD:SetModule(def.module, true)
+        ST:SetModule(def.module, true)
         RefreshPlaceholder(def)
     end)
     pane.turnOn = button
@@ -495,7 +495,7 @@ end
 -- The view's pane: the real one when its module is loaded, else the
 -- placeholder.
 local function BuildModuleView(def, content)
-    if MD.DashboardParts[def.part] then return def.build(content) end
+    if ST.DashboardParts[def.part] then return def.build(content) end
     return BuildPlaceholder(def, content)
 end
 
@@ -505,7 +505,7 @@ end
 local function SwapPlaceholders()
     if not nav then return end
     for _, def in ipairs(MODULE_VIEWS) do
-        if placeholders[def] and MD.DashboardParts[def.part] then
+        if placeholders[def] and ST.DashboardParts[def.part] then
             local pane = def.build(nav:Content())
             placeholders[def] = nil
             nav:ReplacePane(def.group, def.view, pane)
@@ -521,17 +521,17 @@ local function CreateDashboard()
     nav = UI.CreateNavFrame("SpellTuner", "SpellTunerDashboard", WIDTH, HEIGHT, Groups(),
         function(group, view, content)
             if group == "spells" then
-                return MD.SpellsPane:Create(content) -- T36: one frame for every Spells view
+                return ST.SpellsPane:Create(content) -- T36: one frame for every Spells view
             elseif ModuleViewFor(group, view) then
                 return BuildModuleView(ModuleViewFor(group, view), content) -- T73: Review, Practice
-            elseif group == "settings" and MD.Settings and MD.Settings.Owns(view) then
+            elseif group == "settings" and ST.Settings and ST.Settings.Owns(view) then
                 -- T119: General, Review and About (UI/Settings.lua, this
-                -- line's rows in MD.SettingsLine above)
-                return MD.Settings.Build(view, content)
+                -- line's rows in ST.SettingsLine above)
+                return ST.Settings.Build(view, content)
             elseif group == "settings" and view == "clock" then
                 -- T102: Settings -> Clock (UI/ClockSettings.lua)
-                if MD.ClockSettings and MD.ClockSettings.Build then
-                    return MD.ClockSettings.Build(content, CLOCK_SWITCHES)
+                if ST.ClockSettings and ST.ClockSettings.Build then
+                    return ST.ClockSettings.Build(content, CLOCK_SWITCHES)
                 end
                 return nil
             elseif group == "settings" and view == "modules" then
@@ -542,9 +542,9 @@ local function CreateDashboard()
         end,
         function(group, view, pane)
             -- T32: the group's own size, the TOPLEFT kept (6.7)
-            MD.Win:SetGroup("main", group)
-            if group == "settings" and MD.Settings and MD.Settings.Owns(view) then MD.Settings.Refresh(view) end
-            if group == "settings" and view == "clock" and MD.ClockSettings then MD.ClockSettings.Show(pane) end
+            ST.Win:SetGroup("main", group)
+            if group == "settings" and ST.Settings and ST.Settings.Owns(view) then ST.Settings.Refresh(view) end
+            if group == "settings" and view == "clock" and ST.ClockSettings then ST.ClockSettings.Show(pane) end
             if group == "settings" and view == "modules" then RefreshModulesPane() end
             if group == "reports" and view == "review" then RefreshReviewPane() end
             local def = ModuleViewFor(group, view)
@@ -553,13 +553,13 @@ local function CreateDashboard()
             -- the FIRST included -- a plain Show()/OnShow pair would miss the
             -- first one, since a frame is created already shown (CLAUDE.md's
             -- "one owner" rule is about hide/show, not about this).
-            if group == "spells" then MD.SpellsPane:Show(view) end
+            if group == "spells" then ST.SpellsPane:Show(view) end
         end, { resizable = true, notUserPlaced = true })
     frame = nav.frame
-    MD.SpellsPane:Attach(nav) -- T36: the rail's [ + Add ] and Undo line
+    ST.SpellsPane:Attach(nav) -- T36: the rail's [ + Add ] and Undo line
 
     frame:SetScript("OnShow", function()
-        local path = MD.db.uiPath
+        local path = ST.db.uiPath
         if path and path[1] then
             nav:Select(path[1], path[2])
         else
@@ -574,30 +574,30 @@ local function CreateDashboard()
     -- T80 (C1, review A22): the dashboard hands the manager what it knows --
     -- its sizes, its first group, how to open it on a view, how to read the
     -- view it shows, and the practice view a session goes back to.
-    MD.Win:Register(frame, { key = "main", role = "host", sizes = SIZES, group = "spells",
-        open = function(group, view) return MD:OpenMainWindow(group, view) end,
-        selected = function() return MD:SelectedView() end,
+    ST.Win:Register(frame, { key = "main", role = "host", sizes = SIZES, group = "spells",
+        open = function(group, view) return ST:OpenMainWindow(group, view) end,
+        selected = function() return ST:SelectedView() end,
         practicePath = { "simulate", "practice" } })
 end
 
-function MD:ShowDashboard()
+function ST:ShowDashboard()
     CreateDashboard()
     if frame then frame:Show() end
 end
 
-function MD:ToggleDashboard()
+function ST:ToggleDashboard()
     CreateDashboard()
     if not frame then return end
     if frame:IsShown() then
         frame:Hide()
     else
-        MD.Win:ShowMain() -- T32: on the remembered view
+        ST.Win:ShowMain() -- T32: on the remembered view
     end
 end
 
--- T32: what MD.Win:ShowMain opens -- the window on the view asked for, or on
+-- T32: what ST.Win:ShowMain opens -- the window on the view asked for, or on
 -- the remembered one when none is named. Opens the window if closed.
-function MD:OpenMainWindow(group, view)
+function ST:OpenMainWindow(group, view)
     CreateDashboard()
     if not nav then return end
     if not frame:IsShown() then frame:Show() end
@@ -607,18 +607,18 @@ end
 -- Every entry point that wants a particular view goes through here (/st
 -- modules today; the same door M2/M3/M4 use). Since T32 (6.3) it goes
 -- through the window manager, which T34 teaches the takeover rules.
-function MD:SelectView(group, view)
-    CreateDashboard() -- T80: the host registers with MD.Win when it is built
-    return MD.Win:ShowMain(group, view)
+function ST:SelectView(group, view)
+    CreateDashboard() -- T80: the host registers with ST.Win when it is built
+    return ST.Win:ShowMain(group, view)
 end
 
 -- T79 (P36): the minimap button's right-click (UI/MinimapButton.lua), as on
 -- TBC (UI/Dashboard.lua): the window on Settings -> General.
-function MD:OpenDashboardSettings()
-    return MD:SelectView("settings", "general")
+function ST:OpenDashboardSettings()
+    return ST:SelectView("settings", "general")
 end
 
-function MD:SelectedView()
+function ST:SelectedView()
     if not nav then return nil end
     return nav:Selected()
 end
@@ -627,7 +627,7 @@ end
 -- switched it on already refreshes; this covers CORE_READY's own login-time
 -- loads landing while the window happens to be up from a previous session
 -- were that ever possible, and any other module firing MODULE_LOADED later).
-MD:RegisterCallback("MODULE_LOADED", RefreshModulesPane)
+ST:RegisterCallback("MODULE_LOADED", RefreshModulesPane)
 -- T70: Settings -> Review goes live with the Replay module, and About lists
 -- the commands a module registered as it loaded -- since T119 UI/Settings.lua
 -- refreshes its own panes on MODULE_LOADED.
@@ -638,4 +638,4 @@ MD:RegisterCallback("MODULE_LOADED", RefreshModulesPane)
 -- the view if it is the one on screen (shown and refreshed) and keeps the new
 -- pane hidden otherwise. (T32: the window no longer grows here -- Reports has
 -- its own size, 6.7.)
-MD:RegisterCallback("MODULE_LOADED", SwapPlaceholders)
+ST:RegisterCallback("MODULE_LOADED", SwapPlaceholders)

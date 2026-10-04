@@ -2,7 +2,7 @@
 -- the combat log. Four groupings -- Spell (per event kind), Role, Class,
 -- Target -- and two scopes: this session (undecayed, has targets) or all
 -- persisted data (decayed, no targets). Exports a constructor on
--- MD.DashboardParts; UI/Dashboard.lua shows it when the "Waste" tab is up.
+-- ST.DashboardParts; UI/Dashboard.lua shows it when the "Waste" tab is up.
 --
 -- Mana belongs to the SPELL, not the target, so Casts / Mana only appear in
 -- Spell mode. A role or target that was guessed rather than read carries a
@@ -13,10 +13,10 @@
 -- numbers right-justified in Arial Narrow on 20-px rows, zebra, a rule under
 -- the header -- and the list scrolls (the wheel, a thin bar) instead of
 -- ending with T53's "... and N more" line. The colours are token reads.
-local _, MD = ...
-local UI = MD.UI
+local _, ST = ...
+local UI = ST.UI
 
-MD.DashboardParts = MD.DashboardParts or {}
+ST.DashboardParts = ST.DashboardParts or {}
 
 local MODES = { { "spell", "Spell" }, { "role", "Role" }, { "class", "Class" }, { "target", "Target" } }
 local LIST_TOP, BOTTOM = 20, 24   -- under the mode buttons; above the total line
@@ -60,14 +60,14 @@ local function Cols(rowW)
 end
 
 local function Pct(f) return string.format("%.1f%%", f * 100) end
--- MD.Util.K (Core.lua; T60, P16, review A9) with this view's own threshold:
+-- ST.Util.K (Core.lua; T60, P16, review A9) with this view's own threshold:
 -- "12.3k" only from 10000 on, below it the rounded whole number. Every amount
 -- here (mana, healing, waste) is a sum of non-negative events.
 local K_FROM = 10000
-local function K(n) return MD.Util.K(n, K_FROM) end
+local function K(n) return ST.Util.K(n, K_FROM) end
 local function Tone(token, text) return UI.Hex(token) .. text .. RESET end
 
-function MD.DashboardParts.CreateWaste(parent, width)
+function ST.DashboardParts.CreateWaste(parent, width)
     local pane = CreateFrame("Frame", nil, parent)
     pane:Hide()
     local mode, scope = "spell", "session"
@@ -124,7 +124,7 @@ function MD.DashboardParts.CreateWaste(parent, width)
     local function TableFor(m)
         local t = tables[m]
         if t then return t end
-        t = MD.DashboardParts.CreateTable(pane, width, {
+        t = ST.DashboardParts.CreateTable(pane, width, {
             cols = COLS[m], font = UI.FONT_NUM_SMALL or UI.FONT_SMALL, wideFont = UI.FONT_SMALL,
             rowHeight = rowH, headerHeight = headH, headerRule = true,
             zebra = true, rowWidth = rowW, scroll = true,
@@ -143,9 +143,9 @@ function MD.DashboardParts.CreateWaste(parent, width)
     -- casts + mana per family this session, for Spell mode
     local function FamilySpend()
         local out = {}
-        local ST = MD.Spend
-        if ST and ST.session then
-            for fam, v in pairs(ST.session) do out[fam] = v end
+        local SPEND = ST.Spend
+        if SPEND and SPEND.session then
+            for fam, v in pairs(SPEND.session) do out[fam] = v end
         end
         return out
     end
@@ -158,7 +158,7 @@ function MD.DashboardParts.CreateWaste(parent, width)
         out.sub = Tone("muted", r.sub or "")
         if mode == "spell" then
             local id = r.key:match("^k:(%d+):")
-            local s = id and MD.SpellData.spells[tonumber(id)]
+            local s = id and ST.SpellData.spells[tonumber(id)]
             local fam = s and s.family
             -- casts / mana belong to the spell as a whole: show them on the
             -- first event-kind row of each family only
@@ -175,7 +175,7 @@ function MD.DashboardParts.CreateWaste(parent, width)
             local st = OH.session[r.key]
             out.role = Tone(c, (st and st.role or "?") .. (r.guessed and " ?" or ""))
             local guid = r.key:match("^u:(.+)$")
-            local taps = MD.Targets and MD.Targets:LifeTaps(guid) or 0
+            local taps = ST.Targets and ST.Targets:LifeTaps(guid) or 0
             if taps > 0 then
                 -- overheal on a tapping warlock is partly the HoT doing its job
                 out.sub = Tone("muted", r.sub or "") .. " " .. LIFE_TAP .. "Life Tap x" .. taps .. RESET
@@ -205,7 +205,7 @@ function MD.DashboardParts.CreateWaste(parent, width)
     function api:Render()
         if not pane:IsShown() then return end
         highlightMode(mode); highlightScope(scope)
-        local OH = MD.Overheal
+        local OH = ST.Overheal
         local rows
         if mode == "spell" then rows = OH:SpellRows(scope)
         elseif mode == "role" then rows = OH:RoleRows(scope)
@@ -238,7 +238,7 @@ function MD.DashboardParts.CreateWaste(parent, width)
             " yet - heal something.") or "")
 
         local wm, we = OH:WastedTotal()
-        local spent = MD.Spend and MD.Spend.sessionSpent or 0
+        local spent = ST.Spend and ST.Spend.sessionSpent or 0
         if spent > 0 then
             totalFS:SetFormattedText("%s%s spent this session, ~%s (%d%%) into targets at full health across %d events.  " ..
                 "Grey label / ? = role guessed, not read.|r", UI.Hex("muted"), K(spent), K(wm), wm / spent * 100, we)

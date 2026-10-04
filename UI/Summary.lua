@@ -1,5 +1,5 @@
 -- End-of-combat summary: one chat line per fight (>=15s) plus a ring of the
--- last 200 fights, persisted per character in MD.cdb.fights so the pull-time
+-- last 200 fights, persisted per character in ST.cdb.fights so the pull-time
 -- spend seed and the "last time here" reference survive a /reload. The zone is
 -- recorded with each fight; Engine/SpendTracker.lua prefers same-zone fights
 -- when it seeds the estimator.
@@ -9,33 +9,33 @@
 -- 20s ring (so the pre-pull HoTs are known at the pull) and into the live
 -- fight; at the end of combat each cast gets exactly one plan-free label and
 -- the fight gets one extra chat line saying where the mana went.
-local _, MD = ...
+local _, ST = ...
 
-local SD = MD.SpellData
+local SD = ST.SpellData
 
-MD.fightHistory = {}
+ST.fightHistory = {}
 local MAX_HISTORY = 200
 
--- MD.cdb is not there until PLAYER_LOGIN, so bind (and adopt whatever was
--- saved) at MD_READY. MD.fightHistory keeps its name and shape: everything
+-- ST.cdb is not there until PLAYER_LOGIN, so bind (and adopt whatever was
+-- saved) at MD_READY. ST.fightHistory keeps its name and shape: everything
 -- else that reads it is unchanged.
-MD:RegisterCallback("MD_READY", function()
-    MD.cdb.fights = MD.cdb.fights or {}
-    MD.fightHistory = MD.cdb.fights
-    while #MD.fightHistory > MAX_HISTORY do
-        table.remove(MD.fightHistory, 1)
+ST:RegisterCallback("MD_READY", function()
+    ST.cdb.fights = ST.cdb.fights or {}
+    ST.fightHistory = ST.cdb.fights
+    while #ST.fightHistory > MAX_HISTORY do
+        table.remove(ST.fightHistory, 1)
     end
-    if #MD.fightHistory > 0 then
-        MD:Debug("combat", "loaded %d recorded fight(s) from this character's history", #MD.fightHistory)
+    if #ST.fightHistory > 0 then
+        ST:Debug("combat", "loaded %d recorded fight(s) from this character's history", #ST.fightHistory)
     end
 end)
 
 -- Recent fights in a zone, newest last. Used for the pull-time seed.
-function MD:FightsInZone(zone, n)
+function ST:FightsInZone(zone, n)
     local out = {}
     if not zone then return out end
-    for i = #MD.fightHistory, 1, -1 do
-        local f = MD.fightHistory[i]
+    for i = #ST.fightHistory, 1, -1 do
+        local f = ST.fightHistory[i]
         if f.zone == zone then
             table.insert(out, 1, f)
             if #out >= (n or 5) then break end
@@ -49,7 +49,7 @@ local fight = nil -- active fight state
 --------------------------------------------------------------------------------
 -- Own-cast capture (SPEC-v0.7 §2.1)
 --
--- One record per cast the player lands, appended to MD.Recorder.ring (always,
+-- One record per cast the player lands, appended to ST.Recorder.ring (always,
 -- last 20s) and to the live fight (in combat). The record is the unit both the
 -- labels below and the v0.7.1 replay engine read, so it carries everything the
 -- combat log cannot reconstruct afterwards: what the target's health was at the
@@ -60,13 +60,13 @@ local fight = nil -- active fight state
 local RING_WINDOW = 20   -- seconds of own casts kept before the pull
 local HOT_TICK_TTL = 60  -- seconds before a stale HoT record is dropped
 
-MD.Recorder = {
+ST.Recorder = {
     ring = {},        -- own casts, last RING_WINDOW seconds
     roster = {},      -- index -> { guid, name, class, role }; stable for the session
     rosterIndex = {}, -- guid -> index
     hots = {},        -- "<guid>\029<family>" -> the cast record that applied it
 }
-local Rec = MD.Recorder
+local Rec = ST.Recorder
 
 local SHIFT_SPELLS = {
     [33891] = true,  -- Tree of Life
@@ -100,7 +100,7 @@ function Rec:Index(guid, name)
     if not guid or guid == "" then return -1 end
     local i = Rec.rosterIndex[guid]
     if i then return i end
-    local e = MD.Targets and MD.Targets:Lookup(guid, name)
+    local e = ST.Targets and ST.Targets:Lookup(guid, name)
     if not e then return -1 end
     i = #Rec.roster + 1
     Rec.roster[i] = { guid = guid, name = e.name, class = e.class, role = e.role }
@@ -113,7 +113,7 @@ end
 -- same GUID (party slots shuffle).
 local function HpFraction(guid, name)
     if not guid or guid == "" then return -1 end
-    local e = MD.Targets and MD.Targets:Lookup(guid, name)
+    local e = ST.Targets and ST.Targets:Lookup(guid, name)
     local unit = e and e.unit
     if not unit or UnitGUID(unit) ~= guid then return -1 end
     local maxHp = UnitHealthMax(unit)
@@ -140,7 +140,7 @@ local function NoteOwnCast(spellID, destGUID, destName)
         cost = cost or -1,
         tgt = Rec:Index(destGUID, destName),
         hpAtCast = HpFraction(destGUID, destName),
-        form = MD:InTreeForm() and 1 or 0,
+        form = ST:InTreeForm() and 1 or 0,
         kind = kind,
     }
 
@@ -184,7 +184,7 @@ end
 -- Overheal is recorded in AND out of combat -- rolling Lifebloom on a tank
 -- between pulls is exactly the sort of casting whose overheal belongs in the
 -- average.
-MD:On("COMBAT_LOG_EVENT_UNFILTERED", function()
+ST:On("COMBAT_LOG_EVENT_UNFILTERED", function()
     -- One unpack for the whole addon. The 11-field prefix is fixed; what p1..p10
     -- mean depends on the subevent (docs/SPEC-v0.7.md 1), so they are named
     -- generically here and interpreted by whoever needs them. For the heal
@@ -194,26 +194,26 @@ MD:On("COMBAT_LOG_EVENT_UNFILTERED", function()
         p1, p2, p3, p4, p5, p6, p7, p8, p9, p10 = CombatLogGetCurrentEventInfo()
     local spellID, spellName, amount, overheal, critical = p1, p2, p4, p5, p7
     -- group members' own casts (Life Tap) before the player-only gate
-    if subevent == "SPELL_CAST_SUCCESS" and MD.Targets then
-        MD.Targets:NoteCast(sourceGUID, spellName)
+    if subevent == "SPELL_CAST_SUCCESS" and ST.Targets then
+        ST.Targets:NoteCast(sourceGUID, spellName)
     end
     -- The recorder sees everything, including other people's damage and heals;
     -- it decides for itself what is worth keeping (Engine/FightRecorder.lua).
-    if MD.FightRecorder and MD.FightRecorder.active then
+    if ST.FightRecorder and ST.FightRecorder.active then
         if subevent == "UNIT_DIED" then
-            MD.FightRecorder:Died(destGUID, destName)
+            ST.FightRecorder:Died(destGUID, destName)
         else
-            MD.FightRecorder:Event(subevent, sourceGUID, destGUID, destName,
+            ST.FightRecorder:Event(subevent, sourceGUID, destGUID, destName,
                 p1, p2, p3, p4, p5, p6, p7, p8, p9, p10)
             -- v0.12.0: a hostile cast aimed at somebody we are healing. Not
             -- handled inside FR:Event because that one is written around "is
             -- this the player's own event"; this is the opposite question.
-            if sourceGUID ~= MD.player.guid then
-                MD.FightRecorder:EnemyCast(subevent, sourceGUID, destGUID, destName, p1)
+            if sourceGUID ~= ST.player.guid then
+                ST.FightRecorder:EnemyCast(subevent, sourceGUID, destGUID, destName, p1)
             end
         end
     end
-    if sourceGUID ~= MD.player.guid then return end
+    if sourceGUID ~= ST.player.guid then return end
     -- SPELL_CAST_SUCCESS carries the cast's target in the prefix destGUID /
     -- destName (verified against Details!, SPEC-v0.7 §1) -- no cast-to-heal
     -- matching is needed.
@@ -250,7 +250,7 @@ MD:On("COMBAT_LOG_EVENT_UNFILTERED", function()
     end
 
     local wasted = 0
-    if MD.Overheal then wasted = MD.Overheal:Record(attrID, kind, amount, overheal, destGUID, destName) end
+    if ST.Overheal then wasted = ST.Overheal:Record(attrID, kind, amount, overheal, destGUID, destName) end
 
     -- one convention for the whole addon (Engine/Overheal.lua): whether the
     -- log's "amount" already includes the overheal is a client property,
@@ -258,14 +258,14 @@ MD:On("COMBAT_LOG_EVENT_UNFILTERED", function()
     -- "a and f() or b" is truncated to ONE value -- the bug v0.5.3 already
     -- fixed once in this file; write the if out.)
     local effective, gross
-    if MD.Overheal then
-        effective, gross = MD.Overheal:Split(amount, overheal)
+    if ST.Overheal then
+        effective, gross = ST.Overheal:Split(amount, overheal)
     else
         effective, gross = amount, amount + overheal
     end
 
-    if MD.Calibration then
-        MD.Calibration:Observe(attrID, kind, gross, critical, destGUID)
+    if ST.Calibration then
+        ST.Calibration:Observe(attrID, kind, gross, critical, destGUID)
     end
 
     -- Ticks are credited to the cast record that applied the HoT.
@@ -289,15 +289,15 @@ MD:On("COMBAT_LOG_EVENT_UNFILTERED", function()
     -- combat log reported it (whether "amount" already includes the overheal
     -- is the client property Engine/Overheal.lua latches). This is how heal
     -- formulas get verified in-game (Tree aura, Lifebloom bloom, relics).
-    if MD.db and MD.db.debug and MD.db.debug.enabled and MD.db.debug.categories.heal then
-        MD:Debug("heal", "%s (%d)%s on %s: %d%s%s%s", spellName or "?", spellID or 0,
+    if ST.db and ST.db.debug and ST.db.debug.enabled and ST.db.debug.categories.heal then
+        ST:Debug("heal", "%s (%d)%s on %s: %d%s%s%s", spellName or "?", spellID or 0,
             subevent == "SPELL_PERIODIC_HEAL" and " tick" or "", destName or "?", amount,
             overheal > 0 and string.format(" (%d overheal)", overheal) or "",
-            critical and " CRIT" or "", MD:InTreeForm() and " [tree]" or "")
+            critical and " CRIT" or "", ST:InTreeForm() and " [tree]" or "")
     end
 end)
 
-MD:On("PLAYER_REGEN_DISABLED", function()
+ST:On("PLAYER_REGEN_DISABLED", function()
     local now = GetTime()
     PruneHots(now)
     fight = {
@@ -319,18 +319,18 @@ MD:On("PLAYER_REGEN_DISABLED", function()
         c.preGross, c.preOver = c.tickGross or 0, c.tickOver or 0
         fight.precasts[i] = c
     end
-    MD:Debug("combat", "pull: mana %d/%d, regen base %.2f casting %.2f, zone %s",
-        fight.startMana, UnitPowerMax("player", 0), MD.Regen.base, MD.Regen.casting,
+    ST:Debug("combat", "pull: mana %d/%d, regen base %.2f casting %.2f, zone %s",
+        fight.startMana, UnitPowerMax("player", 0), ST.Regen.base, ST.Regen.casting,
         GetRealZoneText and GetRealZoneText() or "?")
-    MD:Debug("sim", "pull: %d cast(s) in the last %ds carried into the fight", #fight.precasts, RING_WINDOW)
-    if MD.FightRecorder then MD.FightRecorder:Start(now) end
-    if MD.Targets then MD:Debug("combat", "roster: %s", MD.Targets:RosterLine()) end
+    ST:Debug("sim", "pull: %d cast(s) in the last %ds carried into the fight", #fight.precasts, RING_WINDOW)
+    if ST.FightRecorder then ST.FightRecorder:Start(now) end
+    if ST.Targets then ST:Debug("combat", "roster: %s", ST.Targets:RosterLine()) end
 end)
 
 -- OOM detection (below 2% counts as dry) and the fight's mana low-water mark.
-MD:OnTick(function()
+ST:OnTick(function()
     if not fight then return end
-    if MD.FightRecorder then MD.FightRecorder:Tick() end
+    if ST.FightRecorder then ST.FightRecorder:Tick() end
     local manaMax = UnitPowerMax("player", 0)
     if manaMax <= 0 then return end
     local frac = UnitPower("player", 0) / manaMax
@@ -446,40 +446,40 @@ local function PreHot(f, fullHp)
     return mana, gross, over, fams
 end
 
-MD:On("PLAYER_REGEN_ENABLED", function()
+ST:On("PLAYER_REGEN_ENABLED", function()
     if not fight then return end
     local f = fight
     fight = nil
     PruneHots(GetTime())
 
     local duration = GetTime() - f.start
-    local ST = MD.Spend
-    if duration < 15 or ST.combat.spent <= 0 then
-        MD:Debug("combat", "end: %.0fs, spent %d - too short to record", duration, ST.combat.spent)
-        if MD.FightRecorder then MD.FightRecorder:Finish(duration) end
+    local SPEND = ST.Spend
+    if duration < 15 or SPEND.combat.spent <= 0 then
+        ST:Debug("combat", "end: %.0fs, spent %d - too short to record", duration, SPEND.combat.spent)
+        if ST.FightRecorder then ST.FightRecorder:Finish(duration) end
         return
     end
 
     local endMana = UnitPower("player", 0)
     local netMp5 = (endMana - f.startMana) / duration * 5
-    local avgSpendRate = ST.combat.spent / duration
+    local avgSpendRate = SPEND.combat.spent / duration
 
     -- spend by family, biggest first, for the "where did it go" clause
     local SHORT = { Lifebloom = "LB", Rejuvenation = "RJ", Regrowth = "RG", HealingTouch = "HT",
                     Swiftmend = "SM", Tranquility = "TQ", other = "other" }
     local fams = {}
-    for fam, mana in pairs(ST.combat.byFamily) do fams[#fams + 1] = { fam, mana } end
+    for fam, mana in pairs(SPEND.combat.byFamily) do fams[#fams + 1] = { fam, mana } end
     table.sort(fams, function(a, b) return a[2] > b[2] end)
     local breakdown = {}
     for i = 1, math.min(4, #fams) do
         breakdown[#breakdown + 1] = string.format("%s %d%%", SHORT[fams[i][1]] or fams[i][1],
-            fams[i][2] / ST.combat.spent * 100 + 0.5)
+            fams[i][2] / SPEND.combat.spent * 100 + 0.5)
     end
 
     local parts = {
         FmtClock(duration),
         string.format("net %+d mp5", netMp5),
-        string.format("spent %.1fk%s", ST.combat.spent / 1000,
+        string.format("spent %.1fk%s", SPEND.combat.spent / 1000,
             #breakdown > 0 and (" (" .. table.concat(breakdown, ", ") .. ")") or ""),
     }
     if (f.wastedMana or 0) > 0 then
@@ -489,7 +489,7 @@ MD:On("PLAYER_REGEN_ENABLED", function()
         parts[#parts + 1] = string.format("overheal %d%%",
             f.overhealed / (f.healed + f.overhealed) * 100)
     end
-    local realized = MD.Regen:CombatSpiritRealized()
+    local realized = ST.Regen:CombatSpiritRealized()
     if realized then
         parts[#parts + 1] = string.format("spirit regen realized %d%%", realized * 100)
     end
@@ -497,44 +497,44 @@ MD:On("PLAYER_REGEN_ENABLED", function()
     -- profile's `rankTable` capability (T123: the druid's, and a priest's,
     -- shaman's or paladin's on TBC); Engine/SpendTracker.lua counts it
     -- through RankMath:Source(), so it is the class's own book's max rank
-    if MD.ClassProfile:Can("rankTable") and ST.combat.casts > 0 then
+    if ST.ClassProfile:Can("rankTable") and SPEND.combat.casts > 0 then
         parts[#parts + 1] = string.format("max-rank casts %d%%",
-            ST.combat.maxRankCasts / ST.combat.casts * 100)
+            SPEND.combat.maxRankCasts / SPEND.combat.casts * 100)
     end
     if f.oomAt then
         parts[#parts + 1] = "|cffff4444OOM at " .. FmtClock(f.oomAt) .. "|r"
     end
 
     local summary = table.concat(parts, " || ") -- ASCII only; default WoW fonts lack many glyphs
-    MD:Debug("combat", "end: %s (casts %d, healed %d, overhealed %d)", summary, ST.combat.casts, f.healed, f.overhealed)
-    if MD.Overheal then
-        for _, line in ipairs(MD.Overheal:Summary()) do
-            MD:Debug("combat", "  overheal %s", line)
+    ST:Debug("combat", "end: %s (casts %d, healed %d, overhealed %d)", summary, SPEND.combat.casts, f.healed, f.overhealed)
+    if ST.Overheal then
+        for _, line in ipairs(ST.Overheal:Summary()) do
+            ST:Debug("combat", "  overheal %s", line)
         end
     end
-    MD:Print(summary)
+    ST:Print(summary)
 
     ----------------------------------------------------------------------------
     -- The v0.7.0 line: where the casts went, not just where the mana went.
     ----------------------------------------------------------------------------
-    local fullHp = (MD.db and MD.db.simFullHp) or 0.85
+    local fullHp = (ST.db and ST.db.simFullHp) or 0.85
     local labels, labelCasts, hpBuckets, aboveCount, aboveMana, healCasts, aboveFams, buffs
         = LabelFight(f, fullHp)
     local prehotMana, prehotGross, prehotOver, prehotFams = PreHot(f, fullHp)
 
     local labelled = 0
     for _, k in ipairs(LABEL_KEYS) do labelled = labelled + labels[k] end
-    MD:Debug("sim", "labels: %s = %d (fight spend %d, delta %+d)",
+    ST:Debug("sim", "labels: %s = %d (fight spend %d, delta %+d)",
         (function()
             local t = {}
             for _, k in ipairs(LABEL_KEYS) do
                 t[#t + 1] = string.format("%s %d/%d", k, labels[k], labelCasts[k])
             end
             return table.concat(t, ", ")
-        end)(), labelled, ST.combat.spent, labelled - ST.combat.spent)
-    if math.abs(labelled - ST.combat.spent) > math.max(50, ST.combat.spent * 0.02) then
-        MD:Debug("sim", "label identity BROKEN: %d labelled vs %d spent over %d own cast(s)",
-            labelled, ST.combat.spent, f.ownCasts)
+        end)(), labelled, SPEND.combat.spent, labelled - SPEND.combat.spent)
+    if math.abs(labelled - SPEND.combat.spent) > math.max(50, SPEND.combat.spent * 0.02) then
+        ST:Debug("sim", "label identity BROKEN: %d labelled vs %d spent over %d own cast(s)",
+            labelled, SPEND.combat.spent, f.ownCasts)
     end
 
     if f.ownCasts >= 4 then
@@ -562,26 +562,26 @@ MD:On("PLAYER_REGEN_ENABLED", function()
             head = string.format("no casts on targets above %d%% (%d heal casts)",
                 fullHp * 100 + 0.5, healCasts)
         end
-        MD:Print(head .. extra)
+        ST:Print(head .. extra)
         if prehotMana > 0 then
-            MD:Print(string.format("pre-pull HoTs on full targets: %s (%d%% overheal)",
+            ST:Print(string.format("pre-pull HoTs on full targets: %s (%d%% overheal)",
                 FmtMana(prehotMana) .. " in " .. FamilyList(prehotFams, 3),
                 prehotOver / prehotGross * 100 + 0.5))
         end
     end
 
     local stream
-    if MD.FightRecorder then stream = MD.FightRecorder:Finish(duration, labels) end
+    if ST.FightRecorder then stream = ST.FightRecorder:Finish(duration, labels) end
 
     -- Fights with almost no casting say nothing about how the healer played and
     -- would poison both the spend seed and the habit counts, so they are not
     -- kept at all (SPEC-v0.7 §2.3).
     if f.ownCasts < 4 then
-        MD:Debug("combat", "end: %.0fs but only %d own cast(s) - not recorded", duration, f.ownCasts)
+        ST:Debug("combat", "end: %.0fs but only %d own cast(s) - not recorded", duration, f.ownCasts)
         return
     end
 
-    MD.fightHistory[#MD.fightHistory + 1] = {
+    ST.fightHistory[#ST.fightHistory + 1] = {
         t = time(),
         duration = duration,
         avgSpendRate = avgSpendRate,
@@ -590,7 +590,7 @@ MD:On("PLAYER_REGEN_ENABLED", function()
         healed = f.healed,
         overhealed = f.overhealed,
         wastedMana = f.wastedMana,
-        byFamily = (function() local t = {} for k, v in pairs(ST.combat.byFamily) do t[k] = v end return t end)(),
+        byFamily = (function() local t = {} for k, v in pairs(SPEND.combat.byFamily) do t[k] = v end return t end)(),
         zone = GetRealZoneText and GetRealZoneText() or nil,
         summary = summary,
         -- v0.7.0
@@ -603,8 +603,8 @@ MD:On("PLAYER_REGEN_ENABLED", function()
         ownCasts = f.ownCasts,
         streamID = stream and stream.id or nil,
     }
-    if #MD.fightHistory > MAX_HISTORY then
-        table.remove(MD.fightHistory, 1)
+    if #ST.fightHistory > MAX_HISTORY then
+        table.remove(ST.fightHistory, 1)
     end
-    MD:Fire("FIGHT_RECORDED")
+    ST:Fire("FIGHT_RECORDED")
 end)

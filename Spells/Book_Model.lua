@@ -1,4 +1,4 @@
--- T118 (docs/tasks/T118-tbc-book.md, docs/SPEC-one-ui.md 3.2): MD.Book on
+-- T118 (docs/tasks/T118-tbc-book.md, docs/SPEC-one-ui.md 3.2): ST.Book on
 -- TBC -- the book contract T117 wrote (Spells/BookShape.lua), built out of
 -- the model the TBC line already has, so the Spells pane (T120) and the
 -- tooltip block (T121) can be one file on both lines.
@@ -21,9 +21,9 @@
 --   Other   every walked spell no family claims that is not passive and
 --           costs mana, one family per name (Forever's Other rule, T10c)
 --
--- LIVE. Get() never reads MD.sim. Get({ whatIf = true }) is the one door
+-- LIVE. Get() never reads ST.sim. Get({ whatIf = true }) is the one door
 -- the What if (T122) reaches the book through: built from RankMath:Compute()
--- (which reads MD.sim), never cached, never announced, the generation left
+-- (which reads ST.sim), never cached, never announced, the generation left
 -- alone.
 --
 -- The generation (Spells/Book.lua's rule): bumped by a build whose
@@ -38,12 +38,12 @@
 --
 -- TBC TOC only, in Spells/Families_TBC.lua's place (after Engine/RankMath.lua
 -- and Spells/Tabs.lua; Engine/DamageMath.lua is read at run time).
-local _, MD = ...
+local _, ST = ...
 
-local BS = MD.BookShape
+local BS = ST.BookShape
 
 local Book = {}
-MD.Book = Book
+ST.Book = Book
 
 Book.GCD = 1.5
 Book.generation = 0
@@ -62,13 +62,13 @@ end
 
 local function R(v) return math.floor((v or 0) + 0.5) end
 
-local function Profile() return MD.ClassProfile end
+local function Profile() return ST.ClassProfile end
 local function CanRankTable()
     local p = Profile()
     return p ~= nil and p:Can("rankTable") == true
 end
 
-local function Reader() return MD.BookTBC end
+local function Reader() return ST.BookTBC end
 
 -- B.Read(id), or an empty read when the reader is absent
 local function Read(id)
@@ -78,14 +78,14 @@ local function Read(id)
 end
 
 local function SpellName(id)
-    local fn = MD.API and MD.API.SpellName
+    local fn = ST.API and ST.API.SpellName
     if type(fn) ~= "function" then return nil end
     local n = fn(id)
     return type(n) == "string" and n ~= "" and n or nil
 end
 
 local function Icon(id)
-    local fn = MD.API and MD.API.SpellTexture
+    local fn = ST.API and ST.API.SpellTexture
     if type(fn) ~= "function" then return nil end
     local tex = fn(id)
     if type(tex) == "string" or type(tex) == "number" then return tex end
@@ -150,7 +150,7 @@ local function HealBonus(c, level, playerLevel)
         why[#why + 1] = string.format("x%.2f %s%s", mult, c.bonusMultName,
             c.kind == "hybrid" and " (HoT)" or "")
     end
-    local C = MD.Coefficients
+    local C = ST.Coefficients
     if C and type(level) == "number" and type(playerLevel) == "number" then
         local d = C.Downrank(level, playerLevel)
         if d < 0.999 then why[#why + 1] = string.format("downrank %.2f", d) end
@@ -211,7 +211,7 @@ local BOOK_FIELDS = {
 }
 
 local function HealFamily(book, src, key, res, ctx)
-    local RM, RR = MD.RankMath, MD.RankRules
+    local RM, RR = ST.RankMath, ST.RankRules
     local info = src.families[key]
     local fam = { key = key, name = info.label or key, kind = "heal", shape = SHAPE[info.type] or "direct",
                   ids = {}, ranks = {} }
@@ -274,7 +274,7 @@ end
 -- Swiftmend's worth: the HoT it eats, the highest known rank of each, at
 -- these stats (Tip:Spell's "Eats" lines, computed as it computes them)
 local function EatsLines(src, ctx)
-    local RM = MD.RankMath
+    local RM = ST.RankMath
     local out = {}
     local function eat(family, seconds, label)
         local id = src.maxRank and src.maxRank[family]
@@ -298,7 +298,7 @@ local function PlainHealFamily(book, src, key, ctx)
     local fam = { key = key, name = info.label or key, kind = "heal", shape = SHAPE[info.type] or "none",
                   noSeed = true, ids = {}, ranks = {} }
     local castKind = (info.type == "channel") and "channeled" or (INSTANT[info.type] and "instant" or "cast")
-    local eats = (key == "Swiftmend" and src == MD.SpellData) and EatsLines(src, ctx) or nil
+    local eats = (key == "Swiftmend" and src == ST.SpellData) and EatsLines(src, ctx) or nil
     for _, id in ipairs(all) do
         local s = src.spells[id] or {}
         local cost = ctx.CostFor and ctx.CostFor(id) or s.cost
@@ -375,7 +375,7 @@ local function DamageCalc(c)
 end
 
 local function RankOf(sub)
-    local P = MD.Parse
+    local P = ST.Parse
     if type(sub) ~= "string" or not P or type(P.Rank) ~= "function" then return nil end
     local n = P.Rank(sub)
     return type(n) == "number" and n or nil
@@ -388,9 +388,9 @@ local function ByRank(a, b)
 end
 
 local function DamageFamilies(book, walk, pool, dmgOpts)
-    local DM, RR = MD.DamageMath, MD.RankRules
+    local DM, RR = ST.DamageMath, ST.RankRules
     if not DM then return {} end
-    local class = MD.player and MD.player.class
+    local class = ST.player and ST.player.class
     local families = DM.FamiliesFor(class)
     local byName = {}
     for _, hit in ipairs(walk) do
@@ -427,7 +427,7 @@ local function DamageFamilies(book, walk, pool, dmgOpts)
                     if c.kind == "hybrid" or c.kind == "dot" or c.kind == "channel" then
                         e.over, e.dur = c.dotTotal, c.dur
                     end
-                    e.casts = MD.RankMath:CastsToOOM(c.cost, c.cast, pool.max, pool.regenCasting)
+                    e.casts = ST.RankMath:CastsToOOM(c.cost, c.cast, pool.max, pool.regenCasting)
                     e.bonus = { counts = ((c.coef or 0) + (c.dotCoef or 0)) * (c.penalty or 1), from = "model",
                                 of = c.bonus, amount = (c.add or 0) + (c.dotAdd or 0), why = DamageWhy(c, f) }
                     e.calc = DamageCalc(c)
@@ -524,30 +524,30 @@ end
 
 function Book.DefaultPoolFrom(ctx)
     local pool = {}
-    local maxMana = MD.API.UnitPowerMax("player", 0)
+    local maxMana = ST.API.UnitPowerMax("player", 0)
     if type(maxMana) == "number" then pool.max, pool.mana = maxMana, maxMana end
     if ctx and type(ctx.castingRegen) == "number" then pool.regenCasting = ctx.castingRegen end
     return pool
 end
 
--- One book. `whatIf` reads MD.sim (RankMath:Compute()); else the live
+-- One book. `whatIf` reads ST.sim (RankMath:Compute()); else the live
 -- context. RankMath.info, which other readers take as the last Compute's
 -- context, is put back as it was.
 -- T124: the What if's +Spell damage on the what-if build only -- the typed
--- value (MD.sim.damage, Spells/WhatIf_TBC.lua's) less the live one (the
--- school on screen, MD.WhatIf:Live()), handed to DM.Compute as a delta that
+-- value (ST.sim.damage, Spells/WhatIf_TBC.lua's) less the live one (the
+-- school on screen, ST.WhatIf:Live()), handed to DM.Compute as a delta that
 -- moves every school alike. nil when no damage is typed.
 local function WhatIfDamage()
-    local sim = MD.sim
+    local sim = ST.sim
     if type(sim) ~= "table" or type(sim.damage) ~= "number" then return nil end
-    local WI = MD.WhatIf
+    local WI = ST.WhatIf
     local live = WI and WI.Live and WI:Live().damage
     if type(live) ~= "number" then return nil end
     return { bonusDelta = sim.damage - live }
 end
 
 function Book:Build(whatIf)
-    local RM = MD.RankMath
+    local RM = ST.RankMath
     local book = { families = {}, order = {}, spells = {}, generation = Book.generation }
     local opts = (not whatIf) and { live = true } or nil
     local savedInfo = RM.info
@@ -556,7 +556,7 @@ function Book:Build(whatIf)
     local ctx = RM:Context(opts)
     if not whatIf then Book._bonus = ctx.bonus end
 
-    local src = RM.Source and RM:Source() or MD.SpellData
+    local src = RM.Source and RM:Source() or ST.SpellData
     local canTable = CanRankTable() and src ~= nil
     if canTable then
         for _, key in ipairs(src.familyOrder or {}) do
@@ -618,7 +618,7 @@ function Book:Refresh()
     end
     book.generation = Book.generation
     Book._cache, Book._cacheTime = book, Now()
-    if changed then MD:Fire("BOOK_CHANGED", book) end
+    if changed then ST:Fire("BOOK_CHANGED", book) end
     return book
 end
 
@@ -652,7 +652,7 @@ end
 function Book:CastsFor(entry, pool)
     if type(entry) ~= "table" or type(pool) ~= "table" then return nil end
     local amount = entry.cost and entry.cost.amount
-    return MD.RankMath:CastsToOOM(amount, entry.interval, pool.mana or pool.max, pool.regenCasting)
+    return ST.RankMath:CastsToOOM(amount, entry.interval, pool.mana or pool.max, pool.regenCasting)
 end
 
 -- the family's ranks as copies, casts recounted for `pool`; the book's own
@@ -716,14 +716,14 @@ end
 
 -- { mana = max, max, regenCasting }: counted from full
 function Book:DefaultPool()
-    local RM = MD.RankMath
+    local RM = ST.RankMath
     return Book.DefaultPoolFrom(RM:Context({ live = true }))
 end
 
 -- { max, mana, regenCasting, modelled = false }: TBC reads its pool (no ~)
 function Book:Pool()
     local d = Book:DefaultPool()
-    local mana = MD.API.UnitPower("player", 0)
+    local mana = ST.API.UnitPower("player", 0)
     return { max = d.max, mana = type(mana) == "number" and mana or d.max, regenCasting = d.regenCasting,
              modelled = false }
 end
@@ -736,7 +736,7 @@ function Book:Bonus(kind, school)
         if Book._bonus == nil then return nil end
         return Book._bonus, false
     elseif kind == "damage" then
-        local DM = MD.DamageMath
+        local DM = ST.DamageMath
         if not (DM and DM.Bonus) or school == nil then return nil end
         -- the pane hands a family's school name ("Nature"); the client
         -- takes the school's id
@@ -764,23 +764,23 @@ end
 --------------------------------------------------------------------------------
 
 local function Rebuild()
-    if Book._cache and type(MD.db) == "table" then Book:Refresh() end
+    if Book._cache and type(ST.db) == "table" then Book:Refresh() end
 end
 
-MD:RegisterCallback("SPELLS_REBUILT", function()
+ST:RegisterCallback("SPELLS_REBUILT", function()
     -- the known-rank index moved (a rank trained): the walk and the reads go
     -- first (Data/SpellData.lua fires this before Spells/Book_TBC.lua's own
     -- SPELLS_CHANGED handlers forget them)
     local B = Reader()
     if B and type(B.Forget) == "function" then B.Forget() end
-    if type(MD.db) == "table" and type(MD.cdb) == "table" then Book:Refresh() end
+    if type(ST.db) == "table" and type(ST.cdb) == "table" then Book:Refresh() end
 end)
-MD:RegisterCallback("TALENTS_CHANGED", Rebuild)
-MD:RegisterCallback("FORM_CHANGED", Rebuild)
-MD:On("UNIT_INVENTORY_CHANGED", function(unit)
+ST:RegisterCallback("TALENTS_CHANGED", Rebuild)
+ST:RegisterCallback("FORM_CHANGED", Rebuild)
+ST:On("UNIT_INVENTORY_CHANGED", function(unit)
     if unit == "player" then Rebuild() end
 end)
-MD:On("PLAYER_LEVEL_UP", Rebuild)
+ST:On("PLAYER_LEVEL_UP", Rebuild)
 
 -- T117: every method the contract names, present (Spells/BookShape.lua).
 if BS then BS.CheckMethods(Book, "Spells/Book_Model.lua") end

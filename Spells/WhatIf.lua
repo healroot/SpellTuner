@@ -7,12 +7,12 @@
 -- tooltip block, the kit, the coach and practice keep the live numbers, and
 -- nothing here is saved (not in db or cdb; a /reload clears it).
 --
--- MD.WhatIf:
+-- ST.WhatIf:
 --   WI.STATS               the STATS rows, in order (both lines)
 --   WI:Get(key) / Set(key, v)
 --                          v nil, "" or "live" clears; a number is clamped
 --                          to >= 0 (crit 0..100, a class row to its own
---                          min..max); WHATIF_CHANGED fires through MD:Fire
+--                          min..max); WHATIF_CHANGED fires through ST:Fire
 --                          only when the value moved (Set answers false on
 --                          an equal write)
 --   WI:Clear()             every key, one WHATIF_CHANGED (none when nothing
@@ -29,10 +29,10 @@
 --   ClassNote()            the provider's answers, nil without one
 --   WI.Changes(liveFam, whatFam)   the pane's footer, pure
 --   WI.Diff(a, b, aCasts, bCasts)  the cells that changed, pure
-local _, MD = ...
+local _, ST = ...
 
-local WI = MD.WhatIf or {}
-MD.WhatIf = WI
+local WI = ST.WhatIf or {}
+ST.WhatIf = WI
 
 WI.STATS = {
     { key = "heal",    label = "+Healing",            step = 25,  bigStep = 100 },
@@ -50,7 +50,7 @@ local values = {}
 WI.serial = WI.serial or 0
 
 local function Num(v, decimals)
-    if MD.Words then return MD.Words.Num(v, decimals) end
+    if ST.Words then return ST.Words.Num(v, decimals) end
     if type(v) ~= "number" or v ~= v then return "-" end
     if decimals then return string.format("%." .. decimals .. "f", v) end
     return tostring(math.floor(v + 0.5))
@@ -116,7 +116,7 @@ end
 
 local function Changed()
     WI.serial = WI.serial + 1
-    MD:Fire("WHATIF_CHANGED")
+    ST:Fire("WHATIF_CHANGED")
 end
 
 function WI:Get(key)
@@ -240,7 +240,7 @@ end
 -- The cells a row shows, as the pane rounds them (Spells/Words.lua's cell
 -- words), so a change below the shown digit is not drawn as one.
 local function CellWords(e, casts)
-    local W = MD.Words
+    local W = ST.Words
     local out = {
         value = Num(e.value),
         perMana = Num(e.perMana, 2),
@@ -271,12 +271,12 @@ function WI.Diff(a, b, aCasts, bCasts)
 end
 
 -- T124: the school +Spell damage reads live -- the damage family on screen
--- (MD.SpellsPane's family view, a preview included), else the book's first damage
+-- (ST.SpellsPane's family view, a preview included), else the book's first damage
 -- family in its order; nil when the book has none. A school is a name
 -- ("Nature") or an id; both books' Bonus("damage", school) take either.
 function WI.DamageSchool(book)
     if type(book) ~= "table" or type(book.families) ~= "table" then return nil end
-    local P = MD.SpellsPane
+    local P = ST.SpellsPane
     local f = P and P.family    if type(f) == "table" and f.key ~= nil and (not f.IsShown or f:IsShown()) then
         local fam = book.families[f.key]
         if type(fam) == "table" and fam.kind == "damage" and fam.school ~= nil then return fam.school end
@@ -327,8 +327,8 @@ function WI.Changes(liveFam, whatFam)
     end
     local top = whatFam.maxKnown and whatFam.maxKnown.rank
     local kind = (whatFam.kind == "damage") and "damage" or "heal"
-    if MD.Words and MD.Words.SuggestionMoved then
-        return MD.Words.SuggestionMoved(old, new, beaten, top, kind)
+    if ST.Words and ST.Words.SuggestionMoved then
+        return ST.Words.SuggestionMoved(old, new, beaten, top, kind)
     end
     return "Suggested: Rank " .. tostring(old.rank or "-") .. " -> Rank " .. tostring(new.rank or "-") .. "."
 end
