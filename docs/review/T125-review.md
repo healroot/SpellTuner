@@ -42,6 +42,8 @@ with the drawer open.
 
 ### M1 (major) `UI/SpellsPane.lua:1306`: the drawer is placed off-screen when neither side fits
 
+**Fixed in 4b02936**: right when it fits, else left when it fits, else the side with more room; `d:SetClampedToScreen(true)`. Test T125-5 (UIParent about 910 wide).
+
 **Defect.** `PlaceDrawer` tests only the right side. When the right side fails it anchors left
 without checking that the left side fits. The drawer is not clamped (`SetClampedToScreen` is never
 set on it), and the window's clamp covers only the window's own rect.
@@ -64,6 +66,8 @@ option is to nudge the window inward by the shortfall through `MD.Win`.
 
 ### m1 (minor) `UI/SpellsPane.lua:1705-1706`, `:1753`: Alt+Z costs the drawer up to 2 s
 
+**Fixed in 4b02936**: both hooks hide the drawer only when the view itself is not shown or the window is still visible (a hide inside the window); the `drawerDown` clause is gone. Test T125-6 (Alt+Z by hand, as the stub fires no child OnHide).
+
 **Defect.** The OnHide hooks on `f` and `host` hide the drawer on any ancestor hide. That includes
 UIParent under Alt+Z and the window itself, where the drawer would follow its parent anyway.
 
@@ -76,6 +80,8 @@ For the same reason, the first ESC in that gap closes the window, not the drawer
 `Esc:Push`'s own hook already assumes. The `drawerDown` clause in the tick can then go.
 
 ### m2 (minor) `UI/Windows.lua:583` with `UI/EscStack.lua:240`: turning the ESC stack back on skips the drawer
+
+**Fixed in 4b02936**: `Esc:Companion(frame, onEsc)` (`Win:Companion`); `Esc:Set(true, ...)` pushes every companion on screen after the windows. Test T125-7 (off: drawer shown, no entry, not in UISpecialFrames; on: drawer above the window, first ESC closes it).
 
 **Defect.** `Win:SetEscStack(true)` re-pushes only the registered windows. The drawer is not a
 registered window. With the stack off, the unnamed drawer never enters `UISpecialFrames`, which is
@@ -94,6 +100,8 @@ back on, which the brief asks for.
 
 ### m3 (minor) `UI/EscStack.lua:228` (`TopWindow`): copy boxes centre on the drawer
 
+**Fixed in 4b02936**: `TopWindow` skips companions. Test T125-6.
+
 **Defect.** The drawer is a non-list stack entry above the window, so `Win:TopWindow` returns it.
 
 **Failure scenario.** With the drawer open, run `/md profile`, `/md export` or the debug log's
@@ -106,6 +114,8 @@ Alternatively, push the drawer with a flag that `TopWindow` ignores.
 
 ### m4 (minor) `UI/SpellsPane.lua:1406-1418`: the drawer polls the window five times a second
 
+**Fixed in 4b02936**: six numbers (window left, width, height, scale; UIParent right, scale) compared against fields on the drawer; no table or strings. Hooks not used (SetHeight kept, height now in the compare).
+
 **Defect.** Every 0.2 s while the drawer is shown, the OnUpdate builds a table, five `tostring`
 strings and a concat, just to notice a move or a scale change. That is small but steady garbage
 on a panel that may stay open for a long time. It also leaves out the window's height, which is
@@ -116,6 +126,8 @@ window's `OnMoved` hook (end of drag), `Win:SetScale` and `UI_SCALE_CHANGED` / `
 and anchor TOP and BOTTOM to the window so the height never needs setting.
 
 ### m5 (minor) `tools/spellsui.lua:792-831`, T125 forever: the geometry test cannot catch wrapping or a wide delta
+
+**Fixed in 4b02936**: the stub wraps a `SetWordWrap(true)` string with a width by words under geometry (`S.WrappedLines`); T125-1 hands each string its font object, uses a long footer (4-6 lines) and checks label, unit and delta widths; a Forever -2..+2 case with the class note (2-3 lines) and footer measured through `S.WrappedLines`.
 
 **Defect.** Under `S.Geometry(true)`, the stub's `GetStringHeight` counts explicit newlines only
 (`tools/wowstub.lua:833`). It ignores `SetWidth` wrapping, so `classNote` and the now word-wrapped
