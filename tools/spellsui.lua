@@ -1292,6 +1292,20 @@ if S.flavour == "tbc" then
         return #bad == 0 and #seen > 0, table.concat(bad, "; ") .. " | " .. table.concat(seen, " // ") .. " || " .. vtip
     end)
 
+    -- Lifebloom on TBC is one known rank: its strip (and the What if button
+    -- and drawer with it) stays, saying which rolled row holds the marks.
+    T("tbc: Lifebloom's one rank keeps the strip and the What if drawer", function()
+        WIr():Clear()
+        local f = OpenFam("Lifebloom")
+        if not f.strip:IsShown() then return false, "no strip on Lifebloom" end
+        if not (f.whatIf and f.whatIf:IsShown()) then Click(f.strip.whatIfBtn) end
+        local drawer = f.whatIf and f.whatIf:IsShown()
+        local words = tostring(f.strip.compare:GetText())
+        Click(f.strip.whatIfBtn)
+        return drawer and (words:find("holds all three marks", 1, true) or words:find("let it bloom", 1, true)) ~= nil,
+            string.format("drawer=%s compare=%q", tostring(drawer), words)
+    end)
+
     -- Review T128 M1: Lifebloom's own rank row is one of its stack -- its
     -- TRADE verdict agrees with its tag (beaten when a rolled row holds best),
     -- never the family's "holds best, max, eff" of a one-rank family; the
@@ -3044,7 +3058,7 @@ T36("T38 a HoT, a hybrid and a spell with no value: header, strip, columns and c
 
     OpenView("Starfall")
     local hybrid = f.header.sub:GetText() == "Damage - hit and over time - Arcane - Rank 1 of 1 known"
-        and not f.strip:IsShown()
+        and f.strip:IsShown() and f.strip.compare:GetText() == "Your only rank."
         and PairValue("Hit") == "9 - 12" and PairValue("Over time") == "12 over 9 s" and PairValue("Total") == "23"
     local hybridSub = f.header.sub:GetText()
 

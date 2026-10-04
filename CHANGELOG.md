@@ -6,6 +6,8 @@ published to CurseForge; the developers' log is `docs/HISTORY.md`.
 ## 0.17.1
 
 ### What if
+- A spell with only one known rank (Lifebloom on TBC, Starfall) keeps its strip, and with it the
+  What if... button: the What if no longer disappears there.
 - The line under What if... now compares the old and the new best rank with the same stats
   (`Best: Rank X -> Rank Y. With these stats Rank Y gives P per mana, Rank X Q (+n%).`), and
   says why when the new one gives less per mana (it is beaten, or under 40% of your best rank's

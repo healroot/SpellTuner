@@ -2162,7 +2162,8 @@ function SpellsPane:RenderFamily(key, preview)
     f.header.sub:SetWidth(math.max(60, VIEW_W - 4 - right - 8 - 46))
     f.header.name:SetWidth(math.max(60, VIEW_W - 4 - right - 8 - 46))
 
-    -- 2. the strip: two or more known ranks with a value, and a suggestion
+    -- 2. the strip: a known rank with a value, and a suggestion (a family of
+    -- one rank, or Lifebloom's rolled rows, keeps it: the What if button is there)
     local valued = 0
     for _, e in ipairs(fam.ranks) do
         if e.known ~= false and e.value ~= nil then valued = valued + 1 end
@@ -2200,7 +2201,7 @@ function SpellsPane:RenderFamily(key, preview)
         f.strip.chipLive:SetText("")
         f.strip.chipLive:Hide()
     end
-    if fam.kind and s and valued >= 2 then
+    if fam.kind and s and valued >= 1 then
         f.strip.chipRank:SetText((type(s.rank) == "number") and ("Rank " .. s.rank) or "-")
         -- T127: best against max (the most per second), else the highest
         local text, full = CompareFit(f.strip.measure, s, fam.maxRank or fam.maxKnown, fam.kind, compareW, fam)
