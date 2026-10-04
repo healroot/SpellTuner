@@ -75,6 +75,16 @@ spells only; `spellbooks[Class].talents` lists the talent-granted spells; `.gone
 - Terms ask not to hammer the server. A tool fetches `data.json` **once**, caches it, and never
   hits the site per query.
 
+**Talents used (T129).** `tools/buildtalents.py` reads `talents[Class].trees[].talents[]` (`name`,
+`max`, `desc` one sentence per rank) and writes the cast-time talents to
+`Data/Talents_Forever.lua`: only a rank sentence of the shape "Reduces the cast(ing) time of
+<spells> by N sec" (and "and your <spell> by M sec"), every rank's amount read from its own
+sentence. The export carries no talent or spell ids, so a rule is **matched by name** -- the
+talent's name against the name the client's trait walk answers, the spell names against the
+book's family names; a spell name not in that class's spellbook in the export is dropped. 14
+rules on the 2026-10-03 export; 14 cast-time talents of other shapes are skipped and named in the
+file's header. **Preliminary** until verified in game (`docs/DECISIONS.md`, 2026-10-04).
+
 ## 2. Wowhead
 
 **What it is.** Wowhead has a Forever database: URL prefix `/forever`, internal data environment

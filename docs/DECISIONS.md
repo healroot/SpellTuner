@@ -1550,3 +1550,14 @@ Forever, where there is no coefficient model, a rank's +healing share is measure
 player's own gear changes (two plain scans out of combat, `Book:MeasureBonus`) before it is
 estimated from the shared coefficient rules, and the card says which. A measurement never
 changes a shown value; it only sets how far a what-if moves a rank.
+
+## Cast-time talents from talentsforever (2026-10-04, T129, the author's ruling)
+
+talentsforever.com is the **preliminary source of truth** for what a Forever talent does, until a
+Forever client shows otherwise. The cast-time talents are generated from its export into
+`Data/Talents_Forever.lua` (`tools/buildtalents.py`), matched by name, and the ranks are read
+from the client through `ST.API.TalentRanks()` (C_ClassTalents / C_Traits). A talent shortens
+the cast, not the coefficient, so `Coef.Estimate` takes the direct part at the cast before the
+talent (`e.baseCast`) and says so; ranks unread say `talents not read`, a rank above the rule's
+length says `no rule` and is never extrapolated. The rules live in `Spells/Book.lua`'s
+`Book.adjust` seam and nowhere else. TBC is unchanged.

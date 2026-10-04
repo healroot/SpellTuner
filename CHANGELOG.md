@@ -43,6 +43,14 @@ published to CurseForge; the developers' log is `docs/HISTORY.md`.
 - With What if on, a rank's hover shows the What if numbers, as its cells do (it showed the live
   ones), and the line beside the WHAT IF chip shortens instead of being cut off at large fonts.
 
+### Cast-time talents (Forever)
+- Forever now reads your talent ranks. A talent that shortens a cast (Improved Wrath, Naturalist,
+  Divine Fury, Bane and the rest) no longer lowers the estimated +healing / +damage share of the
+  spells it touches: the estimate uses the cast before the talent, and says so
+  (`cast 1.7 / 3.5 (1.5 + 0.2 Improved Wrath 2)`). When the ranks cannot be read it says
+  `talents not read`. What each talent does comes from talentsforever.com until checked in game.
+- `/st dump` has a `talents:` line.
+
 ### Commands
 - /md is gone: use /st (or /spelltuner).
 

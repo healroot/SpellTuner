@@ -2396,6 +2396,13 @@ On either client, `/st` -> Spells.
    `...` at font offsets -2..+2 (Settings -> General); hover it for the whole sentence, which ends
    `score s vs max 1.000`.
 
+10. **Forever only: cast-time talents (T129).** On a druid with points in Improved Wrath, open
+    Spells -> Wrath -> Rank 2: the card's estimate reads `cast 1.7 / 3.5 (1.5 + 0.2 Improved
+    Wrath 2)` (the numbers follow your points: 0.1 a point). `/st dump` has
+    `talents: Improved Wrath 2` (every talent you took, by name). Respec (take a point out of or
+    into Improved Wrath), wait a second and look again: the card and the dump line follow. If the
+    line says `talents: not read (...)`, paste the reason.
+
 **Paste back** a line per step into `.logs/tbc/0.17.1-s1.md` and `docs/probe/<build>-0.17.1-s1.md`,
 with the footer of step 1 copied whole.
 
