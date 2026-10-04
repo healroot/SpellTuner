@@ -32,14 +32,115 @@ local MIN_LINES, MAX_LINES = 1, 20
 local MAX_WALK_SLOT = 500
 
 --------------------------------------------------------------------------------
--- The talent seam (Q6, Facts): empty. The client's own spell text is assumed
--- to carry every talent it applies (a heal's numbers already move with the
--- caster's talents, same as with level and gear -- Q1). If a level-10+ probe
--- report ever shows a talent that changes a spell's effect WITHOUT changing
--- its description, that talent's own adjustment is added here, as one more
--- function(entry, family) in this list, and nowhere else in Book.
+-- The talent seam (Q6, Facts). The client's own spell text is assumed to
+-- carry every talent it applies (a heal's numbers already move with the
+-- caster's talents, same as with level and gear -- Q1). If a talent changes
+-- a spell's effect WITHOUT changing its description, that talent's own
+-- adjustment is added here, as one more function(entry, family) in this
+-- list, and nowhere else in Book.
+--
+-- T129 (docs/tasks/T129-forever-talent-casts.md): the first one. A cast-time
+-- talent (Improved Wrath) moves the client's cast -- the `cast` this book
+-- reads, which the card's Cast line keeps showing -- but not the spell's
+-- coefficient, which is taken at the cast BEFORE talents. For an entry with a
+-- cast above 0 that is not channelled, whose name a rule of the player's
+-- class names (ST.TalentRules, Data/Talents_Forever.lua, generated from
+-- talentsforever.com: PRELIMINARY until verified in game):
+--   ranks read, rank r > 0, r within the rule:
+--       entry.baseCast = cast + castPerRank[r], entry.castTalent = "<talent> <r>"
+--   ranks not read (ST.API.TalentRanks answered nil):
+--       entry.castTalent = "talents not read", no baseCast
+--   r above the rule's length:
+--       entry.castTalent = "<talent> <r>: no rule", no baseCast (never extrapolated)
+-- A talent at rank 0 (not taken) adds nothing. Coef.Estimate reads baseCast.
 --------------------------------------------------------------------------------
 Book.adjust = {}
+
+-- The player's talent ranks, read once per change (the talent events below,
+-- SPELLS_CHANGED) rather than on every 2-second rescan: { [name] = rank } or
+-- nil, with the reason in Book._talentsWhy. A read that answered nothing is
+-- tried again at the next scan (the trait data may not be ready at login).
+Book._talents, Book._talentsWhy, Book._talentsDirty = nil, "not read yet", true
+
+-- The /st dump line (defined at the end of the file) is added the first time
+-- the ranks are asked for, as the other lazy dump lines are (UI/Styles.lua,
+-- UI/ClockView.lua): a session that never priced a cast-time rule adds none.
+local TalentsDumpLine, talentsDumpAdded
+function Book:Talents()
+    if not talentsDumpAdded and TalentsDumpLine and ST.AddDumpLine then
+        talentsDumpAdded = true
+        ST:AddDumpLine("talents", TalentsDumpLine)
+    end
+    if Book._talentsDirty or Book._talents == nil then
+        local ranks, why
+        if ST.API.TalentRanks then
+            ranks, why = ST.API.TalentRanks()
+        else
+            why = "absent"
+        end
+        if type(ranks) == "table" then
+            Book._talents, Book._talentsWhy = ranks, nil
+        else
+            Book._talents, Book._talentsWhy = nil, (type(why) == "string") and why or "absent"
+        end
+        Book._talentsDirty = false
+    end
+    return Book._talents, Book._talentsWhy
+end
+
+-- The class's rules by spell name: { [spellName] = { rule, ... } }, built once
+-- per class token.
+local rulesIndex, rulesIndexClass
+local function RulesFor(name)
+    local class = ST.player and ST.player.class
+    local all = ST.TalentRules
+    if type(name) ~= "string" or type(all) ~= "table" or type(all[class]) ~= "table" then return nil end
+    if rulesIndexClass ~= class then
+        rulesIndex, rulesIndexClass = {}, class
+        local keys = {}
+        for k in pairs(all[class]) do keys[#keys + 1] = k end
+        table.sort(keys)
+        for _, k in ipairs(keys) do
+            local r = all[class][k]
+            if type(r) == "table" and type(r.spells) == "table" and type(r.castPerRank) == "table" then
+                for _, s in ipairs(r.spells) do
+                    rulesIndex[s] = rulesIndex[s] or {}
+                    table.insert(rulesIndex[s], { talent = r.talent or k, castPerRank = r.castPerRank })
+                end
+            end
+        end
+    end
+    return rulesIndex[name]
+end
+
+local function CastTalent(e, fam)
+    if type(e.cast) ~= "number" or e.cast <= 0 or e.castKind == "channeled" then return end
+    local list = RulesFor(e.name or (fam and fam.name))
+    if not list then return end
+    local ranks = Book:Talents()
+    if type(ranks) ~= "table" then
+        e.castTalent = "talents not read"
+        return
+    end
+    local add, words = 0, {}
+    for _, rule in ipairs(list) do
+        local r = ranks[rule.talent]
+        if type(r) == "number" and r > 0 then
+            local amount = rule.castPerRank[r]
+            if type(amount) ~= "number" then
+                e.castTalent = rule.talent .. " " .. tostring(r) .. ": no rule"
+                return
+            end
+            add = add + amount
+            words[#words + 1] = rule.talent .. " " .. tostring(r)
+        end
+    end
+    if #words > 0 then
+        e.baseCast = e.cast + add
+        e.castTalent = table.concat(words, ", ")
+    end
+end
+Book.adjust[1] = CastTalent
 
 --------------------------------------------------------------------------------
 -- Small helpers -- every one reads only what ST.API already handed out plain.
@@ -591,6 +692,9 @@ function Book:ReadSpell(id)
     -- T95: the cooldown, the reach and the lockout, as BuildEntry reads them.
     entry.cooldown, entry.cooldownFrom = ReadCooldown(id, tip, Book._readSpells[id])
     ApplyReach(entry)
+    -- T129: the talent seam, as GroupFamilies runs it for a book entry (the
+    -- estimate below reads its baseCast).
+    for _, fn in ipairs(Book.adjust) do pcall(fn, entry, nil) end
 
     -- The kind (heal/damage), the same rule GroupFamilies uses per family,
     -- read off this one entry's own parsed text.
@@ -1245,7 +1349,28 @@ function Book:Bonus(kind, school)
     return Book._lastBonus, true
 end
 
-ST:On("SPELLS_CHANGED", function() Book:MarkDirty() end)
+ST:On("SPELLS_CHANGED", function() Book._talentsDirty = true; Book:MarkDirty() end)
+-- T129: the talent ranks are read again after a talent change. TRAIT_CONFIG_UPDATED
+-- is retail's trait event (not in the 69893 baseline, which lists no events;
+-- ST:On registers under pcall, so an event this client does not know is
+-- dropped, never raised); PLAYER_TALENT_UPDATE the probe saw answer.
+local function TalentsChanged() Book._talentsDirty = true; Book:MarkDirty() end
+ST:On("PLAYER_TALENT_UPDATE", TalentsChanged)
+ST:On("TRAIT_CONFIG_UPDATED", TalentsChanged)
+
+-- T129: /st dump's talents line -- every rank read, by name, or why none were.
+-- Added by Book:Talents on its first call.
+TalentsDumpLine = function()
+    local ranks, why = Book:Talents()
+    if type(ranks) ~= "table" then return "talents: not read (" .. tostring(why) .. ")" end
+    local names = {}
+    for name in pairs(ranks) do names[#names + 1] = name end
+    table.sort(names)
+    if #names == 0 then return "talents: none taken" end
+    local parts = {}
+    for i, name in ipairs(names) do parts[i] = name .. " " .. tostring(ranks[name]) end
+    return "talents: " .. table.concat(parts, ", ")
+end
 ST:On("PLAYER_LEVEL_UP", function() Book:MarkDirty() end)
 ST:On("PLAYER_EQUIPMENT_CHANGED", function() Book:MarkDirty() end)
 -- T127: a Trade-off setting moved (UI/Settings.lua): the best mark moves

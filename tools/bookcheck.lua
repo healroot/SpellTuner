@@ -486,10 +486,12 @@ do
 end
 
 --------------------------------------------------------------------------------
--- 11: the talent seam is empty and applies what is put in it
+-- 11: the talent seam holds T129's cast rule only and applies what is put in it
 --------------------------------------------------------------------------------
 do
-    local emptyGood = type(Book.adjust) == "table" and #Book.adjust == 0
+    -- T129: the seam's first function is the cast-time talent rule
+    -- (docs/tasks/T129-forever-talent-casts.md); anything added runs after it.
+    local emptyGood = type(Book.adjust) == "table" and #Book.adjust == 1
 
     table.insert(Book.adjust, function(entry, family)
         if entry.id == 5185 then entry.talentSeamTouched = true end
@@ -498,9 +500,9 @@ do
     table.remove(Book.adjust)
 
     local applied = FindEntry(book, 5185).talentSeamTouched == true
-    local emptyAfter = #Book.adjust == 0
+    local emptyAfter = #Book.adjust == 1
 
-    check("the talent seam is empty and applies what is put in it",
+    check("the talent seam holds the cast rule only and applies what is put in it",
         emptyGood and applied and emptyAfter,
         string.format("emptyGood=%s applied=%s emptyAfter=%s", tostring(emptyGood), tostring(applied), tostring(emptyAfter)))
 end

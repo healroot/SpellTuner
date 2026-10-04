@@ -137,7 +137,8 @@ local function ForeverChecks()
                 Book:MarkDirty()
                 local okGet, book = Try(function() return Book:Get() end)
                 if not okGet then return false, label .. ": Get raised " .. tostring(book) end
-                local valid, problems = BS.Validate(book)
+                -- T129: the talent seam's fields pass, as Book's own Check lets them
+                local valid, problems = BS.Validate(book, Book._seamFields)
                 local n = 0
                 for _ in pairs(book.spells) do n = n + 1 end
                 notes[#notes + 1] = string.format("%s: %d spells, %d families", label, n, #book.order)
@@ -203,7 +204,7 @@ local function ForeverChecks()
             for _, c in ipairs(cases) do
                 local b = Copy(live)
                 c[2](b)
-                local valid, problems = BS.Validate(b)
+                local valid, problems = BS.Validate(b, Book._seamFields)
                 local named = not valid
                 for _, needle in ipairs(c[3]) do
                     if not Has(problems, needle) then named = false end
@@ -219,7 +220,7 @@ local function ForeverChecks()
                 ok, why = false, "Check did not raise naming its caller: " .. tostring(err)
             end
             -- the live book still passes (the copies were the ones changed)
-            if not BS.Validate(live) then ok, why = false, "the live book was changed" end
+            if not BS.Validate(live, Book._seamFields) then ok, why = false, "the live book was changed" end
         end
         check("2. an undeclared field, a wrong type, a missing id and a variant in spells are refused by name",
             ok, why)
@@ -261,7 +262,9 @@ local function ForeverChecks()
             local htWant = 1.5 / 3.5 * (1 - (20 - 1) * 0.0375)
             local rjWant = 12 / 15 * (1 - (20 - 4) * 0.0375)
             if not (htB and Near(htB.counts, htWant) and htB.from == "estimated"
-                and htB.why == "cast 1.5 / 3.5 x 0.29") then
+                -- T129: no C_Traits in the stub, so Healing Touch's Naturalist
+                -- rule says the talents were not read
+                and htB.why == "cast 1.5 / 3.5 (talents not read) x 0.29") then
                 ok, why = false, "Healing Touch: " .. Show(htB) .. " want counts " .. htWant
             elseif not (rjB and Near(rjB.counts, rjWant) and rjB.from == "estimated"
                 and rjB.why == "over 12 s / 15 x 0.40") then

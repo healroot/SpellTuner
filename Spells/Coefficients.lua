@@ -93,8 +93,31 @@ end
 --   ", group rule" appended           a heal that reaches the party (x Coef.GROUP)
 -- A shape with no rule, or a number the rule needs and the entry lacks:
 -- nil, "no rule for <shape>" / "no duration".
+-- T129: the direct part is taken at `e.baseCast` when it is a number (the
+-- cast before a cast-time talent, Spells/Book.lua's talent seam), else at
+-- `e.cast`; the words name it:
+--   "cast 1.7 / 3.5 (1.5 + 0.2 Improved Wrath 2) x 0.47"   talent read
+--   "cast 1.5 / 3.5 (talents not read) x 0.47"            a rule, ranks unread
+-- A rank with no rule ("<talent> <r>: no rule") leaves the words as before.
 --------------------------------------------------------------------------------
 local function F1(v) return string.format("%.1f", v) end
+-- up to two decimals, trailing zeros dropped: 1.5, 0.2, 0.17, 2
+local function Num(v)
+    local s = string.format("%.2f", v):gsub("0+$", ""):gsub("%.$", "")
+    return s
+end
+
+-- The cast the coefficient is taken at, and the words that say where it came from.
+local function BaseCast(e)
+    if type(e.baseCast) == "number" and type(e.cast) == "number" then
+        local note = " (" .. Num(e.cast) .. " + " .. Num(e.baseCast - e.cast)
+        if type(e.castTalent) == "string" then note = note .. " " .. e.castTalent end
+        return e.baseCast, note .. ")"
+    end
+    local cast = (type(e.cast) == "number") and e.cast or GCD
+    if e.castTalent == "talents not read" then return cast, " (talents not read)" end
+    return cast, ""
+end
 local function Secs(v)
     if v == math.floor(v) then return tostring(math.floor(v)) end
     return F1(v)
@@ -103,7 +126,7 @@ end
 function Coef.Estimate(e, shape)
     if type(e) ~= "table" then return nil, "no entry" end
     local counts, why
-    local cast = (type(e.cast) == "number") and e.cast or GCD
+    local cast, castNote = BaseCast(e)
     local clamped = math.min(math.max(cast, 1.5), 3.5)
     if e.castKind == "channeled" and (shape == "hot" or shape == "direct") then
         local dur = (type(e.interval) == "number" and e.interval) or e.dur
@@ -112,7 +135,7 @@ function Coef.Estimate(e, shape)
         why = "channel " .. Secs(dur) .. " s / 3.5"
     elseif shape == "direct" then
         counts = Coef.Direct(cast)
-        why = "cast " .. F1(clamped) .. " / 3.5"
+        why = "cast " .. F1(clamped) .. " / 3.5" .. castNote
     elseif shape == "hot" then
         local dur = e.dur
         if type(dur) ~= "number" or dur <= 0 then return nil, "no duration" end
@@ -126,7 +149,7 @@ function Coef.Estimate(e, shape)
         end
         local d, h = Coef.Hybrid(cast, dur, (e.min + e.max) / 2, over)
         counts = d + h
-        why = "cast " .. F1(clamped) .. " / 3.5 + over " .. Secs(dur) .. " s / 15, by amount"
+        why = "cast " .. F1(clamped) .. " / 3.5" .. castNote .. " + over " .. Secs(dur) .. " s / 15, by amount"
     else
         return nil, "no rule for " .. tostring(shape)
     end

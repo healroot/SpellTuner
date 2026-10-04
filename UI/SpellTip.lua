@@ -732,6 +732,9 @@ function SpellTip:ViewFor(tt, id)
     return nil
 end
 
+-- T129: the last id a block was drawn for, for /st tooltip why's cast talent.
+local lastBlockId
+
 local function OnSpell(tt, id, source)
     if not tt or type(id) ~= "number" then return false, "no id" end
     if ST.db and ST.db.spellTooltip == false then return true, "off" end
@@ -768,6 +771,7 @@ local function OnSpell(tt, id, source)
 
     tt._spellTipId = id
     tt._spellTipDetail = detail
+    lastBlockId = id
     -- 5.1: a spacer first (ElvUI's convention for its own blocks), so the
     -- block does not read as part of the game's description.
     tt:AddLine(" ")
@@ -805,6 +809,15 @@ function SpellTip:Why()
     local head = "tooltip why: macro post-call " .. tostring(hooks.macro or "not registered")
         .. ", SetAction hook " .. tostring(hooks.action or "not registered")
     if ST.db and ST.db.spellTooltip == false then head = head .. " (block off: /st tooltip)" end
+    -- T129: the cast talent of the last spell a block was drawn for (Spells/
+    -- Book.lua's talent seam), when its entry carries one.
+    local okTalent, talent = pcall(function()
+        local e = lastBlockId and Book:Get().spells[lastBlockId]
+        return type(e) == "table" and e.castTalent or nil
+    end)
+    if okTalent and type(talent) == "string" then
+        head = head .. "; last block " .. tostring(lastBlockId) .. " cast talent: " .. talent
+    end
     local rec = ST.API.LastMacroHover and ST.API.LastMacroHover()
     if type(rec) ~= "table" then
         return head .. "; last macro hover: path none"
