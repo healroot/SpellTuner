@@ -6,10 +6,10 @@ published to CurseForge; the developers' log is `docs/HISTORY.md`.
 ## 0.17.1
 
 ### What if
-- The line under What if... now compares the old and the new suggested rank with the same stats
-  (`Suggested: Rank X -> Rank Y. With these stats Rank Y gives P per mana, Rank X Q (+n%).`), and
+- The line under What if... now compares the old and the new best rank with the same stats
+  (`Best: Rank X -> Rank Y. With these stats Rank Y gives P per mana, Rank X Q (+n%).`), and
   says why when the new one gives less per mana (it is beaten, or under 40% of your best rank's
-  heal or damage). When the suggestion does not move it says `No change to the suggestion.`
+  heal, or the trade against max no longer pays). When the suggestion does not move it says `No change to the suggestion.`
 - A new `+Spell damage` row, on both clients: a damage spell's Value and Per mana follow it, and
   its header shows `+N <School> damage what if`.
 - Forever now reads your spell damage per school, so a damage spell's header shows it beside your
