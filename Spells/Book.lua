@@ -59,19 +59,27 @@ Book.adjust = {}
 -- The player's talent ranks, read once per change (the talent events below,
 -- SPELLS_CHANGED) rather than on every 2-second rescan: { [name] = rank } or
 -- nil, with the reason in Book._talentsWhy. A read that answered nothing is
--- tried again at the next scan (the trait data may not be ready at login).
+-- tried again at the next scan (the trait data may not be ready at login) --
+-- once per scan, never once per entry (review m3): Book:Scan moves
+-- Book._scanSerial, and an unread answer is kept until it moves.
 Book._talents, Book._talentsWhy, Book._talentsDirty = nil, "not read yet", true
+Book._scanSerial, Book._talentsTriedAt = 0, nil
 
--- The /st dump line (defined at the end of the file) is added the first time
--- the ranks are asked for, as the other lazy dump lines are (UI/Styles.lua,
--- UI/ClockView.lua): a session that never priced a cast-time rule adds none.
+-- The /st dump line (defined at the end of the file) is added by the book's
+-- first scan, for every class (review m2), as the other lazy dump lines are
+-- (UI/Styles.lua, UI/ClockView.lua): a session that never read its book adds
+-- none.
 local TalentsDumpLine, talentsDumpAdded
-function Book:Talents()
+local function NoteTalentsDump()
     if not talentsDumpAdded and TalentsDumpLine and ST.AddDumpLine then
         talentsDumpAdded = true
         ST:AddDumpLine("talents", TalentsDumpLine)
     end
-    if Book._talentsDirty or Book._talents == nil then
+end
+function Book:Talents()
+    NoteTalentsDump()
+    if Book._talentsDirty
+        or (Book._talents == nil and Book._talentsTriedAt ~= Book._scanSerial) then
         local ranks, why
         if ST.API.TalentRanks then
             ranks, why = ST.API.TalentRanks()
@@ -84,6 +92,7 @@ function Book:Talents()
             Book._talents, Book._talentsWhy = nil, (type(why) == "string") and why or "absent"
         end
         Book._talentsDirty = false
+        Book._talentsTriedAt = Book._scanSerial
     end
     return Book._talents, Book._talentsWhy
 end
@@ -1192,6 +1201,9 @@ function Book:MeasureBonus(spells, families)
 end
 
 function Book:Scan()
+    -- T129 review m2 / m3: the talents dump line, and one talent read per scan
+    Book._scanSerial = Book._scanSerial + 1
+    NoteTalentsDump()
     -- T35: a scan after MarkDirty (or the first) is a changed book; the
     -- 2-second rescans of an unchanged one are not.
     local changed = Book._dirty or not Book._cache

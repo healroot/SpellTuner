@@ -10,7 +10,10 @@ talent does until it is verified in game (docs/DECISIONS.md, 2026-10-04).
 Recognised: only a rank sentence that STARTS
     Reduces the cast(ing) time of (your)? <spell list> (spell(s))? by N sec
 optionally followed by "and your <spell> spell by M sec" (Bane: the second
-spell gets its own rule). Every rank's amount is read from that rank's own
+spell gets its own rule). What follows the last amount must be nothing, ".",
+or one more clause "(,) and <words>." whose words say nothing about casting
+(T129 review m4): "by 0.5 sec while in Shadowform." is refused and named in
+the header, never shipped as a permanent rule. Every rank's amount is read from that rank's own
 sentence, never multiplied out. A cast-time talent whose sentences do not all
 match is skipped and named in the file header; a spell name the class's own
 spellbook (or talents, or spell texts) in the same export does not know is
@@ -29,6 +32,17 @@ LEAD = re.compile(
 AND_YOUR = re.compile(
     r"^ and your (?P<spells>.+?)(?: spells?)? by (?P<n>\d+(?:\.\d+)?) secs?(?P<rest>.*)$")
 CAST_WORDS = re.compile(r"cast(?:ing)? time", re.I)
+# the one tail accepted after the last amount: a further effect, not a condition
+TAIL = re.compile(r"^(?:\.?|,? and (?P<clause>[^.]+)\.)$")
+TAIL_CAST = re.compile(r"cast|haste|speed", re.I)
+
+
+def tail_ok(rest):
+    m = TAIL.match(rest)
+    if not m:
+        return False
+    clause = m.group("clause")
+    return clause is None or not TAIL_CAST.search(clause)
 
 CLASS_TOKENS = {
     "Warrior": "WARRIOR", "Paladin": "PALADIN", "Hunter": "HUNTER", "Rogue": "ROGUE",
@@ -52,6 +66,9 @@ def parse_sentence(sentence):
     m2 = AND_YOUR.match(rest)
     if m2:
         parts.append((split_spells(m2.group("spells")), float(m2.group("n"))))
+        rest = m2.group("rest")
+    if not tail_ok(rest):
+        return None
     return parts
 
 
@@ -100,7 +117,10 @@ def build(data):
                     continue
                 parsed = [parse_sentence(s or "") for s in desc]
                 if not desc or any(p is None for p in parsed) or len(desc) != t.get("max"):
-                    skipped.append("%s: %s" % (cls, t["name"]))
+                    # a sentence of the recognised lead whose tail is refused is named as such
+                    tails = [s for s, p in zip(desc, parsed) if p is None and LEAD.match(s or "")]
+                    note = " (text after the amount not recognised)" if tails else ""
+                    skipped.append("%s: %s%s" % (cls, t["name"], note))
                     continue
                 shapes = {tuple(tuple(sp) for sp, _ in p) for p in parsed}
                 if len(shapes) != 1:

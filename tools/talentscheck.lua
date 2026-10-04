@@ -21,6 +21,12 @@
 --   6. a rank above the rule: "<talent> <r>: no rule", no baseCast, the old words
 --   7. a respec (PLAYER_TALENT_UPDATE) moves the base cast
 --   8. /st dump's talents line and /st tooltip why's cast talent
+--   9. review fixes (T129 review M1, m2, m3, m5): a walk where no node answers
+--      is absent, never "none taken" (four shapes); a secret activeRank and a
+--      secret talent name are "secret"; TRAIT_CONFIG_UPDATED re-reads the
+--      ranks; an unread walk runs at most once per scan; the TBC adapter has
+--      no TalentRanks; a fresh session's first scan adds the dump line even
+--      when no class has a rule
 HARNESS_FLAVOUR = "forever"
 
 local here = arg[0]:match("^(.*)/[^/]+$")
@@ -192,10 +198,10 @@ end)
 T("3 Healing Touch with no Naturalist point: unchanged, no castTalent", function()
     local e = book.spells[5185]
     local b = e and e.bonus
-    local plain = { cast = e.cast, level = e.level, castKind = e.castKind }
-    local counts, why = Coef.Estimate(plain, "direct")
-    return e and e.baseCast == nil and e.castTalent == nil and b and b.counts == counts and b.why == why
-        and not Has(b.why, "("),
+    -- the stub's Healing Touch: cast 1.5, level 1 (sub-20 0.2875); literals,
+    -- so an Estimate regression fails here too (review m5)
+    local counts, why = (1.5 / 3.5) * (1 - 19 * 0.0375), "cast 1.5 / 3.5 x 0.29"
+    return e and e.baseCast == nil and e.castTalent == nil and b and Near(b.counts, counts) and b.why == why,
         string.format("castTalent=%s why=%s", tostring(e and e.castTalent), tostring(b and b.why))
 end)
 
@@ -285,6 +291,84 @@ T("8 /st tooltip why names the last block's cast talent", function()
     _G.DEFAULT_CHAT_FRAME = prev
     local text = table.concat(said, "\n")
     return okCall and Has(text, "last block 95402 cast talent: Improved Wrath 2"), text
+end)
+
+--------------------------------------------------------------------------------
+-- 9: review fixes
+--------------------------------------------------------------------------------
+for _, shape in ipairs({ "noTreeNodes", "noNodeInfo", "nilNodeInfo", "noTrees" }) do
+    T("9 no node answers (" .. shape .. "): absent, never none taken", function()
+        S.AddTraits(S.DRUID_TALENTS, { [shape] = true })
+        Forget()
+        local r, why = ST.API.TalentRanks()
+        local b9 = Use(S.DRUID_TALENTS, { [shape] = true })
+        local e = b9.spells[95402]
+        return r == nil and why == "absent" and e.castTalent == "talents not read" and e.baseCast == nil
+            and Has(e.bonus.why, "(talents not read)") and DumpLine() == "talents: not read (absent)",
+            string.format("r=%s why=%s castTalent=%s", tostring(r), tostring(why), tostring(e.castTalent))
+    end)
+end
+
+T("9 a secret activeRank or talent name: secret", function()
+    local got = {}
+    for _, kind in ipairs({ "rank", "name" }) do
+        S.AddTraits(S.DRUID_TALENTS, { secret = kind })
+        Forget()
+        local r, why = ST.API.TalentRanks()
+        got[#got + 1] = kind .. "=" .. tostring(r) .. "/" .. tostring(why)
+        if not (r == nil and why == "secret") then return false, table.concat(got, " ") end
+    end
+    return true, table.concat(got, " ")
+end)
+
+T("9 TRAIT_CONFIG_UPDATED re-reads the ranks (a rescan alone does not)", function()
+    Use(S.DRUID_TALENTS)
+    S.AddTraits({ ["Improved Wrath"] = 3 })
+    Forget()
+    Book:MarkDirty()
+    local before = Book:Get().spells[95402].baseCast
+    S.Fire("TRAIT_CONFIG_UPDATED")
+    local after = Book:Get().spells[95402].baseCast
+    return Near(before, 1.7) and Near(after, 1.8), tostring(before) .. " -> " .. tostring(after)
+end)
+
+T("9 an unread walk runs at most once per scan", function()
+    Use(S.DRUID_TALENTS, { secret = "node" })
+    local calls = 0
+    local own = C_ClassTalents.GetActiveConfigID
+    C_ClassTalents.GetActiveConfigID = function(...) calls = calls + 1; return own(...) end
+    Forget()
+    Book:MarkDirty()
+    Book:Get()
+    local first = calls
+    Book:Get()
+    Book:ReadSpell(95402)
+    C_ClassTalents.GetActiveConfigID = own
+    return first == 1 and calls == 1 and Book._talentsWhy == "secret",
+        "walks: first scan " .. first .. ", after " .. calls
+end)
+
+T("9 the TBC adapter defines no TalentRanks", function()
+    local f = io.open(here .. "/../Client/API_TBC.lua", "r")
+    if not f then return false, "no Client/API_TBC.lua" end
+    local text = f:read("*a")
+    f:close()
+    return not Has(text, "TalentRanks"), "Client/API_TBC.lua names TalentRanks"
+end)
+
+T("9 a fresh session: the first scan adds the dump line, no rule needed", function()
+    local b0 = arg[0]; arg[0] = here .. "/harness.lua"
+    local ST2 = dofile(here .. "/harness.lua")
+    arg[0] = b0
+    local function HasLine()
+        for _, d in ipairs(ST2:DumpLines()) do if d.key == "talents" then return true end end
+        return false
+    end
+    local beforeScan = HasLine()
+    ST2.TalentRules = {}
+    ST2.Book:MarkDirty()
+    ST2.Book:Get()
+    return not beforeScan and HasLine(), "before " .. tostring(beforeScan) .. ", after " .. tostring(HasLine())
 end)
 
 print(string.format("\n%d ok, %d failed", ok, #fails))

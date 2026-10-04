@@ -1884,7 +1884,12 @@ end
 -- GetNodeInfo (activeRank, activeEntry.entryID), GetEntryInfo
 -- (definitionID), GetDefinitionInfo (overrideName) -- in retail 12.x's
 -- shapes, one node per talent plus one untaken node. opts.secret = "node"
--- answers every GetNodeInfo with a secret table. Without `talents` the config
+-- answers every GetNodeInfo with a secret table; "rank" a taken node whose
+-- activeRank alone is secret; "name" a definition whose overrideName is a
+-- secret string (T129 review m5). The shapes where no node answers (review
+-- M1): opts.noTreeNodes / opts.noNodeInfo leave that function out,
+-- opts.nilNodeInfo answers nil for every node, opts.noTrees gives treeIDs {}.
+-- Without `talents` the config
 -- stays the T0b one (the probe's golden line). A script that installs this
 -- after the adapter has answered for a name calls ST.API.Invalidate for it.
 S.DRUID_TALENTS = { ["Improved Wrath"] = 2 }
@@ -1910,12 +1915,16 @@ function S.AddTraits(talents, opts)
         nodeIDs[#nodeIDs + 1] = node
         nodes[node] = { ID = node, activeRank = talents[name], ranksPurchased = talents[name], maxRanks = 5,
             entryIDs = { entry }, activeEntry = { entryID = entry, rank = talents[name] } }
+        if opts.secret == "rank" then nodes[node].activeRank = S.Secret() end
         entries[entry] = { definitionID = def, maxRanks = 5, type = 1 }
         defs[def] = { overrideName = name, spellID = 0 }
+        if opts.secret == "name" then defs[def].overrideName = S.Secret("string") end
     end
     C_Traits = {
         GetConfigInfo = function(id)
-            if id == 7 then return { ID = 7, name = "Stub loadout", type = 1, treeIDs = { 1 } } end
+            if id == 7 then
+                return { ID = 7, name = "Stub loadout", type = 1, treeIDs = opts.noTrees and {} or { 1 } }
+            end
             return nil
         end,
         GetTreeNodes = function(tree)
@@ -1931,6 +1940,9 @@ function S.AddTraits(talents, opts)
         GetEntryInfo = function(cfg, entry) return entries[entry] end,
         GetDefinitionInfo = function(def) return defs[def] end,
     }
+    if opts.noTreeNodes then C_Traits.GetTreeNodes = nil end
+    if opts.noNodeInfo then C_Traits.GetNodeInfo = nil end
+    if opts.nilNodeInfo then C_Traits.GetNodeInfo = function() return nil end end
 end
 
 function S.Load(files, addonName, ST)

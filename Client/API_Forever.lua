@@ -536,7 +536,10 @@ ST.API._bindings.SetTooltipSpell = "GameTooltip.SetSpellByID"
 -- copy that dropped a secret field) makes the whole answer nil, "secret" --
 -- half a talent list would price a rank wrong without saying so. A node whose
 -- shape does not answer (no plain activeRank, no entry) is passed over: an
--- untaken node is the normal case. Recorded explicitly, as CursorInfo.
+-- untaken node is the normal case. But a walk in which NO node answered a
+-- table (no tree, GetTreeNodes or GetNodeInfo missing or answering nil) is
+-- nil, "absent", never {} -- that would read as "none taken" (review M1).
+-- Recorded explicitly, as CursorInfo.
 local function TraitCopy(depth, dotted, ...)
     local v, why = ST.API.Call(dotted, ...)
     if why ~= nil then return nil, why end
@@ -557,7 +560,7 @@ local function TalentWalk()
     if type(info) ~= "table" then return nil, iwhy or "absent" end
     if type(info.treeIDs) ~= "table" then return nil, "absent" end
 
-    local ranks = {}
+    local ranks, answered = {}, false
     for _, tree in ipairs(info.treeIDs) do
         if type(tree) == "number" then
             local nodes, nwhy = TraitCopy(1, "C_Traits.GetTreeNodes", tree)
@@ -567,6 +570,7 @@ local function TalentWalk()
                     if type(node) == "number" then
                         local ni, why2 = TraitCopy(2, "C_Traits.GetNodeInfo", cfg, node)
                         if why2 == "secret" or why2 == "error" then return nil, why2 end
+                        if type(ni) == "table" then answered = true end
                         local rank = type(ni) == "table" and ni.activeRank
                         local entry = type(ni) == "table" and type(ni.activeEntry) == "table"
                             and ni.activeEntry.entryID
@@ -595,6 +599,7 @@ local function TalentWalk()
             end
         end
     end
+    if not answered then return nil, "absent" end
     return ranks
 end
 
