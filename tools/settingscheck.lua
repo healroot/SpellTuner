@@ -641,4 +641,50 @@ Try("Trade-off: damage / heals on MODEL, 0..100 step 5, write tradeKDamage / tra
         "found=" .. table.concat(found, ",") .. " " .. table.concat(bad, "; ")
 end)
 
+-- Review T127 m6: a drag writes each step but re-marks once, on the mouse-up.
+Try("a drag of Trade-off: heals writes each step and fires RANK_RULES_CHANGED once, on the mouse-up", function()
+    local r = Pane("review")
+    local ctl
+    for _, c in ipairs(r.controls) do
+        if c.kind == "slider" and c.row.key == "tradeKHeal" then ctl = c.ctl end
+    end
+    if not ctl then return false, "no tradeKHeal slider" end
+    local fired = 0
+    ST:RegisterCallback("RANK_RULES_CHANGED", function() fired = fired + 1 end)
+    local enter, changed, up = ctl:GetScript("OnEnter"), ctl:GetScript("OnValueChanged"), ctl:GetScript("OnMouseUp")
+    if enter then enter(ctl) end
+    for _, v in ipairs({ 20, 25, 30, 35 }) do
+        ctl:SetValue(v)
+        changed(ctl, v, true)
+    end
+    local during, value = fired, ST.db.tradeKHeal
+    up(ctl)
+    local after = fired
+    ST.db.tradeKHeal = nil
+    return during == 0 and after == 1 and value == 0.35,
+        string.format("during=%d after=%d value=%s", during, after, tostring(value))
+end)
+
+-- Review T127 m5: the rows' defaults and words read ST.Rules, never a copy.
+Try("Trade-off rows: defaults and tips from ST.Rules (k, floor), not literals", function()
+    local saved = { ST.Rules.TRADE_K_DAMAGE, ST.Rules.TRADE_K_HEAL, ST.Rules.SUGGESTED_FLOOR }
+    local d, h = ST.Settings.TRADE_ROWS[1], ST.Settings.TRADE_ROWS[2]
+    local function Default(row)
+        local v = row.default
+        if type(v) == "function" then v = v() end
+        return v
+    end
+    local function Tips(row)
+        local t = row.tips
+        if type(t) == "function" then t = t() end
+        return table.concat(t or {}, " ")
+    end
+    ST.Rules.TRADE_K_DAMAGE, ST.Rules.TRADE_K_HEAL, ST.Rules.SUGGESTED_FLOOR = 0.5, 0.2, 0.3
+    local dd, hd, dt, ht = Default(d), Default(h), Tips(d), Tips(h)
+    ST.Rules.TRADE_K_DAMAGE, ST.Rules.TRADE_K_HEAL, ST.Rules.SUGGESTED_FLOOR = saved[1], saved[2], saved[3]
+    local ok = dd == 0.5 and hd == 0.2 and dt:find("50%: 1% per mana for 2% per second", 1, true) ~= nil
+        and ht:find("30% of your highest", 1, true) ~= nil and ht:find("20%: 1% per mana for 5% per second", 1, true) ~= nil
+    return ok, string.format("defaults %s / %s; tips %q / %q", tostring(dd), tostring(hd), dt, ht)
+end)
+
 T.done()

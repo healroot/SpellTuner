@@ -189,6 +189,136 @@ check("11. tradeKDamage / tradeKHeal are registered defaults",
     ST:Setting("tradeKDamage") == 0.25 and ST:Setting("tradeKHeal") == 0.15,
     tostring(ST:Setting("tradeKDamage")) .. " " .. tostring(ST:Setting("tradeKHeal")))
 
+-- 12. the stamp: the rule's version and both k, so a snapshot of best ranks
+-- taken under another rule is known as such (review T127 M1)
+local st0 = RR.Stamp and RR.Stamp()
+SetK("heal", 0.5)
+local st1 = RR.Stamp and RR.Stamp()
+SetK("heal", nil)
+check("12. RR.Stamp names the rule version and both k; a k change changes it",
+    type(st0) == "string" and st0 ~= st1 and RR.Stamp() == st0 and st0:find("0.25", 1, true) ~= nil,
+    tostring(st0) .. " / " .. tostring(st1))
+
+-- 13. TBC: the Advisor's gear toast (UI/Advisor.lua) never toasts a shift the
+-- rule caused -- an old snapshot (no stamp, or another k) is re-seeded
+-- silently; RANK_RULES_CHANGED re-seeds; a real shift says "best rank"
+if ST.RankMath and ST.RankMath.SuggestedRanks and _G.STUB and ST.ClassProfile:Can("advisor") then
+    local S = _G.STUB
+    local chat = {}
+    local realChat = _G.DEFAULT_CHAT_FRAME
+    _G.DEFAULT_CHAT_FRAME = { AddMessage = function(_, m) chat[#chat + 1] = tostring(m) end }
+    local function Toasts(from)
+        local n = 0
+        for i = from or 1, #chat do if chat[i]:find("gear change", 1, true) then n = n + 1 end end
+        return n
+    end
+    local ready, realReg = {}, ST.RegisterCallback
+    ST.RegisterCallback = function(self, name, fn)
+        if name == "MD_READY" then ready[#ready + 1] = fn end
+        return realReg(self, name, fn)
+    end
+    S.Load({ "UI/Advisor.lua" }, "SpellTuner", ST)
+    ST.RegisterCallback = realReg
+    local function Wait(sec) for _ = 1, sec * 2 do S.Tick(0.5) end end
+    local Stamp = RR.Stamp or function() return "no RR.Stamp" end
+    local current = ST.RankMath:SuggestedRanks()
+    local anyFamily
+    for fam in pairs(current) do anyFamily = anyFamily or fam end
+    local function Old(stamp)
+        local ranks = {}
+        for fam, r in pairs(current) do ranks[fam] = r end
+        ranks[anyFamily] = current[anyFamily] + 1 -- as the old rule had it
+        return { form = ST:InTreeForm() and "tree" or "caster", ranks = ranks, rule = stamp }
+    end
+    -- a: MD_READY with a pre-T127 snapshot re-seeds it, stamped
+    ST.cdb.suggestedRanks = Old(nil)
+    for _, fn in ipairs(ready) do fn() end
+    Wait(6)
+    local a = ST.cdb.suggestedRanks.rule == Stamp() and ST.cdb.suggestedRanks.ranks[anyFamily] == current[anyFamily]
+    -- b: a gear change over a pre-T127 snapshot: no toast, re-seeded
+    local mark = #chat + 1
+    ST.cdb.suggestedRanks = Old(nil)
+    S.Fire("PLAYER_EQUIPMENT_CHANGED")
+    Wait(3)
+    local b = Toasts(mark) == 0 and ST.cdb.suggestedRanks.rule == Stamp()
+    -- c: a snapshot from another k: no toast either
+    ST.cdb.suggestedRanks = Old("marks:other")
+    S.Fire("PLAYER_EQUIPMENT_CHANGED")
+    Wait(3)
+    local c = Toasts(mark) == 0 and ST.cdb.suggestedRanks.rule == Stamp()
+    -- d: a slider move re-seeds silently (heal k 0 moves best), the next gear change says nothing
+    SetK("heal", 0)
+    ST:Fire("RANK_RULES_CHANGED")
+    local afterK = ST.RankMath:SuggestedRanks()
+    local d = ST.cdb.suggestedRanks.rule == Stamp() and ST.cdb.suggestedRanks.ranks[anyFamily] == afterK[anyFamily]
+    S.Fire("PLAYER_EQUIPMENT_CHANGED")
+    Wait(3)
+    d = d and Toasts(mark) == 0
+    SetK("heal", nil)
+    ST:Fire("RANK_RULES_CHANGED")
+    -- e: a real shift under the same rule toasts, in the new words
+    ST.cdb.suggestedRanks = Old(Stamp())
+    S.Fire("PLAYER_EQUIPMENT_CHANGED")
+    Wait(3)
+    local said = chat[#chat] or ""
+    local e = Toasts(mark) == 1 and said:find("is now your best rank", 1, true) ~= nil
+    _G.DEFAULT_CHAT_FRAME = realChat
+    check("13. tbc Advisor: an old snapshot re-seeded silently (MD_READY, gear), RANK_RULES_CHANGED re-seeds, "
+        .. "a real shift says best rank",
+        a and b and c and d and e,
+        string.format("a=%s b=%s c=%s d=%s e=%s said=%q", tostring(a), tostring(b), tostring(c), tostring(d),
+            tostring(e), said))
+end
+
+-- 14. Review T127 m7: Words agree with RR.Marks in the edge cases.
+do
+    local W = ST.Words
+    local top = { rank = 5, known = true } -- the highest known, no value (a gap)
+    local mx = { rank = 4, known = true, value = 1000 }
+    local fam = { maxKnown = top, maxRank = mx }
+    local low, high = { value = 300 }, { value = 500 }
+    local under = W.UnderFloor(low, fam, "heal") and not W.UnderFloor(high, fam, "heal")
+        and not W.UnderFloor(low, fam, "damage")
+    local c = { perMana = 10, value = -20, cast = 0 }
+    local hMax, hHigh = W.Compare(c, 4, "heal", "full"), W.Compare(c, 5, "heal", "full", true)
+    local heads = hMax:find("(max)", 1, true) ~= nil and hHigh:find("(highest)", 1, true) ~= nil
+        and hHigh:find("(max)", 1, true) == nil
+    local same = W.CompareSame("full")
+    local rule = W.SuggestedRule()
+    local words = same:find("best per mana", 1, true) == nil and rule:find("fastest", 1, true) == nil
+        and rule:find("most per second", 1, true) ~= nil
+    check("14. Words: UnderFloor falls back to max's value, the highest stand-in heads (highest), "
+        .. "CompareSame / SuggestedRule say what the rule does",
+        under and heads and words,
+        string.format("under=%s heads=%q/%q same=%q rule=%q", tostring(under), hMax, hHigh, same, rule))
+end
+
+-- 15. Review T127 n1: a k move that leaves best in place still redraws (the
+-- Spells pane's signature, and on TBC the book's generation).
+do
+    local SP = ST.SpellsPane
+    local sig0 = SP and SP.Signature and SP:Signature("probe", false)
+    local gen0 = ST.Book.generation
+    if ST.Book.Refresh and gen0 then ST.Book:Refresh(); gen0 = ST.Book.generation end
+    SetK("heal", 0.2)
+    ST:Fire("RANK_RULES_CHANGED")
+    local sig1 = SP and SP.Signature and SP:Signature("probe", false)
+    local genOk = true
+    if ST.Book.Refresh and gen0 then
+        ST.Book:Refresh()
+        genOk = ST.Book.generation ~= gen0
+    end
+    SetK("heal", nil)
+    ST:Fire("RANK_RULES_CHANGED")
+    -- the TBC harness loads no Spells pane: there the book's generation is the test
+    local sigOk
+    if sig0 == nil then sigOk = ST.Book.Refresh ~= nil and gen0 ~= nil else sigOk = sig0 ~= sig1 end
+    check("15. a k move changes the Spells pane's signature (and the TBC book's generation)",
+        sigOk and genOk,
+        string.format("pane=%s sig moved=%s gen moved=%s", tostring(sig0 ~= nil), tostring(sig0 ~= sig1),
+            tostring(genOk)))
+end
+
 print(string.format("\n%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("  FAIL " .. f) end
 os.exit(#fails > 0 and 1 or 0)

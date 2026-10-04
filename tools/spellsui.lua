@@ -251,6 +251,10 @@ if S.flavour == "tbc" then
         end
         if e.variants then
             if e.bestOfStacks then return "best" end
+            -- review T127 m2 (mockup M4): beaten when a rolled row holds best
+            for _, v in ipairs(e.variants) do
+                if v.bestOfStacks then return "beaten" end
+            end
             return e.dominated and "beaten" or ""
         end
         if e.suggested then return "best" end
@@ -407,11 +411,27 @@ if S.flavour == "tbc" then
             local raw = row.cells.rank:GetText() or ""
             if Cell(row, "rank") ~= "x" .. v.variant or raw:find(UI.Hex("muted"), 1, true) ~= 1
                 or Cell(row, "value") ~= Num(v.value) or Cell(row, "permana") ~= Num(v.perMana, 2)
-                -- T127 (mockup M4): the rolled row holding bestOfStacks is tagged best
+                -- T127 (mockup M4): the rolled row holding bestOfStacks is tagged best;
+                -- review T127 m2: the others beaten, the fill and bar on best's row alone
                 or Cell(row, "persec") ~= Num(v.perSec, 1)
-                or Cell(row, "tag") ~= (v.bestOfStacks and "best" or "") then
+                or Cell(row, "tag") ~= (v.bestOfStacks and "best" or "beaten")
+                or (r.suggested and true or false) ~= (v.bestOfStacks and true or false)
+                or (row.mark and row.mark:IsShown() or false) ~= (v.bestOfStacks and true or false) then
                 bad[#bad + 1] = "x" .. v.variant .. ":" .. tostring(Cell(row, "rank")) .. "/" .. tostring(Cell(row, "value"))
+                    .. "/" .. tostring(Cell(row, "tag")) .. "/" .. tostring(r.suggested)
             end
+        end
+        -- the rank's own row: the fill only when it holds best itself
+        local rankRow
+        for _, r in ipairs(f.lastRows or {}) do
+            if r.kind == "rank" then rankRow = r end
+        end
+        local anyStack = e.bestOfStacks
+        for _, v in ipairs(e.variants) do anyStack = anyStack or v.bestOfStacks end
+        if not anyStack then bad[#bad + 1] = "no bestOfStacks" end
+        if rankRow and ((rankRow.suggested and true or false) ~= (e.bestOfStacks and true or false)
+            or Cell(RowFrame(rankRow), "tag") ~= (e.bestOfStacks and "best" or "beaten")) then
+            bad[#bad + 1] = "R1:" .. tostring(rankRow.suggested) .. "/" .. tostring(Cell(RowFrame(rankRow), "tag"))
         end
         local sel = f.selectedId
         local row2 = RowFrame(vrows[1])
@@ -601,7 +621,7 @@ if S.flavour == "tbc" then
             and form and form.buttons and form.buttons.live and form.buttons.caster and form.buttons.tree
             and Box("moonglow") ~= nil and p.clearBtn and p.clearBtn:IsShown()
             and Strip(p.classTitle:GetText()) == "DRUID" and not (p.classNote and p.classNote:IsShown())
-            and Strip(p.footer:GetText()) == "No change to the suggestion."
+            and Strip(p.footer:GetText()) == "No change to the best rank."
         return good, string.format("open=%s drawer=%s ph=%q crit=%q labels=%s", tostring(p and p:IsShown()),
             tostring(between), phText, critPh, table.concat(labels, ","))
     end)
@@ -815,7 +835,7 @@ if S.flavour == "tbc" then
         -- worse" with its reason), so a sentence that wraps is laid out
         local changes = WIr().Changes
         WIr().Changes = function()
-            return "Suggested: Rank 6 -> Rank 12. With these stats Rank 12 gives 5.51 per mana, Rank 6 7.77 (-29%)."
+            return "Best: Rank 6 -> Rank 12. With these stats Rank 12 gives 5.51 per mana, Rank 6 7.77 (-29%)."
                 .. " Rank 6 is under the floor: it heals less than 40% of Rank 12."
         end
         local small = UI.fontObjects[UI.FONT_SMALL]
@@ -1632,7 +1652,7 @@ end)
 -- T77 (P33, review U8; mockup M4): a rail row hovered for half a second says
 -- what its tag is -- the suggested rank among the known ones and its per
 -- mana -- and how to move it
-T36("T77: a rail row's tooltip: Suggested  Rank N of M known, Per mana, the drag hint", function()
+T36("T77: a rail row's tooltip: Best  Rank N of M known, Per mana, the drag hint", function()
     ST:SelectView("spells", "overview")
     local fam = ST.Book:Get().families["Rejuvenation"]
     local s = fam and fam.suggested
@@ -1648,7 +1668,7 @@ T36("T77: a rail row's tooltip: Suggested  Rank N of M known, Per mana, the drag
     S.Tick(0.4)
     local got, pm, hint = false, false, false
     for _, l in ipairs(tt.lines or {}) do
-        if l[1] == "Suggested" and l[2] == want then got = true end
+        if l[1] == "Best" and l[2] == want then got = true end
         if l[1] == "Per mana" and l[2] == ST.Words.PerMana(s, "cell") then pm = true end
         if l[1] == UI.RAIL_HINT then hint = true end
     end
@@ -1750,6 +1770,10 @@ local function TagText(e, family)
     end
     if e.variants then
         if e.bestOfStacks then return "best" end
+        -- review T127 m2 (mockup M4): beaten when a rolled row holds best
+        for _, v in ipairs(e.variants) do
+            if v.bestOfStacks then return "beaten" end
+        end
         return e.dominated and "beaten" or ""
     end
     if e.suggested then return "best" end
@@ -2987,7 +3011,7 @@ T36("T39 My spells: a row per listed family, suggested against highest; a click 
         end
         return table.concat(t, ",")
     end
-    -- T127: the Suggested column is the best mark, Rank 2 at the heal trade-off 0.15
+    -- T127: the Best column (review T127 m1: was Suggested) is the best mark, Rank 2 at the heal trade-off 0.15
     local wantN = table.concat({ "Nourish", "R2", "103", Num(e2.perMana, 2), CastsWord(FullCasts(e2)), "R2", "103",
         Num(e2.perMana, 2) }, ",")
     local header
@@ -3002,7 +3026,7 @@ T36("T39 My spells: a row per listed family, suggested against highest; a click 
     local _, v = Nav():Selected()
     local good = table.concat(keys, ",") == table.concat(want, ",") and #keys > 3
         and Cells(nourish) == wantN
-        and labels == "Spell,Suggested,Value,Per mana,Casts,Highest,Value,Per mana" -- T78
+        and labels == "Spell,Best,Value,Per mana,Casts,Highest,Value,Per mana" -- T78; review T127 m1
         and bookHidden and v == "fam:Rejuvenation"
     return good, string.format("keys=%s nourish=%s labels=%s view=%s", table.concat(keys, ","),
         nourish and Cells(nourish) or "nil", labels, tostring(v))
@@ -3273,7 +3297,7 @@ T36("T124 forever: Wrath's header reads +N Nature damage; +Spell damage typed sh
         and table.concat(labels, ","):find("+Healing,+Spell damage,", 1, true) == 1
         and type(phLive) == "number" and ph == Num(phLive) and wrathLive == 120
         and typedRaw:find(accent, 1, true) == 1 and StripColor(typedRaw) == "+200 Nature damage what if"
-        and footer == wantFooter and footer == "No change to the suggestion."
+        and footer == wantFooter and footer == "No change to the best rank."
         and not SP.whatIfOpen
     return good, string.format("before=%q after=%q labels=%s ph=%q phLive=%s wrathLive=%s typed=%q footer=%q", before, after,
         table.concat(labels, ","), ph, tostring(phLive), tostring(wrathLive), StripColor(typedRaw), footer)
@@ -3331,7 +3355,7 @@ T36("T125 forever: the class note and footer wrapped at -2..+2 inside the drawer
     Measured(d.footer)
     local changes = WIf().Changes
     WIf().Changes = function()
-        return "Suggested: Rank 6 -> Rank 12. With these stats Rank 12 gives 5.51 per mana, Rank 6 7.77 (-29%)."
+        return "Best: Rank 6 -> Rank 12. With these stats Rank 12 gives 5.51 per mana, Rank 6 7.77 (-29%)."
             .. " Rank 6 is under the floor: it heals less than 40% of Rank 12."
     end
     local problems, sizes, noteLines, last = {}, {}, 0, 0

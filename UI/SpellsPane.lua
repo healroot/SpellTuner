@@ -448,7 +448,7 @@ local function CompareFit(measure, a, b, kind, width, fam)
     if a ~= b and not c then return "", "" end
     local function Say(style)
         if a == b then return Words.CompareBestIsMax(fam, kind, style) end
-        return Words.Compare(c, b.rank, kind, style)
+        return Words.Compare(c, b.rank, kind, style, fam and fam.maxRank == nil)
     end
     local full = Say("full")
     local styles = Words.COMPARE_STYLES
@@ -552,6 +552,14 @@ end
 local function TagOf(r)
     if r and r.kind == "variant" then
         if r.entry and r.entry.bestOfStacks then return "best" end
+        -- review T127 m2 (mockup M4): the other rows of a stack that holds best
+        local p = r.parent
+        if p and p.known ~= false then
+            if p.bestOfStacks then return "beaten" end
+            for _, v in ipairs(p.variants or {}) do
+                if v.bestOfStacks then return "beaten" end
+            end
+        end
         return nil
     end
     local e = r and r.kind == "rank" and r.entry
@@ -563,6 +571,9 @@ local function TagOf(r)
     end
     if e.variants then
         if e.bestOfStacks then return "best" end
+        for _, v in ipairs(e.variants) do -- review T127 m2: a rolled row holds best
+            if v.bestOfStacks then return "beaten" end
+        end
         if e.dominated then return "beaten" end
         return nil
     end
@@ -865,8 +876,14 @@ local function FamilyRows(fam, pool, liveFam, livePool)
     end
     local full = FullPool(pool)
     local function Add(e)
+        -- review T127 m2 (mockup M4): on a rank with rolled rows the fill and
+        -- the bar go to the row holding bestOfStacks, not the rank's own row
+        local stackBest = e.bestOfStacks
+        for _, v in ipairs(e.variants or {}) do stackBest = stackBest or v.bestOfStacks end
+        local sugg = e.suggested
+        if stackBest then sugg = e.suggested and e.bestOfStacks end
         local r = { kind = "rank", rank = e.rank, entry = e, id = e.id, family = fam,
-            known = e.known, suggested = e.suggested, dominated = e.dominated,
+            known = e.known, suggested = sugg, dominated = e.dominated,
             isMax = (fam.maxKnown == e), maxPerMana = maxPerMana, after = after,
             fullCasts = ST.Book:CastsFor(e, full) }
         rows[#rows + 1] = r
@@ -883,11 +900,11 @@ local function FamilyRows(fam, pool, liveFam, livePool)
             r.livePerMana = lpm
         end
         -- T120: Lifebloom's rolled rows under the rank they belong to; not
-        -- selectable (no id), no tag
+        -- selectable (no id); T127 tagged (TagOf), the fill on best's row
         for _, v in ipairs(e.variants or {}) do
             rows[#rows + 1] = { kind = "variant", entry = v, parent = e, family = fam,
                 variant = v, known = e.known, maxPerMana = maxPerMana, after = after,
-                fullCasts = v.casts }
+                fullCasts = v.casts, suggested = (e.suggested and v.bestOfStacks) and true or nil }
         end
     end
     for n = 1, maxListed do
@@ -1863,6 +1880,10 @@ end
 -- (BOOK_CHANGED), the bonus-healing reading (the last plain one), the pool's
 -- max and the pitch.
 SpellsPane.bookGen = 0
+local function RuleStamp()
+    if ST.RankRules and ST.RankRules.Stamp then return ST.RankRules.Stamp() end
+    return ""
+end
 function SpellsPane:Signature(key, preview)
     -- T120: the book's bonus (Book:Bonus: the last plain reading on Forever,
     -- the model's on TBC) and the After overheal switch
@@ -1871,7 +1892,8 @@ function SpellsPane:Signature(key, preview)
     local pool = Pool()
     return table.concat({ tostring(key), tostring(preview and true or false), tostring(self.bookGen),
         tostring(self.lastBonus), tostring(stale), tostring(pool.max), tostring(Pitch(TABLE_ROW)),
-        tostring(AfterOn()), tostring(ST.WhatIf and ST.WhatIf.serial) }, "|") -- T122: the what-if
+        tostring(AfterOn()), tostring(ST.WhatIf and ST.WhatIf.serial), -- T122: the what-if
+        RuleStamp() }, "|") -- review T127 n1: both k (the strip's "at 6.7:1")
 end
 
 -- T120: the header's bonus line for a family: "+450 healing", "+300 Nature
@@ -2189,12 +2211,13 @@ local MINE_EMPTY = "Your list is empty - + Add on the left, or + beside a family
 -- T78 (U9 / U10): "Casts" as in RANKS, and a sentence on every header.
 local MINE_COLS = {
     { key = "spell",     x = 28,  w = 128, label = "Spell" },
-    { key = "suggested", x = 158, w = 62,  label = "Suggested",
-      tooltip = "The rank SpellTuner suggests." },
+    -- T127 (review m1): the column is the best mark, named so
+    { key = "suggested", x = 158, w = 62,  label = "Best",
+      tooltip = "The best rank: the most per mana that is worth what it loses per second against max." },
     { key = "value",     x = 220, w = 46,  label = "Value",    justify = "RIGHT",
-      tooltip = "The suggested rank's average heal or damage; all of it for one over time." },
+      tooltip = "The best rank's average heal or damage; all of it for one over time." },
     { key = "permana",   x = 266, w = 58,  label = "Per mana", justify = "RIGHT",
-      tooltip = "The suggested rank's healing or damage for each point of mana." },
+      tooltip = "The best rank's healing or damage for each point of mana." },
     { key = "toOOM",     x = 324, w = 52,  label = "Casts",    justify = "RIGHT",
       tooltip = HEAD_TIPS.toOOM },
     { key = "highest",   x = 392, w = 50,  label = "Highest",
@@ -2739,7 +2762,7 @@ local function RailTip(fam)
     local lines = {}
     local s = fam.suggested
     if s and type(s.rank) == "number" then
-        lines[#lines + 1] = { l = "Suggested", r = string.format("Rank %d of %d known", s.rank, KnownRanks(fam)),
+        lines[#lines + 1] = { l = "Best", r = string.format("Rank %d of %d known", s.rank, KnownRanks(fam)),
             c = "label", rc = "text" }
     end
     if s and type(s.perMana) == "number" then

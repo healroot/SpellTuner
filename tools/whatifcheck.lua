@@ -218,15 +218,15 @@ T("8 WI.Changes: every number from the what-if book; floor / beaten / trade reas
     local function Want(got, want, what)
         if got ~= want then bad[#bad + 1] = what .. "=" .. string.format("%q", tostring(got)) end
     end
-    local WORSE = "Suggested: Rank 6 -> Rank 12. With these stats Rank 12 gives 5.51 per mana, Rank 6 7.77 (-29%)."
-    Want(a, "Suggested: Rank 12 -> Rank 6. With these stats Rank 6 gives 7.40 per mana, Rank 12 6.83 (+8%).", "moved")
+    local WORSE = "Best: Rank 6 -> Rank 12. With these stats Rank 12 gives 5.51 per mana, Rank 6 7.77 (-29%)."
+    Want(a, "Best: Rank 12 -> Rank 6. With these stats Rank 6 gives 7.40 per mana, Rank 12 6.83 (+8%).", "moved")
     Want(f, WORSE .. " Rank 6 is under 40% of Rank 12's heal.", "floor")
     Want(fd, WORSE .. " Rank 6's trade against max no longer pays.", "floor damage") -- T127: no damage floor
     Want(tr, WORSE .. " Rank 6's trade against max no longer pays.", "trade")
     Want(bt, WORSE .. " Rank 6 is beaten by Rank 9.", "beaten")
-    Want(c, "No change to the suggestion.", "stayed")
-    Want(n1, "No change to the suggestion.", "nil live")
-    Want(n2, "No change to the suggestion.", "nil what if")
+    Want(c, "No change to the best rank.", "stayed")
+    Want(n1, "No change to the best rank.", "nil live")
+    Want(n2, "No change to the best rank.", "nil what if")
     local good = #bad == 0 and ascii and #leaked == 0 and n0 == 0
         and d1.value and d1.perMana and d1.perSec and d1.casts and not d1.cost and not d1.cast
     return good, table.concat(bad, "; ") .. " leaked=" .. table.concat(leaked, ",") .. " ascii=" .. tostring(ascii)

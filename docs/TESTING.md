@@ -2246,8 +2246,8 @@ measured +healing share (49.3 step 4).
    `+150` (or `+` 25 a click, Shift `+` 100): the chip reads **WHAT IF** with `live: R12` under the
    rank, the header's `+healing` and the changed cells in your accent colour, a cell's hover
    `live 6.09, what if 6.41`, a white mark on the per-mana bar at the what-if value, RANKS' note
-   `what if: +150 healing`, and one footer line (`Suggested: Rank 12 -> Rank 6 ...` or
-   `No change to the suggestion. ...`). Form `Tree of Life` and Moonglow 3: the note adds
+   `what if: +150 healing`, and one footer line (`Best: Rank 12 -> Rank 6 ...` or
+   `No change to the best rank. ...`). Form `Tree of Life` and Moonglow 3: the note adds
    `costs from the static table`. Mana 10000: Casts change, nothing else. While it is set,
    hover Healing Touch on your action bar: the tooltip shows the LIVE numbers, and the clock does
    not move. **Clear** puts every number back. Set it again and `/reload`: it is gone (never
@@ -2336,12 +2336,12 @@ step 5's Export block whole, screenshots of 49.1 steps 1, 2 and 7.
 On either client, `/st` -> Spells.
 
 1. **The footer.** A family with several ranks (Healing Touch) -> What if... Type +Healing until
-   the suggestion moves. The footer reads `Suggested: Rank X -> Rank Y. With these stats Rank Y
+   the best rank moves. The footer reads `Best: Rank X -> Rank Y. With these stats Rank Y
    gives P per mana, Rank X Q (+n%).` Both numbers should match the Per mana cells of those two
    rows in the table. If P is below Q the line ends with ` Rank X is beaten by Rank N.` or
    ` Rank X is under 40% of Rank M's heal.`
-2. **No move.** Type a value that leaves the suggestion where it is: the footer reads `No change
-   to the suggestion.`
+2. **No move.** Type a value that leaves the best rank where it is: the footer reads `No change
+   to the best rank.`
 3. **+Spell damage.** Open Wrath (TBC: any damage spell with several ranks) -> What if... -> type
    +Spell damage. The header reads `+N Nature damage what if` (the school of that spell) in the
    accent, and the Value / Per mana cells move. Clear puts them back.
@@ -2375,11 +2375,13 @@ On either client, `/st` -> Spells.
    (or that none does). The card of a marked rank starts with `Marks` lines; the line beside the
    BEST chip compares best with max (hover it for the whole sentence when it is cut). Hover a rank
    in the spellbook: the tooltip's `Best` line, and a `Marks` line on the max or eff rank. TBC
-   only: Lifebloom shows `best` on Rank 1 or on its x3 row, nothing else. Say whether the best
+   only: Lifebloom shows `best` (with the accent fill) on Rank 1 or on its x3 row and `beaten` on
+   the other two. My spells' column and the rail row's tooltip say `Best`. Say whether the best
    rank feels right on Wrath and Healing Touch.
 8. **The two trade-offs.** Settings -> Review -> MODEL: `Trade-off: damage (%)` (25) and
    `Trade-off: heals (%)` (15). Drag the damage one to 0, then open Spells -> Wrath: best is the
-   eff rank. Back to Settings, drag it to 100: Wrath's best moves towards max. No reload needed.
+   eff rank. Back to Settings, drag it to 100: Wrath's best moves towards max (the books re-mark
+   when you let go of the slider). No reload needed.
    Put them back to 25 and 15.
 
 **Paste back** a line per step into `.logs/tbc/0.17.1-s1.md` and `docs/probe/<build>-0.17.1-s1.md`,

@@ -658,7 +658,8 @@ function RankMath:Compute(opts)
                     suggested.rank, suggested.heal, suggested.cost, suggested.hpm,
                     maxRow.rank, maxRow.cost / suggested.cost, maxRow.heal / suggested.heal)
             elseif suggested then
-                callout = string.format("Max rank (R%d) is also the best trade (T127: no lower rank saves enough mana for what it loses per second).", suggested.rank)
+                -- T127: best is max -- no lower rank's extra per mana pays for what it loses per second
+                callout = string.format("Max rank (R%d) is also the best rank: no lower rank saves enough mana for what it loses per second.", suggested.rank)
             end
 
             results[family] = {

@@ -601,12 +601,16 @@ function Book:Build(whatIf)
     return book
 end
 
--- the generation's signature (Spells/Book.lua's EntrySig, minus casts)
+-- the generation's signature (Spells/Book.lua's EntrySig, minus casts); the
+-- rule's stamp (both k) and each family's eff / max marks too, so a k move
+-- that leaves best in place still redraws its words (review T127 n1)
+local function MarkId(e) return tostring(type(e) == "table" and e.id) end
 local function Signature(book)
     local parts = {}
+    if ST.RankRules and ST.RankRules.Stamp then parts[1] = ST.RankRules.Stamp() end
     for _, key in ipairs(book.order) do
         local fam = book.families[key]
-        parts[#parts + 1] = "F" .. key
+        parts[#parts + 1] = "F" .. key .. ":" .. MarkId(fam.effRank) .. ":" .. MarkId(fam.maxRank)
         for _, e in ipairs(fam.ranks) do
             parts[#parts + 1] = table.concat({ e.id, tostring(e.known), tostring(e.value),
                 tostring(e.cost and e.cost.amount), tostring(e.cast), tostring(e.perMana), tostring(e.perSec),

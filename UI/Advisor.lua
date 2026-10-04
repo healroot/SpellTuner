@@ -55,25 +55,33 @@ local toastPending = false
 
 -- T99 (docs/SPEC-next.md 4.4): the rank toast is the class profile's
 -- `advisor` capability (ST.ClassProfile:Can), the druid's on this line.
+-- Review T127 M1: the snapshot carries the rule's stamp (RR.Stamp: version
+-- and both k); one taken under another rule -- before the upgrade, or before
+-- a Trade-off slider moved -- is replaced silently, never compared, so a
+-- shift the rule caused is never blamed on gear.
+local function Snapshot()
+    return { form = ST:InTreeForm() and "tree" or "caster", ranks = ST.RankMath:SuggestedRanks(),
+             rule = ST.RankRules.Stamp() }
+end
+
 local function CheckRankShift()
     toastPending = false
     if not ST.ClassProfile:Can("advisor") or not ST.cdb then return end
     if ST.sim and next(ST.sim) then return end -- dashboard simulation active: not real gear
     -- Suggestions depend on the form too (Tree of Life cost + aura), so a
     -- stored snapshot from the other form is replaced, never compared.
-    local current = ST.RankMath:SuggestedRanks()
-    local form = ST:InTreeForm() and "tree" or "caster"
+    local now = Snapshot()
     local stored = ST.cdb.suggestedRanks
-    if stored and stored.form == form and stored.ranks then
-        for family, rank in pairs(current) do
+    if stored and stored.form == now.form and stored.rule == now.rule and stored.ranks then
+        for family, rank in pairs(now.ranks) do
             if stored.ranks[family] and stored.ranks[family] ~= rank then
                 local label = ST.SpellData.families[family].label
-                ST:Alert(string.format("gear change - %s R%d is now your efficient rank (was R%d). Rebind?",
+                ST:Alert(string.format("gear change - %s R%d is now your best rank (was R%d). Rebind?",
                     label, rank, stored.ranks[family]))
             end
         end
     end
-    ST.cdb.suggestedRanks = { form = form, ranks = current }
+    ST.cdb.suggestedRanks = now
 end
 
 ST:On("PLAYER_EQUIPMENT_CHANGED", function()
@@ -82,15 +90,21 @@ ST:On("PLAYER_EQUIPMENT_CHANGED", function()
     C_Timer.After(2, CheckRankShift) -- debounce a full outfit swap into one check
 end)
 
+-- Seed a missing snapshot, and replace one from another rule (M1)
+local function Reseed(onlyStale)
+    if not (ST.ClassProfile:Can("advisor") and ST.cdb) then return end
+    local stored = ST.cdb.suggestedRanks
+    if onlyStale and stored and stored.ranks and stored.rule == ST.RankRules.Stamp() then return end
+    ST.cdb.suggestedRanks = Snapshot()
+end
+
 ST:RegisterCallback("MD_READY", function()
-    C_Timer.After(5, function()
-        if ST.ClassProfile:Can("advisor") and ST.cdb
-            and not (ST.cdb.suggestedRanks and ST.cdb.suggestedRanks.ranks) then
-            ST.cdb.suggestedRanks = { form = ST:InTreeForm() and "tree" or "caster",
-                                      ranks = ST.RankMath:SuggestedRanks() }
-        end
-    end)
+    C_Timer.After(5, function() Reseed(true) end)
 end)
+
+-- A Trade-off slider moved: best may move for every family; the snapshot
+-- follows silently
+ST:RegisterCallback("RANK_RULES_CHANGED", function() Reseed(false) end)
 
 --------------------------------------------------------------------------------
 -- Drink reminder: OOC, mana < 70%, stationary ~5s, not drinking, at most once

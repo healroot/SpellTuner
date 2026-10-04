@@ -531,7 +531,7 @@ bigRail.frame:SetHeight(400)
 local bigRows = { { id = "overview", text = "Overview", fixed = true } }
 for i = 1, 25 do
     bigRows[#bigRows + 1] = { id = "fam:" .. i, text = "Spell " .. i, tag = "R" .. (i % 7 + 1),
-        tooltip = { { l = "Suggested", r = "Rank 1 of 2 known" }, { l = "Per mana", r = "1.90" } } }
+        tooltip = { { l = "Best", r = "Rank 1 of 2 known" }, { l = "Per mana", r = "1.90" } } }
 end
 bigRail:SetRows(bigRows)
 

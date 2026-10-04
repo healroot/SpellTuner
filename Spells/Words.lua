@@ -407,19 +407,20 @@ function W.TradeRatio(k)
     return Num(x, 1) .. ":1"
 end
 
--- "1% per mana for 4% per second"; "the most per mana" at k 0.
-local function Weight(kind)
-    local k = TradeK(kind)
+-- "1% per mana for 4% per second" at `k` 0.25; "the most per mana" at k 0.
+-- The settings' tips say it too (review T127 m5).
+function W.TradePhrase(k)
     if type(k) ~= "number" or k <= 0 then return "the most per mana" end
     local x = 1 / k
     local n = (math.abs(x - math.floor(x + 0.5)) < 0.05) and Num(x) or Num(x, 1)
     return "1% per mana for " .. n .. "% per second"
 end
+local function Weight(kind) return W.TradePhrase(TradeK(kind)) end
 
 -- The best rule in words (the chip's and the best tag's hover), its weights
 -- and floor read at each call (ST.Rules, the settings).
 function W.SuggestedRule()
-    return "Best: the rank whose extra per mana is worth what it loses per second against max, the fastest rank."
+    return "Best: the rank whose extra per mana is worth what it loses per second against max, the rank with the most per second."
         .. " Damage: " .. Weight("damage") .. ". Heals: " .. Weight("heal") .. ", and at least "
         .. Num(ST.Rules.SUGGESTED_FLOOR * 100) .. "% of your highest rank's heal. Else max."
 end
@@ -437,12 +438,20 @@ local function Change(a, b)
     return (a / b - 1) * 100
 end
 
--- Whether `e`'s value is under the heal floor of `fam`'s highest known rank.
+-- Whether `e`'s value is under the heal floor of `fam`'s highest known rank;
+-- as RR.Marks (review T127 m7), max's value when the highest has none.
+local function FloorBase(fam)
+    local top, max = fam and fam.maxKnown, fam and fam.maxRank
+    if type(top) == "table" and type(top.value) == "number" then return top.value end
+    if type(max) == "table" and type(max.value) == "number" then return max.value end
+    return nil
+end
+W.FloorBase = FloorBase
 local function UnderFloor(e, fam, kind)
     if kind == "damage" then return false end
-    local top = fam and fam.maxKnown
-    if type(top) ~= "table" or type(top.value) ~= "number" or type(e.value) ~= "number" then return false end
-    return e.value < ST.Rules.SUGGESTED_FLOOR * top.value
+    local tv = FloorBase(fam)
+    if tv == nil or type(e.value) ~= "number" then return false end
+    return e.value < ST.Rules.SUGGESTED_FLOOR * tv
 end
 W.UnderFloor = UnderFloor
 
@@ -585,7 +594,9 @@ end
 -- `c` nil (no comparison) is "".
 W.COMPARE_STYLES = { "full", "short", "tight" }
 local function Pct(x) return math.floor(math.abs(x) + 0.5) end
-function W.Compare(c, rank, kind, style)
+-- `highest` true: the rank compared against is the highest known standing in
+-- for a missing max (review T127 m7), headed "(highest)" not "(max)".
+function W.Compare(c, rank, kind, style, highest)
     if type(c) ~= "table" then return "" end
     local dmg = (kind == "damage")
     local what = dmg and "damage" or "healing"
@@ -625,15 +636,17 @@ function W.Compare(c, rank, kind, style)
             parts[#parts + 1] = (short and "" or "a ") .. p .. "% " .. (c.cast < 0 and "shorter" or "longer") .. " cast"
         end
     end
-    local head = short and ("vs Rank " .. r) or ("vs Rank " .. r .. " (max)") -- T127: against max
+    local tag = highest and " (highest)" or " (max)" -- T127: against max
+    local head = "vs Rank " .. r
+    if not short then head = head .. tag end
     if #parts == 0 then return head .. "." end
     return head .. ": " .. table.concat(parts, ", ") .. "."
 end
 
 -- The strip when the suggested rank is the highest known, by the same styles.
 function W.CompareSame(style)
-    if style == "tight" then return "Your highest is best per mana." end
-    return "Your highest rank is also the best per mana."
+    if style == "tight" then return "Your highest is best." end
+    return "Your highest rank is also the best rank."
 end
 
 -- T127 (mockup M5): the strip when best is also max, by the same styles;
@@ -742,7 +755,7 @@ end
 --   "... Rank 6's trade against max no longer pays."
 function W.SuggestionMoved(old, new, beatenBy, top, kind, underFloor)
     local oldR, newR = tostring(old.rank or "-"), tostring(new.rank or "-")
-    local text = "Suggested: Rank " .. oldR .. " -> Rank " .. newR .. "."
+    local text = "Best: Rank " .. oldR .. " -> Rank " .. newR .. "."
     local p, q = new.perMana, old.perMana
     if type(p) ~= "number" or type(q) ~= "number" then return text end
     local pct = ""

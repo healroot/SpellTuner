@@ -524,14 +524,23 @@ local GOLDEN = {
     -- line by line with --print
     -- T127: re-based for the rank marks (docs/tasks/T127-rank-marks.md):
     -- against 8aac028's transcript with --print, the only lines that differ
-    -- are the suggested rank (now RR.Marks' best: Healing Touch, Regrowth and
-    -- Rejuvenation move to their max rank under k 0.15), the callout that
-    -- names it, the dominatedBy ids that follow it and Lifebloom's
-    -- bestOfStacks (x3); 8aac028's digests were druid { 417569, 553152855,
-    -- 1166058324 }, class { 174286, 2384515562, 297317080 }, book { 184989,
-    -- 1369451877, 4050973907 }
-    druid = { n = 900, bytes = 418853, h1 = 1247514214, h2 = 902273299 },
-    class = { n = 354, bytes = 175206, h1 = 3335362305, h2 = 2090036625 },
+    -- are the suggested rank (now RR.Marks' best under k 0.15), the callout
+    -- that names it (every family's: the best-is-max sentence is reworded),
+    -- the dominatedBy ids that follow it and Lifebloom's bestOfStacks (x3).
+    -- Suggested moved (review T127 m4, the whole list):
+    --   druid  Healing Touch (L40 live, tree off), Regrowth (L64 all three
+    --          kits), Rejuvenation (L64 all three, L70 tree on); book:
+    --          Regrowth and Rejuvenation (L64 caster, tree), Rejuvenation
+    --          (L70 tree)
+    --   class  Priest Renew (L60, L70), Flash Heal (L60, L70), Circle of
+    --          Healing (L60), Greater Heal (L60); Shaman Chain Heal (L60,
+    --          L70), Lesser Healing Wave (L60); Paladin Flash of Light (L70)
+    -- 8aac028's digests were druid { 417569, 553152855, 1166058324 }, class
+    -- { 174286, 2384515562, 297317080 }, book { 184989, 1369451877,
+    -- 4050973907 }. Review T127 m3 then dropped the task tag from the
+    -- best-is-max callout (druid and class digests only)
+    druid = { n = 900, bytes = 418621, h1 = 4243151015, h2 = 1211065361 },
+    class = { n = 354, bytes = 175038, h1 = 1517985918, h2 = 53664074 },
     -- T123: the druid's ST.Book (check 28), captured with --golden on 49494eb
     book = { n = 284, bytes = 185071, h1 = 1787193203, h2 = 93974256 },
 }

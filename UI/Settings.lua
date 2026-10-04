@@ -97,7 +97,7 @@ end
 local function Read(row)
     if row.get then return row.get() end
     local v = ST:Setting(row.key)
-    if v == nil then v = row.default end
+    if v == nil then v = Call(row.default) end
     return v
 end
 
@@ -217,7 +217,7 @@ end
 -- The row kinds
 --------------------------------------------------------------------------------
 local function Tips(t)
-    t = t or {}
+    t = Call(t) or {}
     return t[1], t[2], t[3], t[4], t[5], t[6], t[7], t[8]
 end
 
@@ -240,9 +240,13 @@ function BUILD.check(pane, sec, row)
 end
 
 function BUILD.slider(pane, sec, row)
+    -- row.release: once a value is let go of (the mouse-up, Enter), where
+    -- row.after runs on every step of a drag (review T127 m6)
+    local release
+    if row.release then release = function(value) row.release(value) end end
     local s = UI.CreateSlider(row.text, sec, row.min, row.max, row.width or 160, row.step or 1, function(value)
         WriteSlider(row, value)
-    end, nil, row.percent and true or false, Tips(row.tips))
+    end, release, row.percent and true or false, Tips(row.tips))
     -- the label sits above the slider (Pitch(14) of room), its box under it
     sec.items[#sec.items + 1] = {
         region = s, x = 5 + (row.indent or 15),
@@ -515,21 +519,36 @@ end
 
 -- T127 (docs/tasks/T127-rank-marks.md): the two trade-offs the best mark
 -- scores with (Spells/RankRules.lua reads them at each call), 0..1 in steps of
--- 0.05, shown as percent; both lines, under the line's own MODEL rows. A move
--- re-marks every book (RANK_RULES_CHANGED).
+-- 0.05, shown as percent; both lines, under the line's own MODEL rows. A
+-- released move re-marks every book (RANK_RULES_CHANGED, once per drag:
+-- review T127 m6). Defaults and words read ST.Rules (review T127 m5).
 local function TradeChanged() ST:Fire("RANK_RULES_CHANGED") end
+local function PctOf(x) return string.format("%d%%", math.floor(x * 100 + 0.5)) end
+local function Phrase(k)
+    if ST.Words and ST.Words.TradePhrase then return ST.Words.TradePhrase(k) end
+    return ""
+end
 MS.TRADE_ROWS = {
     { kind = "slider", text = "Trade-off: damage (%)", key = "tradeKDamage", min = 0, max = 100, step = 5,
-      scale = 100, percent = true, default = 0.25, mark = "tradeDamageSlider", after = TradeChanged,
-      tips = { "Trade-off: damage",
-               "How much per second a lower damage rank may give up for each",
-               "1% it gains per mana and still be best. 25%: 1% per mana for 4% per second.",
-               "0: the most per mana wins; 100%: one for one." } },
+      scale = 100, percent = true, mark = "tradeDamageSlider", release = TradeChanged,
+      default = function() return ST.Rules.TRADE_K_DAMAGE end,
+      tips = function()
+          local k = ST.Rules.TRADE_K_DAMAGE
+          return { "Trade-off: damage",
+                   "How much per second a lower damage rank may give up for each",
+                   "1% it gains per mana and still be best. " .. PctOf(k) .. ": " .. Phrase(k) .. ".",
+                   "0: the most per mana wins; 100%: one for one." }
+      end },
     { kind = "slider", text = "Trade-off: heals (%)", key = "tradeKHeal", min = 0, max = 100, step = 5,
-      scale = 100, percent = true, default = 0.15, mark = "tradeHealSlider", after = TradeChanged,
-      tips = { "Trade-off: heals",
-               "The same for heals, which also need 40% of your highest rank's heal.",
-               "15%: 1% per mana for 6.7% per second." } },
+      scale = 100, percent = true, mark = "tradeHealSlider", release = TradeChanged,
+      default = function() return ST.Rules.TRADE_K_HEAL end,
+      tips = function()
+          local k = ST.Rules.TRADE_K_HEAL
+          return { "Trade-off: heals",
+                   "The same for heals, which also need " .. PctOf(ST.Rules.SUGGESTED_FLOOR)
+                       .. " of your highest rank's heal.",
+                   PctOf(k) .. ": " .. Phrase(k) .. "." }
+      end },
 }
 
 local function BuildReview(content)

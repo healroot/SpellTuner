@@ -312,14 +312,14 @@ end
 -- follows (beaten, else under the floor, else -- T127 -- the trade no longer
 -- pays). Else "No change to the suggestion."
 function WI.Changes(liveFam, whatFam)
-    local same = "No change to the suggestion."
+    local same = "No change to the best rank." -- T127 (review m1): was "suggestion"
     if type(liveFam) ~= "table" or type(whatFam) ~= "table" then return same end
     local ls, ws = liveFam.suggested, whatFam.suggested
     if not ls or not ws or ls.id == ws.id then return same end
     local old = ById(whatFam, ls.id)
     local new = ById(whatFam, ws.id) or ws
     if not old then
-        return "Suggested: Rank " .. tostring(ls.rank or "-") .. " -> Rank " .. tostring(ws.rank or "-") .. "."
+        return "Best: Rank " .. tostring(ls.rank or "-") .. " -> Rank " .. tostring(ws.rank or "-") .. "."
     end
     local beaten
     if old.dominatedBy ~= nil then
@@ -331,12 +331,14 @@ function WI.Changes(liveFam, whatFam)
     -- T127: a heal under the floor of the what-if book's highest known rank
     -- (else, not beaten, its trade against max no longer pays)
     local underFloor = false
+    -- (review T127 m7: max's value when the highest has none, as RR.Marks)
     local tv = whatFam.maxKnown and whatFam.maxKnown.value
+    if type(tv) ~= "number" then tv = whatFam.maxRank and whatFam.maxRank.value end
     if kind ~= "damage" and type(tv) == "number" and type(old.value) == "number" then
         underFloor = old.value < ST.Rules.SUGGESTED_FLOOR * tv
     end
     if ST.Words and ST.Words.SuggestionMoved then
         return ST.Words.SuggestionMoved(old, new, beaten, top, kind, underFloor)
     end
-    return "Suggested: Rank " .. tostring(old.rank or "-") .. " -> Rank " .. tostring(new.rank or "-") .. "."
+    return "Best: Rank " .. tostring(old.rank or "-") .. " -> Rank " .. tostring(new.rank or "-") .. "."
 end

@@ -68,6 +68,15 @@ function RR.TradeK(kind)
     return fallback
 end
 
+-- The rule's stamp (review T127 M1): its version and both k, so a snapshot of
+-- best ranks taken under another rule (UI/Advisor.lua's gear toast) is
+-- replaced, never compared. Bump RULE_VERSION when the rule itself changes.
+RR.RULE_VERSION = 2 -- 1: the floor rule (to 0.17.1); 2: T127's three marks
+function RR.Stamp()
+    return string.format("marks%d:%.4f:%.4f:%.4f", RR.RULE_VERSION, RR.TradeK("damage"), RR.TradeK("heal"),
+        ST.Rules.SUGGESTED_FLOOR)
+end
+
 -- The trade of row `r` against `maxRow` (the most per second):
 -- (eff / eff of max - 1) - k * (1 - rate / rate of max). Positive when the
 -- per mana gained outweighs the per second lost at weight `k`; 0 for max
