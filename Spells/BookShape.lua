@@ -53,7 +53,9 @@ BS.FAMILY = {
     ranks     = R("table"),
     ids       = R("table"),
     maxKnown  = O("table"),
-    suggested = O("table"),
+    suggested = O("table"),   -- T127: the `best` mark (Spells/RankRules.lua's RR.Marks)
+    effRank   = O("table"),   -- T127: the `eff` mark, the most per mana
+    maxRank   = O("table"),   -- T127: the `max` mark, the most per second
     gaps      = O("table"),
     school    = O("string"),
     noSeed    = O("boolean"),
@@ -109,6 +111,9 @@ BS.ENTRY = {
     suggested    = O("boolean"),
     dominated    = O("boolean"),
     dominatedBy  = O("number"),
+    -- T127: a rank with rolled rows (TBC's Lifebloom) that wins best over
+    -- them (RR.MarkVariants); nil when a rolled row wins or there are none
+    bestOfStacks = O("boolean"),
     -- DamageHalf
     half         = O("string"),
     of           = O("table"),
@@ -138,6 +143,7 @@ BS.VARIANT = {
     cost          = O("table|number"),
     cast          = O("number"),
     afterOverheal = O("table"),
+    bestOfStacks  = O("boolean"), -- T127: this rolled row wins best (RR.MarkVariants)
 }
 
 -- entry.bonus: the share of +healing (or +damage) the rank gets.

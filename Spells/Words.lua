@@ -388,10 +388,187 @@ function W.CritNote()
     return "x" .. Num(W.CRIT_MULT, 1) .. ", not measured"
 end
 
--- The suggested rule in words (3.5), its floor read from ST.Rules.
+-- T127 (docs/tasks/T127-rank-marks.md, mockup docs/mockups/rank-marks.html
+-- M5): the three rank marks in words. `k` is Spells/RankRules.lua's
+-- RR.TradeK(kind) (the settings tradeKDamage / tradeKHeal), read at each call.
+local function TradeK(kind)
+    local RR = ST.RankRules
+    if RR and RR.TradeK then return RR.TradeK(kind) end
+    if kind == "damage" then return ST.Rules.TRADE_K_DAMAGE end
+    return ST.Rules.TRADE_K_HEAL
+end
+
+-- "4:1" (1% per mana is worth 4% per second at k 0.25), "6.7:1" at 0.15,
+-- "1:1" at 1; nil at k 0 (per mana only).
+function W.TradeRatio(k)
+    if type(k) ~= "number" or k <= 0 then return nil end
+    local x = 1 / k
+    if math.abs(x - math.floor(x + 0.5)) < 0.05 then return Num(x) .. ":1" end
+    return Num(x, 1) .. ":1"
+end
+
+-- "1% per mana for 4% per second"; "the most per mana" at k 0.
+local function Weight(kind)
+    local k = TradeK(kind)
+    if type(k) ~= "number" or k <= 0 then return "the most per mana" end
+    local x = 1 / k
+    local n = (math.abs(x - math.floor(x + 0.5)) < 0.05) and Num(x) or Num(x, 1)
+    return "1% per mana for " .. n .. "% per second"
+end
+
+-- The best rule in words (the chip's and the best tag's hover), its weights
+-- and floor read at each call (ST.Rules, the settings).
 function W.SuggestedRule()
-    return "Highest heal per mana among the ranks nothing beats on both per mana and per second, with at least "
-        .. Num(ST.Rules.SUGGESTED_FLOOR * 100) .. "% of your highest rank's heal."
+    return "Best: the rank whose extra per mana is worth what it loses per second against max, the fastest rank."
+        .. " Damage: " .. Weight("damage") .. ". Heals: " .. Weight("heal") .. ", and at least "
+        .. Num(ST.Rules.SUGGESTED_FLOOR * 100) .. "% of your highest rank's heal. Else max."
+end
+
+-- " (damage, 4:1)" / " at 4:1": the ratio a sentence names, "" at k 0.
+local function At(kind)
+    local r = W.TradeRatio(TradeK(kind))
+    if not r then return "" end
+    return " at " .. r
+end
+
+-- (a / b - 1) * 100, nil when either is missing or b is not positive.
+local function Change(a, b)
+    if type(a) ~= "number" or type(b) ~= "number" or b <= 0 then return nil end
+    return (a / b - 1) * 100
+end
+
+-- Whether `e`'s value is under the heal floor of `fam`'s highest known rank.
+local function UnderFloor(e, fam, kind)
+    if kind == "damage" then return false end
+    local top = fam and fam.maxKnown
+    if type(top) ~= "table" or type(top.value) ~= "number" or type(e.value) ~= "number" then return false end
+    return e.value < ST.Rules.SUGGESTED_FLOOR * top.value
+end
+W.UnderFloor = UnderFloor
+
+-- The marks `e` holds in `fam` (fam.suggested best, fam.maxRank max,
+-- fam.effRank eff), in the order best, max, eff: { "best", "max" }.
+function W.MarksOf(e, fam)
+    local out = {}
+    if type(e) ~= "table" or type(fam) ~= "table" then return out end
+    if fam.suggested == e then out[#out + 1] = "best" end
+    if fam.maxRank == e then out[#out + 1] = "max" end
+    if fam.effRank == e then out[#out + 1] = "eff" end
+    return out
+end
+
+-- One mark's reason (the rank card's Marks block, M5), the rule's own
+-- numbers read back; `kind` "heal" or "damage".
+--   best (also max, eff elsewhere) "no trade pays at 4:1; Rank 6: +5% per mana, -49% per sec"
+--   best (all three)               "nothing to trade: it is also the most per mana"
+--   best (not max)                 "+204% per mana for -40% per second (worth it for damage at 4:1)"
+--   max                            "most per second: 720"
+--   eff                            "most per mana: 4.44 (+5% vs Rank 10 for -49% per second)"
+--   eff under the floor            "most per mana: 4.75; under the 40% heal floor, so not best"
+function W.MarkReason(mark, e, fam, kind)
+    if type(e) ~= "table" or type(fam) ~= "table" then return "" end
+    local maxR, effR = fam.maxRank, fam.effRank
+    if mark == "max" then return "most per second: " .. Num(e.perSec) end
+    if mark == "eff" then
+        local text = "most per mana: " .. Num(e.perMana, 2)
+        if fam.suggested ~= e then
+            if UnderFloor(e, fam, kind) then
+                return text .. "; under the " .. Num(ST.Rules.SUGGESTED_FLOOR * 100) .. "% heal floor, so not best"
+            end
+            if type(maxR) == "table" and maxR ~= e then
+                local pm, ps = Change(e.perMana, maxR.perMana), Change(e.perSec, maxR.perSec)
+                if pm and ps then
+                    text = text .. " (" .. W.Signed(pm) .. " vs Rank " .. tostring(maxR.rank or "-") .. " for "
+                        .. W.Signed(ps) .. " per second)"
+                end
+            end
+        end
+        return text
+    end
+    if mark ~= "best" then return "" end
+    if type(maxR) ~= "table" then return "your highest rank: nothing to compare it with" end
+    if maxR == e then
+        if effR == nil or effR == e then return "nothing to trade: it is also the most per mana" end
+        local pm, ps = Change(effR.perMana, e.perMana), Change(effR.perSec, e.perSec)
+        local text = "no trade pays" .. At(kind)
+        if pm and ps then
+            text = text .. "; Rank " .. tostring(effR.rank or "-") .. ": " .. W.Signed(pm) .. " per mana, "
+                .. W.Signed(ps) .. " per sec"
+        end
+        return text
+    end
+    local pm, ps = Change(e.perMana, maxR.perMana), Change(e.perSec, maxR.perSec)
+    if not (pm and ps) then return "the best trade against max" end
+    return W.Signed(pm) .. " per mana for " .. W.Signed(ps) .. " per second (worth it for "
+        .. ((kind == "damage") and "damage" or "heals") .. At(kind) .. ")"
+end
+
+-- The tag's hover sentence (M5), for the strongest mark `tag` of `e`.
+--   best = max: "The most per second, and no rank's extra per mana is worth
+--               what it loses per second (damage: 1% per mana for 4% per
+--               second). Most per mana is Rank 6: +5% for -49% per second."
+--   best:       "The best trade against max (Rank 12): +1% per mana for -1%
+--               per second. For heals 1% per mana is worth 6.7% per second,
+--               among ranks with at least 40% of your highest heal."
+--   max:        "The most per second: 986. The rank to press when time, not
+--               mana, runs out."
+--   eff:        "The most per mana, 10% more than Rank 12. Not best: its heal
+--               is under 40% of your highest rank's, and below that a heal
+--               costs you casts."
+-- Answers title, sentence.
+function W.MarkTip(tag, e, fam, kind)
+    local maxR, effR = fam and fam.maxRank, fam and fam.effRank
+    local heal = (kind ~= "damage")
+    local rankName = "Rank " .. tostring(e and e.rank or "-")
+    if tag == "best" then
+        if type(maxR) ~= "table" then return "Best " .. rankName, W.SuggestedRule() end
+        if maxR == e then
+            local text = "The most per second, and no rank's extra per mana is worth what it loses per second ("
+                .. (heal and "heals" or "damage") .. ": " .. Weight(kind) .. ")."
+            if type(effR) == "table" and effR ~= e then
+                local pm, ps = Change(effR.perMana, e.perMana), Change(effR.perSec, e.perSec)
+                if pm and ps then
+                    text = text .. " Most per mana is Rank " .. tostring(effR.rank or "-") .. ": " .. W.Signed(pm)
+                        .. " for " .. W.Signed(ps) .. " per second."
+                end
+            else
+                text = text .. " It is also the most per mana."
+            end
+            return "Best and max " .. rankName, text
+        end
+        local pm, ps = Change(e.perMana, maxR.perMana), Change(e.perSec, maxR.perSec)
+        local text = "The best trade against max (Rank " .. tostring(maxR.rank or "-") .. ")"
+        if pm and ps then text = text .. ": " .. W.Signed(pm) .. " per mana for " .. W.Signed(ps) .. " per second" end
+        text = text .. ". For " .. (heal and "heals" or "damage") .. " " .. Weight(kind):gsub(" for ", " is worth ")
+        if heal then
+            text = text .. ", among ranks with at least " .. Num(ST.Rules.SUGGESTED_FLOOR * 100)
+                .. "% of your highest heal."
+        else
+            text = text .. "."
+        end
+        return "Best " .. rankName, text
+    end
+    if tag == "max" then
+        return "Max " .. rankName, "The most per second: " .. Num(e and e.perSec)
+            .. ". The rank to press when time, not mana, runs out."
+    end
+    if tag == "eff" then
+        local text = "The most per mana"
+        if type(maxR) == "table" and maxR ~= e then
+            local pm = Change(e.perMana, maxR.perMana)
+            if pm then text = text .. ", " .. Num(math.abs(pm)) .. "% more than Rank " .. tostring(maxR.rank or "-") end
+        end
+        text = text .. "."
+        if UnderFloor(e, fam, kind) then
+            text = text .. " Not best: its heal is under " .. Num(ST.Rules.SUGGESTED_FLOOR * 100)
+                .. "% of your highest rank's, and below that a heal costs you casts."
+        elseif fam and fam.suggested ~= e then
+            text = text .. " Not best: the per second it gives up costs more than the mana it saves"
+                .. At(kind) .. ". Press it when mana runs out before the fight does."
+        end
+        return "Eff " .. rankName, text
+    end
+    return nil
 end
 
 -- The Spells pane's decision strip (3.5): the suggested rank against the
@@ -448,7 +625,7 @@ function W.Compare(c, rank, kind, style)
             parts[#parts + 1] = (short and "" or "a ") .. p .. "% " .. (c.cast < 0 and "shorter" or "longer") .. " cast"
         end
     end
-    local head = short and ("vs Rank " .. r) or ("vs Rank " .. r .. " (your highest)")
+    local head = short and ("vs Rank " .. r) or ("vs Rank " .. r .. " (max)") -- T127: against max
     if #parts == 0 then return head .. "." end
     return head .. ": " .. table.concat(parts, ", ") .. "."
 end
@@ -457,6 +634,56 @@ end
 function W.CompareSame(style)
     if style == "tight" then return "Your highest is best per mana." end
     return "Your highest rank is also the best per mana."
+end
+
+-- T127 (mockup M5): the strip when best is also max, by the same styles;
+-- `fam` gives the marks, `kind` "heal" or "damage".
+--   one known rank   "Your only rank."
+--   all three marks  "Rank 12 holds all three marks: the most per mana and
+--                    per second. Every lower rank is beaten."
+--   eff elsewhere    full  "Rank 10 is best and max: no rank's extra per
+--                          mana is worth what it loses per second (damage,
+--                          4:1). Rank 6 has the most per mana: 5% more for
+--                          49% less per second."
+--                    short "Also max. Most per mana: Rank 6, +5% per mana,
+--                          -49% per sec."
+--                    tight "Also max. Most per mana: R6."
+-- No max (no rank with numbers): W.CompareSame.
+function W.CompareBestIsMax(fam, kind, style)
+    local best, effR = fam and fam.suggested, fam and fam.effRank
+    -- a rank with rolled rows (TBC's Lifebloom): the row that holds best
+    if type(best) == "table" and type(best.variants) == "table" then
+        if best.bestOfStacks then return "One cast holds all three marks: let it bloom." end
+        for _, v in ipairs(best.variants) do
+            if v.bestOfStacks then
+                return "Rolled " .. tostring(v.variantLabel or ("x" .. tostring(v.variant))) .. " holds all three marks."
+            end
+        end
+    end
+    local known = 0
+    for _, x in ipairs(fam and fam.ranks or {}) do
+        if x.known then known = known + 1 end
+    end
+    if known == 1 then return "Your only rank." end
+    if type(best) ~= "table" or fam.maxRank ~= best then return W.CompareSame(style) end
+    local rn = tostring(best.rank or "-")
+    if effR == nil or effR == best then
+        if style == "tight" then return "Rank " .. rn .. " holds all three marks." end
+        return "Rank " .. rn .. " holds all three marks: the most per mana and per second. Every lower rank is beaten."
+    end
+    local er = tostring(effR.rank or "-")
+    local pm, ps = Change(effR.perMana, best.perMana), Change(effR.perSec, best.perSec)
+    if style == "tight" or not (pm and ps) then return "Also max. Most per mana: R" .. er .. "." end
+    if style == "short" then
+        return "Also max. Most per mana: Rank " .. er .. ", " .. W.Signed(pm) .. " per mana, " .. W.Signed(ps) .. " per sec."
+    end
+    local ratio = W.TradeRatio(TradeK(kind))
+    local paren = (kind == "damage") and "damage" or "heals"
+    if ratio then paren = paren .. ", " .. ratio end
+    return "Rank " .. rn .. " is best and max: no rank's extra per mana is worth what it loses per second ("
+        .. paren .. "). Rank " .. er .. " has the most per mana: " .. Num(math.abs(pm)) .. "% "
+        .. ((pm >= 0) and "more" or "less") .. " for " .. Num(math.abs(ps)) .. "% "
+        .. ((ps <= 0) and "less" or "more") .. " per second."
 end
 
 -- T110 (docs/SPEC-next.md 4.2 P6): an either-or spell's other half, for the
@@ -510,7 +737,10 @@ end
 -- else under the floor (ST.Rules.SUGGESTED_FLOOR, Spells/RankRules.lua's).
 --   "Suggested: Rank 1 -> Rank 2. With these stats Rank 2 gives 7.40 per
 --    mana, Rank 1 6.83 (+8%)."
-function W.SuggestionMoved(old, new, beatenBy, top, kind)
+-- T127: `underFloor` true when `old` is a heal under the floor; else, when
+-- neither beaten nor under the floor, its trade against max no longer pays:
+--   "... Rank 6's trade against max no longer pays."
+function W.SuggestionMoved(old, new, beatenBy, top, kind, underFloor)
     local oldR, newR = tostring(old.rank or "-"), tostring(new.rank or "-")
     local text = "Suggested: Rank " .. oldR .. " -> Rank " .. newR .. "."
     local p, q = new.perMana, old.perMana
@@ -522,10 +752,12 @@ function W.SuggestionMoved(old, new, beatenBy, top, kind)
     if p < q then
         if beatenBy ~= nil then
             text = text .. " Rank " .. oldR .. " is beaten by Rank " .. tostring(beatenBy) .. "."
-        elseif top ~= nil then
+        elseif underFloor and top ~= nil then
             local floor = (ST.Rules and ST.Rules.SUGGESTED_FLOOR) or 0.4
             text = text .. " Rank " .. oldR .. " is under " .. Num(floor * 100) .. "% of Rank " .. tostring(top)
                 .. "'s " .. ((kind == "damage") and "damage" or "heal") .. "."
+        else
+            text = text .. " Rank " .. oldR .. "'s trade against max no longer pays."
         end
     end
     return text

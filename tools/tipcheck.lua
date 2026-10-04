@@ -305,12 +305,16 @@ do
 
     local r1Lines = SpellTip:Lines(92070)
     local r2Lines = SpellTip:Lines(92071)
-    local onItself = r1Lines[2][1] == "Suggested" and r1Lines[2][2] == "this rank"
+    -- T127 (mockup rank-marks M5): the line is "Best"; on itself it names the
+    -- other marks it holds (Rank 1 is also eff, Rank 2 max)
+    local onItself = r1Lines[2][1] == "Best" and r1Lines[2][2] == "this rank (also eff)"
     local onTheOther = r2Lines[2]
-    local onTheOtherGood = onTheOther[1] == "Suggested"
-        -- T78 (mockup M5): the suggested rank against this one, in percent
-        and onTheOther[2] == string.format("Rank 1 (%+d%% per mana)",
-            math.floor((sub1.perMana / sub2.perMana - 1) * 100 + 0.5))
+    local onTheOtherGood = onTheOther[1] == "Best"
+        -- T78 (mockup M5): the suggested rank against this one, in percent;
+        -- T127: per second too
+        and onTheOther[2] == string.format("Rank 1 (%+d%% per mana, %+d%% per sec)",
+            math.floor((sub1.perMana / sub2.perMana - 1) * 100 + 0.5),
+            math.floor((sub1.perSec / sub2.perSec - 1) * 100 + 0.5))
         and IsColour(onTheOther[3], onTheOther[4], onTheOther[5], "label")
         and IsColour(onTheOther[6], onTheOther[7], onTheOther[8], "accent")
 
@@ -356,7 +360,7 @@ do
 
     check("a spell not in the book gets the header, per mana and per second",
         notInBook and shape and average ~= nil and average[2] == "70 (60 - 80)"
-        and FindLine(detail, "Suggested") == nil and FindLine(detail, "Casts to OOM") == nil,
+        and FindLine(detail, "Best") == nil and FindLine(detail, "Casts to OOM") == nil,
         string.format("notInBook=%s lines=%s average=%s", tostring(notInBook),
             tostring(lines and #lines), tostring(average and average[2])))
 end
@@ -996,7 +1000,7 @@ do
     check("T37: a hybrid's detail is the hit, the over-time part and the total",
         hit ~= nil and hit[2] == "avg 13, crit 17 - 23" and over ~= nil and over[2] == "24 over 12 s"
         and total ~= nil and total[2] == "37" and LineAt(d, "Crit multiplier") ~= nil
-        and sugg[1] == "Suggested" and sugg[2]:find("^Rank 1 %(") ~= nil,
+        and sugg[1] == "Best" and sugg[2]:find("^Rank 1 %(") ~= nil,
         string.format("hit=%s over=%s total=%s suggested=%s/%s", tostring(hit and hit[2]),
             tostring(over and over[2]), tostring(total and total[2]), tostring(sugg[1]), tostring(sugg[2])))
 end
@@ -1504,14 +1508,14 @@ do
         and Right(ret.plain, "Per mana") == "1.07" and Right(ret.plain, "Per sec") == "34.8  every 10 s"
         and Right(ret.detail, "Average") == "348 (334 - 362)"
         and Right(ret.detail, "Or heals") == "320  0.98 per mana" and Right(ret.plain, "Or heals") == nil
-        and Right(ret.plain, "Suggested") == "this rank"
+        and Right(ret.plain, "Best") == "this rank (also max, eff)"
     check("T110: Holy Shock's block shows the role's half and names the other behind the key", cond,
         good and string.format("roles=%s/%s heal pm=%q ps=%q or=%q; ret pm=%q ps=%q avg=%q or=%q sugg=%q",
             tostring(healer.role), tostring(ret.role), tostring(Right(healer.plain, "Per mana")),
             tostring(Right(healer.plain, "Per sec")), tostring(Right(healer.detail, "Or damage")),
             tostring(Right(ret.plain, "Per mana")), tostring(Right(ret.plain, "Per sec")),
             tostring(Right(ret.detail, "Average")), tostring(Right(ret.detail, "Or heals")),
-            tostring(Right(ret.plain, "Suggested"))) or tostring(healer))
+            tostring(Right(ret.plain, "Best"))) or tostring(healer))
 end
 
 --------------------------------------------------------------------------------

@@ -309,7 +309,8 @@ end
 -- Rank 12 -> Rank 6. With these stats Rank 6 gives 7.40 per mana, Rank 12
 -- 6.83 (+8%)." -- both numbers the what-if book's; `liveFam` gives only which
 -- rank was suggested live. When the new rank gives less per mana, the reason
--- follows (beaten, else under the floor). Else "No change to the suggestion."
+-- follows (beaten, else under the floor, else -- T127 -- the trade no longer
+-- pays). Else "No change to the suggestion."
 function WI.Changes(liveFam, whatFam)
     local same = "No change to the suggestion."
     if type(liveFam) ~= "table" or type(whatFam) ~= "table" then return same end
@@ -327,8 +328,15 @@ function WI.Changes(liveFam, whatFam)
     end
     local top = whatFam.maxKnown and whatFam.maxKnown.rank
     local kind = (whatFam.kind == "damage") and "damage" or "heal"
+    -- T127: a heal under the floor of the what-if book's highest known rank
+    -- (else, not beaten, its trade against max no longer pays)
+    local underFloor = false
+    local tv = whatFam.maxKnown and whatFam.maxKnown.value
+    if kind ~= "damage" and type(tv) == "number" and type(old.value) == "number" then
+        underFloor = old.value < ST.Rules.SUGGESTED_FLOOR * tv
+    end
     if ST.Words and ST.Words.SuggestionMoved then
-        return ST.Words.SuggestionMoved(old, new, beaten, top, kind)
+        return ST.Words.SuggestionMoved(old, new, beaten, top, kind, underFloor)
     end
     return "Suggested: Rank " .. tostring(old.rank or "-") .. " -> Rank " .. tostring(new.rank or "-") .. "."
 end

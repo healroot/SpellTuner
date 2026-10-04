@@ -256,6 +256,17 @@ ST.Rules = {
     -- A rank is suggested only while its value is at least this share of the
     -- highest known rank's (Spells/Book.lua, Engine/RankMath.lua; P23).
     SUGGESTED_FLOOR = 0.4,
+    -- T127: how much a lost per second weighs against a gained per mana in
+    -- the `best` mark (Spells/RankRules.lua's RR.Marks): score = (eff / eff of
+    -- max - 1) - k * (1 - rate / rate of max). Not measured: the author's own
+    -- reading of 2026-10-04 on TBC -- Wrath R8 / Starfire R6, a small damage
+    -- loss for 3-5% more per mana, are the right picks, while +5% per mana for
+    -- -50% damage is not (5 < 12.5 at 0.25) -- so a percent of efficiency is
+    -- worth more than a percent of output. Heals lean further to efficiency
+    -- and keep SUGGESTED_FLOOR besides. Defaults of the settings tradeKDamage
+    -- and tradeKHeal (Settings -> Review -> MODEL, 0..1), read at each call.
+    TRADE_K_DAMAGE = 0.25,
+    TRADE_K_HEAL = 0.15,
 }
 
 -- Alert respects /st mute and pulses the widget if present.

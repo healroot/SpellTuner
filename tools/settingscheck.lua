@@ -612,4 +612,33 @@ else
     end)
 end
 
+--------------------------------------------------------------------------------
+T.section("14. T127: the two Trade-off rows on Review / MODEL")
+--------------------------------------------------------------------------------
+Try("Trade-off: damage / heals on MODEL, 0..100 step 5, write tradeKDamage / tradeKHeal and re-mark the books", function()
+    local r = Pane("review")
+    local found, bad, fired = {}, {}, 0
+    ST:RegisterCallback("RANK_RULES_CHANGED", function() fired = fired + 1 end)
+    for _, c in ipairs(r.controls) do
+        local row = c.row
+        if c.kind == "slider" and (row.key == "tradeKDamage" or row.key == "tradeKHeal") then
+            found[#found + 1] = row.key
+            if SectionOf(c.ctl) ~= "MODEL" then bad[#bad + 1] = row.key .. " in " .. tostring(SectionOf(c.ctl)) end
+            if row.min ~= 0 or row.max ~= 100 or row.step ~= 5 or row.scale ~= 100 then
+                bad[#bad + 1] = row.key .. " range"
+            end
+            local before = fired
+            Type(c.ctl, "50")
+            if ST.db[row.key] ~= 0.5 then bad[#bad + 1] = row.key .. "=" .. tostring(ST.db[row.key]) end
+            if fired ~= before + 1 then bad[#bad + 1] = row.key .. " fired " .. (fired - before) end
+            local kind = (row.key == "tradeKDamage") and "damage" or "heal"
+            if ST.RankRules.TradeK(kind) ~= 0.5 then bad[#bad + 1] = row.key .. " not read" end
+            ST.db[row.key] = nil
+        end
+    end
+    local defaults = ST.RankRules.TradeK("damage") == 0.25 and ST.RankRules.TradeK("heal") == 0.15
+    return #bad == 0 and table.concat(found, ",") == "tradeKDamage,tradeKHeal" and defaults,
+        "found=" .. table.concat(found, ",") .. " " .. table.concat(bad, "; ")
+end)
+
 T.done()

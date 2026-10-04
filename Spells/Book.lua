@@ -815,10 +815,14 @@ function Book:Rows(family, pool)
     -- its spell id (a plain number, never a second path to a table) -- the
     -- suggested rank when it is one of them, else the one of them with the
     -- best per mana. T67: all three are Spells/RankRules.lua's.
+    -- T127: three marks instead of one (RR.Marks): eff (the most per mana),
+    -- max (the most per second) and best -- the trade against max at the
+    -- family's kind's k, a heal still over the floor -- held as `suggested`.
     RR.Pareto(family.ranks, RULE_FIELDS)
-    local suggested = RR.Suggested(family.ranks, family.maxKnown, RULE_FIELDS)
+    local suggested, maxMark, effMark = RR.Marks(family.ranks, family.maxKnown, RULE_FIELDS, family.kind)
     if suggested then suggested.suggested = true end
     family.suggested = suggested
+    family.maxRank, family.effRank = maxMark, effMark
     RR.DominatedBy(family.ranks, suggested, RULE_FIELDS)
 end
 
@@ -863,6 +867,7 @@ function Book:Half(family, role, pool)
     for k, x in pairs(family) do view[k] = x end
     view.kind, view.altKind, view.half, view.of = "damage", "heal", "damage", family
     view.ranks, view.maxKnown, view.suggested = {}, nil, nil
+    view.maxRank, view.effRank = nil, nil
     for i, e in ipairs(family.ranks or {}) do
         local v = DamageHalf(e, pool)
         view.ranks[i] = v
@@ -870,9 +875,10 @@ function Book:Half(family, role, pool)
     end
     view.shape = ShapeOf(view)
     RR.Pareto(view.ranks, RULE_FIELDS)
-    local suggested = RR.Suggested(view.ranks, view.maxKnown, RULE_FIELDS)
+    local suggested, maxMark, effMark = RR.Marks(view.ranks, view.maxKnown, RULE_FIELDS, "damage")
     if suggested then suggested.suggested = true end
     view.suggested = suggested
+    view.maxRank, view.effRank = maxMark, effMark
     RR.DominatedBy(view.ranks, suggested, RULE_FIELDS)
     return view
 end
@@ -1242,6 +1248,8 @@ end
 ST:On("SPELLS_CHANGED", function() Book:MarkDirty() end)
 ST:On("PLAYER_LEVEL_UP", function() Book:MarkDirty() end)
 ST:On("PLAYER_EQUIPMENT_CHANGED", function() Book:MarkDirty() end)
+-- T127: a Trade-off setting moved (UI/Settings.lua): the best mark moves
+ST:RegisterCallback("RANK_RULES_CHANGED", function() Book:MarkDirty() end)
 ST:On("UNIT_AURA", function(unit)
     if not ST.API.IsSecret(unit) and unit == "player" then Book:MarkDirty() end
 end)

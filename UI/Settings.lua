@@ -513,6 +513,25 @@ local function BuildGeneral(content)
     return pane
 end
 
+-- T127 (docs/tasks/T127-rank-marks.md): the two trade-offs the best mark
+-- scores with (Spells/RankRules.lua reads them at each call), 0..1 in steps of
+-- 0.05, shown as percent; both lines, under the line's own MODEL rows. A move
+-- re-marks every book (RANK_RULES_CHANGED).
+local function TradeChanged() ST:Fire("RANK_RULES_CHANGED") end
+MS.TRADE_ROWS = {
+    { kind = "slider", text = "Trade-off: damage (%)", key = "tradeKDamage", min = 0, max = 100, step = 5,
+      scale = 100, percent = true, default = 0.25, mark = "tradeDamageSlider", after = TradeChanged,
+      tips = { "Trade-off: damage",
+               "How much per second a lower damage rank may give up for each",
+               "1% it gains per mana and still be best. 25%: 1% per mana for 4% per second.",
+               "0: the most per mana wins; 100%: one for one." } },
+    { kind = "slider", text = "Trade-off: heals (%)", key = "tradeKHeal", min = 0, max = 100, step = 5,
+      scale = 100, percent = true, default = 0.15, mark = "tradeHealSlider", after = TradeChanged,
+      tips = { "Trade-off: heals",
+               "The same for heals, which also need 40% of your highest rank's heal.",
+               "15%: 1% per mana for 6.7% per second." } },
+}
+
 local function BuildReview(content)
     local pane = NewPane(content, "review")
     local L = Line()
@@ -530,6 +549,7 @@ local function BuildReview(content)
 
     local model = Section(pane, "MODEL", nil, "right")
     BuildRows(pane, model, L.model)
+    BuildRows(pane, model, MS.TRADE_ROWS) -- T127
     if L.modelHint then BuildRows(pane, model, { { kind = "hint", text = L.modelHint, mark = "modelHint" } }) end
     return pane
 end

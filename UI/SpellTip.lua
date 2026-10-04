@@ -11,7 +11,8 @@
 --
 -- T37 (docs/SPEC-forever-ui.md 5.1-5.4b, 5.6): the block redesigned. A
 -- spacer, then a header in the accent, then at most four facts (Suggested
--- first, then per mana, per second, casts to OOM) plus the one warning (a
+-- first -- "Best" since T127, with a Marks line when the rank holds max or
+-- eff -- then per mana, per second, casts to OOM) plus the one warning (a
 -- text read before combat, last); everything assumed or derived -- the
 -- value and its range, the crit and its 1.5x, every known rank, a gap --
 -- behind the detail key (db.spellTooltipDetail). Colours are passed as
@@ -59,6 +60,7 @@ local FALLBACK = {
     disabled = { 0.302, 0.302, 0.302, hex = "|cff4d4d4d" },
     mana     = { 0.302, 0.6, 1, hex = "|cff4d99ff" },
     bad      = { 0.878, 0.376, 0.353, hex = "|cffe0605a" },
+    good     = { 0.361, 0.796, 0.431, hex = "|cff5ccb6e" }, -- T127: the eff mark (Style.lua's good)
 }
 -- T69 (P25): UI.TEXT is present on TBC too now (its gold among it), so the
 -- block asks UI.THEMED: without the theme it keeps these values, as before.
@@ -230,12 +232,40 @@ local function PerManaDiff(s, entry)
     return string.format("%+d%% per mana", pct)
 end
 
+-- T127: the same for per second, "+95% per sec"; nil when either is missing.
+local function PerSecDiff(s, entry)
+    if type(s.perSec) ~= "number" or type(entry.perSec) ~= "number" or entry.perSec <= 0 then
+        return nil
+    end
+    local pct = math.floor((s.perSec / entry.perSec - 1) * 100 + 0.5)
+    if pct == 0 then return "same per sec" end
+    return string.format("%+d%% per sec", pct)
+end
+
 -- The first fact: which rank, never "press" (5.1). T78 (P34, review U9;
--- mockup M5): the suggested rank against this one ("Rank 1 (+2% per mana)"),
--- and the author's word for a dominated rank, "Beaten by".
+-- mockup M5): the suggested rank against this one, and the author's word
+-- for a dominated rank, "Beaten by". T127 (docs/mockups/rank-marks.html M5):
+-- the suggested rank is the `best` mark, so the line says "Best": "Rank 10
+-- (-5% per mana, +95% per sec)", or "this rank (also max, eff)" with the
+-- other marks it holds (a rank with rolled rows: the row that wins).
 local function SuggestedLine(family, entry)
     if entry.suggested == true then
-        return Pair("Suggested", "this rank", "label", "accent")
+        local text = "this rank"
+        if type(entry.variants) == "table" then
+            if not entry.bestOfStacks then
+                for _, v in ipairs(entry.variants) do
+                    if v.bestOfStacks then
+                        text = "this rank, rolled " .. tostring(v.variantLabel or ("x" .. tostring(v.variant)))
+                    end
+                end
+            end
+        else
+            local also = {}
+            if family.maxRank == entry then also[#also + 1] = "max" end
+            if family.effRank == entry then also[#also + 1] = "eff" end
+            if #also > 0 then text = text .. " (also " .. table.concat(also, ", ") .. ")" end
+        end
+        return Pair("Best", text, "label", "accent")
     end
     if entry.dominated then
         local by = Dominator(family, entry)
@@ -244,11 +274,26 @@ local function SuggestedLine(family, entry)
     local s = family.suggested
     if s and s.rank then
         local text = "Rank " .. tostring(s.rank)
-        local diff = PerManaDiff(s, entry)
-        if diff then text = text .. " (" .. diff .. ")" end
-        return Pair("Suggested", text, "label", "accent")
+        local diffs = {}
+        diffs[#diffs + 1] = PerManaDiff(s, entry)
+        diffs[#diffs + 1] = PerSecDiff(s, entry)
+        if #diffs > 0 then text = text .. " (" .. table.concat(diffs, ", ") .. ")" end
+        return Pair("Best", text, "label", "accent")
     end
     return nil
+end
+
+-- T127 (mockup M5): a second line only when the hovered rank holds a mark
+-- that is not best: "Marks  max  most per second", "eff  most per mana".
+local function MarksLine(family, entry)
+    if entry.suggested == true or type(entry.variants) == "table" then return nil end
+    local said = {}
+    if family.maxRank == entry then said[#said + 1] = "max  most per second" end
+    if family.effRank == entry then said[#said + 1] = "eff  most per mana" end
+    if #said == 0 then return nil end
+    local tone = "text"
+    if family.maxRank ~= entry then tone = "good" end
+    return Pair("Marks", table.concat(said, ", "), "label", tone)
 end
 
 --------------------------------------------------------------------------------
@@ -557,6 +602,8 @@ function SpellTip:Lines(id, detail, source)
     if family then
         local s = SuggestedLine(family, entry)
         if s then lines[#lines + 1] = s end
+        local m = MarksLine(family, entry) -- T127
+        if m then lines[#lines + 1] = m end
     end
     lines[#lines + 1] = Pair("Per mana", PerManaText(entry))
     lines[#lines + 1] = Pair("Per sec", PerSecText(entry)) -- T78: the table's word

@@ -167,14 +167,17 @@ function provider.Book()
             spells[e.id] = w
             if fam.maxKnown == e then nf.maxKnown = w end
         end
+        nf.maxRank, nf.effRank = nil, nil
         if fam.kind then
             for _, w in ipairs(nf.ranks) do
                 w.dominated, w.dominatedBy, w.suggested = nil, nil, nil
             end
             RR.Pareto(nf.ranks, Book.RULE_FIELDS)
-            local suggested = RR.Suggested(nf.ranks, nf.maxKnown, Book.RULE_FIELDS)
+            -- T127: the three marks on the what-if numbers (RR.Marks)
+            local suggested, maxMark, effMark = RR.Marks(nf.ranks, nf.maxKnown, Book.RULE_FIELDS, fam.kind)
             if suggested then suggested.suggested = true end
             nf.suggested = suggested
+            nf.maxRank, nf.effRank = maxMark, effMark
             RR.DominatedBy(nf.ranks, suggested, Book.RULE_FIELDS)
         end
         families[name] = nf

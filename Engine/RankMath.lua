@@ -579,7 +579,8 @@ function RankMath:EventPrediction(spellID)
 end
 
 --------------------------------------------------------------------------------
--- Returns family -> { label, tol, rows = {...}, suggestedID, callout }; the
+-- Returns family -> { label, tol, rows = {...}, suggestedID, effID, maxID,
+-- callout } (T127: effID / maxID the eff and max marks); the
 -- inputs used are left in RankMath.info (the context).
 --------------------------------------------------------------------------------
 -- T118 (docs/tasks/T118-tbc-book.md): `opts` reaches Context. Compute() reads
@@ -619,17 +620,18 @@ function RankMath:Compute(opts)
             end
 
             -- Pareto dominance on (HPM, HPS) — among KNOWN, real ranks only.
-            -- Suggested rank: highest-HPM known non-dominated rank that still
-            -- heals >= ST.Rules.SUGGESTED_FLOOR (40%) of the max known rank
-            -- (assumption: below that, cast-count pressure outweighs
-            -- efficiency). T67: both rules are Spells/RankRules.lua's.
+            -- T127: three marks (Spells/RankRules.lua's RR.Marks, a heal):
+            -- eff (the most HPM), max (the most HPS) and best (the trade
+            -- against max at the heal's k, worth at least
+            -- ST.Rules.SUGGESTED_FLOOR of the highest known rank) -- best is
+            -- the row marked `suggested`. T67: the rules are RankRules'.
             local RR = ST.RankRules
             RR.Pareto(rows, RULE_FIELDS)
             local maxRow
             for i = 1, #rows do
                 if rows[i].isMax then maxRow = rows[i] end
             end
-            local suggested = RR.Suggested(rows, maxRow, RULE_FIELDS)
+            local suggested, maxMark, effMark = RR.Marks(rows, maxRow, RULE_FIELDS, "heal")
             if suggested then suggested.suggested = true end
 
             local callout
@@ -656,7 +658,7 @@ function RankMath:Compute(opts)
                     suggested.rank, suggested.heal, suggested.cost, suggested.hpm,
                     maxRow.rank, maxRow.cost / suggested.cost, maxRow.heal / suggested.heal)
             elseif suggested then
-                callout = string.format("Max rank (R%d) is also your most efficient usable rank.", suggested.rank)
+                callout = string.format("Max rank (R%d) is also the best trade (T127: no lower rank saves enough mana for what it loses per second).", suggested.rank)
             end
 
             results[family] = {
@@ -664,6 +666,8 @@ function RankMath:Compute(opts)
                 tol = info.tol,
                 rows = rows,
                 suggestedID = suggested and suggested.id or nil,
+                effID = effMark and effMark.id or nil,
+                maxID = maxMark and maxMark.id or nil,
                 callout = (callout or "") .. (lbNote or ""),
             }
         end

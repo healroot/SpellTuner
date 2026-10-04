@@ -282,6 +282,8 @@ local function PipeZoneCheck()
 end
 
 --------------------------------------------------------------------------------
+-- T127: /st profile's settings line gains tradeKDamage=0.25 and tradeKHeal=0.15 (the
+-- two new Trade-off defaults); nothing else moved.
 -- The golden: `tools/run.sh tools/verifycheck.lua --golden` on fecaad4, pasted.
 --------------------------------------------------------------------------------
 local GOLDEN = {
@@ -364,7 +366,7 @@ local GOLDEN = {
         "|cff9966ffSpellTuner:|r spend 39.90 +- 15.16 mana/s (3 casts, cv 0.38, half-life 15s), regen 43.56/s (duty 62%)",
         "|cff9966ffSpellTuner:|r ",
         "|cff9966ffSpellTuner:|r --- settings ---",
-        "|cff9966ffSpellTuner:|r calibAlerts=true  drinkReminder=true  effectiveMode=false  firstRun=false  halfLife=15  healAmountGross=true  locked=true  muted=false  naturesGrace=true  oomConfidence=0.7  recordFights=true  recordRuns=true  recordThreat=true  replayAutoCoach=true  replayNextPull=true  replaySpeed=1  replayTicks=true  runAutoStart=false  runMaxMinutes=90  showCooldown=true  showRest=true  simAllowRebinds=false  simBigHit=0.15  simDangerHits=1  simFloor=0.3  simForeignShare=0.25  simFullHp=0.85  simGateHpMax=0.15  simGateHpMean=0.05  simGateManaMax=0.05  simGateManaMean=0.02  simMinActivity=0  simReaction=0.5  spellTooltip=true  spellTooltipDamage=true  treeAura=true  widgetTooltip=true",
+        "|cff9966ffSpellTuner:|r calibAlerts=true  drinkReminder=true  effectiveMode=false  firstRun=false  halfLife=15  healAmountGross=true  locked=true  muted=false  naturesGrace=true  oomConfidence=0.7  recordFights=true  recordRuns=true  recordThreat=true  replayAutoCoach=true  replayNextPull=true  replaySpeed=1  replayTicks=true  runAutoStart=false  runMaxMinutes=90  showCooldown=true  showRest=true  simAllowRebinds=false  simBigHit=0.15  simDangerHits=1  simFloor=0.3  simForeignShare=0.25  simFullHp=0.85  simGateHpMax=0.15  simGateHpMean=0.05  simGateManaMax=0.05  simGateManaMean=0.02  simMinActivity=0  simReaction=0.5  spellTooltip=true  spellTooltipDamage=true  tradeKDamage=0.25  tradeKHeal=0.15  treeAura=true  widgetTooltip=true",
         "|cff9966ffSpellTuner:|r debug: enabled=false, keep 1000 lines, categories: calib cast chat combat heal mana other regen sim spend tto",
     } },
     { cmd = "export", lines = {

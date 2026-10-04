@@ -21,6 +21,16 @@ published to CurseForge; the developers' log is `docs/HISTORY.md`.
   in view while you change the stats. It opens on the window's left when the right would leave
   the screen; ESC closes the drawer first, then the window.
 
+### Rank marks
+- A spell's ranks now carry three marks instead of one "best": `eff` (the most per mana), `max`
+  (the most per second) and `best` (the trade between them). A lower rank is best only when the
+  mana it saves is worth what it loses per second: by default 1% more per mana for at most 4% less
+  per second on damage, 6.7% on heals (heals also keep the 40% of your highest rank's heal).
+- The RANKS tags, the card's Marks lines, the line beside the BEST chip and the spell tooltip's
+  `Best` line say which rank holds which mark and why. Lifebloom shows `best` on the way to cast
+  it that wins (one cast, or rolled x3).
+- Settings -> Review -> MODEL: `Trade-off: damage` and `Trade-off: heals` set the two trades.
+
 ### Commands
 - /md is gone: use /st (or /spelltuner).
 

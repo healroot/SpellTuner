@@ -241,10 +241,21 @@ if S.flavour == "tbc" then
         local p = ST.Book:Pool()
         return { max = p.max, regenCasting = p.regenCasting }
     end
+    -- T127 (docs/tasks/T127-rank-marks.md): one tag, best > max > eff >
+    -- beaten; max is the family's maxRank (most per second), eff its effRank;
+    -- a rank with rolled rows shows best only where bestOfStacks is
     local function TagWant(fam, e)
+        if e.known == false then
+            if e.suggested then return "best" end
+            return (type(e.level) == "number") and ("learn at " .. e.level) or "not learned"
+        end
+        if e.variants then
+            if e.bestOfStacks then return "best" end
+            return e.dominated and "beaten" or ""
+        end
         if e.suggested then return "best" end
-        if e.known == false then return (type(e.level) == "number") and ("learn at " .. e.level) or "not learned" end
-        if fam.maxKnown == e then return "max" end
+        if fam.maxRank == e then return "max" end
+        if fam.effRank == e then return "eff" end
         if e.dominated then return "beaten" end
         return ""
     end
@@ -396,7 +407,9 @@ if S.flavour == "tbc" then
             local raw = row.cells.rank:GetText() or ""
             if Cell(row, "rank") ~= "x" .. v.variant or raw:find(UI.Hex("muted"), 1, true) ~= 1
                 or Cell(row, "value") ~= Num(v.value) or Cell(row, "permana") ~= Num(v.perMana, 2)
-                or Cell(row, "persec") ~= Num(v.perSec, 1) or Cell(row, "tag") ~= "" then
+                -- T127 (mockup M4): the rolled row holding bestOfStacks is tagged best
+                or Cell(row, "persec") ~= Num(v.perSec, 1)
+                or Cell(row, "tag") ~= (v.bestOfStacks and "best" or "") then
                 bad[#bad + 1] = "x" .. v.variant .. ":" .. tostring(Cell(row, "rank")) .. "/" .. tostring(Cell(row, "value"))
             end
         end
@@ -691,7 +704,7 @@ if S.flavour == "tbc" then
         end
         local note = f.ranksNote:IsShown() and Strip(f.ranksNote:GetText()) or "(none)"
         local good = #bad == 0 and htBefore ~= nil and not WIr():Active()
-            and Strip(f.strip.chipLabel:GetText()) == "SUGGESTED"
+            and Strip(f.strip.chipLabel:GetText()) == "BEST" -- T127: was SUGGESTED
             and not (f.strip.chipLive and f.strip.chipLive:IsShown())
             and note == "live: gear, talents, downrank rules" and (ST.sim == nil or next(ST.sim) == nil)
             and Strip(f.header.bonus:GetText()) == "+450 healing"
@@ -1098,9 +1111,11 @@ if S.flavour == "tbc" then
         end
         local fam = ST.Book:Get().families[f.key]
         if WIr():Active() then fam = WIr():Book().families[f.key] end
-        local s, top = fam.suggested, fam.maxKnown
+        -- T127: best against max (the most per second), else the highest
+        -- known; when best is max the sentence names the marks
+        local s, top = fam.suggested, fam.maxRank or fam.maxKnown
         local full
-        if s == top then full = W.CompareSame("full")
+        if s == top then full = W.CompareBestIsMax(fam, fam.kind, "full")
         else full = W.Compare(ST.Book:Compare(s, top), top.rank, fam.kind, "full") end
         if text ~= full then
             local hit = st.compareHit
@@ -1726,10 +1741,20 @@ end
 
 -- T39: the RANKS table's Tag column (3.5): best, learn at N, max, and (T78,
 -- P34, the author's word, docs/PLAN-refactor-ux.md 8.1 item 7) beaten.
+-- T127: best > max (maxRank) > eff (effRank) > beaten; a rank with rolled
+-- rows shows best only where bestOfStacks is.
 local function TagText(e, family)
+    if e.known == false then
+        if e.suggested then return "best" end
+        return (type(e.level) == "number") and ("learn at " .. e.level) or "not learned"
+    end
+    if e.variants then
+        if e.bestOfStacks then return "best" end
+        return e.dominated and "beaten" or ""
+    end
     if e.suggested then return "best" end
-    if e.known == false then return (type(e.level) == "number") and ("learn at " .. e.level) or "not learned" end
-    if family and family.maxKnown == e then return "max" end
+    if family and family.maxRank == e then return "max" end
+    if family and family.effRank == e then return "eff" end
     if e.dominated then return "beaten" end
     return ""
 end
@@ -2507,9 +2532,13 @@ T36("T38 the header and the decision strip: which rank, and one factual line", f
         and rawMana:find(UI.TEXT.mana.hex .. "~", 1, true) == 1 -- only the modelled pool in the mana colour
         -- T120: the +healing line under the pool (ST.Book:Bonus), both lines
         and StripColor(f.header.bonus and f.header.bonus:GetText() or "(no bonus line)") == wantBonus
-        and f.strip:IsShown() and f.strip.chipLabel:GetText() == "SUGGESTED"
-        and f.strip.chipRank:GetText() == "Rank 1"
-        and f.strip.compare:GetText() == "vs Rank 2 (your highest): 2% more healing per mana, 46% of the heal, a 25% shorter cast."
+        and f.strip:IsShown() and f.strip.chipLabel:GetText() == "BEST" -- T127: was SUGGESTED
+        -- T127 (docs/tasks/T127-rank-marks.md): at the heal trade-off 0.15
+        -- Rank 1's +2% per mana does not pay for its -38% per second, so best
+        -- is max, Rank 2, and the strip names the eff rank
+        and f.strip.chipRank:GetText() == "Rank 2"
+        and f.strip.compare:GetText() == "Rank 2 is best and max: no rank's extra per mana is worth what it loses"
+            .. " per second (heals, 6.7:1). Rank 1 has the most per mana: 2% more for 38% less per second."
     return good, string.format("sub=%q mana=%q chip=%q cmp=%q", tostring(f.header.sub:GetText()), manaText,
         tostring(f.strip.chipRank and f.strip.chipRank:GetText()), tostring(f.strip.compare and f.strip.compare:GetText()))
 end)
@@ -2532,9 +2561,10 @@ T36("T38 the ranks table: every rank to the highest listed, the gap, the bar and
         end
         return table.concat(t, ",")
     end
-    local want1 = table.concat({ "R1", "1", "25", "48", "1.90", "31.7", "1.5s", Num(FullPoolCasts(e1)), "best" }, ",")
+    -- T127: Rank 1 the most per mana (eff), Rank 2 best (and max: one tag, best first)
+    local want1 = table.concat({ "R1", "1", "25", "48", "1.90", "31.7", "1.5s", Num(FullPoolCasts(e1)), "eff" }, ",")
     local want2 = table.concat({ "R2", "8", "55", "103", Num(e2.perMana, 2), Num(e2.perSec, 1), "2.0s",
-        Num(FullPoolCasts(e2)), "max" }, ",")
+        Num(FullPoolCasts(e2)), "best" }, ",")
     local header
     for _, fr in ipairs(S.allFrames) do
         if fr.isHeader and fr.cells and fr.cells.value and fr:IsVisible() then header = fr end
@@ -2549,24 +2579,35 @@ T36("T38 the ranks table: every rank to the highest listed, the gap, the bar and
     local headTips = HeadHover(header, "toOOM") .. " // " .. HeadHover(header, "persec")
         .. " // " .. HeadHover(header, "value")
     local hit1 = TagHover(row1)
-    local bestTip = TipText(GameTooltip)
+    local effTip = TipText(GameTooltip)
     if hit1 then hit1:GetScript("OnLeave")(hit1) end
+    local hit2 = TagHover(row2)
+    local bestTip = TipText(GameTooltip)
+    if hit2 then hit2:GetScript("OnLeave")(hit2) end
     -- a row with nothing in its tag cell has no hit there: the row's hover
     -- (the gap's reason) covers the whole row
     local hit3 = row3.cellHits and row3.cellHits.tag
     local gapTip = { (hit3 and hit3:IsShown()) and "a tag hit on the gap row" or "no tag hit" }
-    local t78 = row1.pick and row1.pick:IsShown() and row1.pick.w == 2 and row1.pick.color
-        and row1.pick.color[1] == 1 and row1.pick.color[2] == 1 and row1.pick.color[3] == 1
-        and not row2.pick:IsShown()
+    -- T127: the selected (best) rank is now Rank 2; eff in `good`, best in the accent
+    local t78 = row2.pick and row2.pick:IsShown() and row2.pick.w == 2 and row2.pick.color
+        and row2.pick.color[1] == 1 and row2.pick.color[2] == 1 and row2.pick.color[3] == 1
+        and not row1.pick:IsShown()
         and (row3.cells.rank:GetText() or ""):find(D, 1, true) == 1
         and (row3.cells.wide:GetText() or ""):find(M, 1, true) == 1
         and (row4.cells.tag:GetText() or ""):find(L, 1, true) == 1
-        and (row2.cells.tag:GetText() or ""):find(L, 1, true) == 1
+        and (row1.cells.tag:GetText() or ""):find(UI.Hex("good"), 1, true) == 1
+        and (row2.cells.tag:GetText() or ""):find(UI.Hex("accent"), 1, true) == 1
         and (header.cells.persec:GetText() or ""):find(L, 1, true) == 1
         and CellText(header, "persec") == "Per sec" and CellText(header, "toOOM") == "Casts"
         and headTips == "Casts / Casts in a row from a full pool. // Per sec / Healing per second of casting."
-            .. " // Heal / The average heal of one cast, from the spell's own text."
-        and bestTip == "Best / The rank SpellTuner suggests."
+            .. " max marks the most. // Heal / The average heal of one cast, from the spell's own text."
+        -- T127 (mockup M5): a mark says why, against max with both numbers
+        and effTip == "Eff Rank 1 / Per mana|1.90 vs 1.86 / Per sec|31.7 vs 51.2 / The most per mana, 2% more"
+            .. " than Rank 2. Not best: the per second it gives up costs more than the mana it saves at 6.7:1."
+            .. " Press it when mana runs out before the fight does."
+        and bestTip == "Best and max Rank 2 / The most per second, and no rank's extra per mana is worth what it"
+            .. " loses per second (heals: 1% per mana for 6.7% per second). Most per mana is Rank 1: +2% for -38%"
+            .. " per second."
         and gapTip[1] == "no tag hit"
     local good = t78 and table.concat(order, ",") == "rank1,rank2,gap3,rank4"
         and Cells(row1) == want1 and Cells(row2) == want2
@@ -2578,42 +2619,47 @@ T36("T38 the ranks table: every rank to the highest listed, the gap, the bar and
         and row1.bars.permana.fill:IsShown() and row1.bars.permana.fill.w == 72
         and math.abs(row2.bars.permana.fill.w - 72 * e2.perMana / e1.perMana) < 1e-6
         and not row3.bars.permana.track:IsShown()
-        and row1.mark:IsShown() and not row2.mark:IsShown()
-        and f.selectedId == 93801 and Fill(row1) == 0.10 and Fill(row2) == 0.03 -- T78: suggested's fill; zebra
-    return good, string.format("t78=%s order=%s r1=%s r2=%s gap=%q r4tag=%s fill1=%s heads=%q best=%q gapTip=%q",
+        and row2.mark:IsShown() and not row1.mark:IsShown() -- T127: the suggested (best) row is Rank 2
+        and f.selectedId == 93802 and Fill(row2) == 0.10 and Fill(row1) == nil -- T78: suggested's fill; zebra
+    return good, string.format("t78=%s order=%s r1=%s r2=%s gap=%q r4tag=%s fill=%s/%s heads=%q eff=%q best=%q gapTip=%q",
         tostring(t78), table.concat(order, ","), Cells(row1), Cells(row2), tostring(gapText),
-        tostring(CellText(row4, "tag")), tostring(Fill(row1)), headTips, bestTip, table.concat(gapTip, " / "))
+        tostring(CellText(row4, "tag")), tostring(Fill(row1)), tostring(Fill(row2)), headTips, effTip, bestTip,
+        table.concat(gapTip, " / "))
 end)
 
 -- T38-3: the card follows the selected rank; a click selects another
 T36("T38 the rank card: the suggested rank by default, a click selects another", function()
+    -- T127: the suggested (best) rank is Rank 2 at the heal trade-off 0.15, so
+    -- the card opens on it with its Marks first, and a click selects Rank 1
     local f = F()
     local before = f.card.title:GetText() .. " / " .. f.card.learned:GetText()
     local firstPairs = Pairs()
-    local _, row2 = ViewRow(2)
-    row2:GetScript("OnMouseUp")(row2, "LeftButton")
-    local e2 = Book:Get().spells[93802]
-    local pool = ST.Clock:Pool()
     local _, row1 = ViewRow(1)
-    local good = before == "RANK 1 / learned at 1"
-        and firstPairs:find("Heals=40 - 55 (avg 48); Crit=60 - 83 (x1.5 assumed)", 1, true) == 1
-        and f.selectedId == 93802 and f.card.title:GetText() == "RANK 2" and f.card.learned:GetText() == "learned at 8"
-        and f.card.quote:GetText() == '"Heals a friendly target for 90 to 115."'
-        and PairValue("Heals") == "90 - 115 (avg 103)" and PairValue("Crit") == "135 - 173 (x1.5 assumed)"
-        and PairValue("Cost") == "55 mana" and PairValue("Cast") == "2.0 s"
-        and PairValue("Per mana") == Num(e2.perMana, 2)
-        and PairValue("Per sec") == Num(e2.perSec, 1) .. " over a 2.0 s cast" -- T78
+    row1:GetScript("OnMouseUp")(row1, "LeftButton")
+    local e1 = Book:Get().spells[93801]
+    local pool = ST.Clock:Pool()
+    local _, row2 = ViewRow(2)
+    local good = before == "RANK 2 / learned at 8"
+        and firstPairs:find("Marks=best  no trade pays at 6.7:1; Rank 1: +2% per mana, -38% per sec; "
+            .. "=max  most per second: 51; Heals=90 - 115 (avg 103); Crit=135 - 173 (x1.5 assumed)", 1, true) == 1
+        and f.selectedId == 93801 and f.card.title:GetText() == "RANK 1" and f.card.learned:GetText() == "learned at 1"
+        and f.card.quote:GetText() == '"Heals a friendly target for 40 to 55."'
+        and PairValue("Marks") ~= nil and PairValue("Marks"):find("^eff  ") ~= nil
+        and PairValue("Heals") == "40 - 55 (avg 48)" and PairValue("Crit") == "60 - 83 (x1.5 assumed)"
+        and PairValue("Cost") == "25 mana" and PairValue("Cast") == "1.5 s"
+        and PairValue("Per mana") == Num(e1.perMana, 2)
+        and PairValue("Per sec") == Num(e1.perSec, 1) .. " over a 1.5 s cast" -- T78
         -- T120: the +Healing pair (Words.Bonus), right after Per sec
-        and (e2.bonus == nil or (PairValue("+Healing") == ST.Words.Bonus(e2, "card")
+        and (e1.bonus == nil or (PairValue("+Healing") == ST.Words.Bonus(e1, "card")
             and Pairs():find("Per sec=[^;]*; %+Healing=") ~= nil))
-        and PairValue("Casts") == OOMWord(FullPoolCasts(e2)) -- T78
-        and PairValue("Now") == NowWord(Book:CastsFor(e2, pool), pool)
+        and PairValue("Casts") == OOMWord(FullPoolCasts(e1)) -- T78
+        and PairValue("Now") == NowWord(Book:CastsFor(e1, pool), pool)
         -- T78 (U1): the selection moved as a white bar; no `selected` fill on
         -- either row -- the suggested row keeps its fill and its accent bar
-        and Fill(row2) == 0.03 and row2.pick:IsShown() and not row1.pick:IsShown()
-        and Fill(row1) == 0.10 and row1.mark:IsShown()
+        and Fill(row1) == nil and row1.pick:IsShown() and not row2.pick:IsShown()
+        and Fill(row2) == 0.10 and row2.mark:IsShown()
         and f.footer:GetText() == "Values come from the spell's own text. ~ = modelled."
-    return good, "before=" .. before .. " | " .. Pairs()
+    return good, "before=" .. before .. " | " .. Pairs() .. " | quote=" .. tostring(f.card.quote:GetText())
 end)
 
 -- T38-4: a row's hover is the game's own tooltip for that rank, through the
@@ -2673,7 +2719,9 @@ T36("T38 a HoT, a hybrid and a spell with no value: header, strip, columns and c
     local _, rj1 = ViewRow(1)
     local hot = f.header.sub:GetText() == "Heal over time - Rank 2 of 2 known - 12 s"
         and f.strip:IsShown() and f.strip.chipRank:GetText() == "Rank 2"
-        and f.strip.compare:GetText() == "Your highest rank is also the best per mana."
+        -- T127: the highest rank holds best, max and eff (Words.CompareBestIsMax)
+        and f.strip.compare:GetText() == "Rank 2 holds all three marks: the most per mana and per second."
+            .. " Every lower rank is beaten."
         and CellText(rj1, "tag") == "beaten" -- T78: the author's word
         and (rj1.cells.level:GetText() or ""):find(UI.TEXT.text.hex, 1, true) == 1 -- T78: numbers, not greyed
         and PairValue("Heals") == "56 over 12 s" and PairValue("Crit") == nil
@@ -2687,7 +2735,7 @@ T36("T38 a HoT, a hybrid and a spell with no value: header, strip, columns and c
         .. " / Per sec|" .. Num(rjE2.perSec, 1) .. " vs " .. Num(rjE1.perSec, 1)
         .. " / Rank 2 is better on both, and you know it."
     hot = hot and beatenTip == wantBeaten and rjE1.dominatedBy == rjE2.id
-    local hotSub = f.header.sub:GetText() .. " | " .. beatenTip
+    local hotSub = f.header.sub:GetText() .. " | " .. beatenTip .. " | " .. tostring(f.strip.compare:GetText())
 
     OpenView("Starfall")
     local hybrid = f.header.sub:GetText() == "Damage - hit and over time - Arcane - Rank 1 of 1 known"
@@ -2939,7 +2987,8 @@ T36("T39 My spells: a row per listed family, suggested against highest; a click 
         end
         return table.concat(t, ",")
     end
-    local wantN = table.concat({ "Nourish", "R1", "48", "1.90", CastsWord(FullCasts(e1)), "R2", "103",
+    -- T127: the Suggested column is the best mark, Rank 2 at the heal trade-off 0.15
+    local wantN = table.concat({ "Nourish", "R2", "103", Num(e2.perMana, 2), CastsWord(FullCasts(e2)), "R2", "103",
         Num(e2.perMana, 2) }, ",")
     local header
     for _, fr in ipairs(S.allFrames) do
@@ -3165,7 +3214,7 @@ T36("T122 forever: Clear restores every cell; the pane closes again", function()
         if x.row.wiMark and x.row.wiMark:IsShown() then bad[#bad + 1] = "mark " .. id end
     end
     local good = #bad == 0 and nourishBefore ~= nil and not WIf():Active()
-        and StripColor(f.strip.chipLabel:GetText() or "") == "SUGGESTED"
+        and StripColor(f.strip.chipLabel:GetText() or "") == "BEST" -- T127: was SUGGESTED
         and not (f.strip.chipLive and f.strip.chipLive:IsShown())
         and not f.ranksNote:IsShown()
     Click(f.strip.whatIfBtn)

@@ -47,14 +47,30 @@ if S.flavour == "tbc" then
         end
         local maxRow
         for i = 1, #rows do if rows[i].isMax then maxRow = rows[i] end end
-        local suggested
+        -- T127 (docs/tasks/T127-rank-marks.md): the old "highest HPM over the
+        -- floor" became three marks -- eff the most HPM, max the most HPS,
+        -- best the highest (hpm/hpm of max - 1) - 0.15 * (1 - hps/hps of max)
+        -- above 0 among the rows over the floor, else max. Written out here
+        -- as the new oracle (an expected change of the suggested rank).
+        local eff, maxMark
         for i = 1, #rows do
             local r = rows[i]
-            if r.known and not r.virtual and not r.dominated and maxRow and r.heal >= 0.4 * maxRow.heal then
-                if not suggested or r.hpm > suggested.hpm then suggested = r end
+            if r.known and not r.virtual and not r.dominated then
+                if not eff or r.hpm > eff.hpm then eff = r end
+                if not maxMark or r.hps > maxMark.hps then maxMark = r end
             end
         end
-        return suggested or maxRow
+        if not maxMark then return maxRow end
+        local suggested, bestScore = nil, 0
+        for i = 1, #rows do
+            local r = rows[i]
+            if r.known and not r.virtual and not r.dominated and r ~= maxMark and maxRow
+                and r.heal >= 0.4 * maxRow.heal then
+                local sc = (r.hpm / maxMark.hpm - 1) - 0.15 * (1 - r.hps / maxMark.hps)
+                if sc > bestScore then suggested, bestScore = r, sc end
+            end
+        end
+        return suggested or maxMark, maxMark, eff
     end
     local function Fresh(rows)
         local out = {}
@@ -73,9 +89,13 @@ if S.flavour == "tbc" then
         for family, res in pairs(results) do
             families = families + 1
             local copy = Fresh(res.rows)
-            local want = OldRule(copy)
+            local want, wantMax, wantEff = OldRule(copy)
             if (want and want.id) ~= res.suggestedID then
                 bad[#bad + 1] = family .. " suggested " .. tostring(res.suggestedID) .. " want " .. tostring(want and want.id)
+            end
+            if (wantMax and wantMax.id) ~= res.maxID or (wantEff and wantEff.id) ~= res.effID then
+                bad[#bad + 1] = family .. " max/eff " .. tostring(res.maxID) .. "/" .. tostring(res.effID)
+                    .. " want " .. tostring(wantMax and wantMax.id) .. "/" .. tostring(wantEff and wantEff.id)
             end
             for i, r in ipairs(res.rows) do
                 rowsSeen = rowsSeen + 1
@@ -90,7 +110,7 @@ if S.flavour == "tbc" then
         end
         table.sort(bad)
     end
-    check("tbc: Compute's dominated and suggested ranks are the old rule's on every family",
+    check("tbc: Compute's dominated, best, max and eff ranks are the T127 rule's on every family",
         okRun and families > 0 and dominatedSeen > 0 and #bad == 0,
         string.format("ran=%s families=%d rows=%d dominated=%d bad=%s", tostring(okRun), families, rowsSeen,
             dominatedSeen, okRun and (#bad == 0 and "none" or table.concat(bad, "; ")) or tostring(results)))

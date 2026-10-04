@@ -522,10 +522,18 @@ local GOLDEN = {
     -- (talentName, tickPeriod); every other byte equal to the e93d367
     -- transcript (bytes = 400487, h1 = 4209107753, h2 = 3722721600), checked
     -- line by line with --print
-    druid = { n = 900, bytes = 417569, h1 = 553152855, h2 = 1166058324 },
-    class = { n = 354, bytes = 174286, h1 = 2384515562, h2 = 297317080 },
+    -- T127: re-based for the rank marks (docs/tasks/T127-rank-marks.md):
+    -- against 8aac028's transcript with --print, the only lines that differ
+    -- are the suggested rank (now RR.Marks' best: Healing Touch, Regrowth and
+    -- Rejuvenation move to their max rank under k 0.15), the callout that
+    -- names it, the dominatedBy ids that follow it and Lifebloom's
+    -- bestOfStacks (x3); 8aac028's digests were druid { 417569, 553152855,
+    -- 1166058324 }, class { 174286, 2384515562, 297317080 }, book { 184989,
+    -- 1369451877, 4050973907 }
+    druid = { n = 900, bytes = 418853, h1 = 1247514214, h2 = 902273299 },
+    class = { n = 354, bytes = 175206, h1 = 3335362305, h2 = 2090036625 },
     -- T123: the druid's ST.Book (check 28), captured with --golden on 49494eb
-    book = { n = 284, bytes = 184989, h1 = 1369451877, h2 = 4050973907 },
+    book = { n = 284, bytes = 185071, h1 = 1787193203, h2 = 93974256 },
 }
 
 -- Druid damage ranks: id -> family, cast (ms), learn level (nil: the client
@@ -1069,7 +1077,7 @@ local function BookChecks(dB)
                 RR.Pareto(copies, F)
                 local top
                 for i, e in ipairs(fam.ranks) do if e == fam.maxKnown then top = copies[i] end end
-                local s = RR.Suggested(copies, top, F)
+                local s = RR.Suggested(copies, top, F, "damage") -- T127: the damage trade
                 if not (s and fam.suggested and s.id == fam.suggested.id and fam.suggested.suggested == true) then
                     bad[#bad + 1] = name .. " suggested " .. tostring(s and s.id) .. " vs "
                         .. tostring(fam.suggested and fam.suggested.id)

@@ -264,10 +264,18 @@ local function HealFamily(book, src, key, res, ctx)
             book.spells[id] = e
             if e.known then fam.maxKnown = e end
             if res.suggestedID == id then fam.suggested = e end
+            -- T127: the eff and max marks, RankMath's (RR.Marks)
+            if res.effID == id then fam.effRank = e end
+            if res.maxID == id then fam.maxRank = e end
             last = e
         end
     end
     RR.DominatedBy(fam.ranks, fam.suggested, BOOK_FIELDS)
+    -- T127: a rank with rolled rows (Lifebloom x2 / x3): one choice at one
+    -- cost, the winner holds bestOfStacks (RR.MarkVariants)
+    for _, e in ipairs(fam.ranks) do
+        if e.variants then RR.MarkVariants(e) end
+    end
     return fam
 end
 
@@ -446,9 +454,11 @@ local function DamageFamilies(book, walk, pool, dmgOpts)
                 if e.known then fam.maxKnown = e end
             end
             RR.Pareto(fam.ranks, BOOK_FIELDS)
-            local s = RR.Suggested(fam.ranks, fam.maxKnown, BOOK_FIELDS)
+            -- T127: the three marks, a damage trade (RR.Marks)
+            local s, maxMark, effMark = RR.Marks(fam.ranks, fam.maxKnown, BOOK_FIELDS, "damage")
             if s then s.suggested = true end
             fam.suggested = s
+            fam.maxRank, fam.effRank = maxMark, effMark
             RR.DominatedBy(fam.ranks, s, BOOK_FIELDS)
             book.families[key] = fam
             order[#order + 1] = key
@@ -781,6 +791,8 @@ ST:On("UNIT_INVENTORY_CHANGED", function(unit)
     if unit == "player" then Rebuild() end
 end)
 ST:On("PLAYER_LEVEL_UP", Rebuild)
+-- T127: a Trade-off setting moved (UI/Settings.lua): the best mark moves
+ST:RegisterCallback("RANK_RULES_CHANGED", Rebuild)
 
 -- T117: every method the contract names, present (Spells/BookShape.lua).
 if BS then BS.CheckMethods(Book, "Spells/Book_Model.lua") end

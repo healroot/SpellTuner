@@ -175,8 +175,8 @@ check("2. Casts to OOM N from full is RankMath:CastsToOOM from a full pool",
     tostring(R(find(L, "Casts to OOM"))) .. " want " .. tostring(casts))
 check("   the header says Rank 12 of 12 and the detail key", R(find(L, "SpellTuner")) == "Rank 12 of 12 Shift",
     R(find(L, "SpellTuner")))
-check("   Suggested, then the facts; no HPM, Average, Downranked or overheal on the plain block",
-    find(L, "Suggested") ~= nil and find(L, "HPM / HPS") == nil and find(L, "Average") == nil
+check("   Best (T127: was Suggested), then the facts; no HPM, Average, Downranked or overheal on the plain block",
+    find(L, "Best") ~= nil and find(L, "HPM / HPS") == nil and find(L, "Average") == nil
     and find(L, "Heal") == nil and find(L, "Downranked") == nil and find(L, "After your overheal") == nil
     and find(L, "After overheal") == nil and find(L, "How") == nil)
 

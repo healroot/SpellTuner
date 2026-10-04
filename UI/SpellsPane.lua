@@ -240,7 +240,7 @@ end
 -- view scrolls when it is taller than the pane):
 --   1. the header: the icon, the name, what the family is (its shape), and
 --      the modelled pool at the right ("~" only on the current pool);
---   2. the decision strip: the SUGGESTED chip and one factual comparison
+--   2. the decision strip: the BEST chip (T127; was SUGGESTED) and one factual comparison
 --      with the highest known rank (Book:Compare), never what to press;
 --      no strip with one known rank;
 --   3. RANKS: one row per rank from 1 to the highest listed, gaps included,
@@ -268,7 +268,8 @@ local CARD_LABEL_W = 70
 local CARD_VALUE_W = CARD_COL - CARD_LABEL_W - 8          -- a pair in its column
 local CARD_WIDE_W = VIEW_W - 8 - CARD_LABEL_W - 2 - 8     -- T120: a pair across the row
 local TIP_GAP = 6           -- the row tooltip's distance from the row
-local SUGGESTED_RULE = Words.SuggestedRule() -- the floor is ST.Rules.SUGGESTED_FLOOR (T67)
+-- T127: the best rule's words are built at each hover (Words.SuggestedRule):
+-- its weights are settings (tradeKDamage / tradeKHeal)
 local GAP_TEXT = 'not in your spellbook - untrained, or hidden by "show all ranks"'
 local RANKS_NOTE_W = 300     -- RANKS' title-row note (T120)
 local SIDE_W = 130          -- the strip's right column: After overheal (T120)
@@ -293,8 +294,9 @@ local HEAD_TIPS = {
         if label == "Total" then return "All of one cast, over its whole duration, from the spell's own text." end
         return "The average heal or damage of one cast; all of it for one over time."
     end,
-    permana = function() return Amount() .. " for each point of mana." end,
-    persec = function() return Amount() .. " per second of casting." end,
+    -- T127 (mockup M5): the column a mark is the most of
+    permana = function() return Amount() .. " for each point of mana. eff marks the most." end,
+    persec = function() return Amount() .. " per second of casting. max marks the most." end,
     cast = "Cast time; inst for an instant, chan for a channel.",
     toOOM = "Casts in a row from a full pool.",
 }
@@ -437,14 +439,15 @@ local function WrapsWithin(measure, text, width, maxLines)
     return true
 end
 
--- The strip's words for `a` (the suggested rank) against `b` (the highest
--- known): the painted text and the full sentence. `width` is the room
--- beside the chip; b == a is the "also the best" line.
-local function CompareFit(measure, a, b, kind, width)
+-- The strip's words for `a` (the suggested rank) against `b` (T127: max,
+-- the most per second): the painted text and the full sentence. `width` is
+-- the room beside the chip; b == a is the "best is also max" line
+-- (Words.CompareBestIsMax, from `fam`'s marks).
+local function CompareFit(measure, a, b, kind, width, fam)
     local c = (a ~= b) and ST.Book:Compare(a, b) or nil
     if a ~= b and not c then return "", "" end
     local function Say(style)
-        if a == b then return Words.CompareSame(style) end
+        if a == b then return Words.CompareBestIsMax(fam, kind, style) end
         return Words.Compare(c, b.rank, kind, style)
     end
     local full = Say("full")
@@ -539,28 +542,47 @@ end
 --------------------------------------------------------------------------------
 -- 3. The RANKS rows
 --------------------------------------------------------------------------------
--- A rank row's tag: "best", "learn at N", "max" or "beaten" (T78, the
+-- A rank row's tag: "best", "learn at N", "max", "eff" or "beaten" (T78, the
 -- author's word for `dominated`, docs/PLAN-refactor-ux.md 8.1 item 7), nil
--- for none or for a row that is not a rank.
+-- for none or for a row that is not a rank. T127 (docs/tasks/T127-rank-
+-- marks.md): one tag per row, best > max > eff -- best is `suggested`, max
+-- the family's maxRank (the most per second, no longer the highest rank),
+-- eff its effRank (the most per mana). A rank with rolled rows (TBC's
+-- Lifebloom) and those rows show best only, on whichever holds bestOfStacks.
 local function TagOf(r)
+    if r and r.kind == "variant" then
+        if r.entry and r.entry.bestOfStacks then return "best" end
+        return nil
+    end
     local e = r and r.kind == "rank" and r.entry
     if not e then return nil end
-    if e.suggested then return "best" end
+    local fam = r.family
     if e.known == false then
+        if e.suggested then return "best" end
         return (type(e.level) == "number") and ("learn at " .. e.level) or "not learned"
     end
-    if r.isMax then return "max" end
+    if e.variants then
+        if e.bestOfStacks then return "best" end
+        if e.dominated then return "beaten" end
+        return nil
+    end
+    if e.suggested then return "best" end
+    if fam and fam.maxRank == e then return "max" end
+    if fam and fam.effRank == e then return "eff" end
     if e.dominated then return "beaten" end
     return nil
 end
+
+-- T127 (mockup R): best in the accent, max in `text`, eff in `good`; the
+-- rest (beaten, learn at) in `label`. Token reads at paint.
+local TAG_COLOR = { best = "accent", max = "text", eff = "good" }
 
 -- T78 (U7): the tags in `label`, best in the accent; the explanations that
 -- used to be `disabled` grey are readable.
 local function TagText(r)
     local tag = TagOf(r)
     if not tag then return "" end
-    if tag == "best" then return UI.Hex("accent") .. tag .. RESET end
-    return UI.Hex("label") .. tag .. RESET
+    return UI.Hex(TAG_COLOR[tag] or "label") .. tag .. RESET
 end
 
 -- The known rank that beats `e` (Book's entry.dominatedBy, an id), or nil.
@@ -575,10 +597,12 @@ end
 
 -- T78 (U10; mockup M5): a tag explains itself on hover, one sentence; a
 -- beaten rank names the rank that beats it with both numbers side by side.
-local TAG_SENTENCE = {
-    best = "The rank SpellTuner suggests.",
-    max = "Your highest known rank.",
-}
+-- T127: best, max and eff say why (Words.MarkTip) with the two numbers
+-- against max (best, eff) side by side.
+local function MarkKind(fam)
+    if fam and fam.kind == "damage" then return "damage" end
+    return "heal"
+end
 function TagTip(r)
     local tag = TagOf(r)
     if not tag then return nil end
@@ -597,9 +621,57 @@ function TagTip(r)
             { l = name .. " is better on both, and you know it.", c = "muted", wrap = true },
         }
     end
+    local fam = r.family
+    if tag == "best" and (r.kind == "variant" or (e and e.variants)) then
+        return { { l = "Best", c = "text" },
+                 { l = "The most per mana and per second of the ways to cast it: every one costs the same on one GCD.",
+                   c = "label", wrap = true } }
+    end
+    if tag == "best" or tag == "max" or tag == "eff" then
+        local title, text = Words.MarkTip(tag, e, fam, MarkKind(fam))
+        local out = { { l = title or tag, c = "text" } }
+        local maxR = fam and fam.maxRank
+        if tag ~= "max" and type(maxR) == "table" and maxR ~= e then
+            out[#out + 1] = { l = "Per mana", r = Num(e.perMana, 2) .. " vs " .. Num(maxR.perMana, 2),
+                              c = "label", rc = "text" }
+            out[#out + 1] = { l = "Per sec", r = Num(e.perSec, 1) .. " vs " .. Num(maxR.perSec, 1),
+                              c = "label", rc = "text" }
+        end
+        out[#out + 1] = { l = text or "", c = "label", wrap = true }
+        return out
+    end
     local title = tag:sub(1, 1):upper() .. tag:sub(2)
-    local sentence = TAG_SENTENCE[tag] or "Not learned yet."
-    return { { l = title, c = "text" }, { l = sentence, c = "label", wrap = true } }
+    return { { l = title, c = "text" }, { l = "Not learned yet.", c = "label", wrap = true } }
+end
+
+-- T127 (mockup M5): the rank card's Marks block -- one wide pair per mark the
+-- rank holds, best, max, eff, the tag word in its colour and the rule's own
+-- numbers read back (Words.MarkReason). A rank with rolled rows holds best
+-- alone, on itself or on the rolled row that wins.
+local function MarkPairs(fam, e)
+    local out = {}
+    if type(fam) ~= "table" or not fam.kind or type(e) ~= "table" or e.known == false then return out end
+    local function Add(mark, text)
+        out[#out + 1] = { (#out == 0) and "Marks" or "", UI.Hex(TAG_COLOR[mark] or "label") .. mark .. RESET
+            .. "  " .. text, wide = true }
+    end
+    if e.variants then
+        if e.bestOfStacks then
+            Add("best", "one cast, let it bloom: the most per mana and per second of its rolled rows")
+        else
+            for _, v in ipairs(e.variants) do
+                if v.bestOfStacks then
+                    Add("best", "rolled " .. tostring(v.variantLabel or ("x" .. tostring(v.variant)))
+                        .. ": the most per mana and per second (one cost, one GCD)")
+                end
+            end
+        end
+        return out
+    end
+    for _, mark in ipairs(Words.MarksOf(e, fam)) do
+        Add(mark, Words.MarkReason(mark, e, fam, MarkKind(fam)))
+    end
+    return out
 end
 
 local function RankCell(e)
@@ -655,13 +727,14 @@ local function RenderRankRow(row, r, color)
     local c = row.cells
     if r.kind == "variant" then
         -- T120: a rolled row (Lifebloom's x2 / x3) -- its own numbers, the
-        -- rank cell muted, no level, mana from the item, no tag
+        -- rank cell muted, no level, mana from the item; T127: tagged best
+        -- when it holds bestOfStacks
         local v = r.entry
         local value, perMana, perSec = Shown(v, r.after)
         c.rank:SetText(UI.Hex("muted") .. (v.variantLabel or ("x" .. tostring(v.variant))) .. RESET)
         c.mana:SetText(color .. Num(v.cost) .. RESET)
         c.cast:SetText(color .. ((type(v.cast) == "number") and Words.Cast(r.parent, "cell") or "-") .. RESET)
-        c.tag:SetText("")
+        c.tag:SetText(TagText(r))
         if c.value then
             c.value:SetText(color .. Num(value) .. RESET)
             c.permana:SetText(color .. Num(perMana, 2) .. RESET)
@@ -1019,14 +1092,18 @@ local function RenderCard(f, fam, e, pool)
     local spec = CardPairs(fam, e, pool)
     for _, p in ipairs(card.pairPool) do p.label:Hide(); p.value:Hide() end
     card.shown, card.toOOMPair, card.nowPair = {}, nil, nil
+    -- T127: the Marks block first, each mark across the row
+    local list = MarkPairs(fam, e)
+    local off = #list
+    for _, pair in ipairs(spec.pairs) do list[#list + 1] = pair end
     -- two columns; T120: a value wider than its column takes the whole row
     -- (+Healing, After oh. and the cast note's words do at a large offset)
     local col, line = 0, 0
-    for i, pair in ipairs(spec.pairs) do
+    for i, pair in ipairs(list) do
         local p = CardPair(card, i)
         p.value:SetWidth(CARD_WIDE_W)
         p.value:SetText(pair[2])
-        local wide = (p.value:GetStringWidth() or 0) > CARD_VALUE_W
+        local wide = pair.wide or (p.value:GetStringWidth() or 0) > CARD_VALUE_W
         if wide and col == 1 then col, line = 0, line + 1 end
         local x, py = 8 + col * CARD_COL, y + line * card.pitch
         p.label:ClearAllPoints()
@@ -1037,8 +1114,8 @@ local function RenderCard(f, fam, e, pool)
         p.label:SetText(pair[1])
         p.label:Show(); p.value:Show()
         card.shown[#card.shown + 1] = p
-        if i == spec.toOOM then card.toOOMPair = p end
-        if i == spec.now then card.nowPair = p end
+        if i - off == spec.toOOM then card.toOOMPair = p end
+        if i - off == spec.now then card.nowPair = p end
         if wide or col == 1 then col, line = 0, line + 1 else col = 1 end
     end
     y = y + (line + col) * card.pitch
@@ -1647,13 +1724,13 @@ local function BuildFamily(host)
     strip.chipLabel:SetPoint("TOPLEFT", chip, "TOPLEFT", 10, -4)
     strip.chipLabel:SetJustifyH("LEFT")
     UI.Tint(strip.chipLabel, "text", "accent")
-    strip.chipLabel:SetText("SUGGESTED")
+    strip.chipLabel:SetText("BEST") -- T127
     strip.chipRank = chip:CreateFontString(nil, "OVERLAY", UI.FONT_BIG or UI.FONT_TITLE)
     strip.chipRank:SetPoint("TOPLEFT", chip, "TOPLEFT", 10, -17)
     strip.chipRank:SetJustifyH("LEFT")
     UI.Tint(strip.chipRank, "text", "text")
     chip:EnableMouse(true)
-    chip:SetScript("OnEnter", function(self) KitTip(self, "Suggested rank", SUGGESTED_RULE) end)
+    chip:SetScript("OnEnter", function(self) KitTip(self, "Best rank", Words.SuggestedRule()) end) -- T127
     chip:SetScript("OnLeave", function() if UI.tooltip then UI.tooltip:Hide() end end)
     strip.chip = chip
     -- T120: the right column, After overheal and the family's measured
@@ -1692,7 +1769,8 @@ local function BuildFamily(host)
     strip.compareHit:SetPoint("BOTTOMLEFT", chip, "BOTTOMRIGHT", BLOCK_GAP, 0)
     strip.compareHit:EnableMouse(true)
     strip.compareHit:SetScript("OnEnter", function(self)
-        if strip.compareFull then KitTip(self, "Compared with your highest rank", strip.compareFull) end
+        -- T127: the strip compares best with max, the most per second
+        if strip.compareFull then KitTip(self, "Compared with max", strip.compareFull) end
     end)
     strip.compareHit:SetScript("OnLeave", function() if UI.tooltip then UI.tooltip:Hide() end end)
     strip.compareHit:Hide()
@@ -2005,13 +2083,14 @@ function SpellsPane:RenderFamily(key, preview)
         f.strip.chipLive:SetText("live: R" .. ls.rank)
         f.strip.chipLive:Show()
     else
-        f.strip.chipLabel:SetText(whatIf and "WHAT IF" or "SUGGESTED")
+        f.strip.chipLabel:SetText(whatIf and "WHAT IF" or "BEST") -- T127
         f.strip.chipLive:SetText("")
         f.strip.chipLive:Hide()
     end
     if fam.kind and s and valued >= 2 then
         f.strip.chipRank:SetText((type(s.rank) == "number") and ("Rank " .. s.rank) or "-")
-        local text, full = CompareFit(f.strip.measure, s, fam.maxKnown, fam.kind, compareW)
+        -- T127: best against max (the most per second), else the highest
+        local text, full = CompareFit(f.strip.measure, s, fam.maxRank or fam.maxKnown, fam.kind, compareW, fam)
         f.strip.compare:SetText(text)
         f.strip.compareFull = (full ~= text) and full or nil
         f.strip.compareHit:SetShown(f.strip.compareFull ~= nil)

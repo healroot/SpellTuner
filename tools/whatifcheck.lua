@@ -168,7 +168,7 @@ end)
 -- prints is the what-if book's; the live family gives the old rank's id and
 -- number only. WI.Diff's rounding as before.
 --------------------------------------------------------------------------------
-T("8 WI.Changes: every number from the what-if book; floor / beaten reasons; ASCII; WI.Diff", function()
+T("8 WI.Changes: every number from the what-if book; floor / beaten / trade reasons; ASCII; WI.Diff", function()
     -- entries: { rank, perMana, value, dominatedByRank }
     local function Fam(sugRank, entries, kind)
         local fam = { ranks = {}, kind = kind or "heal" }
@@ -188,15 +188,20 @@ T("8 WI.Changes: every number from the what-if book; floor / beaten reasons; ASC
     local liveB = Fam(6, { { 6, 3.33 }, { 9, 4.44 }, { 12, 5.55 } })
     local LIVE_DIGITS = { "6.20", "6.09", "3.33", "4.44", "5.55" }
     local moved = Fam(6, { { 6, 7.40 }, { 12, 6.83 } })                          -- the new rank better
-    local floor = Fam(12, { { 6, 7.77 }, { 9, 7.10 }, { 12, 5.51 } })            -- worse, the old under the floor
-    local floorD = Fam(12, { { 6, 7.77 }, { 9, 7.10 }, { 12, 5.51 } }, "damage")
+    -- T127: the old rank's value 30 is under 40% of the top's 100 (a heal
+    -- only: damage has no floor, so the same numbers there say the trade
+    -- against max no longer pays)
+    local floor = Fam(12, { { 6, 7.77, 30 }, { 9, 7.10 }, { 12, 5.51 } })        -- worse, the old under the floor
+    local floorD = Fam(12, { { 6, 7.77, 30 }, { 9, 7.10 }, { 12, 5.51 } }, "damage")
+    local trade = Fam(12, { { 6, 7.77 }, { 9, 7.10 }, { 12, 5.51 } })            -- worse, over the floor: the trade
     local beaten = Fam(12, { { 6, 7.77, 100, 9 }, { 9, 7.90 }, { 12, 5.51 } })   -- worse, the old beaten
     local stayed = Fam(12, { { 6, 9.99 }, { 12, 8.88 } })                        -- same id, numbers moved
     local a, f, fd = WI.Changes(liveA, moved), WI.Changes(liveB, floor), WI.Changes(liveB, floorD)
     local bt, c = WI.Changes(liveB, beaten), WI.Changes(liveA, stayed)
+    local tr = WI.Changes(liveB, trade)
     local n1, n2 = WI.Changes(nil, moved), WI.Changes(liveA, nil)
     local ascii, leaked = true, {}
-    for _, s in ipairs({ a, f, fd, bt, c, n1, n2 }) do
+    for _, s in ipairs({ a, f, fd, bt, c, n1, n2, tr }) do
         if type(s) ~= "string" or s:find("[\128-\255]") or s:gsub("||", ""):find("|") then ascii = false end
         for _, d in ipairs(LIVE_DIGITS) do
             if type(s) == "string" and s:find(d, 1, true) then leaked[#leaked + 1] = d end
@@ -216,7 +221,8 @@ T("8 WI.Changes: every number from the what-if book; floor / beaten reasons; ASC
     local WORSE = "Suggested: Rank 6 -> Rank 12. With these stats Rank 12 gives 5.51 per mana, Rank 6 7.77 (-29%)."
     Want(a, "Suggested: Rank 12 -> Rank 6. With these stats Rank 6 gives 7.40 per mana, Rank 12 6.83 (+8%).", "moved")
     Want(f, WORSE .. " Rank 6 is under 40% of Rank 12's heal.", "floor")
-    Want(fd, WORSE .. " Rank 6 is under 40% of Rank 12's damage.", "floor damage")
+    Want(fd, WORSE .. " Rank 6's trade against max no longer pays.", "floor damage") -- T127: no damage floor
+    Want(tr, WORSE .. " Rank 6's trade against max no longer pays.", "trade")
     Want(bt, WORSE .. " Rank 6 is beaten by Rank 9.", "beaten")
     Want(c, "No change to the suggestion.", "stayed")
     Want(n1, "No change to the suggestion.", "nil live")
@@ -625,7 +631,7 @@ else
             Want(Near(w.perSec, w.value / Book.IntervalFor(w)), "perSec " .. w.id)
             Want(w.casts == Book:CastsFor(w, wpool), "casts " .. w.id)
         end
-        Want(wf.suggested == RR.Suggested(wf.ranks, wf.maxKnown, FIELDS), "suggested")
+        Want(wf.suggested == RR.Suggested(wf.ranks, wf.maxKnown, FIELDS, wf.kind), "suggested")
         Want(Ser(Book:Get()) == liveSer and Book:Get() == live, "live book")
         Want(w1.bonus and w1.bonus.of == 350, "bonus.of")
         WI:Clear()

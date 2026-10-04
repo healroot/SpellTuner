@@ -2369,6 +2369,19 @@ On either client, `/st` -> Spells.
    - **Combat**: with the drawer open, enter combat: it hides with the window, and comes back with
      it after.
 
+7. **Rank marks (T127).** Healing Touch (TBC) or Wrath: the RANKS Tag column shows one tag per
+   row -- `best` in the accent, `max` white, `eff` green, `beaten` grey. Hover each: `max` says
+   most per second, `eff` most per mana with both numbers against max, `best` why its trade pays
+   (or that none does). The card of a marked rank starts with `Marks` lines; the line beside the
+   BEST chip compares best with max (hover it for the whole sentence when it is cut). Hover a rank
+   in the spellbook: the tooltip's `Best` line, and a `Marks` line on the max or eff rank. TBC
+   only: Lifebloom shows `best` on Rank 1 or on its x3 row, nothing else. Say whether the best
+   rank feels right on Wrath and Healing Touch.
+8. **The two trade-offs.** Settings -> Review -> MODEL: `Trade-off: damage (%)` (25) and
+   `Trade-off: heals (%)` (15). Drag the damage one to 0, then open Spells -> Wrath: best is the
+   eff rank. Back to Settings, drag it to 100: Wrath's best moves towards max. No reload needed.
+   Put them back to 25 and 15.
+
 **Paste back** a line per step into `.logs/tbc/0.17.1-s1.md` and `docs/probe/<build>-0.17.1-s1.md`,
 with the footer of step 1 copied whole.
 
