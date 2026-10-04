@@ -789,19 +789,42 @@ if S.flavour == "tbc" then
     -- T125: the drawer open at font offsets -2..+2 -- the view laid out as
     -- closed, every row and the footer inside the drawer's height, nothing
     -- wider than the drawer
+    -- (T125 review m5: every string handed its font object, as the stub
+    -- ignores a template; the footer and class note wrap at their width
+    -- under the stub's word wrap, so a long sentence moves contentH; a value
+    -- typed so the footer and the deltas carry text)
     T("T125-1 tbc: the drawer open at font offsets -2..+2 -- every row inside it, the view as closed", function()
         WIr():Clear()
         local f = OpenFam("HealingTouch")
         if not (f.whatIf and f.whatIf:IsShown()) then Click(f.strip.whatIfBtn) end
+        WIr():Set("heal", 400)
+        -- the footer's longest wording (tools/whatifcheck.lua's "moved,
+        -- worse" with its reason), so a sentence that wraps is laid out
+        local changes = WIr().Changes
+        WIr().Changes = function()
+            return "Suggested: Rank 6 -> Rank 12. With these stats Rank 12 gives 5.51 per mana, Rank 6 7.77 (-29%)."
+                .. " Rank 6 is under the floor: it heals less than 40% of Rank 12."
+        end
+        local small = UI.fontObjects[UI.FONT_SMALL]
         local problems, sizes = {}, {}
+        local footerLines = 0
         for _, o in ipairs({ -2, -1, 0, 1, 2 }) do
+            local d0 = Fam().whatIf
+            d0.footer.fontObject, d0.classNote.fontObject = small, small
+            for _, r in pairs(d0.rows or {}) do
+                r.label.fontObject = small
+                if r.unit then r.unit.fontObject = small end
+                if r.delta then r.delta.fontObject = UI.fontObjects[UI.FONT_NUM or UI.FONT] or small end
+            end
             UI.ApplyFonts(o)
             f = Fam()
             for _, p in ipairs(Laid(f)) do problems[#problems + 1] = "offset " .. o .. ": " .. p end
             local d = f.whatIf
             local dh = d:GetHeight()
             local ch = d.contentH or 9999
-            sizes[#sizes + 1] = o .. "=" .. ch .. "/" .. dh
+            local fl = math.floor(d.footer:GetStringHeight() / (select(2, small:GetFont()) or 12) + 0.5)
+            if fl > footerLines then footerLines = fl end
+            sizes[#sizes + 1] = o .. "=" .. ch .. "/" .. dh .. "(footer " .. fl .. " lines)"
             if ch > dh then problems[#problems + 1] = "offset " .. o .. ": contents " .. ch .. " > " .. dh end
             local paneY = 8
             for key, r in pairs(d.rows or {}) do
@@ -809,22 +832,36 @@ if S.flavour == "tbc" then
                     local parts = { r.label, r.box, r.minus, r.plus, r.unit, r.delta }
                     for _, b in ipairs(r.order or {}) do parts[#parts + 1] = b end
                     for _, part in ipairs(parts) do
-                        local _, _, _, x, y = part:GetPoint(1)
+                        local _, rel, _, x, y = part:GetPoint(1)
                         local bottom = paneY - (y or 0) + (part:GetHeight() or 0)
                         if bottom > ch then
                             problems[#problems + 1] = "offset " .. o .. ": " .. key .. " at " .. bottom .. " below " .. ch
                         end
-                        if part ~= r.delta and part ~= r.label and 8 + (x or 0) + (part:GetWidth() or 0) > 220 - 8 then
-                            problems[#problems + 1] = "offset " .. o .. ": " .. key .. " wider than the drawer"
+                        -- a string by its text, a widget by its width (every
+                        -- part is anchored to the pane, 204 wide)
+                        local w = part:GetWidth() or 0
+                        if part == r.label or part == r.delta or part == r.unit then
+                            w = part:GetStringWidth() or 0
+                        end
+                        local px = rel == d.pane and (x or 0) or 9999
+                        if px + w > 220 - 8 - 8 then
+                            problems[#problems + 1] = string.format("offset %d: %s %s %d wider than the drawer",
+                                o, key, part == r.delta and "delta" or part == r.label and "label" or "part", px + w)
                         end
                     end
                 end
             end
             local _, _, _, _, fy = d.footer:GetPoint(1)
-            if paneY - (fy or 0) > ch then problems[#problems + 1] = "offset " .. o .. ": footer below" end
+            if paneY - (fy or 0) + d.footer:GetStringHeight() > ch then
+                problems[#problems + 1] = "offset " .. o .. ": footer below"
+            end
         end
+        WIr().Changes = changes
         UI.ApplyFonts(0)
+        WIr():Clear()
         Click(Fam().strip.whatIfBtn)
+        -- the stub's wrap is in effect: the typed footer takes more than one line
+        if footerLines < 2 then problems[#problems + 1] = "footer never wrapped (" .. footerLines .. " lines)" end
         return #problems == 0 and not Fam().whatIf:IsShown(),
             table.concat(sizes, " ") .. " " .. table.concat(problems, "; ")
     end)
@@ -907,6 +944,99 @@ if S.flavour == "tbc" then
             and open == true and not d:IsShown(),
             string.format("group=%s overview=%s back=%s reports=%s back=%s", tostring(g), tostring(onOverview),
                 tostring(back1), tostring(onReports), tostring(back2))
+    end)
+
+    -- T125 review M1: a screen too narrow for the drawer on either side --
+    -- the side with more room, and clamped, so the client pushes it back
+    -- over the window's edge instead of off the screen (the push itself is
+    -- the client's: docs/TESTING.md 50.6)
+    T("T125-5 tbc: neither side fits -- the side with more room, the drawer clamped to the screen", function()
+        local f = OpenFam("HealingTouch")
+        local win = SPn().nav.frame
+        if not (f.whatIf and f.whatIf:IsShown()) then Click(f.strip.whatIfBtn) end
+        local d = Fam().whatIf
+        local pw = S.physicalWidth
+        S.physicalWidth = 1280 -- 5:4 at 1024: UIParent about 910 wide here, far short of 860 + 2 * 222
+        local screenW = UIParent:GetRight()
+        local function At(x)
+            win:ClearAllPoints()
+            win:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", x, 700)
+            S.Tick(0.3)
+            return tostring(d.side)
+        end
+        local nearLeft = At(20)                  -- 20 left, 80 right: right
+        local nearRight = At(screenW - 860 - 20) -- 80 left, 20 right: left
+        local clamped = d:IsClampedToScreen()
+        S.physicalWidth = pw
+        local roomy = At(20) -- a wide screen again: right, as T125-3
+        Click(Fam().strip.whatIfBtn)
+        MD.Win:Place("main")
+        return screenW < 860 + 2 * 222 and nearLeft == "right" and nearRight == "left" and clamped == true
+            and roomy == "right",
+            string.format("screen=%s nearLeft=%s nearRight=%s clamped=%s roomy=%s", tostring(screenW), nearLeft,
+                nearRight, tostring(clamped), roomy)
+    end)
+
+    -- T125 review m1 / m3: the interface hidden (Alt+Z) fires the view's
+    -- OnHide with the view still shown -- the drawer stays and is on screen
+    -- with the window again at once; a copy box centres on the window, never
+    -- the drawer. (The stub fires no child's OnHide on a parent's hide, so the
+    -- client's calls are made here by hand.)
+    T("T125-6 tbc: Alt+Z keeps the drawer and its ESC entry; TopWindow is the window, not the drawer", function()
+        local f = OpenFam("HealingTouch")
+        local win = SPn().nav.frame
+        if not (f.whatIf and f.whatIf:IsShown()) then Click(f.strip.whatIfBtn) end
+        S.Tick(0)
+        local d = Fam().whatIf
+        local topWin = MD.Win:TopWindow()
+        UIParent.shown = false
+        for _, fr in ipairs({ SPn().host, Fam(), d }) do
+            local h = fr:GetScript("OnHide")
+            if h then h(fr) end
+        end
+        local kept = d:IsShown()
+        UIParent.shown = true
+        local stack = MD.EscStack.stack
+        local top = stack[#stack] and stack[#stack].frame
+        local visible = d:IsVisible()
+        Click(Fam().strip.whatIfBtn)
+        return topWin == win and kept == true and top == d and visible == true,
+            string.format("topWindow=%s kept=%s top=%s visible=%s", topWin == win and "window"
+                or topWin == d and "drawer" or tostring(topWin), tostring(kept), tostring(top == d), tostring(visible))
+    end)
+
+    -- T125 review m2: the ESC stack off -- the drawer opens without an entry
+    -- (unnamed, so not in UISpecialFrames: ESC closes the window and the
+    -- drawer with it); turned back on with the drawer up, the drawer is
+    -- pushed again above the window, so the first ESC is still its own
+    T("T125-7 tbc: escStack off, then on with the drawer up -- the drawer above the window again", function()
+        local f = OpenFam("HealingTouch")
+        local win = SPn().nav.frame
+        if f.whatIf and f.whatIf:IsShown() then Click(f.strip.whatIfBtn) end
+        MD.Win:SetEscStack(false)
+        Click(Fam().strip.whatIfBtn)
+        S.Tick(0)
+        local d = Fam().whatIf
+        local shownOff = d:IsShown()
+        local stack = MD.EscStack.stack
+        local emptyOff = #stack == 0
+        local special = false
+        for _, name in ipairs(UISpecialFrames) do
+            if _G[name] == d then special = true end
+        end
+        MD.Win:SetEscStack(true)
+        local n = #stack
+        local top = stack[n] and stack[n].frame
+        local below = stack[n - 1] and stack[n - 1].frame
+        _G.SpellTunerEscProxy:Hide() -- one ESC
+        S.Tick(0)
+        local afterOne = { drawer = d:IsShown(), win = win:IsShown(), open = SPn().whatIfOpen }
+        OpenFam("HealingTouch")
+        return shownOff and emptyOff and not special and top == d and below == win and afterOne.drawer == false
+            and afterOne.win == true and afterOne.open == false,
+            string.format("shownOff=%s emptyOff=%s special=%s n=%d top=%s below=%s one=%s/%s/%s", tostring(shownOff),
+                tostring(emptyOff), tostring(special), n, tostring(top == d), tostring(below == win),
+                tostring(afterOne.drawer), tostring(afterOne.win), tostring(afterOne.open))
     end)
 
     ----------------------------------------------------------------------------
@@ -3127,6 +3257,54 @@ T36("T125 forever: the drawer outside the window, RANKS unmoved, ESC closes it f
         and win:IsShown() and not SP.whatIfOpen
     return good, string.format("outside=%s ranks=%s/%s top=%s drawer=%s win=%s", tostring(outside), tostring(before),
         tostring(after), tostring(top == d), tostring(d and d:IsShown()), tostring(win:IsShown()))
+end)
+
+-- T125 review m5: Forever's class section is always the provider's sentence;
+-- at font offsets -2..+2 the sentence and the footer wrap at 188 under the
+-- stub's word wrap (S.WrappedLines; this half keeps its own anchors, so the
+-- two strings measure through it), and the contents stay inside the drawer
+T36("T125 forever: the class note and footer wrapped at -2..+2 inside the drawer", function()
+    WIf():Clear()
+    SP.whatIfOpen = false
+    local f = OpenView("Nourish")
+    Click(f.strip.whatIfBtn)
+    S.Tick(0)
+    local d = F().whatIf
+    local small = UI.fontObjects[UI.FONT_SMALL]
+    local function Measured(fs)
+        fs.GetStringHeight = function(self)
+            local _, size = small:GetFont()
+            size = size or 12
+            return S.WrappedLines(self.text, self.w or 188, size) * size
+        end
+    end
+    Measured(d.classNote)
+    Measured(d.footer)
+    local changes = WIf().Changes
+    WIf().Changes = function()
+        return "Suggested: Rank 6 -> Rank 12. With these stats Rank 12 gives 5.51 per mana, Rank 6 7.77 (-29%)."
+            .. " Rank 6 is under the floor: it heals less than 40% of Rank 12."
+    end
+    local problems, sizes, noteLines, last = {}, {}, 0, 0
+    for _, o in ipairs({ -2, -1, 0, 1, 2 }) do
+        UI.ApplyFonts(o)
+        d = F().whatIf
+        local ch, dh = d.contentH or 9999, d:GetHeight()
+        local _, size = small:GetFont()
+        local nl = d.classNote:IsShown() and d.classNote:GetStringHeight() / (size or 12) or 0
+        if nl > noteLines then noteLines = nl end
+        sizes[#sizes + 1] = string.format("%d=%s/%s(note %s)", o, tostring(ch), tostring(dh), tostring(nl))
+        if not d.classNote:IsShown() then problems[#problems + 1] = "offset " .. o .. ": no class note" end
+        if ch > dh then problems[#problems + 1] = "offset " .. o .. ": contents " .. ch .. " > " .. dh end
+        if ch < last then problems[#problems + 1] = "offset " .. o .. ": contents shrank" end
+        last = ch
+    end
+    WIf().Changes = changes
+    d.classNote.GetStringHeight, d.footer.GetStringHeight = nil, nil
+    UI.ApplyFonts(0)
+    Click(F().strip.whatIfBtn)
+    if noteLines < 2 then problems[#problems + 1] = "class note never wrapped" end
+    return #problems == 0, table.concat(sizes, " ") .. " " .. table.concat(problems, "; ")
 end)
 
 --------------------------------------------------------------------------------

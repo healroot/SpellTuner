@@ -38,6 +38,7 @@ end
 
 local hooked = setmetatable({}, { __mode = "k" })     -- frames whose OnHide we hooked
 local popups = setmetatable({}, { __mode = "k" })     -- open dropdown lists (UI_POPUP)
+local companions = setmetatable({}, { __mode = "k" }) -- frame -> onEsc: a panel beside a window (T125)
 local special = {}                                    -- names the fallback put in UISpecialFrames
 
 function Esc:On()
@@ -228,9 +229,17 @@ end
 function Esc:TopWindow(exclude)
     for i = #self.stack, 1, -1 do
         local f = self.stack[i].frame
-        if f ~= exclude and not popups[f] and OnScreen(f) then return f end
+        if f ~= exclude and not popups[f] and not companions[f] and OnScreen(f) then return f end
     end
     return nil
+end
+
+-- A companion (T125, the What if drawer beside the main window): pushed by
+-- its owner while shown like any frame, but never the frame a copy box
+-- centres on, and pushed again (above the windows) when the stack is turned
+-- back on while it is on screen.
+function Esc:Companion(frame, onEsc)
+    if frame then companions[frame] = onEsc or true end
 end
 
 -- db.ui.escStack (Settings -> General): on, the stack; off, one
@@ -246,6 +255,9 @@ function Esc:Set(on, shown)
         u.escStack = true
         DropSpecials()
         for _, e in ipairs(shown or {}) do self:Push(e.frame, e.onEsc) end
+        for f, onEsc in pairs(companions) do
+            if OnScreen(f) then self:Push(f, onEsc ~= true and onEsc or nil) end
+        end
     else
         local open = {}
         for _, e in ipairs(self.stack) do open[#open + 1] = e.frame end

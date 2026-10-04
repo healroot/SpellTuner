@@ -1287,9 +1287,11 @@ local function WrappedHeight(fs)
     return 2 * Pitch(WI_SUB_H)
 end
 
--- The drawer's side: right of the window unless its right edge plus the
--- drawer would leave the screen (UIParent's right), then left. Widget
--- geometry only (the window manager reads the same).
+-- The drawer's side: right of the window when it fits there before
+-- UIParent's right edge, else left when it fits there, else the side with
+-- more room (the drawer is clamped to the screen, so the client pushes it
+-- back over the window's edge rather than off the screen). Widget geometry
+-- only (the window manager reads the same).
 function SpellsPane:PlaceDrawer()
     local d = self.drawer
     if not d then return end
@@ -1303,7 +1305,12 @@ function SpellsPane:PlaceDrawer()
     local side = "right"
     if type(left) == "number" and type(w) == "number" and type(es) == "number" and type(uiRight) == "number"
         and type(ues) == "number" then
-        if (left + w + DRAWER_GAP + DRAWER_W) * es > uiRight * ues + 0.5 then side = "left" end
+        local need = (DRAWER_GAP + DRAWER_W) * es
+        local rightRoom = uiRight * ues - (left + w) * es
+        local leftRoom = left * es
+        if rightRoom + 0.5 < need then
+            if leftRoom + 0.5 >= need or leftRoom > rightRoom then side = "left" end
+        end
     end
     if d.side ~= side or not d.anchored then
         d:ClearAllPoints()
@@ -1333,6 +1340,7 @@ local function BuildWhatIf(win)
     d.spellsWhatIf = true -- marks the drawer for the suites
     d:SetSize(DRAWER_W, win:GetHeight())
     d:EnableMouse(true)
+    d:SetClampedToScreen(true) -- neither side fits: over the window, not off the screen
     UI.StylizeFrame(d, P.frame, P.border)
     local header = CreateFrame("Frame", nil, d, "BackdropTemplate")
     header:SetPoint("LEFT", d, "LEFT", 0, 0)
@@ -1393,11 +1401,15 @@ local function BuildWhatIf(win)
     -- and the next the window. Pushed on the next frame: shown with the
     -- window, the window's own entry is pushed after its children's OnShow,
     -- and the drawer must sit above it. The stack's OnHide hook takes it off.
+    -- Marked as the window's companion: TopWindow passes over it (a copy box
+    -- centres on the window), and the stack turned back on pushes it again.
+    local function OnEsc() SpellsPane:CloseWhatIf() end
+    if MD.Win and MD.Win.Companion then MD.Win:Companion(d, OnEsc) end
     d:SetScript("OnShow", function(self)
         SpellsPane:PlaceDrawer()
         MD.API.After(0, function()
             if self:IsVisible() and MD.Win and MD.Win.Push then
-                MD.Win:Push(self, function() SpellsPane:CloseWhatIf() end)
+                MD.Win:Push(self, OnEsc)
             end
         end)
     end)
@@ -1409,10 +1421,13 @@ local function BuildWhatIf(win)
         self.sinceCheck = 0
         local w = self:GetParent()
         if not w then return end
-        local now = table.concat({ tostring(w:GetLeft()), tostring(w:GetWidth()), tostring(w:GetEffectiveScale()),
-            tostring(UIParent:GetRight()), tostring(UIParent:GetEffectiveScale()) }, "/")
-        if now ~= self.placedForRaw then
-            self.placedForRaw = now
+        -- six numbers against the last six (no strings, no tables)
+        local l, wd, ht, es = w:GetLeft(), w:GetWidth(), w:GetHeight(), w:GetEffectiveScale()
+        local ur, ues = UIParent:GetRight(), UIParent:GetEffectiveScale()
+        if l ~= self.atLeft or wd ~= self.atWidth or ht ~= self.atHeight or es ~= self.atScale
+            or ur ~= self.atUIRight or ues ~= self.atUIScale then
+            self.atLeft, self.atWidth, self.atHeight, self.atScale = l, wd, ht, es
+            self.atUIRight, self.atUIScale = ur, ues
             SpellsPane:PlaceDrawer()
         end
     end)
@@ -1701,9 +1716,17 @@ local function BuildFamily(host)
     f.strip = strip
 
     -- T125: the What if is a drawer on the window (SyncWhatIf builds it on
-    -- the first open); the view's own hiding takes it down, whatIfOpen kept
-    f:HookScript("OnHide", function(self) if self.whatIf then self.whatIf:Hide() end end)
-    host:HookScript("OnHide", function() if f.whatIf then f.whatIf:Hide() end end)
+    -- the first open); the view's own hiding takes it down, whatIfOpen kept.
+    -- Only a hide inside the window: when the window itself or UIParent
+    -- (Alt+Z) hides, the drawer follows its parent and comes back with it.
+    local function ViewHid(view)
+        local d = f.whatIf
+        if not d then return end
+        local win = d:GetParent()
+        if not view:IsShown() or (win and win:IsVisible()) then d:Hide() end
+    end
+    f:HookScript("OnHide", ViewHid)
+    host:HookScript("OnHide", ViewHid)
 
     -- 3. RANKS
     f.ranks = TitledPane(content, "RANKS")
@@ -1749,10 +1772,7 @@ local function BuildFamily(host)
         if f.lastTick and (now - f.lastTick) < 2 then return end
         f.lastTick = now
         MD.Book:Get() -- a changed book fires BOOK_CHANGED here, and bumps bookGen
-        -- T125: a drawer the view's hiding took down (Alt+Z) comes back
-        local drawerDown = SpellsPane.whatIfOpen and f.strip:IsShown()
-            and not (f.whatIf and f.whatIf:IsShown())
-        if drawerDown or SpellsPane:Signature(f.key, f.preview) ~= f.signature then
+        if SpellsPane:Signature(f.key, f.preview) ~= f.signature then
             SpellsPane:RenderFamily(f.key, f.preview)
         else
             SpellsPane:UpdateFamilyLive()

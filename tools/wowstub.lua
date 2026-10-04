@@ -787,6 +787,32 @@ local function GeoVisibleChars(text)
     end
     return widest, lines
 end
+-- T125 review m5: a font string given SetWordWrap(true) and a width wraps
+-- greedily by words at the same 6 px per character metric (a word wider than
+-- the width takes its own lines); one without either keeps one line per "\n".
+local function GeoWrappedLines(text, width, size)
+    local s = rawtype(text) == "string" and text or ""
+    s = s:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|T.-|t", "#"):gsub("||", "|")
+    local cw = 6 * size / 12
+    local total = 0
+    for line in (s .. "\n"):gmatch("([^\n]*)\n") do
+        local n, used = 1, 0
+        for word in line:gmatch("%S+") do
+            local ww = #word * cw
+            if used == 0 then
+                used = ww
+            elseif used + cw + ww <= width then
+                used = used + cw + ww
+            else
+                n, used = n + 1, ww
+            end
+            while used > width do n, used = n + 1, used - width end
+        end
+        total = total + n
+    end
+    return total
+end
+S.WrappedLines = GeoWrappedLines -- for a suite that keeps its own anchors (spellsui's Forever half)
 local GEO_FRAME = {
     SetScale = function(self, s) self.scaleV = s end,
     GetScale = function(self) return self.scaleV or 1 end,
@@ -832,6 +858,10 @@ local GEO_FRAME = {
     end,
     GetStringHeight = function(self)
         local _, lines = GeoVisibleChars(self.text)
+        local width = self.w
+        if self.wordWrap == true and rawtype(width) == "number" and width > 0 then
+            lines = GeoWrappedLines(self.text, width, GeoFontSize(self))
+        end
         return lines * GeoFontSize(self)
     end,
 }

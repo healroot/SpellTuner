@@ -575,6 +575,7 @@ function Win:Prune() return Esc:Prune() end
 function Win:OnEsc() return Esc:OnEsc() end
 function Win:CloseLists() return Esc:CloseLists() end
 function Win:TopWindow(exclude) return Esc:TopWindow(exclude) end
+function Win:Companion(frame, onEsc) return Esc:Companion(frame, onEsc) end
 function Win:EscStackOn() return Esc:On() end
 function Win:EscLine() return Esc:Line() end
 
