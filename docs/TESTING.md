@@ -2406,6 +2406,18 @@ On either client, `/st` -> Spells.
 **Paste back** a line per step into `.logs/tbc/0.17.1-s1.md` and `docs/probe/<build>-0.17.1-s1.md`,
 with the footer of step 1 copied whole.
 
+## 51. The gear / enchant freeze (TBC; one short session, 5 min)
+
+1. **Gear.** Out of combat, with `/st` closed, swap a whole set (an equipment manager outfit or
+   several pieces in a row): no hitch. Then with `/st` -> Spells open: no hitch, and the rank
+   tags follow the new +healing.
+2. **Enchant.** Apply an enchant (or have one applied through trade): no hitch.
+3. **Talents still move the book.** Respec a point that changes a cost (or any point), open
+   `/st` -> Spells: the costs follow.
+
+**Paste back** one line per step into `.logs/tbc/gear-freeze.md`; if a hitch remains, say which
+step and whether `/st` was open.
+
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the
 raw numbers. `/st profile` output is welcome with any report. I turn them into

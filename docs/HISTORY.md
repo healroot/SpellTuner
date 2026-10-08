@@ -5103,6 +5103,21 @@ installed into both clients and merged to master on 2026-10-04; nothing publishe
 damage, MeasureBonus heal-only, no stale damage bonus on TBC (report deviations 3-5).
 Next: TESTING section 50, publish on the author's word.
 
+## 2026-10-08 -- the gear / enchant freeze (TBC)
+
+The author reported a freeze on every gear change and enchant. Cause: the TBC client fires
+SPELLS_CHANGED (and UNIT_INVENTORY_CHANGED) in bursts on a swap or an enchant. Each
+SPELLS_CHANGED ran SD:BuildKnown, whose SPELLS_REBUILT made Spells/Book_Model.lua forget every
+read and rebuild the book (every spellbook spell's tooltip scanned and parsed again), then
+Spells/Book_TBC.lua forgot and rebuilt again; each UNIT_INVENTORY_CHANGED rebuilt the book once
+more. Fixed in the worktree gear-freeze: SPELLS_CHANGED rebuilds the known ranks only when they
+moved (SD:KnownSignature), and forgets the reads only when the spellbook's ids moved
+(B.BookSignature, no tooltip read); a talent change (a changed TALENTS_CHANGED signature)
+still forgets and rebuilds; UNIT_INVENTORY_CHANGED and the Dashboard's
+PLAYER_EQUIPMENT_CHANGED coalesce a burst into one rebuild on the next frame.
+bookshapecheck/tbc 24b holds it (on master: 258 tooltip reads and 3 SPELLS_REBUILT for a three
+event burst; now 0 and 0); expected count 18 -> 19. TESTING section 51. Not merged, not installed.
+
 ## Moved from CLAUDE.md on 2026-10-04
 
 Text moved verbatim out of `CLAUDE.md` when it was trimmed (each line as it stood, including the parts that stay in `CLAUDE.md` in shorter form). Sub-headings are the `CLAUDE.md` sections the lines came from.

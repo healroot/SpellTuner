@@ -447,9 +447,19 @@ ST:RegisterCallback("FORM_CHANGED", RefreshSpellRail)
 ST:RegisterCallback("SPELLS_REBUILT", Refresh)
 ST:RegisterCallback("FIGHT_RECORDED", Refresh)
 ST:RegisterCallback("FORM_CHANGED", Refresh) -- Tree of Life: costs and aura change
-ST:On("PLAYER_EQUIPMENT_CHANGED", function()
+-- one repaint on the next frame for a whole gear swap (one event per slot)
+local gearPending = false
+local function GearRefresh()
+    gearPending = false
     if frame and frame:IsShown() then
         RefreshSpellRail() -- T84: gear moves the suggested-rank tags
         Refresh()
     end
+end
+ST:On("PLAYER_EQUIPMENT_CHANGED", function()
+    if not (frame and frame:IsShown()) then return end
+    if not (C_Timer and C_Timer.After) then GearRefresh(); return end
+    if gearPending then return end
+    gearPending = true
+    C_Timer.After(0, GearRefresh)
 end)

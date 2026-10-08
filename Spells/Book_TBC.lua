@@ -35,12 +35,13 @@
 -- so the TBC book (Spells/Book_Model.lua) and the spell list follow.
 --
 -- T118: B.WalkAll() (every spell of the book) and B.Read(id) (one rank's
--- text and reads) are every caller's, cached until SPELLS_CHANGED /
--- LEARNED_SPELL_IN_TAB or the next build. T123: the priest's, shaman's and
--- paladin's TBC profiles grant the rank table, so a logged-in priest, shaman
--- or paladin builds here (the spend tracker, the fight summary and /st
--- profile read it through RankMath:Source() as the rank math does). TBC TOC
--- only, after Spells/Parse.lua.
+-- text and reads) are every caller's, cached until the spellbook's ids move
+-- (SPELLS_CHANGED), LEARNED_SPELL_IN_TAB, a talent change or the next build.
+-- T123: the priest's, shaman's and paladin's TBC profiles grant the rank
+-- table, so a logged-in priest, shaman or paladin builds here (the spend
+-- tracker, the fight summary and /st profile read it through
+-- RankMath:Source() as the rank math does). TBC TOC only, after
+-- Spells/Parse.lua.
 local _, ST = ...
 
 local B = {}
@@ -475,12 +476,63 @@ function B:Rebuild()
     return B._src
 end
 
+--- B.BookSignature() -> the spellbook's spell ids in slot order, as one
+--- string: no tooltip is read, so it is cheap enough for every SPELLS_CHANGED.
+function B.BookSignature()
+    local parts = {}
+    local tabs = Call("SpellTabCount")
+    if type(tabs) ~= "number" then return nil end
+    for tab = 1, tabs do
+        local _, _, offset, count = Call("SpellTabInfo", tab)
+        if type(offset) == "number" and type(count) == "number" then
+            for slot = offset + 1, offset + count do
+                local _, _, id = Call("SpellBookItemName", slot, "spell")
+                if type(id) ~= "number" then
+                    local kind, id2 = Call("SpellBookItemKind", slot, "spell")
+                    if kind == "SPELL" and type(id2) == "number" then id = id2 end
+                end
+                parts[#parts + 1] = tostring(id)
+            end
+        end
+    end
+    return table.concat(parts, ",")
+end
+
 local function OnBook() B:Rebuild() end
 ST:RegisterCallback("MD_READY", OnBook)
-ST:On("SPELLS_CHANGED", OnBook)
 ST:On("LEARNED_SPELL_IN_TAB", OnBook)
 ST:On("PLAYER_LEVEL_UP", OnBook)
--- T118: B:Build forgets the reads and the walk; these two forget them for a
--- class that builds nothing (the druid, whose TBC book still walks)
-ST:On("SPELLS_CHANGED", B.Forget)
+-- T118: B:Build forgets the reads and the walk; this forgets them for a class
+-- that builds nothing (the druid, whose TBC book still walks)
 ST:On("LEARNED_SPELL_IN_TAB", B.Forget)
+-- The client fires SPELLS_CHANGED on every gear swap and enchant, often
+-- several times. The TBC text is static, so the reads and the walk are
+-- forgotten (and the book rebuilt) only when the spellbook's ids moved; a
+-- talent change (its costs are in the text) forgets and rebuilds them below.
+B._bookSig = nil
+ST:On("SPELLS_CHANGED", function()
+    local sig = B.BookSignature() or "" -- a book that cannot be walked stays empty
+    if sig == B._bookSig then return end
+    B._bookSig = sig
+    B.Forget()
+    B:Rebuild()
+end)
+-- the talent ranks as one string: TALENTS_CHANGED fires on every scan, a
+-- changed talent or not
+local function TalentSignature()
+    local parts = {}
+    for name, rank in pairs(type(ST.talents) == "table" and ST.talents or {}) do
+        parts[#parts + 1] = tostring(name) .. "=" .. tostring(rank)
+    end
+    table.sort(parts)
+    return table.concat(parts, ",")
+end
+B._talentSig = nil
+ST:RegisterCallback("TALENTS_CHANGED", function()
+    local sig = TalentSignature()
+    if sig == B._talentSig then return end
+    B._talentSig = sig
+    B._bookSig = nil
+    B.Forget()
+    if B._src then B:Rebuild() end -- a built class's ranks read again (not at login)
+end)

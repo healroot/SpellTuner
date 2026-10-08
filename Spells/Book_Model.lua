@@ -791,8 +791,18 @@ ST:RegisterCallback("SPELLS_REBUILT", function()
 end)
 ST:RegisterCallback("TALENTS_CHANGED", Rebuild)
 ST:RegisterCallback("FORM_CHANGED", Rebuild)
+-- a gear swap or an enchant fires this several times at once: one rebuild on
+-- the next frame for the whole burst
+local inventoryPending = false
 ST:On("UNIT_INVENTORY_CHANGED", function(unit)
-    if unit == "player" then Rebuild() end
+    if unit ~= "player" then return end
+    if not (C_Timer and C_Timer.After) then Rebuild(); return end
+    if inventoryPending then return end
+    inventoryPending = true
+    C_Timer.After(0, function()
+        inventoryPending = false
+        Rebuild()
+    end)
 end)
 ST:On("PLAYER_LEVEL_UP", Rebuild)
 -- T127: a Trade-off setting moved (UI/Settings.lua): the best mark moves

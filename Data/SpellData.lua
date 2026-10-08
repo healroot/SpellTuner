@@ -289,7 +289,23 @@ local function IsKnown(id)
     return GetSpellInfo(GetSpellInfo(id) or "") ~= nil
 end
 
+-- the highest known rank of every family, as one string: what BuildKnown
+-- would build, without building it (SPELLS_CHANGED's cheap test)
+function SD:KnownSignature()
+    local parts = {}
+    for family, list in pairs(SD.all) do
+        local top = 0
+        for i = 1, #list do
+            if IsKnown(list[i]) then top = i end
+        end
+        if top > 0 then parts[#parts + 1] = family .. "=" .. top end
+    end
+    table.sort(parts)
+    return table.concat(parts, ",")
+end
+
 function SD:BuildKnown()
+    SD._knownSig = SD:KnownSignature()
     wipe(SD.known)
     wipe(SD.knownSet)
     wipe(SD.maxRank)
@@ -320,6 +336,9 @@ end
 
 ST:RegisterCallback("MD_READY", function() SD:BuildKnown() end)
 ST:On("LEARNED_SPELL_IN_TAB", function() SD:BuildKnown() end)
+-- The client fires SPELLS_CHANGED on every gear swap and enchant, often
+-- several times; SPELLS_REBUILT rebuilds the whole book (every spellbook
+-- tooltip read again), so it fires only when a known rank moved.
 ST:On("SPELLS_CHANGED", function()
-    if ST.db then SD:BuildKnown() end
+    if ST.db and SD:KnownSignature() ~= SD._knownSig then SD:BuildKnown() end
 end)

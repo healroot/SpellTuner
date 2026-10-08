@@ -1227,16 +1227,18 @@ local function BookChecks(dB)
         ST:RegisterCallback("BOOK_CHANGED", function() fired = fired + 1 end)
         local gen0 = Book and Book.generation or -1
         local savedBonus = _G.GetSpellBonusHealing
+        -- the rebuild runs on the next frame, once for a burst of these
+        local function Gear(unit) S.Fire("UNIT_INVENTORY_CHANGED", unit); S.Tick(0.01) end
         _G.GetSpellBonusHealing = function() return 520 end
-        S.Fire("UNIT_INVENTORY_CHANGED", "player")
+        Gear("player")
         local afterGear, genGear = fired, Book and Book.generation
-        S.Fire("UNIT_INVENTORY_CHANGED", "player")
+        Gear("player")
         ST:Fire("TALENTS_CHANGED")
         local afterSame, genSame = fired, Book and Book.generation
-        S.Fire("UNIT_INVENTORY_CHANGED", "party1")
+        Gear("party1")
         local afterParty = fired
         _G.GetSpellBonusHealing = savedBonus
-        S.Fire("UNIT_INVENTORY_CHANGED", "player")
+        Gear("player")
         local afterBack, genBack = fired, Book and Book.generation
         local seen = { afterGear = afterGear, afterSame = afterSame, afterParty = afterParty, afterBack = afterBack,
                        gen0 = gen0, genGear = genGear, genSame = genSame, genBack = genBack }
@@ -1244,6 +1246,31 @@ local function BookChecks(dB)
         check("24. gear moving a value fires BOOK_CHANGED once and bumps the generation; an unchanged rebuild does neither",
             afterGear == 1 and genGear == gen0 + 1 and afterSame == 1 and genSame == genGear and afterParty == 1
                 and afterBack == 2 and genBack == gen0 + 2, Show(seen))
+    end
+
+    -- 24b ---------------------------------------------------------------------
+    -- a gear swap or an enchant: the client fires SPELLS_CHANGED and
+    -- UNIT_INVENTORY_CHANGED in bursts; with the spellbook and the known
+    -- ranks unchanged, no spellbook tooltip is read again (the freeze)
+    T.section("24b. a gear burst reads no tooltip")
+    do
+        pcall(Fresh)
+        S.Fire("SPELLS_CHANGED") -- settles the book's signature
+        pcall(Fresh)
+        local reads, rebuilt = 0, 0
+        local realLines = ST.API.SpellTooltipLines
+        ST.API.SpellTooltipLines = function(...) reads = reads + 1; return realLines(...) end
+        ST:RegisterCallback("SPELLS_REBUILT", function() rebuilt = rebuilt + 1 end)
+        for _ = 1, 3 do
+            S.Fire("SPELLS_CHANGED")
+            S.Fire("UNIT_INVENTORY_CHANGED", "player")
+            S.Fire("PLAYER_EQUIPMENT_CHANGED")
+        end
+        S.Tick(0.01)
+        pcall(Fresh)
+        ST.API.SpellTooltipLines = realLines
+        check("24b. three SPELLS_CHANGED / UNIT_INVENTORY_CHANGED over an unchanged book: no tooltip read, no SPELLS_REBUILT",
+            reads == 0 and rebuilt == 0, "reads=" .. reads .. " rebuilt=" .. rebuilt)
     end
 
     -- 25 ----------------------------------------------------------------------
