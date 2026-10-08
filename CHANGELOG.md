@@ -3,6 +3,13 @@
 What changed, for players. `./release.sh --publish` sends the section of the version being
 published to CurseForge; the developers' log is `docs/HISTORY.md`.
 
+## 0.17.2
+
+### Fixes
+- TBC: no more freeze when you change gear or apply an enchant. The game announces a spellbook
+  change several times on every swap, and SpellTuner re-read every spell's tooltip each time; it
+  now does that only when your spells or talents really changed.
+
 ## 0.17.1
 
 ### What if
