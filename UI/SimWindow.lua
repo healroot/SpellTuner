@@ -118,17 +118,17 @@ local function Run()
                     best.swiftmendBelow * 100 + 0.5)
             end
             if not best.noDirect and d then
-                local sd = ST.SpellData.spells[d]
+                local sd = ST.Kit.Index().spells[d]
                 out[#out + 1] = string.format("  2. Under %d%%: %s R%d",
-                    best.directBelow * 100 + 0.5, ST.SpellData.families[sd.family].label, sd.rank)
+                    best.directBelow * 100 + 0.5, ST.Kit.Index().families[sd.family].label, sd.rank)
             end
             if best.rollStacks > 0 then
                 out[#out + 1] = string.format("  3. Keep Lifebloom x%d rolling on the tank", best.rollStacks)
             end
             if best.binds.Rejuvenation then
-                local sd = ST.SpellData.spells[best.binds.Rejuvenation]
+                local sd = ST.Kit.Index().spells[best.binds.Rejuvenation]
                 out[#out + 1] = string.format("  4. Under %d%% without Rejuvenation: %s R%d",
-                    best.hotBelow * 100 + 0.5, ST.SpellData.families[sd.family].label, sd.rank)
+                    best.hotBelow * 100 + 0.5, ST.Kit.Index().families[sd.family].label, sd.rank)
             end
             out[#out + 1] = string.format("  5. Otherwise %s (%d%% of the fight)",
                 best.filler and "Lifebloom on the tank" or "wait",

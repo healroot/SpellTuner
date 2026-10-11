@@ -457,12 +457,16 @@ local function FamilyCooldown(family)
     return def and def.cooldown or nil
 end
 
--- T111: the kit is the druid's, from Data/SpellData.lua, for every class
--- (decision 8 (b): tables and tooltips only, the TBC coach stays the
--- druid's) -- a priest's Review validation and replay run on the kit they ran
--- on before T111. RankMath.ClassKit (below) builds a class's own kit; only the
--- offline tools call it.
+-- T111: the kit was the druid's, from Data/SpellData.lua, for every class
+-- (decision 8 (b)). 2026-10-11 (the author: practice for every class): a
+-- class whose profile grants the rank table (RankMath:IsClassBook) heals with
+-- its own kit, RankMath.ClassKit over its book, and the kit's index
+-- (ST.Kit.Index(), what the engine, practice and replay read beside the kit)
+-- is that book. The druid's kit below is unchanged.
 function RankMath:SpellKit(opts)
+    if RankMath:IsClassBook() then
+        return RankMath.ClassKit(opts, RankMath:Source())
+    end
     local SD = ST.SpellData
     local kit = { caster = {}, tree = {}, profile = KIT_PROFILE }
 
@@ -773,7 +777,15 @@ function RankMath:Source()
 end
 
 local NO_SOURCE = { spells = {}, families = {}, familyOrder = {}, all = {}, known = {}, knownSet = {},
-                    maxRank = {}, GetCost = function() return nil, "unknown" end }
+                    maxRank = {}, GetCost = function() return nil, "unknown" end,
+                    Resolve = function(_, id) return id end }
+
+-- the kit's index follows the kit: a class book's source (an empty one until
+-- the book is built, never the druid's table), else ST.SpellData
+ST.Kit.indexSource = function()
+    if RankMath:IsClassBook() then return RankMath:Source() or NO_SOURCE end
+    return nil
+end
 
 -- The school's crit and the mana, through the adapter (Client/API_TBC.lua's
 -- SpellCritChance, the shared UnitPower); an absent or unreadable answer is 0.

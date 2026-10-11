@@ -330,6 +330,24 @@ do
     local cost = SD:GetCost(44208) or SD.spells[26983].cost
     check("B13: raid Tranquility waste / caster's party of 5", math.abs(wasted - cost / (4 * 5)) < 1e-6,
         string.format("%.2f, expected %.2f (a raid of 25 gives %.2f)", wasted, cost / 20, cost / 100))
+
+    -- 2026-10-11 (the author: "replay does not show the whole raid, only the
+    -- party"): a raid pull tracks every member, each roster row with its
+    -- subgroup, the player's marked unit "player"
+    local FR = ST.FightRecorder
+    FR:Start(GetTime())
+    local st = FR.active
+    local inOther, me = 0, nil
+    for i, r in ipairs(st and st.roster or {}) do
+        if st.trackedSet[i] and r.subgroup and r.subgroup ~= 3 then inOther = inOther + 1 end
+        if r.unit == "player" then me = r end
+    end
+    check("2026-10-11: a raid pull tracks all 25, twenty of them outside the healer's subgroup",
+        st ~= nil and #st.tracked == 25 and inOther == 20,
+        string.format("tracked %d, other subgroups %d", st and #st.tracked or -1, inOther))
+    check("2026-10-11: the player's roster row is unit \"player\" in subgroup 3",
+        me ~= nil and me.subgroup == 3, me and tostring(me.subgroup) or "no player row")
+    FR.active = nil
     S.raid = false
 end
 

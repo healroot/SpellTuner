@@ -45,44 +45,18 @@ ST:RegisterCallback("MD_READY", function()
 end)
 
 --------------------------------------------------------------------------------
--- Who is worth recording. Solo or in a party: everyone. In a raid: the player's
--- own subgroup plus anyone flagged main tank -- a raid's other twenty-odd
--- health bars are not this healer's problem and recording them would bury the
--- ones that are.
+-- Who is worth recording: everyone in the group, a raid's every member too
+-- (the author, 2026-10-11: a replay of a raid showed only the healer's own
+-- subgroup, so most of the people healed were missing). Pets are not.
 --------------------------------------------------------------------------------
-local function SubgroupOf(name)
-    if not (GetRaidRosterInfo and GetNumGroupMembers) then return nil end
-    for i = 1, GetNumGroupMembers() do
-        local ok, rname, _, subgroup = pcall(GetRaidRosterInfo, i)
-        if ok and rname == name then return subgroup end
-    end
-    return nil
-end
-
 local function BuildTracked()
     local T = ST.Targets
     if not T then return {} end
     local tracked = {}
-    local inRaid = IsInRaid and IsInRaid()
-    local mySubgroup = inRaid and SubgroupOf(UnitName("player")) or nil
-
     for _, e in pairs(T.byGUID) do
         if not e.isPet then
-            local keep
-            if not inRaid then
-                keep = true
-            else
-                local sub = SubgroupOf(e.name)
-                keep = (sub ~= nil and sub == mySubgroup)
-                if not keep and e.unit and GetPartyAssignment then
-                    local ok, mt = pcall(GetPartyAssignment, "MAINTANK", e.unit)
-                    keep = ok and mt and true or false
-                end
-            end
-            if keep then
-                local idx = ST.Recorder and ST.Recorder:Index(e.guid, e.name) or -1
-                if idx > 0 then tracked[idx] = true end
-            end
+            local idx = ST.Recorder and ST.Recorder:Index(e.guid, e.name) or -1
+            if idx > 0 then tracked[idx] = true end
         end
     end
     return tracked
@@ -101,8 +75,15 @@ local function BuildRoster()
         if e and e.unit and UnitGUID(e.unit) == r.guid then
             maxHP = UnitHealthMax(e.unit) or -1
         end
+        -- the healer and each member's raid subgroup: a party-wide heal reaches
+        -- the caster's subgroup only (Engine/SimModel.lua), and the replay
+        -- lays a raid out by subgroup
+        local me = ST.player and r.guid == ST.player.guid
+        local subgroup = e and e.subgroup
+        if me and ST.Targets and ST.Targets.byGUID[r.guid] then subgroup = ST.Targets.byGUID[r.guid].subgroup end
         out[i] = { name = r.name, guid = r.guid, class = r.class, role = r.role,
-                   roleSource = e and e.roleSource or "unknown", maxHP = maxHP }
+                   roleSource = e and e.roleSource or "unknown", maxHP = maxHP,
+                   unit = me and "player" or nil, subgroup = subgroup }
     end
     return out
 end
@@ -116,7 +97,7 @@ end
 local DRINK_BUFFS = { ["Drink"] = true, ["Refreshment"] = true, ["Food & Drink"] = true }
 
 local function ScanAuras(stream)
-    local SD = ST.SpellData
+    local SD = ST.Kit.Index()
     local auras, buffs = {}, {}
     local now = GetTime()
 
@@ -229,7 +210,7 @@ function FR:Start(t0)
         -- never trained Swiftmend, and the offline coach bound it. Six numbers.
         known = (function()
             local k = {}
-            for family, id in pairs(ST.SpellData.maxRank or {}) do k[family] = id end
+            for family, id in pairs(ST.Kit.Index().maxRank or {}) do k[family] = id end
             return k
         end)(),
     }
@@ -375,6 +356,9 @@ function FR:Event(subevent, sourceGUID, destGUID, destName, p1, p2, p3, p4, p5, 
     if subevent == "SPELL_HEAL" or subevent == "SPELL_PERIODIC_HEAL" then
         local spellID, amount, overheal, critical = p1, p4 or 0, p5 or 0, p7
         local periodic = (subevent == "SPELL_PERIODIC_HEAL")
+        -- a heal the log credits to the player that the player cannot cast
+        -- (another druid's bloom, Earth Shield) is a foreign heal
+        if isOwn and ST.BookTBC and not ST.BookTBC.IsOwnSpell(p2) then isOwn = false end
         if isOwn then
             -- THE MULTI-RETURN TRAP, third time (CLAUDE.md names the two in
             -- UI/Summary.lua). `ST.Overheal and ST.Overheal:Split(a, o)` is an
@@ -452,11 +436,11 @@ function FR:Event(subevent, sourceGUID, destGUID, destName, p1, p2, p3, p4, p5, 
         -- the pending cast's own success closes it; any other success (an
         -- off-GCD instant) leaves it open
         if FR.pending and p1 == FR.pending[1] then FR.pending = nil end
-        local cost = ST.SpellData:GetCost(p1)
+        local cost = ST.Kit.Index():GetCost(p1)
         Push(s, t, K.OWNCAST, idx, cost or -1, p1 or 0)
         if p1 and not s.names[p1] then
             -- p2 is the combat log's own spell name; GetSpellInfo adds the rank
-            local sd = ST.SpellData.spells[p1]
+            local sd = ST.Kit.Index().spells[p1]
             s.names[p1] = sd and (sd.family .. " r" .. sd.rank)
                 or (type(p2) == "string" and p2) or (GetSpellInfo and GetSpellInfo(p1)) or nil
             if ST.ClassifyCast then ST:ClassifyCast(p1) end

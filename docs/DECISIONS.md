@@ -1551,6 +1551,20 @@ player's own gear changes (two plain scans out of combat, `Book:MeasureBonus`) b
 estimated from the shared coefficient rules, and the card says which. A measurement never
 changes a shown value; it only sets how far a what-if moves a rank.
 
+## Practice for every TBC class (2026-10-11, the author's ruling)
+
+The author: "practice does not work on other classes - lets enable it for all". Decision 8 (b)
+(TBC's sim stays the druid's) is overruled for practice. A TBC class with a class book
+practises on its own kit (`RankMath:SpellKit` -> `RankMath.ClassKit`, `ST.Kit.Index()` the
+spell index), with no shipped default bindings. The coach, simulate and the advisor stay the
+druid's on TBC until a separate ruling.
+
+## The whole group is recorded (2026-10-11, the author's ruling)
+
+"replay does not show the whole raid, only the party". The recorder tracks every group member
+who is not a pet, not just the subgroup and the main tanks. A raid recording is larger; the
+eight-recording ring is unchanged.
+
 ## Cast-time talents from talentsforever (2026-10-04, T129, the author's ruling)
 
 talentsforever.com is the **preliminary source of truth** for what a Forever talent does, until a

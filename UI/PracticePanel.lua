@@ -344,7 +344,7 @@ function ST.DashboardParts.CreatePractice(parent, width)
 
     local function BindLines()
         PR.EnsureKit()
-        local SD = ST.SpellData
+        local SD = ST.Kit.Index()
         local out = {}
         for _, b in ipairs(PR.Binds()) do
             local id = PR.SpellFor(b)
@@ -369,7 +369,7 @@ function ST.DashboardParts.CreatePractice(parent, width)
     -- T40: the summary line and its hover (the theme only)
     local function RenderSummary()
         PR.EnsureKit()
-        local SD = ST.SpellData
+        local SD = ST.Kit.Index()
         local binds = PR.Binds()
         local accent, white = UI.Hex("accent"), UI.Hex("text")
         local tips = { Title("What your presses cast") }
@@ -418,7 +418,7 @@ function ST.DashboardParts.CreatePractice(parent, width)
             statusFS:SetText("|cffff9966Nothing is bound yet - import your bindings or add one in Edit bindings first.|r")
             return
         end
-        if PR.policy.kitIsLive and not PR.FirstFamily() then
+        if PR.Policy().kitIsLive and not PR.FirstFamily() then
             statusFS:SetText("|cffff9966No healing spell in your spellbook for practice to cast.|r")
             return
         end

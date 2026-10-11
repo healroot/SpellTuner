@@ -2418,6 +2418,20 @@ with the footer of step 1 copied whole.
 **Paste back** one line per step into `.logs/tbc/gear-freeze.md`; if a hitch remains, say which
 step and whether `/st` was open.
 
+## 52. A TBC priest: practice, the raid replay, overheal by rank (one session, 15 min)
+
+1. **Practice.** On the priest: `/st` -> Simulate -> Practice. Bind four or five of your heals
+   (Import from Cell / Clique / Keybindings, or by hand), then Start. Heal for a minute. The
+   fight should end with your own spells, and Play should replay it.
+2. **Raid replay.** Do one raid pull (or a battleground / any group of more than 5), then
+   `/st replay`. Every member you healed should have a row, grouped by subgroup.
+3. **Overheal.** Press Settings -> General -> **Reset overheal data** first: the stored rows still hold the foreign
+   Lifebloom. Heal in a group with a druid, then open `/st` -> Reports -> Waste -> by spell. Only
+   your own spells should be listed, each with its rank (e.g. `Greater Heal R5`).
+4. **The druid.** On the druid, Practice should still show the druid's default bindings.
+
+**Paste back** one line per step into `.logs/tbc/priest-fixes.md`.
+
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the
 raw numbers. `/st profile` output is welcome with any report. I turn them into

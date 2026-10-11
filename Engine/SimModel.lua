@@ -141,7 +141,7 @@ SM.SPELL_CD = SPELL_CD
 -- the kit: the engine's slot (S.kit, set by SM:Run) or a ReplayTrace state
 -- (its scenario's kit). The entry is looked up in S.form, then in every form
 -- (a family's cooldown does not change with the form). With no entry the
--- family is ST.SpellData's, else the id itself. Allocates nothing.
+-- family is the kit index's (ST.Kit.Index()), else the id itself. Allocates nothing.
 local KIT_FORMS = { "caster", "tree" }
 local function KitEntry(S, spellID)
     local kit = S and (S.kit or (S.scenario and S.scenario.kit))
@@ -164,7 +164,8 @@ function SM.CooldownOf(S, spellID)
     if secs and secs <= 0 then secs = nil end
     local family = e and e.family
     if not family then
-        local sd = ST.SpellData and ST.SpellData.spells and ST.SpellData.spells[spellID]
+        local index = ST.Kit.Index()
+        local sd = index and index.spells and index.spells[spellID]
         family = sd and sd.family
     end
     return family or spellID, secs
@@ -1442,7 +1443,7 @@ function SM:Run(scenario, plan, opts)
                         -- and the endDeficit term always had it this way.
                         -- the bloom reaches the combat log under its own id
                         Land(a, st.bloom, st.family or "Lifebloom",
-                            st.spellID and ST.SpellData.bloomID or nil, false)
+                            st.spellID and ST.Kit.Index().bloomID or nil, false)
                         bloomCount = bloomCount + 1
                         bloomed = 1
                     end
@@ -1876,7 +1877,7 @@ local function ScenarioV2(rec, kit, others)
             -- remove, and it is only read when a plan is deciding (which is
             -- also when `script` is dropped).
             script[#script + 1] = entry
-            if not ST.SpellData.spells[id] then
+            if not ST.Kit.Index().spells[id] then
                 -- `a and f()` truncates f() to one value (CLAUDE.md); the if
                 -- has to be written out or `kind` is always nil
                 local kind = "unknown"
@@ -2281,7 +2282,7 @@ local function ValidateV2(rec, kit)
     local spendBySpell, spend = SM.OwnSpend(rec)
     local drifted, uncalibrated, driftShort = nil, {}, nil
     for spellID, mana in pairs(spendBySpell) do
-        if spend > 0 and mana / spend >= 0.10 and ST.SpellData.spells[spellID] then
+        if spend > 0 and mana / spend >= 0.10 and ST.Kit.Index().spells[spellID] then
             local d = ST.Calibration and ST.Calibration:Drift(spellID)
             if d == nil then
                 uncalibrated[#uncalibrated + 1] = ST.API.SpellName(spellID) or spellID
@@ -2343,7 +2344,7 @@ function SM.CostOfCasts(rec, kit, kinds)
     local kept, taken = {}, {}
     for _, c in ipairs(sc.script or {}) do
         local drop = false
-        if not ST.SpellData.spells[c[2]] and ST.ClassifyCast then
+        if not ST.Kit.Index().spells[c[2]] and ST.ClassifyCast then
             local _, kind = ST:ClassifyCast(c[2])
             if kind and kinds[kind] then drop = true end
         end

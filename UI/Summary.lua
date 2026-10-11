@@ -222,6 +222,10 @@ ST:On("COMBAT_LOG_EVENT_UNFILTERED", function()
         return
     end
     if subevent ~= "SPELL_HEAL" and subevent ~= "SPELL_PERIODIC_HEAL" then return end
+    -- the log names some heals' receiver as their source (another druid's
+    -- Lifebloom bloom, Earth Shield, Judgement of Light): only a spell in the
+    -- player's own book is the player's heal
+    if ST.BookTBC and not ST.BookTBC.IsOwnSpell(spellName) then return end
     amount, overheal = amount or 0, overheal or 0
 
     -- Event kind for calibration and (v0.6.3) the overheal buckets: a periodic

@@ -409,12 +409,13 @@ do
     check("the priest's profile is selected and its file grants the clock, the rank table and the tooltip",
         p == ST.Profiles.byClass.PRIEST and p:Can("clock") and p:Can("rankTable") and p:Can("tooltip") == true)
     local wrong = {}
-    for _, cap in ipairs({ "coach", "practice", "simulate", "advisor" }) do
+    for _, cap in ipairs({ "coach", "simulate", "advisor" }) do
         local ok, why = p:Can(cap)
         if ok or why ~= "class" then wrong[#wrong + 1] = cap .. "=" .. tostring(ok) .. "," .. tostring(why) end
     end
-    check("the coach, practice, simulate and the advisor stay refused for the class", #wrong == 0,
+    check("the coach, simulate and the advisor stay refused for the class", #wrong == 0,
         table.concat(wrong, " "))
+    check("practice is granted (2026-10-11: practice for every class)", p:Can("practice") == true)
     local _, why = p:Can("coach")
     local okW, words = pcall(ST.Profiles.Refusal, "coach", why, "Coaching")
     check("the refusal names the class: Coaching: not modelled for Priest yet",
@@ -423,7 +424,7 @@ do
     for _, c in ipairs({ "SHAMAN", "PALADIN" }) do
         local caps = ST.Profiles.byClass[c] and ST.Profiles.byClass[c].caps or {}
         if not (caps.clock and caps.rankTable == true and caps.tooltip == true and not caps.coach
-                and not caps.practice and not caps.simulate and not caps.advisor) then
+                and caps.practice == true and not caps.simulate and not caps.advisor) then
             files[#files + 1] = c .. Show(caps)
         end
     end
@@ -669,8 +670,10 @@ do
         Show({ SPEND.combat.casts - c0.casts, SPEND.combat.maxRankCasts - c0.max, SPEND.combat.byFamily }))
 
     local okD, dkit = pcall(function() return RM:SpellKit({ live = true }) end)
-    check("RankMath:SpellKit stays the druid's for a priest with the rank table (decision 8 (b))",
-        okD and dkit.profile == "DRUID" and dkit.caster[25213] == nil, okD and tostring(dkit.profile) or tostring(dkit))
+    check("RankMath:SpellKit is the priest's own kit for a priest with the rank table (2026-10-11)",
+        okD and dkit.profile == "PRIEST", okD and tostring(dkit.profile) or tostring(dkit))
+    check("the kit's index is the priest's book, ST.SpellData stays the druid's",
+        ST.Kit.Index() == src and ST.SpellData ~= src)
     local okKit, kit = pcall(function() return RM.ClassKit({ live = true }, src) end)
     local valid, problems = false, nil
     if okKit and Kit then valid, problems = Kit.Validate(kit) end
@@ -685,6 +688,93 @@ do
         and phE.type == "group" and phE.direct ~= nil and bhE.type == "selfAndTarget",
         Show({ ghE.type, rnE.type, rnE.ticks, phE.type, bhE.type }))
     RowsRender("the priest", src)
+end
+
+--------------------------------------------------------------------------------
+-- 4b. 2026-10-11: a TBC priest practises on the priest's own kit
+--------------------------------------------------------------------------------
+T.section("a priest practises (2026-10-11)")
+do
+    local PR, SM = ST.Practice, ST.SimModel
+    ST.db.practiceBinds = nil
+    local seeded = #PR.AllBinds()
+    check("a first practice seeds the account's TBC defaults, hidden for the priest",
+        seeded == #PR.DEFAULT_BINDS and #PR.Binds() == 0 and #PR.HiddenBinds() == seeded,
+        string.format("all=%d shown=%d hidden=%d", seeded, #PR.Binds(), #PR.HiddenBinds()))
+    local binding = {}
+    for _, fam in ipairs(src and src.familyOrder or {}) do
+        if #binding < 8 then
+            binding[#binding + 1] = PR.AddBind({ key = tostring(#binding + 1), family = fam })
+        end
+    end
+    check("the priest's own bindings are shown, the druid's kept hidden",
+        #binding >= 4 and #PR.Binds() == #binding and #PR.AllBinds() == #binding + seeded,
+        string.format("bound=%d shown=%d all=%d", #binding, #PR.Binds(), #PR.AllBinds()))
+    local setup = PR.DefaultSetup("5", 70)
+    setup.dur, setup.fixedSeed = 40, 7
+    local errs = {}
+    local okS, sess = pcall(PR.New, PR.CopySetup(setup), { seed = setup.fixedSeed, noStore = true,
+        onError = function(m) errs[#errs + 1] = tostring(m) end })
+    local prec, own, pv = nil, 0, nil
+    if okS and sess then
+        sess:Start()
+        local nextAt, turn, guard = 0.5, 0, 0
+        while sess.state == "running" and guard < 5000 do
+            guard = guard + 1
+            if sess.clock >= nextAt and sess.S then
+                turn = turn % #binding + 1
+                local low, lowFrac = 1, 2
+                for i = 1, sess.S.nT do
+                    local f = sess.S.maxHP[i] > 0 and sess.S.hp[i] / sess.S.maxHP[i] or 2
+                    if not sess.S.dead[i] and f < lowFrac then low, lowFrac = i, f end
+                end
+                sess:Cast(PR.SpellFor(binding[turn]), low)
+                nextAt = nextAt + 3
+            end
+            sess:Update(0.05)
+        end
+        prec = sess.rec
+        for i = 1, (prec and prec.n or 0) do
+            if prec.ev.kind[i] == SM.K.OWNCAST then own = own + 1 end
+        end
+        pv = prec and SM:Validate(prec)
+    else
+        errs[#errs + 1] = tostring(sess)
+    end
+    check("a practice session plays the priest's heals on the priest's kit",
+        prec ~= nil and own >= 6 and prec.kit and prec.kit.profile == "PRIEST" and #errs == 0,
+        string.format("rec=%s casts=%d kit=%s errors=[%s]", tostring(prec ~= nil), own,
+            tostring(prec and prec.kit and prec.kit.profile), table.concat(errs, "; ")))
+    local failed = {}
+    for _, g in ipairs(pv and pv.gates or {}) do
+        if not g.ok then failed[#failed + 1] = tostring(g.name or g.id) end
+    end
+    check("the practice fight replays through the gates", pv ~= nil and pv.ok == true,
+        table.concat(failed, " "))
+    ST.db.practiceBinds = nil
+end
+
+--------------------------------------------------------------------------------
+-- 4c. 2026-10-11: overheal is the priest's own spells, each with its rank
+--------------------------------------------------------------------------------
+T.section("a priest's overheal (2026-10-11)")
+do
+    local OH, BT = ST.Overheal, ST.BookTBC
+    check("IsOwnSpell: Greater Heal is the priest's, Lifebloom is not",
+        BT.IsOwnSpell("Greater Heal") == true and BT.IsOwnSpell("Lifebloom") == false)
+    wipe(OH.session)
+    local me = ST.player.guid
+    -- a druid's Lifebloom bloom, logged with the priest (its receiver) as the source
+    S.Combat(0, "SPELL_HEAL", false, me, "src", 0, 0, me, "Me", 0, 0,
+        33778, "Lifebloom", 8, 600, 600, 0, false)
+    S.Combat(0, "SPELL_HEAL", false, me, "src", 0, 0, me, "Me", 0, 0,
+        25213, "Greater Heal", 2, 2400, 400, 0, false)
+    local labels = {}
+    for _, r in ipairs(OH:SpellRows("session")) do labels[#labels + 1] = tostring(r.label) end
+    table.sort(labels)
+    local joined = table.concat(labels, ",")
+    check("the summary's overheal keeps the priest's Greater Heal, labelled with its rank, and drops the foreign Lifebloom",
+        joined:find("Greater Heal R7", 1, true) ~= nil and joined:find("Lifebloom", 1, true) == nil, joined)
 end
 
 --------------------------------------------------------------------------------

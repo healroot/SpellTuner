@@ -154,7 +154,7 @@ local coachEvals = nil     -- the search's plan count last written into the dimm
 local function HasSwiftmend()
     local known = rp and rp.rec and rp.rec.initial and rp.rec.initial.known
     if known then return known.Swiftmend ~= nil end
-    return (ST.SpellData.maxRank or {}).Swiftmend ~= nil
+    return (ST.Kit.Index().maxRank or {}).Swiftmend ~= nil
 end
 local rows = {}            -- roster indices in display order
 local playing, speed = false, 1
@@ -175,7 +175,7 @@ end
 
 local rankCount = nil
 local function SpellLabel(spellID)
-    local SD = ST.SpellData
+    local SD = ST.Kit.Index()
     local sd = SD.spells[spellID]
     if sd then
         if not rankCount then
@@ -804,7 +804,7 @@ local function PaintFrame(f, st, ti, isLeft, now)
                 ic:SetPoint(ho[1], f, ho[1], (ho[2] + ho[5] * (slot - 1) * ho[4]) * sc, ho[3] * sc)
             end
             local fam = hotSlots.name[fi]
-            SetIcon(ic, ST.SpellData.maxRank[fam] or 0, fam)
+            SetIcon(ic, ST.Kit.Index().maxRank[fam] or 0, fam)
             Sweep(ic, h.since, h.since + (h.duration or 0), st.t)
             if fi == hotSlots.lifebloom then
                 ic.count:SetText(tostring(h.stacks or 1))
@@ -1868,8 +1868,14 @@ local function Layout()
     -- unitsPerColumn, a raid's subgroup and main tanks filling the next ones
     rows = {}
     for _, ti in ipairs(rp.rec.tracked or {}) do rows[#rows + 1] = ti end
-    table.sort(rows)
     local roster = rp.rec.roster
+    -- a raid by subgroup, as the raid frames show it; then roster order
+    table.sort(rows, function(a, b)
+        local ga = roster[a] and roster[a].subgroup or 0
+        local gb = roster[b] and roster[b].subgroup or 0
+        if ga ~= gb then return ga < gb end
+        return a < b
+    end)
     local healerIdx = nil
     local myName = ST.API.UnitName("player")
     for i, r in ipairs(roster) do
@@ -2444,7 +2450,7 @@ function ST:OpenPractice(setup, seed)
         tracked[i] = i
     end
     local known = {}
-    for family, id in pairs(ST.SpellData.maxRank or {}) do known[family] = id end
+    for family, id in pairs(ST.Kit.Index().maxRank or {}) do known[family] = id end
     rp = { live = true, scenario = session.scenario, kit = session.kit,
            rec = { roster = roster, tracked = tracked, initial = { known = known }, names = {} },
            left = { trace = session:LiveTrace() } }

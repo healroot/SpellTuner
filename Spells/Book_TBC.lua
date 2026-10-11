@@ -477,25 +477,41 @@ function B:Rebuild()
 end
 
 --- B.BookSignature() -> the spellbook's spell ids in slot order, as one
---- string: no tooltip is read, so it is cheap enough for every SPELLS_CHANGED.
+--- string, and the set of its spell names: no tooltip is read, so it is cheap
+--- enough for every SPELLS_CHANGED.
 function B.BookSignature()
-    local parts = {}
+    local parts, names = {}, {}
     local tabs = Call("SpellTabCount")
-    if type(tabs) ~= "number" then return nil end
+    if type(tabs) ~= "number" then return nil, names end
     for tab = 1, tabs do
         local _, _, offset, count = Call("SpellTabInfo", tab)
         if type(offset) == "number" and type(count) == "number" then
             for slot = offset + 1, offset + count do
-                local _, _, id = Call("SpellBookItemName", slot, "spell")
+                local name, _, id = Call("SpellBookItemName", slot, "spell")
                 if type(id) ~= "number" then
                     local kind, id2 = Call("SpellBookItemKind", slot, "spell")
                     if kind == "SPELL" and type(id2) == "number" then id = id2 end
                 end
+                if type(name) == "string" then names[name] = true end
                 parts[#parts + 1] = tostring(id)
             end
         end
     end
-    return table.concat(parts, ",")
+    return table.concat(parts, ","), names
+end
+
+--- B.IsOwnSpell(name) -> true when a spell of this name is in the player's
+--- spellbook. The TBC combat log names some heals' RECEIVER as their source
+--- (another druid's Lifebloom bloom, Earth Shield, Judgement of Light): a
+--- heal from "the player" is the player's own only when the player can cast
+--- it. True when the book cannot be walked (nothing is refused on no data).
+function B.IsOwnSpell(name)
+    if B._names == nil then
+        local _, names = B.BookSignature()
+        B._names = names
+    end
+    if next(B._names) == nil then return true end
+    return name ~= nil and B._names[name] == true
 end
 
 local function OnBook() B:Rebuild() end
@@ -510,8 +526,12 @@ ST:On("LEARNED_SPELL_IN_TAB", B.Forget)
 -- forgotten (and the book rebuilt) only when the spellbook's ids moved; a
 -- talent change (its costs are in the text) forgets and rebuilds them below.
 B._bookSig = nil
+B._names = nil
+ST:On("LEARNED_SPELL_IN_TAB", function() B._names = nil end)
 ST:On("SPELLS_CHANGED", function()
-    local sig = B.BookSignature() or "" -- a book that cannot be walked stays empty
+    local sig, names = B.BookSignature()
+    sig = sig or "" -- a book that cannot be walked stays empty
+    B._names = names
     if sig == B._bookSig then return end
     B._bookSig = sig
     B.Forget()

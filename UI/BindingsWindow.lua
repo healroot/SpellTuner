@@ -59,7 +59,7 @@ local function Binds() return ST.Practice.Binds() end
 -- rank is forty rows and ran off the bottom of the window (v0.15.2).
 local function SpellItems()
     ST.Practice.EnsureKit()
-    local SD = ST.SpellData
+    local SD = ST.Kit.Index()
     local items = {}
     for _, family in ipairs({ "Lifebloom", "Rejuvenation", "Regrowth", "Swiftmend", "HealingTouch" }) do
         local known = SD.known[family]
@@ -272,7 +272,7 @@ local function Build(onPane)
     addBtn:SetPoint("BOTTOMLEFT", root, "BOTTOMLEFT", 12, 72)
     addBtn:SetScript("OnClick", function()
         local family = "Rejuvenation"
-        if ST.Practice.policy.kitIsLive then family = ST.Practice.FirstFamily() end
+        if ST.Practice.Policy().kitIsLive then family = ST.Practice.FirstFamily() end
         ST.Practice.AddBind({ key = "", family = family }) -- T27: into the stored list
         Render()
         Status("click the new row's key box and press something.")
@@ -285,7 +285,7 @@ local function Build(onPane)
     defBtn:SetPoint("LEFT", addBtn, "RIGHT", 6, 0)
     -- no defaults to go back to on a line whose policy ships none (Forever:
     -- the shipped ones are the TBC author's Cell bindings)
-    if #ST.Practice.policy.defaultBinds == 0 then defBtn:Hide() end
+    if #ST.Practice.Policy().defaultBinds == 0 then defBtn:Hide() end
     defBtn:SetScript("OnClick", function()
         ST.db.practiceBinds = nil
         Binds()

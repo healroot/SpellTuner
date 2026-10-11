@@ -158,7 +158,8 @@ function ST.DashboardParts.CreateWaste(parent, width)
         out.sub = Tone("muted", r.sub or "")
         if mode == "spell" then
             local id = r.key:match("^k:(%d+):")
-            local s = id and ST.SpellData.spells[tonumber(id)]
+            local src = ST.RankMath and ST.RankMath:Source() or ST.SpellData
+            local s = id and src and src.spells[tonumber(id)]
             local fam = s and s.family
             -- casts / mana belong to the spell as a whole: show them on the
             -- first event-kind row of each family only

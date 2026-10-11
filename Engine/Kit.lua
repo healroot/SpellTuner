@@ -24,6 +24,19 @@ local _, ST = ...
 ST.Kit = ST.Kit or {}
 local Kit = ST.Kit
 
+-- Kit.Index() -> the kit's index: the spells / families / familyOrder / known /
+-- all / maxRank tables (and GetCost, Resolve) the engine, practice, replay
+-- and recorder read beside the kit. ST.SpellData, unless a builder installed
+-- Kit.indexSource: TBC's RankMath does for a priest, shaman or paladin, whose
+-- kit is built from the class's own book (Spells/Book_TBC.lua) while
+-- ST.SpellData stays the druid's table.
+Kit.indexSource = Kit.indexSource or nil
+function Kit.Index()
+    local f = Kit.indexSource
+    local index = f and f() or nil
+    return index or ST.SpellData
+end
+
 -- The forms a kit carries an entry list for. Forever has no Tree of Life, so
 -- its builder leaves `tree` empty; it is still a table.
 Kit.FORMS = { "caster", "tree" }

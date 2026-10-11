@@ -163,10 +163,26 @@ PR.MOUSE = { LeftButton = "BUTTON1", RightButton = "BUTTON2", MiddleButton = "BU
 -- Replay module), and that replaces it.
 --------------------------------------------------------------------------------
 PR.TBC_POLICY = { defaultBinds = PR.DEFAULT_BINDS, kitIsLive = false, client = "tbc" }
+-- 2026-10-11 (practice for every TBC class): a TBC priest, shaman or paladin
+-- practises on the kit built from the class's own book (Engine/RankMath.lua),
+-- which is live like Forever's: a family can be missing, so a binding for one
+-- (the druid's Cell defaults: practiceBinds is account wide) is hidden, never
+-- deleted. No bindings ship for these classes.
+PR.TBC_CLASS_POLICY = { defaultBinds = {}, kitIsLive = true, client = "tbc", keepShipped = true }
 PR.policy = ST.PracticePolicy or PR.TBC_POLICY
 
+-- The policy in force: on TBC it follows the logged-in class (a class book's
+-- kit is live), read at use because the class is not known at load.
+function PR.Policy()
+    if PR.policy == PR.TBC_POLICY and ST.RankMath and ST.RankMath.IsClassBook
+        and ST.RankMath:IsClassBook() then
+        return PR.TBC_CLASS_POLICY
+    end
+    return PR.policy
+end
+
 local function KitIsLive()
-    return PR.policy.kitIsLive == true
+    return PR.Policy().kitIsLive == true
 end
 
 -- T24: is this list exactly PR.DEFAULT_BINDS (same length, and in order the
@@ -189,12 +205,14 @@ end
 -- saved. PR.Binds() below is what is SHOWN and CAST.
 function PR.AllBinds()
     local db = ST.db
-    local defaults = PR.policy.defaultBinds
+    local policy = PR.Policy()
+    local defaults = policy.defaultBinds
     if db and type(db.practiceBinds) == "table" then
         -- only an exact copy of the TBC defaults, on a line whose own defaults
         -- are other (Forever's are none), is dropped, once; any other list is
-        -- the player's own and is kept whole
-        if defaults ~= PR.DEFAULT_BINDS and IsShippedDefaults(db.practiceBinds) then
+        -- the player's own and is kept whole. A TBC class's (keepShipped)
+        -- keeps them: the same list is the druid's on this account.
+        if defaults ~= PR.DEFAULT_BINDS and not policy.keepShipped and IsShippedDefaults(db.practiceBinds) then
             db.practiceBinds = {}
             if ST.Debug then
                 ST:Debug("other", "practice: the shipped TBC default bindings were saved on this client; dropped")
@@ -202,8 +220,11 @@ function PR.AllBinds()
         end
         return db.practiceBinds
     end
+    -- a TBC class seeds the account's list with the TBC defaults all the
+    -- same (hidden for it), so a druid on this account still gets them
+    local seed = policy.keepShipped and PR.DEFAULT_BINDS or defaults
     local out = {}
-    for i, b in ipairs(defaults) do out[i] = { key = b.key, family = b.family, rank = b.rank } end
+    for i, b in ipairs(seed) do out[i] = { key = b.key, family = b.family, rank = b.rank } end
     if db then db.practiceBinds = out end
     return out
 end
@@ -292,7 +313,7 @@ PR.FAMILY_LABELS = {
     Swiftmend = "Swiftmend", HealingTouch = "Healing Touch",
 }
 function PR.FamilyLabel(family)
-    local SD = ST.SpellData
+    local SD = ST.Kit.Index()
     local fam = SD and SD.families and SD.families[family]
     if fam and fam.label then return fam.label end
     if PR.FAMILY_LABELS[family] then return PR.FAMILY_LABELS[family] end
@@ -325,7 +346,7 @@ end
 -- warms the kit itself, once -- a no-op on TBC, where SD.maxRank is never
 -- nil and this guard is always false.
 function PR.EnsureKit()
-    local SD = ST.SpellData
+    local SD = ST.Kit.Index()
     if not SD.maxRank and ST.RankMath and ST.RankMath.SpellKit then
         ST.RankMath:SpellKit({ live = true })
     end
@@ -338,7 +359,7 @@ function PR.InBook(bind)
     if not KitIsLive() then return true end
     if not bind or not bind.family then return false end
     PR.EnsureKit()
-    local all = ST.SpellData.all
+    local all = ST.Kit.Index().all
     local ranks = all and all[bind.family]
     return type(ranks) == "table" and #ranks > 0
 end
@@ -347,7 +368,7 @@ end
 -- order, then Swiftmend -- else nil.
 function PR.FirstFamily()
     PR.EnsureKit()
-    local SD = ST.SpellData
+    local SD = ST.Kit.Index()
     if not SD.known then return nil end
     local order = {}
     for _, f in ipairs(SD.familyOrder or {}) do order[#order + 1] = f end
@@ -362,7 +383,7 @@ end
 -- A binding's spell id: that rank if you know it, else your highest. A bind
 -- whose family is not in the spellbook (Forever) casts nothing.
 function PR.SpellFor(bind)
-    local SD = ST.SpellData
+    local SD = ST.Kit.Index()
     if not bind or not bind.family then return nil end
     if not PR.InBook(bind) then return nil end
     if not SD.known or not SD.maxRank then return nil end
@@ -403,7 +424,7 @@ function PR.ParseSpellText(text)
     local name, rank = text:match("^%s*(.-)%s*%(%s*[Rr]ank%s*(%d+)%s*%)%s*$")
     if not name then name = text:match("^%s*(.-)%s*$") end
     if not name or name == "" then return nil end
-    local SD = ST.SpellData
+    local SD = ST.Kit.Index()
     for family, info in pairs(SD.families) do
         if name == (info.label or family) or name == family then
             if SD.known[family] or SD.all[family] then return family, tonumber(rank) end
@@ -423,7 +444,7 @@ function PR.ParseSpellText(text)
 end
 
 function PR.SpellFromID(id)
-    local s = ST.SpellData.spells[tonumber(id) or 0]
+    local s = ST.Kit.Index().spells[tonumber(id) or 0]
     if not s then return nil end
     return s.family, s.rank
 end
@@ -985,7 +1006,8 @@ function PR.BindsReport()
                 local what = "empty"
                 if kind == "spell" then
                     spells = spells + 1
-                    local sp = ST.SpellData and ST.SpellData.spells and ST.SpellData.spells[tonumber(id) or 0]
+                    local index = ST.Kit.Index()
+                    local sp = index and index.spells and index.spells[tonumber(id) or 0]
                     what = "spell " .. Esc(tostring(id)) .. (sp and (" (" .. Esc(tostring(sp.family)) .. ")") or "")
                 elseif kind == "macro" then
                     macros = macros + 1
@@ -1481,7 +1503,7 @@ function Session:Finish()
     -- it -- for every id the healer's own events carry (T59, P15, review A30:
     -- the heals and ticks too, and the bloom's own id, which no cast carries).
     -- A heal's crit flag (+100000) is not part of the id.
-    local SD = ST.SpellData
+    local SD = ST.Kit.Index()
     local spent, casts, names = 0, 0, {}
     local function Name(x)
         local id = (x >= 100000) and (x - 100000) or x
@@ -1546,7 +1568,7 @@ function Session:Finish()
     end
 
     local known = {}
-    for family, id in pairs(ST.SpellData.maxRank or {}) do known[family] = id end
+    for family, id in pairs(ST.Kit.Index().maxRank or {}) do known[family] = id end
     local initial = {}
     for k, v in pairs(sc.initial) do initial[k] = v end
     initial.known = known
@@ -1581,7 +1603,7 @@ function Session:Finish()
     end
     local rec = {
         v = 2, id = self.startedAt, t0 = 0, dur = endT, pool = sc.pool,
-        kit = ST.SimModel.KitSnapshot(self.kit), client = PR.policy.client, level = ST.player and ST.player.level,
+        kit = ST.SimModel.KitSnapshot(self.kit), client = PR.Policy().client, level = ST.player and ST.player.level,
         build = build, version = ST.version,
         zone = "Practice: " .. (g and g.label or "custom"), encounter = "Practice",
         roster = roster, tracked = tracked, ev = ev, n = #ev.t,

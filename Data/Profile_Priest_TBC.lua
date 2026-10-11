@@ -1,7 +1,8 @@
 -- T111 (docs/SPEC-next.md 4.2 P5, decision 8 (b)): the priest's profile on the
 -- TBC line -- for the rank table and the spell tooltip (granted by T123,
 -- with the class's damage spells). The TBC coach stays
--- the druid's (decision 8): no `coach`, `practice`, `simulate` or `advisor`,
+-- the druid's (decision 8): no `coach`, `simulate` or `advisor` (practice,
+-- 2026-10-11, on the class's own kit),
 -- and no planner.
 --
 -- Names and kit types only -- never a spell number. Every number comes from
@@ -25,7 +26,9 @@ ST.Profiles.Register("PRIEST", {
     critSchool = 2,                -- Holy (GetSpellCritChance's school; VERIFY)
     -- T123: the rank table and the tooltip, now that every TBC reader of
     -- Data/SpellData.lua reads RankMath:Source() (docs/tasks/T123-tbc-classes-damage.md)
-    caps = { clock = true, rankTable = true, tooltip = true },
+    -- 2026-10-11 (the author): practice for every class, on the class's own
+    -- kit (Engine/RankMath.lua's ClassKit over this book)
+    caps = { clock = true, rankTable = true, tooltip = true, practice = true },
     families = {
         LesserHeal      = { names = { "Lesser Heal" },       kit = "direct" },
         Heal            = { names = { "Heal" },              kit = "direct" },

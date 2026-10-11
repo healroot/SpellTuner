@@ -84,10 +84,19 @@ end
 --------------------------------------------------------------------------------
 local TICKS = { Rejuvenation = 4, Regrowth = 7, Lifebloom = 7, Tranquility = 4 }
 
+-- The ranks of the logged-in class: its own book (a priest's, a shaman's),
+-- Data/SpellData.lua for the druid or until the book is built.
+local function Src()
+    local RM = ST.RankMath
+    local src = RM and RM.Source and RM:Source()
+    return src or ST.SpellData
+end
+
 local function Attribute(spellID, spell, kind)
     if not spell then return 0 end
-    local cost = ST.SpellData:GetCost(spellID) or spell.cost or 0
-    local fam, ftype = spell.family, ST.SpellData.families[spell.family] and ST.SpellData.families[spell.family].type
+    local src = Src()
+    local cost = src:GetCost(spellID) or spell.cost or 0
+    local fam, ftype = spell.family, src.families[spell.family] and src.families[spell.family].type
     if kind == "bloom" then return 0 end
     if ftype == "channel" then
         -- T48 (review B13): the caster's party, not the whole raid
@@ -140,7 +149,8 @@ function OH:Record(spellID, kind, amount, overheal, destGUID, destName)
     local over = gross - effective
     kind = kind or "direct"
 
-    local s = ST.SpellData and ST.SpellData.spells[ST.SpellData:Resolve(spellID)]
+    local src = Src()
+    local s = src and src.spells[src:Resolve(spellID)]
     local t = ST.Targets and ST.Targets:Lookup(destGUID, destName)
     local role = t and t.role or "UNKNOWN"
     local class = t and t.class or "UNKNOWN"
@@ -197,7 +207,8 @@ end
 function OH:Fraction(spellID)
     local frac, n = FractionIn(OH.stats, "s:" .. spellID)
     if frac then return frac, n, "rank" end
-    local s = ST.SpellData and ST.SpellData.spells[ST.SpellData:Resolve(spellID)]
+    local src = Src()
+    local s = src and src.spells[src:Resolve(spellID)]
     if s then
         frac, n = FractionIn(OH.stats, "f:" .. s.family)
         if frac then return frac, n, "family" end
@@ -253,9 +264,12 @@ function OH:SpellRows(scope)
     return Rows("k:", scope, function(k)
         local id, kind = k:match("^k:(%d+):(%a+)$")
         id = tonumber(id)
-        local s = id and ST.SpellData.spells[id]
-        local name = GetSpellInfo(id) or tostring(id)
-        local label = s and string.format("%s R%d", name, s.rank) or name
+        local s = id and Src().spells[id]
+        local name, rankText = GetSpellInfo(id)
+        name = name or tostring(id)
+        -- the rank from the class's book, else the client's own "Rank 5"
+        local rank = s and s.rank or (type(rankText) == "string" and tonumber(rankText:match("(%d+)")))
+        local label = rank and string.format("%s R%d", name, rank) or name
         return label, kind
     end)
 end

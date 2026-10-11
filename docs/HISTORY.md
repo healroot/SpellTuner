@@ -5118,6 +5118,29 @@ PLAYER_EQUIPMENT_CHANGED coalesce a burst into one rebuild on the next frame.
 bookshapecheck/tbc 24b holds it (on master: 258 tooltip reads and 3 SPELLS_REBUILT for a three
 event burst; now 0 and 0); expected count 18 -> 19. TESTING section 51. Not merged, not installed.
 
+## 2026-10-11 -- a TBC priest: practice, the whole raid in a replay, overheal by own spell and rank
+
+The author tested 0.17.2 on a TBC priest and reported three things.
+**Practice for every class.** The TBC class profiles (priest, shaman, paladin) now grant
+`practice`. On a class with its own book, `RankMath:SpellKit` returns that class's
+`RankMath.ClassKit`. `ST.Kit.Index()` (Engine/Kit.lua) is the spell index the sim, practice,
+recorder and replay read in place of `ST.SpellData`: the class book for such a class,
+`ST.SpellData` otherwise. `PR.Policy()` gives a TBC class `TBC_CLASS_POLICY`, the live kit with
+no default bindings; the account's druid defaults are kept and hidden. Decision 8 (b) is
+overruled for practice; the coach, simulate and the advisor stay the druid's.
+**The whole raid in a replay.** `Engine/FightRecorder.lua` tracked only the player's subgroup
+and the main tanks. It now tracks every group member who is not a pet. Each roster row carries
+`subgroup` and `unit = "player"` for the player, so a group heal finds its caster and party.
+The replay lays out its rows by subgroup.
+**Overheal.** TBC logs some heals with the receiver as the source: another druid's Lifebloom
+bloom, Earth Shield, Judgement of Light. `ST.BookTBC.IsOwnSpell(name)`, a name set kept with
+the spellbook signature, drops a heal not in the player's book from the summary's overheal.
+The recorder files it as a foreign heal. Overheal and Waste read spell rows through
+`RankMath:Source()`, and each spell row now names its rank. A character's stored overheal
+still holds the earlier foreign rows until it is reset.
+tbcclasscheck/tbc gains a priest practice session that must pass the eight gates, and the overheal filter and rank label (71 checks); reccheck/tbc a raid pull tracking all 25 (65).
+TESTING section 52. Not merged, not installed.
+
 ## Moved from CLAUDE.md on 2026-10-04
 
 Text moved verbatim out of `CLAUDE.md` when it was trimmed (each line as it stood, including the parts that stay in `CLAUDE.md` in shorter form). Sub-headings are the `CLAUDE.md` sections the lines came from.

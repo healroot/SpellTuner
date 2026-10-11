@@ -115,7 +115,7 @@ end
 -- and for a Forever druid without Wild Growth, the list adds nothing and
 -- SP.BINDABLE itself comes back.
 function SP.Bindable()
-    local SD = ST.SpellData
+    local SD = ST.Kit.Index()
     local named = {}
     for _, fam in ipairs(SP.BINDABLE) do named[fam] = true end
     local unpriced = (ST.Kit and ST.Kit.UNPRICED) or {}
@@ -141,7 +141,7 @@ end
 -- spell is a different addon's suggestion, not this fight's.
 --------------------------------------------------------------------------------
 function SP.BindsFromRecording(rec, kit)
-    local SD = ST.SpellData
+    local SD = ST.Kit.Index()
     local counts = {}
     if rec then
         for i = 1, (rec.n or 0) do
@@ -172,7 +172,7 @@ end
 -- `known` (a recording's initial.known) restricts the binds to the spells that
 -- existed for the player at the time; without it, whatever they know now.
 function SP.MaxRankBinds(known)
-    local SD, binds = ST.SpellData, {}
+    local SD, binds = ST.Kit.Index(), {}
     for _, family in ipairs(SP.Bindable()) do
         binds[family] = known and known[family] or (not known and SD.maxRank[family]) or nil
     end
@@ -520,7 +520,7 @@ end
 -- and 1194 of 1592 was thrown away" is the reason.
 function SP.CastWhy(c, names)
     if not c then return nil end
-    local SD2 = ST.SpellData
+    local SD2 = ST.Kit.Index()
     local sd = SD2.spells[c.spellID]
     local fam = sd and sd.family or (names and names[c.spellID]) or "that cast"
     local L = c.label
@@ -954,7 +954,7 @@ local SHIFT_SPELLS = { [33891] = true, [5487] = true, [9634] = true, [768] = tru
 
 function SP.Classify(rec, scenario, plan, kit)
     SM = SM or ST.SimModel
-    local SD = ST.SpellData
+    local SD = ST.Kit.Index()
     local K = SM.K
     local fullHp = ST:Setting("simFullHp")
 
@@ -1108,8 +1108,9 @@ local function Clock(sec)
 end
 
 local function RankLabel(id)
-    local sd = ST.SpellData.spells[id]
-    return sd and string.format("%s R%d", ST.SpellData.families[sd.family].label, sd.rank)
+    local index = ST.Kit.Index()
+    local sd = index.spells[id]
+    return sd and string.format("%s R%d", index.families[sd.family].label, sd.rank)
         or tostring(id)
 end
 
@@ -1373,7 +1374,7 @@ function SP.CardLines(rec, best, bestResult, replayResult, baselineResults, cls,
         end
         if first then
             local names = rec and rec.names
-            local SD2 = ST.SpellData
+            local SD2 = ST.Kit.Index()
             local function SpellName(id)
                 local sd = id and SD2.spells[id]
                 if sd then return string.format("%s R%d", sd.family, sd.rank) end
@@ -1426,7 +1427,7 @@ end
 -- the installed kit index, as RankLabel is; the profile from the plan's kit.
 function SP.Unmodelled(rec, kit)
     local out = {}
-    local SD = ST.SpellData
+    local SD = ST.Kit.Index()
     local skip = {}
     for _, name in ipairs(SD and type(SD.skipped) == "table" and SD.skipped or {}) do skip[name] = true end
     local prof = ST.Profiles and ST.Profiles.ForKit(kit)
