@@ -791,6 +791,7 @@ local function PaintFrame(f, st, ti, isLeft, now)
     -- T96: a slot is named by the kit's own profile (State:HotSlots), never
     -- the logged-in player's; for a druid's kit it is SM.HOT_NAME exactly.
     local hotSlots = st:HotSlots()
+    local maxRank = ST.Kit.Index().maxRank or {}
     local eatable = false
     local slot, ho = 0, CELL.hots
     for fi = 1, #f.hots do
@@ -804,7 +805,7 @@ local function PaintFrame(f, st, ti, isLeft, now)
                 ic:SetPoint(ho[1], f, ho[1], (ho[2] + ho[5] * (slot - 1) * ho[4]) * sc, ho[3] * sc)
             end
             local fam = hotSlots.name[fi]
-            SetIcon(ic, ST.Kit.Index().maxRank[fam] or 0, fam)
+            SetIcon(ic, maxRank[fam] or 0, fam)
             Sweep(ic, h.since, h.since + (h.duration or 0), st.t)
             if fi == hotSlots.lifebloom then
                 ic.count:SetText(tostring(h.stacks or 1))
@@ -1885,6 +1886,21 @@ local function Layout()
     local n = #rows
     local sc, nCols, stretch = ScaleFor(n)
     local perCol = (sc == 1) and CELL.unitsPerColumn or math.max(1, math.ceil(n / nCols))
+    -- 2026-10-11: a raid (scale 1) starts a new column at each subgroup, as
+    -- the raid frames do, so a short group never runs into the next one
+    local place = {}
+    if sc == 1 then
+        local c, r, lastG = 0, 0, nil
+        for k, ti in ipairs(rows) do
+            local g = roster[ti] and roster[ti].subgroup
+            if k > 1 then
+                if r + 1 >= perCol or g ~= lastG then c, r = c + 1, 0 else r = r + 1 end
+            end
+            place[k] = { c, r }
+            lastG = g
+        end
+        nCols = math.max(nCols, c + 1)
+    end
     local spX, spY = CELL.spacingX * sc, CELL.spacingY * sc
     local H = CELL.size[2] * sc
     local W = CELL.size[1] * sc
@@ -1951,6 +1967,7 @@ local function Layout()
     local y0 = -(topH + STRIP_H + overhang)
     for k, ti in ipairs(rows) do
         local cI, rI = math.floor((k - 1) / perCol), (k - 1) % perCol
+        if place[k] then cI, rI = place[k][1], place[k][2] end
         local dx, y = cI * (W + spX), y0 - rI * (H + spY)
         for ci, col in ipairs({ left, right }) do
             if ci == 1 or hasRight then

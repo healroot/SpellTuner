@@ -233,7 +233,7 @@ end
 -- spellbook (Lifebloom from a TBC Cell import) is HIDDEN: not listed by the
 -- panel or the bindings sheet, not counted, never cast -- and not deleted, so
 -- it is back the day the spell is learned. A row with no spell picked yet is
--- the player's own unfinished row, not a hidden one. Always false on TBC.
+-- the player's own unfinished row, not a hidden one. On TBC only a family the class does not have at all (2026-10-11).
 local function IsHidden(b)
     return type(b) == "table" and b.family ~= nil and not PR.InBook(b)
 end
@@ -245,7 +245,6 @@ end
 -- PR.AddBind / PR.RemoveBind.
 function PR.Binds()
     local all = PR.AllBinds()
-    if not KitIsLive() then return all end
     local any = false
     for _, b in ipairs(all) do
         if IsHidden(b) then any = true; break end
@@ -258,10 +257,9 @@ function PR.Binds()
     return out
 end
 
--- T27: the bindings kept but hidden (Forever), in stored order; {} on TBC.
+-- T27: the bindings kept but hidden (Forever), in stored order; on TBC a family the class does not have at all.
 function PR.HiddenBinds()
     local out = {}
-    if not KitIsLive() then return out end
     for _, b in ipairs(PR.AllBinds()) do
         if IsHidden(b) then out[#out + 1] = b end
     end
@@ -274,7 +272,7 @@ function PR.ForgetHidden()
     local all = PR.AllBinds()
     local n = 0
     for i = #all, 1, -1 do
-        if KitIsLive() and IsHidden(all[i]) then
+        if IsHidden(all[i]) then
             table.remove(all, i)
             n = n + 1
         end
@@ -354,9 +352,14 @@ end
 
 -- T24: is the bind's family in the player's own spellbook? Forever's kit
 -- lists a family in SD.all only when the book has it. TBC's static table
--- has every family, so it is always true there.
+-- has every druid family, so it is true there for each of them; 2026-10-11:
+-- practiceBinds is account wide, so a TBC priest's rows (FlashHeal) reach the
+-- druid too, and a family the table does not have at all is not in the book.
 function PR.InBook(bind)
-    if not KitIsLive() then return true end
+    if not KitIsLive() then
+        local fams = bind and bind.family and ST.Kit.Index().families
+        return not fams or fams[bind.family] ~= nil
+    end
     if not bind or not bind.family then return false end
     PR.EnsureKit()
     local all = ST.Kit.Index().all
@@ -1233,7 +1236,10 @@ local function BuildScenario(setup, seed, kit)
         -- T101 (4.5): `caster` -- you, whom a self-and-target heal also reaches
         targets[i] = { name = tg.name, role = tg.role, maxHP = maxHP,
                        hp0 = math.floor(maxHP * (tg.startHp or setup.startHp or 1) + 0.5), tracked = true,
-                       caster = tg.you or nil }
+                       caster = tg.you or nil,
+                       -- 2026-10-11: a raid setup in subgroups of five, so a
+                       -- party heal (Prayer of Healing) reaches the caster's five
+                       group = math.floor((i - 1) / 5) + 1 }
     end
     local sampleT, hpT = {}, {}
     for t = 0, dur, 2 do sampleT[#sampleT + 1] = t end

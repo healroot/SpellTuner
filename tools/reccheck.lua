@@ -347,6 +347,26 @@ do
         string.format("tracked %d, other subgroups %d", st and #st.tracked or -1, inOther))
     check("2026-10-11: the player's roster row is unit \"player\" in subgroup 3",
         me ~= nil and me.subgroup == 3, me and tostring(me.subgroup) or "no player row")
+    -- review M1: a raid's budget grows with the tracked count (25 -> 4x a
+    -- party's), and the foreign share is over the healer's subgroup only
+    check("2026-10-11: a 25-man pull's event budget is four times a party's", st and st.maxEv == 16000,
+        tostring(st and st.maxEv))
+    local mine, other
+    for i, r in ipairs(st and st.roster or {}) do
+        if r.subgroup == 3 and r.unit ~= "player" then mine = mine or i end
+        if r.subgroup == 1 then other = other or i end
+    end
+    local K = ST.SimModel.K
+    local function put(kind, tgt, amt)
+        st.n = st.n + 1
+        st.ev.t[st.n], st.ev.kind[st.n], st.ev.tgt[st.n], st.ev.amt[st.n], st.ev.x[st.n] = 1, kind, tgt, amt, 0
+    end
+    put(K.OWNHEAL, mine, 900)
+    put(K.FHEAL, mine, 100)
+    put(K.FHEAL, other, 50000)
+    FR:Finish(5, {})
+    check("2026-10-11: the foreign share counts the healer's subgroup, not another group's healers",
+        math.abs((st.foreignShare or -1) - 0.10) < 1e-9, tostring(st.foreignShare))
     FR.active = nil
     S.raid = false
 end

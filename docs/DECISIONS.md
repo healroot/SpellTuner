@@ -1562,8 +1562,24 @@ druid's on TBC until a separate ruling.
 ## The whole group is recorded (2026-10-11, the author's ruling)
 
 "replay does not show the whole raid, only the party". The recorder tracks every group member
-who is not a pet, not just the subgroup and the main tanks. A raid recording is larger; the
-eight-recording ring is unchanged.
+who is not a pet, not just the subgroup and the main tanks. A raid recording is larger: the
+event budget grows with the tracked count (4000 for every 5 tracked, at most 16000); the
+eight-recording ring is unchanged. Gate 6's foreign share counts only the healer's own subgroup,
+as its text says ("healing on your group"); counting the whole raid would fail every raid fight.
+Chain Heal jumps to any tracked target in the sim, not just the caster's party, as it does in
+the game. A practice raid setup is in subgroups of five, in setup order.
+
+## Only the player's own spells are the player's heals (2026-10-11, the author's report)
+
+"in overheal recorded spells there are spells from other heals recorded as mine (like
+lifebloom)". On TBC a heal logged with the player as its source counts as the player's only
+when its spell name is in the player's spellbook (`ST.BookTBC.IsOwnSpell`). For the druid, too,
+a self-heal from outside the book (a healthstone, a potion, a trinket) leaves the summary's
+overheal, and the recorder files it as foreign healing. A heal of the same name from another
+player of the same class (another druid's Lifebloom on a druid) still counts as the player's:
+the log cannot tell them apart. If the spellbook cannot be read, every heal counts, as before.
+Wasted mana is charged per landing at the cast's share: a group heal over the party size, a
+chain over its count, Binding Heal over two, and a class HoT tick over its duration / 3 s.
 
 ## Cast-time talents from talentsforever (2026-10-04, T129, the author's ruling)
 

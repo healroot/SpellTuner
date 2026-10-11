@@ -757,9 +757,8 @@ RankMath.GROUP_COEF = ST.Coefficients and ST.Coefficients.GROUP
 -- True when the logged-in class reads its own book (built or not): a class
 -- other than the one Data/SpellData.lua is written for (the druid,
 -- Engine/Kit.lua's default profile) whose profile GRANTS the rank table.
--- The TBC priest, shaman and paladin profiles do not grant it yet
--- (Data/Profile_<Class>_TBC.lua says why), so until they do every class
--- reads exactly what it read before T111 -- the druid's context over
+-- The TBC priest, shaman and paladin profiles grant it (T123); every other
+-- class reads what it read before T111 -- the druid's context over
 -- Data/SpellData.lua, and no rank table.
 function RankMath:IsClassBook()
     local class = ST.player and ST.player.class
@@ -994,8 +993,8 @@ end
 
 -- The class's kit: every known rank, one form (no Tree of Life), stamped
 -- with the logged-in class's profile, in Engine/Kit.lua's shape and checked
--- by it. RankMath:SpellKit never answers it (decision 8 (b)): the offline
--- tools call it by name.
+-- by it. RankMath:SpellKit answers it for a class book (2026-10-11, practice
+-- for every class); the offline tools call it by name.
 function RankMath.ClassKit(opts, src)
     src = src or NO_SOURCE
     local ctx = RankMath.ClassContext({ live = true, healer = opts and opts.healer }, src)

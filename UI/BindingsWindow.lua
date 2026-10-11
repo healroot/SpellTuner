@@ -61,9 +61,15 @@ local function SpellItems()
     ST.Practice.EnsureKit()
     local SD = ST.Kit.Index()
     local items = {}
-    for _, family in ipairs({ "Lifebloom", "Rejuvenation", "Regrowth", "Swiftmend", "HealingTouch" }) do
+    -- 2026-10-11: a TBC class with its own book lists its own heal families
+    -- (the druid's five stay the druid's)
+    local order = { "Lifebloom", "Rejuvenation", "Regrowth", "Swiftmend", "HealingTouch" }
+    local classBook = SD ~= ST.SpellData and SD.familyOrder ~= nil
+    if classBook then order = SD.familyOrder end
+    for _, family in ipairs(order) do
         local known = SD.known[family]
-        if known and #known > 0 then
+        local def = SD.families[family]
+        if known and #known > 0 and not (classBook and def and (def.exclude or def.type == "channel")) then
             local label = (SD.families[family] and SD.families[family].label) or family
             local top = SD.spells[known[#known]].rank
             local kids = { { id = family .. ":0", text = "highest (rank " .. top .. ", follows training)" } }

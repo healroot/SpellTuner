@@ -15,7 +15,10 @@ local FR = {}
 ST.FightRecorder = FR
 
 local K = nil            -- ST.SimModel.K, bound lazily (load order)
-local MAX_EV = 4000      -- events per stream; the fight keeps its summary either way
+local MAX_EV = 4000      -- events per stream for a party; the fight keeps its summary either way
+-- 2026-10-11: a raid tracks everyone, so the budget grows with the tracked
+-- count (per 5 tracked), at most MAX_EV_SCALE times a party's
+local MAX_EV_SCALE = 4
 local AURA_EVENTS = {
     SPELL_AURA_APPLIED = "apply", SPELL_AURA_REFRESH = "apply",
     SPELL_AURA_APPLIED_DOSE = "dose", SPELL_AURA_REMOVED_DOSE = "dose",
@@ -182,6 +185,7 @@ function FR:Start(t0)
     stream.tracked = {}
     for idx in pairs(stream.trackedSet) do stream.tracked[#stream.tracked + 1] = idx end
     table.sort(stream.tracked)
+    stream.maxEv = MAX_EV * math.min(MAX_EV_SCALE, math.max(1, math.ceil(#stream.tracked / 5)))
     for _, idx in ipairs(stream.tracked) do
         stream.hp.hp[idx] = {}
         stream.hp.max[idx] = {}
@@ -234,10 +238,11 @@ function FR:Start(t0)
 end
 
 local function Push(s, t, kind, tgt, amt, x)
-    if s.n >= MAX_EV then
+    local maxEv = s.maxEv or MAX_EV
+    if s.n >= maxEv then
         if not s.truncated then
             s.truncated = true
-            ST:Debug("sim", "recording truncated at %d events", MAX_EV)
+            ST:Debug("sim", "recording truncated at %d events", maxEv)
         end
         return
     end
@@ -412,7 +417,7 @@ function FR:Event(subevent, sourceGUID, destGUID, destName, p1, p2, p3, p4, p5, 
         if not on[x] then
             if not isBuff then
                 local cap = (list and list.MAX_DEBUFFS_PER_TARGET) or 4
-                local budget = math.floor(MAX_EV * ((list and list.DEBUFF_BUDGET) or 0.10))
+                local budget = math.floor((s.maxEv or MAX_EV) * ((list and list.DEBUFF_BUDGET) or 0.10))
                 if on.n >= cap then return end
                 if (s.auraN or 0) >= budget then
                     if not s.auraTruncated then
@@ -623,14 +628,24 @@ function FR:Finish(duration, labels)
     s.labels = labels
     FR:Snapshot(duration)
 
-    -- foreign share: how much of the healing on tracked targets was not this
-    -- player's. Below ~10% the fight is the healer's own; above it, a plan that
-    -- assumes otherwise is fiction.
+    -- foreign share: how much of the healing on the healer's own group was
+    -- not this player's. Below ~10% the fight is the healer's own; above it, a
+    -- plan that assumes otherwise is fiction. 2026-10-11: a raid records
+    -- everyone, so the share is over the healer's subgroup only (a row with no
+    -- subgroup counts, as a party's did), else every raid fails gate 6.
+    local mySub
+    for _, r in ipairs(s.roster or {}) do
+        if r.unit == "player" then mySub = r.subgroup end
+    end
     local own, foreign = 0, 0
     for i = 1, s.n do
         local k = s.ev.kind[i]
-        if k == K.OWNHEAL or k == K.OWNTICK then own = own + (s.ev.amt[i] or 0)
-        elseif k == K.FHEAL then foreign = foreign + (s.ev.amt[i] or 0) end
+        local r = s.roster and s.roster[s.ev.tgt[i]]
+        local mine = not mySub or not r or not r.subgroup or r.subgroup == mySub
+        if mine then
+            if k == K.OWNHEAL or k == K.OWNTICK then own = own + (s.ev.amt[i] or 0)
+            elseif k == K.FHEAL then foreign = foreign + (s.ev.amt[i] or 0) end
+        end
     end
     s.foreignShare = (own + foreign) > 0 and (foreign / (own + foreign)) or 0
     s.trackedSet = nil  -- a set of indices does not serialise usefully

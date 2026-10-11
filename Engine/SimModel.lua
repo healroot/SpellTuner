@@ -419,7 +419,8 @@ end
 local InParty = SM.InParty
 
 -- SM.ChainTargets(S, ti, jumps, out) -> n: where a chain heal cast on ti
--- jumps -- up to `jumps` living members of the caster's party other than ti,
+-- jumps -- up to `jumps` living tracked targets other than ti (2026-10-11:
+-- the whole raid, as the game's Chain Heal jumps, not the caster's party),
 -- the most injured first (missing health NOW, ties by roster order), each
 -- one missing something. out[1..n] (reused: no allocation). The engine reads
 -- it when the cast lands, the solver when it decides; a burst after that
@@ -429,7 +430,7 @@ function SM.ChainTargets(S, ti, jumps, out)
     for _ = 1, (jumps or 0) do
         local best, bestMissing
         for i = 1, (S.nT or 0) do
-            if i ~= ti and not S.dead[i] and InParty(S, i) and (S.maxHP[i] or 0) > 0 then
+            if i ~= ti and not S.dead[i] and S.tracked[i] == true and (S.maxHP[i] or 0) > 0 then
                 local taken = false
                 for k = 1, n do if out[k] == i then taken = true; break end end
                 if not taken then

@@ -107,7 +107,21 @@ local function Attribute(spellID, spell, kind)
         if kind == "direct" then return cost / 2 end
         return cost / 2 / (TICKS[fam] or 7)
     end
-    if kind == "tick" then return cost / (TICKS[fam] or 4) end
+    -- 2026-10-11: a class book's HoT ticks every 3 s over its own duration
+    -- (Renew 15 s: 5), not the druid's table
+    local ticks = TICKS[fam]
+    if not ticks and spell.hotDuration then ticks = math.max(1, math.floor(spell.hotDuration / 3 + 0.5)) end
+    if kind == "tick" then return cost / (ticks or 4) end
+    -- 2026-10-11: one cast lands on several people (Prayer of Healing, Chain
+    -- Heal, Binding Heal): each landing carries its share of the cost, never
+    -- the whole of it
+    if ftype == "group" then
+        return cost / math.max(1, ST.Targets and ST.Targets:PartySize() or 1)
+    elseif ftype == "chain" then
+        return cost / math.max(1, spell.count or 3)
+    elseif ftype == "selfAndTarget" then
+        return cost / 2
+    end
     return cost
 end
 

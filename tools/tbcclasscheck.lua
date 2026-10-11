@@ -18,10 +18,11 @@
 --     Spells/Words.lua's words, the entry's per mana the rank row's, and
 --     every row carries a level the table can print;
 --   * T123: AS SHIPPED a priest, shaman or paladin has the rank table and the
---     tooltip (their profiles' `caps`), never the coach, practice, simulate
---     or advisor; the spend tracker counts a max-rank cast and a family
---     through RankMath:Source(); RankMath:SpellKit stays the druid's
---     (decision 8 (b));
+--     tooltip (their profiles' `caps`), never the coach, simulate or
+--     advisor; the spend tracker counts a max-rank cast and a family through
+--     RankMath:Source(); 2026-10-11: practice granted, RankMath:SpellKit the
+--     class's own kit, ST.Kit.Index() its book, a priest's practice session
+--     through the gates, overheal only the priest's spells, with ranks;
 --   * T123: each class's damage spells (DAMAGE_FIXTURE, the profile's
 --     `damage`) are book families of kind damage, valued by
 --     Engine/DamageMath.lua over their own text with the class's school, no
@@ -775,6 +776,19 @@ do
     local joined = table.concat(labels, ",")
     check("the summary's overheal keeps the priest's Greater Heal, labelled with its rank, and drops the foreign Lifebloom",
         joined:find("Greater Heal R7", 1, true) ~= nil and joined:find("Lifebloom", 1, true) == nil, joined)
+    -- review M2: a Renew tick carries a fifth of the cost (15 s / 3 s), a
+    -- Binding Heal landing half of it, never the whole
+    local function Wasted(id) return OH.waste["s:" .. id] and OH.waste["s:" .. id].mana or 0 end
+    local w0, b0 = Wasted(25222), Wasted(32546)
+    S.Combat(0, "SPELL_PERIODIC_HEAL", false, me, "src", 0, 0, me, "Me", 0, 0,
+        25222, "Renew", 2, 300, 300, 0, false)
+    S.Combat(0, "SPELL_HEAL", false, me, "src", 0, 0, me, "Me", 0, 0,
+        32546, "Binding Heal", 2, 1000, 1000, 0, false)
+    local rc, bc = src:GetCost(25222), src:GetCost(32546)
+    check("a fully overhealed Renew tick wastes a fifth of its cost, a Binding Heal landing half",
+        rc and bc and Near(Wasted(25222) - w0, rc / 5) and Near(Wasted(32546) - b0, bc / 2),
+        string.format("renew %.1f (cost %s), binding %.1f (cost %s)", Wasted(25222) - w0, tostring(rc),
+            Wasted(32546) - b0, tostring(bc)))
 end
 
 --------------------------------------------------------------------------------
@@ -982,6 +996,20 @@ do
         same and next(druidBefore) ~= nil, table.concat(detail, " "))
     local okKit, kit = pcall(function() return RM:SpellKit() end)
     check("the druid's kit is still the druid's", okKit and kit.profile == "DRUID" and next(kit.tree) ~= nil)
+    -- 2026-10-11 (review M4): practiceBinds is account wide; a priest's row
+    -- is hidden on the druid, kept, and never cast
+    local PR = ST.Practice
+    ST.db.practiceBinds = nil
+    PR.AllBinds()
+    local priestRow = PR.AddBind({ key = "9", family = "FlashHeal" })
+    local shown = false
+    for _, b in ipairs(PR.Binds()) do if b == priestRow then shown = true end end
+    local hidden = PR.HiddenBinds()
+    check("a priest's binding on the druid: hidden, kept, never cast; the druid's defaults shown",
+        not shown and #hidden == 1 and hidden[1] == priestRow and PR.SpellFor(priestRow) == nil
+        and #PR.Binds() == #PR.DEFAULT_BINDS, string.format("shown %s, hidden %d, binds %d",
+            tostring(shown), #hidden, #PR.Binds()))
+    ST.db.practiceBinds = nil
 end
 
 T.done()

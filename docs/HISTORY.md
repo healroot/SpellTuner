@@ -5139,6 +5139,13 @@ The recorder files it as a foreign heal. Overheal and Waste read spell rows thro
 `RankMath:Source()`, and each spell row now names its rank. A character's stored overheal
 still holds the earlier foreign rows until it is reset.
 tbcclasscheck/tbc gains a priest practice session that must pass the eight gates, and the overheal filter and rank label (71 checks); reccheck/tbc a raid pull tracking all 25 (65).
+An independent review (4 majors) led to these fixes. A raid's event budget grows with the
+tracked count, and gate 6's foreign share counts the healer's own subgroup, so raid recordings,
+the druid's included, are not all refused. Wasted mana for multi-target heals is split per
+landing, and class HoT ticks are counted from the duration. The bindings window lists a
+class's own families. A priest's binding row is hidden on the druid (practiceBinds is account
+wide). Smaller fixes: the replay starts a new column at each subgroup, Chain Heal jumps
+raid-wide, and practice raid setups are in subgroups of five. tbcclasscheck 73, reccheck 67.
 TESTING section 52. Not merged, not installed.
 
 ## Moved from CLAUDE.md on 2026-10-04
