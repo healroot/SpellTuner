@@ -2189,6 +2189,33 @@ function SP.MonteCarlo(scenario, plan, derived, k)
 end
 
 --------------------------------------------------------------------------------
+-- T130: Simulate for a kit whose profile names no threshold rules (a TBC
+-- priest, shaman or paladin). The rules search has nothing to tune there, so
+-- the window runs the solver's strategies (SP.SOLVER_COACH, the coach's own
+-- set) on the built scenario with `binds` and keeps the best by SP.Score.
+-- Returns `best` ({ name, plan, result }) and `rows` (every strategy, in
+-- order), each result a snapshot with its own copy of the casts by family.
+--------------------------------------------------------------------------------
+function SP.SolverSimulate(scenario, binds, kit)
+    local rows, best, bestScore = {}, nil, nil
+    for _, c in ipairs(SP.SOLVER_COACH) do
+        local plan = SP.MakeStrategy(SP.Strategy(c.key), binds, kit, { scenario = scenario })
+        if plan then
+            local r = SP.RunPlan(scenario, plan, { critMode = "ev" })
+            local snap = Snap(r)
+            local byFamily = {}
+            for fam, n in pairs(r.byFamily or {}) do byFamily[fam] = n end
+            snap.byFamily = byFamily
+            local row = { name = c.name, plan = plan, result = snap }
+            rows[#rows + 1] = row
+            local score = SP.Score(snap, plan, 0)
+            if SP.Better(score, bestScore) then best, bestScore = row, score end
+        end
+    end
+    return best, rows
+end
+
+--------------------------------------------------------------------------------
 -- THE RUN (docs/SPEC-v0.9.md 5): the same coordinate descent, one plan for the
 -- whole dungeon, scored on a chain of pulls with the gaps in between.
 --
@@ -2240,10 +2267,16 @@ function SP.SearchRun(run, opts, onProgress, onDone)
     local maxEvals = opts.maxEvals or math.max(24, math.min(300, math.floor(2400 / math.max(1, #pulls))))
     local evals, seen = 0, {}
     local best, bestScore, bestChain = nil, nil, nil
+    -- T130: a kit whose profile names no threshold rules (a TBC priest,
+    -- shaman or paladin) has no plan parameters to tune: every evaluation is
+    -- the blind solver (the present only, so causal) and the search walks the
+    -- drink policy alone
+    local solverOnly = SP.SolverOnly(kit)
 
     -- the plan's key (every SP.PARAMS entry, `noDirect` included -- T46, review
     -- B6) plus the drink policy's two
     local function Key(p)
+        if solverOnly then return string.format("solver|%.2f|%.2f", p.below, p.upTo) end
         return string.format("%s|%.2f|%.2f", SP.ParamKey(p), p.below, p.upTo)
     end
 
@@ -2251,7 +2284,12 @@ function SP.SearchRun(run, opts, onProgress, onDone)
         local key = Key(params)
         if seen[key] then return seen[key] end
         if evals >= maxEvals then return nil end
-        local plan = SP.NewPlan(binds, params, kit)
+        local plan
+        if solverOnly then
+            plan = SP.MakeStrategy(SP.Strategy("solver-blind"), binds, kit)
+        else
+            plan = SP.NewPlan(binds, params, kit)
+        end
         local chain = SM.ChainRun(run, kit, { plan = plan, drinkRate = opts.drinkRate,
             policy = { below = params.below, upTo = params.upTo } })
         evals = evals + 1
@@ -2271,7 +2309,11 @@ function SP.SearchRun(run, opts, onProgress, onDone)
           below = 0.50, upTo = 0.90 },
     }
     local order = {}
-    for _, n in ipairs(SP.PARAM_ORDER) do order[#order + 1] = n end
+    if solverOnly then
+        seeds = { { below = 0.60, upTo = 0.95 }, { below = 0.50, upTo = 0.90 } }
+    else
+        for _, n in ipairs(SP.PARAM_ORDER) do order[#order + 1] = n end
+    end
     for _, n in ipairs(SP.POLICY_ORDER) do order[#order + 1] = n end
     local function Domain(name)
         return SP.DOMAINS[name] or SP.POLICY_DOMAINS[name]
@@ -2401,7 +2443,17 @@ function SP.RunCard(run, best, chain, you, evals, gates)
     Row("you", you, you.lowest and you.lowest.pull and string.format(" (pull %d)", you.lowest.pull) or "")
     Row("best", chain, chain.lowest and chain.lowest.pull and string.format(" (pull %d)", chain.lowest.pull) or "")
 
-    if best then
+    if best and best.kind == "solver" then
+        -- T130: a solver-only kit's run plan (SP.SearchRun) -- no thresholds,
+        -- and its binds named from the kit's own index (SP.Bindable)
+        add("  the plan: the solver (the present only) -- the most missing health per mana")
+        local binds = {}
+        for _, fam in ipairs(SP.Bindable()) do
+            local id = best.binds and best.binds[fam]
+            if id then binds[#binds + 1] = RankLabel(id) end
+        end
+        if #binds > 0 then add("  binds: %s", table.concat(binds, ", ")) end
+    elseif best then
         local p = best:Params()
         add("  the plan: Swiftmend <%s, direct <%s, HoT <%s, roll %d stack(s)%s",
             Pct(p.swiftmendBelow), Pct(p.directBelow), Pct(p.hotBelow), p.rollStacks,

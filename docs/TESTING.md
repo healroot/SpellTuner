@@ -2433,6 +2433,17 @@ step and whether `/st` was open.
    a pull and let it bloom a few times. `/st` -> Reports -> Waste -> by target: the tank's row
    should count your blooms (before, they were missing). With another druid in the group, their
    blooms on you should not add to your Lifebloom row under by spell.
+6. **Every feature (T130).** On the priest:
+   - **Coach.** After a recorded pull of at least 20 s, `/st` -> Reports -> Review -> select it
+     -> Coach (or `/st coach 1`). The card should say "the solver", list only priest spells, and
+     name any unmodelled spell you cast (Power Word: Shield). Play: the SUGGESTED column casts
+     only priest spells.
+   - **Simulate.** `/st` -> Simulate -> Run on any preset: "Best plan: the solver", "It may
+     cast:" with priest spells only, no Rejuvenation / Lifebloom / Innervate anywhere.
+   - **Advisor.** In a long fight with a mana potion in your bags, let mana fall: "Super Mana
+     Potion now - you're down N mana" (or your potion's name) once the deficit covers it. No
+     Innervate line. Swap a +healing piece out of combat: if a best rank moves, the toast names
+     a priest spell.
 
 **Paste back** one line per step into `.logs/tbc/priest-fixes.md`.
 

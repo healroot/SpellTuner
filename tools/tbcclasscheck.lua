@@ -18,8 +18,8 @@
 --     Spells/Words.lua's words, the entry's per mana the rank row's, and
 --     every row carries a level the table can print;
 --   * T123: AS SHIPPED a priest, shaman or paladin has the rank table and the
---     tooltip (their profiles' `caps`), never the coach, simulate or
---     advisor; the spend tracker counts a max-rank cast and a family through
+--     tooltip (their profiles' `caps`), and since T130 (2026-10-12) the coach,
+--     simulate and the advisor too; the spend tracker counts a max-rank cast and a family through
 --     RankMath:Source(); 2026-10-11: practice granted, RankMath:SpellKit the
 --     class's own kit, ST.Kit.Index() its book, a priest's practice session
 --     through the gates, overheal only the priest's spells, with ranks;
@@ -398,7 +398,7 @@ end
 --------------------------------------------------------------------------------
 -- 2. A priest: the texts become bases
 --------------------------------------------------------------------------------
-T.section("as shipped (T123): a priest has the rank table and the tooltip")
+T.section("as shipped (T123, T130): a priest has every feature")
 local PRIEST_TALENTS = { ["Spiritual Healing"] = 5, ["Empowered Healing"] = 5, ["Divine Fury"] = 5,
                          ["Improved Renew"] = 3 }
 ST:SetTalents(PRIEST_TALENTS)
@@ -409,27 +409,46 @@ do
     local p = ST.ClassProfile
     check("the priest's profile is selected and its file grants the clock, the rank table and the tooltip",
         p == ST.Profiles.byClass.PRIEST and p:Can("clock") and p:Can("rankTable") and p:Can("tooltip") == true)
+    -- T130 (2026-10-12, the author): every feature for every TBC class
     local wrong = {}
     for _, cap in ipairs({ "coach", "simulate", "advisor" }) do
         local ok, why = p:Can(cap)
-        if ok or why ~= "class" then wrong[#wrong + 1] = cap .. "=" .. tostring(ok) .. "," .. tostring(why) end
+        if ok ~= true then wrong[#wrong + 1] = cap .. "=" .. tostring(ok) .. "," .. tostring(why) end
     end
-    check("the coach, simulate and the advisor stay refused for the class", #wrong == 0,
+    check("T130: the coach, simulate and the advisor are granted to the class", #wrong == 0,
         table.concat(wrong, " "))
     check("practice is granted (2026-10-11: practice for every class)", p:Can("practice") == true)
-    local _, why = p:Can("coach")
-    local okW, words = pcall(ST.Profiles.Refusal, "coach", why, "Coaching")
-    check("the refusal names the class: Coaching: not modelled for Priest yet",
-        okW and words == "Coaching: not modelled for Priest yet", tostring(words))
+    check("T130: the priest's planner names families and no threshold rules (solver only)",
+        type(p.planner) == "table" and p.planner.rules == nil and type(p.planner.families) == "table"
+        and table.concat(p.planner.families, " ") ==
+            "Renew FlashHeal GreaterHeal Heal LesserHeal PrayerOfHealing CircleOfHealing BindingHeal",
+        Show(p.planner))
     local files = {}
     for _, c in ipairs({ "SHAMAN", "PALADIN" }) do
         local caps = ST.Profiles.byClass[c] and ST.Profiles.byClass[c].caps or {}
-        if not (caps.clock and caps.rankTable == true and caps.tooltip == true and not caps.coach
-                and caps.practice == true and not caps.simulate and not caps.advisor) then
+        if not (caps.clock and caps.rankTable == true and caps.tooltip == true and caps.coach == true
+                and caps.practice == true and caps.simulate == true and caps.advisor == true) then
             files[#files + 1] = c .. Show(caps)
         end
     end
-    check("the shaman's and the paladin's files grant the same three", #files == 0, table.concat(files, " "))
+    check("the shaman's and the paladin's files grant the same seven", #files == 0, table.concat(files, " "))
+    local plans = {}
+    for c, want in pairs({ SHAMAN = "ChainHeal LesserHealingWave HealingWave",
+                           PALADIN = "HolyShock FlashOfLight HolyLight" }) do
+        local pl = ST.Profiles.byClass[c] and ST.Profiles.byClass[c].planner
+        if not (type(pl) == "table" and pl.rules == nil and type(pl.families) == "table"
+                and table.concat(pl.families, " ") == want) then
+            plans[#plans + 1] = c .. Show(pl)
+        end
+    end
+    check("T130: the shaman's and the paladin's planners, solver only, in Forever's order", #plans == 0,
+        table.concat(plans, " "))
+    local bad = {}
+    for _, c in ipairs({ "PRIEST", "SHAMAN", "PALADIN" }) do
+        local okV, problems = ST.Profiles.Validate(ST.Profiles.byClass[c])
+        if not okV then bad[#bad + 1] = c .. Show(problems) end
+    end
+    check("T130: the three profiles validate with their planners", #bad == 0, table.concat(bad, " "))
 end
 
 T.section("a priest's book")
@@ -968,6 +987,402 @@ do
         return e.school == "Holy" and Near(c.coef, 1.5 / 3.5)
     end)
     undo()
+end
+
+--------------------------------------------------------------------------------
+-- 6c. T130 (2026-10-12, the author: every feature for every TBC class): for a
+--     priest, a shaman and a paladin, in the manner of tools/classcoach.lua --
+--     the three grants; a five-man fight played with the class's heals and
+--     recorded (a practice session: the recorder's v2 stream), with a spell
+--     the kit does not model cast in it, replayed through the gates; the
+--     solver coaches it (its plan casts the class's heals, nobody dies, the
+--     card names the unmodelled spell, the group assumption where a heal
+--     reaches several); the causality test on the priest; /st coach and
+--     coachrun on the priest; the simulator on one preset casting only the
+--     class's spells; the advisor's rank toast naming only the class's
+--     families.
+--------------------------------------------------------------------------------
+do
+    local SM, SP, PR, P = ST.SimModel, ST.SimPlanner, ST.Practice, ST.SimPresets
+    local K = SM.K
+    -- the harness leaves out what draws (UI/); the advisor is loaded where
+    -- its TOC line puts it, as tools/rankmarkscheck.lua does
+    local okAdv, errAdv = pcall(S.Load, { "UI/Advisor.lua" }, "SpellTuner", ST)
+    check("UI/Advisor.lua loads", okAdv, tostring(errAdv))
+    -- and the Simulate panel with the widget kit it draws with (tools/replayui.lua's list)
+    -- (Style, Tip and Tip_TBC are in already when section 4 loaded them:
+    -- a second Tip_TBC would be a second MinimapLines provider)
+    local simFiles = { "UI/Theme_Flat.lua", "UI/EscStack.lua", "UI/Windows.lua", "UI/ContextMenu.lua",
+        "UI/SimWindow.lua" }
+    if not (ST.Tip and ST.Tip.Clock) then
+        simFiles = { "UI/Style.lua", "UI/Theme_Flat.lua", "UI/EscStack.lua", "UI/Windows.lua",
+            "UI/ContextMenu.lua", "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/SimWindow.lua" }
+    end
+    local okSimUI, errSimUI = pcall(S.Load, simFiles, "SpellTuner", ST)
+    local simPanel
+    if okSimUI then
+        okSimUI, errSimUI = pcall(function() simPanel = ST:AdoptSimPanel(CreateFrame("Frame", nil, UIParent)) end)
+    end
+    check("UI/SimWindow.lua loads and its panel builds", okSimUI and simPanel ~= nil, tostring(errSimUI))
+    -- the panel's Run, clicked; its result box read back, colour codes out
+    local function SimPanelRun()
+        local runBtn
+        for _, f in ipairs(S.allFrames) do
+            if f.kind == "Button" and f.text == "Run" then runBtn = f end
+        end
+        local fn = runBtn and runBtn:GetScript("OnClick")
+        if not fn then return nil, "no Run button" end
+        local okR, errR = pcall(fn, runBtn)
+        if not okR then return nil, tostring(errR) end
+        for _ = 1, 200 do S.Tick(0.016) end
+        for _, f in ipairs(S.allFrames) do
+            local t = type(f.GetText) == "function" and f:GetText() or nil
+            if type(t) == "string" and (t:find("Best plan", 1, true) or t:find("Simulation", 1, true)) then
+                local lines = {}
+                for l in (t:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "") .. "\n"):gmatch("([^\n]*)\n") do
+                    lines[#lines + 1] = l
+                end
+                return lines
+            end
+        end
+        return nil, "no result text"
+    end
+    local DRUID_LABELS = {}
+    for _, def in pairs(ST.SpellData.families or {}) do
+        if type(def) == "table" and def.label then DRUID_LABELS[#DRUID_LABELS + 1] = def.label end
+    end
+    local function Has(lines, text)
+        for _, l in ipairs(lines or {}) do
+            if type(l) == "string" and l:find(text, 1, true) then return l end
+        end
+        return nil
+    end
+    local function DruidWord(lines)
+        for _, l in ipairs(lines or {}) do
+            for _, label in ipairs(DRUID_LABELS) do
+                if type(l) == "string" and l:find(label, 1, true) then return label .. " in: " .. l end
+            end
+            if type(l) == "string" and (l:find("Swiftmend", 1, true) or l:find("Lifebloom", 1, true)) then
+                return l
+            end
+        end
+        return nil
+    end
+    local function Ascii(lines)
+        for _, l in ipairs(lines or {}) do
+            local okA, why = T.Ascii(l)
+            if not okA then return false, l .. ": " .. tostring(why) end
+        end
+        return true
+    end
+    local function GatesText(v)
+        local out = {}
+        for _, g in ipairs(v and v.gates or {}) do
+            if not g.ok then out[#out + 1] = tostring(g.name) .. ": " .. tostring(g.text) end
+        end
+        return table.concat(out, "; ")
+    end
+
+    -- a practice session played with the class's heals, one press every 3 s
+    -- on whoever is lowest, its recording returned
+    local function Played(srcC, seed)
+        ST.db.practiceBinds = nil
+        PR.AllBinds()
+        local binding = {}
+        for _, fam in ipairs(srcC.familyOrder or {}) do
+            if #binding < 8 then binding[#binding + 1] = PR.AddBind({ key = tostring(#binding + 1), family = fam }) end
+        end
+        local setup = PR.DefaultSetup("5", 70)
+        setup.dur, setup.fixedSeed = 40, seed
+        local errs = {}
+        local okS, sess = pcall(PR.New, PR.CopySetup(setup), { seed = seed, noStore = true,
+            onError = function(m) errs[#errs + 1] = tostring(m) end })
+        if not (okS and sess) then return nil, tostring(sess) end
+        sess:Start()
+        local nextAt, turn, guard = 0.5, 0, 0
+        while sess.state == "running" and guard < 5000 do
+            guard = guard + 1
+            if sess.clock >= nextAt and sess.S then
+                turn = turn % #binding + 1
+                local low, lowFrac = 1, 2
+                for i = 1, sess.S.nT do
+                    local f = sess.S.maxHP[i] > 0 and sess.S.hp[i] / sess.S.maxHP[i] or 2
+                    if not sess.S.dead[i] and f < lowFrac then low, lowFrac = i, f end
+                end
+                sess:Cast(PR.SpellFor(binding[turn]), low)
+                nextAt = nextAt + 3
+            end
+            sess:Update(0.05)
+        end
+        ST.db.practiceBinds = nil
+        return sess.rec, table.concat(errs, "; ")
+    end
+
+    -- a copy of the recording's events with `extra` ({ t, kind, tgt, amt, x })
+    -- merged in by time (an added event after the recorded ones at its time)
+    local function WithEvents(rec, extra)
+        local out = {}
+        for k, v in pairs(rec) do out[k] = v end
+        local rows = {}
+        for i = 1, rec.n do
+            rows[#rows + 1] = { rec.ev.t[i], rec.ev.kind[i], rec.ev.tgt[i], rec.ev.amt[i], rec.ev.x[i], i }
+        end
+        for j, e in ipairs(extra) do rows[#rows + 1] = { e[1], e[2], e[3], e[4], e[5], rec.n + j } end
+        table.sort(rows, function(a, b)
+            if a[1] ~= b[1] then return a[1] < b[1] end
+            return a[6] < b[6]
+        end)
+        local ev = { t = {}, kind = {}, tgt = {}, amt = {}, x = {} }
+        for i, r in ipairs(rows) do
+            ev.t[i], ev.kind[i], ev.tgt[i], ev.amt[i], ev.x[i] = r[1], r[2], r[3], r[4], r[5]
+        end
+        out.ev, out.n = ev, #rows
+        return out
+    end
+
+    local CLASSES = {
+        { class = "PRIEST", label = "Priest", talents = PRIEST_TALENTS, group = true, seed = 7,
+          unmodelled = { id = 25218, name = "Power Word: Shield" } },
+        { class = "SHAMAN", label = "Shaman", group = true, seed = 11,
+          talents = { ["Purification"] = 5, ["Improved Chain Heal"] = 2 },
+          unmodelled = { id = 16188, name = "Nature's Swiftness" } },
+        { class = "PALADIN", label = "Paladin", group = false, seed = 13,
+          talents = { ["Healing Light"] = 3 },
+          unmodelled = { id = 20216, name = "Divine Favor" } },
+    }
+
+    for _, C in ipairs(CLASSES) do
+        local label = C.label
+        T.section(label .. ": every feature (T130)")
+        ST:SetTalents(C.talents)
+        local _, restoreC = Install(S, ST, C.class)
+        LogIn(C.class, 70)
+        local srcC = Rebuild()
+        local p = ST.ClassProfile
+        local okKit, kit = pcall(function() return RM:SpellKit() end)
+        local grants = {}
+        for _, cap in ipairs({ "coach", "simulate", "advisor" }) do
+            if p:Can(cap) ~= true then grants[#grants + 1] = cap end
+        end
+        check(label .. ": coach, simulate and advisor granted; the kit the class's, solver only",
+            #grants == 0 and okKit and kit.profile == C.class and SP.SolverOnly(kit) == true
+            and srcC ~= nil and ST.Kit.Index() == srcC,
+            string.format("refused=[%s] kit=%s solverOnly=%s", table.concat(grants, ","),
+                tostring(okKit and kit.profile), tostring(okKit and SP.SolverOnly(kit))))
+
+        ------------------------------------------------------------------------
+        -- the fight: played, recorded, an unmodelled spell cast in it
+        ------------------------------------------------------------------------
+        local prec, errs = Played(srcC, C.seed)
+        local rec
+        if prec then
+            local at = 20.05
+            rec = WithEvents(prec, { { at, K.OWNCAST, 1, 0, C.unmodelled.id } })
+            local names = {}
+            for k, v in pairs(prec.names or {}) do names[k] = v end
+            names[C.unmodelled.id] = C.unmodelled.name
+            rec.names = names
+            rec.ownCasts = (prec.ownCasts or 0) + 1
+            rec.id = 1795000000 + C.seed
+        end
+        local own, fams = 0, {}
+        for i = 1, (rec and rec.n or 0) do
+            if rec.ev.kind[i] == K.OWNCAST then
+                own = own + 1
+                local sd = srcC and srcC.spells[rec.ev.x[i]]
+                if sd then fams[sd.family] = true end
+            end
+        end
+        local nFams = 0
+        for _ in pairs(fams) do nFams = nFams + 1 end
+        local v = rec and SM:Validate(rec, kit)
+        check(label .. ": a five-man fight with the class's heals is recorded and replays through the gates",
+            rec ~= nil and own >= 6 and nFams >= 3 and rec.kit and rec.kit.profile == C.class
+            and v ~= nil and v.ok == true and #v.gates >= 7,
+            string.format("rec=%s casts=%d families=%d gates=%d errors=[%s] failed: %s", tostring(rec ~= nil),
+                own, nFams, v and #v.gates or 0, tostring(errs), GatesText(v)))
+
+        ------------------------------------------------------------------------
+        -- the coach
+        ------------------------------------------------------------------------
+        local okCoach, card, validation, _, best
+        if rec then okCoach, card, validation, _, best = pcall(SP.Coach, rec, { n = 1 }) end
+        if not okCoach then card = { tostring(card) } end
+        local casts, castFams, foreign = 0, {}, {}
+        local deaths = -1
+        if okCoach and best then
+            local sc = SM.ScenarioFromRecording(rec, kit)
+            local r = SP.RunPlan(sc, best, { critMode = "ev", onCast = function(_, _, id)
+                local sd = srcC.spells[id]
+                if sd then
+                    casts = casts + 1
+                    castFams[sd.family] = true
+                elseif id ~= C.unmodelled.id then
+                    foreign[#foreign + 1] = tostring(id)
+                end
+            end })
+            deaths = r.deaths.n
+        end
+        local famList = {}
+        for fam in pairs(castFams) do famList[#famList + 1] = fam end
+        table.sort(famList)
+        check(label .. ": the solver coaches it -- its plan casts the class's heals and nobody dies",
+            okCoach and best ~= nil and best.kind == "solver" and validation and validation.ok == true
+            and casts > 0 and #famList >= 2 and #foreign == 0 and deaths == 0,
+            string.format("coach=%s best=%s casts=%d families=%s foreign=[%s] deaths=%d first=%s",
+                tostring(okCoach), tostring(best and (best.kind or "rules")), casts, table.concat(famList, ","),
+                table.concat(foreign, ","), deaths, tostring(card and card[1])))
+        local okAscii, badLine = Ascii(card)
+        local druid = DruidWord(card)
+        check(label .. ": the card is ASCII, no threshold-rule rows and no druid spell on it",
+            okCoach and okAscii and Has(card, "max rank") == nil and Has(card, "your binds") == nil
+            and druid == nil, tostring(badLine or druid))
+        check(label .. ": the card names the spell the kit does not model",
+            okCoach and Has(card, C.unmodelled.name) ~= nil, C.unmodelled.name)
+        local groupLine = Has(card, SP.GROUP_ASSUMPTION or "?")
+        if C.group then
+            check(label .. ": the card carries the group assumption", groupLine ~= nil)
+        else
+            check(label .. ": the card carries no group assumption (no heal reaches several targets)",
+                okCoach and groupLine == nil)
+        end
+
+        if C.class == "PRIEST" and rec then
+            -- the causality test: a burst late in the fight changes nothing
+            -- the solver casts before it
+            local binds = SP.BindsFromRecording(rec, kit)
+            local function CastsOf(r2)
+                local scB = SM.ScenarioFromRecording(r2, kit)
+                local plan = SP.MakeStrategy(SP.Strategy("solver-blind"), binds, kit)
+                local out = {}
+                SP.RunPlan(scB, plan, { critMode = "ev", onCast = function(_, at, id, ti)
+                    out[#out + 1] = string.format("%.2f:%d:%s", at, id, tostring(ti)) end })
+                return out
+            end
+            local burst = {}
+            for t = 30, 36 do burst[#burst + 1] = { t + 0.1, K.DMG, 3, 1500, 0 } end
+            local quiet, loud = CastsOf(rec), CastsOf(WithEvents(rec, burst))
+            local diverged, differs = nil, #quiet ~= #loud
+            for j = 1, math.min(#quiet, #loud) do
+                local atQ = tonumber(quiet[j]:match("^([%d%.]+)"))
+                if quiet[j] ~= loud[j] then
+                    differs = true
+                    diverged = diverged or atQ
+                end
+            end
+            check(label .. ": the causality test holds (a burst at 30 s changes nothing cast before it)",
+                #quiet > 0 and differs and (diverged == nil or diverged >= 29.9),
+                string.format("%d casts; diverged at %s", #quiet, tostring(diverged)))
+
+            -- the live command: /st coach 1 (SP.CoachAsync's solver path)
+            ST.cdb.recordings = { rec }
+            local said = {}
+            local frame = _G.DEFAULT_CHAT_FRAME
+            local orig = frame.AddMessage
+            frame.AddMessage = function(_, m) said[#said + 1] = T.Strip(m) end
+            SP.plans[rec.id] = nil
+            ST:RunCoach("1")
+            local n = 0
+            while ST.coachSearch and n < 20000 do S.Tick(0.016); n = n + 1 end
+            frame.AddMessage = orig
+            local plan = SP.plans[rec.id]
+            check(label .. ": /st coach 1 coaches it with the solver and names what is not modelled",
+                plan ~= nil and plan.kind == "solver" and ST.coachSearch == nil
+                and Has(said, "not modelled, kept as recorded: " .. C.unmodelled.name) ~= nil
+                and DruidWord(said) == nil,
+                string.format("plan=%s lines=%d druid=%s last=%s", tostring(plan and (plan.kind or "rules")),
+                    #said, tostring(DruidWord(said)), tostring(said[#said])))
+            ST.cdb.recordings = {}
+
+            -- coachrun: a run of this pull, one solver plan and a drink policy
+            local runCard, runBest
+            local run = { id = 1795100000, name = "Test run", pulls = { rec },
+                          stats = { pulls = 1, wall = 60, combatPct = 0.7 } }
+            local okRun, errRun = pcall(SP.CoachRun, run, { maxEvals = 6 }, function(lines, b)
+                runCard, runBest = lines, b
+            end)
+            local guard = 0
+            while okRun and runCard == nil and guard < 20000 do S.Tick(0.016); guard = guard + 1 end
+            check(label .. ": coachrun searches a solver plan and a drink policy, no druid rule on its card",
+                okRun and runBest ~= nil and runBest.kind == "solver" and Has(runCard, "the plan: the solver") ~= nil
+                and DruidWord(runCard) == nil and Ascii(runCard),
+                string.format("ok=%s err=%s best=%s druid=%s first=%s", tostring(okRun), tostring(errRun),
+                    tostring(runBest and (runBest.kind or "rules")), tostring(DruidWord(runCard)),
+                    tostring(runCard and runCard[1])))
+        end
+
+        ------------------------------------------------------------------------
+        -- Simulate: one preset, the solver's strategies on the class's kit
+        ------------------------------------------------------------------------
+        do
+            local sc = P.BuildScenario({ party = "5", damage = "dungeon", situation = "full", dur = 45 })
+            sc.kit = kit
+            local binds = SP.MaxRankBinds()
+            local druidBinds = {}
+            for fam, id in pairs(binds) do
+                if not (srcC.families[fam] and srcC.spells[id]) then druidBinds[#druidBinds + 1] = fam end
+            end
+            local okSim, simBest, rows = pcall(SP.SolverSimulate, sc, binds, kit)
+            local simFams, other = {}, {}
+            for fam, nC in pairs(okSim and simBest and simBest.result.byFamily or {}) do
+                if nC > 0 then
+                    if srcC.families[fam] then simFams[#simFams + 1] = fam else other[#other + 1] = fam end
+                end
+            end
+            table.sort(simFams)
+            check(label .. ": Simulate runs one preset on the class's kit; its plan casts only the class's spells",
+                okSim and simBest ~= nil and simBest.plan.kind == "solver" and #rows == #SP.SOLVER_COACH
+                and #simFams >= 1 and #other == 0 and #druidBinds == 0,
+                string.format("ok=%s err=%s families=%s other=%s druid binds=%s", tostring(okSim),
+                    okSim and "" or tostring(simBest), table.concat(simFams, ","), table.concat(other, ","),
+                    table.concat(druidBinds, ",")))
+            -- the panel itself: Run prints the solver's plan, named from the
+            -- class's book, and no druid rule or spell
+            local lines, whyNot = nil, "the panel did not build"
+            if simPanel then lines, whyNot = SimPanelRun() end
+            local firstFam = srcC.families[srcC.familyOrder[1]]
+            local okLines = lines and Ascii(lines)
+            check(label .. ": the Simulate panel's Run shows the solver's plan in the class's words, no druid spell",
+                lines ~= nil and Has(lines, "Best plan: the solver") ~= nil and Has(lines, "It may cast: ") ~= nil
+                and firstFam ~= nil and Has(lines, firstFam.label .. " R") ~= nil and DruidWord(lines) == nil
+                and okLines,
+                lines and (tostring(DruidWord(lines)) .. " | " .. table.concat(lines, " / ")) or tostring(whyNot))
+        end
+
+        ------------------------------------------------------------------------
+        -- the advisor: the rank toast reads the class's book
+        ------------------------------------------------------------------------
+        do
+            local alerts = {}
+            local origAlert = ST.Alert
+            ST.Alert = function(_, m) alerts[#alerts + 1] = tostring(m) end
+            local now = RM:SuggestedRanks()
+            local stored = {}
+            for fam, rank in pairs(now) do stored[fam] = rank + 1 end
+            -- a druid family in an old snapshot is never named
+            stored.Regrowth, stored.Rejuvenation = 3, 4
+            ST.cdb.suggestedRanks = { form = "caster", ranks = stored, rule = ST.RankRules.Stamp() }
+            S.Fire("PLAYER_EQUIPMENT_CHANGED", 5, true)
+            for _ = 1, 10 do S.Tick(0.5) end
+            ST.Alert = origAlert
+            local named, wrong = {}, {}
+            for _, m in ipairs(alerts) do
+                local hit = false
+                for _, fam in ipairs(srcC.familyOrder) do
+                    local def = srcC.families[fam]
+                    if def and m:find("gear change - " .. def.label .. " R", 1, true) then hit = true end
+                end
+                if hit then named[#named + 1] = m else wrong[#wrong + 1] = m end
+            end
+            check(label .. ": the advisor's rank toast names only the class's families",
+                #named >= 1 and #wrong == 0 and DruidWord(alerts) == nil,
+                string.format("named=%d wrong=[%s]", #named, table.concat(wrong, " | ")))
+            ST.cdb.suggestedRanks = nil
+        end
+
+        restoreC()
+    end
+    ST:SetTalents(PRIEST_TALENTS)
 end
 
 --------------------------------------------------------------------------------

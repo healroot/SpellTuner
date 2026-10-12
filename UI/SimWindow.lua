@@ -70,6 +70,62 @@ local function Render(lines)
     resultFS:SetText(table.concat(lines, "\n"))
 end
 
+-- T130: a kit whose profile names no threshold rules (a TBC priest, shaman or
+-- paladin) has nothing for the rules search to tune: the solver's strategies
+-- run on the built fight (SP.SolverSimulate), the best one is shown with the
+-- families it may cast, each named from the class's own book (Kit.Index), and
+-- no druid rule line is ever printed.
+local function DangerWords(s)
+    if s.deaths.n > 0 then return string.format("|cffff5555%d died|r", s.deaths.n) end
+    if s.floorSeconds > 0 then return string.format("|cffffcc66%.0fs in danger|r", s.floorSeconds) end
+    return "|cff99dd99everyone held|r"
+end
+
+local function RunSolver(SP, scenario, kit)
+    local binds = SP.MaxRankBinds()
+    local best, rows = SP.SolverSimulate(scenario, binds, kit)
+    if not best then
+        Render({ "Simulation: no spell to cast in this book yet." })
+        return
+    end
+    local SD = ST.Kit.Index()
+    local out = {}
+    out[#out + 1] = string.format("|cffffcc00Best plan: the solver (%s), %d strategies compared|r",
+        best.name, #rows)
+    out[#out + 1] = "  Each cast is the spell that removes the most missing health per mana,"
+    out[#out + 1] = "  judged on the damage so far; waiting is a priced choice."
+    local names = {}
+    for _, fam in ipairs(SD.familyOrder or {}) do
+        local id = binds[fam]
+        local sd = id and SD.spells[id]
+        local def = SD.families[fam]
+        if sd and def then names[#names + 1] = string.format("%s R%d", def.label or fam, sd.rank) end
+    end
+    if #names > 0 then out[#out + 1] = "  It may cast: " .. table.concat(names, ", ") end
+    out[#out + 1] = string.format("  It waited %d%% of the fight",
+        (best.result.waitFraction or 0) * 100 + 0.5)
+    out[#out + 1] = ""
+    for _, row in ipairs(rows) do
+        local s = row.result
+        out[#out + 1] = string.format("%-12s %7s used   lowest %3d%%   %s",
+            row.name, K(SP.ManaUsed(s)), (s.lowest.hp or 1) * 100 + 0.5, DangerWords(s))
+    end
+    local mc = SP.MonteCarlo(scenario, best.plan, derived)
+    if mc then
+        out[#out + 1] = ""
+        out[#out + 1] = string.format(
+            "|cff888888over %d randomised replicates: someone below the floor %d%% of the time, a death %d%%|r",
+            mc.k, mc.floorRate * 100 + 0.5, mc.deathRate * 100 + 0.5)
+    end
+    out[#out + 1] = ""
+    out[#out + 1] = "|cff888888caveat: rolled crits in the replicates, EV crit elsewhere; no defensives, " ..
+        "no threat, no kill speed. " ..
+        (derived and "Damage measured from your recordings." or
+         "Damage is a PLACEHOLDER - press 'From recordings' once you have some.") .. "|r"
+    Render(out)
+    lastResult = best.result
+end
+
 local function Run()
     local SP, SM = ST.SimPlanner, ST.SimModel
     -- T99 (docs/SPEC-next.md 4.4): the class profile's simulate capability
@@ -89,6 +145,10 @@ local function Run()
     local kit = ST.RankMath:SpellKit()
     local scenario = BuildScenario()
     scenario.kit = kit
+    if SP.SolverOnly(kit) then
+        RunSolver(SP, scenario, kit)
+        return
+    end
 
     local lines = {}
     local baselines = SP.Baselines(nil, kit)

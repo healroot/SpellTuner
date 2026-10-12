@@ -1,9 +1,10 @@
 -- T111 (docs/SPEC-next.md 4.2 P5, decision 8 (b)): the priest's profile on the
 -- TBC line -- for the rank table and the spell tooltip (granted by T123,
--- with the class's damage spells). The TBC coach stays
--- the druid's (decision 8): no `coach`, `simulate` or `advisor` (practice,
--- 2026-10-11, on the class's own kit),
--- and no planner.
+-- with the class's damage spells), practice (2026-10-11, on the class's own
+-- kit) and, since T130 (2026-10-12, the author: "make all features available
+-- for all classes"), the coach, Simulate and the advisor on the same kit. The
+-- coach is solver only: the planner names families and no threshold rules
+-- (those are the druid's tactics, docs/SPEC-next.md 4.2 P2), as on Forever.
 --
 -- Names and kit types only -- never a spell number. Every number comes from
 -- the client's own text: Spells/Book_TBC.lua walks the spellbook, reads each
@@ -28,7 +29,9 @@ ST.Profiles.Register("PRIEST", {
     -- Data/SpellData.lua reads RankMath:Source() (docs/tasks/T123-tbc-classes-damage.md)
     -- 2026-10-11 (the author): practice for every class, on the class's own
     -- kit (Engine/RankMath.lua's ClassKit over this book)
-    caps = { clock = true, rankTable = true, tooltip = true, practice = true },
+    -- T130 (2026-10-12): coach, simulate and advisor, on the same kit
+    caps = { clock = true, rankTable = true, tooltip = true, practice = true,
+             coach = true, simulate = true, advisor = true },
     families = {
         LesserHeal      = { names = { "Lesser Heal" },       kit = "direct" },
         Heal            = { names = { "Heal" },              kit = "direct" },
@@ -49,6 +52,12 @@ ST.Profiles.Register("PRIEST", {
     order = { "GreaterHeal", "Heal", "FlashHeal", "LesserHeal", "Renew",
               "PrayerOfHealing", "CircleOfHealing", "BindingHeal" },
     hotSlots = { "Renew" },
+    -- T130: the solver's candidate families, in Forever's order (Circle of
+    -- Healing where Forever names Holy Nova); no `rules`, so solver only
+    planner = {
+        families = { "Renew", "FlashHeal", "GreaterHeal", "Heal", "LesserHeal",
+                     "PrayerOfHealing", "CircleOfHealing", "BindingHeal" },
+    },
     unmodelled = { "Power Word: Shield", "Desperate Prayer", "Prayer of Mending", "Holy Nova",
                    "Lightwell", "Inner Focus", "Power Infusion" },
     -- T123: the damage spells Engine/DamageMath.lua values from each rank's

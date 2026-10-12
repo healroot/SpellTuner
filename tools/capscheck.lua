@@ -415,7 +415,7 @@ end
 
 --------------------------------------------------------------------------------
 -- 4b. T123: a TBC priest -- the rank table and the tooltip granted by the
---     profile's file, the coach still refused for the class
+--     profile's file; since T130 the coach, Simulate and the advisor too
 --------------------------------------------------------------------------------
 if not forever then
     T.section("a TBC priest (T123)")
@@ -423,8 +423,10 @@ if not forever then
     local p = ST.ClassProfile
     check("a TBC priest's profile grants the rank table and the tooltip",
         p == P.Get("PRIEST") and p ~= P.generic and p:Can("rankTable") == true and p:Can("tooltip") == true)
+    -- T130 (the author, 2026-10-12): every feature for every class
     local can, why = p:Can("coach")
-    check("a TBC priest is still not coached, for the class's sake", can == false and why == "class",
+    check("a TBC priest is coached, simulated and advised since T130",
+        can == true and p:Can("simulate") == true and p:Can("advisor") == true,
         tostring(can) .. " " .. tostring(why))
 end
 

@@ -1593,6 +1593,21 @@ second cannot be told apart.
 Wasted mana is charged per landing at the cast's share: a group heal over the party size, a
 chain over its count, Binding Heal over two, and a class HoT tick over its duration / 3 s.
 
+## Every feature for every TBC class (2026-10-12, T130, the author's ruling)
+
+The author: "now lets make all features avaliable for all classes". Decision 8 (b) (TBC's coach,
+simulate and advisor stay the druid's) and the last sentence of "Practice for every TBC class"
+above are overruled. The TBC priest, shaman and paladin profiles grant `coach`, `simulate` and
+`advisor`, each on the class's own book (`RankMath:Source()`, `RankMath.ClassKit`,
+`ST.Kit.Index()`), never on `Data/SpellData.lua`. As on Forever (T106), a non-druid's planner has
+families and no rules, so the coach, `/st coachrun`, the replay's SUGGESTED column and Simulate
+run the solver only (`SP.SolverOnly`; Simulate through `SP.SolverSimulate`); the druid's rules
+and binds are never offered to another class. The card names the class's unmodelled spells and
+the group-heal assumption as for every solver card. The advisor's mana sources are per class
+(`Engine/ManaCooldowns.lua`: potions for every mana user, Innervate only for the druid); the gear
+toast labels a family from the class's book and skips one the book does not name; the drink
+reminder was already class-neutral. Forever is unchanged; the druid's paths are unchanged.
+
 ## Cast-time talents from talentsforever (2026-10-04, T129, the author's ruling)
 
 talentsforever.com is the **preliminary source of truth** for what a Forever talent does, until a

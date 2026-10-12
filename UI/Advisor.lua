@@ -54,7 +54,7 @@ end)
 local toastPending = false
 
 -- T99 (docs/SPEC-next.md 4.4): the rank toast is the class profile's
--- `advisor` capability (ST.ClassProfile:Can), the druid's on this line.
+-- `advisor` capability (ST.ClassProfile:Can): every TBC class since T130.
 -- Review T127 M1: the snapshot carries the rule's stamp (RR.Stamp: version
 -- and both k); one taken under another rule -- before the upgrade, or before
 -- a Trade-off slider moved -- is replaced silently, never compared, so a
@@ -72,10 +72,16 @@ local function CheckRankShift()
     -- stored snapshot from the other form is replaced, never compared.
     local now = Snapshot()
     local stored = ST.cdb.suggestedRanks
+    -- T130: the labels from the ranks' own source (the class's book for a
+    -- TBC class with one, Data/SpellData.lua for the druid); a family the
+    -- source does not name is skipped, never labelled from the druid's table
+    local src = ST.RankMath:Source()
+    local fams = src and src.families or {}
     if stored and stored.form == now.form and stored.rule == now.rule and stored.ranks then
         for family, rank in pairs(now.ranks) do
-            if stored.ranks[family] and stored.ranks[family] ~= rank then
-                local label = ST.SpellData.families[family].label
+            local fam = fams[family]
+            if fam and stored.ranks[family] and stored.ranks[family] ~= rank then
+                local label = fam.label or family
                 ST:Alert(string.format("gear change - %s R%d is now your best rank (was R%d). Rebind?",
                     label, rank, stored.ranks[family]))
             end
