@@ -5158,6 +5158,14 @@ before the recorder or the player-only gate reads the source. Ordinary HoTs carr
 and were never affected. tools/fakepull.lua logs the bloom as the client does; reccheck 70.
 TESTING 52 step 5.
 
+**2026-10-12, T130: every feature for every TBC class** (the author: "now lets make all features
+avaliable for all classes"; overrules decision 8 (b)). Priest, shaman and paladin are granted
+coach, simulate and advisor, each profile with a solver-only `planner` as on Forever. Coach
+needed only the planner; coachrun on a solver-only kit compares solver settings. Simulate runs
+`SP.SolverSimulate` on the class kit. The advisor's rank toast reads the class book (it raised
+for a priest); mana sources stay per class (potions; Innervate the druid's). Forever unchanged.
+tbcclasscheck 73 -> 107. TESTING 52 step 6.
+
 ## Moved from CLAUDE.md on 2026-10-04
 
 Text moved verbatim out of `CLAUDE.md` when it was trimmed (each line as it stood, including the parts that stay in `CLAUDE.md` in shorter form). Sub-headings are the `CLAUDE.md` sections the lines came from.
