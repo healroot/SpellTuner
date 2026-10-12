@@ -162,9 +162,12 @@ local function castPull()
     castStart(HT, "Tank-1", "Destroyka"); unitCast("UNIT_SPELLCAST_START", "Cast-F", HT)
     advance(3.0); m.ht5End = now(); cast(HT, "Tank-1", "Destroyka"); S.mana = S.mana - (SD:GetCost(HT) or 0)
 
-    -- the bloom (fully overhealed) and a Tranquility heal, both non-periodic
+    -- the bloom (fully overhealed) and a Tranquility heal, both non-periodic.
+    -- 2026-10-12: as the client logs it -- the player's Lifebloom aura ends
+    -- (its real caster), then the bloom arrives credited to its receiver
     advance(1.0)
-    ev("SPELL_HEAL", PLAYER, "Tank-1", "Destroyka", SD.bloomID, "Lifebloom", 8, 900, 900, 0, false)
+    ev("SPELL_AURA_REMOVED", PLAYER, "Tank-1", "Destroyka", lifebloom, "Lifebloom", 8, "BUFF")
+    ev("SPELL_HEAL", "Tank-1", "Tank-1", "Destroyka", SD.bloomID, "Lifebloom", 8, 900, 900, 0, false)
     ev("SPELL_HEAL", PLAYER, "Tank-1", "Destroyka", 44208, "Tranquility", 8, 700, 200, 0, false)
     advance(1.0); cast(rejuv, "Mage-1", "Alkandari"); S.mana = S.mana - (SD:GetCost(rejuv) or 0)
     advance(8.0)

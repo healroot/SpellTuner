@@ -178,6 +178,38 @@ local function PruneHots(now)
     end
 end
 
+-- 2026-10-12: whose bloom is it? The log credits Lifebloom's bloom
+-- (SD.bloomID) to the player it LANDS ON, never the druid who cast it -- the
+-- author's 8 recordings held 105 "own" blooms, every one on the druid herself,
+-- and none on the targets carrying 1362 of her ticks. The aura events name the
+-- real caster, so a bloom is the player's exactly when the player's own
+-- Lifebloom on that target ends with it: removed within BLOOM_WINDOW of the
+-- heal, or still up and due to expire (the heal may come first). A dispelled
+-- Lifebloom blooms early and is missed: it counts as somebody else's.
+local BLOOM_WINDOW = 1.0
+local Blooms = { mine = {} }   -- destGUID -> { applied = t, removed = t }
+ST.Blooms = Blooms
+
+local BLOOM_UP = { SPELL_AURA_APPLIED = true, SPELL_AURA_REFRESH = true, SPELL_AURA_APPLIED_DOSE = true }
+
+function Blooms.Aura(subevent, sourceGUID, destGUID, spellID, now)
+    if sourceGUID ~= ST.player.guid or not destGUID then return end
+    local row = spellID and SD.spells[spellID]
+    if not (row and row.family == "Lifebloom") then return end
+    if BLOOM_UP[subevent] then
+        Blooms.mine[destGUID] = { applied = now, duration = row.hotDuration or 7 }
+    elseif subevent == "SPELL_AURA_REMOVED" then
+        Blooms.mine[destGUID] = { removed = now }
+    end
+end
+
+function Blooms.IsMine(destGUID, now)
+    local m = destGUID and Blooms.mine[destGUID]
+    if not m then return false end
+    if m.removed then return now - m.removed <= BLOOM_WINDOW end
+    return m.applied ~= nil and now >= m.applied + m.duration - BLOOM_WINDOW
+end
+
 -- Combat log, one handler and one CombatLogGetCurrentEventInfo() call: the
 -- player's own heals feed the fight totals, the per-spell overheal stats and
 -- the "heal" debug category; the player's own casts feed the ring above.
@@ -193,6 +225,13 @@ ST:On("COMBAT_LOG_EVENT_UNFILTERED", function()
     local _, subevent, _, sourceGUID, _, _, _, destGUID, destName, _, _,
         p1, p2, p3, p4, p5, p6, p7, p8, p9, p10 = CombatLogGetCurrentEventInfo()
     local spellID, spellName, amount, overheal, critical = p1, p2, p4, p5, p7
+    -- a bloom's logged source is its receiver: give it its real owner before
+    -- the recorder or the player-only gate below reads the source
+    if subevent == "SPELL_HEAL" and spellID == SD.bloomID then
+        sourceGUID = Blooms.IsMine(destGUID, GetTime()) and ST.player.guid or nil
+    elseif BLOOM_UP[subevent] or subevent == "SPELL_AURA_REMOVED" then
+        Blooms.Aura(subevent, sourceGUID, destGUID, spellID, GetTime())
+    end
     -- group members' own casts (Life Tap) before the player-only gate
     if subevent == "SPELL_CAST_SUCCESS" and ST.Targets then
         ST.Targets:NoteCast(sourceGUID, spellName)
@@ -222,9 +261,9 @@ ST:On("COMBAT_LOG_EVENT_UNFILTERED", function()
         return
     end
     if subevent ~= "SPELL_HEAL" and subevent ~= "SPELL_PERIODIC_HEAL" then return end
-    -- the log names some heals' receiver as their source (another druid's
-    -- Lifebloom bloom, Earth Shield, Judgement of Light): only a spell in the
-    -- player's own book is the player's heal
+    -- the log names some heals' receiver as their source (Earth Shield,
+    -- Judgement of Light; a bloom's owner is settled above): only a spell in
+    -- the player's own book is the player's heal
     if ST.BookTBC and not ST.BookTBC.IsOwnSpell(spellName) then return end
     amount, overheal = amount or 0, overheal or 0
 

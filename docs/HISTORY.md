@@ -5148,6 +5148,16 @@ wide). Smaller fixes: the replay starts a new column at each subgroup, Chain Hea
 raid-wide, and practice raid setups are in subgroups of five. tbcclasscheck 73, reccheck 67.
 TESTING section 52. Not merged, not installed.
 
+**2026-10-12, blooms.** The author asked whether other HoTs leak the way Lifebloom did, then
+"yes, fix the bloom". The author's 8 TBC recordings showed the log credits the bloom to its
+receiver: 105 own blooms all on the druid herself, none on the targets of 1362 of her ticks, and
+23 foreign blooms all on targets carrying her Lifebloom. So her blooms on others were lost and
+other druids' blooms on her counted. `ST.Blooms` (UI/Summary.lua) gives a bloom to the player
+only when the player's own Lifebloom on that target was removed within 1 s or is due to expire,
+before the recorder or the player-only gate reads the source. Ordinary HoTs carry their caster
+and were never affected. tools/fakepull.lua logs the bloom as the client does; reccheck 70.
+TESTING 52 step 5.
+
 ## Moved from CLAUDE.md on 2026-10-04
 
 Text moved verbatim out of `CLAUDE.md` when it was trimmed (each line as it stood, including the parts that stay in `CLAUDE.md` in shorter form). Sub-headings are the `CLAUDE.md` sections the lines came from.

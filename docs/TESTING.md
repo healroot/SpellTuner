@@ -2429,6 +2429,10 @@ step and whether `/st` was open.
    Lifebloom. Heal in a group with a druid, then open `/st` -> Reports -> Waste -> by spell. Only
    your own spells should be listed, each with its rank (e.g. `Greater Heal R5`).
 4. **The druid.** On the druid, Practice should still show the druid's default bindings.
+5. **Blooms (2026-10-12).** On the druid, Reset overheal data, then keep Lifebloom on a tank for
+   a pull and let it bloom a few times. `/st` -> Reports -> Waste -> by target: the tank's row
+   should count your blooms (before, they were missing). With another druid in the group, their
+   blooms on you should not add to your Lifebloom row under by spell.
 
 **Paste back** one line per step into `.logs/tbc/priest-fixes.md`.
 

@@ -1576,8 +1576,20 @@ lifebloom)". On TBC a heal logged with the player as its source counts as the pl
 when its spell name is in the player's spellbook (`ST.BookTBC.IsOwnSpell`). For the druid, too,
 a self-heal from outside the book (a healthstone, a potion, a trinket) leaves the summary's
 overheal, and the recorder files it as foreign healing. A heal of the same name from another
-player of the same class (another druid's Lifebloom on a druid) still counts as the player's:
-the log cannot tell them apart. If the spellbook cannot be read, every heal counts, as before.
+player of the same class would still count as the player's, since the log cannot tell them
+apart by name. If the spellbook cannot be read, every heal counts, as before.
+
+**The bloom has its owner from the aura** (2026-10-12, the author's "yes, fix the bloom"). The
+log credits Lifebloom's bloom (33778) to the player it lands on, never to the druid who cast it:
+the author's 8 TBC recordings held 105 "own" blooms, every one on the druid herself, none on
+the targets carrying 1362 of her Lifebloom ticks, and 23 "foreign" blooms, all on targets that
+carried her Lifebloom. So the druid's blooms on others were lost and other druids' blooms on her
+counted as hers. The aura events name the real caster: a bloom is the player's when the
+player's own Lifebloom on that target was removed within 1 s of it, or is still up and due to
+expire (its last application at least its duration less 1 s ago; the heal may come before the
+removal). Everything else is somebody else's bloom. A dispelled Lifebloom blooms early and is
+missed (counted as foreign); two druids' Lifeblooms expiring on one target within the same
+second cannot be told apart.
 Wasted mana is charged per landing at the cast's share: a group heal over the party size, a
 chain over its count, Binding Heal over two, and a class HoT tick over its duration / 3 s.
 

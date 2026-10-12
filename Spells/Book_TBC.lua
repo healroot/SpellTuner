@@ -502,7 +502,7 @@ end
 
 --- B.IsOwnSpell(name) -> true when a spell of this name is in the player's
 --- spellbook. The TBC combat log names some heals' RECEIVER as their source
---- (another druid's Lifebloom bloom, Earth Shield, Judgement of Light): a
+--- (a bloom, Earth Shield, Judgement of Light): a
 --- heal from "the player" is the player's own only when the player can cast
 --- it. True when the book cannot be walked (nothing is refused on no data).
 function B.IsOwnSpell(name)

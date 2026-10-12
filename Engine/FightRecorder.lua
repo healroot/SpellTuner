@@ -362,7 +362,8 @@ function FR:Event(subevent, sourceGUID, destGUID, destName, p1, p2, p3, p4, p5, 
         local spellID, amount, overheal, critical = p1, p4 or 0, p5 or 0, p7
         local periodic = (subevent == "SPELL_PERIODIC_HEAL")
         -- a heal the log credits to the player that the player cannot cast
-        -- (another druid's bloom, Earth Shield) is a foreign heal
+        -- (Earth Shield; a bloom arrives with its owner already settled by
+        -- UI/Summary.lua's ST.Blooms) is a foreign heal
         if isOwn and ST.BookTBC and not ST.BookTBC.IsOwnSpell(p2) then isOwn = false end
         if isOwn then
             -- THE MULTI-RETURN TRAP, third time (CLAUDE.md names the two in

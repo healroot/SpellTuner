@@ -308,6 +308,39 @@ do
 end
 
 --------------------------------------------------------------------------------
+-- 2026-10-12: the log credits a bloom to its receiver. It is the player's
+-- exactly when the player's own Lifebloom on that target ends with it.
+--------------------------------------------------------------------------------
+do
+    local OH, SD = ST.Overheal, ST.SpellData
+    local me, LB = ST.player.guid, SD.maxRank.Lifebloom
+    local function C(sub, src, dst, ...) S.Combat(0, sub, false, src, "src", 0, 0, dst, "X", 0, 0, ...) end
+    local function Bloom(dst) C("SPELL_HEAL", dst, dst, SD.bloomID, "Lifebloom", 8, 500, 500, 0, false) end
+    local function Blooms(guid) local u = OH.session["u:" .. guid]; return u and u.n or 0 end
+    wipe(OH.session)
+    -- another druid's bloom on the player: no Lifebloom of the player's ended
+    Bloom(me)
+    check("2026-10-12: another druid's bloom on the player is not the player's", Blooms(me) == 0,
+        tostring(Blooms(me)))
+    -- the player's Lifebloom on a tank expires: the bloom may arrive before the aura's removal
+    C("SPELL_AURA_APPLIED", me, "Tank-9", LB, "Lifebloom", 8, "BUFF")
+    S.Tick(7.0)
+    Bloom("Tank-9")
+    C("SPELL_AURA_REMOVED", me, "Tank-9", LB, "Lifebloom", 8, "BUFF")
+    check("2026-10-12: the player's bloom on a tank, logged as the tank's, is the player's", Blooms("Tank-9") == 1,
+        tostring(Blooms("Tank-9")))
+    -- a fresh Lifebloom of the player's is up when another druid's blooms on the same tank
+    C("SPELL_AURA_APPLIED", me, "Tank-9", LB, "Lifebloom", 8, "BUFF")
+    S.Tick(2.0)
+    Bloom("Tank-9")
+    S.Tick(3.0)
+    Bloom("Tank-9")
+    check("2026-10-12: another druid's bloom is not the player's while the player's own Lifebloom has seconds to run",
+        Blooms("Tank-9") == 1, tostring(Blooms("Tank-9")))
+    wipe(OH.session)
+end
+
+--------------------------------------------------------------------------------
 -- T48 (P4, review B13): Tranquility heals the caster's party, so a fully
 -- overhealed tick in a 25-man raid carries its cost over the five of subgroup
 -- 3, not over the raid.
