@@ -74,4 +74,25 @@ ST.Profiles.Register("PRIEST", {
         ["Shadow Word: Pain"] = { school = 6, kind = "dot",    baseCast = 1.5, tick = 3 },
     },
     damageOrder = { "Smite", "Holy Fire", "Mind Blast", "Shadow Word: Pain" },
+    -- T130b (review M1): the class's other casts by the spellbook's name, so
+    -- the spend-coverage gate knows what the mana went on (Data/DruidSpells.lua's
+    -- DS.ClassKind). Every row VERIFY: a wrong row costs a label, never a
+    -- number -- the cast's cost comes from the recording either way.
+    castKinds = {
+        ["Power Word: Fortitude"] = "utility", ["Prayer of Fortitude"] = "utility",
+        ["Divine Spirit"] = "utility", ["Prayer of Spirit"] = "utility",
+        ["Shadow Protection"] = "utility", ["Prayer of Shadow Protection"] = "utility",
+        ["Inner Fire"] = "utility", ["Fear Ward"] = "utility", ["Dispel Magic"] = "utility",
+        ["Mass Dispel"] = "utility", ["Abolish Disease"] = "utility", ["Cure Disease"] = "utility",
+        ["Resurrection"] = "utility", ["Fade"] = "utility", ["Levitate"] = "utility",
+        ["Shadowfiend"] = "utility", ["Symbol of Hope"] = "utility", ["Elune's Grace"] = "utility",
+        ["Pain Suppression"] = "utility", ["Feedback"] = "utility", ["Shadowguard"] = "utility",
+        ["Touch of Weakness"] = "utility", ["Hex of Weakness"] = "utility",
+        ["Shadow Word: Death"] = "damage", ["Mind Flay"] = "damage", ["Mana Burn"] = "damage",
+        ["Vampiric Touch"] = "damage", ["Vampiric Embrace"] = "damage",
+        ["Devouring Plague"] = "damage", ["Starshards"] = "damage", ["Chastise"] = "damage",
+        ["Psychic Scream"] = "cc", ["Shackle Undead"] = "cc", ["Mind Control"] = "cc",
+        ["Mind Soothe"] = "cc", ["Silence"] = "cc",
+        ["Shadowform"] = "shift",
+    },
 })

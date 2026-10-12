@@ -52,4 +52,30 @@ ST.Profiles.Register("PALADIN", {
         ["Consecration"] = { school = 2, kind = "dot",    baseCast = 1.5, tick = 1, aoe = true },
     },
     damageOrder = { "Exorcism", "Holy Wrath", "Consecration" },
+    -- T130b (review M1): the class's other casts by the spellbook's name, so
+    -- the spend-coverage gate knows what the mana went on (Data/DruidSpells.lua's
+    -- DS.ClassKind). Every row VERIFY: a wrong row costs a label, never a
+    -- number -- the cast's cost comes from the recording either way.
+    castKinds = {
+        ["Cleanse"] = "utility", ["Purify"] = "utility", ["Redemption"] = "utility",
+        ["Judgement"] = "utility", ["Seal of Light"] = "utility", ["Seal of Wisdom"] = "utility",
+        ["Seal of Righteousness"] = "utility", ["Seal of Command"] = "utility",
+        ["Seal of Justice"] = "utility", ["Seal of the Crusader"] = "utility",
+        ["Seal of Vengeance"] = "utility", ["Seal of Blood"] = "utility",
+        ["Blessing of Wisdom"] = "utility", ["Blessing of Kings"] = "utility",
+        ["Blessing of Might"] = "utility", ["Blessing of Light"] = "utility",
+        ["Blessing of Salvation"] = "utility", ["Blessing of Sanctuary"] = "utility",
+        ["Greater Blessing of Wisdom"] = "utility", ["Greater Blessing of Kings"] = "utility",
+        ["Greater Blessing of Might"] = "utility", ["Greater Blessing of Light"] = "utility",
+        ["Greater Blessing of Salvation"] = "utility", ["Greater Blessing of Sanctuary"] = "utility",
+        ["Blessing of Freedom"] = "utility", ["Blessing of Protection"] = "utility",
+        ["Blessing of Sacrifice"] = "utility", ["Divine Shield"] = "utility",
+        ["Divine Protection"] = "utility", ["Divine Intervention"] = "utility",
+        ["Righteous Fury"] = "utility", ["Holy Shield"] = "utility", ["Avenging Wrath"] = "utility",
+        ["Divine Illumination"] = "utility",
+        ["Hammer of Wrath"] = "damage", ["Avenger's Shield"] = "damage",
+        ["Crusader Strike"] = "damage",
+        ["Hammer of Justice"] = "cc", ["Repentance"] = "cc", ["Turn Undead"] = "cc",
+        ["Turn Evil"] = "cc",
+    },
 })

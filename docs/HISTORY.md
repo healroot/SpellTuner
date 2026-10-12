@@ -5165,6 +5165,7 @@ needed only the planner; coachrun on a solver-only kit compares solver settings.
 `SP.SolverSimulate` on the class kit. The advisor's rank toast reads the class book (it raised
 for a priest); mana sources stay per class (potions; Innervate the druid's). Forever unchanged.
 tbcclasscheck 73 -> 107. TESTING 52 step 6.
+T130b (review fixes): ClassifyCast knows a class book's heals, unmodelled, damage and a VERIFY `castKinds` list per TBC profile (M1); the replay offers no rules strategy to a solver-only kit (M2); Simulate binds and a recorded fight with a foreign healer tested (m1, m2); m3 (druid hot names in `BuildHotSlots`) deferred; tbcclasscheck 107 -> 114.
 
 ## Moved from CLAUDE.md on 2026-10-04
 

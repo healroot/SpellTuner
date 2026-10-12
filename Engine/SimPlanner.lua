@@ -1546,6 +1546,24 @@ function SP.SolverOnly(kit)
     local prof = ST.Profiles and ST.Profiles.ForKit(kit)
     return prof ~= nil and not (prof.planner and prof.planner.rules)
 end
+-- T130b (review M2): the strategies a kit can run. The rules (`kind ==
+-- "rules"`) read the druid's binds only (Plan:Decide), so a solver-only kit
+-- is offered the solver's entries alone; the druid's list is SP.STRATEGY_SET.
+function SP.StrategiesFor(kit)
+    if not SP.SolverOnly(kit) then return SP.STRATEGY_SET end
+    local out = {}
+    for _, e in ipairs(SP.STRATEGY_SET) do
+        if e.kind ~= "rules" then out[#out + 1] = e end
+    end
+    return out
+end
+-- The entry a chooser's pick builds for this kit: a rules entry on a
+-- solver-only kit falls back to the coach's default solver strategy.
+function SP.StrategyFor(key, kit)
+    local e = SP.Strategy(key)
+    if e and e.kind == "rules" and SP.SolverOnly(kit) then e = SP.Strategy(SP.SOLVER_COACH[1].key) end
+    return e
+end
 function SP.SolverCandidates(rec, kit)
     local out = {}
     if not SP.SolverOnly(kit) then return out end

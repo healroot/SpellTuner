@@ -56,4 +56,31 @@ ST.Profiles.Register("SHAMAN", {
         ["Frost Shock"]     = { school = 5, kind = "direct", baseCast = 1.5 },
     },
     damageOrder = { "Lightning Bolt", "Chain Lightning", "Earth Shock", "Flame Shock", "Frost Shock" },
+    -- T130b (review M1): the class's other casts by the spellbook's name, so
+    -- the spend-coverage gate knows what the mana went on (Data/DruidSpells.lua's
+    -- DS.ClassKind). Every row VERIFY: a wrong row costs a label, never a
+    -- number -- the cast's cost comes from the recording either way.
+    castKinds = {
+        ["Mana Spring Totem"] = "utility", ["Mana Tide Totem"] = "utility",
+        ["Windfury Totem"] = "utility", ["Grace of Air Totem"] = "utility",
+        ["Wrath of Air Totem"] = "utility", ["Strength of Earth Totem"] = "utility",
+        ["Stoneskin Totem"] = "utility", ["Tremor Totem"] = "utility",
+        ["Grounding Totem"] = "utility", ["Tranquil Air Totem"] = "utility",
+        ["Windwall Totem"] = "utility", ["Poison Cleansing Totem"] = "utility",
+        ["Disease Cleansing Totem"] = "utility", ["Fire Resistance Totem"] = "utility",
+        ["Frost Resistance Totem"] = "utility", ["Nature Resistance Totem"] = "utility",
+        ["Flametongue Totem"] = "utility", ["Totem of Wrath"] = "utility",
+        ["Earth Elemental Totem"] = "utility", ["Fire Elemental Totem"] = "utility",
+        ["Water Shield"] = "utility", ["Lightning Shield"] = "utility",
+        ["Purge"] = "utility", ["Cure Poison"] = "utility", ["Cure Disease"] = "utility",
+        ["Ancestral Spirit"] = "utility", ["Bloodlust"] = "utility", ["Heroism"] = "utility",
+        ["Water Walking"] = "utility", ["Water Breathing"] = "utility",
+        ["Rockbiter Weapon"] = "utility", ["Flametongue Weapon"] = "utility",
+        ["Frostbrand Weapon"] = "utility", ["Windfury Weapon"] = "utility",
+        ["Elemental Mastery"] = "utility", ["Shamanistic Rage"] = "utility",
+        ["Searing Totem"] = "damage", ["Magma Totem"] = "damage", ["Fire Nova Totem"] = "damage",
+        ["Stormstrike"] = "damage",
+        ["Earthbind Totem"] = "cc",
+        ["Ghost Wolf"] = "shift",
+    },
 })

@@ -1487,6 +1487,9 @@ local function Build()
         local entry = SP.Strategy and SP.Strategy(id)
         if entry then
             local kit = ST.RankMath:SpellKit({ live = true })
+            -- T130b: a rules pick on a solver-only kit builds the default solver
+            entry = SP.StrategyFor(id, kit)
+            id = entry.key
             local sc = ST.SimModel.ScenarioFromRecording(rp.rec, kit)
             local plan = SP.MakeStrategy(entry, SP.BindsFromRecording and
                 SP.BindsFromRecording(rp.rec) or SP.MaxRankBinds(), kit,
@@ -2241,7 +2244,8 @@ function ST:OpenReplay(n)
             local pick = SP.strategyPick[rp.rec.id]
             -- the planners first: they are available whether or not a search has
             -- run, and they are what the author is actually choosing between
-            for _, e in ipairs(SP.STRATEGY_SET or {}) do
+            -- T130b: the rules only for a kit that has the druid's binds
+            for _, e in ipairs(SP.StrategiesFor and SP.StrategiesFor(rp.kit) or SP.STRATEGY_SET or {}) do
                 items[#items + 1] = { id = e.key, text = e.label, tooltip = e.why }
                 if pick == e.key then current = e.key end
             end

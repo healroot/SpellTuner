@@ -61,7 +61,14 @@ P.FIELDS = {
     -- order the book lists them in (damage keys; the rest follow by name).
     damage = "table",
     damageOrder = "table",
+    -- T130b (TBC): the class's other casts by the spellbook's name -> kind
+    -- (P.CAST_KINDS), so the coverage gate knows what the mana went on
+    -- (Data/DruidSpells.lua's DS.ClassKind). Labels only, every row VERIFY.
+    castKinds = "table",
 }
+
+-- what a castKinds row may say (Data/DruidSpells.lua's DS.KINDS)
+P.CAST_KINDS = { damage = true, cc = true, utility = true, shift = true }
 
 -- Required on every registered profile (the generic one carries only caps).
 P.REQUIRED = { "class", "label", "caps", "families" }
@@ -259,6 +266,22 @@ function P.Validate(p, types)
                         Say(problems, "%s names %s, which is the heal family %s", where, tostring(n), heal)
                     end
                 end
+            end
+        end
+    end
+    if p.castKinds ~= nil and type(p.castKinds) == "table" then
+        local unmod = {}
+        for _, n in ipairs(IsList(p.unmodelled) and p.unmodelled or {}) do unmod[n] = true end
+        local dmg = type(p.damage) == "table" and p.damage or {}
+        for name, kind in pairs(p.castKinds) do
+            local where = "castKinds." .. tostring(name)
+            if type(name) ~= "string" or name == "" then
+                Say(problems, "%s: the key is not a name", where)
+            else
+                if not P.CAST_KINDS[kind] then Say(problems, "%s: kind %s", where, tostring(kind)) end
+                if owner[name] then Say(problems, "%s is in the family %s", where, owner[name]) end
+                if unmod[name] then Say(problems, "%s is unmodelled", where) end
+                if dmg[name] ~= nil then Say(problems, "%s is a damage family", where) end
             end
         end
     end

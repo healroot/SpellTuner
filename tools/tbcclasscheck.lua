@@ -1013,10 +1013,10 @@ do
     -- (Style, Tip and Tip_TBC are in already when section 4 loaded them:
     -- a second Tip_TBC would be a second MinimapLines provider)
     local simFiles = { "UI/Theme_Flat.lua", "UI/EscStack.lua", "UI/Windows.lua", "UI/ContextMenu.lua",
-        "UI/SimWindow.lua" }
+        "UI/SimWindow.lua", "UI/ReplayWindow.lua" }
     if not (ST.Tip and ST.Tip.Clock) then
         simFiles = { "UI/Style.lua", "UI/Theme_Flat.lua", "UI/EscStack.lua", "UI/Windows.lua",
-            "UI/ContextMenu.lua", "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/SimWindow.lua" }
+            "UI/ContextMenu.lua", "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/SimWindow.lua", "UI/ReplayWindow.lua" }
     end
     local okSimUI, errSimUI = pcall(S.Load, simFiles, "SpellTuner", ST)
     local simPanel
@@ -1142,13 +1142,16 @@ do
 
     local CLASSES = {
         { class = "PRIEST", label = "Priest", talents = PRIEST_TALENTS, group = true, seed = 7,
-          unmodelled = { id = 25218, name = "Power Word: Shield" } },
+          unmodelled = { id = 25218, name = "Power Word: Shield" },
+          utility = { id = 988, name = "Dispel Magic", kind = "utility" } },
         { class = "SHAMAN", label = "Shaman", group = true, seed = 11,
           talents = { ["Purification"] = 5, ["Improved Chain Heal"] = 2 },
-          unmodelled = { id = 16188, name = "Nature's Swiftness" } },
+          unmodelled = { id = 16188, name = "Nature's Swiftness" },
+          utility = { id = 25570, name = "Mana Spring Totem", kind = "utility" } },
         { class = "PALADIN", label = "Paladin", group = false, seed = 13,
           talents = { ["Healing Light"] = 3 },
-          unmodelled = { id = 20216, name = "Divine Favor" } },
+          unmodelled = { id = 20216, name = "Divine Favor" },
+          utility = { id = 4987, name = "Cleanse", kind = "utility" } },
     }
 
     for _, C in ipairs(CLASSES) do
@@ -1173,17 +1176,53 @@ do
         ------------------------------------------------------------------------
         -- the fight: played, recorded, an unmodelled spell cast in it
         ------------------------------------------------------------------------
+        -- T130b (review M1): the unmodelled cast costs ~15% of the fight's
+        -- mana and a cast off the class's utility list 5% more, so the
+        -- spend-coverage gate fails unless both are named (the client names
+        -- every spell: the stub's S.spellNames)
         local prec, errs = Played(srcC, C.seed)
-        local rec
+        local rec, spentBefore, unmodCost, utilCost
+        S.spellNames[C.unmodelled.id] = C.unmodelled.name
+        S.spellNames[C.utility.id] = C.utility.name
         if prec then
-            local at = 20.05
-            rec = WithEvents(prec, { { at, K.OWNCAST, 1, 0, C.unmodelled.id } })
+            local _, spent = SM.OwnSpend(prec)
+            spentBefore = spent
+            unmodCost = math.floor(spent * 0.15 + 0.5)
+            utilCost = math.floor(spent * 0.05 + 0.5)
+            rec = WithEvents(prec, { { 20.05, K.OWNCAST, 1, unmodCost, C.unmodelled.id },
+                                     { 26.05, K.OWNCAST, 2, utilCost, C.utility.id } })
             local names = {}
             for k, v in pairs(prec.names or {}) do names[k] = v end
             names[C.unmodelled.id] = C.unmodelled.name
+            names[C.utility.id] = C.utility.name
             rec.names = names
-            rec.ownCasts = (prec.ownCasts or 0) + 1
+            rec.ownCasts = (prec.ownCasts or 0) + 2
             rec.id = 1795000000 + C.seed
+            -- the pool the client would have sampled after those two casts
+            local mt, mv = {}, {}
+            for i, t in ipairs(prec.mana and prec.mana.t or {}) do
+                local v = prec.mana.v[i]
+                if t >= 20.05 then v = v - unmodCost end
+                if t >= 26.05 then v = v - utilCost end
+                mt[i], mv[i] = t, v
+            end
+            local mana = {}
+            for k2, v2 in pairs(prec.mana or {}) do mana[k2] = v2 end
+            mana.t, mana.v = mt, mv
+            rec.mana = mana
+        end
+        do
+            local _, kU = ST:ClassifyCast(C.unmodelled.id)
+            local _, kL = ST:ClassifyCast(C.utility.id)
+            local vS = rec and SM:Validate(rec, kit)
+            local gate
+            for _, g in ipairs(vS and vS.gates or {}) do if g.name == "spend coverage" then gate = g end end
+            check(label .. ": a costly unmodelled cast and a utility cast are named, so spend coverage passes (review M1)",
+                kU == "utility" and kL == C.utility.kind and (unmodCost or 0) > 0 and gate ~= nil
+                and gate.ok == true,
+                string.format("unmodelled=%s utility=%s costs=%s+%s of %s gate=%s %s", tostring(kU), tostring(kL),
+                    tostring(unmodCost), tostring(utilCost), tostring(spentBefore),
+                    tostring(gate and gate.ok), tostring(gate and gate.text)))
         end
         local own, fams = 0, {}
         for i = 1, (rec and rec.n or 0) do
@@ -1217,7 +1256,7 @@ do
                 if sd then
                     casts = casts + 1
                     castFams[sd.family] = true
-                elseif id ~= C.unmodelled.id then
+                elseif id ~= C.unmodelled.id and id ~= C.utility.id then
                     foreign[#foreign + 1] = tostring(id)
                 end
             end })
@@ -1247,6 +1286,38 @@ do
                 okCoach and groupLine == nil)
         end
 
+        -- review M2: the replay's strategy chooser offers a solver-only kit no
+        -- rules strategy (they read the druid's binds and never cast), and a
+        -- rules pick builds the default solver instead
+        do
+            local offered, rulesIn = {}, {}
+            for _, e in ipairs(SP.StrategiesFor(kit)) do
+                offered[#offered + 1] = e.key
+                if e.kind == "rules" then rulesIn[#rulesIn + 1] = e.key end
+            end
+            local fallback = SP.StrategyFor("rules", kit)
+            local items, shown = {}, false
+            if rec and okCoach and best then
+                ST.cdb.recordings = { rec }
+                SP.plans[rec.id] = best
+                local okOpen = pcall(ST.OpenReplay, ST, 1)
+                local dd = okOpen and ST.Replay and ST.Replay._strategy and ST.Replay._strategy()
+                shown = dd ~= nil and dd:IsVisible()
+                for _, it in ipairs(dd and dd.items or {}) do
+                    items[#items + 1] = tostring(it.id)
+                    local e = SP.Strategy(it.id)
+                    if e and e.kind == "rules" then rulesIn[#rulesIn + 1] = "window:" .. it.id end
+                end
+                if ST.Replay and ST.Replay.Hide then pcall(ST.Replay.Hide) end
+                ST.cdb.recordings = {}
+            end
+            check(label .. ": the replay's strategy chooser offers no rules strategy, a rules pick builds the solver",
+                #rulesIn == 0 and #offered > 0 and shown and #items >= #offered
+                and fallback ~= nil and fallback.kind == "solver",
+                string.format("rules=[%s] offered=%d shown=%s items=[%s] fallback=%s", table.concat(rulesIn, ","),
+                    #offered, tostring(shown), table.concat(items, ","), tostring(fallback and fallback.key)))
+        end
+
         if C.class == "PRIEST" and rec then
             -- the causality test: a burst late in the fight changes nothing
             -- the solver casts before it
@@ -1261,7 +1332,12 @@ do
             end
             local burst = {}
             for t = 30, 36 do burst[#burst + 1] = { t + 0.1, K.DMG, 3, 1500, 0 } end
-            local quiet, loud = CastsOf(rec), CastsOf(WithEvents(rec, burst))
+            -- on the fight as T130 built it (the unmodelled cast free, no
+            -- utility cast): the burst must move a later cast, and on the
+            -- costlier T130b fight the solver casts the same either way
+            local base = WithEvents(prec, { { 20.05, K.OWNCAST, 1, 0, C.unmodelled.id } })
+            base.names, base.ownCasts, base.id = rec.names, (prec.ownCasts or 0) + 1, rec.id
+            local quiet, loud = CastsOf(base), CastsOf(WithEvents(base, burst))
             local diverged, differs = nil, #quiet ~= #loud
             for j = 1, math.min(#quiet, #loud) do
                 local atQ = tonumber(quiet[j]:match("^([%d%.]+)"))
@@ -1309,6 +1385,93 @@ do
                 string.format("ok=%s err=%s best=%s druid=%s first=%s", tostring(okRun), tostring(errRun),
                     tostring(runBest and (runBest.kind or "rules")), tostring(DruidWord(runCard)),
                     tostring(runCard and runCard[1])))
+
+            -- review m2: a RECORDED fight (UI/Summary.lua's combat-log handler
+            -- into Engine/FightRecorder.lua, not a practice session): a
+            -- paladin healing beside the priest, and two casts outside the
+            -- kit with a real cost (Power Word: Shield, Dispel Magic)
+            local me = ST.player.guid
+            local hadUnits = {}
+            for k2 in pairs(S.units) do hadUnits[k2] = true end
+            S.AddUnit("party1", { guid = "Tank-7", name = "Brakk", class = "WARRIOR", role = "TANK",
+                                  hp = 9000, hpMax = 9000 })
+            S.AddUnit("party2", { guid = "Pala-7", name = "Lumen", class = "PALADIN", role = "HEALER",
+                                  hp = 6000, hpMax = 6000 })
+            S.AddUnit("party3", { guid = "Mage-7", name = "Frosk", class = "MAGE", role = "DAMAGER",
+                                  hp = 4500, hpMax = 4500 })
+            S.Fire("GROUP_ROSTER_UPDATE")
+            S.liveCosts[C.unmodelled.id], S.liveCosts[C.utility.id] = 600, 366
+            local function log(sub, src, dst, dstName, ...)
+                S.Combat(0, sub, false, src, "src", 0, 0, dst, dstName, 0, 0, ...)
+            end
+            local tank = S.units.party1
+            local function Hit(amount)
+                tank.hp = math.max(1, tank.hp - amount)
+                log("SWING_DAMAGE", "Mob-7", "Tank-7", "Brakk", amount, 0, 1, 0, 0, 0, false)
+            end
+            local function Cast(id, name, dst, dstName)
+                local cost = Kit.Index():GetCost(id) or S.liveCosts[id] or 0
+                log("SPELL_CAST_SUCCESS", me, dst, dstName, id, name, 2)
+                S.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", nil, id)
+                S.mana = S.mana - cost
+            end
+            local function Heal(src, id, name, amount)
+                local over = math.max(0, tank.hp + amount - tank.hpMax)
+                tank.hp = math.min(tank.hpMax, tank.hp + amount)
+                log("SPELL_HEAL", src, "Tank-7", "Brakk", id, name, 2, amount, over, 0, false)
+            end
+            local regen = select(2, GetManaRegen())
+            local function Advance(sec)
+                for _ = 1, math.floor(sec / 0.25 + 0.5) do
+                    S.mana = math.min(S.manaMax, S.mana + regen * 0.25)
+                    S.Tick(0.25)
+                end
+            end
+            local rkit = RM:SpellKit()
+            local heals = { { id = 25213, name = "Greater Heal" }, { id = 25235, name = "Flash Heal" } }
+            S.mana = S.manaMax
+            ST.cdb.recordings = {}
+            tank.hp = 5000
+            S.Fire("PLAYER_REGEN_DISABLED")
+            local started = ST.FightRecorder.active ~= nil
+            Advance(0.25) -- no event on a sample's own instant
+            for step = 1, 8 do
+                Hit(2000)
+                Advance(1.0)
+                local h = heals[step % 2 + 1]
+                Cast(h.id, h.name, "Tank-7", "Brakk")
+                local e = rkit.caster[h.id]
+                -- the engine's own expectation (SimModel's DirectAmount, critMode "ev")
+                local p = (e and e.directCrit) or rkit.crit or 0
+                Heal(me, h.id, h.name, math.floor((e and e.direct or 1000) * (1 + 0.5 * p) + 0.5))
+                if step == 3 then Advance(0.5); Cast(C.unmodelled.id, C.unmodelled.name, "Tank-7", "Brakk") end
+                if step == 6 then Advance(0.5); Cast(C.utility.id, C.utility.name, "Mage-7", "Frosk") end
+                if step == 5 then Heal("Pala-7", 27137, "Flash of Light", 500) end
+                Advance(1.5)
+            end
+            Advance(3.0)
+            S.Fire("PLAYER_REGEN_ENABLED")
+            local rrec = ST.FightRecorder:Get(1)
+            local vR = rrec and SM:Validate(rrec, rkit)
+            local byName = {}
+            for _, g in ipairs(vR and vR.gates or {}) do byName[g.name] = g end
+            local fh, sp = byName["foreign healing"], byName["spend coverage"]
+            check(label .. ": a recorded fight (not practice) with a foreign healer and casts outside the kit "
+                .. "replays through the gates (review m2)",
+                started and rrec ~= nil and not rrec.practice and vR ~= nil and vR.ok == true
+                and fh ~= nil and (fh.value or 0) > 0 and sp ~= nil and sp.ok == true,
+                string.format("started=%s rec=%s practice=%s foreign=%s failed: %s", tostring(started),
+                    tostring(rrec ~= nil), tostring(rrec and rrec.practice), tostring(fh and fh.text),
+                    GatesText(vR)))
+            for k2 in pairs(S.units) do
+                if not hadUnits[k2] then S.units[k2] = nil end
+            end
+            for i = #S.unitOrder, 1, -1 do
+                if not hadUnits[S.unitOrder[i]] then table.remove(S.unitOrder, i) end
+            end
+            S.Fire("GROUP_ROSTER_UPDATE")
+            S.mana = S.manaMax
+            ST.cdb.recordings = {}
         end
 
         ------------------------------------------------------------------------
@@ -1318,11 +1481,15 @@ do
             local sc = P.BuildScenario({ party = "5", damage = "dungeon", situation = "full", dur = 45 })
             sc.kit = kit
             local binds = SP.MaxRankBinds()
-            local druidBinds = {}
-            for fam, id in pairs(binds) do
+            local okSim, simBest, rows = pcall(SP.SolverSimulate, sc, binds, kit)
+            -- review m1: the binds of the plan Simulate RAN, every key one of
+            -- the class's own families (and at least one key)
+            local druidBinds, nBinds = {}, 0
+            for fam, id in pairs(okSim and simBest and simBest.plan and simBest.plan.binds or {}) do
+                nBinds = nBinds + 1
                 if not (srcC.families[fam] and srcC.spells[id]) then druidBinds[#druidBinds + 1] = fam end
             end
-            local okSim, simBest, rows = pcall(SP.SolverSimulate, sc, binds, kit)
+            if nBinds == 0 then druidBinds[#druidBinds + 1] = "(the plan has no binds)" end
             local simFams, other = {}, {}
             for fam, nC in pairs(okSim and simBest and simBest.result.byFamily or {}) do
                 if nC > 0 then

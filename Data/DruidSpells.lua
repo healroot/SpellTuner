@@ -63,11 +63,57 @@ DS.KINDS = { damage = true, cc = true, utility = true, shift = true }
 -- Whatever is resolved is written into cdb.spellbook so the offline tools, and
 -- a later session, inherit it without asking the client again.
 --------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+-- T130b (review M1): a TBC class that reads its own book (RankMath:IsClassBook,
+-- the priest, shaman and paladin) is asked about its OWN spells: its book's
+-- heals, its profile's `unmodelled` heals (a shape the rank math has none
+-- for: an absorb, a totem, a next-cast modifier -- replayed as cast, so
+-- "utility"), its `damage` families, and its profile's `castKinds` (name ->
+-- kind, every row VERIFY like DS.byName above). Before this every such cast
+-- was "unknown" and a priest's Power Word: Shield failed the spend-coverage
+-- gate. Labels only: no heal value and no formula. Nil for the druid.
+--------------------------------------------------------------------------------
+local function IsClassBook()
+    local RM = ST.RankMath
+    return RM ~= nil and type(RM.IsClassBook) == "function" and RM:IsClassBook() == true
+end
+
+function DS.ClassKind(name)
+    if type(name) ~= "string" or not IsClassBook() then return nil end
+    local p = ST.ClassProfile
+    if type(p) ~= "table" then return nil end
+    for _, def in pairs(p.families or {}) do
+        for _, n in ipairs(def.names or {}) do if n == name then return "heal" end end
+    end
+    for _, n in ipairs(p.unmodelled or {}) do if n == name then return "utility" end end
+    for key, def in pairs(p.damage or {}) do
+        if key == name then return "damage" end
+        for _, n in ipairs(def.names or {}) do if n == name then return "damage" end end
+    end
+    local kind = p.castKinds and p.castKinds[name]
+    if DS.KINDS[kind] then return kind end
+    return nil
+end
+
+local function ClassBookSpell(spellID)
+    if not IsClassBook() then return nil end
+    local src = ST.RankMath:Source()
+    local s = src and src.spells and src.spells[spellID]
+    if s then return s.family end
+    return nil
+end
+
 function ST:ClassifyCast(spellID)
     if type(spellID) ~= "number" then return nil, "unknown" end
     local SD = ST.SpellData
     local s = SD and SD.spells[spellID]
     if s then return s.family, "heal" end
+
+    local classBook = IsClassBook()
+    if classBook then
+        local fam = ClassBookSpell(spellID)
+        if fam then return fam, "heal" end
+    end
 
     local row = DS.byID[spellID]
     if row then
@@ -76,11 +122,12 @@ function ST:ClassifyCast(spellID)
     end
 
     local known = ST.cdb and ST.cdb.spellbook and ST.cdb.spellbook[spellID]
-    if known then return known.family, known.kind end
+    -- a class book asks again about what an earlier session could not name
+    if known and not (classBook and known.kind == "unknown") then return known.family, known.kind end
 
     local name = GetSpellInfo and GetSpellInfo(spellID) or nil
     if name then
-        local kind = DS.byName[name]
+        local kind = DS.ClassKind(name) or DS.byName[name]
         if kind then
             ST:LearnSpell(spellID, name, kind)
             return name, kind
@@ -115,7 +162,8 @@ function DS.Summarise(rec)
             local family, kind = ST:ClassifyCast(id)
             if kind == "unknown" and rec.names and rec.names[id] then
                 family = rec.names[id]
-                local byName = DS.byName[(family:gsub(" r%d+$", ""))]
+                local bare = family:gsub(" r%d+$", "")
+                local byName = DS.ClassKind(bare) or DS.byName[bare]
                 if byName then kind = byName end
             end
             local b = out[kind] or out.unknown
