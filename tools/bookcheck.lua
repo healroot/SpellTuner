@@ -1181,7 +1181,9 @@ end)
 -- damage family against its own school's +spell damage, stored with kind
 -- "damage" and the school; in combat or on a stale reading nothing is
 -- measured; a heal reading and a damage reading of one id never meet; a
--- T122 entry without a kind still reads as a heal's.
+-- T122 entry without a kind still reads as a heal's. T131: an entry is a set
+-- of readings fitted into an interval (v = 2); a T122 one-pair entry (no v)
+-- is dropped and the estimate shows.
 do
     local zapFlip = "damage" -- 90126 reads as a heal or as a damage spell
     S.AddSpell(90124, "ZapShare", "Rank 1", function()
@@ -1202,6 +1204,20 @@ do
     S.AddSpell(90127, "OldShare", "Rank 1", function()
         return "Heals a friendly target for 200 to 240."
     end, { cast = 2000, cost = 60, level = 1 })
+    -- T131: heals whose text takes a true share of +healing, rounded as the
+    -- tooltip rounds it; `fitBase` moves a base (a talent)
+    local fitBase = 0
+    local function Healer(id, name, rank, base, share, level)
+        S.AddSpell(id, name, rank, function()
+            local b = share * (S.bonusHealing or 0)
+            return "Heals a friendly target for " .. math.floor(base + fitBase + b + 0.5) .. " to "
+                .. math.floor(base + 40 + fitBase + b + 0.5) .. "."
+        end, { cast = 2500, cost = 100, level = level or 1 })
+    end
+    Healer(90131, "FitTrue", "Rank 1", 400, 0.80)
+    Healer(90132, "FitRejuv", "Rank 3", 300, 0.68, 16)
+    Healer(90133, "FitRejuv", "Rank 4", 450, 0.80, 22)
+    Healer(90134, "FitMany", "Rank 1", 500, 0.50)
 
     local function Scan()
         Book:MarkDirty()
@@ -1211,12 +1227,18 @@ do
         local store = ST.cdb and ST.cdb.bonusCounts
         return store and store[id]
     end
+    -- T131: the share handed out (a narrow v = 2 fit), nil when none
+    local function Share(id)
+        local m = Stored(id)
+        if type(m) ~= "table" then return nil end
+        return (Book._Measured(id, m.kind or "heal", m.school))
+    end
     local function Around(fn)
         local savedDmg, savedHeal, savedCombat = S.bonusDamage, S.bonusHealing, ST.inCombat
         local savedFn = _G.GetSpellBonusDamage
         S.bonusDamage = {}
         ST.inCombat, S.inCombat = false, false
-        Book._lastRead = {} -- each case starts with no previous readings
+        ST.cdb.bonusCounts = {} -- T131: each case starts with no previous readings
         local bad = {}
         local function Want(cond, what) if not cond then bad[#bad + 1] = what end end
         local good, err = pcall(fn, Want)
@@ -1281,23 +1303,25 @@ do
             zapFlip = "damage"
             S.bonusDamage[4] = 250
             local book = Scan()
-            Want(Stored(90126) == nil, "heal->damage measured " .. tostring(Stored(90126) and Stored(90126).counts))
+            Want(Share(90126) == nil, "heal->damage measured " .. tostring(Share(90126)))
             local e = book.spells[90126]
             Want(e and e.bonus and e.bonus.from == "estimated", "damage entry " .. tostring(e and e.bonus and e.bonus.from))
             -- and back: the damage reading is not a heal's previous reading
-            Book._lastRead = {}
+            ST.cdb.bonusCounts[90126] = nil
             Scan() -- a damage reading at 250, no heal reading kept
             zapFlip = "heal"
             S.bonusHealing = 400
             Scan()
-            Want(Stored(90126) == nil, "damage->heal measured " .. tostring(Stored(90126) and Stored(90126).counts))
+            Want(Share(90126) == nil, "damage->heal measured " .. tostring(Share(90126)))
             -- a heal-kind share is not handed to a damage rank, nor a damage one to a heal
-            ST.cdb.bonusCounts[90126] = { counts = 0.77, at = 1, bonus = 100 }
+            ST.cdb.bonusCounts[90126] = { v = 2, points = { { 0, 300 }, { 100, 377 } }, counts = 0.77,
+                lo = 0.76, hi = 0.78, at = 1, bonus = 100 }
             zapFlip = "damage"
             local b2 = Scan()
             local e2 = b2.spells[90126]
             Want(e2 and e2.bonus and e2.bonus.from == "estimated", "heal share on damage " .. tostring(e2 and e2.bonus and e2.bonus.from))
-            ST.cdb.bonusCounts[90126] = { counts = 0.66, at = 1, bonus = 100, kind = "damage", school = "Nature" }
+            ST.cdb.bonusCounts[90126] = { v = 2, points = { { 0, 500 }, { 100, 566 } }, counts = 0.66,
+                lo = 0.65, hi = 0.67, at = 1, bonus = 100, kind = "damage", school = "Nature" }
             zapFlip = "heal"
             local b3 = Scan()
             local e3 = b3.spells[90126]
@@ -1307,16 +1331,116 @@ do
         end)
     end)
 
-    T95("T124: a T122 bonusCounts entry without a kind still reads as a heal's share", function()
+    T95("T131: an old one-pair entry (no v) is dropped, the estimate shows; a v = 2 entry without a kind is a heal's", function()
         return Around(function(Want)
-            if type(ST.cdb.bonusCounts) ~= "table" then ST.cdb.bonusCounts = {} end
-            ST.cdb.bonusCounts[90127] = { counts = 0.42, at = 12345, bonus = 50 }
+            ST.cdb.bonusCounts[90127] = { counts = 0.77, at = 12345, bonus = 50 }
             local book = Scan()
             local e = book.spells[90127]
-            Want(e and e.bonus and e.bonus.from == "measured" and ApproxEq(e.bonus.counts, 0.42) and e.bonus.at == 12345,
-                "old entry " .. tostring(e and e.bonus and e.bonus.from) .. " " .. tostring(e and e.bonus and e.bonus.counts))
-            Want(e and ApproxEq(e.value, 220), "value " .. tostring(e and e.value))
+            Want(e and e.bonus and e.bonus.from == "estimated", "old entry " .. tostring(e and e.bonus and e.bonus.from))
+            local m = Stored(90127)
+            Want(m == nil or m.v == 2, "old entry kept " .. tostring(m and m.counts))
+            ST.cdb.bonusCounts[90127] = { v = 2, points = { { 0, 220 }, { 100, 262 } }, counts = 0.42,
+                lo = 0.41, hi = 0.43, at = 12345, bonus = 100 }
+            local b2 = Scan()
+            local e2 = b2.spells[90127]
+            Want(e2 and e2.bonus and e2.bonus.from == "measured" and ApproxEq(e2.bonus.counts, 0.42) and e2.bonus.at == 12345,
+                "v2 entry " .. tostring(e2 and e2.bonus and e2.bonus.from) .. " " .. tostring(e2 and e2.bonus and e2.bonus.counts))
+            Want(e2 and ApproxEq(e2.value, 220), "value " .. tostring(e2 and e2.value))
             ST.cdb.bonusCounts[90127] = nil
+        end)
+    end)
+
+    T95("T131: a true 0.80 read at +0 and +15 is still measuring; +120 measures it narrowly around 0.80", function()
+        return Around(function(Want)
+            S.bonusHealing = 0
+            Scan()
+            S.bonusHealing = 15
+            local b1 = Scan()
+            local e1 = b1.spells[90131]
+            Want(Share(90131) == nil, "measured on a +15 swap " .. tostring(Share(90131)))
+            Want(e1 and e1.bonus and e1.bonus.from == "estimated" and type(e1.bonus.measuring) == "table"
+                and e1.bonus.measuring.lo <= 0.80 and e1.bonus.measuring.hi >= 0.80 and e1.bonus.measuring.need == 35,
+                "measuring " .. tostring(e1 and e1.bonus and e1.bonus.measuring and e1.bonus.measuring.need))
+            S.bonusHealing = 120
+            local b2 = Scan()
+            local e2 = b2.spells[90131]
+            local c, lo, hi, n = Book._Measured(90131, "heal")
+            Want(c and lo <= 0.80 and hi >= 0.80 and hi - lo <= Book.MAX_SPREAD and n == 3,
+                string.format("fit %s %s-%s n=%s", tostring(c), tostring(lo), tostring(hi), tostring(n)))
+            Want(e2 and e2.bonus and e2.bonus.from == "measured" and e2.bonus.measuring == nil
+                and type(e2.bonus.fit) == "table" and e2.bonus.fit.n == 3 and e2.bonus.fit.min == 0
+                and e2.bonus.fit.max == 120, "entry " .. tostring(e2 and e2.bonus and e2.bonus.from))
+            local m = Stored(90131)
+            Want(m and m.v == 2 and #m.points == 3 and m.bonus == 120 and type(m.at) == "number", "shape")
+        end)
+    end)
+
+    T95("T131: Rejuvenation R3 (0.68) and R4 (0.80) on +10 / +20 swaps never measure a wrong share; +150 orders them", function()
+        return Around(function(Want)
+            local wrong = {}
+            for _, b in ipairs({ 10, 20, 10, 20, 0, 10, 20 }) do
+                S.bonusHealing = b
+                Scan()
+                for id, truth in pairs({ [90132] = 0.68, [90133] = 0.80 }) do
+                    local c, lo, hi = Book._Measured(id, "heal")
+                    local m = Stored(id)
+                    if c and (lo > truth or hi < truth) then wrong[#wrong + 1] = id .. "@" .. b .. "=" .. c end
+                    if m and m.lo and (m.lo > truth or m.hi < truth) then wrong[#wrong + 1] = id .. " interval@" .. b end
+                end
+            end
+            Want(#wrong == 0, "wrong " .. table.concat(wrong, ","))
+            Want(Share(90132) == nil and Share(90133) == nil, "narrow on +20 " .. tostring(Share(90132)) .. "/" .. tostring(Share(90133)))
+            S.bonusHealing = 150
+            Scan()
+            local c3, lo3, hi3 = Book._Measured(90132, "heal")
+            local c4, lo4, hi4 = Book._Measured(90133, "heal")
+            Want(c3 and c4 and lo3 <= 0.68 and hi3 >= 0.68 and lo4 <= 0.80 and hi4 >= 0.80 and c3 <= c4,
+                string.format("R3 %s R4 %s", tostring(c3), tostring(c4)))
+        end)
+    end)
+
+    T95("T131: a talent (the value moves at a seen bonus, or the readings disagree) starts again from the newest", function()
+        return Around(function(Want)
+            fitBase = 0
+            S.bonusHealing = 0
+            Scan()
+            S.bonusHealing = 120
+            Scan()
+            Want(Share(90131) ~= nil, "not measured before the talent")
+            fitBase = 60 -- a talent: the same +120 now reads 60 more
+            local b1 = Scan()
+            local m = Stored(90131)
+            Want(m and #m.points == 1 and m.points[1][1] == 120 and Share(90131) == nil, "seen bonus "
+                .. tostring(m and #m.points))
+            Want(b1.spells[90131].bonus.from == "estimated", "entry " .. tostring(b1.spells[90131].bonus.from))
+            S.bonusHealing = 0
+            Scan()
+            Want(Share(90131) ~= nil, "re-measured after the talent")
+            fitBase = 0 -- the talent gone, read at a new bonus: the readings disagree
+            S.bonusHealing = 200
+            Scan()
+            m = Stored(90131)
+            Want(m and #m.points == 1 and m.points[1][1] == 200 and Share(90131) == nil, "disagree "
+                .. tostring(m and #m.points))
+            fitBase = 0
+        end)
+    end)
+
+    T95("T131: at most MAX_POINTS readings, the lowest and highest bonus kept", function()
+        return Around(function(Want)
+            for _, b in ipairs({ 0, 100, 10, 20, 30, 40, 50, 60, 70, 80, 90 }) do
+                S.bonusHealing = b
+                Scan()
+            end
+            local m = Stored(90134)
+            local has = {}
+            for _, p in ipairs(m and m.points or {}) do has[p[1]] = true end
+            Want(m and #m.points == Book.MAX_POINTS and Book.MAX_POINTS == 8, "points " .. tostring(m and #m.points))
+            Want(has[0] and has[100] and has[90] and has[40] and not has[30] and not has[10],
+                "kept " .. tostring(has[0]) .. tostring(has[100]) .. tostring(has[90]))
+            Want(m and m.points[#m.points][1] == 90, "newest last")
+            local c, lo, hi = Book._Measured(90134, "heal")
+            Want(c and lo <= 0.5 and hi >= 0.5, "fit " .. tostring(c))
         end)
     end)
 end

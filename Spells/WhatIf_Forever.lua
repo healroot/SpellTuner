@@ -5,7 +5,7 @@
 -- (Q1), so the what-if book is the live book COPIED and moved, never rescanned:
 --   +Healing   each heal rank's value moves by its own share of the change
 --              (entry.bonus.counts -- measured when Spells/Book.lua's
---              MeasureBonus has seen two plain readings, else Spells/
+--              MeasureBonus's fit of the plain readings is narrow (T131), else Spells/
 --              Coefficients.lua's estimate; a rank with neither stays put),
 --              its parts moved with it, then per mana / per second
 --              re-derived through Book.Numbers and the rank rules re-run
@@ -13,7 +13,7 @@
 --   +Spell damage (T124)
 --              each damage rank the same way by its share of the change in
 --              its school's bonus (entry.bonus.counts: measured when
---              MeasureBonus has seen two plain readings of that school's
+--              MeasureBonus's fit of the plain readings of that school's
 --              spell damage, else estimated; the live side the school on
 --              screen, WI.LiveDamage; every school moves by one delta);
 --   Crit %     each valued heal rank's `crit` (a chance, 0..1) -- the values

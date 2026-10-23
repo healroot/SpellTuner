@@ -443,6 +443,12 @@ local function ForeverChecks()
             local model = { bonus = { counts = 1.2, from = "model", amount = 840, of = 700, why = "x1.20 Empowered Touch" } }
             local est = { bonus = { counts = 0.12, from = "estimated", why = "cast 1.5 / 3.5 x 0.29" } }
             local meas = { bonus = { counts = 0.31, from = "measured", at = at } }
+            -- T131: a fit and an estimate still measuring
+            local at23 = os.time({ year = 2026, month = 10, day = 23, hour = 12 })
+            local fitted = { bonus = { counts = 0.8, from = "measured", at = at23,
+                fit = { lo = 0.79, hi = 0.81, n = 4, min = 0, max = 212 } } }
+            local measuring = { bonus = { counts = 0.12, from = "estimated", why = "cast 1.5 / 3.5 x 0.29",
+                measuring = { lo = 0.70, hi = 0.95, need = 40 } } }
             local want = {
                 { model, "card", "heal", "840 of your 700 (x1.20 Empowered Touch)" },
                 { model, "how", "heal", "+Healing counts 120% (x1.20 Empowered Touch)" },
@@ -454,6 +460,13 @@ local function ForeverChecks()
                 { meas, "how", "heal", "+Healing counts 31%, measured 2 Oct" },
                 { meas, "how", "damage", "+Damage counts 31%, measured 2 Oct" },
                 { meas, "tip", "heal", "31%" },
+                { fitted, "card", "heal", "80% measured (0.79-0.81, 4 readings, +0..+212), 23 Oct" },
+                { fitted, "how", "heal", "+Healing counts 80%, measured 23 Oct" },
+                { fitted, "tip", "heal", "80%" },
+                { measuring, "card", "heal", "counts ~12% estimated (cast 1.5 / 3.5 x 0.29) -- measuring 0.70-0.95,"
+                    .. " swap about 40 more +Healing out of combat" },
+                { measuring, "how", "heal", "+Healing counts ~12%, estimated, measuring" },
+                { measuring, "tip", "heal", "~12%" },
             }
             for _, c in ipairs(want) do
                 local okW, got = Try(W.Bonus, c[1], c[2], c[3])

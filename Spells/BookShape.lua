@@ -154,6 +154,8 @@ BS.BONUS = {
     of     = O("number"),
     why    = O("string"),
     at     = O("number"),
+    fit       = O("table"), -- T131: measured: { lo, hi, n, min, max } (the share's interval, readings, bonus span)
+    measuring = O("table"), -- T131: estimated while a fit is too wide: { lo, hi, need }
 }
 BS.BONUS_FROM = { model = true, measured = true, estimated = true }
 

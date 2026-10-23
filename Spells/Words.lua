@@ -901,9 +901,13 @@ end
 --             model     "840 of your 700 (x1.20 Empowered Touch)"
 --             estimated "counts ~12% estimated (cast 1.5 / 3.5 x 0.29)"
 --             measured  "31% measured: your gear change, 2 Oct"
+--             T131, a fit (bonus.fit): "80% measured (0.79-0.81, 4 readings, +0..+212), 23 Oct"
+--             T131, an estimate still measuring (bonus.measuring) adds
+--                       " -- measuring 0.70-0.95, swap about 40 more +Healing out of combat"
 --   "how"  -- the block's How line (5.x):
 --             "+Healing counts 120% (x1.20 Empowered Touch)",
---             "+Healing counts ~12%, estimated", "+Healing counts 31%, measured 2 Oct"
+--             "+Healing counts ~12%, estimated" (", measuring" while a fit is too wide),
+--             "+Healing counts 31%, measured 2 Oct"
 --   "tip"  -- the percentage alone: "120%", "~12%", "31%"
 -- An estimate carries "~"; the source's word is the caller's `from`.
 function W.Bonus(e, style, kind)
@@ -917,16 +921,30 @@ function W.Bonus(e, style, kind)
 
     if style == "tip" then return pct end
 
+    local fit = (b.from == "measured" and type(b.fit) == "table") and b.fit or nil
+    local ms = (est and type(b.measuring) == "table") and b.measuring or nil
+    if ms and not (type(ms.lo) == "number" and type(ms.hi) == "number" and type(ms.need) == "number") then ms = nil end
+
     if style == "how" then
         local text = W.BonusLabel(kind) .. " counts " .. pct
-        if est then return text .. ", estimated" end
+        if est then return text .. ", estimated" .. (ms and ", measuring" or "") end
         if b.from == "measured" then return text .. ", measured" .. (day and (" " .. day) or "") end
         return text .. (why and (" (" .. why .. ")") or "")
     end
 
     -- "card"
     if est then
-        return "counts " .. pct .. " estimated" .. (why and (" (" .. why .. ")") or "")
+        local text = "counts " .. pct .. " estimated" .. (why and (" (" .. why .. ")") or "")
+        if ms then
+            text = text .. " -- measuring " .. string.format("%.2f-%.2f", ms.lo, ms.hi) .. ", swap about "
+                .. Num(ms.need) .. " more " .. W.BonusLabel(kind) .. " out of combat"
+        end
+        return text
+    end
+    if fit and type(fit.lo) == "number" and type(fit.hi) == "number" and type(fit.n) == "number"
+        and type(fit.min) == "number" and type(fit.max) == "number" then
+        return pct .. " measured (" .. string.format("%.2f-%.2f", fit.lo, fit.hi) .. ", " .. Num(fit.n)
+            .. " readings, +" .. Num(fit.min) .. "..+" .. Num(fit.max) .. ")" .. (day and (", " .. day) or "")
     end
     if b.from == "measured" then
         return pct .. " measured: " .. (why or "your gear change") .. (day and (", " .. day) or "")

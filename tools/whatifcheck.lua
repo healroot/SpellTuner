@@ -563,10 +563,13 @@ else
         Book:MarkDirty()
         return Book:Get()
     end
+    -- T131: the share handed out (a narrow v = 2 fit, Book._Measured), and the
+    -- stored entry; a reading that measured nothing stores points, not a share.
     local function Counts(id)
         local store = ST.cdb and ST.cdb.bonusCounts
         local m = store and store[id]
-        return m and m.counts, m
+        if type(m) ~= "table" then return nil, m end
+        return (Book._Measured(id, m.kind or "heal", m.school)), m
     end
 
     --------------------------------------------------------------------------
@@ -698,7 +701,6 @@ else
         local savedDmg = S.bonusDamage[4]
         S.bonusDamage[4] = 100
         -- no earlier reading and no stored share: Wrath stays estimated
-        Book._lastRead = {}
         if ST.cdb and ST.cdb.bonusCounts then ST.cdb.bonusCounts[5176] = nil end
         local good, detail, why = pcall(function()
             local live = Scan(200)
@@ -764,7 +766,7 @@ else
         S.AddSpell(95302, "Spark", "Rank 2", function()
             return "Causes 300 to 340 Nature damage to the target."
         end, { cast = 3000, cost = 120, level = 10 })
-        Book._lastRead = {}
+        if ST.cdb and ST.cdb.bonusCounts then ST.cdb.bonusCounts[95301], ST.cdb.bonusCounts[95302] = nil, nil end
         local good, detail, why = pcall(function()
             S.bonusDamage[4] = 100
             Scan(200)
