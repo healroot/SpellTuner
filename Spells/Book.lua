@@ -533,7 +533,7 @@ local function ApplyBonus(e, kind, shape)
         return
     end
     if not Coef then return end
-    local est, why = Coef.Estimate(e, shape)
+    local est, why = Coef.Estimate(e, shape, kind)
     if type(est) ~= "number" then return end
     local of = BonusNow(kind, school)
     e.bonus = {

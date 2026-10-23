@@ -39,7 +39,9 @@
 --      suite as tbcclasscheck grants them;
 --  14. the coefficient literals live in Spells/Coefficients.lua only: neither
 --      Engine/RankMath.lua nor Engine/DamageMath.lua carries `/ 3.5`, `/ 15`,
---      `0.0375` or `GROUP_COEF = <number>` outside a comment.
+--      `0.0375` or `GROUP_COEF = <number>` outside a comment. T132: the other
+--      allowed home of a coefficient is the generated Data/Coefs_Forever.lua
+--      (Forever only, tools/buildcoefs.py), which this rule never scans.
 --
 -- T118 (docs/tasks/T118-tbc-book.md): TBC's ST.Book, Spells/Book_Model.lua.
 --  15. ST.Book exists on TBC, CheckMethods passes, Get() passes Validate at
@@ -254,7 +256,19 @@ local function ForeverChecks()
     do
         local ok, why = Book ~= nil and Coef ~= nil, "no book or no Coefficients"
         if ok then
+            -- T132: this section holds the old rule (an id with no row in
+            -- Data/Coefs_Forever.lua); the stub's 5185 and 774 have rows, so they
+            -- are lifted for this section and put back after it.
+            -- tools/coefscheck.lua holds the rows' estimates.
+            local savedRows = {}
+            for _, id in ipairs({ 5185, 774 }) do
+                savedRows[id] = ST.CoefRules and ST.CoefRules[id]
+                if ST.CoefRules then ST.CoefRules[id] = nil end
+            end
+            Book:MarkDirty()
             local book = Book:Get()
+            for id, row in pairs(savedRows) do ST.CoefRules[id] = row end
+            Book:MarkDirty()
             local ht, rj = book.spells[5185], book.spells[774]
             local htB, rjB = ht and ht.bonus, rj and rj.bonus
             print("    Healing Touch 1: " .. Show(htB))

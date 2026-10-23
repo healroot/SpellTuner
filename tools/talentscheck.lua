@@ -50,6 +50,12 @@ local S = _G.STUB
 local Book = ST.Book
 local Coef = ST.Coefficients
 
+-- T132: this suite holds T129's old path (an id with no row in
+-- Data/Coefs_Forever.lua); the stub's Wrath R1 (5176) and Healing Touch R1
+-- (5185) have rows there, so they are lifted for the whole suite.
+-- tools/coefscheck.lua holds the rows' estimates.
+if ST.CoefRules then ST.CoefRules[5176], ST.CoefRules[5185] = nil, nil end
+
 local function Near(a, b) return type(a) == "number" and type(b) == "number" and math.abs(a - b) < 1e-9 end
 local function Has(s, part) return type(s) == "string" and s:find(part, 1, true) ~= nil end
 

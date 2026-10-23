@@ -123,8 +123,75 @@ local function Secs(v)
     return F1(v)
 end
 
-function Coef.Estimate(e, shape)
+--------------------------------------------------------------------------------
+-- T132 (docs/tasks/T132-forever-coefficients.md): an id Data/Coefs_Forever.lua
+-- has a row for (ST.CoefRules, generated from talentsforever's per-rank
+-- coefficients, PRELIMINARY) is estimated from that row instead:
+--   counts = (direct or 0) + (tick or 0) x ticks
+-- ticks = the part's duration / its tick period when Spells/Parse.lua read
+-- one, else 3 s (the vanilla HoT / DoT tick, said in the words); a channel the
+-- same, from its own duration and period. No sub-20 factor; the group rule
+-- stays. The words:
+--   "42.9% (talentsforever)"
+--   "20% x 4 ticks, 3 s ticks assumed (talentsforever)"
+--   "28.6% + 7.1% x 7 ticks, 3 s ticks assumed (talentsforever)"
+-- `kind` ("heal" / "damage", optional) names which parsed part carries the
+-- ticks; without it the heal part, else the damage part.
+--------------------------------------------------------------------------------
+local TICK_ASSUMED = 3 -- seconds: the vanilla HoT / DoT tick, when the text names none
+
+local function Pct(v)
+    local s = string.format("%.1f", v * 100):gsub("%.0$", "")
+    return s .. "%"
+end
+
+local function TickPart(e, kind)
+    local p = e.parsed
+    if type(p) ~= "table" then return nil end
+    if kind ~= nil and type(p[kind]) == "table" then return p[kind] end
+    if type(p.heal) == "table" then return p.heal end
+    if type(p.damage) == "table" then return p.damage end
+    return nil
+end
+
+local function FromRow(e, row, kind)
+    local direct = (type(row.direct) == "number") and row.direct or nil
+    local tick = (type(row.tick) == "number") and row.tick or nil
+    if direct == nil and tick == nil then return nil, "no share in the row" end
+    local counts, words = direct or 0, {}
+    if direct then words[#words + 1] = Pct(direct) end
+    local note = ""
+    if tick then
+        local part = TickPart(e, kind)
+        local dur = part and (part.dur or part.periodDur)
+        if type(dur) ~= "number" then dur = e.dur end
+        if type(dur) ~= "number" or dur <= 0 then return nil, "no duration" end
+        local period = part and part.period
+        if type(period) ~= "number" or period <= 0 then
+            period = TICK_ASSUMED
+            note = ", " .. Secs(TICK_ASSUMED) .. " s ticks assumed"
+        end
+        local ticks = math.floor(dur / period + 1e-9)
+        if ticks < 1 then return nil, "no ticks" end
+        counts = counts + tick * ticks
+        words[#words + 1] = Pct(tick) .. " x " .. ticks .. " tick" .. (ticks == 1 and "" or "s")
+    end
+    return counts, table.concat(words, " + ") .. note .. " (talentsforever)"
+end
+
+function Coef.Estimate(e, shape, kind)
     if type(e) ~= "table" then return nil, "no entry" end
+    local rules = ST.CoefRules
+    local row = type(rules) == "table" and type(e.id) == "number" and rules[e.id] or nil
+    if type(row) == "table" then
+        local counts, why = FromRow(e, row, kind)
+        if counts == nil then return nil, why end
+        if e.targets == "party" then
+            counts = counts * Coef.GROUP
+            why = why .. ", group rule"
+        end
+        return counts, why
+    end
     local counts, why
     local cast, castNote = BaseCast(e)
     local clamped = math.min(math.max(cast, 1.5), 3.5)
