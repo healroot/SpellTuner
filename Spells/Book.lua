@@ -490,7 +490,8 @@ end
 
 -- The stored entry of `id` for this kind and school (a v = 2 entry), else nil;
 -- an old-shape entry, or one read at another player level (T132), is removed here.
--- An entry with no level (before T132) is kept and takes the level at its next reading.
+-- An entry with no level (before T132) is kept and takes the level at its next
+-- reading, a repeat included (AddReading); with no readable level nothing is dropped.
 local function StoredFit(id, kind, school)
     local store = type(ST.cdb) == "table" and ST.cdb.bonusCounts
     local m = type(store) == "table" and store[id]
@@ -1293,6 +1294,13 @@ local function AddReading(id, name, kind, school, bonus, value, terms)
     elseif kind == "damage" and m.school == nil then
         m.school = school
     end
+    -- T132 review m1: every accepted reading stamps the level, a repeat
+    -- included, so an entry stored before T132 takes one at its first read and
+    -- StoredFit drops it at another level. When UnitLevel is unreadable
+    -- (PlayerLevel() nil) nothing is stamped and nothing is dropped: the entry
+    -- is left as it is until a level reads.
+    local lvl = PlayerLevel()
+    if lvl ~= nil then m.level = lvl end
     local points = m.points
     -- review M1: a value made of another number of rounded terms is another text
     if #points > 0 and (m.terms or 1) ~= terms then
@@ -1329,7 +1337,6 @@ local function AddReading(id, name, kind, school, bonus, value, terms)
     end
     m.points = points
     m.terms = terms
-    m.level = PlayerLevel() -- T132: a share read at another level is old
     m.lo, m.hi = lo, hi
     m.counts = (lo ~= nil) and (lo + hi) / 2 or nil
     m.at, m.bonus = time(), bonus

@@ -71,6 +71,9 @@ the site's base text is stale). They go in `docs/TESTING.md` as the ranks to che
   `bonusCounts` entry stores the player's level (`ST.player.level`); an entry read at another
   level is old -- its points are dropped and the estimate shows until it is measured again. No
   penalty is modelled in the estimate. One oracle in `tools/bookcheck.lua`.
+- (Review m1, the lead's ruling:) every accepted reading stamps the level, a repeat included,
+  so an entry stored without one (T131) takes it on its first T132 read and is dropped at the
+  next level. An unreadable `UnitLevel` leaves the store as it is. One more oracle.
 
 ## 3. Tests
 

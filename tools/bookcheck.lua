@@ -1516,6 +1516,33 @@ do
         return good, detail
     end)
 
+    T95("T132 m1: a level-less entry takes the level on a repeated reading; another level drops it", function()
+        local savedLevel, savedStub = ST.player.level, S.level
+        local good, detail = Around(function(Want)
+            S.level, ST.player.level = 25, 25
+            S.bonusHealing = 0
+            Scan()
+            S.bonusHealing = 120
+            Scan()
+            local m = Stored(90131)
+            if m then m.level = nil end -- an entry stored before T132 (T131 kept no level)
+            Book:MarkDirty()
+            local b1 = Scan() -- the same reading again
+            local m1 = Stored(90131)
+            Want(m1 and m1.level == 25 and b1.spells[90131].bonus.from == "measured",
+                "repeat at 25: level " .. tostring(m1 and m1.level) .. " " .. tostring(b1.spells[90131].bonus.from))
+            S.level, ST.player.level = 26, 26
+            local b2 = Scan()
+            local m2 = Stored(90131)
+            Want(b2.spells[90131].bonus.from == "estimated", "after the level: " .. tostring(b2.spells[90131].bonus.from))
+            Want(m2 and m2.level == 26 and #m2.points == 1, "new entry: level " .. tostring(m2 and m2.level)
+                .. " points " .. tostring(m2 and #m2.points))
+        end)
+        S.level = savedStub
+        ST.player.level = savedLevel
+        return good, detail
+    end)
+
     T95("T131: at most MAX_POINTS readings, the lowest and highest bonus kept", function()
         return Around(function(Want)
             for _, b in ipairs({ 0, 100, 10, 20, 30, 40, 50, 60, 70, 80, 90 }) do
