@@ -256,12 +256,15 @@ end
 -- and its back; the veil, its edge and the green line (hidden: Join is stacked);
 -- the chip, its fill and its Cooldown (the chip hidden); the tick mark (hidden).
 -- Captured with --golden on this task's paint; every other section unchanged.
+-- T131 re-based the clock section once more: Bar is the default layout, so the
+-- first paint is the Bar's -- 17 regions, 200 x 22, the mana bar 196 x 16 with
+-- the 5SR strip 196 x 3 on it; captured with --golden, every other section unchanged.
 --------------------------------------------------------------------------------
 local GOLDEN = {
     forever = {
         nav = { 29, 1225158578 },
         host = { 52, 441673342 },
-        clock = { 17, 1154631320 },
+        clock = { 17, 1472678175 },
         palette = { 33, 1948568416 },
         text = { 15, 1382467428 },
         fonts = { 12, 1125933103 },
@@ -269,7 +272,7 @@ local GOLDEN = {
     tbc = {
         nav = { 29, 1015818899 },
         host = { 52, 98457140 },
-        clock = { 17, 1258458495 },
+        clock = { 17, 1574512087 },
         palette = { 33, 1948568416 },
         text = { 15, 1382467428 },
         fonts = { 12, 1125933103 },

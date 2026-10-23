@@ -157,6 +157,9 @@ end
 -- below drives the live ST.Pool model and the ST.Clock frame that paints it
 -- (T68, P24: the model is the pool's; ST.Clock.model is only an alias).
 --------------------------------------------------------------------------------
+-- T131: Bar is the default layout; these checks measure the Line layout,
+-- so the player's saved choice says "line" (a saved layout is kept).
+ST.ClockView.SetLayout("line")
 local Clock = ST.Clock
 local Pool = ST.Pool
 local model = Pool and Pool.model

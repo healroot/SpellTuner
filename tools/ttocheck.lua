@@ -93,6 +93,9 @@ do
         self.lastPoint = { ... } -- T93: the anchor a region holds now (check 14)
         if realSP then return realSP(self, ...) end
     end
+    -- T131: Bar is the default layout; these checks measure the Line layout,
+    -- so the player's saved choice says "line" (a saved layout is kept).
+    ST.db.clockLook = { layout = "line", over = {} }
     for _, fn in ipairs(ready) do fn() end
     FrameMT.CreateFontString, FrameMT.SetPoint = realCFS, realSP
 end

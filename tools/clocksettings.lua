@@ -155,6 +155,9 @@ local widget = W.frame
 if ST.db then ST.db.locked = true end
 if W.Preview then pcall(W.Preview, W, 0) end
 if forever and ST.db and type(ST.db.clock) == "table" then ST.db.clock.locked = true end
+-- T131: Bar is the default layout; these checks were written on the Line
+-- layout, so the player's saved choice says "line" (a saved layout is kept).
+if ST.ClockView and ST.ClockView.SetLayout then ST.ClockView.SetLayout("line") end
 
 local function Try(name, fn)
     local okR, cond, detail = pcall(fn)

@@ -327,6 +327,25 @@ local face1 = faces[1] and faces[1].face
 --------------------------------------------------------------------------------
 T.section("the layouts (" .. flavour .. ")")
 --------------------------------------------------------------------------------
+-- T131: Bar is the default (a fresh store, an unknown saved layout); a saved
+-- "line" is the player's and kept; the Bar's default bars draw on this line.
+Try("T131: Bar is the default layout, its default bars draw on this line; a saved line is kept", function()
+    local facts = W.facts or {}
+    local fresh = ST.db.clockLook and ST.db.clockLook.layout
+    local def = CV.DEFAULT_LAYOUT == "bar"
+    local look = CV.Resolve({}, CV.Role(), facts)
+    local unknown = CV.Resolve({ layout = "hexagon" }, CV.Role(), facts)
+    local kept = CV.Resolve({ layout = "line" }, CV.Role(), facts)
+    local okB, why = CV.BarsOK("bar", CV.BARS_DEFAULT, facts)
+    local drawn = look.layout == "bar" and next(look.refused) == nil and look.bars.show == "both"
+        and look.bars.mana == "game" and okB == true
+    return def and fresh == "bar" and drawn and unknown.layout == "bar" and kept.layout == "line",
+        string.format("default %s, fresh %s, resolved %s (show %s, mana %s, refused %s), unknown %s, kept %s, BarsOK %s %s",
+            tostring(CV.DEFAULT_LAYOUT), tostring(fresh), tostring(look.layout), tostring(look.bars.show),
+            tostring(look.bars.mana), tostring(next(look.refused)), tostring(unknown.layout), tostring(kept.layout),
+            tostring(okB), tostring(why))
+end)
+
 Try("line, compact and bar; SetLayout saves and fires CLOCK_LOOK once; an unknown one refused", function()
     local listed = table.concat(CV.LAYOUTS or {}, ",") == "line,compact,bar"
     local n0 = looks

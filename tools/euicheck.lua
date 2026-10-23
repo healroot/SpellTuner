@@ -263,6 +263,9 @@ ST:RegisterCallback("EUI_LOOKS_CHANGED", function() looksChanged = looksChanged 
 local S2 = H.SkinFacade()
 E._DispatchSkins(S2) -- BlizzardSkin's PLAYER_LOGIN, after SpellTuner's MD_READY
 Ticks(S, 4)
+-- T131: Bar is the default layout; checks 4 and 12 were written on the Line
+-- layout (its secondary, its 180 x 32), so the saved choice says "line".
+ST.ClockView.SetLayout("line")
 
 local function Obj(name) return lib:GetDataObjectByName(name) end
 

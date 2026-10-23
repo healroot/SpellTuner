@@ -27,13 +27,13 @@
 --
 -- T98 (docs/SPEC-next.md 7.2-7.3, K3 of R-clock.md; decision 13): the
 -- LAYOUTS and the look.
---   * Layouts (all draw the same face): "line" (L1 above, the default),
+--   * Layouts (all draw the same face): "line" (L1 above; the default until T131, now "bar"),
 --     "compact" (L2: the label small over one big number, no secondary) and
 --     "bar" (L3: a bar the width of the clock with the label and the time on
 --     it). The ring (L4) is T104's; CV.BarsOK already holds its rule. Each
 --     layout's text regions are built the first time it is drawn and kept
 --     (one pool per frame), so a switch leaks nothing; the bars are shared.
---   * The look, sparse (7.3): db.clockLook = { layout = "line", over = {} }
+--   * The look, sparse (7.3): db.clockLook = { layout = "bar", over = {} }
 --     (registered here, both TOCs). CV.Resolve gives the RESOLVED look:
 --         the layout's defaults  <-  the active style's `clock` role  <-  over
 --     The role (each style file defines its own; Flat's in UI/Theme_Flat.lua)
@@ -127,7 +127,10 @@ CV.GAP = 6        -- between the label slot and the value
 -- T98: the look's store, sparse (docs/SPEC-next.md 7.3). A registered default
 -- fills every leaf, so only the layout and an empty override table are
 -- declared; what "follows the style" is resolved, never stored.
-ST:RegisterDefaults({ clockLook = { layout = "line", over = {} } })
+-- T131: the layout a fresh store, an unknown saved layout and the dump's
+-- "non-default" test all read (a saved "line" is the player's and is kept).
+CV.DEFAULT_LAYOUT = "bar"
+ST:RegisterDefaults({ clockLook = { layout = CV.DEFAULT_LAYOUT, over = {} } })
 
 -- The widest value a layout must hold: a prefix, four digits, an arrow of two
 -- ("~0:00 vv" is never drawn, but nothing drawn is wider); the widest
@@ -340,7 +343,7 @@ end
 -- CV.Resolve(stored, role, facts) -> look. Pure: `stored` is db.clockLook's
 -- shape ({ layout, over }), `role` the style's clock recipe, `facts` the
 -- line's (poolPlain, model, tick, textures, labelSample, show). A layout
--- nobody draws (yet) is "line"; an override this file does not accept is
+-- nobody draws (yet) is CV.DEFAULT_LAYOUT; an override this file does not accept is
 -- ignored; bars.* and frame.* are read for the layout drawn; a bars choice
 -- this line may not draw falls back to the default (look.refused names what
 -- was refused and why). Everything is a copy: the store is never touched.
@@ -349,7 +352,7 @@ function CV.Resolve(stored, role, facts)
     role = type(role) == "table" and role or {}
     facts = type(facts) == "table" and facts or {}
     local over = type(stored.over) == "table" and stored.over or {}
-    local key = Renderable(stored.layout) and stored.layout or "line"
+    local key = Renderable(stored.layout) and stored.layout or CV.DEFAULT_LAYOUT
     local d = CV.LAYOUT[key]
 
     local look = {
@@ -492,7 +495,7 @@ local migrated = false
 local function StoredRaw()
     local db = ST.db
     if type(db) ~= "table" then return nil end
-    if type(db.clockLook) ~= "table" then db.clockLook = { layout = "line", over = {} } end
+    if type(db.clockLook) ~= "table" then db.clockLook = { layout = CV.DEFAULT_LAYOUT, over = {} } end
     if type(db.clockLook.over) ~= "table" then db.clockLook.over = {} end
     return db.clockLook
 end
@@ -516,7 +519,7 @@ end
 
 local function Stored()
     local s = StoredRaw()
-    if not s then return { layout = "line", over = {} } end
+    if not s then return { layout = CV.DEFAULT_LAYOUT, over = {} } end
     if not migrated then CV.MigrateStored(CV.lineFacts) end
     return s
 end
@@ -536,14 +539,14 @@ end
 function CV.DumpLine()
     local s = Stored()
     local keys = OverKeys(s.over)
-    local layout = Renderable(s.layout) and s.layout or ("line (saved " .. tostring(s.layout) .. ")")
+    local layout = Renderable(s.layout) and s.layout or (CV.DEFAULT_LAYOUT .. " (saved " .. tostring(s.layout) .. ")")
     return string.format("clock: layout %s, %d override%s%s", layout, #keys, #keys == 1 and "" or "s",
         #keys > 0 and (" (" .. table.concat(keys, ", ") .. ")") or "")
 end
 
 local function Note(s)
     if dumpAdded then return end
-    if s.layout ~= "line" or #OverKeys(s.over) > 0 then
+    if s.layout ~= CV.DEFAULT_LAYOUT or #OverKeys(s.over) > 0 then
         dumpAdded = true
         ST:AddDumpLine("clock", CV.DumpLine)
     end
