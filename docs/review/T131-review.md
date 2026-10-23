@@ -61,6 +61,8 @@ terms the value has. Fix: tolerance per entry = 0.5 x (1 for a min/max pair, +1 
 +n for `tick` x n), passed into `Fit`; or refuse to fit tick-built totals. Add a bookcheck
 case with a per-tick channel and a hybrid.
 
+**Fixed in 89e29c2.** `Parse.Terms` -> `e.roundTerms`; tolerance `ROUND_TOL x terms` in `Fit`, `AddReading` and `need`; bookcheck oracles for the 5-tick channel and the +0 / +55 / +61 hybrid (both fail with terms forced to 1).
+
 ## Minors
 
 **m1. CHANGELOG.md:9-10 -- "A clock you set to Line stays Line" is not what happens.**
@@ -70,6 +72,8 @@ Line whether or not the player chose it. Only a new install, or a deleted `clock
 That is the spec's "no migration", but the player-facing line should say "for a new install"
 (TESTING section 53.1 already does).
 
+**Fixed in 12c0df9.**
+
 **m2. Spells/Book.lua:540-547 -- the measuring hint promises a measurement that never comes.**
 When the span is already 50 or more but the fit is refused by `Narrow` for `counts <= 0` or
 `> 2` (a value that does not move with the bonus, or a text that lagged the bonus read: dv = 0
@@ -78,10 +82,14 @@ When the span is already 50 or more but the fit is refused by `Narrow` for `coun
 the measuring words only when `hi - lo > MAX_SPREAD`; a negative `lo` also prints as
 `-0.01-0.01`.
 
+**Fixed in 89e29c2.** (measuring words only while `hi - lo > MAX_SPREAD`, `lo` shown clamped at 0; bookcheck oracle.)
+
 **m3. UI/ClockView.lua:1254, 1300, 1307, 1416; UI/ClockSettings.lua:666, 669 -- the
 unreachable fallbacks still say `"line"`.** Harmless today (see above), but they contradict
 `CV.DEFAULT_LAYOUT`; a future caller passing a look without a layout would draw Line.
 Read `CV.DEFAULT_LAYOUT` there too.
+
+**Fixed in 89e29c2.** (`UI/ClockSettings.lua:787` keeps `"line"`: a bar-capability query, not a fallback.)
 
 ## Notes (not findings)
 
