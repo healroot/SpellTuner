@@ -6,8 +6,9 @@ published to CurseForge; the developers' log is `docs/HISTORY.md`.
 ## 0.17.3
 
 ### Mana clock
-- The Bar layout (the time on a mana bar) is now the default for a new clock. A clock you set to
-  Line stays Line.
+- The Bar layout (the time on a mana bar) is now the default for a new install, or after the
+  clock's look is reset. An existing clock keeps Line, because the old default was saved with it;
+  switch it in Settings -> Clock.
 
 ### Spells
 - Forever: the share of +Healing (and of spell damage) each rank gets is now fitted from every
