@@ -231,6 +231,41 @@ local function ExportText()
     for _, n in ipairs(book.order) do if book.families[n].kind == "damage" then DumpFamily(n) end end
     for _, n in ipairs(book.order) do if not book.families[n].kind then DumpFamily(n) end end
 
+    -- The caster's state the spell texts were read at (2026-10-23), so two
+    -- exports can be compared offline: +healing, spell damage per school, the
+    -- max mana and the talent ranks. Last, after the spells: tools/refcheck.py skips it.
+    lines[#lines + 1] = "== stats"
+    local function Num(v, stale)
+        if type(v) ~= "number" or v ~= v then return "?" end
+        return tostring(v) .. (stale and " (stale)" or "")
+    end
+    local heal, healStale = ST.Book:Bonus("heal")
+    lines[#lines + 1] = "  bonus heal: " .. Num(heal, healStale)
+    for _, school in ipairs({ "Holy", "Fire", "Nature", "Frost", "Shadow", "Arcane" }) do
+        local v, stale = ST.Book:Bonus("damage", school)
+        lines[#lines + 1] = "  bonus " .. school .. ": " .. Num(v, stale)
+    end
+    local okPool, pool = pcall(ST.Book.Pool, ST.Book)
+    lines[#lines + 1] = "  max mana: " .. Num(okPool and type(pool) == "table" and pool.max or nil)
+    if ST.Book.Talents then
+        local ranks, why = ST.Book:Talents()
+        if type(ranks) == "table" then
+            local names = {}
+            for n, r in pairs(ranks) do
+                if type(n) == "string" and type(r) == "number" and r > 0 then names[#names + 1] = n end
+            end
+            table.sort(names)
+            for _, n in ipairs(names) do
+                lines[#lines + 1] = "  talent: " .. Esc(n) .. " " .. tostring(ranks[n])
+            end
+            if #names == 0 then lines[#lines + 1] = "  talents: none taken" end
+        else
+            lines[#lines + 1] = "  talents: not read (" .. Esc(tostring(why)) .. ")"
+        end
+    else
+        lines[#lines + 1] = "  talents: not read on this line"
+    end
+
     return table.concat(lines, "\n")
 end
 

@@ -458,6 +458,7 @@ if S.flavour == "tbc" then
         local out, cur = { character = lines[1], byId = {}, n = 0 }, nil
         for i = 3, #lines do
             local l = lines[i]
+            if l == "== stats" then break end -- the caster's stats follow the spells
             local id = l:match("^spell (%d+)$")
             if id then
                 cur = { id = tonumber(id) }
@@ -2403,6 +2404,7 @@ do
     exportText = captured and captured.text
     local hasCharLine = exportText ~= nil and exportText:find("^character: %S+ %S+ %S+ level %d+") ~= nil
     local hasSection = exportText ~= nil and exportText:find("\n== spells\n", 1, true) ~= nil
+        and exportText:find("\n== stats\n  bonus heal: ", 1, true) ~= nil -- 2026-10-23: the caster's stats last
     local hasSpellBlock = exportText ~= nil
         and exportText:find("spell 5185\n  name: Healing Touch\n  rank: Rank 1\n  desc: ", 1, true) ~= nil
     local hasCostCastLevel = exportText ~= nil
