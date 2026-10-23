@@ -19,6 +19,22 @@ match is skipped and named in the file header; a spell name the class's own
 spellbook (or talents, or spell texts) in the same export does not know is
 dropped and named too -- never guessed.
 
+T133 (docs/tasks/T133-forever-share-factors.md): the talent MULTIPLIERS too,
+ST.TalentMults[class][talent] = { scope, pctPerRank }, each rank's percent
+read from its own sentence. Recognised (after the cast-time clause T129 reads,
+"Reduces the cast time of ... by N sec and ", when there is one):
+    increases all damage you deal by N%                      scope { kind = "damage" }
+    Increases the damage done by your <School> and <School> spells by N%
+                                                             scope { kind = "damage", schools }
+    Increases the effect(iveness) of (all) your healing spells by N%
+    Increases the amount healed by your spells by N%         scope { kind = "heal" }
+    Increases the effect of your <Spell> spell by N%         scope { spells = { <Spell> } }
+with nothing after the percent but ".". A talent with a sentence that starts
+like one of these ("Increases all damage you deal", "Increases the damage done
+by your", "Increases the effect", "Increases the amount healed") but is not
+one of them -- a condition, a second effect, a school or spell the export does
+not know, a rank missing -- is skipped and named in the header, never guessed.
+
 Not run by make check: run it by hand when the export moves, and commit the
 file it writes.
 """
@@ -43,6 +59,95 @@ def tail_ok(rest):
         return False
     clause = m.group("clause")
     return clause is None or not TAIL_CAST.search(clause)
+
+# T133: the multiplier sentences. NUM is a percent amount.
+NUM = r"(?P<n>\d+(?:\.\d+)?)%"
+CAST_CLAUSE = re.compile(
+    r"^Reduces the cast(?:ing)? time of .+? by \d+(?:\.\d+)? secs? and (?P<rest>.+)$")
+MULT_SHAPES = [
+    ("damage", re.compile(r"^[Ii]ncreases all damage you deal by " + NUM + r"(?P<rest>.*)$")),
+    ("schools", re.compile(r"^[Ii]ncreases the damage done by your (?P<a>[A-Za-z]+) and (?P<b>[A-Za-z]+) "
+                           r"spells by " + NUM + r"(?P<rest>.*)$")),
+    ("heal", re.compile(r"^[Ii]ncreases the effect(?:iveness)? of (?:all )?your healing spells by "
+                        + NUM + r"(?P<rest>.*)$")),
+    ("heal", re.compile(r"^[Ii]ncreases the amount healed by your spells by " + NUM + r"(?P<rest>.*)$")),
+    ("spell", re.compile(r"^[Ii]ncreases the effect of your (?P<spell>.+?) spell by " + NUM
+                         + r"(?P<rest>.*)$")),
+]
+# a sentence that starts like a multiplier: one that is not recognised is named
+MULT_LEAD = re.compile(r"^[Ii]ncreases (?:all damage you deal|the damage done by your|the effect"
+                       r"|the amount healed)")
+SCHOOLS = {"Arcane", "Fire", "Frost", "Holy", "Nature", "Shadow", "Physical"}
+
+
+def mult_text(sentence):
+    """The sentence past T129's cast-time clause, when it has one."""
+    m = CAST_CLAUSE.match(sentence)
+    if m:
+        return m.group("rest")
+    return sentence
+
+
+def parse_mult(sentence, known):
+    """(scope, pct) or (None, why) when the sentence is not a recognised multiplier."""
+    text = mult_text(sentence)
+    for shape, rx in MULT_SHAPES:
+        m = rx.match(text)
+        if not m:
+            continue
+        if m.group("rest") not in ("", "."):
+            return None, "text after the percent not recognised"
+        pct = float(m.group("n"))
+        if shape == "damage":
+            return {"kind": "damage"}, pct
+        if shape == "heal":
+            return {"kind": "heal"}, pct
+        if shape == "schools":
+            a, b = m.group("a"), m.group("b")
+            if a not in SCHOOLS or b not in SCHOOLS:
+                return None, "not a school"
+            return {"kind": "damage", "schools": [a, b]}, pct
+        spell = m.group("spell")
+        if spell not in known:
+            return None, "spell %s not in the export" % spell
+        return {"spells": [spell]}, pct
+    return None, "sentence not recognised"
+
+
+def build_mults(data):
+    mults, skipped = {}, []
+    for cls in sorted(data["talents"]):
+        token = CLASS_TOKENS.get(cls)
+        if token is None:
+            continue
+        known = known_names(data, cls)
+        mults.setdefault(token, {})
+        for tree in data["talents"][cls]["trees"]:
+            for t in tree["talents"]:
+                desc = t.get("desc") or []
+                if isinstance(desc, dict):
+                    desc = [desc[k] for k in sorted(desc, key=lambda k: int(k))]
+                if not any(MULT_LEAD.match(mult_text(s or "")) for s in desc):
+                    continue
+                parsed = [parse_mult(s or "", known) for s in desc]
+                bad = [why for scope, why in parsed if scope is None]
+                if bad:
+                    skipped.append("%s: %s (%s)" % (cls, t["name"], bad[0]))
+                    continue
+                if len(desc) != t.get("max"):
+                    skipped.append("%s: %s (not one sentence per rank)" % (cls, t["name"]))
+                    continue
+                scopes = {repr(sorted(scope.items())) for scope, _ in parsed}
+                if len(scopes) != 1:
+                    skipped.append("%s: %s (scope differs by rank)" % (cls, t["name"]))
+                    continue
+                pcts = [pct for _, pct in parsed]
+                if any(p <= 0 for p in pcts) or any(b <= a for a, b in zip(pcts, pcts[1:])):
+                    skipped.append("%s: %s (percent not rising by rank)" % (cls, t["name"]))
+                    continue
+                mults[token][t["name"]] = {"scope": parsed[0][0], "pctPerRank": pcts}
+    return mults, skipped
+
 
 CLASS_TOKENS = {
     "Warrior": "WARRIOR", "Paladin": "PALADIN", "Hunter": "HUNTER", "Rogue": "ROGUE",
@@ -140,7 +245,20 @@ def build(data):
     return rules, skipped, dropped
 
 
-def write(data, rules, skipped, dropped, out):
+def lua_scope(scope):
+    parts = []
+    if "kind" in scope:
+        parts.append("kind = %s" % lua_str(scope["kind"]))
+    if "schools" in scope:
+        parts.append("schools = { %s }" % ", ".join(lua_str(x) for x in scope["schools"]))
+    if "spells" in scope:
+        parts.append("spells = { %s }" % ", ".join(lua_str(x) for x in scope["spells"]))
+    return "{ " + ", ".join(parts) + " }"
+
+
+def write(data, rules, skipped, dropped, out, mults=None, mskipped=None):
+    mults = mults or {}
+    mskipped = mskipped or []
     lines = []
     w = lines.append
     w("local _, ST = ...")
@@ -172,6 +290,16 @@ def write(data, rules, skipped, dropped, out):
         w("--   " + s)
     if not dropped:
         w("--   none")
+    w("--")
+    w("-- T133: ST.TalentMults[class token][talent] = { scope, pctPerRank }: rank r")
+    w("-- multiplies what the scope names (kind \"damage\" / \"heal\", schools, spells")
+    w("-- by name) by 1 + pctPerRank[r] / 100, read from rank r's own sentence.")
+    w("-- %d multiplier talent(s) skipped (a sentence that starts like one but is not" % len(mskipped))
+    w("-- of a recognised shape -- conditions, second effects, other words):")
+    for s in sorted(mskipped):
+        w("--   " + s)
+    if not mskipped:
+        w("--   none")
     w("-" * 80)
     w("")
     w("ST.TalentRules = {")
@@ -184,6 +312,18 @@ def write(data, rules, skipped, dropped, out):
             w("            ranks = %d," % r["ranks"])
             w("            spells = { %s }," % ", ".join(lua_str(s) for s in r["spells"]))
             w("            castPerRank = { %s }," % ", ".join(num(v) for v in r["castPerRank"]))
+            w("        },")
+        w("    },")
+    w("}")
+    w("")
+    w("ST.TalentMults = {")
+    for token in sorted(mults):
+        w("    %s = {" % token)
+        for name in sorted(mults[token]):
+            m = mults[token][name]
+            w("        [%s] = {" % lua_str(name))
+            w("            scope = %s," % lua_scope(m["scope"]))
+            w("            pctPerRank = { %s }," % ", ".join(num(v) for v in m["pctPerRank"]))
             w("        },")
         w("    },")
     w("}")
@@ -210,9 +350,12 @@ def main(argv):
     with open(args[0], encoding="utf-8") as f:
         data = json.load(f)
     rules, skipped, dropped = build(data)
-    write(data, rules, skipped, dropped, out)
+    mults, mskipped = build_mults(data)
+    write(data, rules, skipped, dropped, out, mults, mskipped)
     n = sum(len(v) for v in rules.values())
-    print("%d rule(s), %d skipped, %d name(s) dropped -> %s" % (n, len(skipped), len(dropped), out))
+    nm = sum(len(v) for v in mults.values())
+    print("%d rule(s), %d skipped, %d name(s) dropped; %d multiplier(s), %d skipped -> %s"
+          % (n, len(skipped), len(dropped), nm, len(mskipped), out))
     return 0
 
 

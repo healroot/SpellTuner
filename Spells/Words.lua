@@ -895,6 +895,28 @@ local function Day(at)
     return (s:gsub("^0", ""))
 end
 
+-- T133 (docs/tasks/T133-forever-share-factors.md): a measured fit beside the
+-- prediction (bonus.predicted, bonus.factors): inside the fit's interval
+--   " -- as predicted (80% x 0.75 level)"
+-- outside it, the residual said (shown, never applied anywhere)
+--   " -- predicted 25.7% (42.9% x 0.60 level); unexplained x0.91"
+-- "" when there is no prediction.
+local function Pct1(v)
+    local s = string.format("%.1f", v * 100):gsub("%.0$", "")
+    return s .. "%"
+end
+local function Predicted(b, fit)
+    local p, f = b.predicted, b.factors
+    if type(p) ~= "number" or p ~= p or type(f) ~= "string" or f == "" then return "" end
+    -- within the float noise of a product (0.8 x 0.75 is 0.6000000000000001)
+    if p >= fit.lo - 1e-9 and p <= fit.hi + 1e-9 then return " -- as predicted (" .. f .. ")" end
+    local text = " -- predicted " .. Pct1(p) .. " (" .. f .. ")"
+    if p > 0 and type(b.counts) == "number" then
+        text = text .. "; unexplained x" .. string.format("%.2f", b.counts / p)
+    end
+    return text
+end
+
 -- W.Bonus(e, style, kind) -> the words, or nil when the entry has no share.
 -- `kind` names the label ("heal" by default; "damage" -> "+Damage").
 --   "card" -- the rank card's +Healing value (3.5):
@@ -902,6 +924,7 @@ end
 --             estimated "counts ~12% estimated (cast 1.5 / 3.5 x 0.29)"
 --             measured  "31% measured: your gear change, 2 Oct"
 --             T131, a fit (bonus.fit): "80% measured (0.79-0.81, 4 readings, +0..+212), 23 Oct"
+--             T133, a fit with a prediction adds " -- as predicted (80% x 0.75 level)"
 --             T131, an estimate still measuring (bonus.measuring) adds
 --                       " -- measuring 0.70-0.95, swap about 40 more +Healing out of combat"
 --   "how"  -- the block's How line (5.x):
@@ -945,6 +968,7 @@ function W.Bonus(e, style, kind)
         and type(fit.min) == "number" and type(fit.max) == "number" then
         return pct .. " measured (" .. string.format("%.2f-%.2f", fit.lo, fit.hi) .. ", " .. Num(fit.n)
             .. " readings, +" .. Num(fit.min) .. "..+" .. Num(fit.max) .. ")" .. (day and (", " .. day) or "")
+            .. Predicted(b, fit)
     end
     if b.from == "measured" then
         return pct .. " measured: " .. (why or "your gear change") .. (day and (", " .. day) or "")

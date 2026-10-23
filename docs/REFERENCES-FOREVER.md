@@ -84,6 +84,16 @@ talent's name against the name the client's trait walk answers, the spell names 
 book's family names; a spell name not in that class's spellbook in the export is dropped. 14
 rules on the 2026-10-03 export; 14 cast-time talents of other shapes are skipped and named in the
 file's header. **Preliminary** until verified in game (`docs/DECISIONS.md`, 2026-10-04).
+**T133:** on the 2026-10-22 export 14 rules (Improved Frostbolt now also names Frost Blast; Ice
+Barrier and Elemental Mastery newly skipped, 16 in all). The same file also carries the talent
+**multipliers** (`ST.TalentMults`): "increases all damage you deal by N%", "Increases the damage
+done by your <School> and <School> spells by N%", "Increases the effect(iveness) of (all) your
+healing spells by N%", "Increases the amount healed by your spells by N%", "Increases the effect of
+your <Spell> spell by N%" (after T129's cast-time clause, as in Naturalist), nothing after the
+percent. 6 multipliers (Naturalist, Moonfury, Gift of Nature, Improved Rejuvenation, Spiritual
+Healing, Purification); 23 talents whose sentence starts like one but is not (Bastion's "while a
+shield is equipped", Fire Power's single school, Restorative Totems' two effects, ...) are
+skipped and named in the header.
 
 **Coefficients used (T132).** `tools/buildcoefs.py` reads every class's `spell_desc` rows with
 `s` = `beta` and a `co` it recognises -- comma-separated parts, each "N% of spell power (direct)"
@@ -94,7 +104,10 @@ wording, is skipped and counted in the file's header. They are Forever's **base 
 (`Coef.Estimate`: direct + tick x ticks, ticks = duration / the parsed period, else 3 s only for
 Rejuvenation, Regrowth and Moonfire, measured 2026-10-23; any other spell over time with no parsed
 period keeps the old rule; no low-level penalty and no group rule, the site's share being
-per target -- Prayer of Healing 28.6%), a measured share still wins. On the 2026-10-22 export: 557 rows; 1 skipped
+per target -- Prayer of Healing 28.6%), a measured share still wins. **T133:** the share is now
+one factor of the estimate, beside a heal's low-rank level penalty (`Coef.LevelPenalty`, from the
+author's level-25 and level-26 exports) and the talent multipliers above -- a prediction, each
+factor named; Entangling Roots joins the measured 3 s families. On the 2026-10-22 export: 557 rows; 1 skipped
 for a note (Shaman Lava Burst Rank 3, `asis`), 7 for wording (Paladin Seal of Fury, "42.9% and
 10% of spell power (direct)"). The author's level-25 export (2026-10-23) fits them with no
 low-level penalty except Healing Touch R1, Rejuvenation R1 and Regrowth R3's direct part

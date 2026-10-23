@@ -77,7 +77,7 @@ function Coef.Penalty(level, playerLevel)
 end
 
 --------------------------------------------------------------------------------
--- Coef.Estimate(e, shape) -> counts, why | nil, reason
+-- Coef.Estimate(e, shape) -> counts, why [, short] | nil, reason  (short: T133, row path only)
 --
 -- Forever's estimate of how much of +healing (or +damage) a rank of the book
 -- gets (docs/SPEC-one-ui.md 4.3, decision D3): the rules above by the family's
@@ -149,7 +149,10 @@ end
 -- Rejuvenation R1-R4, Regrowth R2's HoT and Moonfire R1's DoT fit the site's
 -- per-tick share only at one tick every 3 s. A family is added here only from
 -- a measurement; any other spell with no parsed period takes the old rule.
-local TICK_MEASURED = { Rejuvenation = true, Regrowth = true, Moonfire = true }
+-- T133: Entangling Roots added from the author's level-26 export (2026-10-23):
+-- R1 read 0.244-0.255 of spell damage, which the site's 6% per tick fits only
+-- at four ticks over its 12 s (one every 3 s) times Naturalist 5's 1.05.
+local TICK_MEASURED = { Rejuvenation = true, Regrowth = true, Moonfire = true, ["Entangling Roots"] = true }
 local TICK_MEASURED_SECS = 3
 local TICK_MEASURED_NOTE = ", 3 s ticks (measured 2026-10-23)"
 Coef.TICK_MEASURED = TICK_MEASURED
@@ -184,6 +187,87 @@ local function Share(row, kind)
     return d
 end
 
+--------------------------------------------------------------------------------
+-- T133 (docs/tasks/T133-forever-share-factors.md): the row's share is one
+-- factor; the low-rank level penalty and the talent multipliers are others,
+-- each named, each a PREDICTION (the author's ruling, 2026-10-23) until more
+-- levels and gear are tested after launch. A measured share still wins.
+--   counts = share x P(rank, level) x M(talents)
+--
+-- P, heals only: max(LEVEL_FLOOR, 1 - LEVEL_STEP x max(0, playerLevel - start)),
+-- start = learnLevel + LEVEL_GRACE, or MEASURED_START[id] when a measurement
+-- named it. Provenance: the author's Forever beta exports, 2026-10-23, druid
+-- level 25 (ten readings, +0..+171 healing) and level 26 (eight readings, the
+-- same gear steps): Healing Touch R1 0.593-0.614 / 0.535-0.556 of the share,
+-- Rejuvenation R1 0.796-0.803 / 0.743-0.753, Healing Touch R2 0.996-1.005 /
+-- 0.943-0.958, every higher rank 1.00 -- a step of 0.05 per level fits all
+-- three penalised ranks at both levels; TBC's ratio rule does not. Damage has
+-- no penalty: Wrath R1 and Moonfire R1 counted the full share at 26.
+--------------------------------------------------------------------------------
+Coef.LEVEL_STEP = 0.05   -- share lost per level past the start (2026-10-23, lvl 25-26)
+Coef.LEVEL_GRACE = 17    -- the start is the learn level + this (2026-10-23, lvl 25-26)
+-- The floor the penalty stops at. UNMEASURED (assumed 0): no export has yet
+-- reached a level where a rank's penalty would go below it.
+Coef.LEVEL_FLOOR = 0
+-- Starts a measurement named, winning over the rule: Healing Touch R1 (5185,
+-- learned at 1) starts at 17, one level early (2026-10-23, lvl 25-26).
+Coef.MEASURED_START = { [5185] = 17 }
+
+-- Coef.LevelPenalty(id, learnLevel, playerLevel, kind) -> P, start, source
+-- P is 1 for damage, for an unknown level (either one), and below the start;
+-- `source` "measured" (MEASURED_START) or "rule"; start and source nil when
+-- no start applies (damage, an unknown level).
+function Coef.LevelPenalty(id, learnLevel, playerLevel, kind)
+    if kind == "damage" then return 1, nil, nil end
+    if type(playerLevel) ~= "number" or playerLevel <= 0 then return 1, nil, nil end
+    local start, source = Coef.MEASURED_START[id], "measured"
+    if type(start) ~= "number" then
+        if type(learnLevel) ~= "number" or learnLevel <= 0 then return 1, nil, nil end
+        start, source = learnLevel + Coef.LEVEL_GRACE, "rule"
+    end
+    local over = playerLevel - start
+    if over <= 0 then return 1, start, source end
+    local p = 1 - Coef.LEVEL_STEP * over
+    if p < Coef.LEVEL_FLOOR then p = Coef.LEVEL_FLOOR end
+    return p, start, source
+end
+
+local function PlayerLevel()
+    local l = ST.player and ST.player.level
+    if type(l) == "number" and l > 0 then return l end
+    return nil
+end
+
+-- The level factor's words: the long one for the estimate, the short one for
+-- the measured line. Nothing when P is 1 and the level is known.
+local function LevelWords(e, kind)
+    if kind == "damage" then return 1, "", "" end
+    local lvl = PlayerLevel()
+    if lvl == nil then return 1, ", level unknown", "" end
+    local p, start = Coef.LevelPenalty(e.id, e.level, lvl, kind)
+    if p >= 1 or start == nil then return 1, "", "" end
+    local step = Num(Coef.LEVEL_STEP * 100)
+    if p <= 0 then
+        return 0, " x0 level " .. lvl .. " (from " .. start .. ", -" .. step .. "%/level: no bonus at this level)",
+            " x0 level"
+    end
+    local f = string.format("%.2f", p)
+    return p, " x " .. f .. " level " .. lvl .. " (from " .. start .. ", -" .. step .. "%/level)",
+        " x " .. f .. " level"
+end
+
+-- The talent factor, from Spells/Book.lua's seam (entry.talentMult, for the
+-- kind it was read for): factor, words. "talents not read" is factor 1 and
+-- not said; a "no rule" talent is said.
+local function TalentWords(e, kind)
+    local m = e.talentMult
+    if type(m) ~= "table" or type(m.factor) ~= "number" then return 1, "" end
+    if m.kind ~= nil and kind ~= nil and m.kind ~= kind then return 1, "" end
+    if type(m.words) ~= "string" or m.words == "" or m.words == "talents not read" then return 1, "" end
+    if m.factor == 1 and not m.words:find("no rule", 1, true) then return 1, "" end
+    return m.factor, " " .. m.words
+end
+
 local function FromRow(e, row, kind)
     local direct = Share(row, kind)
     local tick = (type(row.tick) == "number") and row.tick or nil
@@ -209,7 +293,17 @@ local function FromRow(e, row, kind)
         counts = counts + tick * ticks
         words[#words + 1] = Pct(tick) .. " x " .. ticks .. " tick" .. (ticks == 1 and "" or "s")
     end
-    return counts, table.concat(words, " + ") .. note .. " (talentsforever)"
+    -- T133: the share, then each factor that is not 1, by name
+    local share = counts
+    local p, levelLong, levelShort = LevelWords(e, kind)
+    local m, talent = TalentWords(e, kind)
+    counts = share * p * m
+    local predicted = (levelLong ~= "" and levelLong ~= ", level unknown") or talent ~= ""
+    local why = table.concat(words, " + ") .. note .. levelLong .. talent
+        .. (predicted and " (talentsforever, predicted)" or " (talentsforever)")
+    -- the short form the measured line quotes: "80% x 0.75 level x1.05 Naturalist 5"
+    local short = Pct(share) .. levelShort .. talent
+    return counts, why, nil, short
 end
 
 local OldRule
@@ -219,10 +313,11 @@ function Coef.Estimate(e, shape, kind)
     local rules = ST.CoefRules
     local row = type(rules) == "table" and type(e.id) == "number" and rules[e.id] or nil
     if type(row) == "table" then
-        local counts, why, unknown = FromRow(e, row, kind)
+        local counts, why, unknown, short = FromRow(e, row, kind)
         -- M2: the site's share is already per target (Prayer of Healing's
         -- 28.6% is 3.0 / 3.5 x 1/3), so the group rule is the old path's only
-        if not unknown then return counts, why end
+        -- T133: `short` (third return) the factors in the measured line's words
+        if not unknown then return counts, why, short end
         -- M1: the per-tick share cannot be counted, so the whole row is set
         -- aside and the old rule speaks, saying why
         local c, w = OldRule(e, shape)

@@ -157,6 +157,8 @@ BS.BONUS = {
     at     = O("number"),
     fit       = O("table"), -- T131: measured: { lo, hi, n, min, max } (the share's interval, readings, bonus span)
     measuring = O("table"), -- T131: estimated while a fit is too wide: { lo, hi, need }
+    predicted = O("number"), -- T133: measured with a talentsforever row: the prediction, never applied
+    factors   = O("string"), -- T133: the prediction's factors, "80% x 0.75 level"
 }
 BS.BONUS_FROM = { model = true, measured = true, estimated = true }
 

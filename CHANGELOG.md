@@ -28,6 +28,12 @@ published to CurseForge; the developers' log is `docs/HISTORY.md`.
   29%), not halved again.
 - Forever: a measured share is kept with the level it was read at; after a level up it is
   measured again (the estimate shows meanwhile), in case a low rank's share moves with your level.
+- Forever: the estimate now names each factor and is a prediction: the rank's share, a low
+  heal rank's level penalty (5% of its share per level once you are 17 levels past learning it;
+  `42.9% x 0.55 level 26 (from 17, -5%/level)`), and talents that multiply a spell (Naturalist's
+  damage: `x1.05 Naturalist 5`). Damage ranks have no level penalty. A measured share still wins,
+  and its card says whether the prediction agreed (`-- as predicted (80% x 0.75 level)`) or how
+  far it was off (`unexplained x0.91`).
 
 ## 0.17.2
 

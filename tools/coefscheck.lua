@@ -16,6 +16,14 @@
 --      an either-or spell's heal and damage shares never summed (B1)
 --   4. an id with no row falls back to the old rule with its old words
 --   5. a measured share still wins over the generated estimate
+--   (sections 1-5 run at player level 17, below every rank's level-penalty
+--   start, so they hold the site's share alone -- T133's factors are 1 there)
+--   6. T133 (docs/tasks/T133-forever-share-factors.md): Coef.LevelPenalty's
+--      oracles; through the real Book at level 26 with Naturalist 5, each rank
+--      inside the author's level-26 measured interval; the words of each
+--      factor; ranks not read, a rank above the rule, two multipliers
+--   7. T133 words: the card's estimated and measured lines, as predicted or
+--      with the residual
 HARNESS_FLAVOUR = "forever"
 
 local here = arg[0]:match("^(.*)/[^/]+$")
@@ -38,6 +46,10 @@ arg[0] = a0
 local S = _G.STUB
 local Book = ST.Book
 local Coef = ST.Coefficients
+local W = ST.Words
+
+-- T133: sections 1-5 hold the share alone; level 17 is below every start
+S.level, ST.player.level = 17, 17
 
 local function Near(a, b) return type(a) == "number" and type(b) == "number" and math.abs(a - b) < 1e-9 end
 
@@ -210,11 +222,14 @@ end)
 
 -- M1 (the lead's ruling): 3 s only for the families a measurement confirmed;
 -- any other tick row with no parsed period takes the old rule whole
-T("3 the measured 3 s families are Rejuvenation, Regrowth and Moonfire only", function()
+-- T133: Entangling Roots joined from the author's level-26 export (2026-10-23)
+T("3 the measured 3 s families are Rejuvenation, Regrowth, Moonfire and Entangling Roots only", function()
     local n, all = 0, true
     for k in pairs(Coef.TICK_MEASURED) do n = n + 1 end
-    for _, k in ipairs({ "Rejuvenation", "Regrowth", "Moonfire" }) do all = all and Coef.TICK_MEASURED[k] == true end
-    return n == 3 and all, tostring(n)
+    for _, k in ipairs({ "Rejuvenation", "Regrowth", "Moonfire", "Entangling Roots" }) do
+        all = all and Coef.TICK_MEASURED[k] == true
+    end
+    return n == 4 and all, tostring(n)
 end)
 
 for _, c in ipairs({
@@ -273,6 +288,194 @@ T("5 a narrow measured share wins over the generated estimate", function()
     return b and b.from == "measured" and Near(b.counts, 0.64) and after.from == "estimated" and Near(after.counts, 0.8),
         string.format("from=%s counts=%s after=%s", tostring(b and b.from), tostring(b and b.counts), tostring(after and after.from))
 end)
+
+--------------------------------------------------------------------------------
+-- 6: T133, the factors -- share x level penalty x talents
+--------------------------------------------------------------------------------
+local function Near3(a, b) return type(a) == "number" and type(b) == "number" and math.abs(a - b) < 1e-6 end
+
+for _, c in ipairs({
+    { "Healing Touch R1 at 25", 5185, 1, 25, "heal", 0.60, 17, "measured" },
+    { "Healing Touch R1 at 26", 5185, 1, 26, "heal", 0.55, 17, "measured" },
+    { "Healing Touch R1 at 37 (the floor)", 5185, 1, 37, "heal", 0, 17, "measured" },
+    { "Healing Touch R1 at 16 (below the start)", 5185, 1, 16, "heal", 1, 17, "measured" },
+    { "Rejuvenation R1 at 25", 774, 4, 25, "heal", 0.80, 21, "rule" },
+    { "Rejuvenation R1 at 26", 774, 4, 26, "heal", 0.75, 21, "rule" },
+    { "Healing Touch R2 at 25", 5186, 8, 25, "heal", 1, 25, "rule" },
+    { "Healing Touch R2 at 26", 5186, 8, 26, "heal", 0.95, 25, "rule" },
+    { "Rejuvenation R2 at 26", 1058, 10, 26, "heal", 1, 27, "rule" },
+    { "Rejuvenation R2 at 28", 1058, 10, 28, "heal", 0.95, 27, "rule" },
+}) do
+    T("6 LevelPenalty " .. c[1] .. ": " .. c[6], function()
+        local p, start, source = Coef.LevelPenalty(c[2], c[3], c[4], c[5])
+        return Near3(p, c[6]) and start == c[7] and source == c[8],
+            string.format("P=%s start=%s source=%s", tostring(p), tostring(start), tostring(source))
+    end)
+end
+
+T("6 LevelPenalty: damage (Wrath R1 at 26) 1, an unknown level 1", function()
+    local d, ds = Coef.LevelPenalty(5176, 1, 26, "damage")
+    local u, us = Coef.LevelPenalty(5185, 1, nil, "heal")
+    local z = Coef.LevelPenalty(774, 4, 0, "heal")
+    local l = Coef.LevelPenalty(99999, nil, 26, "heal")
+    return d == 1 and ds == nil and u == 1 and us == nil and z == 1 and l == 1,
+        string.format("%s %s %s %s", tostring(d), tostring(u), tostring(z), tostring(l))
+end)
+
+T("6 the constants: step 0.05, grace 17, floor 0, Healing Touch R1 starts at 17", function()
+    return Coef.LEVEL_STEP == 0.05 and Coef.LEVEL_GRACE == 17 and Coef.LEVEL_FLOOR == 0
+        and Coef.MEASURED_START[5185] == 17
+end)
+
+-- the author's level-26 export, druid with Naturalist 5 (and Improved Wrath 5,
+-- Moonglow 3, Nature's Focus 5, Reflection 3, which multiply nothing)
+S.AddSpell(339, "Entangling Roots", "Rank 1", function()
+    return "Roots the target in place and causes 21 Nature damage over 12 sec." end,
+    { cast = 1500, cost = 50, level = 8 })
+local TRAIT_NAMES = { "C_ClassTalents.GetActiveConfigID", "C_Traits.GetConfigInfo", "C_Traits.GetTreeNodes",
+    "C_Traits.GetNodeInfo", "C_Traits.GetEntryInfo", "C_Traits.GetDefinitionInfo" }
+local function Use(level, talents)
+    S.level, ST.player.level = level, level
+    if talents == false then
+        C_Traits, C_ClassTalents = nil, nil
+    else
+        S.AddTraits(talents)
+    end
+    for _, n in ipairs(TRAIT_NAMES) do ST.API.Invalidate(n) end
+    S.Fire("PLAYER_TALENT_UPDATE")
+    Book:MarkDirty()
+    return Book:Get()
+end
+local AUTHOR = { ["Improved Wrath"] = 5, ["Moonglow"] = 3, ["Naturalist"] = 5, ["Nature's Focus"] = 5,
+    ["Reflection"] = 3 }
+local b26 = Use(26, AUTHOR)
+
+-- { id, name, want, measured lo, hi (counts at level 26), why }
+for _, c in ipairs({
+    { 5185, "Healing Touch R1", 0.429 * 0.55, 0.429 * 0.535, 0.429 * 0.556,
+        "42.9% x 0.55 level 26 (from 17, -5%/level) (talentsforever, predicted)" },
+    { 774, "Rejuvenation R1", 0.80 * 0.75, 0.80 * 0.743, 0.80 * 0.753,
+        "20% x 4 ticks, 3 s ticks (measured 2026-10-23) x 0.75 level 26 (from 21, -5%/level) (talentsforever, predicted)" },
+    { 1430, "Rejuvenation R3", 0.80, 0.80 * 0.996, 0.80 * 1.004,
+        "20% x 4 ticks, 3 s ticks (measured 2026-10-23) (talentsforever)" },
+    { 5176, "Wrath R1", 0.429 * 1.05, 0.429 * 1.036, 0.429 * 1.055,
+        "42.9% x1.05 Naturalist 5 (talentsforever, predicted)" },
+    { 339, "Entangling Roots R1", 0.06 * 4 * 1.05, 0.244, 0.255,
+        "6% x 4 ticks, 3 s ticks (measured 2026-10-23) x1.05 Naturalist 5 (talentsforever, predicted)" },
+}) do
+    T("6 level 26, Naturalist 5: " .. c[2] .. " " .. string.format("%.4f", c[3]) .. ", inside the measured", function()
+        local e = b26.spells[c[1]]
+        local b = e and e.bonus
+        return b and b.from == "estimated" and Near3(b.counts, c[3]) and b.counts >= c[4] and b.counts <= c[5]
+            and b.why == c[6],
+            string.format("counts=%s why=%s", tostring(b and b.counts), tostring(b and b.why))
+    end)
+end
+
+T("6 the seam: Wrath's talentMult x1.05 Naturalist 5; Healing Touch has none", function()
+    local w, h = b26.spells[5176], b26.spells[5185]
+    local m = w and w.talentMult
+    return m and Near3(m.factor, 1.05) and m.words == "x1.05 Naturalist 5" and h and h.talentMult == nil
+        and Book._seamFields.talentMult == true,
+        string.format("w=%s h=%s", tostring(m and m.words), tostring(h and h.talentMult))
+end)
+
+T("6 level 60: Healing Touch R1 gives no bonus, and says so", function()
+    local b = Use(60, AUTHOR).spells[5185].bonus
+    return b and b.counts == 0
+        and b.why == "42.9% x0 level 60 (from 17, -5%/level: no bonus at this level) (talentsforever, predicted)",
+        tostring(b and b.why)
+end)
+
+T("6 the level unread: P 1, said level unknown", function()
+    local b = Use(0, AUTHOR).spells[5185].bonus
+    return b and Near3(b.counts, 0.429) and b.why == "42.9%, level unknown (talentsforever)", tostring(b and b.why)
+end)
+
+T("6 ranks not read: factor 1, talents not read, the share alone", function()
+    local e = Use(26, false).spells[5176]
+    local m = e.talentMult
+    return m and m.factor == 1 and m.words == "talents not read" and Near3(e.bonus.counts, 0.429)
+        and e.bonus.why == "42.9% (talentsforever)",
+        string.format("%s %s", tostring(m and m.words), tostring(e.bonus.why))
+end)
+
+T("6 a rank above the rule: no rule, its factor left out", function()
+    local e = Use(26, { ["Naturalist"] = 6 }).spells[5176]
+    local m = e.talentMult
+    return m and m.factor == 1 and m.words == "Naturalist 6: no rule" and Near3(e.bonus.counts, 0.429)
+        and e.bonus.why == "42.9% Naturalist 6: no rule (talentsforever, predicted)",
+        string.format("%s %s", tostring(m and m.words), tostring(e.bonus.why))
+end)
+
+T("6 two multipliers: a product, said as assumed (Moonfire, Moonfury 5 and Naturalist 5)", function()
+    local e = Use(26, { ["Moonfury"] = 5, ["Naturalist"] = 5 }).spells[8921]
+    local m = e.talentMult
+    return m and Near3(m.factor, 1.10 * 1.05) and m.words == "x1.10 Moonfury 5 x1.05 Naturalist 5 (product assumed)"
+        and Near3(e.bonus.counts, 0.54 * 1.10 * 1.05),
+        string.format("%s %s", tostring(m and m.words), tostring(e.bonus.counts))
+end)
+
+T("6 a spell scope: Improved Rejuvenation 3 on Rejuvenation, not on Healing Touch", function()
+    local b = Use(17, { ["Improved Rejuvenation"] = 3, ["Gift of Nature"] = 5 })
+    local r, h = b.spells[1430], b.spells[5186]
+    return Near3(r.talentMult.factor, 1.10 * 1.15) and Near3(h.talentMult.factor, 1.10)
+        and r.talentMult.words == "x1.10 Gift of Nature 5 x1.15 Improved Rejuvenation 3 (product assumed)",
+        string.format("%s / %s", tostring(r.talentMult.words), tostring(h.talentMult.words))
+end)
+
+-- a measured share keeps the prediction beside it, never applied
+local AT = os.time({ year = 2026, month = 10, day = 23, hour = 12 })
+local function Measure(id, counts, lo, hi)
+    ST.cdb.bonusCounts = ST.cdb.bonusCounts or {}
+    ST.cdb.bonusCounts[id] = { v = 2, points = { { 0, 10 }, { 20, 12 }, { 40, 14 }, { 60, 16 }, { 90, 19 },
+        { 120, 22 }, { 150, 25 }, { 171, 27 } }, counts = counts, lo = lo, hi = hi, at = AT, bonus = 171,
+        level = 26 }
+end
+Measure(774, 0.595, 0.59, 0.60)
+-- in combat, so the scan adds no reading of the stub's own text to these fits
+ST.inCombat = true
+local bm = Use(26, AUTHOR)
+ST.inCombat = false
+
+T("6 measured Rejuvenation R1: predicted 0.60 beside it, the measured share used", function()
+    local b = bm.spells[774].bonus
+    return b.from == "measured" and Near3(b.counts, 0.595) and Near3(b.predicted, 0.60)
+        and b.factors == "80% x 0.75 level",
+        string.format("%s %s %s", tostring(b.counts), tostring(b.predicted), tostring(b.factors))
+end)
+
+--------------------------------------------------------------------------------
+-- 7: T133 words, the card
+--------------------------------------------------------------------------------
+T("7 card, Healing Touch R1 at 26, estimated", function()
+    local s = W.Bonus(b26.spells[5185], "card", "heal")
+    return s == "counts ~24% estimated (42.9% x 0.55 level 26 (from 17, -5%/level) (talentsforever, predicted))", s
+end)
+
+T("7 card, Wrath R1, estimated", function()
+    local s = W.Bonus(b26.spells[5176], "card", "damage")
+    return s == "counts ~45% estimated (42.9% x1.05 Naturalist 5 (talentsforever, predicted))", s
+end)
+
+T("7 card, Rejuvenation R1 measured: as predicted", function()
+    local s = W.Bonus(bm.spells[774], "card", "heal")
+    return s == "60% measured (0.59-0.60, 8 readings, +0..+171), 23 Oct -- as predicted (80% x 0.75 level)", s
+end)
+
+T("7 card, measured outside the prediction: the residual said", function()
+    local e = { bonus = { counts = 0.234, from = "measured", at = AT, predicted = 0.429 * 0.60,
+        factors = "42.9% x 0.60 level", fit = { lo = 0.231, hi = 0.236, n = 8, min = 0, max = 171 } } }
+    local s = W.Bonus(e, "card", "heal")
+    return s == "23% measured (0.23-0.24, 8 readings, +0..+171), 23 Oct -- predicted 25.7% (42.9% x 0.60 level); unexplained x0.91", s
+end)
+
+T("7 the how line and the tip are unchanged by a prediction", function()
+    local e = bm.spells[774]
+    return W.Bonus(e, "how", "heal") == "+Healing counts 60%, measured 23 Oct" and W.Bonus(e, "tip", "heal") == "60%",
+        tostring(W.Bonus(e, "how", "heal"))
+end)
+ST.cdb.bonusCounts[774] = nil
 
 print(string.format("\n%d ok, %d failed", ok, #fails))
 os.exit(#fails > 0 and 1 or 0)

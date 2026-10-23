@@ -392,6 +392,11 @@ local function ForeverChecks()
         local ok, why = Book ~= nil, "no book"
         if ok then
             local savedB, savedShift = S.bonusHealing, S.descShift
+            -- T133: Healing Touch R1 (learned at 1) gives no bonus at the stub's
+            -- level 64 (the low-rank level penalty); this section reads the
+            -- bonus moving, so it runs at level 17, below the penalty's start
+            local savedLevel = ST.player.level
+            ST.player.level = 17
             Book:MarkDirty()
             local b0 = Book:Get()
             local gen0 = Book.generation
@@ -414,6 +419,7 @@ local function ForeverChecks()
             Book:Get()
             if ok and Book.generation == gen0 then ok, why = false, "a text change did not move it" end
             S.bonusHealing = savedB
+            ST.player.level = savedLevel
             Book:MarkDirty()
             Book:Get()
         end

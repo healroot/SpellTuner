@@ -1630,3 +1630,22 @@ period keeps the old rule whole. Preliminary until verified in game; a measured 
 an id the export does not list keeps the old rule. Healing Touch R1, Rejuvenation R1 and Regrowth
 R3's direct part disagree with the author's export and are left to measurement
 (`docs/TESTING.md` §54), never typed in.
+
+**2026-10-23 (T133, the author's word):** Forever's +bonus estimate is kept as separate, named
+factors -- `counts = share x P(rank, level) x M(talents)` -- and used **as a prediction** until
+more levels and gear are tested after launch; a measured share still wins (T131). The share is
+talentsforever's `co` (T132). P, the low-rank level penalty, heals only:
+`max(LEVEL_FLOOR, 1 - 0.05 x max(0, playerLevel - start))`, `start = learnLevel + 17`, or a
+measured start (`MEASURED_START`: Healing Touch R1 starts at 17, not 18). From the author's
+exports at level 25 (ten readings, +0..+171 healing, +0..+94 spell damage) and level 26 (eight
+readings, same gear steps, Improved Wrath 5, Moonglow 3, Naturalist 5, Nature's Focus 5,
+Reflection 3): measured / share Healing Touch R1 0.593-0.614 / 0.535-0.556, Rejuvenation R1
+0.796-0.803 / 0.743-0.753, Healing Touch R2 0.996-1.005 / 0.943-0.958, every higher rank 1.00;
+the step of 0.05 per level fits all three at both levels, TBC's ratio rule does not. The floor of
+0 is assumed, not measured. Damage has no penalty (Wrath R1 and Moonfire R1 count the full share
+at 26). M, the talent multipliers (`ST.TalentMults`, generated from talentsforever's talent
+sentences): Naturalist 5 made every damage rank x1.05, base included (Starfire 1.048-1.052,
+Wrath R1 1.036-1.055, Entangling Roots R1 0.244-0.255 = 6% x 4 ticks x 1.05, which also adds
+Entangling Roots to the measured 3 s tick families). Two multipliers combine as a product: not
+measured, said as assumed. The card shows a measured share beside the prediction and the residual
+(`unexplained x0.91`); the residual is never applied.

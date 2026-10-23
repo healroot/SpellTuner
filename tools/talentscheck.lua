@@ -27,6 +27,11 @@
 --      ranks; an unread walk runs at most once per scan; the TBC adapter has
 --      no TalentRanks; a fresh session's first scan adds the dump line even
 --      when no class has a rule
+--  10. T133 (docs/tasks/T133-forever-share-factors.md): the generated talent
+--      multipliers (ST.TalentMults): Naturalist, Moonfury, Gift of Nature,
+--      Improved Rejuvenation and Spiritual Healing with every rank's percent;
+--      a sentence of the lead not recognised (Bastion's condition) skipped
+--      and named in the file's header, never shipped
 HARNESS_FLAVOUR = "forever"
 
 local here = arg[0]:match("^(.*)/[^/]+$")
@@ -375,6 +380,65 @@ T("9 a fresh session: the first scan adds the dump line, no rule needed", functi
     ST2.Book:MarkDirty()
     ST2.Book:Get()
     return not beforeScan and HasLine(), "before " .. tostring(beforeScan) .. ", after " .. tostring(HasLine())
+end)
+
+
+--------------------------------------------------------------------------------
+-- 10: T133, the talent multipliers
+--------------------------------------------------------------------------------
+for _, c in ipairs({
+    { "DRUID", "Naturalist", { kind = "damage" }, { 1, 2, 3, 4, 5 } },
+    { "DRUID", "Moonfury", { kind = "damage", schools = { "Arcane", "Nature" } }, { 2, 4, 6, 8, 10 } },
+    { "DRUID", "Gift of Nature", { kind = "heal" }, { 2, 4, 6, 8, 10 } },
+    { "DRUID", "Improved Rejuvenation", { spells = { "Rejuvenation" } }, { 5, 10, 15 } },
+    { "PRIEST", "Spiritual Healing", { kind = "heal" }, { 3, 7, 10 } },
+}) do
+    T("10 " .. c[2] .. ": every rank's percent, its scope", function()
+        local m = ST.TalentMults and ST.TalentMults[c[1]] and ST.TalentMults[c[1]][c[2]]
+        if type(m) ~= "table" then return false, "missing" end
+        local good = #m.pctPerRank == #c[4] and m.scope.kind == c[3].kind
+        for i, v in ipairs(c[4]) do good = good and Near(m.pctPerRank[i], v) end
+        for _, k in ipairs({ "schools", "spells" }) do
+            local want, got = c[3][k], m.scope[k]
+            if want then
+                good = good and type(got) == "table" and #got == #want
+                for i, v in ipairs(want) do good = good and got[i] == v end
+            else
+                good = good and got == nil
+            end
+        end
+        return good, table.concat(m.pctPerRank, ",")
+    end)
+end
+
+T("10 every multiplier: percents positive, rising, a known scope", function()
+    local bad = {}
+    for c, rules in pairs(ST.TalentMults or {}) do
+        for name, m in pairs(rules) do
+            local p = m.pctPerRank
+            if type(p) ~= "table" or #p == 0 then bad[#bad + 1] = c .. "/" .. name end
+            for i, v in ipairs(p or {}) do
+                if type(v) ~= "number" or v <= 0 or (i > 1 and v <= p[i - 1]) then bad[#bad + 1] = c .. "/" .. name end
+            end
+            local s = m.scope
+            if type(s) ~= "table" or (s.kind == nil and s.spells == nil)
+                or (s.kind ~= nil and s.kind ~= "heal" and s.kind ~= "damage") then
+                bad[#bad + 1] = c .. "/" .. name .. " scope"
+            end
+        end
+    end
+    return ST.TalentMults ~= nil and #bad == 0, table.concat(bad, "; ")
+end)
+
+T("10 an unrecognised sentence: skipped and named (Bastion, Restorative Totems), never shipped", function()
+    local fh = io.open(here .. "/../Data/Talents_Forever.lua", "r")
+    local text = fh and fh:read("*a") or ""
+    if fh then fh:close() end
+    local head = text:match("^(.-)\nST%.TalentRules") or ""
+    local named = Has(head, "--   Warrior: Bastion (text after the percent not recognised)")
+        and Has(head, "--   Shaman: Restorative Totems (")
+    local shipped = (ST.TalentMults.WARRIOR or {})["Bastion"] ~= nil or (ST.TalentMults.SHAMAN or {})["Restorative Totems"] ~= nil
+    return named and not shipped, "named=" .. tostring(named) .. " shipped=" .. tostring(shipped)
 end)
 
 print(string.format("\n%d ok, %d failed", ok, #fails))

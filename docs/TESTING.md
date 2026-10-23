@@ -2490,6 +2490,27 @@ left to measurement, not typed in:
 **Paste back** the three cards' +Healing lines verbatim and the export into
 `.logs/forever/coefs.md`.
 
+## 55. 0.17.3: the level penalty and the talent multipliers (T133; Forever druid, 10 min per level)
+
+The estimate is now `share x level x talents`, each factor named on the card, and a prediction:
+a rank learned more than 17 levels below you loses 5% of its share per level (heals only;
+Healing Touch Rank 1 from level 17), and Naturalist multiplies every damage rank. A measured share
+still wins, and its card now says whether the prediction agreed.
+
+1. **At level 27 and at 28.** Out of combat, export (Spells -> Overview -> Export) once at full
+   gear and once with every +healing / spell damage item off. If the rule holds, measured / share
+   reads: Healing Touch R1 0.50 (27), Healing Touch R2 0.90 (27), Rejuvenation R1 0.70 (27),
+   Rejuvenation R2 1.00 at 27 and 0.95 at 28. The measured cards should say `-- as predicted (...)`;
+   one that says `-- predicted ...; unexplained x...` is the rule missing.
+2. **A heal multiplier talent**, when you take one (Gift of Nature, Improved Rejuvenation): the
+   card's why names it (`x1.02 Gift of Nature 1`), and the measured share agrees with it or says
+   how far it is off.
+3. **The far end.** Healing Touch R1 at level 30 should read 0.35 of its share, and at 37 nothing
+   (`x0 level 37 ... no bonus at this level`): the first check of the far end and of the floor.
+
+**Paste back** both exports per level and the cards of the ranks above into
+`.logs/forever/factors.md`.
+
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the
 raw numbers. `/st profile` output is welcome with any report. I turn them into

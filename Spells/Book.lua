@@ -151,6 +151,99 @@ local function CastTalent(e, fam)
 end
 Book.adjust[1] = CastTalent
 
+-- T133 (docs/tasks/T133-forever-share-factors.md): the second. A talent that
+-- multiplies a spell's effect (Naturalist's "increases all damage you deal by
+-- 5%") multiplies the +bonus share too -- base included, so the text carries
+-- it, but the share talentsforever names does not. For the player's class
+-- (ST.TalentMults, Data/Talents_Forever.lua, generated, PRELIMINARY), every
+-- rule whose scope matches the entry -- kind (heal / damage, from the entry's
+-- own parsed text), school (its parsed damage part's), spell by name -- and
+-- whose talent has rank r > 0 multiplies in 1 + pctPerRank[r] / 100:
+--   entry.talentMult = { factor = 1.05, words = "x1.05 Naturalist 5", kind = "damage" }
+-- Two or more multiply (a product: how they combine is NOT measured, so the
+-- words say "product assumed"). Ranks not read: words "talents not read",
+-- factor 1. A rank above the rule's length: that talent "<talent> <r>: no
+-- rule", its factor left out (never extrapolated). Nothing when no rule matches.
+-- Coefficients.Estimate's row path reads it (Spells/Coefficients.lua).
+local multIndexClass, multKeys
+local function MultRules()
+    local class = ST.player and ST.player.class
+    local all = ST.TalentMults
+    if type(all) ~= "table" or type(all[class]) ~= "table" then return nil end
+    if multIndexClass ~= class then
+        multIndexClass, multKeys = class, {}
+        for k in pairs(all[class]) do multKeys[#multKeys + 1] = k end
+        table.sort(multKeys)
+    end
+    return all[class], multKeys
+end
+
+local function EntryKind(e)
+    local p = e.parsed
+    if type(p) ~= "table" then return nil end
+    if p.heal ~= nil or p.absorb ~= nil then return "heal" end
+    if p.damage ~= nil then return "damage" end
+    return nil
+end
+
+local function ScopeMatches(scope, e, kind)
+    if type(scope) ~= "table" then return false end
+    if scope.kind ~= nil and scope.kind ~= kind then return false end
+    if type(scope.schools) == "table" then
+        local d = type(e.parsed) == "table" and e.parsed.damage
+        local school = type(d) == "table" and d.school
+        local hit = false
+        for _, sc in ipairs(scope.schools) do if sc == school then hit = true end end
+        if not hit then return false end
+    end
+    if type(scope.spells) == "table" then
+        local hit = false
+        for _, n in ipairs(scope.spells) do if n == e.name then hit = true end end
+        if not hit then return false end
+    end
+    return true
+end
+
+local function TalentMult(e, fam)
+    local kind = EntryKind(e)
+    if not kind then return end
+    local rules, keys = MultRules()
+    if not rules then return end
+    local matched = {}
+    for _, k in ipairs(keys) do
+        local r = rules[k]
+        if type(r) == "table" and type(r.pctPerRank) == "table" and ScopeMatches(r.scope, e, kind) then
+            matched[#matched + 1] = k
+        end
+    end
+    if #matched == 0 then return end
+    local ranks = Book:Talents()
+    if type(ranks) ~= "table" then
+        e.talentMult = { factor = 1, words = "talents not read", kind = kind }
+        return
+    end
+    local factor, words, n = 1, {}, 0
+    for _, k in ipairs(matched) do
+        local r = ranks[k]
+        if type(r) == "number" and r > 0 then
+            local pct = rules[k].pctPerRank[r]
+            if type(pct) ~= "number" then
+                words[#words + 1] = k .. " " .. tostring(r) .. ": no rule"
+            else
+                local f = 1 + pct / 100
+                factor = factor * f
+                n = n + 1
+                words[#words + 1] = string.format("x%.2f", f) .. " " .. k .. " " .. tostring(r)
+            end
+        end
+    end
+    if #words == 0 then return end
+    local text = table.concat(words, " ")
+    if n > 1 then text = text .. " (product assumed)" end
+    e.talentMult = { factor = factor, words = text, kind = kind }
+end
+Book.adjust[2] = TalentMult
+
 --------------------------------------------------------------------------------
 -- Small helpers -- every one reads only what ST.API already handed out plain.
 --------------------------------------------------------------------------------
@@ -549,6 +642,16 @@ local function ApplyBonus(e, kind, shape)
             of = of, amount = of and counts * of or nil,
             fit = { lo = lo, hi = hi, n = n, min = mn, max = mx },
         }
+        -- T133: a rank with a talentsforever row keeps the prediction beside
+        -- the measured share, for the card to say how far apart they are; the
+        -- residual is shown, never applied
+        local rules = ST.CoefRules
+        if Coef and type(rules) == "table" and type(rules[e.id]) == "table" then
+            local est, _, short = Coef.Estimate(e, shape, kind)
+            if type(est) == "number" and type(short) == "string" then
+                e.bonus.predicted, e.bonus.factors = est, short
+            end
+        end
         return
     end
     if not Coef then return end
