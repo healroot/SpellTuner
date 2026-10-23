@@ -5167,6 +5167,21 @@ for a priest); mana sources stay per class (potions; Innervate the druid's). For
 tbcclasscheck 73 -> 107. TESTING 52 step 6.
 T130b (review fixes): ClassifyCast knows a class book's heals, unmodelled, damage and a VERIFY `castKinds` list per TBC profile (M1); the replay offers no rules strategy to a solver-only kit (M2); Simulate binds and a recorded fight with a foreign healer tested (m1, m2); m3 (druid hot names in `BuildHotSlots`) deferred; tbcclasscheck 107 -> 114.
 
+## 2026-10-23 -- 0.17.3: Forever's +bonus estimate as a prediction (T131-T133), released
+
+- T131: the Bar layout is the default for a new install; measured +bonus shares are fitted from
+  many readings with a rounding-aware interval.
+- T132: Forever's estimated shares come from talentsforever's `co` (`Data/Coefs_Forever.lua`);
+  measured shares are stamped with the level and dropped on a level change.
+- T133 (`docs/tasks/T133-forever-share-factors.md`, review `docs/review/T133-review.md`, M1 and
+  m1-m2 fixed in fb57d25): the estimate is share x P x M. P is the low heal rank's level penalty,
+  -5% per level from learn level + 17 (HT R1 from 17, measured). M is the talent multipliers,
+  `ST.TalentMults` in `Data/Talents_Forever.lua`, regenerated from the 2026-10-22 export. This is
+  a prediction on the author's word, from the level 25 and 26 exports; a measured share still
+  wins and its card shows the residual.
+- 0.17.3 on every TOC, including the TBC class work of 2026-10-11/12 (T130). Installed on Forever
+  and published to CurseForge on the author's word.
+
 ## Moved from CLAUDE.md on 2026-10-04
 
 Text moved verbatim out of `CLAUDE.md` when it was trimmed (each line as it stood, including the parts that stay in `CLAUDE.md` in shorter form). Sub-headings are the `CLAUDE.md` sections the lines came from.

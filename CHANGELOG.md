@@ -5,6 +5,16 @@ published to CurseForge; the developers' log is `docs/HISTORY.md`.
 
 ## 0.17.3
 
+### TBC: every healing class
+- Priests, shamans and paladins now get Practice, Coach, Simulate and the advisor on their own
+  spells, as the druid does. Their plans are found by the solver; the druid's hand-written rules
+  stay the druid's.
+- Recordings keep the whole raid, not only your party, and the replay lays the frames out by
+  subgroup.
+- Overheal is counted by your own spell and rank. A heal the combat log credits to its receiver
+  (another druid's Lifebloom bloom on you) is no longer counted as yours; your own blooms are,
+  when your Lifebloom on that target has just ended.
+
 ### Mana clock
 - The Bar layout (the time on a mana bar) is now the default for a new install, or after the
   clock's look is reset. An existing clock keeps Line, because the old default was saved with it;
@@ -19,7 +29,7 @@ published to CurseForge; the developers' log is `docs/HISTORY.md`.
 - Shares measured by an earlier version are dropped: re-measure: swap gear out of combat.
 - Forever: until a rank is measured, its share of +Healing and spell damage now comes from the
   coefficients talentsforever.com lists for Forever (preliminary until checked in game), not from
-  Classic's rules. Forever has no low-level penalty, and its HoTs and Healing Touch get much more
+  Classic's rules. Its HoTs and Healing Touch get much more
   than in Classic: Rejuvenation 80%, Healing Touch Rank 2 57%, Wrath Rank 1 43%. The card says
   `20% x 4 ticks, 3 s ticks (measured 2026-10-23) (talentsforever)`. A spell the site does not
   list keeps the old estimate, and so does a spell over time whose tick period is neither in
