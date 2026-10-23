@@ -2447,6 +2447,23 @@ step and whether `/st` was open.
 
 **Paste back** one line per step into `.logs/tbc/priest-fixes.md`.
 
+## 53. 0.17.3: the Bar by default, +bonus shares fitted (T131; one short session per client, 10 min)
+
+1. **Bar by default.** On a character whose clock was never set (or after deleting
+   `clockLook` from the saved variables), the clock is the Bar: `~FULL 1:15` on a mana bar.
+   A clock set to Line before the update is still Line. On TBC, the widget's Bar draws the
+   mana and the 5SR strip as on Forever.
+2. **Measured shares (Forever druid).** Out of combat, `/st` -> Spells -> Rejuvenation. Take
+   off a +healing weapon, wait for the card to refresh, put it back (still out of combat). The
+   Rank 3 and Rank 4 cards say `measured` with a narrow range (e.g.
+   `80% measured (0.79-0.81, 2 readings, +0..+212)`), and Rank 3's share is at most Rank 4's.
+   With a smaller swap (one ring) the card says `estimated -- measuring ...` and how much more
+   +Healing to swap.
+3. **Old shares dropped.** A share measured before 0.17.3 shows as estimated until step 2 is done.
+
+**Paste back** one line per step into `.logs/forever/bonus-fit.md` (the cards' +Healing lines
+for R3 and R4 verbatim).
+
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the
 raw numbers. `/st profile` output is welcome with any report. I turn them into

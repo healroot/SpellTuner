@@ -3,6 +3,20 @@
 What changed, for players. `./release.sh --publish` sends the section of the version being
 published to CurseForge; the developers' log is `docs/HISTORY.md`.
 
+## 0.17.3
+
+### Mana clock
+- The Bar layout (the time on a mana bar) is now the default for a new clock. A clock you set to
+  Line stays Line.
+
+### Spells
+- Forever: the share of +Healing (and of spell damage) each rank gets is now fitted from every
+  gear change out of combat, not only the last one, and the card shows the range it is sure of
+  (`80% measured (0.79-0.81, 4 readings, +0..+212)`). Until the range is narrow the rank keeps its
+  estimate and the card says how much more bonus to swap. A small swap no longer overwrites a good
+  measurement, so two ranks of one spell no longer show shares that cannot both be right.
+- Shares measured by an earlier version are dropped: re-measure: swap gear out of combat.
+
 ## 0.17.2
 
 ### Fixes
