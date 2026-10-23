@@ -53,6 +53,10 @@ the site's base text is stale). They go in `docs/TESTING.md` as the ranks to che
   generated data file; adjust `tools/bookshapecheck.lua`'s literal rule to allow the
   generated file.
 - TBC's estimates are unchanged.
+- (Lead's addition, 2026-10-23: Forever may scale a low rank by the player's level.) Each v = 2
+  `bonusCounts` entry stores the player's level (`ST.player.level`); an entry read at another
+  level is old -- its points are dropped and the estimate shows until it is measured again. No
+  penalty is modelled in the estimate. One oracle in `tools/bookcheck.lua`.
 
 ## 3. Tests
 

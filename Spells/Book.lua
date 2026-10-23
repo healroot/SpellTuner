@@ -478,13 +478,31 @@ local MAX_POINTS = 8     -- readings kept per spell: the lowest, the highest, th
 local MAX_COUNTS = 2     -- no rank takes twice the bonus
 Book.ROUND_TOL, Book.MAX_SPREAD, Book.MAX_POINTS = ROUND_TOL, MAX_SPREAD, MAX_POINTS
 
+-- T132 (the lead's addition): the player's level a share was read at. Forever
+-- may scale a low rank by the player's level, so a share read at another
+-- level is old: its points are dropped and the estimate shows until the new
+-- level measures it again. Nothing is modelled; the level only invalidates.
+local function PlayerLevel()
+    local l = ST.player and ST.player.level
+    if type(l) == "number" and l > 0 then return l end
+    return nil
+end
+
 -- The stored entry of `id` for this kind and school (a v = 2 entry), else nil;
--- an old-shape entry is removed here.
+-- an old-shape entry, or one read at another player level (T132), is removed here.
+-- An entry with no level (before T132) is kept and takes the level at its next reading.
 local function StoredFit(id, kind, school)
     local store = type(ST.cdb) == "table" and ST.cdb.bonusCounts
     local m = type(store) == "table" and store[id]
     if type(m) ~= "table" then return nil end
     if m.v ~= 2 or type(m.points) ~= "table" then
+        store[id] = nil
+        return nil
+    end
+    local lvl = PlayerLevel()
+    if type(m.level) == "number" and lvl ~= nil and m.level ~= lvl then
+        ST:Debug("other", "bonus fit: %s read at level %d, now %d -- readings dropped",
+            tostring(id), m.level, lvl)
         store[id] = nil
         return nil
     end
@@ -1311,6 +1329,7 @@ local function AddReading(id, name, kind, school, bonus, value, terms)
     end
     m.points = points
     m.terms = terms
+    m.level = PlayerLevel() -- T132: a share read at another level is old
     m.lo, m.hi = lo, hi
     m.counts = (lo ~= nil) and (lo + hi) / 2 or nil
     m.at, m.bonus = time(), bonus

@@ -1490,6 +1490,32 @@ do
         end)
     end)
 
+    T95("T132: a share read at another player level is old -- its points dropped, the estimate shows", function()
+        local savedLevel, savedStub = ST.player.level, S.level
+        local good, detail = Around(function(Want)
+            -- the level Core keeps from UnitLevel / PLAYER_LEVEL_UP (the stub's
+            -- forever event list has no PLAYER_LEVEL_UP, so it is set as Core sets it)
+            S.level, ST.player.level = 25, 25
+            S.bonusHealing = 0
+            Scan()
+            S.bonusHealing = 120
+            local b1 = Scan()
+            local m1 = Stored(90131)
+            Want(m1 and m1.level == 25 and b1.spells[90131].bonus.from == "measured",
+                "at 25: level " .. tostring(m1 and m1.level) .. " " .. tostring(b1.spells[90131].bonus.from))
+            S.level, ST.player.level = 26, 26
+            local b2 = Scan()
+            local e2 = b2.spells[90131]
+            local m2 = Stored(90131)
+            Want(e2 and e2.bonus and e2.bonus.from == "estimated", "after the level: " .. tostring(e2 and e2.bonus and e2.bonus.from))
+            Want(m2 and m2.level == 26 and #m2.points == 1 and m2.points[1][1] == 120,
+                "new entry: level " .. tostring(m2 and m2.level) .. " points " .. tostring(m2 and #m2.points))
+        end)
+        S.level = savedStub
+        ST.player.level = savedLevel
+        return good, detail
+    end)
+
     T95("T131: at most MAX_POINTS readings, the lowest and highest bonus kept", function()
         return Around(function(Want)
             for _, b in ipairs({ 0, 100, 10, 20, 30, 40, 50, 60, 70, 80, 90 }) do
