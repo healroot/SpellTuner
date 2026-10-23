@@ -2477,8 +2477,10 @@ left to measurement, not typed in:
 | Regrowth Rank 3, direct part | ~0.22 | 0.286 (or its base text is stale) |
 
 1. **The words.** Out of combat, `/st` -> Spells -> Rejuvenation Rank 2: the card's +Healing line
-   says `80% estimated` and its why `20% x 4 ticks, 3 s ticks assumed (talentsforever)`. Healing
-   Touch Rank 2 says `57%`; Wrath Rank 1 `43%` (spell damage), no low-level factor.
+   says `80% estimated` and its why `20% x 4 ticks, 3 s ticks (measured 2026-10-23) (talentsforever)`.
+   Healing Touch Rank 2 says `57%`; Wrath Rank 1 `43%` (spell damage), no low-level factor.
+   Wild Growth and Insect Swarm keep the old estimate, their why ending `(tick period unknown --
+   old rule)`: their tick period is neither in the text nor measured.
 2. **The gear swap.** Still out of combat, take off a +healing item (as much +healing as you
    can: a weapon), wait for the cards to refresh, put it back. Read Healing Touch Rank 1,
    Rejuvenation Rank 1 and Regrowth Rank 3: each card goes `measured` with a range, or says how

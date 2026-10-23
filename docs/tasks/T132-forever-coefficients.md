@@ -47,6 +47,14 @@ the site's base text is stale). They go in `docs/TESTING.md` as the ranks to che
 - `ticks` = the entry's duration / its tick interval. Use the parsed interval when
   `Spells/Parse.lua` gives one; else 3 s, the vanilla HoT/DoT tick, with the why saying
   "3 s ticks assumed".
+- (Review M1, the lead's ruling, 2026-10-23, replacing the line above: no tick period is
+  guessed for an arbitrary spell.) The per-tick share uses the period parsed from the
+  spell's own text, else 3 s only for the families the author's 2026-10-23 export confirmed
+  -- Rejuvenation, Regrowth (its HoT), Moonfire (its DoT) -- kept as a named table in
+  `Spells/Coefficients.lua` with its provenance; the why says "3 s ticks (measured
+  2026-10-23)". Any other spell (Wild Growth, Insect Swarm, Mind Flay, Blizzard,
+  Consecration, Holy Fire, Flamestrike, ...) takes the old rule whole, direct part
+  included, and its why ends "(tick period unknown -- old rule)".
 - A channel uses its own tick count from duration / interval.
 - No sub-20 factor on this path. The group rule stays.
 - The why reads, for example, `20% x 4 ticks (talentsforever)` or

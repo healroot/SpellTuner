@@ -7,10 +7,11 @@
 --   1. the data file's shape: every row's numbers positive and finite, a name;
 --      the druid's ranks below all present
 --   2. through the real Book on the stub, the author's export (2026-10-23):
---      Rejuvenation R1-R4 0.80 each (20% x 4 ticks, 3 s assumed); Healing
+--      Rejuvenation R1-R4 0.80 each (20% x 4 ticks, 3 s measured); Healing
 --      Touch R1-R4 0.429 / 0.571 / 0.714 / 0.857; Regrowth R2 0.286 + 0.071 x
 --      7; Wrath R1 0.429; Moonfire R1 0.15 + 0.13 x 3 -- no sub-20 factor
---   3. a parsed tick period is used, not the 3 s assumption; a channel counts
+--   3. a parsed tick period is used; 3 s only for the measured families, any
+--      other tick row with no period on the old rule whole (M1); a channel counts
 --      its own ticks; the group rule still halves
 --      an either-or spell's heal and damage shares never summed (B1)
 --   4. an id with no row falls back to the old rule with its old words
@@ -113,10 +114,10 @@ end)
 -- 2: the author's export through the book
 --------------------------------------------------------------------------------
 for _, id in ipairs({ 774, 1058, 1430, 2090 }) do
-    T("2 Rejuvenation " .. id .. ": 0.80 (20% x 4 ticks, 3 s assumed)", function()
+    T("2 Rejuvenation " .. id .. ": 0.80 (20% x 4 ticks, 3 s measured)", function()
         local b = Bonus(id)
         return b and b.from == "estimated" and Near(b.counts, 0.8)
-            and b.why == "20% x 4 ticks, 3 s ticks assumed (talentsforever)",
+            and b.why == "20% x 4 ticks, 3 s ticks (measured 2026-10-23) (talentsforever)",
             string.format("counts=%s why=%s", tostring(b and b.counts), tostring(b and b.why))
     end)
 end
@@ -133,7 +134,7 @@ end
 T("2 Regrowth R2: 0.286 + 0.071 x 7", function()
     local b = Bonus(8938)
     return b and b.from == "estimated" and Near(b.counts, 0.286 + 0.071 * 7)
-        and b.why == "28.6% + 7.1% x 7 ticks, 3 s ticks assumed (talentsforever)",
+        and b.why == "28.6% + 7.1% x 7 ticks, 3 s ticks (measured 2026-10-23) (talentsforever)",
         string.format("counts=%s why=%s", tostring(b and b.counts), tostring(b and b.why))
 end)
 
@@ -146,7 +147,7 @@ end)
 T("2 Moonfire R1: 0.15 + 0.13 x 3", function()
     local b = Bonus(8921)
     return b and b.from == "estimated" and Near(b.counts, 0.15 + 0.13 * 3)
-        and b.why == "15% + 13% x 3 ticks, 3 s ticks assumed (talentsforever)",
+        and b.why == "15% + 13% x 3 ticks, 3 s ticks (measured 2026-10-23) (talentsforever)",
         string.format("counts=%s why=%s", tostring(b and b.counts), tostring(b and b.why))
 end)
 
@@ -198,6 +199,33 @@ T("3 a row with one slot gives it to either kind", function()
     local w = Coef.Estimate({ id = 5176, parsed = { damage = { min = 13, max = 16 } } }, "direct", "heal")
     return Near(h, 0.429) and Near(d, 0.429) and Near(w, 0.429), tostring(h) .. " " .. tostring(d) .. " " .. tostring(w)
 end)
+
+-- M1 (the lead's ruling): 3 s only for the families a measurement confirmed;
+-- any other tick row with no parsed period takes the old rule whole
+T("3 the measured 3 s families are Rejuvenation, Regrowth and Moonfire only", function()
+    local n, all = 0, true
+    for k in pairs(Coef.TICK_MEASURED) do n = n + 1 end
+    for _, k in ipairs({ "Rejuvenation", "Regrowth", "Moonfire" }) do all = all and Coef.TICK_MEASURED[k] == true end
+    return n == 3 and all, tostring(n)
+end)
+
+for _, c in ipairs({
+    { 5570, "Insect Swarm R1 (DoT, no period)", { id = 5570, dur = 12, parsed = { damage = { over = 66, dur = 12 } } }, "hot", "damage" },
+    { 408120, "Wild Growth R1 (HoT, no period)", { id = 408120, dur = 7, targets = "party", parsed = { heal = { over = 210, dur = 7 } } }, "hot", "heal" },
+    { 14914, "Holy Fire R1 (direct + DoT, no period): not half applied",
+        { id = 14914, cast = 3.5, dur = 10, over = 30, min = 84, max = 104,
+          parsed = { damage = { min = 84, max = 104, over = 30, dur = 10 } } }, "hybrid", "damage" },
+}) do
+    T("3 " .. c[2] .. ": the old rule", function()
+        local e = c[3]
+        local c1, w1 = Coef.Estimate(e, c[4], c[5])
+        e.id = nil
+        local c0, w0 = Coef.Estimate(e, c[4], c[5])
+        return ST.CoefRules[c[1]] ~= nil and type(c0) == "number" and Near(c1, c0)
+            and w1 == w0 .. " (tick period unknown -- old rule)",
+            tostring(c1) .. " " .. tostring(w1) .. " / old " .. tostring(c0) .. " " .. tostring(w0)
+    end)
+end
 
 T("3 a tick row with no duration gives no share", function()
     local c, why = Coef.Estimate({ id = 774, parsed = { heal = { min = 1, max = 2 } } }, "hot", "heal")

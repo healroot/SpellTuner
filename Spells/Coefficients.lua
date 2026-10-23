@@ -131,16 +131,28 @@ end
 -- share = the row's heal slot for a heal, its direct (damage) slot for damage,
 -- the other when only one is there (never the two summed);
 -- ticks = the part's duration / its tick period when Spells/Parse.lua read
--- one, else 3 s (the vanilla HoT / DoT tick, said in the words); a channel the
--- same, from its own duration and period. No sub-20 factor; the group rule
--- stays. The words:
+-- one, else 3 s only for a family in TICK_MEASURED (review M1, the lead's
+-- ruling: no tick period is guessed for an arbitrary spell); a channel the
+-- same, from its own duration and period. A row with a per-tick share whose
+-- period is unknown falls back to the old rule whole, direct part included
+-- (never half applied), and says "tick period unknown -- old rule". No sub-20
+-- factor; the words:
 --   "42.9% (talentsforever)"
---   "20% x 4 ticks, 3 s ticks assumed (talentsforever)"
---   "28.6% + 7.1% x 7 ticks, 3 s ticks assumed (talentsforever)"
+--   "20% x 4 ticks, 3 s ticks (measured 2026-10-23) (talentsforever)"
+--   "28.6% + 7.1% x 7 ticks, 3 s ticks (measured 2026-10-23) (talentsforever)"
 -- `kind` ("heal" / "damage", optional) names which parsed part carries the
 -- ticks; without it the heal part, else the damage part.
 --------------------------------------------------------------------------------
-local TICK_ASSUMED = 3 -- seconds: the vanilla HoT / DoT tick, when the text names none
+-- The families whose 3 s tick a measurement confirmed, by the row's own name
+-- (the site's, so the client's locale does not matter). Provenance: the
+-- author's level-25 Forever export, 2026-10-23 (docs/TESTING.md section 54):
+-- Rejuvenation R1-R4, Regrowth R2's HoT and Moonfire R1's DoT fit the site's
+-- per-tick share only at one tick every 3 s. A family is added here only from
+-- a measurement; any other spell with no parsed period takes the old rule.
+local TICK_MEASURED = { Rejuvenation = true, Regrowth = true, Moonfire = true }
+local TICK_MEASURED_SECS = 3
+local TICK_MEASURED_NOTE = ", 3 s ticks (measured 2026-10-23)"
+Coef.TICK_MEASURED = TICK_MEASURED
 
 local function Pct(v)
     local s = string.format("%.1f", v * 100):gsub("%.0$", "")
@@ -186,8 +198,11 @@ local function FromRow(e, row, kind)
         if type(dur) ~= "number" or dur <= 0 then return nil, "no duration" end
         local period = part and part.period
         if type(period) ~= "number" or period <= 0 then
-            period = TICK_ASSUMED
-            note = ", " .. Secs(TICK_ASSUMED) .. " s ticks assumed"
+            if not (type(row.name) == "string" and TICK_MEASURED[row.name]) then
+                return nil, "tick period unknown", true
+            end
+            period = TICK_MEASURED_SECS
+            note = TICK_MEASURED_NOTE
         end
         local ticks = math.floor(dur / period + 1e-9)
         if ticks < 1 then return nil, "no ticks" end
@@ -197,19 +212,32 @@ local function FromRow(e, row, kind)
     return counts, table.concat(words, " + ") .. note .. " (talentsforever)"
 end
 
+local OldRule
+
 function Coef.Estimate(e, shape, kind)
     if type(e) ~= "table" then return nil, "no entry" end
     local rules = ST.CoefRules
     local row = type(rules) == "table" and type(e.id) == "number" and rules[e.id] or nil
     if type(row) == "table" then
-        local counts, why = FromRow(e, row, kind)
-        if counts == nil then return nil, why end
-        if e.targets == "party" then
-            counts = counts * Coef.GROUP
-            why = why .. ", group rule"
+        local counts, why, unknown = FromRow(e, row, kind)
+        if not unknown then
+            if counts == nil then return nil, why end
+            if e.targets == "party" then
+                counts = counts * Coef.GROUP
+                why = why .. ", group rule"
+            end
+            return counts, why
         end
-        return counts, why
+        -- M1: the per-tick share cannot be counted, so the whole row is set
+        -- aside and the old rule speaks, saying why
+        local c, w = OldRule(e, shape)
+        if c == nil then return nil, w end
+        return c, w .. " (tick period unknown -- old rule)"
     end
+    return OldRule(e, shape)
+end
+
+OldRule = function(e, shape)
     local counts, why
     local cast, castNote = BaseCast(e)
     local clamped = math.min(math.max(cast, 1.5), 3.5)

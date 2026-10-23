@@ -21,8 +21,10 @@ published to CurseForge; the developers' log is `docs/HISTORY.md`.
   coefficients talentsforever.com lists for Forever (preliminary until checked in game), not from
   Classic's rules. Forever has no low-level penalty, and its HoTs and Healing Touch get much more
   than in Classic: Rejuvenation 80%, Healing Touch Rank 2 57%, Wrath Rank 1 43%. The card says
-  `20% x 4 ticks, 3 s ticks assumed (talentsforever)`. A spell the site does not list keeps the
-  old estimate.
+  `20% x 4 ticks, 3 s ticks (measured 2026-10-23) (talentsforever)`. A spell the site does not
+  list keeps the old estimate, and so does a spell over time whose tick period is neither in
+  its text nor measured (Wild Growth, Insect Swarm, Mind Flay and others: `tick period unknown
+  -- old rule`).
 - Forever: a measured share is kept with the level it was read at; after a level up it is
   measured again (the estimate shows meanwhile), in case a low rank's share moves with your level.
 
