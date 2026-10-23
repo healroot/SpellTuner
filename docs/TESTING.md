@@ -2464,6 +2464,30 @@ step and whether `/st` was open.
 **Paste back** one line per step into `.logs/forever/bonus-fit.md` (the cards' +Healing lines
 for R3 and R4 verbatim).
 
+## 54. 0.17.3: the estimates from talentsforever's coefficients (T132; Forever druid, 10 min)
+
+The estimated share of a rank no measurement has reached now comes from talentsforever's `co`
+(`Data/Coefs_Forever.lua`). Three ranks of the author's 2026-10-23 export disagree with it and are
+left to measurement, not typed in:
+
+| rank | export implies | talentsforever |
+|---|---|---|
+| Healing Touch Rank 1 | ~0.26 | 0.429 |
+| Rejuvenation Rank 1 | ~0.64 | 0.80 |
+| Regrowth Rank 3, direct part | ~0.22 | 0.286 (or its base text is stale) |
+
+1. **The words.** Out of combat, `/st` -> Spells -> Rejuvenation Rank 2: the card's +Healing line
+   says `80% estimated` and its why `20% x 4 ticks, 3 s ticks assumed (talentsforever)`. Healing
+   Touch Rank 2 says `57%`; Wrath Rank 1 `43%` (spell damage), no low-level factor.
+2. **The gear swap.** Still out of combat, take off a +healing item (as much +healing as you
+   can: a weapon), wait for the cards to refresh, put it back. Read Healing Touch Rank 1,
+   Rejuvenation Rank 1 and Regrowth Rank 3: each card goes `measured` with a range, or says how
+   much more to swap. Repeat with spell damage for Wrath Rank 1 if a spell damage item is at hand.
+3. **Export.** Spells -> Overview -> Export, after the swap.
+
+**Paste back** the three cards' +Healing lines verbatim and the export into
+`.logs/forever/coefs.md`.
+
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the
 raw numbers. `/st profile` output is welcome with any report. I turn them into

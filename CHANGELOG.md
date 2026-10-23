@@ -17,6 +17,14 @@ published to CurseForge; the developers' log is `docs/HISTORY.md`.
   estimate and the card says how much more bonus to swap. A small swap no longer overwrites a good
   measurement, so two ranks of one spell no longer show shares that cannot both be right.
 - Shares measured by an earlier version are dropped: re-measure: swap gear out of combat.
+- Forever: until a rank is measured, its share of +Healing and spell damage now comes from the
+  coefficients talentsforever.com lists for Forever (preliminary until checked in game), not from
+  Classic's rules. Forever has no low-level penalty, and its HoTs and Healing Touch get much more
+  than in Classic: Rejuvenation 80%, Healing Touch Rank 2 57%, Wrath Rank 1 43%. The card says
+  `20% x 4 ticks, 3 s ticks assumed (talentsforever)`. A spell the site does not list keeps the
+  old estimate.
+- Forever: a measured share is kept with the level it was read at; after a level up it is
+  measured again (the estimate shows meanwhile), in case a low rank's share moves with your level.
 
 ## 0.17.2
 

@@ -85,6 +85,19 @@ book's family names; a spell name not in that class's spellbook in the export is
 rules on the 2026-10-03 export; 14 cast-time talents of other shapes are skipped and named in the
 file's header. **Preliminary** until verified in game (`docs/DECISIONS.md`, 2026-10-04).
 
+**Coefficients used (T132).** `tools/buildcoefs.py` reads every class's `spell_desc` rows with
+`s` = `beta` and a `co` it recognises -- comma-separated parts, each "N% of spell power (direct)"
+or "(heal)" (the direct share) or "(per tick)" (each tick's share) -- and writes them by spell id
+to `Data/Coefs_Forever.lua` (`ST.CoefRules`). A row with an `fx` / `asis` note, or any other
+wording, is skipped and counted in the file's header. They are Forever's **base estimates**
+(`Coef.Estimate`: direct + tick x ticks, ticks = duration / the parsed period, else 3 s; no
+low-level penalty), a measured share still wins. On the 2026-10-22 export: 557 rows; 1 skipped
+for a note (Shaman Lava Burst Rank 3, `asis`), 7 for wording (Paladin Seal of Fury, "42.9% and
+10% of spell power (direct)"). The author's level-25 export (2026-10-23) fits them with no
+low-level penalty except Healing Touch R1, Rejuvenation R1 and Regrowth R3's direct part
+(`docs/TESTING.md` §54). **Preliminary** until verified in game (`docs/DECISIONS.md`, 2026-10-23);
+the caveat above that `co` is unsourced still holds.
+
 ## 2. Wowhead
 
 **What it is.** Wowhead has a Forever database: URL prefix `/forever`, internal data environment
