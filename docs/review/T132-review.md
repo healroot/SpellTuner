@@ -34,6 +34,8 @@ Probe used for every number below: the real Book on the Forever stub, with the s
 
 ## B1 (blocker): `tools/buildcoefs.py:40` adds a spell's damage share and its heal share into one `direct`
 
+**Fixed in 7e1a65f.**
+
 `parse_co` sends both "(direct)" and "(heal)" to the `direct` slot and adds them up. On the site,
 "(direct)" is the damage part and "(heal)" is the heal part. The either-or spells show this:
 - Holy Shock: "causing 129 to 139 Holy damage to an enemy, or 110 to 118 healing to an ally".
@@ -59,6 +61,8 @@ any row that has both. `FromRow` then picks the slot by the `kind` it already re
 coefscheck case for Holy Shock.
 
 ## M1 (major, from the spec): the 3 s tick fallback is wrong for many listed spells, two of them the druid's
+
+**Fixed in ca18c67.**
 
 When the text names no period, `Spells/Coefficients.lua:141,171` assumes 3 s ticks. Many rows in
 the table tick faster, and the site's own per-tick share only adds up with the real tick count:
@@ -91,6 +95,8 @@ This contradicts the brief, so it goes to the lead or the arbiter.
 
 ## M2 (major, from the spec): the group rule halves a share the site already gives per target
 
+**Fixed in d325701.**
+
 The site's `co` is already the per-target share. Prayer of Healing's 28.6% is Classic's
 3.0 / 3.5 x 1/3, the AoE reduction already applied. Holy Nova's heal share is 10.7%, and Wild
 Growth's 3.3% per tick is also per target. `Spells/Coefficients.lua:189` still multiplies the
@@ -107,6 +113,8 @@ If upheld, drop lines 189-192 on the row path and update the test, TESTING, DECI
 REFERENCES.
 
 ## m1 (minor): a level-less entry is never invalidated while its reading repeats, and can bless older-level points
+
+**Fixed in ff61c1d.**
 
 `Spells/Book.lua:503` skips the level test when `m.level` is nil. The only place a level is
 written is `Spells/Book.lua:1332`, after the "same reading again" early return at
@@ -127,6 +135,8 @@ Impact is small: T131 was installed on the author's Forever client only, on 2026
 the level on the early-return path too. The bookcheck oracle covers only the levelled case.
 
 ## m2 (minor): coefscheck's channel case cannot fail on channel behaviour
+
+**Fixed in 0682419.**
 
 `tools/coefscheck.lua:162` builds a `castKind = "channeled"` entry with `period = 2`,
 `periodDur = 8`. `FromRow` has no channel branch: it reads `periodDur / period` for any entry, so
