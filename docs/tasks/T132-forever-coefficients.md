@@ -26,10 +26,13 @@ the site's base text is stale). They go in `docs/TESTING.md` as the ranks to che
 - Like `tools/buildtalents.py`: reads a `data.json` path and writes `-- GENERATED, do
   not hand edit`, with the source's `generated` date, the attribution line and
   "PRELIMINARY until verified in game".
-- Shape: `ST.CoefRules = { [spellId] = { direct = 0.429?, tick = 0.20?, name, rank } }`
+- Shape: `ST.CoefRules = { [spellId] = { direct = 0.429?, heal = 0.429?, tick = 0.20?, name, rank } }`
   for every class's `spell_desc` row whose `co` it recognises: "N% of spell power
-  (direct)" or "(heal)" goes to `direct`; "(per tick)" goes to `tick`; comma-separated
-  parts are combined.
+  (direct)" goes to `direct`, "(heal)" to `heal`, "(per tick)" to `tick`; parts of one
+  kind are added up. (Review B1, lead's ruling: the site's "(direct)" is the damage part
+  and "(heal)" the heal part, so the two are never summed; `Coef.Estimate` reads `heal`
+  for a heal, else `direct`, and `direct` for damage, else `heal`. Holy Shock R1 is 0.429
+  either way, never 0.858.)
 - Any other wording is skipped and named in the header by count, with the first few
   phrases. Never guess.
 - Rows with `s ~= "beta"` are skipped. Honour `fx` / `asis` notes by skipping those

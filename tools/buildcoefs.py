@@ -11,9 +11,12 @@ PRELIMINARY source of truth until verified in game (docs/DECISIONS.md,
 
 Recognised: a `co` string whose comma-separated parts are each
     N% of spell power (direct)     -> direct
-    N% of spell power (heal)       -> direct
+    N% of spell power (heal)       -> heal
     N% of spell power (per tick)   -> tick
-parts of the same kind added up. Any other wording skips the row and is
+parts of the same kind added up. The site's "(direct)" is the damage part and
+"(heal)" the heal part (Holy Shock: 42.9% (direct), 42.9% (heal) -- one or
+the other, never both), so the two are kept apart and never summed; the
+reader (Spells/Coefficients.lua) picks the slot by the kind it estimates. Any other wording skips the row and is
 counted in the file header with the first few phrases -- never guessed.
 A row whose text is not the beta client's (`s` other than "beta") is
 skipped; so is a row the site carries a note on (`fx`, `asis`), listed.
@@ -31,13 +34,14 @@ FIRST_PHRASES = 5
 
 
 def parse_co(co):
-    """{ direct = x?, tick = y? } (fractions) or None when a part is not recognised."""
+    """{ direct = x?, heal = h?, tick = y? } (fractions) or None when a part is not recognised."""
     out = {}
     for part in co.split(","):
         m = PART.match(part.strip())
         if not m:
             return None
-        slot = "tick" if m.group("kind") == "per tick" else "direct"
+        kind = m.group("kind")
+        slot = "tick" if kind == "per tick" else kind
         out[slot] = out.get(slot, 0.0) + float(m.group("n"))
     # percent to a fraction, rounded so 28.6 is 0.286 and not 0.28600000000000003
     return {k: round(v / 100.0, 6) for k, v in out.items()}
@@ -76,7 +80,7 @@ def build(data):
         row["rank"] = rank
         if sid in seen:
             old = rows.get(sid)
-            if old is not None and (old.get("direct"), old.get("tick")) != (row.get("direct"), row.get("tick")):
+            if old is not None and (old.get("direct"), old.get("heal"), old.get("tick")) != (row.get("direct"), row.get("heal"), row.get("tick")):
                 clash.append("%d (%s / %s)" % (sid, seen[sid], key))
                 rows.pop(sid, None)
             continue
@@ -109,8 +113,9 @@ def write(data, rows, unknown, notes, notbeta, noid, clash, out):
     w("-- %s, generated %s (%s)." % (data.get("attribution", "Data from talentsforever.com (https://talentsforever.com)"),
                                     data.get("generated", "?"), data.get("license", "CC-BY-4.0")))
     w("--")
-    w("-- [spell id] = { direct, tick, name, rank }: direct the share of the direct")
-    w("-- (or heal) part, tick the share of each tick; either may be absent.")
+    w("-- [spell id] = { direct, heal, tick, name, rank }: direct the share of the")
+    w("-- direct (damage) part, heal the share of the heal part, tick the share of")
+    w("-- each tick; any may be absent. direct and heal are never summed.")
     w("--")
     w("-- Rows read: %d." % len(rows))
     w("-- Skipped, text not the beta client's (s other than beta): %d." % notbeta)
@@ -139,6 +144,8 @@ def write(data, rows, unknown, notes, notbeta, noid, clash, out):
         bits = []
         if "direct" in r:
             bits.append("direct = %s" % num(r["direct"]))
+        if "heal" in r:
+            bits.append("heal = %s" % num(r["heal"]))
         if "tick" in r:
             bits.append("tick = %s" % num(r["tick"]))
         bits.append("name = %s" % lua_str(r["name"]))

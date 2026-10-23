@@ -12,6 +12,7 @@
 --      7; Wrath R1 0.429; Moonfire R1 0.15 + 0.13 x 3 -- no sub-20 factor
 --   3. a parsed tick period is used, not the 3 s assumption; a channel counts
 --      its own ticks; the group rule still halves
+--      an either-or spell's heal and damage shares never summed (B1)
 --   4. an id with no row falls back to the old rule with its old words
 --   5. a measured share still wins over the generated estimate
 HARNESS_FLAVOUR = "forever"
@@ -84,8 +85,8 @@ T("1 ST.CoefRules: every number positive and finite, every row named", function(
         if type(r) ~= "table" then
             bad[#bad + 1] = where .. " row"
         else
-            if r.direct == nil and r.tick == nil then bad[#bad + 1] = where .. " no share" end
-            for _, k in ipairs({ "direct", "tick" }) do
+            if r.direct == nil and r.heal == nil and r.tick == nil then bad[#bad + 1] = where .. " no share" end
+            for _, k in ipairs({ "direct", "heal", "tick" }) do
                 local v = r[k]
                 if v ~= nil and (type(v) ~= "number" or v ~= v or v <= 0 or v == math.huge) then
                     bad[#bad + 1] = where .. " " .. k
@@ -173,6 +174,29 @@ T("3 the group rule still halves", function()
     local e = { id = 5185, targets = "party", parsed = { heal = { min = 40, max = 54 } } }
     local c, why = Coef.Estimate(e, "direct", "heal")
     return Near(c, 0.429 * Coef.GROUP) and why == "42.9% (talentsforever), group rule", tostring(c) .. " " .. tostring(why)
+end)
+
+-- B1: the site's "(direct)" is the damage part and "(heal)" the heal part;
+-- an either-or spell gets the one its kind names, never the two summed
+for _, c in ipairs({
+    { 1311606, "Holy Shock R1", 0.429, "42.9%", 0.429, "42.9%" },
+    { 15237, "Holy Nova R1", 0.107, "10.7%", 0.107, "10.7%" },
+    { 1310911, "Light's Vigil R1", 0.143, "14.3%", 0.429, "42.9%" },
+}) do
+    T("3 " .. c[2] .. ": heal " .. c[3] .. ", damage " .. c[5] .. ", never summed", function()
+        local e = { id = c[1], parsed = { heal = { min = 10, max = 12 }, damage = { min = 10, max = 12 } } }
+        local h, hw = Coef.Estimate(e, "direct", "heal")
+        local d, dw = Coef.Estimate(e, "direct", "damage")
+        return Near(h, c[3]) and hw == c[4] .. " (talentsforever)" and Near(d, c[5]) and dw == c[6] .. " (talentsforever)",
+            string.format("heal=%s (%s) damage=%s (%s)", tostring(h), tostring(hw), tostring(d), tostring(dw))
+    end)
+end
+
+T("3 a row with one slot gives it to either kind", function()
+    local h = Coef.Estimate({ id = 5185, parsed = { heal = { min = 40, max = 54 } } }, "direct", "heal")
+    local d = Coef.Estimate({ id = 5185, parsed = { heal = { min = 40, max = 54 } } }, "direct", "damage")
+    local w = Coef.Estimate({ id = 5176, parsed = { damage = { min = 13, max = 16 } } }, "direct", "heal")
+    return Near(h, 0.429) and Near(d, 0.429) and Near(w, 0.429), tostring(h) .. " " .. tostring(d) .. " " .. tostring(w)
 end)
 
 T("3 a tick row with no duration gives no share", function()

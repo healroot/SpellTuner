@@ -127,7 +127,9 @@ end
 -- T132 (docs/tasks/T132-forever-coefficients.md): an id Data/Coefs_Forever.lua
 -- has a row for (ST.CoefRules, generated from talentsforever's per-rank
 -- coefficients, PRELIMINARY) is estimated from that row instead:
---   counts = (direct or 0) + (tick or 0) x ticks
+--   counts = (share or 0) + (tick or 0) x ticks
+-- share = the row's heal slot for a heal, its direct (damage) slot for damage,
+-- the other when only one is there (never the two summed);
 -- ticks = the part's duration / its tick period when Spells/Parse.lua read
 -- one, else 3 s (the vanilla HoT / DoT tick, said in the words); a channel the
 -- same, from its own duration and period. No sub-20 factor; the group rule
@@ -154,8 +156,24 @@ local function TickPart(e, kind)
     return nil
 end
 
+-- The row's one-off share for `kind` (B1): the site's "(direct)" is the
+-- damage part and "(heal)" the heal part, kept apart by tools/buildcoefs.py and
+-- never summed (Holy Shock R1 is 0.429 as a heal and 0.429 as damage). A heal
+-- reads heal, else direct; damage reads direct, else heal; a row with one slot
+-- gives it to either kind.
+local function Share(row, kind)
+    local d = (type(row.direct) == "number") and row.direct or nil
+    local h = (type(row.heal) == "number") and row.heal or nil
+    if kind == "damage" then
+        if d ~= nil then return d end
+        return h
+    end
+    if h ~= nil then return h end
+    return d
+end
+
 local function FromRow(e, row, kind)
-    local direct = (type(row.direct) == "number") and row.direct or nil
+    local direct = Share(row, kind)
     local tick = (type(row.tick) == "number") and row.tick or nil
     if direct == nil and tick == nil then return nil, "no share in the row" end
     local counts, words = direct or 0, {}

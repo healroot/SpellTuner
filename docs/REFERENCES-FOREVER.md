@@ -87,7 +87,8 @@ file's header. **Preliminary** until verified in game (`docs/DECISIONS.md`, 2026
 
 **Coefficients used (T132).** `tools/buildcoefs.py` reads every class's `spell_desc` rows with
 `s` = `beta` and a `co` it recognises -- comma-separated parts, each "N% of spell power (direct)"
-or "(heal)" (the direct share) or "(per tick)" (each tick's share) -- and writes them by spell id
+(the damage part's share), "(heal)" (the heal part's share; never added to the damage part:
+Holy Shock's 42.9% (direct), 42.9% (heal) is 0.429 either way) or "(per tick)" (each tick's share) -- and writes them by spell id
 to `Data/Coefs_Forever.lua` (`ST.CoefRules`). A row with an `fx` / `asis` note, or any other
 wording, is skipped and counted in the file's header. They are Forever's **base estimates**
 (`Coef.Estimate`: direct + tick x ticks, ticks = duration / the parsed period, else 3 s; no
