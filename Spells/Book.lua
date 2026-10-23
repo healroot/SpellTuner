@@ -395,6 +395,8 @@ local function Numbers(e, kind)
     local value, part = PartValue(e, kind)
     local interval, by = IntervalFor(e, part)
     e.value = value
+    -- T131 review M1: the rounded numbers the value was added up from (the fit's tolerance)
+    e.roundTerms = (value ~= nil and part ~= nil) and Parse.Terms(part) or nil
     e.min = part and part.min
     e.max = part and part.max
     e.over = part and part.over
@@ -469,7 +471,8 @@ end
 -- a damage rank (an either-or heal's damage half included: same id, kind
 -- "heal" stored, so the half stays estimated). An entry without `v` (T122's
 -- one pair, the shares that were wrong) is dropped on the first read.
-local ROUND_TOL = 0.5    -- each tooltip value is read within this (rounded to an integer)
+local ROUND_TOL = 0.5    -- each rounded number in a value is read within this; a value of n rounded
+                         -- numbers (entry.roundTerms, Parse.Terms) within n x this (review M1)
 local MAX_SPREAD = 0.04  -- a share is measured once its interval is this narrow
 local MAX_POINTS = 8     -- readings kept per spell: the lowest, the highest, the newest between
 local MAX_COUNTS = 2     -- no rank takes twice the bonus
@@ -537,13 +540,15 @@ local function ApplyBonus(e, kind, shape)
         counts = est, from = "estimated", why = why,
         of = of, amount = of and est * of or nil,
     }
-    -- T131: a fit still too wide says how far it has come
+    -- T131: a fit still too wide says how far it has come; a narrow one the
+    -- share refused (the text does not move with the bonus) says nothing (review m2)
     local f = StoredFit(e.id, kind, school)
-    if f and type(f.lo) == "number" and type(f.hi) == "number" then
+    if f and type(f.lo) == "number" and type(f.hi) == "number" and f.hi - f.lo > MAX_SPREAD then
         local mn, mx = Span(f.points)
-        local need = math.ceil(4 * ROUND_TOL / MAX_SPREAD - (mx - mn))
+        local tol = ROUND_TOL * (type(f.terms) == "number" and f.terms or 1)
+        local need = math.ceil(4 * tol / MAX_SPREAD - (mx - mn))
         if need < 1 then need = 1 end
-        e.bonus.measuring = { lo = f.lo, hi = f.hi, need = need }
+        e.bonus.measuring = { lo = (f.lo > 0) and f.lo or 0, hi = f.hi, need = need }
     end
 end
 
@@ -1193,7 +1198,8 @@ end
 -- the rank's (bonus, value) to ST.cdb.bonusCounts[id].points -- one point per
 -- distinct bonus, at most MAX_POINTS (the lowest and highest bonus and the
 -- newest between). The fit is an interval: each value is read within
--- ROUND_TOL, so for every pair the share lies in [(dv - 2 TOL) / db,
+-- TOL = ROUND_TOL x the value's rounded terms (entry.roundTerms: a tick-built
+-- total of 5 ticks is 5 rounded numbers), so for every pair the share lies in [(dv - 2 TOL) / db,
 -- (dv + 2 TOL) / db]; lo, hi the intersection, counts its midpoint. An empty
 -- intersection, or a new value at a bonus already seen, means the base moved
 -- (a talent, a level, the text): every point but the newest is dropped.
@@ -1208,14 +1214,14 @@ end
 
 -- The interval over every pair of points: lo, hi, or nil when empty (or
 -- fewer than two distinct bonuses).
-local function Fit(points)
+local function Fit(points, tol)
     local lo, hi
     for i = 1, #points do
         for j = 1, #points do
             local db = points[j][1] - points[i][1]
             if db > 0 then
                 local dv = points[j][2] - points[i][2]
-                local a, b = (dv - 2 * ROUND_TOL) / db, (dv + 2 * ROUND_TOL) / db
+                local a, b = (dv - 2 * tol) / db, (dv + 2 * tol) / db
                 if lo == nil or a > lo then lo = a end
                 if hi == nil or b < hi then hi = b end
             end
@@ -1255,7 +1261,9 @@ local function Readings(points)
 end
 
 -- One reading into the store; true when the entry changed.
-local function AddReading(id, name, kind, school, bonus, value)
+local function AddReading(id, name, kind, school, bonus, value, terms)
+    terms = (type(terms) == "number" and terms >= 1) and terms or 1
+    local tol = ROUND_TOL * terms
     if type(ST.cdb) ~= "table" then return false end
     if type(ST.cdb.bonusCounts) ~= "table" then ST.cdb.bonusCounts = {} end
     local store = ST.cdb.bonusCounts
@@ -1268,6 +1276,12 @@ local function AddReading(id, name, kind, school, bonus, value)
         m.school = school
     end
     local points = m.points
+    -- review M1: a value made of another number of rounded terms is another text
+    if #points > 0 and (m.terms or 1) ~= terms then
+        ST:Debug("other", "bonus fit: %s (%s) now %d rounded terms, was %d -- readings %s dropped",
+            tostring(name), tostring(id), terms, m.terms or 1, Readings(points))
+        points = {}
+    end
     for i, p in ipairs(points) do
         if p[1] == bonus then
             if p[2] == value then
@@ -1276,15 +1290,19 @@ local function AddReading(id, name, kind, school, bonus, value)
                 points[#points + 1] = p
                 return false
             end
-            ST:Debug("other", "bonus fit: %s (%s) read %s at +%s, had %s -- the base moved, readings %s dropped",
-                tostring(name), tostring(id), tostring(value), tostring(bonus), tostring(p[2]), Readings(points))
-            points = {}
+            if math.abs(value - p[2]) <= 2 * tol then
+                table.remove(points, i) -- within the rounding: the newest value for that bonus
+            else
+                ST:Debug("other", "bonus fit: %s (%s) read %s at +%s, had %s -- the base moved, readings %s dropped",
+                    tostring(name), tostring(id), tostring(value), tostring(bonus), tostring(p[2]), Readings(points))
+                points = {}
+            end
             break
         end
     end
     points[#points + 1] = { bonus, value }
     points = Trim(points)
-    local lo, hi, empty = Fit(points)
+    local lo, hi, empty = Fit(points, tol)
     if empty then
         ST:Debug("other", "bonus fit: %s (%s) readings %s disagree -- the base moved, the newest kept",
             tostring(name), tostring(id), Readings(points))
@@ -1292,6 +1310,7 @@ local function AddReading(id, name, kind, school, bonus, value)
         lo, hi = nil, nil
     end
     m.points = points
+    m.terms = terms
     m.lo, m.hi = lo, hi
     m.counts = (lo ~= nil) and (lo + hi) / 2 or nil
     m.at, m.bonus = time(), bonus
@@ -1323,7 +1342,7 @@ function Book:MeasureBonus(spells, families)
             and e.descState == "ok" then
             local school = (kind == "damage") and fam.school or nil
             local bonus = Reading(kind, school)
-            if bonus ~= nil and AddReading(id, e.name, kind, school, bonus, e.value) then
+            if bonus ~= nil and AddReading(id, e.name, kind, school, bonus, e.value, e.roundTerms) then
                 ApplyBonus(e, kind, fam.shape)
             end
         end

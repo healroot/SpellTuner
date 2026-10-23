@@ -430,6 +430,22 @@ function Parse.Total(part)
     return total
 end
 
+-- T131 review M1: how many rounded numbers Parse.Total added up -- the
+-- min/max pair counts once (its average), `over` once, a tick once per tick.
+-- Each is an integer the tooltip rounded, so a total built of n of them is
+-- read within n times one number's rounding. At least 1.
+function Parse.Terms(part)
+    if type(part) ~= "table" then return 1 end
+    local n = 0
+    if part.min ~= nil or part.max ~= nil then n = n + 1 end
+    if part.over ~= nil then n = n + 1 end
+    if part.tick ~= nil and part.periodDur ~= nil and part.period ~= nil and part.period > 0 then
+        n = n + math.floor(part.periodDur / part.period)
+    end
+    if n < 1 then n = 1 end
+    return n
+end
+
 function Parse.Duration(part)
     if type(part) ~= "table" then return nil end
     return part.dur or part.periodDur or nil

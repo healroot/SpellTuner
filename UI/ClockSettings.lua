@@ -663,10 +663,10 @@ end
 -- T115: the layout the controls write to (each layout keeps its own bars and
 -- frame), and the layout's own defaults.
 local function Layout(p)
-    return p.look and p.look.layout or "line"
+    return p.look and p.look.layout or ST.ClockView.DEFAULT_LAYOUT
 end
 local function LayoutDef(p)
-    return ST.ClockView.LAYOUT[Layout(p)] or ST.ClockView.LAYOUT.line
+    return ST.ClockView.LAYOUT[Layout(p)] or ST.ClockView.LAYOUT[ST.ClockView.DEFAULT_LAYOUT]
 end
 
 -- One frame.<layout>.<field> from a slider: the layout's default writes nil.

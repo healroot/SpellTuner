@@ -1218,6 +1218,18 @@ do
     Healer(90132, "FitRejuv", "Rank 3", 300, 0.68, 16)
     Healer(90133, "FitRejuv", "Rank 4", 450, 0.80, 22)
     Healer(90134, "FitMany", "Rank 1", 500, 0.50)
+    -- review M1: a channel totalled from 5 rounded ticks (true share 0.50, 0.10
+    -- a tick) and a hybrid of a rounded direct pair and a rounded HoT (0.30 + 0.43)
+    S.AddSpell(90135, "FitChannel", "Rank 1", function()
+        local t = math.floor(98 + 0.10 * (S.bonusHealing or 0) + 0.5)
+        return "Regenerates all nearby party members within 20 yards for " .. t
+            .. " every 2 sec for 10 sec. Druid must channel to maintain the spell."
+    end, { cast = 0, cost = 300, level = 1 })
+    S.AddSpell(90136, "FitHybrid", "Rank 1", function()
+        local b = S.bonusHealing or 0
+        return "Heals a friendly target for " .. math.floor(93 + 0.30 * b + 0.5) .. " to "
+            .. math.floor(107 + 0.30 * b + 0.5) .. " and another " .. math.floor(98 + 0.43 * b + 0.5) .. " over 21 sec."
+    end, { cast = 2000, cost = 120, level = 1 })
 
     local function Scan()
         Book:MarkDirty()
@@ -1423,6 +1435,58 @@ do
             Want(m and #m.points == 1 and m.points[1][1] == 200 and Share(90131) == nil, "disagree "
                 .. tostring(m and #m.points))
             fitBase = 0
+        end)
+    end)
+
+    T95("T131 review M1: a 5-tick channel (0.50) read at +0 / +55 keeps the truth inside; +7 steps never reset", function()
+        return Around(function(Want)
+            S.bonusHealing = 0
+            local b0 = Scan()
+            local e0 = b0.spells[90135]
+            Want(e0 and e0.roundTerms == 5, "roundTerms " .. tostring(e0 and e0.roundTerms))
+            S.bonusHealing = 55
+            Scan()
+            local m = Stored(90135)
+            Want(m and m.lo and m.lo <= 0.50 and m.hi >= 0.50, "interval " .. tostring(m and m.lo) .. "-" .. tostring(m and m.hi))
+            local c, lo, hi = Book._Measured(90135, "heal")
+            Want(c == nil or (lo <= 0.50 and hi >= 0.50), "measured wrong " .. tostring(c))
+            ST.cdb.bonusCounts[90135] = nil
+            local resets = {}
+            for i = 0, 10 do
+                S.bonusHealing = 7 * i
+                Scan()
+                local mi = Stored(90135)
+                if not mi or #mi.points ~= math.min(i + 1, Book.MAX_POINTS) then resets[#resets + 1] = "+" .. 7 * i .. ":" .. tostring(mi and #mi.points) end
+                if mi and mi.lo and (mi.lo > 0.50 or mi.hi < 0.50) then resets[#resets + 1] = "+" .. 7 * i .. " excludes" end
+            end
+            Want(#resets == 0, "steps " .. table.concat(resets, ","))
+        end)
+    end)
+
+    T95("T131 review M1: a hybrid (0.30 direct + 0.43 over) at +0 / +55 / +61 does not reset", function()
+        return Around(function(Want)
+            for _, b in ipairs({ 0, 55, 61 }) do
+                S.bonusHealing = b
+                Scan()
+            end
+            local m = Stored(90136)
+            local e = Book:Get().spells[90136]
+            Want(e and e.roundTerms == 2, "roundTerms " .. tostring(e and e.roundTerms))
+            Want(m and #m.points == 3, "points " .. tostring(m and #m.points))
+            Want(m and m.lo and m.lo <= 0.73 and m.hi >= 0.73, "interval " .. tostring(m and m.lo) .. "-" .. tostring(m and m.hi))
+        end)
+    end)
+
+    T95("T131 review m2: a text that does not move with the bonus gives no measuring hint", function()
+        return Around(function(Want)
+            S.bonusHealing = 0
+            Scan()
+            S.bonusHealing = 200
+            local e = Scan().spells[90127] -- OldShare: "200 to 240" whatever the bonus
+            local m = Stored(90127)
+            Want(m and m.lo and m.hi - m.lo <= Book.MAX_SPREAD and Share(90127) == nil, "fit " .. tostring(m and m.counts))
+            Want(e and e.bonus and e.bonus.from == "estimated" and e.bonus.measuring == nil,
+                "measuring " .. tostring(e and e.bonus and e.bonus.measuring and e.bonus.measuring.need))
         end)
     end)
 

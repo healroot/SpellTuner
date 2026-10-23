@@ -1251,7 +1251,7 @@ end
 function View:SetLook(look)
     self.look = look or self.look
     look = self.look
-    local key = CV.LAYOUT[look.layout] and look.layout or "line"
+    local key = CV.LAYOUT[look.layout] and look.layout or CV.DEFAULT_LAYOUT
     look.layout = key
     local set = self:Set(key)
     if self.active and self.active ~= set then
@@ -1297,14 +1297,14 @@ end
 function CV.Build(parent, look, draw)
     look = look or {}
     if look.layout == nil then
-        local resolved = CV.Resolve({ layout = "line", over = {} }, CV.Role(), {
+        local resolved = CV.Resolve({ layout = CV.DEFAULT_LAYOUT, over = {} }, CV.Role(), {
             labelSample = look.labelSample, show = look.show })
         resolved.colors = look.colors or resolved.colors
         resolved.bars.show = "none"
         look = resolved
     end
     local v = setmetatable({ parent = parent, look = look, draw = draw or {} }, View)
-    v:Set(CV.LAYOUT[look.layout] and look.layout or "line")
+    v:Set(CV.LAYOUT[look.layout] and look.layout or CV.DEFAULT_LAYOUT)
 
     -- the pulse: four quarter-second fades (UI/Widget.lua's since v0.1)
     local pulse = parent:CreateAnimationGroup()
@@ -1413,7 +1413,7 @@ local WARMUP_FACE = { mode = "warmup", label = "OOM", known = "pending", tone = 
 function View:Paint(face, look)
     if look then self.look = look end
     local CF = ST.ClockFace
-    local key = CV.LAYOUT[self.look.layout] and self.look.layout or "line"
+    local key = CV.LAYOUT[self.look.layout] and self.look.layout or CV.DEFAULT_LAYOUT
     local f = type(face) == "table" and face or WARMUP_FACE
     self.face = type(face) == "table" and face or nil
     self:Layout()

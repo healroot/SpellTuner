@@ -97,6 +97,7 @@ BS.ENTRY = {
     kind         = O("string"),   -- ReadSpell's own entries and a Half's copies
     -- Numbers
     value        = O("number"),
+    roundTerms   = O("number"),   -- T131 review M1: the rounded numbers `value` adds up (Parse.Terms)
     min          = O("number"),
     max          = O("number"),
     over         = O("number"),
