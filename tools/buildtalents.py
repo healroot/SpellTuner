@@ -74,9 +74,29 @@ MULT_SHAPES = [
     ("spell", re.compile(r"^[Ii]ncreases the effect of your (?P<spell>.+?) spell by " + NUM
                          + r"(?P<rest>.*)$")),
 ]
-# a sentence that starts like a multiplier: one that is not recognised is named
-MULT_LEAD = re.compile(r"^[Ii]ncreases (?:all damage you deal|the damage done by your|the effect"
-                       r"|the amount healed)")
+# A candidate multiplier (T133 review M1): any sentence that increases something
+# whose object names damage, healing, health, an effect or an amount, by N%. A
+# candidate not of a recognised shape is skipped and named, never shipped. The
+# object words that are not an amount (a chance, threat, a duration, mana, armor,
+# attack power, an area of effect) do not make a candidate.
+MULT_VERB = re.compile(r"\b[Ii]ncreases?\b")
+MULT_OBJECT = re.compile(r"\b(?:damage|heal(?:ing|ed|s)?|health|effect(?:iveness)?|amount)\b"
+                         r"(?P<obj>[^%.]*?) by \d+(?:\.\d+)?%")
+MULT_NOT_AMOUNT = re.compile(r"threat|duration|\b[Mm]ana\b|[Aa]rmor|[Aa]ttack [Pp]ower")
+
+
+def mult_candidate(sentence):
+    """True when the sentence raises damage, healing or an effect by a percent."""
+    text = mult_text(sentence).replace("area of effect", "area")
+    if not MULT_VERB.search(text):
+        return False
+    for m in MULT_OBJECT.finditer(text):
+        # "critical effect chance" is a chance; "damage and critical strike
+        # chance of your Moonfire" still raises the damage
+        if m.group("obj").startswith(" chance") or MULT_NOT_AMOUNT.search(m.group(0)):
+            continue
+        return True
+    return False
 SCHOOLS = {"Arcane", "Fire", "Frost", "Holy", "Nature", "Shadow", "Physical"}
 
 
@@ -127,7 +147,7 @@ def build_mults(data):
                 desc = t.get("desc") or []
                 if isinstance(desc, dict):
                     desc = [desc[k] for k in sorted(desc, key=lambda k: int(k))]
-                if not any(MULT_LEAD.match(mult_text(s or "")) for s in desc):
+                if not any(mult_candidate(s or "") for s in desc):
                     continue
                 parsed = [parse_mult(s or "", known) for s in desc]
                 bad = [why for scope, why in parsed if scope is None]
@@ -294,8 +314,9 @@ def write(data, rules, skipped, dropped, out, mults=None, mskipped=None):
     w("-- T133: ST.TalentMults[class token][talent] = { scope, pctPerRank }: rank r")
     w("-- multiplies what the scope names (kind \"damage\" / \"heal\", schools, spells")
     w("-- by name) by 1 + pctPerRank[r] / 100, read from rank r's own sentence.")
-    w("-- %d multiplier talent(s) skipped (a sentence that starts like one but is not" % len(mskipped))
-    w("-- of a recognised shape -- conditions, second effects, other words):")
+    w("-- %d multiplier talent(s) skipped (a sentence that raises damage, healing, an" % len(mskipped))
+    w("-- effect or an amount by a percent but is not of a recognised shape --")
+    w("-- conditions, second effects, other words; named, never guessed):")
     for s in sorted(mskipped):
         w("--   " + s)
     if not mskipped:

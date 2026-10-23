@@ -31,7 +31,9 @@
 --      multipliers (ST.TalentMults): Naturalist, Moonfury, Gift of Nature,
 --      Improved Rejuvenation and Spiritual Healing with every rank's percent;
 --      a sentence of the lead not recognised (Bastion's condition) skipped
---      and named in the file's header, never shipped
+--      and named in the file's header, never shipped; every sentence that
+--      raises damage, healing, an effect or an amount by a percent is named
+--      (review M1: Genesis, Improved Moonfire, ...), a crit chance is not
 HARNESS_FLAVOUR = "forever"
 
 local here = arg[0]:match("^(.*)/[^/]+$")
@@ -439,6 +441,23 @@ T("10 an unrecognised sentence: skipped and named (Bastion, Restorative Totems),
         and Has(head, "--   Shaman: Restorative Totems (")
     local shipped = (ST.TalentMults.WARRIOR or {})["Bastion"] ~= nil or (ST.TalentMults.SHAMAN or {})["Restorative Totems"] ~= nil
     return named and not shipped, "named=" .. tostring(named) .. " shipped=" .. tostring(shipped)
+end)
+
+T("10 every damage / healing / effect percent is named (review M1): Genesis, Improved Moonfire, Twin Disciplines, Improved PW:S, Searing Light, Darkness, Shadow Mastery, Soul Siphon, Improved Cone of Cold; a crit chance is not", function()
+    local fh = io.open(here .. "/../Data/Talents_Forever.lua", "r")
+    local text = fh and fh:read("*a") or ""
+    if fh then fh:close() end
+    local head = text:match("^(.-)\nST%.TalentRules") or ""
+    local missing = {}
+    for _, n in ipairs({ "Druid: Genesis (", "Druid: Improved Moonfire (", "Priest: Twin Disciplines (",
+        "Priest: Improved Power Word: Shield (", "Priest: Searing Light (", "Priest: Darkness (",
+        "Warlock: Shadow Mastery (", "Warlock: Soul Siphon (", "Mage: Improved Cone of Cold (" }) do
+        if not Has(head, "--   " .. n) then missing[#missing + 1] = n end
+    end
+    local chance = Has(head, "--   Druid: Improved Regrowth (") or Has(head, "--   Shaman: Tidal Mastery (")
+    local shipped = (ST.TalentMults.DRUID or {})["Genesis"] ~= nil
+    return #missing == 0 and not chance and not shipped,
+        "missing=" .. table.concat(missing, ",") .. " chance=" .. tostring(chance) .. " shipped=" .. tostring(shipped)
 end)
 
 print(string.format("\n%d ok, %d failed", ok, #fails))

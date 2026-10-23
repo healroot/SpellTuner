@@ -1648,4 +1648,11 @@ sentences): Naturalist 5 made every damage rank x1.05, base included (Starfire 1
 Wrath R1 1.036-1.055, Entangling Roots R1 0.244-0.255 = 6% x 4 ticks x 1.05, which also adds
 Entangling Roots to the measured 3 s tick families). Two multipliers combine as a product: not
 measured, said as assumed. The card shows a measured share beside the prediction and the residual
-(`unexplained x0.91`); the residual is never applied.
+(`unexplained x0.91`); the residual is never applied. After the T133 review: every talent sentence that raises
+damage, healing, an effect or an amount by a percent is at least named in the generated file's
+header (Genesis, Improved Moonfire, Twin Disciplines, ...); only the recognised shapes ship. Talent
+ranks not read and a heal's learn level unknown are each factor 1 and said (`, talents not read`,
+`, learn level unknown`). **Known limit (review m3):** an either-or spell's damage half (Holy Shock,
+Holy Nova) takes the heal entry's talent factor, which is dropped for kind damage, so it can never
+take a damage multiplier; none is generated for paladin or priest today, so nothing is wrong on
+the current data, but a recognised "Holy damage" shape would leave that half at x1.

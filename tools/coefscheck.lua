@@ -21,7 +21,9 @@
 --   6. T133 (docs/tasks/T133-forever-share-factors.md): Coef.LevelPenalty's
 --      oracles; through the real Book at level 26 with Naturalist 5, each rank
 --      inside the author's level-26 measured interval; the words of each
---      factor; ranks not read, a rank above the rule, two multipliers
+--      factor; ranks not read (said, review m1), a learn level unknown (said,
+--      review m2), P on a hybrid (Regrowth R2 at 37), a rank above the rule,
+--      two multipliers
 --   7. T133 words: the card's estimated and measured lines, as predicted or
 --      with the residual
 HARNESS_FLAVOUR = "forever"
@@ -129,7 +131,7 @@ for _, id in ipairs({ 774, 1058, 1430, 2090 }) do
     T("2 Rejuvenation " .. id .. ": 0.80 (20% x 4 ticks, 3 s measured)", function()
         local b = Bonus(id)
         return b and b.from == "estimated" and Near(b.counts, 0.8)
-            and b.why == "20% x 4 ticks, 3 s ticks (measured 2026-10-23) (talentsforever)",
+            and b.why == "20% x 4 ticks, 3 s ticks (measured 2026-10-23), talents not read (talentsforever)",
             string.format("counts=%s why=%s", tostring(b and b.counts), tostring(b and b.why))
     end)
 end
@@ -138,7 +140,7 @@ for id, want in pairs({ [5185] = { 0.429, "42.9%" }, [5186] = { 0.571, "57.1%" }
     [5187] = { 0.714, "71.4%" }, [5188] = { 0.857, "85.7%" } }) do
     T("2 Healing Touch " .. id .. ": " .. want[1], function()
         local b = Bonus(id)
-        return b and b.from == "estimated" and Near(b.counts, want[1]) and b.why == want[2] .. " (talentsforever)",
+        return b and b.from == "estimated" and Near(b.counts, want[1]) and b.why == want[2] .. ", talents not read (talentsforever)",
             string.format("counts=%s why=%s", tostring(b and b.counts), tostring(b and b.why))
     end)
 end
@@ -146,20 +148,20 @@ end
 T("2 Regrowth R2: 0.286 + 0.071 x 7", function()
     local b = Bonus(8938)
     return b and b.from == "estimated" and Near(b.counts, 0.286 + 0.071 * 7)
-        and b.why == "28.6% + 7.1% x 7 ticks, 3 s ticks (measured 2026-10-23) (talentsforever)",
+        and b.why == "28.6% + 7.1% x 7 ticks, 3 s ticks (measured 2026-10-23), talents not read (talentsforever)",
         string.format("counts=%s why=%s", tostring(b and b.counts), tostring(b and b.why))
 end)
 
 T("2 Wrath R1: 0.429, no sub-20 factor", function()
     local b = Bonus(5176)
-    return b and b.from == "estimated" and Near(b.counts, 0.429) and b.why == "42.9% (talentsforever)",
+    return b and b.from == "estimated" and Near(b.counts, 0.429) and b.why == "42.9%, talents not read (talentsforever)",
         string.format("counts=%s why=%s", tostring(b and b.counts), tostring(b and b.why))
 end)
 
 T("2 Moonfire R1: 0.15 + 0.13 x 3", function()
     local b = Bonus(8921)
     return b and b.from == "estimated" and Near(b.counts, 0.15 + 0.13 * 3)
-        and b.why == "15% + 13% x 3 ticks, 3 s ticks (measured 2026-10-23) (talentsforever)",
+        and b.why == "15% + 13% x 3 ticks, 3 s ticks (measured 2026-10-23), talents not read (talentsforever)",
         string.format("counts=%s why=%s", tostring(b and b.counts), tostring(b and b.why))
 end)
 
@@ -170,7 +172,7 @@ T("3 a parsed tick period is used: 2 s over 10 s is 5 ticks", function()
     local id = 774
     local e = { id = id, dur = 10, parsed = { heal = { tick = 20, period = 2, periodDur = 10 } } }
     local c, why = Coef.Estimate(e, "hot", "heal")
-    return Near(c, 0.2 * 5) and why == "20% x 5 ticks (talentsforever)", tostring(c) .. " " .. tostring(why)
+    return Near(c, 0.2 * 5) and why == "20% x 5 ticks, learn level unknown (talentsforever)", tostring(c) .. " " .. tostring(why)
 end)
 
 -- m2: a real channel, Mind Flay R1 (per-tick row, "over 3 sec." names no
@@ -188,7 +190,7 @@ end)
 T("3 Prayer of Healing R1: 0.286, no group rule (the share is per target)", function()
     local e = { id = 596, targets = "party", cast = 3, parsed = { heal = { min = 312, max = 333 } } }
     local c, why = Coef.Estimate(e, "direct", "heal")
-    return Near(c, 0.286) and why == "28.6% (talentsforever)", tostring(c) .. " " .. tostring(why)
+    return Near(c, 0.286) and why == "28.6%, learn level unknown (talentsforever)", tostring(c) .. " " .. tostring(why)
 end)
 
 T("3 the old path still halves a party heal", function()
@@ -208,7 +210,7 @@ for _, c in ipairs({
         local e = { id = c[1], parsed = { heal = { min = 10, max = 12 }, damage = { min = 10, max = 12 } } }
         local h, hw = Coef.Estimate(e, "direct", "heal")
         local d, dw = Coef.Estimate(e, "direct", "damage")
-        return Near(h, c[3]) and hw == c[4] .. " (talentsforever)" and Near(d, c[5]) and dw == c[6] .. " (talentsforever)",
+        return Near(h, c[3]) and hw == c[4] .. ", learn level unknown (talentsforever)" and Near(d, c[5]) and dw == c[6] .. " (talentsforever)",
             string.format("heal=%s (%s) damage=%s (%s)", tostring(h), tostring(hw), tostring(d), tostring(dw))
     end)
 end
@@ -396,8 +398,44 @@ T("6 ranks not read: factor 1, talents not read, the share alone", function()
     local e = Use(26, false).spells[5176]
     local m = e.talentMult
     return m and m.factor == 1 and m.words == "talents not read" and Near3(e.bonus.counts, 0.429)
-        and e.bonus.why == "42.9% (talentsforever)",
+        and e.bonus.why == "42.9%, talents not read (talentsforever)",
         string.format("%s %s", tostring(m and m.words), tostring(e.bonus.why))
+end)
+
+-- review m1: ranks not read are said beside a level factor too, and are not
+-- themselves a prediction (factor 1)
+T("6 ranks not read on a heal at 26: x 0.55 level, then talents not read", function()
+    local e = Use(26, false).spells[5185]
+    local b = e.bonus
+    return b and Near3(b.counts, 0.429 * 0.55) and e.talentMult and e.talentMult.words == "talents not read"
+        and b.why == "42.9% x 0.55 level 26 (from 17, -5%/level), talents not read (talentsforever, predicted)",
+        tostring(b and b.why)
+end)
+
+-- review m2: a heal's learn level missing or 0 is P 1, said; Healing Touch R1's
+-- measured start needs no learn level
+T("6 learn level unknown (nil, 0): P 1, said; a measured start still applies", function()
+    S.level, ST.player.level = 26, 26
+    local rj = { id = 774, dur = 12, parsed = { heal = { tick = 20, period = 3, periodDur = 12 } } }
+    local c1, w1 = Coef.Estimate(rj, "hot", "heal")
+    rj.level = 0
+    local c2, w2 = Coef.Estimate(rj, "hot", "heal")
+    local c3, w3 = Coef.Estimate({ id = 5185, parsed = { heal = { min = 40, max = 54 } } }, "direct", "heal")
+    local d, dw = Coef.Estimate({ id = 5176, parsed = { damage = { min = 13, max = 16 } } }, "direct", "damage")
+    return Near(c1, 0.8) and w1 == "20% x 4 ticks, learn level unknown (talentsforever)"
+        and Near(c2, 0.8) and w2 == w1
+        and Near3(c3, 0.429 * 0.55) and w3 == "42.9% x 0.55 level 26 (from 17, -5%/level) (talentsforever, predicted)"
+        and Near(d, 0.429) and dw == "42.9% (talentsforever)",
+        table.concat({ tostring(w1), tostring(w2), tostring(w3), tostring(dw) }, " | ")
+end)
+
+-- review: P on a hybrid scales the direct part and every tick (Regrowth R2,
+-- learned 18, start 35; level 37 -> 0.90)
+T("6 Regrowth R2 at 37: (0.286 + 0.071 x 7) x 0.90", function()
+    local b = Use(37, {}).spells[8938].bonus
+    return b and Near3(b.counts, (0.286 + 0.071 * 7) * 0.90)
+        and b.why == "28.6% + 7.1% x 7 ticks, 3 s ticks (measured 2026-10-23) x 0.90 level 37 (from 35, -5%/level) (talentsforever, predicted)",
+        tostring(b and b.counts) .. " " .. tostring(b and b.why)
 end)
 
 T("6 a rank above the rule: no rule, its factor left out", function()

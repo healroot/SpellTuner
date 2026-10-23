@@ -239,13 +239,15 @@ local function PlayerLevel()
 end
 
 -- The level factor's words: the long one for the estimate, the short one for
--- the measured line. Nothing when P is 1 and the level is known.
+-- the measured line. Nothing when P is 1 and both levels are known; an
+-- unknown player level or (a heal's) learn level is P 1 and said (review m2).
 local function LevelWords(e, kind)
     if kind == "damage" then return 1, "", "" end
     local lvl = PlayerLevel()
     if lvl == nil then return 1, ", level unknown", "" end
     local p, start = Coef.LevelPenalty(e.id, e.level, lvl, kind)
-    if p >= 1 or start == nil then return 1, "", "" end
+    if start == nil then return 1, ", learn level unknown", "" end
+    if p >= 1 then return 1, "", "" end
     local step = Num(Coef.LEVEL_STEP * 100)
     if p <= 0 then
         return 0, " x0 level " .. lvl .. " (from " .. start .. ", -" .. step .. "%/level: no bonus at this level)",
@@ -258,12 +260,14 @@ end
 
 -- The talent factor, from Spells/Book.lua's seam (entry.talentMult, for the
 -- kind it was read for): factor, words. "talents not read" is factor 1 and
--- not said; a "no rule" talent is said.
+-- said as ", talents not read" (review m1, as T129's cast rule says it), not a
+-- prediction; a "no rule" talent is said.
 local function TalentWords(e, kind)
     local m = e.talentMult
     if type(m) ~= "table" or type(m.factor) ~= "number" then return 1, "" end
     if m.kind ~= nil and kind ~= nil and m.kind ~= kind then return 1, "" end
-    if type(m.words) ~= "string" or m.words == "" or m.words == "talents not read" then return 1, "" end
+    if m.words == "talents not read" then return 1, ", talents not read" end
+    if type(m.words) ~= "string" or m.words == "" then return 1, "" end
     if m.factor == 1 and not m.words:find("no rule", 1, true) then return 1, "" end
     return m.factor, " " .. m.words
 end
@@ -298,11 +302,14 @@ local function FromRow(e, row, kind)
     local p, levelLong, levelShort = LevelWords(e, kind)
     local m, talent = TalentWords(e, kind)
     counts = share * p * m
-    local predicted = (levelLong ~= "" and levelLong ~= ", level unknown") or talent ~= ""
+    -- a prediction is a factor said by name; an unknown level or unread
+    -- talents (factor 1, ", ... unknown" / ", talents not read") is not one
+    local predicted = levelShort ~= "" or (talent ~= "" and talent:sub(1, 1) ~= ",")
     local why = table.concat(words, " + ") .. note .. levelLong .. talent
         .. (predicted and " (talentsforever, predicted)" or " (talentsforever)")
     -- the short form the measured line quotes: "80% x 0.75 level x1.05 Naturalist 5"
-    local short = Pct(share) .. levelShort .. talent
+    local short = Pct(share) .. levelShort
+    if talent:sub(1, 1) ~= "," then short = short .. talent end
     return counts, why, nil, short
 end
 
