@@ -11,8 +11,8 @@
 --      Touch R1-R4 0.429 / 0.571 / 0.714 / 0.857; Regrowth R2 0.286 + 0.071 x
 --      7; Wrath R1 0.429; Moonfire R1 0.15 + 0.13 x 3 -- no sub-20 factor
 --   3. a parsed tick period is used; 3 s only for the measured families, any
---      other tick row with no period on the old rule whole (M1); a channel counts
---      its own ticks; no group rule on this path, the old path's kept (M2)
+--      other tick row with no period on the old rule whole (M1), a channel
+--      (Mind Flay) included (m2); no group rule on this path, the old path's kept (M2)
 --      an either-or spell's heal and damage shares never summed (B1)
 --   4. an id with no row falls back to the old rule with its old words
 --   5. a measured share still wins over the generated estimate
@@ -161,14 +161,15 @@ T("3 a parsed tick period is used: 2 s over 10 s is 5 ticks", function()
     return Near(c, 0.2 * 5) and why == "20% x 5 ticks (talentsforever)", tostring(c) .. " " .. tostring(why)
 end)
 
-T("3 a channel counts its own ticks (duration / period)", function()
-    local saved = ST.CoefRules[99001]
-    ST.CoefRules[99001] = { tick = 0.1, name = "Test Channel", rank = 1 }
-    local e = { id = 99001, castKind = "channeled", interval = 8,
-        parsed = { heal = { tick = 50, period = 2, periodDur = 8 } } }
-    local c, why = Coef.Estimate(e, "hot", "heal")
-    ST.CoefRules[99001] = saved
-    return Near(c, 0.4) and why == "10% x 4 ticks (talentsforever)", tostring(c) .. " " .. tostring(why)
+-- m2: a real channel, Mind Flay R1 (per-tick row, "over 3 sec." names no
+-- period): no 3 s guess, the old channel rule with the reason
+T("3 Mind Flay R1, a channel with no parsed period: the old channel rule", function()
+    local e = { id = 15407, castKind = "channeled", interval = 3, dur = 3, level = 20,
+        parsed = { damage = { over = 75, dur = 3 } } }
+    local c, why = Coef.Estimate(e, "hot", "damage")
+    return type(ST.CoefRules[15407]) == "table" and type(ST.CoefRules[15407].tick) == "number"
+        and Near(c, 3 / 3.5) and why == "channel 3 s / 3.5 (tick period unknown -- old rule)",
+        tostring(c) .. " " .. tostring(why)
 end)
 
 -- M2: the site's share is per target, so no group rule on this path
