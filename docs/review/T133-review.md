@@ -34,7 +34,7 @@ Verdict: **fail** on one major (a small generator fix); otherwise sound.
   on a direct heal (HT R1), on ticks (Rejuvenation R1), its absence on damage (Wrath R1, ER R1),
   the floor (level 60) and the unknown level. The bookshapecheck section needs the bonus to move;
   at the stub's 64 HT R1 is legitimately 0. Not tested: P on a hybrid (Regrowth) -- the code
-  multiplies the sum, so this is coverage, not a defect.
+  multiplies the sum, so this is coverage, not a defect. Oracle added in fb57d25 (Regrowth R2 at 37).
 - Item (4), Entangling Roots in TICK_MEASURED: 0.06 x 4 = 0.240 lies outside the measured
   0.244-0.255 and 0.06 x 4 x 1.05 = 0.252 inside; the 1.05 is confirmed independently by Wrath and
   Starfire, so the joint inference is sound. Acceptable (family-keyed like the others).
@@ -60,6 +60,7 @@ so whoever reads it to see what is missing will not find Genesis. The TESTING st
 heal-multiplier talent when taken" would then show an `unexplained x1.05` with nothing in the
 file to explain it. Fix: widen the lead (e.g. any "Increases ... by N%" whose object is damage,
 healing, an effect or an amount), keep the shapes as they are, so these are named as skipped.
+**Fixed in fb57d25** (94 named; oracle in `tools/talentscheck.lua` section 10).
 
 ## Minor
 
@@ -69,14 +70,14 @@ factor 1 and never said**, unlike T129's cast rule, whose old path says "(talent
 are not said"), but section 2 deliberately gives the case its own words. Failure: at login the
 trait walk answers nothing for the first scans (Book.lua:59-64); a Naturalist 5 druid's Wrath
 shows "~43% estimated (42.9% (talentsforever))" -- not even "predicted" -- 5% low, indistinguishable
-from a druid without the talent. Suggest saying ", talents not read" as the level does.
+from a druid without the talent. Suggest saying ", talents not read" as the level does. **Fixed in fb57d25**.
 
 **m2 -- `Spells/Coefficients.lua:225,248`: a heal rank with no learn level silently gets P 1.**
 `SpellLevelLearned` answering nil or 0 (no number, or a spell the client gives no level) returns
 `1, nil, nil`, and LevelWords says nothing, while an unknown *player* level says ", level
 unknown". Failure: on a level-60 druid, if the client answers 0 for Rejuvenation R1, the card
 says "80% (talentsforever)" where the rule gives 0, with no word that the penalty was not
-applied. Only HT R1 is protected (MEASURED_START). Suggest ", learn level unknown" for kind heal.
+applied. Only HT R1 is protected (MEASURED_START). Suggest ", learn level unknown" for kind heal. **Fixed in fb57d25**.
 
 **m3 -- `Spells/Book.lua:1128-1130` with `Spells/Book.lua:243`: an either-or spell's damage
 half can never take a damage multiplier.** Item (3): TalentMult runs once per book entry with the
@@ -85,6 +86,7 @@ TalentWords drops it for kind "damage". No damage multiplier for paladin or prie
 today (Searing Light / Darkness are dropped, M1), so nothing is wrong on the current data; once
 M1 is fixed and a "Holy damage" shape is recognised, Holy Nova's damage half would silently stay
 x1. Either compute the damage half's factor in DamageHalf or note the limit in the seam comment.
+**Fixed in fb57d25** (no code change, the lead's ruling: a known limit in `docs/DECISIONS.md`'s T133 entry).
 
 ## Not findings
 
