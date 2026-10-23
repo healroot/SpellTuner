@@ -136,7 +136,7 @@ end
 -- same, from its own duration and period. A row with a per-tick share whose
 -- period is unknown falls back to the old rule whole, direct part included
 -- (never half applied), and says "tick period unknown -- old rule". No sub-20
--- factor; the words:
+-- factor and no group rule: the site's share is per target (review M2). The words:
 --   "42.9% (talentsforever)"
 --   "20% x 4 ticks, 3 s ticks (measured 2026-10-23) (talentsforever)"
 --   "28.6% + 7.1% x 7 ticks, 3 s ticks (measured 2026-10-23) (talentsforever)"
@@ -220,14 +220,9 @@ function Coef.Estimate(e, shape, kind)
     local row = type(rules) == "table" and type(e.id) == "number" and rules[e.id] or nil
     if type(row) == "table" then
         local counts, why, unknown = FromRow(e, row, kind)
-        if not unknown then
-            if counts == nil then return nil, why end
-            if e.targets == "party" then
-                counts = counts * Coef.GROUP
-                why = why .. ", group rule"
-            end
-            return counts, why
-        end
+        -- M2: the site's share is already per target (Prayer of Healing's
+        -- 28.6% is 3.0 / 3.5 x 1/3), so the group rule is the old path's only
+        if not unknown then return counts, why end
         -- M1: the per-tick share cannot be counted, so the whole row is set
         -- aside and the old rule speaks, saying why
         local c, w = OldRule(e, shape)

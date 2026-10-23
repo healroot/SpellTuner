@@ -12,7 +12,7 @@
 --      7; Wrath R1 0.429; Moonfire R1 0.15 + 0.13 x 3 -- no sub-20 factor
 --   3. a parsed tick period is used; 3 s only for the measured families, any
 --      other tick row with no period on the old rule whole (M1); a channel counts
---      its own ticks; the group rule still halves
+--      its own ticks; no group rule on this path, the old path's kept (M2)
 --      an either-or spell's heal and damage shares never summed (B1)
 --   4. an id with no row falls back to the old rule with its old words
 --   5. a measured share still wins over the generated estimate
@@ -171,10 +171,17 @@ T("3 a channel counts its own ticks (duration / period)", function()
     return Near(c, 0.4) and why == "10% x 4 ticks (talentsforever)", tostring(c) .. " " .. tostring(why)
 end)
 
-T("3 the group rule still halves", function()
-    local e = { id = 5185, targets = "party", parsed = { heal = { min = 40, max = 54 } } }
+-- M2: the site's share is per target, so no group rule on this path
+T("3 Prayer of Healing R1: 0.286, no group rule (the share is per target)", function()
+    local e = { id = 596, targets = "party", cast = 3, parsed = { heal = { min = 312, max = 333 } } }
     local c, why = Coef.Estimate(e, "direct", "heal")
-    return Near(c, 0.429 * Coef.GROUP) and why == "42.9% (talentsforever), group rule", tostring(c) .. " " .. tostring(why)
+    return Near(c, 0.286) and why == "28.6% (talentsforever)", tostring(c) .. " " .. tostring(why)
+end)
+
+T("3 the old path still halves a party heal", function()
+    local e = { targets = "party", cast = 3, level = 30, parsed = { heal = { min = 312, max = 333 } } }
+    local c, why = Coef.Estimate(e, "direct", "heal")
+    return Near(c, 3 / 3.5 * Coef.GROUP) and why == "cast 3.0 / 3.5, group rule", tostring(c) .. " " .. tostring(why)
 end)
 
 -- B1: the site's "(direct)" is the damage part and "(heal)" the heal part;

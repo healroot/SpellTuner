@@ -57,6 +57,9 @@ the site's base text is stale). They go in `docs/TESTING.md` as the ranks to che
   included, and its why ends "(tick period unknown -- old rule)".
 - A channel uses its own tick count from duration / interval.
 - No sub-20 factor on this path. The group rule stays.
+- (Review M2, the lead's ruling, 2026-10-23, replacing "the group rule stays":) the site's
+  share is already per target (Prayer of Healing's 28.6% is 3.0 / 3.5 x 1/3), so no group
+  rule on this path; it stays on the old path only. Prayer of Healing R1 reads 0.286.
 - The why reads, for example, `20% x 4 ticks (talentsforever)` or
   `28.6% + 7.1% x 7 ticks (talentsforever)`.
 - Keep `BaseCast` / T129 only for the old path, which is the fallback for an id with

@@ -93,7 +93,8 @@ to `Data/Coefs_Forever.lua` (`ST.CoefRules`). A row with an `fx` / `asis` note, 
 wording, is skipped and counted in the file's header. They are Forever's **base estimates**
 (`Coef.Estimate`: direct + tick x ticks, ticks = duration / the parsed period, else 3 s only for
 Rejuvenation, Regrowth and Moonfire, measured 2026-10-23; any other spell over time with no parsed
-period keeps the old rule; no low-level penalty), a measured share still wins. On the 2026-10-22 export: 557 rows; 1 skipped
+period keeps the old rule; no low-level penalty and no group rule, the site's share being
+per target -- Prayer of Healing 28.6%), a measured share still wins. On the 2026-10-22 export: 557 rows; 1 skipped
 for a note (Shaman Lava Burst Rank 3, `asis`), 7 for wording (Paladin Seal of Fury, "42.9% and
 10% of spell power (direct)"). The author's level-25 export (2026-10-23) fits them with no
 low-level penalty except Healing Touch R1, Rejuvenation R1 and Regrowth R3's direct part
