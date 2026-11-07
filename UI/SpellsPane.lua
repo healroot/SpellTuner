@@ -1634,6 +1634,17 @@ local function BuildWhatIf(win)
     d.classTitle = pane:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
     d.classTitle:SetJustifyH("LEFT")
     UI.Tint(d.classTitle, "text", "muted")
+    -- T137: the talent planner's door, beside TALENTS where a line installs one
+    d.planBtn = UI.CreateButton(pane, "Talent plan...", "accent-hover", { 84, 16 }, false, false, UI.FONT_SMALL, nil)
+    d.planBtn:SetScript("OnClick", function()
+        local planner = ST.TalentPlanner
+        if not planner then return end
+        local s, why = planner.Open(d:GetParent())
+        if not s and why then ST:Print("talent plan: " .. why) end
+    end)
+    UI.SetTooltips(d.planBtn, "ANCHOR_TOPLEFT", 0, 3, "Talent plan",
+        "Plan a whole build on your class's trees; the numbers here follow it.")
+    d.planBtn:Hide()
     d.classNote = pane:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
     d.classNote:SetJustifyH("LEFT")
     d.classNote:SetWordWrap(true)
@@ -1728,6 +1739,14 @@ local function PaintWhatIf(f, liveFam, fam)
         d.classTitle:ClearAllPoints()
         d.classTitle:SetPoint("TOPLEFT", pane, "TOPLEFT", 0, -cy)
         d.classTitle:Show()
+        local planner = ST.TalentPlanner
+        if planner and planner.Available() then
+            d.planBtn:ClearAllPoints()
+            d.planBtn:SetPoint("TOPRIGHT", pane, "TOPRIGHT", 0, -cy + 3)
+            d.planBtn:Show()
+        else
+            d.planBtn:Hide()
+        end
         local ry = cy + Pitch(WI_SUB_H)
         for _, spec in ipairs(classRows) do
             local row = d.rows[spec.key]
@@ -1760,6 +1779,16 @@ local function PaintWhatIf(f, liveFam, fam)
     else
         d.classTitle:SetText("")
         d.classTitle:Hide()
+        -- review m3: the planner opens for a class no modelled talent touches too
+        local planner = ST.TalentPlanner
+        if planner and planner.Available() then
+            d.planBtn:ClearAllPoints()
+            d.planBtn:SetPoint("TOPRIGHT", pane, "TOPRIGHT", 0, -cy)
+            d.planBtn:Show()
+            cy = cy + 20
+        else
+            d.planBtn:Hide()
+        end
         local note = WI:ClassNote(rowsFam)
         if note then
             d.classNote:SetText(note)

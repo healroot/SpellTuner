@@ -1678,6 +1678,8 @@ do not move, and the sentence says so: `docs/tasks/T134-forever-launch-talents.m
 
 A talent that lengthens a spell (Nature's Splendor; Improved Shadow Word: Pain) adds its seconds to the
 over-time part at the same amount a second, so the amount over time grows by (dur + d) / dur and a pure
-HoT's per second (its interval is its own duration) stays. The live book is untouched: the client's text
+HoT's per second (its interval is its own duration) stays (with no other talent typed). A hybrid's
++healing share moves by the whole spell's ratio, as T134 accepted for Genesis: Regrowth's comes out about
+4% low under Nature's Splendor (T137 review m6, accepted). The live book is untouched: the client's text
 is assumed to carry the duration of a talent taken (VERIFY, `docs/TESTING.md` 56.5). Talents whose
 sentence also does something else (Call of Flame, a stun) are named and skipped.

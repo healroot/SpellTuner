@@ -2523,7 +2523,8 @@ Forever, as a druid. Everything here is a prediction until you say otherwise.
 4. **Open Healing Touch** with the What if still on: other rows (Naturalist, Tranquil Spirit, Gift of
    Nature). Naturalist 5: the cast falls by 0.5 s if you have no points in it. Tranquil Spirit 5: the
    cost falls 10%. Compare with what a real respec shows, and report a mismatch.
-5. **Nature's Splendor 1** (T136) on Rejuvenation: Heal x15/12 and Per mana up, Per sec unchanged; on
+5. **Clear, then Nature's Splendor 1** (T136; with Bloom typed too the ratios differ) on Rejuvenation:
+   Heal x15/12 and Per mana up, Per sec unchanged; on
    Regrowth only the over-time part grows (x27/21). If you have the talent, check the spell's own text
    already says 15 s: the What if assumes it does.
 6. **Clear.** Every number returns.
@@ -2541,6 +2542,24 @@ Either client. **Settings -> Clock -> Bars -> Join -> Moving line.**
 2. Cast again mid-way: the line jumps back to the left.
 3. After the rule: a thin green line along the bar's top (After the rule: Green), nothing (Empty).
 4. Try Line, Compact and Bar layouts; switch back to One bar and Stacked: both look as before.
+
+## 58. The talent planner (T137) -- NEW, 5 min
+
+Forever, as a druid with talents. Everything is a prediction until you say otherwise.
+
+1. **Spells -> Rejuvenation -> What if... -> Talent plan...** (right of TALENTS). A sheet over the
+   window: your three trees with the game's icons and your live ranks (5/5 ...), "level N: M points,
+   K spent". Report any question-mark icon (a name the client does not know) and whether M matches
+   the points the game gives you.
+2. **Rules.** Left-click a tier-3 talent in an empty tree: refused, and the right panel says why
+   ("needs 10 points in Restoration"). Right-click a point under a talent of a later tier: refused.
+3. **Plan Bloom** (it needs 10 points in Restoration above it; take points from elsewhere when you have
+   none to spare), **Use in What if**: Rejuvenation's Heal and Per mana move; the What if rows show the
+   same ranks. Nature's Splendor needs Nature's Majesty 2 in Balance, if your level allows both.
+6. **A spinner past the rules** (type Bloom 1 with no Restoration points, then Talent plan...): the info
+   line says "breaks the rules" and Bloom's edge is red.
+4. **x instead of Use:** nothing changes. **My talents**, **Clear** do what they say.
+5. **Clear the What if:** the next Talent plan... starts from your live build again.
 
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the

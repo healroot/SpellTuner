@@ -14,6 +14,10 @@ published to CurseForge; the developers' log is `docs/HISTORY.md`.
 - What if -> Talents moves durations too: Nature's Splendor makes Rejuvenation and Moonfire 3 s
   longer and Regrowth's over-time part 6 s longer, so more healing for the same mana.
 
+- Talent plan: What if -> Talent plan... opens your class's three talent trees with their icons. Plan
+  a build with clicks (left adds, right removes, the game's tier rules) and "Use in What if": the spells' numbers follow the planned talents SpellTuner models (a blue dot);
+  the others count for points and tiers only.
+
 ### Both: a moving line for the five-second rule
 - Settings -> Clock -> Bars -> Join -> Moving line: the mana bar keeps its colour and an amber line
   crosses it during the five seconds after a cast. Stacked, One bar and Swipe chip stay.

@@ -143,7 +143,24 @@ function WI:Set(key, v)
     return true
 end
 
+-- T137: several keys in one change (the talent planner): { { key, value }, ... },
+-- a nil value clears its key; a refused one is skipped. WHATIF_CHANGED once, when
+-- anything moved; answers how many keys moved.
+function WI:SetMany(pairs_)
+    local n = 0
+    for _, p in ipairs(pairs_ or {}) do
+        local clean = Clean(p[1], p[2])
+        if clean ~= false and values[p[1]] ~= clean then
+            values[p[1]] = clean
+            n = n + 1
+        end
+    end
+    if n > 0 then Changed() end
+    return n
+end
+
 function WI:Clear()
+    WI.clears = (WI.clears or 0) + 1 -- T137 review m1: the planner's kept plan ends here
     if next(values) == nil then return false end
     wipe(values)
     Changed()

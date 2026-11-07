@@ -17,6 +17,7 @@ Data\Profile_Paladin_Forever.lua
 Data\Profile_Shaman_Forever.lua
 Data\Profile_Priest_Forever.lua
 Data\Talents_Forever.lua
+Data\TalentTree_Forever.lua
 Data\Coefs_Forever.lua
 Spells\Parse.lua
 Spells\RankRules.lua
@@ -26,6 +27,7 @@ Spells\Book.lua
 Spells\Words.lua
 Spells\WhatIf.lua
 Spells\WhatIf_Forever.lua
+Spells\TalentPlan.lua
 Spells\Tabs.lua
 Engine\ClockFace.lua
 Engine\ManaModel.lua
@@ -43,6 +45,7 @@ UI\Feeds.lua
 UI\Dashboard_Rows.lua
 UI\SpellRail.lua
 UI\SpellsPane.lua
+UI\TalentPlanner.lua
 UI\Settings.lua
 UI\Dashboard_Forever.lua
 UI\SpellTip.lua

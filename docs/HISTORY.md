@@ -5352,3 +5352,10 @@ The author missed Nature's Splendor in What if -> Talents. `tools/buildtalents.p
 `ST.TalentDurations` (Nature's Splendor in three spell groups, Improved Shadow Word: Pain; 11 named and
 skipped); `Spells/WhatIf_Forever.lua` lengthens the over-time part from the live rank to the typed one.
 Next agreed: a talent tree planner feeding the What if, mockup first.
+
+## 2026-11-07 -- T137: the talent planner
+
+The author asked for a small copy of the talent tree to plan a build the numbers follow; mockup approved
+("sheet with real icons, keep the spinners too"). `Data/TalentTree_Forever.lua` (generated, every class),
+`Spells/TalentPlan.lua` (rules and the What if bridge, `WI:SetMany`), `UI/TalentPlanner.lua` (the sheet,
+from the What if drawer). New suite `tools/talentplancheck.lua`. `docs/TESTING.md` section 58.
