@@ -59,7 +59,10 @@
 --     runs, a 1-px green line along its top after -- flat amber at 0.45
 --     alpha with a 1-px edge: the kit ships no hatch art) and "chip" (C: a
 --     square left of the label holding a Cooldown frame's swipe, SetCooldown
---     once per spend; the client animates it) --, `order` (manaOver /
+--     once per spend; the client animates it); T135 a fourth, "sweep" (one
+--     mana bar in its own colour, an amber line with a dark edge crossing it
+--     left to right over the five seconds; after, the green top line, or
+--     with `after` tick the white line at the regen tick) --, `order` (manaOver /
 --     fsrOver), `mana` (game / model: Forever's modelled pool from the face's
 --     plain pct, at 0.6 alpha), `fsr` (the strip's thickness, 1-8), `after`
 --     (green / empty / tick: TBC's 2-s regen tick from ST.Regen:RegenTick, a
@@ -161,7 +164,7 @@ CV.BARS_DEFAULT = { show = "both", join = "stacked", order = "manaOver", mana = 
 -- facts take some out).
 CV.BARS_VALUES = {
     show = { "both", "mana", "fsr", "none" },
-    join = { "stacked", "veil", "chip" },
+    join = { "stacked", "veil", "chip", "sweep" },
     order = { "manaOver", "fsrOver" },
     mana = { "game", "model" },
     after = { "green", "empty", "tick" },
@@ -187,6 +190,7 @@ CV.TICK_COLOR  = { 1, 1, 1 }
 CV.VEIL_ALPHA = 0.45
 CV.MODEL_ALPHA = 0.6
 CV.TICK_WIDTH = 2
+CV.SWEEP_WIDTH = 2 -- T135: the moving line, with a 1-px dark edge each side
 
 CV.TICK_REFUSED = "Forever cannot read your mana, so the 2-second regen tick cannot be learned: the strip stays green."
 CV.MODEL_REFUSED = "no modelled pool on this line: it reads the real one"
@@ -767,7 +771,7 @@ end
 
 -- Which bars a look draws: manaOn (the mana bar), and the five-second rule's
 -- element -- "strip" (stacked under / over the mana bar), "solo" (the strip in
--- the mana bar's place, show = fsr), "veil", "chip", or nil.
+-- the mana bar's place, show = fsr), "veil", "chip", "sweep", or nil.
 local function Element(bars)
     local show = bars.show
     if show == "none" then return false, nil end
@@ -776,6 +780,7 @@ local function Element(bars)
     local j = bars.join
     if j == "veil" then return true, "veil" end
     if j == "chip" then return true, "chip" end
+    if j == "sweep" then return true, "sweep" end
     return true, "strip"
 end
 
@@ -1203,10 +1208,19 @@ function View:Place(m)
     self.greenLine:SetPoint("TOPLEFT", self.bar, "TOPLEFT", 0, 0)
     self.greenLine:SetPoint("TOPRIGHT", self.bar, "TOPRIGHT", 0, 0)
     self.greenLine:SetHeight(1)
+    -- T135: the moving line, as tall as the mana bar
+    local px = UI.px and UI.px(1, p) or 1
+    local sw = UI.px and UI.px(CV.SWEEP_WIDTH, p) or CV.SWEEP_WIDTH
+    self.sweep:SetSize(sw, self.barH > 0 and self.barH or 1)
+    self.sweepBack:SetSize(sw + 2 * px, self.barH > 0 and self.barH or 1)
+    if m.el ~= "veil" and m.el ~= "sweep" then self.greenLine:Hide() end
     if m.el ~= "veil" then
         self.veil:Hide()
         self.veilEdge:Hide()
-        self.greenLine:Hide()
+    end
+    if m.el ~= "sweep" then
+        self.sweep:Hide()
+        self.sweepBack:Hide()
     end
     -- the tick mark: on the strip
     self.tickMark:SetSize(UI.px and UI.px(CV.TICK_WIDTH, p) or CV.TICK_WIDTH, self.stripH > 0 and self.stripH or 1)
@@ -1340,6 +1354,13 @@ function CV.Build(parent, look, draw)
     v.greenLine = v.bar:CreateTexture(nil, "OVERLAY")
     v.greenLine:SetColorTexture(CV.REGEN_COLOR[1], CV.REGEN_COLOR[2], CV.REGEN_COLOR[3], 1)
     v.greenLine:Hide()
+    -- T135: the moving line over the mana bar, on a dark edge so it reads on any colour
+    v.sweepBack = v.bar:CreateTexture(nil, "OVERLAY", nil, 1)
+    v.sweepBack:SetColorTexture(0, 0, 0, 0.85)
+    v.sweepBack:Hide()
+    v.sweep = v.bar:CreateTexture(nil, "OVERLAY", nil, 2)
+    v.sweep:SetColorTexture(CV.FSR_COLOR[1], CV.FSR_COLOR[2], CV.FSR_COLOR[3], 1)
+    v.sweep:Hide()
     -- C: the chip, a square holding a Cooldown frame's swipe
     v.chip = CreateFrame("Frame", nil, parent)
     v.chipBg = v.chip:CreateTexture(nil, "BACKGROUND")
@@ -1567,6 +1588,38 @@ function View:PaintFSR(now)
             self.veilEdge:Hide()
             ShowIf(self.greenLine, after ~= "empty")
         end
+    elseif el == "sweep" then
+        -- T135: the line at the share of the five seconds gone, left to right
+        host = self.bar
+        local x
+        if running then
+            x = self.barW * (5 - rem) / 5
+            self.sweep:SetColorTexture(F[1], F[2], F[3], 1)
+            self.greenLine:Hide()
+            step = true
+        else
+            if after == "tick" and type(self.draw.tick) == "function" then
+                local t, period = self.draw.tick(now)
+                if type(t) == "number" and type(period) == "number" and period > 0 then
+                    x = ((now - t) % period) / period * self.barW
+                    local T = CV.TICK_COLOR
+                    self.sweep:SetColorTexture(T[1], T[2], T[3], 1)
+                    step = true
+                end
+            end
+            ShowIf(self.greenLine, after == "green")
+        end
+        if x then
+            self.sweep:ClearAllPoints()
+            self.sweep:SetPoint("CENTER", self.bar, "LEFT", x, 0)
+            self.sweepBack:ClearAllPoints()
+            self.sweepBack:SetPoint("CENTER", self.bar, "LEFT", x, 0)
+            self.sweep:Show()
+            self.sweepBack:Show()
+        else
+            self.sweep:Hide()
+            self.sweepBack:Hide()
+        end
     elseif el == "chip" then
         if running then
             local spend = type(self.draw.spend) == "function" and self.draw.spend(now) or nil
@@ -1635,8 +1688,10 @@ function View:FillBar(r, g, b)
     self.chipBg:SetColorTexture(G[1], G[2], G[3], 1)
     self.veil:Hide()
     self.veilEdge:Hide()
+    self.sweep:Hide()
+    self.sweepBack:Hide()
     self.tickMark:Hide()
-    ShowIf(self.greenLine, self.el == "veil")
+    ShowIf(self.greenLine, self.el == "veil" or self.el == "sweep")
 end
 
 -- view:Message(text, r, g, b): one centred line instead of the pieces (the

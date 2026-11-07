@@ -5337,3 +5337,11 @@ Bloom in the live numbers; What if -> Talents rows per family. New suite `tools/
 Branch `worktree-forever-talents`; not merged, installed or published. Open: `charKey` collides on
 two-part Forever names (`Core.lua:315`), `release.sh` and `tools/import.lua` do not know the `_forever_`
 folder, the unmerged `worktree-haste` branch, the 1.0.0 version decision.
+
+## 2026-11-07 -- T135: the moving line for the five-second rule
+
+The author asked for a clock look where the five-second rule is a vertical line moving over the mana
+bar rather than an amber veil changing the bar's colour, keeping the old one. `UI/ClockView.lua` join
+`sweep` ("Moving line"): an amber 2-px line on a dark edge at barW x (5 - remaining) / 5, placed by time
+alone; after, the green top line (or the white regen tick on TBC). Default unchanged (Stacked).
+`docs/TESTING.md` section 57.

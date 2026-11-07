@@ -691,7 +691,8 @@ do
         r.stacked = Muted()
         Set("order", "fsrOver"); r.fsrOver = Muted(); Set("order", nil)
         Set("join", "veil"); r.veil = Muted()
-        Set("join", "chip"); r.chip = Muted(); Set("join", nil)
+        Set("join", "chip"); r.chip = Muted()
+        Set("join", "sweep"); r.sweep = Muted(); Set("join", nil)
         Set("mana", "model"); r.model = Muted(); Set("mana", nil)
         Set("show", "mana"); r.mana = Muted()
         Set("show", "fsr"); r.fsr = Muted()
@@ -706,6 +707,7 @@ do
         fsrOver = P .. " The bar is your real mana, drawn by the game; the strip over it is the five seconds after your last priced cast.",
         veil = P .. " The bar is your real mana, drawn by the game; the amber veil over it is the five seconds after your last priced cast.",
         chip = P .. " The bar is your real mana, drawn by the game; the square beside the label is the five seconds after your last priced cast.",
+        sweep = P .. " The bar is your real mana, drawn by the game; the amber line crossing it is the five seconds after your last priced cast.",
         model = P .. " The bar is your modelled mana (~); the strip under it is the five seconds after your last priced cast.",
         mana = P .. " The bar is your real mana, drawn by the game.",
         fsr = P .. " The bar is the five seconds after your last priced cast.",
@@ -715,7 +717,7 @@ do
     if not okH then
         bad = "raised: " .. tostring(res)
     else
-        for _, k in ipairs({ "stacked", "fsrOver", "veil", "chip", "model", "mana", "fsr", "none" }) do
+        for _, k in ipairs({ "stacked", "fsrOver", "veil", "chip", "sweep", "model", "mana", "fsr", "none" }) do
             if res[k] ~= want[k] and not bad then bad = string.format("%s: %q", k, tostring(res[k])) end
         end
     end

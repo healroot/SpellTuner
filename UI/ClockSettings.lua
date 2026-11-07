@@ -754,6 +754,8 @@ local BAR_ITEMS = {
         { id = "stacked", text = "Stacked", tooltip = "The default: the mana bar over a thin strip." },
         { id = "veil", text = "One bar", tooltip = "One mana bar; an amber veil over its right part while the rule runs." },
         { id = "chip", text = "Swipe chip", tooltip = "One mana bar; a square beside the label sweeps the five seconds." },
+        { id = "sweep", text = "Moving line",
+          tooltip = "One mana bar in its own colour; an amber line crosses it during the five seconds." },
     },
     order = {
         { id = "manaOver", text = "Mana over 5SR" },
@@ -848,7 +850,7 @@ TAB.bars = function(p, f)
         p.afterNote = Note(f, ST.ClockView.TICK_REFUSED, nil, y)
         y = y - 16
     end
-    Note(f, "Each layout keeps its own bars. The strip, the veil and the chip are amber while the rule runs, green after.",
+    Note(f, "Each layout keeps its own bars. The strip, the veil, the chip and the line are amber while the rule runs, green after.",
         nil, y)
 end
 

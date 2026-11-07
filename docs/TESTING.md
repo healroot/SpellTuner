@@ -2529,6 +2529,16 @@ Forever, as a druid. Everything here is a prediction until you say otherwise.
    last Spirit read.
 7. **Priest / shaman / paladin:** What if shows that class's talents. Rows are from the site.
 
+## 57. The moving line for the five-second rule (T135) -- NEW, 2 min
+
+Either client. **Settings -> Clock -> Bars -> Join -> Moving line.**
+
+1. Cast a heal. The mana bar stays blue; an amber line with a dark edge starts at its left end and
+   reaches the right end five seconds later.
+2. Cast again mid-way: the line jumps back to the left.
+3. After the rule: a thin green line along the bar's top (After the rule: Green), nothing (Empty).
+4. Try Line, Compact and Bar layouts; switch back to One bar and Stacked: both look as before.
+
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the
 raw numbers. `/st profile` output is welcome with any report. I turn them into

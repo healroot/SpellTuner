@@ -182,6 +182,7 @@ local FSR_WHERE = {
     stacked = "the strip under it",
     veil = "the amber veil over it",
     chip = "the square beside the label",
+    sweep = "the amber line crossing it",
 }
 local function BarWords()
     local l = Clock.view and Clock.view.look

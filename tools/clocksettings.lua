@@ -488,11 +488,11 @@ Try("Bars: the choices are this line's (" .. (forever and "Mana from; no tick; f
     local labels = {}
     for _, fs in ipairs(FontStrings(p.tabFrames.bars)) do labels[fs:GetText() or ""] = true end
     local words = Texts(p.showDropdown) == "Mana + 5SR/Mana only/5SR only/None"
-        and Texts(p.joinDropdown) == "Stacked/One bar/Swipe chip"
+        and Texts(p.joinDropdown) == "Stacked/One bar/Swipe chip/Moving line"
         and Texts(p.orderDropdown) == "Mana over 5SR/5SR over mana"
         and labels["Bars"] and labels["Join"] and labels["Order"] and labels["After the rule"] and labels["Texture"]
         and not labels["Show"]
-    local common = show == "both,mana,fsr,none" and join == "stacked,veil,chip" and order == "manaOver,fsrOver"
+    local common = show == "both,mana,fsr,none" and join == "stacked,veil,chip,sweep" and order == "manaOver,fsrOver"
         and words
     local own
     local afterTip = table.concat(p.afterDropdown and p.afterDropdown.tooltips or {}, " ")

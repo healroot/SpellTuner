@@ -303,7 +303,7 @@ local function Paint(face)
 end
 
 local LAYOUTS = { "line", "compact", "bar" }
-local JOINS = { "stacked", "veil", "chip" }
+local JOINS = { "stacked", "veil", "chip", "sweep" }
 local SHOWS = { "both", "mana", "fsr", "none" }
 
 -- the line's own five-second rule: the model's last priced spend on
@@ -438,7 +438,7 @@ for _, layout in ipairs(LAYOUTS) do
         UI.ApplyFonts(0)
         RuleOff()
         CV.ResetToStyle()
-        return bad == nil and n == 3 * 4 * 5 * #faces and n > 0 and v.look.layout == layout,
+        return bad == nil and n == #JOINS * 4 * 5 * #faces and n > 0 and v.look.layout == layout,
             bad or string.format("%d paints", n)
     end)
 end
@@ -632,6 +632,40 @@ Try("a new spend restarts the strip at 0 at once (amber)", function()
     RuleOff()
     Reset()
     return green and restarted, tostring(v.strip.value)
+end)
+
+-- T135: the moving line -- the mana bar keeps its colour; an amber line at
+-- barW x gone / 5 from the left, on a dark edge; after, the green top line;
+-- empty: nothing; tick (where the line has one): the white line at the tick
+Try("sweep: the line at barW x (5 - remaining) / 5, the bar its own colour; after green, empty none", function()
+    Reset()
+    for _, layout in ipairs(LAYOUTS) do Bars_(layout, "join", "sweep") end
+    local bad
+    for _, layout in ipairs(LAYOUTS) do
+        CV.SetLayout(layout)
+        RuleFor(3)
+        local v = Paint(face1)
+        local pt = v.sweep and v.sweep.points and v.sweep.points[#v.sweep.points]
+        local mid = Shown(v.sweep) and Shown(v.sweepBack) and not Shown(v.strip) and not Shown(v.veil)
+            and pt and pt[1] == "CENTER" and pt[2] == v.bar and pt[3] == "LEFT"
+            and Near(pt[4], v.bar:GetWidth() * 2 / 5, 1e-6)
+            and Same(v.sweep.color, AMBER[1], AMBER[2], AMBER[3], 1)
+            and v.sweep:GetHeight() == v.bar:GetHeight() and not Shown(v.greenLine)
+            and not Is(v.bar.barColor, AMBER)
+        RuleOff()
+        Paint(face1)
+        local after = not Shown(v.sweep) and Shown(v.greenLine) and Is(v.greenLine.color, GREEN)
+        Bars_(layout, "after", "empty")
+        Paint(face1)
+        local empty = not Shown(v.sweep) and not Shown(v.greenLine)
+        Bars_(layout, "after", nil)
+        if not (mid and after and empty) and not bad then
+            bad = string.format("%s: mid %s (x %s of %s), after %s, empty %s", layout, tostring(mid),
+                tostring(pt and pt[4]), tostring(v.bar:GetWidth()), tostring(after), tostring(empty))
+        end
+    end
+    Reset()
+    return bad == nil, bad
 end)
 
 -- 8. The veil
@@ -1421,7 +1455,9 @@ Try(forever
                         if barSecret ~= want and not errs[1] then
                             errs[#errs + 1] = tag .. ": bar secret " .. tostring(barSecret)
                         end
-                        for _, x in ipairs({ v.strip.value, v.veil and v.veil:GetWidth(), v.cd and v.cd.cdStart }) do
+                        local sp = v.sweep and v.sweep.points and v.sweep.points[#v.sweep.points]
+                        for _, x in ipairs({ v.strip.value, v.veil and v.veil:GetWidth(), v.cd and v.cd.cdStart,
+                                             sp and sp[4] or nil }) do
                             if x ~= nil and issecretvalue(x) and not errs[1] then
                                 errs[#errs + 1] = tag .. ": a secret outside the mana bar"
                             end
@@ -1435,7 +1471,7 @@ Try(forever
     v.bar.GetValue = realGet
     Reset()
     S.Fire("PLAYER_REGEN_ENABLED")
-    return #errs == 0 and n == 3 * 3 * 4 * #manas and not secretText and reads == 0,
+    return #errs == 0 and n == 3 * #JOINS * 4 * #manas and not secretText and reads == 0,
         string.format("%d paints, %d raised%s, secret text %s, %d reads of the bar", n, #errs,
             errs[1] and (": " .. errs[1]) or "", tostring(secretText), reads)
 end)
