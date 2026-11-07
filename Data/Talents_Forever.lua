@@ -8,7 +8,7 @@ local _, ST = ...
 -- PRELIMINARY until verified in game (docs/DECISIONS.md, 2026-10-04):
 -- talentsforever.com is the source of truth for what a talent does until a
 -- Forever client shows otherwise.
--- Data from talentsforever.com (https://talentsforever.com), generated 2026-10-22 (CC-BY-4.0).
+-- Data from talentsforever.com (https://talentsforever.com), generated 2026-11-04 (CC-BY-4.0).
 --
 -- [class token][rule] = { talent, ranks, spells, castPerRank }: castPerRank[r] is the
 -- seconds rank r takes off each named spell's cast, read from rank r's own
@@ -18,19 +18,28 @@ local _, ST = ...
 -- Cast-time talents skipped (a sentence not of the recognised shape --
 -- procs, charges, percentages, other words):
 --   Druid: Eclipse
+--   Druid: Nature's Focus
 --   Hunter: Improved Revive Pet
 --   Mage: Burning Soul
 --   Mage: Heating Up
 --   Mage: Ice Barrier
+--   Mage: Improved Channeling
 --   Mage: Presence of Mind
+--   Paladin: Champion of the Light
 --   Paladin: Infusion of Light
 --   Paladin: Spiritual Focus
+--   Paladin: Turn Evil (text after the amount not recognised)
 --   Priest: Martyrdom
---   Shaman: Elemental Mastery
+--   Priest: Twilight Focus
+--   Shaman: Eye of the Storm
+--   Shaman: Healing Focus
+--   Shaman: Lightning Mastery
 --   Shaman: Maelstrom Weapon
 --   Shaman: Nature's Swiftness
 --   Warlock: Decimation
+--   Warlock: Fel Concentration
 --   Warlock: Fel Domination
+--   Warlock: Intensity
 --   Warlock: Nightfall
 --   Warrior: Improved Slam
 -- Spell names dropped (not in the class's spellbook in the export):
@@ -43,11 +52,10 @@ local _, ST = ...
 -- T133: ST.TalentMults[class token][talent] = { scope, pctPerRank }: rank r
 -- multiplies what the scope names (kind "damage" / "heal", schools, spells
 -- by name) by 1 + pctPerRank[r] / 100, read from rank r's own sentence.
--- 94 multiplier talent(s) skipped (a sentence that raises damage, healing, an
+-- 88 multiplier talent(s) skipped (a sentence that raises damage, healing, an
 -- effect or an amount by a percent but is not of a recognised shape --
 -- conditions, second effects, other words; named, never guessed):
 --   Druid: Feral Instinct (sentence not recognised)
---   Druid: Genesis (sentence not recognised)
 --   Druid: Improved Entangling Roots (sentence not recognised)
 --   Druid: Improved Moonfire (sentence not recognised)
 --   Druid: Natural Instinct (sentence not recognised)
@@ -72,10 +80,9 @@ local _, ST = ...
 --   Mage: Improved Cone of Cold (sentence not recognised)
 --   Mage: Improved Scorch (sentence not recognised)
 --   Mage: Wand Specialization (sentence not recognised)
---   Paladin: Healing Light (sentence not recognised)
+--   Paladin: Holy Power (sentence not recognised)
 --   Paladin: Improved Seals (sentence not recognised)
 --   Paladin: Iron Creed (sentence not recognised)
---   Paladin: One-Handed Weapon Specialization (sentence not recognised)
 --   Paladin: Sacred Arbiter (sentence not recognised)
 --   Paladin: Shield Specialization (sentence not recognised)
 --   Paladin: Two-Handed Weapon Specialization (sentence not recognised)
@@ -83,18 +90,15 @@ local _, ST = ...
 --   Priest: Darkness (sentence not recognised)
 --   Priest: Early Demise (sentence not recognised)
 --   Priest: Improved Power Word: Shield (sentence not recognised)
---   Priest: Improved Renew (sentence not recognised)
 --   Priest: Martyrdom (sentence not recognised)
 --   Priest: Searing Light (sentence not recognised)
 --   Priest: Shadow Weaving (sentence not recognised)
---   Priest: Twin Disciplines (sentence not recognised)
 --   Priest: Wand Specialization (sentence not recognised)
 --   Rogue: Aggression (sentence not recognised)
+--   Rogue: Coup de Grace (sentence not recognised)
 --   Rogue: Dual Wield Specialization (sentence not recognised)
 --   Rogue: Ghostly Strike (sentence not recognised)
---   Rogue: Improved Eviscerate (sentence not recognised)
 --   Rogue: Lethality (sentence not recognised)
---   Rogue: Murder (sentence not recognised)
 --   Rogue: Opportunity (sentence not recognised)
 --   Rogue: Serrated Blades (sentence not recognised)
 --   Rogue: Venom (sentence not recognised)
@@ -106,7 +110,6 @@ local _, ST = ...
 --   Shaman: Elemental Fury (sentence not recognised)
 --   Shaman: Elemental Weapons (sentence not recognised)
 --   Shaman: Guardian Totems (sentence not recognised)
---   Shaman: Healing Way (sentence not recognised)
 --   Shaman: Improved Lightning Shield (sentence not recognised)
 --   Shaman: Improved Reincarnation (sentence not recognised)
 --   Shaman: Restorative Totems (sentence not recognised)
@@ -119,7 +122,6 @@ local _, ST = ...
 --   Warlock: Demonic Sacrifice (sentence not recognised)
 --   Warlock: Improved Bane of Agony (sentence not recognised)
 --   Warlock: Improved Corruption (sentence not recognised)
---   Warlock: Improved Drains (sentence not recognised)
 --   Warlock: Improved Felhunter (sentence not recognised)
 --   Warlock: Improved Health Funnel (sentence not recognised)
 --   Warlock: Improved Imp (sentence not recognised)
@@ -139,7 +141,44 @@ local _, ST = ...
 --   Warrior: Impale (sentence not recognised)
 --   Warrior: Improved Rend (sentence not recognised)
 --   Warrior: Improved Revenge (sentence not recognised)
+--   Warrior: Improved Whirlwind (sentence not recognised)
 --   Warrior: Two-Handed Weapon Specialization (sentence not recognised)
+--
+-- T134: ST.TalentCosts: rank r takes pctPerRank[r] percent off the mana cost of
+-- what the scope names (read by the What if only: the client's cost already
+-- carries the talents taken). ST.TalentExpiry: when a named spell runs its whole
+-- duration the target is healed for pctPerRank[r] percent of scope.stat.
+-- ST.TalentStats: rank r raises scope.stat by pctPerRank[r] percent.
+-- TalentCosts skipped (named, never guessed):
+--   Druid: Natural Shapeshifter (sentence not recognised)
+--   Hunter: Efficiency (sentence not recognised)
+--   Hunter: Improved Mend Pet (sentence not recognised)
+--   Hunter: Improved Revive Pet (sentence not recognised)
+--   Hunter: Resourcefulness (sentence not recognised)
+--   Mage: Arcane Blast (sentence not recognised)
+--   Mage: Arcane Concentration (sentence not recognised)
+--   Mage: Frost Channeling (spell Frost not in the export)
+--   Mage: Master of Elements (sentence not recognised)
+--   Mage: Missile Barrage (sentence not recognised)
+--   Paladin: Benediction (sentence not recognised)
+--   Paladin: Sanctified Judgement (sentence not recognised)
+--   Priest: Devouring Contagion (sentence not recognised)
+--   Priest: Inner Focus (sentence not recognised)
+--   Priest: Mental Agility (spell instant cast not in the export)
+--   Priest: Shadowform (sentence not recognised)
+--   Priest: Soul Warding (sentence not recognised)
+--   Shaman: Convection (spell Shock not in the export)
+--   Shaman: Elemental Focus (sentence not recognised)
+--   Shaman: Maelstrom Weapon (sentence not recognised)
+--   Shaman: Shamanistic Focus (spell Shock not in the export)
+--   Shaman: Totemic Focus (sentence not recognised)
+--   Warlock: Cataclysm (spell Destruction not in the export)
+--   Warlock: Fel Domination (sentence not recognised)
+--   Warlock: Master Summoner (sentence not recognised)
+-- TalentExpiry skipped (named, never guessed):
+--   none
+-- TalentStats skipped (named, never guessed):
+--   none
 --------------------------------------------------------------------------------
 
 ST.TalentRules = {
@@ -159,33 +198,27 @@ ST.TalentRules = {
         ["Naturalist"] = {
             talent = "Naturalist",
             ranks = 5,
-            spells = { "Healing Touch" },
+            spells = { "Healing Touch", "Wild Growth" },
             castPerRank = { 0.1, 0.2, 0.3, 0.4, 0.5 },
         },
     },
     HUNTER = {
     },
     MAGE = {
-        ["Improved Fireball"] = {
-            talent = "Improved Fireball",
+        ["Accelerant"] = {
+            talent = "Accelerant",
             ranks = 5,
-            spells = { "Fireball", "Frostfire Bolt" },
+            spells = { "Fireball", "Frostfire Bolt", "Arcane Wrath" },
             castPerRank = { 0.1, 0.2, 0.3, 0.4, 0.5 },
         },
         ["Improved Frostbolt"] = {
             talent = "Improved Frostbolt",
             ranks = 5,
-            spells = { "Frostbolt", "Frost Blast" },
+            spells = { "Frostbolt" },
             castPerRank = { 0.1, 0.2, 0.3, 0.4, 0.5 },
         },
     },
     PALADIN = {
-        ["Instrument of Law"] = {
-            talent = "Instrument of Law",
-            ranks = 2,
-            spells = { "Hammer of Wrath" },
-            castPerRank = { 0.5, 1 },
-        },
     },
     PRIEST = {
         ["Divine Fury"] = {
@@ -207,7 +240,7 @@ ST.TalentRules = {
         ["Elemental Alacrity"] = {
             talent = "Elemental Alacrity",
             ranks = 3,
-            spells = { "Lightning Bolt", "Chain Lightning", "Lava Burst" },
+            spells = { "Lightning Bolt", "Chain Lightning" },
             castPerRank = { 0.17, 0.33, 0.5 },
         },
         ["Improved Ghost Wolf"] = {
@@ -249,6 +282,10 @@ ST.TalentRules = {
 
 ST.TalentMults = {
     DRUID = {
+        ["Genesis"] = {
+            scope = { periodic = true },
+            pctPerRank = { 2, 4, 6, 8, 10 },
+        },
         ["Gift of Nature"] = {
             scope = { kind = "heal" },
             pctPerRank = { 2, 4, 6, 8, 10 },
@@ -263,7 +300,105 @@ ST.TalentMults = {
         },
         ["Naturalist"] = {
             scope = { kind = "damage" },
+            pctPerRank = { 2, 4, 6, 8, 10 },
+        },
+    },
+    HUNTER = {
+    },
+    MAGE = {
+    },
+    PALADIN = {
+        ["Healing Light"] = {
+            scope = { spells = { "Holy Light", "Flash of Light", "Holy Shock" } },
+            pctPerRank = { 4, 8, 12 },
+        },
+    },
+    PRIEST = {
+        ["Improved Renew"] = {
+            scope = { spells = { "Renew" } },
+            pctPerRank = { 5, 10, 15 },
+        },
+        ["Spiritual Healing"] = {
+            scope = { kind = "heal" },
+            pctPerRank = { 3, 7, 10 },
+        },
+        ["Twin Disciplines"] = {
+            scope = { instant = true },
             pctPerRank = { 1, 2, 3, 4, 5 },
+        },
+    },
+    ROGUE = {
+    },
+    SHAMAN = {
+        ["Healing Way"] = {
+            scope = { spells = { "Healing Wave" } },
+            pctPerRank = { 8, 17, 25 },
+        },
+        ["Purification"] = {
+            scope = { kind = "heal" },
+            pctPerRank = { 2, 4, 6, 8, 10 },
+        },
+    },
+    WARLOCK = {
+    },
+    WARRIOR = {
+    },
+}
+
+ST.TalentCosts = {
+    DRUID = {
+        ["Improved Wrath"] = {
+            scope = { spells = { "Wrath" } },
+            pctPerRank = { 10, 20, 30, 40, 50 },
+        },
+        ["Moonglow"] = {
+            scope = { kind = "damage" },
+            pctPerRank = { 8, 17, 25 },
+        },
+        ["Tranquil Spirit"] = {
+            scope = { spells = { "Healing Touch", "Tranquility" } },
+            pctPerRank = { 2, 4, 6, 8, 10 },
+        },
+    },
+    HUNTER = {
+    },
+    MAGE = {
+    },
+    PALADIN = {
+        ["Holy Conduit"] = {
+            scope = { spells = { "Consecration", "Holy Wrath", "Exorcism", "Hammer of Wrath" } },
+            pctPerRank = { 20, 40 },
+        },
+        ["Purifying Power"] = {
+            scope = { spells = { "Cleanse", "Purify" } },
+            pctPerRank = { 10, 20 },
+        },
+    },
+    PRIEST = {
+        ["Improved Healing"] = {
+            scope = { spells = { "Lesser Heal", "Heal", "Greater Heal", "Penance", "Prayer of Mending" } },
+            pctPerRank = { 5, 10, 15 },
+        },
+    },
+    ROGUE = {
+    },
+    SHAMAN = {
+        ["Tidal Focus"] = {
+            scope = { kind = "heal" },
+            pctPerRank = { 1, 2, 3, 4, 5 },
+        },
+    },
+    WARLOCK = {
+    },
+    WARRIOR = {
+    },
+}
+
+ST.TalentExpiry = {
+    DRUID = {
+        ["Bloom"] = {
+            scope = { spells = { "Rejuvenation", "Regrowth" }, stat = "Spirit" },
+            pctPerRank = { 100 },
         },
     },
     HUNTER = {
@@ -273,18 +408,35 @@ ST.TalentMults = {
     PALADIN = {
     },
     PRIEST = {
-        ["Spiritual Healing"] = {
-            scope = { kind = "heal" },
-            pctPerRank = { 3, 7, 10 },
-        },
     },
     ROGUE = {
     },
     SHAMAN = {
-        ["Purification"] = {
-            scope = { kind = "heal" },
-            pctPerRank = { 2, 4, 6, 8, 10 },
+    },
+    WARLOCK = {
+    },
+    WARRIOR = {
+    },
+}
+
+ST.TalentStats = {
+    DRUID = {
+        ["Living Spirit"] = {
+            scope = { stat = "Spirit" },
+            pctPerRank = { 5, 10, 15 },
         },
+    },
+    HUNTER = {
+    },
+    MAGE = {
+    },
+    PALADIN = {
+    },
+    PRIEST = {
+    },
+    ROGUE = {
+    },
+    SHAMAN = {
     },
     WARLOCK = {
     },

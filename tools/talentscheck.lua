@@ -33,7 +33,7 @@
 --      a sentence of the lead not recognised (Bastion's condition) skipped
 --      and named in the file's header, never shipped; every sentence that
 --      raises damage, healing, an effect or an amount by a percent is named
---      (review M1: Genesis, Improved Moonfire, ...), a crit chance is not
+--      (review M1: Improved Moonfire, ...), a crit chance is not
 HARNESS_FLAVOUR = "forever"
 
 local here = arg[0]:match("^(.*)/[^/]+$")
@@ -389,7 +389,7 @@ end)
 -- 10: T133, the talent multipliers
 --------------------------------------------------------------------------------
 for _, c in ipairs({
-    { "DRUID", "Naturalist", { kind = "damage" }, { 1, 2, 3, 4, 5 } },
+    { "DRUID", "Naturalist", { kind = "damage" }, { 2, 4, 6, 8, 10 } },
     { "DRUID", "Moonfury", { kind = "damage", schools = { "Arcane", "Nature" } }, { 2, 4, 6, 8, 10 } },
     { "DRUID", "Gift of Nature", { kind = "heal" }, { 2, 4, 6, 8, 10 } },
     { "DRUID", "Improved Rejuvenation", { spells = { "Rejuvenation" } }, { 5, 10, 15 } },
@@ -423,7 +423,7 @@ T("10 every multiplier: percents positive, rising, a known scope", function()
                 if type(v) ~= "number" or v <= 0 or (i > 1 and v <= p[i - 1]) then bad[#bad + 1] = c .. "/" .. name end
             end
             local s = m.scope
-            if type(s) ~= "table" or (s.kind == nil and s.spells == nil)
+            if type(s) ~= "table" or (s.kind == nil and s.spells == nil and not s.periodic and not s.instant)
                 or (s.kind ~= nil and s.kind ~= "heal" and s.kind ~= "damage") then
                 bad[#bad + 1] = c .. "/" .. name .. " scope"
             end
@@ -443,19 +443,21 @@ T("10 an unrecognised sentence: skipped and named (Bastion, Restorative Totems),
     return named and not shipped, "named=" .. tostring(named) .. " shipped=" .. tostring(shipped)
 end)
 
-T("10 every damage / healing / effect percent is named (review M1): Genesis, Improved Moonfire, Twin Disciplines, Improved PW:S, Searing Light, Darkness, Shadow Mastery, Soul Siphon, Improved Cone of Cold; a crit chance is not", function()
+T("10 every damage / healing / effect percent is named (review M1): Improved Moonfire, Improved PW:S, Searing Light, Darkness, Shadow Mastery, Soul Siphon, Improved Cone of Cold; a crit chance is not", function()
     local fh = io.open(here .. "/../Data/Talents_Forever.lua", "r")
     local text = fh and fh:read("*a") or ""
     if fh then fh:close() end
     local head = text:match("^(.-)\nST%.TalentRules") or ""
     local missing = {}
-    for _, n in ipairs({ "Druid: Genesis (", "Druid: Improved Moonfire (", "Priest: Twin Disciplines (",
+    for _, n in ipairs({ "Druid: Improved Moonfire (",
         "Priest: Improved Power Word: Shield (", "Priest: Searing Light (", "Priest: Darkness (",
         "Warlock: Shadow Mastery (", "Warlock: Soul Siphon (", "Mage: Improved Cone of Cold (" }) do
         if not Has(head, "--   " .. n) then missing[#missing + 1] = n end
     end
     local chance = Has(head, "--   Druid: Improved Regrowth (") or Has(head, "--   Shaman: Tidal Mastery (")
-    local shipped = (ST.TalentMults.DRUID or {})["Genesis"] ~= nil
+    -- T134: the periodic and instant-cast shapes ship now, each with its scope
+    local shipped = not (((ST.TalentMults.DRUID or {})["Genesis"] or {}).scope or {}).periodic
+        or not (((ST.TalentMults.PRIEST or {})["Twin Disciplines"] or {}).scope or {}).instant
     return #missing == 0 and not chance and not shipped,
         "missing=" .. table.concat(missing, ",") .. " chance=" .. tostring(chance) .. " shipped=" .. tostring(shipped)
 end)

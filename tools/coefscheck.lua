@@ -204,7 +204,7 @@ end)
 for _, c in ipairs({
     { 1311606, "Holy Shock R1", 0.429, "42.9%", 0.429, "42.9%" },
     { 15237, "Holy Nova R1", 0.107, "10.7%", 0.107, "10.7%" },
-    { 1310911, "Light's Vigil R1", 0.143, "14.3%", 0.429, "42.9%" },
+    { 1310911, "Light's Vigil R1", 0.143, "14.3%", 0.143, "14.3%" }, -- T134: the launch export
 }) do
     T("3 " .. c[2] .. ": heal " .. c[3] .. ", damage " .. c[5] .. ", never summed", function()
         local e = { id = c[1], parsed = { heal = { min = 10, max = 12 }, damage = { min = 10, max = 12 } } }
@@ -353,6 +353,8 @@ local AUTHOR = { ["Improved Wrath"] = 5, ["Moonglow"] = 3, ["Naturalist"] = 5, [
 local b26 = Use(26, AUTHOR)
 
 -- { id, name, want, measured lo, hi (counts at level 26), why }
+-- T134: Naturalist went from 1% to 2% a rank at launch, so its two rows have no
+-- measurement yet (the 2026-10-23 export predates it): lo and hi are the want's.
 for _, c in ipairs({
     { 5185, "Healing Touch R1", 0.429 * 0.55, 0.429 * 0.535, 0.429 * 0.556,
         "42.9% x 0.55 level 26 (from 17, -5%/level) (talentsforever, predicted)" },
@@ -360,24 +362,25 @@ for _, c in ipairs({
         "20% x 4 ticks, 3 s ticks (measured 2026-10-23) x 0.75 level 26 (from 21, -5%/level) (talentsforever, predicted)" },
     { 1430, "Rejuvenation R3", 0.80, 0.80 * 0.996, 0.80 * 1.004,
         "20% x 4 ticks, 3 s ticks (measured 2026-10-23) (talentsforever)" },
-    { 5176, "Wrath R1", 0.429 * 1.05, 0.429 * 1.036, 0.429 * 1.055,
-        "42.9% x1.05 Naturalist 5 (talentsforever, predicted)" },
-    { 339, "Entangling Roots R1", 0.06 * 4 * 1.05, 0.244, 0.255,
-        "6% x 4 ticks, 3 s ticks (measured 2026-10-23) x1.05 Naturalist 5 (talentsforever, predicted)" },
+    { 5176, "Wrath R1", 0.429 * 1.10, 0.429 * 1.10, 0.429 * 1.10,
+        "42.9% x1.10 Naturalist 5 (talentsforever, predicted)" },
+    { 339, "Entangling Roots R1", 0.06 * 4 * 1.10, 0.06 * 4 * 1.10, 0.06 * 4 * 1.10,
+        "6% x 4 ticks, 3 s ticks (measured 2026-10-23) x1.10 Naturalist 5 (talentsforever, predicted)" },
 }) do
     T("6 level 26, Naturalist 5: " .. c[2] .. " " .. string.format("%.4f", c[3]) .. ", inside the measured", function()
         local e = b26.spells[c[1]]
         local b = e and e.bonus
-        return b and b.from == "estimated" and Near3(b.counts, c[3]) and b.counts >= c[4] and b.counts <= c[5]
+        return b and b.from == "estimated" and Near3(b.counts, c[3])
+            and b.counts >= c[4] - 1e-9 and b.counts <= c[5] + 1e-9
             and b.why == c[6],
             string.format("counts=%s why=%s", tostring(b and b.counts), tostring(b and b.why))
     end)
 end
 
-T("6 the seam: Wrath's talentMult x1.05 Naturalist 5; Healing Touch has none", function()
+T("6 the seam: Wrath's talentMult x1.10 Naturalist 5; Healing Touch has none", function()
     local w, h = b26.spells[5176], b26.spells[5185]
     local m = w and w.talentMult
-    return m and Near3(m.factor, 1.05) and m.words == "x1.05 Naturalist 5" and h and h.talentMult == nil
+    return m and Near3(m.factor, 1.10) and m.words == "x1.10 Naturalist 5" and h and h.talentMult == nil
         and Book._seamFields.talentMult == true,
         string.format("w=%s h=%s", tostring(m and m.words), tostring(h and h.talentMult))
 end)
@@ -449,9 +452,18 @@ end)
 T("6 two multipliers: a product, said as assumed (Moonfire, Moonfury 5 and Naturalist 5)", function()
     local e = Use(26, { ["Moonfury"] = 5, ["Naturalist"] = 5 }).spells[8921]
     local m = e.talentMult
-    return m and Near3(m.factor, 1.10 * 1.05) and m.words == "x1.10 Moonfury 5 x1.05 Naturalist 5 (product assumed)"
-        and Near3(e.bonus.counts, 0.54 * 1.10 * 1.05),
+    return m and Near3(m.factor, 1.10 * 1.10) and m.words == "x1.10 Moonfury 5 x1.10 Naturalist 5 (product assumed)"
+        and Near3(e.bonus.counts, 0.54 * 1.10 * 1.10),
         string.format("%s %s", tostring(m and m.words), tostring(e.bonus.counts))
+end)
+
+T("6 T134 a periodic scope: Genesis 5 multiplies Regrowth's ticks alone, Rejuvenation whole, Healing Touch not", function()
+    local b = Use(26, { ["Genesis"] = 5 })
+    local rj, rg, ht = b.spells[1430], b.spells[8938], b.spells[5188]
+    return Near3(rj.bonus.counts, 0.80 * 1.10) and Near3(ht.talentMult and ht.talentMult.factor or 1, 1)
+        and Near3(rj.talentMult.tickFactor, 1.10) and Near3(rj.talentMult.factor, 1)
+        and Near3(rg.bonus.counts, (0.286 + 0.071 * 7 * 1.10) * Coef.LevelPenalty(rg)),
+        string.format("rj=%s rg=%s", tostring(rj.bonus.counts), tostring(rg.bonus.counts))
 end)
 
 T("6 a spell scope: Improved Rejuvenation 3 on Rejuvenation, not on Healing Touch", function()
@@ -493,7 +505,7 @@ end)
 
 T("7 card, Wrath R1, estimated", function()
     local s = W.Bonus(b26.spells[5176], "card", "damage")
-    return s == "counts ~45% estimated (42.9% x1.05 Naturalist 5 (talentsforever, predicted))", s
+    return s == "counts ~47% estimated (42.9% x1.10 Naturalist 5 (talentsforever, predicted))", s
 end)
 
 T("7 card, Rejuvenation R1 measured: as predicted", function()

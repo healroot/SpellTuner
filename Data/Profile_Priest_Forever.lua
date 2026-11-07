@@ -1,7 +1,7 @@
 -- T106 (docs/SPEC-next.md 4.3, section 11): the priest's profile on the
 -- Forever line -- the third class after the druid to be coached (decision 7:
 -- Paladin -> Shaman -> Priest). It adds the `group` and `selfAndTarget` kit
--- types (Prayer of Healing, Holy Nova, Binding Heal, T101).
+-- types (Prayer of Healing, Holy Nova, T101; Binding Heal and Lightwell left the game, T134).
 --
 -- **Without Power Word: Shield until T109** (docs/SPEC-next.md 4.2 P3, 4.3):
 -- the engine has no absorb, so a priest is coached without shields. The
@@ -29,7 +29,7 @@
 --   * Power Word: Shield, Contingency Plan -- absorbs (T109);
 --   * Desperate Prayer -- heals the caster alone;
 --   * Divine Grace -- heals only a target below a health line;
---   * Penance, Prayer of Mending, Lightwell, Vampiric Embrace -- refused by
+--   * Penance, Prayer of Mending, Vampiric Embrace -- refused by
 --     the parser, or heals the plan cannot choose (docs/SPEC-next.md 3
 --     principle 8);
 --   * Inner Focus, Power Infusion -- next-cast modifiers.
@@ -60,11 +60,10 @@ ST.Profiles.Register("PRIEST", {
         PrayerOfHealing = { names = { "Prayer of Healing" }, kit = "group" },
         HolyNova        = { names = { "Holy Nova" },         kit = "group" },
         -- the target and the caster (4.5; VERIFY)
-        BindingHeal     = { names = { "Binding Heal" },      kit = "selfAndTarget" },
     },
     -- The dashboard order (ST.SpellData.familyOrder).
     order = { "GreaterHeal", "Heal", "FlashHeal", "LesserHeal", "Renew",
-              "PrayerOfHealing", "BindingHeal", "HolyNova" },
+              "PrayerOfHealing", "HolyNova" },
     -- Renew's HoT in slot 1 (the engine's per-target HoT slots).
     hotSlots = { "Renew" },
     -- Solver only (no `rules`: the threshold rules are the druid's tactics,
@@ -72,9 +71,9 @@ ST.Profiles.Register("PRIEST", {
     -- only ties -- Engine/SimSolver.lua scores every one).
     planner = {
         families = { "Renew", "FlashHeal", "GreaterHeal", "Heal", "LesserHeal",
-                     "PrayerOfHealing", "BindingHeal", "HolyNova" },
+                     "PrayerOfHealing", "HolyNova" },
     },
     unmodelled = { "Power Word: Shield", "Contingency Plan", "Desperate Prayer", "Divine Grace",
-                   "Penance", "Prayer of Mending", "Lightwell", "Vampiric Embrace",
+                   "Penance", "Prayer of Mending", "Vampiric Embrace",
                    "Inner Focus", "Power Infusion" },
 })

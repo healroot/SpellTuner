@@ -268,7 +268,7 @@ local function TalentWords(e, kind)
     if m.kind ~= nil and kind ~= nil and m.kind ~= kind then return 1, "" end
     if m.words == "talents not read" then return 1, ", talents not read" end
     if type(m.words) ~= "string" or m.words == "" then return 1, "" end
-    if m.factor == 1 and not m.words:find("no rule", 1, true) then return 1, "" end
+    if m.factor == 1 and (m.tickFactor or 1) == 1 and not m.words:find("no rule", 1, true) then return 1, "" end
     return m.factor, " " .. m.words
 end
 
@@ -277,6 +277,7 @@ local function FromRow(e, row, kind)
     local tick = (type(row.tick) == "number") and row.tick or nil
     if direct == nil and tick == nil then return nil, "no share in the row" end
     local counts, words = direct or 0, {}
+    local tickShare = 0 -- T134: the over-time part, which a periodic talent (Genesis) multiplies alone
     if direct then words[#words + 1] = Pct(direct) end
     local note = ""
     if tick then
@@ -294,14 +295,16 @@ local function FromRow(e, row, kind)
         end
         local ticks = math.floor(dur / period + 1e-9)
         if ticks < 1 then return nil, "no ticks" end
-        counts = counts + tick * ticks
+        tickShare = tick * ticks
+        counts = counts + tickShare
         words[#words + 1] = Pct(tick) .. " x " .. ticks .. " tick" .. (ticks == 1 and "" or "s")
     end
     -- T133: the share, then each factor that is not 1, by name
     local share = counts
     local p, levelLong, levelShort = LevelWords(e, kind)
     local m, talent = TalentWords(e, kind)
-    counts = share * p * m
+    local tf = type(e.talentMult) == "table" and e.talentMult.kind == kind and e.talentMult.tickFactor or 1
+    counts = (share + tickShare * (tf - 1)) * p * m
     -- a prediction is a factor said by name; an unknown level or unread
     -- talents (factor 1, ", ... unknown" / ", talents not read") is not one
     local predicted = levelShort ~= "" or (talent ~= "" and talent:sub(1, 1) ~= ",")

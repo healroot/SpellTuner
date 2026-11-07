@@ -642,6 +642,13 @@ LinesFor = function(id, detail, source, view)
     end
     lines[#lines + 1] = Pair("Per mana", PerManaText(entry))
     lines[#lines + 1] = Pair("Per sec", PerSecText(entry)) -- T78: the table's word
+    -- T134 review m6: Bloom is in the two numbers above, so it is said beside them
+    local ex = entry.expiryHeal
+    if type(ex) == "table" and type(ex.words) == "string" and kind == "heal" then
+        local line = Single((type(ex.amount) == "number" and "Includes " or "") .. ex.words .. " (predicted)", "muted")
+        line.wrap = true
+        lines[#lines + 1] = line
+    end
     -- casts to OOM: a family row's number only (a ReadSpell entry never has
     -- one, 5.4), and only for a mana cost (a Rage spell never runs dry)
     if family and not OtherPowerCost(entry.cost) then

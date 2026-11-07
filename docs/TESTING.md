@@ -2304,8 +2304,8 @@ measured +healing share (49.3 step 4).
    hover `read before combat`). The card gains **+Healing counts ~N% estimated (cast 3.0 / 3.5)**
    on every rank before a gear change; nothing else on the card changed. No After overheal check
    (Forever has no combat log, D2).
-2. **What if (T122, new on Forever).** What if... -> the panel with STATS and the sentence `Your
-   talents are already in the spells' text, so there is no class row.` +150 healing: the ranks'
+2. **What if (T122, new on Forever).** What if... -> the panel with STATS and, since T134, the TALENTS rows
+   (section 56). +150 healing: the ranks'
    Heal, Per mana and Per sec move, the suggestion may move, the footer says so, and RANKS' note
    reads `what if: +150 healing - N of M ranks measured, K estimated`. Crit 30: only the card's
    Crit line changes. Mana: Casts and Now. Overview and the rail's tags follow (Overview's title
@@ -2510,6 +2510,24 @@ still wins, and its card now says whether the prediction agreed.
 
 **Paste back** both exports per level and the cards of the ranks above into
 `.logs/forever/factors.md`.
+
+## 56. Launch talents: Bloom and What if -> Talents (T134) -- NEW, 5 min
+
+Forever, as a druid. Everything here is a prediction until you say otherwise.
+
+1. **Spells -> Rejuvenation -> What if...** A TALENTS section with one-line rows: Bloom, Genesis, Gift of
+   Nature, Improved Rejuvenation, Living Spirit, then Spirit, each showing your live value greyed.
+2. **Bloom +.** Heal and Per mana rise by your Spirit (Bloom's 100%). The card gets `Bloom +N if it runs
+   out (100% of N Spirit)`. Compare that N with the heal you see land when a Rejuvenation expires.
+3. **Living Spirit 3 with Bloom on:** the amount goes up 15%. Type a Spirit: it follows.
+4. **Open Healing Touch** with the What if still on: other rows (Naturalist, Tranquil Spirit, Gift of
+   Nature). Naturalist 5: the cast falls by 0.5 s if you have no points in it. Tranquil Spirit 5: the
+   cost falls 10%. Compare with what a real respec shows, and report a mismatch.
+5. **Clear.** Every number returns.
+6. **Really take Bloom.** Rejuvenation's Per mana includes it with the What if off. Hover the spell: under
+   Per sec, `Includes Bloom +N if it runs out ... (predicted)`. In combat the amount stays at the
+   last Spirit read.
+7. **Priest / shaman / paladin:** What if shows that class's talents. Rows are from the site.
 
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the

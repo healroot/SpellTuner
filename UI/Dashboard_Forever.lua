@@ -367,6 +367,11 @@ end
 ST.SpellsLine = {
     footer = "Values come from the spell's own text. ~ = modelled.",
     critNote = "x1.5, unverified",
+    -- T134: only a class with a talent that adds to the text
+    valueNote = function()
+        local rules = ST.TalentExpiry and ST.player and ST.TalentExpiry[ST.player.class]
+        return rules and "Plus Bloom if you have it, when the spell runs out." or nil
+    end,
 }
 
 --------------------------------------------------------------------------------

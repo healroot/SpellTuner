@@ -324,9 +324,12 @@ local HEAD_TIPS = {
     level = "The level you learn this rank at.",
     mana = "What one cast costs.",
     value = function(label)
-        if label == "Heal" then return "The average heal of one cast, from the spell's own text." end
+        -- T134: a line's words for what it adds to the text (Forever: Bloom)
+        local more = ST.SpellsLine and ST.SpellsLine.valueNote and ST.SpellsLine.valueNote()
+        more = more and (" " .. more) or ""
+        if label == "Heal" then return "The average heal of one cast, from the spell's own text." .. more end
         if label == "Dmg" then return "The average damage of one cast, from the spell's own text." end
-        if label == "Total" then return "All of one cast, over its whole duration, from the spell's own text." end
+        if label == "Total" then return "All of one cast, over its whole duration, from the spell's own text." .. more end
         return "The average heal or damage of one cast; all of it for one over time."
     end,
     -- T127 (mockup M5): the column a mark is the most of
@@ -1135,6 +1138,11 @@ local function CardPairs(fam, e, pool)
         -- measured overheal
         local bonus = Words.Bonus(e, "card", kind)
         if bonus then P(Words.BonusLabel(kind), bonus) end
+        -- T134: Bloom is in the value above and in no spell's text: say so
+        local ex = e.expiryHeal
+        if kind == "heal" and type(ex) == "table" and type(ex.text) == "string" then
+            P(ex.talent, ex.text)
+        end
         if type(e.afterOverheal) == "table" and type(e.afterOverheal.value) == "number" then
             P("After oh.", AfterWord(e.afterOverheal))
         end
@@ -1357,6 +1365,8 @@ local WI_ROW_GAP = 3
 local WI_SUB_H = 16          -- STATS / the class title
 local WI_BOX_W = 60
 local WI_CHOICE_W = { live = 44, caster = 50, tree = 80 }
+local WI_COMPACT_BOX_W = 24  -- T134: a talent's rank
+local WI_COMPACT_LABEL_W = 122 -- T134: 122 + 2 + 24 + 2 + 16 + 2 + 16 = 184 of 188
 
 -- "600", "17.5": a typed value as the box shows it
 local function BoxText(v)
@@ -1367,7 +1377,7 @@ end
 
 local function StepWhatIf(key, dir)
     local WI = WhatIf()
-    local stat = WI and WI.STAT_BY[key]
+    local stat = WI and (WI.STAT_BY[key] or (WI.ClassRow and WI:ClassRow(key)))
     if not (stat and stat.step) then return end
     local big = ST.API.IsShiftKeyDown and ST.API.IsShiftKeyDown() == true
     local step = (big and stat.bigStep) or stat.step
@@ -1380,7 +1390,7 @@ end
 -- One row: its label, and (a number) its box with the grey live value, its
 -- steps and the change beside it; (a choice) a button group.
 local function WhatIfRow(pane, key, label, spec)
-    local row = { key = key }
+    local row = { key = key, compact = spec.compact } -- T134: compact, one line (a talent's rank)
     row.label = pane:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
     row.label:SetJustifyH("LEFT")
     row.label:SetWordWrap(false)
@@ -1401,7 +1411,8 @@ local function WhatIfRow(pane, key, label, spec)
         end)
         return row
     end
-    local box = UI.CreateEditBox(pane, WI_BOX_W, 18, false, false, false, UI.FONT_NUM or UI.FONT)
+    local box = UI.CreateEditBox(pane, spec.compact and WI_COMPACT_BOX_W or WI_BOX_W, 18, false, false, false,
+        UI.FONT_NUM or UI.FONT)
     row.box = box
     row.ph = box:CreateFontString(nil, "OVERLAY", UI.FONT_NUM or UI.FONT)
     row.ph:SetPoint("LEFT", box, "LEFT", 5, 0)
@@ -1432,10 +1443,15 @@ local function WhatIfRow(pane, key, label, spec)
         row.minus:SetScript("OnClick", function() StepWhatIf(key, -1) end)
         row.plus = UI.CreateButton(pane, "+", "accent-hover", { 16, 18 }, false, false, UI.FONT_SMALL, UI.FONT_SMALL)
         row.plus:SetScript("OnClick", function() StepWhatIf(key, 1) end)
-        UI.SetTooltips(row.plus, "ANCHOR_TOPLEFT", 0, 3, label,
-            "+" .. spec.step .. " (Shift: +" .. (spec.bigStep or spec.step) .. ")")
-        UI.SetTooltips(row.minus, "ANCHOR_TOPLEFT", 0, 3, label,
-            "-" .. spec.step .. " (Shift: -" .. (spec.bigStep or spec.step) .. ")")
+        if spec.compact then
+            UI.SetTooltips(row.plus, "ANCHOR_TOPLEFT", 0, 3, label, "One rank more (highest " .. tostring(spec.max) .. ")")
+            UI.SetTooltips(row.minus, "ANCHOR_TOPLEFT", 0, 3, label, "One rank less")
+        else
+            UI.SetTooltips(row.plus, "ANCHOR_TOPLEFT", 0, 3, label,
+                "+" .. spec.step .. " (Shift: +" .. (spec.bigStep or spec.step) .. ")")
+            UI.SetTooltips(row.minus, "ANCHOR_TOPLEFT", 0, 3, label,
+                "-" .. spec.step .. " (Shift: -" .. (spec.bigStep or spec.step) .. ")")
+        end
     end
     local note = spec.unit or spec.note
     if note then
@@ -1452,7 +1468,8 @@ local function WhatIfRow(pane, key, label, spec)
 end
 
 -- A row's pitch: its label line, its controls, the gap (T125: stacked).
-local function WhatIfRowPitch()
+local function WhatIfRowPitch(row)
+    if row and row.compact then return WI_CTRL_H + WI_ROW_GAP end
     return Pitch(WI_LABEL_H) + WI_CTRL_H + WI_ROW_GAP
 end
 
@@ -1460,6 +1477,22 @@ end
 -- left to right.
 local function PlaceWhatIfRow(pane, row, y)
     local x = WI_ROW_X
+    if row.compact then
+        row.label:ClearAllPoints()
+        row.label:SetPoint("TOPLEFT", pane, "TOPLEFT", x, -(y + 3))
+        row.label:SetWidth(WI_COMPACT_LABEL_W)
+        local cx = x + WI_COMPACT_LABEL_W + 2
+        row.box:ClearAllPoints()
+        row.box:SetPoint("TOPLEFT", pane, "TOPLEFT", cx, -y)
+        cx = cx + WI_COMPACT_BOX_W + 2
+        row.minus:ClearAllPoints()
+        row.minus:SetPoint("TOPLEFT", pane, "TOPLEFT", cx, -y)
+        row.plus:ClearAllPoints()
+        row.plus:SetPoint("TOPLEFT", pane, "TOPLEFT", cx + 18, -y)
+        row.delta:ClearAllPoints()
+        row.delta:SetPoint("TOPLEFT", row.plus, "TOPRIGHT", 2, -3)
+        return
+    end
     row.label:ClearAllPoints()
     row.label:SetPoint("TOPLEFT", pane, "TOPLEFT", x, -y)
     row.label:SetWidth(WI_ROW_W)
@@ -1517,7 +1550,7 @@ function SpellsPane:PlaceDrawer()
     if not d then return end
     local win = d:GetParent()
     if not win then return end
-    d:SetHeight(win:GetHeight())
+    d:SetHeight(math.max(win:GetHeight(), d.contentH or 0)) -- T134 review m9
     local left, w = win:GetLeft(), win:GetWidth()
     local es = win:GetEffectiveScale()
     local uiRight = UIParent:GetRight()
@@ -1675,7 +1708,7 @@ local function PaintWhatIf(f, liveFam, fam)
         if not (row.box.HasFocus and row.box:HasFocus()) then row.box:SetText(BoxText(v)) end
         row.ph:SetText(Num(live[row.key], decimals))
         row.ph:SetShown((row.box:GetText() or "") == "")
-        row.delta:SetText(WI:Delta(row.key))
+        row.delta:SetText(row.compact and "" or WI:Delta(row.key)) -- T134: a rank has no room for one
     end
     for i, row in ipairs(d.statRows) do
         PlaceWhatIfRow(pane, row, y0 + (i - 1) * pitch)
@@ -1685,7 +1718,9 @@ local function PaintWhatIf(f, liveFam, fam)
     end
     -- the class section under STATS: the provider's rows, else its sentence
     local cy = y0 + #d.statRows * pitch + 4
-    local classRows = WI:ClassRows()
+    -- the live family: a talent typed to an instant keeps its row (T134 review m1)
+    local rowsFam = liveFam or fam
+    local classRows = WI:ClassRowsFor(rowsFam)
     local wanted = {}
     local fy
     if classRows then
@@ -1693,30 +1728,39 @@ local function PaintWhatIf(f, liveFam, fam)
         d.classTitle:ClearAllPoints()
         d.classTitle:SetPoint("TOPLEFT", pane, "TOPLEFT", 0, -cy)
         d.classTitle:Show()
-        d.classNote:Hide()
         local ry = cy + Pitch(WI_SUB_H)
-        local n = 0
-        for j, spec in ipairs(classRows) do
+        for _, spec in ipairs(classRows) do
             local row = d.rows[spec.key]
             if not row then
                 row = WhatIfRow(pane, spec.key, spec.label or spec.key, spec)
                 d.rows[spec.key] = row
             end
             wanted[spec.key] = true
-            PlaceWhatIfRow(pane, row, ry + (j - 1) * pitch)
+            PlaceWhatIfRow(pane, row, ry)
+            ry = ry + WhatIfRowPitch(row)
             ShowWhatIfRow(row, true)
             if row.highlight then
                 row.highlight(WI:Get(spec.key) or "live")
             else
                 PaintNumber(row, nil)
             end
-            n = j
         end
-        fy = ry + n * pitch + 4
+        fy = ry + 4
+        -- T134: a sentence under the rows too, when the provider has one
+        local note = WI:ClassNote(rowsFam)
+        if note then
+            d.classNote:SetText(note)
+            d.classNote:ClearAllPoints()
+            d.classNote:SetPoint("TOPLEFT", pane, "TOPLEFT", WI_ROW_X, -fy)
+            d.classNote:Show()
+            fy = fy + WrappedHeight(d.classNote) + 6
+        else
+            d.classNote:Hide()
+        end
     else
         d.classTitle:SetText("")
         d.classTitle:Hide()
-        local note = WI:ClassNote()
+        local note = WI:ClassNote(rowsFam)
         if note then
             d.classNote:SetText(note)
             d.classNote:ClearAllPoints()
@@ -1739,6 +1783,9 @@ local function PaintWhatIf(f, liveFam, fam)
     local paneH = fy + WrappedHeight(d.footer) + 4
     pane:SetHeight(paneH)
     d.contentH = DRAWER_PAD + paneH + DRAWER_PAD
+    -- T134 review m9: every talent row at font +2 is past the window; the drawer
+    -- does not scroll, so it grows rather than lose the footer
+    d:SetHeight(math.max(d:GetParent():GetHeight(), d.contentH))
 end
 
 -- Shows the drawer while the What if is open and a spell's strip is on

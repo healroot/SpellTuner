@@ -944,6 +944,13 @@ function W.Bonus(e, style, kind)
 
     if style == "tip" then return pct end
 
+    -- T134: moved by typed talents, it is neither what was measured nor what the
+    -- live talents' words describe
+    if type(b.movedFrom) == "number" then
+        return (style == "how" and (W.BonusLabel(kind) .. " counts ") or "counts ") .. pct
+            .. " under the typed talents (was " .. Num(b.movedFrom * 100) .. "%)"
+    end
+
     local fit = (b.from == "measured" and type(b.fit) == "table") and b.fit or nil
     local ms = (est and type(b.measuring) == "table") and b.measuring or nil
     if ms and not (type(ms.lo) == "number" and type(ms.hi) == "number" and type(ms.need) == "number") then ms = nil end

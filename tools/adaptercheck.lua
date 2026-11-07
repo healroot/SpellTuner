@@ -90,6 +90,8 @@ local FOREVER_ONLY_NAMES = {
     -- T129 (Spells/Book.lua's talent seam): the player's talent ranks by
     -- name, the C_Traits walk, recorded explicitly.
     "TalentRanks", -- T129
+    -- T134: Spirit for Bloom (Spells/Book.lua), through its own wrapper.
+    "UnitStat", "Spirit", -- T134
 }
 -- T15: Client/API_TBC.lua's own binding -- GetSpellInfo, so
 -- Engine/SimModel.lua and Engine/SimPlanner.lua's four call sites can go

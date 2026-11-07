@@ -1656,3 +1656,20 @@ ranks not read and a heal's learn level unknown are each factor 1 and said (`, t
 Holy Nova) takes the heal entry's talent factor, which is dropped for kind damage, so it can never
 take a damage multiplier; none is generated for paladin or priest today, so nothing is wrong on
 the current data, but a recognised "Holy damage" shape would leave that half at x1.
+
+## The launch talents, and talent builds in the What if (2026-11-07, T134, the author's request)
+
+talentsforever's 2026-11-04 export replaces the beta's numbers, still **preliminary until verified in
+game**. Naturalist went from 1% to 2% a rank, so the x1.05 measured on 2026-10-23 no longer describes
+the game; `tools/coefscheck.lua` predicts x1.10 until someone measures it.
+
+**Bloom counts in a spell's value**, per mana and the marks: it is what the talent buys, and the author
+wants its effect on efficiency. It assumes the HoT runs out, and the words say so; Swiftmending or
+refreshing forfeits it. Flat Spirit, no +healing and no multipliers (VERIFY). The fit reads `textValue`,
+so a Bloom never measures as a +healing share. The simulator does not model it yet.
+
+**The What if moves from the live ranks to the typed ones** because the client's text and cost already
+carry the live talents; hence no rows at all while ranks are unread, rather than assuming rank 0. Cost
+talents add (assumed). "Amount healed" talents do not reach a shield: only a talent naming the spell does
+(VERIFY; T134 review m2). Crit, durations, regen, stat-to-bonus talents, procs and spells a talent teaches
+do not move, and the sentence says so: `docs/tasks/T134-forever-launch-talents.md`.

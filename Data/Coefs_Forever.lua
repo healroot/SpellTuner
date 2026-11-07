@@ -8,16 +8,22 @@ local _, ST = ...
 -- PRELIMINARY until verified in game (docs/DECISIONS.md, 2026-10-04 and
 -- 2026-10-23): talentsforever.com's coefficients are the base estimates
 -- until a Forever client shows otherwise; a measured share wins.
--- Data from talentsforever.com (https://talentsforever.com), generated 2026-10-22 (CC-BY-4.0).
+-- Data from talentsforever.com (https://talentsforever.com), generated 2026-11-04 (CC-BY-4.0).
 --
 -- [spell id] = { direct, heal, tick, name, rank }: direct the share of the
 -- direct (damage) part, heal the share of the heal part, tick the share of
 -- each tick; any may be absent. direct and heal are never summed.
 --
--- Rows read: 557.
+-- Rows read: 538.
 -- Skipped, text not the beta client's (s other than beta): 0.
--- Skipped, a note on the row (fx / asis): 1.
---   Shaman|Lava Burst|Rank 3 (asis)
+-- Skipped, a note on the row (fx / asis): 7.
+--   Mage|Fire Blast|Rank 1 (fx)
+--   Mage|Fire Blast|Rank 2 (fx)
+--   Mage|Fire Blast|Rank 3 (fx)
+--   Mage|Fire Blast|Rank 4 (fx)
+--   Mage|Fire Blast|Rank 5 (fx)
+--   Mage|Fire Blast|Rank 6 (fx)
+--   Mage|Fire Blast|Rank 7 (fx)
 -- Skipped, wording not recognised: 7 row(s), 1 phrase(s), the first:
 --   42.9% and 10% of spell power (direct)
 -- Skipped, no spell id: 0.
@@ -43,7 +49,7 @@ ST.CoefRules = {
     [339] = { tick = 0.06, name = "Entangling Roots", rank = 1 },
     [348] = { direct = 0.2, tick = 0.13, name = "Immolate", rank = 1 },
     [403] = { direct = 0.429, name = "Lightning Bolt", rank = 1 },
-    [421] = { direct = 0.571, name = "Chain Lightning", rank = 1 },
+    [421] = { direct = 0.714, name = "Chain Lightning", rank = 1 },
     [529] = { direct = 0.571, name = "Lightning Bolt", rank = 2 },
     [547] = { heal = 0.714, name = "Healing Wave", rank = 3 },
     [548] = { direct = 0.714, name = "Lightning Bolt", rank = 3 },
@@ -71,7 +77,7 @@ ST.CoefRules = {
     [905] = { direct = 0.267, name = "Lightning Shield", rank = 3 },
     [913] = { heal = 0.857, name = "Healing Wave", rank = 4 },
     [915] = { direct = 0.714, name = "Lightning Bolt", rank = 4 },
-    [930] = { direct = 0.571, name = "Chain Lightning", rank = 2 },
+    [930] = { direct = 0.714, name = "Chain Lightning", rank = 2 },
     [939] = { heal = 0.857, name = "Healing Wave", rank = 5 },
     [943] = { direct = 0.714, name = "Lightning Bolt", rank = 5 },
     [945] = { direct = 0.267, name = "Lightning Shield", rank = 4 },
@@ -107,13 +113,10 @@ ST.CoefRules = {
     [2091] = { tick = 0.2, name = "Rejuvenation", rank = 5 },
     [2120] = { direct = 0.157, tick = 0.032, name = "Flamestrike", rank = 1 },
     [2121] = { direct = 0.157, tick = 0.032, name = "Flamestrike", rank = 2 },
-    [2136] = { direct = 0.429, name = "Fire Blast", rank = 1 },
-    [2137] = { direct = 0.429, name = "Fire Blast", rank = 2 },
-    [2138] = { direct = 0.429, name = "Fire Blast", rank = 3 },
     [2652] = { direct = 0.107, name = "Touch of Weakness", rank = 1 },
     [2767] = { tick = 0.2, name = "Shadow Word: Pain", rank = 5 },
     [2812] = { direct = 0.19, name = "Holy Wrath", rank = 1 },
-    [2860] = { direct = 0.517, name = "Chain Lightning", rank = 3 },
+    [2860] = { direct = 0.714, name = "Chain Lightning", rank = 3 },
     [2912] = { direct = 1, name = "Starfire", rank = 1 },
     [2941] = { direct = 0.2, tick = 0.13, name = "Immolate", rank = 4 },
     [2944] = { tick = 0.1, name = "Devouring Plague", rank = 1 },
@@ -212,8 +215,6 @@ ST.CoefRules = {
     [8406] = { direct = 0.814, name = "Frostbolt", rank = 5 },
     [8407] = { direct = 0.814, name = "Frostbolt", rank = 6 },
     [8408] = { direct = 0.814, name = "Frostbolt", rank = 7 },
-    [8412] = { direct = 0.429, name = "Fire Blast", rank = 4 },
-    [8413] = { direct = 0.429, name = "Fire Blast", rank = 5 },
     [8416] = { tick = 0.286, name = "Arcane Missiles", rank = 4 },
     [8417] = { tick = 0.286, name = "Arcane Missiles", rank = 5 },
     [8422] = { direct = 0.157, tick = 0.032, name = "Flamestrike", rank = 3 },
@@ -277,8 +278,6 @@ ST.CoefRules = {
     [10185] = { tick = 0.042, name = "Blizzard", rank = 4 },
     [10186] = { tick = 0.042, name = "Blizzard", rank = 5 },
     [10187] = { tick = 0.042, name = "Blizzard", rank = 6 },
-    [10197] = { direct = 0.429, name = "Fire Blast", rank = 6 },
-    [10199] = { direct = 0.429, name = "Fire Blast", rank = 7 },
     [10201] = { direct = 0.143, name = "Arcane Explosion", rank = 5 },
     [10202] = { direct = 0.143, name = "Arcane Explosion", rank = 6 },
     [10205] = { direct = 0.429, name = "Scorch", rank = 5 },
@@ -317,7 +316,7 @@ ST.CoefRules = {
     [10585] = { tick = 0.033, name = "Magma Totem", rank = 2 },
     [10586] = { tick = 0.033, name = "Magma Totem", rank = 3 },
     [10587] = { tick = 0.033, name = "Magma Totem", rank = 4 },
-    [10605] = { direct = 0.571, name = "Chain Lightning", rank = 4 },
+    [10605] = { direct = 0.714, name = "Chain Lightning", rank = 4 },
     [10622] = { heal = 0.714, name = "Chain Heal", rank = 2 },
     [10623] = { heal = 0.714, name = "Chain Heal", rank = 3 },
     [10797] = { tick = 0.167, name = "Starshards", rank = 1 },
@@ -514,7 +513,6 @@ ST.CoefRules = {
     [29228] = { direct = 0.214, tick = 0.1, name = "Flame Shock", rank = 6 },
     [400574] = { direct = 0.429, name = "Arcane Blast", rank = 1 },
     [401502] = { direct = 0.814, name = "Frostfire Bolt", rank = 1 },
-    [401937] = { heal = 0.429, name = "Binding Heal", rank = 1 },
     [402174] = { heal = 0.19, tick = 0.19, name = "Penance", rank = 1 },
     [408120] = { tick = 0.033, name = "Wild Growth", rank = 1 },
     [408341] = { direct = 0.143, name = "Fire Nova", rank = 1 },
@@ -522,27 +520,20 @@ ST.CoefRules = {
     [408343] = { direct = 0.143, name = "Fire Nova", rank = 3 },
     [408344] = { direct = 0.143, name = "Fire Nova", rank = 4 },
     [408345] = { direct = 0.143, name = "Fire Nova", rank = 5 },
-    [408490] = { direct = 0.714, name = "Lava Burst", rank = 1 },
-    [408521] = { heal = 0.214, tick = 0.1, name = "Riptide", rank = 1 },
+    [408521] = { tick = 0.1, name = "Riptide", rank = 1 },
     [412758] = { direct = 0.714, name = "Incinerate", rank = 1 },
     [1237312] = { direct = 0.814, name = "Frostfire Bolt", rank = 2 },
     [1237313] = { direct = 0.814, name = "Frostfire Bolt", rank = 3 },
     [1238214] = { tick = 0.033, name = "Wild Growth", rank = 2 },
     [1238215] = { tick = 0.033, name = "Wild Growth", rank = 3 },
-    [1238299] = { direct = 0.714, name = "Lava Burst", rank = 2 },
-    [1239242] = { heal = 0.214, tick = 0.1, name = "Riptide", rank = 2 },
-    [1239243] = { heal = 0.214, tick = 0.1, name = "Riptide", rank = 3 },
+    [1239242] = { tick = 0.1, name = "Riptide", rank = 2 },
+    [1239243] = { tick = 0.1, name = "Riptide", rank = 3 },
     [1239696] = { direct = 0.429, name = "Arcane Blast", rank = 2 },
     [1239697] = { direct = 0.429, name = "Arcane Blast", rank = 3 },
     [1239699] = { direct = 0.429, name = "Arcane Blast", rank = 4 },
     [1239700] = { direct = 0.429, name = "Arcane Blast", rank = 5 },
     [1240720] = { heal = 0.19, tick = 0.19, name = "Penance", rank = 2 },
     [1240721] = { heal = 0.19, tick = 0.19, name = "Penance", rank = 3 },
-    [1240770] = { heal = 0.429, name = "Binding Heal", rank = 2 },
-    [1240771] = { heal = 0.429, name = "Binding Heal", rank = 3 },
-    [1240772] = { heal = 0.429, name = "Binding Heal", rank = 4 },
-    [1240773] = { heal = 0.429, name = "Binding Heal", rank = 5 },
-    [1240774] = { heal = 0.429, name = "Binding Heal", rank = 6 },
     [1277331] = { direct = 0.143, name = "Chastise", rank = 1 },
     [1277332] = { direct = 0.143, name = "Chastise", rank = 2 },
     [1277333] = { direct = 0.143, name = "Chastise", rank = 3 },
@@ -568,16 +559,12 @@ ST.CoefRules = {
     [1309633] = { direct = 0.429, name = "Shadow Word: Death", rank = 2 },
     [1309635] = { direct = 0.429, name = "Shadow Word: Death", rank = 3 },
     [1309636] = { direct = 0.429, name = "Shadow Word: Death", rank = 4 },
-    [1310911] = { direct = 0.429, heal = 0.143, name = "Light's Vigil", rank = 1 },
-    [1311590] = { direct = 0.429, heal = 0.143, name = "Light's Vigil", rank = 2 },
-    [1311595] = { direct = 0.429, heal = 0.143, name = "Light's Vigil", rank = 3 },
+    [1310911] = { heal = 0.143, name = "Light's Vigil", rank = 1 },
+    [1311590] = { heal = 0.143, name = "Light's Vigil", rank = 2 },
+    [1311595] = { heal = 0.143, name = "Light's Vigil", rank = 3 },
     [1311606] = { direct = 0.429, heal = 0.429, name = "Holy Shock", rank = 1 },
-    [1316697] = { tick = 0.143, name = "Wrack", rank = 1 },
+    [1316697] = { tick = 0.286, name = "Wrack", rank = 1 },
     [1316995] = { heal = 0.19, tick = 0.19, name = "Penance", rank = 4 },
-    [1326047] = { direct = 0.714, name = "Lava Burst", rank = 4 },
-    [1326053] = { direct = 0.343, name = "Frost Blast", rank = 1 },
-    [1326054] = { direct = 0.343, name = "Frost Blast", rank = 2 },
-    [1326055] = { direct = 0.343, name = "Frost Blast", rank = 3 },
     [1326079] = { direct = 1, name = "Arcane Wrath", rank = 1 },
     [1326080] = { direct = 1, name = "Arcane Wrath", rank = 2 },
     [1326081] = { direct = 1, name = "Arcane Wrath", rank = 3 },

@@ -603,6 +603,19 @@ local function TalentWalk()
     return ranks
 end
 
+-- T134: the player's Spirit, for Bloom (docs/tasks/T134-forever-launch-talents.md).
+-- UnitStat's second return is the stat with gear and talents; plain out of
+-- combat, secret in combat (ShouldUnitStatsBeSecret, docs/probe/1.60.1_70009.md).
+ST.API.Bind({ UnitStat = "UnitStat" })
+local SPIRIT_INDEX = 5
+function ST.API.Spirit()
+    local first, effective = ST.API.UnitStat("player", SPIRIT_INDEX)
+    if type(first) ~= "number" then return nil, effective end
+    if type(effective) ~= "number" then return nil, "absent" end
+    return effective
+end
+ST.API._bindings.Spirit = "UnitStat"
+
 function ST.API.TalentRanks()
     local ok, ranks, why = pcall(TalentWalk)
     if not ok then return nil, "error" end

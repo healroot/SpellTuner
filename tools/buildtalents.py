@@ -19,6 +19,13 @@ match is skipped and named in the file header; a spell name the class's own
 spellbook (or talents, or spell texts) in the same export does not know is
 dropped and named too -- never guessed.
 
+T134 (docs/tasks/T134-forever-launch-talents.md): ST.TalentCosts (a percent off
+a spell's mana cost, read only by the What if: the client's cost already carries
+the talents taken), ST.TalentExpiry (a heal when a HoT runs out, Bloom) and
+ST.TalentStats (a percent on Spirit, Living Spirit); the multipliers learn the
+amount-healed, periodic and instant-cast sentences. Each refuses what it does not
+recognise and names it, as below.
+
 T133 (docs/tasks/T133-forever-share-factors.md): the talent MULTIPLIERS too,
 ST.TalentMults[class][talent] = { scope, pctPerRank }, each rank's percent
 read from its own sentence. Recognised (after the cast-time clause T129 reads,
@@ -73,6 +80,13 @@ MULT_SHAPES = [
     ("heal", re.compile(r"^[Ii]ncreases the amount healed by your spells by " + NUM + r"(?P<rest>.*)$")),
     ("spell", re.compile(r"^[Ii]ncreases the effect of your (?P<spell>.+?) spell by " + NUM
                          + r"(?P<rest>.*)$")),
+    # T134
+    ("spell", re.compile(r"^[Ii]ncreases the amount healed by your (?P<spell>.+?) spells? by " + NUM
+                         + r"(?P<rest>.*)$")),
+    ("periodic", re.compile(r"^[Ii]ncreases the periodic damage and healing done by your spells and "
+                            r"abilities by " + NUM + r"(?P<rest>.*)$")),
+    ("instant", re.compile(r"^[Ii]ncreases the damage and healing of your instant cast spells by "
+                           + NUM + r"(?P<rest>.*)$")),
 ]
 # A candidate multiplier (T133 review M1): any sentence that increases something
 # whose object names damage, healing, health, an effect or an amount, by N%. A
@@ -127,11 +141,114 @@ def parse_mult(sentence, known):
             if a not in SCHOOLS or b not in SCHOOLS:
                 return None, "not a school"
             return {"kind": "damage", "schools": [a, b]}, pct
-        spell = m.group("spell")
+        if shape == "periodic":
+            return {"periodic": True}, pct
+        if shape == "instant":
+            return {"instant": True}, pct
+        spells = split_spells(m.group("spell"))
+        for spell in spells:
+            if spell not in known:
+                return None, "spell %s not in the export" % spell
+        return {"spells": spells}, pct
+    return None, "sentence not recognised"
+
+
+# T134: a percent off a spell's mana cost. The list is spell names, or the words
+# "healing" / "damaging" (a kind). A second clause that names no cost is allowed
+# ("and improves your chance to hit by 5%"); any other shape is skipped and named.
+COST_CANDIDATE = re.compile(r"\b[Mm]ana cost\b")
+COST_SHAPE = re.compile(r"^[Rr]educes the [Mm]ana cost of your (?P<list>.+?) spells? by " + NUM
+                        + r"(?P<rest>.*)$")
+COST_ITS = re.compile(r"^[Rr]educes the cast(?:ing)? time of your (?P<list>.+?) spells? by "
+                      r"\d+(?:\.\d+)? secs? and its [Mm]ana cost by " + NUM + r"(?P<rest>.*)$")
+COST_TAIL = re.compile(r"^(?: and (?P<clause>[^.]+))?\.?$")
+
+
+def parse_cost(sentence, known):
+    """(scope, pct) or (None, why)."""
+    m = COST_SHAPE.match(sentence) or COST_ITS.match(sentence)
+    if not m:
+        return None, "sentence not recognised"
+    tail = COST_TAIL.match(m.group("rest"))
+    if not tail or (tail.group("clause") and COST_CANDIDATE.search(tail.group("clause"))):
+        return None, "text after the percent not recognised"
+    pct = float(m.group("n"))
+    words = m.group("list")
+    if words == "healing":
+        return {"kind": "heal"}, pct
+    if words == "damaging":
+        return {"kind": "damage"}, pct
+    spells = split_spells(words)
+    for spell in spells:
         if spell not in known:
             return None, "spell %s not in the export" % spell
-        return {"spells": [spell]}, pct
-    return None, "sentence not recognised"
+    return {"spells": spells}, pct
+
+
+# T134: a heal when a spell runs out: "When your A or B spell expires due to its
+# duration, the target is instantly healed for an amount equal to N% of your Spirit."
+EXPIRY_CANDIDATE = re.compile(r"\bexpires? due to its duration\b")
+EXPIRY_SHAPE = re.compile(r"^When your (?P<list>.+?) spell expires due to its duration, the target is "
+                          r"instantly healed for an amount equal to " + NUM + r" of your Spirit\.")
+
+
+def parse_expiry(sentence, known):
+    m = EXPIRY_SHAPE.match(sentence)
+    if not m:
+        return None, "sentence not recognised"
+    spells = [x.strip() for x in m.group("list").split(" or ")]
+    for spell in spells:
+        if spell not in known:
+            return None, "spell %s not in the export" % spell
+    return {"spells": spells, "stat": "Spirit"}, float(m.group("n"))
+
+
+# T134: a percent on Spirit: "Increases your Spirit by N%." Only that sentence:
+# a proc, a party buff or a duration is not a permanent stat and is named.
+STAT_CANDIDATE = re.compile(r"\b[Ii]ncreases your (?:total )?Spirit by\b")
+STAT_SHAPE = re.compile(r"^[Ii]ncreases your (?:total )?Spirit by " + NUM + r"\.?$")
+
+
+def parse_stat(sentence, known):
+    m = STAT_SHAPE.match(sentence)
+    if not m:
+        return None, "sentence not recognised"
+    return {"stat": "Spirit"}, float(m.group("n"))
+
+
+def build_table(data, candidate, parse):
+    """{ token: { talent: { scope, pctPerRank } } }, skipped: one per talent with rising percents."""
+    table, skipped = {}, []
+    for cls in sorted(data["talents"]):
+        token = CLASS_TOKENS.get(cls)
+        if token is None:
+            continue
+        known = known_names(data, cls)
+        table.setdefault(token, {})
+        for tree in data["talents"][cls]["trees"]:
+            for t in tree["talents"]:
+                desc = t.get("desc") or []
+                if isinstance(desc, dict):
+                    desc = [desc[k] for k in sorted(desc, key=lambda k: int(k))]
+                if not any(candidate.search(s or "") for s in desc):
+                    continue
+                parsed = [parse(s or "", known) for s in desc]
+                bad = [why for scope, why in parsed if scope is None]
+                if bad:
+                    skipped.append("%s: %s (%s)" % (cls, t["name"], bad[0]))
+                    continue
+                if len(desc) != t.get("max"):
+                    skipped.append("%s: %s (not one sentence per rank)" % (cls, t["name"]))
+                    continue
+                if len({repr(sorted(scope.items())) for scope, _ in parsed}) != 1:
+                    skipped.append("%s: %s (scope differs by rank)" % (cls, t["name"]))
+                    continue
+                pcts = [pct for _, pct in parsed]
+                if any(p <= 0 for p in pcts) or any(b <= a for a, b in zip(pcts, pcts[1:])):
+                    skipped.append("%s: %s (percent not rising by rank)" % (cls, t["name"]))
+                    continue
+                table[token][t["name"]] = {"scope": parsed[0][0], "pctPerRank": pcts}
+    return table, skipped
 
 
 def build_mults(data):
@@ -273,12 +390,19 @@ def lua_scope(scope):
         parts.append("schools = { %s }" % ", ".join(lua_str(x) for x in scope["schools"]))
     if "spells" in scope:
         parts.append("spells = { %s }" % ", ".join(lua_str(x) for x in scope["spells"]))
+    if scope.get("periodic"):
+        parts.append("periodic = true")
+    if scope.get("instant"):
+        parts.append("instant = true")
+    if "stat" in scope:
+        parts.append("stat = %s" % lua_str(scope["stat"]))
     return "{ " + ", ".join(parts) + " }"
 
 
-def write(data, rules, skipped, dropped, out, mults=None, mskipped=None):
+def write(data, rules, skipped, dropped, out, mults=None, mskipped=None, extra=None):
     mults = mults or {}
     mskipped = mskipped or []
+    extra = extra or []
     lines = []
     w = lines.append
     w("local _, ST = ...")
@@ -321,6 +445,18 @@ def write(data, rules, skipped, dropped, out, mults=None, mskipped=None):
         w("--   " + s)
     if not mskipped:
         w("--   none")
+    w("--")
+    w("-- T134: ST.TalentCosts: rank r takes pctPerRank[r] percent off the mana cost of")
+    w("-- what the scope names (read by the What if only: the client's cost already")
+    w("-- carries the talents taken). ST.TalentExpiry: when a named spell runs its whole")
+    w("-- duration the target is healed for pctPerRank[r] percent of scope.stat.")
+    w("-- ST.TalentStats: rank r raises scope.stat by pctPerRank[r] percent.")
+    for global_name, _, tskipped in extra:
+        w("-- %s skipped (named, never guessed):" % global_name)
+        for s in sorted(tskipped):
+            w("--   " + s)
+        if not tskipped:
+            w("--   none")
     w("-" * 80)
     w("")
     w("ST.TalentRules = {")
@@ -348,6 +484,19 @@ def write(data, rules, skipped, dropped, out, mults=None, mskipped=None):
             w("        },")
         w("    },")
     w("}")
+    for global_name, table, _ in extra:
+        w("")
+        w("ST.%s = {" % global_name)
+        for token in sorted(table):
+            w("    %s = {" % token)
+            for name in sorted(table[token]):
+                m = table[token][name]
+                w("        [%s] = {" % lua_str(name))
+                w("            scope = %s," % lua_scope(m["scope"]))
+                w("            pctPerRank = { %s }," % ", ".join(num(v) for v in m["pctPerRank"]))
+                w("        },")
+            w("    },")
+        w("}")
     text = "\n".join(lines) + "\n"
     text.encode("ascii")  # raises on a byte above 127: the file must be ASCII
     with open(out, "w", newline="\n") as f:
@@ -372,11 +521,22 @@ def main(argv):
         data = json.load(f)
     rules, skipped, dropped = build(data)
     mults, mskipped = build_mults(data)
-    write(data, rules, skipped, dropped, out, mults, mskipped)
+    costs, cskipped = build_table(data, COST_CANDIDATE, parse_cost)
+    expiry, eskipped = build_table(data, EXPIRY_CANDIDATE, parse_expiry)
+    stats, sskipped = build_table(data, STAT_CANDIDATE, parse_stat)
+    write(data, rules, skipped, dropped, out, mults, mskipped, [
+        ("TalentCosts", costs, cskipped),
+        ("TalentExpiry", expiry, eskipped),
+        ("TalentStats", stats, sskipped),
+    ])
     n = sum(len(v) for v in rules.values())
     nm = sum(len(v) for v in mults.values())
-    print("%d rule(s), %d skipped, %d name(s) dropped; %d multiplier(s), %d skipped -> %s"
-          % (n, len(skipped), len(dropped), nm, len(mskipped), out))
+    print("%d rule(s), %d skipped, %d name(s) dropped; %d multiplier(s), %d skipped; "
+          "%d cost(s), %d skipped; %d expiry, %d skipped; %d stat(s), %d skipped -> %s"
+          % (n, len(skipped), len(dropped), nm, len(mskipped),
+             sum(len(v) for v in costs.values()), len(cskipped),
+             sum(len(v) for v in expiry.values()), len(eskipped),
+             sum(len(v) for v in stats.values()), len(sskipped), out))
     return 0
 
 

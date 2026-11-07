@@ -189,6 +189,12 @@ end
 local function ScopeMatches(scope, e, kind)
     if type(scope) ~= "table" then return false end
     if scope.kind ~= nil and scope.kind ~= kind then return false end
+    -- T134: a part over time only (Genesis), an instant only (Twin Disciplines)
+    if scope.periodic then
+        local part = type(e.parsed) == "table" and e.parsed[kind]
+        if type(part) ~= "table" or (part.over == nil and part.tick == nil) then return false end
+    end
+    if scope.instant and not (e.cast == 0 and e.castKind ~= "channeled") then return false end
     if type(scope.schools) == "table" then
         local d = type(e.parsed) == "table" and e.parsed.damage
         local school = type(d) == "table" and d.school
@@ -204,6 +210,16 @@ local function ScopeMatches(scope, e, kind)
     return true
 end
 
+-- T134 review m2: a shield heals nothing, so "amount healed" does not reach an
+-- absorb; only a talent that names the spell does (VERIFY, docs/DECISIONS.md).
+local function MultMatches(scope, e, kind)
+    local p = type(e.parsed) == "table" and e.parsed
+    if p and p.absorb ~= nil and p.heal == nil and not (type(scope) == "table" and scope.spells) then
+        return false
+    end
+    return ScopeMatches(scope, e, kind)
+end
+
 local function TalentMult(e, fam)
     local kind = EntryKind(e)
     if not kind then return end
@@ -212,7 +228,7 @@ local function TalentMult(e, fam)
     local matched = {}
     for _, k in ipairs(keys) do
         local r = rules[k]
-        if type(r) == "table" and type(r.pctPerRank) == "table" and ScopeMatches(r.scope, e, kind) then
+        if type(r) == "table" and type(r.pctPerRank) == "table" and MultMatches(r.scope, e, kind) then
             matched[#matched + 1] = k
         end
     end
@@ -222,7 +238,8 @@ local function TalentMult(e, fam)
         e.talentMult = { factor = 1, words = "talents not read", kind = kind }
         return
     end
-    local factor, words, n = 1, {}, 0
+    -- T134: a periodic scope multiplies only the over-time share (tickFactor)
+    local factor, tickFactor, words, n = 1, 1, {}, 0
     for _, k in ipairs(matched) do
         local r = ranks[k]
         if type(r) == "number" and r > 0 then
@@ -231,7 +248,7 @@ local function TalentMult(e, fam)
                 words[#words + 1] = k .. " " .. tostring(r) .. ": no rule"
             else
                 local f = 1 + pct / 100
-                factor = factor * f
+                if rules[k].scope.periodic then tickFactor = tickFactor * f else factor = factor * f end
                 n = n + 1
                 words[#words + 1] = string.format("x%.2f", f) .. " " .. k .. " " .. tostring(r)
             end
@@ -240,9 +257,76 @@ local function TalentMult(e, fam)
     if #words == 0 then return end
     local text = table.concat(words, " ")
     if n > 1 then text = text .. " (product assumed)" end
-    e.talentMult = { factor = factor, words = text, kind = kind }
+    e.talentMult = { factor = factor, tickFactor = tickFactor, words = text, kind = kind }
 end
 Book.adjust[2] = TalentMult
+-- T134: Spells/WhatIf_Forever.lua
+Book.ScopeMatches, Book.MultMatches, Book.EntryKind = ScopeMatches, MultMatches, EntryKind
+
+-- T134 (docs/tasks/T134-forever-launch-talents.md): the third. A talent that
+-- heals when a spell runs out (Bloom: "healed for an amount equal to 100% of
+-- your Spirit") is in no spell's text. For the player's class (ST.TalentExpiry,
+-- generated, PRELIMINARY), an entry a rule names, with the talent at rank r > 0:
+--   entry.expiryHeal = { talent, rank, pct, spirit, amount, text, words }
+-- and Numbers adds `amount` to the entry's value, so per mana and the marks see
+-- it. It assumes the spell runs its whole duration (refreshed or eaten by
+-- Swiftmend it heals nothing; dispelled, half) and a flat heal, no +healing, no
+-- talent multiplier: the words say "if it runs out", the rest is VERIFY. Spirit
+-- is secret in combat: the last plain reading is kept (Book:Spirit); never read,
+-- the entry has words and no amount. A rank above the rule: "no rule", no amount.
+Book._spirit, Book._spiritTriedAt = nil, nil
+function Book:Spirit()
+    if Book._spiritTriedAt ~= Book._scanSerial or Book._spirit == nil then
+        Book._spiritTriedAt = Book._scanSerial
+        local v = ST.API.Spirit and ST.API.Spirit()
+        if type(v) == "number" and v == v then Book._spirit = v end
+    end
+    return Book._spirit
+end
+
+-- The expiry heal of entry `e` at talent ranks `ranks` and `spirit`, or nil:
+-- Book.adjust's for the live ranks, Spells/WhatIf_Forever.lua's for typed ones.
+function Book.ExpiryFor(e, ranks, spirit)
+    local all = ST.TalentExpiry
+    local class = ST.player and ST.player.class
+    local rules = type(all) == "table" and all[class]
+    if type(rules) ~= "table" or type(ranks) ~= "table" then return nil end
+    local keys = {}
+    for k in pairs(rules) do keys[#keys + 1] = k end
+    table.sort(keys)
+    for _, k in ipairs(keys) do
+        local rule, r = rules[k], ranks[k]
+        if type(r) == "number" and r > 0 then
+            for _, name in ipairs(rule.scope and rule.scope.spells or {}) do
+                if name == e.name then
+                    local pct = rule.pctPerRank[r]
+                    if type(pct) ~= "number" then
+                        return { talent = k, rank = r, text = "rank " .. tostring(r) .. ": no rule",
+                                 words = k .. " " .. tostring(r) .. ": no rule" }
+                    end
+                    if type(spirit) ~= "number" then
+                        return { talent = k, rank = r, pct = pct, text = "Spirit not read",
+                                 words = k .. ": Spirit not read" }
+                    end
+                    local amount = spirit * pct / 100
+                    local text = string.format("+%d if it runs out (%d%% of %d Spirit)",
+                        math.floor(amount + 0.5), pct, math.floor(spirit + 0.5))
+                    return { talent = k, rank = r, pct = pct, spirit = spirit, amount = amount,
+                             text = text, words = k .. " " .. text }
+                end
+            end
+        end
+    end
+    return nil
+end
+
+local function ExpiryHeal(e, fam)
+    if type(ST.TalentExpiry) ~= "table" then return end
+    local ranks = Book:Talents()
+    if type(ranks) ~= "table" then return end
+    e.expiryHeal = Book.ExpiryFor(e, ranks, Book:Spirit())
+end
+Book.adjust[3] = ExpiryHeal
 
 --------------------------------------------------------------------------------
 -- Small helpers -- every one reads only what ST.API already handed out plain.
@@ -487,6 +571,11 @@ local CALC_TEXT = "read from the spell's text"
 local function Numbers(e, kind)
     local value, part = PartValue(e, kind)
     local interval, by = IntervalFor(e, part)
+    e.textValue = value -- T134: what the bonus fit reads, the text and nothing added
+    local ex = e.expiryHeal
+    if value ~= nil and kind == "heal" and type(ex) == "table" and type(ex.amount) == "number" then
+        value = value + ex.amount
+    end
     e.value = value
     -- T131 review M1: the rounded numbers the value was added up from (the fit's tolerance)
     e.roundTerms = (value ~= nil and part ~= nil) and Parse.Terms(part) or nil
@@ -1471,7 +1560,7 @@ function Book:MeasureBonus(spells, families)
             and e.descState == "ok" then
             local school = (kind == "damage") and fam.school or nil
             local bonus = Reading(kind, school)
-            if bonus ~= nil and AddReading(id, e.name, kind, school, bonus, e.value, e.roundTerms) then
+            if bonus ~= nil and AddReading(id, e.name, kind, school, bonus, e.textValue or e.value, e.roundTerms) then
                 ApplyBonus(e, kind, fam.shape)
             end
         end

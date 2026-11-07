@@ -97,6 +97,7 @@ BS.ENTRY = {
     kind         = O("string"),   -- ReadSpell's own entries and a Half's copies
     -- Numbers
     value        = O("number"),
+    textValue    = O("number"),   -- T134: `value` as the spell's text says it, before a Bloom
     roundTerms   = O("number"),   -- T131 review M1: the rounded numbers `value` adds up (Parse.Terms)
     min          = O("number"),
     max          = O("number"),
@@ -155,6 +156,7 @@ BS.BONUS = {
     of     = O("number"),
     why    = O("string"),
     at     = O("number"),
+    movedFrom = O("number"), -- T134: What if: the share before the typed talents moved it
     fit       = O("table"), -- T131: measured: { lo, hi, n, min, max } (the share's interval, readings, bonus span)
     measuring = O("table"), -- T131: estimated while a fit is too wide: { lo, hi, need }
     predicted = O("number"), -- T133: measured with a talentsforever row: the prediction, never applied

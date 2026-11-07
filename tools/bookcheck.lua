@@ -486,14 +486,15 @@ do
 end
 
 --------------------------------------------------------------------------------
--- 11: the talent seam holds T129's cast rule and T133's multiplier only and
+-- 11: the talent seam holds T129's cast rule, T133's multiplier and T134's expiry heal only and
 -- applies what is put in it
 --------------------------------------------------------------------------------
 do
     -- T129: the seam's first function is the cast-time talent rule
     -- (docs/tasks/T129-forever-talent-casts.md), T133's talent multiplier the
-    -- second (docs/tasks/T133-forever-share-factors.md); anything added runs after them.
-    local emptyGood = type(Book.adjust) == "table" and #Book.adjust == 2
+    -- second (docs/tasks/T133-forever-share-factors.md), T134's expiry heal the
+    -- third; anything added runs after them.
+    local emptyGood = type(Book.adjust) == "table" and #Book.adjust == 3
 
     table.insert(Book.adjust, function(entry, family)
         if entry.id == 5185 then entry.talentSeamTouched = true end
@@ -502,9 +503,9 @@ do
     table.remove(Book.adjust)
 
     local applied = FindEntry(book, 5185).talentSeamTouched == true
-    local emptyAfter = #Book.adjust == 2
+    local emptyAfter = #Book.adjust == 3
 
-    check("the talent seam holds the cast and multiplier rules only and applies what is put in it",
+    check("the talent seam holds the cast, multiplier and expiry rules only and applies what is put in it",
         emptyGood and applied and emptyAfter,
         string.format("emptyGood=%s applied=%s emptyAfter=%s", tostring(emptyGood), tostring(applied), tostring(emptyAfter)))
 end
@@ -1068,6 +1069,29 @@ T95("T110: Holy Shock keeps both halves; the damage role sees 348 over its coold
             tostring(v and v.perMana), tostring(v and v.perSec), tostring(v and v.intervalBy),
             tostring(view.suggested == v), tostring(e.value), tostring(gen), tostring(B.generation),
             tostring(view.shape), tostring(v and v.min), tostring(v and v.max), tostring(fam.suggested == e))
+    end)
+end)
+
+-- T134 review m3: Twin Disciplines says damage and healing, so the What if moves both halves
+T95("T134: Twin Disciplines typed moves Holy Nova's heal and its damage half", function()
+    return ClassBook("priest", nil, function(fresh, book)
+        local WI = fresh.WhatIf
+        fresh.player.class = "PRIEST"
+        local TRAITS = { "C_ClassTalents.GetActiveConfigID", "C_Traits.GetConfigInfo", "C_Traits.GetTreeNodes",
+            "C_Traits.GetNodeInfo", "C_Traits.GetEntryInfo", "C_Traits.GetDefinitionInfo" }
+        S.AddTraits({})
+        for _, n in ipairs(TRAITS) do fresh.API.Invalidate(n) end
+        fresh.Book:MarkDirty()
+        local e = fresh.Book:Get().families["Holy Nova"].maxKnown
+        WI:Clear()
+        WI:Set("talent:Twin Disciplines", 5)
+        local w = WI:Book().families["Holy Nova"].maxKnown
+        WI:Clear()
+        C_Traits, C_ClassTalents = nil, nil
+        for _, n in ipairs(TRAITS) do fresh.API.Invalidate(n) end
+        return ApproxEq(w.value, e.value * 1.05) and ApproxEq(w.alt.value, e.alt.value * 1.05)
+            and ApproxEq(e.value, 311) and ApproxEq(e.alt.value, 187),
+            string.format("%s %s", tostring(w.value), tostring(w.alt and w.alt.value))
     end)
 end)
 

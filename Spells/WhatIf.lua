@@ -27,6 +27,9 @@
 --                          ranksNote(fam) -- each a value or a function
 --   WI:Live() / Book() / Pool(livePool) / ClassRows() / ClassTitle() /
 --   ClassNote()            the provider's answers, nil without one
+--   WI:ClassRowsFor(fam)   T134: the rows the family on screen shows (the
+--                          provider's classRowsFor, else every class row)
+--   WI:ClassRow(key)       one class row, for the drawer's steps
 --   WI.Changes(liveFam, whatFam)   the pane's footer, pure
 --   WI.Diff(a, b, aCasts, bCasts)  the cells that changed, pure
 local _, ST = ...
@@ -75,8 +78,8 @@ function WI:ClassTitle()
     local t = Call("classTitle")
     return (type(t) == "string" and t ~= "") and t or nil
 end
-function WI:ClassNote()
-    local t = Call("classNote")
+function WI:ClassNote(fam)
+    local t = Call("classNote", fam)
     return (type(t) == "string" and t ~= "") and t or nil
 end
 
@@ -85,6 +88,13 @@ local function ClassRow(key)
         if r.key == key then return r end
     end
     return nil
+end
+WI.ClassRow = function(_, key) return ClassRow(key) end
+
+function WI:ClassRowsFor(fam)
+    local p = WI.provider
+    if type(p) == "table" and type(p.classRowsFor) == "function" then return p.classRowsFor(fam) end
+    return WI:ClassRows()
 end
 
 -- The value a key may hold, or nil (cleared), or false (refused).
@@ -107,7 +117,7 @@ local function Clean(key, v)
         return false
     end
     v = tonumber(v)
-    if type(v) ~= "number" or v ~= v then return false end
+    if type(v) ~= "number" or v ~= v or v == math.huge or v == -math.huge then return false end
     v = math.floor(v)
     if type(row.min) == "number" and v < row.min then v = row.min end
     if type(row.max) == "number" and v > row.max then v = row.max end

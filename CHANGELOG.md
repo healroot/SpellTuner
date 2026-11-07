@@ -3,6 +3,15 @@
 What changed, for players. `./release.sh --publish` sends the section of the version being
 published to CurseForge; the developers' log is `docs/HISTORY.md`.
 
+## Next
+
+### Forever: launch talents
+- Numbers follow the launch talents and spell coefficients (preliminary, from talentsforever).
+- Bloom counts: Rejuvenation and Regrowth show its heal, and per mana and the best rank include it,
+  assuming the spell runs its full duration.
+- What if -> Talents: try a talent build without respeccing. Rank steppers for the talents that touch
+  the spell on screen, and Spirit where Bloom reads it.
+
 ## 0.17.3
 
 ### TBC: every healing class

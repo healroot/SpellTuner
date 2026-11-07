@@ -2922,6 +2922,7 @@ T36("T38 the ranks table: every rank to the highest listed, the gap, the bar and
         and CellText(header, "persec") == "Per sec" and CellText(header, "toOOM") == "Casts"
         and headTips == "Casts / Casts in a row from a full pool. // Per sec / Healing per second of casting."
             .. " max marks the most. // Heal / The average heal of one cast, from the spell's own text."
+            .. (ST.SpellsLine.valueNote and ST.SpellsLine.valueNote() and (" " .. ST.SpellsLine.valueNote()) or "")
         -- T127 (mockup M5): a mark says why, against max with both numbers
         and effTip == "Eff Rank 1 / Per mana|1.90 vs 1.86 / Per sec|31.7 vs 51.2 / The most per mana, 2% more"
             .. " than Rank 2. Not best: the per second it gives up costs more than the mana it saves at 6.7:1."
@@ -3436,7 +3437,7 @@ T36("T122 forever: What if... opens the pane -- STATS, the sentence for the clas
     local ph = heal and StripColor(heal.ph:GetText() or "") or "?"
     local good = p and p:IsShown() and heal ~= nil and ph == Num(live.heal)
         and p.classNote and p.classNote:IsShown()
-        and StripColor(p.classNote:GetText() or "") == "Your talents are already in the spells' text, so there is no class row."
+        and StripColor(p.classNote:GetText() or "") == "Your talents were not read yet, so a talent can't be tried here."
         and not (p.classTitle and p.classTitle:IsShown()) and FBox("form") == nil
         and FBox("mana") and FBox("mana").plus ~= nil and FBox("crit").plus == nil
     return good, string.format("open=%s ph=%q note=%q", tostring(p and p:IsShown()), ph,
@@ -3672,6 +3673,94 @@ end)
 -- at font offsets -2..+2 the sentence and the footer wrap at 188 under the
 -- stub's word wrap (S.WrappedLines; this half keeps its own anchors, so the
 -- two strings measure through it), and the contents stay inside the drawer
+T36("T134 forever: talents read -- one-line rank rows of the family on screen; + steps; they fit; ESC", function()
+    WIf():Clear()
+    local TRAITS = { "C_ClassTalents.GetActiveConfigID", "C_Traits.GetConfigInfo", "C_Traits.GetTreeNodes",
+        "C_Traits.GetNodeInfo", "C_Traits.GetEntryInfo", "C_Traits.GetDefinitionInfo" }
+    S.AddTraits({})
+    for _, n in ipairs(TRAITS) do ST.API.Invalidate(n) end
+    S.Fire("PLAYER_TALENT_UPDATE")
+    ST.Book:MarkDirty()
+    local f = OpenView("Rejuvenation")
+    if not f.strip.whatIfBtn then return false, "no What if... button" end
+    if not (F().whatIf and F().whatIf:IsShown()) then Click(f.strip.whatIfBtn) end
+    local d = F().whatIf
+    local bloom, spirit = FBox("talent:Bloom"), FBox("spirit")
+    if not (bloom and bloom.plus and spirit) then return false, "no rows" end
+    local fit = (d.contentH or 9999) <= d:GetHeight()
+    local shown = d.classTitle:IsShown() and d.classNote:IsShown() and bloom.compact == true
+        and bloom.label:IsShown() and bloom.plus:IsShown()
+    local noDelta = bloom.delta:GetText() == nil or bloom.delta:GetText() == ""
+    Click(bloom.plus)
+    local typed = WIf():Get("talent:Bloom")
+    Click(bloom.plus)
+    local top = WIf():Get("talent:Bloom")
+    local deltaAfter = bloom.delta:GetText()
+    WIf():Clear()
+    C_Traits, C_ClassTalents = nil, nil
+    for _, n in ipairs(TRAITS) do ST.API.Invalidate(n) end
+    S.Fire("PLAYER_TALENT_UPDATE")
+    ST.Book:MarkDirty()
+    local again = OpenView("Nourish")
+    return fit and shown and noDelta and typed == 1 and top == 1 and (deltaAfter == nil or deltaAfter == "") and again ~= nil,
+        string.format("fit=%s %s/%s shown=%s typed=%s top=%s delta=%s", tostring(fit), tostring(d.contentH),
+            tostring(d:GetHeight()), tostring(shown), tostring(typed), tostring(top), tostring(deltaAfter))
+end)
+
+-- T134 review m9: every Rejuvenation row, Spirit typed, a long footer, -2..+2: the
+-- drawer grows past the window only when it must, and nothing falls out of it
+T36("T134 forever: Rejuvenation's talent rows stay inside the drawer at -2..+2", function()
+    WIf():Clear()
+    local TRAITS = { "C_ClassTalents.GetActiveConfigID", "C_Traits.GetConfigInfo", "C_Traits.GetTreeNodes",
+        "C_Traits.GetNodeInfo", "C_Traits.GetEntryInfo", "C_Traits.GetDefinitionInfo" }
+    S.AddTraits({})
+    for _, n in ipairs(TRAITS) do ST.API.Invalidate(n) end
+    S.Fire("PLAYER_TALENT_UPDATE")
+    ST.Book:MarkDirty()
+    SP.whatIfOpen = false
+    local f = OpenView("Rejuvenation")
+    Click(f.strip.whatIfBtn)
+    S.Tick(0)
+    local d = F().whatIf
+    local small = UI.fontObjects[UI.FONT_SMALL]
+    local function Measured(fs)
+        fs.GetStringHeight = function(self)
+            local _, size = small:GetFont()
+            size = size or 12
+            return S.WrappedLines(self.text, self.w or 188, size) * size
+        end
+    end
+    Measured(d.classNote)
+    Measured(d.footer)
+    local changes = WIf().Changes
+    WIf().Changes = function()
+        return "Best: Rank 6 -> Rank 12. With these stats Rank 12 gives 5.51 per mana, Rank 6 7.77 (-29%)."
+            .. " Rank 6 is under the floor: it heals less than 40% of Rank 12."
+    end
+    WIf():Set("spirit", 500)
+    local problems, sizes = {}, {}
+    local winH = d:GetParent():GetHeight()
+    for _, o in ipairs({ -2, -1, 0, 1, 2 }) do
+        UI.ApplyFonts(o)
+        d = F().whatIf
+        local ch, dh = d.contentH or 9999, d:GetHeight()
+        sizes[#sizes + 1] = o .. "=" .. tostring(ch) .. "/" .. tostring(dh)
+        if ch > dh then problems[#problems + 1] = "offset " .. o .. " past the drawer" end
+        if dh ~= math.max(winH, ch) then problems[#problems + 1] = "offset " .. o .. " wrong height" end
+    end
+    WIf().Changes = changes
+    d.classNote.GetStringHeight, d.footer.GetStringHeight = nil, nil
+    UI.ApplyFonts(0)
+    WIf():Clear()
+    Click(F().strip.whatIfBtn)
+    C_Traits, C_ClassTalents = nil, nil
+    for _, n in ipairs(TRAITS) do ST.API.Invalidate(n) end
+    S.Fire("PLAYER_TALENT_UPDATE")
+    ST.Book:MarkDirty()
+    OpenView("Nourish")
+    return #problems == 0, table.concat(sizes, " ") .. " " .. table.concat(problems, "; ")
+end)
+
 T36("T125 forever: the class note and footer wrapped at -2..+2 inside the drawer", function()
     WIf():Clear()
     SP.whatIfOpen = false
@@ -3705,6 +3794,8 @@ T36("T125 forever: the class note and footer wrapped at -2..+2 inside the drawer
         sizes[#sizes + 1] = string.format("%d=%s/%s(note %s)", o, tostring(ch), tostring(dh), tostring(nl))
         if not d.classNote:IsShown() then problems[#problems + 1] = "offset " .. o .. ": no class note" end
         if ch > dh then problems[#problems + 1] = "offset " .. o .. ": contents " .. ch .. " > " .. dh end
+        -- T134 review m9: the drawer may grow, but this short pane never needs it
+        if dh ~= d:GetParent():GetHeight() then problems[#problems + 1] = "offset " .. o .. ": drawer grew" end
         if ch < last then problems[#problems + 1] = "offset " .. o .. ": contents shrank" end
         last = ch
     end
