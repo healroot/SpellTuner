@@ -2523,11 +2523,14 @@ Forever, as a druid. Everything here is a prediction until you say otherwise.
 4. **Open Healing Touch** with the What if still on: other rows (Naturalist, Tranquil Spirit, Gift of
    Nature). Naturalist 5: the cast falls by 0.5 s if you have no points in it. Tranquil Spirit 5: the
    cost falls 10%. Compare with what a real respec shows, and report a mismatch.
-5. **Clear.** Every number returns.
-6. **Really take Bloom.** Rejuvenation's Per mana includes it with the What if off. Hover the spell: under
+5. **Nature's Splendor 1** (T136) on Rejuvenation: Heal x15/12 and Per mana up, Per sec unchanged; on
+   Regrowth only the over-time part grows (x27/21). If you have the talent, check the spell's own text
+   already says 15 s: the What if assumes it does.
+6. **Clear.** Every number returns.
+7. **Really take Bloom.** Rejuvenation's Per mana includes it with the What if off. Hover the spell: under
    Per sec, `Includes Bloom +N if it runs out ... (predicted)`. In combat the amount stays at the
    last Spirit read.
-7. **Priest / shaman / paladin:** What if shows that class's talents. Rows are from the site.
+8. **Priest / shaman / paladin:** What if shows that class's talents. Rows are from the site.
 
 ## 57. The moving line for the five-second rule (T135) -- NEW, 2 min
 

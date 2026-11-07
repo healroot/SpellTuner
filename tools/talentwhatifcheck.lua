@@ -193,7 +193,7 @@ T("4 the family on screen: Rejuvenation's talents, then Living Spirit and Spirit
     local b = Use({})
     local keys = Keys(WI:ClassRowsFor(b.families.Rejuvenation))
     return keys == "talent:Bloom,talent:Genesis,talent:Gift of Nature,talent:Improved Rejuvenation,"
-        .. "talent:Living Spirit,spirit", keys
+        .. "talent:Nature's Splendor,talent:Living Spirit,spirit", keys
 end)
 
 T("4 Healing Touch: its talents, none of Bloom's", function()
@@ -411,11 +411,59 @@ T("7 the sentence names what does not move; a family no talent touches says only
     local b = Use({})
     local note = WI:ClassNote(b.families.Rejuvenation)
     local good = true
-    for _, w in ipairs({ "crit", "durations", "regen", "stat-to-bonus", "procs", "Oath of Light", "teaches" }) do
+    for _, w in ipairs({ "crit", "regen", "stat-to-bonus", "procs", "Oath of Light", "teaches" }) do
         good = good and note:find(w, 1, true) ~= nil
     end
     local none = WI:ClassNote({ ranks = {} })
     return good and none == "No talent moves this spell in the What if.", tostring(none)
+end)
+
+--------------------------------------------------------------------------------
+-- T136: durations
+--------------------------------------------------------------------------------
+T("8 the durations table as generated: Nature's Splendor in three groups, Improved SW:P", function()
+    local d = ST.TalentDurations
+    local ns = d.DRUID["Nature's Splendor (Moonfire, Rejuvenation)"]
+    local rg = d.DRUID["Nature's Splendor (Regrowth)"]
+    local swp = d.PRIEST["Improved Shadow Word: Pain"]
+    return ns and ns.talent == "Nature's Splendor" and ns.secPerRank[1] == 3 and rg.secPerRank[1] == 6
+        and d.DRUID["Nature's Splendor (Insect Swarm)"].secPerRank[1] == 2
+        and swp.secPerRank[1] == 3 and swp.secPerRank[2] == 6 and d.SHAMAN["Call of Flame"] == nil
+end)
+
+T("8 Nature's Splendor typed: Rejuvenation 92 over 12 -> 115 over 15; per mana up, per second the same", function()
+    local b = Use({})
+    local e = b.spells[1430]
+    WI:Set("talent:Nature's Splendor", 1)
+    local w = WI:Book().spells[1430]
+    WI:Clear()
+    return Near(w.value, 92 * 15 / 12) and w.dur == 15 and Near(w.perMana, w.value / 75)
+        and Near(w.perSec, e.perSec) and e.value == 92 and e.dur == 12,
+        string.format("%s over %s, per sec %s vs %s", tostring(w.value), tostring(w.dur), tostring(w.perSec),
+            tostring(e.perSec))
+end)
+
+T("8 Regrowth: only the over-time part lasts 6 s longer, the hit unchanged", function()
+    local b = Use({})
+    local e = b.spells[8938]
+    WI:Set("talent:Nature's Splendor", 1)
+    local w = WI:Book().spells[8938]
+    WI:Clear()
+    return Near(w.over, 154 * 27 / 21) and w.dur == 27 and w.min == e.min and w.max == e.max,
+        tostring(w.over) .. " over " .. tostring(w.dur)
+end)
+
+T("8 taken live, typed off: the client's 15 s text goes back to 12", function()
+    S.AddSpell(1430, "Rejuvenation", "Rank 3", function() return "Heals the target for 115 over 15 sec." end,
+        { cast = 0, cost = 75, level = 16, base = 774 })
+    Use({ ["Nature's Splendor"] = 1 })
+    WI:Set("talent:Nature's Splendor", 0)
+    local w = WI:Book().spells[1430]
+    WI:Clear()
+    S.AddSpell(1430, "Rejuvenation", "Rank 3", function() return "Heals the target for 92 over 12 sec." end,
+        { cast = 0, cost = 75, level = 16, base = 774 })
+    Use({})
+    return Near(w.value, 92) and w.dur == 12, tostring(w.value) .. " over " .. tostring(w.dur)
 end)
 
 --------------------------------------------------------------------------------

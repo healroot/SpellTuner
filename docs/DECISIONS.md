@@ -1673,3 +1673,11 @@ carry the live talents; hence no rows at all while ranks are unread, rather than
 talents add (assumed). "Amount healed" talents do not reach a shield: only a talent naming the spell does
 (VERIFY; T134 review m2). Crit, durations, regen, stat-to-bonus talents, procs and spells a talent teaches
 do not move, and the sentence says so: `docs/tasks/T134-forever-launch-talents.md`.
+
+## Durations in the What if (2026-11-07, T136)
+
+A talent that lengthens a spell (Nature's Splendor; Improved Shadow Word: Pain) adds its seconds to the
+over-time part at the same amount a second, so the amount over time grows by (dur + d) / dur and a pure
+HoT's per second (its interval is its own duration) stays. The live book is untouched: the client's text
+is assumed to carry the duration of a talent taken (VERIFY, `docs/TESTING.md` 56.5). Talents whose
+sentence also does something else (Call of Flame, a stun) are named and skipped.

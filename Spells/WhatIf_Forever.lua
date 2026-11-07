@@ -27,7 +27,7 @@
 --              typed / live, a cast talent moves the cast, a cost talent the
 --              cost (percents added, assumed), an expiry talent re-prices Bloom
 --              at the typed Spirit x the stat talents' typed / live. Crit,
---              durations, regen, a +healing-from-a-stat talent and a spell a
+--              regen, a +healing-from-a-stat talent and a spell a
 --              talent teaches do not move (the sentence says so). Off when the
 --              live ranks were not read: a ratio needs them.
 -- The live book, its generation and its entries are never written.
@@ -62,7 +62,7 @@ local function TalentIndex()
     local function Info(name)
         local i = byName[name]
         if not i then
-            i = { name = name, max = 0, cast = {} }
+            i = { name = name, max = 0, cast = {}, dur = {} }
             byName[name] = i
             order[#order + 1] = name
         end
@@ -75,6 +75,12 @@ local function TalentIndex()
         local i = Info(r.talent or k)
         i.cast[#i.cast + 1] = r
         Grow(i, r.castPerRank)
+    end
+    -- T136: a longer spell, one rule per group of spells
+    for k, r in pairs(ST.TalentDurations and ST.TalentDurations[class] or {}) do
+        local i = Info(r.talent or k)
+        i.dur[#i.dur + 1] = r
+        Grow(i, r.secPerRank)
     end
     for field, tbl in pairs({ mult = ST.TalentMults, cost = ST.TalentCosts,
                               expiry = ST.TalentExpiry, stat = ST.TalentStats }) do
@@ -96,6 +102,18 @@ local function Has(list, name)
     return false
 end
 
+-- T136: a part that runs over time and is not a channel (a channel's ticks are its cast)
+local function OverTime(part)
+    return type(part) == "table" and ((part.over ~= nil and type(part.dur) == "number" and part.dur > 0)
+        or (part.tick ~= nil and type(part.periodDur) == "number" and part.periodDur > 0))
+end
+
+local function DurRuleHits(rule, e)
+    if e.castKind == "channeled" or not Has(rule.spells, e.name) then return false end
+    local p = type(e.parsed) == "table" and e.parsed or {}
+    return OverTime(p.heal) or OverTime(p.damage)
+end
+
 local function CastRuleHits(rule, e)
     return type(e.cast) == "number" and e.castKind ~= "channeled" and Has(rule.spells, e.name)
 end
@@ -105,6 +123,9 @@ local function Touches(info, e)
     local kind = Book.EntryKind(e)
     for _, rule in ipairs(info.cast) do
         if CastRuleHits(rule, e) then return true end
+    end
+    for _, rule in ipairs(info.dur) do
+        if DurRuleHits(rule, e) then return true end
     end
     if kind and info.mult and Book.MultMatches(info.mult.scope, e, kind) then return true end
     if kind and info.cost and Book.ScopeMatches(info.cost.scope, e, kind) then return true end
@@ -205,6 +226,21 @@ local function TalentPlan()
     return { live = live, what = what, changed = changed, spirit = spirit, index = index }
 end
 
+-- T136: d seconds more of the over-time part, the same amount a second: the
+-- amount over time grows by (dur + d) / dur; a tick part ticks d seconds longer.
+local function LongerPart(part, d)
+    local out = {}
+    for k, v in pairs(part) do out[k] = v end
+    if out.over ~= nil and type(out.dur) == "number" and out.dur > 0 then
+        local dur = math.max(0, out.dur + d)
+        out.over = out.over * dur / out.dur
+        out.dur = dur
+    elseif out.tick ~= nil and type(out.periodDur) == "number" then
+        out.periodDur = math.max(0, out.periodDur + d)
+    end
+    return out
+end
+
 local function ScalePart(part, ratio, tickRatio)
     if type(part) ~= "table" then return part end
     local out = {}
@@ -220,7 +256,7 @@ end
 local function ApplyTalents(w, e, kind, plan)
     local dirty = false
     local entryKind = Book.EntryKind(e)
-    local castMove = 0
+    local castMove, durMove = 0, 0
     -- each half by the talents that reach it: Twin Disciplines both, a heal talent one
     local function Ratios(part)
         local r, t = 1, 1
@@ -237,6 +273,13 @@ local function ApplyTalents(w, e, kind, plan)
     end
     for _, i in ipairs(plan.changed) do
         local L, W = plan.live[i.name] or 0, plan.what[i.name] or 0
+        for _, rule in ipairs(i.dur) do
+            if DurRuleHits(rule, e) then
+                local a = (L > 0) and rule.secPerRank[L] or 0
+                local b = (W > 0) and rule.secPerRank[W] or 0
+                if a and b then durMove = durMove + b - a end
+            end
+        end
         for _, rule in ipairs(i.cast) do
             if CastRuleHits(rule, e) then
                 local a = (L > 0) and rule.castPerRank[L] or 0
@@ -264,6 +307,19 @@ local function ApplyTalents(w, e, kind, plan)
                 for k, v in pairs(e.parsed) do parsed[k] = v end
             end
             parsed.absorb = parsed.absorb * r
+        end
+        -- T136: a longer spell, after the multipliers (they commute)
+        if durMove ~= 0 then
+            for _, part in ipairs({ "heal", "damage" }) do
+                local src = (parsed or e.parsed)[part]
+                if OverTime(src) then
+                    if not parsed then
+                        parsed = {}
+                        for k, v in pairs(e.parsed) do parsed[k] = v end
+                    end
+                    parsed[part] = LongerPart(src, durMove)
+                end
+            end
         end
         if parsed then
             w.parsed = parsed
@@ -487,7 +543,7 @@ function provider.classNote(fam)
     if type(fam) == "table" and not provider.classRowsFor(fam) then
         return "No talent moves this spell in the What if."
     end
-    return "Preliminary, from talentsforever. Not moved: crit, durations, regen, stat-to-bonus talents,"
+    return "Preliminary, from talentsforever. Not moved: crit, regen, stat-to-bonus talents,"
         .. " procs, Oath of Light, spells a talent teaches."
 end
 

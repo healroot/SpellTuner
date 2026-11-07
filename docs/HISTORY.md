@@ -5345,3 +5345,10 @@ bar rather than an amber veil changing the bar's colour, keeping the old one. `U
 `sweep` ("Moving line"): an amber 2-px line on a dark edge at barW x (5 - remaining) / 5, placed by time
 alone; after, the green top line (or the white regen tick on TBC). Default unchanged (Stacked).
 `docs/TESTING.md` section 57.
+
+## 2026-11-07 -- T136: durations in the What if
+
+The author missed Nature's Splendor in What if -> Talents. `tools/buildtalents.py` writes
+`ST.TalentDurations` (Nature's Splendor in three spell groups, Improved Shadow Word: Pain; 11 named and
+skipped); `Spells/WhatIf_Forever.lua` lengthens the over-time part from the live rank to the typed one.
+Next agreed: a talent tree planner feeding the What if, mockup first.

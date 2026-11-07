@@ -11,6 +11,8 @@ published to CurseForge; the developers' log is `docs/HISTORY.md`.
   assuming the spell runs its full duration.
 - What if -> Talents: try a talent build without respeccing. Rank steppers for the talents that touch
   the spell on screen, and Spirit where Bloom reads it.
+- What if -> Talents moves durations too: Nature's Splendor makes Rejuvenation and Moonfire 3 s
+  longer and Regrowth's over-time part 6 s longer, so more healing for the same mana.
 
 ### Both: a moving line for the five-second rule
 - Settings -> Clock -> Bars -> Join -> Moving line: the mana bar keeps its colour and an amber line

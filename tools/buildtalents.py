@@ -42,12 +42,20 @@ by your", "Increases the effect", "Increases the amount healed") but is not
 one of them -- a condition, a second effect, a school or spell the export does
 not know, a rank missing -- is skipped and named in the header, never guessed.
 
+T137 (docs/tasks/T137-forever-talent-planner.md): beside it, Data/TalentTree_Forever.lua
+(GENERATED too): ST.TalentTree[class token] = { { name, talents = { { name, row, col,
+max, req, icon, desc } } } }, every tree of every class as the export lays it out --
+the talent planner's layout and words, never a number the model reads. desc is the
+top rank's sentence, folded to ASCII.
+
 Not run by make check: run it by hand when the export moves, and commit the
-file it writes.
+files it writes.
 """
 import json
+import os
 import re
 import sys
+import unicodedata
 
 LEAD = re.compile(
     r"^Reduces the cast(?:ing)? time of (?:your )?(?P<spells>.+?)(?: spells?)? by "
@@ -214,6 +222,79 @@ def parse_stat(sentence, known):
     if not m:
         return None, "sentence not recognised"
     return {"stat": "Spirit"}, float(m.group("n"))
+
+
+# T136: a longer spell: "Increases the duration of your A and B spells by N sec, your C
+# spell by M sec, and your D spell by K sec." Every clause read, or the talent is
+# named and skipped (a stun, a debuff on you, a second effect).
+DUR_CANDIDATE = re.compile(r"\bduration of your\b")
+DUR_LEAD = re.compile(r"^Increases the duration of your (?P<list>.+?) spells? by (?P<n>\d+(?:\.\d+)?) sec"
+                      r"(?P<rest>.*)$")
+DUR_MORE = re.compile(r"^,? (?:and )?your (?P<list>.+?) spells? by (?P<n>\d+(?:\.\d+)?) sec(?P<rest>.*)$")
+
+
+def parse_duration(sentence, known):
+    """[(spells, secs), ...] or (None, why)."""
+    m = DUR_LEAD.match(sentence)
+    if not m:
+        return None, "sentence not recognised"
+    groups = []
+    while True:
+        spells = split_spells(m.group("list"))
+        for spell in spells:
+            if spell not in known:
+                return None, "spell %s not in the export" % spell
+        groups.append((spells, float(m.group("n"))))
+        rest = m.group("rest")
+        if rest in ("", "."):
+            return groups, None
+        m = DUR_MORE.match(rest)
+        if not m:
+            return None, "text after the seconds not recognised"
+
+
+def build_durations(data):
+    """{ token: { rule: { talent, ranks, spells, secPerRank } } }, skipped."""
+    table, skipped = {}, []
+    for cls in sorted(data["talents"]):
+        token = CLASS_TOKENS.get(cls)
+        if token is None:
+            continue
+        known = known_names(data, cls)
+        table.setdefault(token, {})
+        for tree in data["talents"][cls]["trees"]:
+            for t in tree["talents"]:
+                desc = t.get("desc") or []
+                if isinstance(desc, dict):
+                    desc = [desc[k] for k in sorted(desc, key=lambda k: int(k))]
+                if not any(DUR_CANDIDATE.search(s or "") for s in desc):
+                    continue
+                parsed = [parse_duration(s or "", known) for s in desc]
+                bad = [why for groups, why in parsed if groups is None]
+                if bad:
+                    skipped.append("%s: %s (%s)" % (cls, t["name"], bad[0]))
+                    continue
+                if len(desc) != t.get("max"):
+                    skipped.append("%s: %s (not one sentence per rank)" % (cls, t["name"]))
+                    continue
+                shapes = {repr([g[0] for g in groups]) for groups, _ in parsed}
+                if len(shapes) != 1:
+                    skipped.append("%s: %s (spells differ by rank)" % (cls, t["name"]))
+                    continue
+                first = parsed[0][0]
+                rising = True
+                for gi in range(len(first)):
+                    secs = [groups[gi][1] for groups, _ in parsed]
+                    if any(s <= 0 for s in secs) or any(b <= a for a, b in zip(secs, secs[1:])):
+                        rising = False
+                if not rising:
+                    skipped.append("%s: %s (seconds not rising by rank)" % (cls, t["name"]))
+                    continue
+                for gi, (spells, _) in enumerate(first):
+                    name = t["name"] if len(first) == 1 else "%s (%s)" % (t["name"], ", ".join(spells))
+                    table[token][name] = {"talent": t["name"], "ranks": t["max"], "spells": spells,
+                                          "secPerRank": [groups[gi][1] for groups, _ in parsed]}
+    return table, skipped
 
 
 def build_table(data, candidate, parse):
@@ -399,7 +480,8 @@ def lua_scope(scope):
     return "{ " + ", ".join(parts) + " }"
 
 
-def write(data, rules, skipped, dropped, out, mults=None, mskipped=None, extra=None):
+def write(data, rules, skipped, dropped, out, mults=None, mskipped=None, extra=None, durations=None):
+    durations, dskipped = durations or ({}, [])
     mults = mults or {}
     mskipped = mskipped or []
     extra = extra or []
@@ -451,6 +533,13 @@ def write(data, rules, skipped, dropped, out, mults=None, mskipped=None, extra=N
     w("-- carries the talents taken). ST.TalentExpiry: when a named spell runs its whole")
     w("-- duration the target is healed for pctPerRank[r] percent of scope.stat.")
     w("-- ST.TalentStats: rank r raises scope.stat by pctPerRank[r] percent.")
+    w("-- T136: ST.TalentDurations[class token][rule] = { talent, ranks, spells, secPerRank }:")
+    w("-- rank r makes each named spell last secPerRank[r] seconds longer (read by the What")
+    w("-- if only: the client's text already carries the talents taken). Skipped:")
+    for s in sorted(dskipped):
+        w("--   " + s)
+    if not dskipped:
+        w("--   none")
     for global_name, _, tskipped in extra:
         w("-- %s skipped (named, never guessed):" % global_name)
         for s in sorted(tskipped):
@@ -497,8 +586,82 @@ def write(data, rules, skipped, dropped, out, mults=None, mskipped=None, extra=N
                 w("        },")
             w("    },")
         w("}")
+    w("")
+    w("ST.TalentDurations = {")
+    for token in sorted(durations):
+        w("    %s = {" % token)
+        for name in sorted(durations[token]):
+            r = durations[token][name]
+            w("        [%s] = {" % lua_str(name))
+            w("            talent = %s," % lua_str(r["talent"]))
+            w("            ranks = %d," % r["ranks"])
+            w("            spells = { %s }," % ", ".join(lua_str(s) for s in r["spells"]))
+            w("            secPerRank = { %s }," % ", ".join(num(v) for v in r["secPerRank"]))
+            w("        },")
+        w("    },")
+    w("}")
     text = "\n".join(lines) + "\n"
     text.encode("ascii")  # raises on a byte above 127: the file must be ASCII
+    with open(out, "w", newline="\n") as f:
+        f.write(text)
+
+
+ASCII_FOLD = {"\u2018": "'", "\u2019": "'", "\u201c": '"', "\u201d": '"', "\u2013": "-", "\u2014": "-",
+              "\u2026": "...", "\u00a0": " "}
+
+
+def ascii_text(s):
+    for a, b in ASCII_FOLD.items():
+        s = s.replace(a, b)
+    s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def write_tree(data, out):
+    """T137: every class's trees, as laid out, for the planner."""
+    lines = []
+    w = lines.append
+    w("local _, ST = ...")
+    w("")
+    w("-" * 80)
+    w("-- The talent trees, per class (T137). GENERATED by tools/buildtalents.py from a")
+    w("-- talentsforever.com data export -- do not hand edit; rebuild it.")
+    w("-- %s, generated %s (%s)." % (data.get("attribution", "Data from talentsforever.com (https://talentsforever.com)"),
+                                    data.get("generated", "?"), data.get("license", "CC-BY-4.0")))
+    w("--")
+    w("-- ST.TalentTree[class token] = { { name, talents = { { name, row, col, max, req, icon,")
+    w("-- desc } } } }: the layout the talent planner draws (UI/TalentPlanner.lua) and its")
+    w("-- words; desc is the top rank's sentence. Nothing here is a number the model reads:")
+    w("-- what a talent does to a spell is Data/Talents_Forever.lua's. PRELIMINARY until")
+    w("-- verified in game.")
+    w("-" * 80)
+    w("")
+    w("ST.TalentTree = {")
+    for cls in sorted(data["talents"]):
+        token = CLASS_TOKENS.get(cls)
+        if token is None:
+            continue
+        w("    %s = {" % token)
+        for tree in data["talents"][cls]["trees"]:
+            w("        { name = %s, talents = {" % lua_str(ascii_text(tree["name"])))
+            for t in sorted(tree["talents"], key=lambda x: (x["row"], x["col"])):
+                desc = t.get("desc") or []
+                if isinstance(desc, dict):
+                    desc = [desc[k] for k in sorted(desc, key=lambda k: int(k))]
+                parts = ["name = %s" % lua_str(ascii_text(t["name"])), "row = %d" % t["row"], "col = %d" % t["col"],
+                         "max = %d" % t["max"]]
+                if t.get("req"):
+                    parts.append("req = %s" % lua_str(ascii_text(t["req"])))
+                if t.get("icon"):
+                    parts.append("icon = %s" % lua_str(ascii_text(t["icon"])))
+                if desc:
+                    parts.append("desc = %s" % lua_str(ascii_text(desc[-1] or "")))
+                w("            { %s }," % ", ".join(parts))
+            w("        } },")
+        w("    },")
+    w("}")
+    text = "\n".join(lines) + "\n"
+    text.encode("ascii")
     with open(out, "w", newline="\n") as f:
         f.write(text)
 
@@ -524,19 +687,24 @@ def main(argv):
     costs, cskipped = build_table(data, COST_CANDIDATE, parse_cost)
     expiry, eskipped = build_table(data, EXPIRY_CANDIDATE, parse_expiry)
     stats, sskipped = build_table(data, STAT_CANDIDATE, parse_stat)
+    durations, dskipped = build_durations(data)
     write(data, rules, skipped, dropped, out, mults, mskipped, [
         ("TalentCosts", costs, cskipped),
         ("TalentExpiry", expiry, eskipped),
         ("TalentStats", stats, sskipped),
-    ])
+    ], (durations, dskipped))
+    tree_out = os.path.join(os.path.dirname(out) or ".", "TalentTree_Forever.lua")
+    write_tree(data, tree_out)
     n = sum(len(v) for v in rules.values())
     nm = sum(len(v) for v in mults.values())
     print("%d rule(s), %d skipped, %d name(s) dropped; %d multiplier(s), %d skipped; "
-          "%d cost(s), %d skipped; %d expiry, %d skipped; %d stat(s), %d skipped -> %s"
+          "%d cost(s), %d skipped; %d expiry, %d skipped; %d stat(s), %d skipped; "
+          "%d duration(s), %d skipped -> %s"
           % (n, len(skipped), len(dropped), nm, len(mskipped),
              sum(len(v) for v in costs.values()), len(cskipped),
              sum(len(v) for v in expiry.values()), len(eskipped),
-             sum(len(v) for v in stats.values()), len(sskipped), out))
+             sum(len(v) for v in stats.values()), len(sskipped),
+             sum(len(v) for v in durations.values()), len(dskipped), out))
     return 0
 
 

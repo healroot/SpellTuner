@@ -149,6 +149,20 @@ local _, ST = ...
 -- carries the talents taken). ST.TalentExpiry: when a named spell runs its whole
 -- duration the target is healed for pctPerRank[r] percent of scope.stat.
 -- ST.TalentStats: rank r raises scope.stat by pctPerRank[r] percent.
+-- T136: ST.TalentDurations[class token][rule] = { talent, ranks, spells, secPerRank }:
+-- rank r makes each named spell last secPerRank[r] seconds longer (read by the What
+-- if only: the client's text already carries the talents taken). Skipped:
+--   Druid: Brutal Impact (sentence not recognised)
+--   Hunter: Improved Stings (sentence not recognised)
+--   Mage: Missile Barrage (sentence not recognised)
+--   Mage: Permafrost (sentence not recognised)
+--   Paladin: Guardian's Favor (sentence not recognised)
+--   Rogue: Blood Splatter (sentence not recognised)
+--   Rogue: Improved Gouge (sentence not recognised)
+--   Rogue: Improved Slice and Dice (sentence not recognised)
+--   Shaman: Call of Flame (sentence not recognised)
+--   Shaman: Trial by Fire (sentence not recognised)
+--   Warlock: Improved Sayaad (sentence not recognised)
 -- TalentCosts skipped (named, never guessed):
 --   Druid: Natural Shapeshifter (sentence not recognised)
 --   Hunter: Efficiency (sentence not recognised)
@@ -433,6 +447,51 @@ ST.TalentStats = {
     PALADIN = {
     },
     PRIEST = {
+    },
+    ROGUE = {
+    },
+    SHAMAN = {
+    },
+    WARLOCK = {
+    },
+    WARRIOR = {
+    },
+}
+
+ST.TalentDurations = {
+    DRUID = {
+        ["Nature's Splendor (Insect Swarm)"] = {
+            talent = "Nature's Splendor",
+            ranks = 1,
+            spells = { "Insect Swarm" },
+            secPerRank = { 2 },
+        },
+        ["Nature's Splendor (Moonfire, Rejuvenation)"] = {
+            talent = "Nature's Splendor",
+            ranks = 1,
+            spells = { "Moonfire", "Rejuvenation" },
+            secPerRank = { 3 },
+        },
+        ["Nature's Splendor (Regrowth)"] = {
+            talent = "Nature's Splendor",
+            ranks = 1,
+            spells = { "Regrowth" },
+            secPerRank = { 6 },
+        },
+    },
+    HUNTER = {
+    },
+    MAGE = {
+    },
+    PALADIN = {
+    },
+    PRIEST = {
+        ["Improved Shadow Word: Pain"] = {
+            talent = "Improved Shadow Word: Pain",
+            ranks = 2,
+            spells = { "Shadow Word: Pain" },
+            secPerRank = { 3, 6 },
+        },
     },
     ROGUE = {
     },
