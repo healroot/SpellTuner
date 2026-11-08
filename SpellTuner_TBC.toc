@@ -70,7 +70,7 @@ UI\SpellTip.lua
 UI\SpellTooltip.lua
 UI\Visibility.lua
 UI\ClockStore.lua
-UI\ClockView.lua
+UI\ClockBar.lua
 UI\Widget.lua
 UI\ClockSettings.lua
 UI\Dashboard_Rows.lua

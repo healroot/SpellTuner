@@ -356,6 +356,7 @@ local FOREVER_EVENTS = {
     UNIT_SPELLCAST_SENT = true, UNIT_SPELLCAST_START = true, UNIT_SPELLCAST_SUCCEEDED = true,
     UNIT_SPELLCAST_STOP = true, UNIT_SPELLCAST_FAILED = true, UNIT_HEALTH = true,
     UNIT_MAXHEALTH = true, UNIT_POWER_UPDATE = true, UNIT_POWER_FREQUENT = true, -- T143: EllesmereUI registers it on Forever
+    UNIT_MAXPOWER = true, -- T145c: the clock's bar range (UI/Clock_Forever.lua)
     UNIT_AURA = true, UNIT_FLAGS = true,
     UNIT_COMBAT = true, GROUP_ROSTER_UPDATE = true, PLAYER_REGEN_DISABLED = true,
     PLAYER_REGEN_ENABLED = true, SPELLS_CHANGED = true, PLAYER_TALENT_UPDATE = true,
@@ -981,16 +982,50 @@ local function RunDueTimers()
     for _, t in ipairs(due) do t.fn() end
 end
 
+-- T145c (docs/SPEC-clock-v3.md 4.2, E6): the client runs a frame's OnUpdate
+-- only while the frame is visible (shown, and every parent shown). Opt-in,
+-- so older suites are untouched: S.VisibleOnUpdate(true) makes S.Tick do the
+-- same; the clock suites turn it on.
+S.visibleOnUpdate = false
+function S.VisibleOnUpdate(on) S.visibleOnUpdate = on and true or false end
+
 function S.Tick(dt)
     S.now = S.now + dt
     for _, f in ipairs(frames) do
-        if f.scripts.OnUpdate then f.scripts.OnUpdate(f, dt) end
+        if f.scripts.OnUpdate and (not S.visibleOnUpdate or f:IsVisible()) then f.scripts.OnUpdate(f, dt) end
     end
     for _, tk in ipairs(S.tickers or {}) do
         tk.acc = tk.acc + dt
         while tk.acc >= tk.period do tk.acc = tk.acc - tk.period; tk.fn() end
     end
     RunDueTimers() -- T54 (P10)
+end
+
+-- T145c (docs/SPEC-clock-v3.md 4.3): region call counters, opt-in.
+-- S.CountCalls(names, filter) wraps each named frame method (whatever is in
+-- place now, the geometry's included, or the no-op fallback) so that a call
+-- on a frame `filter(frame)` accepts (nil: every frame) adds one to
+-- S.calls[name]; S.CountCalls(false) puts the methods back. S.ResetCalls()
+-- empties the counts.
+S.calls = {}
+local countSaved
+function S.ResetCalls() for k in pairs(S.calls) do S.calls[k] = nil end end
+function S.CountCalls(names, filter)
+    if countSaved then
+        for k, v in pairs(countSaved) do FrameMT[k] = v or nil end
+        countSaved = nil
+    end
+    if not names then return end
+    countSaved = {}
+    for _, k in ipairs(names) do
+        local orig = rawget(FrameMT, k)
+        countSaved[k] = orig or false
+        local fallback = orig or FrameMT[k]
+        FrameMT[k] = function(self, ...)
+            if filter == nil or filter(self) then S.calls[k] = (S.calls[k] or 0) + 1 end
+            if fallback then return fallback(self, ...) end
+        end
+    end
 end
 
 -- Switches the stub's globals to the Forever profile (T0). Called once, by a

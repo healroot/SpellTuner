@@ -5,8 +5,8 @@
 -- flavours:
 --   1. the file is pure: it loads and runs with Lua's library and a fake ST
 --      holding only db, Fire and AddDumpLine; every main TOC lists it just
---      before UI/ClockView.lua; T145b leaves db.clockLook as it was at login
---      (nothing reads the store yet);
+--      before UI/ClockBar.lua; T145c: db.clockLook is v3 once MD_READY ran
+--      (each clock host calls MigrateStored);
 --   2. Normalize repairs each invalid field and names it, drops and names an
 --      unknown key, and is idempotent; the defaults and both presets are valid;
 --   3. every Set path: an accepted value written, ONE CLOCK_LOOK, the store
@@ -94,20 +94,21 @@ do
         local store, view
         for i, rel in ipairs(files) do
             if rel == "UI/ClockStore.lua" then store = i end
-            if rel == "UI/ClockView.lua" then view = i end
+            if rel == "UI/ClockBar.lua" then view = i end
         end
         placed[#placed + 1] = (store and view and store == view - 1) and true or false
     end
-    check("1. every main TOC lists UI/ClockStore.lua just before UI/ClockView.lua",
+    check("1. every main TOC lists UI/ClockStore.lua just before UI/ClockBar.lua (T145c)",
         placed[1] and placed[2] and placed[3])
     if FLAVOUR == "forever" then
         local live = ST.db and ST.db.clockLook
-        check("1. the Forever TOC loaded it; db.clockLook is still the v2 store at login (U2 wires nothing)",
-            type(ST.ClockStore) == "table" and type(live) == "table" and live.v ~= 3 and live.over ~= nil,
+        check("1. the Forever TOC loaded it; T145c: db.clockLook is v3 after MD_READY (MigrateStored wired)",
+            type(ST.ClockStore) == "table" and type(live) == "table" and live.v == 3 and live.over == nil
+            and CS0.Valid(live),
             "v=" .. tostring(live and live.v))
         local look = ST.ClockStore.Look()
-        check("1. Look() of the live store is a valid v3 copy, and writes nothing",
-            CS0.Valid(look) and ST.db.clockLook.v ~= 3 and ST.db.clockLook ~= look)
+        check("1. Look() of the live store is a valid v3 copy, not the stored table",
+            CS0.Valid(look) and ST.db.clockLook.v == 3 and ST.db.clockLook ~= look and Same(look, ST.db.clockLook))
     else
         check("1. the TBC harness draws nothing (UI/ is not loaded): the pure copy stands in", ST.ClockStore == nil)
     end

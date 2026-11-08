@@ -201,9 +201,9 @@ local wasInFSR = false
 -- the two intervals between them are each 2.0 s within 0.15 s and the latest
 -- is under 4 s old, the tick is known: RM:RegenTick(now) -> the latest rise,
 -- 2. Anything else (drinking and potions rise irregularly; no rise for 4 s)
--- answers nil. Read only by the clock's "After the rule = Regen tick" (the
--- white mark sweeping the green strip, UI/ClockView.lua); nothing in the
--- model reads it. VERIFY in game (docs/TESTING.md).
+-- answers nil. It was read only by the old clock's "After the rule = Regen
+-- tick" mark, gone with its renderer in T145c; nothing in the model reads it.
+-- VERIFY in game (docs/TESTING.md).
 --------------------------------------------------------------------------------
 local gainT = { nil, nil, nil }
 local TICK_PERIOD, TICK_SLACK, TICK_STALE = 2.0, 0.15, 4

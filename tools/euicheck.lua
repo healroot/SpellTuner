@@ -128,24 +128,18 @@ local function DumpLine(ST)
     return okD and line or ("raised: " .. tostring(line))
 end
 
--- The clock's words as drawn (UI/ClockView.lua's three segments), colour
--- codes removed: tools/clockcheck.lua's ClockText.
+-- The clock's words as a line (T145c: the Bar draws its texts apart, so the
+-- clock's line is ClockFace.LineString of the face the clock paints, colour
+-- codes removed -- the default string the feeds draw, docs/SPEC-clock-v3.md
+-- 1.1); nil while the preview's message stands in for a face.
 local function StripCodes(s) return (s:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) end
 local function ClockText(ST)
-    local v = ST.Clock and ST.Clock.view
-    if not v then return nil end
-    if v.msg and v.msg:IsShown() then return nil end -- the preview's message, not a face
-    local function Seg(fs)
-        if not fs or not fs:IsShown() then return nil end
-        local t = fs:GetText()
-        if t == nil or t == "" then return nil end
-        return StripCodes(t)
-    end
-    local l, val, s = Seg(v.label), Seg(v.value), Seg(v.second)
-    local out = l or ""
-    if val then out = out .. " " .. val end
-    if s then out = out .. "  " .. s end
-    return out
+    local CF = ST.ClockFace
+    if ST.Clock and ST.Clock.Previewing and ST.Clock:Previewing() then return nil end
+    if not (CF and CF.Current and CF.LineString) then return nil end
+    local face = CF.Current(GetTime())
+    if not face then return nil end
+    return StripCodes(CF.LineString(face))
 end
 
 local function TextChanges(lib, name)
@@ -263,9 +257,6 @@ ST:RegisterCallback("EUI_LOOKS_CHANGED", function() looksChanged = looksChanged 
 local S2 = H.SkinFacade()
 E._DispatchSkins(S2) -- BlizzardSkin's PLAYER_LOGIN, after SpellTuner's MD_READY
 Ticks(S, 4)
--- T131: Bar is the default layout; checks 4 and 12 were written on the Line
--- layout (its secondary, its 180 x 32), so the saved choice says "line".
-ST.ClockView.SetLayout("line")
 
 local function Obj(name) return lib:GetDataObjectByName(name) end
 
@@ -593,8 +584,9 @@ Guarded("12. the mover", function()
     local ended = not ST.Clock:Previewing()
     S.Geometry(false)
     elem.clearPosition("SpellTuner_Clock")
+    -- T145c: the size is the Bar look's width x height (was the Line layout's 180 x 32)
     check("12. the mover: saves, loads, applies, clears, waits out a fight, hides with the clock; /unlock previews",
-        reg and w == 180 and h == 32 and saved and applied and loaded and cleared and applyOk and waited and afterFight
+        reg and w == ST.ClockStore.Look().width and h == ST.ClockStore.Look().height and saved and applied and loaded and cleared and applyOk and waited and afterFight
         and hiddenOff and hiddenOn and previewing and ended and E.calls.RegisterUnlockModeListener[1] == "SpellTuner",
         string.format("reg=%s size=%sx%s saved=%s applied=%s loaded=%s cleared=%s apply=%s waited=%s after=%s "
             .. "hidden=%s/%s preview=%s/%s", tostring(reg), tostring(w), tostring(h), tostring(saved), tostring(applied),

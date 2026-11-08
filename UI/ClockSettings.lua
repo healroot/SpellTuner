@@ -3,24 +3,15 @@
 --
 --   * Settings -> Clock (7.4): a view of its own in the Settings group (TBC
 --     General, Clock, About; Forever General, Clock, Modules, About), built by
---     ST.ClockSettings.Build. Its PREVIEW is a separate frame drawn by
---     ST.ClockView.Build (UI/ClockView.lua), never the clock on screen, so the
+--     ST.ClockSettings.Build. T145c (docs/SPEC-clock-v3.md, U3): a MINIMAL
+--     pane until U4 rewrites it -- its PREVIEW is a separate frame drawn by
+--     ST.ClockBar.New (UI/ClockBar.lua), never the clock on screen, so the
 --     single visibility owner of each line (CLAUDE.md) is never touched from
---     here. The state chips paint ST.ClockFace.SAMPLES -- the table
---     tools/clockfacecheck.lua and tools/clockui.lua render -- as this line
---     draws a face (Forever: the "~", one colour, "0:15", no arrow); (Live)
---     paints ST.ClockFace.Current every tick while the view is shown. LAYOUT
---     is one button per ST.ClockView.LAYOUTS (T104's ring joins the row when
---     it is drawn) and Reset to style; under them a level-3 box
---     (UI.CreateNavBox) with Colours, Frame, Bar, Show and When. A control
---     writes one override through ST.ClockView.Set (db.clockLook.over, read
---     only by the resolver), which fires CLOCK_LOOK: the line's clock and this
---     preview rebuild. Show and When hold the line's own switches (TBC
---     db.showRest / showCooldown / locked / widgetTooltip, Forever
---     db.clock.*), which each line's dashboard hands in (opts.show /
---     opts.when): a line's keys stay in that line's files (7.3 phase 1).
---     The swatch row (the tones, the style's tokens, the class colour, eight
---     fixed colours; no client call) is local to this file.
+--     here; the sample chips (In a fight, Running out, Filling, Full, Live);
+--     the two presets with Undo, the 5SR line and Reset, each one write
+--     through UI/ClockStore.lua (one CLOCK_LOOK); the line's When switches
+--     (opts.when, each line's dashboard hands them in). CS.Refresh reads
+--     ClockStore.Look().
 --   * The Look controls (5.4, M7b): the style dropdown (UI.Styles' keys; the
 --     Ellesmere entry named by UI.Ellesmere.Label, "Ellesmere (following
 --     EllesmereUI)" while it follows), "Use my class colour" (db.useClassColour,
@@ -34,13 +25,14 @@
 --     found), the broker switches (db.feeds.ldb, db.feeds.compact) and a hint;
 --     a line adds its own switches (the Forever EllesmereUI mover).
 --   * The clock subcommands (7.4, 2.5) through ST:AddSubcommand: `/st clock
---     layout <name>`, `/st clock look reset`, `/st clock preview`. Forever's
+--     layout` (T145c: says the Bar is the only one), `/st clock look reset`,
+--     `/st clock preview`. Forever's
 --     `/st clock` and `/st clock lock` keep their meaning (a sub is matched
 --     only on its own first word); on TBC, which had no `clock` verb, the subs
 --     create `/st clock`.
---   * ST.ClockLook (ST:Provide): the line's resolved clock look, which
+--   * ST.ClockLook (ST:Provide): the line's rest / cooldown switches, which
 --     Integrations/Surface_LDB.lua follows so the broker drops the rest
---     segment when the clock does (2.3 "one string, every place").
+--     segment when the line does (U4 removes it: the default LineString).
 --
 -- "Use my class colour" overrides any style's accent (decision 3). UI/Styles.lua
 -- (T103's this wave) applies a style through UI.ApplyStyleTokens; this file
@@ -350,102 +342,65 @@ function CS.BuildIntegrations(parent, width, height, extra)
 end
 
 --------------------------------------------------------------------------------
--- The line's look for the broker: Integrations/Surface_LDB.lua's ST.ClockLook
+-- The line's look for the broker: Integrations/Surface_LDB.lua's ST.ClockLook.
+-- T145c: the Bar is the only layout and its texts are not the broker's; the
+-- broker keeps the line's own rest / cooldown switches (U4 removes this).
 --------------------------------------------------------------------------------
 ST:Provide("ClockLook", function()
-    local W = ST.ClockWidget
-    local v = W and W.view
-    return v and v.look or nil
+    local show = { rest = true, cd = true }
+    local db = ST.db
+    if type(db) == "table" then
+        if type(db.clock) == "table" and db.clock.showRest == false then show.rest = false end
+        if db.showRest == false then show.rest = false end
+        if db.showCooldown == false then show.cd = false end
+    end
+    return { show = show }
 end)
 
 --------------------------------------------------------------------------------
--- Settings -> Clock: the preview
+-- Settings -> Clock: a minimal pane until U4 (docs/SPEC-clock-v3.md 5, U3):
+-- the preview (a ClockBar of its own on a ground strip, never the clock on
+-- screen), the two presets with Undo, the 5SR line, Reset, Show on screen,
+-- and the line's When switches. Every write goes through UI/ClockStore.lua
+-- (one CLOCK_LOOK); CS.Refresh reads ClockStore.Look(). U4 replaces it.
 --------------------------------------------------------------------------------
--- The chips, in the order 7.4 draws them: (Live), then SAMPLES by key.
-CS.CHIPS = { "live", "oom", "crit", "bound", "hold", "warmup", "full", "rest", "ooc" }
-CS.SAMPLE_POOL = 0.6   -- the preview's illustrative fill for the pool and the model
+-- The sample states (spec 3.1) and their faces, as each line draws them.
+CS.CHIPS = { "fight", "low", "filling", "full", "live" }
+CS.CHIP_NAMES = { fight = "In a fight", low = "Running out", filling = "Filling", full = "Full", live = "Live" }
+CS.SAMPLE_POOL = 0.6   -- the preview's illustrative fill
 CS.SAMPLE_FSR = 3      -- seconds left in the five-second rule in a sample fight
-CS.GROUND = { dark = { 0.05, 0.05, 0.05, 1 }, light = { 0.72, 0.72, 0.72, 1 } }
+CS.GROUND = { 0.05, 0.05, 0.05, 1 }
 
-local DEFAULT_FACTS = { labelSample = "FULL", show = {} }
+local SAMPLE_FACES = {
+    fight = { mode = "oom", label = "OOM", value = 80, known = "point", tone = "normal", combat = true,
+        timeFmt = "mss", pct = 0.6, mana = 4210, manaMax = 7000, mp5 = 92, fsr = 3,
+        second = { kind = "rest", label = "rest", value = 130 } },
+    low = { mode = "oom", label = "OOM", value = 15, known = "point", tone = "crit", combat = true,
+        timeFmt = "mss", pct = 0.1, mana = 700, manaMax = 7000, mp5 = 92 },
+    filling = { mode = "ooc", label = "FULL", value = 45, known = "point", tone = "good", combat = false,
+        timeFmt = "mss", pct = 0.8, mana = 5600, manaMax = 7000, mp5 = 140 },
+    full = { mode = "fullnow", label = "FULL", known = "none", tone = "good", combat = false,
+        timeFmt = "mss", pct = 1, mana = 7000, manaMax = 7000, mp5 = 140 },
+}
 
--- The line's facts (UI/Widget.lua's or UI/Clock_Forever.lua's, T98).
-local function Facts()
-    local W = ST.ClockWidget
-    return (W and type(W.facts) == "table") and W.facts or DEFAULT_FACTS
-end
-
-local function Sample(key)
-    for _, s in ipairs(ST.ClockFace and ST.ClockFace.SAMPLES or {}) do
-        if s.key == key then return s end
-    end
-end
-
-local function Copy(t)
+-- CS.SampleFace(key) -> a copy of a sample face (nil for "live").
+function CS.SampleFace(key)
+    local f = SAMPLE_FACES[key]
+    if not f then return nil end
     local out = {}
-    for k, v in pairs(t) do out[k] = type(v) == "table" and Copy(v) or v end
+    for k, v in pairs(f) do
+        if type(v) == "table" then
+            local c = {}
+            for k2, v2 in pairs(v) do c[k2] = v2 end
+            out[k] = c
+        else
+            out[k] = v
+        end
+    end
     return out
 end
 
--- CS.SampleFace(key, facts) -> a SAMPLES face as this line draws one: on a
--- line with a modelled pool (Forever) the "~", one colour, "0:15" and no
--- arrow (it keeps no trend), the model's illustrative pct.
-function CS.SampleFace(key, facts)
-    local s = Sample(key)
-    if not s then return nil end
-    local f = Copy(s.face)
-    facts = facts or Facts()
-    if facts.model then
-        f.modelled, f.mono, f.timeFmt, f.arrow, f.unstable = true, true, "mss", nil, false
-        if f.pct == nil then f.pct = CS.SAMPLE_POOL end
-    end
-    return f
-end
-
-function CS.ChipName(key)
-    if key == "live" then return "(Live)" end
-    local s = Sample(key)
-    return s and s.name or key
-end
-
-local function SamplePool(b)
-    b:SetMinMaxValues(0, 1)
-    b:SetValue(CS.SAMPLE_POOL)
-end
-
--- T115: each pane's own sample sources -- the illustrative pool, and the
--- five-second rule from the pane's own spend (p.ruleSpend: a sample fight's,
--- or a rule chip's), so the preview's strip, veil and chip move as the
--- clock's would.
-local function SampleDraw(p)
-    if p.sampleDraw then return p.sampleDraw end
-    p.sampleDraw = {
-        pool = SamplePool,
-        fsr = function(now)
-            if not p.ruleSpend then return 0 end
-            return math.max(0, p.ruleSpend + 5 - (now or GetTime()))
-        end,
-        spend = function() return p.ruleSpend end,
-    }
-    return p.sampleDraw
-end
-
--- The pane's spend for a sample face: in a fight, the rule with
--- CS.SAMPLE_FSR seconds left; out of one, none.
-local function RuleFromFace(p, face)
-    if face and face.combat then
-        p.ruleSpend = GetTime() - (5 - CS.SAMPLE_FSR)
-    else
-        p.ruleSpend = nil
-    end
-end
-
--- The line's own bar sources (the pool it draws, its five-second rule).
-local function LiveDraw(p)
-    local W = ST.ClockWidget
-    local v = W and W.view
-    return v and type(v.draw) == "table" and v.draw or SampleDraw(p)
-end
+function CS.ChipName(key) return CS.CHIP_NAMES[key] or key end
 
 local function LiveFace()
     local CF = ST.ClockFace
@@ -455,143 +410,71 @@ local function LiveFace()
     return nil
 end
 
+-- The preview's sources: the sample pool and the pane's own five-second rule
+-- (a fight's chip: CS.SAMPLE_FSR seconds left), or the line's own (Live).
+local function SampleDraw(p)
+    if p.sampleDraw then return p.sampleDraw end
+    p.sampleDraw = {
+        pool = function(b)
+            if p.chip == "live" then
+                local W = ST.ClockWidget
+                local d = W and (W.draw or (W.renderer and W.renderer.draw))
+                if d and d.pool then d.pool(b) return end
+            end
+            b:SetValue(CS.SAMPLE_POOL)
+        end,
+        poolMax = function(b)
+            if p.chip == "live" then
+                local W = ST.ClockWidget
+                local d = W and (W.draw or (W.renderer and W.renderer.draw))
+                if d and d.poolMax then d.poolMax(b) return end
+            end
+            b:SetMinMaxValues(0, 1)
+        end,
+        fsrEnd = function()
+            if p.chip == "live" then
+                local W = ST.ClockWidget
+                local d = W and (W.draw or (W.renderer and W.renderer.draw))
+                if d and d.fsrEnd then return d.fsrEnd() end
+                return nil
+            end
+            return p.ruleEnd
+        end,
+    }
+    return p.sampleDraw
+end
+
 local panes = setmetatable({}, { __mode = "k" })
 
--- The look the preview draws with: the line's resolved one (the layout, the
--- style's clock role, the overrides), its switches as the line has them now.
-local function PreviewLook(p)
-    local look = ST.ClockView.Look(Facts())
-    p.look = look
-    return look
-end
-
--- The segments the line shows: its facts (refreshed at the line's own paint),
--- then the line's own switches read now -- a Show switch carrying `segment`
--- ("rest" / "cd") -- so the preview follows a click at once.
-local function SyncShow(p, look)
-    local show = Facts().show or {}
-    look.show = look.show or {}
-    look.show.rest, look.show.cd = show.rest, show.cd
-    for _, def in ipairs(p.opts and p.opts.show or {}) do
-        if def.segment and type(def.get) == "function" then look.show[def.segment] = def.get() and true or false end
-    end
-end
-
--- Paint the preview: the chip's face (or the live one) in the resolved look.
+-- CS.PaintPreview(p): the chip's face (or the live one) in the stored look.
 function CS.PaintPreview(p)
     local v = p and p.view
     if not v then return end
-    local look = p.look or PreviewLook(p)
-    SyncShow(p, look)
     local face
-    if p.chip == "live" then
-        v.draw = LiveDraw(p)
-        face = LiveFace()
-    else
-        v.draw = SampleDraw(p)
-        face = CS.SampleFace(p.chip)
-    end
-    v:Paint(face, look)
-    v:PaintBar(GetTime())
+    if p.chip == "live" then face = LiveFace() else face = CS.SampleFace(p.chip) end
+    p.words = ST.ClockWords.Build(face, p.look, nil, GetTime(), p.words, false)
+    v:Paint(p.words)
+    v:PaintPower(true)
     p.face = face
 end
 
---------------------------------------------------------------------------------
--- Settings -> Clock: the swatch row
---------------------------------------------------------------------------------
-CS.FIXED = { "ffffff", "bfbfbf", "000000", "ff3333", "ff8000", "ffd100", "00ccff", "b266ff" }
-local TONES = { "crit", "warn", "normal", "good", "muted", "mana" }
-local TOKENS = { "accent", "text", "label", "muted", "mana", "good", "bad" }
-
-local function HexOf(code)
-    if type(code) ~= "string" then return nil end
-    local h = code:match("^|c[fF][fF](%x%x%x%x%x%x)$") or code:match("^(%x%x%x%x%x%x)$")
-    return h and h:lower() or nil
+local function Chip(p, key)
+    p.chip = key
+    if p.highlightChip then p.highlightChip(key) end
+    local face = CS.SampleFace(key)
+    if face and face.combat then p.ruleEnd = GetTime() + CS.SAMPLE_FSR else p.ruleEnd = nil end
+    CS.PaintPreview(p)
 end
 
--- CS.Swatches() -> { { name, hex } }: the tones, the style's tokens, the class
--- colour, eight fixed colours -- read now (a style changes the tokens).
-function CS.Swatches()
-    local out = {}
-    local CF = ST.ClockFace
-    for _, t in ipairs(TONES) do
-        local h = CF and CF.HEX and HexOf(CF.HEX[t])
-        if h then out[#out + 1] = { name = "tone: " .. t, hex = h } end
+local function Section(pane, text, height, above, gap)
+    local t = UI.CreateTitledPane(pane, text, 400, height)
+    if above then
+        t:SetPoint("TOPLEFT", above, "BOTTOMLEFT", 0, -(gap or 12))
+    else
+        t:SetPoint("TOPLEFT", pane, "TOPLEFT", 4, -4)
     end
-    for _, t in ipairs(TOKENS) do
-        local tok = UI.TEXT[t]
-        local h = tok and HexOf(tok.hex)
-        if h then out[#out + 1] = { name = "style: " .. t, hex = h } end
-    end
-    local class = HexOf(UI.classAccentHex)
-    if class then out[#out + 1] = { name = "your class colour", hex = class } end
-    for _, h in ipairs(CS.FIXED) do out[#out + 1] = { name = h, hex = h } end
-    return out
-end
-
-function CS.RGB(hex)
-    return tonumber(hex:sub(1, 2), 16) / 255, tonumber(hex:sub(3, 4), 16) / 255,
-        tonumber(hex:sub(5, 6), 16) / 255
-end
-
-local SWATCH = 12
-
-local function PaintSwatches(row)
-    local list = CS.Swatches()
-    for i, b in ipairs(row.swatches) do
-        local s = list[i]
-        if s then
-            b.hex, b.name = s.hex, s.name
-            b.tex:SetColorTexture(CS.RGB(s.hex))
-            UI.SetTooltips(b, "ANCHOR_TOPLEFT", 0, 3, s.name, s.hex)
-            b:Show()
-        else
-            b:Hide()
-        end
-    end
-end
-
--- A row of swatches; a click hands onPick the hex ("rrggbb"); the last
--- button ("x", style) hands it nil: back to the style's.
-local function SwatchRow(parent, onPick)
-    local row = CreateFrame("Frame", nil, parent)
-    row:SetHeight(SWATCH + 2)
-    row.swatches = {}
-    local n = #CS.Swatches()
-    for i = 1, n do
-        local b = CreateFrame("Button", nil, row, "BackdropTemplate")
-        b:SetSize(SWATCH, SWATCH)
-        b:SetPoint("LEFT", row, "LEFT", (i - 1) * (SWATCH + 2), 0)
-        UI.Skin(b, "field", "field", "border")
-        b.tex = b:CreateTexture(nil, "ARTWORK")
-        b.tex:SetPoint("TOPLEFT", b, "TOPLEFT", 1, -1)
-        b.tex:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", -1, 1)
-        b:SetScript("OnClick", function(self) onPick(self.hex) end)
-        row.swatches[i] = b
-    end
-    local reset = UI.CreateButton(row, "style", "accent-hover", { 40, SWATCH + 2 }, false, false,
-        UI.FONT_SMALL, UI.FONT_SMALL, "Back to the style's", "This setting follows the look again.")
-    reset:SetPoint("LEFT", row, "LEFT", n * (SWATCH + 2) + 4, 0)
-    reset:SetScript("OnClick", function() onPick(nil) end)
-    row.reset = reset
-    row:SetWidth(n * (SWATCH + 2) + 48)
-    PaintSwatches(row)
-    return row
-end
-
---------------------------------------------------------------------------------
--- Settings -> Clock: the tabs of the level-3 box
---------------------------------------------------------------------------------
-local ROW = 22
-local LABEL_W = 112
-
-local function RowLabel(parent, text, y)
-    local fs = parent:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
-    fs:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, y)
-    fs:SetWidth(LABEL_W - 4)
-    fs:SetJustifyH("LEFT")
-    fs:SetText(text)
-    return fs
+    t:SetPoint("RIGHT", pane, "RIGHT", -4, 0)
+    return t
 end
 
 local function Note(parent, text, anchor, y)
@@ -604,1341 +487,154 @@ local function Note(parent, text, anchor, y)
     return fs
 end
 
-local function Set(key, value)
-    return ST.ClockView.Set(key, value)
-end
-
-local function Rgba(hex, a)
-    if not hex then return nil end
-    local r, g, b = CS.RGB(hex)
-    return { r, g, b, a or 1 }
-end
-
-local TONE_LABEL = {
-    crit = "Crit (under 20 s)", warn = "Warn (under 60 s)", normal = "Normal",
-    good = "Good (FULL)", muted = "Muted", mana = "Mana cooldown",
-}
-
--- T115: the mana bar's colour (the strip, the veil and the chip keep amber
--- and green under every choice, so their meaning never changes)
-local MANA_COLOURS = {
-    { id = "mana", text = "Mana blue", tooltip = "The default: the mana blue." },
-    { id = "tone", text = "By tone", tooltip = "The value's colour: red near OOM, green when full." },
-    { id = "class", text = "Class colour" },
-    { id = "fixed", text = "A swatch", tooltip = "Pick one in the row beside it." },
-}
-
-local TAB = {}
-
-TAB.colours = function(p, f)
-    local y = -2
-    p.toneRows = {}
-    for _, tone in ipairs(TONES) do
-        RowLabel(f, TONE_LABEL[tone], y - 1)
-        local row = SwatchRow(f, function(hex) Set("colors." .. tone, hex) end)
-        row:SetPoint("TOPLEFT", f, "TOPLEFT", LABEL_W, y)
-        p.toneRows[tone] = row
-        y = y - ROW
-    end
-    RowLabel(f, "Mana colour", y - 3)
-    local dd = UI.CreateDropdown(f, 110, 18, function(id)
-        if id == "mana" then Set("colors.manaBar", nil)
-        elseif id ~= "fixed" then Set("colors.manaBar", id) end
-    end)
-    dd:SetPoint("TOPLEFT", f, "TOPLEFT", LABEL_W, y)
-    dd:SetItems(MANA_COLOURS)
-    p.manaColour = dd
-    local row = SwatchRow(f, function(hex)
-        Set("colors.manaBar", hex and Rgba(hex) or nil)
-    end)
-    row:SetPoint("LEFT", dd, "RIGHT", 8, 0)
-    p.manaColourRow = row
-    y = y - ROW
-    RowLabel(f, "Bar background", y - 1)
-    local back = SwatchRow(f, function(hex) Set("bar.back", Rgba(hex)) end)
-    back:SetPoint("TOPLEFT", f, "TOPLEFT", LABEL_W, y)
-    p.barBackRow = back
-end
-
--- T115: the layout the controls write to (each layout keeps its own bars and
--- frame), and the layout's own defaults.
-local function Layout(p)
-    return p.look and p.look.layout or ST.ClockView.DEFAULT_LAYOUT
-end
-local function LayoutDef(p)
-    return ST.ClockView.LAYOUT[Layout(p)] or ST.ClockView.LAYOUT[ST.ClockView.DEFAULT_LAYOUT]
-end
-
--- One frame.<layout>.<field> from a slider: the layout's default writes nil.
-local function SetFrame(p, field, value, default)
-    value = tonumber(value)
-    if value == nil then return end
-    Set("frame." .. Layout(p) .. "." .. field, (value ~= default) and value or nil)
-end
-
-TAB.frame = function(p, f)
-    local y = -2
-    RowLabel(f, "Background", y - 1)
-    p.fillRow = SwatchRow(f, function(hex)
-        local a = (p.look and p.look.panel and UI.SkinColour(p.look.panel.fill) or {})[4] or 1
-        Set("panel.fill", hex and Rgba(hex, a) or nil)
-    end)
-    p.fillRow:SetPoint("TOPLEFT", f, "TOPLEFT", LABEL_W, y)
-    y = y - ROW - 12
-    local alpha = UI.CreateSlider("Background alpha", f, 0, 100, 160, 5, nil, function(value)
-        local c = p.look and p.look.panel and UI.SkinColour(p.look.panel.fill) or { 0, 0, 0, 1 }
-        Set("panel.fill", { c[1], c[2], c[3], (tonumber(value) or 100) / 100 })
-    end, true, "Background alpha", "0 %: no background, only the words and the bar.")
-    alpha:SetPoint("TOPLEFT", f, "TOPLEFT", LABEL_W + 2, y)
-    p.alphaSlider = alpha
-    y = y - 40
-    RowLabel(f, "Border", y - 1)
-    p.edgeRow = SwatchRow(f, function(hex) Set("panel.edge", Rgba(hex)) end)
-    p.edgeRow:SetPoint("TOPLEFT", f, "TOPLEFT", LABEL_W, y)
-    local none = UI.CreateButton(f, "none", "accent-hover", { 40, SWATCH + 2 }, false, false,
-        UI.FONT_SMALL, UI.FONT_SMALL, "No border", "The clock without its edge.")
-    none:SetPoint("LEFT", p.edgeRow, "RIGHT", 4, 0)
-    none:SetScript("OnClick", function() Set("panel.edge", { 0, 0, 0, 0 }) end)
-    p.edgeNone = none
-
-    -- the size, per layout: three sliders under the swatches, each writing
-    -- on release (Width and Height never under the layout's measured
-    -- minimum, named beside them; Scale keeps the clock's centre)
-    y = y - ROW - 16
-    local d = LayoutDef(p)
-    local function SizeSlider(label, lo, hi, step, x, after, ...)
-        local s = UI.CreateSlider(label, f, lo, hi, 120, step, nil, after, false, ...)
-        s:SetPoint("TOPLEFT", f, "TOPLEFT", x, y)
-        return s
-    end
-    p.wSlider = SizeSlider("Width", d.wRange[1], d.wRange[2], 1, 4, function(value)
-        SetFrame(p, "w", value, LayoutDef(p).width)
-    end, "Width", "The clock's width in this layout; never under the minimum its words need.")
-    p.hSlider = SizeSlider("Height", d.hRange[1], d.hRange[2], 1, 170, function(value)
-        SetFrame(p, "h", value, LayoutDef(p).height)
-    end, "Height", "Extra height goes to the mana bar; the words and the strip stay as they are.")
-    p.scaleSlider = SizeSlider("Scale (%)", ST.ClockView.SCALE_RANGE[1], ST.ClockView.SCALE_RANGE[2], 5, 336,
-        function(value) SetFrame(p, "scale", value, 100) end,
-        "Scale", "The whole clock larger or smaller; its centre stays where it is.")
-    -- the layout's minimum: a green mark on the track at the minimum's
-    -- place, and "min N" in the same green over the slider's right end
-    -- (CS.PlaceMinimum moves both at each refresh)
-    local function Min(slider)
-        local mark = slider:CreateTexture(nil, "OVERLAY")
-        mark:SetSize(2, 16)
-        UI.Tint(mark, "texture", "good")
-        mark:Hide()
-        slider.minMark = mark
-        local fs = f:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
-        fs:SetPoint("BOTTOMRIGHT", slider, "TOPRIGHT", 0, 2)
-        UI.Tint(fs, "text", "good")
-        return fs, mark
-    end
-    p.wMin, p.wMark = Min(p.wSlider)
-    p.hMin, p.hMark = Min(p.hSlider)
-    local n1 = Note(f, "Width, height and scale are kept per layout.", nil, y - 32)
-    Note(f, "Green mark: this layout's minimum at this text size.", n1, -4)
-end
-
--- T115: the bars, per layout. Each list holds what this line may draw
--- (CV.BarsOK with the line's facts): the tick, the client's textures (TBC),
--- the modelled pool (Forever). The defaults are the recommended choices.
-local BAR_ITEMS = {
-    show = {
-        { id = "both", text = "Mana + 5SR", tooltip = "The default: your mana and the five-second rule." },
-        { id = "mana", text = "Mana only" },
-        { id = "fsr", text = "5SR only", tooltip = "The five-second rule in the mana bar's place." },
-        { id = "none", text = "None", tooltip = "Words only." },
-    },
-    join = {
-        { id = "stacked", text = "Stacked", tooltip = "The default: the mana bar over a thin strip." },
-        { id = "veil", text = "One bar", tooltip = "One mana bar; an amber veil over its right part while the rule runs." },
-        { id = "chip", text = "Swipe chip", tooltip = "One mana bar; a square beside the label sweeps the five seconds." },
-        { id = "sweep", text = "Moving line",
-          tooltip = "One mana bar in its own colour; an amber line crosses it during the five seconds." },
-    },
-    order = {
-        { id = "manaOver", text = "Mana over 5SR" },
-        { id = "fsrOver", text = "5SR over mana" },
-    },
-    mana = {
-        { id = "game", text = "The game", tooltip = "The default: your real mana, drawn by the game." },
-        { id = "model", text = "The model", tooltip = "SpellTuner's modelled pool (~), a little transparent." },
-    },
-    after = {
-        { id = "green", text = "Green", tooltip = "The default: the strip turns green once spirit regen runs." },
-        { id = "empty", text = "Empty" },
-        { id = "tick", text = "Regen tick", tooltip = "A white mark sweeping the green strip every 2-s regen tick." },
-    },
-    texture = {
-        { id = "flat", text = "Flat" },
-        { id = "statusbar", text = "Status bar" },
-        { id = "raid", text = "Raid bar" },
-    },
-}
-
--- Flat is the only texture where the line cannot take the client's (Forever,
--- until Q-clock-4), and its row says why the list is one long.
-local FLAT_ONLY = { id = "flat", text = "Flat (others wait for the probe)",
-    tooltip = "Forever's bar textures wait for the probe (Q-clock-4)." }
-
-local function BarItems(field)
-    local items = {}
-    local facts = Facts()
-    for _, it in ipairs(BAR_ITEMS[field]) do
-        if ST.ClockView.BarsOK("line", { [field] = it.id }, facts) then items[#items + 1] = it end
-    end
-    if field == "texture" and not facts.textures and #items == 1 and items[1].id == "flat" then
-        items[1] = FLAT_ONLY
-    end
-    return items
-end
-
--- Order is Stacked's alone: One bar and Swipe chip draw a single mana bar.
-local ORDER_TIP = "Which bar is on top. Stacked only: One bar and Swipe chip draw a single mana bar."
-local function Stacked(p)
-    local b = p.look and p.look.bars
-    return (b and b.join or "stacked") == "stacked"
-end
-
--- One bars.<layout>.<field>: the default writes nil. Order is written only
--- while Join is Stacked (its dropdown is disabled otherwise).
-local function SetBar(p, field, value)
-    if field == "order" and not Stacked(p) then return end
-    Set("bars." .. Layout(p) .. "." .. field, (value ~= ST.ClockView.BarsDefault(Layout(p))[field]) and value or nil)
-end
-
-local BAR_LABEL = {
-    show = "Bars", join = "Join", order = "Order", mana = "Mana from", after = "After the rule", texture = "Texture",
-}
-
-TAB.bars = function(p, f)
-    local facts = Facts()
-    local function Row(field, x, y, w)
-        local fs = f:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
-        fs:SetPoint("TOPLEFT", f, "TOPLEFT", x, y - 3)
-        fs:SetWidth(LABEL_W - 16)
-        fs:SetJustifyH("LEFT")
-        fs:SetText(BAR_LABEL[field])
-        local dd = UI.CreateDropdown(f, w or 120, 18, function(id) SetBar(p, field, id) end)
-        dd:SetPoint("TOPLEFT", f, "TOPLEFT", x + LABEL_W - 12, y)
-        dd:SetItems(BarItems(field))
-        p[field .. "Dropdown"] = dd
-        return dd
-    end
-    local left, right = 0, 260
-    Row("show", left, -2)
-    Row("join", left, -2 - ROW)
-    local order = Row("order", left, -2 - 2 * ROW)
-    UI.SetTooltips(order, "ANCHOR_TOPLEFT", 0, 3, "Order", ORDER_TIP)
-    if facts.model then Row("mana", left, -2 - 3 * ROW) end
-    local after = Row("after", right, -2)
-    if not facts.tick then
-        -- answer 5: the tick is not offered here, and the control says why
-        UI.SetTooltips(after, "ANCHOR_TOPLEFT", 0, 3, "After the rule", ST.ClockView.TICK_REFUSED)
-    end
-    local fsr = UI.CreateSlider("5SR strip (px)", f, ST.ClockView.FSR_RANGE[1], ST.ClockView.FSR_RANGE[2], 120, 1,
-        nil, function(value)
-            value = tonumber(value)
-            if value then SetBar(p, "fsr", math.floor(value + 0.5)) end
-        end, false, "Strip thickness", "1 to 8 pixels; the mana bar takes the rest of the height.")
-    fsr:SetPoint("TOPLEFT", f, "TOPLEFT", right + LABEL_W - 12, -2 - ROW - 16)
-    p.fsrSlider = fsr
-    local y = -2 - 4 * ROW - 14
-    if not facts.tick then
-        p.afterNote = Note(f, ST.ClockView.TICK_REFUSED, nil, y)
-        y = y - 16
-    end
-    Note(f, "Each layout keeps its own bars. The strip, the veil, the chip and the line are amber while the rule runs, green after.",
-        nil, y)
-end
-
---------------------------------------------------------------------------------
--- T139 (docs/tasks/T139-clock-bar-look.md, the author's mockup of 2026-11-08):
--- Bar look -- shape, texture, the bar's height and edge, six colours through
--- the game's picker, presets. T142 (docs/tasks/T142-bar-texts-game-frame.md):
--- the Bar layout's Frame (None / Border / Game bar frame) and Font
--- (EllesmereUI's / SpellTuner's), its texts table (one row per kind: Show,
--- Text, Place, Align, X, Y, Size, Colour, Outline; a row that is off dimmed)
--- in place of the old Text place and slot pickers, and five presets. Every
--- control writes bars.<layout>.*, text.bar.items.* or a colour through
--- ST.ClockView.Set (a preset through SetMany, one CLOCK_LOOK); the default
--- writes nil. The tab's lower part scrolls; no dropdown sits in it (a list
--- would be cut by the scroll frame): Place, Align and Outline are buttons
--- that step through their values (right-click steps back).
---------------------------------------------------------------------------------
-local SHAPE_ITEMS = {
-    { id = "rect", text = "Rectangle" }, { id = "round", text = "Rounded" },
-    { id = "pill", text = "Pill" }, { id = "thin", text = "Thin" },
-}
-local FRAME_ITEMS = {
-    { id = "none", text = "None" }, { id = "border", text = "Border" }, { id = "game", text = "Game bar frame" },
-}
-local FONT_ITEMS = { { id = "eui", text = "EllesmereUI's" }, { id = "st", text = "SpellTuner's" } }
-local COLOUR_ROWS = {
-    { key = "colors.manaBar", text = "Fill" }, { key = "colors.fillEnd", text = "Fill end" },
-    { key = "bar.back", text = "Background" }, { key = "colors.edge", text = "Border" },
-    { key = "colors.fsrLine", text = "5SR line" }, { key = "colors.after", text = "After 5SR" },
-}
-local LOOK_FIELDS = { "shape", "texture", "height", "border", "frame", "font", "show" }
-local function HexRGB(h) return { tonumber(h:sub(1, 2), 16) / 255, tonumber(h:sub(3, 4), 16) / 255, tonumber(h:sub(5, 6), 16) / 255, 1 } end
-local function HexRGBA(h, a) local c = HexRGB(h); c[4] = a; return c end
-
--- the words of the step buttons
-CS.ITEM_STEP = {
-    place = { inside = "Inside", above = "Above", below = "Below" },
-    align = { left = "Left", center = "Centre", right = "Right" },
-    outline = { none = "None", outline = "Outline", thick = "Thick", shadow = "Shadow" },
-}
-
--- A preset's items: each kind from a base (on, place, align, x, y, size,
--- colour, outline) as the mockup's, written over CV.ITEMS_DEFAULT.
-local function Items(t)
-    local out = {}
-    for kind, v in pairs(t) do
-        out[kind] = { on = v[1], place = v[2], align = v[3], x = v[4], y = v[5], size = v[6], colour = v[7],
-            outline = v[8] }
-    end
-    return out
-end
-local EUI_ITEMS = Items({
-    label = { false, "inside", "left", 4, 0, 10, "E3E3E3", "outline" },
-    time = { false, "inside", "right", -4, 0, 10, "E3E3E3", "outline" },
-    mana = { true, "inside", "center", 0, 2, 15, "E3E3E3", "outline" },
-    manaMax = { false, "inside", "center", 0, 0, 12, "E3E3E3", "outline" },
-    pct = { false, "inside", "right", -4, 0, 10, "E3E3E3", "outline" },
-    mp5 = { false, "below", "right", 0, -1, 10, "9FD7A9", "outline" },
-    fsr = { false, "below", "left", 0, -1, 10, "FFAB33", "outline" },
-    rest = { false, "below", "right", 0, -1, 10, "8F8A83", "outline" },
-})
-local BELOW_ITEMS = Items({
-    label = { true, "below", "left", 2, -2, 11, "E3E3E3", "outline" },
-    time = { true, "below", "right", -2, -2, 11, "E3E3E3", "outline" },
-    mana = { true, "inside", "center", 0, 2, 15, "E3E3E3", "outline" },
-    manaMax = { false, "inside", "center", 0, 0, 12, "E3E3E3", "outline" },
-    pct = { false, "inside", "right", -4, 0, 10, "E3E3E3", "outline" },
-    mp5 = { false, "below", "center", 0, -2, 10, "9FD7A9", "outline" },
-    fsr = { false, "above", "left", 2, 1, 10, "FFAB33", "outline" },
-    rest = { false, "below", "right", 0, -1, 10, "8F8A83", "outline" },
-})
-CS.PRESETS = {
-    { id = "default", text = "SpellTuner default",
-      tip = "The game's bar frame, rounded, 200 x 8, the time below left, the mana in the middle, the regen below right.",
-      bars = {}, colors = {}, items = {} },
-    -- T140 / T142: EllesmereUI's resource bar with its Blizzard style: Pixels
-    -- Dark (its own file while EllesmereUI is loaded; else Soft), 260 x 8, its
-    -- mana colour (read live, else 008CFF), 111111 behind, the mana centred
-    -- in its font, no five-second line
-    { id = "eui", text = "Like my EllesmereUI",
-      tip = "EllesmereUI's mana bar: the game's frame, Pixels Dark, the mana in the middle, no 5SR line.",
-      bars = { frame = "game", shape = "round", texture = "eui:pixels-dark", height = 8, font = "eui", show = "mana" },
-      fallback = { texture = "soft" }, width = 260,
-      colors = { ["colors.manaBar"] = HexRGB("008CFF"), ["bar.back"] = HexRGBA("111111", 0.75) },
-      liveMana = true, items = EUI_ITEMS },
-    { id = "below", text = "Words below",
-      tip = "Like my EllesmereUI with the 5SR line, the label below left and the time below right.",
-      bars = { frame = "game", shape = "round", texture = "eui:pixels-dark", height = 8, font = "eui" },
-      fallback = { texture = "soft" }, width = 260,
-      colors = { ["colors.manaBar"] = HexRGB("008CFF"), ["bar.back"] = HexRGBA("111111", 0.75) },
-      liveMana = true, items = BELOW_ITEMS },
-    { id = "pill", text = "Soft pill", tip = "Rounded and glossy, 18 px, the label and the time inside.",
-      bars = { frame = "border", shape = "pill", texture = "gloss", height = 18, font = "st" },
-      colors = { ["colors.manaBar"] = HexRGB("3F7FE0"), ["colors.edge"] = HexRGB("2B3A55"), ["bar.back"] = HexRGB("151A24") },
-      items = Items({
-          label = { true, "inside", "left", 0, 0, 12, "E4E1DC", "none" },
-          time = { true, "inside", "right", 0, 0, 12, "E4E1DC", "none" },
-          mana = { false, "inside", "center", 0, 0, 11, "E4E1DC", "none" },
-          mp5 = { false, "below", "right", 0, -1, 11, "9FD7A9", "none" },
-      }) },
-    { id = "thin", text = "Thin line", tip = "4 px under the words, no edge, the fill by tone.",
-      bars = { frame = "none", shape = "thin", texture = "flat", height = 4, border = 0, font = "st" },
-      colors = { ["colors.manaBar"] = "tone" },
-      items = Items({
-          label = { true, "above", "left", 0, 1, 11, "E4E1DC", "none" },
-          time = { true, "above", "right", 0, 1, 11, "E4E1DC", "none" },
-          mana = { false, "inside", "center", 0, 0, 11, "E4E1DC", "none" },
-          mp5 = { false, "below", "right", 0, -1, 11, "9FD7A9", "none" },
-      }) },
-}
-
--- A preset: its bars fields, width, colours and (the Bar layout's) texts on
--- the layout drawn, everything else back to the default -- one write.
-function CS.ApplyPreset(p, id)
-    local pre
-    for _, x in ipairs(CS.PRESETS) do if x.id == id then pre = x end end
-    if not pre then return false end
-    local CV, L = ST.ClockView, Layout(p)
-    local M = ST.Media
-    local D = CV.BarsDefault(L)
-    local list = {}
-    local function Put(key, v, default)
-        if not CV.OVER[key] then return end
-        -- written out: `false` (a text off) is a value, and `a and false or nil` loses it
-        if v == default then v = nil end
-        list[#list + 1] = { key, v }
-    end
-    for _, f in ipairs(LOOK_FIELDS) do
-        local v = pre.bars[f]
-        -- T140: a texture of EllesmereUI's only while EllesmereUI answers
-        if f == "texture" and type(v) == "string" and v:sub(1, #CV.EUI_PREFIX) == CV.EUI_PREFIX
-            and not (M and M.FetchEllesmere and M.FetchEllesmere(v:sub(#CV.EUI_PREFIX + 1))) then
-            v = pre.fallback and pre.fallback.texture
-        end
-        Put("bars." .. L .. "." .. f, v, D[f])
-    end
-    Put("frame." .. L .. ".w", pre.width, (CV.LAYOUT[L] or {}).width)
-    for _, row in ipairs(COLOUR_ROWS) do
-        local c = pre.colors[row.key]
-        if row.key == "colors.manaBar" and pre.liveMana then
-            local live = M and M.EllesmereMana and M.EllesmereMana()
-            if live then c = { live[1], live[2], live[3], 1 } end
-        end
-        list[#list + 1] = { row.key, c }
-    end
-    for _, kind in ipairs(CV.ITEM_KINDS) do
-        local it = pre.items and pre.items[kind] or {}
-        for _, f in ipairs(CV.ITEM_FIELDS) do
-            Put("text.bar.items." .. kind .. "." .. f, it[f], CV.ITEMS_DEFAULT[kind][f])
-        end
-    end
-    return CV.SetMany(list)
-end
-
--- The Texture list: SpellTuner's and the game's, then the host's (LibSharedMedia).
-function CS.TextureItems()
-    local CV = ST.ClockView
-    local items = {}
-    for _, id in ipairs(CV.BARS_VALUES.texture) do
-        items[#items + 1] = { id = id, text = CV.TEXTURE_NAMES[id] or id }
-    end
-    -- T140: EllesmereUI's own, while it is loaded
-    for _, x in ipairs(ST.Media and ST.Media.Ellesmere and ST.Media.Ellesmere() or {}) do
-        items[#items + 1] = { id = CV.EUI_PREFIX .. x.key, text = x.name .. " (EllesmereUI)" }
-    end
-    for _, x in ipairs(ST.Media and ST.Media.Bars and ST.Media.Bars() or {}) do
-        items[#items + 1] = { id = CV.LSM_PREFIX .. x.name, text = x.name .. " (your UI)" }
-    end
-    return items
-end
-
--- A colour row's colour now, from the preview's view (the resolved look).
-local function RowColour(p, key)
-    local v = p.view
-    if key == "colors.manaBar" then return v:ManaColour() end
-    if key == "bar.back" then
-        local c = UI.SkinColour(p.look and p.look.bar and p.look.bar.back) or { 0, 0, 0, 1 }
-        return c[1], c[2], c[3], c[4] or 1
-    end
-    return v:Col(key:match("^colors%.(.+)$"))
-end
-
-function CS.PickColour(p, key)
-    local r, g, b, a = RowColour(p, key)
-    local ok, why = ST.API.PickColour(r, g, b, a, function(nr, ng, nb, na)
-        Set(key, { nr, ng, nb, na or 1 })
-    end)
-    if not ok then ST:Print("mana clock: the colour picker is not available (" .. tostring(why) .. ")") end
-    return ok
-end
-
--- T142: one item field; its default writes nil.
-function CS.SetItem(kind, field, value)
-    local CV = ST.ClockView
-    local d = CV.ITEMS_DEFAULT[kind] and CV.ITEMS_DEFAULT[kind][field]
-    if value == d then value = nil end -- written out: `false` is a value
-    return Set("text.bar.items." .. kind .. "." .. field, value)
-end
-
-local function Hex6(r, g, b)
-    local function C(x) return math.max(0, math.min(255, math.floor(x * 255 + 0.5))) end
-    return string.format("%02X%02X%02X", C(r), C(g), C(b))
-end
-CS.Hex6 = Hex6
-
--- T142: an item's colour through the game's picker (no opacity: a text's
--- colour is RGB).
-function CS.PickItemColour(p, kind)
-    local it = p.look and p.look.items and p.look.items[kind]
-    if not it then return false end
-    local r, g, b = ST.ClockView.HexRGB(it.colour)
-    local ok, why = ST.API.PickColour(r, g, b, 1, function(nr, ng, nb)
-        CS.SetItem(kind, "colour", Hex6(nr, ng, nb))
-    end)
-    if not ok then ST:Print("mana clock: the colour picker is not available (" .. tostring(why) .. ")") end
-    return ok
-end
-
--- The next (or, back, the previous) value of a stepped field.
-function CS.StepValue(field, now, back)
-    local list = ST.ClockView.ITEM_VALUES[field]
-    local i = 1
-    for k, v in ipairs(list) do if v == now then i = k end end
-    i = back and (i - 2) % #list + 1 or i % #list + 1
-    return list[i]
-end
-
-local function Buttons(f, items, x, y, w, onPick)
-    local list, prev = {}, nil
-    for _, it in ipairs(items) do
-        local b = UI.CreateButton(f, it.text, "accent-hover", { w, 18 }, false, false, UI.FONT_SMALL, UI.FONT_SMALL)
-        b.id = it.id
-        if prev then b:SetPoint("LEFT", prev, "RIGHT", -1, 0) else b:SetPoint("TOPLEFT", f, "TOPLEFT", x, y) end
-        list[#list + 1] = b
-        prev = b
-    end
-    return list, UI.CreateButtonGroup(list, onPick)
-end
-
-local function Swatch(f, onClick, title, tip)
-    local b = CreateFrame("Button", nil, f, "BackdropTemplate")
-    b:SetSize(14, 14)
-    UI.Skin(b, "field", "field", "border")
-    b.tex = b:CreateTexture(nil, "ARTWORK")
-    b.tex:SetPoint("TOPLEFT", b, "TOPLEFT", 1, -1)
-    b.tex:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", -1, 1)
-    if b.RegisterForClicks then b:RegisterForClicks("LeftButtonUp", "RightButtonUp") end
-    b:SetScript("OnClick", onClick)
-    UI.SetTooltips(b, "ANCHOR_TOPLEFT", 0, 3, title, tip)
-    return b
-end
-
--- T142: the texts table's columns (x, width) and its rows.
-CS.ITEM_COLS = { on = 0, name = 18, place = 104, align = 156, x = 202, y = 236, size = 270, colour = 306, outline = 326 }
-local ITEM_ROW = 20
-
-local function NumberBox(row, kind, field, lo, hi, x)
-    local eb = UI.CreateEditBox(row, 30, 16, false, false, false, UI.FONT_SMALL)
-    eb:SetPoint("LEFT", row, "LEFT", x, 0)
-    eb:SetTextInsets(3, 3, 0, 0)
-    local function Commit()
-        local n = tonumber(eb:GetText() or "")
-        if n then
-            n = math.max(lo, math.min(hi, math.floor(n + 0.5)))
-            CS.SetItem(kind, field, n)
-        end
-        eb.refresh()
-    end
-    eb.commit = Commit
-    eb:SetScript("OnEnterPressed", function() Commit(); eb:ClearFocus() end)
-    eb:SetScript("OnEditFocusLost", function() eb:HighlightText(0, 0); Commit() end)
-    return eb
-end
-
-local function ItemRow(p, parent, kind, y)
-    local CV, C = ST.ClockView, CS.ITEM_COLS
-    local row = CreateFrame("Frame", nil, parent)
-    row:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, y)
-    row:SetSize(400, ITEM_ROW - 2)
-    row.kind = kind
-    row.on = UI.CreateCheckButton(row, "", function(checked) CS.SetItem(kind, "on", checked and true or false) end,
-        "Show", "Show " .. CV.ITEM_NAMES[kind] .. ".")
-    row.on:SetPoint("LEFT", row, "LEFT", C.on, 0)
-    row.name = row:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
-    row.name:SetPoint("LEFT", row, "LEFT", C.name, 0)
-    row.name:SetJustifyH("LEFT")
-    row.name:SetText(CV.ITEM_NAMES[kind] .. "  " .. CV.ITEM_WORDS[kind])
-    -- what dims with the row: everything after Show and the name
-    row.dim = {}
-    local function Step(field, x, w, title, tip)
-        local b = UI.CreateButton(row, "", "accent-hover", { w, 16 }, false, false, UI.FONT_SMALL, UI.FONT_SMALL,
-            title, tip)
-        b:SetPoint("LEFT", row, "LEFT", x, 0)
-        if b.RegisterForClicks then b:RegisterForClicks("LeftButtonUp", "RightButtonUp") end
-        b:SetScript("OnClick", function(_, button)
-            local it = p.look and p.look.items and p.look.items[kind]
-            if it then CS.SetItem(kind, field, CS.StepValue(field, it[field], button == "RightButton")) end
-        end)
-        row[field] = b
-        row.dim[#row.dim + 1] = b
-        return b
-    end
-    Step("place", C.place, 50, "Place", "Inside the bar, above it or below it (outside, it never makes the bar taller). "
-        .. "Click: next; right-click: back.")
-    Step("align", C.align, 44, "Align", "From the bar's left edge, centre or right edge. Click: next; right-click: back.")
-    local X, Y, Z = CV.ITEM_X, CV.ITEM_Y, CV.ITEM_SIZE
-    for _, n in ipairs({ { "x", X, C.x }, { "y", Y, C.y }, { "size", Z, C.size } }) do
-        local eb = NumberBox(row, kind, n[1], n[2][1], n[2][2], n[3])
-        eb.refresh = function() CS.Refresh(p) end
-        row[n[1]] = eb
-        row.dim[#row.dim + 1] = eb
-    end
-    row.colour = Swatch(row, function(_, button)
-        if button == "RightButton" then CS.SetItem(kind, "colour", nil) else CS.PickItemColour(p, kind) end
-    end, "Colour", "Click: any colour. Right-click: back to the default.")
-    row.colour:SetPoint("LEFT", row, "LEFT", C.colour, 0)
-    row.dim[#row.dim + 1] = row.colour
-    Step("outline", C.outline, 56, "Outline", "None, an outline, a thick outline or a drop shadow. "
-        .. "Click: next; right-click: back.")
-    return row
-end
-
--- The rows from the look (CS.Refresh): values, the off rows dimmed.
-local function RefreshItems(p, look)
-    if not p.itemRows then return end
-    local CV = ST.ClockView
-    for _, row in ipairs(p.itemRows) do
-        local it = look.items and look.items[row.kind] or CV.ITEMS_DEFAULT[row.kind]
-        row.on:SetChecked(it.on == true)
-        row.place:SetText(CS.ITEM_STEP.place[it.place] or it.place)
-        row.align:SetText(CS.ITEM_STEP.align[it.align] or it.align)
-        row.outline:SetText(CS.ITEM_STEP.outline[it.outline] or it.outline)
-        for _, f in ipairs({ "x", "y", "size" }) do
-            if not (row[f].HasFocus and row[f]:HasFocus()) then row[f]:SetText(tostring(it[f])) end
-        end
-        local r, g, b = CV.HexRGB(it.colour)
-        row.colour.tex:SetColorTexture(r, g, b, 1)
-        local a = it.on and 1 or 0.35
-        for _, w in ipairs(row.dim) do w:SetAlpha(a) end
-        row.name:SetAlpha(it.on and 1 or 0.6)
-    end
-end
-
-TAB.look = function(p, f)
-    local CV = ST.ClockView
-    local function Label(host, text, x, y)
-        local fs = host:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
-        fs:SetPoint("TOPLEFT", host, "TOPLEFT", x, y - 3)
-        fs:SetText(text)
-        return fs
-    end
-    local function SetLook(field, value)
-        Set("bars." .. Layout(p) .. "." .. field, (value ~= CV.BarsDefault(Layout(p))[field]) and value or nil)
-    end
-    -- the fixed top: shape and texture; the Bar layout's frame and font
-    Label(f, "Shape", 0, -2)
-    p.shapeButtons, p.highlightShape = Buttons(f, SHAPE_ITEMS, 44, -2, 62, function(id)
-        SetLook("shape", id)
-        -- Thin: a low bar
-        if id == "thin" then
-            local b = p.look and p.look.bars or {}
-            if (b.height or CV.BAR_HEIGHT) > 6 then SetLook("height", 4) end
-        end
-    end)
-    Label(f, "Texture", 310, -2)
-    local tex = UI.CreateDropdown(f, 150, 18, function(id) SetLook("texture", id) end)
-    tex:SetPoint("TOPLEFT", f, "TOPLEFT", 362, -2)
-    tex:SetItems(CS.TextureItems())
-    UI.SetTooltips(tex, "ANCHOR_TOPLEFT", 0, 3, "Texture",
-        "SpellTuner's, the game's two bars, and the bar textures your UI addons share (LibSharedMedia).")
-    p.textureDropdown = tex
-
-    p.frameLabel = Label(f, "Frame", 0, -24)
-    p.frameButtons, p.highlightFrame = Buttons(f, FRAME_ITEMS, 44, -24, 62, function(id) SetLook("frame", id) end)
-    p.frameButtons[3]:SetWidth(96)
-    for _, b in ipairs(p.frameButtons) do
-        UI.SetTooltips(b, "ANCHOR_TOPLEFT", 0, 3, "Frame", "Bar layout: none, a border (its width below), or the "
-            .. "game's own bar art that EllesmereUI's Blizzard style draws (where the client has it).")
-    end
-    p.fontLabel = Label(f, "Font", 310, -24)
-    p.fontButtons, p.highlightFont = Buttons(f, FONT_ITEMS, 362, -24, 76, function(id) SetLook("font", id) end)
-    for _, b in ipairs(p.fontButtons) do
-        UI.SetTooltips(b, "ANCHOR_TOPLEFT", 0, 3, "Font", "Bar layout: EllesmereUI's font (read live; SpellTuner's "
-            .. "without it) or SpellTuner's. Each text keeps its own outline.")
-    end
-
-    -- the rest scrolls
-    local holder = CreateFrame("Frame", nil, f)
-    holder:SetPoint("TOPLEFT", f, "TOPLEFT", 0, -46)
-    holder:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -8, 0)
-    local sf = UI.CreateScrollFrame(holder, 0, 0)
-    p.lookScroll = sf
-    local c = sf.content
-
-    local height = UI.CreateSlider("Bar height (px)", c, CV.HEIGHT_RANGE[1], CV.HEIGHT_RANGE[2], 120, 1, nil,
-        function(value)
-            value = tonumber(value)
-            if value then SetLook("height", math.floor(value + 0.5)) end
-        end, false, "Bar height", "Bar layout: the bar's own height; the frame is the bar.")
-    height:SetPoint("TOPLEFT", c, "TOPLEFT", 44, -16)
-    p.heightSlider = height
-    local border = UI.CreateSlider("Border (px)", c, CV.BORDER_RANGE[1], CV.BORDER_RANGE[2], 120, 1, nil,
-        function(value)
-            value = tonumber(value)
-            if value then SetLook("border", math.floor(value + 0.5)) end
-        end, false, "Border", "The edge round each bar, 0 for none (Bar layout: with Frame Border).")
-    border:SetPoint("TOPLEFT", c, "TOPLEFT", 220, -16)
-    p.borderSlider = border
-
-    -- six colours, three to a row: a click opens the game's picker, a right-click resets
-    p.colourButtons = {}
-    for i, row in ipairs(COLOUR_ROWS) do
-        local col, line = (i - 1) % 3, math.floor((i - 1) / 3)
-        local b = Swatch(c, function(_, button)
-            if button == "RightButton" then Set(row.key, nil) else CS.PickColour(p, row.key) end
-        end, row.text, "Click: any colour, its hex and opacity. Right-click: back to the default.")
-        b:SetPoint("TOPLEFT", c, "TOPLEFT", col * 150, -46 - line * 20)
-        b.key = row.key
-        local fs = c:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
-        fs:SetPoint("LEFT", b, "RIGHT", 6, 0)
-        fs:SetText(row.text)
-        p.colourButtons[#p.colourButtons + 1] = b
-    end
-
-    -- T142: the Bar layout's texts
-    local texts = CreateFrame("Frame", nil, c)
-    texts:SetPoint("TOPLEFT", c, "TOPLEFT", 0, -90)
-    texts:SetSize(400, 18 + #CV.ITEM_KINDS * ITEM_ROW)
-    p.itemsFrame = texts
-    local C = CS.ITEM_COLS
-    for _, h in ipairs({ { "Show", C.on }, { "Text", C.name }, { "Place", C.place }, { "Align", C.align },
-        { "X", C.x }, { "Y", C.y }, { "Size", C.size }, { "Colour", C.colour - 4 }, { "Outline", C.outline } }) do
-        local fs = texts:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
-        fs:SetPoint("TOPLEFT", texts, "TOPLEFT", h[2], 0)
-        fs:SetText(h[1])
-        fs:SetTextColor(UI.RGB("label"))
-    end
-    p.itemRows = {}
-    for i, kind in ipairs(CV.ITEM_KINDS) do
-        p.itemRows[i] = ItemRow(p, texts, kind, -14 - (i - 1) * ITEM_ROW)
-    end
-
-    local presetsY = -90 - 18 - #CV.ITEM_KINDS * ITEM_ROW - 8
-    Label(c, "Presets", 0, presetsY)
-    p.presetButtons = {}
-    local prev
-    for i, pre in ipairs(CS.PRESETS) do
-        local b = UI.CreateButton(c, pre.text, "accent-hover", { 118, 18 }, false, false, UI.FONT_SMALL, UI.FONT_SMALL,
-            pre.text, pre.tip)
-        if i == 4 then
-            b:SetPoint("TOPLEFT", c, "TOPLEFT", 52, presetsY - 22)
-        elseif prev then
-            b:SetPoint("LEFT", prev, "RIGHT", 4, 0)
-        else
-            b:SetPoint("TOPLEFT", c, "TOPLEFT", 52, presetsY)
-        end
-        b:SetScript("OnClick", function() CS.ApplyPreset(p, pre.id) end)
-        b.id = pre.id
-        p.presetButtons[#p.presetButtons + 1] = b
-        prev = b
-    end
-    p.lookNote = Note(c, "Each layout keeps its own look. Frame, Font, Bar height and the texts are the Bar layout's; "
-        .. "a text outside the bar never makes it taller.", nil, presetsY - 48)
-    sf:SetContentHeight(-(presetsY - 48) + 30)
-end
-
-local function SwitchList(p, f, defs, y)
-    p.switches = p.switches or {}
-    for _, def in ipairs(defs or {}) do
-        local cb = Switch(f, {
-            text = def.text, tips = def.tips, get = def.get,
-            set = function(on)
-                def.set(on)
-                CS.Refresh(p)
-            end,
-        })
-        cb:SetPoint("TOPLEFT", f, "TOPLEFT", 2, y)
-        p.switches[#p.switches + 1] = cb
-        y = y - ROW
-    end
-    return y
-end
-
-TAB.when = function(p, f)
-    local y = SwitchList(p, f, p.opts.when, -2)
-    local n1 = Note(f, "In combat the clock is always up; out of combat it shows under 90% mana and hides again over 95%.",
-        nil, y - 4)
-    Note(f, "Left-click opens the window, out of combat only.", n1, -4)
-end
-
--- T116 (clock v2, C5): the Text tab -- a dropdown per slot of the layout on
--- screen (ClockFace.TEXT_SLOTS / TEXT_OPTIONS; Cooldown only on a line with a
--- cooldown secondary, "~ model" beside the numbers a modelled pool draws),
--- Labels and Mana as of max, then FORMAT: Time, Size (with Default), Outline,
--- Shadow, Numbers. Each writes text.<layout>.<key>; the layout's own default
--- writes nil, so over stays sparse.
-local SLOT_LABEL = { left = "Left", main = "Main", right = "Right", right2 = "Right 2", top = "Top", bottom = "Bottom",
-    center = "Centre" }
-local SLOT_ORDER = { "left", "center", "top", "main", "right", "right2", "bottom" }
-local SLOT_WORDS = {
-    label = "Label", time = "Time 1:20", pct = "Mana % 62%", mana = "Mana 4210", rest = "Rest 2:10",
-    mp5 = "Regen 92 mp5", fsr = "Five-second rule 3.0", cd = "Cooldown inn 2:10", none = "None",
-}
-local SLOT_TIPS = {
-    label = "OOM, FULL, HOLD: what the clock is counting to.",
-    time = "The time to OOM (or to full), with its arrow.",
-    pct = "Your mana as a percentage.",
-    mana = "Your mana as a number.",
-    rest = "Time to full if you stop casting now (the line's rest switch).",
-    mp5 = "Your regen per five seconds.",
-    fsr = "Seconds left in the five-second rule.",
-    cd = "What the clock becomes with your mana cooldown (the line's cooldown switch).",
-    none = "Nothing here.",
-}
-local MODELLED = { pct = true, mana = true, mp5 = true }
-local FORMAT_ITEMS = {
-    labels = {
-        { id = "caps", text = "OOM / FULL", tooltip = "The default." },
-        { id = "lower", text = "out / full" },
-    },
-    time = {
-        { id = "line", text = "1:20", tooltip = "The default: minutes and seconds, seconds under a minute." },
-        { id = "sec", text = "80s", tooltip = "Seconds only." },
-        { id = "msec", text = "1m20", tooltip = "Minutes and seconds, spelled out." },
-    },
-    outline = {
-        { id = "none", text = "None", tooltip = "The default." },
-        { id = "outline", text = "Outline" },
-        { id = "thick", text = "Thick outline" },
-        { id = "mono", text = "Monochrome" },
-    },
-    numbers = {
-        { id = "number", text = "Number font", tooltip = "The default: the narrow number font for the numbers." },
-        { id = "labels", text = "Label font", tooltip = "The numbers in the labels' font." },
-    },
-}
-local FORMAT_DEFAULT = { labels = "caps", time = "line", outline = "none", numbers = "number" }
-CS.TEXT_NOTE = "Forever: the ~ stays on every modelled number. A real mana % or number as text waits for the probe "
-    .. "(Q-clock-2); until then those picks show the model's ~ value."
-CS.BOX_NOTE = "Text, size and bars are kept per layout; Reset to style wipes your changes, not the layout."
-CS.BAR_TEXT_NOTE = "Bar layout: each text (show, place, align, size, colour, outline) is set in Bar look. "
-    .. "Labels and Time word them here."
-
--- One slot's items on this line, for a layout.
-local function SlotItems(layout, slot)
-    local facts = Facts()
-    local items = {}
-    local CF = ST.ClockFace
-    for _, id in ipairs(CF.TEXT_OPTIONS[layout] and CF.TEXT_OPTIONS[layout][slot] or {}) do
-        if not (id == "cd" and facts.cd == false) then
-            local text = SLOT_WORDS[id] or id
-            if facts.model and MODELLED[id] then text = text .. "  ~ model" end
-            items[#items + 1] = { id = id, text = text, tooltip = SLOT_TIPS[id] }
-        end
-    end
-    return items
-end
-
--- The line's own switch for a segment ("rest" / "cd"), on.
-local function SwitchOn(p, segment)
-    for _, def in ipairs(p.opts and p.opts.show or {}) do
-        if def.segment == segment and type(def.set) == "function" and not (def.get and def.get()) then
-            def.set(true)
-        end
-    end
-end
-
-local function SetText(p, key, value)
-    return Set("text." .. Layout(p) .. "." .. key, value)
-end
-
--- A slot's pick: Rest and Cooldown turn the line's switch on (a slot that
--- shows a segment the line hides would stay empty); the layout's default
--- writes nil. Right 2 is refused while the frame is too narrow for it.
-local function PickSlot(p, slot, id)
-    local layout = Layout(p)
-    if slot == "right2" and id ~= "none" then
-        local fits = p.view and p.view:FitsRight2()
-        if fits ~= true then
-            CS.Refresh(p)
-            return
-        end
-    end
-    if id == "rest" then SwitchOn(p, "rest") end
-    if id == "cd" then SwitchOn(p, "cd") end
-    local default = ST.ClockFace.TEXT[layout] and ST.ClockFace.TEXT[layout][slot]
-    SetText(p, slot, (id ~= default) and id or nil)
-end
-
-TAB.text = function(p, f)
-    p.slotDD, p.slotLabel = {}, {}
-    for _, slot in ipairs(SLOT_ORDER) do
-        local fs = f:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
-        fs:SetWidth(56)
-        fs:SetJustifyH("LEFT")
-        fs:SetText(SLOT_LABEL[slot])
-        local dd = UI.CreateDropdown(f, 150, 18, function(id) PickSlot(p, slot, id) end)
-        dd:SetItems(SlotItems(Layout(p), slot))
-        p.slotLabel[slot], p.slotDD[slot] = fs, dd
-    end
-    local y = -2 - 4 * ROW
-    local function Dropdown(label, field, x, yy, w)
-        local fs = f:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
-        fs:SetPoint("TOPLEFT", f, "TOPLEFT", x, yy - 3)
-        fs:SetWidth(56)
-        fs:SetJustifyH("LEFT")
-        fs:SetText(label)
-        local dd = UI.CreateDropdown(f, w or 110, 18, function(id)
-            SetText(p, field, (id ~= FORMAT_DEFAULT[field]) and id or nil)
-        end)
-        dd:SetPoint("TOPLEFT", f, "TOPLEFT", x + 60, yy)
-        dd:SetItems(FORMAT_ITEMS[field])
-        p[field .. "Dropdown"] = dd
-        p[field .. "Label"] = fs
-        return dd
-    end
-    -- T142: on the Bar layout, where its slots were
-    local barNote = Note(f, CS.BAR_TEXT_NOTE, nil, -4)
-    barNote:ClearAllPoints()
-    barNote:SetPoint("TOPLEFT", f, "TOPLEFT", 0, -4)
-    barNote:SetWidth(240)
-    barNote:Hide()
-    p.barTextNote = barNote
-    Dropdown("Labels", "labels", 0, y)
-    local ofMax = UI.CreateCheckButton(f, "Mana as 4210/6800", function(checked)
-        SetText(p, "ofMax", checked and true or nil)
-    end, "Mana as of max", "A Mana slot shows your mana over your maximum.")
-    ofMax:SetPoint("TOPLEFT", f, "TOPLEFT", 2, y - ROW - 2)
-    p.ofMaxCheck = ofMax
-
-    -- FORMAT, the right column
-    local x = 260
-    local head = f:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
-    head:SetPoint("TOPLEFT", f, "TOPLEFT", x, -5)
-    head:SetText("FORMAT")
-    head:SetTextColor(UI.RGB("label"))
-    Dropdown("Time", "time", x, -2 - ROW)
-    Dropdown("Outline", "outline", x, -2 - 2 * ROW)
-    Dropdown("Numbers", "numbers", x, -2 - 3 * ROW)
-    local shadow = UI.CreateCheckButton(f, "Shadow", function(checked)
-        if checked then SetText(p, "shadow", nil) else SetText(p, "shadow", false) end
-    end, "Shadow", "The words' drop shadow (on by default).")
-    shadow:SetPoint("TOPLEFT", f, "TOPLEFT", x + 2, -2 - 4 * ROW - 2)
-    p.shadowCheck = shadow
-    local lo, hi = ST.ClockView.TEXT_SIZE[1], ST.ClockView.TEXT_SIZE[2]
-    local size = UI.CreateSlider("Size", f, lo, hi, 120, 1, nil, function(value)
-        value = tonumber(value)
-        if value then SetText(p, "size", math.max(lo, math.min(hi, math.floor(value + 0.5)))) end
-    end, false, "Size", "The main slot's size in this layout; the small slots follow at half.",
-        "Default: the window's text size.")
-    size:SetPoint("TOPLEFT", f, "TOPLEFT", x + 2, -2 - 5 * ROW - 16)
-    p.sizeSlider = size
-    local def = UI.CreateButton(f, "Default", "accent-hover", { 60, 18 }, false, false,
-        UI.FONT_SMALL, UI.FONT_SMALL, "Default size", "Back to the window's text size (it follows Settings -> General).")
-    def:SetPoint("LEFT", size, "RIGHT", 12, 0)
-    def:SetScript("OnClick", function() SetText(p, "size", nil) end)
-    p.sizeDefault = def
-
-    if Facts().model then
-        local note = Note(f, CS.TEXT_NOTE, nil, -2 - 6 * ROW - 4)
-        note:ClearAllPoints()
-        note:SetPoint("TOPLEFT", f, "TOPLEFT", 0, -2 - 6 * ROW - 4)
-        note:SetWidth(250)
-        p.textNote = note
-    end
-end
-
--- The Text tab's controls from the look (CS.Refresh): the layout's slots
--- only, in order, with this line's items; the FORMAT values; Right 2 enabled
--- only where the frame is wide enough, its reason on its hover.
-local function RefreshText(p, look)
-    if not p.slotDD then return end
-    local CF = ST.ClockFace
-    local layout = Layout(p)
-    local t = look.text or {}
-    local on = {}
-    -- T142: the Bar layout's texts are items, set in Bar look; here only its
-    -- word options (Labels, Time)
-    local bar = layout == "bar"
-    for _, w in ipairs({ p.ofMaxCheck, p.outlineDropdown, p.numbersDropdown, p.shadowCheck, p.sizeSlider,
-        p.sizeDefault, p.outlineLabel, p.numbersLabel }) do
-        if bar then w:Hide() else w:Show() end
-    end
-    if p.barTextNote then
-        if bar then p.barTextNote:Show() else p.barTextNote:Hide() end
-    end
-    for i, slot in ipairs(not bar and CF.TEXT_SLOTS[layout] or {}) do
-        on[slot] = true
-        local dd, fs = p.slotDD[slot], p.slotLabel[slot]
-        if dd then
-            local yy = -2 - (i - 1) * ROW
-            fs:ClearAllPoints()
-            fs:SetPoint("TOPLEFT", dd:GetParent(), "TOPLEFT", 0, yy - 3)
-            dd:ClearAllPoints()
-            dd:SetPoint("TOPLEFT", dd:GetParent(), "TOPLEFT", 60, yy)
-            if dd.layout ~= layout then
-                dd.value = nil
-                dd:SetItems(SlotItems(layout, slot))
-                dd.layout = layout
-            end
-            dd:SetValue(t[slot] or (CF.TEXT[layout] and CF.TEXT[layout][slot]))
-            fs:Show()
-            dd:Show()
-        end
-    end
-    for slot, dd in pairs(p.slotDD) do
-        if not on[slot] then
-            dd:Close()
-            dd:Hide()
-            p.slotLabel[slot]:Hide()
-        end
-    end
-    local r2 = p.slotDD.right2
-    if r2 and on.right2 then
-        local fits, need = p.view:FitsRight2()
-        if fits == true then
-            r2:Enable()
-            UI.SetTooltips(r2, "ANCHOR_RIGHT", 0, 0, "Right 2", "A second Right slot, left of the first.")
-        else
-            r2:Close()
-            r2:Disable()
-            UI.SetTooltips(r2, "ANCHOR_RIGHT", 0, 0, "Right 2",
-                "needs " .. tostring(need or "?") .. " px: raise the width on Frame")
-        end
-    end
-    for _, field in ipairs({ "labels", "time", "outline", "numbers" }) do
-        local dd = p[field .. "Dropdown"]
-        if dd then dd:SetValue(t[field] or FORMAT_DEFAULT[field]) end
-    end
-    if p.ofMaxCheck then p.ofMaxCheck:SetChecked(t.ofMax == true) end
-    if p.shadowCheck then p.shadowCheck:SetChecked(t.shadow ~= false) end
-    if p.sizeSlider then
-        local size = t.size
-        if not size and p.view.value then
-            local _, s = p.view.value:GetFont()
-            size = tonumber(s)
-        end
-        local lo, hi = ST.ClockView.TEXT_SIZE[1], ST.ClockView.TEXT_SIZE[2]
-        size = math.max(lo, math.min(hi, math.floor((size or 13) + 0.5)))
-        p.sizeSlider:SetValue(size)
-    end
-end
-
--- T116: Text first (it replaces Show: the rest and cooldown segments are
--- Right's picks, the line's switches turned on by them).
-CS.TABS = {
-    { id = "text", text = "Text" }, { id = "look", text = "Bar look" }, { id = "colours", text = "Colours" },
-    { id = "frame", text = "Frame" }, { id = "bars", text = "Bars" }, { id = "when", text = "When" },
-}
-
---------------------------------------------------------------------------------
--- Settings -> Clock: the pane
---------------------------------------------------------------------------------
-local function Section(pane, text, height, above, gap)
-    local t = UI.CreateTitledPane(pane, text, 400, height)
-    if above then
-        t:SetPoint("TOPLEFT", above, "BOTTOMLEFT", 0, -(gap or 12))
-    else
-        t:SetPoint("TOPLEFT", pane, "TOPLEFT", 4, -4)
-    end
-    t:SetPoint("RIGHT", pane, "RIGHT", -4, 0)
-    return t
-end
-
-local function StyleName()
-    local S = UI.Styles
-    local key = ActiveStyle()
-    local s = S and S.Get and S.Get(key)
-    local text = (LABEL[key] and LABEL[key]()) or (s and s.name) or tostring(key)
-    return text
-end
-
-local function Chip(p, key)
-    p.chip = key
-    if p.highlightChip then p.highlightChip(key) end
-    if key ~= "live" then RuleFromFace(p, CS.SampleFace(key)) end
-    CS.PaintPreview(p)
-end
-
--- T115: the rule chips -- the preview's five-second rule at three moments
--- (3.0 s left, a cast just now, regen running), on whatever face it shows.
-CS.RULE_CHIPS = {
-    { id = "rule", text = "in the rule, 3.0 s left", ago = 2 },
-    { id = "cast", text = "just cast", ago = 0 },
-    { id = "regen", text = "regen running" },
-}
-
-local function RuleChip(p, id)
-    for _, c in ipairs(CS.RULE_CHIPS) do
-        if c.id == id then p.ruleSpend = c.ago and (GetTime() - c.ago) or nil end
-    end
-    CS.PaintPreview(p)
+local function SmallButton(parent, text, w, title, tip)
+    return UI.CreateButton(parent, text, "accent-hover", { w, 20 }, false, false, UI.FONT_SMALL, UI.FONT_SMALL,
+        title, tip)
 end
 
 local function BuildPreview(p, pane)
-    local sec = Section(pane, "PREVIEW", 148)
+    local sec = Section(pane, "PREVIEW", 118)
     p.previewSection = sec
-
-    -- the ground the preview sits on: dark (a dungeon) or light (a snowfield)
-    local groundBtns = {}
-    for i, key in ipairs({ "light", "dark" }) do
-        local b = UI.CreateButton(sec, key, "accent-hover", { 44, 16 }, false, false, UI.FONT_SMALL, UI.FONT_SMALL)
-        b.id = key
-        if i == 1 then
-            b:SetPoint("BOTTOMRIGHT", sec.line, "TOPRIGHT", 0, 2)
-        else
-            b:SetPoint("RIGHT", groundBtns[i - 1], "LEFT", 1, 0)
-        end
-        groundBtns[i] = b
-    end
-    local groundLabel = sec:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
-    groundLabel:SetPoint("RIGHT", groundBtns[2], "LEFT", -6, 0)
-    groundLabel:SetTextColor(UI.RGB("muted"))
-    groundLabel:SetText("ground")
-
     local ground = CreateFrame("Frame", nil, sec)
     ground:SetPoint("TOPLEFT", sec, "TOPLEFT", 0, -24)
     ground:SetPoint("RIGHT", sec, "RIGHT", 0, 0)
-    ground:SetHeight(60)
+    ground:SetHeight(56)
     ground.tex = ground:CreateTexture(nil, "BACKGROUND")
     ground.tex:SetAllPoints(ground)
+    ground.tex:SetColorTexture(CS.GROUND[1], CS.GROUND[2], CS.GROUND[3], CS.GROUND[4])
     p.ground = ground
-    local function Ground(key)
-        p.groundKey = key
-        local c = CS.GROUND[key]
-        ground.tex:SetColorTexture(c[1], c[2], c[3], c[4])
-    end
-    local highlightGround = UI.CreateButtonGroup(groundBtns, function(id) Ground(id) end)
-    Ground("dark")
-    highlightGround("dark")
 
     -- the preview: its own frame, drawn by the clock's renderer
     local frame = CreateFrame("Frame", nil, ground, "BackdropTemplate")
     frame:SetPoint("CENTER", ground, "CENTER", 0, 0)
     frame:SetFrameLevel((ground:GetFrameLevel() or 1) + 2)
     p.previewFrame = frame
-    p.view = ST.ClockView.Build(frame, PreviewLook(p), SampleDraw(p))
+    p.view = ST.ClockBar.New(frame, SampleDraw(p))
 
-    -- the chips
-    local stateLabel = sec:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
-    stateLabel:SetPoint("TOPLEFT", ground, "BOTTOMLEFT", 0, -9)
-    stateLabel:SetText("state")
-    stateLabel:SetTextColor(UI.RGB("muted"))
     p.chips = {}
     local prev
     for _, key in ipairs(CS.CHIPS) do
         local name = CS.ChipName(key)
-        local w = math.max(32, math.ceil(UI.TextWidth and UI.TextWidth(name, UI.FONT_SMALL) or (#name * 6)) + 12)
-        local b = UI.CreateButton(sec, name, "accent-hover", { w, 18 }, false, false, UI.FONT_SMALL, UI.FONT_SMALL)
+        local w = math.max(40, #name * 6 + 14)
+        local b = SmallButton(sec, name, w)
         b.id = key
         if prev then
             b:SetPoint("LEFT", prev, "RIGHT", -1, 0)
         else
-            b:SetPoint("LEFT", stateLabel, "RIGHT", 8, 0)
+            b:SetPoint("TOPLEFT", ground, "BOTTOMLEFT", 0, -8)
         end
         p.chips[#p.chips + 1] = b
         prev = b
     end
     p.highlightChip = UI.CreateButtonGroup(p.chips, function(id) Chip(p, id) end)
-
-    -- T115: the rule chips
-    local ruleLabel = sec:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
-    ruleLabel:SetPoint("TOPLEFT", stateLabel, "BOTTOMLEFT", 0, -12)
-    ruleLabel:SetText("5SR")
-    ruleLabel:SetTextColor(UI.RGB("muted"))
-    p.ruleChips = {}
-    prev = nil
-    for _, c in ipairs(CS.RULE_CHIPS) do
-        local w = math.max(32, math.ceil(UI.TextWidth and UI.TextWidth(c.text, UI.FONT_SMALL) or (#c.text * 6)) + 12)
-        local b = UI.CreateButton(sec, c.text, "accent-hover", { w, 18 }, false, false, UI.FONT_SMALL, UI.FONT_SMALL)
-        b.id = c.id
-        if prev then
-            b:SetPoint("LEFT", prev, "RIGHT", -1, 0)
-        else
-            b:SetPoint("LEFT", ruleLabel, "RIGHT", 8, 0)
-        end
-        p.ruleChips[#p.ruleChips + 1] = b
-        prev = b
-    end
-    p.highlightRule = UI.CreateButtonGroup(p.ruleChips, function(id) RuleChip(p, id) end)
-    p.chipNote = Note(sec, "A chip paints a sample face here; the clock on screen is untouched.", ruleLabel, -8)
-end
-
-local function BuildLayoutRow(p, pane)
-    local sec = Section(pane, "LAYOUT", 46, p.previewSection)
-    p.layoutSection = sec
-    p.layoutButtons = {}
-    local prev
-    for _, key in ipairs(ST.ClockView.LAYOUTS or {}) do
-        local d = ST.ClockView.LAYOUT[key]
-        local name = d and d.name or key
-        local b = UI.CreateButton(sec, name, "accent-hover", { math.max(64, #name * 8 + 16), 20 }, false, false,
-            UI.FONT_SMALL, UI.FONT_SMALL)
-        b.id = key
-        if prev then b:SetPoint("LEFT", prev, "RIGHT", -1, 0)
-        else b:SetPoint("TOPLEFT", sec, "TOPLEFT", 5, -24) end
-        p.layoutButtons[#p.layoutButtons + 1] = b
-        prev = b
-    end
-    p.highlightLayout = UI.CreateButtonGroup(p.layoutButtons, function(id)
-        local okL, why = ST.ClockView.SetLayout(id)
-        if not okL then ST:Print("mana clock: " .. tostring(why)) end
-    end)
-    local reset = UI.CreateButton(sec, "Reset to style", "accent-hover", { 110, 20 }, false, false,
-        UI.FONT_SMALL, UI.FONT_SMALL, "Reset to style", "Every colour, text, frame and bar setting back to the look's own.",
-        "The layout is kept.")
-    reset:SetPoint("TOPRIGHT", sec, "TOPRIGHT", 0, -24)
-    reset:SetScript("OnClick", function() ST.ClockView.ResetToStyle() end)
-    p.resetButton = reset
-    local style = sec:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
-    style:SetPoint("RIGHT", reset, "LEFT", -10, 0)
-    style:SetTextColor(UI.RGB("muted"))
-    p.styleLabel = style
-end
-
-local function BuildBox(p, pane)
-    local box = UI.CreateNavBox(pane, 400, 214, CS.TABS, function(group, _, content)
-        p.tab = group
-        p.tabFrames = p.tabFrames or {}
-        for id, fr in pairs(p.tabFrames) do
-            if id ~= group then fr:Hide() end
-        end
-        local fr = p.tabFrames[group]
-        if not fr then
-            fr = CreateFrame("Frame", nil, content)
-            fr:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 22)
-            fr:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", 0, 0)
-            p.tabFrames[group] = fr
-            TAB[group](p, fr)
-            CS.Refresh(p)
-        end
-        fr:Show()
-    end)
-    box.frame:SetPoint("TOPLEFT", p.layoutSection, "BOTTOMLEFT", 0, -12)
-    box.frame:SetPoint("RIGHT", pane, "RIGHT", -4, 0)
-    p.box = box
-end
-
-local function BuildBottom(p, pane)
-    local show = UI.CreateButton(pane, "Show on screen 60 s", "accent-hover", { 140, 20 }, false, false,
-        nil, nil, "Show on screen 60 s", "The clock up for 60 s at any mana level, to see or move it.")
-    show:SetPoint("TOPRIGHT", p.box.frame, "BOTTOMRIGHT", 0, -8)
+    local show = SmallButton(sec, "Show on screen", 110, "Show on screen",
+        "The clock up for 60 s at any mana level, to see or move it.")
+    show:SetPoint("TOPRIGHT", ground, "BOTTOMRIGHT", 0, -8)
     show:SetScript("OnClick", function()
         local W = ST.ClockWidget
         if W and W.Preview then W:Preview(60) end
     end)
     p.showButton = show
-    local place = UI.CreateButton(pane, "Reset place", "accent-hover", { 96, 20 }, false, false,
-        nil, nil, "Reset place", "The clock back at its default place.")
-    place:SetPoint("RIGHT", show, "LEFT", -6, 0)
-    place:SetScript("OnClick", function()
-        local W = ST.ClockWidget
-        if W and W.ResetPosition then W:ResetPosition() end
-        ST:Print("mana clock: position reset")
-    end)
-    p.placeButton = place
-    -- T116: what the box keeps, under it
-    local note = pane:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
-    note:SetPoint("TOPLEFT", p.box.frame, "BOTTOMLEFT", 0, -34)
-    note:SetPoint("RIGHT", p.box.frame, "RIGHT", 0, 0)
-    note:SetJustifyH("LEFT")
-    note:SetTextColor(UI.RGB("muted"))
-    note:SetText(CS.BOX_NOTE)
-    p.boxNote = note
 end
 
--- CS.PlaceMinimum(slider, fs, min): the green mark on the slider's track at
--- the layout's minimum (the track's own width over its range), "min N"
--- beside it; no minimum, or one outside the range, hides the mark.
-function CS.PlaceMinimum(slider, fs, min)
-    if fs then fs:SetText(min and ("min " .. min) or "") end
-    local mark = slider and slider.minMark
-    if not mark then return end
-    local lo, hi = slider.low, slider.high
-    if type(min) ~= "number" or type(lo) ~= "number" or type(hi) ~= "number" or hi <= lo or min < lo or min > hi then
-        mark:Hide()
-        return
+local function BuildBar(p, pane)
+    local sec = Section(pane, "BAR", 104, p.previewSection)
+    p.barSection = sec
+    local label = sec:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+    label:SetPoint("TOPLEFT", sec, "TOPLEFT", 5, -28)
+    label:SetText("Presets")
+    p.presetButtons = {}
+    local prev = label
+    for _, pr in ipairs(ST.ClockStore.PRESETS) do
+        local b = SmallButton(sec, pr.name, math.max(80, #pr.name * 7 + 16), pr.name, pr.tip)
+        b.id = pr.key
+        b:SetPoint("LEFT", prev, "RIGHT", (prev == label) and 8 or 4, 0)
+        b:SetScript("OnClick", function() CS.ApplyPreset(pr.key) end)
+        p.presetButtons[#p.presetButtons + 1] = b
+        prev = b
     end
-    mark:ClearAllPoints()
-    mark:SetPoint("CENTER", slider, "LEFT", slider:GetWidth() * (min - lo) / (hi - lo), 0)
-    mark:Show()
+    local undo = SmallButton(sec, "Undo", 60, "Undo", "Your look before the last preset.")
+    undo:SetPoint("LEFT", prev, "RIGHT", 4, 0)
+    undo:SetScript("OnClick", function() ST.ClockStore.Undo() end)
+    p.undoButton = undo
+    local reset = SmallButton(sec, "Reset", 60, "Reset", "The SpellTuner look.")
+    reset:SetPoint("TOPRIGHT", sec, "TOPRIGHT", 0, -24)
+    reset:SetScript("OnClick", function() ST.ClockStore.Reset() end)
+    p.resetButton = reset
+
+    local line = UI.CreateCheckButton(sec, "5SR line", function(checked)
+        ST.ClockStore.Set("line", checked and true or false)
+    end, "5SR line", "The amber line crossing the bar for the five seconds after your last priced cast.")
+    line:SetPoint("TOPLEFT", label, "BOTTOMLEFT", 0, -12)
+    p.lineCheck = line
+    p.barNote = Note(sec, "Width, height, the texture, the texts and their places come back in the next build.",
+        line, -8)
 end
 
--- CS.Refresh(p): every control from the resolved look and the line's
--- switches, the preview repainted.
+local function BuildWhen(p, pane)
+    local defs = p.opts.when or {}
+    local sec = Section(pane, "WHEN", 30 + 22 * #defs + 18, p.barSection)
+    p.whenSection = sec
+    p.switches = {}
+    local y = -26
+    for _, def in ipairs(defs) do
+        local cb = Switch(sec, {
+            text = def.text, tips = def.tips, get = def.get,
+            set = function(on)
+                def.set(on)
+                CS.Refresh(p)
+            end,
+        })
+        cb:SetPoint("TOPLEFT", sec, "TOPLEFT", 5, y)
+        p.switches[#p.switches + 1] = cb
+        y = y - 22
+    end
+    Note(sec, "In combat the clock is always up; out of combat it shows under 90% mana and hides over 95%.",
+        nil, y - 2)
+end
+
+-- CS.ApplyPreset(key): ClockStore's preset (EllesmereUI's with its live mana
+-- colour when it is loaded).
+function CS.ApplyPreset(key)
+    local opts
+    local pr = ST.ClockStore.Preset(key)
+    if pr and pr.hostFill and ST.Media and ST.Media.EllesmereMana then
+        local c = ST.Media.EllesmereMana()
+        if type(c) == "table" then
+            opts = { fill = string.format("%02X%02X%02X", math.floor(c[1] * 255 + 0.5),
+                math.floor(c[2] * 255 + 0.5), math.floor(c[3] * 255 + 0.5)) }
+        end
+    end
+    return ST.ClockStore.ApplyPreset(key, opts)
+end
+
+-- CS.Refresh(p): the stored look into the preview and the controls.
 function CS.Refresh(p)
     if not p or not p.view then return end
-    local look = PreviewLook(p)
-    p.view:SetLook(look)
-    if p.highlightLayout then p.highlightLayout(look.layout) end
-    if p.styleLabel then p.styleLabel:SetText("style: " .. StyleName() .. " (Settings -> General -> Look)") end
-    -- T115: the bars and the frame of the layout drawn
-    local bars = look.bars or {}
-    if p.textureDropdown then p.textureDropdown:SetItems(CS.TextureItems()) end
-    for _, field in ipairs({ "show", "join", "order", "mana", "after", "texture" }) do
-        local dd = p[field .. "Dropdown"]
-        if dd then dd:SetValue(bars[field]) end
+    p.look = ST.ClockStore.Look()
+    p.view:Apply(p.look)
+    if p.lineCheck then p.lineCheck:SetChecked(p.look.line == true) end
+    if p.undoButton then
+        if ST.ClockStore.HasUndo() then p.undoButton:Show() else p.undoButton:Hide() end
     end
-    -- T139: Bar look
-    if p.highlightShape then p.highlightShape(bars.shape) end
-    if p.heightSlider then p.heightSlider:SetValue(bars.height or ST.ClockView.BAR_HEIGHT) end
-    if p.borderSlider then p.borderSlider:SetValue(bars.border or ST.ClockView.BARS_DEFAULT.border) end
-    p.look = look
-    -- T142: the Bar layout's frame, font and texts (shown on that layout only)
-    local isBar = look.layout == "bar"
-    if p.highlightFrame then p.highlightFrame(bars.frame) end
-    if p.highlightFont then p.highlightFont(bars.font) end
-    -- what this client could not draw, on the button that asked for it
-    local refused = look.refused or {}
-    local whyFrame, whyFont = refused["bars.bar.frame"], refused["bars.bar.font"]
-    if p.frameButtons then
-        UI.SetTooltips(p.frameButtons[3], "ANCHOR_TOPLEFT", 0, 3, "Game bar frame",
-            whyFrame or "The game's own bar art that EllesmereUI's Blizzard style draws.")
-    end
-    if p.fontButtons then
-        UI.SetTooltips(p.fontButtons[1], "ANCHOR_TOPLEFT", 0, 3, "EllesmereUI's font",
-            whyFont or "EllesmereUI's font, read live; each text keeps its own outline.")
-    end
-    p.frameWhy, p.fontWhy = whyFrame, whyFont
-    for _, w in ipairs({ p.frameLabel, p.fontLabel, p.itemsFrame, p.heightSlider }) do
-        if isBar then w:Show() else w:Hide() end
-    end
-    for _, list in ipairs({ p.frameButtons or {}, p.fontButtons or {} }) do
-        for _, b in ipairs(list) do if isBar then b:Show() else b:Hide() end end
-    end
-    if p.borderSlider then
-        -- the width a Border frame draws (the other layouts: always theirs)
-        if isBar and bars.frame ~= "border" then p.borderSlider:Disable() else p.borderSlider:Enable() end
-    end
-    RefreshItems(p, look)
-    for _, b in ipairs(p.colourButtons or {}) do
-        local r, g, bl = RowColour(p, b.key)
-        b.tex:SetColorTexture(r, g, bl, 1)
-    end
-    if p.fsrSlider then p.fsrSlider:SetValue(bars.fsr or 3) end
-    local d = ST.ClockView.LAYOUT[look.layout] or ST.ClockView.LAYOUT.line
-    local fr = look.frame or {}
-    if p.wSlider then
-        p.wSlider:UpdateMinMaxValues(d.wRange[1], d.wRange[2])
-        p.wSlider:SetValue(fr.w or d.width)
-    end
-    if p.hSlider then
-        p.hSlider:UpdateMinMaxValues(d.hRange[1], d.hRange[2])
-        p.hSlider:SetValue(fr.h or d.height)
-        -- T142: the Bar layout's height is its bar's (Bar look): the frame is the bar
-        local own = look.layout == "bar"
-        if own then p.hSlider:Hide() else p.hSlider:Show() end
-        if p.hMin then if own then p.hMin:Hide() else p.hMin:Show() end end
-    end
-    if p.scaleSlider then p.scaleSlider:SetValue(fr.scale or 100) end
-    local mw, mh = p.view:Minimum()
-    CS.PlaceMinimum(p.wSlider, p.wMin, mw)
-    CS.PlaceMinimum(p.hSlider, p.hMin, mh)
-    if p.orderDropdown then
-        if Stacked(p) then p.orderDropdown:Enable() else p.orderDropdown:Close(); p.orderDropdown:Disable() end
-    end
-    if p.manaColour then
-        local c = look.colors and look.colors.manaBar
-        p.manaColour:SetValue((c == nil or c == "mana") and "mana" or (c == "tone" or c == "class") and c or "fixed")
-    end
-    if p.alphaSlider then
-        local c = UI.SkinColour(look.panel.fill) or {}
-        p.alphaSlider:SetValue(math.floor((c[4] or 1) * 100 + 0.5))
-    end
-    for _, row in ipairs({ p.fillRow, p.edgeRow, p.manaColourRow, p.barBackRow }) do PaintSwatches(row) end
-    for _, row in pairs(p.toneRows or {}) do PaintSwatches(row) end
     for _, cb in ipairs(p.switches or {}) do cb:SetChecked(cb.def.get() and true or false) end
-    RefreshText(p, look)
     CS.PaintPreview(p)
 end
 
 -- ST.ClockSettings.Build(content, opts) -> the Settings -> Clock pane.
--- opts.show / opts.when: the line's own switches, each { text, tips, get, set };
--- a Show switch with `segment` ("rest" / "cd") also drives the preview's
--- look.show at once (the line's own facts follow at its next paint).
+-- opts.when: the line's own switches, each { text, tips, get, set }.
 function CS.Build(content, opts)
     local pane = CreateFrame("Frame", nil, content)
     pane:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
     pane:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", 0, 0)
-    local p = { pane = pane, opts = opts or {}, chip = "oom" }
+    local p = { pane = pane, opts = opts or {}, chip = "fight" }
     pane.clockSettings = p -- marks this pane for tools/clocksettings.lua
     BuildPreview(p, pane)
-    BuildLayoutRow(p, pane)
-    BuildBox(p, pane)
-    BuildBottom(p, pane)
+    BuildBar(p, pane)
+    BuildWhen(p, pane)
     panes[p] = true
-    p.highlightChip("oom")
-    RuleFromFace(p, CS.SampleFace("oom"))
-    p.box:Select("text")
+    p.highlightChip("fight")
+    p.ruleEnd = GetTime() + CS.SAMPLE_FSR
     CS.Refresh(p)
     return pane
 end
@@ -1959,7 +655,7 @@ end
 ST:RegisterCallback("CLOCK_LOOK", RefreshAll)
 ST:RegisterCallback("STYLE_CHANGED", RefreshAll)
 
--- (Live) follows the real face while the view is on screen.
+-- Live follows the real face while the view is on screen.
 ST:OnTick(function()
     for p in pairs(panes) do
         if p.chip == "live" and p.pane:IsVisible() then CS.PaintPreview(p) end
@@ -1969,30 +665,18 @@ end)
 --------------------------------------------------------------------------------
 -- /st clock layout | look | preview (7.4), through the kernel's seam (2.5)
 --------------------------------------------------------------------------------
-ST:AddSubcommand("clock", "layout", function(rest)
-    local CV = ST.ClockView
-    local name = (rest or ""):match("^(%S+)")
-    if not name then
-        local look = CV.Look(Facts())
-        ST:Print(string.format("mana clock: layout %s (layouts: %s)", look.layout, table.concat(CV.LAYOUTS, ", ")))
-        return
-    end
-    local okL, why = CV.SetLayout(name)
-    if okL then
-        ST:Print("mana clock: layout " .. name:lower())
-    else
-        ST:Print("mana clock: " .. tostring(why))
-    end
-end, "layout <name>", "the mana clock's layout (Settings -> Clock shows each)")
+ST:AddSubcommand("clock", "layout", function()
+    ST:Print("mana clock: the Bar is the only layout now (Settings -> Clock sets its look)")
+end, "layout", "the mana clock's layout: the Bar")
 
 ST:AddSubcommand("clock", "look", function(rest)
     if (rest or ""):match("^(%S+)") == "reset" then
-        ST.ClockView.ResetToStyle()
-        ST:Print("mana clock: every colour and bar setting back to the look's own")
+        ST.ClockStore.Reset()
+        ST:Print("mana clock: the look back to SpellTuner's")
     else
         ST:Print("usage: /st clock look reset")
     end
-end, "look reset", "every clock colour and bar setting back to the look's own")
+end, "look reset", "the clock's look back to SpellTuner's")
 
 ST:AddSubcommand("clock", "preview", function()
     local W = ST.ClockWidget

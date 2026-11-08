@@ -1,81 +1,27 @@
--- tools/run.sh [--flavour tbc|forever] tools/clockui.lua [--print]
+-- tools/run.sh [--flavour tbc|forever] tools/clockui.lua
 --
--- T98 (docs/SPEC-next.md 7.2-7.3, section 11 row T98; K3 of
--- docs/research/next/R-clock.md; decisions 13 and 15): the clock's LAYOUTS and
--- its look, drawn by UI/ClockView.lua into each line's own frame (TBC
--- UI/Widget.lua, Forever UI/Clock_Forever.lua). The whole TOC of the flavour
--- is loaded -- TBC's UI files included (the harness drops them) -- with the
--- stub's geometry on (S.Geometry(true): points kept, a deterministic text
--- metric that follows the font size), so where every piece of the clock sits
--- can be computed and compared with the frame it is drawn in.
---
--- T115 (clock v2, docs/tasks/T115-clock-bars-frame.md; docs/mockups/clock-v2.html
--- C2-C4, C6): mana and the five-second rule together, in three designs
--- (Join: stacked -- the default --, veil, chip), per layout under
--- bars.<layout>; the frame's width / height / scale per layout with a measured
--- minimum; the 5SR marks placed by time alone; F1's step driving the strip and
--- the veil every frame. Held here, on both flavours:
---   * the layouts (line, compact, bar): CV.SetLayout saves db.clockLook.layout
---     and fires CLOCK_LOOK once, an unknown layout is refused;
---   * the defaults: every layout draws the mana bar over a 3-px strip
---     (stacked, mana over 5SR, green after); Line 180 x 32 (text row, mana 4,
---     a 1-px gap, the strip 3), Compact 72 x 46 (at least its measure), Bar
---     200 x 22;
---   * each layout x each join x each `show` x each SAMPLES face FITS its frame
---     at font offsets -2..+2 (every piece inside, no overlap, no text over a
---     bar beside it), and a second round builds no region;
---   * Height gives its pixels to the mana bar (the text unmoved, the strip
---     kept), Width stretches both bars (the secondary at the right edge), a
---     size under the layout's measured minimum stops there and is named
---     (View:Minimum), Scale is SetScale with the clock's centre kept;
---   * stacked, veil and chip mid-rule and after it (green / empty), the
---     order, the strip's thickness, show fsr / none;
---   * the smooth step moves the strip and the veil every frame and is gone
---     at the rule's end, on a join or show change and under FillBar;
---   * a style's barFill tints the mana bar only; colors.manaBar = tone;
---     after = tick (TBC: RM:RegenTick's mark; Forever refused); Mana from the
---     model (Forever; refused on TBC); the textures (TBC; Forever flat only);
---     the ring rule;
---   * the frame's visibility has one owner (counted), a switch keeps it;
---   * the dump line names the new keys;
---   * Forever, under the stub's forever profile: every layout x join x show x
---     mana-from paints in a fight, only the mana bar holds the secret and
---     nothing reads it back; TBC: the same matrix paints without raising.
---
--- T116 (clock v2, docs/tasks/T116-clock-text-tab.md; clock-v2.html C1): the
--- slots drawn. Each layout's places are slots filled from one list
--- (ClockFace.TEXT_OPTIONS), kept per layout under text.<layout> with the
--- renderer's size / outline / shadow / numbers. Held here, on both flavours:
---   * the defaults draw today's words at T115's places; look.text / texts;
---   * every slot at a fixed place: 59s -> 1:00 -> >10m moves no anchor;
---   * every option in every slot x every SAMPLES face fits at Size 8..32;
---   * size, outline, shadow and numbers reach the font strings; an unset size
---     follows the window text-size offset, a set one does not;
---   * per layout (Compact's main = pct leaves Line's words alone);
---   * Right2 drawn only where the width allows (refused with the width);
---   * the minimum: Compact's Bottom adds 12 px, Line's right = none 30 high;
---   * Forever's seam: POWER_TEXT_READS off draws the model's "~62%" and never
---     calls ST.API.DrawPowerText; on (T144: the default) SetFormattedText is
---     handed the secret unread; TBC draws plain words;
---   * look.texts.line, whatever layout is on screen, is what the feed reads.
---
--- T142 (docs/tasks/T142-bar-texts-game-frame.md): the Bar layout's texts are
--- items and its frame is the bar. Held here, on both flavours: the default
--- (the game frame -- TBC: the border and why --, 200 x 8, Soft without
--- EllesmereUI, the time below left, the mana in the middle, the regen below
--- right); the item store and its validation; outside texts never change the
--- frame's size; each item's anchor; the words (label off: the time keeps the
--- face's marks, FULL in its place); the game frame with and without its
--- atlases; the font fallback; the once-only reset of an old store. The T116
--- slot checks run on Line and Compact, which keep their slots; Legacy() pins
--- the Bar layout's old look as items (the label inside left, the time inside
--- right, a 16-px bar with a border).
+-- The clock's HOST, on both flavours (TBC UI/Widget.lua, Forever
+-- UI/Clock_Forever.lua): its visibility, its drag and its hover. Cut down by
+-- T145c (docs/SPEC-clock-v3.md 5 U3): the renderer's checks -- layouts,
+-- designs, slots, sizes, textures, secrets -- left with UI/ClockView.lua; the
+-- Bar's drawing is tools/clockbarcheck.lua's, the look's store
+-- tools/clockstorecheck.lua's. Held here:
+--   * a look change (every Bar setting, a text, each preset, Reset) leaves the
+--     frame's shown state alone -- shown in a fight, hidden at full out of
+--     combat -- and calls no Show / Hide (the renderer never shows or hides
+--     the clock, 2.3);
+--   * every Show / Hide on the frame comes from the visibility owner (counted
+--     by its caller's name);
+--   * a Width change keeps the clock's centre where it was (a TOPLEFT point
+--     moves by half the change); a Height change moves nothing;
+--   * the drag: unlocked (or previewed) it moves and saves its point; locked,
+--     Forever's does not start;
+--   * the hover: the clock's tooltip, ASCII, no bare pipe; on Forever it names
+--     the bar as drawn.
 HARNESS_FLAVOUR = { "tbc", "forever" }
 
 local here = arg[0]:match("^(.*)/[^/]+$")
 local root = arg[1] or "."
-local printing = false
-for i = 2, #arg do if arg[i] == "--print" then printing = true end end
 
 local flavour = os.getenv("ST_FLAVOUR")
 if flavour == nil or flavour == "" then flavour = "tbc" end
@@ -87,218 +33,26 @@ local forever = flavour == "forever"
 
 local T = dofile(here .. "/lib/t.lua")
 local check = T.check
+local D = dofile(here .. "/lib/clockdrive.lua")
+local ST, S = D.Load(here, root, flavour)
 
-dofile(here .. "/wowstub.lua")
-local S = _G.STUB
-S.root = root
-S.flavour = flavour
-
-local ST = {}
-local toc = "SpellTuner_TBC.toc"
-if forever then
-    S.UseProfile("forever")
-    S.UseAtlases() -- T142: the game bar frame draws on Forever
-    toc = "SpellTuner_Mainline.toc"
-end
-S.Geometry(true)
-local files = {}
-for _, rel in ipairs(S.TocFiles(toc)) do
-    -- Integrations/ needs a host addon (tools/surfacecheck.lua's); not the clock's business
-    if rel:sub(1, 13) ~= "Integrations/" then files[#files + 1] = rel end
-end
-S.loadedFiles = files
-S.Load(files, "SpellTuner", ST)
-S.Fire("ADDON_LOADED", "SpellTuner")
-S.Fire("PLAYER_LOGIN")
-S.Fire("PLAYER_ENTERING_WORLD")
-
-local UI = ST.UI
-local CV = ST.ClockView or {}
-local CF = ST.ClockFace or {}
+local Store = ST.ClockStore
 local W = ST.ClockWidget or {}
-local frame = W.frame or (forever and _G.SpellTunerClock or _G.SpellTunerWidget)
-local function View() return W.view or (frame and frame.view) or (ST.Clock and ST.Clock.view) end
+local frame = D.Frame(ST)
 
 -- the first run's 60-s placing preview (TBC unlocks the clock at a first
 -- login) ended, the clock locked: what the visibility checks start from
 if ST.db then ST.db.locked = true end
 if W.Preview then pcall(W.Preview, W, 0) end
 
--- A check whose body may raise (on the parent, before T115, much of what it
--- calls does not exist): the raise is the failure, never the suite's end.
 local function Try(name, fn)
     local okR, cond, detail = pcall(fn)
     if not okR then return check(name, false, "raised: " .. tostring(cond)) end
     return check(name, cond, detail)
 end
-
-local function Near(a, b, eps) return type(a) == "number" and type(b) == "number" and math.abs(a - b) < (eps or 1e-6) end
-local function Same(c, r, g, b, a)
-    return type(c) == "table" and Near(c[1], r) and Near(c[2], g) and Near(c[3], b) and (a == nil or Near(c[4], a))
-end
-local function C(c)
-    if type(c) ~= "table" then return tostring(c) end
-    local out = {}
-    for i = 1, 4 do out[i] = c[i] == nil and "-" or string.format("%.3g", c[i]) end
-    return table.concat(out, ",")
-end
-local AMBER, GREEN, BLUE = { 1, 0.67, 0.2 }, CV.REGEN_COLOR, CV.MANA_COLOR -- T139: the author's green and blue
-local function Is(c, rgb) return Same(c, rgb[1], rgb[2], rgb[3]) end
-
--- The faces as this line draws them: SAMPLES (TBC-shaped), with Forever's
--- marks on Forever (the "~" before the label, one colour, "0:15").
-local function Faces()
-    local out = {}
-    for _, s in ipairs(CF.SAMPLES or {}) do
-        local f = {}
-        for k, v in pairs(s.face) do f[k] = v end
-        if forever then f.modelled, f.mono, f.timeFmt = true, true, "mss" end
-        out[#out + 1] = { key = s.key, face = f }
-    end
-    return out
-end
-
 local function Tick(n) for _ = 1, n or 1 do S.Tick(0.5) end end
 
---------------------------------------------------------------------------------
--- Where a region sits, from its points, in the frame's own units with the
--- frame's bottom-left at 0, 0. A font string is as wide and as tall as its
--- text (the stub's metric); a texture or a frame as its size.
---------------------------------------------------------------------------------
-local function PointXY(rect, p)
-    local x = p:find("LEFT") and rect.l or (p:find("RIGHT") and rect.r) or (rect.l + rect.r) / 2
-    local y = p:find("TOP") and rect.t or (p:find("BOTTOM") and rect.b) or (rect.b + rect.t) / 2
-    return x, y
-end
-local function Size(r)
-    if r.kind == "FontString" then return r:GetStringWidth(), r:GetStringHeight() end
-    return r:GetWidth(), r:GetHeight()
-end
-local function Rect(r, depth)
-    depth = depth or 0
-    if r == nil then return nil end
-    if r == frame then return { l = 0, b = 0, r = frame:GetWidth(), t = frame:GetHeight() } end
-    if depth > 8 then return nil end
-    local pts = r.points or {}
-    if #pts == 0 then return nil end
-    if #pts >= 2 then
-        local box = {}
-        for _, pt in ipairs(pts) do
-            local rr = Rect(pt[2] or r.parentFrame, depth + 1)
-            if not rr then return nil end
-            local x, y = PointXY(rr, pt[3] or pt[1])
-            x, y = x + (pt[4] or 0), y + (pt[5] or 0)
-            if pt[1]:find("LEFT") then box.l = x end
-            if pt[1]:find("RIGHT") then box.r = x end
-            if pt[1]:find("TOP") then box.t = y end
-            if pt[1]:find("BOTTOM") then box.b = y end
-        end
-        if box.l and box.r and box.t and box.b then return box end
-        return nil
-    end
-    local p, rel, rp, x, y = pts[1][1], pts[1][2], pts[1][3], pts[1][4], pts[1][5]
-    local rr = Rect(rel or r.parentFrame, depth + 1)
-    if not rr then return nil end
-    local ax, ay = PointXY(rr, rp or p)
-    ax, ay = ax + (x or 0), ay + (y or 0)
-    local w, h = Size(r)
-    local l = p:find("LEFT") and ax or (p:find("RIGHT") and (ax - w)) or (ax - w / 2)
-    local t = p:find("TOP") and ay or (p:find("BOTTOM") and (ay + h)) or (ay + h / 2)
-    return { l = l, r = l + w, t = t, b = t - h }
-end
-local EPS = 0.001
-local function Inside(a, b)
-    return a.l >= b.l - EPS and a.r <= b.r + EPS and a.b >= b.b - EPS and a.t <= b.t + EPS
-end
-local function Overlap(a, b)
-    return a.l < b.r - EPS and b.l < a.r - EPS and a.b < b.t - EPS and b.b < a.t - EPS
-end
-local function R(r) return r and string.format("[%.1f..%.1f x %.1f..%.1f]", r.l, r.r, r.b, r.t) or "nil" end
-local function Shown(r) return r ~= nil and r:IsShown() end
-
--- The bar regions shown now: the mana bar, the strip, the chip.
-local function Bars(v)
-    local out = {}
-    for _, k in ipairs({ "bar", "strip", "chip" }) do
-        if Shown(v[k]) then out[#out + 1] = { k = k, r = Rect(v[k]) } end
-    end
-    return out
-end
-
--- What is wrong with the view as painted now: nil when every shown piece
--- fits, else a sentence.
-local function Misfit(v, layout)
-    local fr = Rect(frame)
-    local pieces = {}
-    -- T142: the Bar layout draws items; the frame is the bar, so a text may
-    -- hang above or below it (and an inside one be taller than it) but never
-    -- past its ends, and never makes the frame taller than the bar
-    local items = layout == "bar" and v.active and v.active.items
-    for _, k in ipairs(items and CV.ITEM_KINDS or { "label", "value", "second", "right2" }) do
-        local fs = items and items[k] or v[k]
-        if fs and fs:IsShown() and (fs:GetText() or "") ~= "" then
-            local r = Rect(fs)
-            if not r then return k .. " has no place" end
-            pieces[#pieces + 1] = { k = k, r = r, text = fs:GetText() }
-        end
-    end
-    if #pieces == 0 then return "nothing drawn" end
-    if items then
-        local barH = v.look.bars.height or CV.BAR_HEIGHT
-        if not Near(fr.t - fr.b, barH) then return string.format("the frame is %s high, the bar %s", fr.t - fr.b, barH) end
-    end
-    for _, p in ipairs(pieces) do
-        local inside = Inside(p.r, fr)
-        if items then inside = p.r.l >= fr.l - EPS and p.r.r <= fr.r + EPS end
-        if not inside then
-            return string.format("%s %q %s outside the frame %s", p.k, p.text, R(p.r), R(fr))
-        end
-    end
-    for i = 1, #pieces do
-        for j = i + 1, #pieces do
-            if Overlap(pieces[i].r, pieces[j].r) then
-                return string.format("%s %s overlaps %s %s", pieces[i].k, R(pieces[i].r), pieces[j].k, R(pieces[j].r))
-            end
-        end
-    end
-    local bars = Bars(v)
-    for _, b in ipairs(bars) do
-        if not b.r then return "the " .. b.k .. " has no place" end
-        if not Inside(b.r, fr) then return "the " .. b.k .. " " .. R(b.r) .. " outside the frame " .. R(fr) end
-    end
-    for i = 1, #bars do
-        for j = i + 1, #bars do
-            if Overlap(bars[i].r, bars[j].r) then
-                return string.format("the %s %s overlaps the %s %s", bars[i].k, R(bars[i].r), bars[j].k, R(bars[j].r))
-            end
-        end
-    end
-    for _, back in ipairs({ "barBack", "stripBack" }) do
-        if Shown(v[back]) then
-            local bk = Rect(v[back])
-            if not bk then return back .. " has no place" end
-            if not Inside(bk, fr) then return back .. " " .. R(bk) .. " outside the frame " .. R(fr) end
-        end
-    end
-    for _, p in ipairs(pieces) do
-        for _, b in ipairs(bars) do
-            -- the bar layout's text sits IN its mana bar (or the strip in its
-            -- place, show = fsr); everywhere else text and bars sit apart
-            local inBar = layout == "bar" and ((items and b.k ~= "chip") or b.k == "bar" or (b.k == "strip" and not Shown(v.bar)))
-            if not inBar and Overlap(p.r, b.r) then return p.k .. " " .. R(p.r) .. " over the " .. b.k .. " " .. R(b.r) end
-        end
-        if layout ~= "bar" then
-            for _, back in ipairs({ "barBack", "stripBack" }) do
-                if Shown(v[back]) and Overlap(p.r, Rect(v[back])) then
-                    return p.k .. " " .. R(p.r) .. " over the " .. back .. " " .. R(Rect(v[back]))
-                end
-            end
-        end
-    end
-    return nil
-end
-
--- Every Show / Hide on the frame, with the name of the function that called it.
+-- every Show / Hide on the clock's frame, with its caller's name
 local visCalls = {}
 if frame then
     local realShow, realHide = frame.Show, frame.Hide
@@ -314,786 +68,100 @@ if frame then
     end
 end
 
--- CLOCK_LOOK, counted
-local looks = 0
-ST:RegisterCallback("CLOCK_LOOK", function() looks = looks + 1 end)
-
-local function Paint(face)
-    local v = View()
-    v:Paint(face)
-    v:PaintBar(GetTime())
-    return v
-end
-
-local LAYOUTS = { "line", "compact", "bar" }
-local JOINS = { "stacked", "veil", "chip", "sweep" }
-local SHOWS = { "both", "mana", "fsr", "none" }
-
--- the line's own five-second rule: the model's last priced spend on
--- Forever, the regen model's end on TBC
-local function RuleFor(seconds)
+local function Half()
     if forever then
-        ST.Pool.model.lastSpend = GetTime() - (5 - seconds)
+        local m = ST.Pool.model
+        m:Anchor(GetTime(), m.max * 0.5, "clockui")
+        S.Fire("UNIT_POWER_FREQUENT", "player", "MANA")
     else
-        ST.Regen.fsrEnd = GetTime() + seconds
+        S.mana = math.floor(S.manaMax * 0.5)
     end
 end
-local function RuleOff()
-    if forever then ST.Pool.model.lastSpend = -1e9 else ST.Regen.fsrEnd = 0 end
-end
-local function Bars_(layout, key, value) return CV.Set("bars." .. layout .. "." .. key, value) end
--- T139: the suites below were written for the look before T139; Reset pins
--- it (stacked, flat, a rectangle, the Bar layout's words inside, the panel),
--- and the T139 section tests the new defaults through CV.ResetToStyle alone.
--- T142: the Bar layout's words inside were Left (the label) and Right (the
--- time) on a 22-px frame; now items on a bar that is the frame: the label
--- inside left, the time inside right, nothing else, a 16-px bar with a border.
-local LEGACY = { join = "stacked", texture = "flat", shape = "rect" }
-local LEGACY_BAR = { frame = "border", font = "st", height = 16 }
-local LEGACY_ITEMS = {
-    label = { on = true, place = "inside", align = "left" },
-    time = { on = true, place = "inside", align = "right" },
-    mana = { on = false }, mp5 = { on = false },
-}
-local function Legacy()
-    for _, L in ipairs(CV.LAYOUTS) do
-        for k, v in pairs(LEGACY) do CV.Set("bars." .. L .. "." .. k, v) end
-    end
-    for k, v in pairs(LEGACY_BAR) do CV.Set("bars.bar." .. k, v) end
-    for kind, it in pairs(LEGACY_ITEMS) do
-        for f, v in pairs(it) do CV.Set("text.bar.items." .. kind .. "." .. f, v) end
-    end
-    -- the Bar layout's panel: tests that read it set it
-end
-local function Reset() CV.ResetToStyle(); Legacy(); CV.SetLayout("line") end
-
-local faces = Faces()
-local face1 = faces[1] and faces[1].face
-
---------------------------------------------------------------------------------
-T.section("the layouts (" .. flavour .. ")")
---------------------------------------------------------------------------------
--- T131: Bar is the default (a fresh store, an unknown saved layout); a saved
--- "line" is the player's and kept; the Bar's default bars draw on this line.
-Try("T131: Bar is the default layout, its default bars draw on this line; a saved line is kept", function()
-    local facts = W.facts or {}
-    local fresh = ST.db.clockLook and ST.db.clockLook.layout
-    local def = CV.DEFAULT_LAYOUT == "bar"
-    local look = CV.Resolve({}, CV.Role(), facts)
-    local unknown = CV.Resolve({ layout = "hexagon" }, CV.Role(), facts)
-    local kept = CV.Resolve({ layout = "line" }, CV.Role(), facts)
-    local okB, why = CV.BarsOK("bar", CV.BARS_DEFAULT, facts)
-    local drawn = look.layout == "bar" and next(look.refused) == nil and look.bars.show == "both"
-        and look.bars.mana == "game" and okB == true
-    return def and fresh == "bar" and drawn and unknown.layout == "bar" and kept.layout == "line",
-        string.format("default %s, fresh %s, resolved %s (show %s, mana %s, refused %s), unknown %s, kept %s, BarsOK %s %s",
-            tostring(CV.DEFAULT_LAYOUT), tostring(fresh), tostring(look.layout), tostring(look.bars.show),
-            tostring(look.bars.mana), tostring(next(look.refused)), tostring(unknown.layout), tostring(kept.layout),
-            tostring(okB), tostring(why))
-end)
-
-Try("line, compact and bar; SetLayout saves and fires CLOCK_LOOK once; an unknown one refused", function()
-    local listed = table.concat(CV.LAYOUTS or {}, ",") == "line,compact,bar"
-    local n0 = looks
-    local okC = CV.SetLayout("compact")
-    local saved = ST.db.clockLook and ST.db.clockLook.layout
-    local fired = looks - n0
-    local n1 = looks
-    local okBad, why = CV.SetLayout("hexagon")
-    local unchanged = ST.db.clockLook.layout == "compact" and looks == n1
-    CV.SetLayout("line")
-    return listed and okC == true and saved == "compact" and fired == 1 and okBad == false
-        and type(why) == "string" and why:find("line", 1, true) ~= nil and unchanged,
-        string.format("listed %s, saved %s, fired %d, refused %s (%s)", tostring(listed), tostring(saved), fired,
-            tostring(okBad == false), tostring(why))
-end)
-
--- 1. the defaults
-for _, layout in ipairs(LAYOUTS) do
-    Try("defaults: " .. layout .. " draws mana over a 3-px strip, stacked, green after", function()
-        Reset()
-        CV.SetLayout(layout)
-        RuleOff()
-        local v = Paint(face1)
-        local b = v.look.bars or {}
-        local d = CV.BARS_DEFAULT or {}
-        local resolved = b.show == "both" and b.join == "stacked" and b.order == "manaOver" and b.mana == "game"
-            and b.fsr == 3 and b.after == "green" and b.texture == "flat"
-            and d.show == "both" and d.join == "sweep" and d.fsr == 3 and d.after == "green"
-        local mr, sr = Rect(v.bar), Rect(v.strip)
-        local drawn = Shown(v.bar) and Shown(v.strip) and not Shown(v.chip) and not Shown(v.veil)
-            and mr ~= nil and sr ~= nil and Near(sr.t - sr.b, 3) and Near(mr.b, sr.t + 1)
-            and Is(v.strip.barColor, GREEN) and Near(v.strip.value, 5)
-        return resolved and drawn, string.format("bars %s/%s/%s/%s, mana %s strip %s",
-            tostring(b.show), tostring(b.join), tostring(b.order), tostring(b.fsr), R(mr), R(sr))
-    end)
-end
-
-Try("sizes: Line 180 x 32 (text, mana 4, gap 1, strip 3), Compact 72 x 46 (or its measure), Bar 200 x 16 (T142: the frame is the bar)", function()
-    Reset()
-    local v = Paint(face1)
-    local mr, sr, lr = Rect(v.bar), Rect(v.strip), Rect(v.label)
-    local line = frame:GetWidth() == 180 and frame:GetHeight() == 32 and v.bar:GetWidth() == 160
-        and v.bar:GetHeight() == 4 and v.strip:GetWidth() == 160 and v.strip:GetHeight() == 3
-        and mr and sr and lr and Near(sr.b, 5) and Near(sr.l, 10) and Near(mr.b, 9) and lr.b >= mr.t + 1
-    local lineS = string.format("line %sx%s mana %s strip %s", tostring(frame:GetWidth()),
-        tostring(frame:GetHeight()), R(mr), R(sr))
-    CV.SetLayout("compact")
-    Paint(face1)
-    local mw = v.Minimum and select(1, v:Minimum()) or 0
-    local compact = frame:GetHeight() == 46 and frame:GetWidth() == math.max(72, mw)
-        and CV.LAYOUT.compact.width == 72 and CV.LAYOUT.compact.height == 46
-    local compactS = string.format("compact %sx%s (min w %s)", tostring(frame:GetWidth()), tostring(frame:GetHeight()),
-        tostring(mw))
-    -- T142: the frame is the bar (Legacy's 16 px: mana 12, a 1-px gap, the strip 3)
-    CV.SetLayout("bar")
-    Paint(face1)
-    local bar = frame:GetWidth() == 200 and frame:GetHeight() == 16 and v.bar:GetHeight() == 12
-        and v.strip:GetHeight() == 3
-    local barS = string.format("bar %sx%s mana %s", tostring(frame:GetWidth()), tostring(frame:GetHeight()),
-        tostring(v.bar:GetHeight()))
-    Reset()
-    return line and compact and bar, lineS .. "; " .. compactS .. "; " .. barS
-end)
-
--- 2. every face fits every layout x join x show at every font offset
-local regionsAfterFirstRound
-for _, layout in ipairs(LAYOUTS) do
-    Try("fits: " .. layout .. " -- every join x show x SAMPLES face at font offsets -2..+2", function()
-        CV.ResetToStyle()
-        CV.SetLayout(layout)
-        local v = View()
-        local n, bad = 0, nil
-        RuleFor(3)
-        for _, join in ipairs(JOINS) do
-            for _, show in ipairs(SHOWS) do
-                Bars_(layout, "join", join)
-                Bars_(layout, "show", show)
-                for offset = -2, 2 do
-                    UI.ApplyFonts(offset)
-                    for _, f in ipairs(faces) do
-                        Paint(f.face)
-                        n = n + 1
-                        local why = Misfit(v, layout)
-                        if why and not bad then
-                            bad = string.format("%s/%s offset %+d, %s: %s", join, show, offset, f.key, why)
-                        end
-                    end
-                end
-            end
-        end
-        UI.ApplyFonts(0)
-        RuleOff()
-        CV.ResetToStyle()
-        return bad == nil and n == #JOINS * 4 * 5 * #faces and n > 0 and v.look.layout == layout,
-            bad or string.format("%d paints", n)
-    end)
-end
-regionsAfterFirstRound = #S.allFrames
-
-Try("a second round of switches builds no region (one pool per frame)", function()
-    for _, layout in ipairs(LAYOUTS) do
-        CV.SetLayout(layout)
-        for _, join in ipairs(JOINS) do
-            Bars_(layout, "join", join)
-            Paint(face1)
-        end
-    end
-    Reset()
-    Paint(face1)
-    return #S.allFrames == regionsAfterFirstRound, string.format("%d -> %d regions", regionsAfterFirstRound,
-        #S.allFrames)
-end)
-
---------------------------------------------------------------------------------
-T.section("the frame: height, width, the minimum, scale")
---------------------------------------------------------------------------------
--- 3. Height's pixels go to the mana bar
-Try("height: Line 32 -> 44 gives the mana bar 12 px, moves no text; Bar 16 -> 24 (T142: bars.bar.height) grows its bar; the strip kept", function()
-    Reset()
-    local v = Paint(face1)
-    local function TextTops()
-        local out = {}
-        for _, k in ipairs({ "label", "value", "second" }) do
-            local r = Rect(v[k])
-            out[#out + 1] = r and (frame:GetHeight() - r.t) or -1
-        end
-        return table.concat(out, ",")
-    end
-    local m0, tops0 = v.bar:GetHeight(), TextTops()
-    CV.Set("frame.line.h", 44)
-    Paint(face1)
-    local line = frame:GetHeight() == 44 and v.bar:GetHeight() == m0 + 12 and v.strip:GetHeight() == 3
-        and TextTops() == tops0 and Misfit(v, "line") == nil
-    local lineS = string.format("line mana %s -> %s, text %s -> %s", tostring(m0), tostring(v.bar:GetHeight()),
-        tops0, TextTops())
-    -- T142: the Bar layout's height is its bar's (bars.bar.height), the frame with it
-    CV.SetLayout("bar")
-    Paint(face1)
-    local b0 = v.bar:GetHeight()
-    CV.Set("bars.bar.height", 24)
-    Paint(face1)
-    local bar = b0 == 12 and frame:GetHeight() == 24 and v.bar:GetHeight() == 20 and v.strip:GetHeight() == 3
-        and Misfit(v, "bar") == nil
-    Reset()
-    return line and bar, lineS .. string.format("; bar %s -> %s", tostring(b0), tostring(v.bar:GetHeight()))
-end)
-
--- 4. Width stretches both bars
-Try("width: Line 180 -> 300 stretches both bars; the secondary stays at the right edge", function()
-    Reset()
-    local v = Paint(faces[7] and faces[7].face or face1) -- "rest": a secondary segment
-    CV.Set("frame.line.w", 300)
-    Paint(faces[7] and faces[7].face or face1)
-    local sr = Rect(v.second)
-    local okW = frame:GetWidth() == 300 and v.bar:GetWidth() == 280 and v.strip:GetWidth() == 280
-        and sr ~= nil and Near(sr.r, 300 - CV.INSET)
-    Reset()
-    return okW, string.format("frame %s, bars %s / %s, second %s", tostring(frame:GetWidth()),
-        tostring(v.bar:GetWidth()), tostring(v.strip:GetWidth()), R(sr))
-end)
-
--- 5. the measured minimum
-Try("minimum: a size under it stops at it and is named; View:Minimum() is the measure; a bigger font raises it", function()
-    Reset()
-    local v = Paint(face1)
-    local mw, mh = v:Minimum()
-    CV.Set("frame.line.w", 100)
-    CV.Set("frame.line.h", 26)
-    Paint(face1)
-    local stopped = frame:GetWidth() == mw and frame:GetHeight() == mh and mw > 100 and mh > 26
-    local why = v.look.refused and v.look.refused["frame.line.w"]
-    local whyH = v.look.refused and v.look.refused["frame.line.h"]
-    local named = type(why) == "string" and why == "under this layout's minimum (" .. mw .. ")"
-        and type(whyH) == "string" and whyH:find("minimum", 1, true) ~= nil
-    UI.ApplyFonts(2)
-    Paint(face1)
-    local mw2, mh2 = v:Minimum()
-    UI.ApplyFonts(0)
-    Paint(face1)
-    -- no secondary (rest and cooldown both off): the minimum drops by the
-    -- secondary's room (C2: 100 x 30 with no secondary)
-    local sh = v.look.show
-    local rest0, cd0 = sh.rest, sh.cd
-    sh.rest, sh.cd = false, false
-    Paint(face1)
-    local mwNo, mhNo = v:Minimum()
-    local dropped = CV.HasSecondary(v.look) == false and mwNo < mw and mwNo <= 110 and mhNo == mh
-        and frame:GetWidth() == mwNo and Misfit(v, "line") == nil
-    sh.rest, sh.cd = rest0, cd0
-    Paint(face1)
-    local back = select(1, v:Minimum()) == mw
-    Reset()
-    return stopped and named and mw2 > mw and mh2 >= mh and dropped and back,
-        string.format("min %sx%s, frame %sx%s, refused %q, +2: %sx%s, no secondary %sx%s, back %s", tostring(mw),
-            tostring(mh), tostring(frame:GetWidth()), tostring(frame:GetHeight()), tostring(why), tostring(mw2),
-            tostring(mh2), tostring(mwNo), tostring(mhNo), tostring(back))
-end)
-
--- 6. Scale: SetScale per layout, the centre kept
-local function Centre()
-    local es = frame:GetEffectiveScale()
-    return (frame:GetLeft() + frame:GetWidth() / 2) * es, (frame:GetTop() - frame:GetHeight() / 2) * es
-end
-Try("scale: SetScale per layout (50-200 %), the clock's centre kept across a change ("
-        .. (forever and "db.clock.point" or "db.pos") .. ")", function()
-    Reset()
-    Tick(1)
-    local x0, y0 = Centre()
-    local s0 = frame:GetScale()
-    CV.Set("frame.line.scale", 150)
-    local x1, y1 = Centre()
-    local s1 = frame:GetScale()
-    CV.Set("frame.line.scale", 50)
-    local x2, y2 = Centre()
-    local refused = CV.Set("frame.line.scale", 40) == false and CV.Set("frame.line.scale", 201) == false
-    CV.SetLayout("compact")
-    local sc = frame:GetScale()
-    CV.SetLayout("line")
-    local back = frame:GetScale()
-    local saved = forever and ST.db.clock.point or ST.db.pos
-    CV.Set("frame.line.scale", nil)
-    local x3, y3 = Centre()
-    Reset()
-    return Near(s0, 1) and Near(s1, 1.5) and Near(sc, 1) and Near(back, 0.5) and refused
-        and Near(x1, x0, 0.01) and Near(y1, y0, 0.01) and Near(x2, x0, 0.01) and Near(y2, y0, 0.01)
-        and Near(x3, x0, 0.01) and Near(y3, y0, 0.01) and type(saved) == "table",
-        string.format("scales %s %s compact %s back %s; centre %.2f,%.2f -> %.2f,%.2f -> %.2f,%.2f -> %.2f,%.2f",
-            tostring(s0), tostring(s1), tostring(sc), tostring(back), x0, y0, x1 or -1, y1 or -1, x2 or -1,
-            y2 or -1, x3 or -1, y3 or -1)
-end)
-
---------------------------------------------------------------------------------
-T.section("the three designs and the five-second rule")
---------------------------------------------------------------------------------
--- 7. Stacked
-Try("stacked: mid-rule (3.0 s left) the strip is 2/5 amber; after, full green; after = empty: empty", function()
-    Reset()
-    RuleFor(3)
-    local v = Paint(face1)
-    local mid = Near(v.strip.value, 2, 1e-6) and Near(v.strip.maxV, 5) and Is(v.strip.barColor, AMBER)
-        and Is(v.bar.barColor, BLUE)
-    RuleOff()
-    Paint(face1)
-    local after = Near(v.strip.value, 5) and Is(v.strip.barColor, GREEN)
-    Bars_("line", "after", "empty")
-    Paint(face1)
-    local empty = Near(v.strip.value, 0) and Shown(v.strip)
-    Reset()
-    return mid and after and empty, string.format("mid %s (%s), after %s, empty %s", tostring(mid),
-        tostring(v.strip.value), tostring(after), tostring(empty))
-end)
-
-Try("order: 5SR over mana swaps them; the strip's thickness 1-8 keeps the mana bar the rest", function()
-    Reset()
-    CV.Set("frame.line.h", 44)
-    local v = Paint(face1)
-    local m0, s0 = Rect(v.bar), Rect(v.strip)
-    Bars_("line", "order", "fsrOver")
-    Paint(face1)
-    local m1, s1 = Rect(v.bar), Rect(v.strip)
-    local swapped = m0 and s0 and m1 and s1 and m0.b > s0.t and s1.b > m1.t
-    Bars_("line", "order", nil)
-    local sum
-    local okT = true
-    for _, px in ipairs({ 1, 6, 8 }) do
-        Bars_("line", "fsr", px)
-        Paint(face1)
-        local total = v.bar:GetHeight() + v.strip:GetHeight()
-        sum = sum or total
-        if v.strip:GetHeight() ~= px or total ~= sum then okT = false end
-    end
-    local range = Bars_("line", "fsr", 0) == false and Bars_("line", "fsr", 9) == false
-    Reset()
-    return swapped and okT and range, string.format("swapped %s, thickness %s, range %s", tostring(swapped),
-        tostring(okT), tostring(range))
-end)
-
-Try("a new spend restarts the strip at 0 at once (amber)", function()
-    Reset()
-    RuleOff()
-    local v = Paint(face1)
-    local green = Near(v.strip.value, 5)
-    RuleFor(5)
-    Paint(face1)
-    local restarted = Near(v.strip.value, 0, 1e-6) and Is(v.strip.barColor, AMBER)
-    RuleOff()
-    Reset()
-    return green and restarted, tostring(v.strip.value)
-end)
-
--- T135: the moving line -- the mana bar keeps its colour; an amber line at
--- barW x gone / 5 from the left, on a dark edge; after, the green top line;
--- empty: nothing; tick (where the line has one): the white line at the tick
-Try("sweep: the line at barW x (5 - remaining) / 5, the bar its own colour; after green, empty none", function()
-    Reset()
-    for _, layout in ipairs(LAYOUTS) do Bars_(layout, "join", "sweep") end
-    local bad
-    for _, layout in ipairs(LAYOUTS) do
-        CV.SetLayout(layout)
-        RuleFor(3)
-        local v = Paint(face1)
-        local pt = v.sweep and v.sweep.points and v.sweep.points[#v.sweep.points]
-        local mid = Shown(v.sweep) and Shown(v.sweepBack) and not Shown(v.strip) and not Shown(v.veil)
-            and pt and pt[1] == "CENTER" and pt[2] == v.bar and pt[3] == "LEFT"
-            and Near(pt[4], v.bar:GetWidth() * 2 / 5, 1e-6)
-            and Same(v.sweep.color, AMBER[1], AMBER[2], AMBER[3], 1)
-            and v.sweep:GetHeight() == v.bar:GetHeight() and not Shown(v.greenLine)
-            and not Is(v.bar.barColor, AMBER)
-        RuleOff()
-        Paint(face1)
-        local after = not Shown(v.sweep) and Shown(v.greenLine) and Is(v.greenLine.color, GREEN)
-        Bars_(layout, "after", "empty")
-        Paint(face1)
-        local empty = not Shown(v.sweep) and not Shown(v.greenLine)
-        Bars_(layout, "after", nil)
-        if not (mid and after and empty) and not bad then
-            bad = string.format("%s: mid %s (x %s of %s), after %s, empty %s", layout, tostring(mid),
-                tostring(pt and pt[4]), tostring(v.bar:GetWidth()), tostring(after), tostring(empty))
-        end
-    end
-    Reset()
-    return bad == nil, bad
-end)
-
--- 8. The veil
-Try("veil: width = barW x remaining / 5 at the bar's right edge; after, a 1-px green top line; empty: none", function()
-    Reset()
-    for _, layout in ipairs(LAYOUTS) do Bars_(layout, "join", "veil") end
-    local bad
-    for _, layout in ipairs(LAYOUTS) do
-        CV.SetLayout(layout)
-        RuleFor(3)
-        local v = Paint(face1)
-        local pt = v.veil and v.veil.points and v.veil.points[#v.veil.points]
-        local mid = Shown(v.veil) and not Shown(v.strip) and Near(v.veil:GetWidth(), v.bar:GetWidth() * 3 / 5, 1e-6)
-            and pt and pt[1] == "RIGHT" and pt[2] == v.bar and pt[3] == "RIGHT"
-            and Same(v.veil.color, AMBER[1], AMBER[2], AMBER[3], 0.45) and Shown(v.veilEdge)
-            and not Shown(v.greenLine)
-        RuleOff()
-        Paint(face1)
-        local after = not Shown(v.veil) and Shown(v.greenLine) and v.greenLine:GetHeight() == 1
-            and Is(v.greenLine.color, GREEN)
-        Bars_(layout, "after", "empty")
-        Paint(face1)
-        local empty = not Shown(v.veil) and not Shown(v.greenLine)
-        Bars_(layout, "after", nil)
-        if not (mid and after and empty) and not bad then
-            bad = string.format("%s: mid %s (w %s of %s), after %s, empty %s", layout, tostring(mid),
-                tostring(v.veil and v.veil:GetWidth()), tostring(v.bar:GetWidth()), tostring(after), tostring(empty))
-        end
-    end
-    Reset()
-    return bad == nil, bad
-end)
-
--- 9. The chip
-Try("chip: SetCooldown(lastSpend, 5) once per spend, green after; the label moves 13 px on Line", function()
-    Reset()
-    local v = Paint(face1)
-    local lx0 = Rect(v.label).l
-    Bars_("line", "join", "chip")
-    -- the stub counts SetCooldown over the view's life (the fits above drew
-    -- the chip too): counted from here
-    local c0 = v.cd and v.cd.cdCalls or 0
-    RuleFor(4)
-    local spend = forever and ST.Pool.model.lastSpend or (ST.Regen.fsrEnd - 5)
-    Paint(face1)
-    Paint(face1)
-    S.Tick(0.03)
-    local cd = v.cd
-    local once = cd ~= nil and cd.cdCalls - c0 == 1 and Near(cd.cdStart, spend, 1e-6) and cd.cdDur == 5
-        and Shown(v.chip) and Is(v.chipBg.color, AMBER)
-    local moved = Near(Rect(v.label).l, lx0 + 13)
-    RuleFor(5)
-    Paint(face1)
-    local again = cd ~= nil and cd.cdCalls - c0 == 2
-    RuleOff()
-    Paint(face1)
-    local green = Is(v.chipBg.color, GREEN) and Shown(v.chip)
-    Reset()
-    return once and moved and again and green, string.format("calls %s start %s/%s, moved %s, again %s, green %s",
-        tostring(cd and cd.cdCalls), tostring(cd and cd.cdStart), tostring(spend), tostring(moved), tostring(again),
-        tostring(green))
-end)
-
--- 10. The smooth step
-Try("smooth: the strip and the veil move on each of eight 0.03-s frames between two line paints", function()
-    local res = {}
-    for _, case in ipairs({ { "line", "stacked" }, { "bar", "veil" } }) do
-        Reset()
-        CV.SetLayout(case[1])
-        Bars_(case[1], "join", case[2])
-        RuleFor(4)
-        local v = Paint(face1)
-        local function Read() if case[2] == "veil" then return -v.veil:GetWidth() end return v.strip.value end
-        local prev, moved = Read(), 0
-        for _ = 1, 8 do
-            S.Tick(0.03)
-            local now = Read()
-            if type(now) == "number" and type(prev) == "number" and now > prev + 1e-9 then moved = moved + 1 end
-            prev = now
-        end
-        local want = case[2] == "veil" and -(v.bar:GetWidth() * (4 - 8 * 0.03) / 5) or (5 - (4 - 8 * 0.03))
-        res[#res + 1] = case[2] .. " " .. moved .. "/8 " .. tostring(Near(prev, want, 1e-6))
-        if not (moved == 8 and Near(prev, want, 1e-6)) then res.bad = true end
-    end
-    RuleOff()
-    Reset()
-    return not res.bad, table.concat(res, ", ")
-end)
-
-Try("smooth: gone at the rule's end, on a join or show change and under FillBar; one function per view", function()
-    Reset()
-    local v = View()
-    RuleFor(0.1)
-    Paint(face1)
-    local host = v.stepHost
-    local fn1 = host and host:GetScript("OnUpdate")
-    for _ = 1, 5 do S.Tick(0.03) end
-    local ended = host and host:GetScript("OnUpdate") == nil and Near(v.strip.value, 5) and Is(v.strip.barColor, GREEN)
-    RuleFor(4)
-    Paint(face1)
-    local fn2 = v.stepHost and v.stepHost:GetScript("OnUpdate")
-    local sameFn = fn1 ~= nil and fn1 == fn2 and fn1 == v.step
-    Bars_("line", "join", "chip")
-    local offJoin = (v.strip:GetScript("OnUpdate") == nil) and (v.bar:GetScript("OnUpdate") == nil)
-    Bars_("line", "join", nil)
-    Paint(face1)
-    local onAgain = v.stepHost:GetScript("OnUpdate") ~= nil
-    Bars_("line", "show", "mana")
-    local offShow = (v.strip:GetScript("OnUpdate") == nil) and (v.bar:GetScript("OnUpdate") == nil)
-    Bars_("line", "show", nil)
-    Paint(face1)
-    v:FillBar(1, 0, 0)
-    local offFill = (v.strip:GetScript("OnUpdate") == nil) and (v.bar:GetScript("OnUpdate") == nil)
-        and Near(v.bar.value, v.bar.maxV) and Is(v.bar.barColor, { 1, 0, 0 }) and Near(v.strip.value, 5)
-    RuleOff()
-    Reset()
-    return fn1 ~= nil and ended and sameFn and offJoin and onAgain and offShow and offFill,
-        string.format("installed %s, ended %s, same fn %s, off by join %s, on again %s, off by show %s, fill %s",
-            tostring(fn1 ~= nil), tostring(ended), tostring(sameFn), tostring(offJoin), tostring(onAgain),
-            tostring(offShow), tostring(offFill))
-end)
-
--- 11. show = fsr / none
-Try("show fsr: the strip in the mana bar's place; none: no bar, no strip, no chip", function()
-    Reset()
-    local v = Paint(face1)
-    local mr = Rect(v.bar)
-    Bars_("line", "show", "fsr")
-    RuleFor(3)
-    Paint(face1)
-    local sr = Rect(v.strip)
-    local fsr = not Shown(v.bar) and Shown(v.strip) and sr and mr and Near(sr.b, Rect(frame).b + 5)
-        and Near(sr.t - sr.b, mr.t - mr.b) and Is(v.strip.barColor, AMBER)
-    for _, j in ipairs(JOINS) do
-        Bars_("line", "join", j)
-        Bars_("line", "show", "none")
-        Paint(face1)
-        if Shown(v.bar) or Shown(v.strip) or Shown(v.chip) or Shown(v.veil) or Shown(v.barBack)
-            or Shown(v.stripBack) or Shown(v.greenLine) then fsr = false end
-        Bars_("line", "show", "fsr")
-    end
-    RuleOff()
-    Reset()
-    return fsr and true or false, string.format("strip %s, mana was %s", R(sr), R(mr))
-end)
-
---------------------------------------------------------------------------------
-T.section("colours, the tick, the model, textures, refusals")
---------------------------------------------------------------------------------
-Try("UI.Skin(widget, \"clock\"): the frame is registered by the clock role in today's paint", function()
-    Reset()
-    Paint(face1)
-    local rec = UI.skinned and UI.skinned[frame]
-    local P = UI.PALETTE
-    return rec ~= nil and rec.role == "clock" and Same(frame.bg, P.bg[1], P.bg[2], P.bg[3], P.bg[4])
-        and Same(frame.border, P.border[1], P.border[2], P.border[3], P.border[4])
-        and Same(View().barBack.color, 0, 0, 0, 1) and Same(View().stripBack.color, 0, 0, 0, 1),
-        string.format("role %s, bg %s, edge %s", tostring(rec and rec.role), C(frame.bg), C(frame.border))
-end)
-
--- 12. a style's barFill tints the mana bar only
-Try("a style's barFill tints the mana bar only (the strip amber / green); an override wins; Reset and Flat", function()
-    local TEST = {
-        name = "T115", hint = "clockui's own.", accent = "class",
-        roles = { clock = { kind = "pixel", fill = { 0.1, 0.2, 0.3, 1 }, edge = "border",
-            bar = { 0.5, 0, 0, 1 }, barFill = { 0, 1, 0, 1 } } },
-        needs = {},
-    }
-    UI.Styles.Register("t115", TEST)
-    UI.SetStyle("t115")
-    Reset()
-    local v = View()
-    RuleFor(3)
-    Paint(face1)
-    local styled = Same(frame.bg, 0.1, 0.2, 0.3, 1) and Same(v.barBack.color, 0.5, 0, 0, 1)
-        and Same(v.bar.barColor, 0, 1, 0) and Is(v.strip.barColor, AMBER)
-    RuleOff()
-    Paint(face1)
-    local after = Is(v.strip.barColor, GREEN) and Same(v.bar.barColor, 0, 1, 0)
-    CV.Set("panel.fill", { 0.9, 0.8, 0.7, 1 })
-    CV.Set("bar.back", { 0, 0, 0.5, 1 })
-    CV.Set("colors.manaBar", { 1, 1, 0 })
-    Paint(face1)
-    local over = Same(frame.bg, 0.9, 0.8, 0.7, 1) and Same(v.barBack.color, 0, 0, 0.5, 1)
-        and Same(v.bar.barColor, 1, 1, 0) and Is(v.strip.barColor, GREEN)
-    CV.ResetToStyle()
-    Paint(face1)
-    local reset = Same(frame.bg, 0.1, 0.2, 0.3, 1) and Same(v.barBack.color, 0.5, 0, 0, 1)
-        and Same(v.bar.barColor, 0, 1, 0)
-    UI.SetStyle("flat")
-    Paint(face1)
-    local P = UI.PALETTE
-    local flat = Same(frame.bg, P.bg[1], P.bg[2], P.bg[3], P.bg[4]) and Same(v.barBack.color, 0, 0, 0, 1)
-        and Is(v.bar.barColor, BLUE) and UI.skinned[frame].role == "clock"
-    return styled and after and over and reset and flat,
-        string.format("styled %s, after %s, over %s, reset %s, flat %s (bar %s)", tostring(styled), tostring(after),
-            tostring(over), tostring(reset), tostring(flat), C(v.bar.barColor))
-end)
-
--- 13. colors.manaBar = tone
-Try("colors.manaBar = tone: crit red on the mana bar; class: the class colour", function()
-    Reset()
-    CV.Set("colors.manaBar", "tone")
-    local face = { mode = "oom", label = "OOM", value = 12, known = "point", tone = "crit", combat = true,
-        timeFmt = "auto", pct = 0.3 }
-    if forever then face.modelled, face.mono, face.timeFmt = true, true, "mss" end
-    local v = Paint(face)
-    local tone = Same(v.bar.barColor, 1, 0x44 / 255, 0x44 / 255)
-    CV.Set("colors.manaBar", "class")
-    Paint(face)
-    local a = UI.classAccent or UI.accent
-    local class = Same(v.bar.barColor, a[1], a[2], a[3])
-    local refused = CV.Set("colors.manaBar", "source") == false
-    Reset()
-    return tone and class and refused, string.format("tone %s, class %s, refused %s", C(v.bar.barColor),
-        tostring(class), tostring(refused))
-end)
-
--- 14. after = tick
-if forever then
-    Try("tick: refused on Forever, with its reason; the strip stays green", function()
-        local facts = W.facts or {}
-        local okB, why, field = CV.BarsOK("line", { after = "tick" }, facts)
-        local look = CV.Resolve({ layout = "line", over = { bars = { line = { after = "tick" } } } }, CV.Role(), facts)
-        return okB == false and why == CV.TICK_REFUSED and field == "after" and look.bars.after == "green"
-            and look.refused["bars.line.after"] == CV.TICK_REFUSED
-            and CV.TICK_REFUSED == "Forever cannot read your mana, so the 2-second regen tick cannot be learned: the strip stays green.",
-            tostring(why)
-    end)
-else
-    Try("tick: with RM:RegenTick() answering, a white mark sweeps the strip over 2 s after the rule; without, green", function()
-        Reset()
-        Bars_("line", "after", "tick")
-        local realTick = ST.Regen.RegenTick
-        local t0 = GetTime() - 0.5
-        ST.Regen.RegenTick = function() return t0, 2 end
-        RuleOff()
-        local v = Paint(face1)
-        local m = v.tickMark
-        local function X() local pt = m and m.points and m.points[#m.points]; return pt and pt[4] end
-        local x0 = X()
-        local placed = Shown(m) and Near(x0, 0.25 * v.strip:GetWidth(), 1e-6) and Is(v.strip.barColor, GREEN)
-            and Same(m.color, 1, 1, 1)
-        S.Tick(0.03)
-        local swept = type(X()) == "number" and X() > x0
-        ST.Regen.RegenTick = function() return nil end
-        Paint(face1)
-        local plain = not Shown(m) and Is(v.strip.barColor, GREEN) and Near(v.strip.value, 5)
-        ST.Regen.RegenTick = realTick
-        Reset()
-        return placed and swept and plain, string.format("placed %s (x %s), swept %s, without %s", tostring(placed),
-            tostring(x0), tostring(swept), tostring(plain))
-    end)
-end
-
--- 15. Mana from the model
-Try(forever and "mana from the model: the bar holds the face's plain pct, at 0.6 alpha"
-        or "mana from the model: refused on TBC (no model)", function()
-    Reset()
-    local facts = W.facts or {}
+local function Full()
     if forever then
-        Bars_("line", "mana", "model")
-        local face = { mode = "oom", label = "OOM", value = 90, known = "point", tone = "normal", combat = true,
-            pct = 0.4, modelled = true, mono = true, timeFmt = "mss" }
-        local v = Paint(face)
-        local okM = Near(v.bar.value, 0.4) and Near(v.bar.maxV, 1) and not issecretvalue(v.bar.value)
-            and Near(v.manaAlpha, 0.6)
-        -- the model's value and alpha, read while plain (the game's draw below
-        -- leaves a secret in the bar, which tostring may not touch)
-        local modelV, modelA = v.bar.value, v.manaAlpha
-        Bars_("line", "mana", nil)
-        Paint(face)
-        local game = issecretvalue(v.bar.value) == true and Near(v.manaAlpha, 1)
-        Reset()
-        return okM and game, string.format("model %s alpha %s, game %s", tostring(modelV), tostring(modelA),
-            tostring(game))
+        local m = ST.Pool.model
+        m:Anchor(GetTime(), m.max, "clockui")
+    else
+        S.mana = S.manaMax
+        S.Fire("UNIT_POWER_UPDATE", "player", "MANA")
     end
-    local okB, why = CV.BarsOK("line", { mana = "model" }, facts)
-    local look = CV.Resolve({ layout = "line", over = { bars = { line = { mana = "model" } } } }, CV.Role(), facts)
-    return okB == false and type(why) == "string" and look.bars.mana == "game"
-        and look.refused["bars.line.mana"] ~= nil, tostring(why)
-end)
+end
 
--- 16. Textures
-Try("texture: both lines apply flat, statusbar and raid (T139: Forever too)", function()
-    Reset()
-    local facts = W.facts or {}
-    local bad
-    for _, tx in ipairs({ "flat", "statusbar", "raid" }) do
-        local okB = CV.BarsOK("line", { texture = tx }, facts)
-        Bars_("line", "texture", tx)
-        local v = Paint(face1)
-        local want = tx
-        if v.look.bars.texture ~= want or v.texturePath ~= CV.TEXTURES[want]
-            or (okB == true) ~= (want == tx) then
-            bad = bad or string.format("%s: resolved %s, path %s, ok %s", tx, tostring(v.look.bars.texture),
-                tostring(v.texturePath), tostring(okB))
-        end
+-- every look change a user can make: each Bar setting, a text, each preset,
+-- Reset
+local function LookChanges()
+    local list = {}
+    local function add(fn) list[#list + 1] = fn end
+    for _, kv in ipairs({ { "width", 300 }, { "height", 14 }, { "shape", "pill" }, { "shape", "rect" },
+        { "frame", "border" }, { "frame", "none" }, { "texture", "flat" }, { "fill", "class" },
+        { "back", "222222" }, { "backAlpha", 0.4 }, { "line", false }, { "line", true }, { "warn", false },
+        { "timeFmt", "sec" } }) do
+        add(function() Store.Set(kv[1], kv[2]) end)
     end
-    local paths = CV.TEXTURES and CV.TEXTURES.statusbar == "Interface\\TargetingFrame\\UI-StatusBar"
-        and CV.TEXTURES.raid == "Interface\\RaidFrame\\Raid-Bar-Hp-Fill" and CV.TEXTURES.flat == UI.whiteTexture
-    Reset()
-    return bad == nil and paths, bad
-end)
-
-Try("the ring rule (T104): the game's pool on a ring refused " .. (forever and "on Forever" or "nowhere on TBC")
-        .. "; an unknown value refused", function()
-    local facts = W.facts or {}
-    local ring, why = CV.BarsOK("ring", { show = "both", mana = "game" }, facts)
-    local ringFsr = CV.BarsOK("ring", { show = "fsr" }, facts)
-    local line = CV.BarsOK("line", { show = "both", mana = "game" }, facts)
-    local bad = CV.BarsOK("line", { join = "zigzag" }, facts)
-    local wantRing = not forever
-    return (ring == true) == wantRing and ringFsr == true and line == true and bad == false
-        and (wantRing or type(why) == "string"),
-        string.format("ring %s (%s), ring fsr %s, line %s, zigzag %s", tostring(ring), tostring(why),
-            tostring(ringFsr), tostring(line), tostring(bad))
-end)
+    add(function() Store.SetText("mp5", "on", true) end)
+    add(function() Store.SetText("time", "place", "inside") end)
+    add(function() Store.SetText("time", "size", 20) end)
+    for _, p in ipairs(Store.PRESETS or {}) do
+        add(function() Store.ApplyPreset(p.key or p) end)
+    end
+    add(function() Store.Reset() end)
+    return list
+end
 
 --------------------------------------------------------------------------------
-T.section("the frame's visibility: one owner")
+T.section("the frame's visibility: one owner (" .. flavour .. ")")
 --------------------------------------------------------------------------------
-local function IsUp() return frame:IsShown() end
-
-Try("a layout or design switch leaves the frame's shown state alone (shown and hidden), no Show / Hide", function()
-    Reset()
+Try("a look change leaves the frame's shown state alone (shown in a fight, hidden at full), no Show / Hide", function()
+    S.inCombat = true
     S.Fire("PLAYER_REGEN_DISABLED")
+    Half()
     Tick(2)
     local bad
-    local wasShown = IsUp()
-    for _, layout in ipairs({ "compact", "bar", "line" }) do
-        local before, n = IsUp(), #visCalls
-        CV.SetLayout(layout)
-        Bars_(layout, "join", "chip")
-        CV.Set("frame." .. layout .. ".scale", 120)
-        if IsUp() ~= before or #visCalls ~= n then bad = bad or ("in combat, to " .. layout) end
+    local wasShown = frame:IsShown()
+    local changes = LookChanges()
+    for i, fn in ipairs(changes) do
+        local before, n = frame:IsShown(), #visCalls
+        fn()
+        if frame:IsShown() ~= before or #visCalls ~= n then bad = bad or ("in a fight, change " .. i) end
     end
+    S.inCombat = false
     S.Fire("PLAYER_REGEN_ENABLED")
-    if forever then
-        ST.Pool.model.mana = ST.Pool.model.max
-    else
-        S.mana = UnitPowerMax("player", 0)
-    end
+    Full()
     Tick(4)
-    local wasHidden = not IsUp()
-    for _, layout in ipairs({ "bar", "compact", "line" }) do
-        local before, n = IsUp(), #visCalls
-        CV.SetLayout(layout)
-        Bars_(layout, "show", "none")
-        if IsUp() ~= before or #visCalls ~= n then bad = bad or ("out of combat, to " .. layout) end
+    local wasHidden = not frame:IsShown()
+    for i, fn in ipairs(changes) do
+        local before, n = frame:IsShown(), #visCalls
+        fn()
+        if frame:IsShown() ~= before or #visCalls ~= n then bad = bad or ("at full, change " .. i) end
     end
-    Reset()
-    return wasShown and wasHidden and bad == nil,
-        string.format("shown in a fight %s, hidden at full %s, %s", tostring(wasShown), tostring(wasHidden),
-            tostring(bad))
+    Store.Reset()
+    return wasShown and wasHidden and bad == nil and #changes > 15,
+        string.format("shown in a fight %s, hidden at full %s, %d changes, %s", tostring(wasShown),
+            tostring(wasHidden), #changes, tostring(bad))
 end)
 
 Try("every Show / Hide on the frame comes from the visibility owner (counted)", function()
-    for _, layout in ipairs(LAYOUTS) do
-        for _, join in ipairs(JOINS) do
-            S.Fire("PLAYER_REGEN_DISABLED")
-            CV.SetLayout(layout)
-            Bars_(layout, "join", join)
-            Bars_(layout, "show", "fsr")
-            CV.Set("frame." .. layout .. ".w", 260)
-            CV.Set("frame." .. layout .. ".scale", 80)
-            Tick(2)
-            CV.ResetToStyle()
-            S.Fire("PLAYER_REGEN_ENABLED")
-            Tick(3)
-        end
+    local n0 = #visCalls
+    for _, fn in ipairs(LookChanges()) do
+        S.inCombat = true
+        S.Fire("PLAYER_REGEN_DISABLED")
+        Half()
+        fn()
+        Tick(2)
+        S.inCombat = false
+        S.Fire("PLAYER_REGEN_ENABLED")
+        Full()
+        Tick(3)
     end
     if W.Preview then W:Preview(60) end
     Tick(2)
     if W.Preview then W:Preview(0) end
     if forever and ST.Clock.SetLocked then ST.Clock:SetLocked(true) end
     Tick(3)
-    Reset()
+    Store.Reset()
     local shows, hides, other = 0, 0, {}
-    for _, c in ipairs(visCalls) do
+    for i = n0 + 1, #visCalls do
+        local c = visCalls[i]
         if c[1] == "Show" then shows = shows + 1 else hides = hides + 1 end
         if c[2] ~= "UpdateVisibility" then other[#other + 1] = c[1] .. " from " .. c[2] end
     end
@@ -1103,962 +171,106 @@ Try("every Show / Hide on the frame comes from the visibility owner (counted)", 
 end)
 
 --------------------------------------------------------------------------------
-T.section("the dump line")
+T.section("the place: a Width change keeps the centre (" .. flavour .. ")")
 --------------------------------------------------------------------------------
-Try("the dump line names the layout and the new keys once the look is not the default", function()
-    local function Line()
-        for _, d in ipairs(ST:DumpLines()) do
-            if d.key == "clock" then return d.fn() end
+Try("a Width change moves a TOPLEFT point by half the change; a Height change moves nothing", function()
+    Store.Reset()
+    local w0 = Store.Look().width
+    local function Point()
+        if forever then
+            local p = ST.db.clock.point
+            return p and p[4], p and p[5]
         end
-        return nil
+        local p = ST.db.pos
+        return p and p[3], p and p[4]
     end
-    CV.ResetToStyle()
-    CV.SetLayout("line")
-    local plain = Line()
-    Bars_("line", "join", "veil")
-    local one = Line()
-    CV.Set("frame.line.h", 40)
-    local two = Line()
-    CV.SetLayout("bar")
-    local three = Line()
-    Reset()
-    local okText = T.Ascii(two or "") ~= false
-    return plain == "clock: layout line, 0 overrides" and one == "clock: layout line, 1 override (bars.line.join)"
-        and two == "clock: layout line, 2 overrides (bars.line.join, frame.line.h)"
-        and three == "clock: layout bar, 2 overrides (bars.line.join, frame.line.h)" and okText,
-        string.format("%q / %q / %q / %q", tostring(plain), tostring(one), tostring(two), tostring(three))
-end)
-
---------------------------------------------------------------------------------
-T.section("T116: the slots")
---------------------------------------------------------------------------------
--- T142: the layouts that keep slots; the Bar layout's texts are items (the
--- T142 section below)
-local SLOT_LAYOUTS = { "line", "compact" }
-local function TextSet(layout, key, value) return CV.Set("text." .. layout .. "." .. key, value) end
-local function Strip(s) return (tostring(s or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) end
-local function Words(fs)
-    if not (fs and fs:IsShown()) then return nil end
-    local t = fs:GetText()
-    if type(t) ~= "string" or t == "" then return nil end
-    return Strip(t)
-end
--- a face with every number a slot can show: 62 %, 4210 of 6800, 92 mp5, the
--- rule 3.0 s (Forever: the model's, "~"), in a fight
-local function Rich(f)
-    local g = {}
-    for k, x in pairs(f or {}) do g[k] = x end
-    g.pct, g.mana, g.manaMax, g.mp5, g.fsr, g.combat = 0.62, 4210, 6800, 92, 3, true
-    if forever then g.pctModelled, g.manaModelled, g.mp5Modelled = true, true, true end
-    return g
-end
-local PCT = forever and "~62%" or "62%"
-local REGIONS = { "label", "value", "second", "right2" }
-local function Points(r)
-    if not r then return "-" end
-    local out = {}
-    for _, pt in ipairs(r.points or {}) do
-        out[#out + 1] = string.format("%s:%s:%s:%s", tostring(pt[1]), tostring(pt[3]), tostring(pt[4]), tostring(pt[5]))
-    end
-    return table.concat(out, ";")
-end
-
--- 1. the defaults: today's words at T115's places, and the look's text
-Try("text defaults: Line and Compact (T142: Bar has items) draw today's words at T115's places; look.text and look.texts are the defaults", function()
-    local bad
-    local labelW = math.ceil(#(forever and "~FULL" or "FULL") * 6 * 13 / 12)
-    for _, layout in ipairs(SLOT_LAYOUTS) do
-        Reset()
-        CV.SetLayout(layout)
-        local v = View()
-        local look = v.look
-        local t = look.text
-        local okT = type(t) == "table" and type(look.texts) == "table" and look.texts[layout] == t
-            and type(look.texts.line) == "table" and type(look.texts.compact) == "table"
-            and type(look.texts.bar) == "table"
-        if okT then
-            for _, slot in ipairs(CF.TEXT_SLOTS[layout]) do
-                if t[slot] ~= CF.TEXT[layout][slot] then okT = false end
-            end
-            okT = okT and t.size == nil and t.outline == "none" and t.shadow == true and t.numbers == "number"
-        end
-        if not okT and not bad then bad = layout .. ": look.text missing or not the defaults" end
-        for _, f in ipairs(faces) do
-            Paint(f.face)
-            local segs = CF.Segments(f.face, { show = look.show })
-            if layout ~= "line" then segs.second = nil end
-            local want = CF.JoinSegments(segs)
-            if v:Text() ~= want and not bad then
-                bad = string.format("%s %s: %q, want %q", layout, f.key, v:Text(), want)
-            end
-        end
-        local lp, vp, sp = Points(v.label), Points(v.value), Points(v.second)
-        local places
-        if layout == "line" then
-            places = lp == "TOPLEFT:TOPLEFT:8:-4" and vp == "TOPLEFT:TOPLEFT:" .. (8 + labelW + 6) .. ":-4"
-                and sp == "TOPRIGHT:TOPRIGHT:-8:-4"
-        elseif layout == "compact" then
-            places = lp == "TOPLEFT:TOPLEFT:6:-3" and vp == "TOPLEFT:TOPLEFT:6:-14"
-        else
-            places = lp == "LEFT:LEFT:6:0" and vp == "RIGHT:RIGHT:-6:0"
-        end
-        if not places and not bad then bad = string.format("%s places %s / %s / %s", layout, lp, vp, sp) end
-    end
-    Reset()
-    return bad == nil, bad
-end)
-
--- 2. fixed places: only a value's own digits move
-Try("every slot at a fixed place: 59s -> 1:00 -> >10m moves no anchor (defaults and set slots, Line and Compact)", function()
-    local configs = {
-        { "line" }, { "line", left = "pct", right = "mp5" }, { "line", main = "mana", right = "fsr" },
-        { "compact" }, { "compact", top = "time", main = "pct", bottom = "rest" },
-    }
-    local bad, n = nil, 0
-    for _, c in ipairs(configs) do
-        Reset()
-        local layout = c[1]
-        CV.SetLayout(layout)
-        for _, slot in ipairs(CF.TEXT_SLOTS[layout]) do
-            if c[slot] then
-                local okS = TextSet(layout, slot, c[slot])
-                if not okS and not bad then bad = layout .. "." .. slot .. " = " .. c[slot] .. " not accepted" end
-            end
-        end
-        local first
-        for _, sec in ipairs({ 59, 60, 700 }) do
-            local face = Rich({ mode = "oom", known = "point", value = sec, tone = sec < 60 and "warn" or "normal",
-                arrow = "v", label = "OOM", second = { kind = "rest", label = "rest", value = 130 } })
-            if forever then face.modelled, face.mono, face.timeFmt, face.arrow = true, true, "mss", nil end
-            local v = Paint(face)
-            n = n + 1
-            local now = {}
-            for _, k in ipairs(REGIONS) do now[#now + 1] = k .. "=" .. Points(v[k]) end
-            local s = table.concat(now, " ")
-            if first == nil then first = s
-            elseif s ~= first and not bad then
-                bad = string.format("%s at %ds: %s, was %s", layout, sec, s, first)
-            end
-        end
-    end
-    Reset()
-    return bad == nil and n == #configs * 3, bad or (n .. " paints")
-end)
-
--- 3. every option in every slot fits at every size
-Try("fits: every TEXT_OPTIONS value in every slot of Line and Compact x every SAMPLES face at Size 8, 13, 22, 32", function()
-    local bad, n = nil, 0
-    RuleFor(3)
-    for _, layout in ipairs(SLOT_LAYOUTS) do
-        for _, slot in ipairs(CF.TEXT_SLOTS[layout]) do
-            for _, kind in ipairs(CF.TEXT_OPTIONS[layout][slot]) do
-                for _, size in ipairs({ 8, 13, 22, 32 }) do
-                    Reset()
-                    CV.SetLayout(layout)
-                    TextSet(layout, slot, kind)
-                    local okZ = TextSet(layout, "size", size)
-                    if not okZ and not bad then bad = "size " .. size .. " not accepted" end
-                    if slot == "right2" then CV.Set("frame.line.w", 400) end
-                    local v = View()
-                    for _, f in ipairs(faces) do
-                        Paint(Rich(f.face))
-                        n = n + 1
-                        local why = Misfit(v, layout)
-                        local mw, mh = v:Minimum()
-                        if not why and (frame:GetWidth() < mw or frame:GetHeight() < mh) then
-                            why = string.format("frame %sx%s under its minimum %sx%s", tostring(frame:GetWidth()),
-                                tostring(frame:GetHeight()), tostring(mw), tostring(mh))
-                        end
-                        if why and not bad then
-                            bad = string.format("%s %s=%s size %d, %s: %s", layout, slot, kind, size, f.key, why)
-                        end
-                    end
-                end
-            end
-        end
-    end
-    RuleOff()
-    Reset()
-    return bad == nil and n > 0, bad or (n .. " paints")
-end)
-
--- 4. size, outline, shadow and numbers reach the font strings
-Try("size, outline, shadow and numbers reach the font strings; unset size follows the font offset, set does not", function()
-    Reset()
-    local v = Paint(face1)
-    local function Sz(fs) return select(2, fs:GetFont()) end
-    local function Face(fs) return (fs:GetFont()) end
-    local function Flags(fs) return select(3, fs:GetFont()) end
-    local s0 = Sz(v.label)
-    UI.ApplyFonts(2)
-    Paint(face1)
-    local follows = Sz(v.label) == s0 + 2
-    UI.ApplyFonts(0)
-    TextSet("line", "size", 20)
-    Paint(face1)
-    local set = Sz(v.label) == 20 and Sz(v.value) == 20 and Sz(v.second) == 20
-    UI.ApplyFonts(2)
-    Paint(face1)
-    local fixed = Sz(v.label) == 20 and Sz(v.value) == 20
-    UI.ApplyFonts(0)
-    TextSet("line", "outline", "thick")
-    Paint(face1)
-    local outline = Flags(v.label) == "THICKOUTLINE" and Flags(v.value) == "THICKOUTLINE"
-    local shadows = {}
-    for _, k in ipairs({ "label", "value", "second" }) do
-        v[k].SetShadowOffset = function(self, x, y) shadows[k] = { x, y } end
-    end
-    TextSet("line", "shadow", false)
-    Paint(face1)
-    local off = shadows.label ~= nil and shadows.label[1] == 0 and shadows.label[2] == 0 and shadows.value ~= nil
-        and shadows.value[1] == 0
-    TextSet("line", "shadow", nil)
-    Paint(face1)
-    local on = shadows.label ~= nil and shadows.label[1] == 1 and shadows.label[2] == -1
-    for _, k in ipairs({ "label", "value", "second" }) do v[k].SetShadowOffset = nil end
-    local numFace = Face(v.value) ~= Face(v.label)
-    TextSet("line", "numbers", "labels")
-    Paint(face1)
-    local labelsFace = Face(v.value) == Face(v.label)
-    Reset()
-    CV.SetLayout("compact")
-    TextSet("compact", "size", 30)
-    Paint(face1)
-    local compact = Sz(v.value) == 30 and Sz(v.label) == 15
-    Reset()
-    Paint(face1)
-    local back = Sz(v.label) == s0
-    return follows and set and fixed and outline and off and on and numFace and labelsFace and compact and back,
-        string.format("follows %s set %s fixed %s outline %s shadow %s/%s numbers %s/%s compact %s back %s",
-            tostring(follows), tostring(set), tostring(fixed), tostring(outline), tostring(off), tostring(on),
-            tostring(numFace), tostring(labelsFace), tostring(compact), tostring(back))
-end)
-
--- 5. per layout
-Try("per layout: Compact's main = pct leaves Line's words alone; each layout shows its own", function()
-    Reset()
-    local face = Rich(faces[1].face)
-    local v = Paint(face)
-    local lineBefore = v:Text()
-    local okSet = TextSet("compact", "main", "pct")
-    Paint(face)
-    local lineAfter = v:Text()
-    CV.SetLayout("compact")
-    Paint(face)
-    local main, top = Words(v.value), Words(v.label)
-    CV.SetLayout("line")
-    Paint(face)
-    local lineBack = v:Text()
-    Reset()
-    return okSet == true and lineAfter == lineBefore and lineBack == lineBefore and main == PCT
-        and top ~= nil and top:find("OOM", 1, true) ~= nil and top:find(":", 1, true) ~= nil,
-        string.format("line %q / %q / %q, compact top %q main %q", lineBefore, lineAfter, lineBack, tostring(top),
-            tostring(main))
-end)
-
--- 6. Right2
-Try("Right2: refused with the measured width at 180, drawn left of Right at 300, refused again at 180", function()
-    Reset()
-    local okSet = TextSet("line", "right2", "mp5")
-    local face = Rich(faces[7].face)
-    local v = Paint(face)
-    local fits, need, now = v:FitsRight2()
-    local why = v.look.refused and v.look.refused["text.line.right2"]
-    local refused = fits == false and type(need) == "number" and need > 180 and now == 180
-        and why == string.format("needs %d px of width (now %d)", need, now) and not Shown(v.right2)
-    CV.Set("frame.line.w", 300)
-    Paint(face)
-    local fits2 = v:FitsRight2()
-    local w2 = Words(v.right2)
-    local r2, r1 = Rect(v.right2), Rect(v.second)
-    local drawn = fits2 == true and w2 == (forever and "~92 mp5" or "92 mp5") and r2 ~= nil and r1 ~= nil
-        and r2.r <= r1.l + EPS and (v.look.refused or {})["text.line.right2"] == nil
-        and v:Text():sub(-#w2 - 2) == "  " .. w2 and Misfit(v, "line") == nil
-    CV.Set("frame.line.w", nil)
-    Paint(face)
-    local again = v:FitsRight2() == false and not Shown(v.right2)
-    Reset()
-    return okSet == true and refused and drawn and again,
-        string.format("fits %s need %s now %s why %q; at 300 %s (%s); back %s", tostring(fits), tostring(need),
-            tostring(now), tostring(why), tostring(drawn), tostring(w2), tostring(again))
-end)
-
--- 7. the minimum, from the slots set
-Try("minimum: Compact's Bottom adds 12 px of height; Line with right = none is 30 high and as narrow as no secondary", function()
-    Reset()
-    CV.SetLayout("compact")
-    local face = Rich(faces[7].face)
-    local v = Paint(face)
-    local _, h0 = v:Minimum()
-    local okB = TextSet("compact", "bottom", "rest")
-    Paint(face)
-    local _, h1 = v:Minimum()
-    local bottomShown = Words(v.second) ~= nil
-    Reset()
-    Paint(face)
-    local sh = v.look.show
-    local rest0, cd0 = sh.rest, sh.cd
-    sh.rest, sh.cd = false, false
-    Paint(face)
-    local mwNo = v:Minimum()
-    sh.rest, sh.cd = rest0, cd0
-    local okN = TextSet("line", "right", "none")
-    Paint(face)
-    local mw, mh = v:Minimum()
-    local tbc100 = forever or mw == 100
-    local secondGone = not Shown(v.second)
-    Reset()
-    return okB == true and okN == true and h1 - h0 == 12 and bottomShown and mw == mwNo and mh == 30 and tbc100
-        and secondGone,
-        string.format("compact %s -> %s (bottom shown %s); line right none %sx%s (no secondary %s)", tostring(h0),
-            tostring(h1), tostring(bottomShown), tostring(mw), tostring(mh), tostring(mwNo))
-end)
-
--- 8. Forever's real text behind the seam. T144: the seam is open
--- (EllesmereUI's in-game evidence): on by default, the font string is handed
--- the secret through SetFormattedText unread; the flag off still draws the
--- model's "~62%" and never calls DrawPowerText.
-Try(forever and "Forever: POWER_TEXT_READS on (T144) hands the secret to SetFormattedText unread; off draws ~62% and never calls DrawPowerText"
-        or "TBC: a Mana % slot draws plain 62% (no draw.powerText on this line)", function()
-    Reset()
-    local okSet = TextSet("line", "right", "pct")
-    local calls = 0
-    local real = ST.API.DrawPowerText
-    if real then ST.API.DrawPowerText = function(...) calls = calls + 1; return real(...) end end
-    local face = Rich(face1)
-    local res
     if forever then
-        local savedCC = rawget(_G, "CurveConstants")
-        _G.CurveConstants = { ScaleTo100 = { curve = "ScaleTo100" } }
-        local origFlag = ST.API.POWER_TEXT_READS
-        ST.API.POWER_TEXT_READS = false
-        local v = Paint(face)
-        local words = Words(v.second)
-        local first = words == "~62%" and calls == 0 and origFlag == true
-        S.Fire("PLAYER_REGEN_DISABLED")
-        ST.API.POWER_TEXT_READS = true
-        local seen = {}
-        v.second.SetFormattedText = function(self, fmt, ...)
-            seen = { fmt = fmt, n = select("#", ...), a = (...) }
-            self.text = "62" -- what the client would print; the addon never reads it
-        end
-        local okP, err = pcall(function() Paint(face); return v:Text() end)
-        local secret = seen.fmt == "%d%%" and seen.n == 1 and issecretvalue(seen.a) == true and v.second:IsShown()
-            and calls > 0
-        local before = calls
-        local again = v:PaintPowerTexts() == 1 and calls == before + 1
-        v.second.SetFormattedText = nil
-        ST.API.POWER_TEXT_READS = origFlag
-        _G.CurveConstants = savedCC
-        S.Fire("PLAYER_REGEN_ENABLED")
-        res = { first and okP and secret and again,
-            string.format("off %q calls %d; on raised %s secret %s (fmt %s n %s); again %s", tostring(words), calls,
-                tostring(not okP and err), tostring(secret), tostring(seen.fmt), tostring(seen.n), tostring(again)) }
+        ST.db.clock.point = { "TOPLEFT", nil, "TOPLEFT", 100, -100 }
+        ST.Clock:ApplyPoint()
     else
-        local v = Paint(face)
-        local words = Words(v.second)
-        res = { words == "62%" and calls == 0 and v.draw.powerText == nil,
-            string.format("%q, calls %d", tostring(words), calls) }
+        ST.db.pos = { "TOPLEFT", "TOPLEFT", 100, -100 }
+        ST:ApplyWidgetPosition()
     end
-    ST.API.DrawPowerText = real
-    Reset()
-    return okSet == true and res[1], res[2]
+    Store.Set("width", w0 + 100)
+    local x1, y1 = Point()
+    Store.Set("height", Store.Look().height + 6)
+    local x2, y2 = Point()
+    local fp, _, _, fx, fy = frame:GetPoint(1)
+    Store.Reset()
+    if forever then ST.Clock:ResetPosition() else W:ResetPosition() end
+    return x1 == 50 and y1 == -100 and x2 == 50 and y2 == -100 and fp == "TOPLEFT" and fx == 50 and fy == -100,
+        string.format("after width %s,%s; after height %s,%s; frame %s %s,%s", tostring(x1), tostring(y1),
+            tostring(x2), tostring(y2), tostring(fp), tostring(fx), tostring(fy))
 end)
 
--- 9. look.texts.line, whatever layout is on screen
-Try("look.texts.line is resolved whatever layout is on screen: the feed reads Line's right = pct while Bar shows", function()
-    Reset()
-    local okSet = TextSet("line", "right", "pct")
-    CV.SetLayout("bar")
+--------------------------------------------------------------------------------
+T.section("the drag and the hover (" .. flavour .. ")")
+--------------------------------------------------------------------------------
+Try(forever and "the drag: previewed it moves and saves its point; locked it does not start"
+        or "the drag: unlocked it moves and saves its point", function()
+    local start, stop = frame:GetScript("OnDragStart"), frame:GetScript("OnDragStop")
+    local moved = 0
+    local realStart = frame.StartMoving
+    frame.StartMoving = function(self, ...) moved = moved + 1 end
+    if not forever then ST.db.locked = false end
+    if W.Preview then W:Preview(60) end
     Tick(1)
-    local look = ST.ClockLook and ST.ClockLook()
-    local texts = type(look) == "table" and look.texts
-    local okT = look ~= nil and look.layout == "bar" and texts and texts.line and texts.line.right == "pct"
-        and look.text == texts.bar and texts.bar.right == "time"
-    local line = texts and texts.line and Strip(CF.LineString(Rich(face1), nil, texts.line)) or ""
-    local feed = ST.Feeds and ST.Feeds.Text("clock", { plain = true }) or ""
-    Reset()
-    return okSet == true and okT and line:sub(-#PCT - 2) == "  " .. PCT and feed:find("%", 1, true) ~= nil,
-        string.format("layout %s, line.right %s, line %q, feed %q", tostring(look and look.layout),
-            tostring(texts and texts.line and texts.line.right), line, feed)
+    start(frame)
+    frame:ClearAllPoints()
+    frame:SetPoint("CENTER", UIParent, "CENTER", 12, 34)
+    stop(frame)
+    local saved
+    if forever then
+        local p = ST.db.clock.point
+        saved = type(p) == "table" and p[1] == "CENTER" and p[4] == 12 and p[5] == 34
+    else
+        local p = ST.db.pos
+        saved = type(p) == "table" and p[1] == "CENTER" and p[3] == 12 and p[4] == 34
+    end
+    local unlockedMoves = moved == 1
+    if W.Preview then W:Preview(0) end
+    local lockedStill = true
+    if forever then
+        ST.Clock:SetLocked(true)
+        start(frame)
+        lockedStill = moved == 1
+    else
+        ST.db.locked = true
+    end
+    Tick(1)
+    frame.StartMoving = realStart
+    if forever then ST.Clock:ResetPosition() else W:ResetPosition() end
+    return unlockedMoves and saved and lockedStill,
+        string.format("moved %d saved %s locked still %s", moved, tostring(saved), tostring(lockedStill))
 end)
 
---------------------------------------------------------------------------------
-T.section(forever and "secrets" or "the design matrix")
---------------------------------------------------------------------------------
-Try(forever
-        and "forever profile: every layout x join x show x mana-from paints in a fight; only the mana bar holds the secret, unread"
-        or "every layout x join x show paints in a fight without raising", function()
+Try("the hover: the clock's tooltip, ASCII, no bare pipe" .. (forever and "; it names the bar as drawn" or ""), function()
+    S.inCombat = true
     S.Fire("PLAYER_REGEN_DISABLED")
-    local errs, n, secretText, reads = {}, 0, false, 0
-    local v = View()
-    local realGet = v.bar.GetValue
-    v.bar.GetValue = function(self, ...) reads = reads + 1; return realGet(self, ...) end
-    local manas = forever and { "game", "model" } or { "game" }
-    for _, layout in ipairs(LAYOUTS) do
-        for _, join in ipairs(JOINS) do
-            for _, show in ipairs(SHOWS) do
-                for _, mana in ipairs(manas) do
-                    CV.SetLayout(layout)
-                    Bars_(layout, "join", join)
-                    Bars_(layout, "show", show)
-                    Bars_(layout, "mana", mana ~= "game" and mana or nil)
-                    RuleFor(2.5)
-                    local okP, e = pcall(function()
-                        if forever then ST.Clock:Refresh() end
-                        S.Tick(0.5)
-                        S.Tick(0.03)
-                    end)
-                    n = n + 1
-                    local tag = layout .. "/" .. join .. "/" .. show .. "/" .. mana
-                    if not okP then errs[#errs + 1] = tag .. ": " .. tostring(e) end
-                    for _, k in ipairs({ "label", "value", "second", "right2" }) do
-                        local fs = v[k]
-                        if fs and (issecretvalue and issecretvalue(fs.text)) then secretText = true end
-                    end
-                    if forever then
-                        local barSecret = Shown(v.bar) and issecretvalue(v.bar.value) == true
-                        local want = Shown(v.bar) and mana == "game"
-                        if barSecret ~= want and not errs[1] then
-                            errs[#errs + 1] = tag .. ": bar secret " .. tostring(barSecret)
-                        end
-                        local sp = v.sweep and v.sweep.points and v.sweep.points[#v.sweep.points]
-                        for _, x in ipairs({ v.strip.value, v.veil and v.veil:GetWidth(), v.cd and v.cd.cdStart,
-                                             sp and sp[4] or nil }) do
-                            if x ~= nil and issecretvalue(x) and not errs[1] then
-                                errs[#errs + 1] = tag .. ": a secret outside the mana bar"
-                            end
-                        end
-                    end
-                    RuleOff()
-                end
+    Half()
+    Tick(2)
+    GameTooltip.lines = {}
+    local enter = frame:GetScript("OnEnter")
+    if enter then enter(frame) end
+    local lines = GameTooltip.lines or {}
+    local bad, bar = nil, not forever
+    for _, l in ipairs(lines) do
+        for i = 1, 2 do
+            local s = l[i]
+            if type(s) == "string" then
+                local plain = s:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+                if T.Ascii(plain) == false or plain:find("|", 1, true) then bad = bad or s end
+                if plain:find("The bar is your real mana, drawn by the game", 1, true) then bar = true end
             end
         end
     end
-    v.bar.GetValue = realGet
-    Reset()
+    local leave = frame:GetScript("OnLeave")
+    if leave then leave(frame) end
+    S.inCombat = false
     S.Fire("PLAYER_REGEN_ENABLED")
-    return #errs == 0 and n == 3 * #JOINS * 4 * #manas and not secretText and reads == 0,
-        string.format("%d paints, %d raised%s, secret text %s, %d reads of the bar", n, #errs,
-            errs[1] and (": " .. errs[1]) or "", tostring(secretText), reads)
+    Tick(1)
+    return #lines > 2 and bad == nil and bar,
+        string.format("%d lines, bad %s, bar sentence %s", #lines, tostring(bad), tostring(bar))
 end)
-
---------------------------------------------------------------------------------
-T.section("T139: the bar's look (" .. flavour .. ")")
---------------------------------------------------------------------------------
-Try("T139 shapes: Pill and Rounded give every bar region its masks' files; Rectangle clips nothing", function()
-    CV.ResetToStyle()
-    CV.SetLayout("bar")
-    Bars_("bar", "shape", "pill")
-    local v = Paint(face1)
-    if not v.masks then return false, "no masks" end
-    local function Files(want)
-        for _, pair in pairs(v.masks) do
-            if pair[1].texPath ~= want[1] or pair[2].texPath ~= want[2] or pair[1].wrap ~= "CLAMPTOWHITE" then
-                return false
-            end
-        end
-        return true
-    end
-    local pill = Files({ CV.MEDIA .. "PillL", CV.MEDIA .. "PillR" })
-    -- T142: the fill may also carry the game frame's mask; the shape's pair is on it
-    local function Has(t, pair)
-        local n = 0
-        for _, m in ipairs(t.masks or {}) do if m == pair[1] or m == pair[2] then n = n + 1 end end
-        return n == 2
-    end
-    local fill = v.bar:GetStatusBarTexture()
-    local clipped = Has(fill, v.masks.bar) and Has(v.barEdge, v.masks.barEdge) and Has(v.sweep, v.masks.bar)
-    Bars_("bar", "shape", "round")
-    Paint(face1)
-    local round = Files({ CV.MEDIA .. "RoundL", CV.MEDIA .. "RoundR" })
-    Bars_("bar", "shape", "rect")
-    Paint(face1)
-    local rect = Files({ UI.whiteTexture, UI.whiteTexture })
-    local sized = Near(v.masks.bar[1].w, v.bar.h) and Near(v.masks.barEdge[1].h, v.barEdge.h)
-    Reset()
-    return pill and clipped and round and rect and sized, string.format("pill %s clipped %s round %s rect %s sized %s",
-        tostring(pill), tostring(clipped), tostring(round), tostring(rect), tostring(sized))
-end)
-
-Try("T139 Gradient: the fill end on the left to the fill on the right; colours for edge, 5SR line and after", function()
-    CV.ResetToStyle()
-    CV.SetLayout("bar")
-    Bars_("bar", "frame", "border")
-    Bars_("bar", "texture", "gradient")
-    CV.Set("colors.fillEnd", { 0, 0, 1, 1 })
-    CV.Set("colors.manaBar", { 1, 0, 0, 1 })
-    CV.Set("colors.edge", { 0.5, 0.5, 0.5, 1 })
-    CV.Set("colors.fsrLine", { 1, 0, 1, 1 })
-    CV.Set("colors.after", { 0, 1, 1, 1 })
-    RuleFor(3)
-    local v = Paint(face1)
-    local g = v.bar:GetStatusBarTexture().gradient
-    local grad = type(g) == "table" and g[1] == "HORIZONTAL"
-    local line = Same(v.sweep.color, 1, 0, 1, 1) and Same(v.barEdge.color, 0.5, 0.5, 0.5, 1)
-    RuleOff()
-    Paint(face1)
-    local after = Same(v.greenLine.color, 0, 1, 1, 1)
-    Reset()
-    return grad and line and after, string.format("gradient %s line %s after %s", tostring(grad), tostring(line),
-        tostring(after))
-end)
-
---------------------------------------------------------------------------------
-T.section("T142: the Bar layout's texts and frame (" .. flavour .. ")")
---------------------------------------------------------------------------------
-local function Item(kind, field, value) return CV.Set("text.bar.items." .. kind .. "." .. field, value) end
-local function ItemFS(v, kind) return v.active and v.active.items and v.active.items[kind] end
-
-Try("T142 the default Bar: the game frame (" .. (forever and "drawn" or "TBC: the border, and why") .. "), rounded, 200 x 8, "
-        .. "Soft without EllesmereUI, 396DA7 on 0A0A0A, the moving line; the time below left, the mana in the middle, "
-        .. "the regen below right", function()
-    CV.ResetToStyle()
-    CV.SetLayout("bar")
-    RuleOff()
-    local v = Paint(Rich(face1))
-    local look = v.look
-    local b = look.bars
-    local resolved = b.frame == "game" and b.font == "eui" and b.shape == "round" and b.height == 8
-        and b.texture == "eui:pixels-dark" and b.join == "sweep" and b.show == "both"
-        and Is(look.bar.back, { 0x0A / 255, 0x0A / 255, 0x0A / 255 }) and look.bar.back[4] == 1
-    local soft = v.texturePath == CV.MEDIA .. "Soft" and look.refused["bars.bar.texture"] == nil
-    local size = frame:GetWidth() == 200 and frame:GetHeight() == 8
-    local blue = Is(v.bar.barColor, { 0x39 / 255, 0x6D / 255, 0xA7 / 255 })
-    local frameOK
-    if forever then
-        frameOK = v.frameMode == "game" and look.refused["bars.bar.frame"] == nil and not Shown(v.barEdge)
-    else
-        frameOK = v.frameMode == "border" and look.refused["bars.bar.frame"] == CV.GAME_REFUSED and Shown(v.barEdge)
-    end
-    local it = look.items
-    local items = it.time.on and it.time.place == "below" and it.time.align == "left" and it.time.y == -1
-        and it.time.size == 11 and it.time.colour == "E4E1DC" and it.time.outline == "none"
-        and it.mana.on and it.mana.place == "inside" and it.mana.align == "center" and it.mana.y == 0
-        and it.mp5.on and it.mp5.place == "below" and it.mp5.align == "right" and it.mp5.colour == "9FD7A9"
-        and not it.label.on and not it.manaMax.on and not it.pct.on and not it.fsr.on and not it.rest.on
-    local fr, tr, mr, pr = Rect(frame), Rect(ItemFS(v, "time")), Rect(ItemFS(v, "mana")), Rect(ItemFS(v, "mp5"))
-    local placed = tr ~= nil and mr ~= nil and pr ~= nil and tr.t <= fr.b - 1 + EPS and Near(tr.l, 0)
-        and pr.t <= fr.b - 1 + EPS and Near(pr.r, 200) and Near((mr.l + mr.r) / 2, 100)
-    local words = v:Text()
-    -- T144: no "~" on the Bar's texts; on Forever the mana is the game's own
-    -- (drawn through draw.powerText, so left out of view:Text())
-    local want = forever and "1:20 v  92 mp5" or "1:20 v  4210  92 mp5"
-    local colour = Same(ItemFS(v, "mp5").textColor, 0x9F / 255, 0xD7 / 255, 0xA9 / 255)
-    Reset()
-    return resolved and soft and size and blue and frameOK and items and placed and words == want and colour,
-        string.format("resolved %s soft %s size %sx%s blue %s frame %s (%s) items %s placed %s (time %s mana %s mp5 %s) "
-            .. "words %q want %q colour %s", tostring(resolved), tostring(soft), tostring(frame:GetWidth()),
-            tostring(frame:GetHeight()), tostring(blue), tostring(frameOK), tostring(v.frameMode), tostring(items),
-            tostring(placed), R(tr), R(mr), R(pr), words, want, tostring(colour))
-end)
-
-Try("T142 the item store: text.bar.items.<kind>.<field>, sparse; every field validated; a bad stored value "
-        .. "falls back to its default and look.refused names it", function()
-    CV.ResetToStyle()
-    CV.SetLayout("bar")
-    local bad = {}
-    local good = { on = true, place = "above", align = "right", x = -40, y = 20, size = 32, colour = "a0b1c2",
-        outline = "thick" }
-    local wrong = { on = "yes", place = "left", align = "middle", x = 41, y = 2.5, size = 5, colour = "red",
-        outline = "mono" }
-    for _, kind in ipairs(CV.ITEM_KINDS) do
-        for _, f in ipairs(CV.ITEM_FIELDS) do
-            if Item(kind, f, good[f]) ~= true then bad[#bad + 1] = kind .. "." .. f .. " refused" end
-            if Item(kind, f, wrong[f]) ~= false then bad[#bad + 1] = kind .. "." .. f .. " took " .. tostring(wrong[f]) end
-        end
-    end
-    local look = CV.Look(W.facts or {})
-    local took = look.items.pct.place == "above" and look.items.pct.colour == "a0b1c2" and look.items.rest.x == -40
-    CV.ResetToStyle()
-    -- sparse: a field set back to nil leaves nothing behind
-    Item("pct", "on", true)
-    Item("pct", "on", nil)
-    local sparse = ST.db.clockLook.over.text == nil
-    -- a value written past CV.Set (an old or hand-edited store)
-    ST.db.clockLook.over.text = { bar = { items = { mana = { size = 99, place = "below" }, nope = { on = true } } } }
-    look = CV.Look(W.facts or {})
-    local fell = look.items.mana.size == 11 and look.items.mana.place == "below"
-        and look.refused["text.bar.items.mana.size"] == "not accepted: 99"
-    CV.ResetToStyle()
-    return #bad == 0 and took and sparse and fell, string.format("bad %s took %s sparse %s fell %s",
-        table.concat(bad, "; "), tostring(took), tostring(sparse), tostring(fell))
-end)
-
-Try("T142 outside texts never change the bar or the frame (200 x 8 at size 6..32, y -20..20); an inside one never makes it taller", function()
-    CV.ResetToStyle()
-    CV.SetLayout("bar")
-    local bad, n = nil, 0
-    for _, kind in ipairs(CV.ITEM_KINDS) do Item(kind, "on", true) end
-    for _, place in ipairs({ "inside", "above", "below" }) do
-        for _, size in ipairs({ 6, 11, 32 }) do
-            for _, y in ipairs({ -20, 0, 20 }) do
-                for _, kind in ipairs({ "time", "mp5" }) do
-                    Item(kind, "place", place)
-                    Item(kind, "size", size)
-                    Item(kind, "y", y)
-                end
-                local v = Paint(Rich(face1))
-                n = n + 1
-                local wide = place ~= "inside" and frame:GetWidth() ~= 200
-                if (wide or frame:GetHeight() ~= 8 or v.bar:GetHeight() ~= 8) and not bad then
-                    bad = string.format("%s size %d y %d: frame %sx%s bar %s", place, size, y, tostring(frame:GetWidth()),
-                        tostring(frame:GetHeight()), tostring(v.bar:GetHeight()))
-                end
-            end
-        end
-    end
-    Reset()
-    return bad == nil and n == 27, bad or (n .. " paints")
-end)
-
-Try("T142 each text on its own: inside (2 px in unless centred), above / below hang from the bar's edge; x / y move it", function()
-    CV.ResetToStyle()
-    CV.SetLayout("bar")
-    Bars_("bar", "frame", "none")
-    Item("pct", "on", true)
-    Item("pct", "place", "above")
-    Item("pct", "align", "right")
-    Item("pct", "x", 5)
-    Item("pct", "y", 3)
-    Item("label", "on", true)
-    Item("label", "place", "inside")
-    Item("label", "align", "left")
-    Item("label", "y", 0)
-    Item("fsr", "on", true)
-    Item("fsr", "place", "below")
-    Item("fsr", "align", "center")
-    Item("fsr", "y", 0)
-    RuleFor(3)
-    local v = Paint(Rich(face1))
-    local function Spec(k) local s = v.metrics and v.metrics.items and v.metrics.items[k]; return s and table.concat({ s[1], s[2], s[3], s[4] }, ":") or "-" end
-    local above = Spec("pct") == "BOTTOMRIGHT:TOPRIGHT:5:" .. (CV.ITEM_GAP + 3)
-    local inside = Spec("label") == "LEFT:LEFT:" .. CV.ITEM_PAD .. ":0"
-    local below = Spec("fsr") == "TOP:BOTTOM:0:" .. (-CV.ITEM_GAP)
-    local pr, fr = Rect(ItemFS(v, "pct")), Rect(frame)
-    local drawn = pr ~= nil and Near(pr.b, fr.t + CV.ITEM_GAP + 3) and Near(pr.r, fr.r + 5)
-        and Words(ItemFS(v, "fsr")) == "5SR 3.0" and Words(ItemFS(v, "pct")) == "62%" -- T144: no "~" on a Bar text
-    -- each its own: moving one leaves the others where they were
-    local before = Spec("label") .. "/" .. Spec("fsr")
-    Item("pct", "y", -20)
-    Paint(Rich(face1))
-    local alone = Spec("label") .. "/" .. Spec("fsr") == before
-    -- the border frame keeps an outside text clear of its edge
-    Bars_("bar", "frame", "border")
-    Paint(Rich(face1))
-    local clear = Spec("fsr") == "TOP:BOTTOM:0:" .. (-(CV.ITEM_GAP + 1))
-    RuleOff()
-    Reset()
-    return above and inside and below and drawn and alone and clear, string.format(
-        "pct %s label %s fsr %s drawn %s alone %s clear %s", Spec("pct"), Spec("label"), Spec("fsr"), tostring(drawn),
-        tostring(alone), tostring(clear))
-end)
-
-Try("T142 the words: the label off, the time carries the face's own arrow (T144: no ~; "
-        .. "FULL in its place); Mana / max, Rest; no bare pipe", function()
-    CV.ResetToStyle()
-    CV.SetLayout("bar")
-    Item("manaMax", "on", true)
-    Item("rest", "on", true)
-    Item("rest", "place", "above")
-    local v = Paint(Rich(faces[7] and faces[7].face or face1))
-    local time, mm, rest = Words(ItemFS(v, "time")), Words(ItemFS(v, "manaMax")), Words(ItemFS(v, "rest"))
-    -- T144: no "~" on a Bar text; Forever's Mana / max is the game's own
-    local okT = time == "1:20 ="
-    local okM
-    if forever then
-        okM = false
-        for _, e in ipairs(v.powerFs or {}) do if e[2] == "manaMax" and e[1] == ItemFS(v, "manaMax") then okM = true end end
-    else
-        okM = mm == "4210/6800"
-    end
-    local okR = rest ~= nil and rest:find("^rest ") ~= nil
-    local full
-    for _, f in ipairs(faces) do if f.key == "fullnow" then full = f.face end end
-    Paint(Rich(full))
-    local fullWord = Words(ItemFS(v, "time"))
-    local okF = fullWord == "FULL"
-    Item("label", "on", true)
-    Paint(Rich(full))
-    local okL = Words(ItemFS(v, "time")) == nil and Words(ItemFS(v, "label")) == "FULL"
-    local pipes = false
-    for _, k in ipairs(CV.ITEM_KINDS) do
-        local fs = ItemFS(v, k)
-        local t = fs and fs:GetText() or ""
-        if Strip(t):find("|", 1, true) then pipes = true end
-    end
-    Reset()
-    return okT and okM and okR and okF and okL and not pipes, string.format("time %q mm %q rest %q full %q label %s pipes %s",
-        tostring(time), tostring(mm), tostring(rest), tostring(fullWord), tostring(okL), tostring(pipes))
-end)
-
-Try("T142 the game frame" .. (forever and " with the atlases: art round the bar, the mask on the fill and the back, "
-        .. "four bevels under the moving line; without them" or "") .. ": the border, and why", function()
-    CV.ResetToStyle()
-    CV.SetLayout("bar")
-    RuleFor(3)
-    local v = Paint(face1)
-    local drawn = true
-    local detail = ""
-    if forever then
-        local g = v.game
-        local fill = v.bar:GetStatusBarTexture()
-        local function HasMask(t, m) for _, x in ipairs(t.masks or {}) do if x == m then return true end end return false end
-        local B = g and g.bevel or {}
-        local art = g ~= nil and g.art.atlas == CV.GAME_ATLAS.frame and g.art:IsShown() and g.art.layer == "BACKGROUND"
-        local masks = g ~= nil and g.mask.atlas == CV.GAME_ATLAS.mask and g.backMask.atlas == CV.GAME_ATLAS.mask
-            and HasMask(fill, g.mask) and HasMask(v.barBack, g.backMask)
-        local bevel = B.top ~= nil and Shown(B.top) and Shown(B.bottom) and Shown(B.left) and Shown(B.right)
-            and Near(B.top.h, 2) and Near(B.bottom.h, 1) and Near(B.left.w, 30) and Near(B.right.w, 30)
-            and HasMask(B.top, g.mask) and type(B.top.gradient) == "table" and B.top.gradient[1] == "VERTICAL"
-        local fr, ar = Rect(frame), g and Rect(g.art)
-        local reach = ar ~= nil and Near(ar.l, fr.l - 2) and Near(ar.t, fr.t + 3) and Near(ar.r, fr.r + 6)
-            and Near(ar.b, fr.b - 7)
-        local under = (B.top and B.top.sublevel or 0) < (v.sweep.sublevel or 0) and Shown(v.sweep)
-        local noEdge = not Shown(v.barEdge) and v.look.refused["bars.bar.frame"] == nil
-        drawn = art and masks and bevel and reach and under and noEdge
-        detail = string.format("art %s masks %s bevel %s reach %s (%s) under %s no edge %s; ", tostring(art),
-            tostring(masks), tostring(bevel), tostring(reach), R(ar), tostring(under), tostring(noEdge))
-        S.atlases["UI-HUD-CoolDownManager-Bar-BG"] = nil
-        Bars_("bar", "border", 2)
-        v = Paint(face1)
-    end
-    local fell = v.frameMode == "border" and v.look.refused["bars.bar.frame"] == CV.GAME_REFUSED and Shown(v.barEdge)
-        and (not v.game or (not v.game.art:IsShown() and v.game.mask.texPath == UI.whiteTexture))
-    if forever then S.atlases["UI-HUD-CoolDownManager-Bar-BG"] = true end
-    RuleOff()
-    Reset()
-    return drawn and fell, detail .. "fell back " .. tostring(fell)
-end)
-
-Try("T142 the font: EllesmereUI's read live when it answers; without it SpellTuner's, and why; each outline applies", function()
-    CV.ResetToStyle()
-    CV.SetLayout("bar")
-    local v = Paint(face1)
-    local kit = select(1, UI.fontObjects and UI.fontObjects[UI.FONT] and UI.fontObjects[UI.FONT]:GetFont() or nil)
-    local tf = ItemFS(v, "time")
-    local without = v.look.refused["bars.bar.font"] == CV.FONT_EUI_MISSING and (kit == nil or (tf:GetFont()) == kit)
-    local saved = ST.EUIParent
-    ST.EUIParent = { GetFontPath = function() return "Interface\\AddOns\\EllesmereUI\\media\\fonts\\Expressway.ttf" end }
-    CV.Set("text.bar.items.time.outline", "outline")
-    v = Paint(face1)
-    local face, size, flags = tf:GetFont()
-    local with = face == "Interface\\AddOns\\EllesmereUI\\media\\fonts\\Expressway.ttf" and size == 11
-        and flags == "OUTLINE" and v.look.refused["bars.bar.font"] == nil
-    CV.Set("text.bar.items.time.outline", "shadow")
-    v = Paint(face1)
-    local sx, sy = tf:GetShadowOffset()
-    local shadow = select(3, tf:GetFont()) == "" and sx == 1 and sy == -1
-    ST.EUIParent = saved
-    Bars_("bar", "font", "st")
-    v = Paint(face1)
-    local st = v.look.refused["bars.bar.font"] == nil and (kit == nil or (tf:GetFont()) == kit)
-    Reset()
-    return without and with and shadow and st, string.format("without %s with %s (%s %s %s) shadow %s st %s",
-        tostring(without), tostring(with), tostring(face), tostring(size), tostring(flags), tostring(shadow), tostring(st))
-end)
-
-Try("T142 the store is reset once: the Bar layout's look and the bar colours cleared, Line's kept, "
-        .. "a second read changes nothing; the dump names what was reset", function()
-    local facts = W.facts or {}
-    local keep = ST.db.clockLook
-    ST.db.clockLook = { layout = "line", over = {
-        bars = { bar = { shape = "pill", texture = "gloss" }, line = { join = "veil" } },
-        text = { bar = { center = "mana", items = { mp5 = { on = false } } }, line = { right = "pct" } },
-        frame = { bar = { w = 300, h = 30 }, line = { w = 250 } },
-        colors = { manaBar = { 1, 0, 0, 1 }, edge = { 0, 0, 0, 1 }, crit = "ff0000" },
-        bar = { back = { 0, 0, 0, 1 } },
-    } }
-    CV.MigrateStored(facts, true)
-    local o = ST.db.clockLook.over
-    local cleared = (o.bars.bar == nil) and (o.text.bar == nil) and (o.frame.bar == nil) and o.colors.manaBar == nil
-        and o.colors.edge == nil and o.bar == nil
-    local kept = o.bars.line.join == "veil" and o.text.line.right == "pct" and o.frame.line.w == 250
-        and o.colors.crit == "ff0000" and ST.db.clockLook.layout == "line" and ST.db.clockLook.v == CV.LOOK_VERSION
-    local line
-    for _, d in ipairs(ST:DumpLines()) do if d.key == "clockReset" then line = d.fn() end end
-    local named = type(line) == "string" and line:find("bars.bar.shape", 1, true) ~= nil
-        and line:find("colors.manaBar", 1, true) ~= nil and line:find("frame.bar.w", 1, true) ~= nil
-    -- a second read: the store at v 2, a new Bar override kept
-    CV.Set("bars.bar.shape", "pill")
-    local changed2, reset2 = CV.ResetBarLook(ST.db.clockLook)
-    CV.MigrateStored(facts, true)
-    local second = changed2 == false and #reset2 == 0 and ST.db.clockLook.over.bars.bar.shape == "pill"
-    -- a fresh store is at v 2 from the start
-    ST.db.clockLook = nil
-    CV.Look(facts)
-    local fresh = ST.db.clockLook.v == CV.LOOK_VERSION
-    ST.db.clockLook = keep
-    Reset()
-    return cleared and kept and named and second and fresh, string.format("cleared %s kept %s named %s (%s) second %s fresh %s",
-        tostring(cleared), tostring(kept), tostring(named), tostring(line), tostring(second), tostring(fresh))
-end)
-
---------------------------------------------------------------------------------
-T.section("T144: the Bar's size, its words, the game's mana (" .. flavour .. ")")
---------------------------------------------------------------------------------
--- docs/tasks/T144-bar-fixes-real-mana.md: no text changes the bar's size (an
--- inside one included); no "~" on any Bar text; on Forever the mana texts are
--- the game's own, handed to SetFormattedText unread and drawn again between
--- ticks without a layout.
-
-Try("T144 no text changes the bar: every item on, size 6..32, each place, x / y at their ends -- the frame "
-        .. "200 x 8 and the minimum the bar's own", function()
-    CV.ResetToStyle()
-    CV.SetLayout("bar")
-    for _, kind in ipairs(CV.ITEM_KINDS) do Item(kind, "on", true) end
-    local bad, n = nil, 0
-    for _, place in ipairs({ "inside", "above", "below" }) do
-        for _, size in ipairs({ 6, 11, 20, 32 }) do
-            for _, xy in ipairs({ { -40, -20 }, { 0, 0 }, { 40, 20 } }) do
-                for _, kind in ipairs(CV.ITEM_KINDS) do
-                    Item(kind, "place", place)
-                    Item(kind, "size", size)
-                    Item(kind, "x", xy[1])
-                    Item(kind, "y", xy[2])
-                end
-                local v = Paint(Rich(face1))
-                n = n + 1
-                local mw = v:Minimum()
-                if (frame:GetWidth() ~= 200 or frame:GetHeight() ~= 8 or mw ~= 20) and not bad then
-                    bad = string.format("%s size %d x %d y %d: frame %sx%s minimum %s", place, size, xy[1], xy[2],
-                        tostring(frame:GetWidth()), tostring(frame:GetHeight()), tostring(mw))
-                end
-            end
-        end
-    end
-    -- the width and the height move through their own controls only
-    CV.Set("frame.bar.w", 260)
-    Bars_("bar", "height", 12)
-    Paint(Rich(face1))
-    local own = frame:GetWidth() == 260 and frame:GetHeight() == 12
-    -- an inside text wider than the bar is one line over its ends, never wrapped
-    local fs = ItemFS(View(), "mana")
-    local oneLine = fs ~= nil and fs:GetWordWrap() == false and #(fs.points or {}) == 1
-    CV.ResetToStyle()
-    Reset()
-    return bad == nil and n == 36 and own and oneLine,
-        string.format("%s; own %s one line %s", bad or (n .. " paints"), tostring(own), tostring(oneLine))
-end)
-
-Try("T144 no ~ on any Bar text, every sample face, label on and off; Line keeps its own", function()
-    CV.ResetToStyle()
-    CV.SetLayout("bar")
-    for _, kind in ipairs(CV.ITEM_KINDS) do Item(kind, "on", true) end
-    local origFlag = ST.API.POWER_TEXT_READS
-    ST.API.POWER_TEXT_READS = false -- every number the face's own words here
-    local bad, n = nil, 0
-    for _, labelOn in ipairs({ true, false }) do
-        Item("label", "on", labelOn)
-        for _, f in ipairs(faces) do
-            local v = Paint(Rich(f.face))
-            RuleFor(3)
-            for _, kind in ipairs(CV.ITEM_KINDS) do
-                local w = Words(ItemFS(v, kind))
-                n = n + 1
-                if w and w:find("~", 1, true) and not bad then bad = f.key .. " " .. kind .. " " .. w end
-            end
-        end
-    end
-    local pieces = CF.ItemPieces(Rich(face1), nil, nil, false) or {}
-    local pure = true
-    for _, p in pairs(pieces) do
-        for _, k in ipairs({ "text", "labelText", "valueText" }) do
-            if type(p[k]) == "string" and p[k]:find("~", 1, true) then pure = false end
-        end
-    end
-    ST.API.POWER_TEXT_READS = origFlag
-    RuleOff()
-    -- the Line layout keeps its marks (Forever: "~OOM")
-    Reset()
-    local v = Paint(Rich(face1))
-    local line = v:Text()
-    local lineOK = (not forever) or line:find("~", 1, true) ~= nil
-    Reset()
-    return bad == nil and pure and lineOK, string.format("%s; pieces %s; line %q", bad or (n .. " texts"),
-        tostring(pure), line)
-end)
-
-Try(forever and "T144 review S1 Forever: a Bar mana text the game did not draw is still named the model's (hover)"
-        or "T144 review S1 TBC: the face's plain mana is never named the model's", function()
-    CV.ResetToStyle()
-    CV.SetLayout("bar")
-    Item("mana", "on", true)
-    local origFlag = ST.API.POWER_TEXT_READS
-    ST.API.POWER_TEXT_READS = false -- the game refuses: the model's number is drawn
-    local face = Rich(face1)
-    local v = Paint(face)
-    local words = v.modelledWords
-    ST.API.POWER_TEXT_READS = origFlag
-    CV.ResetToStyle()
-    Reset()
-    local want = face.manaModelled == true
-    return (words ~= nil) == want and (not forever or want),
-        string.format("modelledWords %s manaModelled %s", tostring(words), tostring(face.manaModelled))
-end)
-
-Try(forever and "T144 Forever: Mana, Mana / max and Mana % are the game's -- SetFormattedText handed the secrets unread; "
-        .. "PaintPowerTexts draws them again with no layout; the flag off, nothing"
-        or "T144 TBC: the Bar's mana texts are the face's plain numbers (no draw.powerText)", function()
-    CV.ResetToStyle()
-    CV.SetLayout("bar")
-    for _, kind in ipairs({ "mana", "manaMax", "pct" }) do Item(kind, "on", true) end
-    local v = View()
-    if not forever then
-        Paint(Rich(face1))
-        local got = string.format("%s / %s / %s", tostring(Words(ItemFS(v, "mana"))),
-            tostring(Words(ItemFS(v, "manaMax"))), tostring(Words(ItemFS(v, "pct"))))
-        local okT = got == "4210 / 4210/6800 / 62%" and v.draw.powerText == nil and v:PaintPowerTexts() == 0
-        Reset()
-        return okT, got
-    end
-    local savedCC = rawget(_G, "CurveConstants")
-    _G.CurveConstants = { ScaleTo100 = { curve = "ScaleTo100" } }
-    Paint(Rich(face1)) -- the items made
-    local seen = {}
-    local function Spy(kind)
-        local fs = ItemFS(v, kind)
-        fs.SetFormattedText = function(self, fmt, ...)
-            -- the current value is secret (the player's max is plain on
-            -- this client); nothing here reads either
-            local n, first = select("#", ...), (...)
-            seen[#seen + 1] = { kind = kind, fmt = fmt, n = n, secret = issecretvalue(first) == true }
-            self.text = "1"
-        end
-        return fs
-    end
-    local fss = { Spy("mana"), Spy("manaMax"), Spy("pct") }
-    Paint(Rich(face1))
-    local first = #seen
-    local function Fmt(kind) for _, e in ipairs(seen) do if e.kind == kind then return e end end end
-    local m, mm, pc = Fmt("mana"), Fmt("manaMax"), Fmt("pct")
-    local handed = m and m.fmt == "%d" and m.n == 1 and m.secret and mm and mm.fmt == "%d/%d" and mm.n == 2 and mm.secret
-        and pc and pc.fmt == "%d%%" and pc.n == 1 and pc.secret
-    -- between ticks: the three again, no layout
-    local layouts, origLayout = 0, v.Layout
-    v.Layout = function(self, ...) layouts = layouts + 1; return origLayout(self, ...) end
-    local again = v:PaintPowerTexts()
-    v.Layout = origLayout
-    local between = again == 3 and #seen == first + 3 and layouts == 0
-    -- the flag off: the model's words, nothing handed to the font strings
-    ST.API.POWER_TEXT_READS = false
-    local before = #seen
-    Paint(Rich(face1))
-    local off = #seen == before and v:PaintPowerTexts() == 0 and Words(ItemFS(v, "mana")) == "4210"
-    ST.API.POWER_TEXT_READS = true
-    -- without CurveConstants the percent is refused, never made from a secret
-    _G.CurveConstants = nil
-    local absent, why = ST.API.DrawPowerText(fss[3], "player", 0, "pct")
-    for _, fs in ipairs(fss) do fs.SetFormattedText = nil end
-    _G.CurveConstants = savedCC
-    Reset()
-    return first == 3 and handed and between and off and absent == nil and why == "absent", string.format(
-        "first %d handed %s between %s (again %s layouts %d) off %s absent %s/%s", first, tostring(handed),
-        tostring(between), tostring(again), layouts, tostring(off), tostring(absent), tostring(why))
-end)
-
-if printing then
-    for _, c in ipairs(visCalls) do print(c[1] .. " from " .. c[2]) end
-end
 
 T.done()

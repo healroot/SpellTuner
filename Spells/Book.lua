@@ -67,7 +67,7 @@ Book._scanSerial, Book._talentsTriedAt = 0, nil
 
 -- The /st dump line (defined at the end of the file) is added by the book's
 -- first scan, for every class (review m2), as the other lazy dump lines are
--- (UI/Styles.lua, UI/ClockView.lua): a session that never read its book adds
+-- (UI/Styles.lua, UI/ClockStore.lua): a session that never read its book adds
 -- none.
 local TalentsDumpLine, talentsDumpAdded
 local function NoteTalentsDump()

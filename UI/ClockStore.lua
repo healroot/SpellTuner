@@ -25,11 +25,10 @@
 --   ClockStore.DumpLine()        the `clock:` line for /st dump
 --
 -- PURE but for ST.db (the store) and ST:Fire / ST:AddDumpLine: no frame, no
--- client call, no style token (a colour is the user's hex). T145b: nothing
--- reads it yet and db.clockLook is not rewritten at login -- MigrateStored is
--- called by the tests only until T145c wires it at MD_READY and deletes
--- UI/ClockView.lua (whose v1 rules, CV.Migrate and CV.ResetBarLook, are
--- COPIED below, not shared, so they leave with that file).
+-- client call, no style token (a colour is the user's hex). T145c: each clock
+-- host (UI/Clock_Forever.lua, UI/Widget.lua) calls MigrateStored at MD_READY;
+-- UI/ClockView.lua is gone, and its v1 rules (CV.Migrate, CV.ResetBarLook)
+-- live on below as copies.
 local _, ST = ...
 
 ST.ClockStore = ST.ClockStore or {}
@@ -652,7 +651,27 @@ local migrated = false
 local migrationNotes, migratedFrom = nil, nil
 local undo = nil -- session only: the look before the last preset
 
+-- T145c: the `clock:` dump line is registered once there is something to
+-- say -- a migration from an older store, or a look that is not the default
+-- -- so a session that never touched the clock dumps what it did before
+-- (T113: with no dump line registered the dump is byte-identical).
+local dumpAdded = false
+local function NoteDump()
+    if dumpAdded then return end
+    local db = ST.db
+    local look = type(db) == "table" and db.clockLook or nil
+    local say = migratedFrom ~= nil and migratedFrom ~= "v3" and migratedFrom ~= "none"
+    if not say and type(look) == "table" and look.v == Store.VERSION and #Store.Differs(Store.Look()) > 0 then
+        say = true
+    end
+    if say then
+        dumpAdded = true
+        ST:AddDumpLine("clock", Store.DumpLine)
+    end
+end
+
 local function Changed()
+    NoteDump()
     ST:Fire("CLOCK_LOOK")
 end
 
@@ -667,7 +686,7 @@ function Store.MigrateStored(force)
     local look, notes, from = Store.Migrate(db.clockLook)
     db.clockLook = look
     migrationNotes, migratedFrom = notes, from
-    ST:AddDumpLine("clock", Store.DumpLine)
+    NoteDump()
     return true, notes
 end
 

@@ -1,134 +1,77 @@
--- The TBC mana clock: "OOM 1:20 v  rest 2:10" over a five-second-rule bar
--- that fills over 5 s after each mana spend (amber while it fills, green once
--- spirit regen runs). T82 (C4 of docs/PLAN-refactor-ux.md, review U4, mockup
--- M6): one clock look on both lines -- the kit's panel (UI.StylizeFrame in the
--- theme's `bg` with a 1-px edge), the kit's font (UI.FONT), the text centred
--- at the top, and the bar in Forever's 160 x 4 slot with a black backing one
--- pixel wider all round (UI/Clock_Forever.lua's layout, 180 x 30). The bar
--- still means the five-second rule here; on Forever it is the real pool. The
--- unlock preview says "SpellTuner - drag me" in the accent over a full accent
--- bar. All show/hide decisions live in ST:UpdateVisibility() -- nothing else
--- may call Show/Hide on this frame. Hovering shows the clock tooltip
--- (UI/Tip_TBC.lua's Tip:Clock); that requires mouse input on the frame, so
--- db.widgetTooltip turns both off together -- and with them the frame's habit
--- of swallowing clicks in its own rectangle, which is what a clock parked in
--- the middle of the screen wants. The setting is THIS frame's alone: the
--- minimap button and the ElvUI datatexts keep their tooltips.
+-- The TBC mana clock. All show/hide decisions live in ST:UpdateVisibility() --
+-- nothing else may call Show/Hide on this frame. Hovering shows the clock
+-- tooltip (UI/Tip_TBC.lua's Tip:Clock); that requires mouse input on the
+-- frame, so db.widgetTooltip turns both off together -- and with them the
+-- frame's habit of swallowing clicks in its own rectangle, which is what a
+-- clock parked in the middle of the screen wants. The setting is THIS frame's
+-- alone: the minimap button and the ElvUI datatexts keep their tooltips.
 --
--- T93 (docs/SPEC-next.md 7.1, decisions 14 and 17): the words are drawn by
--- UI/ClockView.lua from ST:GetClockFace() -- the label, the value and the
--- secondary segment at FIXED places (no longer centred), the same bytes as
--- ST:GetDisplayString; the preview is the view's message line, the pulse the
--- view's. A left-click opens the window out of combat only, as on Forever.
--- The mover seam (ApplyPoint, ResetPosition, Preview) is ST.Widget, provided
--- as ST.ClockWidget -- the Forever clock provides the same name.
+-- T93 (docs/SPEC-next.md 7.1, decisions 14 and 17): the preview is the
+-- renderer's message line, the pulse the renderer's. A left-click opens the
+-- window out of combat only, as on Forever. The mover seam (ApplyPoint,
+-- ResetPosition, Preview) is ST.Widget, provided as ST.ClockWidget -- the
+-- Forever clock provides the same name.
 --
--- T98 (docs/SPEC-next.md 7.2-7.3, decisions 13 and 15): the view owns the
--- layout (db.clockLook: line / compact / bar), the panel (UI.Skin(widget,
--- "clock") -- the style's clock role, the user's overrides) and the bar
--- (built by the view; its source the five-second rule by default, or the
--- real pool, the time to OOM, none; the spark). This file hands it the
--- line's facts and the two sources it reads itself (the pool, the 5SR),
--- rebuilds the look on CLOCK_LOOK / STYLE_CHANGED, and keeps the frame, the
--- drag, the hover and the one visibility owner.
---
--- T115 (clock v2, docs/tasks/T115-clock-bars-frame.md): the mana bar AND the
--- five-second rule on every layout (the view's bars.<layout>: stacked / veil /
--- chip, the order, the strip's thickness, after the rule, the texture); this
--- line reads the pool plain, learns the 2-s regen tick (ST.Regen:RegenTick)
--- and offers the client's two bar textures. The frame's scale per layout
--- (frame.<layout>.scale) is applied here with SetScale, the clock's centre
--- kept (CV.KeepCentre) by rewriting db.pos.
+-- T145c (docs/SPEC-clock-v3.md 2.5; docs/tasks/T145c-clock-bar.md): the same
+-- bar as Forever's, drawn by UI/ClockBar.lua (it replaces UI/ClockView.lua):
+-- the face is ST:GetClockFace() (TBC keeps its own sigma precision and latch,
+-- Engine/TTO.lua, so no steady latch here and no quiet-pool signal: the pool
+-- is read plain and the face's pct says FULL), its words ST.ClockWords.Build,
+-- the pool and its mana texts through the TBC adapter (ST.API.DrawUnitPower /
+-- DrawUnitPowerMax / DrawPowerText, plain reads), the moving line from
+-- ST.Regen.fsrEnd. The look is UI/ClockStore.lua's, migrated once at MD_READY.
 local _, ST = ...
 local UI = ST.UI
 
-local widget, view, bar, barBack, strip, stripBack
+local widget, renderer
 local shown = false
 local forceUntil = 0        -- first-run / unlock preview
 local flashedThisFight = false
 
--- T98 (docs/SPEC-next.md 7.2-7.3): what this line tells the renderer about
--- itself -- the bar's own meaning (the five-second rule, decision 15 (a)), a
--- pool it can read (so a ring may draw it, T104), no modelled pool, its widest
--- label, and its own switches (db.showRest / db.showCooldown: the face
--- already obeys them, the view is told so the two agree). The bar's slot (M6:
--- Forever's 160 x 4) and the five-second rule's amber and green are the
--- view's (UI/ClockView.lua) under the line layout.
--- T116: cd = true -- this line has a cooldown secondary, so the Text tab
--- offers it in a Right slot.
-local facts = { line = "tbc", poolPlain = true, model = false, tick = true, textures = true,
-    labelSample = "FULL", show = {}, cd = true }
-ST.ClockView.lineFacts = facts
-local function Facts()
-    facts.show.rest = ST.db.showRest ~= false
-    facts.show.cd = ST.db.showCooldown ~= false
-    return facts
-end
-
--- The bars' sources this line draws itself: the real pool (read plain here,
--- drawn as a fraction), the seconds left in the five-second rule, the spend
--- that started it (the chip's swipe) and the last regen tick (the strip's
--- tick mark).
+-- This line's sources for the renderer: the pool and its texts (plain reads
+-- through the adapter) and the five-second rule's end (ST.Regen's own clock).
 local draw = {
-    pool = function(b)
-        local max = UnitPowerMax("player", 0)
-        local cur = UnitPower("player", 0)
-        b:SetMinMaxValues(0, 1)
-        if type(max) == "number" and max > 0 and type(cur) == "number" then
-            b:SetValue(math.max(0, math.min(1, cur / max)))
-        else
-            b:SetValue(0)
-        end
-    end,
-    fsr = function() return ST.Regen and ST.Regen:FSRRemaining() or nil end,
-    spend = function()
+    pool = function(b) ST.API.DrawUnitPower(b, "player", 0) end,
+    poolMax = function(b) ST.API.DrawUnitPowerMax(b, "player", 0) end,
+    fsrEnd = function()
         local e = ST.Regen and ST.Regen.fsrEnd
-        if type(e) == "number" and e > 0 then return e - 5 end
+        if type(e) == "number" and e > 0 then return e end
         return nil
     end,
-    tick = function(now)
-        if ST.Regen and ST.Regen.RegenTick then return ST.Regen:RegenTick(now) end
-        return nil
+    powerText = function(fs, kind)
+        if type(ST.API.DrawPowerText) ~= "function" then return false end
+        return ST.API.DrawPowerText(fs, "player", 0, kind) == true
     end,
 }
 
--- T93 / T98: the resolved look (UI/ClockView.lua: the layout's defaults, the
--- style's clock role, the user's overrides), made again on CLOCK_LOOK and
--- STYLE_CHANGED; the switches refreshed in place at each paint (4 a second).
+-- The look drawn (a validated v3 copy), and the words, one table reused.
 local look
-local function Look()
-    local f = Facts()
-    if not look then look = ST.ClockView.Look(f) end
-    look.show.rest, look.show.cd = f.show.rest, f.show.cd
-    return look
+local words = {}
+
+local PaintWidget -- below CreateWidget, which its OnUpdate calls
+
+local function Unlocked()
+    return not ST.db.locked or GetTime() < forceUntil
 end
 
 local function CreateWidget()
     widget = CreateFrame("Frame", "SpellTunerWidget", UIParent, "BackdropTemplate")
-    widget:SetSize(180, 32)
+    widget:SetSize(200, 8)
     widget:SetFrameStrata("MEDIUM")
     widget:SetMovable(true)
     widget:SetClampedToScreen(true)
     widget:EnableMouse(false)
     widget:RegisterForDrag("LeftButton")
 
-    -- T93: the words, in three fixed segments (UI/ClockView.lua); T98: and
-    -- the layout, the panel (UI.Skin(widget, "clock")) and the bar with its
-    -- black backing, the view's -- 160 x 4 under the line layout, the
-    -- five-second rule by default
-    view = ST.ClockView.Build(widget, Look(), draw)
-    widget.view = view
-    bar, barBack, strip, stripBack = view.bar, view.barBack, view.strip, view.stripBack
-    widget.bar = bar
-    widget.barBack = barBack
-    widget.strip = strip
-    widget.stripBack = stripBack
-    widget.barEdge, widget.stripEdge = view.barEdge, view.stripEdge -- T139: the black edge round each
-    widget:SetScale(view:Scale())
+    -- T145c: the renderer, laid out once per look
+    renderer = ST.ClockBar.New(widget, draw)
+    widget.renderer = renderer
+    look = ST.ClockStore.Look()
+    renderer:Apply(look)
 
     widget:SetScript("OnDragStart", function(self)
         -- draggable when unlocked OR during the first-run/unlock preview
-        if not ST.db.locked or GetTime() < forceUntil then self:StartMoving() end
+        if Unlocked() then self:StartMoving() end
     end)
     widget:SetScript("OnDragStop", function(self)
         self:StopMovingOrSizing()
@@ -138,7 +81,7 @@ local function CreateWidget()
 
     -- Hover tooltip (Tip:Clock, the minimap button's words) and a left-click
     -- shortcut to the window. This needs mouse input on the widget, which
-    -- also means it swallows clicks in its own 180x30 rectangle -- hence the
+    -- also means it swallows clicks in its own rectangle -- hence the
     -- setting. T82: the hints are label / value pairs, Shift the detail key.
     widget:SetScript("OnEnter", function(self)
         if ST.db.widgetTooltip == false then return end
@@ -159,83 +102,68 @@ local function CreateWidget()
     end)
 
     -- pulse animation (used by ST:Alert and the one-per-fight 30s flash):
-    -- the view's since T93
-    widget.pulse = view.pulse
+    -- the renderer's
+    widget.pulse = renderer.pulse
 
     widget:Hide()
     ST:ApplyWidgetPosition()
 
-    -- Rendering only; the model is event/tick driven elsewhere. The text is
-    -- rebuilt 4x/s (the latch in TTO.lua means it can only change every 1s
-    -- anyway); the bar keeps a 10 Hz refresh so it fills smoothly.
-    local acc, textAcc = 0, 1
+    -- Rendering only; the model is event/tick driven elsewhere. The words
+    -- and the pool 4x/s (the latch in TTO.lua means the time can only change
+    -- every 1s anyway); the moving line is the renderer's own driver.
+    local acc = 1
     widget:SetScript("OnUpdate", function(_, elapsed)
         acc = acc + elapsed
-        if acc < 0.1 then return end
-        textAcc = textAcc + acc
+        if acc < 0.25 then return end
         acc = 0
-        if UI.px(1, widget) ~= view.snappedPx then view:Snap() end -- re-snap after a scale change
-
-        if not ST.db.locked or GetTime() < forceUntil then
-            -- T82 (M6): the preview in the accent, over a full accent bar
-            view:Message("SpellTuner - drag me", UI.RGB("accent"))
-            view:FillBar(UI.RGB("accent"))
-            return
-        end
-
-        if textAcc >= 0.25 then
-            textAcc = 0
-            -- T93: the face, drawn in segments; no face yet draws "OOM ..."
-            view:Paint(ST:GetClockFace(), Look())
-
-            -- one attention event per fight: first time TTO crosses below 30s
-            if not flashedThisFight then
-                local s = ST:GetManaState()
-                if s and s.mode == "oom" and s.tto and s.tto < 30 and s.stable then
-                    flashedThisFight = true
-                    view:Pulse()
-                end
-            end
-        end
-
-        -- T115: the mana bar and the five-second rule (amber while it runs,
-        -- green once spirit regen runs; the view's step moves the rule every
-        -- frame between these paints)
-        view:PaintBar(GetTime())
+        PaintWidget(GetTime())
     end)
 end
 
--- T98: a new look (a layout, an override: CLOCK_LOOK; a style: STYLE_CHANGED)
--- -- the view rebuilt inside the frame, never shown or hidden here. After a
--- CLOCK_LOOK (the user's change) the words and the bar are drawn at once;
--- after a style the next paint draws them (a style changes paint only).
+-- PaintWidget(now): one paint -- the preview's line, or the face's words;
+-- then the pool and its texts. Text and colour only (T145c, P5).
+PaintWidget = function(now)
+    if not renderer then return end
+    renderer:Snap() -- re-snap after a scale change, else a compare
+    if Unlocked() then
+        -- T82 (M6): the preview in the accent
+        renderer:Message("SpellTuner - drag me", UI.RGB("accent"))
+        renderer:PaintPower(true)
+        return
+    end
+    renderer:Message(nil)
+    ST.ClockWords.Build(ST:GetClockFace(), look, nil, now, words, false)
+    renderer:Paint(words)
+    renderer:PaintPower(true)
+
+    -- one attention event per fight: first time TTO crosses below 30s
+    if not flashedThisFight then
+        local s = ST:GetManaState()
+        if s and s.mode == "oom" and s.tto and s.tto < 30 and s.stable then
+            flashedThisFight = true
+            renderer:Pulse()
+        end
+    end
+end
+
+-- T145c: a new look (CLOCK_LOOK: the user's change; STYLE_CHANGED: the kit's
+-- font may have moved) -- laid out again inside the frame, never shown or
+-- hidden here. A Width change keeps the clock's centre where it was.
 local function NewLook(repaint)
-    look = nil
-    local l = Look()
-    if not view then return end
+    look = ST.ClockStore.Look()
+    if not renderer then return end
     local w0, h0 = widget:GetWidth(), widget:GetHeight()
-    local s0 = widget:GetScale()
-    view:SetLook(l)
-    local s1 = view:Scale()
-    if s1 ~= s0 then
-        -- T115: the scale per layout, the clock's centre kept where it was
+    renderer:Apply(look)
+    local w1, h1 = look.width, look.height
+    if w1 ~= w0 and type(w0) == "number" and type(h0) == "number" then
         local pos = ST.db.pos
         if type(pos) ~= "table" then pos = { "CENTER", "CENTER", 0, -140 } end
         if #pos ~= 4 then pos = { pos[1], pos[1], pos[2], pos[3] } end
-        local x1, y1 = ST.ClockView.KeepCentre(pos[1], pos[3], pos[4], s0, s1, w0, h0,
-            widget:GetWidth(), widget:GetHeight())
+        local x1, y1 = ST.ClockBar.KeepCentre(pos[1], pos[3], pos[4], 1, 1, w0, h0, w1, h1)
         ST.db.pos = { pos[1], pos[2], x1, y1 }
-        widget:SetScale(s1)
         ST:ApplyWidgetPosition()
     end
-    if not repaint then return end
-    if not ST.db.locked or GetTime() < forceUntil then
-        view:Message("SpellTuner - drag me", UI.RGB("accent"))
-        view:FillBar(UI.RGB("accent"))
-    else
-        view:Paint(ST:GetClockFace(), l)
-        view:PaintBar(GetTime())
-    end
+    if repaint then PaintWidget(GetTime()) end
 end
 ST:RegisterCallback("CLOCK_LOOK", function() NewLook(true) end)
 ST:RegisterCallback("STYLE_CHANGED", function() NewLook(false) end)
@@ -252,7 +180,7 @@ function ST:ApplyWidgetPosition()
 end
 
 function ST:PulseWidget()
-    if widget and shown then view:Pulse() end
+    if widget and shown then renderer:Pulse() end
 end
 
 function ST:ForceWidgetPreview(seconds)
@@ -268,6 +196,7 @@ end
 --   ResetPosition()     the default place (ST.DEFAULTS.pos), stored and applied
 --   Preview(seconds)    the clock up and draggable for `seconds` (60), 0 ends it
 --   frame               the frame (nil until MD_READY)
+--   renderer            the renderer (UI/ClockBar.lua), T145c
 -- None of them shows or hides the frame: ST:UpdateVisibility does.
 --------------------------------------------------------------------------------
 ST.Widget = ST.Widget or {}
@@ -288,6 +217,11 @@ function Widget:Preview(seconds)
     ST:ForceWidgetPreview(tonumber(seconds) or 60)
 end
 
+-- One paint now (the frame's OnUpdate calls it 4x/s; a suite may too).
+function Widget:Paint(now)
+    PaintWidget(now or GetTime())
+end
+
 ST:Provide("ClockWidget", Widget)
 
 --------------------------------------------------------------------------------
@@ -299,7 +233,7 @@ ST:Provide("ClockWidget", Widget)
 function ST:UpdateVisibility()
     if not widget then return end
 
-    local unlocked = not ST.db.locked or GetTime() < forceUntil
+    local unlocked = Unlocked()
     local wantShown
     if unlocked then
         widget:EnableMouse(true)
@@ -326,10 +260,11 @@ function ST:UpdateVisibility()
 end
 
 ST:RegisterCallback("MD_READY", function()
+    -- T145c: the stored look made v3 once a session (UI/ClockStore.lua)
+    ST.ClockStore.MigrateStored()
     CreateWidget()
     Widget.frame = widget
-    Widget.view = view   -- T98: the renderer (a preview or a suite reads its layout)
-    Widget.facts = facts -- T98: this line's bar facts (CV.BarsOK, CV.Look)
+    Widget.renderer = renderer
     ST:UpdateVisibility()
 end)
 

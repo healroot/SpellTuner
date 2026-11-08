@@ -131,10 +131,9 @@ rail:SetRows({ { id = "ov", text = "Overview", fixed = true },
                { id = "ht", text = "Healing Touch" }, { id = "rj", text = "Rejuvenation" } })
 rail:Select("ht")
 local clock = flavour == "forever" and _G.SpellTunerClock or _G.SpellTunerWidget
--- T139: the Bar layout ships without a panel; these checks are about the
--- panel a style paints, so they pin the style's own fill and edge
-ST.ClockView.Set("panel.fill", "bg")
-ST.ClockView.Set("panel.edge", "border")
+-- T145c (docs/SPEC-clock-v3.md 1.3, 4.6): the Bar has no panel and its
+-- colours are the user's hex, so no style paints the clock; its regions are
+-- in the golden, and the checks below hold that a style leaves it alone.
 
 local ROOTS = { nav = nav.frame, host = host, clock = clock }
 
@@ -277,12 +276,17 @@ end
 -- size any more, so its hidden measuring probe (one FontString) is never made,
 -- 36 regions; every other line of the section byte-identical to T142's (diffed
 -- with --print); captured with --golden, every other section unchanged.
+-- T145c re-based the clock section (docs/SPEC-clock-v3.md 4.6): the renderer is
+-- UI/ClockBar.lua -- the 200 x 8 frame, the bar, its back and 1-px edge, the
+-- moving line and its dark edge (hidden: no rule), three mask pairs, the text
+-- holder with seven texts and the message, the line's driver frame: 23
+-- regions, no panel; captured with --golden, every other section unchanged.
 --------------------------------------------------------------------------------
 local GOLDEN = {
     forever = {
         nav = { 29, 1225158578 },
         host = { 52, 441673342 },
-        clock = { 36, 1226321320 },
+        clock = { 23, 395075287 },
         palette = { 33, 1948568416 },
         text = { 15, 1382467428 },
         fonts = { 12, 1125933103 },
@@ -290,7 +294,7 @@ local GOLDEN = {
     tbc = {
         nav = { 29, 1015818899 },
         host = { 52, 98457140 },
-        clock = { 36, 1772210151 },
+        clock = { 23, 364593482 },
         palette = { 33, 1948568416 },
         text = { 15, 1382467428 },
         fonts = { 12, 1125933103 },
@@ -310,11 +314,11 @@ check("at login Flat is applied (UI.STYLE flat, db.ui.style flat, STYLE_CHANGED 
       and changed[1] == "flat",
     string.format("STYLE %s, saved %s, %d fired", tostring(UI.STYLE), tostring(ST.db and ST.db.ui and ST.db.ui.style),
         changedAtLogin))
-check("the regions are registered by role once built (UI.skinned, UI.pixelFrames its old name)",
+check("the regions are registered by role once built (UI.skinned, UI.pixelFrames its old name); the clock is not (T145c)",
     registry ~= nil and UI.pixelFrames == UI.skinned and registry[nav.frame] ~= nil
       and registry[nav.frame].role == "window" and registry[btn] ~= nil and registry[btn].role == "button"
       and registry[cb] ~= nil and registry[cb].role == "field" and registry[rail.frame] ~= nil
-      and registry[rail.frame].role == "pane" and clock ~= nil and registry[clock] ~= nil,
+      and registry[rail.frame].role == "pane" and clock ~= nil and registry[clock] == nil,
     registry and string.format("nav %s, button %s, check %s, rail %s, clock %s",
         tostring(registry[nav.frame] and registry[nav.frame].role), tostring(registry[btn] and registry[btn].role),
         tostring(registry[cb] and registry[cb].role), tostring(registry[rail.frame] and registry[rail.frame].role),
@@ -441,7 +445,8 @@ do
           and is(rail.frame.bg, 0.05, 0.07, 0.09, 1) and type(rail.frame._skinStrips) == "table"
           and is(rail.bar.bg, 1, 1, 1, 0.1),
         string.format("button %s, check %s, rail %s, bar %s", C(btn.bg), C(cb.bg), C(rail.frame.bg), C(rail.bar.bg)))
-    check("the clock repaints (its fill)", clock ~= nil and is(clock.bg, 0.05, 0.07, 0.09, 0.96), clock and C(clock.bg))
+    -- T145c: the Bar has no panel and its colours are the user's: a style leaves it alone
+    check("the clock is not repainted (no panel)", clock ~= nil and clock.bg == nil, clock and C(clock.bg))
     local face, size, flags = UI.fontObjects[UI.FONT]:GetFont()
     local cls = UI.fontObjects[UI.FONT_CLASS]
     check("the fonts are re-faced at their sizes, the class fonts in the accent",
@@ -684,7 +689,7 @@ do
         and bodyFont.shadowX == 1 and bodyFont.shadowY == -1
         and NavStrips(0.10) and is(nav.frame.bg, PANEL[1], PANEL[2], PANEL[3], 0.96)
         and is(btn.bg, 0.061, 0.095, 0.12, 0.6) and is(btn.border, 1, 1, 1, 0.30)
-        and clock ~= nil and is(clock.bg, PANEL[1], PANEL[2], PANEL[3], 0.96)
+        and clock ~= nil and clock.bg == nil -- T145c: no panel on the clock
         and E ~= nil and E.Following ~= nil and E.Following() == nil
     local dumpClone = DumpLine()
     local okF = UI.SetStyle and UI.SetStyle("flat")

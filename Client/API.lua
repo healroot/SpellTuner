@@ -332,9 +332,8 @@ end
 local smoothMode
 function ST.API.DrawUnitPower(bar, unit, powerType, smooth)
     if type(bar) ~= "table" then return false, "absent" end
-    local maxFn = ST.API.Has("UnitPowerMax")
     local curFn = ST.API.Has("UnitPower")
-    if type(maxFn) ~= "function" or type(curFn) ~= "function" then return false, "absent" end
+    if type(curFn) ~= "function" then return false, "absent" end
     -- only a found mode is kept: a client without one asks again (cheap)
     if smooth and smoothMode == nil then
         pcall(function()
@@ -347,11 +346,26 @@ function ST.API.DrawUnitPower(bar, unit, powerType, smooth)
     local mode = smooth and smoothMode or nil
 
     local ok = pcall(function()
-        local max = maxFn(unit, powerType)
         local cur = curFn(unit, powerType)
-        -- Never inspected -- a secret max/cur goes straight into the bar.
-        bar:SetMinMaxValues(0, max)
+        -- Never inspected -- a secret value goes straight into the bar.
         if mode then bar:SetValue(cur, mode) else bar:SetValue(cur) end
+    end)
+    if not ok then return false, "error" end
+    return true
+end
+
+-- T145c (docs/SPEC-clock-v3.md 2.1, T142-T143 review W1): DrawUnitPower is the
+-- VALUE only, so the frequent power event never hands the bar a new range
+-- (SetMinMaxValues restarts the client's easing); the range is this one's,
+-- called on a look, the tick and UNIT_MAXPOWER. Same shape: fetched through
+-- Has, handed straight to the bar's own setter inside one pcall, never read.
+function ST.API.DrawUnitPowerMax(bar, unit, powerType)
+    if type(bar) ~= "table" then return false, "absent" end
+    local maxFn = ST.API.Has("UnitPowerMax")
+    if type(maxFn) ~= "function" then return false, "absent" end
+    local ok = pcall(function()
+        -- Never inspected -- a secret max goes straight into the bar.
+        bar:SetMinMaxValues(0, maxFn(unit, powerType))
     end)
     if not ok then return false, "error" end
     return true
@@ -408,7 +422,7 @@ function ST.API.SetGradient(tex, r1, g1, b1, a1, r2, g2, b2, a2, orient)
     return false, "error"
 end
 
--- T142: whether the client has a texture atlas (UI/ClockView.lua's game bar
+-- T142: whether the client has a texture atlas (UI/ClockBar.lua's game bar
 -- frame asks before it draws one): C_Texture.GetAtlasInfo answers a table.
 -- Only the answer's type is looked at. -> true, or false and "absent" /
 -- "error" / "secret".

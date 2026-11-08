@@ -6,8 +6,8 @@
 -- widget and its hover, painting the pool). Forever only:
 -- the modelled pool exists because current mana is secret on this client
 -- (Facts); nothing here is meaningful on TBC, which reads UnitPower directly.
--- T93 (docs/SPEC-next.md 7.1): the clock's text is UI/ClockView.lua's three
--- segments (read back through ClockText below), and the Forever gaps F1, F3-F6
+-- T93 (docs/SPEC-next.md 7.1): the clock's words (since T145c the face's line,
+-- read back through ClockText below; the Bar's texts through Drawn), and the Forever gaps F1, F3-F6
 -- and the mover seam are held near the end.
 HARNESS_FLAVOUR = "forever"
 
@@ -157,36 +157,29 @@ end
 -- below drives the live ST.Pool model and the ST.Clock frame that paints it
 -- (T68, P24: the model is the pool's; ST.Clock.model is only an alias).
 --------------------------------------------------------------------------------
--- T131: Bar is the default layout; these checks measure the Line layout,
--- so the player's saved choice says "line" (a saved layout is kept).
-ST.ClockView.SetLayout("line")
+-- T145c: the Bar is the only layout (docs/SPEC-clock-v3.md D1).
 local Clock = ST.Clock
 local Pool = ST.Pool
 local model = Pool and Pool.model
 
--- T93: the clock's words as drawn, colour codes removed. Since T93 the text is
--- three font strings at fixed places (UI/ClockView.lua: label, value,
--- secondary), or the preview's message line over them; before it, one font
--- string (Clock.text). The same words either way: label, one space, the value,
--- two spaces, the secondary.
+-- T145c: the clock's words as a line -- ClockFace.LineString of the face the
+-- clock paints (the words the feeds and the hover use), colour codes removed;
+-- the preview's message while it stands in for a face. The Bar's own texts
+-- are read through Drawn(kind) (UI/ClockBar.lua; tools/clockbarcheck.lua holds
+-- the drawing itself).
 local function StripCodes(s) return (s:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) end
 local function ClockText()
-    local v = Clock.view
-    if v then
-        if v.msg and v.msg:IsShown() then return StripCodes(v.msg:GetText()) end
-        local function Seg(fs)
-            if not fs or not fs:IsShown() then return nil end
-            local t = fs:GetText()
-            if t == nil or t == "" then return nil end
-            return StripCodes(t)
-        end
-        local l, val, s = Seg(v.label), Seg(v.value), Seg(v.second)
-        local out = l or ""
-        if val then out = out .. " " .. val end
-        if s then out = out .. "  " .. s end
-        return out
-    end
-    return Clock.text and Clock.text:GetText() or ""
+    local r = Clock.renderer
+    if r and r.msgOn then return StripCodes(r.msg:GetText() or "") end
+    local face = ST.ClockFace.Current(GetTime())
+    if not face then return "" end
+    return StripCodes(ST.ClockFace.LineString(face))
+end
+local function Drawn(kind)
+    local r = Clock.renderer
+    local fs = r and r.texts and r.texts[kind]
+    if not fs or not fs:IsShown() then return nil end
+    return fs:GetText()
 end
 
 -- item 1: assumed full at login.
@@ -310,7 +303,10 @@ do
     local origIsSecretValue = _G.issecretvalue
     _G.issecretvalue = function(v) calls[#calls + 1] = v; return origIsSecretValue(v) end
     local bar = CreateFrame("StatusBar", nil, UIParent)
+    -- T145c: the range is DrawUnitPowerMax's, the value DrawUnitPower's (value only)
+    local maxOk = ST.API.DrawUnitPowerMax(bar, "player", 0)
     local drawOk = ST.API.DrawUnitPower(bar, "player", 0)
+    if maxOk ~= true then drawOk = false end
     _G.issecretvalue = origIsSecretValue
 
     local sawIt = false
@@ -338,16 +334,17 @@ do
         eased and plain.valueMode == nil,
         string.format("mode=%s plain=%s", tostring(bar.valueMode), tostring(plain.valueMode)))
 
-    local view, frame = Clock.view, Clock.frame
+    -- T145c: the renderer's PaintPower (the bar's value and the game's texts)
+    local R, frame = Clock.renderer, Clock.frame
     ST.db.clock.shown = true
     model.mana = model.max * 0.5
     Clock:Refresh()
-    local n, orig = 0, view.PaintMana
-    view.PaintMana = function(self, ...) n = n + 1; return orig(self, ...) end
+    local n, orig, had = 0, R.PaintPower, rawget(R, "PaintPower")
+    R.PaintPower = function(self, ...) n = n + 1; return orig(self, ...) end
     S.Fire("UNIT_POWER_FREQUENT", "party1", "MANA")
     local other = n
     S.Fire("UNIT_POWER_FREQUENT", "player", "MANA")
-    view.PaintMana = orig
+    R.PaintPower = had
     check("T143: a player power change repaints the bar, another unit's does not",
         frame:IsShown() and other == 0 and n == 1,
         string.format("shown=%s other=%d player=%d", tostring(frame:IsShown()), other, n))
@@ -432,13 +429,14 @@ do
             tostring(afterHide)))
 
     -- a player power change repaints the game's mana texts too, no layout
-    local view = Clock.view
-    local n, orig = 0, view.PaintPowerTexts
-    view.PaintPowerTexts = function(self, ...) n = n + 1; return orig(self, ...) end
+    -- (T145c: one paint, PaintPower, draws the bar and the game's texts)
+    local R = Clock.renderer
+    local n, orig, had = 0, R.PaintPower, rawget(R, "PaintPower")
+    R.PaintPower = function(self, ...) n = n + 1; return orig(self, ...) end
     S.Fire("UNIT_POWER_FREQUENT", "party1", "MANA")
     local other = n
     S.Fire("UNIT_POWER_FREQUENT", "player", "MANA")
-    view.PaintPowerTexts = orig
+    R.PaintPower = had
     check("T144: a player power change repaints the game's mana texts, another unit's does not",
         Clock.frame:IsShown() and other == 0 and n == 1,
         string.format("shown=%s other=%d player=%d", tostring(Clock.frame:IsShown()), other, n))
@@ -737,70 +735,52 @@ do
 end
 
 --------------------------------------------------------------------------------
--- T41 (docs/SPEC-forever-ui.md 4.4): the clock under the theme -- the `bg`
--- fill and a pixel-snapped 1-px border, and a 1-px black backing behind the
--- 160x4 mana bar so it reads on bright ground; both re-snapped when the UI
--- scale changes, without a reload (the manager never touches the clock, 6.1).
+-- T41 (docs/SPEC-forever-ui.md 4.4), re-based by T145c (docs/SPEC-clock-v3.md
+-- 1.3: the Bar has no panel): the clock frame is not filled; with Frame =
+-- Border the bar's black edge is one physical pixel wider on every side, and
+-- re-snapped when the UI scale changes, without a reload.
 --------------------------------------------------------------------------------
 do
     local UI = ST.UI
-    local P = UI.PALETTE
     local w = Clock.frame
+    local R = Clock.renderer
+    local Store = ST.ClockStore
     local function Near(a, b) return type(a) == "number" and type(b) == "number" and math.abs(a - b) < 1e-9 end
-    local function SameColour(got, want)
-        return type(got) == "table" and type(want) == "table" and Near(got[1], want[1]) and Near(got[2], want[2])
-            and Near(got[3], want[3]) and Near(got[4], want[4])
-    end
-
+    local savedFrame = Store.Get("frame")
     S.physicalHeight = 1080
     w.GetEffectiveScale = function() return 1 end
-    ST.ClockView.Set("bars.line.join", "stacked") -- T139: the moving line is the default now
+    Store.Set("frame", "border")
     S.Tick(0.5)
+    local look = Store.Look()
     local e = UI.px(1, w)
-    local bd = w.backdrop or {}
-    check("the clock is filled with the theme's bg and edged in one physical pixel",
-        SameColour(w.bg, P.bg) and SameColour(w.border, P.border) and Near(bd.edgeSize, e)
-        and bd.insets ~= nil and Near(bd.insets.left, e) and UI.pixelFrames[w] ~= nil,
-        string.format("bg=%s,%s,%s,%s edge=%s px=%s", tostring(w.bg and w.bg[1]), tostring(w.bg and w.bg[2]),
-            tostring(w.bg and w.bg[3]), tostring(w.bg and w.bg[4]), tostring(bd.edgeSize), tostring(e)))
+    local edge = R and R.edge
+    check("the clock has no panel; the bar's black edge is one physical pixel wider on every side (Border)",
+        w.bg == nil and edge ~= nil and edge:IsShown() and type(edge.color) == "table" and edge.color[1] == 0
+        and edge.color[2] == 0 and edge.color[3] == 0 and Near(edge.w, look.width + 2 * e)
+        and Near(edge.h, look.height + 2 * e),
+        string.format("bg=%s edge=%s w=%s h=%s want %s x %s", tostring(w.bg), tostring(edge ~= nil),
+            tostring(edge and edge.w), tostring(edge and edge.h), tostring(look.width + 2 * e),
+            tostring(look.height + 2 * e)))
 
-    -- T115 (clock v2): the mana bar 160 x 4 over the 160 x 3 five-second-rule
-    -- strip, each on its own black backing; T139: the backing the bar's size,
-    -- its black edge one physical pixel (border 1) wider on every side
-    local back, sback = Clock.barEdge, Clock.stripEdge
-    check("the mana bar and the 5SR strip each have a black edge one physical pixel wider on every side",
-        back ~= nil and back.parentFrame == w and SameColour(back.color, { 0, 0, 0, 1 })
-        and Near(back.w, 160 + 2 * e) and Near(back.h, 4 + 2 * e)
-        and Clock.barBack.w == 160 and Clock.barBack.h == 4
-        and Clock.bar and Clock.bar.w == 160 and Clock.bar.h == 4
-        and sback ~= nil and sback.parentFrame == w and SameColour(sback.color, { 0, 0, 0, 1 })
-        and Near(sback.w, 160 + 2 * e) and Near(sback.h, 3 + 2 * e)
-        and Clock.strip and Clock.strip.w == 160 and Clock.strip.h == 3,
-        string.format("back=%s w=%s h=%s want %s x %s; strip back=%s %s x %s", tostring(back ~= nil),
-            tostring(back and back.w), tostring(back and back.h), tostring(160 + 2 * e), tostring(4 + 2 * e),
-            tostring(sback ~= nil), tostring(sback and sback.w), tostring(sback and sback.h)))
-
-    -- a UI scale change: the next tick re-snaps the edge and the backing
+    -- a UI scale change: the next tick re-snaps the edge
     w.GetEffectiveScale = function() return 0.64 end
     S.Tick(0.5)
     local e2 = UI.px(1, w)
-    local bd2 = w.backdrop or {}
-    check("a UI scale change re-snaps the clock's edge and the bar's backing without a reload",
-        not Near(e, e2) and Near(bd2.edgeSize, e2) and back ~= nil and Near(back.w, 160 + 2 * e2)
-        and Near(back.h, 4 + 2 * e2) and SameColour(w.bg, P.bg),
-        string.format("edge=%s backW=%s want px=%s", tostring(bd2.edgeSize), tostring(back and back.w), tostring(e2)))
+    check("a UI scale change re-snaps the bar's edge without a reload",
+        not Near(e, e2) and edge ~= nil and Near(edge.w, look.width + 2 * e2) and Near(edge.h, look.height + 2 * e2),
+        string.format("edgeW=%s want %s (px %s)", tostring(edge and edge.w), tostring(look.width + 2 * e2),
+            tostring(e2)))
     w.GetEffectiveScale = function() return 1 end
-    ST.ClockView.Set("bars.line.join", nil)
+    Store.Set("frame", savedFrame)
     S.Tick(0.5)
 end
 
 --------------------------------------------------------------------------------
--- T115 (clock v2): the hover says what the bars are, by the look drawn --
--- stacked (the default), the order, the veil, the chip, Mana from the model,
--- one bar alone, none.
+-- T115 (clock v2), re-based by T145c: the hover says what the bar is -- the
+-- game's mana, and the amber line crossing it while the moving line is on.
 --------------------------------------------------------------------------------
 do
-    local CV = ST.ClockView
+    local Store = ST.ClockStore
     local function Muted()
         local lines = Clock:HoverLines(GetTime()) or {}
         for _, l in ipairs(lines) do
@@ -808,47 +788,28 @@ do
         end
         return ""
     end
-    local function Set(k, v) CV.Set("bars.line." .. k, v); S.Tick(0.5) end
     local okH, res = pcall(function()
         local r = {}
-        CV.ResetToStyle()
-        S.Tick(0.5)
-        Set("join", "stacked") -- T139: the moving line is the default now
-        r.stacked = Muted()
-        Set("order", "fsrOver"); r.fsrOver = Muted(); Set("order", nil)
-        Set("join", "veil"); r.veil = Muted()
-        Set("join", "chip"); r.chip = Muted()
-        Set("join", "sweep"); r.sweep = Muted(); Set("join", "stacked")
-        Set("mana", "model"); r.model = Muted(); Set("mana", nil)
-        Set("show", "mana"); r.mana = Muted()
-        Set("show", "fsr"); r.fsr = Muted()
-        Set("show", "none"); r.none = Muted()
-        CV.ResetToStyle()
-        S.Tick(0.5)
+        local was = Store.Get("line")
+        Store.Set("line", true); S.Tick(0.5); r.line = Muted()
+        Store.Set("line", false); S.Tick(0.5); r.none = Muted()
+        Store.Set("line", was); S.Tick(0.5)
         return r
     end)
     local P = "~ = modelled from your casts."
     local want = {
-        stacked = P .. " The bar is your real mana, drawn by the game; the strip under it is the five seconds after your last priced cast.",
-        fsrOver = P .. " The bar is your real mana, drawn by the game; the strip over it is the five seconds after your last priced cast.",
-        veil = P .. " The bar is your real mana, drawn by the game; the amber veil over it is the five seconds after your last priced cast.",
-        chip = P .. " The bar is your real mana, drawn by the game; the square beside the label is the five seconds after your last priced cast.",
-        sweep = P .. " The bar is your real mana, drawn by the game; the amber line crossing it is the five seconds after your last priced cast.",
-        model = P .. " The bar is your modelled mana (~); the strip under it is the five seconds after your last priced cast.",
-        mana = P .. " The bar is your real mana, drawn by the game.",
-        fsr = P .. " The bar is the five seconds after your last priced cast.",
-        none = P,
+        line = P .. " The bar is your real mana, drawn by the game; the amber line crossing it is the five seconds after your last priced cast.",
+        none = P .. " The bar is your real mana, drawn by the game.",
     }
     local bad
     if not okH then
         bad = "raised: " .. tostring(res)
     else
-        for _, k in ipairs({ "stacked", "fsrOver", "veil", "chip", "sweep", "model", "mana", "fsr", "none" }) do
+        for _, k in ipairs({ "line", "none" }) do
             if res[k] ~= want[k] and not bad then bad = string.format("%s: %q", k, tostring(res[k])) end
         end
     end
-    check("the hover names the bars as drawn: stacked, the order, veil, chip, the model, one bar, none",
-        bad == nil, bad)
+    check("the hover names the bar as drawn: the game's mana, the moving line when it is on", bad == nil, bad)
 end
 
 --------------------------------------------------------------------------------
@@ -935,7 +896,8 @@ end
 -- T93 (docs/SPEC-next.md 7.1, F1 and F3-F6; decisions 16 and 18): the Forever
 -- clock's gaps. The clock paints ST.ManaModel.Face of the pool's projection;
 -- here the projection answers chosen states, so a paint can be read at 10 s,
--- 45 s, 25 s. The words are UI/ClockView.lua's three segments.
+-- 45 s, 25 s. The words are the face's line; the tone is the Bar's time text's
+-- colour (T145c).
 --------------------------------------------------------------------------------
 local CFace = ST.ClockFace
 local function HexRGB(hex)
@@ -961,28 +923,48 @@ local function WithState(st, fn)
     Pool.Project = realProject
     if not ok2 then error(err, 0) end
 end
-local view = Clock.view or {}
+local R = Clock.renderer or {}
+-- the clock's steady latch emptied, so a chosen state is drawn as it is
+-- (T144: the shown time otherwise steps 5 s at most once a second)
+local function FreshLatch()
+    local L = Clock.SteadyLatch and Clock:SteadyLatch()
+    if type(L) == "table" then for k in pairs(L) do L[k] = nil end end
+end
+local function TimeHex(fs)
+    local hex = ST.ClockStore.Look().texts.time.colour
+    local c = fs and fs.textColor
+    local r, g, b = tonumber(hex:sub(1, 2), 16) / 255, tonumber(hex:sub(3, 4), 16) / 255, tonumber(hex:sub(5, 6), 16) / 255
+    return type(c) == "table" and math.abs(c[1] - r) < 1e-6 and math.abs(c[2] - g) < 1e-6 and math.abs(c[3] - b) < 1e-6
+end
 
 do
     -- F1: the band's tones, TBC's literals (decision 16); never an arrow on Forever
     local r = {}
     ST.db.clock.shown = true
-    WithState({ mode = "oom", tto = 12 }, function()
+    -- T145a's quiet pool would say FULL here (no power event in this script,
+    -- the model at max): off while the chosen states are drawn
+    local quiet = Pool.QUIET_FULL
+    Pool.QUIET_FULL = false
+    WithState({ mode = "oom", tto = 12, mana = model.max * 0.5 }, function()
+        FreshLatch()
         Clock:Refresh()
-        r.crit = { ClockText(), Toned(view.label, "crit"), Toned(view.value, "crit") }
+        r.crit = { ClockText(), true, Toned(R.texts.time, "crit") }
     end)
-    WithState({ mode = "oom", tto = 45 }, function()
+    WithState({ mode = "oom", tto = 45, mana = model.max * 0.5 }, function()
+        FreshLatch()
         Clock:Refresh()
-        r.warn = { ClockText(), Toned(view.label, "muted"), Toned(view.value, "warn") }
+        r.warn = { ClockText(), true, Toned(R.texts.time, "warn") }
     end)
-    WithState({ mode = "oom", tto = 80 }, function()
+    WithState({ mode = "oom", tto = 80, mana = model.max * 0.5 }, function()
+        FreshLatch()
         Clock:Refresh()
-        r.normal = { ClockText(), Toned(view.label, "muted"), Toned(view.value, "normal") }
+        r.normal = { ClockText(), true, TimeHex(R.texts.time) }
     end)
+    Pool.QUIET_FULL = quiet
     local okCrit = r.crit[1] == "~OOM 0:10" and r.crit[2] and r.crit[3]
     local okWarn = r.warn[1] == "~OOM 0:45" and r.warn[2] and r.warn[3]
     local okNormal = r.normal[1] == "~OOM 1:20" and r.normal[2] and r.normal[3]
-    check("T93 F1: ~OOM 0:10 crit-toned with no arrow (0:45 amber, 1:20 white, labels muted)",
+    check("T93 F1: ~OOM 0:10 with no arrow, the Bar's time crit-toned (0:45 amber, 1:20 the time's own colour)",
         okCrit and okWarn and okNormal,
         string.format("crit=%q %s/%s warn=%q %s/%s normal=%q %s/%s", tostring(r.crit[1]), tostring(r.crit[2]),
             tostring(r.crit[3]), tostring(r.warn[1]), tostring(r.warn[2]), tostring(r.warn[3]),
@@ -1051,7 +1033,7 @@ end
 do
     -- F5: one pulse per fight, the first time the clock reads under 30 s; and
     -- ST:PulseWidget (ST:Alert's) pulses it while shown
-    local pulse = view.pulse
+    local pulse = R.pulse
     local n0 = pulse and pulse.plays or 0
     ST.db.clock.shown = true
     S.inCombat = true
@@ -1077,71 +1059,81 @@ do
 end
 
 do
-    -- F6: the rest segment can be turned off (db.clock.showRest, on by default)
-    local isDefault = ST.db.clock.showRest == true
-    local on, off, secHidden
-    WithState({ mode = "oom", tto = 80, rest = 200 }, function()
-        Clock:Refresh()
-        on = ClockText()
-        ST.db.clock.showRest = false
-        Clock:Refresh()
-        off = ClockText()
-        secHidden = view.second ~= nil and not view.second:IsShown()
-        ST.db.clock.showRest = true
-        Clock:Refresh()
-    end)
-    -- by hand until Settings -> Clock: /st clock rest, a sub (the clock stays shown)
+    -- F6, re-based by T145c (docs/SPEC-clock-v3.md 1.3): the rest is the Rest
+    -- text's own switch (texts.rest.on; db.clock.showRest merged into it),
+    -- /st clock rest toggles it and leaves the clock shown
+    local Store = ST.ClockStore
+    local was = Store.Get("texts.rest.on") == true
     local shownBefore = ST.db.clock.shown
-    SlashCmdList.SPELLTUNER("clock rest")
-    local cmdOff = ST.db.clock.showRest == false and ST.db.clock.shown == shownBefore
-    SlashCmdList.SPELLTUNER("clock rest")
-    local cmdOn = ST.db.clock.showRest == true
-    check("T93 F6: the rest segment off (db.clock.showRest, on by default)",
-        isDefault and on == "~OOM 1:20  rest 3:20" and off == "~OOM 1:20" and secHidden and cmdOff and cmdOn,
-        string.format("default=%s on=%q off=%q second hidden=%s /st clock rest %s/%s", tostring(isDefault),
-            tostring(on), tostring(off), tostring(secHidden), tostring(cmdOff), tostring(cmdOn)))
+    local on, off, back, cmdOff, cmdOn
+    WithState({ mode = "oom", tto = 80, rest = 200 }, function()
+        Store.SetText("rest", "on", true)
+        Clock:Refresh()
+        on = Drawn("rest")
+        SlashCmdList.SPELLTUNER("clock rest")
+        cmdOff = Store.Get("texts.rest.on") == false and ST.db.clock.shown == shownBefore
+        Clock:Refresh()
+        off = Drawn("rest")
+        SlashCmdList.SPELLTUNER("clock rest")
+        cmdOn = Store.Get("texts.rest.on") == true
+        Clock:Refresh()
+        back = Drawn("rest")
+    end)
+    Store.SetText("rest", "on", was)
+    Clock:Refresh()
+    check("T93 F6: the rest text on and off (texts.rest.on; /st clock rest)",
+        type(on) == "string" and on:find("^rest %d") ~= nil and off == nil and back == on and cmdOff and cmdOn,
+        string.format("on=%q off=%q back=%q /st clock rest %s/%s", tostring(on), tostring(off), tostring(back),
+            tostring(cmdOff), tostring(cmdOn)))
 end
 
 do
-    -- T116 (clock v2, C1): Line's Right = Mana % draws the model's "~62%"
-    -- (POWER_TEXT_READS stays off); the hover says the number is the model's;
-    -- /st clock rest still drops a Right = Rest
-    local CV = ST.ClockView
+    -- T116 (clock v2, C1), re-based by T145c: the Mana % text. With the game's
+    -- text refused (POWER_TEXT_READS off) it draws the model's percentage and
+    -- the hover says so; with it on, the game's, and no such hover line.
+    local Store = ST.ClockStore
     local okT, res = pcall(function()
         local r = {}
-        r.set = CV.Set("text.line.right", "pct") == true
+        local was, reads = Store.Get("texts.pct.on") == true, ST.API.POWER_TEXT_READS
+        local wasMana = Store.Get("texts.mana.on") == true
+        Store.SetText("pct", "on", true)
+        Store.SetText("mana", "on", false) -- the hover names the first modelled text: Mana % alone
+        ST.API.POWER_TEXT_READS = false
         WithState({ mode = "oom", tto = 80, rest = 200, mana = model.max * 0.62 }, function()
             Clock:Refresh()
-            r.pct = ClockText()
+            r.pct = Drawn("pct")
             r.hover = false
             for _, l in ipairs(Clock:HoverLines(GetTime()) or {}) do
-                if l.l == "~62% is the model's; the game's own number cannot be shown yet." then r.hover = true end
+                if r.pct and l.l == r.pct .. " is the model's; the game's own number cannot be shown yet." then
+                    r.hover = true
+                end
             end
         end)
-        CV.Set("text.line.right", nil)
+        -- the game's own text: Mana (the stub has no UnitPowerPercent, so a
+        -- Mana % is refused here whatever the flag says)
+        ST.API.POWER_TEXT_READS = true
+        Store.SetText("pct", "on", false)
+        Store.SetText("mana", "on", true)
         WithState({ mode = "oom", tto = 80, rest = 200 }, function()
             Clock:Refresh()
-            r.rest = ClockText()
-            SlashCmdList.SPELLTUNER("clock rest")
-            Clock:Refresh()
-            r.off = ClockText()
-            SlashCmdList.SPELLTUNER("clock rest")
-            Clock:Refresh()
-            r.on = ClockText()
+            r.game = Clock.renderer.byPower.mana == true and Drawn("mana") ~= nil
             r.noModelLine = true
             for _, l in ipairs(Clock:HoverLines(GetTime()) or {}) do
                 if type(l.l) == "string" and l.l:find("is the model's;", 1, true) then r.noModelLine = false end
             end
         end)
+        ST.API.POWER_TEXT_READS = reads
+        Store.SetText("pct", "on", was)
+        Store.SetText("mana", "on", wasMana)
+        Clock:Refresh()
         return r
     end)
     local r = okT and res or {}
-    check("T116: Line's Right = Mana % draws the model's ~62% and the hover says so; /st clock rest drops Rest",
-        okT and r.set and r.pct == "~OOM 1:20  ~62%" and r.hover and r.rest == "~OOM 1:20  rest 3:20"
-            and r.off == "~OOM 1:20" and r.on == r.rest and r.noModelLine,
-        okT and string.format("set %s pct %q hover %s rest %q off %q on %q no model line %s", tostring(r.set),
-            tostring(r.pct), tostring(r.hover), tostring(r.rest), tostring(r.off), tostring(r.on),
-            tostring(r.noModelLine)) or ("raised: " .. tostring(res)))
+    check("T116: Mana % draws the model's percentage and the hover says so when the game's is refused; else the game's",
+        okT and type(r.pct) == "string" and r.pct:find("62%%") ~= nil and r.hover and r.game
+            and r.noModelLine,
+        okT and string.format("pct %q hover %s game %s no model line %s", tostring(r.pct), tostring(r.hover),
+            tostring(r.game), tostring(r.noModelLine)) or ("raised: " .. tostring(res)))
 end
 
 do

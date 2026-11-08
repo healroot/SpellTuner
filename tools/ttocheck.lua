@@ -68,11 +68,10 @@ do
     -- T68 (P24): UI/Visibility.lua holds the widget's show/hide rule, so it
     -- loads before UI/Widget.lua, as in SpellTuner_TBC.toc.
     -- T82 (C4): and the theme after the kit, as the TOC lists it since C1.
-    -- T93: the clock's renderer (UI/ClockView.lua) before the widget, as the TOC lists it
-    -- (skipped where the file does not exist, so the parent runs to its verdicts).
-    local files = { "UI/Style.lua", "UI/Theme_Flat.lua", "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/Visibility.lua" }
-    local cv = io.open(S.root .. "/UI/ClockView.lua", "r")
-    if cv then cv:close(); files[#files + 1] = "UI/ClockView.lua" end
+    -- T93: the clock's renderer before the widget, as the TOC lists it; since
+    -- T145c the store and the renderer (UI/ClockStore.lua, UI/ClockBar.lua).
+    local files = { "UI/Style.lua", "UI/Theme_Flat.lua", "UI/Tip.lua", "UI/Tip_TBC.lua", "UI/Visibility.lua",
+        "UI/ClockStore.lua", "UI/ClockBar.lua" }
     files[#files + 1] = "UI/Widget.lua"
     files[#files + 1] = "UI/Advisor.lua"
     S.Load(files, "SpellTuner", ST)
@@ -93,10 +92,8 @@ do
         self.lastPoint = { ... } -- T93: the anchor a region holds now (check 14)
         if realSP then return realSP(self, ...) end
     end
-    -- T131: Bar is the default layout; these checks measure the Line layout,
-    -- so the player's saved choice says "line" (a saved layout is kept).
-    -- T139: the moving line is the default; check 12 is the stacked strip's
-    ST.db.clockLook = { layout = "line", over = { bars = { line = { join = "stacked" } } } }
+    -- T145c: the Bar is the only layout; the checks below read the default look
+    ST.db.clockLook = nil
     for _, fn in ipairs(ready) do fn() end
     FrameMT.CreateFontString, FrameMT.SetPoint = realCFS, realSP
 end
@@ -347,119 +344,73 @@ check("...the time to full is the deficit over the base rate",
 check("widget: below 90% out of combat -> still shown", W and W:IsShown())
 
 --------------------------------------------------------------------------------
--- 12. T82 (C4 of docs/PLAN-refactor-ux.md, mockup M6): one clock look. Under
--- the theme the widget is the Forever clock's panel (UI/Clock_Forever.lua):
--- in the theme's `bg` with its border, the kit's font at the top. T115 (clock
--- v2, C2 / C3): 180 x 32, the mana bar 160 x 4 over a 3-px five-second-rule
--- strip (stacked, the default), each on a black backing one pixel wider all
--- round; the strip amber while the rule runs, green after; the mana bar the
--- pool (UnitPower over its max) in the mana blue.
+-- 12. T82 / T115, re-based by T145c (docs/SPEC-clock-v3.md D1, 2.2): the
+-- widget is the Bar -- the frame width x height of the look, the bar the
+-- plain pool (UnitPower over its max) in the look's fill, the five-second
+-- rule a moving line that runs while the rule does and is hidden after.
 --------------------------------------------------------------------------------
 local UI = ST.UI
+local CB = ST.ClockBar
+local R = W and W.renderer
 local function Same3(a, b)
     return type(a) == "table" and type(b) == "table" and math.abs(a[1] - b[1]) < 1e-6
         and math.abs(a[2] - b[2]) < 1e-6 and math.abs(a[3] - b[3]) < 1e-6
 end
 do
-    local P = UI.PALETTE
-    local bar, back = W and W.bar, W and W.barEdge -- T139: the black edge, one pixel wider
-    local strip, sback = W and W.strip, W and W.stripEdge
-    -- T93 (decision 14, F2): the text is three font strings at fixed places --
-    -- the label in the kit's font from the left edge, the value in its number
-    -- font at a fixed x, the secondary segment right-aligned to the right edge
-    local view = W and W.view
-    local lab, val, sec = view and view.label, view and view.value, view and view.second
+    local look = ST.ClockStore and ST.ClockStore.Look() or {}
+    local bar = R and R.bar
     S.Fire("PLAYER_REGEN_DISABLED")
     Cast(HT5)
     S.Tick(0.5)
-    local inRule = strip and strip.barColor and { strip.barColor[1], strip.barColor[2], strip.barColor[3] }
-    local ruleValue = strip and strip.value
-    local manaValue = bar and bar.value
-    local manaWant = S.mana / S.manaMax
+    local inRule = R and R.lineShown == true and type(R.lineX) == "number"
+    local x0 = R and R.lineX
+    S.Tick(0.5)
+    local moved = R and R.lineShown and type(R.lineX) == "number" and type(x0) == "number" and R.lineX > x0
+    local manaValue, manaMax = bar and bar.value, bar and bar.maxV
     Ticks(12)
-    local after = strip and strip.barColor and { strip.barColor[1], strip.barColor[2], strip.barColor[3] }
-    local afterValue = strip and strip.value
+    local after = R and R.lineShown == false
     S.Fire("PLAYER_REGEN_ENABLED")
-    local e = UI.px(1, W)
-    local panel = W and W.backdrop ~= nil and W.bg and P and Same3(W.bg, P.bg) and W.bg[4] == P.bg[4]
-        and W.border and Same3(W.border, P.border) and W:GetWidth() == 180 and W:GetHeight() == 32
-    local function Pt(r) return r and (r.lastPoint or r.firstPoint) end
-    local function At(r, p, x, y)
-        local pt = Pt(r)
-        return pt ~= nil and pt[1] == p and pt[3] == p and pt[4] == x and pt[5] == y
-    end
-    local function Left(r, p, y) return r and r.firstPoint and r.firstPoint[1] == p and r.firstPoint[2] == W
-        and r.firstPoint[3] == p and r.firstPoint[5] == y end
-    local font = lab and lab.template == UI.FONT and Left(lab, "TOPLEFT", -4)
-        and val and val.template == UI.FONT_NUM and Left(val, "TOPLEFT", -4)
-        and sec and sec.template == UI.FONT and Left(sec, "TOPRIGHT", -4)
-    local function Black(r) return r and r.color and r.color[1] == 0 and r.color[2] == 0 and r.color[3] == 0
-        and r.color[4] == 1 end
-    local slot = bar and bar:GetWidth() == 160 and bar:GetHeight() == 4 and At(bar, "BOTTOMLEFT", 10, 9)
-        and back and back:GetWidth() == 160 + 2 * e and back:GetHeight() == 4 + 2 * e and Black(back)
-        and strip and strip:GetWidth() == 160 and strip:GetHeight() == 3 and At(strip, "BOTTOMLEFT", 10, 5)
-        and sback and sback:GetWidth() == 160 + 2 * e and sback:GetHeight() == 3 + 2 * e and Black(sback)
-    local rule = Same3(inRule, { 1, 0.67, 0.2 }) and type(ruleValue) == "number" and ruleValue < 5
-        and Same3(after, ST.ClockView.REGEN_COLOR) and afterValue == 5
-    local mana = type(manaValue) == "number" and math.abs(manaValue - manaWant) < 1e-6
-        and Same3(bar and bar.barColor, ST.ClockView.MANA_COLOR) -- T139: the author's 396DA7
-    check("widget: the kit's panel, fonts in fixed segments, mana 160 x 4 over a 160 x 3 5SR strip (themed)",
-        UI.THEMED == true and panel and font and slot and rule and mana,
-        string.format("themed=%s panel=%s font=%s slot=%s rule=%s (%s -> %s) mana=%s (%s / %s)", tostring(UI.THEMED),
-            tostring(panel), tostring(font), tostring(slot), tostring(rule), tostring(ruleValue),
-            tostring(afterValue), tostring(mana), tostring(manaValue), tostring(manaWant)))
+    local size = W:GetWidth() == look.width and W:GetHeight() == look.height
+    local mana = manaValue == S.mana and manaMax == S.manaMax
+    local fill = bar and type(bar.barColor) == "table"
+    check("widget: the Bar -- width x height of the look, the plain pool, the moving line in the rule and gone after",
+        R ~= nil and size and mana and fill and inRule and moved and after,
+        string.format("size=%s mana=%s (%s/%s) fill=%s rule=%s moved=%s after=%s", tostring(size), tostring(mana),
+            tostring(manaValue), tostring(manaMax), tostring(fill), tostring(inRule), tostring(moved),
+            tostring(after)))
 end
 
 --------------------------------------------------------------------------------
--- 13. T82: the unlock preview says what it is for in the accent, over a full
--- accent bar; locked again, the clock's text is back in the theme's `text`.
+-- 13. T82: the unlock preview says what it is for in the accent; the texts
+-- hidden under it and back after (T145c: the renderer's Message).
 --------------------------------------------------------------------------------
 do
-    -- T93: the preview is the view's own centred message line (`msg`); the
-    -- three segments are hidden under it and back after
-    local view = W.view or {}
-    local bar, txt = W.bar or {}, view.msg or {} -- {} on a widget without them: a FAIL, not a raise
+    local txt = R and R.msg or {}
+    local time = R and R.texts and R.texts.time
     ST:ForceWidgetPreview(60)
     S.Tick(0.5)
     local accent = { UI.RGB("accent") }
     local previewText = txt.text
     local previewColor = txt.textColor
-    local barOk = bar.maxV ~= nil and bar.value == bar.maxV and Same3(bar.barColor, accent)
     local shownNow = W:IsShown()
-    local segsHidden = view.label ~= nil and not view.label:IsShown() and txt.shown == true
+    local hidden = time ~= nil and not time:IsShown() and txt.shown == true
     ST:ForceWidgetPreview(0)
     S.Tick(0.5)
-    local back = segsHidden and txt.shown == false and view.label:IsShown()
-        and (view.label.text == "OOM" or view.label.text == "FULL")
-    check("widget: the unlock text is in the accent, over a full accent bar",
-        previewText == "SpellTuner - drag me" and Same3(previewColor, accent) and barOk and shownNow and back,
-        string.format("%s %s bar=%s shown=%s back=%s", tostring(previewText),
-            previewColor and table.concat(previewColor, ",") or "-", tostring(barOk), tostring(shownNow),
+    local back = hidden and txt.shown == false and time:IsShown() and type(time.text) == "string"
+        and time.text ~= ""
+    check("widget: the unlock text is in the accent, the texts under it hidden and back after",
+        previewText == "SpellTuner - drag me" and Same3(previewColor, accent) and shownNow and back,
+        string.format("%s %s shown=%s hidden=%s back=%s", tostring(previewText),
+            previewColor and table.concat(previewColor, ",") or "-", tostring(shownNow), tostring(hidden),
             tostring(back)))
 end
 
 --------------------------------------------------------------------------------
--- 14.-16. T93 (docs/SPEC-next.md 7.1 F2, decisions 14 and 17): the clock's
--- text drawn in three fixed segments by UI/ClockView.lua. The widget paints
--- ST:GetClockFace(); here that call answers chosen faces, so the paint can be
--- read at exactly 59s, 1:00 and >10m.
+-- 14.-16. T93, re-based by T145c: the widget paints ST:GetClockFace() through
+-- ST.ClockWords; here that call answers chosen faces, so the paint can be
+-- read at exactly 59s, 1:00 and >10m. The texts never move (P5).
 --------------------------------------------------------------------------------
 local CF = ST.ClockFace
-local view = W.view or {}
-local function Seg(fs)
-    if not fs or not fs:IsShown() then return nil end
-    local t = fs.text
-    if t == nil or t == "" then return nil end
-    return Plain(t)
-end
--- what the widget shows, read back from its font strings
-local function Drawn()
-    local l, v, s = Seg(view.label), Seg(view.value), Seg(view.second)
-    local out = l or ""
-    if v then out = out .. " " .. v end
-    if s then out = out .. "  " .. s end
-    return out
-end
 local realFace = ST.GetClockFace
 local function PaintFace(face)
     ST.GetClockFace = function() return face end
@@ -471,68 +422,57 @@ local function OomFace(v, tone)
         modelled = false, mono = false, unstable = false, timeFmt = "auto",
         second = { kind = "rest", label = "rest", value = 130 } }
 end
+-- what the clock's words say for a face, built as the widget builds them
+local function Want(face)
+    local out = {}
+    ST.ClockWords.Build(face, ST.ClockStore.Look(), nil, GetTime(), out, false)
+    return out
+end
+local function Shown(kind)
+    local fs = R and R.texts and R.texts[kind]
+    if not fs or not fs:IsShown() then return nil end
+    return fs.text
+end
 
 do
-    -- every anchor set from here on is recorded on the region (lastPoint), as
-    -- during the build; an anchor never set again keeps the build's
     local FrameMT = getmetatable(UIParent)
     local realSP = rawget(FrameMT, "SetPoint")
     local sets = 0
     FrameMT.SetPoint = function(self, ...)
-        if self == view.label or self == view.value or self == view.second then sets = sets + 1 end
-        self.lastPoint = { ... }
+        if R and (self == R.texts.time or self == R.texts.rest) then sets = sets + 1 end
         if realSP then return realSP(self, ...) end
     end
-    local function Anchors()
-        local out, regions = {}, { view.label, view.value, view.second }
-        for i = 1, 3 do
-            local fs = regions[i]
-            local p = fs and fs.lastPoint
-            out[i] = p and { p[1], p[2], p[3], p[4], p[5] } or {}
-        end
-        return out
-    end
-    local seen, texts = {}, {}
+    local texts, wants = {}, {}
     for _, f in ipairs({ OomFace(59, "warn"), OomFace(60, "normal"), OomFace(900, "normal") }) do
         PaintFace(f)
-        seen[#seen + 1] = Anchors()
-        texts[#texts + 1] = { Seg(view.label), Seg(view.value), Seg(view.second) }
+        texts[#texts + 1] = Shown("time")
+        wants[#wants + 1] = Want(f).time.text
     end
     FrameMT.SetPoint = realSP
-    local fixed = #seen == 3 and view.label ~= nil
-    for i = 1, 3 do
-        local a = seen[1][i]
-        -- each segment hangs on the widget itself, never on another segment
-        if a[2] ~= W or type(a[4]) ~= "number" then fixed = false end
-        for k = 2, 3 do
-            local b = seen[k][i]
-            for j = 1, 5 do if a[j] ~= b[j] then fixed = false end end
-        end
-    end
-    local words = texts[1][1] == "OOM" and texts[2][1] == "OOM" and texts[3][1] == "OOM"
-        and texts[1][2] == "59s v" and texts[2][2] == "1:00 v" and texts[3][2] == ">10m v"
-        and texts[1][3] == "rest 2:10" and texts[3][3] == "rest 2:10"
-    check("T93: label, value, rest at fixed x on the widget across 59s -> 1:00 -> >10m",
-        fixed and words and sets == 0,
-        string.format("fixed=%s words=%s re-anchored=%d (%s | %s | %s)", tostring(fixed), tostring(words), sets,
-            tostring(texts[1] and texts[1][2]), tostring(texts[2] and texts[2][2]), tostring(texts[3] and texts[3][2])))
+    local words = texts[1] ~= nil and texts[1] == wants[1] and texts[2] == wants[2] and texts[3] == wants[3]
+        and texts[1] ~= texts[2] and texts[2] ~= texts[3]
+    check("T93: the time across 59s -> 1:00 -> >10m is the clock's words, never re-anchored",
+        R ~= nil and words and sets == 0,
+        string.format("words=%s re-anchored=%d (%s | %s | %s; want %s | %s | %s)", tostring(words), sets,
+            tostring(texts[1]), tostring(texts[2]), tostring(texts[3]), tostring(wants[1]), tostring(wants[2]),
+            tostring(wants[3])))
 end
 
 do
-    -- every sample face, and the three above: the drawn words are the line's
-    -- bytes (colour codes aside), the crit band's "vv" included
+    -- every sample face, and the three above: the drawn time is the words'
+    -- bytes, the crit band's included
     local faces = { OomFace(59, "warn"), OomFace(60, "normal"), OomFace(900, "normal") }
     for _, smp in ipairs(CF and CF.SAMPLES or {}) do faces[#faces + 1] = smp.face end
-    local bad, sawVV = nil, false
+    local bad, n = nil, 0
     for _, f in ipairs(faces) do
         PaintFace(f)
-        local want = Plain(CF.LineString(f))
-        local got = Drawn()
-        if got ~= want then bad = bad or string.format("%q drawn as %q", want, got) end
-        if got == "OOM 15s vv" then sawVV = true end
+        local want = Want(f).time.text
+        local got = Shown("time")
+        n = n + 1
+        if got ~= want then bad = bad or string.format("%q drawn as %q", tostring(want), tostring(got)) end
     end
-    check("T93: the drawn segments are the line's text byte for byte, 'OOM 15s vv' included",
-        #faces > 3 and view.label ~= nil and bad == nil and sawVV, bad)
+    check("T93: the drawn time is the clock's words byte for byte, every sample face",
+        n > 3 and R ~= nil and bad == nil, bad)
     S.Tick(0.5) -- the real face again
 end
 
@@ -581,52 +521,37 @@ do
 end
 
 --------------------------------------------------------------------------------
--- 16b. T116 (clock v2, C1): the slots drawn. The default slots draw the
--- line's bytes (vv, inn, rest); Right = Cooldown draws only a cooldown
--- secondary (TBC offers it); /st rest off empties a Right = Rest; Right2 is
--- part of the drawn words when the width allows.
+-- 16b. T116, re-based by T145c: the rest text. On (texts.rest.on) it draws the
+-- words' rest; off it is hidden, on again it is back (the store's switch,
+-- which Settings -> Clock and Forever's /st clock rest write; TBC's /st rest
+-- takes the secondary off the face itself, ST.db.showRest).
 --------------------------------------------------------------------------------
 do
-    local CV = ST.ClockView
-    local function Sample(key)
-        for _, smp in ipairs(CF and CF.SAMPLES or {}) do if smp.key == key then return smp.face end end
-    end
     local okS, res = pcall(function()
-        local r = { bad = nil }
-        local crit, rest, cd = Sample("crit"), Sample("rest"), Sample("cd")
-        for _, f in ipairs({ crit, rest, cd }) do
-            PaintFace(f)
-            local want = Plain(CF.LineString(f, nil, view.look and view.look.text))
-            if Drawn() ~= want or want ~= Plain(CF.LineString(f)) then
-                r.bad = r.bad or string.format("%q drawn as %q", want, Drawn())
-            end
-        end
-        r.text = view.look and type(view.look.text) == "table" and view.look.text.right == "rest"
-        r.cdSet = CV.Set("text.line.right", "cd") == true
-        PaintFace(cd)
-        r.cd = Drawn()
-        PaintFace(rest)
-        r.cdOnRest = Drawn()
-        CV.Set("text.line.right", nil)
-        PaintFace(rest)
-        r.rest = Drawn()
-        SlashCmdList.SPELLTUNER("rest")
-        PaintFace(rest)
-        r.off = Drawn()
-        r.secondHidden = view.second ~= nil and not view.second:IsShown()
-        SlashCmdList.SPELLTUNER("rest")
-        PaintFace(rest)
-        r.on = Drawn()
+        local r = {}
+        local Store = ST.ClockStore
+        local was = Store.Get("texts.rest.on")
+        local face = OomFace(80, "normal")
+        Store.SetText("rest", "on", true)
+        PaintFace(face)
+        r.rest = Shown("rest")
+        r.want = Want(face).rest.text
+        Store.SetText("rest", "on", false)
+        PaintFace(face)
+        r.off = Shown("rest")
+        Store.SetText("rest", "on", true)
+        PaintFace(face)
+        r.on = Shown("rest")
+        Store.SetText("rest", "on", was == true)
         S.Tick(0.5)
         return r
     end)
     local r = okS and res or {}
-    check("T116: the slots draw the line's bytes (vv, inn, rest); Right = Cooldown; /st rest empties Right",
-        okS and r.bad == nil and r.text and r.cdSet and r.cd == "OOM 1:15 v  inn 2:15" and r.cdOnRest == "OOM 1:20 ="
-            and r.rest == "OOM 1:20 =  rest 3:40" and r.off == "OOM 1:20 =" and r.secondHidden and r.on == r.rest,
-        okS and string.format("bad %s text %s cd %s %q on rest %q rest %q off %q (hidden %s) on %q", tostring(r.bad),
-            tostring(r.text), tostring(r.cdSet), tostring(r.cd), tostring(r.cdOnRest), tostring(r.rest),
-            tostring(r.off), tostring(r.secondHidden), tostring(r.on)) or ("raised: " .. tostring(res)))
+    check("T116: the rest text draws the words' rest; off it is hidden, on it is back",
+        okS and type(r.rest) == "string" and r.rest == r.want and r.rest:find("^rest ") ~= nil
+            and r.off == nil and r.on == r.rest,
+        okS and string.format("rest %q want %q off %q on %q", tostring(r.rest), tostring(r.want), tostring(r.off),
+            tostring(r.on)) or ("raised: " .. tostring(res)))
 end
 
 --------------------------------------------------------------------------------

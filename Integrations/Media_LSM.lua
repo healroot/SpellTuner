@@ -6,7 +6,7 @@
 -- (CLAUDE.md "Host libraries borrowed, never shipped"; host globals only
 -- under Integrations/, apicheck rule 11). Nothing is registered with it and
 -- nothing is shipped: no host, no list, and a texture picked earlier falls
--- back to Flat (UI/ClockView.lua names why).
+-- back to Flat (UI/ClockBar.lua names why).
 --
 --   ST.Media.Bars()        -> { { name, path } } sorted by name, or {} (no host)
 --   ST.Media.Fetch(name)   -> path, or nil
@@ -62,7 +62,7 @@ end
 -- catalogue its own dropdowns read: EllesmereUI.BuildBarTextureTables() ->
 -- paths, names, order. Read here only (a host global: apicheck rule 11),
 -- every call under pcall, nothing copied or shipped: without EllesmereUI the
--- list is empty and a texture picked earlier draws Flat (UI/ClockView.lua).
+-- list is empty and a texture picked earlier draws Soft (UI/ClockBar.lua).
 --
 --   ST.Media.Ellesmere()          -> { { key, name, path } } in EllesmereUI's order, or {}
 --   ST.Media.FetchEllesmere(key)  -> path, or nil

@@ -10,30 +10,28 @@
 -- clock reads ST.Pool.model and ST.Pool:Project. ST.Clock:Pool() and
 -- ST.Clock.model stay as aliases of the pool's for their existing readers.
 --
--- T93 (docs/SPEC-next.md 7.1, decisions 14, 16 and 18): the clock's words are
--- drawn by UI/ClockView.lua from ST.ManaModel.Face -- three segments at fixed
--- places, each in its tone (F1: TBC's red under 20 s, amber under 60 s; never
--- an arrow); no clock for a character without a mana pool (F3, the shared
--- rule's manaUsersOnly); db.clock.clickThrough (F4); the pulse, once per fight
--- under 30 s and on ST:Alert (F5); db.clock.showRest (F6). The mover seam
--- (ApplyPoint, ResetPosition, Preview) is ST.Clock, provided as ST.ClockWidget.
+-- T93: no clock for a character without a mana pool (F3, the shared rule's
+-- manaUsersOnly); db.clock.clickThrough (F4); the pulse, once per fight under
+-- 30 s and on ST:Alert (F5). The mover seam (ApplyPoint, ResetPosition,
+-- Preview) is ST.Clock, provided as ST.ClockWidget.
 --
--- T98 (docs/SPEC-next.md 7.2-7.3, decisions 13 and 15): the view owns the
--- layout (db.clockLook: line / compact / bar), the panel (UI.Skin(widget,
--- "clock") -- the style's clock role, the user's overrides) and the bar
--- (built by the view; its source the real pool by default, handed to it by
--- ST.API.DrawUnitPower and never read, or the modelled pool, the time to OOM,
--- the five-second rule from the model's last priced spend, none; the spark).
--- This file hands it the line's facts and the two sources it reads itself,
--- rebuilds the look on CLOCK_LOOK / STYLE_CHANGED (PaintFace: words and bar,
--- no visibility pass), and keeps the frame, the drag, the hover and the one
--- visibility owner. ST.Clock.facts / .view / .bar / .barBack for its readers.
+-- T145c (docs/SPEC-clock-v3.md 2.5; docs/tasks/T145c-clock-bar.md): the
+-- renderer is UI/ClockBar.lua (it replaces UI/ClockView.lua). The tick is
+--     ST.Pool:Project -> ST.ManaModel.Face -> ST.ClockWords.Build(face, look,
+--     steady, now, words, ST.Pool:QuietFull(now)) -> renderer:Paint(words),
+--     renderer:PaintPower(true)
+-- UNIT_POWER_FREQUENT -> renderer:PaintPower() (the value only), UNIT_MAXPOWER
+-- -> PaintPower(true), CLOCK_LOOK / STYLE_CHANGED -> renderer:Apply(look) with
+-- the look from UI/ClockStore.lua (migrated once at MD_READY). This file keeps
+-- the frame, the drag, the hover and the one visibility owner; the moving line
+-- is the renderer's own driver, which nothing here starts or stops.
 local _, ST = ...
 local UI = ST.UI
 
 -- T93: the two switches this file reads, declared here (docs/SPEC-next.md 11:
 -- a default is registered by the file that reads it). db.clock's shown /
--- locked / point stay Core_Forever.lua's.
+-- locked / point stay Core_Forever.lua's. T145c: showRest is the Rest text's
+-- own switch now (db.clockLook.texts.rest.on); the key stays for its readers.
 ST:RegisterDefaults({ clock = { showRest = true, clickThrough = false } })
 
 ST.Clock = ST.Clock or {}
@@ -45,7 +43,7 @@ setmetatable(Clock, { __index = function(_, k)
     if k == "model" then return ST.Pool and ST.Pool.model end
 end })
 
-local widget, view, bar, barBack
+local widget, renderer
 
 -- T93 (F5): the once-per-fight flash under 30 s has fired in this fight.
 local flashedThisFight = false
@@ -53,16 +51,14 @@ local flashedThisFight = false
 -- set by the two regen events before any other handler of them runs and
 -- seeded at MD_READY through the adapter; this file keeps no copy of it.
 
--- T41 (docs/SPEC-forever-ui.md 4.4): the physical pixel the clock was last
--- snapped to is the view's (view.snappedPx, T98).
-
 -- T11b (docs/tasks/T11b-clock-modes.md): out-of-combat hysteresis state --
 -- the one flag that remembers which side of the 90/95 band the clock is
 -- currently on (the rule is ST.Visibility.Want, UI/Visibility.lua, T68).
 local shown = false
 
--- T144 (item 5): the shown time's latch (ST.ManaModel.Steady) -- at most one
--- 5 s step a second; emptied on PLAYER_REGEN_* and whenever the clock hides.
+-- T144 (item 5): the shown time's latch (ST.ClockWords.Steady's) -- at most
+-- one 5 s step a second; emptied on PLAYER_REGEN_*, whenever the clock hides
+-- and when a preview ends.
 local steady = {}
 local function ResetSteady()
     for k in pairs(steady) do steady[k] = nil end
@@ -184,27 +180,14 @@ ST:Provide("MinimapLines", function(hints)
     return lines
 end)
 
--- T98 / T115: what the bars are, in the hover's words, from the look the view
--- draws (what it shows, the mana bar's source, where the five-second rule
--- is); none: nothing said.
+-- T145c: what the bar is, in the hover's words, from the look drawn (the
+-- moving line on or off).
 local FSR_IS = "the five seconds after your last priced cast"
-local FSR_WHERE = {
-    stacked = "the strip under it",
-    veil = "the amber veil over it",
-    chip = "the square beside the label",
-    sweep = "the amber line crossing it",
-}
 local function BarWords()
-    local l = Clock.view and Clock.view.look
-    local b = (l and l.bars) or ST.ClockView.BARS_DEFAULT
-    local show = b.show or "both"
-    if show == "none" then return "" end
-    if show == "fsr" then return " The bar is " .. FSR_IS .. "." end
-    local manaPart = b.mana == "model" and "your modelled mana (~)" or "your real mana, drawn by the game"
-    if show == "mana" then return " The bar is " .. manaPart .. "." end
-    local where = FSR_WHERE[b.join] or FSR_WHERE.stacked
-    if (b.join == nil or b.join == "stacked") and b.order == "fsrOver" then where = "the strip over it" end
-    return " The bar is " .. manaPart .. "; " .. where .. " is " .. FSR_IS .. "."
+    local l = renderer and renderer.look
+    local words = " The bar is your real mana, drawn by the game"
+    if l and l.line then return words .. "; the amber line crossing it is " .. FSR_IS .. "." end
+    return words .. "."
 end
 
 -- Clock:HoverLines(now): the hover's lines (UI/Tip.lua's line model), or nil
@@ -228,10 +211,10 @@ function Clock:HoverLines(now)
         lines[#lines + 1] = Pair("Unpriced casts", tostring(model.unpriced))
     end
     lines[#lines + 1] = {}
-    -- T116: a Mana % / Mana slot drawn from the model says so
-    local words = Clock.view and Clock.view.modelledWords
-    if type(words) == "string" and words ~= "" then
-        lines[#lines + 1] = { l = words .. " is the model's; the game's own number cannot be shown yet.",
+    -- T116 / T144 S1: a Mana % / Mana text drawn from the model says so
+    local mw = renderer and renderer:Modelled()
+    if type(mw) == "string" and mw ~= "" then
+        lines[#lines + 1] = { l = mw .. " is the model's; the game's own number cannot be shown yet.",
             c = "muted", wrap = true }
     end
     lines[#lines + 1] = { l = "~ = modelled from your casts." .. BarWords(), c = "muted", wrap = true }
@@ -260,72 +243,37 @@ local function ApplyPoint()
     end
 end
 
--- T41 (docs/SPEC-forever-ui.md 4.4): the theme's `bg` fill and a 1-px border,
--- and the bar's backing sized one physical pixel around it. The window
--- manager never touches the clock (6.1), so the clock keeps itself snapped:
--- Paint asks the view to whenever UI.px(1) has moved (a UI scale or display
--- change), no reload needed. T98: the panel is the view's -- UI.Skin(widget,
--- "clock") with the style's clock role and the user's overrides.
-
--- T98 (docs/SPEC-next.md 7.2-7.3): what this line tells the renderer about
--- itself -- the bar's own meaning (the real pool, decision 15 (a)), a pool it
--- can only hand to a status bar unread (no ring may draw it), a modelled pool
--- (the face's pct), its widest label ("~FULL", the pool is modelled) and the
--- rest switch (F6).
--- T115: no regen tick (the pool cannot be read, so its rises cannot be
--- timed). T139: every bar texture (SpellTuner's own ship in Media/, the
--- game's two are on the live client).
--- T116: cd = false -- no cooldown secondary, so no Text slot offers it.
-local facts = { line = "forever", poolPlain = false, model = true, tick = false, textures = true,
-    labelSample = "~FULL", show = {}, cd = false }
-ST.ClockView.lineFacts = facts
-local function Facts()
-    local c = ST.db and ST.db.clock
-    facts.show.rest = not (c and c.showRest == false)
-    facts.show.cd = false -- T115: this line has no cooldown secondary (Line's minimum)
-    return facts
-end
-
--- The bar's sources this line draws itself: the real pool, handed to the bar
--- by the adapter and never read (ST.API.DrawUnitPower), and the five-second
--- rule from the model's last priced spend (plain: the model's own clock).
+-- T145c (docs/SPEC-clock-v3.md 2.5): this line's sources for the renderer
+-- (UI/ClockBar.lua): the real pool, its range and its mana texts, handed to
+-- the bar and the font strings by the adapter and never read
+-- (ST.API.DrawUnitPower / DrawUnitPowerMax / DrawPowerText), and the
+-- five-second rule's end from the model's last priced spend (plain: the
+-- model's own clock).
 local draw = {
     pool = function(b) ST.API.DrawUnitPower(b, "player", 0, true) end, -- T143: eased
-    fsr = function(now)
+    poolMax = function(b) ST.API.DrawUnitPowerMax(b, "player", 0) end,
+    fsrEnd = function()
         local m = ST.Pool and ST.Pool.model
-        if not (m and type(m.lastSpend) == "number" and type(now) == "number") then return nil end
-        return m.lastSpend + 5 - now
-    end,
-    -- T115: the chip's swipe starts at the spend
-    spend = function()
-        local m = ST.Pool and ST.Pool.model
-        if m and type(m.lastSpend) == "number" then return m.lastSpend end
+        if m and type(m.lastSpend) == "number" then return m.lastSpend + 5 end
         return nil
     end,
-    -- T116 (Q-clock-2): a Mana % / Mana slot's real number, put into the font
-    -- string by the adapter and never read -- while ST.API.POWER_TEXT_READS is
-    -- on (T144: on, from EllesmereUI's in-game evidence). Off, the slot draws
-    -- the model's value. T144: kinds mana, manaMax, pct.
+    -- T116 / T144: Mana, Mana / max and Mana % drawn by the game while
+    -- ST.API.POWER_TEXT_READS is on; off, the renderer draws the model's words
     powerText = function(fs, kind)
         if ST.API.POWER_TEXT_READS ~= true then return false end
         return ST.API.DrawPowerText(fs, "player", 0, kind) == true
     end,
 }
+Clock.draw = draw
 
--- T93 / T98: the resolved look (UI/ClockView.lua: the layout's defaults, the
--- style's clock role, the user's overrides), made again on CLOCK_LOOK and
--- STYLE_CHANGED; the rest switch refreshed in place at each paint.
+-- The look drawn (UI/ClockStore.lua: a validated v3 copy), made again on
+-- CLOCK_LOOK and STYLE_CHANGED; the words, one table reused every tick.
 local look
-local function Look()
-    local f = Facts()
-    if not look then look = ST.ClockView.Look(f) end
-    look.show.rest, look.show.cd = f.show.rest, f.show.cd
-    return look
-end
+local words = {}
 
 local function CreateWidget()
     widget = CreateFrame("Frame", "SpellTunerClock", UIParent, "BackdropTemplate")
-    widget:SetSize(180, 32)
+    widget:SetSize(200, 8)
     widget:SetFrameStrata("MEDIUM")
     widget:SetMovable(true)
     widget:SetClampedToScreen(true)
@@ -354,22 +302,11 @@ local function CreateWidget()
         if ST.ToggleDashboard then ST:ToggleDashboard() end
     end)
 
-    -- T93: the words, in three fixed segments (UI/ClockView.lua); the
-    -- label slot is as wide as this line's widest label, "~FULL". T98: and
-    -- the layout, the panel and the bar with its black backing (T41: one
-    -- physical pixel wider on every side, so the bar reads on bright
-    -- ground), the view's -- 160 x 4 under the line layout, the real pool by
-    -- default, drawn by the game in the mana blue
-    view = ST.ClockView.Build(widget, Look(), draw)
-    Clock.view = view
-    bar, barBack = view.bar, view.barBack
-    Clock.bar = bar
-    Clock.barBack = barBack
-    Clock.strip = view.strip
-    Clock.stripBack = view.stripBack
-    Clock.barEdge, Clock.stripEdge = view.barEdge, view.stripEdge -- T139
-    Clock.facts = facts
-    widget:SetScale(view:Scale())
+    -- T145c: the renderer, laid out once per look
+    renderer = ST.ClockBar.New(widget, draw)
+    Clock.renderer = renderer
+    look = ST.ClockStore.Look()
+    renderer:Apply(look)
 
     ApplyPoint()
     Clock.frame = widget
@@ -379,25 +316,29 @@ end
 -- Paint: rendering only, tick-driven -- the model is event/tick driven in
 -- Engine/ManaPool_Forever.lua, whose tick runs just before this file's.
 --------------------------------------------------------------------------------
--- T98: the words and the bar only -- what a new look repaints at once, with
--- no visibility pass (a layout switch never shows or hides the clock).
+-- T145c (spec 2.5): the face, its words (the FULL rule, Steady, the quiet
+-- pool) and the power -- text and colour only; no visibility pass.
+local wasPreviewing = false
 local function PaintFace(now)
-    if UI.px(1, widget) ~= view.snappedPx then view:Snap() end -- T41: re-snap after a scale change
+    renderer:Snap() -- T41: Apply again after a UI scale change, else a compare
     local state
     if Previewing() then
         -- T70: the preview says what it is for (TBC's words), in the accent
-        view:Message("SpellTuner - drag me", UI.RGB("accent"))
+        wasPreviewing = true
+        renderer:Message("SpellTuner - drag me", UI.RGB("accent"))
     else
-        -- T93: the face, in segments and tones (F1), the rest switch (F6)
+        -- T144 N3: the steady time starts over when a preview ends
+        if wasPreviewing then
+            wasPreviewing = false
+            ResetSteady()
+        end
+        renderer:Message(nil)
         state = ST.Pool:Project(now)
-        -- T144: the time moves one 5 s step at a time, at most once a second
-        local face = ST.ManaModel.Steady(steady, ST.ManaModel.Face(state, now), now)
-        view:Paint(face, Look())
+        local face = ST.ManaModel.Face(state, now)
+        ST.ClockWords.Build(face, look, steady, now, words, ST.Pool:QuietFull(now))
+        renderer:Paint(words)
     end
-    -- T115: the mana bar -- the real pool by default, handed to the bar by
-    -- ST.API.DrawUnitPower and never read -- and the five-second rule, placed
-    -- by time alone (the view's step moves it between ticks)
-    view:PaintBar(now)
+    renderer:PaintPower(true)
     return state
 end
 
@@ -409,14 +350,14 @@ local function Paint(now)
     if state and not flashedThisFight and shown and ST.inCombat and state.mode == "oom"
         and type(state.tto) == "number" and state.tto < 30 then
         flashedThisFight = true
-        view:Pulse()
+        renderer:Pulse()
     end
 end
 
 -- Repaints without waiting for the next tick -- used by settings/commands
 -- that just changed db.clock, and by the test harness.
 function Clock:Refresh()
-    if not ST.Pool.model then return end
+    if not ST.Pool.model or not widget then return end
     Paint(GetTime())
 end
 
@@ -454,7 +395,7 @@ end
 -- T93 (F5): ST:Alert's pulse (Core.lua calls ST:PulseWidget when it exists),
 -- on this clock while it is shown -- the TBC widget's own rule.
 function ST:PulseWidget()
-    if widget and view and shown then view:Pulse() end
+    if widget and renderer and shown then renderer:Pulse() end
 end
 
 -- Back at the default place (the top of the screen): the saved point cleared.
@@ -474,6 +415,9 @@ end
 -- first), and a repaint on every tick after the pool's own.
 --------------------------------------------------------------------------------
 ST:RegisterCallback("MD_READY", function()
+    -- T145c: the stored look made v3 once a session (UI/ClockStore.lua; the
+    -- dump names what changed) before the first Apply reads it
+    ST.ClockStore.MigrateStored()
     if not widget then CreateWidget() end
     UpdateVisibility()
 end)
@@ -483,17 +427,14 @@ ST:OnTick(function()
     if widget then Paint(GetTime()) end
 end)
 
--- T143: the real pool between ticks. This client's regen is continuous, so
--- the bar follows every player power change (EllesmereUI's event) and the
--- game eases it; the words and the model keep the tick. The value is handed
--- to the bar unread (ST.API.DrawUnitPower).
--- T144: and the game's own mana texts with it (only SetFormattedText through
--- draw.powerText, no layout: View:PaintPowerTexts).
+-- T143 / T145c: the real pool between ticks -- the value only (its range is
+-- the tick's and UNIT_MAXPOWER's, so the client's easing is never restarted,
+-- review W1) and the game's own mana texts; no words, no layout.
 ST:OnUnit("UNIT_POWER_FREQUENT", "player", function()
-    if view and widget and widget:IsShown() then
-        view:PaintMana()
-        view:PaintPowerTexts()
-    end
+    if renderer and widget and widget:IsShown() then renderer:PaintPower() end
+end)
+ST:OnUnit("UNIT_MAXPOWER", "player", function()
+    if renderer and widget and widget:IsShown() then renderer:PaintPower(true) end
 end)
 
 -- T93 (F5): a new fight may flash again. T144: the steady time starts over.
@@ -505,27 +446,22 @@ ST:On("PLAYER_REGEN_ENABLED", function()
     ResetSteady()
 end)
 
--- T98: a new look (a layout, an override: CLOCK_LOOK; a style: STYLE_CHANGED)
--- -- the view rebuilt inside the frame, which is never shown or hidden here.
--- After a CLOCK_LOOK (the user's change) the words and the bar are drawn at
--- once; after a style the next tick draws them (a style changes paint only).
+-- T145c: a new look (CLOCK_LOOK: the user's change; STYLE_CHANGED: the kit's
+-- font may have moved) -- laid out again inside the frame, which is never
+-- shown or hidden here. A Width change keeps the clock's centre where it was
+-- (the frame's scale is always 1 now).
 local function NewLook(repaint)
-    look = nil
-    local l = Look()
-    if not view then return end
+    look = ST.ClockStore.Look()
+    if not renderer then return end
     local w0, h0 = widget:GetWidth(), widget:GetHeight()
-    local s0 = widget:GetScale()
-    view:SetLook(l)
-    local s1 = view:Scale()
-    if s1 ~= s0 then
-        -- T115: the scale per layout, the clock's centre kept where it was
+    renderer:Apply(look)
+    local w1, h1 = look.width, look.height
+    if w1 ~= w0 and type(w0) == "number" and type(h0) == "number" then
         ST.db.clock = ST.db.clock or {}
         local p = ST.db.clock.point
         if type(p) ~= "table" or not p[1] then p = DEFAULT_POINT end
-        local x1, y1 = ST.ClockView.KeepCentre(p[1], p[4] or 0, p[5] or 0, s0, s1, w0, h0,
-            widget:GetWidth(), widget:GetHeight())
+        local x1, y1 = ST.ClockBar.KeepCentre(p[1], p[4] or 0, p[5] or 0, 1, 1, w0, h0, w1, h1)
         ST.db.clock.point = { p[1], nil, p[3] or p[1], x1, y1 }
-        widget:SetScale(s1)
         ApplyPoint()
     end
     if repaint and ST.Pool.model then PaintFace(GetTime()) end
@@ -537,16 +473,15 @@ ST:RegisterCallback("STYLE_CHANGED", function() NewLook(false) end)
 -- ST.Widget on TBC): ApplyPoint, ResetPosition, Preview, frame.
 ST:Provide("ClockWidget", Clock)
 
--- T93: the two new switches by hand until Settings -> Clock (T102) shows
--- them -- TBC's rest and tooltip verbs, as subcommands of /st clock
--- (docs/SPEC-next.md 2.5: matched before the verb, so /st clock and
--- /st clock lock are unchanged).
+-- T93: the two switches by hand -- TBC's rest and tooltip verbs, as
+-- subcommands of /st clock (docs/SPEC-next.md 2.5: matched before the verb,
+-- so /st clock and /st clock lock are unchanged). T145c: rest is the Rest
+-- text's own switch (UI/ClockStore.lua).
 ST:AddSubcommand("clock", "rest", function()
-    ST.db.clock = ST.db.clock or {}
-    ST.db.clock.showRest = ST.db.clock.showRest == false
-    ST:Print("mana clock: rest segment " .. (ST.db.clock.showRest and "on" or "off"))
-    if Clock.frame then Clock:Refresh() end
-end, "rest", "toggle the 'rest' segment (time to full if you stop casting)")
+    local on = ST.ClockStore.Get("texts.rest.on") == true
+    ST.ClockStore.SetText("rest", "on", not on)
+    ST:Print("mana clock: rest text " .. ((not on) and "on" or "off"))
+end, "rest", "toggle the 'rest' text (time to full if you stop casting)")
 ST:AddSubcommand("clock", "clickthrough", function()
     ST.db.clock = ST.db.clock or {}
     ST.db.clock.clickThrough = not ST.db.clock.clickThrough

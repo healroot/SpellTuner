@@ -112,7 +112,9 @@ local TBC_ONLY_NAMES = { "SpellName", "RealZoneText",
     "SpellDescription", "SpellPowerCost", "SpellLevelLearned", "BaseCooldown",
     "SpellBonusHealing", "SpellCritChance", "SpellTooltipLines",
     -- T120: the shared Spells pane's drop and rank-row hover
-    "CursorInfo", "SetTooltipSpell" }
+    "CursorInfo", "SetTooltipSpell",
+    -- T145c: the clock's power texts from plain reads (Client/API_TBC.lua)
+    "DrawPowerText" }
 
 --------------------------------------------------------------------------------
 -- 1-9: both flavours
@@ -315,11 +317,17 @@ end
 -- either value was, so the shape of the check is the same whether or not
 -- this client's UnitPower happens to be secret).
 --------------------------------------------------------------------------------
+-- T145c (docs/SPEC-clock-v3.md 2.1, review W1): the range is DrawUnitPowerMax's,
+-- the value DrawUnitPower's alone (it never touches the range).
 do
     local bar = CreateFrame("StatusBar", nil, UIParent)
+    local valueOnly = ST.API.DrawUnitPower(bar, "player", 0)
+    local untouched = bar.minV == nil and bar.maxV == nil and bar.value ~= nil
+    local maxOk = ST.API.DrawUnitPowerMax(bar, "player", 0)
     local drawOk = ST.API.DrawUnitPower(bar, "player", 0)
-    check("DrawUnitPower hands the values over without reading them",
-        drawOk == true and bar.minV == 0 and bar.maxV ~= nil and bar.value ~= nil)
+    check("DrawUnitPower hands the values over without reading them (T145c: the range is DrawUnitPowerMax's)",
+        valueOnly == true and untouched and maxOk == true and drawOk == true
+        and bar.minV == 0 and bar.maxV ~= nil and bar.value ~= nil)
 end
 
 --------------------------------------------------------------------------------
@@ -617,10 +625,26 @@ if flavour == "tbc" then
             and byName.AddOnInfo and byName.AddOnInfo.client == "GetAddOnInfo")
     end
 
-    -- T114: the Q-clock-2 seam is Forever's only; TBC reads its mana plain.
-    check("T114: DrawPowerText is absent on TBC",
-        ST.API.DrawPowerText == nil and ST.API.POWER_TEXT_READS == nil,
-        string.format("fn=%s flag=%s", type(ST.API.DrawPowerText), tostring(ST.API.POWER_TEXT_READS)))
+    -- T114: the Q-clock-2 seam (the flag) is Forever's only; TBC reads its
+    -- mana plain. T145c: TBC has its own DrawPowerText, the same kinds and
+    -- formats from plain reads, so both clocks hand the renderer one `draw`.
+    do
+        local fs = UIParent:CreateFontString()
+        local okM = ST.API.DrawPowerText(fs, "player", 0, "mana")
+        local mana = fs:GetText()
+        local okX = ST.API.DrawPowerText(fs, "player", 0, "manaMax")
+        local manaMax = fs:GetText()
+        local okP = ST.API.DrawPowerText(fs, "player", 0, "pct")
+        local pct = fs:GetText()
+        local bad, why = ST.API.DrawPowerText(fs, "player", 0, "nosuch")
+        local cur, max = UnitPower("player", 0), UnitPowerMax("player", 0)
+        check("T145c: DrawPowerText on TBC draws the plain pool (mana, manaMax, pct); no flag",
+            ST.API.POWER_TEXT_READS == nil and okM == true and okX == true and okP == true
+            and mana == tostring(cur) and manaMax == cur .. "/" .. max
+            and pct == math.floor(cur / max * 100 + 0.5) .. "%" and bad == nil and why == "error",
+            string.format("flag=%s mana=%s max=%s pct=%s", tostring(ST.API.POWER_TEXT_READS), tostring(mana),
+                tostring(manaMax), tostring(pct)))
+    end
 
     -- T120: GetCursorInfo's spell shape ("spell", book slot, book type, id);
     -- the id from the fourth return, else the slot's through the spellbook;

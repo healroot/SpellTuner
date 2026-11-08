@@ -165,3 +165,34 @@ function ST.API.SetTooltipSpell(tooltip, id)
     return true
 end
 ST.API._bindings.SetTooltipSpell = "GameTooltip.SetSpellByID"
+
+-- T145c (docs/SPEC-clock-v3.md 2.1): the clock's power texts on TBC, the same
+-- kinds and formats as Forever's ST.API.DrawPowerText, from plain reads (this
+-- client's pool is never secret), so both hosts hand the renderer the same
+-- `draw`. Answers true; nil, "absent" without the function or the font
+-- string; nil, "error" for an unknown kind, a value that is not a number or a
+-- raise.
+local POWER_FMT_TBC = { pct = "%d%%", mana = "%d", manaMax = "%d/%d" }
+function ST.API.DrawPowerText(fs, unit, powerType, kind)
+    local fmt = POWER_FMT_TBC[kind]
+    if not fmt then return nil, "error" end
+    if type(fs) ~= "table" then return nil, "absent" end
+    local curFn, maxFn = ST.API.Has("UnitPower"), ST.API.Has("UnitPowerMax")
+    if type(curFn) ~= "function" or type(maxFn) ~= "function" then return nil, "absent" end
+    local okR, cur, max = pcall(function() return curFn(unit, powerType), maxFn(unit, powerType) end)
+    if not okR or type(cur) ~= "number" or type(max) ~= "number" then return nil, "error" end
+    local ok = pcall(function()
+        if kind == "pct" then
+            local p = 0
+            if max > 0 then p = math.floor(cur / max * 100 + 0.5) end
+            fs:SetFormattedText(fmt, p)
+        elseif kind == "manaMax" then
+            fs:SetFormattedText(fmt, cur, max)
+        else
+            fs:SetFormattedText(fmt, cur)
+        end
+    end)
+    if not ok then return nil, "error" end
+    return true
+end
+ST.API._bindings.DrawPowerText = "UnitPower"
