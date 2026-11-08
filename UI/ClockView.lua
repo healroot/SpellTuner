@@ -220,6 +220,10 @@ CV.TEXTURE_NAMES = {
     striped = "Striped", minimal = "Minimal", statusbar = "Status bar (game)", raid = "Raid health (game)",
 }
 CV.LSM_PREFIX = "lsm:"
+-- T140: "eui:<key>", one of EllesmereUI's own bar textures, read from its
+-- catalogue (Integrations/Media_LSM.lua); without EllesmereUI, Flat and why
+CV.EUI_PREFIX = "eui:"
+CV.EUI_MISSING = "EllesmereUI is not loaded: drawn Flat"
 CV.MASKS = { round = "Round", pill = "Pill" }
 CV.LSM_MISSING = "that texture's addon is not loaded: drawn Flat"
 CV.MASK_REFUSED = "this client has no mask textures: drawn as a rectangle"
@@ -227,6 +231,11 @@ CV.MASK_REFUSED = "this client has no mask textures: drawn as a rectangle"
 -- CV.TexturePath(key) -> path, why: a key's file; a host's missing one is Flat
 -- with the reason.
 function CV.TexturePath(key)
+    if type(key) == "string" and key:sub(1, #CV.EUI_PREFIX) == CV.EUI_PREFIX then
+        local path = ST.Media and ST.Media.FetchEllesmere and ST.Media.FetchEllesmere(key:sub(#CV.EUI_PREFIX + 1))
+        if path then return path end
+        return CV.TEXTURES.flat, CV.EUI_MISSING
+    end
     if type(key) == "string" and key:sub(1, #CV.LSM_PREFIX) == CV.LSM_PREFIX then
         local path = ST.Media and ST.Media.Fetch and ST.Media.Fetch(key:sub(#CV.LSM_PREFIX + 1))
         if path then return path end
@@ -328,8 +337,12 @@ local BARS_OK = {
     order = OneOf(CV.BARS_VALUES.order), mana = OneOf(CV.BARS_VALUES.mana),
     after = OneOf(CV.BARS_VALUES.after),
     texture = function(v)
-        return OwnTexture(v) or (type(v) == "string" and #v > #CV.LSM_PREFIX
-            and v:sub(1, #CV.LSM_PREFIX) == CV.LSM_PREFIX)
+        if OwnTexture(v) then return true end
+        if type(v) ~= "string" then return false end
+        for _, pre in ipairs({ CV.LSM_PREFIX, CV.EUI_PREFIX }) do
+            if #v > #pre and v:sub(1, #pre) == pre then return true end
+        end
+        return false
     end,
     fsr = IntRange(CV.FSR_RANGE[1], CV.FSR_RANGE[2]),
     shape = OneOf(CV.BARS_VALUES.shape), text = OneOf(CV.BARS_VALUES.text),
@@ -896,7 +909,7 @@ end
 CV.REGION = {
     line = { left = "label", main = "value", right = "second", right2 = "right2" },
     compact = { top = "label", main = "value", bottom = "second" },
-    bar = { left = "label", right = "value" },
+    bar = { left = "label", center = "second", right = "value" }, -- T140: Centre
 }
 
 -- The widest word each kind draws (the slot's room, so only a value's own
@@ -1122,10 +1135,22 @@ METRICS.compact = function(v, look)
     return m
 end
 
+-- T140: the width the Bar layout's words need: Left and Right with a gap
+-- between; with a Centre, each side as wide as the wider of the two so the
+-- centre stays in the middle.
+function CV.BarWordsW(leftW, rightW, centerW)
+    centerW = centerW or 0
+    if centerW > 0 then
+        local side = math.max(leftW, rightW)
+        return 2 * side + centerW + ((side > 0) and 2 * CV.GAP or 0)
+    end
+    return leftW + ((leftW > 0 and rightW > 0) and 2 * CV.GAP or 0) + rightW
+end
+
 -- T139: the Bar layout with its words above, below or off -- the frame as tall
 -- as the bar, its edge and the text row (the Frame tab's Height does not
 -- apply; Width does), the words at the frame's edges.
-local function BarOutside(look, b, manaOn, el, s, rowH, fonts, leftW, rightW, place)
+local function BarOutside(look, b, manaOn, el, s, rowH, fonts, leftW, rightW, place, centerW)
     local bd = b.border or 1
     local barH = b.height or CV.BAR_HEIGHT
     local total = barH + 2 * bd
@@ -1134,16 +1159,17 @@ local function BarOutside(look, b, manaOn, el, s, rowH, fonts, leftW, rightW, pl
     local textH = hasText and rowH or 0
     local minH = 1 + total + gap + textH + 1
     local chipExtra = el == "chip" and (total + 2) or 0
-    local gaps = (leftW > 0 and rightW > 0) and 2 * CV.GAP or 0
-    local minW = math.ceil(chipExtra + 2 + 2 * bd + (hasText and (leftW + gaps + rightW) or 20))
+    local words = CV.BarWordsW(leftW, rightW, centerW)
+    local minW = math.ceil(chipExtra + 2 + 2 * bd + (hasText and words or 20))
     local fw = Fit(look, minW, 0)
     local barY = (place == "below") and (1 + textH + gap + bd) or (1 + bd)
     local barX = 1 + bd + chipExtra
     local barW = fw - 2 - 2 * bd - chipExtra
     local m = { w = fw, h = minH, minW = minW, minH = minH, manaOn = manaOn, el = el,
-        fonts = { label = fonts.left, value = fonts.right }, msg = { "CENTER", 0, 0 } }
+        fonts = { label = fonts.left, value = fonts.right, second = fonts.center }, msg = { "CENTER", 0, 0 } }
     if hasText then
         m.label, m.value = { "LEFT", 1, 0 }, { "RIGHT", -1, 0 }
+        if (centerW or 0) > 0 then m.second = { "CENTER", 0, 0 } end
         m.holder = { 0, (place == "below") and 1 or (1 + total + gap), fw, textH }
     else
         m.holder = { 0, 0, fw, minH }
@@ -1173,12 +1199,12 @@ METRICS.bar = function(v, look)
     local inset = look.inset or 6
     local t = TextOf(look, "bar")
     local fonts, w, h = Slots(v, look, "bar", t)
-    local leftW, rightW = w.left, w.right
-    local rowH = RowH(fonts, w, h, { "left", "right" }, "right")
+    local leftW, rightW, centerW = w.left, w.right, w.center or 0
+    local rowH = RowH(fonts, w, h, { "left", "center", "right" }, "right")
     local anyBar = manaOn or el ~= nil
     local place = b.text or "inside"
     if anyBar and place ~= "inside" then
-        return BarOutside(look, b, manaOn, el, s, rowH, fonts, leftW, rightW, place)
+        return BarOutside(look, b, manaOn, el, s, rowH, fonts, leftW, rightW, place, centerW)
     end
     local stacked = manaOn and el == "strip"
     local minH = anyBar and (rowH + s + 4) or (rowH + 6)
@@ -1189,15 +1215,15 @@ METRICS.bar = function(v, look)
     if b.height then h0 = math.max(minH, b.height + 4) end
     local single = h0 - 4
     local chipExtra = el == "chip" and (single + 2) or 0
-    local gaps = (leftW > 0 and rightW > 0) and 2 * CV.GAP or 0
-    local minW = math.ceil(chipExtra + 4 + 2 * inset + leftW + gaps + rightW)
+    local minW = math.ceil(chipExtra + 4 + 2 * inset + CV.BarWordsW(leftW, rightW, centerW))
     local fw, fh = Fit(look, minW, b.height and 0 or minH)
     if b.height then fh = h0 end
     local barX = 2 + chipExtra
     local barW = fw - 4 - chipExtra
     local m = { w = fw, h = fh, minW = minW, minH = minH, manaOn = manaOn, el = el,
-        fonts = { label = fonts.left, value = fonts.right },
+        fonts = { label = fonts.left, value = fonts.right, second = fonts.center },
         label = { "LEFT", inset, 0 }, value = { "RIGHT", -inset, 0 }, msg = { "CENTER", 0, 0 } }
+    if centerW > 0 then m.second = { "CENTER", 0, 0 } end
     if stacked then
         local manaH = fh - s - 3
         if b.order == "fsrOver" then

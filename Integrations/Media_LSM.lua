@@ -55,3 +55,60 @@ function Media.Bars()
     table.sort(out, function(a, b) return a.name < b.name end)
     return out
 end
+
+--------------------------------------------------------------------------------
+-- T140 (docs/tasks/T140-ellesmere-bar-look.md): EllesmereUI's own bar
+-- textures. EllesmereUI keeps them out of LibSharedMedia, but publishes the
+-- catalogue its own dropdowns read: EllesmereUI.BuildBarTextureTables() ->
+-- paths, names, order. Read here only (a host global: apicheck rule 11),
+-- every call under pcall, nothing copied or shipped: without EllesmereUI the
+-- list is empty and a texture picked earlier draws Flat (UI/ClockView.lua).
+--
+--   ST.Media.Ellesmere()          -> { { key, name, path } } in EllesmereUI's order, or {}
+--   ST.Media.FetchEllesmere(key)  -> path, or nil
+--   ST.Media.EllesmereMana()      -> { r, g, b } EllesmereUI's mana colour, or nil
+--------------------------------------------------------------------------------
+local function EUITables()
+    local E = rawget(_G, "EllesmereUI")
+    if type(E) ~= "table" then return nil, "EllesmereUI is not loaded" end
+    local build = E.BuildBarTextureTables
+    if type(build) ~= "function" then return nil, "this EllesmereUI has no texture catalogue" end
+    local ok, tex, names, order = pcall(build, false)
+    if not ok or type(tex) ~= "table" or type(order) ~= "table" then
+        return nil, "EllesmereUI's texture catalogue did not answer"
+    end
+    return tex, names, order
+end
+
+function Media.Ellesmere()
+    local tex, names, order = EUITables()
+    if not tex then Media.euiWhy = names; return {} end
+    Media.euiWhy = nil
+    local out = {}
+    for _, k in ipairs(order) do
+        local path = tex[k]
+        if type(k) == "string" and type(path) == "string" and path ~= "" then
+            local name = type(names) == "table" and names[k]
+            out[#out + 1] = { key = k, name = type(name) == "string" and name or k, path = path }
+        end
+    end
+    return out
+end
+
+function Media.FetchEllesmere(key)
+    if type(key) ~= "string" or key == "" then return nil end
+    local tex = EUITables()
+    local path = tex and tex[key]
+    if type(path) == "string" and path ~= "" then return path end
+    return nil
+end
+
+function Media.EllesmereMana()
+    local E = rawget(_G, "EllesmereUI")
+    if type(E) ~= "table" or type(E.GetPowerColor) ~= "function" then return nil end
+    local ok, c = pcall(E.GetPowerColor, "MANA")
+    if not ok or type(c) ~= "table" then return nil end
+    local r, g, b = c.r, c.g, c.b
+    if type(r) ~= "number" or type(g) ~= "number" or type(b) ~= "number" then return nil end
+    return { r, g, b }
+end

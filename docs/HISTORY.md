@@ -5387,3 +5387,17 @@ What changed:
 - The stylecheck clock golden is re-based.
 
 `docs/tasks/T139-clock-bar-look.md`, TESTING section 60.
+
+## 2026-11-08 -- T140, T141: EllesmereUI's look; the talent plan live and docked
+
+**T140.** The author matched EllesmereUI's mana bar by hand and asked how to make it exact.
+- Their profile and screenshot gave Pixels Dark, the mana colour 008CFF, 111111, height 8, no border,
+  and the number centred above.
+- EllesmereUI's own texture catalogue (`BuildBarTextureTables`) feeds the Texture list as `eui:<key>`.
+- The Bar layout gained a Centre slot, and "Like EllesmereUI" now copies that bar.
+
+**T141.** The talent plan has no Use button: each click goes into the What if, and it sits docked
+beside the window (`UI.CreateSheet` `docked`), so the Spells pane is seen moving.
+
+`docs/tasks/T140-ellesmere-bar-look.md`, `docs/tasks/T141-talent-plan-live-docked.md`, TESTING sections
+61 and 62.

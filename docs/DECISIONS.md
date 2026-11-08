@@ -1706,3 +1706,17 @@ as default"):
 - The shapes are masks (`CreateMaskTexture`, `CLAMPTOWHITE`), and the colour picker and `SetGradient` go
   through `ST.API`. All three are VERIFY on both clients (`docs/TESTING.md` §60).
 - Settings saved before T139 keep their values; only unset fields take the new defaults.
+
+**EllesmereUI's textures come from its own catalogue** (T140, 2026-11-08):
+- EllesmereUI keeps its bar textures out of LibSharedMedia, and its skin API has no texture getter.
+  `EllesmereUI.BuildBarTextureTables()` is the published list its own dropdowns read, so SpellTuner reads
+  that, under `Integrations/` only, and draws the file from EllesmereUI's folder.
+- Nothing is copied, and without EllesmereUI the bar draws Flat and says why.
+- "Like EllesmereUI" reads EllesmereUI's live mana colour (`GetPowerColor("MANA")`) at the click. It
+  does not read EllesmereUI's saved settings: its guide asks addons not to touch them directly, so the
+  rest of the preset is fixed values measured from the author's profile.
+
+**The talent plan is live and docked** (T141, the author's ruling the same day):
+- No Use step: each click goes into the What if.
+- The panel sits beside the window, so the Spells pane's numbers are seen moving.
+- Closing it keeps the plan, and the What if's Clear is the one way back to the live build.

@@ -1588,6 +1588,34 @@ Try("T139 words above, off; a height and a border make the frame; Line's height 
         tostring(above), R(mr), R(lr), tostring(tall), tostring(off), tostring(h0), tostring(h1))
 end)
 
+Try("T140 the Bar layout's Centre: mana over the middle, inside and above; the minimum keeps it centred; none hides it", function()
+    CV.ResetToStyle()
+    CV.SetLayout("bar")
+    local v = Paint(face1)
+    local off = not Shown(v.second)
+    local min0 = v.metrics.minW
+    CV.Set("text.bar.center", "mana")
+    v = Paint(face1)
+    local function Centred()
+        local pt = v.second and v.second.firstPoint
+        return Shown(v.second) and v.metrics.second ~= nil and v.metrics.second[1] == "CENTER"
+            and v.second:GetText() ~= nil and v.second:GetText() ~= ""
+    end
+    local below = Centred()
+    local lw, rw, cw = v.label:GetStringWidth(), v.value:GetStringWidth(), v.second:GetStringWidth()
+    local wider = v.metrics.minW >= min0 and v.metrics.minW >= 2 * math.max(lw, rw) + cw
+    Bars_("bar", "text", "inside")
+    v = Paint(face1)
+    local inside = Centred()
+    CV.Set("text.bar.center", nil)
+    v = Paint(face1)
+    local gone = not Shown(v.second)
+    Reset()
+    return off and below and wider and inside and gone, string.format("off %s below %s wider %s (%s >= %s) inside %s gone %s",
+        tostring(off), tostring(below), tostring(wider), tostring(v.metrics.minW), tostring(min0), tostring(inside),
+        tostring(gone))
+end)
+
 if printing then
     for _, c in ipairs(visCalls) do print(c[1] .. " from " .. c[2]) end
 end

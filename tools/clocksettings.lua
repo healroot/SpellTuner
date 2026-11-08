@@ -633,17 +633,60 @@ Try("T139 each control writes bars.<layout>.*; the default writes nil; the clock
         tostring(round), tostring(back), tostring(tex), tostring(rest), tostring(thin))
 end)
 
-Try("T139 presets: Like EllesmereUI sets its look and colours; Default clears them", function()
+local function Preset(id) for _, b in ipairs(p.presetButtons) do if b.id == id then Click(b) end end end
+local function Near3(c, r, g, b)
+    return type(c) == "table" and math.abs(c[1] - r) < 1e-6 and math.abs(c[2] - g) < 1e-6 and math.abs(c[3] - b) < 1e-6
+end
+
+Try("T140 presets: Like EllesmereUI without EllesmereUI -- Soft, square, no border, 8 px, 008CFF on 111111; Default clears them", function()
     ST.ClockView.ResetToStyle()
     p.box:Select("look")
-    for _, b in ipairs(p.presetButtons) do if b.id == "eui" then Click(b) end end
+    Preset("eui")
     local o = Over()
-    local eui = OverBar("shape") == "rect" and OverBar("texture") == "gradient" and OverBar("text") == "above"
-        and OverBar("height") == 8 and OverBar("border") == nil and type(o.colors and o.colors.manaBar) == "table"
-        and type(o.colors.fillEnd) == "table"
-    for _, b in ipairs(p.presetButtons) do if b.id == "default" then Click(b) end end
+    local eui = OverBar("shape") == "rect" and OverBar("texture") == nil and OverBar("text") == "above"
+        and OverBar("height") == 8 and OverBar("border") == 0
+        and Near3(o.colors and o.colors.manaBar, 0, 0x8C / 255, 1)
+        and Near3(o.colors.fillEnd == nil and o.bar and o.bar.back, 0x11 / 255, 0x11 / 255, 0x11 / 255)
+    Preset("default")
     local cleared = next(Over().bars and Over().bars[Lay()] or {}) == nil and (Over().colors == nil or next(Over().colors) == nil)
     return eui and cleared, string.format("eui %s cleared %s", tostring(eui), tostring(cleared))
+end)
+
+Try("T140 with EllesmereUI: its textures listed and drawn from its folder; the preset takes Pixels Dark, its mana colour and the Centre", function()
+    ST.ClockView.ResetToStyle()
+    local saved = rawget(_G, "EllesmereUI")
+    local dir = "Interface\\AddOns\\EllesmereUI\\media\\textures\\"
+    _G.EllesmereUI = {
+        BuildBarTextureTables = function()
+            return { atrocity = dir .. "atrocity.tga", ["pixels-dark"] = dir .. "pixels-dark.tga" },
+                { none = "None", atrocity = "Atrocity", ["pixels-dark"] = "Pixels Dark" },
+                { "none", "atrocity", "pixels-dark" }
+        end,
+        GetPowerColor = function(key) if key == "MANA" then return { r = 0, g = 0.55, b = 1 } end end,
+    }
+    ST.ClockView.SetLayout("bar")
+    p.box:Select("look")
+    CS.Refresh(p)
+    local texts = {}
+    for _, it in ipairs(p.textureDropdown.items) do texts[#texts + 1] = it.id .. "=" .. it.text end
+    local listed = table.concat(texts, "/"):find("eui:atrocity=Atrocity (EllesmereUI)/eui:pixels-dark=Pixels Dark (EllesmereUI)", 1, true) ~= nil
+    Preset("eui")
+    local o = Over()
+    local took = OverBar("texture") == "eui:pixels-dark" and W.view.texturePath == dir .. "pixels-dark.tga"
+        and Near3(o.colors and o.colors.manaBar, 0, 0.55, 1)
+        and o.text and o.text.bar and o.text.bar.center == "mana" and W.view.second and W.view.second:IsShown()
+    Preset("default")
+    local centreGone = (Over().text == nil or Over().text.bar == nil or Over().text.bar.center == nil)
+        and not (W.view.second and W.view.second:IsShown())
+    _G.EllesmereUI = nil
+    ST.ClockView.Set("bars.bar.texture", "eui:pixels-dark")
+    local look = WidgetLook()
+    local flat = W.view.texturePath == CVw.TEXTURES.flat and look.refused["bars.bar.texture"] == CVw.EUI_MISSING
+    _G.EllesmereUI = saved
+    ST.ClockView.ResetToStyle()
+    ST.ClockView.SetLayout("line")
+    return listed and took and centreGone and flat, string.format("listed %s took %s centre gone %s flat %s (%s)",
+        tostring(listed), tostring(took), tostring(centreGone), tostring(flat), table.concat(texts, "/"))
 end)
 
 Try("T139 a colour opens the game's picker; a move writes it; Cancel puts it back; right-click resets", function()
@@ -775,7 +818,8 @@ end
 local function ItemText(dd, id)
     for _, it in ipairs(dd and dd.items or {}) do if it.id == id then return it.text end end
 end
-local SLOT_LABEL = { left = "Left", main = "Main", right = "Right", right2 = "Right 2", top = "Top", bottom = "Bottom" }
+local SLOT_LABEL = { left = "Left", main = "Main", right = "Right", right2 = "Right 2", top = "Top", bottom = "Bottom",
+    center = "Centre" }
 local function LineOptions(layout, slot)
     local out = {}
     for _, id in ipairs((CF.TEXT_OPTIONS or {})[layout] and CF.TEXT_OPTIONS[layout][slot] or {}) do

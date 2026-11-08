@@ -3,15 +3,19 @@ local _, ST = ...
 --------------------------------------------------------------------------------
 -- T137 (docs/tasks/T137-forever-talent-planner.md; the author: "a small copy of
 -- the actual talent tree where the player can plan a build, and we calculate
--- like he has those talents"): the talent planner, a sheet over the main window,
--- Forever TOCs only. The What if drawer's "Talent plan..." opens it.
+-- like he has those talents"): the talent planner, Forever TOCs only. The What
+-- if drawer's "Talent plan..." opens it. T141 (the author: "each talent change
+-- applies right away ... to the side, not on top of dashboard"): a panel docked
+-- beside the main window (its right, else its left where the screen has no
+-- room), so the Spells pane stays in view and its numbers move with each click.
 --
 -- Three trees laid out as the game lays them (Data/TalentTree_Forever.lua), each
 -- talent its real icon; left-click adds a point, right-click takes one off, under
 -- the game's rules (Spells/TalentPlan.lua). A blue dot marks a talent the What if
 -- moves numbers by. The panel on the right: the hovered talent, then every change
--- from the live build. "Use in What if" puts the plan into the What if and
--- closes; the x or ESC closes without it. Never opens in combat; never saved.
+-- from the live build. Every click, Clear and My talents goes into the What if
+-- at once (TP:Apply); the x or ESC closes the panel and keeps the plan in the
+-- What if (its Clear clears it). Never opens in combat; never saved.
 --
 -- ST.TalentPlanner: Open(win) -> the sheet or nil, why; sheet (for the suites).
 --------------------------------------------------------------------------------
@@ -162,9 +166,18 @@ local function Change(name, delta)
     local r = TP.Rank(plan, name) + delta
     plan[name] = (r > 0) and r or nil
     sel = name
+    TPL.Apply()
     Paint()
     return true
 end
+
+-- T141: the plan into the What if at once (its WHATIF_CHANGED repaints the
+-- Spells pane); the panel's own resync sees its own values and moves nothing.
+function TPL.Apply()
+    if not plan then return end
+    TP:Apply(plan)
+end
+
 TPL.Change = Change -- for the suites
 
 local function MakeCell(parent, t, x, y)
@@ -216,9 +229,42 @@ local function Text(parent, font, x, y, w)
     return fs
 end
 
+-- T141: beside the window -- its right while the screen has room, else its left.
+-- The window is the pane's top frame (the one whose parent is UIParent).
+local DOCK_GAP = 6
+local function TopOf(f)
+    local guard = 0
+    while f and f.GetParent and guard < 40 do
+        local p = f:GetParent()
+        if p == nil or p == UIParent then return f end
+        f, guard = p, guard + 1
+    end
+    return f
+end
+TPL.TopOf = TopOf
+local function Dock(pane)
+    local win = TopOf(pane) or pane
+    sheet.dockedTo = win
+    sheet:ClearAllPoints()
+    local right = win.GetRight and win:GetRight()
+    local screen = UIParent and UIParent.GetWidth and UIParent:GetWidth()
+    local scale = (win.GetEffectiveScale and UIParent.GetEffectiveScale)
+        and (win:GetEffectiveScale() / UIParent:GetEffectiveScale()) or 1
+    local fits = not (type(right) == "number" and type(screen) == "number")
+        or (right * scale + DOCK_GAP + SHEET_W * scale) <= screen
+    sheet.side = fits and "right" or "left"
+    if fits then
+        sheet:SetPoint("TOPLEFT", win, "TOPRIGHT", DOCK_GAP, 0)
+    else
+        sheet:SetPoint("TOPRIGHT", win, "TOPLEFT", -DOCK_GAP, 0)
+    end
+end
+TPL.Dock = function(win) if sheet then Dock(win) end end
+
 local function Build(win)
     if sheet then sheet:Hide() end
-    sheet = UI.CreateSheet(win, win, SHEET_W, SHEET_H, "TALENT PLAN")
+    -- T141: the window's own child, so moving between spells keeps it open
+    sheet = UI.CreateSheet(win, win, SHEET_W, SHEET_H, "TALENT PLAN", { docked = true })
     sheet.win = win
     cells = nil
     sheet.talentPlanner = true -- marks the sheet for tools/talentplancheck.lua
@@ -226,15 +272,9 @@ local function Build(win)
     sheet.info = Text(body, UI.FONT, PAD, 10)
     UI.Tint(sheet.info, "text", "text")
 
-    local use = UI.CreateButton(body, "Use in What if", "accent-hover", { 110, 20 }, false, false, UI.FONT_SMALL, nil)
-    use:SetPoint("TOPRIGHT", body, "TOPRIGHT", -PAD, -6)
-    use:SetScript("OnClick", function()
-        TP:Apply(plan)
-        sheet:Hide()
-    end)
     local clear = UI.CreateButton(body, "Clear", "accent-hover", { 60, 20 }, false, false, UI.FONT_SMALL, nil)
-    clear:SetPoint("RIGHT", use, "LEFT", -6, 0)
-    clear:SetScript("OnClick", function() plan = {}; Paint() end)
+    clear:SetPoint("TOPRIGHT", body, "TOPRIGHT", -PAD, -6)
+    clear:SetScript("OnClick", function() plan = {}; TPL.Apply(); Paint() end)
     local mine = UI.CreateButton(body, "My talents", "accent-hover", { 84, 20 }, false, false, UI.FONT_SMALL, nil)
     mine:SetPoint("RIGHT", clear, "LEFT", -6, 0)
     mine:SetScript("OnClick", function()
@@ -243,9 +283,10 @@ local function Build(win)
             local f = TP.Find(trees, k)
             if f and type(v) == "number" and v > 0 then plan[k] = math.min(v, f.t.max) end -- review m5
         end
+        TPL.Apply()
         Paint()
     end)
-    sheet.useBtn, sheet.clearBtn, sheet.mineBtn = use, clear, mine
+    sheet.clearBtn, sheet.mineBtn = clear, mine
 
     sheet.heads, sheet.body = {}, body
     -- review m4: each line of the panel under the one before, so a long sentence pushes
@@ -267,15 +308,16 @@ local function Build(win)
     sheet.changes = Under(Text(body, UI.FONT_SMALL, PANEL_X, 0, PANEL_W), ch, 6)
     local legend = Text(body, UI.FONT_SMALL, PAD, SHEET_H - 22 - 40, SHEET_W - 2 * PAD)
     legend:SetText(UI.Hex("mana") .. "Blue dot|r: moves SpellTuner's numbers.  Left-click adds a point, right-click "
-        .. "takes one off; five points in a tree open its next tier.|nPreliminary, from talentsforever. Not saved "
-        .. "to your character: the What if uses the plan until you clear it.")
+        .. "takes one off; five points in a tree open its next tier.|nEach click moves the Spells pane at once. "
+        .. "Preliminary, from talentsforever. Not saved to your character: the What if keeps the plan until you "
+        .. "clear it.")
     UI.Tint(legend, "text", "muted")
     sheet.legend = legend
     sheet:HookScript("OnHide", function() sel = nil end)
-    -- review m2: the What if drawer sits outside the mask; a talent the What if
-    -- changes while the sheet is open (a Clear) moves the plan too, so Use never
-    -- overwrites it unseen. T138: only a talent whose value changed -- a Level
-    -- typed meanwhile keeps the clicks not yet used
+    -- review m2: a talent the What if changes while the panel is open (its
+    -- Clear) moves the plan too. T138: only a talent whose value changed -- a
+    -- Level typed meanwhile keeps the plan. T141: the panel's own Apply comes
+    -- back here with the plan's own values, so nothing moves
     ST:RegisterCallback("WHATIF_CHANGED", function()
         if not (sheet and sheet:IsShown() and plan and live) then return end
         local WI, now = ST.WhatIf, {}
@@ -321,7 +363,8 @@ local function Layout()
 end
 
 -- TPL.Open(win) -> the sheet shown, or nil and why.
-function TPL.Open(win)
+function TPL.Open(pane)
+    local win = TopOf(pane) or pane -- T141: the pane's window
     -- review m2: a second press while it is open keeps the plan in progress
     if sheet and sheet:IsShown() and sheet.win == win then return sheet end
     if ST.inCombat then
@@ -334,6 +377,7 @@ function TPL.Open(win)
     if not win then return nil, "no window" end
     if not sheet or sheet.win ~= win then Build(win) end
     Layout()
+    Dock(win)
     plan = TP:Current() or {}
     sheet.seen = {}
     for _, tree in ipairs(trees) do

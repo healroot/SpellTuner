@@ -2490,10 +2490,15 @@ function UI.CreateMask(region, level, text)
     return m
 end
 
-function UI.CreateSheet(pane, maskRegion, w, h, title)
+-- T141: opts.docked -- a panel beside its window rather than over it: no mask,
+-- not the one open sheet (other sheets neither hide it nor are hidden by it),
+-- clamped to the screen; the caller anchors it.
+function UI.CreateSheet(pane, maskRegion, w, h, title, opts)
     maskRegion = maskRegion or pane
+    local docked = type(opts) == "table" and opts.docked == true
     local base = pane:GetFrameLevel()
-    local mask = UI.CreateMask(maskRegion, base + 30)
+    local mask = docked and { Show = function() end, Hide = function() end, IsShown = function() return false end }
+        or UI.CreateMask(maskRegion, base + 30)
 
     local s = CreateFrame("Frame", nil, pane, "BackdropTemplate")
     s:SetSize(w, h)
@@ -2545,6 +2550,11 @@ function UI.CreateSheet(pane, maskRegion, w, h, title)
     function s:Body() return body end
 
     s:Hide()
+    if docked then
+        s.docked = true
+        if s.SetClampedToScreen then s:SetClampedToScreen(true) end
+        return s
+    end
     s:SetScript("OnShow", function(self)
         if UI.openSheet and UI.openSheet ~= self then UI.openSheet:Hide() end
         UI.openSheet = self

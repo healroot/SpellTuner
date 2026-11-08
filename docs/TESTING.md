@@ -2518,7 +2518,7 @@ only in **Talent plan...** (the What if drawer has no talent rows; its section i
 and Spirit on a spell Bloom touches).
 
 1. **Spells -> Rejuvenation -> What if... -> Talent plan...**, add Bloom (it needs 10 points in Restoration
-   above it), **Use in What if.** Heal and Per mana rise by your Spirit (Bloom's 100%). The card gets
+   above it) -- it applies at once (T141). Heal and Per mana rise by your Spirit (Bloom's 100%). The card gets
    `Bloom +N if it runs out (100% of N Spirit)`; the drawer's sentence `Talents from your plan: Bloom 1.`
    Compare N with the heal you see land when a Rejuvenation expires.
 2. **Plan Living Spirit 3 too:** the amount goes up 15%. Type a Spirit in the drawer: it follows.
@@ -2554,7 +2554,7 @@ Forever, as a druid with talents. Everything is a prediction until you say other
 2. **Rules.** Left-click a tier-3 talent in an empty tree: refused, and the right panel says why
    ("needs 10 points in Restoration"). Right-click a point under a talent of a later tier: refused.
 3. **Plan Bloom** (it needs 10 points in Restoration above it; take points from elsewhere when you have
-   none to spare), **Use in What if**: Rejuvenation's Heal and Per mana move; the What if rows show the
+   none to spare); each click applies at once (T141): Rejuvenation's Heal and Per mana move; the What if rows show the
    same ranks. Nature's Splendor needs Nature's Majesty 2 in Balance, if your level allows both.
 6. **A spinner past the rules** (type Bloom 1 with no Restoration points, then Talent plan...): the info
    line says "breaks the rules" and Bloom's edge is red.
@@ -2572,7 +2572,7 @@ Forever, at your level (say 26).
    game when you get there.
 2. **Talent plan... with Level still 40:** the line says `level 40: 31 points`. Plan 31 points; no warning.
 3. **Clear the What if, Talent plan... again:** spend more than your level gives (up to 51). The line
-   says `you don't have that many yet: needs level N` (N = points + 9). Use in What if still works.
+   says `you don't have that many yet: needs level N` (N = points + 9). The numbers still follow each click.
 
 ## 60. The clock's bar look (T139) -- NEW, 5 min
 
@@ -2596,6 +2596,33 @@ were never changed, or press Reset to style first.
 6. **Presets:** Like EllesmereUI gives a square 8-px gradient bar with the words above, close to
    EllesmereUI's mana bar; compare them side by side and tell me what still differs. Default brings
    back step 1.
+
+## 61. EllesmereUI's look for the clock (T140) -- NEW, 3 min
+
+Forever with EllesmereUI loaded, Bar layout.
+
+1. **Bar look -> Texture:** the list has EllesmereUI's bars ("Pixels Dark (EllesmereUI)", "Atrocity
+   (EllesmereUI)", ...). Pick Pixels Dark: the bar shades like EllesmereUI's, a dark top line and a
+   dark bottom.
+2. **Presets -> Like EllesmereUI:** square, no border, 8 high, EllesmereUI's mana blue on a 111111
+   background, the mana number centred above the bar (FULL / OOM on the left, the time on the right).
+   Put it next to EllesmereUI's own mana bar and tell me what still differs (text size: Text tab ->
+   Size; EllesmereUI uses 15).
+3. **Text -> Centre:** None hides the centre number; Mana % / Mana / Regen / 5SR draw there.
+   **Default** preset: the centre number goes away.
+4. **Turn EllesmereUI off, /reload:** the bar draws Flat (the look's dump names why); turn it back on.
+
+## 62. The talent plan beside the window, live (T141) -- NEW, 2 min
+
+Forever. Spells -> Rejuvenation -> What if -> Talent plan...
+
+1. The plan opens **beside** the SpellTuner window (its right, or its left near the screen's edge),
+   not over it; Rejuvenation's numbers stay in view.
+2. **Click a talent with a blue dot** (Gift of Nature): Rejuvenation's Heal and Per mana change at once.
+   Right-click it back: they return. There is no Use button.
+3. Pick another spell in the rail: the plan stays open and that spell shows the planned talents.
+4. **x** closes it; the numbers keep the plan. What if -> **Clear** puts your own talents back.
+5. Move the SpellTuner window: the plan moves with it.
 
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the

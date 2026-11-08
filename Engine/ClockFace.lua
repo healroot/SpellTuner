@@ -135,7 +135,7 @@ local RIGHT = { "rest", "pct", "mana", "mp5", "fsr", "cd", "none" }
 CF.TEXT_SLOTS = {
     line = { "left", "main", "right", "right2" },
     compact = { "top", "main", "bottom" },
-    bar = { "left", "right" },
+    bar = { "left", "center", "right" }, -- T140: Centre, over the middle of the bar
 }
 CF.TEXT_HOME = { line = "main", compact = "main", bar = "right" }
 CF.TEXT_LABEL = { line = "left", compact = "top", bar = "left" }
@@ -158,6 +158,7 @@ CF.TEXT_OPTIONS = {
     },
     bar = {
         left = { "label", "pct", "mana", "none" },
+        center = { "none", "pct", "mana", "mp5", "fsr" },
         right = { "time", "pct", "mana", "none" },
     },
 }
@@ -166,7 +167,7 @@ CF.TEXT = {
         labels = "caps", ofMax = false, time = "line" },
     compact = { top = "label", main = "time", bottom = "none",
         labels = "caps", ofMax = false, time = "line" },
-    bar = { left = "label", right = "time",
+    bar = { left = "label", center = "none", right = "time",
         labels = "caps", ofMax = false, time = "line" },
 }
 

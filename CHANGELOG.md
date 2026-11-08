@@ -19,7 +19,7 @@ published to CurseForge; the developers' log is `docs/HISTORY.md`.
   the level the plan needs. The What if's talent +/- rows are gone: the talent plan is the one place
   to change talents.
 - Talent plan: What if -> Talent plan... opens your class's three talent trees with their icons. Plan
-  a build with clicks (left adds, right removes, the game's tier rules) and "Use in What if": the spells' numbers follow the planned talents SpellTuner models (a blue dot);
+  a build with clicks (left adds, right removes, the game's tier rules): the spells' numbers follow the planned talents SpellTuner models (a blue dot);
   the others count for points and tiers only.
 
 ### Both: a moving line for the five-second rule
@@ -34,6 +34,13 @@ published to CurseForge; the developers' log is `docs/HISTORY.md`.
   after 5SR). Presets: Default, Like EllesmereUI, Soft pill, Thin line.
 - The new default: a 6-px blue pill with the words below and the moving line. Your own settings are kept.
 - Forever: the clock's textures are no longer limited to Flat.
+- With EllesmereUI: its own bar textures (Pixels Dark, Atrocity, ...) in the Texture list, and "Like
+  EllesmereUI" copies its mana bar -- Pixels Dark, square, no border, its mana blue, the number centred
+  above. The Bar layout has a Centre text slot.
+
+### Forever: the talent plan, live
+- The talent plan opens beside the SpellTuner window instead of over it, and every click changes the
+  numbers at once -- no Use button. Closing it keeps the plan; What if -> Clear puts your talents back.
 
 ## 0.17.3
 

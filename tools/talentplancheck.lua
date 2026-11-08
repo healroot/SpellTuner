@@ -262,20 +262,54 @@ T("4 left adds, right takes off, under the rules; the panel names the change", f
         string.format("added %s held %s off %s name %s", tostring(added), tostring(held), tostring(off), tostring(name))
 end)
 
-T("4 Use in What if: the plan's modelled talents typed, the sheet closed; x discards", function()
+T("4 T141: each click goes into the What if at once (one WHATIF_CHANGED); no Use button; x keeps the plan", function()
     Use(LIVE)
     TP.kept = nil
+    WI:Clear()
+    local fired = 0
+    ST:RegisterCallback("WHATIF_CHANGED", function() fired = fired + 1 end)
     local sheet = TPL.Open(win)
+    local noUse = sheet.useBtn == nil
+    local f0 = fired
+    Click(CellOf(sheet, "Bloom"), "LeftButton")
+    local now = WI:Get("talent:Bloom") == 1 and fired - f0 == 1 and TPL.Plan()["Bloom"] == 1
+    Click(CellOf(sheet, "Bloom"), "RightButton")
+    local back = WI:Get("talent:Bloom") == nil and TPL.Plan()["Bloom"] == nil
     Click(CellOf(sheet, "Bloom"), "LeftButton")
     sheet:Hide()
-    local discarded = WI:Get("talent:Bloom") == nil
+    local kept = WI:Get("talent:Bloom") == 1
     sheet = TPL.Open(win)
-    local fresh = TPL.Plan()["Bloom"] == nil
-    Click(CellOf(sheet, "Bloom"), "LeftButton")
-    Click(sheet.useBtn)
-    local used = WI:Get("talent:Bloom") == 1 and not sheet:IsShown()
+    local reopened = TPL.Plan()["Bloom"] == 1
+    Click(sheet.clearBtn)
+    local cleared = WI:Get("talent:Naturalist") == 0 and WI:Get("talent:Bloom") == nil
+    Click(sheet.mineBtn)
+    local mine = WI:Get("talent:Naturalist") == nil and WI:Get("talent:Bloom") == nil
+    sheet:Hide()
     WI:Clear()
-    return discarded and fresh and used
+    return noUse and now and back and kept and reopened and cleared and mine, string.format(
+        "noUse %s now %s back %s kept %s reopened %s cleared %s mine %s", tostring(noUse), tostring(now),
+        tostring(back), tostring(kept), tostring(reopened), tostring(cleared), tostring(mine))
+end)
+
+T("4 T141: docked beside the window, never over it -- its right, else its left where the screen has no room", function()
+    Use(LIVE)
+    TP.kept = nil
+    local pane = CreateFrame("Frame", nil, win)
+    local savedR, savedW = win.GetRight, UIParent.GetWidth
+    win.GetRight = function() return 900 end
+    UIParent.GetWidth = function() return 1920 end
+    local sheet = TPL.Open(pane)
+    local onWin = sheet:GetParent() == win and sheet.dockedTo == win and sheet.docked == true
+    local right = sheet.side == "right"
+    local masked = sheet.mask and sheet.mask.IsShown and sheet.mask:IsShown()
+    sheet:Hide()
+    win.GetRight = function() return 1800 end
+    sheet = TPL.Open(pane)
+    local left = sheet.side == "left"
+    win.GetRight, UIParent.GetWidth = savedR, savedW
+    sheet:Hide()
+    return onWin and right and left and not masked, string.format("onWin %s right %s left %s masked %s",
+        tostring(onWin), tostring(right), tostring(left), tostring(masked))
 end)
 
 T("4 My talents and Clear", function()
@@ -290,7 +324,7 @@ T("4 My talents and Clear", function()
     return cleared and mine
 end)
 
-T("4 the drawer's Talent plan... opens the sheet over the window", function()
+T("4 the drawer's Talent plan... opens the panel beside the window (T141)", function()
     Use(LIVE)
     TP.kept = nil
     if not ST.Tabs:Has("Rejuvenation") then ST.Tabs:Add("Rejuvenation", nil); ST.SpellsPane:ListChanged() end
@@ -303,7 +337,7 @@ T("4 the drawer's Talent plan... opens the sheet over the window", function()
     local shown = d.planBtn:IsShown()
     Click(d.planBtn)
     local sheet = TPL.Sheet()
-    local open = sheet and sheet:IsShown() and sheet:GetParent() == d:GetParent()
+    local open = sheet and sheet:IsShown() and sheet:GetParent() == TPL.TopOf(d:GetParent())
     if sheet then sheet:Hide() end
     Click(f.strip.whatIfBtn)
     return shown and open, tostring(shown) .. " " .. tostring(open)

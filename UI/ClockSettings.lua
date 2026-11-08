@@ -877,9 +877,15 @@ local function HexRGB(h) return { tonumber(h:sub(1, 2), 16) / 255, tonumber(h:su
 CS.PRESETS = {
     { id = "default", text = "Default", tip = "SpellTuner's bar: a 6-px pill, Soft, the words below.",
       bars = {}, colors = {} },
-    { id = "eui", text = "Like EllesmereUI", tip = "Thin with a dark edge, a blue gradient, the words above.",
-      bars = { shape = "rect", texture = "gradient", text = "above", height = 8 },
-      colors = { ["colors.manaBar"] = HexRGB("58A6FF"), ["colors.fillEnd"] = HexRGB("1D4EA6") } },
+    -- T140: EllesmereUI's resource bar as it ships: Pixels Dark (its own file,
+    -- while EllesmereUI is loaded; else Soft), square, no border, 8 px, its
+    -- mana colour (read live, else 008CFF), 111111 behind, the mana centred above
+    { id = "eui", text = "Like EllesmereUI", tip = "EllesmereUI's mana bar: Pixels Dark, square, no border, the mana centred above.",
+      bars = { shape = "rect", texture = "eui:pixels-dark", text = "above", height = 8, border = 0 },
+      fallback = { texture = "soft" },
+      colors = { ["colors.manaBar"] = HexRGB("008CFF"), ["bar.back"] = HexRGB("111111") },
+      liveMana = true,
+      text = { center = "mana" } },
     { id = "pill", text = "Soft pill", tip = "Rounded and glossy, 18 px, the words inside.",
       bars = { texture = "gloss", text = "inside", height = 18 },
       colors = { ["colors.manaBar"] = HexRGB("3F7FE0"), ["colors.edge"] = HexRGB("2B3A55"), ["bar.back"] = HexRGB("151A24") } },
@@ -895,11 +901,26 @@ function CS.ApplyPreset(p, id)
     for _, x in ipairs(CS.PRESETS) do if x.id == id then pre = x end end
     if not pre then return false end
     local CV, L = ST.ClockView, Layout(p)
+    local M = ST.Media
     for _, f in ipairs(LOOK_FIELDS) do
         local v = pre.bars[f]
+        -- T140: a texture of EllesmereUI's only while EllesmereUI answers
+        if f == "texture" and type(v) == "string" and v:sub(1, #CV.EUI_PREFIX) == CV.EUI_PREFIX
+            and not (M and M.FetchEllesmere and M.FetchEllesmere(v:sub(#CV.EUI_PREFIX + 1))) then
+            v = pre.fallback and pre.fallback.texture
+        end
         Set("bars." .. L .. "." .. f, (v ~= CV.BARS_DEFAULT[f]) and v or nil)
     end
-    for _, row in ipairs(COLOUR_ROWS) do Set(row.key, pre.colors[row.key]) end
+    for _, row in ipairs(COLOUR_ROWS) do
+        local c = pre.colors[row.key]
+        if row.key == "colors.manaBar" and pre.liveMana then
+            local live = M and M.EllesmereMana and M.EllesmereMana()
+            if live then c = { live[1], live[2], live[3], 1 } end
+        end
+        Set(row.key, c)
+    end
+    -- T140: the Bar layout's Centre (a Text tab slot): the preset's, else none
+    if L == "bar" then Set("text.bar.center", pre.text and pre.text.center or nil) end
     return true
 end
 
@@ -909,6 +930,10 @@ function CS.TextureItems()
     local items = {}
     for _, id in ipairs(CV.BARS_VALUES.texture) do
         items[#items + 1] = { id = id, text = CV.TEXTURE_NAMES[id] or id }
+    end
+    -- T140: EllesmereUI's own, while it is loaded
+    for _, x in ipairs(ST.Media and ST.Media.Ellesmere and ST.Media.Ellesmere() or {}) do
+        items[#items + 1] = { id = CV.EUI_PREFIX .. x.key, text = x.name .. " (EllesmereUI)" }
     end
     for _, x in ipairs(ST.Media and ST.Media.Bars and ST.Media.Bars() or {}) do
         items[#items + 1] = { id = CV.LSM_PREFIX .. x.name, text = x.name .. " (your UI)" }
@@ -1066,8 +1091,9 @@ end
 -- Labels and Mana as of max, then FORMAT: Time, Size (with Default), Outline,
 -- Shadow, Numbers. Each writes text.<layout>.<key>; the layout's own default
 -- writes nil, so over stays sparse.
-local SLOT_LABEL = { left = "Left", main = "Main", right = "Right", right2 = "Right 2", top = "Top", bottom = "Bottom" }
-local SLOT_ORDER = { "left", "top", "main", "right", "right2", "bottom" }
+local SLOT_LABEL = { left = "Left", main = "Main", right = "Right", right2 = "Right 2", top = "Top", bottom = "Bottom",
+    center = "Centre" }
+local SLOT_ORDER = { "left", "center", "top", "main", "right", "right2", "bottom" }
 local SLOT_WORDS = {
     label = "Label", time = "Time 1:20", pct = "Mana % 62%", mana = "Mana 4210", rest = "Rest 2:10",
     mp5 = "Regen 92 mp5", fsr = "Five-second rule 3.0", cd = "Cooldown inn 2:10", none = "None",
