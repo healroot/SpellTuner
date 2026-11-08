@@ -1979,6 +1979,24 @@ Try("T144 no ~ on any Bar text, every sample face, label on and off; Line keeps 
         tostring(pure), line)
 end)
 
+Try(forever and "T144 review S1 Forever: a Bar mana text the game did not draw is still named the model's (hover)"
+        or "T144 review S1 TBC: the face's plain mana is never named the model's", function()
+    CV.ResetToStyle()
+    CV.SetLayout("bar")
+    Item("mana", "on", true)
+    local origFlag = ST.API.POWER_TEXT_READS
+    ST.API.POWER_TEXT_READS = false -- the game refuses: the model's number is drawn
+    local face = Rich(face1)
+    local v = Paint(face)
+    local words = v.modelledWords
+    ST.API.POWER_TEXT_READS = origFlag
+    CV.ResetToStyle()
+    Reset()
+    local want = face.manaModelled == true
+    return (words ~= nil) == want and (not forever or want),
+        string.format("modelledWords %s manaModelled %s", tostring(words), tostring(face.manaModelled))
+end)
+
 Try(forever and "T144 Forever: Mana, Mana / max and Mana % are the game's -- SetFormattedText handed the secrets unread; "
         .. "PaintPowerTexts draws them again with no layout; the flag off, nothing"
         or "T144 TBC: the Bar's mana texts are the face's plain numbers (no draw.powerText)", function()

@@ -2182,8 +2182,11 @@ function View:PaintItems(f)
                     fs:SetTextColor(r, g, b)
                     fs:Show()
                     segs[#segs + 1] = { kind = kind, piece = piece }
-                    if not modelled and (kind == "mana" or kind == "pct" or kind == "manaMax")
-                        and piece.text:sub(1, 1) == "~" then
+                    -- T144 review S1: the Bar's words carry no "~", so the
+                    -- face's own flags say the number is the model's
+                    if not modelled and type(f) == "table"
+                        and ((kind == "pct" and f.pctModelled)
+                            or ((kind == "mana" or kind == "manaMax") and f.manaModelled)) then
                         modelled = piece.text
                     end
                 else

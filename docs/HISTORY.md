@@ -5423,3 +5423,17 @@ beside the window (`UI.CreateSheet` `docked`), so the Spells pane is seen moving
 - **In game:** `docs/TESTING.md` §63 and §64.
 - **Open:** N1-N6 from the review. The `CLAUDE.md` rows for `UI/ClockView.lua` and
   `UI/ClockSettings.lua` still describe T139/T140; the implementer report has the wording.
+
+## 2026-11-08 -- T144: the clock bar after the first in-game look
+
+- **Commit 96aee98, plus the review fix** (S1 from `docs/review/T144-review.md`).
+- **Dropdowns:** at most 12 rows, scrolled by the wheel, with the selected entry in view (shared
+  widget, `UI/Style.lua`).
+- **Bar size:** no Bar text ever changes the bar's size.
+- **No `~` on Bar texts.** The face's own `manaModelled` / `pctModelled` flags still tell the hover
+  when a number is the model's (S1).
+- **Real mana on Forever:** `POWER_TEXT_READS` is on, based on EllesmereUI's shipped code on the same
+  client (`SetFormattedText`, unread). It is redrawn on every `UNIT_POWER_FREQUENT`.
+- **The time:** `ManaModel.Steady` moves it one 5 s step at most once a second.
+- **Review:** pass, with nits N1-N6 open (N3: the steady latch is not reset during the preview).
+- **In game:** `docs/TESTING.md` §65.
