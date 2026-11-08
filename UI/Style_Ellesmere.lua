@@ -222,6 +222,9 @@ local function Build(accent, panel, face, flags)
 end
 
 local following = nil   -- "skin" | "parent" | nil (the clone), as last resolved
+-- T142: the font the last Resolve read, { host, path }, handed once to
+-- E.FontPath so the clock's rebuild on STYLE_CHANGED does not ask again.
+local lastFont = nil
 
 -- The registered style's resolve: the table applied, and the dump's note.
 local function Resolve()
@@ -234,15 +237,39 @@ local function Resolve()
         panel = Colour(Ask(host, "GetPanelColor")) or panel
         local path, flag = Ask(host, "GetFont")
         path = FontPath(path)
+        lastFont = { host = host, path = path }
         if path then face, flags = path, Flags(flag) end
         note = "follows EllesmereUI (skin apiVersion " .. Version(E.API_VERSION) .. ")"
     elseif src == "parent" then
         accent = Colour(Ask(host, "GetAccentColor")) or accent
-        face = FontPath((Ask(host, "GetFontPath"))) or face
+        local path = FontPath((Ask(host, "GetFontPath")))
+        lastFont = { host = host, path = path }
+        face = path or face
         note = "follows EllesmereUI (its accent and font)"
     end
     following = src ~= "clone" and src or nil
     return Build(accent, panel, face, flags), note
+end
+
+-- T142: EllesmereUI's font now, read the way Resolve reads it (the skin
+-- facade's GetFont, else the parent's GetFontPath), for the clock's Bar
+-- layout texts. -> path, or nil and why.
+function E.FontPath()
+    local src, host, why = E.Source()
+    local path
+    local last = lastFont
+    lastFont = nil
+    if last and host ~= nil and last.host == host and (src == "skin" or src == "parent") then
+        path = last.path
+    elseif src == "skin" then
+        path = FontPath((Ask(host, "GetFont")))
+    elseif src == "parent" then
+        path = FontPath((Ask(host, "GetFontPath")))
+    else
+        return nil, why or "EllesmereUI is not loaded"
+    end
+    if path then return path end
+    return nil, "EllesmereUI did not answer a font"
 end
 
 -- E.Following() -> "skin" | "parent" | nil: what the last apply followed.

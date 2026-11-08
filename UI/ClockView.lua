@@ -107,6 +107,27 @@
 -- author's: a 6-px pill, Soft, the words below, 396DA7 / 1D4EA6 / 0A0A0A on a
 -- black edge, the moving line, and no panel behind the Bar layout.
 --
+-- T142 (docs/tasks/T142-bar-texts-game-frame.md; the mockup
+-- tools/.cache/clockbar2/index.html; "override my ingame setting"):
+--   * The Bar layout's texts are ITEMS, one per kind (CV.ITEM_KINDS: label,
+--     time, mana, manaMax, pct, mp5, fsr, rest), each with on / place
+--     (inside, above, below) / align / x / y / size / colour / outline, kept
+--     sparse as text.bar.items.<kind>.<field> (CV.ITEMS_DEFAULT the author's
+--     pick; CV.ResolveItems validates, look.items). They replace its Left /
+--     Centre / Right slots and bars.bar.text; Line and Compact keep theirs.
+--   * THE FRAME IS THE BAR: bars.bar.height high, frame.bar.w wide; an
+--     outside text hangs from the bar's edge and never changes the frame's
+--     size (only the texts inside ask for width).
+--   * bars.bar.frame: none / border / game -- EllesmereUI's Blizzard-style
+--     art, mask and bevel (View:PlaceGame), the atlases asked through
+--     ST.API.HasAtlas; without them the border, named in look.refused.
+--   * bars.bar.font: eui (UI.Ellesmere.FontPath, live) / st; without
+--     EllesmereUI the kit's font, named.
+--   * The Bar layout's defaults are its own (CV.BarsDefault): the game frame,
+--     rounded, 8 px, Pixels Dark (Soft without EllesmereUI, silently).
+--   * db.clockLook.v 2: CV.ResetBarLook clears the Bar layout's look and the
+--     bar colours once (MigrateStored; a dump line names what).
+--
 -- T116 (clock v2, C1; docs/tasks/T116-clock-text-tab.md): the slots drawn.
 --   * text.<layout>.<key> in `over`: T114's slots and words (ClockFace's
 --     TEXT_OPTIONS / TEXT_WORDS, judged by CF.ResolveText) and the renderer's
@@ -176,15 +197,30 @@ CV.LAYOUT = {
         -- the author's background (0A0A0A) and fill (396DA7) under every style
         -- (a style's clock role bar / barFill are the other layouts')
         panel = { fill = { 0, 0, 0, 0 }, edge = { 0, 0, 0, 0 } },
-        back = { 0x0A / 255, 0x0A / 255, 0x0A / 255, 1 }, ownFill = true },
+        back = { 0x0A / 255, 0x0A / 255, 0x0A / 255, 1 }, ownFill = true,
+        -- T142: the author's pick (the mockup's screenshot): the game's bar
+        -- frame, rounded, 8 px, EllesmereUI's Pixels Dark (Soft without it) in
+        -- EllesmereUI's font; the frame is the bar (its texts hang outside it)
+        bars = { frame = "game", font = "eui", shape = "round", texture = "eui:pixels-dark", height = 8 },
+        textureFallback = "soft" },
 }
 
 -- T115: the bars' defaults (both lines, every layout; answers 1, 2 and 5).
 CV.BARS_DEFAULT = { show = "both", join = "sweep", order = "manaOver", mana = "game", fsr = 3,
-    after = "green", texture = "soft", shape = "pill", border = 1, text = "below" }
--- T139: the Bar layout's bar with its words outside it; inside, the frame's
--- height sets it unless bars.<layout>.height does
-CV.BAR_HEIGHT = 6
+    after = "green", texture = "soft", shape = "pill", border = 1 }
+-- T139 / T142: the Bar layout's bar height when nothing sets it (the frame is
+-- the bar: its texts never make it taller)
+CV.BAR_HEIGHT = 8
+
+-- T142: a layout's bars defaults -- CV.BARS_DEFAULT with the layout's own
+-- (the Bar layout's frame, font, shape, texture and height) over it. A copy.
+function CV.BarsDefault(layout)
+    local out = {}
+    for k, v in pairs(CV.BARS_DEFAULT) do out[k] = v end
+    local d = CV.LAYOUT[layout]
+    for k, v in pairs(d and d.bars or {}) do out[k] = v end
+    return out
+end
 
 -- What each bars field accepts (the lists a picker offers, before the line's
 -- facts take some out).
@@ -196,7 +232,8 @@ CV.BARS_VALUES = {
     after = { "green", "empty", "tick" },
     texture = { "soft", "flat", "smooth", "gradient", "gloss", "striped", "minimal", "statusbar", "raid" },
     shape = { "rect", "round", "pill", "thin" },
-    text = { "inside", "above", "below", "off" },
+    frame = { "none", "border", "game" }, -- T142: the Bar layout's
+    font = { "eui", "st" },               -- T142: the Bar layout's
 }
 CV.FSR_RANGE = { 1, 8 }
 CV.BORDER_RANGE = { 0, 3 }
@@ -262,6 +299,50 @@ CV.TICK_REFUSED = "Forever cannot read your mana, so the 2-second regen tick can
 CV.MODEL_REFUSED = "no modelled pool on this line: it reads the real one"
 CV.TEXTURE_REFUSED = "this line draws its bars flat only"
 CV.RING_REFUSED = "the real pool is drawn by the game, never read: a ring cannot show it here"
+
+-- T142 (docs/tasks/T142-bar-texts-game-frame.md): the Bar layout's texts, one
+-- item per kind, each placed on its own (inside the bar, above or below it),
+-- in this drawing order. Fields: on, place, align, x, y, size, colour (six
+-- hex digits: the player's own value, never a token), outline.
+CV.ITEM_KINDS = { "label", "time", "mana", "manaMax", "pct", "mp5", "fsr", "rest" }
+CV.ITEM_FIELDS = { "on", "place", "align", "x", "y", "size", "colour", "outline" }
+CV.ITEM_NAMES = { label = "Label", time = "Time", mana = "Mana", manaMax = "Mana / max", pct = "Mana %",
+    mp5 = "Regen", fsr = "5SR", rest = "Rest" }
+CV.ITEM_WORDS = { label = "OOM", time = "1:20 v", mana = "1020", manaMax = "1020/2400", pct = "42%",
+    mp5 = "92 mp5", fsr = "5SR 3.0", rest = "rest 2:10" }
+CV.ITEM_VALUES = {
+    place = { "inside", "above", "below" },
+    align = { "left", "center", "right" },
+    outline = { "none", "outline", "thick", "shadow" },
+}
+CV.ITEM_X, CV.ITEM_Y, CV.ITEM_SIZE = { -40, 40 }, { -20, 20 }, { 6, 32 }
+CV.ITEM_PAD = 2      -- an inside text that is not centred, from its edge
+CV.ITEM_GAP = 1      -- an outside text, from the bar's edge
+local function It(on, place, align, x, y, size, colour, outline)
+    return { on = on, place = place, align = align, x = x, y = y, size = size, colour = colour, outline = outline }
+end
+-- the author's pick (the mockup's "mine"): the time below left, the mana in
+-- the middle, the regen below right; every other kind off with its own place
+CV.ITEMS_DEFAULT = {
+    label = It(false, "below", "left", 0, -1, 11, "E4E1DC", "none"),
+    time = It(true, "below", "left", 0, -1, 11, "E4E1DC", "none"),
+    mana = It(true, "inside", "center", 0, 0, 11, "E4E1DC", "none"),
+    manaMax = It(false, "inside", "center", 0, 0, 11, "E4E1DC", "none"),
+    pct = It(false, "above", "right", 0, 1, 11, "E4E1DC", "none"),
+    mp5 = It(true, "below", "right", 0, -1, 11, "9FD7A9", "none"),
+    fsr = It(false, "above", "left", 0, 1, 11, "FFAB33", "none"),
+    rest = It(false, "below", "right", 0, -1, 11, "8F8A83", "none"),
+}
+CV.ITEM_OUTLINE = { outline = "OUTLINE", thick = "THICKOUTLINE" }
+
+-- T142: the game's bar art (EllesmereUI's "Blizzard style", read from
+-- EUI_ResourceBars_Style.lua / _Groups.lua): the frame atlas round the bar,
+-- the mask atlas on the fill and the background, four bevel strips.
+CV.GAME_ATLAS = { frame = "UI-HUD-CoolDownManager-Bar-BG", mask = "UI-HUD-CoolDownManager-Bar" }
+CV.GAME_REACH = { left = -2, top = 3, right = 6, bottom = -7 }
+CV.GAME_REFUSED = "this client has no game bar art: drawn with a border"
+CV.FONT_EUI_MISSING = "EllesmereUI is not loaded: SpellTuner's font"
+CV.LOOK_VERSION = 2  -- db.clockLook.v: T142 reset the Bar layout's look once
 
 --------------------------------------------------------------------------------
 -- Small helpers
@@ -345,11 +426,15 @@ local BARS_OK = {
         return false
     end,
     fsr = IntRange(CV.FSR_RANGE[1], CV.FSR_RANGE[2]),
-    shape = OneOf(CV.BARS_VALUES.shape), text = OneOf(CV.BARS_VALUES.text),
+    shape = OneOf(CV.BARS_VALUES.shape),
     border = IntRange(CV.BORDER_RANGE[1], CV.BORDER_RANGE[2]),
     height = IntRange(CV.HEIGHT_RANGE[1], CV.HEIGHT_RANGE[2]),
+    frame = OneOf(CV.BARS_VALUES.frame), font = OneOf(CV.BARS_VALUES.font),
 }
-local BARS_ORDER = { "show", "join", "order", "mana", "fsr", "after", "texture", "shape", "border", "height", "text" }
+local BARS_ORDER = { "show", "join", "order", "mana", "fsr", "after", "texture", "shape", "border", "height",
+    "frame", "font" }
+-- T142: frame and font are the Bar layout's only
+local BARS_BAR_ONLY = { frame = true, font = true }
 
 CV.OVER = {
     ["panel.fill"] = IsColour,
@@ -375,17 +460,39 @@ local TEXT_OK = {
 }
 local function Bool(v) return type(v) == "boolean" end
 
+-- T142: what each item field accepts
+local ITEM_OK = {
+    on = Bool,
+    place = OneOf(CV.ITEM_VALUES.place), align = OneOf(CV.ITEM_VALUES.align),
+    x = IntRange(CV.ITEM_X[1], CV.ITEM_X[2]), y = IntRange(CV.ITEM_Y[1], CV.ITEM_Y[2]),
+    size = IntRange(CV.ITEM_SIZE[1], CV.ITEM_SIZE[2]),
+    colour = Hex,
+    outline = OneOf(CV.ITEM_VALUES.outline),
+}
+CV.ITEM_OK = ITEM_OK
+
 for _, L in ipairs(CV.LAYOUTS) do
     local d = CV.LAYOUT[L]
     local CF = ST.ClockFace
-    for _, slot in ipairs(CF.TEXT_SLOTS[L]) do
-        CV.OVER["text." .. L .. "." .. slot] = OneOf(CF.TEXT_OPTIONS[L][slot])
+    -- T142: the Bar layout's texts are items (text.bar.items.<kind>.<field>);
+    -- its word options (labels, time) stay; its slots and their size,
+    -- outline, shadow, numbers and ofMax are gone
+    if L == "bar" then
+        for _, kind in ipairs(CV.ITEM_KINDS) do
+            for _, f in ipairs(CV.ITEM_FIELDS) do CV.OVER["text.bar.items." .. kind .. "." .. f] = ITEM_OK[f] end
+        end
+    else
+        for _, slot in ipairs(CF.TEXT_SLOTS[L]) do
+            CV.OVER["text." .. L .. "." .. slot] = OneOf(CF.TEXT_OPTIONS[L][slot])
+        end
+        CV.OVER["text." .. L .. ".ofMax"] = Bool
+        for k, ok in pairs(TEXT_OK) do CV.OVER["text." .. L .. "." .. k] = ok end
     end
     CV.OVER["text." .. L .. ".labels"] = OneOf(CF.TEXT_WORDS.labels)
     CV.OVER["text." .. L .. ".time"] = OneOf(CF.TEXT_WORDS.time)
-    CV.OVER["text." .. L .. ".ofMax"] = Bool
-    for k, ok in pairs(TEXT_OK) do CV.OVER["text." .. L .. "." .. k] = ok end
-    for _, f in ipairs(BARS_ORDER) do CV.OVER["bars." .. L .. "." .. f] = BARS_OK[f] end
+    for _, f in ipairs(BARS_ORDER) do
+        if L == "bar" or not BARS_BAR_ONLY[f] then CV.OVER["bars." .. L .. "." .. f] = BARS_OK[f] end
+    end
     CV.OVER["frame." .. L .. ".w"] = Range(d.wRange[1], d.wRange[2])
     CV.OVER["frame." .. L .. ".h"] = Range(d.hRange[1], d.hRange[2])
     CV.OVER["frame." .. L .. ".scale"] = Range(CV.SCALE_RANGE[1], CV.SCALE_RANGE[2])
@@ -448,7 +555,7 @@ function CV.Resolve(stored, role, facts)
         panel = d.panel and Copy(d.panel) or { fill = role.fill or "bg", edge = role.edge or "border" },
         bar = { back = d.back and Copy(d.back)
             or ((role.bar ~= nil and IsColour(role.bar)) and Copy(role.bar) or { 0, 0, 0, 1 }) },
-        bars = Copy(CV.BARS_DEFAULT),
+        bars = CV.BarsDefault(key),
         frame = { w = d.width, h = d.height, scale = 100 },
         colors = {},
         refused = {},
@@ -479,7 +586,13 @@ function CV.Resolve(stored, role, facts)
         if okB then break end
         field = field or "show"
         look.refused["bars." .. key .. "." .. field] = why
-        look.bars[field] = (field == "show") and "fsr" or CV.BARS_DEFAULT[field]
+        look.bars[field] = (field == "show") and "fsr" or CV.BarsDefault(key)[field]
+    end
+    -- T142: the layout's own default texture has a fallback of its own (the
+    -- Bar's EllesmereUI texture draws Soft without EllesmereUI, silently: it
+    -- is the default, not the player's pick)
+    if d.textureFallback and Get(over, "bars." .. key .. ".texture") == nil then
+        look.textureFallback = d.textureFallback
     end
 
     -- T116: every layout's text (the feeds read Line's whatever is on
@@ -497,14 +610,43 @@ function CV.Resolve(stored, role, facts)
             look.refused["text." .. L .. "." .. field] = "not accepted: " .. tostring(v)
             return default
         end
-        t.size = Own("size", nil)
-        t.outline = Own("outline", "none")
-        t.shadow = Own("shadow", true)
-        t.numbers = Own("numbers", "number")
+        if L ~= "bar" then
+            t.size = Own("size", nil)
+            t.outline = Own("outline", "none")
+            t.shadow = Own("shadow", true)
+            t.numbers = Own("numbers", "number")
+        end
         look.texts[L] = t
     end
     look.text = look.texts[key]
+    look.items = CV.ResolveItems(type(overText.bar) == "table" and overText.bar.items or nil, look.refused)
     return look
+end
+
+-- T142: CV.ResolveItems(stored, refused) -> items: every kind with every
+-- field, the stored value where it is accepted, else the default (a refused
+-- one named in `refused` as text.bar.items.<kind>.<field>). Copies.
+function CV.ResolveItems(stored, refused)
+    stored = type(stored) == "table" and stored or {}
+    local out = {}
+    for _, kind in ipairs(CV.ITEM_KINDS) do
+        local d = CV.ITEMS_DEFAULT[kind]
+        local s = type(stored[kind]) == "table" and stored[kind] or {}
+        local it = {}
+        for _, f in ipairs(CV.ITEM_FIELDS) do
+            local v = s[f]
+            if v == nil then
+                it[f] = d[f]
+            elseif ITEM_OK[f](v) then
+                it[f] = v
+            else
+                it[f] = d[f]
+                if refused then refused["text.bar.items." .. kind .. "." .. f] = "not accepted: " .. tostring(v) end
+            end
+        end
+        out[kind] = it
+    end
+    return out
 end
 
 -- The active style's clock role (Flat's while no registry is loaded).
@@ -572,6 +714,43 @@ function CV.Migrate(stored, facts)
     return changed, dropped
 end
 
+-- T142: the Bar layout's look before db.clockLook.v 2, reset once (the
+-- author's ruling, "override my ingame setting"): bars.bar, text.bar,
+-- frame.bar and the bar colours cleared; Line and Compact's overrides and the
+-- layout kept. CV.ResetBarLook(stored) -> changed, reset (a sorted list of
+-- the override keys cleared). A store at v 2 or above is left alone, so a
+-- second read changes nothing.
+CV.RESET_COLOURS = { "colors.manaBar", "bar.back", "colors.fillEnd", "colors.edge", "colors.fsrLine", "colors.after" }
+function CV.ResetBarLook(stored)
+    if type(stored) ~= "table" then return false, {} end
+    local v = stored.v
+    if type(v) == "number" and v >= CV.LOOK_VERSION then return false, {} end
+    local over = type(stored.over) == "table" and stored.over or nil
+    local reset = {}
+    if over then
+        local function Walk(t, prefix)
+            for k, x in pairs(t) do
+                local key = prefix .. "." .. tostring(k)
+                if type(x) == "table" and not IsColour(x) then Walk(x, key) else reset[#reset + 1] = key end
+            end
+        end
+        for _, area in ipairs({ "bars", "text", "frame" }) do
+            local t = type(over[area]) == "table" and over[area].bar or nil
+            if type(t) == "table" then Walk(t, area .. ".bar") end
+            if t ~= nil then PutPath(over, area .. ".bar", nil) end
+        end
+        for _, k in ipairs(CV.RESET_COLOURS) do
+            if Get(over, k) ~= nil then
+                reset[#reset + 1] = k
+                PutPath(over, k, nil)
+            end
+        end
+    end
+    stored.v = CV.LOOK_VERSION
+    table.sort(reset)
+    return true, reset
+end
+
 --------------------------------------------------------------------------------
 -- The store: db.clockLook, written only here.
 --------------------------------------------------------------------------------
@@ -581,7 +760,7 @@ local migrated = false
 local function StoredRaw()
     local db = ST.db
     if type(db) ~= "table" then return nil end
-    if type(db.clockLook) ~= "table" then db.clockLook = { layout = CV.DEFAULT_LAYOUT, over = {} } end
+    if type(db.clockLook) ~= "table" then db.clockLook = { layout = CV.DEFAULT_LAYOUT, over = {}, v = CV.LOOK_VERSION } end
     if type(db.clockLook.over) ~= "table" then db.clockLook.over = {} end
     return db.clockLook
 end
@@ -599,6 +778,14 @@ function CV.MigrateStored(facts, force)
         local text = string.format("clock: %d old clock key%s dropped (%s)", #dropped, #dropped == 1 and "" or "s",
             table.concat(dropped, ", "))
         ST:AddDumpLine("clockOld", function() return text end)
+    end
+    -- T142: the Bar layout's look reset once, named by its own dump line
+    local _, reset = CV.ResetBarLook(s)
+    if #reset > 0 then
+        local text = string.format("clock: T142 reset the Bar look, %d override%s (%s)", #reset,
+            #reset == 1 and "" or "s", table.concat(reset, ", "))
+        ST:AddDumpLine("clockReset", function() return text end)
+        changed = true
     end
     return changed, dropped
 end
@@ -668,6 +855,21 @@ function CV.Set(key, value)
     if not ok then return false, "not a clock look setting: " .. tostring(key) end
     if value ~= nil and not ok(value) then return false, key .. ": not accepted: " .. tostring(value) end
     PutPath(Stored().over, key, value)
+    Changed()
+    return true
+end
+
+-- T142: CV.SetMany(list) -> true | false, why: several overrides ({ key,
+-- value } pairs, nil removes) judged first, then written together with one
+-- CLOCK_LOOK (a preset); one refused writes none.
+function CV.SetMany(list)
+    for _, kv in ipairs(list or {}) do
+        local ok = CV.OVER[kv[1]]
+        if not ok then return false, "not a clock look setting: " .. tostring(kv[1]) end
+        if kv[2] ~= nil and not ok(kv[2]) then return false, kv[1] .. ": not accepted: " .. tostring(kv[2]) end
+    end
+    local over = Stored().over
+    for _, kv in ipairs(list or {}) do PutPath(over, kv[1], kv[2]) end
     Changed()
     return true
 end
@@ -816,11 +1018,16 @@ BUILD.bar = function(v)
     -- the text sits on a frame above the bars (the bars are child frames and
     -- draw over the parent's own regions), placed over the mana bar
     local holder = CreateFrame("Frame", nil, p)
-    local set = { holder = holder }
-    set.label = NewText(holder, UI.FONT)
-    set.label:SetJustifyH("LEFT")
-    set.value = NewText(holder, UI.FONT_NUM or UI.FONT)
-    set.value:SetJustifyH("RIGHT")
+    -- T142: one font string per text kind, made the first time it is drawn;
+    -- the label's and the time's are the view's label / value
+    local set = { holder = holder, items = {} }
+    for _, kind in ipairs({ "label", "time" }) do
+        local fs = NewText(holder, UI.FONT)
+        fs:SetText("")
+        fs:Hide()
+        set.items[kind] = fs
+    end
+    set.label, set.value = set.items.label, set.items.time
     set.msg = NewText(holder, UI.FONT)
     set.msg:SetText("")
     set.msg:Hide()
@@ -831,6 +1038,10 @@ local function Pieces(set)
     local out = {}
     for _, k in ipairs({ "label", "value", "second", "right2", "msg" }) do
         if set[k] then out[#out + 1] = set[k] end
+    end
+    for _, kind in ipairs(CV.ITEM_KINDS) do
+        local fs = set.items and set.items[kind]
+        if fs and fs ~= set.label and fs ~= set.value then out[#out + 1] = fs end
     end
     return out
 end
@@ -909,7 +1120,7 @@ end
 CV.REGION = {
     line = { left = "label", main = "value", right = "second", right2 = "right2" },
     compact = { top = "label", main = "value", bottom = "second" },
-    bar = { left = "label", center = "second", right = "value" }, -- T140: Centre
+    -- T142: the Bar layout draws items (CV.ITEM_KINDS), not slots
 }
 
 -- The widest word each kind draws (the slot's room, so only a value's own
@@ -1147,103 +1358,132 @@ function CV.BarWordsW(leftW, rightW, centerW)
     return leftW + ((leftW > 0 and rightW > 0) and 2 * CV.GAP or 0) + rightW
 end
 
--- T139: the Bar layout with its words above, below or off -- the frame as tall
--- as the bar, its edge and the text row (the Frame tab's Height does not
--- apply; Width does), the words at the frame's edges.
-local function BarOutside(look, b, manaOn, el, s, rowH, fonts, leftW, rightW, place, centerW)
-    local bd = b.border or 1
-    local barH = b.height or CV.BAR_HEIGHT
-    local total = barH + 2 * bd
-    local hasText = place ~= "off"
-    local gap = hasText and 1 or 0
-    local textH = hasText and rowH or 0
-    local minH = 1 + total + gap + textH + 1
-    local chipExtra = el == "chip" and (total + 2) or 0
-    local words = CV.BarWordsW(leftW, rightW, centerW)
-    local minW = math.ceil(chipExtra + 2 + 2 * bd + (hasText and words or 20))
-    local fw = Fit(look, minW, 0)
-    local barY = (place == "below") and (1 + textH + gap + bd) or (1 + bd)
-    local barX = 1 + bd + chipExtra
-    local barW = fw - 2 - 2 * bd - chipExtra
-    local m = { w = fw, h = minH, minW = minW, minH = minH, manaOn = manaOn, el = el,
-        fonts = { label = fonts.left, value = fonts.right, second = fonts.center }, msg = { "CENTER", 0, 0 } }
-    if hasText then
-        m.label, m.value = { "LEFT", 1, 0 }, { "RIGHT", -1, 0 }
-        if (centerW or 0) > 0 then m.second = { "CENTER", 0, 0 } end
-        m.holder = { 0, (place == "below") and 1 or (1 + total + gap), fw, textH }
-    else
-        m.holder = { 0, 0, fw, minH }
+-- T142: the font the Bar layout's texts draw in: EllesmereUI's, read live
+-- through the Ellesmere style's own path (UI/Style_Ellesmere.lua E.FontPath),
+-- or the kit's. CV.BarFont(look) -> face, why (why: eui asked, not there).
+function CV.BarFont(look)
+    local b = type(look) == "table" and look.bars or {}
+    local why
+    if b.font == "eui" then
+        local E = UI.Ellesmere
+        local path = E and E.FontPath and E.FontPath()
+        if type(path) == "string" and path ~= "" then return path end
+        why = CV.FONT_EUI_MISSING
     end
-    if manaOn and el == "strip" then
-        local manaH = math.max(1, barH - s - 1)
-        if b.order == "fsrOver" then
-            m.bar = { barX, barY, barW, manaH }
-            m.strip = { barX, barY + manaH + 1, barW, s }
-        else
-            m.strip = { barX, barY, barW, s }
-            m.bar = { barX, barY + s + 1, barW, manaH }
-        end
-    elseif manaOn then
-        m.bar = { barX, barY, barW, barH }
-    elseif el == "solo" then
-        m.strip = { barX, barY, barW, barH }
-    end
-    if el == "chip" then m.chip = { "BOTTOMLEFT", 1, barY - bd, total } end
-    return m
+    local obj = FontObj(UI.FONT)
+    local face
+    if obj and obj.GetFont then face = obj:GetFont() end
+    if type(face) ~= "string" then face = "Fonts\\ARIALN.TTF" end
+    return face, why
 end
 
+-- An item's font: { face, size, flags, shadowX, shadowY }; its own outline
+-- always applies (shadow: a 1-px drop shadow, the others none).
+local function ItemFont(face, it)
+    local flags = CV.ITEM_OUTLINE[it.outline] or ""
+    local sx, sy = 0, 0
+    if it.outline == "shadow" then sx, sy = 1, -1 end
+    return { face, it.size, flags, sx, sy }
+end
+
+-- The widest word an item draws, or nil for none (the time's own sample per
+-- word option, with Forever's "~" while the label is off).
+local function ItemSample(look, t, kind, labelOn)
+    local label = look.labelSample or "FULL"
+    if kind == "label" then return label end
+    if kind == "time" then
+        local s = CV.TIME_SAMPLE[t.time] or CV.VALUE_SAMPLE
+        if not labelOn and label:sub(1, 1) == "~" then s = "~" .. s end
+        return s
+    end
+    if kind == "mana" then return CV.KIND_SAMPLE.mana end
+    if kind == "manaMax" then return CV.KIND_SAMPLE.manaOfMax end
+    if kind == "rest" then return CV.HasSecondary(look) and CV.SECOND_SAMPLE or nil end
+    return CV.KIND_SAMPLE[kind]
+end
+
+local SUFFIX = { left = "LEFT", center = "", right = "RIGHT" }
+
+-- T142: the Bar layout -- THE FRAME IS THE BAR (its width the frame's, its
+-- height bars.bar.height); every text an item at its own place: inside (from
+-- the bar's left edge, centre or right edge, 2 px in when not centred), or
+-- above / below, hanging outside the frame from its top / bottom edge, so a
+-- text never makes the bar or the frame taller. The width never goes under
+-- what the texts inside the bar need side by side.
 METRICS.bar = function(v, look)
     local b = look.bars
     local manaOn, el = Element(b)
     local s = b.fsr or 3
-    local inset = look.inset or 6
+    local barH = b.height or CV.BAR_HEIGHT
+    local items = look.items or CV.ResolveItems(nil)
     local t = TextOf(look, "bar")
-    local fonts, w, h = Slots(v, look, "bar", t)
-    local leftW, rightW, centerW = w.left, w.right, w.center or 0
-    local rowH = RowH(fonts, w, h, { "left", "center", "right" }, "right")
-    local anyBar = manaOn or el ~= nil
-    local place = b.text or "inside"
-    if anyBar and place ~= "inside" then
-        return BarOutside(look, b, manaOn, el, s, rowH, fonts, leftW, rightW, place, centerW)
+    look.refused = look.refused or {}
+    -- the face read once per look (View:SetLook), not at every paint
+    local face, whyF = v.barFace, v.barFaceWhy
+    if not face then face, whyF = CV.BarFont(look) end
+    if whyF then look.refused["bars.bar.font"] = whyF else look.refused["bars.bar.font"] = nil end
+    local labelOn = items.label and items.label.on
+    local fonts, specs = {}, {}
+    local need = { inside = {}, above = {}, below = {} }
+    for _, kind in ipairs(CV.ITEM_KINDS) do
+        local it = items[kind]
+        if it and it.on then
+            fonts[kind] = ItemFont(face, it)
+            local w = MeasureIn(v, fonts[kind], ItemSample(look, t, kind, labelOn))
+            local g = need[it.place]
+            if g and w > 0 then g[it.align] = (g[it.align] or 0) + (g[it.align] and CV.GAP or 0) + w end
+        end
     end
-    local stacked = manaOn and el == "strip"
-    local minH = anyBar and (rowH + s + 4) or (rowH + 6)
-    -- the height first: the chip is as tall as the mana bar, and its width
-    -- goes into the minimum width; T139: a bar height the look sets wins over
-    -- the frame's (the words still fit)
-    local _, h0 = Fit(look, 0, b.height and 0 or minH)
-    if b.height then h0 = math.max(minH, b.height + 4) end
-    local single = h0 - 4
-    local chipExtra = el == "chip" and (single + 2) or 0
-    local minW = math.ceil(chipExtra + 4 + 2 * inset + CV.BarWordsW(leftW, rightW, centerW))
-    local fw, fh = Fit(look, minW, b.height and 0 or minH)
-    if b.height then fh = h0 end
-    local barX = 2 + chipExtra
-    local barW = fw - 4 - chipExtra
-    local m = { w = fw, h = fh, minW = minW, minH = minH, manaOn = manaOn, el = el,
-        fonts = { label = fonts.left, value = fonts.right, second = fonts.center },
-        label = { "LEFT", inset, 0 }, value = { "RIGHT", -inset, 0 }, msg = { "CENTER", 0, 0 } }
-    if centerW > 0 then m.second = { "CENTER", 0, 0 } end
-    if stacked then
-        local manaH = fh - s - 3
+    local function Need(place)
+        local g = need[place]
+        return CV.BarWordsW(g.left or 0, g.right or 0, g.center or 0)
+    end
+    local chipExtra = el == "chip" and (barH + 2) or 0
+    -- only the texts inside the bar ask for width: an outside one never
+    -- changes the frame's size
+    local minW = math.ceil(chipExtra + math.max(20, Need("inside") + 2 * CV.ITEM_PAD))
+    local fw = Fit(look, minW, 0)
+    local fh = barH
+    local barX, barW = chipExtra, fw - chipExtra
+    local m = { w = fw, h = fh, minW = minW, minH = fh, manaOn = manaOn, el = el,
+        items = specs, itemFonts = fonts, msg = { "CENTER", 0, 0 } }
+    if manaOn and el == "strip" then
+        local manaH = math.max(1, barH - s - 1)
         if b.order == "fsrOver" then
-            m.bar = { barX, 1, barW, manaH }
-            m.strip = { barX, 1 + manaH + 1, barW, s }
+            m.bar = { barX, 0, barW, manaH }
+            m.strip = { barX, manaH + 1, barW, s }
         else
-            m.strip = { barX, 1, barW, s }
-            m.bar = { barX, s + 2, barW, manaH }
+            m.strip = { barX, 0, barW, s }
+            m.bar = { barX, s + 1, barW, manaH }
         end
     elseif manaOn then
-        m.bar = { barX, 2, barW, single }
+        m.bar = { barX, 0, barW, barH }
     elseif el == "solo" then
-        m.strip = { barX, 2, barW, single }
+        m.strip = { barX, 0, barW, barH }
     end
-    if el == "chip" then m.chip = { "BOTTOMLEFT", 2, 2, single } end
-    -- the text holder over the mana bar, else over the strip, else the frame
-    local r = m.bar or m.strip
-    m.holder = r and { r[1], r[2], r[3], r[4] } or { 0, 0, fw, fh }
+    if el == "chip" then m.chip = { "BOTTOMLEFT", 0, 0, barH } end
+    -- the texts' anchor: the bar's own rect (right of a chip)
+    m.holder = { barX, 0, barW, fh }
+    local gap = CV.ITEM_GAP
+    if b.frame == "border" then gap = gap + (b.border or 0) end
+    for _, kind in ipairs(CV.ITEM_KINDS) do
+        local it = items[kind]
+        if it and it.on then
+            local suf = SUFFIX[it.align] or ""
+            if it.place == "inside" then
+                local p = (suf == "") and "CENTER" or suf
+                local pad = (suf == "LEFT" and CV.ITEM_PAD) or (suf == "RIGHT" and -CV.ITEM_PAD) or 0
+                specs[kind] = { p, p, pad + it.x, it.y }
+            elseif it.place == "above" then
+                specs[kind] = { "BOTTOM" .. suf, "TOP" .. suf, it.x, gap + it.y }
+            else
+                specs[kind] = { "TOP" .. suf, "BOTTOM" .. suf, it.x, -gap + it.y }
+            end
+        end
+    end
     return m
 end
+
 
 local function SameMetrics(a, b)
     if type(a) ~= "table" or type(b) ~= "table" then return false end
@@ -1290,6 +1530,8 @@ function View:SizeBack()
     local e = UI.px and UI.px(1, self.parent) or 1
     local m = self.metrics or {}
     local bd = ((self.look and self.look.bars and self.look.bars.border) or 1) * e
+    -- T142: the Bar layout's frame: None and the game's art draw no border
+    if self.frameMode == "none" or self.frameMode == "game" then bd = 0 end
     local mk = self.masks or {}
     if m.bar then
         self.barBack:SetSize(m.bar[3], m.bar[4])
@@ -1308,6 +1550,121 @@ function View:SizeBack()
     ShowIf(self.barEdge, m.bar ~= nil and bd > 0)
     ShowIf(self.stripEdge, m.strip ~= nil and bd > 0)
     self.snappedPx = e
+    self:PlaceGame()
+end
+
+--------------------------------------------------------------------------------
+-- T142: the game's bar frame (EllesmereUI's "Blizzard style", read from its
+-- ERB_ApplyBlizzBarChrome / ERB_BlizzBarShadow): the frame atlas on a
+-- BACKGROUND -2 texture from (-2, 3) to (6, -7) round the bar (most of that
+-- reach is the art's own shadow; its rim is about 1 px), the mask atlas on
+-- the mana bar's fill and background, and four black bevel strips at OVERLAY
+-- -3 on the mana bar, each masked too -- top max(2, h * 0.2) at 0.55, bottom
+-- max(1, h * 0.1) at 0.30, each end max(2, w * 0.15) at 0.35, fading to 0.
+-- The moving 5SR line (OVERLAY 1-2) stays above the bevel. Built the first
+-- time the game frame is drawn; off, the masks clip nothing.
+--------------------------------------------------------------------------------
+-- CV.GameFrameOK() -> true, or false and why: the client has both atlases
+-- (asked through ST.API; ClockView reads no client value itself).
+function CV.GameFrameOK()
+    local A = ST.API
+    if not (A and A.HasAtlas) then return false, CV.GAME_REFUSED end
+    if A.HasAtlas(CV.GAME_ATLAS.frame) and A.HasAtlas(CV.GAME_ATLAS.mask) then return true end
+    return false, CV.GAME_REFUSED
+end
+
+local function NoSnap(tex)
+    if tex.SetSnapToPixelGrid then pcall(tex.SetSnapToPixelGrid, tex, false) end
+    if tex.SetTexelSnappingBias then pcall(tex.SetTexelSnappingBias, tex, 0) end
+end
+
+function View:BuildGame()
+    if self.game then return self.game end
+    local p, bar = self.parent, self.bar
+    local g = { on = {} }
+    g.art = p:CreateTexture(nil, "BACKGROUND", nil, -2)
+    NoSnap(g.art)
+    g.art:Hide()
+    g.mask = bar:CreateMaskTexture()
+    g.mask:SetAllPoints(bar)
+    g.backMask = p:CreateMaskTexture()
+    g.backMask:SetAllPoints(self.barBack)
+    self.barBack:AddMaskTexture(g.backMask)
+    g.bevel = {}
+    for _, k in ipairs({ "top", "bottom", "left", "right" }) do
+        local t = bar:CreateTexture(nil, "OVERLAY", nil, -3)
+        t:SetTexture(UI.whiteTexture)
+        t:AddMaskTexture(g.mask)
+        NoSnap(t)
+        t:Hide()
+        g.bevel[k] = t
+    end
+    self.game = g
+    return g
+end
+
+-- The fill texture clipped by the game mask (SetStatusBarTexture may hand
+-- back a new one).
+local function GameClip(g, tex)
+    if type(tex) ~= "table" or type(tex.AddMaskTexture) ~= "function" or g.on[tex] then return end
+    g.on[tex] = true
+    tex:AddMaskTexture(g.mask)
+end
+
+function View:PlaceGame()
+    local m = self.metrics or {}
+    local on = self.frameMode == "game" and m.bar ~= nil
+    if not on then
+        local g = self.game
+        if g then
+            g.art:Hide()
+            for _, t in pairs(g.bevel) do t:Hide() end
+            -- off: the masks clip nothing
+            pcall(g.mask.SetTexture, g.mask, UI.whiteTexture, "CLAMPTOWHITE", "CLAMPTOWHITE")
+            pcall(g.backMask.SetTexture, g.backMask, UI.whiteTexture, "CLAMPTOWHITE", "CLAMPTOWHITE")
+        end
+        return
+    end
+    local g = self:BuildGame()
+    local p, bar = self.parent, self.bar
+    local A = CV.GAME_ATLAS
+    g.art:SetAtlas(A.frame)
+    g.mask:SetAtlas(A.mask)
+    g.backMask:SetAtlas(A.mask)
+    GameClip(g, bar.GetStatusBarTexture and bar:GetStatusBarTexture())
+    -- round the whole bar (the strip too, when stacked)
+    local x0, w, h = m.holder and m.holder[1] or 0, m.holder and m.holder[3] or m.w, m.h
+    local R = CV.GAME_REACH
+    g.art:ClearAllPoints()
+    g.art:SetPoint("TOPLEFT", p, "BOTTOMLEFT", x0 + R.left, h + R.top)
+    g.art:SetPoint("BOTTOMRIGHT", p, "BOTTOMLEFT", x0 + w + R.right, R.bottom)
+    g.art:Show()
+    local bw, bh = m.bar[3], m.bar[4]
+    local top = math.max(2, math.floor(bh * 0.2))
+    local bottom = math.max(1, math.floor(bh * 0.1))
+    local side = math.max(2, math.floor(bw * 0.15))
+    local B = g.bevel
+    B.top:ClearAllPoints()
+    B.top:SetPoint("TOPLEFT", bar, "TOPLEFT", 0, 0)
+    B.top:SetPoint("TOPRIGHT", bar, "TOPRIGHT", 0, 0)
+    B.top:SetHeight(top)
+    ST.API.SetGradient(B.top, 0, 0, 0, 0, 0, 0, 0, 0.55, "VERTICAL")
+    B.bottom:ClearAllPoints()
+    B.bottom:SetPoint("BOTTOMLEFT", bar, "BOTTOMLEFT", 0, 0)
+    B.bottom:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", 0, 0)
+    B.bottom:SetHeight(bottom)
+    ST.API.SetGradient(B.bottom, 0, 0, 0, 0.30, 0, 0, 0, 0, "VERTICAL")
+    B.left:ClearAllPoints()
+    B.left:SetPoint("TOPLEFT", bar, "TOPLEFT", 0, 0)
+    B.left:SetPoint("BOTTOMLEFT", bar, "BOTTOMLEFT", 0, 0)
+    B.left:SetWidth(side)
+    ST.API.SetGradient(B.left, 0, 0, 0, 0.35, 0, 0, 0, 0)
+    B.right:ClearAllPoints()
+    B.right:SetPoint("TOPRIGHT", bar, "TOPRIGHT", 0, 0)
+    B.right:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", 0, 0)
+    B.right:SetWidth(side)
+    ST.API.SetGradient(B.right, 0, 0, 0, 0, 0, 0, 0, 0.35)
+    for _, t in pairs(B) do t:Show() end
 end
 
 -- T139: a pair of masks on `owner` (nil where the client has none), and the
@@ -1399,9 +1756,35 @@ function View:Place(m)
         set.holder:SetFrameLevel((self.bar:GetFrameLevel() or 1) + 2)
         rel = set.holder
     end
+    -- T142: the Bar layout's items, each in its font at its place (a kind
+    -- made the first time it is drawn), the others emptied
+    if m.items then
+        for _, kind in ipairs(CV.ITEM_KINDS) do
+            local spec, font = m.items[kind], m.itemFonts and m.itemFonts[kind]
+            local fs = set.items[kind]
+            if spec and not fs then
+                fs = NewText(rel, UI.FONT)
+                set.items[kind] = fs
+            end
+            if fs then
+                if spec then
+                    fs:SetFont(font[1], font[2], font[3])
+                    fs:SetShadowOffset(font[4], font[5])
+                    if fs.SetShadowColor then fs:SetShadowColor(0, 0, 0, 1) end
+                    local p = spec[1]
+                    fs:SetJustifyH((p:find("LEFT") and "LEFT") or (p:find("RIGHT") and "RIGHT") or "CENTER")
+                    fs:ClearAllPoints()
+                    fs:SetPoint(spec[1], rel, spec[2], spec[3], spec[4])
+                else
+                    fs:SetText("")
+                    fs:Hide()
+                end
+            end
+        end
+    end
     -- T116: each slot's region in its font, at its place; a region the
     -- metrics leave out is emptied
-    for _, k in ipairs({ "label", "value", "second", "right2" }) do
+    for _, k in ipairs(m.items and {} or { "label", "value", "second", "right2" }) do
         local spec, font = m[k], m.fonts and m.fonts[k]
         if spec and not set[k] then set[k] = MakeRegion(rel, k) end
         local fs = set[k]
@@ -1531,10 +1914,30 @@ function View:SetLook(look)
     self.barBack:SetColorTexture(back[1], back[2], back[3], back[4] or 1)
     self.stripBack:SetColorTexture(back[1], back[2], back[3], back[4] or 1)
     local tex, why = CV.TexturePath(look.bars.texture)
+    if why and look.textureFallback then
+        -- T142: the layout's own default, not there: its fallback, silently
+        tex, why = CV.TexturePath(look.textureFallback)
+    end
     if why then
         look.refused = look.refused or {}
         look.refused["bars." .. key .. ".texture"] = why
     end
+    -- T142: the Bar layout's frame (the other layouts: their border, as
+    -- before); the game's art where the client has it, else the border
+    local mode = (key == "bar") and look.bars.frame or "border"
+    if mode == "game" then
+        local okG, whyG = CV.GameFrameOK()
+        if not okG or not self.masks then
+            look.refused = look.refused or {}
+            look.refused["bars.bar.frame"] = whyG or CV.GAME_REFUSED
+            mode = "border"
+        end
+    end
+    self.frameMode = mode
+    -- T142: the Bar layout's font, read once per look (EllesmereUI's getter
+    -- is not asked at every paint)
+    self.barFace, self.barFaceWhy = nil, nil
+    if key == "bar" then self.barFace, self.barFaceWhy = CV.BarFont(look) end
     self.bar:SetStatusBarTexture(tex)
     self.strip:SetStatusBarTexture(tex)
     self.texturePath = tex
@@ -1711,6 +2114,8 @@ function View:Paint(face, look)
     self:Layout()
     self.msg:SetText("")
     self.msg:Hide()
+    self.itemSegs = nil
+    if self.metrics and self.metrics.items then return self:PaintItems(f) end
 
     local t = TextOf(self.look, key)
     local pieces = CF.Slots(f, t, key, self.look) or {}
@@ -1749,6 +2154,64 @@ function View:Paint(face, look)
     end
     self.modelledWords = modelled
     self.segs = segs
+end
+
+local function HexRGB(h)
+    return tonumber(h:sub(1, 2), 16) / 255, tonumber(h:sub(3, 4), 16) / 255, tonumber(h:sub(5, 6), 16) / 255
+end
+CV.HexRGB = HexRGB
+
+-- T142: the Bar layout's items, each with ClockFace's words for its kind
+-- (CF.ItemPieces: the "~", the arrows, a label drawn nowhere riding on the
+-- time as CF.Slots does) in its own colour; a label or an arrow in a tone of
+-- its own keeps its colour code. Mana and Mana % ask the line's
+-- draw.powerText(fs, kind) first, as the slots do.
+function View:PaintItems(f)
+    local CF = ST.ClockFace
+    local look = self.look
+    local items = look.items or CV.ResolveItems(nil)
+    local t = TextOf(look, "bar")
+    local pieces = CF.ItemPieces(f, t, look, items.label and items.label.on) or {}
+    local colors = look.colors
+    local m = self.metrics or {}
+    local set = self.active or {}
+    local powerText = type(self.draw) == "table" and self.draw.powerText or nil
+    local segs, modelled = {}, nil
+    for _, kind in ipairs(CV.ITEM_KINDS) do
+        local fs = set.items and set.items[kind]
+        local it = items[kind]
+        local piece = (m.items and m.items[kind]) and pieces[kind] or nil
+        if fs then
+            local r, g, b = HexRGB(it.colour)
+            local own = false
+            if piece and (kind == "mana" or kind == "pct") and type(powerText) == "function" then
+                local okP, res = pcall(powerText, fs, kind)
+                if okP and res == true then
+                    fs:SetTextColor(r, g, b)
+                    fs:Show()
+                    own = true
+                end
+            end
+            if not own then
+                if piece then
+                    fs:SetText(PieceText(piece, colors))
+                    fs:SetTextColor(r, g, b)
+                    fs:Show()
+                    segs[#segs + 1] = { kind = kind, piece = piece }
+                    if not modelled and (kind == "mana" or kind == "pct" or kind == "manaMax")
+                        and piece.text:sub(1, 1) == "~" then
+                        modelled = piece.text
+                    end
+                else
+                    fs:SetText("")
+                    fs:Hide()
+                end
+            end
+        end
+    end
+    self.modelledWords = modelled
+    self.segs = nil
+    self.itemSegs = segs
 end
 
 --------------------------------------------------------------------------------
@@ -1971,22 +2434,38 @@ end
 -- view:Message(text, r, g, b): one centred line instead of the pieces (the
 -- preview's "SpellTuner - drag me", in the colour the line passes).
 function View:Message(text, r, g, b)
-    for _, fs in ipairs({ self.label, self.value, self.second or false, self.right2 or false }) do
+    for _, fs in ipairs({ self.label or false, self.value or false, self.second or false, self.right2 or false }) do
         if fs then
             fs:SetText("")
             fs:Hide()
         end
     end
+    for _, fs in pairs(self.active and self.active.items or {}) do
+        fs:SetText("")
+        fs:Hide()
+    end
     self.msg:SetText(text or "")
     if r then self.msg:SetTextColor(r, g, b) end
     self.msg:Show()
     self.segs = nil
+    self.itemSegs = nil
 end
 
 -- view:Text(): the words as drawn, plain -- the message, or the pieces joined
--- as ClockFace.JoinSegments joins them.
+-- as ClockFace.JoinSegments joins them (T142, the Bar layout: its items in
+-- drawing order, the time one space after the label, two spaces between the
+-- others).
 function View:Text()
     if self.msg:IsShown() then return self.msg:GetText() or "" end
+    if self.itemSegs then
+        local out, prev = "", nil
+        for _, s in ipairs(self.itemSegs) do
+            local sep = (prev == "label" and s.kind == "time") and " " or "  "
+            out = (out ~= "" and (out .. sep) or "") .. ST.ClockFace.ValueText(s.piece)
+            prev = s.kind
+        end
+        return out
+    end
     return ST.ClockFace.JoinSegments(self.segs)
 end
 

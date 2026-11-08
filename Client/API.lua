@@ -379,16 +379,31 @@ end
 -- T139: a texture's horizontal gradient from (r1, g1, b1, a1) on the left to
 -- (r2, g2, b2, a2) on the right: the colour-object form (10.0 on), else the
 -- old six numbers. -> true, or false and "absent" / "error".
-function ST.API.SetGradient(tex, r1, g1, b1, a1, r2, g2, b2, a2)
+-- T142: `orient` "VERTICAL" (optional, else "HORIZONTAL"): the first colour
+-- at the bottom, the second at the top.
+function ST.API.SetGradient(tex, r1, g1, b1, a1, r2, g2, b2, a2, orient)
     if type(tex) ~= "table" or type(tex.SetGradient) ~= "function" then return false, "absent" end
+    orient = (orient == "VERTICAL") and "VERTICAL" or "HORIZONTAL"
     local CC = ST.API.Has("CreateColor")
     if type(CC) == "function" then
-        if pcall(tex.SetGradient, tex, "HORIZONTAL", CC(r1, g1, b1, a1 or 1), CC(r2, g2, b2, a2 or 1)) then
+        if pcall(tex.SetGradient, tex, orient, CC(r1, g1, b1, a1 or 1), CC(r2, g2, b2, a2 or 1)) then
             return true
         end
     end
-    if pcall(tex.SetGradient, tex, "HORIZONTAL", r1, g1, b1, r2, g2, b2) then return true end
+    if pcall(tex.SetGradient, tex, orient, r1, g1, b1, r2, g2, b2) then return true end
     return false, "error"
+end
+
+-- T142: whether the client has a texture atlas (UI/ClockView.lua's game bar
+-- frame asks before it draws one): C_Texture.GetAtlasInfo answers a table.
+-- Only the answer's type is looked at. -> true, or false and "absent" /
+-- "error" / "secret".
+function ST.API.HasAtlas(name)
+    if type(name) ~= "string" or name == "" then return false, "absent" end
+    local info, why = ST.API.Call("C_Texture.GetAtlasInfo", name)
+    if why then return false, why end
+    if type(info) ~= "table" then return false, "absent" end
+    return true
 end
 
 -- T17c: whether a hidden status bar may be asked for a party member's max

@@ -58,6 +58,18 @@
 --     calls ST.API.DrawPowerText; on (here only) the font string holds the
 --     secret unread; TBC draws plain words;
 --   * look.texts.line, whatever layout is on screen, is what the feed reads.
+--
+-- T142 (docs/tasks/T142-bar-texts-game-frame.md): the Bar layout's texts are
+-- items and its frame is the bar. Held here, on both flavours: the default
+-- (the game frame -- TBC: the border and why --, 200 x 8, Soft without
+-- EllesmereUI, the time below left, the mana in the middle, the regen below
+-- right); the item store and its validation; outside texts never change the
+-- frame's size; each item's anchor; the words (label off: the time keeps the
+-- face's marks, FULL in its place); the game frame with and without its
+-- atlases; the font fallback; the once-only reset of an old store. The T116
+-- slot checks run on Line and Compact, which keep their slots; Legacy() pins
+-- the Bar layout's old look as items (the label inside left, the time inside
+-- right, a 16-px bar with a border).
 HARNESS_FLAVOUR = { "tbc", "forever" }
 
 local here = arg[0]:match("^(.*)/[^/]+$")
@@ -85,6 +97,7 @@ local ST = {}
 local toc = "SpellTuner_TBC.toc"
 if forever then
     S.UseProfile("forever")
+    S.UseAtlases() -- T142: the game bar frame draws on Forever
     toc = "SpellTuner_Mainline.toc"
 end
 S.Geometry(true)
@@ -217,8 +230,12 @@ end
 local function Misfit(v, layout)
     local fr = Rect(frame)
     local pieces = {}
-    for _, k in ipairs({ "label", "value", "second", "right2" }) do
-        local fs = v[k]
+    -- T142: the Bar layout draws items; the frame is the bar, so a text may
+    -- hang above or below it (and an inside one be taller than it) but never
+    -- past its ends, and never makes the frame taller than the bar
+    local items = layout == "bar" and v.active and v.active.items
+    for _, k in ipairs(items and CV.ITEM_KINDS or { "label", "value", "second", "right2" }) do
+        local fs = items and items[k] or v[k]
         if fs and fs:IsShown() and (fs:GetText() or "") ~= "" then
             local r = Rect(fs)
             if not r then return k .. " has no place" end
@@ -226,8 +243,14 @@ local function Misfit(v, layout)
         end
     end
     if #pieces == 0 then return "nothing drawn" end
+    if items then
+        local barH = v.look.bars.height or CV.BAR_HEIGHT
+        if not Near(fr.t - fr.b, barH) then return string.format("the frame is %s high, the bar %s", fr.t - fr.b, barH) end
+    end
     for _, p in ipairs(pieces) do
-        if not Inside(p.r, fr) then
+        local inside = Inside(p.r, fr)
+        if items then inside = p.r.l >= fr.l - EPS and p.r.r <= fr.r + EPS end
+        if not inside then
             return string.format("%s %q %s outside the frame %s", p.k, p.text, R(p.r), R(fr))
         end
     end
@@ -261,7 +284,7 @@ local function Misfit(v, layout)
         for _, b in ipairs(bars) do
             -- the bar layout's text sits IN its mana bar (or the strip in its
             -- place, show = fsr); everywhere else text and bars sit apart
-            local inBar = layout == "bar" and (b.k == "bar" or (b.k == "strip" and not Shown(v.bar)))
+            local inBar = layout == "bar" and ((items and b.k ~= "chip") or b.k == "bar" or (b.k == "strip" and not Shown(v.bar)))
             if not inBar and Overlap(p.r, b.r) then return p.k .. " " .. R(p.r) .. " over the " .. b.k .. " " .. R(b.r) end
         end
         if layout ~= "bar" then
@@ -322,10 +345,23 @@ local function Bars_(layout, key, value) return CV.Set("bars." .. layout .. "." 
 -- T139: the suites below were written for the look before T139; Reset pins
 -- it (stacked, flat, a rectangle, the Bar layout's words inside, the panel),
 -- and the T139 section tests the new defaults through CV.ResetToStyle alone.
-local LEGACY = { join = "stacked", texture = "flat", shape = "rect", text = "inside" }
+-- T142: the Bar layout's words inside were Left (the label) and Right (the
+-- time) on a 22-px frame; now items on a bar that is the frame: the label
+-- inside left, the time inside right, nothing else, a 16-px bar with a border.
+local LEGACY = { join = "stacked", texture = "flat", shape = "rect" }
+local LEGACY_BAR = { frame = "border", font = "st", height = 16 }
+local LEGACY_ITEMS = {
+    label = { on = true, place = "inside", align = "left" },
+    time = { on = true, place = "inside", align = "right" },
+    mana = { on = false }, mp5 = { on = false },
+}
 local function Legacy()
     for _, L in ipairs(CV.LAYOUTS) do
         for k, v in pairs(LEGACY) do CV.Set("bars." .. L .. "." .. k, v) end
+    end
+    for k, v in pairs(LEGACY_BAR) do CV.Set("bars.bar." .. k, v) end
+    for kind, it in pairs(LEGACY_ITEMS) do
+        for f, v in pairs(it) do CV.Set("text.bar.items." .. kind .. "." .. f, v) end
     end
     -- the Bar layout's panel: tests that read it set it
 end
@@ -393,7 +429,7 @@ for _, layout in ipairs(LAYOUTS) do
     end)
 end
 
-Try("sizes: Line 180 x 32 (text, mana 4, gap 1, strip 3), Compact 72 x 46 (or its measure), Bar 200 x 22", function()
+Try("sizes: Line 180 x 32 (text, mana 4, gap 1, strip 3), Compact 72 x 46 (or its measure), Bar 200 x 16 (T142: the frame is the bar)", function()
     Reset()
     local v = Paint(face1)
     local mr, sr, lr = Rect(v.bar), Rect(v.strip), Rect(v.label)
@@ -409,9 +445,10 @@ Try("sizes: Line 180 x 32 (text, mana 4, gap 1, strip 3), Compact 72 x 46 (or it
         and CV.LAYOUT.compact.width == 72 and CV.LAYOUT.compact.height == 46
     local compactS = string.format("compact %sx%s (min w %s)", tostring(frame:GetWidth()), tostring(frame:GetHeight()),
         tostring(mw))
+    -- T142: the frame is the bar (Legacy's 16 px: mana 12, a 1-px gap, the strip 3)
     CV.SetLayout("bar")
     Paint(face1)
-    local bar = frame:GetWidth() == 200 and frame:GetHeight() == 22 and v.bar:GetHeight() == 16
+    local bar = frame:GetWidth() == 200 and frame:GetHeight() == 16 and v.bar:GetHeight() == 12
         and v.strip:GetHeight() == 3
     local barS = string.format("bar %sx%s mana %s", tostring(frame:GetWidth()), tostring(frame:GetHeight()),
         tostring(v.bar:GetHeight()))
@@ -472,7 +509,7 @@ end)
 T.section("the frame: height, width, the minimum, scale")
 --------------------------------------------------------------------------------
 -- 3. Height's pixels go to the mana bar
-Try("height: Line 32 -> 44 gives the mana bar 12 px, moves no text; Bar 22 -> 30 grows its bar; the strip kept", function()
+Try("height: Line 32 -> 44 gives the mana bar 12 px, moves no text; Bar 16 -> 24 (T142: bars.bar.height) grows its bar; the strip kept", function()
     Reset()
     local v = Paint(face1)
     local function TextTops()
@@ -490,12 +527,13 @@ Try("height: Line 32 -> 44 gives the mana bar 12 px, moves no text; Bar 22 -> 30
         and TextTops() == tops0 and Misfit(v, "line") == nil
     local lineS = string.format("line mana %s -> %s, text %s -> %s", tostring(m0), tostring(v.bar:GetHeight()),
         tops0, TextTops())
+    -- T142: the Bar layout's height is its bar's (bars.bar.height), the frame with it
     CV.SetLayout("bar")
     Paint(face1)
     local b0 = v.bar:GetHeight()
-    CV.Set("frame.bar.h", 30)
+    CV.Set("bars.bar.height", 24)
     Paint(face1)
-    local bar = b0 == 16 and frame:GetHeight() == 30 and v.bar:GetHeight() == 24 and v.strip:GetHeight() == 3
+    local bar = b0 == 12 and frame:GetHeight() == 24 and v.bar:GetHeight() == 20 and v.strip:GetHeight() == 3
         and Misfit(v, "bar") == nil
     Reset()
     return line and bar, lineS .. string.format("; bar %s -> %s", tostring(b0), tostring(v.bar:GetHeight()))
@@ -1094,6 +1132,9 @@ end)
 --------------------------------------------------------------------------------
 T.section("T116: the slots")
 --------------------------------------------------------------------------------
+-- T142: the layouts that keep slots; the Bar layout's texts are items (the
+-- T142 section below)
+local SLOT_LAYOUTS = { "line", "compact" }
 local function TextSet(layout, key, value) return CV.Set("text." .. layout .. "." .. key, value) end
 local function Strip(s) return (tostring(s or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) end
 local function Words(fs)
@@ -1123,10 +1164,10 @@ local function Points(r)
 end
 
 -- 1. the defaults: today's words at T115's places, and the look's text
-Try("text defaults: every layout draws today's words at T115's places; look.text and look.texts are the defaults", function()
+Try("text defaults: Line and Compact (T142: Bar has items) draw today's words at T115's places; look.text and look.texts are the defaults", function()
     local bad
     local labelW = math.ceil(#(forever and "~FULL" or "FULL") * 6 * 13 / 12)
-    for _, layout in ipairs(LAYOUTS) do
+    for _, layout in ipairs(SLOT_LAYOUTS) do
         Reset()
         CV.SetLayout(layout)
         local v = View()
@@ -1168,11 +1209,10 @@ Try("text defaults: every layout draws today's words at T115's places; look.text
 end)
 
 -- 2. fixed places: only a value's own digits move
-Try("every slot at a fixed place: 59s -> 1:00 -> >10m moves no anchor (defaults and set slots, every layout)", function()
+Try("every slot at a fixed place: 59s -> 1:00 -> >10m moves no anchor (defaults and set slots, Line and Compact)", function()
     local configs = {
         { "line" }, { "line", left = "pct", right = "mp5" }, { "line", main = "mana", right = "fsr" },
         { "compact" }, { "compact", top = "time", main = "pct", bottom = "rest" },
-        { "bar" }, { "bar", left = "pct", right = "time" }, { "bar", left = "none", right = "mana" },
     }
     local bad, n = nil, 0
     for _, c in ipairs(configs) do
@@ -1206,10 +1246,10 @@ Try("every slot at a fixed place: 59s -> 1:00 -> >10m moves no anchor (defaults 
 end)
 
 -- 3. every option in every slot fits at every size
-Try("fits: every TEXT_OPTIONS value in every slot of every layout x every SAMPLES face at Size 8, 13, 22, 32", function()
+Try("fits: every TEXT_OPTIONS value in every slot of Line and Compact x every SAMPLES face at Size 8, 13, 22, 32", function()
     local bad, n = nil, 0
     RuleFor(3)
-    for _, layout in ipairs(LAYOUTS) do
+    for _, layout in ipairs(SLOT_LAYOUTS) do
         for _, slot in ipairs(CF.TEXT_SLOTS[layout]) do
             for _, kind in ipairs(CF.TEXT_OPTIONS[layout][slot]) do
                 for _, size in ipairs({ 8, 13, 22, 32 }) do
@@ -1490,32 +1530,10 @@ end)
 --------------------------------------------------------------------------------
 T.section("T139: the bar's look (" .. flavour .. ")")
 --------------------------------------------------------------------------------
-Try("T139 the default Bar: a 6-px pill in Soft, the moving line, the words below, no panel, the author's colours (any style)", function()
-    CV.ResetToStyle()
-    CV.SetLayout("bar")
-    RuleOff()
-    local v = Paint(face1)
-    local b = v.look.bars
-    local resolved = b.join == "sweep" and b.shape == "pill" and b.texture == "soft" and b.text == "below"
-        and b.border == 1 and b.height == nil and v.texturePath == CV.MEDIA .. "Soft"
-        and Is(v.look.bar.back, { 0x0A / 255, 0x0A / 255, 0x0A / 255 }) and b.fill == nil
-    local mr, lr = Rect(v.bar), Rect(v.label)
-    local below = mr ~= nil and Near(mr.t - mr.b, 6) and (lr == nil or lr.t <= mr.b)
-    local fill = v.look.panel.fill
-    local noPanel = type(fill) == "table" and fill[4] == 0
-    local blue = Is(v.bar.barColor, { 0x39 / 255, 0x6D / 255, 0xA7 / 255 })
-    local e = UI.px and UI.px(1, v.parent) or 1
-    local edge = Shown(v.barEdge) and Near(v.barEdge.w, mr and (mr.r - mr.l) + 2 * e or -1)
-        and Same(v.barEdge.color, 0, 0, 0, 1)
-    Reset()
-    return resolved and below and noPanel and blue and edge, string.format(
-        "resolved %s below %s (bar %s label %s) panel %s blue %s edge %s", tostring(resolved), tostring(below),
-        R(mr), R(lr), tostring(noPanel), tostring(blue), tostring(edge))
-end)
-
 Try("T139 shapes: Pill and Rounded give every bar region its masks' files; Rectangle clips nothing", function()
     CV.ResetToStyle()
     CV.SetLayout("bar")
+    Bars_("bar", "shape", "pill")
     local v = Paint(face1)
     if not v.masks then return false, "no masks" end
     local function Files(want)
@@ -1527,9 +1545,14 @@ Try("T139 shapes: Pill and Rounded give every bar region its masks' files; Recta
         return true
     end
     local pill = Files({ CV.MEDIA .. "PillL", CV.MEDIA .. "PillR" })
+    -- T142: the fill may also carry the game frame's mask; the shape's pair is on it
+    local function Has(t, pair)
+        local n = 0
+        for _, m in ipairs(t.masks or {}) do if m == pair[1] or m == pair[2] then n = n + 1 end end
+        return n == 2
+    end
     local fill = v.bar:GetStatusBarTexture()
-    local clipped = fill.masks and #fill.masks == 2 and v.barEdge.masks and #v.barEdge.masks == 2
-        and v.sweep.masks and #v.sweep.masks == 2
+    local clipped = Has(fill, v.masks.bar) and Has(v.barEdge, v.masks.barEdge) and Has(v.sweep, v.masks.bar)
     Bars_("bar", "shape", "round")
     Paint(face1)
     local round = Files({ CV.MEDIA .. "RoundL", CV.MEDIA .. "RoundR" })
@@ -1545,6 +1568,7 @@ end)
 Try("T139 Gradient: the fill end on the left to the fill on the right; colours for edge, 5SR line and after", function()
     CV.ResetToStyle()
     CV.SetLayout("bar")
+    Bars_("bar", "frame", "border")
     Bars_("bar", "texture", "gradient")
     CV.Set("colors.fillEnd", { 0, 0, 1, 1 })
     CV.Set("colors.manaBar", { 1, 0, 0, 1 })
@@ -1564,56 +1588,286 @@ Try("T139 Gradient: the fill end on the left to the fill on the right; colours f
         tostring(after))
 end)
 
-Try("T139 words above, off; a height and a border make the frame; Line's height unmoved by bars.height", function()
+--------------------------------------------------------------------------------
+T.section("T142: the Bar layout's texts and frame (" .. flavour .. ")")
+--------------------------------------------------------------------------------
+local function Item(kind, field, value) return CV.Set("text.bar.items." .. kind .. "." .. field, value) end
+local function ItemFS(v, kind) return v.active and v.active.items and v.active.items[kind] end
+
+Try("T142 the default Bar: the game frame (" .. (forever and "drawn" or "TBC: the border, and why") .. "), rounded, 200 x 8, "
+        .. "Soft without EllesmereUI, 396DA7 on 0A0A0A, the moving line; the time below left, the mana in the middle, "
+        .. "the regen below right", function()
     CV.ResetToStyle()
     CV.SetLayout("bar")
-    Bars_("bar", "text", "above")
-    Bars_("bar", "height", 12)
-    Bars_("bar", "border", 2)
-    local v = Paint(face1)
-    local mr, lr = Rect(v.bar), Rect(v.label)
-    local above = mr ~= nil and Near(mr.t - mr.b, 12) and lr ~= nil and lr.b >= mr.t
-    local m = v.metrics
-    local tall = m.h == m.minH and m.h >= 12 + 4 + 2
-    Bars_("bar", "text", "off")
-    Paint(face1)
-    local off = not Shown(v.label) and Near(v.metrics.h, 1 + 12 + 4 + 1)
+    RuleOff()
+    local v = Paint(Rich(face1))
+    local look = v.look
+    local b = look.bars
+    local resolved = b.frame == "game" and b.font == "eui" and b.shape == "round" and b.height == 8
+        and b.texture == "eui:pixels-dark" and b.join == "sweep" and b.show == "both"
+        and Is(look.bar.back, { 0x0A / 255, 0x0A / 255, 0x0A / 255 }) and look.bar.back[4] == 1
+    local soft = v.texturePath == CV.MEDIA .. "Soft" and look.refused["bars.bar.texture"] == nil
+    local size = frame:GetWidth() == 200 and frame:GetHeight() == 8
+    local blue = Is(v.bar.barColor, { 0x39 / 255, 0x6D / 255, 0xA7 / 255 })
+    local frameOK
+    if forever then
+        frameOK = v.frameMode == "game" and look.refused["bars.bar.frame"] == nil and not Shown(v.barEdge)
+    else
+        frameOK = v.frameMode == "border" and look.refused["bars.bar.frame"] == CV.GAME_REFUSED and Shown(v.barEdge)
+    end
+    local it = look.items
+    local items = it.time.on and it.time.place == "below" and it.time.align == "left" and it.time.y == -1
+        and it.time.size == 11 and it.time.colour == "E4E1DC" and it.time.outline == "none"
+        and it.mana.on and it.mana.place == "inside" and it.mana.align == "center" and it.mana.y == 0
+        and it.mp5.on and it.mp5.place == "below" and it.mp5.align == "right" and it.mp5.colour == "9FD7A9"
+        and not it.label.on and not it.manaMax.on and not it.pct.on and not it.fsr.on and not it.rest.on
+    local fr, tr, mr, pr = Rect(frame), Rect(ItemFS(v, "time")), Rect(ItemFS(v, "mana")), Rect(ItemFS(v, "mp5"))
+    local placed = tr ~= nil and mr ~= nil and pr ~= nil and tr.t <= fr.b - 1 + EPS and Near(tr.l, 0)
+        and pr.t <= fr.b - 1 + EPS and Near(pr.r, 200) and Near((mr.l + mr.r) / 2, 100)
+    local words = v:Text()
+    local want = (forever and "~1:20 v" or "1:20 v") .. "  " .. (forever and "~4210" or "4210") .. "  "
+        .. (forever and "~92 mp5" or "92 mp5")
+    local colour = Same(ItemFS(v, "mp5").textColor, 0x9F / 255, 0xD7 / 255, 0xA9 / 255)
     Reset()
-    CV.SetLayout("line")
-    local h0 = Paint(face1).metrics.h
-    Bars_("line", "height", 20)
-    local h1 = Paint(face1).metrics.h
-    Reset()
-    return above and tall and off and h0 == h1, string.format("above %s (bar %s label %s) tall %s off %s line %s/%s",
-        tostring(above), R(mr), R(lr), tostring(tall), tostring(off), tostring(h0), tostring(h1))
+    return resolved and soft and size and blue and frameOK and items and placed and words == want and colour,
+        string.format("resolved %s soft %s size %sx%s blue %s frame %s (%s) items %s placed %s (time %s mana %s mp5 %s) "
+            .. "words %q want %q colour %s", tostring(resolved), tostring(soft), tostring(frame:GetWidth()),
+            tostring(frame:GetHeight()), tostring(blue), tostring(frameOK), tostring(v.frameMode), tostring(items),
+            tostring(placed), R(tr), R(mr), R(pr), words, want, tostring(colour))
 end)
 
-Try("T140 the Bar layout's Centre: mana over the middle, inside and above; the minimum keeps it centred; none hides it", function()
+Try("T142 the item store: text.bar.items.<kind>.<field>, sparse; every field validated; a bad stored value "
+        .. "falls back to its default and look.refused names it", function()
+    CV.ResetToStyle()
+    CV.SetLayout("bar")
+    local bad = {}
+    local good = { on = true, place = "above", align = "right", x = -40, y = 20, size = 32, colour = "a0b1c2",
+        outline = "thick" }
+    local wrong = { on = "yes", place = "left", align = "middle", x = 41, y = 2.5, size = 5, colour = "red",
+        outline = "mono" }
+    for _, kind in ipairs(CV.ITEM_KINDS) do
+        for _, f in ipairs(CV.ITEM_FIELDS) do
+            if Item(kind, f, good[f]) ~= true then bad[#bad + 1] = kind .. "." .. f .. " refused" end
+            if Item(kind, f, wrong[f]) ~= false then bad[#bad + 1] = kind .. "." .. f .. " took " .. tostring(wrong[f]) end
+        end
+    end
+    local look = CV.Look(W.facts or {})
+    local took = look.items.pct.place == "above" and look.items.pct.colour == "a0b1c2" and look.items.rest.x == -40
+    CV.ResetToStyle()
+    -- sparse: a field set back to nil leaves nothing behind
+    Item("pct", "on", true)
+    Item("pct", "on", nil)
+    local sparse = ST.db.clockLook.over.text == nil
+    -- a value written past CV.Set (an old or hand-edited store)
+    ST.db.clockLook.over.text = { bar = { items = { mana = { size = 99, place = "below" }, nope = { on = true } } } }
+    look = CV.Look(W.facts or {})
+    local fell = look.items.mana.size == 11 and look.items.mana.place == "below"
+        and look.refused["text.bar.items.mana.size"] == "not accepted: 99"
+    CV.ResetToStyle()
+    return #bad == 0 and took and sparse and fell, string.format("bad %s took %s sparse %s fell %s",
+        table.concat(bad, "; "), tostring(took), tostring(sparse), tostring(fell))
+end)
+
+Try("T142 outside texts never change the bar or the frame (200 x 8 at size 6..32, y -20..20); an inside one never makes it taller", function()
+    CV.ResetToStyle()
+    CV.SetLayout("bar")
+    local bad, n = nil, 0
+    for _, kind in ipairs(CV.ITEM_KINDS) do Item(kind, "on", true) end
+    for _, place in ipairs({ "inside", "above", "below" }) do
+        for _, size in ipairs({ 6, 11, 32 }) do
+            for _, y in ipairs({ -20, 0, 20 }) do
+                for _, kind in ipairs({ "time", "mp5" }) do
+                    Item(kind, "place", place)
+                    Item(kind, "size", size)
+                    Item(kind, "y", y)
+                end
+                local v = Paint(Rich(face1))
+                n = n + 1
+                local wide = place ~= "inside" and frame:GetWidth() ~= 200
+                if (wide or frame:GetHeight() ~= 8 or v.bar:GetHeight() ~= 8) and not bad then
+                    bad = string.format("%s size %d y %d: frame %sx%s bar %s", place, size, y, tostring(frame:GetWidth()),
+                        tostring(frame:GetHeight()), tostring(v.bar:GetHeight()))
+                end
+            end
+        end
+    end
+    Reset()
+    return bad == nil and n == 27, bad or (n .. " paints")
+end)
+
+Try("T142 each text on its own: inside (2 px in unless centred), above / below hang from the bar's edge; x / y move it", function()
+    CV.ResetToStyle()
+    CV.SetLayout("bar")
+    Bars_("bar", "frame", "none")
+    Item("pct", "on", true)
+    Item("pct", "place", "above")
+    Item("pct", "align", "right")
+    Item("pct", "x", 5)
+    Item("pct", "y", 3)
+    Item("label", "on", true)
+    Item("label", "place", "inside")
+    Item("label", "align", "left")
+    Item("label", "y", 0)
+    Item("fsr", "on", true)
+    Item("fsr", "place", "below")
+    Item("fsr", "align", "center")
+    Item("fsr", "y", 0)
+    RuleFor(3)
+    local v = Paint(Rich(face1))
+    local function Spec(k) local s = v.metrics and v.metrics.items and v.metrics.items[k]; return s and table.concat({ s[1], s[2], s[3], s[4] }, ":") or "-" end
+    local above = Spec("pct") == "BOTTOMRIGHT:TOPRIGHT:5:" .. (CV.ITEM_GAP + 3)
+    local inside = Spec("label") == "LEFT:LEFT:" .. CV.ITEM_PAD .. ":0"
+    local below = Spec("fsr") == "TOP:BOTTOM:0:" .. (-CV.ITEM_GAP)
+    local pr, fr = Rect(ItemFS(v, "pct")), Rect(frame)
+    local drawn = pr ~= nil and Near(pr.b, fr.t + CV.ITEM_GAP + 3) and Near(pr.r, fr.r + 5)
+        and Words(ItemFS(v, "fsr")) == "5SR 3.0" and Words(ItemFS(v, "pct")) == PCT
+    -- each its own: moving one leaves the others where they were
+    local before = Spec("label") .. "/" .. Spec("fsr")
+    Item("pct", "y", -20)
+    Paint(Rich(face1))
+    local alone = Spec("label") .. "/" .. Spec("fsr") == before
+    -- the border frame keeps an outside text clear of its edge
+    Bars_("bar", "frame", "border")
+    Paint(Rich(face1))
+    local clear = Spec("fsr") == "TOP:BOTTOM:0:" .. (-(CV.ITEM_GAP + 1))
+    RuleOff()
+    Reset()
+    return above and inside and below and drawn and alone and clear, string.format(
+        "pct %s label %s fsr %s drawn %s alone %s clear %s", Spec("pct"), Spec("label"), Spec("fsr"), tostring(drawn),
+        tostring(alone), tostring(clear))
+end)
+
+Try("T142 the words: the label off, the time carries the face's own marks ("
+        .. (forever and "~1:20" or "1:20 v") .. "; FULL in its place); Mana / max, Rest; no bare pipe", function()
+    CV.ResetToStyle()
+    CV.SetLayout("bar")
+    Item("manaMax", "on", true)
+    Item("rest", "on", true)
+    Item("rest", "place", "above")
+    local v = Paint(Rich(faces[7] and faces[7].face or face1))
+    local time, mm, rest = Words(ItemFS(v, "time")), Words(ItemFS(v, "manaMax")), Words(ItemFS(v, "rest"))
+    local okT = time == (forever and "~1:20 =" or "1:20 =")
+    local okM = mm == (forever and "~4210/6800" or "4210/6800")
+    local okR = rest ~= nil and rest:find("^rest ") ~= nil
+    local full
+    for _, f in ipairs(faces) do if f.key == "fullnow" then full = f.face end end
+    Paint(Rich(full))
+    local fullWord = Words(ItemFS(v, "time"))
+    local okF = fullWord == (forever and "~FULL" or "FULL")
+    Item("label", "on", true)
+    Paint(Rich(full))
+    local okL = Words(ItemFS(v, "time")) == nil and Words(ItemFS(v, "label")) == (forever and "~FULL" or "FULL")
+    local pipes = false
+    for _, k in ipairs(CV.ITEM_KINDS) do
+        local fs = ItemFS(v, k)
+        local t = fs and fs:GetText() or ""
+        if Strip(t):find("|", 1, true) then pipes = true end
+    end
+    Reset()
+    return okT and okM and okR and okF and okL and not pipes, string.format("time %q mm %q rest %q full %q label %s pipes %s",
+        tostring(time), tostring(mm), tostring(rest), tostring(fullWord), tostring(okL), tostring(pipes))
+end)
+
+Try("T142 the game frame" .. (forever and " with the atlases: art round the bar, the mask on the fill and the back, "
+        .. "four bevels under the moving line; without them" or "") .. ": the border, and why", function()
+    CV.ResetToStyle()
+    CV.SetLayout("bar")
+    RuleFor(3)
+    local v = Paint(face1)
+    local drawn = true
+    local detail = ""
+    if forever then
+        local g = v.game
+        local fill = v.bar:GetStatusBarTexture()
+        local function HasMask(t, m) for _, x in ipairs(t.masks or {}) do if x == m then return true end end return false end
+        local B = g and g.bevel or {}
+        local art = g ~= nil and g.art.atlas == CV.GAME_ATLAS.frame and g.art:IsShown() and g.art.layer == "BACKGROUND"
+        local masks = g ~= nil and g.mask.atlas == CV.GAME_ATLAS.mask and g.backMask.atlas == CV.GAME_ATLAS.mask
+            and HasMask(fill, g.mask) and HasMask(v.barBack, g.backMask)
+        local bevel = B.top ~= nil and Shown(B.top) and Shown(B.bottom) and Shown(B.left) and Shown(B.right)
+            and Near(B.top.h, 2) and Near(B.bottom.h, 1) and Near(B.left.w, 30) and Near(B.right.w, 30)
+            and HasMask(B.top, g.mask) and type(B.top.gradient) == "table" and B.top.gradient[1] == "VERTICAL"
+        local fr, ar = Rect(frame), g and Rect(g.art)
+        local reach = ar ~= nil and Near(ar.l, fr.l - 2) and Near(ar.t, fr.t + 3) and Near(ar.r, fr.r + 6)
+            and Near(ar.b, fr.b - 7)
+        local under = (B.top and B.top.sublevel or 0) < (v.sweep.sublevel or 0) and Shown(v.sweep)
+        local noEdge = not Shown(v.barEdge) and v.look.refused["bars.bar.frame"] == nil
+        drawn = art and masks and bevel and reach and under and noEdge
+        detail = string.format("art %s masks %s bevel %s reach %s (%s) under %s no edge %s; ", tostring(art),
+            tostring(masks), tostring(bevel), tostring(reach), R(ar), tostring(under), tostring(noEdge))
+        S.atlases["UI-HUD-CoolDownManager-Bar-BG"] = nil
+        Bars_("bar", "border", 2)
+        v = Paint(face1)
+    end
+    local fell = v.frameMode == "border" and v.look.refused["bars.bar.frame"] == CV.GAME_REFUSED and Shown(v.barEdge)
+        and (not v.game or (not v.game.art:IsShown() and v.game.mask.texPath == UI.whiteTexture))
+    if forever then S.atlases["UI-HUD-CoolDownManager-Bar-BG"] = true end
+    RuleOff()
+    Reset()
+    return drawn and fell, detail .. "fell back " .. tostring(fell)
+end)
+
+Try("T142 the font: EllesmereUI's read live when it answers; without it SpellTuner's, and why; each outline applies", function()
     CV.ResetToStyle()
     CV.SetLayout("bar")
     local v = Paint(face1)
-    local off = not Shown(v.second)
-    local min0 = v.metrics.minW
-    CV.Set("text.bar.center", "mana")
+    local kit = select(1, UI.fontObjects and UI.fontObjects[UI.FONT] and UI.fontObjects[UI.FONT]:GetFont() or nil)
+    local tf = ItemFS(v, "time")
+    local without = v.look.refused["bars.bar.font"] == CV.FONT_EUI_MISSING and (kit == nil or (tf:GetFont()) == kit)
+    local saved = ST.EUIParent
+    ST.EUIParent = { GetFontPath = function() return "Interface\\AddOns\\EllesmereUI\\media\\fonts\\Expressway.ttf" end }
+    CV.Set("text.bar.items.time.outline", "outline")
     v = Paint(face1)
-    local function Centred()
-        local pt = v.second and v.second.firstPoint
-        return Shown(v.second) and v.metrics.second ~= nil and v.metrics.second[1] == "CENTER"
-            and v.second:GetText() ~= nil and v.second:GetText() ~= ""
-    end
-    local below = Centred()
-    local lw, rw, cw = v.label:GetStringWidth(), v.value:GetStringWidth(), v.second:GetStringWidth()
-    local wider = v.metrics.minW >= min0 and v.metrics.minW >= 2 * math.max(lw, rw) + cw
-    Bars_("bar", "text", "inside")
+    local face, size, flags = tf:GetFont()
+    local with = face == "Interface\\AddOns\\EllesmereUI\\media\\fonts\\Expressway.ttf" and size == 11
+        and flags == "OUTLINE" and v.look.refused["bars.bar.font"] == nil
+    CV.Set("text.bar.items.time.outline", "shadow")
     v = Paint(face1)
-    local inside = Centred()
-    CV.Set("text.bar.center", nil)
+    local sx, sy = tf:GetShadowOffset()
+    local shadow = select(3, tf:GetFont()) == "" and sx == 1 and sy == -1
+    ST.EUIParent = saved
+    Bars_("bar", "font", "st")
     v = Paint(face1)
-    local gone = not Shown(v.second)
+    local st = v.look.refused["bars.bar.font"] == nil and (kit == nil or (tf:GetFont()) == kit)
     Reset()
-    return off and below and wider and inside and gone, string.format("off %s below %s wider %s (%s >= %s) inside %s gone %s",
-        tostring(off), tostring(below), tostring(wider), tostring(v.metrics.minW), tostring(min0), tostring(inside),
-        tostring(gone))
+    return without and with and shadow and st, string.format("without %s with %s (%s %s %s) shadow %s st %s",
+        tostring(without), tostring(with), tostring(face), tostring(size), tostring(flags), tostring(shadow), tostring(st))
+end)
+
+Try("T142 the store is reset once: the Bar layout's look and the bar colours cleared, Line's kept, "
+        .. "a second read changes nothing; the dump names what was reset", function()
+    local facts = W.facts or {}
+    local keep = ST.db.clockLook
+    ST.db.clockLook = { layout = "line", over = {
+        bars = { bar = { shape = "pill", texture = "gloss" }, line = { join = "veil" } },
+        text = { bar = { center = "mana", items = { mp5 = { on = false } } }, line = { right = "pct" } },
+        frame = { bar = { w = 300, h = 30 }, line = { w = 250 } },
+        colors = { manaBar = { 1, 0, 0, 1 }, edge = { 0, 0, 0, 1 }, crit = "ff0000" },
+        bar = { back = { 0, 0, 0, 1 } },
+    } }
+    CV.MigrateStored(facts, true)
+    local o = ST.db.clockLook.over
+    local cleared = (o.bars.bar == nil) and (o.text.bar == nil) and (o.frame.bar == nil) and o.colors.manaBar == nil
+        and o.colors.edge == nil and o.bar == nil
+    local kept = o.bars.line.join == "veil" and o.text.line.right == "pct" and o.frame.line.w == 250
+        and o.colors.crit == "ff0000" and ST.db.clockLook.layout == "line" and ST.db.clockLook.v == CV.LOOK_VERSION
+    local line
+    for _, d in ipairs(ST:DumpLines()) do if d.key == "clockReset" then line = d.fn() end end
+    local named = type(line) == "string" and line:find("bars.bar.shape", 1, true) ~= nil
+        and line:find("colors.manaBar", 1, true) ~= nil and line:find("frame.bar.w", 1, true) ~= nil
+    -- a second read: the store at v 2, a new Bar override kept
+    CV.Set("bars.bar.shape", "pill")
+    local changed2, reset2 = CV.ResetBarLook(ST.db.clockLook)
+    CV.MigrateStored(facts, true)
+    local second = changed2 == false and #reset2 == 0 and ST.db.clockLook.over.bars.bar.shape == "pill"
+    -- a fresh store is at v 2 from the start
+    ST.db.clockLook = nil
+    CV.Look(facts)
+    local fresh = ST.db.clockLook.v == CV.LOOK_VERSION
+    ST.db.clockLook = keep
+    Reset()
+    return cleared and kept and named and second and fresh, string.format("cleared %s kept %s named %s (%s) second %s fresh %s",
+        tostring(cleared), tostring(kept), tostring(named), tostring(line), tostring(second), tostring(fresh))
 end)
 
 if printing then

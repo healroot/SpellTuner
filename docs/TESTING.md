@@ -2624,6 +2624,29 @@ Forever. Spells -> Rejuvenation -> What if -> Talent plan...
 4. **x** closes it; the numbers keep the plan. What if -> **Clear** puts your own talents back.
 5. Move the SpellTuner window: the plan moves with it.
 
+## 63. The bar's texts one by one, the game bar frame (T142) -- NEW, 5 min
+
+Forever with EllesmereUI loaded (step 5 on TBC). Bar layout. Your old Bar look is reset once on the
+first login with this build (the Line and Compact looks are kept); `/st dump` has a line
+`clock: T142 reset the Bar look, N overrides (...)` naming what was cleared.
+
+1. **The default** looks like the mockup's left side (tools/.cache/clockbar2, "My pick"): an 8-px bar,
+   200 wide, with the game's rounded bar frame and its soft shading, Pixels Dark, blue 396DA7 on a black
+   back; the time below left, your mana in the middle of the bar, the regen (green) below right, in
+   EllesmereUI's font; the amber 5SR line crossing it after a cast, above the shading. The clock's frame
+   is only the bar: drag it (unlocked) and check the words below do not make its box taller.
+2. **Next to EllesmereUI's own mana bar:** Settings -> Clock -> Bar look -> Presets -> **Like my
+   EllesmereUI** (260 wide, the mana centred, no 5SR line). Report what differs: the frame's rim, its
+   shadow at the bottom-right, the corners, the shading, the text's font and place.
+3. **Each text on its own** (Bar look -> the texts table): turn Mana % on; step its Place (Inside /
+   Above / Below; right-click steps back) and Align; type X 10 and Y 3 (Enter); size 16; pick a colour;
+   step Outline. Only that text moves. A row that is off is dimmed. None of it makes the bar taller.
+4. **Frame:** None, Border (its width slider), Game bar frame. **Font:** SpellTuner's / EllesmereUI's.
+   Turn EllesmereUI off and /reload: the bar draws Soft and SpellTuner's font (hover EllesmereUI's: it says why).
+5. **TBC:** the same default draws a 1-px Border instead of the game frame (the TBC client has no such
+   art: hover Game bar frame, it says so), Soft, SpellTuner's font.
+6. **Presets:** Words below, Soft pill, Thin line, then SpellTuner default brings back step 1.
+
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the
 raw numbers. `/st profile` output is welcome with any report. I turn them into

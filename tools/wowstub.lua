@@ -492,7 +492,9 @@ function FrameMT:GetPoint() return "CENTER", nil, "CENTER", 0, 0 end
 function FrameMT:GetFrameLevel() return 1 end
 function FrameMT:GetScale() return 1 end
 function FrameMT:GetEffectiveScale() return 1 end
-function FrameMT:GetAlpha() return 1 end
+-- T142: SetAlpha recorded (the clock settings dim a text row that is off)
+function FrameMT:SetAlpha(a) self.alpha = a end
+function FrameMT:GetAlpha() return self.alpha or 1 end
 function FrameMT:GetLeft() return 0 end
 function FrameMT:GetRight() return self.w or 100 end
 function FrameMT:GetTop() return self.h or 20 end
@@ -509,7 +511,19 @@ local function Child(kind, parent)
     return c
 end
 function FrameMT:CreateFontString() return Child("FontString", self) end
-function FrameMT:CreateTexture() return Child("Texture", self) end
+-- T142: a texture's draw layer and sublevel, and a font string's shadow
+-- offset, recorded (the game frame's bevel sits under the moving line)
+function FrameMT:CreateTexture(_, layer, _, sublevel)
+    local t = Child("Texture", self)
+    t.layer, t.sublevel = layer, sublevel
+    return t
+end
+function FrameMT:SetShadowOffset(x, y) self.shadowOffset = { x, y } end
+function FrameMT:GetShadowOffset()
+    local s = self.shadowOffset
+    if s then return s[1], s[2] end
+    return nil -- as before T142: unset answers nothing
+end
 -- T58 (P14): an animation group (UI/Widget.lua's pulse, which tools/ttocheck.lua
 -- loads) -- the fallback made CreateAnimationGroup a no-op answering nil, and
 -- the widget indexes what it returns. Its animations take every method as a
@@ -613,6 +627,8 @@ function FrameMT:AddMaskTexture(m)
 end
 function FrameMT:SetTexture(path, wrapH) self.texPath, self.wrap = path, wrapH end
 function FrameMT:SetGradient(orient, a, b, ...) self.gradient = { orient, a, b, ... } end
+-- T142: the game bar frame's atlases, recorded (nothing drawn)
+function FrameMT:SetAtlas(name) self.atlas = name end
 function FrameMT:SetTextColor(r, g, b) self.textColor = { r, g, b } end
 -- enabled state is stored (not a no-op) so a harness can read back which
 -- buttons a pane turned off and why
@@ -969,6 +985,20 @@ end
 -- probecheck-style script, before any addon file loads. "forever" is the only
 -- name for now -- the full "only what exists" stub is M1's T5, not this task;
 -- everything the TBC profile defines above stays unless named here.
+-- T142: the game bar frame's atlases, opt-in (tools/probecheck.lua installs
+-- its own C_Texture, and its "none of them" client must have none): a suite
+-- that draws the clock's game frame calls S.UseAtlases() before loading the
+-- TOC; it removes a name from S.atlases to see the fallback.
+function S.UseAtlases()
+    S.atlases = { ["UI-HUD-CoolDownManager-Bar-BG"] = true, ["UI-HUD-CoolDownManager-Bar"] = true }
+    C_Texture = {
+        GetAtlasInfo = function(name)
+            if S.atlases[name] then return { file = 1, width = 64, height = 16 } end
+            return nil
+        end,
+    }
+end
+
 function S.UseProfile(name)
     if name ~= "forever" then return end
     S.profile = "forever"

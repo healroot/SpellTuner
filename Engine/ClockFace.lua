@@ -467,6 +467,34 @@ function CF.Slots(face, text, layout, look)
     return out
 end
 
+-- T142 (docs/tasks/T142-bar-texts-game-frame.md): the Bar layout's texts,
+-- one piece per kind, each placed on its own by UI/ClockView.lua.
+-- CF.ItemPieces(face, text, look, labelOn) -> { label, time, mana, manaMax,
+-- pct, mp5, fsr, rest }, each nil or a piece in Slots' shape. `text` gives
+-- the word options (labels, time); `look.show` gates the rest segment. With
+-- the label off the time follows Slots' rule for a label drawn nowhere:
+-- Forever's "~" stays on it ("~1:20"), and a FULL with no time draws its
+-- label in the time's place. Never raises on a face that is not a table: nil.
+function CF.ItemPieces(face, text, look, labelOn)
+    if type(face) ~= "table" then return nil end
+    local words = type(text) == "table" and { labels = text.labels, time = text.time } or nil
+    local t = CF.ResolveText(words, "line")
+    local base = Pieces(face, look, LabelWord(face, t.labels), TimeFmt(face, t.time))
+    local l, v = base.label, base.value
+    local out = { label = { text = l.text, tone = l.tone } }
+    if v then
+        local w = v.text
+        if not labelOn and face.modelled then w = "~" .. w end
+        out.time = { text = w, tone = v.tone, arrow = v.arrow, arrowTone = v.arrowTone, time = true }
+    elseif not labelOn then
+        out.time = { text = l.text, tone = l.tone, time = true, labelOnly = true }
+    end
+    out.mana = KindPiece("mana", face, base, { ofMax = false }, false)
+    out.manaMax = KindPiece("mana", face, base, { ofMax = true }, false)
+    for _, k in ipairs({ "pct", "mp5", "fsr", "rest" }) do out[k] = KindPiece(k, face, base, t, false) end
+    return out
+end
+
 function CF.Segments(face, look)
     if type(face) ~= "table" then return nil end
     local text = type(look) == "table" and look.text or nil

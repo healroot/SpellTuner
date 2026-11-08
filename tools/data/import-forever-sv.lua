@@ -2154,6 +2154,7 @@ SpellTunerDB = {
 	["clockLook"] = {
 		["layout"] = "bar",
 		["over"] = {},
+		["v"] = 2,
 	},
 	["debug"] = {
 		["categories"] = {

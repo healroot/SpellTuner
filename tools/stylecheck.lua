@@ -268,12 +268,17 @@ end
 -- T139 adds the bar's and strip's edges and their shape masks, and the Bar
 -- layout's new look (a 6-px pill in Soft, the words below, the moving line;
 -- the panel pinned above); captured with --golden, every other section unchanged.
+-- T142 re-based the clock section: the Bar layout's default is the author's
+-- look -- the frame is the 200 x 8 bar (the game frame falls back to the
+-- border here: this suite installs no atlases), its texts the items (time
+-- below left, mana inside, mp5 below right), 37 regions; captured with
+-- --golden, every other section unchanged.
 --------------------------------------------------------------------------------
 local GOLDEN = {
     forever = {
         nav = { 29, 1225158578 },
         host = { 52, 441673342 },
-        clock = { 35, 210072138 },
+        clock = { 37, 694687313 },
         palette = { 33, 1948568416 },
         text = { 15, 1382467428 },
         fonts = { 12, 1125933103 },
@@ -281,7 +286,7 @@ local GOLDEN = {
     tbc = {
         nav = { 29, 1015818899 },
         host = { 52, 98457140 },
-        clock = { 35, 1819488330 },
+        clock = { 37, 301186103 },
         palette = { 33, 1948568416 },
         text = { 15, 1382467428 },
         fonts = { 12, 1125933103 },
