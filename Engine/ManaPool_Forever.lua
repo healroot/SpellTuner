@@ -24,6 +24,18 @@ local Pool = ST.Pool
 -- The model, nil until MD_READY (a login or /reload makes a fresh one).
 Pool.model = nil
 
+-- T145a (docs/SPEC-clock-v3.md 2.4): the quiet pool. The client fires
+-- UNIT_POWER_FREQUENT while the player's pool changes and stops when it is
+-- full; the event's ARRIVAL is plain (its arguments are never read here), so
+-- a silence outside the five-second rule, at a base rate that would have
+-- moved the pool, means the real pool is full -- the one correction for what
+-- the model cannot see (drinks, Innervate, potions, Clearcasting). The rule is
+-- ST.ClockWords.QuietFull (pure); QUIET is VERIFY there. Ships on.
+Pool.QUIET_FULL = true
+Pool.lastPowerEvent = nil -- GetTime() of the last player power event, nil before the first
+Pool.powerEvents = 0      -- counted for /st dump
+Pool.quietAnchors = 0     -- anchors made by the quiet-pool rule, for /st dump
+
 --------------------------------------------------------------------------------
 -- Cost lookup: ST.Book's own entry.cost.amount (a family's known rank, or a
 -- standalone ReadSpell for anything else the book does not list -- both
@@ -78,6 +90,24 @@ function Pool:Project(now)
     if not m then return nil end
     return m:Project(now)
 end
+
+-- Pool:QuietFull(now) -> true when the game's pool has gone quiet (full), by
+-- ClockWords.QuietFull on this pool's own fields; false before MD_READY,
+-- with the flag off, or without the words file.
+function Pool:QuietFull(now)
+    local m = self.model
+    local CW = ST.ClockWords
+    if not m or not Pool.QUIET_FULL or not (CW and CW.QuietFull) then return false end
+    return CW.QuietFull(now, self.lastPowerEvent, m.lastSpend, m.base)
+end
+
+-- The dump's line: how often the event came and how often the rule anchored.
+-- Added at the first power event (as the clock's own line waits for a look),
+-- so a session that never saw one dumps what it did before T145a.
+function Pool.DumpLine()
+    return string.format("pool: power events %d, quiet-full anchors %d", Pool.powerEvents, Pool.quietAnchors)
+end
+local dumpAdded = false
 
 -- The regen rates last read plain (out of combat): base, casting. ManaRegen()
 -- goes secret in combat, so this is what a reader falls back on for the whole
@@ -137,6 +167,17 @@ ST:On("UNIT_SPELLCAST_SUCCEEDED", function(unit, castGUID, spellID)
     model:Unpriced(now)
 end)
 
+-- T145a: the player's power events, only their arrival (time and count).
+-- Registered before UI/Clock_Forever.lua's handler of the same event.
+ST:OnUnit("UNIT_POWER_FREQUENT", "player", function()
+    Pool.lastPowerEvent = GetTime()
+    Pool.powerEvents = Pool.powerEvents + 1
+    if not dumpAdded then
+        dumpAdded = true
+        ST:AddDumpLine("pool", Pool.DumpLine)
+    end
+end)
+
 ST:On("PLAYER_REGEN_DISABLED", function()
     -- Review B19: an opener that succeeded up to 0.5 s before this flag is
     -- folded into the fight by the model itself (ManaModel:StartFight).
@@ -158,6 +199,13 @@ ST:OnTick(function()
     if not ST.inCombat then ReadRegen(model) end
 
     model:Advance(now)
+
+    -- T145a: the quiet pool -- in and out of combat, the game's pool has
+    -- stopped moving, so it is full whatever the model counted.
+    if model.max and model.max > 0 and model.mana < model.max and Pool:QuietFull(now) then
+        model:Anchor(now, model.max, "the game's pool stopped moving")
+        Pool.quietAnchors = Pool.quietAnchors + 1
+    end
 
     -- The assume-full rule. Out of combat, once regen alone (at the base rate,
     -- the faster of the two -- Facts) would have had time to refill the whole

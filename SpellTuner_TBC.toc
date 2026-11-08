@@ -32,6 +32,7 @@ Engine\Targets.lua
 Engine\Overheal.lua
 Engine\ManaCooldowns.lua
 Engine\ClockFace.lua
+Engine\ClockWords.lua
 Engine\TTO.lua
 Engine\Kit.lua
 Spells\RankRules.lua

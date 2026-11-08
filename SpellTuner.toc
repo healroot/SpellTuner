@@ -30,6 +30,7 @@ Spells\WhatIf_Forever.lua
 Spells\TalentPlan.lua
 Spells\Tabs.lua
 Engine\ClockFace.lua
+Engine\ClockWords.lua
 Engine\ManaModel.lua
 Engine\Recordings.lua
 Spells\Measure.lua

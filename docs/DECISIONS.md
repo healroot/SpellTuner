@@ -1730,3 +1730,26 @@ as default"):
 - No Use step: each click goes into the What if.
 - The panel sits beside the window, so the Spells pane's numbers are seen moving.
 - Closing it keeps the plan, and the What if's Clear is the one way back to the live build.
+
+## Clock v3: one bar, a dense store, the moving line back on (2026-11-08, T145, the author's approval)
+
+The author approved `docs/SPEC-clock-v3.md` and its mockup `tools/.cache/clockv3/index.html` on
+2026-11-08, with every decision in it. The diagnosis behind it is `docs/review/clock-v3-diagnosis.md`.
+- **D1: the Bar is the only layout, on both lines.** Line and Compact are dropped; a text-only clock is
+  the datatext / LDB / ElvUI feed (`ClockFace.LineString`). A saved `line` / `compact` gets the Bar with
+  default texts, named in `/st dump` and the changelog.
+- **D2: the store is dense and versioned** (`db.clockLook = { v = 3, ... }`, every field held,
+  `ClockStore.Normalize` fills a missing or invalid one from the default and names it). A future
+  default does not move a look the user already has.
+- **D3: the migration turns the moving 5SR line on**, whatever the old store said (`bars.bar.show =
+  "mana"` came from a preset whose tooltip alone said "no 5SR line"); named in the dump and the
+  changelog, and one click turns it off.
+- **P3, the FULL rule:** at full mana the clock says `FULL`; a refill time always carries `FULL`; a time
+  is never `0s` or `0:00` (T145a: a running-out value shown as 0 reads `OOM`).
+- **The quiet pool (Forever, VERIFY):** `UNIT_POWER_FREQUENT`'s arrival is plain; silence for
+  `ClockWords.QUIET` (3.0 s) outside the five-second rule, at a base rate that would have brought at least
+  2 mana, anchors the model at max ("the game's pool stopped moving"). It rests on one client fact not yet
+  seen in our own probe (the event is frequent while regenerating and silent at full); `docs/TESTING.md`
+  section 66 step 1 settles it, and QUIET is raised to a measured gap, never guessed.
+- **Open:** a model *above* the real pool (an under-priced cost) is not corrected by this; the hover keeps
+  saying the time is modelled.
