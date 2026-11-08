@@ -242,11 +242,24 @@ local function TopOf(f)
     return f
 end
 TPL.TopOf = TopOf
+-- The What if drawer when it is open on this window: the plan docks beside
+-- it, never over it (the author, 2026-11-08: "talents on the right, not in
+-- place of the what if numbers").
+local function OpenDrawer(win)
+    local sp = ST.SpellsPane
+    local d = sp and sp.drawer
+    if d and d.IsShown and d:IsShown() and d.GetParent and d:GetParent() == win then return d end
+    return nil
+end
 local function Dock(pane)
     local win = TopOf(pane) or pane
     sheet.dockedTo = win
     sheet:ClearAllPoints()
-    local right = win.GetRight and win:GetRight()
+    local d = OpenDrawer(win)
+    local rightOf = (d and d.side ~= "left") and d or win
+    local leftOf = (d and d.side == "left") and d or win
+    sheet.besideDrawer = d ~= nil
+    local right = rightOf.GetRight and rightOf:GetRight()
     local screen = UIParent and UIParent.GetWidth and UIParent:GetWidth()
     local scale = (win.GetEffectiveScale and UIParent.GetEffectiveScale)
         and (win:GetEffectiveScale() / UIParent:GetEffectiveScale()) or 1
@@ -254,12 +267,14 @@ local function Dock(pane)
         or (right * scale + DOCK_GAP + SHEET_W * scale) <= screen
     sheet.side = fits and "right" or "left"
     if fits then
-        sheet:SetPoint("TOPLEFT", win, "TOPRIGHT", DOCK_GAP, 0)
+        sheet:SetPoint("TOPLEFT", rightOf, "TOPRIGHT", DOCK_GAP, 0)
     else
-        sheet:SetPoint("TOPRIGHT", win, "TOPLEFT", -DOCK_GAP, 0)
+        sheet:SetPoint("TOPRIGHT", leftOf, "TOPLEFT", -DOCK_GAP, 0)
     end
 end
 TPL.Dock = function(win) if sheet then Dock(win) end end
+-- The drawer moved, opened or closed: an open plan follows it.
+TPL.Redock = function() if sheet and sheet:IsShown() and sheet.win then Dock(sheet.win) end end
 
 local function Build(win)
     if sheet then sheet:Hide() end

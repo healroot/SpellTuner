@@ -1574,6 +1574,7 @@ function SpellsPane:PlaceDrawer()
         end
         d.side, d.anchored = side, true
     end
+    if ST.TalentPlanner and ST.TalentPlanner.Redock then ST.TalentPlanner.Redock() end
     return side
 end
 
@@ -1594,6 +1595,9 @@ local function BuildWhatIf(win)
     d:SetSize(DRAWER_W, win:GetHeight())
     d:EnableMouse(true)
     d:SetClampedToScreen(true) -- neither side fits: over the window, not off the screen
+    -- the talent plan docks beside the open drawer, beside the window when it closes
+    d:HookScript("OnShow", function() if ST.TalentPlanner and ST.TalentPlanner.Redock then ST.TalentPlanner.Redock() end end)
+    d:HookScript("OnHide", function() if ST.TalentPlanner and ST.TalentPlanner.Redock then ST.TalentPlanner.Redock() end end)
     UI.StylizeFrame(d, P.frame, P.border)
     local header = CreateFrame("Frame", nil, d, "BackdropTemplate")
     header:SetPoint("LEFT", d, "LEFT", 0, 0)

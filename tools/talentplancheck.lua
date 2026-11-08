@@ -343,6 +343,28 @@ T("4 the drawer's Talent plan... opens the panel beside the window (T141)", func
     return shown and open, tostring(shown) .. " " .. tostring(open)
 end)
 
+T("4 the plan docks beside the open What if drawer, never over it; beside the window once it closes (2026-11-08)", function()
+    Use(LIVE)
+    TP.kept = nil
+    ST:SelectView("spells", "fam:Rejuvenation")
+    local f = ST.SpellsPane.family
+    if not (f.whatIf and f.whatIf:IsShown()) then Click(f.strip.whatIfBtn) end
+    local d = f.whatIf
+    if not (d and d:IsShown()) then return false, "no drawer" end
+    local sheet = TPL.Open(d)
+    if not sheet then return false, "no sheet" end
+    local rel
+    local orig = sheet.SetPoint
+    sheet.SetPoint = function(self, p, r, ...) rel = r; return orig(self, p, r, ...) end
+    TPL.Redock()
+    local beside = sheet.besideDrawer == true and rel == d
+    Click(f.strip.whatIfBtn) -- closes the drawer; OnHide redocks
+    local back = sheet.besideDrawer == false and rel == sheet.win and not d:IsShown()
+    sheet.SetPoint = orig
+    sheet:Hide()
+    return beside and back, string.format("beside %s back %s", tostring(beside), tostring(back))
+end)
+
 local function SameColour(tex, token)
     local r, g, b = UI.RGB(token)
     local c = tex.color or {}
