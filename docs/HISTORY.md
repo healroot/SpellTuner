@@ -5458,3 +5458,7 @@ beside the window (`UI.CreateSheet` `docked`), so the Spells pane is seen moving
   change.
 - **T145e:** the docs (CLAUDE.md rows, TOOLS.md, DECISIONS, TESTING §66, CHANGELOG) and the gate.
 - **In game:** `docs/TESTING.md` §66 (step 1 settles QUIET).
+- **Review (2026-11-08, picked up in worktree `clockview-fixes-1059a4`):** `docs/review/T145-review.md`,
+  pass-with-minors, 0 blockers; S1 (TBC Rest text still gated by `/st rest`), S2 (E1 counted empty
+  texts as changes), S3 (stale CHANGELOG clock lines) and N1-N6 fixed in 980f0d0; `make check` 115
+  runs green. Installed on Forever 2026-11-08; in game: `docs/TESTING.md` §66 (steps 1-8).
