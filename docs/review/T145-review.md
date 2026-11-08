@@ -99,7 +99,7 @@ text that draws nothing (S2).
 
 ### S1 (should-fix) -- TBC: the Rest text is still gated by `db.showRest` / `db.showCooldown`, and the pane no longer offers those switches
 
-**Fixed in <sha>.** `Engine/TTO.lua` gives the face `clockSecond`, the same segment rule without `db.showRest` / `db.showCooldown`; `ClockWords.Build` draws the Rest text from it (Forever's face has none and keeps `second`). `second` stays gated for the feeds. Test: `tools/clockfacecheck.lua` 3i (real `GetClockFace`, both switches off). Not as an E1 base: E1's TBC moment is a hand-made face, which would not reach `GetClockFace`.
+**Fixed in 980f0d0.** `Engine/TTO.lua` gives the face `clockSecond`, the same segment rule without `db.showRest` / `db.showCooldown`; `ClockWords.Build` draws the Rest text from it (Forever's face has none and keeps `second`). `second` stays gated for the feeds. Test: `tools/clockfacecheck.lua` 3i (real `GetClockFace`, both switches off). Not as an E1 base: E1's TBC moment is a hand-made face, which would not reach `GetClockFace`.
 `Engine/TTO.lua:404-406` builds `face.second` only when `db.showCooldown ~= false` (for the
 `inn` kind) or `db.showRest ~= false` (for the `rest` kind). `ClockWords.Build` takes the Rest
 text's words only from `face.second` (`Engine/ClockWords.lua:266-271`). T145d removed the `show`
@@ -128,7 +128,7 @@ Then add an E1 base with `db.showRest = false` on TBC.
 
 ### S2 (should-fix) -- E1 counts an empty text as "visibly changed" (Forever's Rest text)
 
-**Fixed in <sha>.** `tools/clocke2e.lua`'s `Differs` counts a `text.<kind>` change only when that text is shown with non-empty words in the snapshots that show it. Forever's held moment is at 60 % mana, so the rest (about 45 s) is drawn beside the 80 s time. It failed with 16 inert Rest operations before the moment moved.
+**Fixed in 980f0d0.** `tools/clocke2e.lua`'s `Differs` counts a `text.<kind>` change only when that text is shown with non-empty words in the snapshots that show it. Forever's held moment is at 60 % mana, so the rest (about 45 s) is drawn beside the 80 s time. It failed with 16 inert Rest operations before the moment moved.
 `tools/clocke2e.lua:259-272` (`Differs`) compares `Drawn()`'s font, point and colour cache. It never
 checks that the text has anything to draw.
 
@@ -148,7 +148,7 @@ inert so that the empty-list pass condition means what it says.
 
 ### S3 (should-fix) -- CHANGELOG `## Next` contradicts itself about the clock
 
-**Fixed in <sha>.** `CHANGELOG.md`'s `## Next` has one clock section (clock v3): the moving line and the texture list folded in; Join, Bars, Thin, Gradient, the six colour pickers, the old presets and the 6-px pill default dropped.
+**Fixed in 980f0d0.** `CHANGELOG.md`'s `## Next` has one clock section (clock v3): the moving line and the texture list folded in; Join, Bars, Thin, Gradient, the six colour pickers, the old presets and the 6-px pill default dropped.
 `CHANGELOG.md:25-39`: "Both: a moving line" (Settings -> Clock -> Bars -> Join -> Moving line;
 "Stacked, One bar and Swipe chip stay") and "Both: the clock's bar look":
 - Thin and Gradient;
@@ -168,7 +168,7 @@ EllesmereUI texture list, drop Join, Bars, Thin, Gradient, the colour pickers an
 
 ### N1 (nit) -- the tick still hands the bar its range twice a second (review W1, half-closed)
 
-**Fixed in <sha>.** `UI/Clock_Forever.lua`'s tick passes `withMax` only when the model's plain max moved, else every `Clock.RANGE_EVERY` (10 s); Apply and `UNIT_MAXPOWER` still set it. Test: E7 (range calls over 9 s steady at most 1, one after the max moves). TESTING 66 step 6.
+**Fixed in 980f0d0.** `UI/Clock_Forever.lua`'s tick passes `withMax` only when the model's plain max moved, else every `Clock.RANGE_EVERY` (10 s); Apply and `UNIT_MAXPOWER` still set it. Test: E7 (range calls over 9 s steady at most 1, one after the max moves). TESTING 66 step 6.
 `UI/Clock_Forever.lua:341` calls `renderer:PaintPower(true)` on every 0.5 s tick, so
 `DrawUnitPowerMax` calls `SetMinMaxValues` every tick. W1's concern is that the 12.x client snaps
 or restarts the eased `SetValue` on each `SetMinMaxValues`. The frequent event is now value only,
@@ -183,7 +183,7 @@ At minimum, add "the bar fills smoothly, no twice-a-second hitch" to TESTING §6
 
 ### N2 (nit) -- Font is always visible, and inert when every text is off
 
-**Fixed in <sha>.** Font is `visible` only while a text is on. E1 has a fourth base, every text off (it failed with `font = st` inert before the fix).
+**Fixed in 980f0d0.** Font is `visible` only while a text is on. E1 has a fourth base, every text off (it failed with `font = st` inert before the fix).
 `UI/ClockSettings.lua:568`: `font` has no `visible`, so it defaults to Always. Unticking all
 seven texts is reachable (P2 binds only presets), and then Font changes nothing drawn (`Drawn()`'s
 `text.*.face` stays nil). It is a small P1 hole.
@@ -193,7 +193,7 @@ the rule stays total.
 
 ### N3 (nit) -- a v3 store repaired at login is not named in the dump; a future `v > 3` loses the look
 
-**Fixed in <sha>.** the dump line says `repaired v3, N notes: ...` for a v3 store Normalize changed at login (and registers itself for it); `Migrate` reads a store with `v` above 3 as from `v<n>`, normalized, every valid field kept. Tests: two checks in `tools/clockstorecheck.lua` section 6.
+**Fixed in 980f0d0.** the dump line says `repaired v3, N notes: ...` for a v3 store Normalize changed at login (and registers itself for it); `Migrate` reads a store with `v` above 3 as from `v<n>`, normalized, every valid field kept. Tests: two checks in `tools/clockstorecheck.lua` section 6.
 - **The repair is not named.** `MigrateStored` writes the normalized v3 store, but `DumpLine`
   prints the notes only when `migratedFrom ~= "v3"` (`UI/ClockStore.lua:838`). `NoteDump` also
   ignores a v3 migration with notes (line 664). So a hand-edited or older-build field that
@@ -206,7 +206,7 @@ the rule stays total.
 
 ### N4 (nit) -- the Live preview chip draws the model's mana numbers
 
-**Fixed in <sha>.** the preview's draw table forwards `powerText` to the live host's on the Live chip (false otherwise: the sample's words). Test: clocke2e `E1 (preview, Live)`.
+**Fixed in 980f0d0.** the preview's draw table forwards `powerText` to the live host's on the Live chip (false otherwise: the sample's words). Test: clocke2e `E1 (preview, Live)`.
 `UI/ClockSettings.lua:405-433`: `SampleDraw` has `pool`, `poolMax` and `fsrEnd` but no
 `powerText`. In Live, the preview's bar is the real pool, but its Mana / Mana % texts are the
 model's words, unmarked. The clock on screen shows the game's numbers. So on Forever the two can
@@ -216,7 +216,7 @@ disagree side by side, in the one place meant to be "the real check".
 
 ### N5 (nit) -- the quiet-pool rule anchors whatever stops the events, including (VERIFY) a dead player
 
-**Fixed in <sha>.** `Pool:QuietFull` answers false while `ST.API.UnitIsDeadOrGhost("player") == true` (the adapter's plain boolean), and `PLAYER_DEAD` / `PLAYER_ALIVE` / `PLAYER_UNGHOST` clear `lastPowerEvent`, so the rule waits for a fresh event. The stub's Forever event list gained the three events (retail events, assumed present; `ST:On`'s pcall covers a refusal). Test: E7 dead / alive / fresh event. TESTING 66 step 7 (VERIFY).
+**Fixed in 980f0d0.** `Pool:QuietFull` answers false while `ST.API.UnitIsDeadOrGhost("player") == true` (the adapter's plain boolean), and `PLAYER_DEAD` / `PLAYER_ALIVE` / `PLAYER_UNGHOST` clear `lastPowerEvent`, so the rule waits for a fresh event. The stub's Forever event list gained the three events (retail events, assumed present; `ST:On`'s pcall covers a refusal). Test: E7 dead / alive / fresh event. TESTING 66 step 7 (VERIFY).
 `Engine/ManaPool_Forever.lua:203-208` anchors the model at max after 3 s with no
 `UNIT_POWER_FREQUENT`, outside the rule, while `base * 3 >= 2`. While dead or a ghost the pool
 does not move, out of combat.
@@ -232,7 +232,7 @@ TESTING §66.
 
 ### N6 (nit) -- docs: the CLAUDE.md row for `Engine/ManaPool_Forever.lua` omits the quiet pool
 
-**Partly fixed in <sha>.** TESTING 66 step 8 (Rectangle vs Rounded under the game frame). The CLAUDE.md row is not edited: the implementer rules leave CLAUDE.md to the lead; the proposed row text is in the implementer's report.
+**Partly fixed in 980f0d0.** TESTING 66 step 8 (Rectangle vs Rounded under the game frame). The CLAUDE.md row is not edited: the implementer rules leave CLAUDE.md to the lead; the proposed row text is in the implementer's report.
 `CLAUDE.md:73` still describes the file as T68's owner. It does not say that it registers
 `UNIT_POWER_FREQUENT`, keeps `lastPowerEvent`, makes the quiet-full anchor (`Pool.QUIET_FULL`
 ships on) or adds the `pool:` dump line. Those facts appear only in the ClockWords row.
