@@ -69,6 +69,7 @@ UI\Feeds.lua
 UI\SpellTip.lua
 UI\SpellTooltip.lua
 UI\Visibility.lua
+UI\ClockStore.lua
 UI\ClockView.lua
 UI\Widget.lua
 UI\ClockSettings.lua

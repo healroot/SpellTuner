@@ -15,6 +15,8 @@
   "clockfacecheck/tbc": 24,
   "clocksettings/forever": 55,
   "clocksettings/tbc": 54,
+  "clockstorecheck/forever": 43,
+  "clockstorecheck/tbc": 42,
   "clocktextcheck/forever": 13,
   "clocktextcheck/tbc": 13,
   "clockui/forever": 57,
