@@ -472,9 +472,19 @@ end
 -- CF.ItemPieces(face, text, look, labelOn) -> { label, time, mana, manaMax,
 -- pct, mp5, fsr, rest }, each nil or a piece in Slots' shape. `text` gives
 -- the word options (labels, time); `look.show` gates the rest segment. With
--- the label off the time follows Slots' rule for a label drawn nowhere:
--- Forever's "~" stays on it ("~1:20"), and a FULL with no time draws its
--- label in the time's place. Never raises on a face that is not a table: nil.
+-- the label off a FULL with no time draws its label in the time's place.
+-- T144 (docs/tasks/T144-bar-fixes-real-mana.md): no "~" on any piece -- the
+-- Bar's texts are plain words; the Line and Compact slots and the hover keep
+-- theirs (the hover is where the clock says a value is modelled). Never
+-- raises on a face that is not a table: nil.
+local function Unmarked(p)
+    if type(p) ~= "table" then return p end
+    for _, k in ipairs({ "text", "labelText", "valueText" }) do
+        if type(p[k]) == "string" then p[k] = (p[k]:gsub("~", "")) end
+    end
+    return p
+end
+
 function CF.ItemPieces(face, text, look, labelOn)
     if type(face) ~= "table" then return nil end
     local words = type(text) == "table" and { labels = text.labels, time = text.time } or nil
@@ -483,15 +493,14 @@ function CF.ItemPieces(face, text, look, labelOn)
     local l, v = base.label, base.value
     local out = { label = { text = l.text, tone = l.tone } }
     if v then
-        local w = v.text
-        if not labelOn and face.modelled then w = "~" .. w end
-        out.time = { text = w, tone = v.tone, arrow = v.arrow, arrowTone = v.arrowTone, time = true }
+        out.time = { text = v.text, tone = v.tone, arrow = v.arrow, arrowTone = v.arrowTone, time = true }
     elseif not labelOn then
         out.time = { text = l.text, tone = l.tone, time = true, labelOnly = true }
     end
     out.mana = KindPiece("mana", face, base, { ofMax = false }, false)
     out.manaMax = KindPiece("mana", face, base, { ofMax = true }, false)
     for _, k in ipairs({ "pct", "mp5", "fsr", "rest" }) do out[k] = KindPiece(k, face, base, t, false) end
+    for _, p in pairs(out) do Unmarked(p) end
     return out
 end
 

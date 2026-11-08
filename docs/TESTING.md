@@ -2656,6 +2656,24 @@ Forever only.
    changes on its half-second tick.
 3. In a group: another player's mana changes do not make the bar flicker.
 
+## 65. The bar after the first look: list, size, words, real mana, steady time (T144) -- NEW, 3 min
+
+Forever with EllesmereUI's mana bar on screen. Bar layout.
+1. **The texture list fits:** Settings -> Clock -> Bar look -> Texture. The open list shows at most 12
+   rows (fewer near the screen's edge) with a thin bar on its right; the mouse wheel scrolls it; your
+   current texture is in view when it opens. Pick one far down: it is applied and the list closes.
+2. **Sizes and places never change the bar:** in the texts table set Mana's Size to 32, then 6; step
+   its Place through Inside / Above / Below; type X 40, Y 20. The bar stays 200 x 8 every time. A big
+   inside text runs over the bar's ends on one line; it is not cut or wrapped. Only Width (Frame tab) and
+   Height (Bar look) change the bar.
+3. **No `~`** on any Bar text (time, mana, Mana / max, Mana %, regen). Line and Compact still show
+   theirs, and the hover still says which numbers are modelled.
+4. **Real mana:** the number on the bar equals EllesmereUI's at every moment -- full, after a cast, and
+   while regenerating (it follows every change, as the bar does, not every half second). Turn on Mana /
+   max and Mana %: they match the game's too. Report if any of them shows `%d` or a blank.
+5. **Steady time:** in a fight, watch OOM: it changes at most once a second and by 5 s at a time
+   (25 -> 20 -> 15, never 25 -> 15). A potion or a new fight jumps straight to the new time.
+
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the
 raw numbers. `/st profile` output is welcome with any report. I turn them into

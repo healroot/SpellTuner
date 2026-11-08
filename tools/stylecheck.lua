@@ -273,12 +273,16 @@ end
 -- border here: this suite installs no atlases), its texts the items (time
 -- below left, mana inside, mp5 below right), 37 regions; captured with
 -- --golden, every other section unchanged.
+-- T144 re-based the clock section: no text measures into the Bar layout's
+-- size any more, so its hidden measuring probe (one FontString) is never made,
+-- 36 regions; every other line of the section byte-identical to T142's (diffed
+-- with --print); captured with --golden, every other section unchanged.
 --------------------------------------------------------------------------------
 local GOLDEN = {
     forever = {
         nav = { 29, 1225158578 },
         host = { 52, 441673342 },
-        clock = { 37, 694687313 },
+        clock = { 36, 1226321320 },
         palette = { 33, 1948568416 },
         text = { 15, 1382467428 },
         fonts = { 12, 1125933103 },
@@ -286,7 +290,7 @@ local GOLDEN = {
     tbc = {
         nav = { 29, 1015818899 },
         host = { 52, 98457140 },
-        clock = { 37, 301186103 },
+        clock = { 36, 1772210151 },
         palette = { 33, 1948568416 },
         text = { 15, 1382467428 },
         fonts = { 12, 1125933103 },

@@ -1497,6 +1497,16 @@ decide / And those that are recomended become default" (`docs/SPEC-next.md` 13).
   the model's `mana` / `manaMax` marked `manaModelled`; the real values replace them only after a
   Forever report answers Q-clock-2, through a seam that **ships off**
   (`MD.API.DrawPowerText`, `MD.API.POWER_TEXT_READS = false`; the `BAR_READS_MAX` pattern).
+  **Answered 2026-11-08 (T144) by in-game evidence, not by a probe report:** EllesmereUI's shipped
+  code on the author's Forever client (`EllesmereUIResourceBars/EUI_ResourceBars_Update.lua`) shows
+  the real pool as text by handing the secret `UnitPower` / `UnitPowerPercent` to the client's own
+  C functions (`string.format`, `FontString:SetFormattedText`), never doing arithmetic on it. So
+  `ST.API.POWER_TEXT_READS` is now **on**, and `ST.API.DrawPowerText` draws with
+  `fs:SetFormattedText` (`mana` `"%d"`, `manaMax` `"%d/%d"`, `pct` `"%d%%"` from
+  `UnitPowerPercent(unit, pt, true, CurveConstants.ScaleTo100)`, absent without `CurveConstants`).
+  The Bar layout's texts carry no `~` at all (T144); Line / Compact keep theirs on the model's
+  numbers, and the hover still says what is modelled. A probe confirmation (`/st probe`,
+  Q-clock-2) is still welcome.
 - **After the rule the strip stays full green; the regen-tick sweep is TBC-only (T115).** The 2-s
   tick is learned from mana gains (`RM:RegenTick()`); Forever cannot read mana, so After the rule
   does not offer it there and the control's tooltip says why.

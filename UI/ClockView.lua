@@ -1386,62 +1386,35 @@ local function ItemFont(face, it)
     return { face, it.size, flags, sx, sy }
 end
 
--- The widest word an item draws, or nil for none (the time's own sample per
--- word option, with Forever's "~" while the label is off).
-local function ItemSample(look, t, kind, labelOn)
-    local label = look.labelSample or "FULL"
-    if kind == "label" then return label end
-    if kind == "time" then
-        local s = CV.TIME_SAMPLE[t.time] or CV.VALUE_SAMPLE
-        if not labelOn and label:sub(1, 1) == "~" then s = "~" .. s end
-        return s
-    end
-    if kind == "mana" then return CV.KIND_SAMPLE.mana end
-    if kind == "manaMax" then return CV.KIND_SAMPLE.manaOfMax end
-    if kind == "rest" then return CV.HasSecondary(look) and CV.SECOND_SAMPLE or nil end
-    return CV.KIND_SAMPLE[kind]
-end
-
 local SUFFIX = { left = "LEFT", center = "", right = "RIGHT" }
 
 -- T142: the Bar layout -- THE FRAME IS THE BAR (its width the frame's, its
 -- height bars.bar.height); every text an item at its own place: inside (from
 -- the bar's left edge, centre or right edge, 2 px in when not centred), or
 -- above / below, hanging outside the frame from its top / bottom edge, so a
--- text never makes the bar or the frame taller. The width never goes under
--- what the texts inside the bar need side by side.
+-- text never makes the bar or the frame taller. T144: no text sets the width
+-- either -- the frame's width is frame.bar.w (and its height the bar's), at any
+-- size, place or offset; an inside text wider than the bar runs over its ends.
 METRICS.bar = function(v, look)
     local b = look.bars
     local manaOn, el = Element(b)
     local s = b.fsr or 3
     local barH = b.height or CV.BAR_HEIGHT
     local items = look.items or CV.ResolveItems(nil)
-    local t = TextOf(look, "bar")
     look.refused = look.refused or {}
     -- the face read once per look (View:SetLook), not at every paint
     local face, whyF = v.barFace, v.barFaceWhy
     if not face then face, whyF = CV.BarFont(look) end
     if whyF then look.refused["bars.bar.font"] = whyF else look.refused["bars.bar.font"] = nil end
-    local labelOn = items.label and items.label.on
     local fonts, specs = {}, {}
-    local need = { inside = {}, above = {}, below = {} }
     for _, kind in ipairs(CV.ITEM_KINDS) do
         local it = items[kind]
-        if it and it.on then
-            fonts[kind] = ItemFont(face, it)
-            local w = MeasureIn(v, fonts[kind], ItemSample(look, t, kind, labelOn))
-            local g = need[it.place]
-            if g and w > 0 then g[it.align] = (g[it.align] or 0) + (g[it.align] and CV.GAP or 0) + w end
-        end
-    end
-    local function Need(place)
-        local g = need[place]
-        return CV.BarWordsW(g.left or 0, g.right or 0, g.center or 0)
+        if it and it.on then fonts[kind] = ItemFont(face, it) end
     end
     local chipExtra = el == "chip" and (barH + 2) or 0
-    -- only the texts inside the bar ask for width: an outside one never
-    -- changes the frame's size
-    local minW = math.ceil(chipExtra + math.max(20, Need("inside") + 2 * CV.ITEM_PAD))
+    -- T144: the minimum is the bar's own (a chip and 20 px of bar), never a
+    -- text's measure: no text, at any size or place, changes the frame's size
+    local minW = chipExtra + 20
     local fw = Fit(look, minW, 0)
     local fh = barH
     local barX, barW = chipExtra, fw - chipExtra
@@ -1769,6 +1742,9 @@ function View:Place(m)
             if fs then
                 if spec then
                     fs:SetFont(font[1], font[2], font[3])
+                    -- T144: one line at any size, running over the bar's ends
+                    -- (one anchor point and no width, so never wrapped or cut)
+                    if fs.SetWordWrap then fs:SetWordWrap(false) end
                     fs:SetShadowOffset(font[4], font[5])
                     if fs.SetShadowColor then fs:SetShadowColor(0, 0, 0, 1) end
                     local p = spec[1]
@@ -2115,6 +2091,7 @@ function View:Paint(face, look)
     self.msg:SetText("")
     self.msg:Hide()
     self.itemSegs = nil
+    self.powerFs = nil
     if self.metrics and self.metrics.items then return self:PaintItems(f) end
 
     local t = TextOf(self.look, key)
@@ -2123,22 +2100,26 @@ function View:Paint(face, look)
     local m = self.metrics or {}
     local segs, modelled = {}, nil
     local powerText = type(self.draw) == "table" and self.draw.powerText or nil
+    local own = {}
     for _, slot in ipairs(CF.TEXT_SLOTS[key]) do
         local region = CV.REGION[key][slot]
         local fs = self[region]
         local piece = m[region] and pieces[slot] or nil
         local kind = t[slot]
         if fs then
-            local own = false
+            local drawn = false
             if piece and (kind == "pct" or kind == "mana") and slot ~= t.timeAt and type(powerText) == "function" then
-                local okP, res = pcall(powerText, fs, kind)
+                -- T144: a Mana slot of max asks for the game's "cur/max"
+                local pk = (kind == "mana" and t.ofMax) and "manaMax" or kind
+                local okP, res = pcall(powerText, fs, pk)
                 if okP and res == true then
                     fs:SetTextColor(CF.ToneRGB(piece.tone, colors))
                     fs:Show()
-                    own = true
+                    drawn = true
+                    own[#own + 1] = { fs, pk }
                 end
             end
-            if not own then
+            if not drawn then
                 if piece then
                     Put(fs, PieceText(piece, colors), piece.tone, colors)
                     segs[region] = piece
@@ -2154,6 +2135,7 @@ function View:Paint(face, look)
     end
     self.modelledWords = modelled
     self.segs = segs
+    self.powerFs = own
 end
 
 local function HexRGB(h)
@@ -2164,8 +2146,9 @@ CV.HexRGB = HexRGB
 -- T142: the Bar layout's items, each with ClockFace's words for its kind
 -- (CF.ItemPieces: the "~", the arrows, a label drawn nowhere riding on the
 -- time as CF.Slots does) in its own colour; a label or an arrow in a tone of
--- its own keeps its colour code. Mana and Mana % ask the line's
--- draw.powerText(fs, kind) first, as the slots do.
+-- its own keeps its colour code. Mana, Mana / max and Mana % ask the line's
+-- draw.powerText(fs, kind) first, as the slots do (T144: manaMax too); the
+-- font strings it took are kept for View:PaintPowerTexts.
 function View:PaintItems(f)
     local CF = ST.ClockFace
     local look = self.look
@@ -2176,23 +2159,24 @@ function View:PaintItems(f)
     local m = self.metrics or {}
     local set = self.active or {}
     local powerText = type(self.draw) == "table" and self.draw.powerText or nil
-    local segs, modelled = {}, nil
+    local segs, modelled, own = {}, nil, {}
     for _, kind in ipairs(CV.ITEM_KINDS) do
         local fs = set.items and set.items[kind]
         local it = items[kind]
         local piece = (m.items and m.items[kind]) and pieces[kind] or nil
         if fs then
             local r, g, b = HexRGB(it.colour)
-            local own = false
-            if piece and (kind == "mana" or kind == "pct") and type(powerText) == "function" then
+            local drawn = false
+            if piece and (kind == "mana" or kind == "pct" or kind == "manaMax") and type(powerText) == "function" then
                 local okP, res = pcall(powerText, fs, kind)
                 if okP and res == true then
                     fs:SetTextColor(r, g, b)
                     fs:Show()
-                    own = true
+                    drawn = true
+                    own[#own + 1] = { fs, kind }
                 end
             end
-            if not own then
+            if not drawn then
                 if piece then
                     fs:SetText(PieceText(piece, colors))
                     fs:SetTextColor(r, g, b)
@@ -2212,6 +2196,24 @@ function View:PaintItems(f)
     self.modelledWords = modelled
     self.segs = nil
     self.itemSegs = segs
+    self.powerFs = own
+end
+
+-- T144: the game's own mana texts again, between ticks (the line's
+-- UNIT_POWER_FREQUENT): only the font strings the last paint gave to
+-- draw.powerText, each asked again -- no layout, no words, no measuring. A
+-- refusal now (the flag off, an error) leaves the text as it was until the
+-- next paint. Nothing here reads what the line put in.
+function View:PaintPowerTexts()
+    local list = self.powerFs
+    local powerText = type(self.draw) == "table" and self.draw.powerText or nil
+    if type(list) ~= "table" or type(powerText) ~= "function" then return 0 end
+    local n = 0
+    for _, e in ipairs(list) do
+        local okP, res = pcall(powerText, e[1], e[2])
+        if okP and res == true then n = n + 1 end
+    end
+    return n
 end
 
 --------------------------------------------------------------------------------

@@ -1704,7 +1704,10 @@ local function CurveColourText()
 end
 
 -- Q-clock-2: UnitPowerPercent handed to a font string's SetText unread, then
--- what GetText and the string's width say.
+-- what GetText and the string's width say. T144 (2026-11-08): answered by
+-- in-game evidence -- EllesmereUI's shipped code on the same client shows the
+-- real pool through SetFormattedText, so ST.API.POWER_TEXT_READS is on
+-- (Client/API_Forever.lua); this line stays as the probe's confirmation.
 local function PercentTextText()
     local percent = ST.API.Has("UnitPowerPercent")
     if type(percent) ~= "function" then return "percent as text: UnitPowerPercent <absent>" end

@@ -355,6 +355,53 @@ function ManaModel.Face(state, now)
     return face
 end
 
+-- T144 (docs/tasks/T144-bar-fixes-real-mana.md, item 5): the shown time,
+-- steady. The face rounds to 5 s, but the estimate moves between 0.5 s ticks
+-- and the time jumped (25 -> 15). ManaModel.Steady(latch, face, now) -> face:
+-- within one label and mode, with a point value (known "point", a number,
+-- not past 600 s), the shown value changes at most once per STEADY_EVERY
+-- seconds, each change one STEADY_STEP toward the face's own value. It snaps
+-- to the face's value when the label or the mode changes, when the value is
+-- nil / bound / pending (or comes back from one), and when the gap is
+-- STEADY_SNAP seconds or more (a new fight, a potion). Pure: `latch` is the
+-- caller's table (UI/Clock_Forever.lua keeps one, reset on PLAYER_REGEN_* and
+-- on hide), `now` its time. The face is never changed in place: a held value
+-- comes back in a copy with its own tone band (OOM) re-read.
+ManaModel.STEADY_SNAP = 60    -- seconds: a gap this big is a new situation
+ManaModel.STEADY_STEP = 5     -- the face's own rounding
+ManaModel.STEADY_EVERY = 1.0  -- seconds between two changes, at least
+
+function ManaModel.Steady(latch, face, now)
+    if type(latch) ~= "table" or type(face) ~= "table" then return face end
+    local v = face.value
+    local point = face.known == "point" and Plain(v) and v <= 600 and Plain(now)
+    if not point then
+        latch.label, latch.mode, latch.shown, latch.at = face.label, face.mode, nil, nil
+        return face
+    end
+    if latch.shown == nil or latch.label ~= face.label or latch.mode ~= face.mode
+        or math.abs(v - latch.shown) >= ManaModel.STEADY_SNAP then
+        latch.label, latch.mode, latch.shown, latch.at = face.label, face.mode, v, now
+        return face
+    end
+    if v ~= latch.shown and now - latch.at >= ManaModel.STEADY_EVERY - 1e-6 then
+        local step = ManaModel.STEADY_STEP
+        local nextV
+        if v > latch.shown then
+            nextV = math.min(v, latch.shown + step)
+        else
+            nextV = math.max(v, latch.shown - step)
+        end
+        latch.shown, latch.at = nextV, now
+    end
+    if latch.shown == v then return face end
+    local held = {}
+    for k, x in pairs(face) do held[k] = x end
+    held.value = latch.shown
+    if face.mode == "oom" and face.tone ~= "muted" then held.tone = ST.ClockFace.Tone(latch.shown) end
+    return held
+end
+
 function ManaModel.Text(state)
     return ST.ClockFace.LineString(ManaModel.Face(state))
 end

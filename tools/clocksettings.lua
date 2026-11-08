@@ -868,6 +868,68 @@ Try("T139 your UI's bar textures (LibSharedMedia) are listed and drawn; without 
         tostring(drawn), tostring(flat), table.concat(texts, "/"))
 end)
 
+-- T144 (item 1): a long list fits -- at most UI.DROPDOWN_ROWS rows in view,
+-- the wheel scrolls it, a bar says where it is, the selected entry is in view
+-- on open; a short list is as before (every row, no bar).
+Try("T144 the Texture list fits: at most 12 rows, the wheel scrolls it, the selected one in view on open; "
+        .. "a short list unchanged", function()
+    ST.ClockView.ResetToStyle()
+    ST.ClockView.SetLayout("bar")
+    local savedLS = rawget(_G, "LibStub")
+    local names = {}
+    for i = 1, 30 do names[i] = string.format("Host%02d", i) end
+    local LSM = {
+        List = function(_, kind) return kind == "statusbar" and names or {} end,
+        Fetch = function(_, kind, name) return "Interface\\AddOns\\Host\\" .. name end,
+    }
+    _G.LibStub = { GetLibrary = function(_, name) if name == "LibSharedMedia-3.0" then return LSM end end }
+    p.box:Select("look")
+    CS.Refresh(p)
+    local dd = p.textureDropdown
+    local n = #dd.items
+    Pick(dd, "lsm:Host28")
+    local function InView()
+        local out = {}
+        for i, r in ipairs(dd.rows) do if i <= n and r:IsShown() then out[#out + 1] = i end end
+        return out
+    end
+    dd:GetScript("OnClick")(dd) -- open
+    local open = dd.list:IsShown()
+    local view = InView()
+    local sel
+    for i, it in ipairs(dd.items) do if it.id == "lsm:Host28" then sel = i end end
+    local selIn = false
+    for _, i in ipairs(view) do if i == sel then selIn = true end end
+    local h, vis0 = dd.list:GetHeight(), dd.visible
+    local fits = n > 12 and #view == dd.visible and dd.visible <= ST.UI.DROPDOWN_ROWS and dd.visible >= 3
+        and h == dd.visible * 17 + 3 and dd.scrollBar:IsShown()
+    -- the wheel: down one row, up past the top stops at the top
+    local off0 = dd.offset
+    local wheel = dd.list:GetScript("OnMouseWheel")
+    wheel(dd.list, 1)
+    local up = dd.offset == math.max(0, off0 - 1)
+    for _ = 1, 50 do wheel(dd.list, 1) end
+    local top = dd.offset == 0 and InView()[1] == 1
+    for _ = 1, 50 do wheel(dd.list, -1) end
+    local bottom = dd.offset == n - dd.visible and InView()[#InView()] == n
+    -- a row in view still picks
+    local picked = Pick(dd, dd.items[n].id) and not dd.list:IsShown()
+    _G.LibStub = savedLS
+    CS.Refresh(p)
+    -- a short list: every row, no bar
+    local short = ST.UI.CreateDropdown(UIParent, 100, 18, function() end)
+    short:SetItems({ { id = 1, text = "a" }, { id = 2, text = "b" }, { id = 3, text = "c" } })
+    short:GetScript("OnClick")(short)
+    local shortOK = short.visible == 3 and short.list:GetHeight() == 3 * 17 + 3 and not short.scrollBar:IsShown()
+        and short.rows[1]:IsShown() and short.rows[3]:IsShown()
+    short:Close()
+    ST.ClockView.ResetToStyle()
+    return open and selIn and fits and up and top and bottom and picked and shortOK, string.format(
+        "n %d open %s view %d (visible %s) sel %s in %s height %s fits %s up %s top %s bottom %s picked %s short %s",
+        n, tostring(open), #view, tostring(vis0), tostring(sel), tostring(selIn), tostring(h), tostring(fits),
+        tostring(up), tostring(top), tostring(bottom), tostring(picked), tostring(shortOK))
+end)
+
 Try("Reset to style empties the overrides and keeps the layout", function()
     ST.ClockView.SetLayout("bar")
     local n0 = counts.CLOCK_LOOK

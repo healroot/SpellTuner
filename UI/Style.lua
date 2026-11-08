@@ -2580,7 +2580,19 @@ end
 --   dd:SetValue(id)   -- no callback
 --   dd:Value()
 --   dd:Close()
+--
+-- T144 (docs/tasks/T144-bar-fixes-real-mana.md, item 1): a long list scrolls.
+-- The open list shows at most UI.DROPDOWN_ROWS rows (12), fewer when the
+-- screen has no room for them; the mouse wheel moves it a row at a time, a
+-- thin bar on its right in the rail's style (track, accent thumb) says where
+-- it is, and the selected entry is scrolled into view on open. dd.rows[i] is
+-- still item i's row (a row out of view is hidden, not reused).
+--   dd:Scroll(delta)   -- rows, + down; clamped
+--   dd.offset          -- the first row in view, minus one
+--   dd.visible         -- the rows in view
 --------------------------------------------------------------------------------
+UI.DROPDOWN_ROWS = 12
+
 function UI.CreateDropdown(parent, width, height, onSelect)
     height = height or 18
     local dd = UI.CreateButton(parent, "", "accent-hover", { width, height }, false, false,
@@ -2603,11 +2615,84 @@ function UI.CreateDropdown(parent, width, height, onSelect)
     list:Hide()
     WatchPopup(list)   -- T31: UI.OnPopup told, once it exists (after the first Hide)
     dd.list = list
+    dd.offset, dd.visible = 0, 0
+
+    -- T144: the scroll bar, shown only while the list holds more than it shows
+    local sbar = CreateFrame("Frame", nil, list, "BackdropTemplate")
+    sbar:SetWidth(RAIL_BAR_W)
+    sbar:SetPoint("TOPRIGHT", list, "TOPRIGHT", -1, -1)
+    sbar:SetPoint("BOTTOMRIGHT", list, "BOTTOMRIGHT", -1, 1)
+    UI.StylizeFrame(sbar, Fill("track", { 0.1, 0.1, 0.1, 0.8 }))
+    sbar:Hide()
+    local thumb = sbar:CreateTexture(nil, "OVERLAY")
+    thumb:SetWidth(RAIL_BAR_W)
+    UI.Tint(thumb, "texture", "accent", 0.8)
+    dd.scrollBar, dd.thumb = sbar, thumb
 
     local function Label(id)
         for _, it in ipairs(dd.items) do if it.id == id then return it.text end end
         return ""
     end
+
+    -- the rows the screen has room for under (or over) the button, at most
+    -- UI.DROPDOWN_ROWS (that cap when nothing can be measured), never under 3
+    local function Fits()
+        local cap = UI.DROPDOWN_ROWS
+        local _, bottom, _, top = Box(dd)
+        local _, screenH = ScreenSize()
+        if bottom and screenH then
+            local _, rowH = Extent(list, 0, height - 1)
+            if rowH and rowH > 0 then
+                local room = math.max(bottom, screenH - top) - 4
+                local n = math.floor((room - 3) / rowH)
+                if n < cap then cap = math.max(3, n) end
+            end
+        end
+        return cap
+    end
+
+    -- the rows in view placed, the others hidden; the thumb at its place
+    local function Layout()
+        local n = #dd.items
+        local vis = math.min(n, dd.maxShown or UI.DROPDOWN_ROWS)
+        local maxOff = math.max(0, n - vis)
+        if dd.offset > maxOff then dd.offset = maxOff end
+        if dd.offset < 0 then dd.offset = 0 end
+        dd.visible = vis
+        local scrolls = n > vis
+        local rowW = scrolls and (width - 3 - RAIL_BAR_W) or (width - 2)
+        for i, r in ipairs(dd.rows) do
+            local slot = i - dd.offset
+            if i <= n and slot >= 1 and slot <= vis then
+                r:ClearAllPoints()
+                r:SetPoint("TOPLEFT", list, "TOPLEFT", 1, -1 - (slot - 1) * (height - 1))
+                r:SetWidth(rowW)
+                r:Show()
+            else
+                r:Hide()
+            end
+        end
+        list:SetHeight(math.max(height, vis * (height - 1) + 3))
+        if scrolls then
+            local trackH = vis * (height - 1) + 1
+            local th = math.max(8, math.floor(trackH * vis / n))
+            thumb:SetHeight(th)
+            thumb:ClearAllPoints()
+            thumb:SetPoint("TOP", sbar, "TOP", 0, -math.floor((trackH - th) * dd.offset / maxOff))
+            sbar:Show()
+        else
+            sbar:Hide()
+        end
+    end
+
+    function dd:Scroll(delta)
+        dd.offset = dd.offset + (tonumber(delta) or 0)
+        Layout()
+        return dd.offset
+    end
+
+    list:EnableMouseWheel(true)
+    list:SetScript("OnMouseWheel", function(_, delta) dd:Scroll(-delta) end)
 
     function dd:Close() list:Hide() end
 
@@ -2621,7 +2706,6 @@ function UI.CreateDropdown(parent, width, height, onSelect)
     function dd:SetItems(items)
         dd.items = items or {}
         for _, r in ipairs(dd.rows) do r:Hide() end
-        local prev
         for i, it in ipairs(dd.items) do
             local r = dd.rows[i]
             if not r then
@@ -2630,25 +2714,33 @@ function UI.CreateDropdown(parent, width, height, onSelect)
                 dd.rows[i] = r
             end
             r:SetText(it.text)
-            r:ClearAllPoints()
-            if prev then r:SetPoint("TOPLEFT", prev, "BOTTOMLEFT", 0, 1)
-            else r:SetPoint("TOPLEFT", list, "TOPLEFT", 1, -1) end
             if it.tooltip then UI.SetTooltips(r, "ANCHOR_RIGHT", 0, 0, it.text, it.tooltip) end
             r:SetScript("OnClick", function()
                 dd:SetValue(it.id)
                 list:Hide()
                 if onSelect then onSelect(it.id) end
             end)
-            r:Show()
-            prev = r
         end
-        list:SetHeight(math.max(height, #dd.items * (height - 1) + 3))
+        Layout()
         if dd.value == nil and dd.items[1] then dd:SetValue(dd.items[1].id) end
+    end
+
+    -- T144: the selected entry in view (in the middle when it can be)
+    local function ShowSelected()
+        local at
+        for i, it in ipairs(dd.items) do if it.id == dd.value then at = i; break end end
+        local vis = math.min(#dd.items, dd.maxShown or UI.DROPDOWN_ROWS)
+        if at and (at <= dd.offset or at > dd.offset + vis) then
+            dd.offset = at - math.ceil(vis / 2)
+        end
+        Layout()
     end
 
     -- T77 (P33, review U12): below the button, or above it when below would
     -- leave the screen (UI.ListSide); the chevron points the way it opened
     function dd:PlaceList()
+        dd.maxShown = Fits()
+        ShowSelected()
         local side = UI.ListSide(dd, list)
         list:ClearAllPoints()
         if side == "up" then list:SetPoint("BOTTOMLEFT", dd, "TOPLEFT", 0, 1)

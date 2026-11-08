@@ -61,6 +61,15 @@ local flashedThisFight = false
 -- currently on (the rule is ST.Visibility.Want, UI/Visibility.lua, T68).
 local shown = false
 
+-- T144 (item 5): the shown time's latch (ST.ManaModel.Steady) -- at most one
+-- 5 s step a second; emptied on PLAYER_REGEN_* and whenever the clock hides.
+local steady = {}
+local function ResetSteady()
+    for k in pairs(steady) do steady[k] = nil end
+end
+-- the latch, for its tests (read-only by convention)
+function Clock:SteadyLatch() return steady end
+
 -- T70 (P26 of docs/PLAN-refactor-ux.md, review U18): the preview -- the clock
 -- up at any mana level for PREVIEW_SECONDS after Lock is unticked or Show now
 -- is pressed, as TBC's widget does (UI/Widget.lua forceUntil), so it can be
@@ -95,6 +104,7 @@ local function UpdateVisibility()
     if not (c and c.shown) then
         widget:Hide()
         shown = false
+        ResetSteady()
         return
     end
     local model = ST.Pool.model
@@ -104,7 +114,7 @@ local function UpdateVisibility()
     -- rule's manaUsersOnly, the TBC widget's gate
     local usesMana = ST.player and ST.player.usesMana
     shown = ST.Visibility.Want(pct, shown, ST.inCombat, Previewing(), nil, usesMana ~= false)
-    if shown then widget:Show() else widget:Hide() end
+    if shown then widget:Show() else widget:Hide(); ResetSteady() end
 end
 
 --------------------------------------------------------------------------------
@@ -293,9 +303,9 @@ local draw = {
         return nil
     end,
     -- T116 (Q-clock-2): a Mana % / Mana slot's real number, put into the font
-    -- string by the adapter and never read -- only once the probe shows the
-    -- client takes a secret there (ST.API.POWER_TEXT_READS, off). Off, the
-    -- slot draws the model's "~" value.
+    -- string by the adapter and never read -- while ST.API.POWER_TEXT_READS is
+    -- on (T144: on, from EllesmereUI's in-game evidence). Off, the slot draws
+    -- the model's value. T144: kinds mana, manaMax, pct.
     powerText = function(fs, kind)
         if ST.API.POWER_TEXT_READS ~= true then return false end
         return ST.API.DrawPowerText(fs, "player", 0, kind) == true
@@ -380,7 +390,9 @@ local function PaintFace(now)
     else
         -- T93: the face, in segments and tones (F1), the rest switch (F6)
         state = ST.Pool:Project(now)
-        view:Paint(ST.ManaModel.Face(state, now), Look())
+        -- T144: the time moves one 5 s step at a time, at most once a second
+        local face = ST.ManaModel.Steady(steady, ST.ManaModel.Face(state, now), now)
+        view:Paint(face, Look())
     end
     -- T115: the mana bar -- the real pool by default, handed to the bar by
     -- ST.API.DrawUnitPower and never read -- and the five-second rule, placed
@@ -475,13 +487,22 @@ end)
 -- the bar follows every player power change (EllesmereUI's event) and the
 -- game eases it; the words and the model keep the tick. The value is handed
 -- to the bar unread (ST.API.DrawUnitPower).
+-- T144: and the game's own mana texts with it (only SetFormattedText through
+-- draw.powerText, no layout: View:PaintPowerTexts).
 ST:OnUnit("UNIT_POWER_FREQUENT", "player", function()
-    if view and widget and widget:IsShown() then view:PaintMana() end
+    if view and widget and widget:IsShown() then
+        view:PaintMana()
+        view:PaintPowerTexts()
+    end
 end)
 
--- T93 (F5): a new fight may flash again.
+-- T93 (F5): a new fight may flash again. T144: the steady time starts over.
 ST:On("PLAYER_REGEN_DISABLED", function()
     flashedThisFight = false
+    ResetSteady()
+end)
+ST:On("PLAYER_REGEN_ENABLED", function()
+    ResetSteady()
 end)
 
 -- T98: a new look (a layout, an override: CLOCK_LOOK; a style: STYLE_CHANGED)

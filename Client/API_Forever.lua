@@ -55,35 +55,72 @@ ST.API.BASE_CD_READS = false
 -- T114 (docs/tasks/T114-clock-face-slots.md; mockup clock-v2 C1, probe
 -- Q-clock-2): the player's mana as TEXT -- the clock's Mana % / Mana slots
 -- drawn from the client rather than the model. UnitPower is secret always on
--- this client; whether a font string shows a secret handed to SetText is
--- Q-clock-2's question (`fs:SetText(UnitPowerPercent("player", 0))` shows a
--- number). Until a Forever probe report answers it, POWER_TEXT_READS stays
--- false and the slots draw the model's "~" values (the BAR_READS_MAX pattern,
--- Client/API.lua; the integrator flips it). How a real percent is worded
--- (0..1 or 0..100) is that report's question too.
---   kind "pct"  -> UnitPowerPercent(unit, powerType)
---   kind "mana" -> UnitPower(unit, powerType)
--- The value goes straight into fs:SetText -- never read, compared,
--- concatenated or formatted: the sanctioned path for a secret into a font
--- string, as DrawUnitPower is for a status bar. Answers true; nil, "secret"
--- while the flag is false (nothing touched: no client function called, no
--- font string written); nil, "absent" without the function or the font
--- string; nil, "error" for an unknown kind or a raise. Nothing calls it yet
--- (T116's renderer asks the Forever line's draw.powerText for it). Recorded
--- explicitly, as OnSpellTooltip: it is not a Bind() wrapper.
-ST.API.POWER_TEXT_READS = false
+-- this client.
+-- T144 (docs/tasks/T144-bar-fixes-real-mana.md): Q-clock-2 is answered by
+-- in-game evidence, 2026-11-08: EllesmereUI's shipped code on the same client
+-- (EllesmereUIResourceBars/EUI_ResourceBars_Update.lua) hands the secret
+-- UnitPower / UnitPowerPercent to the client's own C functions
+-- (string.format, FontString:SetFormattedText) and shows the real pool as
+-- text -- "string.format handles secrets natively (C function): store as-is
+-- and only pass to format/SetFormattedText, NEVER arithmetic". So the flag is
+-- on, and the value is drawn with fs:SetFormattedText(fmt, value...):
+--   kind "mana"    -> "%d"    UnitPower(unit, powerType)
+--   kind "manaMax" -> "%d/%d" UnitPower, UnitPowerMax(unit, powerType)
+--   kind "pct"     -> "%d%%"  UnitPowerPercent(unit, powerType, true,
+--                             CurveConstants.ScaleTo100); without
+--                             CurveConstants: nil, "absent" (no maths on a
+--                             secret to make a percent)
+-- The values go straight into SetFormattedText inside the one pcall -- never
+-- read, compared, concatenated or used in arithmetic: the sanctioned path for
+-- a secret into a font string, as DrawUnitPower is for a status bar. Answers
+-- true; nil, "secret" while the flag is false (nothing touched: no client
+-- function called, no font string written); nil, "absent" without a function,
+-- the curve constant or the font string; nil, "error" for an unknown kind or a
+-- raise. A probe confirmation (Client/Probe.lua, Q-clock-2) is still welcome.
+-- Recorded explicitly, as OnSpellTooltip: it is not a Bind() wrapper.
+ST.API.POWER_TEXT_READS = true
 
-local POWER_TEXT = { pct = "UnitPowerPercent", mana = "UnitPower" }
+-- each kind's client function (manaMax: the max, drawn after UnitPower's
+-- current) and its format
+local POWER_TEXT = { pct = "UnitPowerPercent", mana = "UnitPower", manaMax = "UnitPowerMax" }
+local POWER_FMT = { pct = "%d%%", mana = "%d", manaMax = "%d/%d" }
+
+-- CurveConstants.ScaleTo100 (a client constant, not in the function
+-- baseline), or nil -- only its presence is tested, never its value.
+local function ScaleTo100()
+    local c = rawget(_G, "CurveConstants")
+    if type(c) ~= "table" then return nil end
+    local s = c.ScaleTo100
+    if type(s) == "nil" then return nil end
+    return s
+end
 
 function ST.API.DrawPowerText(fs, unit, powerType, kind)
     if ST.API.POWER_TEXT_READS ~= true then return nil, "secret" end
-    local name = POWER_TEXT[kind]
+    local name, fmt = POWER_TEXT[kind], POWER_FMT[kind]
     if not name then return nil, "error" end
     if type(fs) ~= "table" then return nil, "absent" end
     local fn = ST.API.Has(name)
     if type(fn) ~= "function" then return nil, "absent" end
+    local cur
+    if kind == "manaMax" then
+        cur = ST.API.Has(POWER_TEXT.mana)
+        if type(cur) ~= "function" then return nil, "absent" end
+    end
+    local curve
+    if kind == "pct" then
+        curve = ScaleTo100()
+        if curve == nil then return nil, "absent" end
+    end
     local ok = pcall(function()
-        fs:SetText(fn(unit, powerType)) -- never inspected: a secret goes straight in
+        -- never inspected: a secret goes straight into the client's formatter
+        if kind == "pct" then
+            fs:SetFormattedText(fmt, fn(unit, powerType, true, curve))
+        elseif kind == "manaMax" then
+            fs:SetFormattedText(fmt, (cur(unit, powerType)), fn(unit, powerType))
+        else
+            fs:SetFormattedText(fmt, fn(unit, powerType))
+        end
     end)
     if not ok then return nil, "error" end
     return true

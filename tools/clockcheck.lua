@@ -353,6 +353,97 @@ do
         string.format("shown=%s other=%d player=%d", tostring(frame:IsShown()), other, n))
 end
 
+-- T144 (docs/tasks/T144-bar-fixes-real-mana.md, item 5): the shown time
+-- steps 5 s at most once a second (ManaModel.Steady, pure), and snaps on a
+-- new label or mode, a value that goes or comes back, and a gap of 60 s.
+do
+    local function F(label, mode, v, known)
+        return { label = label, mode = mode, value = v, known = known or (v and "point" or "none"),
+            tone = label == "FULL" and "good" or ST.ClockFace.Tone(v or 0), modelled = true }
+    end
+    local function V(face) return face and face.value end
+    local L = {}
+    local s0 = V(ManaModel.Steady(L, F("OOM", "oom", 25), 0))
+    local face15 = F("OOM", "oom", 15)
+    local same = V(ManaModel.Steady(L, face15, 0))
+    local half = V(ManaModel.Steady(L, face15, 0.5))
+    local one = V(ManaModel.Steady(L, face15, 1.0))
+    local oneHalf = V(ManaModel.Steady(L, face15, 1.5))
+    local two = V(ManaModel.Steady(L, face15, 2.0))
+    local untouched = face15.value == 15
+    local held = ManaModel.Steady(L, F("OOM", "oom", 25), 2.5)
+    local heldTone = held.value == 15 and held.tone == ST.ClockFace.Tone(15)
+    check("T144: 25 -> 15 at t = 0 reads 25 at 0.5, 20 at 1.0 and 1.5, 15 at 2.0; the face is never changed in place",
+        s0 == 25 and same == 25 and half == 25 and one == 20 and oneHalf == 20 and two == 15 and untouched and heldTone,
+        string.format("%s %s %s %s %s %s untouched %s held %s/%s", tostring(s0), tostring(same), tostring(half),
+            tostring(one), tostring(oneHalf), tostring(two), tostring(untouched), tostring(held.value),
+            tostring(held.tone)))
+
+    -- snaps: a label change, a mode change, a nil and back, a bound, 60 s
+    local A = {}
+    ManaModel.Steady(A, F("OOM", "oom", 40), 0)
+    local label = V(ManaModel.Steady(A, F("FULL", "full", 20), 0.1)) == 20
+    local mode = V(ManaModel.Steady(A, F("FULL", "ooc", 35), 0.2)) == 35
+    local gone = ManaModel.Steady(A, F("OOM", "oom", nil), 0.3).known == "none"
+    local back = V(ManaModel.Steady(A, F("OOM", "oom", 10), 0.4)) == 10
+    local bound = V(ManaModel.Steady(A, F("OOM", "oom", 300, "bound"), 0.5)) == 300
+    local after = V(ManaModel.Steady(A, F("OOM", "oom", 30), 0.6)) == 30
+    local far = V(ManaModel.Steady(A, F("OOM", "oom", 30 + ManaModel.STEADY_SNAP), 5)) == 90
+    local near = V(ManaModel.Steady(A, F("OOM", "oom", 90 - 55), 10)) == 85
+    check("T144: the shown time snaps on a new label or mode, a nil, a bound, and a gap of 60 s (STEADY_SNAP)",
+        ManaModel.STEADY_SNAP == 60 and label and mode and gone and back and bound and after and far and near,
+        string.format("label %s mode %s gone %s back %s bound %s after %s far %s near %s", tostring(label),
+            tostring(mode), tostring(gone), tostring(back), tostring(bound), tostring(after), tostring(far),
+            tostring(near)))
+
+    -- a true countdown, painted every 0.5 s: never more than one step behind
+    local C, worst = {}, 0
+    for i = 0, 240 do
+        local t = i * 0.5
+        local real = 120 - t
+        local shownV = math.floor(real / 5 + 0.5) * 5
+        local out = V(ManaModel.Steady(C, F("OOM", "oom", shownV), t))
+        local lag = math.abs(out - shownV)
+        if lag > worst then worst = lag end
+    end
+    check("T144: a true countdown never runs more than one 5 s step behind",
+        worst <= ManaModel.STEADY_STEP, "worst " .. tostring(worst))
+
+    -- the clock keeps the latch: emptied on PLAYER_REGEN_* and on hide
+    local latch = Clock.SteadyLatch and Clock:SteadyLatch()
+    ST.db.clock.shown = true
+    model.mana = model.max * 0.5
+    Clock:Refresh()
+    local seeded = latch and latch.label ~= nil
+    S.Fire("PLAYER_REGEN_DISABLED")
+    local afterIn = latch and next(latch) == nil
+    Clock:Refresh()
+    S.Fire("PLAYER_REGEN_ENABLED")
+    local afterOut = latch and next(latch) == nil
+    Clock:Refresh()
+    ST.db.clock.shown = false
+    Clock:Refresh()
+    local afterHide = latch and next(latch) == nil and not Clock.frame:IsShown()
+    ST.db.clock.shown = true
+    Clock:Refresh()
+    check("T144: the clock's latch is emptied on PLAYER_REGEN_DISABLED / ENABLED and when it hides",
+        seeded and afterIn and afterOut and afterHide,
+        string.format("seeded %s in %s out %s hide %s", tostring(seeded), tostring(afterIn), tostring(afterOut),
+            tostring(afterHide)))
+
+    -- a player power change repaints the game's mana texts too, no layout
+    local view = Clock.view
+    local n, orig = 0, view.PaintPowerTexts
+    view.PaintPowerTexts = function(self, ...) n = n + 1; return orig(self, ...) end
+    S.Fire("UNIT_POWER_FREQUENT", "party1", "MANA")
+    local other = n
+    S.Fire("UNIT_POWER_FREQUENT", "player", "MANA")
+    view.PaintPowerTexts = orig
+    check("T144: a player power change repaints the game's mana texts, another unit's does not",
+        Clock.frame:IsShown() and other == 0 and n == 1,
+        string.format("shown=%s other=%d player=%d", tostring(Clock.frame:IsShown()), other, n))
+end
+
 -- item 11: shown in combat; hidden at full out of combat; off means off.
 do
     local frame = Clock.frame

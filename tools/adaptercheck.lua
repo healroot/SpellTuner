@@ -13,6 +13,8 @@
 -- T120: the shared Spells pane on TBC -- CursorInfo (the drop on the rail) and
 -- SetTooltipSpell (the rank row's hover) join the TBC list, two tbc checks
 -- (26 forever, 19 tbc).
+-- T144: DrawPowerText on, drawn with SetFormattedText (mana, manaMax, pct) --
+-- three forever checks where T114 had two (27 forever, 19 tbc).
 HARNESS_FLAVOUR = { "forever", "tbc" }
 
 local here = arg[0]:match("^(.*)/[^/]+$")
@@ -459,52 +461,77 @@ if flavour == "forever" then
     end
 
     -- T114: DrawPowerText, the Q-clock-2 seam -- a secret power value handed
-    -- straight to a font string. Ships off (ST.API.POWER_TEXT_READS false);
-    -- with the flag off it answers nil, "secret" and touches neither the font
-    -- string nor either client function.
+    -- straight to a font string. T144: on (ST.API.POWER_TEXT_READS true, from
+    -- EllesmereUI's in-game evidence), drawn with SetFormattedText; with the
+    -- flag off it answers nil, "secret" and touches neither the font string
+    -- nor any client function.
     do
         local listed = false
         for _, n in ipairs(FOREVER_ONLY_NAMES) do if n == "DrawPowerText" then listed = true end end
-        check("T114: DrawPowerText is a Forever-only binding and ships off",
+        check("T144: DrawPowerText is a Forever-only binding and is on",
             listed and type(ST.API.DrawPowerText) == "function"
             and ST.API._bindings.DrawPowerText == "UnitPowerPercent"
-            and ST.API.POWER_TEXT_READS == false,
+            and ST.API.POWER_TEXT_READS == true,
             string.format("listed=%s fn=%s binding=%s flag=%s", tostring(listed),
                 type(ST.API.DrawPowerText), tostring(ST.API._bindings.DrawPowerText),
                 tostring(ST.API.POWER_TEXT_READS)))
     end
 
     do
-        local savedPct, savedPow = rawget(_G, "UnitPowerPercent"), rawget(_G, "UnitPower")
-        local clientCalls, sets, last = 0, 0, nil
-        _G.UnitPowerPercent = function() clientCalls = clientCalls + 1; return 0.62 end
-        _G.UnitPower = function() clientCalls = clientCalls + 1; return 4321 end
-        ST.API.Invalidate("UnitPowerPercent")
-        ST.API.Invalidate("UnitPower")
-        local fs = { SetText = function(self, v) sets = sets + 1; last = v end }
+        local savedPct, savedPow, savedMax = rawget(_G, "UnitPowerPercent"), rawget(_G, "UnitPower"),
+            rawget(_G, "UnitPowerMax")
+        local savedCC = rawget(_G, "CurveConstants")
+        local CURVE = { "ScaleTo100" }
+        local clientCalls, sets, last, pctArgs = 0, 0, nil, nil
+        _G.UnitPowerPercent = function(...) clientCalls = clientCalls + 1; pctArgs = { ... }; return S.Secret() end
+        _G.UnitPower = function() clientCalls = clientCalls + 1; return S.Secret() end
+        _G.UnitPowerMax = function() clientCalls = clientCalls + 1; return 6800 end
+        _G.CurveConstants = { ScaleTo100 = CURVE }
+        for _, n in ipairs({ "UnitPowerPercent", "UnitPower", "UnitPowerMax" }) do ST.API.Invalidate(n) end
+        -- SetFormattedText records what it was handed and reads none of it
+        local fs = {
+            SetText = function() sets = sets + 1 end,
+            SetFormattedText = function(self, fmt, ...)
+                sets = sets + 1
+                last = { fmt = fmt, n = select("#", ...), a = (select(1, ...)), b = (select(2, ...)) }
+            end,
+        }
         local draw = type(ST.API.DrawPowerText) == "function" and ST.API.DrawPowerText
             or function() return "missing" end
         local origFlag = ST.API.POWER_TEXT_READS
+        ST.API.POWER_TEXT_READS = false
         local a, b = draw(fs, "player", 0, "pct")
         local c, d = draw(fs, "player", 0, "mana")
         local offCalls, offSets = clientCalls, sets
-        -- The flag flipped (the probe's answer): the value goes into the font
-        -- string unread, and an unknown kind is refused.
         ST.API.POWER_TEXT_READS = true
-        local on = draw(fs, "player", 0, "mana")
-        local onLast = last
+        local onM = draw(fs, "player", 0, "mana")
+        local m = last
+        local onMM = draw(fs, "player", 0, "manaMax")
+        local mm = last
+        local onP = draw(fs, "player", 0, "pct")
+        local pc, pa = last, pctArgs
         local bad, badWhy = draw(fs, "player", 0, "mp5")
+        _G.CurveConstants = nil
+        local noCurve, noCurveWhy = draw(fs, "player", 0, "pct")
         ST.API.POWER_TEXT_READS = origFlag
-        _G.UnitPowerPercent, _G.UnitPower = savedPct, savedPow
-        ST.API.Invalidate("UnitPowerPercent")
-        ST.API.Invalidate("UnitPower")
-        check("T114: with POWER_TEXT_READS off, DrawPowerText gives nil, secret and touches nothing",
-            origFlag == false and a == nil and b == "secret" and c == nil and d == "secret"
-            and offCalls == 0 and offSets == 0
-            and on == true and onLast == 4321 and bad == nil and badWhy == "error",
-            string.format("a=%s/%s c=%s/%s calls=%s sets=%s on=%s last=%s bad=%s/%s", tostring(a), tostring(b),
-                tostring(c), tostring(d), tostring(offCalls), tostring(offSets), tostring(on),
-                tostring(onLast), tostring(bad), tostring(badWhy)))
+        _G.UnitPowerPercent, _G.UnitPower, _G.UnitPowerMax = savedPct, savedPow, savedMax
+        _G.CurveConstants = savedCC
+        for _, n in ipairs({ "UnitPowerPercent", "UnitPower", "UnitPowerMax" }) do ST.API.Invalidate(n) end
+        local IS = _G.issecretvalue
+        check("T144: with POWER_TEXT_READS off, DrawPowerText gives nil, secret and touches nothing",
+            a == nil and b == "secret" and c == nil and d == "secret" and offCalls == 0 and offSets == 0,
+            string.format("a=%s/%s c=%s/%s calls=%s sets=%s", tostring(a), tostring(b), tostring(c), tostring(d),
+                tostring(offCalls), tostring(offSets)))
+        check("T144: on, mana / manaMax / pct go into SetFormattedText unread; an unknown kind is refused; "
+                .. "no CurveConstants, no percent",
+            onM == true and m.fmt == "%d" and m.n == 1 and IS(m.a) == true
+            and onMM == true and mm.fmt == "%d/%d" and mm.n == 2 and IS(mm.a) == true and mm.b == 6800
+            and onP == true and pc.fmt == "%d%%" and pc.n == 1 and IS(pc.a) == true
+            and pa[1] == "player" and pa[2] == 0 and pa[3] == true and pa[4] == CURVE
+            and bad == nil and badWhy == "error" and noCurve == nil and noCurveWhy == "absent",
+            string.format("mana %s %s; max %s %s; pct %s %s; bad %s/%s; no curve %s/%s", tostring(onM),
+                tostring(m and m.fmt), tostring(onMM), tostring(mm and mm.fmt), tostring(onP), tostring(pc and pc.fmt),
+                tostring(bad), tostring(badWhy), tostring(noCurve), tostring(noCurveWhy)))
     end
 
     -- T17c: HealthMax, a party member's real max through a hidden status bar,

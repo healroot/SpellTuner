@@ -55,8 +55,8 @@
 --   * Right2 drawn only where the width allows (refused with the width);
 --   * the minimum: Compact's Bottom adds 12 px, Line's right = none 30 high;
 --   * Forever's seam: POWER_TEXT_READS off draws the model's "~62%" and never
---     calls ST.API.DrawPowerText; on (here only) the font string holds the
---     secret unread; TBC draws plain words;
+--     calls ST.API.DrawPowerText; on (T144: the default) SetFormattedText is
+--     handed the secret unread; TBC draws plain words;
 --   * look.texts.line, whatever layout is on screen, is what the feed reads.
 --
 -- T142 (docs/tasks/T142-bar-texts-game-frame.md): the Bar layout's texts are
@@ -1414,8 +1414,11 @@ Try("minimum: Compact's Bottom adds 12 px of height; Line with right = none is 3
             tostring(h1), tostring(bottomShown), tostring(mw), tostring(mh), tostring(mwNo))
 end)
 
--- 8. Forever's real text waits behind the seam
-Try(forever and "Forever: POWER_TEXT_READS off draws ~62% and never calls DrawPowerText; on, the font string holds the secret unread"
+-- 8. Forever's real text behind the seam. T144: the seam is open
+-- (EllesmereUI's in-game evidence): on by default, the font string is handed
+-- the secret through SetFormattedText unread; the flag off still draws the
+-- model's "~62%" and never calls DrawPowerText.
+Try(forever and "Forever: POWER_TEXT_READS on (T144) hands the secret to SetFormattedText unread; off draws ~62% and never calls DrawPowerText"
         or "TBC: a Mana % slot draws plain 62% (no draw.powerText on this line)", function()
     Reset()
     local okSet = TextSet("line", "right", "pct")
@@ -1423,24 +1426,37 @@ Try(forever and "Forever: POWER_TEXT_READS off draws ~62% and never calls DrawPo
     local real = ST.API.DrawPowerText
     if real then ST.API.DrawPowerText = function(...) calls = calls + 1; return real(...) end end
     local face = Rich(face1)
-    local v = Paint(face)
-    local words = Words(v.second)
     local res
     if forever then
-        local first = words == "~62%" and calls == 0 and ST.API.POWER_TEXT_READS == false
+        local savedCC = rawget(_G, "CurveConstants")
+        _G.CurveConstants = { ScaleTo100 = { curve = "ScaleTo100" } }
+        local origFlag = ST.API.POWER_TEXT_READS
+        ST.API.POWER_TEXT_READS = false
+        local v = Paint(face)
+        local words = Words(v.second)
+        local first = words == "~62%" and calls == 0 and origFlag == true
         S.Fire("PLAYER_REGEN_DISABLED")
         ST.API.POWER_TEXT_READS = true
+        local seen = {}
+        v.second.SetFormattedText = function(self, fmt, ...)
+            seen = { fmt = fmt, n = select("#", ...), a = (...) }
+            self.text = "62" -- what the client would print; the addon never reads it
+        end
         local okP, err = pcall(function() Paint(face); return v:Text() end)
-        local raw = rawget(v.second, "text")
-        local secret = issecretvalue(raw) == true and v.second:IsShown() and calls > 0
-        ST.API.POWER_TEXT_READS = false
-        Paint(face)
-        local backWords = Words(v.second)
+        local secret = seen.fmt == "%d%%" and seen.n == 1 and issecretvalue(seen.a) == true and v.second:IsShown()
+            and calls > 0
+        local before = calls
+        local again = v:PaintPowerTexts() == 1 and calls == before + 1
+        v.second.SetFormattedText = nil
+        ST.API.POWER_TEXT_READS = origFlag
+        _G.CurveConstants = savedCC
         S.Fire("PLAYER_REGEN_ENABLED")
-        res = { first and okP and secret and backWords == "~62%",
-            string.format("off %q calls %d; on raised %s secret %s; back %q", tostring(words), calls,
-                tostring(not okP and err), tostring(secret), tostring(backWords)) }
+        res = { first and okP and secret and again,
+            string.format("off %q calls %d; on raised %s secret %s (fmt %s n %s); again %s", tostring(words), calls,
+                tostring(not okP and err), tostring(secret), tostring(seen.fmt), tostring(seen.n), tostring(again)) }
     else
+        local v = Paint(face)
+        local words = Words(v.second)
         res = { words == "62%" and calls == 0 and v.draw.powerText == nil,
             string.format("%q, calls %d", tostring(words), calls) }
     end
@@ -1625,8 +1641,9 @@ Try("T142 the default Bar: the game frame (" .. (forever and "drawn" or "TBC: th
     local placed = tr ~= nil and mr ~= nil and pr ~= nil and tr.t <= fr.b - 1 + EPS and Near(tr.l, 0)
         and pr.t <= fr.b - 1 + EPS and Near(pr.r, 200) and Near((mr.l + mr.r) / 2, 100)
     local words = v:Text()
-    local want = (forever and "~1:20 v" or "1:20 v") .. "  " .. (forever and "~4210" or "4210") .. "  "
-        .. (forever and "~92 mp5" or "92 mp5")
+    -- T144: no "~" on the Bar's texts; on Forever the mana is the game's own
+    -- (drawn through draw.powerText, so left out of view:Text())
+    local want = forever and "1:20 v  92 mp5" or "1:20 v  4210  92 mp5"
     local colour = Same(ItemFS(v, "mp5").textColor, 0x9F / 255, 0xD7 / 255, 0xA9 / 255)
     Reset()
     return resolved and soft and size and blue and frameOK and items and placed and words == want and colour,
@@ -1720,7 +1737,7 @@ Try("T142 each text on its own: inside (2 px in unless centred), above / below h
     local below = Spec("fsr") == "TOP:BOTTOM:0:" .. (-CV.ITEM_GAP)
     local pr, fr = Rect(ItemFS(v, "pct")), Rect(frame)
     local drawn = pr ~= nil and Near(pr.b, fr.t + CV.ITEM_GAP + 3) and Near(pr.r, fr.r + 5)
-        and Words(ItemFS(v, "fsr")) == "5SR 3.0" and Words(ItemFS(v, "pct")) == PCT
+        and Words(ItemFS(v, "fsr")) == "5SR 3.0" and Words(ItemFS(v, "pct")) == "62%" -- T144: no "~" on a Bar text
     -- each its own: moving one leaves the others where they were
     local before = Spec("label") .. "/" .. Spec("fsr")
     Item("pct", "y", -20)
@@ -1737,8 +1754,8 @@ Try("T142 each text on its own: inside (2 px in unless centred), above / below h
         tostring(alone), tostring(clear))
 end)
 
-Try("T142 the words: the label off, the time carries the face's own marks ("
-        .. (forever and "~1:20" or "1:20 v") .. "; FULL in its place); Mana / max, Rest; no bare pipe", function()
+Try("T142 the words: the label off, the time carries the face's own arrow (T144: no ~; "
+        .. "FULL in its place); Mana / max, Rest; no bare pipe", function()
     CV.ResetToStyle()
     CV.SetLayout("bar")
     Item("manaMax", "on", true)
@@ -1746,17 +1763,24 @@ Try("T142 the words: the label off, the time carries the face's own marks ("
     Item("rest", "place", "above")
     local v = Paint(Rich(faces[7] and faces[7].face or face1))
     local time, mm, rest = Words(ItemFS(v, "time")), Words(ItemFS(v, "manaMax")), Words(ItemFS(v, "rest"))
-    local okT = time == (forever and "~1:20 =" or "1:20 =")
-    local okM = mm == (forever and "~4210/6800" or "4210/6800")
+    -- T144: no "~" on a Bar text; Forever's Mana / max is the game's own
+    local okT = time == "1:20 ="
+    local okM
+    if forever then
+        okM = false
+        for _, e in ipairs(v.powerFs or {}) do if e[2] == "manaMax" and e[1] == ItemFS(v, "manaMax") then okM = true end end
+    else
+        okM = mm == "4210/6800"
+    end
     local okR = rest ~= nil and rest:find("^rest ") ~= nil
     local full
     for _, f in ipairs(faces) do if f.key == "fullnow" then full = f.face end end
     Paint(Rich(full))
     local fullWord = Words(ItemFS(v, "time"))
-    local okF = fullWord == (forever and "~FULL" or "FULL")
+    local okF = fullWord == "FULL"
     Item("label", "on", true)
     Paint(Rich(full))
-    local okL = Words(ItemFS(v, "time")) == nil and Words(ItemFS(v, "label")) == (forever and "~FULL" or "FULL")
+    local okL = Words(ItemFS(v, "time")) == nil and Words(ItemFS(v, "label")) == "FULL"
     local pipes = false
     for _, k in ipairs(CV.ITEM_KINDS) do
         local fs = ItemFS(v, k)
@@ -1868,6 +1892,151 @@ Try("T142 the store is reset once: the Bar layout's look and the bar colours cle
     Reset()
     return cleared and kept and named and second and fresh, string.format("cleared %s kept %s named %s (%s) second %s fresh %s",
         tostring(cleared), tostring(kept), tostring(named), tostring(line), tostring(second), tostring(fresh))
+end)
+
+--------------------------------------------------------------------------------
+T.section("T144: the Bar's size, its words, the game's mana (" .. flavour .. ")")
+--------------------------------------------------------------------------------
+-- docs/tasks/T144-bar-fixes-real-mana.md: no text changes the bar's size (an
+-- inside one included); no "~" on any Bar text; on Forever the mana texts are
+-- the game's own, handed to SetFormattedText unread and drawn again between
+-- ticks without a layout.
+
+Try("T144 no text changes the bar: every item on, size 6..32, each place, x / y at their ends -- the frame "
+        .. "200 x 8 and the minimum the bar's own", function()
+    CV.ResetToStyle()
+    CV.SetLayout("bar")
+    for _, kind in ipairs(CV.ITEM_KINDS) do Item(kind, "on", true) end
+    local bad, n = nil, 0
+    for _, place in ipairs({ "inside", "above", "below" }) do
+        for _, size in ipairs({ 6, 11, 20, 32 }) do
+            for _, xy in ipairs({ { -40, -20 }, { 0, 0 }, { 40, 20 } }) do
+                for _, kind in ipairs(CV.ITEM_KINDS) do
+                    Item(kind, "place", place)
+                    Item(kind, "size", size)
+                    Item(kind, "x", xy[1])
+                    Item(kind, "y", xy[2])
+                end
+                local v = Paint(Rich(face1))
+                n = n + 1
+                local mw = v:Minimum()
+                if (frame:GetWidth() ~= 200 or frame:GetHeight() ~= 8 or mw ~= 20) and not bad then
+                    bad = string.format("%s size %d x %d y %d: frame %sx%s minimum %s", place, size, xy[1], xy[2],
+                        tostring(frame:GetWidth()), tostring(frame:GetHeight()), tostring(mw))
+                end
+            end
+        end
+    end
+    -- the width and the height move through their own controls only
+    CV.Set("frame.bar.w", 260)
+    Bars_("bar", "height", 12)
+    Paint(Rich(face1))
+    local own = frame:GetWidth() == 260 and frame:GetHeight() == 12
+    -- an inside text wider than the bar is one line over its ends, never wrapped
+    local fs = ItemFS(View(), "mana")
+    local oneLine = fs ~= nil and fs:GetWordWrap() == false and #(fs.points or {}) == 1
+    CV.ResetToStyle()
+    Reset()
+    return bad == nil and n == 36 and own and oneLine,
+        string.format("%s; own %s one line %s", bad or (n .. " paints"), tostring(own), tostring(oneLine))
+end)
+
+Try("T144 no ~ on any Bar text, every sample face, label on and off; Line keeps its own", function()
+    CV.ResetToStyle()
+    CV.SetLayout("bar")
+    for _, kind in ipairs(CV.ITEM_KINDS) do Item(kind, "on", true) end
+    local origFlag = ST.API.POWER_TEXT_READS
+    ST.API.POWER_TEXT_READS = false -- every number the face's own words here
+    local bad, n = nil, 0
+    for _, labelOn in ipairs({ true, false }) do
+        Item("label", "on", labelOn)
+        for _, f in ipairs(faces) do
+            local v = Paint(Rich(f.face))
+            RuleFor(3)
+            for _, kind in ipairs(CV.ITEM_KINDS) do
+                local w = Words(ItemFS(v, kind))
+                n = n + 1
+                if w and w:find("~", 1, true) and not bad then bad = f.key .. " " .. kind .. " " .. w end
+            end
+        end
+    end
+    local pieces = CF.ItemPieces(Rich(face1), nil, nil, false) or {}
+    local pure = true
+    for _, p in pairs(pieces) do
+        for _, k in ipairs({ "text", "labelText", "valueText" }) do
+            if type(p[k]) == "string" and p[k]:find("~", 1, true) then pure = false end
+        end
+    end
+    ST.API.POWER_TEXT_READS = origFlag
+    RuleOff()
+    -- the Line layout keeps its marks (Forever: "~OOM")
+    Reset()
+    local v = Paint(Rich(face1))
+    local line = v:Text()
+    local lineOK = (not forever) or line:find("~", 1, true) ~= nil
+    Reset()
+    return bad == nil and pure and lineOK, string.format("%s; pieces %s; line %q", bad or (n .. " texts"),
+        tostring(pure), line)
+end)
+
+Try(forever and "T144 Forever: Mana, Mana / max and Mana % are the game's -- SetFormattedText handed the secrets unread; "
+        .. "PaintPowerTexts draws them again with no layout; the flag off, nothing"
+        or "T144 TBC: the Bar's mana texts are the face's plain numbers (no draw.powerText)", function()
+    CV.ResetToStyle()
+    CV.SetLayout("bar")
+    for _, kind in ipairs({ "mana", "manaMax", "pct" }) do Item(kind, "on", true) end
+    local v = View()
+    if not forever then
+        Paint(Rich(face1))
+        local got = string.format("%s / %s / %s", tostring(Words(ItemFS(v, "mana"))),
+            tostring(Words(ItemFS(v, "manaMax"))), tostring(Words(ItemFS(v, "pct"))))
+        local okT = got == "4210 / 4210/6800 / 62%" and v.draw.powerText == nil and v:PaintPowerTexts() == 0
+        Reset()
+        return okT, got
+    end
+    local savedCC = rawget(_G, "CurveConstants")
+    _G.CurveConstants = { ScaleTo100 = { curve = "ScaleTo100" } }
+    Paint(Rich(face1)) -- the items made
+    local seen = {}
+    local function Spy(kind)
+        local fs = ItemFS(v, kind)
+        fs.SetFormattedText = function(self, fmt, ...)
+            -- the current value is secret (the player's max is plain on
+            -- this client); nothing here reads either
+            local n, first = select("#", ...), (...)
+            seen[#seen + 1] = { kind = kind, fmt = fmt, n = n, secret = issecretvalue(first) == true }
+            self.text = "1"
+        end
+        return fs
+    end
+    local fss = { Spy("mana"), Spy("manaMax"), Spy("pct") }
+    Paint(Rich(face1))
+    local first = #seen
+    local function Fmt(kind) for _, e in ipairs(seen) do if e.kind == kind then return e end end end
+    local m, mm, pc = Fmt("mana"), Fmt("manaMax"), Fmt("pct")
+    local handed = m and m.fmt == "%d" and m.n == 1 and m.secret and mm and mm.fmt == "%d/%d" and mm.n == 2 and mm.secret
+        and pc and pc.fmt == "%d%%" and pc.n == 1 and pc.secret
+    -- between ticks: the three again, no layout
+    local layouts, origLayout = 0, v.Layout
+    v.Layout = function(self, ...) layouts = layouts + 1; return origLayout(self, ...) end
+    local again = v:PaintPowerTexts()
+    v.Layout = origLayout
+    local between = again == 3 and #seen == first + 3 and layouts == 0
+    -- the flag off: the model's words, nothing handed to the font strings
+    ST.API.POWER_TEXT_READS = false
+    local before = #seen
+    Paint(Rich(face1))
+    local off = #seen == before and v:PaintPowerTexts() == 0 and Words(ItemFS(v, "mana")) == "4210"
+    ST.API.POWER_TEXT_READS = true
+    -- without CurveConstants the percent is refused, never made from a secret
+    _G.CurveConstants = nil
+    local absent, why = ST.API.DrawPowerText(fss[3], "player", 0, "pct")
+    for _, fs in ipairs(fss) do fs.SetFormattedText = nil end
+    _G.CurveConstants = savedCC
+    Reset()
+    return first == 3 and handed and between and off and absent == nil and why == "absent", string.format(
+        "first %d handed %s between %s (again %s layouts %d) off %s absent %s/%s", first, tostring(handed),
+        tostring(between), tostring(again), layouts, tostring(off), tostring(absent), tostring(why))
 end)
 
 if printing then
