@@ -33,6 +33,9 @@ published to CurseForge; the developers' log is `docs/HISTORY.md`.
 - The time at full now reads `FULL`, a refill always `FULL 0:45`, and a time never reads `0s`.
 - Forever: when the game stops sending mana changes for about 3 s outside the five-second rule, the
   clock takes your mana as full (a guess to be checked in game).
+- Forever: the refill time out of combat counts down to the second under a minute, and mana the game
+  reports as gained (drinks and potions, to be checked in game) moves the clock at once; a gain that
+  repeats (Mana Well) counts in the mp5 and the time, inside the five-second rule too.
 - Settings -> Clock is one page: a live preview on top (In a fight, Running out, Filling, Full, Live),
   then Bar (width, height, shape, frame, texture, font, fill, background, the 5SR line), Texts (each
   text on or off with its place, size and colour; an off text shows only its switch), Presets

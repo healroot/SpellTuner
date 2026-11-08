@@ -13,7 +13,9 @@
 --      and entering FULL snaps;
 --   5. QuietFull at every boundary, nil inputs false (E7's rule, pure);
 --   6. Build with `out` passed allocates nothing over 1000 calls;
---   7. the other kinds' words (no "~"), the modelled marks.
+--   7. the other kinds' words (no "~"), the modelled marks;
+--  10. T146: a face marked `exact` is drawn as it is (FULL 17s, then FULL 16s
+--      a second later), never held by the latch, and it empties the latch.
 -- Forever only:
 --   8. the bug-2 face made by the real model (in a fight, regen outrunning
 --      the spend, the model at max) reads FULL, and so does a refill under
@@ -21,7 +23,19 @@
 --   9. the pool's quiet-full anchor through the real events and ticks (E7):
 --      events every 0.2 s no anchor; quiet outside the rule anchors at max and
 --      the words read FULL; quiet inside the rule no anchor; a slow base no
---      anchor; the dump line counts both.
+--      anchor; the dump line counts both (and, T146, carries the model, the
+--      anchor and the ENERGIZE counts);
+--  11. T146: ManaModel:Gain -- advances, adds, clamps to max, never restarts
+--      the five-second rule nor counts as spend; a non-number, NaN or a
+--      negative amount adds nothing;
+--  12. T146: the real model's refill out of combat under a minute is exact
+--      (FULL 17s, then FULL 16s one second later, through the latch), from a
+--      minute up and in a fight it keeps the 5 s rounding;
+--  13. T146: the measured periodic gain (ManaModel:GainRate): a repeating
+--      amount over the window is a rate, a one-off (a potion) never, none for
+--      the window is 0; it adds to the shown mp5 inside and outside the rule,
+--      to the refill time and the in-fight regen, and never to Advance (no
+--      double count); the dump line carries it.
 HARNESS_FLAVOUR = { "tbc", "forever" }
 
 local here = arg[0]:match("^(.*)/[^/]+$")
@@ -318,6 +332,31 @@ do
 end
 
 --------------------------------------------------------------------------------
+T.section("10. an exact face is never held (T146)")
+--------------------------------------------------------------------------------
+do
+    local function Exact(v)
+        return { mode = "ooc", label = "FULL", value = v, known = "point", tone = "good", timeFmt = "mss", exact = true }
+    end
+    local latch = {}
+    local a = W.Build(Exact(17), SEC, latch, 100).time.text
+    local b = W.Build(Exact(16), SEC, latch, 101).time.text
+    check("10. exact refill: FULL 17s, then FULL 16s a second later", a == "FULL 17s" and b == "FULL 16s",
+        tostring(a) .. " / " .. tostring(b))
+    local c = W.Build(Exact(15), SEC, latch, 101.5).time.text
+    check("10. exact refill half a second later: drawn as it is (FULL 15s), no hold", c == "FULL 15s", tostring(c))
+    local held = {}
+    W.Build({ mode = "ooc", label = "FULL", value = 45, known = "point", tone = "good", timeFmt = "mss" }, SEC, held, 200)
+    local d = W.Build(Exact(17), SEC, held, 200.2).time.text
+    check("10. an exact face after a held one: drawn as it is, the latch emptied",
+        d == "FULL 17s" and held.shown == nil, tostring(d) .. " latch " .. tostring(held.shown))
+    local e = W.Build({ mode = "ooc", label = "FULL", value = 30, known = "point", tone = "good", timeFmt = "mss" },
+        SEC, held, 200.4).time.text
+    check("10. a face without the mark is latched as before (snaps afresh after an exact one)",
+        e == "FULL 30s" and held.shown == 30, tostring(e))
+end
+
+--------------------------------------------------------------------------------
 -- Forever: the real model and the real pool
 --------------------------------------------------------------------------------
 if FLAVOUR == "forever" then
@@ -422,10 +461,138 @@ if FLAVOUR == "forever" then
             S.inCombat = false
             local line
             for _, d in ipairs(ST:DumpLines()) do if d.key == "pool" then line = d.fn() end end
+            -- T146 extended the line: the T145a counts still lead it
+            local head = string.format("pool: power events %d, quiet-full anchors %d", Pool.powerEvents, Pool.quietAnchors)
             check("9. the dump line counts the events and the anchors", type(line) == "string"
-                and line == string.format("pool: power events %d, quiet-full anchors %d", Pool.powerEvents, Pool.quietAnchors)
+                and line:sub(1, #head) == head
                 and Pool.quietAnchors >= 1, tostring(line))
+            check("9. T146: the dump line carries the model, both rates, the anchor and the ENERGIZE counts",
+                type(line) == "string"
+                and line:find(string.format(", model %.0f/%.0f, ", model.mana, model.max), 1, true) ~= nil
+                and line:find(string.format("regen per s base %.2f casting %.2f", model.base, model.casting), 1, true) ~= nil
+                and line:find("anchor '" .. tostring(model.anchor.why) .. "' ", 1, true) ~= nil
+                and line:find("s ago", 1, true) ~= nil
+                and line:find(string.format("energize %d (+%d mana, %d secret, %d not mana)", Pool.energizeEvents,
+                    Pool.energizeMana, Pool.energizeSecret, Pool.energizeOther), 1, true) ~= nil
+                and line:find(string.format("gain rate %.2f per s", model:GainRate(S.now)), 1, true) ~= nil
+                and line:find("|", 1, true) == nil, tostring(line))
         end
+    end
+
+    T.section("11. ManaModel:Gain (T146)")
+    do
+        local m = MM.New()
+        m:SetMax(1000); m:SetRegen(10, 5); m:Anchor(0, 400, "test")
+        m.lastSpend = -100
+        m:Gain(200, 2) -- 2 s at the base rate (20), then 200
+        check("11. Gain advances to t, then adds", m.mana == 620 and m.t == 2, tostring(m.mana))
+        check("11. Gain never restarts the five-second rule", m.lastSpend == -100)
+        m:Gain(1000, 3)
+        check("11. Gain clamps to max", m.mana == 1000, tostring(m.mana))
+        m:Anchor(3, 500, "test")
+        m:StartFight(3)
+        m:Gain(100, 3)
+        check("11. in a fight: added, and never counted as spend or a cast",
+            m.mana == 600 and m.fight.spent == 0 and m.fight.casts == 0 and m.lastSpend == -100, tostring(m.mana))
+        m:Gain(nil, 3); m:Gain("50", 3); m:Gain(0 / 0, 3); m:Gain(-50, 3)
+        check("11. nil, a string, NaN or a negative amount adds nothing", m.mana == 600, tostring(m.mana))
+    end
+
+    T.section("12. the out-of-combat refill to the second (T146)")
+    do
+        local m = MM.New()
+        m:SetMax(1000); m:SetRegen(10, 5); m:Anchor(0, 1000 - 170, "test")
+        m.lastSpend = -100
+        local latch = {}
+        local f1 = MM.Face(m:Project(0), 0)
+        local w1 = W.Build(f1, SEC, latch, 0).time.text
+        local f2 = MM.Face(m:Project(1), 1)
+        local w2 = W.Build(f2, SEC, latch, 1).time.text
+        check("12. ooc, 17 s to full: FULL 17s, then FULL 16s a second later (through the latch)",
+            f1.exact == true and w1 == "FULL 17s" and w2 == "FULL 16s", tostring(w1) .. " / " .. tostring(w2))
+        local seq, ok = {}, true
+        for i = 2, 12 do
+            local f = MM.Face(m:Project(i), i)
+            local w = W.Build(f, SEC, latch, i).time.text
+            seq[#seq + 1] = w
+            local want = (17 - i >= W.FULL_UNDER) and ("FULL " .. (17 - i) .. "s") or "FULL"
+            if w ~= want then ok = false end
+        end
+        check("12. it falls one second per second, FULL once under FULL_UNDER", ok, table.concat(seq, ","))
+        local m3 = MM.New()
+        m3:SetMax(1000); m3:SetRegen(10, 5); m3:Anchor(0, 1000 - 730, "test")
+        m3.lastSpend = -100
+        local f3 = MM.Face(m3:Project(0), 0) -- 73 s
+        check("12. a refill of a minute or more keeps the 5 s rounding (73 s -> 75)",
+            f3.exact == nil and f3.value == 75, tostring(f3.value))
+        local m4 = MM.New()
+        m4:SetMax(1000); m4:SetRegen(10, 5); m4:Anchor(0, 500, "test")
+        m4.lastSpend = -100
+        m4:StartFight(0)
+        m4:Spend(1, 0); m4:Spend(1, 0); m4:Spend(1, 0)
+        local f4 = MM.Face(m4:Project(20), 20)
+        check("12. in a fight a refill keeps the 5 s rounding and is not exact",
+            f4.mode == "full" and f4.exact == nil and type(f4.value) == "number" and f4.value % 5 == 0,
+            tostring(f4.mode) .. " " .. tostring(f4.value))
+    end
+
+    T.section("13. the measured periodic gain (T146, the author's Mana Well)")
+    do
+        local function Near(a, b) return type(a) == "number" and math.abs(a - b) < 1e-6 end
+        local m = MM.New()
+        m:SetMax(1000); m:SetRegen(10, 0); m:Anchor(0, 500, "test")
+        m.lastSpend = -100
+        m:Gain(10, 0)
+        check("13. one gain alone is no rate", Near(m:GainRate(1), 0), tostring(m:GainRate(1)))
+        m:Gain(10, 5); m:Gain(10, 10)
+        check("13. 10 mana at 0, 5 and 10: 30 over the 15 s window = 2 a second",
+            Near(m:GainRate(10), 30 / MM.GAIN_WINDOW), tostring(m:GainRate(10)))
+        m:Gain(1500, 11)
+        check("13. a one-off potion of 1500 is never read as a rate",
+            Near(m:GainRate(11), 30 / MM.GAIN_WINDOW), tostring(m:GainRate(11)))
+        m:Gain(11, 12) -- within 10 % of 10: the same tick
+        check("13. an amount within GAIN_MATCH of the others counts with them",
+            Near(m:GainRate(12), 41 / MM.GAIN_WINDOW), tostring(m:GainRate(12)))
+        check("13. none for the whole window: 0", Near(m:GainRate(12 + MM.GAIN_WINDOW), 0),
+            tostring(m:GainRate(12 + MM.GAIN_WINDOW)))
+
+        -- no double count: the ticks go into the pool, the rate never into Advance
+        local a = MM.New()
+        a:SetMax(10000); a:SetRegen(10, 0); a:Anchor(0, 1000, "test")
+        a.lastSpend = -100
+        for i = 0, 3 do a:Gain(10, i * 5) end
+        a:Advance(20)
+        check("13. Advance integrates the rates only: 1000 + 4 ticks of 10 + 20 s x 10 = 1240",
+            Near(a.mana, 1240), tostring(a.mana))
+
+        -- inside the rule, casting 0 (the author's "0 mp5"), ticks of 10 every 5 s
+        local w = MM.New()
+        w:SetMax(1000); w:SetRegen(10, 0); w:Anchor(0, 600, "test")
+        w.lastSpend = -100
+        w:Gain(10, 0); w:Gain(10, 5); w:Gain(10, 10)
+        w:Spend(45, 10) -- the rule from 10 to 15
+        local st = w:Project(11)
+        local g = 30 / MM.GAIN_WINDOW
+        local face = MM.Face(st, 11)
+        check("13. inside the rule the shown mp5 is the client's (0) + the measured rate x 5",
+            Near(face.mp5, g * 5) and face.fsr ~= nil, tostring(face.mp5))
+        local deficit = w.max - w.mana
+        local fsr = 4
+        local want = fsr + (deficit - g * fsr) / (10 + g)
+        check("13. the refill adds the rate inside and outside the rule",
+            Near(st.ttf, want), tostring(st.ttf) .. " want " .. tostring(want))
+        local out = MM.Face(w:Project(16), 16)
+        check("13. outside the rule the shown mp5 is base x 5 + the rate x 5",
+            Near(out.mp5, 50 + w:GainRate(16) * 5) and w:GainRate(16) > 0 and out.fsr == nil, tostring(out.mp5))
+
+        local f = MM.New()
+        f:SetMax(1000); f:SetRegen(10, 0); f:Anchor(0, 600, "test")
+        f.lastSpend = -100
+        f:StartFight(0)
+        f:Gain(10, 0); f:Gain(10, 5)
+        local fs = f:Project(10)
+        check("13. in a fight the regen carries the rate (10 s outside the rule at 10 + 20/15)",
+            Near(fs.regen, 10 + 20 / MM.GAIN_WINDOW), tostring(fs.regen))
     end
 end
 

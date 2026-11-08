@@ -215,6 +215,11 @@ local function RegenReading()
         local t, lastSpend = Plain(model.t), Plain(model.lastSpend)
         inFsr = (t ~= nil and lastSpend ~= nil and t < lastSpend + 5) or false
         if inFsr then rate = casting else rate = base end
+        -- T146: plus the measured periodic gain (a Mana Well), as the clock's mp5
+        if rate ~= nil and t ~= nil and pool.GainRate then
+            local g = Plain(pool:GainRate(t))
+            if g ~= nil then rate = rate + g end
+        end
         modelled = ST.inCombat == true
     else
         local RM = ST.Regen

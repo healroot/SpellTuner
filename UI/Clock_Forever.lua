@@ -159,7 +159,15 @@ function Clock:SummaryLines(now, state)
     elseif m == "hold" then
         lines[#lines + 1] = Pair("Out of mana in", (state.regen == nil) and "--" or "not at this pace", "muted")
     elseif m == "ooc" then
-        lines[#lines + 1] = Pair("Full again in", "~" .. Time(state.ttf), "mana")
+        -- T146: the clock's own words -- a refill under a minute to the second
+        local ttf = state.ttf
+        if type(ttf) == "number" and ttf < ST.ManaModel.EXACT_UNDER then
+            local v = math.floor(ttf + 0.5)
+            if v < 0 then v = 0 end
+            lines[#lines + 1] = Pair("Full again in", "~" .. ST.Util.Clock(v), "mana")
+        else
+            lines[#lines + 1] = Pair("Full again in", "~" .. Time(ttf), "mana")
+        end
     elseif m == "fullnow" then
         lines[#lines + 1] = Pair("Full", "now", "text")
     end

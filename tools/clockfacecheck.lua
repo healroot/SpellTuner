@@ -1424,6 +1424,8 @@ E oom showRest=false	|cff999999OOM|r |cffffffff1:00|r |cff999999=|r	|cff999999OO
 ]==]
 -- GOLDEN-TBC-END
 -- GOLDEN-FOREVER-BEGIN
+-- T146: re-captured with --golden for one reason: an out-of-combat refill under 60 s is shown to
+-- the second (ooc ttf=2.4, 2.6, 19, 59); every other line is the e2b13f4 capture.
 GOLDEN.forever = [==[
 F fullnow ttf=nil	~FULL
 F fullnow ttf=-3	~FULL
@@ -1444,11 +1446,11 @@ F fullnow ttf=inf	~FULL
 F ooc ttf=nil	~FULL --
 F ooc ttf=-3	~FULL 0:00
 F ooc ttf=0	~FULL 0:00
-F ooc ttf=2.4	~FULL 0:00
-F ooc ttf=2.6	~FULL 0:05
+F ooc ttf=2.4	~FULL 0:02
+F ooc ttf=2.6	~FULL 0:03
 F ooc ttf=10	~FULL 0:10
-F ooc ttf=19	~FULL 0:20
-F ooc ttf=59	~FULL 1:00
+F ooc ttf=19	~FULL 0:19
+F ooc ttf=59	~FULL 0:59
 F ooc ttf=62.4	~FULL 1:00
 F ooc ttf=597.6	~FULL 10:00
 F ooc ttf=600	~FULL 10:00

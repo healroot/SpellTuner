@@ -25,6 +25,7 @@ function ManaModel.New()
         anchor = { at = nil, why = nil },
         unpriced = 0,      -- unpriced casts since the last StartFight
         lastCast = nil,    -- { t, cost, priced } of the last own cast made out of a fight (B19)
+        gains = {},        -- T146: the recent Gain()s, { t, amount }, oldest first
     }, ManaModel)
 end
 
@@ -113,6 +114,66 @@ function ManaModel:Unpriced(t)
     end
 end
 
+-- T146: mana the player gained that the model can see (UNIT_COMBAT's
+-- ENERGIZE amount, read plain -- drinks and potions, VERIFY): advance, add,
+-- clamp to [0, max]. Never restarts the five-second rule (a gain is not a
+-- spend) and never touches the fight's spend, so the in-combat rates stay
+-- what the casts made them. A non-number, or a NaN, adds nothing.
+-- Each gain is also kept for GainRate (below), pruned past GAIN_WINDOW.
+ManaModel.GAIN_WINDOW = 15  -- seconds the measured gain rate looks back
+ManaModel.GAIN_REPEAT = 2   -- a gain counts toward the rate only when its amount came this often
+ManaModel.GAIN_MATCH = 0.1  -- two amounts are "the same" within 10 % (at least 1 mana)
+ManaModel.GAIN_KEEP = 64    -- at most this many gains kept
+
+function ManaModel:Gain(amount, t)
+    self:Advance(t)
+    if type(amount) ~= "number" or amount ~= amount or amount <= 0 then return end
+    self.mana = self.mana + amount
+    if self.max and self.mana > self.max then self.mana = self.max end
+    local g = self.gains
+    if type(g) ~= "table" then g = {}; self.gains = g end
+    g[#g + 1] = { t = t, amount = amount }
+    local keepFrom = 1
+    while keepFrom <= #g and (t - g[keepFrom].t >= ManaModel.GAIN_WINDOW or #g - keepFrom + 1 > ManaModel.GAIN_KEEP) do
+        keepFrom = keepFrom + 1
+    end
+    if keepFrom > 1 then
+        local n = 0
+        for i = keepFrom, #g do n = n + 1; g[n] = g[i] end
+        for i = #g, n + 1, -1 do g[i] = nil end
+    end
+end
+
+-- T146 (the author's Mana Well: 10 mana every 5 s, inside the rule too, not
+-- in GetManaRegen's casting rate): the measured periodic gain, mana per
+-- second at t -- the sum of the gains in (t - GAIN_WINDOW, t] whose amount
+-- came at least GAIN_REPEAT times there (within GAIN_MATCH), over the window.
+-- A one-off (a potion) never repeats, so it is never read as a rate; none in
+-- the window is 0. This rate feeds only the FORWARD projection and the shown
+-- mp5: the gains themselves are already in the pool (Gain), never in
+-- Advance's integral, so nothing is counted twice.
+function ManaModel:GainRate(t)
+    local g = self.gains
+    if type(g) ~= "table" or type(t) ~= "number" then return 0 end
+    local W = ManaModel.GAIN_WINDOW
+    local sum = 0
+    for i = 1, #g do
+        local e = g[i]
+        local age = t - e.t
+        if age >= 0 and age < W then
+            local tol = math.max(1, e.amount * ManaModel.GAIN_MATCH)
+            local same = 0
+            for j = 1, #g do
+                local o = g[j]
+                local oage = t - o.t
+                if oage >= 0 and oage < W and math.abs(o.amount - e.amount) <= tol then same = same + 1 end
+            end
+            if same >= ManaModel.GAIN_REPEAT then sum = sum + e.amount end
+        end
+    end
+    return sum / W
+end
+
 function ManaModel:Anchor(t, mana, why)
     self.mana = mana
     if self.max and self.max > 0 and self.mana > self.max then self.mana = self.max end
@@ -154,35 +215,45 @@ end
 -- both for "rest" (in combat too) and for the out-of-combat "refill" time.
 -- A rate this needs but does not have (nil) makes the whole answer nil,
 -- never a guess at zero.
-local function RestTime(self, t)
+-- T146: `extra` (GainRate, mana per second) is added to both rates -- a
+-- periodic gain runs inside the rule and out of it alike.
+local function RestTime(self, t, extra)
     local deficit = self.max - self.mana
     if deficit <= 0 then return 0 end
+    if type(extra) ~= "number" then extra = 0 end
 
     local fsr = (self.lastSpend + 5) - t
     if fsr < 0 then fsr = 0 end
 
+    local base = self.base
+    if base ~= nil then base = base + extra end
+
     if fsr > 0 then
         if self.casting == nil then return nil end
-        local gained = self.casting * fsr
+        local casting = self.casting + extra
+        local gained = casting * fsr
         if gained >= deficit then
-            if self.casting <= 0 then return nil end
-            return deficit / self.casting
+            if casting <= 0 then return nil end
+            return deficit / casting
         end
-        if self.base == nil or self.base <= 0 then return nil end
-        return fsr + (deficit - gained) / self.base
+        if base == nil or base <= 0 then return nil end
+        return fsr + (deficit - gained) / base
     end
 
-    if self.base == nil or self.base <= 0 then return nil end
-    return deficit / self.base
+    if base == nil or base <= 0 then return nil end
+    return deficit / base
 end
 
 -- The state every renderer (Text below, the dashboard's own numbers) reads.
 function ManaModel:Project(t)
     self:Advance(t)
+    local extra = self:GainRate(t)
     local out = { mana = self.mana, max = self.max, unpriced = self.unpriced, anchor = self.anchor,
         -- T114: what the face's fsr and mp5 read (the rule from the last
         -- priced spend; the rates last read plain, the regen feed's)
-        t = t, lastSpend = self.lastSpend, base = self.base, casting = self.casting }
+        t = t, lastSpend = self.lastSpend, base = self.base, casting = self.casting,
+        -- T146: the measured periodic gain, mana per second (0 for none)
+        gainRate = extra }
 
     if self.fight then
         local elapsed = t - self.fight.start
@@ -194,11 +265,11 @@ function ManaModel:Project(t)
         if self.casting ~= nil and self.base ~= nil and elapsed > 0 then
             local fsrTime = self.fight.fsrTime
             if fsrTime > elapsed then fsrTime = elapsed end
-            regen = (fsrTime * self.casting + (elapsed - fsrTime) * self.base) / elapsed
+            regen = (fsrTime * self.casting + (elapsed - fsrTime) * self.base) / elapsed + extra
         end
         out.spend = spend
         out.regen = regen
-        out.rest = RestTime(self, t)
+        out.rest = RestTime(self, t, extra)
 
         if self.fight.casts < 3 or elapsed < 10 then
             out.mode = "warmup"
@@ -219,12 +290,12 @@ function ManaModel:Project(t)
             end
         end
     else
-        out.rest = RestTime(self, t)
+        out.rest = RestTime(self, t, extra)
         if self.max > 0 and self.mana >= self.max then
             out.mode = "fullnow"
         else
             out.mode = "ooc"
-            out.ttf = RestTime(self, t)
+            out.ttf = RestTime(self, t, extra)
         end
     end
 
@@ -298,6 +369,13 @@ end
 -- the state's own time (Project's t).
 local function Plain(x) return type(x) == "number" and x == x end
 
+-- T146: out of combat (mode "ooc", the refill) a time under EXACT_UNDER
+-- seconds is shown to the second -- no 5 s rounding -- and the face says so
+-- (`exact`), so ClockWords' Steady latch leaves it alone: it is deterministic
+-- and falls one second per second. In-combat times keep the 5 s rounding and
+-- the latch (T144).
+ManaModel.EXACT_UNDER = 60
+
 function ManaModel.Face(state, now)
     local face = { modelled = true, mono = true, unstable = false, timeFmt = "mss",
         pctModelled = true, mp5Modelled = true, manaModelled = true, combat = false }
@@ -319,7 +397,12 @@ function ManaModel.Face(state, now)
         if inFsr then face.fsr = left end
         local rate
         if inFsr then rate = state.casting else rate = state.base end
-        if Plain(rate) then face.mp5 = rate * 5 end
+        -- T146: plus the measured periodic gain, in the rule and out of it
+        if Plain(rate) then
+            local g = state.gainRate
+            if Plain(g) then rate = rate + g end
+            face.mp5 = rate * 5
+        end
     end
     face.combat = m == "warmup" or m == "hold" or m == "oom" or m == "full"
 
@@ -327,6 +410,11 @@ function ManaModel.Face(state, now)
         face.label, face.known, face.tone = "FULL", "none", "good"
     elseif m == "ooc" or m == "full" then
         face.label, face.value = "FULL", Shown(state.ttf)
+        if m == "ooc" and Plain(state.ttf) and state.ttf < ManaModel.EXACT_UNDER then
+            local v = math.floor(state.ttf + 0.5)
+            if v < 0 then v = 0 end
+            face.value, face.exact = v, true
+        end
         if face.value == nil then
             face.known, face.tone = "none", "muted"
         else

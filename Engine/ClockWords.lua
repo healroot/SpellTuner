@@ -103,7 +103,8 @@ end
 -- time. Within one label and mode, with a point value (known "point", a
 -- number, not past 600 s), the shown value changes at most once per
 -- STEADY_EVERY seconds, each change one STEADY_STEP toward the face's own
--- value. It snaps to the face's value when the label or the mode changes,
+-- value. A face marked `exact` (T146) is shown as it is and empties the latch.
+-- It snaps to the face's value when the label or the mode changes,
 -- when the value is nil / bound / pending (or comes back from one), and when
 -- the gap is STEADY_SNAP seconds or more. `latch` is the caller's table.
 --------------------------------------------------------------------------------
@@ -112,7 +113,9 @@ end
 function W.SteadyValue(latch, face, now)
     local v = face.value
     if type(latch) ~= "table" then return v end
-    local point = face.known == "point" and Plain(v) and v <= 600 and Plain(now)
+    -- T146: an exact face (Forever's refill under a minute, to the second) is
+    -- never held: it resets the latch like a non-point face
+    local point = face.known == "point" and face.exact ~= true and Plain(v) and v <= 600 and Plain(now)
     if not point then
         latch.label, latch.mode, latch.shown, latch.at = face.label, face.mode, nil, nil
         return v

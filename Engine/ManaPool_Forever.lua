@@ -36,6 +36,18 @@ Pool.lastPowerEvent = nil -- GetTime() of the last player power event, nil befor
 Pool.powerEvents = 0      -- counted for /st dump
 Pool.quietAnchors = 0     -- anchors made by the quiet-pool rule, for /st dump
 
+-- T146: mana gains the model can see. UNIT_COMBAT's amounts read plain on
+-- this client (docs/FOREVER-PLAN.md, the probe: WOUND and HEAL); an ENERGIZE
+-- on the player with a plain amount is added to the model (ManaModel:Gain).
+-- Whether drinks and potions arrive as ENERGIZE here is VERIFY
+-- (docs/TESTING.md section 66): counted for /st dump. While the player's power
+-- is plainly not mana (a druid's bear or cat form) an ENERGIZE is rage or
+-- energy: counted as seen, never added.
+Pool.energizeEvents = 0   -- ENERGIZE events on the player with a plain amount, added
+Pool.energizeMana = 0     -- the mana those added (the amounts as read)
+Pool.energizeSecret = 0   -- ENERGIZE events whose amount was secret: ignored
+Pool.energizeOther = 0    -- ENERGIZE events while the power was not mana: ignored
+
 --------------------------------------------------------------------------------
 -- Cost lookup: ST.Book's own entry.cost.amount (a family's known rank, or a
 -- standalone ReadSpell for anything else the book does not list -- both
@@ -91,6 +103,14 @@ function Pool:Project(now)
     return m:Project(now)
 end
 
+-- T146: the measured periodic gain (ManaModel:GainRate), mana per second;
+-- 0 before MD_READY.
+function Pool:GainRate(now)
+    local m = self.model
+    if not m then return 0 end
+    return m:GainRate(now)
+end
+
 -- Pool:QuietFull(now) -> true when the game's pool has gone quiet (full), by
 -- ClockWords.QuietFull on this pool's own fields; false before MD_READY,
 -- with the flag off, or without the words file.
@@ -107,10 +127,38 @@ end
 -- The dump's line: how often the event came and how often the rule anchored.
 -- Added at the first power event (as the clock's own line waits for a look),
 -- so a session that never saw one dumps what it did before T145a.
-function Pool.DumpLine()
-    return string.format("pool: power events %d, quiet-full anchors %d", Pool.powerEvents, Pool.quietAnchors)
+-- T146: and the model beside them, so the author can hold it against the
+-- game's bar -- mana / max, the two regen rates (mana per second, base then
+-- casting), the last anchor's reason and age, the ENERGIZE counts. `now` is
+-- the caller's time, GetTime() when none.
+local function Num(x, fmt)
+    if type(x) == "number" and x == x then return string.format(fmt, x) end
+    return "--"
+end
+function Pool.DumpLine(now)
+    local line = string.format("pool: power events %d, quiet-full anchors %d", Pool.powerEvents, Pool.quietAnchors)
+    local m = Pool.model
+    if m then
+        if type(now) ~= "number" then now = GetTime() end
+        local why = m.anchor and m.anchor.why
+        local at = m.anchor and m.anchor.at
+        local age = "--"
+        if type(at) == "number" and type(now) == "number" then age = Num(now - at, "%.0f") .. "s ago" end
+        line = line .. string.format(", model %s/%s, regen per s base %s casting %s, anchor %s %s",
+            Num(m.mana, "%.0f"), Num(m.max, "%.0f"), Num(m.base, "%.2f"), Num(m.casting, "%.2f"),
+            type(why) == "string" and ("'" .. why .. "'") or "--", age)
+    end
+    local rate = 0
+    if m and type(now) == "number" then rate = m:GainRate(now) end
+    return line .. string.format(", energize %d (+%d mana, %d secret, %d not mana), gain rate %.2f per s",
+        Pool.energizeEvents, Pool.energizeMana, Pool.energizeSecret, Pool.energizeOther, rate)
 end
 local dumpAdded = false
+local function AddDump()
+    if dumpAdded then return end
+    dumpAdded = true
+    ST:AddDumpLine("pool", Pool.DumpLine)
+end
 
 -- The regen rates last read plain (out of combat): base, casting. ManaRegen()
 -- goes secret in combat, so this is what a reader falls back on for the whole
@@ -175,10 +223,30 @@ end)
 ST:OnUnit("UNIT_POWER_FREQUENT", "player", function()
     Pool.lastPowerEvent = GetTime()
     Pool.powerEvents = Pool.powerEvents + 1
-    if not dumpAdded then
-        dumpAdded = true
-        ST:AddDumpLine("pool", Pool.DumpLine)
+    AddDump()
+end)
+
+-- T146: an ENERGIZE on the player, its amount plain, into the model. Every
+-- argument tested with IsSecret before any comparison (the
+-- UNIT_SPELLCAST_SUCCEEDED handler's rule).
+ST:OnUnit("UNIT_COMBAT", "player", function(unit, action, descriptor, amount)
+    local model = Pool.model
+    if not model then return end
+    if ST.API.IsSecret(unit) or unit ~= "player" then return end
+    if ST.API.IsSecret(action) or action ~= "ENERGIZE" then return end
+    AddDump()
+    if ST.API.IsSecret(amount) or type(amount) ~= "number" or amount ~= amount then
+        Pool.energizeSecret = Pool.energizeSecret + 1
+        return
     end
+    local power = ST.API.UnitPowerType("player")
+    if type(power) == "number" and power ~= 0 then
+        Pool.energizeOther = Pool.energizeOther + 1
+        return
+    end
+    model:Gain(amount, GetTime())
+    Pool.energizeEvents = Pool.energizeEvents + 1
+    if amount > 0 then Pool.energizeMana = Pool.energizeMana + amount end
 end)
 
 -- T145 review N5: a death forgets the last power event, and so does coming

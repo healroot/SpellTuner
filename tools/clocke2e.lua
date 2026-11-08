@@ -36,6 +36,15 @@
 --       QUIET outside the rule -> anchored, the time FULL; quiet inside the
 --       rule -> no anchor; base x QUIET < 2 -> no anchor; dead or a ghost ->
 --       no anchor, and after PLAYER_ALIVE none until a fresh event (N5).
+--   E8  (Forever, T146) mana the model can see: an ENERGIZE on the player
+--       with a plain amount moves the model (clamped to max, the rule not
+--       restarted) and is counted; a secret amount, another unit, a HEAL and
+--       an ENERGIZE while the power is not mana are not added; the refill out
+--       of combat under a minute, on screen, falls one second per second
+--       (FULL 17s, FULL 16s, ...) and reads FULL at the end; a Mana Well
+--       (10 mana every 5 s by ENERGIZE) inside the rule makes the face's mp5
+--       the client's casting rate + 10, the regen feed's too, and the dump
+--       line's gain rate; a lone potion leaves the mp5 alone.
 --
 -- The moment E1 holds the live clock at (a seam, not the model's own path):
 -- Forever, the model's fight fields set at 60 % mana so the time to OOM is
@@ -760,6 +769,94 @@ T.section("E7. the quiet pool (Forever)")
         return deadOK and aliveOK and after,
             string.format("dead %s, alive %s, after a fresh event %s", tostring(deadOK), tostring(aliveOK), tostring(after))
     end)
+
+T.section("E8. mana the model can see; the refill to the second (Forever, T146)")
+    Try("E8: an ENERGIZE of 500 on the player moves the model by 500, the rule not restarted; counted", function()
+        Rates(0.001)
+        local m = Setup(0.5, 0.001)
+        local before, spend = m.mana, m.lastSpend
+        local n0, mana0 = Pool.energizeEvents, Pool.energizeMana
+        S.Combat("player", "ENERGIZE", 500)
+        local moved = math.abs(m.mana - (before + 500)) < 0.01
+        return moved and m.lastSpend == spend and Pool.energizeEvents == n0 + 1 and Pool.energizeMana == mana0 + 500,
+            string.format("mana %s -> %s, events +%d, mana +%d", tostring(before), tostring(m.mana),
+                Pool.energizeEvents - n0, Pool.energizeMana - mana0)
+    end)
+    Try("E8: a secret amount, another unit, a HEAL and an ENERGIZE in a form: nothing added", function()
+        Rates(0.001)
+        local m = Setup(0.5, 0.001)
+        local before = m.mana
+        local n0, s0, o0 = Pool.energizeEvents, Pool.energizeSecret, Pool.energizeOther
+        S.Combat("player", "ENERGIZE", S.Secret())
+        S.Combat("party1", "ENERGIZE", 500)
+        S.Combat("player", "HEAL", 500)
+        local pt = S.powerType
+        S.powerType = 1 -- rage: a bear's ENERGIZE
+        S.Combat("player", "ENERGIZE", 500)
+        S.powerType = pt
+        return math.abs(m.mana - before) < 0.01 and Pool.energizeEvents == n0 and Pool.energizeSecret == s0 + 1
+            and Pool.energizeOther == o0 + 1,
+            string.format("mana %s -> %s, events +%d, secret +%d, not mana +%d", tostring(before), tostring(m.mana),
+                Pool.energizeEvents - n0, Pool.energizeSecret - s0, Pool.energizeOther - o0)
+    end)
+    Try("E8: an ENERGIZE over the deficit fills the model to max, no further", function()
+        Rates(0.001)
+        local m = Setup(0.9, 0.001)
+        S.Combat("player", "ENERGIZE", m.max)
+        return m.mana == m.max, tostring(m.mana) .. " / " .. tostring(m.max)
+    end)
+    Try("E8: out of combat, 17 s from full: the time on screen falls one second per second, then FULL", function()
+        D.UseLook(ST, BASES[1].look)
+        local base = 10
+        Rates(base)
+        local m = Setup(0.5, base)
+        m:Anchor(S.now, m.max - 17 * base, "e8")
+        local seen, secs = {}, {}
+        for _ = 1, 20 do
+            Run(1, 0.2)
+            local w = D.TimeWords(ST)
+            seen[#seen + 1] = tostring(w)
+            local v = type(w) == "string" and (w:match("^FULL (%d+)s$") or w:match("^FULL 0:(%d%d)$"))
+            if v then secs[#secs + 1] = tonumber(v) end
+        end
+        local steps = #secs >= 10
+        for i = 2, #secs do if secs[i] ~= secs[i - 1] - 1 then steps = false end end
+        local last = seen[#seen]
+        return steps and secs[1] ~= nil and secs[1] >= 15 and (last == "FULL" or last == "nil"),
+            table.concat(seen, ",")
+    end)
+
+    Try("E8: a Mana Well inside the rule: mp5 = the client's casting rate x 5 + 10, the feed's and the dump's too; "
+            .. "a lone potion is no rate", function()
+        local base = 2
+        Rates(base) -- casting base / 2 = 1 a second, 5 mp5
+        local m = Setup(0.5, base)
+        for _ = 1, 4 do -- 20 s of ticks every 5 s, a cast keeping the rule up
+            S.Combat("player", "ENERGIZE", 10)
+            m:Spend(1, S.now)
+            Run(5, 0.2)
+        end
+        S.Combat("player", "ENERGIZE", 10)
+        m:Spend(1, S.now)
+        Run(1, 0.2)
+        local face = ST.ClockFace.Current(S.now)
+        local rate = ST.Pool:GainRate(S.now)
+        local wellOK = face.fsr ~= nil and math.abs(rate * 5 - 10) < 1e-6
+            and math.abs(face.mp5 - (base / 2 * 5 + 10)) < 1e-6
+        local feed = ST.Feeds.RegenReading()
+        local feedOK = feed ~= nil and feed.fsr == true and feed.mp5 == math.floor(base / 2 * 5 + 10 + 0.5)
+        local line = ST.Pool.DumpLine(S.now)
+        local dumpOK = line:find(string.format("gain rate %.2f per s", rate), 1, true) ~= nil and rate > 0
+        -- a potion, a minute later: no repeat, no rate
+        Run(ST.ManaModel.GAIN_WINDOW + 1, 0.2)
+        S.Combat("player", "ENERGIZE", 1500)
+        Run(1, 0.2)
+        local potionOK = ST.Pool:GainRate(S.now) == 0
+        return wellOK and feedOK and dumpOK and potionOK,
+            string.format("fsr %s, rate %s, mp5 %s, feed %s, dump %s, potion rate %s", tostring(face.fsr), tostring(rate),
+                tostring(face.mp5), tostring(feed and feed.mp5), tostring(dumpOK), tostring(ST.Pool:GainRate(S.now)))
+    end)
+
     _G.GetManaRegen = realRegen
     ST.API.Invalidate("GetManaRegen")
 end

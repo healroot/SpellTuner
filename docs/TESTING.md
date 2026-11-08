@@ -2700,6 +2700,16 @@ Forever with EllesmereUI's mana bar on screen, then TBC. `docs/SPEC-clock-v3.md`
 8. **Shape under the game frame (VERIFY):** Frame = Game frame, then Shape Rectangle vs Rounded. Say
    whether the two look different in game (both the game's mask and the shape's mask clip the fill;
    offline only the mask's file name is compared).
+9. **Drinks and the refill to the second (Forever, VERIFY, T146):** out of combat, spend to about
+   half, `/st dump` once, then drink. `/st dump` again while drinking: the `pool:` line's `energize`
+   count rises and its `model` mana follows the game's bar. Once under a minute from full the time
+   counts down second by second (`FULL 17s`, `FULL 16s`, ...) and reads `FULL` within about 1-3 s of
+   the game's bar being full. **If the energize count stays 0 while drinking, report it** (with both
+   dumps): drinks are then not visible this way.
+10. **Mana Well (Forever, VERIFY, T146):** with Mana Well up (10 mana every 5 s), cast so the
+   five-second rule runs: the clock's mp5 reads about the client's casting rate + 10 inside the rule
+   (not `0 mp5`), and the dump's `pool:` line shows `gain rate 2.00 per s` and the energize count
+   rising. If the gain rate stays 0, report the dump: the well is not seen as ENERGIZE.
 
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the

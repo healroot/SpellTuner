@@ -1769,3 +1769,28 @@ The author approved `docs/SPEC-clock-v3.md` and its mockup `tools/.cache/clockv3
 - **Line and Compact's open items close with them:** Right2 (`CF.TEXT`), the slots and the
   per-layout heights left with the layouts (D1); the `~` on Line / Compact's numbers went with them.
   Q-clock-2 stays answered by T144; a probe confirmation is still welcome.
+- **Mana gains into the model (2026-11-08, T146, the author's report "FULL 20s" at 382 of 385; VERIFY):**
+  `UNIT_COMBAT` amounts read plain on Forever (`docs/FOREVER-PLAN.md`, WOUND and HEAL). An `ENERGIZE`
+  on the player with a plain amount is added to the model (`ManaModel:Gain`: advance, add, clamp to
+  max; never restarts the five-second rule, never counted as spend). A secret amount is ignored, and
+  so is an ENERGIZE while the player's power type is plainly not mana (a druid's bear or cat form:
+  rage or energy). **Whether drinks and potions arrive as ENERGIZE on this client is VERIFY**:
+  `/st dump`'s `pool:` line counts them (`energize N (+M mana, S secret, O not mana)`) beside the
+  model's mana / max, both rates and the last anchor; `docs/TESTING.md` section 66 step 9 settles it.
+  If the count stays 0 while drinking, drinks are not visible this way and the quiet pool stays the
+  only correction.
+- **A measured periodic gain (T146, the author's Mana Well: 10 mana every 5 s, running inside the rule,
+  read `0 mp5  FULL 5s` at 345 mana; VERIFY that it arrives as ENERGIZE):** `ManaModel:GainRate(t)` is
+  the sum of the ENERGIZE amounts in the last `GAIN_WINDOW` (15 s) whose amount came at least
+  `GAIN_REPEAT` (2) times there (within 10 %, at least 1 mana), over the window, in mana per second;
+  0 once none came for the window. **A one-off (a potion) never repeats, so it is never a rate**; a
+  drink's ticks repeat and count while drinking (the refill is then right too). The rate is added to
+  the shown mp5 (the face's and the regen feed's, client rate + rate x 5, inside and outside the rule),
+  to both rates of the refill / rest time and to the in-fight regen. **It feeds only the forward
+  projection**: the amounts are already in the pool (`Gain`), never in `Advance`'s integral, so
+  nothing is counted twice. The dump's `pool:` line shows it (`gain rate N per s`).
+- **The refill to the second (T146):** out of combat (mode `ooc`) a refill under 60 s is shown to the
+  second (`ManaModel.EXACT_UNDER`), not rounded to 5 s, and the face is marked `exact` so the Steady
+  latch leaves it alone: it is deterministic and falls one second per second. In-combat times keep
+  the 5 s rounding and the latch (T144). A refill under `ClockWords.FULL_UNDER` (5 s) still reads
+  `FULL`. TBC's words are unchanged (its faces are never `exact`).
