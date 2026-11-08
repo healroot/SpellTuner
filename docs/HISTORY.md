@@ -5401,3 +5401,25 @@ beside the window (`UI.CreateSheet` `docked`), so the Spells pane is seen moving
 
 `docs/tasks/T140-ellesmere-bar-look.md`, `docs/tasks/T141-talent-plan-live-docked.md`, TESTING sections
 61 and 62.
+
+## 2026-11-08 -- T142, T143: the bar's texts one by one, the game bar frame; a smooth mana bar
+
+- **T142 (f24beae):**
+  - Each Bar-layout text (label, time, mana, mana/max, %, regen, 5SR, rest) is placed on its own:
+    inside, above or below the bar, with align, X/Y, size, colour and outline. Texts outside the bar
+    never make the frame taller.
+  - Frame: None / Border / Game bar frame, which is EllesmereUI's Blizzard-style art, mask and bevel,
+    read from its code. Without the atlas it falls back to Border.
+  - Font: EllesmereUI's or SpellTuner's.
+  - The default is the author's pick from the mockup: game frame, rounded, 200x8, Pixels Dark,
+    396DA7 on 0A0A0A, the moving line, time below left, mana inside centred, regen below right.
+  - A one-time store reset (`clockLook.v = 2`) clears the saved Bar look and the bar colours.
+- **T143 (20708b3):**
+  - The Forever bar follows every player `UNIT_POWER_FREQUENT` through the new `ST:OnUnit`.
+  - The client eases it (`ExponentialEaseOut`) where `DrawUnitPower` is asked to.
+- **Gate and review:** `make check` green (107 runs). Review `docs/review/T142-T143-review.md`:
+  pass with six nits and two things to watch in game (W1: the easing may restart on every min/max set).
+- **Installed** on Forever on 2026-11-08.
+- **In game:** `docs/TESTING.md` §63 and §64.
+- **Open:** N1-N6 from the review. The `CLAUDE.md` rows for `UI/ClockView.lua` and
+  `UI/ClockSettings.lua` still describe T139/T140; the implementer report has the wording.
