@@ -2647,6 +2647,15 @@ first login with this build (the Line and Compact looks are kept); `/st dump` ha
    art: hover Game bar frame, it says so), Soft, SpellTuner's font.
 6. **Presets:** Words below, Soft pill, Thin line, then SpellTuner default brings back step 1.
 
+## 64. The mana bar follows your mana smoothly (T143) -- NEW, 1 min
+
+Forever only.
+1. Out of combat, below full: cast a heal, then watch the clock's bar refill next to EllesmereUI's
+   mana bar. Both fill smoothly and together, with no step every half second.
+2. Cast again: the bar drops at the cast and eases down. The number on the bar (`~`, the model) still
+   changes on its half-second tick.
+3. In a group: another player's mana changes do not make the bar flicker.
+
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the
 raw numbers. `/st profile` output is welcome with any report. I turn them into

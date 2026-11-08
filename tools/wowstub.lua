@@ -355,7 +355,8 @@ _G.C_Spell = nil
 local FOREVER_EVENTS = {
     UNIT_SPELLCAST_SENT = true, UNIT_SPELLCAST_START = true, UNIT_SPELLCAST_SUCCEEDED = true,
     UNIT_SPELLCAST_STOP = true, UNIT_SPELLCAST_FAILED = true, UNIT_HEALTH = true,
-    UNIT_MAXHEALTH = true, UNIT_POWER_UPDATE = true, UNIT_AURA = true, UNIT_FLAGS = true,
+    UNIT_MAXHEALTH = true, UNIT_POWER_UPDATE = true, UNIT_POWER_FREQUENT = true, -- T143: EllesmereUI registers it on Forever
+    UNIT_AURA = true, UNIT_FLAGS = true,
     UNIT_COMBAT = true, GROUP_ROSTER_UPDATE = true, PLAYER_REGEN_DISABLED = true,
     PLAYER_REGEN_ENABLED = true, SPELLS_CHANGED = true, PLAYER_TALENT_UPDATE = true,
     TRAIT_CONFIG_UPDATED = true, DAMAGE_METER_COMBAT_SESSION_UPDATED = true,
@@ -388,6 +389,13 @@ setmetatable(FrameMT, { __index = function(_, k)
     if type(k) == "string" and k:match("^%u") then return noop end
     return nil
 end })
+-- T143: a unit event, delivered by S.Fire only when its first argument is
+-- that unit, as the client filters it
+function FrameMT:RegisterUnitEvent(e, unit)
+    self.unitEvents = self.unitEvents or {}
+    self.unitEvents[e] = unit
+    return self:RegisterEvent(e)
+end
 function FrameMT:RegisterEvent(e)
     -- Recorded in every profile, before anything can forbid or raise, so a
     -- test can see exactly which events (and in what order) a frame tried to
@@ -578,7 +586,8 @@ local function Clamp(self, v)
     if rawtype(hi) == "number" and v > hi then v = hi end
     return v
 end
-function FrameMT:SetValue(v) self.value = Clamp(self, v) end
+-- T143: the interpolation mode a bar was handed with its value, kept for a test
+function FrameMT:SetValue(v, mode) self.value = Clamp(self, v); self.valueMode = mode end
 function FrameMT:GetValue() return self.value or 0 end
 function FrameMT:SetMinMaxValues(a, b)
     self.minV, self.maxV = a, b
@@ -938,7 +947,10 @@ function S.Fire(event, ...)
         elseif event == "PLAYER_REGEN_ENABLED" then S.inCombat = false end
     end
     for _, f in ipairs(frames) do
-        if f.events[event] and f.scripts.OnEvent then f.scripts.OnEvent(f, event, ...) end
+        local unit = f.unitEvents and f.unitEvents[event]
+        if f.events[event] and f.scripts.OnEvent and (unit == nil or unit == (...)) then
+            f.scripts.OnEvent(f, event, ...)
+        end
     end
 end
 

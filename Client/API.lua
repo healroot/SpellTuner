@@ -326,18 +326,32 @@ end
 -- straight to the bar inside one pcall, the same "one raise, caught once"
 -- shape as Has/Call/Copy. UnitPowerMax/UnitPower are shared names (Bind
 -- below), so this lives here rather than in a flavour file.
-function ST.API.DrawUnitPower(bar, unit, powerType)
+-- T143: `smooth` true eases the fill to the new value on the client's side
+-- (Enum.StatusBarInterpolation.ExponentialEaseOut, EllesmereUI's smooth
+-- bars) where the client has it; else a plain SetValue.
+local smoothMode
+function ST.API.DrawUnitPower(bar, unit, powerType, smooth)
     if type(bar) ~= "table" then return false, "absent" end
     local maxFn = ST.API.Has("UnitPowerMax")
     local curFn = ST.API.Has("UnitPower")
     if type(maxFn) ~= "function" or type(curFn) ~= "function" then return false, "absent" end
+    -- only a found mode is kept: a client without one asks again (cheap)
+    if smooth and smoothMode == nil then
+        pcall(function()
+            local e = rawget(_G, "Enum")
+            local m = type(e) == "table" and type(e.StatusBarInterpolation) == "table"
+                and e.StatusBarInterpolation.ExponentialEaseOut
+            if type(m) == "number" then smoothMode = m end
+        end)
+    end
+    local mode = smooth and smoothMode or nil
 
     local ok = pcall(function()
         local max = maxFn(unit, powerType)
         local cur = curFn(unit, powerType)
         -- Never inspected -- a secret max/cur goes straight into the bar.
         bar:SetMinMaxValues(0, max)
-        bar:SetValue(cur)
+        if mode then bar:SetValue(cur, mode) else bar:SetValue(cur) end
     end)
     if not ok then return false, "error" end
     return true

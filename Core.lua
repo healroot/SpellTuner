@@ -41,6 +41,31 @@ function ST:On(event, fn)
     handlers[event][#handlers[event] + 1] = fn
 end
 
+-- T143: a unit event for one unit (UNIT_POWER_FREQUENT for "player"), on its
+-- own frame per event and unit so another unit's changes never reach Lua.
+-- The same refusal as ST:On; handlers get the event's arguments, isolated
+-- the same way (Dispatch, below).
+local unitHandlers = {}
+local Dispatch
+function ST:OnUnit(event, unit, fn)
+    local key = event .. "\0" .. unit
+    local entry = unitHandlers[key]
+    if not entry then
+        if not ST.API.CanRegisterEvent(event) then
+            ST:Debug("other", "refused event %s", event)
+            return
+        end
+        local f = CreateFrame("Frame")
+        if type(f.RegisterUnitEvent) ~= "function" then return end
+        local ok = pcall(f.RegisterUnitEvent, f, event, unit)
+        if not ok then return end
+        entry = { frame = f, list = {} }
+        unitHandlers[key] = entry
+        f:SetScript("OnEvent", function(_, _, ...) Dispatch(entry.list, ...) end)
+    end
+    entry.list[#entry.list + 1] = fn
+end
+
 -- T55 (P11, review A4): fault isolation. Each handler runs as
 -- xpcall(handler, ST.ErrorSink, ...), so a raise in one handler no longer
 -- stops the ones after it (PLAYER_REGEN_ENABLED has eight: the recorder
@@ -75,7 +100,7 @@ function ST.ErrorSink(msg)
 end
 local ErrorSink = ST.ErrorSink
 
-local function Dispatch(list, ...)
+function Dispatch(list, ...)
     local unsunk
     for i = 1, #list do
         local ok, marker = xpcall(list[i], ErrorSink, ...)

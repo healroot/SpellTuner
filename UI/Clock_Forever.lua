@@ -280,7 +280,7 @@ end
 -- by the adapter and never read (ST.API.DrawUnitPower), and the five-second
 -- rule from the model's last priced spend (plain: the model's own clock).
 local draw = {
-    pool = function(b) ST.API.DrawUnitPower(b, "player", 0) end,
+    pool = function(b) ST.API.DrawUnitPower(b, "player", 0, true) end, -- T143: eased
     fsr = function(now)
         local m = ST.Pool and ST.Pool.model
         if not (m and type(m.lastSpend) == "number" and type(now) == "number") then return nil end
@@ -469,6 +469,14 @@ end)
 ST:OnTick(function()
     if not ST.Pool.model then return end
     if widget then Paint(GetTime()) end
+end)
+
+-- T143: the real pool between ticks. This client's regen is continuous, so
+-- the bar follows every player power change (EllesmereUI's event) and the
+-- game eases it; the words and the model keep the tick. The value is handed
+-- to the bar unread (ST.API.DrawUnitPower).
+ST:OnUnit("UNIT_POWER_FREQUENT", "player", function()
+    if view and widget and widget:IsShown() then view:PaintMana() end
 end)
 
 -- T93 (F5): a new fight may flash again.

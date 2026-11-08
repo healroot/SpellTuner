@@ -323,6 +323,36 @@ do
         string.format("drawOk=%s minV=%s sawIt=%s", tostring(drawOk), tostring(bar.minV), tostring(sawIt)))
 end
 
+-- T143: the bar eases (the client's interpolation), and follows every player
+-- power change between ticks; another unit's change does not reach it.
+do
+    local e = rawget(_G, "Enum") or {}
+    _G.Enum = e
+    e.StatusBarInterpolation = e.StatusBarInterpolation or { Immediate = 0, ExponentialEaseOut = 1 }
+    local bar = CreateFrame("StatusBar", nil, UIParent)
+    ST.API.DrawUnitPower(bar, "player", 0, true)
+    local eased = bar.valueMode == e.StatusBarInterpolation.ExponentialEaseOut
+    local plain = CreateFrame("StatusBar", nil, UIParent)
+    ST.API.DrawUnitPower(plain, "player", 0)
+    check("T143: the pool eases where asked, plain otherwise",
+        eased and plain.valueMode == nil,
+        string.format("mode=%s plain=%s", tostring(bar.valueMode), tostring(plain.valueMode)))
+
+    local view, frame = Clock.view, Clock.frame
+    ST.db.clock.shown = true
+    model.mana = model.max * 0.5
+    Clock:Refresh()
+    local n, orig = 0, view.PaintMana
+    view.PaintMana = function(self, ...) n = n + 1; return orig(self, ...) end
+    S.Fire("UNIT_POWER_FREQUENT", "party1", "MANA")
+    local other = n
+    S.Fire("UNIT_POWER_FREQUENT", "player", "MANA")
+    view.PaintMana = orig
+    check("T143: a player power change repaints the bar, another unit's does not",
+        frame:IsShown() and other == 0 and n == 1,
+        string.format("shown=%s other=%d player=%d", tostring(frame:IsShown()), other, n))
+end
+
 -- item 11: shown in combat; hidden at full out of combat; off means off.
 do
     local frame = Clock.frame
