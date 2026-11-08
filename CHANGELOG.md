@@ -26,6 +26,15 @@ published to CurseForge; the developers' log is `docs/HISTORY.md`.
 - Settings -> Clock -> Bars -> Join -> Moving line: the mana bar keeps its colour and an amber line
   crosses it during the five seconds after a cast. Stacked, One bar and Swipe chip stay.
 
+### Both: the clock's bar look
+- Settings -> Clock -> Bar look: shape (Rectangle, Rounded, Pill, Thin), texture (SpellTuner's Soft,
+  Flat, Smooth, Gradient, Gloss, Striped, Minimal, the game's two, and your UI's bars through
+  LibSharedMedia when an addon provides it), the words inside, above, below or off, bar height and
+  border, and six colours from the game's colour picker (fill, fill end, background, border, 5SR line,
+  after 5SR). Presets: Default, Like EllesmereUI, Soft pill, Thin line.
+- The new default: a 6-px blue pill with the words below and the moving line. Your own settings are kept.
+- Forever: the clock's textures are no longer limited to Flat.
+
 ## 0.17.3
 
 ### TBC: every healing class

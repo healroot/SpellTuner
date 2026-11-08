@@ -333,7 +333,7 @@ Try("the Settings group has a Clock view, after General", function()
     return table.concat(ids, ",") == want, table.concat(ids, ",")
 end)
 
-Try("selecting it builds the pane: PREVIEW, LAYOUT, the box with five tabs (Text first, no Show)", function()
+Try("selecting it builds the pane: PREVIEW, LAYOUT, the box with six tabs (Text first, then Bar look; no Show)", function()
     ST:SelectView("settings", "clock")
     for _, f in ipairs(S.allFrames) do if f.clockSettings then pane, p = f, f.clockSettings end end
     local g, v = ST:SelectedView()
@@ -343,7 +343,7 @@ Try("selecting it builds the pane: PREVIEW, LAYOUT, the box with five tabs (Text
     for _, t in ipairs(CS.TABS or {}) do tabs[#tabs + 1] = t.id end
     return g == "settings" and v == "clock" and pane ~= nil and pane:IsVisible()
         and table.concat(titles, ",") == "PREVIEW,LAYOUT" and p.box ~= nil
-        and table.concat(tabs, ",") == "text,colours,frame,bars,when" and p.tab == "text",
+        and table.concat(tabs, ",") == "text,look,colours,frame,bars,when" and p.tab == "text",
         string.format("%s/%s titles %s", tostring(g), tostring(v), table.concat(titles, ","))
 end)
 
@@ -451,6 +451,7 @@ end)
 
 Try("Bars: each dropdown and the 5SR thickness write bars.<layout>.*; the clock draws them; Order is Stacked's only", function()
     p.box:Select("bars")
+    Pick(p.joinDropdown, "stacked") -- T139: the moving line is the default; Order is Stacked's
     local orderOn = p.orderDropdown and p.orderDropdown:IsEnabled()
     local picks = Pick(p.showDropdown, "mana") and Pick(p.showDropdown, "both") and Pick(p.orderDropdown, "fsrOver")
         and Pick(p.joinDropdown, "veil") and Pick(p.afterDropdown, "empty")
@@ -472,14 +473,14 @@ Try("Bars: each dropdown and the 5SR thickness write bars.<layout>.*; the clock 
             tostring(orderOn), tostring(orderOff), tostring(kept), tips)
 end)
 
-Try("Bars: the choices are this line's (" .. (forever and "Mana from; no tick; flat only" or "the tick; three textures; no Mana from") .. ")", function()
+Try("Bars: the choices are this line's (" .. (forever and "Mana from; no tick" or "the tick; no Mana from") .. "; Texture is Bar look's)", function()
     local function Ids(dd)
         local ids = {}
         for _, it in ipairs(dd and dd.items or {}) do ids[#ids + 1] = it.id end
         return table.concat(ids, ",")
     end
     local show, join, order = Ids(p.showDropdown), Ids(p.joinDropdown), Ids(p.orderDropdown)
-    local after, tex, mana = Ids(p.afterDropdown), Ids(p.textureDropdown), p.manaDropdown and Ids(p.manaDropdown)
+    local after, mana = Ids(p.afterDropdown), p.manaDropdown and Ids(p.manaDropdown)
     local function Texts(dd)
         local t = {}
         for _, it in ipairs(dd and dd.items or {}) do t[#t + 1] = it.text end
@@ -490,30 +491,28 @@ Try("Bars: the choices are this line's (" .. (forever and "Mana from; no tick; f
     local words = Texts(p.showDropdown) == "Mana + 5SR/Mana only/5SR only/None"
         and Texts(p.joinDropdown) == "Stacked/One bar/Swipe chip/Moving line"
         and Texts(p.orderDropdown) == "Mana over 5SR/5SR over mana"
-        and labels["Bars"] and labels["Join"] and labels["Order"] and labels["After the rule"] and labels["Texture"]
-        and not labels["Show"]
+        and labels["Bars"] and labels["Join"] and labels["Order"] and labels["After the rule"]
+        and not labels["Texture"] and not labels["Show"]
     local common = show == "both,mana,fsr,none" and join == "stacked,veil,chip,sweep" and order == "manaOver,fsrOver"
         and words
     local own
     local afterTip = table.concat(p.afterDropdown and p.afterDropdown.tooltips or {}, " ")
     if forever then
-        own = after == "green,empty" and tex == "flat" and mana == "game,model"
-            and Texts(p.textureDropdown) == "Flat (others wait for the probe)"
+        own = after == "green,empty" and mana == "game,model"
             and Texts(p.manaDropdown) == "The game/The model" and labels["Mana from"]
             and T.Has(afterTip, ST.ClockView.TICK_REFUSED)
             and T.Has(p.afterNote and p.afterNote:GetText(), "cannot be learned")
     else
-        own = after == "green,empty,tick" and tex == "flat,statusbar,raid" and mana == nil
-            and Texts(p.textureDropdown) == "Flat/Status bar/Raid bar" and not labels["Mana from"]
+        own = after == "green,empty,tick" and mana == nil and not labels["Mana from"]
             and not T.Has(afterTip, "cannot be learned")
     end
-    return common and own, string.format("show %s join %s order %s after %s texture %s (%s) mana %s; words %s, after tip %q",
-        show, join, order, after, tex, Texts(p.textureDropdown), tostring(mana), tostring(words), afterTip)
+    return common and own, string.format("show %s join %s order %s after %s mana %s; words %s, after tip %q",
+        show, join, order, after, tostring(mana), tostring(words), afterTip)
 end)
 
 Try("Bars: a choice is kept per layout (compact has its own; line's comes back)", function()
     for _, x in ipairs(p.layoutButtons) do if x.id == "compact" then Click(x) end end
-    local fresh = p.joinDropdown.value == "stacked"
+    local fresh = p.joinDropdown.value == "sweep" -- T139's default
     Pick(p.joinDropdown, "chip")
     local compactSet = Over().bars.compact and Over().bars.compact.join == "chip"
     for _, x in ipairs(p.layoutButtons) do if x.id == "line" then Click(x) end end
@@ -576,6 +575,7 @@ Try("the rule chips paint the preview's five-second rule: 3.0 s left, just cast,
     local names, res = {}, {}
     for _, b in ipairs(p.ruleChips or {}) do names[#names + 1] = b:GetText() end
     ST.ClockView.ResetToStyle()
+    for _, L in ipairs(ST.ClockView.LAYOUTS) do ST.ClockView.Set("bars." .. L .. ".join", "stacked") end -- T139
     Click(p.chips[2]) -- a sample face
     for _, b in ipairs(p.ruleChips or {}) do
         Click(b)
@@ -586,6 +586,121 @@ Try("the rule chips paint the preview's five-second rule: 3.0 s left, just cast,
     return table.concat(names, ",") == "in the rule, 3.0 s left,just cast,regen running" and okR,
         string.format("%s: rule %s cast %s regen %s", table.concat(names, ","), tostring(res.rule),
             tostring(res.cast), tostring(res.regen))
+end)
+
+--------------------------------------------------------------------------------
+-- T139: Bar look
+--------------------------------------------------------------------------------
+local CVw = ST.ClockView
+local function Lay() return WidgetLook().layout or "line" end
+local function OverBar(f) local b = Over().bars and Over().bars[Lay()]; return b and b[f] end
+
+Try("T139 Bar look: shape, texture, text, height, border, six colours and four presets", function()
+    ST.ClockView.ResetToStyle()
+    p.box:Select("look")
+    local ids = {}
+    for _, it in ipairs(p.textureDropdown and p.textureDropdown.items or {}) do ids[#ids + 1] = it.id end
+    local shapes, places = {}, {}
+    for _, b in ipairs(p.shapeButtons or {}) do shapes[#shapes + 1] = b.id end
+    for _, b in ipairs(p.placeButtons or {}) do places[#places + 1] = b.id end
+    local presets = {}
+    for _, b in ipairs(p.presetButtons or {}) do presets[#presets + 1] = b.id end
+    return table.concat(shapes, ",") == "rect,round,pill,thin" and table.concat(places, ",") == "inside,above,below,off"
+        and table.concat(ids, ",") == "soft,flat,smooth,gradient,gloss,striped,minimal,statusbar,raid"
+        and #(p.colourButtons or {}) == 6 and table.concat(presets, ",") == "default,eui,pill,thin"
+        and p.heightSlider ~= nil and p.borderSlider ~= nil,
+        table.concat(ids, ",") .. " / " .. table.concat(presets, ",")
+end)
+
+Try("T139 each control writes bars.<layout>.*; the default writes nil; the clock draws it", function()
+    ST.ClockView.ResetToStyle()
+    p.box:Select("look")
+    local function ByID(list, id) for _, b in ipairs(list) do if b.id == id then return b end end end
+    Click(ByID(p.shapeButtons, "round"))
+    local round = OverBar("shape") == "round" and WidgetLook().bars.shape == "round"
+    Click(ByID(p.shapeButtons, "pill"))
+    local back = OverBar("shape") == nil
+    Pick(p.textureDropdown, "gloss")
+    local tex = OverBar("texture") == "gloss" and W.view.texturePath == CVw.MEDIA .. "Gloss"
+    Click(ByID(p.placeButtons, "above"))
+    Type(p.heightSlider, "12")
+    Type(p.borderSlider, "0")
+    local rest = OverBar("text") == "above" and OverBar("height") == 12 and OverBar("border") == 0
+    Click(ByID(p.shapeButtons, "thin"))
+    local thin = OverBar("shape") == "thin" and OverBar("height") == 4
+    ST.ClockView.ResetToStyle()
+    return round and back and tex and rest and thin, string.format("round %s back %s tex %s rest %s thin %s",
+        tostring(round), tostring(back), tostring(tex), tostring(rest), tostring(thin))
+end)
+
+Try("T139 presets: Like EllesmereUI sets its look and colours; Default clears them", function()
+    ST.ClockView.ResetToStyle()
+    p.box:Select("look")
+    for _, b in ipairs(p.presetButtons) do if b.id == "eui" then Click(b) end end
+    local o = Over()
+    local eui = OverBar("shape") == "rect" and OverBar("texture") == "gradient" and OverBar("text") == "above"
+        and OverBar("height") == 8 and OverBar("border") == nil and type(o.colors and o.colors.manaBar) == "table"
+        and type(o.colors.fillEnd) == "table"
+    for _, b in ipairs(p.presetButtons) do if b.id == "default" then Click(b) end end
+    local cleared = next(Over().bars and Over().bars[Lay()] or {}) == nil and (Over().colors == nil or next(Over().colors) == nil)
+    return eui and cleared, string.format("eui %s cleared %s", tostring(eui), tostring(cleared))
+end)
+
+Try("T139 a colour opens the game's picker; a move writes it; Cancel puts it back; right-click resets", function()
+    ST.ClockView.ResetToStyle()
+    p.box:Select("look")
+    local info
+    local cur = { 0.1, 0.2, 0.3, 0.5 }
+    local saved = rawget(_G, "ColorPickerFrame")
+    _G.ColorPickerFrame = {
+        SetupColorPickerAndShow = function(_, i) info = i end,
+        GetColorRGB = function() return cur[1], cur[2], cur[3] end,
+        GetColorAlpha = function() return cur[4] end,
+    }
+    ST.API.Invalidate("ColorPickerFrame")
+    local edge
+    for _, b in ipairs(p.colourButtons) do if b.key == "colors.edge" then edge = b end end
+    Click(edge)
+    local opened = info ~= nil and info.hasOpacity == true and info.r == 0 and info.g == 0 and info.b == 0
+    if info then info.swatchFunc() end
+    local c = Over().colors and Over().colors.edge
+    local moved = type(c) == "table" and math.abs(c[1] - 0.1) < 1e-9 and math.abs(c[4] - 0.5) < 1e-9
+        and W.view.barEdge.color[3] == 0.3
+    if info then info.cancelFunc() end
+    c = Over().colors and Over().colors.edge
+    local cancelled = type(c) == "table" and c[1] == 0 and c[2] == 0 and c[3] == 0
+    edge:GetScript("OnClick")(edge, "RightButton")
+    local reset = Over().colors == nil or Over().colors.edge == nil
+    _G.ColorPickerFrame = saved
+    ST.API.Invalidate("ColorPickerFrame")
+    return opened and moved and cancelled and reset, string.format("opened %s moved %s cancelled %s reset %s",
+        tostring(opened), tostring(moved), tostring(cancelled), tostring(reset))
+end)
+
+Try("T139 your UI's bar textures (LibSharedMedia) are listed and drawn; without the host, Flat and why", function()
+    ST.ClockView.ResetToStyle()
+    local savedLS = rawget(_G, "LibStub")
+    local LSM = {
+        List = function(_, kind) return kind == "statusbar" and { "Norm", "Clean" } or {} end,
+        Fetch = function(_, kind, name) return "Interface\\AddOns\\Host\\" .. name end,
+    }
+    _G.LibStub = { GetLibrary = function(_, name) if name == "LibSharedMedia-3.0" then return LSM end end }
+    p.box:Select("look")
+    CS.Refresh(p)
+    local texts = {}
+    for _, it in ipairs(p.textureDropdown.items) do texts[#texts + 1] = it.text end
+    local listed = table.concat(texts, "/"):find("Clean (your UI)/Norm (your UI)", 1, true) ~= nil
+    Pick(p.textureDropdown, "lsm:Norm")
+    local drawn = OverBar("texture") == "lsm:Norm" and W.view.texturePath == "Interface\\AddOns\\Host\\Norm"
+    _G.LibStub = nil
+    ST.ClockView.Set("bars." .. Lay() .. ".texture", "lsm:Norm")
+    local look = WidgetLook()
+    local flat = W.view.texturePath == CVw.TEXTURES.flat
+        and look.refused["bars." .. look.layout .. ".texture"] == CVw.LSM_MISSING
+    _G.LibStub = savedLS
+    ST.ClockView.ResetToStyle()
+    return listed and drawn and flat, string.format("listed %s drawn %s flat %s (%s)", tostring(listed),
+        tostring(drawn), tostring(flat), table.concat(texts, "/"))
 end)
 
 Try("Reset to style empties the overrides and keeps the layout", function()

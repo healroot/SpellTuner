@@ -123,6 +123,7 @@ local function CreateWidget()
     widget.barBack = barBack
     widget.strip = strip
     widget.stripBack = stripBack
+    widget.barEdge, widget.stripEdge = view.barEdge, view.stripEdge -- T139: the black edge round each
     widget:SetScale(view:Scale())
 
     widget:SetScript("OnDragStart", function(self)

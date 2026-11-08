@@ -5370,3 +5370,20 @@ The author asked for three changes:
 The +healing share moves by P(typed) / P(live). The drawer keeps Level and Spirit, and its sentence names
 the plan's talents. `docs/tasks/T138-whatif-level-and-plan-only.md`, TESTING sections 56 (rewritten for the
 plan) and 59.
+
+## 2026-11-08 -- T139: the clock's bar look
+
+The author asked for colour, texture and shape choices so the clock could match EllesmereUI's mana bar.
+An interactive mockup was approved, and the author asked for its on-screen settings as the default.
+
+What changed:
+- Settings -> Clock has a new Bar look tab: shape (masks), texture (seven SpellTuner textures built by
+  `tools/buildmedia.py` into `Media/`, the game's two, LibSharedMedia's through
+  `Integrations/Media_LSM.lua`), the words' place, height, border, six colours through
+  `ST.API.PickColour`, and four presets.
+- Forever draws every texture.
+- The defaults are the author's (`docs/DECISIONS.md`).
+- The suites written for the old look pin it in their Reset.
+- The stylecheck clock golden is re-based.
+
+`docs/tasks/T139-clock-bar-look.md`, TESTING section 60.

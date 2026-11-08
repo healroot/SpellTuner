@@ -735,12 +735,12 @@ do
         local over = CV.Resolve(stored, role, facts)
         over.bar.back[1] = 0.5 -- the resolved look is a copy: the store keeps its own
         local okDefaults = flat.panel.fill == "bg" and flat.panel.edge == "border" and Is(flat.bar.back, 0, 0, 0, 1)
-            and flat.bars.show == "both" and flat.bars.join == "stacked" and flat.bars.order == "manaOver"
+            and flat.bars.show == "both" and flat.bars.join == "sweep" and flat.bars.order == "manaOver"
             and flat.bars.mana == "game" and flat.bars.fsr == 3 and flat.bars.after == "green"
-            and flat.bars.texture == "flat" and flat.bars.fill == nil
+            and flat.bars.texture == "soft" and flat.bars.shape == "pill" and flat.bars.border == 1 and flat.bars.fill == nil
             and flat.frame.w == 180 and flat.frame.h == 32 and flat.frame.scale == 100
         local okStyled = Is(styled.panel.fill, 0.1, 0.2, 0.3, 1) and Is(styled.bar.back, 0.5, 0, 0, 1)
-            and Is(styled.bars.fill, 0, 1, 0, 1) and styled.bars.join == "stacked"
+            and Is(styled.bars.fill, 0, 1, 0, 1) and styled.bars.join == "sweep"
         local okOver = Is(over.panel.fill, 0.9, 0.9, 0.9, 1) and over.panel.edge == "border"
             and over.bars.join == "veil" and over.bars.fsr == 5 and over.frame.h == 44 and over.frame.scale == 120
             and over.frame.w == 180 and over.colors.crit == "ff0000" and over.colors.manaBar == "tone"
@@ -779,7 +779,7 @@ do
         CV.Set("bars.line.fsr", nil)
         local pruned = next(ST.db.clockLook.over) == nil
         local okR = had and overLook.bars.join == "veil" and overLook.frame.h == 30 and empty
-            and ST.db.clockLook.layout == "bar" and after == 1 and look.bars.join == "stacked"
+            and ST.db.clockLook.layout == "bar" and after == 1 and look.bars.join == "sweep"
             and look.frame.h == 22 and look.colors.crit == nil and pruned
         CV.SetLayout("line")
         if okR then return true end

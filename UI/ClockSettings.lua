@@ -837,13 +837,12 @@ TAB.bars = function(p, f)
         -- answer 5: the tick is not offered here, and the control says why
         UI.SetTooltips(after, "ANCHOR_TOPLEFT", 0, 3, "After the rule", ST.ClockView.TICK_REFUSED)
     end
-    Row("texture", right, -2 - ROW, (not facts.textures) and 200 or nil)
     local fsr = UI.CreateSlider("5SR strip (px)", f, ST.ClockView.FSR_RANGE[1], ST.ClockView.FSR_RANGE[2], 120, 1,
         nil, function(value)
             value = tonumber(value)
             if value then SetBar(p, "fsr", math.floor(value + 0.5)) end
         end, false, "Strip thickness", "1 to 8 pixels; the mana bar takes the rest of the height.")
-    fsr:SetPoint("TOPLEFT", f, "TOPLEFT", right + LABEL_W - 12, -2 - 2 * ROW - 16)
+    fsr:SetPoint("TOPLEFT", f, "TOPLEFT", right + LABEL_W - 12, -2 - ROW - 16)
     p.fsrSlider = fsr
     local y = -2 - 4 * ROW - 14
     if not facts.tick then
@@ -852,6 +851,189 @@ TAB.bars = function(p, f)
     end
     Note(f, "Each layout keeps its own bars. The strip, the veil, the chip and the line are amber while the rule runs, green after.",
         nil, y)
+end
+
+--------------------------------------------------------------------------------
+-- T139 (docs/tasks/T139-clock-bar-look.md, the author's mockup of 2026-11-08):
+-- Bar look -- shape, texture, the words' place, the bar's height and edge,
+-- six colours through the game's picker, four presets. Every control writes
+-- bars.<layout>.* or a colour through ST.ClockView.Set; the default writes nil.
+--------------------------------------------------------------------------------
+local SHAPE_ITEMS = {
+    { id = "rect", text = "Rectangle" }, { id = "round", text = "Rounded" },
+    { id = "pill", text = "Pill" }, { id = "thin", text = "Thin" },
+}
+local PLACE_ITEMS = {
+    { id = "inside", text = "Inside" }, { id = "above", text = "Above" },
+    { id = "below", text = "Below" }, { id = "off", text = "Off" },
+}
+local COLOUR_ROWS = {
+    { key = "colors.manaBar", text = "Fill" }, { key = "colors.fillEnd", text = "Fill end" },
+    { key = "bar.back", text = "Background" }, { key = "colors.edge", text = "Border" },
+    { key = "colors.fsrLine", text = "5SR line" }, { key = "colors.after", text = "After 5SR" },
+}
+local LOOK_FIELDS = { "shape", "texture", "text", "height", "border" }
+local function HexRGB(h) return { tonumber(h:sub(1, 2), 16) / 255, tonumber(h:sub(3, 4), 16) / 255, tonumber(h:sub(5, 6), 16) / 255, 1 } end
+CS.PRESETS = {
+    { id = "default", text = "Default", tip = "SpellTuner's bar: a 6-px pill, Soft, the words below.",
+      bars = {}, colors = {} },
+    { id = "eui", text = "Like EllesmereUI", tip = "Thin with a dark edge, a blue gradient, the words above.",
+      bars = { shape = "rect", texture = "gradient", text = "above", height = 8 },
+      colors = { ["colors.manaBar"] = HexRGB("58A6FF"), ["colors.fillEnd"] = HexRGB("1D4EA6") } },
+    { id = "pill", text = "Soft pill", tip = "Rounded and glossy, 18 px, the words inside.",
+      bars = { texture = "gloss", text = "inside", height = 18 },
+      colors = { ["colors.manaBar"] = HexRGB("3F7FE0"), ["colors.edge"] = HexRGB("2B3A55"), ["bar.back"] = HexRGB("151A24") } },
+    { id = "thin", text = "Thin line", tip = "4 px under the words, no edge, the fill by tone.",
+      bars = { shape = "thin", texture = "flat", text = "above", height = 4, border = 0 },
+      colors = { ["colors.manaBar"] = "tone" } },
+}
+
+-- A preset: its bars fields on the layout drawn, every other look field and
+-- colour back to the default.
+function CS.ApplyPreset(p, id)
+    local pre
+    for _, x in ipairs(CS.PRESETS) do if x.id == id then pre = x end end
+    if not pre then return false end
+    local CV, L = ST.ClockView, Layout(p)
+    for _, f in ipairs(LOOK_FIELDS) do
+        local v = pre.bars[f]
+        Set("bars." .. L .. "." .. f, (v ~= CV.BARS_DEFAULT[f]) and v or nil)
+    end
+    for _, row in ipairs(COLOUR_ROWS) do Set(row.key, pre.colors[row.key]) end
+    return true
+end
+
+-- The Texture list: SpellTuner's and the game's, then the host's (LibSharedMedia).
+function CS.TextureItems()
+    local CV = ST.ClockView
+    local items = {}
+    for _, id in ipairs(CV.BARS_VALUES.texture) do
+        items[#items + 1] = { id = id, text = CV.TEXTURE_NAMES[id] or id }
+    end
+    for _, x in ipairs(ST.Media and ST.Media.Bars and ST.Media.Bars() or {}) do
+        items[#items + 1] = { id = CV.LSM_PREFIX .. x.name, text = x.name .. " (your UI)" }
+    end
+    return items
+end
+
+-- A colour row's colour now, from the preview's view (the resolved look).
+local function RowColour(p, key)
+    local v = p.view
+    if key == "colors.manaBar" then return v:ManaColour() end
+    if key == "bar.back" then
+        local c = UI.SkinColour(p.look and p.look.bar and p.look.bar.back) or { 0, 0, 0, 1 }
+        return c[1], c[2], c[3], c[4] or 1
+    end
+    return v:Col(key:match("^colors%.(.+)$"))
+end
+
+function CS.PickColour(p, key)
+    local r, g, b, a = RowColour(p, key)
+    local ok, why = ST.API.PickColour(r, g, b, a, function(nr, ng, nb, na)
+        Set(key, { nr, ng, nb, na or 1 })
+    end)
+    if not ok then ST:Print("mana clock: the colour picker is not available (" .. tostring(why) .. ")") end
+    return ok
+end
+
+local function Buttons(f, items, x, y, w, onPick)
+    local list, prev = {}, nil
+    for _, it in ipairs(items) do
+        local b = UI.CreateButton(f, it.text, "accent-hover", { w, 18 }, false, false, UI.FONT_SMALL, UI.FONT_SMALL)
+        b.id = it.id
+        if prev then b:SetPoint("LEFT", prev, "RIGHT", -1, 0) else b:SetPoint("TOPLEFT", f, "TOPLEFT", x, y) end
+        list[#list + 1] = b
+        prev = b
+    end
+    return list, UI.CreateButtonGroup(list, onPick)
+end
+
+TAB.look = function(p, f)
+    local CV = ST.ClockView
+    local function Label(text, x, y)
+        local fs = f:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+        fs:SetPoint("TOPLEFT", f, "TOPLEFT", x, y - 3)
+        fs:SetText(text)
+        return fs
+    end
+    local function SetLook(field, value)
+        Set("bars." .. Layout(p) .. "." .. field, (value ~= CV.BARS_DEFAULT[field]) and value or nil)
+    end
+    Label("Shape", 0, -2)
+    p.shapeButtons, p.highlightShape = Buttons(f, SHAPE_ITEMS, 44, -2, 62, function(id)
+        SetLook("shape", id)
+        -- Thin: a low bar with the words outside it
+        if id == "thin" then
+            local b = p.look and p.look.bars or {}
+            if (b.height or CV.BAR_HEIGHT) > 6 then SetLook("height", 4) end
+            if b.text == "inside" then SetLook("text", "above") end
+        end
+    end)
+    Label("Texture", 310, -2)
+    local tex = UI.CreateDropdown(f, 150, 18, function(id) SetLook("texture", id) end)
+    tex:SetPoint("TOPLEFT", f, "TOPLEFT", 362, -2)
+    tex:SetItems(CS.TextureItems())
+    UI.SetTooltips(tex, "ANCHOR_TOPLEFT", 0, 3, "Texture",
+        "SpellTuner's, the game's two bars, and the bar textures your UI addons share (LibSharedMedia).")
+    p.textureDropdown = tex
+
+    Label("Text", 0, -26)
+    p.placeButtons, p.highlightPlace = Buttons(f, PLACE_ITEMS, 44, -26, 52, function(id) SetLook("text", id) end)
+    for _, b in ipairs(p.placeButtons) do
+        UI.SetTooltips(b, "ANCHOR_TOPLEFT", 0, 3, "Text", "Bar layout: the words on the bar, above it, below it, or none.")
+    end
+
+    local height = UI.CreateSlider("Bar height (px)", f, CV.HEIGHT_RANGE[1], CV.HEIGHT_RANGE[2], 120, 1, nil,
+        function(value)
+            value = tonumber(value)
+            if value then SetLook("height", math.floor(value + 0.5)) end
+        end, false, "Bar height", "Bar layout: the bar's own height; the frame follows it.")
+    height:SetPoint("TOPLEFT", f, "TOPLEFT", 44, -70)
+    p.heightSlider = height
+    local border = UI.CreateSlider("Border (px)", f, CV.BORDER_RANGE[1], CV.BORDER_RANGE[2], 120, 1, nil,
+        function(value)
+            value = tonumber(value)
+            if value then SetLook("border", math.floor(value + 0.5)) end
+        end, false, "Border", "The edge round each bar, 0 for none.")
+    border:SetPoint("TOPLEFT", f, "TOPLEFT", 220, -70)
+    p.borderSlider = border
+
+    -- six colours, three to a row: a click opens the game's picker, a right-click resets
+    p.colourButtons = {}
+    for i, row in ipairs(COLOUR_ROWS) do
+        local col, line = (i - 1) % 3, math.floor((i - 1) / 3)
+        local b = CreateFrame("Button", nil, f, "BackdropTemplate")
+        b:SetSize(14, 14)
+        b:SetPoint("TOPLEFT", f, "TOPLEFT", col * 150, -96 - line * 20)
+        UI.Skin(b, "field", "field", "border")
+        b.tex = b:CreateTexture(nil, "ARTWORK")
+        b.tex:SetPoint("TOPLEFT", b, "TOPLEFT", 1, -1)
+        b.tex:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", -1, 1)
+        if b.RegisterForClicks then b:RegisterForClicks("LeftButtonUp", "RightButtonUp") end
+        b.key = row.key
+        b:SetScript("OnClick", function(_, button)
+            if button == "RightButton" then Set(row.key, nil) else CS.PickColour(p, row.key) end
+        end)
+        UI.SetTooltips(b, "ANCHOR_TOPLEFT", 0, 3, row.text, "Click: any colour, its hex and opacity. Right-click: back to the default.")
+        local fs = f:CreateFontString(nil, "OVERLAY", UI.FONT_SMALL)
+        fs:SetPoint("LEFT", b, "RIGHT", 6, 0)
+        fs:SetText(row.text)
+        p.colourButtons[#p.colourButtons + 1] = b
+    end
+
+    Label("Presets", 0, -142)
+    p.presetButtons = {}
+    local prev
+    for _, pre in ipairs(CS.PRESETS) do
+        local b = UI.CreateButton(f, pre.text, "accent-hover", { 104, 18 }, false, false, UI.FONT_SMALL, UI.FONT_SMALL,
+            pre.text, pre.tip)
+        if prev then b:SetPoint("LEFT", prev, "RIGHT", 4, 0) else b:SetPoint("TOPLEFT", f, "TOPLEFT", 52, -142) end
+        b:SetScript("OnClick", function() CS.ApplyPreset(p, pre.id) end)
+        b.id = pre.id
+        p.presetButtons[#p.presetButtons + 1] = b
+        prev = b
+    end
+    Note(f, "Each layout keeps its own look. Height and Text are the Bar layout's.", nil, -166)
 end
 
 local function SwitchList(p, f, defs, y)
@@ -1113,8 +1295,8 @@ end
 -- T116: Text first (it replaces Show: the rest and cooldown segments are
 -- Right's picks, the line's switches turned on by them).
 CS.TABS = {
-    { id = "text", text = "Text" }, { id = "colours", text = "Colours" }, { id = "frame", text = "Frame" },
-    { id = "bars", text = "Bars" }, { id = "when", text = "When" },
+    { id = "text", text = "Text" }, { id = "look", text = "Bar look" }, { id = "colours", text = "Colours" },
+    { id = "frame", text = "Frame" }, { id = "bars", text = "Bars" }, { id = "when", text = "When" },
 }
 
 --------------------------------------------------------------------------------
@@ -1360,9 +1542,20 @@ function CS.Refresh(p)
     if p.styleLabel then p.styleLabel:SetText("style: " .. StyleName() .. " (Settings -> General -> Look)") end
     -- T115: the bars and the frame of the layout drawn
     local bars = look.bars or {}
+    if p.textureDropdown then p.textureDropdown:SetItems(CS.TextureItems()) end
     for _, field in ipairs({ "show", "join", "order", "mana", "after", "texture" }) do
         local dd = p[field .. "Dropdown"]
         if dd then dd:SetValue(bars[field]) end
+    end
+    -- T139: Bar look
+    if p.highlightShape then p.highlightShape(bars.shape) end
+    if p.highlightPlace then p.highlightPlace(bars.text) end
+    if p.heightSlider then p.heightSlider:SetValue(bars.height or ST.ClockView.BAR_HEIGHT) end
+    if p.borderSlider then p.borderSlider:SetValue(bars.border or ST.ClockView.BARS_DEFAULT.border) end
+    p.look = look
+    for _, b in ipairs(p.colourButtons or {}) do
+        local r, g, bl = RowColour(p, b.key)
+        b.tex:SetColorTexture(r, g, bl, 1)
     end
     if p.fsrSlider then p.fsrSlider:SetValue(bars.fsr or 3) end
     local d = ST.ClockView.LAYOUT[look.layout] or ST.ClockView.LAYOUT.line
@@ -1374,6 +1567,10 @@ function CS.Refresh(p)
     if p.hSlider then
         p.hSlider:UpdateMinMaxValues(d.hRange[1], d.hRange[2])
         p.hSlider:SetValue(fr.h or d.height)
+        -- T139: with the words outside, the Bar layout's height is Bar look's
+        local own = look.layout == "bar" and (look.bars.text or "inside") ~= "inside"
+        if own then p.hSlider:Hide() else p.hSlider:Show() end
+        if p.hMin then if own then p.hMin:Hide() else p.hMin:Show() end end
     end
     if p.scaleSlider then p.scaleSlider:SetValue(fr.scale or 100) end
     local mw, mh = p.view:Minimum()

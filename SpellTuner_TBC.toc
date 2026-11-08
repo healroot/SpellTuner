@@ -89,6 +89,7 @@ UI\Advisor.lua
 UI\Summary.lua
 Integrations\Surface_ElvUI.lua
 Integrations\Surface_LDB.lua
+Integrations\Media_LSM.lua
 Diagnostics_TBC.lua
 Engine\RegenMeasure.lua
 Engine\SimSelfTest.lua

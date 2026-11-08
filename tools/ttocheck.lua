@@ -95,7 +95,8 @@ do
     end
     -- T131: Bar is the default layout; these checks measure the Line layout,
     -- so the player's saved choice says "line" (a saved layout is kept).
-    ST.db.clockLook = { layout = "line", over = {} }
+    -- T139: the moving line is the default; check 12 is the stacked strip's
+    ST.db.clockLook = { layout = "line", over = { bars = { line = { join = "stacked" } } } }
     for _, fn in ipairs(ready) do fn() end
     FrameMT.CreateFontString, FrameMT.SetPoint = realCFS, realSP
 end
@@ -361,8 +362,8 @@ local function Same3(a, b)
 end
 do
     local P = UI.PALETTE
-    local bar, back = W and W.bar, W and W.barBack
-    local strip, sback = W and W.strip, W and W.stripBack
+    local bar, back = W and W.bar, W and W.barEdge -- T139: the black edge, one pixel wider
+    local strip, sback = W and W.strip, W and W.stripEdge
     -- T93 (decision 14, F2): the text is three font strings at fixed places --
     -- the label in the kit's font from the left edge, the value in its number
     -- font at a fixed x, the secondary segment right-aligned to the right edge
@@ -399,9 +400,9 @@ do
         and strip and strip:GetWidth() == 160 and strip:GetHeight() == 3 and At(strip, "BOTTOMLEFT", 10, 5)
         and sback and sback:GetWidth() == 160 + 2 * e and sback:GetHeight() == 3 + 2 * e and Black(sback)
     local rule = Same3(inRule, { 1, 0.67, 0.2 }) and type(ruleValue) == "number" and ruleValue < 5
-        and Same3(after, { 0.2, 1, 0.4 }) and afterValue == 5
+        and Same3(after, ST.ClockView.REGEN_COLOR) and afterValue == 5
     local mana = type(manaValue) == "number" and math.abs(manaValue - manaWant) < 1e-6
-        and Same3(bar and bar.barColor, { 0.3, 0.6, 1 })
+        and Same3(bar and bar.barColor, ST.ClockView.MANA_COLOR) -- T139: the author's 396DA7
     check("widget: the kit's panel, fonts in fixed segments, mana 160 x 4 over a 160 x 3 5SR strip (themed)",
         UI.THEMED == true and panel and font and slot and rule and mana,
         string.format("themed=%s panel=%s font=%s slot=%s rule=%s (%s -> %s) mana=%s (%s / %s)", tostring(UI.THEMED),

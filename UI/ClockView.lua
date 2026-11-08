@@ -89,6 +89,24 @@
 --     height once (clock-v2.html C4's table) and names what it dropped in a
 --     lazy dump line. The spark and the "time" source are gone.
 --
+-- T139 (docs/tasks/T139-clock-bar-look.md; the author's mockup, 2026-11-08, and
+-- "I want make this what I've set on screen as default"): the bar's look, per
+-- layout under bars.<layout> -- `shape` (rect / round / pill / thin: Rounded
+-- and Pill clip every bar texture with Media's masks, CLAMPTOWHITE, one pair
+-- per region; a client with no masks draws a rectangle and says so; Thin is a
+-- rectangle the settings pair with a low bar and the text outside), `texture`
+-- (SpellTuner's Media art, the game's two bars, Gradient -- the fill-end colour
+-- on the left to the fill on the right through ST.API.SetGradient -- or
+-- "lsm:<name>", a host's LibSharedMedia bar through ST.Media; one that cannot
+-- be found draws Flat and says so), `border` (0-3 physical pixels of the edge
+-- colour round each bar, under the background), `height` (the Bar layout's
+-- bar, 3-30) and `text` (the Bar layout's words inside the bar, above it,
+-- below it, or off). Colours beside colors.manaBar and bar.back:
+-- colors.fillEnd, colors.edge, colors.fsrLine (the rule's amber: strip, veil,
+-- line, chip) and colors.after (the green after it). The defaults are the
+-- author's: a 6-px pill, Soft, the words below, 396DA7 / 1D4EA6 / 0A0A0A on a
+-- black edge, the moving line, and no panel behind the Bar layout.
+--
 -- T116 (clock v2, C1; docs/tasks/T116-clock-text-tab.md): the slots drawn.
 --   * text.<layout>.<key> in `over`: T114's slots and words (ClockFace's
 --     TEXT_OPTIONS / TEXT_WORDS, judged by CF.ResolveText) and the renderer's
@@ -153,12 +171,20 @@ CV.LAYOUT = {
         second = false, inset = 6, valueSize = 22 },
     -- L3: a bar with the time on it
     bar = { name = "Bar", width = 200, height = 22, wRange = { 100, 400 }, hRange = { 16, 60 },
-        second = false, inset = 6 },
+        second = false, inset = 6,
+        -- T139: no panel behind the Bar layout unless the Frame tab sets one;
+        -- the author's background (0A0A0A) and fill (396DA7) under every style
+        -- (a style's clock role bar / barFill are the other layouts')
+        panel = { fill = { 0, 0, 0, 0 }, edge = { 0, 0, 0, 0 } },
+        back = { 0x0A / 255, 0x0A / 255, 0x0A / 255, 1 }, ownFill = true },
 }
 
 -- T115: the bars' defaults (both lines, every layout; answers 1, 2 and 5).
-CV.BARS_DEFAULT = { show = "both", join = "stacked", order = "manaOver", mana = "game", fsr = 3,
-    after = "green", texture = "flat" }
+CV.BARS_DEFAULT = { show = "both", join = "sweep", order = "manaOver", mana = "game", fsr = 3,
+    after = "green", texture = "soft", shape = "pill", border = 1, text = "below" }
+-- T139: the Bar layout's bar with its words outside it; inside, the frame's
+-- height sets it unless bars.<layout>.height does
+CV.BAR_HEIGHT = 6
 
 -- What each bars field accepts (the lists a picker offers, before the line's
 -- facts take some out).
@@ -168,24 +194,55 @@ CV.BARS_VALUES = {
     order = { "manaOver", "fsrOver" },
     mana = { "game", "model" },
     after = { "green", "empty", "tick" },
-    texture = { "flat", "statusbar", "raid" },
+    texture = { "soft", "flat", "smooth", "gradient", "gloss", "striped", "minimal", "statusbar", "raid" },
+    shape = { "rect", "round", "pill", "thin" },
+    text = { "inside", "above", "below", "off" },
 }
 CV.FSR_RANGE = { 1, 8 }
+CV.BORDER_RANGE = { 0, 3 }
+CV.HEIGHT_RANGE = { 3, 30 }
 CV.SCALE_RANGE = { 50, 200 }
 
--- The bar textures: flat (the kit's), and the client's two bars (TBC).
+-- The bar textures: flat (the kit's), SpellTuner's art (tools/buildmedia.py),
+-- Gradient (flat, shaded by SetGradient), the client's two bars; "lsm:<name>"
+-- a host's (Integrations/Media_LSM.lua).
+CV.MEDIA = "Interface\\AddOns\\SpellTuner\\Media\\"
 CV.TEXTURES = {
     flat = UI.whiteTexture,
+    gradient = UI.whiteTexture,
+    soft = CV.MEDIA .. "Soft", smooth = CV.MEDIA .. "Smooth", gloss = CV.MEDIA .. "Gloss",
+    striped = CV.MEDIA .. "Striped", minimal = CV.MEDIA .. "Minimal",
     statusbar = "Interface\\TargetingFrame\\UI-StatusBar",
     raid = "Interface\\RaidFrame\\Raid-Bar-Hp-Fill",
 }
+CV.TEXTURE_NAMES = {
+    soft = "Soft", flat = "Flat", smooth = "Smooth", gradient = "Gradient", gloss = "Gloss",
+    striped = "Striped", minimal = "Minimal", statusbar = "Status bar (game)", raid = "Raid health (game)",
+}
+CV.LSM_PREFIX = "lsm:"
+CV.MASKS = { round = "Round", pill = "Pill" }
+CV.LSM_MISSING = "that texture's addon is not loaded: drawn Flat"
+CV.MASK_REFUSED = "this client has no mask textures: drawn as a rectangle"
+
+-- CV.TexturePath(key) -> path, why: a key's file; a host's missing one is Flat
+-- with the reason.
+function CV.TexturePath(key)
+    if type(key) == "string" and key:sub(1, #CV.LSM_PREFIX) == CV.LSM_PREFIX then
+        local path = ST.Media and ST.Media.Fetch and ST.Media.Fetch(key:sub(#CV.LSM_PREFIX + 1))
+        if path then return path end
+        return CV.TEXTURES.flat, CV.LSM_MISSING
+    end
+    return CV.TEXTURES[key] or CV.TEXTURES.flat
+end
 
 -- The five-second rule's amber while it runs and green once spirit regen
 -- runs (UI/Widget.lua's since v0.1), the mana blue (UI/Clock_Forever.lua's
 -- since T11), the veil's alpha, the model's alpha, the tick mark.
 CV.FSR_COLOR   = { 1, 0.67, 0.2 }
-CV.REGEN_COLOR = { 0.2, 1, 0.4 }
-CV.MANA_COLOR  = { 0.3, 0.6, 1 }
+CV.REGEN_COLOR = { 0x5C / 255, 0xCB / 255, 0x6E / 255 } -- T139: the author's 5CCB6E
+CV.MANA_COLOR  = { 0x39 / 255, 0x6D / 255, 0xA7 / 255 } -- T139: the author's 396DA7
+CV.FILL_END_COLOR = { 0x1D / 255, 0x4E / 255, 0xA6 / 255 } -- T139: Gradient's left end
+CV.EDGE_COLOR  = { 0, 0, 0 }
 CV.TICK_COLOR  = { 1, 1, 1 }
 CV.VEIL_ALPHA = 0.45
 CV.MODEL_ALPHA = 0.6
@@ -265,13 +322,21 @@ CV.Get, CV.PutPath = Get, PutPath
 -- The overrides (`over`), each with what it accepts. A control writes one
 -- through CV.Set; a value this table refuses is never stored.
 --------------------------------------------------------------------------------
+local OwnTexture = OneOf(CV.BARS_VALUES.texture)
 local BARS_OK = {
     show = OneOf(CV.BARS_VALUES.show), join = OneOf(CV.BARS_VALUES.join),
     order = OneOf(CV.BARS_VALUES.order), mana = OneOf(CV.BARS_VALUES.mana),
-    after = OneOf(CV.BARS_VALUES.after), texture = OneOf(CV.BARS_VALUES.texture),
+    after = OneOf(CV.BARS_VALUES.after),
+    texture = function(v)
+        return OwnTexture(v) or (type(v) == "string" and #v > #CV.LSM_PREFIX
+            and v:sub(1, #CV.LSM_PREFIX) == CV.LSM_PREFIX)
+    end,
     fsr = IntRange(CV.FSR_RANGE[1], CV.FSR_RANGE[2]),
+    shape = OneOf(CV.BARS_VALUES.shape), text = OneOf(CV.BARS_VALUES.text),
+    border = IntRange(CV.BORDER_RANGE[1], CV.BORDER_RANGE[2]),
+    height = IntRange(CV.HEIGHT_RANGE[1], CV.HEIGHT_RANGE[2]),
 }
-local BARS_ORDER = { "show", "join", "order", "mana", "fsr", "after", "texture" }
+local BARS_ORDER = { "show", "join", "order", "mana", "fsr", "after", "texture", "shape", "border", "height", "text" }
 
 CV.OVER = {
     ["panel.fill"] = IsColour,
@@ -280,6 +345,9 @@ CV.OVER = {
     ["colors.crit"] = Hex, ["colors.warn"] = Hex, ["colors.normal"] = Hex,
     ["colors.good"] = Hex, ["colors.muted"] = Hex, ["colors.mana"] = Hex,
     ["colors.manaBar"] = function(v) return v == "mana" or v == "tone" or v == "class" or IsColour(v) end,
+    -- T139
+    ["colors.fillEnd"] = IsColour, ["colors.edge"] = IsColour,
+    ["colors.fsrLine"] = IsColour, ["colors.after"] = IsColour,
 }
 -- T116: the text's renderer options (beside T114's slot and word keys).
 CV.OUTLINES = { "none", "outline", "thick", "mono" }
@@ -364,14 +432,15 @@ function CV.Resolve(stored, role, facts)
         inset = d.inset, valueSize = d.valueSize,
         labelSample = facts.labelSample or "FULL",
         show = Copy(facts.show) or {},
-        panel = { fill = role.fill or "bg", edge = role.edge or "border" },
-        bar = { back = (role.bar ~= nil and IsColour(role.bar)) and Copy(role.bar) or { 0, 0, 0, 1 } },
+        panel = d.panel and Copy(d.panel) or { fill = role.fill or "bg", edge = role.edge or "border" },
+        bar = { back = d.back and Copy(d.back)
+            or ((role.bar ~= nil and IsColour(role.bar)) and Copy(role.bar) or { 0, 0, 0, 1 }) },
         bars = Copy(CV.BARS_DEFAULT),
         frame = { w = d.width, h = d.height, scale = 100 },
         colors = {},
         refused = {},
     }
-    if role.barFill ~= nil and IsColour(role.barFill) then look.bars.fill = Copy(role.barFill) end
+    if role.barFill ~= nil and IsColour(role.barFill) and not d.ownFill then look.bars.fill = Copy(role.barFill) end
     if role.ring ~= nil then look.ring = Copy(role.ring) end
 
     for k, ok in pairs(CV.OVER) do
@@ -1053,6 +1122,50 @@ METRICS.compact = function(v, look)
     return m
 end
 
+-- T139: the Bar layout with its words above, below or off -- the frame as tall
+-- as the bar, its edge and the text row (the Frame tab's Height does not
+-- apply; Width does), the words at the frame's edges.
+local function BarOutside(look, b, manaOn, el, s, rowH, fonts, leftW, rightW, place)
+    local bd = b.border or 1
+    local barH = b.height or CV.BAR_HEIGHT
+    local total = barH + 2 * bd
+    local hasText = place ~= "off"
+    local gap = hasText and 1 or 0
+    local textH = hasText and rowH or 0
+    local minH = 1 + total + gap + textH + 1
+    local chipExtra = el == "chip" and (total + 2) or 0
+    local gaps = (leftW > 0 and rightW > 0) and 2 * CV.GAP or 0
+    local minW = math.ceil(chipExtra + 2 + 2 * bd + (hasText and (leftW + gaps + rightW) or 20))
+    local fw = Fit(look, minW, 0)
+    local barY = (place == "below") and (1 + textH + gap + bd) or (1 + bd)
+    local barX = 1 + bd + chipExtra
+    local barW = fw - 2 - 2 * bd - chipExtra
+    local m = { w = fw, h = minH, minW = minW, minH = minH, manaOn = manaOn, el = el,
+        fonts = { label = fonts.left, value = fonts.right }, msg = { "CENTER", 0, 0 } }
+    if hasText then
+        m.label, m.value = { "LEFT", 1, 0 }, { "RIGHT", -1, 0 }
+        m.holder = { 0, (place == "below") and 1 or (1 + total + gap), fw, textH }
+    else
+        m.holder = { 0, 0, fw, minH }
+    end
+    if manaOn and el == "strip" then
+        local manaH = math.max(1, barH - s - 1)
+        if b.order == "fsrOver" then
+            m.bar = { barX, barY, barW, manaH }
+            m.strip = { barX, barY + manaH + 1, barW, s }
+        else
+            m.strip = { barX, barY, barW, s }
+            m.bar = { barX, barY + s + 1, barW, manaH }
+        end
+    elseif manaOn then
+        m.bar = { barX, barY, barW, barH }
+    elseif el == "solo" then
+        m.strip = { barX, barY, barW, barH }
+    end
+    if el == "chip" then m.chip = { "BOTTOMLEFT", 1, barY - bd, total } end
+    return m
+end
+
 METRICS.bar = function(v, look)
     local b = look.bars
     local manaOn, el = Element(b)
@@ -1063,16 +1176,23 @@ METRICS.bar = function(v, look)
     local leftW, rightW = w.left, w.right
     local rowH = RowH(fonts, w, h, { "left", "right" }, "right")
     local anyBar = manaOn or el ~= nil
+    local place = b.text or "inside"
+    if anyBar and place ~= "inside" then
+        return BarOutside(look, b, manaOn, el, s, rowH, fonts, leftW, rightW, place)
+    end
     local stacked = manaOn and el == "strip"
     local minH = anyBar and (rowH + s + 4) or (rowH + 6)
     -- the height first: the chip is as tall as the mana bar, and its width
-    -- goes into the minimum width
-    local _, h0 = Fit(look, 0, minH)
+    -- goes into the minimum width; T139: a bar height the look sets wins over
+    -- the frame's (the words still fit)
+    local _, h0 = Fit(look, 0, b.height and 0 or minH)
+    if b.height then h0 = math.max(minH, b.height + 4) end
     local single = h0 - 4
     local chipExtra = el == "chip" and (single + 2) or 0
     local gaps = (leftW > 0 and rightW > 0) and 2 * CV.GAP or 0
     local minW = math.ceil(chipExtra + 4 + 2 * inset + leftW + gaps + rightW)
-    local fw, fh = Fit(look, minW, minH)
+    local fw, fh = Fit(look, minW, b.height and 0 or minH)
+    if b.height then fh = h0 end
     local barX = 2 + chipExtra
     local barW = fw - 4 - chipExtra
     local m = { w = fw, h = fh, minW = minW, minH = minH, manaOn = manaOn, el = el,
@@ -1126,13 +1246,115 @@ local function ShowIf(r, on)
     if on then r:Show() else r:Hide() end
 end
 
--- The backings one physical pixel wider than their bar on every side (T41).
+-- T139: each bar's background its own size, its edge `border` physical
+-- pixels wider on every side (T41's one pixel was the background's), and the
+-- shape's masks a square of their region's height at each end.
+local function SizeMasks(pair, region, h)
+    if not pair or not region then return end
+    local l, r = pair[1], pair[2]
+    l:ClearAllPoints()
+    l:SetPoint("TOPLEFT", region, "TOPLEFT", 0, 0)
+    l:SetSize(h, h)
+    r:ClearAllPoints()
+    r:SetPoint("TOPRIGHT", region, "TOPRIGHT", 0, 0)
+    r:SetSize(h, h)
+end
+
 function View:SizeBack()
     local e = UI.px and UI.px(1, self.parent) or 1
     local m = self.metrics or {}
-    if m.bar then self.barBack:SetSize(m.bar[3] + 2 * e, m.bar[4] + 2 * e) end
-    if m.strip then self.stripBack:SetSize(m.strip[3] + 2 * e, m.strip[4] + 2 * e) end
+    local bd = ((self.look and self.look.bars and self.look.bars.border) or 1) * e
+    local mk = self.masks or {}
+    if m.bar then
+        self.barBack:SetSize(m.bar[3], m.bar[4])
+        self.barEdge:SetSize(m.bar[3] + 2 * bd, m.bar[4] + 2 * bd)
+        SizeMasks(mk.bar, self.bar, m.bar[4])
+        SizeMasks(mk.barBack, self.barBack, m.bar[4])
+        SizeMasks(mk.barEdge, self.barEdge, m.bar[4] + 2 * bd)
+    end
+    if m.strip then
+        self.stripBack:SetSize(m.strip[3], m.strip[4])
+        self.stripEdge:SetSize(m.strip[3] + 2 * bd, m.strip[4] + 2 * bd)
+        SizeMasks(mk.strip, self.strip, m.strip[4])
+        SizeMasks(mk.stripBack, self.stripBack, m.strip[4])
+        SizeMasks(mk.stripEdge, self.stripEdge, m.strip[4] + 2 * bd)
+    end
+    ShowIf(self.barEdge, m.bar ~= nil and bd > 0)
+    ShowIf(self.stripEdge, m.strip ~= nil and bd > 0)
     self.snappedPx = e
+end
+
+-- T139: a pair of masks on `owner` (nil where the client has none), and the
+-- textures each clips -- added once, the shape changes only their files.
+local function MaskPair(owner)
+    if type(owner.CreateMaskTexture) ~= "function" then return nil end
+    local ok1, l = pcall(owner.CreateMaskTexture, owner)
+    local ok2, r = pcall(owner.CreateMaskTexture, owner)
+    if not (ok1 and ok2 and type(l) == "table" and type(r) == "table") then return nil end
+    return { l, r, on = {} }
+end
+local function Clip(pair, tex)
+    if not pair or type(tex) ~= "table" or type(tex.AddMaskTexture) ~= "function" or pair.on[tex] then return end
+    pair.on[tex] = true
+    tex:AddMaskTexture(pair[1])
+    tex:AddMaskTexture(pair[2])
+end
+
+-- The shape's files into every pair (a rectangle: the white texture, which
+-- clips nothing); the bars' fill textures clipped (SetStatusBarTexture may
+-- hand back a new one). A shape the client cannot mask is named in refused.
+function View:ApplyShape()
+    local look = self.look
+    local base = CV.MASKS[look.bars.shape]
+    local mk = self.masks
+    if base and not mk then
+        look.refused = look.refused or {}
+        look.refused["bars." .. look.layout .. ".shape"] = CV.MASK_REFUSED
+        return
+    end
+    if not mk then return end
+    Clip(mk.bar, self.bar.GetStatusBarTexture and self.bar:GetStatusBarTexture())
+    Clip(mk.strip, self.strip.GetStatusBarTexture and self.strip:GetStatusBarTexture())
+    for _, pair in pairs(mk) do
+        local l = base and (CV.MEDIA .. base .. "L") or UI.whiteTexture
+        local r = base and (CV.MEDIA .. base .. "R") or UI.whiteTexture
+        pcall(pair[1].SetTexture, pair[1], l, "CLAMPTOWHITE", "CLAMPTOWHITE")
+        pcall(pair[2].SetTexture, pair[2], r, "CLAMPTOWHITE", "CLAMPTOWHITE")
+    end
+    self.maskFile = base
+end
+
+-- T139: the look's colour for a bar part, as r, g, b, a.
+local COLOUR_DEFAULT = { fsrLine = "FSR_COLOR", after = "REGEN_COLOR", fillEnd = "FILL_END_COLOR", edge = "EDGE_COLOR" }
+function View:Col(key)
+    local c = self.look and self.look.colors and self.look.colors[key]
+    if c ~= nil then
+        local rgba = UI.SkinColour and UI.SkinColour(c) or c
+        if type(rgba) == "table" then return rgba[1], rgba[2], rgba[3], rgba[4] or 1 end
+    end
+    local d = CV[COLOUR_DEFAULT[key]]
+    return d[1], d[2], d[3], 1
+end
+
+-- The parts painted once per look in their colours (the rule's marks are
+-- painted again by PaintFSR from self.cF / self.cG).
+function View:ApplyColours()
+    local F, G = { self:Col("fsrLine") }, { self:Col("after") }
+    self.cF, self.cG = F, G
+    local er, eg, eb, ea = self:Col("edge")
+    self.barEdge:SetColorTexture(er, eg, eb, ea)
+    self.stripEdge:SetColorTexture(er, eg, eb, ea)
+    self.veil:SetColorTexture(F[1], F[2], F[3], CV.VEIL_ALPHA)
+    self.veilEdge:SetColorTexture(F[1], F[2], F[3], 1)
+    self.greenLine:SetColorTexture(G[1], G[2], G[3], 1)
+    self.sweep:SetColorTexture(F[1], F[2], F[3], 1)
+end
+
+-- Gradient's two colours on a bar's fill (after its colour, which they replace).
+function View:Gradient(bar, r, g, b)
+    if self.look.bars.texture ~= "gradient" or not bar.GetStatusBarTexture then return end
+    local er, eg, eb = self:Col("fillEnd")
+    ST.API.SetGradient(bar:GetStatusBarTexture(), er, eg, eb, 1, r, g, b, 1)
 end
 
 -- Apply a layout's metrics: the frame's size, the pieces, the bars. Never the
@@ -1282,10 +1504,16 @@ function View:SetLook(look)
     local back = (UI.SkinColour and UI.SkinColour(look.bar.back)) or { 0, 0, 0, 1 }
     self.barBack:SetColorTexture(back[1], back[2], back[3], back[4] or 1)
     self.stripBack:SetColorTexture(back[1], back[2], back[3], back[4] or 1)
-    local tex = CV.TEXTURES[look.bars.texture] or CV.TEXTURES.flat
+    local tex, why = CV.TexturePath(look.bars.texture)
+    if why then
+        look.refused = look.refused or {}
+        look.refused["bars." .. key .. ".texture"] = why
+    end
     self.bar:SetStatusBarTexture(tex)
     self.strip:SetStatusBarTexture(tex)
     self.texturePath = tex
+    self:ApplyShape()
+    self:ApplyColours()
     self:StepOff()
     self.metrics = nil
     self:Place(METRICS[key](self, look))
@@ -1336,13 +1564,18 @@ function CV.Build(parent, look, draw)
     -- above it, the backdrop beneath it
     v.bar = CreateFrame("StatusBar", nil, parent)
     v.bar:SetStatusBarTexture(UI.whiteTexture)
-    v.barBack = parent:CreateTexture(nil, "ARTWORK")
+    v.barBack = parent:CreateTexture(nil, "ARTWORK", nil, 1)
     v.barBack:SetPoint("CENTER", v.bar, "CENTER", 0, 0)
+    -- T139: the edge under the background, `border` pixels wider each side
+    v.barEdge = parent:CreateTexture(nil, "ARTWORK", nil, 0)
+    v.barEdge:SetPoint("CENTER", v.bar, "CENTER", 0, 0)
     v.strip = CreateFrame("StatusBar", nil, parent)
     v.strip:SetStatusBarTexture(UI.whiteTexture)
     v.strip:SetMinMaxValues(0, 5)
-    v.stripBack = parent:CreateTexture(nil, "ARTWORK")
+    v.stripBack = parent:CreateTexture(nil, "ARTWORK", nil, 1)
     v.stripBack:SetPoint("CENTER", v.strip, "CENTER", 0, 0)
+    v.stripEdge = parent:CreateTexture(nil, "ARTWORK", nil, 0)
+    v.stripEdge:SetPoint("CENTER", v.strip, "CENTER", 0, 0)
     -- B: the veil over the mana bar's right part (flat amber: no hatch art in
     -- the kit), its 1-px left edge, and the green line after the rule
     v.veil = v.bar:CreateTexture(nil, "OVERLAY")
@@ -1375,6 +1608,18 @@ function CV.Build(parent, look, draw)
     v.tickMark = v.strip:CreateTexture(nil, "OVERLAY")
     v.tickMark:SetColorTexture(CV.TICK_COLOR[1], CV.TICK_COLOR[2], CV.TICK_COLOR[3], 1)
     v.tickMark:Hide()
+    -- T139: the shape's masks, one pair per region (none where the client has none)
+    local barM = MaskPair(v.bar)
+    if barM then
+        v.masks = { bar = barM, barBack = MaskPair(parent), barEdge = MaskPair(parent),
+            strip = MaskPair(v.strip), stripBack = MaskPair(parent), stripEdge = MaskPair(parent) }
+        for _, t in ipairs({ v.veil, v.veilEdge, v.greenLine, v.sweep, v.sweepBack }) do Clip(v.masks.bar, t) end
+        Clip(v.masks.barBack, v.barBack)
+        Clip(v.masks.barEdge, v.barEdge)
+        Clip(v.masks.strip, v.tickMark)
+        Clip(v.masks.stripBack, v.stripBack)
+        Clip(v.masks.stripEdge, v.stripEdge)
+    end
     -- F1: the per-frame step, made once per view (installing it again
     -- allocates nothing)
     v.step = function() v:Step(GetTime()) end
@@ -1538,7 +1783,9 @@ function View:PaintMana()
         self.manaAlpha = 1
     end
     bar:SetAlpha(self.manaAlpha)
-    bar:SetStatusBarColor(self:ManaColour())
+    local r, g, b = self:ManaColour()
+    bar:SetStatusBarColor(r, g, b)
+    self:Gradient(bar, r, g, b)
 end
 
 -- The five-second rule's element at `now`, by time alone: the strip's value,
@@ -1550,7 +1797,7 @@ function View:PaintFSR(now)
     local rem = self:FSR(now)
     local running = rem ~= nil and rem > 0
     local step, host = false, nil
-    local F, G = CV.FSR_COLOR, CV.REGEN_COLOR
+    local F, G = self.cF or CV.FSR_COLOR, self.cG or CV.REGEN_COLOR
 
     if el == "strip" or el == "solo" then
         local strip = self.strip
@@ -1670,13 +1917,14 @@ end
 -- view:FillBar(r, g, b): the preview's full bar in one colour (TBC's unlock):
 -- the mana bar full in that colour, the strip and the chip green.
 function View:FillBar(r, g, b)
-    local G = CV.REGEN_COLOR
+    local G = self.cG or CV.REGEN_COLOR
     self:StepOff()
     if self.manaOn then
         self.bar:SetMinMaxValues(0, 1)
         self.bar:SetValue(1)
         self.bar:SetAlpha(1)
         self.bar:SetStatusBarColor(r, g, b)
+        self:Gradient(self.bar, r, g, b)
     end
     self.strip:SetMinMaxValues(0, 5)
     self.strip:SetValue(5)

@@ -129,7 +129,7 @@ local function C(c)
     for i = 1, 4 do out[i] = c[i] == nil and "-" or string.format("%.3g", c[i]) end
     return table.concat(out, ",")
 end
-local AMBER, GREEN, BLUE = { 1, 0.67, 0.2 }, { 0.2, 1, 0.4 }, { 0.3, 0.6, 1 }
+local AMBER, GREEN, BLUE = { 1, 0.67, 0.2 }, CV.REGEN_COLOR, CV.MANA_COLOR -- T139: the author's green and blue
 local function Is(c, rgb) return Same(c, rgb[1], rgb[2], rgb[3]) end
 
 -- The faces as this line draws them: SAMPLES (TBC-shaped), with Forever's
@@ -319,7 +319,17 @@ local function RuleOff()
     if forever then ST.Pool.model.lastSpend = -1e9 else ST.Regen.fsrEnd = 0 end
 end
 local function Bars_(layout, key, value) return CV.Set("bars." .. layout .. "." .. key, value) end
-local function Reset() CV.ResetToStyle(); CV.SetLayout("line") end
+-- T139: the suites below were written for the look before T139; Reset pins
+-- it (stacked, flat, a rectangle, the Bar layout's words inside, the panel),
+-- and the T139 section tests the new defaults through CV.ResetToStyle alone.
+local LEGACY = { join = "stacked", texture = "flat", shape = "rect", text = "inside" }
+local function Legacy()
+    for _, L in ipairs(CV.LAYOUTS) do
+        for k, v in pairs(LEGACY) do CV.Set("bars." .. L .. "." .. k, v) end
+    end
+    -- the Bar layout's panel: tests that read it set it
+end
+local function Reset() CV.ResetToStyle(); Legacy(); CV.SetLayout("line") end
 
 local faces = Faces()
 local face1 = faces[1] and faces[1].face
@@ -373,7 +383,7 @@ for _, layout in ipairs(LAYOUTS) do
         local d = CV.BARS_DEFAULT or {}
         local resolved = b.show == "both" and b.join == "stacked" and b.order == "manaOver" and b.mana == "game"
             and b.fsr == 3 and b.after == "green" and b.texture == "flat"
-            and d.show == "both" and d.join == "stacked" and d.fsr == 3 and d.after == "green"
+            and d.show == "both" and d.join == "sweep" and d.fsr == 3 and d.after == "green"
         local mr, sr = Rect(v.bar), Rect(v.strip)
         local drawn = Shown(v.bar) and Shown(v.strip) and not Shown(v.chip) and not Shown(v.veil)
             and mr ~= nil and sr ~= nil and Near(sr.t - sr.b, 3) and Near(mr.b, sr.t + 1)
@@ -950,7 +960,7 @@ Try(forever and "mana from the model: the bar holds the face's plain pct, at 0.6
 end)
 
 -- 16. Textures
-Try(forever and "texture: Forever refuses all but flat" or "texture: TBC applies flat, statusbar and raid", function()
+Try("texture: both lines apply flat, statusbar and raid (T139: Forever too)", function()
     Reset()
     local facts = W.facts or {}
     local bad
@@ -958,7 +968,7 @@ Try(forever and "texture: Forever refuses all but flat" or "texture: TBC applies
         local okB = CV.BarsOK("line", { texture = tx }, facts)
         Bars_("line", "texture", tx)
         local v = Paint(face1)
-        local want = forever and "flat" or tx
+        local want = tx
         if v.look.bars.texture ~= want or v.texturePath ~= CV.TEXTURES[want]
             or (okB == true) ~= (want == tx) then
             bad = bad or string.format("%s: resolved %s, path %s, ok %s", tx, tostring(v.look.bars.texture),
@@ -1064,7 +1074,8 @@ Try("the dump line names the layout and the new keys once the look is not the de
         end
         return nil
     end
-    Reset()
+    CV.ResetToStyle()
+    CV.SetLayout("line")
     local plain = Line()
     Bars_("line", "join", "veil")
     local one = Line()
@@ -1474,6 +1485,107 @@ Try(forever
     return #errs == 0 and n == 3 * #JOINS * 4 * #manas and not secretText and reads == 0,
         string.format("%d paints, %d raised%s, secret text %s, %d reads of the bar", n, #errs,
             errs[1] and (": " .. errs[1]) or "", tostring(secretText), reads)
+end)
+
+--------------------------------------------------------------------------------
+T.section("T139: the bar's look (" .. flavour .. ")")
+--------------------------------------------------------------------------------
+Try("T139 the default Bar: a 6-px pill in Soft, the moving line, the words below, no panel, the author's colours (any style)", function()
+    CV.ResetToStyle()
+    CV.SetLayout("bar")
+    RuleOff()
+    local v = Paint(face1)
+    local b = v.look.bars
+    local resolved = b.join == "sweep" and b.shape == "pill" and b.texture == "soft" and b.text == "below"
+        and b.border == 1 and b.height == nil and v.texturePath == CV.MEDIA .. "Soft"
+        and Is(v.look.bar.back, { 0x0A / 255, 0x0A / 255, 0x0A / 255 }) and b.fill == nil
+    local mr, lr = Rect(v.bar), Rect(v.label)
+    local below = mr ~= nil and Near(mr.t - mr.b, 6) and (lr == nil or lr.t <= mr.b)
+    local fill = v.look.panel.fill
+    local noPanel = type(fill) == "table" and fill[4] == 0
+    local blue = Is(v.bar.barColor, { 0x39 / 255, 0x6D / 255, 0xA7 / 255 })
+    local e = UI.px and UI.px(1, v.parent) or 1
+    local edge = Shown(v.barEdge) and Near(v.barEdge.w, mr and (mr.r - mr.l) + 2 * e or -1)
+        and Same(v.barEdge.color, 0, 0, 0, 1)
+    Reset()
+    return resolved and below and noPanel and blue and edge, string.format(
+        "resolved %s below %s (bar %s label %s) panel %s blue %s edge %s", tostring(resolved), tostring(below),
+        R(mr), R(lr), tostring(noPanel), tostring(blue), tostring(edge))
+end)
+
+Try("T139 shapes: Pill and Rounded give every bar region its masks' files; Rectangle clips nothing", function()
+    CV.ResetToStyle()
+    CV.SetLayout("bar")
+    local v = Paint(face1)
+    if not v.masks then return false, "no masks" end
+    local function Files(want)
+        for _, pair in pairs(v.masks) do
+            if pair[1].texPath ~= want[1] or pair[2].texPath ~= want[2] or pair[1].wrap ~= "CLAMPTOWHITE" then
+                return false
+            end
+        end
+        return true
+    end
+    local pill = Files({ CV.MEDIA .. "PillL", CV.MEDIA .. "PillR" })
+    local fill = v.bar:GetStatusBarTexture()
+    local clipped = fill.masks and #fill.masks == 2 and v.barEdge.masks and #v.barEdge.masks == 2
+        and v.sweep.masks and #v.sweep.masks == 2
+    Bars_("bar", "shape", "round")
+    Paint(face1)
+    local round = Files({ CV.MEDIA .. "RoundL", CV.MEDIA .. "RoundR" })
+    Bars_("bar", "shape", "rect")
+    Paint(face1)
+    local rect = Files({ UI.whiteTexture, UI.whiteTexture })
+    local sized = Near(v.masks.bar[1].w, v.bar.h) and Near(v.masks.barEdge[1].h, v.barEdge.h)
+    Reset()
+    return pill and clipped and round and rect and sized, string.format("pill %s clipped %s round %s rect %s sized %s",
+        tostring(pill), tostring(clipped), tostring(round), tostring(rect), tostring(sized))
+end)
+
+Try("T139 Gradient: the fill end on the left to the fill on the right; colours for edge, 5SR line and after", function()
+    CV.ResetToStyle()
+    CV.SetLayout("bar")
+    Bars_("bar", "texture", "gradient")
+    CV.Set("colors.fillEnd", { 0, 0, 1, 1 })
+    CV.Set("colors.manaBar", { 1, 0, 0, 1 })
+    CV.Set("colors.edge", { 0.5, 0.5, 0.5, 1 })
+    CV.Set("colors.fsrLine", { 1, 0, 1, 1 })
+    CV.Set("colors.after", { 0, 1, 1, 1 })
+    RuleFor(3)
+    local v = Paint(face1)
+    local g = v.bar:GetStatusBarTexture().gradient
+    local grad = type(g) == "table" and g[1] == "HORIZONTAL"
+    local line = Same(v.sweep.color, 1, 0, 1, 1) and Same(v.barEdge.color, 0.5, 0.5, 0.5, 1)
+    RuleOff()
+    Paint(face1)
+    local after = Same(v.greenLine.color, 0, 1, 1, 1)
+    Reset()
+    return grad and line and after, string.format("gradient %s line %s after %s", tostring(grad), tostring(line),
+        tostring(after))
+end)
+
+Try("T139 words above, off; a height and a border make the frame; Line's height unmoved by bars.height", function()
+    CV.ResetToStyle()
+    CV.SetLayout("bar")
+    Bars_("bar", "text", "above")
+    Bars_("bar", "height", 12)
+    Bars_("bar", "border", 2)
+    local v = Paint(face1)
+    local mr, lr = Rect(v.bar), Rect(v.label)
+    local above = mr ~= nil and Near(mr.t - mr.b, 12) and lr ~= nil and lr.b >= mr.t
+    local m = v.metrics
+    local tall = m.h == m.minH and m.h >= 12 + 4 + 2
+    Bars_("bar", "text", "off")
+    Paint(face1)
+    local off = not Shown(v.label) and Near(v.metrics.h, 1 + 12 + 4 + 1)
+    Reset()
+    CV.SetLayout("line")
+    local h0 = Paint(face1).metrics.h
+    Bars_("line", "height", 20)
+    local h1 = Paint(face1).metrics.h
+    Reset()
+    return above and tall and off and h0 == h1, string.format("above %s (bar %s label %s) tall %s off %s line %s/%s",
+        tostring(above), R(mr), R(lr), tostring(tall), tostring(off), tostring(h0), tostring(h1))
 end)
 
 if printing then

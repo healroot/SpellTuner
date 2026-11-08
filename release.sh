@@ -516,6 +516,13 @@ collect_core() {
             have "$entry" || FILES+=("$entry")
         done < "$SRC/$toc"
     done
+    # T139: the clock bar's art (tools/buildmedia.py), loaded by path, never listed in a TOC
+    local m
+    shopt -s nullglob
+    for m in "$SRC"/Media/*.tga; do
+        have "Media/${m##*/}" || FILES+=("Media/${m##*/}")
+    done
+    shopt -u nullglob
 }
 
 # A module's files (T2), from ITS OWN TOCs. T13c: an entry not under the module's

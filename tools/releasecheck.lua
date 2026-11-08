@@ -159,6 +159,16 @@ local foreverExpected = { "README.md", "SpellTuner_Mainline.toc", "SpellTuner.to
 Append(foreverExpected, Entries(ROOT .. "/SpellTuner_Mainline.toc"))
 Append(foreverExpected, Entries(ROOT .. "/SpellTuner.toc"))
 
+-- T139: every package ships the bar textures and shape masks under Media/
+-- (no TOC lists a texture)
+do
+    local out = sh("cd " .. q(ROOT .. "/Media") .. " 2>/dev/null && ls -1 *.tga")
+    for line in out:gmatch("[^\n]+") do
+        tbcExpected[#tbcExpected + 1] = "Media/" .. line
+        foreverExpected[#foreverExpected + 1] = "Media/" .. line
+    end
+end
+
 local moduleNames = {}
 do
     local out = sh("ls -1 " .. q(ROOT .. "/Modules"))

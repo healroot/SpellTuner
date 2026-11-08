@@ -596,6 +596,23 @@ function FrameMT:GetChecked() return self.checked == true end
 function FrameMT:SetMaxLetters(n) self.maxLetters = n end
 function FrameMT:SetColorTexture(r, g, b, a) self.color = { r, g, b, a } end
 function FrameMT:SetStatusBarColor(r, g, b) self.barColor = { r, g, b } end
+-- T139: the clock bar's texture, its fill region, masks and gradient, recorded
+-- so tools/clockui.lua can read back what a look asked for (nothing drawn)
+function FrameMT:SetStatusBarTexture(path)
+    self.barTexture = path
+    self.fillTex = self.fillTex or Child("Texture", self)
+end
+function FrameMT:GetStatusBarTexture()
+    self.fillTex = self.fillTex or Child("Texture", self)
+    return self.fillTex
+end
+function FrameMT:CreateMaskTexture() return Child("MaskTexture", self) end
+function FrameMT:AddMaskTexture(m)
+    self.masks = self.masks or {}
+    self.masks[#self.masks + 1] = m
+end
+function FrameMT:SetTexture(path, wrapH) self.texPath, self.wrap = path, wrapH end
+function FrameMT:SetGradient(orient, a, b, ...) self.gradient = { orient, a, b, ... } end
 function FrameMT:SetTextColor(r, g, b) self.textColor = { r, g, b } end
 -- enabled state is stored (not a no-op) so a harness can read back which
 -- buttons a pane turned off and why

@@ -343,6 +343,54 @@ function ST.API.DrawUnitPower(bar, unit, powerType)
     return true
 end
 
+-- T139: the game's colour picker for one colour. onChange(r, g, b, a) on every
+-- move and with the starting colour on Cancel; plain numbers the picker holds,
+-- nothing read from the world. The 10.2.5 picker (SetupColorPickerAndShow, with
+-- its hex box and opacity) where the client has it, else the old fields
+-- (no opacity). -> true, or false and "absent" / "error".
+function ST.API.PickColour(r, g, b, a, onChange)
+    local P = ST.API.Has("ColorPickerFrame")
+    if type(P) ~= "table" or type(onChange) ~= "function" then return false, "absent" end
+    a = (type(a) == "number") and a or 1
+    local function Now()
+        local nr, ng, nb = P:GetColorRGB()
+        local na = a
+        if type(P.GetColorAlpha) == "function" then na = P:GetColorAlpha() end
+        onChange(nr, ng, nb, na)
+    end
+    local function Cancel() onChange(r, g, b, a) end
+    local ok = pcall(function()
+        if type(P.SetupColorPickerAndShow) == "function" then
+            P:SetupColorPickerAndShow({ r = r, g = g, b = b, opacity = a, hasOpacity = true,
+                swatchFunc = Now, opacityFunc = Now, cancelFunc = Cancel })
+        else
+            P.hasOpacity = false
+            P.previousValues = { r, g, b }
+            P.func, P.opacityFunc, P.cancelFunc = Now, nil, Cancel
+            P:SetColorRGB(r, g, b)
+            local show = ST.API.Has("ShowUIPanel")
+            if type(show) == "function" then show(P) else P:Show() end
+        end
+    end)
+    if not ok then return false, "error" end
+    return true
+end
+
+-- T139: a texture's horizontal gradient from (r1, g1, b1, a1) on the left to
+-- (r2, g2, b2, a2) on the right: the colour-object form (10.0 on), else the
+-- old six numbers. -> true, or false and "absent" / "error".
+function ST.API.SetGradient(tex, r1, g1, b1, a1, r2, g2, b2, a2)
+    if type(tex) ~= "table" or type(tex.SetGradient) ~= "function" then return false, "absent" end
+    local CC = ST.API.Has("CreateColor")
+    if type(CC) == "function" then
+        if pcall(tex.SetGradient, tex, "HORIZONTAL", CC(r1, g1, b1, a1 or 1), CC(r2, g2, b2, a2 or 1)) then
+            return true
+        end
+    end
+    if pcall(tex.SetGradient, tex, "HORIZONTAL", r1, g1, b1, r2, g2, b2) then return true end
+    return false, "error"
+end
+
 -- T17c: whether a hidden status bar may be asked for a party member's max
 -- health. Whether a bar hands a secret back PLAIN is UNKNOWN until the
 -- author's TESTING section 38.3 report (docs/probe/<build>-alpha4-party.md):

@@ -263,9 +263,10 @@ end
 -- (the face's pct), its widest label ("~FULL", the pool is modelled) and the
 -- rest switch (F6).
 -- T115: no regen tick (the pool cannot be read, so its rises cannot be
--- timed) and flat bars only.
+-- timed). T139: every bar texture (SpellTuner's own ship in Media/, the
+-- game's two are on the live client).
 -- T116: cd = false -- no cooldown secondary, so no Text slot offers it.
-local facts = { line = "forever", poolPlain = false, model = true, tick = false, textures = false,
+local facts = { line = "forever", poolPlain = false, model = true, tick = false, textures = true,
     labelSample = "~FULL", show = {}, cd = false }
 ST.ClockView.lineFacts = facts
 local function Facts()
@@ -356,6 +357,7 @@ local function CreateWidget()
     Clock.barBack = barBack
     Clock.strip = view.strip
     Clock.stripBack = view.stripBack
+    Clock.barEdge, Clock.stripEdge = view.barEdge, view.stripEdge -- T139
     Clock.facts = facts
     widget:SetScale(view:Scale())
 

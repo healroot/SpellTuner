@@ -2574,6 +2574,29 @@ Forever, at your level (say 26).
 3. **Clear the What if, Talent plan... again:** spend more than your level gives (up to 51). The line
    says `you don't have that many yet: needs level N` (N = points + 9). Use in What if still works.
 
+## 60. The clock's bar look (T139) -- NEW, 5 min
+
+Both lines. Use the Bar layout (Settings -> Clock -> Layout -> Bar) on a character whose clock settings
+were never changed, or press Reset to style first.
+
+1. **The default:** a thin (6-px) blue pill with a black 1-px edge and rounded ends, the words below
+   it, no panel behind, the amber line moving across it for five seconds after a cast. Report whether
+   the ends are really rounded (masks) and whether any part pokes out square: the back, the edge, the
+   amber line, the green line after.
+2. **Bar look -> Shape:** Rectangle squares it; Rounded softens the corners; Thin makes it 4 px with
+   the words above.
+3. **Texture:** go through the list. Soft and Smooth shade darker toward the bottom; Gradient runs from
+   Fill end (left) to Fill (right); Striped shows stripes. With ElvUI or EllesmereUI loaded, their bars
+   appear as "name (your UI)" and draw when picked. Report any that draw white or not at all.
+4. **Colours:** click Fill. The game's colour picker opens with an opacity slider; the bar follows as you
+   drag; Cancel puts it back; right-click on the swatch resets it. Report if the picker fails to open or
+   the bar does not follow (TBC and Forever each).
+5. **Text:** inside, above, below, off. Height and Border sliders move the bar; with the words outside,
+   the Frame tab's height slider is hidden.
+6. **Presets:** Like EllesmereUI gives a square 8-px gradient bar with the words above, close to
+   EllesmereUI's mana bar; compare them side by side and tell me what still differs. Default brings
+   back step 1.
+
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the
 raw numbers. `/st profile` output is welcome with any report. I turn them into

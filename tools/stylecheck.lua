@@ -131,6 +131,10 @@ rail:SetRows({ { id = "ov", text = "Overview", fixed = true },
                { id = "ht", text = "Healing Touch" }, { id = "rj", text = "Rejuvenation" } })
 rail:Select("ht")
 local clock = flavour == "forever" and _G.SpellTunerClock or _G.SpellTunerWidget
+-- T139: the Bar layout ships without a panel; these checks are about the
+-- panel a style paints, so they pin the style's own fill and edge
+ST.ClockView.Set("panel.fill", "bg")
+ST.ClockView.Set("panel.edge", "border")
 
 local ROOTS = { nav = nav.frame, host = host, clock = clock }
 
@@ -261,12 +265,15 @@ end
 -- the 5SR strip 196 x 3 on it; captured with --golden, every other section unchanged.
 -- T135 adds the moving line and its dark edge (hidden: Join is stacked), 19 regions;
 -- captured with --golden, every other section unchanged.
+-- T139 adds the bar's and strip's edges and their shape masks, and the Bar
+-- layout's new look (a 6-px pill in Soft, the words below, the moving line;
+-- the panel pinned above); captured with --golden, every other section unchanged.
 --------------------------------------------------------------------------------
 local GOLDEN = {
     forever = {
         nav = { 29, 1225158578 },
         host = { 52, 441673342 },
-        clock = { 19, 180624613 },
+        clock = { 35, 210072138 },
         palette = { 33, 1948568416 },
         text = { 15, 1382467428 },
         fonts = { 12, 1125933103 },
@@ -274,7 +281,7 @@ local GOLDEN = {
     tbc = {
         nav = { 29, 1015818899 },
         host = { 52, 98457140 },
-        clock = { 19, 97929853 },
+        clock = { 35, 1819488330 },
         palette = { 33, 1948568416 },
         text = { 15, 1382467428 },
         fonts = { 12, 1125933103 },

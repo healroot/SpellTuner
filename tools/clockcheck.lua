@@ -633,6 +633,7 @@ do
 
     S.physicalHeight = 1080
     w.GetEffectiveScale = function() return 1 end
+    ST.ClockView.Set("bars.line.join", "stacked") -- T139: the moving line is the default now
     S.Tick(0.5)
     local e = UI.px(1, w)
     local bd = w.backdrop or {}
@@ -643,11 +644,13 @@ do
             tostring(w.bg and w.bg[3]), tostring(w.bg and w.bg[4]), tostring(bd.edgeSize), tostring(e)))
 
     -- T115 (clock v2): the mana bar 160 x 4 over the 160 x 3 five-second-rule
-    -- strip, each on its own black backing
-    local back, sback = Clock.barBack, Clock.stripBack
-    check("the mana bar and the 5SR strip each have a black backing one physical pixel wider on every side",
+    -- strip, each on its own black backing; T139: the backing the bar's size,
+    -- its black edge one physical pixel (border 1) wider on every side
+    local back, sback = Clock.barEdge, Clock.stripEdge
+    check("the mana bar and the 5SR strip each have a black edge one physical pixel wider on every side",
         back ~= nil and back.parentFrame == w and SameColour(back.color, { 0, 0, 0, 1 })
         and Near(back.w, 160 + 2 * e) and Near(back.h, 4 + 2 * e)
+        and Clock.barBack.w == 160 and Clock.barBack.h == 4
         and Clock.bar and Clock.bar.w == 160 and Clock.bar.h == 4
         and sback ~= nil and sback.parentFrame == w and SameColour(sback.color, { 0, 0, 0, 1 })
         and Near(sback.w, 160 + 2 * e) and Near(sback.h, 3 + 2 * e)
@@ -666,6 +669,7 @@ do
         and Near(back.h, 4 + 2 * e2) and SameColour(w.bg, P.bg),
         string.format("edge=%s backW=%s want px=%s", tostring(bd2.edgeSize), tostring(back and back.w), tostring(e2)))
     w.GetEffectiveScale = function() return 1 end
+    ST.ClockView.Set("bars.line.join", nil)
     S.Tick(0.5)
 end
 
@@ -688,11 +692,12 @@ do
         local r = {}
         CV.ResetToStyle()
         S.Tick(0.5)
+        Set("join", "stacked") -- T139: the moving line is the default now
         r.stacked = Muted()
         Set("order", "fsrOver"); r.fsrOver = Muted(); Set("order", nil)
         Set("join", "veil"); r.veil = Muted()
         Set("join", "chip"); r.chip = Muted()
-        Set("join", "sweep"); r.sweep = Muted(); Set("join", nil)
+        Set("join", "sweep"); r.sweep = Muted(); Set("join", "stacked")
         Set("mana", "model"); r.model = Muted(); Set("mana", nil)
         Set("show", "mana"); r.mana = Muted()
         Set("show", "fsr"); r.fsr = Muted()

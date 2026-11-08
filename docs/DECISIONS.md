@@ -1690,3 +1690,19 @@ already 0 stays 0, and ranks learned later are not added. **Talents are typed on
 points, with a warning naming the level it needs (points + 9, VERIFY). The live book is untouched: the client's text
 is assumed to carry the duration of a talent taken (VERIFY, `docs/TESTING.md` 56.5). Talents whose
 sentence also does something else (Call of Flame, a stun) are named and skipped.
+
+**The clock's default look is the author's** (T139, 2026-11-08, "I want make this what I've set on screen
+as default"):
+- Join is the moving line.
+- The Bar layout is a 6-px pill in Soft with a 1-px black border, the words below, and no panel.
+- Its colours are Fill 396DA7, Fill end 1D4EA6, Background 0A0A0A, 5SR line FFAB33 and After 5SR 5CCB6E.
+- The Bar layout's background and fill are its own under every style; a style's clock role colours the
+  other layouts.
+- The author picked EllesmereUI's bar texture. It ships only with EllesmereUI, so the default is
+  SpellTuner's Soft, which shades like it; the Ellesmere texture is selectable if EllesmereUI registers it with
+  LibSharedMedia (VERIFY).
+- Forever applies every texture. T115 had kept it to Flat until the probe; a texture is paint and costs
+  no number.
+- The shapes are masks (`CreateMaskTexture`, `CLAMPTOWHITE`), and the colour picker and `SetGradient` go
+  through `ST.API`. All three are VERIFY on both clients (`docs/TESTING.md` §60).
+- Settings saved before T139 keep their values; only unset fields take the new defaults.
