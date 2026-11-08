@@ -5437,3 +5437,24 @@ beside the window (`UI.CreateSheet` `docked`), so the Spells pane is seen moving
 - **The time:** `ManaModel.Steady` moves it one 5 s step at most once a second.
 - **Review:** pass, with nits N1-N6 open (N3: the steady latch is not reset during the preview).
 - **In game:** `docs/TESTING.md` §65.
+
+## 2026-11-08 -- T145: clock v3 -- one bar, a dense store, the words, the pane
+
+`docs/SPEC-clock-v3.md` (approved with its mockup `tools/.cache/clockv3/index.html`), diagnosis
+`docs/review/clock-v3-diagnosis.md`, implementer reports `docs/review/T145ab-implementer-report.md`,
+`T145c-implementer-report.md`, `T145de-implementer-report.md`.
+- **T145a (3c37952):** `Engine/ClockWords.lua` -- the FULL rule (at full `FULL`, a refill always
+  `FULL 0:45`, never `0s`), the steady latch moved in, and the quiet pool (no power event for 3.0 s
+  outside the rule = full; VERIFY).
+- **T145b (075edf9):** `UI/ClockStore.lua` -- `db.clockLook` dense and versioned (v3), the migration
+  from v1 / v2 (the moving line turned on, D3), the two presets with Undo.
+- **T145c (7b222e4):** `UI/ClockBar.lua` replaces `UI/ClockView.lua`; Line and Compact gone (D1);
+  both hosts on the one renderer; the line's driver set once and never cleared.
+- **T145d:** the Settings -> Clock pane per the mockup (PREVIEW, BAR, TEXTS, PRESETS, WHEN; the
+  control registry `CS.CONTROLS`); `tools/clocke2e.lua` drives every control into the live clock;
+  `clocksettings`' 36 skipped checks ported or replaced; the feeds always the default `LineString`.
+  U3's open point 3: in a fight the model's average spend keeps the clock on OOM while mana rises --
+  model meaning, not the author's bug; out of combat it reads `FULL m:ss` then `FULL` (E5b), no model
+  change.
+- **T145e:** the docs (CLAUDE.md rows, TOOLS.md, DECISIONS, TESTING §66, CHANGELOG) and the gate.
+- **In game:** `docs/TESTING.md` §66 (step 1 settles QUIET).

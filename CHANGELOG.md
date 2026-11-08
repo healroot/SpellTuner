@@ -38,6 +38,21 @@ published to CurseForge; the developers' log is `docs/HISTORY.md`.
   EllesmereUI" copies its mana bar -- Pixels Dark, square, no border, its mana blue, the number centred
   above. The Bar layout has a Centre text slot.
 
+### Both: the clock, one bar (clock v3)
+- The clock is one bar on both lines: the mana bar with its texts around it. **Line and Compact are
+  gone**; a clock saved as Line or Compact becomes the bar with its default texts. For a text-only
+  clock use the datatext or broker (ElvUI, EllesmereUI's DataBars, Titan Panel), which keep the words.
+- **Your clock's look is moved once** to the new store, keeping what still applies (size, texture,
+  colours, each text's place), and `/st dump` names what was dropped. The moving five-second-rule line
+  is turned **on** for everyone; one click turns it off.
+- The time at full now reads `FULL`, a refill always `FULL 0:45`, and a time never reads `0s`.
+- Forever: when the game stops sending mana changes for about 3 s outside the five-second rule, the
+  clock takes your mana as full (a guess to be checked in game).
+- Settings -> Clock is one page: a live preview on top (In a fight, Running out, Filling, Full, Live),
+  then Bar, Texts (each text on or off; an off text shows only its switch), Presets (SpellTuner,
+  EllesmereUI, with Undo) and When. Every control changes the clock on screen; one that would do
+  nothing is hidden. This replaces the tabs and the Bar look above.
+
 ### Forever: the talent plan, live
 - The talent plan opens beside the SpellTuner window instead of over it, and every click changes the
   numbers at once -- no Use button. Closing it keeps the plan; What if -> Clear puts your talents back.

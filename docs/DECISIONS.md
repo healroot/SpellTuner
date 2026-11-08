@@ -1753,3 +1753,19 @@ The author approved `docs/SPEC-clock-v3.md` and its mockup `tools/.cache/clockv3
   section 66 step 1 settles it, and QUIET is raised to a measured gap, never guessed.
 - **Open:** a model *above* the real pool (an under-priced cost) is not corrected by this; the hover keeps
   saying the time is modelled.
+- **The pane (T145d, the mockup):** one Settings -> Clock pane, PREVIEW fixed on top and BAR, TEXTS,
+  PRESETS, WHEN scrolling under it; no tabs. Every control is an entry of `CS.CONTROLS` with the fields
+  it changes, and `tools/clocke2e.lua` proves each one changes the live clock (P1, no exception list).
+  A control the look makes inert is hidden; a choice the client cannot draw (EllesmereUI or your UI's
+  texture gone, no masks, no atlas) stays clickable with the reason beside it (2.6). There is no Reset
+  button: the SpellTuner preset is the defaults, and `/st clock look reset` stays. The mockup's
+  "Your look, migrated" and "What v3 removes" panes explain the change; they are not in the game.
+- **The refill time in a fight (T145d, U3's open point 3):** with the model's fight-average spend and
+  constant regen, after a burst the net is below zero exactly while the modelled pool is above max,
+  so in a fight the clock reads the OOM time (growing to `>10m`) and then `FULL`, not a refill time.
+  That is the model's meaning, not a harness artefact, and not the author's bug: out of combat while
+  regenerating the clock reads `FULL m:ss` and at full `FULL` (`clocke2e` E5b on both lines); a fight
+  entered below max with light casting reads `FULL m:ss` in combat (E5c). No model change was made.
+- **Line and Compact's open items close with them:** Right2 (`CF.TEXT`), the slots and the
+  per-layout heights left with the layouts (D1); the `~` on Line / Compact's numbers went with them.
+  Q-clock-2 stays answered by T144; a probe confirmation is still welcome.

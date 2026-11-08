@@ -2674,6 +2674,23 @@ Forever with EllesmereUI's mana bar on screen. Bar layout.
 5. **Steady time:** in a fight, watch OOM: it changes at most once a second and by 5 s at a time
    (25 -> 20 -> 15, never 25 -> 15). A potion or a new fight jumps straight to the new time.
 
+## 66. The clock, one bar (clock v3, T145) -- NEW, Forever 5 min, then TBC 2 min
+
+Forever with EllesmereUI's mana bar on screen, then TBC. `docs/SPEC-clock-v3.md`.
+1. **The migration and the quiet pool (VERIFY):** `/st dump` shows the `clock:` line naming the
+   migration (what was kept, what was dropped). Then drink to full, out of combat: the time reads
+   `FULL` within about 3 s of EllesmereUI's bar reaching full, and the dump's `pool:` line counts a
+   quiet-full anchor. **If it takes more than 5 s, report the dump's power-event count** -- it sets
+   `ClockWords.QUIET` (3.0 s, unverified).
+2. **The moving line:** a pull. The amber line crosses the bar after each cast, and keeps moving while
+   you change Width, the texture or a text's size in Settings -> Clock during the In a fight preview.
+3. **The time at full:** regen outruns the casting (or out of combat after a fight). The time reads
+   `FULL 0:xx`, then `FULL`, and never `0s` or `0:00`.
+4. **Settings -> Clock:** every control you touch changes the clock on screen. An off text shows only
+   its switch. Each preset (SpellTuner, EllesmereUI) keeps the time and the line, and Undo preset puts
+   your look back. Without EllesmereUI loaded, its texture and font say why beside the control.
+5. **TBC:** the same bar, the time `FULL` at full in a fight, the line moving.
+
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the
 raw numbers. `/st profile` output is welcome with any report. I turn them into
