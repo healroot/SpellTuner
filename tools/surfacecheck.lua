@@ -607,12 +607,12 @@ if FLAVOUR == "tbc" then
 end
 
 --------------------------------------------------------------------------------
--- 9. T114 (docs/tasks/T114-clock-face-slots.md): the clock feed follows Line's
--- slots -- ST.ClockLook().texts.line handed to ClockFace.LineString -- and the
--- ElvUI datatext, which reads the feed, follows without an edit. No provider
--- (or a look with no texts): today's string, byte for byte.
+-- 9. T114, re-based by T145d (docs/SPEC-clock-v3.md 1.1): Line's slots left
+-- with Line and Compact. The clock feed is the default LineString whatever a
+-- ST.ClockLook provider (if one were installed) says, and the ElvUI datatext,
+-- which reads the feed, follows: today's string, byte for byte.
 --------------------------------------------------------------------------------
-T.section("9. T114: the clock feed follows Line's slots")
+T.section("9. T145d: the clock feed is the default LineString")
 do
     local CF = ST.ClockFace
     local face
@@ -627,7 +627,6 @@ do
         face.modelled, face.mono, face.timeFmt, face.arrow = true, true, "mss", nil
         face.pctModelled, face.manaModelled = true, true
     end
-    local WANT = FLAVOUR == "forever" and "~OOM 1:20  ~62%" or "OOM 1:20 v  62%"
     local savedCurrent, savedLook = CF.Current, rawget(ST, "ClockLook")
     local function WithLook(look, fn)
         rawset(CF, "Current", function() return face end)
@@ -641,30 +640,25 @@ do
     local PCT = function() return { texts = { line = { right = "pct" } } } end
     Guarded("9a. the clock feed", function()
         local picked, pickedHex = WithLook(PCT, function()
-            return Feeds.Text("clock", { plain = true }), Feeds.Text("clock", { valueHex = "|cff16c3f2" })
+            return Feeds.Text("clock", {}), Feeds.Text("clock", { valueHex = "|cff16c3f2" })
         end)
         local none = WithLook(nil, function() return Feeds.Text("clock", {}) end)
-        local bare = WithLook(function() return { show = {} } end, function() return Feeds.Text("clock", {}) end)
         local raising = WithLook(function() error("boom") end, function() return Feeds.Text("clock", {}) end)
         local want = CF.LineString(face)
-        check("9a. the clock feed with texts.line.right = pct reads " .. WANT .. "; no provider: today's string",
-            picked == WANT and T.Strip(pickedHex) == WANT and T.Ascii(pickedHex)
-            and none == want and bare == want and raising == want,
+        check("9a. the clock feed is the default LineString, with or without a clock-look provider (T145d)",
+            savedLook == nil and picked == want and pickedHex == CF.LineString(face, "|cff16c3f2")
+            and none == want and raising == want and T.Ascii(pickedHex) and not T.Has(T.Strip(picked), "62%"),
             string.format("picked=%s none=%s want=%s", tostring(picked), tostring(none), tostring(want)))
     end)
     Guarded("9b. the ElvUI datatext follows", function()
         local dt, feed = WithLook(PCT, function() return Read(OOM), Feeds.Text("clock", {}) end)
         Colour("16c3f2")
         local dtHex = WithLook(PCT, function() return Read(OOM) end)
-        local defHex = WithLook(function() return { texts = { line = CF.TEXT and CF.TEXT.line or {} } } end,
-            function() return Read(OOM) end)
         Colour(nil)
-        local def = WithLook(function() return { texts = { line = CF.TEXT and CF.TEXT.line or {} } } end,
-            function() return Read(OOM) end)
-        check("9b. the ElvUI datatext reads the same slots; with the default text its string is today's",
-            dt == feed and T.Strip(dt) == WANT and T.Strip(dtHex) == WANT and type(CF.TEXT) == "table"
-            and def == CF.LineString(face) and defHex == CF.LineString(face, "|cff16c3f2"),
-            string.format("dt=%s def=%s", tostring(dt), tostring(def)))
+        check("9b. the ElvUI datatext reads the feed: today's string, its own colour too (T145d)",
+            dt == feed and dt == CF.LineString(face) and dtHex == CF.LineString(face, "|cff16c3f2")
+            and CF.TEXT == nil and CF.Slots == nil and CF.ResolveText == nil,
+            string.format("dt=%s hex=%s", tostring(dt), tostring(dtHex)))
     end)
 end
 

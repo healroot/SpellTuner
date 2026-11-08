@@ -89,13 +89,9 @@ end
 local function RefreshClock()
     if ST.Clock and ST.Clock.Refresh then ST.Clock:Refresh() end
 end
+-- T145d (docs/SPEC-clock-v3.md 1.3): no `show` group -- the Rest text has
+-- its own switch on Settings -> Clock (texts.rest.on, /st clock rest).
 local CLOCK_SWITCHES = {
-    show = {
-        { text = "Rest time (rest 2:10)", segment = "rest", tips = { "Rest time", "Time to full if you stop casting right now,",
-              "beside the clock. Same as /st clock rest." },
-          get = function() return ClockDB().showRest ~= false end,
-          set = function(on) ClockDB().showRest = on; RefreshClock() end },
-    },
     when = {
         { text = "Show the mana clock", tips = { "Show the mana clock", "Same as /st clock." },
           get = function() return ClockDB().shown ~= false end,

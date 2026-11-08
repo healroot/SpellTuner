@@ -17,6 +17,7 @@
 --   ClockStore.Get(path)         one field of Look() ("texts.mana.size")
 --   ClockStore.Set(key, value)   one field ("width", "texts.mana.size"),
 --   ClockStore.SetText(kind, field, value)
+--   ClockStore.SetMany(map)      several bar fields at once (T145d)
 --   ClockStore.ApplyPreset(key, opts) / Undo() / Reset()
 --                                each ONE write and ONE CLOCK_LOOK; a refused
 --                                value writes nothing and fires nothing
@@ -746,6 +747,25 @@ function Store.Set(key, value)
     local s = Stored()
     if not s then return false, "no saved variables yet" end
     s[key] = value
+    undo = nil
+    Changed()
+    return true
+end
+
+-- Store.SetMany(map) -> true | false, why. T145d: several bar fields
+-- ({ back = "222222", backAlpha = 0.5 }: the Background swatch's one move) in
+-- ONE write and ONE CLOCK_LOOK; every value checked first, so a refused one
+-- writes nothing. Bar fields only (a text's are SetText's).
+function Store.SetMany(map)
+    if type(map) ~= "table" or next(map) == nil then return false, "nothing to set" end
+    for key, value in pairs(map) do
+        local ok = Store.OK[key]
+        if type(key) ~= "string" or not ok then return false, "not a clock look setting: " .. tostring(key) end
+        if not ok(value) then return false, key .. ": not accepted: " .. Say(value) end
+    end
+    local s = Stored()
+    if not s then return false, "no saved variables yet" end
+    for key, value in pairs(map) do s[key] = value end
     undo = nil
     Changed()
     return true

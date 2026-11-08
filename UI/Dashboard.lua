@@ -231,18 +231,10 @@ end
 local function Visibility()
     if ST.UpdateVisibility then ST:UpdateVisibility() end
 end
+-- T145d (docs/SPEC-clock-v3.md 1.3): no `show` group -- the Rest text has
+-- its own switch on Settings -> Clock; db.showRest / db.showCooldown stay for
+-- the face the feeds draw (Engine/TTO.lua, /st rest).
 local CLOCK_SWITCHES = {
-    show = {
-        { text = "Rest time (rest 2:10)", segment = "rest", tips = { "Show rest time",
-              "Grey 'rest 2:10' next to the clock:", "time to full if you stop casting right now. Same as /st rest." },
-          get = function() return ST.db.showRest ~= false end,
-          set = function(on) ST.db.showRest = on end },
-        { text = "Mana cooldown (inn 2:10)", segment = "cd", tips = { "Mana cooldown projection",
-              "Under 90s to OOM, with Innervate (or a potion) ready, what the clock",
-              "becomes if you press it now. It replaces 'rest' there." },
-          get = function() return ST.db.showCooldown ~= false end,
-          set = function(on) ST.db.showCooldown = on end },
-    },
     when = {
         { text = "Locked", tips = { "Lock widget", "Unticked: the clock stays up and can be dragged." },
           get = function() return ST.db.locked == true end,

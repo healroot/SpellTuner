@@ -6,10 +6,10 @@
 -- EllesmereUI's DataBars ("Broker Plugin" block) on Forever, Titan Panel,
 -- ChocolateBar or ElvUI's own "Data Broker" list on TBC.
 --   "SpellTuner"        -- the `clock` feed's words, plain: "~OOM 1:20  rest
---                          2:10" (Forever), "OOM 1:20 v" (TBC); T114: Line's
---                          slots (ST.ClockLook().texts.line). db.feeds.compact
---                          drops the secondary segment (rest / a cooldown; T114:
---                          both Right slots, whatever they hold) for a narrow bar; the honesty marks (~ > = -- ...) and
+--                          2:10" (Forever), "OOM 1:20 v" (TBC); T145d: the
+--                          default words (no slots). db.feeds.compact
+--                          drops the secondary segment (rest / a cooldown)
+--                          for a narrow bar; the honesty marks (~ > = -- ...) and
 --                          the label stay, so the words still say what is
 --                          meant. The icon tint carries the tone, because a
 --                          broker display may strip colour codes (DataBars
@@ -74,27 +74,14 @@ local function Settings()
     return {}
 end
 
--- The look the broker draws the face with: the line's own clock look when a
--- file provides one (ST.ClockLook(), the user's clock settings: the rest
--- switch, T98 / T102), else every segment the face carries; compact drops the
--- secondary whatever the look says. T114: Line's slots (look.texts.line, the
--- contract T116's resolver fulfils) when present, so the broker says what the
--- datatext says whatever layout is on screen.
+-- The look the broker draws the face with: every segment the face carries
+-- (TBC's face is already gated by db.showRest / db.showCooldown,
+-- Engine/TTO.lua); compact drops the secondary. T145d: no clock-look provider
+-- (Line's slots and the rest switch left with Line and Compact).
 local function Look(compact)
-    local look
-    if type(ST.ClockLook) == "function" then
-        local okL, l = pcall(ST.ClockLook)
-        if okL and type(l) == "table" then look = l end
-    end
     local show = { rest = true, cd = true }
-    if look and type(look.show) == "table" then
-        show.rest = look.show.rest ~= false
-        show.cd = look.show.cd ~= false
-    end
     if compact then show.rest, show.cd = false, false end
-    local text
-    if look and type(look.texts) == "table" and type(look.texts.line) == "table" then text = look.texts.line end
-    return { show = show, text = text }
+    return { show = show }
 end
 
 local function UsesMana()
@@ -113,8 +100,7 @@ function LDBS.ClockText(compact)
     if not face then return LDBS.NAMES.clock end
     local okS, text = pcall(function()
         local segs = CF.Segments(face, Look(compact))
-        -- compact drops both Right slots (T114), whatever kind they hold
-        if compact and type(segs) == "table" then segs.second, segs.right, segs.right2 = nil, nil, nil end
+        if compact and type(segs) == "table" then segs.second = nil end
         return CF.JoinSegments(segs)
     end)
     if not okS or type(text) ~= "string" or text == "" then return LDBS.NAMES.clock end

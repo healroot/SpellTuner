@@ -1,81 +1,45 @@
 -- tools/run.sh [--flavour tbc|forever] tools/clocksettings.lua
 --
--- T102 (docs/SPEC-next.md 5.4, 6.3, 7.3-7.4, section 11 row T102; mockups
--- M7b, M8f, M8g, M9d): the Settings join point, UI/ClockSettings.lua, on both
--- lines. The flavour's whole TOC is loaded -- TBC's UI files and both lines'
--- Integrations/ included -- with the stub's geometry on and fake hosts
--- installed BEFORE the TOC (tools/stub_hosts.lua: LibDataBroker on both,
--- ElvUI's datatexts on TBC, EllesmereUI 9.3.4 on Forever), so the
--- INTEGRATIONS pane has something to say. UI/ClockSettings.lua is loaded where
--- the integrator's TOC line puts it (right after UI/Widget.lua on TBC, right
--- after UI/Clock_Forever.lua on Forever) when the TOC does not list it yet.
+-- T102 (docs/SPEC-next.md 5.4, 6.3, 7.3-7.4), re-based by T145d
+-- (docs/SPEC-clock-v3.md 3; docs/tasks/T145d-clock-pane.md): the Settings join
+-- point, UI/ClockSettings.lua, on both lines. The flavour's whole TOC is
+-- loaded -- TBC's UI files and both lines' Integrations/ included -- with the
+-- stub's geometry on and fake hosts installed BEFORE the TOC
+-- (tools/stub_hosts.lua: LibDataBroker on both, ElvUI's datatexts on TBC,
+-- EllesmereUI 9.3.4 on Forever), so the INTEGRATIONS pane has something to say.
 --
 -- What is held, on both flavours:
---   1. Settings has a Clock view (TBC general, clock, about; Forever general,
---      clock, modules, about); its pane has PREVIEW and LAYOUT and the level-3
---      box (Colours, Frame, Bars, Show, When), and the preview is a frame of
---      its own -- neither the clock on screen nor a child of it;
---   2. each state chip paints its ClockFace.SAMPLES face, as this line draws a
---      face (Forever: "~", one colour, "0:15", no arrow), into the preview --
---      the words checked against the face built here from SAMPLES, not
---      through the pane's own helper -- and the clock on screen is untouched
---      (its words, its shown state, no Show / Hide on it); (Live) paints
---      ST.ClockFace.Current;
---   3. the layout buttons save db.clockLook.layout (CLOCK_LOOK once) and the
---      clock on screen and the preview rebuild in it;
---   4. a control writes db.clockLook.over -- a tone swatch, Mana colour, the
---      Bars tab (bars.<layout>.*, kept per layout), the Frame tab (width,
---      height with the minimum named, scale on release, alpha), the rule
---      chips (T115) -- and the clock on
---      screen rebuilds with it; Reset to style empties it, the layout kept;
---   5. Show / When hold the line's own switches (the rest segment: the
---      preview's rest chip loses it, and so does ST.ClockLook, the broker's
---      look); the When tab's lock;
---   6. the Look dropdown on General (TBC Windows pane, Forever APPEARANCE)
---      lists every registered style (Ellesmere by UI.Ellesmere.Label), writes
---      db.ui.style and repaints at once (STYLE_CHANGED once, the palette is
---      the style's), the reload line shows UI.Restyle.Line() while the look
---      differs from the login's (hidden while UI.Restyle.Left() is 0, as since
---      the wave N4 integration); "Use my class colour" puts the class colour over a style's
---      accent and takes it back;
---   7. the subcommands: /st clock layout compact / nosuch / ring (accepted
---      only where a ring is drawn), look reset, preview; on Forever /st clock
---      and /st clock lock answer exactly as before; on TBC /st clock prints
---      the subs' usage; the help row carries the three subs;
---   8. INTEGRATIONS: the lines are ST.Integrations.Lines(), the broker and
---      compact switches write db.feeds, the hint names the host found (TBC:
---      pick SpellTuner in ElvUI; Forever: /eui -> DataBars) and Forever's
---      EllesmereUI mover switch writes db.eui.unlock; with nothing found the
---      pane says "none found";
---   9. Customise... on the everyday clock pane (TBC OOM Widget, Forever MANA
---      CLOCK) opens Settings -> Clock;
---  10. every word the new panes draw is ASCII with no bare pipe, and every
---      titled pane of Settings -> General and of Settings -> Clock lies inside
---      its view (the windows' fixed sizes, TBC 1036 x 646, Forever 860 x 560);
---  11. Forever, under the stub's forever profile: (Live) in a fight paints
+--   1. Settings has a Clock view after General; the pane is PREVIEW on top
+--      and, scrolling under it, BAR, TEXTS, PRESETS, WHEN (no tabs); the
+--      preview is a frame of its own, never the clock on screen;
+--   2. the chips (In a fight, Running out, Filling, Full, Live) paint their
+--      faces' words into the preview and leave the clock on screen untouched;
+--      Live paints ST.ClockFace.Current through ClockWords;
+--   3. the control registry (CS.CONTROLS): every entry has its widget; an off
+--      text shows only its switch, its name and a sample; Time as / Warn only
+--      with the time on, Custom's swatch only with a colour fill, Undo only
+--      while held (every control against the live clock: tools/clocke2e.lua);
+--   4. the Texture list (EllesmereUI's, your UI's; at most 12 rows in view),
+--      the reason beside a choice the client cannot draw, the colour picker;
+--   5. When: the line's own switches, no Rest (the Rest text has its own);
+--   6. the Look dropdown on General lists every style, writes db.ui.style and
+--      repaints at once; Use my class colour;
+--   7. the subcommands: /st clock layout (the Bar only), look reset, preview;
+--      Forever's /st clock and /st clock lock as before; TBC's usage;
+--   8. INTEGRATIONS: ST.Integrations.Lines(), the broker switches, the hint,
+--      Forever's EllesmereUI mover switch, "none found";
+--   9. Customise... on the everyday clock pane opens Settings -> Clock;
+--  10. every word the pane draws is ASCII with no bare pipe; the preview and
+--      the scrolling area lie inside the view, every section inside the
+--      scrolling area's width; General's panes inside the view;
+--  11. Forever, under the stub's forever profile: Live in a fight paints
 --      without raising and no font string of the pane holds a secret.
---
--- T116 (clock v2, C5's Text tab): the Text tab replaces Show -- tabs Text,
--- Colours, Frame, Bars, When, Text first. On both flavours (5b): a dropdown per
--- slot of the layout on screen with the line's options (Cooldown on TBC only,
--- "~ model" on Forever) writing text.<layout>.<slot>, per layout; Right 2
--- disabled with its reason at 180 px, enabled at 300 px; Right's Rest / None /
--- Cooldown picks and the line's switches; Time, Size (with Default), Outline,
--- Shadow, Numbers; Labels and Mana as of max; the Forever footnote and the
--- note under the box. Section 5: no Show tab, /st rest (/st clock rest) still
--- drops the rest.
---
--- T119 (SPEC-one-ui 7, re-based): Settings is UI/Settings.lua's on both lines
--- -- the views gain Review (1), General's pane is ST.Settings.panes.general
--- (6, 10), Customise... is the shared MANA CLOCK's clockCustomise on TBC too
--- (9), and TBC's Settings content is 736 x 520 as Forever's (10).
---
--- T142 (docs/tasks/T142-bar-texts-game-frame.md): Bar look on the Bar layout
--- -- Frame (None / Border / Game bar frame; the reason on its button where the
--- client cannot draw it), Font, the texts table (each control writes
--- text.bar.items.<kind>.<field>, the default nil, an off row dimmed), the five
--- presets (one CLOCK_LOOK each), EllesmereUI's textures, mana colour and font;
--- the Text tab has no slot pickers on Bar.
+-- The 36 checks T145c skipped (U4) were ported here (the chips, Live, When's
+-- lock, the Look dropdown, EllesmereUI / LibSharedMedia textures, the Texture
+-- list, the colour picker, the words and places) or replaced by
+-- tools/clocke2e.lua (every Bar / Text / Colour / Frame control and preset);
+-- the Line / Compact slots, tabs and layout buttons are gone with them
+-- (docs/review/T145de-implementer-report.md lists each).
 HARNESS_FLAVOUR = { "tbc", "forever" }
 
 local here = arg[0]:match("^(.*)/[^/]+$")
@@ -91,65 +55,6 @@ local forever = flavour == "forever"
 
 local T = dofile(here .. "/lib/t.lua")
 local check = T.check
-
--- T145c (docs/SPEC-clock-v3.md 5 U3, "The Settings pane"): until U4 rewrites
--- the pane, Settings -> Clock is a minimal one on the new store (presets,
--- Undo, Reset, the moving line, When, the preview, INTEGRATIONS). The checks
--- below test controls and keys that pane no longer has; each is SKIPPED (U4),
--- named in the transcript and in docs/review/T145c-implementer-report.md, and
--- not counted. Its body still runs (under Try), so nothing else is hidden.
-local SKIP_U4 = {
-    ["(Live) paints the line's own face (ST.ClockFace.Current)"] = true,
-    ["Bars: a choice is kept per layout (compact has its own; line's comes back)"] = true,
-    ["Bars: each dropdown and the 5SR thickness write bars.<layout>.*; the clock draws them; Order is Stacked's only"] = true,
-    ["Bars: the choices are this line's (Mana from; no tick; Texture is Bar look's)"] = true,
-    ["Bars: the choices are this line's (the tick; no Mana from; Texture is Bar look's)"] = true,
-    ["Colours: Mana colour writes colors.manaBar (by tone, class, a swatch); the strip keeps its own"] = true,
-    ["Colours: a tone's swatch writes colors.<tone>, on the clock and the preview"] = true,
-    ["Frame: Scale writes frame.<layout>.scale on release (a drag alone writes nothing)"] = true,
-    ["Frame: the background alpha writes panel.fill with the fill's colour"] = true,
-    ["Frame: width and height write frame.<layout>.w / h; each slider names the layout's minimum"] = true,
-    ["Reset to style empties the overrides and keeps the layout"] = true,
-    ["Show: no Show tab; the line's rest switch (/st clock rest) still drops the segment from the rest chip and the broker's look"] = true,
-    ["Show: no Show tab; the line's rest switch (/st rest) still drops the segment from the rest chip and the broker's look"] = true,
-    ["T139 / T142 Bar look: shape, texture, frame, font, height, border, six colours, the texts table and five presets; no Text place"] = true,
-    ["T139 / T142 each control writes bars.<layout>.*; the default writes nil; the clock draws it"] = true,
-    ["T139 a colour opens the game's picker; a move writes it; Cancel puts it back; right-click resets"] = true,
-    ["T139 your UI's bar textures (LibSharedMedia) are listed and drawn; without the host, Flat and why"] = true,
-    ["T140 / T142 with EllesmereUI: its textures listed and drawn; the preset takes Pixels Dark and its mana colour; the font follows it"] = true,
-    ["T142 presets: each writes its look in one CLOCK_LOOK -- Like my EllesmereUI (Soft without it), Words below, Soft pill, Thin line; SpellTuner default clears them"] = true,
-    ["T142 the texts table: Show, Place, Align, X, Y, Size, Colour, Outline write text.bar.items.<kind>.*; the default writes nil; an off row is dimmed; the clock draws it"] = true,
-    ["T144 the Texture list fits: at most 12 rows, the wheel scrolls it, the selected one in view on open; a short list unchanged"] = true,
-    ["Text: FORMAT -- Time, Size (and Default), Outline, Shadow, Numbers write their keys; the preview follows"] = true,
-    ["Text: Labels (out / full) and Mana as 4210/6800 write labels and ofMax"] = true,
-    ["Text: Right 2 is disabled at 180 px with its reason, enabled at 300 px, and then writes right2"] = true,
-    ["Text: Right's picks write the line's switches (Rest on; None leaves them)"] = true,
-    ["Text: Right's picks write the line's switches (Rest on; None leaves them; Cooldown on)"] = true,
-    ["Text: a dropdown per slot of the layout on screen (T142: none on Bar), the line's options (Cooldown listed)"] = true,
-    ["Text: a dropdown per slot of the layout on screen (T142: none on Bar), the line's options (Cooldown not listed, ~ model beside Mana % / Mana / Regen)"] = true,
-    ["Text: a pick writes text.<layout>.<slot>; the clock and the preview follow, each layout its own"] = true,
-    ["Text: no footnote on TBC, and the note under the box"] = true,
-    ["Text: the Forever footnote, and the note under the box"] = true,
-    ["When: Locked is the line's own lock"] = true,
-    ["a layout button saves db.clockLook.layout, CLOCK_LOOK once, the clock and the preview rebuild"] = true,
-    ["back to Flat: the palette is Flat's, the reload line hides, the clock pane says Flat"] = true,
-    ["each chip paints its face, as this line draws one"] = true,
-    ["every titled pane of Settings -> Clock lies inside the view"] = true,
-    ["every word the clock view and the INTEGRATIONS pane draw is ASCII, no bare pipe"] = true,
-    ["picking a style writes db.ui.style and repaints at once (STYLE_CHANGED once); the reload line is UI.Restyle's"] = true,
-    ["selecting it builds the pane: PREVIEW, LAYOUT, the box with six tabs (Text first, then Bar look; no Show)"] = true,
-    ["the chips are the eight of 7.4 after (Live), named as SAMPLES names them"] = true,
-    ["the rule chips paint the preview's five-second rule: 3.0 s left, just cast, regen running"] = true,
-}
-local skippedU4 = 0
-check = function(name, cond, detail)
-    if SKIP_U4[name] then
-        skippedU4 = skippedU4 + 1
-        print(string.format("%-72s skipped (U4)", name))
-        return true
-    end
-    return T.check(name, cond, detail)
-end
 
 dofile(here .. "/wowstub.lua")
 local S = _G.STUB
@@ -213,7 +118,6 @@ S.Fire("PLAYER_ENTERING_WORLD")
 
 local UI = ST.UI or {}
 local CS = ST.ClockSettings or {}
-local CV = ST.ClockView or {}
 local CF = ST.ClockFace or {}
 local W = ST.ClockWidget or {}
 local widget = W.frame
@@ -279,28 +183,6 @@ if widget then
         visCalls[#visCalls + 1] = "Hide from " .. tostring(info and info.name)
         return realHide(self, ...)
     end
-end
-
-local function Over()
-    local l = ST.db and ST.db.clockLook
-    return type(l) == "table" and type(l.over) == "table" and l.over or {}
-end
-local function WidgetLook() return W.view and W.view.look or {} end
-
--- the faces as this line draws them: SAMPLES, with Forever's marks on Forever
-local function LineFace(key)
-    for _, s in ipairs(CF.SAMPLES or {}) do
-        if s.key == key then
-            local f = {}
-            for k, v in pairs(s.face) do f[k] = v end
-            if forever then f.modelled, f.mono, f.timeFmt, f.arrow, f.unstable = true, true, "mss", nil, false end
-            return f
-        end
-    end
-end
-local WARMUP = { mode = "warmup", label = "OOM", known = "pending", tone = "muted" }
-local function Words(face, look)
-    return CF.JoinSegments(CF.Segments(face or WARMUP, look) or CF.Segments(WARMUP, look))
 end
 
 --------------------------------------------------------------------------------
@@ -397,18 +279,19 @@ Try("the Settings group has a Clock view, after General", function()
     return table.concat(ids, ",") == want, table.concat(ids, ",")
 end)
 
-Try("selecting it builds the pane: PREVIEW, LAYOUT, the box with six tabs (Text first, then Bar look; no Show)", function()
+-- T145d (docs/SPEC-clock-v3.md 3, the mockup): one pane, no tabs -- PREVIEW
+-- on top, then, scrolling under it, BAR, TEXTS, PRESETS and WHEN
+Try("selecting it builds the pane: PREVIEW, then BAR, TEXTS, PRESETS, WHEN scrolling under it; no tabs", function()
     ST:SelectView("settings", "clock")
     for _, f in ipairs(S.allFrames) do if f.clockSettings then pane, p = f, f.clockSettings end end
     local g, v = ST:SelectedView()
-    local titles = {}
-    for _, t in ipairs(TitledUnder(pane)) do titles[#titles + 1] = t.title:GetText() end
-    local tabs = {}
-    for _, t in ipairs(CS.TABS or {}) do tabs[#tabs + 1] = t.id end
+    local top, under = {}, {}
+    for _, t in ipairs(TitledUnder(pane)) do top[#top + 1] = t.title:GetText() end
+    for _, t in ipairs(TitledUnder(p.content)) do under[#under + 1] = t.title:GetText() end
     return g == "settings" and v == "clock" and pane ~= nil and pane:IsVisible()
-        and table.concat(titles, ",") == "PREVIEW,LAYOUT" and p.box ~= nil
-        and table.concat(tabs, ",") == "text,look,colours,frame,bars,when" and p.tab == "text",
-        string.format("%s/%s titles %s", tostring(g), tostring(v), table.concat(titles, ","))
+        and table.concat(top, ",") == "PREVIEW" and table.concat(under, ",") == "BAR,TEXTS,PRESETS,WHEN"
+        and CS.TABS == nil and p.box == nil,
+        string.format("%s/%s top %s under %s", tostring(g), tostring(v), table.concat(top, ","), table.concat(under, ","))
 end)
 
 Try("the preview is a frame of its own, not the clock on screen nor a child of it", function()
@@ -418,416 +301,124 @@ Try("the preview is a frame of its own, not the clock on screen nor a child of i
         if up == widget then child = true end
         up, guard = up.parentFrame, guard + 1
     end
-    return f ~= nil and widget ~= nil and f ~= widget and not child and p.view ~= W.view
+    return f ~= nil and widget ~= nil and f ~= widget and not child and p.view ~= W.renderer
 end)
 
 --------------------------------------------------------------------------------
-T.section("2. the chips paint the SAMPLES faces into the preview; the clock is untouched")
+T.section("2. the chips paint the sample faces into the preview; the clock is untouched")
 --------------------------------------------------------------------------------
-Try("each chip paints its face, as this line draws one", function()
-    local before = W.view and W.view:Text()
-    local shownBefore = widget and widget:IsShown()
-    local n0 = #visCalls
-    local bad, n = {}, 0
-    for _, b in ipairs(p.chips) do
-        if b.id ~= "live" then
-            Click(b)
-            n = n + 1
-            local want = Words(LineFace(b.id), p.look)
-            local got = p.view:Text()
-            if got ~= want or p.chip ~= b.id then bad[#bad + 1] = b.id .. ": " .. tostring(got) .. " / " .. want end
-        end
-    end
-    local untouched = W.view:Text() == before and widget:IsShown() == shownBefore and #visCalls == n0
-    return n == 8 and #bad == 0 and untouched,
-        string.format("%d chips, %s; clock untouched %s (%d Show/Hide)", n, table.concat(bad, "; "),
-            tostring(untouched), #visCalls - n0)
-end)
+local function PreviewTime() return p.view:Drawn().text.time.words end
+local function LiveTime() return W.renderer and W.renderer:Drawn().text.time.words end
 
-Try("the chips are the eight of 7.4 after (Live), named as SAMPLES names them", function()
+Try("the chips are In a fight, Running out, Filling, Full, Live", function()
     local names = {}
     for _, b in ipairs(p.chips) do names[#names + 1] = b:GetText() end
-    return table.concat(names, ",") == "(Live),OOM,OOM <20s,bound,hold,warm-up,FULL,rest,ooc", table.concat(names, ",")
+    return table.concat(names, ",") == "In a fight,Running out,Filling,Full,Live", table.concat(names, ",")
 end)
 
-Try("(Live) paints the line's own face (ST.ClockFace.Current)", function()
-    Click(p.chips[1])
-    local okF, face = pcall(CF.Current, GetTime())
-    local want = Words(okF and face or nil, p.look)
+Try("each chip paints its face's words (1:20 with the 5SR line, 0:15 red, FULL 0:45, FULL); the clock is untouched",
+        function()
+    ST.ClockStore.Reset()
+    local before = LiveTime()
+    local shownBefore = widget and widget:IsShown()
+    local n0 = #visCalls
+    local got = {}
+    for _, b in ipairs(p.chips) do
+        if b.id ~= "live" then
+            Click(b) -- a chip paints at once; no tick, so the clock on screen is not repainted by time
+            p.view.step() -- the preview's own line driver, one frame (the world's tick would move the clock)
+            local d = p.view:Drawn()
+            got[#got + 1] = b.id .. "=" .. tostring(d.text.time.words) .. (d.line.shown and "+line" or "")
+        end
+    end
+    local untouched = LiveTime() == before and widget:IsShown() == shownBefore and #visCalls == n0
+    local want = "fight=1:20+line,low=0:15+line,filling=FULL 0:45,full=FULL"
+    Click(p.chips[2])
+    local red = p.view:Drawn().text.time.colour
+    local crit = { ST.ClockFace.ToneRGB("crit") }
+    local isRed = red and math.abs(red[1] - crit[1]) < 1e-6 and math.abs(red[2] - crit[2]) < 1e-6
+    return table.concat(got, ",") == want and untouched and isRed,
+        string.format("%s; clock untouched %s (%d Show/Hide); red %s", table.concat(got, ","), tostring(untouched),
+            #visCalls - n0, tostring(isRed))
+end)
+
+Try("Live paints the line's own face (ST.ClockFace.Current) through ClockWords", function()
+    Click(p.chips[#p.chips])
     Tick(1)
-    okF, face = pcall(CF.Current, GetTime())
-    local want2 = Words(okF and face or nil, p.look)
-    return p.chip == "live" and p.view:Text() == want2, tostring(p.view:Text()) .. " / " .. want .. " / " .. want2
+    CS.PaintPreview(p)
+    local face = CF.Current(GetTime())
+    local want = ST.ClockWords.Build(face, ST.ClockStore.Look(), nil, GetTime(), nil, false).time.text
+    return p.chip == "live" and PreviewTime() == want, tostring(PreviewTime()) .. " / " .. tostring(want)
 end)
 
 --------------------------------------------------------------------------------
-T.section("3. the layout buttons")
+T.section("3. the controls: one registry, an off text shows only its switch")
 --------------------------------------------------------------------------------
-Try("a layout button saves db.clockLook.layout, CLOCK_LOOK once, the clock and the preview rebuild", function()
-    local b
-    for _, x in ipairs(p.layoutButtons) do if x.id == "compact" then b = x end end
-    local n0 = counts.CLOCK_LOOK
-    Click(b)
-    local saved = ST.db.clockLook.layout == "compact"
-    local fired = counts.CLOCK_LOOK - n0
-    local rebuilt = WidgetLook().layout == "compact" and p.look.layout == "compact"
-    local ids = {}
-    for _, x in ipairs(p.layoutButtons) do ids[#ids + 1] = x.id end
-    for _, x in ipairs(p.layoutButtons) do if x.id == "line" then Click(x) end end
-    return saved and fired == 1 and rebuilt and ST.db.clockLook.layout == "line"
-        and table.concat(ids, ",") == table.concat(CV.LAYOUTS, ","),
-        string.format("saved %s fired %d rebuilt %s buttons %s", tostring(saved), fired, tostring(rebuilt),
-            table.concat(ids, ","))
-end)
-
---------------------------------------------------------------------------------
-T.section("4. a control writes db.clockLook.over; the clock rebuilds")
---------------------------------------------------------------------------------
-Try("Colours: a tone's swatch writes colors.<tone>, on the clock and the preview", function()
-    p.box:Select("colours")
-    local row = p.toneRows and p.toneRows.crit
-    local sw
-    for _, b in ipairs(row and row.swatches or {}) do if b.hex == "00ccff" then sw = b end end
-    Click(sw)
-    local o = Over()
-    return sw ~= nil and o.colors and o.colors.crit == "00ccff" and WidgetLook().colors.crit == "00ccff"
-        and p.look.colors.crit == "00ccff"
-end)
-
-Try("Colours: Mana colour writes colors.manaBar (by tone, class, a swatch); the strip keeps its own", function()
-    p.box:Select("colours")
-    local ids = {}
-    for _, it in ipairs(p.manaColour and p.manaColour.items or {}) do ids[#ids + 1] = it.id end
-    local picked = Pick(p.manaColour, "tone")
-    local toneOK = Over().colors and Over().colors.manaBar == "tone" and WidgetLook().colors.manaBar == "tone"
-    local sw
-    for _, b in ipairs(p.manaColourRow and p.manaColourRow.swatches or {}) do if b.hex == "ff8000" then sw = b end end
-    Click(sw)
-    local c = Over().colors and Over().colors.manaBar
-    local fixed = type(c) == "table" and math.abs(c[1] - 1) < 1e-9 and math.abs(c[2] - 0x80 / 255) < 1e-9
-        and p.manaColour.value == "fixed"
-    Click(p.manaColourRow and p.manaColourRow.reset)
-    local back = Over().colors == nil or Over().colors.manaBar == nil
-    return table.concat(ids, ",") == "mana,tone,class,fixed" and picked and toneOK and fixed and back,
-        string.format("items %s, tone %s, fixed %s, back %s", table.concat(ids, ","), tostring(toneOK),
-            tostring(fixed), tostring(back))
-end)
-
-Try("Bars: each dropdown and the 5SR thickness write bars.<layout>.*; the clock draws them; Order is Stacked's only", function()
-    p.box:Select("bars")
-    Pick(p.joinDropdown, "stacked") -- T139: the moving line is the default; Order is Stacked's
-    local orderOn = p.orderDropdown and p.orderDropdown:IsEnabled()
-    local picks = Pick(p.showDropdown, "mana") and Pick(p.showDropdown, "both") and Pick(p.orderDropdown, "fsrOver")
-        and Pick(p.joinDropdown, "veil") and Pick(p.afterDropdown, "empty")
-    Type(p.fsrSlider, "5")
-    local o = Over().bars and Over().bars.line or {}
-    local wl = WidgetLook().bars or {}
-    local okW = o.show == nil and o.join == "veil" and o.order == "fsrOver" and o.after == "empty" and o.fsr == 5
-        and wl.join == "veil" and wl.order == "fsrOver" and wl.after == "empty" and wl.fsr == 5
-        and p.look.bars.join == "veil"
-    -- under One bar the Order dropdown is disabled, says why, and writes nothing
-    local orderOff = p.orderDropdown:IsEnabled() == false
-    Pick(p.orderDropdown, "manaOver")
-    local kept = (Over().bars.line.order == "fsrOver")
-    local tips = table.concat(p.orderDropdown.tooltips or {}, " ")
-    local said = T.Has(tips, "Stacked only")
-    return picks and okW and orderOn and orderOff and kept and said,
-        string.format("picks %s, over join %s order %s after %s fsr %s show %s; order on %s, off %s, kept %s, tip %q",
-            tostring(picks), tostring(o.join), tostring(o.order), tostring(o.after), tostring(o.fsr), tostring(o.show),
-            tostring(orderOn), tostring(orderOff), tostring(kept), tips)
-end)
-
-Try("Bars: the choices are this line's (" .. (forever and "Mana from; no tick" or "the tick; no Mana from") .. "; Texture is Bar look's)", function()
-    local function Ids(dd)
-        local ids = {}
-        for _, it in ipairs(dd and dd.items or {}) do ids[#ids + 1] = it.id end
-        return table.concat(ids, ",")
+Try("every CS.CONTROLS entry has its widget, a write, a visible rule and the fields it changes", function()
+    local bad = {}
+    for _, c in ipairs(CS.CONTROLS) do
+        if not (p.widgets[c.id] and type(c.write) == "function" and type(c.visible) == "function"
+            and type(c.affects) == "table" and #c.affects > 0 and type(c.values) == "table" and #c.values > 1) then
+            bad[#bad + 1] = c.id
+        end
     end
-    local show, join, order = Ids(p.showDropdown), Ids(p.joinDropdown), Ids(p.orderDropdown)
-    local after, mana = Ids(p.afterDropdown), p.manaDropdown and Ids(p.manaDropdown)
-    local function Texts(dd)
-        local t = {}
-        for _, it in ipairs(dd and dd.items or {}) do t[#t + 1] = it.text end
-        return table.concat(t, "/")
-    end
-    local labels = {}
-    for _, fs in ipairs(FontStrings(p.tabFrames.bars)) do labels[fs:GetText() or ""] = true end
-    local words = Texts(p.showDropdown) == "Mana + 5SR/Mana only/5SR only/None"
-        and Texts(p.joinDropdown) == "Stacked/One bar/Swipe chip/Moving line"
-        and Texts(p.orderDropdown) == "Mana over 5SR/5SR over mana"
-        and labels["Bars"] and labels["Join"] and labels["Order"] and labels["After the rule"]
-        and not labels["Texture"] and not labels["Show"]
-    local common = show == "both,mana,fsr,none" and join == "stacked,veil,chip,sweep" and order == "manaOver,fsrOver"
-        and words
-    local own
-    local afterTip = table.concat(p.afterDropdown and p.afterDropdown.tooltips or {}, " ")
-    if forever then
-        own = after == "green,empty" and mana == "game,model"
-            and Texts(p.manaDropdown) == "The game/The model" and labels["Mana from"]
-            and T.Has(afterTip, ST.ClockView.TICK_REFUSED)
-            and T.Has(p.afterNote and p.afterNote:GetText(), "cannot be learned")
-    else
-        own = after == "green,empty,tick" and mana == nil and not labels["Mana from"]
-            and not T.Has(afterTip, "cannot be learned")
-    end
-    return common and own, string.format("show %s join %s order %s after %s mana %s; words %s, after tip %q",
-        show, join, order, after, tostring(mana), tostring(words), afterTip)
+    return #bad == 0 and #CS.CONTROLS == 68, #CS.CONTROLS .. " controls; " .. table.concat(bad, ", ")
 end)
 
-Try("Bars: a choice is kept per layout (compact has its own; line's comes back)", function()
-    for _, x in ipairs(p.layoutButtons) do if x.id == "compact" then Click(x) end end
-    local fresh = p.joinDropdown.value == "sweep" -- T139's default
-    Pick(p.joinDropdown, "chip")
-    local compactSet = Over().bars.compact and Over().bars.compact.join == "chip"
-    for _, x in ipairs(p.layoutButtons) do if x.id == "line" then Click(x) end end
-    local lineBack = p.joinDropdown.value == "veil" and WidgetLook().bars.join == "veil"
-    return fresh and compactSet and lineBack, string.format("fresh %s, compact %s, line back %s", tostring(fresh),
-        tostring(compactSet), tostring(lineBack))
-end)
-
-Try("Frame: width and height write frame.<layout>.w / h; each slider names the layout's minimum", function()
-    p.box:Select("frame")
-    Type(p.hSlider, "44")
-    Type(p.wSlider, "260")
-    local fr = Over().frame and Over().frame.line or {}
-    local mw, mh = p.view:Minimum()
-    local wl = WidgetLook().frame or {}
-    local okF = fr.w == 260 and fr.h == 44 and wl.w == 260 and wl.h == 44
-    local okMin = p.wMin and p.wMin:GetText() == "min " .. mw and p.hMin and p.hMin:GetText() == "min " .. mh
-    -- the green mark sits on the track at the minimum
-    local function MarkAt(slider, min)
-        local mark = slider and slider.minMark
-        local pt = mark and mark.points and mark.points[1]
-        if not (pt and mark:IsShown()) then return false end
-        local want = slider:GetWidth() * (min - slider.low) / (slider.high - slider.low)
-        local r, g, b = UI.RGB("good")
-        local c = mark.color or {}
-        return pt[1] == "CENTER" and pt[2] == slider and pt[3] == "LEFT" and math.abs((pt[4] or 0) - want) < 1e-6
-            and (c[1] == nil or (math.abs(c[1] - r) < 1e-6 and math.abs(c[2] - g) < 1e-6 and math.abs(c[3] - b) < 1e-6))
+local function Row(kind) for _, r in ipairs(p.textRows) do if r.kind == kind then return r end end end
+Try("an off text shows its switch, its name and a sample; on, its seven fields; the store keeps them", function()
+    ST.ClockStore.Reset()
+    local row = Row("pct")
+    local fields = { "place", "align", "x", "y", "size", "colour", "outline" }
+    local function Shown(on)
+        for _, f in ipairs(fields) do
+            if p.widgets["texts.pct." .. f]:IsShown() ~= on then return false end
+        end
+        return true
     end
-    local marks = MarkAt(p.wSlider, mw) and MarkAt(p.hSlider, mh)
-    local note, green = false, false
-    for _, fs in ipairs(FontStrings(p.tabFrames.frame)) do
-        if fs:GetText() == "Width, height and scale are kept per layout." then note = true end
-        if fs:GetText() == "Green mark: this layout's minimum at this text size." then green = true end
-    end
-    return okF and okMin and marks and note and green, string.format("over %s x %s, min %s / %s (%s x %s), marks %s, notes %s / %s",
-        tostring(fr.w), tostring(fr.h), tostring(p.wMin and p.wMin:GetText()), tostring(p.hMin and p.hMin:GetText()),
-        tostring(mw), tostring(mh), tostring(marks), tostring(note), tostring(green))
+    local off = not ST.ClockStore.Look().texts.pct.on and row.on:IsShown() and row.sample:IsShown()
+        and row.sample:GetText() == "60%" and Shown(false)
+    ST.ClockStore.SetText("pct", "size", 14)
+    row.on:SetChecked(true); row.on:GetScript("OnClick")(row.on)
+    local on = ST.ClockStore.Look().texts.pct.on and Shown(true) and not row.sample:IsShown()
+        and p.widgets["texts.pct.size"]:GetText() == "14"
+    row.on:SetChecked(false); row.on:GetScript("OnClick")(row.on)
+    local kept = ST.ClockStore.Look().texts.pct.size == 14 and Shown(false)
+    ST.ClockStore.Reset()
+    return off and on and kept, string.format("off %s on %s kept %s", tostring(off), tostring(on), tostring(kept))
 end)
 
-Try("Frame: Scale writes frame.<layout>.scale on release (a drag alone writes nothing)", function()
-    local n0 = counts.CLOCK_LOOK
-    if p.scaleSlider.onValueChangedFn then p.scaleSlider.onValueChangedFn(150) end
-    local dragged = (Over().frame.line.scale == nil) and counts.CLOCK_LOOK == n0
-    Type(p.scaleSlider, "150")
-    local released = Over().frame.line.scale == 150 and WidgetLook().frame.scale == 150
-        and math.abs(widget:GetScale() - 1.5) < 1e-9
-    Type(p.scaleSlider, "100")
-    return dragged and released, string.format("drag wrote nothing %s, release %s", tostring(dragged),
-        tostring(released))
-end)
-
-Try("Frame: the background alpha writes panel.fill with the fill's colour", function()
-    Type(p.alphaSlider, "50")
-    local f = Over().panel and Over().panel.fill
-    return type(f) == "table" and math.abs((f[4] or 0) - 0.5) < 1e-9
-        and math.abs((UI.SkinColour(WidgetLook().panel.fill) or {})[4] - 0.5) < 1e-9
-end)
-
-Try("the rule chips paint the preview's five-second rule: 3.0 s left, just cast, regen running", function()
-    local names, res = {}, {}
-    for _, b in ipairs(p.ruleChips or {}) do names[#names + 1] = b:GetText() end
-    ST.ClockView.ResetToStyle()
-    for _, L in ipairs(ST.ClockView.LAYOUTS) do ST.ClockView.Set("bars." .. L .. ".join", "stacked") end -- T139
-    Click(p.chips[2]) -- a sample face
-    for _, b in ipairs(p.ruleChips or {}) do
-        Click(b)
-        res[b.id] = p.view.strip and p.view.strip.value
-    end
-    local okR = math.abs((res.rule or -1) - 2) < 0.05 and math.abs((res.cast or -1) - 0) < 0.05
-        and math.abs((res.regen or -1) - 5) < 1e-9
-    return table.concat(names, ",") == "in the rule, 3.0 s left,just cast,regen running" and okR,
-        string.format("%s: rule %s cast %s regen %s", table.concat(names, ","), tostring(res.rule),
-            tostring(res.cast), tostring(res.regen))
+Try("Time as and Warn colours only while the time is on; Custom's swatch only while the fill is a colour; "
+        .. "Undo only while a preset's undo is held", function()
+    ST.ClockStore.Reset()
+    local tOn = p.widgets.timeFmt:IsShown() and p.widgets.warn:IsShown()
+    ST.ClockStore.SetText("time", "on", false)
+    local tOff = not p.widgets.timeFmt:IsShown() and not p.widgets.warn:IsShown()
+    ST.ClockStore.Reset()
+    local noSwatch = not p.widgets.fillColour:IsShown()
+    for _, b in ipairs(p.widgets.fill.buttons) do if b.id == "custom" then Click(b) end end
+    local custom = p.widgets.fillColour:IsShown() and ST.ClockStore.Look().fill == CS.CUSTOM_FILL
+    local noUndo = not p.undoButton:IsShown()
+    for _, b in ipairs(p.presetButtons) do if b.id == "ellesmere" then Click(b) end end
+    local undo = p.undoButton:IsShown()
+    Click(p.undoButton)
+    local back = not p.undoButton:IsShown() and ST.ClockStore.Look().fill == CS.CUSTOM_FILL
+    ST.ClockStore.Reset()
+    return tOn and tOff and noSwatch and custom and noUndo and undo and back,
+        string.format("time %s/%s swatch %s/%s undo %s/%s/%s", tostring(tOn), tostring(tOff), tostring(noSwatch),
+            tostring(custom), tostring(noUndo), tostring(undo), tostring(back))
 end)
 
 --------------------------------------------------------------------------------
--- T139: Bar look
+T.section("4. textures, the reason beside a choice, the colour picker")
 --------------------------------------------------------------------------------
-local CVw = ST.ClockView
-local function Lay() return WidgetLook().layout or "line" end
-local function OverBar(f) local b = Over().bars and Over().bars[Lay()]; return b and b[f] end
+local function Pane() return ST.ClockStore.Look() end
 
-Try("T139 / T142 Bar look: shape, texture, frame, font, height, border, six colours, the texts table and five presets; "
-        .. "no Text place", function()
-    ST.ClockView.ResetToStyle()
-    ST.ClockView.SetLayout("bar")
-    p.box:Select("look")
-    local ids = {}
-    for _, it in ipairs(p.textureDropdown and p.textureDropdown.items or {}) do ids[#ids + 1] = it.id end
-    local function Ids(list) local out = {}; for _, b in ipairs(list or {}) do out[#out + 1] = b.id end; return table.concat(out, ",") end
-    local rows = {}
-    for _, r in ipairs(p.itemRows or {}) do rows[#rows + 1] = r.kind end
-    local shown = p.itemsFrame and p.itemsFrame:IsShown() and p.frameButtons[1]:IsShown() and p.fontButtons[1]:IsShown()
-    local okA = Ids(p.shapeButtons) == "rect,round,pill,thin" and Ids(p.frameButtons) == "none,border,game"
-        and Ids(p.fontButtons) == "eui,st" and p.placeButtons == nil
-        and table.concat(ids, ",") == "soft,flat,smooth,gradient,gloss,striped,minimal,statusbar,raid"
-        and #(p.colourButtons or {}) == 6 and Ids(p.presetButtons) == "default,eui,below,pill,thin"
-        and table.concat(rows, ",") == table.concat(CVw.ITEM_KINDS, ",")
-        and p.heightSlider ~= nil and p.borderSlider ~= nil and shown
-        -- the reason a client cannot draw the game frame is on its button (TBC has no such art)
-        and ((forever and p.frameWhy == nil) or (not forever and p.frameWhy == CVw.GAME_REFUSED
-            and table.concat(p.frameButtons[3].tooltips or {}, " "):find(CVw.GAME_REFUSED, 1, true) ~= nil))
-    -- the Bar layout's own controls hide on Line
-    ST.ClockView.SetLayout("line")
-    local hidden = not p.itemsFrame:IsShown() and not p.frameButtons[1]:IsShown() and not p.fontButtons[1]:IsShown()
-    ST.ClockView.ResetToStyle()
-    return okA and hidden, table.concat(ids, ",") .. " / " .. Ids(p.presetButtons) .. " / " .. table.concat(rows, ",")
-        .. string.format(" shown %s hidden %s", tostring(shown), tostring(hidden))
-end)
-
-Try("T139 / T142 each control writes bars.<layout>.*; the default writes nil; the clock draws it", function()
-    ST.ClockView.ResetToStyle()
-    ST.ClockView.SetLayout("bar")
-    p.box:Select("look")
-    local function ByID(list, id) for _, b in ipairs(list) do if b.id == id then return b end end end
-    Click(ByID(p.shapeButtons, "pill"))
-    local pill = OverBar("shape") == "pill" and WidgetLook().bars.shape == "pill"
-    Click(ByID(p.shapeButtons, "round"))
-    local back = OverBar("shape") == nil
-    Pick(p.textureDropdown, "gloss")
-    local tex = OverBar("texture") == "gloss" and W.view.texturePath == CVw.MEDIA .. "Gloss"
-    Click(ByID(p.frameButtons, "border"))
-    local border = OverBar("frame") == "border" and W.view.frameMode == "border" and p.borderSlider:IsEnabled() ~= false
-    Type(p.borderSlider, "2")
-    Click(ByID(p.frameButtons, "game"))
-    local game = OverBar("frame") == nil and OverBar("border") == 2 and p.borderSlider:IsEnabled() == false
-    Click(ByID(p.fontButtons, "st"))
-    local font = OverBar("font") == "st" and WidgetLook().refused["bars.bar.font"] == nil
-    Type(p.heightSlider, "12")
-    local height = OverBar("height") == 12 and W.view.parent:GetHeight() == 12
-    Click(ByID(p.shapeButtons, "thin"))
-    local thin = OverBar("shape") == "thin" and OverBar("height") == 4
-    ST.ClockView.ResetToStyle()
-    ST.ClockView.SetLayout("line")
-    return pill and back and tex and border and game and font and height and thin, string.format(
-        "pill %s back %s tex %s border %s game %s font %s height %s thin %s", tostring(pill), tostring(back),
-        tostring(tex), tostring(border), tostring(game), tostring(font), tostring(height), tostring(thin))
-end)
-
-local function ItemOver(kind, f)
-    local t = Over().text
-    local it = type(t) == "table" and t.bar and t.bar.items and t.bar.items[kind]
-    return it and it[f]
-end
-local function Row(kind) for _, r in ipairs(p.itemRows or {}) do if r.kind == kind then return r end end end
-
-Try("T142 the texts table: Show, Place, Align, X, Y, Size, Colour, Outline write text.bar.items.<kind>.*; the default "
-        .. "writes nil; an off row is dimmed; the clock draws it", function()
-    ST.ClockView.ResetToStyle()
-    ST.ClockView.SetLayout("bar")
-    p.box:Select("look")
-    local r = Row("pct")
-    local dim0 = r.place:GetAlpha() < 1 and r.on:GetChecked() == false
-    r.on:SetChecked(true)
-    Click(r.on)
-    local on = ItemOver("pct", "on") == true and r.place:GetAlpha() == 1 and W.view.active.items.pct:IsShown()
-    -- above -> below (step), back (right-click), and on to inside
-    Click(r.place)
-    local below = ItemOver("pct", "place") == "below" and r.place:GetText() == "Below"
-    r.place:GetScript("OnClick")(r.place, "RightButton")
-    local above = ItemOver("pct", "place") == nil and r.place:GetText() == "Above"
-    Click(r.align)
-    local align = ItemOver("pct", "align") == "left"
-    r.x:SetText("7")
-    r.x:GetScript("OnEnterPressed")(r.x)
-    r.y:SetText("-99")
-    r.y:GetScript("OnEnterPressed")(r.y)
-    r.size:SetText("14")
-    r.size:GetScript("OnEnterPressed")(r.size)
-    local nums = ItemOver("pct", "x") == 7 and ItemOver("pct", "y") == -20 and ItemOver("pct", "size") == 14
-        and r.y:GetText() == "-20" and select(2, W.view.active.items.pct:GetFont()) == 14
-    Click(r.outline)
-    local outline = ItemOver("pct", "outline") == "outline" and select(3, W.view.active.items.pct:GetFont()) == "OUTLINE"
-    -- the colour through the game's picker, RGB as six hex digits; right-click resets
-    local info
-    local saved = rawget(_G, "ColorPickerFrame")
-    _G.ColorPickerFrame = {
-        SetupColorPickerAndShow = function(_, i) info = i end,
-        GetColorRGB = function() return 1, 0.5, 0 end,
-        GetColorAlpha = function() return 1 end,
-    }
-    ST.API.Invalidate("ColorPickerFrame")
-    Click(r.colour)
-    if info then info.swatchFunc() end
-    local colour = ItemOver("pct", "colour") == "FF8000"
-        and math.abs(W.view.active.items.pct.textColor[2] - 0x80 / 255) < 1e-6
-    r.colour:GetScript("OnClick")(r.colour, "RightButton")
-    local reset = ItemOver("pct", "colour") == nil
-    _G.ColorPickerFrame = saved
-    ST.API.Invalidate("ColorPickerFrame")
-    r.on:SetChecked(false)
-    Click(r.on)
-    local dim1 = ItemOver("pct", "on") == nil and r.place:GetAlpha() < 1 and not W.view.active.items.pct:IsShown()
-    ST.ClockView.ResetToStyle()
-    ST.ClockView.SetLayout("line")
-    return dim0 and on and below and above and align and nums and outline and colour and reset and dim1, string.format(
-        "dim %s on %s below %s above %s align %s nums %s outline %s colour %s reset %s dim again %s", tostring(dim0),
-        tostring(on), tostring(below), tostring(above), tostring(align), tostring(nums), tostring(outline),
-        tostring(colour), tostring(reset), tostring(dim1))
-end)
-
-local function Preset(id) for _, b in ipairs(p.presetButtons) do if b.id == id then Click(b) end end end
-local function Near3(c, r, g, b)
-    return type(c) == "table" and math.abs(c[1] - r) < 1e-6 and math.abs(c[2] - g) < 1e-6 and math.abs(c[3] - b) < 1e-6
-end
-
-Try("T142 presets: each writes its look in one CLOCK_LOOK -- Like my EllesmereUI (Soft without it), Words below, "
-        .. "Soft pill, Thin line; SpellTuner default clears them", function()
-    ST.ClockView.ResetToStyle()
-    ST.ClockView.SetLayout("bar")
-    p.box:Select("look")
-    local n0 = counts.CLOCK_LOOK
-    Preset("eui")
-    local once = counts.CLOCK_LOOK - n0 == 1
-    local l = WidgetLook()
-    local it = l.items
-    local o = Over()
-    local eui = OverBar("frame") == nil and OverBar("shape") == nil and OverBar("texture") == "soft"
-        and OverBar("height") == nil and OverBar("font") == nil and OverBar("show") == "mana"
-        and l.frame.w == 260 and Near3(o.colors and o.colors.manaBar, 0, 0x8C / 255, 1)
-        and Near3(o.bar and o.bar.back, 0x11 / 255, 0x11 / 255, 0x11 / 255) and math.abs(o.bar.back[4] - 0.75) < 1e-6
-        and it.mana.on and it.mana.place == "inside" and it.mana.align == "center" and it.mana.y == 2
-        and it.mana.size == 15 and it.mana.colour == "E3E3E3" and it.mana.outline == "outline"
-        and not it.time.on and not it.mp5.on and not it.label.on
-    Preset("below")
-    l, it = WidgetLook(), WidgetLook().items
-    local below = l.bars.show == "both" and l.bars.join == "sweep" and l.frame.w == 260
-        and it.label.on and it.label.place == "below" and it.label.align == "left" and it.label.x == 2 and it.label.y == -2
-        and it.time.on and it.time.align == "right" and it.time.x == -2 and it.mana.on and it.mana.size == 15
-        and not it.mp5.on
-    Preset("pill")
-    l, it = WidgetLook(), WidgetLook().items
-    local pill = l.bars.shape == "pill" and l.bars.texture == "gloss" and l.bars.height == 18 and l.bars.frame == "border"
-        and it.label.on and it.label.place == "inside" and it.time.on and it.time.place == "inside"
-        and it.time.align == "right" and not it.mana.on and not it.mp5.on and l.frame.w == 200
-    Preset("thin")
-    l, it = WidgetLook(), WidgetLook().items
-    local thin = l.bars.shape == "thin" and l.bars.height == 4 and l.bars.frame == "none" and l.colors.manaBar == "tone"
-        and it.label.on and it.label.place == "above" and it.time.place == "above" and not it.mana.on
-    Preset("default")
-    local cleared = next(Over().bars and Over().bars[Lay()] or {}) == nil and (Over().colors == nil or next(Over().colors) == nil)
-        and Over().text == nil and Over().frame == nil and Over().bar == nil
-    ST.ClockView.SetLayout("line")
-    return once and eui and below and pill and thin and cleared, string.format(
-        "once %s eui %s below %s pill %s thin %s cleared %s", tostring(once), tostring(eui), tostring(below),
-        tostring(pill), tostring(thin), tostring(cleared))
-end)
-
-Try("T140 / T142 with EllesmereUI: its textures listed and drawn; the preset takes Pixels Dark and its mana colour; "
-        .. "the font follows it", function()
-    ST.ClockView.ResetToStyle()
+-- T140 (ported, T145d): EllesmereUI's textures listed and drawn; its preset
+-- takes its mana colour; the font follows it
+Try("with EllesmereUI: its textures listed and drawn, its preset takes its mana colour, the font follows it",
+        function()
+    ST.ClockStore.Reset()
     local saved, savedParent = rawget(_G, "EllesmereUI"), ST.EUIParent
     local dir = "Interface\\AddOns\\EllesmereUI\\media\\textures\\"
     _G.EllesmereUI = {
@@ -839,98 +430,72 @@ Try("T140 / T142 with EllesmereUI: its textures listed and drawn; the preset tak
         GetPowerColor = function(key) if key == "MANA" then return { r = 0, g = 0.55, b = 1 } end end,
     }
     ST.EUIParent = { GetFontPath = function() return "Fonts\\EUI.ttf" end }
-    ST.ClockView.SetLayout("bar")
-    p.box:Select("look")
     CS.Refresh(p)
     local texts = {}
     for _, it in ipairs(p.textureDropdown.items) do texts[#texts + 1] = it.id .. "=" .. it.text end
     local listed = table.concat(texts, "/"):find("eui:atrocity=Atrocity (EllesmereUI)/eui:pixels-dark=Pixels Dark (EllesmereUI)", 1, true) ~= nil
-    -- the default draws Pixels Dark itself while EllesmereUI answers
-    local def = W.view.texturePath == dir .. "pixels-dark.tga" and select(1, W.view.active.items.time:GetFont()) == "Fonts\\EUI.ttf"
-    Preset("eui")
-    local o = Over()
-    local took = OverBar("texture") == nil and W.view.texturePath == dir .. "pixels-dark.tga"
-        and Near3(o.colors and o.colors.manaBar, 0, 0.55, 1) and W.view.active.items.mana:IsShown()
-        and select(1, W.view.active.items.mana:GetFont()) == "Fonts\\EUI.ttf"
-    Preset("default")
-    _G.EllesmereUI = nil
-    ST.EUIParent = nil
-    ST.ClockView.Set("bars.bar.texture", "eui:pixels-dark")
-    local look = WidgetLook()
-    local flat = W.view.texturePath == CVw.TEXTURES.flat and look.refused["bars.bar.texture"] == CVw.EUI_MISSING
-        and look.refused["bars.bar.font"] == CVw.FONT_EUI_MISSING
-    _G.EllesmereUI = saved
-    ST.EUIParent = savedParent
-    ST.ClockView.ResetToStyle()
-    ST.ClockView.SetLayout("line")
-    return listed and def and took and flat, string.format("listed %s default %s took %s flat %s (%s)",
-        tostring(listed), tostring(def), tostring(took), tostring(flat), table.concat(texts, "/"))
+    -- a host arriving is seen by the pane's own repaint (CS.Refresh) -- the
+    -- clock on screen repaints on its next CLOCK_LOOK
+    local live = p.view:Drawn()
+    local def = live.bar.texture == dir .. "pixels-dark.tga" and live.text.time.face == "Fonts\\EUI.ttf"
+        and p.notes.texture:GetText() == "" and p.notes.font:GetText() == ""
+    Pick(p.textureDropdown, "eui:atrocity")
+    local picked = Pane().texture == "eui:atrocity" and W.renderer:Drawn().bar.texture == dir .. "atrocity.tga"
+    for _, b in ipairs(p.presetButtons) do if b.id == "ellesmere" then Click(b) end end
+    local took = Pane().fill == "008CFF" and Pane().width == 260
+    _G.EllesmereUI, ST.EUIParent = saved, savedParent
+    ST.ClockStore.Reset()
+    return listed and def and picked and took, string.format("listed %s default %s picked %s took %s (%s)",
+        tostring(listed), tostring(def), tostring(picked), tostring(took), table.concat(texts, "/"))
 end)
 
-Try("T139 a colour opens the game's picker; a move writes it; Cancel puts it back; right-click resets", function()
-    ST.ClockView.ResetToStyle()
-    p.box:Select("look")
-    local info
-    local cur = { 0.1, 0.2, 0.3, 0.5 }
-    local saved = rawget(_G, "ColorPickerFrame")
-    _G.ColorPickerFrame = {
-        SetupColorPickerAndShow = function(_, i) info = i end,
-        GetColorRGB = function() return cur[1], cur[2], cur[3] end,
-        GetColorAlpha = function() return cur[4] end,
-    }
-    ST.API.Invalidate("ColorPickerFrame")
-    local edge
-    for _, b in ipairs(p.colourButtons) do if b.key == "colors.edge" then edge = b end end
-    Click(edge)
-    local opened = info ~= nil and info.hasOpacity == true and info.r == 0 and info.g == 0 and info.b == 0
-    if info then info.swatchFunc() end
-    local c = Over().colors and Over().colors.edge
-    local moved = type(c) == "table" and math.abs(c[1] - 0.1) < 1e-9 and math.abs(c[4] - 0.5) < 1e-9
-        and W.view.barEdge.color[3] == 0.3
-    if info then info.cancelFunc() end
-    c = Over().colors and Over().colors.edge
-    local cancelled = type(c) == "table" and c[1] == 0 and c[2] == 0 and c[3] == 0
-    edge:GetScript("OnClick")(edge, "RightButton")
-    local reset = Over().colors == nil or Over().colors.edge == nil
-    _G.ColorPickerFrame = saved
-    ST.API.Invalidate("ColorPickerFrame")
-    return opened and moved and cancelled and reset, string.format("opened %s moved %s cancelled %s reset %s",
-        tostring(opened), tostring(moved), tostring(cancelled), tostring(reset))
+-- spec 2.6: a choice the client cannot honour shows the reason beside it and
+-- stays clickable (the choice kept for when it can be drawn)
+Try("without EllesmereUI: Texture and Font keep the choice, draw Soft and SpellTuner's font, the reason beside each",
+        function()
+    ST.ClockStore.Reset()
+    local saved, savedParent, savedSkin = rawget(_G, "EllesmereUI"), ST.EUIParent, ST.EUISkin
+    _G.EllesmereUI, ST.EUIParent, ST.EUISkin = nil, nil, nil
+    CS.Refresh(p)
+    local CB = ST.ClockBar
+    local live = p.view:Drawn()
+    local ok = Pane().texture == "eui:pixels-dark" and Pane().font == "eui" and live.bar.texture == CB.TEXTURES.soft
+        and p.notes.texture:GetText() == CB.EUI_TEXTURE_MISSING and p.notes.font:GetText() == CB.FONT_EUI_MISSING
+        and p.textureDropdown:IsShown() and p.widgets.font:IsShown()
+    _G.EllesmereUI, ST.EUIParent, ST.EUISkin = saved, savedParent, savedSkin
+    CS.Refresh(p)
+    return ok, tostring(p.notes.texture:GetText()) .. " / " .. tostring(p.notes.font:GetText())
 end)
 
-Try("T139 your UI's bar textures (LibSharedMedia) are listed and drawn; without the host, Flat and why", function()
-    ST.ClockView.ResetToStyle()
+-- T139 (ported): your UI's bar textures (LibSharedMedia)
+Try("your UI's bar textures (LibSharedMedia) are listed and drawn; without the host, Flat and the reason", function()
+    ST.ClockStore.Reset()
     local savedLS = rawget(_G, "LibStub")
     local LSM = {
         List = function(_, kind) return kind == "statusbar" and { "Norm", "Clean" } or {} end,
         Fetch = function(_, kind, name) return "Interface\\AddOns\\Host\\" .. name end,
     }
     _G.LibStub = { GetLibrary = function(_, name) if name == "LibSharedMedia-3.0" then return LSM end end }
-    p.box:Select("look")
     CS.Refresh(p)
     local texts = {}
     for _, it in ipairs(p.textureDropdown.items) do texts[#texts + 1] = it.text end
     local listed = table.concat(texts, "/"):find("Clean (your UI)/Norm (your UI)", 1, true) ~= nil
     Pick(p.textureDropdown, "lsm:Norm")
-    local drawn = OverBar("texture") == "lsm:Norm" and W.view.texturePath == "Interface\\AddOns\\Host\\Norm"
+    local drawn = Pane().texture == "lsm:Norm" and W.renderer:Drawn().bar.texture == "Interface\\AddOns\\Host\\Norm"
     _G.LibStub = nil
-    ST.ClockView.Set("bars." .. Lay() .. ".texture", "lsm:Norm")
-    local look = WidgetLook()
-    local flat = W.view.texturePath == CVw.TEXTURES.flat
-        and look.refused["bars." .. look.layout .. ".texture"] == CVw.LSM_MISSING
+    CS.Refresh(p)
+    local flat = p.view:Drawn().bar.texture == ST.ClockBar.TEXTURES.flat
+        and p.notes.texture:GetText() == ST.ClockBar.LSM_MISSING
     _G.LibStub = savedLS
-    ST.ClockView.ResetToStyle()
+    ST.ClockStore.Reset()
     return listed and drawn and flat, string.format("listed %s drawn %s flat %s (%s)", tostring(listed),
         tostring(drawn), tostring(flat), table.concat(texts, "/"))
 end)
 
--- T144 (item 1): a long list fits -- at most UI.DROPDOWN_ROWS rows in view,
--- the wheel scrolls it, a bar says where it is, the selected entry is in view
--- on open; a short list is as before (every row, no bar).
-Try("T144 the Texture list fits: at most 12 rows, the wheel scrolls it, the selected one in view on open; "
-        .. "a short list unchanged", function()
-    ST.ClockView.ResetToStyle()
-    ST.ClockView.SetLayout("bar")
+-- T144 (ported): a long list fits -- at most UI.DROPDOWN_ROWS rows in view,
+-- the wheel scrolls it, the selected entry in view on open
+Try("the Texture list fits: at most 12 rows, the wheel scrolls it, the selected one in view on open", function()
+    ST.ClockStore.Reset()
     local savedLS = rawget(_G, "LibStub")
     local names = {}
     for i = 1, 30 do names[i] = string.format("Host%02d", i) end
@@ -939,7 +504,6 @@ Try("T144 the Texture list fits: at most 12 rows, the wheel scrolls it, the sele
         Fetch = function(_, kind, name) return "Interface\\AddOns\\Host\\" .. name end,
     }
     _G.LibStub = { GetLibrary = function(_, name) if name == "LibSharedMedia-3.0" then return LSM end end }
-    p.box:Select("look")
     CS.Refresh(p)
     local dd = p.textureDropdown
     local n = #dd.items
@@ -956,279 +520,105 @@ Try("T144 the Texture list fits: at most 12 rows, the wheel scrolls it, the sele
     for i, it in ipairs(dd.items) do if it.id == "lsm:Host28" then sel = i end end
     local selIn = false
     for _, i in ipairs(view) do if i == sel then selIn = true end end
-    local h, vis0 = dd.list:GetHeight(), dd.visible
     local fits = n > 12 and #view == dd.visible and dd.visible <= ST.UI.DROPDOWN_ROWS and dd.visible >= 3
-        and h == dd.visible * 17 + 3 and dd.scrollBar:IsShown()
-    -- the wheel: down one row, up past the top stops at the top
-    local off0 = dd.offset
+        and dd.scrollBar:IsShown()
     local wheel = dd.list:GetScript("OnMouseWheel")
-    wheel(dd.list, 1)
-    local up = dd.offset == math.max(0, off0 - 1)
     for _ = 1, 50 do wheel(dd.list, 1) end
     local top = dd.offset == 0 and InView()[1] == 1
     for _ = 1, 50 do wheel(dd.list, -1) end
     local bottom = dd.offset == n - dd.visible and InView()[#InView()] == n
-    -- a row in view still picks
     local picked = Pick(dd, dd.items[n].id) and not dd.list:IsShown()
     _G.LibStub = savedLS
-    CS.Refresh(p)
-    -- a short list: every row, no bar
-    local short = ST.UI.CreateDropdown(UIParent, 100, 18, function() end)
-    short:SetItems({ { id = 1, text = "a" }, { id = 2, text = "b" }, { id = 3, text = "c" } })
-    short:GetScript("OnClick")(short)
-    local shortOK = short.visible == 3 and short.list:GetHeight() == 3 * 17 + 3 and not short.scrollBar:IsShown()
-        and short.rows[1]:IsShown() and short.rows[3]:IsShown()
-    short:Close()
-    ST.ClockView.ResetToStyle()
-    return open and selIn and fits and up and top and bottom and picked and shortOK, string.format(
-        "n %d open %s view %d (visible %s) sel %s in %s height %s fits %s up %s top %s bottom %s picked %s short %s",
-        n, tostring(open), #view, tostring(vis0), tostring(sel), tostring(selIn), tostring(h), tostring(fits),
-        tostring(up), tostring(top), tostring(bottom), tostring(picked), tostring(shortOK))
+    ST.ClockStore.Reset()
+    return open and selIn and fits and top and bottom and picked, string.format(
+        "n %d open %s view %d sel %s in %s fits %s top %s bottom %s picked %s", n, tostring(open), #view,
+        tostring(sel), tostring(selIn), tostring(fits), tostring(top), tostring(bottom), tostring(picked))
 end)
 
-Try("Reset to style empties the overrides and keeps the layout", function()
-    ST.ClockView.SetLayout("bar")
+-- T139 (ported): the game's colour picker; one move is one write; Cancel puts
+-- the colour back; right-click is SpellTuner's
+Try("a colour opens the game's picker; a move writes it (one CLOCK_LOOK); Cancel puts it back; right-click "
+        .. "resets", function()
+    ST.ClockStore.Reset()
+    local info
+    local cur = { 0.1, 0.2, 0.3, 0.5 }
+    local saved = rawget(_G, "ColorPickerFrame")
+    _G.ColorPickerFrame = {
+        SetupColorPickerAndShow = function(_, i) info = i end,
+        GetColorRGB = function() return cur[1], cur[2], cur[3] end,
+        GetColorAlpha = function() return cur[4] end,
+    }
+    ST.API.Invalidate("ColorPickerFrame")
+    local back = p.widgets.back
+    Click(back)
+    local opened = info ~= nil and info.hasOpacity == true and math.abs(info.r - 10 / 255) < 1e-6
     local n0 = counts.CLOCK_LOOK
-    Click(p.resetButton)
-    local empty = next(Over()) == nil
-    local kept = ST.db.clockLook.layout == "bar" and WidgetLook().layout == "bar"
-    local fired = counts.CLOCK_LOOK - n0
-    ST.ClockView.SetLayout("line")
-    return empty and kept and fired == 1 and WidgetLook().colors.crit == nil
+    if info then info.swatchFunc() end
+    local moved = Pane().back == "1A334D" and Pane().backAlpha == 0.5 and counts.CLOCK_LOOK - n0 == 1
+        and math.abs(W.renderer:Drawn().back.colour[4] - 0.5) < 1e-9
+    if info then info.cancelFunc() end
+    local cancelled = Pane().back == "0A0A0A" and Pane().backAlpha == 1
+    if info then info.swatchFunc() end
+    back:GetScript("OnClick")(back, "RightButton")
+    local reset = Pane().back == ST.ClockStore.DEFAULTS.back and Pane().backAlpha == ST.ClockStore.DEFAULTS.backAlpha
+    -- a text's colour: no opacity kept
+    info = nil
+    local sw = p.widgets["texts.mana.colour"]
+    Click(sw)
+    if info then info.swatchFunc() end
+    local text = Pane().texts.mana.colour == "1A334D"
+    sw:GetScript("OnClick")(sw, "RightButton")
+    local textReset = Pane().texts.mana.colour == ST.ClockStore.DEFAULTS.texts.mana.colour
+    _G.ColorPickerFrame = saved
+    ST.API.Invalidate("ColorPickerFrame")
+    ST.ClockStore.Reset()
+    return opened and moved and cancelled and reset and text and textReset, string.format(
+        "opened %s moved %s cancelled %s reset %s text %s/%s", tostring(opened), tostring(moved), tostring(cancelled),
+        tostring(reset), tostring(text), tostring(textReset))
 end)
 
 --------------------------------------------------------------------------------
-T.section("5. the line's own switches: rest (no Show tab), When")
+T.section("5. When; the Rest text's own switch")
 --------------------------------------------------------------------------------
 local function SwitchNamed(text)
     for _, cb in ipairs(p.switches or {}) do if cb.def.text:find(text, 1, true) == 1 then return cb end end
 end
 
-Try("Show: no Show tab; the line's rest switch (" .. (forever and "/st clock rest" or "/st rest")
-        .. ") still drops the segment from the rest chip and the broker's look", function()
-    local noShow = true
-    for _, t in ipairs(CS.TABS or {}) do if t.id == "show" then noShow = false end end
-    local restChip
-    for _, b in ipairs(p.chips) do if b.id == "rest" then restChip = b end end
-    Click(restChip)
-    local with = p.view:Text()
-    local verb = forever and "clock rest" or "rest"
-    local slashFn = SlashCmdList and SlashCmdList.SPELLTUNER
-    Chat(function() slashFn(verb) end)
-    Tick(1)
-    CS.Refresh(p)
-    local key
-    if forever then key = ST.db.clock and ST.db.clock.showRest else key = ST.db.showRest end
-    local without = p.view:Text()
-    local look = ST.ClockLook and ST.ClockLook()
-    local brokerOff = type(look) == "table" and look.show and look.show.rest == false
-    Chat(function() slashFn(verb) end)
-    Tick(1)
-    CS.Refresh(p)
-    local back = p.view:Text()
-    return noShow and key == false and T.Has(with, "rest ") and not T.Has(without, "rest ")
-        and back == with and brokerOff,
-        string.format("no Show tab %s; with %q without %q back %q key %s broker %s", tostring(noShow), tostring(with),
-            tostring(without), tostring(back), tostring(key), tostring(brokerOff))
-end)
-
-Try("When: Locked is the line's own lock", function()
-    p.box:Select("when")
+Try("When: the line's own switches, no Rest among them; Locked is the line's own lock", function()
+    local names = {}
+    for _, cb in ipairs(p.switches) do names[#names + 1] = cb.def.text end
+    local want = forever and "Show the mana clock,Locked,Click-through" or "Locked,Tooltip and left-click"
     local cb = SwitchNamed("Locked")
     cb:SetChecked(false); cb.onClick(false, cb)
     local off = forever and ST.db.clock.locked == false or (not forever and ST.db.locked == false)
     cb:SetChecked(true); cb.onClick(true, cb)
     local on = forever and ST.db.clock.locked == true or (not forever and ST.db.locked == true)
     if W.Preview then W:Preview(0) end
-    return cb ~= nil and off and on
+    return table.concat(names, ",") == want and off and on, table.concat(names, ",")
 end)
 
---------------------------------------------------------------------------------
-T.section("5b. Text: a dropdown per slot, FORMAT, the line's switches (T116)")
---------------------------------------------------------------------------------
-local function TextOver(layout)
-    local t = Over().text
-    return type(t) == "table" and type(t[layout]) == "table" and t[layout] or {}
+if forever then
+    Try("/st clock rest turns the Rest text on and off, and the pane follows", function()
+        ST.ClockStore.Reset()
+        local slashFn = SlashCmdList and SlashCmdList.SPELLTUNER
+        Chat(function() slashFn("clock rest") end)
+        local on = ST.ClockStore.Look().texts.rest.on == true and Row("rest").on:GetChecked()
+            and p.widgets["texts.rest.size"]:IsShown()
+        Chat(function() slashFn("clock rest") end)
+        local off = ST.ClockStore.Look().texts.rest.on == false and not Row("rest").on:GetChecked()
+        return on and off, string.format("on %s off %s", tostring(on), tostring(off))
+    end)
+else
+    Try("/st rest still turns the feeds' rest segment (db.showRest); the clock's Rest text is the pane's", function()
+        ST.ClockStore.Reset()
+        local slashFn = SlashCmdList and SlashCmdList.SPELLTUNER
+        local before = ST.db.showRest
+        Chat(function() slashFn("rest") end)
+        local flipped = ST.db.showRest == not before and ST.ClockStore.Look().texts.rest.on == false
+        Chat(function() slashFn("rest") end)
+        return flipped and ST.db.showRest == before, tostring(ST.db.showRest)
+    end)
 end
-local function DDIds(dd)
-    local ids = {}
-    for _, it in ipairs(dd and dd.items or {}) do ids[#ids + 1] = it.id end
-    return table.concat(ids, ",")
-end
-local function ItemText(dd, id)
-    for _, it in ipairs(dd and dd.items or {}) do if it.id == id then return it.text end end
-end
-local SLOT_LABEL = { left = "Left", main = "Main", right = "Right", right2 = "Right 2", top = "Top", bottom = "Bottom",
-    center = "Centre" }
-local function LineOptions(layout, slot)
-    local out = {}
-    for _, id in ipairs((CF.TEXT_OPTIONS or {})[layout] and CF.TEXT_OPTIONS[layout][slot] or {}) do
-        if not (forever and id == "cd") then out[#out + 1] = id end
-    end
-    return table.concat(out, ",")
-end
-local function Slot(slot) return p.slotDD and p.slotDD[slot] end
-local function RestOn()
-    if forever then return ST.db.clock.showRest ~= false end
-    return ST.db.showRest ~= false
-end
-local function SetRest(on)
-    if forever then ST.db.clock.showRest = on else ST.db.showRest = on end
-end
-
-Try("Text: a dropdown per slot of the layout on screen (T142: none on Bar), the line's options (Cooldown "
-        .. (forever and "not listed, ~ model beside Mana % / Mana / Regen" or "listed") .. ")", function()
-    ST.ClockView.ResetToStyle()
-    p.box:Select("text")
-    local bad = {}
-    for _, layout in ipairs({ "line", "compact", "bar" }) do
-        ST.ClockView.SetLayout(layout)
-        local shown = {}
-        -- T142: the Bar layout has no slot pickers (its texts are Bar look's
-        -- items): the note in their place, Labels and Time kept, the rest hidden
-        if layout == "bar" then
-            if not (p.barTextNote and p.barTextNote:IsShown() and p.labelsDropdown:IsShown() and p.timeDropdown:IsShown()
-                    and not p.sizeSlider:IsShown() and not p.outlineDropdown:IsShown() and not p.ofMaxCheck:IsShown()) then
-                bad[#bad + 1] = "bar: the note, Labels and Time, nothing else"
-            end
-        elseif p.barTextNote and p.barTextNote:IsShown() then
-            bad[#bad + 1] = layout .. ": the Bar note shown"
-        end
-        for _, slot in ipairs(layout == "bar" and {} or CF.TEXT_SLOTS[layout]) do
-            local dd, lab = Slot(slot), p.slotLabel and p.slotLabel[slot]
-            if not (dd and dd:IsShown() and lab and lab:IsShown() and lab:GetText() == SLOT_LABEL[slot]
-                    and DDIds(dd) == LineOptions(layout, slot)) then
-                bad[#bad + 1] = layout .. "." .. slot .. " " .. (dd and DDIds(dd) or "nil")
-            end
-            shown[slot] = true
-        end
-        for slot, dd in pairs(p.slotDD or {}) do
-            if not shown[slot] and dd:IsShown() then bad[#bad + 1] = layout .. ": " .. slot .. " shown" end
-        end
-    end
-    ST.ClockView.SetLayout("line")
-    local dd = Slot("right")
-    local words = ItemText(dd, "rest") == "Rest 2:10" and ItemText(dd, "none") == "None"
-        and ItemText(dd, "fsr") == "Five-second rule 3.0" and ItemText(Slot("main"), "time") == "Time 1:20"
-        and ItemText(Slot("left"), "label") == "Label"
-    if forever then
-        words = words and ItemText(dd, "pct") == "Mana % 62%  ~ model" and ItemText(dd, "mana") == "Mana 4210  ~ model"
-            and ItemText(dd, "mp5") == "Regen 92 mp5  ~ model" and ItemText(dd, "cd") == nil
-    else
-        words = words and ItemText(dd, "pct") == "Mana % 62%" and ItemText(dd, "mana") == "Mana 4210"
-            and ItemText(dd, "mp5") == "Regen 92 mp5" and ItemText(dd, "cd") == "Cooldown inn 2:10"
-    end
-    return p.slotDD ~= nil and #bad == 0 and words, table.concat(bad, "; ") .. "; words " .. tostring(words)
-end)
-
-Try("Text: a pick writes text.<layout>.<slot>; the clock and the preview follow, each layout its own", function()
-    ST.ClockView.SetLayout("line")
-    local okL = Pick(Slot("main"), "pct") and TextOver("line").main == "pct"
-        and WidgetLook().text.main == "pct" and p.look.text.main == "pct" and p.look.text.timeAt == "left"
-    ST.ClockView.SetLayout("compact")
-    local fresh = Slot("main"):Value() == "time"
-    local okC = Pick(Slot("bottom"), "mp5") and TextOver("compact").bottom == "mp5"
-        and WidgetLook().text.bottom == "mp5" and TextOver("line").main == "pct"
-    ST.ClockView.SetLayout("line")
-    local back = Slot("main"):Value() == "pct"
-    Pick(Slot("main"), "time")
-    local cleared = TextOver("line").main == nil
-    ST.ClockView.ResetToStyle()
-    return okL and fresh and okC and back and cleared,
-        string.format("line %s, compact fresh %s set %s, line back %s, cleared %s", tostring(okL), tostring(fresh),
-            tostring(okC), tostring(back), tostring(cleared))
-end)
-
-Try("Text: Right 2 is disabled at 180 px with its reason, enabled at 300 px, and then writes right2", function()
-    ST.ClockView.SetLayout("line")
-    local fits, need, now = p.view:FitsRight2()
-    local dd = Slot("right2")
-    local off = dd:IsEnabled() == false and fits == false and now == 180
-    local tips = table.concat(dd.tooltips or {}, " ")
-    local said = T.Has(tips, "needs " .. tostring(need) .. " px: raise the width on Frame")
-    Pick(dd, "mp5")
-    local refused = TextOver("line").right2 == nil
-    ST.ClockView.Set("frame.line.w", 300)
-    local on = dd:IsEnabled() and p.view:FitsRight2() == true
-    Pick(dd, "mp5")
-    local wrote = TextOver("line").right2 == "mp5" and WidgetLook().text.right2 == "mp5"
-    ST.ClockView.ResetToStyle()
-    return off and said and refused and on and wrote,
-        string.format("off %s (fits %s need %s now %s), tip %q, refused %s, on %s, wrote %s", tostring(off),
-            tostring(fits), tostring(need), tostring(now), tips, tostring(refused), tostring(on), tostring(wrote))
-end)
-
-Try("Text: Right's picks write the line's switches (Rest on; None leaves them"
-        .. (forever and "" or "; Cooldown on") .. ")", function()
-    ST.ClockView.SetLayout("line")
-    SetRest(false)
-    CS.Refresh(p)
-    local dd = Slot("right")
-    Pick(dd, "none")
-    local none = TextOver("line").right == "none" and not RestOn()
-    Pick(dd, "rest")
-    local rest = TextOver("line").right == nil and RestOn()
-    local cd = true
-    if not forever then
-        ST.db.showCooldown = false
-        Pick(dd, "cd")
-        cd = TextOver("line").right == "cd" and ST.db.showCooldown == true
-        Pick(dd, "rest")
-    end
-    ST.ClockView.ResetToStyle()
-    SetRest(true)
-    return none and rest and cd and TextOver("line").right == nil,
-        string.format("none %s rest %s cd %s", tostring(none), tostring(rest), tostring(cd))
-end)
-
-Try("Text: FORMAT -- Time, Size (and Default), Outline, Shadow, Numbers write their keys; the preview follows", function()
-    ST.ClockView.SetLayout("line")
-    local okT = Pick(p.timeDropdown, "sec") and TextOver("line").time == "sec" and p.look.text.time == "sec"
-    Type(p.sizeSlider, "20")
-    local _, size = p.view.value:GetFont()
-    local okS = TextOver("line").size == 20 and size == 20 and WidgetLook().text.size == 20
-    Click(p.sizeDefault)
-    local okD = TextOver("line").size == nil
-    local okO = Pick(p.outlineDropdown, "thick") and TextOver("line").outline == "thick"
-        and select(3, p.view.value:GetFont()) == "THICKOUTLINE"
-    p.shadowCheck:SetChecked(false); p.shadowCheck.onClick(false, p.shadowCheck)
-    local okSh = TextOver("line").shadow == false and p.look.text.shadow == false
-    local okN = Pick(p.numbersDropdown, "labels") and TextOver("line").numbers == "labels"
-        and p.look.text.numbers == "labels"
-    -- a default picked back removes the key: over stays sparse
-    Pick(p.timeDropdown, "line"); Pick(p.outlineDropdown, "none"); Pick(p.numbersDropdown, "number")
-    p.shadowCheck:SetChecked(true); p.shadowCheck.onClick(true, p.shadowCheck)
-    local sparse = next(TextOver("line")) == nil
-    ST.ClockView.ResetToStyle()
-    return okT and okS and okD and okO and okSh and okN and sparse,
-        string.format("time %s size %s (%s) default %s outline %s shadow %s numbers %s sparse %s", tostring(okT),
-            tostring(okS), tostring(size), tostring(okD), tostring(okO), tostring(okSh), tostring(okN), tostring(sparse))
-end)
-
-Try("Text: Labels (out / full) and Mana as 4210/6800 write labels and ofMax", function()
-    ST.ClockView.SetLayout("line")
-    local oomChip
-    for _, b in ipairs(p.chips) do if b.id == "oom" then oomChip = b end end
-    Click(oomChip)
-    local okL = Pick(p.labelsDropdown, "lower") and TextOver("line").labels == "lower"
-    local text = p.view:Text()
-    local lower = T.Has(text, "out ") and not T.Has(text, "OOM")
-    p.ofMaxCheck:SetChecked(true); p.ofMaxCheck.onClick(true, p.ofMaxCheck)
-    local okM = TextOver("line").ofMax == true and p.look.text.ofMax == true
-    ST.ClockView.ResetToStyle()
-    return okL and lower and okM, string.format("labels %s (%q) ofMax %s", tostring(okL), tostring(text), tostring(okM))
-end)
-
-Try("Text: " .. (forever and "the Forever footnote" or "no footnote on TBC") .. ", and the note under the box", function()
-    local want = "Forever: the ~ stays on every modelled number. A real mana % or number as text waits for the probe "
-        .. "(Q-clock-2); until then those picks show the model's ~ value."
-    local foot = p.textNote and p.textNote:IsShown() and p.textNote:GetText()
-    local okF
-    if forever then okF = foot == want else okF = not foot end
-    local box = p.boxNote and p.boxNote:GetText()
-    return okF and box == "Text, size and bars are kept per layout; Reset to style wipes your changes, not the layout.",
-        string.format("foot %q box %q", tostring(foot), tostring(box))
-end)
 
 --------------------------------------------------------------------------------
 T.section("6. the Look dropdown and Use my class colour")
@@ -1266,11 +656,9 @@ Try("picking a style writes db.ui.style and repaints at once (STYLE_CHANGED once
     else
         shown = look.reload:IsShown() and look.reloadText:GetText() == UI.Restyle.Line()
     end
-    local label = p.styleLabel:GetText()
     return picked and hidden and ST.db.ui.style == "ellesmere" and UI.STYLE == "ellesmere" and fired == 1
-        and repainted and shown and T.Has(label, "style: Ellesmere"),
-        string.format("fired %d repainted %s reload %s label %q", fired, tostring(repainted), tostring(shown),
-            tostring(label))
+        and repainted and shown,
+        string.format("fired %d repainted %s reload %s", fired, tostring(repainted), tostring(shown))
 end)
 
 Try("Use my class colour puts the class colour over the style's accent, and takes it back", function()
@@ -1288,12 +676,12 @@ Try("Use my class colour puts the class colour over the style's accent, and take
     return on and off and fired == 1 and differs, string.format("on %s off %s fired %d", tostring(on), tostring(off), fired)
 end)
 
-Try("back to Flat: the palette is Flat's, the reload line hides, the clock pane says Flat", function()
+Try("back to Flat: the palette is Flat's, the reload line hides", function()
     Pick(look.dropdown, "flat")
     local flatBg = UI.FLAT.palette.bg
     local r, g, b = UI.Fill("bg")
     return ST.db.ui.style == "flat" and not look.reload:IsShown() and math.abs(r - flatBg[1]) < 1e-9
-        and math.abs(b - flatBg[3]) < 1e-9 and T.Has(p.styleLabel:GetText(), "style: Flat")
+        and math.abs(b - flatBg[3]) < 1e-9
 end)
 
 --------------------------------------------------------------------------------
@@ -1439,8 +827,10 @@ Try("every word the clock view and the INTEGRATIONS pane draw is ASCII, no bare 
     local bad
     local tops = { pane, integ }
     if look then tops[#tops + 1] = look.reload end
-    for _, chip in ipairs(p.chips) do Click(chip) end
-    for _, tab in ipairs(CS.TABS) do p.box:Select(tab.id) end
+    ST:SelectView("settings", "clock")
+    -- every text on, so every row's fields have their words
+    for _, kind in ipairs(ST.ClockStore.KINDS) do ST.ClockStore.SetText(kind, "on", true) end
+    for _, chip in ipairs(p.chips) do Click(chip); Tick(1) end
     local n = 0
     for _, top in ipairs(tops) do
         for _, fs in ipairs(FontStrings(top)) do
@@ -1456,23 +846,29 @@ Try("every word the clock view and the INTEGRATIONS pane draw is ASCII, no bare 
         local okA, why = T.Ascii(it.text)
         if not okA then bad = bad or (it.text .. ": " .. why) end
     end
-    return bad == nil and n > 40, bad or (n .. " strings")
+    for _, it in ipairs(p.textureDropdown.items) do
+        local okA, why = T.Ascii(it.text)
+        if not okA then bad = bad or (it.text .. ": " .. why) end
+    end
+    ST.ClockStore.Reset()
+    return bad == nil and n > 60, bad or (n .. " strings")
 end)
 
-Try("every titled pane of Settings -> Clock lies inside the view", function()
+Try("the preview and the scrolling area lie inside the view; every section inside the scrolling area's width",
+        function()
+    ST:SelectView("settings", "clock")
     local bad
-    local box = Rect(p.box.frame, pane, VIEW_W, VIEW_H)
     local base = { l = 0, t = 0, r = VIEW_W, b = -VIEW_H }
-    for _, t in ipairs(TitledUnder(pane)) do
-        local r = Rect(t, pane, VIEW_W, VIEW_H)
-        if not (r and Inside(r, base)) then bad = bad or (t.title:GetText() .. " " .. R(r)) end
+    for _, f in ipairs({ p.previewSection, p.holder }) do
+        local r = Rect(f, pane, VIEW_W, VIEW_H)
+        if not (r and Inside(r, base)) then bad = bad or ((f.title and f.title:GetText() or "holder") .. " " .. R(r)) end
     end
-    if not (box and Inside(box, base)) then bad = bad or ("the box " .. R(box)) end
-    for _, b in ipairs({ p.showButton, p.placeButton }) do
-        local r = Rect(b, pane, VIEW_W, VIEW_H)
-        if not (r and Inside(r, base)) then bad = bad or (b:GetText() .. " " .. R(r)) end
-    end
-    return bad == nil, bad
+    local hold = Rect(p.holder, pane, VIEW_W, VIEW_H)
+    local widest = 0
+    if CS.TEXT_COLS then widest = CS.TEXT_COLS.outline + 64 end
+    local width = hold and (hold.r - hold.l) or 0
+    return bad == nil and width >= widest + 10 and #TitledUnder(p.content) == 4,
+        (bad or "") .. string.format(" holder %s, rows need %d", R(hold), widest)
 end)
 
 Try("every titled pane of Settings -> General lies inside the view", function()
@@ -1509,5 +905,4 @@ Try("(Live) in a fight paints without raising, and no word on the pane is a secr
     return okRun and secret == nil, err or secret
 end)
 
-print(string.format("\n%d skipped (U4)", skippedU4))
 T.done()

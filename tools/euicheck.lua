@@ -482,12 +482,13 @@ Guarded("11. a late reader", function()
 end)
 
 --------------------------------------------------------------------------------
--- 19-20. T114 (docs/tasks/T114-clock-face-slots.md): the SpellTuner broker
--- follows Line's slots (ST.ClockLook().texts.line), and db.feeds.compact drops
--- both Right slots whatever they hold. A fixed face (a fight, 92 mp5, 62 %)
--- stands in for the pool's, so the words are known.
+-- 19-20. T114, re-based by T145d (docs/SPEC-clock-v3.md 1.1): Line's slots
+-- left with Line and Compact, so the SpellTuner broker says the default words
+-- whatever a ST.ClockLook provider (if one were installed) says, and
+-- db.feeds.compact drops the secondary. A fixed face (a fight, rest 2:10, 92
+-- mp5, 62 %) stands in for the pool's, so the words are known.
 --------------------------------------------------------------------------------
-T.section("19-20. T114: the broker follows Line's slots")
+T.section("19-20. T145d: the broker says the default words")
 do
     local CF = ST.ClockFace
     local face = {}
@@ -496,6 +497,7 @@ do
     end
     face.modelled, face.mono, face.timeFmt, face.arrow = true, true, "mss", nil
     face.pct, face.pctModelled, face.mp5, face.mp5Modelled, face.combat = 0.62, true, 92, true, true
+    face.second = { kind = "rest", label = "rest", value = 130 }
     local savedCurrent, savedLook = CF.Current, rawget(ST, "ClockLook")
     local function WithText(line, fn)
         rawset(CF, "Current", function() return face end)
@@ -506,16 +508,16 @@ do
         if not okRun then error(a, 0) end
         return a, b
     end
-    Guarded("19. the broker follows Line's slots", function()
+    Guarded("19. the broker says the default words", function()
         local text, obj = WithText({ right = "mp5" }, function()
             LDBS.Update()
             return LDBS.ClockText(false), H.LdbBlockText(Obj(NAME))
         end)
         Seen(text)
-        check("19. the SpellTuner broker follows Line's slots: right = mp5 reads ~92 mp5 in a fight",
-            text == "~OOM 1:20  ~92 mp5" and obj == text, tostring(text) .. " / " .. tostring(obj))
+        check("19. the SpellTuner broker says the default words whatever a clock-look provider says (T145d)",
+            savedLook == nil and text == "~OOM 1:20  rest 2:10" and obj == text, tostring(text) .. " / " .. tostring(obj))
     end)
-    Guarded("20. compact drops both Right slots", function()
+    Guarded("20. compact drops the secondary", function()
         local wide, narrow = WithText({ right = "mp5", right2 = "pct" }, function()
             local w = LDBS.ClockText(false)
             local was = ST.db.feeds.compact
@@ -527,8 +529,8 @@ do
         end)
         Seen(wide); Seen(narrow)
         LDBS.Update()
-        check("20. db.feeds.compact drops both right and right2",
-            wide == "~OOM 1:20  ~92 mp5  ~62%" and narrow == "~OOM 1:20", tostring(wide) .. " / " .. tostring(narrow))
+        check("20. db.feeds.compact drops the secondary",
+            wide == "~OOM 1:20  rest 2:10" and narrow == "~OOM 1:20", tostring(wide) .. " / " .. tostring(narrow))
     end)
 end
 

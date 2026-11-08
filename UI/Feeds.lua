@@ -35,10 +35,9 @@
 --   clock -- ClockFace.LineString of the line's own face
 --            (ST.ClockFace.Current: TBC's ST:GetClockFace, Forever's pool);
 --            byte for byte TBC's ST:GetDisplayString. The tooltip is the
---            minimap button's lines (ST.MinimapLines). T114: the words
---            follow Line's slots -- ST.ClockLook().texts.line (the resolved
---            text of the Line layout, whatever layout is on screen) handed
---            to LineString; no provider, no texts: today's string.
+--            minimap button's lines (ST.MinimapLines). T145d: always the
+--            default LineString (Line's slots, T114, left with Line and
+--            Compact; docs/SPEC-clock-v3.md 1.1).
 --   regen -- the CURRENT regen: the casting rate inside the five-second rule,
 --            the full rate outside it. "Regen: 123", " (5SR)" in the rule;
 --            plain "Regen 123", "Regen 123 (5SR)"; "--" without a reading.
@@ -178,19 +177,6 @@ end
 --------------------------------------------------------------------------------
 -- clock
 --------------------------------------------------------------------------------
--- T114: Line's resolved text from the clock look (ST:Provide "ClockLook",
--- under pcall as Integrations/Surface_LDB.lua reads it), or nil.
-local function LineText()
-    local provide = ST.ClockLook
-    if type(provide) ~= "function" then return nil end
-    local ok, look = pcall(provide)
-    if not ok or type(look) ~= "table" or type(look.texts) ~= "table" then return nil end
-    local line = look.texts.line
-    if type(line) ~= "table" then return nil end
-    return line
-end
-Feeds.LineText = LineText
-
 Feeds.Register("clock", {
     label = "SpellTuner",
     icon = ICON,
@@ -198,7 +184,7 @@ Feeds.Register("clock", {
     Text = function(ctx)
         local face = CurrentFace()
         if not face then return "" end
-        return ST.ClockFace.LineString(face, ctx.valueHex, LineText())
+        return ST.ClockFace.LineString(face, ctx.valueHex)
     end,
     Tooltip = ClockTooltip,
     Click = OpenOnClick,
