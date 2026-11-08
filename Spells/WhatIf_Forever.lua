@@ -30,6 +30,13 @@
 --              regen, a +healing-from-a-stat talent and a spell a
 --              talent teaches do not move (the sentence says so). Off when the
 --              live ranks were not read: a ratio needs them.
+--              T138: the drawer shows no talent rows any more -- the talent
+--              plan (UI/TalentPlanner.lua) is the one place a talent is typed;
+--              the keys stay rows here so the plan's values are accepted.
+--   Level (T138) a heal rank's +healing share at the typed level: the share was
+--              read (or estimated) under the live level's penalty
+--              (Coefficients.LevelPenalty), so it moves by the ratio of the
+--              two; ranks learned later are not in the book, nothing else moves.
 -- The live book, its generation and its entries are never written.
 local _, ST = ...
 
@@ -52,6 +59,21 @@ local provider = {}
 --------------------------------------------------------------------------------
 local TALENT_PREFIX = "talent:"
 local SPIRIT_KEY = "spirit"
+local LEVEL_KEY = "level"
+local LEVEL_MAX = 60 -- Forever's cap (vanilla content)
+
+local function PlayerLevel()
+    local l = ST.player and ST.player.level
+    return (type(l) == "number" and l > 0) and l or nil
+end
+
+local function LevelRow()
+    return { key = LEVEL_KEY, label = "Level", min = 1, max = math.max(LEVEL_MAX, PlayerLevel() or 0),
+             step = 1, bigStep = 5 }
+end
+local function SpiritRow()
+    return { key = SPIRIT_KEY, label = "Spirit", min = 0, step = 25, bigStep = 100 }
+end
 
 local talentIndex, talentIndexClass
 
@@ -139,9 +161,12 @@ local function LiveRanks()
     return (type(ranks) == "table") and ranks or nil
 end
 
+-- Every key the What if accepts beyond the stats: Level always, the talents
+-- (typed by the plan) and Spirit only when the live ranks were read.
 local function Rows()
-    if not LiveRanks() then return nil end
-    local index, rows, spirit = TalentIndex(), {}, false
+    local rows = { LevelRow() }
+    if not LiveRanks() then return rows end
+    local index, spirit = TalentIndex(), false
     for _, name in ipairs(index.order) do
         local i = index.byName[name]
         if i.max > 0 then
@@ -150,45 +175,44 @@ local function Rows()
             if i.expiry then spirit = true end
         end
     end
-    if spirit then
-        rows[#rows + 1] = { key = SPIRIT_KEY, label = "Spirit", min = 0, step = 25, bigStep = 100 }
-    end
-    return (#rows > 0) and rows or nil
+    if spirit then rows[#rows + 1] = SpiritRow() end
+    return rows
 end
 
 function provider.classRows() return Rows() end
-provider.classTitle = "TALENTS"
+provider.classTitle = "LEVEL AND TALENTS"
 
--- T134: only the talents that move a rank of the family on screen (the drawer
--- is a window high); Spirit with a talent that reads it, or raises it.
+-- Does any talent of the class move a rank of this family?
+local function FamilyTouched(fam)
+    if type(fam) ~= "table" then return false end
+    local index = TalentIndex()
+    for _, name in ipairs(index.order) do
+        local i = index.byName[name]
+        for _, e in ipairs(fam.ranks or {}) do
+            if i.max > 0 and Touches(i, e) then return true end
+        end
+    end
+    return false
+end
+
+-- T138: the drawer's rows -- Level, and Spirit when a talent that reads it
+-- (Bloom) touches the family on screen. No talent row: the plan types them.
 function provider.classRowsFor(fam)
-    local rows = Rows()
-    if not rows or type(fam) ~= "table" then return rows end
-    local index, out, spirit = TalentIndex(), {}, false
-    for _, row in ipairs(rows) do
-        local i = row.talent and index.byName[row.talent]
-        if i then
-            local hit = false
+    local out = { LevelRow() }
+    if not (LiveRanks() and type(fam) == "table") then return out end
+    local index = TalentIndex()
+    for _, name in ipairs(index.order) do
+        local i = index.byName[name]
+        if i.expiry and i.max > 0 then
             for _, e in ipairs(fam.ranks or {}) do
-                if Touches(i, e) then hit = true break end
-            end
-            if hit then
-                out[#out + 1] = row
-                if i.expiry then spirit = true end
+                if Has(i.expiry.scope.spells, e.name) then
+                    out[#out + 1] = SpiritRow()
+                    return out
+                end
             end
         end
     end
-    if spirit then
-        for _, name in ipairs(index.order) do
-            local i = index.byName[name]
-            if i.stat and i.max > 0 then
-                out[#out + 1] = { key = TALENT_PREFIX .. name, label = name, talent = name,
-                                  min = 0, max = i.max, step = 1, bigStep = 1, compact = true }
-            end
-        end
-        out[#out + 1] = { key = SPIRIT_KEY, label = "Spirit", min = 0, step = 25, bigStep = 100 }
-    end
-    return (#out > 0) and out or nil
+    return out
 end
 
 -- The percent a rank gives under a rule (rank 0: none), nil above the rule.
@@ -383,6 +407,7 @@ function provider.Live()
         end
     end
     if Book and Book.Spirit then out[SPIRIT_KEY] = Book:Spirit() end
+    out[LEVEL_KEY] = PlayerLevel()
     out.heal = LiveBonus()
     out.damage = WI.LiveDamage(Book) -- T124: the school on screen
     local school = ST.ClassProfile and ST.ClassProfile.critSchool or 2
@@ -433,9 +458,23 @@ local function ShiftPart(part, d)
     if dOver ~= 0 then part.over = part.over + dOver end
 end
 
+-- T138: a heal rank's share at the typed level, from its live one (read or
+-- estimated under the live level's penalty), by the ratio of the penalties;
+-- nil when nothing moves, or when the live share is 0 (what it was before the
+-- penalty took it is not known).
+local function LevelShare(e, kind, lvl, counts)
+    if not lvl or kind ~= "heal" or type(counts) ~= "number" then return nil end
+    local Coef = ST.Coefficients
+    if not (Coef and Coef.LevelPenalty) then return nil end
+    local pa = Coef.LevelPenalty(e.id, e.level, lvl.live, kind)
+    local pb = Coef.LevelPenalty(e.id, e.level, lvl.typed, kind)
+    if pa == pb or pa <= 0 then return nil end
+    return counts * pb / pa
+end
+
 -- T124: the stat a family of `kind` moves with -- +Healing for a heal,
 -- +Spell damage for a damage family; { d = typed - live, typed } or nil.
-local function CopyEntry(e, move, crit, kind, plan)
+local function CopyEntry(e, move, crit, kind, plan, lvl)
     local w = {}
     for k, v in pairs(e) do w[k] = v end
     local talented = plan and kind and ApplyTalents(w, e, kind, plan) or false
@@ -443,8 +482,16 @@ local function CopyEntry(e, move, crit, kind, plan)
     local d = 0
     local delta = move and move.delta or 0
     local typed = move and move.typed or nil
-    if delta ~= 0 and type(b) == "table" and type(b.counts) == "number" and type(w.parsed) == "table" then
-        d = b.counts * delta
+    local counts = type(b) == "table" and b.counts or nil
+    -- T138: the level moves the share; the value moves by the share's change
+    -- at the live bonus (no live bonus read: the level moves nothing)
+    local levelCounts = LevelShare(e, kind, lvl, counts)
+    if levelCounts and type(b.of) ~= "number" then levelCounts = nil end
+    if levelCounts then d = (levelCounts - counts) * b.of end
+    local share = levelCounts or counts
+    if delta ~= 0 and type(share) == "number" then d = d + share * delta end
+    if d ~= 0 and type(w.parsed) ~= "table" then d = 0 end
+    if d ~= 0 then
         local parsed = {}
         for k, v in pairs(w.parsed) do parsed[k] = v end
         if kind == "heal" then
@@ -464,11 +511,13 @@ local function CopyEntry(e, move, crit, kind, plan)
     -- live reading plus the delta -- the typed value only where the entry
     -- names no reading; with no live reading at all nothing moved, so the
     -- entry's own bonus is left as it is
-    if type(b) == "table" and typed ~= nil and not move.noLive then
+    local bonusTyped = typed ~= nil and not move.noLive
+    if type(b) == "table" and (bonusTyped or levelCounts) then
         local nb = {}
         for k, v in pairs(b) do nb[k] = v end
-        nb.of = (type(b.of) == "number") and (b.of + delta) or typed
-        nb.amount = (type(b.counts) == "number") and b.counts * nb.of or nil
+        if bonusTyped then nb.of = (type(b.of) == "number") and (b.of + delta) or typed end
+        if levelCounts then nb.counts, nb.atLevel = levelCounts, lvl.typed end
+        nb.amount = (type(nb.counts) == "number" and type(nb.of) == "number") and nb.counts * nb.of or nil
         w.bonus = nb
     end
     if d ~= 0 then Book.Numbers(w, kind) end
@@ -499,6 +548,9 @@ function provider.Book()
     local pool = WI:Pool(Book:Pool())
     local castPool = { max = pool.max, regenCasting = pool.regenCasting }
     local plan = TalentPlan() -- T134
+    local typedLevel, liveLevel = WI:Get(LEVEL_KEY), PlayerLevel()
+    local lvl = (typedLevel ~= nil and liveLevel ~= nil and typedLevel ~= liveLevel)
+        and { live = liveLevel, typed = typedLevel } or nil -- T138
 
     local spells, families = {}, {}
     for name, fam in pairs(live.families or {}) do
@@ -506,7 +558,7 @@ function provider.Book()
         for k, v in pairs(fam) do nf[k] = v end
         nf.ranks = {}
         for i, e in ipairs(fam.ranks or {}) do
-            local w = CopyEntry(e, moves[fam.kind or ""], crit, fam.kind, plan)
+            local w = CopyEntry(e, moves[fam.kind or ""], crit, fam.kind, plan, lvl)
             w.casts = Book:CastsFor(w, castPool)
             nf.ranks[i] = w
             spells[e.id] = w
@@ -535,16 +587,37 @@ function provider.Book()
              generation = live.generation, whatIf = true }
 end
 
--- T134: under the rows, what they move; no rows when the live ranks are unread.
+-- T134, T138: under the rows -- what the level moves, the talents the plan
+-- typed (the plan is the one place to change them), what is not modelled.
 function provider.classNote(fam)
-    if not LiveRanks() then
-        return "Your talents were not read yet, so a talent can't be tried here."
+    local out = {}
+    local typedLevel = WI:Get(LEVEL_KEY)
+    if typedLevel ~= nil then
+        out[#out + 1] = "Level " .. typedLevel .. ": each heal rank's +healing share at that level's"
+            .. " penalty. Ranks learned later are not in the book."
     end
-    if type(fam) == "table" and not provider.classRowsFor(fam) then
-        return "No talent moves this spell in the What if."
+    local live = LiveRanks()
+    if not live then
+        out[#out + 1] = "Your talents were not read yet, so a talent plan can't be tried here."
+        return table.concat(out, " ")
     end
-    return "Preliminary, from talentsforever. Not moved: crit, regen, stat-to-bonus talents,"
-        .. " procs, Oath of Light, spells a talent teaches."
+    local index, planned = TalentIndex(), {}
+    for _, name in ipairs(index.order) do
+        local v = WI:Get(TALENT_PREFIX .. name)
+        if v ~= nil and v ~= (live[name] or 0) then planned[#planned + 1] = name .. " " .. v end
+    end
+    if #planned > 0 then
+        out[#out + 1] = "Talents from your plan: " .. table.concat(planned, ", ") .. "."
+    else
+        out[#out + 1] = "Your own talents; Talent plan... tries a build."
+    end
+    if type(fam) == "table" and not FamilyTouched(fam) then
+        out[#out + 1] = "No talent moves this spell in the What if."
+    else
+        out[#out + 1] = "Preliminary, from talentsforever. Not moved: crit, regen, stat-to-bonus talents,"
+            .. " procs, Oath of Light, spells a talent teaches."
+    end
+    return table.concat(out, " ")
 end
 
 -- "2 of 3 ranks measured, 1 estimated" -- the shares the move rests on: a

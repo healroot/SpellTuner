@@ -1680,6 +1680,13 @@ A talent that lengthens a spell (Nature's Splendor; Improved Shadow Word: Pain) 
 over-time part at the same amount a second, so the amount over time grows by (dur + d) / dur and a pure
 HoT's per second (its interval is its own duration) stays (with no other talent typed). A hybrid's
 +healing share moves by the whole spell's ratio, as T134 accepted for Genesis: Regrowth's comes out about
-4% low under Nature's Splendor (T137 review m6, accepted). The live book is untouched: the client's text
+4% low under Nature's Splendor (T137 review m6, accepted).
+
+**The What if's Level moves the +healing share by the ratio of the penalties** (T138, 2026-11-08): the
+share on screen was read or estimated at the live level, so the typed level's share is that share x
+P(typed) / P(live), with LevelPenalty's PRELIMINARY rule (-5%/level from learn level + 17). A share
+already 0 stays 0, and ranks learned later are not added. **Talents are typed only by the talent plan**
+(the author's ruling the same day): the drawer's per-talent rows are gone, and a plan may spend all 51
+points, with a warning naming the level it needs (points + 9, VERIFY). The live book is untouched: the client's text
 is assumed to carry the duration of a talent taken (VERIFY, `docs/TESTING.md` 56.5). Talents whose
 sentence also does something else (Call of Flame, a stun) are named and skipped.

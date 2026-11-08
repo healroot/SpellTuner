@@ -2511,27 +2511,27 @@ still wins, and its card now says whether the prediction agreed.
 **Paste back** both exports per level and the cards of the ranks above into
 `.logs/forever/factors.md`.
 
-## 56. Launch talents: Bloom and What if -> Talents (T134) -- NEW, 5 min
+## 56. Launch talents: Bloom and the talent plan (T134, T138) -- NEW, 5 min
 
-Forever, as a druid. Everything here is a prediction until you say otherwise.
+Forever, as a druid. Everything here is a prediction until you say otherwise. Since T138 a talent is typed
+only in **Talent plan...** (the What if drawer has no talent rows; its section is LEVEL AND TALENTS: Level,
+and Spirit on a spell Bloom touches).
 
-1. **Spells -> Rejuvenation -> What if...** A TALENTS section with one-line rows: Bloom, Genesis, Gift of
-   Nature, Improved Rejuvenation, Living Spirit, then Spirit, each showing your live value greyed.
-2. **Bloom +.** Heal and Per mana rise by your Spirit (Bloom's 100%). The card gets `Bloom +N if it runs
-   out (100% of N Spirit)`. Compare that N with the heal you see land when a Rejuvenation expires.
-3. **Living Spirit 3 with Bloom on:** the amount goes up 15%. Type a Spirit: it follows.
-4. **Open Healing Touch** with the What if still on: other rows (Naturalist, Tranquil Spirit, Gift of
-   Nature). Naturalist 5: the cast falls by 0.5 s if you have no points in it. Tranquil Spirit 5: the
-   cost falls 10%. Compare with what a real respec shows, and report a mismatch.
-5. **Clear, then Nature's Splendor 1** (T136; with Bloom typed too the ratios differ) on Rejuvenation:
-   Heal x15/12 and Per mana up, Per sec unchanged; on
-   Regrowth only the over-time part grows (x27/21). If you have the talent, check the spell's own text
-   already says 15 s: the What if assumes it does.
-6. **Clear.** Every number returns.
-7. **Really take Bloom.** Rejuvenation's Per mana includes it with the What if off. Hover the spell: under
+1. **Spells -> Rejuvenation -> What if... -> Talent plan...**, add Bloom (it needs 10 points in Restoration
+   above it), **Use in What if.** Heal and Per mana rise by your Spirit (Bloom's 100%). The card gets
+   `Bloom +N if it runs out (100% of N Spirit)`; the drawer's sentence `Talents from your plan: Bloom 1.`
+   Compare N with the heal you see land when a Rejuvenation expires.
+2. **Plan Living Spirit 3 too:** the amount goes up 15%. Type a Spirit in the drawer: it follows.
+3. **Open Healing Touch** with the What if still on; plan Naturalist 5 (if you have no points in it): the
+   cast falls by 0.5 s. Tranquil Spirit 5: the cost falls 10%. Compare with a real respec.
+4. **Clear, then plan Nature's Splendor 1** (T136; needs Nature's Majesty 2 in Balance) on Rejuvenation:
+   Heal x15/12 and Per mana up, Per sec unchanged; on Regrowth only the over-time part grows (x27/21).
+   If you have the talent, check the spell's own text already says 15 s: the What if assumes it does.
+5. **Clear.** Every number returns.
+6. **Really take Bloom.** Rejuvenation's Per mana includes it with the What if off. Hover the spell: under
    Per sec, `Includes Bloom +N if it runs out ... (predicted)`. In combat the amount stays at the
    last Spirit read.
-8. **Priest / shaman / paladin:** What if shows that class's talents. Rows are from the site.
+7. **Priest / shaman / paladin:** Talent plan... shows that class's trees.
 
 ## 57. The moving line for the five-second rule (T135) -- NEW, 2 min
 
@@ -2560,6 +2560,19 @@ Forever, as a druid with talents. Everything is a prediction until you say other
    line says "breaks the rules" and Bloom's edge is red.
 4. **x instead of Use:** nothing changes. **My talents**, **Clear** do what they say.
 5. **Clear the What if:** the next Talent plan... starts from your live build again.
+
+## 59. Level in the What if, plans past your level (T138) -- NEW, 3 min
+
+Forever, at your level (say 26).
+
+1. **What if -> Level**, type 40: Rejuvenation's low ranks heal less and lose Per mana (their +healing
+   share drops 5% a level past learn level + 17); the high ranks you have keep theirs until their own
+   start. The sentence says `Level 40: each heal rank's +healing share at that level's penalty`. Ranks
+   you only learn later are not in the list. Report whether the drop at your next level matches the
+   game when you get there.
+2. **Talent plan... with Level still 40:** the line says `level 40: 31 points`. Plan 31 points; no warning.
+3. **Clear the What if, Talent plan... again:** spend more than your level gives (up to 51). The line
+   says `you don't have that many yet: needs level N` (N = points + 9). Use in What if still works.
 
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the

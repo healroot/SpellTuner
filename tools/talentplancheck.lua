@@ -283,7 +283,7 @@ T("4 My talents and Clear", function()
     TP.kept = nil
     local sheet = TPL.Open(win)
     Click(sheet.clearBtn)
-    local cleared = next(TPL.Plan()) == nil and (sheet.info:GetText() or ""):find("0 spent", 1, true) ~= nil
+    local cleared = next(TPL.Plan()) == nil and (sheet.info:GetText() or ""):find("0 of 51 spent", 1, true) ~= nil
     Click(sheet.mineBtn)
     local mine = TPL.Plan()["Naturalist"] == 5 and TPL.Plan()["Gift of Nature"] == 2
     sheet:Hide()
@@ -356,6 +356,10 @@ T("4 review m2: a spinner moved while the sheet is open moves the plan; a second
     local synced = TPL.Plan()["Naturalist"] == 3 and CellOf(sheet, "Naturalist").rank:GetText() == "3/5"
     TPL.Open(win)
     local keptInProgress = TPL.Plan()["Heart of the Wild"] == 1
+    Click(CellOf(sheet, "Genesis"), "LeftButton") -- a modelled click not yet used
+    WI:Set("level", 40)
+    keptInProgress = keptInProgress and TPL.Plan()["Genesis"] == 1 and TP:Modelled("Genesis")
+        and TPL.Plan()["Naturalist"] == 3
     sheet:Hide()
     WI:Clear()
     return synced and keptInProgress
@@ -374,6 +378,33 @@ T("4 review m3: the drawer's Talent plan... shows when the family has no talent 
     WI.ClassRowsFor = rowsFor
     Click(f.strip.whatIfBtn)
     return shown
+end)
+
+T("4 T138 the plan spends up to 51; past the level's points it says the level it needs", function()
+    Use(LIVE)
+    TP.kept = nil
+    local sheet = TPL.Open(win)
+    local fits = (sheet.info:GetText() or ""):find("needs level", 1, true) == nil
+    for _ = 1, 3 do Click(CellOf(sheet, "Heart of the Wild"), "LeftButton") end -- 15 spent
+    for _ = 1, 5 do Click(CellOf(sheet, "Furor"), "LeftButton") end              -- 20 spent, 17 at 26
+    local spent = TP.Total(TPL.Plan(), trees)
+    local info = (sheet.info:GetText() or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+    local warns = info:find("you don't have that many yet: needs level 29", 1, true) ~= nil
+    WI:Set("level", 40)
+    local info40 = (sheet.info:GetText() or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+    sheet:Hide()
+    WI:Clear()
+    return fits and spent == 20 and warns and info40:find("level 40: 31 points", 1, true) ~= nil
+        and info40:find("needs level", 1, true) == nil, info .. " / " .. info40
+end)
+
+T("4 T138 TP.Level and TP.NeedLevel", function()
+    Use(LIVE)
+    local live = TP.Level()
+    WI:Set("level", 50)
+    local typed = TP.Level()
+    WI:Clear()
+    return live == 26 and typed == 50 and TP.NeedLevel(51) == 60 and TP.NeedLevel(1) == 10 and TP.NeedLevel(0) == nil
 end)
 
 print(string.format("\n%d ok, %d failed", ok, #fails))

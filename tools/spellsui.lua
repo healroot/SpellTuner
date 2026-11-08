@@ -3437,8 +3437,8 @@ T36("T122 forever: What if... opens the pane -- STATS, the sentence for the clas
     local ph = heal and StripColor(heal.ph:GetText() or "") or "?"
     local good = p and p:IsShown() and heal ~= nil and ph == Num(live.heal)
         and p.classNote and p.classNote:IsShown()
-        and StripColor(p.classNote:GetText() or "") == "Your talents were not read yet, so a talent can't be tried here."
-        and not (p.classTitle and p.classTitle:IsShown()) and FBox("form") == nil
+        and StripColor(p.classNote:GetText() or "") == "Your talents were not read yet, so a talent plan can't be tried here."
+        and p.classTitle and p.classTitle:IsShown() and FBox("level") ~= nil and FBox("form") == nil
         and FBox("mana") and FBox("mana").plus ~= nil and FBox("crit").plus == nil
     return good, string.format("open=%s ph=%q note=%q", tostring(p and p:IsShown()), ph,
         tostring(p and p.classNote and p.classNote:GetText()))
@@ -3673,7 +3673,7 @@ end)
 -- at font offsets -2..+2 the sentence and the footer wrap at 188 under the
 -- stub's word wrap (S.WrappedLines; this half keeps its own anchors, so the
 -- two strings measure through it), and the contents stay inside the drawer
-T36("T134 forever: talents read -- one-line rank rows of the family on screen; + steps; they fit; ESC", function()
+T36("T138 forever: talents read -- Level and Spirit rows, no talent row; + steps; they fit; ESC", function()
     WIf():Clear()
     local TRAITS = { "C_ClassTalents.GetActiveConfigID", "C_Traits.GetConfigInfo", "C_Traits.GetTreeNodes",
         "C_Traits.GetNodeInfo", "C_Traits.GetEntryInfo", "C_Traits.GetDefinitionInfo" }
@@ -3685,26 +3685,25 @@ T36("T134 forever: talents read -- one-line rank rows of the family on screen; +
     if not f.strip.whatIfBtn then return false, "no What if... button" end
     if not (F().whatIf and F().whatIf:IsShown()) then Click(f.strip.whatIfBtn) end
     local d = F().whatIf
-    local bloom, spirit = FBox("talent:Bloom"), FBox("spirit")
-    if not (bloom and bloom.plus and spirit) then return false, "no rows" end
+    local level, spirit, bloom = FBox("level"), FBox("spirit"), FBox("talent:Bloom")
+    if not (level and level.plus and spirit) then return false, "no rows" end
     local fit = (d.contentH or 9999) <= d:GetHeight()
-    local shown = d.classTitle:IsShown() and d.classNote:IsShown() and bloom.compact == true
-        and bloom.label:IsShown() and bloom.plus:IsShown()
-    local noDelta = bloom.delta:GetText() == nil or bloom.delta:GetText() == ""
-    Click(bloom.plus)
-    local typed = WIf():Get("talent:Bloom")
-    Click(bloom.plus)
-    local top = WIf():Get("talent:Bloom")
-    local deltaAfter = bloom.delta:GetText()
+    local shown = d.classTitle:IsShown() and d.classNote:IsShown() and level.label:IsShown() and level.plus:IsShown()
+        and not (bloom and bloom.label:IsShown())
+    local noDelta = level.delta:GetText() == nil or level.delta:GetText() == ""
+    local liveLevel = ST.player.level
+    Click(level.minus)
+    local typed = WIf():Get("level")
+    local deltaAfter = level.delta:GetText()
     WIf():Clear()
     C_Traits, C_ClassTalents = nil, nil
     for _, n in ipairs(TRAITS) do ST.API.Invalidate(n) end
     S.Fire("PLAYER_TALENT_UPDATE")
     ST.Book:MarkDirty()
     local again = OpenView("Nourish")
-    return fit and shown and noDelta and typed == 1 and top == 1 and (deltaAfter == nil or deltaAfter == "") and again ~= nil,
-        string.format("fit=%s %s/%s shown=%s typed=%s top=%s delta=%s", tostring(fit), tostring(d.contentH),
-            tostring(d:GetHeight()), tostring(shown), tostring(typed), tostring(top), tostring(deltaAfter))
+    return fit and shown and noDelta and typed == liveLevel - 1 and deltaAfter == "-1" and again ~= nil,
+        string.format("fit=%s %s/%s shown=%s typed=%s delta=%s", tostring(fit), tostring(d.contentH),
+            tostring(d:GetHeight()), tostring(shown), tostring(typed), tostring(deltaAfter))
 end)
 
 -- T134 review m9: every Rejuvenation row, Spirit typed, a long footer, -2..+2: the

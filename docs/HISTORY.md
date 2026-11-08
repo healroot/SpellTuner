@@ -5359,3 +5359,14 @@ The author asked for a small copy of the talent tree to plan a build the numbers
 ("sheet with real icons, keep the spinners too"). `Data/TalentTree_Forever.lua` (generated, every class),
 `Spells/TalentPlan.lua` (rules and the What if bridge, `WI:SetMany`), `UI/TalentPlanner.lua` (the sheet,
 from the What if drawer). New suite `tools/talentplancheck.lua`. `docs/TESTING.md` section 58.
+
+## 2026-11-08 -- T138: What if Level, plans to 51, the plan the only talent override
+
+The author asked for three changes:
+- the planner spends up to 51 points, with a warning naming the level the plan needs;
+- a What if Level, so the downrank penalty can be priced at a future level;
+- no talent +/- rows in the drawer.
+
+The +healing share moves by P(typed) / P(live). The drawer keeps Level and Spirit, and its sentence names
+the plan's talents. `docs/tasks/T138-whatif-level-and-plan-only.md`, TESTING sections 56 (rewritten for the
+plan) and 59.

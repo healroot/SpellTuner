@@ -129,10 +129,18 @@ local function PaintPanel()
     sheet.changes:SetText(ChangesText())
 end
 
+-- T138: every plan may spend all 51 points; the level the plan is judged at
+-- (the What if's Level, else the player's) and the level it needs are said
 local function Paint()
     local spent = TP.Total(plan, trees)
-    local info = ClassName() .. ", level " .. tostring(ST.player and ST.player.level or "?") .. ": "
-        .. points .. " points  " .. (spent == points and UI.Hex("good") or UI.Hex("label")) .. spent .. " spent|r"
+    local level = TP.Level()
+    local have = TP.Points(level, TP.Total(live, trees))
+    local info = ClassName() .. ", level " .. tostring(level or "?") .. ": " .. have .. " points  "
+        .. (spent == have and UI.Hex("good") or UI.Hex("label")) .. spent .. " of " .. points .. " spent|r"
+    if spent > have then
+        info = info .. "  " .. UI.Hex("bad") .. "you don't have that many yet: needs level "
+            .. TP.NeedLevel(spent) .. "|r"
+    end
     -- review m5: a plan the spinners typed past the game's rules is said, never painted as fine
     local problems = TP.Problems(plan, trees, points)
     if #problems > 0 then
@@ -264,20 +272,26 @@ local function Build(win)
     UI.Tint(legend, "text", "muted")
     sheet.legend = legend
     sheet:HookScript("OnHide", function() sel = nil end)
-    -- review m2: the What if drawer sits outside the mask; a spinner moved while the
-    -- sheet is open moves the plan too, so Use never overwrites it unseen
+    -- review m2: the What if drawer sits outside the mask; a talent the What if
+    -- changes while the sheet is open (a Clear) moves the plan too, so Use never
+    -- overwrites it unseen. T138: only a talent whose value changed -- a Level
+    -- typed meanwhile keeps the clicks not yet used
     ST:RegisterCallback("WHATIF_CHANGED", function()
         if not (sheet and sheet:IsShown() and plan and live) then return end
-        local WI = ST.WhatIf
+        local WI, now = ST.WhatIf, {}
         for _, tree in ipairs(trees) do
             for _, t in ipairs(tree.talents) do
                 if TP:Modelled(t.name) then
                     local r = WI:Get("talent:" .. t.name)
-                    if r == nil then r = TP.Rank(live, t.name) end
-                    plan[t.name] = (r > 0) and math.min(r, t.max) or nil
+                    now[t.name] = r or false
+                    if (r or false) ~= (sheet.seen and sheet.seen[t.name] or false) then
+                        if r == nil then r = TP.Rank(live, t.name) end
+                        plan[t.name] = (r > 0) and math.min(r, t.max) or nil
+                    end
                 end
             end
         end
+        sheet.seen = now
         Paint()
     end)
     -- closes with its window (the bindings sheet's rule)
@@ -321,8 +335,12 @@ function TPL.Open(win)
     if not sheet or sheet.win ~= win then Build(win) end
     Layout()
     plan = TP:Current() or {}
+    sheet.seen = {}
+    for _, tree in ipairs(trees) do
+        for _, t in ipairs(tree.talents) do sheet.seen[t.name] = ST.WhatIf:Get("talent:" .. t.name) or false end
+    end
     local liveTotal = TP.Total(live, trees)
-    points = TP.Points(ST.player and ST.player.level, liveTotal)
+    points = math.max(TP.MAX_POINTS, liveTotal) -- T138: plan past your level
     if not (sel and TP.Find(trees, sel)) then sel = trees[1].talents[1] and trees[1].talents[1].name end
     Paint()
     sheet:Show()

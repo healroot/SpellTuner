@@ -14,6 +14,10 @@ published to CurseForge; the developers' log is `docs/HISTORY.md`.
 - What if -> Talents moves durations too: Nature's Splendor makes Rejuvenation and Moonfire 3 s
   longer and Regrowth's over-time part 6 s longer, so more healing for the same mana.
 
+- What if -> Level: price your spells at another level -- each heal rank's +healing share at that
+  level's downrank penalty. The talent plan may spend all 51 points; past your level's points it says
+  the level the plan needs. The What if's talent +/- rows are gone: the talent plan is the one place
+  to change talents.
 - Talent plan: What if -> Talent plan... opens your class's three talent trees with their icons. Plan
   a build with clicks (left adds, right removes, the game's tier rules) and "Use in What if": the spells' numbers follow the planned talents SpellTuner models (a blue dot);
   the others count for points and tiers only.

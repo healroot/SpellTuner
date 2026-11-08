@@ -173,35 +173,37 @@ local function Keys(rows)
     return table.concat(out, ",")
 end
 
-T("4 the rows: each talent once, 0 to its top rank, steps of one; Spirit last", function()
+T("4 the keys: Level first, each talent once, 0 to its top rank, steps of one; Spirit last", function()
     Use({})
     local rows = WI:ClassRows()
     local seen, bad = {}, {}
     for _, r in ipairs(rows or {}) do
         if seen[r.key] then bad[#bad + 1] = "twice " .. r.key end
         seen[r.key] = r
-        if r.key ~= "spirit" and not (r.min == 0 and r.max >= 1 and r.step == 1 and r.compact) then
+        if r.key ~= "spirit" and r.key ~= "level" and not (r.min == 0 and r.max >= 1 and r.step == 1 and r.compact) then
             bad[#bad + 1] = r.key
         end
     end
-    return seen["talent:Bloom"] and seen["talent:Bloom"].max == 1 and seen["talent:Naturalist"].max == 5
-        and rows[#rows].key == "spirit" and #bad == 0 and WI:ClassTitle() == "TALENTS",
-        table.concat(bad, ",")
+    return rows[1].key == "level" and rows[1].max == 60 and seen["talent:Bloom"] and seen["talent:Bloom"].max == 1
+        and seen["talent:Naturalist"].max == 5 and rows[#rows].key == "spirit" and #bad == 0
+        and WI:ClassTitle() == "LEVEL AND TALENTS", table.concat(bad, ",")
 end)
 
-T("4 the family on screen: Rejuvenation's talents, then Living Spirit and Spirit", function()
+T("4 T138 the drawer: Level, and Spirit where Bloom reads it; never a talent row", function()
     local b = Use({})
-    local keys = Keys(WI:ClassRowsFor(b.families.Rejuvenation))
-    return keys == "talent:Bloom,talent:Genesis,talent:Gift of Nature,talent:Improved Rejuvenation,"
-        .. "talent:Nature's Splendor,talent:Living Spirit,spirit", keys
+    local rj = Keys(WI:ClassRowsFor(b.families.Rejuvenation))
+    local ht = Keys(WI:ClassRowsFor(b.families["Healing Touch"]))
+    return rj == "level,spirit" and ht == "level", rj .. " / " .. ht
 end)
 
-T("4 Healing Touch: its talents, none of Bloom's", function()
+T("4 T138 the sentence names the plan's talents, else your own", function()
     local b = Use({})
-    local keys = Keys(WI:ClassRowsFor(b.families["Healing Touch"]))
-    return keys:find("talent:Naturalist", 1, true) and keys:find("talent:Tranquil Spirit", 1, true)
-        and keys:find("talent:Gift of Nature", 1, true) and not keys:find("Bloom", 1, true)
-        and not keys:find("spirit", 1, true) and true or false, keys
+    local own = WI:ClassNote(b.families.Rejuvenation)
+    WI:Set("talent:Bloom", 1)
+    local planned = WI:ClassNote(b.families.Rejuvenation)
+    WI:Clear()
+    return own:find("Your own talents; Talent plan... tries a build.", 1, true) == 1
+        and planned:find("Talents from your plan: Bloom 1.", 1, true) == 1, planned
 end)
 
 T("4 a typed rank clamps to the rule; a fraction floors; a talent of another class is refused", function()
@@ -216,13 +218,13 @@ T("4 a typed rank clamps to the rule; a fraction floors; a talent of another cla
     return top == 1 and floor == 2 and other == nil, string.format("%s %s %s", tostring(top), tostring(floor), tostring(other))
 end)
 
-T("4 ranks unread: no rows, a sentence, and nothing moves (never assumed 0)", function()
+T("4 ranks unread: only Level, a sentence, and nothing moves (never assumed 0)", function()
     local b = Use(false)
     local rows, note = WI:ClassRows(), WI:ClassNote()
     WI:Set("talent:Bloom", 1)
     local typed = WI:Get("talent:Bloom")
     local e = WI:Book().spells[1430]
-    return rows == nil and note == "Your talents were not read yet, so a talent can't be tried here."
+    return Keys(rows) == "level" and note == "Your talents were not read yet, so a talent plan can't be tried here."
         and typed == nil and Near(e.value, b.spells[1430].value), tostring(note)
 end)
 
@@ -356,10 +358,8 @@ T("7 a cast talent typed to an instant says so and keeps its row (m1)", function
     local b = Use({})
     WI:Set("talent:Improved Wrath", 5)
     local w = WI:Book().spells[5176]
-    local keys = Keys(WI:ClassRowsFor(b.families.Wrath))
     WI:Clear()
-    return w.cast == 0 and w.castKind == "instant" and keys:find("talent:Improved Wrath", 1, true) ~= nil,
-        tostring(w.cast) .. " " .. tostring(w.castKind) .. " " .. keys
+    return w.cast == 0 and w.castKind == "instant", tostring(w.cast) .. " " .. tostring(w.castKind)
 end)
 
 T("7 a talent that says amount healed does not reach an absorb, unless it names the spell (m2)", function()
@@ -415,7 +415,60 @@ T("7 the sentence names what does not move; a family no talent touches says only
         good = good and note:find(w, 1, true) ~= nil
     end
     local none = WI:ClassNote({ ranks = {} })
-    return good and none == "No talent moves this spell in the What if.", tostring(none)
+    return good and none == "Your own talents; Talent plan... tries a build. No talent moves this spell in the What if.",
+        tostring(none)
+end)
+
+--------------------------------------------------------------------------------
+-- T138: the level
+--------------------------------------------------------------------------------
+T("9 Level: a heal rank's share moves by the ratio of the two penalties; the value with it", function()
+    S.bonusHealing = 300
+    local b = Use({})
+    local Coef = ST.Coefficients
+    local live = ST.player.level
+    local pick
+    for _, e in ipairs(b.families.Rejuvenation.ranks) do
+        local pa = Coef.LevelPenalty(e.id, e.level, live, "heal")
+        local pb = Coef.LevelPenalty(e.id, e.level, live + 10, "heal")
+        if type(e.bonus) == "table" and type(e.bonus.counts) == "number" and type(e.bonus.of) == "number"
+            and e.bonus.of > 0 and pa > 0 and pb < pa then pick = e break end
+    end
+    if not pick then
+        local seen = {}
+        for _, e in ipairs(b.families.Rejuvenation.ranks) do
+            seen[#seen + 1] = string.format("%s L%s c%s of%s", tostring(e.id), tostring(e.level),
+                tostring(e.bonus and e.bonus.counts), tostring(e.bonus and e.bonus.of))
+        end
+        return false, "no rank with a share the level moves: " .. table.concat(seen, "; ")
+    end
+    WI:Set("level", live + 10)
+    local w = WI:Book().spells[pick.id]
+    local pa = Coef.LevelPenalty(pick.id, pick.level, live, "heal")
+    local pb = Coef.LevelPenalty(pick.id, pick.level, live + 10, "heal")
+    local share = pick.bonus.counts * pb / pa
+    local drop = (pick.bonus.counts - share) * pick.bonus.of
+    WI:Clear()
+    S.bonusHealing = 0
+    Use({})
+    return Near(w.bonus.counts, share) and w.bonus.atLevel == live + 10 and w.value < pick.value
+        and w.perMana < pick.perMana, string.format("share %s -> %s value %s -> %s (drop %.1f)",
+            tostring(pick.bonus.counts), tostring(w.bonus.counts), tostring(pick.value), tostring(w.value), drop)
+end)
+
+T("9 Level: the live level, or a damage rank, moves nothing; the sentence says what it moves", function()
+    local b = Use({})
+    WI:Set("level", ST.player.level)
+    local same = WI:Get("level") == ST.player.level and Near(WI:Book().spells[1430].value, b.spells[1430].value)
+    WI:Set("level", 60)
+    local wr = b.families.Wrath.ranks[1]
+    local dmg = Near(WI:Book().spells[wr.id].value, wr.value)
+    local note = WI:ClassNote(b.families.Rejuvenation)
+    WI:Set("level", 99)
+    local clamped = WI:Get("level")
+    WI:Clear()
+    return same and dmg and clamped == 60 and note:find("Level 60: each heal rank's +healing share", 1, true) == 1,
+        tostring(note)
 end)
 
 --------------------------------------------------------------------------------

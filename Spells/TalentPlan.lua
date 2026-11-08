@@ -9,6 +9,9 @@ local _, ST = ...
 --   TP.Points(level, live)     the points a level gives: level - 9, 0..51 (assumed:
 --                              one a level from 10, VERIFY), never under what the
 --                              live build already spends
+--   TP.Level()                 the level the plan is judged at: the What if's
+--                              typed Level (T138), else the player's, or nil
+--   TP.NeedLevel(spent)        the level that gives `spent` points (T138)
 --   TP.Spent(plan, trees, ti, belowRow)  points in tree ti (rows under belowRow)
 --   TP.Total(plan, trees)      every point the plan spends in the trees
 --   TP.CanAdd(plan, trees, name, points)  -> true | false, why
@@ -36,6 +39,19 @@ ST.TalentPlan = TP
 local PREFIX = "talent:"
 TP.MAX_POINTS = 51
 TP.FIRST_LEVEL = 10
+
+function TP.Level()
+    local WI = ST.WhatIf
+    local typed = WI and WI:Get("level")
+    if type(typed) == "number" then return typed end
+    local l = ST.player and ST.player.level
+    return (type(l) == "number" and l > 0) and l or nil
+end
+
+function TP.NeedLevel(spent)
+    if type(spent) ~= "number" or spent <= 0 then return nil end
+    return spent + TP.FIRST_LEVEL - 1
+end
 
 function TP.Trees(class)
     class = class or (ST.player and ST.player.class)
