@@ -401,7 +401,7 @@ end
 
 -- The preview's sources: the sample pool and the pane's own five-second rule
 -- (a fight's chip: a rule that runs again after CS.SAMPLE_GAP), or the
--- line's own (Live).
+-- line's own (Live: its pool, range, rule and power texts).
 local function SampleDraw(p)
     if p.sampleDraw then return p.sampleDraw end
     p.sampleDraw = {
@@ -418,6 +418,15 @@ local function SampleDraw(p)
                 if d and d.poolMax then d.poolMax(b) return end
             end
             b:SetMinMaxValues(0, 1)
+        end,
+        -- T145 review N4: Live draws the game's own mana texts, as the
+        -- clock on screen does; a sample chip, the sample's words
+        powerText = function(fs, kind)
+            if p.chip == "live" then
+                local d = LiveDraw()
+                if d and d.powerText then return d.powerText(fs, kind) end
+            end
+            return false
         end,
         fsrEnd = function()
             if p.chip == "live" then
@@ -566,7 +575,14 @@ CS.CONTROLS = {
     { id = "texture", kind = "dropdown", key = "texture", values = { "flat", "gloss", "statusbar", "soft" },
       label = "Texture", affects = { "bar.texture" }, note = "texture" },
     { id = "font", kind = "buttons", key = "font", values = { "eui", "st" }, names = CS.FONT_NAMES,
-      label = "Font", affects = { "text.*.face" }, note = "font" },
+      label = "Font", affects = { "text.*.face" }, note = "font",
+      -- T145 review N2: with every text off a font draws nothing
+      visible = function(look)
+          for _, kind in ipairs(ST.ClockStore.KINDS) do
+              if look.texts[kind] and look.texts[kind].on == true then return true end
+          end
+          return false
+      end },
     { id = "fill", kind = "buttons", key = "fill", values = { "mana", "class", "custom" }, names = CS.FILL_NAMES,
       label = "Fill", affects = { "bar.colour" },
       get = function(look) return IsHex(look.fill) and "custom" or look.fill end,

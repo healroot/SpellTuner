@@ -19,7 +19,8 @@
 -- renderer is UI/ClockBar.lua (it replaces UI/ClockView.lua). The tick is
 --     ST.Pool:Project -> ST.ManaModel.Face -> ST.ClockWords.Build(face, look,
 --     steady, now, words, ST.Pool:QuietFull(now)) -> renderer:Paint(words),
---     renderer:PaintPower(true)
+--     renderer:PaintPower(withMax) (the range only when the max moved, or
+--     every RANGE_EVERY s; review N1)
 -- UNIT_POWER_FREQUENT -> renderer:PaintPower() (the value only), UNIT_MAXPOWER
 -- -> PaintPower(true), CLOCK_LOOK / STYLE_CHANGED -> renderer:Apply(look) with
 -- the look from UI/ClockStore.lua (migrated once at MD_READY). This file keeps
@@ -319,6 +320,11 @@ end
 -- T145c (spec 2.5): the face, its words (the FULL rule, Steady, the quiet
 -- pool) and the power -- text and colour only; no visibility pass.
 local wasPreviewing = false
+-- T145 review N1: the tick hands the bar its range only when the plain max
+-- moved, else every RANGE_EVERY seconds as a safety net -- each
+-- SetMinMaxValues may restart the client's easing (review W1)
+Clock.RANGE_EVERY = 10
+local rangeMax, rangeAt = nil, nil
 local function PaintFace(now)
     renderer:Snap() -- T41: Apply again after a UI scale change, else a compare
     local state
@@ -338,7 +344,10 @@ local function PaintFace(now)
         ST.ClockWords.Build(face, look, steady, now, words, ST.Pool:QuietFull(now))
         renderer:Paint(words)
     end
-    renderer:PaintPower(true)
+    local mx = ST.Pool.model and ST.Pool.model.max
+    local withMax = mx ~= rangeMax or rangeAt == nil or now - rangeAt >= Clock.RANGE_EVERY
+    if withMax then rangeMax, rangeAt = mx, now end
+    renderer:PaintPower(withMax)
     return state
 end
 

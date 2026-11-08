@@ -12,9 +12,9 @@
 -- operated through its own widget (a click, a dropdown pick, a check, a
 -- number box's Enter, the colour picker's move).
 --
---   E1  every control visibly changes the live clock (P1): from each of three
+--   E1  every control visibly changes the live clock (P1): from each of four
 --       base looks (the defaults; the author's migrated 2026-11-08 store; every
---       text on with the line off), every entry of CS.CONTROLS visible there,
+--       text on with the line off; every text off), every entry of CS.CONTROLS visible there,
 --       every sample value that differs: the live clock's Drawn() differs on a
 --       field the control names. An empty inert list is the pass; there is no
 --       exception list. The same for the pane's own preview.
@@ -34,11 +34,13 @@
 --       across every Bar control operated from the pane.
 --   E7  (Forever) the quiet pool: events every 0.2 s -> no anchor; quiet for
 --       QUIET outside the rule -> anchored, the time FULL; quiet inside the
---       rule -> no anchor; base x QUIET < 2 -> no anchor.
+--       rule -> no anchor; base x QUIET < 2 -> no anchor; dead or a ghost ->
+--       no anchor, and after PLAYER_ALIVE none until a fresh event (N5).
 --
 -- The moment E1 holds the live clock at (a seam, not the model's own path):
--- Forever, the model's fight fields set so the time to OOM is 80 s (40 s for
--- Warn colours) with the rule running, out of combat so the Settings window
+-- Forever, the model's fight fields set at 60 % mana so the time to OOM is
+-- 80 s (40 s for Warn colours) with the rule running and the rest far enough
+-- from it to be drawn, out of combat so the Settings window
 -- stays open; TBC, ST:GetClockFace answering that face. Each control is
 -- operated from that moment, then one 0.5 s tick.
 HARNESS_FLAVOUR = { "tbc", "forever" }
@@ -100,7 +102,7 @@ local events = 0
 ST:RegisterCallback("CLOCK_LOOK", function() events = events + 1 end)
 
 --------------------------------------------------------------------------------
--- The three base looks
+-- The four base looks
 --------------------------------------------------------------------------------
 local function Copy(v) return D.Copy(v) end
 local BASES = {}
@@ -111,6 +113,12 @@ do
     for _, kind in ipairs(Store.KINDS) do all.texts[kind].on = true end
     all.line = false
     BASES[3] = { name = "every text on, the line off", look = all }
+end
+do
+    -- T145 review N2: every text off is reachable (P2 binds presets only)
+    local none = Copy(Store.DEFAULTS)
+    for _, kind in ipairs(Store.KINDS) do none.texts[kind].on = false end
+    BASES[4] = { name = "every text off", look = none }
 end
 
 --------------------------------------------------------------------------------
@@ -136,7 +144,9 @@ local function Hold(tto)
     local now = S.now
     if forever then
         local m = ST.Pool.model
-        local mana = m.max * 0.4
+        -- 60 %: the rest (about 45 s at the stub's rates) is more than 25 %
+        -- away from the 80 s time, so the Rest text has words (review S2)
+        local mana = m.max * 0.6
         m.casting = m.casting or 5
         local spend = mana / tto + m.casting
         m:Anchor(now, mana, "e2e")
@@ -256,16 +266,35 @@ local function Field(snap, path)
     end
     return t
 end
+-- T145 review S2: a text's change counts only when the text has something to
+-- draw -- every snapshot where it is shown holds non-empty words, and it is
+-- shown in at least one (an empty Rest text moved is nothing on screen).
+local function Visible(s0, s1, kind)
+    local shown = 0
+    for _, s in ipairs({ s0, s1 }) do
+        local t = s.text and s.text[kind]
+        if t and t.shown then
+            if type(t.words) ~= "string" or t.words == "" then return false end
+            shown = shown + 1
+        end
+    end
+    return shown > 0
+end
 local function Differs(s0, s1, affects)
     for _, path in ipairs(affects) do
         if path:find("%*") then
             local pre, post = path:match("^(.-)%.%*%.(.+)$")
             for _, kind in ipairs(Store.KINDS) do
                 local f = pre .. "." .. kind .. "." .. post
-                if not Same(Field(s0, f), Field(s1, f)) then return true end
+                if not Same(Field(s0, f), Field(s1, f)) and (pre ~= "text" or Visible(s0, s1, kind)) then
+                    return true
+                end
             end
-        elseif not Same(Field(s0, path), Field(s1, path)) then
-            return true
+        else
+            local kind = path:match("^text%.([^.]+)%.")
+            if not Same(Field(s0, path), Field(s1, path)) and (kind == nil or Visible(s0, s1, kind)) then
+                return true
+            end
         end
     end
     return false
@@ -408,6 +437,24 @@ Try("E3: every operation fires exactly one CLOCK_LOOK and leaves a valid store",
         for _, x in ipairs(r.invalid or {}) do v[#v + 1] = x end
     end
     return live and preview and #m == 0 and #v == 0, table.concat(m, "; ") .. " | " .. table.concat(v, "; ")
+end)
+
+-- T145 review N4: on the Live chip the preview's mana texts are the game's,
+-- as on the live clock, never the model's words beside them
+Try("E1 (preview, Live): the preview's power texts are drawn as the live clock draws them (review N4)", function()
+    UseBase(BASES[3])
+    Hold(); S.Tick(0.5)
+    CS.Chip(p, "live")
+    S.Tick(0.5)
+    local live, pv = R:Drawn(), p.view:Drawn()
+    local bad = {}
+    for _, kind in ipairs({ "mana", "manaMax", "pct" }) do
+        local a, b = live.text[kind].words, pv.text[kind].words
+        if a ~= b then bad[#bad + 1] = kind .. " " .. tostring(a) .. "/" .. tostring(b) end
+    end
+    CS.Chip(p, "fight")
+    Release()
+    return #bad == 0 and live.text.mana.words ~= nil, table.concat(bad, "; ") .. " live mana " .. tostring(live.text.mana.words)
 end)
 
 --------------------------------------------------------------------------------
@@ -670,6 +717,48 @@ T.section("E7. the quiet pool (Forever)")
         local a0 = Pool.quietAnchors
         Run(CW.QUIET + 2, nil)
         return Pool.quietAnchors == a0 and m.mana < m.max, "anchors " .. (Pool.quietAnchors - a0)
+    end)
+    -- T145 review N1: the tick no longer hands the bar its range twice a second
+    Try("E7: the tick sets the bar's range only when the max moved, else every RANGE_EVERY s (review N1)", function()
+        local d = R.draw
+        local real, calls = d.poolMax, 0
+        d.poolMax = function(...) calls = calls + 1; return real(...) end
+        Run(1, 0.2) -- settle
+        calls = 0
+        Run(ST.Clock.RANGE_EVERY - 1, 0.2)
+        local steady = calls
+        calls = 0
+        local m = Pool.model
+        local oldMax = S.manaMax
+        S.manaMax = oldMax + 100
+        Run(1, 0.2)
+        local moved = calls
+        S.manaMax = oldMax
+        Run(1, 0.2)
+        d.poolMax = real
+        return steady <= 1 and moved >= 1 and m.max == oldMax,
+            string.format("%d range calls over %d s steady, %d after the max moved", steady, ST.Clock.RANGE_EVERY - 1, moved)
+    end)
+    -- T145 review N5: a dead or ghost player's pool does not move either
+    Try("E7: dead or a ghost, quiet for QUIET outside the rule: no anchor (review N5)", function()
+        Rates(5)
+        local m = Setup(0.35, 5)
+        local a0 = Pool.quietAnchors
+        S.units.player.dead = true
+        S.Fire("PLAYER_DEAD")
+        Run(CW.QUIET + 1, nil)
+        local deadOK = Pool.quietAnchors == a0 and m.mana < m.max
+        -- alive again at 35 %: no anchor until a fresh power event, then the
+        -- quiet rule as before
+        S.units.player.dead = false
+        S.Fire("PLAYER_ALIVE")
+        Run(CW.QUIET + 1, nil)
+        local aliveOK = Pool.quietAnchors == a0 and m.mana < m.max
+        S.Fire("UNIT_POWER_FREQUENT", "player", "MANA")
+        Run(CW.QUIET + 1, nil)
+        local after = Pool.quietAnchors == a0 + 1
+        return deadOK and aliveOK and after,
+            string.format("dead %s, alive %s, after a fresh event %s", tostring(deadOK), tostring(aliveOK), tostring(after))
     end)
     _G.GetManaRegen = realRegen
     ST.API.Invalidate("GetManaRegen")

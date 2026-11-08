@@ -98,6 +98,9 @@ function Pool:QuietFull(now)
     local m = self.model
     local CW = ST.ClockWords
     if not m or not Pool.QUIET_FULL or not (CW and CW.QuietFull) then return false end
+    -- T145 review N5: a dead or ghost player's pool is quiet too, and not
+    -- full; the adapter answers a plain boolean or nil (anything else: alive)
+    if ST.API.UnitIsDeadOrGhost("player") == true then return false end
     return CW.QuietFull(now, self.lastPowerEvent, m.lastSpend, m.base)
 end
 
@@ -177,6 +180,14 @@ ST:OnUnit("UNIT_POWER_FREQUENT", "player", function()
         ST:AddDumpLine("pool", Pool.DumpLine)
     end
 end)
+
+-- T145 review N5: a death forgets the last power event, and so does coming
+-- back (a res, a release, the spirit healer): the quiet rule waits for a
+-- fresh event, so a pool that has not moved since cannot be read as full.
+local function ForgetPowerEvent() Pool.lastPowerEvent = nil end
+ST:On("PLAYER_DEAD", ForgetPowerEvent)
+ST:On("PLAYER_ALIVE", ForgetPowerEvent)
+ST:On("PLAYER_UNGHOST", ForgetPowerEvent)
 
 ST:On("PLAYER_REGEN_DISABLED", function()
     -- Review B19: an opener that succeeded up to 0.5 s before this flag is

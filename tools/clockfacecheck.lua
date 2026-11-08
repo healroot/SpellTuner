@@ -483,6 +483,23 @@ if FLAVOUR == "tbc" then
             if not f or LS(f) ~= ST:GetDisplayString() or LS(f, HEX) ~= ST:GetDisplayString(HEX) then same = false end
         end
         check("3f. ClockFace.Current() rendered by LineString IS GetDisplayString, with and without a hex", same)
+        -- T145 review S1: db.showRest / db.showCooldown gate the feeds'
+        -- `second` only; the clock's Rest text (ClockWords) draws without them
+        local CW = ST.ClockWords
+        local look = { texts = { rest = { on = true } } }
+        local saveR, saveC = ST.db.showRest, ST.db.showCooldown
+        ST.db.showRest, ST.db.showCooldown = false, false
+        Put({ mode = "oom", value = 110, bounded = true }, { inCombat = true, rest = 400 })
+        local fR = ST:GetClockFace()
+        local wR = CW and fR and CW.Build(fR, look, nil, S.now).rest.text
+        Put({ mode = "oom", value = 90 }, { inCombat = true, rest = 400, cd = { short = "inn", tto = 130, delta = 2000 } })
+        local fC = ST:GetClockFace()
+        local wC = CW and fC and CW.Build(fC, look, nil, S.now).rest.text
+        ST.db.showRest, ST.db.showCooldown = saveR, saveC
+        check("3i. showRest / showCooldown off: the feeds' segment gone, the clock's Rest text still drawn (S1)",
+            fR and fR.second == nil and wR == "rest 6:40" and fC and fC.second == nil and wC == "inn 2:15"
+                and not Strip(LS(fR)):find("rest", 1, true),
+            tostring(wR) .. " / " .. tostring(wC))
         local z = unreachableFullNil()
         check("3g. FULL with no value (unreachable through the latch) reads FULL --, never 0s",
             z.ooc[2] == "|cff999999FULL --|r" and z.full[2] == "|cff999999FULL --|r"

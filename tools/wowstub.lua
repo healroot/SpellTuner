@@ -371,6 +371,10 @@ local FOREVER_EVENTS = {
     -- T37: the detail key's refresh (UI/SpellTip_Forever.lua); a retail
     -- event, assumed present like PLAYER_TARGET_CHANGED above.
     MODIFIER_STATE_CHANGED = true, -- T37
+    -- T145 review N5: the quiet pool forgets its last power event on a death
+    -- and a return (Engine/ManaPool_Forever.lua); retail events, assumed
+    -- present like PLAYER_TARGET_CHANGED (ST:On's pcall covers a refusal)
+    PLAYER_DEAD = true, PLAYER_ALIVE = true, PLAYER_UNGHOST = true,
 }
 
 -- Frames: only what the engine files touch (event registration and OnUpdate).

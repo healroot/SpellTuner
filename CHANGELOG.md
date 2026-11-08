@@ -22,36 +22,25 @@ published to CurseForge; the developers' log is `docs/HISTORY.md`.
   a build with clicks (left adds, right removes, the game's tier rules): the spells' numbers follow the planned talents SpellTuner models (a blue dot);
   the others count for points and tiers only.
 
-### Both: a moving line for the five-second rule
-- Settings -> Clock -> Bars -> Join -> Moving line: the mana bar keeps its colour and an amber line
-  crosses it during the five seconds after a cast. Stacked, One bar and Swipe chip stay.
-
-### Both: the clock's bar look
-- Settings -> Clock -> Bar look: shape (Rectangle, Rounded, Pill, Thin), texture (SpellTuner's Soft,
-  Flat, Smooth, Gradient, Gloss, Striped, Minimal, the game's two, and your UI's bars through
-  LibSharedMedia when an addon provides it), the words inside, above, below or off, bar height and
-  border, and six colours from the game's colour picker (fill, fill end, background, border, 5SR line,
-  after 5SR). Presets: Default, Like EllesmereUI, Soft pill, Thin line.
-- The new default: a 6-px blue pill with the words below and the moving line. Your own settings are kept.
-- Forever: the clock's textures are no longer limited to Flat.
-- With EllesmereUI: its own bar textures (Pixels Dark, Atrocity, ...) in the Texture list, and "Like
-  EllesmereUI" copies its mana bar -- Pixels Dark, square, no border, its mana blue, the number centred
-  above. The Bar layout has a Centre text slot.
-
 ### Both: the clock, one bar (clock v3)
 - The clock is one bar on both lines: the mana bar with its texts around it. **Line and Compact are
   gone**; a clock saved as Line or Compact becomes the bar with its default texts. For a text-only
   clock use the datatext or broker (ElvUI, EllesmereUI's DataBars, Titan Panel), which keep the words.
+- A moving line for the five-second rule: an amber line crosses the bar during the five seconds after
+  a cast. It is turned **on** for everyone; one click turns it off.
 - **Your clock's look is moved once** to the new store, keeping what still applies (size, texture,
-  colours, each text's place), and `/st dump` names what was dropped. The moving five-second-rule line
-  is turned **on** for everyone; one click turns it off.
+  colours, each text's place), and `/st dump` names what was dropped.
 - The time at full now reads `FULL`, a refill always `FULL 0:45`, and a time never reads `0s`.
 - Forever: when the game stops sending mana changes for about 3 s outside the five-second rule, the
   clock takes your mana as full (a guess to be checked in game).
 - Settings -> Clock is one page: a live preview on top (In a fight, Running out, Filling, Full, Live),
-  then Bar, Texts (each text on or off; an off text shows only its switch), Presets (SpellTuner,
-  EllesmereUI, with Undo) and When. Every control changes the clock on screen; one that would do
-  nothing is hidden. This replaces the tabs and the Bar look above.
+  then Bar (width, height, shape, frame, texture, font, fill, background, the 5SR line), Texts (each
+  text on or off with its place, size and colour; an off text shows only its switch), Presets
+  (SpellTuner, EllesmereUI, with Undo) and When. Every control changes the clock on screen; one that
+  would do nothing is hidden.
+- Textures on both lines: SpellTuner's Soft, Flat, Smooth, Gloss, Striped, Minimal, the game's two,
+  EllesmereUI's own bar textures (Pixels Dark, Atrocity, ...) when it is loaded, and your UI's bars
+  through LibSharedMedia when an addon provides it.
 
 ### Forever: the talent plan, live
 - The talent plan opens beside the SpellTuner window instead of over it, and every click changes the

@@ -263,7 +263,10 @@ function W.Build(face, look, latch, now, out, quietFull)
     if Plain(r) then Put(out.mp5, Round(r) .. " mp5", "text") else Put(out.mp5, "-- mp5", "text") end
     local f = face.fsr
     if Plain(f) and f > 0 then Put(out.fsr, string.format("5SR %.1f", f), "text") else Put(out.fsr, nil, "text") end
-    local sec = face.second
+    -- T145 review S1: TBC's face carries the segment without the feed
+    -- switches as clockSecond (false: none); Forever's has only `second`
+    local sec = face.clockSecond
+    if sec == nil then sec = face.second end
     if type(sec) == "table" and Plain(sec.value) and sec.value >= 1 then
         Put(out.rest, (sec.label or sec.kind or "rest") .. " " .. ST.ClockFace.Time(sec.value, fmt), "text")
     else

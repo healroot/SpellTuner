@@ -2690,6 +2690,16 @@ Forever with EllesmereUI's mana bar on screen, then TBC. `docs/SPEC-clock-v3.md`
    its switch. Each preset (SpellTuner, EllesmereUI) keeps the time and the line, and Undo preset puts
    your look back. Without EllesmereUI loaded, its texture and font say why beside the control.
 5. **TBC:** the same bar, the time `FULL` at full in a fight, the line moving.
+   With `/st rest` typed once (the datatext's rest off), tick the Rest text on in Settings -> Clock:
+   it still shows `rest m:ss` in a fight (the switch is the datatext's only).
+6. **The bar fills smoothly (VERIFY):** regenerating out of combat, the fill eases with no hitch
+   twice a second (the range is now set only when your max changes, or every 10 s).
+7. **Dead, then back (VERIFY):** die out of combat at part mana, wait 5 s, then take a res. The
+   clock does not jump to `FULL` while dead or after the res; it reads the refill and reaches `FULL`
+   only once the game's bar is full. `/st dump`'s `pool:` line counts no quiet-full anchor while dead.
+8. **Shape under the game frame (VERIFY):** Frame = Game frame, then Shape Rectangle vs Rounded. Say
+   whether the two look different in game (both the game's mask and the shape's mask clip the fill;
+   offline only the mask's file name is compared).
 
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the

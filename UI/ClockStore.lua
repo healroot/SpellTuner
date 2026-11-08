@@ -558,7 +558,8 @@ local function MigrateV2(s, notes)
 end
 
 -- Store.Migrate(raw) -> look, notes, from. Pure: `raw` is never changed.
--- `from` is "v3" | "v2" | "v1" | "none" | "garbage". A v3 store is only
+-- `from` is "v3" | "v2" | "v1" | "none" | "garbage" | "v<n>" (n above 3: a
+-- later build's store, only normalized). A v3 store is only
 -- normalized; v1 (no v, or v under 2) runs CV.Migrate's rules and T142's Bar
 -- reset first, as the T142 build did at login, and is then read as v2.
 function Store.Migrate(raw)
@@ -569,6 +570,12 @@ function Store.Migrate(raw)
     if raw.v == Store.VERSION then
         local look, notes = Store.Normalize(raw)
         return look, notes, "v3"
+    end
+    -- T145 review N3: a store from a later build (a downgrade) is normalized,
+    -- every field that validates kept, never read as v2
+    if type(raw.v) == "number" and raw.v > Store.VERSION then
+        local look, notes = Store.Normalize(raw)
+        return look, notes, "v" .. tostring(raw.v)
     end
     local notes = {}
     local s = Copy(raw)
@@ -662,6 +669,8 @@ local function NoteDump()
     local db = ST.db
     local look = type(db) == "table" and db.clockLook or nil
     local say = migratedFrom ~= nil and migratedFrom ~= "v3" and migratedFrom ~= "none"
+    -- T145 review N3: a v3 store repaired at login is named too
+    if migratedFrom == "v3" and migrationNotes and #migrationNotes > 0 then say = true end
     if not say and type(look) == "table" and look.v == Store.VERSION and #Store.Differs(Store.Look()) > 0 then
         say = true
     end
@@ -835,10 +844,14 @@ function Store.DumpLine()
     local keys = Store.Differs()
     local line = string.format("clock: v3, %d field%s set%s", #keys, #keys == 1 and "" or "s",
         #keys > 0 and (" (" .. table.concat(keys, ", ") .. ")") or "")
+    local notes = migrationNotes or {}
     if migratedFrom and migratedFrom ~= "v3" then
-        local notes = migrationNotes or {}
         line = line .. string.format("; migrated from %s, %d note%s%s", migratedFrom, #notes,
             #notes == 1 and "" or "s", #notes > 0 and (": " .. table.concat(notes, "; ")) or "")
+    elseif migratedFrom == "v3" and #notes > 0 then
+        -- T145 review N3: what Normalize put back at login
+        line = line .. string.format("; repaired v3, %d note%s: %s", #notes, #notes == 1 and "" or "s",
+            table.concat(notes, "; "))
     end
     return line
 end

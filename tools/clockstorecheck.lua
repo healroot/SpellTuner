@@ -20,7 +20,9 @@
 --      a v3 store unchanged, garbage; pure and idempotent; every dropped key
 --      named;
 --   6. MigrateStored rewrites db.clockLook as v3 only fields, once a
---      session, and the dump line names the notes.
+--      session, and the dump line names the notes; a v3 store repaired at
+--      login is named too, and a later build's store (v 4) keeps every field
+--      that validates (review N3).
 HARNESS_FLAVOUR = { "tbc", "forever" }
 
 local here = arg[0]:match("^(.*)/[^/]+$")
@@ -429,6 +431,29 @@ do
     local fresh = select(1, Fresh({}))
     check("6. a fresh store's line: no fields set, no migration named",
         fresh.DumpLine() == "clock: v3, 0 fields set", fresh.DumpLine())
+end
+do
+    -- T145 review N3: a v3 store repaired at login is named in the dump
+    local C0 = select(1, Fresh({}))
+    local bad = Copy(C0.DEFAULTS)
+    bad.width = 9999
+    local C, F = Fresh({ clockLook = bad })
+    local _, notes = C.MigrateStored()
+    local line = F.dump.clock and F.dump.clock()
+    check("6. a v3 store repaired at login: the dump line names the repair (review N3)",
+        #notes == 1 and type(line) == "string" and line:find("repaired v3, 1 note", 1, true)
+        and line:find(notes[1], 1, true) ~= nil and F.db.clockLook.width == C.DEFAULTS.width, line)
+    -- a store from a later build (v 4) keeps every field that validates
+    local later = Copy(C0.DEFAULTS)
+    later.v = 4
+    later.width = 333
+    later.texts.rest.on = true
+    later.newThing = 1
+    local look, lnotes, from = C0.Migrate(later)
+    local text = table.concat(lnotes, "; ")
+    check("6. a store from a later build (v 4): normalized, every valid field kept, the rest named (review N3)",
+        from == "v4" and look.v == 3 and look.width == 333 and look.texts.rest.on == true and look.newThing == nil
+        and text:find("v 4 -> 3", 1, true) ~= nil and text:find("newThing dropped", 1, true) ~= nil, from .. ": " .. text)
 end
 
 T.done()

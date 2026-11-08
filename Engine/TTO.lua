@@ -397,20 +397,34 @@ function ST:GetClockFace(now)
     --               then already right.
     --   "rest 2:10" time to full if you stop casting now. Hidden when it is
     --               within 25% of the primary (no decision content).
+    --
+    -- T145 review S1: `second` keeps the two feed switches (db.showCooldown,
+    -- db.showRest: the datatext's line); `clockSecond` is the same rule
+    -- without them, what the clock's Rest text draws (docs/SPEC-clock-v3.md
+    -- 1.3: the clock no longer reads those keys). false: no segment.
+    face.clockSecond = false
     if s.inCombat and (m == "oom" or m == "hold" or m == "warmup") then
         local cd = s.cd
-        if cd and cd.tto and m == "oom" and not disp.bounded and v and v <= 90
+        local cdOffer = cd and cd.tto and m == "oom" and not disp.bounded and v and v <= 90
             and cd.delta >= 0.10 * math.max(s.manaMax, 1)
-            and not (ST.db and ST.db.showCooldown == false) then
-            face.second = { kind = "cd", label = cd.short, value = Quantize(cd.tto, cd.tto < 60 and 5 or 15) }
-        elseif s.rest and not (ST.db and ST.db.showRest == false) then
+        local cdSeg = cdOffer and { kind = "cd", label = cd.short, value = Quantize(cd.tto, cd.tto < 60 and 5 or 15) } or nil
+        local restSeg = nil
+        if s.rest then
             local r = s.rest
             -- always when the primary is a bound or missing: nothing to compare against
             local show = disp.bounded or (v == nil) or (v > CAP) or (math.abs(r - v) / math.max(v, 1) >= 0.25)
             if show then
-                face.second = { kind = "rest", label = "rest", value = Quantize(r, r < 30 and 1 or 5) }
+                restSeg = { kind = "rest", label = "rest", value = Quantize(r, r < 30 and 1 or 5) }
             end
         end
+        local cdOn = not (ST.db and ST.db.showCooldown == false)
+        local restOn = not (ST.db and ST.db.showRest == false)
+        if cdSeg and cdOn then
+            face.second = cdSeg
+        elseif restSeg and restOn then
+            face.second = restSeg
+        end
+        face.clockSecond = cdSeg or restSeg or false
     end
     return face
 end
