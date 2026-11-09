@@ -5462,3 +5462,12 @@ beside the window (`UI.CreateSheet` `docked`), so the Spells pane is seen moving
   pass-with-minors, 0 blockers; S1 (TBC Rest text still gated by `/st rest`), S2 (E1 counted empty
   texts as changes), S3 (stale CHANGELOG clock lines) and N1-N6 fixed in 980f0d0; `make check` 115
   runs green. Installed on Forever 2026-11-08; in game: `docs/TESTING.md` §66 (steps 1-8).
+
+## 2026-11-09 -- 0.18.0: released
+
+- After the T145 review: the talent plan docks beside the open What if drawer (2a752da); Forever's refill
+  time takes the game's ENERGIZE gains (drinks, potions), a repeating-gain rate (Mana Well) in mp5 and the
+  projection, and counts the out-of-combat refill to the second (a2035b1). Both installed on Forever and
+  approved by the author ("looking good").
+- 0.18.0 on every TOC, `CHANGELOG.md` `## Next` titled `## 0.18.0`, merged to master, published to
+  CurseForge as a beta.

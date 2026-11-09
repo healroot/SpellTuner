@@ -3,7 +3,7 @@
 What changed, for players. `./release.sh --publish` sends the section of the version being
 published to CurseForge; the developers' log is `docs/HISTORY.md`.
 
-## Next
+## 0.18.0
 
 ### Forever: launch talents
 - Numbers follow the launch talents and spell coefficients (preliminary, from talentsforever).
