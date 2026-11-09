@@ -46,7 +46,7 @@ published to CurseForge; the developers' log is `docs/HISTORY.md`.
   through LibSharedMedia when an addon provides it.
 
 ### Forever: the talent plan, live
-- The talent plan opens beside the SpellTuner window instead of over it, and every click changes the
+- The talent plan opens beside the What if (or the SpellTuner window) instead of over it, and every click changes the
   numbers at once -- no Use button. Closing it keeps the plan; What if -> Clear puts your talents back.
 
 ## 0.17.3
