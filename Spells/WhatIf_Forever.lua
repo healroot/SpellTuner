@@ -16,8 +16,10 @@
 --              MeasureBonus's fit of the plain readings of that school's
 --              spell damage, else estimated; the live side the school on
 --              screen, WI.LiveDamage; every school moves by one delta);
---   Crit %     each valued heal rank's `crit` (a chance, 0..1) -- the values
---              are averages without crit (the card's Crit pair names it);
+--   Crit %     each valued rank's `crit` (a chance, 0..1) moved by typed - live
+--              (heals: the typed one; a damage school by the same step), and
+--              its numbers re-derived -- the values average crit in (Spells/
+--              Book.lua's CritFactor, direct and ticks alike, 2026-11-11);
 --   Mana / Regen while casting
 --              the pool casts to OOM are counted from (from full).
 --   Talents (T134, docs/tasks/T134-forever-launch-talents.md)
@@ -36,7 +38,12 @@
 --   Level (T138) a heal rank's +healing share at the typed level: the share was
 --              read (or estimated) under the live level's penalty
 --              (Coefficients.LevelPenalty), so it moves by the ratio of the
---              two; ranks learned later are not in the book, nothing else moves.
+--              two; nothing else moves. A rank is available at the typed
+--              level when it is learned at or below it (Available): a rank
+--              not learned yet (Spells/Book.lua's AddFutureRanks) competes for
+--              the marks there, a learned one above the typed level does not.
+--              A rank learned above the level it is priced at has no penalty
+--              (P 1 below the start), one the typed level passes has it.
 -- The live book, its generation and its entries are never written.
 local _, ST = ...
 
@@ -412,7 +419,12 @@ function provider.Live()
     out.damage = WI.LiveDamage(Book) -- T124: the school on screen
     local school = ST.ClassProfile and ST.ClassProfile.critSchool or 2
     local crit = ST.API.SpellCritChance and ST.API.SpellCritChance(school)
-    if type(crit) == "number" and crit == crit then out.crit = crit end
+    if type(crit) == "number" and crit == crit then
+        out.crit = crit
+    elseif Book and Book.CritNow then -- secret in combat: the last plain reading
+        local c = Book.CritNow("heal")
+        if type(c) == "number" then out.crit = c * 100 end
+    end
     local pool = Book and Book.Pool and Book:Pool()
     if type(pool) == "table" then
         out.mana = pool.max
@@ -472,6 +484,13 @@ local function LevelShare(e, kind, lvl, counts)
     return counts * pb / pa
 end
 
+-- Whether rank `e` is available at the typed level: learned at or below it.
+-- No level typed, or a rank with no learn level: as the live book has it.
+local function Available(e, lvl)
+    if not lvl or type(e.level) ~= "number" then return e.known end
+    return e.level <= lvl.typed
+end
+
 -- T124: the stat a family of `kind` moves with -- +Healing for a heal,
 -- +Spell damage for a damage family; { d = typed - live, typed } or nil.
 local function CopyEntry(e, move, crit, kind, plan, lvl)
@@ -520,8 +539,20 @@ local function CopyEntry(e, move, crit, kind, plan, lvl)
         nb.amount = (type(nb.counts) == "number" and type(nb.of) == "number") and nb.counts * nb.of or nil
         w.bonus = nb
     end
-    if d ~= 0 then Book.Numbers(w, kind) end
-    if crit ~= nil and kind == "heal" and w.value ~= nil then w.crit = crit / 100 end
+    -- the crit chance at the typed Crit %: moved by typed - live (crit is
+    -- { typed, live } in percent), a rank with no reading at the typed one
+    local critMoved = false
+    if crit ~= nil and (kind == "heal" or kind == "damage") and w.value ~= nil then
+        local c
+        if type(e.crit) == "number" and type(crit.live) == "number" then
+            c = e.crit + (crit.typed - crit.live) / 100
+        else
+            c = crit.typed / 100
+        end
+        c = math.max(0, math.min(1, c))
+        if c ~= e.crit then w.crit, critMoved = c, true end
+    end
+    if d ~= 0 or critMoved then Book.Numbers(w, kind) end
     return w
 end
 
@@ -544,7 +575,12 @@ function provider.Book()
     if type(live) ~= "table" then return nil end
     local liveStats = { heal = LiveBonus(), damage = WI.LiveDamage(Book) }
     local moves = { heal = Move("heal", liveStats), damage = Move("damage", liveStats) }
-    local crit = WI:Get("crit")
+    local typedCrit = WI:Get("crit")
+    local crit = nil
+    if typedCrit ~= nil then
+        local liveCrit = Book.CritNow and Book.CritNow("heal")
+        crit = { typed = typedCrit, live = (type(liveCrit) == "number") and liveCrit * 100 or nil }
+    end
     local pool = WI:Pool(Book:Pool())
     local castPool = { max = pool.max, regenCasting = pool.regenCasting }
     local plan = TalentPlan() -- T134
@@ -557,12 +593,14 @@ function provider.Book()
         local nf = {}
         for k, v in pairs(fam) do nf[k] = v end
         nf.ranks = {}
+        nf.maxKnown = nil
         for i, e in ipairs(fam.ranks or {}) do
             local w = CopyEntry(e, moves[fam.kind or ""], crit, fam.kind, plan, lvl)
             w.casts = Book:CastsFor(w, castPool)
+            w.known = Available(e, lvl)
             nf.ranks[i] = w
             spells[e.id] = w
-            if fam.maxKnown == e then nf.maxKnown = w end
+            if w.known and w.rank and (not nf.maxKnown or w.rank > nf.maxKnown.rank) then nf.maxKnown = w end
         end
         nf.maxRank, nf.effRank = nil, nil
         if fam.kind then
@@ -593,8 +631,8 @@ function provider.classNote(fam)
     local out = {}
     local typedLevel = WI:Get(LEVEL_KEY)
     if typedLevel ~= nil then
-        out[#out + 1] = "Level " .. typedLevel .. ": each heal rank's +healing share at that level's"
-            .. " penalty. Ranks learned later are not in the book."
+        out[#out + 1] = "Level " .. typedLevel .. ": the ranks learned by then compete, each heal rank's"
+            .. " +healing share at that level's penalty."
     end
     local live = LiveRanks()
     if not live then
@@ -614,7 +652,7 @@ function provider.classNote(fam)
     if type(fam) == "table" and not FamilyTouched(fam) then
         out[#out + 1] = "No talent moves this spell in the What if."
     else
-        out[#out + 1] = "Preliminary, from talentsforever. Not moved: crit, regen, stat-to-bonus talents,"
+        out[#out + 1] = "Preliminary, from talentsforever. Not moved: crit talents, regen, stat-to-bonus talents,"
             .. " procs, Oath of Light, spells a talent teaches."
     end
     return table.concat(out, " ")

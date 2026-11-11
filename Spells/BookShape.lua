@@ -77,6 +77,7 @@ BS.ENTRY = {
     rankText     = O("string"),
     rank         = O("number"),
     known        = O("boolean"),
+    future       = O("boolean"),  -- a rank not learned yet, from Data/Ranks_Forever.lua
     lowRank      = O("boolean"),
     desc         = O("string"),
     parsed       = O("table"),

@@ -35,6 +35,9 @@ ST.API.Bind({
     SpellLevelLearned = "C_Spell.GetSpellLevelLearned",
     BaseSpell = "C_Spell.GetBaseSpell",
     SpellTexture = "C_Spell.GetSpellTexture",
+    -- a rank not learned yet (Spells/Book.lua's AddFutureRanks): its text
+    -- answers "" until the client has loaded it; asked once per id
+    SpellRequestLoad = "C_Spell.RequestLoadSpellData",
     -- copy = 3: the tooltip table -> its `lines` array -> each line's own fields.
     SpellTooltipData = { client = "C_TooltipInfo.GetSpellByID", copy = 3 },
 })

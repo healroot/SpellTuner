@@ -48,6 +48,9 @@ local ST = dofile(here .. "/harness.lua")
 arg[0] = a0
 
 local S = _G.STUB
+-- Forever values average crit in (Spells/Book.lua's CritFactor, tools/critcheck.lua);
+-- this suite's numbers are the text's, so the stub's spell crit is 0 here
+if type(S.crit) == "table" then for school = 1, 7 do S.crit[school] = 0 end end
 local TBC = S.flavour == "tbc"
 
 if TBC then
@@ -644,7 +647,9 @@ else
     --------------------------------------------------------------------------
     -- 7 (forever)
     --------------------------------------------------------------------------
-    T("7 forever: crit 30 -- the values unchanged, the entry's crit set", function()
+    -- 2026-11-11: the values average crit in (Spells/Book.lua's CritFactor); the
+    -- suite's live crit is 0, so Crit 30 is x1.15 on every valued heal or damage rank
+    T("7 forever: crit 30 -- each valued rank x1.15, its crit 0.30; others unchanged", function()
         WI:Clear()
         local live = Book:Get()
         WI:Set("crit", 30)
@@ -652,14 +657,19 @@ else
         local bad = {}
         for id, e in pairs(live.spells) do
             local w = wb.spells[id]
+            local fam = live.families[e.family]
+            local kind = fam and fam.kind
             if not w then bad[#bad + 1] = id .. " missing"
-            elseif w.value ~= e.value or w.perMana ~= e.perMana then bad[#bad + 1] = tostring(id)
-            elseif e.value ~= nil and live.families[e.family] and live.families[e.family].kind == "heal"
-                and not Near(w.crit, 0.3) then bad[#bad + 1] = id .. " crit " .. tostring(w.crit) end
+            elseif e.value ~= nil and (kind == "heal" or kind == "damage") then
+                if not (Near(w.value, e.value * 1.15) and Near(w.crit, 0.3)) then
+                    bad[#bad + 1] = id .. " " .. tostring(w.value) .. " crit " .. tostring(w.crit)
+                end
+            elseif w.value ~= e.value then bad[#bad + 1] = tostring(id)
+            end
         end
         local liveCrit = live.spells[95201].crit
         WI:Clear()
-        return #bad == 0 and liveCrit == nil, table.concat(bad, "; ")
+        return #bad == 0 and liveCrit == 0, table.concat(bad, "; ")
     end)
 
     --------------------------------------------------------------------------

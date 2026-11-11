@@ -3,6 +3,23 @@
 What changed, for players. `./release.sh --publish` sends the section of the version being
 published to CurseForge; the developers' log is `docs/HISTORY.md`.
 
+## Next
+
+### Forever: ranks you have not learned yet
+- The Spells pane lists each spell's later ranks too, greyed and tagged `learn at N`, with their
+  value, per mana and per second read from the game's own text for them. Hover one for the game's
+  tooltip. They never take the best / max / eff marks while you cannot cast them.
+- What if -> Level lets them compete: at a typed level every rank learned by then counts (and a rank
+  learned above it does not). A rank learned above the level it is priced at has no +healing penalty;
+  once the typed level passes its penalty start it has the usual one.
+- Settings -> Model -> Show ranks not learned yet turns them off.
+
+### Forever: crit in the numbers
+- Value, per mana and per second now include your crit chance -- direct heals, heals over time and
+  damage over time alike, since everything can crit on Forever. The card says it: `(105 with 10% crit)`.
+  The crit size is assumed 1.5x until measured.
+- What if -> Crit % moves those numbers now, not just the card's Crit line.
+
 ## 0.18.0
 
 ### Forever: launch talents

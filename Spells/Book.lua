@@ -568,6 +568,50 @@ end
 -- T117: a valued entry's derivation is the text itself (`calc`, one line; TBC's
 -- book fills it from RankMath:Explain).
 local CALC_TEXT = "read from the spell's text"
+
+--------------------------------------------------------------------------------
+-- Crit (2026-11-11, the author's request): on this client a heal or a damage
+-- spell crits on its direct part AND on its ticks (the retail engine; VERIFY),
+-- so a rank's value is its expected value: the text's average x (1 + crit x
+-- (CRIT_MULT - 1)), `entry.crit` the chance (0..1) averaged in -- TBC's book's
+-- convention (Words.ValueNote: "(3691 with 15% crit)"). The parts (min, max,
+-- over, the kit's and /st measure's reads) and textValue (the bonus fit's) stay
+-- the text's, without crit. CRIT_MULT is vanilla's 1.5, UNVERIFIED here.
+--------------------------------------------------------------------------------
+local CRIT_MULT = 1.5
+Book.CRIT_MULT = CRIT_MULT -- Spells/Words.lua's one UI copy reads it
+-- GetSpellCritChance's school index by the school name a damage part names
+Book.CRIT_SCHOOLS = { Physical = 1, Holy = 2, Fire = 3, Nature = 4, Frost = 5, Shadow = 6, Arcane = 7 }
+Book._critLast = Book._critLast or {} -- school index -> the last plain chance (0..1)
+local scanCrit -- { [school index] = chance or false } during one Scan
+
+-- The crit chance (0..1) a rank of `kind` (and damage `school` name) is priced
+-- at: the client's for that school, the last plain reading while it is
+-- secret or unreadable, nil when never read.
+local function CritNow(kind, school)
+    local idx
+    if kind == "heal" then
+        idx = ST.ClassProfile and ST.ClassProfile.critSchool or 2
+    elseif kind == "damage" then
+        idx = (school and Book.CRIT_SCHOOLS[school]) or (ST.ClassProfile and ST.ClassProfile.critSchool) or 2
+    else
+        return nil
+    end
+    if scanCrit and scanCrit[idx] ~= nil then return scanCrit[idx] or nil end
+    local v = ST.API.SpellCritChance and ST.API.SpellCritChance(idx)
+    if type(v) == "number" and v == v and v >= 0 and v <= 100 then Book._critLast[idx] = v / 100 end
+    local c = Book._critLast[idx]
+    if scanCrit then scanCrit[idx] = c or false end
+    return c
+end
+Book.CritNow = CritNow
+
+local function CritFactor(e)
+    if type(e.crit) ~= "number" then return 1 end
+    return 1 + e.crit * (CRIT_MULT - 1)
+end
+Book.CritFactor = CritFactor
+
 local function Numbers(e, kind)
     local value, part = PartValue(e, kind)
     local interval, by = IntervalFor(e, part)
@@ -576,6 +620,8 @@ local function Numbers(e, kind)
     if value ~= nil and kind == "heal" and type(ex) == "table" and type(ex.amount) == "number" then
         value = value + ex.amount
     end
+    local critF = CritFactor(e)
+    if value ~= nil then value = value * critF end
     e.value = value
     -- T131 review M1: the rounded numbers the value was added up from (the fit's tolerance)
     e.roundTerms = (value ~= nil and part ~= nil) and Parse.Terms(part) or nil
@@ -594,6 +640,7 @@ local function Numbers(e, kind)
     e.alt = nil
     if kind == "heal" and type(e.parsed) == "table" and e.parsed.damage ~= nil then
         local dv, dp = PartValue(e, "damage")
+        if dv ~= nil then dv = dv * critF end
         if dv ~= nil then
             local di = IntervalFor(e, dp)
             e.alt = {
@@ -821,6 +868,52 @@ local function ApplyStale(entry, prevSpells)
     end
 end
 
+-- What every rank reads by its id alone, the same for a book rank, a rank not
+-- learned yet and a spell outside the book: the text (kept through a secret
+-- one from `prev`, ApplyStale), the learn level, the cast, the cost, the
+-- cooldown, the reach. `prev` is the previous read of each id.
+local function ReadById(entry, id, prev)
+    local desc, descReason = ST.API.SpellDescription(id)
+    if type(desc) == "string" then
+        entry.desc = Parse.Clean(desc)
+        entry.parsed = Parse.Description(desc)
+        entry.descState = (entry.desc == "") and "empty" or "ok"
+    elseif descReason == "secret" then
+        entry.descState = "secret"
+    else
+        entry.descState = "absent"
+    end
+    ApplyStale(entry, prev)
+
+    local level = ST.API.SpellLevelLearned(id)
+    entry.level = (type(level) == "number") and level or nil
+
+    local tip = ST.API.SpellTooltipData(id)
+
+    local info = ST.API.SpellInfo(id)
+    local tipSecs, tipKind = TooltipCastInfo(tip)
+    if type(info) == "table" and type(info.castTime) == "number" then
+        entry.cast = info.castTime / 1000
+    else
+        entry.cast = tipSecs
+    end
+
+    if tipKind == "channeled" then
+        entry.castKind = "channeled"
+    elseif entry.cast == 0 then
+        entry.castKind = HasTickPart(entry.parsed) and "channeled" or "instant"
+    elseif entry.cast ~= nil then
+        entry.castKind = "cast"
+    end
+
+    local costList, costReason = ST.API.SpellPowerCost(id)
+    entry.cost, entry.costState = ResolveCost(costList, costReason, tip)
+
+    -- T95: the cooldown, the reach and the lockout.
+    entry.cooldown, entry.cooldownFrom = ReadCooldown(id, tip, prev and prev[id])
+    ApplyReach(entry)
+end
+
 function Book:BuildEntry(row, slot, bank, futureConst, prevSpells)
     local id = row.spellID
     local entry = { id = id, slot = slot }
@@ -852,49 +945,96 @@ function Book:BuildEntry(row, slot, bank, futureConst, prevSpells)
     local lowRank = ST.API.SpellBookItemIsLowRank(slot, bank)
     entry.lowRank = (type(lowRank) == "boolean") and lowRank or nil
 
-    local desc, descReason = ST.API.SpellDescription(id)
-    if type(desc) == "string" then
-        entry.desc = Parse.Clean(desc)
-        entry.parsed = Parse.Description(desc)
-        entry.descState = (entry.desc == "") and "empty" or "ok"
-    elseif descReason == "secret" then
-        entry.descState = "secret"
-    else
-        entry.descState = "absent"
-    end
-    ApplyStale(entry, prevSpells)
-
-    local level = ST.API.SpellLevelLearned(id)
-    entry.level = (type(level) == "number") and level or nil
-
     entry.icon = (type(row.iconID) == "number") and row.iconID or nil
-
-    local tip = ST.API.SpellTooltipData(id)
-
-    local info = ST.API.SpellInfo(id)
-    local tipSecs, tipKind = TooltipCastInfo(tip)
-    if type(info) == "table" and type(info.castTime) == "number" then
-        entry.cast = info.castTime / 1000
-    else
-        entry.cast = tipSecs
-    end
-
-    if tipKind == "channeled" then
-        entry.castKind = "channeled"
-    elseif entry.cast == 0 then
-        entry.castKind = HasTickPart(entry.parsed) and "channeled" or "instant"
-    elseif entry.cast ~= nil then
-        entry.castKind = "cast"
-    end
-
-    local costList, costReason = ST.API.SpellPowerCost(id)
-    entry.cost, entry.costState = ResolveCost(costList, costReason, tip)
-
-    -- T95: the cooldown, the reach and the lockout.
-    entry.cooldown, entry.cooldownFrom = ReadCooldown(id, tip, prevSpells and prevSpells[id])
-    ApplyReach(entry)
+    ReadById(entry, id, prevSpells)
 
     return entry
+end
+
+--------------------------------------------------------------------------------
+-- Ranks not learned yet (Data/Ranks_Forever.lua)
+--------------------------------------------------------------------------------
+-- The spellbook lists the ranks the player has; a family's other ranks come
+-- from the generated table (ST.FutureRanks: the id and the learn level of every
+-- rank), each read by its id through the adapter as a book rank is -- the
+-- text, the cost and the cast are the client's own for that id; the table's
+-- level only when the client names none. Only a family the player already has
+-- gets them (a spell not learned at all stays off the list), and an id the
+-- client says is known is left out (a rank "show all ranks" hides stays a
+-- gap). Each is `known = false, future = true`: nothing that picks a rank to
+-- press -- the marks, the kit's known ranks -- counts it; the bonus fit never
+-- reads it (MeasureBonus). Off with the setting spellsFutureRanks.
+local FUTURE_SLOT = 100000 -- after every real slot (GroupFamilies' tiebreak)
+
+if ST.RegisterDefaults then ST:RegisterDefaults({ spellsFutureRanks = true }) end
+
+-- An id whose text the client has not loaded yet answers "" (retail's spell
+-- cache); asked to load once, the next scan (2 s) reads it.
+Book._loadAsked = Book._loadAsked or {}
+
+function Book:BuildFutureEntry(id, rank, info, slot, prevSpells, familyName)
+    local name = ST.API.SpellName(id)
+    -- the table names this id for `familyName`; a client that names it
+    -- otherwise (a renamed or reused id) is not trusted to be that rank
+    if type(name) ~= "string" or name ~= familyName then return nil end
+    local entry = { id = id, slot = slot, known = false, future = true, passive = false }
+    entry.name, entry.family = name, name
+
+    local rankText = ST.API.SpellSubtext(id)
+    entry.rankText = (type(rankText) == "string") and rankText or nil
+    entry.rank = Parse.Rank(entry.rankText) or rank
+
+    local icon = ST.API.SpellTexture(id)
+    entry.icon = (type(icon) == "number" or type(icon) == "string") and icon or nil
+
+    ReadById(entry, id, prevSpells)
+    if (type(entry.level) ~= "number" or entry.level <= 0) and type(info.level) == "number" then
+        entry.level = info.level
+    end
+    if entry.descState ~= "ok" and not entry.stale and not Book._loadAsked[id]
+        and ST.API.SpellRequestLoad then
+        Book._loadAsked[id] = true
+        ST.API.SpellRequestLoad(id)
+    end
+    return entry
+end
+
+-- Adds to `spells` every rank not learned yet of each family `spells` has.
+function Book:AddFutureRanks(spells, prevSpells)
+    if ST:Setting("spellsFutureRanks") == false then return 0 end
+    local byClass = type(ST.FutureRanks) == "table" and ST.FutureRanks[ST.player and ST.player.class]
+    if type(byClass) ~= "table" then return 0 end
+    local have = {} -- family name -> { [rank] = true }
+    for _, e in pairs(spells) do
+        if e.name then
+            local h = have[e.name] or {}
+            if e.rank then h[e.rank] = true end
+            have[e.name] = h
+        end
+    end
+    local names = {}
+    for name in pairs(have) do names[#names + 1] = name end
+    table.sort(names)
+    local added, slot = 0, FUTURE_SLOT
+    for _, name in ipairs(names) do
+        local ranks = byClass[name]
+        if type(ranks) == "table" then
+            for rank = 1, #ranks do
+                local info = ranks[rank]
+                slot = slot + 1
+                if type(info) == "table" and type(info.id) == "number" and spells[info.id] == nil
+                    and not have[name][rank] and ST.API.SpellKnown(info.id) ~= true then
+                    local e = Book:BuildFutureEntry(info.id, rank, info, slot, prevSpells, name)
+                    if e and not have[name][e.rank or rank] then
+                        spells[e.id] = e
+                        have[name][e.rank or rank] = true
+                        added = added + 1
+                    end
+                end
+            end
+        end
+    end
+    return added
 end
 
 --------------------------------------------------------------------------------
@@ -923,48 +1063,11 @@ function Book:ReadSpell(id)
     entry.rankText = (type(rankText) == "string") and rankText or nil
     entry.rank = Parse.Rank(entry.rankText)
 
-    local desc, descReason = ST.API.SpellDescription(id)
-    if type(desc) == "string" then
-        entry.desc = Parse.Clean(desc)
-        entry.parsed = Parse.Description(desc)
-        entry.descState = (entry.desc == "") and "empty" or "ok"
-    elseif descReason == "secret" then
-        entry.descState = "secret"
-    else
-        entry.descState = "absent"
-    end
     -- T67 (P23, review A15's R41 gap): the last readable text is carried
     -- through a secret description here too, as BuildEntry carries it, from
     -- this path's own previous reads -- a spell outside the book (a chat
     -- link, another bar) no longer goes blank in combat.
-    ApplyStale(entry, Book._readSpells)
-
-    local level = ST.API.SpellLevelLearned(id)
-    entry.level = (type(level) == "number") and level or nil
-
-    local tip = ST.API.SpellTooltipData(id)
-    local info = ST.API.SpellInfo(id)
-    local tipSecs, tipKind = TooltipCastInfo(tip)
-    if type(info) == "table" and type(info.castTime) == "number" then
-        entry.cast = info.castTime / 1000
-    else
-        entry.cast = tipSecs
-    end
-
-    if tipKind == "channeled" then
-        entry.castKind = "channeled"
-    elseif entry.cast == 0 then
-        entry.castKind = HasTickPart(entry.parsed) and "channeled" or "instant"
-    elseif entry.cast ~= nil then
-        entry.castKind = "cast"
-    end
-
-    local costList, costReason = ST.API.SpellPowerCost(id)
-    entry.cost, entry.costState = ResolveCost(costList, costReason, tip)
-
-    -- T95: the cooldown, the reach and the lockout, as BuildEntry reads them.
-    entry.cooldown, entry.cooldownFrom = ReadCooldown(id, tip, Book._readSpells[id])
-    ApplyReach(entry)
+    ReadById(entry, id, Book._readSpells)
     -- T129: the talent seam, as GroupFamilies runs it for a book entry (the
     -- estimate below reads its baseCast).
     for _, fn in ipairs(Book.adjust) do pcall(fn, entry, nil) end
@@ -980,6 +1083,7 @@ function Book:ReadSpell(id)
     entry.kind = kind
 
     if kind then
+        entry.crit = CritNow(kind, SchoolOf(entry, kind))
         Numbers(entry, kind)
         ApplyBonus(entry, kind, PartShape(entry, kind))
     end
@@ -1176,6 +1280,7 @@ function Book:Rows(family, pool)
     if not family.kind then return end
 
     for _, e in ipairs(family.ranks) do
+        e.crit = CritNow(family.kind, family.school) -- the chance the value averages in
         Numbers(e, family.kind)
         ApplyBonus(e, family.kind, family.shape) -- T117
         e.casts = Book:CastsFor(e, pool)
@@ -1556,8 +1661,10 @@ function Book:MeasureBonus(spells, families)
     for id, e in pairs(spells) do
         local fam = families[e.family]
         local kind = fam and fam.kind
+        -- a rank not learned yet is never a reading: its text is the
+        -- client's for a spell the player does not have
         if (kind == "heal" or kind == "damage") and type(e.value) == "number" and not e.stale
-            and e.descState == "ok" then
+            and e.descState == "ok" and e.known ~= false then
             local school = (kind == "damage") and fam.school or nil
             local bonus = Reading(kind, school)
             if bonus ~= nil and AddReading(id, e.name, kind, school, bonus, e.textValue or e.value, e.roundTerms) then
@@ -1603,15 +1710,19 @@ function Book:Scan()
         end
     end
 
+    -- the ranks not learned yet of every family the book has (Data/Ranks_Forever.lua)
+    read.future = Book:AddFutureRanks(spells, prevSpells)
+
     Book._seamFields = {}
     local families, order = Book:GroupFamilies(spells)
     local pool = Book:DefaultPool()
     scanBonus = {} -- T117: one +healing reading for the whole scan
+    scanCrit = {} -- and one crit reading per school
     for _, name in ipairs(order) do
         Book:Rows(families[name], pool)
     end
     Book:MeasureBonus(spells, families) -- T122
-    scanBonus = nil
+    scanBonus, scanCrit = nil, nil
 
     -- T63: the generation moves when any entry did (see Book.generation).
     local prevSigs = Book._prevSigs

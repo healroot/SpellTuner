@@ -242,6 +242,15 @@ ST.SettingsLine = {
                      "text, one line in chat per cast (/st measure; /st measure dump for the list)." },
             onClick = function() if ST.Measure and ST.Measure.Toggle then ST.Measure:Toggle() end end } },
         { kind = "hint", text = "Measure checks each cast that lands against its own text." },
+        -- Spells/Book.lua's AddFutureRanks: the ranks not learned yet, greyed
+        { kind = "check", text = "Show ranks not learned yet", mark = "futureRanksCheck",
+          tips = { "Show ranks not learned yet", "Each spell's later ranks in the Spells pane, greyed, read",
+                   "from the game's own text for them. What if Level lets them compete." },
+          get = function() return ST:Setting("spellsFutureRanks") ~= false end,
+          set = function(on)
+              ST.db.spellsFutureRanks = on and true or false
+              if ST.Book and ST.Book.MarkDirty then ST.Book:MarkDirty() end
+          end },
     },
     modelHint = "~ marks a number the model computed, not one the game showed.",
 }

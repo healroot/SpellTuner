@@ -46,6 +46,9 @@ local ST = dofile(here .. "/harness.lua")
 arg[0] = a0
 
 local S = _G.STUB
+-- Forever values average crit in (Spells/Book.lua's CritFactor, tools/critcheck.lua);
+-- this suite's numbers are the text's, so the stub's spell crit is 0 here
+if type(S.crit) == "table" then for school = 1, 7 do S.crit[school] = 0 end end
 local Book = ST.Book
 local UI = ST.UI
 
@@ -2967,7 +2970,7 @@ T36("T38 the rank card: the suggested rank by default, a click selects another",
         and f.selectedId == 93801 and f.card.title:GetText() == "RANK 1" and f.card.learned:GetText() == "learned at 1"
         and f.card.quote:GetText() == '"Heals a friendly target for 40 to 55."'
         and PairValue("Marks") ~= nil and PairValue("Marks"):find("^eff  ") ~= nil
-        and PairValue("Heals") == "40 - 55 (avg 48)" and PairValue("Crit") == "60 - 83 (x1.5 assumed)"
+        and PairValue("Heals") == "40 - 55 (avg 48)" and PairValue("Crit") == "60 - 83 (x1.5 assumed) 0% chance"
         and PairValue("Cost") == "25 mana" and PairValue("Cast") == "1.5 s"
         and PairValue("Per mana") == Num(e1.perMana, 2)
         and PairValue("Per sec") == Num(e1.perSec, 1) .. " over a 1.5 s cast" -- T78
@@ -3509,7 +3512,9 @@ T36("T122 forever: +150 healing -- the estimated ranks move; chip, cells, hovers
         wantNote, chipLive, footer, accented, hovered, marks, table.concat(bad, "; "))
 end)
 
-T36("T122 forever: crit 30 changes the card's Crit line, not the values", function()
+-- 2026-11-11: the values average crit in (Spells/Book.lua's CritFactor), so
+-- Crit % moves every valued rank's cells as well as the card's Crit line
+T36("T122 forever: crit 30 changes the card's Crit line and the values", function()
     WIf():Clear()
     local before = {}
     for id, x in pairs(FRanks()) do before[id] = FCells(x.row) end
@@ -3522,8 +3527,10 @@ T36("T122 forever: crit 30 changes the card's Crit line, not the values", functi
         if before[id] ~= FCells(x.row) then bad[#bad + 1] = tostring(id) end
     end
     local crit = PairValue("Crit") or ""
-    local good = #bad == 0 and critBefore:find("chance", 1, true) == nil
-        and crit:sub(-#"30% chance") == "30% chance" and crit:find(critBefore, 1, true) == 1
+    local n = 0
+    for _ in pairs(FRanks()) do n = n + 1 end
+    local good = n > 0 and #bad == n and critBefore:sub(-#"0% chance") == "0% chance"
+        and crit:sub(-#"30% chance") == "30% chance"
     return good, string.format("crit=%q before=%q bad=%s", crit, critBefore, table.concat(bad, ","))
 end)
 

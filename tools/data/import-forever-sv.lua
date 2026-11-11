@@ -2303,6 +2303,7 @@ SpellTunerDB = {
 	["spellTooltip"] = true,
 	["spellTooltipDamage"] = true,
 	["spellTooltipDetail"] = "SHIFT",
+	["spellsFutureRanks"] = true,
 	["tradeKDamage"] = 0.25,
 	["tradeKHeal"] = 0.14999999999999999,
 	["ui"] = {

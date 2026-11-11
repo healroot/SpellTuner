@@ -224,6 +224,8 @@ local function ExportText()
             if type(e.level) == "number" then
                 lines[#lines + 1] = "  level: " .. tostring(e.level)
             end
+            -- a rank not learned yet, read by its id (Spells/Book.lua's AddFutureRanks)
+            if e.known == false then lines[#lines + 1] = "  known: no" end
         end
     end
 
@@ -568,7 +570,7 @@ local function TipView()
     if not WIActive() then return nil end
     return { book = ViewBook(), pool = ViewPool() }
 end
-local function GameTip(row, fam, e)
+local function GameTip(row, fam, e, note)
     local tt = GameTooltip
     tt:SetOwner(row, "ANCHOR_NONE")
     tt:ClearAllPoints()
@@ -591,6 +593,10 @@ local function GameTip(row, fam, e)
     if type(trade) == "table" and #trade > 0 then
         tt:AddLine(" ")
         ST.Tip:Render(tt, trade)
+    end
+    if note then
+        tt:AddLine(" ")
+        tt:AddLine(note, UI.RGB("muted"))
     end
     ST.Tip:Skin(tt, row)
     tt:Show()
@@ -952,6 +958,9 @@ local function RankRowEnter(row, r)
     if e.known == false then
         local why = (type(e.level) == "number") and ("Not learned yet: learn at level " .. e.level .. ".")
             or "Not learned yet."
+        -- a rank not learned yet read by its id (Spells/Book.lua's
+        -- AddFutureRanks): the game's own tooltip for it, then the note
+        if e.future and type(e.id) == "number" then GameTip(row, fam, e, why) return end
         KitTip(row, RankName(fam, e.rank), why)
         return
     end

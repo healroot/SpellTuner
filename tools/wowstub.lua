@@ -1396,11 +1396,16 @@ function S.UseProfile(name)
     -- opts (T7a, optional): { cast, cost, costPercent, level, base, lowRank, noCost,
     -- itemType, known, costList }.
     local nextFreeSlot = 6
+    -- opts.noSlot: the client knows the id (name, text, cost) but the
+    -- spellbook does not list it -- a rank not learned yet (Spells/Book.lua's
+    -- AddFutureRanks); pass known = false with it.
     function S.AddSpell(id, name, rank, descFn, opts)
         opts = opts or {}
-        while SPELL_SLOTS[nextFreeSlot] do nextFreeSlot = nextFreeSlot + 1 end
-        SPELL_SLOTS[nextFreeSlot] = id
-        nextFreeSlot = nextFreeSlot + 1
+        if not opts.noSlot then
+            while SPELL_SLOTS[nextFreeSlot] do nextFreeSlot = nextFreeSlot + 1 end
+            SPELL_SLOTS[nextFreeSlot] = id
+            nextFreeSlot = nextFreeSlot + 1
+        end
         SPELL_NAMES[id] = name
         SPELL_SUBTEXT[id] = rank
         SPELL_DESC[id] = descFn
@@ -1425,7 +1430,9 @@ function S.UseProfile(name)
             SPELL_COST_PERCENT[id] = opts.costPercent or 0
         end
     end
+    S.loadRequests = {} -- every id C_Spell.RequestLoadSpellData was asked for, in order
     C_Spell = {
+        RequestLoadSpellData = function(id) S.loadRequests[#S.loadRequests + 1] = id end,
         GetSpellName = function(id) return SPELL_NAMES[id] end,
         GetSpellSubtext = function(id) return SPELL_SUBTEXT[id] end,
         GetSpellDescription = function(id)

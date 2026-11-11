@@ -373,6 +373,9 @@ do
     local writes, realSnap = 0, Kit and Kit.Snapshot
     if Kit then Kit.Snapshot = function(...) writes = writes + 1; return realSnap(...) end end
     S.crit[4] = 6.4                     -- a change the cache has not seen: one build, one write
+    -- 2026-11-11: crit is in the book's values too (Spells/Book.lua's CritFactor),
+    -- so the book reads the change first; the second call's book is then unchanged
+    if Book then Book:MarkDirty() end
     local k1 = ST.RankMath:SpellKit()
     local gen1, saved1 = Book and Book.generation, ST.cdb.kit
     if Book then Book:MarkDirty() end   -- the book read again, unchanged

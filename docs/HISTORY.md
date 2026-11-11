@@ -5471,3 +5471,23 @@ beside the window (`UI.CreateSheet` `docked`), so the Spells pane is seen moving
   approved by the author ("looking good").
 - 0.18.0 on every TOC, `CHANGELOG.md` `## Next` titled `## 0.18.0`, merged to master, published to
   CurseForge as a beta.
+
+## 2026-11-11 -- ranks not learned yet; crit in the values (Forever)
+
+The author asked for the Spells pane to show the ranks not learned yet ("like What can I train"), greyed,
+with every What if on them, and ruled the penalty (none for a rank learned above the selected level, the
+usual one once a typed level passes it); then for crit in the numbers ("dots and hots can crit, as well as
+direct casts"). Rulings: `docs/DECISIONS.md` (both 2026-11-11 entries).
+- **Ranks not learned yet:** `tools/buildranks.py` -> `Data/Ranks_Forever.lua` (1551 ranks, 9 classes, from
+  talentsforever's data.json of 2026-11-10); `Spells/Book.lua` `AddFutureRanks` / `BuildFutureEntry` (read by
+  id through the adapter; `ReadById` now shared by BuildEntry, ReadSpell and the new path; asks the client
+  to load an unloaded text once, `SpellRequestLoad`); `known = false, future = true`, no mark, no bonus-fit
+  reading; What if Level makes a rank available by its learn level (`Available`); the pane's hover shows
+  the game's tooltip; Export marks them `known: no`; Settings -> Model -> Show ranks not learned yet.
+- **Crit:** `Book.CritNow` (per school, once per scan, last plain reading) and `CritFactor`, averaged into
+  value / per mana / per second (`entry.crit`); the What if's Crit % now moves the numbers.
+- **Suites:** new `futureranks` (13) and `critcheck` (7); spellsui, tipcheck, whatifcheck, talentwhatifcheck
+  pin the stub's crit to 0 (their numbers are the text's); T122 / whatifcheck 7 now assert crit moves
+  values; the import fixture rebuilt.
+- **In game:** `docs/TESTING.md` section 67 (VERIFY: the client answers an unlearned id's text; whether
+  it carries +healing; the crit size 1.5).

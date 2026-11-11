@@ -2711,6 +2711,27 @@ Forever with EllesmereUI's mana bar on screen, then TBC. `docs/SPEC-clock-v3.md`
    (not `0 mp5`), and the dump's `pool:` line shows `gain rate 2.00 per s` and the energize count
    rising. If the gain rate stays 0, report the dump: the well is not seen as ENERGIZE.
 
+## 67. Ranks not learned yet (Forever) -- NEW, 3 min
+
+Below level 60, with a heal that has later ranks (Healing Touch, Rejuvenation, Regrowth).
+1. **They show (VERIFY):** `/st` -> Spells -> Healing Touch. Under your ranks, the later ones are
+   greyed, tagged `learn at N`, with Value, Per mana and Per sec filled in. **If a greyed row has no
+   numbers after ~5 s, report it** with Export (the Overview's button): the client does not answer an
+   unlearned rank's text, and the `known: no` blocks show what it did answer.
+2. **Hover a greyed row:** the game's own tooltip for that rank, the SpellTuner block, then
+   `Not learned yet: learn at level N.`
+3. **No marks:** best / max / eff stay on ranks you have.
+4. **What if -> Level** at a level above a greyed rank's: that rank turns white and may take best;
+   a rank learned above the typed level stays (or turns) grey. Type a level far past a low rank's
+   learn level + 17: its value drops (the penalty); a rank learned above your level shows none at
+   your own level.
+5. **Does the text carry your +healing?** Compare a greyed rank's Value with talentsforever's
+   level-60 text for it: higher by about its share of your +healing means yes. Say which.
+6. **Settings -> Model -> Show ranks not learned yet** off: the greyed rows go; on: back.
+7. **Crit in the numbers:** a rank card's value line reads `(N with X% crit)` with X your character
+   sheet's spell crit; What if -> Crit % 30 raises Value, Per mana and Per sec. Report a heal's real
+   crit size if you see one (a landed crit / its non-crit): 1.5 is assumed.
+
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the
 raw numbers. `/st profile` output is welcome with any report. I turn them into

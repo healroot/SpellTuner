@@ -94,6 +94,8 @@ local FOREVER_ONLY_NAMES = {
     "TalentRanks", -- T129
     -- T134: Spirit for Bloom (Spells/Book.lua), through its own wrapper.
     "UnitStat", "Spirit", -- T134
+    -- Spells/Book.lua's ranks not learned yet: ask the client to load an id's text.
+    "SpellRequestLoad",
 }
 -- T15: Client/API_TBC.lua's own binding -- GetSpellInfo, so
 -- Engine/SimModel.lua and Engine/SimPlanner.lua's four call sites can go

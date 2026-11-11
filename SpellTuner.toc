@@ -19,6 +19,7 @@ Data\Profile_Priest_Forever.lua
 Data\Talents_Forever.lua
 Data\TalentTree_Forever.lua
 Data\Coefs_Forever.lua
+Data\Ranks_Forever.lua
 Spells\Parse.lua
 Spells\RankRules.lua
 Spells\Coefficients.lua

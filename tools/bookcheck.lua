@@ -19,6 +19,9 @@ local ST = dofile(here .. "/harness.lua")
 arg[0] = a0
 
 local S = _G.STUB
+-- Forever values average crit in (Spells/Book.lua's CritFactor, tools/critcheck.lua);
+-- this suite's numbers are the text's, so the stub's spell crit is 0 here
+if type(S.crit) == "table" then for school = 1, 7 do S.crit[school] = 0 end end
 
 --------------------------------------------------------------------------------
 -- tbc (T67, P23, review A13): the dashboard's rank rules are

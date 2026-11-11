@@ -29,7 +29,7 @@ local W = ST.Words
 -- Vanilla's crit rule (1.5x); Forever's own is UNVERIFIED (HoTs crit since
 -- 70009, REFERENCES-FOREVER.md sec4, amount not stated). T12's /st measure
 -- checks it against a landed heal above the crit range's top.
-W.CRIT_MULT = 1.5
+W.CRIT_MULT = (ST.Book and ST.Book.CRIT_MULT) or 1.5 -- Spells/Book.lua averages it into values (Forever)
 -- Spells/Book.lua's global cooldown: the interval a direct spell's per second
 -- is over when its cast is shorter, and an Other spell's for casts to OOM.
 W.GCD = (ST.Book and ST.Book.GCD) or 1.5
