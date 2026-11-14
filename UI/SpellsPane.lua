@@ -1124,6 +1124,10 @@ local function CardPairs(fam, e, pool)
                 -- the text's value has no crit in it, so nothing else moves
                 if p[1] == "Crit" and type(e.crit) == "number" then
                     v = v .. " " .. UI.Hex("muted") .. Num(e.crit * 100) .. "% chance" .. RESET
+                    -- 2026-11-11: the talent crit the client's number lacks, added in
+                    if type(e.critTalent) == "string" then
+                        v = v .. " " .. UI.Hex("muted") .. "incl. " .. Esc(e.critTalent) .. RESET
+                    end
                 end
                 P(p[1], v)
             end

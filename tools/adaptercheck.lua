@@ -94,6 +94,7 @@ local FOREVER_ONLY_NAMES = {
     "TalentRanks", -- T129
     -- T134: Spirit for Bloom (Spells/Book.lua), through its own wrapper.
     "UnitStat", "Spirit", -- T134
+    "Intellect", -- 2026-11-11: the What if's crit and +healing from Intellect
     -- Spells/Book.lua's ranks not learned yet: ask the client to load an id's text.
     "SpellRequestLoad",
 }

@@ -8,7 +8,7 @@ local _, ST = ...
 -- PRELIMINARY until verified in game (docs/DECISIONS.md, 2026-10-04):
 -- talentsforever.com is the source of truth for what a talent does until a
 -- Forever client shows otherwise.
--- Data from talentsforever.com (https://talentsforever.com), generated 2026-11-04 (CC-BY-4.0).
+-- Data from talentsforever.com (https://talentsforever.com), generated 2026-11-10 (CC-BY-4.0).
 --
 -- [class token][rule] = { talent, ranks, spells, castPerRank }: castPerRank[r] is the
 -- seconds rank r takes off each named spell's cast, read from rank r's own
@@ -149,6 +149,11 @@ local _, ST = ...
 -- carries the talents taken). ST.TalentExpiry: when a named spell runs its whole
 -- duration the target is healed for pctPerRank[r] percent of scope.stat.
 -- ST.TalentStats: rank r raises scope.stat by pctPerRank[r] percent.
+-- ST.TalentCrit (2026-11-11): rank r adds pctPerRank[r] points of crit chance to
+-- what the scope names (all: every spell, kind heal, schools, spells by name).
+-- ST.TalentCritBonus: rank r makes a crit's bonus over a hit pctPerRank[r] percent
+-- bigger for the scope's kind and schools. ST.TalentStatBonus: rank r adds
+-- pctPerRank[r] percent of scope.stat to the bonus of each of scope.kinds.
 -- T136: ST.TalentDurations[class token][rule] = { talent, ranks, spells, secPerRank }:
 -- rank r makes each named spell last secPerRank[r] seconds longer (read by the What
 -- if only: the client's text already carries the talents taken). Skipped:
@@ -192,7 +197,46 @@ local _, ST = ...
 -- TalentExpiry skipped (named, never guessed):
 --   none
 -- TalentStats skipped (named, never guessed):
---   none
+--   Mage: Arcane Mind (sentence not recognised)
+-- TalentCrit skipped (named, never guessed):
+--   Druid: Sharpened Claws (sentence not recognised)
+--   Hunter: Ferocity (sentence not recognised)
+--   Hunter: Intimidation (sentence not recognised)
+--   Hunter: Lethal Attacks (sentence not recognised)
+--   Hunter: Savage Strikes (sentence not recognised)
+--   Mage: Arcane Instability (sentence not recognised)
+--   Mage: Combustion (sentence not recognised)
+--   Mage: Shatter (sentence not recognised)
+--   Paladin: Boundless Light (sentence not recognised)
+--   Paladin: Divine Favor (sentence not recognised)
+--   Priest: Early Demise (sentence not recognised)
+--   Priest: Inner Focus (sentence not recognised)
+--   Priest: Renewed Hope (sentence not recognised)
+--   Rogue: Cold Blood (sentence not recognised)
+--   Rogue: Hack and Slash (sentence not recognised)
+--   Rogue: Improved Ambush (sentence not recognised)
+--   Rogue: Malice (sentence not recognised)
+--   Rogue: Puncturing Wounds (sentence not recognised)
+--   Rogue: Remorseless Attacks (sentence not recognised)
+--   Warlock: Agonizing Flames (spell Searing Pain spell by 3% not in the export)
+--   Warrior: Cruelty (sentence not recognised)
+--   Warrior: Improved Overpower (sentence not recognised)
+--   Warrior: Weaponmaster (sentence not recognised)
+-- TalentCritBonus skipped (named, never guessed):
+--   Druid: Natural Instinct (sentence not recognised)
+--   Hunter: Mortal Shots (sentence not recognised)
+--   Mage: Arcane Mind (sentence not recognised)
+--   Priest: Shadowform (sentence not recognised)
+--   Rogue: Lethality (sentence not recognised)
+--   Shaman: Elemental Fury (not a list of schools)
+--   Warlock: Pandemic (not a list of schools)
+--   Warlock: Ruin (not a list of schools)
+--   Warrior: Impale (sentence not recognised)
+-- TalentStatBonus skipped (named, never guessed):
+--   Hunter: Careful Aim (sentence not recognised)
+--   Mage: Arcane Blast (sentence not recognised)
+--   Mage: Arcane Resilience (sentence not recognised)
+--   Shaman: Mental Dexterity (sentence not recognised)
 --------------------------------------------------------------------------------
 
 ST.TalentRules = {
@@ -435,6 +479,10 @@ ST.TalentExpiry = {
 
 ST.TalentStats = {
     DRUID = {
+        ["Heart of the Wild"] = {
+            scope = { stat = "Intellect" },
+            pctPerRank = { 2, 4, 6, 8, 10 },
+        },
         ["Living Spirit"] = {
             scope = { stat = "Spirit" },
             pctPerRank = { 5, 10, 15 },
@@ -445,12 +493,167 @@ ST.TalentStats = {
     MAGE = {
     },
     PALADIN = {
+        ["Divine Intellect"] = {
+            scope = { stat = "Intellect" },
+            pctPerRank = { 2, 4, 6, 8, 10 },
+        },
+    },
+    PRIEST = {
+        ["Mental Strength"] = {
+            scope = { stat = "Intellect" },
+            pctPerRank = { 2, 4, 6, 8, 10 },
+        },
+    },
+    ROGUE = {
+    },
+    SHAMAN = {
+        ["Ancestral Knowledge"] = {
+            scope = { stat = "Intellect" },
+            pctPerRank = { 2, 4, 6, 8, 10 },
+        },
+    },
+    WARLOCK = {
+    },
+    WARRIOR = {
+    },
+}
+
+ST.TalentCrit = {
+    DRUID = {
+        ["Improved Moonfire"] = {
+            scope = { spells = { "Moonfire" } },
+            pctPerRank = { 5, 10 },
+        },
+        ["Improved Regrowth"] = {
+            scope = { spells = { "Regrowth" } },
+            pctPerRank = { 10, 20, 30, 40, 50 },
+        },
+        ["Nature's Majesty"] = {
+            scope = { all = true },
+            pctPerRank = { 2, 4 },
+        },
+    },
+    HUNTER = {
+    },
+    MAGE = {
+        ["Arcane Impact"] = {
+            scope = { schools = { "Arcane" } },
+            pctPerRank = { 2, 4, 6 },
+        },
+        ["Critical Mass"] = {
+            scope = { schools = { "Fire" } },
+            pctPerRank = { 2, 4, 6 },
+        },
+        ["Improved Flamestrike"] = {
+            scope = { spells = { "Flamestrike" } },
+            pctPerRank = { 5, 10, 15 },
+        },
+        ["Incineration"] = {
+            scope = { spells = { "Fire Blast", "Ice Lance", "Arcane Blast", "Scorch" } },
+            pctPerRank = { 2, 4, 6, 8, 10 },
+        },
+    },
+    PALADIN = {
+        ["Conviction"] = {
+            scope = { all = true },
+            pctPerRank = { 2, 4, 6 },
+        },
+    },
+    PRIEST = {
+        ["Holy Specialization"] = {
+            scope = { schools = { "Holy" } },
+            pctPerRank = { 1, 2, 3, 4, 5 },
+        },
+    },
+    ROGUE = {
+    },
+    SHAMAN = {
+        ["Call of Thunder"] = {
+            scope = { spells = { "Lightning Bolt", "Chain Lightning" } },
+            pctPerRank = { 5 },
+        },
+        ["Thundering Strikes"] = {
+            scope = { all = true },
+            pctPerRank = { 1, 2, 3, 4, 5 },
+        },
+        ["Tidal Mastery"] = {
+            scope = { kind = "heal" },
+            pctPerRank = { 1, 2, 3, 4, 5 },
+        },
+    },
+    WARLOCK = {
+        ["Fire and Brimstone"] = {
+            scope = { spells = { "Conflagrate" } },
+            pctPerRank = { 8, 17, 25 },
+        },
+        ["Malevolence"] = {
+            scope = { schools = { "Shadow" } },
+            pctPerRank = { 1, 2, 3, 4, 5 },
+        },
+    },
+    WARRIOR = {
+    },
+}
+
+ST.TalentCritBonus = {
+    DRUID = {
+        ["Vengeance"] = {
+            scope = { kind = "damage", schools = { "Arcane", "Nature" } },
+            pctPerRank = { 20, 40, 60, 80, 100 },
+        },
+    },
+    HUNTER = {
+    },
+    MAGE = {
+        ["Ice Shards"] = {
+            scope = { kind = "damage", schools = { "Frost" } },
+            pctPerRank = { 20, 40, 60, 80, 100 },
+        },
+    },
+    PALADIN = {
+        ["Holy Power"] = {
+            scope = { kind = "heal", schools = { "Holy" } },
+            pctPerRank = { 10, 20, 30, 40, 50 },
+        },
     },
     PRIEST = {
     },
     ROGUE = {
     },
     SHAMAN = {
+    },
+    WARLOCK = {
+    },
+    WARRIOR = {
+    },
+}
+
+ST.TalentStatBonus = {
+    DRUID = {
+        ["Natural Instinct"] = {
+            scope = { kinds = { "heal" }, stat = "Intellect" },
+            pctPerRank = { 12, 25 },
+        },
+    },
+    HUNTER = {
+    },
+    MAGE = {
+    },
+    PALADIN = {
+        ["Champion of the Light"] = {
+            scope = { kinds = { "damage" }, stat = "Intellect" },
+            pctPerRank = { 12, 24, 36, 48, 60 },
+        },
+    },
+    PRIEST = {
+    },
+    ROGUE = {
+    },
+    SHAMAN = {
+        ["Mental Quickness"] = {
+            scope = { kinds = { "heal", "damage" }, stat = "Intellect" },
+            pctPerRank = { 15, 30 },
+        },
     },
     WARLOCK = {
     },

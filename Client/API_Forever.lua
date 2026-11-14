@@ -656,6 +656,17 @@ function ST.API.Spirit()
 end
 ST.API._bindings.Spirit = "UnitStat"
 
+-- 2026-11-11: the player's Intellect, for the What if's crit and +healing from
+-- Intellect (Spells/WhatIf_Forever.lua); the same read as Spirit.
+local INTELLECT_INDEX = 4
+function ST.API.Intellect()
+    local first, effective = ST.API.UnitStat("player", INTELLECT_INDEX)
+    if type(first) ~= "number" then return nil, effective end
+    if type(effective) ~= "number" then return nil, "absent" end
+    return effective
+end
+ST.API._bindings.Intellect = "UnitStat"
+
 function ST.API.TalentRanks()
     local ok, ranks, why = pcall(TalentWalk)
     if not ok then return nil, "error" end

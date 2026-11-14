@@ -112,7 +112,10 @@ local function TalentIndex()
         Grow(i, r.secPerRank)
     end
     for field, tbl in pairs({ mult = ST.TalentMults, cost = ST.TalentCosts,
-                              expiry = ST.TalentExpiry, stat = ST.TalentStats }) do
+                              expiry = ST.TalentExpiry, stat = ST.TalentStats,
+                              -- 2026-11-11: crit chance, crit size, +bonus from Intellect
+                              crit = ST.TalentCrit, critBonus = ST.TalentCritBonus,
+                              statBonus = ST.TalentStatBonus }) do
         for k, r in pairs(type(tbl) == "table" and tbl[class] or {}) do
             local i = Info(k)
             i[field] = r
@@ -159,6 +162,12 @@ local function Touches(info, e)
     if kind and info.mult and Book.MultMatches(info.mult.scope, e, kind) then return true end
     if kind and info.cost and Book.ScopeMatches(info.cost.scope, e, kind) then return true end
     if info.expiry and Has(info.expiry.scope.spells, e.name) then return true end
+    -- 2026-11-11: crit, crit size, Intellect (crit for every valued rank) and
+    -- +bonus from Intellect (the heals or damage it names)
+    if kind and info.crit and Book.CritScopeHits(info.crit.scope, e, kind) then return true end
+    if kind and info.critBonus and Book.CritScopeHits(info.critBonus.scope, e, kind) then return true end
+    if kind and info.stat and info.stat.scope.stat == "Intellect" then return true end
+    if kind and info.statBonus and Has(info.statBonus.scope.kinds, kind) then return true end
     return false
 end
 
@@ -246,15 +255,53 @@ local function TalentPlan()
     if #changed == 0 and typedSpirit == nil then return nil end
     local spirit = typedSpirit
     if spirit == nil then spirit = Book:Spirit() end
-    if type(spirit) == "number" then
+    -- a stat talent moves its own stat only (2026-11-11: Intellect talents too)
+    local function Moved(stat, value)
+        if type(value) ~= "number" then return value end
         for _, i in ipairs(changed) do
-            if i.stat then
+            if i.stat and i.stat.scope.stat == stat then
                 local a, b = PctAt(i.stat, live[i.name]), PctAt(i.stat, what[i.name])
-                if a and b then spirit = spirit * (1 + b / 100) / (1 + a / 100) end
+                if a and b then value = value * (1 + b / 100) / (1 + a / 100) end
+            end
+        end
+        return value
+    end
+    spirit = Moved("Spirit", spirit)
+    -- 2026-11-11: Intellect -- the crit it gives (Coef.INT_PER_CRIT, assumed)
+    -- and the +bonus a talent takes from it (Natural Instinct), live to planned
+    local liveInt = Book.Intellect and Book:Intellect() or nil
+    local planInt = Moved("Intellect", liveInt)
+    local bonus = { heal = 0, damage = 0 }
+    if type(liveInt) == "number" then
+        for _, name in ipairs(index.order) do
+            local i = index.byName[name]
+            if i.statBonus and i.statBonus.scope.stat == "Intellect" then
+                local a, b = PctAt(i.statBonus, live[name] or 0), PctAt(i.statBonus, what[name] or 0)
+                if a and b then
+                    local d = b / 100 * planInt - a / 100 * liveInt
+                    for _, k in ipairs(i.statBonus.scope.kinds or {}) do bonus[k] = (bonus[k] or 0) + d end
+                end
             end
         end
     end
-    return { live = live, what = what, changed = changed, spirit = spirit, index = index }
+    return { live = live, what = what, changed = changed, spirit = spirit, index = index,
+             liveInt = liveInt, int = planInt, bonus = bonus }
+end
+
+-- 2026-11-11: the crit a plan moves rank `e` by (a fraction) and its crit
+-- multiplier at the plan's ranks: every crit talent that reaches it, live to
+-- planned, plus the planned Intellect's crit at Coef.INT_PER_CRIT (assumed).
+local function PlanCrit(plan, e, kind)
+    if not plan or not kind then return 0, nil end
+    local a = Book.CritTalentAdd(e, kind, plan.live, true)
+    local b = Book.CritTalentAdd(e, kind, plan.what, true)
+    local d = b - a
+    local Coef = ST.Coefficients
+    local ratio = Coef and Coef.INT_PER_CRIT and Coef.INT_PER_CRIT[ST.player and ST.player.class]
+    if type(ratio) == "number" and ratio > 0 and type(plan.int) == "number" and type(plan.liveInt) == "number" then
+        d = d + (plan.int - plan.liveInt) / ratio / 100
+    end
+    return d, Book.CritMultFor(e, kind, plan.what)
 end
 
 -- T136: d seconds more of the over-time part, the same amount a second: the
@@ -541,16 +588,28 @@ local function CopyEntry(e, move, crit, kind, plan, lvl)
     end
     -- the crit chance at the typed Crit %: moved by typed - live (crit is
     -- { typed, live } in percent), a rank with no reading at the typed one
+    -- 2026-11-11: and by the plan's crit talents and Intellect, and its crit size
     local critMoved = false
-    if crit ~= nil and (kind == "heal" or kind == "damage") and w.value ~= nil then
-        local c
-        if type(e.crit) == "number" and type(crit.live) == "number" then
-            c = e.crit + (crit.typed - crit.live) / 100
-        else
-            c = crit.typed / 100
+    local planD, planMult = 0, nil
+    if plan and (kind == "heal" or kind == "damage") then planD, planMult = PlanCrit(plan, e, kind) end
+    if (crit ~= nil or planD ~= 0) and (kind == "heal" or kind == "damage") and w.value ~= nil then
+        local c = e.crit
+        if crit ~= nil then
+            if type(e.crit) == "number" and type(crit.live) == "number" then
+                c = e.crit + (crit.typed - crit.live) / 100
+            else
+                c = crit.typed / 100
+            end
         end
-        c = math.max(0, math.min(1, c))
-        if c ~= e.crit then w.crit, critMoved = c, true end
+        if type(c) == "number" then
+            c = math.max(0, math.min(1, c + planD))
+            if c ~= e.crit then w.crit, critMoved = c, true end
+        end
+    end
+    local oldMult = (type(e.critMult) == "number") and e.critMult or Book.CRIT_MULT
+    if planMult and planMult ~= oldMult then
+        w.critMult = (planMult ~= Book.CRIT_MULT) and planMult or nil
+        critMoved = true
     end
     if d ~= 0 or critMoved then Book.Numbers(w, kind) end
     return w
@@ -575,6 +634,19 @@ function provider.Book()
     if type(live) ~= "table" then return nil end
     local liveStats = { heal = LiveBonus(), damage = WI.LiveDamage(Book) }
     local moves = { heal = Move("heal", liveStats), damage = Move("damage", liveStats) }
+    local plan = TalentPlan() -- T134
+    -- 2026-11-11: +bonus from Intellect the plan moves (Natural Instinct), on top
+    -- of a typed +Healing / +Spell damage; nothing without a live bonus reading
+    for kind, add in pairs(plan and plan.bonus or {}) do
+        if add ~= 0 and type(liveStats[kind]) == "number" then
+            local m = moves[kind]
+            if m and not m.noLive then
+                m.delta = m.delta + add
+            elseif not m then
+                moves[kind] = { delta = add, typed = liveStats[kind] + add }
+            end
+        end
+    end
     local typedCrit = WI:Get("crit")
     local crit = nil
     if typedCrit ~= nil then
@@ -583,7 +655,6 @@ function provider.Book()
     end
     local pool = WI:Pool(Book:Pool())
     local castPool = { max = pool.max, regenCasting = pool.regenCasting }
-    local plan = TalentPlan() -- T134
     local typedLevel, liveLevel = WI:Get(LEVEL_KEY), PlayerLevel()
     local lvl = (typedLevel ~= nil and liveLevel ~= nil and typedLevel ~= liveLevel)
         and { live = liveLevel, typed = typedLevel } or nil -- T138
@@ -652,7 +723,7 @@ function provider.classNote(fam)
     if type(fam) == "table" and not FamilyTouched(fam) then
         out[#out + 1] = "No talent moves this spell in the What if."
     else
-        out[#out + 1] = "Preliminary, from talentsforever. Not moved: crit talents, regen, stat-to-bonus talents,"
+        out[#out + 1] = "Preliminary, from talentsforever; Intellect to crit at vanilla's level-60 rate. Not moved: regen,"
             .. " procs, Oath of Light, spells a talent teaches."
     end
     return table.concat(out, " ")

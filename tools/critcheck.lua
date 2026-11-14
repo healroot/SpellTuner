@@ -118,6 +118,106 @@ T("5 What if Crit is clamped to 0..100 per school", function()
     return near(wr.crit, 0) and near(wr.value, 14.5), "crit=" .. tostring(wr.crit)
 end)
 
+-- 6 ---------------------------------------------------------------------------
+-- Talents (Data/Talents_Forever.lua: ST.TalentCrit, TalentCritBonus,
+-- TalentStats, TalentStatBonus) and the card's words for a HoT.
+S.AddSpell(8936, "Regrowth", "Rank 1", function()
+    return "Heals a friendly target for 93 to 107 and another 98 over 21 sec." end,
+    { cast = 2000, cost = 80, level = 12 })
+local TRAIT_NAMES = { "C_ClassTalents.GetActiveConfigID", "C_Traits.GetConfigInfo", "C_Traits.GetTreeNodes",
+    "C_Traits.GetNodeInfo", "C_Traits.GetEntryInfo", "C_Traits.GetDefinitionInfo" }
+local function Use(talents)
+    WI:Clear()
+    S.AddTraits(talents)
+    for _, n in ipairs(TRAIT_NAMES) do ST.API.Invalidate(n) end
+    S.Fire("PLAYER_TALENT_UPDATE")
+    return Fresh()
+end
+S.crit[4] = 10
+S.level, ST.player.level = 16, 16 -- below Healing Touch R1's level-penalty start: its whole share
+
+T("6 a HoT's card says its ticks crit: Crit line and the total with crit", function()
+    local e = Use({}).spells[1058]
+    local pairs_ = ST.Words.Value(e, "heal", "card", { muted = "", reset = "" })
+    local got = {}
+    for _, p in ipairs(pairs_) do got[p[1]] = p[2] end
+    return got.Crit == "each tick x1.5 (assumed)" and got.Total == "59 with crit"
+        and got.Heals == "56 over 12 s", "crit=" .. tostring(got.Crit) .. " total=" .. tostring(got.Total)
+end)
+
+T("6 Regrowth's hybrid card: the crit range says the ticks crit too", function()
+    local e = Book:Get().spells[8936]
+    local got = {}
+    for _, p in ipairs(ST.Words.Value(e, "heal", "card", { muted = "", reset = "" })) do got[p[1]] = p[2] end
+    return got.Crit == "140 - 161 (x1.5 assumed) ticks too" and got.Total:find("with crit", 1, true) ~= nil,
+        "crit=" .. tostring(got.Crit)
+end)
+
+T("7 Improved Regrowth 5 (live): Regrowth at the client's 10% + 50%; others untouched", function()
+    local book = Use({ ["Improved Regrowth"] = 5 })
+    local rg, ht = book.spells[8936], book.spells[5185]
+    return near(rg.crit, 0.60) and rg.critTalent == "Improved Regrowth 5 +50%"
+        and near(rg.value, (100 + 98) * 1.30) and near(ht.crit, 0.10) and ht.critTalent == nil,
+        string.format("rg=%s %s ht=%s", tostring(rg.crit), tostring(rg.value), tostring(ht.crit))
+end)
+
+T("7 Nature's Majesty 2 (live): already in the client's number, nothing added", function()
+    local ht = Use({ ["Nature's Majesty"] = 2 }).spells[5185]
+    return near(ht.crit, 0.10) and ht.critTalent == nil
+end)
+
+T("7 Vengeance 5 (live): Nature damage crits x2.0; a heal keeps x1.5", function()
+    local book = Use({ Vengeance = 5 })
+    local wr, ht = book.spells[5176], book.spells[5185]
+    return near(wr.critMult, 2.0) and near(wr.value, 14.5 * 1.10) and ht.critMult == nil
+        and near(ht.value, 47.5 * 1.05), "wrath=" .. tostring(wr.critMult) .. " " .. tostring(wr.value)
+end)
+
+T("8 What if: Improved Regrowth 0 -> 5 moves Regrowth's crit by +50 points", function()
+    Use({})
+    WI:Set("talent:Improved Regrowth", 5)
+    local rg = WI:Book().spells[8936]
+    WI:Clear()
+    return near(rg.crit, 0.60) and near(rg.value, (100 + 98) * 1.30), "crit=" .. tostring(rg.crit)
+end)
+
+T("8 What if: Nature's Majesty 0 -> 2 moves every rank by +4 points", function()
+    Use({})
+    WI:Set("talent:Nature's Majesty", 2)
+    local wb = WI:Book()
+    WI:Clear()
+    return near(wb.spells[5185].crit, 0.14) and near(wb.spells[5176].crit, 0.14)
+end)
+
+T("8 What if: Heart of the Wild 0 -> 5 -- +10% Intellect, its crit at 60 per 1%", function()
+    Use({})
+    WI:Set("talent:Heart of the Wild", 5)
+    local ht = WI:Book().spells[5185]
+    WI:Clear()
+    local want = 0.10 + 425 * 0.10 / 60 / 100
+    return near(ht.crit, want), string.format("crit=%s want=%s", tostring(ht.crit), tostring(want))
+end)
+
+T("8 What if: Natural Instinct 0 -> 2 -- +25% of 425 Intellect as +healing", function()
+    S.bonusHealing = 0
+    local e = Use({}).spells[5185]
+    WI:Set("talent:Natural Instinct", 2)
+    local w = WI:Book().spells[5185]
+    WI:Clear()
+    local share = e.bonus and e.bonus.counts
+    return type(share) == "number" and share > 0 and near(w.bonus.of, 106.25)
+        and near(w.value, (47.5 + share * 106.25) * 1.05),
+        string.format("of=%s value=%s share=%s", tostring(w.bonus and w.bonus.of), tostring(w.value), tostring(share))
+end)
+
+T("8 What if: Vengeance 0 -> 5 makes Wrath's crits x2.0", function()
+    Use({})
+    WI:Set("talent:Vengeance", 5)
+    local wr = WI:Book().spells[5176]
+    WI:Clear()
+    return near(wr.critMult, 2.0) and near(wr.value, 14.5 * 1.10), "mult=" .. tostring(wr.critMult)
+end)
+
 print("")
 print(string.format("%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("FAIL " .. f) end

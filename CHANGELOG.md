@@ -16,9 +16,15 @@ published to CurseForge; the developers' log is `docs/HISTORY.md`.
 
 ### Forever: crit in the numbers
 - Value, per mana and per second now include your crit chance -- direct heals, heals over time and
-  damage over time alike, since everything can crit on Forever. The card says it: `(105 with 10% crit)`.
-  The crit size is assumed 1.5x until measured.
-- What if -> Crit % moves those numbers now, not just the card's Crit line.
+  damage over time alike, since everything can crit on Forever. The card says `with crit` beside the
+  average or total, and a HoT (Rejuvenation, Regrowth's over-time part) gets its own Crit line
+  (`each tick x1.5`, with your chance). The crit size is assumed 1.5x until measured.
+- Crit talents count: Improved Regrowth, Improved Moonfire, Holy Specialization, Tidal Mastery and the
+  like are added to the spells they name (the card says `incl. Improved Regrowth 5 +50%`); Vengeance and
+  Holy Power make crits bigger. Talents for every spell (Nature's Majesty) are already in your sheet.
+- What if -> Crit % moves those numbers now, not just the card's Crit line. The talent plan moves crit
+  too: crit talents, Intellect talents (Heart of the Wild: more Intellect, so more crit, assumed at 60
+  Intellect per 1%) and Intellect into +healing (Natural Instinct, Mental Quickness).
 
 ## 0.18.0
 

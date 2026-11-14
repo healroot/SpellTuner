@@ -328,6 +328,112 @@ local function ExpiryHeal(e, fam)
 end
 Book.adjust[3] = ExpiryHeal
 
+-- 2026-11-11 (the author's request): the fourth. Crit talents (ST.TalentCrit,
+-- ST.TalentCritBonus, generated, PRELIMINARY). The client's school crit
+-- (GetSpellCritChance) is assumed to carry a talent on every spell (scope.all:
+-- Nature's Majesty) and NOT one on a spell, a school or the heals (Improved
+-- Regrowth, Holy Specialization, Tidal Mastery) -- those are added here as
+--   entry.critAdd = points of crit (a fraction), entry.critTalent = words
+-- (VERIFY: a school talent may already be in the client's number). A crit
+-- bonus talent (Vengeance, Holy Power) makes the crit bigger:
+--   entry.critMult = 1 + (CRIT_MULT - 1) x (1 + pct / 100)
+-- Numbers prices the value at entry.crit (Rows: the client's + critAdd) x critMult.
+Book._intellect, Book._intellectTriedAt = nil, nil
+function Book:Intellect()
+    if Book._intellectTriedAt ~= Book._scanSerial or Book._intellect == nil then
+        Book._intellectTriedAt = Book._scanSerial
+        local v = ST.API.Intellect and ST.API.Intellect()
+        if type(v) == "number" and v == v then Book._intellect = v end
+    end
+    return Book._intellect
+end
+
+local SCHOOL_NAMES = { [1] = "Physical", [2] = "Holy", [3] = "Fire", [4] = "Nature", [5] = "Frost",
+                       [6] = "Shadow", [7] = "Arcane" }
+-- The school a rank of `kind` crits as: a damage part's own, a heal the class's crit school.
+local function CritSchoolName(e, kind)
+    if kind == "damage" then
+        local d = type(e.parsed) == "table" and e.parsed.damage
+        return type(d) == "table" and d.school or nil
+    end
+    return SCHOOL_NAMES[ST.ClassProfile and ST.ClassProfile.critSchool or 2]
+end
+Book.CritSchoolName = CritSchoolName
+
+local function CritScopeHits(scope, e, kind)
+    if type(scope) ~= "table" then return false end
+    if scope.all then return true end
+    if scope.kind and scope.kind ~= kind then return false end
+    if scope.spells then
+        local hit = false
+        for _, n in ipairs(scope.spells) do if n == e.name then hit = true end end
+        if not hit then return false end
+    end
+    if scope.schools then
+        local s, hit = CritSchoolName(e, kind), false
+        for _, n in ipairs(scope.schools) do if n == s then hit = true end end
+        if not hit then return false end
+    end
+    return scope.kind ~= nil or scope.spells ~= nil or scope.schools ~= nil
+end
+Book.CritScopeHits = CritScopeHits
+
+local function ClassTable(name)
+    local t = ST[name]
+    local class = ST.player and ST.player.class
+    return type(t) == "table" and type(t[class]) == "table" and t[class] or nil
+end
+
+-- Points of crit (a fraction) the talents at `ranks` add to rank `e` of `kind`;
+-- `withAll` counts the every-spell talents too (the What if's move), else only
+-- the ones the client's number lacks. Also the words, "Improved Regrowth 5 +50%".
+function Book.CritTalentAdd(e, kind, ranks, withAll)
+    local rules = ClassTable("TalentCrit")
+    if not rules or type(ranks) ~= "table" or not kind then return 0, nil end
+    local add, words, keys = 0, {}, {}
+    for k in pairs(rules) do keys[#keys + 1] = k end
+    table.sort(keys)
+    for _, k in ipairs(keys) do
+        local rule, r = rules[k], ranks[k]
+        if type(r) == "number" and r > 0 and (withAll or not rule.scope.all) and CritScopeHits(rule.scope, e, kind) then
+            local pct = rule.pctPerRank[math.min(r, #rule.pctPerRank)]
+            if type(pct) == "number" then
+                add = add + pct / 100
+                words[#words + 1] = string.format("%s %d +%d%%", k, r, pct)
+            end
+        end
+    end
+    return add, (#words > 0) and table.concat(words, ", ") or nil
+end
+
+-- The crit multiplier of rank `e` of `kind` at `ranks` (CRIT_MULT with no talent).
+function Book.CritMultFor(e, kind, ranks)
+    local base = Book.CRIT_MULT or 1.5
+    local rules = ClassTable("TalentCritBonus")
+    if not rules or type(ranks) ~= "table" or not kind then return base end
+    local bonus = base - 1
+    for k, rule in pairs(rules) do
+        local r = ranks[k]
+        if type(r) == "number" and r > 0 and CritScopeHits(rule.scope, e, kind) then
+            local pct = rule.pctPerRank[math.min(r, #rule.pctPerRank)]
+            if type(pct) == "number" then bonus = bonus * (1 + pct / 100) end
+        end
+    end
+    return 1 + bonus
+end
+
+local function CritTalents(e, fam)
+    local ranks = Book:Talents()
+    if type(ranks) ~= "table" then return end
+    local kind = EntryKind(e)
+    if not kind then return end
+    local add, words = Book.CritTalentAdd(e, kind, ranks, false)
+    if add > 0 then e.critAdd, e.critTalent = add, words end
+    local mult = Book.CritMultFor(e, kind, ranks)
+    if mult ~= (Book.CRIT_MULT or 1.5) then e.critMult = mult end
+end
+Book.adjust[4] = CritTalents
+
 --------------------------------------------------------------------------------
 -- Small helpers -- every one reads only what ST.API already handed out plain.
 --------------------------------------------------------------------------------
@@ -608,8 +714,19 @@ Book.CritNow = CritNow
 
 local function CritFactor(e)
     if type(e.crit) ~= "number" then return 1 end
-    return 1 + e.crit * (CRIT_MULT - 1)
+    local mult = (type(e.critMult) == "number") and e.critMult or CRIT_MULT
+    return 1 + e.crit * (mult - 1)
 end
+
+-- The chance a rank is priced at: the client's for its school plus the crit
+-- talents it lacks (entry.critAdd, the crit seam), at most 1; nil unread.
+local function CritOf(e, kind, school)
+    local c = CritNow(kind, school)
+    if type(c) ~= "number" then return nil end
+    if type(e.critAdd) == "number" then c = c + e.critAdd end
+    return math.min(1, c)
+end
+Book.CritOf = CritOf
 Book.CritFactor = CritFactor
 
 local function Numbers(e, kind)
@@ -1083,7 +1200,7 @@ function Book:ReadSpell(id)
     entry.kind = kind
 
     if kind then
-        entry.crit = CritNow(kind, SchoolOf(entry, kind))
+        entry.crit = CritOf(entry, kind, SchoolOf(entry, kind))
         Numbers(entry, kind)
         ApplyBonus(entry, kind, PartShape(entry, kind))
     end
@@ -1280,7 +1397,7 @@ function Book:Rows(family, pool)
     if not family.kind then return end
 
     for _, e in ipairs(family.ranks) do
-        e.crit = CritNow(family.kind, family.school) -- the chance the value averages in
+        e.crit = CritOf(e, family.kind, family.school) -- the chance the value averages in
         Numbers(e, family.kind)
         ApplyBonus(e, family.kind, family.shape) -- T117
         e.casts = Book:CastsFor(e, pool)

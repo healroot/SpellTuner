@@ -5491,3 +5491,17 @@ direct casts"). Rulings: `docs/DECISIONS.md` (both 2026-11-11 entries).
   values; the import fixture rebuilt.
 - **In game:** `docs/TESTING.md` section 67 (VERIFY: the client answers an unlearned id's text; whether
   it carries +healing; the crit size 1.5).
+
+## 2026-11-14 -- crit talents, Intellect, the HoT card (Forever)
+
+The author: crit did not show on Rejuvenation or Regrowth's HoT (the card worded no crit for a part over
+time; the value had it), and crit / Intellect talents and Natural Instinct were not modelled. Ruling:
+`docs/DECISIONS.md` "Crit talents and Intellect".
+- `tools/buildtalents.py`: Intellect stat talents, `ST.TalentCrit`, `ST.TalentCritBonus`,
+  `ST.TalentStatBonus` (regenerated from data.json 2026-11-10; the planner tree's words moved with it).
+- `Spells/Book.lua`: `Book.adjust[4]` (crit talents the client lacks, crit size), `CritOf`, `Book:Intellect`;
+  `Client/API_Forever.lua` `ST.API.Intellect`; `Coef.INT_PER_CRIT` (VERIFY).
+- `Spells/WhatIf_Forever.lua`: the plan's Intellect, `PlanCrit`, +bonus from Intellect; a stat talent moves
+  only its own stat (an Intellect talent no longer moved Bloom's Spirit).
+- `Spells/Words.lua`: a HoT's Crit line and `with crit`; the pane names `incl. <talent>`.
+- `tools/critcheck.lua` 7 -> 17. In game: `docs/TESTING.md` section 67 steps 7-8.

@@ -163,9 +163,9 @@ end)
 
 T("3 a plan of unmodelled talents only is kept, though the What if has nothing typed", function()
     Use(LIVE)
-    TP:Apply({ ["Nature's Focus"] = 3, ["Naturalist"] = 5, ["Gift of Nature"] = 2, ["Heart of the Wild"] = 2 })
+    TP:Apply({ ["Nature's Focus"] = 3, ["Naturalist"] = 5, ["Gift of Nature"] = 2, ["Furor"] = 2 })
     local plan = TP:Current()
-    return not WI:Active() and plan["Nature's Focus"] == 3 and plan["Heart of the Wild"] == 2
+    return not WI:Active() and plan["Nature's Focus"] == 3 and plan["Furor"] == 2
 end)
 
 T("3 review M1: a talent the plan takes to 0 stays at 0", function()

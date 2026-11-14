@@ -2728,9 +2728,17 @@ Below level 60, with a heal that has later ranks (Healing Touch, Rejuvenation, R
 5. **Does the text carry your +healing?** Compare a greyed rank's Value with talentsforever's
    level-60 text for it: higher by about its share of your +healing means yes. Say which.
 6. **Settings -> Model -> Show ranks not learned yet** off: the greyed rows go; on: back.
-7. **Crit in the numbers:** a rank card's value line reads `(N with X% crit)` with X your character
-   sheet's spell crit; What if -> Crit % 30 raises Value, Per mana and Per sec. Report a heal's real
-   crit size if you see one (a landed crit / its non-crit): 1.5 is assumed.
+7. **Crit in the numbers:** Healing Touch's card reads `(avg N) with crit` and its Crit line ends with
+   your character sheet's spell crit (`10% chance`). **Rejuvenation's card has a Crit line**
+   (`each tick x1.5 (assumed) 10% chance`) and `Total N with crit`; Regrowth's Crit line ends
+   `ticks too`. What if -> Crit % 30 raises Value, Per mana and Per sec. Report a heal's real crit size
+   if you see one (a landed crit / its non-crit): 1.5 is assumed.
+8. **Crit talents (VERIFY):** with Improved Regrowth taken, Regrowth's Crit line says
+   `incl. Improved Regrowth N +M%` and its chance is your sheet's + M. **Tell me whether your
+   character sheet's spell crit already rises when you take Improved Regrowth** (then it would be
+   counted twice). In the talent plan: add Nature's Majesty and every rank's chance rises by its
+   points; add Heart of the Wild and the chance rises a little (Intellect / 60 per 1%, assumed); add
+   Natural Instinct and Value rises (25% of your Intellect as +healing at 2/2).
 
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the

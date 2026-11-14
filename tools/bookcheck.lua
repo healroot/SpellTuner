@@ -489,15 +489,15 @@ do
 end
 
 --------------------------------------------------------------------------------
--- 11: the talent seam holds T129's cast rule, T133's multiplier and T134's expiry heal only and
+-- 11: the talent seam holds T129's cast rule, T133's multiplier and T134's expiry heal and the crit talents (2026-11-14) only and
 -- applies what is put in it
 --------------------------------------------------------------------------------
 do
     -- T129: the seam's first function is the cast-time talent rule
     -- (docs/tasks/T129-forever-talent-casts.md), T133's talent multiplier the
     -- second (docs/tasks/T133-forever-share-factors.md), T134's expiry heal the
-    -- third; anything added runs after them.
-    local emptyGood = type(Book.adjust) == "table" and #Book.adjust == 3
+    -- third, the crit talents the fourth; anything added runs after them.
+    local emptyGood = type(Book.adjust) == "table" and #Book.adjust == 4
 
     table.insert(Book.adjust, function(entry, family)
         if entry.id == 5185 then entry.talentSeamTouched = true end
@@ -506,9 +506,9 @@ do
     table.remove(Book.adjust)
 
     local applied = FindEntry(book, 5185).talentSeamTouched == true
-    local emptyAfter = #Book.adjust == 3
+    local emptyAfter = #Book.adjust == 4
 
-    check("the talent seam holds the cast, multiplier and expiry rules only and applies what is put in it",
+    check("the talent seam holds the cast, multiplier, expiry and crit rules only and applies what is put in it",
         emptyGood and applied and emptyAfter,
         string.format("emptyGood=%s applied=%s emptyAfter=%s", tostring(emptyGood), tostring(applied), tostring(emptyAfter)))
 end

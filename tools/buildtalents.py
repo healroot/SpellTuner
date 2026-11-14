@@ -213,15 +213,90 @@ def parse_expiry(sentence, known):
 
 # T134: a percent on Spirit: "Increases your Spirit by N%." Only that sentence:
 # a proc, a party buff or a duration is not a permanent stat and is named.
-STAT_CANDIDATE = re.compile(r"\b[Ii]ncreases your (?:total )?Spirit by\b")
-STAT_SHAPE = re.compile(r"^[Ii]ncreases your (?:total )?Spirit by " + NUM + r"\.?$")
+STAT_CANDIDATE = re.compile(r"\b[Ii]ncreases your (?:total )?(?:Spirit|Intellect) by\b")
+# 2026-11-11: Intellect too (Heart of the Wild, Mental Strength, ...); a tail that
+# only applies in a form ("In addition, while in Bear Form ...") is not the stat's
+STAT_SHAPE = re.compile(r"^[Ii]ncreases your (?:total )?(?P<stat>Spirit|Intellect) by " + NUM
+                        + r"\.?(?: In addition, while in [^.]*\.?)?$")
 
 
 def parse_stat(sentence, known):
     m = STAT_SHAPE.match(sentence)
     if not m:
         return None, "sentence not recognised"
-    return {"stat": "Spirit"}, float(m.group("n"))
+    return {"stat": m.group("stat")}, float(m.group("n"))
+
+
+# 2026-11-11: a talent that raises the crit chance -- of every spell, of the
+# healing spells, of the spells of named schools, or of named spells. Every other
+# shape (a condition, a proc, a form, melee only) is named and skipped.
+CRIT_CANDIDATE = re.compile(r"critical (?:strike|effect) chance|chance to get a critical strike")
+CRIT_ALL = [
+    re.compile(r"^Increases your critical strike chance with spells and melee attacks by " + NUM + r"\.?$"),
+    re.compile(r"^Improves your chance to get a critical strike with all spells and attacks by " + NUM + r"\.?$"),
+]
+CRIT_SCOPED = re.compile(r"^Increases the (?:damage and )?critical (?:strike|effect) chance of your "
+                         r"(?P<list>.+?) spells? by " + NUM + r"\.?$")
+SCHOOLS = ("Arcane", "Fire", "Frost", "Holy", "Nature", "Shadow")
+
+
+def split_list(text):
+    return [x.strip() for x in re.split(r",\s*(?:and\s+)?|\s+and\s+", text) if x.strip()]
+
+
+def parse_crit(sentence, known):
+    for shape in CRIT_ALL:
+        m = shape.match(sentence)
+        if m:
+            return {"all": True}, float(m.group("n"))
+    m = CRIT_SCOPED.match(sentence)
+    if not m:
+        return None, "sentence not recognised"
+    names = split_list(m.group("list"))
+    if names == ["healing"]:
+        return {"kind": "heal"}, float(m.group("n"))
+    if all(n in SCHOOLS for n in names):
+        return {"schools": names}, float(m.group("n"))
+    for n in names:
+        if n not in known:
+            return None, "spell %s not in the export" % n
+    return {"spells": names}, float(m.group("n"))
+
+
+# 2026-11-11: a bigger crit -- "Increases the critical strike damage (healing)
+# bonus of your Arcane and Nature (Holy) spells by N%": the bonus over a normal
+# hit (x1.5 -> 0.5) grows by N%. Melee, totems and forms are named and skipped.
+CRITBONUS_CANDIDATE = re.compile(r"critical strike (?:damage|healing) bonus")
+CRITBONUS_SHAPE = re.compile(r"^Increases the critical strike (?P<kind>damage|healing) bonus of your "
+                             r"(?P<list>.+?) spells by " + NUM + r"\.?$")
+
+
+def parse_critbonus(sentence, known):
+    m = CRITBONUS_SHAPE.match(sentence)
+    if not m:
+        return None, "sentence not recognised"
+    names = split_list(m.group("list"))
+    if not all(n in SCHOOLS for n in names):
+        return None, "not a list of schools"
+    kind = "heal" if m.group("kind") == "healing" else "damage"
+    return {"kind": kind, "schools": names}, float(m.group("n"))
+
+
+# 2026-11-11: +healing (or +spell damage) from a share of your Intellect:
+# Natural Instinct, Mental Quickness, Champion of the Light. The clause is read
+# wherever it stands in the sentence; the rest of the sentence is another effect.
+STATBONUS_CANDIDATE = re.compile(r"of your Intellect")
+STATBONUS_SHAPE = re.compile(r"(?:[Ii]ncreases your )?spell (?P<what>healing|damage and healing|damage) by "
+                             r"(?:up to )?" + NUM + r" of your Intellect")
+
+
+def parse_statbonus(sentence, known):
+    m = STATBONUS_SHAPE.search(sentence)
+    if not m:
+        return None, "sentence not recognised"
+    what = m.group("what")
+    kinds = {"healing": ["heal"], "damage": ["damage"], "damage and healing": ["heal", "damage"]}[what]
+    return {"stat": "Intellect", "kinds": kinds}, float(m.group("n"))
 
 
 # T136: a longer spell: "Increases the duration of your A and B spells by N sec, your C
@@ -465,8 +540,12 @@ def build(data):
 
 def lua_scope(scope):
     parts = []
+    if scope.get("all"):
+        parts.append("all = true")
     if "kind" in scope:
         parts.append("kind = %s" % lua_str(scope["kind"]))
+    if "kinds" in scope:
+        parts.append("kinds = { %s }" % ", ".join(lua_str(x) for x in scope["kinds"]))
     if "schools" in scope:
         parts.append("schools = { %s }" % ", ".join(lua_str(x) for x in scope["schools"]))
     if "spells" in scope:
@@ -533,6 +612,11 @@ def write(data, rules, skipped, dropped, out, mults=None, mskipped=None, extra=N
     w("-- carries the talents taken). ST.TalentExpiry: when a named spell runs its whole")
     w("-- duration the target is healed for pctPerRank[r] percent of scope.stat.")
     w("-- ST.TalentStats: rank r raises scope.stat by pctPerRank[r] percent.")
+    w("-- ST.TalentCrit (2026-11-11): rank r adds pctPerRank[r] points of crit chance to")
+    w("-- what the scope names (all: every spell, kind heal, schools, spells by name).")
+    w("-- ST.TalentCritBonus: rank r makes a crit's bonus over a hit pctPerRank[r] percent")
+    w("-- bigger for the scope's kind and schools. ST.TalentStatBonus: rank r adds")
+    w("-- pctPerRank[r] percent of scope.stat to the bonus of each of scope.kinds.")
     w("-- T136: ST.TalentDurations[class token][rule] = { talent, ranks, spells, secPerRank }:")
     w("-- rank r makes each named spell last secPerRank[r] seconds longer (read by the What")
     w("-- if only: the client's text already carries the talents taken). Skipped:")
@@ -687,11 +771,17 @@ def main(argv):
     costs, cskipped = build_table(data, COST_CANDIDATE, parse_cost)
     expiry, eskipped = build_table(data, EXPIRY_CANDIDATE, parse_expiry)
     stats, sskipped = build_table(data, STAT_CANDIDATE, parse_stat)
+    crits, crskipped = build_table(data, CRIT_CANDIDATE, parse_crit)
+    critbonus, cbskipped = build_table(data, CRITBONUS_CANDIDATE, parse_critbonus)
+    statbonus, sbskipped = build_table(data, STATBONUS_CANDIDATE, parse_statbonus)
     durations, dskipped = build_durations(data)
     write(data, rules, skipped, dropped, out, mults, mskipped, [
         ("TalentCosts", costs, cskipped),
         ("TalentExpiry", expiry, eskipped),
         ("TalentStats", stats, sskipped),
+        ("TalentCrit", crits, crskipped),
+        ("TalentCritBonus", critbonus, cbskipped),
+        ("TalentStatBonus", statbonus, sbskipped),
     ], (durations, dskipped))
     tree_out = os.path.join(os.path.dirname(out) or ".", "TalentTree_Forever.lua")
     write_tree(data, tree_out)

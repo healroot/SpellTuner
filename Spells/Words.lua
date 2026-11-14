@@ -42,8 +42,9 @@ end
 local Num = W.Num
 
 -- The crit range of a part with a min and a max, "a - b".
-function W.CritRange(part)
-    return Num(part.min * W.CRIT_MULT) .. " - " .. Num(part.max * W.CRIT_MULT)
+function W.CritRange(part, mult)
+    mult = (type(mult) == "number") and mult or W.CRIT_MULT
+    return Num(part.min * mult) .. " - " .. Num(part.max * mult)
 end
 
 -- Review R13: a Rage / Focus / Energy cost is no mana; named "10 Rage".
@@ -343,7 +344,7 @@ function W.Value(e, kind, style, c)
             return out, false
         end
         if part.min ~= nil and part.max ~= nil then
-            local critRange = W.CritRange(part)
+            local critRange = W.CritRange(part, e.critMult)
             if part.over ~= nil and part.dur ~= nil then
                 P("Hit", "avg " .. Num((part.min + part.max) / 2) .. ", crit " .. critRange)
                 P("Over time", Num(part.over) .. " over " .. Num(part.dur) .. " s")
@@ -359,26 +360,38 @@ function W.Value(e, kind, style, c)
 
     local muted, reset = c and c.muted or "", c and c.reset or ""
     local valueWord = (kind == "damage") and "Damage" or "Heals"
+    -- 2026-11-11: the value averages crit in (Spells/Book.lua's CritFactor),
+    -- ticks as well as hits: said where a crit chance above 0 is in it, and a
+    -- part over time gets its own Crit line (the pane adds the chance)
+    local mult = (type(e.critMult) == "number") and e.critMult or W.CRIT_MULT
+    local critOn = type(e.crit) == "number" and e.crit > 0
+    local withCrit = critOn and (" " .. muted .. "with crit" .. reset) or ""
+    local assumed = muted .. "(x" .. Num(mult, 1) .. " assumed)" .. reset
     if part == nil and kind == "heal" and IsAbsorb(e) then
         P("Absorbs", Num(e.parsed.absorb))
     elseif part and part.min ~= nil and part.max ~= nil then
-        local crit = W.CritRange(part) .. " " .. muted .. "(x" .. Num(W.CRIT_MULT, 1) .. " assumed)" .. reset
+        local crit = W.CritRange(part, mult) .. " " .. assumed
         if part.over ~= nil and part.dur ~= nil then
             P("Hit", Num(part.min) .. " - " .. Num(part.max))
-            P("Crit", crit)
+            P("Crit", crit .. (critOn and (" " .. muted .. "ticks too" .. reset) or ""))
             P("Over time", Num(part.over) .. " over " .. Num(part.dur) .. " s")
-            P("Total", Num(e.value))
+            P("Total", Num(e.value) .. withCrit)
         else
-            P(valueWord, Num(part.min) .. " - " .. Num(part.max) .. " (avg " .. Num(e.value) .. ")")
+            P(valueWord, Num(part.min) .. " - " .. Num(part.max) .. " (avg " .. Num(e.value) .. ")" .. withCrit)
             P("Crit", crit)
         end
         return out, true
     elseif part and part.over ~= nil and part.dur ~= nil then
         P(valueWord, Num(part.over) .. " over " .. Num(part.dur) .. " s")
+        if critOn then
+            P("Crit", "each tick x" .. Num(mult, 1) .. " " .. muted .. "(assumed)" .. reset)
+            P("Total", Num(e.value) .. withCrit)
+        end
     elseif part and part.tick ~= nil then
-        if part.periodDur ~= nil then P(valueWord, Num(e.value) .. " over " .. Num(part.periodDur) .. " s") end
+        if part.periodDur ~= nil then P(valueWord, Num(e.value) .. " over " .. Num(part.periodDur) .. " s" .. withCrit) end
         -- only what the text states: a tick and its period, never derived
         if part.period ~= nil then P("Ticks", Num(part.tick) .. " every " .. Num(part.period) .. " s") end
+        if critOn then P("Crit", "each tick x" .. Num(mult, 1) .. " " .. muted .. "(assumed)" .. reset) end
     end
     return out, false
 end

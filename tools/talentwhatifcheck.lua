@@ -414,7 +414,7 @@ T("7 the sentence names what does not move; a family no talent touches says only
     local b = Use({})
     local note = WI:ClassNote(b.families.Rejuvenation)
     local good = true
-    for _, w in ipairs({ "crit", "regen", "stat-to-bonus", "procs", "Oath of Light", "teaches" }) do
+    for _, w in ipairs({ "Intellect to crit", "regen", "procs", "Oath of Light", "teaches" }) do
         good = good and note:find(w, 1, true) ~= nil
     end
     local none = WI:ClassNote({ ranks = {} })

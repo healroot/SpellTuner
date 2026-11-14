@@ -206,6 +206,13 @@ end
 --------------------------------------------------------------------------------
 Coef.LEVEL_STEP = 0.05   -- share lost per level past the start (2026-10-23, lvl 25-26)
 Coef.LEVEL_GRACE = 17    -- the start is the learn level + this (2026-10-23, lvl 25-26)
+
+-- 2026-11-11: Intellect per 1% of spell crit, by class -- vanilla's level-60
+-- ratios, NOT measured on Forever and not scaled by level (VERIFY,
+-- docs/DECISIONS.md "Crit talents and Intellect"). Read by the What if only, to
+-- turn a talent's Intellect into crit; the live crit is always the client's.
+Coef.INT_PER_CRIT = { DRUID = 60, PRIEST = 59.2, SHAMAN = 59.5, PALADIN = 54, MAGE = 59.5, WARLOCK = 60.6,
+                      HUNTER = 60 }
 -- The floor the penalty stops at. UNMEASURED (assumed 0): no export has yet
 -- reached a level where a rank's penalty would go below it.
 Coef.LEVEL_FLOOR = 0
