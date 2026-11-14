@@ -384,7 +384,7 @@ local GOLDEN = {
         "|cff9966ffSpellTuner:|r   |cffffff00/st coachrun [n]|r - coach a recorded RUN: one plan and a drink policy for the whole dungeon",
         "|cff9966ffSpellTuner:|r   |cffffff00/st debug|r - toggle the debug console (enable logging there, Copy to export)",
         "|cff9966ffSpellTuner:|r   |cffffff00/st ui style <name>|r - the look of SpellTuner's windows (no name: list the styles)",
-        "|cff9966ffSpellTuner:|r   |cffffff00/st clock layout / look reset / preview|r - the mana clock's layout: the Bar; the clock's look back to SpellTuner's; the clock on screen for 60 s, to see or move it",
+        "|cff9966ffSpellTuner:|r   |cffffff00/st clock always / layout / look reset / preview|r - keep the clock on screen out of combat too; the mana clock's layout: the Bar; the clock's look back to SpellTuner's; the clock on screen for 60 s, to see or move it",
     } },
     { cmd = "spied /st options", lines = {
         "call ST:ShowOptionsFrame()",
@@ -588,6 +588,7 @@ local GOLDEN = {
         "|cff9966ffSpellTuner:|r usage: /st ui style <name>",
     } },
     { cmd = "spied /st clock", lines = {
+        "|cff9966ffSpellTuner:|r usage: /st clock always",
         "|cff9966ffSpellTuner:|r usage: /st clock layout",
         "|cff9966ffSpellTuner:|r usage: /st clock look reset",
         "|cff9966ffSpellTuner:|r usage: /st clock preview",
@@ -640,7 +641,7 @@ local GOLDEN = {
         "|cff9966ffSpellTuner:|r   |cffffff00/st coachrun [n]|r - coach a recorded RUN: one plan and a drink policy for the whole dungeon",
         "|cff9966ffSpellTuner:|r   |cffffff00/st debug|r - toggle the debug console (enable logging there, Copy to export)",
         "|cff9966ffSpellTuner:|r   |cffffff00/st ui style <name>|r - the look of SpellTuner's windows (no name: list the styles)",
-        "|cff9966ffSpellTuner:|r   |cffffff00/st clock layout / look reset / preview|r - the mana clock's layout: the Bar; the clock's look back to SpellTuner's; the clock on screen for 60 s, to see or move it",
+        "|cff9966ffSpellTuner:|r   |cffffff00/st clock always / layout / look reset / preview|r - keep the clock on screen out of combat too; the mana clock's layout: the Bar; the clock's look back to SpellTuner's; the clock on screen for 60 s, to see or move it",
     } },
     { cmd = "spied /st   MUTE  ", lines = {
         "|cff9966ffSpellTuner:|r alerts muted.",
@@ -685,7 +686,7 @@ local GOLDEN = {
         "|cff9966ffSpellTuner:|r   |cffffff00/st coachrun [n]|r - coach a recorded RUN: one plan and a drink policy for the whole dungeon",
         "|cff9966ffSpellTuner:|r   |cffffff00/st debug|r - toggle the debug console (enable logging there, Copy to export)",
         "|cff9966ffSpellTuner:|r   |cffffff00/st ui style <name>|r - the look of SpellTuner's windows (no name: list the styles)",
-        "|cff9966ffSpellTuner:|r   |cffffff00/st clock layout / look reset / preview|r - the mana clock's layout: the Bar; the clock's look back to SpellTuner's; the clock on screen for 60 s, to see or move it",
+        "|cff9966ffSpellTuner:|r   |cffffff00/st clock always / layout / look reset / preview|r - keep the clock on screen out of combat too; the mana clock's layout: the Bar; the clock's look back to SpellTuner's; the clock on screen for 60 s, to see or move it",
     } },
     { cmd = "bare /st options", lines = {
     } },
@@ -848,6 +849,7 @@ local GOLDEN = {
         "|cff9966ffSpellTuner:|r usage: /st ui style <name>",
     } },
     { cmd = "bare /st clock", lines = {
+        "|cff9966ffSpellTuner:|r usage: /st clock always",
         "|cff9966ffSpellTuner:|r usage: /st clock layout",
         "|cff9966ffSpellTuner:|r usage: /st clock look reset",
         "|cff9966ffSpellTuner:|r usage: /st clock preview",
@@ -900,7 +902,7 @@ local GOLDEN = {
         "|cff9966ffSpellTuner:|r   |cffffff00/st coachrun [n]|r - coach a recorded RUN: one plan and a drink policy for the whole dungeon",
         "|cff9966ffSpellTuner:|r   |cffffff00/st debug|r - toggle the debug console (enable logging there, Copy to export)",
         "|cff9966ffSpellTuner:|r   |cffffff00/st ui style <name>|r - the look of SpellTuner's windows (no name: list the styles)",
-        "|cff9966ffSpellTuner:|r   |cffffff00/st clock layout / look reset / preview|r - the mana clock's layout: the Bar; the clock's look back to SpellTuner's; the clock on screen for 60 s, to see or move it",
+        "|cff9966ffSpellTuner:|r   |cffffff00/st clock always / layout / look reset / preview|r - keep the clock on screen out of combat too; the mana clock's layout: the Bar; the clock's look back to SpellTuner's; the clock on screen for 60 s, to see or move it",
     } },
     { cmd = "bare /st   MUTE  ", lines = {
         "|cff9966ffSpellTuner:|r alerts muted.",
@@ -969,8 +971,8 @@ local GOLDEN = {
         "toggle the debug console (enable logging there, Copy to export)",
         "/st ui style <name>",
         "the look of SpellTuner's windows (no name: list the styles)",
-        "/st clock layout / look reset / preview",
-        "the mana clock's layout: the Bar; the clock's look back to SpellTuner's; the clock on screen for 60 s, to see or move it",
+        "/st clock always / layout / look reset / preview",
+        "keep the clock on screen out of combat too; the mana clock's layout: the Bar; the clock's look back to SpellTuner's; the clock on screen for 60 s, to see or move it",
     } },
 }
 Compare(GOLDEN)

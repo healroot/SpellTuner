@@ -36,6 +36,15 @@ Visibility.DEFAULT_RULE = { combat = "always", ooc = "low", manaUsersOnly = true
 
 local DEFAULT = Visibility.DEFAULT_RULE
 
+-- db.clockAlways (2026-11-14, Settings -> Clock -> WHEN "Always visible"):
+-- the clock stays up out of combat at any mana; a character with no mana pool
+-- still gets none. Rule(always) is the rule a host passes to Want.
+Visibility.ALWAYS_RULE = { combat = "always", ooc = "always", manaUsersOnly = true }
+function Visibility.Rule(always)
+    if always == true then return Visibility.ALWAYS_RULE end
+    return DEFAULT
+end
+
 local function Field(rule, key)
     local v = rule[key]
     if v == nil then v = DEFAULT[key] end

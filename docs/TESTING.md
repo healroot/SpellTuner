@@ -2740,6 +2740,13 @@ Below level 60, with a heal that has later ranks (Healing Touch, Rejuvenation, R
    points; add Heart of the Wild and the chance rises a little (Intellect / 60 per 1%, assumed); add
    Natural Instinct and Value rises (25% of your Intellect as +healing at 2/2).
 
+## 68. The clock always visible -- NEW, both lines 1 min
+1. Settings -> Clock -> WHEN: the first switch is **Always visible** (off).
+2. At full mana out of combat the clock is hidden; tick Always visible: it appears and stays, at any
+   mana. Untick: it hides again at full mana (over 95%).
+3. `/st clock always` flips the same switch and prints which.
+4. On a character with no mana pool it stays hidden either way.
+
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the
 raw numbers. `/st profile` output is welcome with any report. I turn them into

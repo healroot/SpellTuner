@@ -587,7 +587,8 @@ end
 Try("When: the line's own switches, no Rest among them; Locked is the line's own lock", function()
     local names = {}
     for _, cb in ipairs(p.switches) do names[#names + 1] = cb.def.text end
-    local want = forever and "Show the mana clock,Locked,Click-through" or "Locked,Tooltip and left-click"
+    local want = forever and "Always visible,Show the mana clock,Locked,Click-through"
+        or "Always visible,Locked,Tooltip and left-click"
     local cb = SwitchNamed("Locked")
     cb:SetChecked(false); cb.onClick(false, cb)
     local off = forever and ST.db.clock.locked == false or (not forever and ST.db.locked == false)
@@ -595,6 +596,25 @@ Try("When: the line's own switches, no Rest among them; Locked is the line's own
     local on = forever and ST.db.clock.locked == true or (not forever and ST.db.locked == true)
     if W.Preview then W:Preview(0) end
     return table.concat(names, ",") == want and off and on, table.concat(names, ",")
+end)
+
+Try("When: Always visible keeps the clock up at full mana out of combat; /st clock always turns it off", function()
+    if W.Preview then W:Preview(0) end
+    ST.db.clockAlways = false
+    if forever then ST.db.clock.shown = true end
+    Tick(2)
+    local hiddenFull = not widget:IsShown()
+    local cb = SwitchNamed("Always visible")
+    cb:SetChecked(true); cb.onClick(true, cb)
+    Tick(1)
+    local up = ST.db.clockAlways == true and widget:IsShown()
+    local slashFn = SlashCmdList and SlashCmdList.SPELLTUNER
+    local said = Plain(Chat(function() slashFn("clock always") end))
+    Tick(1)
+    local down = ST.db.clockAlways == false and not widget:IsShown()
+    return hiddenFull and up and down and said[1] == "mana clock: out of combat only under 90% mana (hides over 95%)",
+        string.format("hiddenFull %s up %s down %s said %s", tostring(hiddenFull), tostring(up), tostring(down),
+            tostring(said[1]))
 end)
 
 if forever then
@@ -736,7 +756,7 @@ if forever then
 else
     Try("TBC: /st clock alone prints the subs' usage", function()
         local a = Plain(Chat(function() slash("clock") end))
-        return table.concat(a, " | ") == "usage: /st clock layout | usage: /st clock look reset | "
+        return table.concat(a, " | ") == "usage: /st clock always | usage: /st clock layout | usage: /st clock look reset | "
             .. "usage: /st clock preview", table.concat(a, " | ")
     end)
 end
@@ -744,8 +764,8 @@ end
 Try("the clock's help row carries layout, look reset and preview", function()
     local row
     for _, c in ipairs(ST:Commands()) do if c.name == "clock" then row = c end end
-    local want = forever and "/st clock [lock] / rest / clickthrough / layout / look reset / preview"
-        or "/st clock layout / look reset / preview"
+    local want = forever and "/st clock [lock] / rest / clickthrough / always / layout / look reset / preview"
+        or "/st clock always / layout / look reset / preview"
     return row ~= nil and row.usage == want and not row.hidden, row and row.usage
 end)
 

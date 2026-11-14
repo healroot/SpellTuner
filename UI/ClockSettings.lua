@@ -1113,8 +1113,34 @@ local function BuildPresets(p, parent)
     return sec
 end
 
+-- "Always visible" (2026-11-14): db.clockAlways, both lines -- the clock
+-- stays up out of combat at any mana (ST.Visibility.Rule). Each host's own
+-- visibility owner applies it; this only writes the key and asks it to.
+ST:RegisterDefaults({ clockAlways = false })
+local function RefreshVisibility()
+    if ST.Clock and ST.Clock.Refresh and ST.Clock.frame then ST.Clock:Refresh() end
+    if ST.UpdateVisibility then ST:UpdateVisibility() end
+end
+function CS.SetAlways(on)
+    ST.db.clockAlways = on == true
+    RefreshVisibility()
+end
+CS.ALWAYS_SWITCH = {
+    text = "Always visible",
+    tips = { "Always visible", "On: the clock stays on screen out of combat too, at any mana.",
+        "Off: out of combat it shows under 90% mana and hides over 95%. Same as /st clock always." },
+    get = function() return ST.db.clockAlways == true end,
+    set = function(on) CS.SetAlways(on) end,
+}
+ST:AddSubcommand("clock", "always", function()
+    CS.SetAlways(ST.db.clockAlways ~= true)
+    ST:Print("mana clock: " .. (ST.db.clockAlways and "always visible"
+        or "out of combat only under 90% mana (hides over 95%)"))
+end, "always", "keep the clock on screen out of combat too")
+
 local function BuildWhen(p, parent)
-    local defs = p.opts.when or {}
+    local defs = { CS.ALWAYS_SWITCH }
+    for _, def in ipairs(p.opts.when or {}) do defs[#defs + 1] = def end
     local sec = Section(parent, "WHEN", 30 + 22 * #defs + 18)
     p.whenSection = sec
     p.switches = {}
@@ -1131,7 +1157,7 @@ local function BuildWhen(p, parent)
         p.switches[#p.switches + 1] = cb
         y = y - 22
     end
-    local n = Note(sec, "In combat the clock is always up; out of combat it shows under 90% mana and hides over 95%.")
+    local n = Note(sec, "In combat the clock is always up; out of combat it shows under 90% mana and hides over 95%, unless Always visible is on.")
     n:SetPoint("TOPLEFT", sec, "TOPLEFT", 5, y - 2)
     n:SetPoint("RIGHT", sec, "RIGHT", -4, 0)
     return sec

@@ -5,6 +5,11 @@ published to CurseForge; the developers' log is `docs/HISTORY.md`.
 
 ## Next
 
+### The clock can stay on screen
+- Settings -> Clock -> WHEN -> **Always visible** (or `/st clock always`): the mana clock stays up
+  out of combat too, at any mana. Off (the default) keeps today's rule: in combat always, out of
+  combat under 90% mana, hidden over 95%. Both lines.
+
 ### Forever: ranks you have not learned yet
 - The Spells pane lists each spell's later ranks too, greyed and tagged `learn at N`, with their
   value, per mana and per second read from the game's own text for them. Hover one for the game's

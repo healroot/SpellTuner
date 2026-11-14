@@ -246,12 +246,13 @@ function ST:UpdateVisibility()
     -- a mana user), as before.
     local usesMana = ST.player.usesMana
     local pct
-    if not unlocked and not ST.inCombat and usesMana then -- T58 (P14, A28): the kernel's flag (Core.lua)
+    local rule = ST.Visibility.Rule(ST.db.clockAlways)
+    if not unlocked and not ST.inCombat and usesMana and rule.ooc == "low" then -- T58 (P14, A28): the kernel's flag (Core.lua)
         local mana = UnitPower("player", 0)
         local manaMax = UnitPowerMax("player", 0)
         pct = manaMax > 0 and mana / manaMax or 1
     end
-    wantShown = ST.Visibility.Want(pct, shown, ST.inCombat, unlocked, nil, usesMana and true or false)
+    wantShown = ST.Visibility.Want(pct, shown, ST.inCombat, unlocked, rule, usesMana and true or false)
 
     if wantShown ~= shown then
         shown = wantShown

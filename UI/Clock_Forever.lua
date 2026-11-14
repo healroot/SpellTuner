@@ -110,7 +110,8 @@ local function UpdateVisibility()
     -- T93 (F3): no mana pool (a warrior, a rogue), no clock -- the shared
     -- rule's manaUsersOnly, the TBC widget's gate
     local usesMana = ST.player and ST.player.usesMana
-    shown = ST.Visibility.Want(pct, shown, ST.inCombat, Previewing(), nil, usesMana ~= false)
+    shown = ST.Visibility.Want(pct, shown, ST.inCombat, Previewing(), ST.Visibility.Rule(ST.db.clockAlways),
+        usesMana ~= false)
     if shown then widget:Show() else widget:Hide(); ResetSteady() end
 end
 

@@ -2151,6 +2151,7 @@ SpellTunerDB = {
 		["showRest"] = true,
 		["shown"] = true,
 	},
+	["clockAlways"] = false,
 	["clockLook"] = {
 		["back"] = "0A0A0A",
 		["backAlpha"] = 1,
