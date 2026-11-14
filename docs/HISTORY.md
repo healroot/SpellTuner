@@ -5505,3 +5505,11 @@ time; the value had it), and crit / Intellect talents and Natural Instinct were 
   only its own stat (an Intellect talent no longer moved Bloom's Spirit).
 - `Spells/Words.lua`: a HoT's Crit line and `with crit`; the pane names `incl. <talent>`.
 - `tools/critcheck.lua` 7 -> 17. In game: `docs/TESTING.md` section 67 steps 7-8.
+
+## 2026-11-14 -- the clock always visible; 0.18.1
+
+- `db.clockAlways` (Settings -> Clock -> WHEN "Always visible", `/st clock always`), both lines:
+  `ST.Visibility.Rule` hands each clock host the always rule; `tools/clocksettings.lua` +1 per line,
+  slashcheck golden re-based for the help row. In game: `docs/TESTING.md` section 68.
+- 0.18.1 on every TOC from branch `future-ranks-crit` (2996c45, 4a6b762, 1d33852): published beta to
+  CurseForge on the author's word; not merged to master.

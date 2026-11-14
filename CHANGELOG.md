@@ -3,7 +3,7 @@
 What changed, for players. `./release.sh --publish` sends the section of the version being
 published to CurseForge; the developers' log is `docs/HISTORY.md`.
 
-## Next
+## 0.18.1
 
 ### The clock can stay on screen
 - Settings -> Clock -> WHEN -> **Always visible** (or `/st clock always`): the mana clock stays up
