@@ -630,6 +630,7 @@ end
 
 function provider.Book()
     if not (Book and Book.Get) then return nil end
+    if Book.WantFuture then Book:WantFuture() end -- a typed Level lets them compete
     local live = Book:Get()
     if type(live) ~= "table" then return nil end
     local liveStats = { heal = LiveBonus(), damage = WI.LiveDamage(Book) }

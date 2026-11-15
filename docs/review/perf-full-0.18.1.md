@@ -240,3 +240,13 @@ Each step:
 - adds a `perf:` line to `/st dump`: scans this session, last scan ms (`debugprofilestop`), the
   addon's memory (`UpdateAddOnMemoryUsage` / `GetAddOnMemoryUsage`). That way a player's report
   gives in-game numbers instead of harness ones.
+
+## Status (2026-11-15)
+Built: F1, F2 (memo, kept tooltips, contract once; entry reuse not needed now that scans are
+rare), F4, F5 (feeds, the clock's face, TBC's state and history), F6 (no closure per power
+event), M1, M2, S1-S2. **F3 needed no code**: with recording off, others' log events cost 0
+bytes (`tools/perf/cleu_tbc.lua`); the earlier figure was the recorder and the stub's `xpcall`.
+**Not built:** M3 (TBC LoadOnDemand siblings) and M4 (a Forever tools module): structural, code
+memory only, kept for later (`docs/DECISIONS.md`). M5 not built: it trims the player's own
+kept data (runs, fight detail), so it waits for the author's call. `Data/SimFixture_BF1.lua`
+stays in the TBC TOC: `/st simreplay fixture` replays it in game (9 KB).

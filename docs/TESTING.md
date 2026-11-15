@@ -2747,6 +2747,19 @@ Below level 60, with a heal that has later ranks (Healing Touch, Rejuvenation, R
 3. `/st clock always` flips the same switch and prints which.
 4. On a character with no mana pool it stays hidden either way.
 
+## 69. Faster, lighter (0.18.2 perf) -- NEW, Forever 5 min, TBC 1 min
+1. **Forever, the freeze:** a dungeon or a target dummy, casting every GCD for a minute: no
+   hitch at each cast. `/st dump` -> the `perf:` line: `book scans` grows only when you
+   learn / change talents / level / swap gear, or out of combat after a buff; `last N ms`.
+2. The clock still drops by each cast's cost (Clearcasting / Omen: a free cast spends nothing).
+3. Spells window: ranks not learned yet still greyed in their families; What if -> Level still
+   lets them compete. Gear swap with the window open: the numbers move within a second.
+4. Hover a spell in combat: the tooltip block shows (its numbers from before the fight).
+5. **TBC:** first login says `fight recording is now off by default ...` once; Settings ->
+   Review -> Record fights unticked; your old recordings still listed in Review. Tick it to
+   record again; the next login says nothing.
+6. Report the `perf:` line from a long session (memory KB) if anything feels slow.
+
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the
 raw numbers. `/st profile` output is welcome with any report. I turn them into

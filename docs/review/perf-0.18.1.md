@@ -94,3 +94,7 @@ rate as well.
    scans from events) so a player's report shows it.
 
 Ship 1-3 as 0.18.2.
+
+## Status (2026-11-15)
+P1-P6 built on `future-ranks-crit` (see `docs/HISTORY.md` 2026-11-15, `tools/perfcheck.lua`).
+P7 left: scans are now rare (marks only), so their per-entry cost matters far less.

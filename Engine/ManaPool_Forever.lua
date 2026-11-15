@@ -58,18 +58,22 @@ Pool.energizeOther = 0    -- ENERGIZE events while the power was not mana: ignor
 -- The caller has already checked the id is a plain number (IsSecret first):
 -- a secret id never reaches the book as a key (T45).
 --------------------------------------------------------------------------------
+-- Perf P1 (docs/review/perf-0.18.1.md): one id's cost, read now, never a
+-- book scan from this event handler.
 function Pool.CostFor(id)
     if not ST.Book then return nil end
-    local book = ST.Book:Get()
-    local entry = book and book.spells[id]
-    if not entry then
+    local cost, state
+    if ST.Book.CostOf then
         local ok
-        ok, entry = pcall(ST.Book.ReadSpell, ST.Book, id)
-        if not ok then entry = nil end
+        ok, cost, state = pcall(ST.Book.CostOf, ST.Book, id)
+        if not ok then cost, state = nil, nil end
+    else
+        local book = ST.Book:Get()
+        local entry = book and book.spells[id]
+        if entry then cost, state = entry.cost, entry.costState end
     end
-    if not entry then return nil end
-    if entry.costState == "free" then return 0 end
-    if entry.cost and type(entry.cost.amount) == "number" then return entry.cost.amount end
+    if state == "free" then return 0 end
+    if type(cost) == "table" and type(cost.amount) == "number" then return cost.amount end
     return nil
 end
 

@@ -128,6 +128,10 @@ function ST.API.IsSecret(v)
         local ok, secret = pcall(isSecretValue, v)
         if ok and secret == true then return true end
     end
+    -- perf F4: a table predicate only for what can be a table (type() of a
+    -- secret answers its underlying type, so a secret table still says "table")
+    local tv = type(v)
+    if tv ~= "table" and tv ~= "userdata" then return false end
     local isSecretTable = ST.API.Has("issecrettable")
     if type(isSecretTable) == "function" then
         local ok, secret = pcall(isSecretTable, v)
@@ -142,23 +146,30 @@ end
 -- makes the whole call secret, because a caller that got the OTHER return
 -- values would still have to decide what to do with a mix -- easier and
 -- safer for every shared file if one secret return taints the call.
-function ST.API.Call(dotted, ...)
-    local fn = ST.API.Has(dotted)
-    if type(fn) ~= "function" then return nil, "absent" end
-
-    local retvals, retn = Pack(pcall(fn, ...))
-    local ok = retvals[1]
+-- perf F4: the returns are checked where they stand and handed back as they
+-- came (every one, trailing nils included) -- no table per call.
+local function Finish(ok, ...)
     if not ok then
-        local msg = retvals[2]
+        local msg = ...
         local safe = "<unreadable error>"
         if type(msg) == "string" and not ST.API.IsSecret(msg) then safe = msg end
         return nil, "error", safe
     end
-
-    for i = 2, retn do
-        if ST.API.IsSecret(retvals[i]) then return nil, "secret" end
+    local n = select("#", ...)
+    if n == 1 then
+        if ST.API.IsSecret((...)) then return nil, "secret" end
+        return (...)
     end
-    return unpack(retvals, 2, retn)
+    for i = 1, n do
+        if ST.API.IsSecret((select(i, ...))) then return nil, "secret" end
+    end
+    return ...
+end
+
+function ST.API.Call(dotted, ...)
+    local fn = ST.API.Has(dotted)
+    if type(fn) ~= "function" then return nil, "absent" end
+    return Finish(pcall(fn, ...))
 end
 
 -- T7: a value that is a plain string, number or boolean -- what a "shared
@@ -257,6 +268,28 @@ end
 -- before handing it back -- so a caller of a copying binding can never end
 -- up holding the client's own table, only ever a copy of it.
 ST.API._bindings = ST.API._bindings or {}
+-- perf F4: every table result copied, the returns handed back as they came;
+-- no table for up to three returns (every copying binding today).
+local function CopyOne(v, depth)
+    if type(v) == "table" then return ST.API.Copy(v, depth) end
+    return v
+end
+local function CopyOut(depth, ...)
+    local n = select("#", ...)
+    if n == 0 then return end
+    if n == 1 then return CopyOne((...), depth) end
+    if n == 2 then
+        local a, b = ...
+        return CopyOne(a, depth), CopyOne(b, depth)
+    end
+    if n == 3 then
+        local a, b, c = ...
+        return CopyOne(a, depth), CopyOne(b, depth), CopyOne(c, depth)
+    end
+    local retvals, retn = Pack(...)
+    for i = 1, retn do retvals[i] = CopyOne(retvals[i], depth) end
+    return unpack(retvals, 1, retn)
+end
 function ST.API.Bind(map)
     for name, spec in pairs(map) do
         if ST.API[name] == nil or ST.API._bindings[name] then
@@ -266,15 +299,7 @@ function ST.API.Bind(map)
             end
             ST.API._bindings[name] = dotted
             if copyDepth then
-                ST.API[name] = function(...)
-                    local retvals, retn = Pack(ST.API.Call(dotted, ...))
-                    for i = 1, retn do
-                        if type(retvals[i]) == "table" then
-                            retvals[i] = ST.API.Copy(retvals[i], copyDepth)
-                        end
-                    end
-                    return unpack(retvals, 1, retn)
-                end
+                ST.API[name] = function(...) return CopyOut(copyDepth, ST.API.Call(dotted, ...)) end
             else
                 ST.API[name] = function(...) return ST.API.Call(dotted, ...) end
             end
@@ -330,6 +355,18 @@ end
 -- (Enum.StatusBarInterpolation.ExponentialEaseOut, EllesmereUI's smooth
 -- bars) where the client has it; else a plain SetValue.
 local smoothMode
+-- perf F6: module-level bodies for the two pcalls below, so the frequent power
+-- event builds no closure; the client's value goes straight into the bar.
+local function SetBarValue(bar, curFn, unit, powerType, mode)
+    local cur = curFn(unit, powerType)
+    -- Never inspected -- a secret value goes straight into the bar.
+    if mode then bar:SetValue(cur, mode) else bar:SetValue(cur) end
+end
+local function SetBarMax(bar, maxFn, unit, powerType)
+    -- Never inspected -- a secret max goes straight into the bar.
+    bar:SetMinMaxValues(0, maxFn(unit, powerType))
+end
+
 function ST.API.DrawUnitPower(bar, unit, powerType, smooth)
     if type(bar) ~= "table" then return false, "absent" end
     local curFn = ST.API.Has("UnitPower")
@@ -345,11 +382,7 @@ function ST.API.DrawUnitPower(bar, unit, powerType, smooth)
     end
     local mode = smooth and smoothMode or nil
 
-    local ok = pcall(function()
-        local cur = curFn(unit, powerType)
-        -- Never inspected -- a secret value goes straight into the bar.
-        if mode then bar:SetValue(cur, mode) else bar:SetValue(cur) end
-    end)
+    local ok = pcall(SetBarValue, bar, curFn, unit, powerType, mode)
     if not ok then return false, "error" end
     return true
 end
@@ -363,10 +396,7 @@ function ST.API.DrawUnitPowerMax(bar, unit, powerType)
     if type(bar) ~= "table" then return false, "absent" end
     local maxFn = ST.API.Has("UnitPowerMax")
     if type(maxFn) ~= "function" then return false, "absent" end
-    local ok = pcall(function()
-        -- Never inspected -- a secret max goes straight into the bar.
-        bar:SetMinMaxValues(0, maxFn(unit, powerType))
-    end)
+    local ok = pcall(SetBarMax, bar, maxFn, unit, powerType)
     if not ok then return false, "error" end
     return true
 end
@@ -508,6 +538,10 @@ ST.API.Bind({
     UnitPower = "UnitPower", UnitPowerMax = "UnitPowerMax", UnitPowerType = "UnitPowerType",
     ManaRegen = "GetManaRegen", RealmName = "GetRealmName", BuildInfo = "GetBuildInfo",
     After = "C_Timer.After", NewTicker = "C_Timer.NewTicker",
+    -- perf (docs/review/perf-full-0.18.1.md): /st dump's perf line -- a
+    -- millisecond clock for a scan's cost, and the addon's own memory
+    ProfileMs = "debugprofilestop", UpdateAddOnMemory = "UpdateAddOnMemoryUsage",
+    AddOnMemory = "GetAddOnMemoryUsage",
     -- T3: error capture (Core_Forever.lua). Both clients carry these three
     -- (the FrameXML error path), so they live in the shared Bind call rather
     -- than a flavour file -- unused on TBC today, same as every other name

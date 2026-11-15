@@ -49,6 +49,9 @@ local function RestTime(mana, manaMax)
     return deficit / RM.base
 end
 
+-- perf F5: two state tables, alternated and refilled -- the tick builds no
+-- record, and a reader still holding the previous tick's keeps its values.
+local stateBufs, stateAt = { {}, {} }, 1
 local function Compute()
     if not RM or not ST.player.usesMana then return nil end
     local mana = UnitPower("player", 0)
@@ -58,19 +61,20 @@ local function Compute()
     local pess = rate + K_SIGMA * sigma
     local net = pess - regen
     local cv = rate > 0 and sigma / rate or 0
-    local s = {
-        mana = mana, manaMax = manaMax,
-        pct = manaMax > 0 and mana / manaMax or 1,
-        regen = regen, regenNow = RM:Current(), duty = RM:Duty(),
-        spend = rate, sigma = sigma, pessimistic = pess, net = net,
-        casts = n, cv = cv,
-        stable = n >= 5 and cv <= CV_STABLE,
-        -- T58 (P14, review A28): the kernel's flag (Core.lua), set by the two
-        -- regen events and seeded at MD_READY -- so a /reload mid-fight
-        -- projects in combat at once, as the Forever clock already did (R36).
-        inCombat = ST.inCombat == true,
-        rest = RestTime(mana, manaMax),
-    }
+    stateAt = 3 - stateAt
+    local s = stateBufs[stateAt]
+    for k in pairs(s) do s[k] = nil end
+    s.mana, s.manaMax = mana, manaMax
+    s.pct = manaMax > 0 and mana / manaMax or 1
+    s.regen, s.regenNow, s.duty = regen, RM:Current(), RM:Duty()
+    s.spend, s.sigma, s.pessimistic, s.net = rate, sigma, pess, net
+    s.casts, s.cv = n, cv
+    s.stable = n >= 5 and cv <= CV_STABLE
+    -- T58 (P14, review A28): the kernel's flag (Core.lua), set by the two
+    -- regen events and seeded at MD_READY -- so a /reload mid-fight
+    -- projects in combat at once, as the Forever clock already did (R36).
+    s.inCombat = ST.inCombat == true
+    s.rest = RestTime(mana, manaMax)
     if not s.inCombat then
         local deficit = manaMax - mana
         local ttf = s.rest
@@ -299,10 +303,13 @@ ST:OnTick(function()
 
     -- shown-value history for the arrow: keep ~10s
     local h = disp.history
-    h[#h + 1] = { now, disp.value }
+    local spare
     while h[2] and now - h[2][1] >= 10 do
-        table.remove(h, 1)
+        spare = table.remove(h, 1) -- perf F5: the oldest entry is reused
     end
+    spare = spare or {}
+    spare[1], spare[2] = now, disp.value
+    h[#h + 1] = spare
 end)
 
 -- Arrow from the SHOWN value over the last ~10s. A clock counting down at

@@ -3110,9 +3110,19 @@ T36("T38 the refresh split: mana, Now and To OOM in place; a book change re-rend
     OpenView("Nourish")
     renders = f.renderCount
 
+    -- perf P4: a rescan that moved an entry (here +healing) re-renders; one that
+    -- moved nothing does not
     Book:MarkDirty()
     for _ = 1, 4 do S.Tick(0.5) end
-    local rerendered = f.renderCount == renders + 1
+    local quiet = f.renderCount == renders
+    local bonusWas = S.bonusHealing
+    S.bonusHealing = (S.bonusHealing or 0) + 77
+    Book:MarkDirty()
+    for _ = 1, 4 do S.Tick(0.5) end
+    local rerendered = quiet and f.renderCount == renders + 1
+    S.bonusHealing = bonusWas
+    Book:MarkDirty()
+    for _ = 1, 4 do S.Tick(0.5) end
 
     UI.ApplyFonts(2)
     local _, a = ViewRow(1)

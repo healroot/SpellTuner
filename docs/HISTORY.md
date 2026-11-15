@@ -5513,3 +5513,24 @@ time; the value had it), and crit / Intellect talents and Natural Instinct were 
   slashcheck golden re-based for the help row. In game: `docs/TESTING.md` section 68.
 - 0.18.1 on every TOC from branch `future-ranks-crit` (2996c45, 4a6b762, 1d33852): published beta to
   CurseForge on the author's word; not merged to master.
+
+## 2026-11-15 -- performance: compute on demand (0.18.2 candidate)
+
+Reviews `docs/review/perf-0.18.1.md` (the freeze) and `docs/review/perf-full-0.18.1.md` (both
+lines). Built on branch `future-ranks-crit`:
+- `Spells/Book.lua`: hard / soft marks, no 2-second rule, `Peek`, `CostOf`, the sweeper,
+  `WantFuture`, the parse memo, tooltips kept per id, the contract checked once, `BOOK_CHANGED`
+  on a moved entry only, scan timing and the `perf:` dump line. `Engine/ManaPool_Forever.lua`
+  prices a cast with `CostOf`. `UI/SpellsPane.lua` asks for future ranks and rebuilds its rail on
+  show. `Core_Forever.lua` `ST:PruneClassData` at `MD_READY`. `Core_TBC.lua` `recordFights` off +
+  the one-time switch-off. `UI/Feeds.lua` polls only with a listener (`ST:HasCallback`).
+  `Engine/ManaModel.lua` `Face(state, now, out)`; `Engine/TTO.lua` two state tables, history
+  entries reused. `Client/API.lua`: `Call` without a table, `IsSecret`'s table predicate only for
+  tables, copying bindings without a table, `DrawUnitPower` without a closure.
+- Measured in the harness (`tools/perf/`): a cast 94 KB -> 2 KB of garbage and **no scan**
+  (a real book was several MB and 100+ ms per cast); Forever tick 4.6 / 6.2 KB -> 1.4 / 1.8 KB
+  (out of / in combat); TBC tick 1.9 -> 0.5 KB; TBC combat log 0 bytes for others' events with
+  recording off; `ST.API.Call` 128 -> 0 bytes, 2.2 -> 1.6 us; resident after login 3507 ->
+  2818 KB (the class prune).
+- New suite `tools/perfcheck.lua` (forever 12, tbc 2); `tools/fakepull.lua` turns recording on.
+  In game: `docs/TESTING.md` section 69.

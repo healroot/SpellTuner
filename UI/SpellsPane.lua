@@ -54,6 +54,14 @@ local Words = ST.Words
 local SpellsPane = {}
 ST.SpellsPane = SpellsPane
 
+-- The live book for this pane: it shows ranks not learned yet, so it asks the
+-- book for them (perf rule 3: nothing else pays for them). TBC's book has no
+-- such ranks and no WantFuture.
+local function LiveBook()
+    if ST.Book.WantFuture then ST.Book:WantFuture() end
+    return ST.Book:Get()
+end
+
 -- 3.2 / 4.3 metrics at font offset 0; every vertical pitch below goes through
 -- UI.Pitch (4.2), so it grows with a positive offset.
 -- (T84: the rail's row, footer and picker metrics went with the glue to
@@ -159,7 +167,7 @@ local function ViewBook()
         local b = ST.WhatIf:Book()
         if type(b) == "table" and type(b.families) == "table" then return b end
     end
-    return ST.Book:Get()
+    return LiveBook()
 end
 -- An entry as its cells show it (After overheal's numbers over the entry).
 local function ShownEntry(e, after)
@@ -197,7 +205,7 @@ local function Str(v)
 end
 
 local function ExportText()
-    local book = ST.Book:Get()
+    local book = LiveBook()
 
     local name = ST.API.UnitName("player")
     local realm = ST.API.RealmName()
@@ -2082,10 +2090,11 @@ local function BuildFamily(host)
     -- place, or a full render when what the view was drawn from changed
     ST:OnTick(function()
         if not f:IsVisible() or not f.key then return end
+        SpellsPane:FlushRail()
         local now = GetTime()
         if f.lastTick and (now - f.lastTick) < 2 then return end
         f.lastTick = now
-        ST.Book:Get() -- a changed book fires BOOK_CHANGED here, and bumps bookGen
+        LiveBook() -- a changed book fires BOOK_CHANGED here, and bumps bookGen
         if SpellsPane:Signature(f.key, f.preview) ~= f.signature then
             SpellsPane:RenderFamily(f.key, f.preview)
         else
@@ -2235,7 +2244,7 @@ function SpellsPane:RenderFamily(key, preview)
 
     -- T122: the what-if book while the what-if is active (the live family
     -- beside it for the changes)
-    local liveBook = ST.Book:Get()
+    local liveBook = LiveBook()
     local book = ViewBook()
     local fam = ST.Tabs:Resolve(key, book)
     local liveFam = fam
@@ -2958,9 +2967,10 @@ local function BuildOverview(host)
     -- the master ticker runs at 0.5 s and this never fires while hidden
     ST:OnTick(function()
         if not pane:IsVisible() then return end
+        SpellsPane:FlushRail()
         local now = GetTime()
         if pane.lastRefresh and (now - pane.lastRefresh) < 2 then return end
-        ST.Book:Get() -- a changed book fires BOOK_CHANGED here, and bumps bookGen
+        LiveBook() -- a changed book fires BOOK_CHANGED here, and bumps bookGen
         if OverviewSignature(OverviewMode()) ~= pane.signature then
             SpellsPane:RenderOverview()
         else
@@ -3091,7 +3101,7 @@ end
 function SpellsPane:Find(text)
     local want = (type(text) == "string" and text or ""):lower()
     if want == "" or not ST.Book then return nil end
-    local book = ST.Book:Get()
+    local book = LiveBook()
     local listed = ST.Tabs:Get(book)
     local function Scan(list, exact)
         for _, key in ipairs(list) do
@@ -3189,8 +3199,21 @@ end
 -- registered before this file loaded): the rail follows, and (T38) a
 -- family's view re-renders on its next tick -- the book's generation is in
 -- what the view was drawn from.
+-- Perf P4: the rail is rebuilt only while the window shows; closed, it is
+-- rebuilt on the next tick it is seen (FlushRail from the views' ticks).
 ST:RegisterCallback("BOOK_CHANGED", function()
     SpellsPane.bookGen = (SpellsPane.bookGen or 0) + 1
+    local nav = SpellsPane.nav
+    if nav and nav.frame and nav.frame.IsVisible and not nav.frame:IsVisible() then
+        SpellsPane.railPending = true
+        return
+    end
     SpellsPane:RefreshRail()
 end)
+function SpellsPane:FlushRail()
+    if self.railPending then
+        self.railPending = false
+        self:RefreshRail()
+    end
+end
 

@@ -40,6 +40,7 @@ local SHARED_NAMES = {
     "UnitClass", "UnitName", "UnitLevel", "UnitGUID", "UnitExists", "UnitIsDeadOrGhost",
     "UnitAffectingCombat", "InCombatLockdown", "UnitHealth", "UnitHealthMax", "UnitPower",
     "UnitPowerMax", "UnitPowerType", "ManaRegen", "RealmName", "BuildInfo", "After", "NewTicker",
+    "ProfileMs", "UpdateAddOnMemory", "AddOnMemory",
     -- T3: the three error-capture bindings, added to Client/API.lua's shared
     -- Bind call alongside the rest of this list.
     "GetErrorHandler", "SetErrorHandler", "DebugStack",

@@ -334,3 +334,52 @@ ST:AddCommand("modules", function()
         ST:ShowCommands()
     end
 end, "/st modules", "switch the Recorder, Replay and Practice modules on or off")
+
+
+--------------------------------------------------------------------------------
+-- Perf M1 (docs/review/perf-full-0.18.1.md): the generated data ships for all
+-- nine classes (about 630 KB resident); this character reads only its own
+-- (about 60 KB). At MD_READY every other class's subtable is dropped, and the
+-- coefficient rows (keyed by spell id) are kept for this class's rank ids and
+-- for the rows no class's ranks name. ST.keepClassData (the harness) keeps all.
+--------------------------------------------------------------------------------
+ST.CLASS_TABLES = { "TalentTree", "FutureRanks", "TalentRules", "TalentMults", "TalentCosts", "TalentExpiry",
+    "TalentStats", "TalentDurations", "TalentCrit", "TalentCritBonus", "TalentStatBonus" }
+
+function ST:PruneClassData(class)
+    if type(class) ~= "string" then return 0 end
+    local ranks = type(ST.FutureRanks) == "table" and ST.FutureRanks or {}
+    if type(ST.CoefRules) == "table" and type(ranks[class]) == "table" then
+        local mine, anyone = {}, {}
+        for c, byName in pairs(ranks) do
+            for _, list in pairs(byName) do
+                for _, r in ipairs(list) do
+                    if type(r) == "table" and r.id then
+                        anyone[r.id] = true
+                        if c == class then mine[r.id] = true end
+                    end
+                end
+            end
+        end
+        for id in pairs(ST.CoefRules) do
+            if anyone[id] and not mine[id] then ST.CoefRules[id] = nil end
+        end
+    end
+    local dropped = 0
+    for _, key in ipairs(ST.CLASS_TABLES) do
+        local t = ST[key]
+        if type(t) == "table" then
+            for c in pairs(t) do
+                if c ~= class then t[c] = nil; dropped = dropped + 1 end
+            end
+        end
+    end
+    ST.classDataPruned = class
+    return dropped
+end
+
+ST:RegisterCallback("MD_READY", function()
+    if ST.keepClassData or ST.classDataPruned then return end
+    ST:PruneClassData(ST.player and ST.player.class)
+    collectgarbage("step", 2000)
+end)

@@ -140,6 +140,9 @@ end
 --------------------------------------------------------------------------------
 local last = {}
 function Feeds.Poll()
+    -- perf F5: the surfaces pull their own text; the texts are built here only
+    -- while something listens for FEED_CHANGED
+    if not ST:HasCallback("FEED_CHANGED") then return end
     for i = 1, #order do
         local key = order[i]
         local s = Feeds.Text(key, {})

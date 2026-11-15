@@ -114,7 +114,14 @@ local function Cast(id)
 end
 local function Plain(s) return (s:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) end
 local function Shown() return Plain(ST:GetDisplayString()) end
-local function State() return ST:GetManaState() end
+-- a copy: the clock refills its two state tables (perf F5), and this suite keeps a log of them
+local function State()
+    local s = ST:GetManaState()
+    if type(s) ~= "table" then return s end
+    local c = {}
+    for k, v in pairs(s) do c[k] = v end
+    return c
+end
 local function Ticks(n) for _ = 1, n do S.Tick(0.5) end end
 -- "1:15" -> 75, "50s" -> 50, ">10m" -> nil
 local function Secs(txt)

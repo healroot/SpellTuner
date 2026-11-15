@@ -18,6 +18,8 @@ function ST:DebugLog(cat, text) if cat == "sim" or cat == "combat" then print("[
 
 local PLAYER = "Player-1"
 ST.db.healAmountGross = true
+-- 0.18.2 (perf M2): recording is off by default; this pull exists to be recorded
+ST.db.recordFights = true
 local rejuv, regrowth, lifebloom = SD.maxRank.Rejuvenation, SD.maxRank.Regrowth, SD.maxRank.Lifebloom
 local MOTW = 9885
 

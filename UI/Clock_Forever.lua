@@ -334,6 +334,7 @@ local wasPreviewing = false
 -- SetMinMaxValues may restart the client's easing (review W1)
 Clock.RANGE_EVERY = 10
 local rangeMax, rangeAt = nil, nil
+local faceBuf = {}
 local function PaintFace(now)
     renderer:Snap() -- T41: Apply again after a UI scale change, else a compare
     local state
@@ -349,7 +350,7 @@ local function PaintFace(now)
         end
         renderer:Message(nil)
         state = ST.Pool:Project(now)
-        local face = ST.ManaModel.Face(state, now)
+        local face = ST.ManaModel.Face(state, now, faceBuf) -- perf F5: one record, refilled
         ST.ClockWords.Build(face, look, steady, now, words, ST.Pool:QuietFull(now))
         renderer:Paint(words)
     end

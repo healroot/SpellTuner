@@ -51,7 +51,9 @@ local S = _G.STUB
 S.root = arg[1] or "."
 S.flavour = flavour
 
-local ST = {}
+-- perf M1: the suites read every class's generated data, so the login prune is
+-- off unless a tool sets HARNESS_PRUNE_CLASS_DATA (tools/perfcheck.lua)
+local ST = { keepClassData = (HARNESS_PRUNE_CLASS_DATA ~= true) }
 
 if flavour == "forever" then
     S.UseProfile("forever")

@@ -99,6 +99,8 @@
   "talentwhatifcheck/forever": 41,
   "futureranks/forever": 13,
   "critcheck/forever": 17,
+  "perfcheck/forever": 12,
+  "perfcheck/tbc": 2,
   "tbcclasscheck/tbc": 114,
   "textcheck-selftest": 2,
   "themecheck/forever": 38,

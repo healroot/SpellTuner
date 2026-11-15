@@ -1858,3 +1858,25 @@ sentence is named in the header and skipped.
   +Healing. No Intellect row in the drawer yet (the drawer is at its height limit at font +2).
 - **The HoT card:** a part over time gets a Crit line (`each tick x1.5`) and its total `with crit` when
   the chance is above 0; a hybrid's crit range says `ticks too`.
+
+
+## Performance: compute on demand (2026-11-15, the author's four rules; 0.18.2)
+
+Players reported a freeze every few seconds on 0.18.1. Reviews: `docs/review/perf-0.18.1.md`,
+`docs/review/perf-full-0.18.1.md`. Rulings:
+
+- **The Forever book is read on events, never on a timer or a cast.** Hard marks (spells,
+  talents, level, gear, a rule) rescan on the next `Get`; soft marks (a player aura, a text
+  loaded, the end of a fight) only out of combat -- in combat the descriptions are secret and a
+  rescan reads nothing new. The cast path reads one id's cost (`Book:CostOf`). A sweeper re-reads
+  4 texts a tick out of combat and soft-marks a difference. `BOOK_CHANGED` only when an entry moved.
+- **Ranks not learned yet are read once a view asked** (`Book:WantFuture`: the Spells pane, the
+  What if).
+- **A description's parse is memoised by its text; a tooltip copy kept per id until a hard mark;
+  the book contract checked once a session** (`Book.checkEveryScan` for a suite that wants more).
+- **Forever drops every other class's generated data at login** (`ST:PruneClassData`;
+  `ST.keepClassData` keeps all -- the harness sets it).
+- **TBC fight recording is off by default**; an older install's stored `true` is turned off once
+  with a chat line (`recordFightsOff2`). Replay and coach are opt-in, so their recorder is too.
+- Kept for later (structural, code memory only): TBC replay / coach / practice / simulator as
+  LoadOnDemand siblings like Forever's; the probe and `/st measure` as a Forever tools module.

@@ -1431,6 +1431,7 @@ do
             local heals = { { id = 25213, name = "Greater Heal" }, { id = 25235, name = "Flash Heal" } }
             S.mana = S.manaMax
             ST.cdb.recordings = {}
+            ST.db.recordFights = true -- off by default since 0.18.2 (perf M2)
             tank.hp = 5000
             S.Fire("PLAYER_REGEN_DISABLED")
             local started = ST.FightRecorder.active ~= nil

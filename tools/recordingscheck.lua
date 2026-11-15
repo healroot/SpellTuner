@@ -199,6 +199,7 @@ do
         M:SetModule("SpellTuner_Recorder", true)
     end
     M.cdb.recordings = {}
+    M.db.recordFights = true -- off by default since 0.18.2 (perf M2)
     local shipped = M.Util.RECORD_GATE
     local keptShipped = OnePull(M, St)
     M.Util.RECORD_GATE = { sec = 5, casts = 2 }

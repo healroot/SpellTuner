@@ -126,6 +126,12 @@ function ST:Fire(name, ...)
     if not list then return end
     Dispatch(list, ...)
 end
+-- Whether anything listens (perf F5: work done only to be fired is skipped
+-- while nobody would hear it).
+function ST:HasCallback(name)
+    local list = callbacks[name]
+    return list ~= nil and #list > 0
+end
 
 --------------------------------------------------------------------------------
 -- The combat flag (T55, P11, review A28): one owner. Set by the two regen

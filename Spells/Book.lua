@@ -70,10 +70,17 @@ Book._scanSerial, Book._talentsTriedAt = 0, nil
 -- (UI/Styles.lua, UI/ClockStore.lua): a session that never read its book adds
 -- none.
 local TalentsDumpLine, talentsDumpAdded
+local PerfDumpLine, perfDumpAdded -- perf: the same lazy rule, added by the first scan
 local function NoteTalentsDump()
     if not talentsDumpAdded and TalentsDumpLine and ST.AddDumpLine then
         talentsDumpAdded = true
         ST:AddDumpLine("talents", TalentsDumpLine)
+    end
+end
+local function NotePerfDump()
+    if not perfDumpAdded and PerfDumpLine and ST.AddDumpLine then
+        perfDumpAdded = true
+        ST:AddDumpLine("perf", PerfDumpLine)
     end
 end
 function Book:Talents()
@@ -989,11 +996,41 @@ end
 -- learned yet and a spell outside the book: the text (kept through a secret
 -- one from `prev`, ApplyStale), the learn level, the cast, the cost, the
 -- cooldown, the reach. `prev` is the previous read of each id.
+-- Perf (docs/review/perf-full-0.18.1.md rule 4): a description's parse is a
+-- pure function of its text, and most reads see the same strings, so each
+-- text is parsed once. The parsed table is shared; nothing writes into it (the
+-- What if copies before it changes a part). Bounded: emptied past MEMO_MAX.
+local MEMO_MAX = 1500
+local memo, memoN = {}, 0
+local function CleanAndParse(desc)
+    local m = memo[desc]
+    if m == nil then
+        if memoN >= MEMO_MAX then memo, memoN = {}, 0 end
+        m = { Parse.Clean(desc), Parse.Description(desc) }
+        memo[desc] = m
+        memoN = memoN + 1
+    end
+    return m[1], m[2]
+end
+Book._ParseMemoSize = function() return memoN end
+
+-- The tooltip's copy per id (cast kind, the cost and cooldown fallbacks): the
+-- same until the spells, talents or level change, so it is read once per id
+-- and forgotten on a hard MarkDirty (perf F2).
+Book._tips = Book._tips or {}
+local function TipFor(id)
+    local tip = Book._tips[id]
+    if tip == nil then
+        tip = ST.API.SpellTooltipData(id) or false
+        Book._tips[id] = tip
+    end
+    return tip or nil
+end
+
 local function ReadById(entry, id, prev)
     local desc, descReason = ST.API.SpellDescription(id)
     if type(desc) == "string" then
-        entry.desc = Parse.Clean(desc)
-        entry.parsed = Parse.Description(desc)
+        entry.desc, entry.parsed = CleanAndParse(desc)
         entry.descState = (entry.desc == "") and "empty" or "ok"
     elseif descReason == "secret" then
         entry.descState = "secret"
@@ -1005,7 +1042,7 @@ local function ReadById(entry, id, prev)
     local level = ST.API.SpellLevelLearned(id)
     entry.level = (type(level) == "number") and level or nil
 
-    local tip = ST.API.SpellTooltipData(id)
+    local tip = TipFor(id)
 
     local info = ST.API.SpellInfo(id)
     local tipSecs, tipKind = TooltipCastInfo(tip)
@@ -1117,7 +1154,19 @@ function Book:BuildFutureEntry(id, rank, info, slot, prevSpells, familyName)
 end
 
 -- Adds to `spells` every rank not learned yet of each family `spells` has.
+-- Perf rule 3: only the Spells pane, the What if and the export show ranks not
+-- learned yet, so they are read once one of them asked (Book:WantFuture);
+-- the cast path and the spell tooltip never pay for them.
+Book.wantFuture = Book.wantFuture or false
+function Book:WantFuture()
+    if not Book.wantFuture then
+        Book.wantFuture = true
+        Book._dirty = true
+    end
+end
+
 function Book:AddFutureRanks(spells, prevSpells)
+    if not Book.wantFuture then return 0 end
     if ST:Setting("spellsFutureRanks") == false then return 0 end
     local byClass = type(ST.FutureRanks) == "table" and ST.FutureRanks[ST.player and ST.player.class]
     if type(byClass) ~= "table" then return 0 end
@@ -1792,6 +1841,8 @@ function Book:MeasureBonus(spells, families)
 end
 
 function Book:Scan()
+    NotePerfDump()
+    local t0 = ST.API.ProfileMs and ST.API.ProfileMs()
     -- T129 review m2 / m3: the talents dump line, and one talent read per scan
     Book._scanSerial = Book._scanSerial + 1
     NoteTalentsDump()
@@ -1861,34 +1912,125 @@ function Book:Scan()
                    generation = Book.generation }
     -- T117: the contract, checked as the kit is (Engine/Kit.lua's Check);
     -- read at the call, so a harness loading this file alone still scans.
+    -- Perf F2: once a session (the suites hold the contract on every scan
+    -- they make: Book.checkEveryScan).
     local Shape = ST.BookShape
-    if Shape then Shape.Check(book, "Spells/Book.lua", Book._seamFields) end
+    if Shape and (Book.checkEveryScan or not Book._shapeChecked) then
+        Shape.Check(book, "Spells/Book.lua", Book._seamFields)
+        Book._shapeChecked = true
+    end
     Book._cache = book
     Book._cacheTime = GetTime()
     Book._prevSpells = spells
     Book._dirty = false
+    Book._soft = false
+    Book.scans = (Book.scans or 0) + 1
+    Book.sweepIds = nil
+    local t1 = ST.API.ProfileMs and ST.API.ProfileMs()
+    if type(t0) == "number" and type(t1) == "number" then Book.lastScanMs = t1 - t0 end
 
     ST:Debug("other", "book scan via=%s spells=%d secret=%d errors=%d",
         read.via, read.spells, read.secret, read.errors)
     -- T35: Spells/Tabs.lua reconciles the spell list here (a newly learned
     -- heal appended), after the cache is in place.
-    if changed then ST:Fire("BOOK_CHANGED", book) end
+    -- Perf P4: only when an entry moved (the generation), not every scan
+    -- after a mark -- an aura that changed nothing rebuilds nothing.
+    if changed and entryChanged then ST:Fire("BOOK_CHANGED", book) end
     return book
 end
 
+-- A hard mark: the spells, talents, level, gear or a rule changed -- the next
+-- Get rescans, in combat too, and the kept tooltips are read again.
 function Book:MarkDirty()
     Book._dirty = true
+    Book._tips = {}
 end
 
--- Rescanned when dirty, or when the cache is older than 2 seconds (Facts).
--- GetTime() is read the same way Core_Forever.lua already does (a plain,
--- always-present client clock, no adapter binding of its own).
-local CACHE_SECONDS = 2
+-- A soft mark (perf P4 / rule 1): something that may move a number (a player
+-- aura, a spell's text loaded, the end of a fight). The next Get out of
+-- combat rescans; in combat the descriptions are secret, so a rescan would
+-- read nothing new and the cache answers.
+function Book:MarkSoft()
+    Book._soft = true
+end
+
+-- The cache as it is, never a scan (the cast path, perf P1).
+function Book:Peek()
+    return Book._cache
+end
+
+-- Rescanned when hard-dirty, or soft-dirty out of combat (perf P3: no time
+-- rule -- an unchanged book is never read again; the sweeper below catches
+-- a change no event announced).
 function Book:Get()
-    if Book._dirty or not Book._cache or (GetTime() - (Book._cacheTime or 0)) >= CACHE_SECONDS then
+    if Book._dirty or not Book._cache or (Book._soft and not ST.inCombat) then
         Book:Scan()
     end
     return Book._cache
+end
+
+-- One spell's cost now, without the book (perf P1): the cast path's only
+-- question. The kept tooltip is the fallback, as a scan's.
+function Book:CostOf(id)
+    if type(id) ~= "number" then return nil end
+    local list, reason = ST.API.SpellPowerCost(id)
+    local cost, state = ResolveCost(list, reason, Book._tips[id] or nil)
+    return cost, state
+end
+
+-- The sweeper (perf rule 1): out of combat, SWEEP_PER_TICK ids a tick have
+-- their text read again and compared with the kept one; a difference (or a
+-- text that loaded) is a soft mark, never a scan. Paused in combat.
+Book.SWEEP_PER_TICK = 4
+local sweepAt = 0
+function Book:Sweep()
+    local cache = Book._cache
+    if not cache or ST.inCombat or Book._soft or Book._dirty then return end
+    local ids = Book.sweepIds
+    if not ids then
+        ids = {}
+        for id in pairs(cache.spells) do ids[#ids + 1] = id end
+        table.sort(ids)
+        Book.sweepIds = ids
+        sweepAt = 0
+    end
+    local n = #ids
+    if n == 0 then return end
+    for _ = 1, math.min(Book.SWEEP_PER_TICK, n) do
+        sweepAt = sweepAt % n + 1
+        local id = ids[sweepAt]
+        local e = cache.spells[id]
+        if e then
+            local desc = ST.API.SpellDescription(id)
+            if type(desc) == "string" then
+                local clean = CleanAndParse(desc)
+                if e.descState ~= "ok" or clean ~= e.desc then
+                    Book:MarkSoft()
+                    return
+                end
+            end
+        end
+    end
+end
+ST:OnTick(function() Book:Sweep() end)
+
+-- /st dump's perf line (perf plan): what a player's report needs to show the
+-- book's cost in game -- scans this session, the last one's time, entries,
+-- the parse memo, and the addon's memory. Added by the first scan (NotePerfDump).
+do
+    PerfDumpLine = function()
+        local cache = Book._cache
+        local n = 0
+        if cache then for _ in pairs(cache.spells) do n = n + 1 end end
+        local mem
+        if ST.API.UpdateAddOnMemory and ST.API.AddOnMemory then
+            ST.API.UpdateAddOnMemory()
+            mem = ST.API.AddOnMemory("SpellTuner")
+        end
+        return string.format("perf: book scans %d, last %s ms, %d entries, %d texts parsed, memory %s KB",
+            Book.scans or 0, type(Book.lastScanMs) == "number" and string.format("%.1f", Book.lastScanMs) or "--",
+            n, memoN, type(mem) == "number" and string.format("%.0f", mem) or "--")
+    end
 end
 
 function Book:Entry(id)
@@ -1983,8 +2125,13 @@ ST:On("PLAYER_EQUIPMENT_CHANGED", function() Book:MarkDirty() end)
 -- T127: a Trade-off setting moved (UI/Settings.lua): the best mark moves
 ST:RegisterCallback("RANK_RULES_CHANGED", function() Book:MarkDirty() end)
 ST:On("UNIT_AURA", function(unit)
-    if not ST.API.IsSecret(unit) and unit == "player" then Book:MarkDirty() end
+    if not ST.API.IsSecret(unit) and unit == "player" then Book:MarkSoft() end
 end)
+-- a text asked for (BuildFutureEntry) arrived; a fight's stale texts readable again
+ST:On("SPELL_DATA_LOAD_RESULT", function(id)
+    if not ST.API.IsSecret(id) and type(id) == "number" and Book._loadAsked[id] then Book:MarkSoft() end
+end)
+ST:On("PLAYER_REGEN_ENABLED", function() Book:MarkSoft() end)
 
 -- T117: every method the contract names, present (Spells/BookShape.lua).
 if BS then BS.CheckMethods(Book, "Spells/Book.lua") end

@@ -612,6 +612,7 @@ else
     --------------------------------------------------------------------------
     T("6 forever: +150 healing moves each rank by its share; the rules re-run", function()
         WI:Clear()
+        Book:WantFuture() -- as the Spells pane asks before any What if (perf rule 3)
         Scan(200)
         local live = Book:Get()
         local liveSer = Ser(live)

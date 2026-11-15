@@ -33,8 +33,10 @@ local DEFAULTS = {
     -- The engine's, the planner's and the replay window's settings (sim*,
     -- replay*, the gate thresholds) are declared by Engine/SimModel.lua with
     -- ST:RegisterDefaults since T64 (P20, review A3): same values, one place.
-    recordFights = true,  -- keep the full event stream of the last 8 interesting pulls so they
-                          -- can be replayed (Engine/FightRecorder.lua). Summaries run regardless
+    recordFights = false, -- keep the full event stream of the last 8 interesting pulls so they
+                          -- can be replayed (Engine/FightRecorder.lua). Summaries run regardless.
+                          -- Off by default since 0.18.2 (perf M2): replay and coach are opt-in
+    recordFightsOff2 = false, -- the one-time 0.18.2 switch-off of an older install's true (Core_TBC MD_READY)
     recordThreat = true,  -- record the two things a healer can see coming: aggro on each tracked
                           -- target, and a hostile cast aimed at one (docs/SPEC-v0.12.md). A few
                           -- dozen events a pull; off for anyone who does not want the bytes
@@ -121,6 +123,20 @@ end
 ST:On("UPDATE_SHAPESHIFT_FORM", CheckForm)
 ST:On("UPDATE_SHAPESHIFT_FORMS", CheckForm)
 ST:RegisterCallback("MD_READY", function() lastTree = ST:InTreeForm() end)
+
+-- Perf M2 (docs/review/perf-full-0.18.1.md): fight recording went off by
+-- default in 0.18.2. Defaults are copied into the saved settings, so an older
+-- install still holds the old `true`: turned off once, with one chat line;
+-- the recordings already kept stay. Settings -> Review -> Record fights.
+ST:RegisterCallback("MD_READY", function()
+    if type(ST.db) ~= "table" or ST.db.recordFightsOff2 then return end
+    ST.db.recordFightsOff2 = true
+    if ST.db.recordFights == true then
+        ST.db.recordFights = false
+        ST:Print("fight recording is now off by default: it cost memory in every fight. "
+            .. "Settings -> Review -> Record fights turns it back on; your kept recordings stay.")
+    end
+end)
 
 --------------------------------------------------------------------------------
 -- Talents: scanned by NAME across all tabs so positional index shifts between

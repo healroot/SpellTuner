@@ -1,5 +1,6 @@
 -- tools/run.sh [--flavour f] tools/perf/<this>.lua -- not a suite (make check skips tools/perf/). resident memory after login, data tables by class, garbage per tick / per event
 HARNESS_FLAVOUR = HARNESS_FLAVOUR or "forever"
+HARNESS_PRUNE_CLASS_DATA = os.getenv("PRUNE") == "1" -- PRUNE=1: the login prune, as in game
 local here = (arg[0]:match("^(.*)/[^/]+$"):gsub("/perf$", "")) -- tools/, from tools/perf/
 collectgarbage("collect")
 local base = collectgarbage("count")

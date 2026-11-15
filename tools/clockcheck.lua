@@ -224,7 +224,7 @@ end
 -- removed, now that type(secret) answers "number" as on the client.
 do
     local Book = ST.Book
-    local origGet, origRead = Book.Get, Book.ReadSpell
+    local origGet, origRead, origCost = Book.Get, Book.ReadSpell, Book.CostOf
     local keys, secretKeys = 0, 0
     local function Seen(k)
         keys = keys + 1
@@ -245,6 +245,11 @@ do
         if issecretvalue(id) then return nil end
         return origRead(self, id, ...)
     end
+    Book.CostOf = function(self, id, ...) -- perf P1: the cast path's one read
+        Seen(id)
+        if issecretvalue(id) then return nil end
+        return origCost(self, id, ...)
+    end
     local before = model.mana
     S.inCombat = true
     S.Fire("PLAYER_REGEN_DISABLED")
@@ -252,7 +257,7 @@ do
     S.Cast(774)
     S.Fire("PLAYER_REGEN_ENABLED")
     S.inCombat = false
-    Book.Get, Book.ReadSpell = origGet, origRead
+    Book.Get, Book.ReadSpell, Book.CostOf = origGet, origRead, origCost
     check("in a fight the book is never indexed by a secret spell id",
         secretKeys == 0 and keys >= 1 and model.mana < before,
         string.format("keys=%d secret=%d mana %s->%s", keys, secretKeys, tostring(before), tostring(model.mana)))

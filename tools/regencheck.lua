@@ -101,6 +101,7 @@ RM:Refresh()
 check("the model adds it to both rates",
     math.abs(RM.base - (RM.apiBase + 8.5)) < 0.2 and math.abs(RM.casting - (RM.apiCasting + 8.5)) < 0.2,
     string.format("base %.2f (api %.2f), casting %.2f (api %.2f)", RM.base, RM.apiBase, RM.casting, RM.apiCasting))
+ST.db.recordFights = true -- off by default since 0.18.2 (perf M2)
 check("a new recording carries it as energize", (function()
     ST.FightRecorder:Start(S.now)
     local e = ST.FightRecorder.active and ST.FightRecorder.active.initial.energize

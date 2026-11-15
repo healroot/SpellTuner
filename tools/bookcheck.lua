@@ -548,27 +548,34 @@ do
 end
 
 --------------------------------------------------------------------------------
--- 13: the scan is cached until the book changes or two seconds pass
+-- 13: the scan is cached until a mark (perf P3: no time rule); a soft mark
+-- rescans out of combat only, a hard one always; Peek never scans
 --------------------------------------------------------------------------------
 do
     Book:MarkDirty()
     S.now = 100
     local first = Book:Get()
 
-    S.now = 101
+    S.now = 160
     local stillCached = Book:Get()
 
-    S.now = 102.1
-    local rescanned = Book:Get()
+    Book:MarkSoft()
+    S.inCombat, ST.inCombat = true, true
+    local softInFight = Book:Get()
+    local peek = Book:Peek()
+    S.inCombat, ST.inCombat = false, false
+    local softAfter = Book:Get()
 
-    S.now = 102.2
+    S.inCombat, ST.inCombat = true, true
     Book:MarkDirty()
     local dirtyForces = Book:Get()
+    S.inCombat, ST.inCombat = false, false
 
-    check("the scan is cached until the book changes or two seconds pass",
-        first == stillCached and rescanned ~= first and dirtyForces ~= rescanned,
-        string.format("first==stillCached=%s rescanned~=first=%s dirtyForces~=rescanned=%s",
-            tostring(first == stillCached), tostring(rescanned ~= first), tostring(dirtyForces ~= rescanned)))
+    check("the scan is cached until a mark; soft rescans out of combat only, hard always",
+        first == stillCached and softInFight == first and peek == first and softAfter ~= first
+            and dirtyForces ~= softAfter,
+        string.format("cached=%s softInFight=%s softAfter=%s hard=%s", tostring(first == stillCached),
+            tostring(softInFight == first), tostring(softAfter ~= first), tostring(dirtyForces ~= softAfter)))
 end
 
 --------------------------------------------------------------------------------

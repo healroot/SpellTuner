@@ -3,6 +3,23 @@
 What changed, for players. `./release.sh --publish` sends the section of the version being
 published to CurseForge; the developers' log is `docs/HISTORY.md`.
 
+## 0.18.2
+
+### Faster, lighter (players reported a freeze every few seconds)
+- **Forever: no more freeze when you cast.** Every cast used to re-read the whole spell book
+  (and, since 0.18.1, every rank you have not learned yet). A cast now reads only its own
+  cost; the book is read again only when your spells, talents, level or gear change, and out of
+  combat after a buff or a spell's text changed. A light background check catches anything
+  missed, a few spells at a time, never in combat.
+- Ranks not learned yet are read only for the Spells window and the What if.
+- Forever keeps only your own class's talent, rank and coefficient data (about 0.6 MB less).
+- Less garbage every half second from the clock, and none from the feeds when nothing shows them.
+- **TBC: fight recording is off by default.** It recorded the full combat log of every pull for
+  replay and coach and kept the last 8 (over 1 MB on a played character). Your kept recordings
+  stay; Settings -> Review -> Record fights turns it back on. A one-time chat line says so.
+- `/st dump` has a `perf:` line (book reads, the last read's time, the addon's memory) for bug
+  reports.
+
 ## 0.18.1
 
 ### The clock can stay on screen

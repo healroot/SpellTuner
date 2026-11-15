@@ -38,6 +38,7 @@ local S = _G.STUB
 -- this suite's numbers are the text's, so the stub's spell crit is 0 here
 if type(S.crit) == "table" then for school = 1, 7 do S.crit[school] = 0 end end
 local Book, WI = ST.Book, ST.WhatIf
+Book:WantFuture() -- perf rule 3: the Spells pane asks for them; this suite reads the book directly
 
 S.level, ST.player.level, ST.player.class = 12, 12, "DRUID"
 S.bonusHealing = 100

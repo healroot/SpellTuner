@@ -111,7 +111,7 @@ ST.SettingsLine = {
     -- are supposed to be argued with, not nudged. The sliders read ST:Setting,
     -- so a fresh database shows the registered default.
     recording = {
-        { kind = "check", text = "Record fights", key = "recordFights", default = true,
+        { kind = "check", text = "Record fights", key = "recordFights", default = false,
           tips = { "Keep the full event stream of the last 8 interesting pulls",
                    "so they can be replayed and reviewed (/st -> Review).",
                    "Fight summaries keep working either way." } },

@@ -376,9 +376,19 @@ local function Plain(x) return type(x) == "number" and x == x end
 -- the latch (T144).
 ManaModel.EXACT_UNDER = 60
 
-function ManaModel.Face(state, now)
-    local face = { modelled = true, mono = true, unstable = false, timeFmt = "mss",
-        pctModelled = true, mp5Modelled = true, manaModelled = true, combat = false }
+-- `out` (perf F5): a table the caller keeps, emptied and filled in place, so
+-- the clock's 0.5 s paint builds no record; nil builds a new one as before.
+function ManaModel.Face(state, now, out)
+    local face
+    if type(out) == "table" then
+        for k in pairs(out) do out[k] = nil end
+        face = out
+        face.modelled, face.mono, face.unstable, face.timeFmt = true, true, false, "mss"
+        face.pctModelled, face.mp5Modelled, face.manaModelled, face.combat = true, true, true, false
+    else
+        face = { modelled = true, mono = true, unstable = false, timeFmt = "mss",
+            pctModelled = true, mp5Modelled = true, manaModelled = true, combat = false }
+    end
     if type(state) ~= "table" or type(state.mode) ~= "string" then
         face.mode, face.label, face.known, face.tone = "oom", "OOM", "none", "muted"
         return face
