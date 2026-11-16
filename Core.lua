@@ -24,6 +24,36 @@ ST.version = ST.API.AddonVersion() or "dev"
 local eventFrame = CreateFrame("Frame")
 local handlers = {}
 
+-- The profiler's seam (/st perf, Engine/Perf.lua; 2026-11-16). Off, a
+-- dispatch reads one field more. On, Engine/Perf.lua's Enter / Took time
+-- each handler. Every handler list carries `label` (what fired) and `sites`
+-- (where each handler registered, "Spells/Book.lua:1234"), so a report names
+-- the code, not an index. A site is read once, at registration.
+ST.Prof = { on = false }
+local PROF = ST.Prof
+local function Site()
+    local stack = ST.API.DebugStack and ST.API.DebugStack(1, 12, 0)
+    if type(stack) ~= "string" then return nil end
+    -- the first frame outside the adapter and this file (Site and the
+    -- registrar are here); a registration Core.lua makes itself is "Core.lua"
+    for line in stack:gmatch("[^\n]+") do
+        local path, n = line:match("([%w_%-%./\\]+%.lua)\"?%]?:(%d+)")
+        if path then
+            path = path:gsub("\\", "/")
+            if not path:find("Client/", 1, true) and path ~= "Core.lua" and not path:find("/Core%.lua$") then
+                path = path:match("SpellTuner[^/]*/(.+)$") or path:match("([^/]+/[^/]+)$") or path
+                return path .. ":" .. n
+            end
+        end
+    end
+    return "Core.lua"
+end
+local function Add(list, fn)
+    local i = #list + 1
+    list[i] = fn
+    list.sites[i] = Site()
+end
+
 -- Register a handler; events unknown to this client are silently skipped, and
 -- an event the adapter's flavour file has forbidden (Forever's combat log)
 -- is never even attempted -- RegisterEvent trips the blocked-action dialog
@@ -36,9 +66,9 @@ function ST:On(event, fn)
         end
         local ok = pcall(eventFrame.RegisterEvent, eventFrame, event)
         if not ok then return end
-        handlers[event] = {}
+        handlers[event] = { label = event, sites = {} }
     end
-    handlers[event][#handlers[event] + 1] = fn
+    Add(handlers[event], fn)
 end
 
 -- T143: a unit event for one unit (UNIT_POWER_FREQUENT for "player"), on its
@@ -59,11 +89,11 @@ function ST:OnUnit(event, unit, fn)
         if type(f.RegisterUnitEvent) ~= "function" then return end
         local ok = pcall(f.RegisterUnitEvent, f, event, unit)
         if not ok then return end
-        entry = { frame = f, list = {} }
+        entry = { frame = f, list = { label = event .. "/" .. unit, sites = {} } }
         unitHandlers[key] = entry
         f:SetScript("OnEvent", function(_, _, ...) Dispatch(entry.list, ...) end)
     end
-    entry.list[#entry.list + 1] = fn
+    Add(entry.list, fn)
 end
 
 -- T55 (P11, review A4): fault isolation. Each handler runs as
@@ -102,8 +132,12 @@ local ErrorSink = ST.ErrorSink
 
 function Dispatch(list, ...)
     local unsunk
+    local prof = PROF.on
     for i = 1, #list do
+        local t0, depth
+        if prof then t0, depth = PROF.Enter(list, i) end
         local ok, marker = xpcall(list[i], ErrorSink, ...)
+        if t0 then PROF.Took(list, i, t0, depth) end
         if not ok and marker == UNSUNK and unsunk == nil then unsunk = unsunkMsg end
     end
     if unsunk ~= nil then error(unsunk, 0) end
@@ -118,8 +152,8 @@ end)
 -- Internal pub/sub (module-to-module, not Blizzard events).
 local callbacks = {}
 function ST:RegisterCallback(name, fn)
-    callbacks[name] = callbacks[name] or {}
-    callbacks[name][#callbacks[name] + 1] = fn
+    callbacks[name] = callbacks[name] or { label = "fire " .. tostring(name), sites = {} }
+    Add(callbacks[name], fn)
 end
 function ST:Fire(name, ...)
     local list = callbacks[name]
@@ -154,15 +188,24 @@ end)
 --------------------------------------------------------------------------------
 -- Master ticker: the model is event-driven; this drives accumulation/rendering.
 --------------------------------------------------------------------------------
-local tickers = {}
+local tickers = { label = "tick", sites = {} }
 function ST:OnTick(fn)
-    tickers[#tickers + 1] = fn
+    Add(tickers, fn)
 end
 
 local TICK = 0.5
 ST.API.NewTicker(TICK, function()
+    local prof = PROF.on
     for i = 1, #tickers do
-        tickers[i](TICK)
+        if prof then
+            -- a raising ticker leaves its depth behind; the next Took at a
+            -- lower depth puts it back (Engine/Perf.lua)
+            local t0, depth = PROF.Enter(tickers, i)
+            tickers[i](TICK)
+            PROF.Took(tickers, i, t0, depth)
+        else
+            tickers[i](TICK)
+        end
     end
 end)
 

@@ -116,6 +116,7 @@ local function CreateWidget()
         acc = acc + elapsed
         if acc < 0.25 then return end
         acc = 0
+        if ST.Prof.on then return ST.Prof.Time("TBC widget paint (OnUpdate)", PaintWidget, GetTime()) end
         PaintWidget(GetTime())
     end)
 end

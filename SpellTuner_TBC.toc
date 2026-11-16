@@ -11,6 +11,7 @@ Client\API.lua
 Client\API_TBC.lua
 Core.lua
 Core_TBC.lua
+Engine\Perf.lua
 Spells\Profiles.lua
 Data\Profile_Druid_TBC.lua
 Data\Profile_Priest_TBC.lua

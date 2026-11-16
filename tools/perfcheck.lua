@@ -229,6 +229,116 @@ else
     end)
 end
 
+--------------------------------------------------------------------------------
+-- 15. /st perf, the profiler (Engine/Perf.lua, 2026-11-16), both lines
+--------------------------------------------------------------------------------
+do
+    local PROF, Perf = ST.Prof, ST.Perf
+    local realPrint = ST.Print
+    ST.Print = function() end
+    local function Burn(ms)
+        local t = debugprofilestop() + ms
+        while debugprofilestop() < t do end
+    end
+    local function Stat(label)
+        for _, s in pairs(Perf.data.stats) do if s.label == label then return s end end
+    end
+
+    T("15a off by default: nothing timed, no data", function()
+        ST:Fire("MD_READY")
+        return PROF.on == false and Perf.data == nil, tostring(PROF.on)
+    end)
+
+    ST:RegisterCallback("PERFCHECK_INNER", function()
+        Burn(3)
+        local t = {}
+        for i = 1, 3000 do t[i] = { i } end
+    end)
+    ST:RegisterCallback("PERFCHECK_OUTER", function()
+        Burn(2)
+        ST:Fire("PERFCHECK_INNER")
+    end)
+    ST:RegisterCallback("PERFCHECK_RAISE", function() error("perfcheck: a raising handler") end)
+
+    T("15b on: a callback and the one it fires, each its self time and where it registered", function()
+        Perf.Command("on")
+        collectgarbage("stop")
+        ST:Fire("PERFCHECK_OUTER")
+        collectgarbage("restart")
+        local o, i = Stat("fire PERFCHECK_OUTER"), Stat("fire PERFCHECK_INNER")
+        local good = PROF.on and SpellTunerDB.perf.on == true and o and i and o.calls == 1 and i.calls == 1
+            and i.ms >= 2.5 and o.ms >= 1.5 and o.ms < o.max - 2 and o.max >= 4.5
+            and (tostring(o.site):find("perfcheck.lua:%d+") ~= nil or type(debugstack) ~= "function")
+            and i.kb > 10
+        return good == true, o and i and string.format("outer self %.1f max %.1f site %s; inner %.1f ms %.0f KB",
+            o.ms, o.max, tostring(o.site), i.ms, i.kb) or "missing"
+    end)
+
+    T("15c the 0.5 s tick is timed; a long frame is kept as a hitch", function()
+        S.Tick(0.5)
+        local tick = Stat("tick")
+        local n0 = Perf.data.eventN
+        S.Tick(0.2)
+        local e = Perf.data.events[(Perf.data.eventN - 1) % Perf.KEEP_EVENTS + 1]
+        return tick ~= nil and tick.calls >= 1 and Perf.data.eventN > n0 and e.frame >= 199
+            and Perf.data.frameHist[100] >= 1, string.format("tick %s, hitches %d -> %d",
+            tostring(tick and tick.calls), n0, Perf.data.eventN)
+    end)
+
+    T("15d a raising handler is still sunk once and leaves no frame behind", function()
+        local errs = #(S.clientErrors or {})
+        local okFire = pcall(ST.Fire, ST, "PERFCHECK_RAISE")
+        ST:Fire("PERFCHECK_INNER")
+        return PROF.Current() == nil and Stat("fire PERFCHECK_RAISE") ~= nil
+            and Stat("fire PERFCHECK_INNER").calls == 2, string.format("fire ok %s, errors %d -> %d, current %s",
+            tostring(okFire), errs, #(S.clientErrors or {}), tostring(PROF.Current()))
+    end)
+
+    if forever then
+        T("15e a book scan is noted with its mark and the handler that set it", function()
+            ST:RegisterCallback("PERFCHECK_MARK", function()
+                ST.Book:MarkDirty()
+                ST.Book:Get()
+            end)
+            ST:Fire("PERFCHECK_MARK")
+            local hit
+            for kind, keys in pairs(Perf.data.notes) do
+                if kind:find("book scans", 1, true) then
+                    for key in pairs(keys) do
+                        if key:find("hard, fire PERFCHECK_MARK -> fire PERFCHECK_MARK", 1, true) then hit = key end
+                    end
+                end
+            end
+            return hit ~= nil, tostring(hit)
+        end)
+    end
+
+    T("15f the report: totals, handlers by self time with their file, hitches; kept in saved variables", function()
+        local text = Perf.Report()
+        local good = text:find("SpellTuner perf report", 1, true) and text:find("by self time", 1, true)
+            and text:find("fire PERFCHECK_INNER", 1, true)
+            and (text:find("perfcheck.lua:", 1, true) or type(debugstack) ~= "function")
+            and text:find("hitches", 1, true) and SpellTunerDB.perf.report == text and not text:find("|", 1, true)
+        return good and true or false, string.format("head %s self %s inner %s site %s hitches %s kept %s pipe %s",
+            tostring(text:find("SpellTuner perf report", 1, true) ~= nil), tostring(text:find("by self time", 1, true) ~= nil),
+            tostring(text:find("fire PERFCHECK_INNER", 1, true) ~= nil), tostring(text:find("perfcheck.lua:", 1, true) ~= nil),
+            tostring(text:find("hitches", 1, true) ~= nil), tostring(SpellTunerDB.perf.report == text),
+            tostring(text:find("|", 1, true) ~= nil))
+    end)
+
+    T("15g off: nothing more is timed, the data stays; on again starts fresh", function()
+        Perf.Command("off")
+        local calls = Stat("fire PERFCHECK_INNER").calls
+        ST:Fire("PERFCHECK_INNER")
+        local stayed = PROF.on == false and SpellTunerDB.perf.on == nil and Stat("fire PERFCHECK_INNER").calls == calls
+        Perf.Command("on")
+        local fresh = Stat("fire PERFCHECK_INNER") == nil
+        Perf.Command("off")
+        return stayed and fresh, string.format("stayed %s fresh %s", tostring(stayed), tostring(fresh))
+    end)
+    ST.Print = realPrint
+end
+
 print("")
 print(string.format("%d ok, %d failed", ok, #fails))
 for _, f in ipairs(fails) do print("FAIL " .. f) end

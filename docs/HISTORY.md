@@ -5534,3 +5534,16 @@ lines). Built on branch `future-ranks-crit`:
   2818 KB (the class prune).
 - New suite `tools/perfcheck.lua` (forever 12, tbc 2); `tools/fakepull.lua` turns recording on.
   In game: `docs/TESTING.md` section 69.
+
+## 2026-11-16 -- `/st perf`, the profiler (0.18.2)
+
+The author asked whether the logs were enough to measure in game; they were not (one dump line:
+scans, last scan ms, memory). Built on `future-ranks-crit`: `Engine/Perf.lua` (both lines) and
+the `ST.Prof` seam in `Core.lua` (handler lists carry `label` / `sites`; `Dispatch` and the tick
+time each handler only while on). Timed besides: the clock's per-frame line (`UI/ClockBar.lua`),
+the TBC widget's paint (`UI/Widget.lua`), the spell tooltip (`UI/SpellTip.lua`); book scans
+noted by cause (`Spells/Book.lua`: the mark, the handler that set it, the one that asked).
+Frames over 100 ms and our spikes over 16 ms kept with our share; GC drops; addon memory every
+60 s out of combat. `/st perf on|off|report|reset` (hidden from help), the report kept in
+`SpellTunerDB.perf.report`. `tools/perfcheck.lua` section 15 (forever 19, tbc 8). In game:
+`docs/TESTING.md` section 69 step 7.

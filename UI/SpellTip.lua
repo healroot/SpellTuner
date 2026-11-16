@@ -788,6 +788,12 @@ local function OnSpell(tt, id, source)
     if tt.Show then tt:Show() end
     return true, "block"
 end
+-- /st perf: the tooltip block timed (Engine/Perf.lua); off, one field read
+local OnSpellBody = OnSpell
+OnSpell = function(tt, id, source)
+    if ST.Prof.on then return ST.Prof.Time("spell tooltip", OnSpellBody, tt, id, source) end
+    return OnSpellBody(tt, id, source)
+end
 SpellTip.OnSpell = OnSpell
 
 -- T37 (5.6): the detail key pressed or released while a tooltip carries a

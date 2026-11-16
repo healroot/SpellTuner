@@ -336,7 +336,11 @@ function CB.New(host, draw)
     driver:SetSize(1, 1)
     driver:SetPoint("TOPLEFT", host, "TOPLEFT", 0, 0)
     b.driver = driver
-    b.step = function() b:Step(GetTime()) end
+    local PROF = ST.Prof
+    b.step = function()
+        if PROF.on then return PROF.Time("clock line (OnUpdate)", b.Step, b, GetTime()) end
+        b:Step(GetTime())
+    end
     driver:SetScript("OnUpdate", b.step)
     b.barW, b.lineOn = 0, false
     return b

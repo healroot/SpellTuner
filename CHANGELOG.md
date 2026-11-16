@@ -19,6 +19,10 @@ published to CurseForge; the developers' log is `docs/HISTORY.md`.
   stay; Settings -> Review -> Record fights turns it back on. A one-time chat line says so.
 - `/st dump` has a `perf:` line (book reads, the last read's time, the addon's memory) for bug
   reports.
+- **`/st perf on`** times SpellTuner's own code while you play: each part's time, its worst
+  call, what it allocates, every frame where the game hitched and how much of it was ours, and
+  how often the garbage collector ran. `/st perf report` gives one block to paste into a bug
+  report; `/st perf off` stops. Off by default and costs nothing off.
 
 ## 0.18.1
 

@@ -2759,6 +2759,14 @@ Below level 60, with a heal that has later ranks (Healing Touch, Rejuvenation, R
    Review -> Record fights unticked; your old recordings still listed in Review. Tick it to
    record again; the next login says nothing.
 6. Report the `perf:` line from a long session (memory KB) if anything feels slow.
+7. **The profiler (`/st perf`, 2026-11-16):** `/st perf on` (chat says it is on), then a
+   dungeon or 5 minutes of casting on a dummy, in and out of combat; hover a few spells; open
+   the Spells window once. `/st perf report` -> a copy box: the totals (`ours: N ms total`),
+   handlers by self time with their files, `book scans (cause ...)`, and `hitches`. Each hitch
+   line says the frame's length and `ours` -- a 300 ms frame with `ours 0.4 ms` is not
+   SpellTuner. `/reload`: chat says profiling is still on. `/st perf off`. Paste the whole
+   block back (or log out: it is kept in `WTF/.../SavedVariables/SpellTuner.lua` under
+   `perf.report`).
 
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the

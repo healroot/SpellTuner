@@ -1842,6 +1842,7 @@ end
 
 function Book:Scan()
     NotePerfDump()
+    local scanKind = (not Book._cache and "first") or (Book._dirty and "hard") or (Book._soft and "soft") or "asked"
     local t0 = ST.API.ProfileMs and ST.API.ProfileMs()
     -- T129 review m2 / m3: the talents dump line, and one talent read per scan
     Book._scanSerial = Book._scanSerial + 1
@@ -1928,6 +1929,14 @@ function Book:Scan()
     Book.sweepIds = nil
     local t1 = ST.API.ProfileMs and ST.API.ProfileMs()
     if type(t0) == "number" and type(t1) == "number" then Book.lastScanMs = t1 - t0 end
+    -- /st perf (Engine/Perf.lua): the scan's cost by its cause -- which mark
+    -- (and the handler that set it) and the handler that asked
+    if ST.Prof.on then
+        ST.Prof.Note("book scans (cause: mark, marked by -> asked by)", string.format("%s, %s -> %s%s",
+            scanKind, Book._markBy or "?", ST.Prof.Current() or "?", ST.inCombat and ", in combat" or ""),
+            Book.lastScanMs)
+    end
+    Book._markBy = nil
 
     ST:Debug("other", "book scan via=%s spells=%d secret=%d errors=%d",
         read.via, read.spells, read.secret, read.errors)
@@ -1944,6 +1953,7 @@ end
 function Book:MarkDirty()
     Book._dirty = true
     Book._tips = {}
+    if ST.Prof.on then Book._markBy = ST.Prof.Current() or "?" end
 end
 
 -- A soft mark (perf P4 / rule 1): something that may move a number (a player
@@ -1952,6 +1962,7 @@ end
 -- read nothing new and the cache answers.
 function Book:MarkSoft()
     Book._soft = true
+    if ST.Prof.on and not Book._markBy then Book._markBy = ST.Prof.Current() or "?" end
 end
 
 -- The cache as it is, never a scan (the cast path, perf P1).
