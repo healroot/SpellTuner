@@ -179,9 +179,18 @@ end
 
 -- Every key the What if accepts beyond the stats: Level always, the talents
 -- (typed by the plan) and Spirit only when the live ranks were read.
+-- D (2026-11-16): the rows are the same until the class, the level or
+-- whether the live ranks read changes, so they are built once for those --
+-- TP:Modelled asked for them once per talent per paint (106 builds, 0.9 MB
+-- a What if change in the author's report). Readers never write to them.
+local rowsMemo, rowsKey
 local function Rows()
+    local live = LiveRanks() ~= nil
+    local key = tostring(ST.player and ST.player.class) .. ":" .. tostring(PlayerLevel()) .. ":" .. tostring(live)
+    if rowsMemo and rowsKey == key then return rowsMemo end
     local rows = { LevelRow() }
-    if not LiveRanks() then return rows end
+    rowsMemo, rowsKey = rows, key
+    if not live then return rows end
     local index, spirit = TalentIndex(), false
     for _, name in ipairs(index.order) do
         local i = index.byName[name]
@@ -628,6 +637,7 @@ local function Move(kind, live)
     return { delta = typed - base, typed = typed }
 end
 
+local bookMemo, bookKey
 function provider.Book()
     if not (Book and Book.Get) then return nil end
     if Book.WantFuture then Book:WantFuture() end -- a typed Level lets them compete
@@ -659,6 +669,16 @@ function provider.Book()
     local typedLevel, liveLevel = WI:Get(LEVEL_KEY), PlayerLevel()
     local lvl = (typedLevel ~= nil and liveLevel ~= nil and typedLevel ~= liveLevel)
         and { live = liveLevel, typed = typedLevel } or nil -- T138
+
+    -- D (2026-11-16): one what-if book per What if change. The Spells pane
+    -- asks for it from the view, every rail row and every cell's hover; it is
+    -- built again only when what it is built from moved: the live book (its
+    -- table or generation), the typed values (WI.serial), the live readings
+    -- it moves from, the pool.
+    local key = string.format("%s:%s:%s:%s:%s:%s:%s:%s:%s", tostring(live), tostring(live.generation),
+        tostring(WI.serial), tostring(liveStats.heal), tostring(liveStats.damage),
+        tostring(crit and crit.live), tostring(castPool.max), tostring(castPool.regenCasting), tostring(liveLevel))
+    if bookMemo and bookKey == key then return bookMemo end
 
     local spells, families = {}, {}
     for name, fam in pairs(live.families or {}) do
@@ -693,8 +713,9 @@ function provider.Book()
     for id, e in pairs(live.spells or {}) do
         if spells[id] == nil then spells[id] = CopyEntry(e, nil, nil, nil) end
     end
-    return { families = families, order = live.order, spells = spells, read = live.read,
-             generation = live.generation, whatIf = true }
+    bookMemo, bookKey = { families = families, order = live.order, spells = spells, read = live.read,
+             generation = live.generation, whatIf = true }, key
+    return bookMemo
 end
 
 -- T134, T138: under the rows -- what the level moves, the talents the plan

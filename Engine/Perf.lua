@@ -25,8 +25,12 @@ local _, ST = ...
 --     handler in it -- so a hitch that is not ours shows as "ours 0.3 ms";
 --   * the Lua heap each second (every addon's): a drop over GC_DROP_KB is a
 --     garbage collection, counted and timed;
---   * the addon's own memory each MEM_EVERY seconds, out of combat only
---     (UpdateAddOnMemoryUsage walks every addon and can itself take ms).
+--   * the addon's own memory when profiling starts and at each report only
+--     (UpdateAddOnMemoryUsage walks every addon: 75 ms a read in the
+--     author's game, 2026-11-16);
+--   * from the first `on`, the Spells pane's, the talent planner's and the
+--     What if's functions are timed too (Perf.WrapUI), so a click, a hover
+--     or a view shown outside the dispatcher is named, not "?".
 --
 -- `/st perf report` shows the report in a copy box and keeps it in
 -- SpellTunerDB.perf.report; logging out keeps the latest as well, so it can
@@ -41,7 +45,6 @@ Perf.SLOW_MS = 5
 Perf.SPIKE_MS = 16
 Perf.HITCH_MS = 100
 Perf.GC_DROP_KB = 256
-Perf.MEM_EVERY = 60
 Perf.KEEP_EVENTS = 60
 Perf.TOP = 20
 
@@ -136,11 +139,15 @@ function PROF.Took(list, i, t0, d)
 end
 
 -- Code outside the dispatcher: PROF.Time(label, fn, ...) runs fn(...) timed
--- (its returns dropped; the callers want none). A raise propagates as before.
+-- and hands its returns back. A raise propagates as before (the next Finish
+-- at a lower depth drops the frame it left).
+local function After(label, t0, d, ...)
+    Finish(label, label, nil, t0, d)
+    return ...
+end
 function PROF.Time(label, fn, ...)
     local t0, d = Begin(label)
-    fn(...)
-    Finish(label, label, nil, t0, d)
+    return After(label, t0, d, fn(...))
 end
 
 -- The label of the handler running now ("UNIT_AURA", "tick", ...), or nil.
@@ -164,7 +171,8 @@ end
 -- Frames, the heap, the addon's memory
 --------------------------------------------------------------------------------
 local frame
-local secAcc, memAcc, lastHeap = 0, 0, nil
+local secAcc, lastHeap = 0, nil
+local pending -- a spike of ours: the frame it delays is the next one
 
 local function Keep(ev)
     D.eventN = D.eventN + 1
@@ -191,7 +199,18 @@ function Perf.OnFrame(elapsed)
     for _, b in ipairs({ 1000, 250, 100, 50 }) do
         if ms >= b then D.frameHist[b] = D.frameHist[b] + 1 break end
     end
-    if ms >= Perf.HITCH_MS or acc >= Perf.SPIKE_MS then
+    -- our work between two OnUpdates can land after this frame's own (a
+    -- tooltip, a click): the frame it lengthens is the next, so a spike is
+    -- kept with both lengths
+    if pending then
+        pending.next = ms
+        Keep(pending)
+        pending = nil
+    end
+    if acc >= Perf.SPIKE_MS then
+        pending = { t = Now() - D.startedAt, frame = ms, ours = acc, top = accTop, topMs = accTopMs,
+            combat = ST.inCombat and true or false }
+    elseif ms >= Perf.HITCH_MS then
         Keep({ t = Now() - D.startedAt, frame = ms, ours = acc, top = accTop, topMs = accTopMs,
             combat = ST.inCombat and true or false })
     end
@@ -210,11 +229,6 @@ function Perf.OnFrame(elapsed)
         if not D.heapMin or h < D.heapMin then D.heapMin = h end
         if not D.heapMax or h > D.heapMax then D.heapMax = h end
     end
-    memAcc = memAcc + (elapsed or 0)
-    if memAcc >= Perf.MEM_EVERY and not ST.inCombat then
-        memAcc = 0
-        ReadMem()
-    end
 end
 
 --------------------------------------------------------------------------------
@@ -232,7 +246,8 @@ function Perf.Start(keepData)
     if type(ST.API.ProfileMs) ~= "function" then return false end
     if not D or not keepData then Perf.Reset() end
     depth, acc, accTop, accTopMs = 0, 0, nil, 0
-    secAcc, memAcc, lastHeap = 0, 0, nil
+    secAcc, lastHeap, pending = 0, nil, nil
+    Perf.WrapUI()
     if not frame then frame = CreateFrame("Frame") end
     frame:SetScript("OnUpdate", function(_, elapsed) Perf.OnFrame(elapsed) end)
     PROF.on = true
@@ -330,7 +345,8 @@ function Perf.Report()
     local first = math.max(1, D.eventN - Perf.KEEP_EVENTS + 1)
     for k = first, D.eventN do
         local e = D.events[(k - 1) % Perf.KEEP_EVENTS + 1]
-        A(string.format("  t=%7s frame %6s ms  ours %6s ms%s  %s", F(e.t), F(e.frame, 0), F(e.ours),
+        A(string.format("  t=%7s frame %6s ms%s  ours %6s ms%s  %s", F(e.t), F(e.frame, 0),
+            e.next and (" next " .. F(e.next, 0) .. " ms") or "", F(e.ours),
             e.combat and " C" or "  ", e.top and (e.top .. " " .. F(e.topMs) .. " ms") or "-"))
     end
     -- every piece is ours and ASCII (labels, file names, numbers): no escape
@@ -338,6 +354,37 @@ function Perf.Report()
     local sv = Saved()
     if sv then sv.report = text end
     return text
+end
+
+--------------------------------------------------------------------------------
+-- E (2026-11-16): the UI's own functions, timed from the first `on` (never
+-- wrapped while the profiler was never used). A wrapper reads ST.Prof.on
+-- and calls straight through while off; returns are kept.
+--------------------------------------------------------------------------------
+local wrapped = false
+local UI_TABLES = {
+    { "SpellsPane", "Spells pane" },
+    { "TalentPlanner", "talent plan" },
+    { "WhatIf", "What if" },
+}
+local SKIP = { Get = true, Active = true, Values = true } -- WI's per-cell reads: noise
+function Perf.WrapUI()
+    if wrapped then return end
+    wrapped = true
+    for _, t in ipairs(UI_TABLES) do
+        local tbl = ST[t[1]]
+        if type(tbl) == "table" then
+            for name, fn in pairs(tbl) do
+                if type(fn) == "function" and not SKIP[name] then
+                    local label = t[2] .. " " .. name
+                    tbl[name] = function(...)
+                        if PROF.on then return PROF.Time(label, fn, ...) end
+                        return fn(...)
+                    end
+                end
+            end
+        end
+    end
 end
 
 --------------------------------------------------------------------------------

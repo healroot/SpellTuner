@@ -19,6 +19,13 @@ published to CurseForge; the developers' log is `docs/HISTORY.md`.
   stay; Settings -> Review -> Record fights turns it back on. A one-time chat line says so.
 - `/st dump` has a `perf:` line (book reads, the last read's time, the addon's memory) for bug
   reports.
+- **No stutter when you hover a spell or open the Spells window.** Reading the spell book
+  (40-70 ms on a real character) is now spread over several frames, a few ms each, in and out
+  of combat; until it is done the numbers you saw stay up. Hovering a spell after a buff
+  changed re-reads only that spell's ranks, not the whole book.
+- **What if and the talent plan: much less work per click.** The What if numbers are worked
+  out once per change instead of once per row and per hover, and the talent plan no longer
+  rebuilds its talent list for every talent (about 1 MB less garbage per click).
 - **`/st perf on`** times SpellTuner's own code while you play: each part's time, its worst
   call, what it allocates, every frame where the game hitched and how much of it was ours, and
   how often the garbage collector ran. `/st perf report` gives one block to paste into a bug

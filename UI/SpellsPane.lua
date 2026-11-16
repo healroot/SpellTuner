@@ -3203,6 +3203,10 @@ end
 -- rebuilt on the next tick it is seen (FlushRail from the views' ticks).
 ST:RegisterCallback("BOOK_CHANGED", function()
     SpellsPane.bookGen = (SpellsPane.bookGen or 0) + 1
+    -- 2026-11-16: a sliced read ends a few frames after the view asked; the
+    -- views look again on the next tick (0.5 s), not 2 s later
+    if SpellsPane.family then SpellsPane.family.lastTick = nil end
+    if SpellsPane.overview then SpellsPane.overview.lastRefresh = nil end
     local nav = SpellsPane.nav
     if nav and nav.frame and nav.frame.IsVisible and not nav.frame:IsVisible() then
         SpellsPane.railPending = true

@@ -1120,6 +1120,22 @@ end
 -- reads it (MeasureBonus). Off with the setting spellsFutureRanks.
 local FUTURE_SLOT = 100000 -- after every real slot (GroupFamilies' tiebreak)
 
+-- The sliced read (2026-11-16, the author's in-game /st perf report: a full
+-- read cost 40-72 ms). A read a reader asked for while a book is already
+-- kept runs as a coroutine, Book.SLICE_MS a frame (Book:StartJob); the loops
+-- of a read call MaybeYield between entries and families. The one-scan
+-- readings (scanBonus, scanCrit) are put aside across a yield, so nothing
+-- that runs between two slices reads them.
+local jobCo, sliceEnd
+local function MaybeYield()
+    if jobCo and sliceEnd and coroutine.running() == jobCo and ST.API.ProfileMs() >= sliceEnd then
+        local b, c = scanBonus, scanCrit
+        scanBonus, scanCrit = nil, nil
+        coroutine.yield()
+        scanBonus, scanCrit = b, c
+    end
+end
+
 if ST.RegisterDefaults then ST:RegisterDefaults({ spellsFutureRanks = true }) end
 
 -- An id whose text the client has not loaded yet answers "" (retail's spell
@@ -1188,6 +1204,7 @@ function Book:AddFutureRanks(spells, prevSpells)
             for rank = 1, #ranks do
                 local info = ranks[rank]
                 slot = slot + 1
+                MaybeYield()
                 if type(info) == "table" and type(info.id) == "number" and spells[info.id] == nil
                     and not have[name][rank] and ST.API.SpellKnown(info.id) ~= true then
                     local e = Book:BuildFutureEntry(info.id, rank, info, slot, prevSpells, name)
@@ -1840,9 +1857,14 @@ function Book:MeasureBonus(spells, families)
     end
 end
 
-function Book:Scan()
+function Book:Scan(job)
     NotePerfDump()
+    -- a read run straight through supersedes a sliced one under way
+    if not job and Book._job then Book:CancelJob() end
     local scanKind = (not Book._cache and "first") or (Book._dirty and "hard") or (Book._soft and "soft") or "asked"
+    local markBy = Book._markBy
+    Book._markBy = nil
+    local softSerial = Book._softSerial
     local t0 = ST.API.ProfileMs and ST.API.ProfileMs()
     -- T129 review m2 / m3: the talents dump line, and one talent read per scan
     Book._scanSerial = Book._scanSerial + 1
@@ -1850,6 +1872,9 @@ function Book:Scan()
     -- T35: a scan after MarkDirty (or the first) is a changed book; the
     -- 2-second rescans of an unchanged one are not.
     local changed = Book._dirty or not Book._cache
+    -- the marks are consumed now: one set while a sliced read runs is the
+    -- next read's (the next Get starts it)
+    Book._dirty, Book._soft = false, false
     local via, slotList = Book:Enumerate()
     local read = { via = via, slots = #slotList, spells = 0, secret = 0, errors = 0 }
 
@@ -1862,6 +1887,7 @@ function Book:Scan()
     local spells = {}
 
     for _, slot in ipairs(slotList) do
+        MaybeYield()
         local row, reason = ST.API.SpellBookItemInfo(slot, bank)
         if reason == "secret" then
             read.secret = read.secret + 1
@@ -1888,8 +1914,11 @@ function Book:Scan()
     scanBonus = {} -- T117: one +healing reading for the whole scan
     scanCrit = {} -- and one crit reading per school
     for _, name in ipairs(order) do
+        MaybeYield()
         Book:Rows(families[name], pool)
+        families[name].freshAt = softSerial -- RefreshFamily: read since this soft mark
     end
+    MaybeYield()
     Book:MeasureBonus(spells, families) -- T122
     scanBonus, scanCrit = nil, nil
 
@@ -1923,20 +1952,27 @@ function Book:Scan()
     Book._cache = book
     Book._cacheTime = GetTime()
     Book._prevSpells = spells
-    Book._dirty = false
-    Book._soft = false
     Book.scans = (Book.scans or 0) + 1
     Book.sweepIds = nil
     local t1 = ST.API.ProfileMs and ST.API.ProfileMs()
-    if type(t0) == "number" and type(t1) == "number" then Book.lastScanMs = t1 - t0 end
+    if job then
+        -- the read's own time: the slices before this one plus this one
+        Book.lastScanMs = job.ms + ((type(t1) == "number" and job.sliceStart) and (t1 - job.sliceStart) or 0)
+        Book.lastScanSlices = job.slices + 1
+        -- done: what BOOK_CHANGED's handlers do below is not this read's
+        if Book._job == job then Book._job, jobCo = nil, nil end
+    elseif type(t0) == "number" and type(t1) == "number" then
+        Book.lastScanMs = t1 - t0
+        Book.lastScanSlices = 1
+    end
     -- /st perf (Engine/Perf.lua): the scan's cost by its cause -- which mark
     -- (and the handler that set it) and the handler that asked
     if ST.Prof.on then
-        ST.Prof.Note("book scans (cause: mark, marked by -> asked by)", string.format("%s, %s -> %s%s",
-            scanKind, Book._markBy or "?", ST.Prof.Current() or "?", ST.inCombat and ", in combat" or ""),
+        ST.Prof.Note("book scans (cause: mark, marked by -> asked by)", string.format("%s, %s -> %s%s%s",
+            scanKind, markBy or "?", (job and job.askedBy) or ST.Prof.Current() or "?",
+            ST.inCombat and ", in combat" or "", job and (", sliced in " .. Book.lastScanSlices) or ""),
             Book.lastScanMs)
     end
-    Book._markBy = nil
 
     ST:Debug("other", "book scan via=%s spells=%d secret=%d errors=%d",
         read.via, read.spells, read.secret, read.errors)
@@ -1960,8 +1996,10 @@ end
 -- aura, a spell's text loaded, the end of a fight). The next Get out of
 -- combat rescans; in combat the descriptions are secret, so a rescan would
 -- read nothing new and the cache answers.
+Book._softSerial = Book._softSerial or 0
 function Book:MarkSoft()
     Book._soft = true
+    Book._softSerial = Book._softSerial + 1
     if ST.Prof.on and not Book._markBy then Book._markBy = ST.Prof.Current() or "?" end
 end
 
@@ -1973,11 +2011,142 @@ end
 -- Rescanned when hard-dirty, or soft-dirty out of combat (perf P3: no time
 -- rule -- an unchanged book is never read again; the sweeper below catches
 -- a change no event announced).
+-- 2026-11-16: with a book kept, the read is sliced (Book:StartJob) and the
+-- kept book answers until it is done; the very first read runs straight
+-- through (there is nothing to answer with yet).
 function Book:Get()
-    if Book._dirty or not Book._cache or (Book._soft and not ST.inCombat) then
+    if not Book._cache then
         Book:Scan()
+    elseif Book._dirty or (Book._soft and not ST.inCombat) then
+        Book:StartJob()
     end
     return Book._cache
+end
+
+-- The sliced read: Book.SLICE_MS of a read a frame, in combat too, on a
+-- driver frame's OnUpdate; the first slice runs at once (a small book is done
+-- in it). ST.syncBook (the harness, unless a tool asks for slices) reads
+-- straight through instead.
+Book.SLICE_MS = 4
+local jobDriver
+local function JobStep()
+    local job = Book._job
+    if not job then
+        if jobDriver then jobDriver:SetScript("OnUpdate", nil) end
+        return
+    end
+    local t0 = ST.API.ProfileMs()
+    job.sliceStart = t0
+    sliceEnd = t0 + Book.SLICE_MS
+    local ok, err = coroutine.resume(job.co)
+    sliceEnd = nil
+    job.ms = job.ms + (ST.API.ProfileMs() - t0)
+    job.slices = job.slices + 1
+    if not ok or coroutine.status(job.co) == "dead" then
+        if Book._job == job then Book._job, jobCo = nil, nil end
+        scanBonus, scanCrit = nil, nil
+        if not Book._job and jobDriver then jobDriver:SetScript("OnUpdate", nil) end
+        if not ok then
+            -- the read raised: reported once, as a handler's raise is
+            local h = ST.API.GetErrorHandler and ST.API.GetErrorHandler()
+            if type(h) == "function" then h(err) else error(err, 0) end
+        end
+    end
+end
+local function JobFrame()
+    if ST.Prof.on then return ST.Prof.Time("book read, a slice (OnUpdate)", JobStep) end
+    JobStep()
+end
+
+function Book:StartJob()
+    if Book._job then return end
+    if ST.syncBook or not Book.SLICE_MS or type(ST.API.ProfileMs) ~= "function" then
+        Book:Scan()
+        return
+    end
+    local job = { ms = 0, slices = 0, askedBy = ST.Prof.on and ST.Prof.Current() or nil }
+    job.co = coroutine.create(function() Book:Scan(job) end)
+    Book._job, jobCo = job, job.co
+    if not jobDriver then jobDriver = CreateFrame("Frame") end
+    jobDriver:SetScript("OnUpdate", JobFrame)
+    JobStep()
+end
+
+function Book:CancelJob()
+    Book._job, jobCo = nil, nil
+    scanBonus, scanCrit = nil, nil
+    if jobDriver then jobDriver:SetScript("OnUpdate", nil) end
+end
+
+-- One spell's book (A, the author's ruling 2026-11-16: the tooltip needs one
+-- spell, the Spells pane all of them). Soft-dirty out of combat, only this
+-- spell's family -- every rank, learned or not -- is read again
+-- (RefreshFamily); hard-dirty, the sliced read starts and the kept book
+-- answers; the first read runs as Get's.
+function Book:ForSpell(id)
+    local cache = Book._cache
+    if not cache or Book._dirty then return Book:Get() end
+    if Book._soft and not ST.inCombat and not Book._job then
+        local e = cache.spells[id]
+        if e and e.family then Book:RefreshFamily(e.family) end
+    end
+    return Book._cache
+end
+
+-- Reads one family of the kept book again, in place: its learned ranks from
+-- their slots, its ranks not learned yet by id, its rows. False (nothing
+-- moved) when the family is fresh since the last soft mark, or the spellbook
+-- moved under it (a slot holds another spell: that is the full read's job).
+function Book:RefreshFamily(name)
+    local cache = Book._cache
+    local fam = cache and cache.families[name]
+    if not fam or fam.freshAt == Book._softSerial or Book._job then return false end
+    local bank = ST.API.Constant("Enum.SpellBookSpellBank.Player")
+    local futureConst = ST.API.Constant("Enum.SpellBookItemType.FutureSpell")
+    local byClass = type(ST.FutureRanks) == "table" and ST.FutureRanks[ST.player and ST.player.class]
+    local ranksOf = type(byClass) == "table" and byClass[name] or nil
+    local prev = Book._prevSpells
+    local sub, old = {}, {}
+    for id, e in pairs(cache.spells) do
+        if e.family == name then
+            old[#old + 1] = id
+            local ne
+            if e.future then
+                local info = type(ranksOf) == "table" and ranksOf[e.rank] or nil
+                ne = Book:BuildFutureEntry(id, e.rank, type(info) == "table" and info or {}, e.slot, prev, name)
+            else
+                local row = ST.API.SpellBookItemInfo(e.slot, bank)
+                if type(row) ~= "table" or row.spellID ~= id then return false end
+                ne = Book:BuildEntry(row, e.slot, bank, futureConst, prev)
+            end
+            if not (ne and ne.family == name) then return false end
+            sub[id] = ne
+        end
+    end
+    local families = Book:GroupFamilies(sub)
+    local nf = families[name]
+    if not nf then return false end
+    scanBonus, scanCrit = {}, {}
+    Book:Rows(nf, Book:DefaultPool())
+    scanBonus, scanCrit = nil, nil
+    nf.freshAt = Book._softSerial
+    local sigs, moved = Book._prevSigs or {}, false
+    for _, id in ipairs(old) do cache.spells[id] = nil end
+    for id, e in pairs(sub) do
+        cache.spells[id] = e
+        local sig = EntrySig(e)
+        if sigs[id] ~= sig then moved = true end
+        sigs[id] = sig
+    end
+    Book._prevSigs = sigs
+    cache.families[name] = nf
+    Book.familyRefreshes = (Book.familyRefreshes or 0) + 1
+    if moved then
+        Book.generation = Book.generation + 1
+        cache.generation = Book.generation
+        ST:Fire("BOOK_CHANGED", cache)
+    end
+    return moved
 end
 
 -- One spell's cost now, without the book (perf P1): the cast path's only

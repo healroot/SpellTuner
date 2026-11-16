@@ -197,6 +197,94 @@ if forever then
         return type(line) == "string" and line:find("^perf: book scans %d+, last [%d%.%-]+ ms, %d+ entries") ~= nil,
             tostring(line)
     end)
+
+    ----------------------------------------------------------------------------
+    -- 16. the author's 2026-11-16 report: a full read cost 40-72 ms, a What if
+    -- change 1.4 MB. A: the tooltip reads one family; C: a read is sliced;
+    -- D: one what-if book and one row list per change.
+    ----------------------------------------------------------------------------
+    local mendTxt = "Heals a friendly target for 200 to 220."
+    S.AddSpell(99002, "Perf Salve", "Rank 1", function() return mendTxt end, { cast = 1500, cost = 60, level = 6 })
+    Book:MarkDirty(); Book:Get()
+
+    T("16a a soft mark and a tooltip: that spell's family read again, not the book", function()
+        local scans, fams = Book.scans, Book.familyRefreshes or 0
+        mendTxt = "Heals a friendly target for 240 to 260."
+        Book:MarkSoft()
+        local b = Book:ForSpell(99002)
+        local e = b.spells[99002]
+        local again = Book:ForSpell(99002) -- fresh now: nothing read
+        return Book.scans == scans and (Book.familyRefreshes or 0) == fams + 1 and e and e.min == 240
+            and again == b and Book._soft == true, string.format("scans +%d families +%d min %s",
+            Book.scans - scans, (Book.familyRefreshes or 0) - fams, tostring(e and e.min))
+    end)
+
+    T("16b ...in combat the kept family answers; a hard mark is the full read's", function()
+        Book:MarkDirty(); Book:Get()
+        local fams = Book.familyRefreshes or 0
+        Book:MarkSoft()
+        InFight(function() Book:ForSpell(99002) end)
+        local inFight = (Book.familyRefreshes or 0) == fams
+        local scans = Book.scans
+        Book:MarkDirty()
+        Book:ForSpell(99002)
+        return inFight and Book.scans == scans + 1, string.format("in fight %s scans +%d", tostring(inFight),
+            Book.scans - scans)
+    end)
+
+    T("16c a sliced read: the kept book answers until it is done, then the new one", function()
+        ST.syncBook = false
+        local slice = Book.SLICE_MS
+        Book.SLICE_MS = -1 -- every MaybeYield yields: the most slices a book can take
+        Book:MarkDirty()
+        local old = Book:Peek()
+        local got = Book:Get()
+        local running = Book._job ~= nil
+        local again = Book:Get() -- no second read while one runs
+        local frames = 0
+        while Book._job and frames < 2000 do S.Tick(0.016); frames = frames + 1 end
+        local new = Book:Peek()
+        Book.SLICE_MS = slice
+        ST.syncBook = true
+        return got == old and again == old and running and new ~= old and Book.lastScanSlices > 2
+            and not Book._job and new.spells[99002] ~= nil, string.format("running %s slices %s frames %d",
+            tostring(running), tostring(Book.lastScanSlices), frames)
+    end)
+
+    T("16d a mark during a sliced read is the next read's; a straight read cancels a sliced one", function()
+        ST.syncBook = false
+        local slice = Book.SLICE_MS
+        Book.SLICE_MS = -1
+        Book:MarkDirty(); Book:Get()
+        Book:MarkDirty() -- while it runs
+        local frames = 0
+        while Book._job and frames < 2000 do S.Tick(0.016); frames = frames + 1 end
+        local dirtyAfter = Book._dirty == true
+        Book:Get() -- the next read starts
+        local second = Book._job ~= nil
+        local scans = Book.scans
+        Book:Scan() -- straight through
+        local cancelled = Book._job == nil and Book.scans == scans + 1
+        for _ = 1, 5 do S.Tick(0.016) end
+        Book.SLICE_MS = slice
+        ST.syncBook = true
+        return dirtyAfter and second and cancelled and Book.scans == scans + 1,
+            string.format("dirty after %s second %s cancelled %s", tostring(dirtyAfter), tostring(second),
+            tostring(cancelled))
+    end)
+
+    T("16e What if: one book per change, one row list until the level or class changes", function()
+        local WI = ST.WhatIf
+        WI:Clear()
+        WI:Set("heal", 500)
+        local b1, b2 = WI:Book(), WI:Book()
+        WI:Set("heal", 600)
+        local b3 = WI:Book()
+        local r1, r2 = WI:ClassRows(), WI:ClassRows()
+        WI:Clear()
+        return b1 ~= nil and b1 == b2 and b3 ~= b1 and r1 ~= nil and r1 == r2,
+            string.format("same %s new %s rows %s", tostring(b1 == b2), tostring(b3 ~= b1), tostring(r1 == r2))
+    end)
 else
     T("12 fight recording: off by default; an old install's true turned off once", function()
         local def = ST.DEFAULTS.recordFights == false
@@ -324,6 +412,29 @@ do
             tostring(text:find("fire PERFCHECK_INNER", 1, true) ~= nil), tostring(text:find("perfcheck.lua:", 1, true) ~= nil),
             tostring(text:find("hitches", 1, true) ~= nil), tostring(SpellTunerDB.perf.report == text),
             tostring(text:find("|", 1, true) ~= nil))
+    end)
+
+    T("15h a spike of ours is kept with the frame after it (the one it lengthens)", function()
+        ST:RegisterCallback("PERFCHECK_SPIKE", function() Burn(Perf.SPIKE_MS + 2) end)
+        local n0 = Perf.data.eventN
+        ST:Fire("PERFCHECK_SPIKE")
+        S.Tick(0.01)
+        local held = Perf.data.eventN == n0
+        S.Tick(0.03)
+        local e = Perf.data.events[(Perf.data.eventN - 1) % Perf.KEEP_EVENTS + 1]
+        return held and Perf.data.eventN == n0 + 1 and e.ours >= Perf.SPIKE_MS and e.next ~= nil
+            and e.next >= 29 and tostring(e.top):find("fire PERFCHECK_SPIKE", 1, true) == 1,
+            string.format("held %s ours %.1f next %s top %s", tostring(held), e.ours or -1, tostring(e.next),
+            tostring(e.top))
+    end)
+
+    T("15i the UI's own functions are timed by name; memory read at start and report only", function()
+        ST.WhatIf:Pool({ max = 1000 })
+        local s = Stat("What if Pool")
+        local reads = #Perf.data.mem
+        for _ = 1, 3 do S.Tick(70) end
+        return s ~= nil and s.calls >= 1 and #Perf.data.mem == reads, string.format("pool %s, memory reads %d -> %d",
+            tostring(s and s.calls), reads, #Perf.data.mem)
     end)
 
     T("15g off: nothing more is timed, the data stays; on again starts fresh", function()

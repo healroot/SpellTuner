@@ -5547,3 +5547,23 @@ Frames over 100 ms and our spikes over 16 ms kept with our share; GC drops; addo
 60 s out of combat. `/st perf on|off|report|reset` (hidden from help), the report kept in
 `SpellTunerDB.perf.report`. `tools/perfcheck.lua` section 15 (forever 19, tbc 8). In game:
 `docs/TESTING.md` section 69 step 7.
+
+## 2026-11-16 (later) -- from the first `/st perf` report (0.18.2)
+
+The author's report: full book reads 40-72 ms each (a hovered spell or a What if change after a
+soft mark), a What if change up to 50 ms / 1.4 MB, SpellTuner's memory 9 -> 53 MB in 42 s.
+Built (rulings in `docs/DECISIONS.md` 2026-11-16):
+- `Spells/Book.lua`: the sliced read (`StartJob`, `MaybeYield`, `CancelJob`, `Book.SLICE_MS`),
+  marks consumed at a read's start, `ForSpell` / `RefreshFamily` (one family on a soft mark),
+  `family.freshAt` (declared in `Spells/BookShape.lua`). `UI/SpellTip.lua` reads through
+  `ForSpell`. `UI/SpellsPane.lua`: a book change redraws the views on the next tick.
+- `Spells/WhatIf_Forever.lua`: the row list memoised by class / level / live ranks (was 106
+  builds a change, 0.9 MB), the what-if book memoised per change (the pane asked per row and
+  per hover). Harness probe: 5 What if changes 1297 -> 278 KB; the planner's handler 680 -> 1.5
+  KB a change.
+- `Engine/Perf.lua`: memory read at start / report only, a spike kept with the next frame,
+  `PROF.Time` keeps returns, `Perf.WrapUI` (Spells pane, talent planner, What if functions);
+  `UI/TalentPlanner.lua`'s paint timed (a hover repaints the panel).
+- `tools/perfcheck.lua` 15h-15i, 16a-16e (forever 26, tbc 10); `tools/harness.lua`
+  `ST.syncBook` (`HARNESS_SLICED_BOOK`); `tools/perf/whatif_forever.lua`. In game:
+  `docs/TESTING.md` section 69 step 8.

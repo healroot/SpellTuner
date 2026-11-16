@@ -551,7 +551,9 @@ function SpellTip:Lines(id, detail, source, view)
 end
 
 LinesFor = function(id, detail, source, view)
-    local book = view and view.book or Book:Get()
+    -- A (2026-11-16): one spell's family read again when the book is
+    -- soft-dirty, never the whole book (Book:ForSpell; TBC's book has none)
+    local book = view and view.book or (Book.ForSpell and Book:ForSpell(id)) or Book:Get()
     local entry = book.spells[id]
     local inBook = entry ~= nil
     -- T121: the family by the entry's key (TBC's book keys families by
@@ -825,7 +827,7 @@ function SpellTip:Why()
     -- T129: the cast talent of the last spell a block was drawn for (Spells/
     -- Book.lua's talent seam), when its entry carries one.
     local okTalent, talent = pcall(function()
-        local e = lastBlockId and Book:Get().spells[lastBlockId]
+        local e = lastBlockId and ((Book.Peek and Book:Peek()) or Book:Get()).spells[lastBlockId]
         return type(e) == "table" and e.castTalent or nil
     end)
     if okTalent and type(talent) == "string" then

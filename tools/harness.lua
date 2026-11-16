@@ -53,7 +53,9 @@ S.flavour = flavour
 
 -- perf M1: the suites read every class's generated data, so the login prune is
 -- off unless a tool sets HARNESS_PRUNE_CLASS_DATA (tools/perfcheck.lua)
-local ST = { keepClassData = (HARNESS_PRUNE_CLASS_DATA ~= true) }
+-- 2026-11-16: the suites read the Forever book straight through (a Get after
+-- a mark answers the new book), unless a tool sets HARNESS_SLICED_BOOK
+local ST = { keepClassData = (HARNESS_PRUNE_CLASS_DATA ~= true), syncBook = (HARNESS_SLICED_BOOK ~= true) }
 
 if flavour == "forever" then
     S.UseProfile("forever")

@@ -135,7 +135,13 @@ end
 
 -- T138: every plan may spend all 51 points; the level the plan is judged at
 -- (the What if's Level, else the player's) and the level it needs are said
+-- /st perf (2026-11-16): the paint timed -- a hover repaints the panel
+local PaintBody
 local function Paint()
+    if ST.Prof.on then return ST.Prof.Time("talent plan paint", PaintBody) end
+    return PaintBody()
+end
+PaintBody = function()
     local spent = TP.Total(plan, trees)
     local level = TP.Level()
     local have = TP.Points(level, TP.Total(live, trees))

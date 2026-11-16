@@ -2767,6 +2767,14 @@ Below level 60, with a heal that has later ranks (Healing Touch, Rejuvenation, R
    SpellTuner. `/reload`: chat says profiling is still on. `/st perf off`. Paste the whole
    block back (or log out: it is kept in `WTF/.../SavedVariables/SpellTuner.lua` under
    `perf.report`).
+8. **No stutter on hover / What if (2026-11-16, from the author's first report):** out of
+   combat, take a buff on or off, then hover a heal: no hitch, the block shows. Open the Spells
+   window (first time this session): ranks not learned yet appear within a second. Talent plan
+   open: click talents for a while and hover cells. Then `/st perf report`: `book scans` lines
+   say `sliced in N` with no line over a few ms in `by worst call`; `spell tooltip` max a few
+   ms; `fire WHATIF_CHANGED` max well under the old 50 ms and KB alloc far under the old
+   1.4 MB a call; hitches with `ours` over 16 ms rare. In a fight: learn nothing, but swap gear
+   or change form -- `book read, a slice` lines, none over ~5 ms.
 
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the

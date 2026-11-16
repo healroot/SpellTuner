@@ -1880,3 +1880,21 @@ Players reported a freeze every few seconds on 0.18.1. Reviews: `docs/review/per
   with a chat line (`recordFightsOff2`). Replay and coach are opt-in, so their recorder is too.
 - Kept for later (structural, code memory only): TBC replay / coach / practice / simulator as
   LoadOnDemand siblings like Forever's; the probe and `/st measure` as a Forever tools module.
+
+### 2026-11-16 -- from the first `/st perf` report: read only what a reader needs, slice the rest
+
+The author's report (out of combat, the Spells window and the talent plan open): a full book
+read 40-72 ms, each one a stutter, asked by a hovered spell or a What if change after a soft
+mark; a What if change up to 50 ms and 1.4 MB. Rulings (the author's A-E):
+- **A / B (the author's correction):** a soft mark re-reads nothing by itself. The tooltip
+  needs one spell, so it reads that spell's family again (every rank, learned or not;
+  `Book:ForSpell` -> `RefreshFamily`); the Spells pane and the What if need every spell, so they
+  get the full read. In combat a soft-dirty book answers as kept (the texts are secret).
+- **C:** a full read with a book already kept is sliced, about 4 ms a frame, in and out of
+  combat; the kept book answers until the new one is done, then `BOOK_CHANGED` and the views
+  redraw on their next tick. The first read of a session runs straight through.
+- **D:** one what-if book per change (keyed on the live book and its generation, `WI.serial`,
+  the live readings, the pool) and one What if row list per class / level. Batching changes
+  was not needed: they come one per click; the cost was the rebuilds per row and per hover.
+- **E:** the profiler reads the addon's memory only at start and report (75 ms a read in the
+  author's game), keeps a spike with the frame after it, and names the UI's own functions.

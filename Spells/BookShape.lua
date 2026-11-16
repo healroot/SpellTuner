@@ -61,6 +61,7 @@ BS.FAMILY = {
     noSeed    = O("boolean"),
     half      = O("string"),
     of        = O("table"),
+    freshAt   = O("number"),  -- 2026-11-16: the soft-mark serial it was read at (Book:RefreshFamily)
 }
 
 BS.SHAPES = { direct = true, hot = true, hybrid = true, bloom = true, channel = true, none = true }
