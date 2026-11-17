@@ -5567,3 +5567,13 @@ Built (rulings in `docs/DECISIONS.md` 2026-11-16):
 - `tools/perfcheck.lua` 15h-15i, 16a-16e (forever 26, tbc 10); `tools/harness.lua`
   `ST.syncBook` (`HARNESS_SLICED_BOOK`); `tools/perf/whatif_forever.lua`. In game:
   `docs/TESTING.md` section 69 step 8.
+
+## 2026-11-17 -- from the second `/st perf` report (0.18.2)
+
+Report: tooltip fixed (avg 0.5 ms), but sliced reads ran 16-21 ms slices, and every buff with
+the Spells window open was a full read (6 in 95 s, 2.5 MB each). Built: `Spells/Book.lua`
+`MaybeYield` per rank / sig / bonus fit, phase timing (`Phase`, "book read phases" in the
+report), the first slice on the next frame, `Book:AuraPrint` (an aura marks only when a priced
+reading moved), the first read at `CORE_READY`; `Spells/WhatIf.lua` rows by key.
+`tools/wowstub.lua` `S.Load` seeds a fresh namespace with `S.nsDefaults` (harness: `syncBook`,
+`keepClassData`), so suites that load their own session read straight through.

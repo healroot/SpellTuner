@@ -2054,6 +2054,11 @@ function S.Load(files, addonName, ST)
     -- Read by FrameMT:RegisterEvent's forbid stand-in (S.Fire("ADDON_ACTION_FORBIDDEN", S.addonName, ...)),
     -- which needs the addon name before any file has registered anything.
     S.addonName = addonName
+    -- the harness's namespace defaults (tools/harness.lua: syncBook,
+    -- keepClassData) for a fresh namespace a suite loads itself
+    for k, v in pairs(S.nsDefaults or {}) do
+        if ST[k] == nil then ST[k] = v end
+    end
     for _, rel in ipairs(files) do
         local path = S.root .. "/" .. rel
         local chunk, err = loadfile(path)

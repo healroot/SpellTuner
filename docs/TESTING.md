@@ -2775,6 +2775,9 @@ Below level 60, with a heal that has later ranks (Healing Touch, Rejuvenation, R
    ms; `fire WHATIF_CHANGED` max well under the old 50 ms and KB alloc far under the old
    1.4 MB a call; hitches with `ours` over 16 ms rare. In a fight: learn nothing, but swap gear
    or change form -- `book read, a slice` lines, none over ~5 ms.
+   The report also has `book read phases`: each phase's ms and `(step)` its longest stretch
+   without a pause -- paste it if any slice is still over ~8 ms. Buffs that change none of your
+   numbers (food, a mount, most procs) should add no `book scans` line at all.
 
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the

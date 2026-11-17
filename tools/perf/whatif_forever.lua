@@ -16,8 +16,12 @@ ST.Print = function() end
 
 S.level, ST.player.level = 26, 26
 S.AddTraits({ ["Nature's Focus"] = 5, ["Naturalist"] = 5, ["Gift of Nature"] = 2 })
+-- the login read (CORE_READY) asked before these existed: the adapter looks again
+for _, n in ipairs({ "C_ClassTalents.GetActiveConfigID", "C_Traits.GetConfigInfo", "C_Traits.GetTreeNodes",
+    "C_Traits.GetNodeInfo", "C_Traits.GetEntryInfo", "C_Traits.GetDefinitionInfo" }) do ST.API.Invalidate(n) end
 S.Fire("PLAYER_TALENT_UPDATE")
 Book:MarkDirty(); Book:Get()
+for _ = 1, 30 do S.Tick(0.016) end -- the sliced read done
 
 ST:ToggleDashboard()
 ST:SelectView("spells", "fam:HealingTouch")

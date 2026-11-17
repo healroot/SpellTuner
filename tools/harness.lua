@@ -56,6 +56,7 @@ S.flavour = flavour
 -- 2026-11-16: the suites read the Forever book straight through (a Get after
 -- a mark answers the new book), unless a tool sets HARNESS_SLICED_BOOK
 local ST = { keepClassData = (HARNESS_PRUNE_CLASS_DATA ~= true), syncBook = (HARNESS_SLICED_BOOK ~= true) }
+S.nsDefaults = { keepClassData = ST.keepClassData, syncBook = ST.syncBook }
 
 if flavour == "forever" then
     S.UseProfile("forever")

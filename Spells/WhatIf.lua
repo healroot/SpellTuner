@@ -83,11 +83,20 @@ function WI:ClassNote(fam)
     return (type(t) == "string" and t ~= "") and t or nil
 end
 
+-- 2026-11-16: by key through an index of the row list it was built from
+-- (the provider hands the same list back until it changes; the second report
+-- had 2,900 linear walks)
+local rowIndex, rowIndexOf = nil, nil
 local function ClassRow(key)
-    for _, r in ipairs(WI:ClassRows() or {}) do
-        if r.key == key then return r end
+    local rows = WI:ClassRows()
+    if not rows then return nil end
+    if rowIndexOf ~= rows then
+        rowIndex, rowIndexOf = {}, rows
+        for _, r in ipairs(rows) do
+            if r.key ~= nil and rowIndex[r.key] == nil then rowIndex[r.key] = r end
+        end
     end
-    return nil
+    return rowIndex[key]
 end
 WI.ClassRow = function(_, key) return ClassRow(key) end
 

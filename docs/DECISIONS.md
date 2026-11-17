@@ -1898,3 +1898,10 @@ mark; a What if change up to 50 ms and 1.4 MB. Rulings (the author's A-E):
   was not needed: they come one per click; the cost was the rebuilds per row and per hover.
 - **E:** the profiler reads the addon's memory only at start and report (75 ms a read in the
   author's game), keeps a spike with the frame after it, and names the UI's own functions.
+- **(second report, 2026-11-17)** slices of 16-21 ms and 6 full reads in 95 s, each 2.5 MB:
+  more pause points (per rank, the sig pass, the bonus fit), the first slice on the next frame,
+  each phase's time and longest step noted for `/st perf`; out of combat an aura is a soft mark
+  only when a reading the book prices from moved (`Book:AuraPrint`: +healing, +spell damage
+  and crit per school, Spirit, max mana, each family's top cast time); a text an aura changes is
+  the sweeper's. The first read of a session at `CORE_READY` (the loading screen), not on the
+  first hover. What if finds a row by key.

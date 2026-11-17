@@ -256,6 +256,7 @@ if forever then
         local slice = Book.SLICE_MS
         Book.SLICE_MS = -1
         Book:MarkDirty(); Book:Get()
+        S.Tick(0.016) -- the first slice runs on the next frame
         Book:MarkDirty() -- while it runs
         local frames = 0
         while Book._job and frames < 2000 do S.Tick(0.016); frames = frames + 1 end

@@ -1127,12 +1127,37 @@ local FUTURE_SLOT = 100000 -- after every real slot (GroupFamilies' tiebreak)
 -- readings (scanBonus, scanCrit) are put aside across a yield, so nothing
 -- that runs between two slices reads them.
 local jobCo, sliceEnd
+-- 2026-11-16 (the second report: slices of 16-21 ms): each phase's time and
+-- its longest step between two MaybeYield calls, so a report names the part
+-- that does not yield often enough (`/st perf`'s "book read phases").
+local phase, phaseAt, stepAt
+local phaseMs, phaseStep = {}, {}
+local function Phase(name)
+    if not jobCo or coroutine.running() ~= jobCo then return end
+    local now = ST.API.ProfileMs()
+    if phase then
+        phaseMs[phase] = (phaseMs[phase] or 0) + (now - phaseAt)
+        local step = now - stepAt
+        if step > (phaseStep[phase] or 0) then phaseStep[phase] = step end
+    end
+    phase, phaseAt, stepAt = name, now, now
+end
 local function MaybeYield()
-    if jobCo and sliceEnd and coroutine.running() == jobCo and ST.API.ProfileMs() >= sliceEnd then
+    if not (jobCo and sliceEnd and coroutine.running() == jobCo) then return end
+    local now = ST.API.ProfileMs()
+    if phase then
+        local step = now - stepAt
+        if step > (phaseStep[phase] or 0) then phaseStep[phase] = step end
+        stepAt = now
+    end
+    if now >= sliceEnd then
+        if phase then phaseMs[phase] = (phaseMs[phase] or 0) + (now - phaseAt) end
         local b, c = scanBonus, scanCrit
         scanBonus, scanCrit = nil, nil
         coroutine.yield()
         scanBonus, scanCrit = b, c
+        now = ST.API.ProfileMs()
+        phaseAt, stepAt = now, now
     end
 end
 
@@ -1463,6 +1488,7 @@ function Book:Rows(family, pool)
     if not family.kind then return end
 
     for _, e in ipairs(family.ranks) do
+        MaybeYield()
         e.crit = CritOf(e, family.kind, family.school) -- the chance the value averages in
         Numbers(e, family.kind)
         ApplyBonus(e, family.kind, family.shape) -- T117
@@ -1875,6 +1901,8 @@ function Book:Scan(job)
     -- the marks are consumed now: one set while a sliced read runs is the
     -- next read's (the next Get starts it)
     Book._dirty, Book._soft = false, false
+    if job then phase = nil; phaseMs, phaseStep = {}, {} end
+    Phase("spellbook")
     local via, slotList = Book:Enumerate()
     local read = { via = via, slots = #slotList, spells = 0, secret = 0, errors = 0 }
 
@@ -1906,26 +1934,32 @@ function Book:Scan(job)
     end
 
     -- the ranks not learned yet of every family the book has (Data/Ranks_Forever.lua)
+    Phase("unlearned ranks")
     read.future = Book:AddFutureRanks(spells, prevSpells)
 
+    Phase("families")
     Book._seamFields = {}
     local families, order = Book:GroupFamilies(spells)
     local pool = Book:DefaultPool()
     scanBonus = {} -- T117: one +healing reading for the whole scan
     scanCrit = {} -- and one crit reading per school
+    Phase("rows")
     for _, name in ipairs(order) do
         MaybeYield()
         Book:Rows(families[name], pool)
         families[name].freshAt = softSerial -- RefreshFamily: read since this soft mark
     end
     MaybeYield()
+    Phase("bonus fit")
     Book:MeasureBonus(spells, families) -- T122
+    Phase("finish")
     scanBonus, scanCrit = nil, nil
 
     -- T63: the generation moves when any entry did (see Book.generation).
     local prevSigs = Book._prevSigs
     local sigs, entryChanged = {}, (prevSigs == nil)
     for id, entry in pairs(spells) do
+        MaybeYield()
         local sig = EntrySig(entry)
         sigs[id] = sig
         if not entryChanged and prevSigs[id] ~= sig then entryChanged = true end
@@ -1964,6 +1998,18 @@ function Book:Scan(job)
     elseif type(t0) == "number" and type(t1) == "number" then
         Book.lastScanMs = t1 - t0
         Book.lastScanSlices = 1
+    end
+    Book._auraPrint = Book:AuraPrint()
+    if job then
+        Phase(nil)
+        phase = nil
+        if ST.Prof.on then
+            for name, ms in pairs(phaseMs) do
+                ST.Prof.Note("book read phases (ms; max = the longest step without a pause)", name, ms)
+                ST.Prof.Note("book read phases (ms; max = the longest step without a pause)", name .. " (step)",
+                    phaseStep[name] or 0)
+            end
+        end
     end
     -- /st perf (Engine/Perf.lua): the scan's cost by its cause -- which mark
     -- (and the handler that set it) and the handler that asked
@@ -2024,8 +2070,7 @@ function Book:Get()
 end
 
 -- The sliced read: Book.SLICE_MS of a read a frame, in combat too, on a
--- driver frame's OnUpdate; the first slice runs at once (a small book is done
--- in it). ST.syncBook (the harness, unless a tool asks for slices) reads
+-- driver frame's OnUpdate, starting on the next frame. ST.syncBook (the harness, unless a tool asks for slices) reads
 -- straight through instead.
 Book.SLICE_MS = 4
 local jobDriver
@@ -2068,8 +2113,9 @@ function Book:StartJob()
     job.co = coroutine.create(function() Book:Scan(job) end)
     Book._job, jobCo = job, job.co
     if not jobDriver then jobDriver = CreateFrame("Frame") end
+    -- the first slice on the next frame too: not inside the click or the
+    -- view that asked (the second report: a slice on top of a pane render)
     jobDriver:SetScript("OnUpdate", JobFrame)
-    JobStep()
 end
 
 function Book:CancelJob()
@@ -2304,14 +2350,56 @@ ST:On("PLAYER_LEVEL_UP", function() Book:MarkDirty() end)
 ST:On("PLAYER_EQUIPMENT_CHANGED", function() Book:MarkDirty() end)
 -- T127: a Trade-off setting moved (UI/Settings.lua): the best mark moves
 ST:RegisterCallback("RANK_RULES_CHANGED", function() Book:MarkDirty() end)
+-- 2026-11-16 (the second report: every buff out of combat was a 40 ms, 2.5 MB
+-- read with the Spells window open): out of combat an aura is a soft mark
+-- only when a reading the book prices from moved (Book:AuraPrint); a text an
+-- aura changes is the sweeper's to find. In combat a mark as before (nothing
+-- is read until the fight ends, and its end marks anyway).
+function Book:AuraPrint()
+    local A = ST.API
+    local parts = {}
+    local function Add(v) parts[#parts + 1] = (type(v) == "number" and v == v) and string.format("%.3f", v) or "-" end
+    Add(A.SpellBonusHealing and A.SpellBonusHealing())
+    for school = 2, 7 do
+        Add(A.SpellBonusDamage and A.SpellBonusDamage(school))
+        Add(A.SpellCritChance and A.SpellCritChance(school))
+    end
+    Add(A.Spirit and A.Spirit())
+    Add(A.UnitPowerMax and A.UnitPowerMax("player", 0))
+    -- haste: the cast time of each family's top learned rank
+    local cache = Book._cache
+    if cache then
+        for _, name in ipairs(cache.order or {}) do
+            local fam = cache.families[name]
+            local top = fam and fam.kind and fam.maxKnown
+            if top and A.SpellInfo then
+                local info = A.SpellInfo(top.id)
+                Add(type(info) == "table" and info.castTime or nil)
+            end
+        end
+    end
+    return table.concat(parts, ",")
+end
 ST:On("UNIT_AURA", function(unit)
-    if not ST.API.IsSecret(unit) and unit == "player" then Book:MarkSoft() end
+    if ST.API.IsSecret(unit) or unit ~= "player" then return end
+    if Book._soft or Book._dirty then return end
+    if ST.inCombat then Book:MarkSoft() return end
+    local print = Book:AuraPrint()
+    if print ~= Book._auraPrint then
+        Book._auraPrint = print
+        Book:MarkSoft()
+    end
 end)
 -- a text asked for (BuildFutureEntry) arrived; a fight's stale texts readable again
 ST:On("SPELL_DATA_LOAD_RESULT", function(id)
     if not ST.API.IsSecret(id) and type(id) == "number" and Book._loadAsked[id] then Book:MarkSoft() end
 end)
 ST:On("PLAYER_REGEN_ENABLED", function() Book:MarkSoft() end)
+-- 2026-11-16: the first read of a session during the loading screen, not on
+-- the first spell hovered (33 ms in the second report)
+ST:RegisterCallback("CORE_READY", function()
+    if not ST.syncBook and not Book._cache then Book:Get() end
+end)
 
 -- T117: every method the contract names, present (Spells/BookShape.lua).
 if BS then BS.CheckMethods(Book, "Spells/Book.lua") end
