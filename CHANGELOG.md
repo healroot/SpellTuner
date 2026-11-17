@@ -24,6 +24,9 @@ published to CurseForge; the developers' log is `docs/HISTORY.md`.
   of combat; until it is done the numbers you saw stay up. Hovering a spell after a buff
   changed re-reads only that spell's ranks, not the whole book. A buff that changes none of
   your numbers (healing, spell damage, crit, Spirit, mana, cast times) re-reads nothing.
+  With the Spells window open on Overview in a fight, the table no longer redraws itself
+  when your spells change -- the To OOM column keeps moving and the rest updates when the
+  fight ends.
 - **What if and the talent plan: much less work per click.** The What if numbers are worked
   out once per change instead of once per row and per hover, and the talent plan no longer
   rebuilds its talent list for every talent (about 1 MB less garbage per click).

@@ -2971,7 +2971,10 @@ local function BuildOverview(host)
         local now = GetTime()
         if pane.lastRefresh and (now - pane.lastRefresh) < 2 then return end
         LiveBook() -- a changed book fires BOOK_CHANGED here, and bumps bookGen
-        if OverviewSignature(OverviewMode()) ~= pane.signature then
+        -- 2026-11-17 (the combat report: 28 ms in one frame): in combat the
+        -- tick never redraws the whole table -- the To OOM cells move, the
+        -- rest waits for the fight's end; a click still redraws at once
+        if OverviewSignature(OverviewMode()) ~= pane.signature and not ST.inCombat then
             SpellsPane:RenderOverview()
         else
             SpellsPane:UpdateOverviewLive()

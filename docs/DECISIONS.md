@@ -1905,3 +1905,9 @@ mark; a What if change up to 50 ms and 1.4 MB. Rulings (the author's A-E):
   and crit per school, Spirit, max mana, each family's top cast time); a text an aura changes is
   the sweeper's. The first read of a session at `CORE_READY` (the loading screen), not on the
   first hover. What if finds a row by key.
+- **(combat reports, 2026-11-17)** two fights, 6.6-7.9 ms/s ours, no GC in combat, reads sliced
+  (worst slice 7.9 ms). The one spike of ours: Overview's 2 s tick redrawing the whole table after
+  a book change, 28 ms in one frame. In combat that tick moves the To OOM cells only; the full
+  redraw waits for the fight's end (a click still redraws at once). The family grouping pauses
+  per family (6 ms step). The "hard, UNIT_AURA" read was the first view asking for unlearned
+  ranks (`WantFuture`), mislabelled; it now names itself.

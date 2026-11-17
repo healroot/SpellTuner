@@ -5577,3 +5577,10 @@ report), the first slice on the next frame, `Book:AuraPrint` (an aura marks only
 reading moved), the first read at `CORE_READY`; `Spells/WhatIf.lua` rows by key.
 `tools/wowstub.lua` `S.Load` seeds a fresh namespace with `S.nsDefaults` (harness: `syncBook`,
 `keepClassData`), so suites that load their own session read straight through.
+
+## 2026-11-17 -- from the combat `/st perf` reports (0.18.2)
+
+`Engine/Perf.lua`: a `combat in this window` line (fights entered / left, the client's lockdown
+frames), 954e667. Two combat reports then: clean fights; fixed the Overview tick's in-combat full
+redraw (`UI/SpellsPane.lua`), a pause per family in `Book:GroupFamilies`, `WantFuture`'s own mark
+label. `tools/perfcheck.lua` 15j, 16f.

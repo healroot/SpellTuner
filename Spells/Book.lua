@@ -1203,6 +1203,8 @@ function Book:WantFuture()
     if not Book.wantFuture then
         Book.wantFuture = true
         Book._dirty = true
+        -- the third report blamed this read on the last soft mark's handler
+        if ST.Prof.on then Book._markBy = "first view of unlearned ranks" end
     end
 end
 
@@ -1369,6 +1371,7 @@ function Book:GroupFamilies(spells)
     table.sort(order)
 
     for _, name in ipairs(order) do
+        MaybeYield() -- the third report: 6 ms between two pauses here
         local fam = families[name]
         table.sort(fam.ranks, function(a, b)
             local ra, rb = a.rank or math.huge, b.rank or math.huge

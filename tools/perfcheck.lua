@@ -274,6 +274,25 @@ if forever then
             tostring(cancelled))
     end)
 
+    T("16f Overview in combat: the tick moves the To OOM cells, the full redraw waits for the fight's end", function()
+        ST:ToggleDashboard()
+        ST:SelectView("spells", "overview")
+        local pane = ST.SpellsPane.overview
+        if not (pane and pane:IsVisible()) then return false, "overview not shown" end
+        S.Tick(2.5)
+        local r0, l0 = pane.renderCount or 0, pane.liveCount or 0
+        pane.signature = "stale" -- what the table was drawn from changed
+        S.inCombat, ST.inCombat = true, true
+        S.Tick(2.5)
+        local rIn, lIn = pane.renderCount or 0, pane.liveCount or 0
+        S.inCombat, ST.inCombat = false, false
+        S.Tick(2.5)
+        local rOut = pane.renderCount or 0
+        ST:ToggleDashboard()
+        return rIn == r0 and lIn > l0 and rOut == r0 + 1,
+            string.format("renders %d -> in combat %d -> after %d; live %d -> %d", r0, rIn, rOut, l0, lIn)
+    end)
+
     T("16e What if: one book per change, one row list until the level or class changes", function()
         local WI = ST.WhatIf
         WI:Clear()
