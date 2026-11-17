@@ -2778,6 +2778,9 @@ Below level 60, with a heal that has later ranks (Healing Touch, Rejuvenation, R
    The report also has `book read phases`: each phase's ms and `(step)` its longest stretch
    without a pause -- paste it if any slice is still over ~8 ms. Buffs that change none of your
    numbers (food, a mount, most procs) should add no `book scans` line at all.
+   For a combat report: `/st perf reset` before the pull, fight, `/st perf report` after it
+   ends. The `combat in this window` line says whether the window saw the fight (entered / left,
+   the client's lockdown frames).
 
 ## Reporting
 Paste the `.logs/*.txt` files (or their names if committed locally) and, for §3/§4, the

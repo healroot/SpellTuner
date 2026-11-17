@@ -438,6 +438,20 @@ do
             tostring(s and s.calls), reads, #Perf.data.mem)
     end)
 
+    T("15j the report says whether its window saw a fight: entered, left, the client's lockdown", function()
+        local n = Perf.data.framesLockdown
+        S.inCombat, ST.inCombat = true, true
+        S.Fire("PLAYER_REGEN_DISABLED")
+        S.Tick(0.05)
+        S.inCombat, ST.inCombat = false, false
+        S.Fire("PLAYER_REGEN_ENABLED")
+        S.Tick(0.05)
+        local text = Perf.Report()
+        local line = text:match("combat in this window: [^\n]+") or ""
+        return Perf.data.fightsIn == 1 and Perf.data.fightsOut == 1 and Perf.data.framesLockdown >= n + 1
+            and line:find("1 entered, 1 left", 1, true) ~= nil, line
+    end)
+
     T("15g off: nothing more is timed, the data stays; on again starts fresh", function()
         Perf.Command("off")
         local calls = Stat("fire PERFCHECK_INNER").calls

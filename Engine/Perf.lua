@@ -66,6 +66,9 @@ function Perf.Reset()
         frameHist = { [50] = 0, [100] = 0, [250] = 0, [1000] = 0 },
         worstFrame = 0,
         combatSec = 0,
+        fightsIn = 0, fightsOut = 0,  -- PLAYER_REGEN_DISABLED / _ENABLED inside the window
+        framesLockdown = 0,           -- frames InCombatLockdown() answered true
+        inCombatAtStart = ST.inCombat and true or false,
         ourMs = 0, ourMsCombat = 0,
         gcN = 0, gcKB = 0, gcCombat = 0,
         heapMin = nil, heapMax = nil,
@@ -195,6 +198,10 @@ function Perf.OnFrame(elapsed)
         D.framesCombat = D.framesCombat + 1
         D.combatSec = D.combatSec + (elapsed or 0)
     end
+    -- 2026-11-17: the client's own answer beside the flag, so a report says
+    -- plainly whether its window saw a fight
+    local lock = ST.API.InCombatLockdown and ST.API.InCombatLockdown()
+    if lock == true or lock == 1 then D.framesLockdown = D.framesLockdown + 1 end
     if ms > D.worstFrame then D.worstFrame = ms end
     for _, b in ipairs({ 1000, 250, 100, 50 }) do
         if ms >= b then D.frameHist[b] = D.frameHist[b] + 1 break end
@@ -288,6 +295,8 @@ function Perf.Report()
         PROF.on and "running" or "stopped"))
     A(string.format("session %ss (combat %ss), frames %d (combat %d), avg fps %s",
         F(dur, 0), F(D.combatSec, 0), D.frames, D.framesCombat, F(dur > 0 and D.frames / dur or 0)))
+    A(string.format("combat in this window: %s at start, %d entered, %d left; client lockdown %d frames",
+        D.inCombatAtStart and "in combat" or "out of combat", D.fightsIn, D.fightsOut, D.framesLockdown))
     A(string.format("ours: %s ms total (%s ms/s), in combat %s ms (%s ms/s)",
         F(D.ourMs), F(dur > 0 and D.ourMs / dur or 0, 2), F(D.ourMsCombat),
         F(D.combatSec > 0 and D.ourMsCombat / D.combatSec or 0, 2)))
@@ -431,6 +440,9 @@ ST:RegisterCallback("CORE_LOGIN", function()
         ST:Print("perf: profiling is on (/st perf report, /st perf off).")
     end
 end)
+
+ST:On("PLAYER_REGEN_DISABLED", function() if D and PROF.on then D.fightsIn = D.fightsIn + 1 end end)
+ST:On("PLAYER_REGEN_ENABLED", function() if D and PROF.on then D.fightsOut = D.fightsOut + 1 end end)
 
 ST:On("PLAYER_LOGOUT", function()
     if D then pcall(Perf.Report) end
